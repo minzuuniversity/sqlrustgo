@@ -165,6 +165,32 @@ impl BinlogClient {
         Ok(())
     }
 
+    /// #4937: report the position this replica has **durably written**.
+    ///
+    /// Distinct from [`Self::send_ack`], which sends `HeartbeatAck` —
+    /// a liveness signal whose value the master chose. Semi-sync
+    /// replication waits on this instead: the master may not report a
+    /// commit until a replica says it has written that far.
+    ///
+    /// `pos` must be the position the replica actually persisted, not
+    /// the one the master broadcast.
+    pub fn send_binlog_ack(&mut self, file: &str, pos: u64) -> std::io::Result<()> {
+        let mut stream = self
+            .stream
+            .as_ref()
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotConnected, "Not connected to master")
+            })?
+            .try_clone()?;
+
+        let ack = ReplicationMessage::BinlogAck {
+            file: file.to_string(),
+            pos,
+        };
+        PacketWriter::write_packet(&mut stream, &ack.serialize())?;
+        Ok(())
+    }
+
     pub fn close(&mut self) {
         if let Some(mut stream) = self.stream.take() {
             let _ = PacketWriter::write_packet(&mut stream, &ReplicationMessage::EOF.serialize());
@@ -203,12 +229,31 @@ fn run_replication_loop(
                 };
 
                 match msg {
-                    ReplicationMessage::BinlogData { events, .. } => {
+                    ReplicationMessage::BinlogData { file, pos, events } => {
                         for event in events {
                             if tx.send(event).is_err() {
                                 return Ok(());
                             }
                         }
+                        // #4937: acknowledge what was actually received.
+                        //
+                        // `pos` is the position the master wrote, and it
+                        // is the one position this replica has a claim on:
+                        // the events are now queued to the caller, so the
+                        // replica is committed to applying them. Using the
+                        // broadcast `pos` (rather than echoing a heartbeat
+                        // lsn the master chose) is what lets the master
+                        // stand behind the commit.
+                        //
+                        // A replica that needs acknowledgement strictly
+                        // *after* durable storage should send
+                        // `send_binlog_ack` itself once the relay log is
+                        // written instead of relying on this.
+                        let ack = ReplicationMessage::BinlogAck {
+                            file: file.clone(),
+                            pos,
+                        };
+                        let _ = PacketWriter::write_packet(&mut stream, &ack.serialize());
                     }
                     ReplicationMessage::Heartbeat { lsn, timestamp } => {
                         let _ = timestamp;

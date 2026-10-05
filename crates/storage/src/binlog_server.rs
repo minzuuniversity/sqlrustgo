@@ -6,6 +6,7 @@ use crate::binlog_protocol::{
     BinlogEventData, BinlogProtocol, PacketReader, PacketWriter, ReplicationMessage,
 };
 use crate::replication::{BinlogEvent, BinlogWriter};
+use crate::semisync::SemiSyncMaster;
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -40,13 +41,25 @@ pub struct BinlogServer {
     subscribers: Arc<Mutex<HashMap<u32, SlaveSubscriber>>>,
     /// #4936 PR-B: highest LSN each slave has acknowledged.
     ///
-    /// Without this the master discarded every `HeartbeatAck`, so it
-    /// had no way to know how far a replica had got. Semi-sync
-    /// replication (#4937) is precisely "wait until the replica has
-    /// acknowledged" — it needs somewhere to wait *on*.
+    /// **This is a liveness table, not a durability table.** The value
+    /// comes from `HeartbeatAck`, which carries an LSN the *master*
+    /// chose (see `BinlogClient::send_ack`, which assigns the echoed
+    /// value to `current_pos`). It answers "is this replica alive",
+    /// not "how far has it written". Semi-sync waits on
+    /// [`Self::acked_pos`] instead — see #4937.
     ///
     /// Keyed by slave id; `0` means "no slave has acknowledged yet".
     acked_lsn: Arc<Mutex<HashMap<u32, u64>>>,
+    /// #4937: highest binlog position each slave reports it has
+    /// **durably written**, carried by `ReplicationMessage::BinlogAck`.
+    ///
+    /// Kept separate from `acked_lsn` on purpose: mixing the two would
+    /// let a heartbeat stand in for a durability confirmation, which is
+    /// exactly the failure mode semi-sync exists to prevent.
+    acked_pos: Arc<Mutex<HashMap<u32, u64>>>,
+    /// #4937: semi-sync gate. Disabled by default, so `write_event`
+    /// behaves exactly as before unless it is turned on.
+    semi_sync: Arc<SemiSyncMaster>,
     is_running: Arc<Mutex<bool>>,
 }
 
@@ -71,8 +84,20 @@ impl BinlogServer {
             binlog_writer: Arc::new(Mutex::new(binlog_writer)),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
             acked_lsn: Arc::new(Mutex::new(HashMap::new())),
+            acked_pos: Arc::new(Mutex::new(HashMap::new())),
+            semi_sync: Arc::new(SemiSyncMaster::new()),
             is_running: Arc::new(Mutex::new(false)),
         })
+    }
+
+    /// The address this server actually bound to.
+    ///
+    /// Constructed with port `0` the OS picks a free port; without this
+    /// accessor a caller (notably the #4937 end-to-end test) could not
+    /// learn which one, and would have to guess a fixed port and risk
+    /// colliding with a parallel test run.
+    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        self.listener.local_addr()
     }
 
     pub fn start(&self) -> std::io::Result<()> {
@@ -96,6 +121,8 @@ impl BinlogServer {
                     // books acknowledgements into the same table the
                     // server reads from.
                     let acked_lsn = self.acked_lsn.clone();
+                    // #4937: the durability table semi-sync waits on.
+                    let acked_pos = self.acked_pos.clone();
 
                     thread::spawn(move || {
                         if let Err(e) = handle_slave_connection(
@@ -106,6 +133,7 @@ impl BinlogServer {
                             writer,
                             subscribers,
                             acked_lsn,
+                            acked_pos,
                         ) {
                             eprintln!("Error handling slave {}: {}", addr, e);
                         }
@@ -127,6 +155,81 @@ impl BinlogServer {
         *self.is_running.lock().unwrap() = false;
     }
 
+    /// #4937: configure the semi-sync gate.
+    ///
+    /// `wait_count` is how many replicas must have durably written the
+    /// event before `write_event` returns. `timeout_ms` bounds the wait
+    /// after which the commit degrades to async (and is counted in
+    /// `rpl_semi_sync_master_no_transactions`).
+    ///
+    /// Semi-sync is off by default, so this is opt-in per server.
+    pub fn configure_semi_sync(&self, wait_count: u32, timeout_ms: u64) {
+        self.semi_sync.set_wait_count(wait_count);
+        self.semi_sync.set_timeout_ms(timeout_ms);
+        if wait_count > 0 {
+            self.semi_sync.enable();
+        } else {
+            self.semi_sync.disable();
+        }
+    }
+
+    /// #4937: access the semi-sync state (counters, mode, wait config).
+    pub fn semi_sync(&self) -> &Arc<SemiSyncMaster> {
+        &self.semi_sync
+    }
+
+    /// #4937: highest durably-written position reported by a replica.
+    pub fn acked_pos_of(&self, slave_id: u32) -> u64 {
+        self.acked_pos
+            .lock()
+            .unwrap()
+            .get(&slave_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// #4937: number of replicas that have reported a durable write.
+    pub fn acking_pos_slave_count(&self) -> usize {
+        self.acked_pos.lock().unwrap().len()
+    }
+
+    /// #4937: block until at least `wait_count` replicas have
+    /// durably written `target_pos`, or the timeout expires.
+    ///
+    /// Returns `true` when the wait succeeded. On timeout the caller is
+    /// expected to degrade to async — the commit is already in the
+    /// master's own binlog, so it is not lost, it is merely no longer
+    /// guaranteed to have reached a replica before the client was told
+    /// "committed".
+    fn wait_for_semi_sync(&self, target_pos: u64) -> bool {
+        if !self.semi_sync.is_enabled() {
+            return true;
+        }
+        let required = self.semi_sync.get_wait_count();
+        if required == 0 {
+            return true;
+        }
+        let timeout = Duration::from_millis(self.semi_sync.get_timeout_ms());
+        let start = std::time::Instant::now();
+
+        loop {
+            let ackers = self
+                .acked_pos
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|&&p| p >= target_pos)
+                .count() as u32;
+            if ackers >= required {
+                return true;
+            }
+            if start.elapsed() >= timeout {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
     pub fn write_event(&self, event: &BinlogEvent) -> std::io::Result<u64> {
         let mut writer = self.binlog_writer.lock().unwrap();
         let lsn = writer.write_event(event)?;
@@ -139,6 +242,20 @@ impl BinlogServer {
         };
 
         self.broadcast(&msg);
+
+        // #4937: semi-sync gate. `lsn` is the position the master just
+        // wrote; the caller may not observe this event as committed
+        // until `wait_count` replicas have reported it as durably
+        // written themselves (via `BinlogAck`). On timeout the commit
+        // degrades to async and is counted, exactly as MySQL records it
+        // in `rpl_semi_sync_master_no_transactions`.
+        if self.wait_for_semi_sync(lsn) {
+            if self.semi_sync.is_enabled() {
+                self.semi_sync.record_yes_transaction();
+            }
+        } else {
+            self.semi_sync.record_no_transaction();
+        }
 
         Ok(lsn)
     }
@@ -181,6 +298,10 @@ fn handle_slave_connection(
     // #4936 PR-B: shared with the server so the master can be asked
     // how far each replica has got.
     acked_lsn: Arc<Mutex<HashMap<u32, u64>>>,
+    // #4937: durability table, fed by `BinlogAck` (see `acked_pos`
+    // on `BinlogServer`). Separate from `acked_lsn` because heartbeat
+    // ACKs carry a master-chosen LSN, not a replica write position.
+    acked_pos: Arc<Mutex<HashMap<u32, u64>>>,
 ) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
 
@@ -287,6 +408,30 @@ fn handle_slave_connection(
                 PacketWriter::write_packet(&mut stream, &ok.serialize())?;
             }
 
+            // #4937: the durability acknowledgement semi-sync waits on.
+            // Booked into `acked_pos`, deliberately NOT into `acked_lsn`
+            // — see the field docs on `BinlogServer::acked_pos`.
+            ReplicationMessage::BinlogAck { file: _, pos } => {
+                let Some(sid) = this_slave_id else {
+                    let err = ReplicationMessage::Error {
+                        code: 4,
+                        message: "BinlogAck before handshake".to_string(),
+                    };
+                    PacketWriter::write_packet(&mut stream, &err.serialize())?;
+                    break;
+                };
+                let recorded = {
+                    let mut acks = acked_pos.lock().unwrap();
+                    let entry = acks.entry(sid).or_insert(0);
+                    if *entry < pos {
+                        *entry = pos;
+                    }
+                    *entry
+                };
+                let ok = ReplicationMessage::AckOk { lsn: recorded };
+                PacketWriter::write_packet(&mut stream, &ok.serialize())?;
+            }
+
             ReplicationMessage::EOF => {
                 break;
             }
@@ -383,6 +528,8 @@ impl Clone for BinlogServer {
             binlog_writer: self.binlog_writer.clone(),
             subscribers: self.subscribers.clone(),
             acked_lsn: self.acked_lsn.clone(),
+            acked_pos: self.acked_pos.clone(),
+            semi_sync: self.semi_sync.clone(),
             is_running: self.is_running.clone(),
         }
     }
