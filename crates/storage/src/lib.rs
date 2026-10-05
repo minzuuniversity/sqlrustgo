@@ -46,6 +46,7 @@ pub mod recovery_engine;
 pub mod replication;
 pub mod replication_lag;
 pub mod restore_filespace;
+pub mod semisync;
 pub mod vtu_guard;
 pub mod vtu_ir;
 pub mod wal;
