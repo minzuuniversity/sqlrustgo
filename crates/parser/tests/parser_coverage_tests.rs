@@ -3453,8 +3453,20 @@ fn test_parse_show_databases() {
 
 #[test]
 fn test_parse_show_schemas() {
-    let result = parse("SHOW SCHEMAS");
-    let _ = result;
+    // Issue #5019 Problem 2: `SHOW SCHEMAS` is the SQL-standard
+    // synonym for `SHOW DATABASES` (MySQL accepts both; PostgreSQL uses
+    // SCHEMAS). It should parse to ShowStatement::Databases so the
+    // existing execute_show_databases() dispatches without further work.
+    use sqlrustgo_parser::parser::{ShowStatement, Statement};
+    let result = parse("SHOW SCHEMAS").expect("SHOW SCHEMAS must parse");
+    let stmt = match result {
+        Statement::Show(s) => s,
+        other => panic!("expected Show, got {other:?}"),
+    };
+    assert!(
+        matches!(stmt, ShowStatement::Databases),
+        "SHOW SCHEMAS must desugar to ShowStatement::Databases, got {stmt:?}"
+    );
 }
 
 #[test]
