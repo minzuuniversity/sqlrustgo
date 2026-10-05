@@ -41,6 +41,24 @@ jobs:
       - name: Build graph-cli
         run: |
           cd repo
+          # #5026: `graph-cli` (and its `evidence-graph` dependency) live
+          # only under archive/v3.11/archived-crates/, which is not a
+          # workspace member. `cargo build -p graph-cli` therefore always
+          # failed with the opaque
+          #   error: package ID specification `graph-cli` did not match
+          #           any packages
+          # Check for the package up front so the failure names the real
+          # cause instead. Re-wiring this job requires moving the tool
+          # back into the workspace — tracked separately.
+          if ! cargo metadata --no-deps --format-version 1 2>/dev/null \
+               | grep -q '"name":"graph-cli"'; then
+            echo "::error::package 'graph-cli' is not a workspace member."
+            echo "::error::It exists only at archive/v3.11/archived-crates/graph-cli"
+            echo "::error::(v3.11+ never wired it in), so the evidence-graph"
+            echo "::error::toolchain this job needs is absent from the tree."
+            echo "::error::See the issue tracking re-wiring before trusting this gate."
+            exit 1
+          fi
           cargo build -p graph-cli --release
 
       - name: Initialize Evidence Graph
@@ -132,5 +150,15 @@ jobs:
       - name: Run Legacy Gate
         run: |
           cd repo
-          chmod +x scripts/gate/check_alpha.sh
-          bash scripts/gate/check_alpha.sh 2>&1 || true
+          # #5026: the script lives under scripts/gate/legacy/, not
+          # scripts/gate/. The wrong path made `chmod` fail, and because
+          # the runner uses `bash -e -o pipefail` that exited the step
+          # before the `|| true` below could ever apply — so the job
+          # reported a failure that had nothing to do with the gate.
+          GATE="scripts/gate/legacy/check_alpha.sh"
+          if [ ! -f "$GATE" ]; then
+            echo "::error::legacy gate script not found at $GATE"
+            exit 1
+          fi
+          chmod +x "$GATE"
+          bash "$GATE" 2>&1 || true
