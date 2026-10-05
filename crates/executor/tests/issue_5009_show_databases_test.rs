@@ -128,3 +128,63 @@ fn empty_engine_still_lists_only_default() {
     let mut e = engine();
     assert_eq!(databases(&mut e), vec!["default".to_string()]);
 }
+
+// ---------------------------------------------------------------------------
+// #5019 — `SHOW SCHEMAS` is an exact synonym of `SHOW DATABASES` in MySQL.
+// Before the fix it hit the generic arm and produced
+//   Parse error: Unexpected token after SHOW: Identifier("SCHEMAS")
+// ---------------------------------------------------------------------------
+
+#[test]
+fn show_schemas_is_a_synonym_for_show_databases() {
+    let mut e = engine();
+    e.execute("CREATE DATABASE shop").unwrap();
+    let r = e
+        .execute("SHOW SCHEMAS")
+        .unwrap_or_else(|err| panic!("SHOW SCHEMAS failed: {err}"));
+    let names: Vec<String> = r
+        .rows
+        .iter()
+        .map(|row| match &row[0] {
+            Value::Text(s) => s.clone(),
+            other => panic!("expected Text, got {other:?}"),
+        })
+        .collect();
+    assert!(
+        names.iter().any(|n| n == "shop"),
+        "#5019: SHOW SCHEMAS must list created databases; got {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n == "default"),
+        "#5019: SHOW SCHEMAS must keep listing `default`; got {names:?}"
+    );
+}
+
+#[test]
+fn show_schemas_and_show_databases_agree() {
+    let mut e = engine();
+    e.execute("CREATE DATABASE a_db").unwrap();
+    e.execute("CREATE DATABASE b_db").unwrap();
+    let via_databases = databases(&mut e);
+    let via_schemas = e.execute("SHOW SCHEMAS").unwrap();
+    let via_schemas: Vec<String> = via_schemas
+        .rows
+        .iter()
+        .map(|row| match &row[0] {
+            Value::Text(s) => s.clone(),
+            other => panic!("expected Text, got {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        via_databases, via_schemas,
+        "#5019: SHOW SCHEMAS and SHOW DATABASES must return identical rows"
+    );
+}
+
+#[test]
+fn show_schemas_on_empty_engine_returns_default() {
+    let mut e = engine();
+    let r = e.execute("SHOW SCHEMAS").unwrap();
+    assert_eq!(r.rows.len(), 1, "got {r:?}");
+    assert!(matches!(&r.rows[0][0], Value::Text(s) if s == "default"));
+}

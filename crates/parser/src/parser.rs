@@ -2612,6 +2612,36 @@ impl Parser {
         Some(Expression::Identifier(format!("excluded.{col}")))
     }
 
+    /// #5019: MySQL 8.0.20+ row alias. `INSERT ... VALUES (...) AS new
+    /// ON DUPLICATE KEY UPDATE n = new.n`.
+    ///
+    /// This lowers `<alias>.<col>` to the very same `excluded.<col>`
+    /// shape that #5009 established for the older `VALUES(col)` spelling.
+    /// The two are semantically identical in MySQL — both name the row
+    /// this INSERT would have written — so sharing the representation
+    /// keeps the evaluator untouched.
+    ///
+    /// The alias only exists inside the ODKU / ON CONFLICT clause, so
+    /// there is no need to carry it on the AST; the caller passes the
+    /// name it captured after the VALUES list.
+    ///
+    /// Returns `None` without touching the token stream unless the
+    /// tokens are exactly `Identifier Dot Identifier`.
+    fn try_parse_row_alias_ref(&mut self, alias: &str) -> Option<Expression> {
+        if !matches!(self.current(), Some(Token::Identifier(n)) if n == alias) {
+            return None;
+        }
+        if !matches!(self.tokens.get(self.position + 1), Some(Token::Dot)) {
+            return None;
+        }
+        let col = match self.tokens.get(self.position + 2) {
+            Some(Token::Identifier(n)) => n.clone(),
+            _ => return None,
+        };
+        self.position += 3;
+        Some(Expression::Identifier(format!("excluded.{col}")))
+    }
+
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.position + 1)
     }
@@ -8535,6 +8565,28 @@ impl Parser {
             return Err("Expected VALUES, SELECT, or DEFAULT VALUES".to_string());
         };
 
+        // #5019: MySQL 8.0.20+ row alias — `INSERT ... VALUES (...) AS new
+        // ON DUPLICATE KEY UPDATE n = new.n`.
+        //
+        // Before this, the `AS` was never consumed. `current()` was then
+        // `As` rather than `On`, so the whole `ON DUPLICATE KEY UPDATE`
+        // clause was skipped and the statement reported success having
+        // changed nothing. See `try_parse_row_alias_ref` for the lowering
+        // used on the right-hand side.
+        let row_alias: Option<String> = if matches!(self.current(), Some(Token::As)) {
+            self.next();
+            match self.current() {
+                Some(Token::Identifier(name)) => {
+                    let name = name.clone();
+                    self.next();
+                    Some(name)
+                }
+                _ => return Err("Expected row alias identifier after AS in INSERT".to_string()),
+            }
+        } else {
+            None
+        };
+
         // V312-63 / Issue #4642: ON CONFLICT (SQLite/Postgres) is parsed
         // alongside ON DUPLICATE KEY UPDATE; declare `on_conflict_clause`
         // at this outer scope so the INSERT construction below can use it
@@ -8586,7 +8638,13 @@ impl Parser {
                                              // row-value reference. Try it first; fall
                                              // through to the general expression parser
                                              // for everything else.
-                                let val = match self.try_parse_values_row_ref() {
+                                             // #5019: `AS new` row alias is the newer
+                                             // spelling of the same thing.
+                                let val = match row_alias
+                                    .as_deref()
+                                    .and_then(|a| self.try_parse_row_alias_ref(a))
+                                    .or_else(|| self.try_parse_values_row_ref())
+                                {
                                     Some(e) => e,
                                     None => self.parse_expression()?,
                                 };
@@ -8715,7 +8773,11 @@ impl Parser {
                                                      // branch — the two forms share
                                                      // `apply_odku`, so a row-value
                                                      // reference has to work in both.
-                                        let val = match self.try_parse_values_row_ref() {
+                                        let val = match row_alias
+                                            .as_deref()
+                                            .and_then(|a| self.try_parse_row_alias_ref(a))
+                                            .or_else(|| self.try_parse_values_row_ref())
+                                        {
                                             Some(e) => e,
                                             None => self.parse_expression()?,
                                         };
@@ -12674,7 +12736,14 @@ impl Parser {
         self.expect(Token::Show)?;
 
         match self.current() {
-            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "DATABASES" => {
+            // #5019: MySQL treats SHOW SCHEMAS as a exact synonym of
+            // SHOW DATABASES. Without this it fell through to the generic
+            // arm and produced
+            //   Parse error: Unexpected token after SHOW: Identifier("SCHEMAS")
+            Some(Token::Identifier(ref ident))
+                if ident.eq_ignore_ascii_case("DATABASES")
+                    || ident.eq_ignore_ascii_case("SCHEMAS") =>
+            {
                 self.next();
                 Ok(Statement::Show(ShowStatement::Databases))
             }
