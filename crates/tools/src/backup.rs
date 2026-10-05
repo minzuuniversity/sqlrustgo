@@ -424,7 +424,18 @@ pub fn run() -> Result<()> {
             dir,
             format,
             data_dir,
-        } => create_incremental_backup(&parent, &dir, &format, &data_dir),
+        } => {
+            // #4938 AC5: the `incremental` subcommand has no change
+            // capture behind it, so it writes a full dump. Say so
+            // before it runs rather than letting the operator discover
+            // it from the manifest afterwards.
+            println!(
+                "NOTE: the `incremental` subcommand currently exports ALL tables.\n\
+                 \x20     The backup is labelled `Full`; only `parent_lsn` links it\n\
+                 \x20     to the parent. A true delta requires a change set."
+            );
+            create_incremental_backup(&parent, &dir, &format, &data_dir)
+        }
         BackupCommand::List { dir } => list_backups(&dir),
         BackupCommand::Verify { dir } => verify_backup(&dir),
         BackupCommand::Restore { dir, target, clean } => restore_backup(&dir, &target, clean),
@@ -576,7 +587,12 @@ pub fn create_incremental_backup_from_demo(parent: &Path, dir: &Path, format: &s
     create_incremental_backup_from_storage(parent, dir, format, None)
 }
 
-/// Create an incremental backup against the caller's `data_dir`.
+/// Create a backup of the caller's `data_dir`, chained to `parent`.
+///
+/// #4938 AC5: despite the historical name, this exports **every table**,
+/// so the manifest it writes is labelled `Full`. The `parent_lsn` link is
+/// real and is kept, but nothing here is a delta. For a genuine
+/// incremental, use [`create_incremental_backup_with_changeset`].
 pub fn create_incremental_backup(
     parent: &Path,
     dir: &Path,
@@ -670,13 +686,21 @@ fn create_incremental_backup_from_storage(
     // Create manifest
     let manifest = BackupManifest {
         version: "1.0".to_string(),
-        // NOTE: this path exports every table, so the manifest label is
-        // aspirational — the engine has no change capture, so nothing
-        // here is a delta relative to the parent. Left as `Incremental`
-        // because issue_4938_incremental_backup_references_parent in
-        // crates/tools/tests/incremental_backup_e2e_test.rs pins it; the
-        // label itself is tracked in #4938 rather than changed here.
-        backup_type: BackupType::Incremental,
+        // #4938 AC5: this path exports EVERY table, so it is a full
+        // dump. The label used to say `Incremental`, which made a
+        // restore operator believe they had a delta to replay when they
+        // actually had a second complete copy. It is `Full` now.
+        //
+        // The engine has no change capture, so there is no honest way
+        // for this entry point to produce a real delta — a caller with
+        // an actual change set wants
+        // `create_incremental_backup_with_changeset`, which exports only
+        // the changes and still records `Incremental`.
+        //
+        // `parent_lsn` stays: the export really is a child of that
+        // backup, and `restore_incremental_chain` walks the chain from
+        // the directory list rather than from this label.
+        backup_type: BackupType::Full,
         timestamp: chrono_lite_timestamp(),
         lsn: Some(current_lsn.clone()),
         parent_lsn: Some(parent_lsn.clone()),
