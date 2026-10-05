@@ -1,7 +1,7 @@
-# GMP-Platform consumer gate — 2026-10-05T06:07:20Z
+# GMP-Platform consumer gate — 2026-10-05T09:34:39Z
 
-- SQLRustGo: `716d334565` (feat/4943-smoke-wiring)
-- GMP-Platform: `1795ebb` (fix/web-tsconfig-node-types) at `/Volumes/workspace/dev/GMP-Platform`
+- SQLRustGo: `6c52ce1317` (test/4943-gate-evidence)
+- GMP-Platform: `7143c72` (fix/hnsw-embed-dim) at `/Volumes/workspace/dev/GMP-Platform`
 
 | Status | Check | Detail |
 |---|---|---|
@@ -9,12 +9,12 @@
 | PASS | `compile-gmp-api` | cargo check against current sqlrustgo crates |
 | PASS | `compile-gmp-auth` | cargo check against current sqlrustgo crates |
 | PASS | `compile-gmp-audit-db` | cargo check against current sqlrustgo crates |
-| PASS | `sqlrustgo-linkage` | 4 GMP crate(s) path-depend on this repo; sqlrustgo-storage still builds |
+| FAIL | `sqlrustgo-linkage` | sqlrustgo-storage failed to build: error: this file contains an unclosed delimiter |
 | PASS | `smoke-408` | gmp-eval ran 5 of 408 scenarios |
 | PASS | `webui` | npm run test ok (Tests  11 passed) |
 | PASS | `webui-typecheck` | npm run typecheck clean |
 
-**8 passed · 0 failed · 0 skipped**
+**7 passed · 1 failed · 0 skipped**
 
 ## 关于 #4873 记录的「PR #207 self-approval pending」
 
