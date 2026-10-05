@@ -56,6 +56,21 @@ pub enum ReplicationMessage {
     AckOk {
         lsn: u64,
     },
+    /// #4937: a replica reports how far it has **durably written** the
+    /// binlog.
+    ///
+    /// This is deliberately a separate variant from `HeartbeatAck`. A
+    /// heartbeat ACK only proves the replica is alive — the master
+    /// echoes its own `lsn` back (`BinlogClient::send_ack` even assigns
+    /// that echoed value to `current_pos`), so it carries no information
+    /// about the replica's own write progress. Semi-sync must wait on a
+    /// position the replica chose, otherwise a replica could ACK a
+    /// heartbeat for LSN N while having durably written nothing of N, and
+    /// the master would report a commit it has no basis to stand behind.
+    BinlogAck {
+        file: String,
+        pos: u64,
+    },
     EOF,
 }
 

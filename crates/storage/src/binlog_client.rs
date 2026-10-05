@@ -165,6 +165,32 @@ impl BinlogClient {
         Ok(())
     }
 
+    /// #4937: report the position this replica has **durably written**.
+    ///
+    /// Distinct from [`Self::send_ack`], which sends `HeartbeatAck` —
+    /// a liveness signal whose value the master chose. Semi-sync
+    /// replication waits on this instead: the master may not report a
+    /// commit until a replica says it has written that far.
+    ///
+    /// `pos` must be the position the replica actually persisted, not
+    /// the one the master broadcast.
+    pub fn send_binlog_ack(&mut self, file: &str, pos: u64) -> std::io::Result<()> {
+        let mut stream = self
+            .stream
+            .as_ref()
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotConnected, "Not connected to master")
+            })?
+            .try_clone()?;
+
+        let ack = ReplicationMessage::BinlogAck {
+            file: file.to_string(),
+            pos,
+        };
+        PacketWriter::write_packet(&mut stream, &ack.serialize())?;
+        Ok(())
+    }
+
     pub fn close(&mut self) {
         if let Some(mut stream) = self.stream.take() {
             let _ = PacketWriter::write_packet(&mut stream, &ReplicationMessage::EOF.serialize());
