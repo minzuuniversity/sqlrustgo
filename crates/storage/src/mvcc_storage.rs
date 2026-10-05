@@ -714,6 +714,12 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
         self.inner.drop_database(db_name)
     }
+    /// #5009: forward. Without this the MVCC layer would answer the
+    /// trait default (empty list) and `SHOW DATABASES` would report
+    /// nothing at all when the server runs on the MVCC engine.
+    fn list_databases(&self) -> SqlResult<Vec<String>> {
+        self.inner.list_databases()
+    }
     fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
         self.inner.create_index(info)
     }

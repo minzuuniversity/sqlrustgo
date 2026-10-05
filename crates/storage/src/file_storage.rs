@@ -4840,6 +4840,30 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
+    /// #5009: the file engine's `create_database` makes a directory under
+    /// `data_dir`, so the databases *are* the sub-directories. Wal files
+    /// are regular files and never appear here.
+    fn list_databases(&self) -> SqlResult<Vec<String>> {
+        let mut names = Vec::new();
+        let entries = match std::fs::read_dir(&self.data_dir) {
+            Ok(e) => e,
+            // A data dir that does not exist yet simply holds no
+            // databases; that is an empty list, not a failure.
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(names),
+            Err(e) => return Err(SqlError::ExecutionError(format!("list_databases: {}", e))),
+        };
+        for entry in entries.flatten() {
+            if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            if let Some(name) = entry.file_name().to_str() {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
         let table_data = self
             .write_state

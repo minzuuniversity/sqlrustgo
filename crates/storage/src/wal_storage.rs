@@ -765,6 +765,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner_mut().drop_database(db_name)
     }
 
+    /// #5009: forward to the inner engine. Not delegating here is the
+    /// same "wrapper silently drops the method" defect shape as #4974.
+    fn list_databases(&self) -> SqlResult<Vec<String>> {
+        self.inner().list_databases()
+    }
+
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         self.inner_mut().create_table(info)
     }

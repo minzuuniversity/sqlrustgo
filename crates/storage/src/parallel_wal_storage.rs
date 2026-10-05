@@ -195,7 +195,9 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         // 1. Write commit entry to WAL (serial)
         if self.wal_enabled {
             let entry = WalEntry {
-                tx_id: self.current_tx_id.load(std::sync::atomic::Ordering::Acquire),
+                tx_id: self
+                    .current_tx_id
+                    .load(std::sync::atomic::Ordering::Acquire),
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 key: None,

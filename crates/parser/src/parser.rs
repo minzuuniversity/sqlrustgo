@@ -2569,6 +2569,49 @@ impl Parser {
         self.tokens.get(self.position)
     }
 
+    /// #5009: lower MySQL's `VALUES(col)` row-value reference to the
+    /// `excluded.col` shape the evaluator already understands.
+    ///
+    /// In `ON DUPLICATE KEY UPDATE` / `ON CONFLICT DO UPDATE SET`,
+    /// `VALUES(col)` denotes the value this INSERT would have written for
+    /// `col`. That is *exactly* what `EXCLUDED.col` means in
+    /// PostgreSQL / SQLite, and exactly what
+    /// `evaluate_expression_with_excluded` already implements — it looks
+    /// the column up in `new_row` (`src/expr_utils.rs:315`). The parser
+    /// already collapses the `table.col` form into a single
+    /// `Identifier("excluded.col")` literal, so lowering to the same
+    /// shape means **the evaluator and the ODKU assignment path need no
+    /// change at all** — the new spelling just rides the path that
+    /// #4807 already put under test.
+    ///
+    /// MySQL deprecated this form in 8.0.20 in favour of row aliases
+    /// (`INSERT ... AS new ... new.col`), but it remains the most common
+    /// spelling in existing production code, and rejecting it is a 1064
+    /// on SQL that works on every real MySQL.
+    ///
+    /// Returns `None` — **leaving the token stream untouched** — unless
+    /// the sequence is exactly `VALUES ( ident )`. A genuine `VALUES`
+    /// table constructor in the same position must still reach
+    /// `parse_expression()` and report its own error rather than being
+    /// silently reinterpreted.
+    fn try_parse_values_row_ref(&mut self) -> Option<Expression> {
+        if !matches!(self.current(), Some(Token::Values)) {
+            return None;
+        }
+        if !matches!(self.tokens.get(self.position + 1), Some(Token::LParen)) {
+            return None;
+        }
+        let col = match self.tokens.get(self.position + 2) {
+            Some(Token::Identifier(n)) => n.clone(),
+            _ => return None,
+        };
+        if !matches!(self.tokens.get(self.position + 3), Some(Token::RParen)) {
+            return None;
+        }
+        self.position += 4;
+        Some(Expression::Identifier(format!("excluded.{col}")))
+    }
+
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.position + 1)
     }
@@ -8539,7 +8582,14 @@ impl Parser {
                                     ));
                                 }
                                 self.next(); // consume '='
-                                let val = self.parse_expression()?;
+                                             // #5009: `VALUES(col)` on the RHS is MySQL's
+                                             // row-value reference. Try it first; fall
+                                             // through to the general expression parser
+                                             // for everything else.
+                                let val = match self.try_parse_values_row_ref() {
+                                    Some(e) => e,
+                                    None => self.parse_expression()?,
+                                };
                                 updates.push((col, val));
                             }
                             Some(Token::Comma) => {
@@ -8660,7 +8710,15 @@ impl Parser {
                                             ));
                                         }
                                         self.next(); // consume '='
-                                        let val = self.parse_expression()?;
+                                                     // #5009: same `VALUES(col)`
+                                                     // lowering as the ON DUPLICATE
+                                                     // branch — the two forms share
+                                                     // `apply_odku`, so a row-value
+                                                     // reference has to work in both.
+                                        let val = match self.try_parse_values_row_ref() {
+                                            Some(e) => e,
+                                            None => self.parse_expression()?,
+                                        };
                                         updates.push((col, val));
                                     }
                                     Some(Token::Comma) => {

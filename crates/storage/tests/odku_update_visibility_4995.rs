@@ -100,12 +100,17 @@ fn update_must_be_visible_to_a_following_read() {
     let dir = tmp("visible");
     let mut s = storage(&dir);
 
-    in_tx(&mut s, 1, |s| { s.insert("t", vec![vec![i(1), i(100)]]).expect("insert"); });
+    in_tx(&mut s, 1, |s| {
+        s.insert("t", vec![vec![i(1), i(100)]]).expect("insert");
+    });
     assert_eq!(read_k(&s), Some(100), "insert should be visible");
 
     // This is exactly what `apply_odku` does for
     // `ON DUPLICATE KEY UPDATE k=222`.
-    in_tx(&mut s, 2, |s| { let n = s.update("t", &[i(1)], &[(1, i(222))]).expect("update"); let _ = n;});
+    in_tx(&mut s, 2, |s| {
+        let n = s.update("t", &[i(1)], &[(1, i(222))]).expect("update");
+        let _ = n;
+    });
 
     assert_eq!(
         read_k(&s),
@@ -129,17 +134,14 @@ fn update_only_touches_the_filtered_pk() {
         .expect("insert");
     });
 
-    in_tx(&mut s, 2, |s| { s.update("t", &[i(2)], &[(1, i(999))]).expect("update"); });
+    in_tx(&mut s, 2, |s| {
+        s.update("t", &[i(2)], &[(1, i(999))]).expect("update");
+    });
 
     let rows = s.scan("t").expect("scan");
     let got: Vec<(i64, i64)> = rows
         .iter()
-        .map(|r| {
-            (
-                r[0].as_integer().unwrap(),
-                r[1].as_integer().unwrap(),
-            )
-        })
+        .map(|r| (r[0].as_integer().unwrap(), r[1].as_integer().unwrap()))
         .collect();
     assert_eq!(
         got,
@@ -156,11 +158,15 @@ fn update_only_touches_the_filtered_pk() {
 fn second_update_wins_over_the_first() {
     let dir = tmp("twice");
     let mut s = storage(&dir);
-    in_tx(&mut s, 1, |s| { s.insert("t", vec![vec![i(1), i(0)]]).expect("insert"); });
+    in_tx(&mut s, 1, |s| {
+        s.insert("t", vec![vec![i(1), i(0)]]).expect("insert");
+    });
 
     for (n, want) in [11i64, 22, 33].into_iter().enumerate() {
         let tx = 10 + n as u64;
-        in_tx(&mut s, tx, |s| { s.update("t", &[i(1)], &[(1, i(want))]).expect("update"); });
+        in_tx(&mut s, tx, |s| {
+            s.update("t", &[i(1)], &[(1, i(want))]).expect("update");
+        });
         assert_eq!(read_k(&s), Some(want), "after update to {want}");
     }
 }
@@ -170,7 +176,9 @@ fn second_update_wins_over_the_first() {
 fn update_inside_a_transaction_is_not_visible_until_commit() {
     let dir = tmp("iso");
     let mut s = storage(&dir);
-    in_tx(&mut s, 1, |s| { s.insert("t", vec![vec![i(1), i(100)]]).expect("insert"); });
+    in_tx(&mut s, 1, |s| {
+        s.insert("t", vec![vec![i(1), i(100)]]).expect("insert");
+    });
 
     s.set_current_tx_id(7);
     s.update("t", &[i(1)], &[(1, i(555))]).expect("update");

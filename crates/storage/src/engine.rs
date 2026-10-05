@@ -1209,6 +1209,24 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
+    /// #5009: list the user-visible databases this engine knows about,
+    /// i.e. exactly the names that `create_database` accepted.
+    ///
+    /// `SHOW DATABASES` was hard-coded to emit the single `default` row
+    /// (V312-58 / Issue #4516), so every `CREATE DATABASE` produced a
+    /// database that was invisible to `SHOW DATABASES` — and, with no
+    /// accessor on this trait, there was no way for the executor to ask.
+    ///
+    /// Takes `&self` (not `&mut self` like `create_database`/`drop_database`)
+    /// so a reader can enumerate under a shared lock.
+    ///
+    /// The default is an empty list rather than an error: an engine that
+    /// never implemented `create_database` has no databases to report, and
+    /// "no databases" is a legitimate answer, not a failure.
+    fn list_databases(&self) -> SqlResult<Vec<String>> {
+        Ok(Vec::new())
+    }
+
     /// Create a table
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()>;
 
@@ -2437,6 +2455,12 @@ impl StorageEngine for MemoryStorage {
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
         self.databases.remove(db_name);
         Ok(())
+    }
+
+    /// #5009: mirror of `create_database` — the in-memory engine records
+    /// the name in `self.databases`, so enumeration is a clone of that set.
+    fn list_databases(&self) -> SqlResult<Vec<String>> {
+        Ok(self.databases.iter().cloned().collect())
     }
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
