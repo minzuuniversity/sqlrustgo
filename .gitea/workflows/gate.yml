@@ -7,10 +7,16 @@ on:
       - main
       - develop/v3.7.0
       - develop/v3.8.0
+      - develop/v4.0.0
+      - develop/v4.1.0
+      - "develop/v4.*"
   pull_request:
     branches:
       - develop
       - main
+      - develop/v4.0.0
+      - develop/v4.1.0
+      - "develop/v4.*"
 
 env:
   CARGO_TERM_COLOR: always
