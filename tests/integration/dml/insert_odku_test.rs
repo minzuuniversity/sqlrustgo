@@ -299,3 +299,122 @@ fn test_odku_values_ref_requires_exactly_one_column() {
         combined
     );
 }
+
+// ---------------------------------------------------------------------------
+// #5019 — MySQL 8.0.20+ `AS new` row alias
+//
+// Before the fix the `AS` was never consumed by the INSERT parser, so
+// `current()` was `As` instead of `On`, the whole `ON DUPLICATE KEY UPDATE`
+// clause was skipped, and the statement reported success having changed
+// nothing. These tests pin both the value and the "no silent no-op" shape.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_odku_as_new_row_alias_takes_incoming_value() {
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE rn1 (id INT PRIMARY KEY, n INT);\n\
+         INSERT INTO rn1 VALUES (1, 10);\n\
+         INSERT INTO rn1 VALUES (1, 99) AS new ON DUPLICATE KEY UPDATE n = new.n;\n\
+         SELECT n FROM rn1 WHERE id = 1;\n\
+         .exit\n",
+    );
+    let combined = format!("{}{}", out, err);
+    assert!(
+        combined.contains("Integer(99)"),
+        "#5019: `new.n` must be the value this INSERT would write (99), not \
+         the stored value (10); got:\n{}",
+        combined
+    );
+    assert!(
+        !combined.contains("Integer(10)\n"),
+        "#5019: the stored value 10 must have been overwritten; got:\n{}",
+        combined
+    );
+}
+
+#[test]
+fn test_odku_as_new_and_values_agree() {
+    // Both spellings name the same incoming row in MySQL, so mixing them
+    // in one statement must agree.
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE rn2 (id INT PRIMARY KEY, a INT, b INT, c TEXT);\n\
+         INSERT INTO rn2 VALUES (1, 1, 1, 'x');\n\
+         INSERT INTO rn2 VALUES (1, 42, 43, 'y') AS new \
+         ON DUPLICATE KEY UPDATE a = new.a, b = VALUES(b), c = new.c;\n\
+         SELECT a, b, c FROM rn2 WHERE id = 1;\n\
+         .exit\n",
+    );
+    let combined = format!("{}{}", out, err);
+    assert!(
+        combined.contains("42") && combined.contains("43"),
+        "#5019: `new.a` and `VALUES(b)` must both take incoming values \
+         42/43; got:\n{}",
+        combined
+    );
+    assert!(
+        combined.contains("\"y\"") || combined.contains("Text(\"y\")"),
+        "#5019: `new.c` must take the incoming 'y'; got:\n{}",
+        combined
+    );
+}
+
+#[test]
+fn test_odku_as_new_arbitrary_alias_name() {
+    // The alias is user-chosen, not a keyword.
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE rn3 (id INT PRIMARY KEY, n INT);\n\
+         INSERT INTO rn3 VALUES (1, 10);\n\
+         INSERT INTO rn3 VALUES (1, 7) AS incoming \
+         ON DUPLICATE KEY UPDATE n = incoming.n;\n\
+         SELECT n FROM rn3 WHERE id = 1;\n\
+         .exit\n",
+    );
+    let combined = format!("{}{}", out, err);
+    assert!(
+        combined.contains("Integer(7)"),
+        "#5019: any alias name must work, not just `new`; got:\n{}",
+        combined
+    );
+}
+
+// Regression guard for the exact defect: an unconsumed `AS` used to make
+// the engine skip the ODKU clause *without erroring*. If the clause is
+// dropped again, the stored value stays and this fails.
+#[test]
+fn test_odku_as_new_never_silently_skips_the_clause() {
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE rn4 (id INT PRIMARY KEY, n INT);\n\
+         INSERT INTO rn4 VALUES (1, 10);\n\
+         INSERT INTO rn4 VALUES (1, 55) AS new ON DUPLICATE KEY UPDATE n = new.n;\n\
+         SELECT n FROM rn4 WHERE id = 1;\n\
+         .exit\n",
+    );
+    let combined = format!("{}{}", out, err);
+    assert!(
+        !combined.contains("Integer(10)\n"),
+        "#5019: ODKU must not be silently skipped — if it is, the row still \
+         reads 10; got:\n{}",
+        combined
+    );
+}
+
+// A qualified name that is NOT the declared alias must not be lowered to a
+// row reference; it has to go through the general expression parser.
+#[test]
+fn test_odku_as_new_ignores_other_qualified_names() {
+    let (out, err, _code) = run_repl(
+        "CREATE TABLE rn5 (id INT PRIMARY KEY, n INT);\n\
+         INSERT INTO rn5 VALUES (1, 10);\n\
+         INSERT INTO rn5 VALUES (1, 3) AS new \
+         ON DUPLICATE KEY UPDATE n = other.n;\n\
+         SELECT n FROM rn5 WHERE id = 1;\n\
+         .exit\n",
+    );
+    let combined = format!("{}{}", out, err);
+    assert!(
+        combined.contains("Integer(10)"),
+        "#5019: `other.n` is not a row reference; the statement must fail \
+         and leave the row at 10; got:\n{}",
+        combined
+    );
+}
