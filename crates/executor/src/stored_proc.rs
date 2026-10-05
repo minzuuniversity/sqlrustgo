@@ -1731,11 +1731,12 @@ impl StoredProcExecutor {
     /// Execute a SELECT statement and return rows
     fn execute_subquery(&self, select: &sqlrustgo_parser::SelectStatement) -> Vec<Vec<Value>> {
         let storage = self.storage.read();
-        // #4947: use scan_with_filter with permissive filter. Storage engines
-        // that override scan_with_filter (FileStorage, WalStorage) get the
-        // lock-internal clone-on-match optimization; default impl delegates
-        // to scan() as before.
-        let records = match storage.scan_with_filter(&select.table, &|_| true) {
+        // #4947 follow-up: scan_with_filter(&|_| true) is marginally slower
+        // than scan() on FileStorage (4% per criterion bench on 50k rows).
+        // The real win is selective predicates which don't apply here
+        // (subquery may reference outer context). Use scan() to avoid the
+        // closure-dispatch overhead.
+        let records = match storage.scan(&select.table) {
             Ok(r) => r,
             Err(_) => return Vec::new(),
         };

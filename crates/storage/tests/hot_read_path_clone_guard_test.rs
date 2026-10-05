@@ -259,7 +259,11 @@ fn get_table_info_must_not_clone_whole_table() {
         checked += 1;
         if let Some(rel) = find_clone_get_table(&src, "get_table_info") {
             let rel_path = file.strip_prefix(&root).unwrap_or(&file);
-            hits.push(format!("{}: get_table_info body offset {}", rel_path.display(), rel));
+            hits.push(format!(
+                "{}: get_table_info body offset {}",
+                rel_path.display(),
+                rel
+            ));
         }
     }
 

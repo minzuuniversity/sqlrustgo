@@ -834,14 +834,22 @@ pub fn find_column_index_in(col_name: &str, columns: &[ColumnDefinition]) -> Opt
     if let Some(idx) = columns.iter().position(|c| c.name == col_name) {
         return Some(idx);
     }
-    if let Some(idx) = columns.iter().position(|c| c.name.eq_ignore_ascii_case(col_name)) {
+    if let Some(idx) = columns
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case(col_name))
+    {
         return Some(idx);
     }
     if let Some((_qualifier, col)) = col_name.split_once('.') {
-        if let Some(idx) = columns.iter().position(|c| c.name.eq_ignore_ascii_case(col)) {
+        if let Some(idx) = columns
+            .iter()
+            .position(|c| c.name.eq_ignore_ascii_case(col))
+        {
             return Some(idx);
         }
-        return columns.iter().position(|c| trailing_segments_eq(&c.name, col_name));
+        return columns
+            .iter()
+            .position(|c| trailing_segments_eq(&c.name, col_name));
     }
     columns.iter().position(|c| match c.name.rsplit_once('.') {
         Some((_, tail)) => tail.eq_ignore_ascii_case(col_name),
@@ -4163,8 +4171,14 @@ mod tests {
     #[test]
     fn test_find_column_index_in_layers() {
         let cols = vec![
-            ColumnDefinition { name: "id".to_string(), ..Default::default() },
-            ColumnDefinition { name: "val".to_string(), ..Default::default() },
+            ColumnDefinition {
+                name: "id".to_string(),
+                ..Default::default()
+            },
+            ColumnDefinition {
+                name: "val".to_string(),
+                ..Default::default()
+            },
         ];
         assert_eq!(find_column_index_in("id", &cols), Some(0));
         assert_eq!(find_column_index_in("ID", &cols), Some(0));
@@ -4175,8 +4189,14 @@ mod tests {
     #[test]
     fn test_find_column_index_in_case_colliding_columns_prefers_exact() {
         let cols = vec![
-            ColumnDefinition { name: "ID".to_string(), ..Default::default() },
-            ColumnDefinition { name: "id".to_string(), ..Default::default() },
+            ColumnDefinition {
+                name: "ID".to_string(),
+                ..Default::default()
+            },
+            ColumnDefinition {
+                name: "id".to_string(),
+                ..Default::default()
+            },
         ];
         assert_eq!(find_column_index_in("id", &cols), Some(1));
         assert_eq!(find_column_index_in("ID", &cols), Some(0));
@@ -4188,7 +4208,11 @@ mod tests {
             name: name.to_string(),
             ..Default::default()
         };
-        let cols = vec![mk("a_join_b.t1.c1"), mk("a_join_b.t2.c2"), mk("a_join_b.t3.c3")];
+        let cols = vec![
+            mk("a_join_b.t1.c1"),
+            mk("a_join_b.t2.c2"),
+            mk("a_join_b.t3.c3"),
+        ];
         assert_eq!(find_column_index_in("t1.c1", &cols), Some(0));
         assert_eq!(find_column_index_in("t2.c2", &cols), Some(1));
         assert_eq!(find_column_index_in("t3.c3", &cols), Some(2));

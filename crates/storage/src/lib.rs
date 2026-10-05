@@ -63,13 +63,13 @@ pub use buffer_pool::BufferPool;
 pub use change_buffer::{ChangeBuffer, ChangeEntry, ChangeOp};
 pub use checkpoint::{CheckpointConfig, CheckpointManager, CheckpointMetadata};
 pub use double_write_buffer::{DoubleWriteBuffer, DwbPage};
+pub use engine::find_column_index;
 pub use engine::{
     evaluate_check_constraint, find_column_index_in, CheckConstraint, ColumnDefinition,
     ForeignKeyAction, ForeignKeyConstraint, IndexInfo, MemoryStorage, Record, RowFilter,
     RowMutation, SchemaSnapshot, SequenceInfo, SqlResult, StorageEngine, TableData, TableInfo,
     TriggerEvent, TriggerInfo, TriggerTiming, TxLog, UniqueConstraint, Value, ViewInfo,
 };
-pub use engine::find_column_index;
 pub use failover_manager::{FailoverConfig, FailoverState, NodeInfo, NodeType};
 pub use file_storage::FileStorage;
 pub use lock::{GapLock, GapLockManager, GapLockType, IsolationLevel};

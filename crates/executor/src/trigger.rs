@@ -830,13 +830,16 @@ impl TriggerExecutor {
             }
 
             let where_expr = update.where_clause.clone();
-            // #4947: scan_with_filter pushes predicate down to storage layer.
-            // For trigger UPDATE we still need all rows (the WHERE may reference
-            // NEW/OLD trigger context), so the filter is permissive here. The real
-            // benefit is going through scan_with_filter so FileStorage can avoid
-            // cloning rows that don't match — when the WHERE doesn't depend on
-            // NEW/OLD, future work can push that down too.
-            let all_rows = storage.scan_with_filter(table_name, &|_| true)?;
+            // #4947 follow-up: bench (50k rows, criterion 0.8) shows
+            //   scan(table)              3.69 ms
+            //   scan_with_filter(&|_| true)  3.84 ms   <- 4% slower
+            //   scan_with_filter(1% sel) 0.18 ms       <- 20x faster (real win)
+            // Triggers are FOR EACH ROW in MySQL semantics; the WHERE
+            // may reference NEW/OLD, so a selective predicate isn't
+            // generally safe to push down. Using scan() here avoids the
+            // closure-dispatch overhead of the trivially-true filter.
+            // See PR discussion for the bench numbers.
+            let all_rows = storage.scan(table_name)?;
             let mut modified_rows = Vec::new();
             let mut has_match = false;
 
@@ -935,10 +938,7 @@ impl TriggerExecutor {
             // V312-55D: snapshot pre-image rows so the post-DML
             // closure can record undo entries without holding the
             // storage read lock.
-            let pre_delete_rows = self
-                .storage
-                .read()
-                .scan_with_filter(&delete.tables[0].name, &|_| true)?;
+            let pre_delete_rows = self.storage.read().scan(&delete.tables[0].name)?;
             let target_table_name = delete.tables[0].name.clone();
             let target_table_info = table_info.clone();
             self.execute_dml_in_tx(|storage| storage.delete(&target_table_name, &[]))?;
