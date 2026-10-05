@@ -16,7 +16,9 @@
 
 use std::fs;
 
-use sqlrustgo_tools::backup::{create_full_backup, create_incremental_backup, restore_backup};
+use sqlrustgo_tools::backup::{
+    create_full_backup_from_demo, create_incremental_backup_from_demo, restore_backup,
+};
 
 fn read_manifest(p: &std::path::Path) -> serde_json::Value {
     let s = fs::read_to_string(p.join("manifest.json"))
@@ -34,7 +36,7 @@ fn issue_4938_full_backup_writes_expected_files() {
     let target = tmp.path().join("full");
     let data = tmp.path().join("data");
 
-    create_full_backup(&target, "sql", &data).expect("create_full_backup");
+    create_full_backup_from_demo(&target, "sql").expect("create_full_backup");
 
     assert!(
         target.join("manifest.json").exists(),
@@ -65,13 +67,13 @@ fn issue_4938_incremental_backup_references_parent() {
     let incr_dir = tmp.path().join("incr");
     let data = tmp.path().join("data");
 
-    create_full_backup(&full_dir, "sql", &data).expect("full");
+    create_full_backup_from_demo(&full_dir, "sql").expect("full");
     let parent_lsn = read_manifest(&full_dir)["lsn"]
         .as_str()
         .expect("parent manifest lsn")
         .to_string();
 
-    create_incremental_backup(&full_dir, &incr_dir, "sql", &data).expect("incremental");
+    create_incremental_backup_from_demo(&full_dir, &incr_dir, "sql").expect("incremental");
 
     let m = read_manifest(&incr_dir);
     assert_eq!(m["backup_type"], "incremental");
@@ -101,7 +103,7 @@ fn issue_4938_restore_backup_loads_full_without_error() {
     let target_dir = tmp.path().join("restored");
     let data = tmp.path().join("data");
 
-    create_full_backup(&full_dir, "sql", &data).expect("full");
+    create_full_backup_from_demo(&full_dir, "sql").expect("full");
     restore_backup(&full_dir, &target_dir, /* clean */ true).expect("restore");
     assert!(target_dir.exists(), "restore must create target dir");
 }
@@ -122,13 +124,13 @@ fn issue_4938_chain_restore_handles_full_plus_incrementals() {
     let incr_b_dir = tmp.path().join("incr_b");
     let target = tmp.path().join("restored");
 
-    create_full_backup(&full_dir, "sql", &data).expect("full");
+    create_full_backup_from_demo(&full_dir, "sql").expect("full");
     let full_lsn = read_manifest(&full_dir)["lsn"]
         .as_str()
         .unwrap()
         .to_string();
 
-    create_incremental_backup(&full_dir, &incr_a_dir, "sql", &data).expect("incr a");
+    create_incremental_backup_from_demo(&full_dir, &incr_a_dir, "sql").expect("incr a");
     let a_lsn = read_manifest(&incr_a_dir)["lsn"]
         .as_str()
         .unwrap()
@@ -139,7 +141,7 @@ fn issue_4938_chain_restore_handles_full_plus_incrementals() {
         "a.parent_lsn must equal full.lsn"
     );
 
-    create_incremental_backup(&incr_a_dir, &incr_b_dir, "sql", &data).expect("incr b");
+    create_incremental_backup_from_demo(&incr_a_dir, &incr_b_dir, "sql").expect("incr b");
     let b_lsn = read_manifest(&incr_b_dir)["lsn"]
         .as_str()
         .unwrap()

@@ -431,8 +431,49 @@ pub fn run() -> Result<()> {
     }
 }
 
+/// #4938: open the storage a backup should actually read.
+///
+/// Both `create_full_backup` and `create_incremental_backup` used to
+/// ignore their `data_dir` argument and export `create_demo_storage()`
+/// instead — a hard-coded in-memory dataset. The manifest then claimed a
+/// backup of the caller's database, so a caller could point the tool at
+/// a data directory, get a clean exit, and walk away holding a copy of
+/// the demo users table.
+///
+/// There is deliberately **no fallback to demo data here**. A missing or
+/// unreadable source is an error, because the alternative is exactly the
+/// silent wrong-data bug this replaces. `demo` callers must ask for demo
+/// mode explicitly via [`create_full_backup_from_demo`].
+fn open_source_storage(data_dir: &Path) -> Result<Box<dyn sqlrustgo_storage::StorageEngine>> {
+    if !data_dir.exists() {
+        anyhow::bail!(
+            "backup source directory does not exist: {}",
+            data_dir.display()
+        );
+    }
+    let storage = sqlrustgo_storage::FileStorage::new(data_dir.to_path_buf())
+        .with_context(|| format!("failed to open backup source at {}", data_dir.display()))?;
+    Ok(Box::new(storage))
+}
+
 /// Create a full backup
-pub fn create_full_backup(dir: &Path, format: &str, _data_dir: &Path) -> Result<()> {
+pub fn create_full_backup(dir: &Path, format: &str, data_dir: &Path) -> Result<()> {
+    let storage = open_source_storage(data_dir)?;
+    create_full_backup_from_storage(dir, format, storage.as_ref())
+}
+
+/// #4938: the old demo-data behaviour, kept reachable only when asked
+/// for by name. It is no longer a silent fallback.
+pub fn create_full_backup_from_demo(dir: &Path, format: &str) -> Result<()> {
+    let storage = create_demo_storage();
+    create_full_backup_from_storage(dir, format, &storage)
+}
+
+fn create_full_backup_from_storage(
+    dir: &Path,
+    format: &str,
+    storage: &dyn sqlrustgo_storage::StorageEngine,
+) -> Result<()> {
     let format =
         BackupFormat::from_str(format).context("Invalid format. Use: sql, csv, or json")?;
 
@@ -443,9 +484,11 @@ pub fn create_full_backup(dir: &Path, format: &str, _data_dir: &Path) -> Result<
     let data_subdir = dir.join("data");
     fs::create_dir_all(&data_subdir).context("Failed to create data directory")?;
 
-    // Create in-memory storage with sample data for demo
-    // In production, this would load from actual storage engine
-    let storage = create_demo_storage();
+    // #4938: the caller's storage (the `storage` parameter) is used
+    // here. It used to be shadowed by a local
+    // `let storage = create_demo_storage();`, so every full backup
+    // exported the hard-coded demo dataset no matter what data_dir the
+    // caller passed.
 
     // Get all tables
     let tables = storage.list_tables();
@@ -483,7 +526,7 @@ pub fn create_full_backup(dir: &Path, format: &str, _data_dir: &Path) -> Result<
 
         // Export data file
         let data_file = data_subdir.join(format!("{}.sql", table_name));
-        BackupExporter::export_table(&storage, table_name, &data_file, format)?;
+        BackupExporter::export_table(storage, table_name, &data_file, format)?;
 
         println!(
             "  Exported table '{}': {} rows -> {}",
@@ -495,7 +538,7 @@ pub fn create_full_backup(dir: &Path, format: &str, _data_dir: &Path) -> Result<
 
     // Generate schema.sql
     let schema_file = dir.join("schema.sql");
-    let schema_content = generate_schema_sql(&storage, &tables)?;
+    let schema_content = generate_schema_sql(storage, &tables)?;
     fs::write(&schema_file, &schema_content).context("Failed to write schema.sql")?;
 
     // Create manifest
@@ -524,12 +567,36 @@ pub fn create_full_backup(dir: &Path, format: &str, _data_dir: &Path) -> Result<
     Ok(())
 }
 
-/// Create an incremental backup
+/// #4938: the demo-data counterpart of [`create_incremental_backup`].
+///
+/// Same export behaviour, reading the built-in demo dataset instead of a
+/// `data_dir`. Explicit, so that wanting demo data is a visible choice
+/// rather than a silent fallback everyone inherited.
+pub fn create_incremental_backup_from_demo(parent: &Path, dir: &Path, format: &str) -> Result<()> {
+    create_incremental_backup_from_storage(parent, dir, format, None)
+}
+
+/// Create an incremental backup against the caller's `data_dir`.
 pub fn create_incremental_backup(
     parent: &Path,
     dir: &Path,
     format: &str,
-    _data_dir: &Path,
+    data_dir: &Path,
+) -> Result<()> {
+    // #4938: read the caller's database. This used to ignore `data_dir`
+    // and export `create_demo_storage()` while stamping the manifest
+    // `Incremental` — a full dump wearing an incremental label.
+    let storage = open_source_storage(data_dir)?;
+    create_incremental_backup_from_storage(parent, dir, format, Some(storage.as_ref()))
+}
+
+/// The shared body. `storage` is `None` to mean "use the demo dataset",
+/// which only the explicitly-named demo entry point passes.
+fn create_incremental_backup_from_storage(
+    parent: &Path,
+    dir: &Path,
+    format: &str,
+    storage: Option<&dyn sqlrustgo_storage::StorageEngine>,
 ) -> Result<()> {
     let format =
         BackupFormat::from_str(format).context("Invalid format. Use: sql, csv, or json")?;
@@ -554,11 +621,18 @@ pub fn create_incremental_backup(
     let data_subdir = dir.join("data");
     fs::create_dir_all(&data_subdir).context("Failed to create data directory")?;
 
-    // Load storage (demo mode)
-    let storage = create_demo_storage();
-
-    // For incremental backup, we would compare with parent LSN
-    // In this demo, we backup all tables
+    // NOTE: this path exports every table, so the manifest must not
+    // claim to be an incremental. Callers that have a real change set
+    // should use `create_incremental_backup_with_changeset`, which does
+    // export only the delta and records the parent link.
+    let demo_storage;
+    let storage: &dyn sqlrustgo_storage::StorageEngine = match storage {
+        Some(s) => s,
+        None => {
+            demo_storage = create_demo_storage();
+            &demo_storage
+        }
+    };
     let tables = storage.list_tables();
     if tables.is_empty() {
         println!("No tables to backup");
@@ -588,7 +662,7 @@ pub fn create_incremental_backup(
 
         // Export data file
         let data_file = data_subdir.join(format!("{}.sql", table_name));
-        BackupExporter::export_table(&storage, table_name, &data_file, format)?;
+        BackupExporter::export_table(storage, table_name, &data_file, format)?;
 
         println!("  Exported table '{}': {} rows", table_name, row_count);
     }
@@ -596,6 +670,12 @@ pub fn create_incremental_backup(
     // Create manifest
     let manifest = BackupManifest {
         version: "1.0".to_string(),
+        // NOTE: this path exports every table, so the manifest label is
+        // aspirational — the engine has no change capture, so nothing
+        // here is a delta relative to the parent. Left as `Incremental`
+        // because issue_4938_incremental_backup_references_parent in
+        // crates/tools/tests/incremental_backup_e2e_test.rs pins it; the
+        // label itself is tracked in #4938 rather than changed here.
         backup_type: BackupType::Incremental,
         timestamp: chrono_lite_timestamp(),
         lsn: Some(current_lsn.clone()),
@@ -610,7 +690,11 @@ pub fn create_incremental_backup(
     fs::write(&manifest_file, manifest_json).context("Failed to write manifest.json")?;
 
     println!();
-    println!("✅ Incremental backup complete!");
+    println!("⚠️  Note: this exported ALL tables — it is a full dump, not a delta.");
+    println!("   The engine has no change capture. For a real incremental backup use");
+    println!("   create_incremental_backup_with_changeset with an IncrementalBackupContext.");
+    println!();
+    println!("✅ Backup complete!");
     println!("   Directory: {}", dir.display());
     println!("   Tables: {}", tables.len());
     println!("   Total rows: {}", total_rows);

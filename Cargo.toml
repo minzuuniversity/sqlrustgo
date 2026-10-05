@@ -875,6 +875,10 @@ name = "truncate_table_test"
 path = "tests/integration/ddl/truncate_table_test.rs"
 
 [[test]]
+name = "incremental_backup_datasource_4938"
+path = "crates/tools/tests/incremental_backup_datasource_4938.rs"
+
+[[test]]
 name = "insert_odku_test"
 path = "tests/integration/dml/insert_odku_test.rs"
 
