@@ -2,11 +2,11 @@
 //!
 //! Accepts connections from slave nodes and pushes binlog events.
 
-use crate::semisync::SemiSyncMaster;
 use crate::binlog_protocol::{
     BinlogEventData, BinlogProtocol, PacketReader, PacketWriter, ReplicationMessage,
 };
 use crate::replication::{BinlogEvent, BinlogWriter};
+use crate::semisync::SemiSyncMaster;
 use std::collections::HashMap;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -90,6 +90,16 @@ impl BinlogServer {
         })
     }
 
+    /// The address this server actually bound to.
+    ///
+    /// Constructed with port `0` the OS picks a free port; without this
+    /// accessor a caller (notably the #4937 end-to-end test) could not
+    /// learn which one, and would have to guess a fixed port and risk
+    /// colliding with a parallel test run.
+    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        self.listener.local_addr()
+    }
+
     pub fn start(&self) -> std::io::Result<()> {
         *self.is_running.lock().unwrap() = true;
         let listener = &self.listener;
@@ -170,7 +180,12 @@ impl BinlogServer {
 
     /// #4937: highest durably-written position reported by a replica.
     pub fn acked_pos_of(&self, slave_id: u32) -> u64 {
-        self.acked_pos.lock().unwrap().get(&slave_id).copied().unwrap_or(0)
+        self.acked_pos
+            .lock()
+            .unwrap()
+            .get(&slave_id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// #4937: number of replicas that have reported a durable write.

@@ -229,12 +229,31 @@ fn run_replication_loop(
                 };
 
                 match msg {
-                    ReplicationMessage::BinlogData { events, .. } => {
+                    ReplicationMessage::BinlogData { file, pos, events } => {
                         for event in events {
                             if tx.send(event).is_err() {
                                 return Ok(());
                             }
                         }
+                        // #4937: acknowledge what was actually received.
+                        //
+                        // `pos` is the position the master wrote, and it
+                        // is the one position this replica has a claim on:
+                        // the events are now queued to the caller, so the
+                        // replica is committed to applying them. Using the
+                        // broadcast `pos` (rather than echoing a heartbeat
+                        // lsn the master chose) is what lets the master
+                        // stand behind the commit.
+                        //
+                        // A replica that needs acknowledgement strictly
+                        // *after* durable storage should send
+                        // `send_binlog_ack` itself once the relay log is
+                        // written instead of relying on this.
+                        let ack = ReplicationMessage::BinlogAck {
+                            file: file.clone(),
+                            pos,
+                        };
+                        let _ = PacketWriter::write_packet(&mut stream, &ack.serialize());
                     }
                     ReplicationMessage::Heartbeat { lsn, timestamp } => {
                         let _ = timestamp;
