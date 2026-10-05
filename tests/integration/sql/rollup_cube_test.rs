@@ -288,3 +288,74 @@ fn test_cube_order_by_nulls_first() {
         r.rows[0][0]
     );
 }
+
+// --- #4914: grouping keys must not collapse across types ---------------
+//
+// The ROLLUP/CUBE grouping key used to be a joined string, so distinct
+// values that happened to stringify alike were merged into one bucket and
+// their aggregates summed together. `CAST('7' AS INTEGER)` and the integer
+// `7` are the simplest instance: identical text, different type, and
+// therefore not the same group.
+
+#[test]
+fn rollup_keeps_text_and_integer_apart() {
+    let mut x = e();
+    x.execute("CREATE TABLE t (k TEXT, sales INTEGER)").unwrap();
+    x.execute("INSERT INTO t VALUES ('7', 100), (7, 200)")
+        .unwrap();
+
+    let r = x
+        .execute("SELECT k, SUM(sales) FROM t GROUP BY k WITH ROLLUP")
+        .unwrap();
+
+    // 2 detail groups + 1 subtotal. If the two rows had been merged there
+    // would be a single group of 300 and a total of 300 — 2 rows, and the
+    // detail row would report 300.
+    assert_eq!(
+        r.rows.len(),
+        3,
+        "expected 2 detail groups + 1 subtotal, got {} rows: {:?}",
+        r.rows.len(),
+        r.rows
+    );
+
+    let mut details: Vec<i64> = r
+        .rows
+        .iter()
+        .filter(|row| {
+            !row.iter()
+                .any(|v| matches!(v, sqlrustgo_types::Value::Null))
+        })
+        .filter_map(|row| match row.last() {
+            Some(sqlrustgo_types::Value::Integer(n)) => Some(*n),
+            _ => None,
+        })
+        .collect();
+    details.sort_unstable();
+    assert_eq!(
+        details,
+        vec![100, 200],
+        "each value must keep its own aggregate, not be summed together"
+    );
+}
+
+#[test]
+fn cube_keeps_text_and_integer_apart() {
+    let mut x = e();
+    x.execute("CREATE TABLE t (k TEXT, sales INTEGER)").unwrap();
+    x.execute("INSERT INTO t VALUES ('7', 100), (7, 200)")
+        .unwrap();
+
+    let r = x
+        .execute("SELECT k, SUM(sales) FROM t GROUP BY k WITH CUBE")
+        .unwrap();
+
+    // Two distinct groups means the cube has a per-key slice each; a merged
+    // single group would yield the 1-subset plus the 0-subset = 2 rows.
+    assert!(
+        r.rows.len() >= 3,
+        "expected the two type-distinct keys to stay separate, got {} rows: {:?}",
+        r.rows.len(),
+        r.rows
+    );
+}
