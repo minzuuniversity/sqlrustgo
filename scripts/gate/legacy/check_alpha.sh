@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # v2.9.0 Alpha Gate — 进入 Alpha 阶段必须通过
 set -euo pipefail
-cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 PASS=0; TOTAL=0; BLOCKERS=0
 
 check() {
