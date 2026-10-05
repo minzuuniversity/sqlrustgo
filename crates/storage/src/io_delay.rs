@@ -11,6 +11,7 @@
 //! unchanged. New code should prefer [`IoFaultInjector`] for comprehensive
 //! fault injection.
 
+use std::sync::Mutex;
 use std::time::Duration;
 
 // ---------------------------------------------------------------------------
@@ -267,10 +268,18 @@ impl IoFaultInjector {
 mod tests {
     use super::*;
 
+    // Issue #5018: serialize env-mutating tests via a process-wide Mutex
+    // so they don't race each other on `SQLRUSTGO_IO_*` globals.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     // --- Original API backward compatibility ---
 
     #[test]
     fn test_io_delay_parsing() {
+        let _g = env_lock();
         std::env::set_var("SQLRUSTGO_IO_DELAY_MS", "50");
         assert_eq!(io_delay_ms(), Some(50));
         std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
@@ -278,6 +287,7 @@ mod tests {
 
     #[test]
     fn test_io_delay_zero() {
+        let _g = env_lock();
         std::env::set_var("SQLRUSTGO_IO_DELAY_MS", "0");
         assert_eq!(io_delay_ms(), None);
         std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
@@ -285,12 +295,14 @@ mod tests {
 
     #[test]
     fn test_io_delay_not_set() {
+        let _g = env_lock();
         std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
         assert_eq!(io_delay_ms(), None);
     }
 
     #[test]
     fn test_maybe_delay_noop_when_not_set() {
+        let _g = env_lock();
         std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
         // Should not panic or sleep
         maybe_delay();
@@ -308,6 +320,7 @@ mod tests {
 
     #[test]
     fn test_config_from_env_all_set() {
+        let _g = env_lock();
         std::env::set_var("SQLRUSTGO_IO_DELAY_MS", "200");
         std::env::set_var("SQLRUSTGO_IO_CORRUPTION_RATE", "0.3");
         std::env::set_var("SQLRUSTGO_IO_DROPOUT_RATE", "0.1");
@@ -324,6 +337,7 @@ mod tests {
 
     #[test]
     fn test_config_from_env_missing() {
+        let _g = env_lock();
         std::env::remove_var("SQLRUSTGO_IO_DELAY_MS");
         std::env::remove_var("SQLRUSTGO_IO_CORRUPTION_RATE");
         std::env::remove_var("SQLRUSTGO_IO_DROPOUT_RATE");
@@ -334,6 +348,7 @@ mod tests {
 
     #[test]
     fn test_config_from_env_clamp() {
+        let _g = env_lock();
         std::env::set_var("SQLRUSTGO_IO_CORRUPTION_RATE", "5.0");
         std::env::set_var("SQLRUSTGO_IO_DROPOUT_RATE", "-1.0");
 
@@ -578,6 +593,7 @@ mod tests {
 
     #[test]
     fn test_from_env_creates_injector() {
+        let _g = env_lock();
         std::env::set_var("SQLRUSTGO_IO_DELAY_MS", "50");
         let injector = IoFaultInjector::from_env();
         assert_eq!(injector.config().delay_ms, 50);
