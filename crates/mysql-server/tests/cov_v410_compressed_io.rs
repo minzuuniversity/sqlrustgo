@@ -60,7 +60,7 @@ fn read_compressed_packet_reports_io_error_on_truncated_stream() {
 }
 
 #[test]
-fn compressed_writer_reader_roundtrip_with_leftover_drain() {
+fn compressed_writer_reader_roundtrip_serves_each_frame_once() {
     let mut wire = Vec::new();
     {
         let mut w = CompressedWriter::new(&mut wire, true);
@@ -72,15 +72,51 @@ fn compressed_writer_reader_roundtrip_with_leftover_drain() {
     let (s0, p0) = r.read_packet().expect("read 0");
     assert_eq!(s0, 0);
     assert_eq!(p0, b"first-payload".to_vec());
-    // observed contract: the buffered frame is served again from the
-    // leftover branch before the next wire frame is consumed; that branch
-    // derives `seq` from the payload's first byte, not the frame header
-    let (s0b, p0b) = r.read_packet().expect("read leftover");
-    assert_eq!(p0b, b"first-payload".to_vec());
-    assert_eq!(s0b, b'f' as u8, "leftover branch reports payload[0] as seq");
+    // Regression: the next call must consume the SECOND wire frame.
+    // The old store-then-clone left pos = 0, so frame 0 was served twice.
     let (s1, p1) = r.read_packet().expect("read 1");
     assert_eq!(s1, 1);
     assert_eq!(p1, b"second-payload".to_vec());
+}
+
+#[test]
+fn read_partial_then_read_packet_returns_tail_with_frame_seq() {
+    let mut wire = Vec::new();
+    {
+        let mut w = CompressedWriter::new(&mut wire, true);
+        w.write_packet(0, b"first-payload").expect("packet 0");
+        w.write_packet(1, b"second-payload").expect("packet 1");
+    }
+    let mut cur = Cursor::new(wire);
+    let mut r = CompressedReader::new(&mut cur, true);
+    let mut head = [0u8; 4];
+    assert_eq!(r.read(&mut head).expect("partial read"), 4);
+    assert_eq!(&head, b"firs");
+    // Regression: the tail must carry the frame-header seq (0), not
+    // payload[0] ('f' = 0x66) as the old leftover branch reported.
+    let (seq, tail) = r.read_packet().expect("tail");
+    assert_eq!(seq, 0, "tail must report the frame-header seq");
+    assert_eq!(tail, b"t-payload".to_vec());
+    let (s1, p1) = r.read_packet().expect("read 1");
+    assert_eq!(s1, 1);
+    assert_eq!(p1, b"second-payload".to_vec());
+}
+
+#[test]
+fn read_impl_drains_payload_incrementally() {
+    let mut wire = Vec::new();
+    write_compressed_packet(&mut wire, 0, b"first-payload").expect("write");
+    let mut cur = Cursor::new(wire);
+    let mut r = CompressedReader::new(&mut cur, true);
+    let mut a = [0u8; 4];
+    assert_eq!(r.read(&mut a).expect("first chunk"), 4);
+    assert_eq!(&a, b"firs");
+    let mut b = [0u8; 64];
+    assert_eq!(r.read(&mut b).expect("drain rest"), 9);
+    assert_eq!(&b[..9], b"t-payload");
+    // Excess capacity is not filled past the frame; a further read hits
+    // the exhausted stream and surfaces the Io error (no silent EOF).
+    assert!(r.read(&mut b).is_err(), "exhausted stream must error");
 }
 
 #[test]

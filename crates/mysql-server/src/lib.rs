@@ -2283,12 +2283,14 @@ pub fn read_compressed_packet<R: Read>(inner: &mut R) -> MySqlResult<(u8, Vec<u8
 pub struct CompressedReader<'a, R: Read> {
     inner: &'a mut R,
     use_compress: bool,
-    // Decompression buffer: holds partial decompressed data from a
-    // compressed packet whose output spanned multiple MySQL payload chunks.
-    // Most MySQL implementations don't span a single uncompressed packet
-    // across multiple compressed frames, but we handle it for correctness.
+    // Residue of the current frame not yet drained by `Read::read`.
+    // One frame carries one complete payload, so residue only exists
+    // between a partial `read()` and its continuation.
     decompressed_buf: Vec<u8>,
     decompressed_pos: usize,
+    // Frame-header seq of the buffered frame, so a residue tail
+    // returned by `read_packet` reports the real seq (never payload[0]).
+    frame_seq: u8,
 }
 
 impl<'a, R: Read> CompressedReader<'a, R> {
@@ -2298,52 +2300,62 @@ impl<'a, R: Read> CompressedReader<'a, R> {
             use_compress,
             decompressed_buf: Vec::new(),
             decompressed_pos: 0,
+            frame_seq: 0,
         }
     }
 
     /// Reads one MySQL packet payload. When compression is enabled this
     /// reads and decompresses a compressed packet frame; otherwise reads
-    /// a plain packet. Returns (seq, payload).
+    /// a plain packet. Returns (seq, payload). If a previous `Read::read`
+    /// left part of a frame undrained, returns that tail with the frame's
+    /// sequence number.
     pub fn read_packet(&mut self) -> MySqlResult<(u8, Vec<u8>)> {
         if !self.use_compress {
             let pkt = Packet::read_from(self.inner)?;
             return Ok((pkt.sequence, pkt.payload));
         }
 
-        // First: drain any leftover decompressed data from a previous frame
+        // Residue first: a partial `Read::read` left the tail of the
+        // current frame undrained — complete the stream position before
+        // consuming the next wire frame.
         if self.decompressed_pos < self.decompressed_buf.len() {
-            let remaining = self.decompressed_buf[self.decompressed_pos..].to_vec();
-            let seq = self.decompressed_buf.first().copied().unwrap_or(0);
+            let tail = self.decompressed_buf[self.decompressed_pos..].to_vec();
             self.decompressed_buf.clear();
             self.decompressed_pos = 0;
-            return Ok((seq, remaining));
+            return Ok((self.frame_seq, tail));
         }
 
-        // Read a compressed packet frame
-        let (seq, payload) = read_compressed_packet(self.inner)?;
-        self.decompressed_buf = payload;
-        self.decompressed_pos = 0;
-        Ok((seq, self.decompressed_buf.clone()))
+        // Fresh frame returned directly, never buffered: buffering the
+        // payload here (with pos = 0) would re-serve the same frame on
+        // the next call instead of advancing the wire.
+        read_compressed_packet(self.inner)
     }
 }
 
 impl<'a, R: Read> Read for CompressedReader<'a, R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        // This Read impl is for the case where we use CompressedReader
-        // as a drop-in Read replacement (draining decompressed data).
-        // For simplicity, delegate to read_packet.
         if buf.is_empty() {
             return Ok(0);
         }
-        match self.read_packet() {
-            Ok((_seq, payload)) => {
-                let len = payload.len().min(buf.len());
-                buf[..len].copy_from_slice(&payload[..len]);
-                Ok(len)
-            }
-            Err(MySqlError::Io(e)) => Err(e),
-            Err(e) => Err(std::io::Error::other(e)),
+        if self.decompressed_pos >= self.decompressed_buf.len() {
+            // Buffer drained: pull the next frame's payload into it.
+            let (seq, payload) = match self.read_packet() {
+                Ok(x) => x,
+                Err(MySqlError::Io(e)) => return Err(e),
+                Err(e) => return Err(std::io::Error::other(e)),
+            };
+            self.frame_seq = seq;
+            self.decompressed_buf = payload;
+            self.decompressed_pos = 0;
         }
+        // Serve only the undrained remainder so bytes are never repeated
+        // across calls (the old code re-served the whole payload from
+        // index 0 on every other call).
+        let avail = &self.decompressed_buf[self.decompressed_pos..];
+        let n = avail.len().min(buf.len());
+        buf[..n].copy_from_slice(&avail[..n]);
+        self.decompressed_pos += n;
+        Ok(n)
     }
 }
 
