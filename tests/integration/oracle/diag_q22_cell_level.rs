@@ -162,11 +162,14 @@ mod tests {
             .unwrap();
         assert_eq!(r3.rows[0][0].to_sql_string(), "");
 
-        // SUBSTR with start=0 should behave as start=1 (1-indexed SQL standard)
+        // MySQL 14.8 String Functions: "A value of 0 for pos returns an empty
+        // string" — pos=0 must be "", NOT equivalent to pos=1 (the previous
+        // expectation of "13" here contradicted both MySQL docs and the
+        // Issue #4681 / v312_68_substring_zero_test.rs canon).
         let r4 = engine
             .execute("SELECT SUBSTR(c_phone, 0, 2) FROM customer WHERE c_custkey = 1")
             .unwrap();
-        assert_eq!(r4.rows[0][0].to_sql_string(), "13");
+        assert_eq!(r4.rows[0][0].to_sql_string(), "");
     }
 
     #[test]
