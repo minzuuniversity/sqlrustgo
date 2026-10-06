@@ -159,19 +159,50 @@ fn dispatch(cli: Cli) -> Result<u8, Box<dyn std::error::Error>> {
             wal,
             target_time,
         } => {
+            // #5055: `data_dir` used to be bound to `let _ = data_dir;`
+            // and the command printed "pitr ok" with exit 0 while
+            // writing nothing. The restore now runs against the
+            // directory, and the exit code says what actually happened.
+            let data_path = std::path::PathBuf::from(&data_dir);
             let wal_path = std::path::PathBuf::from(&wal);
-            let _ = data_dir;
             let target_ts = pitr::parse_target_time(&target_time)?;
-            let r = pitr::pitr_replay(&wal_path, target_ts)?;
+            let r = pitr::pitr_replay_into(&data_path, &wal_path, target_ts)?;
             println!(
-                "pitr ok: scanned={} applied={} skipped={} committed={} aborted={} active_at_target={}",
+                "pitr: scanned={} applied={} skipped={} failed={} after_target={} \
+                 committed={} aborted={} active_at_target={} tables={:?}",
                 r.entries_scanned,
                 r.entries_applied,
                 r.entries_skipped,
+                r.entries_failed,
+                r.entries_after_target,
                 r.transactions_committed,
                 r.transactions_aborted,
-                r.active_transactions_at_target
+                r.active_transactions_at_target,
+                r.tables_touched,
             );
+            if let Some(e) = &r.first_error {
+                eprintln!("pitr: first replay error: {e}");
+            }
+            // Exit non-zero when the restore is not clean. "ok" here
+            // used to be a claim about work that never happened.
+            if r.entries_failed > 0 {
+                eprintln!(
+                    "pitr: INCOMPLETE — {} entries could not be applied; \
+                     the data directory does not match the target time",
+                    r.entries_failed
+                );
+                return Ok(3);
+            }
+            if r.is_suspiciously_empty() {
+                eprintln!(
+                    "pitr: WARNING — {} transactions were committed by the target \
+                     time but 0 entries were applied; the data directory may not \
+                     match the log's base backup",
+                    r.transactions_committed
+                );
+                return Ok(4);
+            }
+            println!("pitr ok");
             Ok(0)
         }
         Commands::Status {

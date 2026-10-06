@@ -836,89 +836,159 @@ fn test_physical_backup_restore_no_wal() {
     assert_eq!(fs::read(&restored).unwrap(), b"{}");
 }
 // ============ PITR replay tests ============
+//
+// #5055: these previously called `pitr_replay_entries`, which counted
+// WAL entries without opening a data directory or writing a row — the
+// counting-only behaviour that let `admin pitr` print `pitr ok` and
+// exit 0 having changed nothing. The windowing arithmetic they covered
+// is still covered, but each case now also asserts what is on disk in
+// the restore target afterwards.
 
-use sqlrustgo_admin::pitr::pitr_replay_entries;
-use sqlrustgo_storage::wal::{WalEntry, WalEntryType};
+use sqlrustgo_admin::pitr::pitr_replay_into;
+use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo};
+use sqlrustgo_storage::file_storage::FileStorage;
+use sqlrustgo_types::Value;
 
-/// pitr_replay_entries with empty WAL entries.
+fn users_table() -> TableInfo {
+    TableInfo {
+        name: "users".into(),
+        columns: vec![
+            ColumnDefinition::new("id", "INTEGER"),
+            ColumnDefinition::new("name", "VARCHAR(64)"),
+        ],
+        foreign_keys: vec![],
+        unique_constraints: vec![],
+        check_constraints: vec![],
+        compression: None,
+        collations: std::collections::HashMap::new(),
+        partition_info: None,
+        original_sql: String::new(),
+    }
+}
+
+/// A data directory holding an empty `users` table, plus the TempDir
+/// that keeps it alive.
+fn target_dir(tag: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::TempDir::new().unwrap();
+    let p = dir.path().to_path_buf();
+    let mut s = FileStorage::new(p.clone()).unwrap();
+    s.create_table(&users_table()).unwrap();
+    s.flush_all_buffers().unwrap();
+    (dir, p)
+}
+
+fn restored(dir: &std::path::Path) -> Vec<Vec<Value>> {
+    FileStorage::new(dir.to_path_buf())
+        .unwrap()
+        .scan("users")
+        .unwrap()
+}
+
+fn alice() -> Vec<Value> {
+    vec![Value::Integer(1), Value::Text("Alice".into())]
+}
+
+/// A WAL that exists and is empty: nothing to replay, and that must be
+/// reported as such rather than treated as an error.
 #[test]
 fn test_pitr_replay_empty_entries() {
-    let entries: Vec<WalEntry> = vec![];
-    let result = pitr_replay_entries(&entries, 1000);
+    let (keep, target) = target_dir("empty");
+    let wal = target.join("empty.wal");
+    sqlrustgo_storage::wal_legacy::WalWriter::with_config(&wal, false, 100).unwrap();
+    let result = pitr_replay_into(&target, &wal, 1000).unwrap();
     assert_eq!(result.entries_scanned, 0);
     assert_eq!(result.entries_applied, 0);
     assert_eq!(result.entries_skipped, 0);
+    assert_eq!(result.entries_failed, 0);
     assert_eq!(result.transactions_committed, 0);
     assert_eq!(result.transactions_aborted, 0);
+    assert!(restored(&target).is_empty());
+    drop(keep);
 }
 
-/// pitr_replay_entries with BEGIN/COMMIT entries.
+/// One transaction commits by the target; a second is still open at it.
 #[test]
 fn test_pitr_replay_with_transactions() {
-    let entries = vec![
-        WalEntry {
-            tx_id: 1,
-            entry_type: WalEntryType::Begin,
-            table_id: 1,
-            key: None,
-            data: None,
-            lsn: 0,
-            timestamp: 100,
-        },
-        WalEntry {
-            tx_id: 1,
-            entry_type: WalEntryType::Commit,
-            table_id: 1,
-            key: None,
-            data: None,
-            lsn: 1,
-            timestamp: 200,
-        },
-        WalEntry {
-            tx_id: 2,
-            entry_type: WalEntryType::Begin,
-            table_id: 2,
-            key: None,
-            data: None,
-            lsn: 2,
-            timestamp: 150,
-        },
-    ];
-    let result = pitr_replay_entries(&entries, 500);
-    assert_eq!(result.entries_scanned, 3);
-    assert_eq!(result.transactions_committed, 1); // tx 1 committed
+    let (src_keep, src) = target_dir("src_tx");
+    {
+        let mut s = FileStorage::new_with_wal(src.clone()).unwrap();
+        s.create_table(&users_table()).unwrap();
+        s.begin_transaction().unwrap();
+        s.insert("users", vec![alice()]).unwrap();
+        s.commit_transaction().unwrap();
+        s.flush_all_buffers().unwrap();
+        s.begin_transaction().unwrap();
+        s.insert(
+            "users",
+            vec![vec![Value::Integer(2), Value::Text("Bob".into())]],
+        )
+        .unwrap();
+        s.flush_all_buffers().unwrap();
+    }
+    let wal = src.join("sqlrustgo.wal");
+
+    let (_keep, target) = target_dir("dst_tx");
+    let result = pitr_replay_into(&target, &wal, u64::MAX).unwrap();
+    assert_eq!(
+        result.entries_scanned, 5,
+        "Begin+Insert+Commit+Begin+Insert"
+    );
+    assert_eq!(result.transactions_committed, 1);
     assert_eq!(result.transactions_aborted, 0);
-    // tx 2 was in progress at target_time=500 (timestamp 150) but no commit yet
-    assert!(result.active_transactions_at_target >= 0);
+    assert_eq!(result.active_transactions_at_target, 1);
+    assert_eq!(result.entries_applied, 1);
+    assert_eq!(result.entries_skipped, 1);
+    assert_eq!(
+        restored(&target),
+        vec![alice()],
+        "only the committed row may be restored"
+    );
+    drop(src_keep);
 }
 
-/// pitr_replay_entries with ROLLBACK entries.
+/// A transaction that rolled back restores nothing.
 #[test]
 fn test_pitr_replay_with_rollback() {
-    let entries = vec![
-        WalEntry {
-            tx_id: 10,
-            entry_type: WalEntryType::Begin,
-            table_id: 1,
-            key: None,
-            data: None,
-            lsn: 0,
-            timestamp: 50,
-        },
-        WalEntry {
-            tx_id: 10,
-            entry_type: WalEntryType::Rollback,
-            table_id: 1,
-            key: None,
-            data: None,
-            lsn: 1,
-            timestamp: 300,
-        },
-    ];
-    let result = pitr_replay_entries(&entries, 1000);
-    assert_eq!(result.entries_scanned, 2);
+    let (src_keep, src) = target_dir("src_rb");
+    {
+        let mut s = FileStorage::new_with_wal(src.clone()).unwrap();
+        s.create_table(&users_table()).unwrap();
+        s.begin_transaction().unwrap();
+        s.insert("users", vec![alice()]).unwrap();
+        s.rollback_transaction().unwrap();
+        s.flush_all_buffers().unwrap();
+    }
+    let wal = src.join("sqlrustgo.wal");
+
+    let (_keep, target) = target_dir("dst_rb");
+    let result = pitr_replay_into(&target, &wal, u64::MAX).unwrap();
+    assert_eq!(result.entries_scanned, 3);
     assert_eq!(result.transactions_aborted, 1);
     assert_eq!(result.transactions_committed, 0);
+    assert_eq!(result.entries_applied, 0);
+    assert!(restored(&target).is_empty());
+    drop(src_keep);
+}
+
+/// #5055: the failure paths the old entry-counting API could not have.
+#[test]
+fn test_pitr_replay_missing_data_dir_is_an_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let wal = dir.path().join("x.wal");
+    sqlrustgo_storage::wal_legacy::WalWriter::with_config(&wal, false, 100).unwrap();
+    let missing = dir.path().join("no-such-dir");
+    assert!(
+        pitr_replay_into(&missing, &wal, 100).is_err(),
+        "restoring into a directory that does not exist must fail, \\
+         not report success having written nothing"
+    );
+}
+
+#[test]
+fn test_pitr_replay_missing_wal_is_an_error() {
+    let (keep, target) = target_dir("missing_wal");
+    assert!(pitr_replay_into(&target, &target.join("absent.wal"), 100).is_err());
+    drop(keep);
 }
 
 // ============ MysqlAdmin dispatch tests ============

@@ -95,6 +95,19 @@ pub struct WalEntry {
     pub lsn: u64,
     /// Timestamp
     pub timestamp: u64,
+    /// #5055: the table's name.
+    ///
+    /// `table_id` is a 31-radix hash of the name (`WalStorage::
+    /// table_name_to_id`), so a replay cannot recover the name from it —
+    /// and `StorageEngine::insert` needs the name. Without this field a
+    /// WAL entry knows *that* a row changed but not *which table it
+    /// belongs to*, which makes point-in-time recovery impossible.
+    ///
+    /// `None` for entries written before #5055, and for non-row entries
+    /// (begin/commit/rollback) that have no table. A replay must refuse
+    /// to apply a row entry without it rather than guess: writing a row
+    /// into the wrong table is worse than not recovering it.
+    pub table_name: Option<String>,
 }
 
 impl WalEntry {
@@ -133,6 +146,17 @@ impl WalEntry {
             None => {
                 bytes.extend_from_slice(&0u32.to_le_bytes());
             }
+        }
+
+        // #5055: optional trailing table name. The magic guards against
+        // a reader that mis-computed the data length and then reading the
+        // name's bytes as if they were a field. An entry without it is a
+        // pre-#5055 entry and stays readable.
+        if let Some(name) = &self.table_name {
+            const TABLE_NAME_MAGIC: [u8; 4] = *b"TNAM";
+            bytes.extend_from_slice(&TABLE_NAME_MAGIC);
+            bytes.extend_from_slice(&(name.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(name.as_bytes());
         }
 
         bytes
@@ -212,6 +236,31 @@ impl WalEntry {
         } else {
             None
         };
+        offset += data_len;
+
+        // #5055: optional trailing table name. Anything left that does
+        // not start with the magic is treated as absent — that is a
+        // pre-#5055 entry, which is still valid, just not replayable.
+        const TABLE_NAME_MAGIC: [u8; 4] = *b"TNAM";
+        let table_name =
+            if offset + 8 <= bytes.len() && bytes[offset..offset + 4] == TABLE_NAME_MAGIC {
+                let name_len = u32::from_le_bytes([
+                    bytes[offset + 4],
+                    bytes[offset + 5],
+                    bytes[offset + 6],
+                    bytes[offset + 7],
+                ]) as usize;
+                let start = offset + 8;
+                if start + name_len <= bytes.len() {
+                    Some(String::from_utf8_lossy(&bytes[start..start + name_len]).into_owned())
+                } else {
+                    // Truncated tail: the entry's data is intact, so keep it
+                    // and report no table rather than dropping the whole entry.
+                    None
+                }
+            } else {
+                None
+            };
 
         Some(WalEntry {
             tx_id,
@@ -221,6 +270,7 @@ impl WalEntry {
             data,
             lsn,
             timestamp,
+            table_name,
         })
     }
 }
@@ -293,7 +343,15 @@ impl WalWriter {
         self.flush_threshold = threshold;
     }
 
-    /// Append an entry to the WAL
+    /// Append an entry to the WAL, returning the LSN *this writer*
+    /// would assign.
+    ///
+    /// #5055: the returned LSN is **not** written into the entry. The
+    /// serialized bytes carry `entry.lsn`, whatever the caller set.
+    /// `FileBackedWalManager` therefore stamps the LSN itself before
+    /// calling this, because the returned value is discarded by the
+    /// `WalManager` trait and a WAL where every entry reads back as
+    /// `lsn == 0` is unorderable.
     pub fn append(&mut self, entry: &WalEntry) -> std::io::Result<u64> {
         let lsn = self.lsn;
         let bytes = entry.to_bytes();
@@ -477,6 +535,7 @@ impl WalManager {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            table_name: None,
         };
 
         writer.append(&entry)
@@ -497,6 +556,7 @@ impl WalManager {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            table_name: None,
         };
 
         writer.append(&entry)
@@ -517,6 +577,7 @@ impl WalManager {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            table_name: None,
         };
 
         writer.append(&entry)
@@ -543,6 +604,7 @@ impl WalManager {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            table_name: None,
         };
 
         writer.append(&entry)
@@ -569,6 +631,7 @@ impl WalManager {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            table_name: None,
         };
 
         writer.append(&entry)
@@ -589,6 +652,7 @@ impl WalManager {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            table_name: None,
         };
 
         writer.append(&entry)
@@ -609,6 +673,7 @@ impl WalManager {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            table_name: None,
         };
 
         writer.append(&entry)
@@ -629,6 +694,7 @@ impl WalManager {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            table_name: None,
         };
 
         writer.append(&entry)
@@ -1127,6 +1193,7 @@ mod tests {
             data: Some(vec![10, 20, 30]),
             lsn: 0,
             timestamp: 1234567890,
+            table_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1156,6 +1223,7 @@ mod tests {
                 data: None,
                 lsn: 0,
                 timestamp: 1234567890,
+                table_name: None,
             };
 
             writer.append(&entry1).unwrap();
@@ -1168,6 +1236,7 @@ mod tests {
                 data: Some(vec![10, 20]),
                 lsn: 1,
                 timestamp: 1234567891,
+                table_name: None,
             };
 
             writer.append(&entry2).unwrap();
@@ -1230,6 +1299,7 @@ mod tests {
             data: None,
             lsn: 0,
             timestamp: 1234567890,
+            table_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1250,6 +1320,7 @@ mod tests {
             data: Some(large_data.clone()),
             lsn: 0,
             timestamp: 1234567890,
+            table_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1273,6 +1344,7 @@ mod tests {
             data: None,
             lsn: 0,
             timestamp: 1234567890,
+            table_name: None,
         };
 
         let lsn1 = writer.append(&entry).unwrap();
@@ -1327,6 +1399,7 @@ mod tests {
                     data: Some(vec![i as u8 * 10]),
                     lsn: i,
                     timestamp: 1234567890 + i,
+                    table_name: None,
                 };
                 let _ = manager.get_writer().unwrap().append(&entry);
             }
@@ -1613,6 +1686,7 @@ mod tests {
             data: Some(vec![]),
             lsn: 10,
             timestamp: 9876543210,
+            table_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1631,6 +1705,7 @@ mod tests {
             data: None,
             lsn: 5,
             timestamp: 1111111111,
+            table_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1649,6 +1724,7 @@ mod tests {
             data: Some(vec![9, 8, 7, 6, 5, 4, 3, 2, 1]),
             lsn: 15,
             timestamp: 2222222222,
+            table_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1679,6 +1755,7 @@ mod tests {
                 data: Some(vec![i as u8 * 2]),
                 lsn: i as u64,
                 timestamp: i as u64 + 1000,
+                table_name: None,
             };
             writer.append(&entry).unwrap();
         }
@@ -1869,6 +1946,7 @@ mod tests {
                 data: None,
                 lsn: 0,
                 timestamp: 0,
+                table_name: None,
             };
             let bytes = entry.to_bytes();
             let len = bytes.len() as u32;

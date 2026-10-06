@@ -219,6 +219,7 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
+                table_name: None,
             };
             self.append_wal_entry(entry)?;
         }

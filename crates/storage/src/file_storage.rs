@@ -6,6 +6,7 @@ use crate::engine::{
     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
     SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
 };
+use crate::wal::{WalEntry, WalEntryType};
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
@@ -123,6 +124,26 @@ pub struct FileStorage {
     /// by `save_table` to decide whether to write anything, and to
     /// limit incremental writes to only the new rows.
     last_saved_row_count: Mutex<HashMap<String, usize>>,
+    /// #5055: monotonic transaction-id source.
+    ///
+    /// See [`next_tx_id`](Self::next_tx_id) for why the previous
+    /// wall-clock derivation was not good enough. Starts at 1 because
+    /// `current_tx_id == 0` means autocommit.
+    next_tx_id_counter: std::sync::atomic::AtomicU64,
+    /// #5055: the write-ahead log, opened by [`new_with_wal`].
+    ///
+    /// `None` in every other constructor, which is what makes
+    /// [`StorageEngine::is_wal_enabled`] answer `false` there. It is a
+    /// plain `Mutex` rather than being folded into `WriteState`
+    /// because WAL appends happen *after* the `WriteState` guard is
+    /// released — see `wal_append` — and folding them together would
+    /// mean holding the storage write lock across a file write.
+    ///
+    /// Before this field existed, `new_with_wal` computed
+    /// `let _wal_path = data_dir.join("sqlrustgo.wal")` and dropped it
+    /// on the floor. Nothing was ever written, so `admin pitr` had an
+    /// empty or absent WAL to "replay" and reported success anyway.
+    wal: Mutex<Option<Box<dyn crate::wal::WalManager>>>,
 }
 
 /// Issue #4581 / B-track case 35-36: per-transaction undo log entry.
@@ -159,6 +180,169 @@ enum UndoOp {
 }
 
 impl FileStorage {
+    // --- #5055: write-ahead logging -----------------------------------
+    //
+    // The methods below are the whole WAL surface of `FileStorage`.
+    // They are deliberately thin: encode, hand to the `WalManager`,
+    // done. All the "which rows changed" bookkeeping lives at the DML
+    // call sites, because that is the only place it is still true.
+
+    /// `true` when a WAL was opened by [`new_with_wal`](Self::new_with_wal).
+    ///
+    /// A poisoned mutex means some other thread panicked while holding
+    /// it. The `WalManager` behind it is still a live, usable object —
+    /// `append` is the only thing that touches it and it does not leave
+    /// it half-updated in a way `&mut` cannot express — so recovering
+    /// the guard is strictly better than propagating the panic to every
+    /// subsequent write.
+    fn wal_enabled(&self) -> bool {
+        self.wal.lock().map(|g| g.is_some()).unwrap_or(true)
+    }
+
+    /// Append a batch of entries. A no-op when no WAL is open.
+    ///
+    /// Callers must invoke this **after** releasing `write_state`. WAL
+    /// append does file I/O, and holding the storage write lock across
+    /// it would serialise every reader behind the disk.
+    fn wal_append(&self, entries: Vec<WalEntry>) -> SqlResult<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut guard = match self.wal.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let Some(wal) = guard.as_mut() else {
+            return Ok(());
+        };
+        for entry in entries {
+            wal.append(entry)?;
+        }
+        Ok(())
+    }
+
+    /// Build one row-level WAL entry for `table`.
+    ///
+    /// `table_name` is always `Some` here. #5055 made it an optional
+    /// field on `WalEntry` for backward compatibility with WALs written
+    /// before it existed, but a row entry this code writes can always
+    /// name its table, and a replay that has to guess would be worse
+    /// than one that refuses.
+    fn wal_row_entry(
+        &self,
+        entry_type: WalEntryType,
+        table: &str,
+        key: Vec<u8>,
+        data: Option<Vec<u8>>,
+    ) -> WalEntry {
+        WalEntry {
+            tx_id: self
+                .current_tx_id
+                .load(std::sync::atomic::Ordering::Acquire),
+            entry_type,
+            table_id: crate::wal_record_codec::table_name_to_id(table),
+            table_name: Some(table.to_string()),
+            key: Some(key),
+            data,
+            lsn: 0,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+        }
+    }
+
+    /// Build a transaction-boundary entry (BEGIN / COMMIT / ROLLBACK).
+    fn wal_tx_entry(&self, entry_type: WalEntryType, tx_id: u64, lsn: u64) -> WalEntry {
+        WalEntry {
+            tx_id,
+            entry_type,
+            table_id: 0,
+            table_name: None,
+            key: None,
+            data: None,
+            lsn,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+        }
+    }
+
+    /// Encode one row into the `Insert` entries for it.
+    fn wal_insert_entries(&self, table: &str, records: &[Record]) -> Vec<WalEntry> {
+        records
+            .iter()
+            .map(|r| {
+                self.wal_row_entry(
+                    WalEntryType::Insert,
+                    table,
+                    crate::wal_record_codec::record_key(r),
+                    Some(crate::wal_record_codec::record_to_bytes(r)),
+                )
+            })
+            .collect()
+    }
+
+    /// Encode one row into the `Delete` entries for it. A delete logs
+    /// only the key, not the row: replay removes by key.
+    fn wal_delete_entries(&self, table: &str, rows: &[Record]) -> Vec<WalEntry> {
+        rows.iter()
+            .map(|r| {
+                self.wal_row_entry(
+                    WalEntryType::Delete,
+                    table,
+                    crate::wal_record_codec::record_key(r),
+                    None,
+                )
+            })
+            .collect()
+    }
+
+    /// Encode one row into the `Update` entry for it. An update logs
+    /// the key *and* the full post-image, so replay is a blind
+    /// overwrite and does not need to re-evaluate the predicate.
+    fn wal_update_entries(&self, table: &str, rows: &[Record]) -> Vec<WalEntry> {
+        rows.iter()
+            .map(|r| {
+                self.wal_row_entry(
+                    WalEntryType::Update,
+                    table,
+                    crate::wal_record_codec::record_key(r),
+                    Some(crate::wal_record_codec::record_to_bytes(r)),
+                )
+            })
+            .collect()
+    }
+
+    /// #5055: read back every entry currently in the WAL.
+    ///
+    /// Public because "what does this data directory's log actually
+    /// contain" is the question a recovery tool, an operator, and a
+    /// test all need answered, and until now the only way to get at it
+    /// was to open the file by hand. Returns an empty vector when no
+    /// WAL is open — that is a fact about the backend, not an error.
+    pub fn recover_wal_entries(&self) -> SqlResult<Vec<WalEntry>> {
+        let mut guard = match self.wal.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        match guard.as_mut() {
+            Some(wal) => wal.recover(),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// #5055: the LSN the next appended entry will receive, or 0 when
+    /// no WAL is open.
+    pub fn wal_current_lsn(&self) -> u64 {
+        let guard = match self.wal.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        guard.as_ref().map(|w| w.current_lsn()).unwrap_or(0)
+    }
+
     /// Create a new FileStorage with the given data directory
     pub fn new(data_dir: PathBuf) -> std::io::Result<Self> {
         // Create directory if it doesn't exist
@@ -190,6 +374,8 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
+            next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            wal: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -232,6 +418,8 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
+            next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            wal: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -245,10 +433,25 @@ impl FileStorage {
     /// Create a new FileStorage with WAL (Write-Ahead Log) enabled for crash recovery.
     /// The WAL file will be stored in the data directory as "sqlrustgo.wal".
     /// Returns Err if WAL cannot be initialized.
+    ///
+    /// #5055: this used to compute `wal_path` and immediately drop it.
+    /// The storage behaved identically to [`new`](Self::new) and wrote
+    /// no log at all, while `is_wal_enabled()` — which this type never
+    /// overrode — answered `false`, so nothing downstream could notice
+    /// either. `admin pitr` then read a WAL that either did not exist
+    /// or was empty, and the CLI reported `pitr ok` and exited 0.
+    ///
+    /// A failure to open the WAL is now an error, not a silent
+    /// downgrade to a log-less storage: the caller asked for
+    /// durability, and quietly returning a storage without it is how
+    /// the original bug existed in the first place.
     pub fn new_with_wal(data_dir: PathBuf) -> std::io::Result<Self> {
         fs::create_dir_all(&data_dir)?;
 
-        let _wal_path = data_dir.join("sqlrustgo.wal");
+        let wal_path = data_dir.join("sqlrustgo.wal");
+        let wal = crate::wal::FileBackedWalManager::new(wal_path).map_err(|e| {
+            std::io::Error::other(format!("failed to open WAL {}: {e}", data_dir.display()))
+        })?;
 
         let storage = Self {
             data_dir,
@@ -269,6 +472,8 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
+            next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            wal: Mutex::new(Some(Box::new(wal))),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -323,6 +528,8 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: Some(lock_manager),
             last_saved_row_count: Mutex::new(HashMap::new()),
+            next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            wal: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -3894,25 +4101,33 @@ impl StorageEngine for FileStorage {
         // tx_undo_log. Compute it outside the lock so the closure
         // body only touches the write-protected fields.
         let id = self.next_tx_id();
-        Self::with_write_lock(self, |s| {
+        let (tx_id, is_new) = Self::with_write_lock(self, |s| -> SqlResult<(u64, bool)> {
             use std::sync::atomic::Ordering as O;
             let existing = self.current_tx_id.load(O::Acquire);
             if existing != 0 {
                 // Already in a tx — keep the existing id (MySQL-style nested BEGIN).
-                return Ok(existing);
+                return Ok((existing, false));
             }
             self.current_tx_id.store(id, O::Release);
             s.tx_undo_log.clear();
-            Ok(id)
-        })
+            Ok((id, true))
+        })?;
+        // #5055: log the boundary. A replay can only tell a committed
+        // row from an uncommitted one by seeing Commit, and it can only
+        // see Commit if Begin was written for the same tx_id. Note this
+        // fires only for a *new* transaction — a nested BEGIN must not
+        // emit a second boundary for the same tx.
+        if is_new && self.wal_enabled() {
+            self.wal_append(vec![self.wal_tx_entry(WalEntryType::Begin, tx_id, 0)])?;
+        }
+        Ok(tx_id)
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        if self
+        let tx_id = self
             .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            == 0
-        {
+            .load(std::sync::atomic::Ordering::Acquire);
+        if tx_id == 0 {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
         }
@@ -3926,6 +4141,14 @@ impl StorageEngine for FileStorage {
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
+        // #5055: read the tx_id *before* the reset above and log the
+        // Commit under the id the rows were written with. Logging it
+        // after the reset — with `current_tx_id` now 0 — would produce a
+        // Commit for tx 0 that matches no rows, and the whole
+        // transaction would replay as uncommitted.
+        if self.wal_enabled() {
+            self.wal_append(vec![self.wal_tx_entry(WalEntryType::Commit, tx_id, 0)])?;
+        }
         Ok(())
     }
 
@@ -3969,11 +4192,10 @@ impl StorageEngine for FileStorage {
     /// "capability signal would disable the caller's correctness work"
     /// argument as `commit_transaction_lockfree` above.
     fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
-        if self
+        let tx_id = self
             .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            == 0
-        {
+            .load(std::sync::atomic::Ordering::Acquire);
+        if tx_id == 0 {
             return Ok(());
         }
         Self::with_write_lock(self, |s| {
@@ -3984,15 +4206,19 @@ impl StorageEngine for FileStorage {
         });
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
+        // #5055: capture `tx_id` before the reset so the Rollback names
+        // the transaction whose rows it cancels.
+        if self.wal_enabled() {
+            self.wal_append(vec![self.wal_tx_entry(WalEntryType::Rollback, tx_id, 0)])?;
+        }
         Ok(())
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        if self
+        let rolling_back_tx = self
             .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            == 0
-        {
+            .load(std::sync::atomic::Ordering::Acquire);
+        if rolling_back_tx == 0 {
             // ROLLBACK outside a tx is a warning in MySQL but a no-op in
             // SQLite. Match SQLite to keep behavior consistent.
             return Ok(());
@@ -4087,6 +4313,18 @@ impl StorageEngine for FileStorage {
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
+        // #5055: as in `commit_transaction`, the id is captured before
+        // the reset. A rollback that logs tx 0 would leave the real
+        // transaction looking merely "uncommitted at target", which
+        // reads as an in-flight transaction rather than a cancelled
+        // one.
+        if self.wal_enabled() {
+            self.wal_append(vec![self.wal_tx_entry(
+                WalEntryType::Rollback,
+                rolling_back_tx,
+                0,
+            )])?;
+        }
         Ok(())
     }
 
@@ -4308,6 +4546,14 @@ impl StorageEngine for FileStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        // #5055: log before applying. This is the write-ahead half of
+        // write-ahead logging — a crash between here and the buffer
+        // flush must still leave the rows recoverable, which it cannot
+        // if the log is written after the mutation.
+        if self.wal_enabled() {
+            self.wal_append(self.wal_insert_entries(table, &records))?;
+        }
+
         // C.1.2: in_transaction / insert_buffered / insert_direct are
         // inherent `&self` methods — safe to call from outside the
         // lock and from inside (Rust reborrows `&mut Self` as `&Self`
@@ -4354,92 +4600,126 @@ impl StorageEngine for FileStorage {
         // every step touches {tables, dirty_tables, tx_undo_log,
         // insert_buffer}. Splitting would mean multiple lock acquisitions
         // and risk of observing torn state between them.
-        Self::with_write_lock(self, |s| {
-            let in_tx = self
-                .current_tx_id
-                .load(std::sync::atomic::Ordering::Acquire)
-                != 0;
+        //
+        // #5055: the closure also snapshots the rows about to be
+        // removed, because after the `retain` there is no way to tell
+        // which ones they were. The snapshot has to happen inside this
+        // same critical section — reading the rows again afterwards
+        // would race a concurrent insert.
+        let wal_on = self.wal_enabled();
+        let (removed, removed_rows) =
+            Self::with_write_lock(self, |s| -> SqlResult<(usize, Vec<Record>)> {
+                let in_tx = self
+                    .current_tx_id
+                    .load(std::sync::atomic::Ordering::Acquire)
+                    != 0;
 
-            // Issue #4581 / B-track case 35-36: snapshot rows for ROLLBACK
-            // BEFORE the actual delete. The `data` borrow ends before the
-            // `dirty_tables` / `insert_buffer` mutations, so we snapshot first,
-            // then mutate, then post-process the buffer.
-            let removed = if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
-                &table,
-            )) {
-                let original_len = data.rows.len();
+                // Issue #4581 / B-track case 35-36: snapshot rows for ROLLBACK
+                // BEFORE the actual delete. The `data` borrow ends before the
+                // `dirty_tables` / `insert_buffer` mutations, so we snapshot first,
+                // then mutate, then post-process the buffer.
+                let mut removed_rows: Vec<Record> = Vec::new();
+                let removed = if let Some(ref mut data) = s.tables.get_mut(
+                    &crate::engine::scoped_key(&self.current_db.read().unwrap(), &table),
+                ) {
+                    let original_len = data.rows.len();
 
-                // Issue #4581: capture pre-delete snapshots. We collect them
-                // up-front (in reverse iteration order so ROLLBACK replays in
-                // the correct sequence) before mutating data.rows.
-                if in_tx {
-                    if filters.is_empty() {
-                        let snap = data.rows.clone();
-                        s.tx_undo_log.push(UndoOp::DeleteAll {
-                            table: table.to_string(),
-                            original_rows: snap,
-                        });
-                    } else {
-                        for (idx, row) in data.rows.iter().enumerate().rev() {
-                            let matches = filters
-                                .iter()
-                                .enumerate()
-                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
-                            if matches {
-                                s.tx_undo_log.push(UndoOp::DeleteRow {
-                                    table: table.to_string(),
-                                    row_idx: idx,
-                                    original: row.clone(),
-                                });
+                    // #5055: snapshot for the WAL, same reason as the
+                    // undo log below captures one for ROLLBACK.
+                    if wal_on {
+                        if filters.is_empty() {
+                            removed_rows = data.rows.clone();
+                        } else {
+                            removed_rows =
+                                data.rows
+                                    .iter()
+                                    .filter(|row| {
+                                        filters.iter().enumerate().all(|(i, f)| {
+                                            row.get(i).map(|v| v == f).unwrap_or(false)
+                                        })
+                                    })
+                                    .cloned()
+                                    .collect();
+                        }
+                    }
+
+                    // Issue #4581: capture pre-delete snapshots. We collect them
+                    // up-front (in reverse iteration order so ROLLBACK replays in
+                    // the correct sequence) before mutating data.rows.
+                    if in_tx {
+                        if filters.is_empty() {
+                            let snap = data.rows.clone();
+                            s.tx_undo_log.push(UndoOp::DeleteAll {
+                                table: table.to_string(),
+                                original_rows: snap,
+                            });
+                        } else {
+                            for (idx, row) in data.rows.iter().enumerate().rev() {
+                                let matches = filters
+                                    .iter()
+                                    .enumerate()
+                                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
+                                if matches {
+                                    s.tx_undo_log.push(UndoOp::DeleteRow {
+                                        table: table.to_string(),
+                                        row_idx: idx,
+                                        original: row.clone(),
+                                    });
+                                }
                             }
                         }
                     }
+
+                    if filters.is_empty() {
+                        data.rows.clear();
+                    } else {
+                        // Row-level delete: keep rows that do NOT match the filter.
+                        data.rows.retain(|row| {
+                            !filters
+                                .iter()
+                                .enumerate()
+                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                        });
+                    }
+                    original_len - data.rows.len()
+                } else {
+                    0
+                };
+
+                // V311-07: Mark dirty instead of immediate persist.
+                if removed > 0 || filters.is_empty() {
+                    s.dirty_tables.insert(table.to_string());
                 }
 
+                // After full table delete, clear any buffered inserts (the caller
+                // UPDATE path will re-insert correct rows). For partial delete,
+                // strip matching rows from insert_buffer so they don't shadow
+                // updated values.
                 if filters.is_empty() {
-                    data.rows.clear();
-                } else {
-                    // Row-level delete: keep rows that do NOT match the filter.
-                    data.rows.retain(|row| {
+                    s.insert_buffer.remove(&crate::engine::scoped_key(
+                        &self.current_db.read().unwrap(),
+                        table,
+                    ));
+                } else if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    table,
+                )) {
+                    buffered.retain(|row| {
                         !filters
                             .iter()
                             .enumerate()
                             .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
                     });
                 }
-                original_len - data.rows.len()
-            } else {
-                0
-            };
+                Ok((removed, removed_rows))
+            })?;
 
-            // V311-07: Mark dirty instead of immediate persist.
-            if removed > 0 || filters.is_empty() {
-                s.dirty_tables.insert(table.to_string());
-            }
-
-            // After full table delete, clear any buffered inserts (the caller
-            // UPDATE path will re-insert correct rows). For partial delete,
-            // strip matching rows from insert_buffer so they don't shadow
-            // updated values.
-            if filters.is_empty() {
-                s.insert_buffer.remove(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    table,
-                ));
-            } else if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
-                table,
-            )) {
-                buffered.retain(|row| {
-                    !filters
-                        .iter()
-                        .enumerate()
-                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                });
-            }
-            Ok(removed)
-        })
+        // #5055: outside the storage write lock on purpose — this does
+        // file I/O.
+        if wal_on {
+            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+        }
+        Ok(removed)
     }
 
     /// Phase B Step 4.1: like `delete`, but returns the list of
@@ -4589,23 +4869,35 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        Self::with_write_lock(self, |s| {
-            if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
-                &table,
-            )) {
-                let original_len = data.rows.len();
-                data.rows.retain(|r| !filter(r));
-                let new_len = data.rows.len();
-                // V311-07: Mark dirty instead of immediate persist
-                if new_len < original_len {
-                    s.dirty_tables.insert(table.to_string());
+        // #5055: same shape as `delete` — snapshot the matching rows
+        // inside the critical section, append to the WAL outside it.
+        let wal_on = self.wal_enabled();
+        let (removed, removed_rows) =
+            Self::with_write_lock(self, |s| -> SqlResult<(usize, Vec<Record>)> {
+                if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    &table,
+                )) {
+                    let original_len = data.rows.len();
+                    let mut removed_rows = Vec::new();
+                    if wal_on {
+                        removed_rows = data.rows.iter().filter(|r| filter(r)).cloned().collect();
+                    }
+                    data.rows.retain(|r| !filter(r));
+                    let new_len = data.rows.len();
+                    // V311-07: Mark dirty instead of immediate persist
+                    if new_len < original_len {
+                        s.dirty_tables.insert(table.to_string());
+                    }
+                    Ok((original_len - new_len, removed_rows))
+                } else {
+                    Ok((0, Vec::new()))
                 }
-                Ok(original_len - new_len)
-            } else {
-                Ok(0)
-            }
-        })
+            })?;
+        if wal_on {
+            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+        }
+        Ok(removed)
     }
 
     fn update(
@@ -4618,56 +4910,74 @@ impl StorageEngine for FileStorage {
         // no lock. `tables` and `tx_undo_log` are separate fields of the
         // same struct, so the borrow checker can hand out both here —
         // the old code got them through one `&mut FileStorage`.
-        let st = self.write_state.get_mut();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        let WriteState {
-            ref mut tables,
-            ref mut tx_undo_log,
-            ..
-        } = *st;
-        let Some(ref mut data) = tables.get_mut(&crate::engine::scoped_key(
-            &self.current_db.read().unwrap(),
-            table,
-        )) else {
-            return Ok(0);
-        };
+        //
+        // #5055: the whole scan is scoped to a block so the `&mut` it
+        // takes on `write_state` is released before the WAL append. An
+        // append inside this scope would not compile *and* would hold
+        // the storage write lock across a file write.
+        let wal_on = self.wal_enabled();
+        let (count, updated_rows) = {
+            let st = self.write_state.get_mut();
+            let in_tx = self
+                .current_tx_id
+                .load(std::sync::atomic::Ordering::Acquire)
+                != 0;
+            let WriteState {
+                ref mut tables,
+                ref mut tx_undo_log,
+                ..
+            } = *st;
+            let Some(ref mut data) = tables.get_mut(&crate::engine::scoped_key(
+                &self.current_db.read().unwrap(),
+                table,
+            )) else {
+                return Ok(0);
+            };
 
-        let mut count = 0;
-        for (idx, record) in data.rows.iter_mut().enumerate() {
-            if filters.is_empty()
-                || filters
-                    .iter()
-                    .enumerate()
-                    .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
-            {
-                // Issue #4581 / B-track case 35-36: when inside a tx,
-                // snapshot the pre-image BEFORE mutating so ROLLBACK
-                // can restore it. We clone the entire row (small +
-                // simple). Multiple updates on the same row each log
-                // their own snapshot — replay in reverse naturally
-                // produces the pre-tx state.
-                if in_tx {
-                    let original = record.clone();
-                    tx_undo_log.push(UndoOp::UpdateRow {
-                        table: table.to_string(),
-                        row_idx: idx,
-                        original,
-                    });
-                }
-                for &(col_idx, ref new_val) in updates {
-                    if col_idx < record.len() {
-                        record[col_idx] = new_val.clone();
+            let mut count = 0;
+            let mut updated_rows: Vec<Record> = Vec::new();
+            for (idx, record) in data.rows.iter_mut().enumerate() {
+                if filters.is_empty()
+                    || filters
+                        .iter()
+                        .enumerate()
+                        .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
+                {
+                    // Issue #4581 / B-track case 35-36: when inside a tx,
+                    // snapshot the pre-image BEFORE mutating so ROLLBACK
+                    // can restore it. We clone the entire row (small +
+                    // simple). Multiple updates on the same row each log
+                    // their own snapshot — replay in reverse naturally
+                    // produces the pre-tx state.
+                    if in_tx {
+                        let original = record.clone();
+                        tx_undo_log.push(UndoOp::UpdateRow {
+                            table: table.to_string(),
+                            row_idx: idx,
+                            original,
+                        });
                     }
+                    for &(col_idx, ref new_val) in updates {
+                        if col_idx < record.len() {
+                            record[col_idx] = new_val.clone();
+                        }
+                    }
+                    // #5055: the WAL needs the post-image, and this is
+                    // the last point where the row is still whole.
+                    if wal_on {
+                        updated_rows.push(record.clone());
+                    }
+                    count += 1;
                 }
-                count += 1;
             }
-        }
-        // V311-07: Mark dirty instead of immediate persist
-        if count > 0 {
-            st.dirty_tables.insert(table.to_string());
+            // V311-07: Mark dirty instead of immediate persist
+            if count > 0 {
+                st.dirty_tables.insert(table.to_string());
+            }
+            (count, updated_rows)
+        };
+        if wal_on {
+            self.wal_append(self.wal_update_entries(table, &updated_rows))?;
         }
         Ok(count)
     }
@@ -4679,28 +4989,42 @@ impl StorageEngine for FileStorage {
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
         // #5025: resolve the key before the mutable borrow.
+        //
+        // #5055: as in `update`, the scan is scoped so the `&mut` on
+        // `write_state` is released before the WAL append.
         let key = self.tbl(table);
-        let st = self.write_state.get_mut();
-        let Some(data) = st.tables.get_mut(&key) else {
-            return Ok(0);
-        };
+        let wal_on = self.wal_enabled();
+        let (count, updated_rows) = {
+            let st = self.write_state.get_mut();
+            let Some(data) = st.tables.get_mut(&key) else {
+                return Ok(0);
+            };
 
-        let mut count = 0;
-        let assignments = mutation.assignments();
+            let mut count = 0;
+            let mut updated_rows: Vec<Record> = Vec::new();
+            let assignments = mutation.assignments();
 
-        for record in data.rows.iter_mut() {
-            if filter(record) {
-                for &(col_idx, ref new_val) in assignments {
-                    if col_idx < record.len() {
-                        record[col_idx] = new_val.clone();
+            for record in data.rows.iter_mut() {
+                if filter(record) {
+                    for &(col_idx, ref new_val) in assignments {
+                        if col_idx < record.len() {
+                            record[col_idx] = new_val.clone();
+                        }
                     }
+                    if wal_on {
+                        updated_rows.push(record.clone());
+                    }
+                    count += 1;
                 }
-                count += 1;
             }
-        }
-        // V311-07: Mark dirty instead of immediate persist
-        if count > 0 {
-            st.dirty_tables.insert(table.to_string());
+            // V311-07: Mark dirty instead of immediate persist
+            if count > 0 {
+                st.dirty_tables.insert(table.to_string());
+            }
+            (count, updated_rows)
+        };
+        if wal_on {
+            self.wal_append(self.wal_update_entries(table, &updated_rows))?;
         }
         Ok(count)
     }
@@ -5252,6 +5576,18 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
+    /// #5055: report whether a WAL is actually open.
+    ///
+    /// Without this override the trait default answers `false` for
+    /// every `FileStorage` — including one built by `new_with_wal` —
+    /// so any caller gating on the capability signal concluded that
+    /// this backend had no durability story. That is the second half
+    /// of the `admin pitr` bug: the log did not exist *and* the engine
+    /// said it could not.
+    fn is_wal_enabled(&self) -> bool {
+        self.wal_enabled()
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -5469,21 +5805,34 @@ impl FileStorage {
 // pollute the trait surface.
 
 impl FileStorage {
-    /// Monotonic tx id counter. Persisted only for the lifetime of the
-    /// process — restart resets to 1. The first BEGIN after process
-    /// startup returns 1; subsequent BEGINs return 2, 3, ...
+    /// Allocate the next transaction id.
+    ///
+    /// #5055: this used to derive the id from the wall clock —
+    /// `now_nanos % 1_000_000` plus the length of the undo log — on the
+    /// theory that the "not required for correctness" tie-breaker only
+    /// had to make logs easier to read. It was required for
+    /// correctness, because the id is what the WAL records:
+    ///
+    /// ```text
+    /// PROBE 100 back-to-back BEGIN/COMMIT pairs
+    /// PROBE distinct tx ids = 98   (expected 100)
+    /// ```
+    ///
+    /// The modulo wraps every millisecond, and a COMMIT clears the undo
+    /// log that the second term was counting, so two BEGINs a few
+    /// microseconds apart routinely land on the same id. In the log
+    /// that is not a cosmetic collision. A replay decides "committed"
+    /// per `tx_id`, so a rolled-back transaction followed by a
+    /// different transaction that happens to reuse its id is replayed
+    /// as committed — rows that were explicitly discarded come back.
+    ///
+    /// A plain counter cannot collide. It starts at 1 because 0 means
+    /// "autocommit" throughout this codebase, and it is per-process:
+    /// a restart begins a new log, so there is nothing for it to
+    /// collide with.
     fn next_tx_id(&self) -> u64 {
-        // Avoid a dedicated field — the counter is implicit in the
-        // undo log state. Sum the existing log entries as a rough
-        // offset, then add a monotonic-time tie-breaker so two BEGINs
-        // without intervening mutations still get distinct ids (not
-        // required for correctness but easier to reason about in logs).
-        let max_existing: u64 = self.with_read_lock(|st| st.tx_undo_log.iter().map(|_| 1u64).sum());
-        let now_nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0);
-        (now_nanos % 1_000_000) + max_existing + 1
+        self.next_tx_id_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
     /// Replay one UndoOp.
