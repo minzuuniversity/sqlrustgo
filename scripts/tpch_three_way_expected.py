@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # ============================================================================
 # Config
 # ============================================================================
-REPO_ROOT = Path("/home/openclaw/dev/yinglichina163/sqlrustgo/.worktrees/tpch-22-wire-v2")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = REPO_ROOT / "tests" / "data" / "tpch-sf001"
 QUERIES_DIR = REPO_ROOT / "queries"
 EXPECTED_DIR = FIXTURE_DIR / "expected"
