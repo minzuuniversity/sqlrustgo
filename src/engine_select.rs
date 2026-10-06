@@ -771,9 +771,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // rest of this function picks up the substituted version.
         let select_owned;
         let select: &SelectStatement = {
+            // #5025: resolve `DATABASE()` / `SCHEMA()` here, where the
+            // storage is reachable. `eval_fn` is a pure function and used
+            // to hardcode "default", so after a `USE` the client was told
+            // it was in the wrong schema even though table names resolved
+            // against the right database. Read once, under the same lock
+            // the statement will use, so the value cannot disagree with
+            // where the tables come from.
+            let current_db = self.storage.read().current_db();
             let session_vars = self.session_vars.read();
-            let substituted =
-                crate::execution_engine::substitute_session_vars_in_select(select, &session_vars);
+            let substituted = crate::execution_engine::substitute_session_vars_in_select(
+                &crate::execution_engine::substitute_current_database_in_select(
+                    select,
+                    &current_db,
+                ),
+                &session_vars,
+            );
             // Safety: `session_vars` guard goes out of scope here; we
             // only borrow from the cloned SelectStatement below.
             drop(session_vars);
