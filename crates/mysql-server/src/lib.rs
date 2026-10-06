@@ -9535,3 +9535,395 @@ fn g4_graph_match_sql_form_strips_GRAPH_prefix() {
     // warnings when tests grow.
     let _label: Label = Label("Person".to_string());
 }
+
+// ============================================================================
+// V4.1.0 COV-02: targeted coverage for mysql-server hot-spot lines
+// ============================================================================
+#[cfg(test)]
+mod cov_v410_tests {
+    use super::*;
+
+    /// statement_kind must map every Statement variant (and the parse
+    /// error path) to its metrics label. This is a single table-driven
+    /// assertion: a mismatch (either a parse failure or a wrong kind)
+    /// is collected so one run reports every calibration problem at
+    /// once instead of failing on the first.
+    #[test]
+    fn statement_kind_covers_all_dispatch_arms() {
+        use sqlrustgo_parser::parse;
+        let cases: &[(&str, &str)] = &[
+            ("SELECT 1", "SELECT"),
+            ("INSERT INTO t VALUES (1)", "INSERT"),
+            ("UPDATE t SET a = 1", "UPDATE"),
+            ("DELETE FROM t", "DELETE"),
+            (
+                "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET a = s.a",
+                "MERGE",
+            ),
+            ("CREATE TABLE t (id INT)", "CREATE_TABLE"),
+            ("CREATE INDEX i ON t (id)", "CREATE_INDEX"),
+            ("CREATE FULLTEXT INDEX ft ON t (c)", "CREATE_FULLTEXT_INDEX"),
+            (
+                "CREATE VECTOR INDEX vi ON t USING HNSW (c) WITH (m=16, ef_construction=200)",
+                "CREATE_VECTOR_INDEX",
+            ),
+            ("CREATE VIEW v AS SELECT 1", "CREATE_VIEW"),
+            ("DROP TABLE t", "DROP_TABLE"),
+            ("DROP INDEX i", "DROP_INDEX"),
+            ("DROP VIEW v", "DROP_VIEW"),
+            ("CREATE SEQUENCE s", "CREATE_SEQUENCE"),
+            ("DROP SEQUENCE s", "DROP_SEQUENCE"),
+            ("ALTER SEQUENCE s RESTART", "ALTER_SEQUENCE"),
+            ("TRUNCATE TABLE t", "TRUNCATE"),
+            ("ANALYZE t", "ANALYZE"),
+            ("VACUUM", "VACUUM"),
+            ("REINDEX", "REINDEX"),
+            ("WITH x AS (SELECT 1) SELECT * FROM x", "WITH_SELECT"),
+            (
+                "WITH x AS (SELECT 1) DELETE FROM t WHERE id IN (SELECT id FROM x)",
+                "WITH_DML",
+            ),
+            ("ALTER TABLE t ADD COLUMN c INT", "ALTER_TABLE"),
+            ("ALTER USER u IDENTIFIED BY 'p'", "ALTER_USER"),
+            ("CREATE USER u IDENTIFIED BY 'p'", "CREATE_USER"),
+            ("DROP USER u", "DROP_USER"),
+            ("CALL p(1)", "CALL"),
+            (
+                "CREATE PROCEDURE p() BEGIN SELECT 1; END",
+                "CREATE_PROCEDURE",
+            ),
+            ("DROP PROCEDURE p", "DROP_PROCEDURE"),
+            (
+                "CREATE FUNCTION f() RETURNS INT RETURN 1",
+                "CREATE_FUNCTION",
+            ),
+            ("DROP FUNCTION f", "DROP_FUNCTION"),
+            ("SELECT 1 UNION SELECT 2", "UNION"),
+            (
+                "CREATE TRIGGER trg AFTER INSERT ON t FOR EACH ROW BEGIN SELECT 1; END",
+                "CREATE_TRIGGER",
+            ),
+            ("DROP TRIGGER trg", "DROP_TRIGGER"),
+            ("SELECT 1 INTERSECT SELECT 1", "INTERSECT"),
+            ("SELECT 1 EXCEPT SELECT 2", "EXCEPT"),
+            ("COMMIT", "TRANSACTION"),
+            ("BEGIN", "TRANSACTION"),
+            ("GRANT SELECT ON t TO u", "GRANT"),
+            ("GRANT r TO u", "GRANT"),
+            ("REVOKE SELECT ON t FROM u", "REVOKE"),
+            ("REVOKE r FROM u", "REVOKE"),
+            ("SHOW TABLES", "SHOW"),
+            ("DESCRIBE t", "SHOW"),
+            ("SHOW GRANTS FOR u", "SHOW"),
+            ("CREATE DATABASE d", "CREATE_DATABASE"),
+            ("DROP DATABASE d", "DROP_DATABASE"),
+            ("CREATE GRAPH g", "CREATE_GRAPH"),
+            ("DROP GRAPH g", "DROP_GRAPH"),
+            ("USE d", "USE_DATABASE"),
+            ("SAVEPOINT sp", "SAVEPOINT"),
+            ("PREPARE stmt FROM 'SELECT 1'", "PREPARED_STMT"),
+            ("EXECUTE stmt", "PREPARED_STMT"),
+            ("DEALLOCATE PREPARE stmt", "PREPARED_STMT"),
+            ("KILL 1", "KILL"),
+            ("EXPLAIN SELECT 1", "EXPLAIN"),
+            ("PRAGMA journal_mode=WAL", "PRAGMA"),
+            (")", "PARSE_ERROR"),
+        ];
+        let mut failures = Vec::new();
+        for (sql, expected) in cases {
+            match parse(sql) {
+                Ok(stmt) => {
+                    let kind = statement_kind(&Ok(stmt));
+                    if kind != *expected {
+                        failures.push(format!("{sql:?}: got kind={kind}, expected={expected}"));
+                    }
+                }
+                Err(e) if *expected == "PARSE_ERROR" => {
+                    let _ = e;
+                }
+                Err(e) => {
+                    failures.push(format!("{sql:?}: PARSE_ERR={e} (expected kind={expected})"));
+                }
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "statement_kind calibration failures ({}):\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
+
+    /// decode_param: every type code either succeeds with a payload or
+    /// returns None on truncation. Sweep 0..=255 with both a full
+    /// payload (covers each Some arm) and an empty payload (covers
+    /// each truncation `return None` arm), plus explicit semantics
+    /// spot-checks.
+    #[test]
+    fn decode_param_sweeps_all_type_codes() {
+        let mut full = vec![0x03u8, b'a', b'b', b'c'];
+        full.extend_from_slice(&[0u8; 64]);
+        let mut any_some = 0usize;
+        for code in 0..=255u8 {
+            let mut pos = 0usize;
+            if decode_param(&full, &mut pos, code).is_some() {
+                any_some += 1;
+            }
+            let mut pos_empty = 0usize;
+            let _ = decode_param(&[], &mut pos_empty, code);
+        }
+        assert!(any_some > 200, "most codes should decode a full payload");
+
+        // TINY sign extension: 0xFE == -2 as i8.
+        let mut pos = 0usize;
+        let v = decode_param(&[0xFEu8], &mut pos, mysql_type::TINY).expect("TINY decodes");
+        assert_eq!(v, b"-2".to_vec());
+        assert_eq!(pos, 1);
+
+        // NULL type: zero bytes consumed, empty value.
+        let mut pos = 0usize;
+        let v = decode_param(&[0u8], &mut pos, mysql_type::NULL).expect("NULL decodes");
+        assert!(v.is_empty());
+        assert_eq!(pos, 0);
+
+        // Unknown-code truncation: lenenc claims 5 bytes, payload has 1.
+        let mut pos = 0usize;
+        assert!(
+            decode_param(&[0x05u8, b'a'], &mut pos, 0xEE).is_none(),
+            "over-long unknown code must return None and rewind"
+        );
+        assert_eq!(pos, 0, "pos must rewind to start on failure");
+    }
+
+    /// extract_table_name: cover every DML branch (SELECT/INSERT/
+    /// UPDATE/DELETE), the original-case mirroring, and the None
+    /// negatives (no FROM, empty table, non-DML).
+    #[test]
+    fn extract_table_name_covers_dml_and_negatives() {
+        assert_eq!(
+            extract_table_name("SELECT a FROM MyTable WHERE x = 1"),
+            Some("MyTable".to_string())
+        );
+        assert_eq!(
+            extract_table_name("select a from t2"),
+            Some("t2".to_string())
+        );
+        assert_eq!(
+            extract_table_name("SELECT a FROM t3, t4"),
+            Some("t3".to_string())
+        );
+        assert_eq!(
+            extract_table_name("SELECT a FROM t5;"),
+            Some("t5".to_string())
+        );
+        assert_eq!(extract_table_name("SELECT a FROM"), None);
+        assert_eq!(extract_table_name("SELECT 1"), None);
+
+        assert_eq!(
+            extract_table_name("INSERT INTO T (a) VALUES (1)"),
+            Some("T".to_string())
+        );
+        assert_eq!(extract_table_name("INSERT INTO t2"), Some("t2".to_string()));
+        assert_eq!(
+            extract_table_name("INSERT INTO `t3` SET a = 1"),
+            Some("t3".to_string())
+        );
+        assert_eq!(
+            extract_table_name("INSERT INTO \"t4\" VALUES (1)"),
+            Some("t4".to_string())
+        );
+        assert_eq!(extract_table_name("INSERT values"), None);
+        assert_eq!(extract_table_name("INSERT INTO"), None);
+        assert_eq!(extract_table_name("INSERT INTO (a) VALUES (1)"), None);
+
+        assert_eq!(
+            extract_table_name("UPDATE t SET a = 1"),
+            Some("t".to_string())
+        );
+        assert_eq!(
+            extract_table_name("update `T2` set a = 1"),
+            Some("T2".to_string())
+        );
+        assert_eq!(
+            extract_table_name("UPDATE \"t3\" SET a = 1"),
+            Some("t3".to_string())
+        );
+        assert_eq!(
+            extract_table_name("UPDATE SET a = 1"),
+            Some("SET".to_string())
+        );
+        assert_eq!(extract_table_name("UPDATE"), None);
+
+        assert_eq!(
+            extract_table_name("DELETE FROM t WHERE id = 1"),
+            Some("t".to_string())
+        );
+        assert_eq!(
+            extract_table_name("delete from `T9`"),
+            Some("T9".to_string())
+        );
+        assert_eq!(extract_table_name("DELETE nofrom"), None);
+        assert_eq!(extract_table_name("DELETE FROM ;"), None);
+
+        assert_eq!(extract_table_name("CREATE TABLE t (id INT)"), None);
+        assert_eq!(extract_table_name("SHOW TABLES"), None);
+        assert_eq!(extract_table_name(""), None);
+    }
+
+    /// infer_column_types: hit the three paths — metadata match (with
+    /// and without take() truncation), metadata count mismatch →
+    /// fallback, unknown table → fallback, and non-DML → fallback.
+    #[test]
+    fn infer_column_types_paths() {
+        use sqlrustgo::MemoryExecutionEngine;
+        use sqlrustgo_storage::MemoryStorage;
+        use std::sync::Arc;
+
+        let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
+        let mut engine = MemoryExecutionEngine::new(Arc::clone(&storage));
+        engine
+            .execute("CREATE TABLE cov_infer (id INT, name VARCHAR(50))")
+            .expect("create table");
+
+        let cols = vec!["a".to_string(), "b".to_string()];
+        let v = infer_column_types("SELECT * FROM cov_infer", &storage, &cols);
+        assert_eq!(v.len(), 2);
+        assert_ne!(
+            v[0], "VARCHAR(255)",
+            "column 0 must come from table metadata, not the fallback"
+        );
+
+        // take(cols.len()) truncation path: request fewer than exist.
+        let one = vec!["a".to_string()];
+        let v = infer_column_types("SELECT * FROM cov_infer", &storage, &one);
+        assert_eq!(v.len(), 1);
+        assert_ne!(v[0], "VARCHAR(255)");
+
+        let three = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let v = infer_column_types("SELECT * FROM cov_infer", &storage, &three);
+        assert_eq!(v, vec!["VARCHAR(255)".to_string(); 3]);
+
+        let v = infer_column_types("SELECT * FROM no_such_table", &storage, &cols);
+        assert_eq!(v, vec!["VARCHAR(255)".to_string(); 2]);
+
+        let v = infer_column_types("SHOW TABLES", &storage, &cols);
+        assert_eq!(v, vec!["VARCHAR(255)".to_string(); 2]);
+    }
+
+    /// property_value_to_sql_value: every top-level PropertyValue arm
+    /// plus every nested List element arm.
+    #[test]
+    fn property_value_to_sql_value_covers_all_arms() {
+        use sqlrustgo_graph::types::PropertyValue;
+
+        assert_eq!(
+            property_value_to_sql_value(PropertyValue::String("s".into())),
+            Value::Text("s".to_string())
+        );
+        assert_eq!(
+            property_value_to_sql_value(PropertyValue::Int(7)),
+            Value::Integer(7)
+        );
+        assert_eq!(
+            property_value_to_sql_value(PropertyValue::Float(1.5)),
+            Value::Float(1.5)
+        );
+        assert_eq!(
+            property_value_to_sql_value(PropertyValue::Bool(true)),
+            Value::Boolean(true)
+        );
+        assert_eq!(
+            property_value_to_sql_value(PropertyValue::Null),
+            Value::Null
+        );
+        assert_eq!(
+            property_value_to_sql_value(PropertyValue::Bytes(vec![0xab, 0xcd])),
+            Value::Text("\\xabcd".to_string())
+        );
+
+        let list = PropertyValue::List(vec![
+            PropertyValue::String("a".into()),
+            PropertyValue::Int(1),
+            PropertyValue::Float(2.5),
+            PropertyValue::Bool(false),
+            PropertyValue::Null,
+            PropertyValue::Bytes(vec![0x01]),
+            PropertyValue::List(vec![PropertyValue::Int(9)]),
+        ]);
+        assert_eq!(
+            property_value_to_sql_value(list),
+            Value::Text("[a,1,2.5,false,NULL,\\x01,[...]]".to_string())
+        );
+    }
+
+    /// param_bind_type_from_string: one input per branch of the chain.
+    #[test]
+    fn param_bind_type_from_string_covers_every_branch() {
+        assert_eq!(param_bind_type_from_string("DATETIME"), col_type::DATETIME);
+        assert_eq!(param_bind_type_from_string("TIMESTAMP"), col_type::DATETIME);
+        assert_eq!(param_bind_type_from_string("DATE"), col_type::DATE);
+        assert_eq!(param_bind_type_from_string("TIME"), col_type::TIME);
+        assert_eq!(
+            param_bind_type_from_string("VARCHAR(64)"),
+            col_type::VARCHAR
+        );
+        assert_eq!(param_bind_type_from_string("CHAR(16)"), col_type::VARSTRING);
+        assert_eq!(param_bind_type_from_string("TEXT"), col_type::VARSTRING);
+        assert_eq!(param_bind_type_from_string("INT"), col_type::LONGLONG);
+        assert_eq!(param_bind_type_from_string("INTEGER"), col_type::LONGLONG);
+        assert_eq!(param_bind_type_from_string("BIGINT"), col_type::LONGLONG);
+        assert_eq!(param_bind_type_from_string("MEDIUMINT"), col_type::LONGLONG);
+        assert_eq!(param_bind_type_from_string("SMALLINT"), col_type::LONGLONG);
+        assert_eq!(param_bind_type_from_string("TINYINT"), col_type::LONGLONG);
+        assert_eq!(param_bind_type_from_string("FLOAT"), col_type::FLOAT);
+        assert_eq!(param_bind_type_from_string("DOUBLE"), col_type::DOUBLE);
+        assert_eq!(
+            param_bind_type_from_string("DECIMAL(10,2)"),
+            col_type::VARSTRING
+        );
+    }
+
+    /// write_binary_row: one row containing every Value variant and
+    /// every Integer/Float col_type arm must serialize without error
+    /// and produce the header + null-bitmap + payload layout.
+    #[test]
+    fn write_binary_row_covers_all_value_and_type_arms() {
+        let row = vec![
+            Value::Integer(5),
+            Value::Integer(6),
+            Value::Integer(7),
+            Value::Integer(8),
+            Value::Integer(9), // Integer default arm (non-int col type)
+            Value::Float(1.25),
+            Value::Float(2.5),
+            Value::Text("txt".into()),
+            Value::Blob(vec![1, 2, 3]),
+            Value::Boolean(true),
+            Value::Point(1.5, -2.5),
+            Value::Json(serde_json::json!({"k": 1})),
+            Value::Null,
+        ];
+        let col_types = vec![
+            mysql_type::TINY,
+            mysql_type::SHORT,
+            mysql_type::LONG,
+            mysql_type::LONGLONG,
+            mysql_type::NEWDECIMAL, // non-int → Integer default arm
+            mysql_type::DOUBLE,
+            mysql_type::FLOAT,
+            mysql_type::STRING,
+            mysql_type::BLOB,
+            mysql_type::TINY,
+            mysql_type::DOUBLE,
+            mysql_type::JSON,
+            mysql_type::LONG,
+        ];
+        let mut buf = Vec::new();
+        write_binary_row(&mut buf, &row, &col_types).expect("row must serialize");
+        assert_eq!(buf[0], 0x00, "header byte");
+        // 13 columns → 2 null-bitmap bytes; column 12 is Null → byte 1 bit (12%8)=4 → 0x10.
+        assert_eq!(buf[1], 0x00, "first null-map byte clear");
+        assert_eq!(buf[2] & 0x10, 0x10, "column 12 (index 12) must be NULL");
+        assert!(buf.len() > 3, "payload bytes must follow the bitmap");
+    }
+}
