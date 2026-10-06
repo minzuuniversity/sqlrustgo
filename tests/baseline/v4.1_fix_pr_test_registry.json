@@ -271,6 +271,16 @@
       "note": "13 + 5 项。变异 M1-M8 全部被抓住。两处按反造假原则显式标注：(1) M3（删除 load_all_tables 里对 _idx_ 文件的跳过）未被任何测试抓住 —— 序列化的 BPlusTree 本就解析不成 StoredTableData，外层 if let Ok 已吞掉，属无效变异，该跳过保留但不计为覆盖证据；(2) M6（BufferedDelete 撤销改空操作）首轮存活，暴露真实覆盖缺口 —— 所有 delete 测试都在删前 flush 过，行已搬进 tables，回滚走 DeleteRow。补 rollback_restores_a_committed_but_unflushed_row_deleted_in_the_transaction 后抓住。"
     },
     {
+      "pr": 5067,
+      "issue": 4944,
+      "fix": "执行器自死锁：持 storage 写锁时调用 scan_for_reader 取读锁，parking_lot 不可重入 → AUTOINCREMENT 的 INSERT 与 REPLACE INTO 永不返回",
+      "test_paths": [
+        "crates/executor/tests/engine_dml_write_lock_scan_deadlock_4944.rs",
+        "crates/executor/tests/wp_c_legacy.rs"
+      ],
+      "note": "5 项新增 + wp_c_legacy 摘掉 2 个 #[ignore]（该文件由 4 通过/10 忽略 变为 6 通过/8 忽略）。变异 M12（两处退回 scan_for_reader）表现为**挂死**而非 FAILED：test replace_into_existing_row_replaces_it has been running for over 60 seconds。已核实全仓其余 scan_for_reader 调用点均不持写锁（一处在独立 {} 块内、一处在 if/else 互斥分支）。顺带暴露门禁盲区：ci.yml 的 Test summary 靠 grep 'test result: FAILED' 计数，挂死用例产不出该行，门禁只会看到 job 超时。"
+    },
+    {
       "pr": 5066,
       "issue": 5059,
       "fix": "补齐 #5059 验收标准 #2 —— 「同一行被两个并发事务写」的场景此前零覆盖",

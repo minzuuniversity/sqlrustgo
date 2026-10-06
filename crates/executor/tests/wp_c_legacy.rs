@@ -86,11 +86,32 @@ mod issue_4652_procedure_function {
 mod issue_4672_autoincrement {
     use super::{as_i64, as_str, create_engine};
 
-    /// HANG: AUTOINCREMENT causes the executor to hang. PR #4927 added
-    /// per-table AtomicU64 counters for AUTO_INCREMENT; AUTOINCREMENT
-    /// (SQLite) appears to take a different code path that loops.
-    /// Tracking as GAP until someone fixes the executor hang.
-    #[ignore = "GAP: AUTOINCREMENT hangs the executor (>60s, no return)"]
+    /// #4944: this used to hang the executor forever. It is no longer
+    /// `#[ignore]`d.
+    ///
+    /// The original note guessed the cause ("AUTOINCREMENT appears to take
+    /// a different code path that loops"). That was wrong. AUTOINCREMENT
+    /// takes the same INSERT path as everything else; what differed is that
+    /// this path is the only one that scans the table to compute
+    /// `MAX(id) + 1`, and that scan went through `scan_for_reader`, which
+    /// takes a **read** lock — while the caller already held the **write**
+    /// lock. `storage_read()` falls back to a blocking `read()` when
+    /// `try_read()` fails, and for the thread holding the write lock it
+    /// always fails. `parking_lot::RwLock` is not reentrant, so the
+    /// statement blocked on itself indefinitely.
+    ///
+    /// Fixed in `src/engine_dml.rs` by using the guard-taking
+    /// `scan_for_reader_with(&storage, ..)` — the variant that exists
+    /// precisely for this, and which the neighbouring duplicate-check scan
+    /// already used. Re-running this test used to hit the 120s timeout; it
+    /// now finishes in ~0.01s.
+    // #4944: no longer `#[ignore]`d. This used to hang the executor
+    // forever (">60s, no return"): the MAX(id) scan went through
+    // `scan_for_reader`, which blocks on a read lock the calling thread
+    // already held as a writer. `parking_lot::RwLock` is not reentrant.
+    // Fixed in `src/engine_dml.rs` by using the guard-taking
+    // `scan_for_reader_with`. Re-running the ignored test now finishes in
+    // ~0.01s.
     #[test]
     fn autoincrement_allocates_sequential_ids() {
         let mut e = create_engine();
@@ -108,8 +129,8 @@ mod issue_4672_autoincrement {
         assert_eq!(as_str(&r.rows[2][1]), "carol");
     }
 
-    /// HANG: same as above.
-    #[ignore = "GAP: AUTOINCREMENT hangs the executor (>60s)"]
+    /// #4944: same deadlock as the sibling test above.
+    // #4944: un-ignored with the sibling test above — same deadlock.
     #[test]
     fn autoincrement_continues_after_delete() {
         let mut e = create_engine();

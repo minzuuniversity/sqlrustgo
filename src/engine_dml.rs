@@ -265,7 +265,13 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             };
             // Only delete when a row actually matches this key — for a brand
             // new key (no existing row) REPLACE degenerates to a plain INSERT.
-            let existing_rows = engine.scan_for_reader(&table_name)?;
+            //
+            // #4944: same self-deadlock as the AUTOINCREMENT scan below —
+            // this runs inside the `storage.write()` critical section taken
+            // above, so it must use the guard-taking variant. Confirmed by
+            // probe, not inferred: with `scan_for_reader` here, `REPLACE
+            // INTO t VALUES (...)` never returns.
+            let existing_rows = engine.scan_for_reader_with(&storage, &table_name)?;
             let has_conflict = existing_rows
                 .iter()
                 .any(|existing| record_matches_unique_key(existing, record, &table_info));
@@ -497,7 +503,19 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             let mut next_auto_id: i64 = 1;
             // An empty table scans to zero rows, which leaves the
             // default of 1 in place — same as the previous behaviour.
-            let existing = engine.scan_for_reader(&table_name)?;
+            // #4944: this scan runs inside the `storage.write()` critical
+            // section taken above, so it must go through the guard-taking
+            // variant. `scan_for_reader` calls `storage_read()`, which
+            // falls back to a *blocking* `read()` when `try_read()` fails —
+            // and it always fails for the thread already holding the write
+            // lock. `parking_lot::RwLock` is not reentrant, so that was a
+            // self-deadlock: every INSERT into a table with an AUTOINCREMENT
+            // column hung the executor forever.
+            //
+            // The neighbouring duplicate-check scan a few lines below
+            // already used `scan_for_reader_with(&storage, ..)`; this one
+            // was simply missed.
+            let existing = engine.scan_for_reader_with(&storage, &table_name)?;
             next_auto_id = existing
                 .iter()
                 .filter_map(|r| r.get(col_idx).and_then(|v| v.as_integer()))
