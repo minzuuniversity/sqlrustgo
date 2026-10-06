@@ -376,6 +376,23 @@ pub enum BackupCommand {
         /// Database data directory
         #[structopt(short = "D", long = "data-dir", default_value = "./data")]
         data_dir: PathBuf,
+
+        /// #5048: export every table instead of a delta.
+        ///
+        /// The pre-#5048 behaviour, now named explicitly. The resulting
+        /// manifest is labelled `Full`, because that is what the
+        /// directory contains.
+        #[structopt(long = "full")]
+        full: bool,
+
+        /// #5048: take changes recorded after this LSN. Defaults to 0
+        /// (everything the change log holds).
+        ///
+        /// Pass the LSN recorded in the parent backup's manifest to
+        /// continue a chain; without it the delta re-exports writes the
+        /// parent already contains, and replaying it duplicates rows.
+        #[structopt(long = "since-lsn")]
+        since_lsn: Option<u64>,
     },
 
     /// List backups in a directory
@@ -427,30 +444,31 @@ pub fn run() -> Result<()> {
             dir,
             format,
             data_dir,
+            full,
+            since_lsn,
         } => {
-            // #5048: the CLI cannot produce a real delta, and this is a
-            // property of the design rather than a missing feature.
-            //
-            // Change capture is per-process and in-memory: it records what
-            // *this* process wrote. A `backup` invocation opens the data
-            // directory fresh, so the writes it would need to replay
-            // happened elsewhere and left nothing behind. Making the CLI
-            // accept a `--since-lsn` would only produce an empty backup
-            // labelled `incremental` — indistinguishable, to whoever
-            // restores it, from data loss.
-            //
-            // So the CLI keeps the old behaviour and says so. The real
-            // entry point is `create_incremental_backup_from_open_storage`,
-            // for a caller that holds the open database.
-            println!(
-                "NOTE: the CLI `incremental` subcommand exports ALL tables.\n\
-                 \x20     Change capture lives in the writing process and does not\n\
-                 \x20     survive a restart, so this command cannot know what\n\
-                 \x20     changed. The backup is labelled `Full`.\n\
-                 \x20     A real delta needs `create_incremental_backup_from_open_storage`,\n\
-                 \x20     called on the open database by whoever writes to it."
-            );
-            create_incremental_backup(&parent, &dir, &format, &data_dir)
+            if full {
+                // #5048: the pre-#5048 behaviour, now opt-in. The
+                // manifest is labelled `Full` because that is what the
+                // directory contains.
+                println!(
+                    "NOTE: --full exports every table. This backup is a full \
+                     dump and will be labelled `Full`."
+                );
+                create_incremental_backup(&parent, &dir, &format, &data_dir)
+            } else {
+                // #5048: a real delta, read from the persisted change
+                // log. The database must have had capture enabled when
+                // it was written, or the log on disk is empty and this
+                // errors rather than producing a backup that restores to
+                // the wrong state.
+                create_incremental_backup_from_data_dir(
+                    &parent,
+                    &dir,
+                    &data_dir,
+                    since_lsn.unwrap_or(0),
+                )
+            }
         }
         BackupCommand::List { dir } => list_backups(&dir),
         BackupCommand::Verify { dir } => verify_backup(&dir),
@@ -782,18 +800,42 @@ pub fn change_set_from_log(entries: &[ChangeLogEntry], since_lsn: u64) -> Increm
     ctx
 }
 
-/// #5048: produce a real incremental backup from an open, instrumented
-/// database.
+/// #5048: produce a real incremental backup from a data directory.
 ///
-/// Takes the storage rather than a path on purpose. The change log is
-/// in-memory and per-process, so re-opening the data directory yields an
-/// empty log — a delta cannot be produced by a second process, only by
-/// the one that observed the writes. Handing this function a path would
-/// make it appear to work while always reporting "no changes".
+/// This is what the `backup incremental` CLI calls. It works across
+/// processes because the change log is persisted: `FileStorage::flush`
+/// writes it *after* the data it describes, so a log on disk never
+/// names a row the database does not contain.
 ///
 /// An empty delta is an error rather than an empty backup: a directory
 /// with an `incremental` manifest and no changes is indistinguishable,
 /// to whoever restores it, from data loss.
+pub fn create_incremental_backup_from_data_dir(
+    parent: &Path,
+    dir: &Path,
+    data_dir: &Path,
+    since_lsn: u64,
+) -> Result<()> {
+    if !data_dir.exists() {
+        anyhow::bail!(
+            "backup source directory does not exist: {}",
+            data_dir.display()
+        );
+    }
+    let storage = sqlrustgo_storage::FileStorage::new(data_dir.to_path_buf())
+        .with_context(|| format!("failed to open backup source at {}", data_dir.display()))?;
+    // Read back whatever the writing process left on disk. Without this
+    // the fresh handle starts with an empty log and every delta is empty.
+    storage.enable_change_log();
+    create_incremental_backup_from_open_storage(parent, dir, &storage, since_lsn)
+}
+
+/// The same, on a database the caller already holds open.
+///
+/// A live `FileStorage` may have changes that have not been flushed yet;
+/// those are not in the persisted log and are deliberately not included,
+/// because a backup may not claim a change the database has not
+/// committed.
 pub fn create_incremental_backup_from_open_storage(
     parent: &Path,
     dir: &Path,

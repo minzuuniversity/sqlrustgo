@@ -18,7 +18,8 @@
 use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo, Value};
 use sqlrustgo_tools::backup::{
-    create_full_backup, create_incremental_backup_from_open_storage, restore_incremental_chain_into,
+    create_full_backup, create_incremental_backup_from_data_dir,
+    create_incremental_backup_from_open_storage, restore_incremental_chain_into,
 };
 use std::path::Path;
 
@@ -163,9 +164,10 @@ fn issue_5048_no_change_log_is_an_error_not_an_empty_backup() {
     }
     create_full_backup(&full, "sql", &data).expect("full backup");
 
-    // A database whose capture was never turned on: this is what a
-    // re-opened (or another process's) database looks like.
+    // A database written by a build that never persisted a change log.
+    // The on-disk log is absent, so the delta would be empty.
     let uninstrumented = FileStorage::new(data.clone()).expect("open");
+    uninstrumented.enable_change_log();
     let r = create_incremental_backup_from_open_storage(&full, &incr, &uninstrumented, 0);
     assert!(
         r.is_err(),
@@ -262,5 +264,90 @@ fn issue_5048_a_delta_that_reexports_the_base_is_rejected() {
     assert!(
         all.len() > after_base.len(),
         "a delta taken from 0 would re-export the base's own write"
+    );
+}
+
+/// The CLI's real capability: a *different process* — simulated by
+/// re-opening the directory — must be able to read the change log and
+/// build a delta from it.
+///
+/// This is the case that made the CLI possible. The change log was
+/// in-memory, so a fresh `FileStorage` saw nothing and `backup
+/// incremental` could only ever produce an empty backup. `flush` now
+/// writes the log after the data it describes, and `enable_change_log`
+/// reads it back.
+#[test]
+fn issue_5048_a_second_process_can_read_the_change_log() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let data = tmp.path().join("data");
+    let full = tmp.path().join("full");
+    let incr = tmp.path().join("incr");
+    let target = tmp.path().join("restored");
+
+    let expected;
+    let mark;
+    {
+        // --- the writing process
+        let mut s = open(&data);
+        s.create_table(&tbl("acct")).expect("create acct");
+        s.insert("acct", vec![vec![Value::Integer(1), Value::Integer(100)]])
+            .expect("insert 1");
+        s.flush().expect("flush 1");
+
+        create_full_backup(&full, "sql", &data).expect("full");
+        mark = s.current_change_lsn();
+
+        s.insert("acct", vec![vec![Value::Integer(2), Value::Integer(200)]])
+            .expect("insert 2");
+        s.flush().expect("flush 2");
+        expected = pairs(s.scan("acct").expect("scan"));
+    } // writer goes away entirely
+
+    // --- a separate process, holding nothing from the writer
+    create_incremental_backup_from_data_dir(&full, &incr, &data, mark)
+        .expect("incremental from a fresh process");
+
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(incr.join("manifest.json")).expect("manifest"),
+    )
+    .expect("parse");
+    assert_eq!(
+        manifest["backup_type"], "incremental",
+        "the CLI path must produce a real delta, not a relabelled full dump"
+    );
+
+    let restored =
+        restore_incremental_chain_into(&full, std::slice::from_ref(&incr), &target, None)
+            .expect("restore");
+    assert_eq!(
+        pairs(restored.scan("acct").expect("scan restored")),
+        expected
+    );
+}
+
+/// Repeated flushes must not duplicate the on-disk log, or a delta built
+/// from it would replay the same change twice.
+#[test]
+fn issue_5048_repeated_flushes_do_not_duplicate_the_log() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let data = tmp.path().join("data");
+
+    {
+        let mut s = open(&data);
+        s.create_table(&tbl("acct")).expect("create acct");
+        s.insert("acct", vec![vec![Value::Integer(1), Value::Integer(100)]])
+            .expect("insert");
+        for _ in 0..5 {
+            s.flush().expect("flush");
+        }
+    }
+
+    let reader = open(&data);
+    let entries = reader.changes_since(0);
+    assert_eq!(
+        entries.len(),
+        1,
+        "five flushes of one write must leave one entry, got {}: {entries:?}",
+        entries.len()
     );
 }

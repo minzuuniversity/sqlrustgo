@@ -142,7 +142,7 @@ pub struct FileStorage {
 /// `Record = Vec<Value>`, and giving the backup tool column names would
 /// mean carrying schema alongside every change. The backup exporter
 /// already writes positional SQL, so the two agree.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChangeLogEntry {
     pub table: String,
     pub op: ChangeOp,
@@ -156,7 +156,7 @@ pub struct ChangeLogEntry {
     pub lsn: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ChangeOp {
     Insert,
     Update,
@@ -167,6 +167,15 @@ pub enum ChangeOp {
 struct ChangeLog {
     entries: Vec<ChangeLogEntry>,
     next_lsn: u64,
+    /// #5048: true once the on-disk log has been read. A freshly
+    /// enabled log on an open database starts empty, but a log read
+    /// from disk that happens to be empty is a different fact — and a
+    /// backup must be able to tell them apart.
+    #[allow(dead_code)]
+    loaded_from_disk: bool,
+    /// #5048: how many entries are already on disk. `persist_change_log`
+    /// appends only the tail, so repeated flushes do not duplicate.
+    persisted: usize,
 }
 
 /// #5048: take the change-log lock, ignoring poisoning.
@@ -230,10 +239,124 @@ impl FileStorage {
     /// Off by default: the log grows without bound until drained, and a
     /// caller that never takes an incremental backup should not pay for
     /// it.
+    ///
+    /// #5048: an existing on-disk log is loaded. That is what makes a
+    /// delta possible from a *different process* than the writer — which
+    /// is the only way the `backup` CLI can work at all. `next_lsn`
+    /// continues past whatever was on disk, so LSNs never collide with
+    /// a previous run's.
     pub fn enable_change_log(&self) {
+        let already = change_log_lock(self).is_some();
+        if already {
+            return;
+        }
+        let mut log = ChangeLog {
+            entries: Vec::new(),
+            next_lsn: 0,
+            loaded_from_disk: false,
+            persisted: 0,
+        };
+        match self.load_change_log_from_disk() {
+            Ok(entries) => {
+                log.next_lsn = entries.iter().map(|e| e.lsn).max().unwrap_or(0);
+                log.persisted = entries.len();
+                log.entries = entries;
+                log.loaded_from_disk = true;
+            }
+            Err(e) => {
+                // A corrupt or unreadable log must not stop the database
+                // from opening. It does mean an incremental backup taken
+                // now would silently miss earlier changes, so say so
+                // loudly rather than letting it pass.
+                // `sqlrustgo-storage` does not depend on `tracing`, and
+                // this is exactly the case where silence would mislead:
+                // the caller would take a delta that is quietly missing
+                // earlier changes.
+                eprintln!(
+                    "WARN: could not read change log at {}: {e}. An incremental \
+                     backup taken now may be missing earlier changes.",
+                    self.change_log_path().display()
+                );
+            }
+        }
+        *change_log_lock(self) = Some(log);
+    }
+
+    /// #5048: append the log to disk.
+    ///
+    /// Called from `flush`, not from each write. A backup taken between
+    /// a write and its flush must not claim a change the database has not
+    /// committed — the log and the data have to become durable together
+    /// or the delta would replay rows the base does not contain.
+    pub fn persist_change_log(&self) -> std::io::Result<()> {
         let mut guard = change_log_lock(self);
-        if guard.is_none() {
-            *guard = Some(ChangeLog::default());
+        let Some(log) = guard.as_mut() else {
+            return Ok(());
+        };
+        if log.entries.len() == log.persisted {
+            return Ok(());
+        }
+        let tail = &log.entries[log.persisted..];
+        let path = self.change_log_path();
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?;
+        use std::io::Write;
+        let mut writer = BufWriter::new(file);
+        for e in tail {
+            let line = serde_json::to_string(e)
+                .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+            writer.write_all(line.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+        writer.flush()?;
+        // Only now is the tail durable; a failed write must leave
+        // `persisted` alone so the next flush retries it.
+        log.persisted = log.entries.len();
+        Ok(())
+    }
+
+    fn load_change_log_from_disk(&self) -> std::io::Result<Vec<ChangeLogEntry>> {
+        let path = self.change_log_path();
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let content = std::fs::read_to_string(&path)?;
+        let mut out = Vec::new();
+        for (i, line) in content.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<ChangeLogEntry>(line) {
+                Ok(e) => out.push(e),
+                // A half-written final line is the expected shape of a
+                // crash during append. Earlier lines stay valid.
+                Err(err) => {
+                    if i + 1 == content.lines().count() {
+                        eprintln!("WARN: truncating incomplete change log line {i}: {err}");
+                        break;
+                    }
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("change log line {i} is corrupt: {err}"),
+                    ));
+                }
+            }
+        }
+        out.sort_by_key(|e| e.lsn);
+        Ok(out)
+    }
+
+    fn change_log_path(&self) -> std::path::PathBuf {
+        let file = "changelog.jsonl";
+        match self.db_dir() {
+            None => self.data_dir.join(file),
+            Some(dir) => {
+                let _ = std::fs::create_dir_all(&dir);
+                dir.join(file)
+            }
         }
     }
 
@@ -1173,6 +1296,13 @@ impl FileStorage {
             // whether a full re-write is needed.
             self.with_read_lock(|st| self.save_table_window(st, name, window, *total))?;
         }
+
+        // #5048: persist the change log only after the data it describes
+        // is on disk. The other order would let a crash leave a log that
+        // names rows the database does not contain, and a delta built
+        // from it would replay a change that never happened.
+        self.persist_change_log()?;
+
         Ok(())
     }
 
