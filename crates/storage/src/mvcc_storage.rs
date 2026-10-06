@@ -714,6 +714,18 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
         self.inner.drop_database(db_name)
     }
+
+    /// #5025: forward the database switch. A wrapper that answers the
+    /// trait default (`Ok(())` that changes nothing) makes `USE` report
+    /// success while every query still resolves against the previous
+    /// database.
+    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.set_current_db(db_name)
+    }
+
+    fn current_db(&self) -> String {
+        self.inner.current_db()
+    }
     /// #5009: forward. Without this the MVCC layer would answer the
     /// trait default (empty list) and `SHOW DATABASES` would report
     /// nothing at all when the server runs on the MVCC engine.

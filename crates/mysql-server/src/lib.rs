@@ -5331,6 +5331,20 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 *server_last_sent_seq = seq;
             }
             packet_type::COM_INIT_DB => {
+                // #5025: this is how a MySQL client switches database
+                // mid-connection. The handler used to emit an OK packet
+                // and drop the payload, so the selection was discarded.
+                let db = String::from_utf8_lossy(payload)
+                    .trim_end_matches('\0')
+                    .trim()
+                    .to_string();
+                if db.is_empty() {
+                    storage
+                        .write()
+                        .set_current_db(sqlrustgo_storage::engine::DEFAULT_DATABASE)?;
+                } else {
+                    storage.write().set_current_db(&db)?;
+                }
                 seq = write_ok_packets(
                     stream,
                     make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
@@ -6352,6 +6366,17 @@ fn handle_connection(
                     .ok();
                 return;
             }
+                // #5025: apply the database the client named in the handshake. This is
+                // the non-TLS path (the TLS path has the same block); a client
+                // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
+                // without this the selection is parsed, logged, and discarded.
+                if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
+                    if let Err(e) = storage.write().set_current_db(db) {
+                        tracing::warn!("handshake database {:?} rejected: {}", db, e);
+                    } else {
+                        tracing::info!("handshake selected database: {}", db);
+                    }
+                }
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             // V312-WIRE-5: Vec<Packet> — write all packets (OK + optional
             // session_state_info) and advance the sequence number per
@@ -6420,6 +6445,17 @@ fn handle_connection(
             .ok();
         return;
     }
+        // #5025: apply the database the client named in the handshake. This is
+        // the non-TLS path (the TLS path has the same block); a client
+        // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
+        // without this the selection is parsed, logged, and discarded.
+        if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
+            if let Err(e) = storage.write().set_current_db(db) {
+                tracing::warn!("handshake database {:?} rejected: {}", db, e);
+            } else {
+                tracing::info!("handshake selected database: {}", db);
+            }
+        }
     tracing::info!("Auth accepted, sending OK packet, seq=2");
     // V312-WIRE-5: Vec<Packet> — emit OK + optional session_state_info.
     for pkt in make_ok_packet(2, 0, 0, 0x0002, 0, resp.capability_flags, true) {

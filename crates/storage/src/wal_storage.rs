@@ -771,6 +771,18 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner().list_databases()
     }
 
+    /// #5025: forward the database switch. A wrapper that answers the
+    /// trait default (`Ok(())` that changes nothing) makes `USE` report
+    /// success while every query still resolves against the previous
+    /// database.
+    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner_mut().set_current_db(db_name)
+    }
+
+    fn current_db(&self) -> String {
+        self.inner().current_db()
+    }
+
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         self.inner_mut().create_table(info)
     }
