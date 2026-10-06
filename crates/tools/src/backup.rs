@@ -1181,7 +1181,27 @@ fn apply_change_record(storage: &mut MemoryStorage, change: &ChangeRecord) -> Re
     Ok(())
 }
 
+/// #5049: does this backup directory hold a real delta?
+///
+/// See the call site for why the manifest's `backup_type` is not asked.
+/// `changes.json` is written only when there are replayable changes, and a
+/// full backup of an empty database has `tables: []` — so a delta needs
+/// both signals, and everything else counts as a full export.
+fn carries_changeset(path: &Path, manifest: &BackupManifest) -> bool {
+    path.join("changes.json").exists() && manifest.tables.is_empty()
+}
+
 /// Apply retention policy to backup directory
+///
+/// #5049: quotas are applied per **content** class, decided by
+/// [`carries_changeset`]. A directory of nothing but full exports simply
+/// has no delta class, so `keep_incremental` goes unused — that is not an
+/// error, a backup directory is allowed to contain no deltas at all. Full
+/// exports consume `keep_full` whatever the manifest says.
+///
+/// Still `#[allow(dead_code)]`: no production caller wires this up yet, and
+/// #5049 asks for that decision to be made explicitly rather than by
+/// accident.
 #[allow(dead_code)]
 pub fn apply_retention_policy(
     backup_dir: &Path,
@@ -1224,14 +1244,28 @@ pub fn apply_retention_policy(
     // Sort by timestamp (newest first)
     backups.sort_by(|a, b| b.1.timestamp.cmp(&a.1.timestamp));
 
-    // Separate full and incremental backups
+    // #5049: classify by what the directory actually contains, not by the
+    // manifest's `backup_type` string.
+    //
+    // The label happens to agree with the content today — #4938 relabelled
+    // the all-tables exporter to `Full` and #5048 made the change-set
+    // exporter emit a real `Incremental` — but nothing *enforced* that, and
+    // it had already slipped once: before #4938 a full dump was filed
+    // under `Incremental`, so `keep_incremental` counted full exports and
+    // `keep_full` did nothing. A quota decided by a self-reported string is
+    // one bad write away from deleting the wrong backups.
+    //
+    // A backup is a delta iff it carries a change set *and* claims no
+    // exported tables. Both halves matter: `changes.json` is only written
+    // when there are replayable changes, and a full backup of an empty
+    // database legitimately has `tables: []`.
     let full_backups: Vec<_> = backups
         .iter()
-        .filter(|(_, _, bt)| bt == &BackupType::Full)
+        .filter(|(path, manifest, _)| !carries_changeset(path, manifest))
         .collect();
     let incr_backups: Vec<_> = backups
         .iter()
-        .filter(|(_, _, bt)| bt == &BackupType::Incremental)
+        .filter(|(path, manifest, _)| carries_changeset(path, manifest))
         .collect();
 
     // Determine which to delete
@@ -2106,48 +2140,267 @@ mod tests {
         assert_eq!(sql, "NULL");
     }
 
-    #[test]
-    fn test_backup_retention_policy() {
-        let temp_dir = std::env::temp_dir().join("retention_test");
-        std::fs::create_dir_all(&temp_dir).ok();
+    /// Build a backup directory whose manifest label and on-disk content
+    /// can disagree. #5049: `label` is what the manifest claims,
+    /// `with_changeset` is whether `changes.json` is present, `tables` is
+    /// the manifest's exported-table list.
+    fn seed_backup(
+        root: &Path,
+        name: &str,
+        timestamp: &str,
+        label: BackupType,
+        with_changeset: bool,
+        tables: Vec<TableBackupInfo>,
+    ) -> PathBuf {
+        let dir = root.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        if with_changeset {
+            std::fs::write(dir.join("changes.json"), "[]").unwrap();
+        }
+        let manifest = BackupManifest {
+            version: "1.0".to_string(),
+            backup_type: label,
+            timestamp: timestamp.to_string(),
+            lsn: Some(format!("{:08x}", timestamp.len())),
+            parent_lsn: Some("00000001".to_string()),
+            tables,
+            total_rows: 0,
+            checksum: "abc123".to_string(),
+        };
+        std::fs::write(
+            dir.join("manifest.json"),
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+        dir
+    }
 
-        // Create 5 mock backup directories with manifests
-        for i in 0..5 {
-            let backup_dir = temp_dir.join(format!("backup_{}", i));
-            std::fs::create_dir_all(&backup_dir).ok();
-            let manifest = BackupManifest {
-                version: "1.0".to_string(),
-                backup_type: if i < 2 {
-                    BackupType::Full
-                } else {
-                    BackupType::Incremental
-                },
-                timestamp: format!("2024-01-{:02}_12:00:00", i + 1),
-                lsn: Some(format!("{:08x}", i)),
-                parent_lsn: if i > 0 {
-                    Some(format!("{:08x}", i - 1))
-                } else {
-                    None
-                },
-                tables: vec![],
-                total_rows: 0,
-                checksum: "abc123".to_string(),
-            };
-            let manifest_path = backup_dir.join("manifest.json");
-            std::fs::write(
-                &manifest_path,
-                serde_json::to_string_pretty(&manifest).unwrap(),
-            )
-            .ok();
+    fn table_info(name: &str) -> TableBackupInfo {
+        TableBackupInfo {
+            name: name.to_string(),
+            row_count: 1,
+            columns: vec![],
+        }
+    }
+
+    fn unique_root(tag: &str) -> PathBuf {
+        // Unique per run: the old test used a fixed `retention_test`
+        // path, so two concurrent runs shared a directory and whichever
+        // finished first deleted the other's fixtures.
+        let root = std::env::temp_dir().join(format!(
+            "retention_{tag}_{}_{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn names_of(dirs: &[PathBuf]) -> Vec<String> {
+        let mut v: Vec<String> = dirs
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// #5049: quotas are decided by content, so a manifest whose label
+    /// disagrees with what is on disk must not steer the quota.
+    ///
+    /// Timestamps below run oldest → newest; retention sorts newest-first.
+    /// Under label-based classification this same fixture deletes
+    /// `full_middle`, `full_export_wrongly_labelled_incremental` and
+    /// `delta_newer`; under content-based it deletes `delta_newer` instead
+    /// of those two. The disagreement is the point — see the mutation note
+    /// in the evidence doc.
+    #[test]
+    fn test_retention_classifies_by_content_not_by_label() {
+        let root = unique_root("classify");
+
+        // Full exports: manifest says Full, and they really are full dumps.
+        seed_backup(
+            &root,
+            "full_oldest",
+            "2024-01-01_00:00:00",
+            BackupType::Full,
+            false,
+            vec![table_info("users")],
+        );
+        seed_backup(
+            &root,
+            "full_middle",
+            "2024-01-02_00:00:00",
+            BackupType::Full,
+            false,
+            vec![table_info("users")],
+        );
+
+        // A full export mislabelled `Incremental` — this is the pre-#4938
+        // bug in reverse. Content says full export, so it must consume a
+        // full quota, not a delta one.
+        seed_backup(
+            &root,
+            "full_export_wrongly_labelled_incremental",
+            "2024-01-03_00:00:00",
+            BackupType::Incremental,
+            false,
+            vec![table_info("users")],
+        );
+
+        seed_backup(
+            &root,
+            "delta_oldest",
+            "2024-01-04_00:00:00",
+            BackupType::Incremental,
+            true,
+            vec![],
+        );
+        seed_backup(
+            &root,
+            "delta_newer",
+            "2024-01-05_00:00:00",
+            BackupType::Incremental,
+            true,
+            vec![],
+        );
+
+        // A real delta mislabelled `Full`, and the newest backup overall.
+        // Content says delta, so it must consume a delta quota — which is
+        // exactly what spares it: labelled `Full` it would be the newest
+        // full export and kept for the *wrong reason*, and the real full
+        // exports would be squeezed out instead.
+        seed_backup(
+            &root,
+            "delta_wrongly_labelled_full",
+            "2024-01-06_00:00:00",
+            BackupType::Full,
+            true,
+            vec![],
+        );
+
+        // keep 2 full exports, keep 1 delta.
+        let deleted = apply_retention_policy(&root, 2, 1).unwrap();
+
+        // Full class (by content): full_oldest, full_middle,
+        // full_export_wrongly_labelled_incremental. Newest two kept →
+        // full_oldest deleted.
+        // Delta class (by content): delta_oldest, delta_newer,
+        // delta_wrongly_labelled_full. Newest one kept → the other two gone.
+        assert_eq!(
+            names_of(&deleted),
+            vec![
+                "delta_newer".to_string(),
+                "delta_oldest".to_string(),
+                "full_oldest".to_string(),
+            ],
+            "quota must follow on-disk content, not the manifest label"
+        );
+
+        // The survivors must actually still exist; the deleted ones gone.
+        assert!(root.join("full_middle").is_dir());
+        assert!(root
+            .join("full_export_wrongly_labelled_incremental")
+            .is_dir());
+        assert!(root.join("delta_wrongly_labelled_full").is_dir());
+        assert!(!root.join("full_oldest").exists());
+        assert!(!root.join("delta_oldest").exists());
+        assert!(!root.join("delta_newer").exists());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// #5049 task 3, pinned: a directory of nothing but full exports has
+    /// no delta class. `keep_incremental` therefore goes unused — it is
+    /// **not** an error, and the full exports are governed solely by
+    /// `keep_full`.
+    #[test]
+    fn test_retention_on_a_full_export_only_directory_uses_keep_full_alone() {
+        let root = unique_root("fullonly");
+
+        for i in 0..4 {
+            seed_backup(
+                &root,
+                &format!("full_{i}"),
+                &format!("2024-02-{:02}_00:00:00", i + 1),
+                BackupType::Full,
+                false,
+                vec![table_info("users")],
+            );
         }
 
-        // Apply retention policy: keep 1 full, 2 incremental
-        let deleted = apply_retention_policy(&temp_dir, 1, 2).unwrap();
+        // keep_incremental = 0 must not turn into "delete everything":
+        // there is nothing in the delta class for that quota to act on.
+        let deleted = apply_retention_policy(&root, 2, 0).unwrap();
 
-        // Should delete: 1 full backup (index 2) and 2 incremental backups (indices 4 and possibly 3)
-        // (We kept backups 0, 1 for full, and 2, 3 for incremental based on timestamp sorting)
+        assert_eq!(
+            names_of(&deleted),
+            vec!["full_0".to_string(), "full_1".to_string()],
+            "keep_incremental=0 must not touch full exports"
+        );
+        assert!(root.join("full_2").is_dir());
+        assert!(root.join("full_3").is_dir());
 
-        std::fs::remove_dir_all(&temp_dir).ok();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// #5049: a delta needs **both** signals — `changes.json` *and* an
+    /// empty exported-table list. Guards the `&&` half of
+    /// [`carries_changeset`].
+    ///
+    /// `keep_incremental = 1` on purpose. With `0`, any backup filed into
+    /// the delta class is deleted unconditionally, which hides *which*
+    /// class it landed in — the first version of this test used 0, and
+    /// the mutation it was written for sailed straight through.
+    #[test]
+    fn test_retention_requires_both_signals_for_a_delta() {
+        let root = unique_root("bothsignals");
+
+        // Oldest. A plain full export.
+        seed_backup(
+            &root,
+            "full_export",
+            "2024-03-01_00:00:00",
+            BackupType::Full,
+            false,
+            vec![table_info("users")],
+        );
+        // Carries a change set but still lists exported tables, so the
+        // directory holds a full dump as well. Not a delta.
+        seed_backup(
+            &root,
+            "changeset_but_tables_listed",
+            "2024-03-02_00:00:00",
+            BackupType::Incremental,
+            true,
+            vec![table_info("users")],
+        );
+        // No change set at all. Not a delta, even with `tables: []` — a
+        // full backup of an empty database looks exactly like this.
+        seed_backup(
+            &root,
+            "no_changeset",
+            "2024-03-03_00:00:00",
+            BackupType::Incremental,
+            false,
+            vec![],
+        );
+
+        // All three are full exports by content, so keep_full=1 keeps only
+        // the newest (`no_changeset`) and there is no delta class at all.
+        let deleted = apply_retention_policy(&root, 1, 1).unwrap();
+        assert_eq!(
+            names_of(&deleted),
+            vec![
+                "changeset_but_tables_listed".to_string(),
+                "full_export".to_string(),
+            ],
+            "a change set alone must not make a backup a delta"
+        );
+        assert!(root.join("no_changeset").is_dir());
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
