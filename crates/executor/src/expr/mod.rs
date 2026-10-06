@@ -568,6 +568,35 @@ pub fn compare_values(left: &Value, right: &Value) -> i32 {
     }
 }
 
+/// #4846: PAD SPACE ordering comparison for Text operands.
+///
+/// Two legacy issues made opposite calls and landed in different code
+/// paths:
+///
+/// - **#4612** made [`compare_values`] BINARY by default — trailing spaces
+///   significant — and says so on its own Text/Text arm.
+/// - **#4846** made `sql_compare`'s `=` / `!=` PAD SPACE, so a CHAR(10)
+///   holding `'U1'` (stored `"U1        "`) matches `WHERE id = 'U1'`.
+///
+/// `BETWEEN` and `IN` went through [`compare_values`], i.e. the BINARY
+/// reading, while `=` went through `sql_compare`, i.e. PAD SPACE. So
+/// `WHERE ch = 'abc'` matched a padded CHAR(5) but
+/// `WHERE ch BETWEEN 'abc' AND 'ghi'` silently missed the same row.
+///
+/// This helper applies the same rule `=` already uses, so the three
+/// agree. It deliberately does **not** change [`compare_values`] itself:
+/// ORDER BY and GROUP BY keys go through it, and flipping those is a
+/// separate, larger decision than the predicate gap #4846 is about.
+pub fn compare_values_pad_space(left: &Value, right: &Value) -> i32 {
+    match (left, right) {
+        (Value::Text(l), Value::Text(r)) => compare_values(
+            &Value::Text(l.trim_end().to_string()),
+            &Value::Text(r.trim_end().to_string()),
+        ),
+        _ => compare_values(left, right),
+    }
+}
+
 /// Evaluate the parser-AST `Expression::Between(expr, low, high)` arm:
 /// returns `Value::Boolean(true)` if `low <= value <= high`, else
 /// `Value::Boolean(false)`.
@@ -586,12 +615,19 @@ pub fn compare_values(left: &Value, right: &Value) -> i32 {
 ///   sorts before any non-NULL per `compare_values` semantics, so
 ///   `compare_values(&Null, &lo) = -1 < 0`)
 pub fn eval_between(value: &Value, low: &Value, high: &Value) -> Value {
-    Value::Boolean(compare_values(value, low) >= 0 && compare_values(value, high) <= 0)
+    // #4846: PAD SPACE, so `BETWEEN` agrees with `=`. See
+    // `compare_values_pad_space` for why `compare_values` itself is left
+    // alone.
+    Value::Boolean(
+        compare_values_pad_space(value, low) >= 0 && compare_values_pad_space(value, high) <= 0,
+    )
 }
 
 /// Inverse of [`eval_between`]. P0-2 §4.8.
 pub fn eval_not_between(value: &Value, low: &Value, high: &Value) -> Value {
-    Value::Boolean(!(compare_values(value, low) >= 0 && compare_values(value, high) <= 0))
+    Value::Boolean(
+        !(compare_values_pad_space(value, low) >= 0 && compare_values_pad_space(value, high) <= 0),
+    )
 }
 
 /// Resolve a column reference against a schema slice.
