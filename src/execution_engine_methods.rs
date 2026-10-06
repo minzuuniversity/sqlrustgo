@@ -359,6 +359,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         crate::cbo_estimator::collect_table_stats(self, &*storage, table)
     }
 
+    /// #5025: execute `sql` with `db` active, atomically.
+    ///
+    /// The server re-asserted the connection's database once per command
+    /// and then, several hundred lines later, called `execute` — which
+    /// takes the storage lock again. Between those two points nothing held
+    /// a lock, so another connection could switch the shared `current_db`
+    /// and this statement would resolve its table names against *that*
+    /// database. `FileStorage::tbl` re-reads `current_db` on every call, so
+    /// the key was not even a value captured at statement start — a
+    /// concurrent `USE` could redirect a statement that was already in
+    /// flight.
+    ///
+    /// Doing both under one lock closes the window: no other connection can
+    /// change the database between the switch and the reads that depend on
+    /// it. `execute` keeps its old signature for callers that have no
+    /// per-connection state to apply.
+    pub fn execute_in_database(&mut self, db: &str, sql: &str) -> SqlResult<ExecutorResult> {
+        self.storage.write().set_current_db(db)?;
+        self.execute(sql)
+    }
+
     /// Execute a SQL statement and return results
     pub fn execute(&mut self, sql: &str) -> SqlResult<ExecutorResult> {
         let statement = parse(sql).map_err(|e| SqlError::ParseError(e.to_string()))?;

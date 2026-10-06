@@ -1028,6 +1028,80 @@ pub(crate) fn substitute_session_vars_in_expr(
 /// `Identifier("@name")` token. Bypasses subquery bodies (those are
 /// passed through unchanged and resolved when their own `execute_select`
 /// runs).
+/// #5025: replace `DATABASE()` / `SCHEMA()` with the connection's actual
+/// database.
+///
+/// These have to be resolved before the projection runs, in the same
+/// pass that substitutes `@session` variables, because
+/// `eval_fn(name, args) -> Value` is a pure function with no access to
+/// storage. Hardcoding `"default"` there is what made
+/// `SELECT DATABASE()` report the wrong schema after a `USE` — the
+/// client then cannot tell which database it is talking to, even though
+/// the engine resolves table names against the right one.
+///
+/// `current_database()` is handled too: MySQL treats it as a synonym, and
+/// it was returning NULL.
+pub(crate) fn substitute_current_database_in_expr(
+    expr: sqlrustgo_parser::Expression,
+    db: &str,
+) -> sqlrustgo_parser::Expression {
+    use sqlrustgo_parser::Expression;
+    let q = db.replace('\'', "''");
+    match expr {
+        Expression::FunctionCall(ref name, ref args) if args.is_empty() => {
+            let upper = name.to_uppercase();
+            if upper == "DATABASE" || upper == "SCHEMA" || upper == "CURRENT_DATABASE" {
+                // Expression::Literal holds source text, not a Value, and the
+                // existing literal evaluator parses it -- so a string literal
+                // has to keep its quotes.
+                Expression::Literal(format!("'{}'", q))
+            } else {
+                expr
+            }
+        }
+        // Recurse, mirroring substitute_session_vars_in_expr. Without this,
+        // `WHERE DATABASE() = 'x'` kept the call unsubstituted: it lives
+        // under where_clause, not columns.
+        Expression::BinaryOp(l, op, r) => Expression::BinaryOp(
+            Box::new(substitute_current_database_in_expr(*l, db)),
+            op,
+            Box::new(substitute_current_database_in_expr(*r, db)),
+        ),
+        Expression::UnaryOp(op, e) => {
+            Expression::UnaryOp(op, Box::new(substitute_current_database_in_expr(*e, db)))
+        }
+        Expression::FunctionCall(name, args) => Expression::FunctionCall(
+            name,
+            args.into_iter()
+                .map(|a| substitute_current_database_in_expr(a, db))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// Apply [`substitute_current_database_in_expr`] across a whole SELECT.
+pub(crate) fn substitute_current_database_in_select(
+    select: &sqlrustgo_parser::SelectStatement,
+    db: &str,
+) -> sqlrustgo_parser::SelectStatement {
+    use sqlrustgo_parser::SelectColumn;
+    let map_expr = |e: sqlrustgo_parser::Expression| substitute_current_database_in_expr(e, db);
+    let mut out = select.clone();
+    out.columns = select
+        .columns
+        .iter()
+        .map(|c| SelectColumn {
+            name: c.name.clone(),
+            alias: c.alias.clone(),
+            expression: c.expression.clone().map(map_expr),
+        })
+        .collect();
+    out.where_clause = select.where_clause.clone().map(map_expr);
+    out.having = select.having.clone().map(map_expr);
+    out
+}
+
 pub(crate) fn substitute_session_vars_in_select(
     select: &sqlrustgo_parser::SelectStatement,
     session_vars: &HashMap<String, SqlValue>,
