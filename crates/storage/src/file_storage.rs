@@ -123,6 +123,71 @@ pub struct FileStorage {
     /// by `save_table` to decide whether to write anything, and to
     /// limit incremental writes to only the new rows.
     last_saved_row_count: Mutex<HashMap<String, usize>>,
+    /// #5048: opt-in change log, the prerequisite for a real incremental
+    /// backup. `None` unless a caller turns it on, so the ordinary path
+    /// pays nothing.
+    ///
+    /// It exists because `FileStorage` had no versioned change capture of
+    /// any kind: no WAL, no CDC, no per-table change log. `table_change_
+    /// stamp` (the trait default) answers "is my cached copy stale", not
+    /// "which rows changed", and only `MemoryStorage` overrode it at all
+    /// — so an incremental backup could not be produced from a real data
+    /// directory, which is the only thing the backup tool opens.
+    change_log: Mutex<Option<ChangeLog>>,
+}
+
+/// #5048: a recorded change, as a backup delta needs it.
+///
+/// Positional, not column-named: the storage layer's DML surface works on
+/// `Record = Vec<Value>`, and giving the backup tool column names would
+/// mean carrying schema alongside every change. The backup exporter
+/// already writes positional SQL, so the two agree.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChangeLogEntry {
+    pub table: String,
+    pub op: ChangeOp,
+    /// Leading key columns of the affected row.
+    pub key: Vec<Value>,
+    /// The row after the change; `None` for a delete.
+    pub row: Option<Vec<Value>>,
+    /// Monotonic per-log sequence number. Doubles as the LSN: it orders
+    /// changes exactly, and a backup can slice "everything after the last
+    /// full backup's snapshot" by comparing it.
+    pub lsn: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeOp {
+    Insert,
+    Update,
+    Delete,
+}
+
+#[derive(Debug, Default)]
+struct ChangeLog {
+    entries: Vec<ChangeLogEntry>,
+    next_lsn: u64,
+}
+
+/// #5048: take the change-log lock, ignoring poisoning.
+///
+/// A panic while the log was held would otherwise make every later
+/// backup fail permanently. The log is diagnostic state — losing it is
+/// better than refusing to open the database, and the log is opt-in so
+/// a caller can detect that it went missing.
+fn change_log_lock(me: &FileStorage) -> std::sync::MutexGuard<'_, Option<ChangeLog>> {
+    me.change_log.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// #5048: the key columns of a row.
+///
+/// The storage layer's delete/update filters are positional and compare
+/// against the row's *leading* columns, so the leading column is the
+/// identity a change record can name. `table.primary_key` is a name, and
+/// turning a name back into a position needs the schema; the filters
+/// themselves do not, so the two stay consistent by using position.
+fn key_of(row: &[Value]) -> Vec<Value> {
+    row.iter().take(1).cloned().collect()
 }
 
 /// Issue #4581 / B-track case 35-36: per-transaction undo log entry.
@@ -159,6 +224,72 @@ enum UndoOp {
 }
 
 impl FileStorage {
+    /// #5048: start recording changes so an incremental backup can be
+    /// produced from this data directory.
+    ///
+    /// Off by default: the log grows without bound until drained, and a
+    /// caller that never takes an incremental backup should not pay for
+    /// it.
+    pub fn enable_change_log(&self) {
+        let mut guard = change_log_lock(self);
+        if guard.is_none() {
+            *guard = Some(ChangeLog::default());
+        }
+    }
+
+    /// #5048: changes recorded after `since_lsn`, in order.
+    ///
+    /// Returns an empty list when the log was never enabled — a caller
+    /// must not be able to mistake "no changes" for "no log".
+    pub fn changes_since(&self, since_lsn: u64) -> Vec<ChangeLogEntry> {
+        let guard = change_log_lock(self);
+        match guard.as_ref() {
+            Some(log) => log
+                .entries
+                .iter()
+                .filter(|e| e.lsn > since_lsn)
+                .cloned()
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// The LSN a backup taken now should record, so a later
+    /// [`Self::changes_since`] starts exactly where this one ended.
+    pub fn current_change_lsn(&self) -> u64 {
+        let guard = change_log_lock(self);
+        guard.as_ref().map(|l| l.next_lsn).unwrap_or(0)
+    }
+
+    /// True once [`Self::enable_change_log`] has been called. Lets the
+    /// backup tool tell "nothing changed" apart from "nothing was being
+    /// watched".
+    pub fn change_log_enabled(&self) -> bool {
+        change_log_lock(self).is_some()
+    }
+
+    /// Record one change. No-op unless the log is enabled, so every
+    /// write path can call this unconditionally.
+    fn record_change(&self, table: &str, op: ChangeOp, key: Vec<Value>, row: Option<Vec<Value>>) {
+        let mut guard = change_log_lock(self);
+        if let Some(log) = guard.as_mut() {
+            log.next_lsn += 1;
+            let lsn = log.next_lsn;
+            log.entries.push(ChangeLogEntry {
+                // #5025 keys rows by `db\u{1}table`. A backup replays by
+                // table name against a restored database, which has no such
+                // prefix — recording the scoped key would make every delta
+                // un-replayable. The database travels with the backup
+                // directory instead.
+                table: table.to_string(),
+                op,
+                key,
+                row,
+                lsn,
+            });
+        }
+    }
+
     /// Create a new FileStorage with the given data directory
     pub fn new(data_dir: PathBuf) -> std::io::Result<Self> {
         // Create directory if it doesn't exist
@@ -190,6 +321,8 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
+            // #5048: off unless `enable_change_log` is called.
+            change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -232,6 +365,8 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
+            // #5048: off unless `enable_change_log` is called.
+            change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -269,6 +404,8 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
+            // #5048: off unless `enable_change_log` is called.
+            change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -323,6 +460,8 @@ impl FileStorage {
             triggers: RwLock::new(HashMap::new()),
             gap_lock_manager: Some(lock_manager),
             last_saved_row_count: Mutex::new(HashMap::new()),
+            // #5048: off unless `enable_change_log` is called.
+            change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -4327,6 +4466,14 @@ impl StorageEngine for FileStorage {
         // This was causing O(N * table_size) behavior during bulk loads where
         // each batch of 100+ rows triggered a full table serialization and write.
         // Now: always buffer inserts, caller explicitly calls flush() to persist.
+        // #5048: the change log needs the row contents, but the insert
+        // path below consumes `records`. Cloning is only paid when the
+        // log is actually on.
+        let logged = if self.change_log_enabled() {
+            Some(records.clone())
+        } else {
+            None
+        };
         if self.in_transaction() {
             self.insert_buffered(table, records)?
         } else if !self.enable_buffer {
@@ -4338,6 +4485,13 @@ impl StorageEngine for FileStorage {
         Self::with_write_lock(self, |s| {
             s.dirty_tables.insert(table.to_string());
         });
+        // #5048: record the change so an incremental backup can be
+        // produced from this data directory.
+        if let Some(rows) = logged {
+            for row in rows {
+                self.record_change(table, ChangeOp::Insert, key_of(&row), Some(row));
+            }
+        }
         Ok(())
     }
 
@@ -4439,6 +4593,18 @@ impl StorageEngine for FileStorage {
                 });
             }
             Ok(removed)
+        })
+        .map(|removed| {
+            // #5048: record the deletion. `filters` is already positional
+            // against the row's leading columns — exactly what a change
+            // record's `key` is — so the same slice identifies the rows.
+            // An empty filter means a full-table wipe; recording that once
+            // with an empty key keeps the log honest without expanding it
+            // into one entry per row.
+            if self.change_log_enabled() && !filters.is_empty() {
+                self.record_change(table, ChangeOp::Delete, filters.to_vec(), None);
+            }
+            removed
         })
     }
 
@@ -4589,7 +4755,23 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        Self::with_write_lock(self, |s| {
+        // #5048: `retain` drops the rows without telling us which, so
+        // collect their keys first — the filter is a closure over the row,
+        // and after the retain there is no row left to ask.
+        let watching = self.change_log_enabled();
+        let mut removed_keys: Vec<Vec<Value>> = Vec::new();
+        if watching {
+            let key = crate::engine::scoped_key(&self.current_db.read().unwrap(), table);
+            Self::with_write_lock(self, |s| {
+                if let Some(ref data) = s.tables.get(&key) {
+                    for r in data.rows.iter().filter(|r| filter(r)) {
+                        removed_keys.push(key_of(r));
+                    }
+                }
+            });
+        }
+
+        let removed = Self::with_write_lock(self, |s| {
             if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
                 &self.current_db.read().unwrap(),
                 &table,
@@ -4601,11 +4783,16 @@ impl StorageEngine for FileStorage {
                 if new_len < original_len {
                     s.dirty_tables.insert(table.to_string());
                 }
-                Ok(original_len - new_len)
+                Ok::<usize, SqlError>(original_len - new_len)
             } else {
                 Ok(0)
             }
-        })
+        })?;
+
+        for key in removed_keys {
+            self.record_change(table, ChangeOp::Delete, key, None);
+        }
+        Ok(removed)
     }
 
     fn update(
@@ -4614,6 +4801,9 @@ impl StorageEngine for FileStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
+        // #5048: read the flag before `get_mut`, which holds an exclusive
+        // borrow of `self` for the rest of the body.
+        let watching = self.change_log_enabled();
         // #4951: `&mut self`, so `get_mut` yields the guarded state with
         // no lock. `tables` and `tx_undo_log` are separate fields of the
         // same struct, so the borrow checker can hand out both here —
@@ -4636,6 +4826,8 @@ impl StorageEngine for FileStorage {
         };
 
         let mut count = 0;
+        // #5048: post-change rows, captured while we still have them.
+        let mut logged: Vec<(Vec<Value>, Vec<Value>)> = Vec::new();
         for (idx, record) in data.rows.iter_mut().enumerate() {
             if filters.is_empty()
                 || filters
@@ -4662,12 +4854,21 @@ impl StorageEngine for FileStorage {
                         record[col_idx] = new_val.clone();
                     }
                 }
+                if watching {
+                    // #5048: capture the post-change row here, before the
+                    // next iteration moves on.
+                    logged.push((key_of(record), record.clone()));
+                }
                 count += 1;
             }
         }
         // V311-07: Mark dirty instead of immediate persist
         if count > 0 {
             st.dirty_tables.insert(table.to_string());
+        }
+        drop(st);
+        for (key, row) in logged {
+            self.record_change(table, ChangeOp::Update, key, Some(row));
         }
         Ok(count)
     }
@@ -4678,6 +4879,8 @@ impl StorageEngine for FileStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
+        // #5048: read the flag before `get_mut` takes `&mut self`.
+        let watching = self.change_log_enabled();
         // #5025: resolve the key before the mutable borrow.
         let key = self.tbl(table);
         let st = self.write_state.get_mut();
@@ -4687,6 +4890,10 @@ impl StorageEngine for FileStorage {
 
         let mut count = 0;
         let assignments = mutation.assignments();
+        // #5048: the post-change row, recorded while we still have it.
+        // Capturing it after the loop is impossible — the mutation is
+        // already applied and the old values are gone.
+        let mut logged: Vec<(Vec<Value>, Vec<Value>)> = Vec::new();
 
         for record in data.rows.iter_mut() {
             if filter(record) {
@@ -4695,12 +4902,19 @@ impl StorageEngine for FileStorage {
                         record[col_idx] = new_val.clone();
                     }
                 }
+                if watching {
+                    logged.push((key_of(record), record.clone()));
+                }
                 count += 1;
             }
         }
         // V311-07: Mark dirty instead of immediate persist
         if count > 0 {
             st.dirty_tables.insert(table.to_string());
+        }
+        drop(st);
+        for (key, row) in logged {
+            self.record_change(table, ChangeOp::Update, key, Some(row));
         }
         Ok(count)
     }
