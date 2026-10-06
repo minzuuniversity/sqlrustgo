@@ -5681,6 +5681,7 @@ impl Parser {
                                 }
                             }
                         }
+                        self.expect(Token::RParen)?;
                         let alias = if matches!(self.current(), Some(Token::As)) {
                             self.next();
                             if let Some(Token::Identifier(n)) = self.current() {
@@ -11701,7 +11702,12 @@ impl Parser {
                                 let columns = self.parse_column_list()?;
                                 constraints.push(TableConstraint::Unique { columns, name });
                             }
-                            _ => continue,
+                            // P0: `_ => continue` re-matched UNIQUE without
+                            // advancing (spins forever on `UNIQUE b` / `UNIQUE)`).
+                            _ => return Err(format!(
+                                "Expected `(` or `KEY` after UNIQUE in table constraint, got {:?}",
+                                next_tok
+                            )),
                         }
                     }
                     Some(Token::Check) => {
