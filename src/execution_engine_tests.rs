@@ -1758,3 +1758,77 @@ fn test_v410_phase3_concurrent_inserts() {
         N_ROWS
     );
 }
+// --- #5025: DATABASE() / SCHEMA() must report the real database ----
+//
+// These resolved through `eval_fn`, a pure function with no access to
+// storage, so they returned a hardcoded "default" no matter what the
+// connection had selected. A client that asks cannot tell which
+// database it is in, even though table names resolve against the right
+// one — the two halves of the session state disagreed.
+
+#[test]
+fn database_reports_the_selected_database() {
+    let mut x = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    x.execute("CREATE DATABASE d1").unwrap();
+    x.execute("CREATE DATABASE d2").unwrap();
+
+    assert_eq!(
+        x.execute("SELECT DATABASE()").unwrap().rows,
+        vec![vec![Value::Text("default".to_string())]],
+        "a fresh connection is in the default database"
+    );
+
+    x.execute("USE d1").unwrap();
+    assert_eq!(
+        x.execute("SELECT DATABASE()").unwrap().rows,
+        vec![vec![Value::Text("d1".to_string())]]
+    );
+
+    x.execute("USE d2").unwrap();
+    assert_eq!(
+        x.execute("SELECT DATABASE()").unwrap().rows,
+        vec![vec![Value::Text("d2".to_string())]]
+    );
+}
+
+/// MySQL treats SCHEMA() and current_database() as synonyms of
+/// DATABASE(). `current_database()` had been returning NULL.
+#[test]
+fn schema_and_current_database_are_synonyms() {
+    let mut x = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    x.execute("CREATE DATABASE d1").unwrap();
+    x.execute("USE d1").unwrap();
+    for sql in ["SELECT SCHEMA()", "SELECT current_database()"] {
+        assert_eq!(
+            x.execute(sql).unwrap().rows,
+            vec![vec![Value::Text("d1".to_string())]],
+            "{} should report the selected database",
+            sql
+        );
+    }
+}
+
+/// The substitution happens in the projection pass, so it must also
+/// apply inside WHERE — otherwise `WHERE DATABASE() = 'x'` silently
+/// compares against a stale constant.
+#[test]
+fn database_is_resolved_in_where_too() {
+    let mut x = ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())));
+    x.execute("CREATE DATABASE d1").unwrap();
+    x.execute("USE d1").unwrap();
+    x.execute("CREATE TABLE probe (id INT)").unwrap();
+    assert_eq!(
+        x.execute("SELECT id FROM probe WHERE DATABASE() = 'd1'")
+            .unwrap()
+            .rows,
+        Vec::<Vec<Value>>::new(),
+        "the row is filtered out when the database matches"
+    );
+    assert!(
+            x.execute("SELECT 1 FROM probe WHERE DATABASE() = 'd2'")
+                .unwrap()
+                .rows
+                .is_empty(),
+            "and also when it does not — the comparison must see 'd1',              not a stale constant"
+        );
+}
