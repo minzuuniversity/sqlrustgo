@@ -5264,6 +5264,10 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
     engine: Arc<parking_lot::RwLock<ExecutionEngine<BoxStorageEngine>>>,
     cap: u32,
     server_last_sent_seq: &mut u8,
+    // #5025: this connection's current database, owned by the caller
+    // (`handle_connection`) because the handshake — where a client selects
+    // its database — happens before this loop.
+    conn_db: &mut String,
     ps_manager: &mut PreparedStatementManager,
     authenticated_user: Option<String>,
     // V312-32: per-handle ephemeral config. Replaces the process-global
@@ -5294,6 +5298,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
         };
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
+        // #5025: re-assert this connection's database before every command.
+        // The engine's `current_db` is one shared value, so another
+        // connection may have changed it since the last statement.
+        if cmd != packet_type::COM_QUIT {
+            storage
+                .write()
+                .set_current_db(conn_db)
+                .unwrap_or_else(|e| tracing::warn!("re-assert database {}: {}", conn_db, e));
+        }
         // MySQL/MariaDB protocol: every new client command starts with
         // pkt_seq=0, and the server resets its response seq to 0
         // (so the first response packet uses seq=1). pymysql and
@@ -5338,12 +5351,17 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     .trim_end_matches('\0')
                     .trim()
                     .to_string();
+                // #5025: also record it on the connection — the
+                // re-assert before the next command would otherwise switch
+                // this connection straight back.
                 if db.is_empty() {
                     storage
                         .write()
                         .set_current_db(sqlrustgo_storage::engine::DEFAULT_DATABASE)?;
+                    *conn_db = String::from(sqlrustgo_storage::engine::DEFAULT_DATABASE);
                 } else {
                     storage.write().set_current_db(&db)?;
+                    *conn_db = db;
                 }
                 seq = write_ok_packets(
                     stream,
@@ -6236,6 +6254,13 @@ fn handle_connection(
     // `start_ephemeral` servers coexist in the same process.
     config: Arc<crate::testing::EphemeralConfig>,
 ) {
+    // #5025: the database this connection works in. A client selects it in
+    // the handshake (`mysql -D db`) or later via `COM_INIT_DB` / `USE`; all
+    // three update this value, and `do_command_loop` re-asserts it to the
+    // engine before every command. The engine's own `current_db` is shared
+    // by all connections, so without this the last connection to switch
+    // would decide what every other one reads.
+    let mut conn_db: String = String::from(sqlrustgo_storage::engine::DEFAULT_DATABASE);
     ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
     TOTAL_CONNECTIONS_ACCEPTED.fetch_add(1, Ordering::Relaxed);
     // V312-18e Issue #4021: feed the connection lifecycle into the
@@ -6366,17 +6391,19 @@ fn handle_connection(
                     .ok();
                 return;
             }
-                // #5025: apply the database the client named in the handshake. This is
-                // the non-TLS path (the TLS path has the same block); a client
-                // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
-                // without this the selection is parsed, logged, and discarded.
-                if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
-                    if let Err(e) = storage.write().set_current_db(db) {
-                        tracing::warn!("handshake database {:?} rejected: {}", db, e);
-                    } else {
+            // #5025: apply the database the client named in the handshake. This is
+            // the non-TLS path (the TLS path has the same block); a client
+            // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
+            // without this the selection is parsed, logged, and discarded.
+            if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
+                match storage.write().set_current_db(db) {
+                    Ok(()) => {
+                        conn_db = db.to_string();
                         tracing::info!("handshake selected database: {}", db);
                     }
+                    Err(e) => tracing::warn!("handshake database {:?} rejected: {}", db, e),
                 }
+            }
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             // V312-WIRE-5: Vec<Packet> — write all packets (OK + optional
             // session_state_info) and advance the sequence number per
@@ -6403,6 +6430,7 @@ fn handle_connection(
                 engine,
                 resp.capability_flags,
                 &mut server_last_sent_seq,
+                &mut conn_db,
                 &mut ps_manager,
                 Some(resp.username.clone()),
                 &config,
@@ -6445,17 +6473,19 @@ fn handle_connection(
             .ok();
         return;
     }
-        // #5025: apply the database the client named in the handshake. This is
-        // the non-TLS path (the TLS path has the same block); a client
-        // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
-        // without this the selection is parsed, logged, and discarded.
-        if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
-            if let Err(e) = storage.write().set_current_db(db) {
-                tracing::warn!("handshake database {:?} rejected: {}", db, e);
-            } else {
+    // #5025: apply the database the client named in the handshake. This is
+    // the non-TLS path (the TLS path has the same block); a client
+    // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
+    // without this the selection is parsed, logged, and discarded.
+    if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
+        match storage.write().set_current_db(db) {
+            Ok(()) => {
+                conn_db = db.to_string();
                 tracing::info!("handshake selected database: {}", db);
             }
+            Err(e) => tracing::warn!("handshake database {:?} rejected: {}", db, e),
         }
+    }
     tracing::info!("Auth accepted, sending OK packet, seq=2");
     // V312-WIRE-5: Vec<Packet> — emit OK + optional session_state_info.
     for pkt in make_ok_packet(2, 0, 0, 0x0002, 0, resp.capability_flags, true) {
@@ -6474,6 +6504,7 @@ fn handle_connection(
         engine,
         resp.capability_flags,
         &mut server_last_sent_seq,
+        &mut conn_db,
         &mut ps_manager,
         Some(resp.username.clone()),
         &config,
