@@ -3663,11 +3663,6 @@ fn param_bind_type_from_string(t: &str) -> u8 {
         col_type::VARCHAR
     } else if u.contains("CHAR") || u.contains("TEXT") {
         col_type::VARSTRING
-    } else if u.contains("INT") || u.contains("INTEGER") {
-        // Promote INT/INTEGER to LONGLONG (8 bytes) so libmysqlclient's
-        // MYSQL_TYPE_LONG wire encoding (which is 8 bytes LE) decodes
-        // correctly on subsequent COM_STMT_EXECUTE calls.
-        col_type::LONGLONG
     } else if u.contains("BIGINT") {
         col_type::LONGLONG
     } else if u.contains("MEDIUMINT") {
@@ -3676,6 +3671,11 @@ fn param_bind_type_from_string(t: &str) -> u8 {
         col_type::SHORT
     } else if u.contains("TINYINT") {
         col_type::TINY
+    } else if u.contains("INT") || u.contains("INTEGER") {
+        // Promote INT/INTEGER to LONGLONG (8 bytes) so libmysqlclient's
+        // MYSQL_TYPE_LONG wire encoding (which is 8 bytes LE) decodes
+        // correctly on subsequent COM_STMT_EXECUTE calls.
+        col_type::LONGLONG
     } else if u.contains("FLOAT") {
         col_type::FLOAT
     } else if u.contains("DOUBLE") {
@@ -9893,9 +9893,9 @@ mod cov_v410_tests {
         assert_eq!(param_bind_type_from_string("INT"), col_type::LONGLONG);
         assert_eq!(param_bind_type_from_string("INTEGER"), col_type::LONGLONG);
         assert_eq!(param_bind_type_from_string("BIGINT"), col_type::LONGLONG);
-        assert_eq!(param_bind_type_from_string("MEDIUMINT"), col_type::LONGLONG);
-        assert_eq!(param_bind_type_from_string("SMALLINT"), col_type::LONGLONG);
-        assert_eq!(param_bind_type_from_string("TINYINT"), col_type::LONGLONG);
+        assert_eq!(param_bind_type_from_string("MEDIUMINT"), col_type::INT24);
+        assert_eq!(param_bind_type_from_string("SMALLINT"), col_type::SHORT);
+        assert_eq!(param_bind_type_from_string("TINYINT"), col_type::TINY);
         assert_eq!(param_bind_type_from_string("FLOAT"), col_type::FLOAT);
         assert_eq!(param_bind_type_from_string("DOUBLE"), col_type::DOUBLE);
         assert_eq!(
