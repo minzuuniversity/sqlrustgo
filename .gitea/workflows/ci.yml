@@ -261,6 +261,12 @@ jobs:
           set -euo pipefail
           chmod +x scripts/gate/check_anti_fabrication.sh
           bash scripts/gate/check_anti_fabrication.sh 2>&1 | tee anti_fabrication.log
+      - name: Fix-PR Test Registry Check (v4.1.0+) — every fix PR's test file must exist + compile
+        if: contains(github.ref, 'develop/v4.1.0') || contains(github.ref, 'develop/v4.') || contains(github.ref, 'release/v4.')
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_fix_pr_test_registry.sh
+          bash scripts/gate/check_fix_pr_test_registry.sh 2>&1 | tee fix_pr_test_registry.log
       - name: Doc Completeness Check (v3.8.0 mandatory docs) — FIX 2026-06-26 Hermes / pipefail
         run: |
           set -euo pipefail
