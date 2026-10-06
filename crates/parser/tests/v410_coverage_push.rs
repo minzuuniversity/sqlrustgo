@@ -1383,7 +1383,12 @@ fn show_grants_roles_sequences() {
     pok("SHOW GRANTS FOR u");
     perr("SHOW GRANTS FOR 42");
     pok("SHOW SEQUENCES");
-    perr("SHOW ROLES");
+    // Was perr: pinned the *defect* (lexer lacked the ROLE/ROLES keyword
+    // arm, so SHOW ROLES failed). The full Token::Roles -> parse_show ->
+    // Statement::ShowRoles -> execute_show_roles chain makes success the
+    // designed behaviour; v410_role_values_fix.rs pins it with a variant
+    // assertion.
+    pok("SHOW ROLES");
 }
 
 #[test]

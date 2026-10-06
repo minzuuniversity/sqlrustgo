@@ -2677,9 +2677,40 @@ impl Parser {
     }
 
     /// Parse a complete SQL statement
+    fn parse_values_statement(&mut self) -> Result<Statement, String> {
+        self.expect(Token::Values)?;
+        let mut rows = Vec::new();
+        loop {
+            self.expect(Token::LParen)?;
+            let mut row = Vec::new();
+            loop {
+                row.push(self.parse_expression()?);
+                match self.current() {
+                    Some(Token::Comma) => {
+                        self.next();
+                    }
+                    Some(Token::RParen) => {
+                        self.next();
+                        break;
+                    }
+                    _ => return Err("Expected `,` or `)` in VALUES row".to_string()),
+                }
+            }
+            rows.push(row);
+            match self.current() {
+                Some(Token::Comma) => {
+                    self.next();
+                }
+                _ => break,
+            }
+        }
+        Ok(Statement::Values(rows))
+    }
+
     pub fn parse_statement(&mut self) -> Result<Statement, String> {
         match self.current() {
             Some(Token::Select) => self.parse_select(),
+            Some(Token::Values) => self.parse_values_statement(),
             Some(Token::Explain) => self.parse_explain(),
             Some(Token::Insert) | Some(Token::Replace) => self.parse_insert(),
             Some(Token::Update) => self.parse_update(),

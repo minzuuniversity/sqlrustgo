@@ -402,6 +402,8 @@ impl<'a> Lexer<'a> {
                     "ROLLBACK" => Token::Rollback,
                     "GRANT" => Token::Grant,
                     "REVOKE" => Token::Revoke,
+                    "ROLE" => Token::Role,
+                    "ROLES" => Token::Roles,
                     "ANALYZE" => Token::Analyze,
                     "EXPLAIN" => Token::Explain,
                     "FOREIGN" => Token::Foreign,
