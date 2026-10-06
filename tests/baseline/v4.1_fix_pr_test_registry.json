@@ -307,6 +307,16 @@
         "crates/executor/tests/wp_g_legacy.rs"
       ],
       "note": "wp_g_legacy 由 4 通过/8 忽略 变为 11 通过/1 忽略（摘掉 5 个 #[ignore]：3 个因 PR #5068 而已能过，2 个因本次修复）。变异 M15（eval_between 退回 compare_values）char_between_inclusive_bounds FAILED；M16（InList 退回 compare_values）char_in_list FAILED，两者互不遮蔽。刻意不改 compare_values 本身：ORDER BY / GROUP BY 的 key 也走它，改那里是更大一个量级的决定。最后 1 个 #[ignore] 是 VARCHAR 过度 trim —— sql_compare 拿不到列身份，需列类型感知比较模型，已在测试注释与证据文档写明，本次不做。"
+    },
+    {
+      "pr": 5070,
+      "issue": "4847, 4519",
+      "fix": "打开的显式事务被第二个 BEGIN 静默提交 —— begin_transaction 无条件 drain 当前事务，未区分隐式/显式；TxSession::is_explicit_transaction 是死标志（8 处构造点初始化为 false，从未被置 true 也从未被读）",
+      "test_paths": [
+        "crates/executor/tests/explicit_tx_not_silently_committed_4847.rs",
+        "crates/executor/tests/issue_4847_transaction_semantics_test.rs"
+      ],
+      "note": "由 PR #5069 合并后的 executor 全量跑出 1 个 FAILED 而追出：issue_4847_transaction_semantics_test 断言的是 #4519 修复前的缺陷行为（INSERT 后 BEGIN 必须失败），d3457e9c7c 早已改掉该契约，git merge-base 证实它早于本批全部 PR，非本批回归。重写该测试改为断言「ROLLBACK 必须撤销本事务内的工作」，并据此实测出真缺陷：BEGIN;INSERT;BEGIN;ROLLBACK 会提交 INSERT 使 ROLLBACK 变空操作（探针 P5 ROLLBACK_LOST=true）。新增 6 项回归测试。变异 M17(退回无条件 drain) 3 FAILED / M18(去掉 COMMIT 的标志清零) 1 FAILED / M19(去掉 ROLLBACK 的清零) 1 FAILED / M20(不置 true) 3 FAILED，四个全部 CAUGHT 且互不遮蔽。M18/M19 首轮存活，追到底发现是 fixture 缺陷而非覆盖缺口：成功的隐式 DML 会自行提交使 current_tx_id 归 None，begin_transaction 在 (false,_) 分支短路、根本读不到标志；只有失败的隐式 DML（主键冲突经 ? 返回、不提交）才泄漏事务使标志可观测 —— 已改用 seeded_pk()+leak_implicit_tx()。"
     }
   ]
 }
