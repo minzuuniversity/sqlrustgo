@@ -16,15 +16,16 @@
 //!   - VARCHAR vs CHAR strict (works — VARCHAR does NOT apply PAD SPACE)
 //!   - ASCII-only padding match (works for the basic case)
 //!
-//! Tests that document GAP (currently failing — see issue #4846 and
-//! `issue_4846_char_pad_space_test.rs` for the partial-fix evidence):
-//!   - `WHERE id = 'short_literal'` headline (broken — see #4846)
-//!   - BETWEEN with CHAR (broken — range comparison doesn't PAD)
-//!   - IN list with CHAR (broken — set membership doesn't PAD)
+//! #4944 closed the CHAR **primary key point lookup** half of #4846 (two of
+//! the `#[ignore]`s below, now real passing tests — see the comment on
+//! `char_pk_point_lookup_with_short_literal`). Still documented as GAP:
+//!   - BETWEEN with CHAR (range comparison doesn't PAD)
+//!   - IN list with CHAR (set membership doesn't PAD)
 //!   - DISTINCT across literal lengths (broken — equality not applied)
 //!
-//! Each `#[ignore]` test has a comment explaining the gap. Mutation:
-//! comment out the LIKE-wildcard prefix fix → 1 active test fails.
+//! Each remaining `#[ignore]` test has a comment explaining the gap.
+//! Mutation: comment out the LIKE-wildcard prefix fix → 1 active test
+//! fails; re-enable the PK fast path for CHAR columns → 2 more fail.
 //!
 //! refs: LEGACY_ISSUES.md §3.7
 
@@ -147,8 +148,19 @@ mod issue_4846_char_padding_comparison {
         );
     }
 
-    /// GAP: CHAR PK point lookup with short literal — headline #4846.
-    #[ignore = "GAP: short literal PK lookup returns 0 rows (issue #4846 headline)"]
+    /// #4846 headline: no longer `#[ignore]`d.
+    ///
+    /// Two independent defects used to make this return 0 rows, both in the
+    /// PK point-lookup fast path (`WHERE <pk> = <literal>` and nothing
+    /// else — add any conjunct and the engine falls back to a scan that
+    /// gets it right):
+    ///
+    /// 1. `parse_literal_token` took the raw AST token, so `'U20190001'`
+    ///    became `Text("'U20190001'")` — quotes included — and never
+    ///    matched the stored `Text("U20190001")`. This hit VARCHAR too.
+    /// 2. `scan_pk`'s default `row.first() == Some(&pk)` cannot express
+    ///    PAD SPACE, so a CHAR(10) holding `'U20190001'` (stored padded to
+    ///    10 chars) did not match. CHAR columns now skip the fast path.
     #[test]
     fn char_pk_point_lookup_with_short_literal() {
         let mut e = create_engine();
@@ -162,8 +174,7 @@ mod issue_4846_char_padding_comparison {
         assert_eq!(r.rows.len(), 1);
     }
 
-    /// GAP: CHAR PK with padded literal — same root cause.
-    #[ignore = "GAP: padded literal PK lookup — see short_literal_matches_padded_storage"]
+    /// #4846: un-ignored with the sibling test above — same two defects.
     #[test]
     fn char_pk_point_lookup_with_padded_literal() {
         let mut e = create_engine();
