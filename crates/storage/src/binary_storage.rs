@@ -678,6 +678,18 @@ impl StorageEngine for BoxStorageEngine {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         (**self).scan(table)
     }
+
+    /// #5025: forward the database switch. A wrapper that answers the
+    /// trait default (`Ok(())` that changes nothing) makes `USE` report
+    /// success while every query still resolves against the previous
+    /// database.
+    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
+        (**self).set_current_db(db_name)
+    }
+
+    fn current_db(&self) -> String {
+        (**self).current_db()
+    }
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         (**self).insert(table, records)
     }

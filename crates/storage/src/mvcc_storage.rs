@@ -188,13 +188,19 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
 
     /// Acquire (or lazily create) the MVCC table for `table_name`.
     fn mvcc_table(&self, table_name: &str) -> Arc<VersionedTable> {
+        // #5025: the MVCC version store is keyed per database, like the
+        // inner engine's tables. Without this, `d1.t` and `d2.t` share one
+        // `VersionedTable` and a scan in one database returns the other's
+        // rows — the isolation holds for `FileStorage` and is then undone
+        // here.
+        let key = crate::engine::scoped_key(&self.inner.current_db(), table_name);
         // Fast path: already exists.
-        if let Some(t) = self.mvcc.read().get(table_name).cloned() {
+        if let Some(t) = self.mvcc.read().get(&key).cloned() {
             return t;
         }
         // Slow path: create.
         let mut w = self.mvcc.write();
-        w.entry(table_name.to_string())
+        w.entry(key)
             .or_insert_with(|| Arc::new(VersionedTable::new()))
             .clone()
     }
@@ -674,7 +680,9 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
         self.inner.drop_table(table)?;
-        self.mvcc.write().remove(table);
+        // #5025: same scoped key `mvcc_table` uses.
+        let key = crate::engine::scoped_key(&self.inner.current_db(), table);
+        self.mvcc.write().remove(&key);
         Ok(())
     }
 
@@ -713,6 +721,18 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
         self.inner.drop_database(db_name)
+    }
+
+    /// #5025: forward the database switch. A wrapper that answers the
+    /// trait default (`Ok(())` that changes nothing) makes `USE` report
+    /// success while every query still resolves against the previous
+    /// database.
+    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.set_current_db(db_name)
+    }
+
+    fn current_db(&self) -> String {
+        self.inner.current_db()
     }
     /// #5009: forward. Without this the MVCC layer would answer the
     /// trait default (empty list) and `SHOW DATABASES` would report
@@ -810,9 +830,12 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
 
     fn rename_table(&mut self, old: &str, new: &str) -> SqlResult<()> {
         // Move MVCC state under the new name.
-        let mvcc_state = self.mvcc.write().remove(old);
+        // #5025: move the version store with the table.
+        let old_key = crate::engine::scoped_key(&self.inner.current_db(), old);
+        let mvcc_state = self.mvcc.write().remove(&old_key);
         if let Some(state) = mvcc_state {
-            self.mvcc.write().insert(new.to_string(), state);
+            let new_key = crate::engine::scoped_key(&self.inner.current_db(), new);
+            self.mvcc.write().insert(new_key, state);
         }
         self.inner.rename_table(old, new)
     }
@@ -1145,5 +1168,62 @@ mod tests {
             })
             .collect();
         assert_eq!(pks, vec![2, 3, 4]);
+    }
+}
+
+// --- #5025: the MVCC version store is per-database -----------------------
+//
+// `FileStorage` scoping alone is not enough: `MvccStorage` keeps its own
+// `VersionedTable` per name, so without a scoped key two databases'
+// same-named tables share one version store and a scan in either returns
+// both. This is the one that made isolation hold on disk and then not
+// hold on read.
+
+#[cfg(test)]
+mod db_isolation_tests {
+    use super::*;
+    use crate::engine::StorageEngine;
+    use crate::file_storage::FileStorage;
+    use sqlrustgo_types::Value;
+    use std::fs::remove_dir_all;
+
+    fn table(name: &str) -> crate::engine::TableInfo {
+        let mut info = crate::engine::TableInfo::default();
+        info.name = name.to_string();
+        info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
+        info
+    }
+
+    #[test]
+    fn mvcc_version_store_is_scoped_per_database() {
+        let dir = std::env::temp_dir().join("mvcc_db_iso_5025");
+        let _ = remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let inner = FileStorage::new(dir.clone()).unwrap();
+        let mut mvcc = MvccStorage::new(inner);
+        mvcc.create_database("d1").unwrap();
+        mvcc.create_database("d2").unwrap();
+
+        for (db, id) in [("d1", 1i64), ("d2", 2)] {
+            mvcc.set_current_db(db).unwrap();
+            mvcc.create_table(&table("t")).unwrap();
+            mvcc.insert("t", vec![vec![Value::Integer(id)]]).unwrap();
+        }
+
+        mvcc.set_current_db("d1").unwrap();
+        assert_eq!(
+            mvcc.scan("t").unwrap(),
+            vec![vec![Value::Integer(1)]],
+            "d1 must not see d2's version"
+        );
+        mvcc.set_current_db("d2").unwrap();
+        assert_eq!(
+            mvcc.scan("t").unwrap(),
+            vec![vec![Value::Integer(2)]],
+            "d2 must not see d1's version"
+        );
+
+        let _ = remove_dir_all(&dir);
     }
 }

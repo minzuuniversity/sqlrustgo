@@ -778,10 +778,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     // V312-F-4: execute_alter_sequence moved to src/engine_create.rs
     // to keep execution_engine.rs under 1500 lines (C-ARCH-05 AD-001).
 
-    pub(super) fn execute_use_database(&self, _db: &str) -> SqlResult<ExecutorResult> {
-        // v3.9.0 single-database: USE <database> is accepted for MySQL wire
-        // compatibility but is a no-op. v3.10 multi-database mode will switch
-        // the active database context.
+    pub(super) fn execute_use_database(&self, db: &str) -> SqlResult<ExecutorResult> {
+        // #5025: `USE` used to be an accepted no-op, so every database
+        // shared one table namespace. It now switches the storage's active
+        // database, and an unknown name is an error rather than a silent
+        // fall-through to the previous database.
+        //
+        // Note: the active database lives on the storage engine, which is
+        // shared by every connection. `USE` is connection-level in the
+        // MySQL protocol, so a per-connection context is still needed for
+        // the semantics to be correct with two simultaneous clients —
+        // the remaining half of #5025.
+        self.storage.write().set_current_db(db)?;
         Ok(ExecutorResult::empty())
     }
 

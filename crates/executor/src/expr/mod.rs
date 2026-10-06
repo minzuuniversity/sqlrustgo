@@ -1384,7 +1384,7 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         // (single-database mode), so the actual current schema is the
         // empty string. See execute_use_database in
         // src/execution_engine.rs.
-        "DATABASE" | "SCHEMA" => Value::Text(String::new()),
+        "DATABASE" | "SCHEMA" => Value::Text("default".to_string()),
         // V312-58 / #4518: MySQL compat — CURRENT_USER / USER / etc.
         // sqlrustgo runs in single-user mode; return the canonical
         // default user identifier "openclaw@%" so SHOW GRANTS / wire
