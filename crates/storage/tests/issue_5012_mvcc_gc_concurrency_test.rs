@@ -7,19 +7,25 @@
 //! on base `720f018826` (post-#4986 partial fix) and asked that the
 //! result be **re-confirmed on current HEAD** before closing.
 //!
-//! This file is a storage-layer regression test for that property:
+//! This file is a storage-layer **smoke test** for that property:
 //! one writer thread + one GC thread + N reader threads hammering
-//! the same `VersionedTable` for a fixed number of operations and
-//! asserting (a) no panic and (b) readers always see the *most recent*
-//! committed version of each key they observe. The test runs
-//! repeatedly with different thread counts to surface flakes.
+//! the same `VersionedTable` for a fixed duration, asserting (a) no
+//! panic, (b) no reader is handed a malformed (non-integer) row, and
+//! (c) no reader comes away having observed nothing at all.
+//!
+//! Scope, stated honestly after the 2026-10-06 mutation audit: this test
+//! does **not** pin the GC eviction predicate. Two earlier revisions of
+//! this header claimed readers "always see the most recent committed
+//! version" — no such assertion ever existed (the per-reader value set
+//! was collected and then discarded), and none of the GC-predicate
+//! mutations tried could be killed from here, because `gc` takes the
+//! versions lock between the writer's operations and readers therefore
+//! always catch rows in the gaps. The eviction predicate is pinned by
+//! `gc_pending_version_test` (PR #4992 — mutation-KILLED).
 //!
 //! It is NOT a wire-level probe (no MySQL client, no real server).
 //! The wire-level repro lives in `scripts/repro_4994_concurrent_delete.py`
 //! (added by PR #5013, cherry-picked from `test/4994-repro-script`).
-//! This test guards the same property at the storage layer so a
-//! regression on `VersionedTable::gc` shows up in CI, not in a
-//! wire probe.
 
 use sqlrustgo_storage::mvcc::VersionedTable;
 use sqlrustgo_types::Value;
@@ -110,11 +116,39 @@ fn run_concurrent_gc(duration: Duration, n_readers: usize) -> Result<(), String>
     stop.store(true, Ordering::Relaxed);
     writer.join().unwrap();
     gc.join().unwrap();
-    let _: Vec<_> = readers.into_iter().map(|h| h.join().unwrap()).collect();
+    let per_reader: Vec<HashSet<i64>> =
+        readers.into_iter().map(|h| h.join().unwrap()).collect();
 
     let err = reader_err_count.load(Ordering::Relaxed);
     if err > 0 {
         return Err(format!("reader observed {} non-integer rows", err));
+    }
+
+    // 2026-10-06 (mutation audit): this set used to be thrown away
+    // (`let _: Vec<_> = ...`), so the test asserted only "no panic" and
+    // "no non-integer row". The check below is a coarse guard, not a
+    // discriminating one: the writer rewrites keys 1..=100 in a tight
+    // loop, and `gc` can only take the versions lock between the writer's
+    // operations, so readers always catch rows in the gaps.
+    //
+    // Measured, so nobody re-derives it hoping for more: with the
+    // `committed` / `< cutoff` guards stripped from `VersionedTable::gc`
+    // (every lone chain evicted on every 5 ms tick), this test still
+    // passes — twice in a row. No production-line mutation was found
+    // that makes a reader observe zero rows without also corrupting the
+    // row shape, which the `err` counter already covers.
+    //
+    // Consequence: this file is a concurrency **smoke test**. It pins
+    // "MVCC GC under concurrent readers does not panic or hand back a
+    // malformed row". It does NOT pin the eviction predicate; that is
+    // pinned by `gc_pending_version_test` (see PR #4992, mutation-KILLED).
+    let empty_readers = per_reader.iter().filter(|s| s.is_empty()).count();
+    if empty_readers > 0 {
+        return Err(format!(
+            "{} of {} readers never observed a single committed row",
+            empty_readers,
+            per_reader.len()
+        ));
     }
     Ok(())
 }

@@ -261,6 +261,37 @@ fn committed_rows_become_visible_to_all_readers() {
         vec![1],
         "after commit every reader must see the row"
     );
+    // #4979 mutation gap (2026-10-06): the two assertions above are
+    // satisfied by `scan()` alone, because `MvccStorage::scan` merges
+    // `inner.scan()` unconditionally — the row written through
+    // `inner.insert()` stays visible even when COMMIT never promoted the
+    // MVCC version nor reset the tx id. Dropping `promote_pending_for`
+    // therefore left this test green.
+    //
+    // It matters because `scan_in` — the isolation-correct path #4985
+    // added and #4989 migrated every `engine_select` read onto — consults
+    // `pending_keys` and excludes from the inner merge every key that
+    // still has an uncommitted version. Unpromoted, a committed row is
+    // classified pending and vanishes from `scan_in`: the server reports
+    // a successful COMMIT and loses the row on the next SELECT.
+    let g = s.read();
+    assert_eq!(
+        g.current_tx_id(),
+        0,
+        "COMMIT must forward to the inner engine and reset the tx id; \
+         a surviving non-zero id means the wrapper swallowed the commit"
+    );
+    assert_eq!(
+        g.scan_in("t", 0)
+            .unwrap()
+            .iter()
+            .filter_map(|r| r.first().and_then(|v| v.as_integer()))
+            .collect::<Vec<_>>(),
+        vec![1],
+        "a committed row must be visible through scan_in; if it is not, \
+         COMMIT did not promote the pending MVCC version and \
+         `pending_keys` now suppresses the row in the inner merge"
+    );
 }
 
 /// A plain autocommit insert (no explicit transaction) is committed by
