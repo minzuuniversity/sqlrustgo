@@ -60,6 +60,97 @@ struct WriteState {
     dirty_tables: HashSet<String>,
 }
 
+impl WriteState {
+    /// #5060: the two places a row of `scoped_table` can be.
+    ///
+    /// `insert_buffer` is a **second copy of table state**, not a
+    /// staging area the rest of the engine knows about. Until #5060 only
+    /// `scan` looked at both, so an autocommit `INSERT` followed by an
+    /// `UPDATE` or `DELETE` on the same row reported **0 rows affected**
+    /// and left the old value in place. Worse, `delete` stripped the row
+    /// from the buffer without counting it, so the row vanished from
+    /// memory while `dirty_tables` was never set and the deletion was
+    /// never persisted — the row came back on the next open.
+    ///
+    /// These two helpers are the single place that knows a table has two
+    /// stores, so `update` / `update_if` / `delete` / `delete_if` cannot
+    /// each re-derive the mistake.
+    ///
+    /// `scoped_table` is the `db\x01table` key. Returns the post-image of
+    /// every row that matched, in store order (table rows first, then
+    /// buffered rows) — both the WAL (#5055) and the change log (#5048)
+    /// need those, and neither can reconstruct them after the fact.
+    fn mutate_matching<F, G>(
+        &mut self,
+        scoped_table: &str,
+        matches: F,
+        mut mutate: G,
+    ) -> Vec<(Record, Record)>
+    where
+        F: Fn(&Record) -> bool,
+        G: FnMut(&mut Record),
+    {
+        // (pre-image, post-image) per touched row: the pre-image is
+        // what ROLLBACK needs, the post-image is what the WAL (#5055)
+        // and the change log (#5048) need. Neither can be reconstructed
+        // after the mutation.
+        let mut touched: Vec<(Record, Record)> = Vec::new();
+        if let Some(data) = self.tables.get_mut(scoped_table) {
+            for row in data.rows.iter_mut().filter(|r| matches(r)) {
+                let pre = row.clone();
+                mutate(row);
+                touched.push((pre, row.clone()));
+            }
+        }
+        // Rows still in the buffer are this transaction's uncommitted
+        // inserts. They are real rows for every purpose except
+        // durability, so an UPDATE has to reach them — otherwise
+        // INSERT-then-UPDATE inside a transaction commits the *old*
+        // value.
+        if let Some(buffered) = self.insert_buffer.get_mut(scoped_table) {
+            for row in buffered.iter_mut().filter(|r| matches(r)) {
+                let pre = row.clone();
+                mutate(row);
+                touched.push((pre, row.clone()));
+            }
+        }
+        touched
+    }
+
+    /// #5060: as [`mutate_matching`](Self::mutate_matching), but removes
+    /// the matching rows from both stores. Returns them so the caller can
+    /// log a delete by key.
+    fn remove_matching<F>(&mut self, scoped_table: &str, matches: F) -> Vec<Record>
+    where
+        F: Fn(&Record) -> bool,
+    {
+        let mut removed: Vec<Record> = Vec::new();
+        if let Some(data) = self.tables.get_mut(scoped_table) {
+            let mut kept = Vec::with_capacity(data.rows.len());
+            for row in std::mem::take(&mut data.rows) {
+                if matches(&row) {
+                    removed.push(row);
+                } else {
+                    kept.push(row);
+                }
+            }
+            data.rows = kept;
+        }
+        if let Some(buffered) = self.insert_buffer.get_mut(scoped_table) {
+            let mut kept = Vec::with_capacity(buffered.len());
+            for row in std::mem::take(buffered) {
+                if matches(&row) {
+                    removed.push(row);
+                } else {
+                    kept.push(row);
+                }
+            }
+            *buffered = kept;
+        }
+        removed
+    }
+}
+
 /// File-based storage manager
 pub struct FileStorage {
     /// Base directory for database files
@@ -257,6 +348,40 @@ enum UndoOp {
     BufferedInsert {
         table: String,
         row: Vec<crate::engine::Value>,
+    },
+    /// #5059: DELETE of a row that was still in the insert buffer.
+    ///
+    /// It needs its own variant because `DeleteRow` identifies its row
+    /// by index into `tables`, and a buffered row has no index there.
+    /// ROLLBACK puts the value back into the buffer, where it was.
+    ///
+    /// #5059's actual symptom was neither of these: ROLLBACK never
+    /// removed *anything* from the buffer, because the "belt-and-
+    /// suspenders" sweep at the end of `rollback_transaction` iterated
+    /// `s.tables.keys()` — already-scoped keys — and then scoped them a
+    /// second time, so it addressed `default\x01default\x01tx_t` and
+    /// matched no buffer. 100 committed + 100 rolled-back inserts all
+    /// survived, and the test saw 200.
+    BufferedDelete {
+        table: String,
+        row: Vec<crate::engine::Value>,
+    },
+    /// #5060: UPDATE of a row that was still in the insert buffer.
+    ///
+    /// `DeleteRow` / `UpdateRow` address their row by index into
+    /// `tables`; a buffered row has no index there, and by rollback
+    /// time the buffer may have been drained and refilled by other
+    /// work, so an index captured now would be meaningless. Instead the
+    /// row is located by its post-image and replaced with the
+    /// pre-image.
+    ///
+    /// If the post-image is gone — the row was flushed to `tables`, or
+    /// updated again — the buffered copy has nothing left to undo, and
+    /// the `tables` copy is covered by the ordinary `UpdateRow` entry.
+    BufferedUpdate {
+        table: String,
+        post: Vec<crate::engine::Value>,
+        original: Vec<crate::engine::Value>,
     },
 }
 
@@ -846,8 +971,20 @@ impl FileStorage {
     /// the database directory holds nothing, so tables written before the
     /// layout change stay visible.
     fn table_path(&self, table_name: &str) -> PathBuf {
+        let db = self.current_db_name();
+        self.table_path_in(&db, table_name)
+    }
+
+    /// #5025: `table_path` with the database named explicitly, instead of
+    /// resolved from `current_db`.
+    ///
+    /// The startup loader has to read *every* database's directory while
+    /// `current_db` is still `default`; it cannot flip `current_db` per
+    /// directory to borrow the resolution above, because that is a
+    /// process-wide setting other connections also read.
+    fn table_path_in(&self, db: &str, table_name: &str) -> PathBuf {
         let file = format!("{}.json", table_name);
-        match self.db_dir() {
+        match self.db_dir_for(db) {
             None => self.data_dir.join(file),
             Some(dir) => {
                 let scoped = dir.join(&file);
@@ -875,8 +1012,15 @@ impl FileStorage {
 
     /// #5025: read side for an index file; see `table_path`.
     fn index_path(&self, table_name: &str, column_name: &str) -> PathBuf {
+        let db = self.current_db_name();
+        self.index_path_in(&db, table_name, column_name)
+    }
+
+    /// #5025: `index_path` with the database named explicitly; see
+    /// `table_path_in`.
+    fn index_path_in(&self, db: &str, table_name: &str, column_name: &str) -> PathBuf {
         let file = format!("{}_idx_{}.json", table_name, column_name);
-        match self.db_dir() {
+        match self.db_dir_for(db) {
             None => self.data_dir.join(file),
             Some(dir) => {
                 let scoped = dir.join(&file);
@@ -1045,27 +1189,38 @@ impl FileStorage {
         // C.1: collect pairs via &self reads first, then apply under
         // write_lock. The Vec owns the data so no &self borrow is live
         // when we cross into with_write_lock.
+        //
+        // #5025: walk *every* database directory, not just `data_dir`.
+        // The pre-fix loader only read the root, so a table created in a
+        // named database was written to `data/<db>/t.json` and then
+        // silently absent from the cache on the next open — `scan`
+        // returned zero rows against a file that was sitting on disk.
         let mut rows_to_insert: Vec<(String, TableData)> = Vec::new();
-        for entry in fs::read_dir(&self.data_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                if let Some(table_name) = path.file_stem().and_then(|s| s.to_str()) {
-                    if let Ok(table_data) = self.load_table(table_name) {
-                        rows_to_insert.push((table_name.to_string(), table_data));
-                    }
+        for (db, dir) in self.db_dirs() {
+            for entry in fs::read_dir(&dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                    continue;
+                }
+                let Some(table_name) = path.file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                // `*_idx_*.json` holds a serialised BPlusTree, never a
+                // table. It used to be filtered implicitly, by failing
+                // to parse as `StoredTableData`; say so outright so the
+                // two loaders cannot both claim the same file.
+                if table_name.contains("_idx_") {
+                    continue;
+                }
+                if let Ok(table_data) = self.load_table_in(&db, table_name) {
+                    rows_to_insert.push((crate::engine::scoped_key(&db, table_name), table_data));
                 }
             }
         }
         Self::with_write_lock(self, |s| {
-            for (name, data) in rows_to_insert {
-                // #5025: this runs at startup, when `current_db` is still
-                // `default` — which is correct, because `load_all_tables`
-                // only walks the data_dir root, where pre-#5025 tables (and
-                // the default database's own) live. Tables under a named
-                // database directory are loaded on first use, through
-                // `load_table`, which resolves the scoped path.
-                s.tables.insert(self.tbl(&name), data);
+            for (key, data) in rows_to_insert {
+                s.tables.insert(key, data);
             }
         });
         // V400-MVCC-PKFAST: auto-build the PK B+Tree index for every
@@ -1084,24 +1239,37 @@ impl FileStorage {
             return Ok(());
         }
 
-        for entry in fs::read_dir(&self.data_dir)? {
-            let entry = entry?;
-            let path = entry.path();
+        // #5025: walk every database directory and key the cache by the
+        // *scoped* name. This loader used to walk only `data_dir` and
+        // store the bare `(table, column)` tuple, so two things broke at
+        // once: indexes belonging to a named database were never read, and
+        // even the default database's indexes were filed under a key that
+        // `has_index`/`get_index` — which resolve through `tbl()` — could
+        // never match. `test_e2e_index_survives_restart` caught the second
+        // half; see `index_survives_restart_5025.rs` for the first.
+        for (db, dir) in self.db_dirs() {
+            for entry in fs::read_dir(&dir)? {
+                let entry = entry?;
+                let path = entry.path();
 
-            // Look for index files: table_idx_column.json
-            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
-                if file_name.ends_with(".json") && file_name.contains("_idx_") {
-                    // Parse table_idx_column.json
-                    if let Some((table_name, column_name)) = file_name
-                        .strip_suffix(".json")
-                        .and_then(|s| s.split_once("_idx_"))
-                    {
-                        if let Ok(index) = self.load_index(table_name, column_name) {
-                            if let Ok(mut indexes) = self.indexes.write() {
-                                indexes.insert(
-                                    (table_name.to_string(), column_name.to_string()),
-                                    index,
-                                );
+                // Look for index files: table_idx_column.json
+                if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+                    if file_name.ends_with(".json") && file_name.contains("_idx_") {
+                        // Parse table_idx_column.json
+                        if let Some((table_name, column_name)) = file_name
+                            .strip_suffix(".json")
+                            .and_then(|s| s.split_once("_idx_"))
+                        {
+                            if let Ok(index) = self.load_index_in(&db, table_name, column_name) {
+                                if let Ok(mut indexes) = self.indexes.write() {
+                                    indexes.insert(
+                                        (
+                                            crate::engine::scoped_key(&db, table_name),
+                                            column_name.to_string(),
+                                        ),
+                                        index,
+                                    );
+                                }
                             }
                         }
                     }
@@ -1112,9 +1280,17 @@ impl FileStorage {
         Ok(())
     }
 
-    /// Load a single index from disk
-    fn load_index(&self, table_name: &str, column_name: &str) -> std::io::Result<BPlusTree> {
-        let path = self.index_path(table_name, column_name);
+    /// #5025: load a single index from disk, for the database named
+    /// explicitly. There is no `current_db` shortcut: every caller is the
+    /// startup loader, which reads each database in turn while
+    /// `current_db` is still `default`.
+    fn load_index_in(
+        &self,
+        db: &str,
+        table_name: &str,
+        column_name: &str,
+    ) -> std::io::Result<BPlusTree> {
+        let path = self.index_path_in(db, table_name, column_name);
         let file = File::open(&path)?;
         let reader = BufReader::new(file);
         let index: BPlusTree = serde_json::from_reader(reader)
@@ -1143,9 +1319,11 @@ impl FileStorage {
         Ok(())
     }
 
-    /// Load a single table from disk
-    fn load_table(&self, table_name: &str) -> std::io::Result<TableData> {
-        let path = self.table_path(table_name);
+    /// #5025: load a single table from disk, for the database named
+    /// explicitly. See `load_index_in` for why there is no `current_db`
+    /// shortcut.
+    fn load_table_in(&self, db: &str, table_name: &str) -> std::io::Result<TableData> {
+        let path = self.table_path_in(db, table_name);
         // V400-PERF-DELTA: a missing JSON is OK if the delta file
         // exists — that's the cold-start case where the base JSON
         // was already compacted away.
@@ -1173,7 +1351,7 @@ impl FileStorage {
             )
         };
         // Apply pending deltas on top of the base snapshot.
-        let delta_rows = self.load_table_delta(table_name)?;
+        let delta_rows = self.load_table_delta_in(db, table_name)?;
         rows.extend(delta_rows);
 
         Ok(TableData {
@@ -1370,10 +1548,11 @@ impl FileStorage {
         Ok(())
     }
 
-    /// V400-PERF-DELTA: read all delta rows from `<table>.delta`.
-    /// Returns the rows in append order.
-    fn load_table_delta(&self, table_name: &str) -> std::io::Result<Vec<Vec<Value>>> {
-        let path = self.delta_path(table_name);
+    /// V400-PERF-DELTA: read all delta rows from `<table>.delta`,
+    /// append order, for the database named explicitly. See
+    /// `load_index_in` for why there is no `current_db` shortcut.
+    fn load_table_delta_in(&self, db: &str, table_name: &str) -> std::io::Result<Vec<Vec<Value>>> {
+        let path = self.delta_path_in(db, table_name);
         if !path.exists() {
             return Ok(Vec::new());
         }
@@ -1398,8 +1577,15 @@ impl FileStorage {
     /// two databases with a table of the same name would append to one
     /// delta file and corrupt each other's rows.
     fn delta_path(&self, table_name: &str) -> std::path::PathBuf {
+        let db = self.current_db_name();
+        self.delta_path_in(&db, table_name)
+    }
+
+    /// #5025: `delta_path` with the database named explicitly; see
+    /// `table_path_in`.
+    fn delta_path_in(&self, db: &str, table_name: &str) -> std::path::PathBuf {
         let file = format!("{}.delta", table_name);
-        match self.db_dir() {
+        match self.db_dir_for(db) {
             None => self.data_dir.join(file),
             Some(dir) => {
                 let _ = std::fs::create_dir_all(&dir);
@@ -1601,12 +1787,51 @@ impl FileStorage {
     /// implicit default. `None` means "use `data_dir` directly".
     #[inline]
     fn db_dir(&self) -> Option<std::path::PathBuf> {
-        let db = self.current_db.read().unwrap();
-        if *db == crate::engine::DEFAULT_DATABASE {
+        self.db_dir_for(&self.current_db_name())
+    }
+
+    /// #5025: the database named explicitly, instead of resolved from
+    /// `current_db`.
+    #[inline]
+    fn db_dir_for(&self, db: &str) -> Option<std::path::PathBuf> {
+        if db == crate::engine::DEFAULT_DATABASE {
             None
         } else {
-            Some(self.data_dir.join(&*db))
+            Some(self.data_dir.join(db))
         }
+    }
+
+    /// #5025: `current_db` as an owned `String`, so a caller can pass the
+    /// name on to `*_in` helpers without holding the `current_db` read
+    /// guard across them. Those helpers call `db_dir_for`, and parking_lot
+    /// read locks are not safe to nest when a writer may be queued.
+    #[inline]
+    fn current_db_name(&self) -> String {
+        self.current_db.read().unwrap().clone()
+    }
+
+    /// #5025: every database that has a directory on disk.
+    ///
+    /// The implicit default database has no directory — its files sit in
+    /// `data_dir` itself — so it is paired with `data_dir` here. Every
+    /// other entry is a real subdirectory, because `create_database` is
+    /// the only thing that creates one.
+    fn db_dirs(&self) -> Vec<(String, std::path::PathBuf)> {
+        let mut out = vec![(
+            crate::engine::DEFAULT_DATABASE.to_string(),
+            self.data_dir.clone(),
+        )];
+        if let Ok(entries) = fs::read_dir(&self.data_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+                        out.push((name.to_string(), path));
+                    }
+                }
+            }
+        }
+        out
     }
 
     pub fn contains_table(&self, name: &str) -> bool {
@@ -4507,11 +4732,20 @@ impl StorageEngine for FileStorage {
         // apply_undo logic here (the bodies are short and only touch
         // {tables, dirty_tables, insert_buffer} — all protected).
         //
-        // SAFETY NOTE: holding the lock for the duration of all undo
-        // operations is fine — these are O(N_undo) and rarely deep
-        // (typical N_undo is 0–10). The original per-op lock+release
-        // pattern offered no concurrency benefit because ROLLBACK is
-        // already exclusive at the tx layer.
+        // #5059: the previous "belt-and-suspenders" sweep over
+        // `s.tables.keys()` never worked. Those keys are *already*
+        // scoped (`default\x01tx_t`), and the loop scoped them a second
+        // time, so it addressed `default\x01default\x01tx_t` and matched
+        // no buffer. Every rolled-back INSERT therefore survived, and
+        // `phase_c_1_race::c1_concurrent_begin_commit_rollback` saw 200
+        // rows where 100 were expected.
+        //
+        // The fix is not to sweep harder. It is to undo by **value**:
+        // `insert` records a `BufferedInsert` per row and `delete`
+        // records a `BufferedDelete`, and this loop removes exactly
+        // those. A blanket sweep would also delete *other* connections'
+        // buffered rows — the buffer is instance-level, not
+        // connection-level (#5060) — turning a rollback into data loss.
         Self::with_write_lock(self, |s| {
             while let Some(op) = s.tx_undo_log.pop() {
                 match op {
@@ -4565,25 +4799,43 @@ impl StorageEngine for FileStorage {
                             ));
                         }
                     }
+                    // #5055 / #5060: the row was inserted by *this*
+                    // transaction and never became committed, so it
+                    // goes back out of the buffer. Keyed by value, not
+                    // position — the buffer is drained and refilled by
+                    // concurrent work.
                     UndoOp::BufferedInsert { table, row } => {
-                        if let Some(buf) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
+                        let key =
+                            crate::engine::scoped_key(&self.current_db.read().unwrap(), &table);
+                        if let Some(buffered) = s.insert_buffer.get_mut(&key) {
+                            if let Some(pos) = buffered.iter().position(|r| *r == row) {
+                                buffered.remove(pos);
+                            }
+                        }
+                    }
+                    UndoOp::BufferedDelete { table, row } => {
+                        let key =
+                            crate::engine::scoped_key(&self.current_db.read().unwrap(), &table);
+                        s.insert_buffer.entry(key).or_default().push(row);
+                    }
+                    // #5060: put the pre-image back where the post-image
+                    // was. If the post-image is gone the buffered copy
+                    // has moved on (flushed, or updated again) and the
+                    // `tables` copy is covered by `UpdateRow`.
+                    UndoOp::BufferedUpdate {
+                        table,
+                        post,
+                        original,
+                    } => {
+                        if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
                             &self.current_db.read().unwrap(),
                             &table,
                         )) {
-                            buf.retain(|r| r != &row);
+                            if let Some(pos) = buffered.iter().position(|r| *r == post) {
+                                buffered[pos] = original;
+                            }
                         }
                     }
-                }
-            }
-            // Drain any INSERTs buffered during the tx (they were logged
-            // as BufferedInsert ops above, but if any slipped past, this
-            // is a belt-and-suspenders cleanup).
-            for table in s.tables.keys().cloned().collect::<Vec<_>>() {
-                if let Some(buf) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    &table,
-                )) {
-                    buf.retain(|_row| false);
                 }
             }
             self.current_tx_id
@@ -4858,6 +5110,17 @@ impl StorageEngine for FileStorage {
             None
         };
         if self.in_transaction() {
+            // #5059: record one undo entry per row. Without this,
+            // ROLLBACK had nothing to act on for buffered inserts and
+            // every rolled-back row survived — see `UndoOp`.
+            Self::with_write_lock(self, |s| {
+                for row in &records {
+                    s.tx_undo_log.push(UndoOp::BufferedInsert {
+                        table: table.to_string(),
+                        row: row.clone(),
+                    });
+                }
+            });
             self.insert_buffered(table, records)?
         } else if !self.enable_buffer {
             self.insert_direct(table, records)?
@@ -4892,118 +5155,74 @@ impl StorageEngine for FileStorage {
         // insert_buffer}. Splitting would mean multiple lock acquisitions
         // and risk of observing torn state between them.
         //
-        // #5055: the closure also snapshots the rows about to be
-        // removed, because after the `retain` there is no way to tell
-        // which ones they were. The snapshot has to happen inside this
-        // same critical section — reading the rows again afterwards
-        // would race a concurrent insert.
+        // #5060: the rows being deleted may be in `insert_buffer` rather
+        // than `tables`, and both are removed here, in one critical
+        // section. The old code read `tables` for the count, then
+        // separately stripped the buffer — so a row that was still
+        // buffered was deleted from the buffer but **not counted**, and
+        // because the count was 0 `dirty_tables` was never set, so the
+        // deletion was never persisted. The row disappeared from memory
+        // and came back on the next open.
         let wal_on = self.wal_enabled();
-        let (removed, removed_rows) =
-            Self::with_write_lock(self, |s| -> SqlResult<(usize, Vec<Record>)> {
-                let in_tx = self
-                    .current_tx_id
-                    .load(std::sync::atomic::Ordering::Acquire)
-                    != 0;
+        let watching = self.change_log_enabled();
+        let scoped = crate::engine::scoped_key(&self.current_db.read().unwrap(), table);
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let table_name = table.to_string();
+        let match_row = |row: &Record| {
+            filters.is_empty()
+                || filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+        };
 
-                // Issue #4581 / B-track case 35-36: snapshot rows for ROLLBACK
-                // BEFORE the actual delete. The `data` borrow ends before the
-                // `dirty_tables` / `insert_buffer` mutations, so we snapshot first,
-                // then mutate, then post-process the buffer.
-                let mut removed_rows: Vec<Record> = Vec::new();
-                let removed = if let Some(ref mut data) = s.tables.get_mut(
-                    &crate::engine::scoped_key(&self.current_db.read().unwrap(), &table),
-                ) {
-                    let original_len = data.rows.len();
-
-                    // #5055: snapshot for the WAL, same reason as the
-                    // undo log below captures one for ROLLBACK.
-                    if wal_on {
-                        if filters.is_empty() {
-                            removed_rows = data.rows.clone();
-                        } else {
-                            removed_rows =
-                                data.rows
-                                    .iter()
-                                    .filter(|row| {
-                                        filters.iter().enumerate().all(|(i, f)| {
-                                            row.get(i).map(|v| v == f).unwrap_or(false)
-                                        })
-                                    })
-                                    .cloned()
-                                    .collect();
-                        }
-                    }
-
-                    // Issue #4581: capture pre-delete snapshots. We collect them
-                    // up-front (in reverse iteration order so ROLLBACK replays in
-                    // the correct sequence) before mutating data.rows.
-                    if in_tx {
-                        if filters.is_empty() {
-                            let snap = data.rows.clone();
-                            s.tx_undo_log.push(UndoOp::DeleteAll {
-                                table: table.to_string(),
-                                original_rows: snap,
-                            });
-                        } else {
-                            for (idx, row) in data.rows.iter().enumerate().rev() {
-                                let matches = filters
-                                    .iter()
-                                    .enumerate()
-                                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
-                                if matches {
-                                    s.tx_undo_log.push(UndoOp::DeleteRow {
-                                        table: table.to_string(),
-                                        row_idx: idx,
-                                        original: row.clone(),
-                                    });
-                                }
+        let removed_rows = Self::with_write_lock(self, |s| -> SqlResult<Vec<Record>> {
+            // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
+            // BEFORE the removal, while the rows still exist.
+            if in_tx {
+                if let Some(data) = s.tables.get(&scoped) {
+                    if filters.is_empty() {
+                        s.tx_undo_log.push(UndoOp::DeleteAll {
+                            table: table_name.clone(),
+                            original_rows: data.rows.clone(),
+                        });
+                    } else {
+                        for (idx, row) in data.rows.iter().enumerate().rev() {
+                            if match_row(row) {
+                                s.tx_undo_log.push(UndoOp::DeleteRow {
+                                    table: table_name.clone(),
+                                    row_idx: idx,
+                                    original: row.clone(),
+                                });
                             }
                         }
                     }
-
-                    if filters.is_empty() {
-                        data.rows.clear();
-                    } else {
-                        // Row-level delete: keep rows that do NOT match the filter.
-                        data.rows.retain(|row| {
-                            !filters
-                                .iter()
-                                .enumerate()
-                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                }
+                // #5059: buffered rows have no index in `tables`, so they
+                // are undone by value.
+                if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                    for row in buffered.iter().filter(|r| match_row(r)) {
+                        s.tx_undo_log.push(UndoOp::BufferedDelete {
+                            table: table_name.clone(),
+                            row: row.clone(),
                         });
                     }
-                    original_len - data.rows.len()
-                } else {
-                    0
-                };
-
-                // V311-07: Mark dirty instead of immediate persist.
-                if removed > 0 || filters.is_empty() {
-                    s.dirty_tables.insert(table.to_string());
                 }
+            }
 
-                // After full table delete, clear any buffered inserts (the caller
-                // UPDATE path will re-insert correct rows). For partial delete,
-                // strip matching rows from insert_buffer so they don't shadow
-                // updated values.
-                if filters.is_empty() {
-                    s.insert_buffer.remove(&crate::engine::scoped_key(
-                        &self.current_db.read().unwrap(),
-                        table,
-                    ));
-                } else if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    table,
-                )) {
-                    buffered.retain(|row| {
-                        !filters
-                            .iter()
-                            .enumerate()
-                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                    });
-                }
-                Ok((removed, removed_rows))
-            })?;
+            let removed = s.remove_matching(&scoped, match_row);
+
+            // V311-07: Mark dirty instead of immediate persist. The old
+            // condition keyed off the tables-only count, which missed
+            // buffered deletions entirely.
+            if !removed.is_empty() || filters.is_empty() {
+                s.dirty_tables.insert(table_name.clone());
+            }
+            Ok(removed)
+        })?;
 
         // #5048: record the deletion. `filters` is already positional
         // against the row's leading columns — exactly what a change
@@ -5011,7 +5230,7 @@ impl StorageEngine for FileStorage {
         // An empty filter means a full-table wipe; recording that once
         // with an empty key keeps the log honest without expanding it
         // into one entry per row.
-        if self.change_log_enabled() && !filters.is_empty() {
+        if watching && !filters.is_empty() {
             self.record_change(table, ChangeOp::Delete, filters.to_vec(), None);
         }
 
@@ -5020,7 +5239,7 @@ impl StorageEngine for FileStorage {
         if wal_on {
             self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
         }
-        Ok(removed)
+        Ok(removed_rows.len())
     }
 
     /// Phase B Step 4.1: like `delete`, but returns the list of
@@ -5170,49 +5389,50 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        // `retain` drops the rows without telling us which, so they have
-        // to be captured *before* it runs — and both the change log
-        // (#5048) and the WAL (#5055) need that same set.
-        //
-        // Both captures happen in one critical section rather than the
-        // read-then-write pair #5048 originally used. Reading the keys
+        // #5048 / #5055: the rows being removed may be in `insert_buffer`
+        // or in `tables`, and both the change log and the WAL need that
+        // same set. All of it happens in one critical section — reading
         // under one guard and retaining under another leaves a window
         // where a concurrent INSERT matches the filter, is silently
-        // removed, and is missing from both logs — a delta that replays
-        // to a row the live table no longer has.
+        // removed, and is missing from both logs, so a delta replays to
+        // a row the live table no longer has.
         let watching = self.change_log_enabled();
         let wal_on = self.wal_enabled();
-        let (removed, removed_rows) =
-            Self::with_write_lock(self, |s| -> SqlResult<(usize, Vec<Record>)> {
-                if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    &table,
-                )) {
-                    let original_len = data.rows.len();
-                    let removed_rows: Vec<Record> = if watching || wal_on {
-                        data.rows.iter().filter(|r| filter(r)).cloned().collect()
-                    } else {
-                        Vec::new()
-                    };
-                    data.rows.retain(|r| !filter(r));
-                    let new_len = data.rows.len();
-                    // V311-07: Mark dirty instead of immediate persist
-                    if new_len < original_len {
-                        s.dirty_tables.insert(table.to_string());
-                    }
-                    Ok((original_len - new_len, removed_rows))
-                } else {
-                    Ok((0, Vec::new()))
-                }
-            })?;
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let scoped = crate::engine::scoped_key(&self.current_db.read().unwrap(), table);
+        let table_name = table.to_string();
+        let match_row = |row: &Record| filter(row);
 
-        for row in &removed_rows {
-            self.record_change(table, ChangeOp::Delete, key_of(row), None);
+        let removed_rows = Self::with_write_lock(self, |s| -> Vec<Record> {
+            if in_tx {
+                if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                    for row in buffered.iter().filter(|r| match_row(r)) {
+                        s.tx_undo_log.push(UndoOp::BufferedDelete {
+                            table: table_name.clone(),
+                            row: row.clone(),
+                        });
+                    }
+                }
+            }
+            let removed = s.remove_matching(&scoped, match_row);
+            if !removed.is_empty() {
+                s.dirty_tables.insert(table_name.clone());
+            }
+            removed
+        });
+
+        if watching {
+            for row in &removed_rows {
+                self.record_change(table, ChangeOp::Delete, key_of(row), None);
+            }
         }
         if wal_on {
             self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
         }
-        Ok(removed)
+        Ok(removed_rows.len())
     }
 
     fn update(
@@ -5221,9 +5441,6 @@ impl StorageEngine for FileStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        // #5048: read the flag before `get_mut`, which holds an exclusive
-        // borrow of `self` for the rest of the body.
-        let watching = self.change_log_enabled();
         // #4951: `&mut self`, so `get_mut` yields the guarded state with
         // no lock. `tables` and `tx_undo_log` are separate fields of the
         // same struct, so the borrow checker can hand out both here —
@@ -5233,81 +5450,66 @@ impl StorageEngine for FileStorage {
         // takes on `write_state` is released before the WAL append. An
         // append inside this scope would not compile *and* would hold
         // the storage write lock across a file write.
+        //
+        // #5060: the rows to update may be in `insert_buffer` as well as
+        // `tables`. `mutate_matching` reaches both, so an autocommit
+        // INSERT followed by an UPDATE now affects 1 row instead of 0.
         let wal_on = self.wal_enabled();
-        let (count, updated_rows, logged) = {
-            let st = self.write_state.get_mut();
-            let in_tx = self
-                .current_tx_id
-                .load(std::sync::atomic::Ordering::Acquire)
-                != 0;
-            let WriteState {
-                ref mut tables,
-                ref mut tx_undo_log,
-                ..
-            } = *st;
-            let Some(ref mut data) = tables.get_mut(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
-                table,
-            )) else {
-                return Ok(0);
-            };
+        let watching = self.change_log_enabled();
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let key = self.tbl(table);
+        let match_row = |record: &Record| {
+            filters.is_empty()
+                || filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
+        };
+        let apply = |record: &mut Record| {
+            for &(col_idx, ref new_val) in updates {
+                if col_idx < record.len() {
+                    record[col_idx] = new_val.clone();
+                }
+            }
+        };
 
-            let mut count = 0;
-            // #5048 and #5055 both need the post-image row, and this is
-            // the only point where the row is still whole — the mutation
-            // is applied and the old values are gone. One capture serves
-            // both: `logged` carries the key the change log names the row
-            // by, `updated_rows` is the whole row the WAL replays.
-            let mut logged: Vec<(Vec<Value>, Vec<Value>)> = Vec::new();
-            let mut updated_rows: Vec<Record> = Vec::new();
-            for (idx, record) in data.rows.iter_mut().enumerate() {
-                if filters.is_empty()
-                    || filters
-                        .iter()
-                        .enumerate()
-                        .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
-                {
-                    // Issue #4581 / B-track case 35-36: when inside a tx,
-                    // snapshot the pre-image BEFORE mutating so ROLLBACK
-                    // can restore it. We clone the entire row (small +
-                    // simple). Multiple updates on the same row each log
-                    // their own snapshot — replay in reverse naturally
-                    // produces the pre-tx state.
-                    if in_tx {
-                        let original = record.clone();
-                        tx_undo_log.push(UndoOp::UpdateRow {
-                            table: table.to_string(),
-                            row_idx: idx,
-                            original,
-                        });
-                    }
-                    for &(col_idx, ref new_val) in updates {
-                        if col_idx < record.len() {
-                            record[col_idx] = new_val.clone();
-                        }
-                    }
-                    if watching {
-                        logged.push((key_of(record), record.clone()));
-                    }
-                    if wal_on {
-                        updated_rows.push(record.clone());
-                    }
-                    count += 1;
+        let (count, updated) = {
+            let st = self.write_state.get_mut();
+            // Issue #4581 / B-track case 35-36: snapshot pre-images so
+            // ROLLBACK can restore them. `mutate_matching` returns them
+            // alongside the post-images.
+            let touched = st.mutate_matching(&key, match_row, apply);
+            for (pre, post) in &touched {
+                if in_tx {
+                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
+                        table: table.to_string(),
+                        post: post.clone(),
+                        original: pre.clone(),
+                    });
                 }
             }
             // V311-07: Mark dirty instead of immediate persist
-            if count > 0 {
+            if !touched.is_empty() {
                 st.dirty_tables.insert(table.to_string());
             }
-            (count, updated_rows, logged)
+            (touched.len(), touched)
         };
+
+        // #5048: record the update after the borrow is released —
+        // `record_change` takes the change-log lock.
+        if watching {
+            for (_, post) in &updated {
+                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
+            }
+        }
         // #5055: outside the `write_state` borrow on purpose — this does
         // file I/O.
         if wal_on {
-            self.wal_append(self.wal_update_entries(table, &updated_rows))?;
-        }
-        for (key, row) in logged {
-            self.record_change(table, ChangeOp::Update, key, Some(row));
+            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
+            self.wal_append(self.wal_update_entries(table, &posts))?;
         }
         Ok(count)
     }
@@ -5318,56 +5520,55 @@ impl StorageEngine for FileStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        // #5048: read the flag before `get_mut` takes `&mut self`.
-        let watching = self.change_log_enabled();
         // #5025: resolve the key before the mutable borrow.
         //
         // #5055: as in `update`, the scan is scoped so the `&mut` on
         // `write_state` is released before the WAL append.
+        //
+        // #5060: `insert_buffer` rows are updated too.
         let key = self.tbl(table);
         let wal_on = self.wal_enabled();
-        let (count, updated_rows, logged) = {
-            let st = self.write_state.get_mut();
-            let Some(data) = st.tables.get_mut(&key) else {
-                return Ok(0);
-            };
-
-            let mut count = 0;
-            let assignments = mutation.assignments();
-            // #5048 and #5055: one capture of the post-change row, same
-            // as in `update`.
-            let mut logged: Vec<(Vec<Value>, Vec<Value>)> = Vec::new();
-            let mut updated_rows: Vec<Record> = Vec::new();
-
-            for record in data.rows.iter_mut() {
-                if filter(record) {
-                    for &(col_idx, ref new_val) in assignments {
-                        if col_idx < record.len() {
-                            record[col_idx] = new_val.clone();
-                        }
-                    }
-                    if watching {
-                        logged.push((key_of(record), record.clone()));
-                    }
-                    if wal_on {
-                        updated_rows.push(record.clone());
-                    }
-                    count += 1;
+        let watching = self.change_log_enabled();
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let assignments = mutation.assignments().to_vec();
+        let match_row = |record: &Record| filter(record);
+        let apply = |record: &mut Record| {
+            for &(col_idx, ref new_val) in &assignments {
+                if col_idx < record.len() {
+                    record[col_idx] = new_val.clone();
                 }
             }
-            // V311-07: Mark dirty instead of immediate persist
-            if count > 0 {
+        };
+
+        let (count, updated) = {
+            let st = self.write_state.get_mut();
+            let touched = st.mutate_matching(&key, match_row, apply);
+            for (pre, post) in &touched {
+                if in_tx {
+                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
+                        table: table.to_string(),
+                        post: post.clone(),
+                        original: pre.clone(),
+                    });
+                }
+            }
+            if !touched.is_empty() {
                 st.dirty_tables.insert(table.to_string());
             }
-            (count, updated_rows, logged)
+            (touched.len(), touched)
         };
-        // #5055: outside the `write_state` borrow on purpose — this does
-        // file I/O.
-        if wal_on {
-            self.wal_append(self.wal_update_entries(table, &updated_rows))?;
+
+        if watching {
+            for (_, post) in &updated {
+                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
+            }
         }
-        for (key, row) in logged {
-            self.record_change(table, ChangeOp::Update, key, Some(row));
+        if wal_on {
+            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
+            self.wal_append(self.wal_update_entries(table, &posts))?;
         }
         Ok(count)
     }
@@ -6276,6 +6477,31 @@ impl FileStorage {
                         &table,
                     )) {
                         buf.retain(|r| r != &row);
+                    }
+                }
+                // #5059: mirror of `rollback_transaction`'s arm.
+                UndoOp::BufferedDelete { table, row } => {
+                    s.insert_buffer
+                        .entry(crate::engine::scoped_key(
+                            &self.current_db.read().unwrap(),
+                            &table,
+                        ))
+                        .or_default()
+                        .push(row);
+                }
+                // #5060: mirror of `rollback_transaction`'s arm.
+                UndoOp::BufferedUpdate {
+                    table,
+                    post,
+                    original,
+                } => {
+                    if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
+                        &self.current_db.read().unwrap(),
+                        &table,
+                    )) {
+                        if let Some(pos) = buffered.iter().position(|r| *r == post) {
+                            buffered[pos] = original;
+                        }
                     }
                 }
             }
