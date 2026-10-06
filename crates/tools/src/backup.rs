@@ -11,8 +11,9 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sqlrustgo_storage::{
-    BackupExporter, BackupFormat, ColumnDefinition, DataRestorer, MemoryStorage, StorageEngine,
-    TableInfo,
+    file_storage::{ChangeLogEntry, ChangeOp},
+    BackupExporter, BackupFormat, ColumnDefinition, DataRestorer, MemoryStorage, Record, RowFilter,
+    RowMutation, StorageEngine, TableInfo,
 };
 use sqlrustgo_types::Value;
 use std::collections::HashMap;
@@ -61,7 +62,9 @@ pub enum ChangeOperation {
 }
 
 /// ChangeSet - collection of changes since last backup
-#[derive(Debug, Clone, Default)]
+// #5048: serializable so a delta can be written to `changes.json` and
+// replayed. `ChangeRecord` already derived both; `ChangeSet` did not.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub struct ChangeSet {
     pub changes: Vec<ChangeRecord>,
@@ -373,6 +376,23 @@ pub enum BackupCommand {
         /// Database data directory
         #[structopt(short = "D", long = "data-dir", default_value = "./data")]
         data_dir: PathBuf,
+
+        /// #5048: export every table instead of a delta.
+        ///
+        /// The pre-#5048 behaviour, now named explicitly. The resulting
+        /// manifest is labelled `Full`, because that is what the
+        /// directory contains.
+        #[structopt(long = "full")]
+        full: bool,
+
+        /// #5048: take changes recorded after this LSN. Defaults to 0
+        /// (everything the change log holds).
+        ///
+        /// Pass the LSN recorded in the parent backup's manifest to
+        /// continue a chain; without it the delta re-exports writes the
+        /// parent already contains, and replaying it duplicates rows.
+        #[structopt(long = "since-lsn")]
+        since_lsn: Option<u64>,
     },
 
     /// List backups in a directory
@@ -424,17 +444,31 @@ pub fn run() -> Result<()> {
             dir,
             format,
             data_dir,
+            full,
+            since_lsn,
         } => {
-            // #4938 AC5: the `incremental` subcommand has no change
-            // capture behind it, so it writes a full dump. Say so
-            // before it runs rather than letting the operator discover
-            // it from the manifest afterwards.
-            println!(
-                "NOTE: the `incremental` subcommand currently exports ALL tables.\n\
-                 \x20     The backup is labelled `Full`; only `parent_lsn` links it\n\
-                 \x20     to the parent. A true delta requires a change set."
-            );
-            create_incremental_backup(&parent, &dir, &format, &data_dir)
+            if full {
+                // #5048: the pre-#5048 behaviour, now opt-in. The
+                // manifest is labelled `Full` because that is what the
+                // directory contains.
+                println!(
+                    "NOTE: --full exports every table. This backup is a full \
+                     dump and will be labelled `Full`."
+                );
+                create_incremental_backup(&parent, &dir, &format, &data_dir)
+            } else {
+                // #5048: a real delta, read from the persisted change
+                // log. The database must have had capture enabled when
+                // it was written, or the log on disk is empty and this
+                // errors rather than producing a backup that restores to
+                // the wrong state.
+                create_incremental_backup_from_data_dir(
+                    &parent,
+                    &dir,
+                    &data_dir,
+                    since_lsn.unwrap_or(0),
+                )
+            }
         }
         BackupCommand::List { dir } => list_backups(&dir),
         BackupCommand::Verify { dir } => verify_backup(&dir),
@@ -729,8 +763,115 @@ fn create_incremental_backup_from_storage(
     Ok(())
 }
 
+/// #5048: turn a storage change log into a backup change set.
+///
+/// This is the piece that makes an incremental backup *producable*: the
+/// storage engine records what changed, and this carries it into the
+/// format the exporter and the restore path already speak.
+///
+/// `lsn_of` maps a storage LSN to the string form `ChangeRecord` uses.
+/// They are different types on purpose — the storage side counts, the
+/// backup side sorts lexicographically — so the conversion goes through
+/// zero-padded hex, which preserves ordering.
+pub fn change_set_from_log(entries: &[ChangeLogEntry], since_lsn: u64) -> IncrementalBackupContext {
+    let mut ctx = IncrementalBackupContext::new();
+    for e in entries.iter().filter(|e| e.lsn > since_lsn) {
+        let op = match e.op {
+            ChangeOp::Insert => ChangeOperation::Insert,
+            ChangeOp::Update => ChangeOperation::Update,
+            ChangeOp::Delete => ChangeOperation::Delete,
+        };
+        // A delete legitimately has no row; an insert or update without one
+        // is a corrupt log. `apply_change_record` rejects those at restore
+        // time rather than here, so a bad entry surfaces against the
+        // backup that contains it.
+        let record = ChangeRecord {
+            table: e.table.clone(),
+            operation: op,
+            key_values: e.key.clone(),
+            row_data: e.row.clone(),
+            lsn: format!("{:016x}", e.lsn),
+        };
+        ctx.changes
+            .entry(e.table.clone())
+            .or_insert_with(|| ChangeSet::new(&format!("{:016x}", since_lsn)))
+            .add_change(record);
+    }
+    ctx
+}
+
+/// #5048: produce a real incremental backup from a data directory.
+///
+/// This is what the `backup incremental` CLI calls. It works across
+/// processes because the change log is persisted: `FileStorage::flush`
+/// writes it *after* the data it describes, so a log on disk never
+/// names a row the database does not contain.
+///
+/// An empty delta is an error rather than an empty backup: a directory
+/// with an `incremental` manifest and no changes is indistinguishable,
+/// to whoever restores it, from data loss.
+pub fn create_incremental_backup_from_data_dir(
+    parent: &Path,
+    dir: &Path,
+    data_dir: &Path,
+    since_lsn: u64,
+) -> Result<()> {
+    if !data_dir.exists() {
+        anyhow::bail!(
+            "backup source directory does not exist: {}",
+            data_dir.display()
+        );
+    }
+    let storage = sqlrustgo_storage::FileStorage::new(data_dir.to_path_buf())
+        .with_context(|| format!("failed to open backup source at {}", data_dir.display()))?;
+    // Read back whatever the writing process left on disk. Without this
+    // the fresh handle starts with an empty log and every delta is empty.
+    storage.enable_change_log();
+    create_incremental_backup_from_open_storage(parent, dir, &storage, since_lsn)
+}
+
+/// The same, on a database the caller already holds open.
+///
+/// A live `FileStorage` may have changes that have not been flushed yet;
+/// those are not in the persisted log and are deliberately not included,
+/// because a backup may not claim a change the database has not
+/// committed.
+pub fn create_incremental_backup_from_open_storage(
+    parent: &Path,
+    dir: &Path,
+    storage: &sqlrustgo_storage::FileStorage,
+    since_lsn: u64,
+) -> Result<()> {
+    if !storage.change_log_enabled() {
+        anyhow::bail!(
+            "change capture is off on this database. Call \
+             `FileStorage::enable_change_log` before writing, or the delta \
+             would be empty."
+        );
+    }
+    let entries = storage.changes_since(since_lsn);
+    if entries.is_empty() {
+        anyhow::bail!(
+            "no changes recorded after LSN {since_lsn} — the backup would be \
+             an empty file labelled `incremental`, which a restore cannot \
+             distinguish from data loss. If the database was written by a \
+             different process, its change log did not survive: take the \
+             full backup and the delta from the same session, or pass \
+             `--full` to export every table instead."
+        );
+    }
+
+    println!(
+        "Collected {} changes after LSN {} (now at LSN {})",
+        entries.len(),
+        since_lsn,
+        storage.current_change_lsn()
+    );
+    let context = change_set_from_log(&entries, since_lsn);
+    create_incremental_backup_with_changeset(parent, dir, &context)
+}
+
 /// Create an incremental backup using ChangeSet (only changed data)
-#[allow(dead_code)]
 pub fn create_incremental_backup_with_changeset(
     parent: &Path,
     dir: &Path,
@@ -765,7 +906,13 @@ pub fn create_incremental_backup_with_changeset(
     let current_lsn = context.get_end_lsn();
 
     let mut total_changes = 0;
-    for (table_name, changeset) in changes {
+    // #5048: the `.inc.sql` files are for humans to read; they cannot be
+    // replayed. `ChangeSet::export_to_sql` emits `DELETE FROM t WHERE
+    // col0 = ...`, and a column *position* is not a column *name*, so the
+    // predicate cannot be resolved back to a real column. A structured
+    // copy alongside them is what makes the delta applicable.
+    let mut replayable: Vec<(&String, &ChangeSet)> = Vec::new();
+    for (table_name, changeset) in changes.iter() {
         if changeset.is_empty() {
             continue;
         }
@@ -773,6 +920,7 @@ pub fn create_incremental_backup_with_changeset(
         let sql = changeset.export_to_sql();
         let change_file = data_subdir.join(format!("{}.inc.sql", table_name));
         fs::write(&change_file, &sql).context("Failed to write change file")?;
+        replayable.push((table_name, changeset));
 
         println!(
             "  Exported changes for '{}': {} operations",
@@ -780,6 +928,13 @@ pub fn create_incremental_backup_with_changeset(
             changeset.len()
         );
         total_changes += changeset.len();
+    }
+
+    if !replayable.is_empty() {
+        let replay_path = dir.join("changes.json");
+        let json = serde_json::to_string_pretty(&replayable)?;
+        fs::write(&replay_path, json).context("Failed to write changes.json")?;
+        println!("  Wrote replayable change set: {}", replay_path.display());
     }
 
     // Copy parent manifest for reference
@@ -812,14 +967,18 @@ pub fn create_incremental_backup_with_changeset(
     Ok(())
 }
 
-/// Restore from incremental backup chain (point-in-time recovery)
-#[allow(dead_code)]
-pub fn restore_incremental_chain(
+/// Restore from incremental backup chain (point-in-time recovery).
+///
+/// #5048: returns the restored storage so callers — and tests — can assert
+/// on what was actually rebuilt. It used to return `Result<()>` while
+/// writing nothing, which made "the restore succeeded" and "the restore did
+/// nothing" indistinguishable to everyone downstream.
+pub fn restore_incremental_chain_into(
     base_backup: &Path,
     incremental_backups: &[PathBuf],
     target: &Path,
     target_lsn: Option<&str>,
-) -> Result<()> {
+) -> Result<MemoryStorage> {
     println!("Restoring from backup chain (point-in-time recovery)");
     println!("  Base: {}", base_backup.display());
     if let Some(lsn) = target_lsn {
@@ -851,7 +1010,10 @@ pub fn restore_incremental_chain(
         "\n[1/{}] Restoring base backup...",
         incremental_backups.len() + 1
     );
-    restore_backup(base_backup, target, true)?;
+    // #5048: keep the storage the base restore built. The deltas are
+    // applied to *this*, not to a throwaway.
+    let mut storage = restore_backup_into(base_backup, target, true)?;
+    let mut total_applied = 0usize;
 
     // Sort incremental backups by LSN (they should be applied in order)
     let mut sorted_increments: Vec<(PathBuf, BackupManifest)> = Vec::new();
@@ -893,34 +1055,129 @@ pub fn restore_incremental_chain(
             inc_lsn
         );
 
-        // Apply incremental changes
-        let data_dir = inc_dir.join("data");
-        if data_dir.exists() {
-            for entry in fs::read_dir(&data_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.extension().map(|e| e == "inc").unwrap_or(false) {
-                    let change_sql = fs::read_to_string(&path)?;
-                    println!(
-                        "  Applying: {}",
-                        path.file_name().unwrap().to_string_lossy()
-                    );
-                    // In a real implementation, we would execute the SQL
-                    // For demo, we just log the operations
-                    let op_count = change_sql
-                        .lines()
-                        .filter(|l| !l.starts_with("--") && !l.trim().is_empty())
-                        .count();
-                    println!("    {} operations applied", op_count);
-                }
+        // #5048: apply the delta for real.
+        //
+        // This used to count the non-comment lines in each `.inc.sql`
+        // and print that number as "operations applied". Nothing was
+        // written, yet the function went on to print "Point-in-time
+        // restore complete" and return `Ok` — an operator had no way to
+        // tell a real restore from a no-op.
+        //
+        // Deltas are replayed from `changes.json`, not from the
+        // `.inc.sql` text: `export_to_sql` emits `col0 = ...` for DELETE
+        // predicates, and a column position cannot be resolved back to a
+        // column name.
+        let changes_file = inc_dir.join("changes.json");
+        if !changes_file.exists() {
+            anyhow::bail!(
+                "incremental backup {} has no changes.json and cannot be \
+                 replayed. Since #5048, create_incremental_backup_with_changeset \
+                 writes one; older backups recorded .inc.sql only, whose \
+                 DELETE predicates are not reversible.",
+                inc_dir.display()
+            );
+        }
+
+        let content = fs::read_to_string(&changes_file)
+            .with_context(|| format!("Failed to read {}", changes_file.display()))?;
+        let sets: Vec<(String, ChangeSet)> = serde_json::from_str(&content)
+            .with_context(|| format!("Invalid changes.json in {}", inc_dir.display()))?;
+
+        let mut applied_here = 0usize;
+        for (_table, set) in &sets {
+            for change in &set.changes {
+                apply_change_record(&mut storage, change).with_context(|| {
+                    format!(
+                        "applying a change on table {} from incremental {}",
+                        change.table,
+                        inc_dir.display()
+                    )
+                })?;
+                applied_here += 1;
             }
         }
+        total_applied += applied_here;
+        println!("    {} operations applied", applied_here);
     }
 
     println!();
     println!("✅ Point-in-time restore complete!");
     println!("   Target directory: {}", target.display());
+    println!("   Total operations applied: {}", total_applied);
 
+    Ok(storage)
+}
+
+/// Kept for callers that only need the log output and a success signal.
+pub fn restore_incremental_chain(
+    base_backup: &Path,
+    incremental_backups: &[PathBuf],
+    target: &Path,
+    target_lsn: Option<&str>,
+) -> Result<()> {
+    let _ = restore_incremental_chain_into(base_backup, incremental_backups, target, target_lsn)?;
+    Ok(())
+}
+
+/// #5048: apply one recorded change to storage.
+///
+/// Every failure propagates. The old code could not fail because it never
+/// touched storage; that property is exactly what made its "applied N"
+/// output a lie.
+fn apply_change_record(storage: &mut MemoryStorage, change: &ChangeRecord) -> Result<()> {
+    if !storage.has_table(&change.table) {
+        anyhow::bail!(
+            "change targets table '{}', which does not exist in the restored \
+             base backup",
+            change.table
+        );
+    }
+
+    // `key_values` holds the key columns in order, so it is compared
+    // positionally against the row's leading columns — the same
+    // convention `export_to_sql` writes, and the only one available
+    // without per-column names in the record.
+    let keys = change.key_values.clone();
+    let matches: RowFilter =
+        Box::new(move |r: &Record| keys.iter().enumerate().all(|(i, v)| r.get(i) == Some(v)));
+
+    match change.operation {
+        ChangeOperation::Insert => {
+            let row = change
+                .row_data
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("INSERT record carries no row_data"))?;
+            storage.insert(&change.table, vec![row])?;
+        }
+        ChangeOperation::Update => {
+            let row = change
+                .row_data
+                .clone()
+                .ok_or_else(|| anyhow::anyhow!("UPDATE record carries no row_data"))?;
+            // `row_data` is positional and `RowMutation` is positional, so
+            // the whole new row maps across the columns.
+            let assignments: Vec<(usize, Value)> = row.into_iter().enumerate().collect();
+            let mutation = RowMutation::new(assignments, 0);
+            let n = storage.update_if(&change.table, &matches, &mutation)?;
+            if n == 0 {
+                anyhow::bail!(
+                    "UPDATE on '{}' matched no row (keys: {:?})",
+                    change.table,
+                    change.key_values
+                );
+            }
+        }
+        ChangeOperation::Delete => {
+            let n = storage.delete_if(&change.table, &matches)?;
+            if n == 0 {
+                anyhow::bail!(
+                    "DELETE on '{}' matched no row (keys: {:?})",
+                    change.table,
+                    change.key_values
+                );
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1163,6 +1420,19 @@ pub fn verify_backup(dir: &Path) -> Result<()> {
 
 /// Restore database from backup
 pub fn restore_backup(dir: &Path, target: &Path, clean: bool) -> Result<()> {
+    let _ = restore_backup_into(dir, target, clean)?;
+    Ok(())
+}
+
+/// #5048: the same restore, handing back the storage it built.
+///
+/// `restore_backup` used to construct a `MemoryStorage`, fill it, print
+/// "Restore complete", and drop it. Nothing the caller could observe
+/// afterwards — which is exactly how a chain restore could report success
+/// over a database that existed nowhere. The chain needs this storage to
+/// apply deltas onto, and a test needs it to assert on the result instead
+/// of on a log line.
+pub fn restore_backup_into(dir: &Path, target: &Path, clean: bool) -> Result<MemoryStorage> {
     let manifest_file = dir.join("manifest.json");
 
     if !manifest_file.exists() {
@@ -1240,7 +1510,9 @@ pub fn restore_backup(dir: &Path, target: &Path, clean: bool) -> Result<()> {
     println!("   Tables restored: {}", manifest.tables.len());
     println!("   Total rows: {}", manifest.total_rows);
 
-    Ok(())
+    // #5048: hand the storage back so the caller can apply deltas on top
+    // of it, or assert on what was actually restored.
+    Ok(storage)
 }
 
 // ============================================================================
