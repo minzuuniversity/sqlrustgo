@@ -76,7 +76,16 @@ fn issue_4938_incremental_backup_references_parent() {
     create_incremental_backup_from_demo(&full_dir, &incr_dir, "sql").expect("incremental");
 
     let m = read_manifest(&incr_dir);
-    assert_eq!(m["backup_type"], "incremental");
+    // #4938 AC5: this entry point exports every table, so the manifest
+    // is labelled `Full`. It used to assert `incremental`, which pinned
+    // the wrong label — a restore operator reading that manifest would
+    // expect a delta to replay and get a second full copy instead.
+    // `parent_lsn` is still asserted below: the chain link is real even
+    // though the type is not.
+    assert_eq!(
+        m["backup_type"], "full",
+        "an all-tables export must be labelled `full`, not `incremental`"
+    );
     assert_eq!(
         m["parent_lsn"].as_str(),
         Some(parent_lsn.as_str()),
@@ -91,6 +100,53 @@ fn issue_4938_incremental_backup_references_parent() {
         m["lsn"].as_str(),
         Some(parent_lsn.as_str()),
         "incremental lsn must differ from parent lsn"
+    );
+}
+
+#[test]
+fn issue_4938_all_tables_export_is_not_labelled_incremental() {
+    // #4938 AC5, the property itself rather than one test's assertion.
+    //
+    // The defect was not a wrong string in one test: it was that
+    // `create_incremental_backup` exports every table and stamps the
+    // manifest `Incremental`. Anyone restoring from that manifest is
+    // told a delta exists when a second complete copy does.
+    //
+    // This pins the invariant on BOTH entry points, so putting the label
+    // back on either one fails here.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let full_dir = tmp.path().join("full");
+    let chain_dir = tmp.path().join("chained");
+
+    create_full_backup_from_demo(&full_dir, "sql").expect("full");
+    create_incremental_backup_from_demo(&full_dir, &chain_dir, "sql").expect("chained");
+
+    // Both directories contain a complete export of the demo dataset.
+    for (label, dir) in [("full", &full_dir), ("chained", &chain_dir)] {
+        let data = dir.join("data");
+        let files: Vec<_> = fs::read_dir(&data)
+            .expect("data dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            !files.is_empty(),
+            "{label} backup exported no table files, so the label check below proves nothing"
+        );
+    }
+
+    let m = read_manifest(&chain_dir);
+    assert_ne!(
+        m["backup_type"], "incremental",
+        "an export containing every table must not be labelled `incremental` \
+         (it is a full dump; use create_incremental_backup_with_changeset for a real delta)"
+    );
+    assert_eq!(m["backup_type"], "full");
+    // The chain link is real and must survive the relabelling.
+    assert_eq!(
+        m["parent_lsn"].as_str(),
+        read_manifest(&full_dir)["lsn"].as_str(),
+        "relabelling must not drop the parent link"
     );
 }
 
