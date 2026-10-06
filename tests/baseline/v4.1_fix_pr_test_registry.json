@@ -1,0 +1,253 @@
+{
+  "schema_version": 2,
+  "purpose": "SSOT for every regression test added by a v4.1.0 fix/fix-gate PR. Read by scripts/gate/check_fix_pr_test_registry.sh. Each entry pins a test file (or test bin name) that the corresponding PR must have added; deleting the file or renaming the bin name fails the gate. This is the fail-closed direction: the gate cannot be weakened by editing this file, only by writing a new entry per PR.",
+  "generated_at": "2026-10-06",
+  "generated_by": "audit of merged v4.1.0 fix PRs",
+  "policy": "Every fix/fix-gate/feat/feat-gate PR merged into develop/v4.1.0 must add at least one of (a) a new test file under tests/ or crates/, or (b) a meaningful mutation to an existing test that exercises the bug being fixed. This registry is the audit's outcome and the gate's SSOT.",
+  "scope": {
+    "included_paths": [
+      "tests/**/*.rs",
+      "crates/**/tests/**/*.rs"
+    ],
+    "fallback_paths": [
+      "scripts/repro_*.{py,sh}",
+      "scripts/gate/*.sh",
+      "docs/releases/v4.1.0/**/*.md"
+    ]
+  },
+  "forbidden_actions": [
+    "deleting the file or the bin name below — fails the gate",
+    "moving the test to `#[ignore]` without a registry ADR-008 exception — fails check_anti_ignore_gate.sh"
+  ],
+  "entries": [
+    {
+      "pr": 5001,
+      "issue": null,
+      "fix": "refactor: collapse 6 find_column_index copies into storage::engine",
+      "test_paths": [
+        "crates/storage/tests/ref_to_mut_escape_hatch_guard_test.rs"
+      ]
+    },
+    {
+      "pr": 5007,
+      "issue": 4995,
+      "fix": "ODKU / UPDATE 成功返回但一个字节都没改 (P0 数据正确性)",
+      "test_paths": [
+        "crates/storage/tests/odku_update_visibility_4995.rs"
+      ]
+    },
+    {
+      "pr": 5015,
+      "issue": 5009,
+      "fix": "ODKU VALUES(col) row reference + SHOW DATABASES lists user dbs",
+      "test_paths": [
+        "crates/executor/tests/issue_5009_show_databases_test.rs",
+        "crates/storage/tests/odku_update_visibility_4995.rs",
+        "tests/integration/ddl/show_databases_test.rs",
+        "tests/integration/dml/insert_odku_test.rs"
+      ]
+    },
+    {
+      "pr": 5010,
+      "issue": 4914,
+      "fix": "ROLLUP/CUBE 值键改无损编码，修分组合并缺陷",
+      "test_paths": [
+        "tests/integration/sql/rollup_cube_test.rs"
+      ]
+    },
+    {
+      "pr": 5024,
+      "issue": 5019,
+      "fix": "`AS new` ODKU 行别名 + `SHOW SCHEMAS` 同义词",
+      "test_paths": [
+        "crates/executor/tests/issue_5009_show_databases_test.rs",
+        "tests/integration/dml/insert_odku_test.rs"
+      ]
+    },
+    {
+      "pr": 5029,
+      "issue": 5012,
+      "fix": "concurrent MVCC GC must not yield client-visible errors",
+      "test_paths": [
+        "crates/storage/tests/issue_5012_mvcc_gc_concurrency_test.rs"
+      ]
+    },
+    {
+      "pr": 5030,
+      "issue": 4943,
+      "fix": "补 consumer gate 证据文件 + 门禁变异验证 (AC4/AC5)",
+      "test_paths": [
+        "docs/releases/v4.1.0/evidence/gmp_consumer_gate_20261005.md"
+      ],
+      "note": "Non-Rust evidence file consumed by gate scripts in scripts/gate/."
+    },
+    {
+      "pr": 5031,
+      "issue": 5019,
+      "fix": "SHOW SCHEMAS as synonym for SHOW DATABASES",
+      "test_paths": [
+        "crates/parser/tests/parser_coverage_tests.rs"
+      ]
+    },
+    {
+      "pr": 5033,
+      "issue": 5018,
+      "fix": "serialize env-mutating tests in io_delay",
+      "test_paths": [
+        "crates/storage/src/io_delay.rs"
+      ],
+      "note": "Existing test file mutated to hold a static Mutex<()>. Not a new file but a meaningful test infrastructure change."
+    },
+    {
+      "pr": 5034,
+      "issue": 4938,
+      "fix": "e2e tests for create_incremental_backup + chain restore",
+      "test_paths": [
+        "crates/tools/tests/incremental_backup_e2e_test.rs"
+      ]
+    },
+    {
+      "pr": 5035,
+      "issue": "5018, 5026, 5027, 5016",
+      "fix": "io_delay flaky + evidence-graph-gate 接线 + 删除死代码",
+      "test_paths": [
+        "scripts/gate/check_anti_fabrication.sh",
+        "scripts/gate/check_orphan_sources.sh"
+      ],
+      "note": "Two gate scripts modified. The fix removes backup_scheduler.rs dead code; this is verified by scripts/gate/check_orphan_sources.sh (file presence), not by a new Rust test."
+    },
+    {
+      "pr": 5036,
+      "issue": 4937,
+      "fix": "半同步复制真正门控主库提交 — 新增 BinlogAck 协议 + 端到端测试",
+      "test_paths": [
+        "crates/storage/tests/semisync_commit_gate_4937.rs"
+      ]
+    },
+    {
+      "pr": 5037,
+      "issue": 4914,
+      "fix": "ROLLUP/CUBE 分组键改用 Value，消除字符串往返",
+      "test_paths": [
+        "tests/integration/sql/rollup_cube_test.rs"
+      ]
+    },
+    {
+      "pr": 5005,
+      "issue": 4936,
+      "fix": "end-to-end replication test + 7 latent clippy defects",
+      "test_paths": [
+        "crates/storage/tests/e2e_binlog_replication_test.rs"
+      ]
+    },
+    {
+      "pr": 5006,
+      "issue": 4962,
+      "fix": "revert trigger/stored_proc scan_with_filter(&|_| true) — bench shows 4% regression",
+      "test_paths": [
+        "crates/storage/tests/hot_read_path_clone_guard_test.rs"
+      ]
+    },
+    {
+      "pr": 4996,
+      "issue": "4951, 4986",
+      "fix": "#4951 引入的 ~30% 读吞吐回退 + #4986 遗留的失效测试",
+      "test_paths": [
+        "crates/storage/tests/hot_read_path_clone_guard_test.rs"
+      ]
+    },
+    {
+      "pr": 4992,
+      "issue": "4986, 4982",
+      "fix": "GC 不得回收未提交版本，否则事务提交时静默丢数据",
+      "test_paths": [
+        "crates/storage/tests/gc_pending_version_test.rs"
+      ]
+    },
+    {
+      "pr": 4990,
+      "issue": "4951, 4980",
+      "fix": "AC2 — 移除 as_mut_self 逃逸口，4 字段打包进 RwLock<WriteState>",
+      "test_paths": [
+        "crates/storage/tests/ref_to_mut_escape_hatch_guard_test.rs"
+      ]
+    },
+    {
+      "pr": 4989,
+      "issue": 4983,
+      "fix": "engine_select.rs 12 处 + engine_cte 1 处迁移 (隔离测试 8/8 全绿)",
+      "test_paths": [
+        "crates/storage/tests/tx_isolation_and_escape_hatch_test.rs"
+      ]
+    },
+    {
+      "pr": 4985,
+      "issue": "4983, 4951",
+      "fix": "scan_in 接口：读路径可显式携带 reader_tx (隔离测试 5/2 → 7/1)",
+      "test_paths": [
+        "crates/storage/tests/tx_isolation_and_escape_hatch_test.rs"
+      ]
+    },
+    {
+      "pr": 4982,
+      "issue": 4974,
+      "fix": "未提交的写不再对其他连接可见 (写侧延迟可见 + 提交时提升)",
+      "test_paths": [
+        "crates/storage/tests/tx_isolation_and_escape_hatch_test.rs"
+      ]
+    },
+    {
+      "pr": 4980,
+      "issue": 4974,
+      "fix": "重复键错误必须返回 MySQL 标准 1062 而非 1105",
+      "test_paths": [
+        "crates/storage/tests/ref_to_mut_escape_hatch_guard_test.rs",
+        "crates/mysql-server/tests/dup_entry_error_code_test.rs"
+      ]
+    },
+    {
+      "pr": 4979,
+      "issue": 4978,
+      "fix": "MvccStorage 转发事务方法 (COMMIT 此前在包装下从未生效且被静默吞错)",
+      "test_paths": [
+        "crates/storage/tests/tx_isolation_and_escape_hatch_test.rs"
+      ]
+    },
+    {
+      "pr": 5023,
+      "issue": 4994,
+      "fix": "入库高并发 DELETE 复现脚本 (关闭时遗漏)",
+      "test_paths": [
+        "scripts/repro_4994_concurrent_delete.py"
+      ],
+      "note": "Python reproduction script (was named probe4994.sh in PR title; actual file is .py in scripts/). Used by reproduce probes (not a cargo test)."
+    },
+    {
+      "pr": 5038,
+      "issue": "4943, 4937",
+      "fix": "docs(release): #4943 / #4937 发布说明与证据 (关闭用)",
+      "test_paths": [
+        "docs/releases/v4.1.0/RELEASE_NOTES.md"
+      ],
+      "note": "Docs-only PR. Verified by file presence."
+    },
+    {
+      "pr": 5039,
+      "issue": 5025,
+      "fix": "docs(design): 多数据库表空间隔离 — 完整根因链与两条实现路径",
+      "test_paths": [
+        "docs/releases/v4.1.0/design/5025_DATABASE_ISOLATION_DESIGN.md"
+      ],
+      "note": "Design proposal only. Implementation not started."
+    },
+    {
+      "pr": 5014,
+      "issue": 4937,
+      "fix": "半同步复制移植落地 (26 个测试从未执行过)",
+      "test_paths": [
+        "crates/storage/src/semisync.rs"
+      ],
+      "note": "Module was already on mod graph; PR #5036 (#4937/#5036) added the real-world BinlogAck test (crates/storage/tests/semisync_commit_gate_4937.rs). PR #5014 alone only adds the mod hookup; the test is registered under #5036."
+    }
+  ]
+}
