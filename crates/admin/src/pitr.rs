@@ -65,6 +65,59 @@ pub fn pitr_replay(wal_path: &Path, target_time: u64) -> Result<PitrReport, Back
     pitr_replay_into(&data_dir, wal_path, target_time)
 }
 
+/// The process exit code for a completed replay.
+///
+/// #5055: `admin pitr` used to exit 0 unconditionally, after printing
+/// `pitr ok`, having restored nothing. The rule is deliberately
+/// conservative — anything short of a complete restore is a non-zero
+/// exit, because an operator scripting this needs the shell to notice:
+///
+/// - `0` — everything in scope applied.
+/// - `3` — some entries could not be applied. The directory is in a
+///   mixed state and does **not** match the target time.
+/// - `4` — nothing failed, but committed transactions existed in scope
+///   and nothing was applied. That is the "reported success, restored
+///   nothing" shape; it usually means the log and the data directory
+///   are not from the same base backup.
+///
+/// A legitimate zero-row restore (an empty target, or a log with
+/// nothing after the base) is not flagged: the test is not
+/// "applied == 0" but "applied == 0 *and* there was committed work".
+///
+/// Kept out of `main.rs` on purpose. Inline in the command arm it was
+/// untestable, and a mutation that restored the old "always 0"
+/// behaviour was caught only by an unrelated already-failing test.
+pub fn exit_code_for(report: &PitrReport) -> i32 {
+    if report.entries_failed > 0 {
+        return 3;
+    }
+    if report.is_suspiciously_empty() {
+        return 4;
+    }
+    0
+}
+
+/// Human-readable reasons for a non-zero [`exit_code_for`].
+pub fn incompleteness_warnings(report: &PitrReport) -> Vec<String> {
+    let mut out = Vec::new();
+    if report.entries_failed > 0 {
+        out.push(format!(
+            "pitr: INCOMPLETE — {} entries could not be applied; the data \
+             directory does not match the target time",
+            report.entries_failed
+        ));
+    }
+    if report.is_suspiciously_empty() {
+        out.push(format!(
+            "pitr: WARNING — {} transactions were committed by the target time \
+             but 0 entries were applied; the data directory may not match the \
+             log's base backup",
+            report.transactions_committed
+        ));
+    }
+    out
+}
+
 pub fn parse_target_time(s: &str) -> Result<u64, BackupError> {
     use chrono::DateTime;
     let formats = [
@@ -137,5 +190,60 @@ mod tests {
     #[test]
     fn parse_target_time_invalid() {
         assert!(parse_target_time("not a time").is_err());
+    }
+
+    fn report_with(applied: usize, failed: usize, committed: usize) -> PitrReport {
+        PitrReport {
+            transactions_committed: committed,
+            entries_applied: applied,
+            entries_failed: failed,
+            ..Default::default()
+        }
+    }
+
+    /// #5055: the exact shape the old CLI called success — committed
+    /// work in scope, nothing applied, exit 0.
+    #[test]
+    fn exit_code_is_non_zero_when_nothing_was_restored() {
+        let r = report_with(0, 0, 7);
+        assert_eq!(exit_code_for(&r), 4);
+        assert!(!incompleteness_warnings(&r).is_empty());
+    }
+
+    #[test]
+    fn exit_code_is_non_zero_when_entries_failed() {
+        let r = report_with(3, 2, 1);
+        assert_eq!(exit_code_for(&r), 3);
+    }
+
+    /// Failures dominate: a restore that also applied rows is still
+    /// incomplete, and the "nothing applied" warning would be
+    /// misleading on top of it.
+    #[test]
+    fn failures_take_precedence_over_the_empty_warning() {
+        let r = report_with(0, 5, 2);
+        assert_eq!(exit_code_for(&r), 3);
+        let warnings = incompleteness_warnings(&r);
+        assert_eq!(
+            warnings.len(),
+            1,
+            "expected only the failure notice: {warnings:?}"
+        );
+        assert!(warnings[0].contains("INCOMPLETE"));
+    }
+
+    #[test]
+    fn exit_code_is_zero_for_a_clean_restore() {
+        assert_eq!(exit_code_for(&report_with(10, 0, 3)), 0);
+        assert!(incompleteness_warnings(&report_with(10, 0, 3)).is_empty());
+    }
+
+    /// A restore with no committed work and nothing to do is
+    /// legitimate, not suspicious.
+    #[test]
+    fn empty_log_is_not_suspicious() {
+        let r = report_with(0, 0, 0);
+        assert_eq!(exit_code_for(&r), 0);
+        assert!(incompleteness_warnings(&r).is_empty());
     }
 }

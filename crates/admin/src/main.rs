@@ -183,27 +183,24 @@ fn dispatch(cli: Cli) -> Result<u8, Box<dyn std::error::Error>> {
             if let Some(e) = &r.first_error {
                 eprintln!("pitr: first replay error: {e}");
             }
-            // Exit non-zero when the restore is not clean. "ok" here
-            // used to be a claim about work that never happened.
-            if r.entries_failed > 0 {
-                eprintln!(
-                    "pitr: INCOMPLETE — {} entries could not be applied; \
-                     the data directory does not match the target time",
-                    r.entries_failed
-                );
-                return Ok(3);
+            // #5055: exit non-zero when the restore is not clean. "ok"
+            // here used to be a claim about work that never happened.
+            // The decision lives in `pitr::exit_code_for` so it can be
+            // tested; when it was inline in this arm, a mutation that
+            // restored the old "always ok" behaviour was caught only by
+            // an unrelated already-failing test.
+            match pitr::exit_code_for(&r) {
+                0 => {
+                    println!("pitr ok");
+                    Ok(0)
+                }
+                other => {
+                    for line in pitr::incompleteness_warnings(&r) {
+                        eprintln!("{line}");
+                    }
+                    Ok(other as u8)
+                }
             }
-            if r.is_suspiciously_empty() {
-                eprintln!(
-                    "pitr: WARNING — {} transactions were committed by the target \
-                     time but 0 entries were applied; the data directory may not \
-                     match the log's base backup",
-                    r.transactions_committed
-                );
-                return Ok(4);
-            }
-            println!("pitr ok");
-            Ok(0)
         }
         Commands::Status {
             host,
