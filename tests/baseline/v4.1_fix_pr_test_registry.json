@@ -317,6 +317,16 @@
         "crates/executor/tests/issue_4847_transaction_semantics_test.rs"
       ],
       "note": "由 PR #5069 合并后的 executor 全量跑出 1 个 FAILED 而追出：issue_4847_transaction_semantics_test 断言的是 #4519 修复前的缺陷行为（INSERT 后 BEGIN 必须失败），d3457e9c7c 早已改掉该契约，git merge-base 证实它早于本批全部 PR，非本批回归。重写该测试改为断言「ROLLBACK 必须撤销本事务内的工作」，并据此实测出真缺陷：BEGIN;INSERT;BEGIN;ROLLBACK 会提交 INSERT 使 ROLLBACK 变空操作（探针 P5 ROLLBACK_LOST=true）。新增 6 项回归测试。变异 M17(退回无条件 drain) 3 FAILED / M18(去掉 COMMIT 的标志清零) 1 FAILED / M19(去掉 ROLLBACK 的清零) 1 FAILED / M20(不置 true) 3 FAILED，四个全部 CAUGHT 且互不遮蔽。M18/M19 首轮存活，追到底发现是 fixture 缺陷而非覆盖缺口：成功的隐式 DML 会自行提交使 current_tx_id 归 None，begin_transaction 在 (false,_) 分支短路、根本读不到标志；只有失败的隐式 DML（主键冲突经 ? 返回、不提交）才泄漏事务使标志可观测 —— 已改用 seeded_pk()+leak_implicit_tx()。"
+    },
+    {
+      "pr": 5071,
+      "issue": "4948, 4915",
+      "fix": "COMMIT 深拷贝全库 —— committed_tables 与 tables 改为共享 Arc<Vec<Record>>，commit 时的赋值从 O(总行数) 深拷贝降为 O(表数) 浅拷贝",
+      "test_paths": [
+        "crates/storage/src/engine.rs",
+        "crates/storage/tests/measure_commit_clone_4948.rs"
+      ],
+      "note": "空事务 COMMIT 实测：50 万行 49.127ms -> 0.003ms，曲线由线性变平坦（crates/storage/tests/measure_commit_clone_4948.rs，#[ignore] 手动跑，不入常规套件）。用 Arc::strong_count / Arc::ptr_eq 做结构性断言而非墙钟 —— 避免重演 wal_legacy.rs:1473 硬编码 <2s 在 CPU 争用下间歇失败的错误。变异 M21(commit_transaction_with_log 退回深拷贝) 3 FAILED；M22(trait commit_transaction 退回深拷贝) 1 FAILED。M22 首轮存活是真覆盖缺口：第一版测试只调 commit_transaction_with_log，而 trait 的 commit_transaction 才是引擎 autocommit/COMMIT 的实际热路径 —— 已把测试参数化为两条路径各跑一遍。两处事实更正：(1) issue 称 tables 是 HashMap<String, TableData>，实为 HashMap<String, Vec<Record>>；(2) issue 称这是 breaking change，实则 SchemaSnapshot 与内部字段是两个结构，在 snapshot_schema 边界物化即可保持公共 API 不变，故验收标准第 3 条（CHANGELOG 与迁移说明）不触发。验收标准第 2 条（内存曲线）未测 —— 结构性推导常驻应从约 2x 降到约 1x，但未做 RSS 实测，不据此宣称达成。顺带挖出既有缺陷（已 #[ignore] 留复现用例）：MemoryStorage::rollback_transaction 对 TxLog 里已作用域化的表名又套一层 tbl()，undo 静默失效；既有 test_rollback_removes_inserted_rows 用未作用域的裸 key 预置，断言碰巧成立故抓不到。"
     }
   ]
 }
