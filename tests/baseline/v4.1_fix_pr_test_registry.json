@@ -269,6 +269,15 @@
         "crates/storage/tests/index_and_table_survive_restart_5025.rs"
       ],
       "note": "13 + 5 项。变异 M1-M8 全部被抓住。两处按反造假原则显式标注：(1) M3（删除 load_all_tables 里对 _idx_ 文件的跳过）未被任何测试抓住 —— 序列化的 BPlusTree 本就解析不成 StoredTableData，外层 if let Ok 已吞掉，属无效变异，该跳过保留但不计为覆盖证据；(2) M6（BufferedDelete 撤销改空操作）首轮存活，暴露真实覆盖缺口 —— 所有 delete 测试都在删前 flush 过，行已搬进 tables，回滚走 DeleteRow。补 rollback_restores_a_committed_but_unflushed_row_deleted_in_the_transaction 后抓住。"
+    },
+    {
+      "pr": 5066,
+      "issue": 5059,
+      "fix": "补齐 #5059 验收标准 #2 —— 「同一行被两个并发事务写」的场景此前零覆盖",
+      "test_paths": [
+        "crates/storage/tests/file_storage_concurrent_same_row_5059.rs"
+      ],
+      "note": "3 项。变异 M11（把 BufferedInsert 撤销换回 #5059 之前的二次作用域 blanket sweep）3/3 FAILED，且 c1_concurrent_begin_commit_rollback 同时复现 FAILED。诚实标注一个层边界：这些测试直接驱动 StorageEngine，在唯一性校验层（ExecutionEngine，src/engine_dml.rs 的 SqlError::DuplicateKey）之下 —— 探针实测 FileStorage::insert 收下两条同主键的行都会成功并落盘，那是分层设计而非缺陷，故本文件刻意不断言主键唯一性。"
     }
   ]
 }
