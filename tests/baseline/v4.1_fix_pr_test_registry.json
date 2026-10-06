@@ -288,6 +288,16 @@
         "crates/storage/tests/file_storage_concurrent_same_row_5059.rs"
       ],
       "note": "3 项。变异 M11（把 BufferedInsert 撤销换回 #5059 之前的二次作用域 blanket sweep）3/3 FAILED，且 c1_concurrent_begin_commit_rollback 同时复现 FAILED。诚实标注一个层边界：这些测试直接驱动 StorageEngine，在唯一性校验层（ExecutionEngine，src/engine_dml.rs 的 SqlError::DuplicateKey）之下 —— 探针实测 FileStorage::insert 收下两条同主键的行都会成功并落盘，那是分层设计而非缺陷，故本文件刻意不断言主键唯一性。"
+    },
+    {
+      "pr": 5068,
+      "issue": "4846, 4944",
+      "fix": "PK 点查快路径静默丢行 —— parse_literal_token 不剥引号（影响所有文本主键）+ scan_pk 无法表达 PAD SPACE（影响 CHAR 主键）",
+      "test_paths": [
+        "crates/executor/tests/pk_fast_path_char_pad_space_4846.rs",
+        "crates/executor/tests/wp_g_legacy.rs"
+      ],
+      "note": "5 项新增 + wp_g_legacy 摘掉 2 个 #[ignore]（4 通过/8 忽略 -> 6 通过/6 忽略）。变异 M13（CHAR 守卫失效）3 项 FAILED；M14（撤掉引号剥离）1 项 FAILED，两者互不遮蔽。修法选择：不去改 scan_pk 实现 PAD SPACE —— B+Tree 精确查找无法在不扫描的前提下表达「忽略尾部空格」这一非前缀语义；改为 CHAR 列跳过快路径。代价是 CHAR 主键失去 O(log N) 点查，正确性优先。"
     }
   ]
 }

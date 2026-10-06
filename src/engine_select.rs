@@ -1382,11 +1382,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // below.
             let table_info = storage.get_table_info_in(&current_db, lookup_table)?;
             let pk_column = crate::engine_select_pk::resolve_pk_column(&table_info);
-            let pk_lookup_rows = if let Some(pk_value) =
-                crate::engine_select_pk::try_extract_pk_eq_with_col(
-                    &select.where_clause,
-                    &pk_column,
-                ) {
+            // #4846: the fast path below skips `evaluate_where_clause`
+            // entirely and returns the scanned row unfiltered, so it is
+            // only sound when `scan_pk` agrees with `sql_compare`. For a
+            // CHAR primary key it does not — PAD SPACE makes `id = 'U1'`
+            // match the stored `"U1        "`, while `scan_pk`'s strict
+            // equality finds nothing. Take the ordinary scan path there.
+            let pk_lookup_semantics_ok =
+                crate::engine_select_pk::pk_fast_path_preserves_semantics(&table_info, &pk_column);
+            let pk_lookup_rows = if !pk_lookup_semantics_ok {
+                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &current_db)?
+            } else if let Some(pk_value) = crate::engine_select_pk::try_extract_pk_eq_with_col(
+                &select.where_clause,
+                &pk_column,
+            ) {
                 let row = storage.scan_pk(lookup_table, &pk_column, &pk_value)?;
                 self.instrumentation.on_seq_scan_start(lookup_table);
                 // Phase B Step 4.2: also record the AHI access so the
