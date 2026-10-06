@@ -1130,6 +1130,15 @@ pub enum MergeAction {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CreateTableStatement {
     pub name: String,
+    /// Optional database prefix from `CREATE TABLE db.table`.
+    ///
+    /// `SELECT` has carried this since #4251, but `CREATE TABLE` did not:
+    /// the name parser stopped at the first identifier, so
+    /// `CREATE TABLE d1.t (id INT)` produced `name: "d1"` with an *empty*
+    /// column list — a table named `d1` with no columns, and the rest of
+    /// the statement silently reinterpreted. That is worse than a parse
+    /// error: it reported success and created the wrong thing.
+    pub schema: Option<String>,
     pub columns: Vec<ColumnDefinition>,
     pub constraints: Vec<TableConstraint>,
     pub if_not_exists: bool,
@@ -3338,6 +3347,8 @@ impl Parser {
 
         Ok(Statement::CreateTable(CreateTableStatement {
             name,
+            // VIRTUAL TABLE has no database-qualified form in this grammar.
+            schema: None,
             columns,
             constraints: Vec::new(),
             if_not_exists,
@@ -11587,10 +11598,23 @@ impl Parser {
             false
         };
 
-        let name = match self.next() {
+        // Accept an optional `db.` prefix. Without this the name parser
+        // stopped at the first identifier and `CREATE TABLE d1.t (id INT)`
+        // yielded `name: "d1"` with no columns — the statement then
+        // "succeeded" while creating the wrong table.
+        let mut schema: Option<String> = None;
+        let mut name = match self.next() {
             Some(Token::Identifier(name)) => name,
             _ => return Err("Expected table name".to_string()),
         };
+        if matches!(self.current(), Some(Token::Dot)) {
+            self.next();
+            schema = Some(name);
+            name = match self.next() {
+                Some(Token::Identifier(name)) => name,
+                _ => return Err("Expected table name after database qualifier".to_string()),
+            };
+        }
 
         let mut columns = Vec::new();
         let mut constraints = Vec::new();
@@ -11852,6 +11876,7 @@ impl Parser {
 
         Ok(Statement::CreateTable(CreateTableStatement {
             name,
+            schema,
             columns,
             constraints,
             if_not_exists,
@@ -20243,4 +20268,63 @@ fn test_parse_quantile_cont_array_v312_46() {
     } else {
         panic!("expected Statement::Select");
     }
+}
+
+// --- #5025: `CREATE TABLE db.table` must not silently mis-parse ------
+//
+// The name parser used to stop at the first identifier, so
+// `CREATE TABLE d1.t (id INT)` produced `name: "d1"` with an *empty*
+// column list. That is worse than a parse error: the statement
+// reported success and created a table named `d1` with no columns,
+// while the real table `t` was never created.
+
+#[test]
+fn test_parse_create_table_with_database_qualifier() {
+    let r = parse("CREATE TABLE d1.t (id INT PRIMARY KEY)").expect("should parse");
+    match r {
+        Statement::CreateTable(ct) => {
+            assert_eq!(ct.schema.as_deref(), Some("d1"), "database prefix lost");
+            assert_eq!(ct.name, "t", "table name should not include the database");
+            assert_eq!(ct.columns.len(), 1, "columns were dropped");
+        }
+        other => panic!("expected CreateTable, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_parse_create_table_without_database_qualifier() {
+    let r = parse("CREATE TABLE t (id INT)").expect("should parse");
+    match r {
+        Statement::CreateTable(ct) => {
+            assert_eq!(ct.schema, None, "unqualified table must not gain a schema");
+            assert_eq!(ct.name, "t");
+            assert_eq!(ct.columns.len(), 1);
+        }
+        other => panic!("expected CreateTable, got {:?}", other),
+    }
+}
+
+/// `CREATE TABLE db.t AS SELECT ...` goes through a different branch
+/// than the column-list form, and it lost the qualifier the same way.
+#[test]
+fn test_parse_create_table_as_select_with_database_qualifier() {
+    let r = parse("CREATE TABLE d1.t AS SELECT 1 AS x").expect("should parse");
+    match r {
+        Statement::CreateTable(ct) => {
+            assert_eq!(ct.schema.as_deref(), Some("d1"));
+            assert_eq!(ct.name, "t");
+            assert!(ct.select.is_some(), "the SELECT was dropped");
+        }
+        other => panic!("expected CreateTable, got {:?}", other),
+    }
+}
+
+/// A dangling qualifier must be an error, not a table named after the
+/// database.
+#[test]
+fn test_parse_create_table_rejects_dangling_qualifier() {
+    assert!(
+        parse("CREATE TABLE d1. (id INT)").is_err(),
+        "a database qualifier with no table name must not parse"
+    );
 }
