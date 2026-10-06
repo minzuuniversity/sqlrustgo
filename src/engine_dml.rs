@@ -243,6 +243,13 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             .map(|(i, _)| i)
             .collect();
         let mut storage = engine.storage.write();
+        // Re-assert this connection's tx id under the write lock: the
+        // shared slot may have been stomped by another connection's
+        // begin between our begin and here, which would stamp MVCC
+        // versions with a foreign tx id that our commit never promotes.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
         for record in &all_records {
             // Build the filter slice ONCE per record: for each PK column of the
             // incoming row, take its value. If no PK is declared, fall back to
@@ -480,6 +487,10 @@ pub fn execute_insert<S: StorageEngine + 'static>(
 
     {
         let mut storage = engine.storage.write();
+        // Same tx-id re-assert as above, scoped to this critical section.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
 
         // BLK-1 (docs/releases/v4.1.0/ISSUES_PLAN.md §4.1): allocate
         // AUTO_INCREMENT ids from the table's current MAX(id) while
@@ -995,6 +1006,10 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // source of the execute_update 3.6% inuse footprint shown in V3
         // jeprof. One scan, one clone (for undo), iterate owned rows.
         let mut storage = engine.storage.write();
+        // Same tx-id re-assert as execute_insert, scoped here.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
         // V312-18 / Issue #3971: route the no-WHERE UPDATE path through
         // delete+insert so the WAL layer (which only hooks delete/insert)
         // correctly records each row update for crash recovery. The prior
@@ -1179,6 +1194,10 @@ pub fn execute_update<S: StorageEngine + 'static>(
 
     {
         let mut storage = engine.storage.write();
+        // Same tx-id re-assert as execute_insert, scoped here.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
         if !table_info.check_constraints.is_empty() {
             let col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -1330,6 +1349,10 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         let prior_rows_for_undo: Vec<Vec<Value>> = engine.scan_for_reader(&table_name)?;
         let count = {
             let mut storage = engine.storage.write();
+            // Same tx-id re-assert as execute_insert, scoped here.
+            if let Some(id) = engine.tx_session.lock().current_tx_id {
+                storage.set_current_tx_id(id.as_u64());
+            }
             storage.delete(&table_name, &[])?
         };
         // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Delete
@@ -1451,6 +1474,10 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         // (file_storage.rs:2978 / :3001-3007), and only clones the
         // matching row for UndoOp::DeleteRow (O(1)).
         let mut storage = engine.storage.write();
+        // Same tx-id re-assert as execute_insert, scoped here.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
         let row = &rows_to_delete[0];
         let key_values: Vec<Value> = use_indices
             .iter()
@@ -1474,6 +1501,10 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 
         {
             let mut storage = engine.storage.write();
+            // Same tx-id re-assert as execute_insert, scoped here.
+            if let Some(id) = engine.tx_session.lock().current_tx_id {
+                storage.set_current_tx_id(id.as_u64());
+            }
             // First drop the full table to flush any buffered inserts
             // and to provide a clean slate (this is what the legacy
             // code did).
@@ -1718,6 +1749,10 @@ fn apply_multi_table_updates<S: StorageEngine + 'static>(
     total_count: usize,
 ) -> SqlResult<ExecutorResult> {
     let mut storage = engine.storage.write();
+    // Same tx-id re-assert as execute_insert, scoped here.
+    if let Some(id) = engine.tx_session.lock().current_tx_id {
+        storage.set_current_tx_id(id.as_u64());
+    }
     for (t, tref) in table_refs.iter().enumerate() {
         let pairs = &per_table_updates[t];
         if pairs.is_empty() {
@@ -1812,6 +1847,10 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
 
     let mut total = 0usize;
     let mut storage = engine.storage.write();
+    // Same tx-id re-assert as execute_insert, scoped here.
+    if let Some(id) = engine.tx_session.lock().current_tx_id {
+        storage.set_current_tx_id(id.as_u64());
+    }
     for (t, tref) in source_refs.iter().enumerate() {
         if !target_refs.iter().any(|x| x.name == tref.name) {
             continue;

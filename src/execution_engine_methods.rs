@@ -1603,6 +1603,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // V312-85 / Issue #4519: drain the implicit TX.
             let prev_tx = self.tx_session.lock().current_tx_id;
             let mut storage = self.storage.write();
+            // Re-assert the drained tx id so its pending versions are
+            // the ones promoted, not whichever tx last used the slot.
+            if let Some(pt) = prev_tx {
+                storage.set_current_tx_id(pt.as_u64());
+            }
             let _ = storage.commit_transaction();
             drop(storage);
             self.tx_session.lock().current_tx_id = None;
@@ -1674,6 +1679,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the COMMIT. Same fallback as `begin_transaction`.
         let lockfree_ok = {
             let storage = self.storage.read();
+            // Re-assert our tx id via the shared setter: no writer can
+            // interleave under this read guard, so the lockfree promote's
+            // capture inside sees OUR id rather than a stomped slot.
+            storage.set_current_tx_id_shared(tx_id.as_u64());
             storage.commit_transaction_lockfree().is_ok()
         };
         if lockfree_ok {
@@ -1689,6 +1698,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Fallback: lockfree not supported.
             let mut storage = self.storage.write();
             {
+                storage.set_current_tx_id(tx_id.as_u64());
                 let _ = storage.commit_transaction();
                 // F-16 Gap Locking: release all gap locks on commit
                 storage.release_all_gap_locks(tx_id.as_u64());
@@ -1869,6 +1879,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // time, inside the closure) — this is the same as the legacy path.
         {
             let storage_read = self.storage.read();
+            // Re-assert our tx id so the lockfree rollback discards THIS
+            // tx's buffers, not a foreign id captured from a stomped slot.
+            storage_read.set_current_tx_id_shared(tx_id.as_u64());
             let _ = storage_read.rollback_transaction_lockfree();
         }
         let storage = self.storage.clone();
@@ -1876,6 +1889,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .lock()
             .rollback_with_undo(tx_id, move |rec| {
                 let mut storage = storage.write();
+                // Undo writes must be stamped with the rolled-back tx id
+                // or they leak as foreign pending versions.
+                storage.set_current_tx_id(tx_id.as_u64());
                 match rec {
                     sqlrustgo_transaction::savepoint::UndoRecord::Insert { table, key, row } => {
                         // v312-60: fall back to full-row match when the
@@ -2000,6 +2016,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // "confirmed then lost" shape this issue reports. It used to
             // be `let _ =`, which discarded exactly that signal.
             let mut storage = self.storage.write();
+            // Re-assert our tx id so the capture inside
+            // `commit_transaction` promotes THIS connection's pending
+            // versions, not whichever tx last touched the shared slot.
+            storage.set_current_tx_id(tx_id.as_u64());
             storage.commit_transaction()?;
             // F-16 Gap Locking: release all gap locks on commit
             storage.release_all_gap_locks(tx_id.as_u64());
