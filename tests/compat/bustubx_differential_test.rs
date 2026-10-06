@@ -18,11 +18,23 @@ fn run_sql(sqlrustgo: bool, sql: &str) -> String {
     };
 
     let output = if sqlrustgo {
-        Command::new(&bin)
-            .args(["sqlite", "--batch", "--mode", "csv", "--headers", "true", ":memory:"])
+        let db_dir = make_db_dir();
+        let out = Command::new(&bin)
+            .args([
+                "sqlite",
+                "--batch",
+                "--mode",
+                "csv",
+                "--headers",
+                "true",
+                "--cmd",
+            ])
             .arg(sql)
+            .arg(&db_dir)
             .output()
-            .expect("Failed to execute sqlrustgo")
+            .expect("Failed to execute sqlrustgo");
+        let _ = std::fs::remove_dir_all(&db_dir);
+        out
     } else {
         Command::new(&bin)
             .args(["-csv", "-header", ":memory:"])

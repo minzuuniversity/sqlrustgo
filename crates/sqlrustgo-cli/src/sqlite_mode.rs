@@ -92,6 +92,24 @@ impl SqliteMode {
     }
 
     /// Extract column names from a SELECT statement via the parser.
+    /// Column-name extraction for compound set operations. sqlite3 names
+    /// a UNION/INTERSECT/EXCEPT result after the LEFTMOST SELECT; an empty
+    /// Vec here renders a blank CSV header line, which desynchronizes
+    /// header-row accounting for consumers (`--headers true`).
+    fn stmt_column_names(stmt: &Statement) -> Vec<String> {
+        match stmt {
+            Statement::Select(sel) => sel
+                .columns
+                .iter()
+                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                .collect(),
+            Statement::Union(u) => Self::stmt_column_names(&u.left),
+            Statement::Intersect(i) => Self::stmt_column_names(&i.left),
+            Statement::Except(e) => Self::stmt_column_names(&e.left),
+            _ => Vec::new(),
+        }
+    }
+
     fn extract_columns(&self, sql: &str) -> Result<Vec<String>, CliError> {
         match parse(sql) {
             Ok(Statement::Select(ref sel)) => Ok(sel
@@ -124,6 +142,9 @@ impl SqliteMode {
                     Ok(Vec::new())
                 }
             }
+            Ok(Statement::Union(ref u)) => Ok(Self::stmt_column_names(&u.left)),
+            Ok(Statement::Intersect(ref i)) => Ok(Self::stmt_column_names(&i.left)),
+            Ok(Statement::Except(ref e)) => Ok(Self::stmt_column_names(&e.left)),
             Ok(_) => Ok(Vec::new()),
             Err(e) => Err(CliError::Parse(format!("{:?}", e))),
         }
@@ -511,13 +532,12 @@ impl SqliteMode {
     }
 
     pub fn run_batch(&mut self, sql: &str) -> i32 {
-        match self.execute_sql(sql) {
-            Ok(_) => EXIT_OK,
-            Err(e) => {
-                eprintln!("{}", e);
-                1
-            }
-        }
+        // `--cmd` may carry a whole multi-statement batch ("CREATE ...;
+        // INSERT ...; SELECT ..."). Passing it unsplit to one execute_sql
+        // call only surfaces the FIRST statement's result (later results
+        // never print). Reuse the stdin splitter path so `--cmd` and
+        // `--batch` behave identically.
+        self.run_batch_stdin_with_input(vec![sql.to_string()])
     }
 
     pub fn run_batch_stdin(&mut self) -> i32 {
