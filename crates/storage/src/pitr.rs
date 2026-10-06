@@ -143,10 +143,8 @@ pub fn replay_entries_until<S: StorageEngine>(
                     committed.insert(entry.tx_id);
                 }
             }
-            WalEntryType::Rollback => {
-                if open.remove(&entry.tx_id) {
-                    aborted.insert(entry.tx_id);
-                }
+            WalEntryType::Rollback if open.remove(&entry.tx_id) => {
+                aborted.insert(entry.tx_id);
             }
             _ => {}
         }

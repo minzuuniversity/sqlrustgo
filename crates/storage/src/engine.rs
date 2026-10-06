@@ -955,12 +955,12 @@ pub const DEFAULT_DATABASE: &str = "default";
 /// A control character is used rather than `.` because table names may
 /// legitimately contain dots (`t.2024`), and a `.` separator would make
 /// `db="a", table="b.t"` collide with `db="a.b", table="t"`.
-pub(crate) const DB_SEP: char = '\u{1}';
+const DB_SEP: char = '\u{1}';
 
 /// #5025: scope a bare table name to a database.
 #[inline]
 pub(crate) fn scoped_key(db: &str, table: &str) -> String {
-    format!("{}\u{1}{}", db.to_lowercase(), table.to_lowercase())
+    format!("{}{}{}", db.to_lowercase(), DB_SEP, table.to_lowercase())
 }
 
 pub type Record = Vec<Value>;
@@ -1759,11 +1759,6 @@ impl MemoryStorage {
     #[inline]
     fn tbl(&self, table: impl AsRef<str>) -> String {
         scoped_key(&self.current_db, table.as_ref())
-    }
-
-    /// #5025: the active database, as a bare name.
-    fn db(&self) -> &str {
-        &self.current_db
     }
 
     pub fn new() -> Self {

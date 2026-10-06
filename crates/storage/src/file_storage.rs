@@ -614,7 +614,7 @@ impl FileStorage {
         }
         let tail = &log.entries[log.persisted..];
         let path = self.change_log_path();
-        let mut file = std::fs::OpenOptions::new()
+        let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&path)?;
@@ -1884,7 +1884,7 @@ impl FileStorage {
     pub fn has_index(&self, table_name: &str, column_name: &str) -> bool {
         self.indexes
             .read()
-            .map(|indexes| indexes.contains_key(&(self.tbl(&table_name), column_name.to_string())))
+            .map(|indexes| indexes.contains_key(&(self.tbl(table_name), column_name.to_string())))
             .unwrap_or(false)
     }
 
@@ -1892,7 +1892,7 @@ impl FileStorage {
     pub fn get_index(&self, table_name: &str, column_name: &str) -> Option<BPlusTree> {
         self.indexes.read().ok().and_then(|indexes| {
             indexes
-                .get(&(self.tbl(&table_name), column_name.to_string()))
+                .get(&(self.tbl(table_name), column_name.to_string()))
                 .cloned()
         })
     }
@@ -1929,7 +1929,7 @@ impl FileStorage {
 
         // Store in memory
         if let Ok(mut indexes) = self.indexes.write() {
-            let ik = self.tbl(&table_name);
+            let ik = self.tbl(table_name);
             indexes.insert((ik, column_name.to_string()), index);
         }
 
@@ -2022,7 +2022,7 @@ impl FileStorage {
     pub fn search_index(&self, table_name: &str, column_name: &str, key: i64) -> Option<u32> {
         self.indexes.read().ok().and_then(|indexes| {
             indexes
-                .get(&(self.tbl(&table_name), column_name.to_string()))
+                .get(&(self.tbl(table_name), column_name.to_string()))
                 .and_then(|index| index.search(key))
         })
     }
@@ -2040,7 +2040,7 @@ impl FileStorage {
             .ok()
             .and_then(|indexes| {
                 indexes
-                    .get(&(self.tbl(&table_name), column_name.to_string()))
+                    .get(&(self.tbl(table_name), column_name.to_string()))
                     .map(|index| index.range_query(start, end))
             })
             .unwrap_or_default()
@@ -4195,7 +4195,7 @@ impl FileStorage {
                 let mut result: Option<(Vec<ColumnDefinition>, u32, usize)> = None;
                 if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
                     &self.current_db.read().unwrap(),
-                    &table,
+                    table,
                 )) {
                     start_row_id = data.rows.len() as u32;
                     data.rows.extend(records.iter().cloned());
@@ -4249,7 +4249,7 @@ impl FileStorage {
                         let row_count = records.len();
                         if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
                             &self.current_db.read().unwrap(),
-                            &table,
+                            table,
                         )) {
                             let start_row_id = data.rows.len();
                             data.rows.extend(records.iter().cloned());
@@ -4296,7 +4296,7 @@ impl FileStorage {
                     let row_count = records.len();
                     if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
                         &self.current_db.read().unwrap(),
-                        &table,
+                        table,
                     )) {
                         let start_row_id = data.rows.len();
                         data.rows.extend(records);
@@ -4354,7 +4354,7 @@ impl FileStorage {
             return;
         }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(self.tbl(&table), pk_col_name.clone())) {
+            if let Some(index) = indexes.get_mut(&(self.tbl(table), pk_col_name.clone())) {
                 for (ikey, rid) in updates {
                     index.insert(ikey, rid);
                 }
@@ -4407,7 +4407,7 @@ impl FileStorage {
             return;
         }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(self.tbl(&table), pk_col_name.clone())) {
+            if let Some(index) = indexes.get_mut(&(self.tbl(table), pk_col_name.clone())) {
                 for (ikey, rid) in updates {
                     index.insert(ikey, rid);
                 }
@@ -5261,7 +5261,7 @@ impl StorageEngine for FileStorage {
 
             // Snapshot rows for ROLLBACK (same as `delete`).
             let removed_pks: Vec<Value> = if let Some(ref mut data) = s.tables.get_mut(
-                &crate::engine::scoped_key(&self.current_db.read().unwrap(), &table),
+                &crate::engine::scoped_key(&self.current_db.read().unwrap(), table),
             ) {
                 let original_len = data.rows.len();
 
@@ -5723,7 +5723,7 @@ impl StorageEngine for FileStorage {
                 .map_err(SqlError::from)?;
 
             // Store in memory
-            indexes.insert((self.tbl(&table), column_name), index);
+            indexes.insert((self.tbl(table), column_name), index);
         }
 
         Ok(())
@@ -5766,7 +5766,7 @@ impl StorageEngine for FileStorage {
         Self::with_write_lock(self, |s| {
             if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
                 &self.current_db.read().unwrap(),
-                &table,
+                table,
             )) {
                 data.info.columns.push(column);
                 // V312-72 / Issue #4647: backfill every existing row with
@@ -5995,7 +5995,7 @@ impl StorageEngine for FileStorage {
         let key = crate::engine::scoped_key(db, table);
         Ok(self
             .with_read_lock(|st| st.tables.get(&key).map(|t| t.rows.clone()))
-            .unwrap_or_else(|| Vec::new()))
+            .unwrap_or_default())
     }
 
     fn has_table_in(&self, db: &str, table: &str) -> bool {
