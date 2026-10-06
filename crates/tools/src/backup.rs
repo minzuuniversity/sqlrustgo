@@ -691,7 +691,8 @@ fn create_incremental_backup_from_storage(
         // restore operator believe they had a delta to replay when they
         // actually had a second complete copy. It is `Full` now.
         //
-        // The engine has no change capture, so there is no honest way
+        // The engine has no *versioned* change capture, so there is no
+        // honest way
         // for this entry point to produce a real delta — a caller with
         // an actual change set wants
         // `create_incremental_backup_with_changeset`, which exports only
@@ -715,7 +716,7 @@ fn create_incremental_backup_from_storage(
 
     println!();
     println!("⚠️  Note: this exported ALL tables — it is a full dump, not a delta.");
-    println!("   The engine has no change capture. For a real incremental backup use");
+    println!("   The engine has no versioned change capture. For a real incremental backup use");
     println!("   create_incremental_backup_with_changeset with an IncrementalBackupContext.");
     println!();
     println!("✅ Backup complete!");

@@ -30,8 +30,15 @@ manifest 标 `Full`。名字是历史包袱，不是能力描述。
 
 ## 为什么 `create_incremental_backup` 不能是真增量
 
-存储引擎没有变更捕获（change capture）。没有 WAL 游标、没有 CDC、没有
-per-table 脏标记，工具层就无从知道"自 parent LSN 以来哪些行变了"。
+存储引擎没有**版本化**变更捕获（versioned change capture）。没有 WAL 游标、
+没有 CDC、没有 per-table 变更日志，工具层就无从知道"自 parent LSN 以来哪些行变了"。
+
+> 更正说明：初稿此处写的是"没有变更捕获"，过于绝对。`StorageEngine` 确实有
+> `table_change_stamp`（`crates/storage/src/engine.rs:1309`），但它**不能**用于增量备份——
+> 全仓库只有 `MemoryStorage` 实现了它（`engine.rs:2609`），而备份工具打开的是
+> `FileStorage`（后者继承默认返回 `0`）；且其语义是缓存失效标记，trait 文档明说
+> "callers must treat the value as opaque and only compare it for equality"，
+> 拿不到行级变更内容。详见 #5048。
 
 这意味着诚实的做法只有两个：要么接上真正的变更源，要么**如实标注它不是增量**。
 本轮选了后者。给一个全量导出贴 `Incremental` 标签的危害是具体的：
