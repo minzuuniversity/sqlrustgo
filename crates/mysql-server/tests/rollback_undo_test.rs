@@ -161,7 +161,16 @@ fn rollback_leaves_other_connections_commits_intact() {
         .expect("a insert");
     b.execute("INSERT INTO t VALUES (20, 'b')")
         .expect("b insert");
-    assert_eq!(count(&mut a, "t"), 2, "a sees both uncommitted rows");
+    // Fix 6: A must see only its OWN uncommitted row — B's pending row
+    // stays invisible (no dirty read). The previous `count == 2`
+    // assertion pinned the pre-fix tx-id-collision behaviour where both
+    // connections were assigned tx id 1 by their per-connection
+    // TransactionManagers, so A saw B's row as its own.
+    assert_eq!(
+        rows_of(a.execute("SELECT id FROM t").expect("select")),
+        vec![vec!["10".to_string()]],
+        "a sees only its own uncommitted row; b's pending row must not leak"
+    );
 
     a.execute("ROLLBACK").expect("a rollback");
     b.execute("COMMIT").expect("b commit");

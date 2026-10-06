@@ -61,11 +61,21 @@ impl ActiveTransaction {
     }
 }
 
+/// Fix 6 (#4957 regression): tx ids are allocated from a PROCESS-GLOBAL
+/// counter, not a per-manager one. The MySQL wire gives every connection
+/// its own `ExecutionEngine` (hence its own `TransactionManager`) while
+/// the storage layer is shared and keys MVCC version chains by tx id —
+/// with per-manager counters both connections were handed tx id 1, so one
+/// connection's ROLLBACK (`discard_pending_for(1)`) wiped the OTHER
+/// connection's uncommitted versions while its own stayed pending forever.
+/// Restart resets the counter to 1, matching `FileStorage::next_tx_id`'s
+/// documented process-lifetime semantics.
+static NEXT_TX_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 /// Transaction manager with SSI (Serializable Snapshot Isolation) support
 pub struct TransactionManager {
     ssi_detector: SsiDetectorSync,
     active_transactions: HashMap<TxId, ActiveTransaction>,
-    next_tx_id: u64,
     /// V400-05: per-transaction cross-model write tracker.
     /// Maps tx_id -> list of (ModelKind, description) writes accumulated
     /// during the transaction. Used to enforce all-or-nothing semantics
@@ -99,7 +109,6 @@ impl TransactionManager {
         Self {
             ssi_detector: SsiDetectorSync::new(),
             active_transactions: HashMap::new(),
-            next_tx_id: 1,
             cross_model: HashMap::new(),
         }
     }
@@ -113,8 +122,7 @@ impl TransactionManager {
     /// * `Ok(TxId)` - Transaction ID if successful
     /// * `Err(SsiError)` - If transaction cannot be started
     pub fn begin_transaction(&mut self, _isolation: IsolationLevel) -> Result<TxId, SsiError> {
-        let tx_id = TxId::new(self.next_tx_id);
-        self.next_tx_id += 1;
+        let tx_id = TxId::new(NEXT_TX_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
 
         let snapshot_timestamp = tx_id.as_u64();
         let snapshot = Snapshot::new_read_committed(tx_id, snapshot_timestamp);
@@ -433,7 +441,10 @@ mod tests {
         let mut mgr = TransactionManager::new();
         let tx_id = mgr.begin_transaction(IsolationLevel::SnapshotIsolation);
         assert!(tx_id.is_ok());
-        assert_eq!(tx_id.unwrap().as_u64(), 1);
+        // Ids come from the process-global allocator: only positivity and
+        // cross-manager uniqueness are guaranteed, not a fixed starting
+        // value (see NEXT_TX_ID doc for why per-manager counters broke).
+        assert!(tx_id.unwrap().as_u64() >= 1);
     }
 
     #[test]
@@ -512,8 +523,21 @@ mod tests {
             .unwrap();
         let tx2 = mgr.begin_transaction(IsolationLevel::Serializable).unwrap();
 
-        assert_eq!(tx1.as_u64(), 1);
-        assert_eq!(tx2.as_u64(), 2);
+        // Global allocator: successive ids are strictly increasing but not
+        // pinned to absolute values (other managers may have allocated in
+        // between — that interleaving is exactly the uniqueness contract).
+        assert!(tx1.as_u64() < tx2.as_u64());
+
+        // Fix 6 regression pin: two independent managers (one per MySQL
+        // connection) must never hand out the same tx id — the shared
+        // storage keys MVCC versions by tx id, so a collision made one
+        // connection's ROLLBACK discard the other's pending rows.
+        let mut other = TransactionManager::new();
+        let tx_other = other
+            .begin_transaction(IsolationLevel::Serializable)
+            .unwrap();
+        assert_ne!(tx1, tx_other);
+        assert_ne!(tx2, tx_other);
 
         mgr.record_read(tx1, b"key1".to_vec()).unwrap();
         mgr.record_write(tx2, b"key2".to_vec()).unwrap();

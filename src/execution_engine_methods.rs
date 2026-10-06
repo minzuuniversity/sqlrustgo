@@ -1998,6 +1998,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             Ok((Some(tx_id), true))
         } else {
+            // Fix 6: an explicit tx is already active, but the storage
+            // slot is process-wide (#4951) — another connection's BEGIN
+            // may have stomped it since ours. Re-assert this session's id
+            // so the upcoming write stamps OUR version chain, not a
+            // foreign connection's tx id (same rationale as the
+            // re-asserts in commit_transaction / rollback_transaction).
+            if let Some(tx) = self.tx_session.lock().current_tx_id {
+                let mut storage = self.storage.write();
+                storage.set_current_tx_id(tx.as_u64());
+            }
             Ok((self.tx_session.lock().current_tx_id, false))
         }
     }
