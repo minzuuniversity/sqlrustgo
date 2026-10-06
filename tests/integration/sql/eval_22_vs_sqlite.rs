@@ -16,9 +16,12 @@ const EXPECTED_DIR: &str = "tests/data/tpch-sf001/expected";
 
 const DDL: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)",
-    "CREATE TABLE nation (n_nationkey INTEGER, n_regionkey INTEGER, n_name TEXT, n_comment TEXT)",
-    "CREATE TABLE supplier (s_suppkey INTEGER, s_nationkey INTEGER, s_name TEXT, s_address TEXT, s_phone TEXT, s_acctbal INTEGER, s_comment TEXT)",
-    "CREATE TABLE customer (c_custkey INTEGER, c_nationkey INTEGER, c_name TEXT, c_address TEXT, c_phone TEXT, c_acctbal INTEGER, c_mktsegment TEXT, c_comment TEXT)",
+    // 列序必须与 TPC-H .tbl 物理列序一致 (nationkey|name|regionkey|comment 等),
+    // 否则 loader 按位置取 col_types 时会把 name 落进 INTEGER 列导致 unquoted 标识符
+    // 被算作独立值 ("5 values were supplied") — 与 eval_22_vs_sf01.rs / diag_* 系列对齐。
+    "CREATE TABLE nation (n_nationkey INTEGER, n_name TEXT, n_regionkey INTEGER, n_comment TEXT)",
+    "CREATE TABLE supplier (s_suppkey INTEGER, s_name TEXT, s_address TEXT, s_nationkey INTEGER, s_phone TEXT, s_acctbal INTEGER, s_comment TEXT)",
+    "CREATE TABLE customer (c_custkey INTEGER, c_name TEXT, c_address TEXT, c_nationkey INTEGER, c_phone TEXT, c_acctbal INTEGER, c_mktsegment TEXT, c_comment TEXT)",
     "CREATE TABLE part (p_partkey INTEGER, p_name TEXT, p_mfgr TEXT, p_brand TEXT, p_type TEXT, p_size INTEGER, p_container TEXT, p_retailprice INTEGER, p_comment TEXT)",
     "CREATE TABLE partsupp (ps_partkey INTEGER, ps_suppkey INTEGER, ps_availqty INTEGER, ps_supplycost INTEGER, ps_comment TEXT)",
     "CREATE TABLE orders (o_orderkey INTEGER, o_custkey INTEGER, o_orderstatus TEXT, o_totalprice INTEGER, o_orderdate TEXT, o_orderpriority TEXT, o_clerk TEXT, o_shippriority INTEGER, o_comment TEXT)",
