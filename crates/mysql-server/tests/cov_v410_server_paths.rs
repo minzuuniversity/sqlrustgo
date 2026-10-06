@@ -154,6 +154,65 @@ fn ephemeral_storage_parallel_recovers_rows_across_restart() {
 }
 
 #[test]
+fn ephemeral_storage_parallel_sees_committed_dml_in_session() {
+    let _g = serial();
+    let data_dir = std::env::temp_dir().join(format!(
+        "cov410_parvis_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&data_dir).expect("data dir");
+    {
+        let config = EphemeralConfig {
+            data_dir: Some(data_dir.clone()),
+            storage: Some("parallel".to_string()),
+            ..base_config()
+        };
+        let handle = start_ephemeral(config).expect("start parallel storage");
+        let mut c = connect(handle.port, "tester", "tester");
+        c.execute("CREATE TABLE cov_par_vis (id INTEGER PRIMARY KEY, v INTEGER)")
+            .expect("create");
+        c.execute("INSERT INTO cov_par_vis VALUES (1, 10)")
+            .expect("autocommit insert");
+        // Autocommit DML must be visible to the SAME connection without
+        // a restart (the recorded bug: only WAL recovery after restart
+        // ever surfaced committed rows).
+        assert_eq!(
+            scalar(&mut c, "SELECT COUNT(*) FROM cov_par_vis"),
+            "1",
+            "autocommit insert must be visible in-session"
+        );
+        // Cross-connection visibility (fresh session, same server).
+        let mut c2 = connect(handle.port, "tester", "tester");
+        assert_eq!(
+            scalar(&mut c2, "SELECT COUNT(*) FROM cov_par_vis"),
+            "1",
+            "autocommit insert must be visible to another connection"
+        );
+        // Explicit transaction commit visibility.
+        c.execute("BEGIN").expect("begin");
+        c.execute("INSERT INTO cov_par_vis VALUES (2, 20)")
+            .expect("tx insert");
+        c.execute("COMMIT").expect("commit");
+        assert_eq!(
+            scalar(&mut c, "SELECT COUNT(*) FROM cov_par_vis"),
+            "2",
+            "explicit COMMIT must be visible in-session"
+        );
+        let mut c3 = connect(handle.port, "tester", "tester");
+        assert_eq!(
+            scalar(&mut c3, "SELECT COUNT(*) FROM cov_par_vis"),
+            "2",
+            "explicit COMMIT must be visible to another connection"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&data_dir);
+}
+
+#[test]
 fn plain_listener_serves_without_shutdown_flag() {
     let _g = serial();
     // SQLRUSTGO_DATA_DIR intentionally unset: this covers the cwd-default

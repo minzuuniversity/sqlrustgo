@@ -268,7 +268,36 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
             }
         }
 
-        // 3. Flush tables in parallel
+        // 3. Delegate the commit to the inner engine, then reset this
+        //    layer's tx id (same shape as WalStorage's #4974-follow-up
+        //    delegation at `wal_storage.rs:1013`).
+        //
+        //    This delegation was MISSING: the body used to end at
+        //    `flush_parallel()`, so on the `--storage parallel` stack
+        //    (`ParallelWalStorage<MvccStorage<_>>`) `MvccStorage`'s
+        //    `commit_transaction` — the only place that runs
+        //    `promote_pending_for()` on the `&mut` path the engine's
+        //    `commit_implicit_dml_tx` uses — never executed. The written
+        //    version stayed `committed == false` forever, so MVCC's
+        //    `find_visible` hid it from every reader and #4983's
+        //    `pending_keys` merge-guard additionally excluded the buffered
+        //    row the inner engine already had: a successful INSERT was
+        //    invisible in-session, and only WAL replay after restart ever
+        //    surfaced it (DDL stayed visible because it writes
+        //    `FileStorage::tables` directly). Ordering is load-bearing:
+        //    the delegation must run before this layer's tx id is cleared,
+        //    and while `FileStorage::current_tx_id` (propagated by
+        //    `set_current_tx_id`) is still set, because
+        //    `MvccStorage::commit_transaction` captures the tx id from
+        //    `inner.current_tx_id()` before delegating further down.
+        //    Pinned by the regression test
+        //    `cov_v410_server_paths::ephemeral_storage_parallel_sees_committed_dml_in_session`.
+        self.inner.commit_transaction()?;
+        self.current_tx_id
+            .store(0, std::sync::atomic::Ordering::Release);
+        // 4. Flush tables in parallel — post-commit, matching
+        //    `WalStorage::commit_transaction_and_flush`'s
+        //    commit-then-flush order.
         self.inner.flush_parallel()
     }
 

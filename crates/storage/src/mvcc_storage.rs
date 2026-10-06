@@ -349,7 +349,6 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let pending: std::collections::HashSet<crate::engine::Value> =
             self.pending_keys(table, reader_tx);
         let inner_rows = self.inner.scan(table)?;
-        eprintln!();
         if inner_rows.len() > out.len() {
             let mut present: std::collections::HashSet<crate::engine::Value> =
                 out.iter().filter_map(|r| r.first().cloned()).collect();
