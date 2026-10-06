@@ -293,83 +293,21 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         (inner, self.wal.get_mut())
     }
 
+    // #5055: the three helpers below now live in `wal_record_codec` so the
+    // WAL writer and the WAL reader cannot drift apart. They used to be a
+    // copy of the decoder's format living in the writer, and the copy had
+    // already drifted (see that module's docs).
+
     fn table_name_to_id(table: &str) -> u64 {
-        let mut hash: u64 = 0;
-        for byte in table.bytes() {
-            hash = hash.wrapping_mul(31).wrapping_add(byte as u64);
-        }
-        hash
+        crate::wal_record_codec::table_name_to_id(table)
     }
 
     fn record_key(record: &[Value]) -> Vec<u8> {
-        if record.is_empty() {
-            return Vec::new();
-        }
-        match &record[0] {
-            Value::Integer(i) => i.to_le_bytes().to_vec(),
-            Value::Text(s) => s.as_bytes().to_vec(),
-            Value::Boolean(b) => [*b as u8].to_vec(),
-            Value::Null => Vec::new(),
-            Value::Float(f) => f.to_bits().to_le_bytes().to_vec(),
-            Value::Blob(b) => b.clone(),
-            Value::Point(x, y) => {
-                let mut bytes = vec![0x07];
-                bytes.extend_from_slice(&x.to_le_bytes());
-                bytes.extend_from_slice(&y.to_le_bytes());
-                bytes
-            }
-            Value::Json(v) => {
-                let s = v.to_string();
-                let mut bytes = vec![0x08];
-                bytes.extend_from_slice(s.as_bytes());
-                bytes
-            }
-        }
+        crate::wal_record_codec::record_key(record)
     }
 
     fn record_to_bytes(record: &[Value]) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        for value in record {
-            match value {
-                Value::Integer(i) => {
-                    bytes.extend_from_slice(b"i:");
-                    bytes.extend_from_slice(&i.to_le_bytes());
-                }
-                Value::Text(s) => {
-                    bytes.extend_from_slice(b"s:");
-                    bytes.extend_from_slice(s.as_bytes());
-                    bytes.push(0);
-                }
-                Value::Boolean(b) => {
-                    bytes.extend_from_slice(b"b:");
-                    bytes.push(*b as u8);
-                }
-                Value::Null => {
-                    bytes.extend_from_slice(b"n:");
-                }
-                Value::Float(f) => {
-                    bytes.extend_from_slice(b"f:");
-                    bytes.extend_from_slice(&f.to_bits().to_le_bytes());
-                }
-                Value::Blob(b) => {
-                    bytes.extend_from_slice(b"B:");
-                    bytes.extend_from_slice(b);
-                    bytes.push(0);
-                }
-                Value::Point(x, y) => {
-                    bytes.extend_from_slice(b"P:");
-                    bytes.extend_from_slice(&x.to_le_bytes());
-                    bytes.extend_from_slice(&y.to_le_bytes());
-                    bytes.push(0);
-                }
-                Value::Json(v) => {
-                    bytes.extend_from_slice(b"J:");
-                    bytes.extend_from_slice(v.to_string().as_bytes());
-                    bytes.push(0);
-                }
-            }
-        }
-        bytes
+        crate::wal_record_codec::record_to_bytes(record)
     }
 
     #[allow(dead_code)]
@@ -404,12 +342,21 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         false
     }
 
-    fn log_insert(&mut self, table_id: u64, key: Vec<u8>, data: Vec<u8>) -> SqlResult<()> {
+    fn log_insert(
+        &mut self,
+        table_id: u64,
+        table_name: Option<&str>,
+        key: Vec<u8>,
+        data: Vec<u8>,
+    ) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id: self.current_tx_id.load(Ordering::Relaxed),
                 entry_type: WalEntryType::Insert,
                 table_id,
+                // #5055: without the name a replay cannot know which
+                // table this row belongs to.
+                table_name: table_name.map(|s| s.to_string()),
                 key: Some(key),
                 data: Some(data),
                 lsn: 0,
@@ -423,12 +370,18 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         Ok(())
     }
 
-    fn log_delete(&mut self, table_id: u64, key: Vec<u8>) -> SqlResult<()> {
+    fn log_delete(
+        &mut self,
+        table_id: u64,
+        table_name: Option<&str>,
+        key: Vec<u8>,
+    ) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id: self.current_tx_id.load(Ordering::Relaxed),
                 entry_type: WalEntryType::Delete,
                 table_id,
+                table_name: table_name.map(|s| s.to_string()),
                 key: Some(key),
                 data: None,
                 lsn: 0,
@@ -442,12 +395,19 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         Ok(())
     }
 
-    fn log_update(&mut self, table_id: u64, key: Vec<u8>, new_record: Vec<u8>) -> SqlResult<()> {
+    fn log_update(
+        &mut self,
+        table_id: u64,
+        table_name: Option<&str>,
+        key: Vec<u8>,
+        new_record: Vec<u8>,
+    ) -> SqlResult<()> {
         if self.wal_enabled {
             let entry = WalEntry {
                 tx_id: self.current_tx_id.load(Ordering::Relaxed),
                 entry_type: WalEntryType::Update,
                 table_id,
+                table_name: table_name.map(|s| s.to_string()),
                 key: Some(key),
                 data: Some(new_record),
                 lsn: 0,
@@ -475,6 +435,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
+                table_name: None,
             };
             let lsn = self.append_wal_entry(entry)?;
             // #3223 Phase 1: track active tx → LSN for crash recovery.
@@ -509,6 +470,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
+                table_name: None,
             };
             self.append_wal_entry(entry)?;
             self.wal.lock().sync()?;
@@ -621,7 +583,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                 for record in &records {
                     let key = Self::record_key(record);
                     let data = Self::record_to_bytes(record);
-                    self.log_insert(table_id, key, data)?;
+                    self.log_insert(table_id, Some(table), key, data)?;
                 }
                 self.wal.lock().flush()
             })();
@@ -636,7 +598,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             for record in &records {
                 let key = Self::record_key(record);
                 let data = Self::record_to_bytes(record);
-                self.log_insert(table_id, key, data)?;
+                self.log_insert(table_id, Some(table), key, data)?;
             }
         }
         self.inner_mut().insert(table, records)
@@ -670,13 +632,13 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             for row in &rows {
                 if Self::row_matches_filter(row, filters) {
                     let key = Self::record_key(row);
-                    self.log_delete(table_id, key)?;
+                    self.log_delete(table_id, Some(table), key)?;
                 }
             }
         } else {
             let pk_value = filters[0].clone();
             let key = Self::record_key(std::slice::from_ref(&pk_value));
-            self.log_delete(table_id, key)?;
+            self.log_delete(table_id, Some(table), key)?;
         }
 
         self.inner_mut().delete(table, filters)
@@ -685,7 +647,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
         let key = format!("RowFilter-{:p}", filter).into_bytes();
-        self.log_delete(table_id, key)?;
+        self.log_delete(table_id, Some(table), key)?;
         self.inner_mut().delete_if(table, filter)
     }
 
@@ -732,7 +694,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                 }
                 // Step 3: Log the after-image to WAL
                 let new_data = Self::record_to_bytes(&row);
-                self.log_update(table_id, key, new_data)?;
+                self.log_update(table_id, Some(table), key, new_data)?;
             }
         }
 
@@ -753,7 +715,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // Encode the mutation as a debug string for WAL; on recovery the
         // RowFilter closure cannot be reconstructed, so this is best-effort.
         let data = format!("{:?}", mutation).into_bytes();
-        self.log_update(table_id, key, data)?;
+        self.log_update(table_id, Some(table), key, data)?;
         self.inner_mut().update_if(table, filter, mutation)
     }
 
@@ -857,6 +819,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
+                table_name: None,
             };
             let lsn = self.append_wal_entry(entry)?;
             // #3223 Phase 1: track active tx → LSN for crash recovery.
@@ -889,6 +852,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
+                table_name: None,
             };
             self.append_wal_entry(entry)?
         } else {
@@ -1103,6 +1067,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
+                table_name: None,
             };
             let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
             let mut entry = entry;
@@ -1135,6 +1100,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
+                table_name: None,
             };
             let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
             let mut entry = entry;
@@ -1196,6 +1162,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
+                table_name: None,
             };
             let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
             let mut entry = entry;
@@ -1236,6 +1203,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
+                table_name: None,
             };
             self.append_wal_entry(entry)?;
             self.wal.lock().sync()?;

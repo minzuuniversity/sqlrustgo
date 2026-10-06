@@ -73,6 +73,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                         tx_id,
                         entry_type: WalEntryType::Begin,
                         table_id: 0,
+                        table_name: None,
                         key: None,
                         data: None,
                         lsn,
@@ -94,6 +95,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                         tx_id,
                         entry_type: WalEntryType::Insert,
                         table_id: 116, // hash("t")
+                        table_name: None,
                         key: None,
                         data: Some(data),
                         lsn,
@@ -114,6 +116,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                         tx_id,
                         entry_type: WalEntryType::Update,
                         table_id: 116, // hash("t")
+                        table_name: None,
                         key: Some(format!("i:{target_id}").into_bytes()),
                         data: Some(data),
                         lsn,
@@ -131,6 +134,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                         tx_id,
                         entry_type: WalEntryType::Delete,
                         table_id: 116, // hash("t")
+                        table_name: None,
                         key: Some(format!("i:{target_id}").into_bytes()),
                         data: None,
                         lsn,
@@ -152,6 +156,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                             WalEntryType::Rollback
                         },
                         table_id: 0,
+                        table_name: None,
                         key: None,
                         data: None,
                         lsn,

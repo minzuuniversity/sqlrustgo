@@ -17,6 +17,10 @@ fn make_entry(
         tx_id,
         entry_type,
         table_id,
+        // #5055: this factory predates table-name recording. Leaving it
+        // `None` is the honest representation of a legacy entry and
+        // keeps the legacy-decode paths under test.
+        table_name: None,
         key,
         data,
         lsn: 0,

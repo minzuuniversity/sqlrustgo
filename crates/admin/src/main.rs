@@ -159,20 +159,48 @@ fn dispatch(cli: Cli) -> Result<u8, Box<dyn std::error::Error>> {
             wal,
             target_time,
         } => {
+            // #5055: `data_dir` used to be bound to `let _ = data_dir;`
+            // and the command printed "pitr ok" with exit 0 while
+            // writing nothing. The restore now runs against the
+            // directory, and the exit code says what actually happened.
+            let data_path = std::path::PathBuf::from(&data_dir);
             let wal_path = std::path::PathBuf::from(&wal);
-            let _ = data_dir;
             let target_ts = pitr::parse_target_time(&target_time)?;
-            let r = pitr::pitr_replay(&wal_path, target_ts)?;
+            let r = pitr::pitr_replay_into(&data_path, &wal_path, target_ts)?;
             println!(
-                "pitr ok: scanned={} applied={} skipped={} committed={} aborted={} active_at_target={}",
+                "pitr: scanned={} applied={} skipped={} failed={} after_target={} \
+                 committed={} aborted={} active_at_target={} tables={:?}",
                 r.entries_scanned,
                 r.entries_applied,
                 r.entries_skipped,
+                r.entries_failed,
+                r.entries_after_target,
                 r.transactions_committed,
                 r.transactions_aborted,
-                r.active_transactions_at_target
+                r.active_transactions_at_target,
+                r.tables_touched,
             );
-            Ok(0)
+            if let Some(e) = &r.first_error {
+                eprintln!("pitr: first replay error: {e}");
+            }
+            // #5055: exit non-zero when the restore is not clean. "ok"
+            // here used to be a claim about work that never happened.
+            // The decision lives in `pitr::exit_code_for` so it can be
+            // tested; when it was inline in this arm, a mutation that
+            // restored the old "always ok" behaviour was caught only by
+            // an unrelated already-failing test.
+            match pitr::exit_code_for(&r) {
+                0 => {
+                    println!("pitr ok");
+                    Ok(0)
+                }
+                other => {
+                    for line in pitr::incompleteness_warnings(&r) {
+                        eprintln!("{line}");
+                    }
+                    Ok(other as u8)
+                }
+            }
         }
         Commands::Status {
             host,

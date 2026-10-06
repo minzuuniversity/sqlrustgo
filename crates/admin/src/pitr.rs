@@ -1,95 +1,121 @@
 use crate::backup::BackupError;
+use sqlrustgo_storage::file_storage::FileStorage;
+use sqlrustgo_storage::pitr::replay_entries_until;
 use sqlrustgo_storage::wal::WalEntry;
-use sqlrustgo_storage::wal_legacy::{WalEntryType, WalReader};
-use std::collections::HashSet;
+use sqlrustgo_storage::wal_legacy::WalReader;
 use std::path::Path;
 
-#[derive(Debug, Clone)]
-pub struct PitrResult {
-    #[allow(dead_code)]
-    pub target_time: u64,
-    pub entries_scanned: usize,
-    pub entries_applied: usize,
-    pub entries_skipped: usize,
-    pub transactions_committed: usize,
-    pub transactions_aborted: usize,
-    pub active_transactions_at_target: usize,
-}
+pub use sqlrustgo_storage::pitr::PitrReport;
 
-pub fn pitr_replay(wal_path: &Path, target_time: u64) -> Result<PitrResult, BackupError> {
+/// #5055: replay `wal_path` into `data_dir`, up to `target_time`.
+///
+/// This is the function the CLI used to pretend to have. The old
+/// `pitr_replay` read the WAL, counted the entries it would have
+/// applied, and returned; `main.rs` bound `--data-dir` to `let _ =
+/// data_dir;` and printed `pitr ok` with exit code 0. Nothing was
+/// written and nothing could fail.
+///
+/// Now the data directory is opened, the rows are decoded and applied,
+/// and the buffers are flushed so the result is on disk before this
+/// returns. `Ok(())` means data moved.
+pub fn pitr_replay_into(
+    data_dir: &Path,
+    wal_path: &Path,
+    target_time: u64,
+) -> Result<PitrReport, BackupError> {
     if !wal_path.exists() {
         return Err(BackupError::EntryNotFound(format!(
             "WAL: {}",
             wal_path.display()
         )));
     }
+    if !data_dir.exists() {
+        return Err(BackupError::DataDirNotFound(data_dir.to_path_buf()));
+    }
+
     let mut reader = WalReader::new(&wal_path.to_path_buf()).map_err(BackupError::Io)?;
-    let entries = reader.read_all().map_err(BackupError::Io)?;
-    Ok(pitr_replay_entries(&entries, target_time))
+    let entries: Vec<WalEntry> = reader.read_all().map_err(BackupError::Io)?;
+
+    // `FileStorage::new`, deliberately NOT `new_with_wal`: the replay
+    // must not append to the very log it is reading, or each restore
+    // would double the log for the next one.
+    let mut storage = FileStorage::new(data_dir.to_path_buf())?;
+    let report = replay_entries_until(&mut storage, &entries, target_time)?;
+
+    // Without this the rows sit in the insert buffer and the data
+    // directory is unchanged the moment we return — a restore that
+    // reports success and leaves the data behind.
+    storage.flush_all_buffers()?;
+
+    Ok(report)
 }
 
-pub fn pitr_replay_entries(entries: &[WalEntry], target_time: u64) -> PitrResult {
-    let mut committed: HashSet<u64> = HashSet::new();
-    let mut aborted: HashSet<u64> = HashSet::new();
-    let mut active_at_target: HashSet<u64> = HashSet::new();
-    let mut applied = 0;
-    let mut skipped = 0;
-    #[allow(unused_assignments)] // scanned is reported in PitrReport
-    let mut scanned = 0;
+/// Backwards-compatible name for callers that only want the file-based
+/// replay. #5055 kept this as a thin wrapper; the old behaviour (count
+/// only, no writes) is gone, so a caller that relied on it getting a
+/// count is now getting a restore.
+pub fn pitr_replay(wal_path: &Path, target_time: u64) -> Result<PitrReport, BackupError> {
+    // A data directory that is a sibling of the WAL is the historical
+    // layout. Used only by the wrapper; the CLI passes `--data-dir`
+    // explicitly.
+    let data_dir = wal_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    pitr_replay_into(&data_dir, wal_path, target_time)
+}
 
-    let in_window: Vec<&WalEntry> = entries
-        .iter()
-        .filter(|e| e.timestamp <= target_time)
-        .collect();
-    scanned = in_window.len();
+/// The process exit code for a completed replay.
+///
+/// #5055: `admin pitr` used to exit 0 unconditionally, after printing
+/// `pitr ok`, having restored nothing. The rule is deliberately
+/// conservative — anything short of a complete restore is a non-zero
+/// exit, because an operator scripting this needs the shell to notice:
+///
+/// - `0` — everything in scope applied.
+/// - `3` — some entries could not be applied. The directory is in a
+///   mixed state and does **not** match the target time.
+/// - `4` — nothing failed, but committed transactions existed in scope
+///   and nothing was applied. That is the "reported success, restored
+///   nothing" shape; it usually means the log and the data directory
+///   are not from the same base backup.
+///
+/// A legitimate zero-row restore (an empty target, or a log with
+/// nothing after the base) is not flagged: the test is not
+/// "applied == 0" but "applied == 0 *and* there was committed work".
+///
+/// Kept out of `main.rs` on purpose. Inline in the command arm it was
+/// untestable, and a mutation that restored the old "always 0"
+/// behaviour was caught only by an unrelated already-failing test.
+pub fn exit_code_for(report: &PitrReport) -> i32 {
+    if report.entries_failed > 0 {
+        return 3;
+    }
+    if report.is_suspiciously_empty() {
+        return 4;
+    }
+    0
+}
 
-    for entry in &in_window {
-        match entry.entry_type {
-            WalEntryType::Commit => {
-                committed.insert(entry.tx_id);
-            }
-            WalEntryType::Rollback => {
-                aborted.insert(entry.tx_id);
-            }
-            WalEntryType::Begin => {}
-            _ => {}
-        }
+/// Human-readable reasons for a non-zero [`exit_code_for`].
+pub fn incompleteness_warnings(report: &PitrReport) -> Vec<String> {
+    let mut out = Vec::new();
+    if report.entries_failed > 0 {
+        out.push(format!(
+            "pitr: INCOMPLETE — {} entries could not be applied; the data \
+             directory does not match the target time",
+            report.entries_failed
+        ));
     }
-
-    for entry in &in_window {
-        match entry.entry_type {
-            WalEntryType::Begin => {
-                active_at_target.insert(entry.tx_id);
-            }
-            WalEntryType::Commit => {
-                active_at_target.remove(&entry.tx_id);
-            }
-            WalEntryType::Rollback => {
-                active_at_target.remove(&entry.tx_id);
-            }
-            WalEntryType::Checkpoint
-            | WalEntryType::Insert
-            | WalEntryType::Update
-            | WalEntryType::Delete
-            | WalEntryType::Prepare => {
-                if committed.contains(&entry.tx_id) {
-                    applied += 1;
-                } else {
-                    skipped += 1;
-                }
-            }
-            _ => {}
-        }
+    if report.is_suspiciously_empty() {
+        out.push(format!(
+            "pitr: WARNING — {} transactions were committed by the target time \
+             but 0 entries were applied; the data directory may not match the \
+             log's base backup",
+            report.transactions_committed
+        ));
     }
-    PitrResult {
-        target_time,
-        entries_scanned: scanned,
-        entries_applied: applied,
-        entries_skipped: skipped,
-        transactions_committed: committed.len(),
-        transactions_aborted: aborted.len(),
-        active_transactions_at_target: active_at_target.len(),
-    }
+    out
 }
 
 pub fn parse_target_time(s: &str) -> Result<u64, BackupError> {
@@ -120,153 +146,104 @@ pub fn parse_target_time(s: &str) -> Result<u64, BackupError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlrustgo_storage::wal::{
-        make_begin_entry, make_commit_entry, make_create_vector_index_entry, make_delete_entry,
-        make_drop_vector_index_entry, make_insert_entry, make_rebuild_vector_index_entry,
-        make_rollback_entry, make_update_entry, make_vector_delete_entry, make_vector_insert_entry,
-        make_vector_update_entry,
-    };
-    use std::io::Write;
+    use crate::backup::BackupError;
+    use sqlrustgo_storage::wal_legacy::WalWriter;
     use tempfile::TempDir;
 
-    fn entry(tx: u64, ty: WalEntryType, ts: u64, lsn: u64) -> WalEntry {
-        let mut e = match ty {
-            WalEntryType::Begin => make_begin_entry(tx),
-            WalEntryType::Commit => make_commit_entry(tx, lsn),
-            WalEntryType::Rollback => make_rollback_entry(tx, lsn),
-            WalEntryType::Insert => make_insert_entry(tx, 1, vec![1, 2, 3], vec![1, 2, 3], lsn),
-            WalEntryType::Update => make_update_entry(tx, 1, vec![1, 2, 3], vec![4, 5, 6], lsn),
-            WalEntryType::Delete => make_delete_entry(tx, 1, vec![1, 2, 3], lsn),
-            WalEntryType::Checkpoint => WalEntry {
-                tx_id: tx,
-                entry_type: WalEntryType::Checkpoint,
-                table_id: 0,
-                key: None,
-                data: None,
-                lsn,
-                timestamp: ts,
-            },
-            WalEntryType::Prepare => WalEntry {
-                tx_id: tx,
-                entry_type: WalEntryType::Prepare,
-                table_id: 0,
-                key: None,
-                data: None,
-                lsn,
-                timestamp: ts,
-            },
-            // V400-02 / Issue #3730 vector WAL entries (added 2026-09-29).
-            // Test factory only — real production code uses
-            // make_vector_insert_entry / make_vector_update_entry etc.
-            WalEntryType::VectorInsert => make_vector_insert_entry(tx, 0, 0, 0, vec![0u8; 16], lsn),
-            WalEntryType::VectorUpdate => make_vector_update_entry(tx, 0, 0, 0, vec![0u8; 16], lsn),
-            WalEntryType::VectorDelete => make_vector_delete_entry(tx, 0, 0, 0, lsn),
-            WalEntryType::CreateVectorIndex => {
-                make_create_vector_index_entry(tx, 0, 0, "test_idx", lsn)
-            }
-            WalEntryType::DropVectorIndex => make_drop_vector_index_entry(tx, 0, "test_idx", lsn),
-            WalEntryType::RebuildVectorIndex => {
-                make_rebuild_vector_index_entry(tx, 0, "test_idx", lsn)
-            }
-        };
-        e.timestamp = ts;
-        e
-    }
-
-    #[test]
-    fn test_pitr_replay_committed_tx_applied() {
-        let entries = vec![
-            entry(1, WalEntryType::Begin, 100, 1),
-            entry(1, WalEntryType::Insert, 101, 2),
-            entry(1, WalEntryType::Commit, 102, 3),
-        ];
-        let r = pitr_replay_entries(&entries, 200);
-        assert_eq!(r.entries_applied, 1);
-        assert_eq!(r.entries_skipped, 0);
-        assert_eq!(r.transactions_committed, 1);
-        assert_eq!(r.transactions_aborted, 0);
-    }
-
-    #[test]
-    fn test_pitr_replay_rolled_back_tx_skipped() {
-        let entries = vec![
-            entry(1, WalEntryType::Begin, 100, 1),
-            entry(1, WalEntryType::Insert, 101, 2),
-            entry(1, WalEntryType::Rollback, 102, 3),
-        ];
-        let r = pitr_replay_entries(&entries, 200);
-        assert_eq!(r.entries_applied, 0);
-        assert_eq!(r.transactions_aborted, 1);
-    }
-
-    #[test]
-    fn test_pitr_replay_uncommitted_at_target_aborted() {
-        let entries = vec![
-            entry(1, WalEntryType::Begin, 100, 1),
-            entry(1, WalEntryType::Insert, 101, 2),
-        ];
-        let r = pitr_replay_entries(&entries, 200);
-        assert_eq!(r.entries_applied, 0);
-        assert_eq!(r.active_transactions_at_target, 1);
-    }
-
-    #[test]
-    fn test_pitr_replay_target_time_filters() {
-        let entries = vec![
-            entry(1, WalEntryType::Begin, 100, 1),
-            entry(1, WalEntryType::Insert, 101, 2),
-            entry(1, WalEntryType::Commit, 102, 3),
-            entry(2, WalEntryType::Begin, 200, 4),
-            entry(2, WalEntryType::Insert, 201, 5),
-            entry(2, WalEntryType::Commit, 202, 6),
-        ];
-        let r = pitr_replay_entries(&entries, 150);
-        assert_eq!(r.entries_applied, 1);
-        assert_eq!(r.transactions_committed, 1);
-    }
-
-    #[test]
-    fn test_pitr_replay_empty() {
-        let r = pitr_replay_entries(&[], 1000);
-        assert_eq!(r.entries_scanned, 0);
-        assert_eq!(r.entries_applied, 0);
-    }
-
-    #[test]
-    fn test_pitr_replay_wal_file() {
-        use sqlrustgo_storage::wal::WalWriter;
-        let dir = TempDir::new().unwrap();
-        let wal_path = dir.path().join("test.wal");
-        let mut writer = WalWriter::with_config(&wal_path, false, 100).unwrap();
-        let mut entries = vec![
-            entry(1, WalEntryType::Begin, 100, 1),
-            entry(1, WalEntryType::Insert, 101, 2),
-            entry(1, WalEntryType::Commit, 102, 3),
-        ];
-        for e in &mut entries {
-            e.lsn = writer.current_lsn() + 1;
+    fn write_wal(path: &Path, entries: &[WalEntry]) {
+        let mut writer = WalWriter::with_config(&path.to_path_buf(), false, 100).unwrap();
+        for e in entries {
             writer.append(e).unwrap();
-            writer.flush().unwrap();
         }
-        drop(writer);
-        let r = pitr_replay(&wal_path, 200).unwrap();
-        assert_eq!(r.entries_applied, 1);
+        writer.flush().unwrap();
     }
 
     #[test]
-    fn test_parse_target_time_rfc3339() {
+    fn pitr_replay_into_missing_data_dir_errors() {
+        let dir = TempDir::new().unwrap();
+        let wal = dir.path().join("x.wal");
+        write_wal(&wal, &[]);
+        let missing = dir.path().join("nope");
+        let err = pitr_replay_into(&missing, &wal, 100).unwrap_err();
+        assert!(matches!(err, BackupError::DataDirNotFound(_)));
+    }
+
+    #[test]
+    fn pitr_replay_into_missing_wal_errors() {
+        let dir = TempDir::new().unwrap();
+        let err = pitr_replay_into(dir.path(), &dir.path().join("absent.wal"), 100).unwrap_err();
+        assert!(matches!(err, BackupError::EntryNotFound(_)));
+    }
+
+    #[test]
+    fn parse_target_time_rfc3339() {
         let t = parse_target_time("2026-06-05T10:00:00Z").unwrap();
         assert!(t > 0);
     }
 
     #[test]
-    fn test_parse_target_time_unix() {
+    fn parse_target_time_unix() {
         let t = parse_target_time("1700000000").unwrap();
         assert_eq!(t, 1700000000);
     }
 
     #[test]
-    fn test_parse_target_time_invalid() {
+    fn parse_target_time_invalid() {
         assert!(parse_target_time("not a time").is_err());
+    }
+
+    fn report_with(applied: usize, failed: usize, committed: usize) -> PitrReport {
+        PitrReport {
+            transactions_committed: committed,
+            entries_applied: applied,
+            entries_failed: failed,
+            ..Default::default()
+        }
+    }
+
+    /// #5055: the exact shape the old CLI called success — committed
+    /// work in scope, nothing applied, exit 0.
+    #[test]
+    fn exit_code_is_non_zero_when_nothing_was_restored() {
+        let r = report_with(0, 0, 7);
+        assert_eq!(exit_code_for(&r), 4);
+        assert!(!incompleteness_warnings(&r).is_empty());
+    }
+
+    #[test]
+    fn exit_code_is_non_zero_when_entries_failed() {
+        let r = report_with(3, 2, 1);
+        assert_eq!(exit_code_for(&r), 3);
+    }
+
+    /// Failures dominate: a restore that also applied rows is still
+    /// incomplete, and the "nothing applied" warning would be
+    /// misleading on top of it.
+    #[test]
+    fn failures_take_precedence_over_the_empty_warning() {
+        let r = report_with(0, 5, 2);
+        assert_eq!(exit_code_for(&r), 3);
+        let warnings = incompleteness_warnings(&r);
+        assert_eq!(
+            warnings.len(),
+            1,
+            "expected only the failure notice: {warnings:?}"
+        );
+        assert!(warnings[0].contains("INCOMPLETE"));
+    }
+
+    #[test]
+    fn exit_code_is_zero_for_a_clean_restore() {
+        assert_eq!(exit_code_for(&report_with(10, 0, 3)), 0);
+        assert!(incompleteness_warnings(&report_with(10, 0, 3)).is_empty());
+    }
+
+    /// A restore with no committed work and nothing to do is
+    /// legitimate, not suspicious.
+    #[test]
+    fn empty_log_is_not_suspicious() {
+        let r = report_with(0, 0, 0);
+        assert_eq!(exit_code_for(&r), 0);
+        assert!(incompleteness_warnings(&r).is_empty());
     }
 }

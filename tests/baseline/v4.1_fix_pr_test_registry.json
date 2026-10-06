@@ -248,6 +248,17 @@
         "crates/storage/src/semisync.rs"
       ],
       "note": "Module was already on mod graph; PR #5036 (#4937/#5036) added the real-world BinlogAck test (crates/storage/tests/semisync_commit_gate_4937.rs). PR #5014 alone only adds the mod hookup; the test is registered under #5036."
+    },
+    {
+      "pr": 5061,
+      "issue": 5055,
+      "fix": "admin CLI `pitr` 报假成功 — FileStorage 真正写 WAL，回放真正落盘",
+      "test_paths": [
+        "crates/storage/tests/file_storage_wal_5055.rs",
+        "crates/storage/src/wal_record_codec.rs",
+        "crates/storage/src/pitr.rs"
+      ],
+      "note": "两个 src/ 条目是 `#[cfg(test)] mod tests` 内的单测文件（编解码往返 / V2 vs V1 / PITR 过滤与回放）。端到端在 file_storage_wal_5055.rs：写 WAL → 恢复到另一个目录 → 重开磁盘核对行。变异验证 12/12 全部被抓住，其中 M8（CLI 退出码退回恒 0）第一版为无效证据 —— 退出码判定当时内联在 main.rs 无法测试，被一个既存失败的无关用例触发，已抽出 pitr::exit_code_for 后重做；M12（去掉表存在性检查）针对合并时发现的「缺表时静默报告 applied」。"
     }
   ]
 }

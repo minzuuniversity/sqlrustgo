@@ -124,144 +124,69 @@ pub struct RecoveryEngineImpl;
 // Helpers: table_id ↔ table_name
 // ---------------------------------------------------------------------------
 
-/// Hash algorithm matching WalStorage::table_name_to_id
+/// #5055: delegates to the shared codec so the reader and the writer
+/// cannot drift on what an id means. This used to be a second copy of
+/// the 31-radix fold.
 fn table_name_to_id(table: &str) -> u64 {
-    let mut hash: u64 = 0;
-    for byte in table.bytes() {
-        hash = hash.wrapping_mul(31).wrapping_add(byte as u64);
-    }
-    hash
+    crate::wal_record_codec::table_name_to_id(table)
 }
 
-/// Resolve a table_id to a table_name by scanning all tables
-fn resolve_table_name<S: StorageEngine>(
+/// #5055: the table a row entry belongs to.
+///
+/// Prefers `WalEntry::table_name`, which every entry written by this
+/// codebase now carries. The `table_id` hash is consulted only for
+/// entries written before #5055, and even then it is validated rather
+/// than trusted: the hash is a 31-radix fold over the name, so two
+/// different tables can collide, and a recovery that silently picked
+/// the collision's other table would write every row of one table into
+/// another. Refusing is the only safe answer, and the error names the
+/// entry so an operator can see exactly which rows were not restored.
+fn resolve_entry_table<S: StorageEngine + ?Sized>(
     storage: &S,
-    table_id: u64,
+    entry: &WalEntry,
 ) -> Result<String, crate::engine::SqlError> {
-    for name in storage.list_tables() {
-        if table_name_to_id(&name) == table_id {
-            return Ok(name);
-        }
+    if let Some(name) = entry.table_name.as_deref() {
+        return Ok(name.to_string());
     }
-    Err(crate::engine::SqlError::ExecutionError(format!(
-        "RecoveryEngine: table not found for id={}",
-        table_id
-    )))
+    let mut candidates = storage
+        .list_tables()
+        .into_iter()
+        .filter(|name| table_name_to_id(name) == entry.table_id);
+    match (candidates.next(), candidates.next()) {
+        (Some(only), None) => Ok(only),
+        (Some(a), Some(b)) => Err(crate::engine::SqlError::ExecutionError(format!(
+            "refusing to guess: WAL entry (tx_id={}, lsn={}) carries no table_name \
+             and table_id={} matches both {:?} and {:?}. Replaying into the wrong \
+             table is worse than not replaying; re-take the backup with a writer \
+             that records table names.",
+            entry.tx_id, entry.lsn, entry.table_id, a, b,
+        ))),
+        (None, _) => Err(crate::engine::SqlError::ExecutionError(format!(
+            "cannot resolve table for WAL entry (tx_id={}, lsn={}, table_id={}). The \
+             entry predates table-name recording (before #5055) and no open table \
+             matches its id.",
+            entry.tx_id, entry.lsn, entry.table_id,
+        ))),
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Helpers: WAL entry serialization (inverse of WalStorage::record_to_bytes)
 // ---------------------------------------------------------------------------
 
-/// Deserialize record bytes produced by WalStorage::record_to_bytes
+/// Deserialize record bytes produced by the WAL writer.
 ///
-/// Format:
-/// - `i:` + 8 bytes LE = Integer
-/// - `s:` + bytes + `\0` = Text
-/// - `b:` + 1 byte = Boolean
-/// - `n:` = Null
-/// - `f:` + 8 bytes LE = Float
-/// - `B:` + bytes + `\0` = Blob
-///
-/// v3.12.0 Issue #4682: unknown prefixes are tolerated (substituted
-/// with `Value::Null`) so the WAL replay doesn't abort on the first
-/// corrupt entry. The first unknown prefix in a record is logged at
-/// WARN level; subsequent ones in the same record are at DEBUG to
-/// avoid log spam on heavily corrupted WALs (e.g. one unknown prefix
-/// per byte when the BLOB encoding changed between releases).
+/// #5055: this is now a thin delegate to [`crate::wal_record_codec`],
+/// which is also what the writer uses. The two used to be independent
+/// copies of the same wire format, and the copy in this file had
+/// already drifted: it did not know the `P:` (Point) and `J:` (Json)
+/// tags the writer emits, so replaying a row with a POINT or JSON
+/// column substituted `Value::Null` for the tag **and its payload** and
+/// still reported success. See `wal_record_codec` for the format, the
+/// V2 encoding that replaced the `\0`-terminated one, and the #4682
+/// unknown-tag tolerance rule, which is preserved.
 fn bytes_to_record(data: &[u8]) -> Result<Vec<Value>, crate::engine::SqlError> {
-    let mut record = Vec::new();
-    let mut pos = 0;
-    while pos < data.len() {
-        if pos + 2 > data.len() {
-            return Err(crate::engine::SqlError::ExecutionError(
-                "RecoveryEngine: truncated value prefix".to_string(),
-            ));
-        }
-        match &data[pos..pos + 2] {
-            b"i:" => {
-                if pos + 10 > data.len() {
-                    return Err(crate::engine::SqlError::ExecutionError(
-                        "RecoveryEngine: truncated Integer".to_string(),
-                    ));
-                }
-                let mut buf = [0u8; 8];
-                buf.copy_from_slice(&data[pos + 2..pos + 10]);
-                record.push(Value::Integer(i64::from_le_bytes(buf)));
-                pos += 10;
-            }
-            b"s:" => {
-                let start = pos + 2;
-                // Find null terminator
-                let end = data[start..].iter().position(|&b| b == 0).ok_or_else(|| {
-                    crate::engine::SqlError::ExecutionError(
-                        "RecoveryEngine: Text missing null terminator".to_string(),
-                    )
-                })?;
-                let s = std::str::from_utf8(&data[start..start + end]).map_err(|e| {
-                    crate::engine::SqlError::ExecutionError(format!(
-                        "RecoveryEngine: invalid UTF-8 in Text: {}",
-                        e
-                    ))
-                })?;
-                record.push(Value::Text(s.to_string()));
-                pos = start + end + 1;
-            }
-            b"b:" => {
-                if pos + 3 > data.len() {
-                    return Err(crate::engine::SqlError::ExecutionError(
-                        "RecoveryEngine: truncated Boolean".to_string(),
-                    ));
-                }
-                record.push(Value::Boolean(data[pos + 2] != 0));
-                pos += 3;
-            }
-            b"n:" => {
-                record.push(Value::Null);
-                pos += 2;
-            }
-            b"f:" => {
-                if pos + 10 > data.len() {
-                    return Err(crate::engine::SqlError::ExecutionError(
-                        "RecoveryEngine: truncated Float".to_string(),
-                    ));
-                }
-                let mut buf = [0u8; 8];
-                buf.copy_from_slice(&data[pos + 2..pos + 10]);
-                record.push(Value::Float(f64::from_bits(u64::from_le_bytes(buf))));
-                pos += 10;
-            }
-            b"B:" => {
-                let start = pos + 2;
-                let end = data[start..].iter().position(|&b| b == 0).ok_or_else(|| {
-                    crate::engine::SqlError::ExecutionError(
-                        "RecoveryEngine: Blob missing null terminator".to_string(),
-                    )
-                })?;
-                record.push(Value::Blob(data[start..start + end].to_vec()));
-                pos = start + end + 1;
-            }
-            // v3.12.0 Issue #4682: skip unknown prefixes and substitute NULL
-            // so partial record recovery is still possible
-            _ => {
-                // v3.12.0 Issue #4682: an unknown value prefix (e.g.
-                // produced by a newer writer that an older reader does
-                // not understand, or by a corrupt page) should not
-                // abort the entire record parse. Substitute `Value::Null`
-                // for the affected field and advance by the 2-byte
-                // prefix only. The caller still gets the recovered
-                // record; the unknown field is recoverable from the WAL
-                // (the entry remains in `recover()`'s output).
-                log::debug!(
-                    "bytes_to_record: unknown value prefix {:02x?}, substituting Null",
-                    &data[pos..pos + 2]
-                );
-                record.push(Value::Null);
-                pos += 2;
-            }
-        }
-    }
-    Ok(record)
+    crate::wal_record_codec::bytes_to_record(data)
 }
 
 #[allow(dead_code)]
@@ -271,7 +196,7 @@ pub(crate) fn bytes_to_filters(data: &[u8]) -> Result<Vec<Value>, crate::engine:
 
 /// Force an insert during recovery, bypassing any insert buffer so subsequent
 /// scan/delete in the same recovery pass see the row in `data.rows` directly.
-pub(crate) fn recovery_force_insert<S: StorageEngine>(
+pub(crate) fn recovery_force_insert<S: StorageEngine + ?Sized>(
     storage: &mut S,
     table: &str,
     record: Vec<Value>,
@@ -405,7 +330,7 @@ fn key_to_filter_values(key: &[u8]) -> Result<Vec<Value>, crate::engine::SqlErro
     ))
 }
 
-fn replace_by_key<S: StorageEngine>(
+fn replace_by_key<S: StorageEngine + ?Sized>(
     storage: &mut S,
     table: &str,
     key: &[u8],
@@ -734,77 +659,142 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
     }
 
     fn apply_entry(&mut self, storage: &mut S, entry: &WalEntry) -> SqlResult<()> {
-        // Resolve table_name from table_id hash
-        let table_name = resolve_table_name(storage, entry.table_id).map_err(|e| {
-            crate::engine::SqlError::ExecutionError(format!(
-                "RecoveryEngine::apply_entry: {} (tx_id={}, entry_type={:?}, table_id={})",
-                e, entry.tx_id, entry.entry_type, entry.table_id,
-            ))
-        })?;
+        // #5055: the body moved to `apply_wal_entry` so crash recovery
+        // and point-in-time recovery cannot diverge. A second copy of
+        // this logic is how the WAL row codec came to have an encoder
+        // and a decoder that disagreed about the format — one of them
+        // had grown `P:`/`J:` support the other never got.
+        apply_wal_entry(storage, entry).map(|_| ())
+    }
+}
 
-        match entry.entry_type {
-            WalEntryType::Insert => {
-                let data = entry.data.as_deref().unwrap_or(&[]);
-                if data.is_empty() {
-                    return Err(crate::engine::SqlError::ExecutionError(
-                        "RecoveryEngine: Insert entry with empty data".to_string(),
-                    ));
-                }
-                let record = bytes_to_record(data)?;
-                // F-09 final fix (dual-write dedup): check if the row is
-                // already present in storage. This happens when an autocommit
-                // INSERT was committed (buffer flushed to disk via save_table)
-                // before crash. Without dedup, force_insert would create a
-                // duplicate row during WAL replay.
-                if let Ok(existing) = storage.scan(&table_name) {
-                    if existing.iter().any(|r| r == &record) {
-                        // Row already on disk; skip replay to avoid duplicate.
-                        return Ok(());
-                    }
-                }
-                // During recovery, force direct insert to avoid buffer/direct split
-                // so subsequent scan/delete in same recovery see the inserted row.
-                recovery_force_insert(storage, &table_name, record)?;
+/// Whether an entry mutates rows (as opposed to being a transaction
+/// boundary or a checkpoint).
+fn is_row_entry_type(t: WalEntryType) -> bool {
+    matches!(
+        t,
+        WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete
+    )
+}
+
+/// What [`apply_wal_entry`] did with one entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ApplyOutcome {
+    /// The entry changed the storage.
+    Applied,
+    /// The entry was a no-op: a transaction boundary, or an Insert
+    /// whose row was already present.
+    Skipped,
+}
+
+/// Apply one row-level WAL entry to `storage`.
+///
+/// #5055: extracted from `RecoveryEngineImpl::apply_entry` so
+/// [`crate::pitr`] runs the *same* code crash recovery does.
+///
+/// `storage` must **not** have a WAL attached. Replaying entries that
+/// this call re-logs would double the log on every restore, and the
+/// doubled copy would be replayed by the next restore in turn.
+pub(crate) fn apply_wal_entry(
+    storage: &mut dyn StorageEngine,
+    entry: &WalEntry,
+) -> SqlResult<ApplyOutcome> {
+    // #5055: resolve via the recorded table name; only fall back to the
+    // legacy id hash, and error rather than guess on ambiguity.
+    let table_name = resolve_entry_table(storage, entry).map_err(|e| {
+        crate::engine::SqlError::ExecutionError(format!(
+            "apply_wal_entry: {} (entry_type={:?})",
+            e, entry.entry_type,
+        ))
+    })?;
+
+    // #5055: the table has to exist before anything is applied to it.
+    //
+    // `FileStorage::insert_direct` and `update` / `delete` all treat a
+    // missing table as a no-op and return `Ok(())`. Without this check a
+    // restore into a directory that is missing a table would report every
+    // one of that table's entries as applied, write nothing, and exit 0 —
+    // the same "reported success, restored nothing" shape this issue is
+    // about, one layer down. It is also a genuine diagnostic: a WAL
+    // entry naming a table the restore target does not have means the
+    // base backup and the log are from different databases.
+    if is_row_entry_type(entry.entry_type) && storage.get_table_info(&table_name).is_err() {
+        return Err(crate::engine::SqlError::ExecutionError(format!(
+            "apply_wal_entry: table {:?} named by this entry does not exist in the \
+             target; the data directory and the WAL are not from the same database",
+            table_name
+        )));
+    }
+
+    match entry.entry_type {
+        WalEntryType::Insert => {
+            let data = entry.data.as_deref().unwrap_or(&[]);
+            if data.is_empty() {
+                return Err(crate::engine::SqlError::ExecutionError(
+                    "apply_wal_entry: Insert entry with empty data".to_string(),
+                ));
             }
-            WalEntryType::Update => {
-                if let Some(ref key) = entry.key {
-                    if let Some(ref data) = entry.data {
-                        let new_record = bytes_to_record(data)?;
-                        replace_by_key(storage, &table_name, key, new_record)?;
-                    } else {
-                        log::warn!(
-                            "RecoveryEngine: UPDATE entry without data for table {} (tx_id={})",
-                            table_name,
-                            entry.tx_id
-                        );
-                    }
+            let record = bytes_to_record(data)?;
+            // F-09 final fix (dual-write dedup): skip the row if it is
+            // already present. This is what makes a point-in-time
+            // restore work at all — replay runs on top of a restored
+            // base backup that already holds every row the base had, so
+            // re-applying the log would duplicate all of them.
+            if let Ok(existing) = storage.scan(&table_name) {
+                if existing.iter().any(|r| r == &record) {
+                    return Ok(ApplyOutcome::Skipped);
+                }
+            }
+            // Bypass the insert buffer so a later entry in this same
+            // pass can see the row. `FileStorage::update` and `delete`
+            // read `tables` only, so a row left in the buffer would be
+            // invisible to a subsequent Update or Delete — the restore
+            // would silently apply the first write and drop the rest.
+            recovery_force_insert(storage, &table_name, record)?;
+            Ok(ApplyOutcome::Applied)
+        }
+        WalEntryType::Update => {
+            if let Some(ref key) = entry.key {
+                if let Some(ref data) = entry.data {
+                    let new_record = bytes_to_record(data)?;
+                    replace_by_key(storage, &table_name, key, new_record)?;
+                    Ok(ApplyOutcome::Applied)
                 } else {
                     log::warn!(
-                        "RecoveryEngine: UPDATE entry without key for table {} (tx_id={})",
+                        "apply_wal_entry: UPDATE entry without data for table {} (tx_id={})",
                         table_name,
                         entry.tx_id
                     );
+                    Ok(ApplyOutcome::Skipped)
                 }
-            }
-            WalEntryType::Delete => {
-                if let Some(ref key) = entry.key {
-                    let filter_values = key_to_filter_values(key)?;
-                    storage.delete(&table_name, &filter_values)?;
-                } else {
-                    log::warn!(
-                        "RecoveryEngine: DELETE entry without key for table {} - full table delete",
-                        table_name
-                    );
-                    storage.delete(&table_name, &[])?;
-                }
-            }
-            _ => {
-                // Begin, Commit, Rollback, Checkpoint, Prepare are metadata
-                // entries handled by the filtering step; skip here.
+            } else {
+                log::warn!(
+                    "apply_wal_entry: UPDATE entry without key for table {} (tx_id={})",
+                    table_name,
+                    entry.tx_id
+                );
+                Ok(ApplyOutcome::Skipped)
             }
         }
-
-        Ok(())
+        WalEntryType::Delete => {
+            if let Some(ref key) = entry.key {
+                let filter_values = key_to_filter_values(key)?;
+                storage.delete(&table_name, &filter_values)?;
+                Ok(ApplyOutcome::Applied)
+            } else {
+                log::warn!(
+                    "apply_wal_entry: DELETE entry without key for table {} - full table delete",
+                    table_name
+                );
+                storage.delete(&table_name, &[])?;
+                Ok(ApplyOutcome::Applied)
+            }
+        }
+        _ => {
+            // Begin, Commit, Rollback, Checkpoint, Prepare are metadata
+            // entries handled by the filtering step; skip here.
+            Ok(ApplyOutcome::Skipped)
+        }
     }
 }
 
@@ -897,6 +887,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 0,
@@ -906,6 +897,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Insert,
                 table_id: 100,
+                table_name: None,
                 key: None,
                 data: Some(b"i:{}" as &[u8]).map(|s| s.to_vec()),
                 lsn: 1,
@@ -915,6 +907,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -924,6 +917,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 3,
@@ -933,6 +927,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Insert,
                 table_id: 100,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1058,33 +1053,112 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_resolve_table_name_found() {
-        use crate::engine::{ColumnDefinition, StorageEngine, TableInfo};
-        let mut storage = MemoryStorage::new();
-        let table_info = TableInfo {
+    fn orders_table() -> crate::engine::TableInfo {
+        use crate::engine::ColumnDefinition;
+        crate::engine::TableInfo {
             name: "orders".to_string(),
             columns: vec![ColumnDefinition::new("id", "INTEGER")],
             foreign_keys: vec![],
             unique_constraints: vec![],
             check_constraints: vec![],
-
             compression: None,
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
-        };
-        storage.create_table(&table_info).unwrap();
-        let id = table_name_to_id("orders");
-        let resolved = resolve_table_name(&storage, id).unwrap();
-        assert_eq!(resolved, "orders");
+        }
     }
 
+    fn insert_entry(table_id: u64, table_name: Option<&str>) -> WalEntry {
+        WalEntry {
+            tx_id: 1,
+            entry_type: WalEntryType::Insert,
+            table_id,
+            table_name: table_name.map(|s| s.to_string()),
+            key: None,
+            data: None,
+            lsn: 0,
+            timestamp: 0,
+        }
+    }
+
+    /// #5055: a modern entry resolves straight from its own name,
+    /// without consulting the hash at all.
     #[test]
-    fn test_resolve_table_name_not_found() {
+    fn test_resolve_entry_table_prefers_recorded_name() {
+        use crate::engine::StorageEngine;
+        let mut storage = MemoryStorage::new();
+        storage.create_table(&orders_table()).unwrap();
+        let entry = insert_entry(table_name_to_id("orders"), Some("orders"));
+        assert_eq!(resolve_entry_table(&storage, &entry).unwrap(), "orders");
+    }
+
+    /// #5055: a legacy entry with no name still resolves, as long as
+    /// exactly one table matches its id.
+    #[test]
+    fn test_resolve_entry_table_legacy_entry_via_id() {
+        use crate::engine::StorageEngine;
+        let mut storage = MemoryStorage::new();
+        storage.create_table(&orders_table()).unwrap();
+        let entry = insert_entry(table_name_to_id("orders"), None);
+        assert_eq!(resolve_entry_table(&storage, &entry).unwrap(), "orders");
+    }
+
+    /// #5055: an id matching no open table is an error, not a silent
+    /// drop.
+    #[test]
+    fn test_resolve_entry_table_not_found_is_error() {
+        use crate::engine::StorageEngine;
         let storage = MemoryStorage::new();
-        let result = resolve_table_name(&storage, 99999);
-        assert!(result.is_err());
+        let entry = insert_entry(99999, None);
+        assert!(resolve_entry_table(&storage, &entry).is_err());
+    }
+
+    /// #5055: the 31-radix id hash collides. When it does, replay must
+    /// refuse — writing one table's rows into another is worse than not
+    /// restoring them.
+    ///
+    /// Runs against `FileStorage` because that is the backend `pitr`
+    /// actually uses, and because it is the one whose `list_tables()`
+    /// preserves table-name case. `MemoryStorage` lowercases names,
+    /// which for ASCII happens to rule out this particular collision —
+    /// the hazard is real, just not reachable through that backend.
+    #[test]
+    fn test_resolve_entry_table_refuses_on_hash_collision() {
+        use crate::engine::StorageEngine;
+        use crate::file_storage::FileStorage;
+        // "Aa" and "BB" are the classic collision pair for a base-31
+        // polynomial fold: 65*31 + 97 == 66*31 + 66.
+        let (a, b) = ("Aa", "BB");
+        assert_eq!(
+            table_name_to_id(a),
+            table_name_to_id(b),
+            "this test needs a known collision for the 31-radix fold"
+        );
+        let dir = std::env::temp_dir().join("re_collision_5055");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut storage = FileStorage::new(dir.clone()).unwrap();
+        for table in [a, b] {
+            storage
+                .create_table(&crate::engine::TableInfo {
+                    name: table.to_string(),
+                    ..orders_table()
+                })
+                .unwrap();
+        }
+        let names = storage.list_tables();
+        assert!(
+            names.contains(&a.to_string()) && names.contains(&b.to_string()),
+            "precondition: both colliding tables must be listed, got {names:?}"
+        );
+
+        let err =
+            resolve_entry_table(&storage, &insert_entry(table_name_to_id(a), None)).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("refusing to guess"),
+            "expected an explicit refusal, got: {msg}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1172,6 +1246,7 @@ mod tests {
             tx_id: 1,
             entry_type: crate::wal::WalEntryType::Insert,
             table_id: 0,
+            table_name: None,
             key: None,
             data: None,
             lsn: 0,
@@ -1188,6 +1263,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1197,6 +1273,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1217,6 +1294,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1226,6 +1304,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1235,6 +1314,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 3,
@@ -1244,6 +1324,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Rollback,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1253,6 +1334,7 @@ mod tests {
                 tx_id: 3,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 5,
@@ -1278,6 +1360,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1287,6 +1370,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1296,6 +1380,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 3,
@@ -1305,6 +1390,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1327,6 +1413,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1336,6 +1423,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1347,6 +1435,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Insert,
                 table_id: 0,
+                table_name: None,
                 key: Some(vec![2u8]),
                 data: None,
                 lsn: 3,
@@ -1356,6 +1445,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1365,6 +1455,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 5,
@@ -1391,6 +1482,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1400,6 +1492,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1409,6 +1502,7 @@ mod tests {
                 tx_id: 3,
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 3,
@@ -1418,6 +1512,7 @@ mod tests {
                 tx_id: 2,
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1427,6 +1522,7 @@ mod tests {
                 tx_id: 1,
                 entry_type: WalEntryType::Rollback,
                 table_id: 0,
+                table_name: None,
                 key: None,
                 data: None,
                 lsn: 5,
