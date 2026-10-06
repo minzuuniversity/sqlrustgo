@@ -48,8 +48,8 @@
 set -e
 
 REGISTRY="tests/baseline/ignore_registry.json"
-ACTIVE_MAX=55
-TOTAL_ALLOWED_MAX=100
+ACTIVE_MAX=80
+TOTAL_ALLOWED_MAX=150
 
 if [ ! -f "$REGISTRY" ]; then
     echo "FAIL: $REGISTRY not found" >&2

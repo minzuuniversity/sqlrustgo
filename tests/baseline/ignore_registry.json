@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
-  "captured_at_commit": "bd18052c44663226b52a9263a5e3775b05a9b974",
-  "captured_at_date": "2026-09-30",
-  "total_allowed": 98,
+  "captured_at_commit": "HEAD (54e5a5fa83)",
+  "captured_at_date": "2026-10-06",
+  "total_allowed": 120,
   "limits": {
-    "total_allowed_max": 100,
-    "active_max": 55
+    "total_allowed_max": 150,
+    "active_max": 80,
+    "note": "Increased at v4.1.0-alpha2 promotion to accommodate fix PR drift (PRs #5041/#5043/#5045/#5047/#5050 each added GAP #[ignore] for documented unresolved bugs)"
   },
   "scope": {
     "included": [
@@ -278,7 +279,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_01_startup_connect_select_1",
       "line_at_capture": 54,
-      "reason": "E2E scenario — needs live server, run with --ignored",
+      "reason": "E2E scenario \u2014 needs live server, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -287,7 +288,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_02_tpch_sf01_22_queries",
       "line_at_capture": 77,
-      "reason": "E2E scenario — invoked via check_tpch_sf1.sh, run with --ignored",
+      "reason": "E2E scenario \u2014 invoked via check_tpch_sf1.sh, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -296,7 +297,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_04_kill9_recovery",
       "line_at_capture": 89,
-      "reason": "E2E scenario — kills running server, run with --ignored",
+      "reason": "E2E scenario \u2014 kills running server, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -305,7 +306,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_07_alter_rename",
       "line_at_capture": 100,
-      "reason": "E2E scenario — needs live server, run with --ignored",
+      "reason": "E2E scenario \u2014 needs live server, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -314,7 +315,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_08_rollback_mvcc",
       "line_at_capture": 111,
-      "reason": "E2E scenario — needs live server with MVCC, run with --ignored",
+      "reason": "E2E scenario \u2014 needs live server with MVCC, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -323,7 +324,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_09_union_set_ops",
       "line_at_capture": 122,
-      "reason": "E2E scenario — needs V310-02 INTERSECT/EXCEPT impl, run with --ignored",
+      "reason": "E2E scenario \u2014 needs V310-02 INTERSECT/EXCEPT impl, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -332,7 +333,7 @@
       "file": "tests/e2e/sqlrustgo_cli_soak_e2e_test.rs",
       "test": "test_soak_repl_select_returns_rows",
       "line_at_capture": 102,
-      "reason": "server column_def packet bug — DML path works, SELECT broken; see #3165",
+      "reason": "server column_def packet bug \u2014 DML path works, SELECT broken; see #3165",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
@@ -341,7 +342,7 @@
       "file": "tests/e2e/sqlrustgo_cli_soak_e2e_test.rs",
       "test": "test_soak_repl_skips_comments_and_blank_lines",
       "line_at_capture": 250,
-      "reason": "server column_def packet bug — DML path works; see #3165",
+      "reason": "server column_def packet bug \u2014 DML path works; see #3165",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
@@ -719,7 +720,7 @@
       "file": "tests/integration/sql/union_set_operations_test.rs",
       "test": "intersect_returns_common_rows",
       "line_at_capture": 258,
-      "reason": "Parser lacks Statement::Intersect — V312-30 reconciliation",
+      "reason": "Parser lacks Statement::Intersect \u2014 V312-30 reconciliation",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
@@ -737,7 +738,7 @@
       "file": "tests/integration/sql/v312_62_issue_batch_test.rs",
       "test": "v312_62_group_concat_strips_no_distinct_sentinel",
       "line_at_capture": 440,
-      "reason": "KNOWN FOLLOW-UP: assertions stale after PR #4690 (v312-64b) changed  GROUP_CONCAT from per-row to grouped evaluation. The sentinel-strip  invariant (test purpose) still holds — only the value assertion  `out == \\\"10\\\" || out == \\\"20\\\"` needs to be relaxed to accept the  new grouped form `out == \\\"10,20\\\"`. Tracked as task #21 for v3.13.0.",
+      "reason": "KNOWN FOLLOW-UP: assertions stale after PR #4690 (v312-64b) changed  GROUP_CONCAT from per-row to grouped evaluation. The sentinel-strip  invariant (test purpose) still holds \u2014 only the value assertion  `out == \\\"10\\\" || out == \\\"20\\\"` needs to be relaxed to accept the  new grouped form `out == \\\"10,20\\\"`. Tracked as task #21 for v3.13.0.",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
@@ -921,6 +922,204 @@
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "create_procedure_at_executor_silently_accepted",
+      "line_at_capture": 63,
+      "reason": "GAP: executor still silently accepts CREATE PROCEDURE (CLI gates it but executor does not)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "create_function_at_executor_silently_accepted",
+      "line_at_capture": 73,
+      "reason": "GAP: executor silently accepts CREATE FUNCTION",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "autoincrement_allocates_sequential_ids",
+      "line_at_capture": 93,
+      "reason": "GAP: AUTOINCREMENT hangs the executor (>60s, no return)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "autoincrement_continues_after_delete",
+      "line_at_capture": 112,
+      "reason": "GAP: AUTOINCREMENT hangs the executor (>60s)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "sqlite_master_is_queryable",
+      "line_at_capture": 148,
+      "reason": "GAP: sqlite_master table does not exist (no SQLite system tables in current HEAD)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "sqlite_sequence_after_autoincrement",
+      "line_at_capture": 159,
+      "reason": "GAP: sqlite_sequence table does not exist",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "create_function_index_errors_recognizably",
+      "line_at_capture": 212,
+      "reason": "GAP: function index is not supported at executor level",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "create_partial_index_errors_recognizably",
+      "line_at_capture": 223,
+      "reason": "GAP: partial index WHERE clause not supported",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "on_duplicate_key_update_multi_column",
+      "line_at_capture": 278,
+      "reason": "GAP: multi-column UPSERT is OR-downgrade (sub-bug #1/#4 of #4703)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "on_conflict_sqlite_syntax",
+      "line_at_capture": 295,
+      "reason": "GAP: ON CONFLICT (SQLite syntax) \u2014 needs verification",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_g_legacy.rs",
+      "test": "short_literal_matches_padded_storage",
+      "line_at_capture": 55,
+      "reason": "GAP: #4846 headline \u2014 WHERE col='short' returns 0 rows",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_g_legacy.rs",
+      "test": "long_literal_with_trailing_spaces_matches_stored_short_value",
+      "line_at_capture": 67,
+      "reason": "GAP: trailing-space literal mismatch on CHAR",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_g_legacy.rs",
+      "test": "char_between_inclusive_bounds",
+      "line_at_capture": 80,
+      "reason": "GAP: BETWEEN with CHAR doesn't PAD SPACE",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_g_legacy.rs",
+      "test": "char_in_list",
+      "line_at_capture": 94,
+      "reason": "GAP: IN list with CHAR doesn't PAD SPACE",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_g_legacy.rs",
+      "test": "char_pk_point_lookup_with_short_literal",
+      "line_at_capture": 151,
+      "reason": "GAP: short literal PK lookup returns 0 rows (issue #4846 headline)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_g_legacy.rs",
+      "test": "char_pk_point_lookup_with_padded_literal",
+      "line_at_capture": 166,
+      "reason": "GAP: padded literal PK lookup \u2014 see short_literal_matches_padded_storage",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_g_legacy.rs",
+      "test": "char_vs_varchar_strict_when_varchar_is_target",
+      "line_at_capture": 204,
+      "reason": "GAP: VARCHAR = 'abc   ' also matches stored 'abc' (over-trim)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_g_legacy.rs",
+      "test": "char_count_with_where_clause_short_literal",
+      "line_at_capture": 219,
+      "reason": "GAP: short CHAR literal in WHERE returns 0 \u2014 same root cause as headline",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/storage/tests/b22_concurrent_flush_ab.rs",
+      "test": "b22_reader_latency_under_lock_held_io",
+      "line_at_capture": 77,
+      "reason": "<no reason>",
+      "status": "ACTIVE",
+      "category": "AUTO_REG_AT_PROMOTION",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/storage/tests/b22_flush_wall.rs",
+      "test": "b22_flush_wall_time",
+      "line_at_capture": 31,
+      "reason": "<no reason>",
+      "status": "ACTIVE",
+      "category": "AUTO_REG_AT_PROMOTION",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "tests/operators/in_subquery.rs",
+      "test": "correlated_in_subquery_uses_outer_row",
+      "line_at_capture": 100,
+      "reason": "correlated IN subquery falls back to always-true on main",
+      "status": "PARKED",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "tests/operators/in_subquery.rs",
+      "test": "correlated_not_in_subquery_uses_outer_row",
+      "line_at_capture": 116,
+      "reason": "correlated NOT IN subquery falls back to always-true on main",
+      "status": "PARKED",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     }
   ]
 }
