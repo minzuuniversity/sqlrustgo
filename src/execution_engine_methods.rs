@@ -1591,14 +1591,39 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         isolation: TmIsolationLevel,
         readonly: bool,
     ) -> SqlResult<ExecutorResult> {
-        // If an implicit autocommit TX is still open (i.e. the
-        // previous statement left `current_tx_id` set without an
-        // explicit COMMIT/ROLLBACK), silently commit it before
-        // starting the explicit `BEGIN`. This matches MySQL /
-        // PostgreSQL semantics and avoids the historic
-        // "Transaction already in progress" error reported by
-        // Issue #4519 regression tests when the test pattern is
-        // `INSERT ...; BEGIN; ...`.
+        // V312-85 / Issue #4519: an *implicit* autocommit TX may still be
+        // open (the previous statement left `current_tx_id` set without an
+        // explicit COMMIT/ROLLBACK). Draining it before the explicit
+        // `BEGIN` matches MySQL / PostgreSQL semantics and avoids the
+        // historic "Transaction already in progress" error for the common
+        // `INSERT ...; BEGIN; ...` script shape.
+        //
+        // Issue #4847 follow-up (2026-10-07): this drain used to be
+        // UNCONDITIONAL, which meant a second `BEGIN` inside an already
+        // explicit transaction silently COMMIT-ED that open transaction.
+        // `BEGIN; INSERT; BEGIN; ROLLBACK;` therefore committed the INSERT
+        // and the ROLLBACK became a no-op — the user's rollback boundary was
+        // destroyed by a statement that is a no-op in every dialect we
+        // target (MySQL errors 1568, PostgreSQL warns "there is already a
+        // transaction in progress", SQLite errors). The distinction is
+        // carried by `is_explicit_transaction`, which until now was
+        // declared and initialised but never written or read.
+        let drains_implicit = {
+            let sess = self.tx_session.lock();
+            match (sess.current_tx_id.is_some(), sess.is_explicit_transaction) {
+                // No TX open, or an implicit one → nothing that must not be
+                // committed behind the user's back.
+                (false, _) | (true, false) => true,
+                // An explicit TX is still open → refusing is the only
+                // behaviour that does not silently discard it.
+                (true, true) => false,
+            }
+        };
+        if !drains_implicit {
+            return Err(SqlError::ExecutionError(
+                "Transaction already in progress".to_string(),
+            ));
+        }
         if self.tx_session.lock().current_tx_id.is_some() {
             // V312-85 / Issue #4519: drain the implicit TX.
             let prev_tx = self.tx_session.lock().current_tx_id;
@@ -1651,6 +1676,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         self.tx_session.lock().tx_status = TxStatus::Active;
         self.tx_session.lock().tx_readonly = readonly;
+        // Issue #4847 follow-up: mark the TX as explicitly begun so a
+        // subsequent BEGIN can refuse rather than silently commit it.
+        self.tx_session.lock().is_explicit_transaction = true;
         // V312-RC-GA / Issue #4818: BEGIN used to return the tx_id as a
         // single row, which leaked through the CSV formatter and broke
         // multi-statement scripts (the next statement's first output row
@@ -1705,6 +1733,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // "transaction already committed".
         self.tx_session.lock().tx_status = TxStatus::Idle;
         self.tx_session.lock().tx_readonly = false;
+        self.tx_session.lock().is_explicit_transaction = false;
         Ok(ExecutorResult::empty())
     }
 
@@ -1939,6 +1968,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // in autocommit mode. (Same reasoning as commit_transaction above.)
         self.tx_session.lock().tx_status = TxStatus::Idle;
         self.tx_session.lock().tx_readonly = false;
+        self.tx_session.lock().is_explicit_transaction = false;
         Ok(ExecutorResult::empty())
     }
 
