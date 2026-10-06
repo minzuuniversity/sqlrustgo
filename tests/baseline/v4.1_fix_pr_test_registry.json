@@ -259,6 +259,15 @@
         "crates/storage/src/pitr.rs"
       ],
       "note": "两个 src/ 条目是 `#[cfg(test)] mod tests` 内的单测文件（编解码往返 / V2 vs V1 / PITR 过滤与回放）。端到端在 file_storage_wal_5055.rs：写 WAL → 恢复到另一个目录 → 重开磁盘核对行。变异验证 12/12 全部被抓住，其中 M8（CLI 退出码退回恒 0）第一版为无效证据 —— 退出码判定当时内联在 main.rs 无法测试，被一个既存失败的无关用例触发，已抽出 pitr::exit_code_for 后重做；M12（去掉表存在性检查）针对合并时发现的「缺表时静默报告 applied」。"
+    },
+    {
+      "pr": 5066,
+      "issue": 5059,
+      "fix": "补齐 #5059 验收标准 #2 —— 「同一行被两个并发事务写」的场景此前零覆盖",
+      "test_paths": [
+        "crates/storage/tests/file_storage_concurrent_same_row_5059.rs"
+      ],
+      "note": "3 项。变异 M11（把 BufferedInsert 撤销换回 #5059 之前的二次作用域 blanket sweep）3/3 FAILED，且 c1_concurrent_begin_commit_rollback 同时复现 FAILED。诚实标注一个层边界：这些测试直接驱动 StorageEngine，在唯一性校验层（ExecutionEngine，src/engine_dml.rs 的 SqlError::DuplicateKey）之下 —— 探针实测 FileStorage::insert 收下两条同主键的行都会成功并落盘，那是分层设计而非缺陷，故本文件刻意不断言主键唯一性。"
     }
   ]
 }
