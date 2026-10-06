@@ -1044,6 +1044,9 @@ path = "tests/e2e/merge_e2e_test.rs"
 name = "multi_db_e2e_test"
 path = "tests/e2e/multi_db_e2e_test.rs"
 [[test]]
+name = "multi_db_isolation_5025"
+path = "tests/e2e/multi_db_isolation_5025.rs"
+[[test]]
 name = "partition_e2e_test"
 path = "tests/e2e/partition_e2e_test.rs"
 [[test]]
