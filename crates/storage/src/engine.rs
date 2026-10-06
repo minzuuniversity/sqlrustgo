@@ -1675,7 +1675,13 @@ pub trait StorageEngine: Send + Sync {
 
 /// In-memory storage implementation for testing and caching
 pub struct MemoryStorage {
-    tables: HashMap<String, Vec<Record>>,
+    /// #4948: the rows live behind an `Arc` so that the post-commit
+    /// snapshot (`committed_tables`) can share them instead of deep-copying
+    /// the whole database on every commit. A write path that needs to
+    /// mutate a table goes through `Arc::make_mut`, which clones that one
+    /// table's rows — and only the first time after a commit, while the
+    /// snapshot still shares it.
+    tables: HashMap<String, Arc<Vec<Record>>>,
     /// V4.1.0: per-table stamp bumped by every row mutation. See
     /// `StorageEngine::table_change_stamp`; read it to detect that a
     /// derived cache (e.g. the engine's PK index) has gone stale.
@@ -1718,7 +1724,13 @@ pub struct MemoryStorage {
     /// connection can inherit the **last committed** state of a peer, NOT
     /// the peer's current in-transaction live state. Updated in
     /// `commit_transaction_with_log` and on every autocommit write.
-    committed_tables: HashMap<String, Vec<Record>>,
+    ///
+    /// #4948: shares its `Arc`s with `tables` rather than owning a private
+    /// deep copy. `committed_tables = tables.clone()` at commit time is now
+    /// a HashMap shallow clone — O(tables) instead of O(total rows). The
+    /// public `SchemaSnapshot` is unaffected; `snapshot_schema` still
+    /// materialises owned rows at that boundary.
+    committed_tables: HashMap<String, Arc<Vec<Record>>>,
     /// V312-62 / Issues #4617 & #4621: track `(table, column)` pairs for
     /// every `CREATE INDEX` so `list_indexes` returns them to the planner
     /// and the EXPLAIN planner-shape oracle. The actual B+ tree is still
@@ -1821,7 +1833,9 @@ impl MemoryStorage {
             return vec![Vec::new()];
         };
         if all_rows.len() < PARALLEL_SCAN_MIN_ROWS || n_partitions <= 1 {
-            return vec![all_rows.clone()];
+            // #4948: `all_rows` is an `&Arc<Vec<Record>>`; the return type is
+            // owned, so unwrap the Arc rather than cloning the handle.
+            return vec![(**all_rows).clone()];
         }
         let total = all_rows.len();
         let base = total / n_partitions;
@@ -1939,15 +1953,10 @@ impl MemoryStorage {
             if let Some(active_log) = self.tx_log.as_mut() {
                 active_log.inserted.push((table.clone(), record.clone()));
             }
-            self.tables
-                .entry(key.clone())
-                .or_default()
-                .push(record.clone());
+            Arc::make_mut(self.tables.entry(key.clone()).or_default()).push(record.clone());
             // V312-26 #3969: keep the post-commit snapshot in sync so a
             // later connection joining via this storage sees the broadcast.
-            self.committed_tables
-                .entry(key.clone())
-                .or_default()
+            Arc::make_mut(self.committed_tables.entry(key.clone()).or_default())
                 .push(record.clone());
         }
 
@@ -1956,10 +1965,10 @@ impl MemoryStorage {
                 active_log.deleted.push((table.clone(), record.clone()));
             }
             if let Some(records) = self.tables.get_mut(table) {
-                records.retain(|r| r != record);
+                Arc::make_mut(records).retain(|r| r != record);
             }
             if let Some(records) = self.committed_tables.get_mut(table) {
-                records.retain(|r| r != record);
+                Arc::make_mut(records).retain(|r| r != record);
             }
         }
 
@@ -1970,6 +1979,9 @@ impl MemoryStorage {
                     .push((table.clone(), prior.clone(), new.clone()));
             }
             if let Some(records) = self.tables.get_mut(table) {
+                // #4948: clone-on-write; the post-commit snapshot may
+                // still share this table's rows.
+                let records = Arc::make_mut(records);
                 for record in records.iter_mut() {
                     if record == prior {
                         *record = new.clone();
@@ -1978,6 +1990,9 @@ impl MemoryStorage {
                 }
             }
             if let Some(records) = self.committed_tables.get_mut(table) {
+                // #4948: clone-on-write; the post-commit snapshot may
+                // still share this table's rows.
+                let records = Arc::make_mut(records);
                 for record in records.iter_mut() {
                     if record == prior {
                         *record = new.clone();
@@ -2000,7 +2015,17 @@ impl MemoryStorage {
     pub fn snapshot_schema(&self) -> SchemaSnapshot {
         SchemaSnapshot {
             table_infos: self.table_infos.clone(),
-            tables: self.committed_tables.clone(),
+            // #4948: `committed_tables` shares `Arc`s with `tables`, but
+            // `SchemaSnapshot` is public API and keeps its owned
+            // `HashMap<String, Vec<Record>>`. Materialise here so the public
+            // type — and every caller of `snapshot_schema` — is unchanged.
+            // Cost stays O(total rows), but this runs when a named
+            // connection joins, not on the commit hot path.
+            tables: self
+                .committed_tables
+                .iter()
+                .map(|(k, v)| (k.clone(), (**v).clone()))
+                .collect(),
             views: self.views.clone(),
             sequences: self.sequences.clone(),
             databases: self.databases.clone(),
@@ -2013,7 +2038,12 @@ impl MemoryStorage {
     /// state of any peer already registered in the broadcast hub.
     pub fn apply_schema(&mut self, snapshot: &SchemaSnapshot) -> SqlResult<()> {
         self.table_infos = snapshot.table_infos.clone();
-        self.tables = snapshot.tables.clone();
+        // #4948: wrap each owned row vector in an `Arc` on the way in.
+        self.tables = snapshot
+            .tables
+            .iter()
+            .map(|(k, v)| (k.clone(), Arc::new(v.clone())))
+            .collect();
         self.views = snapshot.views.clone();
         self.sequences = snapshot.sequences.clone();
         self.databases = snapshot.databases.clone();
@@ -2047,10 +2077,12 @@ impl Default for MemoryStorage {
 
 impl StorageEngine for MemoryStorage {
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
+        // #4948: `tables` stores `Arc<Vec<Record>>`; the trait returns owned
+        // rows, so unwrap the handle here rather than handing back the Arc.
         Ok(self
             .tables
             .get(&self.tbl(table))
-            .cloned()
+            .map(|rows| (**rows).clone())
             .unwrap_or_default())
     }
 
@@ -2155,17 +2187,23 @@ impl StorageEngine for MemoryStorage {
             // refuses an unknown database, which is what keeps this honest.
             for (table, row) in log.deleted.into_iter().rev() {
                 let key = self.tbl(table);
-                self.tables.entry(key).or_default().push(row);
+                Arc::make_mut(self.tables.entry(key).or_default()).push(row);
             }
             for (table, row) in log.inserted.into_iter().rev() {
                 let key = self.tbl(table);
                 if let Some(records) = self.tables.get_mut(&key) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let records = Arc::make_mut(records);
                     records.retain(|r| r != &row);
                 }
             }
             for (table, prior, _new) in log.updated.into_iter().rev() {
                 let key = self.tbl(table);
                 if let Some(records) = self.tables.get_mut(&key) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let records = Arc::make_mut(records);
                     for record in records.iter_mut() {
                         if *record == _new {
                             *record = prior.clone();
@@ -2317,19 +2355,19 @@ impl StorageEngine for MemoryStorage {
         } else {
             // V312-26 #3969: autocommit insert — propagate to the post-commit
             // snapshot so a late-joining connection sees the row.
-            self.committed_tables
-                .entry(table_key.clone())
-                .or_default()
+            Arc::make_mut(self.committed_tables.entry(table_key.clone()).or_default())
                 .extend(padded.iter().cloned());
         }
-        self.tables.entry(table_key).or_default().extend(padded);
+        Arc::make_mut(self.tables.entry(table_key).or_default()).extend(padded);
         Ok(())
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
             return Ok(0);
         };
         if filters.is_empty() {
@@ -2340,6 +2378,9 @@ impl StorageEngine for MemoryStorage {
             } else {
                 // V312-26 #3969: autocommit delete — keep post-commit view in sync.
                 if let Some(committed) = self.committed_tables.get_mut(table) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let committed = Arc::make_mut(committed);
                     committed.clear();
                 }
             }
@@ -2354,6 +2395,9 @@ impl StorageEngine for MemoryStorage {
                 if let Some(log) = self.tx_log.as_mut() {
                     log.deleted.push((table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let committed = Arc::make_mut(committed);
                     committed.retain(|c| c != r);
                 }
             }
@@ -2370,7 +2414,9 @@ impl StorageEngine for MemoryStorage {
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
             return Ok(Vec::new());
         };
         if filters.is_empty() {
@@ -2381,6 +2427,9 @@ impl StorageEngine for MemoryStorage {
                     log.deleted.push((table.to_string(), row.clone()));
                 }
             } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                // #4948: clone-on-write; the post-commit snapshot may
+                // still share this table's rows.
+                let committed = Arc::make_mut(committed);
                 committed.clear();
             }
             records.clear();
@@ -2404,6 +2453,9 @@ impl StorageEngine for MemoryStorage {
                 if let Some(log) = self.tx_log.as_mut() {
                     log.deleted.push((table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let committed = Arc::make_mut(committed);
                     committed.retain(|c| c != r);
                 }
             }
@@ -2415,7 +2467,9 @@ impl StorageEngine for MemoryStorage {
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
             return Ok(0);
         };
         let original_len = records.len();
@@ -2425,6 +2479,9 @@ impl StorageEngine for MemoryStorage {
                 if let Some(log) = self.tx_log.as_mut() {
                     log.deleted.push((table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let committed = Arc::make_mut(committed);
                     committed.retain(|c| c != r);
                 }
             }
@@ -2441,7 +2498,9 @@ impl StorageEngine for MemoryStorage {
     ) -> SqlResult<usize> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
             return Ok(0);
         };
 
@@ -2460,6 +2519,9 @@ impl StorageEngine for MemoryStorage {
                 } else {
                     // V312-26 #3969: autocommit update — keep post-commit view in sync.
                     if let Some(committed) = self.committed_tables.get_mut(table) {
+                        // #4948: clone-on-write; the post-commit snapshot may
+                        // still share this table's rows.
+                        let committed = Arc::make_mut(committed);
                         for committed_record in committed.iter_mut() {
                             if committed_record == &prior {
                                 *committed_record = record.clone();
@@ -2485,6 +2547,9 @@ impl StorageEngine for MemoryStorage {
                     } else {
                         // V312-26 #3969: autocommit update — keep post-commit view in sync.
                         if let Some(committed) = self.committed_tables.get_mut(table) {
+                            // #4948: clone-on-write; the post-commit snapshot may
+                            // still share this table's rows.
+                            let committed = Arc::make_mut(committed);
                             for committed_record in committed.iter_mut() {
                                 if committed_record == &prior {
                                     *committed_record = record.clone();
@@ -2509,7 +2574,9 @@ impl StorageEngine for MemoryStorage {
     ) -> SqlResult<usize> {
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        let Some(records) = self.tables.get_mut(&self.tbl(table)) else {
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
             return Ok(0);
         };
 
@@ -2529,6 +2596,9 @@ impl StorageEngine for MemoryStorage {
                 } else {
                     // V312-26 #3969: autocommit update — keep post-commit view in sync.
                     if let Some(committed) = self.committed_tables.get_mut(table) {
+                        // #4948: clone-on-write; the post-commit snapshot may
+                        // still share this table's rows.
+                        let committed = Arc::make_mut(committed);
                         for committed_record in committed.iter_mut() {
                             if committed_record == &prior {
                                 *committed_record = record.clone();
@@ -2595,10 +2665,11 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        // #4948: see `scan` — unwrap the `Arc` back to owned rows.
         Ok(self
             .tables
             .get(&scoped_key(db, table))
-            .cloned()
+            .map(|rows| (**rows).clone())
             .unwrap_or_default())
     }
 
@@ -2750,6 +2821,9 @@ impl StorageEngine for MemoryStorage {
             // short and `SELECT *` returned short/missing cells.
             let fill = default_fill_value(&column.default_value);
             if let Some(records) = self.tables.get_mut(&key.clone()) {
+                // #4948: clone-on-write; the post-commit snapshot may
+                // still share this table's rows.
+                let records = Arc::make_mut(records);
                 for row in records.iter_mut() {
                     row.push(fill.clone());
                 }
@@ -2972,6 +3046,9 @@ impl StorageEngine for MemoryStorage {
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         info.columns.remove(col_idx);
         if let Some(records) = self.tables.get_mut(&table_key.clone()) {
+            // #4948: clone-on-write; the post-commit snapshot may
+            // still share this table's rows.
+            let records = Arc::make_mut(records);
             for record in records.iter_mut() {
                 if col_idx < record.len() {
                     record.remove(col_idx);
@@ -3056,8 +3133,10 @@ impl StorageEngine for MemoryStorage {
         let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
             Vec::with_capacity(num_partitions);
         let mut cur = 0;
-        // v3.10.0 Issue #3776 / F-36: Arc-shared, no per-partition Vec clone
-        let shared: Arc<Vec<Record>> = Arc::new((*data).clone());
+        // v3.10.0 Issue #3776 / F-36: Arc-shared, no per-partition Vec clone.
+        // #4948: `data` is now already an `&Arc<Vec<Record>>`, so sharing the
+        // handle is free — this used to clone the whole row set once per scan.
+        let shared: Arc<Vec<Record>> = Arc::clone(data);
         for i in 0..num_partitions {
             let size = if i < rem { base + 1 } else { base };
             if size > 0 {
@@ -3296,11 +3375,11 @@ mod tests {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
             storage.tbl("lineitem"),
-            vec![
+            Arc::new(vec![
                 vec![Value::Integer(10), Value::Float(100.5), Value::Float(0.05)],
                 vec![Value::Integer(20), Value::Float(200.5), Value::Float(0.10)],
                 vec![Value::Integer(30), Value::Float(300.5), Value::Float(0.05)],
-            ],
+            ]),
         );
         let result = storage.scan("lineitem").unwrap();
         assert_eq!(result.len(), 3);
@@ -3430,7 +3509,10 @@ mod tests {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
             storage.tbl("users"),
-            vec![vec![Value::Integer(1), Value::Text("Alice".to_string())]],
+            Arc::new(vec![vec![
+                Value::Integer(1),
+                Value::Text("Alice".to_string()),
+            ]]),
         );
 
         let updated = storage
@@ -3633,7 +3715,7 @@ mod tests {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
             storage.tbl("t"),
-            (0..100_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            Arc::new((0..100_000_i64).map(|i| vec![Value::Integer(i)]).collect()),
         );
         let parts = storage.partition_rows("t", 8);
         assert_eq!(parts.len(), 1, "below threshold should return 1 chunk");
@@ -3645,7 +3727,7 @@ mod tests {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
             storage.tbl("t"),
-            (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            Arc::new((0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect()),
         );
         let parts = storage.partition_rows("t", 4);
         assert_eq!(parts.len(), 4);
@@ -3661,7 +3743,7 @@ mod tests {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
             storage.tbl("t"),
-            (0..503_003_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            Arc::new((0..503_003_i64).map(|i| vec![Value::Integer(i)]).collect()),
         );
         let parts = storage.partition_rows("t", 4);
         assert_eq!(parts.len(), 4);
@@ -4026,7 +4108,7 @@ mod tests {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
             storage.tbl("t"),
-            (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            Arc::new((0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect()),
         );
         let parts = storage.partition_rows("t", 0);
         assert_eq!(parts.len(), 1, "n_partitions should be clamped to 1");
@@ -4038,7 +4120,7 @@ mod tests {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
             storage.tbl("t"),
-            (0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            Arc::new((0..600_000_i64).map(|i| vec![Value::Integer(i)]).collect()),
         );
         let parts = storage.partition_rows("t", 1);
         assert_eq!(parts.len(), 1);
@@ -4050,7 +4132,7 @@ mod tests {
         let mut storage = MemoryStorage::new();
         storage.tables.insert(
             storage.tbl("t"),
-            (0..500_100_i64).map(|i| vec![Value::Integer(i)]).collect(),
+            Arc::new((0..500_100_i64).map(|i| vec![Value::Integer(i)]).collect()),
         );
         let parts = storage.partition_rows("t", 2);
         assert_eq!(parts.len(), 2);
@@ -4138,18 +4220,19 @@ mod tests {
     fn test_insert_dedup_logic() {
         let mut s = MemoryStorage::new();
         s.tables
-            .insert("t".to_string(), vec![vec![Value::Integer(1)]]);
+            .insert("t".to_string(), Arc::new(vec![vec![Value::Integer(1)]]));
         s.current_tx_id
             .store(1, std::sync::atomic::Ordering::Relaxed);
         s.tx_log = Some(TxLog::default());
-        s.tables.get_mut("t").unwrap().push(vec![Value::Integer(2)]);
+        // #4948: raw-map writes must clone-on-write through the Arc.
+        Arc::make_mut(s.tables.get_mut("t").unwrap()).push(vec![Value::Integer(2)]);
     }
 
     #[test]
     fn test_rollback_removes_inserted_rows() {
         let mut s = MemoryStorage::new();
         s.tables
-            .insert("t".to_string(), vec![vec![Value::Integer(1)]]);
+            .insert("t".to_string(), Arc::new(vec![vec![Value::Integer(1)]]));
         s.begin_transaction().unwrap();
         s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
         s.rollback_transaction().unwrap();
@@ -4601,6 +4684,187 @@ mod tests {
         assert_eq!(s.scan("b.t").unwrap(), vec![vec![Value::Integer(1)]]);
         s.set_current_db("a.b").unwrap();
         assert_eq!(s.scan("t").unwrap(), vec![vec![Value::Integer(2)]]);
+    }
+
+    // ── #4948: COMMIT shares rows instead of deep-copying the database ───────
+    //
+    // `commit_transaction*` used to end with `self.committed_tables =
+    // self.tables.clone()`, a full O(total rows) copy on every commit. With
+    // `tables: HashMap<String, Arc<Vec<Record>>>` the same assignment shares
+    // the row vectors instead.
+    //
+    // These tests assert the sharing **structurally** through
+    // `Arc::strong_count` rather than by wall clock: a timing assertion in the
+    // normal suite is what made `wal_legacy::tests::test_wal_perf_1000_insert`
+    // (`wal_legacy.rs:1473`) fail intermittently under CPU contention. The
+    // before/after timing lives in `tests/measure_commit_clone_4948.rs`, which
+    // is `#[ignore]`d and run manually.
+
+    fn table_with_rows_4948(s: &mut MemoryStorage, name: &str, rows: usize) {
+        let mut info: TableInfo = TableInfo::default();
+        info.name = name.to_string();
+        info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
+        s.create_table(&info).unwrap();
+        let batch: Vec<Record> = (0..rows).map(|i| vec![Value::Integer(i as i64)]).collect();
+        s.insert(name, batch).unwrap();
+    }
+
+    #[test]
+    fn commit_shares_row_vectors_instead_of_deep_copying_4948() {
+        // Both commit entry points carry the snapshot assignment:
+        //   - `StorageEngine::commit_transaction`  — what the engine actually
+        //     calls on every autocommit write and explicit COMMIT;
+        //   - `commit_transaction_with_log`        — the TxLog-returning variant.
+        // Mutation M22 showed a test that only covers the second one lets the
+        // first silently go back to deep-copying, so exercise both.
+        for use_trait_commit in [true, false] {
+            let mut s = MemoryStorage::new();
+            table_with_rows_4948(&mut s, "t1", 10);
+            table_with_rows_4948(&mut s, "t2", 10);
+
+            s.begin_transaction().unwrap();
+            if use_trait_commit {
+                s.commit_transaction().unwrap();
+            } else {
+                s.commit_transaction_with_log();
+            }
+
+            for name in ["t1", "t2"] {
+                let key = s.tbl(name);
+                let live = s.tables.get(&key).expect("live table");
+                let committed = s.committed_tables.get(&key).expect("post-commit snapshot");
+                assert!(
+                    Arc::ptr_eq(live, committed),
+                    "trait_commit={use_trait_commit} {name}: live and committed rows \
+                 must share one allocation"
+                );
+                assert_eq!(
+                    Arc::strong_count(live),
+                    2,
+                    "trait_commit={use_trait_commit} {name}: expected live + snapshot only"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn commit_with_log_shares_row_vectors_instead_of_deep_copying_4948() {
+        let mut s = MemoryStorage::new();
+        table_with_rows_4948(&mut s, "t1", 10);
+        table_with_rows_4948(&mut s, "t2", 10);
+
+        s.begin_transaction().unwrap();
+        s.commit_transaction_with_log();
+
+        // The whole point of #4948: after a commit, every table's rows are
+        // held by exactly two handles — the live map and the post-commit
+        // snapshot — pointing at ONE buffer. Before the change this was a
+        // separate allocation per table.
+        for name in ["t1", "t2"] {
+            let key = s.tbl(name);
+            let live = s.tables.get(&key).expect("live table");
+            let committed = s.committed_tables.get(&key).expect("post-commit snapshot");
+            assert!(
+                Arc::ptr_eq(live, committed),
+                "{name}: live and committed rows must share one allocation"
+            );
+            assert_eq!(
+                Arc::strong_count(live),
+                2,
+                "{name}: expected live + snapshot only"
+            );
+        }
+    }
+
+    #[test]
+    fn writing_one_table_after_commit_clones_only_that_table_4948() {
+        let mut s = MemoryStorage::new();
+        table_with_rows_4948(&mut s, "t1", 10);
+        table_with_rows_4948(&mut s, "t2", 10);
+
+        s.begin_transaction().unwrap();
+        s.commit_transaction_with_log();
+
+        let k1 = s.tbl("t1");
+        let k2 = s.tbl("t2");
+
+        // Write t1 only, inside an open transaction. `Arc::make_mut` must detach
+        // t1 and leave t2 shared.
+        //
+        // NOTE: an *autocommit* insert would not do — `MemoryStorage::insert`
+        // deliberately propagates autocommit writes into `committed_tables`
+        // (V312-26 #3969), so both maps would legitimately change.
+        // `commit_transaction_with_log` takes `tx_log`, so a fresh transaction
+        // has to be opened for the write to actually be in-transaction.
+        s.begin_transaction().unwrap();
+        s.insert("t1", vec![vec![Value::Integer(999)]]).unwrap();
+
+        let t1_live = s.tables.get(&k1).unwrap();
+        let t1_committed = s.committed_tables.get(&k1).unwrap();
+        assert!(
+            !Arc::ptr_eq(t1_live, t1_committed),
+            "t1 was written, so the live copy must have been detached"
+        );
+        assert_eq!(t1_live.len(), 11, "live t1 must carry the new row");
+        assert_eq!(
+            t1_committed.len(),
+            10,
+            "the post-commit snapshot must NOT see the in-transaction row"
+        );
+
+        let t2_live = s.tables.get(&k2).unwrap();
+        let t2_committed = s.committed_tables.get(&k2).unwrap();
+        assert!(
+            Arc::ptr_eq(t2_live, t2_committed),
+            "t2 was untouched, so it must still be shared — no copy"
+        );
+    }
+
+    /// #4948 follow-up, and a PRE-EXISTING defect unrelated to the commit clone.
+    ///
+    /// `MemoryStorage::rollback_transaction` re-scopes the table name it takes
+    /// from the TxLog:
+    ///
+    /// ```ignore
+    /// // insert() stores the ALREADY-scoped key:
+    /// let table_key = self.tbl(table);                  // "default\x01t1"
+    /// log.inserted.push((table_key.clone(), ...));
+    ///
+    /// // ...and rollback scopes it a second time:
+    /// let key = self.tbl(table);                        // "default\x01default\x01t1"
+    /// ```
+    ///
+    /// so the undo never finds the table and silently does nothing.
+    ///
+    /// The existing `test_rollback_removes_inserted_rows` does not catch this:
+    /// it seeds the raw map with the unscoped key `"t"` while `insert` writes to
+    /// `"default\x01t"`, so `scan` sees exactly 1 row whether or not the rollback
+    /// ran — the assertion holds for the wrong reason.
+    ///
+    /// This test builds the table through `create_table`, so the keys line up and
+    /// the failure is real. `#[ignore]`d rather than deleted: the bug is not fixed
+    /// here (out of scope for #4948, which is about commit cost), and the
+    /// reproducer should stay visible until someone does.
+    #[test]
+    #[ignore = "PRE-EXISTING defect: rollback_transaction re-scopes an already-scoped \
+            key from the TxLog, so insert-undo silently does nothing. Same root \
+            cause as the #5059 blanket-sweep bug, different site. Not fixed by \
+            #4948 — see the evidence doc."]
+    fn rollback_actually_undoes_an_insert_4948() {
+        let mut s = MemoryStorage::new();
+        table_with_rows_4948(&mut s, "t1", 5);
+
+        s.begin_transaction().unwrap();
+        s.insert("t1", vec![vec![Value::Integer(100)]]).unwrap();
+        assert_eq!(s.scan("t1").unwrap().len(), 6, "in-transaction insert");
+
+        s.rollback_transaction().unwrap();
+
+        assert_eq!(
+            s.scan("t1").unwrap().len(),
+            5,
+            "ROLLBACK must undo the insert — it currently does not"
+        );
     }
 }
 
