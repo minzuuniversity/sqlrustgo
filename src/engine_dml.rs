@@ -265,7 +265,10 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             };
             // Only delete when a row actually matches this key — for a brand
             // new key (no existing row) REPLACE degenerates to a plain INSERT.
-            let existing_rows = engine.scan_for_reader(&table_name)?;
+            // Global scan: the conflict check must see every committed row,
+            // not this connection's snapshot; `scan_for_reader` would also
+            // deadlock (write guard held, non-reentrant RwLock).
+            let existing_rows = storage.scan(&table_name)?;
             let has_conflict = existing_rows
                 .iter()
                 .any(|existing| record_matches_unique_key(existing, record, &table_info));
@@ -497,7 +500,14 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             let mut next_auto_id: i64 = 1;
             // An empty table scans to zero rows, which leaves the
             // default of 1 in place — same as the previous behaviour.
-            let existing = engine.scan_for_reader(&table_name)?;
+            // BLK-1 must scan the GLOBAL current state (no reader_tx):
+            // the connection's MVCC snapshot predates concurrent commits,
+            // so a snapshot scan under-estimates MAX(id) and mints
+            // duplicate ids (silent version forks, rows "lost" on read).
+            // `scan_for_reader` would additionally deadlock here — the
+            // write guard above is held and parking_lot RwLock is not
+            // reentrant.
+            let existing = storage.scan(&table_name)?;
             next_auto_id = existing
                 .iter()
                 .filter_map(|r| r.get(col_idx).and_then(|v| v.as_integer()))
@@ -1007,7 +1017,10 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // are dropped immediately and only one clone per row goes through
         // `new_rows_for_undo` — and even that clone could be elided in the
         // future if the WAL layer accepts the post-update row directly.
-        let all_rows_no_where = engine.scan_for_reader(&table_name)?;
+        // Global scan: every committed row must be updated regardless of
+        // this connection's snapshot; `scan_for_reader` would deadlock
+        // (write guard held, non-reentrant RwLock).
+        let all_rows_no_where = storage.scan(&table_name)?;
         let need_undo_snapshot = engine.tx_session.lock().current_tx_id.is_some();
         let mut count = 0usize;
         let mut prior_rows_for_undo: Vec<Vec<Value>> = if need_undo_snapshot {
