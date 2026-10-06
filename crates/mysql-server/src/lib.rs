@@ -8889,12 +8889,16 @@ pub mod testing {
         ///
         /// Panics if `port` is outside `[BASE_PORT, BASE_PORT + POOL_SIZE)`.
         pub fn acquire(&self, port: u16) -> Result<EphemeralHandle, std::io::Error> {
-            let idx = (port - BASE_PORT) as usize;
+            // Range-check BEFORE subtracting: `port - BASE_PORT` underflows
+            // (debug panic with an unhelpful message) for ports below
+            // BASE_PORT, so the documented panic contract must be enforced
+            // by the assert first, and only then subtract.
             assert!(
-                idx < POOL_SIZE,
+                (BASE_PORT..BASE_PORT + POOL_SIZE as u16).contains(&port),
                 "port {port} is not in pool range [{BASE_PORT}, {max_port})",
                 max_port = BASE_PORT + POOL_SIZE as u16
             );
+            let idx = (port - BASE_PORT) as usize;
 
             let mut slot = self.slots[idx].lock().unwrap();
 
@@ -8923,39 +8927,15 @@ pub mod testing {
                 let handle = match start_ephemeral(config) {
                     Ok(h) => h,
                     Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                        // Another process holds the port — store a passthrough
-                        // handle in the slot, then retrieve via the normal path.
-                        let _passthrough = EphemeralHandle {
-                            port,
-                            shutdown: None,
-                            join: std::sync::Mutex::new(None),
-                            data_dir: std::env::temp_dir().join(format!(
-                                "sqlrustgo_ephemeral_{}_{}",
-                                port,
-                                std::process::id()
-                            )),
-                            externally_owned: true,
-                            metrics_port: None,
-                            // Passthrough handles reference an
-                            // externally-owned server; we never have
-                            // ownership of its metrics endpoint.
-                            metrics_endpoint: None,
-                        };
-                        // fall through to the shared return path below
-                        let inner = slot.as_ref().unwrap();
-                        let h = inner.as_ref().unwrap();
-                        return Ok(EphemeralHandle {
-                            port: h.port,
-                            shutdown: h.shutdown.clone(),
-                            join: Mutex::new(None),
-                            data_dir: h.data_dir.clone(),
-                            externally_owned: true,
-                            metrics_port: h.metrics_port,
-                            // Pool owns the metrics endpoint in its
-                            // slot — caller-side clones must not
-                            // also try to drop it.
-                            metrics_endpoint: None,
-                        });
+                        // Another process (a lingering server, TIME_WAIT
+                        // listener, or another test binary) already holds
+                        // this port. Return an inert passthrough handle so
+                        // the caller talks to whatever is listening, exactly
+                        // as the comment above intends. The slot stays cold
+                        // on purpose: `start_ephemeral` binds before creating
+                        // any data dir, so each re-acquire re-probes cheaply
+                        // and self-heals once the external holder is gone.
+                        return Ok(EphemeralHandle::detached_for_external_server(port));
                     }
                     Err(e) => return Err(e),
                 };
@@ -9066,6 +9046,47 @@ pub mod testing {
             // Port must now be reusable. start_ephemeral with port=None will
             // pick the next free slot from SERVER_POOL; we don't assert
             // on the specific port here.
+        }
+
+        #[test]
+        fn acquire_on_held_pool_port_returns_detached_handle() {
+            // Regression (2026-10-07): the AddrInUse branch used to build a
+            // passthrough handle and then `slot.as_ref().unwrap()` while the
+            // slot is still None in that branch — an unconditional panic.
+            // Bind from the TOP of the pool range down so we claim a port the
+            // rest of this binary's inline tests do not prefer; if every pool
+            // port is already held externally, the path is exercised anyway.
+            let mut held: Option<std::net::TcpListener> = None;
+            let mut port = BASE_PORT;
+            for p in (BASE_PORT..BASE_PORT + POOL_SIZE as u16).rev() {
+                if let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", p)) {
+                    held = Some(listener);
+                    port = p;
+                    break;
+                }
+            }
+
+            let pool = EphemeralServerPool::new();
+            let handle = pool
+                .acquire(port)
+                .expect("AddrInUse must yield a detached handle, not panic");
+            assert_eq!(handle.port, port);
+            assert!(handle.shutdown.is_none(), "detached handle signals nothing");
+            assert!(
+                handle.join.lock().unwrap().is_none(),
+                "detached handle joins no thread"
+            );
+            assert!(handle.externally_owned);
+            assert!(handle.metrics_endpoint.is_none());
+
+            // Slot must stay cold (nothing cached): re-acquiring while the
+            // port is still held re-probes and returns another detached
+            // handle instead of a boot result.
+            let again = pool
+                .acquire(port)
+                .expect("repeat acquire while port held must not panic");
+            assert_eq!(again.port, port);
+            drop(held);
         }
     }
 }
