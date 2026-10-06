@@ -11,6 +11,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sqlrustgo_storage::{
+    file_storage::{ChangeLogEntry, ChangeOp},
     BackupExporter, BackupFormat, ColumnDefinition, DataRestorer, MemoryStorage, Record, RowFilter,
     RowMutation, StorageEngine, TableInfo,
 };
@@ -427,14 +428,27 @@ pub fn run() -> Result<()> {
             format,
             data_dir,
         } => {
-            // #4938 AC5: the `incremental` subcommand has no change
-            // capture behind it, so it writes a full dump. Say so
-            // before it runs rather than letting the operator discover
-            // it from the manifest afterwards.
+            // #5048: the CLI cannot produce a real delta, and this is a
+            // property of the design rather than a missing feature.
+            //
+            // Change capture is per-process and in-memory: it records what
+            // *this* process wrote. A `backup` invocation opens the data
+            // directory fresh, so the writes it would need to replay
+            // happened elsewhere and left nothing behind. Making the CLI
+            // accept a `--since-lsn` would only produce an empty backup
+            // labelled `incremental` — indistinguishable, to whoever
+            // restores it, from data loss.
+            //
+            // So the CLI keeps the old behaviour and says so. The real
+            // entry point is `create_incremental_backup_from_open_storage`,
+            // for a caller that holds the open database.
             println!(
-                "NOTE: the `incremental` subcommand currently exports ALL tables.\n\
-                 \x20     The backup is labelled `Full`; only `parent_lsn` links it\n\
-                 \x20     to the parent. A true delta requires a change set."
+                "NOTE: the CLI `incremental` subcommand exports ALL tables.\n\
+                 \x20     Change capture lives in the writing process and does not\n\
+                 \x20     survive a restart, so this command cannot know what\n\
+                 \x20     changed. The backup is labelled `Full`.\n\
+                 \x20     A real delta needs `create_incremental_backup_from_open_storage`,\n\
+                 \x20     called on the open database by whoever writes to it."
             );
             create_incremental_backup(&parent, &dir, &format, &data_dir)
         }
@@ -731,8 +745,91 @@ fn create_incremental_backup_from_storage(
     Ok(())
 }
 
+/// #5048: turn a storage change log into a backup change set.
+///
+/// This is the piece that makes an incremental backup *producable*: the
+/// storage engine records what changed, and this carries it into the
+/// format the exporter and the restore path already speak.
+///
+/// `lsn_of` maps a storage LSN to the string form `ChangeRecord` uses.
+/// They are different types on purpose — the storage side counts, the
+/// backup side sorts lexicographically — so the conversion goes through
+/// zero-padded hex, which preserves ordering.
+pub fn change_set_from_log(entries: &[ChangeLogEntry], since_lsn: u64) -> IncrementalBackupContext {
+    let mut ctx = IncrementalBackupContext::new();
+    for e in entries.iter().filter(|e| e.lsn > since_lsn) {
+        let op = match e.op {
+            ChangeOp::Insert => ChangeOperation::Insert,
+            ChangeOp::Update => ChangeOperation::Update,
+            ChangeOp::Delete => ChangeOperation::Delete,
+        };
+        // A delete legitimately has no row; an insert or update without one
+        // is a corrupt log. `apply_change_record` rejects those at restore
+        // time rather than here, so a bad entry surfaces against the
+        // backup that contains it.
+        let record = ChangeRecord {
+            table: e.table.clone(),
+            operation: op,
+            key_values: e.key.clone(),
+            row_data: e.row.clone(),
+            lsn: format!("{:016x}", e.lsn),
+        };
+        ctx.changes
+            .entry(e.table.clone())
+            .or_insert_with(|| ChangeSet::new(&format!("{:016x}", since_lsn)))
+            .add_change(record);
+    }
+    ctx
+}
+
+/// #5048: produce a real incremental backup from an open, instrumented
+/// database.
+///
+/// Takes the storage rather than a path on purpose. The change log is
+/// in-memory and per-process, so re-opening the data directory yields an
+/// empty log — a delta cannot be produced by a second process, only by
+/// the one that observed the writes. Handing this function a path would
+/// make it appear to work while always reporting "no changes".
+///
+/// An empty delta is an error rather than an empty backup: a directory
+/// with an `incremental` manifest and no changes is indistinguishable,
+/// to whoever restores it, from data loss.
+pub fn create_incremental_backup_from_open_storage(
+    parent: &Path,
+    dir: &Path,
+    storage: &sqlrustgo_storage::FileStorage,
+    since_lsn: u64,
+) -> Result<()> {
+    if !storage.change_log_enabled() {
+        anyhow::bail!(
+            "change capture is off on this database. Call \
+             `FileStorage::enable_change_log` before writing, or the delta \
+             would be empty."
+        );
+    }
+    let entries = storage.changes_since(since_lsn);
+    if entries.is_empty() {
+        anyhow::bail!(
+            "no changes recorded after LSN {since_lsn} — the backup would be \
+             an empty file labelled `incremental`, which a restore cannot \
+             distinguish from data loss. If the database was written by a \
+             different process, its change log did not survive: take the \
+             full backup and the delta from the same session, or pass \
+             `--full` to export every table instead."
+        );
+    }
+
+    println!(
+        "Collected {} changes after LSN {} (now at LSN {})",
+        entries.len(),
+        since_lsn,
+        storage.current_change_lsn()
+    );
+    let context = change_set_from_log(&entries, since_lsn);
+    create_incremental_backup_with_changeset(parent, dir, &context)
+}
+
 /// Create an incremental backup using ChangeSet (only changed data)
-#[allow(dead_code)]
 pub fn create_incremental_backup_with_changeset(
     parent: &Path,
     dir: &Path,
