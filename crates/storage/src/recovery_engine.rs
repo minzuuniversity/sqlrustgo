@@ -668,6 +668,15 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
     }
 }
 
+/// Whether an entry mutates rows (as opposed to being a transaction
+/// boundary or a checkpoint).
+fn is_row_entry_type(t: WalEntryType) -> bool {
+    matches!(
+        t,
+        WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete
+    )
+}
+
 /// What [`apply_wal_entry`] did with one entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ApplyOutcome {
@@ -698,6 +707,24 @@ pub(crate) fn apply_wal_entry(
             e, entry.entry_type,
         ))
     })?;
+
+    // #5055: the table has to exist before anything is applied to it.
+    //
+    // `FileStorage::insert_direct` and `update` / `delete` all treat a
+    // missing table as a no-op and return `Ok(())`. Without this check a
+    // restore into a directory that is missing a table would report every
+    // one of that table's entries as applied, write nothing, and exit 0 —
+    // the same "reported success, restored nothing" shape this issue is
+    // about, one layer down. It is also a genuine diagnostic: a WAL
+    // entry naming a table the restore target does not have means the
+    // base backup and the log are from different databases.
+    if is_row_entry_type(entry.entry_type) && storage.get_table_info(&table_name).is_err() {
+        return Err(crate::engine::SqlError::ExecutionError(format!(
+            "apply_wal_entry: table {:?} named by this entry does not exist in the \
+             target; the data directory and the WAL are not from the same database",
+            table_name
+        )));
+    }
 
     match entry.entry_type {
         WalEntryType::Insert => {

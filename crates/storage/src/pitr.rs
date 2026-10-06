@@ -17,6 +17,8 @@ use crate::engine::{SqlResult, StorageEngine};
 use crate::recovery_engine::{apply_wal_entry, ApplyOutcome};
 use crate::wal::WalEntry;
 use crate::wal_legacy::WalEntryType;
+#[cfg(test)]
+use sqlrustgo_types::Value;
 use std::collections::{BTreeSet, HashSet};
 
 /// What a point-in-time replay actually did.
@@ -197,4 +199,231 @@ fn is_row_entry(t: WalEntryType) -> bool {
         t,
         WalEntryType::Insert | WalEntryType::Update | WalEntryType::Delete
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::{ColumnDefinition, MemoryStorage, Record, TableInfo};
+    use crate::wal_record_codec;
+
+    fn users_table() -> TableInfo {
+        TableInfo {
+            name: "users".into(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            partition_info: None,
+            original_sql: String::new(),
+        }
+    }
+
+    fn storage() -> MemoryStorage {
+        let mut s = MemoryStorage::new();
+        s.create_table(&users_table()).unwrap();
+        s
+    }
+
+    fn tx_entry(tx: u64, ty: WalEntryType, ts: u64) -> WalEntry {
+        WalEntry {
+            tx_id: tx,
+            entry_type: ty,
+            table_id: 0,
+            table_name: None,
+            key: None,
+            data: None,
+            lsn: 0,
+            timestamp: ts,
+        }
+    }
+
+    /// An autocommit row: `tx_id == 0`, no boundaries — the shape
+    /// `FileStorage` writes outside a transaction.
+    fn insert_row(id: i64, ts: u64) -> WalEntry {
+        let row: Record = vec![Value::Integer(id)];
+        WalEntry {
+            tx_id: 0,
+            entry_type: WalEntryType::Insert,
+            table_id: wal_record_codec::table_name_to_id("users"),
+            table_name: Some("users".to_string()),
+            key: Some(wal_record_codec::record_key(&row)),
+            data: Some(wal_record_codec::record_to_bytes(&row)),
+            lsn: 0,
+            timestamp: ts,
+        }
+    }
+
+    fn ids(s: &MemoryStorage) -> Vec<i64> {
+        let mut v: Vec<i64> = s
+            .scan("users")
+            .unwrap()
+            .iter()
+            .filter_map(|r| match r.first() {
+                Some(Value::Integer(i)) => Some(*i),
+                _ => None,
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// The headline #5055 behaviour, at the module's own level: a
+    /// committed transaction's rows end up in the storage.
+    #[test]
+    fn committed_rows_are_applied() {
+        let mut s = storage();
+        let entries = vec![
+            tx_entry(1, WalEntryType::Begin, 10),
+            insert_row(1, 11),
+            insert_row(2, 12),
+            tx_entry(1, WalEntryType::Commit, 13),
+        ];
+        let r = replay_entries_until(&mut s, &entries, 100).unwrap();
+        assert_eq!(r.entries_applied, 2, "{r:?}");
+        assert_eq!(r.entries_failed, 0);
+        assert_eq!(r.transactions_committed, 1);
+        assert_eq!(ids(&s), vec![1, 2]);
+    }
+
+    /// An open transaction at the target was not part of the database
+    /// at that instant, and must not be restored.
+    #[test]
+    fn open_transaction_at_target_is_not_applied() {
+        let mut s = storage();
+        let entries = vec![
+            tx_entry(1, WalEntryType::Begin, 10),
+            insert_row_tx(1, 1, 11),
+            // no Commit
+        ];
+        let r = replay_entries_until(&mut s, &entries, 100).unwrap();
+        assert_eq!(r.active_transactions_at_target, 1);
+        assert_eq!(r.entries_applied, 0);
+        assert_eq!(r.entries_skipped, 1);
+        assert!(ids(&s).is_empty());
+    }
+
+    /// A Commit *after* the target does not commit for this restore.
+    #[test]
+    fn commit_after_the_target_does_not_apply() {
+        let mut s = storage();
+        let entries = vec![
+            tx_entry(1, WalEntryType::Begin, 10),
+            insert_row_tx(1, 1, 11),
+            tx_entry(1, WalEntryType::Commit, 50),
+        ];
+        let r = replay_entries_until(&mut s, &entries, 20).unwrap();
+        assert_eq!(r.transactions_committed, 0);
+        assert_eq!(r.entries_after_target, 1);
+        assert_eq!(r.entries_applied, 0);
+        assert!(ids(&s).is_empty());
+    }
+
+    /// Autocommit DML is its own transaction and must be restored.
+    /// The old entry-counting code had no notion of this at all.
+    #[test]
+    fn autocommit_rows_are_applied() {
+        let mut s = storage();
+        let entries = vec![insert_row(1, 10), insert_row(2, 11)];
+        let r = replay_entries_until(&mut s, &entries, 100).unwrap();
+        assert_eq!(r.entries_applied, 2, "{r:?}");
+        assert_eq!(r.transactions_committed, 0);
+        assert_eq!(ids(&s), vec![1, 2]);
+    }
+
+    /// A transaction whose `Begin` predates the window is still bounded,
+    /// so its rows are not mistaken for autocommit work. `bounded` is
+    /// computed over the whole log precisely for this.
+    #[test]
+    fn begin_before_the_window_still_bounds_its_rows() {
+        let mut s = storage();
+        let entries = vec![
+            tx_entry(7, WalEntryType::Begin, 1),
+            // timestamp after the target: the row is out of window
+            insert_row_tx(7, 1, 99),
+            tx_entry(7, WalEntryType::Rollback, 100),
+        ];
+        let r = replay_entries_until(&mut s, &entries, 50).unwrap();
+        assert_eq!(r.entries_scanned, 1, "only the Begin is in the window");
+        assert_eq!(r.active_transactions_at_target, 1);
+        assert_eq!(r.entries_applied, 0);
+        assert!(ids(&s).is_empty());
+    }
+
+    fn insert_row_tx(tx: u64, id: i64, ts: u64) -> WalEntry {
+        let mut e = insert_row(id, ts);
+        e.tx_id = tx;
+        e
+    }
+
+    /// The window is inclusive of the target second.
+    #[test]
+    fn window_is_inclusive_of_the_target() {
+        let mut s = storage();
+        let entries = vec![insert_row(1, 100)];
+        let at = replay_entries_until(&mut s, &entries, 100).unwrap();
+        assert_eq!(at.entries_scanned, 1);
+        assert_eq!(ids(&s), vec![1]);
+
+        let mut s2 = storage();
+        let before = replay_entries_until(&mut s2, &entries, 99).unwrap();
+        assert_eq!(before.entries_scanned, 0);
+        assert!(ids(&s2).is_empty());
+    }
+
+    /// An empty log is a legitimate no-op, not a failure.
+    #[test]
+    fn empty_log_is_a_clean_no_op() {
+        let mut s = storage();
+        let r = replay_entries_until(&mut s, &[], 100).unwrap();
+        assert_eq!(r.entries_scanned, 0);
+        assert_eq!(r.entries_applied, 0);
+        assert_eq!(r.entries_failed, 0);
+        assert!(!r.is_suspiciously_empty());
+    }
+
+    /// Committed work in scope that applied nothing is the shape an
+    /// operator must be warned about, not a success.
+    #[test]
+    fn committed_work_with_nothing_applied_is_suspicious() {
+        let r = PitrReport {
+            transactions_committed: 3,
+            ..Default::default()
+        };
+        assert!(r.is_suspiciously_empty());
+    }
+
+    /// A table that does not exist is a failure, counted and
+    /// reported — the alternative is a silent partial restore.
+    #[test]
+    fn unknown_table_is_counted_as_failed() {
+        let mut s = storage();
+        let mut e = insert_row(1, 10);
+        e.table_name = Some("does_not_exist".to_string());
+        let r = replay_entries_until(&mut s, &[e], 100).unwrap();
+        assert_eq!(r.entries_failed, 1, "{r:?}");
+        assert!(r.first_error.is_some());
+        assert!(ids(&s).is_empty());
+    }
+
+    /// `tables_touched` is the operator's view of the blast radius.
+    #[test]
+    fn tables_touched_names_the_affected_table() {
+        let mut s = storage();
+        let r = replay_entries_until(&mut s, &[insert_row(1, 10)], 100).unwrap();
+        assert!(r.tables_touched.contains("users"));
+    }
+
+    /// Checkpoints are metadata: scanned, never applied.
+    #[test]
+    fn checkpoints_are_scanned_but_not_applied() {
+        let mut s = storage();
+        let entries = vec![tx_entry(0, WalEntryType::Checkpoint, 5), insert_row(1, 10)];
+        let r = replay_entries_until(&mut s, &entries, 100).unwrap();
+        assert_eq!(r.entries_scanned, 2);
+        assert_eq!(r.entries_applied, 1);
+        assert_eq!(ids(&s), vec![1]);
+    }
 }

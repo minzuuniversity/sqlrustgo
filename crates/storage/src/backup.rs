@@ -396,33 +396,100 @@ impl DataRestorer {
         Ok(total_rows)
     }
 
+    /// #5056: return the table name and the value list *after* its opening
+    /// paren.
+    ///
+    /// This used to slice from the `VALUES` keyword itself, so the first
+    /// "column" of every restored row was the literal text `VALUES (1`.
+    /// The whole restore was silently one column off — a text primary key
+    /// in place of an integer one — and no test noticed, because
+    /// `restore_backup` returned `()` and the only assertion was that the
+    /// target directory existed.
+    ///
+    /// The table name is taken up to the first `(`, which is wrong for
+    /// `INSERT INTO t (a, b) VALUES (1, 2)` — there the first paren
+    /// belongs to the column list. Anchoring on the `VALUES` keyword
+    /// handles both shapes: everything before it is the table (and any
+    /// column list, which we skip).
     fn parse_insert(line: &str) -> Option<(String, &str)> {
         let line = line.trim_end_matches(';').trim();
         if !line.starts_with("INSERT INTO") {
             return None;
         }
 
-        let rest = &line[12..];
-        let paren_pos = rest.find('(')?;
-        let table_name = rest[..paren_pos].trim().trim_matches('`').to_string();
-        let values_pos = rest[paren_pos..].find("VALUES")? + paren_pos;
+        let rest = line["INSERT INTO".len()..].trim_start();
+        let upper = rest.to_ascii_uppercase();
+        let kw = upper.find("VALUES")?;
+        let table_name = rest[..kw]
+            .split('(')
+            .next()?
+            .trim()
+            .trim_matches('`')
+            .to_string();
+        if table_name.is_empty() {
+            return None;
+        }
 
-        Some((table_name, &rest[values_pos..]))
+        let after_kw = &rest[kw + "VALUES".len()..];
+        let open = after_kw.find('(')?;
+        Some((table_name, &after_kw[open + 1..]))
+    }
+
+    /// #5056: split a value list on commas that are **not** inside quotes.
+    ///
+    /// The bare `split(',')` this replaces turned `'a,b'` into two
+    /// columns, and `POINT '1 2'` into a mangled pair — so any table with
+    /// a comma in its text data, or with a Point/JSON column, came back
+    /// with the wrong shape. `value_to_sql` escapes a literal quote by
+    /// doubling it (`''`), so a doubled quote stays inside the string.
+    fn split_values(values_str: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut cur = String::new();
+        let mut in_str = false;
+        let mut chars = values_str.chars().peekable();
+        while let Some(c) = chars.next() {
+            if in_str {
+                cur.push(c);
+                if c == '\'' {
+                    // `''` is an escaped quote — stay inside the string.
+                    if chars.peek() == Some(&'\'') {
+                        cur.push(chars.next().unwrap());
+                    } else {
+                        in_str = false;
+                    }
+                }
+                continue;
+            }
+            match c {
+                '\'' => {
+                    in_str = true;
+                    cur.push(c);
+                }
+                ',' => out.push(std::mem::take(&mut cur)),
+                _ => cur.push(c),
+            }
+        }
+        if !cur.trim().is_empty() {
+            out.push(cur);
+        }
+        out
     }
 
     fn parse_insert_values(values_part: &str) -> Vec<Record> {
         let mut rows = Vec::new();
 
-        let values_str = values_part.trim();
+        let values_str = values_part.trim().trim_end_matches(')');
         let value_groups: Vec<&str> = values_str.split("),").collect();
 
         for group in value_groups {
-            let group = group.trim().trim_matches('(').trim_matches(')');
-            let values: Vec<Value> = group
-                .split(',')
+            let group = group.trim().trim_matches('(');
+            let values: Vec<Value> = Self::split_values(group)
+                .iter()
                 .map(|s| Self::parse_sql_value(s.trim()))
                 .collect();
-            rows.push(values);
+            if !values.is_empty() {
+                rows.push(values);
+            }
         }
 
         rows

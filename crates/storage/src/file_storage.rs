@@ -144,6 +144,87 @@ pub struct FileStorage {
     /// on the floor. Nothing was ever written, so `admin pitr` had an
     /// empty or absent WAL to "replay" and reported success anyway.
     wal: Mutex<Option<Box<dyn crate::wal::WalManager>>>,
+    /// #5048: opt-in change log, the prerequisite for a real incremental
+    /// backup. `None` unless a caller turns it on, so the ordinary path
+    /// pays nothing.
+    ///
+    /// It exists because `FileStorage` had no versioned change capture of
+    /// any kind: no WAL, no CDC, no per-table change log. `table_change_
+    /// stamp` (the trait default) answers "is my cached copy stale", not
+    /// "which rows changed", and only `MemoryStorage` overrode it at all
+    /// — so an incremental backup could not be produced from a real data
+    /// directory, which is the only thing the backup tool opens.
+    ///
+    /// #5055: the WAL above is the *other* half of the same gap — it
+    /// records changes for crash recovery and PITR, in an order that can
+    /// be replayed, while this records them for a backup delta. They are
+    /// separate because their consumers differ (one needs commit
+    /// boundaries, the other needs a sliceable LSN), not because the
+    /// writes are different: both hooks sit in the same DML paths.
+    change_log: Mutex<Option<ChangeLog>>,
+}
+
+/// #5048: a recorded change, as a backup delta needs it.
+///
+/// Positional, not column-named: the storage layer's DML surface works on
+/// `Record = Vec<Value>`, and giving the backup tool column names would
+/// mean carrying schema alongside every change. The backup exporter
+/// already writes positional SQL, so the two agree.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ChangeLogEntry {
+    pub table: String,
+    pub op: ChangeOp,
+    /// Leading key columns of the affected row.
+    pub key: Vec<Value>,
+    /// The row after the change; `None` for a delete.
+    pub row: Option<Vec<Value>>,
+    /// Monotonic per-log sequence number. Doubles as the LSN: it orders
+    /// changes exactly, and a backup can slice "everything after the last
+    /// full backup's snapshot" by comparing it.
+    pub lsn: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ChangeOp {
+    Insert,
+    Update,
+    Delete,
+}
+
+#[derive(Debug, Default)]
+struct ChangeLog {
+    entries: Vec<ChangeLogEntry>,
+    next_lsn: u64,
+    /// #5048: true once the on-disk log has been read. A freshly
+    /// enabled log on an open database starts empty, but a log read
+    /// from disk that happens to be empty is a different fact — and a
+    /// backup must be able to tell them apart.
+    #[allow(dead_code)]
+    loaded_from_disk: bool,
+    /// #5048: how many entries are already on disk. `persist_change_log`
+    /// appends only the tail, so repeated flushes do not duplicate.
+    persisted: usize,
+}
+
+/// #5048: take the change-log lock, ignoring poisoning.
+///
+/// A panic while the log was held would otherwise make every later
+/// backup fail permanently. The log is diagnostic state — losing it is
+/// better than refusing to open the database, and the log is opt-in so
+/// a caller can detect that it went missing.
+fn change_log_lock(me: &FileStorage) -> std::sync::MutexGuard<'_, Option<ChangeLog>> {
+    me.change_log.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// #5048: the key columns of a row.
+///
+/// The storage layer's delete/update filters are positional and compare
+/// against the row's *leading* columns, so the leading column is the
+/// identity a change record can name. `table.primary_key` is a name, and
+/// turning a name back into a position needs the schema; the filters
+/// themselves do not, so the two stay consistent by using position.
+fn key_of(row: &[Value]) -> Vec<Value> {
+    row.iter().take(1).cloned().collect()
 }
 
 /// Issue #4581 / B-track case 35-36: per-transaction undo log entry.
@@ -343,6 +424,186 @@ impl FileStorage {
         guard.as_ref().map(|w| w.current_lsn()).unwrap_or(0)
     }
 
+    /// #5048: start recording changes so an incremental backup can be
+    /// produced from this data directory.
+    ///
+    /// Off by default: the log grows without bound until drained, and a
+    /// caller that never takes an incremental backup should not pay for
+    /// it.
+    ///
+    /// #5048: an existing on-disk log is loaded. That is what makes a
+    /// delta possible from a *different process* than the writer — which
+    /// is the only way the `backup` CLI can work at all. `next_lsn`
+    /// continues past whatever was on disk, so LSNs never collide with
+    /// a previous run's.
+    pub fn enable_change_log(&self) {
+        let already = change_log_lock(self).is_some();
+        if already {
+            return;
+        }
+        let mut log = ChangeLog {
+            entries: Vec::new(),
+            next_lsn: 0,
+            loaded_from_disk: false,
+            persisted: 0,
+        };
+        match self.load_change_log_from_disk() {
+            Ok(entries) => {
+                log.next_lsn = entries.iter().map(|e| e.lsn).max().unwrap_or(0);
+                log.persisted = entries.len();
+                log.entries = entries;
+                log.loaded_from_disk = true;
+            }
+            Err(e) => {
+                // A corrupt or unreadable log must not stop the database
+                // from opening. It does mean an incremental backup taken
+                // now would silently miss earlier changes, so say so
+                // loudly rather than letting it pass.
+                // `sqlrustgo-storage` does not depend on `tracing`, and
+                // this is exactly the case where silence would mislead:
+                // the caller would take a delta that is quietly missing
+                // earlier changes.
+                eprintln!(
+                    "WARN: could not read change log at {}: {e}. An incremental \
+                     backup taken now may be missing earlier changes.",
+                    self.change_log_path().display()
+                );
+            }
+        }
+        *change_log_lock(self) = Some(log);
+    }
+
+    /// #5048: append the log to disk.
+    ///
+    /// Called from `flush`, not from each write. A backup taken between
+    /// a write and its flush must not claim a change the database has not
+    /// committed — the log and the data have to become durable together
+    /// or the delta would replay rows the base does not contain.
+    pub fn persist_change_log(&self) -> std::io::Result<()> {
+        let mut guard = change_log_lock(self);
+        let Some(log) = guard.as_mut() else {
+            return Ok(());
+        };
+        if log.entries.len() == log.persisted {
+            return Ok(());
+        }
+        let tail = &log.entries[log.persisted..];
+        let path = self.change_log_path();
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)?;
+        use std::io::Write;
+        let mut writer = BufWriter::new(file);
+        for e in tail {
+            let line = serde_json::to_string(e)
+                .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+            writer.write_all(line.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+        writer.flush()?;
+        // Only now is the tail durable; a failed write must leave
+        // `persisted` alone so the next flush retries it.
+        log.persisted = log.entries.len();
+        Ok(())
+    }
+
+    fn load_change_log_from_disk(&self) -> std::io::Result<Vec<ChangeLogEntry>> {
+        let path = self.change_log_path();
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let content = std::fs::read_to_string(&path)?;
+        let mut out = Vec::new();
+        for (i, line) in content.lines().enumerate() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<ChangeLogEntry>(line) {
+                Ok(e) => out.push(e),
+                // A half-written final line is the expected shape of a
+                // crash during append. Earlier lines stay valid.
+                Err(err) => {
+                    if i + 1 == content.lines().count() {
+                        eprintln!("WARN: truncating incomplete change log line {i}: {err}");
+                        break;
+                    }
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("change log line {i} is corrupt: {err}"),
+                    ));
+                }
+            }
+        }
+        out.sort_by_key(|e| e.lsn);
+        Ok(out)
+    }
+
+    fn change_log_path(&self) -> std::path::PathBuf {
+        let file = "changelog.jsonl";
+        match self.db_dir() {
+            None => self.data_dir.join(file),
+            Some(dir) => {
+                let _ = std::fs::create_dir_all(&dir);
+                dir.join(file)
+            }
+        }
+    }
+
+    /// #5048: changes recorded after `since_lsn`, in order.
+    ///
+    /// Returns an empty list when the log was never enabled — a caller
+    /// must not be able to mistake "no changes" for "no log".
+    pub fn changes_since(&self, since_lsn: u64) -> Vec<ChangeLogEntry> {
+        let guard = change_log_lock(self);
+        match guard.as_ref() {
+            Some(log) => log
+                .entries
+                .iter()
+                .filter(|e| e.lsn > since_lsn)
+                .cloned()
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// The LSN a backup taken now should record, so a later
+    /// [`Self::changes_since`] starts exactly where this one ended.
+    pub fn current_change_lsn(&self) -> u64 {
+        let guard = change_log_lock(self);
+        guard.as_ref().map(|l| l.next_lsn).unwrap_or(0)
+    }
+
+    /// True once [`Self::enable_change_log`] has been called. Lets the
+    /// backup tool tell "nothing changed" apart from "nothing was being
+    /// watched".
+    pub fn change_log_enabled(&self) -> bool {
+        change_log_lock(self).is_some()
+    }
+
+    /// Record one change. No-op unless the log is enabled, so every
+    /// write path can call this unconditionally.
+    fn record_change(&self, table: &str, op: ChangeOp, key: Vec<Value>, row: Option<Vec<Value>>) {
+        let mut guard = change_log_lock(self);
+        if let Some(log) = guard.as_mut() {
+            log.next_lsn += 1;
+            let lsn = log.next_lsn;
+            log.entries.push(ChangeLogEntry {
+                // #5025 keys rows by `db\u{1}table`. A backup replays by
+                // table name against a restored database, which has no such
+                // prefix — recording the scoped key would make every delta
+                // un-replayable. The database travels with the backup
+                // directory instead.
+                table: table.to_string(),
+                op,
+                key,
+                row,
+                lsn,
+            });
+        }
+    }
+
     /// Create a new FileStorage with the given data directory
     pub fn new(data_dir: PathBuf) -> std::io::Result<Self> {
         // Create directory if it doesn't exist
@@ -376,6 +637,8 @@ impl FileStorage {
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
             wal: Mutex::new(None),
+            // #5048: off unless `enable_change_log` is called.
+            change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -420,6 +683,8 @@ impl FileStorage {
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
             wal: Mutex::new(None),
+            // #5048: off unless `enable_change_log` is called.
+            change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -474,6 +739,8 @@ impl FileStorage {
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
             wal: Mutex::new(Some(Box::new(wal))),
+            // #5048: off unless `enable_change_log` is called.
+            change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -530,6 +797,8 @@ impl FileStorage {
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
             wal: Mutex::new(None),
+            // #5048: off unless `enable_change_log` is called.
+            change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
         };
 
@@ -1241,6 +1510,13 @@ impl FileStorage {
             // whether a full re-write is needed.
             self.with_read_lock(|st| self.save_table_window(st, name, window, *total))?;
         }
+
+        // #5048: persist the change log only after the data it describes
+        // is on disk. The other order would let a crash leave a log that
+        // names rows the database does not contain, and a delta built
+        // from it would replay a change that never happened.
+        self.persist_change_log()?;
+
         Ok(())
     }
 
@@ -4573,6 +4849,14 @@ impl StorageEngine for FileStorage {
         // This was causing O(N * table_size) behavior during bulk loads where
         // each batch of 100+ rows triggered a full table serialization and write.
         // Now: always buffer inserts, caller explicitly calls flush() to persist.
+        // #5048: the change log needs the row contents, but the insert
+        // path below consumes `records`. Cloning is only paid when the
+        // log is actually on.
+        let logged = if self.change_log_enabled() {
+            Some(records.clone())
+        } else {
+            None
+        };
         if self.in_transaction() {
             self.insert_buffered(table, records)?
         } else if !self.enable_buffer {
@@ -4584,6 +4868,13 @@ impl StorageEngine for FileStorage {
         Self::with_write_lock(self, |s| {
             s.dirty_tables.insert(table.to_string());
         });
+        // #5048: record the change so an incremental backup can be
+        // produced from this data directory.
+        if let Some(rows) = logged {
+            for row in rows {
+                self.record_change(table, ChangeOp::Insert, key_of(&row), Some(row));
+            }
+        }
         Ok(())
     }
 
@@ -4713,6 +5004,16 @@ impl StorageEngine for FileStorage {
                 }
                 Ok((removed, removed_rows))
             })?;
+
+        // #5048: record the deletion. `filters` is already positional
+        // against the row's leading columns — exactly what a change
+        // record's `key` is — so the same slice identifies the rows.
+        // An empty filter means a full-table wipe; recording that once
+        // with an empty key keeps the log honest without expanding it
+        // into one entry per row.
+        if self.change_log_enabled() && !filters.is_empty() {
+            self.record_change(table, ChangeOp::Delete, filters.to_vec(), None);
+        }
 
         // #5055: outside the storage write lock on purpose — this does
         // file I/O.
@@ -4869,8 +5170,17 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        // #5055: same shape as `delete` — snapshot the matching rows
-        // inside the critical section, append to the WAL outside it.
+        // `retain` drops the rows without telling us which, so they have
+        // to be captured *before* it runs — and both the change log
+        // (#5048) and the WAL (#5055) need that same set.
+        //
+        // Both captures happen in one critical section rather than the
+        // read-then-write pair #5048 originally used. Reading the keys
+        // under one guard and retaining under another leaves a window
+        // where a concurrent INSERT matches the filter, is silently
+        // removed, and is missing from both logs — a delta that replays
+        // to a row the live table no longer has.
+        let watching = self.change_log_enabled();
         let wal_on = self.wal_enabled();
         let (removed, removed_rows) =
             Self::with_write_lock(self, |s| -> SqlResult<(usize, Vec<Record>)> {
@@ -4879,10 +5189,11 @@ impl StorageEngine for FileStorage {
                     &table,
                 )) {
                     let original_len = data.rows.len();
-                    let mut removed_rows = Vec::new();
-                    if wal_on {
-                        removed_rows = data.rows.iter().filter(|r| filter(r)).cloned().collect();
-                    }
+                    let removed_rows: Vec<Record> = if watching || wal_on {
+                        data.rows.iter().filter(|r| filter(r)).cloned().collect()
+                    } else {
+                        Vec::new()
+                    };
                     data.rows.retain(|r| !filter(r));
                     let new_len = data.rows.len();
                     // V311-07: Mark dirty instead of immediate persist
@@ -4894,6 +5205,10 @@ impl StorageEngine for FileStorage {
                     Ok((0, Vec::new()))
                 }
             })?;
+
+        for row in &removed_rows {
+            self.record_change(table, ChangeOp::Delete, key_of(row), None);
+        }
         if wal_on {
             self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
         }
@@ -4906,6 +5221,9 @@ impl StorageEngine for FileStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
+        // #5048: read the flag before `get_mut`, which holds an exclusive
+        // borrow of `self` for the rest of the body.
+        let watching = self.change_log_enabled();
         // #4951: `&mut self`, so `get_mut` yields the guarded state with
         // no lock. `tables` and `tx_undo_log` are separate fields of the
         // same struct, so the borrow checker can hand out both here —
@@ -4916,7 +5234,7 @@ impl StorageEngine for FileStorage {
         // append inside this scope would not compile *and* would hold
         // the storage write lock across a file write.
         let wal_on = self.wal_enabled();
-        let (count, updated_rows) = {
+        let (count, updated_rows, logged) = {
             let st = self.write_state.get_mut();
             let in_tx = self
                 .current_tx_id
@@ -4935,6 +5253,12 @@ impl StorageEngine for FileStorage {
             };
 
             let mut count = 0;
+            // #5048 and #5055 both need the post-image row, and this is
+            // the only point where the row is still whole — the mutation
+            // is applied and the old values are gone. One capture serves
+            // both: `logged` carries the key the change log names the row
+            // by, `updated_rows` is the whole row the WAL replays.
+            let mut logged: Vec<(Vec<Value>, Vec<Value>)> = Vec::new();
             let mut updated_rows: Vec<Record> = Vec::new();
             for (idx, record) in data.rows.iter_mut().enumerate() {
                 if filters.is_empty()
@@ -4962,8 +5286,9 @@ impl StorageEngine for FileStorage {
                             record[col_idx] = new_val.clone();
                         }
                     }
-                    // #5055: the WAL needs the post-image, and this is
-                    // the last point where the row is still whole.
+                    if watching {
+                        logged.push((key_of(record), record.clone()));
+                    }
                     if wal_on {
                         updated_rows.push(record.clone());
                     }
@@ -4974,10 +5299,15 @@ impl StorageEngine for FileStorage {
             if count > 0 {
                 st.dirty_tables.insert(table.to_string());
             }
-            (count, updated_rows)
+            (count, updated_rows, logged)
         };
+        // #5055: outside the `write_state` borrow on purpose — this does
+        // file I/O.
         if wal_on {
             self.wal_append(self.wal_update_entries(table, &updated_rows))?;
+        }
+        for (key, row) in logged {
+            self.record_change(table, ChangeOp::Update, key, Some(row));
         }
         Ok(count)
     }
@@ -4988,21 +5318,26 @@ impl StorageEngine for FileStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
+        // #5048: read the flag before `get_mut` takes `&mut self`.
+        let watching = self.change_log_enabled();
         // #5025: resolve the key before the mutable borrow.
         //
         // #5055: as in `update`, the scan is scoped so the `&mut` on
         // `write_state` is released before the WAL append.
         let key = self.tbl(table);
         let wal_on = self.wal_enabled();
-        let (count, updated_rows) = {
+        let (count, updated_rows, logged) = {
             let st = self.write_state.get_mut();
             let Some(data) = st.tables.get_mut(&key) else {
                 return Ok(0);
             };
 
             let mut count = 0;
-            let mut updated_rows: Vec<Record> = Vec::new();
             let assignments = mutation.assignments();
+            // #5048 and #5055: one capture of the post-change row, same
+            // as in `update`.
+            let mut logged: Vec<(Vec<Value>, Vec<Value>)> = Vec::new();
+            let mut updated_rows: Vec<Record> = Vec::new();
 
             for record in data.rows.iter_mut() {
                 if filter(record) {
@@ -5010,6 +5345,9 @@ impl StorageEngine for FileStorage {
                         if col_idx < record.len() {
                             record[col_idx] = new_val.clone();
                         }
+                    }
+                    if watching {
+                        logged.push((key_of(record), record.clone()));
                     }
                     if wal_on {
                         updated_rows.push(record.clone());
@@ -5021,10 +5359,15 @@ impl StorageEngine for FileStorage {
             if count > 0 {
                 st.dirty_tables.insert(table.to_string());
             }
-            (count, updated_rows)
+            (count, updated_rows, logged)
         };
+        // #5055: outside the `write_state` borrow on purpose — this does
+        // file I/O.
         if wal_on {
             self.wal_append(self.wal_update_entries(table, &updated_rows))?;
+        }
+        for (key, row) in logged {
+            self.record_change(table, ChangeOp::Update, key, Some(row));
         }
         Ok(count)
     }
