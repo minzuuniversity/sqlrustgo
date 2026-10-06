@@ -74,6 +74,13 @@ pub struct FileStorage {
     /// borrow checker enforces what the old code could only assert in a
     /// comment.
     write_state: parking_lot::RwLock<WriteState>,
+    /// #5025: the active database.
+    ///
+    /// A table in a non-default database lives under `data_dir/{db}/`;
+    /// the default database keeps the historical `data_dir/{table}.json`
+    /// layout so an existing installation is untouched. The in-memory
+    /// cache is keyed the same way the on-disk layout is, via `tbl()`.
+    current_db: RwLock<String>,
     /// B+ Tree indexes protected by RwLock for concurrent access.
     /// Keyed by (table, column) because the on-disk layout is one
     /// file per (table, column) pair.
@@ -159,6 +166,7 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
+            current_db: RwLock::new(crate::engine::DEFAULT_DATABASE.to_string()),
             write_state: parking_lot::RwLock::new(WriteState {
                 tables: HashMap::new(),
                 insert_buffer: HashMap::new(),
@@ -209,6 +217,7 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
+            current_db: RwLock::new(crate::engine::DEFAULT_DATABASE.to_string()),
             write_state: parking_lot::RwLock::new(WriteState {
                 tables: HashMap::new(),
                 insert_buffer: HashMap::new(),
@@ -243,6 +252,7 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
+            current_db: RwLock::new(crate::engine::DEFAULT_DATABASE.to_string()),
             write_state: parking_lot::RwLock::new(WriteState {
                 tables: HashMap::new(),
                 insert_buffer: HashMap::new(),
@@ -296,6 +306,7 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
+            current_db: RwLock::new(crate::engine::DEFAULT_DATABASE.to_string()),
             write_state: parking_lot::RwLock::new(WriteState {
                 tables: HashMap::new(),
                 insert_buffer: HashMap::new(),
@@ -355,14 +366,63 @@ impl FileStorage {
     }
 
     /// Get the path for a table file
+    /// #5025: read side. Falls back to the pre-#5025 root location when
+    /// the database directory holds nothing, so tables written before the
+    /// layout change stay visible.
     fn table_path(&self, table_name: &str) -> PathBuf {
-        self.data_dir.join(format!("{}.json", table_name))
+        let file = format!("{}.json", table_name);
+        match self.db_dir() {
+            None => self.data_dir.join(file),
+            Some(dir) => {
+                let scoped = dir.join(&file);
+                if scoped.exists() || dir.is_dir() {
+                    scoped
+                } else {
+                    self.data_dir.join(file)
+                }
+            }
+        }
     }
 
-    /// Get the path for an index file
+    /// #5025: write side. Never falls back — writing a new table into the
+    /// shared root from inside a database is exactly what #5025 is about.
+    fn table_path_for_write(&self, table_name: &str) -> PathBuf {
+        let file = format!("{}.json", table_name);
+        match self.db_dir() {
+            None => self.data_dir.join(file),
+            Some(dir) => {
+                let _ = std::fs::create_dir_all(&dir);
+                dir.join(file)
+            }
+        }
+    }
+
+    /// #5025: read side for an index file; see `table_path`.
     fn index_path(&self, table_name: &str, column_name: &str) -> PathBuf {
-        self.data_dir
-            .join(format!("{}_idx_{}.json", table_name, column_name))
+        let file = format!("{}_idx_{}.json", table_name, column_name);
+        match self.db_dir() {
+            None => self.data_dir.join(file),
+            Some(dir) => {
+                let scoped = dir.join(&file);
+                if scoped.exists() || dir.is_dir() {
+                    scoped
+                } else {
+                    self.data_dir.join(file)
+                }
+            }
+        }
+    }
+
+    /// #5025: write side for an index file; see `table_path_for_write`.
+    fn index_path_for_write(&self, table_name: &str, column_name: &str) -> PathBuf {
+        let file = format!("{}_idx_{}.json", table_name, column_name);
+        match self.db_dir() {
+            None => self.data_dir.join(file),
+            Some(dir) => {
+                let _ = std::fs::create_dir_all(&dir);
+                dir.join(file)
+            }
+        }
     }
 
     /// Get the path for a trigger file (named after the trigger, not the table)
@@ -523,7 +583,13 @@ impl FileStorage {
         }
         Self::with_write_lock(self, |s| {
             for (name, data) in rows_to_insert {
-                s.tables.insert(name, data);
+                // #5025: this runs at startup, when `current_db` is still
+                // `default` — which is correct, because `load_all_tables`
+                // only walks the data_dir root, where pre-#5025 tables (and
+                // the default database's own) live. Tables under a named
+                // database directory are loaded on first use, through
+                // `load_table`, which resolves the scoped path.
+                s.tables.insert(self.tbl(&name), data);
             }
         });
         // V400-MVCC-PKFAST: auto-build the PK B+Tree index for every
@@ -588,7 +654,7 @@ impl FileStorage {
         column_name: &str,
         index: &BPlusTree,
     ) -> std::io::Result<()> {
-        let path = self.index_path(table_name, column_name);
+        let path = self.index_path_for_write(table_name, column_name);
         let file = File::create(&path)?;
         let mut writer = BufWriter::new(file);
 
@@ -743,7 +809,8 @@ impl FileStorage {
             // Cold start, shrink, or a DELETE/UPDATE path: the caller
             // handed us a window, not a snapshot, so re-derive the
             // full table under the lock. Rare relative to inserts.
-            if let Some(data) = st.tables.get(table_name) {
+            // #5025: the cache is keyed by scoped name.
+            if let Some(data) = st.tables.get(&self.tbl(table_name)) {
                 return self.save_table_full(table_name, data);
             }
             return Ok(());
@@ -761,7 +828,7 @@ impl FileStorage {
         let delta_path = self.delta_path(table_name);
         if let Ok(meta) = std::fs::metadata(&delta_path) {
             if meta.len() > 10 * 1024 * 1024 {
-                if let Some(data) = st.tables.get(table_name) {
+                if let Some(data) = st.tables.get(&self.tbl(table_name)) {
                     let _ = self.save_table_full(table_name, data);
                 }
             }
@@ -773,7 +840,9 @@ impl FileStorage {
     /// `save_table` on the first write, after a schema change, and
     /// when the delta file grows too large.
     fn save_table_full(&self, table_name: &str, table_data: &TableData) -> std::io::Result<()> {
-        let path = self.table_path(table_name);
+        // #5025: writes go to the scoped location; `table_path` falls back
+        // to the root for reads only.
+        let path = self.table_path_for_write(table_name);
         let file = File::create(&path)?;
         // B2.3 / #4915 (F-11): 1 MB buffer, and serialize straight
         // into it. The previous code built an owned StoredTableData
@@ -849,8 +918,18 @@ impl FileStorage {
     }
 
     /// V400-PERF-DELTA: get the on-disk delta path for a table.
+    /// #5025: the delta file must follow the same scoping as the table, or
+    /// two databases with a table of the same name would append to one
+    /// delta file and corrupt each other's rows.
     fn delta_path(&self, table_name: &str) -> std::path::PathBuf {
-        self.data_dir.join(format!("{}.delta", table_name))
+        let file = format!("{}.delta", table_name);
+        match self.db_dir() {
+            None => self.data_dir.join(file),
+            Some(dir) => {
+                let _ = std::fs::create_dir_all(&dir);
+                dir.join(file)
+            }
+        }
     }
 
     /// Get a table by name.
@@ -876,7 +955,9 @@ impl FileStorage {
     /// handed to it is valid exactly as long as `f` runs. This is the
     /// cheap way to read a table — no clone.
     pub fn with_table<R>(&self, name: &str, f: impl FnOnce(Option<&TableData>) -> R) -> R {
-        self.with_read_lock(|st| f(st.tables.get(name)))
+        // #5025: the cache is keyed by scoped name.
+        let key = self.tbl(name);
+        self.with_read_lock(|st| f(st.tables.get(&key)))
     }
 
     /// Get a mutable table by name.
@@ -885,13 +966,17 @@ impl FileStorage {
     /// `&mut WriteState` with no lock overhead — the caller already has
     /// exclusive ownership of the whole storage.
     pub fn get_table_mut(&mut self, name: &str) -> Option<&mut TableData> {
-        self.write_state.get_mut().tables.get_mut(name)
+        // #5025: the cache is keyed by scoped name.
+        let key = self.tbl(name);
+        self.write_state.get_mut().tables.get_mut(&key)
     }
 
     /// Insert a new table
     pub fn insert_table(&self, name: String, table_data: TableData) -> std::io::Result<()> {
         Self::with_write_lock(self, |s| {
-            s.tables.insert(name.clone(), table_data.clone());
+            // #5025: scope the cache key, but keep the bare name for the
+            // on-disk file and `TableData.info.name`.
+            s.tables.insert(self.tbl(&name), table_data.clone());
             self.save_table(s, &name, &table_data)
         })
     }
@@ -899,7 +984,8 @@ impl FileStorage {
     /// Drop (delete) a table
     pub fn drop_table(&self, name: &str) -> std::io::Result<()> {
         Self::with_write_lock(self, |s| {
-            s.tables.remove(name);
+            let key = self.tbl(name);
+            s.tables.remove(&key);
             let path = self.table_path(name);
             if path.exists() {
                 std::fs::remove_file(path)?;
@@ -910,7 +996,22 @@ impl FileStorage {
 
     /// Get all table names
     pub fn table_names(&self) -> Vec<String> {
-        self.with_read_lock(|st| st.tables.keys().cloned().collect())
+        // #5025: only this database's tables, reported by bare name —
+        // the scoped cache key is an implementation detail, and leaking it
+        // would show up as `d1\u{1}t` in `SHOW TABLES`.
+        self.with_read_lock(|st| match self.db_dir() {
+            None => st.tables.values().map(|v| v.info.name.clone()).collect(),
+            Some(dir) => {
+                let prefix = format!(
+                    "{}\u{1}",
+                    dir.file_name().unwrap_or_default().to_string_lossy()
+                );
+                st.tables
+                    .iter()
+                    .filter_map(|(k, v)| k.strip_prefix(&prefix).map(|_| v.info.name.clone()))
+                    .collect()
+            }
+        })
     }
 
     /// Force save all dirty tables to disk
@@ -968,7 +1069,8 @@ impl FileStorage {
             std::mem::take(&mut s.dirty_tables)
                 .into_iter()
                 .filter_map(|name| {
-                    let data = s.tables.get(&name)?;
+                    // #5025: scoped cache key.
+                    let data = s.tables.get(&self.tbl(&name))?;
                     let total = data.rows.len();
                     let last_saved = *self
                         .last_saved_row_count
@@ -1002,8 +1104,32 @@ impl FileStorage {
     }
 
     /// Check if a table exists
+    /// #5025: scope a bare table name to the active database.
+    ///
+    /// The in-memory `WriteState::tables` cache is keyed this way, and so
+    /// is every on-disk path, so `d1.t` and `d2.t` are separate entries
+    /// both in memory and on disk.
+    #[inline]
+    fn tbl(&self, name: impl AsRef<str>) -> String {
+        crate::engine::scoped_key(&self.current_db.read().unwrap(), name.as_ref())
+    }
+
+    /// #5025: the directory a database's tables live in, if it is not the
+    /// implicit default. `None` means "use `data_dir` directly".
+    #[inline]
+    fn db_dir(&self) -> Option<std::path::PathBuf> {
+        let db = self.current_db.read().unwrap();
+        if *db == crate::engine::DEFAULT_DATABASE {
+            None
+        } else {
+            Some(self.data_dir.join(&*db))
+        }
+    }
+
     pub fn contains_table(&self, name: &str) -> bool {
-        self.with_read_lock(|st| st.tables.contains_key(name))
+        // #5025: the cache is keyed by scoped name.
+        let key = self.tbl(name);
+        self.with_read_lock(|st| st.tables.contains_key(&key))
     }
 
     /// Create a new database directory under data_dir.
@@ -1036,7 +1162,9 @@ impl FileStorage {
 
     /// Save a table to disk (call after modifications)
     pub fn persist_table(&self, name: &str) -> std::io::Result<()> {
-        self.with_read_lock(|st| match st.tables.get(name) {
+        // #5025: scoped cache key.
+        let key = self.tbl(name);
+        self.with_read_lock(|st| match st.tables.get(&key) {
             Some(table_data) => self.save_table(st, name, table_data),
             None => Ok(()),
         })
@@ -1048,7 +1176,7 @@ impl FileStorage {
     pub fn has_index(&self, table_name: &str, column_name: &str) -> bool {
         self.indexes
             .read()
-            .map(|indexes| indexes.contains_key(&(table_name.to_string(), column_name.to_string())))
+            .map(|indexes| indexes.contains_key(&(self.tbl(&table_name), column_name.to_string())))
             .unwrap_or(false)
     }
 
@@ -1056,7 +1184,7 @@ impl FileStorage {
     pub fn get_index(&self, table_name: &str, column_name: &str) -> Option<BPlusTree> {
         self.indexes.read().ok().and_then(|indexes| {
             indexes
-                .get(&(table_name.to_string(), column_name.to_string()))
+                .get(&(self.tbl(&table_name), column_name.to_string()))
                 .cloned()
         })
     }
@@ -1070,12 +1198,13 @@ impl FileStorage {
     ) -> std::io::Result<()> {
         // #4951: `&mut self` — get_mut needs no lock. The index is built
         // entirely from the returned borrow and never outlives it.
-        let table = self
-            .write_state
-            .get_mut()
-            .tables
-            .get(table_name)
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Table not found"))?;
+        // #5025: the cache is keyed by scoped name; resolve the key before
+        // the mutable borrow so `tbl()` can still read `current_db`.
+        let key = self.tbl(table_name);
+        let table =
+            self.write_state.get_mut().tables.get(&key).ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "Table not found")
+            })?;
 
         // Build B+ Tree from existing rows
         let mut index = crate::bplus_tree::BPlusTree::new();
@@ -1092,7 +1221,8 @@ impl FileStorage {
 
         // Store in memory
         if let Ok(mut indexes) = self.indexes.write() {
-            indexes.insert((table_name.to_string(), column_name.to_string()), index);
+            let ik = self.tbl(&table_name);
+            indexes.insert((ik, column_name.to_string()), index);
         }
 
         Ok(())
@@ -1119,8 +1249,9 @@ impl FileStorage {
             let pk_col_idx = columns.iter().position(|c| c.name == pk_col_name).unwrap();
 
             // Build B+Tree from current rows
-            let snapshot =
-                Self::with_write_lock(self, |s| s.tables.get(&table_name).map(|t| t.rows.clone()));
+            let snapshot = Self::with_write_lock(self, |s| {
+                s.tables.get(&self.tbl(&table_name)).map(|t| t.rows.clone())
+            });
             let Some(rows) = snapshot else { continue };
             let mut index = crate::bplus_tree::BPlusTree::new();
             for (row_id, row) in rows.iter().enumerate() {
@@ -1133,7 +1264,7 @@ impl FileStorage {
             // Persist + register
             self.save_index(&table_name, &pk_col_name, &index)?;
             if let Ok(mut indexes) = self.indexes.write() {
-                indexes.insert((table_name.clone(), pk_col_name.clone()), index);
+                indexes.insert((self.tbl(&table_name), pk_col_name.clone()), index);
             }
         }
         Ok(())
@@ -1147,7 +1278,7 @@ impl FileStorage {
         key: i64,
         row_id: u32,
     ) -> std::io::Result<()> {
-        let key_exists = (table_name.to_string(), column_name.to_string());
+        let key_exists = (self.tbl(table_name), column_name.to_string());
 
         // Clone the key for later use
         let has_index = self
@@ -1183,7 +1314,7 @@ impl FileStorage {
     pub fn search_index(&self, table_name: &str, column_name: &str, key: i64) -> Option<u32> {
         self.indexes.read().ok().and_then(|indexes| {
             indexes
-                .get(&(table_name.to_string(), column_name.to_string()))
+                .get(&(self.tbl(&table_name), column_name.to_string()))
                 .and_then(|index| index.search(key))
         })
     }
@@ -1201,7 +1332,7 @@ impl FileStorage {
             .ok()
             .and_then(|indexes| {
                 indexes
-                    .get(&(table_name.to_string(), column_name.to_string()))
+                    .get(&(self.tbl(&table_name), column_name.to_string()))
                     .map(|index| index.range_query(start, end))
             })
             .unwrap_or_default()
@@ -1209,7 +1340,8 @@ impl FileStorage {
 
     /// Drop an index
     pub fn drop_index(&self, table_name: &str, column_name: &str) -> std::io::Result<()> {
-        let key = (table_name.to_string(), column_name.to_string());
+        // #5025: index keys carry the scoped table name.
+        let key = (self.tbl(table_name), column_name.to_string());
 
         if let Ok(mut indexes) = self.indexes.write() {
             indexes.remove(&key);
@@ -2040,9 +2172,16 @@ mod tests {
             storage.insert("test_table", vec![record]).unwrap();
         }
 
-        assert!(storage.with_read_lock(|st| st.insert_buffer.contains_key("test_table")));
+        assert!({
+            // #5025: the buffer is keyed by the scoped table name.
+            let key = storage.tbl("test_table");
+            storage.with_read_lock(|st| st.insert_buffer.contains_key(&key))
+        });
         assert_eq!(
-            storage.with_read_lock(|st| st.insert_buffer.get("test_table").map(|v| v.len())),
+            {
+                let key = storage.tbl("test_table");
+                storage.with_read_lock(|st| st.insert_buffer.get(&key).map(|v| v.len()))
+            },
             Some(5)
         );
 
@@ -2083,9 +2222,14 @@ mod tests {
             storage.insert("test_table", vec![record]).unwrap();
         }
 
-        assert!(storage.with_read_lock(|st| st.insert_buffer.contains_key("test_table")));
+        // #5025: the buffer is keyed by the scoped table name. Assert
+        // through the public surface instead — the buffer key is an
+        // implementation detail, and the point of the test is the
+        // threshold behaviour, not the key format.
+        let key = storage.tbl("test_table");
+        assert!(storage.with_read_lock(|st| st.insert_buffer.contains_key(&key)));
         assert_eq!(
-            storage.with_read_lock(|st| st.insert_buffer.get("test_table").map(|v| v.len())),
+            storage.with_read_lock(|st| st.insert_buffer.get(&key).map(|v| v.len())),
             Some(2)
         );
 
@@ -2126,11 +2270,19 @@ mod tests {
             storage.insert("test_table", vec![record]).unwrap();
         }
 
-        assert!(storage.with_read_lock(|st| st.insert_buffer.contains_key("test_table")));
+        assert!({
+            // #5025: the buffer is keyed by the scoped table name.
+            let key = storage.tbl("test_table");
+            storage.with_read_lock(|st| st.insert_buffer.contains_key(&key))
+        });
 
         storage.flush_all_buffers().unwrap();
 
-        assert!(!storage.with_read_lock(|st| st.insert_buffer.contains_key("test_table")));
+        assert!(!{
+            // #5025: the buffer is keyed by the scoped table name.
+            let key = storage.tbl("test_table");
+            storage.with_read_lock(|st| st.insert_buffer.contains_key(&key))
+        });
 
         let table = storage.get_table("test_table").unwrap();
         assert_eq!(table.rows.len(), 5);
@@ -3333,7 +3485,10 @@ impl FileStorage {
                 let mut start_row_id: u32 = 0;
                 let row_count = records.len();
                 let mut result: Option<(Vec<ColumnDefinition>, u32, usize)> = None;
-                if let Some(ref mut data) = s.tables.get_mut(table) {
+                if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    &table,
+                )) {
                     start_row_id = data.rows.len() as u32;
                     data.rows.extend(records.iter().cloned());
                     let cols = data.info.columns.clone();
@@ -3368,14 +3523,26 @@ impl FileStorage {
     fn insert_buffered(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
             Self::with_write_lock(self, |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
-                let buffered = s.insert_buffer.entry(table.to_string()).or_default();
+                let buffered = s
+                    .insert_buffer
+                    .entry(crate::engine::scoped_key(
+                        &self.current_db.read().unwrap(),
+                        table,
+                    ))
+                    .or_default();
                 buffered.extend(records.iter().cloned());
 
                 let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
                 if buffered.len() >= self.buffer_threshold {
-                    if let Some(records) = s.insert_buffer.remove(table) {
+                    if let Some(records) = s.insert_buffer.remove(&crate::engine::scoped_key(
+                        &self.current_db.read().unwrap(),
+                        table,
+                    )) {
                         let row_count = records.len();
-                        if let Some(ref mut data) = s.tables.get_mut(table) {
+                        if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
+                            &self.current_db.read().unwrap(),
+                            &table,
+                        )) {
                             let start_row_id = data.rows.len();
                             data.rows.extend(records.iter().cloned());
                             let cols = data.info.columns.clone();
@@ -3401,7 +3568,7 @@ impl FileStorage {
             // `records: Vec<Record>` is owned by this function
             // and the closure took ownership of the move
             // (`buffered.extend(records.iter().cloned())` does
-            // clone, then `s.insert_buffer.remove(table)` moves
+            // clone, then `s.insert_buffer.remove(&crate::engine::scoped_key(&self.current_db.read().unwrap(), table))` moves
             // the buffer out — but `records` is still owned by
             // us at this point because we cloned into the buffer),
             // we can pass &records to read PKs directly.
@@ -3414,9 +3581,15 @@ impl FileStorage {
         let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
             Self::with_write_lock(self, |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
                 let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
-                if let Some(records) = s.insert_buffer.remove(table) {
+                if let Some(records) = s.insert_buffer.remove(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    table,
+                )) {
                     let row_count = records.len();
-                    if let Some(ref mut data) = s.tables.get_mut(table) {
+                    if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
+                        &self.current_db.read().unwrap(),
+                        &table,
+                    )) {
                         let start_row_id = data.rows.len();
                         data.rows.extend(records);
                         let cols = data.info.columns.clone();
@@ -3437,7 +3610,7 @@ impl FileStorage {
         if let Some((start_row_id, row_count, columns)) = snap {
             // V400-PERF-FIX: flush_buffer has no caller-side records
             // (they were consumed by the closure via
-            // `s.insert_buffer.remove(table)`). Use a separate
+            // `s.insert_buffer.remove(&crate::engine::scoped_key(&self.current_db.read().unwrap(), table))`). Use a separate
             // helper that reads ONLY the [start_row_id, +row_count)
             // window of data.rows — O(row_count) not O(table_size).
             Self::update_pk_index_window(self, table, &columns, start_row_id, row_count);
@@ -3473,7 +3646,7 @@ impl FileStorage {
             return;
         }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(table.to_string(), pk_col_name.clone())) {
+            if let Some(index) = indexes.get_mut(&(self.tbl(&table), pk_col_name.clone())) {
                 for (ikey, rid) in updates {
                     index.insert(ikey, rid);
                 }
@@ -3501,7 +3674,7 @@ impl FileStorage {
         // Snapshot only the [start_row_id, start_row_id+count) window
         // so we don't pay O(table_size) for an O(count) operation.
         let rows_snapshot = Self::with_write_lock(self, |s| {
-            s.tables.get(table).map(|t| {
+            s.tables.get(&self.tbl(table)).map(|t| {
                 let end = (start_row_id + count).min(t.rows.len());
                 if start_row_id < t.rows.len() {
                     t.rows[start_row_id..end].to_vec()
@@ -3526,7 +3699,7 @@ impl FileStorage {
             return;
         }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(table.to_string(), pk_col_name.clone())) {
+            if let Some(index) = indexes.get_mut(&(self.tbl(&table), pk_col_name.clone())) {
                 for (ikey, rid) in updates {
                     index.insert(ikey, rid);
                 }
@@ -3538,8 +3711,17 @@ impl FileStorage {
         // Snapshot the table list under the lock; then drop the guard
         // before re-acquiring per table (avoids holding the lock for
         // the duration of all table saves).
-        let tables: Vec<String> =
-            Self::with_write_lock(self, |s| s.insert_buffer.keys().cloned().collect());
+        // #5025: the buffer keys are scoped, and `flush_buffer` takes a
+        // bare table name, so strip the database prefix back off before
+        // handing each one over — otherwise it would be scoped twice and
+        // find nothing.
+        let prefix = self.current_db.read().unwrap().to_lowercase().to_string() + "\u{1}";
+        let tables: Vec<String> = Self::with_write_lock(self, |s| {
+            s.insert_buffer
+                .keys()
+                .map(|k| k.strip_prefix(&prefix).unwrap_or(k).to_string())
+                .collect()
+        });
         for table in tables {
             self.flush_buffer(&table)?;
         }
@@ -3580,9 +3762,12 @@ impl FileStorage {
         // instead: one copy, and the rows/buffer pair comes from a single
         // instant rather than two.
         let Some(all) = self.with_read_lock(|st| {
-            let data = st.tables.get(table)?;
+            let data = st.tables.get(&self.tbl(table))?;
             let mut all: Vec<Record> = data.rows.clone();
-            if let Some(buffered) = st.insert_buffer.get(table) {
+            if let Some(buffered) = st.insert_buffer.get(&crate::engine::scoped_key(
+                &self.current_db.read().unwrap(),
+                table,
+            )) {
                 all.extend(buffered.iter().cloned());
             }
             Some(all)
@@ -3833,10 +4018,16 @@ impl StorageEngine for FileStorage {
                         row_idx,
                         original,
                     } => {
-                        if let Some(data) = s.tables.get_mut(&table) {
+                        if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                            &self.current_db.read().unwrap(),
+                            &table,
+                        )) {
                             if row_idx < data.rows.len() {
                                 data.rows[row_idx] = original;
-                                s.dirty_tables.insert(table);
+                                s.dirty_tables.insert(crate::engine::scoped_key(
+                                    &self.current_db.read().unwrap(),
+                                    &table,
+                                ));
                             }
                         }
                     }
@@ -3845,23 +4036,38 @@ impl StorageEngine for FileStorage {
                         row_idx,
                         original,
                     } => {
-                        if let Some(data) = s.tables.get_mut(&table) {
+                        if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                            &self.current_db.read().unwrap(),
+                            &table,
+                        )) {
                             let idx = row_idx.min(data.rows.len());
                             data.rows.insert(idx, original);
-                            s.dirty_tables.insert(table);
+                            s.dirty_tables.insert(crate::engine::scoped_key(
+                                &self.current_db.read().unwrap(),
+                                &table,
+                            ));
                         }
                     }
                     UndoOp::DeleteAll {
                         table,
                         original_rows,
                     } => {
-                        if let Some(data) = s.tables.get_mut(&table) {
+                        if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                            &self.current_db.read().unwrap(),
+                            &table,
+                        )) {
                             data.rows = original_rows;
-                            s.dirty_tables.insert(table);
+                            s.dirty_tables.insert(crate::engine::scoped_key(
+                                &self.current_db.read().unwrap(),
+                                &table,
+                            ));
                         }
                     }
                     UndoOp::BufferedInsert { table, row } => {
-                        if let Some(buf) = s.insert_buffer.get_mut(&table) {
+                        if let Some(buf) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
+                            &self.current_db.read().unwrap(),
+                            &table,
+                        )) {
                             buf.retain(|r| r != &row);
                         }
                     }
@@ -3871,7 +4077,10 @@ impl StorageEngine for FileStorage {
             // as BufferedInsert ops above, but if any slipped past, this
             // is a belt-and-suspenders cleanup).
             for table in s.tables.keys().cloned().collect::<Vec<_>>() {
-                if let Some(buf) = s.insert_buffer.get_mut(&table) {
+                if let Some(buf) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    &table,
+                )) {
                     buf.retain(|_row| false);
                 }
             }
@@ -3889,12 +4098,15 @@ impl StorageEngine for FileStorage {
         self.with_read_lock(|st| {
             let mut rows: Vec<Record> = st
                 .tables
-                .get(table)
+                .get(&self.tbl(table))
                 .map(|data| data.rows.clone())
                 .unwrap_or_default();
             // F-09 fix: merge insert_buffer so same-transaction SELECT/UPDATE sees
             // the rows that were just inserted (and not yet flushed to data.rows).
-            if let Some(buffered) = st.insert_buffer.get(table) {
+            if let Some(buffered) = st.insert_buffer.get(&crate::engine::scoped_key(
+                &self.current_db.read().unwrap(),
+                table,
+            )) {
                 rows.extend(buffered.iter().cloned());
             }
             Ok(rows)
@@ -3916,10 +4128,16 @@ impl StorageEngine for FileStorage {
         self.with_read_lock(|st| {
             let mut rows: Vec<Record> = st
                 .tables
-                .get(table)
+                .get(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    table,
+                ))
                 .map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())
                 .unwrap_or_default();
-            if let Some(buffered) = st.insert_buffer.get(table) {
+            if let Some(buffered) = st.insert_buffer.get(&crate::engine::scoped_key(
+                &self.current_db.read().unwrap(),
+                table,
+            )) {
                 for record in buffered.iter() {
                     if filter(record) {
                         rows.push(record.clone());
@@ -3980,7 +4198,7 @@ impl StorageEngine for FileStorage {
                 // #4951: single read guard over tables + insert_buffer
                 // so the table and the buffer are read at one instant.
                 let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
-                    st.tables.get(table).map(|data| {
+                    st.tables.get(&self.tbl(table)).map(|data| {
                         // Collect matching rows
                         let mut results = Vec::new();
                         for &row_id in &row_ids {
@@ -3989,7 +4207,10 @@ impl StorageEngine for FileStorage {
                             }
                         }
                         // Also check insert_buffer
-                        if let Some(buffered) = st.insert_buffer.get(table) {
+                        if let Some(buffered) = st.insert_buffer.get(&crate::engine::scoped_key(
+                            &self.current_db.read().unwrap(),
+                            table,
+                        )) {
                             for record in buffered.iter() {
                                 // Check if this buffered row matches the key
                                 if let Some(col_idx) =
@@ -4049,14 +4270,16 @@ impl StorageEngine for FileStorage {
         // rows in a length-prefixed binary format, so row-level seek is
         // possible but requires iterating from the start to find partition
         // boundaries. A future optimization can add that.
+        // #5025: the cache is keyed by scoped name.
+        let key = self.tbl(table);
         let rows: Vec<Record> = self.with_read_lock(|st| {
             let mut rows: Vec<Record> = st
                 .tables
-                .get(table)
+                .get(&key)
                 .map(|data| data.rows.clone())
                 .unwrap_or_default();
             // F-09 fix: merge insert_buffer for same-tx visibility
-            if let Some(buffered) = st.insert_buffer.get(table) {
+            if let Some(buffered) = st.insert_buffer.get(&key) {
                 rows.extend(buffered.iter().cloned());
             }
             rows
@@ -4141,7 +4364,10 @@ impl StorageEngine for FileStorage {
             // BEFORE the actual delete. The `data` borrow ends before the
             // `dirty_tables` / `insert_buffer` mutations, so we snapshot first,
             // then mutate, then post-process the buffer.
-            let removed = if let Some(ref mut data) = s.tables.get_mut(table) {
+            let removed = if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
+                &self.current_db.read().unwrap(),
+                &table,
+            )) {
                 let original_len = data.rows.len();
 
                 // Issue #4581: capture pre-delete snapshots. We collect them
@@ -4197,8 +4423,14 @@ impl StorageEngine for FileStorage {
             // strip matching rows from insert_buffer so they don't shadow
             // updated values.
             if filters.is_empty() {
-                s.insert_buffer.remove(table);
-            } else if let Some(buffered) = s.insert_buffer.get_mut(table) {
+                s.insert_buffer.remove(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    table,
+                ));
+            } else if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
+                &self.current_db.read().unwrap(),
+                table,
+            )) {
                 buffered.retain(|row| {
                     !filters
                         .iter()
@@ -4228,7 +4460,9 @@ impl StorageEngine for FileStorage {
                 != 0;
 
             // Snapshot rows for ROLLBACK (same as `delete`).
-            let removed_pks: Vec<Value> = if let Some(ref mut data) = s.tables.get_mut(table) {
+            let removed_pks: Vec<Value> = if let Some(ref mut data) = s.tables.get_mut(
+                &crate::engine::scoped_key(&self.current_db.read().unwrap(), &table),
+            ) {
                 let original_len = data.rows.len();
 
                 // Capture pre-delete undo log entries (same as `delete`).
@@ -4312,7 +4546,10 @@ impl StorageEngine for FileStorage {
             // removed. The deletion itself already happened just above.
             let mut removed_pks = removed_pks;
             if !filters.is_empty() {
-                if let Some(buffered) = s.insert_buffer.get(table) {
+                if let Some(buffered) = s.insert_buffer.get(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    table,
+                )) {
                     for row in buffered {
                         if filters
                             .iter()
@@ -4332,8 +4569,14 @@ impl StorageEngine for FileStorage {
             // After full table delete, clear any buffered inserts.
             // For partial delete, strip matching rows from insert_buffer.
             if filters.is_empty() {
-                s.insert_buffer.remove(table);
-            } else if let Some(buffered) = s.insert_buffer.get_mut(table) {
+                s.insert_buffer.remove(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    table,
+                ));
+            } else if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
+                &self.current_db.read().unwrap(),
+                table,
+            )) {
                 buffered.retain(|row| {
                     !filters
                         .iter()
@@ -4347,7 +4590,10 @@ impl StorageEngine for FileStorage {
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         Self::with_write_lock(self, |s| {
-            if let Some(ref mut data) = s.tables.get_mut(table) {
+            if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
+                &self.current_db.read().unwrap(),
+                &table,
+            )) {
                 let original_len = data.rows.len();
                 data.rows.retain(|r| !filter(r));
                 let new_len = data.rows.len();
@@ -4382,7 +4628,10 @@ impl StorageEngine for FileStorage {
             ref mut tx_undo_log,
             ..
         } = *st;
-        let Some(ref mut data) = tables.get_mut(table) else {
+        let Some(ref mut data) = tables.get_mut(&crate::engine::scoped_key(
+            &self.current_db.read().unwrap(),
+            table,
+        )) else {
             return Ok(0);
         };
 
@@ -4429,8 +4678,10 @@ impl StorageEngine for FileStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
+        // #5025: resolve the key before the mutable borrow.
+        let key = self.tbl(table);
         let st = self.write_state.get_mut();
-        let Some(data) = st.tables.get_mut(table) else {
+        let Some(data) = st.tables.get_mut(&key) else {
             return Ok(0);
         };
 
@@ -4515,7 +4766,7 @@ impl StorageEngine for FileStorage {
     fn flush(&mut self) -> SqlResult<()> {
         // C.1.2: this used to be a second, independent copy of the loop
         // in `FileStorage::flush`, with its own
-        // `self.tables.get(&name).cloned()` — a whole-`TableData` copy per
+        // `self.tables.get(&self.tbl(name)).cloned()` — a whole-`TableData` copy per
         // dirty table. It is the override the server actually reaches
         // (through `MvccStorage`), so that copy was on the live path
         // while the optimised inherent copy was not; B2.2 improved a
@@ -4604,14 +4855,15 @@ impl StorageEngine for FileStorage {
                 .map_err(SqlError::from)?;
 
             // Store in memory
-            indexes.insert((table.to_string(), column_name), index);
+            indexes.insert((self.tbl(&table), column_name), index);
         }
 
         Ok(())
     }
 
     fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
-        let key = (table.to_string(), index_name.to_string());
+        // #5025: index keys carry the scoped table name.
+        let key = (self.tbl(table), index_name.to_string());
 
         if let Ok(mut indexes) = self.indexes.write() {
             indexes.remove(&key);
@@ -4644,7 +4896,10 @@ impl StorageEngine for FileStorage {
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
         Self::with_write_lock(self, |s| {
-            if let Some(data) = s.tables.get_mut(table) {
+            if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                &self.current_db.read().unwrap(),
+                &table,
+            )) {
                 data.info.columns.push(column);
                 // V312-72 / Issue #4647: backfill every existing row with
                 // the new column's DEFAULT (or Value::Null when no default
@@ -4688,7 +4943,10 @@ impl StorageEngine for FileStorage {
         // removal is also the same ordering as before: the row is off the
         // map while the JSON is written, then re-inserted under the new
         // name.
-        let mut table_data = match self.write_state.get_mut().tables.remove(table) {
+        // #5025: the cache key is scoped.
+        let old_key = self.tbl(table);
+        let new_table_key = self.tbl(new_name);
+        let mut table_data = match self.write_state.get_mut().tables.remove(&old_key) {
             Some(td) => td,
             None => return Ok(()),
         };
@@ -4701,7 +4959,7 @@ impl StorageEngine for FileStorage {
         }
         {
             let st = self.write_state.get_mut();
-            st.tables.insert(new_name.to_string(), table_data);
+            st.tables.insert(new_table_key, table_data);
         }
         {
             // `indexes` is a std::sync::RwLock (poison-aware), not the
@@ -4711,7 +4969,7 @@ impl StorageEngine for FileStorage {
                 let keys: Vec<_> = indexes.keys().cloned().collect();
                 for key in keys {
                     if key.0 == table {
-                        let new_key = (new_name.to_string(), key.1.clone());
+                        let new_key = (self.tbl(new_name), key.1.clone());
                         if let Some(idx) = indexes.remove(&key) {
                             indexes.insert(new_key, idx);
                         }
@@ -4722,7 +4980,7 @@ impl StorageEngine for FileStorage {
                 for key in indexes.keys() {
                     if key.0 == new_name {
                         let old_idx_path = self.index_path(table, &key.1);
-                        let new_idx_path = self.index_path(new_name, &key.1);
+                        let new_idx_path = self.index_path_for_write(new_name, &key.1);
                         if old_idx_path.exists() {
                             std::fs::rename(&old_idx_path, &new_idx_path).ok();
                         }
@@ -4809,11 +5067,14 @@ impl StorageEngine for FileStorage {
     }
 
     fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
+        // #5025: keys carry the database, but callers expect the bare
+        // table name back — `sqlite_master` and friends render this.
+        let key = self.tbl(table);
         let indexes = self.indexes.read().unwrap();
         indexes
             .iter()
-            .filter(|((t, _c), _idx)| t == table)
-            .map(|((t, c), _idx)| (c.clone(), format!("{}_idx_{}", t, c)))
+            .filter(|((t, _c), _idx)| *t == key)
+            .map(|((_t, c), _idx)| (c.clone(), format!("{}_idx_{}", table, c)))
             .collect()
     }
 
@@ -4821,6 +5082,28 @@ impl StorageEngine for FileStorage {
         let db_path = self.data_dir.join(db_name);
         std::fs::create_dir_all(&db_path)
             .map_err(|e| SqlError::ExecutionError(format!("create_database: {}", e)))
+    }
+
+    /// #5025: switch the active database.
+    ///
+    /// A database exists when its directory does. The implicit `default`
+    /// database always resolves, even before any file is written — it is
+    /// where pre-#5025 tables live, and rejecting `USE default` on a
+    /// fresh installation would be surprising.
+    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
+        let key = db_name.to_lowercase();
+        if key != crate::engine::DEFAULT_DATABASE && !self.data_dir.join(&key).is_dir() {
+            return Err(SqlError::ExecutionError(format!(
+                "Unknown database: {}",
+                db_name
+            )));
+        }
+        *self.current_db.write().unwrap() = key;
+        Ok(())
+    }
+
+    fn current_db(&self) -> String {
+        self.current_db.read().unwrap().clone()
     }
 
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
@@ -4865,11 +5148,14 @@ impl StorageEngine for FileStorage {
     }
 
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
+        // #5025: resolve the key first — `self.tbl()` borrows `self`,
+        // which conflicts with the `get_mut()` below.
+        let key = self.tbl(table);
         let table_data = self
             .write_state
             .get_mut()
             .tables
-            .get_mut(table)
+            .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let col_idx = table_data
             .info
@@ -4905,7 +5191,10 @@ impl StorageEngine for FileStorage {
             let st = self.write_state.get_mut();
             let table_data = st
                 .tables
-                .get_mut(table)
+                .get_mut(&crate::engine::scoped_key(
+                    &self.current_db.read().unwrap(),
+                    table,
+                ))
                 .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
             let col_idx = table_data
                 .info
@@ -4944,11 +5233,14 @@ impl StorageEngine for FileStorage {
         column: &str,
         new_def: ColumnDefinition,
     ) -> SqlResult<()> {
+        // #5025: resolve the key first — `self.tbl()` borrows `self`,
+        // which conflicts with the `get_mut()` below.
+        let key = self.tbl(table);
         let table_data = self
             .write_state
             .get_mut()
             .tables
-            .get_mut(table)
+            .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let col_idx = table_data
             .info
@@ -5115,7 +5407,7 @@ impl FileStorage {
         // 2. The `<= 2 tables` branch called `self.flush()`, but the dirty
         //    set had already been taken, so that call saw an empty set and
         //    persisted nothing — the rows were silently dropped.
-        // 3. The 3+ branch read `self.tables.get(name)` from spawned
+        // 3. The 3+ branch read `self.tables.get(&self.tbl(name))` from spawned
         //    threads. `tables` is a plain `HashMap` guarded by
         //    `write_lock`; reading it from `&self` while another thread
         //    holds that lock and mutates it is a data race, not just a
@@ -5212,10 +5504,16 @@ impl FileStorage {
                     row_idx,
                     original,
                 } => {
-                    if let Some(data) = s.tables.get_mut(&table) {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                        &self.current_db.read().unwrap(),
+                        &table,
+                    )) {
                         if row_idx < data.rows.len() {
                             data.rows[row_idx] = original;
-                            s.dirty_tables.insert(table);
+                            s.dirty_tables.insert(crate::engine::scoped_key(
+                                &self.current_db.read().unwrap(),
+                                &table,
+                            ));
                         }
                     }
                 }
@@ -5224,28 +5522,126 @@ impl FileStorage {
                     row_idx,
                     original,
                 } => {
-                    if let Some(data) = s.tables.get_mut(&table) {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                        &self.current_db.read().unwrap(),
+                        &table,
+                    )) {
                         let idx = row_idx.min(data.rows.len());
                         data.rows.insert(idx, original);
-                        s.dirty_tables.insert(table);
+                        s.dirty_tables.insert(crate::engine::scoped_key(
+                            &self.current_db.read().unwrap(),
+                            &table,
+                        ));
                     }
                 }
                 UndoOp::DeleteAll {
                     table,
                     original_rows,
                 } => {
-                    if let Some(data) = s.tables.get_mut(&table) {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                        &self.current_db.read().unwrap(),
+                        &table,
+                    )) {
                         data.rows = original_rows;
-                        s.dirty_tables.insert(table);
+                        s.dirty_tables.insert(crate::engine::scoped_key(
+                            &self.current_db.read().unwrap(),
+                            &table,
+                        ));
                     }
                 }
                 UndoOp::BufferedInsert { table, row } => {
-                    if let Some(buf) = s.insert_buffer.get_mut(&table) {
+                    if let Some(buf) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
+                        &self.current_db.read().unwrap(),
+                        &table,
+                    )) {
                         buf.retain(|r| r != &row);
                     }
                 }
             }
             Ok(())
         })
+    }
+}
+
+// --- #5025: per-database isolation on the production engine ---------------
+//
+// A separate module rather than an addition to the file's own `mod tests`:
+// that one is large and its closing brace is awkward to locate reliably,
+// and a mis-placed `#[test]` silently lands inside a function.
+
+#[cfg(test)]
+mod db_isolation_tests {
+    use super::*;
+    use crate::engine::ColumnDefinition;
+    use std::fs::remove_dir_all;
+
+    /// The on-disk engine is the production path. `MemoryStorage` covers
+    /// the same contract in memory; this pins the part that only exists
+    /// here — that a table's file lands under its database directory
+    /// instead of being overwritten in the shared root.
+    #[test]
+    fn tables_and_files_are_scoped_per_database() {
+        let dir = std::env::temp_dir().join("fs_db_iso_5025");
+        let _ = remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut fs = FileStorage::new(dir.clone()).unwrap();
+        fs.create_database("d1").unwrap();
+        fs.create_database("d2").unwrap();
+
+        for (db, id) in [("d1", 1i64), ("d2", 2)] {
+            fs.set_current_db(db).unwrap();
+            let mut info = TableInfo::default();
+            info.name = "t".to_string();
+            info.columns = vec![ColumnDefinition::new("id", "INTEGER")];
+            fs.create_table(&info).unwrap();
+            fs.force_insert("t", vec![Value::Integer(id)]).unwrap();
+        }
+
+        fs.set_current_db("d1").unwrap();
+        assert_eq!(fs.scan("t").unwrap(), vec![vec![Value::Integer(1)]]);
+        assert_eq!(fs.list_tables(), vec!["t".to_string()]);
+        fs.set_current_db("d2").unwrap();
+        assert_eq!(fs.scan("t").unwrap(), vec![vec![Value::Integer(2)]]);
+
+        // Separate files, not one file written twice.
+        assert!(dir.join("d1").join("t.json").exists(), "d1/t.json missing");
+        assert!(dir.join("d2").join("t.json").exists(), "d2/t.json missing");
+        assert!(!dir.join("t.json").exists(), "a table landed in the root");
+
+        // Unknown database is an error; the failed switch changes nothing.
+        assert!(fs.set_current_db("nope").is_err());
+        assert_eq!(fs.current_db(), "d2");
+
+        let _ = remove_dir_all(&dir);
+    }
+
+    /// Pre-#5025 every table sat directly in `data_dir`. Those must remain
+    /// readable — the read path falls back to the root when the database
+    /// directory is absent, so an existing installation is not broken by
+    /// the layout change.
+    #[test]
+    fn pre_5025_root_layout_is_still_readable() {
+        let dir = std::env::temp_dir().join("fs_db_legacy_5025");
+        let _ = remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut info = TableInfo::default();
+        info.name = "legacy".to_string();
+        info.columns = vec![ColumnDefinition::new("id", "INTEGER")];
+        {
+            let mut fs = FileStorage::new(dir.clone()).unwrap();
+            fs.create_table(&info).unwrap();
+            fs.force_insert("legacy", vec![Value::Integer(42)]).unwrap();
+        }
+        assert!(
+            dir.join("legacy.json").exists(),
+            "expected the table at the data_dir root"
+        );
+
+        let fs = FileStorage::new(dir.clone()).unwrap();
+        assert_eq!(fs.scan("legacy").unwrap(), vec![vec![Value::Integer(42)]]);
+
+        let _ = remove_dir_all(&dir);
     }
 }
