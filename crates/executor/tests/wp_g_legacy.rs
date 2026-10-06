@@ -53,7 +53,8 @@ mod issue_4846_char_padding_comparison {
     /// land for the equality path. See
     /// `issue_4846_char_pad_space_test.rs::test_issue_4846_char10_short_
     /// literal_matches_padded_storage` which also fails on current HEAD.
-    #[ignore = "GAP: #4846 headline — WHERE col='short' returns 0 rows"]
+    // #4944/#4846: no longer `#[ignore]`d — fixed by the PK fast-path work
+    // (PR #5068). Re-run under `--ignored` confirms it now passes.
     #[test]
     fn short_literal_matches_padded_storage() {
         let mut e = create_engine();
@@ -65,7 +66,8 @@ mod issue_4846_char_padding_comparison {
     }
 
     /// GAP: WHERE id = 'abc   ' (padded literal) doesn't match 'abc' in CHAR.
-    #[ignore = "GAP: trailing-space literal mismatch on CHAR"]
+    // #4944/#4846: un-ignored — same root cause; PAD SPACE matches a padded
+    // literal against a shorter stored value.
     #[test]
     fn long_literal_with_trailing_spaces_matches_stored_short_value() {
         let mut e = create_engine();
@@ -78,7 +80,12 @@ mod issue_4846_char_padding_comparison {
     }
 
     /// GAP: BETWEEN with CHAR — range comparison doesn't PAD.
-    #[ignore = "GAP: BETWEEN with CHAR doesn't PAD SPACE"]
+    // #4944/#4846: no longer `#[ignore]`d. `BETWEEN` went through
+    // `compare_values` (BINARY, per #4612) while `=` went through
+    // `sql_compare` (PAD SPACE, per #4846) — two legacy issues, opposite
+    // decisions, different code paths. `compare_values_pad_space` now
+    // gives `BETWEEN` the same rule `=` uses, without touching
+    // `compare_values` itself (ORDER BY / GROUP BY keys still use it).
     #[test]
     fn char_between_inclusive_bounds() {
         let mut e = create_engine();
@@ -92,7 +99,8 @@ mod issue_4846_char_padding_comparison {
     }
 
     /// GAP: IN list with CHAR — set membership doesn't PAD.
-    #[ignore = "GAP: IN list with CHAR doesn't PAD SPACE"]
+    // #4944/#4846: un-ignored — same root cause and same fix as `BETWEEN`
+    // above; the `IN` membership test used `compare_values` too.
     #[test]
     fn char_in_list() {
         let mut e = create_engine();
@@ -207,11 +215,26 @@ mod issue_4846_char_padding_comparison {
         );
     }
 
-    /// GAP: even VARCHAR comparison is loose right now — `WHERE v = 'abc   '`
-    /// matches `VARCHAR(10)` column holding `abc`. This is a deeper bug
-    /// than #4846 (which was specifically about CHAR). The headline fix
-    /// appears to trim trailing whitespace on ALL Text comparisons,
-    /// which is wrong for VARCHAR. Tracked separately in test body.
+    /// Still a GAP, and deliberately not fixed in this round.
+    ///
+    /// `WHERE v = 'abc   '` matches a `VARCHAR(10)` column holding
+    /// `abc`, but trailing spaces are part of a VARCHAR value and must
+    /// not be trimmed. #4846's headline fix trims trailing whitespace on
+    /// **all** Text comparisons, which is wrong here.
+    ///
+    /// It cannot be fixed where it looks like it should be:
+    /// `sql_compare(op, left, right)` receives two `Value`s and has **no
+    /// way to know** whether the column was declared CHAR or VARCHAR.
+    /// `evaluate_where_clause` / `eval_predicate` do have `table_info`,
+    /// so threading the column type into the comparison core is possible
+    /// — but that changes every Text comparison in the engine, which is a
+    /// different order of change from the predicate gaps this round
+    /// closed, and is not something to slip in alongside them.
+    ///
+    /// Same root cause, same shape: for a VARCHAR PK column the bare
+    /// `WHERE id = 'x'` goes through `scan_pk` (strict) while
+    /// `WHERE id = 'x' AND 1=1` goes through `sql_compare` (trim), so the
+    /// two forms disagree. Left for the column-type-aware comparison.
     #[ignore = "GAP: VARCHAR = 'abc   ' also matches stored 'abc' (over-trim)"]
     #[test]
     fn char_vs_varchar_strict_when_varchar_is_target() {
@@ -227,7 +250,7 @@ mod issue_4846_char_padding_comparison {
     }
 
     /// GAP: COUNT(*) with WHERE on short CHAR literal.
-    #[ignore = "GAP: short CHAR literal in WHERE returns 0 — same root cause as headline"]
+    // #4944/#4846: un-ignored — same root cause as the headline above.
     #[test]
     fn char_count_with_where_clause_short_literal() {
         let mut e = create_engine();

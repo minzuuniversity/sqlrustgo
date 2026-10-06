@@ -298,6 +298,15 @@
         "crates/executor/tests/wp_g_legacy.rs"
       ],
       "note": "5 项新增 + wp_g_legacy 摘掉 2 个 #[ignore]（4 通过/8 忽略 -> 6 通过/6 忽略）。变异 M13（CHAR 守卫失效）3 项 FAILED；M14（撤掉引号剥离）1 项 FAILED，两者互不遮蔽。修法选择：不去改 scan_pk 实现 PAD SPACE —— B+Tree 精确查找无法在不扫描的前提下表达「忽略尾部空格」这一非前缀语义；改为 CHAR 列跳过快路径。代价是 CHAR 主键失去 O(log N) 点查，正确性优先。"
+    },
+    {
+      "pr": 5069,
+      "issue": "4944, 4846",
+      "fix": "CHAR PAD SPACE 在 BETWEEN / IN / NOT BETWEEN / NOT IN 上缺失 —— #4612(BINARY) 与 #4846(PAD SPACE) 两个 issue 相反的决定落在不同代码路径",
+      "test_paths": [
+        "crates/executor/tests/wp_g_legacy.rs"
+      ],
+      "note": "wp_g_legacy 由 4 通过/8 忽略 变为 11 通过/1 忽略（摘掉 5 个 #[ignore]：3 个因 PR #5068 而已能过，2 个因本次修复）。变异 M15（eval_between 退回 compare_values）char_between_inclusive_bounds FAILED；M16（InList 退回 compare_values）char_in_list FAILED，两者互不遮蔽。刻意不改 compare_values 本身：ORDER BY / GROUP BY 的 key 也走它，改那里是更大一个量级的决定。最后 1 个 #[ignore] 是 VARCHAR 过度 trim —— sql_compare 拿不到列身份，需列类型感知比较模型，已在测试注释与证据文档写明，本次不做。"
     }
   ]
 }
