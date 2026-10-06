@@ -368,3 +368,12 @@ docs/教学案/
 docs/教学实践/
 docs/教学计划/
 >>>>>>> a12e2da9f4 (chore(gitignore): catch test outputs in evidence/ + AI/local dev artifacts)
+
+# Test-required fixtures — re-included despite the cleanup rules above, because
+# tests/ci/ci_test.rs, tests/e2e/monitoring_test.rs and tests/data_loader.rs
+# hard-require these paths to exist (data/ dir rule must be lifted first for
+# tests/data/t.json — git cannot re-include a file under an excluded parent).
+!.claude/claude_desktop_config.json
+!docs/monitoring/grafana-dashboard.json
+!tests/data/
+!tests/data/t.json

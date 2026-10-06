@@ -27,6 +27,8 @@ ALLOWLIST_PATTERNS=(
     "docs/releases/.*/manifest\.json$"
     "docs/releases/.*/evidence/.*/summary\.json$"
     "\.claude/.*\.json$"
+    "docs/monitoring/grafana-dashboard\.json$"
+    "tests/data/t\.json$"
     "tests/tpch_hashes_.*\.json$"
     "tests/oracle/baselines/.*\.json$"
 )
