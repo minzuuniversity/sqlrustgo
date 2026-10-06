@@ -11704,10 +11704,12 @@ impl Parser {
                             }
                             // P0: `_ => continue` re-matched UNIQUE without
                             // advancing (spins forever on `UNIQUE b` / `UNIQUE)`).
-                            _ => return Err(format!(
+                            _ => {
+                                return Err(format!(
                                 "Expected `(` or `KEY` after UNIQUE in table constraint, got {:?}",
                                 next_tok
-                            )),
+                            ))
+                            }
                         }
                     }
                     Some(Token::Check) => {
