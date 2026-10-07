@@ -4372,7 +4372,7 @@ impl FileStorage {
         };
         // V311-07: Mark table dirty for optimized flush
         Self::with_write_lock(self, |s| {
-            s.dirty_tables.insert(table.to_string());
+            s.dirty_tables.insert(crate::engine::scoped_key(db, &table));
         });
         // #5048: record the change so an incremental backup can be
         // produced from this data directory.
@@ -4667,7 +4667,8 @@ impl FileStorage {
                 }
             }
             if !touched.is_empty() {
-                st.dirty_tables.insert(table.to_string());
+                st.dirty_tables
+                    .insert(crate::engine::scoped_key(db, &table));
             }
             (touched.len(), touched)
         };
@@ -4745,7 +4746,8 @@ impl FileStorage {
             }
             // V311-07: Mark dirty instead of immediate persist
             if !touched.is_empty() {
-                st.dirty_tables.insert(table.to_string());
+                st.dirty_tables
+                    .insert(crate::engine::scoped_key(db, &table));
             }
             (touched.len(), touched)
         };
@@ -4799,7 +4801,8 @@ impl FileStorage {
             }
             let removed = s.remove_matching(&scoped, match_row);
             if !removed.is_empty() {
-                s.dirty_tables.insert(table_name.clone());
+                s.dirty_tables
+                    .insert(crate::engine::scoped_key(db, &table_name));
             }
             removed
         });
@@ -4901,7 +4904,7 @@ impl FileStorage {
 
             // Mark dirty if anything was removed.
             if !removed_pks.is_empty() || filters.is_empty() {
-                s.dirty_tables.insert(table.to_string());
+                s.dirty_tables.insert(crate::engine::scoped_key(db, &table));
             }
 
             // #4960: rows inserted during a transaction live in
@@ -5032,7 +5035,8 @@ impl FileStorage {
             // condition keyed off the tables-only count, which missed
             // buffered deletions entirely.
             if !removed.is_empty() || filters.is_empty() {
-                s.dirty_tables.insert(table_name.clone());
+                s.dirty_tables
+                    .insert(crate::engine::scoped_key(db, &table_name));
             }
             Ok(removed)
         })?;
