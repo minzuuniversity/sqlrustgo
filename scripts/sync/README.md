@@ -63,6 +63,42 @@ Exit codes:
 - 1: drift exceeds threshold
 - 2: network error
 
+### `verify_merge_ref.sh` — assert a merge actually landed on its base ref
+
+```bash
+scripts/sync/verify_merge_ref.sh --pr 5080       # verify an existing merged PR
+scripts/sync/verify_merge_ref.sh --selftest      # construct a merge, assert, clean up
+```
+
+Gitea can return HTTP 200 + `merged=True` from the merge API while
+`refs/heads/<base>` never moves (issue #5076, observed with PR #5075 on
+gitea252, 2026-10-07). Anything trusting `merged=True` alone gets a false
+positive: the merge looks successful but no branch contains the commit.
+
+This script closes that gap client-side (issue #5076 AC4). After a merge
+it asserts `base ref == merge_commit_sha` (reported as `PASS-EXACT`) or,
+if the tip moved on, that the merge commit is reachable from the base tip
+(`PASS-LANDED`); unreachable is `FAIL-DRIFT` with the correction path.
+`--selftest` builds a throwaway `selftest/*` branch pair, merges via the
+API, asserts the AC4 property, and deletes everything on exit — a live
+regression run that leaves only a closed test PR behind.
+
+AC1/AC3 (server must move the ref / must not report success for a failed
+merge) and AC2 (`PATCH /git/refs/heads/*`, currently HTTP 405) are Gitea
+server-side behavior and cannot be fixed from this repo; the client-side
+correction path remains `5remotes_sync.sh` Step 3 (temp ref → docker
+`update-ref` → **`git fetch` the local ref** → sync). Skipping the fetch
+makes the syncer re-push the stale local SHA and rolls the fix back.
+
+Exit codes:
+- 0: base ref contains merge_commit_sha (EXACT = strict AC4)
+- 1: assertion failed (drift / not merged / selftest failure)
+- 2: network or API error
+- 4: argument error
+
+Credentials: `GITEA_URL` / `GITEA_USER` / `GITEA_PASS` / `GITEA_REPO`
+environment overrides (defaults match the sibling scripts).
+
 ## When to use
 
 - After a PR merge on the "publishing" remote (gitea252) — run
