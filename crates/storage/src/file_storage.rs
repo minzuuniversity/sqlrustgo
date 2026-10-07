@@ -64,18 +64,19 @@ struct WriteState {
     ///
     /// #5057: keyed by `(database, table)`, NOT by a bare table name.
     ///
-    /// It used to be a `HashSet<String>` holding bare table names, and the
+    /// It used to be a `HashSet<String>` holding table names, and the
     /// flush path resolved each name against `current_db` when it wrote the
     /// file. A bare name cannot say which database it belongs to, so two
     /// databases holding a table of the same name collapsed into ONE set
     /// entry, and the single write went to whichever database `current_db`
     /// happened to name:
     ///
-    ///     d1.t <- 3 rows, d2.t <- 3 rows, current_db = d1
-    ///     flush() -> Ok(())
-    ///     d1/t.json  3 rows      <- correct
-    ///     d2/t.json  0 rows      <- 3 rows silently gone, no error
-    ///
+    /// ```text
+    /// d1.t <- 3 rows, d2.t <- 3 rows, current_db = d1
+    /// flush() -> Ok(())
+    /// d1/t.json  3 rows      <- correct
+    /// d2/t.json  0 rows      <- 3 rows silently gone, no error
+    /// ```
     /// A tuple keeps both halves and needs no separator round-trip. That
     /// matters: `scoped_key` lowercases both halves, so parsing a
     /// `db\u{1}table` key back apart would hand a lowercased table name to
