@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
-  "captured_at_commit": "HEAD (54e5a5fa83)",
-  "captured_at_date": "2026-10-06",
-  "total_allowed": 120,
+  "captured_at_commit": "HEAD (ef2ad9054b)",
+  "captured_at_date": "2026-10-07",
+  "total_allowed": 113,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 80,
@@ -21,22 +21,24 @@
         "reason": "frozen historical material (archive/v3.11/archived-crates/); not a live test target and never built by CI"
       }
     ],
-    "counting_method": "A literal `#[ignore` was counted only when it is a real attribute, i.e. not inside a line comment and followed by a `fn` item. Of 129 literal occurrences in scope, 31 are prose in comments/strings and 98 are attributes."
+    "counting_method": "A literal `#[ignore` was counted only when it is a real attribute, i.e. not inside a line comment and followed by a `fn` item. Of 157 literal occurrences in scope, 44 are prose in comments/strings and 113 are attributes."
   },
   "status_legend": {
     "ACTIVE": "Should not be there yet: either no reason text at all, or the reason names unimplemented behaviour / a known open bug. This is the debt the ceiling bounds.",
     "PARKED": "Reason is an external prerequisite (live server, --release, large memory, platform permission, dedicated script). Not actionable in normal development."
   },
   "known_deficiencies": {
-    "active": 55,
-    "parked": 43,
+    "active": 66,
+    "parked": 47,
     "categories": {
+      "AUTO_REG_AT_PROMOTION": 2,
+      "EXTERNAL_PREREQ": 45,
       "FUNC_NOT_IMPL": 22,
-      "NO_REASON": 33,
-      "EXTERNAL_PREREQ": 43
+      "GAP_DOCUMENTED": 11,
+      "NO_REASON": 33
     },
     "missing_reason_text": 33,
-    "detail": "33 of 98 attributes carry no #[ignore = \"...\"] reason, which ADR-008-test-claim-transparency requires. They are registered as ACTIVE so the deficit is visible in the counts rather than hidden. Remediation is tracked as an openspec change."
+    "detail": "33 of 113 attributes carry no #[ignore = \"...\"] reason, which ADR-008-test-claim-transparency requires. They are registered as ACTIVE so the deficit is visible in the counts rather than hidden. Remediation is tracked as an openspec change."
   },
   "counting_rule": "total_allowed equals the number of entries below. The gate compares it to limits.total_allowed_max and counts entries whose status is \"ACTIVE\" against limits.active_max.",
   "note_on_line_numbers": "line_at_capture is a snapshot at captured_at_commit and is informational; file + test are the durable identity.",
@@ -943,24 +945,6 @@
     },
     {
       "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "autoincrement_allocates_sequential_ids",
-      "line_at_capture": 93,
-      "reason": "GAP: AUTOINCREMENT hangs the executor (>60s, no return)",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "autoincrement_continues_after_delete",
-      "line_at_capture": 112,
-      "reason": "GAP: AUTOINCREMENT hangs the executor (>60s)",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
       "test": "sqlite_master_is_queryable",
       "line_at_capture": 148,
       "reason": "GAP: sqlite_master table does not exist (no SQLite system tables in current HEAD)",
@@ -1015,72 +999,9 @@
     },
     {
       "file": "crates/executor/tests/wp_g_legacy.rs",
-      "test": "short_literal_matches_padded_storage",
-      "line_at_capture": 55,
-      "reason": "GAP: #4846 headline \u2014 WHERE col='short' returns 0 rows",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_g_legacy.rs",
-      "test": "long_literal_with_trailing_spaces_matches_stored_short_value",
-      "line_at_capture": 67,
-      "reason": "GAP: trailing-space literal mismatch on CHAR",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_g_legacy.rs",
-      "test": "char_between_inclusive_bounds",
-      "line_at_capture": 80,
-      "reason": "GAP: BETWEEN with CHAR doesn't PAD SPACE",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_g_legacy.rs",
-      "test": "char_in_list",
-      "line_at_capture": 94,
-      "reason": "GAP: IN list with CHAR doesn't PAD SPACE",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_g_legacy.rs",
-      "test": "char_pk_point_lookup_with_short_literal",
-      "line_at_capture": 151,
-      "reason": "GAP: short literal PK lookup returns 0 rows (issue #4846 headline)",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_g_legacy.rs",
-      "test": "char_pk_point_lookup_with_padded_literal",
-      "line_at_capture": 166,
-      "reason": "GAP: padded literal PK lookup \u2014 see short_literal_matches_padded_storage",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_g_legacy.rs",
       "test": "char_vs_varchar_strict_when_varchar_is_target",
       "line_at_capture": 204,
       "reason": "GAP: VARCHAR = 'abc   ' also matches stored 'abc' (over-trim)",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_g_legacy.rs",
-      "test": "char_count_with_where_clause_short_literal",
-      "line_at_capture": 219,
-      "reason": "GAP: short CHAR literal in WHERE returns 0 \u2014 same root cause as headline",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
       "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
@@ -1102,6 +1023,24 @@
       "status": "ACTIVE",
       "category": "AUTO_REG_AT_PROMOTION",
       "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/storage/tests/measure_commit_clone_4948.rs",
+      "test": "measure_commit_clone_cost_4948",
+      "line_at_capture": 73,
+      "reason": "wall-clock measurement harness \u2014 run manually, results go in the evidence doc",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/storage/tests/measure_commit_memory_4948.rs",
+      "test": "measure_commit_memory_4948",
+      "line_at_capture": 131,
+      "reason": "memory measurement \u2014 run manually; prints the commit\u2019s RSS delta",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
     },
     {
       "file": "tests/operators/in_subquery.rs",

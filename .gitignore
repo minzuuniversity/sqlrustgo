@@ -355,7 +355,6 @@ queries/expected/
 test_results_72h/
 results/
 data/
-tests/baseline/
 tests/tpch_hashes_v380.json
 
 
