@@ -1822,3 +1822,7 @@ path = "tests/integration/sql/pk_cache_regression_test.rs"
 [[test]]
 name = "insert_db_isolation_5057"
 path = "tests/insert_db_isolation_5057.rs"
+
+[[test]]
+name = "memory_storage_in_db_5057"
+path = "tests/memory_storage_in_db_5057.rs"
