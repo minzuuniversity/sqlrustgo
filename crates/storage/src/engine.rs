@@ -1761,6 +1761,16 @@ pub struct MemoryStorage {
 
 #[derive(Default, Clone, Debug)]
 pub struct TxLog {
+    /// #5072: every table name in this log is a **bare** (unscoped) table
+    /// name. Replay sites resolve it through `MemoryStorage::tbl()` against
+    /// the database active at replay time, which is what lets a log be
+    /// applied on a connection other than the one that produced it.
+    ///
+    /// Pushing an already-scoped key here is a silent no-op bug: the replay
+    /// computes `<db>\x01<db>\x01<table>`, finds nothing, and the undo
+    /// quietly does not happen. `MemoryStorage::insert` did exactly that and
+    /// `test_rollback_removes_inserted_rows` did not catch it because the
+    /// test seeded its fixture with an unscoped key.
     pub inserted: Vec<(String, Record)>,
     pub deleted: Vec<(String, Record)>,
     pub updated: Vec<(String, Record, Record)>,
@@ -2207,6 +2217,12 @@ impl StorageEngine for MemoryStorage {
                     for record in records.iter_mut() {
                         if *record == _new {
                             *record = prior.clone();
+                            // #5072: stop after the first match. Without this,
+                            // two rows that happen to hold the same `new`
+                            // value both get rewritten to `prior`. The
+                            // sibling loop in `apply_committed_log` already
+                            // breaks here; this one did not.
+                            break;
                         }
                     }
                 }
@@ -2350,7 +2366,13 @@ impl StorageEngine for MemoryStorage {
         };
         if let Some(log) = self.tx_log.as_mut() {
             for row in &padded {
-                log.inserted.push((table_key.clone(), row.clone()));
+                // #5072: `TxLog` holds BARE table names — every replay site
+                // (`rollback_transaction`, `apply_committed_log`) resolves them
+                // through `tbl()` against the database active at replay time.
+                // Pushing `table_key` (already scoped) made ROLLBACK look for
+                // `default\x01default\x01t1` and silently undo nothing.
+                // `delete` and `update` already push the bare `table`.
+                log.inserted.push((table.to_string(), row.clone()));
             }
         } else {
             // V312-26 #3969: autocommit insert — propagate to the post-commit
@@ -4239,15 +4261,30 @@ mod tests {
     }
 
     #[test]
+    // #5072: this test used to seed the raw map with the **unscoped** key
+    // `"t"` while `insert` writes to `"default\x01t"`. `scan("t")` therefore
+    // returned exactly one row whether or not the rollback had done anything,
+    // so the assertion held for the wrong reason and the broken insert-undo
+    // went unnoticed. It now builds the table through `create_table` so the
+    // keys line up.
     fn test_rollback_removes_inserted_rows() {
         let mut s = MemoryStorage::new();
-        s.tables
-            .insert("t".to_string(), Arc::new(vec![vec![Value::Integer(1)]]));
+        table_with_rows_4948(&mut s, "t", 1);
+        assert_eq!(s.scan("t").unwrap().len(), 1, "fixture");
+
         s.begin_transaction().unwrap();
-        s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+        s.insert("t", vec![vec![Value::Integer(99)]]).unwrap();
+        assert_eq!(s.scan("t").unwrap().len(), 2, "visible in-transaction");
+
         s.rollback_transaction().unwrap();
+
         let rows = s.scan("t").unwrap();
-        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows.len(),
+            1,
+            "ROLLBACK must remove the in-transaction INSERT (issue #5072)"
+        );
+        assert_eq!(rows[0], vec![Value::Integer(0)], "the surviving row");
     }
 
     #[test]
@@ -4855,11 +4892,64 @@ mod tests {
     /// the failure is real. `#[ignore]`d rather than deleted: the bug is not fixed
     /// here (out of scope for #4948, which is about commit cost), and the
     /// reproducer should stay visible until someone does.
+    /// #5072: the update-undo loop must stop at the first matching row.
+    ///
+    /// Fixture: the table already contains a row equal to the value the
+    /// transaction is about to write. `UPDATE ... WHERE v=1` turns the other
+    /// row into `[1, 99]`, so the table becomes `[1, 99], [1, 99]` while the
+    /// TxLog holds a single `(prior=[1,1], new=[1,99])` entry.
+    ///
+    /// With the `break` restored, ROLLBACK rewrites exactly one row and the
+    /// table returns to `[1,1], [1,99]`. Without it, the loop rewrites **both**
+    /// `[1,99]` rows and the pre-existing `[1,99]` row is destroyed.
     #[test]
-    #[ignore = "PRE-EXISTING defect: rollback_transaction re-scopes an already-scoped \
-            key from the TxLog, so insert-undo silently does nothing. Same root \
-            cause as the #5059 blanket-sweep bug, different site. Not fixed by \
-            #4948 — see the evidence doc."]
+    fn rollback_of_update_restores_only_the_changed_row_5072() {
+        let mut s = MemoryStorage::new();
+        s.create_table(&TableInfo {
+            name: "t".into(),
+            columns: vec![
+                crate::ColumnDefinition::new("id", "INTEGER"),
+                crate::ColumnDefinition::new("v", "INTEGER"),
+            ],
+            ..Default::default()
+        })
+        .unwrap();
+        s.insert(
+            "t",
+            vec![
+                vec![Value::Integer(1), Value::Integer(1)],
+                vec![Value::Integer(1), Value::Integer(99)],
+            ],
+        )
+        .unwrap();
+
+        s.begin_transaction().unwrap();
+        // Only the `v=1` row matches the filter.
+        s.update("t", &[Value::Integer(1)], &[(1, Value::Integer(99))])
+            .unwrap();
+        assert_eq!(
+            s.scan("t").unwrap(),
+            vec![
+                vec![Value::Integer(1), Value::Integer(99)],
+                vec![Value::Integer(1), Value::Integer(99)]
+            ],
+            "fixture: the update collapses both rows to the same value"
+        );
+
+        s.rollback_transaction().unwrap();
+
+        assert_eq!(
+            s.scan("t").unwrap(),
+            vec![
+                vec![Value::Integer(1), Value::Integer(1)],
+                vec![Value::Integer(1), Value::Integer(99)]
+            ],
+            "ROLLBACK must restore exactly the changed row, not every row \
+             that happens to hold the new value (issue #5072)"
+        );
+    }
+
+    #[test]
     fn rollback_actually_undoes_an_insert_4948() {
         let mut s = MemoryStorage::new();
         table_with_rows_4948(&mut s, "t1", 5);

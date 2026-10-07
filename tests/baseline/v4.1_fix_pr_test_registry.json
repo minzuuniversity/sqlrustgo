@@ -337,6 +337,15 @@
         "crates/storage/tests/measure_commit_memory_4948.rs"
       ],
       "note": "commit 内存增量（getrusage 高水位前后差值）：pre-Arc 250K/500K/1M 行为 68.7 / 142.9 / 291.2 MB（约 290 字节/行，严格线性），post-Arc 为 0.0 / 0.1 / 0.0 MB。方法上先失败过一次并已记录：用 /usr/bin/time -l 的 maximum resident set size 直接比较进程峰值，两版毫无差别（各 5 次重复，483.0 vs 483.0 MB，离散度 ±0.3%）。原因是峰值在**装载夹具时**就达到了 —— MemoryStorage::insert 的 autocommit 分支本来就同时写 tables 与 committed_tables，所以常驻约 2x 出现在装载阶段而非 commit 阶段，commit 的额外拷贝抬不高已有峰值。改为在 commit 前后各采样一次 getrusage(RUSAGE_SELF).ru_maxrss 取差值，精确隔离 commit 新分配的内存；不引入 libc 依赖，C 结构体就地声明（ru_maxrss 在 macOS 为字节、Linux 为 KB）。该夹具自带变异验证能力：pre-Arc 等价于「退回深拷贝」，测出 291MB，Arc 版测出 0MB，证明测量确实能分辨二者而非在测噪声。补上标准 2 后，#4948 三条验收标准全部闭合（1 达成、2 达成、3 不触发）。"
+    },
+    {
+      "pr": 5075,
+      "issue": "5072, 5059",
+      "fix": "MemoryStorage 的 TxLog 契约是「存裸表名、回放时按活动库解析」，但 insert 是唯一 push 已作用域键的生产者 —— 回放算出 default\\x01default\\x01t1 找不到表，INSERT 的 undo 静默失效。另修 update 撤销循环缺 break 导致改写多行",
+      "test_paths": [
+        "crates/storage/src/engine.rs"
+      ],
+      "note": "三条撤销路径实测：DELETE / UPDATE 正常、只有 INSERT 失效，正是「只有 insert push 了作用域化键」的直接后果。既有 test_rollback_removes_inserted_rows 是空断言 —— 用未作用域的裸键 \"t\" 预置 storage.tables 而 insert 写到 \"default\\x01t\"，scan(\"t\") 无论 rollback 跑没跑都只看到 1 行；已改为经 create_table 建表。变异 M23(insert 退回 push table_key) 2 FAILED、M24(撤掉 update 回放的 break) 1 FAILED，均 CAUGHT 无无效变异。M24 首轮存活 —— 当时无任何测试覆盖缺陷二，补测才算修；补测第一版也是错的（用了单列表夹具而赋值越界，UPDATE 根本没生效，失败点落在中间断言），改为显式建双列表后才测到真行为。影响面据实下调：FileStorage 根本没有 tx_log，ExecutionEngine::with_memory() 的调用点全在 tests/ 与 crates/bench/tests/，无任何生产二进制调用 —— 是测试/基准用后端的正确性缺陷，不是线上数据丢失；但 TPC-H / OLTP 基准与大量集成测试都建立在 MemoryStorage 的事务语义上，rollback 契约坏着意味着它们在静默给出错误结论。"
     }
   ]
 }
