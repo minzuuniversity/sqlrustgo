@@ -1972,6 +1972,92 @@ impl MemoryStorage {
         Ok(())
     }
 
+    /// #5025 / #5057: `parallel_scan` with the storage key already resolved.
+    ///
+    /// The body used to look the table up with `table.to_lowercase()`, which
+    /// stopped matching once keys became database-scoped — a parallel scan
+    /// of a table outside `default` failed with "Table not found".
+    pub(crate) fn parallel_scan_in_key(
+        &self,
+        table: &str,
+        key: String,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        let data = self
+            .tables
+            .get(&key)
+            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+        let total = data.len();
+        if total == 0 || num_partitions == 0 {
+            return Ok(vec![]);
+        }
+        let num_partitions = num_partitions.min(total);
+        let base = total / num_partitions;
+        let rem = total % num_partitions;
+        let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
+            Vec::with_capacity(num_partitions);
+        let mut cur = 0;
+        // v3.10.0 Issue #3776 / F-36: Arc-shared, no per-partition Vec clone.
+        // #4948: `data` is already an `&Arc<Vec<Record>>`, so sharing the
+        // handle is free — this used to clone the whole row set once per scan.
+        let shared: Arc<Vec<Record>> = Arc::clone(data);
+        for i in 0..num_partitions {
+            let size = if i < rem { base + 1 } else { base };
+            if size > 0 {
+                let part = Arc::clone(&shared);
+                partitions.push(Box::new(SharedSliceIter::new(part, cur, cur + size)));
+            }
+            cur += size;
+        }
+        Ok(partitions)
+    }
+
+    /// #5057: `scan_with_filter` with the storage key already resolved.
+    pub(crate) fn scan_with_filter_in_key(
+        &self,
+        table: &str,
+        key: String,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        let _ = table;
+        let Some(rows) = self.tables.get(&key) else {
+            return Ok(Vec::new());
+        };
+        Ok(rows.iter().filter(|r| filter(r)).cloned().collect())
+    }
+
+    /// #5057: `delete_if` with the storage key already resolved.
+    pub(crate) fn delete_if_in_key(
+        &mut self,
+        table: &str,
+        key: String,
+        filter: &RowFilter,
+    ) -> SqlResult<usize> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
+            return Ok(0);
+        };
+        let original_len = records.len();
+        records.retain(|r| {
+            let keep = !filter(r);
+            if !keep {
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.deleted.push((table.to_string(), r.clone()));
+                } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let committed = Arc::make_mut(committed);
+                    committed.retain(|c| c != r);
+                }
+            }
+            keep
+        });
+        Ok(original_len - records.len())
+    }
+
     /// `drop_table` against a stated database.
     pub(crate) fn drop_table_in_key(&mut self, table: &str, key: String) -> SqlResult<()> {
         self.tables.remove(&key);
@@ -2316,10 +2402,17 @@ impl StorageEngine for MemoryStorage {
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
         let key = self.tbl(table);
-        let Some(rows) = self.tables.get(&key.clone()) else {
-            return Ok(Vec::new());
-        };
-        Ok(rows.iter().filter(|r| filter(r)).cloned().collect())
+        self.scan_with_filter_in_key(table, key, filter)
+    }
+
+    /// #5057: `scan_with_filter` against a stated database.
+    fn scan_with_filter_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        self.scan_with_filter_in_key(table, scoped_key(db, table), filter)
     }
 
     fn scan_with_index(
@@ -2694,29 +2787,13 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        // V4.1.0: any derived cache over this table is now stale.
-        self.bump_change_stamp(table);
-        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
-        // only if the post-commit snapshot still holds this table's rows.
-        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
-            return Ok(0);
-        };
-        let original_len = records.len();
-        records.retain(|r| {
-            let keep = !filter(r);
-            if !keep {
-                if let Some(log) = self.tx_log.as_mut() {
-                    log.deleted.push((table.to_string(), r.clone()));
-                } else if let Some(committed) = self.committed_tables.get_mut(table) {
-                    // #4948: clone-on-write; the post-commit snapshot may
-                    // still share this table's rows.
-                    let committed = Arc::make_mut(committed);
-                    committed.retain(|c| c != r);
-                }
-            }
-            keep
-        });
-        Ok(original_len - records.len())
+        let key = self.tbl(table);
+        self.delete_if_in_key(table, key, filter)
+    }
+
+    /// #5057: `delete_if` against a stated database.
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.delete_if_in_key(table, scoped_key(db, table), filter)
     }
 
     fn update(
@@ -3346,33 +3423,22 @@ impl StorageEngine for MemoryStorage {
         table: &str,
         num_partitions: usize,
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        let data = self
-            .tables
-            .get(&table.to_lowercase())
-            .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let total = data.len();
-        if total == 0 || num_partitions == 0 {
-            return Ok(vec![]);
-        }
-        let num_partitions = num_partitions.min(total);
-        let base = total / num_partitions;
-        let rem = total % num_partitions;
-        let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
-            Vec::with_capacity(num_partitions);
-        let mut cur = 0;
-        // v3.10.0 Issue #3776 / F-36: Arc-shared, no per-partition Vec clone.
-        // #4948: `data` is now already an `&Arc<Vec<Record>>`, so sharing the
-        // handle is free — this used to clone the whole row set once per scan.
-        let shared: Arc<Vec<Record>> = Arc::clone(data);
-        for i in 0..num_partitions {
-            let size = if i < rem { base + 1 } else { base };
-            if size > 0 {
-                let part = Arc::clone(&shared);
-                partitions.push(Box::new(SharedSliceIter::new(part, cur, cur + size)));
-            }
-            cur += size;
-        }
-        Ok(partitions)
+        // #5025 / #5057: table keys are scoped per database (`d1\x01t`), so a
+        // bare `table.to_lowercase()` matches nothing once a table lives
+        // outside `default` — a parallel scan of it failed outright with
+        // "Table not found".
+        let key = self.tbl(table);
+        self.parallel_scan_in_key(table, key, num_partitions)
+    }
+
+    /// #5057: `parallel_scan` against a stated database.
+    fn parallel_scan_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        self.parallel_scan_in_key(table, scoped_key(db, table), num_partitions)
     }
 
     fn as_any(&self) -> &dyn Any {

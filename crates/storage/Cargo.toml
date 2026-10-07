@@ -33,3 +33,7 @@ v313_3_profile = []   # V313.3 profiling experiments; test-only hooks; OFF by de
 [[bench]]
 name = "storage_benchmark"
 harness = false
+
+[[test]]
+name = "memory_in_db_5057"
+path = "tests/memory_in_db_5057.rs"
