@@ -1674,12 +1674,9 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
     }
 
     let combined_info = build_multi_table_combined_schema(&per_table_info, &per_table_prefix);
-    let combined_cols: Vec<(String, usize)> = combined_info
-        .columns
-        .iter()
-        .enumerate()
-        .map(|(i, c)| (c.name.clone(), i))
-        .collect();
+    // #5117: `combined_cols` was only ever used by the SET loop's
+    // `ends_with` search, which is gone. The per-table column lists plus
+    // `col_offsets` below carry the same information and are exact.
     let col_offsets: Vec<usize> = {
         let mut offs = Vec::with_capacity(table_refs.len());
         let mut acc = 0usize;
@@ -1733,27 +1730,65 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
         if !matches {
             continue;
         }
+        // #5117: apply the SET list per table, writing into that table's OWN
+        // columns of the combined row.
+        //
+        // It used to search the combined schema for the first column whose
+        // name *ends with* `.<col>`. Two consequences, both wrong:
+        //
+        //   UPDATE t1, t2 SET k = 99
+        //     - both tables matched `t1.k`, so only `t1.k` was ever written
+        //     - `t2.k` was never touched
+        //   UPDATE t1, t2 SET a.x = 1, b.x = 2     (aliases)
+        //     - the unqualified `.ends_with(".x")` test could not tell the
+        //       two apart even when both were named
+        //
+        // The combined schema names every column `prefix.col`, so matching
+        // on the full name is exact.
         let mut after_row = combined_row.clone();
-        for (col, expr) in &resolved_set {
-            let target_col = col.split_once('.').map(|(_, c)| c).unwrap_or(col.as_str());
-            let new_val =
-                evaluate_expression(expr, combined_row, &combined_info).unwrap_or(Value::Null);
-            if let Some((_, idx)) = combined_cols
-                .iter()
-                .find(|(name, _)| name.ends_with(&format!(".{}", target_col)))
-            {
-                if let Some(slot) = after_row.get_mut(*idx) {
+        for (t, tref) in table_refs.iter().enumerate() {
+            let table_prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
+            let cols_start = col_offsets[t];
+            let cols_end = cols_start + per_table_info[t].columns.len();
+            for (i, col_def) in per_table_info[t].columns.iter().enumerate() {
+                let full_name = format!("{}.{}", table_prefix, col_def.name);
+                // A SET entry targets this column when it names it exactly,
+                // or when it names the column bare — an unqualified column
+                // in a multi-table UPDATE applies to every table, which is
+                // what MySQL does and what the old code silently refused to
+                // do.
+                let Some((_, expr)) = resolved_set
+                    .iter()
+                    .find(|(col, _)| col == &full_name || col == &col_def.name)
+                else {
+                    continue;
+                };
+                let new_val =
+                    evaluate_expression(expr, combined_row, &combined_info).unwrap_or(Value::Null);
+                if let Some(slot) = after_row.get_mut(cols_start + i) {
                     *slot = new_val;
                 }
             }
         }
         // V312-84: Only push updates for tables that have SET clauses targeting them.
         // For UPDATE t1 JOIN t2 ON ... SET t1.col = val, only t1 gets updated.
+        //
+        // #5117: a BARE column name (`SET k = 99`) targets EVERY table.
+        // Requiring `t1.k` meant `UPDATE t1, t2 SET k = 99` matched neither
+        // table, so both were skipped and the statement changed nothing —
+        // while `total_count` still advanced, so it reported
+        // `affected_rows = 1`. A silent no-op that claims success is worse
+        // than an error: it is indistinguishable from a WHERE clause that
+        // matched nothing.
         for (t, tref) in table_refs.iter().enumerate() {
             let table_prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
-            let table_has_update = resolved_set
-                .iter()
-                .any(|(col, _)| col.starts_with(&format!("{}.", table_prefix)));
+            let table_has_update = resolved_set.iter().any(|(col, _)| {
+                match col.split_once('.') {
+                    Some((prefix, _)) => prefix == &table_prefix,
+                    // Unqualified: applies to all tables.
+                    None => true,
+                }
+            });
             if !table_has_update {
                 continue;
             }
