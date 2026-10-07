@@ -41,6 +41,49 @@ pub fn resolve_pk_column(table_info: &TableInfo) -> String {
 /// Inclusive range bounds `(low, high)` for a PK range scan.
 pub type PkRange = (Value, Value);
 
+/// Is this declared type governed by PAD SPACE comparison?
+///
+/// CHAR(n) values are stored right-padded to the declared width, and
+/// comparison ignores the padding. `VARCHAR` is deliberately not in
+/// this set: trailing spaces there are significant, which is exactly
+/// why `sql_compare` applies the rule per comparison rather than per
+/// stored value.
+fn is_pad_space_type(data_type: &str) -> bool {
+    data_type.trim().to_ascii_uppercase().starts_with("CHAR")
+}
+
+/// #4846: may the PK point-lookup fast path be used for this column?
+///
+/// The fast path replaces `scan + evaluate_where_clause` with
+/// `storage.scan_pk`, and the returned row is **not** re-checked
+/// against the WHERE clause. That is only sound when `scan_pk` agrees
+/// with `sql_compare`.
+///
+/// It does not, for CHAR. `sql_compare` applies PAD SPACE to Text
+/// equality — a CHAR(10) holding `'U1'` is stored as `"U1        "`, and
+/// `WHERE id = 'U1'` has to match it — while the default `scan_pk`
+/// implementation is `row.first() == Some(&pk)`, strict equality with
+/// no padding rule. Taking the fast path for a CHAR column therefore
+/// **loses rows**, silently:
+///
+/// ```text
+/// WHERE id = 'U1'          -> 0 rows   (fast path, no PAD SPACE)
+/// WHERE id = 'U1' AND 1=1  -> 1 row    (falls back to the scan path)
+/// ```
+///
+/// Answering `false` here routes CHAR tables down the ordinary scan +
+/// `evaluate_where_clause` path, which already gets it right. The cost
+/// is the O(log N) lookup for CHAR primary keys — correctness first, and
+/// CHAR keys are the rare case.
+pub fn pk_fast_path_preserves_semantics(table_info: &TableInfo, pk_column: &str) -> bool {
+    !table_info
+        .columns
+        .iter()
+        .find(|c| c.name.eq_ignore_ascii_case(pk_column))
+        .map(|c| is_pad_space_type(&c.data_type))
+        .unwrap_or(false)
+}
+
 /// Extract a PK value from a WHERE expression.
 ///
 /// Returns `Some(pk_value)` if `where_expr` is `BinaryOp(col, "=", lit)`
@@ -113,21 +156,29 @@ fn extract_literal_value(expr: &Expression) -> Option<Value> {
 /// Best-effort parse of a literal token into a SQL `Value`. Matches
 /// integers as `Value::Integer`, everything else as `Value::Text`.
 fn parse_literal_token(s: &str) -> Option<Value> {
-    // The parser re-wraps string literals with single quotes
-    // (`Expression::Literal(format!("'{}'", v))`, parser.rs StringLiteral
-    // arm). Strip them so the extracted value equals the stored
-    // `Value::Text` — without this, `WHERE text_pk_col = 'key-0'`
-    // extracted `Text("'key-0'")` and the PK point lookup always missed.
-    // Quoted tokens stay text: `'42'` is a string, `42` is a number.
-    if s.len() >= 2 && s.starts_with('\'') && s.ends_with('\'') {
-        return Some(Value::Text(s[1..s.len() - 1].to_string()));
+    let t = s.trim();
+    // #4846: `Expression::Literal` carries the raw token, so a SQL string
+    // literal still has its delimiters attached. Taking it verbatim built
+    // `Text("'U1'")` and compared that against a stored `Text("U1")`, so
+    // **every** quoted PK point lookup silently matched nothing:
+    //
+    // ```text
+    // WHERE id = 'U1'          -> 0 rows
+    // WHERE id = 'U1' AND 1=1  -> 1 row   (no fast path; PAD SPACE path)
+    // ```
+    //
+    // It also explains why `id = 1` worked: an unquoted numeric token
+    // parses as i64 and needs no stripping.
+    if t.len() >= 2 && t.starts_with('\'') && t.ends_with('\'') {
+        // `''` inside a SQL literal is an escaped single quote.
+        return Some(Value::Text(t[1..t.len() - 1].replace("''", "'")));
     }
-    if let Ok(i) = s.parse::<i64>() {
+    if let Ok(i) = t.parse::<i64>() {
         Some(Value::Integer(i))
-    } else if let Ok(f) = s.parse::<f64>() {
+    } else if let Ok(f) = t.parse::<f64>() {
         Some(Value::Float(f))
     } else {
-        Some(Value::Text(s.to_string()))
+        Some(Value::Text(t.to_string()))
     }
 }
 

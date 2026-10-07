@@ -17,7 +17,8 @@
 use std::fs;
 
 use sqlrustgo_tools::backup::{
-    create_full_backup_from_demo, create_incremental_backup_from_demo, restore_backup,
+    create_full_backup_from_demo, create_incremental_backup_from_demo,
+    create_incremental_backup_with_changeset, restore_backup, IncrementalBackupContext,
 };
 
 fn read_manifest(p: &std::path::Path) -> serde_json::Value {
@@ -171,7 +172,8 @@ fn issue_4938_chain_restore_handles_full_plus_incrementals() {
     // sorts by LSN internally. The harness asserts distinct lsns, the
     // parent_lsn chain (full -> a, a -> b), and that the target dir is
     // created.
-    use sqlrustgo_tools::backup::restore_incremental_chain;
+    use sqlrustgo_storage::{StorageEngine, Value};
+    use sqlrustgo_tools::backup::restore_incremental_chain_into;
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let data = tmp.path().join("data");
@@ -186,7 +188,29 @@ fn issue_4938_chain_restore_handles_full_plus_incrementals() {
         .unwrap()
         .to_string();
 
-    create_incremental_backup_from_demo(&full_dir, &incr_a_dir, "sql").expect("incr a");
+    // #5048: a real delta. `create_incremental_backup_from_demo` exports
+    // every table, so it produces a directory with no `changes.json` and
+    // nothing to replay — using it here would have tested nothing.
+    // `users` has 4 columns (id, name, email, created_at) — a 1-column
+    // row would insert NULLs into name/email/created_at.
+    // #5048 uses its own two-integer-column table rather than the demo
+    // `users` table. `users` has POINT/JSON columns, and the full-restore
+    // SQL parser splits values on bare commas (`backup.rs:422`), so its
+    // rows do not round-trip. That parser bug is pre-existing and out of
+    // scope here; reusing `users` would make this test fail for reasons
+    // unrelated to delta replay.
+    let mut ctx_a = IncrementalBackupContext::new();
+    ctx_a.record_insert(
+        "orders",
+        vec![Value::Integer(4)],
+        vec![
+            Value::Integer(4),
+            Value::Integer(2),
+            Value::Float(59.5),
+            Value::Text("shipped".into()),
+        ],
+    );
+    create_incremental_backup_with_changeset(&full_dir, &incr_a_dir, &ctx_a).expect("incr a");
     let a_lsn = read_manifest(&incr_a_dir)["lsn"]
         .as_str()
         .unwrap()
@@ -197,7 +221,21 @@ fn issue_4938_chain_restore_handles_full_plus_incrementals() {
         "a.parent_lsn must equal full.lsn"
     );
 
-    create_incremental_backup_from_demo(&incr_a_dir, &incr_b_dir, "sql").expect("incr b");
+    let mut ctx_b = IncrementalBackupContext::new();
+    // Delete order 2, and update order 1's total. Both operations must be
+    // visible in the restored database, not merely counted.
+    ctx_b.record_delete("orders", vec![Value::Integer(2)]);
+    ctx_b.record_update(
+        "orders",
+        vec![Value::Integer(1)],
+        vec![
+            Value::Integer(1),
+            Value::Integer(1),
+            Value::Float(109.99),
+            Value::Text("completed".into()),
+        ],
+    );
+    create_incremental_backup_with_changeset(&incr_a_dir, &incr_b_dir, &ctx_b).expect("incr b");
     let b_lsn = read_manifest(&incr_b_dir)["lsn"]
         .as_str()
         .unwrap()
@@ -216,7 +254,66 @@ fn issue_4938_chain_restore_handles_full_plus_incrementals() {
     // Restore in reverse order — restore_incremental_chain must
     // sort by LSN internally to apply full -> a -> b.
     let increments = [incr_b_dir.clone(), incr_a_dir.clone()];
-    restore_incremental_chain(&full_dir, &increments, &target, /* target_lsn */ None)
+    let restored = restore_incremental_chain_into(&full_dir, &increments, &target, None)
         .expect("restore chain");
     assert!(target.exists(), "chain restore must create target dir");
+
+    // #5048: the deltas must actually be in the restored database. The
+    // old implementation printed "N operations applied" without touching
+    // storage, so this is the assertion that could not have passed before.
+    //
+    // The demo `orders` table starts with three rows:
+    //   (1, 1, 99.99, completed) (2, 1, 149.50, pending) (3, 2, 29.99, completed)
+    // Delta a inserts (4, 2, 59.5, shipped).
+    // Delta b deletes id 2 and updates id 1 to (1, 1, 109.99, completed).
+    // So the restored state must be exactly ids 1, 3, 4 — with 1's total
+    // changed and 2 gone.
+    let rows = restored.scan("orders").expect("scan orders");
+    let mut ids: Vec<i64> = rows
+        .iter()
+        .filter_map(|r| match r.first() {
+            Some(Value::Integer(v)) => Some(*v),
+            _ => None,
+        })
+        .collect();
+    ids.sort();
+    let base_ids = base_orders_ids(&full_dir);
+    assert_eq!(
+        ids,
+        vec![1, 3, 4],
+        "base is {base_ids:?}; after the deltas order 2 must be deleted and \
+         order 4 inserted, leaving exactly 1, 3, 4"
+    );
+
+    let total_of_1 = rows
+        .iter()
+        .find(|r| matches!(r.first(), Some(Value::Integer(1))))
+        .and_then(|r| match r.get(2) {
+            Some(Value::Float(v)) => Some(*v),
+            _ => None,
+        });
+    assert_eq!(
+        total_of_1,
+        Some(109.99),
+        "delta b's UPDATE must have changed order 1's total to 109.99"
+    );
+}
+
+/// The base full backup's order ids, for the failure message.
+fn base_orders_ids(full_dir: &std::path::Path) -> Vec<i64> {
+    use sqlrustgo_storage::{StorageEngine, Value};
+    use sqlrustgo_tools::backup::restore_backup_into;
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let base = restore_backup_into(full_dir, &tmp.path().join("t"), true).expect("base restore");
+    let mut ids: Vec<i64> = base
+        .scan("orders")
+        .expect("scan orders")
+        .iter()
+        .filter_map(|r| match r.first() {
+            Some(Value::Integer(v)) => Some(*v),
+            _ => None,
+        })
+        .collect();
+    ids.sort();
+    ids
 }

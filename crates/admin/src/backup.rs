@@ -223,6 +223,13 @@ pub enum BackupError {
     CorruptTar,
     #[error("entry not found: {0}")]
     EntryNotFound(String),
+    /// #5055: a storage-level failure during restore.
+    ///
+    /// Added because `pitr` now actually applies data. It could not
+    /// fail before — it only counted — so there was no error to carry,
+    /// and the `?` operators the restore needs had nowhere to land.
+    #[error("storage: {0}")]
+    Storage(#[from] sqlrustgo_storage::engine::SqlError),
 }
 
 #[cfg(test)]

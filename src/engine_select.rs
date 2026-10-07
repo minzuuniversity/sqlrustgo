@@ -769,11 +769,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // resolved literals, not raw `Identifier("@name")` tokens. The
         // outer `let select = …` shadows the input parameter so the
         // rest of this function picks up the substituted version.
+        // #5057 / #5025: resolve table names against the database this
+        // statement belongs to, not against whatever `USE` another
+        // connection ran last. The storage is shared, so a stored "current
+        // database" answers for the last writer, not the asker — measured
+        // at 53.76% misdirected statements under a concurrent switch.
+        let current_db = self.storage.read().current_db();
+
         let select_owned;
         let select: &SelectStatement = {
             let session_vars = self.session_vars.read();
-            let substituted =
-                crate::execution_engine::substitute_session_vars_in_select(select, &session_vars);
+            let substituted = crate::execution_engine::substitute_session_vars_in_select(
+                &crate::execution_engine::substitute_current_database_in_select(
+                    select,
+                    &current_db,
+                ),
+                &session_vars,
+            );
             // Safety: `session_vars` guard goes out of scope here; we
             // only borrow from the cloned SelectStatement below.
             drop(session_vars);
@@ -1051,7 +1063,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // alias, fall back to the row width.
                 let inner_table = &ws.select.table;
                 let storage = self.storage_read();
-                match storage.get_table_info(inner_table) {
+                match storage.get_table_info_in(&current_db, inner_table) {
                     Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
                     Err(_) => {
                         // Fallback: synthesise col_<i> from row width.
@@ -1154,7 +1166,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     } else if !inner.table.is_empty() {
                         // Inner references a real storage table.
                         let storage = self.storage_read();
-                        match storage.get_table_info(&inner.table) {
+                        match storage.get_table_info_in(&current_db, &inner.table) {
                             Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
                             Err(_) => {
                                 let width = sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
@@ -1168,7 +1180,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else if !subq.table.is_empty() {
                     // Fallback: try the materialised's own `table`.
                     let storage = self.storage_read();
-                    match storage.get_table_info(&subq.table) {
+                    match storage.get_table_info_in(&current_db, &subq.table) {
                         Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
                         Err(_) => {
                             let width = sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
@@ -1233,7 +1245,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // (reader owns lock → writer waits → reader tries reentrant read
         // → blocked by writer preference → deadlock).
         let (mut rows, table_info) = if !select.join_clause.is_empty() {
-            let (jrows, jinfo, _) = self.execute_joins(&mut select.clone())?;
+            let (jrows, jinfo, _) = self.execute_joins(&mut select.clone(), &current_db)?;
             (jrows, jinfo)
         } else if let Some((rows, info)) = materialized {
             (rows, info)
@@ -1368,13 +1380,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // (HashMap lookup on `Arc<RwLock>` metadata) and the same
             // `table_info` is reused by the binding / projection code
             // below.
-            let table_info = storage.get_table_info(lookup_table)?;
+            let table_info = storage.get_table_info_in(&current_db, lookup_table)?;
             let pk_column = crate::engine_select_pk::resolve_pk_column(&table_info);
-            let pk_lookup_rows = if let Some(pk_value) =
-                crate::engine_select_pk::try_extract_pk_eq_with_col(
-                    &select.where_clause,
-                    &pk_column,
-                ) {
+            // #4846: the fast path below skips `evaluate_where_clause`
+            // entirely and returns the scanned row unfiltered, so it is
+            // only sound when `scan_pk` agrees with `sql_compare`. For a
+            // CHAR primary key it does not — PAD SPACE makes `id = 'U1'`
+            // match the stored `"U1        "`, while `scan_pk`'s strict
+            // equality finds nothing. Take the ordinary scan path there.
+            let pk_lookup_semantics_ok =
+                crate::engine_select_pk::pk_fast_path_preserves_semantics(&table_info, &pk_column);
+            let pk_lookup_rows = if !pk_lookup_semantics_ok {
+                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &current_db)?
+            } else if let Some(pk_value) = crate::engine_select_pk::try_extract_pk_eq_with_col(
+                &select.where_clause,
+                &pk_column,
+            ) {
                 // Clustered tables keep their rows in the engine-level
                 // ClusteredTable map, not in storage — `storage.scan_pk`
                 // would return None and silently yield 0 rows. Route the
@@ -1403,7 +1424,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     .record_access(lookup_table, b"all", page_id, offset);
                 row.map(|r| vec![r]).unwrap_or_default()
             } else {
-                self.scan_with_ahi(&storage, lookup_table, &select.index_hints)?
+                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &current_db)?
             };
             let rows = pk_lookup_rows;
             // table_info was already fetched above (Phase D.1 moved it
@@ -1577,6 +1598,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             &mut cursor,
                             &hash_semi_join_indexes,
                             &mut hash_semi_cursor,
+                            &current_db,
                         );
                         let pred = eval_predicate(&replaced, &row, &table_info);
                         if pred {
@@ -1694,8 +1716,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     // Returns None when there is no correlated IN, which lets
                     // the quantified pass and `eval_predicate` work on
                     // `rewritten` unchanged.
-                    let with_in =
-                        self.pre_evaluate_correlated_in_subquery(&rewritten, row, &table_info);
+                    let with_in = self.pre_evaluate_correlated_in_subquery(
+                        &rewritten,
+                        row,
+                        &table_info,
+                        &current_db,
+                    );
                     let base: &Expression = with_in.as_ref().unwrap_or(&rewritten);
                     let pre = self.pre_evaluate_quantified_subquery(row, &table_info, base);
                     // Borrow, never clone: `eval_predicate_with_in_sets` keys
@@ -3463,6 +3489,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage: &parking_lot::RwLockReadGuard<'_, S>,
         table: &str,
         index_hints: &[IndexHint],
+        current_db: &str,
     ) -> SqlResult<Vec<sqlrustgo_storage::Record>> {
         // V311-01 F-23: route clustered-table scans through ClusteredTable.
         // ClusteredTable stores rows ordered by primary key (InnoDB-style),
@@ -3512,7 +3539,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 if matches!(hint.hint_type, IndexHintType::UseIndex) {
                     for idx_name in &hint.index_names {
                         // Try scan_with_index; fall back to full scan if not supported
-                        let table_info = storage.get_table_info(table).ok();
+                        let table_info = storage.get_table_info_in(&current_db, table).ok();
                         if let Some(ref info) = table_info {
                             // Find the column for this index
                             if let Some(_col_idx) = info
@@ -3570,6 +3597,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn execute_joins(
         &self,
         select: &mut SelectStatement,
+        current_db: &str,
     ) -> SqlResult<(Vec<Vec<Value>>, TableInfo, bool)> {
         COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = false);
         let storage = self.storage_read();
@@ -3588,14 +3616,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // V311-02 v2: instrument base-table scan via AHI so repeated
         // SELECTs against the same table get promoted after threshold.
         // V312-85 / Issue #4625: pass index_hints for USE/IGNORE INDEX support.
-        let mut rows = self.scan_with_ahi(&storage, &base_table, &select.index_hints)?;
+        let mut rows =
+            self.scan_with_ahi(&storage, &base_table, &select.index_hints, &current_db)?;
         // Fast-path base-table predicate pushdown (single-table
         // predicates that reference only the base table). For
         // TPC-H Q2 (`FROM part WHERE p_size = 15 AND p_type LIKE
         // '%BRASS'`) this collapses 20K part rows to ~400 rows
         // before any join work, avoiding the full 5-table join
         // explosion downstream.
-        let raw_info = storage.get_table_info(&base_table)?;
+        let raw_info = storage.get_table_info_in(&current_db, &base_table)?;
         let mut table_info = if base_alias.is_some() {
             // Wrap the base columns in alias-prefixed names.
             let mut new_info = raw_info.clone();
@@ -3762,6 +3791,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 rows.clone(),
                 &table_info,
                 &pushdown_filters,
+                current_db,
             ) {
                 // V312-35 (#4182): the hash chain consumes only the
                 // equality join predicates it extracted. If the WHERE
@@ -3825,6 +3855,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 &storage,
                 &select.where_clause,
                 right_filter.as_deref().unwrap_or(&[]),
+                current_db,
             )?;
             rows = new_rows;
             table_info = new_info;
@@ -3921,6 +3952,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         base_rows: Vec<Vec<Value>>,
         base_info: &TableInfo,
         pushdown_filters: &std::collections::HashMap<String, Vec<Expression>>,
+        current_db: &str,
     ) -> Option<(Vec<Vec<Value>>, TableInfo)> {
         use std::collections::HashMap;
         let where_expr = select.where_clause.as_ref()?;
@@ -4019,7 +4051,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 if let Some(col_stripped) = col_name.strip_prefix(prefix) {
                     // Verify the table is in join_tables and has this column.
                     if join_tables.iter().any(|(_, a)| a == alias) {
-                        if let Ok(info) = storage.get_table_info(alias) {
+                        if let Ok(info) = storage.get_table_info_in(&current_db, alias) {
                             let has_col = info.columns.iter().any(|c| {
                                 let bare_c = c
                                     .name
@@ -4037,7 +4069,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Fallback: scan tables; return None on ambiguity (original behaviour).
             let mut found: Option<&str> = None;
             for (bare, alias) in &join_tables {
-                if let Ok(info) = storage.get_table_info(bare) {
+                if let Ok(info) = storage.get_table_info_in(&current_db, bare) {
                     let has_col = info.columns.iter().any(|c| {
                         let bare_c = c
                             .name
@@ -4213,7 +4245,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Multi-start began at a non-base leaf (e.g. Q7's
                 // `nation n1`). Load its rows/columns fresh from storage
                 // and seed `acc_*` from there.
-                let start_info = storage.get_table_info(start_bare).ok()?.clone();
+                let start_info = storage
+                    .get_table_info_in(&current_db, start_bare)
+                    .ok()?
+                    .clone();
                 // #4974: carry this connection's reader_tx into the scan.
                 let start_raw_rows = self.scan_for_reader_with(&*storage, start_bare).ok()?;
                 let start_alias_owned = start_alias.clone();
@@ -4303,7 +4338,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let prev_offset = alias_to_offset.get(prev_alias.as_str()).copied()?;
             let prev_idx = prev_offset + prev_local_idx;
             let cur_bare = &cur.0;
-            let cur_info = storage.get_table_info(cur_bare).ok()?.clone();
+            let cur_info = storage
+                .get_table_info_in(&current_db, cur_bare)
+                .ok()?
+                .clone();
             let cur_idx = cur_info
                 .columns
                 .iter()
@@ -4401,14 +4439,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             if chain_order[0].0 == base_bare && chain_order[0].1.as_str() == effective_base_alias {
                 base_info.clone()
             } else {
-                storage.get_table_info(&chain_order[0].0).ok()?.clone()
+                storage
+                    .get_table_info_in(&current_db, &chain_order[0].0)
+                    .ok()?
+                    .clone()
             };
         joined_info.columns.clear();
         for (bare, alias) in &chain_order {
             let info = if bare == &base_bare && alias.as_str() == effective_base_alias {
                 base_info.clone()
             } else {
-                storage.get_table_info(bare).ok()?.clone()
+                storage.get_table_info_in(&current_db, bare).ok()?.clone()
             };
             for c in &info.columns {
                 joined_info
@@ -4622,6 +4663,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage: &S,
         where_clause: &Option<Expression>,
         right_pushdown: &[Expression],
+        current_db: &str,
     ) -> SqlResult<(Vec<Vec<Value>>, TableInfo)> {
         use sqlrustgo_parser::JoinType as ParserJoinType;
         use std::collections::HashMap;
@@ -4646,7 +4688,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             (
                 // #4974: `storage` here is `&S`, not a guard.
                 self.scan_for_reader_with(storage, &right_table_name)?,
-                storage.get_table_info(&right_table_name)?,
+                storage.get_table_info_in(&current_db, &right_table_name)?,
             )
         };
 
@@ -5947,6 +5989,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         outer_row: &[Value],
         outer_table_info: &TableInfo,
         negated: bool,
+        current_db: &str,
     ) -> bool {
         use sqlrustgo_types::Value as V;
         // Collect the subquery's real inner columns so bare inner-column
@@ -5967,7 +6010,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 if bare.is_empty() {
                     continue;
                 }
-                if let Ok(info) = storage.get_table_info(bare) {
+                if let Ok(info) = storage.get_table_info_in(&current_db, bare) {
                     for c in &info.columns {
                         cols.insert(c.name.to_lowercase());
                     }
@@ -6026,6 +6069,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         cursor: &mut usize,
         hash_semi_join_indexes: &[HashSemiJoinIndex],
         hash_semi_cursor: &mut usize,
+        current_db: &str,
     ) -> sqlrustgo_parser::Expression {
         use sqlrustgo_parser::Expression;
         match where_expr {
@@ -6224,6 +6268,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     cursor,
                     hash_semi_join_indexes,
                     hash_semi_cursor,
+                    current_db,
                 )),
                 op.clone(),
                 Box::new(self.pre_evaluate_correlated_exists(
@@ -6234,6 +6279,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     cursor,
                     hash_semi_join_indexes,
                     hash_semi_cursor,
+                    current_db,
                 )),
             ),
             Expression::UnaryOp(op, inner) => Expression::UnaryOp(
@@ -6246,6 +6292,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     cursor,
                     hash_semi_join_indexes,
                     hash_semi_cursor,
+                    current_db,
                 )),
             ),
             Expression::IsNull(inner) => {
@@ -6257,6 +6304,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     cursor,
                     hash_semi_join_indexes,
                     hash_semi_cursor,
+                    current_db,
                 )))
             }
             Expression::IsNotNull(inner) => {
@@ -6268,6 +6316,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     cursor,
                     hash_semi_join_indexes,
                     hash_semi_cursor,
+                    current_db,
                 )))
             }
             // Issue #4568: correlated `col IN (SELECT ...)` /
@@ -6287,12 +6336,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     outer_row,
                     outer_table_info,
                     false,
+                    current_db,
                 );
                 Expression::Literal(lit.to_string())
             }
             Expression::NotIn(left, subq) => {
-                let lit =
-                    self.eval_in_subquery_membership(left, subq, outer_row, outer_table_info, true);
+                let lit = self.eval_in_subquery_membership(
+                    left,
+                    subq,
+                    outer_row,
+                    outer_table_info,
+                    true,
+                    &current_db,
+                );
                 Expression::Literal(lit.to_string())
             }
             Expression::InList(left, values) => Expression::InList(
@@ -6304,6 +6360,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     cursor,
                     hash_semi_join_indexes,
                     hash_semi_cursor,
+                    current_db,
                 )),
                 values
                     .iter()
@@ -6316,6 +6373,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             cursor,
                             hash_semi_join_indexes,
                             hash_semi_cursor,
+                            current_db,
                         )
                     })
                     .collect(),
@@ -6329,6 +6387,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     cursor,
                     hash_semi_join_indexes,
                     hash_semi_cursor,
+                    current_db,
                 )),
                 values
                     .iter()
@@ -6341,6 +6400,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             cursor,
                             hash_semi_join_indexes,
                             hash_semi_cursor,
+                            current_db,
                         )
                     })
                     .collect(),
@@ -6357,6 +6417,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             cursor,
                             hash_semi_join_indexes,
                             hash_semi_cursor,
+                            current_db,
                         )
                     })
                     .collect(),
@@ -7570,6 +7631,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         expr: &Expression,
         outer_row: &[Value],
         outer_table_info: &TableInfo,
+        current_db: &str,
     ) -> Option<Expression> {
         use sqlrustgo_parser::Expression as E;
         match expr {
@@ -7580,17 +7642,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     outer_row,
                     outer_table_info,
                     false,
+                    current_db,
                 );
                 Some(E::Literal(lit.to_string()))
             }
             E::NotIn(left, subq) if subq_uses_outer_ref(self, subq) => {
-                let lit =
-                    self.eval_in_subquery_membership(left, subq, outer_row, outer_table_info, true);
+                let lit = self.eval_in_subquery_membership(
+                    left,
+                    subq,
+                    outer_row,
+                    outer_table_info,
+                    true,
+                    &current_db,
+                );
                 Some(E::Literal(lit.to_string()))
             }
             E::BinaryOp(l, op, r) => {
-                let nl = self.pre_evaluate_correlated_in_subquery(l, outer_row, outer_table_info);
-                let nr = self.pre_evaluate_correlated_in_subquery(r, outer_row, outer_table_info);
+                let nl = self.pre_evaluate_correlated_in_subquery(
+                    l,
+                    outer_row,
+                    outer_table_info,
+                    &current_db,
+                );
+                let nr = self.pre_evaluate_correlated_in_subquery(
+                    r,
+                    outer_row,
+                    outer_table_info,
+                    &current_db,
+                );
                 if nl.is_none() && nr.is_none() {
                     return None;
                 }
@@ -7601,16 +7680,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 ))
             }
             E::UnaryOp(op, inner) => self
-                .pre_evaluate_correlated_in_subquery(inner, outer_row, outer_table_info)
+                .pre_evaluate_correlated_in_subquery(
+                    inner,
+                    outer_row,
+                    outer_table_info,
+                    &current_db,
+                )
                 .map(|n| E::UnaryOp(op.clone(), Box::new(n))),
             E::IsNull(inner) => self
-                .pre_evaluate_correlated_in_subquery(inner, outer_row, outer_table_info)
+                .pre_evaluate_correlated_in_subquery(
+                    inner,
+                    outer_row,
+                    outer_table_info,
+                    &current_db,
+                )
                 .map(|n| E::IsNull(Box::new(n))),
             E::IsNotNull(inner) => self
-                .pre_evaluate_correlated_in_subquery(inner, outer_row, outer_table_info)
+                .pre_evaluate_correlated_in_subquery(
+                    inner,
+                    outer_row,
+                    outer_table_info,
+                    &current_db,
+                )
                 .map(|n| E::IsNotNull(Box::new(n))),
             E::InList(l, vs) => {
-                let nl = self.pre_evaluate_correlated_in_subquery(l, outer_row, outer_table_info);
+                let nl = self.pre_evaluate_correlated_in_subquery(
+                    l,
+                    outer_row,
+                    outer_table_info,
+                    &current_db,
+                );
                 let mut changed = nl.is_some();
                 let new_vs: Vec<Expression> = vs
                     .iter()
@@ -7619,6 +7718,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             v,
                             outer_row,
                             outer_table_info,
+                            &current_db,
                         ) {
                             Some(n) => {
                                 changed = true;
@@ -7638,7 +7738,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             }
             E::NotInList(l, vs) => {
-                let nl = self.pre_evaluate_correlated_in_subquery(l, outer_row, outer_table_info);
+                let nl = self.pre_evaluate_correlated_in_subquery(
+                    l,
+                    outer_row,
+                    outer_table_info,
+                    &current_db,
+                );
                 let mut changed = nl.is_some();
                 let new_vs: Vec<Expression> = vs
                     .iter()
@@ -7647,6 +7752,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             v,
                             outer_row,
                             outer_table_info,
+                            &current_db,
                         ) {
                             Some(n) => {
                                 changed = true;
@@ -7674,6 +7780,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             a,
                             outer_row,
                             outer_table_info,
+                            &current_db,
                         ) {
                             Some(n) => {
                                 changed = true;

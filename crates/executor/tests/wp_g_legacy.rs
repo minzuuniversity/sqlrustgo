@@ -16,15 +16,16 @@
 //!   - VARCHAR vs CHAR strict (works — VARCHAR does NOT apply PAD SPACE)
 //!   - ASCII-only padding match (works for the basic case)
 //!
-//! Tests that document GAP (currently failing — see issue #4846 and
-//! `issue_4846_char_pad_space_test.rs` for the partial-fix evidence):
-//!   - `WHERE id = 'short_literal'` headline (broken — see #4846)
-//!   - BETWEEN with CHAR (broken — range comparison doesn't PAD)
-//!   - IN list with CHAR (broken — set membership doesn't PAD)
+//! #4944 closed the CHAR **primary key point lookup** half of #4846 (two of
+//! the `#[ignore]`s below, now real passing tests — see the comment on
+//! `char_pk_point_lookup_with_short_literal`). Still documented as GAP:
+//!   - BETWEEN with CHAR (range comparison doesn't PAD)
+//!   - IN list with CHAR (set membership doesn't PAD)
 //!   - DISTINCT across literal lengths (broken — equality not applied)
 //!
-//! Each `#[ignore]` test has a comment explaining the gap. Mutation:
-//! comment out the LIKE-wildcard prefix fix → 1 active test fails.
+//! Each remaining `#[ignore]` test has a comment explaining the gap.
+//! Mutation: comment out the LIKE-wildcard prefix fix → 1 active test
+//! fails; re-enable the PK fast path for CHAR columns → 2 more fail.
 //!
 //! refs: LEGACY_ISSUES.md §3.7
 
@@ -52,7 +53,8 @@ mod issue_4846_char_padding_comparison {
     /// land for the equality path. See
     /// `issue_4846_char_pad_space_test.rs::test_issue_4846_char10_short_
     /// literal_matches_padded_storage` which also fails on current HEAD.
-    #[ignore = "GAP: #4846 headline — WHERE col='short' returns 0 rows"]
+    // #4944/#4846: no longer `#[ignore]`d — fixed by the PK fast-path work
+    // (PR #5068). Re-run under `--ignored` confirms it now passes.
     #[test]
     fn short_literal_matches_padded_storage() {
         let mut e = create_engine();
@@ -64,7 +66,8 @@ mod issue_4846_char_padding_comparison {
     }
 
     /// GAP: WHERE id = 'abc   ' (padded literal) doesn't match 'abc' in CHAR.
-    #[ignore = "GAP: trailing-space literal mismatch on CHAR"]
+    // #4944/#4846: un-ignored — same root cause; PAD SPACE matches a padded
+    // literal against a shorter stored value.
     #[test]
     fn long_literal_with_trailing_spaces_matches_stored_short_value() {
         let mut e = create_engine();
@@ -77,7 +80,12 @@ mod issue_4846_char_padding_comparison {
     }
 
     /// GAP: BETWEEN with CHAR — range comparison doesn't PAD.
-    #[ignore = "GAP: BETWEEN with CHAR doesn't PAD SPACE"]
+    // #4944/#4846: no longer `#[ignore]`d. `BETWEEN` went through
+    // `compare_values` (BINARY, per #4612) while `=` went through
+    // `sql_compare` (PAD SPACE, per #4846) — two legacy issues, opposite
+    // decisions, different code paths. `compare_values_pad_space` now
+    // gives `BETWEEN` the same rule `=` uses, without touching
+    // `compare_values` itself (ORDER BY / GROUP BY keys still use it).
     #[test]
     fn char_between_inclusive_bounds() {
         let mut e = create_engine();
@@ -91,7 +99,8 @@ mod issue_4846_char_padding_comparison {
     }
 
     /// GAP: IN list with CHAR — set membership doesn't PAD.
-    #[ignore = "GAP: IN list with CHAR doesn't PAD SPACE"]
+    // #4944/#4846: un-ignored — same root cause and same fix as `BETWEEN`
+    // above; the `IN` membership test used `compare_values` too.
     #[test]
     fn char_in_list() {
         let mut e = create_engine();
@@ -147,8 +156,19 @@ mod issue_4846_char_padding_comparison {
         );
     }
 
-    /// GAP: CHAR PK point lookup with short literal — headline #4846.
-    #[ignore = "GAP: short literal PK lookup returns 0 rows (issue #4846 headline)"]
+    /// #4846 headline: no longer `#[ignore]`d.
+    ///
+    /// Two independent defects used to make this return 0 rows, both in the
+    /// PK point-lookup fast path (`WHERE <pk> = <literal>` and nothing
+    /// else — add any conjunct and the engine falls back to a scan that
+    /// gets it right):
+    ///
+    /// 1. `parse_literal_token` took the raw AST token, so `'U20190001'`
+    ///    became `Text("'U20190001'")` — quotes included — and never
+    ///    matched the stored `Text("U20190001")`. This hit VARCHAR too.
+    /// 2. `scan_pk`'s default `row.first() == Some(&pk)` cannot express
+    ///    PAD SPACE, so a CHAR(10) holding `'U20190001'` (stored padded to
+    ///    10 chars) did not match. CHAR columns now skip the fast path.
     #[test]
     fn char_pk_point_lookup_with_short_literal() {
         let mut e = create_engine();
@@ -162,8 +182,7 @@ mod issue_4846_char_padding_comparison {
         assert_eq!(r.rows.len(), 1);
     }
 
-    /// GAP: CHAR PK with padded literal — same root cause.
-    #[ignore = "GAP: padded literal PK lookup — see short_literal_matches_padded_storage"]
+    /// #4846: un-ignored with the sibling test above — same two defects.
     #[test]
     fn char_pk_point_lookup_with_padded_literal() {
         let mut e = create_engine();
@@ -196,11 +215,26 @@ mod issue_4846_char_padding_comparison {
         );
     }
 
-    /// GAP: even VARCHAR comparison is loose right now — `WHERE v = 'abc   '`
-    /// matches `VARCHAR(10)` column holding `abc`. This is a deeper bug
-    /// than #4846 (which was specifically about CHAR). The headline fix
-    /// appears to trim trailing whitespace on ALL Text comparisons,
-    /// which is wrong for VARCHAR. Tracked separately in test body.
+    /// Still a GAP, and deliberately not fixed in this round.
+    ///
+    /// `WHERE v = 'abc   '` matches a `VARCHAR(10)` column holding
+    /// `abc`, but trailing spaces are part of a VARCHAR value and must
+    /// not be trimmed. #4846's headline fix trims trailing whitespace on
+    /// **all** Text comparisons, which is wrong here.
+    ///
+    /// It cannot be fixed where it looks like it should be:
+    /// `sql_compare(op, left, right)` receives two `Value`s and has **no
+    /// way to know** whether the column was declared CHAR or VARCHAR.
+    /// `evaluate_where_clause` / `eval_predicate` do have `table_info`,
+    /// so threading the column type into the comparison core is possible
+    /// — but that changes every Text comparison in the engine, which is a
+    /// different order of change from the predicate gaps this round
+    /// closed, and is not something to slip in alongside them.
+    ///
+    /// Same root cause, same shape: for a VARCHAR PK column the bare
+    /// `WHERE id = 'x'` goes through `scan_pk` (strict) while
+    /// `WHERE id = 'x' AND 1=1` goes through `sql_compare` (trim), so the
+    /// two forms disagree. Left for the column-type-aware comparison.
     #[ignore = "GAP: VARCHAR = 'abc   ' also matches stored 'abc' (over-trim)"]
     #[test]
     fn char_vs_varchar_strict_when_varchar_is_target() {
@@ -216,7 +250,7 @@ mod issue_4846_char_padding_comparison {
     }
 
     /// GAP: COUNT(*) with WHERE on short CHAR literal.
-    #[ignore = "GAP: short CHAR literal in WHERE returns 0 — same root cause as headline"]
+    // #4944/#4846: un-ignored — same root cause as the headline above.
     #[test]
     fn char_count_with_where_clause_short_literal() {
         let mut e = create_engine();

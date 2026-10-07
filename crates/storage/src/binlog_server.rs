@@ -288,6 +288,12 @@ impl BinlogServer {
     }
 }
 
+// The replication-slave handler threads one of these per connection; the
+// parameter list mirrors the master's connection state one-for-one. Bundling
+// them into a context struct is a larger refactor of the binlog server than a
+// lint cleanup should carry, so the lint is scoped off here rather than
+// forcing the call sites through an unrelated shape change.
+#[allow(clippy::too_many_arguments)]
 fn handle_slave_connection(
     mut stream: TcpStream,
     addr: SocketAddr,

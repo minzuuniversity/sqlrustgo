@@ -1,0 +1,332 @@
+{
+  "schema_version": 2,
+  "purpose": "SSOT for every regression test added by a v4.1.0 fix/fix-gate PR. Read by scripts/gate/check_fix_pr_test_registry.sh. Each entry pins a test file (or test bin name) that the corresponding PR must have added; deleting the file or renaming the bin name fails the gate. This is the fail-closed direction: the gate cannot be weakened by editing this file, only by writing a new entry per PR.",
+  "generated_at": "2026-10-06",
+  "generated_by": "audit of merged v4.1.0 fix PRs",
+  "policy": "Every fix/fix-gate/feat/feat-gate PR merged into develop/v4.1.0 must add at least one of (a) a new test file under tests/ or crates/, or (b) a meaningful mutation to an existing test that exercises the bug being fixed. This registry is the audit's outcome and the gate's SSOT.",
+  "scope": {
+    "included_paths": [
+      "tests/**/*.rs",
+      "crates/**/tests/**/*.rs"
+    ],
+    "fallback_paths": [
+      "scripts/repro_*.{py,sh}",
+      "scripts/gate/*.sh",
+      "docs/releases/v4.1.0/**/*.md"
+    ]
+  },
+  "forbidden_actions": [
+    "deleting the file or the bin name below — fails the gate",
+    "moving the test to `#[ignore]` without a registry ADR-008 exception — fails check_anti_ignore_gate.sh"
+  ],
+  "entries": [
+    {
+      "pr": 5001,
+      "issue": null,
+      "fix": "refactor: collapse 6 find_column_index copies into storage::engine",
+      "test_paths": [
+        "crates/storage/tests/ref_to_mut_escape_hatch_guard_test.rs"
+      ]
+    },
+    {
+      "pr": 5007,
+      "issue": 4995,
+      "fix": "ODKU / UPDATE 成功返回但一个字节都没改 (P0 数据正确性)",
+      "test_paths": [
+        "crates/storage/tests/odku_update_visibility_4995.rs"
+      ]
+    },
+    {
+      "pr": 5015,
+      "issue": 5009,
+      "fix": "ODKU VALUES(col) row reference + SHOW DATABASES lists user dbs",
+      "test_paths": [
+        "crates/executor/tests/issue_5009_show_databases_test.rs",
+        "crates/storage/tests/odku_update_visibility_4995.rs",
+        "tests/integration/ddl/show_databases_test.rs",
+        "tests/integration/dml/insert_odku_test.rs"
+      ]
+    },
+    {
+      "pr": 5010,
+      "issue": 4914,
+      "fix": "ROLLUP/CUBE 值键改无损编码，修分组合并缺陷",
+      "test_paths": [
+        "tests/integration/sql/rollup_cube_test.rs"
+      ]
+    },
+    {
+      "pr": 5024,
+      "issue": 5019,
+      "fix": "`AS new` ODKU 行别名 + `SHOW SCHEMAS` 同义词",
+      "test_paths": [
+        "crates/executor/tests/issue_5009_show_databases_test.rs",
+        "tests/integration/dml/insert_odku_test.rs"
+      ]
+    },
+    {
+      "pr": 5029,
+      "issue": 5012,
+      "fix": "concurrent MVCC GC must not yield client-visible errors",
+      "test_paths": [
+        "crates/storage/tests/issue_5012_mvcc_gc_concurrency_test.rs"
+      ]
+    },
+    {
+      "pr": 5030,
+      "issue": 4943,
+      "fix": "补 consumer gate 证据文件 + 门禁变异验证 (AC4/AC5)",
+      "test_paths": [
+        "docs/releases/v4.1.0/evidence/gmp_consumer_gate_20261005.md"
+      ],
+      "note": "Non-Rust evidence file consumed by gate scripts in scripts/gate/."
+    },
+    {
+      "pr": 5031,
+      "issue": 5019,
+      "fix": "SHOW SCHEMAS as synonym for SHOW DATABASES",
+      "test_paths": [
+        "crates/parser/tests/parser_coverage_tests.rs"
+      ]
+    },
+    {
+      "pr": 5033,
+      "issue": 5018,
+      "fix": "serialize env-mutating tests in io_delay",
+      "test_paths": [
+        "crates/storage/src/io_delay.rs"
+      ],
+      "note": "Existing test file mutated to hold a static Mutex<()>. Not a new file but a meaningful test infrastructure change."
+    },
+    {
+      "pr": 5034,
+      "issue": 4938,
+      "fix": "e2e tests for create_incremental_backup + chain restore",
+      "test_paths": [
+        "crates/tools/tests/incremental_backup_e2e_test.rs"
+      ]
+    },
+    {
+      "pr": 5035,
+      "issue": "5018, 5026, 5027, 5016",
+      "fix": "io_delay flaky + evidence-graph-gate 接线 + 删除死代码",
+      "test_paths": [
+        "scripts/gate/check_anti_fabrication.sh",
+        "scripts/gate/check_orphan_sources.sh"
+      ],
+      "note": "Two gate scripts modified. The fix removes backup_scheduler.rs dead code; this is verified by scripts/gate/check_orphan_sources.sh (file presence), not by a new Rust test."
+    },
+    {
+      "pr": 5036,
+      "issue": 4937,
+      "fix": "半同步复制真正门控主库提交 — 新增 BinlogAck 协议 + 端到端测试",
+      "test_paths": [
+        "crates/storage/tests/semisync_commit_gate_4937.rs"
+      ]
+    },
+    {
+      "pr": 5037,
+      "issue": 4914,
+      "fix": "ROLLUP/CUBE 分组键改用 Value，消除字符串往返",
+      "test_paths": [
+        "tests/integration/sql/rollup_cube_test.rs"
+      ]
+    },
+    {
+      "pr": 5005,
+      "issue": 4936,
+      "fix": "end-to-end replication test + 7 latent clippy defects",
+      "test_paths": [
+        "crates/storage/tests/e2e_binlog_replication_test.rs"
+      ]
+    },
+    {
+      "pr": 5006,
+      "issue": 4962,
+      "fix": "revert trigger/stored_proc scan_with_filter(&|_| true) — bench shows 4% regression",
+      "test_paths": [
+        "crates/storage/tests/hot_read_path_clone_guard_test.rs"
+      ]
+    },
+    {
+      "pr": 4996,
+      "issue": "4951, 4986",
+      "fix": "#4951 引入的 ~30% 读吞吐回退 + #4986 遗留的失效测试",
+      "test_paths": [
+        "crates/storage/tests/hot_read_path_clone_guard_test.rs"
+      ]
+    },
+    {
+      "pr": 4992,
+      "issue": "4986, 4982",
+      "fix": "GC 不得回收未提交版本，否则事务提交时静默丢数据",
+      "test_paths": [
+        "crates/storage/tests/gc_pending_version_test.rs"
+      ]
+    },
+    {
+      "pr": 4990,
+      "issue": "4951, 4980",
+      "fix": "AC2 — 移除 as_mut_self 逃逸口，4 字段打包进 RwLock<WriteState>",
+      "test_paths": [
+        "crates/storage/tests/ref_to_mut_escape_hatch_guard_test.rs"
+      ]
+    },
+    {
+      "pr": 4989,
+      "issue": 4983,
+      "fix": "engine_select.rs 12 处 + engine_cte 1 处迁移 (隔离测试 8/8 全绿)",
+      "test_paths": [
+        "crates/storage/tests/tx_isolation_and_escape_hatch_test.rs"
+      ]
+    },
+    {
+      "pr": 4985,
+      "issue": "4983, 4951",
+      "fix": "scan_in 接口：读路径可显式携带 reader_tx (隔离测试 5/2 → 7/1)",
+      "test_paths": [
+        "crates/storage/tests/tx_isolation_and_escape_hatch_test.rs"
+      ]
+    },
+    {
+      "pr": 4982,
+      "issue": 4974,
+      "fix": "未提交的写不再对其他连接可见 (写侧延迟可见 + 提交时提升)",
+      "test_paths": [
+        "crates/storage/tests/tx_isolation_and_escape_hatch_test.rs"
+      ]
+    },
+    {
+      "pr": 4980,
+      "issue": 4974,
+      "fix": "重复键错误必须返回 MySQL 标准 1062 而非 1105",
+      "test_paths": [
+        "crates/storage/tests/ref_to_mut_escape_hatch_guard_test.rs",
+        "crates/mysql-server/tests/dup_entry_error_code_test.rs"
+      ]
+    },
+    {
+      "pr": 4979,
+      "issue": 4978,
+      "fix": "MvccStorage 转发事务方法 (COMMIT 此前在包装下从未生效且被静默吞错)",
+      "test_paths": [
+        "crates/storage/tests/tx_isolation_and_escape_hatch_test.rs"
+      ]
+    },
+    {
+      "pr": 5023,
+      "issue": 4994,
+      "fix": "入库高并发 DELETE 复现脚本 (关闭时遗漏)",
+      "test_paths": [
+        "scripts/repro_4994_concurrent_delete.py"
+      ],
+      "note": "Python reproduction script (was named probe4994.sh in PR title; actual file is .py in scripts/). Used by reproduce probes (not a cargo test)."
+    },
+    {
+      "pr": 5038,
+      "issue": "4943, 4937",
+      "fix": "docs(release): #4943 / #4937 发布说明与证据 (关闭用)",
+      "test_paths": [
+        "docs/releases/v4.1.0/RELEASE_NOTES.md"
+      ],
+      "note": "Docs-only PR. Verified by file presence."
+    },
+    {
+      "pr": 5039,
+      "issue": 5025,
+      "fix": "docs(design): 多数据库表空间隔离 — 完整根因链与两条实现路径",
+      "test_paths": [
+        "docs/releases/v4.1.0/design/5025_DATABASE_ISOLATION_DESIGN.md"
+      ],
+      "note": "Design proposal only. Implementation not started."
+    },
+    {
+      "pr": 5014,
+      "issue": 4937,
+      "fix": "半同步复制移植落地 (26 个测试从未执行过)",
+      "test_paths": [
+        "crates/storage/src/semisync.rs"
+      ],
+      "note": "Module was already on mod graph; PR #5036 (#4937/#5036) added the real-world BinlogAck test (crates/storage/tests/semisync_commit_gate_4937.rs). PR #5014 alone only adds the mod hookup; the test is registered under #5036."
+    },
+    {
+      "pr": 5061,
+      "issue": 5055,
+      "fix": "admin CLI `pitr` 报假成功 — FileStorage 真正写 WAL，回放真正落盘",
+      "test_paths": [
+        "crates/storage/tests/file_storage_wal_5055.rs",
+        "crates/storage/src/wal_record_codec.rs",
+        "crates/storage/src/pitr.rs"
+      ],
+      "note": "两个 src/ 条目是 `#[cfg(test)] mod tests` 内的单测文件（编解码往返 / V2 vs V1 / PITR 过滤与回放）。端到端在 file_storage_wal_5055.rs：写 WAL → 恢复到另一个目录 → 重开磁盘核对行。变异验证 12/12 全部被抓住，其中 M8（CLI 退出码退回恒 0）第一版为无效证据 —— 退出码判定当时内联在 main.rs 无法测试，被一个既存失败的无关用例触发，已抽出 pitr::exit_code_for 后重做；M12（去掉表存在性检查）针对合并时发现的「缺表时静默报告 applied」。"
+    },
+    {
+      "pr": 5064,
+      "issue": "5059, 5060, 5025",
+      "fix": "insert_buffer 对 update/delete 可见、按值回滚撤销（#5059/#5060）、命名数据库重启后表/索引重新可见（#5025 子项）",
+      "test_paths": [
+        "crates/storage/tests/file_storage_dml_visibility_5060.rs",
+        "crates/storage/tests/index_and_table_survive_restart_5025.rs"
+      ],
+      "note": "13 + 5 项。变异 M1-M8 全部被抓住。两处按反造假原则显式标注：(1) M3（删除 load_all_tables 里对 _idx_ 文件的跳过）未被任何测试抓住 —— 序列化的 BPlusTree 本就解析不成 StoredTableData，外层 if let Ok 已吞掉，属无效变异，该跳过保留但不计为覆盖证据；(2) M6（BufferedDelete 撤销改空操作）首轮存活，暴露真实覆盖缺口 —— 所有 delete 测试都在删前 flush 过，行已搬进 tables，回滚走 DeleteRow。补 rollback_restores_a_committed_but_unflushed_row_deleted_in_the_transaction 后抓住。"
+    },
+    {
+      "pr": 5067,
+      "issue": 4944,
+      "fix": "执行器自死锁：持 storage 写锁时调用 scan_for_reader 取读锁，parking_lot 不可重入 → AUTOINCREMENT 的 INSERT 与 REPLACE INTO 永不返回",
+      "test_paths": [
+        "crates/executor/tests/engine_dml_write_lock_scan_deadlock_4944.rs",
+        "crates/executor/tests/wp_c_legacy.rs"
+      ],
+      "note": "5 项新增 + wp_c_legacy 摘掉 2 个 #[ignore]（该文件由 4 通过/10 忽略 变为 6 通过/8 忽略）。变异 M12（两处退回 scan_for_reader）表现为**挂死**而非 FAILED：test replace_into_existing_row_replaces_it has been running for over 60 seconds。已核实全仓其余 scan_for_reader 调用点均不持写锁（一处在独立 {} 块内、一处在 if/else 互斥分支）。顺带暴露门禁盲区：ci.yml 的 Test summary 靠 grep 'test result: FAILED' 计数，挂死用例产不出该行，门禁只会看到 job 超时。"
+    },
+    {
+      "pr": 5066,
+      "issue": 5059,
+      "fix": "补齐 #5059 验收标准 #2 —— 「同一行被两个并发事务写」的场景此前零覆盖",
+      "test_paths": [
+        "crates/storage/tests/file_storage_concurrent_same_row_5059.rs"
+      ],
+      "note": "3 项。变异 M11（把 BufferedInsert 撤销换回 #5059 之前的二次作用域 blanket sweep）3/3 FAILED，且 c1_concurrent_begin_commit_rollback 同时复现 FAILED。诚实标注一个层边界：这些测试直接驱动 StorageEngine，在唯一性校验层（ExecutionEngine，src/engine_dml.rs 的 SqlError::DuplicateKey）之下 —— 探针实测 FileStorage::insert 收下两条同主键的行都会成功并落盘，那是分层设计而非缺陷，故本文件刻意不断言主键唯一性。"
+    },
+    {
+      "pr": 5068,
+      "issue": "4846, 4944",
+      "fix": "PK 点查快路径静默丢行 —— parse_literal_token 不剥引号（影响所有文本主键）+ scan_pk 无法表达 PAD SPACE（影响 CHAR 主键）",
+      "test_paths": [
+        "crates/executor/tests/pk_fast_path_char_pad_space_4846.rs",
+        "crates/executor/tests/wp_g_legacy.rs"
+      ],
+      "note": "5 项新增 + wp_g_legacy 摘掉 2 个 #[ignore]（4 通过/8 忽略 -> 6 通过/6 忽略）。变异 M13（CHAR 守卫失效）3 项 FAILED；M14（撤掉引号剥离）1 项 FAILED，两者互不遮蔽。修法选择：不去改 scan_pk 实现 PAD SPACE —— B+Tree 精确查找无法在不扫描的前提下表达「忽略尾部空格」这一非前缀语义；改为 CHAR 列跳过快路径。代价是 CHAR 主键失去 O(log N) 点查，正确性优先。"
+    },
+    {
+      "pr": 5069,
+      "issue": "4944, 4846",
+      "fix": "CHAR PAD SPACE 在 BETWEEN / IN / NOT BETWEEN / NOT IN 上缺失 —— #4612(BINARY) 与 #4846(PAD SPACE) 两个 issue 相反的决定落在不同代码路径",
+      "test_paths": [
+        "crates/executor/tests/wp_g_legacy.rs"
+      ],
+      "note": "wp_g_legacy 由 4 通过/8 忽略 变为 11 通过/1 忽略（摘掉 5 个 #[ignore]：3 个因 PR #5068 而已能过，2 个因本次修复）。变异 M15（eval_between 退回 compare_values）char_between_inclusive_bounds FAILED；M16（InList 退回 compare_values）char_in_list FAILED，两者互不遮蔽。刻意不改 compare_values 本身：ORDER BY / GROUP BY 的 key 也走它，改那里是更大一个量级的决定。最后 1 个 #[ignore] 是 VARCHAR 过度 trim —— sql_compare 拿不到列身份，需列类型感知比较模型，已在测试注释与证据文档写明，本次不做。"
+    },
+    {
+      "pr": 5070,
+      "issue": "4847, 4519",
+      "fix": "打开的显式事务被第二个 BEGIN 静默提交 —— begin_transaction 无条件 drain 当前事务，未区分隐式/显式；TxSession::is_explicit_transaction 是死标志（8 处构造点初始化为 false，从未被置 true 也从未被读）",
+      "test_paths": [
+        "crates/executor/tests/explicit_tx_not_silently_committed_4847.rs",
+        "crates/executor/tests/issue_4847_transaction_semantics_test.rs"
+      ],
+      "note": "由 PR #5069 合并后的 executor 全量跑出 1 个 FAILED 而追出：issue_4847_transaction_semantics_test 断言的是 #4519 修复前的缺陷行为（INSERT 后 BEGIN 必须失败），d3457e9c7c 早已改掉该契约，git merge-base 证实它早于本批全部 PR，非本批回归。重写该测试改为断言「ROLLBACK 必须撤销本事务内的工作」，并据此实测出真缺陷：BEGIN;INSERT;BEGIN;ROLLBACK 会提交 INSERT 使 ROLLBACK 变空操作（探针 P5 ROLLBACK_LOST=true）。新增 6 项回归测试。变异 M17(退回无条件 drain) 3 FAILED / M18(去掉 COMMIT 的标志清零) 1 FAILED / M19(去掉 ROLLBACK 的清零) 1 FAILED / M20(不置 true) 3 FAILED，四个全部 CAUGHT 且互不遮蔽。M18/M19 首轮存活，追到底发现是 fixture 缺陷而非覆盖缺口：成功的隐式 DML 会自行提交使 current_tx_id 归 None，begin_transaction 在 (false,_) 分支短路、根本读不到标志；只有失败的隐式 DML（主键冲突经 ? 返回、不提交）才泄漏事务使标志可观测 —— 已改用 seeded_pk()+leak_implicit_tx()。"
+    },
+    {
+      "pr": 5071,
+      "issue": "4948, 4915",
+      "fix": "COMMIT 深拷贝全库 —— committed_tables 与 tables 改为共享 Arc<Vec<Record>>，commit 时的赋值从 O(总行数) 深拷贝降为 O(表数) 浅拷贝",
+      "test_paths": [
+        "crates/storage/src/engine.rs",
+        "crates/storage/tests/measure_commit_clone_4948.rs"
+      ],
+      "note": "空事务 COMMIT 实测：50 万行 49.127ms -> 0.003ms，曲线由线性变平坦（crates/storage/tests/measure_commit_clone_4948.rs，#[ignore] 手动跑，不入常规套件）。用 Arc::strong_count / Arc::ptr_eq 做结构性断言而非墙钟 —— 避免重演 wal_legacy.rs:1473 硬编码 <2s 在 CPU 争用下间歇失败的错误。变异 M21(commit_transaction_with_log 退回深拷贝) 3 FAILED；M22(trait commit_transaction 退回深拷贝) 1 FAILED。M22 首轮存活是真覆盖缺口：第一版测试只调 commit_transaction_with_log，而 trait 的 commit_transaction 才是引擎 autocommit/COMMIT 的实际热路径 —— 已把测试参数化为两条路径各跑一遍。两处事实更正：(1) issue 称 tables 是 HashMap<String, TableData>，实为 HashMap<String, Vec<Record>>；(2) issue 称这是 breaking change，实则 SchemaSnapshot 与内部字段是两个结构，在 snapshot_schema 边界物化即可保持公共 API 不变，故验收标准第 3 条（CHANGELOG 与迁移说明）不触发。验收标准第 2 条（内存曲线）未测 —— 结构性推导常驻应从约 2x 降到约 1x，但未做 RSS 实测，不据此宣称达成。顺带挖出既有缺陷（已 #[ignore] 留复现用例）：MemoryStorage::rollback_transaction 对 TxLog 里已作用域化的表名又套一层 tbl()，undo 静默失效；既有 test_rollback_removes_inserted_rows 用未作用域的裸 key 预置，断言碰巧成立故抓不到。"
+    }
+  ]
+}

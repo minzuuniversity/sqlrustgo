@@ -119,6 +119,7 @@ pub fn make_begin_entry(tx_id: u64) -> WalEntry {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -135,6 +136,7 @@ pub fn make_commit_entry(tx_id: u64, lsn: u64) -> WalEntry {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -151,6 +153,7 @@ pub fn make_rollback_entry(tx_id: u64, lsn: u64) -> WalEntry {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -173,6 +176,7 @@ pub fn make_insert_entry(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -195,6 +199,7 @@ pub fn make_update_entry(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -211,6 +216,7 @@ pub fn make_delete_entry(tx_id: u64, table_id: u64, key: Vec<u8>, lsn: u64) -> W
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -245,6 +251,7 @@ pub fn make_vector_insert_entry(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -269,6 +276,7 @@ pub fn make_vector_update_entry(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -292,6 +300,7 @@ pub fn make_vector_delete_entry(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -315,6 +324,7 @@ pub fn make_create_vector_index_entry(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -337,6 +347,7 @@ pub fn make_drop_vector_index_entry(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }
 
@@ -359,5 +370,6 @@ pub fn make_rebuild_vector_index_entry(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        table_name: None,
     }
 }

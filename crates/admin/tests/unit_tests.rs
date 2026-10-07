@@ -3,7 +3,7 @@
 use sqlrustgo_admin::{
     backup::{tar_extract_all, tar_extract_one, BackupError, BackupResult},
     manifest::{sha256_bytes, sha256_file, walk_files, FileEntry, Manifest},
-    pitr::{parse_target_time, PitrResult},
+    pitr::{parse_target_time, PitrReport},
     restore::RestoreResult,
     verify::{verify_extracted, VerifyError, VerifyErrorKind, VerifyResult},
     wire_client::{LogicalBackupResult, StatusReport, WireError},
@@ -185,20 +185,58 @@ fn test_parse_target_time_invalid() {
     assert!(parse_target_time("-1").is_err());
 }
 
+/// #5055: the report grew `entries_failed`, `entries_after_target` and
+/// `tables_touched` when the restore started actually applying rows.
+/// `entries_failed` is the one that matters most: it is the difference
+/// between "restored" and "restored, except for the part that broke".
 #[test]
-fn test_pitr_result_fields() {
-    let result = PitrResult {
+fn test_pitr_report_fields() {
+    let result = PitrReport {
         target_time: 1699999999,
         entries_scanned: 100,
+        entries_after_target: 7,
         entries_applied: 10,
         entries_skipped: 5,
+        entries_failed: 0,
         transactions_committed: 3,
         transactions_aborted: 1,
         active_transactions_at_target: 0,
+        tables_touched: Default::default(),
+        first_error: None,
     };
     assert_eq!(result.target_time, 1699999999);
     assert_eq!(result.entries_applied, 10);
     assert_eq!(result.transactions_committed, 3);
+    assert_eq!(result.entries_after_target, 7);
+    assert!(!result.is_suspiciously_empty());
+}
+
+/// #5055: committed work in scope but nothing applied is the exact
+/// "reported success, restored nothing" shape the CLI now refuses to
+/// exit 0 on.
+#[test]
+fn test_pitr_report_flags_an_empty_replay_with_committed_work() {
+    let empty = PitrReport {
+        transactions_committed: 4,
+        ..Default::default()
+    };
+    assert!(empty.is_suspiciously_empty());
+
+    let clean = PitrReport {
+        transactions_committed: 4,
+        entries_applied: 9,
+        ..Default::default()
+    };
+    assert!(!clean.is_suspiciously_empty());
+
+    // A restore with failures is already non-zero-exit for another
+    // reason; do not pile the warning on top of it.
+    let failed = PitrReport {
+        transactions_committed: 4,
+        entries_failed: 1,
+        ..Default::default()
+    };
+    assert!(!failed.is_suspiciously_empty());
 }
 
 // ============================================================================

@@ -416,7 +416,11 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                 if matches!(right_val, Value::Null) {
                     continue;
                 }
-                if crate::expr_utils::compare_values(&left_for_cmp, &right_val) == 0 {
+                // #4846: PAD SPACE, so `IN` agrees with `=` on a padded
+                // CHAR. See `executor::expr::compare_values_pad_space`.
+                if sqlrustgo_executor::expr::compare_values_pad_space(&left_for_cmp, &right_val)
+                    == 0
+                {
                     result = true;
                     break;
                 }
@@ -460,7 +464,8 @@ pub fn eval_predicate(expr: &Expression, row: &[Value], table_info: &TableInfo) 
                 if matches!(right_val, Value::Null) {
                     return false;
                 }
-                if crate::expr_utils::compare_values(&left_val, &right_val) == 0 {
+                // #4846: PAD SPACE — see the `InList` arm above.
+                if sqlrustgo_executor::expr::compare_values_pad_space(&left_val, &right_val) == 0 {
                     return false;
                 }
             }
