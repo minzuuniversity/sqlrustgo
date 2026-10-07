@@ -32,17 +32,34 @@ fn chinese_block_comment_works() {
 }
 
 #[test]
-fn unterminated_block_comment_returns_err() {
-    // Plain ASCII unterminated block comment.
+fn unterminated_block_comment_is_closed_by_eof() {
+    // Plain ASCII unterminated block comment. The lexer scans to EOF and
+    // accepts the comment, so this parses successfully — the previous
+    // `assert!(r.is_err() || r.is_ok())` was vacuously true and asserted
+    // nothing at all.
     let r = parse("SELECT 1; /* unterminated");
-    assert!(r.is_err() || r.is_ok());
+    assert!(
+        r.is_ok(),
+        "an unterminated block comment is closed by EOF (MySQL semantics): {:?}",
+        r
+    );
 }
 
-/// #4708 / #4710: Various block comment edge cases
+/// #4708: Various block comment edge cases
 #[test]
 fn error_block_comment_with_asterisk_inside() {
+    // This test previously asserted `is_err()`, pinning the pre-#4708 defect
+    // where the lexer had no `/*` branch at all. It contradicted
+    // `chinese_block_comment_works` above, which asserts block comments must
+    // work. `/* * */` is a well-formed comment (body = " * "), so the parser
+    // now accepts it. The genuine unterminated-comment error paths are
+    // covered by the `unterminated_block_comment_*` tests below.
     let r = parse("SELECT /* * */");
-    assert!(r.is_err());
+    assert!(
+        r.is_ok(),
+        "'/* * */' is a well-formed block comment (body = \" * \"): {:?}",
+        r
+    );
 }
 
 #[test]

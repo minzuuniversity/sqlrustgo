@@ -65,7 +65,9 @@ mod test_4708_chinese_identifiers {
     }
 
     #[test]
-    #[ignore] // TODO: 多行注释解析需要修复
+    // #4708: was `#[ignore] // TODO: 多行注释解析需要修复` until the lexer
+    // gained a `/* ... */` branch in skip_whitespace. Kept (not deleted) as
+    // the regression witness for the original failure.
     fn test_chinese_comment_multi_line() {
         // Multi-line comments 支持可能需要额外实现
         let sql = "SELECT 1 /* comment */";
@@ -345,5 +347,53 @@ mod test_4720_user_variables {
         let sql = "SELECT @user_var";
         let result = parse(sql);
         assert!(result.is_ok(), "User variable should parse: {:?}", result);
+    }
+}
+
+/// #4708: block comments `/* ... */` — the lexer used to emit `Token::Slash`
+/// unconditionally, so every block comment desynced the token stream.
+mod test_4708_block_comments {
+    use super::*;
+
+    #[test]
+    fn block_comment_between_tokens() {
+        assert!(parse("SELECT /* c */ 1").is_ok());
+    }
+
+    #[test]
+    fn block_comment_at_start_and_end() {
+        assert!(parse("/* leading */ SELECT 1 /* trailing */").is_ok());
+    }
+
+    #[test]
+    fn block_comment_spanning_newlines() {
+        let sql = "SELECT 1 /*\n multi\n line\n*/ , 2";
+        assert!(parse(sql).is_ok(), "multi-line block comment: {:?}", parse(sql));
+    }
+
+    #[test]
+    fn empty_block_comment_does_not_swallow_following_star() {
+        // `/**/2` must stay "1 / 2", not "1" — the `*`s belong to the
+        // comment delimiters, the `/` after it is real division.
+        assert!(parse("SELECT 10 /**/ 2").is_ok());
+    }
+
+    #[test]
+    fn unterminated_block_comment_runs_to_eof() {
+        // Mirrors MySQL: a block comment closed by EOF is accepted.
+        assert!(parse("SELECT 1 /* unterminated").is_ok());
+    }
+
+    #[test]
+    fn block_comment_with_multibyte_content_does_not_desync() {
+        // The scanner steps by UTF-8 char width; stepping by byte would
+        // leave `position` mid-character and panic in `peek_char`.
+        assert!(parse("SELECT 1 /* 中文注释 */ , 2").is_ok());
+    }
+
+    #[test]
+    fn bare_slash_is_still_division() {
+        // Guard the fix against over-reach: `/` alone must remain Slash.
+        assert!(parse("SELECT 10 / 2").is_ok());
     }
 }
