@@ -1312,6 +1312,155 @@ pub trait StorageEngine: Send + Sync {
         self.has_table(table)
     }
 
+    // ---------------------------------------------------------------------
+    // #5057: the rest of the `*_in_db` family.
+    //
+    // `get_table_info_in` / `scan_in_db` / `has_table_in` above were added by
+    // #5025 to make the database explicit on the read paths. They were never
+    // extended to the write paths, so a `SELECT` resolved its table against
+    // the stated database while an `INSERT` into the same table resolved
+    // against whatever `current_db` the shared storage held — the two halves
+    // of one statement could land in different databases.
+    //
+    // These complete the family. Each takes `db` as its first parameter, the
+    // same shape and the same reason as the three above: the storage is
+    // shared by every connection, so a stored "current database" answers for
+    // the last writer, not for whoever is asking.
+    //
+    // The default bodies defer to the database-less method. That is correct
+    // for backends that keep no per-database table namespace (the in-memory
+    // engines, whose tables are not scoped at all), and wrong for the ones
+    // that do — those override.
+    // ---------------------------------------------------------------------
+
+    /// #5057: `scan_with_filter` against a stated database.
+    fn scan_with_filter_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        let _ = db;
+        self.scan_with_filter(table, filter)
+    }
+
+    /// #5057: `scan_with_filter_in` against a stated database — both the
+    /// reading transaction and the database are supplied by the caller.
+    fn scan_with_filter_in_tx_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+        reader_tx: u64,
+    ) -> SqlResult<Vec<Record>> {
+        let _ = db;
+        self.scan_with_filter_in(table, filter, reader_tx)
+    }
+
+    /// #5057: `scan_in` against a stated database — both the reading
+    /// transaction and the database are supplied by the caller.
+    ///
+    /// `MvccStorage` needs both: `db` selects the table namespace, `reader_tx`
+    /// selects which versions are visible.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        let _ = db;
+        self.scan_in(table, reader_tx)
+    }
+
+    /// #5057: `scan_with_index` against a stated database.
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        let _ = db;
+        self.scan_with_index(table, index_name, key)
+    }
+
+    /// #5057: `parallel_scan` against a stated database.
+    fn parallel_scan_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        let _ = db;
+        self.parallel_scan(table, num_partitions)
+    }
+
+    /// #5057: `insert` into a stated database.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        let _ = db;
+        self.insert(table, records)
+    }
+
+    /// #5057: `force_insert` into a stated database.
+    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        let _ = db;
+        self.force_insert(table, record)
+    }
+
+    /// #5057: `delete` within a stated database.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        let _ = db;
+        self.delete(table, filters)
+    }
+
+    /// #5057: `delete_collect_pks` within a stated database.
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        let _ = db;
+        self.delete_collect_pks(table, filters)
+    }
+
+    /// #5057: `delete_if` within a stated database.
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        let _ = db;
+        self.delete_if(table, filter)
+    }
+
+    /// #5057: `update` within a stated database.
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        let _ = db;
+        self.update(table, filters, updates)
+    }
+
+    /// #5057: `update_if` within a stated database.
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        let _ = db;
+        self.update_if(table, filter, mutation)
+    }
+
+    /// #5057: `create_table` within a stated database.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        let _ = db;
+        self.create_table(info)
+    }
+
+    /// #5057: `drop_table` within a stated database.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        let _ = db;
+        self.drop_table(table)
+    }
+
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo>;
 
     /// Check if table exists
