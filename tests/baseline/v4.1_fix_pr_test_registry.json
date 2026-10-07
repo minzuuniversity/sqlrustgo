@@ -324,9 +324,19 @@
       "fix": "COMMIT 深拷贝全库 —— committed_tables 与 tables 改为共享 Arc<Vec<Record>>，commit 时的赋值从 O(总行数) 深拷贝降为 O(表数) 浅拷贝",
       "test_paths": [
         "crates/storage/src/engine.rs",
-        "crates/storage/tests/measure_commit_clone_4948.rs"
+        "crates/storage/tests/measure_commit_clone_4948.rs",
+        "crates/storage/tests/measure_commit_memory_4948.rs"
       ],
       "note": "空事务 COMMIT 实测：50 万行 49.127ms -> 0.003ms，曲线由线性变平坦（crates/storage/tests/measure_commit_clone_4948.rs，#[ignore] 手动跑，不入常规套件）。用 Arc::strong_count / Arc::ptr_eq 做结构性断言而非墙钟 —— 避免重演 wal_legacy.rs:1473 硬编码 <2s 在 CPU 争用下间歇失败的错误。变异 M21(commit_transaction_with_log 退回深拷贝) 3 FAILED；M22(trait commit_transaction 退回深拷贝) 1 FAILED。M22 首轮存活是真覆盖缺口：第一版测试只调 commit_transaction_with_log，而 trait 的 commit_transaction 才是引擎 autocommit/COMMIT 的实际热路径 —— 已把测试参数化为两条路径各跑一遍。两处事实更正：(1) issue 称 tables 是 HashMap<String, TableData>，实为 HashMap<String, Vec<Record>>；(2) issue 称这是 breaking change，实则 SchemaSnapshot 与内部字段是两个结构，在 snapshot_schema 边界物化即可保持公共 API 不变，故验收标准第 3 条（CHANGELOG 与迁移说明）不触发。验收标准第 2 条（内存曲线）未测 —— 结构性推导常驻应从约 2x 降到约 1x，但未做 RSS 实测，不据此宣称达成。顺带挖出既有缺陷（已 #[ignore] 留复现用例）：MemoryStorage::rollback_transaction 对 TxLog 里已作用域化的表名又套一层 tbl()，undo 静默失效；既有 test_rollback_removes_inserted_rows 用未作用域的裸 key 预置，断言碰巧成立故抓不到。"
+    },
+    {
+      "pr": 5073,
+      "issue": "4948, 4915",
+      "fix": "补 #4948 验收标准第 2 条 —— 内存曲线实测。COMMIT 此前每次把整个数据集再复制一份（约 290 字节/行，常驻约 2x），Arc 化后增量恒为 0",
+      "test_paths": [
+        "crates/storage/tests/measure_commit_memory_4948.rs"
+      ],
+      "note": "commit 内存增量（getrusage 高水位前后差值）：pre-Arc 250K/500K/1M 行为 68.7 / 142.9 / 291.2 MB（约 290 字节/行，严格线性），post-Arc 为 0.0 / 0.1 / 0.0 MB。方法上先失败过一次并已记录：用 /usr/bin/time -l 的 maximum resident set size 直接比较进程峰值，两版毫无差别（各 5 次重复，483.0 vs 483.0 MB，离散度 ±0.3%）。原因是峰值在**装载夹具时**就达到了 —— MemoryStorage::insert 的 autocommit 分支本来就同时写 tables 与 committed_tables，所以常驻约 2x 出现在装载阶段而非 commit 阶段，commit 的额外拷贝抬不高已有峰值。改为在 commit 前后各采样一次 getrusage(RUSAGE_SELF).ru_maxrss 取差值，精确隔离 commit 新分配的内存；不引入 libc 依赖，C 结构体就地声明（ru_maxrss 在 macOS 为字节、Linux 为 KB）。该夹具自带变异验证能力：pre-Arc 等价于「退回深拷贝」，测出 291MB，Arc 版测出 0MB，证明测量确实能分辨二者而非在测噪声。补上标准 2 后，#4948 三条验收标准全部闭合（1 达成、2 达成、3 不触发）。"
     }
   ]
 }
