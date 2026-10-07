@@ -66,7 +66,8 @@ fn test_select_specific_column_projects_one() {
 #[test]
 fn test_select_extract_year_projects_expression() {
     // TPC-H Q7/Q8/Q9: SELECT EXTRACT(YEAR FROM o_orderdate) AS o_year
-    // should yield rows with a single year string.
+    // should yield rows with a single year integer (EXTRACT returns
+    // Value::Integer per #4839, matching MySQL/PostgreSQL).
     let mut engine = create_engine();
     engine
         .execute("CREATE TABLE orders (o_orderkey INTEGER, o_orderdate TEXT)")
@@ -90,8 +91,8 @@ fn test_select_extract_year_projects_expression() {
         1,
         "SELECT EXTRACT should project 1 column"
     );
-    assert_eq!(result.rows[0][0], Value::Text("1995".to_string()));
-    assert_eq!(result.rows[2][0], Value::Text("1996".to_string()));
+    assert_eq!(result.rows[0][0], Value::Integer(1995));
+    assert_eq!(result.rows[2][0], Value::Integer(1996));
 }
 
 #[test]
