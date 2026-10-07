@@ -1,10 +1,16 @@
 # Test-runner manifest — 供 scripts/gate/check_anti_fabrication.sh 的
 # CHECK 1.5 (V312-24 test infra artifacts) 使用。
 #
-# 每个 [[test]] 指定一个测试二进制（cargo test --release --no-run 产出，
-# 路径通常为 target/release/<name>-<hash>）+ 传给它的参数。
-# binary 路径相对仓库根解析。
+# 每个 [[test]] 指定一个测试二进制 + 传给它的**libtest** 参数。
 #
+# 两个契约（#5078）：
+# 1. `binary` 相对仓库根解析，且必须指向 **libtest 风格的测试二进制**。
+#    `cargo test --no-run` 只在 `target/release/deps/` 产出二进制，门禁会
+#    把最新的 `deps/<name>-<hash>` 复制到无 hash 的 `target/release/<name>`，
+#    与本文件的 `binary` 对齐。
+# 2. `args` 必须是 libtest 选项（如 `--test-threads=N` 或位置过滤器）。
+#    `--lib` / `--test <name>` 属于 **cargo**，直接调用测试二进制时不存在。
+
 # 字段含义见 `crates/test-registry/src/lib.rs` 的 `ManagedTest`。
 
 [[test]]
@@ -33,16 +39,23 @@ category = "Unit"
 
 [[test]]
 name = "isolation-contract"
-binary = "target/release/sqlrustgo_storage"
-args = ["--test", "tx_isolation_and_escape_hatch_test", "--test-threads=1"]
+# #5078: `tx_isolation_and_escape_hatch_test` is a standalone integration
+# target (`crates/storage/tests/tx_isolation_and_escape_hatch_test.rs`), not a
+# case inside the storage lib binary. The previous entry ran the lib binary
+# with `--test <name>`, but `--test` is a CARGO option, not a libtest option —
+# direct binary invocation rejected it ("error: command not found") and the
+# runner recorded a 3ms FAIL that never executed a single test.
+binary = "target/release/tx_isolation_and_escape_hatch_test"
+args = ["--test-threads=1"]
 timeout_ms = 120000
 priority = "P1"
 category = "Integration"
 
 [[test]]
 name = "scan-with-filter-contract"
-binary = "target/release/sqlrustgo_storage"
-args = ["--test", "scan_with_filter_contract_test", "--test-threads=1"]
+# Same defect as `isolation-contract` above: a standalone integration target.
+binary = "target/release/scan_with_filter_contract_test"
+args = ["--test-threads=1"]
 timeout_ms = 120000
 priority = "P1"
 category = "Integration"

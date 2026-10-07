@@ -271,30 +271,114 @@ for k in ('successful_queries','failed_queries','iterations_requested'):
     # before dispatching. `cargo test --no-run` links the test binaries
     # without running them.
     if [ -s "$tr_manifest" ]; then
-        local tr_pkgs
-        tr_pkgs=$(python3 - "$tr_manifest" <<'PYEOF' 2>/dev/null
+        # #5078: the previous shape derived cargo package names from the
+        # manifest's `binary` FILENAMES (`target/release/sqlrustgo_storage` ->
+        # `sqlrustgo_storage`) and then ran `cargo test --no-run --release -p
+        # sqlrustgo_storage`. Two independent defects made that unable to ever
+        # build on a fresh checkout:
+        #
+        #   (a) `_` is not a valid package name. The crates are
+        #       `sqlrustgo-storage` / `-tools` / `-executor`, so cargo rejected
+        #       the spec outright ("did not match any packages") and the build
+        #       step returned non-zero.
+        #   (b) `cargo test --no-run` links test binaries into
+        #       `target/release/deps/<crate>-<hash>` ONLY. It never produces a
+        #       hashless `target/release/<crate>`, so the `-x` probe below was
+        #       permanently "missing" no matter how many builds ran.
+        #
+        # Fix: resolve packages through `cargo metadata` (authoritative, no
+        # filename->package guesswork) and stage each resolved test binary to
+        # the hashless path the manifest names.
+        local tr_pkgs tr_staged
+        tr_pkgs=$(cd "$REPO_ROOT" && cargo metadata --no-deps --format-version 1 2>/dev/null \
+            | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except ValueError:
+    sys.exit(0)
+have = {p["name"] for p in d.get("packages", [])}
+want = set(sys.argv[1:])
+print(" ".join(sorted(want & have)))
+' -- $(python3 - "$tr_manifest" <<'PYEOF2'
 import re, sys
 pkgs = set()
 try:
     for line in open(sys.argv[1]):
-        m = re.search(r'binary\s*=\s*".*?/([A-Za-z0-9_.-]+)"', line)
+        m = re.search(r'binary\s*=\s".*?/([A-Za-z0-9_.-]+?)"', line)
         if m:
-            pkgs.add(m.group(1))
+            pkgs.add(m.group(1).replace('_', '-'))
 except OSError:
     pass
 print(' '.join(sorted(pkgs)))
-PYEOF
-)
-        local missing=0 p
-        for p in $tr_pkgs; do
-            [ -x "${REPO_ROOT}/target/release/$p" ] || missing=$((missing + 1))
-        done
-        if [ "$missing" -gt 0 ]; then
-            log_info "  ${missing} test binary/binaries missing; building (cargo test --no-run --release)..."
+PYEOF2
+))
+        if [ -z "$tr_pkgs" ]; then
+            log_error "  V312-24: no manifest binary resolves to a cargo package (cargo metadata empty or unmatched)"
+            errors=$((errors + 1))
+        fi
+        if [ -n "$tr_pkgs" ]; then
+            log_info "  building test binaries for packages: $tr_pkgs"
+            # #5078: `cargo test` accepts exactly ONE `-p`. Word-splitting the
+            # package list after a single `-p` made cargo reject the extra
+            # names ("unexpected argument 'sqlrustgo-tools' found"), so only a
+            # build failure could be silently ignored — the manifest binaries
+            # then never appeared and the runner reported them as Crashed.
+            # Emit one `-p <pkg>` pair per package instead.
+            tr_pflags=""
+            for p in $tr_pkgs; do
+                tr_pflags="$tr_pflags -p $p"
+            done
             # shellcheck disable=SC2086
-            ( cd "$REPO_ROOT" && cargo test --no-run --release -p $tr_pkgs ) \
+            ( cd "$REPO_ROOT" && cargo test --no-run --release $tr_pflags ) \
                 2>/tmp/cargo-build-test-bins.log || errors=$((errors + 1))
         fi
+        # Stage `deps/<crate>-<hash>` to the hashless `target/release/<crate>`
+        # path that the manifest (and therefore `ManagedTest::binary`) names.
+        tr_staged=$(cd "$REPO_ROOT" && python3 - "$tr_manifest" <<'PYEOF3'
+import os, re, shutil, sys
+
+REPO = os.getcwd()
+REL = os.path.join(REPO, 'target', 'release')
+DEPS = os.path.join(REL, 'deps')
+
+wanted = []
+try:
+    for line in open(os.path.join(REPO, sys.argv[1])):
+        m = re.search(r'binary\s*=\s"([^"]+)"', line)
+        if m:
+            wanted.append(m.group(1))
+except OSError:
+    pass
+
+staged = []
+for rel in wanted:
+    dst = os.path.join(REPO, rel)
+    name = os.path.basename(rel)
+    if os.path.isfile(dst) and os.access(dst, os.X_OK):
+        staged.append(name)
+        continue
+    crate = name.replace('_', '-')
+    hits = []
+    if os.path.isdir(DEPS):
+        for entry in os.listdir(DEPS):
+            if not entry.startswith(crate.replace('-', '_') + '-'):
+                continue
+            if entry.endswith(('.d', '.rlib', '.rmeta', '.o')):
+                continue
+            p = os.path.join(DEPS, entry)
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                hits.append(p)
+    if not hits:
+        continue
+    # Prefer the newest artifact; cargo leaves stale hashes behind.
+    newest = max(hits, key=lambda p: os.path.getmtime(p))
+    shutil.copy2(newest, dst)
+    staged.append(name)
+print(' '.join(sorted(set(staged))))
+PYEOF3
+)
+            [ -n "$tr_staged" ] && log_info "  staged test binaries: $tr_staged"
     fi
 
     if [ -x "${REPO_ROOT}/target/release/test-runner" ] && [ -s "$tr_manifest" ]; then
@@ -307,6 +391,12 @@ PYEOF
             --manifest "$tr_manifest" \
             --out "${REPO_ROOT}/target/test-runner-report.json" 2>/tmp/test-runner-run.log || errors=$((errors + 1))
         if [ -s "${REPO_ROOT}/target/test-runner-report.json" ]; then
+            # #5078: the previous shape redirected only stderr, so the
+            # validator's `print` went to the console instead of the log.
+            # `tr_count` therefore always fell back to `echo 0` and the PASS
+            # line reported "0 test(s) ran" even when every entry had
+            # executed — the gate printed a fabricated count on every run.
+            # Capture stdout too, and treat 0 as a failure rather than a pass.
             if python3 -c "
 import json, sys
 d = json.load(open('${REPO_ROOT}/target/test-runner-report.json'))
@@ -325,13 +415,19 @@ if crashed:
         len(crashed), ', '.join(str(r.get('name', '?')) for r in crashed)))
     sys.exit(1)
 print('%d test(s) ran, none crashed' % len(results))
-" 2>/tmp/test-runner-schema.log; then
+            " 2>/tmp/test-runner-schema.log >/tmp/test-runner-schema.out; then
                 local total_duration tr_count
-                tr_count=$(tail -1 /tmp/test-runner-schema.log | grep -oE '^[0-9]+' || echo 0)
+                tr_count=$(grep -oE '^[0-9]+' /tmp/test-runner-schema.out | tail -1 || true)
+                [ -n "$tr_count" ] || tr_count=0
                 total_duration=$(python3 -c "import json; print(json.load(open('${REPO_ROOT}/target/test-runner-report.json'))['summary']['total_duration_ms'])")
-                log_pass "  V312-24: test-runner report valid (${tr_count} test(s) ran, total_duration_ms=${total_duration})"
+                if [ "$tr_count" -eq 0 ]; then
+                    log_error "  V312-24: validator reported 0 tests ran — report not trustworthy"
+                    errors=$((errors + 1))
+                else
+                    log_pass "  V312-24: test-runner report valid (${tr_count} test(s) ran, total_duration_ms=${total_duration})"
+                fi
             else
-                log_error "  V312-24: test-runner report INVALID: $(head -1 /tmp/test-runner-schema.log)"
+                log_error "  V312-24: test-runner report INVALID: $(head -1 /tmp/test-runner-schema.out)"
                 errors=$((errors + 1))
             fi
         else
