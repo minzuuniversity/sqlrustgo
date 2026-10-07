@@ -963,6 +963,22 @@ pub(crate) fn scoped_key(db: &str, table: &str) -> String {
     format!("{}{}{}", db.to_lowercase(), DB_SEP, table.to_lowercase())
 }
 
+/// #5057: the inverse of [`scoped_key`] — recover `(db, table)` from a
+/// composed key.
+///
+/// Lives beside `scoped_key` so `DB_SEP` stays private to this module.
+/// Two hand-written spellings of a separator is how they drift apart.
+///
+/// Note both halves come back lowercased, because that is what
+/// `scoped_key` stored. Fine for map lookups, which is what every caller
+/// does; not fine for a filename, which is why `dirty_tables` carries a
+/// `(db, table)` tuple instead of a composed key.
+#[inline]
+pub(crate) fn split_scoped_key(key: &str) -> Option<(&str, &str)> {
+    let (db, table) = key.split_once(DB_SEP)?;
+    Some((db, table))
+}
+
 pub type Record = Vec<Value>;
 
 /// Row mutation with assignments and metadata

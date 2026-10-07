@@ -57,7 +57,27 @@ struct WriteState {
     /// that requires catalog-level undo, tracked as a separate follow-up.
     tx_undo_log: Vec<UndoOp>,
     /// V311-07: Dirty table tracker - marks tables modified since last flush
-    dirty_tables: HashSet<String>,
+    ///
+    /// #5057: keyed by `(database, table)`, NOT by a bare table name.
+    ///
+    /// It used to be a `HashSet<String>` holding bare table names, and the
+    /// flush path resolved each name against `current_db` when it wrote the
+    /// file. A bare name cannot say which database it belongs to, so two
+    /// databases holding a table of the same name collapsed into ONE set
+    /// entry, and the single write went to whichever database `current_db`
+    /// happened to name:
+    ///
+    ///     d1.t <- 3 rows, d2.t <- 3 rows, current_db = d1
+    ///     flush() -> Ok(())
+    ///     d1/t.json  3 rows      <- correct
+    ///     d2/t.json  0 rows      <- 3 rows silently gone, no error
+    ///
+    /// A tuple keeps both halves and needs no separator round-trip. That
+    /// matters: `scoped_key` lowercases both halves, so parsing a
+    /// `db\u{1}table` key back apart would hand a lowercased table name to
+    /// the file-writing helpers, which build `<table>.json` from it — a
+    /// table named `T` would start being persisted as `t.json`.
+    dirty_tables: HashSet<(String, String)>,
 }
 
 impl WriteState {
@@ -1423,11 +1443,16 @@ impl FileStorage {
         table_data: &TableData,
     ) -> std::io::Result<()> {
         let total_rows = table_data.rows.len();
+        // #5057: the bookkeeping key is scoped, so `d1.t` and `d2.t` keep
+        // separate "how many rows are on disk" counters. Sharing one
+        // counter made the second table look already-persisted and skip
+        // its write.
+        let scoped = crate::engine::scoped_key(db, table_name);
         let last_saved = *self
             .last_saved_row_count
             .lock()
             .unwrap()
-            .get(table_name)
+            .get(&scoped)
             .unwrap_or(&0);
 
         // V400-PERF-DELTA: on the very first save (or after a delete
@@ -1445,15 +1470,15 @@ impl FileStorage {
 
         // Delta-only path: append the new rows to <table>.delta.
         let new_rows = &table_data.rows[last_saved..];
-        self.append_table_delta(table_name, new_rows)?;
+        self.append_table_delta(db, table_name, new_rows)?;
         self.last_saved_row_count
             .lock()
             .unwrap()
-            .insert(table_name.to_string(), total_rows);
+            .insert(scoped, total_rows);
 
         // Periodic compaction: when delta size exceeds threshold,
         // rewrite the base snapshot and clear the delta file.
-        let delta_path = self.delta_path(table_name);
+        let delta_path = self.delta_path_in(db, table_name);
         if let Ok(meta) = std::fs::metadata(&delta_path) {
             if meta.len() > 10 * 1024 * 1024 {
                 let _ = self.save_table_full(db, table_name, table_data);
@@ -1485,11 +1510,13 @@ impl FileStorage {
         // `with_write_lock` closure, and `parking_lot::RwLock` is not
         // reentrant, so re-locking here would deadlock. Taking the
         // state as a parameter makes that obligation explicit.
+        // #5057: scoped bookkeeping key; see `save_table`.
+        let scoped = crate::engine::scoped_key(db, table_name);
         let last_saved = *self
             .last_saved_row_count
             .lock()
             .unwrap()
-            .get(table_name)
+            .get(&scoped)
             .unwrap_or(&0);
 
         if total_rows == 0 || last_saved == 0 || total_rows <= last_saved {
@@ -1497,25 +1524,25 @@ impl FileStorage {
             // handed us a window, not a snapshot, so re-derive the
             // full table under the lock. Rare relative to inserts.
             // #5025: the cache is keyed by scoped name.
-            if let Some(data) = st.tables.get(&self.tbl(table_name)) {
+            if let Some(data) = st.tables.get(&scoped) {
                 return self.save_table_full(db, table_name, data);
             }
             return Ok(());
         }
 
         // Delta-only path: append just the window we were given.
-        self.append_table_delta(table_name, &window.rows)?;
+        self.append_table_delta(db, table_name, &window.rows)?;
         self.last_saved_row_count
             .lock()
             .unwrap()
-            .insert(table_name.to_string(), total_rows);
+            .insert(scoped.clone(), total_rows);
 
         // Periodic compaction: when the delta file exceeds the
         // threshold, rewrite the base snapshot and clear the delta.
-        let delta_path = self.delta_path(table_name);
+        let delta_path = self.delta_path_in(db, table_name);
         if let Ok(meta) = std::fs::metadata(&delta_path) {
             if meta.len() > 10 * 1024 * 1024 {
-                if let Some(data) = st.tables.get(&self.tbl(table_name)) {
+                if let Some(data) = st.tables.get(&scoped) {
                     let _ = self.save_table_full(db, table_name, data);
                 }
             }
@@ -1558,11 +1585,11 @@ impl FileStorage {
 
         writer.flush()?;
         // Drop any pending deltas — they're now incorporated.
-        let _ = std::fs::remove_file(self.delta_path(table_name));
-        self.last_saved_row_count
-            .lock()
-            .unwrap()
-            .insert(table_name.to_string(), table_data.rows.len());
+        let _ = std::fs::remove_file(self.delta_path_in(db, table_name));
+        self.last_saved_row_count.lock().unwrap().insert(
+            crate::engine::scoped_key(db, table_name),
+            table_data.rows.len(),
+        );
         Ok(())
     }
 
@@ -1570,9 +1597,18 @@ impl FileStorage {
     /// JSON-line format (one row per line). Lines are chosen over
     /// bincode to keep the delta file human-inspectable and
     /// dependency-free. Each line is `serde_json::to_string(row)`.
-    fn append_table_delta(&self, table_name: &str, rows: &[Vec<Value>]) -> std::io::Result<()> {
+    fn append_table_delta(
+        &self,
+        db: &str,
+        table_name: &str,
+        rows: &[Vec<Value>],
+    ) -> std::io::Result<()> {
         use std::io::Write;
-        let path = self.delta_path(table_name);
+        // #5057: the delta file follows the database, like the table it
+        // extends. Resolving it through `current_db` sent two databases'
+        // appended rows into one `<table>.delta`, which is then replayed
+        // into whichever table the loader finds under that name.
+        let path = self.delta_path_in(db, table_name);
         let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -1612,17 +1648,20 @@ impl FileStorage {
         Ok(all_rows)
     }
 
-    /// V400-PERF-DELTA: get the on-disk delta path for a table.
+    /// #5025 / #5057: the on-disk delta path for a table in a named
+    /// database.
+    ///
     /// #5025: the delta file must follow the same scoping as the table, or
     /// two databases with a table of the same name would append to one
     /// delta file and corrupt each other's rows.
-    fn delta_path(&self, table_name: &str) -> std::path::PathBuf {
-        let db = self.current_db_name();
-        self.delta_path_in(&db, table_name)
-    }
-
-    /// #5025: `delta_path` with the database named explicitly; see
-    /// `table_path_in`.
+    ///
+    /// #5057: there used to be a `delta_path(table_name)` that resolved
+    /// through `current_db`, and every write path called it — the same
+    /// shape `table_path_for_write` had. A helper that picks the database
+    /// from a process-wide setting lets a write that already resolved its
+    /// own database's rows append them to the *active* database's delta
+    /// file. It is removed rather than left dead, because an entry point
+    /// that cannot name its database is how this bug comes back.
     fn delta_path_in(&self, db: &str, table_name: &str) -> std::path::PathBuf {
         let file = format!("{}.delta", table_name);
         match self.db_dir_for(db) {
@@ -1747,16 +1786,20 @@ impl FileStorage {
         // always done this; the inherent version did not, which is part of
         // why the two copies of this loop drifted apart.
         self.flush_all_buffers().map_err(Self::io_err_from_sql)?;
-        let db = self.current_db_name();
         let pending = self.drain_dirty_windowed();
         // Lock released. `save_table_window` / `save_table_full` only
         // touch `data_dir`, `last_saved_row_count` and the filesystem.
-        for (name, window, total) in &pending {
+        //
+        // #5057: `db` is the entry's OWN database, carried out of the dirty
+        // set. It used to be `self.current_db_name()`, one value for the
+        // whole loop — so every dirty table was written under whichever
+        // database was active at flush time.
+        for (db, name, window, total) in &pending {
             // #4951: `save_table_window` needs `&WriteState` but must not
             // re-acquire the lock itself (non-reentrant). Hold the read
             // guard across the call. It only reads `tables` to decide
             // whether a full re-write is needed.
-            self.with_read_lock(|st| self.save_table_window(&db, st, name, window, *total))?;
+            self.with_read_lock(|st| self.save_table_window(db, st, name, window, *total))?;
         }
 
         // #5048: persist the change log only after the data it describes
@@ -1792,22 +1835,31 @@ impl FileStorage {
     /// `b2_flush_dirty_tables/5tables_*` — the copy cost more than the
     /// lock it avoided.
     ///
-    /// Returns `(table_name, window, total_rows)` per dirty table.
+    /// Returns `(database, table_name, window, total_rows)` per dirty table.
     /// `save_table_window` re-derives the full table itself on the rare
     /// cold-start / shrink / compaction branches.
-    fn drain_dirty_windowed(&self) -> Vec<(String, TableData, usize)> {
+    ///
+    /// #5057: the database comes back out of the set, not from `current_db`.
+    /// Callers used to do `let db = self.current_db_name()` and hand that
+    /// same value to every entry, which is how one table's rows ended up
+    /// written into another table's file. Now each entry carries its own.
+    fn drain_dirty_windowed(&self) -> Vec<(String, String, TableData, usize)> {
         Self::with_write_lock(self, |s| {
             std::mem::take(&mut s.dirty_tables)
                 .into_iter()
-                .filter_map(|name| {
-                    // #5025: scoped cache key.
-                    let data = s.tables.get(&self.tbl(&name))?;
+                .filter_map(|(db, name)| {
+                    // #5025: scoped cache key, now built from the entry's
+                    // OWN database instead of `self.tbl(&name)` (which read
+                    // `current_db` and so could only ever address the active
+                    // database's copy).
+                    let scoped = crate::engine::scoped_key(&db, &name);
+                    let data = s.tables.get(&scoped)?;
                     let total = data.rows.len();
                     let last_saved = *self
                         .last_saved_row_count
                         .lock()
                         .unwrap()
-                        .get(&name)
+                        .get(&scoped)
                         .unwrap_or(&0);
                     // Shrink: a DELETE/UPDATE reduced the row count, so
                     // the on-disk set no longer matches and the full
@@ -1815,7 +1867,7 @@ impl FileStorage {
                     // would take that branch anyway, but the window we
                     // hand it is meaningless here, so let it re-derive.
                     if last_saved > total {
-                        return Some((name, TableData::snapshot_from(data, total), total));
+                        return Some((db, name, TableData::snapshot_from(data, total), total));
                     }
                     // Nothing new to write. `flush_all_buffers` runs first
                     // in both callers and persists buffered inserts via
@@ -1828,7 +1880,7 @@ impl FileStorage {
                     if last_saved == total {
                         return None;
                     }
-                    Some((name, TableData::snapshot_from(data, last_saved), total))
+                    Some((db, name, TableData::snapshot_from(data, last_saved), total))
                 })
                 .collect()
         })
@@ -4372,7 +4424,7 @@ impl FileStorage {
         };
         // V311-07: Mark table dirty for optimized flush
         Self::with_write_lock(self, |s| {
-            s.dirty_tables.insert(crate::engine::scoped_key(db, &table));
+            s.dirty_tables.insert((db.to_string(), table.to_string()));
         });
         // #5048: record the change so an incremental backup can be
         // produced from this data directory.
@@ -4555,38 +4607,52 @@ impl FileStorage {
         }
     }
 
+    /// #5057: push every database's buffered inserts into its `tables`
+    /// cache and persist them under their OWN database directory.
+    ///
+    /// It used to walk only the ACTIVE database's buffer, despite the
+    /// name. Two consequences, both silent:
+    ///
+    /// 1. Rows written into any database other than the active one stayed
+    ///    in `insert_buffer` and never reached disk. A `flush()` from `d1`
+    ///    persisted `d1` and left `d2`'s rows nowhere.
+    /// 2. Those rows were also invisible to `drain_dirty_windowed`, which
+    ///    reads `tables.rows` — so the dirty marker for `d2.t` was drained,
+    ///    found an empty table, and skipped. One `flush()` and the rows
+    ///    were gone with `Ok(())` returned.
+    ///
+    /// #5057 made the reach possible: `dirty_tables` and
+    /// `last_saved_row_count` are keyed by `(db, table)`, so a drained
+    /// entry can say which directory it belongs in. Doing this before that
+    /// would have written each database's rows under the active one — the
+    /// worse failure, and the reason the limitation was documented rather
+    /// than half-fixed.
+    ///
+    /// Snapshot the table list under the lock; then drop the guard before
+    /// re-acquiring per table (avoids holding the lock for the duration
+    /// of all table saves).
+    ///
+    /// `insert_buffer` is keyed by `scoped_key(db, table)`, so the
+    /// database is recoverable from the key and every buffered table can
+    /// be flushed exactly once. A table may have several keys? No — one
+    /// key per (db, table) — but dedup anyway so a repeated flush cannot
+    /// persist the same window twice.
     pub fn flush_all_buffers(&self) -> SqlResult<()> {
-        // Snapshot the table list under the lock; then drop the guard
-        // before re-acquiring per table (avoids holding the lock for
-        // the duration of all table saves).
-        // #5025: the buffer keys are scoped, and `flush_buffer` resolves
-        // against the database it is handed, so strip the prefix back off
-        // and pass both halves rather than the bare name.
-        //
-        // #5057: this still flushes only the ACTIVE database's buffer, which
-        // is what it has always done — despite the name. Making it reach every
-        // database is blocked on `dirty_tables`, which is keyed by a MIXTURE
-        // of bare and scoped table names: `insert` inserts the bare name
-        // (file_storage.rs, the insert path) while the delete/update paths
-        // insert `scoped_key(...)`. Until that set is scoped consistently, a
-        // cross-database flush cannot tell which database a dirty table
-        // belongs to, and the file would be written under the wrong
-        // directory — worse than skipping it. Deliberately left as it was
-        // rather than half-fixed. See
-        // `SESSION_CONTEXT_5057_RECON_2026-10-07.md` §8.
-        let db = self.current_db_name();
-        // `scoped_key(db, "")` is exactly `"<db><SEP>"` — the key prefix for
-        // this database. Deriving it that way rather than spelling the
-        // separator out again is the point: two hand-written spellings of a
-        // separator is how they drift apart.
-        let prefix = crate::engine::scoped_key(&db, "");
-        let tables: Vec<String> = Self::with_write_lock(self, |s| {
-            s.insert_buffer
-                .keys()
-                .map(|k| k.strip_prefix(&prefix).unwrap_or(k).to_string())
-                .collect()
+        use std::collections::HashSet;
+        let tables: Vec<(String, String)> = Self::with_write_lock(self, |s| {
+            let mut seen: HashSet<(String, String)> = HashSet::new();
+            let mut out = Vec::new();
+            for key in s.insert_buffer.keys() {
+                if let Some((db, table)) = crate::engine::split_scoped_key(key) {
+                    let entry = (db.to_string(), table.to_string());
+                    if seen.insert(entry.clone()) {
+                        out.push(entry);
+                    }
+                }
+            }
+            out
         });
-        for table in tables {
+        for (db, table) in tables {
             self.flush_buffer(&db, &table)?;
         }
         Ok(())
@@ -4667,8 +4733,7 @@ impl FileStorage {
                 }
             }
             if !touched.is_empty() {
-                st.dirty_tables
-                    .insert(crate::engine::scoped_key(db, &table));
+                st.dirty_tables.insert((db.to_string(), table.to_string()));
             }
             (touched.len(), touched)
         };
@@ -4746,8 +4811,7 @@ impl FileStorage {
             }
             // V311-07: Mark dirty instead of immediate persist
             if !touched.is_empty() {
-                st.dirty_tables
-                    .insert(crate::engine::scoped_key(db, &table));
+                st.dirty_tables.insert((db.to_string(), table.to_string()));
             }
             (touched.len(), touched)
         };
@@ -4801,8 +4865,7 @@ impl FileStorage {
             }
             let removed = s.remove_matching(&scoped, match_row);
             if !removed.is_empty() {
-                s.dirty_tables
-                    .insert(crate::engine::scoped_key(db, &table_name));
+                s.dirty_tables.insert((db.to_string(), table_name.clone()));
             }
             removed
         });
@@ -4904,7 +4967,7 @@ impl FileStorage {
 
             // Mark dirty if anything was removed.
             if !removed_pks.is_empty() || filters.is_empty() {
-                s.dirty_tables.insert(crate::engine::scoped_key(db, &table));
+                s.dirty_tables.insert((db.to_string(), table.to_string()));
             }
 
             // #4960: rows inserted during a transaction live in
@@ -5035,8 +5098,7 @@ impl FileStorage {
             // condition keyed off the tables-only count, which missed
             // buffered deletions entirely.
             if !removed.is_empty() || filters.is_empty() {
-                s.dirty_tables
-                    .insert(crate::engine::scoped_key(db, &table_name));
+                s.dirty_tables.insert((db.to_string(), table_name.clone()));
             }
             Ok(removed)
         })?;
@@ -5481,10 +5543,8 @@ impl StorageEngine for FileStorage {
                         )) {
                             if row_idx < data.rows.len() {
                                 data.rows[row_idx] = original;
-                                s.dirty_tables.insert(crate::engine::scoped_key(
-                                    &self.current_db.read().unwrap(),
-                                    &table,
-                                ));
+                                s.dirty_tables
+                                    .insert((self.current_db.read().unwrap().clone(), table));
                             }
                         }
                     }
@@ -5499,10 +5559,8 @@ impl StorageEngine for FileStorage {
                         )) {
                             let idx = row_idx.min(data.rows.len());
                             data.rows.insert(idx, original);
-                            s.dirty_tables.insert(crate::engine::scoped_key(
-                                &self.current_db.read().unwrap(),
-                                &table,
-                            ));
+                            s.dirty_tables
+                                .insert((self.current_db.read().unwrap().clone(), table));
                         }
                     }
                     UndoOp::DeleteAll {
@@ -5514,10 +5572,8 @@ impl StorageEngine for FileStorage {
                             &table,
                         )) {
                             data.rows = original_rows;
-                            s.dirty_tables.insert(crate::engine::scoped_key(
-                                &self.current_db.read().unwrap(),
-                                &table,
-                            ));
+                            s.dirty_tables
+                                .insert((self.current_db.read().unwrap().clone(), table));
                         }
                     }
                     // #5055 / #5060: the row was inserted by *this*
@@ -6619,9 +6675,8 @@ impl FileStorage {
 
         // For 1-2 tables, sequential is faster (no thread overhead)
         if pending.len() <= 2 {
-            for (name, window, total) in &pending {
-                let db = self.current_db_name();
-                self.with_read_lock(|st| self.save_table_window(&db, st, name, window, *total))?;
+            for (db, name, window, total) in &pending {
+                self.with_read_lock(|st| self.save_table_window(db, st, name, window, *total))?;
             }
             return Ok(());
         }
@@ -6634,11 +6689,10 @@ impl FileStorage {
         let results = std::thread::scope(|s| {
             let handles: Vec<_> = pending
                 .iter()
-                .map(|(name, window, total)| {
-                    let db = self.current_db_name();
+                .map(|(db, name, window, total)| {
                     s.spawn(move || {
                         self.with_read_lock(|st| {
-                            self.save_table_window(&db, st, name, window, *total)
+                            self.save_table_window(db, st, name, window, *total)
                         })
                     })
                 })
@@ -6722,10 +6776,8 @@ impl FileStorage {
                     )) {
                         if row_idx < data.rows.len() {
                             data.rows[row_idx] = original;
-                            s.dirty_tables.insert(crate::engine::scoped_key(
-                                &self.current_db.read().unwrap(),
-                                &table,
-                            ));
+                            s.dirty_tables
+                                .insert((self.current_db.read().unwrap().clone(), table));
                         }
                     }
                 }
@@ -6740,10 +6792,8 @@ impl FileStorage {
                     )) {
                         let idx = row_idx.min(data.rows.len());
                         data.rows.insert(idx, original);
-                        s.dirty_tables.insert(crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
-                            &table,
-                        ));
+                        s.dirty_tables
+                            .insert((self.current_db.read().unwrap().clone(), table));
                     }
                 }
                 UndoOp::DeleteAll {
@@ -6755,10 +6805,8 @@ impl FileStorage {
                         &table,
                     )) {
                         data.rows = original_rows;
-                        s.dirty_tables.insert(crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
-                            &table,
-                        ));
+                        s.dirty_tables
+                            .insert((self.current_db.read().unwrap().clone(), table));
                     }
                 }
                 UndoOp::BufferedInsert { table, row } => {
