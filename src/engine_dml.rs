@@ -118,6 +118,12 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
     insert: &InsertStatement,
 ) -> SqlResult<ExecutorResult> {
+    // #5057: pin the statement to the database it belongs to.
+    // `storage.insert` resolves the table through the shared
+    // `current_db`, so a concurrent `USE` on another connection sends
+    // the rows to the wrong database — measured at 6% under a writer
+    // switching databases continuously.
+    let stmt_db = engine.storage.read().current_db();
     if engine.clustered_tables.read().contains_key(&insert.table) {
         return execute_insert_clustered(engine, insert);
     }
@@ -138,7 +144,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // Get table info first (need it for triggers and FK validation)
     let table_info = {
         let storage = engine.storage.read();
-        match storage.get_table_info(&table_name) {
+        match storage.get_table_info_in(&stmt_db, &table_name) {
             Ok(info) => info.clone(),
             Err(e) => return Err(e),
         }
@@ -275,12 +281,12 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             // Global scan: the conflict check must see every committed row,
             // not this connection's snapshot; `scan_for_reader` would also
             // deadlock (write guard held, non-reentrant RwLock).
-            let existing_rows = storage.scan(&table_name)?;
+            let existing_rows = storage.scan_in_db(&stmt_db, &table_name)?;
             let has_conflict = existing_rows
                 .iter()
                 .any(|existing| record_matches_unique_key(existing, record, &table_info));
             if has_conflict {
-                storage.delete(&table_name, &filter)?;
+                storage.delete_in_db(&stmt_db, &table_name, &filter)?;
             }
         }
     }
@@ -518,7 +524,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             // `scan_for_reader` would additionally deadlock here — the
             // write guard above is held and parking_lot RwLock is not
             // reentrant.
-            let existing = storage.scan(&table_name)?;
+            let existing = storage.scan_in_db(&stmt_db, &table_name)?;
             next_auto_id = existing
                 .iter()
                 .filter_map(|r| r.get(col_idx).and_then(|v| v.as_integer()))
@@ -720,7 +726,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                     // missing column, often `Value::Null`).
                     validate_not_null(&table_info, record, &[])?;
                 }
-                storage.insert(&table_name, to_insert.clone())?;
+                storage.insert_in_db(&stmt_db, &table_name, to_insert.clone())?;
                 stored_rows = to_insert;
             } else {
                 stored_rows = Vec::new();
@@ -751,7 +757,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 // #4558: see comment above — pass `&[]` after reordering.
                 validate_not_null(&table_info, record, &[])?;
             }
-            storage.insert(&table_name, processed_records.clone())?;
+            storage.insert_in_db(&stmt_db, &table_name, processed_records.clone())?;
             stored_rows = processed_records.clone();
         }
 
@@ -863,6 +869,9 @@ pub fn execute_update<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
     update: &UpdateStatement,
 ) -> SqlResult<ExecutorResult> {
+    // #5057: pin the statement to the database it belongs to.
+    // (`execute_insert` carries the same snapshot.)
+    let stmt_db = engine.storage.read().current_db();
     if update.tables.is_empty() {
         return Err(SqlError::ExecutionError(
             "UPDATE requires at least one table".to_string(),
@@ -930,7 +939,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     if resolved_update.where_clause.is_none() {
         let table_info = {
             let storage = engine.storage.read();
-            storage.get_table_info(&table_name)?.clone()
+            storage.get_table_info_in(&stmt_db, &table_name)?.clone()
         };
         let sample_row: Vec<sqlrustgo_types::Value> = {
             let storage = engine.storage.read();
@@ -1035,7 +1044,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // Global scan: every committed row must be updated regardless of
         // this connection's snapshot; `scan_for_reader` would deadlock
         // (write guard held, non-reentrant RwLock).
-        let all_rows_no_where = storage.scan(&table_name)?;
+        let all_rows_no_where = storage.scan_in_db(&stmt_db, &table_name)?;
         let need_undo_snapshot = engine.tx_session.lock().current_tx_id.is_some();
         let mut count = 0usize;
         let mut prior_rows_for_undo: Vec<Vec<Value>> = if need_undo_snapshot {
@@ -1069,11 +1078,11 @@ pub fn execute_update<S: StorageEngine + 'static>(
             for (col_idx, new_val) in &updates {
                 prior_row[*col_idx] = new_val.clone();
             }
-            storage.delete(&table_name, std::slice::from_ref(&pk_val))?;
+            storage.delete_in_db(&stmt_db, &table_name, std::slice::from_ref(&pk_val))?;
             if need_undo_snapshot {
                 new_rows_for_undo.push(prior_row.clone());
             }
-            storage.insert(&table_name, vec![prior_row])?;
+            storage.insert_in_db(&stmt_db, &table_name, vec![prior_row])?;
             count += 1;
         }
         drop(storage);
@@ -1099,7 +1108,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // Get table info and scan rows
     let table_info = {
         let storage = engine.storage.read();
-        storage.get_table_info(&table_name)?.clone()
+        storage.get_table_info_in(&stmt_db, &table_name)?.clone()
     };
 
     // V4.0.0 / SOAK-leak fix: scan_with_filter runs the WHERE predicate
@@ -1241,8 +1250,8 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 .get(pk_idx)
                 .cloned()
                 .unwrap_or(sqlrustgo_types::Value::Null);
-            storage.delete(&table_name, std::slice::from_ref(&pk_val))?;
-            storage.insert(&table_name, vec![new_row.clone()])?;
+            storage.delete_in_db(&stmt_db, &table_name, std::slice::from_ref(&pk_val))?;
+            storage.insert_in_db(&stmt_db, &table_name, vec![new_row.clone()])?;
         }
     }
 
@@ -1290,6 +1299,9 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
     delete: &DeleteStatement,
 ) -> SqlResult<ExecutorResult> {
+    // #5057: pin the statement to the database it belongs to.
+    // (`execute_insert` carries the same snapshot.)
+    let stmt_db = engine.storage.read().current_db();
     if delete.tables.is_empty() {
         return Err(SqlError::ExecutionError(
             "DELETE requires at least one table".to_string(),
@@ -1344,16 +1356,18 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         // Capture row snapshot before delete so #4519 can record UndoRecord::Delete.
         let table_info = {
             let storage = engine.storage.read();
-            storage.get_table_info(&table_name)?.clone()
+            storage.get_table_info_in(&stmt_db, &table_name)?.clone()
         };
-        let prior_rows_for_undo: Vec<Vec<Value>> = engine.scan_for_reader(&table_name)?;
+        // #5057: read against the statement's database, not the shared one.
+        let prior_rows_for_undo: Vec<Vec<Value>> =
+            engine.storage.read().scan_in_db(&stmt_db, &table_name)?;
         let count = {
             let mut storage = engine.storage.write();
             // Same tx-id re-assert as execute_insert, scoped here.
             if let Some(id) = engine.tx_session.lock().current_tx_id {
                 storage.set_current_tx_id(id.as_u64());
             }
-            storage.delete(&table_name, &[])?
+            storage.delete_in_db(&stmt_db, &table_name, &[])?
         };
         // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Delete
         // per row actually deleted (no-WHERE path) so a ROLLBACK TO SAVEPOINT
@@ -1385,15 +1399,19 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     let where_clause = resolved_delete.where_clause.as_ref().unwrap();
     let table_info = {
         let storage = engine.storage.read();
-        storage.get_table_info(&table_name)?.clone()
+        storage.get_table_info_in(&stmt_db, &table_name)?.clone()
     };
 
     let rows_to_delete: Vec<Vec<Value>> = {
-        // #4983: scan on behalf of this connection so an uncommitted
-        // version is visible only to its author.
-        engine.scan_for_reader_filtered(&table_name, &|row| {
-            evaluate_where_clause(where_clause, row, &table_info)
-        })?
+        // #5057: resolve against the statement's database. This scan
+        // decides *which* rows are deleted, so reading the wrong
+        // database here deletes rows in the other one — or none.
+        let storage = engine.storage.read();
+        let all = storage.scan_in_db(&stmt_db, &table_name)?;
+        drop(storage);
+        all.into_iter()
+            .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
+            .collect()
     };
 
     let count = rows_to_delete.len();
@@ -1483,7 +1501,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
             .iter()
             .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
             .collect();
-        storage.delete(&table_name, &key_values)?;
+        storage.delete_in_db(&stmt_db, &table_name, &key_values)?;
     } else {
         // Multi-row delete: keep the legacy round-trip. It clones
         // O(N) into tx_undo_log for UndoOp::DeleteAll, but multi-row
@@ -1492,7 +1510,8 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         // row DELETE ever becomes hot, see Fix A (avoid the clone
         // via std::mem::take + rollback swap).
         let rows_to_keep: Vec<Vec<Value>> = {
-            let all_rows = engine.scan_for_reader(&table_name)?;
+            // #5057: read against the statement's database, not the shared one.
+            let all_rows = engine.storage.read().scan_in_db(&stmt_db, &table_name)?;
             all_rows
                 .into_iter()
                 .filter(|row| !evaluate_where_clause(where_clause, row, &table_info))
@@ -1508,9 +1527,9 @@ pub fn execute_delete<S: StorageEngine + 'static>(
             // First drop the full table to flush any buffered inserts
             // and to provide a clean slate (this is what the legacy
             // code did).
-            storage.delete(&table_name, &[])?;
+            storage.delete_in_db(&stmt_db, &table_name, &[])?;
             if !rows_to_keep.is_empty() {
-                storage.insert(&table_name, rows_to_keep)?;
+                storage.insert_in_db(&stmt_db, &table_name, rows_to_keep)?;
             }
             // Then delete the matching rows from the freshly re-inserted
             // set so WAL records one Delete entry per affected row.
@@ -1519,7 +1538,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
                     .iter()
                     .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
                     .collect();
-                storage.delete(&table_name, &key_values)?;
+                storage.delete_in_db(&stmt_db, &table_name, &key_values)?;
             }
         }
     }
