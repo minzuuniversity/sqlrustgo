@@ -42,6 +42,10 @@ impl ExecutionEngine<MemoryStorage> {
                 current_role: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            // #5057: a fresh connection is in the implicit database.
+            session_db: parking_lot::RwLock::new(
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string(),
+            ),
             current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
@@ -77,6 +81,10 @@ impl ExecutionEngine<MemoryStorage> {
                 current_role: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            // #5057: a fresh connection is in the implicit database.
+            session_db: parking_lot::RwLock::new(
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string(),
+            ),
             current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
@@ -112,6 +120,10 @@ impl ExecutionEngine<MemoryStorage> {
                 current_role: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            // #5057: a fresh connection is in the implicit database.
+            session_db: parking_lot::RwLock::new(
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string(),
+            ),
             current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
@@ -158,6 +170,10 @@ impl ExecutionEngine<MemoryStorage> {
                 current_role: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            // #5057: a fresh connection is in the implicit database.
+            session_db: parking_lot::RwLock::new(
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string(),
+            ),
             current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
@@ -209,6 +225,10 @@ impl ExecutionEngine<MemoryStorage> {
                 current_role: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            // #5057: a fresh connection is in the implicit database.
+            session_db: parking_lot::RwLock::new(
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string(),
+            ),
             current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
@@ -266,6 +286,10 @@ impl ExecutionEngine<MemoryStorage> {
                 current_role: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            // #5057: a fresh connection is in the implicit database.
+            session_db: parking_lot::RwLock::new(
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string(),
+            ),
             current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
@@ -317,6 +341,10 @@ impl ExecutionEngine<MemoryStorage> {
                 current_role: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            // #5057: a fresh connection is in the implicit database.
+            session_db: parking_lot::RwLock::new(
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string(),
+            ),
             current_user: sqlrustgo_catalog::auth::UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: checkpoint_manager.map(|cp| Arc::new(RwLock::new(cp))),

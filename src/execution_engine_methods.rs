@@ -160,6 +160,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage.scan_in(table, reader_tx)
     }
 
+    /// #5057: `scan_for_reader_with` against a stated database.
+    ///
+    /// The table name alone is not enough: `scan_in` resolves it through the
+    /// storage's shared `current_db`, so the row set could come from a
+    /// different connection's database than the `get_table_info_in` lookup
+    /// that named the table.
+    pub(crate) fn scan_for_reader_in_db(
+        &self,
+        storage: &S,
+        db: &str,
+        table: &str,
+    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
+        let reader_tx = self.reader_tx();
+        storage.scan_in_db(db, table)
+    }
+
     /// #4983: [`scan_for_reader_with`](Self::scan_for_reader_with) for
     /// callers holding a `&dyn StorageEngine` rather than the concrete
     /// `&S`. `scan_in` is a trait method, so it dispatches through the
@@ -784,12 +800,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // database, and an unknown name is an error rather than a silent
         // fall-through to the previous database.
         //
-        // Note: the active database lives on the storage engine, which is
-        // shared by every connection. `USE` is connection-level in the
-        // MySQL protocol, so a per-connection context is still needed for
-        // the semantics to be correct with two simultaneous clients —
-        // the remaining half of #5025.
+        // #5057: `USE` is connection-level in the MySQL protocol, so it
+        // also records the choice on **this engine** — the storage field is
+        // one shared value, and without the per-engine copy one connection's
+        // switch redirects another's reads.
         self.storage.write().set_current_db(db)?;
+        *self.session_db.write() = db.to_lowercase();
         Ok(ExecutorResult::empty())
     }
 

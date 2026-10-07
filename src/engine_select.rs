@@ -769,12 +769,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // resolved literals, not raw `Identifier("@name")` tokens. The
         // outer `let select = …` shadows the input parameter so the
         // rest of this function picks up the substituted version.
-        // #5057 / #5025: resolve table names against the database this
-        // statement belongs to, not against whatever `USE` another
-        // connection ran last. The storage is shared, so a stored "current
-        // database" answers for the last writer, not the asker — measured
-        // at 53.76% misdirected statements under a concurrent switch.
-        let current_db = self.storage.read().current_db();
+        // #5057 / #5025: resolve table names against the database **this
+        // connection** selected, not against whatever `USE` another
+        // connection ran last. `storage.current_db()` is a single shared
+        // value, so it answers for the last writer rather than the asker —
+        // measured at 53.76% misdirected statements under a concurrent
+        // switch. `session_db` is per engine, which is per connection.
+        let current_db = self.session_db();
 
         let select_owned;
         let select: &SelectStatement = {
@@ -3522,7 +3523,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // #4974: `storage` is a read guard we already hold; go through
             // the guard-taking helper so the rows come from this
             // connection's snapshot, not the storage-wide `current_tx_id`.
-            let rows = self.scan_for_reader_with(&**storage, table)?;
+            let rows = self.scan_for_reader_in_db(&**storage, &current_db, table)?;
             let mut page_id: u64 = 0xcbf29ce484222325;
             for &b in table.as_bytes() {
                 page_id ^= u64::from(b);
@@ -3578,7 +3579,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // Default: full table scan via storage.
         self.instrumentation.on_seq_scan_start(table);
         // #4974: same as above — guard already held, use the guard variant.
-        let rows = self.scan_for_reader_with(&**storage, table)?;
+        let rows = self.scan_for_reader_in_db(&**storage, &current_db, table)?;
         // V311-02 F-24: stable FNV-1a-ish hash of table name as synthetic page_id.
         let mut page_id: u64 = 0xcbf29ce484222325;
         for &b in table.as_bytes() {
@@ -4250,7 +4251,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     .ok()?
                     .clone();
                 // #4974: carry this connection's reader_tx into the scan.
-                let start_raw_rows = self.scan_for_reader_with(&*storage, start_bare).ok()?;
+                let start_raw_rows = self
+                    .scan_for_reader_in_db(&*storage, &current_db, start_bare)
+                    .ok()?;
                 let start_alias_owned = start_alias.clone();
                 let start_alias_for_strip = start_alias_owned.clone();
                 // V312-58 / Issue #4376 fix: apply pushdown filters
@@ -4347,7 +4350,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .iter()
                 .position(|c| c.name.eq_ignore_ascii_case(&right_col))?;
             // #4974: reader-scoped, matching the chain-start scan above.
-            let raw_cur_rows = self.scan_for_reader_with(&*storage, cur_bare).ok()?;
+            let raw_cur_rows = self
+                .scan_for_reader_in_db(&*storage, &current_db, cur_bare)
+                .ok()?;
             let _rows_before_filter = raw_cur_rows.len();
             // Build alias-prefixed column names so that
             // `eval_predicate` matches TPC-H-style predicates like
