@@ -359,7 +359,58 @@ buffer，只是把 `db` 传对），并在函数注释里写明为什么不做�
 - `cargo test -p sqlrustgo-storage` — **EXIT=0，1404 passed / 0 failed / 9 ignored**
 - `cargo test -p sqlrustgo-storage --test file_storage_db_param_5057` — 4 passed
 
-### 8.7 本次提交不包含
+### 8.7 P1-c-a（DDL）：顺带挖出一个既存缺陷 —— PK 索引查找一直失效
+
+给 `create_table` / `drop_table` 加显式 `db` 时，发现 `create_table` 登记预建
+主键索引用的是**裸表名**。我最初判断这只是一处「不一致」，查下去发现是
+**两套并存的 key 约定**：
+
+| 约定 | 成员 |
+|------|------|
+| A 套（裸表名） | `create_table` 预建索引、`scan_with_index` 查找 |
+| B 套（`scoped_key`） | `create_index`、`drop_index`、启动加载器、`rebuild_pk_indexes`、`update_pk_index` |
+
+关键在于：`rebuild_pk_indexes`（每次启动都跑）和 `update_pk_index`
+（**唯一维护索引内容的路径**）都属于 B 套。
+
+**后果**：`scan_with_index` 按 A 套查找，而 `FileStorage` 实际建出来的索引
+全在 B 套 —— 两者永不相遇。于是每次索引查找都返回
+`Index '…' not found or not usable`，调用方经
+`src/engine_select.rs:3571` 那句
+`scan_with_index not supported or failed, fall through`
+**静默回退到全表扫描**。
+
+即：**V312-85 / Issue #4625 那个 O(log N) 的 PK 查找优化，在 `FileStorage`
+上从未生效过**。功能上正确（回退兜底），性能收益为零，且因为回退把错误吃掉
+而无人察觉。
+
+**这不是本批引入的**，也不是 #5025 引入的 —— `update_pk_index` 一直写 B 套、
+`scan_with_index` 一直查 A 套，两者从未同时存在于同一次运行中。
+
+修法：把 `scan_with_index` 统一到 scoped（多数派，且是有内容维护的那套），
+与 `create_table_at` 对齐。只改 `create_table` 一半会让索引查找从「一直失败」
+变成「彻底坏掉」，因此两者必须一起改。回归测试
+`issue_5057_precreated_pk_index_is_reachable_by_its_scoped_key` 锁住它。
+
+### 8.8 本批的墙钟失败：已坐实与改动无关
+
+`cargo test -p sqlrustgo-storage` 出现 1 个失败：
+`wal_legacy::tests::test_wal_perf_1000_insert`，实测 **3.21s**，
+断言阈值 2s（`crates/storage/src/wal_legacy.rs:1473`）。
+
+用 `git stash` 回退本批改动后，在**基线**上连跑 3 次：
+
+```
+WAL 1000 INSERT (1KB): 4.413433166s  FAILED
+WAL 1000 INSERT (1KB): 2.55230525s   FAILED
+WAL 1000 INSERT (1KB): 2.419448958s  FAILED
+```
+
+基线 3/3 全挂，且**比带改动时更慢**（4.41 / 2.55 / 2.42 vs 3.21）。
+这是本机 CPU 争用下的墙钟断言，与本批改动无关，属已知问题，
+刻意未修（修它需要把墙钟断言改成结构性断言，属另一件事）。
+
+### 8.9 本次提交不包含
 
 - `create_table_in_db` / `drop_table_in_db` / `delete_in_db` /
   `delete_if_in_db` / `update_in_db` / `update_if_in_db` 的 `FileStorage` 覆写

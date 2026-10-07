@@ -57,7 +57,27 @@ struct WriteState {
     /// that requires catalog-level undo, tracked as a separate follow-up.
     tx_undo_log: Vec<UndoOp>,
     /// V311-07: Dirty table tracker - marks tables modified since last flush
-    dirty_tables: HashSet<String>,
+    ///
+    /// #5057: keyed by `(database, table)`, NOT by a bare table name.
+    ///
+    /// It used to be a `HashSet<String>` holding bare table names, and the
+    /// flush path resolved each name against `current_db` when it wrote the
+    /// file. A bare name cannot say which database it belongs to, so two
+    /// databases holding a table of the same name collapsed into ONE set
+    /// entry, and the single write went to whichever database `current_db`
+    /// happened to name:
+    ///
+    ///     d1.t <- 3 rows, d2.t <- 3 rows, current_db = d1
+    ///     flush() -> Ok(())
+    ///     d1/t.json  3 rows      <- correct
+    ///     d2/t.json  0 rows      <- 3 rows silently gone, no error
+    ///
+    /// A tuple keeps both halves and needs no separator round-trip. That
+    /// matters: `scoped_key` lowercases both halves, so parsing a
+    /// `db\u{1}table` key back apart would hand a lowercased table name to
+    /// the file-writing helpers, which build `<table>.json` from it — a
+    /// table named `T` would start being persisted as `t.json`.
+    dirty_tables: HashSet<(String, String)>,
 }
 
 impl WriteState {
@@ -1042,15 +1062,22 @@ impl FileStorage {
     }
 
     /// #5025: write side for an index file; see `table_path_in`.
-    fn index_path_for_write(&self, table_name: &str, column_name: &str) -> PathBuf {
+    /// #5057: write side for the database named explicitly; see
+    /// `table_path_for_write_in`.
+    fn index_path_for_write_in(&self, db: &str, table_name: &str, column_name: &str) -> PathBuf {
         let file = format!("{}_idx_{}.json", table_name, column_name);
-        match self.db_dir() {
+        match self.db_dir_for(db) {
             None => self.data_dir.join(file),
             Some(dir) => {
                 let _ = std::fs::create_dir_all(&dir);
                 dir.join(file)
             }
         }
+    }
+
+    fn index_path_for_write(&self, table_name: &str, column_name: &str) -> PathBuf {
+        let db = self.current_db_name();
+        self.index_path_for_write_in(&db, table_name, column_name)
     }
 
     /// Get the path for a trigger file (named after the trigger, not the table)
@@ -1314,7 +1341,19 @@ impl FileStorage {
         column_name: &str,
         index: &BPlusTree,
     ) -> std::io::Result<()> {
-        let path = self.index_path_for_write(table_name, column_name);
+        let db = self.current_db_name();
+        self.save_index_in(&db, table_name, column_name, index)
+    }
+
+    /// #5057: `save_index` for a stated database; see `table_path_in`.
+    fn save_index_in(
+        &self,
+        db: &str,
+        table_name: &str,
+        column_name: &str,
+        index: &BPlusTree,
+    ) -> std::io::Result<()> {
+        let path = self.index_path_for_write_in(db, table_name, column_name);
         let file = File::create(&path)?;
         let mut writer = BufWriter::new(file);
 
@@ -1404,11 +1443,16 @@ impl FileStorage {
         table_data: &TableData,
     ) -> std::io::Result<()> {
         let total_rows = table_data.rows.len();
+        // #5057: the bookkeeping key is scoped, so `d1.t` and `d2.t` keep
+        // separate "how many rows are on disk" counters. Sharing one
+        // counter made the second table look already-persisted and skip
+        // its write.
+        let scoped = crate::engine::scoped_key(db, table_name);
         let last_saved = *self
             .last_saved_row_count
             .lock()
             .unwrap()
-            .get(table_name)
+            .get(&scoped)
             .unwrap_or(&0);
 
         // V400-PERF-DELTA: on the very first save (or after a delete
@@ -1426,15 +1470,15 @@ impl FileStorage {
 
         // Delta-only path: append the new rows to <table>.delta.
         let new_rows = &table_data.rows[last_saved..];
-        self.append_table_delta(table_name, new_rows)?;
+        self.append_table_delta(db, table_name, new_rows)?;
         self.last_saved_row_count
             .lock()
             .unwrap()
-            .insert(table_name.to_string(), total_rows);
+            .insert(scoped, total_rows);
 
         // Periodic compaction: when delta size exceeds threshold,
         // rewrite the base snapshot and clear the delta file.
-        let delta_path = self.delta_path(table_name);
+        let delta_path = self.delta_path_in(db, table_name);
         if let Ok(meta) = std::fs::metadata(&delta_path) {
             if meta.len() > 10 * 1024 * 1024 {
                 let _ = self.save_table_full(db, table_name, table_data);
@@ -1466,11 +1510,13 @@ impl FileStorage {
         // `with_write_lock` closure, and `parking_lot::RwLock` is not
         // reentrant, so re-locking here would deadlock. Taking the
         // state as a parameter makes that obligation explicit.
+        // #5057: scoped bookkeeping key; see `save_table`.
+        let scoped = crate::engine::scoped_key(db, table_name);
         let last_saved = *self
             .last_saved_row_count
             .lock()
             .unwrap()
-            .get(table_name)
+            .get(&scoped)
             .unwrap_or(&0);
 
         if total_rows == 0 || last_saved == 0 || total_rows <= last_saved {
@@ -1478,25 +1524,25 @@ impl FileStorage {
             // handed us a window, not a snapshot, so re-derive the
             // full table under the lock. Rare relative to inserts.
             // #5025: the cache is keyed by scoped name.
-            if let Some(data) = st.tables.get(&self.tbl(table_name)) {
+            if let Some(data) = st.tables.get(&scoped) {
                 return self.save_table_full(db, table_name, data);
             }
             return Ok(());
         }
 
         // Delta-only path: append just the window we were given.
-        self.append_table_delta(table_name, &window.rows)?;
+        self.append_table_delta(db, table_name, &window.rows)?;
         self.last_saved_row_count
             .lock()
             .unwrap()
-            .insert(table_name.to_string(), total_rows);
+            .insert(scoped.clone(), total_rows);
 
         // Periodic compaction: when the delta file exceeds the
         // threshold, rewrite the base snapshot and clear the delta.
-        let delta_path = self.delta_path(table_name);
+        let delta_path = self.delta_path_in(db, table_name);
         if let Ok(meta) = std::fs::metadata(&delta_path) {
             if meta.len() > 10 * 1024 * 1024 {
-                if let Some(data) = st.tables.get(&self.tbl(table_name)) {
+                if let Some(data) = st.tables.get(&scoped) {
                     let _ = self.save_table_full(db, table_name, data);
                 }
             }
@@ -1539,11 +1585,11 @@ impl FileStorage {
 
         writer.flush()?;
         // Drop any pending deltas — they're now incorporated.
-        let _ = std::fs::remove_file(self.delta_path(table_name));
-        self.last_saved_row_count
-            .lock()
-            .unwrap()
-            .insert(table_name.to_string(), table_data.rows.len());
+        let _ = std::fs::remove_file(self.delta_path_in(db, table_name));
+        self.last_saved_row_count.lock().unwrap().insert(
+            crate::engine::scoped_key(db, table_name),
+            table_data.rows.len(),
+        );
         Ok(())
     }
 
@@ -1551,9 +1597,18 @@ impl FileStorage {
     /// JSON-line format (one row per line). Lines are chosen over
     /// bincode to keep the delta file human-inspectable and
     /// dependency-free. Each line is `serde_json::to_string(row)`.
-    fn append_table_delta(&self, table_name: &str, rows: &[Vec<Value>]) -> std::io::Result<()> {
+    fn append_table_delta(
+        &self,
+        db: &str,
+        table_name: &str,
+        rows: &[Vec<Value>],
+    ) -> std::io::Result<()> {
         use std::io::Write;
-        let path = self.delta_path(table_name);
+        // #5057: the delta file follows the database, like the table it
+        // extends. Resolving it through `current_db` sent two databases'
+        // appended rows into one `<table>.delta`, which is then replayed
+        // into whichever table the loader finds under that name.
+        let path = self.delta_path_in(db, table_name);
         let file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -1593,17 +1648,20 @@ impl FileStorage {
         Ok(all_rows)
     }
 
-    /// V400-PERF-DELTA: get the on-disk delta path for a table.
+    /// #5025 / #5057: the on-disk delta path for a table in a named
+    /// database.
+    ///
     /// #5025: the delta file must follow the same scoping as the table, or
     /// two databases with a table of the same name would append to one
     /// delta file and corrupt each other's rows.
-    fn delta_path(&self, table_name: &str) -> std::path::PathBuf {
-        let db = self.current_db_name();
-        self.delta_path_in(&db, table_name)
-    }
-
-    /// #5025: `delta_path` with the database named explicitly; see
-    /// `table_path_in`.
+    ///
+    /// #5057: there used to be a `delta_path(table_name)` that resolved
+    /// through `current_db`, and every write path called it — the same
+    /// shape `table_path_for_write` had. A helper that picks the database
+    /// from a process-wide setting lets a write that already resolved its
+    /// own database's rows append them to the *active* database's delta
+    /// file. It is removed rather than left dead, because an entry point
+    /// that cannot name its database is how this bug comes back.
     fn delta_path_in(&self, db: &str, table_name: &str) -> std::path::PathBuf {
         let file = format!("{}.delta", table_name);
         match self.db_dir_for(db) {
@@ -1656,24 +1714,41 @@ impl FileStorage {
 
     /// Insert a new table
     pub fn insert_table(&self, name: String, table_data: TableData) -> std::io::Result<()> {
-        // #5057: read the database once, outside the state lock, and use it
-        // for both the cache key and the on-disk path. Reading it inside
-        // the closure would take a second lock while `write_state` is held.
         let db = self.current_db_name();
+        self.insert_table_in(&db, name, table_data)
+    }
+
+    /// #5057: [`insert_table`](Self::insert_table) in a stated database.
+    fn insert_table_in(
+        &self,
+        db: &str,
+        name: String,
+        table_data: TableData,
+    ) -> std::io::Result<()> {
+        // #5057: the database is read once, outside the state lock, and
+        // used for both the cache key and the on-disk path. Reading it
+        // inside the closure would take a second lock while `write_state`
+        // is held.
         Self::with_write_lock(self, |s| {
             // #5025: scope the cache key, but keep the bare name for the
             // on-disk file and `TableData.info.name`.
-            s.tables.insert(self.tbl_in(&db, &name), table_data.clone());
-            self.save_table(&db, s, &name, &table_data)
+            s.tables.insert(self.tbl_in(db, &name), table_data.clone());
+            self.save_table(db, s, &name, &table_data)
         })
     }
 
     /// Drop (delete) a table
     pub fn drop_table(&self, name: &str) -> std::io::Result<()> {
+        let db = self.current_db_name();
+        self.drop_table_in(&db, name)
+    }
+
+    /// #5057: [`drop_table`](Self::drop_table) in a stated database.
+    pub fn drop_table_in(&self, db: &str, name: &str) -> std::io::Result<()> {
         Self::with_write_lock(self, |s| {
-            let key = self.tbl(name);
+            let key = self.tbl_in(db, name);
             s.tables.remove(&key);
-            let path = self.table_path(name);
+            let path = self.table_path_in(db, name);
             if path.exists() {
                 std::fs::remove_file(path)?;
             }
@@ -1711,16 +1786,20 @@ impl FileStorage {
         // always done this; the inherent version did not, which is part of
         // why the two copies of this loop drifted apart.
         self.flush_all_buffers().map_err(Self::io_err_from_sql)?;
-        let db = self.current_db_name();
         let pending = self.drain_dirty_windowed();
         // Lock released. `save_table_window` / `save_table_full` only
         // touch `data_dir`, `last_saved_row_count` and the filesystem.
-        for (name, window, total) in &pending {
+        //
+        // #5057: `db` is the entry's OWN database, carried out of the dirty
+        // set. It used to be `self.current_db_name()`, one value for the
+        // whole loop — so every dirty table was written under whichever
+        // database was active at flush time.
+        for (db, name, window, total) in &pending {
             // #4951: `save_table_window` needs `&WriteState` but must not
             // re-acquire the lock itself (non-reentrant). Hold the read
             // guard across the call. It only reads `tables` to decide
             // whether a full re-write is needed.
-            self.with_read_lock(|st| self.save_table_window(&db, st, name, window, *total))?;
+            self.with_read_lock(|st| self.save_table_window(db, st, name, window, *total))?;
         }
 
         // #5048: persist the change log only after the data it describes
@@ -1756,22 +1835,31 @@ impl FileStorage {
     /// `b2_flush_dirty_tables/5tables_*` — the copy cost more than the
     /// lock it avoided.
     ///
-    /// Returns `(table_name, window, total_rows)` per dirty table.
+    /// Returns `(database, table_name, window, total_rows)` per dirty table.
     /// `save_table_window` re-derives the full table itself on the rare
     /// cold-start / shrink / compaction branches.
-    fn drain_dirty_windowed(&self) -> Vec<(String, TableData, usize)> {
+    ///
+    /// #5057: the database comes back out of the set, not from `current_db`.
+    /// Callers used to do `let db = self.current_db_name()` and hand that
+    /// same value to every entry, which is how one table's rows ended up
+    /// written into another table's file. Now each entry carries its own.
+    fn drain_dirty_windowed(&self) -> Vec<(String, String, TableData, usize)> {
         Self::with_write_lock(self, |s| {
             std::mem::take(&mut s.dirty_tables)
                 .into_iter()
-                .filter_map(|name| {
-                    // #5025: scoped cache key.
-                    let data = s.tables.get(&self.tbl(&name))?;
+                .filter_map(|(db, name)| {
+                    // #5025: scoped cache key, now built from the entry's
+                    // OWN database instead of `self.tbl(&name)` (which read
+                    // `current_db` and so could only ever address the active
+                    // database's copy).
+                    let scoped = crate::engine::scoped_key(&db, &name);
+                    let data = s.tables.get(&scoped)?;
                     let total = data.rows.len();
                     let last_saved = *self
                         .last_saved_row_count
                         .lock()
                         .unwrap()
-                        .get(&name)
+                        .get(&scoped)
                         .unwrap_or(&0);
                     // Shrink: a DELETE/UPDATE reduced the row count, so
                     // the on-disk set no longer matches and the full
@@ -1779,7 +1867,7 @@ impl FileStorage {
                     // would take that branch anyway, but the window we
                     // hand it is meaningless here, so let it re-derive.
                     if last_saved > total {
-                        return Some((name, TableData::snapshot_from(data, total), total));
+                        return Some((db, name, TableData::snapshot_from(data, total), total));
                     }
                     // Nothing new to write. `flush_all_buffers` runs first
                     // in both callers and persists buffered inserts via
@@ -1792,7 +1880,7 @@ impl FileStorage {
                     if last_saved == total {
                         return None;
                     }
-                    Some((name, TableData::snapshot_from(data, last_saved), total))
+                    Some((db, name, TableData::snapshot_from(data, last_saved), total))
                 })
                 .collect()
         })
@@ -4336,7 +4424,7 @@ impl FileStorage {
         };
         // V311-07: Mark table dirty for optimized flush
         Self::with_write_lock(self, |s| {
-            s.dirty_tables.insert(table.to_string());
+            s.dirty_tables.insert((db.to_string(), table.to_string()));
         });
         // #5048: record the change so an incremental backup can be
         // produced from this data directory.
@@ -4519,38 +4607,52 @@ impl FileStorage {
         }
     }
 
+    /// #5057: push every database's buffered inserts into its `tables`
+    /// cache and persist them under their OWN database directory.
+    ///
+    /// It used to walk only the ACTIVE database's buffer, despite the
+    /// name. Two consequences, both silent:
+    ///
+    /// 1. Rows written into any database other than the active one stayed
+    ///    in `insert_buffer` and never reached disk. A `flush()` from `d1`
+    ///    persisted `d1` and left `d2`'s rows nowhere.
+    /// 2. Those rows were also invisible to `drain_dirty_windowed`, which
+    ///    reads `tables.rows` — so the dirty marker for `d2.t` was drained,
+    ///    found an empty table, and skipped. One `flush()` and the rows
+    ///    were gone with `Ok(())` returned.
+    ///
+    /// #5057 made the reach possible: `dirty_tables` and
+    /// `last_saved_row_count` are keyed by `(db, table)`, so a drained
+    /// entry can say which directory it belongs in. Doing this before that
+    /// would have written each database's rows under the active one — the
+    /// worse failure, and the reason the limitation was documented rather
+    /// than half-fixed.
+    ///
+    /// Snapshot the table list under the lock; then drop the guard before
+    /// re-acquiring per table (avoids holding the lock for the duration
+    /// of all table saves).
+    ///
+    /// `insert_buffer` is keyed by `scoped_key(db, table)`, so the
+    /// database is recoverable from the key and every buffered table can
+    /// be flushed exactly once. A table may have several keys? No — one
+    /// key per (db, table) — but dedup anyway so a repeated flush cannot
+    /// persist the same window twice.
     pub fn flush_all_buffers(&self) -> SqlResult<()> {
-        // Snapshot the table list under the lock; then drop the guard
-        // before re-acquiring per table (avoids holding the lock for
-        // the duration of all table saves).
-        // #5025: the buffer keys are scoped, and `flush_buffer` resolves
-        // against the database it is handed, so strip the prefix back off
-        // and pass both halves rather than the bare name.
-        //
-        // #5057: this still flushes only the ACTIVE database's buffer, which
-        // is what it has always done — despite the name. Making it reach every
-        // database is blocked on `dirty_tables`, which is keyed by a MIXTURE
-        // of bare and scoped table names: `insert` inserts the bare name
-        // (file_storage.rs, the insert path) while the delete/update paths
-        // insert `scoped_key(...)`. Until that set is scoped consistently, a
-        // cross-database flush cannot tell which database a dirty table
-        // belongs to, and the file would be written under the wrong
-        // directory — worse than skipping it. Deliberately left as it was
-        // rather than half-fixed. See
-        // `SESSION_CONTEXT_5057_RECON_2026-10-07.md` §8.
-        let db = self.current_db_name();
-        // `scoped_key(db, "")` is exactly `"<db><SEP>"` — the key prefix for
-        // this database. Deriving it that way rather than spelling the
-        // separator out again is the point: two hand-written spellings of a
-        // separator is how they drift apart.
-        let prefix = crate::engine::scoped_key(&db, "");
-        let tables: Vec<String> = Self::with_write_lock(self, |s| {
-            s.insert_buffer
-                .keys()
-                .map(|k| k.strip_prefix(&prefix).unwrap_or(k).to_string())
-                .collect()
+        use std::collections::HashSet;
+        let tables: Vec<(String, String)> = Self::with_write_lock(self, |s| {
+            let mut seen: HashSet<(String, String)> = HashSet::new();
+            let mut out = Vec::new();
+            for key in s.insert_buffer.keys() {
+                if let Some((db, table)) = crate::engine::split_scoped_key(key) {
+                    let entry = (db.to_string(), table.to_string());
+                    if seen.insert(entry.clone()) {
+                        out.push(entry);
+                    }
+                }
+            }
+            out
         });
-        for table in tables {
+        for (db, table) in tables {
             self.flush_buffer(&db, &table)?;
         }
         Ok(())
@@ -4584,6 +4686,569 @@ impl FileStorage {
             }
             s.insert_buffer.clear();
         });
+    }
+
+    /// #5057: [`update_if`](Self::update_if) against a stated database; see
+    /// [`delete_at`](Self::delete_at).
+    fn update_if_at(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        // #5025: resolve the key before the mutable borrow.
+        //
+        // #5055: as in `update`, the scan is scoped so the `&mut` on
+        // `write_state` is released before the WAL append.
+        //
+        // #5060: `insert_buffer` rows are updated too.
+        let key = self.tbl_in(db, table);
+        let wal_on = self.wal_enabled();
+        let watching = self.change_log_enabled();
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let assignments = mutation.assignments().to_vec();
+        let match_row = |record: &Record| filter(record);
+        let apply = |record: &mut Record| {
+            for &(col_idx, ref new_val) in &assignments {
+                if col_idx < record.len() {
+                    record[col_idx] = new_val.clone();
+                }
+            }
+        };
+
+        let (count, updated) = {
+            let st = self.write_state.get_mut();
+            let touched = st.mutate_matching(&key, match_row, apply);
+            for (pre, post) in &touched {
+                if in_tx {
+                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
+                        table: table.to_string(),
+                        post: post.clone(),
+                        original: pre.clone(),
+                    });
+                }
+            }
+            if !touched.is_empty() {
+                st.dirty_tables.insert((db.to_string(), table.to_string()));
+            }
+            (touched.len(), touched)
+        };
+
+        if watching {
+            for (_, post) in &updated {
+                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
+            }
+        }
+        if wal_on {
+            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
+            self.wal_append(self.wal_update_entries(table, &posts))?;
+        }
+        Ok(count)
+    }
+
+    /// #5057: [`update`](Self::update) against a stated database; see
+    /// [`delete_at`](Self::delete_at).
+    fn update_at(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        // #4951: `&mut self`, so `get_mut` yields the guarded state with
+        // no lock. `tables` and `tx_undo_log` are separate fields of the
+        // same struct, so the borrow checker can hand out both here —
+        // the old code got them through one `&mut FileStorage`.
+        //
+        // #5055: the whole scan is scoped to a block so the `&mut` it
+        // takes on `write_state` is released before the WAL append. An
+        // append inside this scope would not compile *and* would hold
+        // the storage write lock across a file write.
+        //
+        // #5060: the rows to update may be in `insert_buffer` as well as
+        // `tables`. `mutate_matching` reaches both, so an autocommit
+        // INSERT followed by an UPDATE now affects 1 row instead of 0.
+        let wal_on = self.wal_enabled();
+        let watching = self.change_log_enabled();
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let key = self.tbl_in(db, table);
+        let match_row = |record: &Record| {
+            filters.is_empty()
+                || filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
+        };
+        let apply = |record: &mut Record| {
+            for &(col_idx, ref new_val) in updates {
+                if col_idx < record.len() {
+                    record[col_idx] = new_val.clone();
+                }
+            }
+        };
+
+        let (count, updated) = {
+            let st = self.write_state.get_mut();
+            // Issue #4581 / B-track case 35-36: snapshot pre-images so
+            // ROLLBACK can restore them. `mutate_matching` returns them
+            // alongside the post-images.
+            let touched = st.mutate_matching(&key, match_row, apply);
+            for (pre, post) in &touched {
+                if in_tx {
+                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
+                        table: table.to_string(),
+                        post: post.clone(),
+                        original: pre.clone(),
+                    });
+                }
+            }
+            // V311-07: Mark dirty instead of immediate persist
+            if !touched.is_empty() {
+                st.dirty_tables.insert((db.to_string(), table.to_string()));
+            }
+            (touched.len(), touched)
+        };
+
+        // #5048: record the update after the borrow is released —
+        // `record_change` takes the change-log lock.
+        if watching {
+            for (_, post) in &updated {
+                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
+            }
+        }
+        // #5055: outside the `write_state` borrow on purpose — this does
+        // file I/O.
+        if wal_on {
+            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
+            self.wal_append(self.wal_update_entries(table, &posts))?;
+        }
+        Ok(count)
+    }
+
+    /// #5057: [`delete_if`](Self::delete_if) against a stated database;
+    /// see [`delete_at`](Self::delete_at).
+    fn delete_if_at(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        // #5048 / #5055: the rows being removed may be in `insert_buffer`
+        // or in `tables`, and both the change log and the WAL need that
+        // same set. All of it happens in one critical section — reading
+        // under one guard and retaining under another leaves a window
+        // where a concurrent INSERT matches the filter, is silently
+        // removed, and is missing from both logs, so a delta replays to
+        // a row the live table no longer has.
+        let watching = self.change_log_enabled();
+        let wal_on = self.wal_enabled();
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let scoped = crate::engine::scoped_key(db, table);
+        let table_name = table.to_string();
+        let match_row = |row: &Record| filter(row);
+
+        let removed_rows = Self::with_write_lock(self, |s| -> Vec<Record> {
+            if in_tx {
+                if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                    for row in buffered.iter().filter(|r| match_row(r)) {
+                        s.tx_undo_log.push(UndoOp::BufferedDelete {
+                            table: table_name.clone(),
+                            row: row.clone(),
+                        });
+                    }
+                }
+            }
+            let removed = s.remove_matching(&scoped, match_row);
+            if !removed.is_empty() {
+                s.dirty_tables.insert((db.to_string(), table_name.clone()));
+            }
+            removed
+        });
+
+        if watching {
+            for row in &removed_rows {
+                self.record_change(table, ChangeOp::Delete, key_of(row), None);
+            }
+        }
+        if wal_on {
+            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+        }
+        Ok(removed_rows.len())
+    }
+
+    /// #5057: [`delete_collect_pks`](Self::delete_collect_pks) against a
+    /// stated database; see [`delete_at`](Self::delete_at).
+    fn delete_collect_pks_at(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        // C.1.2: see `delete` for rationale — wrap the entire body in
+        // `with_write_lock` because every step touches the protected
+        // fields. Splitting would mean multiple lock acquisitions
+        // and risk of torn state.
+        Self::with_write_lock(self, |s| {
+            let in_tx = self
+                .current_tx_id
+                .load(std::sync::atomic::Ordering::Acquire)
+                != 0;
+
+            // Snapshot rows for ROLLBACK (same as `delete`).
+            let removed_pks: Vec<Value> = if let Some(ref mut data) =
+                s.tables.get_mut(&crate::engine::scoped_key(db, table))
+            {
+                let original_len = data.rows.len();
+
+                // Capture pre-delete undo log entries (same as `delete`).
+                if in_tx {
+                    if filters.is_empty() {
+                        let snap = data.rows.clone();
+                        s.tx_undo_log.push(UndoOp::DeleteAll {
+                            table: table.to_string(),
+                            original_rows: snap,
+                        });
+                    } else {
+                        for (idx, row) in data.rows.iter().enumerate().rev() {
+                            let matches = filters
+                                .iter()
+                                .enumerate()
+                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
+                            if matches {
+                                s.tx_undo_log.push(UndoOp::DeleteRow {
+                                    table: table.to_string(),
+                                    row_idx: idx,
+                                    original: row.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Collect PKs of rows that match the filter (before deletion).
+                let pks: Vec<Value> = if filters.is_empty() {
+                    // Full table wipe: caller (MVCC) handles by tombstoning
+                    // all visible rows. Return empty to signal that.
+                    Vec::new()
+                } else {
+                    data.rows
+                        .iter()
+                        .filter(|row| {
+                            filters
+                                .iter()
+                                .enumerate()
+                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                        })
+                        .filter_map(|row| row.first().cloned()) // PK = column 0
+                        .collect()
+                };
+
+                // Now perform the actual deletion (same logic as `delete`).
+                if filters.is_empty() {
+                    data.rows.clear();
+                } else {
+                    data.rows.retain(|row| {
+                        !filters
+                            .iter()
+                            .enumerate()
+                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                    });
+                }
+                debug_assert_eq!(pks.len(), original_len - data.rows.len());
+                pks
+            } else {
+                Vec::new()
+            };
+
+            // Mark dirty if anything was removed.
+            if !removed_pks.is_empty() || filters.is_empty() {
+                s.dirty_tables.insert((db.to_string(), table.to_string()));
+            }
+
+            // #4960: rows inserted during a transaction live in
+            // `insert_buffer` until the buffer threshold promotes them
+            // into `tables.rows`. `removed_pks` above is built solely from
+            // `tables.rows`, so for a table whose rows are all still
+            // buffered it comes back EMPTY — the delete visibly "succeeds"
+            // while reporting zero rows removed. ROLLBACK replays its undo
+            // log through this method, so a transaction's INSERTs were
+            // deleted from the buffer and then reported as not deleted,
+            // and the caller's tombstoning (driven by `removed_pks`) never
+            // ran either. That is why ROLLBACK appeared to do nothing.
+            //
+            // Count the buffered rows we are about to drop and report them
+            // too, so the caller tombstones the same set it actually
+            // removed. The deletion itself already happened just above.
+            let mut removed_pks = removed_pks;
+            if !filters.is_empty() {
+                if let Some(buffered) = s.insert_buffer.get(&crate::engine::scoped_key(db, table)) {
+                    for row in buffered {
+                        if filters
+                            .iter()
+                            .enumerate()
+                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                        {
+                            if let Some(pk) = row.first().cloned() {
+                                if !removed_pks.contains(&pk) {
+                                    removed_pks.push(pk);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // After full table delete, clear any buffered inserts.
+            // For partial delete, strip matching rows from insert_buffer.
+            if filters.is_empty() {
+                s.insert_buffer
+                    .remove(&crate::engine::scoped_key(db, table));
+            } else if let Some(buffered) = s
+                .insert_buffer
+                .get_mut(&crate::engine::scoped_key(db, table))
+            {
+                buffered.retain(|row| {
+                    !filters
+                        .iter()
+                        .enumerate()
+                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                });
+            }
+            Ok(removed_pks)
+        })
+    }
+
+    /// #5057: [`delete`](Self::delete) against a stated database.
+    ///
+    /// The shared storage holds one `current_db`, so the database-less form
+    /// answers for whichever connection last selected one. Every caller that
+    /// knows its own database should use this instead.
+    fn delete_at(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        // C.1.2: the entire body is wrapped in `with_write_lock` because
+        // every step touches {tables, dirty_tables, tx_undo_log,
+        // insert_buffer}. Splitting would mean multiple lock acquisitions
+        // and risk of observing torn state between them.
+        //
+        // #5060: the rows being deleted may be in `insert_buffer` rather
+        // than `tables`, and both are removed here, in one critical
+        // section. The old code read `tables` for the count, then
+        // separately stripped the buffer — so a row that was still
+        // buffered was deleted from the buffer but **not counted**, and
+        // because the count was 0 `dirty_tables` was never set, so the
+        // deletion was never persisted. The row disappeared from memory
+        // and came back on the next open.
+        let wal_on = self.wal_enabled();
+        let watching = self.change_log_enabled();
+        let scoped = crate::engine::scoped_key(db, table);
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let table_name = table.to_string();
+        let match_row = |row: &Record| {
+            filters.is_empty()
+                || filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+        };
+
+        let removed_rows = Self::with_write_lock(self, |s| -> SqlResult<Vec<Record>> {
+            // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
+            // BEFORE the removal, while the rows still exist.
+            if in_tx {
+                if let Some(data) = s.tables.get(&scoped) {
+                    if filters.is_empty() {
+                        s.tx_undo_log.push(UndoOp::DeleteAll {
+                            table: table_name.clone(),
+                            original_rows: data.rows.clone(),
+                        });
+                    } else {
+                        for (idx, row) in data.rows.iter().enumerate().rev() {
+                            if match_row(row) {
+                                s.tx_undo_log.push(UndoOp::DeleteRow {
+                                    table: table_name.clone(),
+                                    row_idx: idx,
+                                    original: row.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+                // #5059: buffered rows have no index in `tables`, so they
+                // are undone by value.
+                if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                    for row in buffered.iter().filter(|r| match_row(r)) {
+                        s.tx_undo_log.push(UndoOp::BufferedDelete {
+                            table: table_name.clone(),
+                            row: row.clone(),
+                        });
+                    }
+                }
+            }
+
+            let removed = s.remove_matching(&scoped, match_row);
+
+            // V311-07: Mark dirty instead of immediate persist. The old
+            // condition keyed off the tables-only count, which missed
+            // buffered deletions entirely.
+            if !removed.is_empty() || filters.is_empty() {
+                s.dirty_tables.insert((db.to_string(), table_name.clone()));
+            }
+            Ok(removed)
+        })?;
+
+        // #5048: record the deletion. `filters` is already positional
+        // against the row's leading columns — exactly what a change
+        // record's `key` is — so the same slice identifies the rows.
+        // An empty filter means a full-table wipe; recording that once
+        // with an empty key keeps the log honest without expanding it
+        // into one entry per row.
+        if watching && !filters.is_empty() {
+            self.record_change(table, ChangeOp::Delete, filters.to_vec(), None);
+        }
+
+        // #5055: outside the storage write lock on purpose — this does
+        // file I/O.
+        if wal_on {
+            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+        }
+        Ok(removed_rows.len())
+    }
+
+    /// #5057: [`scan_with_index`](Self::scan_with_index) against a stated
+    /// database.
+    ///
+    /// The index lookup here used a BARE table name while every index
+    /// producer in this file — `create_index`, `rebuild_pk_indexes` (which
+    /// runs on every startup), and `update_pk_index` (the only path that
+    /// keeps index contents current) — keys by `scoped_key(db, table)`.
+    /// The two never met, so the V312-85 / #4625 O(log N) PK lookup could
+    /// not find any index `FileStorage` had actually built; callers reached
+    /// it through the `scan_with_index not supported or failed, fall
+    /// through` branch in `engine_select.rs` and silently paid a full
+    /// table scan instead. Same key convention as `create_table_at`, now
+    /// that it too is scoped.
+    fn scan_with_index_in(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        let indexes = self.indexes.read().unwrap();
+
+        let index_key = (crate::engine::scoped_key(db, table), index_name.to_string());
+        if let Some(index) = indexes.get(&index_key) {
+            // Convert Value to i64 index key
+            if let Some(search_key) = key.to_index_key() {
+                // Find all row IDs with this key
+                let row_ids = index.search_all(search_key);
+
+                // #4951: single read guard over tables + insert_buffer
+                // so the table and the buffer are read at one instant.
+                let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
+                    st.tables.get(&self.tbl_in(db, table)).map(|data| {
+                        // Collect matching rows
+                        let mut results = Vec::new();
+                        for &row_id in &row_ids {
+                            if (row_id as usize) < data.rows.len() {
+                                results.push(data.rows[row_id as usize].clone());
+                            }
+                        }
+                        // Also check insert_buffer
+                        if let Some(buffered) =
+                            st.insert_buffer.get(&crate::engine::scoped_key(db, table))
+                        {
+                            for record in buffered.iter() {
+                                // Check if this buffered row matches the key
+                                if let Some(col_idx) =
+                                    data.info.columns.iter().position(|c| c.name == index_name)
+                                {
+                                    if record
+                                        .get(col_idx)
+                                        .map(|v| v.to_index_key() == Some(search_key))
+                                        .unwrap_or(false)
+                                    {
+                                        results.push(record.clone());
+                                    }
+                                }
+                            }
+                        }
+                        Ok(results)
+                    })
+                });
+                if let Some(res) = collected {
+                    return res;
+                }
+            }
+        }
+        // Index not found or not usable - fall back to full scan with filter
+        let mut rows = self.scan(table)?;
+        // Filter rows by the key value
+        if let Some(col_idx) = self.with_table(table, |t| {
+            t.and_then(|table_data| {
+                table_data
+                    .info
+                    .columns
+                    .iter()
+                    .position(|c| c.name == index_name)
+            })
+        }) {
+            rows.retain(|row| row.get(col_idx).map(|v| v == key).unwrap_or(false));
+            return Ok(rows);
+        }
+        Err(SqlError::ExecutionError(format!(
+            "Index '{}' on table '{}' not found or not usable",
+            index_name, table
+        )))
+    }
+
+    fn create_table_at(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        let table_data = TableData {
+            info: info.clone(),
+            rows: vec![],
+        };
+        self.insert_table_in(db, info.name.clone(), table_data)
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        // V400-MVCC-PKFAST: pre-create the PK B+Tree index so PK
+        // lookups are O(log N) from the very first insert. Without
+        // this, every PK lookup would have to wait for an explicit
+        // `CREATE INDEX` (which production workloads never issue).
+        //
+        // #5057: the in-memory index key is scoped, like every other
+        // index key in this file (`create_index`, `drop_index`, the
+        // startup loader and `update_pk_index` all use `scoped_key`).
+        // This one site used the bare table name, so the index
+        // `CREATE TABLE` pre-created was unreachable from every lookup:
+        // a dead entry that happened to occupy memory.
+        if let Some(pk_col) = info.columns.iter().find(|c| c.primary_key) {
+            let pk_col_name = pk_col.name.clone();
+            let pk_col_idx = info
+                .columns
+                .iter()
+                .position(|c| c.name == pk_col_name)
+                .unwrap();
+            let empty_index = crate::bplus_tree::BPlusTree::new();
+            self.save_index_in(db, &info.name, &pk_col_name, &empty_index)
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            if let Ok(mut indexes) = self.indexes.write() {
+                indexes.insert(
+                    (
+                        crate::engine::scoped_key(db, &info.name),
+                        pk_col_name.clone(),
+                    ),
+                    empty_index,
+                );
+            }
+            let _ = pk_col_idx; // silence unused if column moved
+        }
+        Ok(())
     }
 
     /// v3.10.0 Issue #3703: returns pre-partitioned chunks so the caller
@@ -4878,10 +5543,8 @@ impl StorageEngine for FileStorage {
                         )) {
                             if row_idx < data.rows.len() {
                                 data.rows[row_idx] = original;
-                                s.dirty_tables.insert(crate::engine::scoped_key(
-                                    &self.current_db.read().unwrap(),
-                                    &table,
-                                ));
+                                s.dirty_tables
+                                    .insert((self.current_db.read().unwrap().clone(), table));
                             }
                         }
                     }
@@ -4896,10 +5559,8 @@ impl StorageEngine for FileStorage {
                         )) {
                             let idx = row_idx.min(data.rows.len());
                             data.rows.insert(idx, original);
-                            s.dirty_tables.insert(crate::engine::scoped_key(
-                                &self.current_db.read().unwrap(),
-                                &table,
-                            ));
+                            s.dirty_tables
+                                .insert((self.current_db.read().unwrap().clone(), table));
                         }
                     }
                     UndoOp::DeleteAll {
@@ -4911,10 +5572,8 @@ impl StorageEngine for FileStorage {
                             &table,
                         )) {
                             data.rows = original_rows;
-                            s.dirty_tables.insert(crate::engine::scoped_key(
-                                &self.current_db.read().unwrap(),
-                                &table,
-                            ));
+                            s.dirty_tables
+                                .insert((self.current_db.read().unwrap().clone(), table));
                         }
                     }
                     // #5055 / #5060: the row was inserted by *this*
@@ -5067,76 +5726,8 @@ impl StorageEngine for FileStorage {
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
-        // V312-85 / Issue #4625: Use B+ Tree index for equality lookup
-        // The index_name is the column name in FileStorage's (table, column) key format
-        let indexes = self.indexes.read().unwrap();
-
-        // Try to find the index - index_name is the column name
-        let index_key = (table.to_string(), index_name.to_string());
-        if let Some(index) = indexes.get(&index_key) {
-            // Convert Value to i64 index key
-            if let Some(search_key) = key.to_index_key() {
-                // Find all row IDs with this key
-                let row_ids = index.search_all(search_key);
-
-                // #4951: single read guard over tables + insert_buffer
-                // so the table and the buffer are read at one instant.
-                let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
-                    st.tables.get(&self.tbl(table)).map(|data| {
-                        // Collect matching rows
-                        let mut results = Vec::new();
-                        for &row_id in &row_ids {
-                            if (row_id as usize) < data.rows.len() {
-                                results.push(data.rows[row_id as usize].clone());
-                            }
-                        }
-                        // Also check insert_buffer
-                        if let Some(buffered) = st.insert_buffer.get(&crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
-                            table,
-                        )) {
-                            for record in buffered.iter() {
-                                // Check if this buffered row matches the key
-                                if let Some(col_idx) =
-                                    data.info.columns.iter().position(|c| c.name == index_name)
-                                {
-                                    if record
-                                        .get(col_idx)
-                                        .map(|v| v.to_index_key() == Some(search_key))
-                                        .unwrap_or(false)
-                                    {
-                                        results.push(record.clone());
-                                    }
-                                }
-                            }
-                        }
-                        Ok(results)
-                    })
-                });
-                if let Some(res) = collected {
-                    return res;
-                }
-            }
-        }
-        // Index not found or not usable - fall back to full scan with filter
-        let mut rows = self.scan(table)?;
-        // Filter rows by the key value
-        if let Some(col_idx) = self.with_table(table, |t| {
-            t.and_then(|table_data| {
-                table_data
-                    .info
-                    .columns
-                    .iter()
-                    .position(|c| c.name == index_name)
-            })
-        }) {
-            rows.retain(|row| row.get(col_idx).map(|v| v == key).unwrap_or(false));
-            return Ok(rows);
-        }
-        Err(SqlError::ExecutionError(format!(
-            "Index '{}' on table '{}' not found or not usable",
-            index_name, table
-        )))
+        let db = self.current_db_name();
+        self.scan_with_index_in(&db, table, index_name, key)
     }
 
     fn parallel_scan(
@@ -5220,96 +5811,13 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        // C.1.2: the entire body is wrapped in `with_write_lock` because
-        // every step touches {tables, dirty_tables, tx_undo_log,
-        // insert_buffer}. Splitting would mean multiple lock acquisitions
-        // and risk of observing torn state between them.
-        //
-        // #5060: the rows being deleted may be in `insert_buffer` rather
-        // than `tables`, and both are removed here, in one critical
-        // section. The old code read `tables` for the count, then
-        // separately stripped the buffer — so a row that was still
-        // buffered was deleted from the buffer but **not counted**, and
-        // because the count was 0 `dirty_tables` was never set, so the
-        // deletion was never persisted. The row disappeared from memory
-        // and came back on the next open.
-        let wal_on = self.wal_enabled();
-        let watching = self.change_log_enabled();
-        let scoped = crate::engine::scoped_key(&self.current_db.read().unwrap(), table);
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        let table_name = table.to_string();
-        let match_row = |row: &Record| {
-            filters.is_empty()
-                || filters
-                    .iter()
-                    .enumerate()
-                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-        };
+        let db = self.current_db_name();
+        self.delete_at(&db, table, filters)
+    }
 
-        let removed_rows = Self::with_write_lock(self, |s| -> SqlResult<Vec<Record>> {
-            // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
-            // BEFORE the removal, while the rows still exist.
-            if in_tx {
-                if let Some(data) = s.tables.get(&scoped) {
-                    if filters.is_empty() {
-                        s.tx_undo_log.push(UndoOp::DeleteAll {
-                            table: table_name.clone(),
-                            original_rows: data.rows.clone(),
-                        });
-                    } else {
-                        for (idx, row) in data.rows.iter().enumerate().rev() {
-                            if match_row(row) {
-                                s.tx_undo_log.push(UndoOp::DeleteRow {
-                                    table: table_name.clone(),
-                                    row_idx: idx,
-                                    original: row.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-                // #5059: buffered rows have no index in `tables`, so they
-                // are undone by value.
-                if let Some(buffered) = s.insert_buffer.get(&scoped) {
-                    for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(UndoOp::BufferedDelete {
-                            table: table_name.clone(),
-                            row: row.clone(),
-                        });
-                    }
-                }
-            }
-
-            let removed = s.remove_matching(&scoped, match_row);
-
-            // V311-07: Mark dirty instead of immediate persist. The old
-            // condition keyed off the tables-only count, which missed
-            // buffered deletions entirely.
-            if !removed.is_empty() || filters.is_empty() {
-                s.dirty_tables.insert(table_name.clone());
-            }
-            Ok(removed)
-        })?;
-
-        // #5048: record the deletion. `filters` is already positional
-        // against the row's leading columns — exactly what a change
-        // record's `key` is — so the same slice identifies the rows.
-        // An empty filter means a full-table wipe; recording that once
-        // with an empty key keeps the log honest without expanding it
-        // into one entry per row.
-        if watching && !filters.is_empty() {
-            self.record_change(table, ChangeOp::Delete, filters.to_vec(), None);
-        }
-
-        // #5055: outside the storage write lock on purpose — this does
-        // file I/O.
-        if wal_on {
-            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
-        }
-        Ok(removed_rows.len())
+    /// #5057: [`delete`](Self::delete) against a stated database.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.delete_at(db, table, filters)
     }
 
     /// Phase B Step 4.1: like `delete`, but returns the list of
@@ -5319,190 +5827,28 @@ impl StorageEngine for FileStorage {
     /// that by tombstoning all visible rows (correct semantics for
     /// "delete everything").
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
-        // C.1.2: see `delete` for rationale — wrap the entire body in
-        // `with_write_lock` because every step touches the protected
-        // fields. Splitting would mean multiple lock acquisitions
-        // and risk of torn state.
-        Self::with_write_lock(self, |s| {
-            let in_tx = self
-                .current_tx_id
-                .load(std::sync::atomic::Ordering::Acquire)
-                != 0;
+        let db = self.current_db_name();
+        self.delete_collect_pks_at(&db, table, filters)
+    }
 
-            // Snapshot rows for ROLLBACK (same as `delete`).
-            let removed_pks: Vec<Value> = if let Some(ref mut data) = s.tables.get_mut(
-                &crate::engine::scoped_key(&self.current_db.read().unwrap(), table),
-            ) {
-                let original_len = data.rows.len();
-
-                // Capture pre-delete undo log entries (same as `delete`).
-                if in_tx {
-                    if filters.is_empty() {
-                        let snap = data.rows.clone();
-                        s.tx_undo_log.push(UndoOp::DeleteAll {
-                            table: table.to_string(),
-                            original_rows: snap,
-                        });
-                    } else {
-                        for (idx, row) in data.rows.iter().enumerate().rev() {
-                            let matches = filters
-                                .iter()
-                                .enumerate()
-                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
-                            if matches {
-                                s.tx_undo_log.push(UndoOp::DeleteRow {
-                                    table: table.to_string(),
-                                    row_idx: idx,
-                                    original: row.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-
-                // Collect PKs of rows that match the filter (before deletion).
-                let pks: Vec<Value> = if filters.is_empty() {
-                    // Full table wipe: caller (MVCC) handles by tombstoning
-                    // all visible rows. Return empty to signal that.
-                    Vec::new()
-                } else {
-                    data.rows
-                        .iter()
-                        .filter(|row| {
-                            filters
-                                .iter()
-                                .enumerate()
-                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                        })
-                        .filter_map(|row| row.first().cloned()) // PK = column 0
-                        .collect()
-                };
-
-                // Now perform the actual deletion (same logic as `delete`).
-                if filters.is_empty() {
-                    data.rows.clear();
-                } else {
-                    data.rows.retain(|row| {
-                        !filters
-                            .iter()
-                            .enumerate()
-                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                    });
-                }
-                debug_assert_eq!(pks.len(), original_len - data.rows.len());
-                pks
-            } else {
-                Vec::new()
-            };
-
-            // Mark dirty if anything was removed.
-            if !removed_pks.is_empty() || filters.is_empty() {
-                s.dirty_tables.insert(table.to_string());
-            }
-
-            // #4960: rows inserted during a transaction live in
-            // `insert_buffer` until the buffer threshold promotes them
-            // into `tables.rows`. `removed_pks` above is built solely from
-            // `tables.rows`, so for a table whose rows are all still
-            // buffered it comes back EMPTY — the delete visibly "succeeds"
-            // while reporting zero rows removed. ROLLBACK replays its undo
-            // log through this method, so a transaction's INSERTs were
-            // deleted from the buffer and then reported as not deleted,
-            // and the caller's tombstoning (driven by `removed_pks`) never
-            // ran either. That is why ROLLBACK appeared to do nothing.
-            //
-            // Count the buffered rows we are about to drop and report them
-            // too, so the caller tombstones the same set it actually
-            // removed. The deletion itself already happened just above.
-            let mut removed_pks = removed_pks;
-            if !filters.is_empty() {
-                if let Some(buffered) = s.insert_buffer.get(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    table,
-                )) {
-                    for row in buffered {
-                        if filters
-                            .iter()
-                            .enumerate()
-                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                        {
-                            if let Some(pk) = row.first().cloned() {
-                                if !removed_pks.contains(&pk) {
-                                    removed_pks.push(pk);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // After full table delete, clear any buffered inserts.
-            // For partial delete, strip matching rows from insert_buffer.
-            if filters.is_empty() {
-                s.insert_buffer.remove(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    table,
-                ));
-            } else if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
-                table,
-            )) {
-                buffered.retain(|row| {
-                    !filters
-                        .iter()
-                        .enumerate()
-                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                });
-            }
-            Ok(removed_pks)
-        })
+    /// #5057: [`delete_collect_pks`](Self::delete_collect_pks) against a stated database.
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        self.delete_collect_pks_at(db, table, filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        // #5048 / #5055: the rows being removed may be in `insert_buffer`
-        // or in `tables`, and both the change log and the WAL need that
-        // same set. All of it happens in one critical section — reading
-        // under one guard and retaining under another leaves a window
-        // where a concurrent INSERT matches the filter, is silently
-        // removed, and is missing from both logs, so a delta replays to
-        // a row the live table no longer has.
-        let watching = self.change_log_enabled();
-        let wal_on = self.wal_enabled();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        let scoped = crate::engine::scoped_key(&self.current_db.read().unwrap(), table);
-        let table_name = table.to_string();
-        let match_row = |row: &Record| filter(row);
+        let db = self.current_db_name();
+        self.delete_if_at(&db, table, filter)
+    }
 
-        let removed_rows = Self::with_write_lock(self, |s| -> Vec<Record> {
-            if in_tx {
-                if let Some(buffered) = s.insert_buffer.get(&scoped) {
-                    for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(UndoOp::BufferedDelete {
-                            table: table_name.clone(),
-                            row: row.clone(),
-                        });
-                    }
-                }
-            }
-            let removed = s.remove_matching(&scoped, match_row);
-            if !removed.is_empty() {
-                s.dirty_tables.insert(table_name.clone());
-            }
-            removed
-        });
-
-        if watching {
-            for row in &removed_rows {
-                self.record_change(table, ChangeOp::Delete, key_of(row), None);
-            }
-        }
-        if wal_on {
-            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
-        }
-        Ok(removed_rows.len())
+    /// #5057: [`delete_if`](Self::delete_if) against a stated database.
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.delete_if_at(db, table, filter)
     }
 
     fn update(
@@ -5511,77 +5857,19 @@ impl StorageEngine for FileStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        // #4951: `&mut self`, so `get_mut` yields the guarded state with
-        // no lock. `tables` and `tx_undo_log` are separate fields of the
-        // same struct, so the borrow checker can hand out both here —
-        // the old code got them through one `&mut FileStorage`.
-        //
-        // #5055: the whole scan is scoped to a block so the `&mut` it
-        // takes on `write_state` is released before the WAL append. An
-        // append inside this scope would not compile *and* would hold
-        // the storage write lock across a file write.
-        //
-        // #5060: the rows to update may be in `insert_buffer` as well as
-        // `tables`. `mutate_matching` reaches both, so an autocommit
-        // INSERT followed by an UPDATE now affects 1 row instead of 0.
-        let wal_on = self.wal_enabled();
-        let watching = self.change_log_enabled();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        let key = self.tbl(table);
-        let match_row = |record: &Record| {
-            filters.is_empty()
-                || filters
-                    .iter()
-                    .enumerate()
-                    .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
-        };
-        let apply = |record: &mut Record| {
-            for &(col_idx, ref new_val) in updates {
-                if col_idx < record.len() {
-                    record[col_idx] = new_val.clone();
-                }
-            }
-        };
+        let db = self.current_db_name();
+        self.update_at(&db, table, filters, updates)
+    }
 
-        let (count, updated) = {
-            let st = self.write_state.get_mut();
-            // Issue #4581 / B-track case 35-36: snapshot pre-images so
-            // ROLLBACK can restore them. `mutate_matching` returns them
-            // alongside the post-images.
-            let touched = st.mutate_matching(&key, match_row, apply);
-            for (pre, post) in &touched {
-                if in_tx {
-                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
-                        table: table.to_string(),
-                        post: post.clone(),
-                        original: pre.clone(),
-                    });
-                }
-            }
-            // V311-07: Mark dirty instead of immediate persist
-            if !touched.is_empty() {
-                st.dirty_tables.insert(table.to_string());
-            }
-            (touched.len(), touched)
-        };
-
-        // #5048: record the update after the borrow is released —
-        // `record_change` takes the change-log lock.
-        if watching {
-            for (_, post) in &updated {
-                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
-            }
-        }
-        // #5055: outside the `write_state` borrow on purpose — this does
-        // file I/O.
-        if wal_on {
-            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
-            self.wal_append(self.wal_update_entries(table, &posts))?;
-        }
-        Ok(count)
+    /// #5057: [`update`](Self::update) against a stated database.
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        self.update_at(db, table, filters, updates)
     }
 
     fn update_if(
@@ -5590,86 +5878,29 @@ impl StorageEngine for FileStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        // #5025: resolve the key before the mutable borrow.
-        //
-        // #5055: as in `update`, the scan is scoped so the `&mut` on
-        // `write_state` is released before the WAL append.
-        //
-        // #5060: `insert_buffer` rows are updated too.
-        let key = self.tbl(table);
-        let wal_on = self.wal_enabled();
-        let watching = self.change_log_enabled();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        let assignments = mutation.assignments().to_vec();
-        let match_row = |record: &Record| filter(record);
-        let apply = |record: &mut Record| {
-            for &(col_idx, ref new_val) in &assignments {
-                if col_idx < record.len() {
-                    record[col_idx] = new_val.clone();
-                }
-            }
-        };
+        let db = self.current_db_name();
+        self.update_if_at(&db, table, filter, mutation)
+    }
 
-        let (count, updated) = {
-            let st = self.write_state.get_mut();
-            let touched = st.mutate_matching(&key, match_row, apply);
-            for (pre, post) in &touched {
-                if in_tx {
-                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
-                        table: table.to_string(),
-                        post: post.clone(),
-                        original: pre.clone(),
-                    });
-                }
-            }
-            if !touched.is_empty() {
-                st.dirty_tables.insert(table.to_string());
-            }
-            (touched.len(), touched)
-        };
-
-        if watching {
-            for (_, post) in &updated {
-                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
-            }
-        }
-        if wal_on {
-            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
-            self.wal_append(self.wal_update_entries(table, &posts))?;
-        }
-        Ok(count)
+    /// #5057: [`update_if`](Self::update_if) against a stated database.
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        self.update_if_at(db, table, filter, mutation)
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
-        let table_data = TableData {
-            info: info.clone(),
-            rows: vec![],
-        };
-        self.insert_table(info.name.clone(), table_data)
-            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-        // V400-MVCC-PKFAST: pre-create the PK B+Tree index so PK
-        // lookups are O(log N) from the very first insert. Without
-        // this, every PK lookup would have to wait for an explicit
-        // `CREATE INDEX` (which production workloads never issue).
-        if let Some(pk_col) = info.columns.iter().find(|c| c.primary_key) {
-            let pk_col_name = pk_col.name.clone();
-            let pk_col_idx = info
-                .columns
-                .iter()
-                .position(|c| c.name == pk_col_name)
-                .unwrap();
-            let empty_index = crate::bplus_tree::BPlusTree::new();
-            self.save_index(&info.name, &pk_col_name, &empty_index)
-                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-            if let Ok(mut indexes) = self.indexes.write() {
-                indexes.insert((info.name.clone(), pk_col_name.clone()), empty_index);
-            }
-            let _ = pk_col_idx; // silence unused if column moved
-        }
-        Ok(())
+        let db = self.current_db_name();
+        self.create_table_at(&db, info)
+    }
+
+    /// #5057: [`create_table`](Self::create_table) in a stated database.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.create_table_at(db, info)
     }
 
     // V4.0.0 / wired_insert_payload_regression_test fix: the trait
@@ -5685,7 +5916,16 @@ impl StorageEngine for FileStorage {
     // inherent `&self` implementation.
     #[allow(unconditional_recursion, clippy::only_used_in_recursion)]
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
-        FileStorage::drop_table(self, table)
+        let db = self.current_db_name();
+        self.drop_table_in_db(&db, table)
+    }
+
+    /// #5057: [`drop_table`](Self::drop_table) in a stated database.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        // Fully-qualified so the resolver picks the inherent `&self`
+        // implementation rather than this trait method — see the note
+        // above about the infinite recursion this used to cause.
+        FileStorage::drop_table_in(self, db, table)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
         Ok(())
     }
@@ -6092,6 +6332,18 @@ impl StorageEngine for FileStorage {
         self.with_read_lock(|st| st.tables.contains_key(&key))
     }
 
+    /// #5057: index lookup against a stated database. See
+    /// [`scan_with_index_in`](Self::scan_with_index_in).
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        self.scan_with_index_in(db, table, index_name, key)
+    }
+
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
         let db_path = self.data_dir.join(db_name);
         if db_path.exists() {
@@ -6423,9 +6675,8 @@ impl FileStorage {
 
         // For 1-2 tables, sequential is faster (no thread overhead)
         if pending.len() <= 2 {
-            for (name, window, total) in &pending {
-                let db = self.current_db_name();
-                self.with_read_lock(|st| self.save_table_window(&db, st, name, window, *total))?;
+            for (db, name, window, total) in &pending {
+                self.with_read_lock(|st| self.save_table_window(db, st, name, window, *total))?;
             }
             return Ok(());
         }
@@ -6438,11 +6689,10 @@ impl FileStorage {
         let results = std::thread::scope(|s| {
             let handles: Vec<_> = pending
                 .iter()
-                .map(|(name, window, total)| {
-                    let db = self.current_db_name();
+                .map(|(db, name, window, total)| {
                     s.spawn(move || {
                         self.with_read_lock(|st| {
-                            self.save_table_window(&db, st, name, window, *total)
+                            self.save_table_window(db, st, name, window, *total)
                         })
                     })
                 })
@@ -6526,10 +6776,8 @@ impl FileStorage {
                     )) {
                         if row_idx < data.rows.len() {
                             data.rows[row_idx] = original;
-                            s.dirty_tables.insert(crate::engine::scoped_key(
-                                &self.current_db.read().unwrap(),
-                                &table,
-                            ));
+                            s.dirty_tables
+                                .insert((self.current_db.read().unwrap().clone(), table));
                         }
                     }
                 }
@@ -6544,10 +6792,8 @@ impl FileStorage {
                     )) {
                         let idx = row_idx.min(data.rows.len());
                         data.rows.insert(idx, original);
-                        s.dirty_tables.insert(crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
-                            &table,
-                        ));
+                        s.dirty_tables
+                            .insert((self.current_db.read().unwrap().clone(), table));
                     }
                 }
                 UndoOp::DeleteAll {
@@ -6559,10 +6805,8 @@ impl FileStorage {
                         &table,
                     )) {
                         data.rows = original_rows;
-                        s.dirty_tables.insert(crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
-                            &table,
-                        ));
+                        s.dirty_tables
+                            .insert((self.current_db.read().unwrap().clone(), table));
                     }
                 }
                 UndoOp::BufferedInsert { table, row } => {

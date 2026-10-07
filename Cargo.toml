@@ -1814,3 +1814,7 @@ path = "tests/operators/three_valued_logic.rs"
 [[test]]
 name = "pk_cache_regression_test"
 path = "tests/integration/sql/pk_cache_regression_test.rs"
+
+[[test]]
+name = "insert_db_isolation_5057"
+path = "tests/insert_db_isolation_5057.rs"

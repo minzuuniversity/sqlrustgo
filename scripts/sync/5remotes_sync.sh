@@ -42,6 +42,8 @@
 #   2 — protected-branch update failed on a Gitea remote
 #   3 — network/SSH error to a Gitea container
 #   4 — argument error
+#   5 — refused to sync: could not fetch, or the local ref disagrees with what
+#       the source remote actually holds (nothing pushed)
 
 set -uo pipefail
 
@@ -81,10 +83,63 @@ source_sha_develop_v400=""
 
 declare -a SOURCE_SHA_VARS=()  # list of variable names to look up later
 
+# Fetch BEFORE reading any SHA, then verify the local ref against what the
+# remote actually holds.
+#
+# This used to read the local "$source_remote/$branch" ref first and fetch
+# afterwards. Whenever that ref was stale — the normal state right after a PR
+# is merged, because merging updates the server and not this clone — the stale
+# SHA was taken as the intended target and force-pushed to every remote,
+# silently rewinding the branch. Observed twice in one session:
+#
+#   PR #5090 merged -> gitea252/develop/v4.1.0 = ed181dfc0b39
+#   run this script -> all five remotes rewound to c4aed21d93f4
+#
+# The verification is the part that matters. `git fetch` can fail, be skipped,
+# or race a concurrent merge, and on its own a fetch failure is not an error
+# here (the script runs without `set -e`). So after fetching, every branch is
+# checked with `git ls-remote`, which asks the server directly and never
+# consults a cached ref:
+#
+#   local ref != server -> refuse (exit 5), never push
+#   ls-remote empty    -> refuse (exit 5), never push
+#
+# A stale ref is indistinguishable from a correct one by inspection alone, so
+# this tool must ask. Failing closed is the whole point: "did not sync" is
+# recoverable, a rewind on five remotes is not.
+echo ""
+echo "Step 0: fetch before reading any SHA"
+if ! git fetch "$source_remote" --no-tags 2>&1 | tail -3; then
+    echo "ERROR: fetch from $source_remote failed; refusing to continue"
+    echo "       without a confirmed-fresh view of the source refs"
+    exit 5
+fi
+if ! git fetch --all --no-tags --prune 2>&1 | tail -3; then
+    echo "ERROR: 'git fetch --all' failed; refusing to continue"
+    exit 5
+fi
+
 for branch in "${branches[@]}"; do
     if ! git rev-parse --verify "$source_remote/$branch" >/dev/null 2>&1; then
         echo "ERROR: source remote $source_remote has no $branch"
         exit 4
+    fi
+    local_sha=$(git rev-parse "$source_remote/$branch")
+    actual_sha=$(git ls-remote "$source_remote" "refs/heads/$branch" 2>/dev/null | cut -f1)
+    if [ -z "$actual_sha" ]; then
+        # ls-remote answers from the server, so an empty answer means the query
+        # failed or the branch is gone upstream. Either way we do not know what
+        # the remote holds, and pushing the local value is a guess.
+        echo "ERROR: could not read refs/heads/$branch from $source_remote"
+        echo "       (ls-remote returned nothing). Refusing to sync on a guess."
+        exit 5
+    fi
+    if [ "$local_sha" != "$actual_sha" ]; then
+        echo "ERROR: local $source_remote/$branch is $local_sha"
+        echo "       but $source_remote actually holds $actual_sha"
+        echo "       Refusing to sync: pushing the local value would rewind the"
+        echo "       branch on every remote. Fetch and re-run."
+        exit 5
     fi
     # Encode branch name -> variable name (POSIX-portable)
     case "$branch" in
@@ -104,8 +159,7 @@ for branch in "${branches[@]}"; do
 done
 
 echo ""
-echo "Step 1: fetch all remotes (prune + no-tags)"
-git fetch --all --no-tags --prune 2>&1 | tail -3
+echo "Step 1: (fetch already done in Step 0, before any SHA was read)"
 
 # Step 2: push to unprotected remotes
 echo ""
