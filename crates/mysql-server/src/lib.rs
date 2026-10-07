@@ -5809,7 +5809,24 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         }
                     } else {
                         let mut eng = engine.write();
-                        eng.execute(stmt_sql)
+                        // #5057: `USE <db>` arrives as an ordinary
+                        // COM_QUERY, so it never reaches the COM_INIT_DB
+                        // branch that updates both the storage and this
+                        // connection's `conn_db`. `execute_use_database`
+                        // writes only the SHARED storage's current
+                        // database, so without copying it back here the
+                        // per-command re-assert at the top of this loop
+                        // restored the OLD database before the next
+                        // statement — making `USE` a no-op on the server
+                        // path, while still answering the client with OK.
+                        //
+                        // The engine guard is dropped before taking the
+                        // storage lock, matching the engine -> storage lock
+                        // order the engine already uses internally.
+                        let r = eng.execute(stmt_sql);
+                        drop(eng);
+                        *conn_db = storage.read().current_db();
+                        r
                     };
                     // V312-18e: time every dispatched statement; the log
                     // itself gates on its threshold.
@@ -6164,7 +6181,16 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     }
                 } else {
                     let mut eng = engine.write();
-                    eng.execute(&final_sql)
+                    // #5057: a `USE` can reach this path through
+                    // COM_STMT_PREPARE / COM_STMT_EXECUTE. Same reason and
+                    // same fix as the COM_QUERY dispatch above: the engine
+                    // updates only the shared storage, so copy the result
+                    // back onto this connection or the next command's
+                    // re-assert reverts it.
+                    let r = eng.execute(&final_sql);
+                    drop(eng);
+                    *conn_db = storage.read().current_db();
+                    r
                 };
                 // V312-18e: prepared-statement executions are timed too.
                 let elapsed_ms = started.elapsed().as_millis() as u64;
