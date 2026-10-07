@@ -847,6 +847,14 @@ impl StorageEngine for BoxStorageEngine {
         (**self).scan_in(table, reader_tx)
     }
 
+    /// #5105: forward `(db, table, reader_tx)`. `BoxStorageEngine` is the
+    /// outermost layer between the engine and the real storage, so a
+    /// default here (`let _ = db`) discards the connection's database on
+    /// the way in.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        (**self).scan_in_tx_db(db, table, reader_tx)
+    }
+
     /// #4974: same forwarding obligation for the predicate variant.
     fn scan_with_filter_in(
         &self,

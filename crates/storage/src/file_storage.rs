@@ -5448,7 +5448,8 @@ impl StorageEngine for FileStorage {
             // Scoped like `commit_transaction`: this log is shared, so
             // clearing it wholesale would discard a concurrent
             // transaction's pending undo.
-            s.tx_undo_log.retain(|e| e.tx_id != existing && e.tx_id != id);
+            s.tx_undo_log
+                .retain(|e| e.tx_id != existing && e.tx_id != id);
             Ok((id, true))
         })?;
         // #5055: log the boundary. A replay can only tell a committed
@@ -6383,6 +6384,22 @@ impl StorageEngine for FileStorage {
     /// was visible to one and invisible to the other. Since this method is
     /// what the executor will use once reads stop going through `current_db`,
     /// leaving it buffer-blind would have hidden every uncommitted row.
+    /// #5105: snapshot read of a stated database.
+    ///
+    /// The trait default is `let _ = db; self.scan_in(table, reader_tx)`,
+    /// and `scan_in` reaches `FileStorage::scan`, which resolves through
+    /// `tbl()` — the storage-wide `current_db`. So without this override a
+    /// per-connection read on `FileStorage` silently falls back to whichever
+    /// database wrote last, which is the exact defect this exists to remove
+    /// (`session_db_isolation_5057.rs` fails without it).
+    ///
+    /// `FileStorage` has no MVCC chain, so `reader_tx` has nothing to
+    /// select: [`scan_in_db`](Self::scan_in_db) is already the whole read.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        let _ = reader_tx;
+        self.scan_in_db(db, table)
+    }
+
     fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
         let key = crate::engine::scoped_key(db, table);
         Ok(self.with_read_lock(|st| {
