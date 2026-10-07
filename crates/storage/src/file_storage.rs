@@ -4622,6 +4622,439 @@ impl FileStorage {
         });
     }
 
+    /// #5057: [`update_if`](Self::update_if) against a stated database; see
+    /// [`delete_at`](Self::delete_at).
+    fn update_if_at(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        // #5025: resolve the key before the mutable borrow.
+        //
+        // #5055: as in `update`, the scan is scoped so the `&mut` on
+        // `write_state` is released before the WAL append.
+        //
+        // #5060: `insert_buffer` rows are updated too.
+        let key = self.tbl_in(db, table);
+        let wal_on = self.wal_enabled();
+        let watching = self.change_log_enabled();
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let assignments = mutation.assignments().to_vec();
+        let match_row = |record: &Record| filter(record);
+        let apply = |record: &mut Record| {
+            for &(col_idx, ref new_val) in &assignments {
+                if col_idx < record.len() {
+                    record[col_idx] = new_val.clone();
+                }
+            }
+        };
+
+        let (count, updated) = {
+            let st = self.write_state.get_mut();
+            let touched = st.mutate_matching(&key, match_row, apply);
+            for (pre, post) in &touched {
+                if in_tx {
+                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
+                        table: table.to_string(),
+                        post: post.clone(),
+                        original: pre.clone(),
+                    });
+                }
+            }
+            if !touched.is_empty() {
+                st.dirty_tables.insert(table.to_string());
+            }
+            (touched.len(), touched)
+        };
+
+        if watching {
+            for (_, post) in &updated {
+                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
+            }
+        }
+        if wal_on {
+            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
+            self.wal_append(self.wal_update_entries(table, &posts))?;
+        }
+        Ok(count)
+    }
+
+    /// #5057: [`update`](Self::update) against a stated database; see
+    /// [`delete_at`](Self::delete_at).
+    fn update_at(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        // #4951: `&mut self`, so `get_mut` yields the guarded state with
+        // no lock. `tables` and `tx_undo_log` are separate fields of the
+        // same struct, so the borrow checker can hand out both here —
+        // the old code got them through one `&mut FileStorage`.
+        //
+        // #5055: the whole scan is scoped to a block so the `&mut` it
+        // takes on `write_state` is released before the WAL append. An
+        // append inside this scope would not compile *and* would hold
+        // the storage write lock across a file write.
+        //
+        // #5060: the rows to update may be in `insert_buffer` as well as
+        // `tables`. `mutate_matching` reaches both, so an autocommit
+        // INSERT followed by an UPDATE now affects 1 row instead of 0.
+        let wal_on = self.wal_enabled();
+        let watching = self.change_log_enabled();
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let key = self.tbl_in(db, table);
+        let match_row = |record: &Record| {
+            filters.is_empty()
+                || filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
+        };
+        let apply = |record: &mut Record| {
+            for &(col_idx, ref new_val) in updates {
+                if col_idx < record.len() {
+                    record[col_idx] = new_val.clone();
+                }
+            }
+        };
+
+        let (count, updated) = {
+            let st = self.write_state.get_mut();
+            // Issue #4581 / B-track case 35-36: snapshot pre-images so
+            // ROLLBACK can restore them. `mutate_matching` returns them
+            // alongside the post-images.
+            let touched = st.mutate_matching(&key, match_row, apply);
+            for (pre, post) in &touched {
+                if in_tx {
+                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
+                        table: table.to_string(),
+                        post: post.clone(),
+                        original: pre.clone(),
+                    });
+                }
+            }
+            // V311-07: Mark dirty instead of immediate persist
+            if !touched.is_empty() {
+                st.dirty_tables.insert(table.to_string());
+            }
+            (touched.len(), touched)
+        };
+
+        // #5048: record the update after the borrow is released —
+        // `record_change` takes the change-log lock.
+        if watching {
+            for (_, post) in &updated {
+                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
+            }
+        }
+        // #5055: outside the `write_state` borrow on purpose — this does
+        // file I/O.
+        if wal_on {
+            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
+            self.wal_append(self.wal_update_entries(table, &posts))?;
+        }
+        Ok(count)
+    }
+
+    /// #5057: [`delete_if`](Self::delete_if) against a stated database;
+    /// see [`delete_at`](Self::delete_at).
+    fn delete_if_at(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        // #5048 / #5055: the rows being removed may be in `insert_buffer`
+        // or in `tables`, and both the change log and the WAL need that
+        // same set. All of it happens in one critical section — reading
+        // under one guard and retaining under another leaves a window
+        // where a concurrent INSERT matches the filter, is silently
+        // removed, and is missing from both logs, so a delta replays to
+        // a row the live table no longer has.
+        let watching = self.change_log_enabled();
+        let wal_on = self.wal_enabled();
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let scoped = crate::engine::scoped_key(db, table);
+        let table_name = table.to_string();
+        let match_row = |row: &Record| filter(row);
+
+        let removed_rows = Self::with_write_lock(self, |s| -> Vec<Record> {
+            if in_tx {
+                if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                    for row in buffered.iter().filter(|r| match_row(r)) {
+                        s.tx_undo_log.push(UndoOp::BufferedDelete {
+                            table: table_name.clone(),
+                            row: row.clone(),
+                        });
+                    }
+                }
+            }
+            let removed = s.remove_matching(&scoped, match_row);
+            if !removed.is_empty() {
+                s.dirty_tables.insert(table_name.clone());
+            }
+            removed
+        });
+
+        if watching {
+            for row in &removed_rows {
+                self.record_change(table, ChangeOp::Delete, key_of(row), None);
+            }
+        }
+        if wal_on {
+            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+        }
+        Ok(removed_rows.len())
+    }
+
+    /// #5057: [`delete_collect_pks`](Self::delete_collect_pks) against a
+    /// stated database; see [`delete_at`](Self::delete_at).
+    fn delete_collect_pks_at(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        // C.1.2: see `delete` for rationale — wrap the entire body in
+        // `with_write_lock` because every step touches the protected
+        // fields. Splitting would mean multiple lock acquisitions
+        // and risk of torn state.
+        Self::with_write_lock(self, |s| {
+            let in_tx = self
+                .current_tx_id
+                .load(std::sync::atomic::Ordering::Acquire)
+                != 0;
+
+            // Snapshot rows for ROLLBACK (same as `delete`).
+            let removed_pks: Vec<Value> = if let Some(ref mut data) =
+                s.tables.get_mut(&crate::engine::scoped_key(db, table))
+            {
+                let original_len = data.rows.len();
+
+                // Capture pre-delete undo log entries (same as `delete`).
+                if in_tx {
+                    if filters.is_empty() {
+                        let snap = data.rows.clone();
+                        s.tx_undo_log.push(UndoOp::DeleteAll {
+                            table: table.to_string(),
+                            original_rows: snap,
+                        });
+                    } else {
+                        for (idx, row) in data.rows.iter().enumerate().rev() {
+                            let matches = filters
+                                .iter()
+                                .enumerate()
+                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
+                            if matches {
+                                s.tx_undo_log.push(UndoOp::DeleteRow {
+                                    table: table.to_string(),
+                                    row_idx: idx,
+                                    original: row.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Collect PKs of rows that match the filter (before deletion).
+                let pks: Vec<Value> = if filters.is_empty() {
+                    // Full table wipe: caller (MVCC) handles by tombstoning
+                    // all visible rows. Return empty to signal that.
+                    Vec::new()
+                } else {
+                    data.rows
+                        .iter()
+                        .filter(|row| {
+                            filters
+                                .iter()
+                                .enumerate()
+                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                        })
+                        .filter_map(|row| row.first().cloned()) // PK = column 0
+                        .collect()
+                };
+
+                // Now perform the actual deletion (same logic as `delete`).
+                if filters.is_empty() {
+                    data.rows.clear();
+                } else {
+                    data.rows.retain(|row| {
+                        !filters
+                            .iter()
+                            .enumerate()
+                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                    });
+                }
+                debug_assert_eq!(pks.len(), original_len - data.rows.len());
+                pks
+            } else {
+                Vec::new()
+            };
+
+            // Mark dirty if anything was removed.
+            if !removed_pks.is_empty() || filters.is_empty() {
+                s.dirty_tables.insert(table.to_string());
+            }
+
+            // #4960: rows inserted during a transaction live in
+            // `insert_buffer` until the buffer threshold promotes them
+            // into `tables.rows`. `removed_pks` above is built solely from
+            // `tables.rows`, so for a table whose rows are all still
+            // buffered it comes back EMPTY — the delete visibly "succeeds"
+            // while reporting zero rows removed. ROLLBACK replays its undo
+            // log through this method, so a transaction's INSERTs were
+            // deleted from the buffer and then reported as not deleted,
+            // and the caller's tombstoning (driven by `removed_pks`) never
+            // ran either. That is why ROLLBACK appeared to do nothing.
+            //
+            // Count the buffered rows we are about to drop and report them
+            // too, so the caller tombstones the same set it actually
+            // removed. The deletion itself already happened just above.
+            let mut removed_pks = removed_pks;
+            if !filters.is_empty() {
+                if let Some(buffered) = s.insert_buffer.get(&crate::engine::scoped_key(db, table)) {
+                    for row in buffered {
+                        if filters
+                            .iter()
+                            .enumerate()
+                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                        {
+                            if let Some(pk) = row.first().cloned() {
+                                if !removed_pks.contains(&pk) {
+                                    removed_pks.push(pk);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // After full table delete, clear any buffered inserts.
+            // For partial delete, strip matching rows from insert_buffer.
+            if filters.is_empty() {
+                s.insert_buffer
+                    .remove(&crate::engine::scoped_key(db, table));
+            } else if let Some(buffered) = s
+                .insert_buffer
+                .get_mut(&crate::engine::scoped_key(db, table))
+            {
+                buffered.retain(|row| {
+                    !filters
+                        .iter()
+                        .enumerate()
+                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+                });
+            }
+            Ok(removed_pks)
+        })
+    }
+
+    /// #5057: [`delete`](Self::delete) against a stated database.
+    ///
+    /// The shared storage holds one `current_db`, so the database-less form
+    /// answers for whichever connection last selected one. Every caller that
+    /// knows its own database should use this instead.
+    fn delete_at(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        // C.1.2: the entire body is wrapped in `with_write_lock` because
+        // every step touches {tables, dirty_tables, tx_undo_log,
+        // insert_buffer}. Splitting would mean multiple lock acquisitions
+        // and risk of observing torn state between them.
+        //
+        // #5060: the rows being deleted may be in `insert_buffer` rather
+        // than `tables`, and both are removed here, in one critical
+        // section. The old code read `tables` for the count, then
+        // separately stripped the buffer — so a row that was still
+        // buffered was deleted from the buffer but **not counted**, and
+        // because the count was 0 `dirty_tables` was never set, so the
+        // deletion was never persisted. The row disappeared from memory
+        // and came back on the next open.
+        let wal_on = self.wal_enabled();
+        let watching = self.change_log_enabled();
+        let scoped = crate::engine::scoped_key(db, table);
+        let in_tx = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+            != 0;
+        let table_name = table.to_string();
+        let match_row = |row: &Record| {
+            filters.is_empty()
+                || filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
+        };
+
+        let removed_rows = Self::with_write_lock(self, |s| -> SqlResult<Vec<Record>> {
+            // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
+            // BEFORE the removal, while the rows still exist.
+            if in_tx {
+                if let Some(data) = s.tables.get(&scoped) {
+                    if filters.is_empty() {
+                        s.tx_undo_log.push(UndoOp::DeleteAll {
+                            table: table_name.clone(),
+                            original_rows: data.rows.clone(),
+                        });
+                    } else {
+                        for (idx, row) in data.rows.iter().enumerate().rev() {
+                            if match_row(row) {
+                                s.tx_undo_log.push(UndoOp::DeleteRow {
+                                    table: table_name.clone(),
+                                    row_idx: idx,
+                                    original: row.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+                // #5059: buffered rows have no index in `tables`, so they
+                // are undone by value.
+                if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                    for row in buffered.iter().filter(|r| match_row(r)) {
+                        s.tx_undo_log.push(UndoOp::BufferedDelete {
+                            table: table_name.clone(),
+                            row: row.clone(),
+                        });
+                    }
+                }
+            }
+
+            let removed = s.remove_matching(&scoped, match_row);
+
+            // V311-07: Mark dirty instead of immediate persist. The old
+            // condition keyed off the tables-only count, which missed
+            // buffered deletions entirely.
+            if !removed.is_empty() || filters.is_empty() {
+                s.dirty_tables.insert(table_name.clone());
+            }
+            Ok(removed)
+        })?;
+
+        // #5048: record the deletion. `filters` is already positional
+        // against the row's leading columns — exactly what a change
+        // record's `key` is — so the same slice identifies the rows.
+        // An empty filter means a full-table wipe; recording that once
+        // with an empty key keeps the log honest without expanding it
+        // into one entry per row.
+        if watching && !filters.is_empty() {
+            self.record_change(table, ChangeOp::Delete, filters.to_vec(), None);
+        }
+
+        // #5055: outside the storage write lock on purpose — this does
+        // file I/O.
+        if wal_on {
+            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+        }
+        Ok(removed_rows.len())
+    }
+
     /// #5057: [`scan_with_index`](Self::scan_with_index) against a stated
     /// database.
     ///
@@ -5318,96 +5751,13 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        // C.1.2: the entire body is wrapped in `with_write_lock` because
-        // every step touches {tables, dirty_tables, tx_undo_log,
-        // insert_buffer}. Splitting would mean multiple lock acquisitions
-        // and risk of observing torn state between them.
-        //
-        // #5060: the rows being deleted may be in `insert_buffer` rather
-        // than `tables`, and both are removed here, in one critical
-        // section. The old code read `tables` for the count, then
-        // separately stripped the buffer — so a row that was still
-        // buffered was deleted from the buffer but **not counted**, and
-        // because the count was 0 `dirty_tables` was never set, so the
-        // deletion was never persisted. The row disappeared from memory
-        // and came back on the next open.
-        let wal_on = self.wal_enabled();
-        let watching = self.change_log_enabled();
-        let scoped = crate::engine::scoped_key(&self.current_db.read().unwrap(), table);
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        let table_name = table.to_string();
-        let match_row = |row: &Record| {
-            filters.is_empty()
-                || filters
-                    .iter()
-                    .enumerate()
-                    .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-        };
+        let db = self.current_db_name();
+        self.delete_at(&db, table, filters)
+    }
 
-        let removed_rows = Self::with_write_lock(self, |s| -> SqlResult<Vec<Record>> {
-            // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
-            // BEFORE the removal, while the rows still exist.
-            if in_tx {
-                if let Some(data) = s.tables.get(&scoped) {
-                    if filters.is_empty() {
-                        s.tx_undo_log.push(UndoOp::DeleteAll {
-                            table: table_name.clone(),
-                            original_rows: data.rows.clone(),
-                        });
-                    } else {
-                        for (idx, row) in data.rows.iter().enumerate().rev() {
-                            if match_row(row) {
-                                s.tx_undo_log.push(UndoOp::DeleteRow {
-                                    table: table_name.clone(),
-                                    row_idx: idx,
-                                    original: row.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-                // #5059: buffered rows have no index in `tables`, so they
-                // are undone by value.
-                if let Some(buffered) = s.insert_buffer.get(&scoped) {
-                    for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(UndoOp::BufferedDelete {
-                            table: table_name.clone(),
-                            row: row.clone(),
-                        });
-                    }
-                }
-            }
-
-            let removed = s.remove_matching(&scoped, match_row);
-
-            // V311-07: Mark dirty instead of immediate persist. The old
-            // condition keyed off the tables-only count, which missed
-            // buffered deletions entirely.
-            if !removed.is_empty() || filters.is_empty() {
-                s.dirty_tables.insert(table_name.clone());
-            }
-            Ok(removed)
-        })?;
-
-        // #5048: record the deletion. `filters` is already positional
-        // against the row's leading columns — exactly what a change
-        // record's `key` is — so the same slice identifies the rows.
-        // An empty filter means a full-table wipe; recording that once
-        // with an empty key keeps the log honest without expanding it
-        // into one entry per row.
-        if watching && !filters.is_empty() {
-            self.record_change(table, ChangeOp::Delete, filters.to_vec(), None);
-        }
-
-        // #5055: outside the storage write lock on purpose — this does
-        // file I/O.
-        if wal_on {
-            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
-        }
-        Ok(removed_rows.len())
+    /// #5057: [`delete`](Self::delete) against a stated database.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.delete_at(db, table, filters)
     }
 
     /// Phase B Step 4.1: like `delete`, but returns the list of
@@ -5417,190 +5767,28 @@ impl StorageEngine for FileStorage {
     /// that by tombstoning all visible rows (correct semantics for
     /// "delete everything").
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
-        // C.1.2: see `delete` for rationale — wrap the entire body in
-        // `with_write_lock` because every step touches the protected
-        // fields. Splitting would mean multiple lock acquisitions
-        // and risk of torn state.
-        Self::with_write_lock(self, |s| {
-            let in_tx = self
-                .current_tx_id
-                .load(std::sync::atomic::Ordering::Acquire)
-                != 0;
+        let db = self.current_db_name();
+        self.delete_collect_pks_at(&db, table, filters)
+    }
 
-            // Snapshot rows for ROLLBACK (same as `delete`).
-            let removed_pks: Vec<Value> = if let Some(ref mut data) = s.tables.get_mut(
-                &crate::engine::scoped_key(&self.current_db.read().unwrap(), table),
-            ) {
-                let original_len = data.rows.len();
-
-                // Capture pre-delete undo log entries (same as `delete`).
-                if in_tx {
-                    if filters.is_empty() {
-                        let snap = data.rows.clone();
-                        s.tx_undo_log.push(UndoOp::DeleteAll {
-                            table: table.to_string(),
-                            original_rows: snap,
-                        });
-                    } else {
-                        for (idx, row) in data.rows.iter().enumerate().rev() {
-                            let matches = filters
-                                .iter()
-                                .enumerate()
-                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
-                            if matches {
-                                s.tx_undo_log.push(UndoOp::DeleteRow {
-                                    table: table.to_string(),
-                                    row_idx: idx,
-                                    original: row.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-
-                // Collect PKs of rows that match the filter (before deletion).
-                let pks: Vec<Value> = if filters.is_empty() {
-                    // Full table wipe: caller (MVCC) handles by tombstoning
-                    // all visible rows. Return empty to signal that.
-                    Vec::new()
-                } else {
-                    data.rows
-                        .iter()
-                        .filter(|row| {
-                            filters
-                                .iter()
-                                .enumerate()
-                                .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                        })
-                        .filter_map(|row| row.first().cloned()) // PK = column 0
-                        .collect()
-                };
-
-                // Now perform the actual deletion (same logic as `delete`).
-                if filters.is_empty() {
-                    data.rows.clear();
-                } else {
-                    data.rows.retain(|row| {
-                        !filters
-                            .iter()
-                            .enumerate()
-                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                    });
-                }
-                debug_assert_eq!(pks.len(), original_len - data.rows.len());
-                pks
-            } else {
-                Vec::new()
-            };
-
-            // Mark dirty if anything was removed.
-            if !removed_pks.is_empty() || filters.is_empty() {
-                s.dirty_tables.insert(table.to_string());
-            }
-
-            // #4960: rows inserted during a transaction live in
-            // `insert_buffer` until the buffer threshold promotes them
-            // into `tables.rows`. `removed_pks` above is built solely from
-            // `tables.rows`, so for a table whose rows are all still
-            // buffered it comes back EMPTY — the delete visibly "succeeds"
-            // while reporting zero rows removed. ROLLBACK replays its undo
-            // log through this method, so a transaction's INSERTs were
-            // deleted from the buffer and then reported as not deleted,
-            // and the caller's tombstoning (driven by `removed_pks`) never
-            // ran either. That is why ROLLBACK appeared to do nothing.
-            //
-            // Count the buffered rows we are about to drop and report them
-            // too, so the caller tombstones the same set it actually
-            // removed. The deletion itself already happened just above.
-            let mut removed_pks = removed_pks;
-            if !filters.is_empty() {
-                if let Some(buffered) = s.insert_buffer.get(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    table,
-                )) {
-                    for row in buffered {
-                        if filters
-                            .iter()
-                            .enumerate()
-                            .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                        {
-                            if let Some(pk) = row.first().cloned() {
-                                if !removed_pks.contains(&pk) {
-                                    removed_pks.push(pk);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // After full table delete, clear any buffered inserts.
-            // For partial delete, strip matching rows from insert_buffer.
-            if filters.is_empty() {
-                s.insert_buffer.remove(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    table,
-                ));
-            } else if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
-                table,
-            )) {
-                buffered.retain(|row| {
-                    !filters
-                        .iter()
-                        .enumerate()
-                        .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
-                });
-            }
-            Ok(removed_pks)
-        })
+    /// #5057: [`delete_collect_pks`](Self::delete_collect_pks) against a stated database.
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        self.delete_collect_pks_at(db, table, filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        // #5048 / #5055: the rows being removed may be in `insert_buffer`
-        // or in `tables`, and both the change log and the WAL need that
-        // same set. All of it happens in one critical section — reading
-        // under one guard and retaining under another leaves a window
-        // where a concurrent INSERT matches the filter, is silently
-        // removed, and is missing from both logs, so a delta replays to
-        // a row the live table no longer has.
-        let watching = self.change_log_enabled();
-        let wal_on = self.wal_enabled();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        let scoped = crate::engine::scoped_key(&self.current_db.read().unwrap(), table);
-        let table_name = table.to_string();
-        let match_row = |row: &Record| filter(row);
+        let db = self.current_db_name();
+        self.delete_if_at(&db, table, filter)
+    }
 
-        let removed_rows = Self::with_write_lock(self, |s| -> Vec<Record> {
-            if in_tx {
-                if let Some(buffered) = s.insert_buffer.get(&scoped) {
-                    for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(UndoOp::BufferedDelete {
-                            table: table_name.clone(),
-                            row: row.clone(),
-                        });
-                    }
-                }
-            }
-            let removed = s.remove_matching(&scoped, match_row);
-            if !removed.is_empty() {
-                s.dirty_tables.insert(table_name.clone());
-            }
-            removed
-        });
-
-        if watching {
-            for row in &removed_rows {
-                self.record_change(table, ChangeOp::Delete, key_of(row), None);
-            }
-        }
-        if wal_on {
-            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
-        }
-        Ok(removed_rows.len())
+    /// #5057: [`delete_if`](Self::delete_if) against a stated database.
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.delete_if_at(db, table, filter)
     }
 
     fn update(
@@ -5609,77 +5797,19 @@ impl StorageEngine for FileStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        // #4951: `&mut self`, so `get_mut` yields the guarded state with
-        // no lock. `tables` and `tx_undo_log` are separate fields of the
-        // same struct, so the borrow checker can hand out both here —
-        // the old code got them through one `&mut FileStorage`.
-        //
-        // #5055: the whole scan is scoped to a block so the `&mut` it
-        // takes on `write_state` is released before the WAL append. An
-        // append inside this scope would not compile *and* would hold
-        // the storage write lock across a file write.
-        //
-        // #5060: the rows to update may be in `insert_buffer` as well as
-        // `tables`. `mutate_matching` reaches both, so an autocommit
-        // INSERT followed by an UPDATE now affects 1 row instead of 0.
-        let wal_on = self.wal_enabled();
-        let watching = self.change_log_enabled();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        let key = self.tbl(table);
-        let match_row = |record: &Record| {
-            filters.is_empty()
-                || filters
-                    .iter()
-                    .enumerate()
-                    .all(|(i, f)| record.get(i).map(|v| v == f).unwrap_or(false))
-        };
-        let apply = |record: &mut Record| {
-            for &(col_idx, ref new_val) in updates {
-                if col_idx < record.len() {
-                    record[col_idx] = new_val.clone();
-                }
-            }
-        };
+        let db = self.current_db_name();
+        self.update_at(&db, table, filters, updates)
+    }
 
-        let (count, updated) = {
-            let st = self.write_state.get_mut();
-            // Issue #4581 / B-track case 35-36: snapshot pre-images so
-            // ROLLBACK can restore them. `mutate_matching` returns them
-            // alongside the post-images.
-            let touched = st.mutate_matching(&key, match_row, apply);
-            for (pre, post) in &touched {
-                if in_tx {
-                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
-                        table: table.to_string(),
-                        post: post.clone(),
-                        original: pre.clone(),
-                    });
-                }
-            }
-            // V311-07: Mark dirty instead of immediate persist
-            if !touched.is_empty() {
-                st.dirty_tables.insert(table.to_string());
-            }
-            (touched.len(), touched)
-        };
-
-        // #5048: record the update after the borrow is released —
-        // `record_change` takes the change-log lock.
-        if watching {
-            for (_, post) in &updated {
-                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
-            }
-        }
-        // #5055: outside the `write_state` borrow on purpose — this does
-        // file I/O.
-        if wal_on {
-            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
-            self.wal_append(self.wal_update_entries(table, &posts))?;
-        }
-        Ok(count)
+    /// #5057: [`update`](Self::update) against a stated database.
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        self.update_at(db, table, filters, updates)
     }
 
     fn update_if(
@@ -5688,57 +5818,19 @@ impl StorageEngine for FileStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        // #5025: resolve the key before the mutable borrow.
-        //
-        // #5055: as in `update`, the scan is scoped so the `&mut` on
-        // `write_state` is released before the WAL append.
-        //
-        // #5060: `insert_buffer` rows are updated too.
-        let key = self.tbl(table);
-        let wal_on = self.wal_enabled();
-        let watching = self.change_log_enabled();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
-        let assignments = mutation.assignments().to_vec();
-        let match_row = |record: &Record| filter(record);
-        let apply = |record: &mut Record| {
-            for &(col_idx, ref new_val) in &assignments {
-                if col_idx < record.len() {
-                    record[col_idx] = new_val.clone();
-                }
-            }
-        };
+        let db = self.current_db_name();
+        self.update_if_at(&db, table, filter, mutation)
+    }
 
-        let (count, updated) = {
-            let st = self.write_state.get_mut();
-            let touched = st.mutate_matching(&key, match_row, apply);
-            for (pre, post) in &touched {
-                if in_tx {
-                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
-                        table: table.to_string(),
-                        post: post.clone(),
-                        original: pre.clone(),
-                    });
-                }
-            }
-            if !touched.is_empty() {
-                st.dirty_tables.insert(table.to_string());
-            }
-            (touched.len(), touched)
-        };
-
-        if watching {
-            for (_, post) in &updated {
-                self.record_change(table, ChangeOp::Update, key_of(post), Some(post.clone()));
-            }
-        }
-        if wal_on {
-            let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
-            self.wal_append(self.wal_update_entries(table, &posts))?;
-        }
-        Ok(count)
+    /// #5057: [`update_if`](Self::update_if) against a stated database.
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        self.update_if_at(db, table, filter, mutation)
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
