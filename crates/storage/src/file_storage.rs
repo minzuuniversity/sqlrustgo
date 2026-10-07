@@ -55,7 +55,11 @@ struct WriteState {
     /// ROLLBACK by draining any buffered entries added during the tx.
     /// Schema DDL (CREATE/DROP/ALTER) inside a tx is not rolled back —
     /// that requires catalog-level undo, tracked as a separate follow-up.
-    tx_undo_log: Vec<UndoOp>,
+    ///
+    /// Entries carry the owning `tx_id` (see [`TxUndoEntry`]) because
+    /// this log is shared by every connection: a rollback must replay
+    /// only its own transaction's entries, never a peer's.
+    tx_undo_log: Vec<TxUndoEntry>,
     /// V311-07: Dirty table tracker - marks tables modified since last flush
     ///
     /// #5057: keyed by `(database, table)`, NOT by a bare table name.
@@ -403,6 +407,34 @@ enum UndoOp {
         post: Vec<crate::engine::Value>,
         original: Vec<crate::engine::Value>,
     },
+}
+
+/// An [`UndoOp`] plus the id of the transaction that produced it.
+///
+/// # Why this wrapper exists
+///
+/// `WriteState.tx_undo_log` is a single `Vec` shared by every connection:
+/// the MySQL server hands each connection handler the same
+/// `Arc<RwLock<FileStorage>>` (`do_command_loop` takes
+/// `storage: Arc<RwLock<BoxStorageEngine>>`). Before this wrapper,
+/// `rollback_transaction` drained that one vector, so a rolling-back
+/// transaction replayed whatever entries happened to be in it — including
+/// entries belonging to transactions still running or already committed.
+///
+/// Measured consequence before the fix (pinned by
+/// `tests/integration/transaction/concurrent_rollback_isolation_test.rs`):
+/// two connections deleting the same row erased it 1/30 of the time even
+/// though the loser's `ROLLBACK` reported success, and a concurrent
+/// `DELETE id=N; INSERT id=N` workload drifted off its row count in both
+/// directions — silently, with zero errors.
+///
+/// Tagging each entry with its owning `tx_id` lets a rollback discard
+/// everything that is not its own, which is what "roll back *my*
+/// transaction" means.
+#[derive(Debug, Clone)]
+struct TxUndoEntry {
+    tx_id: u64,
+    op: UndoOp,
 }
 
 impl FileStorage {
@@ -4408,11 +4440,15 @@ impl FileStorage {
             // #5059: record one undo entry per row. Without this,
             // ROLLBACK had nothing to act on for buffered inserts and
             // every rolled-back row survived — see `UndoOp`.
+            let tx_id = self.current_tx_id();
             Self::with_write_lock(self, |s| {
                 for row in &records {
-                    s.tx_undo_log.push(UndoOp::BufferedInsert {
-                        table: table.to_string(),
-                        row: row.clone(),
+                    s.tx_undo_log.push(TxUndoEntry {
+                        tx_id,
+                        op: UndoOp::BufferedInsert {
+                            table: table.to_string(),
+                            row: row.clone(),
+                        },
                     });
                 }
             });
@@ -4706,10 +4742,8 @@ impl FileStorage {
         let key = self.tbl_in(db, table);
         let wal_on = self.wal_enabled();
         let watching = self.change_log_enabled();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
+        let tx_id = self.current_tx_id();
+        let in_tx = tx_id != 0;
         let assignments = mutation.assignments().to_vec();
         let match_row = |record: &Record| filter(record);
         let apply = |record: &mut Record| {
@@ -4725,10 +4759,13 @@ impl FileStorage {
             let touched = st.mutate_matching(&key, match_row, apply);
             for (pre, post) in &touched {
                 if in_tx {
-                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
-                        table: table.to_string(),
-                        post: post.clone(),
-                        original: pre.clone(),
+                    st.tx_undo_log.push(TxUndoEntry {
+                        tx_id,
+                        op: UndoOp::BufferedUpdate {
+                            table: table.to_string(),
+                            post: post.clone(),
+                            original: pre.clone(),
+                        },
                     });
                 }
             }
@@ -4774,10 +4811,8 @@ impl FileStorage {
         // INSERT followed by an UPDATE now affects 1 row instead of 0.
         let wal_on = self.wal_enabled();
         let watching = self.change_log_enabled();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
+        let tx_id = self.current_tx_id();
+        let in_tx = tx_id != 0;
         let key = self.tbl_in(db, table);
         let match_row = |record: &Record| {
             filters.is_empty()
@@ -4802,10 +4837,13 @@ impl FileStorage {
             let touched = st.mutate_matching(&key, match_row, apply);
             for (pre, post) in &touched {
                 if in_tx {
-                    st.tx_undo_log.push(UndoOp::BufferedUpdate {
-                        table: table.to_string(),
-                        post: post.clone(),
-                        original: pre.clone(),
+                    st.tx_undo_log.push(TxUndoEntry {
+                        tx_id,
+                        op: UndoOp::BufferedUpdate {
+                            table: table.to_string(),
+                            post: post.clone(),
+                            original: pre.clone(),
+                        },
                     });
                 }
             }
@@ -4844,10 +4882,8 @@ impl FileStorage {
         // a row the live table no longer has.
         let watching = self.change_log_enabled();
         let wal_on = self.wal_enabled();
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
+        let tx_id = self.current_tx_id();
+        let in_tx = tx_id != 0;
         let scoped = crate::engine::scoped_key(db, table);
         let table_name = table.to_string();
         let match_row = |row: &Record| filter(row);
@@ -4856,9 +4892,12 @@ impl FileStorage {
             if in_tx {
                 if let Some(buffered) = s.insert_buffer.get(&scoped) {
                     for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(UndoOp::BufferedDelete {
-                            table: table_name.clone(),
-                            row: row.clone(),
+                        s.tx_undo_log.push(TxUndoEntry {
+                            tx_id: self.current_tx_id(),
+                            op: UndoOp::BufferedDelete {
+                                table: table_name.clone(),
+                                row: row.clone(),
+                            },
                         });
                     }
                 }
@@ -4909,9 +4948,12 @@ impl FileStorage {
                 if in_tx {
                     if filters.is_empty() {
                         let snap = data.rows.clone();
-                        s.tx_undo_log.push(UndoOp::DeleteAll {
-                            table: table.to_string(),
-                            original_rows: snap,
+                        s.tx_undo_log.push(TxUndoEntry {
+                            tx_id: self.current_tx_id(),
+                            op: UndoOp::DeleteAll {
+                                table: table.to_string(),
+                                original_rows: snap,
+                            },
                         });
                     } else {
                         for (idx, row) in data.rows.iter().enumerate().rev() {
@@ -4920,10 +4962,13 @@ impl FileStorage {
                                 .enumerate()
                                 .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
                             if matches {
-                                s.tx_undo_log.push(UndoOp::DeleteRow {
-                                    table: table.to_string(),
-                                    row_idx: idx,
-                                    original: row.clone(),
+                                s.tx_undo_log.push(TxUndoEntry {
+                                    tx_id: self.current_tx_id(),
+                                    op: UndoOp::DeleteRow {
+                                        table: table.to_string(),
+                                        row_idx: idx,
+                                        original: row.clone(),
+                                    },
                                 });
                             }
                         }
@@ -5045,10 +5090,8 @@ impl FileStorage {
         let wal_on = self.wal_enabled();
         let watching = self.change_log_enabled();
         let scoped = crate::engine::scoped_key(db, table);
-        let in_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0;
+        let tx_id = self.current_tx_id();
+        let in_tx = tx_id != 0;
         let table_name = table.to_string();
         let match_row = |row: &Record| {
             filters.is_empty()
@@ -5064,17 +5107,23 @@ impl FileStorage {
             if in_tx {
                 if let Some(data) = s.tables.get(&scoped) {
                     if filters.is_empty() {
-                        s.tx_undo_log.push(UndoOp::DeleteAll {
-                            table: table_name.clone(),
-                            original_rows: data.rows.clone(),
+                        s.tx_undo_log.push(TxUndoEntry {
+                            tx_id: self.current_tx_id(),
+                            op: UndoOp::DeleteAll {
+                                table: table_name.clone(),
+                                original_rows: data.rows.clone(),
+                            },
                         });
                     } else {
                         for (idx, row) in data.rows.iter().enumerate().rev() {
                             if match_row(row) {
-                                s.tx_undo_log.push(UndoOp::DeleteRow {
-                                    table: table_name.clone(),
-                                    row_idx: idx,
-                                    original: row.clone(),
+                                s.tx_undo_log.push(TxUndoEntry {
+                                    tx_id: self.current_tx_id(),
+                                    op: UndoOp::DeleteRow {
+                                        table: table_name.clone(),
+                                        row_idx: idx,
+                                        original: row.clone(),
+                                    },
                                 });
                             }
                         }
@@ -5084,9 +5133,12 @@ impl FileStorage {
                 // are undone by value.
                 if let Some(buffered) = s.insert_buffer.get(&scoped) {
                     for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(UndoOp::BufferedDelete {
-                            table: table_name.clone(),
-                            row: row.clone(),
+                        s.tx_undo_log.push(TxUndoEntry {
+                            tx_id: self.current_tx_id(),
+                            op: UndoOp::BufferedDelete {
+                                table: table_name.clone(),
+                                row: row.clone(),
+                            },
                         });
                     }
                 }
@@ -5393,7 +5445,10 @@ impl StorageEngine for FileStorage {
                 return Ok((existing, false));
             }
             self.current_tx_id.store(id, O::Release);
-            s.tx_undo_log.clear();
+            // Scoped like `commit_transaction`: this log is shared, so
+            // clearing it wholesale would discard a concurrent
+            // transaction's pending undo.
+            s.tx_undo_log.retain(|e| e.tx_id != existing && e.tx_id != id);
             Ok((id, true))
         })?;
         // #5055: log the boundary. A replay can only tell a committed
@@ -5421,7 +5476,11 @@ impl StorageEngine for FileStorage {
             // are NOT auto-flushed here; caller decides when to commit
             // visibility. We only need to drop undo so the next BEGIN gets a
             // fresh log.
-            s.tx_undo_log.clear();
+            // Only this transaction's entries. A blanket `clear()`
+            // wiped peers' pending undo too, so a concurrent COMMIT
+            // silently discarded a still-open transaction's rollback
+            // state — its later ROLLBACK then found nothing to undo.
+            s.tx_undo_log.retain(|e| e.tx_id != tx_id);
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
@@ -5530,8 +5589,20 @@ impl StorageEngine for FileStorage {
         // buffered rows — the buffer is instance-level, not
         // connection-level (#5060) — turning a rollback into data loss.
         Self::with_write_lock(self, |s| {
-            while let Some(op) = s.tx_undo_log.pop() {
-                match op {
+            while let Some(entry) = s.tx_undo_log.pop() {
+                // This undo log is shared by every connection, so it can
+                // hold entries belonging to transactions other than the
+                // one rolling back. Replaying those would silently
+                // revert a peer's committed work — two connections
+                // DELETEing the same row made the loser's ROLLBACK
+                // erase the winner's row, with the ROLLBACK reporting
+                // success. Discard foreign entries instead; they belong
+                // to a transaction that is still live (or already
+                // committed) and will drain its own log.
+                if entry.tx_id != rolling_back_tx {
+                    continue;
+                }
+                match entry.op {
                     UndoOp::UpdateRow {
                         table,
                         row_idx,
