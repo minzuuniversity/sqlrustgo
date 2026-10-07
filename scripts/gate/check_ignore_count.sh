@@ -12,6 +12,12 @@
 # Strategy: maintain a registry file listing all allowed #[ignore] with
 # reason + issue link + ADR. Any new #[ignore] not in registry = FAIL.
 #
+# Counting rule: identical to G19 (check_anti_ignore_gate.sh) — a literal
+# `#[ignore` counts only when it is a real attribute (not inside a line
+# comment, followed by a `fn` item), per registry scope.counting_method.
+# Raw grep also matches prose in comments/strings (44 of 157 literals),
+# which produced false "unregistered file" FAILs. SSOT: tests/baseline/ignore_registry.json.
+#
 # Exit codes:
 #   0 = PASS (all #[ignore] are in registry)
 #   1 = FAIL (unregistered #[ignore] found)
@@ -30,19 +36,34 @@ echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo
 
 # ---------------------------------------------------------------------------
-# Step 1: Extract all #[ignore] tests from source
+# Step 1: Extract all #[ignore] tests from source (G19 counting rule)
 # ---------------------------------------------------------------------------
 echo "[1/4] Extracting #[ignore] from source..."
 
-IGNORE_TMP=$(mktemp)
-grep -rE "#\[ignore" --include="*.rs" crates/ tests/ 2>/dev/null | \
-    sed -E 's/.*#\[ignore[ =]"([^"]+)".*/\1/' > "$IGNORE_TMP" || true
-
-# Also extract file:line:reason triples for full traceability
 IGNORE_DETAILS=$(mktemp)
-grep -rnE "#\[ignore" --include="*.rs" crates/ tests/ 2>/dev/null > "$IGNORE_DETAILS" || true
+python3 - "$IGNORE_DETAILS" <<'PYEOF'
+import pathlib, re, sys
 
-total_ignored=$(wc -l < "$IGNORE_TMP" | tr -d ' ')
+ATTR = re.compile(r'#\[ignore(\s*=\s*"((?:[^"\\]|\\[\s\S])*)")?\]')
+BETWEEN = re.compile(r'(?:\s|//[^\n]*|/\*.*?\*/|\#[^\n]*)*?fn\s+([A-Za-z0-9_]+)')
+
+with open(sys.argv[1], "w") as out:
+    paths = sorted(list(pathlib.Path("tests").rglob("*.rs"))
+                   + list(pathlib.Path("crates").rglob("*.rs")))
+    for p in paths:
+        src = p.read_text(errors="replace")
+        for m in ATTR.finditer(src):
+            line_start = src.rfind("\n", 0, m.start()) + 1
+            if src[line_start:m.start()].strip().startswith("//"):
+                continue
+            if not BETWEEN.match(src[m.end():m.end() + 400]):
+                continue
+            lineno = src.count("\n", 0, m.start()) + 1
+            text = " ".join(m.group(0).split())
+            out.write(f"{p}:{lineno}:{text}\n")
+PYEOF
+
+total_ignored=$(wc -l < "$IGNORE_DETAILS" | tr -d ' ')
 echo "  Total #[ignore] tests: $total_ignored"
 
 # ---------------------------------------------------------------------------
@@ -88,7 +109,7 @@ PYEOF
     echo "  Created: $REGISTRY"
     echo
     echo "ℹ️  INFO: first run, registry established. Re-run to verify compliance."
-    rm -f "$IGNORE_TMP" "$IGNORE_DETAILS"
+    rm -f "$IGNORE_DETAILS"
     exit 0
 fi
 
@@ -163,8 +184,8 @@ FAIL=${#unregistered[@]}
 if [ "$FAIL" -gt 0 ]; then
     echo "  ❌ FAIL: $FAIL file(s) have #[ignore] but NOT in registry:"
     for f in "${unregistered[@]}"; do
-        count=$(grep -c "#\[ignore" "$f" 2>/dev/null || echo 0)
-        echo "          - $f ($count #[ignore] lines)"
+        count=$(awk -F: -v f="$f" '$1==f{c++} END{print c+0}' "$IGNORE_DETAILS")
+        echo "          - $f ($count #[ignore] attrs)"
     done
     echo
     echo "  ACTION REQUIRED: Add to $REGISTRY with explicit reason + issue link."
@@ -193,7 +214,7 @@ if [ "$total_ignored" -ne "$registry_count" ]; then
     echo "  ⚠️  WARN: count mismatch - registry may be out of sync"
 fi
 
-rm -f "$IGNORE_TMP" "$IGNORE_DETAILS"
+rm -f "$IGNORE_DETAILS"
 
 echo
 echo "=== P12 Summary ==="
