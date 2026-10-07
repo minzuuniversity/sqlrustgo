@@ -189,3 +189,82 @@ TOCTOU 的结构性论证不依赖本次复现：`FileStorage::tbl()` 每次调�
 从而走 re-derive 全量保存分支 —— 不会丢数据，是性能问题不是正确性问题。
 即便如此，`db` 参数化之后这个 key 应当一并作用域化。记录在此，
 待 `P1-b` 落地时顺带处理或单开 issue。
+
+---
+
+## 7. PR A：先让 `USE` 恢复可用
+
+### 7.1 变更
+
+在 server 的**两处** dispatch 之后，把 storage 的当前库同步回本连接的
+`conn_db`：
+
+| dispatch | 位置 | 覆盖的语句 |
+|----------|------|-----------|
+| `COM_QUERY` | `crates/mysql-server/src/lib.rs` `do_command_loop` | 绝大多数 SQL，含 `USE` |
+| `COM_STMT_EXECUTE` | 同上，`COM_STMT_EXECUTE` 分支 | 预编译语句 |
+
+两处都先 `drop(eng)` 再取 storage 锁，与 engine 内部既有的
+engine → storage 锁序一致，不引入新的嵌套持锁。
+
+### 7.2 修复后的实测
+
+探针 `probe_5057_use_sql_path.rs` 三个用例的输出全部转为 NOT-REPRODUCED：
+
+```
+after USE d1, SELECT DATABASE() -> d1
+after USE d2, SELECT DATABASE() -> d2
+connection A after USE d_a, SELECT DATABASE() -> d_a
+connection B now reports SELECT DATABASE() -> d_b
+```
+
+注意第三行：修复前连接 A 报 `default`（USE 失效），修复后报 `d_a`；
+连接 B 始终报 `d_b`，说明连接间隔离未被这个改动破坏。
+
+### 7.3 缺陷的真实后果（比「USE 无效」更严重）
+
+变异 M-A 的失败输出给出了铁证 —— 去掉同步后，
+`use_routes_table_creation_to_the_selected_database` 打印的是：
+
+```
+Tables_in_default, rows: [["only_in_d1"]]
+```
+
+即：**在 `d1` 里 `CREATE TABLE` 的表，实际落进了 `default` 库**，
+而且 `SHOW TABLES` 诚实地报告了 `Tables_in_default`。
+这不是「切换没生效」，是**写到了错误的库**，且全程无任何报错。
+
+### 7.4 回归测试与变异验证
+
+新增 `crates/mysql-server/tests/use_database_regression_5057.rs`，7 个用例：
+
+| 用例 | 作用 |
+|------|------|
+| `use_as_sql_switches_the_connection_database` | 核心回归 |
+| `repeated_use_lands_on_the_last_database` | 连续切换落在最后一个 |
+| `use_survives_many_intervening_commands` | 扛住 5 次逐命令重断言 |
+| `use_routes_table_creation_to_the_selected_database` | 表作用域随之切换（§7.3 的铁证） |
+| `use_of_an_unknown_database_is_rejected_and_leaves_the_current_one_intact` | 被拒的 USE 不改变当前库 |
+| `handshake_selected_database_still_works` | 对照组：握手选库原本就正常，防误伤 |
+| `use_through_prepared_statement_switches_the_connection_database` | 第二处 dispatch |
+
+变异：
+
+| 编号 | 变异内容 | 结果 |
+|------|---------|------|
+| M-A | 移除 `COM_QUERY` 处的同步（还原成缺陷态） | **CAUGHT**，6 个中 5 个失败 |
+| M-B | 保留 `COM_QUERY`、移除 `COM_STMT_EXECUTE` 处的同步 | **CAUGHT**，精确只失败在 prepared 用例，其余 6 个照常通过 |
+
+M-B 的意义：它证明 prepared 用例真的在测第二处 dispatch，而不是顺带通过。
+也顺带证明 server **确实接受 `USE` 作为预编译语句**，因此第二处 dispatch
+不是死代码 —— 若不接受，该测试会以「server 必须接受 USE」失败，而不是空过。
+
+### 7.5 这个 PR 不解决什么
+
+跨连接 TOCTOU 仍在。重断言机制在命令不交错的场景下有效（§7.2 的连接 B
+始终报 `d_b`），但重断言与语句表解析之间的窗口依旧存在。
+消除它需要 §6 描述的 `SessionContext` 重构，也就是 #5057 的主体。
+
+本 PR 的两处同步在 SessionContext 落地时需要改写一次 —— 届时
+`conn_db` 不再需要每命令重断言，`db` 从会话上下文直接下传。
+这是已知的 churn，不是意外。
