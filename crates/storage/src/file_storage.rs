@@ -5524,8 +5524,16 @@ impl StorageEngine for FileStorage {
             return Ok(());
         }
         // `with_write_lock` takes `&Self` since #4951, so the undo log can
-        // be cleared from a `&self` method without laundering a `&mut`.
-        Self::with_write_lock(self, |s| s.tx_undo_log.clear());
+        // be pruned from a `&self` method without laundering a `&mut`.
+        //
+        // Scoped to this transaction, like the `&mut` variant above: this
+        // log is shared by every connection, so a blanket `clear()` also
+        // discarded a still-open peer's pending undo and its later
+        // ROLLBACK then found nothing to undo.
+        let tx_id = self
+            .current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire);
+        Self::with_write_lock(self, |s| s.tx_undo_log.retain(|e| e.tx_id != tx_id));
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
         Ok(())
@@ -5543,7 +5551,9 @@ impl StorageEngine for FileStorage {
             return Ok(());
         }
         Self::with_write_lock(self, |s| {
-            s.tx_undo_log.clear();
+            // Scoped to this transaction — see the `&mut` variant for why
+            // a blanket `clear()` is data loss under concurrency.
+            s.tx_undo_log.retain(|e| e.tx_id != tx_id);
             if let Some(buf) = s.insert_buffer.get_mut(&String::new()) {
                 let _ = buf;
             }
