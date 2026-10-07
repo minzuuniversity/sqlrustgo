@@ -1314,6 +1314,20 @@ pub trait StorageEngine: Send + Sync {
         self.get_table_info(table)
     }
 
+    /// #5025: `list_tables` against a stated database. See
+    /// [`get_table_info_in`](Self::get_table_info_in).
+    ///
+    /// `SHOW TABLES FROM <db>` runs under a shared read lock, where
+    /// `set_current_db` (`&mut self`) is unreachable — the listing must
+    /// answer for the stated database without flipping the engine-wide
+    /// current database. Backends without a per-database table namespace
+    /// defer to the current-database listing; the ones that scope keys
+    /// override.
+    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+        let _ = db;
+        self.list_tables()
+    }
+
     /// #5057 / #5025: `scan` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
     fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
@@ -3032,6 +3046,16 @@ impl StorageEngine for MemoryStorage {
         // raw keys would make `SHOW TABLES` display `d1\u{1}t` and list
         // every database's tables.
         let prefix = format!("{}\u{1}", self.current_db.to_lowercase());
+        self.table_infos
+            .iter()
+            .filter_map(|(key, info)| key.strip_prefix(&prefix).map(|_| info.name.clone()))
+            .collect()
+    }
+
+    /// #5025: `list_tables` for a stated database, without touching
+    /// `current_db` (see the trait method's doc for why).
+    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+        let prefix = format!("{}\u{1}", db.to_lowercase());
         self.table_infos
             .iter()
             .filter_map(|(key, info)| key.strip_prefix(&prefix).map(|_| info.name.clone()))
@@ -4942,6 +4966,34 @@ mod tests {
         assert_eq!(s.list_tables(), vec!["alpha".to_string()]);
         s.set_current_db("d2").unwrap();
         assert_eq!(s.list_tables(), vec!["beta".to_string()]);
+    }
+
+    /// `SHOW TABLES FROM <db>` needs a target-database listing under a
+    /// shared read lock, where `set_current_db` (`&mut self`) is
+    /// unreachable — hence `list_tables_in_db` must answer for a stated
+    /// database without touching `current_db`.
+    #[test]
+    fn list_tables_in_db_answers_for_stated_database_without_switching() {
+        let mut s = MemoryStorage::new();
+        s.create_database("d1").unwrap();
+        s.create_database("d2").unwrap();
+
+        s.set_current_db("d1").unwrap();
+        s.create_table(&test_table("alpha", &["v"])).unwrap();
+        s.set_current_db("d2").unwrap();
+        s.create_table(&test_table("beta", &["v"])).unwrap();
+
+        let mut d1 = s.list_tables_in_db("d1");
+        d1.sort();
+        assert_eq!(d1, vec!["alpha".to_string()]);
+        let mut d2 = s.list_tables_in_db("d2");
+        d2.sort();
+        assert_eq!(d2, vec!["beta".to_string()]);
+        assert_eq!(
+            s.current_db(),
+            "d2",
+            "list_tables_in_db must not mutate the engine-wide current database"
+        );
     }
 
     /// `USE missing_db` used to be accepted silently, which is how two

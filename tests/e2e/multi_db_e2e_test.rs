@@ -1,7 +1,8 @@
 //! Multi-Database E2E Tests
 //!
 //! 验证 v3.10.0 多数据库支持 (CREATE DATABASE / DROP DATABASE).
-//! 当前 USE 仅作 no-op，因为 table lookup 路径尚未按数据库隔离.
+//! #5025 之后 `USE` 已接通存储层并按库隔离 —— 跨库可见性断言在
+//! `multi_db_isolation_5025.rs`.
 
 use parking_lot::RwLock;
 use sqlrustgo::MemoryExecutionEngine;
@@ -72,7 +73,7 @@ fn test_create_multiple_databases() {
 }
 
 #[test]
-fn test_use_database_noop() {
+fn test_use_database_switches_context() {
     let mut engine = make_engine();
     let _ = engine.execute("CREATE DATABASE mydb");
     let r = engine.execute("USE mydb");

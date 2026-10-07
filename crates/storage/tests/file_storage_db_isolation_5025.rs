@@ -154,3 +154,70 @@ fn tbl(name: &str) -> sqlrustgo_storage::TableInfo {
         original_sql: String::new(),
     }
 }
+
+/// `list_tables_in_db` must enumerate a stated database's tables without
+/// flipping the engine-wide `current_db` — the read lock held by
+/// `SHOW TABLES FROM` cannot do that (`set_current_db` needs `&mut`).
+#[test]
+fn issue_5025_list_tables_in_db_returns_target_database_tables() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let mut storage = make_db(tmp.path());
+
+    storage.create_database("d1").expect("create d1");
+    storage.create_database("d2").expect("create d2");
+
+    storage.set_current_db("d1").expect("switch to d1");
+    storage.create_table(&tbl("t1")).expect("create t1 in d1");
+
+    storage.set_current_db("d2").expect("switch to d2");
+    storage.create_table(&tbl("t1")).expect("create t1 in d2");
+    storage.create_table(&tbl("t2")).expect("create t2 in d2");
+
+    // current_db stays d2 throughout — the answer must not depend on it.
+    let mut d1_tables = storage.list_tables_in_db("d1");
+    d1_tables.sort();
+    assert_eq!(
+        d1_tables,
+        vec!["t1".to_string()],
+        "list_tables_in_db(d1) must list only d1's tables while current_db=d2"
+    );
+
+    let mut d2_tables = storage.list_tables_in_db("d2");
+    d2_tables.sort();
+    assert_eq!(
+        d2_tables,
+        vec!["t1".to_string(), "t2".to_string()],
+        "list_tables_in_db(d2) must list d2's tables"
+    );
+
+    assert_eq!(
+        storage.current_db(),
+        "d2",
+        "list_tables_in_db must not mutate the engine-wide current database"
+    );
+}
+
+/// While `current_db` is the implicit default, a named database's tables
+/// must not leak into `list_tables()`. The `db_dir() == None` branch in
+/// `table_names()` lists every cache entry unfiltered, but every cache
+/// key is scoped (`tbl()` always applies `scoped_key`) — so the unscoped
+/// "list everything" shortcut reports named databases' tables under
+/// `default`.
+#[test]
+fn issue_5025_file_storage_default_database_does_not_leak_named_database_tables() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let mut storage = make_db(tmp.path());
+
+    storage.create_database("d1").expect("create d1");
+    storage.set_current_db("d1").expect("switch to d1");
+    storage
+        .create_table(&tbl("only_in_d1"))
+        .expect("create table in d1");
+
+    storage.set_current_db("default").expect("back to default");
+    let tables = storage.list_tables();
+    assert!(
+        !tables.iter().any(|t| t == "only_in_d1"),
+        "default's list_tables must NOT leak d1's table, got: {tables:?}"
+    );
+}

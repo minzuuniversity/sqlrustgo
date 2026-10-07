@@ -1794,18 +1794,22 @@ impl FileStorage {
         // #5025: only this database's tables, reported by bare name —
         // the scoped cache key is an implementation detail, and leaking it
         // would show up as `d1\u{1}t` in `SHOW TABLES`.
-        self.with_read_lock(|st| match self.db_dir() {
-            None => st.tables.values().map(|v| v.info.name.clone()).collect(),
-            Some(dir) => {
-                let prefix = format!(
-                    "{}\u{1}",
-                    dir.file_name().unwrap_or_default().to_string_lossy()
-                );
-                st.tables
-                    .iter()
-                    .filter_map(|(k, v)| k.strip_prefix(&prefix).map(|_| v.info.name.clone()))
-                    .collect()
-            }
+        //
+        // Every cache key is scoped (`tbl()` always applies `scoped_key`),
+        // including the default database's — so the old `db_dir() == None`
+        // shortcut, which listed every entry unfiltered, reported named
+        // databases' tables under `default`. Bare (unscoped) keys are kept:
+        // they are pre-#5025 root-layout entries that belong to default.
+        self.with_read_lock(|st| {
+            let prefix = format!("{}\u{1}", self.current_db_name().to_lowercase());
+            st.tables
+                .iter()
+                .filter_map(|(k, v)| {
+                    k.strip_prefix(&prefix)
+                        .or_else(|| (!k.contains('\u{1}')).then_some(k))
+                        .map(|_| v.info.name.clone())
+                })
+                .collect()
         })
     }
 
@@ -6059,6 +6063,26 @@ impl StorageEngine for FileStorage {
 
     fn list_tables(&self) -> Vec<String> {
         self.table_names()
+    }
+
+    /// #5025: `list_tables` for a stated database. The cache is keyed by
+    /// `scoped_key(db, table)`, so a prefix filter answers for any
+    /// database without flipping `current_db` (impossible under the read
+    /// lock `SHOW TABLES FROM` holds). Bare keys are pre-#5025 root-layout
+    /// entries and belong to the default database only.
+    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+        let prefix = format!("{}\u{1}", db.to_lowercase());
+        let is_default = db.eq_ignore_ascii_case(crate::engine::DEFAULT_DATABASE);
+        self.with_read_lock(|st| {
+            st.tables
+                .iter()
+                .filter_map(|(k, v)| {
+                    k.strip_prefix(&prefix)
+                        .or_else(|| (is_default && !k.contains('\u{1}')).then_some(k))
+                        .map(|_| v.info.name.clone())
+                })
+                .collect()
+        })
     }
 
     fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
