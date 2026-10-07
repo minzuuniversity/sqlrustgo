@@ -1948,6 +1948,48 @@ impl MemoryStorage {
         scoped_key(&self.current_db, table.as_ref())
     }
 
+    // --- #5057: table operations with the storage key already resolved
+    // ---
+    //
+    // `impl StorageEngine for MemoryStorage` cannot carry extra inherent
+    // helpers, so these live here. The trait's `_in_db` methods compute the
+    // key from the stated `db` and delegate; nothing on this path reads
+    // the shared `current_db`.
+    //
+    // `MemoryStorage` is not only a test backend: `mysql-server` builds one
+    // for `--memory` and the CLI defaults to it, so its `_in_db` methods
+    // are as load-bearing as `FileStorage`'s.
+
+    /// `create_table` against a stated database.
+    pub(crate) fn create_table_in_key(&mut self, info: &TableInfo, key: String) -> SqlResult<()> {
+        // V312-19 #3972: store table info under lowercased key for
+        // case-insensitive lookup. `info.name` keeps the bare table name,
+        // which is what `SHOW TABLES` must display.
+        let mut info = info.clone();
+        info.name = info.name.to_lowercase();
+        self.table_infos.insert(key.clone(), info);
+        self.tables.entry(key).or_default();
+        Ok(())
+    }
+
+    /// `drop_table` against a stated database.
+    pub(crate) fn drop_table_in_key(&mut self, table: &str, key: String) -> SqlResult<()> {
+        self.tables.remove(&key);
+        self.table_infos.remove(&key);
+        // V4.1.0: a DROP must invalidate caches even though the table is
+        // gone — a CREATE of the same name must not inherit a snapshot
+        // describing the old table.
+        self.bump_change_stamp(&key);
+        // #4964 follow-up: MySQL discards a table's AUTO_INCREMENT
+        // high-water mark on DROP, so a CREATE of the same name restarts
+        // from 1.
+        if let Ok(mut counters) = self.auto_inc_counters.lock() {
+            counters.remove(&key);
+        }
+        let _ = table;
+        Ok(())
+    }
+
     pub fn new() -> Self {
         Self {
             tables: HashMap::new(),
@@ -2807,11 +2849,7 @@ impl StorageEngine for MemoryStorage {
         // `d2.t` are distinct. `info.name` keeps the bare table name —
         // that is what `SHOW TABLES` must display.
         let key = self.tbl(&info.name);
-        let mut info = info.clone();
-        info.name = info.name.to_lowercase();
-        self.table_infos.insert(key.clone(), info);
-        self.tables.entry(key).or_default();
-        Ok(())
+        self.create_table_in_key(info, key)
     }
 
     fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
@@ -2878,25 +2916,17 @@ impl StorageEngine for MemoryStorage {
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
         // V312-19 #3972: case-insensitive table name lookup.
         let key = self.tbl(table);
-        self.tables.remove(&key.clone());
-        self.table_infos.remove(&key.clone());
-        // V4.1.0: a DROP must invalidate caches even though the table is
-        // gone — a CREATE of the same name may follow and must not inherit
-        // a snapshot describing the old table.
-        self.bump_change_stamp(&key);
-        // #4964 follow-up: the per-table AUTO_INCREMENT counter is keyed
-        // by table name and lives in a field that `drop_table` did not
-        // know about. MySQL semantics discard a table's AUTO_INCREMENT
-        // high-water mark on DROP, so a CREATE of the same name must
-        // start from 1 again. Without this, `DROP t; CREATE t(...);
-        // INSERT;` continued from the dropped table's last id — a
-        // behaviour change the pre-#4964 `MAX(remaining rows)+1`
-        // allocator got right for free, because it derived the next id
-        // from rows that no longer existed.
-        if let Ok(mut counters) = self.auto_inc_counters.lock() {
-            counters.remove(&key);
-        }
-        Ok(())
+        self.drop_table_in_key(table, key)
+    }
+
+    /// #5057: `create_table` within a stated database.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.create_table_in_key(info, scoped_key(db, &info.name))
+    }
+
+    /// #5057: `drop_table` against a stated database.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        self.drop_table_in_key(table, scoped_key(db, table))
     }
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
