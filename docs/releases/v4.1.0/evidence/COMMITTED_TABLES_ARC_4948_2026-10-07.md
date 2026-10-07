@@ -1,7 +1,7 @@
 # #4948 — COMMIT 不再深拷贝全库：`tables` / `committed_tables` Arc 化
 
 - **Date**: 2026-10-07
-- **Branch**: `feat/4948-committed-tables-arc`
+- **Branch**: `feat/4948-committed-tables-arc`（PR #5071）+ `feat/4948-memory-curve`（PR #5074）
 - **Base**: `gitea252/develop/v4.1.0` = `75683f1cc6`（PR #5070 合并后）
 - **Issue**: #4948（B2.5 / #4915 F-11）
 
@@ -131,13 +131,57 @@ tables   rows/table   total rows   commit ms
 
 曲线从线性变为平坦 —— 这是验收标准第 1 条的直接证据。
 
-### 验收标准第 2 条：内存曲线
+### 验收标准第 2 条：内存曲线 —— 实测（补于 2026-10-07，PR #5074）
 
-**未测。** 验收标准第 2 条要求「附内存曲线（当前常驻约 2×）」。
+#### 先记一次失败的方法
 
-结构性推导是：`committed_tables` 不再持有私有副本，稳态下同一份行数据由一个
-`Arc` 承载而非两份，因此「常驻约 2×」应降为约 1×。**这是推导，不是实测** ——
-本 PR 没有做 RSS / 分配计数测量，不能据此宣称第 2 条达成。补测留给后续。
+第一版用 `/usr/bin/time -l` 的 `maximum resident set size` 直接比较进程峰值，
+结果**两版毫无差别**（10 表 × 5 万行）：
+
+```text
+pre-Arc  : 484.2 / 483.0 / 483.0 / 483.0 / 483.0 MB
+post-Arc : 483.0 / 483.0 / 482.9 / 483.0 / 484.1 MB
+```
+
+（各 5 次重复，离散度 ±0.3%，不是噪声。）
+
+原因是**峰值在构建夹具时就已达到**，commit 的那份额外拷贝抬不高它：
+
+```rust
+// MemoryStorage::insert 的 autocommit 分支本来就同时写两张表
+if let Some(log) = self.tx_log.as_mut() { ... } else {
+    committed_tables.entry(..).or_default().extend(padded.iter().cloned());
+}
+tables.entry(..).or_default().extend(padded);
+```
+
+也就是说数据集一装载，常驻就已经约 2× 了 —— 这正是 issue 说的「当前常驻约 2×」，
+但它出现在**装载阶段**而不是 commit 阶段。峰值 RSS 因此看不见本 issue 关心的东西。
+
+#### 改测「commit 本身带来的增量」
+
+`getrusage(RUSAGE_SELF).ru_maxrss` 是单调高水位，因此在 commit **前后各采样一次**，
+差值就精确隔离出 commit 新分配的内存。没有引入 `libc` 依赖 —— C 结构体就地声明
+（`ru_maxrss` 在 macOS 是字节，Linux 是 KB）。
+
+夹具：`crates/storage/tests/measure_commit_memory_4948.rs`（`#[ignore]`，手动跑）。
+10 表 × 4 列 TEXT，行数由 `SQLRUSTGO_4948_ROWS` 控制。
+
+#### 结果
+
+| 总行数 | pre-Arc commit 增量 | post-Arc commit 增量 |
+|---|---|---|
+| 250 000 | **68.7 MB** | **0.0 MB** |
+| 500 000 | **142.9 MB** | **0.1 MB** |
+| 1 000 000 | **291.2 MB** | **0.0 MB** |
+
+pre-Arc 折合约 **290 字节/行**，随行数严格线性 —— 即 commit 每次都把整个数据集再
+复制一份，常驻从约 1× 变成约 2×。post-Arc 增量恒为 0（500K 那次的 0.1 MB 是
+HashMap 本身重新分配，与行数据无关）。
+
+**验收标准第 2 条达成。** 顺带说明：这个夹具自带变异验证能力 —— pre-Arc 版本等价于
+「把 commit 退回深拷贝」，它测出 291 MB，Arc 版测出 0 MB，说明该测量确实能分辨
+这两者，而不是在测噪声。
 
 ## 6. 测试
 
