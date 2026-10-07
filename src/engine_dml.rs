@@ -123,7 +123,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // `current_db`, so a concurrent `USE` on another connection sends
     // the rows to the wrong database — measured at 6% under a writer
     // switching databases continuously.
-    let stmt_db = engine.storage.read().current_db();
+    let stmt_db = engine.session_db();
     if engine.clustered_tables.read().contains_key(&insert.table) {
         return execute_insert_clustered(engine, insert);
     }
@@ -871,7 +871,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
 ) -> SqlResult<ExecutorResult> {
     // #5057: pin the statement to the database it belongs to.
     // (`execute_insert` carries the same snapshot.)
-    let stmt_db = engine.storage.read().current_db();
+    let stmt_db = engine.session_db();
     if update.tables.is_empty() {
         return Err(SqlError::ExecutionError(
             "UPDATE requires at least one table".to_string(),
@@ -1301,7 +1301,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 ) -> SqlResult<ExecutorResult> {
     // #5057: pin the statement to the database it belongs to.
     // (`execute_insert` carries the same snapshot.)
-    let stmt_db = engine.storage.read().current_db();
+    let stmt_db = engine.session_db();
     if delete.tables.is_empty() {
         return Err(SqlError::ExecutionError(
             "DELETE requires at least one table".to_string(),

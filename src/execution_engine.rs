@@ -108,6 +108,22 @@ pub struct ExecutionEngine<S: StorageEngine> {
     pub(crate) trigger_undo_sink:
         Arc<parking_lot::Mutex<Vec<sqlrustgo_transaction::savepoint::UndoRecord>>>,
 
+    /// #5057: the database **this connection** is working in.
+    ///
+    /// The storage engine also carries a `current_db`, but that one is a
+    /// single shared value: every connection writes to it, so it answers
+    /// "which database did anyone select last" rather than "which one is
+    /// mine". Two engines over one storage therefore read each other's
+    /// tables.
+    ///
+    /// Keeping it here makes one `ExecutionEngine` one connection, which
+    /// is how `mysql-server` builds them (one per accepted socket). The
+    /// storage field remains as a mirror for engines that do not track it
+    /// — `tests/session_db_isolation_5057.rs` names that relationship
+    /// explicitly ("last use wins on the mirror, but not on the
+    /// connection").
+    pub(crate) session_db: parking_lot::RwLock<String>,
+
     /// V312-77 / Issue #4847: distinguishes an explicit BEGIN (set to true
     /// when `begin_transaction` is called) from an implicit DML transaction
     /// (set to false). Only explicit transactions should be tracked by
@@ -321,6 +337,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 current_role: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            // #5057: a fresh connection is in the implicit database.
+            session_db: parking_lot::RwLock::new(
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string(),
+            ),
             current_user: UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
@@ -357,6 +377,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// V312-55F / Issue #4243: returns the current session user identity.
     pub fn current_user(&self) -> &UserIdentity {
         &self.current_user
+    }
+
+    /// #5057: the database this connection selected with `USE`.
+    ///
+    /// Distinct from `storage.current_db()`, which is one shared value
+    /// every connection overwrites. Statements resolve their table names
+    /// against this one.
+    pub fn session_db(&self) -> String {
+        self.session_db.read().clone()
+    }
+
+    /// #5057: switch this connection's database.
+    ///
+    /// Also mirrors the value onto the storage engine, which keeps
+    /// engines that do not track a session (and the `get_table_info_in`
+    /// family) resolving the same way.
+    pub fn set_session_db(&mut self, db: &str) -> SqlResult<()> {
+        self.storage.write().set_current_db(db)?;
+        *self.session_db.write() = db.to_lowercase();
+        Ok(())
     }
 
     /// V312-64f / Issue #4699: override the recursive CTE row cap for

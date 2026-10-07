@@ -73,7 +73,12 @@ fn two_connections() -> (
     Arc<RwLock<FileStorage>>,
     PathBuf,
 ) {
-    let dir = std::env::temp_dir().join(format!("session_db_5057_{}", std::process::id()));
+    // The process id alone is not enough: these tests run in parallel by
+    // default and every one of them wipes and recreates the directory, so
+    // they deleted each other's data mid-run. Include a per-call counter.
+    static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("session_db_5057_{}_{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let storage = Arc::new(RwLock::new(FileStorage::new(dir.clone()).unwrap()));
@@ -114,7 +119,6 @@ fn ids(x: &mut ExecutionEngine<FileStorage>) -> Vec<sqlrustgo_types::Value> {
 /// `storage.current_db`, so connection A's next SELECT resolved `t`
 /// against `d2` and returned d2's row.
 #[test]
-#[ignore = "#5057 next batch: executor still reads the shared storage.current_db"]
 fn select_reads_the_connections_own_database() {
     let (mut a, mut b, storage, dir) = two_connections();
     seed(&mut a);
@@ -141,7 +145,6 @@ fn select_reads_the_connections_own_database() {
 /// pattern repeats the read/switch cycle rather than switching once and
 /// reading once.
 #[test]
-#[ignore = "#5057 next batch: executor still reads the shared storage.current_db"]
 fn interleaved_use_does_not_redirect_the_other_connection() {
     let (mut a, mut b, storage, dir) = two_connections();
     seed(&mut a);
@@ -178,7 +181,6 @@ fn interleaved_use_does_not_redirect_the_other_connection() {
 /// the shared `current_db`, one thread's statement would resolve against
 /// the other's database.
 #[test]
-#[ignore = "#5057 next batch: executor still reads the shared storage.current_db"]
 fn concurrent_reads_stay_isolated() {
     let (mut a, mut b, storage, dir) = two_connections();
     seed(&mut a);
@@ -252,7 +254,6 @@ fn shared_current_db_still_agrees_with_the_last_use() {
 /// second is the actual isolation guarantee. Asserting only the first
 /// would pass with the defect in place.
 #[test]
-#[ignore = "#5057 next batch: executor still reads the shared storage.current_db"]
 fn last_use_wins_on_the_mirror_but_not_on_the_connection() {
     let (mut a, mut b, storage, dir) = two_connections();
     seed(&mut a);
