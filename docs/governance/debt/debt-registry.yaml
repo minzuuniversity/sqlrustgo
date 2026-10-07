@@ -277,20 +277,47 @@ sem:
     related_change: "V310-04 (P0, 20h, deferred to v3.11.0)"
 
   - id: SEM-4
-    title: "Coverage 测量差异 (Z6G4 82% vs Z440 32%)"
-    state: CLOSED
-    progress: 84.44%
+    title: "Coverage 测量差异 (跨机台测量口径不一致：同一 crate 在 Z6G4 与 Z440 上的读数差异)"
+    state: OPEN
+    progress: 87.64%
     progress_metric: |
       v3.12.0 L1_8 平均覆盖率 84.44% >= 80% 阈值 (实测 2026-08-15, macmini M4).
       各 crate: parser 75.16%, planner 86.75%, executor 82.80%, transaction 85.41%,
       storage 83.52%, catalog 84.77%, optimizer 87.06%, types 90.07%.
       check_coverage_v312.sh exit 0.
+      ---
+      2026-10-07 重测 (z440, 修复 check_coverage_v312.sh 的 fail-open 后):
+      7 crate 可测,  平均 87.64%;  executor 测不出 (预先存在的
+      integration test 失败, 见 #5103), 因此 8-crate 均值当前无法给出.
+      parser 86.75% (+11.59pp vs 2026-08-15), planner 88.91%, transaction 86.00%,
+      storage 81.34%, catalog 87.33%, optimizer 87.85%, types 95.28%.
     owner: openclaw
     target_release: v3.13.0
-    review_date: "2027-01-15"
-    closed_at: "2026-08-15"
+    closed_at: "2026-08-15 (RE-OPENED 2026-10-07 — 见 note)"
     closing_pr: []
-    note: "CLOSED 2026-08-15: L1_8 avg 84.44% >= 80% threshold. parser 75.16% (接近阈值 80%, 在coverage测试修复后显著提升). executor 82.80%. 所有 8 core crates 达标. Z440 32% 问题(XYZ)已记录但不影响 v3.12.0 close."
+    note: >-
+      RE-OPENED 2026-10-07 (was CLOSED 2026-08-15). The 2026-08-15 closure
+      rested on three claims that do not hold up:
+      (a) it cited "Z440 32% 问题(XYZ)" — a literal unfilled placeholder, so
+      the root cause of the cross-machine discrepancy was never recorded;
+      (b) it asserted "所有 8 core crates 达标" while its own progress_metric
+      listed parser at 75.16%, below the 80% threshold. The gate threshold is
+      an L1_8 AVERAGE, not a per-crate minimum, so a below-threshold crate can
+      still pass — but "all crates met the threshold" is a stronger claim than
+      the evidence supports;
+      (c) the numbers are not reproducible. Re-measured 2026-10-07 on z440 with
+      the fail-open defects in check_coverage_v312.sh fixed (see #4944 P1-01,
+      commit 666e6608ca): parser 86.75 (+11.59pp), planner 88.91 (+2.16),
+      transaction 86.00 (+0.59), storage 81.34 (-2.18), catalog 87.33 (+2.56),
+      optimizer 87.85 (+0.79), types 95.28 (+5.21), executor UNMEASURABLE
+      (pre-existing integration-test failure, #5103). 7-crate average 87.64.
+      STAGE.yaml open_issues P0-05 separately cites "parser 75.16% 不可复现
+      (实测 60.58%)" — the 60.58% figure is also unreproducible and is not
+      reproduced here either.
+      The 2026-08-15 per-crate figures are LEFT UNCHANGED: they were a real
+      measurement on 2026-08-15 and are not falsified, only no longer current.
+      Re-closure requires the executor suite green (#5103) plus a full
+      8-crate run of the corrected gate.
 
 # =============================================================================
 # F-XX — Feature Gap (36 items, v3.0.0 baseline)
