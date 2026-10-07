@@ -123,21 +123,45 @@ enum SubCmd {
 }
 
 pub fn run() -> i32 {
-    // Implicit-alias fast-path: `sqlrustgo <db-path>` with exactly one positional
-    // arg, optionally followed by `--continue-on-error`.
+    // Implicit-alias fast path: `sqlrustgo <db-path>` [SQL...] [--continue-on-error].
+    // Mirrors sqlite3 (`sqlite3 edu.db "SELECT 1;"`): remaining non-flag
+    // positionals form one SQL batch (dot-commands included) that goes
+    // through the same statement splitter as `--cmd`/stdin. Any other
+    // `-flag` falls through to clap subcommand parsing (previous
+    // behaviour — the old fast path only accepted bare `<db>` and
+    // `<db> --continue-on-error`, so `<db> "SQL"` died in clap with
+    // "unrecognized subcommand" exit 2).
     let args: Vec<String> = std::env::args().collect();
-    let alias_continue = args.len() == 3 && args[2] == "--continue-on-error";
-    if (args.len() == 2 || alias_continue) && crate::implicit_alias::looks_like_db_path(&args[1]) {
-        return run_sqlite_subcommand(
-            PathBuf::from(&args[1]),
-            false,
-            None,
-            OutputMode::Table,
-            None,
-            None,
-            None,
-            alias_continue,
-        );
+    if args.len() >= 2 && crate::implicit_alias::looks_like_db_path(&args[1]) {
+        let mut continue_on_error = false;
+        let mut sql_parts: Vec<String> = Vec::new();
+        let mut foreign_flag = false;
+        for arg in &args[2..] {
+            if arg == "--continue-on-error" {
+                continue_on_error = true;
+            } else if arg.starts_with('-') {
+                foreign_flag = true;
+            } else {
+                sql_parts.push(arg.clone());
+            }
+        }
+        if !foreign_flag {
+            let cmd = if sql_parts.is_empty() {
+                None
+            } else {
+                Some(sql_parts.join(" "))
+            };
+            return run_sqlite_subcommand(
+                PathBuf::from(&args[1]),
+                false,
+                cmd,
+                OutputMode::Table,
+                None,
+                None,
+                None,
+                continue_on_error,
+            );
+        }
     }
 
     let cli = Cli::parse();

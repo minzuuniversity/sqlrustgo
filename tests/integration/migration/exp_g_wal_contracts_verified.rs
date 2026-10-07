@@ -60,7 +60,7 @@ fn test_wal_004_update_survives() {
     }
 
     {
-        let mut engine = ExecutionEngine::with_wal_file(data_dir.clone()).unwrap();
+        let mut engine = ExecutionEngine::with_wal_recovery(data_dir.clone()).unwrap();
 
         let count = extract_count(engine.execute("SELECT COUNT(*) FROM accounts WHERE id = 1"));
         assert_eq!(count, 1, "Row must survive");
@@ -91,7 +91,7 @@ fn test_wal_001_insert_commit_survives() {
     }
 
     {
-        let mut engine = ExecutionEngine::with_wal_file(data_dir.clone()).unwrap();
+        let mut engine = ExecutionEngine::with_wal_recovery(data_dir.clone()).unwrap();
         let count = extract_count(engine.execute("SELECT COUNT(*) FROM users WHERE id = 1"));
         assert_eq!(count, 1, "WAL-001: committed data must survive restart");
     }
@@ -111,7 +111,7 @@ fn test_wal_002_uncommitted_no_survive() {
     }
 
     {
-        let mut engine = ExecutionEngine::with_wal_file(data_dir.clone()).unwrap();
+        let mut engine = ExecutionEngine::with_wal_recovery(data_dir.clone()).unwrap();
         let count = extract_count(engine.execute("SELECT COUNT(*) FROM users WHERE id = 1"));
         assert_eq!(count, 0, "WAL-002: uncommitted data must NOT survive");
     }
@@ -134,7 +134,7 @@ fn test_wal_005_delete_survives() {
     }
 
     {
-        let mut engine = ExecutionEngine::with_wal_file(data_dir.clone()).unwrap();
+        let mut engine = ExecutionEngine::with_wal_recovery(data_dir.clone()).unwrap();
         let count = extract_count(engine.execute("SELECT COUNT(*) FROM data"));
         assert_eq!(count, 0, "WAL-005: deleted row must NOT survive");
     }
@@ -157,7 +157,7 @@ fn test_wal_003_multi_tx_ordering() {
     }
 
     {
-        let mut engine = ExecutionEngine::with_wal_file(data_dir.clone()).unwrap();
+        let mut engine = ExecutionEngine::with_wal_recovery(data_dir.clone()).unwrap();
         let cnt = extract_count(engine.execute("SELECT COUNT(*) FROM accounts"));
         assert_eq!(cnt, 2, "WAL-003: both committed rows must survive");
 

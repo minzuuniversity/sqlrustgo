@@ -63,10 +63,12 @@ inherited_from_v4000_revocation:
     - id: "COV-01"
       scope: "parser coverage 74.32% -> >= 85%"
       priority: "P0 — blocks v4.1.0 GA"
+      status: "DONE 2026-10-07 — 实测 86.20% (region, cargo-llvm-cov, 24/24 test binary ok); evidence: docs/releases/v4.1.0/evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md"
       note: "GA_GATE_REPORT.md records internal AST conversion paths (parser.rs lines 6560-6790) as unreachable via external tests; CLAIM_DOWNGRADE_MANIFEST §4 expected these to be exercised by V400-05 cross-model hooks"
     - id: "COV-02"
       scope: "mysql-server coverage 75.41% -> >= 85%"
       priority: "P0 — blocks v4.1.0 GA"
+      status: "DONE 2026-10-07 — 实测 87.89% (region, cargo-llvm-cov, GATE_EXIT=0, 24/24 test binary ok; 基线 76.31%); evidence: docs/releases/v4.1.0/evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md"
     - id: "REF-01"
       scope: "split crates/executor/src/expr/mod.rs (5104 lines) — the largest file, 3.2x the 1600 C-ARCH-05 limit"
       priority: "P1 — unblocks C-ARCH-05 coverage extension (see ALIGNMENT_AUDIT §7.4.1 option B)"
@@ -193,7 +195,7 @@ legacy_chain_audit_2026_09_30:
     - "cannot determine which items were fixed in code but not documented"
 
 
-current_stage: "DRAFT"
+current_stage: "ALPHA"
 # ============================================================================
 # 2026-09-30 AFP Type-B SELF-DISCOVERY: ALPHA -> DRAFT ROLLBACK
 # ----------------------------------------------------------------------------
@@ -261,6 +263,12 @@ current_stage: "DRAFT"
 # re-run evidence is archived under evidence/gate-runs-*/.
 # ============================================================================
 last_transition:
+  from: "DRAFT"
+  to: "ALPHA"
+  date: "2026-10-06"
+  reason: "RE-ENTRY to ALPHA per STAGE_CONFIG DRAFT_to_ALPHA trigger. All 3 inherited v4.0.0 alpha-gate blockers now empirically cleared with fresh gate evidence: (a) check_anti_ignore_gate.sh PASS (120 real attrs within the updated limits of total=150/active=80 after fix PR drift from #5041/#5043/#5045/#5047/#5050); (b) check_arch_invariants.sh PASS 5/5 (C-ARCH-05 fail-closed since #5003 fix); (c) check_anti_fabrication.sh PASS 0 errors (manifest paths corrected to non-hashed test binary names, sqlrustgo-sqlrustgo-named-tools everywhere). v4.1.0-alpha1 tag (c1a73a5320) is the prior ALPHA point; v4.1.0-alpha2 will be cut after this commit merges. Per #4950 master coord the 6 tracked open items remain tracked (NOT blockers — see resolved_issues_2026_10_03). Coverage per crate: storage 81.45%, executor 82%+, parser 74.51%, mysql-server 75.41% — all above the COVERAGE_MIN_ALPHA=50% threshold. WP-C/D/F/G legacy matrix PRs #5041/#5043/#5045/#5047 merged into develop/v4.1.0. 168h SOAK (V400-09) remains RUNNING (ETA 2026-10-09T16:04Z per issue #4944 comment 179394); FINAL_REPORT pending the run completion — recorded as deferred per alpha_to_beta exit_criteria rule "V400-09 168h SOAK FINAL_REPORT exists OR explicit deferral recorded"."
+
+last_rollback_record:
   from: "ALPHA"
   to: "DRAFT"
   date: "2026-09-30"
@@ -279,9 +287,9 @@ last_transition:
     reason: "Initial draft entry. v4.1.0 enters draft phase on 2026-09-23 after v4.0.0 GA gate (38566af0f8) merged into develop/v4.0.0 + develop/v4.1.0 branch cut from that GA commit. Draft phase per STAGE_CONFIG DRAFT_to_ALPHA trigger criteria. Active work: v4.0.0 bugfix carry-forward (zombie-fix core, workers.push, DML/storage regressions) and 5-remote sync infrastructure. STAGE.yaml created retroactively to satisfy STAGE_CONFIG framework SSOT requirement; PHASE_0 docs scaffolded in parallel."
 
 current_state:
-  head: "0bbb044da3711772d4617bc40ad5839511712805"
+  head: "2f96229f620a7f65961360ac75eb31944e27dab5"
   branch: "develop/v4.1.0"
-  last_modified: "2026-09-29"
+  last_modified: "2026-10-06"
   source: "local git + 5 remotes (gitea250/252, github, gitcode, gitee)"
   note: "develop/v4.1.0 carries v4.0.0 GA gate commit (38566af0f8) plus: (a) cherry-picks of the 4 review-queue commits (6603820f1e / daad2c687d / 82772919e2) and the empty merges (fca71cb525 / a65497e276 / 7e30fbc0cb) that bring 3 doc-only v4.0.0 commits into v4.1.0 graph; (b) the zombie-fix core merge (9c6767a512) carrying v4.0.0 code forward; (c) the closed review queue audit (0bbb044da3)."
 

@@ -1242,8 +1242,22 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// and the trait default is a silent no-op. If anything ever wraps this
     /// engine and propagates through the `&self` path, the same dirty-read
     /// bug that `FileStorage` had would come straight back.
+    ///
+    /// Forwarding to `inner` is load-bearing for the engine's re-assert
+    /// pattern (`execution_engine_methods.rs` commit `:1685` / rollback
+    /// `:1884`): those call sites hold only a *read* guard, so they cannot
+    /// use the `&mut set_current_tx_id` below (which already forwards,
+    /// PR-842). Without the forward, the re-assert died at this layer and
+    /// `MvccStorage::{commit,rollback}_transaction_lockfree` — which
+    /// capture `inner.current_tx_id()` one level further down — promoted /
+    /// discarded whatever tx id the slot still held from the previous
+    /// writer (a concurrent connection's), i.e. ROLLBACK wiped another
+    /// connection's pending versions while its own stayed pending forever.
     fn set_current_tx_id_shared(&self, id: u64) {
         self.current_tx_id.store(id, Ordering::Release);
+        // Same propagation intent as `set_current_tx_id` below (PR-842),
+        // via the BLK-2 `&self` path (backend owns its interior mutability).
+        self.inner().set_current_tx_id_shared(id);
     }
 
     fn set_current_tx_id(&mut self, id: u64) {

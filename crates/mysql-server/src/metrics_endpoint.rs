@@ -582,4 +582,30 @@ mod tests {
         drop(handle);
         drop(_keep);
     }
+
+    #[test]
+    fn bind_serves_prometheus_then_shutdown_detaches() {
+        let ep = MetricsEndpoint::bind(("127.0.0.1", 0)).expect("bind on ephemeral port");
+        let port = ep.port();
+        assert_ne!(port, 0, "bind must capture the OS-assigned port");
+
+        use std::io::{Read as _, Write as _};
+        let mut client = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        client
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        client
+            .write_all(b"GET /metrics HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+            .expect("write request");
+        let mut response = String::new();
+        client.read_to_string(&mut response).expect("read response");
+        assert!(
+            response.starts_with("HTTP/1.1 200 OK"),
+            "expected 200 OK, got: {:?}",
+            &response[..response.len().min(120)]
+        );
+        assert!(response.contains("sqlrustgo_active_connections"));
+
+        ep.shutdown();
+    }
 }

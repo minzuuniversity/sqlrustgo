@@ -243,6 +243,13 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             .map(|(i, _)| i)
             .collect();
         let mut storage = engine.storage.write();
+        // Re-assert this connection's tx id under the write lock: the
+        // shared slot may have been stomped by another connection's
+        // begin between our begin and here, which would stamp MVCC
+        // versions with a foreign tx id that our commit never promotes.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
         for record in &all_records {
             // Build the filter slice ONCE per record: for each PK column of the
             // incoming row, take its value. If no PK is declared, fall back to
@@ -265,13 +272,10 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             };
             // Only delete when a row actually matches this key — for a brand
             // new key (no existing row) REPLACE degenerates to a plain INSERT.
-            //
-            // #4944: same self-deadlock as the AUTOINCREMENT scan below —
-            // this runs inside the `storage.write()` critical section taken
-            // above, so it must use the guard-taking variant. Confirmed by
-            // probe, not inferred: with `scan_for_reader` here, `REPLACE
-            // INTO t VALUES (...)` never returns.
-            let existing_rows = engine.scan_for_reader_with(&storage, &table_name)?;
+            // Global scan: the conflict check must see every committed row,
+            // not this connection's snapshot; `scan_for_reader` would also
+            // deadlock (write guard held, non-reentrant RwLock).
+            let existing_rows = storage.scan(&table_name)?;
             let has_conflict = existing_rows
                 .iter()
                 .any(|existing| record_matches_unique_key(existing, record, &table_info));
@@ -483,6 +487,10 @@ pub fn execute_insert<S: StorageEngine + 'static>(
 
     {
         let mut storage = engine.storage.write();
+        // Same tx-id re-assert as above, scoped to this critical section.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
 
         // BLK-1 (docs/releases/v4.1.0/ISSUES_PLAN.md §4.1): allocate
         // AUTO_INCREMENT ids from the table's current MAX(id) while
@@ -503,19 +511,14 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             let mut next_auto_id: i64 = 1;
             // An empty table scans to zero rows, which leaves the
             // default of 1 in place — same as the previous behaviour.
-            // #4944: this scan runs inside the `storage.write()` critical
-            // section taken above, so it must go through the guard-taking
-            // variant. `scan_for_reader` calls `storage_read()`, which
-            // falls back to a *blocking* `read()` when `try_read()` fails —
-            // and it always fails for the thread already holding the write
-            // lock. `parking_lot::RwLock` is not reentrant, so that was a
-            // self-deadlock: every INSERT into a table with an AUTOINCREMENT
-            // column hung the executor forever.
-            //
-            // The neighbouring duplicate-check scan a few lines below
-            // already used `scan_for_reader_with(&storage, ..)`; this one
-            // was simply missed.
-            let existing = engine.scan_for_reader_with(&storage, &table_name)?;
+            // BLK-1 must scan the GLOBAL current state (no reader_tx):
+            // the connection's MVCC snapshot predates concurrent commits,
+            // so a snapshot scan under-estimates MAX(id) and mints
+            // duplicate ids (silent version forks, rows "lost" on read).
+            // `scan_for_reader` would additionally deadlock here — the
+            // write guard above is held and parking_lot RwLock is not
+            // reentrant.
+            let existing = storage.scan(&table_name)?;
             next_auto_id = existing
                 .iter()
                 .filter_map(|r| r.get(col_idx).and_then(|v| v.as_integer()))
@@ -1003,6 +1006,10 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // source of the execute_update 3.6% inuse footprint shown in V3
         // jeprof. One scan, one clone (for undo), iterate owned rows.
         let mut storage = engine.storage.write();
+        // Same tx-id re-assert as execute_insert, scoped here.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
         // V312-18 / Issue #3971: route the no-WHERE UPDATE path through
         // delete+insert so the WAL layer (which only hooks delete/insert)
         // correctly records each row update for crash recovery. The prior
@@ -1025,7 +1032,10 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // are dropped immediately and only one clone per row goes through
         // `new_rows_for_undo` — and even that clone could be elided in the
         // future if the WAL layer accepts the post-update row directly.
-        let all_rows_no_where = engine.scan_for_reader(&table_name)?;
+        // Global scan: every committed row must be updated regardless of
+        // this connection's snapshot; `scan_for_reader` would deadlock
+        // (write guard held, non-reentrant RwLock).
+        let all_rows_no_where = storage.scan(&table_name)?;
         let need_undo_snapshot = engine.tx_session.lock().current_tx_id.is_some();
         let mut count = 0usize;
         let mut prior_rows_for_undo: Vec<Vec<Value>> = if need_undo_snapshot {
@@ -1184,6 +1194,10 @@ pub fn execute_update<S: StorageEngine + 'static>(
 
     {
         let mut storage = engine.storage.write();
+        // Same tx-id re-assert as execute_insert, scoped here.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
         if !table_info.check_constraints.is_empty() {
             let col_names: Vec<String> =
                 table_info.columns.iter().map(|c| c.name.clone()).collect();
@@ -1335,6 +1349,10 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         let prior_rows_for_undo: Vec<Vec<Value>> = engine.scan_for_reader(&table_name)?;
         let count = {
             let mut storage = engine.storage.write();
+            // Same tx-id re-assert as execute_insert, scoped here.
+            if let Some(id) = engine.tx_session.lock().current_tx_id {
+                storage.set_current_tx_id(id.as_u64());
+            }
             storage.delete(&table_name, &[])?
         };
         // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Delete
@@ -1456,6 +1474,10 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         // (file_storage.rs:2978 / :3001-3007), and only clones the
         // matching row for UndoOp::DeleteRow (O(1)).
         let mut storage = engine.storage.write();
+        // Same tx-id re-assert as execute_insert, scoped here.
+        if let Some(id) = engine.tx_session.lock().current_tx_id {
+            storage.set_current_tx_id(id.as_u64());
+        }
         let row = &rows_to_delete[0];
         let key_values: Vec<Value> = use_indices
             .iter()
@@ -1479,6 +1501,10 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 
         {
             let mut storage = engine.storage.write();
+            // Same tx-id re-assert as execute_insert, scoped here.
+            if let Some(id) = engine.tx_session.lock().current_tx_id {
+                storage.set_current_tx_id(id.as_u64());
+            }
             // First drop the full table to flush any buffered inserts
             // and to provide a clean slate (this is what the legacy
             // code did).
@@ -1723,6 +1749,10 @@ fn apply_multi_table_updates<S: StorageEngine + 'static>(
     total_count: usize,
 ) -> SqlResult<ExecutorResult> {
     let mut storage = engine.storage.write();
+    // Same tx-id re-assert as execute_insert, scoped here.
+    if let Some(id) = engine.tx_session.lock().current_tx_id {
+        storage.set_current_tx_id(id.as_u64());
+    }
     for (t, tref) in table_refs.iter().enumerate() {
         let pairs = &per_table_updates[t];
         if pairs.is_empty() {
@@ -1817,6 +1847,10 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
 
     let mut total = 0usize;
     let mut storage = engine.storage.write();
+    // Same tx-id re-assert as execute_insert, scoped here.
+    if let Some(id) = engine.tx_session.lock().current_tx_id {
+        storage.set_current_tx_id(id.as_u64());
+    }
     for (t, tref) in source_refs.iter().enumerate() {
         if !target_refs.iter().any(|x| x.name == tref.name) {
             continue;

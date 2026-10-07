@@ -1396,7 +1396,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 &select.where_clause,
                 &pk_column,
             ) {
-                let row = storage.scan_pk(lookup_table, &pk_column, &pk_value)?;
+                // Clustered tables keep their rows in the engine-level
+                // ClusteredTable map, not in storage — `storage.scan_pk`
+                // would return None and silently yield 0 rows. Route the
+                // point lookup through `ClusteredTable::lookup_pk`
+                // (O(log N), V311-01).
+                let clustered = self.clustered_tables.read().get(lookup_table).cloned();
+                let row = if let Some(ct_arc) = clustered {
+                    let ct = ct_arc.read();
+                    ct.lookup_pk(&pk_value).cloned()
+                } else {
+                    storage.scan_pk(lookup_table, &pk_column, &pk_value)?
+                };
                 self.instrumentation.on_seq_scan_start(lookup_table);
                 // Phase B Step 4.2: also record the AHI access so the
                 // promotion counters advance — the original

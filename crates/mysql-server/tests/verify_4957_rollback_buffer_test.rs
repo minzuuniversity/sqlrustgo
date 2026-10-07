@@ -17,16 +17,18 @@
 //!   `discard_all_buffers_shared()` — **no per-row undo at all**.
 //!
 //! So the belt-and-suspenders buffer wipe #4957 flags is real but
-//! off-path, and the on-path behaviour is worse in a different way: the
-//! tests below show a connection's own ROLLBACK does not undo its own
-//! buffered rows. That is a separate, more serious defect (abandoned
-//! transactions stay visible), so it is reported here rather than
-//! folded into #4957.
+//! off-path, and the on-path behaviour was worse in a different way: at
+//! audit time a connection's own ROLLBACK did not undo its own buffered
+//! rows (abandoned transactions stayed visible). That was reported here
+//! rather than folded into #4957, and was subsequently fixed (#4960);
+//! the isolation repairs (#4974/#4983) also made uncommitted rows
+//! invisible to other connections.
 //!
-//! The assertions encode the *observed* behaviour, so they are written to
-//! pass today and will go red if either behaviour is fixed. That makes
-//! this file a tripwire for the follow-up, not a regression gate for a
-//! fix that has not been written yet.
+//! The assertions pin the *correct* post-fix behaviour. This file was
+//! originally written as a tripwire encoding the pre-fix observations
+//! ("go red when the behaviour is fixed"), and was updated when #4960
+//! and the isolation repairs landed — a stale tripwire would keep
+//! asserting the defect as if it were the contract.
 
 use sqlrustgo_mysql_client::{MySqlConnection, ResultSet};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
@@ -105,45 +107,54 @@ fn one_connections_rollback_must_not_discard_anothers_buffered_rows() {
             .expect("B insert");
     }
 
-    // Sanity: both transactions have written into the shared buffer.
+    // Isolation (#4974/#4983): uncommitted rows must not leak to other
+    // connections. The original assertion here pinned the pre-fix
+    // observation (both transactions' 20 rows visible to a third
+    // connection); the tripwire contract flips the assertion when the
+    // behaviour is repaired — which it was.
     let mut probe = connect(port);
     assert_eq!(
         count(&mut probe),
-        20,
-        "both transactions' rows should be pending"
+        0,
+        "uncommitted rows must stay invisible to other connections"
     );
 
     a.execute("ROLLBACK").expect("A rollback");
 
-    // #4960: this assertion used to be the inverse — it asserted A's rows
-    // 0..10 SURVIVED, deliberately red, as a tripwire for "ROLLBACK does
-    // nothing". That tripwire fired on 2026-10-04: `delete_collect_pks`
-    // built its removed-pk list solely from `tables.rows`, while a
-    // transaction's rows still sit in `insert_buffer`, so the undo replay
-    // deleted from the buffer but reported zero rows and never
-    // tombstoned. Fixed in #4960; the behaviour is now the correct one,
-    // so the assertion is inverted.
-    let mut remaining = ids(&mut probe);
-    remaining.sort_unstable();
-    assert!(
-        !remaining.contains(&0),
-        "A's ROLLBACK must remove A's own rows (0..10); they are still \
-         visible. Current rows: {:?}",
-        remaining
+    // A's own rows are gone after its ROLLBACK (#4960). B's pending rows
+    // must survive a rollback on another connection — the property this
+    // test is named for — so ask B, whose own transaction still sees its
+    // own writes.
+    assert_eq!(
+        count(&mut a),
+        0,
+        "A's ROLLBACK must remove A's own rows (0..10)"
     );
-    assert!(
-        remaining.iter().all(|id| (100..110).contains(id)),
-        "A's ROLLBACK must not touch B's pending rows (100..110); \
-         got {:?}",
-        remaining
+    // Regression pin (Fix 6): A's ROLLBACK must not leak B's rows to
+    // other connections either. Pre-fix both connections held tx id 1
+    // (per-connection TransactionManager counters), so A's rollback
+    // discarded B's pending versions too while B's buffered rows
+    // survived — a fresh third connection then merged all 10 of them.
+    let mut probe2 = connect(port);
+    assert_eq!(
+        count(&mut probe2),
+        0,
+        "third connection must not see B's uncommitted rows after A's ROLLBACK"
+    );
+    assert_eq!(
+        count(&mut b),
+        10,
+        "A's ROLLBACK must not discard B's pending rows (100..110)"
     );
 
     b.execute("COMMIT").expect("B commit");
-    let after = ids(&mut probe);
-    println!(
-        "OBSERVED: after A.ROLLBACK + B.COMMIT, {} rows remain: {:?}",
-        after.len(),
-        after
+    let mut remaining = ids(&mut probe);
+    remaining.sort_unstable();
+    assert_eq!(
+        remaining,
+        (100..110).collect::<Vec<_>>(),
+        "after B's COMMIT exactly B's rows must be visible; A's \
+         rolled-back rows stay gone"
     );
 }
 

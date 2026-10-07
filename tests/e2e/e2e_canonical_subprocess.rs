@@ -442,10 +442,22 @@ fn e2e_legacy_binary_sqlrustgo_deprecated() {
         return;
     }
     let out = Command::new(&bin).output().expect("run sqlrustgo");
-    assert!(out.status.success(), "legacy sqlrustgo should exit 0");
+    assert!(out.status.success(), "canonical sqlrustgo should exit 0");
+    let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
+    // v3.10.0 binary cleanup (18c174ce92, V310_CLI_BINARY_PLAN.md)
+    // intentionally REMOVED the stderr DEPRECATED shim: root `sqlrustgo`
+    // is now the canonical CLI wrapper and bare invocation delegates to
+    // `sqlrustgo-mysql-server --help`. This test previously pinned the
+    // old shim; migrated per the registered disposition in
+    // docs/releases/v3.12.0/b2-disabled-test-binary-registry.md row 13
+    // ("migrate to sqlrustgo-mysql-server harness").
     assert!(
-        stderr.contains("DEPRECATED"),
-        "sqlrustgo should print DEPRECATED, got: {stderr}"
+        stdout.contains("Usage: sqlrustgo-mysql-server"),
+        "bare invocation should delegate to sqlrustgo-mysql-server help, stdout: {stdout}"
+    );
+    assert!(
+        !stderr.contains("DEPRECATED"),
+        "the v3.10.0-removed DEPRECATED shim must not come back, stderr: {stderr}"
     );
 }

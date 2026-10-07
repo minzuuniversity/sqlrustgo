@@ -2846,7 +2846,11 @@ impl StorageEngine for MemoryStorage {
         let records = self.tables.remove(&key.clone());
         if let (Some(info), Some(records)) = (info, records) {
             let mut new_info = info;
-            new_info.name = new_key.clone();
+            // `info.name` must stay the BARE lowercase name (create_table
+            // invariant, #5025) — list_tables/SHOW TABLES/DESC compare it
+            // against the user-written name; a scoped key here made
+            // `RENAME TO` produce a table DESC could not find.
+            new_info.name = new_name.to_lowercase();
             self.table_infos.insert(new_key.clone(), new_info);
             self.tables.insert(new_key, records);
             Ok(())
@@ -3034,7 +3038,7 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn drop_column(&mut self, table: &str, column: &str) -> SqlResult<()> {
-        let table_key = table.to_lowercase();
+        let table_key = self.tbl(table);
         let info = self
             .table_infos
             .get_mut(&table_key)
@@ -3087,9 +3091,12 @@ impl StorageEngine for MemoryStorage {
         column: &str,
         mut new_def: ColumnDefinition,
     ) -> SqlResult<()> {
+        // Key resolved first: `self.tbl()` borrows `self`, which would
+        // otherwise conflict with the mutable borrow below (#5025).
+        let key = self.tbl(table);
         let info = self
             .table_infos
-            .get_mut(&table.to_lowercase())
+            .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let col_idx = info
             .columns
@@ -3102,9 +3109,12 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn rename_column(&mut self, table: &str, old_name: &str, new_name: &str) -> SqlResult<()> {
+        // Key resolved first: `self.tbl()` borrows `self`, which would
+        // otherwise conflict with the mutable borrow below (#5025).
+        let key = self.tbl(table);
         let info = self
             .table_infos
-            .get_mut(&table.to_lowercase())
+            .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         let col = info
             .columns
