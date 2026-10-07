@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
-  "captured_at_commit": "HEAD (ef2ad9054b)",
+  "captured_at_commit": "6ba04fa070aa6ce70edada6bb6f46aef7d6aae60",
   "captured_at_date": "2026-10-07",
-  "total_allowed": 113,
+  "total_allowed": 117,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 80,
@@ -41,7 +41,7 @@
     "detail": "33 of 113 attributes carry no #[ignore = \"...\"] reason, which ADR-008-test-claim-transparency requires. They are registered as ACTIVE so the deficit is visible in the counts rather than hidden. Remediation is tracked as an openspec change."
   },
   "counting_rule": "total_allowed equals the number of entries below. The gate compares it to limits.total_allowed_max and counts entries whose status is \"ACTIVE\" against limits.active_max.",
-  "note_on_line_numbers": "line_at_capture is a snapshot at captured_at_commit and is informational; file + test are the durable identity.",
+  "note_on_line_numbers": "line_at_capture refers to the position of the #[ignore] attribute at commit 6ba04fa07 (2026-10-07); later edits may shift it, so it is a locator hint, not an assertion.",
   "ignored_tests": [
     {
       "file": "crates/executor/tests/hash_join_left_null_test.rs",
@@ -281,7 +281,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_01_startup_connect_select_1",
       "line_at_capture": 54,
-      "reason": "E2E scenario \u2014 needs live server, run with --ignored",
+      "reason": "E2E scenario — needs live server, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -290,7 +290,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_02_tpch_sf01_22_queries",
       "line_at_capture": 77,
-      "reason": "E2E scenario \u2014 invoked via check_tpch_sf1.sh, run with --ignored",
+      "reason": "E2E scenario — invoked via check_tpch_sf1.sh, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -299,7 +299,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_04_kill9_recovery",
       "line_at_capture": 89,
-      "reason": "E2E scenario \u2014 kills running server, run with --ignored",
+      "reason": "E2E scenario — kills running server, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -308,7 +308,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_07_alter_rename",
       "line_at_capture": 100,
-      "reason": "E2E scenario \u2014 needs live server, run with --ignored",
+      "reason": "E2E scenario — needs live server, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -317,7 +317,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_08_rollback_mvcc",
       "line_at_capture": 111,
-      "reason": "E2E scenario \u2014 needs live server with MVCC, run with --ignored",
+      "reason": "E2E scenario — needs live server with MVCC, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -326,7 +326,7 @@
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_09_union_set_ops",
       "line_at_capture": 122,
-      "reason": "E2E scenario \u2014 needs V310-02 INTERSECT/EXCEPT impl, run with --ignored",
+      "reason": "E2E scenario — needs V310-02 INTERSECT/EXCEPT impl, run with --ignored",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -335,7 +335,7 @@
       "file": "tests/e2e/sqlrustgo_cli_soak_e2e_test.rs",
       "test": "test_soak_repl_select_returns_rows",
       "line_at_capture": 102,
-      "reason": "server column_def packet bug \u2014 DML path works, SELECT broken; see #3165",
+      "reason": "server column_def packet bug — DML path works, SELECT broken; see #3165",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
@@ -344,7 +344,7 @@
       "file": "tests/e2e/sqlrustgo_cli_soak_e2e_test.rs",
       "test": "test_soak_repl_skips_comments_and_blank_lines",
       "line_at_capture": 250,
-      "reason": "server column_def packet bug \u2014 DML path works; see #3165",
+      "reason": "server column_def packet bug — DML path works; see #3165",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
@@ -722,7 +722,7 @@
       "file": "tests/integration/sql/union_set_operations_test.rs",
       "test": "intersect_returns_common_rows",
       "line_at_capture": 258,
-      "reason": "Parser lacks Statement::Intersect \u2014 V312-30 reconciliation",
+      "reason": "Parser lacks Statement::Intersect — V312-30 reconciliation",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
@@ -740,7 +740,7 @@
       "file": "tests/integration/sql/v312_62_issue_batch_test.rs",
       "test": "v312_62_group_concat_strips_no_distinct_sentinel",
       "line_at_capture": 440,
-      "reason": "KNOWN FOLLOW-UP: assertions stale after PR #4690 (v312-64b) changed  GROUP_CONCAT from per-row to grouped evaluation. The sentinel-strip  invariant (test purpose) still holds \u2014 only the value assertion  `out == \\\"10\\\" || out == \\\"20\\\"` needs to be relaxed to accept the  new grouped form `out == \\\"10,20\\\"`. Tracked as task #21 for v3.13.0.",
+      "reason": "KNOWN FOLLOW-UP: assertions stale after PR #4690 (v312-64b) changed  GROUP_CONCAT from per-row to grouped evaluation. The sentinel-strip  invariant (test purpose) still holds — only the value assertion  `out == \\\"10\\\" || out == \\\"20\\\"` needs to be relaxed to accept the  new grouped form `out == \\\"10,20\\\"`. Tracked as task #21 for v3.13.0.",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
@@ -932,7 +932,7 @@
       "reason": "GAP: executor still silently accepts CREATE PROCEDURE (CLI gates it but executor does not)",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/executor/tests/wp_c_legacy.rs",
@@ -941,7 +941,7 @@
       "reason": "GAP: executor silently accepts CREATE FUNCTION",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/executor/tests/wp_c_legacy.rs",
@@ -950,7 +950,7 @@
       "reason": "GAP: sqlite_master table does not exist (no SQLite system tables in current HEAD)",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/executor/tests/wp_c_legacy.rs",
@@ -959,7 +959,7 @@
       "reason": "GAP: sqlite_sequence table does not exist",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/executor/tests/wp_c_legacy.rs",
@@ -968,7 +968,7 @@
       "reason": "GAP: function index is not supported at executor level",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/executor/tests/wp_c_legacy.rs",
@@ -977,7 +977,7 @@
       "reason": "GAP: partial index WHERE clause not supported",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/executor/tests/wp_c_legacy.rs",
@@ -986,16 +986,16 @@
       "reason": "GAP: multi-column UPSERT is OR-downgrade (sub-bug #1/#4 of #4703)",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/executor/tests/wp_c_legacy.rs",
       "test": "on_conflict_sqlite_syntax",
       "line_at_capture": 295,
-      "reason": "GAP: ON CONFLICT (SQLite syntax) \u2014 needs verification",
+      "reason": "GAP: ON CONFLICT (SQLite syntax) — needs verification",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/executor/tests/wp_g_legacy.rs",
@@ -1004,7 +1004,7 @@
       "reason": "GAP: VARCHAR = 'abc   ' also matches stored 'abc' (over-trim)",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/storage/tests/b22_concurrent_flush_ab.rs",
@@ -1013,7 +1013,7 @@
       "reason": "<no reason>",
       "status": "ACTIVE",
       "category": "AUTO_REG_AT_PROMOTION",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/storage/tests/b22_flush_wall.rs",
@@ -1022,13 +1022,13 @@
       "reason": "<no reason>",
       "status": "ACTIVE",
       "category": "AUTO_REG_AT_PROMOTION",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "crates/storage/tests/measure_commit_clone_4948.rs",
       "test": "measure_commit_clone_cost_4948",
       "line_at_capture": 73,
-      "reason": "wall-clock measurement harness \u2014 run manually, results go in the evidence doc",
+      "reason": "wall-clock measurement harness — run manually, results go in the evidence doc",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -1037,7 +1037,7 @@
       "file": "crates/storage/tests/measure_commit_memory_4948.rs",
       "test": "measure_commit_memory_4948",
       "line_at_capture": 131,
-      "reason": "memory measurement \u2014 run manually; prints the commit\u2019s RSS delta",
+      "reason": "memory measurement — run manually; prints the commit’s RSS delta",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -1049,7 +1049,7 @@
       "reason": "correlated IN subquery falls back to always-true on main",
       "status": "PARKED",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
       "file": "tests/operators/in_subquery.rs",
@@ -1058,7 +1058,43 @@
       "reason": "correlated NOT IN subquery falls back to always-true on main",
       "status": "PARKED",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion \u2014 drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "tests/session_db_isolation_5057.rs",
+      "test": "select_reads_the_connections_own_database",
+      "line_at_capture": 117,
+      "reason": "GAP: #5057 — executor reads the shared storage.current_db instead of the per-connection context, so a second connection's SELECT/UPDATE resolves against the wrong database",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added 2026-10-07 — drift from PR #5098 (test/storage): pin concurrent-transaction rollback isolation + scope undo to its tx"
+    },
+    {
+      "file": "tests/session_db_isolation_5057.rs",
+      "test": "interleaved_use_does_not_redirect_the_other_connection",
+      "line_at_capture": 144,
+      "reason": "GAP: #5057 — executor reads the shared storage.current_db instead of the per-connection context, so a second connection's SELECT/UPDATE resolves against the wrong database",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added 2026-10-07 — drift from PR #5098 (test/storage): pin concurrent-transaction rollback isolation + scope undo to its tx"
+    },
+    {
+      "file": "tests/session_db_isolation_5057.rs",
+      "test": "concurrent_reads_stay_isolated",
+      "line_at_capture": 181,
+      "reason": "GAP: #5057 — executor reads the shared storage.current_db instead of the per-connection context, so a second connection's SELECT/UPDATE resolves against the wrong database",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added 2026-10-07 — drift from PR #5098 (test/storage): pin concurrent-transaction rollback isolation + scope undo to its tx"
+    },
+    {
+      "file": "tests/session_db_isolation_5057.rs",
+      "test": "last_use_wins_on_the_mirror_but_not_on_the_connection",
+      "line_at_capture": 255,
+      "reason": "GAP: #5057 — executor reads the shared storage.current_db instead of the per-connection context, so a second connection's SELECT/UPDATE resolves against the wrong database",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added 2026-10-07 — drift from PR #5098 (test/storage): pin concurrent-transaction rollback isolation + scope undo to its tx"
     }
   ]
 }

@@ -40,6 +40,9 @@
 #         (tests/baseline/ignore_registry.json missing)
 #   - 168h SOAK (V400-09) was kicked off 2026-09-19 but no
 #     FINAL_REPORT exists as of 2026-09-29.
+#   >> 2026-10-07 更新（#5102）：本行是 2026-09-29 的快照，保留作历史。
+#      该缺口至今未闭合，且期间"文件存在"的销账被证伪——见
+#      known_gaps.V400_09_soak。
 #   - 5/7 WP-C..G legacy issues defer-to-v4.0.1; v4.1.0 should
 #     pick up these deferred items.
 
@@ -266,7 +269,7 @@ last_transition:
   from: "DRAFT"
   to: "ALPHA"
   date: "2026-10-06"
-  reason: "RE-ENTRY to ALPHA per STAGE_CONFIG DRAFT_to_ALPHA trigger. All 3 inherited v4.0.0 alpha-gate blockers empirically cleared. VERIFIED 2026-10-07 on develop/v4.1.0 HEAD 6a15fc684e: (a) check_anti_ignore_gate.sh -> exit 0 PASS (real #[ignore] count 113 within limits total=150/active=80; the #5041/#5043/#5045/#5047/#5050 fix PRs each added documented GAP entries to the registry); (b) check_arch_invariants.sh -> exit 0 PASS 5/5, FAILED: 0 (C-ARCH-05 fail-closed since #5003); (c) check_anti_fabrication.sh -> exit 0 PASS, ERRORS=0, with V312-24 executing 1836 tests across 5 managed entries (0 failed) — see PR #5097, which fixes 4 contract mismatches that had made this gate unable to self-bootstrap on a clean checkout. v4.1.0-alpha1 (c1a73a5320) remains the prior ALPHA point; v4.1.0-alpha2 NOT YET CUT — no tag was created by the 2026-10-06 commit, and the STAGE_CONFIG draft_to_alpha criterion 'first alpha tag cut: v4.1.0-alpha1' is already satisfied by alpha1, so no second tag is required for this stage. Per #4950 master coord the 6 tracked open items remain tracked (NOT blockers — see resolved_issues_2026_10_03). Coverage >= 50%: storage 81.45%, parser 74.51%, executor ~82%, mysql-server ~75%. WP-C/D/F/G merged via #5041/#5043/#5045/#5047. V400-09 168h SOAK still RUNNING (ETA 2026-10-09T16:04Z per #4944 comment 179394) — recorded as deferred per the alpha_to_beta criterion 'FINAL_REPORT exists OR explicit deferral recorded'."
+  reason: "RE-ENTRY to ALPHA per STAGE_CONFIG DRAFT_to_ALPHA trigger. All 3 inherited v4.0.0 alpha-gate blockers empirically cleared. VERIFIED 2026-10-07 on develop/v4.1.0 HEAD 6ba04fa070: (a) check_anti_ignore_gate.sh -> exit 0 PASS (real #[ignore] count 117 within limits total=150/active=80; #5098 added 4 GAP entries for #5057 session/db isolation); (b) check_arch_invariants.sh -> exit 0 PASS 5/5, FAILED: 0 (C-ARCH-05 fail-closed since #5003); (c) check_anti_fabrication.sh -> exit 0 PASS, ERRORS=0, with V312-24 executing 1836 tests across 5 managed entries (0 failed) — see PR #5097, which fixes 4 contract mismatches that had made this gate unable to self-bootstrap on a clean checkout. v4.1.0-alpha1 (c1a73a5320) remains the prior ALPHA point; v4.1.0-alpha2 NOT YET CUT — no tag was created by the 2026-10-06 commit, and the STAGE_CONFIG draft_to_alpha criterion 'first alpha tag cut: v4.1.0-alpha1' is already satisfied by alpha1, so no second tag is required for this stage. Per #4950 master coord the 6 tracked open items remain tracked (NOT blockers — see resolved_issues_2026_10_03). Coverage >= 50%: storage 81.45%, parser 74.51%, executor ~82%, mysql-server ~75%. WP-C/D/F/G merged via #5041/#5043/#5045/#5047. V400-09 168h SOAK: NOT RUNNING — see known_gaps below. This is a departure from the earlier wording of this field, which said 'still RUNNING (ETA 2026-10-09T16:04Z)'; that claim described a live process that has since terminated (verified 2026-10-07: PID 1957614 absent, no STABILITY_REPORT_*.md or metrics.csv anywhere on disk). The alpha_to_beta criterion 'FINAL_REPORT exists OR explicit deferral recorded' is therefore NOT satisfied by that record and V400-09 is recorded as an explicit known gap (see known_gaps.V400_09_soak) per #5102. Whether to re-run the 168h SOAK is an architect decision, deliberately left open."
 
 last_rollback_record:
   from: "ALPHA"
@@ -321,7 +324,7 @@ phase_1_alpha_status:
   v410_05_dml_storage_regressions: "DONE (f3595e7361 + 40e07f7342 + 17b459969f)"
   v410_06_main_release_v4000_sync: "PARTIAL (re-verified 2026-09-30: release/v4.0.0 created on github, but local main=f8a149b474 is 16905 commits behind develop/v4.0.0=ac3fa16afb and is NOT an ancestor of develop/v4.1.0=e2355c0680 — the branches have DIVERGED, not merely fallen behind. Original '193 commit gap closed / 5-remote consistent' text superseded; see ALIGNMENT_AUDIT_2026-09-30.md F-06.)"
   v410_07_inherit_v4000_alpha_gate_fixes: "DONE 2026-09-30 (all 3 cleared by real gate runs: check_anti_ignore_gate exit 0 PASS; check_arch_invariants exit 0 PASS 5/5; check_anti_fabrication exit 1 FAIL -> remediated via CHECK 4 allowlist addition -> re-run exit 0 PASS. Evidence: docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/. The earlier 'NOT STARTED (3 FAILs still open)' text is superseded.)"
-  v410_08_inherit_v4000_168h_soak: "DONE (V400-09 168h SOAK FINAL_REPORT exists at docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md; verified 2026-09-30)"
+  v410_08_inherit_v4000_168h_soak: "NOT DONE (superseded 2026-10-07 per #5102. The prior 'DONE' rested solely on 'FINAL_REPORT exists' — the file docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md does exist, but it is dated 2026-09-30 and documents the FIRST run's failure (kickoff 2026-09-19), self-described as 'the 168h SOAK process never ran to completion'. The later run3/run4 (server PID 1957614, ETA 2026-10-09T16:04Z) left no artifacts anywhere on disk and the process has terminated. File-existence is not evidence of a completed 168h run. See known_gaps.V400_09_soak.)"
   v410_09_inherit_v4000_deferred_legacy_issues: "SCOPED (WP-C 6 / WP-D 4 / WP-F 1 / WP-G 1 = 12 deferred issues migrated into v4.1.0 scope, plus WP-B 6 + WP-E #4626 1 + WP-H #4639 1 = 20-item backlog documented in ISSUES_PLAN.md §4. Implementation NOT STARTED. Original '5/7' wording superseded — there are 4 WP groups, not 5/7.)"
 
 legacy_issues_status:
@@ -526,7 +529,7 @@ issue_coordination_2026_10_04:
       - id: "#4943"
         conflicts_with: "#4944（共享 GA_GATE_REPORT.md / CLAIM_DOWNGRADE_MANIFEST.md）"
       - id: "#4944"
-        note: "STAGE.yaml 内部对 168h SOAK 是否完成存在矛盾记载，需先消解"
+        note: "168h SOAK 的内部矛盾已于 2026-10-07 消解（#5102）：v410_08 与 resolved_issues 两条'已完成'记录均被撤回，改为在 known_gaps.V400_09_soak 下明确登记为 NOT MET。"
       - id: "#4910"
         scope: "Phase 3 收尾 — views / stmt_cache 两个裸可变字段"
       - id: "#4948"
@@ -557,6 +560,33 @@ issue_coordination_2026_10_04:
     wave_4: "⬜ 未开始"
     note: "每 Wave 结束时在 #4950 追加进度评论，记录合入情况与实测证据"
 
+
+known_gaps:
+  # 显式登记的缺口。每条必须有可复现的证据，且不得用"仍在进行中"
+  # 这类依赖已消失进程的措辞充当判据。
+  V400_09_soak:
+    criterion: "alpha_to_beta / rc_to_ga 判据: 'V400-09 168h SOAK FINAL_REPORT exists OR explicit deferral recorded'"
+    status: "NOT MET"
+    verified: "2026-10-07"
+    finding: >-
+      168h SOAK 进程已终止，不存在任何 run3/run4 产出。
+      实测: (1) #4944 checkpoint 记录的服务进程 PID 1957614 已不在进程表;
+      (2) 全盘搜索无 STABILITY_REPORT_*.md / metrics.csv / *soak*run[34]*;
+      (3) docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md 日期为
+      2026-09-30，记录的是第一轮（2026-09-19 kickoff）的失败，其正文自述
+      "the 168h SOAK process never ran to completion"，与后续 run3/run4 无关。
+    contradiction: >-
+      本 STAGE.yaml 的 last_transition.reason 曾写 "SOAK still RUNNING
+      (ETA 2026-10-09T16:04Z)" —— 该措辞指向一个此后已终止的进程。
+      按 ANTI_FABRICATION_POLICY，这类"证据不支持的声明"与 2026-09-30
+      那次 ALPHA 回滚属同类问题，故不再以此充当 deferral 记录。
+    issue: "#4944 (P1, closed 2026-10-06T16:40:58Z) + #5102 (本缺口的登记 issue)"
+    closing_note: >-
+      #4944 于 10-06 16:40Z 关闭，早于其自身承诺的 SOAK ETA 10-09 16:04Z
+      三天，且 issue body 的 7 条验收项全部为未勾选状态。其中 WP-D/F/G
+      已由 #5041/#5043/#5045/#5047 交付（有 PR 与实测证据），但未被勾选。
+    decision: "OPEN — 是否重跑 168h SOAK 属架构师裁决，本 SSOT 不代为决定。"
+
 open_issues:
   # 2026-10-03 销账审计：原 7 条经实跑核实，6 条已解决并移入
   # resolved_issues_2026_10_03 留档；1 条改写为仍 open（口径矛盾）。
@@ -579,8 +609,8 @@ resolved_issues_2026_10_03:
     evidence: "docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/ (5 份)"
   - id: "168h SOAK (V400-09) FINAL_REPORT missing"
     was: "REPORT absent"
-    resolved: "docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md 存在（2026-09-30 核实）"
-    evidence: "docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md"
+    resolved: "RETRACTED 2026-10-07 per #5102. This entry claimed the gap was closed on 2026-09-30 solely because 'docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md 存在'. That file does exist, but it is dated 2026-09-30 and documents the FIRST run's failure, self-described as 'the 168h SOAK process never ran to completion'. The later run3/run4 produced no artifacts and its server process has terminated. The gap is therefore NOT resolved; see known_gaps.V400_09_soak. Retained here as an audit record of the mis-closure, not as a resolution."
+    evidence: "docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md + issue #5102"
   - id: "Local main DIVERGED from develop/v4.0.0 (main=f8a149b474, gap=16905)"
     was: "main 非 develop 的祖先，且落后 16905 commits"
     resolved: "2026-09-30 按 BRANCH_GOVERNANCE.md §14 收敛：main 由 release/v4.0.0 单向驱动。实测 2026-10-03: 5 远端 main 全部 = 1f62d46f0625 = release/v4.0.0；双备份保留 (backup/main-pre-convergence-2026-09-30 分支 + archive/main-pre-convergence-2026-09-30 tag)。新增 scripts/gate/check_main_freshness.sh (C-MAIN-01/02/03 全 fail-closed)，实测 exit 0。"
