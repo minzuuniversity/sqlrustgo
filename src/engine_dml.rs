@@ -460,7 +460,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             }
         } else {
             let storage = engine.storage.read();
-            pre_scanned_rows = engine.scan_for_reader_with(&storage, &table_name)?;
+            pre_scanned_rows = engine.scan_for_reader_in_db(&storage, &stmt_db, &table_name)?;
         }
     }
 
@@ -555,7 +555,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             }
             pk_index_ready = false;
             // The index is gone, so the duplicate check needs whole rows.
-            pre_scanned_rows = engine.scan_for_reader_with(&storage, &table_name)?;
+            pre_scanned_rows = engine.scan_for_reader_in_db(&storage, &stmt_db, &table_name)?;
             engine.pk_lookup_cache.read()
         };
         let pk_index = pk_index_ready.then(|| {
@@ -946,7 +946,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
             // #4974: the sample row is a read, so it must be this
             // connection's view.
             engine
-                .scan_for_reader_with(&*storage, &table_name)
+                .scan_for_reader_in_db(&*storage, &stmt_db, &table_name)
                 .ok()
                 .and_then(|rows| rows.first().cloned())
                 .unwrap_or_else(|| {
@@ -1587,6 +1587,10 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
     update: &UpdateStatement,
 ) -> SqlResult<ExecutorResult> {
+    // #5106: the database this statement belongs to, taken once so every
+    // read below resolves against it rather than the storage-wide
+    // `current_db`. Same snapshot discipline as `execute_update`.
+    let stmt_db = engine.session_db();
     let scalar_eval = |subq: &sqlrustgo_parser::SelectStatement| -> Result<Value, String> {
         let result = engine.execute_select(subq).map_err(|e| e.to_string())?;
         Ok(result
@@ -1656,8 +1660,12 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
     {
         let storage = engine.storage.read();
         for tref in table_refs {
-            let info = storage.get_table_info(&tref.name)?.clone();
-            let rows = engine.scan_for_reader_with(&storage, &tref.name)?;
+            // #5106: schema and rows must resolve against the SAME
+            // database. Taking the schema from `get_table_info` (no
+            // database) while the rows come from a named one is how a
+            // table's columns end up describing a different table's data.
+            let info = storage.get_table_info_in(&stmt_db, &tref.name)?.clone();
+            let rows = engine.scan_for_reader_in_db(&storage, &stmt_db, &tref.name)?;
             per_table_rows.push(rows);
             per_table_info.push(info);
             let prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
@@ -1758,11 +1766,12 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
         total_count += 1;
     }
 
-    apply_multi_table_updates(engine, table_refs, per_table_updates, total_count)
+    apply_multi_table_updates(engine, &stmt_db, table_refs, per_table_updates, total_count)
 }
 
 fn apply_multi_table_updates<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
+    stmt_db: &str,
     table_refs: &[sqlrustgo_parser::TableRef],
     per_table_updates: Vec<Vec<(Vec<Value>, Vec<Value>)>>,
     total_count: usize,
@@ -1777,12 +1786,17 @@ fn apply_multi_table_updates<S: StorageEngine + 'static>(
         if pairs.is_empty() {
             continue;
         }
-        let info = storage.get_table_info(&tref.name)?.clone();
+        // #5106: name the database on both halves of the write. Reading
+        // the schema by bare name while writing by bare name lands on
+        // whichever connection ran `USE` last — so a multi-table UPDATE
+        // issued in d1 rewrites whatever database is currently selected,
+        // which on a shared storage is not necessarily d1.
+        let info = storage.get_table_info_in(stmt_db, &tref.name)?.clone();
         let pk_idx = info.columns.iter().position(|c| c.primary_key).unwrap_or(0);
         for (before, after) in pairs {
             let pk_val = before.get(pk_idx).cloned().unwrap_or(Value::Null);
-            storage.delete(&tref.name, std::slice::from_ref(&pk_val))?;
-            storage.insert(&tref.name, vec![after.clone()])?;
+            storage.delete_in_db(stmt_db, &tref.name, std::slice::from_ref(&pk_val))?;
+            storage.insert_in_db(stmt_db, &tref.name, vec![after.clone()])?;
         }
     }
     Ok(ExecutorResult::new(vec![], total_count))
@@ -1793,6 +1807,8 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
     delete: &DeleteStatement,
 ) -> SqlResult<ExecutorResult> {
+    // #5106: see `execute_update_multi_table`.
+    let stmt_db = engine.session_db();
     let source_refs: Vec<sqlrustgo_parser::TableRef> = match &delete.using {
         Some(s) => s.clone(),
         None => delete.tables.clone(),
@@ -1833,8 +1849,12 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
     {
         let storage = engine.storage.read();
         for tref in &source_refs {
-            let info = storage.get_table_info(&tref.name)?.clone();
-            let rows = engine.scan_for_reader_with(&storage, &tref.name)?;
+            // #5106: schema and rows must resolve against the SAME
+            // database. Taking the schema from `get_table_info` (no
+            // database) while the rows come from a named one is how a
+            // table's columns end up describing a different table's data.
+            let info = storage.get_table_info_in(&stmt_db, &tref.name)?.clone();
+            let rows = engine.scan_for_reader_in_db(&storage, &stmt_db, &tref.name)?;
             per_table_rows.push(rows);
             per_table_info.push(info);
             let prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
@@ -1874,11 +1894,16 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
         if !target_refs.iter().any(|x| x.name == tref.name) {
             continue;
         }
-        let info = storage.get_table_info(&tref.name)?.clone();
+        // #5106: name the database on both halves of the write. Reading
+        // the schema by bare name while writing by bare name lands on
+        // whichever connection ran `USE` last — so a multi-table UPDATE
+        // issued in d1 rewrites whatever database is currently selected,
+        // which on a shared storage is not necessarily d1.
+        let info = storage.get_table_info_in(&stmt_db, &tref.name)?.clone();
         let pk_idx = info.columns.iter().position(|c| c.primary_key).unwrap_or(0);
         for row in &per_table_drop[t] {
             let pk_val = row.get(pk_idx).cloned().unwrap_or(Value::Null);
-            if storage.delete(&tref.name, std::slice::from_ref(&pk_val))? > 0 {
+            if storage.delete_in_db(&stmt_db, &tref.name, std::slice::from_ref(&pk_val))? > 0 {
                 total += 1;
             }
         }
