@@ -624,7 +624,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             };
             // #4974: read as this connection, not as "whoever wrote last".
             let seq = self
-                .scan_for_reader_with(&*storage, &name)
+                .scan_for_reader_in_db(&*storage, &self.session_db(), &name)
                 .ok()
                 .and_then(|recs| {
                     recs.iter()
@@ -4692,7 +4692,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             (
                 // #4974: `storage` here is `&S`, not a guard.
-                self.scan_for_reader_with(storage, &right_table_name)?,
+                // #5113: the schema line below already names `current_db`
+                // while this one did not — so the right table's COLUMNS
+                // came from the right database and its ROWS from another.
+                self.scan_for_reader_in_db(storage, &current_db, &right_table_name)?,
                 storage.get_table_info_in(&current_db, &right_table_name)?,
             )
         };
@@ -6829,7 +6832,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     // #4974: EXISTS fast path must not see other
                     // transactions' uncommitted rows.
                     let rows = self
-                        .scan_for_reader_with(&*storage, &real_subq_table)
+                        .scan_for_reader_in_db(&*storage, &self.session_db(), &real_subq_table)
                         .ok()?;
                     let arc = std::sync::Arc::new(rows);
                     rc.insert(table_name.clone(), arc.clone());
@@ -6867,7 +6870,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // Direct storage scan + WHERE filter + early exit.
         // #4974: reader-scoped, see the note at the cached path above.
-        let rows = self.scan_for_reader_with(&*storage, &subq.table).ok()?;
+        let rows = self
+            .scan_for_reader_in_db(&*storage, &self.session_db(), &subq.table)
+            .ok()?;
         for row in &rows {
             if eval_predicate(where_expr, row, &table_info) {
                 return Some(true);
@@ -6943,7 +6948,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             return None;
         }
         // #4974: subquery index is built from this connection's view.
-        let rows = self.scan_for_reader_with(&*storage, real_table).ok()?;
+        let rows = self
+            .scan_for_reader_in_db(&*storage, &self.session_db(), real_table)
+            .ok()?;
         // V312-58 Sprint 3: when the residual has no outer refs (e.g.
         // Q22's `NOT EXISTS (SELECT * FROM orders WHERE o_custkey =
         // outer.c_custkey)` → static_predicate == Literal("true")),
@@ -7130,7 +7137,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
         // #4974: reader-scoped prewarm.
-        let rows = self.scan_for_reader_with(&*storage, real_table).ok()?;
+        let rows = self
+            .scan_for_reader_in_db(&*storage, &self.session_db(), real_table)
+            .ok()?;
         let residual_ref: Option<&sqlrustgo_parser::Expression> = if matches!(&residual_expr, E::Literal(s) if s == "true")
         {
             None
@@ -7343,7 +7352,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 drop(cache);
                 DIAG_TRY_SCALAR_AGG_BUILD.fetch_add(1, Ordering::SeqCst);
                 // #4974: reader-scoped lookup.
-                let rows = self.scan_for_reader_with(&*storage, real_table).ok()?;
+                let rows = self
+                    .scan_for_reader_in_db(&*storage, &self.session_db(), real_table)
+                    .ok()?;
                 let residual_ref: Option<&sqlrustgo_parser::Expression> = if matches!(&residual_expr, E::Literal(s) if s == "true")
                 {
                     None
@@ -8417,7 +8428,9 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
     let inner_rows = {
         let storage = engine.storage.read();
         // #4974: free function, but `engine` is in hand — same helper.
-        engine.scan_for_reader_with(&*storage, real_table).ok()?
+        engine
+            .scan_for_reader_in_db(&*storage, &engine.session_db(), real_table)
+            .ok()?
     };
 
     // Apply the residual (if any) at build time when it does NOT

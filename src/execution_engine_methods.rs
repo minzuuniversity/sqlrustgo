@@ -194,6 +194,24 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage.scan_in(table, reader_tx)
     }
 
+    /// #5113: [`scan_for_reader_dyn`](Self::scan_for_reader_dyn) against a
+    /// stated database.
+    ///
+    /// `scan_for_reader_dyn` keeps the transaction and resolves the table
+    /// through the storage's shared `current_db`, so a foreign-key check
+    /// running on one connection validated the parent table of whichever
+    /// database was selected last. Added with the same shape as
+    /// `scan_for_reader_in_db` so the two cannot drift.
+    pub(crate) fn scan_for_reader_dyn_in(
+        &self,
+        storage: &dyn sqlrustgo_storage::engine::StorageEngine,
+        db: &str,
+        table: &str,
+    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
+        let reader_tx = self.reader_tx();
+        storage.scan_in_tx_db(db, table, reader_tx)
+    }
+
     /// #4983: predicate variant of [`scan_for_reader_with`](Self::scan_for_reader_with).
     pub(crate) fn scan_for_reader_filtered_with(
         &self,

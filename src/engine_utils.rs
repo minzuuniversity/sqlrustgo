@@ -181,7 +181,8 @@ pub fn validate_foreign_keys<S: StorageEngine + 'static>(
         // #4983: the guard is already held by the caller, so use the
         // `_with` variant — `scan_for_reader` would re-enter the
         // non-reentrant RwLock and deadlock.
-        let parent_rows = engine.scan_for_reader_dyn(storage, &fk.referenced_table)?;
+        let parent_rows =
+            engine.scan_for_reader_dyn_in(storage, &engine.session_db(), &fk.referenced_table)?;
 
         // Find referenced column indices in parent table
         let ref_col_indices: Vec<usize> = fk

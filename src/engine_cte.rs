@@ -396,7 +396,7 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
                 // rows; another transaction's uncommitted rows must not
                 // participate in the dedup.
                 engine
-                    .scan_for_reader_with(&*storage, &t)
+                    .scan_for_reader_in_db(&*storage, &engine.session_db(), &t)
                     .map_err(|e| SqlError::ExecutionError(format!("Scan {}: {}", t, e)))?
             };
             let mut deduped: Vec<Vec<crate::Value>> = Vec::new();

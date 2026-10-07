@@ -1421,8 +1421,13 @@ fn table_status_row<S: StorageEngine + 'static>(
                 .unwrap_or(0),
         ),
         None => (
+            // #5113: the `Some(db)` branch above resolves against the
+            // stated database; this one must resolve against the
+            // connection's, not the storage-wide `current_db`. The caller
+            // passes `None` precisely when no database was named, so the
+            // connection's own selection is the right answer.
             engine
-                .scan_for_reader_with(storage, name)
+                .scan_for_reader_in_db(storage, &engine.session_db(), name)
                 .map(|r| r.len() as i64)
                 .unwrap_or(0),
             storage

@@ -441,8 +441,14 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 // #4974: the PK cache must not absorb another
                 // transaction's uncommitted keys, or a later commit would
                 // report them as duplicates.
+                // #5113: ...and must not absorb another DATABASE's keys.
+                // `stmt_db` names the database the statement belongs to;
+                // without it the scan reads whichever one was selected
+                // last, so `INSERT` on a shared storage can seed the
+                // cache from a same-named table in a different database
+                // and then reject the row as a duplicate.
                 let index: std::collections::HashSet<_> = engine
-                    .scan_for_reader_with(&*storage, &table_name)?
+                    .scan_for_reader_in_db(&*storage, &stmt_db, &table_name)?
                     .iter()
                     .filter_map(|row| pk_key_of(row, &pk_idx))
                     .collect();

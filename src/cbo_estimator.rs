@@ -173,7 +173,10 @@ pub fn collect_table_stats<S: sqlrustgo_storage::StorageEngine + 'static>(
     // #4983: carry the reading connection's tx id. The optimiser reads
     // committed state to build its cost estimates, so an uncommitted
     // version must not skew them.
-    let rows = exec.scan_for_reader_with(engine, table)?;
+    // #5113: name the database as well as the transaction — the cost
+    // estimate is built from this connection's table, not from whatever
+    // database the shared storage last saw selected.
+    let rows = exec.scan_for_reader_in_db(engine, &exec.session_db(), table)?;
     let row_count = rows.len() as u64;
 
     let table_info = engine.get_table_info(table)?;
