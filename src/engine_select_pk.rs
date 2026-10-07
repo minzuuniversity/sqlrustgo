@@ -113,6 +113,15 @@ fn extract_literal_value(expr: &Expression) -> Option<Value> {
 /// Best-effort parse of a literal token into a SQL `Value`. Matches
 /// integers as `Value::Integer`, everything else as `Value::Text`.
 fn parse_literal_token(s: &str) -> Option<Value> {
+    // The parser re-wraps string literals with single quotes
+    // (`Expression::Literal(format!("'{}'", v))`, parser.rs StringLiteral
+    // arm). Strip them so the extracted value equals the stored
+    // `Value::Text` — without this, `WHERE text_pk_col = 'key-0'`
+    // extracted `Text("'key-0'")` and the PK point lookup always missed.
+    // Quoted tokens stay text: `'42'` is a string, `42` is a number.
+    if s.len() >= 2 && s.starts_with('\'') && s.ends_with('\'') {
+        return Some(Value::Text(s[1..s.len() - 1].to_string()));
+    }
     if let Ok(i) = s.parse::<i64>() {
         Some(Value::Integer(i))
     } else if let Ok(f) = s.parse::<f64>() {
