@@ -1042,15 +1042,22 @@ impl FileStorage {
     }
 
     /// #5025: write side for an index file; see `table_path_in`.
-    fn index_path_for_write(&self, table_name: &str, column_name: &str) -> PathBuf {
+    /// #5057: write side for the database named explicitly; see
+    /// `table_path_for_write_in`.
+    fn index_path_for_write_in(&self, db: &str, table_name: &str, column_name: &str) -> PathBuf {
         let file = format!("{}_idx_{}.json", table_name, column_name);
-        match self.db_dir() {
+        match self.db_dir_for(db) {
             None => self.data_dir.join(file),
             Some(dir) => {
                 let _ = std::fs::create_dir_all(&dir);
                 dir.join(file)
             }
         }
+    }
+
+    fn index_path_for_write(&self, table_name: &str, column_name: &str) -> PathBuf {
+        let db = self.current_db_name();
+        self.index_path_for_write_in(&db, table_name, column_name)
     }
 
     /// Get the path for a trigger file (named after the trigger, not the table)
@@ -1314,7 +1321,19 @@ impl FileStorage {
         column_name: &str,
         index: &BPlusTree,
     ) -> std::io::Result<()> {
-        let path = self.index_path_for_write(table_name, column_name);
+        let db = self.current_db_name();
+        self.save_index_in(&db, table_name, column_name, index)
+    }
+
+    /// #5057: `save_index` for a stated database; see `table_path_in`.
+    fn save_index_in(
+        &self,
+        db: &str,
+        table_name: &str,
+        column_name: &str,
+        index: &BPlusTree,
+    ) -> std::io::Result<()> {
+        let path = self.index_path_for_write_in(db, table_name, column_name);
         let file = File::create(&path)?;
         let mut writer = BufWriter::new(file);
 
@@ -1656,24 +1675,41 @@ impl FileStorage {
 
     /// Insert a new table
     pub fn insert_table(&self, name: String, table_data: TableData) -> std::io::Result<()> {
-        // #5057: read the database once, outside the state lock, and use it
-        // for both the cache key and the on-disk path. Reading it inside
-        // the closure would take a second lock while `write_state` is held.
         let db = self.current_db_name();
+        self.insert_table_in(&db, name, table_data)
+    }
+
+    /// #5057: [`insert_table`](Self::insert_table) in a stated database.
+    fn insert_table_in(
+        &self,
+        db: &str,
+        name: String,
+        table_data: TableData,
+    ) -> std::io::Result<()> {
+        // #5057: the database is read once, outside the state lock, and
+        // used for both the cache key and the on-disk path. Reading it
+        // inside the closure would take a second lock while `write_state`
+        // is held.
         Self::with_write_lock(self, |s| {
             // #5025: scope the cache key, but keep the bare name for the
             // on-disk file and `TableData.info.name`.
-            s.tables.insert(self.tbl_in(&db, &name), table_data.clone());
-            self.save_table(&db, s, &name, &table_data)
+            s.tables.insert(self.tbl_in(db, &name), table_data.clone());
+            self.save_table(db, s, &name, &table_data)
         })
     }
 
     /// Drop (delete) a table
     pub fn drop_table(&self, name: &str) -> std::io::Result<()> {
+        let db = self.current_db_name();
+        self.drop_table_in(&db, name)
+    }
+
+    /// #5057: [`drop_table`](Self::drop_table) in a stated database.
+    pub fn drop_table_in(&self, db: &str, name: &str) -> std::io::Result<()> {
         Self::with_write_lock(self, |s| {
-            let key = self.tbl(name);
+            let key = self.tbl_in(db, name);
             s.tables.remove(&key);
-            let path = self.table_path(name);
+            let path = self.table_path_in(db, name);
             if path.exists() {
                 std::fs::remove_file(path)?;
             }
@@ -4586,6 +4622,136 @@ impl FileStorage {
         });
     }
 
+    /// #5057: [`scan_with_index`](Self::scan_with_index) against a stated
+    /// database.
+    ///
+    /// The index lookup here used a BARE table name while every index
+    /// producer in this file — `create_index`, `rebuild_pk_indexes` (which
+    /// runs on every startup), and `update_pk_index` (the only path that
+    /// keeps index contents current) — keys by `scoped_key(db, table)`.
+    /// The two never met, so the V312-85 / #4625 O(log N) PK lookup could
+    /// not find any index `FileStorage` had actually built; callers reached
+    /// it through the `scan_with_index not supported or failed, fall
+    /// through` branch in `engine_select.rs` and silently paid a full
+    /// table scan instead. Same key convention as `create_table_at`, now
+    /// that it too is scoped.
+    fn scan_with_index_in(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        let indexes = self.indexes.read().unwrap();
+
+        let index_key = (crate::engine::scoped_key(db, table), index_name.to_string());
+        if let Some(index) = indexes.get(&index_key) {
+            // Convert Value to i64 index key
+            if let Some(search_key) = key.to_index_key() {
+                // Find all row IDs with this key
+                let row_ids = index.search_all(search_key);
+
+                // #4951: single read guard over tables + insert_buffer
+                // so the table and the buffer are read at one instant.
+                let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
+                    st.tables.get(&self.tbl_in(db, table)).map(|data| {
+                        // Collect matching rows
+                        let mut results = Vec::new();
+                        for &row_id in &row_ids {
+                            if (row_id as usize) < data.rows.len() {
+                                results.push(data.rows[row_id as usize].clone());
+                            }
+                        }
+                        // Also check insert_buffer
+                        if let Some(buffered) =
+                            st.insert_buffer.get(&crate::engine::scoped_key(db, table))
+                        {
+                            for record in buffered.iter() {
+                                // Check if this buffered row matches the key
+                                if let Some(col_idx) =
+                                    data.info.columns.iter().position(|c| c.name == index_name)
+                                {
+                                    if record
+                                        .get(col_idx)
+                                        .map(|v| v.to_index_key() == Some(search_key))
+                                        .unwrap_or(false)
+                                    {
+                                        results.push(record.clone());
+                                    }
+                                }
+                            }
+                        }
+                        Ok(results)
+                    })
+                });
+                if let Some(res) = collected {
+                    return res;
+                }
+            }
+        }
+        // Index not found or not usable - fall back to full scan with filter
+        let mut rows = self.scan(table)?;
+        // Filter rows by the key value
+        if let Some(col_idx) = self.with_table(table, |t| {
+            t.and_then(|table_data| {
+                table_data
+                    .info
+                    .columns
+                    .iter()
+                    .position(|c| c.name == index_name)
+            })
+        }) {
+            rows.retain(|row| row.get(col_idx).map(|v| v == key).unwrap_or(false));
+            return Ok(rows);
+        }
+        Err(SqlError::ExecutionError(format!(
+            "Index '{}' on table '{}' not found or not usable",
+            index_name, table
+        )))
+    }
+
+    fn create_table_at(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        let table_data = TableData {
+            info: info.clone(),
+            rows: vec![],
+        };
+        self.insert_table_in(db, info.name.clone(), table_data)
+            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+        // V400-MVCC-PKFAST: pre-create the PK B+Tree index so PK
+        // lookups are O(log N) from the very first insert. Without
+        // this, every PK lookup would have to wait for an explicit
+        // `CREATE INDEX` (which production workloads never issue).
+        //
+        // #5057: the in-memory index key is scoped, like every other
+        // index key in this file (`create_index`, `drop_index`, the
+        // startup loader and `update_pk_index` all use `scoped_key`).
+        // This one site used the bare table name, so the index
+        // `CREATE TABLE` pre-created was unreachable from every lookup:
+        // a dead entry that happened to occupy memory.
+        if let Some(pk_col) = info.columns.iter().find(|c| c.primary_key) {
+            let pk_col_name = pk_col.name.clone();
+            let pk_col_idx = info
+                .columns
+                .iter()
+                .position(|c| c.name == pk_col_name)
+                .unwrap();
+            let empty_index = crate::bplus_tree::BPlusTree::new();
+            self.save_index_in(db, &info.name, &pk_col_name, &empty_index)
+                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
+            if let Ok(mut indexes) = self.indexes.write() {
+                indexes.insert(
+                    (
+                        crate::engine::scoped_key(db, &info.name),
+                        pk_col_name.clone(),
+                    ),
+                    empty_index,
+                );
+            }
+            let _ = pk_col_idx; // silence unused if column moved
+        }
+        Ok(())
+    }
+
     /// v3.10.0 Issue #3703: returns pre-partitioned chunks so the caller
     /// (typically `engine_select::filter_partitions_parallel`) can
     /// process each chunk on a separate rayon worker, fusing scan
@@ -5067,76 +5233,8 @@ impl StorageEngine for FileStorage {
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
-        // V312-85 / Issue #4625: Use B+ Tree index for equality lookup
-        // The index_name is the column name in FileStorage's (table, column) key format
-        let indexes = self.indexes.read().unwrap();
-
-        // Try to find the index - index_name is the column name
-        let index_key = (table.to_string(), index_name.to_string());
-        if let Some(index) = indexes.get(&index_key) {
-            // Convert Value to i64 index key
-            if let Some(search_key) = key.to_index_key() {
-                // Find all row IDs with this key
-                let row_ids = index.search_all(search_key);
-
-                // #4951: single read guard over tables + insert_buffer
-                // so the table and the buffer are read at one instant.
-                let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
-                    st.tables.get(&self.tbl(table)).map(|data| {
-                        // Collect matching rows
-                        let mut results = Vec::new();
-                        for &row_id in &row_ids {
-                            if (row_id as usize) < data.rows.len() {
-                                results.push(data.rows[row_id as usize].clone());
-                            }
-                        }
-                        // Also check insert_buffer
-                        if let Some(buffered) = st.insert_buffer.get(&crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
-                            table,
-                        )) {
-                            for record in buffered.iter() {
-                                // Check if this buffered row matches the key
-                                if let Some(col_idx) =
-                                    data.info.columns.iter().position(|c| c.name == index_name)
-                                {
-                                    if record
-                                        .get(col_idx)
-                                        .map(|v| v.to_index_key() == Some(search_key))
-                                        .unwrap_or(false)
-                                    {
-                                        results.push(record.clone());
-                                    }
-                                }
-                            }
-                        }
-                        Ok(results)
-                    })
-                });
-                if let Some(res) = collected {
-                    return res;
-                }
-            }
-        }
-        // Index not found or not usable - fall back to full scan with filter
-        let mut rows = self.scan(table)?;
-        // Filter rows by the key value
-        if let Some(col_idx) = self.with_table(table, |t| {
-            t.and_then(|table_data| {
-                table_data
-                    .info
-                    .columns
-                    .iter()
-                    .position(|c| c.name == index_name)
-            })
-        }) {
-            rows.retain(|row| row.get(col_idx).map(|v| v == key).unwrap_or(false));
-            return Ok(rows);
-        }
-        Err(SqlError::ExecutionError(format!(
-            "Index '{}' on table '{}' not found or not usable",
-            index_name, table
-        )))
+        let db = self.current_db_name();
+        self.scan_with_index_in(&db, table, index_name, key)
     }
 
     fn parallel_scan(
@@ -5644,32 +5742,13 @@ impl StorageEngine for FileStorage {
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
-        let table_data = TableData {
-            info: info.clone(),
-            rows: vec![],
-        };
-        self.insert_table(info.name.clone(), table_data)
-            .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-        // V400-MVCC-PKFAST: pre-create the PK B+Tree index so PK
-        // lookups are O(log N) from the very first insert. Without
-        // this, every PK lookup would have to wait for an explicit
-        // `CREATE INDEX` (which production workloads never issue).
-        if let Some(pk_col) = info.columns.iter().find(|c| c.primary_key) {
-            let pk_col_name = pk_col.name.clone();
-            let pk_col_idx = info
-                .columns
-                .iter()
-                .position(|c| c.name == pk_col_name)
-                .unwrap();
-            let empty_index = crate::bplus_tree::BPlusTree::new();
-            self.save_index(&info.name, &pk_col_name, &empty_index)
-                .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
-            if let Ok(mut indexes) = self.indexes.write() {
-                indexes.insert((info.name.clone(), pk_col_name.clone()), empty_index);
-            }
-            let _ = pk_col_idx; // silence unused if column moved
-        }
-        Ok(())
+        let db = self.current_db_name();
+        self.create_table_at(&db, info)
+    }
+
+    /// #5057: [`create_table`](Self::create_table) in a stated database.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.create_table_at(db, info)
     }
 
     // V4.0.0 / wired_insert_payload_regression_test fix: the trait
@@ -5685,7 +5764,16 @@ impl StorageEngine for FileStorage {
     // inherent `&self` implementation.
     #[allow(unconditional_recursion, clippy::only_used_in_recursion)]
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
-        FileStorage::drop_table(self, table)
+        let db = self.current_db_name();
+        self.drop_table_in_db(&db, table)
+    }
+
+    /// #5057: [`drop_table`](Self::drop_table) in a stated database.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        // Fully-qualified so the resolver picks the inherent `&self`
+        // implementation rather than this trait method — see the note
+        // above about the infinite recursion this used to cause.
+        FileStorage::drop_table_in(self, db, table)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
         Ok(())
     }
@@ -6090,6 +6178,18 @@ impl StorageEngine for FileStorage {
     fn has_table_in(&self, db: &str, table: &str) -> bool {
         let key = crate::engine::scoped_key(db, table);
         self.with_read_lock(|st| st.tables.contains_key(&key))
+    }
+
+    /// #5057: index lookup against a stated database. See
+    /// [`scan_with_index_in`](Self::scan_with_index_in).
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        self.scan_with_index_in(db, table, index_name, key)
     }
 
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
