@@ -151,5 +151,41 @@ TOCTOU 的结构性论证不依赖本次复现：`FileStorage::tbl()` 每次调�
 结构上。已有 `crates/storage/tests/probe_5025_conn_db_race.rs`（无断言，仅打印）
 记录该窗口，`src/engine_select.rs:775-777` 的注释记录了 53.76% 误导向的实测值。
 
-**53.76% 这个数字本轮未重跑验证**，属既有代码注释中的历史记录，
+**53.76% 这个数字本轮未重跑验证**，属既有代码注释中的历史记录
+（出处：`crates/storage/src/engine.rs:1289`，`get_table_info_in` 的文档注释），
 引用时须注明来源，不得当作本次实测。
+
+---
+
+## 6. 实施过程中发现的：`db` 必须穿过整条持久化链（P1-b 的实际规模）
+
+预估 `P1-b` 是"给 `FileStorage` 的表方法加 `db` 参数"。实际实施时发现比这深一层：
+`db` 不只被方法**入口**用，它沿着调用链一路传下去：
+
+| 层 | 位置 | 对 `current_db` 的依赖 |
+|----|------|----------------------|
+| 表方法入口 | `insert`(5076) / `delete`(5152) / `update`(5438) / `create_table`(5576) / `drop_table`(5617) | `self.tbl(...)` |
+| 写入 helper | `insert_direct`(4188) / `insert_buffered`(4231) / `flush_buffer`(4288) | 方法体内直接内联 `scoped_key(&self.current_db.read().unwrap(), ...)` |
+| 索引维护 | `update_pk_index`(4335) / `update_pk_index_window`(4369) | `self.tbl(table)` |
+| 持久化 | `save_table_window`(1443) / `save_table`(1388) | 间接经 `db_dir()`(1789) → `self.current_db_name()`(1809) |
+| 磁盘读 | `load_table_in`(1325) / `load_table_delta_in`(1554) | **已经**接受显式 `db` 参数 |
+
+`FileStorage` 共有 **40 处 `self.tbl(...)`** + **4 处 `self.db_dir()`**。
+其中只有 `load_table_in` / `load_table_delta_in` 已经参数化 —— 磁盘读路径是对的，
+内存缓存与写入路径没跟上。
+
+所以 `P1-b` 的真实规模是：把 `db` 从表方法入口贯穿到写入 helper、索引维护、
+持久化三层，约 500–1000 行的单文件精细重构。这不是机械替换：
+每一层的方法体都要确认「这个 `db` 是调用方给的那个，不是 storage 当前持有的那个」。
+
+### 附带观察：`last_saved_row_count` 按未作用域的表名索引
+
+`save_table_window`(1455-1460) 用**裸** `table_name` 查
+`self.last_saved_row_count`，而 `st.tables` 用的是 `scoped_key(db, table)`。
+两个数据库里同名表 `t` 会共享同一个增量保存计数。
+
+本轮**未构造用例验证**，仅从读码得出。推演方向是保守的：
+`d1.t` 与 `d2.t` 互相抬高计数只会让 `total_rows <= last_saved` 更早成立，
+从而走 re-derive 全量保存分支 —— 不会丢数据，是性能问题不是正确性问题。
+即便如此，`db` 参数化之后这个 key 应当一并作用域化。记录在此，
+待 `P1-b` 落地时顺带处理或单开 issue。
