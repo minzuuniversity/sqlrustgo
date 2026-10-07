@@ -612,6 +612,10 @@ name = "integration_savepoint_test"
 path = "tests/integration/transaction/savepoint_test.rs"
 
 [[test]]
+name = "concurrent_rollback_isolation_test"
+path = "tests/integration/transaction/concurrent_rollback_isolation_test.rs"
+
+[[test]]
 name = "show_tables_test"
 path = "tests/integration/sql/show_tables_test.rs"
 
