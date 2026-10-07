@@ -134,6 +134,12 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.scan_in(table, reader_tx)
     }
 
+    /// #5105: forward `(db, table, reader_tx)`; see the note on
+    /// `WalStorage`'s counterpart. The trait default drops `db`.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_tx_db(db, table, reader_tx)
+    }
+
     /// #4974: same forwarding obligation for the predicate variant.
     fn scan_with_filter_in(
         &self,

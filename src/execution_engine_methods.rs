@@ -173,7 +173,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         table: &str,
     ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
         let reader_tx = self.reader_tx();
-        storage.scan_in_db(db, table)
+        // #5105: `scan_in_db` takes no transaction, so routing through it
+        // put reads back on the storage-wide `current_tx_id` and let one
+        // connection see another's uncommitted rows. `scan_in_tx_db`
+        // carries both. `reader_tx` being computed and unused was the
+        // whole bug in three lines.
+        storage.scan_in_tx_db(db, table, reader_tx)
     }
 
     /// #4983: [`scan_for_reader_with`](Self::scan_for_reader_with) for

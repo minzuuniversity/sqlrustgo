@@ -182,18 +182,42 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         self.mvcc_table(table).pending_keys(tx_id)
     }
 
+    /// #5105: [`pending_keys`](Self::pending_keys) against a stated
+    /// database. The pending set is per `(db, table)` because the version
+    /// store is, so filtering on the wrong database's set would let one
+    /// database's uncommitted row through another database's scan.
+    fn pending_keys_in(
+        &self,
+        db: &str,
+        table: &str,
+        tx_id: u64,
+    ) -> std::collections::HashSet<crate::engine::Value> {
+        self.mvcc_table_in(db, table).pending_keys(tx_id)
+    }
+
     pub fn inner_mut(&mut self) -> &mut S {
         &mut self.inner
     }
 
     /// Acquire (or lazily create) the MVCC table for `table_name`.
     fn mvcc_table(&self, table_name: &str) -> Arc<VersionedTable> {
-        // #5025: the MVCC version store is keyed per database, like the
-        // inner engine's tables. Without this, `d1.t` and `d2.t` share one
-        // `VersionedTable` and a scan in one database returns the other's
-        // rows — the isolation holds for `FileStorage` and is then undone
-        // here.
-        let key = crate::engine::scoped_key(&self.inner.current_db(), table_name);
+        // #5105: the database is resolved from the storage's shared
+        // `current_db` here. That is only correct for callers that have no
+        // database of their own to state — see [`mvcc_table_in`](Self::mvcc_table_in)
+        // for why the per-connection path cannot use it.
+        self.mvcc_table_in(&self.inner.current_db(), table_name)
+    }
+
+    /// #5105: the version store for `(db, table)`.
+    ///
+    /// #5025 keyed the store per database, but derived the database from
+    /// `inner.current_db()` — one shared value. So the key was scoped, yet
+    /// every caller resolved the same database to build it. A read that
+    /// knows which database it is asking about must pass it here, or two
+    /// databases' tables land in one `VersionedTable` and a scan in one
+    /// returns the other's rows.
+    fn mvcc_table_in(&self, db: &str, table_name: &str) -> Arc<VersionedTable> {
+        let key = crate::engine::scoped_key(db, table_name);
         // Fast path: already exists.
         if let Some(t) = self.mvcc.read().get(&key).cloned() {
             return t;
@@ -332,7 +356,26 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// transaction, and an uncommitted write becomes visible to a
     /// connection that did not make it.
     fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        let mvcc = self.mvcc_table(table);
+        // #5105: keep the transaction and resolve the database the way the
+        // rest of this impl does, so both halves come from the same place.
+        self.scan_in_tx_db(&self.inner.current_db(), table, reader_tx)
+    }
+
+    /// #5105: snapshot read of `(db, table)` on behalf of `reader_tx`.
+    ///
+    /// The engine's read path needs both halves at once: `db` selects the
+    /// table namespace and `reader_tx` selects which versions are visible.
+    /// Before this existed the engine could only have one — routing through
+    /// `scan_in_db` kept `db` and dropped `reader_tx` (so a reader saw
+    /// another connection's uncommitted rows), while `scan_in` kept
+    /// `reader_tx` and resolved `db` from the storage-wide `current_db`.
+    ///
+    /// It was the *engine* that lost isolation, not this type: callers
+    /// reaching `scan_in` directly kept both. See
+    /// `tests/mvcc_reader_tx_5105.rs`, which goes through
+    /// `ExecutionEngine` and fails without this.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        let mvcc = self.mvcc_table_in(db, table);
         let snapshot_ts = mvcc.begin_snapshot();
         let pairs = mvcc.scan_visible(snapshot_ts, reader_tx);
         let mut out: Vec<Record> = pairs.into_iter().map(|(_, row)| row).collect();
@@ -346,9 +389,14 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // with no visibility notion of its own, so an unconditional
         // merge hands an uncommitted write straight back to a reader
         // that `scan_visible` had correctly filtered out.
+        //
+        // #5105: both the pending set and the inner scan name `db`. They
+        // read the same rows this method is deciding the visibility of;
+        // pulling either from a different database would merge rows this
+        // transaction has no business seeing.
         let pending: std::collections::HashSet<crate::engine::Value> =
-            self.pending_keys(table, reader_tx);
-        let inner_rows = self.inner.scan(table)?;
+            self.pending_keys_in(db, table, reader_tx);
+        let inner_rows = self.inner.scan_in_db(db, table)?;
         if inner_rows.len() > out.len() {
             let mut present: std::collections::HashSet<crate::engine::Value> =
                 out.iter().filter_map(|r| r.first().cloned()).collect();
