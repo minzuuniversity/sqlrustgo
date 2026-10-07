@@ -1,7 +1,7 @@
 # #4948 — COMMIT 不再深拷贝全库：`tables` / `committed_tables` Arc 化
 
 - **Date**: 2026-10-07
-- **Branch**: `feat/4948-committed-tables-arc`（PR #5071）+ `feat/4948-memory-curve`（PR #5073）
+- **Branch**: `feat/4948-committed-tables-arc`（PR #5071）+ `feat/4948-memory-curve`（PR #5074）
 - **Base**: `gitea252/develop/v4.1.0` = `75683f1cc6`（PR #5070 合并后）
 - **Issue**: #4948（B2.5 / #4915 F-11）
 
@@ -131,7 +131,7 @@ tables   rows/table   total rows   commit ms
 
 曲线从线性变为平坦 —— 这是验收标准第 1 条的直接证据。
 
-### 验收标准第 2 条：内存曲线 —— 实测（补于 2026-10-07，PR #5073）
+### 验收标准第 2 条：内存曲线 —— 实测（补于 2026-10-07，PR #5074）
 
 #### 先记一次失败的方法
 
