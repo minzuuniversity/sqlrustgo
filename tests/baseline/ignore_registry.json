@@ -3,7 +3,7 @@
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
   "captured_at_commit": "6ba04fa070aa6ce70edada6bb6f46aef7d6aae60",
   "captured_at_date": "2026-10-07",
-  "total_allowed": 117,
+  "total_allowed": 116,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 80,
@@ -51,15 +51,6 @@
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
-    },
-    {
-      "file": "crates/parser/tests/wp_a_legacy.rs",
-      "test": "test_chinese_comment_multi_line",
-      "line_at_capture": 68,
-      "reason": "",
-      "status": "ACTIVE",
-      "category": "NO_REASON",
-      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
     },
     {
       "file": "crates/storage/src/mmap_vector_store.rs",
@@ -1095,6 +1086,16 @@
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
       "status_rationale": "added 2026-10-07 — drift from PR #5098 (test/storage): pin concurrent-transaction rollback isolation + scope undo to its tx"
+    }
+  ],
+  "resolved_removed_ignores": [
+    {
+      "file": "crates/parser/tests/wp_a_legacy.rs",
+      "test": "test_chinese_comment_multi_line",
+      "line_at_capture": 68,
+      "resolved": "2026-10-07 — #4708 block-comment support added to Lexer::skip_whitespace; #[ignore] removed, test now runs green.",
+      "prior_reason": "empty (category NO_REASON) — ADR-008 requires an #[ignore = \"...\"] reason",
+      "evidence": "crates/parser/tests/wp_a_legacy.rs::test_4708_block_comments (7 boundary tests)"
     }
   ]
 }
