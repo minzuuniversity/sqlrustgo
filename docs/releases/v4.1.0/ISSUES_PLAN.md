@@ -328,7 +328,26 @@ B2.2"——整理重复实现时顺带暴露出来的。
 修后全绿。其中一例断言"表增长后写 delta 而非重写基础快照"，同时校验内容与
 mtime，重写无法蒙混过关。
 
-## 5. References
+## 5. Alpha→Beta 整改计划（2026-10-08）
+
+> 本节是工作分解和验收入口，不代表门禁已经通过。总控 Issue：#5117。
+
+| 优先级 | Issue | 工作包 | Alpha→Beta 验收摘要 |
+|---|---|---|---|
+| P0 | #5112 | 事务与会话上下文正确性 | rollback `0/300`、8000 事务模型一致、多连接/多库不串扰 |
+| P0 | #5113 | CI 与门禁可信度 | workflow 可解析、fail-closed、P11-P16 与 anti-ignore 自测通过 |
+| P1 | #5114 | BustubX-EDU 与回归矩阵 | B 轨必测 100%、SQL corpus `>=80%`、结果 oracle 无差异 |
+| P1 | #5115 | SOAK、恢复与故障注入 | 1h Alpha SOAK 成功；24h/168h runner 和证据链可执行 |
+| P1 | #5116 | 性能基线与回归门禁 | 固定环境 A/B、>=5 次、吞吐和 p99 阈值可自动判定 |
+
+既有依赖：#5099、#5057、#5025、#5102、#5103。这些 Issue 不得由新工作包重复替代；
+必须按各自合并 PR 和证据关闭。
+
+总控 #5117 的关闭条件为：#5112..#5116 与既有 P0/P1 阻断项全部关闭，AB-01..AB-10
+在单一冻结提交上全部 PASS，required checks 全部成功，且 codeowner 与 governance 独立批准。
+详细标准见 `ALPHA_TO_BETA_GATE_PLAN.md`。
+
+## 6. References
 
 
 - `docs/releases/v4.0.0/ISSUES_PLAN.md` — full v4.0.0 issue catalog
