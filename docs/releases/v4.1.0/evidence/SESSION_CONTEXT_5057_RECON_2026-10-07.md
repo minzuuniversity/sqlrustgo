@@ -268,3 +268,102 @@ M-B 的意义：它证明 prepared 用例真的在测第二处 dispatch，而不
 本 PR 的两处同步在 SessionContext 落地时需要改写一次 —— 届时
 `conn_db` 不再需要每命令重断言，`db` 从会话上下文直接下传。
 这是已知的 churn，不是意外。
+
+---
+
+## 8. P1-b 实施：把 `db` 贯穿到持久化层，以及三处同源的未作用域键
+
+### 8.1 已完成的部分
+
+在 `FileStorage` 上：
+
+| 改动 | 位置 |
+|------|------|
+| 新增 `tbl_in(db, name)` —— 显式库名的作用域键 | inherent |
+| `insert_direct` / `insert_buffered` / `flush_buffer` / `update_pk_index` / `update_pk_index_window` 加 `db` 参数 | inherent |
+| 新增 `insert_at(db, …)`（从 trait 侧 `insert` 搬进 inherent，`insert` 与 `insert_in_db` 都转调它） | inherent |
+| `save_table` / `save_table_window` / `save_table_full` 加 `db` 参数 | inherent |
+| 新增 `table_path_for_write_in(db, table)` —— 写侧路径的显式库名版本 | inherent |
+| `scan_in_db` 补上 `insert_buffer` 合并 | trait |
+| `table_path_for_write` 并入 `table_path_for_write_in`（原版已无调用者） | inherent |
+
+`insert_in_db` / `force_insert_in_db` 已覆写；**其余 `*_in_db` 仍是 trait 默认
+实现（转调无 db 的方法），故本次提交中尚不可依赖。**
+
+### 8.2 顺带修好的：`scan_in_db` 看不见未落盘的行
+
+`#5025` 加的 `scan_in_db` 只读 `tables`，不像 `scan` 那样合并 `insert_buffer`。
+于是同一行数据对 `scan` 可见、对 `scan_in_db` 不可见。这个分歧在 #5025 引入，
+本轮测试首次撞上（见 §8.4 的夹具教训）。已补齐。
+
+这条看似小，但它卡住整件事：一旦读路径改走 `scan_in_db`，**每一条尚未 flush
+的行都会凭空消失**。
+
+### 8.3 三处同源的未作用域键（本轮定位，尚未修）
+
+`FileStorage` 里有三个以**裸表名**为 key、而表本身按 `scoped_key(db, table)`
+存储的结构。它们共享同一个成因 —— #5025 把表作用域化时，只改了 `tables` 与
+`insert_buffer`，没改这几个「按名字索引表」的旁路结构：
+
+| 结构 | key | 后果 |
+|------|-----|------|
+| `dirty_tables` | **混用**：insert 路径存裸名，delete/update 路径存 `scoped_key(...)` | flush 时无法判断某张 dirty 表属于哪个库 |
+| `last_saved_row_count` | 裸表名 | 两个库的同名表共享增量保存计数 |
+| `append_table_delta` / `delta_path` | 裸表名 → 路径 | delta 文件落在 `current_db` 目录 |
+
+### 8.4 `flush` 的跨库行为：**实测写错了目录**
+
+诊断输出（`flush_all_buffers` 之后的数据目录快照）：
+
+```
+["a.json", "a_idx_id.json", "b.json", "b_idx_id.json", "d1/", "d2/"]
+```
+
+`d1/` 与 `d2/` 都是**空目录**，而 `a.json` / `b.json` 落在了共享根目录 ——
+`a` 是在 d1 里建的，`b` 是在 d2 里建的。
+
+成因：`flush()` 的 `drain_dirty_windowed()` 返回 `(name, …)`，随后用
+**单一的 `current_db`** 为所有 dirty 表调 `save_table_window`。加上
+`dirty_tables` 的 key 混用（§8.3），跨库 flush 无法知道一张表属于哪个库，
+于是全部按当前库写。
+
+**这直接决定了 `flush_all_buffers` 怎么处理。** 我一度把它改成遍历所有库的
+buffer，但那样只修了一半：`flush_buffer` 会找到正确的行，`flush` 的
+`drain_dirty_windowed` 仍会把它们写到当前库目录 —— 从「跳过不写」变成
+「写错地方」，后者更糟。
+
+所以本次提交把 `flush_all_buffers` **回退为行为等价**（仍只 flush 当前库的
+buffer，只是把 `db` 传对），并在函数注释里写明为什么不做跨库。跨库 flush
+必须等 `dirty_tables` 作用域化之后。
+
+为此我一度新增的 `unscoped_key`（`scoped_key` 的逆运算）随回退一起删除 ——
+没有调用者的辅助函数不该进仓库，它会在跨库 flush 真正实现时随那次改动再加。
+
+### 8.5 夹具教训：先怀疑夹具
+
+第一版 `file_storage_db_param_5057.rs` 8 个用例**全红**，包括一个测的是
+**完全没改动过**的路径（`insert` 跟随 `current_db`）。
+
+按惯例先查夹具，结论是两层：
+
+1. `scan_in_db` 不合并 buffer（§8.2，真缺陷，已修）；
+2. `count()` 夹具里先调 `flush()`，而 flush 对**命名库**无效（§8.4）——
+   于是计数读到 0，看起来像 `insert_in_db` 没生效。
+
+对照组（未改动路径）先变绿，才确认夹具这一层的判断方向是对的。
+
+### 8.6 验证
+
+- `cargo check -p sqlrustgo-storage --all-features` — 通过
+- `cargo clippy -p sqlrustgo-storage --all-features -- -D warnings` — 通过
+- `cargo test -p sqlrustgo-storage` — **EXIT=0，1404 passed / 0 failed / 9 ignored**
+- `cargo test -p sqlrustgo-storage --test file_storage_db_param_5057` — 4 passed
+
+### 8.7 本次提交不包含
+
+- `create_table_in_db` / `drop_table_in_db` / `delete_in_db` /
+  `delete_if_in_db` / `update_in_db` / `update_if_in_db` 的 `FileStorage` 覆写
+- `dirty_tables` / `last_saved_row_count` / delta 路径的作用域化（§8.3）
+- `flush` 的跨库正确性（§8.4）
+
+`storage` 全量回归结果见 §9。

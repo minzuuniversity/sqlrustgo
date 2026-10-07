@@ -999,9 +999,17 @@ impl FileStorage {
 
     /// #5025: write side. Never falls back — writing a new table into the
     /// shared root from inside a database is exactly what #5025 is about.
-    fn table_path_for_write(&self, table_name: &str) -> PathBuf {
+    /// #5057: write side for the database named explicitly; see
+    /// `table_path_in`.
+    ///
+    /// There used to be a `table_path_for_write` that resolved through
+    /// `current_db`. Every write now passes its database down, because a
+    /// write helper that had already resolved the right database's rows
+    /// would otherwise hand them to the *current* database's directory —
+    /// the rows found under the right key, written to the wrong place.
+    fn table_path_for_write_in(&self, db: &str, table_name: &str) -> PathBuf {
         let file = format!("{}.json", table_name);
-        match self.db_dir() {
+        match self.db_dir_for(db) {
             None => self.data_dir.join(file),
             Some(dir) => {
                 let _ = std::fs::create_dir_all(&dir);
@@ -1033,7 +1041,7 @@ impl FileStorage {
         }
     }
 
-    /// #5025: write side for an index file; see `table_path_for_write`.
+    /// #5025: write side for an index file; see `table_path_in`.
     fn index_path_for_write(&self, table_name: &str, column_name: &str) -> PathBuf {
         let file = format!("{}_idx_{}.json", table_name, column_name);
         match self.db_dir() {
@@ -1385,8 +1393,12 @@ impl FileStorage {
     /// see that method for why it must not re-acquire the lock itself.
     /// It does not read `st` today: every caller hands it an explicit
     /// `table_data`.
+    /// #5057: `db` says which database's directory the file belongs in.
+    /// It is the same database the caller resolved the rows under; passing
+    /// anything else writes the right rows into the wrong directory.
     fn save_table(
         &self,
+        db: &str,
         _st: &WriteState,
         table_name: &str,
         table_data: &TableData,
@@ -1403,13 +1415,13 @@ impl FileStorage {
         // shrunk the row count to 0), we must still emit the JSON
         // because cold-start load relies on it for table schema.
         if total_rows == 0 || last_saved == 0 {
-            return self.save_table_full(table_name, table_data);
+            return self.save_table_full(db, table_name, table_data);
         }
 
         if total_rows <= last_saved {
             // Pure DELETE/UPDATE path: the row set may have shrunk.
             // Force a full snapshot to keep on-disk consistent.
-            return self.save_table_full(table_name, table_data);
+            return self.save_table_full(db, table_name, table_data);
         }
 
         // Delta-only path: append the new rows to <table>.delta.
@@ -1425,7 +1437,7 @@ impl FileStorage {
         let delta_path = self.delta_path(table_name);
         if let Ok(meta) = std::fs::metadata(&delta_path) {
             if meta.len() > 10 * 1024 * 1024 {
-                let _ = self.save_table_full(table_name, table_data);
+                let _ = self.save_table_full(db, table_name, table_data);
             }
         }
         Ok(())
@@ -1440,8 +1452,10 @@ impl FileStorage {
     /// therefore also pass the real table size, otherwise the
     /// "did the table grow?" decision and the `last_saved_row_count`
     /// bookkeeping would be computed against the window length.
+    /// #5057: `db` — see [`save_table`](Self::save_table).
     fn save_table_window(
         &self,
+        db: &str,
         st: &WriteState,
         table_name: &str,
         window: &TableData,
@@ -1465,7 +1479,7 @@ impl FileStorage {
             // full table under the lock. Rare relative to inserts.
             // #5025: the cache is keyed by scoped name.
             if let Some(data) = st.tables.get(&self.tbl(table_name)) {
-                return self.save_table_full(table_name, data);
+                return self.save_table_full(db, table_name, data);
             }
             return Ok(());
         }
@@ -1483,7 +1497,7 @@ impl FileStorage {
         if let Ok(meta) = std::fs::metadata(&delta_path) {
             if meta.len() > 10 * 1024 * 1024 {
                 if let Some(data) = st.tables.get(&self.tbl(table_name)) {
-                    let _ = self.save_table_full(table_name, data);
+                    let _ = self.save_table_full(db, table_name, data);
                 }
             }
         }
@@ -1493,10 +1507,17 @@ impl FileStorage {
     /// V400-PERF-DELTA: write the full table JSON snapshot. Called by
     /// `save_table` on the first write, after a schema change, and
     /// when the delta file grows too large.
-    fn save_table_full(&self, table_name: &str, table_data: &TableData) -> std::io::Result<()> {
+    fn save_table_full(
+        &self,
+        db: &str,
+        table_name: &str,
+        table_data: &TableData,
+    ) -> std::io::Result<()> {
         // #5025: writes go to the scoped location; `table_path` falls back
         // to the root for reads only.
-        let path = self.table_path_for_write(table_name);
+        // #5057: ...and the database is the one the caller named, not
+        // `current_db`.
+        let path = self.table_path_for_write_in(db, table_name);
         let file = File::create(&path)?;
         // B2.3 / #4915 (F-11): 1 MB buffer, and serialize straight
         // into it. The previous code built an owned StoredTableData
@@ -1635,11 +1656,15 @@ impl FileStorage {
 
     /// Insert a new table
     pub fn insert_table(&self, name: String, table_data: TableData) -> std::io::Result<()> {
+        // #5057: read the database once, outside the state lock, and use it
+        // for both the cache key and the on-disk path. Reading it inside
+        // the closure would take a second lock while `write_state` is held.
+        let db = self.current_db_name();
         Self::with_write_lock(self, |s| {
             // #5025: scope the cache key, but keep the bare name for the
             // on-disk file and `TableData.info.name`.
-            s.tables.insert(self.tbl(&name), table_data.clone());
-            self.save_table(s, &name, &table_data)
+            s.tables.insert(self.tbl_in(&db, &name), table_data.clone());
+            self.save_table(&db, s, &name, &table_data)
         })
     }
 
@@ -1686,6 +1711,7 @@ impl FileStorage {
         // always done this; the inherent version did not, which is part of
         // why the two copies of this loop drifted apart.
         self.flush_all_buffers().map_err(Self::io_err_from_sql)?;
+        let db = self.current_db_name();
         let pending = self.drain_dirty_windowed();
         // Lock released. `save_table_window` / `save_table_full` only
         // touch `data_dir`, `last_saved_row_count` and the filesystem.
@@ -1694,7 +1720,7 @@ impl FileStorage {
             // re-acquire the lock itself (non-reentrant). Hold the read
             // guard across the call. It only reads `tables` to decide
             // whether a full re-write is needed.
-            self.with_read_lock(|st| self.save_table_window(st, name, window, *total))?;
+            self.with_read_lock(|st| self.save_table_window(&db, st, name, window, *total))?;
         }
 
         // #5048: persist the change log only after the data it describes
@@ -1810,6 +1836,26 @@ impl FileStorage {
         self.current_db.read().unwrap().clone()
     }
 
+    /// #5057: scope a bare table name to an explicitly named database.
+    ///
+    /// The counterpart of [`tbl`](Self::tbl) for callers that were handed
+    /// the database instead of expected to read the storage's.
+    ///
+    /// Why it exists: the storage is shared by every connection, so
+    /// `self.current_db` answers "whoever ran `USE` last", not "whoever is
+    /// asking". A statement already in flight can resolve its table against
+    /// another connection's database. Taking the database as a parameter
+    /// binds the whole call chain to the asker.
+    ///
+    /// This is the seam every `*_in_db` method threads through. If a helper
+    /// below this point needs the database and does not receive it, its
+    /// signature is missing a parameter — do not reach for
+    /// `self.current_db` to fill the gap.
+    #[inline]
+    fn tbl_in(&self, db: &str, name: impl AsRef<str>) -> String {
+        crate::engine::scoped_key(db, name.as_ref())
+    }
+
     /// #5025: every database that has a directory on disk.
     ///
     /// The implicit default database has no directory — its files sit in
@@ -1872,8 +1918,9 @@ impl FileStorage {
     pub fn persist_table(&self, name: &str) -> std::io::Result<()> {
         // #5025: scoped cache key.
         let key = self.tbl(name);
+        let db = self.current_db_name();
         self.with_read_lock(|st| match st.tables.get(&key) {
-            Some(table_data) => self.save_table(st, name, table_data),
+            Some(table_data) => self.save_table(&db, st, name, table_data),
             None => Ok(()),
         })
     }
@@ -4185,7 +4232,7 @@ mod tests {
 }
 
 impl FileStorage {
-    fn insert_direct(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_direct(&self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let snap: Option<(Vec<ColumnDefinition>, u32, usize)> =
             Self::with_write_lock(self, |s| -> Option<(Vec<ColumnDefinition>, u32, usize)> {
                 #[allow(unused_assignments)]
@@ -4193,10 +4240,7 @@ impl FileStorage {
                 let mut start_row_id: u32 = 0;
                 let row_count = records.len();
                 let mut result: Option<(Vec<ColumnDefinition>, u32, usize)> = None;
-                if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    table,
-                )) {
+                if let Some(ref mut data) = s.tables.get_mut(&self.tbl_in(db, table)) {
                     start_row_id = data.rows.len() as u32;
                     data.rows.extend(records.iter().cloned());
                     let cols = data.info.columns.clone();
@@ -4210,7 +4254,7 @@ impl FileStorage {
                     let total_rows = data.rows.len();
                     let table_data = data.snapshot_from(start_row_id as usize);
                     if self
-                        .save_table_window(s, table, &table_data, total_rows)
+                        .save_table_window(db, s, table, &table_data, total_rows)
                         .is_ok()
                     {
                         result = Some((cols, start_row_id, row_count));
@@ -4223,34 +4267,98 @@ impl FileStorage {
             // helper reads PK values from the input rather than
             // cloning the entire `data.rows` vector. The clone
             // was O(N) per insert and dominated write throughput.
-            Self::update_pk_index(self, table, &columns, &records, start_row_id as usize);
+            Self::update_pk_index(self, db, table, &columns, &records, start_row_id as usize);
         }
         Ok(())
     }
 
-    fn insert_buffered(&self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    /// The one implementation of an insert, parameterised by database.
+    ///
+    /// #5057: this body used to read `self.current_db` inside the write
+    /// helpers, so a single body had to serve both "resolve against the
+    /// storage's current database" and "resolve against this database",
+    /// with no way to tell which was asked for. Lifting it here lets the
+    /// trait's `insert` and `insert_in_db` be one-line wrappers over the
+    /// same code that give different answers.
+    fn insert_at(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        // #5055: log before applying. This is the write-ahead half of
+        // write-ahead logging — a crash between here and the buffer
+        // flush must still leave the rows recoverable, which it cannot
+        // if the log is written after the mutation.
+        if self.wal_enabled() {
+            self.wal_append(self.wal_insert_entries(table, &records))?;
+        }
+
+        // C.1.2: in_transaction / insert_buffered / insert_direct are
+        // inherent `&self` methods — safe to call from outside the
+        // lock and from inside (Rust reborrows `&mut Self` as `&Self`
+        // automatically). The only bare-field write inside the trait
+        // body is the dirty_tables insert at the end; that goes under
+        // the lock.
+        //
+        // PR-842: route inserts through the buffer when we are inside a
+        // transaction so that a crash before COMMIT does not leak partially
+        // applied rows to disk. Outside a transaction (autocommit) the
+        // insert is durable immediately. `enable_buffer: false` is
+        // overridden for tx-scoped writes so WAL recovery sees a clean
+        // apply-or-rollback boundary.
+        //
+        // v3.11.0 P1 fix: removed `records.len() >= self.buffer_threshold`
+        // condition that triggered immediate `insert_direct` (full table save).
+        // This was causing O(N * table_size) behavior during bulk loads where
+        // each batch of 100+ rows triggered a full table serialization and write.
+        // Now: always buffer inserts, caller explicitly calls flush() to persist.
+        // #5048: the change log needs the row contents, but the insert
+        // path below consumes `records`. Cloning is only paid when the
+        // log is actually on.
+        let logged = if self.change_log_enabled() {
+            Some(records.clone())
+        } else {
+            None
+        };
+        if self.in_transaction() {
+            // #5059: record one undo entry per row. Without this,
+            // ROLLBACK had nothing to act on for buffered inserts and
+            // every rolled-back row survived — see `UndoOp`.
+            Self::with_write_lock(self, |s| {
+                for row in &records {
+                    s.tx_undo_log.push(UndoOp::BufferedInsert {
+                        table: table.to_string(),
+                        row: row.clone(),
+                    });
+                }
+            });
+            self.insert_buffered(db, table, records)?
+        } else if !self.enable_buffer {
+            self.insert_direct(db, table, records)?
+        } else {
+            self.insert_buffered(db, table, records)?
+        };
+        // V311-07: Mark table dirty for optimized flush
+        Self::with_write_lock(self, |s| {
+            s.dirty_tables.insert(table.to_string());
+        });
+        // #5048: record the change so an incremental backup can be
+        // produced from this data directory.
+        if let Some(rows) = logged {
+            for row in rows {
+                self.record_change(table, ChangeOp::Insert, key_of(&row), Some(row));
+            }
+        }
+        Ok(())
+    }
+
+    fn insert_buffered(&self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
             Self::with_write_lock(self, |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
-                let buffered = s
-                    .insert_buffer
-                    .entry(crate::engine::scoped_key(
-                        &self.current_db.read().unwrap(),
-                        table,
-                    ))
-                    .or_default();
+                let buffered = s.insert_buffer.entry(self.tbl_in(db, table)).or_default();
                 buffered.extend(records.iter().cloned());
 
                 let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
                 if buffered.len() >= self.buffer_threshold {
-                    if let Some(records) = s.insert_buffer.remove(&crate::engine::scoped_key(
-                        &self.current_db.read().unwrap(),
-                        table,
-                    )) {
+                    if let Some(records) = s.insert_buffer.remove(&self.tbl_in(db, table)) {
                         let row_count = records.len();
-                        if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
-                            table,
-                        )) {
+                        if let Some(ref mut data) = s.tables.get_mut(&self.tbl_in(db, table)) {
                             let start_row_id = data.rows.len();
                             data.rows.extend(records.iter().cloned());
                             let cols = data.info.columns.clone();
@@ -4259,7 +4367,7 @@ impl FileStorage {
                             let total_rows = data.rows.len();
                             let table_data = data.snapshot_from(start_row_id);
                             if self
-                                .save_table_window(s, table, &table_data, total_rows)
+                                .save_table_window(db, s, table, &table_data, total_rows)
                                 .is_ok()
                             {
                                 result = Some((start_row_id, row_count, cols));
@@ -4280,24 +4388,18 @@ impl FileStorage {
             // the buffer out — but `records` is still owned by
             // us at this point because we cloned into the buffer),
             // we can pass &records to read PKs directly.
-            Self::update_pk_index(self, table, &columns, &records, start_row_id);
+            Self::update_pk_index(self, db, table, &columns, &records, start_row_id);
         }
         Ok(())
     }
 
-    fn flush_buffer(&self, table: &str) -> SqlResult<()> {
+    fn flush_buffer(&self, db: &str, table: &str) -> SqlResult<()> {
         let snap: Option<(usize, usize, Vec<ColumnDefinition>)> =
             Self::with_write_lock(self, |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
                 let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
-                if let Some(records) = s.insert_buffer.remove(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    table,
-                )) {
+                if let Some(records) = s.insert_buffer.remove(&self.tbl_in(db, table)) {
                     let row_count = records.len();
-                    if let Some(ref mut data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        &self.current_db.read().unwrap(),
-                        table,
-                    )) {
+                    if let Some(ref mut data) = s.tables.get_mut(&self.tbl_in(db, table)) {
                         let start_row_id = data.rows.len();
                         data.rows.extend(records);
                         let cols = data.info.columns.clone();
@@ -4306,7 +4408,7 @@ impl FileStorage {
                         let total_rows = data.rows.len();
                         let table_data = data.snapshot_from(start_row_id);
                         if self
-                            .save_table_window(s, table, &table_data, total_rows)
+                            .save_table_window(db, s, table, &table_data, total_rows)
                             .is_ok()
                         {
                             result = Some((start_row_id, row_count, cols));
@@ -4321,7 +4423,7 @@ impl FileStorage {
             // `s.insert_buffer.remove(&crate::engine::scoped_key(&self.current_db.read().unwrap(), table))`). Use a separate
             // helper that reads ONLY the [start_row_id, +row_count)
             // window of data.rows — O(row_count) not O(table_size).
-            Self::update_pk_index_window(self, table, &columns, start_row_id, row_count);
+            Self::update_pk_index_window(self, db, table, &columns, start_row_id, row_count);
         }
         Ok(())
     }
@@ -4334,6 +4436,7 @@ impl FileStorage {
     /// Acquires `indexes.write()` to perform the B+Tree inserts.
     fn update_pk_index(
         &self,
+        db: &str,
         table: &str,
         columns: &[ColumnDefinition],
         records: &[Vec<Value>],
@@ -4354,7 +4457,7 @@ impl FileStorage {
             return;
         }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(self.tbl(table), pk_col_name.clone())) {
+            if let Some(index) = indexes.get_mut(&(self.tbl_in(db, table), pk_col_name.clone())) {
                 for (ikey, rid) in updates {
                     index.insert(ikey, rid);
                 }
@@ -4368,6 +4471,7 @@ impl FileStorage {
     /// O(table_size).
     fn update_pk_index_window(
         &self,
+        db: &str,
         table: &str,
         columns: &[ColumnDefinition],
         start_row_id: usize,
@@ -4382,7 +4486,7 @@ impl FileStorage {
         // Snapshot only the [start_row_id, start_row_id+count) window
         // so we don't pay O(table_size) for an O(count) operation.
         let rows_snapshot = Self::with_write_lock(self, |s| {
-            s.tables.get(&self.tbl(table)).map(|t| {
+            s.tables.get(&self.tbl_in(db, table)).map(|t| {
                 let end = (start_row_id + count).min(t.rows.len());
                 if start_row_id < t.rows.len() {
                     t.rows[start_row_id..end].to_vec()
@@ -4407,7 +4511,7 @@ impl FileStorage {
             return;
         }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(self.tbl(table), pk_col_name.clone())) {
+            if let Some(index) = indexes.get_mut(&(self.tbl_in(db, table), pk_col_name.clone())) {
                 for (ikey, rid) in updates {
                     index.insert(ikey, rid);
                 }
@@ -4419,11 +4523,27 @@ impl FileStorage {
         // Snapshot the table list under the lock; then drop the guard
         // before re-acquiring per table (avoids holding the lock for
         // the duration of all table saves).
-        // #5025: the buffer keys are scoped, and `flush_buffer` takes a
-        // bare table name, so strip the database prefix back off before
-        // handing each one over — otherwise it would be scoped twice and
-        // find nothing.
-        let prefix = self.current_db.read().unwrap().to_lowercase().to_string() + "\u{1}";
+        // #5025: the buffer keys are scoped, and `flush_buffer` resolves
+        // against the database it is handed, so strip the prefix back off
+        // and pass both halves rather than the bare name.
+        //
+        // #5057: this still flushes only the ACTIVE database's buffer, which
+        // is what it has always done — despite the name. Making it reach every
+        // database is blocked on `dirty_tables`, which is keyed by a MIXTURE
+        // of bare and scoped table names: `insert` inserts the bare name
+        // (file_storage.rs, the insert path) while the delete/update paths
+        // insert `scoped_key(...)`. Until that set is scoped consistently, a
+        // cross-database flush cannot tell which database a dirty table
+        // belongs to, and the file would be written under the wrong
+        // directory — worse than skipping it. Deliberately left as it was
+        // rather than half-fixed. See
+        // `SESSION_CONTEXT_5057_RECON_2026-10-07.md` §8.
+        let db = self.current_db_name();
+        // `scoped_key(db, "")` is exactly `"<db><SEP>"` — the key prefix for
+        // this database. Deriving it that way rather than spelling the
+        // separator out again is the point: two hand-written spellings of a
+        // separator is how they drift apart.
+        let prefix = crate::engine::scoped_key(&db, "");
         let tables: Vec<String> = Self::with_write_lock(self, |s| {
             s.insert_buffer
                 .keys()
@@ -4431,7 +4551,7 @@ impl FileStorage {
                 .collect()
         });
         for table in tables {
-            self.flush_buffer(&table)?;
+            self.flush_buffer(&db, &table)?;
         }
         Ok(())
     }
@@ -4450,6 +4570,19 @@ impl FileStorage {
             // either not yet added or, if previously added by a prior
             // committed tx in the same session, the next flush() will
             // simply re-save the persisted state.
+        });
+    }
+
+    /// Discard all row data in every in-memory table while preserving the
+    /// schema. Used by `with_wal_recovery` to make the WAL the sole source
+    /// of truth on startup, so we never end up with both persisted rows
+    /// and replayed rows for the same entries.
+    pub fn clear_all_tables(&self) {
+        Self::with_write_lock(self, |s| {
+            for data in s.tables.values_mut() {
+                data.rows.clear();
+            }
+            s.insert_buffer.clear();
         });
     }
 
@@ -4497,21 +4630,6 @@ impl FileStorage {
             cur += size;
         }
         out
-    }
-}
-
-impl FileStorage {
-    /// Discard all row data in every in-memory table while preserving the
-    /// schema. Used by `with_wal_recovery` to make the WAL the sole source
-    /// of truth on startup, so we never end up with both persisted rows
-    /// and replayed rows for the same entries.
-    pub fn clear_all_tables(&self) {
-        Self::with_write_lock(self, |s| {
-            for data in s.tables.values_mut() {
-                data.rows.clear();
-            }
-            s.insert_buffer.clear();
-        });
     }
 }
 
@@ -5074,71 +5192,17 @@ impl StorageEngine for FileStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        // #5055: log before applying. This is the write-ahead half of
-        // write-ahead logging — a crash between here and the buffer
-        // flush must still leave the rows recoverable, which it cannot
-        // if the log is written after the mutation.
-        if self.wal_enabled() {
-            self.wal_append(self.wal_insert_entries(table, &records))?;
-        }
+        let db = self.current_db_name();
+        self.insert_at(&db, table, records)
+    }
 
-        // C.1.2: in_transaction / insert_buffered / insert_direct are
-        // inherent `&self` methods — safe to call from outside the
-        // lock and from inside (Rust reborrows `&mut Self` as `&Self`
-        // automatically). The only bare-field write inside the trait
-        // body is the dirty_tables insert at the end; that goes under
-        // the lock.
-        //
-        // PR-842: route inserts through the buffer when we are inside a
-        // transaction so that a crash before COMMIT does not leak partially
-        // applied rows to disk. Outside a transaction (autocommit) the
-        // insert is durable immediately. `enable_buffer: false` is
-        // overridden for tx-scoped writes so WAL recovery sees a clean
-        // apply-or-rollback boundary.
-        //
-        // v3.11.0 P1 fix: removed `records.len() >= self.buffer_threshold`
-        // condition that triggered immediate `insert_direct` (full table save).
-        // This was causing O(N * table_size) behavior during bulk loads where
-        // each batch of 100+ rows triggered a full table serialization and write.
-        // Now: always buffer inserts, caller explicitly calls flush() to persist.
-        // #5048: the change log needs the row contents, but the insert
-        // path below consumes `records`. Cloning is only paid when the
-        // log is actually on.
-        let logged = if self.change_log_enabled() {
-            Some(records.clone())
-        } else {
-            None
-        };
-        if self.in_transaction() {
-            // #5059: record one undo entry per row. Without this,
-            // ROLLBACK had nothing to act on for buffered inserts and
-            // every rolled-back row survived — see `UndoOp`.
-            Self::with_write_lock(self, |s| {
-                for row in &records {
-                    s.tx_undo_log.push(UndoOp::BufferedInsert {
-                        table: table.to_string(),
-                        row: row.clone(),
-                    });
-                }
-            });
-            self.insert_buffered(table, records)?
-        } else if !self.enable_buffer {
-            self.insert_direct(table, records)?
-        } else {
-            self.insert_buffered(table, records)?
-        };
-        // V311-07: Mark table dirty for optimized flush
-        Self::with_write_lock(self, |s| {
-            s.dirty_tables.insert(table.to_string());
-        });
-        // #5048: record the change so an incremental backup can be
-        // produced from this data directory.
-        if let Some(rows) = logged {
-            for row in rows {
-                self.record_change(table, ChangeOp::Insert, key_of(&row), Some(row));
-            }
-        }
-        Ok(())
+    /// #5057: [`insert`](Self::insert) into a stated database.
+    ///
+    /// Callers that hold the database should prefer this: the storage is
+    /// shared by every connection, so `insert` resolves against whichever
+    /// connection last ran `USE`, not against the caller.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        self.insert_at(db, table, records)
     }
 
     /// F-09 fix: bypass insert_buffer so WAL recovery can replay entries
@@ -5146,7 +5210,13 @@ impl StorageEngine for FileStorage {
     /// see the row in `data.rows` directly, avoiding the "3 rows expected 1"
     /// regression caused by buffered inserts piling up during replay.
     fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
-        self.insert_direct(table, vec![record])
+        let db = self.current_db_name();
+        self.insert_direct(&db, table, vec![record])
+    }
+
+    /// #5057: [`force_insert`](Self::force_insert) into a stated database.
+    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.insert_direct(db, table, vec![record])
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
@@ -5763,6 +5833,8 @@ impl StorageEngine for FileStorage {
     }
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
+        // #5057: read the database before taking the state lock.
+        let db = self.current_db_name();
         Self::with_write_lock(self, |s| {
             if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
                 &self.current_db.read().unwrap(),
@@ -5787,7 +5859,7 @@ impl StorageEngine for FileStorage {
                     row.push(fill.clone());
                 }
                 let table_data = data.clone();
-                self.save_table(s, table, &table_data)?;
+                self.save_table(&db, s, table, &table_data)?;
             }
             Ok(())
         })
@@ -5820,7 +5892,8 @@ impl StorageEngine for FileStorage {
         };
         table_data.info.name = new_name.to_string();
 
-        self.with_read_lock(|st| self.save_table(st, new_name, &table_data))?;
+        let db = self.current_db_name();
+        self.with_read_lock(|st| self.save_table(&db, st, new_name, &table_data))?;
 
         if old_path.exists() {
             std::fs::rename(&old_path, &new_path).map_err(SqlError::from)?;
@@ -5991,11 +6064,27 @@ impl StorageEngine for FileStorage {
             .ok_or_else(|| SqlError::TableNotFound(table.to_string()))
     }
 
+    /// #5057: `scan` against a stated database.
+    ///
+    /// `insert_buffer` is merged here exactly as `scan` does it. #5025
+    /// added this method reading `tables` only, so it disagreed with `scan`
+    /// about a row that had been inserted but not yet flushed: the same row
+    /// was visible to one and invisible to the other. Since this method is
+    /// what the executor will use once reads stop going through `current_db`,
+    /// leaving it buffer-blind would have hidden every uncommitted row.
     fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
         let key = crate::engine::scoped_key(db, table);
-        Ok(self
-            .with_read_lock(|st| st.tables.get(&key).map(|t| t.rows.clone()))
-            .unwrap_or_default())
+        Ok(self.with_read_lock(|st| {
+            let mut rows: Vec<Record> = st
+                .tables
+                .get(&key)
+                .map(|data| data.rows.clone())
+                .unwrap_or_default();
+            if let Some(buffered) = st.insert_buffer.get(&key) {
+                rows.extend(buffered.iter().cloned());
+            }
+            rows
+        }))
     }
 
     fn has_table_in(&self, db: &str, table: &str) -> bool {
@@ -6120,7 +6209,8 @@ impl StorageEngine for FileStorage {
         };
         // `save_table` needs `&self` (for `data_dir` / `last_saved_row_count`),
         // so it cannot run while the `&mut` borrow above is live.
-        self.with_read_lock(|st| self.save_table(st, table, &table_data_clone))?;
+        let db = self.current_db_name();
+        self.with_read_lock(|st| self.save_table(&db, st, table, &table_data_clone))?;
         Ok(())
     }
 
@@ -6334,7 +6424,8 @@ impl FileStorage {
         // For 1-2 tables, sequential is faster (no thread overhead)
         if pending.len() <= 2 {
             for (name, window, total) in &pending {
-                self.with_read_lock(|st| self.save_table_window(st, name, window, *total))?;
+                let db = self.current_db_name();
+                self.with_read_lock(|st| self.save_table_window(&db, st, name, window, *total))?;
             }
             return Ok(());
         }
@@ -6348,8 +6439,11 @@ impl FileStorage {
             let handles: Vec<_> = pending
                 .iter()
                 .map(|(name, window, total)| {
+                    let db = self.current_db_name();
                     s.spawn(move || {
-                        self.with_read_lock(|st| self.save_table_window(st, name, window, *total))
+                        self.with_read_lock(|st| {
+                            self.save_table_window(&db, st, name, window, *total)
+                        })
                     })
                 })
                 .collect();
