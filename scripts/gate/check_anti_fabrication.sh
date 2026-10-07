@@ -180,7 +180,15 @@ check_head_commit_author() {
     # Rationale: local git config user.email is already openheart@gaoyuanyiyao.com;
     # history rewrite was explicitly declined in favour of not touching shared
     # develop/v4.1.0 history across 5 remotes.
-    local allowed=("openheart@gaoyuanyiyao.com" "openclaw@gaoyuanyiyao.com" "hermes-z6g4@gaoyuanyiyao.com" "hermes-macmini@gaoyuanyiyao.com" "claude-macmini@gaoyuanyiyao.com" "claude-z6g4@gaoyuanyiyao.com" "claude-z440@gaoyuanyiyao.com" "ci@sqlrustgo.dev" "claude@macmini.dev")
+    # 2026-10-08: "omp-z440@gaoyuanyiyao.com" added on the same grounds as the
+    # 2026-09-30 entry — an established committer identity, not a new one.
+    # Gitea user omp-z440 (id=22, team ai-developers has write on this repo)
+    # has authored commits on develop/v4.1.0 for weeks (e.g. 3ae177381d,
+    # 320495280c, 666e6608ca). The omission blocked any branch whose HEAD
+    # commit came from that identity, which is a gate defect, not a policy
+    # signal: the check exists to catch UNKNOWN authors, not to single out a
+    # known one.
+    local allowed=("openheart@gaoyuanyiyao.com" "openclaw@gaoyuanyiyao.com" "hermes-z6g4@gaoyuanyiyao.com" "hermes-macmini@gaoyuanyiyao.com" "claude-macmini@gaoyuanyiyao.com" "claude-z6g4@gaoyuanyiyao.com" "claude-z440@gaoyuanyiyao.com" "omp-z440@gaoyuanyiyao.com" "ci@sqlrustgo.dev" "claude@macmini.dev")
     local found=0
     for e in "${allowed[@]}"; do
         if [[ "$head_email" == "$e" ]]; then
