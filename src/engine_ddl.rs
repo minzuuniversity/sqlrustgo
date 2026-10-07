@@ -332,14 +332,38 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// G13-OLTP-1: `pub(crate)` so the mysql-server dispatch site can
     /// call this on a read-lock guard (the COM_QUERY / COM_STMT_EXECUTE
     /// path uses `&self` to allow concurrent SELECTs).
+    /// #5025: reject `FROM <unknown>` the same way `USE` does (PR #5044)
+    /// instead of silently listing the current database. The current
+    /// database and the implicit default always count as known: the
+    /// default has no directory (`list_databases` reports subdirectories
+    /// only), and `USE default` is always legal. Takes its own short read
+    /// guard — callers must NOT hold `self.storage` across it (parking_lot
+    /// read guards must not nest when a writer may be queued).
+    fn ensure_database_known(&self, db: &str) -> SqlResult<()> {
+        let storage = self.storage.read();
+        if db.eq_ignore_ascii_case(&storage.current_db())
+            || db.eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE)
+        {
+            return Ok(());
+        }
+        if storage
+            .list_databases()?
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(db))
+        {
+            return Ok(());
+        }
+        Err(SqlError::ExecutionError(format!("Unknown database: {db}")))
+    }
+
     pub fn execute_show(&self, show: &ShowStatement) -> SqlResult<ExecutorResult> {
         match show {
             // V312-58 / Issue #4516: SHOW TABLES accepts FROM db / LIKE
             // 'pat' / WHERE expr (the FILTER_SUFFIX shared with
-            // SHOW [FULL] TABLES). Real filter evaluation happens in
-            // `execute_show_tables_with_filter` — for v3.12 the
-            // single-schema engine ignores the `db` argument (only the
-            // "default" schema exists) but LIKE / WHERE filter rows.
+            // SHOW [FULL] TABLES). Filter evaluation happens in
+            // `execute_show_tables_with_filter`. The `db` argument used
+            // to be ignored ("single-schema engine", pre-#5025) — it now
+            // resolves against the stated database (#5025).
             ShowStatement::Tables {
                 db,
                 like,
@@ -479,7 +503,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// `WHERE Table_type = 'BASE TABLE'` works.
     pub(crate) fn execute_show_tables_with_filter(
         &self,
-        _db: Option<&str>,
+        db: Option<&str>,
         like: Option<&str>,
         where_clause: Option<&Expression>,
     ) -> SqlResult<ExecutorResult> {
@@ -489,8 +513,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // SHOW TABLES includes views; only SHOW FULL TABLES distinguishes
         // them via Table_type). Pre-#4567 views were acked by CREATE VIEW
         // but invisible here.
-        let mut names = storage.list_tables();
-        names.extend(views.iter().cloned());
+        //
+        // #5025: `FROM <db>` used to be dropped (`_db`), reporting the
+        // current database's tables under the target's name. Views have no
+        // database dimension yet, so they join only the current-database
+        // listing; a cross-database listing is tables-only.
+        if let Some(d) = db {
+            drop(storage);
+            self.ensure_database_known(d)?;
+        }
+        let storage = self.storage.read();
+        let mut names = match db {
+            None => {
+                let mut n = storage.list_tables();
+                n.extend(views.iter().cloned());
+                n
+            }
+            Some(d) => {
+                let mut n = storage.list_tables_in_db(d);
+                if d.eq_ignore_ascii_case(&storage.current_db()) {
+                    n.extend(views.iter().cloned());
+                }
+                n
+            }
+        };
         let mut rows = Vec::new();
         for name in &names {
             if let Some(pat) = like {
@@ -566,14 +612,32 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_show_full_tables(
         &self,
         full: bool,
-        _db: Option<&str>,
+        db: Option<&str>,
         like: Option<&str>,
         where_clause: Option<&Expression>,
     ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
         let views: Vec<String> = self.views.read().keys().cloned().collect();
-        let mut names = storage.list_tables();
-        names.extend(views.iter().cloned());
+        // #5025: same dropped-`db` defect as `execute_show_tables_with_filter`.
+        if let Some(d) = db {
+            drop(storage);
+            self.ensure_database_known(d)?;
+        }
+        let storage = self.storage.read();
+        let mut names = match db {
+            None => {
+                let mut n = storage.list_tables();
+                n.extend(views.iter().cloned());
+                n
+            }
+            Some(d) => {
+                let mut n = storage.list_tables_in_db(d);
+                if d.eq_ignore_ascii_case(&storage.current_db()) {
+                    n.extend(views.iter().cloned());
+                }
+                n
+            }
+        };
         let table_type = |name: &str| {
             if views.iter().any(|v| v == name) {
                 "VIEW"
@@ -634,15 +698,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// scanned row count.
     pub(crate) fn execute_show_table_status(
         &self,
-        _db: Option<&str>,
+        db: Option<&str>,
         like: Option<&str>,
         where_clause: Option<&Expression>,
     ) -> SqlResult<ExecutorResult> {
+        // #5025: same dropped-`db` defect as `execute_show_tables_with_filter`.
+        if let Some(d) = db {
+            self.ensure_database_known(d)?;
+        }
         let storage = self.storage.read();
-        let names = storage.list_tables();
+        let names = match db {
+            None => storage.list_tables(),
+            Some(d) => storage.list_tables_in_db(d),
+        };
         let mut rows = Vec::new();
         for name in &names {
-            let row = table_status_row(self, &*storage, name)?;
+            let row = table_status_row(self, &*storage, db, name)?;
             if let Some(pat) = like {
                 if !sql_like_match(name, pat) {
                     continue;
@@ -1331,18 +1402,35 @@ fn column_metadata_rows(columns: &[ColumnDefinition]) -> Vec<Vec<Value>> {
 fn table_status_row<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
     storage: &S,
+    db: Option<&str>,
     name: &str,
 ) -> SqlResult<Vec<Value>> {
+    // #5025: for `SHOW TABLE STATUS FROM <db>` resolve columns/rows
+    // against the stated database (`*_in_db`), not `current_db`.
     // #4983: carry the reading connection's tx id so an uncommitted
-    // version is visible only to its author.
-    let row_count = engine
-        .scan_for_reader_with(storage, name)
-        .map(|r| r.len() as i64)
-        .unwrap_or(0);
-    let column_count = storage
-        .get_table_info(name)
-        .map(|i| i.columns.len() as i64)
-        .unwrap_or(0);
+    // version is visible only to its author (current-database path).
+    let (row_count, column_count) = match db {
+        Some(d) => (
+            storage
+                .scan_in_db(d, name)
+                .map(|r| r.len() as i64)
+                .unwrap_or(0),
+            storage
+                .get_table_info_in(d, name)
+                .map(|i| i.columns.len() as i64)
+                .unwrap_or(0),
+        ),
+        None => (
+            engine
+                .scan_for_reader_with(storage, name)
+                .map(|r| r.len() as i64)
+                .unwrap_or(0),
+            storage
+                .get_table_info(name)
+                .map(|i| i.columns.len() as i64)
+                .unwrap_or(0),
+        ),
+    };
     Ok(vec![
         Value::Text(name.to_string()),
         Value::Text("InnoDB".to_string()),

@@ -132,3 +132,156 @@ fn issue_5025_use_unknown_database_is_rejected() {
         "a rejected USE must leave the active database unchanged, got: {out}"
     );
 }
+
+/// `SHOW TABLES FROM <db>` must list the TARGET database's tables.
+/// Before this fix the `db` argument was dropped on the floor
+/// (`_db` in `execute_show_tables_with_filter`) and the current
+/// database's tables were returned under the target's name — the
+/// metadata view lied, exactly the failure mode #5025's body warns about.
+#[test]
+fn issue_5025_show_tables_from_lists_target_database() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE only_in_d1 (id INT)")
+        .expect("create in d1");
+
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE only_in_d2 (id INT)")
+        .expect("create in d2");
+
+    engine.execute("USE d1").expect("use d1");
+    let out = format!(
+        "{:?}",
+        engine
+            .execute("SHOW TABLES FROM d2")
+            .expect("show tables from d2")
+    );
+    assert!(
+        out.contains("only_in_d2"),
+        "SHOW TABLES FROM d2 must list d2's table, got: {out}"
+    );
+    assert!(
+        !out.contains("only_in_d1"),
+        "SHOW TABLES FROM d2 must NOT list the current database's table (the db argument was dropped), got: {out}"
+    );
+}
+
+/// `SHOW TABLES FROM` with a LIKE filter must filter the TARGET
+/// database's tables, not the current database's.
+#[test]
+fn issue_5025_show_tables_from_like_filters_target_database() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE keep_this (id INT)")
+        .expect("create keep_this");
+    engine
+        .execute("CREATE TABLE skip_that (id INT)")
+        .expect("create skip_that");
+
+    let out = format!(
+        "{:?}",
+        engine
+            .execute("SHOW TABLES FROM d2 LIKE 'keep%'")
+            .expect("show tables from d2 like")
+    );
+    assert!(
+        out.contains("keep_this"),
+        "LIKE 'keep%' must match d2's table, got: {out}"
+    );
+    assert!(
+        !out.contains("skip_that"),
+        "LIKE 'keep%' must not match d2's other table, got: {out}"
+    );
+}
+
+/// `SHOW TABLES FROM <unknown>` must fail loudly, matching `USE`'s
+/// `Unknown database` semantics (PR #5044) instead of silently listing
+/// the current database.
+#[test]
+fn issue_5025_show_tables_from_unknown_database_is_rejected() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("USE d1").expect("use d1");
+
+    let r = engine.execute("SHOW TABLES FROM no_such_db");
+    assert!(
+        r.is_err(),
+        "SHOW TABLES FROM of an unknown database must error, not list the current database: {:?}",
+        r.map(|v| format!("{v:?}"))
+    );
+}
+
+/// `SHOW FULL TABLES FROM <db>` shares the same dropped-`db` defect as
+/// the bare form (`execute_show_full_tables`), so it needs its own pin.
+#[test]
+fn issue_5025_show_full_tables_from_lists_target_database() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE only_in_d1 (id INT)")
+        .expect("create in d1");
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE only_in_d2 (id INT)")
+        .expect("create in d2");
+
+    engine.execute("USE d1").expect("use d1");
+    let out = format!(
+        "{:?}",
+        engine
+            .execute("SHOW FULL TABLES FROM d2")
+            .expect("show full tables from d2")
+    );
+    assert!(
+        out.contains("only_in_d2"),
+        "SHOW FULL TABLES FROM d2 must list d2's table, got: {out}"
+    );
+    assert!(
+        !out.contains("only_in_d1"),
+        "SHOW FULL TABLES FROM d2 must NOT list the current database's table, got: {out}"
+    );
+}
+
+/// `SHOW TABLE STATUS FROM <db>` shares the same dropped-`db` defect
+/// (`execute_show_table_status`), so it needs its own pin as well.
+#[test]
+fn issue_5025_show_table_status_from_lists_target_database() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE only_in_d1 (id INT)")
+        .expect("create in d1");
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE only_in_d2 (id INT)")
+        .expect("create in d2");
+
+    engine.execute("USE d1").expect("use d1");
+    let out = format!(
+        "{:?}",
+        engine
+            .execute("SHOW TABLE STATUS FROM d2")
+            .expect("show table status from d2")
+    );
+    assert!(
+        out.contains("only_in_d2"),
+        "SHOW TABLE STATUS FROM d2 must include d2's table, got: {out}"
+    );
+    assert!(
+        !out.contains("only_in_d1"),
+        "SHOW TABLE STATUS FROM d2 must NOT include the current database's table, got: {out}"
+    );
+}
