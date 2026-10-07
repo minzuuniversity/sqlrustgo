@@ -6,7 +6,7 @@
 use crate::dotcmd::{parse_dotcmd, DotCmd};
 use crate::error::{CliError, EXIT_OK};
 use crate::output::{format, OutputMode, OutputTarget};
-use sqlrustgo::ExecutionEngine;
+use sqlrustgo::{ExecutionEngine, StorageEngine};
 use sqlrustgo_parser::{parse, split_sql_statements, Statement};
 use sqlrustgo_storage::FileStorage;
 use std::io::BufRead;
@@ -110,32 +110,67 @@ impl SqliteMode {
         }
     }
 
+    /// sqlite3 parity for `.headers on` / `--headers true`: a bare `*`
+    /// projection must render the table's real column names, not a
+    /// literal `*` (extract_columns only sees the parsed projection,
+    /// which has no schema knowledge). Non-star names pass through.
+    fn expand_star(&self, table: &str, names: Vec<String>) -> Vec<String> {
+        if !names.iter().any(|n| n == "*") {
+            return names;
+        }
+        let info = {
+            let guard = self.engine.storage_ref().read();
+            guard.get_table_info(table).ok()
+        };
+        match info {
+            Some(info) => names
+                .into_iter()
+                .flat_map(|n| {
+                    if n == "*" {
+                        info.columns.iter().map(|c| c.name.clone()).collect()
+                    } else {
+                        vec![n]
+                    }
+                })
+                .collect(),
+            None => names,
+        }
+    }
+
     fn extract_columns(&self, sql: &str) -> Result<Vec<String>, CliError> {
         match parse(sql) {
-            Ok(Statement::Select(ref sel)) => Ok(sel
-                .columns
-                .iter()
-                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                .collect()),
-            Ok(Statement::Explain(ref sel)) => Ok(sel
-                .columns
-                .iter()
-                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                .collect()),
-            Ok(Statement::WithSelect(ref w)) => Ok(w
-                .select
-                .columns
-                .iter()
-                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                .collect()),
+            Ok(Statement::Select(ref sel)) => Ok(self.expand_star(
+                &sel.table,
+                sel.columns
+                    .iter()
+                    .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                    .collect(),
+            )),
+            Ok(Statement::Explain(ref sel)) => Ok(self.expand_star(
+                &sel.table,
+                sel.columns
+                    .iter()
+                    .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                    .collect(),
+            )),
+            Ok(Statement::WithSelect(ref w)) => Ok(self.expand_star(
+                &w.select.table,
+                w.select
+                    .columns
+                    .iter()
+                    .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                    .collect(),
+            )),
             Ok(Statement::WithDml(ref w)) => {
                 // WithDml: body is a boxed Statement — extract Select from it if possible
                 if let Statement::Select(ref sel) = *w.body {
-                    Ok(sel
-                        .columns
-                        .iter()
-                        .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                        .collect())
+                    Ok(self.expand_star(
+                        &sel.table,
+                        sel.columns
+                            .iter()
+                            .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                            .collect(),
+                    ))
                 } else if let Statement::Insert(ref ins) = *w.body {
                     Ok(ins.columns.clone())
                 } else {
@@ -619,6 +654,26 @@ impl SqliteMode {
         // of undoing the INSERT. Strip the leading `--` comment so
         // transaction keyword detection works correctly.
         let stripped = Self::strip_leading_line_comment(sql);
+        // Batch dot-commands (`sqlite3 db "SELECT 1; .tables"` parity):
+        // only the REPL routed `.cmd` fragments — run_batch dispatched
+        // them straight to the SQL parser which failed with
+        // "Unexpected token: Dot". Mirror the REPL routing here.
+        if stripped.starts_with('.') {
+            match parse_dotcmd(&stripped) {
+                Ok(DotCmd::Quit) => return,
+                Ok(cmd) => {
+                    if let Err(e) = self.execute_dotcmd(cmd) {
+                        eprintln!("{}", e);
+                        self.error_seen = true;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("{}", e);
+                    self.error_seen = true;
+                }
+            }
+            return;
+        }
         let trimmed_upper = stripped.trim().to_uppercase();
         let is_begin =
             trimmed_upper.starts_with("BEGIN") || trimmed_upper.starts_with("START TRANSACTION");
