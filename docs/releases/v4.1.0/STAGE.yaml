@@ -437,7 +437,8 @@ exit_criteria:
     - "First alpha tag cut: v4.1.0-alpha1"
   alpha_to_beta:
     - "All v4.1.0 ALPHA gate failures resolved (currently 3 inherited from v4.0.0)"
-    - "V400-09 168h SOAK FINAL_REPORT exists OR explicit deferral recorded"
+    - "V400-09 168h SOAK completed with a report whose body states a completed run (file existence alone is NOT evidence — see known_gaps.V400_09_soak; #5102). An explicit deferral recorded in known_gaps also satisfies this, but only while that deferral's own preconditions hold."
+    - "known_gaps.V400_09_soak.decision is no longer OPEN — i.e. an architect has ruled on whether to re-run the 168h SOAK, and that ruling is recorded here"
     - "WP-C/D/F/G deferred items migrated from v4.0.0 deferral into v4.1.0 scope"
     - "Coverage >= 50% (per STAGE_CONFIG COVERAGE_MIN_ALPHA)"
   beta_to_rc:
