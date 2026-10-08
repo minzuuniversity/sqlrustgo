@@ -518,8 +518,19 @@ impl TriggerExecutor {
 
         let statements = self.split_body_statements(body);
         for stmt in statements {
+            // #5123: this used `expand_row_variables_for_parse`, which only
+            // strips the space in `NEW . col` and NEVER substitutes the value.
+            // Every other path (SELECT / UPDATE / DELETE bodies) goes through
+            // `expand_row_variables`, which additionally calls
+            // `do_expand_row_variables` to replace `NEW.col` / `OLD.col` with
+            // literals. Because INSERT bodies took the truncated variant,
+            // `INSERT INTO audit VALUES (NEW.id, NEW.sku)` stored the column
+            // NAMES as values — the row was present but wrong:
+            //   orders: 1 row   audit: 1 row  audit[0][1] = NULL (not "sku-A")
+            // The row-count assertions passed, which is why this hid behind
+            // the weaker "audit.len() == 1" check.
             let expanded =
-                self.expand_row_variables_for_parse(&stmt, &trigger.table_name, old_row, new_row);
+                self.expand_row_variables(&stmt, &trigger.table_name, old_row, new_row);
             self.execute_trigger_sql_mut(&expanded, table, old_row, &mut result)?;
         }
 
@@ -593,16 +604,6 @@ impl TriggerExecutor {
         }
 
         result
-    }
-
-    fn expand_row_variables_for_parse(
-        &self,
-        sql: &str,
-        _table_name: &str,
-        _old_row: Option<&Record>,
-        _new_row: Option<&Record>,
-    ) -> String {
-        sql.replace(". ", ".")
     }
 
     fn do_expand_row_variables(

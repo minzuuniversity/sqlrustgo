@@ -81,6 +81,22 @@ fn issue_4514_after_insert_trigger_fires_and_mutates_target() {
         2,
         "AFTER INSERT trigger must have inserted 2 audit rows via DML commit hook"
     );
+    // #5123: the row-count assertion above passed even while `NEW.id` /
+    // `NEW.sku` were stored as NULL, because the body still produced two
+    // rows. Assert the VALUES so a regression in row-variable expansion
+    // cannot hide behind the count again.
+    assert_eq!(audit_rows[0][0], Value::Integer(1), "NEW.id must expand");
+    assert_eq!(
+        audit_rows[0][1],
+        Value::Text("sku-A".to_string()),
+        "NEW.sku must expand"
+    );
+    assert_eq!(audit_rows[1][0], Value::Integer(2), "NEW.id must expand");
+    assert_eq!(
+        audit_rows[1][1],
+        Value::Text("sku-B".to_string()),
+        "NEW.sku must expand"
+    );
 }
 
 #[test]
