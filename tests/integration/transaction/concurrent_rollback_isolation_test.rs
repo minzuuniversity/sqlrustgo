@@ -33,11 +33,11 @@
 //! that a call returned `Ok` — a call returning `Ok` is exactly what
 //! stayed green while rows vanished.
 
+use parking_lot::RwLock;
 use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
 use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value;
-use parking_lot::RwLock;
 use std::sync::{Arc, Barrier};
 use std::thread;
 use tempfile::TempDir;
@@ -240,7 +240,8 @@ fn concurrent_delete_insert_txns_lose_no_rows() {
          had just deleted in the same transaction"
     );
     assert_eq!(
-        after, baseline,
+        after,
+        baseline,
         "row count drifted from {baseline} to {after} — concurrent transactions silently \
          lost {} rows while every rollback reported success",
         baseline - after
