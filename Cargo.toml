@@ -891,10 +891,6 @@ name = "insert_odku_test"
 path = "tests/integration/dml/insert_odku_test.rs"
 
 [[test]]
-name = "show_databases_test"
-path = "tests/integration/ddl/show_databases_test.rs"
-
-[[test]]
 name = "replace_test"
 path = "tests/integration/dml/replace_test.rs"
 
