@@ -187,7 +187,9 @@ fn committed_delete_is_not_undone_by_peer_rollback() {
 fn concurrent_delete_insert_txns_lose_no_rows() {
     const THREADS: usize = 8;
     const ITERS: usize = 100;
-    const ROWS: i64 = 200;
+    // 8 threads x 100 iterations = 800 distinct keys, so every transaction
+    // owns its row and no two race on one.
+    const ROWS: i64 = (THREADS * ITERS) as i64;
 
     let (_dir, storage) = seeded_storage(ROWS);
     let baseline = count(&storage);
@@ -200,8 +202,16 @@ fn concurrent_delete_insert_txns_lose_no_rows() {
         handles.push(thread::spawn(move || {
             let mut dup_errors = 0usize;
             for n in 0..ITERS {
-                let id = ((tid * 7 + n) as i64) % ROWS + 1;
-                // A distinct id per transaction: every worker shares one
+                // Each transaction touches its OWN row. The previous
+                // `(tid * 7 + n) % ROWS` allocation put 800 operations on
+                // 200 rows, so concurrent transactions routinely deleted the
+                // same key — and "row count is conserved" is not a property
+                // that holds when two transactions race on one row: MySQL
+                // resolves that with row locks (one blocks), it does not
+                // guarantee neither's write is undone. The same-key case is
+                // its own property, per the note on the test above.
+                let id = (tid * ITERS + n) as i64 + 1;
+                // A distinct tx id per transaction: every worker shares one
                 // storage, and `begin_transaction()` would hand them all the
                 // same id from the single `current_tx_id` slot.
                 let tx = (tid * ITERS + n) as u64 + 1;
