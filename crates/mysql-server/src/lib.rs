@@ -2106,9 +2106,32 @@ impl<'a> Read for TlsStream<'a> {
         // records before returning. A single `complete_io` only
         // decrypts ciphertext currently buffered in the socket, which
         // deadlocks large multi-record plaintexts (>= ~16 KB).
-        while self.conn.wants_read() {
+        //
+        // #5099: `while wants_read()` was the bug. `complete_io` returns
+        // `WouldBlock` when the socket has nothing, and `wants_read()`
+        // stays true in that state — so the loop spun at 100% CPU per
+        // worker, `read_exact` made no progress, and the server stopped
+        // answering queries entirely. Reproduced deterministically by
+        // connecting and sending one byte of a packet header: ~1300% CPU
+        // with a single idle connection.
+        //
+        // rustls's own `complete_io` loop breaks once a read has been
+        // performed (`if read_size.is_some() { break; }`,
+        // rustls-0.23 src/conn.rs) and returns the `WouldBlock` it saved.
+        // Mirror that: `complete_io` reports how many bytes it read, so a
+        // `WouldBlock` carrying `rdlen == 0` means the socket had nothing
+        // and we must stop rather than spin. Returning 0 here would look
+        // like EOF to `read_exact` and drop healthy connections.
+        loop {
+            if !self.conn.wants_read() {
+                break;
+            }
             match self.conn.complete_io(self.sock) {
-                Ok(_) => {}
+                Ok((rdlen, _)) => {
+                    if rdlen == 0 {
+                        break;
+                    }
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e),
             }
