@@ -376,3 +376,7 @@ docs/教学计划/
 !docs/monitoring/grafana-dashboard.json
 !tests/data/
 !tests/data/t.json
+
+# 2026-10-09: local-only cargo offline mirror (from stash@{0})
+/vendor/
+/.cargo/
