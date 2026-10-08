@@ -35,7 +35,25 @@
   （主动删 37 行，精确报出 37）。见
   `evidence/TLS_READ_SPIN_HANG_5099_2026-10-09.md`。
 
-- **#5099 顺带发现：`COUNT(*)` 与范围扫描返回 0（P0，待独立定位）** ——
+- **#5168 单列主键等值查询走全表扫描（P0 性能）** —— 容量测试定位。
+  同一张 10000 行表：`WHERE id=1` 需 **25.8ms**，而 `WHERE id=1 AND k=1`
+  只需 **1.41ms**（**18 倍差距**）；`SELECT 1`（不碰表）1.37ms，说明瓶颈
+  既非网络也非协议。代价随行数近似线性（100 行 1.46ms → 10000 行 31.35ms），
+  确认全扫描。**服务器吞吐上限因此锁在 ~13~23 TPS / 250~370 QPS**，
+  80 核机器只用 1.6 核，且**并发从 4 提到 64 吞吐不升反降**
+  （1 连接 136 QPS → 8 连接 17 QPS），因为每次点查都在扫整张表。
+  定位：`scan_with_index_in`（`file_storage.rs:5271`）单列 PK 谓词未命中
+  索引路径，退化为 `scan_in_db`。见
+  `evidence/SOAK_8H_AND_CAPACITY_2026-10-09.md`。
+
+- **SOAK 8h 与性能上限分析（2026-10-09）** —— 8h SOAK 独立实例运行中，
+  1h 段 0 FATAL / 0 errors / 0 reconnects，CPU 全程 ≤174%（空转会 >1000%）。
+  容量阶梯同时给出吞吐上限与四项瓶颈排序：单列 PK 全扫描、`engine.write()`
+  全局独占锁（`lib.rs:5828`）、`FileStorage` 单 `RwLock<WriteState>`、
+  `COUNT(*)` 返回 0（#5167）。见
+  `evidence/SOAK_8H_AND_CAPACITY_2026-10-09.md`。
+
+- **#5099 顺带发现：`COUNT(*)` 与范围扫描返回 0（P0，待独立定位，#5167）** ——
   `SELECT COUNT(*)` / 范围条件 / `SUM` 聚合一律返回 0 或 NULL，**点查正常**。
   **不是丢行**（10000 行表 13 个抽样 id 全部命中，差额在 `.delta` insert
   buffer 内）。用 pristine 二进制复现结果完全相同，**与 TLS 修复无关**。
