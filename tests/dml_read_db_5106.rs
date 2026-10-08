@@ -97,15 +97,12 @@ fn int(v: &Value) -> i64 {
 
 /// A multi-table UPDATE in `d1` must not reach `d2`'s same-named tables.
 ///
-/// `#[ignore]`d: multi-table `UPDATE t1, t2 SET …` does not work at all on
-/// this baseline — it reports `affected_rows = 1` and changes no row (see
-/// `probe_mt_update.rs`; single-table UPDATE and multi-table DELETE both
-/// behave). That is a separate defect, unrelated to database scoping, and
-/// it makes this test fail before it can say anything about `db`. It is
-/// kept here so the specification survives: when the executor is fixed,
-/// this test should pass with no edit.
+/// #5120 fixed the blocker this used to be `#[ignore]`d for: multi-table
+/// `UPDATE` used to report `affected_rows = 1` and change no row, because a
+/// bare column name in the SET list matched no table prefix. That defect is
+/// fixed and its own regression file (`multi_table_update_5117.rs`, 7 cases)
+/// covers it, so this specification can now actually run.
 #[test]
-#[ignore = "multi-table UPDATE is a no-op that reports affected=1 (separate defect)"]
 fn multi_table_update_stays_in_the_statements_database() {
     let (mut a, mut b, dir) = two_connections();
     seed(&mut a);
