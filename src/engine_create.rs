@@ -179,7 +179,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     collations: std::collections::HashMap::new(),
                     original_sql: original_sql.clone(),
                 };
-                storage.create_table(&info)?;
+                storage.create_table_in_db(&self.session_db(), &info)?;
                 return Ok(ExecutorResult::new(vec![], 0));
             }
 
@@ -195,7 +195,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 collations: std::collections::HashMap::new(),
                 original_sql,
             };
-            storage.create_table(&info)?;
+            storage.create_table_in_db(&self.session_db(), &info)?;
             // V400-02 (V4): see top-level hook.
             if create.name.starts_with("vec_") {
                 storage.mark_vector_table(&create.name);
@@ -203,7 +203,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
             // Insert rows from SELECT result
             let insert_count = if !select_result.rows.is_empty() {
-                storage.insert(&create.name, select_result.rows.clone())?;
+                storage.insert_in_db(
+                    &self.session_db(),
+                    &create.name,
+                    select_result.rows.clone(),
+                )?;
                 select_result.rows.len()
             } else {
                 0
@@ -400,23 +404,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Create ClusteredTable
             let ct = ClusteredTable::new(info.clone(), pk_col_idx);
             // Also register with Heap so other code paths (catalog, schema checks) find it
-            storage.create_table(&TableInfo {
-                name: info.name.clone(),
-                columns,
-                foreign_keys,
-                unique_constraints,
-                check_constraints,
-                partition_info: None,
-                compression: None,
-                collations: HashMap::new(),
-                original_sql: info.original_sql.clone(),
-            })?;
+            storage.create_table_in_db(
+                &self.session_db(),
+                &TableInfo {
+                    name: info.name.clone(),
+                    columns,
+                    foreign_keys,
+                    unique_constraints,
+                    check_constraints,
+                    partition_info: None,
+                    compression: None,
+                    collations: HashMap::new(),
+                    original_sql: info.original_sql.clone(),
+                },
+            )?;
             self.clustered_tables
                 .write()
                 .insert(create.name.clone(), Arc::new(parking_lot::RwLock::new(ct)));
             return Ok(ExecutorResult::empty());
         }
-        storage.create_table(&info)?;
+        storage.create_table_in_db(&self.session_db(), &info)?;
         // V400-02 / Issue #3730 (V4): when the new table name
         // follows the `vec_` convention used by
         // `crates/vector::VectorStore::register_column`, mark it

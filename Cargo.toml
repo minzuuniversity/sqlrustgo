@@ -1830,3 +1830,7 @@ path = "tests/insert_db_isolation_5057.rs"
 [[test]]
 name = "memory_storage_in_db_5057"
 path = "tests/memory_storage_in_db_5057.rs"
+
+[[test]]
+name = "ctas_db_isolation_5057"
+path = "tests/ctas_db_isolation_5057.rs"
