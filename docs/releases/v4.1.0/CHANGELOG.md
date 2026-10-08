@@ -20,6 +20,28 @@
   > 同一二进制复跑即复现错误。缺陷以高波动为特征（修复前丢行率在
   > 0.5%~54% 间跳），「若干轮全绿」不构成充分证据。
 
+- **#5099 服务器卡死（TLS 读路径空转）** —— ✅ **已修复**。`impl Read for
+  TlsStream` 的 `while self.conn.wants_read()` 循环在 socket 无数据时
+  `break`，但 `wants_read()` 在该状态下**仍为 true**（它表示「rustls 想读」，
+  不表示「此刻有数据」）。`read_exact` 重入后零进展地忙循环，每 worker
+  100% CPU —— 实测 **1334%**。确定性复现：连上只发 1 个字节（半个包头）后停住。
+  修复用 `complete_io` 的 `rdlen` 区分「无数据」（`Ok(0)` 会被 `read_exact`
+  当作 EOF 而误断连接，不可采用）。
+
+  **1h SOAK 跑满 3602s：0 FATAL / 45609 事务 / 912180 查询 / 0 errors /
+  0 reconnects**，CPU 普查 237 样本最高 **178%**（空转会 >1000%），
+  47 次 `SELECT 1` 探针全通。并发普查固定 seed **20 次重复 0 丢失**
+  （200 行与 1000 行两档，后者 80,000 事务），且 oracle 经反向对照验证
+  （主动删 37 行，精确报出 37）。见
+  `evidence/TLS_READ_SPIN_HANG_5099_2026-10-09.md`。
+
+- **#5099 顺带发现：`COUNT(*)` 与范围扫描返回 0（P0，待独立定位）** ——
+  `SELECT COUNT(*)` / 范围条件 / `SUM` 聚合一律返回 0 或 NULL，**点查正常**。
+  **不是丢行**（10000 行表 13 个抽样 id 全部命中，差额在 `.delta` insert
+  buffer 内）。用 pristine 二进制复现结果完全相同，**与 TLS 修复无关**。
+  影响：任何依赖计数返回值的下游会得到静默错误结论，本次所有行数统计均改用
+  逐 id 点查。详见 `evidence/TLS_READ_SPIN_HANG_5099_2026-10-09.md` §6。
+
 ### Phase 0 (DRAFT doc scaffolding) — 2026-09-29
 
 - `STAGE.yaml` — initial DRAFT entry
