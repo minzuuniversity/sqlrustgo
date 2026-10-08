@@ -9,16 +9,27 @@
 //!
 //! ## Example
 //!
-//! ```rust
-//! use sqlrustgo_executor::instrumentation::{CountingInstrumentationHook, InstrumentationHook};
-//! use std::sync::Arc;
-//!
-//! let hook = Arc::new(CountingInstrumentationHook::new());
-//! // ... pass hook into execution engine ...
-//! // after running query:
-//! assert!(hook.seq_scan_count() >= 1);
-//! assert!(hook.filter_count() >= 1);
 //! ```
+//! use sqlrustgo_executor::instrumentation::{CountingInstrumentationHook, InstrumentationHook};
+//!
+//! // The hooks are called by the engine as work happens. Calling them
+//! // directly is the simplest way to see the counters move, and it is
+//! // how the test suite exercises them.
+//! let hook = CountingInstrumentationHook::new();
+//! assert_eq!(hook.seq_scan_count(), 0);
+//!
+//! hook.on_seq_scan_start("orders");
+//! hook.on_seq_scan_start("orders");
+//! hook.on_filter_start("orders", 100);
+//! hook.on_filter_end("orders", 42);
+//!
+//! assert_eq!(hook.seq_scan_count(), 2);
+//! assert_eq!(hook.filter_count(), 1);
+//! ```
+//!
+//! To observe a real query, wire a `CountingInstrumentationHook` into an
+//! `ExecutionEngine` via its instrumentation hook slot and run a statement
+//! through it.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
