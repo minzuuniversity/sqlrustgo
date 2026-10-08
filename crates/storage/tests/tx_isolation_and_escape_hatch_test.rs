@@ -183,7 +183,7 @@ fn scan_in_serves_the_requesting_transaction() {
 }
 
 #[test]
-#[ignore = "ISSUE_4974_REPEATABLE_READ 未达成：本函数此前连 #[test] 都没有，从未编译执行。标成活测试后实测 FAILED（first=[1] second=[1, 2]）——只读事务观察到了并发提交。begin_snapshot() 每次调用都读全局计数器，事务未绑定其起始快照。此前本文件的「8 passed」有一项是 scan_in_serves_the_requesting_transaction 重复执行（146 行脱节的 #[test]），重复读断言从未参与。追踪见 #4974。"]
+#[ignore = "ISSUE_4974_REPEATABLE_READ 未达成：本函数此前连 #[test] 都没有，从未编译执行。标成活测试后实测 FAILED（first=[1] second=[1, 2]）。阻塞它的是 per-connection 事务身份（#4951 / #5099），不是快照绑定 —— 本例两个「连接」共用一个 storage 级 current_tx_id，B 的写入被记成 A 的待提交写，find_visible 走 reader_tx == created_by_tx 分支根本不经过 snapshot_ts。完整诊断见 #4974 评论。"]
 fn issue_4974_repeat_reads_in_one_transaction_are_stable() {
     let s = storage("/tmp/txiso_repeatable");
 
@@ -204,7 +204,16 @@ fn issue_4974_repeat_reads_in_one_transaction_are_stable() {
     // A reads again, having done no writes of its own.
     let second = read_ids(&s);
 
-    // BLOCKED_ON_4951: same structural cause as
+    // BLOCKED_ON_4951 / #5099 — sharpened diagnosis (see #4974):
+    // this cannot be fixed by snapshot binding alone. The two "connections"
+    // here share ONE storage-wide `current_tx_id`, so B's insert inherits
+    // A's tx id 10; `put` then records `committed: false, created_by_tx: 10`,
+    // and `find_visible` returns it through its
+    // `reader_tx == created_by_tx` branch — which never consults
+    // `snapshot_ts`. Pinning the snapshot changes nothing on this path.
+    // What is missing is per-connection transaction identity (#4951 /
+    // #5099 SessionContext), after which snapshot binding becomes both
+    // expressible and necessary.
     // `issue_4974_uncommitted_write_is_invisible_to_other_readers` — B's
     // commit is observed by A because nothing binds A's reads to the
     // snapshot its transaction started at, and nothing distinguishes the
