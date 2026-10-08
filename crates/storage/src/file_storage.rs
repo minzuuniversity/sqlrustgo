@@ -1981,6 +1981,83 @@ impl FileStorage {
         crate::engine::scoped_key(db, name.as_ref())
     }
 
+    /// #5057: [`scan_with_filter`](Self::scan_with_filter) against a
+    /// stated database rather than the shared current one.
+    ///
+    /// #5025: both the row cache and the insert buffer are keyed by
+    /// scoped name, so both lookups have to use the named database.
+    fn scan_with_filter_in(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        // #4951: one read guard for both collections — see `scan`.
+        let key = self.tbl_in(db, table);
+        self.with_read_lock(|st| {
+            let mut rows: Vec<Record> = st
+                .tables
+                .get(&key)
+                .map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())
+                .unwrap_or_default();
+            if let Some(buffered) = st.insert_buffer.get(&key) {
+                for record in buffered.iter() {
+                    if filter(record) {
+                        rows.push(record.clone());
+                    }
+                }
+            }
+            Ok(rows)
+        })
+    }
+
+    /// #5057: [`parallel_scan`](Self::parallel_scan) against a stated
+    /// database rather than the shared current one.
+    ///
+    /// #5025: the cache is keyed by scoped name, so the key has to come
+    /// from the database the caller named.
+    fn parallel_scan_in(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        let key = self.tbl_in(db, table);
+        let rows: Vec<Record> = self.with_read_lock(|st| {
+            let mut rows: Vec<Record> = st
+                .tables
+                .get(&key)
+                .map(|data| data.rows.clone())
+                .unwrap_or_default();
+            // F-09 fix: merge insert_buffer for same-tx visibility
+            if let Some(buffered) = st.insert_buffer.get(&key) {
+                rows.extend(buffered.iter().cloned());
+            }
+            rows
+        });
+        let total = rows.len();
+        if total == 0 || num_partitions == 0 {
+            return Ok(vec![]);
+        }
+        let num_partitions = num_partitions.min(total);
+        let base = total / num_partitions;
+        let rem = total % num_partitions;
+        let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
+            Vec::with_capacity(num_partitions);
+        let mut cur = 0;
+        // v3.10.0 Issue #3776 / F-36: Arc-shared, no per-partition Vec clone
+        let shared: Arc<Vec<Record>> = Arc::new(rows);
+        for i in 0..num_partitions {
+            let size = if i < rem { base + 1 } else { base };
+            if size > 0 {
+                let part = Arc::clone(&shared);
+                partitions.push(Box::new(SharedSliceIter::new(part, cur, cur + size)));
+            }
+            cur += size;
+        }
+        Ok(partitions)
+    }
+
     /// #5025: every database that has a directory on disk.
     ///
     /// The implicit default database has no directory — its files sit in
@@ -5472,6 +5549,11 @@ impl StorageEngine for FileStorage {
         let tx_id = self
             .current_tx_id
             .load(std::sync::atomic::Ordering::Acquire);
+        self.commit_transaction_for(tx_id)
+    }
+
+    /// #5099: `commit_transaction` for an explicit transaction id.
+    fn commit_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
         if tx_id == 0 {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
@@ -5520,11 +5602,15 @@ impl StorageEngine for FileStorage {
     /// two different "unsupported" defaults (one silent `()`, one `Err`),
     /// both of which quietly disabled a transaction-isolation guarantee.
     fn commit_transaction_lockfree(&self) -> SqlResult<()> {
-        if self
+        let tx_id = self
             .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            == 0
-        {
+            .load(std::sync::atomic::Ordering::Acquire);
+        self.commit_transaction_lockfree_for(tx_id)
+    }
+
+    /// #5099: `commit_transaction_lockfree` for an explicit transaction id.
+    fn commit_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
+        if tx_id == 0 {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
         }
@@ -5535,9 +5621,6 @@ impl StorageEngine for FileStorage {
         // log is shared by every connection, so a blanket `clear()` also
         // discarded a still-open peer's pending undo and its later
         // ROLLBACK then found nothing to undo.
-        let tx_id = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire);
         Self::with_write_lock(self, |s| s.tx_undo_log.retain(|e| e.tx_id != tx_id));
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
@@ -5552,6 +5635,11 @@ impl StorageEngine for FileStorage {
         let tx_id = self
             .current_tx_id
             .load(std::sync::atomic::Ordering::Acquire);
+        self.rollback_transaction_lockfree_for(tx_id)
+    }
+
+    /// #5099: `rollback_transaction_lockfree` for an explicit transaction id.
+    fn rollback_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
         if tx_id == 0 {
             return Ok(());
         }
@@ -5577,6 +5665,11 @@ impl StorageEngine for FileStorage {
         let rolling_back_tx = self
             .current_tx_id
             .load(std::sync::atomic::Ordering::Acquire);
+        self.rollback_transaction_for(rolling_back_tx)
+    }
+
+    /// #5099: `rollback_transaction` for an explicit transaction id.
+    fn rollback_transaction_for(&mut self, rolling_back_tx: u64) -> SqlResult<()> {
         if rolling_back_tx == 0 {
             // ROLLBACK outside a tx is a warning in MySQL but a no-op in
             // SQLite. Match SQLite to keep behavior consistent.
@@ -5754,28 +5847,19 @@ impl StorageEngine for FileStorage {
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        // #4951: one read guard for both collections — see `scan`.
-        self.with_read_lock(|st| {
-            let mut rows: Vec<Record> = st
-                .tables
-                .get(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
-                    table,
-                ))
-                .map(|data| data.rows.iter().filter(|r| filter(r)).cloned().collect())
-                .unwrap_or_default();
-            if let Some(buffered) = st.insert_buffer.get(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
-                table,
-            )) {
-                for record in buffered.iter() {
-                    if filter(record) {
-                        rows.push(record.clone());
-                    }
-                }
-            }
-            Ok(rows)
-        })
+        let db = self.current_db_name();
+        self.scan_with_filter_in(&db, table, filter)
+    }
+
+    /// #5057: [`scan_with_filter`](Self::scan_with_filter) in a stated
+    /// database.
+    fn scan_with_filter_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        self.scan_with_filter_in(db, table, filter)
     }
 
     /// Phase B Step 4.2: O(log N) primary-key lookup using the
@@ -5832,41 +5916,19 @@ impl StorageEngine for FileStorage {
         // rows in a length-prefixed binary format, so row-level seek is
         // possible but requires iterating from the start to find partition
         // boundaries. A future optimization can add that.
-        // #5025: the cache is keyed by scoped name.
-        let key = self.tbl(table);
-        let rows: Vec<Record> = self.with_read_lock(|st| {
-            let mut rows: Vec<Record> = st
-                .tables
-                .get(&key)
-                .map(|data| data.rows.clone())
-                .unwrap_or_default();
-            // F-09 fix: merge insert_buffer for same-tx visibility
-            if let Some(buffered) = st.insert_buffer.get(&key) {
-                rows.extend(buffered.iter().cloned());
-            }
-            rows
-        });
-        let total = rows.len();
-        if total == 0 || num_partitions == 0 {
-            return Ok(vec![]);
-        }
-        let num_partitions = num_partitions.min(total);
-        let base = total / num_partitions;
-        let rem = total % num_partitions;
-        let mut partitions: Vec<Box<dyn Iterator<Item = Record> + Send>> =
-            Vec::with_capacity(num_partitions);
-        let mut cur = 0;
-        // v3.10.0 Issue #3776 / F-36: Arc-shared, no per-partition Vec clone
-        let shared: Arc<Vec<Record>> = Arc::new(rows);
-        for i in 0..num_partitions {
-            let size = if i < rem { base + 1 } else { base };
-            if size > 0 {
-                let part = Arc::clone(&shared);
-                partitions.push(Box::new(SharedSliceIter::new(part, cur, cur + size)));
-            }
-            cur += size;
-        }
-        Ok(partitions)
+        let db = self.current_db_name();
+        self.parallel_scan_in(&db, table, num_partitions)
+    }
+
+    /// #5057: [`parallel_scan`](Self::parallel_scan) in a stated
+    /// database.
+    fn parallel_scan_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        self.parallel_scan_in(db, table, num_partitions)
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {

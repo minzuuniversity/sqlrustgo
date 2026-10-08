@@ -1671,8 +1671,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // the ones promoted, not whichever tx last used the slot.
             if let Some(pt) = prev_tx {
                 storage.set_current_tx_id(pt.as_u64());
+                // #5099: name the drained transaction. Re-asserting the
+                // shared slot is not sufficient — the commit then reads
+                // it back to decide which transaction to retire.
+                let _ = storage.commit_transaction_for(pt.as_u64());
+            } else {
+                let _ = storage.commit_transaction();
             }
-            let _ = storage.commit_transaction();
             drop(storage);
             self.tx_session.lock().current_tx_id = None;
             self.tx_session.lock().tx_status = TxStatus::Idle;
@@ -1746,11 +1751,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the COMMIT. Same fallback as `begin_transaction`.
         let lockfree_ok = {
             let storage = self.storage.read();
-            // Re-assert our tx id via the shared setter: no writer can
-            // interleave under this read guard, so the lockfree promote's
-            // capture inside sees OUR id rather than a stomped slot.
+            // #5099: pass our tx id explicitly.
+            //
+            // The comment here used to claim "no writer can interleave
+            // under this read guard, so the lockfree promote's capture
+            // inside sees OUR id". That is false: `parking_lot::RwLock`
+            // admits concurrent readers, so another connection can
+            // overwrite the shared `current_tx_id` slot between this
+            // re-assert and the moment `commit_transaction_lockfree`
+            // read it back. The re-assert narrows the window; it does not
+            // close it.
+            //
+            // Naming the transaction removes the inference entirely.
             storage.set_current_tx_id_shared(tx_id.as_u64());
-            storage.commit_transaction_lockfree().is_ok()
+            storage
+                .commit_transaction_lockfree_for(tx_id.as_u64())
+                .is_ok()
         };
         if lockfree_ok {
             // F-16 Gap Locking: release all gap locks on commit (lockfree
@@ -1766,7 +1782,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let mut storage = self.storage.write();
             {
                 storage.set_current_tx_id(tx_id.as_u64());
-                let _ = storage.commit_transaction();
+                // #5099: name the transaction — see above.
+                let _ = storage.commit_transaction_for(tx_id.as_u64());
                 // F-16 Gap Locking: release all gap locks on commit
                 storage.release_all_gap_locks(tx_id.as_u64());
             }
@@ -1947,10 +1964,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // time, inside the closure) — this is the same as the legacy path.
         {
             let storage_read = self.storage.read();
-            // Re-assert our tx id so the lockfree rollback discards THIS
-            // tx's buffers, not a foreign id captured from a stomped slot.
+            // #5099: same reasoning as the commit path above — the
+            // read guard does NOT keep a peer out, so the id is named
+            // rather than inferred from the shared slot.
             storage_read.set_current_tx_id_shared(tx_id.as_u64());
-            let _ = storage_read.rollback_transaction_lockfree();
+            let _ = storage_read.rollback_transaction_lockfree_for(tx_id.as_u64());
         }
         let storage = self.storage.clone();
         self.transaction_manager
@@ -2095,11 +2113,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // "confirmed then lost" shape this issue reports. It used to
             // be `let _ =`, which discarded exactly that signal.
             let mut storage = self.storage.write();
-            // Re-assert our tx id so the capture inside
-            // `commit_transaction` promotes THIS connection's pending
-            // versions, not whichever tx last touched the shared slot.
+            // #5099: name the transaction. Re-asserting the shared slot
+            // does not identify it — the commit reads the slot back to
+            // decide which transaction it is retiring.
             storage.set_current_tx_id(tx_id.as_u64());
-            storage.commit_transaction()?;
+            storage.commit_transaction_for(tx_id.as_u64())?;
             // F-16 Gap Locking: release all gap locks on commit
             storage.release_all_gap_locks(tx_id.as_u64());
             drop(storage);

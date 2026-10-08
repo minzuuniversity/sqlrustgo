@@ -388,17 +388,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         self.session_db.read().clone()
     }
 
-    /// #5057: switch this connection's database.
-    ///
-    /// Also mirrors the value onto the storage engine, which keeps
-    /// engines that do not track a session (and the `get_table_info_in`
-    /// family) resolving the same way.
-    pub fn set_session_db(&mut self, db: &str) -> SqlResult<()> {
-        self.storage.write().set_current_db(db)?;
-        *self.session_db.write() = db.to_lowercase();
-        Ok(())
-    }
-
     /// V312-64f / Issue #4699: override the recursive CTE row cap for
     /// this builder to lower the cap without generating 1M-row fixtures.
     pub fn with_recursive_cte_max_rows(mut self, cap: usize) -> Self {

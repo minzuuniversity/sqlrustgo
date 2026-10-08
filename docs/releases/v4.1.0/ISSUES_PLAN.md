@@ -328,7 +328,44 @@ B2.2"——整理重复实现时顺带暴露出来的。
 修后全绿。其中一例断言"表增长后写 delta 而非重写基础快照"，同时校验内容与
 mtime，重写无法蒙混过关。
 
-## 5. References
+## 5. Alpha→Beta 整改计划（2026-10-08）
+
+> 本节是工作分解和验收入口，不代表门禁已经通过。总控 Issue：#5117。
+
+| 优先级 | Issue | 工作包 | Alpha→Beta 验收摘要 |
+|---|---|---|---|
+| P0 | #5112 | 事务与会话上下文正确性 | rollback `0/300`、8000 事务模型一致、多连接/多库不串扰 |
+| P0 | #5113 | CI 与门禁可信度 | workflow 可解析、fail-closed、P11-P16 与 anti-ignore 自测通过 |
+| P1 | #5114 | BustubX-EDU 与回归矩阵 | B 轨必测 100%、SQL corpus `>=80%`、结果 oracle 无差异 |
+| P1 | #5115 | SOAK、恢复与故障注入 | 1h Alpha SOAK 成功；24h/168h runner 和证据链可执行 |
+| P1 | #5116 | 性能基线与回归门禁 | 固定环境 A/B、>=5 次、吞吐和 p99 阈值可自动判定 |
+
+既有依赖：#5099、#5057、#5025、#5102、#5103。这些 Issue 不得由新工作包重复替代；
+必须按各自合并 PR 和证据关闭。
+
+总控 #5117 的关闭条件为：#5112..#5116 与既有 P0/P1 阻断项全部关闭，AB-01..AB-10
+在单一冻结提交上全部 PASS，required checks 全部成功，且 codeowner 与 governance 独立批准。
+详细标准见 `ALPHA_TO_BETA_GATE_PLAN.md`。
+
+### 5.1 已合并代码进展快照（2026-10-08，rebase 至 `d312683244`）
+
+> 本表只登记**已合并到 `develop/v4.1.0`** 且影响 Alpha→Beta 范围的 PR；
+> 不影响 issue 的 OPEN/CLOSED 状态 —— 是否关闭以 Gitea 实际状态为准。
+
+| 关联 Issue | 已合并 PR | 内容 | 是否关闭 Issue |
+|---|---|---|---|
+| #5025 | #5111 | SHOW TABLES FROM 接通目标库 + 修 FileStorage default 分支表泄漏 | 否，仍有未完成子项 |
+| #5057 | #5108 / #5109 / #5110 / #5118 / #5122 / #5124 / #5127 | SessionContext 多库隔离；MemoryStorage `*_in_db` 14 个全覆盖；FileStorage 剩余 2 个补齐；engine 读路径补库参数归零；ignore_registry 同步 | 否，issue 本体未关闭 |
+| #5099 | b0504ab0e2（docs only） | 并发事务丢行排查证据与修订后设计 | 否，事务上下文重构未动工 |
+| #5103 | #5126 | 过程体内无 FROM SELECT 被当 0 行修复 | 是（待复核） |
+| #5117 | #5120 | 多表 UPDATE 静默 no-op 报 affected=1 修复 | 否，总控仍 open |
+| #4944 | 790b3fd64d | check_coverage_v312.sh fail-open 修复（P1-01） | n/a，子项 |
+| #5106 | #5119 | ignore_registry 同步 #5106 的 4 修 2 增 | n/a，配套 |
+
+**注意**：上表只反映"代码已合入 develop"，不等于 AB-01..AB-10 任何一条已 PASS。
+Alpha→Beta 的判定仍以 §4.7 全部 backlog 清零 + 冻结 commit 上完整复核为准。
+
+## 6. References
 
 
 - `docs/releases/v4.0.0/ISSUES_PLAN.md` — full v4.0.0 issue catalog
