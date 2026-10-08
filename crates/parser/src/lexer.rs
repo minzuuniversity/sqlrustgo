@@ -74,6 +74,30 @@ impl<'a> Lexer<'a> {
                         self.position += step;
                     }
                 }
+            } else if ch == '/' && self.input[self.position..].starts_with("/*") {
+                // #4708: block comment `/* ... */`. Without this branch `/`
+                // was unconditionally emitted as `Token::Slash`, so
+                // `SELECT 1 /* c */` tokenized to `SELECT 1 / * c * /`
+                // and failed with "Expected expression".
+                // Non-nesting: scan to the first `*/`. Step by UTF-8 char
+                // width so multi-byte characters inside the comment do not
+                // leave `self.position` mid-character.
+                // An unterminated `/*` runs to EOF, mirroring MySQL, which
+                // accepts a block comment closed by EOF.
+                self.position += 2;
+                while !self.is_eof() {
+                    if self.input[self.position..].starts_with("*/") {
+                        self.position += 2;
+                        break;
+                    }
+                    let step = self.peek_char().len_utf8();
+                    if step == 0 {
+                        // Invalid UTF-8 byte: skip 1 raw byte, never stall.
+                        self.position += 1;
+                    } else {
+                        self.position += step;
+                    }
+                }
             } else if !ch.is_whitespace() {
                 break;
             } else {
