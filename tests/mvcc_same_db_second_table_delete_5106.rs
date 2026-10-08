@@ -1,7 +1,19 @@
-//! #5106 follow-up: with a SECOND table in the same database, a committed
-//! DELETE silently reverts.
+//! #5156 (a #5106 follow-up): with a SECOND table in the same database, a
+//! committed DELETE silently reverted.
 //!
-//! ## Symptom
+//! **Fixed.** `MvccStorage::promote_pending_for` stamped promoted versions
+//! with a timestamp read from a lazily-created `__commit_probe__` table.
+//! `snapshot_counter` is per-`VersionedTable`, so that value had no relation
+//! to any real table's `visible_from_ts` sequence — and `commit_tx`
+//! OVERWRITES that field. A lagging stamp put the tombstone behind versions
+//! that were already newer; `find_visible` walks the chain newest-first, so
+//! it returned the older `put` and the deleted row came back.
+//!
+//! Each table now stamps its own commit from its own counter
+//! (`VersionedTable::commit_tx_auto`), which keeps the ordering
+//! self-consistent no matter what other tables have done.
+//!
+//! ## Symptom (before the fix)
 //!
 //! Production stack (`MvccStorage<FileStorage>`), named database `d1`:
 //!
@@ -68,8 +80,9 @@
 //!
 //! Status: **root cause not yet confirmed** — the storage-level equivalence
 //! rules the storage layer out but does not by itself prove the counter
-//! mechanism. The test below is `#[ignore]`d so the defect stays visible in
-//! the suite rather than being rediscovered from scratch.
+//! mechanism. All three permutations are live now; the two negative controls
+//! still guard against the OPPOSITE defect (a read path that simply stopped
+//! reporting deleted rows would also make the positive case pass).
 
 use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
@@ -117,9 +130,11 @@ fn count(e: &mut Conn, table: &str) -> i64 {
         .unwrap()
 }
 
-/// The live P0. Remove the `#[ignore]` once it passes.
+/// The P0 that #5156 fixed. Needs a peer connection reading the table while
+/// the writer's transaction is open — with a single connection it does not
+/// reproduce.
 #[test]
-#[ignore = "LIVE P0 — committed DELETE reverts when a second table exists in the same database; root cause not yet confirmed. See the file header for the full trigger matrix."]
+
 fn committed_delete_reverts_when_the_database_holds_a_second_table() {
     let (mut a, mut b, dir) = two_connections();
     a.execute("CREATE DATABASE d1").unwrap();

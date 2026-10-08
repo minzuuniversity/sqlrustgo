@@ -122,6 +122,24 @@ impl VersionedTable {
 
     /// #4974: promote every pending version written by `tx_id` to
     /// visible, stamping it with `commit_ts`.
+    /// #5156: commit this transaction's pending versions, stamping each
+    /// with a timestamp taken from THIS table's own counter.
+    ///
+    /// The caller used to pass one timestamp sourced from a throwaway
+    /// `__commit_probe__` table. `snapshot_counter` is per-`VersionedTable`,
+    /// so that value has no relation to this table's `visible_from_ts`
+    /// sequence — and `commit_tx` OVERWRITES `visible_from_ts` with it. When
+    /// the probe's counter lagged behind, the tombstone landed below versions
+    /// that were already newer, `find_visible` (which walks the chain
+    /// newest-first) picked the older `put`, and a committed DELETE reverted.
+    ///
+    /// Taking the stamp from the table being committed keeps the ordering
+    /// self-consistent regardless of what any other table has done.
+    pub fn commit_tx_auto(&self, tx_id: u64) {
+        let ts = self.next_snapshot_ts();
+        self.commit_tx(tx_id, ts);
+    }
+
     pub fn commit_tx(&self, tx_id: u64, commit_ts: u64) {
         let mut w = self.versions.write();
         for chain in w.values_mut() {
