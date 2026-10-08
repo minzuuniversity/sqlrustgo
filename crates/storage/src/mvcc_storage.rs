@@ -145,13 +145,19 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         if tx_id == 0 {
             return;
         }
-        let ts = self.mvcc_table("__commit_probe__").next_snapshot_ts();
+        // #5156: each table stamps its own commit from its OWN counter.
+        // The previous `self.mvcc_table("__commit_probe__").next_snapshot_ts()`
+        // came from a lazily-created table whose counter has no relation to
+        // any real table's `visible_from_ts` sequence — and `commit_tx`
+        // overwrites that field. A lagging stamp put the tombstone behind
+        // versions that were already newer, so `find_visible` returned the
+        // older `put` and a committed DELETE silently reverted.
         let tables: Vec<Arc<VersionedTable>> = {
             let g = self.mvcc.read();
             g.values().cloned().collect()
         };
         for t in tables {
-            t.commit_tx(tx_id, ts);
+            t.commit_tx_auto(tx_id);
         }
     }
 
