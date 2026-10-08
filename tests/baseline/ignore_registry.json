@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
-  "captured_at_commit": "merged tree of develop/v4.1.0 + chore/omp-sync-ignore-registry-5111",
+  "captured_at_commit": "merged tree of develop/v4.1.0 @ fbb80e4744 + #4708 block comments (PR #5146)",
   "captured_at_date": "2026-10-08",
-  "total_allowed": 117,
+  "total_allowed": 116,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 80,
@@ -132,15 +132,6 @@
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
       "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/parser/tests/wp_a_legacy.rs",
-      "test": "test_chinese_comment_multi_line",
-      "line_at_capture": 68,
-      "reason": "(no reason text)",
-      "status": "ACTIVE",
-      "category": "NO_REASON",
-      "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
     },
     {
       "file": "crates/storage/src/mmap_vector_store.rs",
@@ -1132,6 +1123,13 @@
       "resolved": "2026-10-08 — #5120 fixed the multi-table UPDATE no-op (a bare column name in the SET list matched no table prefix, so affected_rows=1 with no row changed). #[ignore] removed; the test now runs green.",
       "prior_reason": "GAP: multi-table `UPDATE t1, t2 SET ...` is a no-op reporting affected_rows=1 on this baseline — a separate defect from database scoping (see tests/probe_mt_update.rs). Single-table UPDATE and multi-table DELETE both behave.",
       "evidence": "tests/dml_read_db_5106.rs — 1 passed; independent regression file tests/multi_table_update_5117.rs (7 cases)"
+    },
+    {
+      "file": "crates/parser/tests/wp_a_legacy.rs",
+      "test": "test_chinese_comment_multi_line",
+      "resolved": "2026-10-08 — #4708 block-comment support added to Lexer::skip_whitespace; #[ignore] removed, test runs green.",
+      "prior_reason": "empty (category NO_REASON) — ADR-008 requires an #[ignore = \"...\"] reason",
+      "evidence": "crates/parser/src/lexer.rs skip_whitespace '/*' branch; crates/parser/tests/wp_a_legacy.rs::test_4708_block_comments (7 boundary tests)"
     }
   ]
 }
