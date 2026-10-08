@@ -1131,6 +1131,52 @@ pub(crate) fn substitute_current_database_in_select(
     out
 }
 
+/// #5141: apply [`substitute_current_database_in_expr`] across every
+/// statement that can carry an expression, not just SELECT.
+///
+/// `DATABASE()` was substituted only inside `execute_select`, so DML fell
+/// through to `eval_fn`'s hard-coded `"default"` — `UPDATE t SET tag =
+/// DATABASE()` silently stored `"default"`, and `INSERT INTO t VALUES (2,
+/// DATABASE())` stored NULL. Two paths, two different wrong answers.
+///
+/// Rewriting here rather than in each executor means a new statement type
+/// inherits the behaviour instead of silently regressing to the fallback.
+pub(crate) fn substitute_current_database_in_statement(
+    stmt: &sqlrustgo_parser::Statement,
+    db: &str,
+) -> sqlrustgo_parser::Statement {
+    let map_expr = |e: sqlrustgo_parser::Expression| substitute_current_database_in_expr(e, db);
+    let mut out = stmt.clone();
+    match &mut out {
+        Statement::Select(select) => {
+            *select = substitute_current_database_in_select(select, db);
+        }
+        Statement::Insert(insert) => {
+            insert.values = insert
+                .values
+                .iter()
+                .map(|row| row.iter().cloned().map(&map_expr).collect())
+                .collect();
+            if let Some(sel) = &mut insert.select {
+                insert.select = Some(Box::new(substitute_current_database_in_select(sel, db)));
+            }
+        }
+        Statement::Update(update) => {
+            update.set_clauses = update
+                .set_clauses
+                .iter()
+                .map(|(c, e)| (c.clone(), map_expr(e.clone())))
+                .collect();
+            update.where_clause = update.where_clause.clone().map(map_expr);
+        }
+        Statement::Delete(delete) => {
+            delete.where_clause = delete.where_clause.clone().map(map_expr);
+        }
+        _ => {}
+    }
+    out
+}
+
 pub(crate) fn substitute_session_vars_in_select(
     select: &sqlrustgo_parser::SelectStatement,
     session_vars: &HashMap<String, SqlValue>,

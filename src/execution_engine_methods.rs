@@ -400,7 +400,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     /// Execute a SQL statement and return results
     pub fn execute(&mut self, sql: &str) -> SqlResult<ExecutorResult> {
-        let statement = parse(sql).map_err(|e| SqlError::ParseError(e.to_string()))?;
+        let parsed = parse(sql).map_err(|e| SqlError::ParseError(e.to_string()))?;
+        // #5141: `DATABASE()` / `SCHEMA()` are replaced here, once, for every
+        // statement type. Doing it inside `execute_select` left DML reaching
+        // `eval_fn`'s hard-coded fallback, which returned "default" for
+        // UPDATE and NULL for INSERT — two different wrong answers for the
+        // same function.
+        let statement = crate::execution_engine::substitute_current_database_in_statement(
+            &parsed,
+            &self.session_db(),
+        );
 
         match statement {
             Statement::Select(ref select) => self.execute_select(select),
