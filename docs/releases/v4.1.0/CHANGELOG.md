@@ -35,20 +35,21 @@
   （主动删 37 行，精确报出 37）。见
   `evidence/TLS_READ_SPIN_HANG_5099_2026-10-09.md`。
 
-- **#5168 单列主键等值查询走全表扫描（P0 性能）** —— 容量测试定位。
-  同一张 10000 行表：`WHERE id=1` 需 **25.8ms**，而 `WHERE id=1 AND k=1`
-  只需 **1.41ms**（**18 倍差距**）；`SELECT 1`（不碰表）1.37ms，说明瓶颈
-  既非网络也非协议。代价随行数近似线性（100 行 1.46ms → 10000 行 31.35ms），
-  确认全扫描。**服务器吞吐上限因此锁在 ~13~23 TPS / 250~370 QPS**，
-  80 核机器只用 1.6 核，且**并发从 4 提到 64 吞吐不升反降**
-  （1 连接 136 QPS → 8 连接 17 QPS），因为每次点查都在扫整张表。
-  定位：`scan_with_index_in`（`file_storage.rs:5271`）单列 PK 谓词未命中
-  索引路径，退化为 `scan_in_db`。见
-  `evidence/SOAK_8H_AND_CAPACITY_2026-10-09.md`。
+- **#5168 主键点查退化为全表扫描（P0 性能）** —— 容量测试定位。
+  **PK 索引在 `CREATE TABLE` 时构建，此后 INSERT 路径不再维护**
+  （`rebuild_pk_indexes` 在空表上建好 B+Tree；维护索引的
+  `insert_with_index` **生产代码零调用，只有测试在用**），于是 `scan_pk`
+  的 B+Tree 查不到行，静默回退到全表扫描。
+  代价随行数线性增长（100 行 **0.38ms** → 20000 行 **9.02ms**）；
+  `CREATE INDEX` 无效（建的是 `k` 的索引，PK 索引早已固化为空）。
+  **服务器吞吐因此锁在 ~13~23 TPS / 250~370 QPS**，80 核只用 1.6 核，
+  且并发从 4 提到 64 吞吐不升反降（1 连接 136 QPS → 8 连接 17 QPS）。
+  见 `evidence/SOAK_8H_AND_CAPACITY_2026-10-09.md` §4.4。
 
 - **SOAK 8h 与性能上限分析（2026-10-09）** —— 8h SOAK 独立实例运行中，
   1h 段 0 FATAL / 0 errors / 0 reconnects，CPU 全程 ≤174%（空转会 >1000%）。
-  容量阶梯同时给出吞吐上限与四项瓶颈排序：单列 PK 全扫描、`engine.write()`
+  容量阶梯同时给出吞吐上限与四项瓶颈排序：PK 索引失维护（#5168）、
+  `engine.write()`
   全局独占锁（`lib.rs:5828`）、`FileStorage` 单 `RwLock<WriteState>`、
   `COUNT(*)` 返回 0（#5167）。见
   `evidence/SOAK_8H_AND_CAPACITY_2026-10-09.md`。
