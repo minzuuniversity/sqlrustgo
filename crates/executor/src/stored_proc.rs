@@ -1004,9 +1004,27 @@ impl StoredProcExecutor {
             sqlrustgo_parser::Statement::Select(select) => {
                 let table_name = &select.table;
 
-                // Handle SELECT without FROM (e.g., SELECT 1, SELECT 'hello', SELECT NULL)
-                let records = if table_name.is_empty() {
-                    vec![]
+                // #5103: a SELECT with no FROM (`SELECT 1`, `SELECT 'hello'`,
+                // `SELECT NULL`) is a one-row constant query, not an empty
+                // result. The previous shape returned `vec![]` here, so the
+                // rows were stashed as an empty `__last_select_result` and the
+                // success-status row at the end of `execute_call` became
+                // unreachable for this whole class of procedure. The comment
+                // above already claimed to "handle SELECT without FROM"; the
+                // body did not.
+                let no_from = table_name.is_empty();
+                let records = if no_from {
+                    // One row, one cell per projected column. `*` cannot occur
+                    // without FROM, but stay defensive and emit NULL rather
+                    // than panic if a future parser change allows it.
+                    vec![select
+                        .columns
+                        .iter()
+                        .map(|c| match &c.expression {
+                            Some(e) => self.expression_to_value(e, ctx),
+                            None => Value::Null,
+                        })
+                        .collect::<Vec<Value>>()]
                 } else if ctx.cte_tables.contains_key(table_name) {
                     ctx.cte_tables.get(table_name).cloned().unwrap_or_default()
                 } else {
