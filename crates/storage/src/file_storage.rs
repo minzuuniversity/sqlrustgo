@@ -5698,19 +5698,32 @@ impl StorageEngine for FileStorage {
         // buffered rows — the buffer is instance-level, not
         // connection-level (#5060) — turning a rollback into data loss.
         Self::with_write_lock(self, |s| {
-            while let Some(entry) = s.tx_undo_log.pop() {
-                // This undo log is shared by every connection, so it can
-                // hold entries belonging to transactions other than the
-                // one rolling back. Replaying those would silently
-                // revert a peer's committed work — two connections
-                // DELETEing the same row made the loser's ROLLBACK
-                // erase the winner's row, with the ROLLBACK reporting
-                // success. Discard foreign entries instead; they belong
-                // to a transaction that is still live (or already
-                // committed) and will drain its own log.
-                if entry.tx_id != rolling_back_tx {
-                    continue;
+            // #5112: drain this transaction's entries and KEEP everyone
+            // else's.
+            //
+            // The loop used to be `while let Some(entry) =
+            // s.tx_undo_log.pop()`, and `continue`d when the entry belonged
+            // to a peer — but popping had already removed it from the log,
+            // so `continue` DISCARDED it. A peer whose undo was discarded has
+            // no way to roll itself back, and its ROLLBACK silently did
+            // nothing while reporting success.
+            //
+            // Measured at ~2/600 trials, and it showed up in BOTH directions:
+            // sometimes a committed DELETE came back, sometimes a rolled-back
+            // one stayed deleted. Neither mode is possible if every entry
+            // survives until its own transaction drains it.
+            let mut mine: Vec<TxUndoEntry> = Vec::new();
+            s.tx_undo_log.retain(|e| {
+                if e.tx_id == rolling_back_tx {
+                    mine.push(e.clone());
+                    false
+                } else {
+                    true
                 }
+            });
+            // Reverse order: the undo log is a stack, so the last change is
+            // undone first.
+            for entry in mine.into_iter().rev() {
                 match entry.op {
                     UndoOp::UpdateRow {
                         table,
