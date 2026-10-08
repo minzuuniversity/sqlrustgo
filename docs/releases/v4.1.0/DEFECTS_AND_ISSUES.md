@@ -16,10 +16,10 @@
 
 | 优先级 | 项数 | 主要类别 |
 |---|---|---|
-| **P0** 阻断任何 release | **7** | 门禁空转、#4708 假 DONE、v4.0.0 GA 撤销、5 远端漂移、debt-registry 残留占位符、YAML 自相矛盾、.gitignore 静默屏蔽新 release 文档 |
+| **P0** 阻断任何 release | **8** | 门禁空转、#4708 假 DONE、v4.0.0 GA 撤销、5 远端漂移、debt-registry 残留占位符、YAML 自相矛盾、.gitignore 静默屏蔽新 release 文档、WAL 恢复逐条整表重写 |
 | **P1** 阻断 ALPHA 推进 | **7** | 覆盖率 60.58%、Q20 oracle 缺产物、WP-A RE-OPENED + 20 条 backlog、crate 状态描述错误、G13 门禁红 |
 | **P2** 不阻断但需记录 | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
-| **合计** | **21** | |
+| **合计** | **22** | |
 
 **性能状态**：A1/B2 A/B 实测已落地 (见 `PERF_A1_4912_AB_MEASUREMENT.md` /
 `PERF_B2_4915_AB_MEASUREMENT.md`)，B2.1 在 22x-39x 范围，但发现一处 regression
@@ -182,6 +182,34 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 - **修复**: 把 `.gitignore:351` 的 `releases/` 改为 `/releases/`（与 line 122 一致）
 - **本 PR 已应用此修复**：line 351 现为 `/releases/  # anchored duplicate of line 122;
   was unanchored ... (bug fixed 2026-10-01)`
+
+### P0-08 WAL 恢复逐条整表重写，重启 24 分钟不可用
+
+- **verdict**: `OPEN`（2026-10-08 实测复现，根因定位到 file:line）
+- **位置**: `crates/storage/src/recovery_engine.rs:274,767`（`recovery_force_insert`
+  逐条重放）→ `crates/storage/src/file_storage.rs:3328`（`insert_direct`）→
+  `:723,742`（`save_table_window` 冷启动分支）→ `:775`（`save_table_full` 整表
+  `to_writer_pretty` 重写）
+- **完整 issue**: `docs/releases/v4.1.0/ISSUE-RECOVERY-QUADRATIC-REPLAY.md`
+- **证据**: `docs/releases/v4.1.0/SOAK_V410_1H_2026-10-08/`（含 `recovery_stack_sample.txt`
+  原始 `sample` 输出 + 60 秒内 `sbtest1.json` 反复 13.6MB→0→13.6MB 的文件系统采样）
+- **实测数据**（v4.1.0 HEAD `b1e9a98ee6`，file storage，68,288 行，8.0 MB WAL）：
+  - 重启后首条 `SELECT COUNT(*)` = **24 分 22 秒**；紧接同一条 = **0.08 秒**
+  - 58,288 条 INSERT 逐条触发整表 JSON 重写，delta 追加路径**一次未走到**
+    （任何采样点都不存在 `.delta` 文件）
+- **机制**: 恢复期 `last_saved_row_count == 0`，`save_table_window` 每次都命中
+  `total_rows == 0 || last_saved == 0 || …` 冷启动分支 → `save_table_full` 整表重写
+- **影响**:
+  - 恢复在 listener 接受连接**之前**完成 → 硬性启动不可用，不是慢查询
+  - 代价随 soak 变长而恶化（重放量 ∝ WAL 条数，单次重写 ∝ 表大小）
+  - 崩溃恢复 / 主从切换 / 备份还原 / 运维重启全部命中
+  - **历史 SOAK 从未覆盖**：`scripts/soak/v400_1h_soak.sh` 从不中途重启服务器，
+    v4.0.0 与 v4.1.0 的所有 SOAK 记录都没碰过这条路径
+- **修复方向**: (1) 恢复期按表批量重放；(2) 预置 `last_saved_row_count` 使其走
+  delta 分支（改动面最小）；(3) `save_table_full` 去 pretty 打印
+- **交叉**: 与 `docs/audit/issues/ISSUE-2740_crash_recovery_unverified.md`（P0，
+  Status UNKNOWN）互补——那条是**正确性未验证**，本条是**复杂度/可用性**；
+  但"恢复测试必须用 FileStorage 而非 MemoryStorage"的结论对本条修复同样适用。
 
 ---
 

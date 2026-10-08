@@ -598,6 +598,7 @@ open_issues:
   - "P0-05 debt-registry.yaml SEM-4 关闭根因仍是字面占位符 'XYZ'，且其中 parser 75.16% 不可复现（实测 60.58%）。详见 DEFECTS_AND_ISSUES.md。"
   - "P1-01 parser 行覆盖率实测 60.58%，ALPHA 门槛 80%，缺 19.42pp；check_coverage_v312.sh:30 提取失败时 fail-open 跳过。详见 DEFECTS_AND_ISSUES.md。"
   - "P1-02 #4540 Q20 oracle 未闭环：sqlrustgo/q20.tsv 缺失，CROSS_ENGINE_HASH_CHECK.json 记 present:false，与 GA5_TPCH_SF1_REPORT.md:40 的 'Q20 PASS' 矛盾。详见 DEFECTS_AND_ISSUES.md。"
+  - "P0-08 WAL 恢复逐条整表重写：实测重启后首条全表查询 24min22s（紧接同一条 0.08s），68,288 行 / 58,288 条 INSERT / 8.0MB WAL 下 save_table_full 被逐条调用、delta 追加路径一次未走到。恢复在 listener 之前完成 → 硬性启动不可用，且历史所有 SOAK 均未覆盖（harness 从不中途重启）。详见 DEFECTS_AND_ISSUES.md + ISSUE-RECOVERY-QUADRATIC-REPLAY.md。"
 
 resolved_issues_2026_10_03:
   - id: "v4.0.0 STAGE.yaml / GA_GATE_REPORT.md 矛盾"

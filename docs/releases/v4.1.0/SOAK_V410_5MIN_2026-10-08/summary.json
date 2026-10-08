@@ -1,0 +1,21 @@
+{
+  "total_queries": 129017,
+  "total_errors": 0,
+  "error_rate_pct": 0.0,
+  "latency_ms": {
+    "min": 1.1,
+    "p50": 29.6,
+    "p90": 67.1,
+    "p95": 88.8,
+    "p99": 170.7,
+    "max": 505.6,
+    "mean": 37.192
+  },
+  "by_kind": {
+    "insert": 13050,
+    "point_select": 64499,
+    "range_scan": 25568,
+    "count_agg": 12885,
+    "point_update": 13015
+  }
+}
