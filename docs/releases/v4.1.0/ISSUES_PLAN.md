@@ -347,6 +347,24 @@ mtime，重写无法蒙混过关。
 在单一冻结提交上全部 PASS，required checks 全部成功，且 codeowner 与 governance 独立批准。
 详细标准见 `ALPHA_TO_BETA_GATE_PLAN.md`。
 
+### 5.1 已合并代码进展快照（2026-10-08，rebase 至 `d312683244`）
+
+> 本表只登记**已合并到 `develop/v4.1.0`** 且影响 Alpha→Beta 范围的 PR；
+> 不影响 issue 的 OPEN/CLOSED 状态 —— 是否关闭以 Gitea 实际状态为准。
+
+| 关联 Issue | 已合并 PR | 内容 | 是否关闭 Issue |
+|---|---|---|---|
+| #5025 | #5111 | SHOW TABLES FROM 接通目标库 + 修 FileStorage default 分支表泄漏 | 否，仍有未完成子项 |
+| #5057 | #5108 / #5109 / #5110 / #5118 / #5122 / #5124 / #5127 | SessionContext 多库隔离；MemoryStorage `*_in_db` 14 个全覆盖；FileStorage 剩余 2 个补齐；engine 读路径补库参数归零；ignore_registry 同步 | 否，issue 本体未关闭 |
+| #5099 | b0504ab0e2（docs only） | 并发事务丢行排查证据与修订后设计 | 否，事务上下文重构未动工 |
+| #5103 | #5126 | 过程体内无 FROM SELECT 被当 0 行修复 | 是（待复核） |
+| #5117 | #5120 | 多表 UPDATE 静默 no-op 报 affected=1 修复 | 否，总控仍 open |
+| #4944 | 790b3fd64d | check_coverage_v312.sh fail-open 修复（P1-01） | n/a，子项 |
+| #5106 | #5119 | ignore_registry 同步 #5106 的 4 修 2 增 | n/a，配套 |
+
+**注意**：上表只反映"代码已合入 develop"，不等于 AB-01..AB-10 任何一条已 PASS。
+Alpha→Beta 的判定仍以 §4.7 全部 backlog 清零 + 冻结 commit 上完整复核为准。
+
 ## 6. References
 
 

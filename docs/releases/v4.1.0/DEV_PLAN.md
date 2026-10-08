@@ -2,7 +2,9 @@
 
 > **更新日期**: 2026-10-08
 > **状态**: ACTIVE PLAN；`STAGE.yaml` 当前阶段仍为 `ALPHA`。
-> **审计基线**: `gitea252/develop/v4.1.0@8bc4aac10c94ee9cd080faf644016c6c8ca126ca`
+> **审计基线**: `gitea252/develop/v4.1.0@d312683244`（2026-10-08 rebase 后快照）
+> **已合并代码进展**: 见 `ISSUES_PLAN.md` §5.1；#5025/#5057/#5099/#5103/#5117
+> 已有部分 PR 合入 develop，但所有 P0/P1 issue 在 Gitea 上仍为 OPEN。
 
 ## 1. 当前判断
 

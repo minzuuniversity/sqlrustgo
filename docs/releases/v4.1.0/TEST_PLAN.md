@@ -3,7 +3,7 @@
 > **更新日期**: 2026-10-08
 > **状态**: ACTIVE PLAN；本文定义测试范围和验收方法，不代表任何门禁已经通过。
 > **阶段 SSOT**: `docs/releases/v4.1.0/STAGE.yaml`，当前为 `ALPHA`。
-> **审计基线**: `gitea252/develop/v4.1.0@8bc4aac10c94ee9cd080faf644016c6c8ca126ca`
+> **审计基线**: `gitea252/develop/v4.1.0@d312683244`（2026-10-08 rebase 后快照）
 
 ## 1. 目标
 

@@ -5,7 +5,7 @@
 > **当前阶段**: `ALPHA`，以 `STAGE.yaml` 为 SSOT。
 > **source_agent**: codex
 > **source_run**: v410-alpha-beta-gates-20261008
-> **assessed_commit**: `8bc4aac10c94ee9cd080faf644016c6c8ca126ca`
+> **assessed_commit**: `d312683244`（2026-10-08 rebase 后快照）
 > **evidence_hash**: 待冻结提交实跑后生成
 
 ## 1. 判定原则
