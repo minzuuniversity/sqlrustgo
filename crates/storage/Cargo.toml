@@ -41,3 +41,7 @@ path = "tests/memory_in_db_5057.rs"
 [[test]]
 name = "memory_in_db_full_5057"
 path = "tests/memory_in_db_full_5057.rs"
+
+[[test]]
+name = "file_scan_in_db_5057"
+path = "tests/file_scan_in_db_5057.rs"
