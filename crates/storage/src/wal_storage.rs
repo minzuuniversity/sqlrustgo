@@ -1093,6 +1093,11 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
 
     fn commit_transaction_lockfree(&self) -> SqlResult<()> {
         let tx_id = self.current_tx_id.load(Ordering::Relaxed);
+        self.commit_transaction_lockfree_for(tx_id)
+    }
+
+    /// #5099: `commit_transaction_lockfree` for an explicit transaction id.
+    fn commit_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
         if tx_id == 0 {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
@@ -1141,7 +1146,14 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // own. Propagating that error would turn a capability signal into a
         // failed COMMIT, and `crates/storage/tests/lockfree_forwarding_4912.rs`
         // (which drives `WalStorage<MemoryStorage>`) catches exactly that.
-        let _ = self.inner().commit_transaction_lockfree();
+        //
+        // #5099: the id is forwarded rather than re-read. `promote_pending()`
+        // identifies the transaction by `inner.current_tx_id()`, and this
+        // whole path runs under a READ guard — concurrent readers are
+        // allowed, so a peer's connection can overwrite the shared slot
+        // between the caller's re-assert and that read. Passing `tx_id`
+        // makes the inner commit name the transaction it belongs to.
+        let _ = self.inner().commit_transaction_lockfree_for(tx_id);
         // Clear tx state AFTER appending WAL and committing the inner
         // engine, so concurrent readers see consistent state.
         self.current_tx_id.store(0, Ordering::Relaxed);
@@ -1156,6 +1168,11 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
 
     fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
         let tx_id = self.current_tx_id.load(Ordering::Relaxed);
+        self.rollback_transaction_lockfree_for(tx_id)
+    }
+
+    /// #5099: `rollback_transaction_lockfree` for an explicit transaction id.
+    fn rollback_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
         if tx_id == 0 {
             return Ok(());
         }
@@ -1186,7 +1203,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // buffers but left the MVCC versions pending — invisible to readers,
         // never released, and counted by `pending_keys` on every later read.
         // Same `let _ =` rationale as the commit path above.
-        let _ = self.inner().rollback_transaction_lockfree();
+        //
+        // #5099: id forwarded, not re-read — see the commit path.
+        let _ = self.inner().rollback_transaction_lockfree_for(tx_id);
         // BLK-2: `&self` path — see begin_transaction_lockfree.
         self.inner().discard_all_buffers_shared();
         self.current_tx_id.store(0, Ordering::Relaxed);

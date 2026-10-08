@@ -933,7 +933,19 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn commit_transaction_lockfree(&self) -> SqlResult<()> {
         // #4974: capture first, delegate second — see `promote_pending_for`.
         let tx_id = self.inner.current_tx_id();
-        let r = self.inner.commit_transaction_lockfree();
+        self.commit_transaction_lockfree_for(tx_id)
+    }
+
+    /// #5099: `commit_transaction_lockfree` for an explicit transaction id.
+    ///
+    /// This is the point where the identity was being lost: the id was
+    /// read back out of the shared `current_tx_id` slot, which under the
+    /// caller's READ guard another connection can overwrite at any moment
+    /// (concurrent readers are allowed). `promote_pending_for` then
+    /// promotes whichever transaction that slot happened to name —
+    /// leaving the real one pending and the peer's rows committed.
+    fn commit_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
+        let r = self.inner.commit_transaction_lockfree_for(tx_id);
         // Promote only after the inner engine accepted the commit — a
         // failed commit must leave everything pending, and therefore
         // invisible. Same ordering as `commit_transaction` above.
@@ -950,7 +962,13 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// subsequent read).
     fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
         let tx_id = self.inner.current_tx_id();
-        let r = self.inner.rollback_transaction_lockfree();
+        self.rollback_transaction_lockfree_for(tx_id)
+    }
+
+    /// #5099: `rollback_transaction_lockfree` for an explicit transaction
+    /// id — see [`Self::commit_transaction_lockfree_for`].
+    fn rollback_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
+        let r = self.inner.rollback_transaction_lockfree_for(tx_id);
         if r.is_ok() {
             self.discard_pending_for(tx_id);
         }

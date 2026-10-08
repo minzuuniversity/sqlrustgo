@@ -1674,6 +1674,27 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
+    /// #5099: [`commit_transaction`](Self::commit_transaction) for an
+    /// explicit transaction id.
+    ///
+    /// The zero-argument form must ask the engine "which transaction am
+    /// I?", and that answer is instance state. On a storage shared by
+    /// every connection it names whichever connection wrote last, so a
+    /// COMMIT could retire a peer's transaction. Callers that know their
+    /// own id — the engine, via `TxSession` — pass it instead.
+    ///
+    /// Default delegates to [`commit_transaction`](Self::commit_transaction).
+    fn commit_transaction_for(&mut self, _tx_id: u64) -> SqlResult<()> {
+        self.commit_transaction()
+    }
+
+    /// #5099: [`rollback_transaction`](Self::rollback_transaction) for an
+    /// explicit transaction id. See
+    /// [`commit_transaction_for`](Self::commit_transaction_for).
+    fn rollback_transaction_for(&mut self, _tx_id: u64) -> SqlResult<()> {
+        self.rollback_transaction()
+    }
+
     /// Rollback the current transaction
     fn rollback_transaction(&mut self) -> SqlResult<()> {
         Err(SqlError::ExecutionError(
@@ -1728,6 +1749,46 @@ pub trait StorageEngine: Send + Sync {
     /// Check if a transaction is in progress
     fn in_transaction(&self) -> bool {
         false
+    }
+
+    /// #5099: is THIS transaction the one holding the engine's state?
+    ///
+    /// [`in_transaction`](Self::in_transaction) answers from the shared
+    /// `current_tx_id` slot, so on a storage shared by every connection it
+    /// reports "some transaction is open" — which is not what a caller
+    /// needs. `crates/executor/src/trigger.rs` used it to decide whether
+    /// its DML runs inside an outer transaction or must open its own; a
+    /// peer's open transaction makes that decision wrong.
+    ///
+    /// The caller passes the id it owns (`ExecutionEngine`'s
+    /// `TxSession::current_tx_id`), so the answer is per-connection.
+    /// Default falls back to [`in_transaction`](Self::in_transaction) for
+    /// engines with a single owner.
+    fn is_transaction_active(&self, _tx_id: u64) -> bool {
+        self.in_transaction()
+    }
+
+    /// #5099: [`commit_transaction_lockfree`](Self::commit_transaction_lockfree)
+    /// for an explicit transaction id.
+    ///
+    /// This is the path a real server takes — `ExecutionEngine` calls it
+    /// while holding only a READ guard, and the code there claimed "no
+    /// writer can interleave under this read guard". That is false:
+    /// `parking_lot::RwLock` admits concurrent readers, so another
+    /// connection can overwrite the shared `current_tx_id` slot between
+    /// the caller's re-assert and this method reading it back. Passing
+    /// the id removes the inference entirely.
+    ///
+    /// Default delegates to the zero-argument form.
+    fn commit_transaction_lockfree_for(&self, _tx_id: u64) -> SqlResult<()> {
+        self.commit_transaction_lockfree()
+    }
+
+    /// #5099: [`rollback_transaction_lockfree`](Self::rollback_transaction_lockfree)
+    /// for an explicit transaction id. See
+    /// [`commit_transaction_lockfree_for`](Self::commit_transaction_lockfree_for).
+    fn rollback_transaction_lockfree_for(&self, _tx_id: u64) -> SqlResult<()> {
+        self.rollback_transaction_lockfree()
     }
 
     /// Get the current transaction ID
