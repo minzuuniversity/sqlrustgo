@@ -11,10 +11,10 @@
 > 2. **服务器性能上限已测出并定位根因**：约 **13~23 TPS / 250~370 QPS**，
 >    且**并发从 4 提到 64，吞吐不升反降**，服务器 CPU 全程锁在 **~150~170%**。
 > 3. **根因不是锁、不是 CPU、不是网络**，而是
->    **PK 索引在 `CREATE TABLE` 时构建、此后 INSERT 路径不再维护**，
->    导致 `scan_pk` 静默回退到全表扫描：20000 行表上主键点查
->    **9.02ms**，代价随行数线性增长（100 行 0.38ms → 20000 行 9.02ms）。
->    见 §4.4。
+>    **`WalStorage` / `ParallelWalStorage` 没有转发 `scan_pk`**，
+>    于是主键点查落到 trait 默认的全表扫描。同一段测量在裸
+>    `FileStorage` 上通过、经 `WalStorage` 即失败：
+>    200 行 3.77ms → 20000 行 **431.44ms**（114×）。见 §4.4。
 
 ---
 
@@ -201,57 +201,80 @@ gdb 采样确认了锁竞争热点：
 
 **但 3.3 的纯读对照证明锁不是主因**：8 个纯读连接同样退化。
 
-### 4.4 真正的根因：PK 索引建表时构建，此后不再维护
+### 4.4 真正的根因：包装层未转发 `scan_pk`
 
-`rebuild_pk_indexes`（`file_storage.rs:2201-2226`）在**表为空时**建好 PK
-B+Tree 并写入 `indexes` map。普通 `INSERT` 路径**不更新这个 map** ——
-维护索引的 `insert_with_index` **只被测试调用**：
+> ⚠️ 本文经**两次更正**。初版称「谓词未命中索引路径」，二版称
+> 「PK 索引失维护」—— **两版都不成立**。本节是经失败测试验证的版本。
+
+#### 索引本身是好的
+
+直接测 `FileStorage`（绕过所有包装层）：
 
 ```
-$ grep -rn insert_with_index crates/ src/ | grep -v "fn insert_with_index"
-crates/storage/tests/file_storage_direct_v3_12.rs:362
-crates/storage/tests/file_storage_direct_v3_12.rs:371
-（全部是测试文件，生产代码零调用）
+A rows visible to scan_in_db: 100
+B rows visible after flush:   100
+C scan_with_index(id=50) rows: 1     ← 索引里有数据
+D scan_pk(50) present: true
 ```
 
-于是 `scan_pk` 的 B+Tree 查不到行 → 返回空 → `scan_pk` 走
-「Fallback: full scan」（`file_storage.rs:5899`）→ **每次主键点查扫全表**。
+`scan_with_index("t","id",50)` 返回 **1 行**，索引已正确填充
+（flush 路径上的 `update_pk_index_window`，`file_storage.rs:4632`，
+确实在维护索引）。
 
-#### 验证：代价随行数线性（= 全扫描）
+#### 缺陷在包装层
 
-| 行数 | `WHERE id=1` 延迟 |
-|---:|---:|
-| 100 | 0.38 ms |
-| 1,000 | 0.78 ms |
-| 5,000 | 2.50 ms |
-| 20,000 | 9.02 ms |
+服务器真实存储链（`crates/mysql-server/src/lib.rs:6843-6881`）：
 
-#### 验证：索引存在也不影响
+```
+FileStorage -> MvccStorage -> ParallelWalStorage / WalStorage
+```
 
-| 场景 | 20k 行点查 |
+覆写 `scan_pk` 的类型只有 `BinaryStorage`、`FileStorage`、`MvccStorage`。
+**`WalStorage` 与 `ParallelWalStorage` 都没有覆写**，落到 trait 默认实现
+（`engine.rs:1055`）—— **全表扫描 + 线性查找**。
+
+| 测量对象 | 200 行 | 20000 行 | 比值 |
+|---|---:|---:|---:|
+| `FileStorage` 直接调用 | 通过 | 通过 | 不随行数增长 |
+| `WalStorage<MvccStorage<FileStorage>>` | 3.77 ms | **431.44 ms** | **114×** |
+
+回归测试 `crates/storage/tests/wal_scan_pk_forwarding_5168.rs` 中，
+`pk_lookup_cost_must_not_scale_with_table_size`（裸 FileStorage）**通过**，
+`wal_wrapped_pk_lookup_must_not_scan`（经 WalStorage）**失败** ——
+**同一段测量代码，只因多一层包装就失败**。
+
+#### 服务器端行为一致
+
+| 查询（20000 行表） | 延迟 |
 |---|---:|
-| 建表后插入 2 万行 | 9.53 ms |
-| 建表后插入 + `CREATE INDEX idx_k` | 9.43 ms |
-| 空表（无行） | 0.29 ms |
+| `WHERE id=1`（命中） | 9.109 ms |
+| `WHERE id=999999`（无匹配） | 9.187 ms |
 
-`CREATE INDEX` 无效：它建的是 `k` 的索引，而 `id` 的 PK 索引
-早在空表时已固化为空。
+不存在的键与存在的键代价相同 —— 全扫描无论命中与否都跑完；
+索引查找未命中应瞬间返回。
 
-#### §4.1 的对照为何指向相反方向
+#### 前两版错在哪
 
-§4.1 用的是 **sysbench sbtest1**，它有 `k` 上的二级索引，
-所以「多列谓词快」命中的是 **idx_k**，不是 PK 路径。
-在只有 PK 的普通表上，方向是反的：
+| 版本 | 说法 | 为什么不成立 |
+|---|---|---|
+| 初版 | `scan_with_index_in` 未命中索引路径 | 谓词确实命中（`engine_select.rs:1417`） |
+| 二版 | PK 索引失维护 | 索引**确实**被 flush 维护，测试证明有数据 |
 
-| 查询（20k 行，仅 PK） | 延迟 |
-|---|---:|
-| `WHERE id=1`（命中 scan_pk → 退回全扫描） | 8.89 ms |
-| `WHERE t.id=1`（限定名，不命中 PK 快速路径） | 17.35 ms |
-| `WHERE id=1 AND k=1` | 9.70 ms |
-| 非 `id` 命名的 PK（`p INTEGER PRIMARY KEY`） | 9.01 ms |
+二版错在：我只证明了「`insert_with_index` 只被测试调用」，
+就当成了「没有路径维护索引」—— 没去查 `update_pk_index_window`
+是否在 flush 路径上。
 
-**结论未变，理由变了**：主键点查仍是全扫描，成本随行数线性增长。
-初版用 sbtest1 的二级索引做对照，掩盖了真实机制。
+#### 修复方向
+
+给 `WalStorage` 与 `ParallelWalStorage` 补 `scan_pk` / `scan_pk_range`
+转发，与它们已有的 `scan_in` / `scan_in_db` 转发
+（`wal_storage.rs:548-552`）保持一致。
+
+#### 方法论
+
+连续两次「读代码 → 下结论」都错，第三次靠**能失败的测试**才定位成功。
+这个缺陷的表观现象（点查慢）与两个不同原因都相容，
+只有受控测量能区分。
 
 ### 4.5 影响量化
 
@@ -275,7 +298,7 @@ crates/storage/tests/file_storage_direct_v3_12.rs:371
 
 | # | 问题 | 预期收益 |
 |---|---|---|
-| 1 | **PK 索引失维护，`scan_pk` 静默退回全扫描（#5168）** | 点查代价不再随行数增长 |
+| 1 | **`WalStorage`/`ParallelWalStorage` 未转发 `scan_pk`（#5168）** | 点查 114× 加速 |
 | 2 | `engine.write()` 全局独占锁覆盖读语句 | 并发可扩展性 |
 | 3 | `FileStorage` 单 `RwLock<WriteState>` | 写并发可扩展性 |
 | 4 | `COUNT(*)`/范围扫描返回 0（#5167） | 正确性 |
@@ -283,9 +306,8 @@ crates/storage/tests/file_storage_direct_v3_12.rs:371
 **第 1 项是硬伤**：它让最常见的访问模式（按主键取一行）付出全表代价，
 且**与并发无关** —— 这解释了为什么加并发不涨吞吐。
 
-修复方向是让 INSERT 维护 PK B+Tree（`insert_with_index` 已存在，
-但生产代码从不调用），并让 `scan_pk` 的全扫描回退**可观测** ——
-静默降级正是这类问题难以发现的原因。
+修复方向是给两个包装层补 `scan_pk` 转发；并考虑让 trait 默认实现的
+全扫描回退**可观测** —— 静默降级正是这类问题难以发现的原因。
 
 ### 5.3 门禁影响
 
@@ -314,6 +336,14 @@ CREATE TABLE t(id INT PRIMARY KEY, k INT);
 -- 灌 N 行后测点查：N=100 / 1000 / 5000 / 20000
 SELECT id FROM t WHERE id=1;
 # 实测 0.38 / 0.78 / 2.50 / 9.02 ms —— 线性，确认每次点查扫全表
+
+# 判定是否走了索引：不存在的键应与存在的键同样快
+SELECT id FROM t WHERE id=999999;      -- 9.19ms，与命中键同代价 => 全扫描
+
+# 存储层回归测试（直接证明包装层问题）
+cargo test --release -p sqlrustgo-storage \
+  --test wal_scan_pk_forwarding_5168 -- --nocapture
+# wal_wrapped_pk_lookup_must_not_scan 失败（裸 FileStorage 的用例通过）
 
 # 确认不是网络/协议：同连接上不碰表的查询
 SELECT 1;                                -- 1.37 ms

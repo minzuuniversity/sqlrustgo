@@ -36,19 +36,25 @@
   `evidence/TLS_READ_SPIN_HANG_5099_2026-10-09.md`。
 
 - **#5168 主键点查退化为全表扫描（P0 性能）** —— 容量测试定位。
-  **PK 索引在 `CREATE TABLE` 时构建，此后 INSERT 路径不再维护**
-  （`rebuild_pk_indexes` 在空表上建好 B+Tree；维护索引的
-  `insert_with_index` **生产代码零调用，只有测试在用**），于是 `scan_pk`
-  的 B+Tree 查不到行，静默回退到全表扫描。
-  代价随行数线性增长（100 行 **0.38ms** → 20000 行 **9.02ms**）；
-  `CREATE INDEX` 无效（建的是 `k` 的索引，PK 索引早已固化为空）。
-  **服务器吞吐因此锁在 ~13~23 TPS / 250~370 QPS**，80 核只用 1.6 核，
-  且并发从 4 提到 64 吞吐不升反降（1 连接 136 QPS → 8 连接 17 QPS）。
+  **`WalStorage` / `ParallelWalStorage` 没有转发 `scan_pk`**，于是服务器
+  （存储链 `FileStorage -> MvccStorage -> ParallelWalStorage`）的主键点查
+  落到 trait 默认实现 `engine.rs:1055` 的**全表扫描**。覆写 `scan_pk` 的
+  只有 `BinaryStorage` / `FileStorage` / `MvccStorage`。
+  同一段测量在裸 `FileStorage` 上通过、经 `WalStorage` 即失败：
+  200 行 3.77ms → 20000 行 **431.44ms**（**114×**）。
+  服务器端印证：`WHERE id=1`（命中）9.109ms 与 `WHERE id=999999`
+  （无匹配）9.187ms 同代价 —— 全扫描无论命中与否都跑完。
+  **服务器吞吐因此锁在 ~13~23 TPS / 250~370 QPS**，80 核只用 1.6 核。
+  回归测试 `crates/storage/tests/wal_scan_pk_forwarding_5168.rs`。
   见 `evidence/SOAK_8H_AND_CAPACITY_2026-10-09.md` §4.4。
+
+  > 本条经两次更正：初版「谓词未命中索引路径」、二版「PK 索引失维护」
+  > 均不成立 —— 前者谓词确实命中，后者索引确实被 flush 维护。
+  > 两次都是「读代码下结论」的错误，第三次靠**能失败的测试**才定位成功。
 
 - **SOAK 8h 与性能上限分析（2026-10-09）** —— 8h SOAK 独立实例运行中，
   1h 段 0 FATAL / 0 errors / 0 reconnects，CPU 全程 ≤174%（空转会 >1000%）。
-  容量阶梯同时给出吞吐上限与四项瓶颈排序：PK 索引失维护（#5168）、
+  容量阶梯同时给出吞吐上限与四项瓶颈排序：`scan_pk` 未转发（#5168）、
   `engine.write()`
   全局独占锁（`lib.rs:5828`）、`FileStorage` 单 `RwLock<WriteState>`、
   `COUNT(*)` 返回 0（#5167）。见
