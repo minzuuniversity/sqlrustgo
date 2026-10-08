@@ -1,0 +1,33 @@
+# cargo-audit configuration — #5113
+#
+# #5113 requires the security Hard Gate to actually fail when it should:
+#
+#   "安全 Hard Gate 不含 || true 或 continue-on-error"
+#
+# `ci-pr.yml` ran `cargo audit || true`, so the gate could never fail — it
+# reported success while vulnerabilities were present. Removing `|| true`
+# alone is not enough: `cargo audit` currently reports one unpatched advisory,
+# and leaving the gate at its true exit code would make every build red until
+# that is resolved.
+#
+# So: every entry below is an EXPLICIT, REVIEWABLE acknowledgement of a known
+# unpatched advisory. Adding to this list is a decision someone has to make
+# deliberately, which is exactly the pressure `|| true` removed.
+
+[advisories]
+ignore = [
+    # RUSTSEC-2026-0258 — h2 "unbounded empty DATA frames".
+    #
+    # h2 0.3.27 is pulled in transitively by hyper 1.11, tonic 0.12 and
+    # reqwest 0.12; the fix lands in h2 0.4.x, a semver-major bump those
+    # crates have to make first. Not a direct dependency of this workspace,
+    # so it cannot be resolved from here.
+    #
+    # Tracked for removal: upgrading hyper/tonic/reqwest past their next
+    # release that moves to h2 0.4. Until then the gate is green WITH this
+    # entry — not green because the check was skipped.
+    #
+    # Re-check: `cargo audit` should report 0 vulnerabilities once
+    # RUSTSEC-2026-0258 disappears from the default output.
+    "RUSTSEC-2026-0258",
+]

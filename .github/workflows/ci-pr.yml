@@ -74,9 +74,10 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # #5113: no `continue-on-error` on a Hard Gate step — it made doc
+      # breakage invisible. Verified exit 0 on this tree before removing it.
       - name: Check docs build
         run: cargo doc --no-deps --all-features
-        continue-on-error: true
 
   # ----------------------------------------
   # Build job
@@ -217,8 +218,15 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # #5113: this job is a Hard Gate, so it must be able to fail. It
+      # previously ran `cargo audit || true`, which reported success while
+      # vulnerabilities were present — the gate could never go red.
+      #
+      # Known unpatched advisories are listed in `.cargo/audit.toml` rather
+      # than swallowed here: adding an entry there is a deliberate act, and
+      # the entry carries the reason and a re-check condition.
       - name: Run security audit
-        run: cargo audit || true
+        run: cargo audit
 
   # ----------------------------------------
   # Verification gate
@@ -284,7 +292,12 @@ jobs:
 
             echo "✅ Proof verified"
           else
-            echo "⚠️ verification_report.json not found, skipping"
+            # #5113: a missing report must not be a pass. The previous
+            # "⚠️ ... skipping" path let the gate go green with no evidence
+            # at all — the script's non-zero exit was swallowed above and
+            # the report's absence was treated as success.
+            echo "❌ verification_report.json not found — the Anti-Cheat gate has no evidence to judge"
+            exit 1
           fi
 
       - name: Prevent proof tampering
