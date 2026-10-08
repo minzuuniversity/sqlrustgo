@@ -3,7 +3,7 @@
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
   "captured_at_commit": "merged tree of develop/v4.1.0 + chore/omp-sync-ignore-registry-5111",
   "captured_at_date": "2026-10-08",
-  "total_allowed": 117,
+  "total_allowed": 116,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 80,
@@ -393,15 +393,6 @@
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
-    },
-    {
-      "file": "tests/dml_read_db_5106.rs",
-      "test": "multi_table_update_stays_in_the_statements_database",
-      "line_at_capture": 108,
-      "reason": "GAP: multi-table `UPDATE t1, t2 SET ...` is a no-op reporting affected_rows=1 on this baseline — a separate defect from database scoping (see tests/probe_mt_update.rs). Single-table UPDATE and multi-table DELETE both behave.",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added 2026-10-07 — drift from PR #5106 (tests/dml_read_db_5106.rs)"
     },
     {
       "file": "tests/dml_read_db_5106.rs",
@@ -1125,6 +1116,13 @@
       "resolved": "2026-10-07 — #5057 per-connection database scoping fixed; #[ignore] removed, test now runs green.",
       "prior_reason": "executor read the shared storage.current_db instead of the per-connection context",
       "evidence": "tests/session_db_isolation_5057.rs — 5 passed / 0 failed after the fix"
+    },
+    {
+      "file": "tests/dml_read_db_5106.rs",
+      "test": "multi_table_update_stays_in_the_statements_database",
+      "resolved": "2026-10-08 — #5120 fixed the multi-table UPDATE no-op (a bare column name in the SET list matched no table prefix, so affected_rows=1 with no row changed). #[ignore] removed; the test now runs green.",
+      "prior_reason": "GAP: multi-table `UPDATE t1, t2 SET ...` is a no-op reporting affected_rows=1 on this baseline — a separate defect from database scoping (see tests/probe_mt_update.rs). Single-table UPDATE and multi-table DELETE both behave.",
+      "evidence": "tests/dml_read_db_5106.rs — 1 passed; independent regression file tests/multi_table_update_5117.rs (7 cases)"
     }
   ]
 }
