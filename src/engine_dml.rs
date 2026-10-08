@@ -293,6 +293,17 @@ pub fn execute_insert<S: StorageEngine + 'static>(
 
     // Execute BEFORE INSERT triggers
     let mut trigger_executor = TriggerExecutor::new(engine.storage.clone());
+    // #5099: tell the trigger which transaction it belongs to, so its
+    // body decides "is there an outer tx?" from this connection's state
+    // rather than from shared storage state.
+    trigger_executor.set_outer_tx_id(
+        engine
+            .tx_session
+            .lock()
+            .current_tx_id
+            .map(|id| id.as_u64())
+            .unwrap_or(0),
+    );
     // V312-55F / Issue #4243: mirror the engine's current session user
     // and wire the catalog-backed privilege check hook so any DML inside
     // the trigger body is gated against the same identity as top-level
@@ -1164,6 +1175,17 @@ pub fn execute_update<S: StorageEngine + 'static>(
 
     // Execute BEFORE UPDATE triggers (if any)
     let mut trigger_executor = TriggerExecutor::new(engine.storage.clone());
+    // #5099: tell the trigger which transaction it belongs to, so its
+    // body decides "is there an outer tx?" from this connection's state
+    // rather than from shared storage state.
+    trigger_executor.set_outer_tx_id(
+        engine
+            .tx_session
+            .lock()
+            .current_tx_id
+            .map(|id| id.as_u64())
+            .unwrap_or(0),
+    );
     // V312-55F / Issue #4243: mirror the engine's current session user
     // and wire the catalog-backed privilege check hook so any DML inside
     // the trigger body is gated against the same identity as top-level
@@ -1428,6 +1450,17 @@ pub fn execute_delete<S: StorageEngine + 'static>(
 
     // Execute BEFORE DELETE triggers
     let mut trigger_executor = TriggerExecutor::new(engine.storage.clone());
+    // #5099: tell the trigger which transaction it belongs to, so its
+    // body decides "is there an outer tx?" from this connection's state
+    // rather than from shared storage state.
+    trigger_executor.set_outer_tx_id(
+        engine
+            .tx_session
+            .lock()
+            .current_tx_id
+            .map(|id| id.as_u64())
+            .unwrap_or(0),
+    );
     // V312-55F / Issue #4243: mirror the engine's current session user
     // and wire the catalog-backed privilege check hook so any DML inside
     // the trigger body is gated against the same identity as top-level

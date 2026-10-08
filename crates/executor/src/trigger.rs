@@ -103,6 +103,15 @@ pub struct TriggerExecutor {
     /// the host stack overflow on a self-referential or mutually-recursive
     /// trigger pair.
     recursion_depth: Arc<std::sync::atomic::AtomicUsize>,
+    /// #5099: the transaction the triggering statement belongs to.
+    ///
+    /// The trigger body must decide whether it participates in an outer
+    /// transaction or opens its own. It used to ask
+    /// `storage.in_transaction()`, which reads the shared `current_tx_id`
+    /// slot — so on a storage shared by every connection a PEER's open
+    /// transaction made this connection believe it had an outer tx, and
+    /// the trigger's DML then ran with no atomicity of its own.
+    outer_tx_id: u64,
     /// V312-55F / Issue #4243: current SQL session user identity. Mirrors
     /// `ExecutionEngine::current_user`. When the identity's username is
     /// `"root"`, the trigger body DML privilege check is short-circuited
@@ -236,10 +245,20 @@ impl TriggerExecutor {
         Self {
             storage,
             recursion_depth: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            outer_tx_id: 0,
             current_user: UserIdentity::new("root", "localhost"),
             auth_check: None,
             undo_recorder: None,
         }
+    }
+
+    /// #5099: declare the transaction the triggering statement belongs to.
+    ///
+    /// `0` means autocommit. Set by the engine, which knows this per
+    /// connection (`TxSession::current_tx_id`), before running trigger
+    /// bodies — never inferred from shared storage state.
+    pub fn set_outer_tx_id(&mut self, tx_id: u64) {
+        self.outer_tx_id = tx_id;
     }
 
     pub fn storage(&self) -> Arc<RwLock<dyn StorageEngine>> {
@@ -336,7 +355,13 @@ impl TriggerExecutor {
         F: FnOnce(&mut dyn StorageEngine) -> SqlResult<R>,
     {
         let mut storage = self.storage.write();
-        let in_outer_tx = storage.in_transaction();
+        // #5099: "is there an outer transaction?" is a question about
+        // THIS connection, answered by the engine when it wired
+        // `outer_tx_id`. Asking the storage (`in_transaction()`) answers a
+        // different question — "is ANY transaction open?" — and on shared
+        // storage a peer's transaction would suppress the trigger's own
+        // transaction, leaving its DML without atomicity.
+        let in_outer_tx = self.outer_tx_id != 0 && storage.is_transaction_active(self.outer_tx_id);
         if !in_outer_tx {
             storage.begin_transaction()?;
         }

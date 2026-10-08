@@ -5472,6 +5472,11 @@ impl StorageEngine for FileStorage {
         let tx_id = self
             .current_tx_id
             .load(std::sync::atomic::Ordering::Acquire);
+        self.commit_transaction_for(tx_id)
+    }
+
+    /// #5099: `commit_transaction` for an explicit transaction id.
+    fn commit_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
         if tx_id == 0 {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
@@ -5520,11 +5525,15 @@ impl StorageEngine for FileStorage {
     /// two different "unsupported" defaults (one silent `()`, one `Err`),
     /// both of which quietly disabled a transaction-isolation guarantee.
     fn commit_transaction_lockfree(&self) -> SqlResult<()> {
-        if self
+        let tx_id = self
             .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            == 0
-        {
+            .load(std::sync::atomic::Ordering::Acquire);
+        self.commit_transaction_lockfree_for(tx_id)
+    }
+
+    /// #5099: `commit_transaction_lockfree` for an explicit transaction id.
+    fn commit_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
+        if tx_id == 0 {
             // COMMIT outside a tx is a silent no-op (MySQL/SQLite semantics).
             return Ok(());
         }
@@ -5535,9 +5544,6 @@ impl StorageEngine for FileStorage {
         // log is shared by every connection, so a blanket `clear()` also
         // discarded a still-open peer's pending undo and its later
         // ROLLBACK then found nothing to undo.
-        let tx_id = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire);
         Self::with_write_lock(self, |s| s.tx_undo_log.retain(|e| e.tx_id != tx_id));
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
@@ -5552,6 +5558,11 @@ impl StorageEngine for FileStorage {
         let tx_id = self
             .current_tx_id
             .load(std::sync::atomic::Ordering::Acquire);
+        self.rollback_transaction_lockfree_for(tx_id)
+    }
+
+    /// #5099: `rollback_transaction_lockfree` for an explicit transaction id.
+    fn rollback_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
         if tx_id == 0 {
             return Ok(());
         }
@@ -5577,6 +5588,11 @@ impl StorageEngine for FileStorage {
         let rolling_back_tx = self
             .current_tx_id
             .load(std::sync::atomic::Ordering::Acquire);
+        self.rollback_transaction_for(rolling_back_tx)
+    }
+
+    /// #5099: `rollback_transaction` for an explicit transaction id.
+    fn rollback_transaction_for(&mut self, rolling_back_tx: u64) -> SqlResult<()> {
         if rolling_back_tx == 0 {
             // ROLLBACK outside a tx is a warning in MySQL but a no-op in
             // SQLite. Match SQLite to keep behavior consistent.
