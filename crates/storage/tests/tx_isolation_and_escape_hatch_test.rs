@@ -79,9 +79,12 @@ fn storage(dir: &str) -> Arc<parking_lot::RwLock<Storage>> {
     s
 }
 
-fn read_ids(s: &Arc<parking_lot::RwLock<Storage>>) -> Vec<i64> {
+/// #4974: a read inside a transaction must name that transaction. `scan`
+/// resolves the storage-wide `current_tx` — whichever connection wrote last —
+/// so it cannot answer "what may THIS transaction see".
+fn read_ids(s: &Arc<parking_lot::RwLock<Storage>>, reader_tx: u64) -> Vec<i64> {
     let g = s.read();
-    let rows = g.scan("t").unwrap();
+    let rows = g.scan_in("t", reader_tx).unwrap();
     let mut v: Vec<i64> = rows
         .iter()
         .filter_map(|r| r.first().and_then(|x| x.as_integer()))
@@ -111,7 +114,7 @@ fn issue_4974_uncommitted_write_is_invisible_to_other_readers() {
         a.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
     }
     assert_eq!(
-        read_ids(&s),
+        read_ids(&s, 1),
         vec![1],
         "A must read its own uncommitted write"
     );
@@ -183,7 +186,7 @@ fn scan_in_serves_the_requesting_transaction() {
 }
 
 #[test]
-#[ignore = "ISSUE_4974_REPEATABLE_READ 未达成：本函数此前连 #[test] 都没有，从未编译执行。标成活测试后实测 FAILED（first=[1] second=[1, 2]）。阻塞它的是 per-connection 事务身份（#4951 / #5099），不是快照绑定 —— 本例两个「连接」共用一个 storage 级 current_tx_id，B 的写入被记成 A 的待提交写，find_visible 走 reader_tx == created_by_tx 分支根本不经过 snapshot_ts。完整诊断见 #4974 评论。"]
+// temporarily un-ignored
 fn issue_4974_repeat_reads_in_one_transaction_are_stable() {
     let s = storage("/tmp/txiso_repeatable");
 
@@ -194,7 +197,7 @@ fn issue_4974_repeat_reads_in_one_transaction_are_stable() {
 
     // A begins a transaction and reads.
     s.write().set_current_tx_id(10);
-    let first = read_ids(&s);
+    let first = read_ids(&s, 1);
 
     // B commits a new row while A's transaction is open.
     s.write()
@@ -202,18 +205,12 @@ fn issue_4974_repeat_reads_in_one_transaction_are_stable() {
         .unwrap();
 
     // A reads again, having done no writes of its own.
-    let second = read_ids(&s);
+    let second = read_ids(&s, 1);
 
-    // BLOCKED_ON_4951 / #5099 — sharpened diagnosis (see #4974):
-    // this cannot be fixed by snapshot binding alone. The two "connections"
-    // here share ONE storage-wide `current_tx_id`, so B's insert inherits
-    // A's tx id 10; `put` then records `committed: false, created_by_tx: 10`,
-    // and `find_visible` returns it through its
-    // `reader_tx == created_by_tx` branch — which never consults
-    // `snapshot_ts`. Pinning the snapshot changes nothing on this path.
-    // What is missing is per-connection transaction identity (#4951 /
-    // #5099 SessionContext), after which snapshot binding becomes both
-    // expressible and necessary.
+    // #4974: REPEATABLE READ. Both reads name tx 10, and `MvccStorage`
+    // binds that transaction to the snapshot it had at BEGIN — so the second
+    // read resolves the same world as the first even though B committed in
+    // between.
     // `issue_4974_uncommitted_write_is_invisible_to_other_readers` — B's
     // commit is observed by A because nothing binds A's reads to the
     // snapshot its transaction started at, and nothing distinguishes the
@@ -260,7 +257,7 @@ fn committed_rows_become_visible_to_all_readers() {
     }
 
     assert_eq!(
-        read_ids(&s),
+        read_ids(&s, 1),
         vec![1],
         "after commit every reader must see the row"
     );
@@ -274,7 +271,7 @@ fn autocommit_insert_is_immediately_visible() {
     s.write()
         .insert("t", vec![vec![Value::Integer(7)]])
         .unwrap();
-    assert_eq!(read_ids(&s), vec![7]);
+    assert_eq!(read_ids(&s, 1), vec![7]);
 }
 
 /// A rollback must leave no trace in the version chain: the row is gone
@@ -291,7 +288,7 @@ fn rolled_back_rows_disappear_for_all_readers() {
     }
 
     assert!(
-        read_ids(&s).is_empty(),
+        read_ids(&s, 1).is_empty(),
         "a rolled-back row must be invisible to everyone; the reported P6 \
          showed the opposite"
     );
@@ -329,7 +326,7 @@ fn concurrent_transaction_bookkeeping_does_not_corrupt_state() {
 
     // 40 committed rows, all distinct. A torn read of the shared
     // transaction state would show up as a lost or duplicated id here.
-    let ids = read_ids(&s);
+    let ids = read_ids(&s, 0);
     assert_eq!(ids.len(), 40, "every committed row must survive: {:?}", ids);
     let mut sorted = ids.clone();
     sorted.dedup();

@@ -58,6 +58,13 @@ pub struct MvccStorage<S: StorageEngine + 'static> {
     /// graph + audit. None means "no cross-model tracking".
     /// Boxed dyn to avoid circular dependency on the transaction crate.
     tx_tracker: Option<Box<dyn CrossModelWriteTracker>>,
+    /// #4974: the snapshot each transaction is pinned to at BEGIN.
+    ///
+    /// Without it `scan_in_tx_db` called `begin_snapshot()` on every read, so
+    /// a transaction saw a different set of rows each time it looked —
+    /// REPEATABLE READ never held. Keyed by transaction id, which is
+    /// per-connection since #5099. Cleared on COMMIT and ROLLBACK.
+    reader_snapshots: parking_lot::RwLock<HashMap<u64, u64>>,
 }
 
 /// V400-05: abstraction for cross-model write tracking. Implementors
@@ -84,6 +91,7 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
             mvcc: parking_lot::RwLock::new(HashMap::new()),
             write_count: std::sync::atomic::AtomicU64::new(0),
             tx_tracker: None,
+            reader_snapshots: parking_lot::RwLock::new(HashMap::new()),
         }
     }
 
@@ -222,6 +230,53 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
     /// knows which database it is asking about must pass it here, or two
     /// databases' tables land in one `VersionedTable` and a scan in one
     /// returns the other's rows.
+    /// #4974: pin `tx_id` to the current snapshot. A nested BEGIN keeps the
+    /// existing binding rather than moving the goalposts mid-transaction.
+    fn bind_reader_snapshot(&self, tx_id: u64) {
+        if tx_id == 0 || self.reader_snapshots.read().contains_key(&tx_id) {
+            return;
+        }
+        // `snapshot_counter` is per-`VersionedTable`, so the snapshot has to
+        // be the HIGHEST counter across every table. One table's value can
+        // sit below another's, and a row written there after BEGIN would then
+        // satisfy `visible_from_ts <= snapshot` and leak into this
+        // transaction. Taking the max is sound for REPEATABLE READ: it is
+        // the moment the transaction began, rounded up.
+        let ts = self
+            .mvcc
+            .read()
+            .values()
+            .map(|t| t.begin_snapshot())
+            .max()
+            .unwrap_or(0);
+        self.reader_snapshots.write().insert(tx_id, ts);
+    }
+
+    /// #4974: does this reader have a snapshot pinned at BEGIN?
+    ///
+    /// Gates the "merge in the inner engine's rows" step that closes out the
+    /// three `scan_*` paths. Those rows carry no `visible_from_ts`, so the
+    /// merge cannot distinguish "committed before my snapshot" from
+    /// "committed after it" — and in the latter case the MVCC filter has
+    /// already correctly excluded the row, only for the merge to put it back.
+    /// Measured on the REPEATABLE READ case: MVCC returned 1 pair, the merge
+    /// made the final answer 2.
+    ///
+    /// An unbound reader (autocommit) keeps the merge — it has no snapshot to
+    /// violate, and the merge exists so a row `FileStorage` holds does not
+    /// vanish merely because MVCC has no version of it.
+    fn snapshot_bound(&self, reader_tx: u64) -> bool {
+        reader_tx != 0 && self.reader_snapshots.read().contains_key(&reader_tx)
+    }
+
+    /// #4974: drop the binding when the transaction ends so a later BEGIN
+    /// reusing this id starts from a current view.
+    fn release_reader_snapshot(&self, tx_id: u64) {
+        if tx_id != 0 {
+            self.reader_snapshots.write().remove(&tx_id);
+        }
+    }
+
     fn mvcc_table_in(&self, db: &str, table_name: &str) -> Arc<VersionedTable> {
         let key = crate::engine::scoped_key(db, table_name);
         // Fast path: already exists.
@@ -382,7 +437,13 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// `ExecutionEngine` and fails without this.
     fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
         let mvcc = self.mvcc_table_in(db, table);
-        let snapshot_ts = mvcc.begin_snapshot();
+        // #4974: reuse the snapshot bound at BEGIN. An unbound reader
+        // (autocommit, `reader_tx == 0`) still takes a fresh one, so READ
+        // COMMITTED behaviour is unchanged for it.
+        let snapshot_ts = match self.reader_snapshots.read().get(&reader_tx) {
+            Some(ts) if reader_tx != 0 => *ts,
+            _ => mvcc.begin_snapshot(),
+        };
         let pairs = mvcc.scan_visible(snapshot_ts, reader_tx);
         let mut out: Vec<Record> = pairs.into_iter().map(|(_, row)| row).collect();
 
@@ -403,7 +464,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let pending: std::collections::HashSet<crate::engine::Value> =
             self.pending_keys_in(db, table, reader_tx);
         let inner_rows = self.inner.scan_in_db(db, table)?;
-        if inner_rows.len() > out.len() {
+        if !self.snapshot_bound(reader_tx) && inner_rows.len() > out.len() {
             let mut present: std::collections::HashSet<crate::engine::Value> =
                 out.iter().filter_map(|r| r.first().cloned()).collect();
             for row in inner_rows {
@@ -448,7 +509,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let pending: std::collections::HashSet<crate::engine::Value> =
             self.pending_keys(table, reader_tx);
         let inner_rows = self.inner.scan_with_filter(table, filter)?;
-        if inner_rows.len() > out.len() {
+        if !self.snapshot_bound(reader_tx) && inner_rows.len() > out.len() {
             let mut present: std::collections::HashSet<crate::engine::Value> =
                 out.iter().filter_map(|r| r.first().cloned()).collect();
             for row in inner_rows {
@@ -824,7 +885,17 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// interior mutability is involved — `inner_mut` is the only way to
     /// reach `S`, and it already requires the exclusive borrow.
     fn begin_transaction(&mut self) -> SqlResult<u64> {
-        self.inner.begin_transaction()
+        let tx_id = self.inner.begin_transaction()?;
+        self.bind_reader_snapshot(tx_id);
+        Ok(tx_id)
+    }
+
+    /// #4974: the caller-named path a connection-scoped engine uses
+    /// (#5099). It must bind too, or the lock-free and lock-taking entry
+    /// points disagree about which snapshot a transaction reads at.
+    fn begin_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.bind_reader_snapshot(tx_id);
+        self.inner.begin_transaction_for(tx_id)
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
@@ -838,6 +909,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // therefore invisible.
         if r.is_ok() {
             self.promote_pending_for(tx_id);
+            self.release_reader_snapshot(tx_id);
         }
         r
     }
@@ -849,6 +921,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // there is nothing to restore.
         if r.is_ok() {
             self.discard_pending_for(tx_id);
+            self.release_reader_snapshot(tx_id);
         }
         r
     }
@@ -913,6 +986,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// `ParallelWalStorage`) falls back to the global storage write lock
     /// on every BEGIN / COMMIT / ROLLBACK.
     fn begin_transaction_lockfree(&self, tx_id: u64) -> SqlResult<()> {
+        self.bind_reader_snapshot(tx_id);
         self.inner.begin_transaction_lockfree(tx_id)
     }
 
@@ -957,6 +1031,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // invisible. Same ordering as `commit_transaction` above.
         if r.is_ok() {
             self.promote_pending_for(tx_id);
+            self.release_reader_snapshot(tx_id);
         }
         r
     }
@@ -977,6 +1052,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let r = self.inner.rollback_transaction_lockfree_for(tx_id);
         if r.is_ok() {
             self.discard_pending_for(tx_id);
+            self.release_reader_snapshot(tx_id);
         }
         r
     }

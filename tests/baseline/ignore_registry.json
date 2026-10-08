@@ -3,7 +3,7 @@
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
   "captured_at_commit": "merged tree of develop/v4.1.0 @ fbb80e4744 + #4708 block comments (PR #5146)",
   "captured_at_date": "2026-10-08",
-  "total_allowed": 116,
+  "total_allowed": 115,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 80,
@@ -1076,15 +1076,6 @@
       "reason": "runs 1h demo; nightly-only via scripts/gate/run_ga_soak.sh",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
-      "status_rationale": "reason names unimplemented behaviour or a known open bug"
-    },
-    {
-      "file": "crates/storage/tests/tx_isolation_and_escape_hatch_test.rs",
-      "test": "issue_4974_repeat_reads_in_one_transaction_are_stable",
-      "line_at_capture": 187,
-      "reason": "ISSUE_4974_REPEATABLE_READ 未达成：标成活测试后实测 FAILED（first=[1] second=[1, 2]）。阻塞它的是 per-connection 事务身份（#4951 / #5099），不是快照绑定 —— 两个「连接」共用一个 storage 级 current_tx_id，B 的写入被记成 A 的待提交写。",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
     }
   ],
