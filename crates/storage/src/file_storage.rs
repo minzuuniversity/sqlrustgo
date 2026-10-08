@@ -6373,8 +6373,9 @@ impl StorageEngine for FileStorage {
     }
 
     fn has_view(&self, name: &str) -> bool {
+        // #5140: keyed by scoped name — see `create_view`.
         let views = self.views.read().unwrap();
-        views.contains_key(name)
+        views.contains_key(&self.tbl(name))
     }
 
     fn create_view(&mut self, info: ViewInfo) -> SqlResult<()> {
@@ -6382,25 +6383,36 @@ impl StorageEngine for FileStorage {
         // write-ahead, then mutate in-memory) — mirrors `create_trigger`.
         self.save_view(&info)
             .map_err(|e| SqlError::ExecutionError(format!("save view: {}", e)))?;
+        // #5140: a view is a per-database object, so the registry is keyed by
+        // the scoped name — the same treatment #5025 gave base tables. With a
+        // bare key, `CREATE VIEW v` in d2 failed with "already exists" after
+        // d1 had one.
+        let key = self.tbl(&info.name);
         let mut views = self.views.write().unwrap();
-        if views.contains_key(&info.name) {
+        if views.contains_key(&key) {
             return Err(SqlError::ExecutionError(format!(
                 "View '{}' already exists",
                 info.name
             )));
         }
-        views.insert(info.name.clone(), info);
+        views.insert(key, info);
         Ok(())
     }
 
     fn get_view(&self, name: &str) -> Option<ViewInfo> {
         let views = self.views.read().unwrap();
-        views.get(name).cloned()
+        views.get(&self.tbl(name)).cloned()
     }
 
     fn list_views(&self) -> Vec<String> {
+        // #5140: keys carry the database, but callers expect the bare view
+        // name back — mirrors `list_indexes`.
+        let prefix = format!("{}\0", self.current_db_name());
         let views = self.views.read().unwrap();
-        let mut names: Vec<String> = views.keys().cloned().collect();
+        let mut names: Vec<String> = views
+            .keys()
+            .filter_map(|k| k.strip_prefix(&prefix).map(|s| s.to_string()))
+            .collect();
         names.sort();
         names
     }
@@ -6411,8 +6423,10 @@ impl StorageEngine for FileStorage {
         // has. Best-effort disk removal (missing file is OK).
         self.remove_view_file(name)
             .map_err(|e| SqlError::ExecutionError(format!("remove view: {}", e)))?;
+        // #5140: keyed by scoped name — dropping d2's `v` must not remove
+        // d1's.
         let mut views = self.views.write().unwrap();
-        views.remove(name);
+        views.remove(&self.tbl(name));
         Ok(())
     }
 

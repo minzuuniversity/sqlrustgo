@@ -1838,3 +1838,7 @@ path = "tests/ctas_db_isolation_5057.rs"
 [[test]]
 name = "database_fn_dml_5141"
 path = "tests/database_fn_dml_5141.rs"
+
+[[test]]
+name = "view_db_isolation_5140"
+path = "tests/view_db_isolation_5140.rs"

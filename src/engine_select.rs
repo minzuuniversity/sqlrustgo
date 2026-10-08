@@ -428,7 +428,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .split_once('|')
             .map(|(t, _)| t)
             .unwrap_or(&select.table);
-        let view = self.views.read().get(bare)?.clone();
+        let view = self
+            .views
+            .read()
+            .get(&crate::execution_engine::view_registry_key(
+                &self.session_db(),
+                bare,
+            ))
+            .cloned()?;
         let Statement::Select(inner) = view.query.as_ref() else {
             return None;
         };

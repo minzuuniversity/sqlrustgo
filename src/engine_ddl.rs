@@ -508,7 +508,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         where_clause: Option<&Expression>,
     ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        let views: Vec<String> = self.views.read().keys().cloned().collect();
+        // #5140: views are keyed by database now, so pick out only the ones
+        // this listing is about. The prefix match also yields the bare view
+        // name that `SHOW TABLES` prints.
+        let views_for = |db: &str| -> Vec<String> {
+            let prefix = format!("{db}\0");
+            self.views
+                .read()
+                .keys()
+                .filter_map(|k| k.strip_prefix(&prefix).map(|s| s.to_string()))
+                .collect()
+        };
         // Issue #4567: list views alongside base tables (MySQL semantics —
         // SHOW TABLES includes views; only SHOW FULL TABLES distinguishes
         // them via Table_type). Pre-#4567 views were acked by CREATE VIEW
@@ -526,17 +536,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let mut names = match db {
             None => {
                 let mut n = storage.list_tables();
-                n.extend(views.iter().cloned());
+                n.extend(views_for(&self.session_db()));
                 n
             }
             Some(d) => {
                 let mut n = storage.list_tables_in_db(d);
-                if d.eq_ignore_ascii_case(&storage.current_db()) {
-                    n.extend(views.iter().cloned());
-                }
+                n.extend(views_for(d));
                 n
             }
         };
+        // Which database this listing is about — the one the tables came
+        // from, or the session's when no `FROM <db>` was given. The view
+        // lookup has to match it, or `SHOW TABLES FROM other_db` labels
+        // this session's views as BASE TABLE.
+        let listed_db = db
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| self.session_db());
+        let listed_views = views_for(&listed_db);
         let mut rows = Vec::new();
         for name in &names {
             if let Some(pat) = like {
@@ -545,7 +561,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 }
             }
             if let Some(expr) = where_clause {
-                let table_type = if views.iter().any(|v| v == name) {
+                let table_type = if listed_views.iter().any(|v| v == name) {
                     "VIEW"
                 } else {
                     "BASE TABLE"
@@ -617,7 +633,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         where_clause: Option<&Expression>,
     ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        let views: Vec<String> = self.views.read().keys().cloned().collect();
+        // #5140: views are keyed by database now, so pick out only the ones
+        // this listing is about. The prefix match also yields the bare view
+        // name that `SHOW TABLES` prints.
+        let views_for = |db: &str| -> Vec<String> {
+            let prefix = format!("{db}\0");
+            self.views
+                .read()
+                .keys()
+                .filter_map(|k| k.strip_prefix(&prefix).map(|s| s.to_string()))
+                .collect()
+        };
         // #5025: same dropped-`db` defect as `execute_show_tables_with_filter`.
         if let Some(d) = db {
             drop(storage);
@@ -627,19 +653,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let mut names = match db {
             None => {
                 let mut n = storage.list_tables();
-                n.extend(views.iter().cloned());
+                n.extend(views_for(&self.session_db()));
                 n
             }
             Some(d) => {
                 let mut n = storage.list_tables_in_db(d);
-                if d.eq_ignore_ascii_case(&storage.current_db()) {
-                    n.extend(views.iter().cloned());
-                }
+                n.extend(views_for(d));
                 n
             }
         };
+        let listed_db = db
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| self.session_db());
+        let listed_views = views_for(&listed_db);
         let table_type = |name: &str| {
-            if views.iter().any(|v| v == name) {
+            if listed_views.iter().any(|v| v == name) {
                 "VIEW"
             } else {
                 "BASE TABLE"
