@@ -903,3 +903,72 @@ fn call_body_statements_run_in_order() {
         "Sequential SET semantics: @a=1, @b=@a+1=2, RETURN 2"
     );
 }
+
+// ============================================================================
+// #5103: SELECT without FROM in a procedure body
+// ============================================================================
+//
+// `execute_statement_storage` carried a comment saying it handled
+// "SELECT without FROM (e.g., SELECT 1, SELECT 'hello', SELECT NULL)" while
+// its body returned `vec![]`. A no-FROM SELECT is a one-row constant query, so
+// the rows were stashed as an empty `__last_select_result`; `execute_call`
+// then returned 0 rows and its success-status row became unreachable for the
+// whole class of procedures ending in such a SELECT.
+//
+// These tests pin the corrected behavior without loosening either of the two
+// pre-existing tests that previously appeared to conflict:
+//   - test_stored_proc::call_body_raw_sql_runs_through_dispatcher (`SELECT 1` → 1 row)
+//   - issue_4513::drop_procedure_removes_registration (`SELECT * FROM empty` → 0 rows)
+
+mod test_5103_select_without_from {
+    use super::*;
+
+    fn call_with_raw_sql(sql: &str) -> Vec<Vec<Value>> {
+        let proc = StoredProcedure::new(
+            "p_no_from".to_string(),
+            vec![],
+            vec![StoredProcStatement::RawSql(sql.to_string())],
+        );
+        let executor = create_executor_with_proc(proc);
+        executor
+            .execute_call("p_no_from", vec![])
+            .expect("CALL should succeed")
+            .rows
+    }
+
+    #[test]
+    fn select_integer_literal_yields_one_row() {
+        let rows = call_with_raw_sql("SELECT 1");
+        assert_eq!(rows.len(), 1, "SELECT 1 is a one-row query: {:?}", rows);
+        assert_eq!(rows[0][0], Value::Integer(1));
+    }
+
+    #[test]
+    fn select_string_literal_yields_one_row() {
+        let rows = call_with_raw_sql("SELECT 'hello'");
+        assert_eq!(rows.len(), 1, "SELECT 'hello' is a one-row query: {:?}", rows);
+        assert_eq!(rows[0][0], Value::Text("hello".to_string()));
+    }
+
+    #[test]
+    fn select_null_yields_one_null_row() {
+        let rows = call_with_raw_sql("SELECT NULL");
+        assert_eq!(rows.len(), 1, "SELECT NULL is a one-row query: {:?}", rows);
+        assert_eq!(rows[0][0], Value::Null);
+    }
+
+    #[test]
+    fn select_multiple_literals_yield_one_row_of_multiple_cells() {
+        let rows = call_with_raw_sql("SELECT 1, 'a'");
+        assert_eq!(rows.len(), 1, "one row, not two: {:?}", rows);
+        assert_eq!(rows[0].len(), 2);
+        assert_eq!(rows[0][0], Value::Integer(1));
+        assert_eq!(rows[0][1], Value::Text("a".to_string()));
+    }
+
+    // NOTE: `SELECT 1 WHERE 1 = 0` is deliberately NOT covered here. The
+    // parser rejects a WHERE clause without a FROM clause ("Expected
+    // expression"), so the constant row can never be filtered by WHERE today
+    // and a test would pin a parse error rather than the row-construction
+    // behavior under repair. That parser limitation is a separate gap.
+}
