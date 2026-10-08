@@ -90,20 +90,42 @@ fn count_id(storage: &Arc<RwLock<FileStorage>>, target: i64) -> i64 {
         .count() as i64
 }
 
-/// The headline regression: two connections delete the SAME row; one
-/// commits, the other rolls back. The row must survive — a rolled-back
-/// DELETE must never erase a concurrently committed one.
+/// A committed DELETE by one connection must not be undone by a peer's
+/// ROLLBACK, and a rolled-back DELETE must be restored.
+///
+/// **The two transactions touch DIFFERENT rows on purpose.** An earlier
+/// version of this test had both connections delete the same `id=42` and
+/// asserted the row must survive. That oracle was wrong: when A commits a
+/// delete of 42 and B rolls back a delete of the same 42, "row 42 present"
+/// and "A's committed delete is permanent" are mutually exclusive. MySQL
+/// resolves that with row locks — one transaction blocks — and does NOT
+/// guarantee resurrection. Asserting resurrection therefore pinned a
+/// behaviour the engine never promised, and the test could not distinguish
+/// a real defect from correct behaviour.
+///
+/// With distinct keys the expected end state is unambiguous:
+///   A: DELETE 42, COMMIT   -> 42 absent
+///   B: DELETE 43, ROLLBACK -> 43 restored
+///
+/// Same-key concurrency is a different property (lock conflict / blocking /
+/// first-committer-wins) and belongs in its own test, not here.
+///
+/// Baseline before the #5099 fix: 30/30 trials wrong, and BOTH halves fail
+/// independently — a committed DELETE was undone 21/30 times, and a
+/// rolled-back DELETE was not restored 9/30 times. Neither property holds
+/// today; neither is an artifact of a wrong oracle.
 ///
 /// Both handles share ONE `FileStorage`, exactly as the server passes
 /// `storage.clone()` to every connection handler.
 #[test]
-fn committed_delete_survives_peer_rollback() {
+fn committed_delete_is_not_undone_by_peer_rollback() {
     const TRIALS: usize = 30;
-    let target = 42i64;
-    let mut lost = 0usize;
+    let committed_target = 42i64;
+    let rolled_back_target = 43i64;
+    let mut wrong = 0usize;
 
     for _ in 0..TRIALS {
-        // Fresh table per trial: one corrupted trial must not mask another.
+        // Fresh table per trial: one corrupted trial cannot mask another.
         let (_dir, storage) = seeded_storage(50);
         let barrier = Arc::new(Barrier::new(2));
 
@@ -116,7 +138,7 @@ fn committed_delete_survives_peer_rollback() {
             a_storage.write().begin_transaction().ok();
             a_storage
                 .write()
-                .delete("t", &[Value::Integer(target)])
+                .delete("t", &[Value::Integer(committed_target)])
                 .ok();
             a_barrier.wait();
             thread::sleep(std::time::Duration::from_millis(20));
@@ -126,7 +148,7 @@ fn committed_delete_survives_peer_rollback() {
             b_storage.write().begin_transaction().ok();
             b_storage
                 .write()
-                .delete("t", &[Value::Integer(target)])
+                .delete("t", &[Value::Integer(rolled_back_target)])
                 .ok();
             b_barrier.wait();
             thread::sleep(std::time::Duration::from_millis(20));
@@ -136,15 +158,19 @@ fn committed_delete_survives_peer_rollback() {
         committer.join().expect("committer thread");
         roller.join().expect("roller thread");
 
-        if count_id(&storage, target) == 0 {
-            lost += 1;
+        // The committed delete stands...
+        let committed_still_gone = count_id(&storage, committed_target) == 0;
+        // ...and the rolled-back delete is undone.
+        let rolled_back_restored = count_id(&storage, rolled_back_target) == 1;
+        if !committed_still_gone || !rolled_back_restored {
+            wrong += 1;
         }
     }
 
     assert_eq!(
-        lost, 0,
-        "rolled-back DELETE erased a concurrently committed one in {lost}/{TRIALS} trials \
-         — a rollback must never remove a row a peer transaction committed"
+        wrong, 0,
+        "{wrong}/{TRIALS} trials had a wrong end state: a committed DELETE was undone \
+         by a peer's ROLLBACK, or a rolled-back DELETE was not restored"
     );
 }
 
