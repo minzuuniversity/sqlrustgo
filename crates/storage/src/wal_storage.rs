@@ -564,6 +564,25 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner().scan_with_filter_in(table, filter, reader_tx)
     }
 
+    /// #5168: forward `scan_pk` instead of leaving the trait default in
+    /// place. The default is a full table scan plus a linear find
+    /// (`engine.rs`), and `FileStorage` below us has a working PK B+Tree —
+    /// so every primary-key point lookup through this wrapper paid O(N)
+    /// instead of O(log N).
+    ///
+    /// The server stores through exactly this chain
+    /// (`FileStorage -> MvccStorage -> WalStorage`), which is why the cost
+    /// was observable end to end and not just in a unit test.
+    fn scan_pk(&self, table: &str, pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
+        self.inner().scan_pk(table, pk_column, pk)
+    }
+
+    /// #5168: same forwarding obligation for the range variant, whose
+    /// default is also a full scan plus a filter.
+    fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
+        self.inner().scan_pk_range(table, low, high)
+    }
+
     fn flush(&mut self) -> SqlResult<()> {
         self.inner_mut().flush()
     }

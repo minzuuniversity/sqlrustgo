@@ -4,7 +4,9 @@
 //!
 //! Key insight: WAL writes must be serial (ordering), but table flushes can be parallel.
 
-use crate::engine::{ColumnDefinition, Record, SqlError, SqlResult, StorageEngine, TableInfo};
+use crate::engine::{
+    ColumnDefinition, Record, SqlError, SqlResult, StorageEngine, TableInfo, Value,
+};
 use crate::wal::{GroupCommitCoordinator, WalEntry, WalEntryType, WalManager};
 use crate::wal_storage::WalSyncMode;
 use std::any::Any;
@@ -148,6 +150,20 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         reader_tx: u64,
     ) -> SqlResult<Vec<Record>> {
         self.inner.scan_with_filter_in(table, filter, reader_tx)
+    }
+
+    /// #5168: forward `scan_pk`. This is the OUTERMOST type in the
+    /// server's storage chain (`FileStorage -> MvccStorage ->
+    /// ParallelWalStorage`), so with the trait default here the indexed
+    /// PK lookup never reached `FileStorage`'s B+Tree at all — every
+    /// point lookup became a full table scan.
+    fn scan_pk(&self, table: &str, pk_column: &str, pk: &Value) -> SqlResult<Option<Record>> {
+        self.inner.scan_pk(table, pk_column, pk)
+    }
+
+    /// #5168: same for the range variant.
+    fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
+        self.inner.scan_pk_range(table, low, high)
     }
 
     fn delete(&mut self, table: &str, filters: &[crate::engine::Value]) -> SqlResult<usize> {
