@@ -143,7 +143,6 @@ fn issue_4974_uncommitted_write_is_invisible_to_other_readers() {
 ///
 /// Reproduces the reported R1/R2 sequence. Connection A only ever
 /// reads; connection B commits in between.
-#[test]
 /// #4983: `scan_in` is the mechanism that lets a read know which
 /// connection it is serving. Asserted directly, independent of whether
 /// every engine call site has been migrated to it yet.
@@ -183,6 +182,8 @@ fn scan_in_serves_the_requesting_transaction() {
     );
 }
 
+#[test]
+#[ignore = "ISSUE_4974_REPEATABLE_READ 未达成：本函数此前连 #[test] 都没有，从未编译执行。标成活测试后实测 FAILED（first=[1] second=[1, 2]）——只读事务观察到了并发提交。begin_snapshot() 每次调用都读全局计数器，事务未绑定其起始快照。此前本文件的「8 passed」有一项是 scan_in_serves_the_requesting_transaction 重复执行（146 行脱节的 #[test]），重复读断言从未参与。追踪见 #4974。"]
 fn issue_4974_repeat_reads_in_one_transaction_are_stable() {
     let s = storage("/tmp/txiso_repeatable");
 
