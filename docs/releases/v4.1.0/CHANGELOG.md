@@ -6,6 +6,15 @@
 
 ## [Unreleased] — DRAFT phase
 
+### P0 修复 — 2026-10-08
+
+- **#5099 并发事务静默丢行**（PR #5132）—— 事务身份此前通过共享的
+  `current_tx_id` 槽位**隐式传递**，而该槽位位于所有连接共享的单个
+  `FileStorage` 上，导致并发事务互相提交/回滚。实测 8000 并发事务丢失
+  **323 行（40.4%）**，且每次 `ROLLBACK` 都返回成功、无任何错误信号。
+  修复后 **0 丢行、0 个 `ERROR 1062`，5/5 轮均为 0**。
+  详见 `evidence/CONCURRENT_TX_ROLLBACK_DATA_LOSS_5099_2026-10-08.md`。
+
 ### Phase 0 (DRAFT doc scaffolding) — 2026-09-29
 
 - `STAGE.yaml` — initial DRAFT entry

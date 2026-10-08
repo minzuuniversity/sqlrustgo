@@ -1,0 +1,171 @@
+# #5099 — 并发事务静默丢行：根因、修复与实测
+
+- **Issue**: #5099（重构 P0：事务上下文从实例级状态改为 per-connection）
+- **Date**: 2026-10-08
+- **Base**: `develop/v4.1.0` = `9083e82a10`
+- **PR**: #5132（merged as `b06be91934`）
+- **Severity**: P0 — 静默数据丢失，无任何错误信号
+
+---
+
+## 1. 症状
+
+1h SOAK（`SOAK_WORKLOAD=oltp_read_write`）在 **60 秒**内中断：
+
+```
+[22:47:54] prepare 完成（10000 rows ✓）
+[22:48:00] FATAL: mysql_drv_query() returned error 1062 (Duplicate entry '5024' for key 'PRIMARY')
+```
+
+进一步实测：8000 并发事务下 **200 行的表只剩约 91 行**（55%），而**每一次
+`ROLLBACK` 都返回成功**。
+
+## 2. 根因：身份被「推断」而非「传递」
+
+> **tx_id 是唯一的，但事务控制接口仍然通过共享的 `current_tx_id` 槽位携带它。**
+
+该槽位位于**所有连接共享的单个 `FileStorage`** 上。因此任何问「我是哪个事务」
+的调用，答案都是**最后写入的那个连接**。
+
+### 2.1 唯一 id 本来就存在
+
+`crates/transaction/src/transaction_manager.rs:73,125`：
+
+```rust
+static NEXT_TX_ID: AtomicU64 = AtomicU64::new(1);
+let tx_id = TxId::new(NEXT_TX_ID.fetch_add(1, Ordering::Relaxed));
+```
+
+进程级全局分配，**全局唯一**。引擎也确实把它传到了存储层
+（`begin_transaction_lockfree(tx_id)`、`set_current_tx_id(id)`）。
+
+丢失发生在**回读**：事务控制方法不接受 id 参数，而是回头去读那个共享槽位。
+
+### 2.2 那条撑起整个失效的错误注释
+
+`ExecutionEngine::commit_transaction` 原本写着：
+
+```rust
+// Re-assert our tx id via the shared setter: no writer can
+// interleave under this read guard, so the lockfree promote's
+// capture inside sees OUR id rather than a stomped slot.
+```
+
+**这是错的。** `parking_lot::RwLock` 允许多个并发读者 —— 对端连接可以在那次
+重断言与 `commit_transaction_lockfree` 回读之间覆盖那个原子槽。
+
+**重断言只缩小了窗口，并没有关闭它。** 代码看起来是安全的，行为却不是。
+
+### 2.3 三个受影响的判断点
+
+| 位置 | 问题 |
+|---|---|
+| `MvccStorage::commit_transaction_lockfree` | `promote_pending_for(tx_id)` 的 id 来自回读共享槽 → 提交了错误的连接的行 |
+| `commit_transaction_lockfree` / `rollback_transaction_lockfree`（全部后端） | 无 tx_id 参数，内部读共享槽 |
+| `crates/executor/src/trigger.rs` | 用 `in_transaction()` 判断「是否有外层事务」，而它问的是「是否有**任何**事务打开」 |
+
+第三条的独立后果：对端开着事务时，本连接会误以为有外层事务、跳过自己的事务，
+导致**触发器 DML 失去原子性**。
+
+## 3. 修复
+
+### 存储 trait（`crates/storage/src/engine.rs`）
+
+新增显式 id 接口，全部默认回落旧行为，**任何后端与测试都不被破坏**：
+
+```
+commit_transaction_for(tx_id)              rollback_transaction_for(tx_id)
+commit_transaction_lockfree_for(tx_id)     rollback_transaction_lockfree_for(tx_id)
+is_transaction_active(tx_id)
+```
+
+### 后端
+
+`WalStorage` / `MvccStorage` / `FileStorage` 改为**接收 id 参数**，不再回读共享槽。
+
+### 引擎（`src/execution_engine_methods.rs`）
+
+5 处事务控制调用点全部传 `TxSession.current_tx_id` —— 这是引擎本就拥有的
+每连接状态。
+
+### Trigger（`crates/executor/src/trigger.rs` + `src/engine_dml.rs`）
+
+`TriggerExecutor` 新增 `outer_tx_id`，由引擎在 3 个 DML 入口设置，
+并改用 `is_transaction_active(outer_tx_id)` 判断。
+
+### 未动的字段
+
+`dirty_tables` 保持存储全局 —— 它跟踪「哪些表待 flush」，本就是存储全局事实。
+把它搬进 per-connection 是错的。
+
+## 4. 实测
+
+真实服务器二进制（`sqlrustgo-mysql-server`），pymysql 客户端走完整链路
+`handle_connection → do_command_loop → ExecutionEngine → WalStorage →
+MvccStorage → FileStorage`。
+
+负载：8 线程 x 200 次 `BEGIN; DELETE id=N; INSERT id=N`，共 5 轮 8000 事务
+（即 sysbench `oltp_read_write` / `execute_delete_inserts` 的确切形态）。
+
+| | ERROR 1062 | 丢失行数 | 每轮丢失率 |
+|---|---:|---:|---|
+| **修复前** | 28 | **323 (40.4%)** | 0.5% ~ 54% 波动 |
+| **修复后** | **0** | **0** | **5/5 轮均为 0** |
+
+逐轮明细（修复前）：
+
+| 轮次 | 1062 | 行数变化 | 丢失率 |
+|---|---:|---|---:|
+| rep0 | 4 | 200 → 182 | 9.0% |
+| rep1 | 13 | 200 → 199 | 0.5% |
+| rep2 | 4 | 200 → 110 | 45.0% |
+| rep3 | 2 | 200 → 92 | 54.0% |
+| rep4 | 5 | 200 → 94 | 53.0% |
+
+### 方法论：单轮不作数
+
+丢行率逐轮在 **0.5% ~ 54%** 间波动 —— 单次测量完全可能落在 rep1 那样接近正常的
+一轮。**验收必须多轮统计，且每轮都要为 0。** 修复后 5/5 轮均为 0。
+
+这正是本次排查中一次教训的来源：undo 分桶的首轮实现曾「2 passed」，
+连跑 5 次却失败 4 次 —— 单次绿色不是证据。
+
+## 5. 现有套件
+
+```
+sqlrustgo-storage                       895 passed; 0 failed
+blk2_walstorage_no_escape_hatch_test      5 passed
+blk2_shared_tx_path_test                  4 passed
+integration_savepoint_test                9 passed
+mvcc_transaction_test                    27 passed
+server_thread_model_guard_test            4 passed
+```
+
+两个 BLK-2 门禁的源码文本断言仍然成立：`{*commit,rollback}_transaction_lockfree`
+保持 `&self` 签名（该签名是为规避一次真实死锁而存在，见 `engine.rs:1726-1741`
+记录的「8 并发读写下整个服务器锁死」），并继续调用 `set_current_tx_id_shared`。
+
+## 6. 已知遗留
+
+`tests/integration/transaction/concurrent_rollback_isolation_test.rs` **仍失败**。
+
+它直接驱动 `FileStorage`，因此从不经过承载 id 的引擎与 trigger 接线 ——
+修的是它没走的那条路。该测试的 oracle 已在 PR #5125 修正：原断言让 A、B 都删除
+同一个 `id=42` 并要求该行存活，这在逻辑上不可满足（A 提交删除 42、B 回滚删除同一
+42 时，「42 存在」与「A 的提交是永久的」互斥；MySQL 靠行锁解决，不保证复活）。
+
+修正后改用不同 key 的无歧义场景，在**未修复**代码上仍 **30/30 失败**，
+且两半各自独立失败（已提交 DELETE 被撤销 21/30、已回滚 DELETE 未恢复 9/30）——
+证明它测的是真实缺陷而非不可能的期望。
+
+后续项：让该测试复现引擎的调用序列（`set_current_tx_id` + 显式 id 的
+commit/rollback），使其真正覆盖本次修复的路径。
+
+## 7. 关联
+
+- Issue #5099 —— 本 issue
+- PR #5125 —— 修正回滚隔离测试的 oracle
+- PR #5107 —— lockfree undo 按事务作用域（#5098 的遗漏）
+- PR #5104 —— 线程模型守卫测试
+- `docs/plans/2026-10-07-soak-blocker-report.md` —— 排查记录
+- `docs/plans/2026-10-08-issue-5099-tx-context-refactor-design.md` —— 设计（修订版）
