@@ -40,21 +40,31 @@
 //!    drift.
 //!
 //! ---------------------------------------------------------------------
-//! STATUS: 4 of these 5 tests FAIL on develop/v4.1.0 and are `#[ignore]`d.
+//! STATUS: all 5 tests are live and passing on `develop/v4.1.0`
+//! (`31d6a330a1b`); 0 ignored.
 //! ---------------------------------------------------------------------
 //!
-//! They are the acceptance criteria for the next #5057 batch, not a
-//! regression in the current tree. Run them with:
+//! They were the acceptance criteria for the #5057 batch and were all
+//! `#[ignore]`d when first written. They became live when the read paths
+//! were wired to `ExecutionEngine::session_db` — PR #5106 (`fb264d7c40`
+//! lineage: `scan_for_reader_in_db`), PR #5109, and PR #5118 (the last
+//! 14 un-parameterised read paths). The `#[ignore]` attributes came off
+//! as each batch landed; this status block was simply never updated, and
+//! it now says the opposite of the truth.
 //!
-//!     cargo test --all-features --test session_db_isolation_5057 -- --ignored
+//! Measured on `develop/v4.1.0` (`31d6a330a1b`):
 //!
-//! Measured on `develop/v4.1.0` (496531a00fe6): the four ignored tests fail
-//! with `connection A (in d1) read the wrong database: left [2], right [1]`.
-//! The fifth passes because the storage mirror does work — it is the
-//! mirror being *consulted* that is the defect, which is why it stays live.
+//!     cargo test --all-features --test session_db_isolation_5057
+//!       -> 5 passed; 0 failed; 0 ignored
 //!
-//! Do not "fix" them by loosening what they assert. The failure output is
-//! the specification. See `SESSION_DB_READPATH_5057_2026-10-07.md`.
+//! Historical baseline for comparison: on `496531a00fe6` the four
+//! non-control tests failed with `connection A (in d1) read the wrong
+//! database: left [2], right [1]`. The fifth (the control) passed then
+//! and passes now — the storage mirror does work; it is the mirror being
+//! *consulted* that was the defect.
+//!
+//! Do not "fix" a failure here by loosening what it asserts. The failure
+//! output is the specification. See `SESSION_DB_READPATH_5057_2026-10-07.md`.
 
 use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
