@@ -3068,7 +3068,6 @@ impl StorageEngine for MemoryStorage {
     /// `table_key` — the info lookup, the AUTO_INCREMENT scan, the
     /// transaction log, and the post-commit snapshot. Resolving it once
     /// here is what keeps a concurrent `USE` from redirecting the write.
-
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         let key = self.tbl(table);
         self.delete_in_key(table, key, filters)
@@ -3131,7 +3130,6 @@ impl StorageEngine for MemoryStorage {
     }
 
     /// #5057: `update` with the storage key already resolved.
-
     fn update_if(
         &mut self,
         table: &str,

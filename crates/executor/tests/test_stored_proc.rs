@@ -946,7 +946,12 @@ mod test_5103_select_without_from {
     #[test]
     fn select_string_literal_yields_one_row() {
         let rows = call_with_raw_sql("SELECT 'hello'");
-        assert_eq!(rows.len(), 1, "SELECT 'hello' is a one-row query: {:?}", rows);
+        assert_eq!(
+            rows.len(),
+            1,
+            "SELECT 'hello' is a one-row query: {:?}",
+            rows
+        );
         assert_eq!(rows[0][0], Value::Text("hello".to_string()));
     }
 

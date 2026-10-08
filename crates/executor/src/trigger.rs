@@ -529,8 +529,7 @@ impl TriggerExecutor {
             //   orders: 1 row   audit: 1 row  audit[0][1] = NULL (not "sku-A")
             // The row-count assertions passed, which is why this hid behind
             // the weaker "audit.len() == 1" check.
-            let expanded =
-                self.expand_row_variables(&stmt, &trigger.table_name, old_row, new_row);
+            let expanded = self.expand_row_variables(&stmt, &trigger.table_name, old_row, new_row);
             self.execute_trigger_sql_mut(&expanded, table, old_row, &mut result)?;
         }
 

@@ -1,68 +1,28 @@
-use crate::engine_utils::{
-    build_aggregate_schema, build_combined_schema, build_multi_table_combined_schema,
-    cartesian_product, eval_predicate, evaluate_where_clause, find_column_index, sql_compare,
-    validate_foreign_keys,
-};
 use crate::execution_engine::{explain_select_plan, parse_session_value};
-use crate::execution_engine::{ExecutionEngine, ExecutionStats, TableStatistics, TxStatus};
-use crate::expr_utils::{
-    compare_values, evaluate_binary_op, evaluate_expr_to_string, evaluate_expression,
-    evaluate_expression_with_subq, expression_to_string, expression_to_value,
-    expression_to_value_from_string, resolve_subqueries_in_expr,
-};
+use crate::execution_engine::{ExecutionEngine, TableStatistics, TxStatus};
+use crate::expr_utils::expression_to_value_from_string;
 use crate::{parse, SqlError, SqlResult, Value};
-use parking_lot::RwLock;
-use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcParam, StoredProcStatement};
-use sqlrustgo_catalog::{
-    auth::UserIdentity, AuthErrorCode, Catalog, ObjectRef, Privilege, StoredProcedure,
-};
-use sqlrustgo_executor::ast_adapter::AstAdapter;
+use sqlrustgo_catalog::stored_proc::{ParamMode, StoredProcStatement};
+use sqlrustgo_catalog::{ObjectRef, Privilege, StoredProcedure};
 use sqlrustgo_executor::expr as expr_mod;
 use sqlrustgo_executor::stored_proc::StoredProcExecutor;
-use sqlrustgo_executor::trigger::{
-    TriggerEvent as ExecTriggerEvent, TriggerExecutor, TriggerTiming as ExecTriggerTiming,
-};
 use sqlrustgo_executor::ExecutorResult;
-use sqlrustgo_optimizer::rules::{BinaryOperator, Expr};
-use sqlrustgo_optimizer::stats::{
-    build_histogram_from_values, ColumnStats as OptColumnStats, Histogram,
-};
-use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
-use sqlrustgo_optimizer::unified_plan::UnifiedPlan;
 use sqlrustgo_parser::parser::{
-    AggregateCall, AggregateFunction, AlterSequenceStatement, AlterTableOperation,
-    AlterTableStatement, AlterUserStatement, CallStatement, CompressionAlgorithm,
-    CreateDatabaseStatement, CreateFunctionStatement, CreateGraphStatement, CreateIndexStatement,
-    CreateProcedureStatement, CreateRoleStatement, CreateSequenceStatement, CreateTableStatement,
-    CreateTriggerStatement, CreateUserStatement, CreateVectorIndexStatement, CreateViewStatement,
-    DescribeStatement, DropDatabaseStatement, DropFunctionStatement, DropGraphStatement,
-    DropIndexStatement, DropProcedureStatement, DropRoleStatement, DropSequenceStatement,
-    DropTableStatement, DropTriggerStatement, DropUserStatement, DropViewStatement,
-    ExceptStatement, GrantRoleStatement, GrantStatement, InsertStatement, IntersectStatement,
-    MergeStatement, ObjectType as ParserObjectType, OrderByExpression,
-    Privilege as ParserPrivilege, RevokeRoleStatement, RevokeStatement, SelectStatement,
-    SetRoleStatement, ShowStatement, StorageEngineSpec, StoredProcParam as ParserStoredProcParam,
-    StoredProcParamMode as ParserParamMode, StoredProcStatement as ParserStatement,
-    TruncateStatement, UnionStatement, VectorIndexAlgorithm,
+    CallStatement, CreateDatabaseStatement, CreateFunctionStatement, CreateGraphStatement,
+    CreateIndexStatement, CreateProcedureStatement, CreateTriggerStatement,
+    CreateVectorIndexStatement, CreateViewStatement, DropDatabaseStatement, DropFunctionStatement,
+    DropGraphStatement, DropIndexStatement, DropProcedureStatement, DropSequenceStatement,
+    DropTableStatement, DropTriggerStatement, DropViewStatement, ExceptStatement, InsertStatement,
+    IntersectStatement, MergeStatement, StoredProcParamMode as ParserParamMode,
+    StoredProcStatement as ParserStatement, TruncateStatement, UnionStatement,
+    VectorIndexAlgorithm,
 };
 use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
-use sqlrustgo_parser::JoinType;
 use sqlrustgo_parser::{
-    DeleteStatement, Expression, SavepointOp, Statement, TransactionStatement, UpdateStatement,
+    DeleteStatement, SavepointOp, Statement, TransactionStatement, UpdateStatement,
 };
-use sqlrustgo_storage::checkpoint::{CheckpointManager, CheckpointMetadata};
-use sqlrustgo_storage::{
-    adaptive_hash_index::AdaptiveHashIndex,
-    clustered_table::ClusteredTable,
-    engine::CheckConstraint,
-    recovery_engine::{RecoveryEngine, RecoveryEngineImpl},
-    wal::{FileBackedWalManager, MemoryWalManager},
-    ColumnDefinition, FileStorage, MemoryStorage, StorageEngine, TableInfo, WalStorage,
-};
-use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager, TxId};
-use sqlrustgo_types::Value as SqlValue;
-use std::collections::HashMap;
-use std::path::PathBuf;
+use sqlrustgo_storage::StorageEngine;
+use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TxId};
 use std::sync::Arc;
 
 // === extracted impl ExecutionEngine<S> block (line 546-2329 of original) ===
@@ -129,37 +89,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .unwrap_or(0)
     }
 
-    /// #4983 / #4951: read the table on behalf of this connection.
-    ///
-    /// The single place read statements should obtain rows, so that the
-    /// `reader_tx` argument cannot be forgotten at a call site — the
-    /// failure mode would be a silently short read rather than a
-    /// compile error.
-    pub(crate) fn scan_for_reader(
-        &self,
-        table: &str,
-    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
-        let reader_tx = self.reader_tx();
-        self.storage_read().scan_in(table, reader_tx)
-    }
-
-    /// #4983: same as [`scan_for_reader`](Self::scan_for_reader) but for
-    /// call sites that already hold a read guard.
-    ///
-    /// `parking_lot::RwLock` is not reentrant, and `storage_read()` falls
-    /// back to a blocking `read()` when `try_read()` fails — which it
-    /// always does when the calling thread already holds the lock. A
-    /// variant taking the guard is therefore required: calling
-    /// `scan_for_reader` from inside such a scope deadlocks.
-    pub(crate) fn scan_for_reader_with(
-        &self,
-        storage: &S,
-        table: &str,
-    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
-        let reader_tx = self.reader_tx();
-        storage.scan_in(table, reader_tx)
-    }
-
     /// #5057: `scan_for_reader_with` against a stated database.
     ///
     /// The table name alone is not enough: `scan_in` resolves it through the
@@ -181,19 +110,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage.scan_in_tx_db(db, table, reader_tx)
     }
 
-    /// #4983: [`scan_for_reader_with`](Self::scan_for_reader_with) for
-    /// callers holding a `&dyn StorageEngine` rather than the concrete
-    /// `&S`. `scan_in` is a trait method, so it dispatches through the
-    /// object just as well.
-    pub(crate) fn scan_for_reader_dyn(
-        &self,
-        storage: &dyn sqlrustgo_storage::engine::StorageEngine,
-        table: &str,
-    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
-        let reader_tx = self.reader_tx();
-        storage.scan_in(table, reader_tx)
-    }
-
     /// #5113: [`scan_for_reader_dyn`](Self::scan_for_reader_dyn) against a
     /// stated database.
     ///
@@ -210,17 +126,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
         let reader_tx = self.reader_tx();
         storage.scan_in_tx_db(db, table, reader_tx)
-    }
-
-    /// #4983: predicate variant of [`scan_for_reader_with`](Self::scan_for_reader_with).
-    pub(crate) fn scan_for_reader_filtered_with(
-        &self,
-        storage: &S,
-        table: &str,
-        filter: &dyn Fn(&sqlrustgo_storage::engine::Record) -> bool,
-    ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
-        let reader_tx = self.reader_tx();
-        storage.scan_with_filter_in(table, filter, reader_tx)
     }
 
     /// #4983: predicate variant of [`scan_for_reader`](Self::scan_for_reader).
@@ -1254,7 +1159,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             &ObjectRef::database(&proc_object_name),
         )?;
 
-        let procedure = catalog
+        let _procedure = catalog
             .get_stored_procedure(&call.procedure_name)
             .ok_or_else(|| {
                 SqlError::ExecutionError(format!(
