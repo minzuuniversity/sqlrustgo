@@ -161,6 +161,18 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// view into its defining subquery (view resolution) and lets
     /// SHOW TABLES / SHOW FULL TABLES list the view by name.
     /// #4910 Phase 3: see [`stmt_cache`](Self::stmt_cache).
+    /// #5140: the key is `"{db}\0{view}"`, not the bare view name.
+    ///
+    /// `CREATE VIEW` writes here *and* to storage, but storage keys its own
+    /// view registry by `scoped_key(db, name)` (#5025) while this map used
+    /// the bare name. The two drifted: a view created in `d1` showed up in
+    /// `d2`'s `SHOW TABLES`, and `CREATE VIEW shared` in `d2` was rejected
+    /// with "already exists" while `d2` had no such view. A view's defining
+    /// query also resolved its tables against the *current* database, so
+    /// selecting it from `d2` failed with "Table not found" on `d1`'s table.
+    ///
+    /// The NUL separator cannot occur in a database or view name, so the
+    /// concatenation is unambiguous.
     pub(crate) views: parking_lot::RwLock<HashMap<String, CreateViewStatement>>,
     /// V311-01 F-23: in-memory registry of `ClusteredTable` instances for
     /// tables opted into clustered primary key storage via
@@ -1141,6 +1153,14 @@ pub(crate) fn substitute_current_database_in_select(
 ///
 /// Rewriting here rather than in each executor means a new statement type
 /// inherits the behaviour instead of silently regressing to the fallback.
+/// #5140: build the in-memory view-registry key for a database.
+///
+/// Paired with the `views` field doc: storage keys views by scoped name while
+/// this map is per-engine, so both need the database spelled out.
+pub(crate) fn view_registry_key(db: &str, view: &str) -> String {
+    format!("{db}\0{view}")
+}
+
 pub(crate) fn substitute_current_database_in_statement(
     stmt: &sqlrustgo_parser::Statement,
     db: &str,
