@@ -134,25 +134,29 @@ fn committed_delete_is_not_undone_by_peer_rollback() {
         let a_barrier = Arc::clone(&barrier);
         let b_barrier = Arc::clone(&barrier);
 
+        // Each connection names its own transaction. `begin_transaction()`
+        // reads the single `current_tx_id` slot, so two concurrent BEGINs
+        // collide: the second sees a non-zero slot and returns the first's
+        // id, making both threads semantically the same transaction.
         let committer = thread::spawn(move || {
-            a_storage.write().begin_transaction().ok();
+            a_storage.write().begin_transaction_for(1).ok();
             a_storage
                 .write()
                 .delete("t", &[Value::Integer(committed_target)])
                 .ok();
             a_barrier.wait();
             thread::sleep(std::time::Duration::from_millis(20));
-            a_storage.write().commit_transaction().ok();
+            a_storage.write().commit_transaction_for(1).ok();
         });
         let roller = thread::spawn(move || {
-            b_storage.write().begin_transaction().ok();
+            b_storage.write().begin_transaction_for(2).ok();
             b_storage
                 .write()
                 .delete("t", &[Value::Integer(rolled_back_target)])
                 .ok();
             b_barrier.wait();
             thread::sleep(std::time::Duration::from_millis(20));
-            b_storage.write().rollback_transaction().ok();
+            b_storage.write().rollback_transaction_for(2).ok();
         });
 
         committer.join().expect("committer thread");
@@ -197,14 +201,18 @@ fn concurrent_delete_insert_txns_lose_no_rows() {
             let mut dup_errors = 0usize;
             for n in 0..ITERS {
                 let id = ((tid * 7 + n) as i64) % ROWS + 1;
-                s.write().begin_transaction().ok();
+                // A distinct id per transaction: every worker shares one
+                // storage, and `begin_transaction()` would hand them all the
+                // same id from the single `current_tx_id` slot.
+                let tx = (tid * ITERS + n) as u64 + 1;
+                s.write().begin_transaction_for(tx).ok();
                 s.write().delete("t", &[Value::Integer(id)]).ok();
                 let res = s
                     .write()
                     .insert("t", vec![vec![Value::Integer(id), Value::Integer(id)]]);
                 match res {
                     Ok(_) => {
-                        s.write().commit_transaction().ok();
+                        s.write().commit_transaction_for(tx).ok();
                     }
                     Err(e) => {
                         // Every insert follows its own delete of the same PK,
@@ -212,7 +220,7 @@ fn concurrent_delete_insert_txns_lose_no_rows() {
                         if format!("{e:?}").contains("1062") {
                             dup_errors += 1;
                         }
-                        s.write().rollback_transaction().ok();
+                        s.write().rollback_transaction_for(tx).ok();
                     }
                 }
             }
