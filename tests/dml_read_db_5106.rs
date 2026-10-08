@@ -171,14 +171,34 @@ fn multi_table_delete_stays_in_the_statements_database() {
 /// `scan_in_tx_db`; a change that threads `db` through by dropping
 /// `reader_tx` satisfies every scoping test above and fails this one.
 ///
-/// `#[ignore]`d for now: on `MvccStorage` a multi-table DELETE does not
-/// become visible to another connection even after COMMIT, which is a
-/// separate defect from the one fixed here (see the file footer). The
-/// `reader_tx` half of the change is already covered by
-/// `mvcc_reader_tx_5105.rs`; this test is kept so the multi-table
-/// statement is covered once that is fixed.
+/// `#[ignore]`d — and the reason has since been re-verified and
+/// re-attributed (#5156).
+///
+/// **Effect (confirmed):** on `MvccStorage` a multi-table DELETE does not
+/// become visible to either connection even after COMMIT.
+///
+/// ```
+/// inside tx,  writer : t1=0  t2=0     <- sees its own delete
+/// inside tx,  peer   : t1=1  t2=1     <- correctly isolated
+/// after COMMIT writer: t1=1  t2=1     <- reverted
+/// after COMMIT peer  : t1=1  t2=1     <- reverted
+/// ```
+///
+/// **Attribution (was wrong):** this is not a multi-table visibility
+/// defect, nor is it about `reader_tx`. It is #5156 — a committed DELETE
+/// reverts whenever the database holds a second table, and a multi-table
+/// DELETE *necessarily* holds two tables in one database, so it always
+/// meets the trigger. Single-table DELETE in the same database reverts
+/// identically (see `mvcc_same_db_second_table_delete_5106.rs`).
+///
+/// The same sequence is correct on plain `FileStorage`, and correct at the
+/// storage layer in every arrangement, so this is an engine-layer defect.
+///
+/// This test is kept because it covers the multi-table statement shape,
+/// which #5156's own test does not; it should start passing when #5156 is
+/// fixed, with no edit here.
 #[test]
-#[ignore = "multi-table DELETE is not visible through MvccStorage even after COMMIT"]
+#[ignore = "#5156 — a committed DELETE reverts when the database holds a second table; multi-table DELETE always meets that trigger. Replaces the earlier (correct-in-effect, wrong-in-attribution) reason."]
 fn uncommitted_multi_table_delete_stays_invisible() {
     let (mut a, mut b, dir) = two_connections();
     seed(&mut a);
