@@ -144,9 +144,9 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // Get table info first (need it for triggers and FK validation)
     let table_info = {
         let storage = engine.storage.read();
-        match storage.get_table_info_in(&stmt_db, &table_name) {
-            Ok(info) => info.clone(),
-            Err(e) => return Err(e),
+        {
+            let info = storage.get_table_info_in(&stmt_db, &table_name)?;
+            info.clone()
         }
     };
 
@@ -531,7 +531,12 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         // MAX(id) and the insert that follows it are one atomic step
         // with respect to other writers.
         if let Some(col_idx) = auto_increment_col {
-            let mut next_auto_id: i64 = 1;
+            // Declared without an initial value: every read below happens
+            // after `next_auto_id = existing` (line 545) assigns it. Giving it
+            // `1` made clippy's `unused_assignments` fire — the literal was
+            // never read, so the "empty table keeps 1" behaviour came from
+            // that dead initialiser rather than from a live path.
+            let mut next_auto_id: i64;
             // An empty table scans to zero rows, which leaves the
             // default of 1 in place — same as the previous behaviour.
             // BLK-1 must scan the GLOBAL current state (no reader_tx):
@@ -583,7 +588,9 @@ pub fn execute_insert<S: StorageEngine + 'static>(
 
         // Rows actually handed to storage by this statement, used below to
         // extend the cached primary-key index with exactly those keys.
-        let mut stored_rows: Vec<Vec<Value>> = Vec::new();
+        // Same as `next_auto_id` above: assigned in every branch before any
+        // read, so the `Vec::new()` initialiser was dead.
+        let mut stored_rows: Vec<Vec<Value>>;
         if needs_pk_scan {
             let mut odku_handled_indices: std::collections::HashSet<usize> =
                 std::collections::HashSet::new();
@@ -810,7 +817,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
         for record in &processed_records {
             record_insert_undo(
-                &mut *engine.transaction_manager.lock(),
+                &mut engine.transaction_manager.lock(),
                 undo_tx,
                 &table_name,
                 &table_info,
@@ -1109,7 +1116,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
         if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
             for (prior_row, new_row) in prior_rows_for_undo.iter().zip(new_rows_for_undo.iter()) {
                 record_update_undo(
-                    &mut *engine.transaction_manager.lock(),
+                    &mut engine.transaction_manager.lock(),
                     undo_tx,
                     &table_name,
                     &table_info,
@@ -1291,7 +1298,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
         for (prior_row, new_row) in rows_to_update.iter().zip(trigger_modified_rows.iter()) {
             record_update_undo(
-                &mut *engine.transaction_manager.lock(),
+                &mut engine.transaction_manager.lock(),
                 undo_tx,
                 &table_name,
                 &table_info,
@@ -1404,7 +1411,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
             for prior_row in &prior_rows_for_undo {
                 record_delete_undo(
-                    &mut *engine.transaction_manager.lock(),
+                    &mut engine.transaction_manager.lock(),
                     undo_tx,
                     &table_name,
                     &table_info,
@@ -1589,7 +1596,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     if let Some(undo_tx) = engine.tx_session.lock().current_tx_id {
         for prior_row in &rows_to_delete {
             record_delete_undo(
-                &mut *engine.transaction_manager.lock(),
+                &mut engine.transaction_manager.lock(),
                 undo_tx,
                 &table_name,
                 &table_info,
@@ -1788,7 +1795,7 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
         for (t, tref) in table_refs.iter().enumerate() {
             let table_prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
             let cols_start = col_offsets[t];
-            let cols_end = cols_start + per_table_info[t].columns.len();
+            let _cols_end = cols_start + per_table_info[t].columns.len();
             for (i, col_def) in per_table_info[t].columns.iter().enumerate() {
                 let full_name = format!("{}.{}", table_prefix, col_def.name);
                 // A SET entry targets this column when it names it exactly,
@@ -1823,7 +1830,7 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
             let table_prefix = tref.alias.clone().unwrap_or_else(|| tref.name.clone());
             let table_has_update = resolved_set.iter().any(|(col, _)| {
                 match col.split_once('.') {
-                    Some((prefix, _)) => prefix == &table_prefix,
+                    Some((prefix, _)) => prefix == table_prefix,
                     // Unqualified: applies to all tables.
                     None => true,
                 }

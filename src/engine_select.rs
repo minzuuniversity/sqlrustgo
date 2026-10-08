@@ -3952,6 +3952,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// ignored. Tables must be reachable from the comma-join list
     /// the WHERE isn't in that list, the chain can't be built
     /// here and we return None.
+    // #5113: 8 parameters trips `clippy::too_many_arguments`. Refactoring
+    // the join planner's parameter set is its own change; this lint is
+    // pre-existing on develop and not introduced by the gate work. Allowed
+    // with a reason rather than silenced globally, so the cost stays visible.
+    #[allow(clippy::too_many_arguments)]
     fn try_comma_join_hash_chain(
         &self,
         select: &SelectStatement,
@@ -4667,6 +4672,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// `storage.scan` and before the hash-join build to reduce
     /// intermediate row counts (Sprint 5 v15+ predicate
     /// pushdown, see `extract_single_table_predicates`).
+    // #5113: 8 parameters trips `clippy::too_many_arguments`. Refactoring
+    // the join planner's parameter set is its own change; this lint is
+    // pre-existing on develop and not introduced by the gate work. Allowed
+    // with a reason rather than silenced globally, so the cost stays visible.
+    #[allow(clippy::too_many_arguments)]
     fn execute_single_join(
         &self,
         left_rows: &[Vec<Value>],
@@ -5692,18 +5702,6 @@ fn lookup_qualified_column(info: &TableInfo, qualifier: &str, col_name: &str) ->
     info.columns
         .iter()
         .position(|c| c.name == needle || c.name.ends_with(&suffix))
-}
-
-/// Byte offset `n` snapped down to a char boundary.
-fn floor_char_boundary(s: &str, n: usize) -> usize {
-    if n >= s.len() {
-        return s.len();
-    }
-    let mut i = n;
-    while i > 0 && !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
 }
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {

@@ -88,8 +88,18 @@ fn wait_ready(port: u16) {
     while Instant::now() < deadline {
         let ok = Command::new("mysql")
             .args([
-                "-h", "127.0.0.1", "-P", &port.to_string(), "-u", "tester", "-ptester",
-                "--protocol=TCP", "--batch", "--skip-column-names", "-e", "SELECT 1",
+                "-h",
+                "127.0.0.1",
+                "-P",
+                &port.to_string(),
+                "-u",
+                "tester",
+                "-ptester",
+                "--protocol=TCP",
+                "--batch",
+                "--skip-column-names",
+                "-e",
+                "SELECT 1",
             ])
             .output();
         if let Ok(o) = ok {
@@ -140,12 +150,7 @@ fn connection_transaction_state_survives_whole_session() {
     script.push_str("COMMIT;\nSELECT COUNT(*) FROM guard_t;\n");
 
     let out = run_script(handle.port, &script);
-    let count = out
-        .lines()
-        .last()
-        .unwrap_or("")
-        .trim()
-        .to_string();
+    let count = out.lines().last().unwrap_or("").trim().to_string();
     assert_eq!(
         count, "20",
         "expected 20 committed rows from the originating connection, got {out:?} — \
@@ -176,8 +181,8 @@ fn workers_are_reused_across_connections() {
     let n_workers = 2usize;
     let n_conns = 12usize;
     let tmp = tempfile::TempDir::new().expect("TempDir");
-    let handle = start_ephemeral(cfg_with_table(n_workers, &tmp, "guard_r"))
-        .expect("start_ephemeral");
+    let handle =
+        start_ephemeral(cfg_with_table(n_workers, &tmp, "guard_r")).expect("start_ephemeral");
     wait_ready(handle.port);
 
     for i in 0..n_conns {
@@ -226,7 +231,10 @@ fn aborted_transaction_does_not_leak_into_next_connection() {
 
     // Connection 1 opens a transaction, inserts, then the process exits
     // without committing (mysql sends no COMMIT on EOF).
-    let leaked = run_script(handle.port, "BEGIN;\nINSERT INTO guard_leak (id, k) VALUES (1, 1);\n");
+    let leaked = run_script(
+        handle.port,
+        "BEGIN;\nINSERT INTO guard_leak (id, k) VALUES (1, 1);\n",
+    );
     assert!(
         !leaked.contains("ERROR"),
         "setup transaction failed: {leaked:?}"
