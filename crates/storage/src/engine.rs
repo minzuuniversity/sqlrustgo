@@ -1722,6 +1722,23 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
+    /// #5099: begin a transaction under a caller-chosen id.
+    ///
+    /// `begin_transaction` reads the storage's single `current_tx_id` slot,
+    /// so two connections beginning concurrently collide — the second sees a
+    /// non-zero slot and returns the first's id, making both semantically the
+    /// same transaction. Naming the id up front removes the collision, the
+    /// same fix as `commit_transaction_for` / `rollback_transaction_for`.
+    ///
+    /// Contract: identical to `set_current_tx_id(tx_id)` followed by a
+    /// begin that adopts `tx_id`, but it never treats a populated
+    /// `current_tx_id` as a nested `BEGIN` — the caller already chose the id,
+    /// so honouring the slot would hand back a foreign id.
+    fn begin_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.set_current_tx_id(tx_id);
+        self.begin_transaction().map(|_| ())
+    }
+
     /// Commit a transaction via interior mutability.
     /// See [`begin_transaction_lockfree`] for rationale.
     fn commit_transaction_lockfree(&self) -> SqlResult<()> {
