@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
-  "captured_at_commit": "6ba04fa070aa6ce70edada6bb6f46aef7d6aae60",
-  "captured_at_date": "2026-10-07",
-  "total_allowed": 115,
+  "captured_at_commit": "merged tree of develop/v4.1.0 + chore/omp-sync-ignore-registry-5111",
+  "captured_at_date": "2026-10-08",
+  "total_allowed": 117,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 80,
@@ -53,10 +53,91 @@
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
     },
     {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "create_procedure_at_executor_silently_accepted",
+      "line_at_capture": 63,
+      "reason": "GAP: executor still silently accepts CREATE PROCEDURE (CLI gates it but executor does not)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "create_function_at_executor_silently_accepted",
+      "line_at_capture": 73,
+      "reason": "GAP: executor silently accepts CREATE FUNCTION",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "sqlite_master_is_queryable",
+      "line_at_capture": 169,
+      "reason": "GAP: sqlite_master table does not exist (no SQLite system tables in current HEAD)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "sqlite_sequence_after_autoincrement",
+      "line_at_capture": 180,
+      "reason": "GAP: sqlite_sequence table does not exist",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "create_function_index_errors_recognizably",
+      "line_at_capture": 233,
+      "reason": "GAP: function index is not supported at executor level",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "create_partial_index_errors_recognizably",
+      "line_at_capture": 244,
+      "reason": "GAP: partial index WHERE clause not supported",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "on_duplicate_key_update_multi_column",
+      "line_at_capture": 299,
+      "reason": "GAP: multi-column UPSERT is OR-downgrade (sub-bug #1/#4 of #4703)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_c_legacy.rs",
+      "test": "on_conflict_sqlite_syntax",
+      "line_at_capture": 316,
+      "reason": "GAP: ON CONFLICT (SQLite syntax) — needs verification",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/executor/tests/wp_g_legacy.rs",
+      "test": "char_vs_varchar_strict_when_varchar_is_target",
+      "line_at_capture": 238,
+      "reason": "GAP: VARCHAR = 'abc   ' also matches stored 'abc' (over-trim)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
       "file": "crates/parser/tests/wp_a_legacy.rs",
       "test": "test_chinese_comment_multi_line",
       "line_at_capture": 68,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -66,6 +147,42 @@
       "test": "test_mmap_save_to_file",
       "line_at_capture": 283,
       "reason": "macOS mmap permission issue with tempfile",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/storage/tests/b22_concurrent_flush_ab.rs",
+      "test": "b22_reader_latency_under_lock_held_io",
+      "line_at_capture": 77,
+      "reason": "<no reason>",
+      "status": "ACTIVE",
+      "category": "AUTO_REG_AT_PROMOTION",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/storage/tests/b22_flush_wall.rs",
+      "test": "b22_flush_wall_time",
+      "line_at_capture": 31,
+      "reason": "<no reason>",
+      "status": "ACTIVE",
+      "category": "AUTO_REG_AT_PROMOTION",
+      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
+    },
+    {
+      "file": "crates/storage/tests/measure_commit_clone_4948.rs",
+      "test": "measure_commit_clone_cost_4948",
+      "line_at_capture": 72,
+      "reason": "wall-clock measurement harness — run manually, results go in the evidence doc",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/storage/tests/measure_commit_memory_4948.rs",
+      "test": "measure_commit_memory_4948",
+      "line_at_capture": 130,
+      "reason": "memory measurement — run manually; prints the commit’s RSS delta",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
@@ -278,6 +395,24 @@
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
     },
     {
+      "file": "tests/dml_read_db_5106.rs",
+      "test": "multi_table_update_stays_in_the_statements_database",
+      "line_at_capture": 108,
+      "reason": "GAP: multi-table `UPDATE t1, t2 SET ...` is a no-op reporting affected_rows=1 on this baseline — a separate defect from database scoping (see tests/probe_mt_update.rs). Single-table UPDATE and multi-table DELETE both behave.",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added 2026-10-07 — drift from PR #5106 (tests/dml_read_db_5106.rs)"
+    },
+    {
+      "file": "tests/dml_read_db_5106.rs",
+      "test": "uncommitted_multi_table_delete_stays_invisible",
+      "line_at_capture": 184,
+      "reason": "GAP: on MvccStorage a multi-table DELETE is not visible to another connection even after COMMIT — a separate defect. The reader_tx half is covered by tests/mvcc_reader_tx_5105.rs.",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "added 2026-10-07 — drift from PR #5106 (tests/dml_read_db_5106.rs)"
+    },
+    {
       "file": "tests/e2e/e2e_beta_test.rs",
       "test": "e2e_01_startup_connect_select_1",
       "line_at_capture": 54,
@@ -407,7 +542,7 @@
       "file": "tests/integration/oracle/diag_q12_sf001_subset.rs",
       "test": "q12_sf001_subset_count",
       "line_at_capture": 37,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -416,7 +551,7 @@
       "file": "tests/integration/oracle/diag_q12_sf01_subset.rs",
       "test": "q12_sf01_subset_count",
       "line_at_capture": 39,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -425,7 +560,7 @@
       "file": "tests/integration/oracle/diag_q12_sf1_subset.rs",
       "test": "q12_sf1_subset_count",
       "line_at_capture": 38,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -434,7 +569,7 @@
       "file": "tests/integration/oracle/diag_q17_100k_subset.rs",
       "test": "diag_q17_100k_subset",
       "line_at_capture": 41,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -443,7 +578,7 @@
       "file": "tests/integration/oracle/diag_q17_1m_subset.rs",
       "test": "diag_q17_1m_subset",
       "line_at_capture": 37,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -452,7 +587,7 @@
       "file": "tests/integration/oracle/diag_q17_sf001_subset.rs",
       "test": "diag_q17_sf001_subset",
       "line_at_capture": 47,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -461,7 +596,7 @@
       "file": "tests/integration/oracle/diag_q17_sprint3_path.rs",
       "test": "diag_q17_100k_path",
       "line_at_capture": 63,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -470,7 +605,7 @@
       "file": "tests/integration/oracle/diag_q17_sprint3_path.rs",
       "test": "diag_q17_1m_path",
       "line_at_capture": 89,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -479,7 +614,7 @@
       "file": "tests/integration/oracle/diag_q20_mini_bisect.rs",
       "test": "diag_q20_bisect",
       "line_at_capture": 63,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -488,7 +623,7 @@
       "file": "tests/integration/oracle/diag_q20_sprint3_path.rs",
       "test": "diag_q20_mini_path",
       "line_at_capture": 88,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -497,7 +632,7 @@
       "file": "tests/integration/oracle/diag_q20_sprint4_inline.rs",
       "test": "diag_q20_l0_inline",
       "line_at_capture": 152,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -506,7 +641,7 @@
       "file": "tests/integration/oracle/diag_q20_sprint4_inline.rs",
       "test": "diag_q20_l4_inline",
       "line_at_capture": 170,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -515,7 +650,7 @@
       "file": "tests/integration/oracle/diag_q20_sprint4_inline.rs",
       "test": "diag_q20_l5_inline",
       "line_at_capture": 184,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -524,7 +659,7 @@
       "file": "tests/integration/oracle/diag_q22_sprint3_path.rs",
       "test": "diag_q22_mini_path",
       "line_at_capture": 103,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -533,7 +668,7 @@
       "file": "tests/integration/oracle/diag_q22_sprint3_path.rs",
       "test": "diag_q22_30k_path",
       "line_at_capture": 173,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -542,7 +677,7 @@
       "file": "tests/integration/oracle/diag_q22_sprint3_path.rs",
       "test": "diag_q22_60k_path",
       "line_at_capture": 189,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -551,7 +686,7 @@
       "file": "tests/integration/oracle/diag_q22_sprint3_path.rs",
       "test": "diag_q22_100k_path",
       "line_at_capture": 205,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -560,7 +695,7 @@
       "file": "tests/integration/oracle/diag_q7_extract.rs",
       "test": "diag_extract_year_simple_parse_only",
       "line_at_capture": 40,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -569,7 +704,7 @@
       "file": "tests/integration/oracle/diag_q7_extract.rs",
       "test": "diag_q7_full_count_against_oracle",
       "line_at_capture": 60,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -578,7 +713,7 @@
       "file": "tests/integration/oracle/diag_q7_sf001_subset.rs",
       "test": "q7_sf001_subset_count",
       "line_at_capture": 63,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -587,7 +722,7 @@
       "file": "tests/integration/oracle/diag_q7_sf1_real_count.rs",
       "test": "q7_sf1_real_count",
       "line_at_capture": 19,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -596,7 +731,7 @@
       "file": "tests/integration/oracle/diag_q8_mini_subset.rs",
       "test": "q8_mini_n2_pushdown",
       "line_at_capture": 62,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -605,7 +740,7 @@
       "file": "tests/integration/oracle/q11_stock_filter_regression.rs",
       "test": "q11_stock_filter_sf1",
       "line_at_capture": 97,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -614,7 +749,7 @@
       "file": "tests/integration/oracle/q17_1m_rss_regression.rs",
       "test": "q17_1m_rss_bounded",
       "line_at_capture": 30,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -623,7 +758,7 @@
       "file": "tests/integration/oracle/q17_sf1_diag.rs",
       "test": "q17_sf1_diag",
       "line_at_capture": 41,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -632,7 +767,7 @@
       "file": "tests/integration/oracle/q17_sf1_watchdog.rs",
       "test": "q17_sf1_watchdog",
       "line_at_capture": 46,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -641,7 +776,7 @@
       "file": "tests/integration/oracle/q17_small_order_shortage_perf.rs",
       "test": "q17_small_order_shortage_sf1",
       "line_at_capture": 106,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -650,7 +785,7 @@
       "file": "tests/integration/oracle/q20_potential_part_promotion_perf.rs",
       "test": "q20_potential_part_promotion_sf1",
       "line_at_capture": 112,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -659,7 +794,7 @@
       "file": "tests/integration/oracle/q22_global_sales_opportunity_perf.rs",
       "test": "q22_global_sales_opportunity_sf1",
       "line_at_capture": 95,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -668,7 +803,7 @@
       "file": "tests/integration/oracle/q2_5way_comma_limit_regression.rs",
       "test": "q2_canonical_5way_comma_limit",
       "line_at_capture": 79,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -677,7 +812,7 @@
       "file": "tests/integration/oracle/q8_8way_date_range_regression.rs",
       "test": "q8_canonical_8way_date_range",
       "line_at_capture": 75,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -686,7 +821,7 @@
       "file": "tests/integration/oracle/sf1_bulk_load_bench.rs",
       "test": "sf1_bulk_load_bench",
       "line_at_capture": 17,
-      "reason": "",
+      "reason": "(no reason text)",
       "status": "ACTIVE",
       "category": "NO_REASON",
       "status_rationale": "no #[ignore = \"...\"] reason text (ADR-008 requires one)"
@@ -757,7 +892,7 @@
     {
       "file": "tests/integration/stress/crash_monkey_test.rs",
       "test": "crash_monkey_full_100k_iterations",
-      "line_at_capture": 254,
+      "line_at_capture": 259,
       "reason": "Long-running; enable with --ignored for full 100k iteration sweep",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
@@ -766,7 +901,7 @@
     {
       "file": "tests/integration/stress/recovery_fuzzer_test.rs",
       "test": "r2_random_fuzz_full_50k_iterations",
-      "line_at_capture": 589,
+      "line_at_capture": 621,
       "reason": "Long-running; enable with --ignored for full 50k iteration sweep",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
@@ -917,132 +1052,6 @@
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
     },
     {
-      "file": "tests/soak/v312_mixed_soak.rs",
-      "test": "v312_ga_mixed_workload_demo",
-      "line_at_capture": 177,
-      "reason": "runs 1h demo; nightly-only via scripts/gate/run_ga_soak.sh",
-      "status": "ACTIVE",
-      "category": "FUNC_NOT_IMPL",
-      "status_rationale": "reason names unimplemented behaviour or a known open bug"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "create_procedure_at_executor_silently_accepted",
-      "line_at_capture": 63,
-      "reason": "GAP: executor still silently accepts CREATE PROCEDURE (CLI gates it but executor does not)",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "create_function_at_executor_silently_accepted",
-      "line_at_capture": 73,
-      "reason": "GAP: executor silently accepts CREATE FUNCTION",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "sqlite_master_is_queryable",
-      "line_at_capture": 148,
-      "reason": "GAP: sqlite_master table does not exist (no SQLite system tables in current HEAD)",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "sqlite_sequence_after_autoincrement",
-      "line_at_capture": 159,
-      "reason": "GAP: sqlite_sequence table does not exist",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "create_function_index_errors_recognizably",
-      "line_at_capture": 212,
-      "reason": "GAP: function index is not supported at executor level",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "create_partial_index_errors_recognizably",
-      "line_at_capture": 223,
-      "reason": "GAP: partial index WHERE clause not supported",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "on_duplicate_key_update_multi_column",
-      "line_at_capture": 278,
-      "reason": "GAP: multi-column UPSERT is OR-downgrade (sub-bug #1/#4 of #4703)",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_c_legacy.rs",
-      "test": "on_conflict_sqlite_syntax",
-      "line_at_capture": 295,
-      "reason": "GAP: ON CONFLICT (SQLite syntax) — needs verification",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/executor/tests/wp_g_legacy.rs",
-      "test": "char_vs_varchar_strict_when_varchar_is_target",
-      "line_at_capture": 204,
-      "reason": "GAP: VARCHAR = 'abc   ' also matches stored 'abc' (over-trim)",
-      "status": "ACTIVE",
-      "category": "GAP_DOCUMENTED",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/storage/tests/b22_concurrent_flush_ab.rs",
-      "test": "b22_reader_latency_under_lock_held_io",
-      "line_at_capture": 77,
-      "reason": "<no reason>",
-      "status": "ACTIVE",
-      "category": "AUTO_REG_AT_PROMOTION",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/storage/tests/b22_flush_wall.rs",
-      "test": "b22_flush_wall_time",
-      "line_at_capture": 31,
-      "reason": "<no reason>",
-      "status": "ACTIVE",
-      "category": "AUTO_REG_AT_PROMOTION",
-      "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
-    },
-    {
-      "file": "crates/storage/tests/measure_commit_clone_4948.rs",
-      "test": "measure_commit_clone_cost_4948",
-      "line_at_capture": 73,
-      "reason": "wall-clock measurement harness — run manually, results go in the evidence doc",
-      "status": "PARKED",
-      "category": "EXTERNAL_PREREQ",
-      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
-    },
-    {
-      "file": "crates/storage/tests/measure_commit_memory_4948.rs",
-      "test": "measure_commit_memory_4948",
-      "line_at_capture": 131,
-      "reason": "memory measurement — run manually; prints the commit’s RSS delta",
-      "status": "PARKED",
-      "category": "EXTERNAL_PREREQ",
-      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
-    },
-    {
       "file": "tests/operators/in_subquery.rs",
       "test": "correlated_in_subquery_uses_outer_row",
       "line_at_capture": 100,
@@ -1061,22 +1070,31 @@
       "status_rationale": "added at v4.1.0-alpha2 promotion — drift from fix PRs (#5041/#5043/#5045/#5047/#5050)"
     },
     {
-      "file": "tests/dml_read_db_5106.rs",
-      "test": "multi_table_update_stays_in_the_statements_database",
-      "line_at_capture": 108,
-      "reason": "GAP: multi-table `UPDATE t1, t2 SET ...` is a no-op reporting affected_rows=1 on this baseline — a separate defect from database scoping (see tests/probe_mt_update.rs). Single-table UPDATE and multi-table DELETE both behave.",
+      "file": "tests/read_path_db_5113.rs",
+      "test": "show_table_status_counts_the_connections_table",
+      "line_at_capture": 148,
+      "reason": "does not reach table_status_row's None branch (mutation-proven)",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added 2026-10-07 — drift from PR #5106 (tests/dml_read_db_5106.rs)"
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
     },
     {
-      "file": "tests/dml_read_db_5106.rs",
-      "test": "uncommitted_multi_table_delete_stays_invisible",
-      "line_at_capture": 184,
-      "reason": "GAP: on MvccStorage a multi-table DELETE is not visible to another connection even after COMMIT — a separate defect. The reader_tx half is covered by tests/mvcc_reader_tx_5105.rs.",
+      "file": "tests/read_path_db_5113.rs",
+      "test": "insert_pk_cache_is_built_from_the_connections_table",
+      "line_at_capture": 202,
+      "reason": "does not reach the PK-cache scan (mutation-proven)",
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
-      "status_rationale": "added 2026-10-07 — drift from PR #5106 (tests/dml_read_db_5106.rs)"
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "tests/soak/v312_mixed_soak.rs",
+      "test": "v312_ga_mixed_workload_demo",
+      "line_at_capture": 177,
+      "reason": "runs 1h demo; nightly-only via scripts/gate/run_ga_soak.sh",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
     }
   ],
   "resolved_removed_ignores": [

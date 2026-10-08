@@ -1428,8 +1428,10 @@ pub trait StorageEngine: Send + Sync {
 
     /// #5057: `force_insert` into a stated database.
     fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
-        let _ = db;
-        self.force_insert(table, record)
+        // Route through `insert_in_db` rather than dropping `db`: an engine
+        // that only implements `insert_in_db` would still lose the scope
+        // here, which is how this stayed broken after `insert_in_db` landed.
+        self.insert_in_db(db, table, vec![record])
     }
 
     /// #5057: `delete` within a stated database.
@@ -2072,6 +2074,388 @@ impl MemoryStorage {
         Ok(original_len - records.len())
     }
 
+    fn insert_in_key(
+        &mut self,
+        table: &str,
+        table_key: String,
+        records: Vec<Record>,
+    ) -> SqlResult<()> {
+        self.bump_change_stamp(table);
+        let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key).cloned() {
+            let ncols = info.columns.len();
+            let auto_inc_cols: Vec<usize> = info
+                .columns
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, c)| if c.auto_increment { Some(idx) } else { None })
+                .collect();
+            // V312-58 Sprint 5 (Issue #4374 SF=1 wall-clock): without this
+            // guard, `bulk_load_tbl_file` for tables WITHOUT auto_increment
+            // (e.g. lineitem, part, customer) used to clone the existing
+            // row set on EVERY batch just to feed the auto_inc scan that
+            // never fires. SF=1 lineitem is ~6M rows in ~5856 batches of
+            // 1024 → ~17B row clones → multi-TB memory churn → bulk_load
+            // hangs. Splitting the branches keeps the auto_inc path
+            // unchanged and turns the non-auto_inc path from O(N^2) into
+            // O(N).
+            if auto_inc_cols.is_empty() {
+                records
+                    .into_iter()
+                    .map(|mut row| {
+                        while row.len() < ncols {
+                            let default = info
+                                .columns
+                                .get(row.len())
+                                .and_then(|c| c.default_value.as_deref())
+                                .map(parse_default_literal)
+                                .unwrap_or(Value::Null);
+                            row.push(default);
+                        }
+                        row
+                    })
+                    .collect()
+            } else {
+                // BLK-3 / Issue #4945: ensure monotonic AUTO_INCREMENT across
+                // concurrent autocommit connections. The fix replaces the
+                // per-batch `next_auto = max(existing)+1` (which two writers
+                // both compute as 1 from an empty table) with a shared
+                // per-table `AtomicU64` counter that is fetched-added inside
+                // the row-allocation closure, so concurrent allocations can't
+                // pick the same id.
+                //
+                // Counter lifecycle:
+                //   1. Created lazily on first touch per table.
+                //   2. Seeded from `existing_rows` so an explicit id=500 in
+                //      the batch lifts the counter above 500 and the next
+                //      auto-assigned id is 501.
+                //   3. Each null cell takes one id via `fetch_add(1)`,
+                //      making the assignment atomic across writers.
+                let existing_rows = self
+                    .tables
+                    .get(&table_key.clone())
+                    .cloned()
+                    .unwrap_or_default();
+                let max_existing: Option<i64> = auto_inc_cols
+                    .iter()
+                    .filter_map(|&idx| {
+                        existing_rows
+                            .iter()
+                            .filter_map(|row| {
+                                row.get(idx).and_then(|v| match v {
+                                    Value::Integer(n) => Some(*n),
+                                    _ => None,
+                                })
+                            })
+                            .max()
+                    })
+                    .max();
+                let max_explicit_in_batch: Option<i64> = records
+                    .iter()
+                    .filter_map(|row| {
+                        auto_inc_cols
+                            .iter()
+                            .filter_map(|&idx| match row.get(idx) {
+                                Some(Value::Integer(n)) => Some(*n),
+                                _ => None,
+                            })
+                            .max()
+                    })
+                    .max();
+                let counters_arc = std::sync::Arc::clone(&self.auto_inc_counters);
+                let counter_arc = {
+                    let mut map = counters_arc.lock().unwrap();
+                    let entry = map.entry(table_key.clone()).or_insert_with(|| {
+                        let seed = max_existing
+                            .map(|m| (m as u64).saturating_add(1))
+                            .unwrap_or(0);
+                        std::sync::Arc::new(std::sync::atomic::AtomicU64::new(seed))
+                    });
+                    std::sync::Arc::clone(entry)
+                };
+                if let Some(m) = max_explicit_in_batch {
+                    let cur = counter_arc.load(std::sync::atomic::Ordering::SeqCst);
+                    if (m as u64) > cur {
+                        counter_arc.store(m as u64, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
+                records
+                    .into_iter()
+                    .map(|mut row| {
+                        while row.len() < ncols {
+                            let default = info
+                                .columns
+                                .get(row.len())
+                                .and_then(|c| c.default_value.as_deref())
+                                .map(parse_default_literal)
+                                .unwrap_or(Value::Null);
+                            row.push(default);
+                        }
+                        for &col_idx in &auto_inc_cols {
+                            if matches!(row.get(col_idx), Some(Value::Null) | None) {
+                                let id = counter_arc
+                                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                                    as i64
+                                    + 1;
+                                row[col_idx] = Value::Integer(id);
+                            }
+                        }
+                        row
+                    })
+                    .collect()
+            }
+        } else {
+            records
+        };
+        if let Some(log) = self.tx_log.as_mut() {
+            for row in &padded {
+                // #5072: `TxLog` holds BARE table names — every replay site
+                // (`rollback_transaction`, `apply_committed_log`) resolves them
+                // through `tbl()` against the database active at replay time.
+                // Pushing `table_key` (already scoped) made ROLLBACK look for
+                // `default\x01default\x01t1` and silently undo nothing.
+                // `delete` and `update` already push the bare `table`.
+                log.inserted.push((table.to_string(), row.clone()));
+            }
+        } else {
+            // V312-26 #3969: autocommit insert — propagate to the post-commit
+            // snapshot so a late-joining connection sees the row.
+            Arc::make_mut(self.committed_tables.entry(table_key.clone()).or_default())
+                .extend(padded.iter().cloned());
+        }
+        Arc::make_mut(self.tables.entry(table_key).or_default()).extend(padded);
+        Ok(())
+    }
+
+    /// #5057: `delete_collect_pks` with the storage key already resolved.
+    fn delete_collect_pks_in_key(
+        &mut self,
+        table: &str,
+        key: String,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
+            return Ok(Vec::new());
+        };
+        if filters.is_empty() {
+            // Full table wipe: caller (MVCC) handles by tombstoning
+            // all visible rows. Empty Vec signals that.
+            if let Some(log) = self.tx_log.as_mut() {
+                for row in records.iter() {
+                    log.deleted.push((table.to_string(), row.clone()));
+                }
+            } else if let Some(committed) = self.committed_tables.get_mut(&key) {
+                // #4948: clone-on-write; the post-commit snapshot may
+                // still share this table's rows.
+                let committed = Arc::make_mut(committed);
+                committed.clear();
+            }
+            records.clear();
+            return Ok(Vec::new());
+        }
+        // Collect PKs of rows that match the filter.
+        let pks: Vec<Value> = records
+            .iter()
+            .filter(|r| {
+                filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| r.get(i).map(|v| v == f).unwrap_or(false))
+            })
+            .filter_map(|r| r.first().cloned())
+            .collect();
+        // Same retain logic as `delete`.
+        records.retain(|r| {
+            let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
+            if !keep {
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.deleted.push((table.to_string(), r.clone()));
+                } else if let Some(committed) = self.committed_tables.get_mut(table) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let committed = Arc::make_mut(committed);
+                    committed.retain(|c| c != r);
+                }
+            }
+            keep
+        });
+        Ok(pks)
+    }
+
+    /// #5057: `delete` with the storage key already resolved.
+    fn delete_in_key(&mut self, table: &str, key: String, filters: &[Value]) -> SqlResult<usize> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
+            return Ok(0);
+        };
+        if filters.is_empty() {
+            if let Some(log) = self.tx_log.as_mut() {
+                for row in records.iter() {
+                    log.deleted.push((table.to_string(), row.clone()));
+                }
+            } else {
+                // V312-26 #3969: autocommit delete — keep post-commit view in sync.
+                if let Some(committed) = self.committed_tables.get_mut(&key) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let committed = Arc::make_mut(committed);
+                    committed.clear();
+                }
+            }
+            let count = records.len();
+            records.clear();
+            return Ok(count);
+        }
+        let original_len = records.len();
+        records.retain(|r| {
+            let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
+            if !keep {
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.deleted.push((table.to_string(), r.clone()));
+                } else if let Some(committed) = self.committed_tables.get_mut(&key) {
+                    // #4948: clone-on-write; the post-commit snapshot may
+                    // still share this table's rows.
+                    let committed = Arc::make_mut(committed);
+                    committed.retain(|c| c != r);
+                }
+            }
+            keep
+        });
+        Ok(original_len - records.len())
+    }
+
+    fn update_in_key(
+        &mut self,
+        table: &str,
+        key: String,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
+            return Ok(0);
+        };
+
+        let mut count = 0;
+
+        if filters.is_empty() {
+            for record in records.iter_mut() {
+                let prior = record.clone();
+                for &(col_idx, ref new_val) in updates {
+                    if col_idx < record.len() {
+                        record[col_idx] = new_val.clone();
+                    }
+                }
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.updated.push((table.to_string(), prior, record.clone()));
+                } else {
+                    // V312-26 #3969: autocommit update — keep post-commit view in sync.
+                    if let Some(committed) = self.committed_tables.get_mut(&key) {
+                        // #4948: clone-on-write; the post-commit snapshot may
+                        // still share this table's rows.
+                        let committed = Arc::make_mut(committed);
+                        for committed_record in committed.iter_mut() {
+                            if committed_record == &prior {
+                                *committed_record = record.clone();
+                                break;
+                            }
+                        }
+                    }
+                }
+                count += 1;
+            }
+        } else if let Some(filter_val) = filters.first() {
+            for record in records.iter_mut() {
+                let matches = record.first().map(|v| v == filter_val).unwrap_or(false);
+                if matches {
+                    let prior = record.clone();
+                    for &(col_idx, ref new_val) in updates {
+                        if col_idx < record.len() {
+                            record[col_idx] = new_val.clone();
+                        }
+                    }
+                    if let Some(log) = self.tx_log.as_mut() {
+                        log.updated.push((table.to_string(), prior, record.clone()));
+                    } else {
+                        // V312-26 #3969: autocommit update — keep post-commit view in sync.
+                        if let Some(committed) = self.committed_tables.get_mut(&key) {
+                            // #4948: clone-on-write; the post-commit snapshot may
+                            // still share this table's rows.
+                            let committed = Arc::make_mut(committed);
+                            for committed_record in committed.iter_mut() {
+                                if committed_record == &prior {
+                                    *committed_record = record.clone();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    count += 1;
+                }
+            }
+        }
+
+        Ok(count)
+    }
+
+    fn update_if_in_key(
+        &mut self,
+        table: &str,
+        key: String,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        // V4.1.0: any derived cache over this table is now stale.
+        self.bump_change_stamp(table);
+        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
+        // only if the post-commit snapshot still holds this table's rows.
+        let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
+            return Ok(0);
+        };
+
+        let mut count = 0;
+        let assignments = mutation.assignments();
+
+        for record in records.iter_mut() {
+            if filter(record) {
+                let prior = record.clone();
+                for &(col_idx, ref new_val) in assignments {
+                    if col_idx < record.len() {
+                        record[col_idx] = new_val.clone();
+                    }
+                }
+                if let Some(log) = self.tx_log.as_mut() {
+                    log.updated.push((table.to_string(), prior, record.clone()));
+                } else {
+                    // V312-26 #3969: autocommit update — keep post-commit view in sync.
+                    if let Some(committed) = self.committed_tables.get_mut(&key) {
+                        // #4948: clone-on-write; the post-commit snapshot may
+                        // still share this table's rows.
+                        let committed = Arc::make_mut(committed);
+                        for committed_record in committed.iter_mut() {
+                            if committed_record == &prior {
+                                *committed_record = record.clone();
+                                break;
+                            }
+                        }
+                    }
+                }
+                count += 1;
+            }
+        }
+
+        Ok(count)
+    }
+
     /// `drop_table` against a stated database.
     pub(crate) fn drop_table_in_key(&mut self, table: &str, key: String) -> SqlResult<()> {
         self.tables.remove(&key);
@@ -2474,6 +2858,49 @@ impl StorageEngine for MemoryStorage {
         }
     }
 
+    /// #5057: `scan_with_index` against a stated database.
+    ///
+    /// Everything below — the index lookup, the fallback scan, and the
+    /// column position — must resolve against `db`. Reading the rows
+    /// through `scan` while looking the index up in `db` would answer from
+    /// whichever database happens to be stored.
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        let table_lower = table.to_lowercase();
+        let table_key = scoped_key(db, &table_lower);
+        let index_key = (table_key.clone(), index_name.to_lowercase());
+        if !self.indexes.contains(&index_key) {
+            return Err(SqlError::ExecutionError(format!(
+                "Index '{}' on table '{}' not found",
+                index_name, table
+            )));
+        }
+        let rows = self.scan_in_db(db, &table_lower)?;
+        let col_idx = self.table_infos.get(&table_key).and_then(|info| {
+            info.columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(index_name))
+        });
+        match col_idx {
+            Some(col_idx) => {
+                let k = key.clone();
+                Ok(rows
+                    .into_iter()
+                    .filter(|row| row.get(col_idx).map(|v| v == &k).unwrap_or(false))
+                    .collect())
+            }
+            None => Err(SqlError::ExecutionError(format!(
+                "Column '{}' in index '{}' not found",
+                index_name, index_name
+            ))),
+        }
+    }
+
     fn begin_transaction(&mut self) -> SqlResult<u64> {
         if self.tx_log.is_some() {
             return Err(SqlError::ExecutionError(
@@ -2548,198 +2975,30 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        // V4.1.0: any derived cache over this table is now stale.
-        self.bump_change_stamp(table);
-        // #5025: scoped once and reused — the key is needed in several
-        // places below, and `tbl()` allocates.
         let table_key = self.tbl(table);
-        let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key).cloned() {
-            let ncols = info.columns.len();
-            let auto_inc_cols: Vec<usize> = info
-                .columns
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, c)| if c.auto_increment { Some(idx) } else { None })
-                .collect();
-            // V312-58 Sprint 5 (Issue #4374 SF=1 wall-clock): without this
-            // guard, `bulk_load_tbl_file` for tables WITHOUT auto_increment
-            // (e.g. lineitem, part, customer) used to clone the existing
-            // row set on EVERY batch just to feed the auto_inc scan that
-            // never fires. SF=1 lineitem is ~6M rows in ~5856 batches of
-            // 1024 → ~17B row clones → multi-TB memory churn → bulk_load
-            // hangs. Splitting the branches keeps the auto_inc path
-            // unchanged and turns the non-auto_inc path from O(N^2) into
-            // O(N).
-            if auto_inc_cols.is_empty() {
-                records
-                    .into_iter()
-                    .map(|mut row| {
-                        while row.len() < ncols {
-                            let default = info
-                                .columns
-                                .get(row.len())
-                                .and_then(|c| c.default_value.as_deref())
-                                .map(parse_default_literal)
-                                .unwrap_or(Value::Null);
-                            row.push(default);
-                        }
-                        row
-                    })
-                    .collect()
-            } else {
-                // BLK-3 / Issue #4945: ensure monotonic AUTO_INCREMENT across
-                // concurrent autocommit connections. The fix replaces the
-                // per-batch `next_auto = max(existing)+1` (which two writers
-                // both compute as 1 from an empty table) with a shared
-                // per-table `AtomicU64` counter that is fetched-added inside
-                // the row-allocation closure, so concurrent allocations can't
-                // pick the same id.
-                //
-                // Counter lifecycle:
-                //   1. Created lazily on first touch per table.
-                //   2. Seeded from `existing_rows` so an explicit id=500 in
-                //      the batch lifts the counter above 500 and the next
-                //      auto-assigned id is 501.
-                //   3. Each null cell takes one id via `fetch_add(1)`,
-                //      making the assignment atomic across writers.
-                let existing_rows = self
-                    .tables
-                    .get(&table_key.clone())
-                    .cloned()
-                    .unwrap_or_default();
-                let max_existing: Option<i64> = auto_inc_cols
-                    .iter()
-                    .filter_map(|&idx| {
-                        existing_rows
-                            .iter()
-                            .filter_map(|row| {
-                                row.get(idx).and_then(|v| match v {
-                                    Value::Integer(n) => Some(*n),
-                                    _ => None,
-                                })
-                            })
-                            .max()
-                    })
-                    .max();
-                let max_explicit_in_batch: Option<i64> = records
-                    .iter()
-                    .filter_map(|row| {
-                        auto_inc_cols
-                            .iter()
-                            .filter_map(|&idx| match row.get(idx) {
-                                Some(Value::Integer(n)) => Some(*n),
-                                _ => None,
-                            })
-                            .max()
-                    })
-                    .max();
-                let counters_arc = std::sync::Arc::clone(&self.auto_inc_counters);
-                let counter_arc = {
-                    let mut map = counters_arc.lock().unwrap();
-                    let entry = map.entry(table_key.clone()).or_insert_with(|| {
-                        let seed = max_existing
-                            .map(|m| (m as u64).saturating_add(1))
-                            .unwrap_or(0);
-                        std::sync::Arc::new(std::sync::atomic::AtomicU64::new(seed))
-                    });
-                    std::sync::Arc::clone(entry)
-                };
-                if let Some(m) = max_explicit_in_batch {
-                    let cur = counter_arc.load(std::sync::atomic::Ordering::SeqCst);
-                    if (m as u64) > cur {
-                        counter_arc.store(m as u64, std::sync::atomic::Ordering::SeqCst);
-                    }
-                }
-                records
-                    .into_iter()
-                    .map(|mut row| {
-                        while row.len() < ncols {
-                            let default = info
-                                .columns
-                                .get(row.len())
-                                .and_then(|c| c.default_value.as_deref())
-                                .map(parse_default_literal)
-                                .unwrap_or(Value::Null);
-                            row.push(default);
-                        }
-                        for &col_idx in &auto_inc_cols {
-                            if matches!(row.get(col_idx), Some(Value::Null) | None) {
-                                let id = counter_arc
-                                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-                                    as i64
-                                    + 1;
-                                row[col_idx] = Value::Integer(id);
-                            }
-                        }
-                        row
-                    })
-                    .collect()
-            }
-        } else {
-            records
-        };
-        if let Some(log) = self.tx_log.as_mut() {
-            for row in &padded {
-                // #5072: `TxLog` holds BARE table names — every replay site
-                // (`rollback_transaction`, `apply_committed_log`) resolves them
-                // through `tbl()` against the database active at replay time.
-                // Pushing `table_key` (already scoped) made ROLLBACK look for
-                // `default\x01default\x01t1` and silently undo nothing.
-                // `delete` and `update` already push the bare `table`.
-                log.inserted.push((table.to_string(), row.clone()));
-            }
-        } else {
-            // V312-26 #3969: autocommit insert — propagate to the post-commit
-            // snapshot so a late-joining connection sees the row.
-            Arc::make_mut(self.committed_tables.entry(table_key.clone()).or_default())
-                .extend(padded.iter().cloned());
-        }
-        Arc::make_mut(self.tables.entry(table_key).or_default()).extend(padded);
-        Ok(())
+        self.insert_in_key(table, table_key, records)
     }
 
+    /// #5057: `insert` into a stated database.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        self.insert_in_key(table, scoped_key(db, table), records)
+    }
+
+    /// #5057: `insert` with the storage key already resolved.
+    ///
+    /// Every table access in the 150-line body below goes through
+    /// `table_key` — the info lookup, the AUTO_INCREMENT scan, the
+    /// transaction log, and the post-commit snapshot. Resolving it once
+    /// here is what keeps a concurrent `USE` from redirecting the write.
+
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        // V4.1.0: any derived cache over this table is now stale.
-        self.bump_change_stamp(table);
-        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
-        // only if the post-commit snapshot still holds this table's rows.
-        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
-            return Ok(0);
-        };
-        if filters.is_empty() {
-            if let Some(log) = self.tx_log.as_mut() {
-                for row in records.iter() {
-                    log.deleted.push((table.to_string(), row.clone()));
-                }
-            } else {
-                // V312-26 #3969: autocommit delete — keep post-commit view in sync.
-                if let Some(committed) = self.committed_tables.get_mut(table) {
-                    // #4948: clone-on-write; the post-commit snapshot may
-                    // still share this table's rows.
-                    let committed = Arc::make_mut(committed);
-                    committed.clear();
-                }
-            }
-            let count = records.len();
-            records.clear();
-            return Ok(count);
-        }
-        let original_len = records.len();
-        records.retain(|r| {
-            let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
-            if !keep {
-                if let Some(log) = self.tx_log.as_mut() {
-                    log.deleted.push((table.to_string(), r.clone()));
-                } else if let Some(committed) = self.committed_tables.get_mut(table) {
-                    // #4948: clone-on-write; the post-commit snapshot may
-                    // still share this table's rows.
-                    let committed = Arc::make_mut(committed);
-                    committed.retain(|c| c != r);
-                }
-            }
-            keep
-        });
-        Ok(original_len - records.len())
+        let key = self.tbl(table);
+        self.delete_in_key(table, key, filters)
+    }
+
+    /// #5057: `delete` against a stated database.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.delete_in_key(table, scoped_key(db, table), filters)
     }
 
     /// Phase B Step 4.1: collect primary keys (column 0) of deleted rows
@@ -2748,56 +3007,18 @@ impl StorageEngine for MemoryStorage {
     /// the caller wants the coarse "tombstone all" fallback for full
     /// table wipes).
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
-        // V4.1.0: any derived cache over this table is now stale.
-        self.bump_change_stamp(table);
-        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
-        // only if the post-commit snapshot still holds this table's rows.
-        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
-            return Ok(Vec::new());
-        };
-        if filters.is_empty() {
-            // Full table wipe: caller (MVCC) handles by tombstoning
-            // all visible rows. Empty Vec signals that.
-            if let Some(log) = self.tx_log.as_mut() {
-                for row in records.iter() {
-                    log.deleted.push((table.to_string(), row.clone()));
-                }
-            } else if let Some(committed) = self.committed_tables.get_mut(table) {
-                // #4948: clone-on-write; the post-commit snapshot may
-                // still share this table's rows.
-                let committed = Arc::make_mut(committed);
-                committed.clear();
-            }
-            records.clear();
-            return Ok(Vec::new());
-        }
-        // Collect PKs of rows that match the filter.
-        let pks: Vec<Value> = records
-            .iter()
-            .filter(|r| {
-                filters
-                    .iter()
-                    .enumerate()
-                    .all(|(i, f)| r.get(i).map(|v| v == f).unwrap_or(false))
-            })
-            .filter_map(|r| r.first().cloned())
-            .collect();
-        // Same retain logic as `delete`.
-        records.retain(|r| {
-            let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
-            if !keep {
-                if let Some(log) = self.tx_log.as_mut() {
-                    log.deleted.push((table.to_string(), r.clone()));
-                } else if let Some(committed) = self.committed_tables.get_mut(table) {
-                    // #4948: clone-on-write; the post-commit snapshot may
-                    // still share this table's rows.
-                    let committed = Arc::make_mut(committed);
-                    committed.retain(|c| c != r);
-                }
-            }
-            keep
-        });
-        Ok(pks)
+        let key = self.tbl(table);
+        self.delete_collect_pks_in_key(table, key, filters)
+    }
+
+    /// #5057: `delete_collect_pks` against a stated database.
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        self.delete_collect_pks_in_key(table, scoped_key(db, table), filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
@@ -2816,75 +3037,22 @@ impl StorageEngine for MemoryStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        // V4.1.0: any derived cache over this table is now stale.
-        self.bump_change_stamp(table);
-        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
-        // only if the post-commit snapshot still holds this table's rows.
-        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
-            return Ok(0);
-        };
-
-        let mut count = 0;
-
-        if filters.is_empty() {
-            for record in records.iter_mut() {
-                let prior = record.clone();
-                for &(col_idx, ref new_val) in updates {
-                    if col_idx < record.len() {
-                        record[col_idx] = new_val.clone();
-                    }
-                }
-                if let Some(log) = self.tx_log.as_mut() {
-                    log.updated.push((table.to_string(), prior, record.clone()));
-                } else {
-                    // V312-26 #3969: autocommit update — keep post-commit view in sync.
-                    if let Some(committed) = self.committed_tables.get_mut(table) {
-                        // #4948: clone-on-write; the post-commit snapshot may
-                        // still share this table's rows.
-                        let committed = Arc::make_mut(committed);
-                        for committed_record in committed.iter_mut() {
-                            if committed_record == &prior {
-                                *committed_record = record.clone();
-                                break;
-                            }
-                        }
-                    }
-                }
-                count += 1;
-            }
-        } else if let Some(filter_val) = filters.first() {
-            for record in records.iter_mut() {
-                let matches = record.first().map(|v| v == filter_val).unwrap_or(false);
-                if matches {
-                    let prior = record.clone();
-                    for &(col_idx, ref new_val) in updates {
-                        if col_idx < record.len() {
-                            record[col_idx] = new_val.clone();
-                        }
-                    }
-                    if let Some(log) = self.tx_log.as_mut() {
-                        log.updated.push((table.to_string(), prior, record.clone()));
-                    } else {
-                        // V312-26 #3969: autocommit update — keep post-commit view in sync.
-                        if let Some(committed) = self.committed_tables.get_mut(table) {
-                            // #4948: clone-on-write; the post-commit snapshot may
-                            // still share this table's rows.
-                            let committed = Arc::make_mut(committed);
-                            for committed_record in committed.iter_mut() {
-                                if committed_record == &prior {
-                                    *committed_record = record.clone();
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    count += 1;
-                }
-            }
-        }
-
-        Ok(count)
+        let key = self.tbl(table);
+        self.update_in_key(table, key, filters, updates)
     }
+
+    /// #5057: `update` against a stated database.
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        self.update_in_key(table, scoped_key(db, table), filters, updates)
+    }
+
+    /// #5057: `update` with the storage key already resolved.
 
     fn update_if(
         &mut self,
@@ -2892,47 +3060,22 @@ impl StorageEngine for MemoryStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        // V4.1.0: any derived cache over this table is now stale.
-        self.bump_change_stamp(table);
-        // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
-        // only if the post-commit snapshot still holds this table's rows.
-        let Some(records) = self.tables.get_mut(&self.tbl(table)).map(Arc::make_mut) else {
-            return Ok(0);
-        };
-
-        let mut count = 0;
-        let assignments = mutation.assignments();
-
-        for record in records.iter_mut() {
-            if filter(record) {
-                let prior = record.clone();
-                for &(col_idx, ref new_val) in assignments {
-                    if col_idx < record.len() {
-                        record[col_idx] = new_val.clone();
-                    }
-                }
-                if let Some(log) = self.tx_log.as_mut() {
-                    log.updated.push((table.to_string(), prior, record.clone()));
-                } else {
-                    // V312-26 #3969: autocommit update — keep post-commit view in sync.
-                    if let Some(committed) = self.committed_tables.get_mut(table) {
-                        // #4948: clone-on-write; the post-commit snapshot may
-                        // still share this table's rows.
-                        let committed = Arc::make_mut(committed);
-                        for committed_record in committed.iter_mut() {
-                            if committed_record == &prior {
-                                *committed_record = record.clone();
-                                break;
-                            }
-                        }
-                    }
-                }
-                count += 1;
-            }
-        }
-
-        Ok(count)
+        let key = self.tbl(table);
+        self.update_if_in_key(table, key, filter, mutation)
     }
+
+    /// #5057: `update_if` against a stated database.
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        self.update_if_in_key(table, scoped_key(db, table), filter, mutation)
+    }
+
+    /// #5057: `update_if` with the storage key already resolved.
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         // V312-19 #3972: store table info under lowercased key for
         // case-insensitive lookup.

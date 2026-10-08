@@ -37,3 +37,7 @@ harness = false
 [[test]]
 name = "memory_in_db_5057"
 path = "tests/memory_in_db_5057.rs"
+
+[[test]]
+name = "memory_in_db_full_5057"
+path = "tests/memory_in_db_full_5057.rs"
