@@ -1832,3 +1832,114 @@ fn database_is_resolved_in_where_too() {
             "and also when it does not — the comparison must see 'd1',              not a stale constant"
         );
 }
+
+// ========================================================================
+// #5191 — session_db must be seeded from storage, not from the constant
+// ========================================================================
+// A MySQL client that names a database in the handshake (`mysql -D db`,
+// `pymysql.connect(database=...)`) never sends `USE` or `COM_INIT_DB`. The
+// selection therefore only ever reaches storage's shared `current_db`, and the
+// engine is constructed *after* that. Seeding `session_db` with the
+// DEFAULT_DATABASE constant made every statement on such a connection resolve
+// against `default`: `DATABASE()` reported the wrong name, table lookup missed,
+// and SELECT returned a 0-column result set instead of erroring.
+//
+// `USE` masked the bug because `execute_use_database` writes both the storage
+// field and the engine session field — so every pre-existing test drove the one
+// path that already worked.
+
+/// The regression itself: storage is switched to `d1` *before* the engine is
+/// built, exactly as the wire layer does after the handshake.
+#[test]
+fn session_db_is_seeded_from_storage_not_the_constant() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    storage.write().create_database("d1").unwrap();
+    storage.write().set_current_db("d1").unwrap();
+
+    let engine = ExecutionEngine::new(storage);
+
+    assert_eq!(
+        engine.session_db(),
+        "d1",
+        "a fresh engine must adopt the storage's current database, not `default`"
+    );
+}
+
+/// End-to-end over the same path: a table that only exists in `d1` must be
+/// reachable, and `COUNT(*)` must report its real row count. Before the fix
+/// both returned 0 rows / 0 columns on a handshake-selected database.
+#[test]
+fn handshake_selected_database_can_query_its_own_tables() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    storage.write().create_database("d1").unwrap();
+    storage.write().set_current_db("d1").unwrap();
+
+    // Build the engine the way the wire layer does: AFTER storage already
+    // points at the handshake-selected database.
+    let mut engine = ExecutionEngine::new(storage);
+    engine
+        .execute("CREATE TABLE t (id INTEGER, val INTEGER)")
+        .expect("CREATE TABLE must succeed on the selected database");
+    engine.execute("BEGIN").unwrap();
+    for (id, val) in [(1, 10), (2, 20), (3, 30)] {
+        engine
+            .execute(&format!("INSERT INTO t VALUES ({id}, {val})"))
+            .expect("INSERT must succeed on the selected database");
+    }
+    engine.execute("COMMIT").unwrap();
+
+    let all = engine
+        .execute("SELECT * FROM t")
+        .expect("SELECT on a handshake-selected database must succeed");
+    assert_eq!(
+        all.columns.len(),
+        2,
+        "expected 2 projected columns, got {} — a 0-column result is the #5191 symptom",
+        all.columns.len()
+    );
+    assert_eq!(all.rows.len(), 3, "expected all 3 rows back");
+
+    let count = engine
+        .execute("SELECT COUNT(*) FROM t")
+        .expect("COUNT(*) must succeed");
+    assert_eq!(count.rows.len(), 1, "COUNT(*) must return exactly one row");
+    assert_eq!(
+        count.rows[0][0],
+        Value::Integer(3),
+        "COUNT(*) reported a wrong value; before #5191 this was 0 on a \
+         handshake-selected database"
+    );
+}
+
+/// The isolation half: a handshake-selected database must not see another
+/// database's tables. Before the fix, `default` resolved `d1`'s tables because
+/// the session always said `default`.
+#[test]
+fn handshake_selected_database_does_not_leak_other_databases() {
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    storage.write().create_database("d1").unwrap();
+    storage.write().set_current_db("d1").unwrap();
+
+    // Build the engine while `d1` is current, exactly as the wire layer does
+    // after a handshake that named `d1`.
+    let mut engine = ExecutionEngine::new(storage.clone());
+    engine
+        .execute("CREATE TABLE t (id INTEGER)")
+        .expect("CREATE TABLE must succeed on the selected database");
+
+    // Another connection switches the shared storage back to `default`. The
+    // engine built above keeps its own session value — that per-engine copy is
+    // what #5057 introduced and what this test pins.
+    storage.write().set_current_db("default").unwrap();
+    assert_eq!(
+        engine.session_db(),
+        "d1",
+        "a connection's session database must not follow another connection's switch"
+    );
+
+    let missing = engine.execute("SELECT * FROM nosuchtable");
+    assert!(
+        missing.is_err(),
+        "selecting an absent table must be an error, not a silent empty result"
+    );
+}
