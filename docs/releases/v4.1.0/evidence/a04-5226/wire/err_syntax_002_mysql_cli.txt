@@ -1,0 +1,9 @@
+=== mysql CLI STDOUT ===
+
+=== STDERR ===
+--------------
+SELEC 1
+--------------
+
+ERROR 1064 (42000) at line 1: Parse error: Unexpected token: Identifier("SELEC")
+

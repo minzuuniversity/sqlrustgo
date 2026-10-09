@@ -1,0 +1,16 @@
+server_version=8.0.33-SQLRustGo
+SETUP> CREATE TABLE t_ex_parent (id INTEGER)
+  OK affected=0
+SETUP> CREATE TABLE t_ex_child (pid INTEGER, c INTEGER)
+  OK affected=0
+SETUP> INSERT INTO t_ex_parent VALUES (1)
+  OK affected=1
+SETUP> INSERT INTO t_ex_parent VALUES (2)
+  OK affected=1
+SETUP> INSERT INTO t_ex_child VALUES (1, 100)
+  OK affected=1
+QUERY> SELECT id FROM t_ex_parent p WHERE EXISTS (SELECT 1 FROM t_ex_child c WHERE c.pid = p.id) ORDER BY id
+  SELECT ncol=1 nrow=1 status=0x0002
+  columns=["id"]
+  types=["integer"]
+  row[0]=["1"]

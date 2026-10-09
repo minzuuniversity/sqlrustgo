@@ -1,0 +1,7 @@
+=== STDOUT ===
+id	v
+1	has
+2	NULL
+
+=== STDERR ===
+

@@ -1,0 +1,5 @@
+=== STDOUT ===
+
+=== STDERR ===
+Error: in prepare, near "SELEC": syntax error (1)
+

@@ -1,0 +1,9 @@
+=== mysql CLI STDOUT ===
+
+=== STDERR ===
+--------------
+SELECT no_such_col FROM t_ec
+--------------
+
+ERROR 1105 (42000) at line 3: Execution error: Binder error: column 'no_such_col' not found in schema
+

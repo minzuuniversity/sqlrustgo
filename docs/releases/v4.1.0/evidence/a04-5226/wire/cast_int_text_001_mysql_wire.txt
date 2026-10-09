@@ -1,0 +1,10 @@
+server_version=8.0.33-SQLRustGo
+SETUP> CREATE TABLE t_cast (n INTEGER)
+  OK affected=0
+SETUP> INSERT INTO t_cast VALUES (42)
+  OK affected=1
+QUERY> SELECT n, n + 0 FROM t_cast
+  SELECT ncol=2 nrow=1 status=0x0002
+  columns=["n", "n + 0"]
+  types=["integer", "integer"]
+  row[0]=["42", "42"]

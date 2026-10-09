@@ -1,0 +1,5 @@
+=== STDOUT ===
+
+=== STDERR ===
+Error: in prepare, no such table: t_definitely_missing_xyz (1)
+

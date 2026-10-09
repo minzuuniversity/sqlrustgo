@@ -1,0 +1,7 @@
+=== STDOUT ===
+
+
+
+=== STDERR ===
+Error: sqlrustgo:error:runtime: Execution error: Column 'id' cannot be NULL
+
