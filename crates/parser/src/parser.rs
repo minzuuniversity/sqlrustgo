@@ -8380,7 +8380,27 @@ impl Parser {
             match self.current().cloned() {
                 Some(Token::Identifier(name)) => {
                     self.next();
-                    name
+                    // #5137 A2: consume the full `db.table` chain. The
+                    // single-shot parse kept only `d2` from `JOIN d2.t2`,
+                    // leaving the Dot in the stream and resolving the right
+                    // side as table `d2` → `Table not found: d2`. The flat
+                    // `db.table` string is understood downstream by
+                    // `execute_single_join` (which splits it per side).
+                    let mut qualified = name;
+                    while matches!(self.current(), Some(Token::Dot)) {
+                        self.next();
+                        match self.current().cloned() {
+                            Some(Token::Identifier(part)) => {
+                                self.next();
+                                qualified = format!("{}.{}", qualified, part);
+                            }
+                            Some(t) => {
+                                return Err(format!("Expected table name after '.', got {:?}", t))
+                            }
+                            None => return Err("Expected table name after '.'".to_string()),
+                        }
+                    }
+                    qualified
                 }
                 Some(t) => return Err(format!("Expected table name, got {:?}", t)),
                 None => return Err("Expected table name".to_string()),
@@ -10263,16 +10283,36 @@ impl Parser {
                 };
                 self.next();
                 if matches!(self.current(), Some(Token::Dot)) {
-                    self.next();
-                    match self.current() {
-                        Some(Token::Identifier(col)) => {
-                            let col_name = col.clone();
-                            self.next();
-                            Ok(Expression::Identifier(format!("{}.{}", name, col_name)))
+                    // #5137 A1: consume the FULL dot chain and emit one flat
+                    // name. The single-shot handling stopped after two
+                    // segments, so `d2.t2.id` in an expression context became
+                    // `SubqueryField(Identifier("d2.t2"), "id")` — whose
+                    // evaluation arm discards the field — and the WHERE
+                    // predicate silently never matched. Flattening here
+                    // matches the column-list loop's convention and routes
+                    // three-segment names through `eval_identifier`'s db-segment
+                    // stripping. `(expr).col` / `f(x).col` are unaffected:
+                    // their primaries are parenthesised and never enter this
+                    // branch.
+                    let mut qualified = name.clone();
+                    while matches!(self.current(), Some(Token::Dot)) {
+                        self.next();
+                        match self.current() {
+                            Some(Token::Identifier(part)) => {
+                                let part_name = part.clone();
+                                self.next();
+                                qualified = format!("{}.{}", qualified, part_name);
+                            }
+                            Some(t) => {
+                                return Err(format!(
+                                    "Expected column name after dot, got {:?}",
+                                    t
+                                ))
+                            }
+                            None => return Err("Expected column name after dot".to_string()),
                         }
-                        Some(t) => Err(format!("Expected column name after dot, got {:?}", t)),
-                        None => Err("Expected column name after dot".to_string()),
                     }
+                    Ok(Expression::Identifier(qualified))
                 } else if matches!(self.current(), Some(Token::LParen)) {
                     self.next();
                     // EXTRACT(field FROM expr) is a special function-call form

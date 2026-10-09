@@ -486,3 +486,106 @@ fn issue_5137_three_segment_column_reference() {
         "d2.t2.id must evaluate to 42, got: {text}"
     );
 }
+
+/// #5137 AC4f (阶段 3 后半): three-segment column in the WHERE clause
+/// AND in a multi-table join predicate. The WHERE path parses through
+/// `parse_expression`'s postfix-dot loop (SubqueryField form) and the
+/// join-key path splits qualifiers at the FIRST dot — both assumed at
+/// most two segments.
+#[test]
+fn issue_5137_three_segment_where_and_join_predicate() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create t1 in d1");
+    engine
+        .execute("INSERT INTO t1 VALUES (1)")
+        .expect("insert into t1");
+
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+    engine
+        .execute("INSERT INTO t2 VALUES (42)")
+        .expect("insert into t2");
+
+    // WHERE with a three-segment reference (single table).
+    engine.execute("USE d1").expect("use d1");
+    let rows = engine
+        .execute("SELECT id FROM d2.t2 WHERE d2.t2.id = 42")
+        .expect("WHERE db.table.col must parse and evaluate");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("42"),
+        "WHERE d2.t2.id = 42 must match the row, got: {text}"
+    );
+    let none = engine
+        .execute("SELECT id FROM d2.t2 WHERE d2.t2.id = 7")
+        .expect("non-matching WHERE must execute");
+    let none_text = format!("{none:?}");
+    assert!(
+        !none_text.contains("42"),
+        "WHERE d2.t2.id = 7 must filter the row out, got: {none_text}"
+    );
+
+    // Join predicate with three-segment references on both sides
+    // (cross-db comma join with WHERE).
+    let joined = engine
+        .execute("SELECT t1.id FROM d1.t1, d2.t2 WHERE d1.t1.id = d2.t2.id")
+        .expect("cross-db join predicate with three-segment refs must execute");
+    let joined_text = format!("{joined:?}");
+    assert!(
+        !joined_text.contains("42") && !joined_text.contains("Integer(1)"),
+        "id=1 vs id=42 must join to nothing, got: {joined_text}"
+    );
+    let joined2 = engine
+        .execute("SELECT t1.id FROM d1.t1, d2.t2 WHERE d1.t1.id + 41 = d2.t2.id")
+        .expect("cross-db join predicate must execute");
+    let joined2_text = format!("{joined2:?}");
+    assert!(
+        joined2_text.contains("Integer(1)") || joined2_text.contains("42"),
+        "matching join predicate must return rows, got: {joined2_text}"
+    );
+}
+
+/// #5137 A2: hand-written cross-db JOIN with three-segment ON predicate.
+/// The join-key builder splits qualifiers at the FIRST dot — `d2.t2.id`
+/// yielded qualifier `d2` (the database, not the table) and the lookup
+/// missed both sides.
+#[test]
+fn issue_5137_handwritten_join_on_three_segment() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create t1 in d1");
+    engine
+        .execute("INSERT INTO t1 VALUES (1)")
+        .expect("insert into t1");
+
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+    engine
+        .execute("INSERT INTO t2 VALUES (1)")
+        .expect("insert into t2");
+
+    engine.execute("USE d1").expect("use d1");
+    let rows = engine
+        .execute("SELECT t1.id FROM d1.t1 JOIN d2.t2 ON d1.t1.id = d2.t2.id")
+        .expect("handwritten cross-db JOIN with three-segment ON must execute");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("Integer(1)"),
+        "matching JOIN must return the joined row, got: {text}"
+    );
+}

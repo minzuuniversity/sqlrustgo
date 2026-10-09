@@ -5299,6 +5299,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Ok(JoinKey::All)
             }
             Expression::Identifier(name) => {
+                // #5137 A2: `db.table.col` — strip the leading database
+                // segment so the qualifier compared against left/right table
+                // names is the TABLE part (`t1`/`t2`), not the database
+                // (`d1`/`d2`). Same rule as `eval_identifier`: only names
+                // with two dots are rewritten; single-dot qualifiers
+                // (including combined-schema names) pass through untouched.
+                let name: &str = match name.find('.') {
+                    Some(first) if name[first + 1..].contains('.') => &name[first + 1..],
+                    _ => name,
+                };
                 if let Some((qualifier, col_name)) = name.split_once('.') {
                     // Qualified name: must match either side
                     if qualifier == left_name {
