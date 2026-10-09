@@ -126,50 +126,6 @@
         "created_by": "aoci-init",
         "order": 106,
         "enabled": true
-      },
-      {
-        "rule_id": "prod-path",
-        "action": "index",
-        "pattern": "src/**/*.rs",
-        "pattern_kind": "glob",
-        "reason": "Production execution path audited by IAIA-410 (engine_select/engine_dml/session_db) — highest cognition value",
-        "source": "user",
-        "created_by": "human",
-        "order": 1,
-        "enabled": true
-      },
-      {
-        "rule_id": "storage-path",
-        "action": "index",
-        "pattern": "crates/storage/**/*.rs",
-        "pattern_kind": "glob",
-        "reason": "Storage layer holds F9 WAL identity defect (#5192) — audited critical path",
-        "source": "user",
-        "created_by": "human",
-        "order": 1,
-        "enabled": true
-      },
-      {
-        "rule_id": "docs-exclude",
-        "action": "exclude",
-        "pattern": "docs/**",
-        "pattern_kind": "glob",
-        "reason": "Documentation is narrative, not production behaviour; index code paths first so cognition budget goes to the audited execution path",
-        "source": "user",
-        "created_by": "human",
-        "order": 100,
-        "enabled": true
-      },
-      {
-        "rule_id": "scripts-exclude",
-        "action": "exclude",
-        "pattern": "scripts/**",
-        "pattern_kind": "glob",
-        "reason": "Gate scripts are reviewed by check_gate_test_integrity and the anti-ignore audit; indexing them duplicates a mechanism that already fails closed once fixed",
-        "source": "user",
-        "created_by": "human",
-        "order": 100,
-        "enabled": true
       }
     ]
   },
@@ -179,7 +135,7 @@
     "whole_index": {
       "target_tokens": 200000,
       "warning_tokens": 300000,
-      "max_tokens": 400000
+      "max_tokens": 600000
     },
     "r": [
       {

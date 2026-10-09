@@ -653,8 +653,8 @@ v4.1.0 在 `91ac4dcd48` 上存在 **2 项 GA 阻断**（F9 数据丢失 + F5 静
 | Issue | 分类 | 严重度 | 状态 |
 |---|---|---|---|
 | [#5191](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5191) | F5 握手选库未同步 `session_db` | P0 | **已修复**（PR #5195） |
-| [#5192](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5192) | F9 崩溃后已提交数据丢失 | P0 / GA 阻断 | **已修复**（PR 待创建） |
-| [#5193](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5193) | F3 planner/executor 未接入生产 | P0 | 待架构决策 |
+| [#5192](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5192) | F9 崩溃后已提交数据丢失 | P0 / GA 阻断 | **已修复**（PR #5208 已合并，见 §14.4） |
+| [#5193](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5193) | F3 planner/executor 未接入生产 | P0 | **已关闭**（选项 C 采纳，PR #5207，见 §15.1） |
 
 ### 14.2 #5191 整改结果
 
@@ -768,3 +768,85 @@ WAL recovery: total=8 committed_txns=1 rows_inserted=5 skipped=0
 
 `skipped=0` 使 `guard_unrecoverable_commits` 放行，与修复前
 （`skipped=5` → 服务静默丢数据）形成对照。
+
+## 15. 第三阶段：整改分析（截至 `8110ce8ae0`，2026-10-10）
+
+本节对 §8 十项与 §13.6 附带发现做现状复核。所有「存活/缺失」判定基于
+`develop/v4.1.0` HEAD `8110ce8ae0`（#5208 合并后）工作树的代码路径证据，
+不是 §13/§14 的外推。
+
+### 15.1 §14 之后新关闭的项
+
+| 项 | 关闭方式 | 证据 |
+|---|---|---|
+| #5193 F3 planner/executor 未接入生产 | **选项 C 采纳**：文档与实现一致（planner/executor 不进入生产链路，手写解释器为生产路径）；「待架构决策」状态关闭 | PR #5207（`c7b1a1e1e`）已合并 |
+| 附带发现 13.6.1 casefold 冲突 | 删除冲突副本 + 新增 casefold 门禁 | PR #5202（`afaa3de8e`）；`docs/releases/v2.9.0/` 下冲突名 `OPENCODE_STARTUP.md` 已不存在 |
+| #5105 连接级当前库引入的脏读回归 | `scan_for_reader_in_db` 改走 `scan_in_tx_db(db, table, reader_tx)`，读路径恢复事务快照隔离 | `7bad10f47`，在 HEAD |
+| #5106 多表 UPDATE/DELETE 未接语句的库 | 读写两侧库作用域接齐 | PR #5109（`5fdea59f3`），在 HEAD |
+| #4974 REPEATABLE READ 快照 | 快照在 BEGIN 时绑定，不再每次读重取 | `ac8e54ba4`，在 HEAD |
+
+### 15.2 未关闭整改项（按严重度）
+
+**R1（P0 / 同类 GA 阻断）—— CLUSTERED 表完全绕过 WAL（§13.5 结构风险 #1，确认存活）**
+
+- 触发：`CREATE TABLE … ENGINE=InnoDB CLUSTERED` → `ClusteredTable`（`src/engine_create.rs:397`）
+- 存放：`clustered_tables: RwLock<HashMap>` 纯内存（`src/execution_engine.rs:182,374`），启动时为空表，**全仓库无加载路径**（无 load/restore/recover 命中）
+- 写路径：`execute_insert_clustered` 直写内存 B+ 树（`src/engine_dml.rs:2171-2182`，`ct.insert(record)`），**零 WAL 行条目**，仅 `commit_implicit_dml_tx`
+- 失效模式：INSERT 成功（返回行数）→ 进程重启 → CLUSTERED 表全部数据静默丢失。与 F9（#5192）同类；#5208 的修复在 storage 层，不覆盖此路径
+- 按 §6 一票否决第 2 条（COMMIT 成功却发生数据丢失），确认即 GA 阻断
+- 整改选项（需裁决，同 #5193 三案模式）：
+  - 方案 A：CLUSTERED DML 行变更走库感知 WAL + 启动加载（真持久化，复用 #5208 的 `DNAM` 编码；工作量最大）
+  - 方案 B：显式声明 CLUSTERED 为非持久化引擎（文档 + `CREATE` 时告警/报错 + 证据矩阵登记），以「不声称持久化」关闭（工作量最小，但改变产品承诺）
+
+**R2（P1，R3 前置）—— 缺口 B：变异 spec 文件不在版本控制，且已不在工作树**
+
+- `scripts/gate/mutation_runner.py:11` 读 `tests/baseline/v4.1_mutation_specs.json`；该文件从未提交（`git log --all` 零命中），当前工作树亦不存在
+- 27 条 spec 的结果（16 KILLED / 11 REVIEW）目前**无法从树复现**
+- 整改：从 #5015 / #5012 等变异审计证据重建 spec 文件，纳入版本控制并冻结哈希
+
+**R3（P1）—— §8 第 8 项：11 条 REVIEW 债务定性**
+
+- 依赖 R2。每条定性三选一：补测试 / 承认功能未实现 / 判定不可变异
+
+**R4（P1，已解除阻断）—— §8 第 4/7 项：Join/EXISTS/GROUP BY/NULL 差分 + B+Tree 索引验证**
+
+- 阻断源 #003（非 PK 查询 0 列）已由 #5191（PR #5195）修复 → §8 表中两行「受 #003 阻断」失效，差分与索引验证**现在可执行**
+- 这是「核心功能真实性」（25 分）维度的最大剩余缺口
+
+**R5（P2）—— 缺口 A + 缺口 C：禁用二进制再验证**
+
+- `b2-disabled-test-binary-registry.md` 现有约 95 行登记（审计时 89），无再验证、排除登记无评审机制
+- 整改：逐个再验证并记录；排除登记加评审（谁禁用、为何、何时可恢复）
+
+**R6（P2）—— 附带发现 13.6.2：`--executor-parallelism` 静默降级（存活）**
+
+- `src/execution_engine.rs:300`：CLI 接受参数，运行时封顶 1，仅 help 文本自承。F10 类（静默行为变更）
+- 整改：生效、显式报错、或启动时 WARNING（三选一，不得静默）
+
+**R7（P2）—— 附带发现 13.6.3：默认数据目录 `/tmp/sqlrustgo-data`（存活）**
+
+- `crates/mysql-server/src/main.rs:208,353`：`/tmp` 清理即丢数据，多实例互相污染
+- 整改：默认改实例专属目录，或首跑强制显式指定
+
+**R8（P1）—— §8 第 9 项：跨版本回归（v3.12 / v4.0 / v4.1）**：无新证据，待执行
+
+**R9（P1）—— §8 第 10 项：证据矩阵 + 独立 GA 审核**：终项，依赖 R1–R8
+
+**R10（P2，验证债务）—— §14.3 遗留：`cargo test -p sqlrustgo --lib` 未跑完**
+
+- #5191 新增 3 条回归测试的断言结果未经全库测试套件验证，evidence/ 无补跑记录
+- 整改：补跑并归档
+
+### 15.3 对 GA 判定的影响
+
+- 原 2 项 GA 阻断（#5191 F5、#5192 F9）已修复并验证（§14.2 / §14.6）
+- **R1 为同类新 GA 阻断**（CLUSTERED 绕过 WAL = COMMIT 成功后重启丢数据）；若裁决走方案 B，降级为「文档化限制 + 证据矩阵登记」
+- 按 §6 一票否决：**当前状态仍不得晋级 GA**，直至 R1 关闭、R4/R3/R8 完成、R9 出具独立审核
+- 建议执行顺序：R2 → R3（可与 R1 裁决并行）→ R1 整改 → R4 差分 → R8 → R9 → R5/R6/R7/R10 清理
+
+### 15.4 关联状态：AOCI-CODE 治理（附带发现 13.6.1 后续）
+
+- casefold 门禁（PR #5202）就位后 `aoci init` 不再 fail-closed；全量索引构建在整改工作副本进行中（机械抽取条目，未提交）
+- #5204 治理阻塞已按受支持流程解开（根因：提交态 config 11 条规则 vs baseline 7 条规则身份矛盾），更正评论已附该 issue
+- 不计入 IAIA-410 评分，仅状态记录
+
