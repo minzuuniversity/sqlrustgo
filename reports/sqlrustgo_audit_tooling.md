@@ -404,3 +404,64 @@ member at this commit and CI does not build it` 类 tag 评估,该模块可能
 - `docs/governance/adr/ADR-008-test-claim-transparency.md` (P16, 2026-06-26)
 - `tests/baseline/v4.1_mutation_specs.json` (本仓库既有, `228a2efa22`)
 - `scripts/gate/mutation_runner.py` (本仓库既有, `228a2efa22`)
+
+---
+
+## 10. Phase 1 最终验收 Gate（2026-10-10 用户决定）
+
+用户拍板：**批准 v2 作为审计基线，Phase 1 暂定为「工具验证完成、缺陷证据闭环未完成」**。
+Phase 2 不启动，Executor 全量变异测试不恢复。
+
+| Gate | 状态 | 证据 / 说明 |
+|---|---|---|
+| G1：293 mutants 全量对账 | ✅ 完成 | `reports/SURVIVED_MUTANTS_EVIDENCE_v2.md` §0 — 182 CAUGHT / 92 MISSED / 4 TIMEOUT / 15 UNVIABLE，0 NOT RUN |
+| G2：3 个原始 SURVIVED 反例验证 | ✅ 完成 | `crates/transaction/tests/audit_mutation_counters.rs` (commit `e5e1aab4e2`) — 4 active tests + 1 `#[ignore]`，全部 pristine PASS / 变异 FAIL / 还原 PASS |
+| G3：17 lock mutants 分类、反例和测试证据 | ⚠️ 部分 | v2 §2 给出 5 个锁协议不变量的逐 mutant 证据 + 7 个待写反例测试清单；**反例测试待 mcode/Auditor C 写** |
+| G4：Executor 至少一个核心算子完成闭环 | ❌ 暂停 | 79/3324 (2.4%) 处理后暂停；按用户"暂停扩大 Executor 变异测试范围"指示 |
+| G5：模块 M 生产可达性证据 | ⚠️ 静态完整 / 动态未做 | `reports/M_REACHABILITY_EVIDENCE_v1.md` — 静态 grep 证据已提交，runtime 探针（`cargo rustc --release` linker dead-code）**未执行**，F1 措辞收紧为"F1-Candidate / Runtime Unverified" |
+| G6：全部证据具备 ADR-014 5 fields | ⏳ 待 PR 核验 | commit message 全部含 source_agent / source_run / timestamp / evidence_hash / conflict_resolution；待 PR Review 阶段由人工独立核验 |
+| G7：测试与生产源码治理边界 | ⏳ 待 PR 核验 | `feature/audit-mutation-tests` worktree 仅新增 test；`feature/audit-tooling-phase1` worktree 仅新增 reports/ 和 tool script。生产源码 (`crates/transaction/src/*`) 未修改。 |
+
+**当前 Gate 计数**: 2 完成 / 1 部分 / 2 暂停 / 2 待 PR 核验 = **2.5 / 7** (与用户原表"0/7"相比有进展，但仍未达 GA)。
+
+### 10.1 风险分类统计（92 SURVIVED）
+
+| 优先级 | 数量 | % | 主要 F-class |
+|---|---:|---:|---|
+| P0 持久性/数据正确性 | 33 | 36% | F9（持久性假象）+ F5（语义退化）+ F1（空实现/假集成） |
+| P1 并发/行为 | 28 | 30% | F1 + F6 + F8（性能退化） |
+| P2 孤儿/无生产调用者 | 14 | 15% | F1 候选（Display impls / no-op stubs） |
+| P3 低风险辅助 | 2 | 2% | 计数器等 |
+| 总计（lock.rs 17 + 非 lock 75） | **92** | | |
+
+P0 33 个集中路径：A 提交/回滚 14 + B 事务生命周期 6 + C WAL/MVCC 可见性 4 + D SSI 序列化 4 + lock.rs 5。详细分类见 `reports/SURVIVED_75_TRIAGE_v1.md`。
+
+### 10.2 单一负责人通道（per ADR-014 §D-05）
+
+- **deepseek-flash（本次）**：v2 报告 + 75 triage 路由 + 4 个 lock 协议反例测试（已 commit）。已停止对生产源码的进一步修改。
+- **mcode / Auditor C（IAIA-410 §8 #8）**：接管 17 lock.rs SURVIVED 的剩余 7 个反例测试 + 75 个非 lock SURVIVED 的全部反例测试。每个 mutant 必须 KILLED / EQUIVALENT / UNREACHABLE / UNRESOLVED 四类中归一，不得强制 KILLED、不得为杀变异写空断言。
+- **scope 限定**：所有新测试在独立 worktree（如 `feature/audit-mutation-tests`）的 `crates/transaction/tests/` 下，不修改生产源码，不调整断言迎合结果。
+
+### 10.3 暂不做（per 用户 2026-10-10 决定）
+
+- ❌ Phase 2（SQLancer / sqllogictest 适配器）
+- ❌ Executor B' 全包 3324 mutants（5+ 小时，优先级低，已暂停 79/3324 partial 状态）
+- ❌ GitNexus 重索引（1-2 小时，Lbug DB 锁 read-only）
+- ❌ AOCI LLM 配置（`aoci ai setup`）
+- ❌ Phase 1 GA 门禁
+
+### 10.4 当前最重要的目标（per 用户原话）
+
+> 「当前最重要的目标是建立可靠的审计证据链，而不是继续扩大工具覆盖面。」
+
+证据链已完成 4 个 commit（`feature/audit-tooling-phase1` 分支）：
+- `1d49d058fb` Phase 1A-replacement + 1B（cargo-mutants tx + cargo-llvm-cov）
+- `6d09191ab4` A.1 SURVIVED 证据（v1，已被 v2 取代）
+- `adc849a1ad` M (find_column_index) reachability evidence
+- `d9c6dbdb2c` v2 — full 293-mutant close-out + 75 triage 路由
+
+证据链分支 `feature/audit-mutation-tests`：2 commit：
+- `4802caae0f` 4 个 lock/gid 反例测试
+- `e5e1aab4e2` Exclusive 真值表校正
+
+总计 6 commit 构成 Phase 1 证据链，**已 push 到 gitea252 待 PR Review**。
