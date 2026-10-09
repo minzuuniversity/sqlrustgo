@@ -1031,6 +1031,18 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                 }
                 WalSyncMode::Every => {
                     self.wal.lock().sync()?;
+                    // B-1 (#5177): durability boundary, NOT the point
+                    // where the client is told COMMIT succeeded. The two
+                    // differ and tests must say which they mean.
+                    //
+                    // Gated, because the module only exists with the
+                    // feature; an ungated call would break the production
+                    // build. Inside, `reach` is a no-op when the harness is
+                    // not armed.
+                    #[cfg(feature = "fault-injection")]
+                    crate::fault_injection::reach(
+                        crate::fault_injection::FaultPoint::AfterCommitFsync,
+                    );
                 }
                 WalSyncMode::GroupCommit { .. } => {
                     // WalStorage path doesn't install a coordinator;
