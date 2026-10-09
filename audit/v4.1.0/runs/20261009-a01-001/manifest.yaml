@@ -1,0 +1,68 @@
+schema_version: 1
+run_id: 20261009-a01-001
+source_agent: opencode+Mimo2.6Flash
+frozen_commit: bf48818cd41369ea9728017b0afeed96d223386f
+environment:
+  os: Linux
+  arch: x86_64
+  hostname: gaoyuan
+  rustc: rustc 1.99.0 (b940084d7 2026-09-28)
+  cargo: cargo 1.99.0 (5f94df478 2026-08-27)
+  env_vars:
+    CARGO_TARGET_DIR: /home/ai/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d8bba914c5223bece0146c28e7cc1cb48f25c27de84275bb03ef65d5a84e5a2d
+  dataset_hashes: {}
+commands:
+- id: frozen-commit-check
+  cmd: git rev-parse HEAD
+  cwd: .
+  timeout_sec: 30
+- id: cargo-lock-hash
+  cmd: sha256sum Cargo.lock
+  cwd: .
+  timeout_sec: 30
+- id: fmt-check
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 300
+- id: docs-links
+  cmd: bash scripts/gate/check_docs_links.sh
+  cwd: .
+  timeout_sec: 300
+results:
+- id: frozen-commit-check
+  started_at: '2026-10-09T20:32:52Z'
+  finished_at: '2026-10-09T20:32:52Z'
+  exit_code: 0
+  stdout_sha256: 6c7c4b876b846b75d9601df4a4cef3080920b0f9842d4bdb36ff3250a5b93f51
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-frozen-commit-check.stdout
+  stderr_path: logs/001-frozen-commit-check.stderr
+- id: cargo-lock-hash
+  started_at: '2026-10-09T20:32:52Z'
+  finished_at: '2026-10-09T20:32:52Z'
+  exit_code: 0
+  stdout_sha256: d516f328dba5a4ea6471c88bc4f2226397ce9926412bdbf391396e5b9377476f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-cargo-lock-hash.stdout
+  stderr_path: logs/002-cargo-lock-hash.stderr
+- id: fmt-check
+  started_at: '2026-10-09T20:32:52Z'
+  finished_at: '2026-10-09T20:32:58Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-fmt-check.stdout
+  stderr_path: logs/003-fmt-check.stderr
+- id: docs-links
+  started_at: '2026-10-09T20:32:58Z'
+  finished_at: '2026-10-09T20:32:58Z'
+  exit_code: 0
+  stdout_sha256: d6aec487ebb33131619f06041f87bf2d82dd3cb2021259f5eb98ee4cbbd51981
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-docs-links.stdout
+  stderr_path: logs/004-docs-links.stderr
+evidence_hash: sha256:d6d9619ea3af829e36ebd9112ae385ad14fc54e04fa0426d10ef43a019c55c93
+completed_at: '2026-10-09T20:32:58Z'
