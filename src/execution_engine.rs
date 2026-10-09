@@ -328,6 +328,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .thread_name(|i| format!("sqlrustgo-par-{i}"))
                 .build_global();
         }
+        // #5191: read the storage-owned current database BEFORE `storage` is
+        // moved into the struct below. A client that names a database in the
+        // handshake (`mysql -D db`, `pymysql.connect(database=...)`) never
+        // sends `USE` or `COM_INIT_DB`, so the selection only ever reaches
+        // storage's shared `current_db`. Seeding the session with the
+        // DEFAULT_DATABASE constant made every statement on such a connection
+        // resolve against `default`: `DATABASE()` reported `default`, table
+        // lookup missed, and SELECT returned a 0-column result set instead of
+        // erroring. `USE` masked this because `execute_use_database` writes
+        // both the storage field and the engine session field.
+        let session_db = storage.read().current_db();
         Self {
             storage,
             // V312-58 / Issue #4513: auto-initialize a default catalog so
@@ -349,10 +360,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 current_role: None,
             })),
             trigger_undo_sink: Arc::new(parking_lot::Mutex::new(Vec::new())),
-            // #5057: a fresh connection is in the implicit database.
-            session_db: parking_lot::RwLock::new(
-                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string(),
-            ),
+            // #5191: seeded from storage above, not from the constant — a
+            // handshake-named database never sends `USE`, so this is the only
+            // point where the selection is visible to the session.
+            session_db: parking_lot::RwLock::new(session_db),
             current_user: UserIdentity::new("root", "localhost"),
             session_null_order_first: None,
             checkpoint_manager: None,
