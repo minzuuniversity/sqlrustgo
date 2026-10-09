@@ -16,7 +16,7 @@
 | 文档 | 说明 |
 |------|------|
 | [2026-02-13-sqlcc-rust-redesign-design.md](2026-02-13-sqlcc-rust-redesign-design.md) | SQLCC Rust 重设计文档 |
-| [2026-02-13-sqlcc-rust-impl-plan.md](2026-02-13-sqlcc-rust-impl-plan.md) | SQLCC Rust 实现计划 |
+| [2026-10-10-write-path-o-log-n-design-5188.md](2026-10-10-write-path-o-log-n-design-5188.md) | 写路径 O(log N) 设计评估（#5188，方案 A/B + 量化 + 风险清单） |
 
 ---
 
