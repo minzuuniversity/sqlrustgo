@@ -3,7 +3,7 @@
 use crate::execution_engine::*;
 use crate::Value;
 use parking_lot::RwLock;
-use sqlrustgo_storage::MemoryStorage;
+use sqlrustgo_storage::{MemoryStorage, StorageEngine};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -1891,13 +1891,21 @@ fn handshake_selected_database_can_query_its_own_tables() {
     let all = engine
         .execute("SELECT * FROM t")
         .expect("SELECT on a handshake-selected database must succeed");
-    assert_eq!(
-        all.columns.len(),
-        2,
-        "expected 2 projected columns, got {} — a 0-column result is the #5191 symptom",
-        all.columns.len()
-    );
+    // `ExecutorResult` carries no column metadata — it is `rows` plus
+    // `affected_rows` — so the #5191 "0 columns" symptom is observed as
+    // rows that come back with zero width. Asserting on row shape rather
+    // than a field that does not exist is what makes this a real check
+    // instead of a compile error.
     assert_eq!(all.rows.len(), 3, "expected all 3 rows back");
+    for (i, row) in all.rows.iter().enumerate() {
+        assert_eq!(
+            row.len(),
+            2,
+            "row {i} has {} fields, expected 2 — rows of width 0 are the \
+             #5191 symptom (0-column result instead of an error)",
+            row.len()
+        );
+    }
 
     let count = engine
         .execute("SELECT COUNT(*) FROM t")
