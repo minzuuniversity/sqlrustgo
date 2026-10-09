@@ -3699,6 +3699,79 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         current_db: &str,
     ) -> SqlResult<(Vec<Vec<Value>>, TableInfo, bool)> {
         COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = false);
+
+        // Phase 3 (TPCH-01 Q15): materialize any derived subqueries from
+        // `FROM t, (SELECT ...) AS alias` before the join chain runs.
+        //
+        // #5137 B (phase-4 lock audit): this MUST stay above
+        // `storage_read()` below. Materialisation recurses into
+        // `execute_select`, whose entry calls `ensure_database_known`
+        // (a blocking `storage.read()` on this very RwLock). Holding
+        // this function's read guard across that recursion deadlocks as
+        // soon as a writer queues up in between: parking_lot parks the
+        // writer, then blocks the reentrant read behind it — the same
+        // writer-preference deadlock documented at the Step-1 site.
+        // Pinned by tests/e2e/multi_db_isolation_5025.rs
+        // `issue_5137_no_deadlock_derived_materialisation_under_writes`.
+        let derived_subqueries = get_and_clear_derived_subqueries();
+        if !derived_subqueries.is_empty() {
+            for (name, subq) in &derived_subqueries {
+                let sub_result = self.execute_select(subq)?;
+                let mut table_info = TableInfo {
+                    name: name.clone(),
+                    columns: Vec::new(),
+                    foreign_keys: Vec::new(),
+                    unique_constraints: Vec::new(),
+                    check_constraints: Vec::new(),
+                    partition_info: None,
+                    compression: None,
+                    collations: std::collections::HashMap::new(),
+                    original_sql: String::new(),
+                };
+                for col in &subq.columns {
+                    let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
+                    let inferred_type_str: String = sub_result
+                        .rows
+                        .iter()
+                        .find(|r| r.iter().any(|v| !matches!(v, Value::Null)))
+                        .and_then(|first_row| {
+                            let col_idx = subq
+                                .columns
+                                .iter()
+                                .position(|c| c.alias.as_ref().unwrap_or(&c.name) == &col_name)?;
+                            first_row.get(col_idx).map(|v| match v {
+                                Value::Integer(_) => "INTEGER",
+                                Value::Float(_) => "FLOAT",
+                                Value::Text(_) => "TEXT",
+                                Value::Boolean(_) => "BOOLEAN",
+                                Value::Blob(_) => "BLOB",
+                                Value::Point(_, _) => "POINT",
+                                Value::Json(_) => "JSON",
+                                Value::Null => "NULL",
+                            })
+                        })
+                        .unwrap_or("TEXT")
+                        .to_string();
+                    table_info
+                        .columns
+                        .push(sqlrustgo_storage::ColumnDefinition {
+                            name: col_name,
+                            data_type: inferred_type_str,
+                            nullable: true,
+                            primary_key: false,
+                            char_max_length: None,
+                            collation: None,
+                            default_value: None,
+                            auto_increment: false,
+                        });
+                }
+                DERIVED_RESULTS.with(|cell| {
+                    cell.borrow_mut()
+                        .insert(name.clone(), (sub_result.rows, table_info));
+                });
+            }
+        }
+
         let storage = self.storage_read();
 
         // Sprint 5 v4: the parser encodes the inline alias into the
@@ -3765,67 +3838,6 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         "applied base-table pushdown"
                     );
                 }
-            }
-        }
-
-        // Phase 3 (TPCH-01 Q15): materialize any derived subqueries from
-        // `FROM t, (SELECT ...) AS alias` before the join chain runs.
-        let derived_subqueries = get_and_clear_derived_subqueries();
-        if !derived_subqueries.is_empty() {
-            for (name, subq) in &derived_subqueries {
-                let sub_result = self.execute_select(subq)?;
-                let mut table_info = TableInfo {
-                    name: name.clone(),
-                    columns: Vec::new(),
-                    foreign_keys: Vec::new(),
-                    unique_constraints: Vec::new(),
-                    check_constraints: Vec::new(),
-                    partition_info: None,
-                    compression: None,
-                    collations: std::collections::HashMap::new(),
-                    original_sql: String::new(),
-                };
-                for col in &subq.columns {
-                    let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
-                    let inferred_type_str: String = sub_result
-                        .rows
-                        .iter()
-                        .find(|r| r.iter().any(|v| !matches!(v, Value::Null)))
-                        .and_then(|first_row| {
-                            let col_idx = subq
-                                .columns
-                                .iter()
-                                .position(|c| c.alias.as_ref().unwrap_or(&c.name) == &col_name)?;
-                            first_row.get(col_idx).map(|v| match v {
-                                Value::Integer(_) => "INTEGER",
-                                Value::Float(_) => "FLOAT",
-                                Value::Text(_) => "TEXT",
-                                Value::Boolean(_) => "BOOLEAN",
-                                Value::Blob(_) => "BLOB",
-                                Value::Point(_, _) => "POINT",
-                                Value::Json(_) => "JSON",
-                                Value::Null => "NULL",
-                            })
-                        })
-                        .unwrap_or("TEXT")
-                        .to_string();
-                    table_info
-                        .columns
-                        .push(sqlrustgo_storage::ColumnDefinition {
-                            name: col_name,
-                            data_type: inferred_type_str,
-                            nullable: true,
-                            primary_key: false,
-                            char_max_length: None,
-                            collation: None,
-                            default_value: None,
-                            auto_increment: false,
-                        });
-                }
-                DERIVED_RESULTS.with(|cell| {
-                    cell.borrow_mut()
-                        .insert(name.clone(), (sub_result.rows, table_info));
-                });
             }
         }
 
