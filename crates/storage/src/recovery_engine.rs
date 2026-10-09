@@ -1139,6 +1139,10 @@ mod tests {
             entry_type: WalEntryType::Insert,
             table_id,
             table_name: table_name.map(|s| s.to_string()),
+            // #5192: absent = written before the field existed. These
+            // fixtures predate it deliberately — a row with a table name
+            // but no database must not be replayed into a guessed one.
+            database_name: None,
             key: None,
             data: None,
             lsn: 0,

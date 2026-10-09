@@ -20,6 +20,11 @@ fn entry() -> WalEntry {
         lsn: 7,
         timestamp: 1_700_000_000,
         table_name: Some("users".to_string()),
+        // #5192 added `database_name`. This entry models a row written
+        // before that field existed, which is exactly what `None` means:
+        // absent, and a replay must refuse to guess rather than write the
+        // row into whichever database happens to be current.
+        database_name: None,
     }
 }
 

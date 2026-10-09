@@ -141,6 +141,10 @@ fn test_wal_entry_round_trip() {
         entry_type: WalEntryType::Insert,
         table_id: 100,
         table_name: None,
+        // #5192: absent = written before the field existed. A replay
+        // must refuse to guess the database rather than write this row
+        // into whichever one happens to be current.
+        database_name: None,
         key: Some(vec![1]),
         data: Some(vec![10, 20]),
         lsn: 0,
@@ -162,6 +166,10 @@ fn test_wal_append_and_read() {
         entry_type: WalEntryType::Insert,
         table_id: 1,
         table_name: None,
+        // #5192: absent = written before the field existed. A replay
+        // must refuse to guess the database rather than write this row
+        // into whichever one happens to be current.
+        database_name: None,
         key: None,
         data: Some(vec![99]),
         lsn: 0,
@@ -185,6 +193,10 @@ fn test_wal_multi_entry() {
             entry_type: WalEntryType::Insert,
             table_id: i,
             table_name: None,
+            // #5192: absent = written before the field existed. A replay
+            // must refuse to guess the database rather than write this row
+            // into whichever one happens to be current.
+            database_name: None,
             key: None,
             data: Some(vec![i as u8]),
             lsn: 0,
@@ -210,6 +222,10 @@ fn test_wal_recover() {
                 entry_type: WalEntryType::Insert,
                 table_id: 1,
                 table_name: None,
+                // #5192: absent = written before the field existed. A replay
+                // must refuse to guess the database rather than write this row
+                // into whichever one happens to be current.
+                database_name: None,
                 key: None,
                 data: Some(vec![i as u8]),
                 lsn: 0,
@@ -235,6 +251,10 @@ fn test_wal_manager_recover() {
             entry_type: WalEntryType::Insert,
             table_id: 1,
             table_name: None,
+            // #5192: absent = written before the field existed. A replay
+            // must refuse to guess the database rather than write this row
+            // into whichever one happens to be current.
+            database_name: None,
             key: None,
             data: Some(vec![77]),
             lsn: 0,
@@ -258,6 +278,10 @@ fn test_wal_lsn() {
         entry_type: WalEntryType::Insert,
         table_id: 1,
         table_name: None,
+        // #5192: absent = written before the field existed. A replay
+        // must refuse to guess the database rather than write this row
+        // into whichever one happens to be current.
+        database_name: None,
         key: None,
         data: None,
         lsn: 0,
