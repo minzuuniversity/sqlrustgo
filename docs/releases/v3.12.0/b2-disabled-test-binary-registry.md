@@ -58,6 +58,35 @@ Sections below:
 | 32 | `bulk_insert_v2_routing` | (REACTIVATED 2026-08-24) — previously listed as compile fail due to `BinaryTableStorageV2` unresolved import. PR #4417 landed; test now compiles AND passes `cargo test --test bulk_insert_v2_routing` → 17 passed, 0 failed. **Reactivated** — removed from this registry and from `DISABLED_TESTS_LIST`. | openclaw | pre-existing (follow-up to #4417) | — |
 | 33 | `bin_storage_compaction_roundtrip` | (REACTIVATED 2026-08-24) — same `BinaryTableStorageV2` compile fix as entry 32. Test compiles AND passes `cargo test --test bin_storage_compaction_roundtrip` → 1 passed, 0 failed. **Reactivated** — removed from this registry and from `DISABLED_TESTS_LIST`. | openclaw | pre-existing (follow-up to #4417) | — |
 
+## 非生产证据登记（不计入禁用，但同样不得作为正确性依据）
+
+**这一节与上面的禁用清单是两回事。** 禁用 = 测试跑不过；这里 = 测试能跑过，但它验证的
+代码路径在生产中不可达，因此其通过率**不构成生产正确性证据**。
+
+登记于此的原因：若不登记，后来者读到「planner 测试全绿」会据此认为 planner 已集成 ——
+这正是 IAIA-410 归为 F3 的认知偏差。
+
+| 目标 | 位置 | 为何不是生产证据 | 复核条件 |
+|---|---|---|---|
+| `coverage_v3_12`、`planner_chain_tests`、`statement_tests` | `crates/planner/tests/` | 验证 `crates/planner` 的物理计划层；`PhysicalPlan` 无 `execute()`，构造点全在 `crates/planner/tests/` 内，`mysql-server` 从不 import planner（#5193，选项 C） | 当且仅当 `PhysicalPlan` 获得 `execute()` 且存在生产调用方时移除本登记 |
+| `sqlrustgo-executor` 的执行器单元测试 | `crates/executor/tests/` | 火山算子在 v4.1.0 未接入生产执行路径 | 同上 |
+
+**注意 `planner_multi_way_join_test` 不在此列。** 它位于 `tests/integration/`，测的是
+手写引擎（`src/engine_select.rs`）的真实 JOIN 路径 —— 名字里有 "planner" 但不是 planner
+crate 的测试，属于生产证据，应继续计入 B2。
+
+### 为什么会腐化，以及防线
+
+上面 89 项禁用清单里，`mysqladmin_e2e_test` 曾被登记为「Investigate mysqladmin e2e flow」，
+**该归因是错的**：缺陷实际在共用的客户端行解析器（#5179），修复后 8/8 通过并已移出清单
+（#5186）。教训是「登记原因写下后无人复验」。
+
+因此本节每条都带**失效条件**（右列），而非仅记录状态。失效条件写明的是**可判定的客观
+事实**（trait 是否有 `execute()`、是否存在生产调用方），不是主观判断或人名认领。
+
+**复核触发点**：任何一次将 planner / executor 接入生产执行的改动，都必须同时处理本节，
+否则该改动的 PR 评审应要求补上。
+
 ## Total: 33 entries (31 active + 2 reactivated-as-removed), all with expiry 2026-09-30
 
 **17 entries linked to OPEN TPC-H BLOCKER issues** (#4374/#4377/#4378/#4381, parent #4374 covers Q14/Q6 too, plus q13/q16/q21 added in this iteration). These require the upstream TPC-H correctness work to close — out of scope for #4385 (Beta gate remediation).

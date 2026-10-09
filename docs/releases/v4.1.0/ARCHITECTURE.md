@@ -24,14 +24,16 @@ develop/v4.1.0 上完成以下架构性工作：
 - 事务隔离设计推进（per `docs/releases/v4.1.0/TRANSACTION_ISOLATION_DESIGN_2026-10-04.md`）。
 - Parser 覆盖率从实测 60.58% 向 80% 目标收敛（per 根 `README.md` §1）。
 
-## 2. 目标组件
+## 2. 组件
+
+### 2.1 实际执行链路（v4.1.0 HEAD 事实）
 
 ```text
 SQL text / MySQL wire / sqlite-like CLI
         |
-Parser -> Planner -> Optimizer -> Executor
-        |
-Catalog / Storage / Transaction / WAL / MVCC
+Parser -> ExecutionEngine（手写解释器）-> Storage
+        |                                    |
+        +-- Optimizer（局部接入）             Catalog / Transaction / WAL / MVCC
         |
 Vector index / Graph store (v4.x 一等公民子系统)
         |
@@ -39,6 +41,37 @@ GMP documents / chunks / audit trail / relations / embeddings
         |
 Hybrid retrieval / SQL-backed graph projection
 ```
+
+**执行者是 `src/engine_select.rs`（9450 行）+ `src/engine_dml.rs`（2478 行）的手写
+解释器，不是物理计划执行。**
+
+### 2.2 未接入生产的部分（IAIA-410 F3，#5193 裁决为选项 C）
+
+`crates/planner` 的物理计划层 —— `PhysicalPlan` trait **没有 `execute()` 方法**，
+`SeqScanExec::execute` 硬编码 `Ok(vec![])`，`IndexScanExec` 无 `execute`。
+`NoOpPlanner` 委托给 `DefaultPlanner`，但 `DefaultPlanner::new()` 的全部外部构造点位于
+`crates/planner/tests/`，且 `mysql-server` 从不 import planner。
+
+**因此：**
+
+- 这些算子的单元测试通过率**不构成生产正确性证据** —— 它们跑的是生产不可达的路径
+- B2 门禁中它们的通过**不代表**任何用户可见行为被验证
+- `crates/planner/src/lib.rs` 的 `// TODO: Add these modules after migration` 表明
+  该层被项目自己排在「迁移之后」，**从未承诺为 v4.1.0 的交付物**
+
+`crates/optimizer` 是**部分接入**，不可整体删除。其中真被生产调用的是：
+
+| 模块 | 生产引用 | 性质 |
+|---|---|---|
+| `decorrelate` | 3 | 真调用（`try_decorrelate` 有埋点） |
+| `stats` | 3 | 真调用（`cbo_estimator.rs:209`） |
+| `unified_cost` | 2 | 真调用（`engine_builder.rs` 七处构造 `UnifiedCostModel`） |
+| `rules` | 2 | ⚠️ **只借 `Expr`/`BinaryOperator` 类型做转换，未调用任何优化规则** |
+
+按「有引用 = 在用」判断会误留 `rules`；按 crate 整体删除会误伤生产路径。详见
+`ARCHITECTURE_ROUTE_DECISION_5193.md` §1.3 与 `CORE_PATH_INVENTORY.md`。
+
+### 2.3 工作空间布局
 
 工作空间 crate 位于 `crates/`（40+ workspace members），集成测试位于 `tests/`。
 
