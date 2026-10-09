@@ -29,6 +29,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self,
         create: &CreateTableStatement,
     ) -> SqlResult<ExecutorResult> {
+        // #5250: a qualified name names its database explicitly, and that
+        // beats the session database. `CREATE TABLE d1.t` issued while
+        // the session is in `d2` must create `d1.t` — otherwise the table
+        // is written into whatever database happened to be current, and a
+        // later read of `d1.t` finds nothing.
+        //
+        // The parser already splits the qualifier into
+        // `CreateTableStatement::schema` (verified for `d1.t`, `t`, and
+        // the quoted `\`d.1\`.\`t.a\``), so no string splitting is done
+        // here — a `.` inside a quoted identifier is part of the name.
+        let session_db = self.session_db();
+        let target_db = create.schema.as_deref().unwrap_or(session_db.as_str());
         let mut storage = self.storage.write();
 
         // V312-18: CREATE TABLE AS SELECT
@@ -62,12 +74,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             };
 
             // V312-18: OR REPLACE - drop existing table first
-            if create.or_replace && storage.has_table(&create.name) {
-                storage.drop_table(&create.name)?;
+            if create.or_replace && storage.has_table_in(target_db, &create.name) {
+                storage.drop_table_in_db(target_db, &create.name)?;
             }
 
             // Check IF NOT EXISTS
-            if storage.has_table(&create.name) {
+            if storage.has_table_in(target_db, &create.name) {
                 if create.if_not_exists {
                     return Ok(ExecutorResult::empty());
                 } else {
@@ -179,7 +191,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     collations: std::collections::HashMap::new(),
                     original_sql: original_sql.clone(),
                 };
-                storage.create_table_in_db(&self.session_db(), &info)?;
+                storage.create_table_in_db(target_db, &info)?;
                 return Ok(ExecutorResult::new(vec![], 0));
             }
 
@@ -195,7 +207,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 collations: std::collections::HashMap::new(),
                 original_sql,
             };
-            storage.create_table_in_db(&self.session_db(), &info)?;
+            storage.create_table_in_db(target_db, &info)?;
             // V400-02 (V4): see top-level hook.
             if create.name.starts_with("vec_") {
                 storage.mark_vector_table(&create.name);
@@ -203,11 +215,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
             // Insert rows from SELECT result
             let insert_count = if !select_result.rows.is_empty() {
-                storage.insert_in_db(
-                    &self.session_db(),
-                    &create.name,
-                    select_result.rows.clone(),
-                )?;
+                // CTAS: the rows land in the same database as the table.
+                storage.insert_in_db(target_db, &create.name, select_result.rows.clone())?;
                 select_result.rows.len()
             } else {
                 0
@@ -278,12 +287,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         });
 
         // V312-18: OR REPLACE for regular CREATE TABLE
-        if create.or_replace && storage.has_table(&create.name) {
-            storage.drop_table(&create.name)?;
+        if create.or_replace && storage.has_table_in(target_db, &create.name) {
+            storage.drop_table_in_db(target_db, &create.name)?;
         }
 
         // Check IF NOT EXISTS for regular CREATE TABLE
-        if storage.has_table(&create.name) {
+        if storage.has_table_in(target_db, &create.name) {
             if create.if_not_exists {
                 return Ok(ExecutorResult::empty());
             } else {
@@ -405,7 +414,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let ct = ClusteredTable::new(info.clone(), pk_col_idx);
             // Also register with Heap so other code paths (catalog, schema checks) find it
             storage.create_table_in_db(
-                &self.session_db(),
+                target_db,
                 &TableInfo {
                     name: info.name.clone(),
                     columns,
@@ -423,7 +432,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .insert(create.name.clone(), Arc::new(parking_lot::RwLock::new(ct)));
             return Ok(ExecutorResult::empty());
         }
-        storage.create_table_in_db(&self.session_db(), &info)?;
+        storage.create_table_in_db(target_db, &info)?;
         // V400-02 / Issue #3730 (V4): when the new table name
         // follows the `vec_` convention used by
         // `crates/vector::VectorStore::register_column`, mark it

@@ -83,7 +83,31 @@ impl<S: 'static> VtuGuard<S> {
 }
 
 impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
+    /// #5250: the check must be asked of the stated database. The old trait
+    /// default resolved this question against the current database, so a
+    /// storage could correctly refuse a write and still answer `true` here.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        self.inner.has_table_in(db, table)
+    }
     /// Scan — allowed (read-only)
+
+    /// #5250: delegate with the stated database. This wrapper holds a
+    /// single inner `StorageEngine`, so the database has to be carried
+    /// through — the previous trait default dropped it (`let _ = db;`) and
+    /// operated on whatever database was current.
+    /// #5250: delegate with the stated database — the guard must not disturb the wrapped storage
+    /// The old trait default did `let _ = db;` and operated on whatever
+    /// database happened to be current, which silently created or dropped
+    /// the wrong table.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.inner_mut().create_table_in_db(db, info)
+    }
+
+    /// #5250: see `create_table_in_db` — same contract, the database must be used.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        self.inner_mut().drop_table_in_db(db, table)
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         self.inner.scan(table)
     }

@@ -300,6 +300,44 @@ impl BinaryTableStorage {
 }
 
 impl StorageEngine for BinaryTableStorage {
+    /// #5250: a single flat namespace — this storage can only answer for
+    /// `default`. Any other database is reported absent rather than answered
+    /// from the wrong namespace.
+    ///
+    /// A `bool` cannot distinguish "does not exist" from "cannot address that
+    /// database"; `false` is the safe answer until a `SqlResult` API exists.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        db.eq_ignore_ascii_case("default") && self.has_table(table)
+    }
+
+    /// #5250: this storage keeps every table in one flat map under `data_dir`
+    /// — it has no database namespace. The trait used to answer these by
+    /// dropping `db` and touching the current database, so `CREATE TABLE d1.t`
+    /// succeeded while creating the table somewhere else entirely.
+    ///
+    /// Refusing beats guessing: `default` is accepted because it is the only
+    /// namespace here, and any other database is an error rather than a silent
+    /// redirect.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "BinaryTableStorage has no database namespace; cannot create table in '{}'",
+                db
+            )));
+        }
+        self.create_table(info)
+    }
+
+    /// #5250: same contract as `create_table_in_db`.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "BinaryTableStorage has no database namespace; cannot drop table '{}' in '{}'",
+                table, db
+            )));
+        }
+        self.drop_table(table)
+    }
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         Ok(self
             .tables
@@ -675,6 +713,24 @@ impl std::ops::DerefMut for BoxStorageEngine {
 }
 
 impl StorageEngine for BoxStorageEngine {
+    /// #5250: ask the inner storage about the *stated* database. The old trait
+    /// default resolved the question against the current database instead.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        self.inner.has_table_in(db, table)
+    }
+
+    /// #5250: delegate with the stated database. This box holds a single inner
+    /// `StorageEngine`, so the database must be carried through — the old trait
+    /// default dropped it (`let _ = db;`).
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.inner.create_table_in_db(db, info)
+    }
+
+    /// #5250: see `create_table_in_db` — same contract, the database must be used.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        self.inner.drop_table_in_db(db, table)
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         (**self).scan(table)
     }

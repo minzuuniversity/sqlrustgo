@@ -437,6 +437,57 @@ fn encode_value_to_bytes_into(v: &crate::engine::Value, buf: &mut Vec<u8>) {
 // for read paths. Full implementation is split across tasks 2.3-2.5.
 
 impl StorageEngine for BinaryTableStorageV2 {
+    /// #5250: this storage has a single flat namespace, so it can only answer
+    /// for `default`. Any other database is reported as absent rather than
+    /// answered from the wrong namespace.
+    ///
+    /// A `bool` cannot distinguish "does not exist" from "cannot address that
+    /// database". Until a `SqlResult` API exists for that distinction, `false`
+    /// is the safe answer — it never claims a table is present when it is not.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        db.eq_ignore_ascii_case("default") && self.has_table(table)
+    }
+
+    /// #5250: this storage has no database namespace — its tables live in one
+    /// flat map under `data_dir`. The trait used to answer these by dropping
+    /// `db` and touching the current database, which made `CREATE TABLE d1.t`
+    /// succeed and quietly create `t` somewhere else.
+    ///
+    /// Silently ignoring `db` is worse than refusing: a caller that named a
+    /// database must be able to trust where the table went. So a stated
+    /// database other than `default` is an error, and `default` is accepted
+    /// because it is the only namespace this storage actually has.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        {
+            if !db.eq_ignore_ascii_case("default") {
+                {
+                    return Err(SqlError::ExecutionError(format!(
+                        "{} has no database namespace; cannot create table in '{}'",
+                        stringify!(BinaryTableStorageV2),
+                        db
+                    )));
+                }
+            }
+            StorageEngine::create_table(self, info)
+        }
+    }
+
+    /// #5250: same contract as `create_table_in_db`.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        {
+            if !db.eq_ignore_ascii_case("default") {
+                {
+                    return Err(SqlError::ExecutionError(format!(
+                        "{} has no database namespace; cannot drop table '{}' in '{}'",
+                        stringify!(BinaryTableStorageV2),
+                        table,
+                        db
+                    )));
+                }
+            }
+            self.drop_table(table)
+        }
+    }
     fn scan(&self, _table: &str) -> SqlResult<Vec<Record>> {
         Ok(vec![])
     }
