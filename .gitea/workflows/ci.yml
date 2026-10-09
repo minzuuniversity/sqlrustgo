@@ -65,14 +65,30 @@ jobs:
         run: cargo build --all-features
       - name: Run tests
         run: |
+          set -o pipefail
           cargo test --all-features 2>&1 | tee test_report.log
       - name: Test summary
         if: always()
         run: |
-          PASS=$(grep -c 'test result: ok' test_report.log 2>/dev/null || echo "0")
-          FAIL=$(grep -c 'test result: FAILED' test_report.log 2>/dev/null || echo "0")
+          # `grep -c` prints 0 AND exits 1 when there is no match, so
+          # `grep -c ... || echo 0` appends a second 0 and yields the two-line
+          # value "0\n0" — which then breaks the integer test below. Taking
+          # the first line keeps this a single number.
+          PASS=$(grep -c 'test result: ok' test_report.log 2>/dev/null | head -1)
+          FAIL=$(grep -c 'test result: FAILED' test_report.log 2>/dev/null | head -1)
+          PASS=${PASS:-0}
+          FAIL=${FAIL:-0}
           echo "Tests: passed=$PASS failed=$FAIL"
+          # A run that produced no `test result` lines at all never reached the
+          # test phase — a compile error, or a build-script failure. Counting
+          # that as "0 failed" reported a broken build as green, so an absent
+          # summary is now a failure in its own right.
           if [ "$FAIL" -gt 0 ]; then exit 1; fi
+          if [ "$((PASS + FAIL))" -eq 0 ]; then
+            echo "No 'test result' lines in test_report.log — the test run did not complete."
+            echo "Treating as failure rather than as a clean run."
+            exit 1
+          fi
       - name: Gate G1 — TPC-H 22/22 baseline (issue #3186)
         if: github.event_name == 'pull_request' || contains(github.ref, 'develop/v3.9.0')
         run: |
