@@ -179,6 +179,36 @@ PERF_ONLY_BINARIES = [
     "int2_substance_parallel_test",  # 200K-row INSERT × 9 tests
 ]
 
+# Tests that must stay OUT of the enumerated set, and why.
+#
+# These are NOT excluded for being slow (PERF_ONLY_BINARIES) or for failing
+# (DISABLED_BINARIES) — they pass today, and they are not enumerated at all:
+# `list_test_binaries()` only reads the root manifest's [[test]] entries plus
+# `EXTRA_TEST_PACKAGES` (sqlrustgo-mysql-server), so `sqlrustgo-planner`'s
+# targets are invisible to the gate. That is the correct state — a green
+# planner suite would be evidence about nothing a user can observe, since the
+# physical-plan layer has no `execute()` and no production caller (IAIA-410 F3,
+# #5193, route decision option C).
+#
+# Keeping the names here makes that a checked invariant rather than a property
+# of two manifests nobody diffs together. If a future change adds
+# `sqlrustgo-planner` to EXTRA_TEST_PACKAGES, the gate would start counting
+# unreachable code as coverage; `check_off_production_path_registry.sh` R4
+# fails on that and forces an explicit decision instead of silent inflation.
+#
+# `crates/executor` needs no such entry: 2 of its 68 targets
+# (distinct_test, multi_join_test) shadow root-manifest names and do run in
+# the gate, but they drive the real interpreter via `sqlrustgo::ExecutionEngine`,
+# so their green is real.
+#
+# Source of truth for each entry and its expiry condition:
+# docs/releases/v4.1.0/b2-off-production-path-registry.md
+OFF_PRODUCTION_PATH_BINARIES = [
+    "planner_chain_tests",  # imports sqlrustgo_planner only; no ExecutionEngine
+    "coverage_v3_12",       # imports sqlrustgo_planner only; no ExecutionEngine
+    "statement_tests",      # planner AST types only (Expr / MergeStatement)
+]
+
 # Per-binary `cargo test` thread override. The default test runner runs each
 # binary's tests in parallel (`--test-threads` defaults to # CPUs). For
 # binaries whose tests touch process-global `AtomicU64` diag counters via
@@ -191,6 +221,8 @@ PERF_ONLY_BINARIES = [
 TEST_THREADS_OVERRIDE = {
     "q4_residual_filter_test": 1,
 }
+
+OFF_PROD_SET = frozenset(OFF_PRODUCTION_PATH_BINARIES)
 
 # Patterns extracted from cargo test output.
 # Examples observed at HEAD:
@@ -213,7 +245,7 @@ FAILED_LINE = re.compile(r"^FAILED\b", re.MULTILINE)
 @dataclasses.dataclass
 class BinaryResult:
     name: str
-    status: str           # 'PASS' | 'FAIL' | 'TIMEOUT' | 'SKIP_DISABLED' | 'SKIP_PERF' | 'INFRA_FAIL'
+    status: str           # 'PASS' | 'FAIL' | 'TIMEOUT' | 'SKIP_DISABLED' | 'SKIP_PERF' | 'SKIP_OFF_PROD' | 'INFRA_FAIL'
     elapsed_sec: float
     passed: int
     failed: int
@@ -388,6 +420,11 @@ def main() -> int:
         "--include-perf", action="store_true",
         help="Run PERF binaries anyway (perf-only path, separate gate)",
     )
+    parser.add_argument(
+        "--include-off-production-path", action="store_true",
+        help="Run OFF_PRODUCTION_PATH binaries anyway (#5193 option C: "
+             "crate coverage, not database correctness)",
+    )
     args = parser.parse_args()
 
     fast_timeout = int(os.environ.get("B2_FAST_TIMEOUT_SEC", DEFAULT_FAST_TIMEOUT_SEC))
@@ -431,6 +468,15 @@ def main() -> int:
                 group="perf",
             ))
             continue
+        if not args.include_off_production_path and name in OFF_PROD_SET:
+            results.append(BinaryResult(
+                name=name, status="SKIP_OFF_PROD",
+                elapsed_sec=0.0, passed=0, failed=0, ignored=0,
+                exit_code=0,
+                log_path="",
+                group="off_production_path",
+            ))
+            continue
         print(f"  → running {name}", flush=True)
         result = run_one_binary(name, slow_timeout)
         results.append(result)
@@ -450,6 +496,7 @@ def main() -> int:
     n_timeout = sum(1 for r in results if r.status == "TIMEOUT")
     n_skip_disabled = sum(1 for r in results if r.status == "SKIP_DISABLED")
     n_skip_perf = sum(1 for r in results if r.status == "SKIP_PERF")
+    n_skip_off_prod = sum(1 for r in results if r.status == "SKIP_OFF_PROD")
     n_infra = sum(1 for r in results if r.status == "INFRA_FAIL")
     n_fast = sum(1 for r in results if r.group == "fast")
     n_slow = sum(1 for r in results if r.group == "slow")
@@ -475,6 +522,7 @@ def main() -> int:
             "timed_out": n_timeout,
             "skipped_disabled": n_skip_disabled,
             "skipped_perf": n_skip_perf,
+            "skipped_off_production_path": n_skip_off_prod,
             "infra_fail": n_infra,
             "group_fast": n_fast,
             "group_slow": n_slow,
@@ -494,6 +542,8 @@ def main() -> int:
     print(f"  TIMEOUT          : {n_timeout}")
     print(f"  SKIP_DISABLED    : {n_skip_disabled}")
     print(f"  SKIP_PERF        : {n_skip_perf}")
+    print(f"  SKIP_OFF_PROD    : {n_skip_off_prod}  (#5193 option C — not on the "
+          f"production execution path)")
     print(f"  INFRA_FAIL       : {n_infra}")
     print(f"  fast group (<30s): {n_fast}")
     print(f"  slow group (≥30s): {n_slow}")
