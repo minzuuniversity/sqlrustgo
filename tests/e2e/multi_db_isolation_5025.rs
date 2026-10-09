@@ -426,7 +426,6 @@ fn issue_5137_qualified_table_where_filter_works() {
 /// and every `extra_tables` / auto-rewritten join entry must each be
 /// resolved against its own database, not the connection's current one.
 #[test]
-#[ignore = "#5137 阶段 2 进行中：parser comma 循环未拼接限定名（基线失败 Table not found: d2）"]
 fn issue_5137_comma_list_across_databases() {
     let mut engine = make_engine();
     engine.execute("CREATE DATABASE d1").expect("create d1");

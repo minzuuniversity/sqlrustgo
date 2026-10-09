@@ -4787,7 +4787,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Some((t, a)) => (t.to_string(), Some(a.to_string())),
             None => (join_clause.table.clone(), None),
         };
-        let right_table_name = right_bare;
+        // #5137 AC4e: the comma list keeps `db.table` embedded in the
+        // table string (per-table schema does not exist in the AST).
+        // Split it so the right side's rows AND columns are read from
+        // its own database; without this the lookup fell through to the
+        // connection's current database and raised `Table not found`
+        // for the schema part (or read the wrong database's table).
+        // The alias fallback must use the BARE table name — qualifiers
+        // match column prefixes (`t2.id`), never `db.table.id`.
+        let (right_db, right_table_name) = if let Some((db, tbl)) = right_bare.split_once('.') {
+            (db.to_string(), tbl.to_string())
+        } else {
+            (current_db.to_string(), right_bare.clone())
+        };
         let right_alias = join_clause.alias.as_ref().unwrap_or(&right_table_name);
 
         // Phase 3 (TPCH-01 Q15): if the right table is a synthetic __subq_N
@@ -4800,11 +4812,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             (
                 // #4974: `storage` here is `&S`, not a guard.
-                // #5113: the schema line below already names `current_db`
-                // while this one did not — so the right table's COLUMNS
-                // came from the right database and its ROWS from another.
-                self.scan_for_reader_in_db(storage, &current_db, &right_table_name)?,
-                storage.get_table_info_in(&current_db, &right_table_name)?,
+                // #5113: schema and rows must name the same database.
+                // #5137: that database is `right_db` — the table's own
+                // schema prefix when the comma list qualified it,
+                // `current_db` otherwise (unchanged behaviour).
+                self.scan_for_reader_in_db(storage, &right_db, &right_table_name)?,
+                storage.get_table_info_in(&right_db, &right_table_name)?,
             )
         };
 

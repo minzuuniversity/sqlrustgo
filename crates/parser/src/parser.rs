@@ -7091,7 +7091,7 @@ impl Parser {
                             });
                             continue;
                         }
-                        let consumed_name = match self.next() {
+                        let mut consumed_name = match self.next() {
                             Some(Token::Identifier(name)) => name,
                             Some(t) => {
                                 return Err(format!(
@@ -7102,6 +7102,28 @@ impl Parser {
                             }
                             None => return Err("Expected table name after comma".to_string()),
                         };
+                        // #5137 AC4e: a qualified table in the comma list
+                        // (`FROM t1, d2.t2`) arrives here as Identifier
+                        // ("d2") followed by Dot + Identifier ("t2"). Keep
+                        // the `db.table` form embedded in the table string
+                        // (per-table schema does not exist in the AST, so
+                        // the executor splits it back per table). Before
+                        // this, `d2` alone became the table name and the
+                        // query failed with `Table not found: d2`.
+                        if matches!(self.current(), Some(Token::Dot)) {
+                            self.next(); // consume `.`
+                            match self.next() {
+                                Some(Token::Identifier(tail)) => {
+                                    consumed_name = format!("{}.{}", consumed_name, tail);
+                                }
+                                other => {
+                                    return Err(format!(
+                                        "Expected table name after `{}.` in FROM list, got {:?}",
+                                        consumed_name, other
+                                    ))
+                                }
+                            }
+                        }
                         // Phase 2 (TPCH-01 Q7/Q21 fix): handle inline alias
                         // for *each* table in the comma list. The previous
                         // design attached the alias to the LAST table only,
