@@ -172,15 +172,21 @@ fn wire_logical_backup_creates_archive_with_data() {
 
 #[test]
 fn wire_admin_handles_connection_failure_gracefully() {
-    let server = fresh_server();
-    // Try to connect with wrong port (off by 1)
-    let result = WireAdmin::connect(
-        "127.0.0.1",
-        server.addr.port() + 1, // wrong port
-        "root",
-        "",
-        "test",
-    );
+    // Bind a listener to port 0, read the port the OS assigned, then drop
+    // it. That port is known-closed at the moment of the connect attempt
+    // *because nothing else in this process can have claimed it* — the
+    // listener is still ours until `drop` returns.
+    //
+    // The previous version used `server.addr.port() + 1` and assumed that
+    // port was free. Under `--test-threads>1` another test's ephemeral
+    // server regularly holds it, so the connect succeeded and the test
+    // failed intermittently (observed: 1 failure in 3 full-binary runs).
+    // "Off by one from a live port" is not a closed port.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+    let dead_port = listener.local_addr().expect("local_addr").port();
+    drop(listener);
+
+    let result = WireAdmin::connect("127.0.0.1", dead_port, "root", "", "test");
     match result {
         Err(WireError::Connect(_)) => {
             // Expected: graceful failure

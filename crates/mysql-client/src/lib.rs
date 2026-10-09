@@ -821,6 +821,9 @@ fn respond_to_local_infile(
 /// `capacity overflow` (the byte is the NULL escape inside a
 /// length-encoded int, so it used to decode to `u64::MAX` and then blow up
 /// `Vec::with_capacity`).
+///
+/// Rows are parsed as text. Use [`parse_result_set_with_infile`] with
+/// `binary_rows = true` for a COM_STMT_EXECUTE response.
 pub fn parse_result_set(
     stream: &mut dyn WireStream,
     deprecate_eof: bool,
@@ -833,10 +836,23 @@ pub fn parse_result_set(
             path
         )))
     };
-    parse_result_set_with_infile(stream, deprecate_eof, &mut refuse, None)
+    parse_result_set_with_infile(stream, deprecate_eof, &mut refuse, None, false)
 }
 
 /// Same as [`parse_result_set`], but able to answer a LOCAL INFILE request.
+///
+/// `binary_rows` states which row encoding the caller asked for: `false`
+/// for COM_QUERY (text protocol rows), `true` for COM_STMT_EXECUTE
+/// (binary protocol rows). The caller always knows this — it chose the
+/// command it just sent — so the parser must not guess.
+///
+/// The previous implementation sniffed the row packet's first byte and
+/// called it binary when that byte was `0x00`. That byte is ambiguous:
+/// a *text* row whose first value is the empty string also begins with
+/// `0x00`, because a zero-length length-encoded string is encoded as the
+/// single byte `0x00`. Such a row was decoded as a binary row and failed
+/// with "Binary row: data too short for null bitmap". `SELECT ''` and
+/// `SELECT @@sql_mode` both hit it (Issue #5179).
 ///
 /// `infile` is invoked with the path the server asked for and must return
 /// the bytes to stream back. `next_seq`, when supplied, receives the
@@ -849,6 +865,7 @@ pub fn parse_result_set_with_infile(
     deprecate_eof: bool,
     infile: LocalInfileHandler<'_>,
     next_seq: Option<&mut u8>,
+    binary_rows: bool,
 ) -> MySqlResult<ResultSet> {
     let pkt = Packet::read_from(stream)?;
 
@@ -950,10 +967,14 @@ pub fn parse_result_set_with_infile(
             status_flags: trailing_status,
         });
     }
-    let first_byte = row_pkt.payload[0];
-    let is_binary = first_byte == 0x00;
+    // Row encoding comes from the caller, not from sniffing the payload.
+    // A text row whose first value is an empty string also starts with
+    // 0x00 (a zero-length lenenc string is a single 0x00 byte), so the
+    // old `first_byte == 0x00` test misread it as a binary row header and
+    // failed the whole query (Issue #5179).
+    let is_binary = binary_rows;
 
-    // Parse first row to determine format, then handle remaining rows
+    // Parse first row, then handle remaining rows
     let mut rows = Vec::new();
     let mut trailing_status_flags: u16 = 0;
     if is_binary {
@@ -1311,8 +1332,14 @@ impl MySqlConnection {
         // be borrowed at once. `next_seq` is only written on the LOCAL
         // INFILE path (see `parse_result_set_with_infile`).
         let mut next_seq = self.seq;
-        let result =
-            parse_result_set_with_infile(&mut self.stream, true, infile, Some(&mut next_seq))?;
+        // COM_QUERY answers with text-protocol rows.
+        let result = parse_result_set_with_infile(
+            &mut self.stream,
+            true,
+            infile,
+            Some(&mut next_seq),
+            false,
+        )?;
         self.seq = next_seq;
 
         // Update seq from the last packet read (handled inside parse_result_set)
@@ -1359,7 +1386,9 @@ impl MySqlConnection {
         let mut results = Vec::new();
         loop {
             let mut infile = read_local_file_for_infile;
-            let rs = parse_result_set_with_infile(&mut self.stream, true, &mut infile, None)?;
+            // Sent as one COM_QUERY, so every result set is text-protocol.
+            let rs =
+                parse_result_set_with_infile(&mut self.stream, true, &mut infile, None, false)?;
             let more = matches!(&rs, ResultSet::Select { status_flags, .. } if *status_flags & SERVER_MORE_RESULTS_EXISTS != 0)
                 || matches!(&rs, ResultSet::Ok { status_flags, .. } if *status_flags & SERVER_MORE_RESULTS_EXISTS != 0);
             let is_last = !more;
@@ -1514,10 +1543,10 @@ impl MySqlConnection {
         self.seq = pkt.sequence.wrapping_add(1);
         pkt.write_to(&mut self.stream)?;
 
-        // Response: text or binary result set depending on server
-        // We use the result-set parser for the text protocol.
+        // COM_STMT_EXECUTE answers with binary-protocol rows. The caller knows
+        // this from the command it just sent; the parser must not sniff.
         let mut infile = read_local_file_for_infile;
-        parse_result_set_with_infile(&mut self.stream, true, &mut infile, None)
+        parse_result_set_with_infile(&mut self.stream, true, &mut infile, None, true)
     }
 
     /// COM_STMT_CLOSE — deallocate a prepared statement.
