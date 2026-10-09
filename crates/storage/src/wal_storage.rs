@@ -660,6 +660,30 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner_mut().insert_in_db(db, table, records)
     }
 
+    /// #5192: read against a stated database.
+    ///
+    /// This wrapper implements the write half of database scoping
+    /// (`insert_in_db`, `delete_in_db`, `update_in_db`) but not the read
+    /// half, so every read fell through to the trait default at
+    /// `engine.rs:1333` — `let _ = db; self.scan(table)` — which resolves
+    /// against the *current* database. Writes and reads therefore
+    /// disagreed about where a row lives.
+    ///
+    /// Measured on the stack production composes,
+    /// `WalStorage<FileStorage>`:
+    ///
+    /// ```text
+    /// has_table_in("aud", "t")        -> true
+    /// insert_in_db("aud", "t", [row]) -> Ok
+    /// scan_in_db("aud", "t")          -> 0 rows   <-- the defect
+    /// ```
+    ///
+    /// The same four lines against `FileStorage` alone return 1 row, which
+    /// is how the wrapper was isolated from the engine underneath it.
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner().scan_in_db(db, table)
+    }
+
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         // #5192: the unscoped entry point records the storage's current
         // database, matching the `delete_in_db` below it.
