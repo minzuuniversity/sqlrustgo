@@ -1468,6 +1468,82 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
+
+    // --- #5192: database-scoping forwards ---------------------------------
+    //
+    // Each names a database explicitly. Without an override the trait
+    // default in `engine.rs` answers for the *current* database and
+    // discards `db`, so a wrapper can write into one database, read from
+    // another and — when the table itself was created through the
+    // unscoped path — lose the rows at the next `flush()`.
+    //
+    // `FileStorage` implements all of them correctly; a wrapper's job is
+    // to name the database, not to reimplement the operation.
+    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+        self.inner().list_tables_in_db(db)
+    }
+
+    fn scan_with_filter_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner().scan_with_filter_in_db(db, table, filter)
+    }
+
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner()
+            .scan_with_index_in_db(db, table, index_name, key)
+    }
+
+    fn parallel_scan_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        self.inner().parallel_scan_in_db(db, table, num_partitions)
+    }
+
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        self.inner_mut().drop_table_in_db(db, table)
+    }
+
+    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.inner_mut().force_insert_in_db(db, table, record)
+    }
+
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        self.inner_mut()
+            .delete_collect_pks_in_db(db, table, filters)
+    }
+
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.inner_mut().delete_if_in_db(db, table, filter)
+    }
+
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        self.inner_mut()
+            .update_if_in_db(db, table, filter, mutation)
+    }
 }
 
 #[cfg(test)]
