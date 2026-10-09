@@ -134,8 +134,14 @@ fn non_equality_predicates_are_not_extracted() {
 #[test]
 fn engine_select_actually_calls_the_routing() {
     let src = include_str!("../../../src/engine_select.rs");
+    // Whitespace-normalised before matching: rustfmt legitimately wraps the
+    // multi-line call, and an exact-substring pin breaks on formatting
+    // alone (regression seen at #5137-C's fmt pass: call site intact, test
+    // red). Stripping all whitespace keeps the pin on the code shape while
+    // ignoring its layout.
+    let flat: String = src.chars().filter(|c| !c.is_whitespace()).collect();
     assert_eq!(
-        src.matches("try_extract_eq_conjunct(&select.where_clause)")
+        flat.matches("try_extract_eq_conjunct(&select.where_clause)")
             .count(),
         1,
         "#5209: engine_select must route an equality conjunct to \\
@@ -143,7 +149,7 @@ fn engine_select_actually_calls_the_routing() {
          call site is gone every query silently falls back to a full scan"
     );
     assert_eq!(
-        src.matches("scan_with_index_in_db(&current_db, lookup_table, &idx_column, &idx_value)")
+        flat.matches("scan_with_index_in_db(&current_db,lookup_table,&idx_column,&idx_value,)")
             .count(),
         1,
         "#5209: the routed lookup must actually call the storage index"
