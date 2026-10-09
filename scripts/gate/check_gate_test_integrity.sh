@@ -20,12 +20,19 @@
 #
 # Exit codes:
 #   0  PASS — all gate tests run by default, 0 `#[ignore]`
-#   1  FAIL — at least one gate test is `#[ignore]`-marked
-#   2  DRIFT-acceptable (baseline missing; first run captures it)
+#   1  FAIL — at least one gate test is `#[ignore]`-marked, a `|| true`
+#            mask is present, or the baseline is missing
+#
+# #5113: a missing baseline is a FAIL, not a "first run, capturing it".
+# The baseline is committed (tests/baseline/ is allowlisted in .gitignore),
+# so a checkout without one means the reference data was lost — and a gate
+# that recreates its own baseline mid-verification asserts nothing. Use
+# `--init-baseline` to record the gate-test set deliberately, then commit it.
 #
 # Usage:
-#   bash scripts/gate/check_gate_test_integrity.sh         # full run
+#   bash scripts/gate/check_gate_test_integrity.sh                # full run
 #   bash scripts/gate/check_gate_test_integrity.sh --dry-run
+#   bash scripts/gate/check_gate_test_integrity.sh --init-baseline # record + commit
 #
 # Refs:
 #   - ADR-008 (Test Claim Transparency + No-Ignore Gate Policy)
@@ -41,9 +48,7 @@ BASELINE_FILE="${REPO_ROOT}/tests/baseline/gate_test_baseline.json"
 GATE_SCRIPTS_DIR="${REPO_ROOT}/scripts/gate"
 
 DRY_RUN=0
-if [[ "${1:-}" == "--dry-run" ]]; then
-    DRY_RUN=1
-fi
+INIT_BASELINE=0
 
 color_red()   { printf '\033[0;31m%s\033[0m' "$*"; }
 color_green() { printf '\033[0;32m%s\033[0m' "$*"; }
@@ -53,6 +58,16 @@ step() { echo ""; echo "=== $* ==="; }
 pass() { echo "  $(color_green PASS): $*"; }
 fail() { echo "  $(color_red FAIL): $*"; }
 warn() { echo "  $(color_yellow WARN): $*"; }
+
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=1 ;;
+        # #5113: recording a baseline is opt-in. The gate no longer writes
+        # its own reference data during a verification run.
+        --init-baseline) INIT_BASELINE=1 ;;
+        *) fail "unknown argument: $arg"; exit 1 ;;
+    esac
+done
 
 # ============================================================================
 # 0. Dry-run
@@ -334,8 +349,23 @@ TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 GATE_TESTS_LIST=$(echo "${GATE_TESTS_RAW}" | python3 -c "import sys,json; print(json.dumps([t.strip() for t in sys.stdin if t.strip()]))")
 
 if [[ ! -f "${BASELINE_FILE}" ]]; then
+    # #5113: this branch used to always create a baseline and exit 0, which
+    # made "baseline missing" indistinguishable from "baseline verified".
+    # A fresh CI checkout has no baseline (the file was untracked under the
+    # repo-wide `*.json` ignore rule), so every run took this path and the
+    # gate reported PASS having compared nothing against anything. Creating a
+    # baseline is a deliberate, reviewable act — a gate must not manufacture
+    # its own reference data during verification. `--init-baseline` keeps the
+    # one legitimate use (recording the initial set) explicit and auditable.
+    if [[ "${INIT_BASELINE}" != "1" ]]; then
+        fail "baseline not found: ${BASELINE_FILE}"
+        fail "  a missing baseline means P16 has no reference to compare against,"
+        fail "  so a PASS here would assert nothing. Commit the baseline, or re-run"
+        fail "  with --init-baseline to record the current gate-test set on purpose."
+        exit 1
+    fi
     warn "baseline not found: ${BASELINE_FILE}"
-    warn "  first run: auto-creating from current state"
+    warn "  --init-baseline given: recording the current gate-test set"
     python3 - <<PYEOF
 import json
 data = {

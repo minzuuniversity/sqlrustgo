@@ -116,8 +116,7 @@ fn run_concurrent_gc(duration: Duration, n_readers: usize) -> Result<(), String>
     stop.store(true, Ordering::Relaxed);
     writer.join().unwrap();
     gc.join().unwrap();
-    let per_reader: Vec<HashSet<i64>> =
-        readers.into_iter().map(|h| h.join().unwrap()).collect();
+    let per_reader: Vec<HashSet<i64>> = readers.into_iter().map(|h| h.join().unwrap()).collect();
 
     let err = reader_err_count.load(Ordering::Relaxed);
     if err > 0 {

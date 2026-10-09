@@ -20,14 +20,34 @@ log_warn() { echo "[WARN] $*"; }
 
 check_version_history_current() {
     log_info "CHECK 1: VERSION_HISTORY.md current version..."
-    local vh_current
-    vh_current=$(grep '^> \*\*当前版本' docs/releases/VERSION_HISTORY.md 2>/dev/null | \
+    # The document tracks two different things on adjacent lines: the branch
+    # under development ("当前版本", e.g. v4.0.0 while it is still being
+    # built) and the newest shipped release ("最新 GA"). Only the latter is
+    # comparable to a release tag — checking the development line against a
+    # GA tag reports a mismatch for as long as the next version exists, which
+    # is precisely the state this repo is in.
+    local vh_ga
+    vh_ga=$(grep '^> \*\*最新 GA' docs/releases/VERSION_HISTORY.md 2>/dev/null | \
         sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+).*/\1/' | head -1 || true)
-    local latest_ga_tag="3.9.0"
-    if [[ "$vh_current" == "$latest_ga_tag" ]]; then
-        log_pass "VERSION_HISTORY.md current: v$vh_current"
+    if [[ -z "$vh_ga" ]]; then
+        log_warn "VERSION_HISTORY.md has no '最新 GA' line; skipping CHECK 1"
+        return 0
+    fi
+    # The expected version was hardcoded to "3.9.0" while the newest GA tag
+    # had moved on, so this check failed no matter what the document said —
+    # and the only way to silence it was to edit the doc backwards. Derive the
+    # reference from the tags instead.
+    local latest_ga_tag
+    latest_ga_tag=$(git tag -l 'v*-ga' --sort=-v:refname 2>/dev/null | head -1 | \
+        sed -E 's/^v([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+    if [[ -z "$latest_ga_tag" ]]; then
+        log_warn "no v*-ga tag found; skipping the VERSION_HISTORY comparison"
+        return 0
+    fi
+    if [[ "$vh_ga" == "$latest_ga_tag" ]]; then
+        log_pass "VERSION_HISTORY.md latest GA: v$vh_ga (matches tag)"
     else
-        log_error "VERSION_HISTORY.md: current is v$vh_current, expected v$latest_ga_tag"
+        log_error "VERSION_HISTORY.md: latest GA is v$vh_ga, latest GA tag is v$latest_ga_tag"
     fi
 }
 
@@ -49,12 +69,81 @@ check_changelog_no_duplicates() {
     log_info "CHECK 3: CHANGELOG.md no duplicate commits..."
     for changelog in docs/releases/v3.*/CHANGELOG.md; do
         [[ -e "$changelog" ]] || continue
-        local commits
-        commits=$(grep -oE '`[0-9a-f]+`' "$changelog" 2>/dev/null | tr -d '`' | sort || true)
-        if [[ -z "$commits" ]]; then continue; fi
+        # A commit is legitimately cited many times: the GA tag line names it
+        # in full, the evidence line abbreviates it, and the tag note
+        # abbreviates it again. Those are references to one commit, not
+        # repeated release entries, so counting occurrences reported every
+        # well-formed CHANGELOG as broken. What actually matters is whether
+        # one commit was shipped as two separate entries — so count how many
+        # *distinct* places claim it, and normalise abbreviations to full
+        # SHAs first so a full/abbreviated pair is not mistaken for two.
         local duplicates
-        duplicates=$(echo "$commits" | uniq -d | tr '\n' ' ' || true)
-        if [[ -n "$duplicates" ]]; then
+        duplicates=$(python3 - "$changelog" <<'PYEOF'
+import re
+import subprocess
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8", errors="replace") as fh:
+    lines = fh.read().split("\n")
+
+full = {}
+def resolve(sha):
+    if sha in full:
+        return full[sha]
+    out = None
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", sha + "^{commit}"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except Exception:
+        out = None
+    full[sha] = out.stdout.strip() if (out and out.returncode == 0 and out.stdout.strip()) else sha
+    return full[sha]
+
+# The defect this guards against is a commit shipped under two different
+# versions: one of those releases then contains none of its own code.
+# So the unit of comparison is the version section, not the line — a commit
+# cited by the GA tag line, the evidence line and the tag note is one commit
+# described three times, which is normal and must not be reported. Sections
+# are delimited by markdown headings that name a version.
+TICK = chr(96)  # backtick; spelled this way to keep the heredoc balanced
+SHA_RE = re.compile(TICK + r"([0-9a-f]{7,40})" + TICK)
+VERSION_HEADING_RE = re.compile(r"^#{1,6}\s+(?:\[)?v?[0-9]+\.[0-9]+\.[0-9]+")
+
+sections = {}   # version -> {sha -> [line numbers]}
+current = "(header)"
+sections.setdefault(current, {})
+
+for idx, line in enumerate(lines, 1):
+    if VERSION_HEADING_RE.match(line):
+        current = line.lstrip("# ").strip()[:40]
+        sections.setdefault(current, {})
+        continue
+    for sha in SHA_RE.findall(line):
+        sections[current].setdefault(resolve(sha), []).append(idx)
+
+# Which version sections claim each commit.
+claimants = {}
+for version, shas in sections.items():
+    for sha, where in shas.items():
+        claimants.setdefault(sha, []).append((version, where))
+
+dupes = []
+for sha, claims in claimants.items():
+    if len(claims) < 2:
+        continue
+    # One section listing the same commit on several lines is prose. The
+    # defect needs the commit to appear under two *different* versions.
+    versions = {v for v, _ in claims}
+    if len(versions) > 1:
+        dupes.append(sha[:12] + " in " + ", ".join(sorted(versions)))
+
+print("; ".join(sorted(dupes)))
+PYEOF
+)
+        if [[ -n "${duplicates// /}" ]]; then
             log_error "$changelog: duplicate commits: $duplicates"
         else
             log_pass "$changelog: no duplicates"

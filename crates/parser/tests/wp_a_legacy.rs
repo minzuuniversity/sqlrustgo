@@ -368,7 +368,11 @@ mod test_4708_block_comments {
     #[test]
     fn block_comment_spanning_newlines() {
         let sql = "SELECT 1 /*\n multi\n line\n*/ , 2";
-        assert!(parse(sql).is_ok(), "multi-line block comment: {:?}", parse(sql));
+        assert!(
+            parse(sql).is_ok(),
+            "multi-line block comment: {:?}",
+            parse(sql)
+        );
     }
 
     #[test]

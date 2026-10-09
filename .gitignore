@@ -179,6 +179,12 @@ docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
 !tests/tpch_hashes_v380.json
 !tests/oracle/baselines/*.json
 !tests/oracle/baselines/perf/*.json
+# P16 gate baselines. These are gate INPUTS, not build output: P16 compares the
+# live gate-test set against them and FAILs on a regression. When they are
+# untracked, a CI checkout has none, so check_gate_test_integrity.sh takes its
+# "baseline missing -> create one" branch and exits 0 having verified nothing —
+# a green P16 that proves only that the checkout was empty (#5113).
+!tests/baseline/*.json
 # keep other tracked JSON if explicitly staged via 'git add -f'
 
 
