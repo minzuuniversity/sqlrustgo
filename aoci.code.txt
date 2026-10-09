@@ -1,0 +1,14 @@
+#AOCI-CODE-VOLUME: 1
+
+===/tmp/sqlrust_aoci2/===
+.gitattributes[EG4T]: F:Routes Git LFS filters for bulk data and archive extensions | R:code:.gitattributes | A:checkout and LFS behaviour | S:Dropping an LFS line silently turns TPC-H and SOAK fixtures into pointers
+
+===/tmp/sqlrust_aoci2/.cargo/===
+audit.toml[EG7T]: F:Pins the cargo-audit advisory ignore policy so known unpatched advisories are explicit acknowledgements | R:code:.cargo/audit.toml | A:security gate configuration | S:Each entry suppresses an advisory repo-wide and must carry its justification
+
+===/tmp/sqlrust_aoci2/.claude/===
+CLAUDE.md[EG7L]: F:Repository guidance entry point for Claude Code agents describing the layered SQL-92 engine | R:code:.claude/CLAUDE.md | A:agent onboarding instructions | S:Guidance can drift from the code so verify claims against source
+
+===/tmp/sqlrust_aoci2/.gitea/===
+COLLABORATION_PROMPT.md[EQ6M]: F:Records the human-facing collaboration contract for multi-agent development on this repository | R:code:.gitea/COLLABORATION_PROMPT.md | A:agent and reviewer working agreement | S:Written for v2.9.0 yet still states current version v2.8.0; treat its version and CI-environment statements as historical and confirm against CURRENT_VERSION.md before acting on them
+pull_request_template.md[EQ6S]: F:PR template that forces every change to declare its linked Issue and test evidence | R:code:.gitea/pull_request_template.md | A:PR body structure enforced on Gitea | S:Mandatory since v3.8.0 per issues 2883 and 2917; dropping a required section reintroduces the claim-without-evidence pattern that IAIA-410 treats as a release blocker
