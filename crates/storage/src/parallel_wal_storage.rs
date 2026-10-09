@@ -242,6 +242,7 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
                     .unwrap()
                     .as_secs(),
                 table_name: None,
+                database_name: None,
             };
             self.append_wal_entry(entry)?;
         }

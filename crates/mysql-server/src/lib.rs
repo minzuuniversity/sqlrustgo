@@ -6891,7 +6891,19 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                         let _ = file_storage.flush();
                     }
                     Err(e) => {
-                        tracing::warn!("WAL recovery skipped: {}", e);
+                        // #5192: a hard recovery error is not recoverable by
+                        // retrying — the committed state of the data directory
+                        // cannot be established, so continuing would accept new
+                        // writes on top of an unknown baseline. `Ok(report)`
+                        // still does not mean "nothing was lost": a partially
+                        // applied replay exits 0, which is why
+                        // `guard_unrecoverable_commits` above checks
+                        // `skipped_entries` rather than the absence of an error.
+                        return Err(MySqlError::Sql(format!(
+                            "WAL recovery failed: {}. Refusing to start, because the committed \
+                             state of the data directory cannot be established.",
+                            e
+                        )));
                     }
                 }
             }
@@ -7004,7 +7016,19 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                         let _ = file_storage.flush();
                     }
                     Err(e) => {
-                        tracing::warn!("WAL recovery skipped: {}", e);
+                        // #5192: a hard recovery error is not recoverable by
+                        // retrying — the committed state of the data directory
+                        // cannot be established, so continuing would accept new
+                        // writes on top of an unknown baseline. `Ok(report)`
+                        // still does not mean "nothing was lost": a partially
+                        // applied replay exits 0, which is why
+                        // `guard_unrecoverable_commits` above checks
+                        // `skipped_entries` rather than the absence of an error.
+                        return Err(MySqlError::Sql(format!(
+                            "WAL recovery failed: {}. Refusing to start, because the committed \
+                             state of the data directory cannot be established.",
+                            e
+                        )));
                     }
                 }
             }

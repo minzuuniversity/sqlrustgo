@@ -653,7 +653,7 @@ v4.1.0 在 `91ac4dcd48` 上存在 **2 项 GA 阻断**（F9 数据丢失 + F5 静
 | Issue | 分类 | 严重度 | 状态 |
 |---|---|---|---|
 | [#5191](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5191) | F5 握手选库未同步 `session_db` | P0 | **已修复**（PR #5195） |
-| [#5192](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5192) | F9 崩溃后已提交数据丢失 | P0 / GA 阻断 | 待整改 |
+| [#5192](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5192) | F9 崩溃后已提交数据丢失 | P0 / GA 阻断 | **已修复**（PR 待创建） |
 | [#5193](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5193) | F3 planner/executor 未接入生产 | P0 | 待架构决策 |
 
 ### 14.2 #5191 整改结果
@@ -694,3 +694,77 @@ let session_db = storage.read().current_db();
    长期未被发现」**——答案是测试全部覆盖在另一条路径上。
 3. **未完成项**：`cargo test -p sqlrustgo --lib` 未跑完（crate 测试配置编译超
    10 分钟），新增测试的断言结果尚未验证，合入前需补跑。端到端验证已完成。
+### 14.4 #5192 整改结果（F9 持久性假象）
+
+**根因是三处叠加，而非审计初判的单点：**
+
+1. **`WalEntry` 缺失库标识。** #5055 给它加了 `table_name`，但对称的库标识从未存在。
+   回放时 `apply_wal_entry` 用不带库参数的 `get_table_info` / `scan` /
+   `force_insert` / `delete`，全部按「当前库」解析 —— 重启后当前库是 `default`。
+
+2. **真正写 WAL 的不是 `WalStorage::log_*`。** `WalStorage` 包裹的 `FileStorage`
+   自己 append 条目（`file_storage.rs` 的 `wal_insert_entries` /
+   `wal_update_entries` / `wal_delete_entries`），`WalStorage::log_insert` 与
+   `log_update` / `log_delete` **是死代码，从未被调用**。审计中通过在
+   `log_insert` 内埋 `eprintln!` 并实跑一次 INSERT，确认该路径零命中 ——
+   这修正了「在 WalStorage 修日志记录」的初始方案。
+
+3. **恢复失败不阻断启动。** `skipped_entries` 非零意味着有已提交事务未回放、
+   数据已经少了，但服务仅 WARN 继续对外服务并接受新写入。
+
+**改动：**
+
+- `WalEntry::database_name` + `DNAM` 尾部编码，沿用 #5055 的 magic + 长度前缀
+  模式，旧格式条目仍可反序列化；缺库标识的行条目**拒绝重放**而非猜测写入
+- `FileStorage::wal_row_entry` 记录当前库（真正的写入点）
+- 回放全路径库感知：`get_table_info_in` / `scan_in_db` / `force_insert_in_db` /
+  `delete_in_db` / `replace_by_key_in_db`
+- `WalStorage`、`BoxStorageEngine`、`MvccStorage` 补齐 `*_in_db` 覆盖，避免 trait
+  默认实现丢弃 `db` 后回落到无库版本
+- **恢复硬失败（`Err` 分支）时拒绝启动**，把静默丢数据变成运维可见的故障。
+  恢复不完整（`Ok(report)` 但 `skipped_entries > 0`）的拒绝启动由并行实现提供的
+  `guard_unrecoverable_commits` 负责（见 §14.5）
+
+**验证**（真实 pymysql，非 default 库，`kill -9` + 重启）：
+
+| | 修复前 | 修复后 |
+|---|---|---|
+| 恢复日志 | `rows_inserted=0 skipped=5` | `rows_inserted=5 skipped=0` |
+| 服务 | 启动并接受写入（静默丢数据） | 正常启动 |
+| 已提交数据 | **永久丢失** | **3 行完整恢复** |
+
+**方法论补充（与 #5191 同源）：** 两次整改都出现了「初判被自己的实验证伪」——
+#5191 是扫描路径 vs 库上下文，#5192 是 `WalStorage::log_*` vs `FileStorage`。
+两者的共同教训是：**审计的静态阅读指向的修复位置未必是真正执行的代码路径**，
+必须用埋点或实跑确认「改的地方确实被调用」再动手。
+
+### 14.5 与并行实现的分工（ADR-014 协作记录）
+
+rebase 到最新 `develop/v4.1.0` 时发现另一路实现已先行落地 #5192 的**拒绝启动**
+部分，且 `crates/storage/` 零改动。分工如下：
+
+| 范围 | 归属 |
+|---|---|
+| `guard_unrecoverable_commits`（拒绝启动 + `SQLRUSTGO_ALLOW_DATA_LOSS=1` 逃生开关） | 并行实现 |
+| 恢复硬失败（`Err` 分支）拒绝启动 | 本审计 |
+| **storage 层 WAL 库标识**（`WalEntry::database_name` / `FileStorage::wal_row_entry` / 库感知回放 / `*_in_db` 覆盖） | **本审计**（远端未做） |
+
+我先前自己实现的 `skipped_entries` 检查已在 rebase 后移除：二者并存时
+`guard_*` 先返回 `Err`，我那段永远走不到，`SQLRUSTGO_ALLOW_DATA_LOSS=1`
+会被架空成死开关。保留的是 `Err(e)` 分支 —— `guard_*` 只处理 `Ok(report)`
+路径，覆盖不到那里。
+
+- source_agent: codex-trae
+- conflict_resolution: 保留远端更完整的 `guard_*`（带逃生开关），移除本地重复实现；本地 `Err` 分支加固与远端无重叠，予以保留
+
+### 14.6 验证结果
+
+rebase 后实跑（真实 pymysql，非 default 库，`kill -9` + 重启）：
+
+```
+WAL recovery: total=8 committed_txns=1 rows_inserted=5 skipped=0
+✅ kill -9 后恢复: 3 行 -> (('1','10'), ('2','20'), ('3','30'))
+```
+
+`skipped=0` 使 `guard_unrecoverable_commits` 放行，与修复前
+（`skipped=5` → 服务静默丢数据）形成对照。
