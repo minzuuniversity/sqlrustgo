@@ -6189,6 +6189,22 @@ impl StorageEngine for FileStorage {
     }
 
     fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
+        // #5209: promote buffered inserts into `tables.rows` before
+        // building the tree. Without this the B+ tree is built over an
+        // empty (or partial) `tables.rows` while the actual rows sit in
+        // `insert_buffer`, so the index silently contains nothing —
+        // and `scan_with_index_in` cannot recover them either, because
+        // its `insert_buffer` fallback stops matching once those rows
+        // are flushed into `tables.rows`. Observed directly: create a
+        // table, insert rows, `CREATE INDEX` on a non-PK column without
+        // an intervening flush, then query — 0 rows returned, where the
+        // pre-index full scan had returned the right answer.
+        //
+        // Row ids in the index are positions in `tables.rows`, so the
+        // buffer must be drained *before* ids are assigned, not merged
+        // in afterwards.
+        self.flush_all_buffers()?;
+
         // Inline the implementation to avoid potential recursion issues
         // Get table from tables
         let table = info.table.as_str();
