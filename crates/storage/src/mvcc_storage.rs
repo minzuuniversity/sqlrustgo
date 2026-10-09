@@ -526,6 +526,22 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         Ok(out)
     }
 
+    /// #5192: read against a stated database.
+    ///
+    /// Without this the read fell through to the trait default at
+    /// `engine.rs:1333`, which resolves against the *current* database —
+    /// so a row written with `insert_in_db("aud", ..)` was invisible to
+    /// `scan_in_db("aud", ..)`. `mvcc_table` is scoped by
+    /// `self.inner.current_db()`, which is exactly the value the stated
+    /// database is meant to override.
+    ///
+    /// The inner storage already scopes correctly, so delegate rather than
+    /// re-deriving the MVCC lookup here: the wrapper's job is to name the
+    /// database, not to reimplement the scan.
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_db(db, table)
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         let mvcc = self.mvcc_table(table);
         let tx_id = self.inner.current_tx_id();
