@@ -1081,6 +1081,9 @@ path = "tests/integration/dml/diag_storage_vs_sql_insert.rs"
 name = "dml_integration_test"
 path = "tests/integration/dml/dml_integration_test.rs"
 [[test]]
+name = "dml_pk_fast_path_5177"
+path = "tests/integration/dml/dml_pk_fast_path_5177.rs"
+[[test]]
 name = "perf_eng_batched_insert_test"
 path = "tests/integration/dml/perf_eng_batched_insert_test.rs"
 [[test]]
