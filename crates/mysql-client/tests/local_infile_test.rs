@@ -148,7 +148,7 @@ fn local_infile_round_trip_returns_server_ok() {
         assert_eq!(p, PATH, "handler must receive the server's exact path");
         Ok(BODY.to_vec())
     };
-    let rs = parse_result_set_with_infile(&mut stream, true, &mut handler, None)
+    let rs = parse_result_set_with_infile(&mut stream, true, &mut handler, None, false)
         .expect("round trip must succeed");
 
     match rs {
@@ -208,7 +208,7 @@ fn handler_error_aborts_without_writing_anything() {
             "no such file",
         )))
     };
-    let err = parse_result_set_with_infile(&mut stream, true, &mut handler, None)
+    let err = parse_result_set_with_infile(&mut stream, true, &mut handler, None, false)
         .expect_err("handler failure must propagate");
     assert!(matches!(err, MySqlClientError::Io(_)));
     assert!(
@@ -226,7 +226,8 @@ fn empty_contents_send_only_the_terminator() {
     let mut stream = DuplexStream::new(script);
 
     let mut handler = |_p: &str| -> sqlrustgo_mysql_client::MySqlResult<Vec<u8>> { Ok(Vec::new()) };
-    let rs = parse_result_set_with_infile(&mut stream, true, &mut handler, None).expect("ok");
+    let rs =
+        parse_result_set_with_infile(&mut stream, true, &mut handler, None, false).expect("ok");
 
     assert!(matches!(
         rs,
@@ -262,7 +263,7 @@ fn oversized_contents_are_split_into_multiple_packets() {
     let payload = big.clone();
     let mut handler =
         move |_p: &str| -> sqlrustgo_mysql_client::MySqlResult<Vec<u8>> { Ok(payload.clone()) };
-    parse_result_set_with_infile(&mut stream, true, &mut handler, None).expect("ok");
+    parse_result_set_with_infile(&mut stream, true, &mut handler, None, false).expect("ok");
 
     let sent = unframe_all(&stream.written());
     assert_eq!(sent.len(), 4, "2 full + 1 remainder + 1 terminator");
@@ -295,7 +296,8 @@ fn server_err_after_upload_is_surfaced_as_error() {
 
     let mut handler =
         |_p: &str| -> sqlrustgo_mysql_client::MySqlResult<Vec<u8>> { Ok(b"root:x:0:0".to_vec()) };
-    let rs = parse_result_set_with_infile(&mut stream, true, &mut handler, None).expect("parsed");
+    let rs =
+        parse_result_set_with_infile(&mut stream, true, &mut handler, None, false).expect("parsed");
 
     match rs {
         ResultSet::Error {
@@ -333,7 +335,7 @@ fn nul_terminated_path_is_trimmed() {
         seen = p.to_string();
         Ok(BODY.to_vec())
     };
-    parse_result_set_with_infile(&mut stream, true, &mut handler, None).expect("ok");
+    parse_result_set_with_infile(&mut stream, true, &mut handler, None, false).expect("ok");
     assert_eq!(seen, PATH, "trailing NUL must not reach the handler");
 }
 
@@ -348,7 +350,8 @@ fn next_seq_is_reported_after_the_upload() {
     let mut handler =
         |_p: &str| -> sqlrustgo_mysql_client::MySqlResult<Vec<u8>> { Ok(BODY.to_vec()) };
     let mut next_seq = 0u8;
-    parse_result_set_with_infile(&mut stream, true, &mut handler, Some(&mut next_seq)).expect("ok");
+    parse_result_set_with_infile(&mut stream, true, &mut handler, Some(&mut next_seq), false)
+        .expect("ok");
 
     assert_eq!(
         next_seq, 11,
@@ -374,8 +377,9 @@ fn next_seq_untouched_for_ordinary_result_set() {
     let mut handler =
         |_p: &str| -> sqlrustgo_mysql_client::MySqlResult<Vec<u8>> { panic!("must not fire") };
     let mut next_seq = 0xAB;
-    let rs = parse_result_set_with_infile(&mut stream, true, &mut handler, Some(&mut next_seq))
-        .expect("parse select");
+    let rs =
+        parse_result_set_with_infile(&mut stream, true, &mut handler, Some(&mut next_seq), false)
+            .expect("parse select");
 
     match rs {
         ResultSet::Select { rows, columns, .. } => {

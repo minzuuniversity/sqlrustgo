@@ -82,7 +82,6 @@ DISABLED_BINARIES = [
     "parallel_main_path_test",
     "io_delay_fault_test",
     "load_local_infile_test",
-    "mysqladmin_e2e_test",
     "mysql_client_e2e_test",
     "oracle_g1_tpch_sha256",
     "oracle_g5_sem1",
