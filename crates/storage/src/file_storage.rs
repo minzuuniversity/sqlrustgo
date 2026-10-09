@@ -510,6 +510,7 @@ impl FileStorage {
     /// than one that refuses.
     fn wal_row_entry(
         &self,
+        db: &str,
         entry_type: WalEntryType,
         table: &str,
         key: Vec<u8>,
@@ -521,7 +522,15 @@ impl FileStorage {
             // `WalStorage` wraps a `FileStorage` that appends its own
             // entries. Recording the database here is what makes a replay
             // able to put the row back where it was committed.
-            database_name: Some(self.current_db_name()),
+            //
+            // It must be the database the caller *named*, not
+            // `self.current_db_name()`: an autocommit insert into a named
+            // database while another one is current wrote `default` here,
+            // and the replay then refused the entry as "no database" or
+            // applied it to the wrong one. Measured at the end of this
+            // issue: `entries_total=3, skipped_entries=3` for a three-row
+            // table in `aud`.
+            database_name: Some(db.to_string()),
             tx_id: self
                 .current_tx_id
                 .load(std::sync::atomic::Ordering::Acquire),
@@ -557,11 +566,12 @@ impl FileStorage {
     }
 
     /// Encode one row into the `Insert` entries for it.
-    fn wal_insert_entries(&self, table: &str, records: &[Record]) -> Vec<WalEntry> {
+    fn wal_insert_entries(&self, db: &str, table: &str, records: &[Record]) -> Vec<WalEntry> {
         records
             .iter()
             .map(|r| {
                 self.wal_row_entry(
+                    db,
                     WalEntryType::Insert,
                     table,
                     crate::wal_record_codec::record_key(r),
@@ -573,10 +583,11 @@ impl FileStorage {
 
     /// Encode one row into the `Delete` entries for it. A delete logs
     /// only the key, not the row: replay removes by key.
-    fn wal_delete_entries(&self, table: &str, rows: &[Record]) -> Vec<WalEntry> {
+    fn wal_delete_entries(&self, db: &str, table: &str, rows: &[Record]) -> Vec<WalEntry> {
         rows.iter()
             .map(|r| {
                 self.wal_row_entry(
+                    db,
                     WalEntryType::Delete,
                     table,
                     crate::wal_record_codec::record_key(r),
@@ -589,10 +600,11 @@ impl FileStorage {
     /// Encode one row into the `Update` entry for it. An update logs
     /// the key *and* the full post-image, so replay is a blind
     /// overwrite and does not need to re-evaluate the predicate.
-    fn wal_update_entries(&self, table: &str, rows: &[Record]) -> Vec<WalEntry> {
+    fn wal_update_entries(&self, db: &str, table: &str, rows: &[Record]) -> Vec<WalEntry> {
         rows.iter()
             .map(|r| {
                 self.wal_row_entry(
+                    db,
                     WalEntryType::Update,
                     table,
                     crate::wal_record_codec::record_key(r),
@@ -4516,7 +4528,7 @@ impl FileStorage {
         // flush must still leave the rows recoverable, which it cannot
         // if the log is written after the mutation.
         if self.wal_enabled() {
-            self.wal_append(self.wal_insert_entries(table, &records))?;
+            self.wal_append(self.wal_insert_entries(db, table, &records))?;
         }
 
         // C.1.2: in_transaction / insert_buffered / insert_direct are
@@ -4892,7 +4904,7 @@ impl FileStorage {
         }
         if wal_on {
             let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
-            self.wal_append(self.wal_update_entries(table, &posts))?;
+            self.wal_append(self.wal_update_entries(db, table, &posts))?;
         }
         Ok(count)
     }
@@ -4975,7 +4987,7 @@ impl FileStorage {
         // file I/O.
         if wal_on {
             let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
-            self.wal_append(self.wal_update_entries(table, &posts))?;
+            self.wal_append(self.wal_update_entries(db, table, &posts))?;
         }
         Ok(count)
     }
@@ -5025,7 +5037,7 @@ impl FileStorage {
             }
         }
         if wal_on {
-            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+            self.wal_append(self.wal_delete_entries(db, table, &removed_rows))?;
         }
         Ok(removed_rows.len())
     }
@@ -5278,7 +5290,7 @@ impl FileStorage {
         // #5055: outside the storage write lock on purpose — this does
         // file I/O.
         if wal_on {
-            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+            self.wal_append(self.wal_delete_entries(db, table, &removed_rows))?;
         }
         Ok(removed_rows.len())
     }
