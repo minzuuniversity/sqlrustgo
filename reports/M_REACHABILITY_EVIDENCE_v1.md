@@ -124,8 +124,9 @@ In **the commit, build configuration and entry set inspected above**:
 - **Reachable but not in the SQL execution hot path** (corpus only):
   M7 (`sql-corpus::find_column_index`, own 2-layer impl; corpus
   fixture generator, not runtime).
-- **Orphan in current production code** (F1 candidates, F-class F1
-  per IAIA-410 §4):
+- **Orphan in current production code** (**F1-Candidate / Runtime
+  Unverified**, per IAIA-410 §4 + user correction "不应直接定性为已经
+  验证的 dead code"):
   - M4 (`crates/executor/src/merge.rs:454`) — private fn, **0 production
     callers**. Reachable only from `mod tests` in the same file.
   - M6 (`src/engine_utils.rs:916`) — pub fn, **0 production callers**.
@@ -133,6 +134,14 @@ In **the commit, build configuration and entry set inspected above**:
     `src/engine_select.rs:2015` that *explains the call was removed*
     in F-08/#4914. The function is a vestige of an earlier, slower
     implementation; it does not participate in any production call.
+
+  **F1 status is "Static Unreferenced, Runtime Unverified"**: the
+  static evidence (zero callers) is solid but the **runtime / linker
+  proof has not been executed**. To prove at link time that the symbol
+  is dead requires `cargo rustc --release -- -C link-arg=-Wl,--print-dead-codes`
+  on the workspace's `sqlrustgo` lib, which exceeds this session's time
+  budget. The static grep evidence is recorded as **F1-Candidate**
+  (not "proven dead code").
 
 **This conclusion is bounded** (per user instruction): it holds for HEAD
 `89dcf74188` of `develop/v4.1.0`, with default features, the
