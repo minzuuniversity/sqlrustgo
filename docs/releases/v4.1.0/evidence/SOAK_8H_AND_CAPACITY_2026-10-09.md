@@ -338,6 +338,40 @@ FileStorage -> MvccStorage -> ParallelWalStorage / WalStorage
 
 ## 5. 结论与建议
 
+### 5.0 QPS 与表大小的关系（回答「曾有 8000-10000 QPS」）
+
+仓库文档 `docs/releases/v3.7.0/BENCHMARK.md` 记录「Simple SELECT >10000 QPS
+✅ 已验证」。该数字**真实存在过**，但**对应小表**，与本报告的 10000 行场景
+不可直接比较。
+
+`sysbench oltp_read_write --threads=8`，**仅改 `--table-size`**：
+
+| table-size | QPS | ms/query | 局部 log-log 斜率 |
+|---:|---:|---:|---:|
+| 100 | **23,612** | 0.042 | — |
+| 1,000 | **6,577** | 0.152 | −0.56 |
+| 5,000 | 1,717 | 0.582 | −0.83 |
+| 10,000 | 862 | 1.160 | **−0.99** |
+
+斜率在大表收敛到 **−0.99**（代价 ∝ 行数），即每条语句扫全表。
+
+#### 根因：UPDATE/DELETE 走全扫描（#5177）
+
+同一条件 `WHERE id=5`，只改行数：
+
+| 行数 | `UPDATE ... WHERE id=5` | `SELECT ... WHERE id=5` |
+|---:|---:|---:|
+| 100 | 0.903 ms | 0.409 ms |
+| 1,000 | 2.496 ms | 0.407 ms |
+| 10,000 | **21.529 ms** | **0.410 ms** |
+
+**SELECT 平坦（#5168 修复生效），UPDATE 随行数线性增长。**
+定位 `src/engine_dml.rs:1147` 的 `scan_for_reader_filtered` ——
+对每行求值 WHERE，无 PK 快速路径。
+
+`oltp_read_write` 每个事务含 1 次 non-index update 与 1 次 delete+insert，
+**两者都走全扫描，占事务一半**。
+
 ### 5.1 性能上限
 
 **当前服务器吞吐上限约 13~23 TPS / 250~370 QPS，且不随并发提升。**
@@ -348,9 +382,10 @@ FileStorage -> MvccStorage -> ParallelWalStorage / WalStorage
 | # | 问题 | 状态 |
 |---|---|---|
 | 1 | **`WalStorage`/`ParallelWalStorage` 未转发 `scan_pk`（#5168）** | ✅ **已修复**，点查 19×、TPS 2.8× |
-| 2 | `engine.write()` 全局独占锁覆盖读语句 | 待处理（并发可扩展性） |
-| 3 | `FileStorage` 单 `RwLock<WriteState>` | 待处理（写并发可扩展性） |
-| 4 | `COUNT(*)`/范围扫描返回 0（#5167） | 待处理（正确性） |
+| 2 | **UPDATE/DELETE 全扫描（#5177）** | 待处理，10000 行 UPDATE 21.5ms → 应 ~0.4ms |
+| 3 | `engine.write()` 全局独占锁覆盖读语句 | 待处理（并发可扩展性） |
+| 4 | `FileStorage` 单 `RwLock<WriteState>` | 待处理（写并发可扩展性） |
+| 5 | `COUNT(*)`/范围扫描返回 0（#5167） | 待处理（正确性） |
 
 **第 1 项已闭合。** 它曾是最硬的一项：让最常见的访问模式付出全表代价，
 且与并发无关 —— 这解释了为什么加并发不涨吞吐。

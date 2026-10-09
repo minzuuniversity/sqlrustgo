@@ -52,6 +52,19 @@
   > 均不成立 —— 前者谓词确实命中，后者索引确实被 flush 维护。
   > 两次都是「读代码下结论」的错误，第三次靠**能失败的测试**才定位成功。
 
+- **#5177 UPDATE/DELETE 的 WHERE 走全表扫描（P0 性能）** —— #5168 在 DML 路径上的
+  同类缺陷。同一条件 `WHERE id=5`，SELECT 已随 #5168 修复变平坦
+  （100/1000/10000 行均 ~0.41ms），**UPDATE 仍随行数线性增长**：
+  0.90 → 2.50 → **21.53ms**（10000 行比点查贵 52 倍）。
+  定位 `src/engine_dml.rs:1147` 的 `scan_for_reader_filtered`（逐行求值 WHERE）。
+
+  这解释了 QPS 对表大小的曲线：`sysbench --threads=8` 仅改 table-size 得
+  **100 行 23612 QPS / 1000 行 6577 / 5000 行 1717 / 10000 行 862**，
+  局部 log-log 斜率收敛到 **−0.99**（代价 ∝ 行数）。
+  **此前记录的「>10000 QPS」并非虚构，但对应小表**，与 10000 行场景不可比。
+  `oltp_read_write` 每事务含 1 次 non-index update + 1 次 delete+insert，
+  两者都走全扫描，占事务一半。
+
 - **#5168 修复：`WalStorage`/`ParallelWalStorage` 转发 `scan_pk`（P0 性能）** ——
   补上两个包装层缺失的 `scan_pk` / `scan_pk_range` 转发，与已有的
   `scan_in` / `scan_in_db` 转发一致。修复前后（同一二进制配置）：
