@@ -1431,6 +1431,65 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 self.adaptive_hash_index
                     .record_access(lookup_table, b"all", page_id, offset);
                 row.map(|r| vec![r]).unwrap_or_default()
+            } else if let Some((idx_column, idx_value)) =
+                crate::engine_select_pk::try_extract_eq_conjunct(&select.where_clause)
+            {
+                // #5209: the PK branch above fires only when the whole
+                // WHERE clause is one PK equality. Anything else — `id = 1
+                // AND k = 1`, or an equality on a secondary-index column —
+                // used to fall through to a full scan even when
+                // `CREATE INDEX` had built a tree for exactly that column.
+                //
+                // Measured on FileStorage at 10,000 rows before the fix:
+                // `WHERE id = 1` 25 µs and flat; `WHERE id = 1 AND k = 1`
+                // 4.23 ms growing 13x from 1,000 to 10,000 rows; `WHERE k =
+                // 1` on an indexed column 3.23 ms. The SELECT path called
+                // `scan_with_index` exactly once, with `&Value::Null` as
+                // the key, so the index was dead code.
+                //
+                // Safe to use now: `BPlusTree` stores a `Vec<u32>` per key
+                // (PR #5213), so a non-unique column returns every matching
+                // row rather than the last one inserted.
+                //
+                // No index for this column, or an engine without
+                // `scan_with_index_in_db`, both return `Err`/`None` and
+                // fall through to the ordinary scan — the pre-existing
+                // behaviour for every case the index does not cover.
+                //
+                // Reaching this branch at all means `pk_lookup_semantics_ok`
+                // held (the first arm above catches the `false` case), so
+                // the PK-vs-`sql_compare` divergence of #4846 — where an
+                // index seek and a filtered scan disagree on PAD SPACE —
+                // cannot be reached through here.
+                match storage.scan_with_index_in_db(
+                    &current_db,
+                    lookup_table,
+                    &idx_column,
+                    &idx_value,
+                ) {
+                    Ok(rows) => {
+                        self.instrumentation.on_seq_scan_start(lookup_table);
+                        let mut page_id: u64 = 0xcbf29ce484222325;
+                        for &b in lookup_table.as_bytes() {
+                            page_id ^= u64::from(b);
+                            page_id = page_id.wrapping_mul(0x100000001b3);
+                        }
+                        let offset = rows.len() as u32;
+                        self.adaptive_hash_index.record_access(
+                            lookup_table,
+                            idx_column.as_bytes(),
+                            page_id,
+                            offset,
+                        );
+                        rows
+                    }
+                    Err(_) => self.scan_with_ahi(
+                        &storage,
+                        lookup_table,
+                        &select.index_hints,
+                        &current_db,
+                    )?,
+                }
             } else {
                 self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &current_db)?
             };

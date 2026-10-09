@@ -1084,6 +1084,12 @@ path = "tests/integration/dml/dml_integration_test.rs"
 name = "dml_pk_fast_path_5177"
 path = "tests/integration/dml/dml_pk_fast_path_5177.rs"
 [[test]]
+name = "equality_index_routing_5209"
+path = "tests/integration/dml/equality_index_routing_5209.rs"
+[[test]]
+name = "eq_index_routing_decision_5209"
+path = "tests/integration/dml/eq_index_routing_decision_5209.rs"
+[[test]]
 name = "perf_eng_batched_insert_test"
 path = "tests/integration/dml/perf_eng_batched_insert_test.rs"
 [[test]]
