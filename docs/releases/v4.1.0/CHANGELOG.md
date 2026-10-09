@@ -65,8 +65,10 @@
   `row_idx` 插入，实测**多行删除的 ROLLBACK 无法还原原表**。
   顺序保持是这个修复的前提，不是顺手保持的。
 
-  `WriteState` 拿不到主键 B+Tree，要真正做到 O(log N) 需要行槽位
-  间接层（`Vec<Option<Row>>` + 空闲链表），属结构性改动，另行评估。
+  `WriteState` 拿不到主键 B+Tree，要真正做到 O(log N) 需结构性改动，
+  评估已开立 **#5188**（候选：位置解析前移 / 行槽位间接层；
+  并记录已否决的「按索引定位后 `Vec::remove`」——破坏 ROLLBACK）。
+  建议在 #5167（正确性）修完后再动。
 
   端到端收益在噪声范围内（10000 行 QPS 1242~1295 → 1254~1367）。
   新增 `crates/storage/tests/write_path_scaling_5181.rs`（5 项）：
