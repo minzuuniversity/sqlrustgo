@@ -684,6 +684,48 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner().scan_in_db(db, table)
     }
 
+    /// #5192: create a table in a stated database.
+    ///
+    /// This wrapper is the fourth place the same omission appeared. It
+    /// scopes `insert_in_db`, `delete_in_db`, `update_in_db` and (since
+    /// the previous commit) `scan_in_db`, but not table creation — so
+    /// `CREATE TABLE t` inside `USE aud` went through the trait default at
+    /// `engine.rs:1485`, which drops `db` and creates the table in the
+    /// *current* database.
+    ///
+    /// The result is a data-loss path, not a cosmetic one. With the table
+    /// registered under `default\u{1}t` and the rows buffered under
+    /// `aud\u{1}t`, `flush_buffer` removes them from `insert_buffer` and
+    /// then finds no table to write them into — the rows are dropped:
+    ///
+    /// ```text
+    /// insert_in_db("aud","t",[row]); scan_in_db("aud","t") -> 1   (buffer)
+    /// flush();                                scan_in_db("aud","t") -> 0
+    /// ```
+    ///
+    /// No crash and no restart required — `flush()` is ordinary
+    /// maintenance, so every write made while another database was
+    /// selected evaporated at the next checkpoint.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.inner_mut().create_table_in_db(db, info)
+    }
+
+    /// #5192: existence check against a stated database.
+    ///
+    /// Fifth instance of the same omission: the trait default at
+    /// `engine.rs:1340` drops `db` and answers for the *current*
+    /// database. Measured with the `create_table_in_db` fix above in
+    /// place — the table really was created under `aud` in the inner
+    /// storage, yet `has_table_in("aud", "t")` answered `false` because
+    /// the question itself was resolved against `default`.
+    ///
+    /// Worth fixing for its own sake: an existence check that silently
+    /// answers about a different database turns "the table is missing"
+    /// into a wrong diagnosis for every caller that guards on it.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        self.inner().has_table_in(db, table)
+    }
+
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         // #5192: the unscoped entry point records the storage's current
         // database, matching the `delete_in_db` below it.
