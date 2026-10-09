@@ -79,7 +79,11 @@ fn committed_transaction_survives_sigkill_at_commit_fsync() {
         reached,
         expected_sum: 10,
         actual_sum: actual.clone(),
-        outcome: if sum == 10 { "PASS".into() } else { "FAIL".into() },
+        outcome: if sum == 10 {
+            "PASS".into()
+        } else {
+            "FAIL".into()
+        },
     });
 
     assert!(

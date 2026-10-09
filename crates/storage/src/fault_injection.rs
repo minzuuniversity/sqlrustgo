@@ -102,7 +102,11 @@ pub fn from_env() -> Option<FaultConfig> {
     let dir = std::env::var("SQLRUSTGO_FAULT_SIGNAL_DIR").ok()?;
     let run_id = std::env::var("SQLRUSTGO_FAULT_RUN_ID").ok()?;
     let point = FaultPoint::parse(&point)?;
-    Some(FaultConfig { point, signal_dir: PathBuf::from(dir), run_id })
+    Some(FaultConfig {
+        point,
+        signal_dir: PathBuf::from(dir),
+        run_id,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +118,8 @@ pub struct FaultConfig {
 
 impl FaultConfig {
     pub fn signal_file(&self) -> PathBuf {
-        self.signal_dir.join(format!("{}.reached", self.point.as_str()))
+        self.signal_dir
+            .join(format!("{}.reached", self.point.as_str()))
     }
 }
 
