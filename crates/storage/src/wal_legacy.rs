@@ -108,6 +108,22 @@ pub struct WalEntry {
     /// to apply a row entry without it rather than guess: writing a row
     /// into the wrong table is worse than not recovering it.
     pub table_name: Option<String>,
+    /// #5192: the database the row belongs to.
+    ///
+    /// Symmetric to `table_name`: `StorageEngine::get_table_info` /
+    /// `scan` / `insert` resolve against the *current* database, so a replay
+    /// that knows only the table name applies the row to whatever database
+    /// happens to be current — which, in a multi-database data directory,
+    /// is `default`. The entry then either lands in the wrong database or
+    /// (when no such table exists there) is reported as skipped while the
+    /// server still starts and accepts writes. The committed row is lost
+    /// with no error surfaced.
+    ///
+    /// `None` for entries written before #5192 and for non-row entries.
+    /// A replay must refuse to apply a row entry that has a `table_name`
+    /// but no `database_name` rather than guess: writing a committed row
+    /// into the wrong database is worse than not recovering it.
+    pub database_name: Option<String>,
 }
 
 impl WalEntry {
@@ -155,6 +171,17 @@ impl WalEntry {
         if let Some(name) = &self.table_name {
             const TABLE_NAME_MAGIC: [u8; 4] = *b"TNAM";
             bytes.extend_from_slice(&TABLE_NAME_MAGIC);
+            bytes.extend_from_slice(&(name.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(name.as_bytes());
+        }
+
+        // #5192: optional trailing database name, same shape as TNAM above.
+        // It is written only when present, so a pre-#5192 entry (and a
+        // pre-#5055 one) still deserializes — `from_bytes` stops at the
+        // first trailing magic it does not recognise.
+        if let Some(name) = &self.database_name {
+            const DATABASE_NAME_MAGIC: [u8; 4] = *b"DNAM";
+            bytes.extend_from_slice(&DATABASE_NAME_MAGIC);
             bytes.extend_from_slice(&(name.len() as u32).to_le_bytes());
             bytes.extend_from_slice(name.as_bytes());
         }
@@ -242,25 +269,54 @@ impl WalEntry {
         // not start with the magic is treated as absent — that is a
         // pre-#5055 entry, which is still valid, just not replayable.
         const TABLE_NAME_MAGIC: [u8; 4] = *b"TNAM";
-        let table_name =
-            if offset + 8 <= bytes.len() && bytes[offset..offset + 4] == TABLE_NAME_MAGIC {
-                let name_len = u32::from_le_bytes([
-                    bytes[offset + 4],
-                    bytes[offset + 5],
-                    bytes[offset + 6],
-                    bytes[offset + 7],
-                ]) as usize;
-                let start = offset + 8;
-                if start + name_len <= bytes.len() {
-                    Some(String::from_utf8_lossy(&bytes[start..start + name_len]).into_owned())
-                } else {
-                    // Truncated tail: the entry's data is intact, so keep it
-                    // and report no table rather than dropping the whole entry.
-                    None
-                }
+        let mut trailing = offset;
+        let table_name = if trailing + 8 <= bytes.len()
+            && bytes[trailing..trailing + 4] == TABLE_NAME_MAGIC
+        {
+            let name_len = u32::from_le_bytes([
+                bytes[trailing + 4],
+                bytes[trailing + 5],
+                bytes[trailing + 6],
+                bytes[trailing + 7],
+            ]) as usize;
+            let start = trailing + 8;
+            if start + name_len <= bytes.len() {
+                let name = String::from_utf8_lossy(&bytes[start..start + name_len]).into_owned();
+                trailing = start + name_len;
+                Some(name)
+            } else {
+                // Truncated tail: the entry's data is intact, so keep it
+                // and report no table rather than dropping the whole entry.
+                None
+            }
+        } else {
+            None
+        };
+
+        // #5192: the database name follows the table name, same encoding.
+        // A pre-#5192 entry simply has no DNAM record here and deserializes
+        // with `database_name: None`, which the replay path treats as
+        // "not replayable in a multi-database directory" rather than
+        // silently applying the row to the current database.
+        const DATABASE_NAME_MAGIC: [u8; 4] = *b"DNAM";
+        let database_name = if trailing + 8 <= bytes.len()
+            && bytes[trailing..trailing + 4] == DATABASE_NAME_MAGIC
+        {
+            let name_len = u32::from_le_bytes([
+                bytes[trailing + 4],
+                bytes[trailing + 5],
+                bytes[trailing + 6],
+                bytes[trailing + 7],
+            ]) as usize;
+            let start = trailing + 8;
+            if start + name_len <= bytes.len() {
+                Some(String::from_utf8_lossy(&bytes[start..start + name_len]).into_owned())
             } else {
                 None
-            };
+            }
+        } else {
+            None
+        };
 
         Some(WalEntry {
             tx_id,
@@ -271,6 +327,7 @@ impl WalEntry {
             lsn,
             timestamp,
             table_name,
+            database_name,
         })
     }
 }
@@ -536,6 +593,7 @@ impl WalManager {
                 .unwrap()
                 .as_secs(),
             table_name: None,
+            database_name: None,
         };
 
         writer.append(&entry)
@@ -557,6 +615,7 @@ impl WalManager {
                 .unwrap()
                 .as_secs(),
             table_name: None,
+            database_name: None,
         };
 
         writer.append(&entry)
@@ -578,6 +637,7 @@ impl WalManager {
                 .unwrap()
                 .as_secs(),
             table_name: None,
+            database_name: None,
         };
 
         writer.append(&entry)
@@ -605,6 +665,7 @@ impl WalManager {
                 .unwrap()
                 .as_secs(),
             table_name: None,
+            database_name: None,
         };
 
         writer.append(&entry)
@@ -632,6 +693,7 @@ impl WalManager {
                 .unwrap()
                 .as_secs(),
             table_name: None,
+            database_name: None,
         };
 
         writer.append(&entry)
@@ -653,6 +715,7 @@ impl WalManager {
                 .unwrap()
                 .as_secs(),
             table_name: None,
+            database_name: None,
         };
 
         writer.append(&entry)
@@ -674,6 +737,7 @@ impl WalManager {
                 .unwrap()
                 .as_secs(),
             table_name: None,
+            database_name: None,
         };
 
         writer.append(&entry)
@@ -695,6 +759,7 @@ impl WalManager {
                 .unwrap()
                 .as_secs(),
             table_name: None,
+            database_name: None,
         };
 
         writer.append(&entry)
@@ -1194,6 +1259,7 @@ mod tests {
             lsn: 0,
             timestamp: 1234567890,
             table_name: None,
+            database_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1224,6 +1290,7 @@ mod tests {
                 lsn: 0,
                 timestamp: 1234567890,
                 table_name: None,
+                database_name: None,
             };
 
             writer.append(&entry1).unwrap();
@@ -1237,6 +1304,7 @@ mod tests {
                 lsn: 1,
                 timestamp: 1234567891,
                 table_name: None,
+                database_name: None,
             };
 
             writer.append(&entry2).unwrap();
@@ -1300,6 +1368,7 @@ mod tests {
             lsn: 0,
             timestamp: 1234567890,
             table_name: None,
+            database_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1321,6 +1390,7 @@ mod tests {
             lsn: 0,
             timestamp: 1234567890,
             table_name: None,
+            database_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1345,6 +1415,7 @@ mod tests {
             lsn: 0,
             timestamp: 1234567890,
             table_name: None,
+            database_name: None,
         };
 
         let lsn1 = writer.append(&entry).unwrap();
@@ -1400,6 +1471,7 @@ mod tests {
                     lsn: i,
                     timestamp: 1234567890 + i,
                     table_name: None,
+                    database_name: None,
                 };
                 let _ = manager.get_writer().unwrap().append(&entry);
             }
@@ -1687,6 +1759,7 @@ mod tests {
             lsn: 10,
             timestamp: 9876543210,
             table_name: None,
+            database_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1706,6 +1779,7 @@ mod tests {
             lsn: 5,
             timestamp: 1111111111,
             table_name: None,
+            database_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1725,6 +1799,7 @@ mod tests {
             lsn: 15,
             timestamp: 2222222222,
             table_name: None,
+            database_name: None,
         };
 
         let bytes = entry.to_bytes();
@@ -1756,6 +1831,7 @@ mod tests {
                 lsn: i as u64,
                 timestamp: i as u64 + 1000,
                 table_name: None,
+                database_name: None,
             };
             writer.append(&entry).unwrap();
         }
@@ -1947,6 +2023,7 @@ mod tests {
                 lsn: 0,
                 timestamp: 0,
                 table_name: None,
+                database_name: None,
             };
             let bytes = entry.to_bytes();
             let len = bytes.len() as u32;

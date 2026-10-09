@@ -612,10 +612,23 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        // #5192: resolve the database before the mutable borrows below, so
+        // the inner write and the MVCC version chain both land in the
+        // database this statement targets.
+        let db = self.inner.current_db();
+        self.insert_in_db(&db, table, records)
+    }
+
+    /// #5192: database-qualified insert.
+    ///
+    /// The trait default (`engine.rs:1424`) drops `db` and forwards to
+    /// `insert`, which resolves against the storage's *current* database
+    /// instead of the one the caller named.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
         // First, write to the inner engine.
-        self.inner.insert(table, records.clone())?;
+        self.inner.insert_in_db(db, table, records.clone())?;
         // Then, append to the MVCC chain under the next snapshot.
-        let mvcc = self.mvcc_table(table);
+        let mvcc = self.mvcc_table_in(db, table);
         for row in records {
             if row.is_empty() {
                 continue;

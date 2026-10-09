@@ -6889,9 +6889,36 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                         // still has the WAL on disk to recover by hand.
                         guard_unrecoverable_commits(&report)?;
                         let _ = file_storage.flush();
+                        // #5192: `skipped` is not a benign detail. A skipped
+                        // row entry means a committed transaction was NOT
+                        // replayed, so the row is gone — yet the server would
+                        // go on to report "Ready to accept connections" and
+                        // take new writes, leaving no trace that the data set
+                        // is short. Refusing to start turns silent loss into
+                        // an operator-visible failure. Refusing is safe:
+                        // `entries_total == 0` (nothing to recover) and a
+                        // clean replay both keep `skipped_entries == 0`.
+                        if report.committed_txns > 0 && report.skipped_entries > 0 {
+                            return Err(MySqlError::Sql(format!(
+                                "WAL recovery incomplete: {} committed transaction(s) had \
+                                 {} entry/entries that could not be replayed. Refusing to \
+                                 start, because these committed writes are lost from the data \
+                                 directory. Inspect the WAL and the data directory, then \
+                                 re-run once they are consistent.",
+                                report.committed_txns, report.skipped_entries
+                            )));
+                        }
                     }
                     Err(e) => {
-                        tracing::warn!("WAL recovery skipped: {}", e);
+                        // #5192: a hard recovery error used to be logged at
+                        // warn level and the server started anyway, accepting
+                        // writes on top of a data directory whose committed
+                        // state could not be established.
+                        return Err(MySqlError::Sql(format!(
+                            "WAL recovery failed: {}. Refusing to start, because the committed \
+                             state of the data directory cannot be established.",
+                            e
+                        )));
                     }
                 }
             }
@@ -7002,9 +7029,36 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                         // still has the WAL on disk to recover by hand.
                         guard_unrecoverable_commits(&report)?;
                         let _ = file_storage.flush();
+                        // #5192: `skipped` is not a benign detail. A skipped
+                        // row entry means a committed transaction was NOT
+                        // replayed, so the row is gone — yet the server would
+                        // go on to report "Ready to accept connections" and
+                        // take new writes, leaving no trace that the data set
+                        // is short. Refusing to start turns silent loss into
+                        // an operator-visible failure. Refusing is safe:
+                        // `entries_total == 0` (nothing to recover) and a
+                        // clean replay both keep `skipped_entries == 0`.
+                        if report.committed_txns > 0 && report.skipped_entries > 0 {
+                            return Err(MySqlError::Sql(format!(
+                                "WAL recovery incomplete: {} committed transaction(s) had \
+                                 {} entry/entries that could not be replayed. Refusing to \
+                                 start, because these committed writes are lost from the data \
+                                 directory. Inspect the WAL and the data directory, then \
+                                 re-run once they are consistent.",
+                                report.committed_txns, report.skipped_entries
+                            )));
+                        }
                     }
                     Err(e) => {
-                        tracing::warn!("WAL recovery skipped: {}", e);
+                        // #5192: a hard recovery error used to be logged at
+                        // warn level and the server started anyway, accepting
+                        // writes on top of a data directory whose committed
+                        // state could not be established.
+                        return Err(MySqlError::Sql(format!(
+                            "WAL recovery failed: {}. Refusing to start, because the committed \
+                             state of the data directory cannot be established.",
+                            e
+                        )));
                     }
                 }
             }

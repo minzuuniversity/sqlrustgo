@@ -516,6 +516,12 @@ impl FileStorage {
         data: Option<Vec<u8>>,
     ) -> WalEntry {
         WalEntry {
+            // #5192: this is the WAL-writing path that actually runs —
+            // `WalStorage::log_insert` and friends are never called, because
+            // `WalStorage` wraps a `FileStorage` that appends its own
+            // entries. Recording the database here is what makes a replay
+            // able to put the row back where it was committed.
+            database_name: Some(self.current_db_name()),
             tx_id: self
                 .current_tx_id
                 .load(std::sync::atomic::Ordering::Acquire),
@@ -539,6 +545,7 @@ impl FileStorage {
             entry_type,
             table_id: 0,
             table_name: None,
+            database_name: None,
             key: None,
             data: None,
             lsn,

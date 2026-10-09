@@ -693,14 +693,42 @@ impl StorageEngine for BoxStorageEngine {
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         (**self).insert(table, records)
     }
+    /// #5192: forward the database-qualified form.
+    ///
+    /// Without this, the trait default (`engine.rs:1424`) drops `db` and
+    /// calls `insert` above, which reaches `WalStorage::insert` — and that
+    /// in turn re-enters `insert_in_db`, so the wrapper logged **two** WAL
+    /// entries per statement. The replayed one carried the database name
+    /// and the other did not, and the nameless one was then skipped as
+    /// unrecoverable, leaving `skipped_entries` non-zero on every restart.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        (**self).insert_in_db(db, table, records)
+    }
     fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
         (**self).force_insert(table, record)
+    }
+    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        (**self).force_insert_in_db(db, table, record)
     }
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         (**self).delete(table, filters)
     }
+    /// #5192: see [`Self::insert_in_db`] — the same double-logging applies.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        (**self).delete_in_db(db, table, filters)
+    }
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         (**self).delete_if(table, filter)
+    }
+    /// #5192: see [`Self::insert_in_db`] — the same double-logging applies.
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        (**self).update_in_db(db, table, filters, updates)
     }
     fn update(
         &mut self,

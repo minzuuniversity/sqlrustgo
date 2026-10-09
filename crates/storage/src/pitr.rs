@@ -231,6 +231,7 @@ mod tests {
             entry_type: ty,
             table_id: 0,
             table_name: None,
+            database_name: None,
             key: None,
             data: None,
             lsn: 0,
