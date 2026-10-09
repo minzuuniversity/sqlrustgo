@@ -52,18 +52,26 @@
   > 均不成立 —— 前者谓词确实命中，后者索引确实被 flush 维护。
   > 两次都是「读代码下结论」的错误，第三次靠**能失败的测试**才定位成功。
 
-- **#5177 UPDATE/DELETE 的 WHERE 走全表扫描（P0 性能）** —— #5168 在 DML 路径上的
-  同类缺陷。同一条件 `WHERE id=5`，SELECT 已随 #5168 修复变平坦
-  （100/1000/10000 行均 ~0.41ms），**UPDATE 仍随行数线性增长**：
-  0.90 → 2.50 → **21.53ms**（10000 行比点查贵 52 倍）。
-  定位 `src/engine_dml.rs:1147` 的 `scan_for_reader_filtered`（逐行求值 WHERE）。
+- **#5177 修复：UPDATE/DELETE 的 WHERE 走全表扫描（P0 性能）** ——
+  新增 `pk_point_lookup`，与 SELECT 侧 `scan_pk` 快速路径同构；对 AND/OR、
+  CHAR 主键、无主键、限定名一律回退全扫描，语义不变。
+  复用既有的 `try_extract_pk_eq_with_col` / `pk_fast_path_preserves_semantics`
+  做保守判别（#4846 已为 SELECT 建立的 CHAR PAD SPACE 陷阱）。
 
-  这解释了 QPS 对表大小的曲线：`sysbench --threads=8` 仅改 table-size 得
-  **100 行 23612 QPS / 1000 行 6577 / 5000 行 1717 / 10000 行 862**，
-  局部 log-log 斜率收敛到 **−0.99**（代价 ∝ 行数）。
-  **此前记录的「>10000 QPS」并非虚构，但对应小表**，与 10000 行场景不可比。
-  `oltp_read_write` 每事务含 1 次 non-index update + 1 次 delete+insert，
-  两者都走全扫描，占事务一半。
+  | 指标（20000 行） | 修复前 | 修复后 |
+  |---|---|---|
+  | UPDATE/SELECT 代价比 | **512×** | **49×** |
+  | UPDATE 端到端 | 10.941 ms | **1.051 ms** |
+  | QPS @1000 行 | 6,577 | **10,764** |
+  | QPS @10000 行 | 862 | **1,396** |
+
+  回归测试 `tests/integration/dml/dml_pk_fast_path_5177.rs`（9 项）：
+  未修复代码上 `update_by_pk_is_not_dominated_by_where_scan` **FAILED**
+  （报 512×），修复后全绿；另有 7 项语义测试钉住快速路径必须回退的形状
+  （额外谓词、非主键谓词、非 id 命名的主键、缺失键、单行影响数）。
+
+  剩余 49× 来自**存储写路径**（`WriteState::remove_matching` 每次删行重建
+  全表向量，20000 行 0.461ms），已拆为 **#5181**。
 
 - **#5168 修复：`WalStorage`/`ParallelWalStorage` 转发 `scan_pk`（P0 性能）** ——
   补上两个包装层缺失的 `scan_pk` / `scan_pk_range` 转发，与已有的
