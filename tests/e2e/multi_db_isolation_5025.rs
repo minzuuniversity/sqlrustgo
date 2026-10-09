@@ -589,3 +589,169 @@ fn issue_5137_handwritten_join_on_three_segment() {
         "matching JOIN must return the joined row, got: {text}"
     );
 }
+
+/// #5137 B: cross-db derived subquery inside a hand-written JOIN.
+///
+/// `execute_joins` materialises derived tables while holding its storage
+/// read guard, and the recursive `execute_select` entry validates `d2`
+/// through `ensure_database_known` — a second read on the same RwLock.
+/// Single-threaded that succeeds (parking_lot allows read reentrancy
+/// when no writer is queued); the concurrent deadlock is pinned by
+/// `issue_5137_no_deadlock_derived_materialisation_under_writes`.
+#[test]
+fn issue_5137_cross_db_derived_join_materializes() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create t1 in d1");
+    engine
+        .execute("INSERT INTO t1 VALUES (1)")
+        .expect("insert 1");
+    engine
+        .execute("INSERT INTO t1 VALUES (2)")
+        .expect("insert 2");
+
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+    engine
+        .execute("INSERT INTO t2 VALUES (2)")
+        .expect("insert 2");
+
+    engine.execute("USE d1").expect("use d1");
+    // CROSS JOIN (not `JOIN ... ON`): the parser's subquery-join branch
+    // consumes `AS x` for the synthetic name but never records it in
+    // `JoinClause.alias` (pre-existing, unrelated to #5137), so an ON
+    // referencing `x.col` cannot resolve. With no ON, the join key is
+    // `JoinKey::All` (cartesian) and no alias is needed — while still
+    // exercising the `execute_joins` held-guard materialisation path.
+    let rows = engine
+        .execute("SELECT t1.id FROM t1 CROSS JOIN (SELECT id FROM d2.t2) AS x")
+        .expect("cross-db derived CROSS JOIN must materialise and join");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("Integer(2)"),
+        "cartesian product must include t1.id=2 joined with d2.t2, got: {text}"
+    );
+    assert!(
+        text.contains("Integer(1)"),
+        "cartesian product must include t1.id=1, got: {text}"
+    );
+}
+
+/// #5137 B (phase-4 lock audit): the derived-materialisation reentrancy
+/// must not deadlock under a concurrent writer.
+///
+/// Reader thread: the cross-db derived-JOIN query in a loop. Its
+/// `execute_joins` holds the storage read guard while the recursive
+/// entry calls `ensure_database_known` (a blocking `storage.read()`).
+/// Writer thread: a tight INSERT loop, so a write request queues up
+/// during the reader's guard window. Pre-fix, parking_lot's fair queue
+/// parks the writer, then blocks the reader's reentrant read behind it
+/// → AB-BA deadlock → the reader never signals completion and
+/// `recv_timeout` fires. Post-fix (materialisation happens before the
+/// guard is taken) both threads finish quickly.
+#[test]
+fn issue_5137_no_deadlock_derived_materialisation_under_writes() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut setup = MemoryExecutionEngine::new(storage.clone());
+    setup.execute("CREATE DATABASE d1").expect("create d1");
+    setup.execute("CREATE DATABASE d2").expect("create d2");
+    setup.execute("USE d1").expect("use d1");
+    setup
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create t1 in d1");
+    // ~20k rows widen the reader's guard window (the base scan runs
+    // under the read guard), so the writer's request reliably queues
+    // up before the recursive materialisation re-enters the lock.
+    for chunk in 0..20 {
+        let mut vals = String::new();
+        for i in 0..1000 {
+            if i > 0 {
+                vals.push(',');
+            }
+            vals.push_str(&format!("({})", chunk * 1000 + i));
+        }
+        setup
+            .execute(&format!("INSERT INTO t1 VALUES {vals}"))
+            .expect("bulk insert t1");
+    }
+    setup
+        .execute("CREATE TABLE w (v INT)")
+        .expect("writer scratch table");
+    setup.execute("USE d2").expect("use d2");
+    setup
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+    setup
+        .execute("INSERT INTO t2 VALUES (2)")
+        .expect("insert t2");
+    setup.execute("USE d1").expect("back to d1");
+    drop(setup);
+
+    let done = Arc::new(AtomicBool::new(false));
+    let writer_inserts = Arc::new(AtomicUsize::new(0));
+    let (tx, rx) = mpsc::channel();
+
+    let reader_storage = storage.clone();
+    thread::spawn(move || {
+        let mut reader = MemoryExecutionEngine::new(reader_storage);
+        for _ in 0..50 {
+            let rows = reader
+                .execute("SELECT t1.id FROM t1 CROSS JOIN (SELECT id FROM d2.t2) AS x")
+                .expect("reader: cross-db derived CROSS JOIN must succeed");
+            let text = format!("{rows:?}");
+            assert!(
+                text.contains("Integer(2)"),
+                "reader: expected the joined row, got: {text}"
+            );
+        }
+        tx.send(()).expect("signal reader completion");
+    });
+
+    let writer_storage = storage.clone();
+    let writer_done = done.clone();
+    let writer_counter = writer_inserts.clone();
+    thread::spawn(move || {
+        let mut writer = MemoryExecutionEngine::new(writer_storage);
+        let start = Instant::now();
+        while !writer_done.load(Ordering::SeqCst) && start.elapsed() < Duration::from_secs(60) {
+            writer
+                .execute("INSERT INTO w VALUES (1)")
+                .expect("writer: INSERT must succeed");
+            writer_counter.fetch_add(1, Ordering::SeqCst);
+        }
+    });
+
+    match rx.recv_timeout(Duration::from_secs(30)) {
+        Ok(()) => {}
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            done.store(true, Ordering::SeqCst);
+            panic!("reader thread panicked — see the thread panic log above");
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            done.store(true, Ordering::SeqCst);
+            panic!(
+                "DEADLOCK: reader stuck in execute_joins while holding the storage read \
+                 guard and re-entering ensure_database_known (#5137 B)"
+            );
+        }
+    }
+    done.store(true, Ordering::SeqCst);
+
+    let n = writer_inserts.load(Ordering::SeqCst);
+    assert!(
+        n >= 100,
+        "writer made no progress ({n} inserts) — contention never exercised"
+    );
+}
