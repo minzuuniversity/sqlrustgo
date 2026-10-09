@@ -1111,6 +1111,25 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         self.inner().list_tables_in_db(db)
     }
 
+    /// #5192: table metadata for a stated database.
+    ///
+    /// Same omission as the `*_in_db` family, and it is the one that broke
+    /// WAL replay: `apply_wal_entry` validates the table with
+    /// `get_table_info_in(db, table)` before inserting, and the trait
+    /// default at `engine.rs:1312` answers for the *current* database. A
+    /// row committed in `aud` therefore looked like a row naming a table
+    /// that does not exist, and every entry was skipped:
+    ///
+    /// ```text
+    /// apply_wal_entry: table "aud"."t" named by this entry does not exist
+    /// ```
+    ///
+    /// (the message prints the two arguments — `aud` is the database, `t`
+    /// the table — which reads like one mangled name; it is not.)
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        self.inner().get_table_info_in(db, table)
+    }
+
     fn scan_with_filter_in_db(
         &self,
         db: &str,

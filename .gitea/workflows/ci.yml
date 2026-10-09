@@ -286,6 +286,15 @@ jobs:
           set -euo pipefail
           chmod +x scripts/gate/check_path_casefold_conflict.sh
           bash scripts/gate/check_path_casefold_conflict.sh
+      # Issue #5192: a storage wrapper that fails to forward a
+      # database-scoped StorageEngine method silently answers for the current
+      # database. Nine such omissions were each found after a separate
+      # investigation; this makes the tenth a CI failure instead.
+      - name: Storage DB-scope coverage check (#5192)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_storage_db_scope_coverage.sh
+          bash scripts/gate/check_storage_db_scope_coverage.sh
       - name: Fix-PR Test Registry Check (v4.1.0+) — every fix PR's test file must exist + compile
         if: contains(github.ref, 'develop/v4.1.0') || contains(github.ref, 'develop/v4.') || contains(github.ref, 'release/v4.')
         run: |
