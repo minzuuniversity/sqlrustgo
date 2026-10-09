@@ -194,19 +194,10 @@ pub(crate) fn bytes_to_filters(data: &[u8]) -> Result<Vec<Value>, crate::engine:
     bytes_to_record(data)
 }
 
-/// Force an insert during recovery, bypassing any insert buffer so subsequent
-/// scan/delete in the same recovery pass see the row in `data.rows` directly.
-pub(crate) fn recovery_force_insert<S: StorageEngine + ?Sized>(
-    storage: &mut S,
-    table: &str,
-    record: Vec<Value>,
-) -> Result<(), crate::engine::SqlError> {
-    storage.force_insert(table, record)
-}
-
-/// #5192: same as [`recovery_force_insert`] but pins the database, so a
-/// committed row is replayed into the database it was committed in rather
-/// than into whichever one happens to be current.
+/// #5192: force-insert during recovery, bypassing any insert buffer so
+/// subsequent scan/delete in the same recovery pass see the row directly.
+/// The database is pinned, so a committed row is replayed into the database
+/// it was committed in rather than into whichever one happens to be current.
 pub(crate) fn recovery_force_insert_in_db<S: StorageEngine + ?Sized>(
     storage: &mut S,
     db: &str,
@@ -342,21 +333,9 @@ fn key_to_filter_values(key: &[u8]) -> Result<Vec<Value>, crate::engine::SqlErro
     ))
 }
 
-fn replace_by_key<S: StorageEngine + ?Sized>(
-    storage: &mut S,
-    table: &str,
-    key: &[u8],
-    new_record: Vec<Value>,
-) -> Result<(), crate::engine::SqlError> {
-    let filter_values = key_to_filter_values(key)?;
-    storage.delete(table, &filter_values)?;
-    storage.insert(table, vec![new_record])?;
-    Ok(())
-}
-
-/// #5192: database-qualified [`replace_by_key`]. Replay must not depend on
-/// the storage's current database — after a restart that is `default`, not
-/// the database the row was committed in.
+/// #5192: database-qualified delete+insert replacement. Replay must not
+/// depend on the storage's current database — after a restart that is
+/// `default`, not the database the row was committed in.
 fn replace_by_key_in_db<S: StorageEngine + ?Sized>(
     storage: &mut S,
     db: &str,
