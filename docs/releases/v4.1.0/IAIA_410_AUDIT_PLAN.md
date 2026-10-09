@@ -721,8 +721,9 @@ let session_db = storage.read().current_db();
   `delete_in_db` / `replace_by_key_in_db`
 - `WalStorage`、`BoxStorageEngine`、`MvccStorage` 补齐 `*_in_db` 覆盖，避免 trait
   默认实现丢弃 `db` 后回落到无库版本
-- **恢复不完整（`committed_txns > 0 && skipped > 0`）或恢复硬失败时拒绝启动**，
-  把静默丢数据变成运维可见的故障
+- **恢复硬失败（`Err` 分支）时拒绝启动**，把静默丢数据变成运维可见的故障。
+  恢复不完整（`Ok(report)` 但 `skipped_entries > 0`）的拒绝启动由并行实现提供的
+  `guard_unrecoverable_commits` 负责（见 §14.5）
 
 **验证**（真实 pymysql，非 default 库，`kill -9` + 重启）：
 
@@ -737,8 +738,33 @@ let session_db = storage.read().current_db();
 两者的共同教训是：**审计的静态阅读指向的修复位置未必是真正执行的代码路径**，
 必须用埋点或实跑确认「改的地方确实被调用」再动手。
 
-### 14.5 当前阻断
+### 14.5 与并行实现的分工（ADR-014 协作记录）
 
-Gitea（192.168.0.252）的 222 / 3000 端口均已关闭，主机可 ping 通，属服务进程停止。
-#5192 的修复已提交到本地分支 `fix/5192-wal-database-scope`（commit `f3020f0796`），
-**推送与 PR 创建待 Gitea 恢复后补做**。
+rebase 到最新 `develop/v4.1.0` 时发现另一路实现已先行落地 #5192 的**拒绝启动**
+部分，且 `crates/storage/` 零改动。分工如下：
+
+| 范围 | 归属 |
+|---|---|
+| `guard_unrecoverable_commits`（拒绝启动 + `SQLRUSTGO_ALLOW_DATA_LOSS=1` 逃生开关） | 并行实现 |
+| 恢复硬失败（`Err` 分支）拒绝启动 | 本审计 |
+| **storage 层 WAL 库标识**（`WalEntry::database_name` / `FileStorage::wal_row_entry` / 库感知回放 / `*_in_db` 覆盖） | **本审计**（远端未做） |
+
+我先前自己实现的 `skipped_entries` 检查已在 rebase 后移除：二者并存时
+`guard_*` 先返回 `Err`，我那段永远走不到，`SQLRUSTGO_ALLOW_DATA_LOSS=1`
+会被架空成死开关。保留的是 `Err(e)` 分支 —— `guard_*` 只处理 `Ok(report)`
+路径，覆盖不到那里。
+
+- source_agent: codex-trae
+- conflict_resolution: 保留远端更完整的 `guard_*`（带逃生开关），移除本地重复实现；本地 `Err` 分支加固与远端无重叠，予以保留
+
+### 14.6 验证结果
+
+rebase 后实跑（真实 pymysql，非 default 库，`kill -9` + 重启）：
+
+```
+WAL recovery: total=8 committed_txns=1 rows_inserted=5 skipped=0
+✅ kill -9 后恢复: 3 行 -> (('1','10'), ('2','20'), ('3','30'))
+```
+
+`skipped=0` 使 `guard_unrecoverable_commits` 放行，与修复前
+（`skipped=5` → 服务静默丢数据）形成对照。
