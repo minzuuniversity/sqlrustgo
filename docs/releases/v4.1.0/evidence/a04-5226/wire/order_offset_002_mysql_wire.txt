@@ -1,0 +1,17 @@
+server_version=8.0.33-SQLRustGo
+SETUP> CREATE TABLE t_off (n INTEGER)
+  OK affected=0
+SETUP> INSERT INTO t_off VALUES (10)
+  OK affected=1
+SETUP> INSERT INTO t_off VALUES (20)
+  OK affected=1
+SETUP> INSERT INTO t_off VALUES (30)
+  OK affected=1
+SETUP> INSERT INTO t_off VALUES (40)
+  OK affected=1
+QUERY> SELECT n FROM t_off ORDER BY n LIMIT 2 OFFSET 1
+  SELECT ncol=1 nrow=2 status=0x0002
+  columns=["n"]
+  types=["integer"]
+  row[0]=["20"]
+  row[1]=["30"]

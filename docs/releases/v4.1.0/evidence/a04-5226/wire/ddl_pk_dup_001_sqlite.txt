@@ -1,0 +1,5 @@
+=== STDOUT ===
+
+=== STDERR ===
+Error: stepping, UNIQUE constraint failed: t_pk.id (19)
+

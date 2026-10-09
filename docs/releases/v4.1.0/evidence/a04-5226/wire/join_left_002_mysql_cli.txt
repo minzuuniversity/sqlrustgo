@@ -1,0 +1,9 @@
+=== mysql CLI STDOUT ===
+
+=== STDERR ===
+--------------
+SELECT l.id, l.x, r.id FROM t_join_l l LEFT JOIN t_join_l r ON l.id = r.id + 1 ORDER BY l.id
+--------------
+
+ERROR 1105 (42000) at line 4: Execution error: Join condition must reference one column from each side
+

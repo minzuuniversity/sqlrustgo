@@ -1,0 +1,7 @@
+=== STDOUT ===
+
+
+
+=== STDERR ===
+Error: sqlrustgo:error:bind: Execution error: Binder error: column 'no_such_col' not found in schema
+

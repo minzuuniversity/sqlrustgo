@@ -1,0 +1,6 @@
+=== STDOUT ===
+g	SUM(n)
+b	5
+
+=== STDERR ===
+

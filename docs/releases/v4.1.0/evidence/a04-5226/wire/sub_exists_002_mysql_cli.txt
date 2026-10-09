@@ -1,0 +1,6 @@
+=== STDOUT ===
+id
+1
+
+=== STDERR ===
+

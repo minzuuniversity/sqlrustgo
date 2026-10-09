@@ -1,0 +1,9 @@
+=== mysql CLI STDOUT ===
+
+=== STDERR ===
+--------------
+INSERT INTO t_nn VALUES (NULL, 'bad')
+--------------
+
+ERROR 1105 (42000) at line 3: Execution error: Column 'id' cannot be NULL
+

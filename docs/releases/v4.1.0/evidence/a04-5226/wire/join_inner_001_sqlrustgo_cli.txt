@@ -1,0 +1,12 @@
+=== STDOUT ===
+
+
+
+
+a.id,a.name,b.val
+1,a,10
+2,b,20
+3,c,30
+
+=== STDERR ===
+

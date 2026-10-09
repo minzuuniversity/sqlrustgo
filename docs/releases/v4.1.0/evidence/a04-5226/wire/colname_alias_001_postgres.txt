@@ -1,0 +1,35 @@
+=== STDOUT ===
+<p>DROP TABLE</p>
+<p>CREATE TABLE</p>
+<p>INSERT 0 1</p>
+<table border="1">
+  <tr>
+    <th align="center">renamed</th>
+  </tr>
+  <tr valign="top">
+    <td align="right">7</td>
+  </tr>
+</table>
+<p>(1 row)<br />
+</p>
+
+=== STDERR ===
+NOTICE:  table "t_join_a" does not exist, skipping
+NOTICE:  table "t_join_l" does not exist, skipping
+NOTICE:  table "t_sub" does not exist, skipping
+NOTICE:  table "t_ex_parent" does not exist, skipping
+NOTICE:  table "t_ex_child" does not exist, skipping
+NOTICE:  table "t_agg" does not exist, skipping
+NOTICE:  table "t_hv" does not exist, skipping
+NOTICE:  table "t_null" does not exist, skipping
+NOTICE:  table "t_nw" does not exist, skipping
+NOTICE:  table "t_cast" does not exist, skipping
+NOTICE:  table "t_div" does not exist, skipping
+NOTICE:  table "t_ol" does not exist, skipping
+NOTICE:  table "t_off" does not exist, skipping
+NOTICE:  table "t_cn" does not exist, skipping
+NOTICE:  table "t_ce" does not exist, skipping
+NOTICE:  table "t_ct" does not exist, skipping
+NOTICE:  table "t_pk" does not exist, skipping
+NOTICE:  table "t_nn" does not exist, skipping
+

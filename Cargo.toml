@@ -1787,6 +1787,10 @@ name = "differential_corpus_test"
 path = "tests/integration/compat/differential_corpus_test.rs"
 
 [[test]]
+name = "a04_mysql_diff_matrix"
+path = "tests/integration/compat/a04_mysql_diff_matrix_test.rs"
+
+[[test]]
 name = "semantic_kernel_test"
 path = "tests/integration/compat/semantic_kernel_test.rs"
 

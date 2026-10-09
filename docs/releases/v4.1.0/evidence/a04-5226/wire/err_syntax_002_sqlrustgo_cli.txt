@@ -1,0 +1,5 @@
+=== STDOUT ===
+
+=== STDERR ===
+Error: sqlrustgo:error:parse: Parse error: Unexpected token: Identifier("SELEC")
+

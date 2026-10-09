@@ -1,0 +1,8 @@
+=== STDOUT ===
+
+
+
+
+=== STDERR ===
+Error: sqlrustgo:error:runtime: Execution error: Join condition must reference one column from each side
+

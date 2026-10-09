@@ -1,0 +1,5 @@
+=== STDOUT ===
+
+=== STDERR ===
+Error: sqlrustgo:error:runtime: Table not found: t_definitely_missing_xyz
+
