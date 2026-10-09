@@ -6588,6 +6588,67 @@ pub fn run_server(host: &str, port: u16) -> MySqlResult<()> {
 /// This is a Stage 2 evolution of [`run_server`] that wires the CLI
 /// args to real behavior. The previous Stage 1 banner-only fields
 /// (data_dir, max_connections, auth_mode) are now actually enforced.
+/// #5192 (IAIA-410 F9) — refuse to start after losing committed data.
+///
+/// A WAL entry belonging to a **committed** transaction that recovery
+/// could not replay is not a recoverable condition the operator can
+/// ignore: the transaction was acknowledged to the client, so the data
+/// is gone from the data directory and from the client's point of view
+/// it was durable.
+///
+/// Startup previously continued after a single `WARN`, so the process
+/// logged "Ready to accept connections" over a silently truncated
+/// database and accepted new writes on top of it. Every subsequent
+/// write then landed in a database whose contents no longer matched
+/// what clients were told.
+///
+/// Refusing to start is strictly safer: the WAL file is still on disk,
+/// so an operator can copy the data directory aside and replay it by
+/// hand. Starting "successfully" destroys that option.
+///
+/// Escape hatch: `SQLRUSTGO_ALLOW_DATA_LOSS=1`. It exists because the
+/// underlying replay bug (WAL entries carry no database identifier) is
+/// not fixed yet — operators who need the database back up, and only
+/// they, decide to start with acknowledged writes missing. It is named
+/// for what it does: it accepts data loss. It is not a recovery switch.
+pub fn guard_unrecoverable_commits(
+    report: &sqlrustgo_storage::recovery_engine::RecoveryReport,
+) -> MySqlResult<()> {
+    if report.skipped_entries == 0 {
+        return Ok(());
+    }
+
+    let allow = std::env::var("SQLRUSTGO_ALLOW_DATA_LOSS")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
+    let detail = format!(
+        "WAL recovery could not replay {} entry/entries from committed \
+         transactions (total={}, committed_txns={}, rows_inserted={}). \
+         Those writes were acknowledged to clients and are now lost.",
+        report.skipped_entries, report.entries_total, report.committed_txns, report.rows_inserted,
+    );
+
+    if allow {
+        tracing::error!(
+            "{}, {} — refusing to start unless SQLRUSTGO_ALLOW_DATA_LOSS=1; \
+             continuing because that variable is set. DATA IS BEING LOST.",
+            detail,
+            "acknowledged writes were dropped",
+        );
+        return Ok(());
+    }
+
+    tracing::error!(
+        "{}, {} — refusing to start. Copy the data directory aside before \
+         touching the WAL. Set SQLRUSTGO_ALLOW_DATA_LOSS=1 only if \
+         deliberately accepting the loss.",
+        detail,
+        "acknowledged writes were dropped",
+    );
+    Err(MySqlError::Sql(detail))
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn run_server_v2(
     host: &str,
@@ -6819,6 +6880,14 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                             report.rows_inserted,
                             report.skipped_entries
                         );
+                        // #5192 (IAIA-410 F9): a committed transaction whose
+                        // entries could not be replayed is PERMANENT data loss.
+                        // Startup used to continue after only a WARN, so the
+                        // server announced itself ready and accepted new
+                        // writes on top of a silently truncated database.
+                        // Refusing to start is the lesser evil: the operator
+                        // still has the WAL on disk to recover by hand.
+                        guard_unrecoverable_commits(&report)?;
                         let _ = file_storage.flush();
                     }
                     Err(e) => {
@@ -6924,6 +6993,14 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                             report.rows_inserted,
                             report.skipped_entries
                         );
+                        // #5192 (IAIA-410 F9): a committed transaction whose
+                        // entries could not be replayed is PERMANENT data loss.
+                        // Startup used to continue after only a WARN, so the
+                        // server announced itself ready and accepted new
+                        // writes on top of a silently truncated database.
+                        // Refusing to start is the lesser evil: the operator
+                        // still has the WAL on disk to recover by hand.
+                        guard_unrecoverable_commits(&report)?;
                         let _ = file_storage.flush();
                     }
                     Err(e) => {
