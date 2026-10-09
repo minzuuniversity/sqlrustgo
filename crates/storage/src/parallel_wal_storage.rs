@@ -5,7 +5,8 @@
 //! Key insight: WAL writes must be serial (ordering), but table flushes can be parallel.
 
 use crate::engine::{
-    ColumnDefinition, Record, SqlError, SqlResult, StorageEngine, TableInfo, Value,
+    ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
+    TableInfo, Value,
 };
 use crate::wal::{GroupCommitCoordinator, WalEntry, WalEntryType, WalManager};
 use crate::wal_storage::WalSyncMode;
@@ -460,6 +461,126 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
         r
+    }
+
+    // --- #5199: database-scoping forwards --------------------------------
+    //
+    // The same trait-default trap WalStorage fixed in #5192: without an
+    // override the default either answers for the *current* database
+    // (dropping `db`) or returns `Err("not supported")`. On the
+    // `--storage parallel` production assembly
+    // (`ParallelWalStorage<MvccStorage<FileStorage>>`) that means
+    // multi-database statements cannot run at all — `CREATE DATABASE`
+    // fails outright and `USE` + DDL/DML silently resolve against the
+    // wrong database. Exposed by the assembly-path consistency gate
+    // (`crates/storage/tests/assembly_forwarding_5199.rs`).
+    fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.create_database(db_name)
+    }
+
+    fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.drop_database(db_name)
+    }
+
+    fn list_databases(&self) -> SqlResult<Vec<String>> {
+        self.inner.list_databases()
+    }
+
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        self.inner.has_table_in(db, table)
+    }
+
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        self.inner.get_table_info_in(db, table)
+    }
+
+    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+        self.inner.list_tables_in_db(db)
+    }
+
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_db(db, table)
+    }
+
+    fn scan_with_filter_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner.scan_with_filter_in_db(db, table, filter)
+    }
+
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner.scan_with_index_in_db(db, table, index_name, key)
+    }
+
+    fn parallel_scan_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        self.inner.parallel_scan_in_db(db, table, num_partitions)
+    }
+
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.inner.create_table_in_db(db, info)
+    }
+
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        self.inner.drop_table_in_db(db, table)
+    }
+
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        self.inner.insert_in_db(db, table, records)
+    }
+
+    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.inner.force_insert_in_db(db, table, record)
+    }
+
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.inner.delete_in_db(db, table, filters)
+    }
+
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        self.inner.delete_collect_pks_in_db(db, table, filters)
+    }
+
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.inner.delete_if_in_db(db, table, filter)
+    }
+
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        self.inner.update_in_db(db, table, filters, updates)
+    }
+
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        self.inner.update_if_in_db(db, table, filter, mutation)
     }
 }
 
