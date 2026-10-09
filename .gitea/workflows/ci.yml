@@ -324,6 +324,12 @@ jobs:
             echo "V312-19 release gates FAILED (artifacts missing or stale) — blocking PR merge"
             exit 1
           fi
+      # restored step: the "- name:" line of this block was lost in an earlier
+      # edit, fusing its `run:` onto the V312-19 step above. Two `run:` keys in
+      # one step is a duplicate YAML mapping key, which Gitea's strict workflow
+      # parser rejects — every push/PR to this repo failed with
+      # "Invalid workflow file" before this fix (run #6575 et al.).
+      - name: Test Plan Audit (Issue #2881 → mandatory via #2882)
         run: |
           set -euo pipefail
           mkdir -p artifacts/audit/v3.8.0
