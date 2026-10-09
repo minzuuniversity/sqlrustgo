@@ -60,8 +60,15 @@ SLOW_THRESHOLD_SEC = 30  # binaries taking longer than this go to the slow group
 
 # Mirror the DISABLED_TESTS_LIST from scripts/gate/check_beta_v3.12.0.sh.
 # Source of truth: docs/releases/v3.12.0/b2-disabled-test-binary-registry.md.
+# === A08 audit 2026-10-09 (Issue #5230) ===
+# 12 binaries reactivated: ddl_e2e_test, savepoint_test, mvcc_transaction_test,
+# operators_join, window_function_test, differential_corpus_test,
+# issue_4491_join_groupby_alias_col_and_scalar_subquery, dml_integration_test,
+# diag_q22_cell_level, tpch_sf01_perf_baseline_test, physical_backup_test,
+# repro_v312_85. Evidence: docs/releases/v4.1.0/A08_DISABLED_BINARIES_REVIEW_2026-10-09.md
+# source_agent: opencode+Mimo2.6Flash, evidence_hash: e50c409ee46825ce66a0989111a8bf22111be7341786d7c57cc76d5f452d42f2
+# === end A08 audit ===
 DISABLED_BINARIES = [
-    "ddl_e2e_test",
     "diag_q11",
     "diag_q11_3way",
     "diag_q11_having",
@@ -91,14 +98,12 @@ DISABLED_BINARIES = [
     "q13_subquery_repro",
     "q16_notin_subquery_regression",
     "q21_cell_regression_test",
-    "physical_backup_test",
     "q2_q17_repro_test",
     # === Added 2026-08-24 from per-binary B2 run (Issue #4413) ===
     "diag_q7_subset_columns",
     "regression_test",
     "replace_test",
     "repro_3282_orderby_desc",
-    "savepoint_test",
     "sem1_savepoint_test",
     "sequence_test",
     "server01_server_test",
@@ -124,7 +129,6 @@ DISABLED_BINARIES = [
     "tpch_sf01_22_vs_sqlite_test",
     "tpch_sf01_inprocess_test",
     "tpch_sf01_oracle_dump",
-    "tpch_sf01_perf_baseline_test",
     "tpch_sf1_gate_contract_test",
     "tpch_soak_qps",
     "tpch_soak_test",
@@ -135,7 +139,6 @@ DISABLED_BINARIES = [
     "union_set_operations_test",
     "upsert_test",
     "v312_13_load_data_sf10_test",
-    "window_function_test",
     "recovery_fuzzer_test",
     "recovery_scenarios_test",
     "types_value_test",
@@ -156,16 +159,9 @@ DISABLED_BINARIES = [
     # disabled registry (docs/releases/v3.12.0/b2-disabled-test-binary-
     # registry.md Section C).
     "v312_71_sqlite_master_test",
-    "repro_v312_85",
-    "mvcc_transaction_test",
     "show_full_tables_test",
     "wal_tx_contract_test",
     "g13_oltp1_concurrent_select_test",
-    "operators_join",
-    "dml_integration_test",
-    "issue_4491_join_groupby_alias_col_and_scalar_subquery",
-    "diag_q22_cell_level",
-    "differential_corpus_test",
 ]
 DISABLED_SET = frozenset(DISABLED_BINARIES)
 
