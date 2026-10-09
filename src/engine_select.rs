@@ -784,6 +784,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // switch. `session_db` is per engine, which is per connection.
         let current_db = self.session_db();
 
+        // #5137: a user-qualified `FROM db.table` resolves against `db`,
+        // not against the connection's current database. Validate the
+        // qualifier BEFORE any storage guard is taken —
+        // `ensure_database_known` takes its own short read guard and
+        // parking_lot read guards must not nest when a writer queues.
+        // `information_schema` is a virtual catalog (not a user
+        // database) and is short-circuited further down, so skip it.
+        if let Some(schema) = &select.schema {
+            if !schema.eq_ignore_ascii_case("information_schema") {
+                self.ensure_database_known(schema)?;
+            }
+        }
+        // The database the BASE table of this FROM resolves in: the
+        // parser's schema qualifier when present, else the connection's
+        // current database. All base-table lookups below use this —
+        // never the bare `current_db` — so `FROM other.t` reads `other`.
+        let base_db = select
+            .schema
+            .clone()
+            .filter(|s| !s.eq_ignore_ascii_case("information_schema"))
+            .unwrap_or_else(|| current_db.clone());
+
         let select_owned;
         let select: &SelectStatement = {
             let session_vars = self.session_vars.read();
@@ -1253,7 +1275,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // (reader owns lock → writer waits → reader tries reentrant read
         // → blocked by writer preference → deadlock).
         let (mut rows, table_info) = if !select.join_clause.is_empty() {
-            let (jrows, jinfo, _) = self.execute_joins(&mut select.clone(), &current_db)?;
+            let (jrows, jinfo, _) = self.execute_joins(&mut select.clone(), &base_db)?;
             (jrows, jinfo)
         } else if let Some((rows, info)) = materialized {
             (rows, info)
@@ -1388,7 +1410,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // (HashMap lookup on `Arc<RwLock>` metadata) and the same
             // `table_info` is reused by the binding / projection code
             // below.
-            let table_info = storage.get_table_info_in(&current_db, lookup_table)?;
+            let table_info = storage.get_table_info_in(&base_db, lookup_table)?;
             let pk_column = crate::engine_select_pk::resolve_pk_column(&table_info);
             // #4846: the fast path below skips `evaluate_where_clause`
             // entirely and returns the scanned row unfiltered, so it is
@@ -1398,8 +1420,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // equality finds nothing. Take the ordinary scan path there.
             let pk_lookup_semantics_ok =
                 crate::engine_select_pk::pk_fast_path_preserves_semantics(&table_info, &pk_column);
-            let pk_lookup_rows = if !pk_lookup_semantics_ok {
-                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &current_db)?
+            // #5137: `storage.scan_pk` takes no database parameter — it
+            // resolves the table through the storage's shared
+            // `current_db`. A qualified cross-database point lookup
+            // (`SELECT db.t WHERE pk = v` while `USE`d elsewhere) would
+            // therefore read the wrong database and silently yield 0
+            // rows. Send cross-database queries down `scan_with_ahi`,
+            // which routes by `base_db`; the WHERE clause is applied by
+            // the ordinary evaluation path below, so results stay
+            // correct (same-db lookups keep the fast path unchanged).
+            let cross_db_lookup = base_db != current_db;
+            let pk_lookup_rows = if !pk_lookup_semantics_ok || cross_db_lookup {
+                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &base_db)?
             } else if let Some(pk_value) = crate::engine_select_pk::try_extract_pk_eq_with_col(
                 &select.where_clause,
                 &pk_column,
@@ -1491,7 +1523,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     )?,
                 }
             } else {
-                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &current_db)?
+                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &base_db)?
             };
             let rows = pk_lookup_rows;
             // table_info was already fetched above (Phase D.1 moved it

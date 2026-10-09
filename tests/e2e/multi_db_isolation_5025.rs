@@ -285,3 +285,176 @@ fn issue_5025_show_table_status_from_lists_target_database() {
         "SHOW TABLE STATUS FROM d2 must NOT include the current database's table, got: {out}"
     );
 }
+
+// ===== issue #5137 阶段 1-2: 跨库限定名 SELECT db.table =====
+
+/// #5137 AC4a: `SELECT * FROM d2.t2` while connected to d1 must read
+/// d2's table. Before the fix the schema qualifier was parsed into
+/// `SelectStatement.schema` but never consulted by the FROM resolver,
+/// so the bare name was looked up in the CURRENT database and failed
+/// with `Table not found: t2`.
+#[test]
+fn issue_5137_select_from_qualified_table_reads_target_database() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create t1 in d1");
+    engine
+        .execute("INSERT INTO t1 VALUES (1)")
+        .expect("insert into t1");
+
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+    engine
+        .execute("INSERT INTO t2 VALUES (42)")
+        .expect("insert into t2");
+
+    // Back in d1: the qualified name must reach across into d2.
+    engine.execute("USE d1").expect("use d1");
+    let rows = engine
+        .execute("SELECT * FROM d2.t2")
+        .expect("SELECT from d2.t2 must read d2, not fail in d1");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("42"),
+        "d2.t2's row (42) must be visible via the qualified name, got: {text}"
+    );
+    assert!(
+        !text.contains("Integer(1)"),
+        "must not accidentally read d1's t1, got: {text}"
+    );
+}
+
+/// #5137 AC4d: the mirrored direction — connected to d2, qualified
+/// `FROM d1.t1` must read d1.
+#[test]
+fn issue_5137_qualified_table_reads_other_database_symmetric() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create t1 in d1");
+    engine
+        .execute("INSERT INTO t1 VALUES (7)")
+        .expect("insert into t1");
+
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+
+    let rows = engine
+        .execute("SELECT * FROM d1.t1")
+        .expect("SELECT from d1.t1 must read d1 while connected to d2");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains('7'),
+        "d1.t1's row (7) must be visible via the qualified name, got: {text}"
+    );
+}
+
+/// #5137: a qualified name against an UNKNOWN database must fail with
+/// the same `Unknown database` error `USE` produces — not silently
+/// fall back to the current database (which would read the WRONG table)
+/// and not a bare `Table not found`.
+#[test]
+fn issue_5137_qualified_unknown_database_is_rejected() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create t1 in d1");
+
+    let r = engine.execute("SELECT * FROM no_such_db.t1");
+    let err = format!("{:?}", r.expect_err("qualified unknown db must error"));
+    assert!(
+        err.contains("Unknown database"),
+        "must be rejected like USE does (Unknown database), got: {err}"
+    );
+    assert!(
+        !err.contains("Table not found"),
+        "must not degrade into a bare Table-not-found in the current db, got: {err}"
+    );
+}
+
+/// #5137 AC4b: WHERE against a qualified FROM with a bare column
+/// reference — the qualifier only affects table resolution, the column
+/// space is still the target table's.
+#[test]
+fn issue_5137_qualified_table_where_filter_works() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+    engine
+        .execute("INSERT INTO t2 VALUES (42)")
+        .expect("insert 42");
+    engine
+        .execute("INSERT INTO t2 VALUES (99)")
+        .expect("insert 99");
+
+    engine.execute("USE d1").expect("use d1");
+    let rows = engine
+        .execute("SELECT id FROM d2.t2 WHERE id = 42")
+        .expect("qualified FROM + WHERE must work");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains('4') && text.contains('2'),
+        "the matching row (42) must come back, got: {text}"
+    );
+    assert!(
+        !text.contains('9'),
+        "the non-matching row (99) must be filtered out, got: {text}"
+    );
+}
+
+/// #5137 AC4e: a comma list spanning two databases — the primary table
+/// and every `extra_tables` / auto-rewritten join entry must each be
+/// resolved against its own database, not the connection's current one.
+#[test]
+#[ignore = "#5137 阶段 2 进行中：parser comma 循环未拼接限定名（基线失败 Table not found: d2）"]
+fn issue_5137_comma_list_across_databases() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create t1 in d1");
+    engine
+        .execute("INSERT INTO t1 VALUES (1)")
+        .expect("insert into t1");
+
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+    engine
+        .execute("INSERT INTO t2 VALUES (42)")
+        .expect("insert into t2");
+
+    engine.execute("USE d1").expect("back to d1");
+    let rows = engine
+        .execute("SELECT * FROM d1.t1, d2.t2")
+        .expect("cross-db comma list must execute");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains('1') && text.contains("42"),
+        "cartesian join must see d1.t1 (1) and d2.t2 (42), got: {text}"
+    );
+}
