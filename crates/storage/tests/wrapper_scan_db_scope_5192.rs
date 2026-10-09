@@ -169,3 +169,71 @@ fn wrapper_keeps_two_databases_separate() {
 
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// #5192: a table created in a named database must survive `flush()`.
+///
+/// This is the fourth instance of the same omission, and the only one that
+/// loses data rather than merely misreporting it. `WalStorage` scoped
+/// `insert_in_db` / `delete_in_db` / `update_in_db` / `scan_in_db` but not
+/// `create_table_in_db`, so the trait default created the table under
+/// `current_db` while the rows were buffered under the named one.
+///
+/// `flush_buffer` then removes those rows from `insert_buffer` and finds
+/// no table to write them into — they are dropped. No crash and no
+/// restart are involved; `flush()` is ordinary maintenance.
+#[test]
+fn wal_storage_flush_does_not_drop_rows_of_a_named_database() {
+    let d = dir("flush");
+    let inner = FileStorage::new(d.clone()).unwrap();
+    let wal = FileBackedWalManager::new(d.join("sqlrustgo.wal")).unwrap();
+    let mut s = WalStorage::new(inner, wal).unwrap();
+
+    s.create_database("aud").unwrap();
+    s.create_table_in_db("aud", &table("t")).unwrap();
+    s.insert_in_db("aud", "t", vec![row(1), row(2)]).unwrap();
+
+    assert_eq!(
+        s.scan_in_db("aud", "t").expect("before flush"),
+        vec![row(1), row(2)],
+        "#5192: precondition — the rows are visible before the flush"
+    );
+
+    s.flush().expect("flush");
+
+    assert_eq!(
+        s.scan_in_db("aud", "t").expect("after flush"),
+        vec![row(1), row(2)],
+        "#5192: flush() dropped committed rows. The table was registered \
+         under the current database while the rows were buffered under the \
+         named one, so flush_buffer removed them and had nowhere to put them."
+    );
+
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// The table itself must live in the database it was created in, not in
+/// whichever one happened to be current. Without this the row-loss case
+/// above would be a flush bug rather than a create bug.
+#[test]
+fn wal_storage_creates_the_table_in_the_stated_database() {
+    let d = dir("create");
+    let inner = FileStorage::new(d.clone()).unwrap();
+    let wal = FileBackedWalManager::new(d.join("sqlrustgo.wal")).unwrap();
+    let mut s = WalStorage::new(inner, wal).unwrap();
+
+    s.create_database("aud").unwrap();
+    s.create_table_in_db("aud", &table("t")).unwrap();
+
+    assert!(
+        s.has_table_in("aud", "t"),
+        "#5192: the table must be registered under the database it was \
+         created in"
+    );
+    assert!(
+        !s.has_table_in("default", "t"),
+        "#5192: the table must NOT also be registered under the current \
+         database — that is the state in which flush() drops rows"
+    );
+
+    let _ = std::fs::remove_dir_all(&d);
+}
