@@ -3208,6 +3208,26 @@ impl StorageEngine for MemoryStorage {
             .unwrap_or_default())
     }
 
+    /// #5137: `scan_in` against a stated database.
+    ///
+    /// The trait default drops `db` and falls through `scan_in` → `scan`
+    /// → `tbl()`, which resolves the key from the shared `current_db` —
+    /// a cross-database `SELECT db.table` then read whichever database
+    /// the connection `USE`d last and silently returned 0 rows instead
+    /// of the target's. Route by the stated `db` exactly like
+    /// `scan_in_db` above (this was the one read-path member of the
+    /// #5057 `_in_db` family `MemoryStorage` had not overridden).
+    /// `reader_tx` is dropped the same way `scan_in`'s default drops it:
+    /// `MemoryStorage` carries no MVCC visibility.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        let _ = reader_tx;
+        Ok(self
+            .tables
+            .get(&scoped_key(db, table))
+            .map(|rows| (**rows).clone())
+            .unwrap_or_default())
+    }
+
     fn has_table_in(&self, db: &str, table: &str) -> bool {
         self.table_infos.contains_key(&scoped_key(db, table))
     }
