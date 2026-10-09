@@ -7037,6 +7037,27 @@ impl Parser {
                         } else {
                             first_table.clone()
                         }
+                    } else if matches!(self.current(), Some(Token::As)) {
+                        // #5137 C1: explicit `FROM db.t AS alias` — the bare
+                        // alias branch above excludes `Token::As`, so without
+                        // this arm the `AS alias` (and every token after it,
+                        // including the comma list and WHERE) was silently
+                        // unconsumed: tables kept only the first name, the
+                        // comma loop never ran, and `where_clause` came out
+                        // as None. Encode the alias like the bare path does.
+                        self.next(); // consume `AS`
+                        match self.current().cloned() {
+                            Some(Token::Identifier(a)) => {
+                                self.next();
+                                format!("{}|{}", first_table, a)
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Expected alias after `AS` in FROM clause, got {:?}",
+                                    other
+                                ))
+                            }
+                        }
                     } else {
                         first_table.clone()
                     };
@@ -7178,6 +7199,26 @@ impl Parser {
                                 tables.push(format!("{}|{}", consumed_name, a));
                             } else {
                                 tables.push(consumed_name);
+                            }
+                        } else if matches!(token_after, Some(Token::As)) {
+                            // #5137 C1: explicit `... , db.t AS alias` — same
+                            // silent-drop failure as the first-table arm: the
+                            // guard above excludes `Token::As`, so the alias
+                            // was never consumed, the loop then saw `As`
+                            // where it expected `Comma`, and the remainder of
+                            // the FROM list plus WHERE were discarded.
+                            self.next(); // consume `AS`
+                            match self.current().cloned() {
+                                Some(Token::Identifier(a)) => {
+                                    self.next();
+                                    tables.push(format!("{}|{}", consumed_name, a));
+                                }
+                                other => {
+                                    return Err(format!(
+                                        "Expected alias after `AS` in FROM list, got {:?}",
+                                        other
+                                    ))
+                                }
                             }
                         } else {
                             tables.push(consumed_name);
