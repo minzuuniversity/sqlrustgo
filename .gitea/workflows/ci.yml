@@ -297,6 +297,16 @@ jobs:
           set -euo pipefail
           chmod +x scripts/gate/check_off_production_path_registry.sh
           bash scripts/gate/check_off_production_path_registry.sh
+      # Issue #5199 item 3 (F6): a correctness test green on a non-production
+      # storage proves nothing about production. The server's production
+      # storage-selection block must keep its default file-backed and must not
+      # introduce MemoryStorage. Without this in CI the "tests cover the
+      # production config" invariant is a comment nobody checks.
+      - name: Production storage default check (#5199 item 3)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_correctness_tests_production_storage.sh
+          bash scripts/gate/check_correctness_tests_production_storage.sh
       # Issue #5192: a storage wrapper that fails to forward a
       # database-scoped StorageEngine method silently answers for the current
       # database. Nine such omissions were each found after a separate
