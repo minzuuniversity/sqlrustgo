@@ -457,3 +457,32 @@ fn issue_5137_comma_list_across_databases() {
         "cartesian join must see d1.t1 (1) and d2.t2 (42), got: {text}"
     );
 }
+
+/// #5137 AC4c: three-segment column reference `db.table.col` in the
+/// SELECT list. Before the fix the parser rejected it outright with
+/// `Parse error: Expected expression` — the bare-identifier path never
+/// accepted a Dot chain long enough for `d2.t2.id`.
+#[test]
+fn issue_5137_three_segment_column_reference() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+    engine
+        .execute("INSERT INTO t2 VALUES (42)")
+        .expect("insert into t2");
+
+    engine.execute("USE d1").expect("use d1");
+    let rows = engine
+        .execute("SELECT d2.t2.id FROM d2.t2")
+        .expect("three-segment column reference must parse and evaluate");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("42"),
+        "d2.t2.id must evaluate to 42, got: {text}"
+    );
+}
