@@ -27,6 +27,10 @@ criterion = "0.8"
 
 [features]
 default = []
+# B-1 (#5177): enables fault-injection hooks. Integration tests compile the
+# library WITHOUT cfg(test), so a cfg(test) hook would silently vanish and
+# the crash tests would hang waiting for a signal. OFF in production.
+fault-injection = []
 bin_storage_default = []
 v313_3_profile = []   # V313.3 profiling experiments; test-only hooks; OFF by default
 

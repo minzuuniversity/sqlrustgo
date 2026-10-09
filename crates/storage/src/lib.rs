@@ -22,6 +22,11 @@ pub mod engine;
 pub mod integrated_storage;
 
 pub mod file_storage;
+
+/// B-1 (#5177) crash-test hooks. Gated behind a feature rather than
+/// `cfg(test)` because integration tests link the library without it.
+#[cfg(any(test, feature = "fault-injection"))]
+pub mod fault_injection;
 pub mod file_table;
 pub mod io_delay;
 pub mod mvcc;
