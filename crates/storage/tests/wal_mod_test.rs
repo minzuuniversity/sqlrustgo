@@ -382,6 +382,10 @@ fn test_wal_entry_to_bytes_and_from_bytes() {
         entry_type: WalEntryType::Insert,
         table_id: 100,
         table_name: None,
+        // #5192: absent = written before the field existed. A replay
+        // must refuse to guess the database rather than write this row
+        // into whichever one happens to be current.
+        database_name: None,
         key: Some(vec![1, 2, 3]),
         data: Some(vec![4, 5, 6]),
         lsn: 7,
@@ -407,6 +411,10 @@ fn test_wal_entry_to_bytes_and_from_bytes_no_key_no_data() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        // #5192: absent = written before the field existed. A replay
+        // must refuse to guess the database rather than write this row
+        // into whichever one happens to be current.
+        database_name: None,
         key: None,
         data: None,
         lsn: 0,
@@ -563,6 +571,10 @@ fn test_wal_entry_type_all_variants() {
             entry_type,
             table_id: 0,
             table_name: None,
+            // #5192: absent = written before the field existed. A replay
+            // must refuse to guess the database rather than write this row
+            // into whichever one happens to be current.
+            database_name: None,
             key: None,
             data: None,
             lsn: 0,
@@ -587,6 +599,10 @@ fn test_wal_entry_with_large_data() {
         entry_type: WalEntryType::Insert,
         table_id: 100,
         table_name: None,
+        // #5192: absent = written before the field existed. A replay
+        // must refuse to guess the database rather than write this row
+        // into whichever one happens to be current.
+        database_name: None,
         key: Some(large_key.clone()),
         data: Some(large_data.clone()),
         lsn: 42,

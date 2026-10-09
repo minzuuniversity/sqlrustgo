@@ -248,6 +248,12 @@ mod tests {
             entry_type: WalEntryType::Insert,
             table_id: wal_record_codec::table_name_to_id("users"),
             table_name: Some("users".to_string()),
+            // #5192: a replayable row must name its database. `None`
+            // means "written before #5192" and the replay path refuses
+            // it rather than guessing — correct behaviour, but these
+            // fixtures exist to assert that committed rows ARE applied,
+            // so they model a modern writer.
+            database_name: Some(crate::engine::DEFAULT_DATABASE.to_string()),
             key: Some(wal_record_codec::record_key(&row)),
             data: Some(wal_record_codec::record_to_bytes(&row)),
             lsn: 0,
