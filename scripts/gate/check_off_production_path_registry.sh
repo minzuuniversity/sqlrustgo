@@ -210,9 +210,22 @@ print(json.load(open('/tmp/_issue5193.json')).get('state','?'))
         add_fail "R5 #5193 is '$STATE' — if the route changed to A or B, this \
 registry must be rewritten (exclusion may no longer apply)"
     fi
+elif [ "${IAIA_ALLOW_NETWORK_SKIP:-0}" = "1" ]; then
+    # 仅在调用方**显式声明**本次可以跳过网络检查时跳过（例如本地离线开发）。
+    #
+    # 原本这里是无条件跳过，代价是 R5 可以永久无声失效：CI 上认证信息缺失、
+    # Gitea 改名、或网络中断，都会让「选项 C 的前提」检查消失，而门禁仍报
+    # PASS —— 一个从不失败的门禁等于没有门禁。
+    #
+    # CI 不设这个变量，所以那里 R5 要么真的检查、要么 FAIL。
+    echo "  [WARN] R5 skipped — IAIA_ALLOW_NETWORK_SKIP=1 was set explicitly"
 else
-    # 网络不可达不应让门禁变成假红：登记仍可静态验证（R1/R2/R4）。
-    echo "  [WARN] R5 could not reach Gitea API — skipped (network-dependent check)"
+    # 查不到 #5193 的状态，就无法确认选项 C 是否仍然成立。
+    # 这是门禁自身的前提，不是可选项：一条无法验证前提的防腐化规则，
+    # 会在前提消失后继续显示绿色。
+    add_fail "R5 could not read #5193 from the Getea API — the state of the \
+option-C decision is unverifiable, so this registry cannot be trusted. \
+Set IAIA_ALLOW_NETWORK_SKIP=1 only for genuinely offline local runs."
 fi
 echo
 
