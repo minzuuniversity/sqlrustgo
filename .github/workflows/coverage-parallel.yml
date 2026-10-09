@@ -40,7 +40,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-core
           path: docs/releases/v2.7.0/coverage-core/
@@ -71,7 +71,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-executor
           path: docs/releases/v2.7.0/coverage-executor/
@@ -102,7 +102,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-storage
           path: docs/releases/v2.7.0/coverage-storage/
@@ -134,7 +134,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-transaction
           path: docs/releases/v2.7.0/coverage-transaction/
@@ -166,7 +166,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-network
           path: docs/releases/v2.7.0/coverage-network/
@@ -197,7 +197,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload coverage HTML
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-vector
           path: docs/releases/v2.7.0/coverage-vector/
@@ -249,7 +249,7 @@ jobs:
           echo "✅ Coverage check passed!"
 
       - name: Upload coverage JSON
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-json
           path: docs/releases/v2.7.0/coverage.json

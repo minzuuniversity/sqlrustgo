@@ -34,7 +34,7 @@ jobs:
           cargo llvm-cov --all-features --json --output-path artifacts/coverage.json
 
       - name: Upload coverage JSON
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-json
           path: artifacts/coverage.json
