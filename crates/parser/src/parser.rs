@@ -6140,37 +6140,55 @@ impl Parser {
                     let (name, consumed, _is_expression) = match self.current().cloned() {
                         Some(Token::Identifier(name)) => {
                             if matches!(self.peek(), Some(Token::Dot)) {
-                                let table = name.clone();
-                                self.next();
-                                self.expect(Token::Dot)?;
-                                match self.current().cloned() {
-                                    Some(Token::Identifier(col)) => {
-                                        self.next();
-                                        (format!("{}.{}", table, col), true, false)
+                                // #5137 AC4c: consume the FULL dot chain.
+                                // The old single-shot handling stopped after
+                                // `db.table`, left the second `Dot` in the
+                                // stream, and the next column-loop round hit
+                                // `Expected expression` on it (`SELECT
+                                // d2.t2.id`). The `db.table.col` form is kept
+                                // as one flat name — matching the existing
+                                // two-segment `table.col` convention; the
+                                // executor strips the leading database
+                                // segment at evaluation time.
+                                let mut qualified = name.clone();
+                                self.next(); // eat the first identifier
+                                while matches!(self.current(), Some(Token::Dot)) {
+                                    self.next(); // eat `.`
+                                    match self.current().cloned() {
+                                        Some(Token::Identifier(part)) => {
+                                            self.next();
+                                            qualified = format!("{}.{}", qualified, part);
+                                        }
+                                        // `Level` is a reserved token (used for
+                                        // transaction isolation levels) but can
+                                        // appear as a user-chosen column name in
+                                        // `tbl.Level` (e.g. `oc.level`). Accept
+                                        // it here as a column name.
+                                        Some(Token::Level) => {
+                                            self.next();
+                                            qualified = format!("{}.level", qualified);
+                                        }
+                                        // `table.*` — qualified star (e.g.
+                                        // `SELECT orders.* FROM orders JOIN users`).
+                                        // Emit a Star column with a special name
+                                        // so the executor can resolve it from
+                                        // the joined tables. Nothing valid
+                                        // follows `*`, so stop the chain here.
+                                        Some(Token::Star) => {
+                                            self.next();
+                                            qualified = format!("{}.*", qualified);
+                                            break;
+                                        }
+                                        Some(t) => {
+                                            return Err(format!(
+                                                "Expected column name, got {:?}",
+                                                t
+                                            ))
+                                        }
+                                        None => return Err("Expected column name".to_string()),
                                     }
-                                    // `Level` is a reserved token (used for
-                                    // transaction isolation levels) but can
-                                    // appear as a user-chosen column name in
-                                    // `tbl.Level` (e.g. `oc.level`). Accept
-                                    // it here as a column name.
-                                    Some(Token::Level) => {
-                                        self.next();
-                                        (format!("{}.level", table), true, false)
-                                    }
-                                    // `table.*` — qualified star (e.g.
-                                    // `SELECT orders.* FROM orders JOIN users`).
-                                    // Emit a Star column with a special name
-                                    // so the executor can resolve it from
-                                    // the joined tables.
-                                    Some(Token::Star) => {
-                                        self.next();
-                                        (format!("{}.*", table), true, false)
-                                    }
-                                    Some(t) => {
-                                        return Err(format!("Expected column name, got {:?}", t))
-                                    }
-                                    None => return Err("Expected column name".to_string()),
                                 }
+                                (qualified, true, false)
                             } else {
                                 (name.clone(), false, false)
                             }

@@ -671,6 +671,16 @@ pub fn eval_identifier(
     if let Some(stripped) = name.strip_prefix("@@") {
         return Ok(resolve_system_variable(&stripped.to_ascii_lowercase()));
     }
+    // #5137 AC4c: `db.table.col` — drop the leading database segment.
+    // The database was already resolved by the FROM clause; the remaining
+    // `table.col` two-segment form then flows through the existing
+    // qualifier lookup unchanged. Only names with TWO dots are rewritten,
+    // so legitimate single-dot qualifiers (including combined-schema
+    // column names like `a_join_b.col`) keep their meaning.
+    let name = match name.find('.') {
+        Some(first) if name[first + 1..].contains('.') => &name[first + 1..],
+        _ => name,
+    };
     if let Some(col_idx) = find_column_index(name, columns) {
         Ok(row.get(col_idx).cloned().unwrap_or(Value::Null))
     } else if name.contains('.') {
