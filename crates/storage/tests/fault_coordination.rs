@@ -101,12 +101,18 @@ impl Server {
     pub fn start(bin: &Path, data: &Path, port: u16, arm: Option<Arm>) -> Result<Self, String> {
         let mut c = Command::new(bin);
         c.arg("serve")
-            .arg("--host").arg("127.0.0.1")
-            .arg("--port").arg(port.to_string())
-            .arg("--data-dir").arg(data)
-            .arg("--server-threads").arg("4")
-            .arg("--storage").arg("file")
-            .arg("--auth-mode").arg("none")
+            .arg("--host")
+            .arg("127.0.0.1")
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--data-dir")
+            .arg(data)
+            .arg("--server-threads")
+            .arg("4")
+            .arg("--storage")
+            .arg("file")
+            .arg("--auth-mode")
+            .arg("none")
             .stdout(Stdio::null())
             .stderr(Stdio::null());
 
@@ -118,7 +124,12 @@ impl Server {
         }
 
         let child = c.spawn().map_err(|e| format!("spawn server: {e}"))?;
-        let s = Self { child, bin: bin.to_path_buf(), data: data.to_path_buf(), port };
+        let s = Self {
+            child,
+            bin: bin.to_path_buf(),
+            data: data.to_path_buf(),
+            port,
+        };
         s.wait_listening(BOOT_TIMEOUT)?;
         Ok(s)
     }
@@ -133,7 +144,10 @@ impl Server {
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        Err(format!("server did not listen on {} in {timeout:?}", self.port))
+        Err(format!(
+            "server did not listen on {} in {timeout:?}",
+            self.port
+        ))
     }
 
     /// SIGKILL: no unwinding, no destructors, no flush — a real crash.
@@ -182,7 +196,8 @@ impl Arm {
     }
 
     pub fn signal_file(&self) -> PathBuf {
-        self.signal_dir.join(format!("{}.reached", self.point.as_str()))
+        self.signal_dir
+            .join(format!("{}.reached", self.point.as_str()))
     }
 }
 
@@ -299,8 +314,14 @@ impl Observation {
     pub fn line(&self) -> String {
         format!(
             "B1 point={} sync={} run_id={} pid={} reached={} expected={} actual={} outcome={}",
-            self.fault_point, self.sync_mode, self.run_id, self.child_pid,
-            self.reached, self.expected_sum, self.actual_sum, self.outcome
+            self.fault_point,
+            self.sync_mode,
+            self.run_id,
+            self.child_pid,
+            self.reached,
+            self.expected_sum,
+            self.actual_sum,
+            self.outcome
         )
     }
 }
