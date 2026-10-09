@@ -333,9 +333,11 @@ COMMIT;
 - **第一阶段只读**：不允许为了通过验证而修改源码、测试或断言
 - 判定必须允许三种状态：`confirmed` / `refuted` / `unverified`
 
-最后一条尤其重要：**不能只凭代码阅读意见直接给项目判定**。本计划启动时已经遇到一个
-反例 —— P0 issue #5167 报告的「`COUNT(*)` 恒为 0」在当前 HEAD 无法复现（3 行与
-10000 行、进程内与 wire 均正确）。若不实际复现就据此开工，会修一个不存在的缺陷。
+最后一条尤其重要：**不能只凭代码阅读意见直接给项目判定**，也不能把「无法复现」当作
+永久事实。本计划启动时，P0 issue #5167 报告的「`COUNT(*)` 恒为 0」在某一次构建下
+无法复现；但第一阶段审计（见 §13）在真实 `mysql` 客户端下复现了该缺陷，且定位到
+**全表扫描路径返回 0 列**这一更根本的根因。教训是：无法复现只说明「本次构建 + 本次
+数据集没有触发」，不等于缺陷不存在；复现实验必须用真实入口而非进程内 API。
 
 ---
 
@@ -381,20 +383,21 @@ verdict: "unverified"
 
 ## 8. 优先执行的 10 项
 
-| # | 项目 | 优先级 | 归属 |
-|---|---|---|---|
-| 1 | 锁定 commit 与构建配置，`audit/` 纳入版本控制 | P0 | Auditor D |
-| 2 | 扫描 TODO / 空实现 / mock / 测试禁用 / 绕行代码 | P0 | Auditor A |
-| 3 | 复原 MySQL 客户端 → Storage 的生产调用图 | P0 | Auditor A |
-| 4 | 对 Join / EXISTS / GROUP BY / NULL 做 PostgreSQL 差分 | P0 | Auditor B |
-| 5 | 验证 DML → TxManager → WAL → Storage | P0 | Auditor B |
-| 6 | 进程崩溃与恢复测试 | P0 | Auditor B |
-| 7 | 验证 B+Tree 索引是否真实参与查询与 DML | P0 | Auditor B |
-| 8 | 关键算子变异测试（含 11 条 REVIEW 债务定性） | P1 | Auditor C |
-| 9 | 对 v3.12 / v4.0 / v4.1 做功能与性能回归 | P1 | Auditor C |
-| 10 | 证据矩阵与独立 GA 审核报告 | P1 | Judge |
+| # | 项目 | 优先级 | 归属 | 第一阶段状态 |
+|---|---|---|---|---|
+| 1 | 锁定 commit 与构建配置，`audit/` 纳入版本控制 | P0 | Auditor D | ✅ 已完成（`91ac4dcd48`） |
+| 2 | 扫描 TODO / 空实现 / mock / 测试禁用 / 绕行代码 | P0 | Auditor A | ✅ 已完成（见 §13.1） |
+| 3 | 复原 MySQL 客户端 → Storage 的生产调用图 | P0 | Auditor A | ✅ 已完成（见 §13.2） |
+| 4 | 对 Join / EXISTS / GROUP BY / NULL 做 PostgreSQL 差分 | P0 | Auditor B | ⚠️ 受 #003 阻断：非 PK 路径返回 0 列 |
+| 5 | 验证 DML → TxManager → WAL → Storage | P0 | Auditor B | ✅ 已完成（见 §13.5，证真） |
+| 6 | 进程崩溃与恢复测试 | P0 | Auditor B | ✅ 已完成（见 §13.3，F9 confirmed） |
+| 7 | 验证 B+Tree 索引是否真实参与查询与 DML | P0 | Auditor B | ⚠️ 受 #003 阻断 |
+| 8 | 关键算子变异测试（含 11 条 REVIEW 债务定性） | P1 | Auditor C | ⏳ 待执行 |
+| 9 | 对 v3.12 / v4.0 / v4.1 做功能与性能回归 | P1 | Auditor C | ⏳ 待执行 |
+| 10 | 证据矩阵与独立 GA 审核报告 | P1 | Judge | ⏳ 待执行 |
 
-第 4–7 项是主战场：这几条链路既有历史缺陷背景，又能通过外部测试得到相对明确的真伪判定。
+第 4–7 项是主战场。其中第 4、7 项被 #003（非 PK 查询返回空结果集）阻断，须先修
+复该缺陷才能继续做有意义的差分与索引验证。
 
 ---
 
@@ -455,3 +458,239 @@ AB-01..10 →  在 IAIA-410 结论为「有意义」的前提下，回答「是�
 - `tests/baseline/ignore_registry.json`
 - `docs/governance/ISSUE_CLOSING_VERIFICATION.md`
 - `docs/governance/DOC_CHECK_CORRECTION_RULES.md`
+
+---
+
+## 13. 第一阶段执行结果摘要（2026-10-09）
+
+> 本节是已执行的审计证据，不是计划。每条发现均经真实 `mysql` 客户端与磁盘文件验证，
+> 状态为 `confirmed` 或 `refuted`。冻结提交 `91ac4dcd48a31354caa690cef4c65996cf4ea606`
+> （`gitea252/develop/v4.1.0`）。审计在独立 worktree `/tmp/iaia410` 中进行，未修改主工作区。
+
+### 13.1 静态扫描结果
+
+在 `91ac4dcd48` 上执行：
+
+| 指标 | 数值 | 说明 |
+|---|---|---|
+| `unimplemented!()` 在 `crates/*/src` | 6 处 | 全部集中在 `wal_transactional_facade.rs`（见 §13.2）与 `stats_provider.rs:77` |
+| `todo!()` 在 `crates/*/src` | 0 处 | — |
+| `unreachable!()` 在 `crates/*/src` | 多为 match 穷尽性 | 不属于占位实现 |
+| `#[ignore]` 总数 | 168 处 | 其中 `crates/*/src` 仅 5 处，其余在测试目录 |
+
+结论：生产代码不存在大面积 `todo!()` / `unimplemented!()`。v4.1.0 的问题不是"留了一堆
+空函数"，而是下文 §13.2 / §13.3 / §13.4 描述的三类集成真实性缺陷。
+
+### 13.2 AUTH-V410-002 — planner/executor 物理计划层整体未接入生产（F3 假集成）
+
+**判定：`confirmed`。**
+
+`crates/planner` 与 `crates/executor` 的物理计划层从未有过执行能力，且在生产路径上
+零引用。证据：
+
+1. **`PhysicalPlan` trait 没有 `execute()` 方法**（`crates/planner/src/physical_plan.rs:14-26`），
+   只有 4 个元数据方法（`schema` / `children` / `name` / `as_any`）。
+2. `SeqScanExec::execute()` 硬编码返回 `Ok(vec![])`（`physical_plan.rs:59-61`）；
+   `IndexScanExec` 连 `execute()` 方法都没有（`physical_plan.rs:122-138`）。
+3. `IndexScanExec::new` 全仓库唯一调用点是 `planner.rs:116`，位于 test-only 的
+   `DefaultPlanner::select_scan` 内。
+4. `mysql-server` 在 `Cargo.toml:11-12` 声明了 planner/executor 依赖，但
+   `crates/mysql-server/src/lib.rs:1-24` 的 import 里一个都没有。
+5. `DefaultPlanner` 全部构造点位于 `planner.rs:369-801`，而 `#[cfg(test)] mod tests`
+   起于 `planner.rs:358`——生产代码零构造。
+6. 7 处 `SeqScanExec::new(String::new(), ...)`（`planner.rs:238,242,246,250,254,258,262`）
+   是不可达占位符，注释自承 `"DDL statements - handled differently"`。
+
+**真实执行者**是根 crate 内约 1.1 万行手写解释器（`src/engine_select.rs` +
+`src/engine_dml.rs`）。生产链路上唯一运行的"优化"是 `sqlrustgo_optimizer::decorrelate`
+（子查询去相关，`src/engine_select.rs:934,943,967`）。
+
+**运行时佐证**：真实 `mysql` 客户端下 `EXPLAIN SELECT * FROM t WHERE id=3` 返回完全空
+的结果集（0 行 0 列），服务端日志 `send_result_set: 0 cols, 0 rows`。
+
+**影响**：`crates/planner` + `crates/executor` 的约 1 万行代码目前是纯负债；**所有
+针对 planner/optimizer 的测试通过率都不构成生产正确性证据**（这些测试运行的是生产
+不可达的代码路径）。
+
+### 13.3 AUTH-V410-001 — COMMIT 成功后崩溃导致数据永久丢失（F9 持久性假象）
+
+**判定：`confirmed`。属 GA 阻断项（§6 一票否决第 2 条）。**
+
+复现命令（真实 `mysql` 客户端）：
+
+```sql
+CREATE DATABASE aud; USE aud;
+CREATE TABLE t (id INT PRIMARY KEY, val INT, name VARCHAR(32));
+INSERT INTO t VALUES (1,10,'a'),(2,20,'b'),(3,30,'c'),(4,40,'d'),(5,50,'e');
+BEGIN; INSERT INTO t VALUES (6,60,'f'); COMMIT;
+-- 崩溃前: SELECT * FROM t WHERE id=6 返回 (6,60,f) ✓
+```
+
+`kill -9` 进程后重启，服务端日志：
+
+```
+WARN recovery_engine: skipping entry (tx_id=2, type=Insert, table_id=116):
+  table "t" named by this entry does not exist in the target
+INFO WAL recovery: total=5 committed_txns=1 rows_inserted=0 skipped=2
+```
+
+**磁盘证据**：`/tmp/iaia410-data/aud/t.json` 的 `rows` 数组只含 id=1..5，**id=6 不
+存在**。已提交事务的 WAL entry 被跳过，数据永久丢失，且仅 WARN 不 ERROR，服务照常
+"Ready to accept connections"。
+
+**根因**：`crates/storage/src/engine.rs:1423-1441` 的 `insert_in_db` 默认实现用
+`let _ = db;` 丢弃库名参数后转发到 `insert`，WAL entry 不携带 database 标识，
+`RecoveryEngine` 按 table_name 回放时无库上下文。
+
+**附带缺陷**：`SHOW TABLES` 在 `USE default` 下仍列出表 `t`，但 `USE default;
+SELECT * FROM t` 返回 `ERROR 1146 Table not found: t`，且
+`/tmp/iaia410-data/default/` 目录根本不存在——目录与元数据不一致。
+
+### 13.4 AUTH-V410-003 — 非主键等值查询返回空结果集（F5 语义退化）
+
+**判定：`confirmed`。属 GA 阻断项（§6 一票否决第 3 条：复杂 SQL 静默返回错误结果）。**
+
+| 查询 | 服务端结果 | 客户端表现 |
+|---|---|---|
+| `SELECT * FROM t WHERE id=3`（主键） | 3 cols, 1 row ✓ | 正常显示 `3 30 c` |
+| `SELECT id,val FROM t WHERE id=2` | 正常 ✓ | 正常显示 `2 20` |
+| `SELECT SUM(val) FROM t WHERE id=1` | 1 col, 1 row ✓ | 正常显示 `10` |
+| `SELECT COUNT(*) FROM t WHERE id=1` | 1 col, 1 row，值=1 ✓ | 正常显示 `1` |
+| `SELECT * FROM t WHERE val=30`（二级索引） | **0 cols, 0 rows** ✗ | ERROR 2027 malformed packet |
+| `SELECT * FROM t WHERE name='c'`（非索引） | **0 cols, 0 rows** ✗ | ERROR 2027 malformed packet |
+| `SELECT * FROM t`（无条件全表扫描） | **0 cols, 0 rows** ✗ | ERROR 2027 malformed packet |
+| `SELECT * FROM t WHERE id>2`（范围） | **0 cols, 0 rows** ✗ | ERROR 2027 malformed packet |
+| `SELECT * FROM t WHERE id=1 OR id=2` | **0 cols, 0 rows** ✗ | ERROR 2027 malformed packet |
+| `SELECT * FROM t WHERE 1=0`（应 0 行） | **0 cols, 0 rows** ✗ | ERROR 2027 malformed packet |
+| `SELECT COUNT(*) FROM t` | 1 col, 1 row，**值=0** ✗ | 显示 `0`（表内 5 行） |
+
+**判定**：只有 PK fast-path（`WHERE <pk_col> = <常量>`）能产出正确的列定义。任何需要
+扫描路径的查询——无论有无 WHERE、无论条件真假、无论是否走索引——都返回 **0 列**。
+`WHERE 1=0` 应返回 0 行但有 3 列，实际返回 0 列，说明**列定义构造本身**（而非行过滤）
+失败。这是静默错误结果：不报错、不拒绝，而是返回错误的空结果集。
+
+### 13.4.1 根因（第二阶段精确定位，Issue #5191）
+
+初判「扫描路径缺陷」在第二阶段被证伪。**真实根因是握手选库未同步到 engine 的
+`session_db`**，与扫描逻辑无关。
+
+对照实验（同一连接内）：
+
+```
+USE d1; SELECT DATABASE()   -> ('d1',)     USE 正常
+```
+
+握手指定 `database='d1'`（`pymysql.connect(database=...)`）：
+
+```
+SELECT DATABASE()     -> ('default',)    ❌
+SELECT * FROM t       -> 0 列 0 行        ❌
+SELECT COUNT(*) FROM t -> 0              ❌
+```
+
+链条：握手选库只写 storage 的共享 `current_db`
+（`crates/mysql-server/src/lib.rs:6541-6549` 非 TLS / `:6459-6467` TLS），
+而 `ExecutionEngine::new` 把 `session_db` 初始化为 `DEFAULT_DATABASE` **常量**
+（`src/execution_engine.rs:352-355`），且 engine 在握手选库**之后**才构造
+（`:6557-6559` / `:6482-6484`）。`DATABASE()` 与
+`substitute_current_database_in_statement` 都读 `self.session_db()`，于是整条连接按
+`default` 解析，表查找落空 → 返回 0 列。
+
+`USE` 之所以正常：`execute_use_database`（`src/execution_engine_methods.rs:733-746`）
+**同时**写 storage 的 `current_db` 与 engine 的 `session_db`。**既有测试全部走 `USE`
+这条唯一正常的路径**——全仓库除 `lib.rs` 内部外无任何测试设置握手 database 字段，
+这是该缺陷长期未被发现的原因。
+
+这也解释了 issue #5167「COUNT(*) 恒为 0」为何在不同库上下文下表现不同、曾「无法复现」。
+
+**状态**：已修复并验证（PR #5195）。`COUNT(*)` 由 0 恢复为真实值，库隔离同时生效。
+
+`SELECT COUNT(*) FROM t` 返回 0 而非 5，与 issue #5167 一致；本审计为该 Issue 提供了
+运行时复现与根因方向。
+
+### 13.5 AUTH-V410-004 — DML → TxManager → WAL → Storage 链路真实（证伪怀疑）
+
+**判定：`refuted`。** 初版怀疑「`engine_dml.rs` 调 `*_in_db` 而 `WalStorage` 未
+override，疑似绕过 WAL」不成立。
+
+`StorageEngine` trait 默认实现（`engine.rs:1423-1441`）丢弃 `db` 后转发到已 override
+的 `WalStorage::insert`（`wal_storage.rs:613` `log_insert`）、`delete`（`:662,668`）、
+`update`（`:698-723`）。事务边界 `begin_implicit_dml_tx` / `commit_implicit_dml_tx`
+（`src/execution_engine_methods.rs:1974,2028`）真实调用 `TransactionManager` 与
+`commit_transaction_for`。崩溃前 COMMIT 的写入正确可见，WAL 文件生成。
+
+**但存在两处真实结构风险**（非虚假实现）：
+1. CLUSTERED 表在 `src/engine_dml.rs:2175-2177` 直接写内存态 `ClusteredTable`，**完
+   全绕过 WAL**。
+2. `*_in_db` 丢弃 `db` 是 §13.3 数据丢失的直接成因。
+
+### 13.6 附带发现
+
+1. **AOCI-CODE 发现的 casefold 冲突**：`docs/releases/v2.9.0/OPencode_STARTUP.md`
+   与 `OPENCODE_STARTUP.md` 内容完全相同，仅文件名大小写不同。在 macOS / Windows
+   大小写不敏感文件系统上会互相覆盖。`aoci init` 因此 fail-closed。
+2. **`--executor-parallelism=N` 静默降级**：help 文本自承
+   `Requires --features parallel-executor at build time to take effect
+   (otherwise capped to 1 at runtime)`。CLI 接受参数但运行时静默降级为串行。
+3. **`mysql-server` 默认数据目录 `/tmp/sqlrustgo-data`**（`main.rs:208`），重启即丢
+   数据，多实例互相污染。
+
+### 13.7 第一阶段结论
+
+v4.1.0 在 `91ac4dcd48` 上存在 **2 项 GA 阻断**（F9 数据丢失 + F5 静默错误结果）和
+**1 项重大假集成**（F3 planner/executor 未接入）。按 §6 一票否决，**当前状态不得
+晋级 GA**。
+
+第二阶段需先修复 §13.4（F5）以解除对 Join / 索引 / 差分测试的阻断，再修复 §13.3
+（F9），最后处理 §13.2 的 planner 接入或明确废弃。
+
+---
+
+## 14. 第二阶段：整改跟踪（2026-10-09 起）
+
+### 14.1 Issue 清单
+
+| Issue | 分类 | 严重度 | 状态 |
+|---|---|---|---|
+| [#5191](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5191) | F5 握手选库未同步 `session_db` | P0 | **已修复**（PR #5195） |
+| [#5192](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5192) | F9 崩溃后已提交数据丢失 | P0 / GA 阻断 | 待整改 |
+| [#5193](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5193) | F3 planner/executor 未接入生产 | P0 | 待架构决策 |
+
+### 14.2 #5191 整改结果
+
+**根因**：`src/execution_engine.rs:352-355` 用 `DEFAULT_DATABASE` **常量**初始化
+`session_db`，而 engine 在握手选库之后才构造。详见 §13.4.1。
+
+**修复**：从 storage 读取当前库，并在 `storage` 被 move 进 struct 之前取值：
+
+```rust
+let session_db = storage.read().current_db();
+```
+
+按最小修改原则，`src/engine_builder.rs` 的 6 处 builder 未改动——其构造函数在生产
+代码中无调用者。
+
+**验证**（真实 pymysql 客户端，`--all-features`）：
+
+| 查询（握手 `database='d1'`） | 修复前 | 修复后 |
+|---|---|---|
+| `SELECT DATABASE()` | `default` ❌ | `d1` ✅ |
+| `SELECT * FROM t` | 0 列 0 行 ❌ | 2 列 3 行 ✅ |
+| `SELECT COUNT(*) FROM t` | `0` ❌ | `3` ✅ |
+| `SELECT * FROM t WHERE id=2` | 0 列 0 行 ❌ | 1 行 ✅ |
+
+库隔离同时生效：`d2` 连接访问 `d1` 的表 → 正确报 `ERROR 1146`。
+
+**新增回归测试** 3 条（`src/execution_engine_tests.rs`）：直接锁定回归点、端到端
+列数/行数/`COUNT(*)` 值、会话库不随其他连接切换而漂移。
+
+### 14.3 本轮的方法论教训
+
+1. **初判被证伪**：第一阶段把 §13.4 归因于「扫描路径」，第二阶段的对照实验
+   （同连接 `USE` 正常 vs 握手选库异常）证明扫描逻辑无问题，根因在库上下文。
+   若不做这个对照，就会去修错的地方。
+2. **变异验证在本例中的价值有限**：我确认全仓库无测试设置握手 database 字段，
+   因此变异测试无论通过与否都不提供信息量。**更有价值的是直接问「这个缺陷为何
+   长期未被发现」**——答案是测试全部覆盖在另一条路径上。
+3. **未完成项**：`cargo test -p sqlrustgo --lib` 未跑完（crate 测试配置编译超
+   10 分钟），新增测试的断言结果尚未验证，合入前需补跑。端到端验证已完成。
