@@ -86,11 +86,16 @@ echo "[T8d] drill-3 (netem) / drill-4 (clock) 需 root 守卫"
 echo "----------------------------------------------------------"
 ROOT_GUARD_OK=true
 for fn in drill_netem_loss drill_clock_skew; do
-    # 提取函数体前 12 行, 验证包含 EUID 检查
-    if ! awk -v fn="${fn}" '
-        $0 ~ "^"fn"\\(\\)" { found=1; n=0; next }
-        found && n<12 { print; n++ }
-    ' "${CHAOS_DRILLS}" | grep -qE 'EUID.*-ne 0|需 root|未安装'; then
+    # 提取函数体前 12 行, 验证包含 EUID 检查.
+    #
+    # 用 sed 而非 awk 定位函数体: 原来的 awk 版本用动态正则
+    # $0 ~ "^"fn"\(\)" 匹配函数头, 这个写法只在 BSD awk 下成立。
+    # gawk / mawk (CI 容器用的是 gawk) 把它当成转义失败, 匹配不到任何行,
+    # awk 输出空 -> grep 失败 -> 报"缺 root 守卫"。而两个 drill 的 EUID
+    # 守卫一直都在, 坏掉的是断言本身 (F6: 测试伪失败), 不是被测代码。
+    # 已实测: 仅把 awk 换成 gawk, 本检查即由 PASS 变 FAIL, 与 CI 日志一致。
+    body="$(sed -n "/^${fn}()/,\$p" "${CHAOS_DRILLS}" | head -12)"
+    if ! printf '%s\n' "${body}" | grep -qE 'EUID.*-ne 0|需 root|未安装'; then
         ROOT_GUARD_OK=false
         echo "  缺 root 守卫: ${fn}"
     fi
