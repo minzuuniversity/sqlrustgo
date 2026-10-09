@@ -1,6 +1,39 @@
 //! SQLRustGo Planner Module
 //!
 //! This module provides query planning and optimization interfaces.
+//!
+//! # ⚠️ NOT ON THE PRODUCTION EXECUTION PATH (#5193, option C)
+//!
+//! **The physical-plan layer in this crate is not wired into production.**
+//! Tests that pass here prove nothing about production correctness.
+//!
+//! The shipped server executes every statement through the hand-written
+//! interpreter in `src/engine_select.rs` and `src/engine_dml.rs`. It never
+//! imports this crate's planner.
+//!
+//! Concretely:
+//!
+//! - [`PhysicalPlan`] has **no `execute()` method**. `SeqScanExec::execute`
+//!   hardcodes `Ok(vec![])` and `IndexScanExec` has no `execute` at all.
+//! - `NoOpPlanner` delegates to [`DefaultPlanner`], but every external
+//!   construction of `DefaultPlanner` lives in `crates/planner/tests/`, so
+//!   the whole chain is unreachable from any server entry point.
+//! - The construction code does sit in production source files
+//!   (`planner.rs`, before its `#[cfg(test)]` module), which is exactly why
+//!   "is it called" must be answered by a reachability check and not by a
+//!   search for the function name.
+//!
+//! The B2 gate still runs this crate's tests. **Treat that as coverage of
+//! the crate, not of the database.** A green planner suite alongside a
+//! production defect is the exact shape IAIA-410 classifies as F3 — a
+//! capability that is claimed but neither completed nor refused at runtime.
+//!
+//! Decision record: `docs/releases/v4.1.0/ARCHITECTURE_ROUTE_DECISION_5193.md`
+//! State of the art across the workspace:
+//! `docs/releases/v4.1.0/CORE_PATH_INVENTORY.md`
+//!
+//! If you are about to change `physical_plan.rs` expecting it to affect query
+//! behaviour: it will not. Start at `src/engine_select.rs`.
 
 pub mod logical_plan;
 pub mod optimizer;
