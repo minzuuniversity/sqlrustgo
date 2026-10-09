@@ -46,6 +46,11 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 BASELINE_FILE="${REPO_ROOT}/tests/baseline/gate_test_baseline.json"
 GATE_SCRIPTS_DIR="${REPO_ROOT}/scripts/gate"
+# #5113: a gate test can also be referenced from a CI workflow rather than
+# from a shell script. Scanning only scripts/gate left every
+# workflow-driven `cargo test --test X` outside the net, which is the gap
+# this now closes.
+WORKFLOW_DIRS=("${REPO_ROOT}/.gitea/workflows" "${REPO_ROOT}/.github/workflows")
 
 DRY_RUN=0
 INIT_BASELINE=0
@@ -107,14 +112,15 @@ mkdir -p "$(dirname "${BASELINE_FILE}")"
 # ============================================================================
 step "P16 step 1/3: extract gate-referenced tests"
 
-# Capture all --test X invocations from scripts/gate/*.sh
-# Patterns handled:
+# Capture all --test X invocations from scripts/gate/*.sh **and** from CI
+# workflow files. Patterns handled:
 #   cargo test --test <name>
 #   cargo test --test=<name>
 #   cargo test -p <pkg> --test <name>  (catches --test after -p)
 #   --test <name> in bash variable / echo
-# Pass the gate scripts dir to Python via environment (Python hardcodes a wrong default path)
+# Pass the scan roots via environment (Python must not hardcode a default path)
 export GATE_DIR="${GATE_SCRIPTS_DIR}"
+export WORKFLOW_DIRS="${WORKFLOW_DIRS[*]}"
 GATE_TESTS_RAW=$(python3 - <<'PYEOF'
 import os
 import re
@@ -123,7 +129,6 @@ import sys
 GATE_DIR = os.environ.get("GATE_DIR")  # must be set by bash; no hardcoded fallback
 if not GATE_DIR or not os.path.isdir(GATE_DIR):
     sys.exit(0)
-    sys.exit(0)
 
 tests = set()
 # Match `cargo test ... --test <name>` (avoid --target, --test-threads, etc.)
@@ -131,16 +136,19 @@ tests = set()
 pat_cargo = re.compile(r'cargo\s+test\b[^|;&\n]*?--test[= ]+([a-zA-Z0-9_]+)')
 pat_echo = re.compile(r'--test[= ]+([a-zA-Z0-9_]+)')
 
+def scan(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except Exception:
+        return None
+
 for fn in sorted(os.listdir(GATE_DIR)):
     if not fn.endswith(".sh"):
         continue
-    path = os.path.join(GATE_DIR, fn)
-    try:
-        with open(path) as f:
-            content = f.read()
-    except Exception:
+    content = scan(os.path.join(GATE_DIR, fn))
+    if content is None:
         continue
-    # Strip line comments
     for line in content.split("\n"):
         # remove inline comments
         if "#" in line:
@@ -152,6 +160,29 @@ for fn in sorted(os.listdir(GATE_DIR)):
             tests.add(m.group(1))
         for m in pat_echo.finditer(line):
             tests.add(m.group(1))
+
+# #5113: CI workflows reference tests directly (`cargo test --test X` in a
+# `run:` block), and those references gate merges exactly like the ones in
+# scripts/gate. Scanning only the shell scripts left them unverified.
+for wf_dir in (os.environ.get("WORKFLOW_DIRS") or "").split():
+    if not os.path.isdir(wf_dir):
+        continue
+    for fn in sorted(os.listdir(wf_dir)):
+        # .yml / .yaml only. A workflow directory can also hold helper
+        # scripts, and those are covered by the scripts/gate sweep.
+        if not (fn.endswith(".yml") or fn.endswith(".yaml")):
+            continue
+        content = scan(os.path.join(wf_dir, fn))
+        if content is None:
+            continue
+        for line in content.split("\n"):
+            if "#" in line:
+                idx = line.find("#")
+                line = line[:idx]
+            for m in pat_cargo.finditer(line):
+                tests.add(m.group(1))
+            for m in pat_echo.finditer(line):
+                tests.add(m.group(1))
 
 # Exclude common false-positives:
 #   - "test" is the cargo subcommand name
@@ -334,6 +365,30 @@ while IFS= read -r gate_script; do
         | cut -d: -f1
     )
 done < <(find "${GATE_SCRIPTS_DIR}" -maxdepth 1 -name "*.sh" -type f)
+
+# #5113: a `run:` block in a CI workflow is just as capable of swallowing a
+# test failure as a shell script is, and a workflow failure blocks every
+# merge. The same detector therefore sweeps the workflow files.
+while IFS= read -r gate_script; do
+    [[ -z "$gate_script" ]] && continue
+    while IFS= read -r line_no; do
+        [[ -z "$line_no" ]] && continue
+        fail "$gate_script: cargo test invocation masked with || true (line $line_no)"
+        OR_TRUE_VIOLATIONS=$((OR_TRUE_VIOLATIONS + 1))
+    done < <(
+        sed 's/[[:space:]]*#.*$//' "$gate_script" \
+        | grep -nE 'cargo[[:space:]]+test\b.*\|\|[[:space:]]*true' \
+        | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*(step|pass|fail|warn|echo|printf)[[:space:]]' \
+        | grep -vE '"cargo[[:space:]]+test' \
+        | grep -vE '`cargo[[:space:]]+test' \
+        | cut -d: -f1
+    )
+done < <(
+    for wf_dir in "${WORKFLOW_DIRS[@]}"; do
+        [[ -d "$wf_dir" ]] || continue
+        find "$wf_dir" -maxdepth 1 \( -name "*.yml" -o -name "*.yaml" \) -type f
+    done
+)
 
 if [[ "$OR_TRUE_VIOLATIONS" -eq 0 ]]; then
     pass "no \`cargo test ... || true\` masking in any gate script"
