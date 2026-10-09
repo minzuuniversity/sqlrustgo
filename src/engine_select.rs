@@ -3784,6 +3784,25 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             None => (select.table.clone(), select.from_alias.clone()),
         };
         let base_prefix = base_alias.as_ref().unwrap_or(&base_table);
+        // #5137 C2: when the base table was written db-qualified and has
+        // no explicit alias, the QUALIFICATION prefix (table_info.name,
+        // which becomes `left_alias` inside execute_single_join) must
+        // keep the database segment (`d1.t1`, not `t1`). The bare name
+        // alone cannot disambiguate same-named tables across databases:
+        // `find_join_key_index` routes `d1.t1.id` / `d2.t1.id` by
+        // comparing the reference qualifier against left/right names,
+        // and two bare `t1` names would both route left. Storage
+        // lookups keep using the bare `base_table` above.
+        let qual_prefix: String = if base_alias.is_none() {
+            match select.schema.as_deref() {
+                Some(schema) if !schema.is_empty() => {
+                    format!("{}.{}", schema, base_table)
+                }
+                _ => base_prefix.clone(),
+            }
+        } else {
+            base_prefix.clone()
+        };
 
         // V311-02 v2: instrument base-table scan via AHI so repeated
         // SELECTs against the same table get promoted after threshold.
@@ -3805,6 +3824,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 col.name = format!("{}.{}", base_prefix, col.name);
             }
             new_info
+        } else if qual_prefix.as_str() != base_prefix.as_str() {
+            // #5137 C2: db-qualified base without alias — carry the
+            // database in the qualification name only; column names
+            // stay bare so NATURAL JOIN / USING bare-name matching and
+            // layer-4 tail resolution keep working unchanged.
+            let mut new_info = raw_info.clone();
+            new_info.name = qual_prefix.clone();
+            new_info
         } else {
             raw_info
         };
@@ -3818,6 +3845,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let mut base_keys: Vec<String> = vec![
                 base_table.clone(),
                 base_prefix.clone(),
+                // #5137 C2: also key the extractor by the db-qualified
+                // qualifier so `d1.t1.x = ...` conjuncts can be extracted.
+                qual_prefix.clone(),
                 Self::tpch_table_prefix(&base_table).to_string(),
             ];
             base_keys.extend(base_qualified);
@@ -3825,6 +3855,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let preds_opt = base_preds
                 .get(base_prefix)
                 .or_else(|| base_preds.get(&base_table))
+                .or_else(|| base_preds.get(&qual_prefix))
                 .or_else(|| base_preds.get(Self::tpch_table_prefix(&base_table)));
             if let Some(preds) = preds_opt {
                 if !preds.is_empty() {
@@ -3858,7 +3889,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // (which extracts the underscore-prefix from
                 // unqualified `n_name`, `l_orderkey`, etc.)
                 // matches the table.
-                let mut joined: Vec<String> = vec![base_table.clone(), base_prefix.clone()];
+                let mut joined: Vec<String> =
+                    vec![base_table.clone(), base_prefix.clone(), qual_prefix.clone()];
                 for jc in &select.join_clause {
                     let (bare, _) = match jc.table.split_once('|') {
                         Some((t, a)) => (t.to_string(), Some(a.to_string())),
@@ -4812,7 +4844,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             (current_db.to_string(), right_bare.clone())
         };
-        let right_alias = join_clause.alias.as_ref().unwrap_or(&right_table_name);
+        // #5137 C2: the qualification prefix must be the FULL right-hand
+        // name (`d2.t1`, or the explicit alias when one exists). The
+        // previous fallback used `right_table_name` (database stripped),
+        // so for same-named cross-database tables BOTH sides qualified
+        // as `t1` — every `db.t1.col` reference collapsed to `t1.col`
+        // and `find_join_key_index` / layer-1 exact matching resolved
+        // both sides to the right column. Non-db tables are unaffected:
+        // `right_bare` then equals `right_table_name`.
+        let right_alias = join_clause.alias.as_ref().unwrap_or(&right_bare);
 
         // Phase 3 (TPCH-01 Q15): if the right table is a synthetic __subq_N
         // from a derived subquery, use the materialized rows from the registry
@@ -4990,7 +5030,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // info as-is with the right info prefixed by
                 // `right_alias`. The left info's columns are already
                 // qualified from prior cartesian steps.
-                let mut combined_columns = left_table_info.columns.clone();
+                // #5137 C2: the db-qualified base case is the exception —
+                // its columns are bare while `left_alias` carries the
+                // database (`d1.t1`). Prefix them here so BOTH sides of
+                // the combined schema are symmetrically qualified; else
+                // layer 3 (`part after first dot`) resolves a bare
+                // `t2.id` to the left's bare `id` column and the
+                // post-WHERE degenerates to `x = x` (all rows pass).
+                let mut combined_columns: Vec<sqlrustgo_storage::ColumnDefinition> =
+                    left_table_info
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            if left_alias.contains('.') && !c.name.contains('.') {
+                                sqlrustgo_storage::ColumnDefinition {
+                                    name: format!("{}.{}", left_alias, c.name),
+                                    ..c.clone()
+                                }
+                            } else {
+                                c.clone()
+                            }
+                        })
+                        .collect();
                 for col in &right_table_info.columns {
                     let bare_col = if join_clause.alias.is_some() {
                         col.name
@@ -5311,35 +5372,51 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Ok(JoinKey::All)
             }
             Expression::Identifier(name) => {
-                // #5137 A2: `db.table.col` — strip the leading database
-                // segment so the qualifier compared against left/right table
-                // names is the TABLE part (`t1`/`t2`), not the database
-                // (`d1`/`d2`). Same rule as `eval_identifier`: only names
-                // with two dots are rewritten; single-dot qualifiers
-                // (including combined-schema names) pass through untouched.
-                let name: &str = match name.find('.') {
+                // #5137 C2: try the FULL qualifier (`d1.t1`) against the
+                // side names first — combined schemas qualify columns with
+                // the db-qualified name for cross-database tables. Then fall
+                // back to the A2 db-stripped qualifier (`t1`) for the
+                // established bare-name routing.
+                let qual_full = name.rsplit_once('.').map(|(rest, _)| rest);
+                let stripped: &str = match name.find('.') {
                     Some(first) if name[first + 1..].contains('.') => &name[first + 1..],
                     _ => name,
                 };
-                if let Some((qualifier, col_name)) = name.split_once('.') {
-                    // Qualified name: must match either side
-                    if qualifier == left_name {
-                        let idx = lookup_column(left_info, col_name).ok_or_else(|| {
-                            SqlError::ExecutionError(format!(
-                                "Column '{}.{}' not found in {}",
-                                qualifier, col_name, left_name
-                            ))
-                        })?;
-                        Ok(JoinKey::Left(idx))
-                    } else if qualifier == right_name {
-                        let idx = lookup_column(right_info, col_name).ok_or_else(|| {
-                            SqlError::ExecutionError(format!(
-                                "Column '{}.{}' not found in {}",
-                                qualifier, col_name, right_name
-                            ))
-                        })?;
-                        Ok(JoinKey::Right(idx))
+                let qual_stripped = stripped.split_once('.').map(|(q, _)| q);
+                // `Some(true)` = left side, `Some(false)` = right side.
+                let side_of = |q: &str| -> Option<bool> {
+                    if q == left_name {
+                        Some(true)
+                    } else if q == right_name {
+                        Some(false)
                     } else {
+                        None
+                    }
+                };
+                let routed = qual_full
+                    .and_then(side_of)
+                    .or_else(|| qual_stripped.and_then(side_of));
+                if let Some(is_left) = routed {
+                    let col_name = stripped.rsplit('.').next().unwrap_or(stripped);
+                    let (info, side_name) = if is_left {
+                        (left_info, left_name)
+                    } else {
+                        (right_info, right_name)
+                    };
+                    let idx = lookup_column(info, col_name).ok_or_else(|| {
+                        SqlError::ExecutionError(format!(
+                            "Column '{}.{}' not found in {}",
+                            stripped, col_name, side_name
+                        ))
+                    })?;
+                    return Ok(if is_left {
+                        JoinKey::Left(idx)
+                    } else {
+                        JoinKey::Right(idx)
+                    });
+                }
+                if let Some((qualifier, col_name)) = stripped.split_once('.') {
+                    {
                         // Qualifier doesn't match left or right (e.g. an
                         // intermediate table already absorbed into left via
                         // build_combined_schema, where columns are named

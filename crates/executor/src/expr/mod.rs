@@ -671,6 +671,23 @@ pub fn eval_identifier(
     if let Some(stripped) = name.strip_prefix("@@") {
         return Ok(resolve_system_variable(&stripped.to_ascii_lowercase()));
     }
+    // #5137 C2: a `db.table.col` reference must first try the FULL name
+    // against the schema verbatim. The combined join schema carries
+    // db-qualified column names for cross-database tables (e.g.
+    // `d1.t1.id` / `d2.t1.id`), and with same-named tables the db strip
+    // below would collapse BOTH to `t1.id`, letting the layer-1 exact
+    // match return the right-hand column for a left-hand reference.
+    // Only exact / case-insensitive-full matches are tried here — never
+    // the layer-3 tail heuristics — so a miss falls through to the
+    // established strip-and-resolve path unchanged.
+    if name.matches('.').count() >= 2 {
+        if let Some(col_idx) = columns
+            .iter()
+            .position(|c| c.name.eq_ignore_ascii_case(name))
+        {
+            return Ok(row.get(col_idx).cloned().unwrap_or(Value::Null));
+        }
+    }
     // #5137 AC4c: `db.table.col` — drop the leading database segment.
     // The database was already resolved by the FROM clause; the remaining
     // `table.col` two-segment form then flows through the existing

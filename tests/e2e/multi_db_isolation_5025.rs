@@ -755,3 +755,165 @@ fn issue_5137_no_deadlock_derived_materialisation_under_writes() {
         "writer made no progress ({n} inserts) — contention never exercised"
     );
 }
+
+// ---------------------------------------------------------------------------
+// #5137 阶段 C: 有 WHERE 多表跨库路径深检。
+//
+// 审计结论（engine_select.rs）：hash chain 每步以
+// `get_table_info_in(current_db, "d2.t2")` 精确 scoped_key 查询（不剥
+// db 前缀），跨库步骤必 miss → `.ok()?` 落笛卡尔回退 + WHERE 后置过滤
+// （COMMA_JOIN_WHERE_CONSUMED 只在 hash chain 成功时置位，跨库永不置位）。
+// 因此下列五形态必须**结果正确**——任何一个错结果都意味着某条路径错误
+// 消费了 WHERE 或读错了库。探针的泄漏断言（负值行不得出现）是敏感指标：
+// WHERE 被丢弃时笛卡尔积必然带出负值行。
+// ---------------------------------------------------------------------------
+
+fn issue_5137_c_fixture() -> MemoryExecutionEngine {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create t1 in d1");
+    engine
+        .execute("INSERT INTO t1 VALUES (1), (2), (42)")
+        .expect("fill t1");
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t2 (id INT)")
+        .expect("create t2 in d2");
+    engine
+        .execute("INSERT INTO t2 VALUES (1), (42)")
+        .expect("fill t2");
+    engine.execute("USE d1").expect("back to d1");
+    engine
+}
+
+/// C1: 别名 comma 跨库 + 等值 WHERE。别名使 pair 提取 (a, b) 命中
+/// join_tables 别名 → hash chain 会尝试构建，随后跨库步骤
+/// `get_table_info_in(current_db, "d2.t2")` 必 miss → 回退。必须结果
+/// 正确（1、42 连接；2 是单边行，出现即 WHERE 被错误消费）。
+#[test]
+fn issue_5137_c_aliased_comma_equi_where() {
+    let mut engine = issue_5137_c_fixture();
+    let rows = engine
+        .execute("SELECT a.id FROM d1.t1 AS a, d2.t2 AS b WHERE a.id = b.id")
+        .expect("aliased cross-db comma join with equi-WHERE must execute");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("Integer(1)") && text.contains("Integer(42)"),
+        "equi-WHERE must join 1 and 42, got: {text}"
+    );
+    assert!(
+        !text.contains("Integer(2)"),
+        "id=2 exists only in d1.t1 — WHERE was consumed without filtering, got: {text}"
+    );
+}
+
+/// C2: 裸限定（t1.id / t2.id，无 db 段）跨库 comma + 等值 WHERE。
+/// pair 提取 (t1, t2) 与 join_tables 平名 (d1.t1, d2.t2) 失配 → 不建
+/// chain → 回退 + 后置过滤。裸限定求值必须两侧都命中（侧列无前缀时
+/// qualifier 对 table_info.name）。
+#[test]
+fn issue_5137_c_bare_qualifier_comma_equi_where() {
+    let mut engine = issue_5137_c_fixture();
+    let rows = engine
+        .execute("SELECT t1.id FROM d1.t1, d2.t2 WHERE t1.id = t2.id")
+        .expect("bare-qualifier cross-db comma join must execute");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("Integer(1)") && text.contains("Integer(42)"),
+        "equi-WHERE must join 1 and 42, got: {text}"
+    );
+    assert!(
+        !text.contains("Integer(2)"),
+        "id=2 must not survive the WHERE, got: {text}"
+    );
+}
+
+/// C3: 同名表跨库碰撞（d1.t1 与 d2.t1）。若求值把两侧 db 段剥错成
+/// 同一张表，则谓词退化为 t1.id = t1.id 恒真 → 全行泄漏（1/3 出现）。
+/// 只有 2 是合法交集。
+#[test]
+fn issue_5137_c_same_name_collision_equi_where() {
+    let mut engine = make_engine();
+    engine.execute("CREATE DATABASE d1").expect("create d1");
+    engine.execute("CREATE DATABASE d2").expect("create d2");
+    engine.execute("USE d1").expect("use d1");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create d1.t1");
+    engine
+        .execute("INSERT INTO t1 VALUES (1), (2)")
+        .expect("fill d1.t1");
+    engine.execute("USE d2").expect("use d2");
+    engine
+        .execute("CREATE TABLE t1 (id INT)")
+        .expect("create d2.t1");
+    engine
+        .execute("INSERT INTO t1 VALUES (2), (3)")
+        .expect("fill d2.t1");
+    engine.execute("USE d1").expect("back to d1");
+
+    let rows = engine
+        .execute("SELECT d1.t1.id FROM d1.t1, d2.t1 WHERE d1.t1.id = d2.t1.id")
+        .expect("same-name cross-db comma join must execute");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("Integer(2)"),
+        "intersection id=2 must join, got: {text}"
+    );
+    assert!(
+        !text.contains("Integer(1)") && !text.contains("Integer(3)"),
+        "non-intersecting ids leaked — sides resolved to the same table, got: {text}"
+    );
+}
+
+/// C4: 手写 JOIN 后的后置 WHERE（跨库右表谓词）。ON 消费连接键后，
+/// `WHERE d2.t2.id = 42` 必须仍逐行过滤——若 JOIN 路径误置
+/// WHERE_CONSUMED 或三段求值读错库，42 之外的行会泄漏或全空。
+#[test]
+fn issue_5137_c_handwritten_join_post_where() {
+    let mut engine = issue_5137_c_fixture();
+    let rows = engine
+        .execute("SELECT t1.id FROM d1.t1 JOIN d2.t2 ON d1.t1.id = d2.t2.id WHERE d2.t2.id = 42")
+        .expect("handwritten cross-db JOIN with post-WHERE must execute");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("Integer(42)"),
+        "joined row id=42 must pass WHERE, got: {text}"
+    );
+    assert!(
+        !text.contains("Integer(1)"),
+        "joined row id=1 must be filtered by WHERE d2.t2.id=42, got: {text}"
+    );
+
+    let empty = engine
+        .execute("SELECT t1.id FROM d1.t1 JOIN d2.t2 ON d1.t1.id = d2.t2.id WHERE d2.t2.id = 7")
+        .expect("non-matching post-WHERE must execute");
+    let empty_text = format!("{empty:?}");
+    assert!(
+        !empty_text.contains("Integer("),
+        "WHERE d2.t2.id=7 matches nothing, got: {empty_text}"
+    );
+}
+
+/// C5: 右侧单表谓词参与 pushdown 提取。`d2.t2.id = 1` 若被错误提取到
+/// 左表、或错误消费导致后置过滤跳过，42 会泄漏。
+#[test]
+fn issue_5137_c_right_table_pushdown_residual() {
+    let mut engine = issue_5137_c_fixture();
+    let rows = engine
+        .execute("SELECT t1.id FROM d1.t1, d2.t2 WHERE d1.t1.id = d2.t2.id AND d2.t2.id = 1")
+        .expect("cross-db comma join with right-side residual must execute");
+    let text = format!("{rows:?}");
+    assert!(
+        text.contains("Integer(1)"),
+        "id=1 must pass both conjuncts, got: {text}"
+    );
+    assert!(
+        !text.contains("Integer(42)"),
+        "residual d2.t2.id=1 must filter out 42, got: {text}"
+    );
+}
