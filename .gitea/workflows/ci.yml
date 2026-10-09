@@ -277,6 +277,15 @@ jobs:
           set -euo pipefail
           chmod +x scripts/gate/check_anti_fabrication.sh
           bash scripts/gate/check_anti_fabrication.sh 2>&1 | tee anti_fabrication.log
+      # Issue #5197: tracked paths differing only by case are one file on
+      # macOS/Windows, so checkout breaks there while CI (Linux) stays
+      # green. Detected over the index, since on a case-insensitive volume
+      # the working tree has already lost one of the pair.
+      - name: Path casefold conflict check
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_path_casefold_conflict.sh
+          bash scripts/gate/check_path_casefold_conflict.sh
       - name: Fix-PR Test Registry Check (v4.1.0+) — every fix PR's test file must exist + compile
         if: contains(github.ref, 'develop/v4.1.0') || contains(github.ref, 'develop/v4.') || contains(github.ref, 'release/v4.')
         run: |
