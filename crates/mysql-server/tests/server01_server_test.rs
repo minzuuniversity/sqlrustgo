@@ -9,43 +9,20 @@
 //! 3. --help 显示 serve subcommand + 新 args
 //! 4. Server 接受 wire protocol 连接
 //! 5. graceful shutdown (no panic on --help)
+//!
+//! 本测试位于 `crates/mysql-server/tests/`，与 `sqlrustgo-mysql-server` 二进制
+//! 同属一个 Cargo package，编译期即可通过 `env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")`
+//! 获得正确的二进制路径，无需运行时回退扫描。
 
 use std::process::{Command, Stdio};
 
-fn get_binary_path() -> String {
-    // Priority 1: cargo test auto-set env var (only when test and binary share a package).
-    // This integration test lives in the root `sqlrustgo` crate, but the binary is in
-    // `crates/mysql-server/`, so CARGO_BIN_EXE_sqlrustgo-mysql-server is NOT auto-set —
-    // we fall through to filesystem scanning below.
-    if let Ok(p) = std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server") {
-        return p;
-    }
-    // Priority 2: user-supplied override
-    if let Ok(p) = std::env::var("SQLRUSTGO_BIN") {
-        return p;
-    }
-    // Priority 3: scan common target directories. The B2_INTEGRATION_TESTS gate runs
-    // `cargo test` which uses the debug profile, so `target/debug/` is checked first.
-    // Release paths are kept for backwards compatibility with developer workflows.
-    let candidates = [
-        "target/debug/sqlrustgo-mysql-server",
-        "target/release/sqlrustgo-mysql-server",
-        "../srv1/target/debug/sqlrustgo-mysql-server",
-        "../srv1/target/release/sqlrustgo-mysql-server",
-    ];
-    for c in &candidates {
-        let p = std::path::Path::new(c);
-        if p.exists() {
-            return p.to_string_lossy().to_string();
-        }
-    }
-    // No binary found — return the most common path so the failure message is clear.
-    "target/debug/sqlrustgo-mysql-server".to_string()
+fn bin_path() -> &'static str {
+    env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")
 }
 
 #[test]
 fn server01_help_shows_serve_subcommand() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let output = Command::new(&bin)
         .arg("--help")
         .output()
@@ -63,7 +40,7 @@ fn server01_help_shows_serve_subcommand() {
 
 #[test]
 fn server01_serve_help_shows_new_args() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let output = Command::new(&bin)
         .arg("serve")
         .arg("--help")
@@ -94,7 +71,7 @@ fn server01_serve_help_shows_new_args() {
 
 #[test]
 fn server01_help_cleanly_exits() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let output = Command::new(&bin)
         .arg("--help")
         .output()
@@ -105,7 +82,7 @@ fn server01_help_cleanly_exits() {
 
 #[test]
 fn server01_version_works() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let output = Command::new(&bin)
         .arg("--version")
         .output()
@@ -119,7 +96,7 @@ fn server01_version_works() {
 #[test]
 fn server01_serve_no_args_uses_defaults() {
     // Verify `serve` with no args shows banner
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .stdout(Stdio::piped())
@@ -159,7 +136,7 @@ fn server01_serve_verbose_shows_mvcc() {
     // banner block). TLS support does not exist in this crate at all, and WAL is
     // always on (no toggle), so neither line is ever printed. Keep only the MVCC:
     // assertion that actually reflects emitted banner content.
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .arg("--verbose")
@@ -176,7 +153,7 @@ fn server01_serve_verbose_shows_mvcc() {
 
 #[test]
 fn server01_serve_with_data_dir_arg() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .arg("--data-dir")
@@ -199,7 +176,7 @@ fn server01_serve_with_data_dir_arg() {
 
 #[test]
 fn server01_serve_with_max_connections_arg() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .arg("--max-connections")
@@ -222,7 +199,7 @@ fn server01_serve_with_max_connections_arg() {
 
 #[test]
 fn server01_serve_with_auth_mode_arg() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .arg("--auth-mode")

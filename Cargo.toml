@@ -619,6 +619,12 @@ path = "tests/e2e/server_thread_model_guard_test.rs"
 name = "concurrent_rollback_isolation_test"
 path = "tests/integration/transaction/concurrent_rollback_isolation_test.rs"
 
+# #5112: same property as concurrent_rollback_isolation_test, but driven
+# through the real MySQL wire with two connections on one shared engine.
+[[test]]
+name = "wire_interleaved_tx_test"
+path = "tests/integration/transaction/wire_interleaved_tx_test.rs"
+
 [[test]]
 name = "show_tables_test"
 path = "tests/integration/sql/show_tables_test.rs"
@@ -692,9 +698,6 @@ path = "tests/integration/sql/test_plan_integrated_test.rs"
 name = "l3_canonical_binary"
 path = "tests/integration/sql/l3_canonical_binary.rs"
 
-[[test]]
-name = "concurrent_insert_test"
-path = "tests/integration/stress/concurrent_insert_test.rs"
 
 [[test]]
 name = "wire_protocol_smoke"
@@ -737,9 +740,6 @@ name = "ci_test"
 path = "tests/ci/ci_test.rs"
 
 # v3.8.0 feature integration tests
-[[test]]
-name = "alter_table_test"
-path = "tests/integration/ddl/alter_table_test.rs"
 # ARCH-3 (#3169) — VtuGuard main-path enforcement
 [[test]]
 name = "arch3_vtu_main_path_test"
@@ -878,17 +878,11 @@ path = "tests/integration/migration/v380_to_v390_full_upgrade_test.rs"
 name = "compatibility_harness"
 path = "tests/integration/wire/compatibility_harness.rs"
 
-[[test]]
-name = "truncate_table_test"
-path = "tests/integration/ddl/truncate_table_test.rs"
 
 [[test]]
 name = "incremental_backup_datasource_4938"
 path = "crates/tools/tests/incremental_backup_datasource_4938.rs"
 
-[[test]]
-name = "insert_odku_test"
-path = "tests/integration/dml/insert_odku_test.rs"
 
 [[test]]
 name = "replace_test"
@@ -1504,9 +1498,6 @@ path = "tests/integration/optimizer/decorrelation_v2_test.rs"
 name = "instrumentation_hooks_test"
 path = "tests/integration/executor/instrumentation_hooks_test.rs"
 
-[[test]]
-name = "mysqladmin_e2e_test"
-path = "tests/integration/admin/mysqladmin_e2e_test.rs"
 
 [[test]]
 name = "quick_query"
@@ -1517,12 +1508,6 @@ path = "tests/integration/sql/rollup_cube_test.rs"
 [[test]]
 name = "sem1_semantics_test"
 path = "tests/integration/sql/sem1_semantics_test.rs"
-[[test]]
-name = "server01_server_test"
-path = "tests/integration/sql/server01_server_test.rs"
-[[test]]
-name = "server01_v2_test"
-path = "tests/integration/sql/server01_v2_test.rs"
 [[test]]
 name = "small_executor_modules_test"
 path = "tests/integration/sql/small_executor_modules_test.rs"
@@ -1677,15 +1662,6 @@ path = "tests/integration/upsert_test.rs"
 name = "window_function_test"
 path = "tests/integration/window_function_test.rs"
 [[test]]
-name = "cli01_repl_test"
-path = "tests/integration/wire/cli01_repl_test.rs"
-[[test]]
-name = "cli02_persistence_test"
-path = "tests/integration/wire/cli02_persistence_test.rs"
-[[test]]
-name = "cli03_persistence_test"
-path = "tests/integration/wire/cli03_persistence_test.rs"
-[[test]]
 name = "mysql_client_e2e_test"
 path = "tests/integration/wire/mysql_client_e2e_test.rs"
 [[test]]
@@ -1713,9 +1689,6 @@ path = "tests/integration/tpch/v312_13_load_data_sf10_test.rs"
 [[test]]
 name = "oracle_g16_compat"
 path = "tests/integration/wire/oracle_g16_compat.rs"
-[[test]]
-name = "server_threads_cli_test"
-path = "tests/integration/wire/server_threads_cli_test.rs"
 [[test]]
 name = "wire_deprecate_eof_test"
 path = "tests/integration/wire/wire_deprecate_eof_test.rs"

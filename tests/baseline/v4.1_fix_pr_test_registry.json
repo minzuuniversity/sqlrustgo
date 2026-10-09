@@ -44,7 +44,7 @@
         "crates/executor/tests/issue_5009_show_databases_test.rs",
         "crates/storage/tests/odku_update_visibility_4995.rs",
         "crates/mysql-server/tests/issue_5009_show_databases_server_test.rs",
-        "tests/integration/dml/insert_odku_test.rs"
+        "crates/mysql-server/tests/insert_odku_test.rs"
       ]
     },
     {
@@ -61,7 +61,7 @@
       "fix": "`AS new` ODKU 行别名 + `SHOW SCHEMAS` 同义词",
       "test_paths": [
         "crates/executor/tests/issue_5009_show_databases_test.rs",
-        "tests/integration/dml/insert_odku_test.rs"
+        "crates/mysql-server/tests/insert_odku_test.rs"
       ]
     },
     {

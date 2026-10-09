@@ -5,26 +5,21 @@
 //! fresh MemoryStorage each invocation, so multi-statement ODKU
 //! testing requires the REPL where state persists across statements.
 
+//! Why this file lives in `crates/mysql-server/tests/`
+//! -----------------------------------------------------------
+//! Cargo only sets `CARGO_BIN_EXE_<name>` for integration tests of
+//! the package that *owns* the binary. The server binary belongs to
+//! `sqlrustgo-mysql-server`, so from the root package the variable is
+//! absent. The previous `bin_path()` helper fell back to scanning
+//! `target/{debug,release}/` for an existing binary — which could
+//! silently resolve to a stale build. `env!` makes the binary
+//! location a compile-time guarantee.
+
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-fn bin_path() -> String {
-    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
-        .ok()
-        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
-        .unwrap_or_else(|| {
-            for candidate in [
-                "target/release/sqlrustgo-mysql-server",
-                "target/debug/sqlrustgo-mysql-server",
-                "../target/release/sqlrustgo-mysql-server",
-                "../target/debug/sqlrustgo-mysql-server",
-            ] {
-                if std::path::Path::new(candidate).exists() {
-                    return candidate.to_string();
-                }
-            }
-            "sqlrustgo-mysql-server".to_string()
-        })
+fn bin_path() -> &'static str {
+    env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")
 }
 
 fn run_repl(script: &str) -> (String, String, i32) {

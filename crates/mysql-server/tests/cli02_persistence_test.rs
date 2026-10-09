@@ -9,7 +9,6 @@
 //! 3. .version 在 persistence REPL 中仍可工作
 //! 4. .timing on 在 persistence REPL 中仍生效
 //! 5. 列名显示 (col_1) 在 persistence REPL 中仍生效 — 1-indexed 命名
-//!    在 `src/bin/sqlrustgo-mysql-server.rs` 的 placeholder 回退分支中
 //!    (修复 `SHOW TABLES` 头部 `col_0 | ...` 用户报告 bug 后启用)。
 //! 6. 多次 SELECT 持续共享 state
 //! 7. Session 间不泄漏 (新 session 新 engine)
@@ -18,26 +17,9 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn run_repl_script(script: &str) -> (String, String, i32) {
-    // cargo test sets CARGO_BIN_EXE_<name> for integration tests; use it
-    // first so tests find the binary regardless of cwd.
-    let bin = std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
-        .ok()
-        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
-        .unwrap_or_else(|| {
-            for candidate in [
-                "target/release/sqlrustgo-mysql-server",
-                "target/debug/sqlrustgo-mysql-server",
-                "../target/release/sqlrustgo-mysql-server",
-                "../target/debug/sqlrustgo-mysql-server",
-            ] {
-                if std::path::Path::new(candidate).exists() {
-                    return candidate.to_string();
-                }
-            }
-            "sqlrustgo-mysql-server".to_string()
-        });
+    let bin = env!("CARGO_BIN_EXE_sqlrustgo-mysql-server");
 
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("repl")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
