@@ -286,6 +286,17 @@ jobs:
           set -euo pipefail
           chmod +x scripts/gate/check_path_casefold_conflict.sh
           bash scripts/gate/check_path_casefold_conflict.sh
+      # Issue #5193 option C: `planner`/`executor` are declared not to be on
+      # the production execution path. This gate is what keeps that
+      # declaration honest — it fails if one of them is referenced from a
+      # production engine module without going back through the audit, and
+      # it fails if the exclusion registry itself goes stale. Without it in
+      # CI the declaration is a comment nobody checks.
+      - name: Off-production-path registry check (#5193 option C)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_off_production_path_registry.sh
+          bash scripts/gate/check_off_production_path_registry.sh
       # Issue #5192: a storage wrapper that fails to forward a
       # database-scoped StorageEngine method silently answers for the current
       # database. Nine such omissions were each found after a separate
