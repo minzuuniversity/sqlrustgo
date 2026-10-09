@@ -339,7 +339,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// only), and `USE default` is always legal. Takes its own short read
     /// guard — callers must NOT hold `self.storage` across it (parking_lot
     /// read guards must not nest when a writer may be queued).
-    fn ensure_database_known(&self, db: &str) -> SqlResult<()> {
+    /// #5137: `pub(crate)` so the SELECT path (`execute_select`) can
+    /// validate a user-qualified `FROM db.table` before taking locks.
+    pub(crate) fn ensure_database_known(&self, db: &str) -> SqlResult<()> {
         let storage = self.storage.read();
         if db.eq_ignore_ascii_case(&storage.current_db())
             || db.eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE)
