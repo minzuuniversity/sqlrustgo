@@ -257,3 +257,84 @@ fn concurrent_delete_insert_txns_lose_no_rows() {
         baseline - after
     );
 }
+
+/// #5112 (mutation gate): a peer's ROLLBACK must not discard *this*
+/// transaction's pending undo entries.
+///
+/// # Why the two tests above cannot see this bug
+///
+/// `committed_delete_is_not_undone_by_peer_rollback` sends transaction A
+/// down COMMIT and transaction B down ROLLBACK. That is the right oracle
+/// for the committed-delete case, but it cannot observe the undo-log
+/// damage: `commit_transaction_for` filters with `retain`, so a COMMIT
+/// never touches anybody's entries. The destructive path is
+/// `rollback_transaction_for`, and the only way to reach it is for **two
+/// rollbacks** to overlap in the shared `tx_undo_log`.
+///
+/// `concurrent_delete_insert_txns_lose_no_rows` does not reach it either:
+/// each worker owns a disjoint key range and commits on success, so at
+/// most one rollback runs per trial.
+///
+/// Reverting the #5112 fix — `retain(|e| e.tx_id == mine)` back to
+/// `while let Some(e) = log.pop()` — leaves **both tests above green**.
+/// This one is the gate that turns red.
+///
+/// # The sequence, and why it is not a race
+///
+/// The order is fixed by the test rather than by thread scheduling, so a
+/// failure is reproducible rather than intermittent:
+///
+///   1. A: `begin_transaction_for(1)` + `DELETE 42`  -> log `[A:42]`
+///   2. B: `begin_transaction_for(2)` + `DELETE 43`  -> log `[A:42, B:43]`
+///   3. A: ROLLBACK                                 -> log `[B:43]`
+///   4. B: ROLLBACK                                 -> log `[]`
+///
+/// Under the fix every step filters by `tx_id`, so both rows come back.
+/// Under the old `pop()` loop, step 3 drains the **whole** log to reach
+/// A's entries — discarding `B:43` on the way — and step 4 finds nothing
+/// to undo. Row 43 stays deleted, and B's ROLLBACK still returned `Ok`.
+///
+/// Both transactions issue a real `DELETE`, so this stays within MySQL's
+/// row-lock semantics: distinct keys never block each other, and each
+/// rollback restoring its own delete is exactly what a single-connection
+/// `BEGIN; DELETE; ROLLBACK` does.
+#[test]
+fn peer_rollback_preserves_other_tx_undo_entries() {
+    const TRIALS: usize = 30;
+    let first_target = 42i64;
+    let second_target = 43i64;
+    let mut lost = 0usize;
+
+    for _ in 0..TRIALS {
+        let (_dir, storage) = seeded_storage(50);
+        let s = &storage;
+
+        // 1 + 2: both transactions delete a distinct row, so both leave an
+        // undo entry behind before either one rolls back.
+        s.write().begin_transaction_for(1).ok();
+        s.write().delete("t", &[Value::Integer(first_target)]).ok();
+        s.write().begin_transaction_for(2).ok();
+        s.write().delete("t", &[Value::Integer(second_target)]).ok();
+
+        // 3: the first rollback. Under the buggy `pop()` this also drains
+        // the second transaction's entry.
+        s.write().rollback_transaction_for(1).ok();
+
+        // 4: the second rollback. Its undo survived iff step 3 filtered by
+        // tx_id rather than popping indiscriminately.
+        s.write().rollback_transaction_for(2).ok();
+
+        // Both rollbacks reported success, so both deletes must be undone.
+        if count_id(s, first_target) != 1 || count_id(s, second_target) != 1 {
+            lost += 1;
+        }
+    }
+
+    assert_eq!(
+        lost, 0,
+        "{lost}/{TRIALS} trials lost a row: one transaction's ROLLBACK drained the \
+         shared undo log and discarded another transaction's pending entries, so the \
+         second ROLLBACK found nothing to undo and silently left its DELETE in place \
+         while still reporting success"
+    );
+}
