@@ -5022,6 +5022,99 @@ impl Parser {
         })
     }
 
+    /// Parse one numeric bound of a LIMIT or OFFSET clause.
+    ///
+    /// Shared by both spellings so they cannot drift apart: `LIMIT count`,
+    /// `LIMIT count OFFSET skip` and `LIMIT skip, count` all reduce their
+    /// two numbers through this one function (#5217). `clause` names the
+    /// keyword for diagnostics.
+    ///
+    /// V313-10 / Issue #4038: a bound followed by an arithmetic operator is
+    /// parsed as an expression and constant-folded, so `LIMIT 2-1` yields 1
+    /// rather than being truncated to 2. An expression that cannot be folded
+    /// is a binder error, never a silently dropped clause.
+    fn parse_limit_value(&mut self, clause: &str) -> Result<Option<u64>, String> {
+        let peek_is_arith = matches!(
+            self.tokens.get(self.position + 1),
+            Some(Token::Plus)
+                | Some(Token::Minus)
+                | Some(Token::Star)
+                | Some(Token::Slash)
+                | Some(Token::Percent)
+        );
+        if peek_is_arith {
+            let saved_pos = self.position;
+            let expr = self.parse_expression()?;
+            return match constant_fold_u64(&expr) {
+                Some(v) => Ok(Some(v)),
+                None => {
+                    self.position = saved_pos;
+                    Err(classify_unfoldable_limit_expr(clause, &expr))
+                }
+            };
+        }
+        match self.current() {
+            Some(Token::NumberLiteral(n)) => {
+                // Handle both integer and float literals (LIMIT 1.25 -> 1 row)
+                let val = if let Ok(i) = n.parse::<u64>() {
+                    i
+                } else if let Ok(f) = n.parse::<f64>() {
+                    f as u64
+                } else {
+                    return Err(format!("Invalid {}: invalid digit found in string", clause));
+                };
+                self.next();
+                Ok(Some(val))
+            }
+            Some(Token::Identifier(ref s)) => {
+                // Support `LIMIT @var` and identifier-like column references.
+                // A pure integer string is accepted directly; a following `(`
+                // goes through parse_expression so a call like `row_number()`
+                // is classified properly; anything else is a column reference
+                // and gets a binder error rather than a silent None.
+                // V313-10 / Issue #4038.
+                if let Ok(val) = s.parse::<u64>() {
+                    self.next();
+                    Ok(Some(val))
+                } else if matches!(self.tokens.get(self.position + 1), Some(Token::LParen)) {
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    match constant_fold_u64(&expr) {
+                        Some(v) => Ok(Some(v)),
+                        None => {
+                            self.position = saved_pos;
+                            Err(classify_unfoldable_limit_expr(clause, &expr))
+                        }
+                    }
+                } else if clause == "LIMIT" {
+                    let ident = s.clone();
+                    Err(format!(
+                        "Binder Error: Referenced column '{}' not found in LIMIT",
+                        ident
+                    ))
+                } else {
+                    // OFFSET historically fell through to the binder instead of
+                    // erroring here, so a non-numeric offset yields no bound at
+                    // all. Preserved rather than made stricter: changing it
+                    // would alter behaviour for queries that parse today.
+                    Ok(None)
+                }
+            }
+            _ => {
+                // V312-19 #3972: accept an arithmetic expression, e.g. LIMIT 2-1.
+                let saved_pos = self.position;
+                let expr = self.parse_expression()?;
+                match constant_fold_u64(&expr) {
+                    Some(v) => Ok(Some(v)),
+                    None => {
+                        self.position = saved_pos;
+                        Err(classify_unfoldable_limit_expr(clause, &expr))
+                    }
+                }
+            }
+        }
+    }
+
     fn parse_select_statement(&mut self) -> Result<SelectStatement, String> {
         // V313-96 / Issue #4717: `FROM (WITH cte AS (...) SELECT ...)` subquery.
         if matches!(self.current(), Some(Token::With)) {
@@ -7855,191 +7948,45 @@ impl Parser {
             Vec::new()
         };
 
-        // Parse LIMIT clause
-        let limit = if matches!(self.current(), Some(Token::Limit)) {
+        // Parse LIMIT clause.
+        //
+        // MySQL has two spellings: `LIMIT count [OFFSET skip]` and the
+        // comma form `LIMIT skip, count`, where the offsets and counts are
+        // swapped relative to each other. #5217: only the first spelling
+        // used to be recognised — the comma form parsed its first number as
+        // the count and silently dropped the rest, so `LIMIT 5,3` returned 5
+        // rows starting at 1 and `LIMIT 0,3` returned none. Both clauses are
+        // folded to (offset, limit) here, so nothing downstream has to know
+        // which spelling was used.
+        let (limit, mut limit_offset) = if matches!(self.current(), Some(Token::Limit)) {
             self.next();
             // MySQL: LIMIT ALL = no limit (== LIMIT NULL)
             if matches!(self.current(), Some(Token::All)) {
                 self.next();
-                None
+                (None, None)
             } else {
-                // V313-10 / Issue #4038: peek whether the LIMIT value is followed
-                // by an arithmetic operator. If it is, parse the full expression
-                // through parse_expression + constant_fold_u64 so that
-                // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
-                let peek_is_arith = matches!(
-                    self.tokens.get(self.position + 1),
-                    Some(Token::Plus)
-                        | Some(Token::Minus)
-                        | Some(Token::Star)
-                        | Some(Token::Slash)
-                        | Some(Token::Percent)
-                );
-                if peek_is_arith {
-                    // Arithmetic expression form: parse full expression.
-                    // V313-10 / Issue #4038: emit a classified binder error
-                    // when the expression cannot be constant-folded.
-                    let saved_pos = self.position;
-                    let expr = self.parse_expression()?;
-                    match constant_fold_u64(&expr) {
-                        Some(v) => Some(v),
-                        None => {
-                            self.position = saved_pos;
-                            return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                        }
-                    }
+                let first = self.parse_limit_value("LIMIT")?;
+                if matches!(self.current(), Some(Token::Comma)) {
+                    // Comma form: the number just parsed is the offset, and
+                    // the next one is the count.
+                    self.next();
+                    (self.parse_limit_value("LIMIT")?, first)
                 } else {
-                    match self.current() {
-                        Some(Token::NumberLiteral(n)) => {
-                            // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
-                            let val = if let Ok(i) = n.parse::<u64>() {
-                                i
-                            } else if let Ok(f) = n.parse::<f64>() {
-                                f as u64
-                            } else {
-                                return Err(
-                                    "Invalid LIMIT: invalid digit found in string".to_string()
-                                );
-                            };
-                            self.next();
-                            Some(val)
-                        }
-                        Some(Token::Identifier(ref s)) => {
-                            // Support LIMIT variable (e.g., @limit) and
-                            // identifier-like column references. When the
-                            // identifier is a pure integer string we accept
-                            // it directly; when followed by `(` we let
-                            // parse_expression handle it (so `row_number()`
-                            // gets wrapped in a WindowCall / FunctionCall
-                            // and the classify step produces the right error);
-                            // otherwise we treat it as a column reference
-                            // and emit the binder error directly.
-                            // V313-10 / Issue #4038.
-                            if let Ok(val) = s.parse::<u64>() {
-                                self.next();
-                                Some(val)
-                            } else if matches!(
-                                self.tokens.get(self.position + 1),
-                                Some(Token::LParen)
-                            ) {
-                                // Looks like a function call (possibly
-                                // windowed) — let parse_expression build
-                                // the full AST, then classify.
-                                let saved_pos = self.position;
-                                let expr = self.parse_expression()?;
-                                match constant_fold_u64(&expr) {
-                                    Some(v) => Some(v),
-                                    None => {
-                                        self.position = saved_pos;
-                                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                                    }
-                                }
-                            } else {
-                                let ident = s.clone();
-                                return Err(format!(
-                                    "Binder Error: Referenced column '{}' not found in LIMIT",
-                                    ident
-                                ));
-                            }
-                        }
-                        _ => {
-                            // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
-                            // V313-10 / Issue #4038: if the expression contains
-                            // an aggregate, window function or column ref
-                            // that cannot be constant-folded, restore
-                            // position and emit a classified binder-style
-                            // error. Returning None would silently swallow
-                            // the LIMIT clause.
-                            let saved_pos = self.position;
-                            let expr = self.parse_expression()?;
-                            match constant_fold_u64(&expr) {
-                                Some(v) => Some(v),
-                                None => {
-                                    self.position = saved_pos;
-                                    return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                                }
-                            }
-                        }
-                    }
+                    (first, None)
                 }
             }
         } else {
-            None
+            (None, None)
         };
 
         // Parse OFFSET clause
-        let offset = if matches!(self.current(), Some(Token::Offset)) {
+        let offset = if let Some(comma_form_offset) = limit_offset.take() {
+            // `LIMIT skip, count` already carried the offset; a trailing
+            // OFFSET would be a syntax error, so nothing more to consume.
+            Some(comma_form_offset)
+        } else if matches!(self.current(), Some(Token::Offset)) {
             self.next();
-            // V313-10 / Issue #4038: mirror the LIMIT fix — peek for an
-            // arithmetic operator so `OFFSET 5-1` folds to 4 instead
-            // of being silently truncated to 5.
-            let peek_is_arith = matches!(
-                self.tokens.get(self.position + 1),
-                Some(Token::Plus)
-                    | Some(Token::Minus)
-                    | Some(Token::Star)
-                    | Some(Token::Slash)
-                    | Some(Token::Percent)
-            );
-            if peek_is_arith {
-                let saved_pos = self.position;
-                let expr = self.parse_expression()?;
-                match constant_fold_u64(&expr) {
-                    Some(v) => Some(v),
-                    None => {
-                        self.position = saved_pos;
-                        return Err(classify_unfoldable_limit_expr("OFFSET", &expr));
-                    }
-                }
-            } else {
-                match self.current() {
-                    Some(Token::NumberLiteral(n)) => {
-                        let val = if let Ok(i) = n.parse::<u64>() {
-                            i
-                        } else if let Ok(f) = n.parse::<f64>() {
-                            f as u64
-                        } else {
-                            return Err("Invalid OFFSET: invalid digit found in string".to_string());
-                        };
-                        self.next();
-                        Some(val)
-                    }
-                    Some(Token::Identifier(ref s)) => {
-                        // V313-10 / Issue #4038: mirror the LIMIT fix —
-                        // non-numeric identifiers (likely column refs)
-                        // fall through to the binder rather than being
-                        // rejected here as 'Invalid OFFSET'.
-                        if let Ok(val) = s.parse::<u64>() {
-                            self.next();
-                            Some(val)
-                        } else {
-                            let saved_pos = self.position;
-                            let expr = self.parse_expression()?;
-                            match constant_fold_u64(&expr) {
-                                Some(v) => Some(v),
-                                None => {
-                                    self.position = saved_pos;
-                                    None
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        // V312-19 #3972: OFFSET also accepts arithmetic expression.
-                        // V313-10 / Issue #4038: emit a classified binder error
-                        // when the expression cannot be constant-folded.
-                        let saved_pos = self.position;
-                        let expr = self.parse_expression()?;
-                        match constant_fold_u64(&expr) {
-                            Some(v) => Some(v),
-                            None => {
-                                self.position = saved_pos;
-                                return Err(classify_unfoldable_limit_expr("OFFSET", &expr));
-                            }
-                        }
-                    }
-                }
-            }
+            self.parse_limit_value("OFFSET")?
         } else {
             None
         };
@@ -18221,6 +18168,102 @@ mod set_op_tests {
         match result.unwrap() {
             Statement::Select(s) => {
                 assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    /// #5217: MySQL's `LIMIT skip, count` is the same statement as
+    /// `LIMIT count OFFSET skip`. Before this, only the `OFFSET` spelling was
+    /// recognised — the comma form took its first number as the count and
+    /// dropped the rest, so `LIMIT 5,3` parsed as limit=5/offset=None and
+    /// `LIMIT 0,3` as limit=0. Both silently returned the wrong rows instead
+    /// of erroring.
+    ///
+    /// The old test above only covered the keyword form, which is why this
+    /// survived: no assertion ever compared the two spellings.
+    #[test]
+    fn test_limit_comma_form_matches_offset_keyword_form() {
+        for (comma, keyword) in [
+            (
+                "SELECT * FROM t LIMIT 5,3",
+                "SELECT * FROM t LIMIT 3 OFFSET 5",
+            ),
+            (
+                "SELECT * FROM t LIMIT 0,3",
+                "SELECT * FROM t LIMIT 3 OFFSET 0",
+            ),
+            (
+                "SELECT * FROM t LIMIT 18,2",
+                "SELECT * FROM t LIMIT 2 OFFSET 18",
+            ),
+            (
+                "SELECT * FROM t ORDER BY a DESC LIMIT 7,4",
+                "SELECT * FROM t ORDER BY a DESC LIMIT 4 OFFSET 7",
+            ),
+        ] {
+            let a = parse(comma).unwrap_or_else(|e| panic!("{} failed: {}", comma, e));
+            let b = parse(keyword).unwrap_or_else(|e| panic!("{} failed: {}", keyword, e));
+            match (a, b) {
+                (Statement::Select(sa), Statement::Select(sb)) => {
+                    assert_eq!(
+                        (sa.offset, sa.limit),
+                        (sb.offset, sb.limit),
+                        "{} and {} must produce the same (offset, limit)",
+                        comma,
+                        keyword
+                    );
+                }
+                _ => panic!("Expected two Select statements"),
+            }
+        }
+    }
+
+    /// The comma form must not leak into the projection. `LIMIT 5,3` has a
+    /// comma between two bounds, not two result columns — a parser that
+    /// treats it as a column separator changes the result shape.
+    #[test]
+    fn test_limit_comma_form_does_not_add_a_column() {
+        match parse("SELECT id FROM t LIMIT 5,3").unwrap() {
+            Statement::Select(s) => {
+                assert_eq!(s.columns.len(), 1, "comma in LIMIT is not a column list");
+                assert_eq!(s.offset, Some(5));
+                assert_eq!(s.limit, Some(3));
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    /// `LIMIT 2-1` folds to 1 (V312-19 #3972) and still works in the comma
+    /// position, since both bounds go through the same folding path now.
+    #[test]
+    fn test_limit_comma_form_folds_arithmetic() {
+        match parse("SELECT * FROM t LIMIT 10-4,8-2").unwrap() {
+            Statement::Select(s) => {
+                assert_eq!(s.offset, Some(6));
+                assert_eq!(s.limit, Some(6));
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    /// A dangling comma is a syntax error, not a silently ignored bound.
+    #[test]
+    fn test_limit_comma_form_rejects_missing_second_bound() {
+        assert!(
+            parse("SELECT * FROM t LIMIT 5,").is_err(),
+            "`LIMIT 5,` must not parse as `LIMIT 5`"
+        );
+    }
+
+    /// `LIMIT ALL` keeps its meaning (no bound) and must not be mistaken for
+    /// the start of a comma form.
+    #[test]
+    fn test_limit_all_is_unbounded() {
+        match parse("SELECT * FROM t LIMIT ALL").unwrap() {
+            Statement::Select(s) => {
+                assert_eq!(s.limit, None);
+                assert_eq!(s.offset, None);
             }
             other => panic!("Expected Select, got {:?}", other),
         }
