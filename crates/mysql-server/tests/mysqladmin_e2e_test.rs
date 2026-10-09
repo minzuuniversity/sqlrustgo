@@ -19,29 +19,9 @@ fn find_free_port() -> u16 {
     port
 }
 
-/// Locate the sqlrustgo-mysql-server binary. Looks first at
-/// CARGO_BIN_EXE_* (set when running under `cargo test`), then falls back to
-/// `target/{release,debug}/sqlrustgo-mysql-server` for `cargo run`.
+/// Locate the sqlrustgo-mysql-server binary.
 fn server_binary_path() -> PathBuf {
-    if let Ok(p) = std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server") {
-        return PathBuf::from(p);
-    }
-    // Fall back: try release then debug
-    let profile = std::env::var("CARGO_PROFILE").unwrap_or_else(|_| "release".into());
-    let candidate = std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("target")
-        .join(&profile)
-        .join("sqlrustgo-mysql-server");
-    if candidate.exists() {
-        return candidate;
-    }
-
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("target")
-        .join("debug")
-        .join("sqlrustgo-mysql-server")
+    PathBuf::from(env!("CARGO_BIN_EXE_sqlrustgo-mysql-server"))
 }
 
 /// Spawn a server instance on the given port. Returns Child handle and

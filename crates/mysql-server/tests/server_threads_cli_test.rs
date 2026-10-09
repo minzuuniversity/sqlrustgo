@@ -5,18 +5,8 @@
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-fn get_binary_path() -> String {
-    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
-        .ok()
-        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
-        .unwrap_or_else(|| {
-            let p = std::path::Path::new("target/release/sqlrustgo-mysql-server");
-            if p.exists() {
-                p.to_string_lossy().to_string()
-            } else {
-                "target/debug/sqlrustgo-mysql-server".to_string()
-            }
-        })
+fn get_binary_path() -> &'static str {
+    env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")
 }
 
 #[test]

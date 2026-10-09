@@ -9,38 +9,15 @@
 //! 3. data_dir 通过 env 传递
 //! 4. auth_mode 通过 env 传递
 //! 5. main.rs 调用 v2 (Stage 1 之前是 v1)
+//!
+//! 本测试位于 `crates/mysql-server/tests/`，与 `sqlrustgo-mysql-server` 二进制
+//! 同属一个 Cargo package，编译期即可通过 `env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")`
+//! 获得正确的二进制路径，无需运行时回退扫描。
 
 use std::process::Command;
 
-fn get_binary_path() -> String {
-    // Priority 1: cargo test auto-set env var (only when test and binary share a package).
-    // This integration test lives in the root `sqlrustgo` crate, but the binary is in
-    // `crates/mysql-server/`, so CARGO_BIN_EXE_sqlrustgo-mysql-server is NOT auto-set —
-    // we fall through to filesystem scanning below.
-    if let Ok(p) = std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server") {
-        return p;
-    }
-    // Priority 2: user-supplied override
-    if let Ok(p) = std::env::var("SQLRUSTGO_BIN") {
-        return p;
-    }
-    // Priority 3: scan common target directories. The B2_INTEGRATION_TESTS gate runs
-    // `cargo test` which uses the debug profile, so `target/debug/` is checked first.
-    // Release paths are kept for backwards compatibility with developer workflows.
-    let candidates = [
-        "target/debug/sqlrustgo-mysql-server",
-        "target/release/sqlrustgo-mysql-server",
-        "../srv2/target/debug/sqlrustgo-mysql-server",
-        "../srv2/target/release/sqlrustgo-mysql-server",
-    ];
-    for c in &candidates {
-        let p = std::path::Path::new(c);
-        if p.exists() {
-            return p.to_string_lossy().to_string();
-        }
-    }
-    // No binary found — return the most common path so the failure message is clear.
-    "target/debug/sqlrustgo-mysql-server".to_string()
+fn bin_path() -> &'static str {
+    env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")
 }
 
 #[test]
@@ -49,7 +26,7 @@ fn server01_v2_lib_function_exists() {
     // We can do this by trying to link against the library in a test
     // but a simpler check: the binary should be built successfully
     // (if run_server_v2 didn't exist, cargo build would fail)
-    let bin = get_binary_path();
+    let bin = bin_path();
     assert!(
         std::path::Path::new(&bin).exists(),
         "Binary should be built successfully with run_server_v2"
@@ -60,7 +37,7 @@ fn server01_v2_lib_function_exists() {
 fn server01_v2_max_connections_passed_through() {
     // Start server with --max-connections=42
     // Verify env var SQLRUSTGO_MAX_CONN is set to 42
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .arg("--max-connections")
@@ -86,7 +63,7 @@ fn server01_v2_max_connections_passed_through() {
 
 #[test]
 fn server01_v2_data_dir_passed_through() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .arg("--data-dir")
@@ -109,7 +86,7 @@ fn server01_v2_data_dir_passed_through() {
 
 #[test]
 fn server01_v2_auth_mode_passed_through() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .arg("--auth-mode")
@@ -132,7 +109,7 @@ fn server01_v2_auth_mode_passed_through() {
 
 #[test]
 fn server01_v2_default_max_connections() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .arg("--port")
@@ -154,7 +131,7 @@ fn server01_v2_default_max_connections() {
 
 #[test]
 fn server01_v2_default_auth_mode_is_none() {
-    let bin = get_binary_path();
+    let bin = bin_path();
     let mut child = Command::new(&bin)
         .arg("serve")
         .arg("--port")

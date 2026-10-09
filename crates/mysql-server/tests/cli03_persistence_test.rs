@@ -15,25 +15,8 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-fn bin_path() -> String {
-    // cargo test sets CARGO_BIN_EXE_<name> for integration tests; use it
-    // first so tests find the binary regardless of cwd.
-    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
-        .ok()
-        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
-        .unwrap_or_else(|| {
-            for candidate in [
-                "target/release/sqlrustgo-mysql-server",
-                "target/debug/sqlrustgo-mysql-server",
-                "../target/release/sqlrustgo-mysql-server",
-                "../target/debug/sqlrustgo-mysql-server",
-            ] {
-                if std::path::Path::new(candidate).exists() {
-                    return candidate.to_string();
-                }
-            }
-            "sqlrustgo-mysql-server".to_string()
-        })
+fn bin_path() -> &'static str {
+    env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")
 }
 
 fn run_repl_with_args(args: &[&str], script: &str) -> (i32, String, String) {

@@ -73,4 +73,14 @@ path = "src/main.rs"
 sqlrustgo-mysql-client = { path = "../mysql-client" }
 query-stats = { path = "../query-stats" }
 tempfile = "3"
+# Issue #5179: mysqladmin_e2e_test moved here from tests/integration/admin/ so
+# it could use env!("CARGO_BIN_EXE_sqlrustgo-mysql-server") — only this package
+# gets that variable set, since only it owns the binary. The test drives the
+# server through admin's wire client.
+#
+# This closes a dev-dependency cycle (admin dev-depends on this crate). Cargo
+# permits cycles through dev-dependencies, and the workspace already has one:
+# the root package dev-depends on this crate while this crate depends on the
+# root library. Verified by building the test target.
+sqlrustgo-admin = { path = "../admin" }
 

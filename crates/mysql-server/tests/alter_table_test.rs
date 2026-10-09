@@ -6,66 +6,25 @@
 //! DDL testing requires the REPL where state persists across
 //! statements.
 
-use std::io::Write;
+//! Why this file lives in `crates/mysql-server/tests/`
+//! -----------------------------------------------------------
+//! Cargo only sets `CARGO_BIN_EXE_<name>` for integration tests of
+//! the package that *owns* the binary. The server binary belongs to
+//! `sqlrustgo-mysql-server`, so from the root package the variable is
+//! absent. The previous `bin_path()` helper fell back to scanning
+//! `target/{debug,release}/` for an existing binary — which could
+//! silently resolve to a stale build. `env!` makes the binary
+//! location a compile-time guarantee.
+
+use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-/// Locate the mysql-server binary (cargo test sets CARGO_BIN_EXE_<name>).
-///
-/// V312-58 / Issue #4374 followup: when running `cargo test --all-features
-/// --all-targets` from a clean checkout (no prior `cargo build --bin
-/// sqlrustgo-mysql-server`), the binary does not yet exist and the test
-/// fails with `Os { code: 2, kind: NotFound }`. Self-heal by invoking
-/// `cargo build --bin sqlrustgo-mysql-server` once if no candidate is
-/// found in the workspace-relative `target/{profile}` directories.
-fn bin_path() -> String {
-    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
-        .ok()
-        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
-        .unwrap_or_else(|| {
-            let profile = if cfg!(debug_assertions) {
-                "debug"
-            } else {
-                "release"
-            };
-            let candidates = [
-                format!("target/{profile}/sqlrustgo-mysql-server"),
-                format!("../target/{profile}/sqlrustgo-mysql-server"),
-                "target/release/sqlrustgo-mysql-server".to_string(),
-                "target/debug/sqlrustgo-mysql-server".to_string(),
-            ];
-            for c in &candidates {
-                if std::path::Path::new(c).exists() {
-                    return c.clone();
-                }
-            }
-            // Self-heal: build the bin in the current profile, then retry.
-            let build_status = Command::new("cargo")
-                .args([
-                    "build",
-                    "-q",
-                    "-p",
-                    "sqlrustgo-mysql-server",
-                    "--bin",
-                    "sqlrustgo-mysql-server",
-                ])
-                .status()
-                .expect("failed to invoke cargo build for sqlrustgo-mysql-server");
-            assert!(
-                build_status.success(),
-                "cargo build --bin sqlrustgo-mysql-server failed"
-            );
-            for c in &candidates {
-                if std::path::Path::new(c).exists() {
-                    return c.clone();
-                }
-            }
-            panic!("sqlrustgo-mysql-server binary still not found after cargo build");
-        })
+fn bin_path() -> &'static str {
+    env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")
 }
 
 /// Run a multi-statement REPL script; return (stdout, stderr, exit_code).
 fn run_repl(script: &str) -> (String, String, i32) {
-    use std::io::Read;
     let mut child = Command::new(bin_path())
         .arg("repl")
         .stdin(Stdio::piped())

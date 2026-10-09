@@ -224,17 +224,84 @@ class BinaryResult:
     group: str            # 'fast' | 'slow' | 'disabled' | 'perf'
 
 
+# Integration tests that live in a workspace member rather than the root
+# package must still be enumerated here, or migrating them out of the root
+# manifest would silently drop them from B2 coverage — the gate would keep
+# reporting PASS for tests it no longer runs. Each entry is (package, test
+# target name); the root package's [[test]] targets are discovered from
+# Cargo.toml as before.
+EXTRA_TEST_PACKAGES = ["sqlrustgo-mysql-server"]
+
+
 def list_test_binaries() -> list[str]:
-    """Enumerate every [[test]] name declared in the workspace Cargo.toml."""
+    """Enumerate every [[test]] name declared in the root Cargo.toml.
+
+    Issue #5179: tests that spawn the server binary were migrated out of
+    the root package into `crates/mysql-server/tests/`, because only the
+    package that *owns* a binary gets `CARGO_BIN_EXE_<name>` set for it.
+    The root-manifest scan below cannot see those auto-discovered targets,
+    so they are appended explicitly. Without this the migration would look
+    like a coverage reduction when it is a correctness fix.
+    """
     text = (REPO_ROOT / "Cargo.toml").read_text()
-    return re.findall(r'\[\[test\]\]\s*name\s*=\s*"([^"]+)"', text)
+    names = re.findall(r'\[\[test\]\]\s*name\s*=\s*"([^"]+)"', text)
+    for pkg in EXTRA_TEST_PACKAGES:
+        names.extend(_list_package_test_targets(pkg))
+    return names
+
+
+def _list_package_test_targets(package: str) -> list[str]:
+    """Test target names auto-discovered in a workspace member.
+
+    Uses `cargo metadata` rather than globbing `tests/*.rs` so that a
+    manifest with `autotests = false` or an explicit `[[test]]` path
+    elsewhere is reported the way cargo actually builds it. On any
+    failure returns [] — the gate then behaves exactly as it did before
+    this change, which is degraded coverage but never a false PASS.
+    """
+    try:
+        out = subprocess.run(
+            ["cargo", "metadata", "--no-deps", "--format-version=1"],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=120,
+        )
+        if out.returncode != 0:
+            return []
+        meta = json.loads(out.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return []
+    return sorted(
+        t["name"]
+        for p in meta.get("packages", [])
+        if p["name"] == package
+        for t in p["targets"]
+        if "test" in t["kind"]
+    )
+
+
+def _package_owning_test_target(name: str) -> str | None:
+    """Return the package that declares test target `name`, or None.
+
+    Root-manifest [[test]] targets resolve against the root package, so
+    None there is correct and keeps the historical command line unchanged.
+    """
+    for pkg in EXTRA_TEST_PACKAGES:
+        if name in _list_package_test_targets(pkg):
+            return pkg
+    return None
 
 
 def run_one_binary(name: str, timeout_sec: int) -> BinaryResult:
     """Run a single integration test binary with `cargo test --test <name>`."""
     log_path = EVIDENCE_DIR / f"{name}.log"
-    cmd = [
-        "cargo", "test", "--all-features", "--test", name,
+    # A target name can exist in more than one package. `cargo test
+    # --test <name>` without -p is ambiguous once a name is declared twice,
+    # so pick the package that actually has it.
+    cmd = ["cargo", "test", "--all-features"]
+    owner = _package_owning_test_target(name)
+    if owner is not None:
+        cmd += ["-p", owner]
+    cmd += [
+        "--test", name,
         "--quiet", "--no-fail-fast",
     ]
     # Apply per-binary test-threads override for binaries whose tests touch

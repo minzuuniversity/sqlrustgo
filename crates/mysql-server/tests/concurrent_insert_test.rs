@@ -13,24 +13,9 @@
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-/// Locate the mysql-server binary (cargo test sets CARGO_BIN_EXE_<name>).
-fn bin_path() -> String {
-    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
-        .ok()
-        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
-        .unwrap_or_else(|| {
-            for candidate in [
-                "target/release/sqlrustgo-mysql-server",
-                "target/debug/sqlrustgo-mysql-server",
-                "../target/release/sqlrustgo-mysql-server",
-                "../target/debug/sqlrustgo-mysql-server",
-            ] {
-                if std::path::Path::new(candidate).exists() {
-                    return candidate.to_string();
-                }
-            }
-            "sqlrustgo-mysql-server".to_string()
-        })
+/// Locate the mysql-server binary.
+fn bin_path() -> &'static str {
+    env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")
 }
 
 /// Run a multi-statement REPL script; return (stdout, stderr, exit_code).
