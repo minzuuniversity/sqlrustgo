@@ -14,27 +14,25 @@
 //! `repl` is the wiring the product ships. Spawning the real binary
 //! means this test fails if `BoxStorageEngine::list_databases` (or any
 //! other link in the chain) stops forwarding.
+//!
+//! Why this file lives in `crates/mysql-server/tests/` and not in the
+//! root package's `tests/integration/ddl/`
+//! -----------------------------------------------------------
+//! Cargo only sets `CARGO_BIN_EXE_<name>` for integration tests of the
+//! package that *owns* the binary. The server binary belongs to
+//! `sqlrustgo-mysql-server`, so from the root package the variable is
+//! absent. The previous `bin_path()` helper fell back to scanning
+//! `target/{debug,release}/` for an existing binary — which silently
+//! resolved to whatever stale build was on disk (the mutation audit
+//! found one 8 days older than HEAD), so the test reported PASS while
+//! executing code that no longer existed. `env!` makes the guarantee
+//! compile-time: no binary for this package, no test.
 
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-fn bin_path() -> String {
-    std::env::var("CARGO_BIN_EXE_sqlrustgo-mysql-server")
-        .ok()
-        .or_else(|| std::env::var("SQLRUSTGO_BIN").ok())
-        .unwrap_or_else(|| {
-            for candidate in [
-                "target/release/sqlrustgo-mysql-server",
-                "target/debug/sqlrustgo-mysql-server",
-                "../target/release/sqlrustgo-mysql-server",
-                "../target/debug/sqlrustgo-mysql-server",
-            ] {
-                if std::path::Path::new(candidate).exists() {
-                    return candidate.to_string();
-                }
-            }
-            "sqlrustgo-mysql-server".to_string()
-        })
+fn bin_path() -> &'static str {
+    env!("CARGO_BIN_EXE_sqlrustgo-mysql-server")
 }
 
 fn run_repl(script: &str) -> String {
