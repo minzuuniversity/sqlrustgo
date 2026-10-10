@@ -204,7 +204,7 @@ pub(crate) fn recovery_force_insert_in_db<S: StorageEngine + ?Sized>(
     table: &str,
     record: Vec<Value>,
 ) -> Result<(), crate::engine::SqlError> {
-    storage.force_insert_in_db(db, table, record)
+    storage.force_insert_in_db(&crate::engine::SessionContext::new(db, 0), table, record)
 }
 
 #[allow(dead_code)]
@@ -344,8 +344,9 @@ fn replace_by_key_in_db<S: StorageEngine + ?Sized>(
     new_record: Vec<Value>,
 ) -> Result<(), crate::engine::SqlError> {
     let filter_values = key_to_filter_values(key)?;
-    storage.delete_in_db(db, table, &filter_values)?;
-    storage.insert_in_db(db, table, vec![new_record])?;
+    let ctx = crate::engine::SessionContext::new(db, 0);
+    storage.delete_in_db(&ctx, table, &filter_values)?;
+    storage.insert_in_db(&ctx, table, vec![new_record])?;
     Ok(())
 }
 
@@ -756,7 +757,7 @@ pub(crate) fn apply_wal_entry(
     // (current database) against a table that lives in `aud` reported a
     // false "table does not exist" and skipped the row.
     if is_row_entry_type(entry.entry_type)
-        && storage.get_table_info_in(db_name, &table_name).is_err()
+        && storage.get_table_info_in(&crate::engine::SessionContext::new(db_name, 0), &table_name).is_err()
     {
         return Err(crate::engine::SqlError::ExecutionError(format!(
             "apply_wal_entry: table {:?}.{:?} named by this entry does not exist in the \
@@ -779,7 +780,7 @@ pub(crate) fn apply_wal_entry(
             // restore work at all — replay runs on top of a restored
             // base backup that already holds every row the base had, so
             // re-applying the log would duplicate all of them.
-            if let Ok(existing) = storage.scan_in_db(db_name, &table_name) {
+            if let Ok(existing) = storage.scan_in_db(&crate::engine::SessionContext::new(db_name, 0), &table_name) {
                 if existing.iter().any(|r| r == &record) {
                     return Ok(ApplyOutcome::Skipped);
                 }
@@ -818,14 +819,14 @@ pub(crate) fn apply_wal_entry(
         WalEntryType::Delete => {
             if let Some(ref key) = entry.key {
                 let filter_values = key_to_filter_values(key)?;
-                storage.delete_in_db(db_name, &table_name, &filter_values)?;
+                storage.delete_in_db(&crate::engine::SessionContext::new(db_name, 0), &table_name, &filter_values)?;
                 Ok(ApplyOutcome::Applied)
             } else {
                 log::warn!(
                     "apply_wal_entry: DELETE entry without key for table {} - full table delete",
                     table_name
                 );
-                storage.delete_in_db(db_name, &table_name, &[])?;
+                storage.delete_in_db(&crate::engine::SessionContext::new(db_name, 0), &table_name, &[])?;
                 Ok(ApplyOutcome::Applied)
             }
         }

@@ -15,7 +15,7 @@ use sqlrustgo_executor::trigger::{
 use sqlrustgo_executor::ExecutorResult;
 use sqlrustgo_parser::parser::{DeleteStatement, InsertStatement, UpdateStatement};
 use sqlrustgo_parser::Expression;
-use sqlrustgo_storage::{StorageEngine, TableInfo};
+use sqlrustgo_storage::{SessionContext, StorageEngine, TableInfo};
 
 use sqlrustgo_types::Value;
 
@@ -145,7 +145,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     let table_info = {
         let storage = engine.storage.read();
         {
-            let info = storage.get_table_info_in(&stmt_db, &table_name)?;
+            let info = storage.get_table_info_in(&SessionContext::new(stmt_db.clone(), 0), &table_name)?;
             info.clone()
         }
     };
@@ -281,12 +281,12 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             // Global scan: the conflict check must see every committed row,
             // not this connection's snapshot; `scan_for_reader` would also
             // deadlock (write guard held, non-reentrant RwLock).
-            let existing_rows = storage.scan_in_db(&stmt_db, &table_name)?;
+            let existing_rows = storage.scan_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name)?;
             let has_conflict = existing_rows
                 .iter()
                 .any(|existing| record_matches_unique_key(existing, record, &table_info));
             if has_conflict {
-                storage.delete_in_db(&stmt_db, &table_name, &filter)?;
+                storage.delete_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, &filter)?;
             }
         }
     }
@@ -546,7 +546,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             // `scan_for_reader` would additionally deadlock here — the
             // write guard above is held and parking_lot RwLock is not
             // reentrant.
-            let existing = storage.scan_in_db(&stmt_db, &table_name)?;
+            let existing = storage.scan_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name)?;
             next_auto_id = existing
                 .iter()
                 .filter_map(|r| r.get(col_idx).and_then(|v| v.as_integer()))
@@ -750,7 +750,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                     // missing column, often `Value::Null`).
                     validate_not_null(&table_info, record, &[])?;
                 }
-                storage.insert_in_db(&stmt_db, &table_name, to_insert.clone())?;
+                storage.insert_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, to_insert.clone())?;
                 stored_rows = to_insert;
             } else {
                 stored_rows = Vec::new();
@@ -781,7 +781,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 // #4558: see comment above — pass `&[]` after reordering.
                 validate_not_null(&table_info, record, &[])?;
             }
-            storage.insert_in_db(&stmt_db, &table_name, processed_records.clone())?;
+            storage.insert_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, processed_records.clone())?;
             stored_rows = processed_records.clone();
         }
 
@@ -1015,7 +1015,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     if resolved_update.where_clause.is_none() {
         let table_info = {
             let storage = engine.storage.read();
-            storage.get_table_info_in(&stmt_db, &table_name)?.clone()
+            storage.get_table_info_in(&SessionContext::new(stmt_db.clone(), 0), &table_name)?.clone()
         };
         let sample_row: Vec<sqlrustgo_types::Value> = {
             let storage = engine.storage.read();
@@ -1120,7 +1120,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // Global scan: every committed row must be updated regardless of
         // this connection's snapshot; `scan_for_reader` would deadlock
         // (write guard held, non-reentrant RwLock).
-        let all_rows_no_where = storage.scan_in_db(&stmt_db, &table_name)?;
+        let all_rows_no_where = storage.scan_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name)?;
         let need_undo_snapshot = engine.tx_session.lock().current_tx_id.is_some();
         let mut count = 0usize;
         let mut prior_rows_for_undo: Vec<Vec<Value>> = if need_undo_snapshot {
@@ -1154,11 +1154,11 @@ pub fn execute_update<S: StorageEngine + 'static>(
             for (col_idx, new_val) in &updates {
                 prior_row[*col_idx] = new_val.clone();
             }
-            storage.delete_in_db(&stmt_db, &table_name, std::slice::from_ref(&pk_val))?;
+            storage.delete_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, std::slice::from_ref(&pk_val))?;
             if need_undo_snapshot {
                 new_rows_for_undo.push(prior_row.clone());
             }
-            storage.insert_in_db(&stmt_db, &table_name, vec![prior_row])?;
+            storage.insert_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, vec![prior_row])?;
             count += 1;
         }
         drop(storage);
@@ -1184,7 +1184,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // Get table info and scan rows
     let table_info = {
         let storage = engine.storage.read();
-        storage.get_table_info_in(&stmt_db, &table_name)?.clone()
+        storage.get_table_info_in(&SessionContext::new(stmt_db.clone(), 0), &table_name)?.clone()
     };
 
     // V4.0.0 / SOAK-leak fix: scan_with_filter runs the WHERE predicate
@@ -1341,8 +1341,8 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 .get(pk_idx)
                 .cloned()
                 .unwrap_or(sqlrustgo_types::Value::Null);
-            storage.delete_in_db(&stmt_db, &table_name, std::slice::from_ref(&pk_val))?;
-            storage.insert_in_db(&stmt_db, &table_name, vec![new_row.clone()])?;
+            storage.delete_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, std::slice::from_ref(&pk_val))?;
+            storage.insert_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, vec![new_row.clone()])?;
         }
     }
 
@@ -1447,18 +1447,18 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         // Capture row snapshot before delete so #4519 can record UndoRecord::Delete.
         let table_info = {
             let storage = engine.storage.read();
-            storage.get_table_info_in(&stmt_db, &table_name)?.clone()
+            storage.get_table_info_in(&SessionContext::new(stmt_db.clone(), 0), &table_name)?.clone()
         };
         // #5057: read against the statement's database, not the shared one.
         let prior_rows_for_undo: Vec<Vec<Value>> =
-            engine.storage.read().scan_in_db(&stmt_db, &table_name)?;
+            engine.storage.read().scan_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name)?;
         let count = {
             let mut storage = engine.storage.write();
             // Same tx-id re-assert as execute_insert, scoped here.
             if let Some(id) = engine.tx_session.lock().current_tx_id {
                 storage.set_current_tx_id(id.as_u64());
             }
-            storage.delete_in_db(&stmt_db, &table_name, &[])?
+            storage.delete_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, &[])?
         };
         // #4519: SAVEPOINT physical-undo wiring. Append one UndoRecord::Delete
         // per row actually deleted (no-WHERE path) so a ROLLBACK TO SAVEPOINT
@@ -1490,7 +1490,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     let where_clause = resolved_delete.where_clause.as_ref().unwrap();
     let table_info = {
         let storage = engine.storage.read();
-        storage.get_table_info_in(&stmt_db, &table_name)?.clone()
+        storage.get_table_info_in(&SessionContext::new(stmt_db.clone(), 0), &table_name)?.clone()
     };
 
     let rows_to_delete: Vec<Vec<Value>> =
@@ -1501,7 +1501,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
                 // decides *which* rows are deleted, so reading the wrong
                 // database here deletes rows in the other one — or none.
                 let storage = engine.storage.read();
-                let all = storage.scan_in_db(&stmt_db, &table_name)?;
+                let all = storage.scan_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name)?;
                 drop(storage);
                 all.into_iter()
                     .filter(|row| evaluate_where_clause(where_clause, row, &table_info))
@@ -1607,7 +1607,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
             .iter()
             .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
             .collect();
-        storage.delete_in_db(&stmt_db, &table_name, &key_values)?;
+        storage.delete_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, &key_values)?;
     } else {
         // Multi-row delete: keep the legacy round-trip. It clones
         // O(N) into tx_undo_log for UndoOp::DeleteAll, but multi-row
@@ -1617,7 +1617,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
         // via std::mem::take + rollback swap).
         let rows_to_keep: Vec<Vec<Value>> = {
             // #5057: read against the statement's database, not the shared one.
-            let all_rows = engine.storage.read().scan_in_db(&stmt_db, &table_name)?;
+            let all_rows = engine.storage.read().scan_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name)?;
             all_rows
                 .into_iter()
                 .filter(|row| !evaluate_where_clause(where_clause, row, &table_info))
@@ -1633,9 +1633,9 @@ pub fn execute_delete<S: StorageEngine + 'static>(
             // First drop the full table to flush any buffered inserts
             // and to provide a clean slate (this is what the legacy
             // code did).
-            storage.delete_in_db(&stmt_db, &table_name, &[])?;
+            storage.delete_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, &[])?;
             if !rows_to_keep.is_empty() {
-                storage.insert_in_db(&stmt_db, &table_name, rows_to_keep)?;
+                storage.insert_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, rows_to_keep)?;
             }
             // Then delete the matching rows from the freshly re-inserted
             // set so WAL records one Delete entry per affected row.
@@ -1644,7 +1644,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
                     .iter()
                     .map(|&i| row.get(i).cloned().unwrap_or(sqlrustgo_types::Value::Null))
                     .collect();
-                storage.delete_in_db(&stmt_db, &table_name, &key_values)?;
+                storage.delete_in_db(&SessionContext::new(stmt_db.clone(), 0), &table_name, &key_values)?;
             }
         }
     }
@@ -1770,7 +1770,7 @@ fn execute_update_multi_table<S: StorageEngine + 'static>(
             // database. Taking the schema from `get_table_info` (no
             // database) while the rows come from a named one is how a
             // table's columns end up describing a different table's data.
-            let info = storage.get_table_info_in(&stmt_db, &tref.name)?.clone();
+            let info = storage.get_table_info_in(&SessionContext::new(stmt_db.clone(), 0), &tref.name)?.clone();
             let rows = engine.scan_for_reader_in_db(&storage, &stmt_db, &tref.name)?;
             per_table_rows.push(rows);
             per_table_info.push(info);
@@ -1932,12 +1932,12 @@ fn apply_multi_table_updates<S: StorageEngine + 'static>(
         // whichever connection ran `USE` last — so a multi-table UPDATE
         // issued in d1 rewrites whatever database is currently selected,
         // which on a shared storage is not necessarily d1.
-        let info = storage.get_table_info_in(stmt_db, &tref.name)?.clone();
+        let info = storage.get_table_info_in(&SessionContext::new(stmt_db.clone(), 0), &tref.name)?.clone();
         let pk_idx = info.columns.iter().position(|c| c.primary_key).unwrap_or(0);
         for (before, after) in pairs {
             let pk_val = before.get(pk_idx).cloned().unwrap_or(Value::Null);
-            storage.delete_in_db(stmt_db, &tref.name, std::slice::from_ref(&pk_val))?;
-            storage.insert_in_db(stmt_db, &tref.name, vec![after.clone()])?;
+            storage.delete_in_db(&SessionContext::new(stmt_db.clone(), 0), &tref.name, std::slice::from_ref(&pk_val))?;
+            storage.insert_in_db(&SessionContext::new(stmt_db.clone(), 0), &tref.name, vec![after.clone()])?;
         }
     }
     Ok(ExecutorResult::new(vec![], total_count))
@@ -1994,7 +1994,7 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
             // database. Taking the schema from `get_table_info` (no
             // database) while the rows come from a named one is how a
             // table's columns end up describing a different table's data.
-            let info = storage.get_table_info_in(&stmt_db, &tref.name)?.clone();
+            let info = storage.get_table_info_in(&SessionContext::new(stmt_db.clone(), 0), &tref.name)?.clone();
             let rows = engine.scan_for_reader_in_db(&storage, &stmt_db, &tref.name)?;
             per_table_rows.push(rows);
             per_table_info.push(info);
@@ -2040,11 +2040,11 @@ fn execute_delete_multi_table<S: StorageEngine + 'static>(
         // whichever connection ran `USE` last — so a multi-table UPDATE
         // issued in d1 rewrites whatever database is currently selected,
         // which on a shared storage is not necessarily d1.
-        let info = storage.get_table_info_in(&stmt_db, &tref.name)?.clone();
+        let info = storage.get_table_info_in(&SessionContext::new(stmt_db.clone(), 0), &tref.name)?.clone();
         let pk_idx = info.columns.iter().position(|c| c.primary_key).unwrap_or(0);
         for row in &per_table_drop[t] {
             let pk_val = row.get(pk_idx).cloned().unwrap_or(Value::Null);
-            if storage.delete_in_db(&stmt_db, &tref.name, std::slice::from_ref(&pk_val))? > 0 {
+            if storage.delete_in_db(&SessionContext::new(stmt_db.clone(), 0), &tref.name, std::slice::from_ref(&pk_val))? > 0 {
                 total += 1;
             }
         }

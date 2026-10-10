@@ -75,8 +75,9 @@ pub use engine::find_column_index;
 pub use engine::{
     evaluate_check_constraint, find_column_index_in, CheckConstraint, ColumnDefinition,
     ForeignKeyAction, ForeignKeyConstraint, IndexInfo, MemoryStorage, Record, RowFilter,
-    RowMutation, SchemaSnapshot, SequenceInfo, SqlResult, StorageEngine, TableData, TableInfo,
-    TriggerEvent, TriggerInfo, TriggerTiming, TxLog, UniqueConstraint, Value, ViewInfo,
+    RowMutation, SchemaSnapshot, SequenceInfo, SessionContext, SqlResult, StorageEngine,
+    TableData, TableInfo, TriggerEvent, TriggerInfo, TriggerTiming, TxLog, UniqueConstraint,
+    Value, ViewInfo,
 };
 pub use failover_manager::{FailoverConfig, FailoverState, NodeInfo, NodeType};
 pub use file_storage::FileStorage;

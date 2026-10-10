@@ -3,6 +3,7 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::engine::{
+    SessionContext,
     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
     SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
 };
@@ -5908,11 +5909,11 @@ impl StorageEngine for FileStorage {
     /// database.
     fn scan_with_filter_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        self.scan_with_filter_in(db, table, filter)
+        self.scan_with_filter_in(&ctx.db, table, filter)
     }
 
     /// Phase B Step 4.2: O(log N) primary-key lookup using the
@@ -5977,11 +5978,11 @@ impl StorageEngine for FileStorage {
     /// database.
     fn parallel_scan_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         num_partitions: usize,
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        self.parallel_scan_in(db, table, num_partitions)
+        self.parallel_scan_in(&ctx.db, table, num_partitions)
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
@@ -5994,8 +5995,8 @@ impl StorageEngine for FileStorage {
     /// Callers that hold the database should prefer this: the storage is
     /// shared by every connection, so `insert` resolves against whichever
     /// connection last ran `USE`, not against the caller.
-    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        self.insert_at(db, table, records)
+    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        self.insert_at(&ctx.db, table, records)
     }
 
     /// F-09 fix: bypass insert_buffer so WAL recovery can replay entries
@@ -6008,8 +6009,8 @@ impl StorageEngine for FileStorage {
     }
 
     /// #5057: [`force_insert`](Self::force_insert) into a stated database.
-    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
-        self.insert_direct(db, table, vec![record])
+    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.insert_direct(&ctx.db, table, vec![record])
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
@@ -6018,8 +6019,8 @@ impl StorageEngine for FileStorage {
     }
 
     /// #5057: [`delete`](Self::delete) against a stated database.
-    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        self.delete_at(db, table, filters)
+    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.delete_at(&ctx.db, table, filters)
     }
 
     /// Phase B Step 4.1: like `delete`, but returns the list of
@@ -6036,11 +6037,11 @@ impl StorageEngine for FileStorage {
     /// #5057: [`delete_collect_pks`](Self::delete_collect_pks) against a stated database.
     fn delete_collect_pks_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
-        self.delete_collect_pks_at(db, table, filters)
+        self.delete_collect_pks_at(&ctx.db, table, filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
@@ -6049,8 +6050,8 @@ impl StorageEngine for FileStorage {
     }
 
     /// #5057: [`delete_if`](Self::delete_if) against a stated database.
-    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        self.delete_if_at(db, table, filter)
+    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.delete_if_at(&ctx.db, table, filter)
     }
 
     fn update(
@@ -6066,12 +6067,12 @@ impl StorageEngine for FileStorage {
     /// #5057: [`update`](Self::update) against a stated database.
     fn update_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        self.update_at(db, table, filters, updates)
+        self.update_at(&ctx.db, table, filters, updates)
     }
 
     fn update_if(
@@ -6087,12 +6088,12 @@ impl StorageEngine for FileStorage {
     /// #5057: [`update_if`](Self::update_if) against a stated database.
     fn update_if_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        self.update_if_at(db, table, filter, mutation)
+        self.update_if_at(&ctx.db, table, filter, mutation)
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
@@ -6101,8 +6102,8 @@ impl StorageEngine for FileStorage {
     }
 
     /// #5057: [`create_table`](Self::create_table) in a stated database.
-    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
-        self.create_table_at(db, info)
+    fn create_table_in_db(&mut self, ctx: &SessionContext, info: &TableInfo) -> SqlResult<()> {
+        self.create_table_at(&ctx.db, info)
     }
 
     // V4.0.0 / wired_insert_payload_regression_test fix: the trait
@@ -6119,15 +6120,15 @@ impl StorageEngine for FileStorage {
     #[allow(unconditional_recursion, clippy::only_used_in_recursion)]
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
         let db = self.current_db_name();
-        self.drop_table_in_db(&db, table)
+        self.drop_table_in_db(&SessionContext::new(db, 0), table)
     }
 
     /// #5057: [`drop_table`](Self::drop_table) in a stated database.
-    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+    fn drop_table_in_db(&mut self, ctx: &SessionContext, table: &str) -> SqlResult<()> {
         // Fully-qualified so the resolver picks the inherent `&self`
         // implementation rather than this trait method — see the note
         // above about the infinite recursion this used to cause.
-        FileStorage::drop_table_in(self, db, table)
+        FileStorage::drop_table_in(self, &ctx.db, table)
             .map_err(|e| SqlError::ExecutionError(e.to_string()))?;
         Ok(())
     }
@@ -6185,9 +6186,9 @@ impl StorageEngine for FileStorage {
     /// database without flipping `current_db` (impossible under the read
     /// lock `SHOW TABLES FROM` holds). Bare keys are pre-#5025 root-layout
     /// entries and belong to the default database only.
-    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
-        let prefix = format!("{}\u{1}", db.to_lowercase());
-        let is_default = db.eq_ignore_ascii_case(crate::engine::DEFAULT_DATABASE);
+    fn list_tables_in_db(&self, ctx: &SessionContext) -> Vec<String> {
+        let prefix = format!("{}\u{1}", ctx.db.to_lowercase());
+        let is_default = ctx.db.eq_ignore_ascii_case(crate::engine::DEFAULT_DATABASE);
         self.with_read_lock(|st| {
             st.tables
                 .iter()
@@ -6550,8 +6551,8 @@ impl StorageEngine for FileStorage {
     /// The table must already be in the cache: this is the read path of an
     /// executing statement, which resolved the name through
     /// `get_table_info_in` first.
-    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
-        let key = crate::engine::scoped_key(db, table);
+    fn get_table_info_in(&self, ctx: &SessionContext, table: &str) -> SqlResult<TableInfo> {
+        let key = crate::engine::scoped_key(&ctx.db, table);
         self.with_read_lock(|st| st.tables.get(&key).map(|t| t.info.clone()))
             .ok_or_else(|| SqlError::TableNotFound(table.to_string()))
     }
@@ -6575,13 +6576,13 @@ impl StorageEngine for FileStorage {
     ///
     /// `FileStorage` has no MVCC chain, so `reader_tx` has nothing to
     /// select: [`scan_in_db`](Self::scan_in_db) is already the whole read.
-    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        let _ = reader_tx;
-        self.scan_in_db(db, table)
+    fn scan_in_tx_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        let _ = ctx.reader_tx;
+        self.scan_in_db(ctx, table)
     }
 
-    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
-        let key = crate::engine::scoped_key(db, table);
+    fn scan_in_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        let key = crate::engine::scoped_key(&ctx.db, table);
         Ok(self.with_read_lock(|st| {
             let mut rows: Vec<Record> = st
                 .tables
@@ -6595,8 +6596,8 @@ impl StorageEngine for FileStorage {
         }))
     }
 
-    fn has_table_in(&self, db: &str, table: &str) -> bool {
-        let key = crate::engine::scoped_key(db, table);
+    fn has_table_in(&self, ctx: &SessionContext, table: &str) -> bool {
+        let key = crate::engine::scoped_key(&ctx.db, table);
         self.with_read_lock(|st| st.tables.contains_key(&key))
     }
 
@@ -6604,12 +6605,12 @@ impl StorageEngine for FileStorage {
     /// [`scan_with_index_in`](Self::scan_with_index_in).
     fn scan_with_index_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
-        self.scan_with_index_in(db, table, index_name, key)
+        self.scan_with_index_in(&ctx.db, table, index_name, key)
     }
 
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {

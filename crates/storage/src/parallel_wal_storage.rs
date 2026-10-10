@@ -5,6 +5,7 @@
 //! Key insight: WAL writes must be serial (ordering), but table flushes can be parallel.
 
 use crate::engine::{
+    SessionContext,
     ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
     TableInfo, Value,
 };
@@ -139,8 +140,8 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
 
     /// #5105: forward `(db, table, reader_tx)`; see the note on
     /// `WalStorage`'s counterpart. The trait default drops `db`.
-    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        self.inner.scan_in_tx_db(db, table, reader_tx)
+    fn scan_in_tx_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_tx_db(ctx, table)
     }
 
     /// #4974: same forwarding obligation for the predicate variant.
@@ -486,101 +487,101 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.list_databases()
     }
 
-    fn has_table_in(&self, db: &str, table: &str) -> bool {
-        self.inner.has_table_in(db, table)
+    fn has_table_in(&self, ctx: &SessionContext, table: &str) -> bool {
+        self.inner.has_table_in(ctx, table)
     }
 
-    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
-        self.inner.get_table_info_in(db, table)
+    fn get_table_info_in(&self, ctx: &SessionContext, table: &str) -> SqlResult<TableInfo> {
+        self.inner.get_table_info_in(ctx, table)
     }
 
-    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
-        self.inner.list_tables_in_db(db)
+    fn list_tables_in_db(&self, ctx: &SessionContext) -> Vec<String> {
+        self.inner.list_tables_in_db(ctx)
     }
 
-    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
-        self.inner.scan_in_db(db, table)
+    fn scan_in_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_db(ctx, table)
     }
 
     fn scan_with_filter_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        self.inner.scan_with_filter_in_db(db, table, filter)
+        self.inner.scan_with_filter_in_db(ctx, table, filter)
     }
 
     fn scan_with_index_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
-        self.inner.scan_with_index_in_db(db, table, index_name, key)
+        self.inner.scan_with_index_in_db(ctx, table, index_name, key)
     }
 
     fn parallel_scan_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         num_partitions: usize,
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        self.inner.parallel_scan_in_db(db, table, num_partitions)
+        self.inner.parallel_scan_in_db(ctx, table, num_partitions)
     }
 
-    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
-        self.inner.create_table_in_db(db, info)
+    fn create_table_in_db(&mut self, ctx: &SessionContext, info: &TableInfo) -> SqlResult<()> {
+        self.inner.create_table_in_db(ctx, info)
     }
 
-    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
-        self.inner.drop_table_in_db(db, table)
+    fn drop_table_in_db(&mut self, ctx: &SessionContext, table: &str) -> SqlResult<()> {
+        self.inner.drop_table_in_db(ctx, table)
     }
 
-    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        self.inner.insert_in_db(db, table, records)
+    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        self.inner.insert_in_db(ctx, table, records)
     }
 
-    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
-        self.inner.force_insert_in_db(db, table, record)
+    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.inner.force_insert_in_db(ctx, table, record)
     }
 
-    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        self.inner.delete_in_db(db, table, filters)
+    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.inner.delete_in_db(ctx, table, filters)
     }
 
     fn delete_collect_pks_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
-        self.inner.delete_collect_pks_in_db(db, table, filters)
+        self.inner.delete_collect_pks_in_db(ctx, table, filters)
     }
 
-    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        self.inner.delete_if_in_db(db, table, filter)
+    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.inner.delete_if_in_db(ctx, table, filter)
     }
 
     fn update_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        self.inner.update_in_db(db, table, filters, updates)
+        self.inner.update_in_db(ctx, table, filters, updates)
     }
 
     fn update_if_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        self.inner.update_if_in_db(db, table, filter, mutation)
+        self.inner.update_if_in_db(ctx, table, filter, mutation)
     }
 }
 

@@ -18,7 +18,7 @@ use sqlrustgo_parser::parser::{
     ShowStatement,
 };
 use sqlrustgo_parser::Expression;
-use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo, Value as StorageValue};
+use sqlrustgo_storage::{ColumnDefinition, SessionContext, StorageEngine, TableInfo, Value as StorageValue};
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_grant(&mut self, grant: &GrantStatement) -> SqlResult<ExecutorResult> {
@@ -542,7 +542,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 n
             }
             Some(d) => {
-                let mut n = storage.list_tables_in_db(d);
+                let mut n = storage.list_tables_in_db(&SessionContext::new(d, 0));
                 n.extend(views_for(d));
                 n
             }
@@ -659,7 +659,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 n
             }
             Some(d) => {
-                let mut n = storage.list_tables_in_db(d);
+                let mut n = storage.list_tables_in_db(&SessionContext::new(d, 0));
                 n.extend(views_for(d));
                 n
             }
@@ -739,7 +739,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let storage = self.storage.read();
         let names = match db {
             None => storage.list_tables(),
-            Some(d) => storage.list_tables_in_db(d),
+            Some(d) => storage.list_tables_in_db(&SessionContext::new(d, 0)),
         };
         let mut rows = Vec::new();
         for name in &names {
@@ -1442,11 +1442,11 @@ fn table_status_row<S: StorageEngine + 'static>(
     let (row_count, column_count) = match db {
         Some(d) => (
             storage
-                .scan_in_db(d, name)
+                .scan_in_db(&SessionContext::new(d, 0), name)
                 .map(|r| r.len() as i64)
                 .unwrap_or(0),
             storage
-                .get_table_info_in(d, name)
+                .get_table_info_in(&SessionContext::new(d, 0), name)
                 .map(|i| i.columns.len() as i64)
                 .unwrap_or(0),
         ),

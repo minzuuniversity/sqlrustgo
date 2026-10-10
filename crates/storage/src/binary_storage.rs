@@ -3,6 +3,7 @@
 //! Fast binary format for table storage, replacing JSON.
 
 use crate::engine::{
+    SessionContext,
     ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
     TableData, TableInfo, TriggerInfo, Value,
 };
@@ -701,21 +702,21 @@ impl StorageEngine for BoxStorageEngine {
     /// entries per statement. The replayed one carried the database name
     /// and the other did not, and the nameless one was then skipped as
     /// unrecoverable, leaving `skipped_entries` non-zero on every restart.
-    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        (**self).insert_in_db(db, table, records)
+    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        (**self).insert_in_db(ctx, table, records)
     }
     fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
         (**self).force_insert(table, record)
     }
-    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
-        (**self).force_insert_in_db(db, table, record)
+    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        (**self).force_insert_in_db(ctx, table, record)
     }
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         (**self).delete(table, filters)
     }
     /// #5192: see [`Self::insert_in_db`] — the same double-logging applies.
-    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        (**self).delete_in_db(db, table, filters)
+    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        (**self).delete_in_db(ctx, table, filters)
     }
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         (**self).delete_if(table, filter)
@@ -723,12 +724,12 @@ impl StorageEngine for BoxStorageEngine {
     /// #5192: see [`Self::insert_in_db`] — the same double-logging applies.
     fn update_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        (**self).update_in_db(db, table, filters, updates)
+        (**self).update_in_db(ctx, table, filters, updates)
     }
     fn update(
         &mut self,
@@ -879,8 +880,8 @@ impl StorageEngine for BoxStorageEngine {
     /// outermost layer between the engine and the real storage, so a
     /// default here (`let _ = db`) discards the connection's database on
     /// the way in.
-    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        (**self).scan_in_tx_db(db, table, reader_tx)
+    fn scan_in_tx_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        (**self).scan_in_tx_db(ctx, table)
     }
 
     /// #4974: same forwarding obligation for the predicate variant.

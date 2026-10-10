@@ -19,6 +19,7 @@
 //! counter.
 
 use crate::engine::{
+    SessionContext,
     ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
     TriggerInfo, Value,
 };
@@ -419,7 +420,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
         // #5105: keep the transaction and resolve the database the way the
         // rest of this impl does, so both halves come from the same place.
-        self.scan_in_tx_db(&self.inner.current_db(), table, reader_tx)
+        let db = self.inner.current_db();
+        self.scan_in_tx_db(&SessionContext::new(db, reader_tx), table)
     }
 
     /// #5105: snapshot read of `(db, table)` on behalf of `reader_tx`.
@@ -435,16 +437,16 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// reaching `scan_in` directly kept both. See
     /// `tests/mvcc_reader_tx_5105.rs`, which goes through
     /// `ExecutionEngine` and fails without this.
-    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        let mvcc = self.mvcc_table_in(db, table);
+    fn scan_in_tx_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        let mvcc = self.mvcc_table_in(&ctx.db, table);
         // #4974: reuse the snapshot bound at BEGIN. An unbound reader
-        // (autocommit, `reader_tx == 0`) still takes a fresh one, so READ
+        // (autocommit, `ctx.reader_tx == 0`) still takes a fresh one, so READ
         // COMMITTED behaviour is unchanged for it.
-        let snapshot_ts = match self.reader_snapshots.read().get(&reader_tx) {
-            Some(ts) if reader_tx != 0 => *ts,
+        let snapshot_ts = match self.reader_snapshots.read().get(&ctx.reader_tx) {
+            Some(ts) if ctx.reader_tx != 0 => *ts,
             _ => mvcc.begin_snapshot(),
         };
-        let pairs = mvcc.scan_visible(snapshot_ts, reader_tx);
+        let pairs = mvcc.scan_visible(snapshot_ts, ctx.reader_tx);
         let mut out: Vec<Record> = pairs.into_iter().map(|(_, row)| row).collect();
 
         // Merge in rows the inner engine holds that MVCC has no visible
@@ -457,14 +459,14 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // merge hands an uncommitted write straight back to a reader
         // that `scan_visible` had correctly filtered out.
         //
-        // #5105: both the pending set and the inner scan name `db`. They
+        // #5105: both the pending set and the inner scan name `ctx.db`. They
         // read the same rows this method is deciding the visibility of;
         // pulling either from a different database would merge rows this
         // transaction has no business seeing.
         let pending: std::collections::HashSet<crate::engine::Value> =
-            self.pending_keys_in(db, table, reader_tx);
-        let inner_rows = self.inner.scan_in_db(db, table)?;
-        if !self.snapshot_bound(reader_tx) && inner_rows.len() > out.len() {
+            self.pending_keys_in(&ctx.db, table, ctx.reader_tx);
+        let inner_rows = self.inner.scan_in_db(ctx, table)?;
+        if !self.snapshot_bound(ctx.reader_tx) && inner_rows.len() > out.len() {
             let mut present: std::collections::HashSet<crate::engine::Value> =
                 out.iter().filter_map(|r| r.first().cloned()).collect();
             for row in inner_rows {
@@ -538,8 +540,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// The inner storage already scopes correctly, so delegate rather than
     /// re-deriving the MVCC lookup here: the wrapper's job is to name the
     /// database, not to reimplement the scan.
-    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
-        self.inner.scan_in_db(db, table)
+    fn scan_in_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_db(ctx, table)
     }
 
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
@@ -632,7 +634,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // the inner write and the MVCC version chain both land in the
         // database this statement targets.
         let db = self.inner.current_db();
-        self.insert_in_db(&db, table, records)
+        self.insert_in_db(&SessionContext::new(db, 0), table, records)
     }
 
     /// #5192: database-qualified insert.
@@ -640,11 +642,11 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// The trait default (`engine.rs:1424`) drops `db` and forwards to
     /// `insert`, which resolves against the storage's *current* database
     /// instead of the one the caller named.
-    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
         // First, write to the inner engine.
-        self.inner.insert_in_db(db, table, records.clone())?;
+        self.inner.insert_in_db(ctx, table, records.clone())?;
         // Then, append to the MVCC chain under the next snapshot.
-        let mvcc = self.mvcc_table_in(db, table);
+        let mvcc = self.mvcc_table_in(&ctx.db, table);
         for row in records {
             if row.is_empty() {
                 continue;
@@ -1107,8 +1109,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     //
     // `FileStorage` implements all of them correctly; a wrapper's job is
     // to name the database, not to reimplement the operation.
-    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
-        self.inner().list_tables_in_db(db)
+    fn list_tables_in_db(&self, ctx: &SessionContext) -> Vec<String> {
+        self.inner().list_tables_in_db(ctx)
     }
 
     /// #5192: table metadata for a stated database.
@@ -1126,92 +1128,92 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     ///
     /// (the message prints the two arguments — `aud` is the database, `t`
     /// the table — which reads like one mangled name; it is not.)
-    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
-        self.inner().get_table_info_in(db, table)
+    fn get_table_info_in(&self, ctx: &SessionContext, table: &str) -> SqlResult<TableInfo> {
+        self.inner().get_table_info_in(ctx, table)
     }
 
     fn scan_with_filter_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        self.inner().scan_with_filter_in_db(db, table, filter)
+        self.inner().scan_with_filter_in_db(ctx, table, filter)
     }
 
     fn scan_with_index_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
         self.inner()
-            .scan_with_index_in_db(db, table, index_name, key)
+            .scan_with_index_in_db(ctx, table, index_name, key)
     }
 
     fn parallel_scan_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         num_partitions: usize,
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        self.inner().parallel_scan_in_db(db, table, num_partitions)
+        self.inner().parallel_scan_in_db(ctx, table, num_partitions)
     }
 
-    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
-        self.inner_mut().create_table_in_db(db, info)
+    fn create_table_in_db(&mut self, ctx: &SessionContext, info: &TableInfo) -> SqlResult<()> {
+        self.inner_mut().create_table_in_db(ctx, info)
     }
 
-    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
-        self.inner_mut().drop_table_in_db(db, table)
+    fn drop_table_in_db(&mut self, ctx: &SessionContext, table: &str) -> SqlResult<()> {
+        self.inner_mut().drop_table_in_db(ctx, table)
     }
 
-    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
-        self.inner_mut().force_insert_in_db(db, table, record)
+    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.inner_mut().force_insert_in_db(ctx, table, record)
     }
 
-    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        self.inner_mut().delete_in_db(db, table, filters)
+    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.inner_mut().delete_in_db(ctx, table, filters)
     }
 
     fn delete_collect_pks_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
         self.inner_mut()
-            .delete_collect_pks_in_db(db, table, filters)
+            .delete_collect_pks_in_db(ctx, table, filters)
     }
 
-    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        self.inner_mut().delete_if_in_db(db, table, filter)
+    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.inner_mut().delete_if_in_db(ctx, table, filter)
     }
 
     fn update_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        self.inner_mut().update_in_db(db, table, filters, updates)
+        self.inner_mut().update_in_db(ctx, table, filters, updates)
     }
 
     fn update_if_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
         self.inner_mut()
-            .update_if_in_db(db, table, filter, mutation)
+            .update_if_in_db(ctx, table, filter, mutation)
     }
 
-    fn has_table_in(&self, db: &str, table: &str) -> bool {
-        self.inner().has_table_in(db, table)
+    fn has_table_in(&self, ctx: &SessionContext, table: &str) -> bool {
+        self.inner().has_table_in(ctx, table)
     }
 }
 

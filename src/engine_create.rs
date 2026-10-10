@@ -18,7 +18,7 @@ use sqlrustgo_storage::clustered_table::ClusteredTable;
 use sqlrustgo_storage::engine::{
     CheckConstraint, ForeignKeyAction, ForeignKeyConstraint, UniqueConstraint,
 };
-use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};
+use sqlrustgo_storage::{ColumnDefinition, SessionContext, StorageEngine, TableInfo};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -179,7 +179,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     collations: std::collections::HashMap::new(),
                     original_sql: original_sql.clone(),
                 };
-                storage.create_table_in_db(&self.session_db(), &info)?;
+                storage.create_table_in_db(&SessionContext::new(self.session_db(), 0), &info)?;
                 return Ok(ExecutorResult::new(vec![], 0));
             }
 
@@ -195,7 +195,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 collations: std::collections::HashMap::new(),
                 original_sql,
             };
-            storage.create_table_in_db(&self.session_db(), &info)?;
+            storage.create_table_in_db(&SessionContext::new(self.session_db(), 0), &info)?;
             // V400-02 (V4): see top-level hook.
             if create.name.starts_with("vec_") {
                 storage.mark_vector_table(&create.name);
@@ -203,8 +203,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
             // Insert rows from SELECT result
             let insert_count = if !select_result.rows.is_empty() {
-                storage.insert_in_db(
-                    &self.session_db(),
+                storage.insert_in_db(&SessionContext::new(self.session_db(), 0),
                     &create.name,
                     select_result.rows.clone(),
                 )?;
@@ -404,8 +403,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Create ClusteredTable
             let ct = ClusteredTable::new(info.clone(), pk_col_idx);
             // Also register with Heap so other code paths (catalog, schema checks) find it
-            storage.create_table_in_db(
-                &self.session_db(),
+            storage.create_table_in_db(&SessionContext::new(self.session_db(), 0),
                 &TableInfo {
                     name: info.name.clone(),
                     columns,
@@ -423,7 +421,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .insert(create.name.clone(), Arc::new(parking_lot::RwLock::new(ct)));
             return Ok(ExecutorResult::empty());
         }
-        storage.create_table_in_db(&self.session_db(), &info)?;
+        storage.create_table_in_db(&SessionContext::new(self.session_db(), 0), &info)?;
         // V400-02 / Issue #3730 (V4): when the new table name
         // follows the `vec_` convention used by
         // `crates/vector::VectorStore::register_column`, mark it

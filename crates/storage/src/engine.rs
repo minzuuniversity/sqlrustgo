@@ -1039,6 +1039,45 @@ pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
 
 /// StorageEngine trait - abstraction for table storage
 /// Enables multiple storage backends (FileStorage, MemoryStorage, etc.)
+    /// #5057: the database this connection selected with `USE`, plus the
+/// reading transaction id, bundled into one value passed explicitly to
+/// every table operation.
+///
+/// Why an explicit parameter rather than a stored field: the storage is
+/// shared by every connection, so any stored "current database" belongs
+/// to whichever wrote last, not to whoever is reading. Measured under
+/// concurrent switching, a stored `current_db` misdirected **53.76%** of
+/// statements — not a rare interleaving but the common case.
+///
+/// `reader_tx` is the same question for the transaction id (#4951
+/// `scan_in`), and `db` is the same question for the database (#5025
+/// `current_db`). Both live here so a call site cannot forget one without
+/// a compile error.
+#[derive(Debug, Clone)]
+pub struct SessionContext {
+    /// The database this connection selected (`USE` / handshake / `COM_INIT_DB`).
+    pub db: String,
+    /// The reading transaction id, or 0 outside a transaction (#4951).
+    pub reader_tx: u64,
+}
+
+impl SessionContext {
+    /// Create a new `SessionContext` for the given database and reading
+    /// transaction. `reader_tx` of 0 means "outside a transaction".
+    pub fn new(db: impl Into<String>, reader_tx: u64) -> Self {
+        Self {
+            db: db.into(),
+            reader_tx,
+        }
+    }
+
+    /// The default session context: database `default`, no transaction.
+    pub fn default_db() -> Self {
+        Self::new(DEFAULT_DATABASE, 0)
+    }
+}
+
+
 pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
     /// Phase B Step 4.2: O(log N) primary-key lookup. Returns the
@@ -1236,7 +1275,7 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
-    /// #5025: the database subsequent table operations resolve against.
+/// #5025: the database subsequent table operations resolve against.
     ///
     /// `USE <db>` used to be an accepted no-op, so every database shared
     /// one table namespace. Storing the name here lets table lookup be
@@ -1309,10 +1348,10 @@ pub trait StorageEngine: Send + Sync {
     /// "the storage is shared by every connection, so any stored 'current
     /// transaction' is whichever wrote last, not whoever is reading". The
     /// database is no different, so it takes the same shape.
-    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
-        let _ = db;
-        self.get_table_info(table)
-    }
+    fn get_table_info_in(&self, ctx: &SessionContext, table: &str) -> SqlResult<TableInfo> {
+            let _ = ctx;
+            self.get_table_info(table)
+        }
 
     /// #5025: `list_tables` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
@@ -1323,22 +1362,22 @@ pub trait StorageEngine: Send + Sync {
     /// current database. Backends without a per-database table namespace
     /// defer to the current-database listing; the ones that scope keys
     /// override.
-    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
-        let _ = db;
+    fn list_tables_in_db(&self, ctx: &SessionContext) -> Vec<String> {
+        let _ = ctx;
         self.list_tables()
     }
 
     /// #5057 / #5025: `scan` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
-    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
-        let _ = db;
+    fn scan_in_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        let _ = ctx;
         self.scan(table)
     }
 
     /// #5057 / #5025: `has_table` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
-    fn has_table_in(&self, db: &str, table: &str) -> bool {
-        let _ = db;
+    fn has_table_in(&self, ctx: &SessionContext, table: &str) -> bool {
+        let _ = ctx;
         self.has_table(table)
     }
 
@@ -1366,11 +1405,11 @@ pub trait StorageEngine: Send + Sync {
     /// #5057: `scan_with_filter` against a stated database.
     fn scan_with_filter_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        let _ = db;
+        let _ = ctx;
         self.scan_with_filter(table, filter)
     }
 
@@ -1378,13 +1417,12 @@ pub trait StorageEngine: Send + Sync {
     /// reading transaction and the database are supplied by the caller.
     fn scan_with_filter_in_tx_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
-        reader_tx: u64,
     ) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan_with_filter_in(table, filter, reader_tx)
+        let _ = ctx;
+        self.scan_with_filter_in(table, filter, ctx.reader_tx)
     }
 
     /// #5057: `scan_in` against a stated database — both the reading
@@ -1392,104 +1430,101 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// `MvccStorage` needs both: `db` selects the table namespace, `reader_tx`
     /// selects which versions are visible.
-    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan_in(table, reader_tx)
+    fn scan_in_tx_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        let _ = ctx;
+        self.scan_in(table, ctx.reader_tx)
     }
 
     /// #5057: `scan_with_index` against a stated database.
     fn scan_with_index_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
-        let _ = db;
+        let _ = ctx;
         self.scan_with_index(table, index_name, key)
     }
 
     /// #5057: `parallel_scan` against a stated database.
     fn parallel_scan_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         num_partitions: usize,
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        let _ = db;
+        let _ = ctx;
         self.parallel_scan(table, num_partitions)
     }
 
     /// #5057: `insert` into a stated database.
-    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let _ = db;
+    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        let _ = ctx;
         self.insert(table, records)
     }
 
     /// #5057: `force_insert` into a stated database.
-    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
-        // Route through `insert_in_db` rather than dropping `db`: an engine
-        // that only implements `insert_in_db` would still lose the scope
-        // here, which is how this stayed broken after `insert_in_db` landed.
-        self.insert_in_db(db, table, vec![record])
+    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.insert_in_db(ctx, table, vec![record])
     }
 
     /// #5057: `delete` within a stated database.
-    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        let _ = db;
+    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        let _ = ctx;
         self.delete(table, filters)
     }
 
     /// #5057: `delete_collect_pks` within a stated database.
     fn delete_collect_pks_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
-        let _ = db;
+        let _ = ctx;
         self.delete_collect_pks(table, filters)
     }
 
     /// #5057: `delete_if` within a stated database.
-    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        let _ = db;
+    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        let _ = ctx;
         self.delete_if(table, filter)
     }
 
     /// #5057: `update` within a stated database.
     fn update_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        let _ = db;
+        let _ = ctx;
         self.update(table, filters, updates)
     }
 
     /// #5057: `update_if` within a stated database.
     fn update_if_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        let _ = db;
+        let _ = ctx;
         self.update_if(table, filter, mutation)
     }
 
     /// #5057: `create_table` within a stated database.
-    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
-        let _ = db;
+    fn create_table_in_db(&mut self, ctx: &SessionContext, info: &TableInfo) -> SqlResult<()> {
+        let _ = ctx;
         self.create_table(info)
     }
 
     /// #5057: `drop_table` within a stated database.
-    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
-        let _ = db;
+    fn drop_table_in_db(&mut self, ctx: &SessionContext, table: &str) -> SqlResult<()> {
+        let _ = ctx;
         self.drop_table(table)
     }
 
@@ -2884,11 +2919,11 @@ impl StorageEngine for MemoryStorage {
     /// #5057: `scan_with_filter` against a stated database.
     fn scan_with_filter_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        self.scan_with_filter_in_key(table, scoped_key(db, table), filter)
+        self.scan_with_filter_in_key(table, scoped_key(&ctx.db, table), filter)
     }
 
     fn scan_with_index(
@@ -2944,13 +2979,13 @@ impl StorageEngine for MemoryStorage {
     /// whichever database happens to be stored.
     fn scan_with_index_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
         let table_lower = table.to_lowercase();
-        let table_key = scoped_key(db, &table_lower);
+        let table_key = scoped_key(&ctx.db, &table_lower);
         let index_key = (table_key.clone(), index_name.to_lowercase());
         if !self.indexes.contains(&index_key) {
             return Err(SqlError::ExecutionError(format!(
@@ -2958,7 +2993,7 @@ impl StorageEngine for MemoryStorage {
                 index_name, table
             )));
         }
-        let rows = self.scan_in_db(db, &table_lower)?;
+        let rows = self.scan_in_db(ctx, &table_lower)?;
         let col_idx = self.table_infos.get(&table_key).and_then(|info| {
             info.columns
                 .iter()
@@ -3058,8 +3093,8 @@ impl StorageEngine for MemoryStorage {
     }
 
     /// #5057: `insert` into a stated database.
-    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        self.insert_in_key(table, scoped_key(db, table), records)
+    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        self.insert_in_key(table, scoped_key(&ctx.db, table), records)
     }
 
     /// #5057: `insert` with the storage key already resolved.
@@ -3074,8 +3109,8 @@ impl StorageEngine for MemoryStorage {
     }
 
     /// #5057: `delete` against a stated database.
-    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        self.delete_in_key(table, scoped_key(db, table), filters)
+    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.delete_in_key(table, scoped_key(&ctx.db, table), filters)
     }
 
     /// Phase B Step 4.1: collect primary keys (column 0) of deleted rows
@@ -3091,11 +3126,11 @@ impl StorageEngine for MemoryStorage {
     /// #5057: `delete_collect_pks` against a stated database.
     fn delete_collect_pks_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
-        self.delete_collect_pks_in_key(table, scoped_key(db, table), filters)
+        self.delete_collect_pks_in_key(table, scoped_key(&ctx.db, table), filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
@@ -3104,8 +3139,8 @@ impl StorageEngine for MemoryStorage {
     }
 
     /// #5057: `delete_if` against a stated database.
-    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        self.delete_if_in_key(table, scoped_key(db, table), filter)
+    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.delete_if_in_key(table, scoped_key(&ctx.db, table), filter)
     }
 
     fn update(
@@ -3121,12 +3156,12 @@ impl StorageEngine for MemoryStorage {
     /// #5057: `update` against a stated database.
     fn update_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        self.update_in_key(table, scoped_key(db, table), filters, updates)
+        self.update_in_key(table, scoped_key(&ctx.db, table), filters, updates)
     }
 
     /// #5057: `update` with the storage key already resolved.
@@ -3143,12 +3178,12 @@ impl StorageEngine for MemoryStorage {
     /// #5057: `update_if` against a stated database.
     fn update_if_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        self.update_if_in_key(table, scoped_key(db, table), filter, mutation)
+        self.update_if_in_key(table, scoped_key(&ctx.db, table), filter, mutation)
     }
 
     /// #5057: `update_if` with the storage key already resolved.
@@ -3192,18 +3227,18 @@ impl StorageEngine for MemoryStorage {
     /// #5057: resolve against the stated database rather than the stored
     /// one, so a concurrent `USE` on another connection cannot redirect a
     /// read that is already in flight.
-    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+    fn get_table_info_in(&self, ctx: &SessionContext, table: &str) -> SqlResult<TableInfo> {
         self.table_infos
-            .get(&scoped_key(db, table))
+            .get(&scoped_key(&ctx.db, table))
             .cloned()
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))
     }
 
-    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+    fn scan_in_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
         // #4948: see `scan` — unwrap the `Arc` back to owned rows.
         Ok(self
             .tables
-            .get(&scoped_key(db, table))
+            .get(&scoped_key(&ctx.db, table))
             .map(|rows| (**rows).clone())
             .unwrap_or_default())
     }
@@ -3219,17 +3254,12 @@ impl StorageEngine for MemoryStorage {
     /// #5057 `_in_db` family `MemoryStorage` had not overridden).
     /// `reader_tx` is dropped the same way `scan_in`'s default drops it:
     /// `MemoryStorage` carries no MVCC visibility.
-    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        let _ = reader_tx;
-        Ok(self
-            .tables
-            .get(&scoped_key(db, table))
-            .map(|rows| (**rows).clone())
-            .unwrap_or_default())
+    fn scan_in_tx_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        self.scan_in_db(ctx, table)
     }
 
-    fn has_table_in(&self, db: &str, table: &str) -> bool {
-        self.table_infos.contains_key(&scoped_key(db, table))
+    fn has_table_in(&self, ctx: &SessionContext, table: &str) -> bool {
+        self.table_infos.contains_key(&scoped_key(&ctx.db, table))
     }
 
     fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
@@ -3250,13 +3280,13 @@ impl StorageEngine for MemoryStorage {
     }
 
     /// #5057: `create_table` within a stated database.
-    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
-        self.create_table_in_key(info, scoped_key(db, &info.name))
+    fn create_table_in_db(&mut self, ctx: &SessionContext, info: &TableInfo) -> SqlResult<()> {
+        self.create_table_in_key(info, scoped_key(&ctx.db, &info.name))
     }
 
     /// #5057: `drop_table` against a stated database.
-    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
-        self.drop_table_in_key(table, scoped_key(db, table))
+    fn drop_table_in_db(&mut self, ctx: &SessionContext, table: &str) -> SqlResult<()> {
+        self.drop_table_in_key(table, scoped_key(&ctx.db, table))
     }
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo> {
@@ -3293,8 +3323,8 @@ impl StorageEngine for MemoryStorage {
 
     /// #5025: `list_tables` for a stated database, without touching
     /// `current_db` (see the trait method's doc for why).
-    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
-        let prefix = format!("{}\u{1}", db.to_lowercase());
+    fn list_tables_in_db(&self, ctx: &SessionContext) -> Vec<String> {
+        let prefix = format!("{}\u{1}", ctx.db.to_lowercase());
         self.table_infos
             .iter()
             .filter_map(|(key, info)| key.strip_prefix(&prefix).map(|_| info.name.clone()))
@@ -3697,11 +3727,11 @@ impl StorageEngine for MemoryStorage {
     /// #5057: `parallel_scan` against a stated database.
     fn parallel_scan_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         num_partitions: usize,
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        self.parallel_scan_in_key(table, scoped_key(db, table), num_partitions)
+        self.parallel_scan_in_key(table, scoped_key(&ctx.db, table), num_partitions)
     }
 
     fn as_any(&self) -> &dyn Any {

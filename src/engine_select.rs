@@ -25,7 +25,7 @@ use sqlrustgo_parser::{
     IndexHintType, JoinClause as ParserJoinClause, JoinType, SelectColumn, SelectStatement,
     Statement,
 };
-use sqlrustgo_storage::{StorageEngine, TableInfo};
+use sqlrustgo_storage::{SessionContext, StorageEngine, TableInfo};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -1093,7 +1093,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // alias, fall back to the row width.
                 let inner_table = &ws.select.table;
                 let storage = self.storage_read();
-                match storage.get_table_info_in(&current_db, inner_table) {
+                match storage.get_table_info_in(&SessionContext::new(current_db.clone(), 0), inner_table) {
                     Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
                     Err(_) => {
                         // Fallback: synthesise col_<i> from row width.
@@ -1196,7 +1196,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     } else if !inner.table.is_empty() {
                         // Inner references a real storage table.
                         let storage = self.storage_read();
-                        match storage.get_table_info_in(&current_db, &inner.table) {
+                        match storage.get_table_info_in(&SessionContext::new(current_db.clone(), 0), &inner.table) {
                             Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
                             Err(_) => {
                                 let width = sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
@@ -1210,7 +1210,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 } else if !subq.table.is_empty() {
                     // Fallback: try the materialised's own `table`.
                     let storage = self.storage_read();
-                    match storage.get_table_info_in(&current_db, &subq.table) {
+                    match storage.get_table_info_in(&SessionContext::new(current_db.clone(), 0), &subq.table) {
                         Ok(info) => info.columns.iter().map(|c| c.name.clone()).collect(),
                         Err(_) => {
                             let width = sub_result.rows.first().map(|r| r.len()).unwrap_or(0);
@@ -1410,7 +1410,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // (HashMap lookup on `Arc<RwLock>` metadata) and the same
             // `table_info` is reused by the binding / projection code
             // below.
-            let table_info = storage.get_table_info_in(&base_db, lookup_table)?;
+            let table_info = storage.get_table_info_in(&SessionContext::new(base_db.clone(), 0), lookup_table)?;
             let pk_column = crate::engine_select_pk::resolve_pk_column(&table_info);
             // #4846: the fast path below skips `evaluate_where_clause`
             // entirely and returns the scanned row unfiltered, so it is
@@ -1493,8 +1493,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // the PK-vs-`sql_compare` divergence of #4846 — where an
                 // index seek and a filtered scan disagree on PAD SPACE —
                 // cannot be reached through here.
-                match storage.scan_with_index_in_db(
-                    &current_db,
+                match storage.scan_with_index_in_db(&SessionContext::new(current_db.clone(), 0),
                     lookup_table,
                     &idx_column,
                     &idx_value,
@@ -3638,7 +3637,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 if matches!(hint.hint_type, IndexHintType::UseIndex) {
                     for idx_name in &hint.index_names {
                         // Try scan_with_index; fall back to full scan if not supported
-                        let table_info = storage.get_table_info_in(&current_db, table).ok();
+                        let table_info = storage.get_table_info_in(&SessionContext::new(current_db.clone(), 0), table).ok();
                         if let Some(ref info) = table_info {
                             // Find the column for this index
                             if let Some(_col_idx) = info
@@ -3815,7 +3814,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // '%BRASS'`) this collapses 20K part rows to ~400 rows
         // before any join work, avoiding the full 5-table join
         // explosion downstream.
-        let raw_info = storage.get_table_info_in(&current_db, &base_table)?;
+        let raw_info = storage.get_table_info_in(&SessionContext::new(current_db.clone(), 0), &base_table)?;
         let mut table_info = if base_alias.is_some() {
             // Wrap the base columns in alias-prefixed names.
             let mut new_info = raw_info.clone();
@@ -4199,7 +4198,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 if let Some(col_stripped) = col_name.strip_prefix(prefix) {
                     // Verify the table is in join_tables and has this column.
                     if join_tables.iter().any(|(_, a)| a == alias) {
-                        if let Ok(info) = storage.get_table_info_in(&current_db, alias) {
+                        if let Ok(info) = storage.get_table_info_in(&SessionContext::new(current_db.clone(), 0), alias) {
                             let has_col = info.columns.iter().any(|c| {
                                 let bare_c = c
                                     .name
@@ -4217,7 +4216,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Fallback: scan tables; return None on ambiguity (original behaviour).
             let mut found: Option<&str> = None;
             for (bare, alias) in &join_tables {
-                if let Ok(info) = storage.get_table_info_in(&current_db, bare) {
+                if let Ok(info) = storage.get_table_info_in(&SessionContext::new(current_db.clone(), 0), bare) {
                     let has_col = info.columns.iter().any(|c| {
                         let bare_c = c
                             .name
@@ -4394,7 +4393,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // `nation n1`). Load its rows/columns fresh from storage
                 // and seed `acc_*` from there.
                 let start_info = storage
-                    .get_table_info_in(&current_db, start_bare)
+                    .get_table_info_in(&SessionContext::new(current_db.clone(), 0), start_bare)
                     .ok()?
                     .clone();
                 // #4974: carry this connection's reader_tx into the scan.
@@ -4489,7 +4488,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let prev_idx = prev_offset + prev_local_idx;
             let cur_bare = &cur.0;
             let cur_info = storage
-                .get_table_info_in(&current_db, cur_bare)
+                .get_table_info_in(&SessionContext::new(current_db.clone(), 0), cur_bare)
                 .ok()?
                 .clone();
             let cur_idx = cur_info
@@ -4592,7 +4591,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 base_info.clone()
             } else {
                 storage
-                    .get_table_info_in(&current_db, &chain_order[0].0)
+                    .get_table_info_in(&SessionContext::new(current_db.clone(), 0), &chain_order[0].0)
                     .ok()?
                     .clone()
             };
@@ -4601,7 +4600,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let info = if bare == &base_bare && alias.as_str() == effective_base_alias {
                 base_info.clone()
             } else {
-                storage.get_table_info_in(&current_db, bare).ok()?.clone()
+                storage.get_table_info_in(&SessionContext::new(current_db.clone(), 0), bare).ok()?.clone()
             };
             for c in &info.columns {
                 joined_info
@@ -4869,7 +4868,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // schema prefix when the comma list qualified it,
                 // `current_db` otherwise (unchanged behaviour).
                 self.scan_for_reader_in_db(storage, &right_db, &right_table_name)?,
-                storage.get_table_info_in(&right_db, &right_table_name)?,
+                storage.get_table_info_in(&SessionContext::new(right_db.clone(), 0), &right_table_name)?,
             )
         };
 
@@ -6226,7 +6225,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 if bare.is_empty() {
                     continue;
                 }
-                if let Ok(info) = storage.get_table_info_in(&current_db, bare) {
+                if let Ok(info) = storage.get_table_info_in(&SessionContext::new(current_db.clone(), 0), bare) {
                     for c in &info.columns {
                         cols.insert(c.name.to_lowercase());
                     }

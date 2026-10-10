@@ -1,5 +1,6 @@
 use crate::checkpoint::{CheckpointManager, CheckpointMetadata};
 use crate::engine::{
+    SessionContext,
     ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
     TriggerInfo, Value,
 };
@@ -561,8 +562,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// so an engine reading through this wrapper resolves the table
     /// against the inner storage's shared `current_db` — the connection
     /// isolation this path exists to provide is lost at the wrapper.
-    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        self.inner().scan_in_tx_db(db, table, reader_tx)
+    fn scan_in_tx_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner().scan_in_tx_db(ctx, table)
     }
 
     /// #4974: same forwarding obligation for the predicate variant.
@@ -602,7 +603,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // #5192: the unscoped entry point records the storage's current
         // database, matching the `insert` below it.
         let db = self.inner().current_db();
-        self.insert_in_db(&db, table, records)
+        self.insert_in_db(&SessionContext::new(db, 0), table, records)
     }
 
     /// #5192: WAL-logged insert that names the target database explicitly.
@@ -613,7 +614,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// to be current instead of the one it wrote to. On replay that put the
     /// row in the wrong database, or skipped it as "table not found" while
     /// the server started and accepted writes.
-    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
         let table_id = Self::table_name_to_id(table);
         // P1 fix (issue #3013): batched WAL write to avoid N fsyncs.
         // Default WalManager config does per-record flush (batch_mode=false),
@@ -633,7 +634,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             let prev_threshold = self.wal.lock().flush_threshold();
             self.wal.lock().set_batch_mode(true);
             self.wal.lock().set_flush_threshold(usize::MAX);
-            let db_name = db.to_string();
+            let db_name = ctx.db.to_string();
             let result: SqlResult<()> = (|| {
                 for record in &records {
                     let key = Self::record_key(record);
@@ -650,14 +651,14 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             }
             result?;
         } else {
-            let db_name = db.to_string();
+            let db_name = ctx.db.to_string();
             for record in &records {
                 let key = Self::record_key(record);
                 let data = Self::record_to_bytes(record);
                 self.log_insert(table_id, Some(table), Some(&db_name), key, data)?;
             }
         }
-        self.inner_mut().insert_in_db(db, table, records)
+        self.inner_mut().insert_in_db(ctx, table, records)
     }
 
     /// #5192: read against a stated database.
@@ -680,8 +681,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     ///
     /// The same four lines against `FileStorage` alone return 1 row, which
     /// is how the wrapper was isolated from the engine underneath it.
-    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
-        self.inner().scan_in_db(db, table)
+    fn scan_in_db(&self, ctx: &SessionContext, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner().scan_in_db(ctx, table)
     }
 
     /// #5192: create a table in a stated database.
@@ -706,8 +707,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// No crash and no restart required — `flush()` is ordinary
     /// maintenance, so every write made while another database was
     /// selected evaporated at the next checkpoint.
-    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
-        self.inner_mut().create_table_in_db(db, info)
+    fn create_table_in_db(&mut self, ctx: &SessionContext, info: &TableInfo) -> SqlResult<()> {
+        self.inner_mut().create_table_in_db(ctx, info)
     }
 
     /// #5192: existence check against a stated database.
@@ -722,22 +723,22 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// Worth fixing for its own sake: an existence check that silently
     /// answers about a different database turns "the table is missing"
     /// into a wrong diagnosis for every caller that guards on it.
-    fn has_table_in(&self, db: &str, table: &str) -> bool {
-        self.inner().has_table_in(db, table)
+    fn has_table_in(&self, ctx: &SessionContext, table: &str) -> bool {
+        self.inner().has_table_in(ctx, table)
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         // #5192: the unscoped entry point records the storage's current
         // database, matching the `delete_in_db` below it.
         let db = self.inner().current_db();
-        self.delete_in_db(&db, table, filters)
+        self.delete_in_db(&SessionContext::new(db, 0), table, filters)
     }
 
     /// #5192: WAL-logged delete that names the target database explicitly.
     /// See [`Self::insert_in_db`] for why the trait default is not enough.
-    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
-        let db_name = db.to_string();
+        let db_name = ctx.db.to_string();
 
         // V4.0.0 / SOAK-hang fix: avoid O(N) inner.scan() under the exclusive
         // write lock held by execute_update (engine_dml.rs:857). See
@@ -760,7 +761,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         //    one row instead of N. The O(N) scan is required here for
         //    correctness, not performance.
         if filters.is_empty() {
-            let rows = self.inner().scan_in_db(db, table)?;
+            let rows = self.inner().scan_in_db(ctx, table)?;
             for row in &rows {
                 if Self::row_matches_filter(row, filters) {
                     let key = Self::record_key(row);
@@ -773,7 +774,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             self.log_delete(table_id, Some(table), Some(&db_name), key)?;
         }
 
-        self.inner_mut().delete_in_db(db, table, filters)
+        self.inner_mut().delete_in_db(ctx, table, filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
@@ -793,20 +794,20 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // #5192: the unscoped entry point records the storage's current
         // database, matching the `update_in_db` below it.
         let db = self.inner().current_db();
-        self.update_in_db(&db, table, filters, updates)
+        self.update_in_db(&SessionContext::new(db, 0), table, filters, updates)
     }
 
     /// #5192: WAL-logged update that names the target database explicitly.
     /// See [`Self::insert_in_db`] for why the trait default is not enough.
     fn update_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
-        let db_name = db.to_string();
+        let db_name = ctx.db.to_string();
 
         // B2.4 / #4915 (F-12): filter inside the storage engine instead
         // of materialising every row and then dropping most of them.
@@ -818,18 +819,18 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // where every row matches by definition.
         let rows_to_update: Vec<(Vec<u8>, Vec<Value>)> = if filters.is_empty() {
             self.inner()
-                .scan_in_db(db, table)?
+                .scan_in_db(ctx, table)?
                 .iter()
                 .map(|r| (Self::record_key(r), r.clone()))
                 .collect()
         } else {
             // #5192: `scan_with_filter_in` has no database-qualified form, so
             // filtering here would resolve against the storage's current
-            // database rather than `db`. Scan the stated database and filter
-            // here instead — the UPDATE applies to `db`, so that is the only
+            // database rather than `ctx.db`. Scan the stated database and filter
+            // here instead — the UPDATE applies to `ctx.db`, so that is the only
             // scope whose rows can match.
             self.inner()
-                .scan_in_db(db, table)?
+                .scan_in_db(ctx, table)?
                 .into_iter()
                 .filter(|r| Self::row_matches_filter(r, filters))
                 .map(|r| (Self::record_key(&r), r))
@@ -853,7 +854,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         }
 
         // Step 4: Call inner update (inner.update may be a stub, but we already logged)
-        let _ = self.inner_mut().update_in_db(db, table, filters, updates)?;
+        let _ = self.inner_mut().update_in_db(ctx, table, filters, updates)?;
 
         Ok(count)
     }
@@ -1491,8 +1492,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     //
     // `FileStorage` implements all of them correctly; a wrapper's job is
     // to name the database, not to reimplement the operation.
-    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
-        self.inner().list_tables_in_db(db)
+    fn list_tables_in_db(&self, ctx: &SessionContext) -> Vec<String> {
+        self.inner().list_tables_in_db(ctx)
     }
 
     /// #5192: table metadata for a stated database.
@@ -1510,70 +1511,70 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     ///
     /// (the message prints the two arguments — `aud` is the database, `t`
     /// the table — which reads like one mangled name; it is not.)
-    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
-        self.inner().get_table_info_in(db, table)
+    fn get_table_info_in(&self, ctx: &SessionContext, table: &str) -> SqlResult<TableInfo> {
+        self.inner().get_table_info_in(ctx, table)
     }
 
     fn scan_with_filter_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        self.inner().scan_with_filter_in_db(db, table, filter)
+        self.inner().scan_with_filter_in_db(ctx, table, filter)
     }
 
     fn scan_with_index_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
         self.inner()
-            .scan_with_index_in_db(db, table, index_name, key)
+            .scan_with_index_in_db(ctx, table, index_name, key)
     }
 
     fn parallel_scan_in_db(
         &self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         num_partitions: usize,
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        self.inner().parallel_scan_in_db(db, table, num_partitions)
+        self.inner().parallel_scan_in_db(ctx, table, num_partitions)
     }
 
-    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
-        self.inner_mut().drop_table_in_db(db, table)
+    fn drop_table_in_db(&mut self, ctx: &SessionContext, table: &str) -> SqlResult<()> {
+        self.inner_mut().drop_table_in_db(ctx, table)
     }
 
-    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
-        self.inner_mut().force_insert_in_db(db, table, record)
+    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.inner_mut().force_insert_in_db(ctx, table, record)
     }
 
     fn delete_collect_pks_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
         self.inner_mut()
-            .delete_collect_pks_in_db(db, table, filters)
+            .delete_collect_pks_in_db(ctx, table, filters)
     }
 
-    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        self.inner_mut().delete_if_in_db(db, table, filter)
+    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.inner_mut().delete_if_in_db(ctx, table, filter)
     }
 
     fn update_if_in_db(
         &mut self,
-        db: &str,
+        ctx: &SessionContext,
         table: &str,
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
         self.inner_mut()
-            .update_if_in_db(db, table, filter, mutation)
+            .update_if_in_db(ctx, table, filter, mutation)
     }
 }
 

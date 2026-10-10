@@ -21,7 +21,7 @@ use sqlrustgo_parser::transaction::IsolationLevel as ParserIsolationLevel;
 use sqlrustgo_parser::{
     DeleteStatement, SavepointOp, Statement, TransactionStatement, UpdateStatement,
 };
-use sqlrustgo_storage::StorageEngine;
+use sqlrustgo_storage::{SessionContext, StorageEngine};
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TxId};
 use std::sync::Arc;
 
@@ -107,7 +107,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // connection see another's uncommitted rows. `scan_in_tx_db`
         // carries both. `reader_tx` being computed and unused was the
         // whole bug in three lines.
-        storage.scan_in_tx_db(db, table, reader_tx)
+        storage.scan_in_tx_db(&SessionContext::new(db, reader_tx), table)
     }
 
     /// #5113: [`scan_for_reader_dyn`](Self::scan_for_reader_dyn) against a
@@ -125,7 +125,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         table: &str,
     ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
         let reader_tx = self.reader_tx();
-        storage.scan_in_tx_db(db, table, reader_tx)
+        storage.scan_in_tx_db(&SessionContext::new(db, reader_tx), table)
     }
 
     /// #4983: predicate variant of [`scan_for_reader`](Self::scan_for_reader).
