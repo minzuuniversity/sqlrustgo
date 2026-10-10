@@ -31,7 +31,8 @@
 //! mixture of bare and scoped table names. Fixing that needs the set scoped
 //! first; doing it here would write files under the wrong directory.
 
-use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, SessionContext, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 
 fn tbl(name: &str) -> TableInfo {
     TableInfo {
@@ -71,7 +72,10 @@ fn fresh() -> (tempfile::TempDir, FileStorage) {
 /// `scan_in_db`, which merges the write buffer, sidesteps it and asserts
 /// what these tests are about: which database the rows landed in.
 fn count(storage: &FileStorage, db: &str, table: &str) -> usize {
-    storage.scan_in_db(db, table).expect("scan").len()
+    storage
+        .scan_in_db(&SessionContext::new(db, 0), table)
+        .expect("scan")
+        .len()
 }
 
 /// Naming a database must route the rows there, whichever database the
@@ -81,17 +85,19 @@ fn issue_5057_insert_in_db_routes_to_the_named_database() {
     let (_tmp, mut s) = fresh();
     s.create_database("d1").expect("create d1");
     s.create_database("d2").expect("create d2");
-
-    s.set_current_db("d1").expect("switch to d1");
-    s.create_table(&tbl("shared")).expect("create in d1");
-    s.set_current_db("d2").expect("switch to d2");
-    s.create_table(&tbl("shared")).expect("create in d2");
+    s.create_table_in_db(&SessionContext::new("d1", 0), &tbl("shared"))
+        .expect("create in d1");
+    s.create_table_in_db(&SessionContext::new("d2", 0), &tbl("shared"))
+        .expect("create in d2");
     // Leave the storage's current database on d1, so the named insert
     // below has to route to d2 by itself.
-    s.set_current_db("d1").expect("switch back to d1");
 
-    s.insert_in_db("d2", "shared", vec![vec![Value::Integer(1)]])
-        .expect("insert naming d2");
+    s.insert_in_db(
+        &SessionContext::new("d2", 0),
+        "shared",
+        vec![vec![Value::Integer(1)]],
+    )
+    .expect("insert naming d2");
 
     assert_eq!(
         count(&s, "d2", "shared"),
@@ -114,13 +120,14 @@ fn issue_5057_insert_without_a_database_still_follows_current_db() {
     let (_tmp, mut s) = fresh();
     s.create_database("d1").expect("create d1");
     s.create_database("d2").expect("create d2");
-
-    s.set_current_db("d1").expect("switch to d1");
-    s.create_table(&tbl("shared")).expect("create in d1");
+    // The database-less create_table resolves against DEFAULT_DATABASE.
+    s.create_table(&tbl("shared")).expect("create in default");
+    // The database-less insert likewise resolves against DEFAULT_DATABASE.
     s.insert("shared", vec![vec![Value::Integer(1)]])
         .expect("insert");
 
-    assert_eq!(count(&s, "d1", "shared"), 1);
+    assert_eq!(count(&s, "default", "shared"), 1);
+    assert_eq!(count(&s, "d1", "shared"), 0);
     assert_eq!(count(&s, "d2", "shared"), 0);
 }
 
@@ -131,19 +138,30 @@ fn issue_5057_named_and_unnamed_inserts_do_not_bleed() {
     let (_tmp, mut s) = fresh();
     s.create_database("d1").expect("create d1");
     s.create_database("d2").expect("create d2");
-
-    s.set_current_db("d1").expect("switch to d1");
-    s.create_table(&tbl("shared")).expect("create in d1");
-    s.set_current_db("d2").expect("switch to d2");
-    s.create_table(&tbl("shared")).expect("create in d2");
-    s.set_current_db("d1").expect("switch back to d1");
+    // The database-less create_table resolves against DEFAULT_DATABASE.
+    s.create_table(&tbl("shared")).expect("create in default");
+    s.create_table_in_db(&SessionContext::new("d2", 0), &tbl("shared"))
+        .expect("create in d2");
 
     s.insert("shared", vec![vec![Value::Integer(10)]])
-        .expect("unnamed insert -> current db");
-    s.insert_in_db("d2", "shared", vec![vec![Value::Integer(20)]])
-        .expect("named insert -> d2");
+        .expect("unnamed insert -> default");
+    s.insert_in_db(
+        &SessionContext::new("d2", 0),
+        "shared",
+        vec![vec![Value::Integer(20)]],
+    )
+    .expect("named insert -> d2");
 
-    assert_eq!(count(&s, "d1", "shared"), 1, "unnamed insert goes to d1");
+    assert_eq!(
+        count(&s, "default", "shared"),
+        1,
+        "unnamed insert goes to default"
+    );
+    assert_eq!(
+        count(&s, "d1", "shared"),
+        0,
+        "unnamed insert must not touch d1"
+    );
     assert_eq!(count(&s, "d2", "shared"), 1, "named insert goes to d2");
 }
 
@@ -154,15 +172,17 @@ fn issue_5057_force_insert_in_db_routes_to_the_named_database() {
     let (_tmp, mut s) = fresh();
     s.create_database("d1").expect("create d1");
     s.create_database("d2").expect("create d2");
+    s.create_table_in_db(&SessionContext::new("d1", 0), &tbl("shared"))
+        .expect("create in d1");
+    s.create_table_in_db(&SessionContext::new("d2", 0), &tbl("shared"))
+        .expect("create in d2");
 
-    s.set_current_db("d1").expect("switch to d1");
-    s.create_table(&tbl("shared")).expect("create in d1");
-    s.set_current_db("d2").expect("switch to d2");
-    s.create_table(&tbl("shared")).expect("create in d2");
-    s.set_current_db("d1").expect("switch back to d1");
-
-    s.force_insert_in_db("d2", "shared", vec![Value::Integer(99)])
-        .expect("force insert into d2");
+    s.force_insert_in_db(
+        &SessionContext::new("d2", 0),
+        "shared",
+        vec![Value::Integer(99)],
+    )
+    .expect("force insert into d2");
 
     assert_eq!(count(&s, "d2", "shared"), 1, "force_insert must reach d2");
     assert_eq!(

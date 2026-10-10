@@ -5,9 +5,8 @@
 //! Key insight: WAL writes must be serial (ordering), but table flushes can be parallel.
 
 use crate::engine::{
-    SessionContext,
-    ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
-    TableInfo, Value,
+    ColumnDefinition, Record, RowFilter, RowMutation, SessionContext, SqlError, SqlResult,
+    StorageEngine, TableInfo, Value,
 };
 use crate::wal::{GroupCommitCoordinator, WalEntry, WalEntryType, WalManager};
 use crate::wal_storage::WalSyncMode;
@@ -175,15 +174,6 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     /// #5025: forward the database switch. A wrapper that answers the
     /// trait default (`Ok(())` that changes nothing) makes `USE` report
     /// success while every query still resolves against the previous
-    /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        self.inner.current_db()
-    }
-
     fn update(
         &mut self,
         table: &str,
@@ -519,7 +509,8 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
-        self.inner.scan_with_index_in_db(ctx, table, index_name, key)
+        self.inner
+            .scan_with_index_in_db(ctx, table, index_name, key)
     }
 
     fn parallel_scan_in_db(
@@ -539,15 +530,30 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.drop_table_in_db(ctx, table)
     }
 
-    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        records: Vec<Record>,
+    ) -> SqlResult<()> {
         self.inner.insert_in_db(ctx, table, records)
     }
 
-    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+    fn force_insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        record: Vec<Value>,
+    ) -> SqlResult<()> {
         self.inner.force_insert_in_db(ctx, table, record)
     }
 
-    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+    fn delete_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<usize> {
         self.inner.delete_in_db(ctx, table, filters)
     }
 
@@ -560,7 +566,12 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.delete_collect_pks_in_db(ctx, table, filters)
     }
 
-    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+    fn delete_if_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filter: &RowFilter,
+    ) -> SqlResult<usize> {
         self.inner.delete_if_in_db(ctx, table, filter)
     }
 

@@ -1,8 +1,7 @@
 use crate::checkpoint::{CheckpointManager, CheckpointMetadata};
 use crate::engine::{
-    SessionContext,
-    ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
-    TriggerInfo, Value,
+    ColumnDefinition, Record, RowFilter, RowMutation, SessionContext, SqlResult, StorageEngine,
+    TableInfo, TriggerInfo, Value,
 };
 use crate::wal::{WalEntry, WalEntryType, WalManager};
 use std::any::Any;
@@ -602,7 +601,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         // #5192: the unscoped entry point records the storage's current
         // database, matching the `insert` below it.
-        let db = self.inner().current_db();
+        let db = crate::engine::DEFAULT_DATABASE;
         self.insert_in_db(&SessionContext::new(db, 0), table, records)
     }
 
@@ -614,7 +613,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// to be current instead of the one it wrote to. On replay that put the
     /// row in the wrong database, or skipped it as "table not found" while
     /// the server started and accepted writes.
-    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        records: Vec<Record>,
+    ) -> SqlResult<()> {
         let table_id = Self::table_name_to_id(table);
         // P1 fix (issue #3013): batched WAL write to avoid N fsyncs.
         // Default WalManager config does per-record flush (batch_mode=false),
@@ -730,15 +734,19 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         // #5192: the unscoped entry point records the storage's current
         // database, matching the `delete_in_db` below it.
-        let db = self.inner().current_db();
+        let db = crate::engine::DEFAULT_DATABASE;
         self.delete_in_db(&SessionContext::new(db, 0), table, filters)
     }
 
     /// #5192: WAL-logged delete that names the target database explicitly.
     /// See [`Self::insert_in_db`] for why the trait default is not enough.
-    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+    fn delete_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
-        let db_name = ctx.db.to_string();
 
         // V4.0.0 / SOAK-hang fix: avoid O(N) inner.scan() under the exclusive
         // write lock held by execute_update (engine_dml.rs:857). See
@@ -765,13 +773,13 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             for row in &rows {
                 if Self::row_matches_filter(row, filters) {
                     let key = Self::record_key(row);
-                    self.log_delete(table_id, Some(table), Some(&db_name), key)?;
+                    self.log_delete(table_id, Some(table), Some(&ctx.db), key)?;
                 }
             }
         } else {
             let pk_value = filters[0].clone();
             let key = Self::record_key(std::slice::from_ref(&pk_value));
-            self.log_delete(table_id, Some(table), Some(&db_name), key)?;
+            self.log_delete(table_id, Some(table), Some(&ctx.db), key)?;
         }
 
         self.inner_mut().delete_in_db(ctx, table, filters)
@@ -779,9 +787,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
-        let db_name = self.inner().current_db();
+        let db_name = crate::engine::DEFAULT_DATABASE;
         let key = format!("RowFilter-{:p}", filter).into_bytes();
-        self.log_delete(table_id, Some(table), Some(&db_name), key)?;
+        self.log_delete(table_id, Some(table), Some(db_name), key)?;
         self.inner_mut().delete_if(table, filter)
     }
 
@@ -793,7 +801,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     ) -> SqlResult<usize> {
         // #5192: the unscoped entry point records the storage's current
         // database, matching the `update_in_db` below it.
-        let db = self.inner().current_db();
+        let db = crate::engine::DEFAULT_DATABASE;
         self.update_in_db(&SessionContext::new(db, 0), table, filters, updates)
     }
 
@@ -854,7 +862,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         }
 
         // Step 4: Call inner update (inner.update may be a stub, but we already logged)
-        let _ = self.inner_mut().update_in_db(ctx, table, filters, updates)?;
+        let _ = self
+            .inner_mut()
+            .update_in_db(ctx, table, filters, updates)?;
 
         Ok(count)
     }
@@ -871,8 +881,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // RowFilter closure cannot be reconstructed, so this is best-effort.
         let data = format!("{:?}", mutation).into_bytes();
         // #5192: bind the database before `inner_mut()` borrows self.
-        let current_db = self.inner().current_db();
-        self.log_update(table_id, Some(table), Some(&current_db), key, data)?;
+        let current_db = crate::engine::DEFAULT_DATABASE;
+        self.log_update(table_id, Some(table), Some(current_db), key, data)?;
         self.inner_mut().update_if(table, filter, mutation)
     }
 
@@ -893,15 +903,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// #5025: forward the database switch. A wrapper that answers the
     /// trait default (`Ok(())` that changes nothing) makes `USE` report
     /// success while every query still resolves against the previous
-    /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner_mut().set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        self.inner().current_db()
-    }
-
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
         self.inner_mut().create_table(info)
     }
@@ -1548,7 +1549,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner_mut().drop_table_in_db(ctx, table)
     }
 
-    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+    fn force_insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        record: Vec<Value>,
+    ) -> SqlResult<()> {
         self.inner_mut().force_insert_in_db(ctx, table, record)
     }
 
@@ -1562,7 +1568,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             .delete_collect_pks_in_db(ctx, table, filters)
     }
 
-    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+    fn delete_if_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filter: &RowFilter,
+    ) -> SqlResult<usize> {
         self.inner_mut().delete_if_in_db(ctx, table, filter)
     }
 

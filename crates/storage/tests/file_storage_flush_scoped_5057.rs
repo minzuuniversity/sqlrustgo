@@ -44,7 +44,8 @@
 //!    would let a caller who named `d2` write into the last `USE`.
 //! 4. Delta files stay per-database.
 
-use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, SessionContext, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 
 fn tbl(name: &str) -> TableInfo {
     TableInfo {
@@ -97,16 +98,24 @@ fn two_databases(storage: &mut FileStorage) {
     storage.create_database("d1").expect("create d1");
     storage.create_database("d2").expect("create d2");
     storage
-        .create_table_in_db("d1", &tbl("t"))
+        .create_table_in_db(&SessionContext::new("d1", 0), &tbl("t"))
         .expect("create d1.t");
     storage
-        .create_table_in_db("d2", &tbl("t"))
+        .create_table_in_db(&SessionContext::new("d2", 0), &tbl("t"))
         .expect("create d2.t");
     storage
-        .insert_in_db("d1", "t", vec![row(11), row(12), row(13)])
+        .insert_in_db(
+            &SessionContext::new("d1", 0),
+            "t",
+            vec![row(11), row(12), row(13)],
+        )
         .expect("insert d1.t");
     storage
-        .insert_in_db("d2", "t", vec![row(21), row(22), row(23)])
+        .insert_in_db(
+            &SessionContext::new("d2", 0),
+            "t",
+            vec![row(21), row(22), row(23)],
+        )
         .expect("insert d2.t");
 }
 
@@ -125,7 +134,6 @@ fn issue_5057_flush_persists_rows_of_every_database() {
 
     // Flush while d1 is the active database, so d2 is the one being
     // proved reachable.
-    storage.set_current_db("d1").expect("use d1");
     storage.flush().expect("flush");
 
     // Read the files directly. `scan_in_db` merges the write buffer, so it
@@ -152,18 +160,21 @@ fn issue_5057_flush_persists_rows_of_every_database() {
 fn issue_5057_cross_db_flush_survives_reopen() {
     let (tmp, mut storage) = fresh();
     two_databases(&mut storage);
-    storage.set_current_db("d1").expect("use d1");
     storage.flush().expect("flush");
     drop(storage);
 
     let reopened = FileStorage::new(tmp.path().to_path_buf()).expect("reopen");
     assert_eq!(
-        ids(&reopened.scan_in_db("d1", "t").expect("scan d1.t")),
+        ids(&reopened
+            .scan_in_db(&SessionContext::new("d1", 0), "t")
+            .expect("scan d1.t")),
         vec![11, 12, 13],
         "d1.t did not come back"
     );
     assert_eq!(
-        ids(&reopened.scan_in_db("d2", "t").expect("scan d2.t")),
+        ids(&reopened
+            .scan_in_db(&SessionContext::new("d2", 0), "t")
+            .expect("scan d2.t")),
         vec![21, 22, 23],
         "d2.t did not come back"
     );
@@ -179,21 +190,23 @@ fn issue_5057_cross_db_delete_is_persisted() {
     two_databases(&mut storage);
 
     storage
-        .delete_in_db("d2", "t", &[Value::Integer(22)])
+        .delete_in_db(&SessionContext::new("d2", 0), "t", &[Value::Integer(22)])
         .expect("delete from d2.t");
-
-    storage.set_current_db("d1").expect("use d1");
     storage.flush().expect("flush");
     drop(storage);
 
     let reopened = FileStorage::new(tmp.path().to_path_buf()).expect("reopen");
     assert_eq!(
-        ids(&reopened.scan_in_db("d2", "t").expect("scan d2.t")),
+        ids(&reopened
+            .scan_in_db(&SessionContext::new("d2", 0), "t")
+            .expect("scan d2.t")),
         vec![21, 23],
         "the deletion in the non-active database was not persisted"
     );
     assert_eq!(
-        ids(&reopened.scan_in_db("d1", "t").expect("scan d1.t")),
+        ids(&reopened
+            .scan_in_db(&SessionContext::new("d1", 0), "t")
+            .expect("scan d1.t")),
         vec![11, 12, 13],
         "the deletion leaked into the active database"
     );
@@ -206,22 +219,25 @@ fn issue_5057_cross_db_delete_is_persisted() {
 fn issue_5057_second_flush_does_not_duplicate_rows() {
     let (_tmp, mut storage) = fresh();
     two_databases(&mut storage);
-    storage.set_current_db("d1").expect("use d1");
 
     storage.flush().expect("first flush");
     storage.flush().expect("second flush");
     storage
-        .insert_in_db("d2", "t", vec![row(24)])
+        .insert_in_db(&SessionContext::new("d2", 0), "t", vec![row(24)])
         .expect("insert into d2.t");
     storage.flush().expect("third flush");
 
     assert_eq!(
-        ids(&storage.scan_in_db("d1", "t").expect("scan d1.t")),
+        ids(&storage
+            .scan_in_db(&SessionContext::new("d1", 0), "t")
+            .expect("scan d1.t")),
         vec![11, 12, 13],
         "d1.t changed across repeated flushes"
     );
     assert_eq!(
-        ids(&storage.scan_in_db("d2", "t").expect("scan d2.t")),
+        ids(&storage
+            .scan_in_db(&SessionContext::new("d2", 0), "t")
+            .expect("scan d2.t")),
         vec![21, 22, 23, 24],
         "d2.t lost or duplicated rows across flushes"
     );
@@ -243,23 +259,27 @@ fn issue_5057_unnamed_family_still_follows_current_db() {
     let (tmp, mut storage) = fresh();
     storage.create_database("d1").expect("create d1");
     storage.create_database("d2").expect("create d2");
-    storage.set_current_db("d2").expect("use d2");
-    storage.create_table(&tbl("t")).expect("create t in d2");
+    // The database-less create_table / insert resolve against DEFAULT_DATABASE.
+    storage
+        .create_table(&tbl("t"))
+        .expect("create t in default");
     storage.insert("t", vec![row(31), row(32)]).expect("insert");
 
     assert_eq!(
-        ids(&storage.scan_in_db("d2", "t").expect("scan d2.t")),
+        ids(&storage
+            .scan_in_db(&SessionContext::new("default", 0), "t")
+            .expect("scan default.t")),
         vec![31, 32],
-        "the database-less family stopped following current_db"
+        "the database-less family resolves against DEFAULT_DATABASE"
     );
 
     storage.flush().expect("flush");
-    let body = std::fs::read_to_string(tmp.path().join("d2/t.json")).expect("read d2/t.json");
+    let body = std::fs::read_to_string(tmp.path().join("t.json")).expect("read t.json");
     let json: serde_json::Value = serde_json::from_str(&body).expect("valid json");
     assert_eq!(
         json["rows"].as_array().expect("rows").len(),
         2,
-        "the database-less family's rows were not persisted under current_db"
+        "the database-less family's rows were persisted under default"
     );
 }
 
@@ -276,7 +296,6 @@ fn issue_5057_unnamed_family_still_follows_current_db() {
 fn issue_5057_delta_files_are_per_database() {
     let (tmp, mut storage) = fresh();
     two_databases(&mut storage);
-    storage.set_current_db("d1").expect("use d1");
     storage.flush().expect("flush");
 
     let d1_delta = tmp.path().join("d1/t.delta");
@@ -302,11 +321,15 @@ fn issue_5057_delta_files_are_per_database() {
     drop(storage);
     let reopened = FileStorage::new(tmp.path().to_path_buf()).expect("reopen");
     assert_eq!(
-        ids(&reopened.scan_in_db("d1", "t").expect("d1")),
+        ids(&reopened
+            .scan_in_db(&SessionContext::new("d1", 0), "t")
+            .expect("d1")),
         vec![11, 12, 13]
     );
     assert_eq!(
-        ids(&reopened.scan_in_db("d2", "t").expect("d2")),
+        ids(&reopened
+            .scan_in_db(&SessionContext::new("d2", 0), "t")
+            .expect("d2")),
         vec![21, 22, 23]
     );
 }

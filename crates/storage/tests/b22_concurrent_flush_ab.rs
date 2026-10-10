@@ -20,7 +20,8 @@
 
 use parking_lot::RwLock;
 use sqlrustgo_storage::mvcc_storage::MvccStorage;
-use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;

@@ -328,17 +328,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .thread_name(|i| format!("sqlrustgo-par-{i}"))
                 .build_global();
         }
-        // #5191: read the storage-owned current database BEFORE `storage` is
-        // moved into the struct below. A client that names a database in the
-        // handshake (`mysql -D db`, `pymysql.connect(database=...)`) never
-        // sends `USE` or `COM_INIT_DB`, so the selection only ever reaches
-        // storage's shared `current_db`. Seeding the session with the
-        // DEFAULT_DATABASE constant made every statement on such a connection
-        // resolve against `default`: `DATABASE()` reported `default`, table
-        // lookup missed, and SELECT returned a 0-column result set instead of
-        // erroring. `USE` masked this because `execute_use_database` writes
-        // both the storage field and the engine session field.
-        let session_db = storage.read().current_db();
+        // #5057: the shared storage `current_db` is no longer seeded into
+        // the session. Handshake / COM_INIT_DB / USE all write the
+        // per-connection `conn_db` (mysql-server) or `session_db` (engine),
+        // never the shared storage field. A fresh engine starts at
+        // DEFAULT_DATABASE; `execute_use_database` switches it per USE.
+        let session_db = sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string();
         Self {
             storage,
             // V312-58 / Issue #4513: auto-initialize a default catalog so

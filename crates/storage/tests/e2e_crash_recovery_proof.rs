@@ -6,12 +6,13 @@
 //! Evidence-based: If this test PASSES, Crash Recovery is proven.
 //! If this test FAILS, Crash Recovery is broken.
 
+use sqlrustgo_types::Value;
 use std::fs;
 use std::path::PathBuf;
 
 use sqlrustgo_storage::engine::{ColumnDefinition, RowFilter, RowMutation, TableData, TableInfo};
 use sqlrustgo_storage::file_storage::FileStorage;
-use sqlrustgo_storage::{Record, StorageEngine, Value};
+use sqlrustgo_storage::{Record, StorageEngine};
 
 fn temp_dir(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("sqlrustgo_crash_{}", name));

@@ -27,7 +27,8 @@
 //! test probe_delete_then_auto ... ok
 //! ```
 
-use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 
 fn table_with_auto_inc(name: &str) -> TableInfo {
     TableInfo {

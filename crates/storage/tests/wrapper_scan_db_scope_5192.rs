@@ -24,8 +24,8 @@
 //! which is what pointed at the wrapper rather than the engine beneath it:
 //!
 //! ```text
-//! FileStorage        insert_in_db("aud","t",r); scan_in_db("aud","t") -> 1 row
-//! WalStorage         insert_in_db("aud","t",r); scan_in_db("aud","t") -> 0 rows
+//! FileStorage        insert_in_db(&SessionContext::new("aud", 0),"t",r); scan_in_db(&SessionContext::new("aud", 0),"t") -> 1 row
+//! WalStorage         insert_in_db(&SessionContext::new("aud", 0),"t",r); scan_in_db(&SessionContext::new("aud", 0),"t") -> 0 rows
 //! ```
 //!
 //! # Why it matters beyond the test
@@ -38,8 +38,10 @@
 
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::{
-    ColumnDefinition, FileStorage, MvccStorage, Record, StorageEngine, TableInfo, Value, WalStorage,
+    ColumnDefinition, FileStorage, MvccStorage, Record, SessionContext, StorageEngine, TableInfo,
+    WalStorage,
 };
+use sqlrustgo_types::Value;
 use std::path::PathBuf;
 
 fn col(n: &str, pk: bool) -> ColumnDefinition {
@@ -80,18 +82,22 @@ fn wal_storage_reads_back_from_the_database_it_wrote_to() {
     let mut s = WalStorage::new(inner, wal).unwrap();
 
     s.create_database("aud").unwrap();
-    s.create_table_in_db("aud", &table("t")).unwrap();
-    s.insert_in_db("aud", "t", vec![row(1)]).unwrap();
+    s.create_table_in_db(&SessionContext::new("aud", 0), &table("t"))
+        .unwrap();
+    s.insert_in_db(&SessionContext::new("aud", 0), "t", vec![row(1)])
+        .unwrap();
 
     assert_eq!(
-        s.scan_in_db("aud", "t").expect("scan aud.t"),
+        s.scan_in_db(&SessionContext::new("aud", 0), "t")
+            .expect("scan aud.t"),
         vec![row(1)],
         "#5192: a row inserted into `aud` must be readable from `aud`. \
          An empty result here means the read fell through to the \
          database-blind trait default while the write was scoped."
     );
     assert_eq!(
-        s.scan_in_db("default", "t").expect("scan default.t"),
+        s.scan_in_db(&SessionContext::new("default", 0), "t")
+            .expect("scan default.t"),
         Vec::<Record>::new(),
         "#5192: the row must not also appear in `default` — the wrapper \
          would be resolving reads against the current database"
@@ -109,16 +115,19 @@ fn mvcc_storage_reads_back_from_the_database_it_wrote_to() {
     let mut s = MvccStorage::new(inner);
 
     s.create_database("aud").unwrap();
-    s.create_table_in_db("aud", &table("t")).unwrap();
-    s.insert_in_db("aud", "t", vec![row(1)]).unwrap();
+    s.create_table_in_db(&SessionContext::new("aud", 0), &table("t"))
+        .unwrap();
+    s.insert_in_db(&SessionContext::new("aud", 0), "t", vec![row(1)])
+        .unwrap();
 
     assert_eq!(
-        s.scan_in_db("aud", "t").expect("scan aud.t"),
+        s.scan_in_db(&SessionContext::new("aud", 0), "t")
+            .expect("scan aud.t"),
         vec![row(1)],
         "#5192: MvccStorage scoped the write but not the read"
     );
     assert!(s
-        .scan_in_db("default", "t")
+        .scan_in_db(&SessionContext::new("default", 0), "t")
         .expect("scan default.t")
         .is_empty());
 
@@ -133,12 +142,18 @@ fn file_storage_itself_scopes_reads_correctly() {
     let d = dir("plain");
     let mut s = FileStorage::new(d.clone()).unwrap();
     s.create_database("aud").unwrap();
-    s.create_table_in_db("aud", &table("t")).unwrap();
-    s.insert_in_db("aud", "t", vec![row(1)]).unwrap();
+    s.create_table_in_db(&SessionContext::new("aud", 0), &table("t"))
+        .unwrap();
+    s.insert_in_db(&SessionContext::new("aud", 0), "t", vec![row(1)])
+        .unwrap();
 
-    assert_eq!(s.scan_in_db("aud", "t").expect("aud"), vec![row(1)]);
+    assert_eq!(
+        s.scan_in_db(&SessionContext::new("aud", 0), "t")
+            .expect("aud"),
+        vec![row(1)]
+    );
     assert!(s
-        .scan_in_db("default", "t")
+        .scan_in_db(&SessionContext::new("default", 0), "t")
         .expect("scan default.t")
         .is_empty());
 
@@ -155,14 +170,24 @@ fn wrapper_keeps_two_databases_separate() {
 
     for (db, id) in [("d1", 1_i64), ("d2", 2)] {
         s.create_database(db).unwrap();
-        s.create_table_in_db(db, &table("t")).unwrap();
-        s.insert_in_db(db, "t", vec![row(id)]).unwrap();
+        s.create_table_in_db(&SessionContext::new(db, 0), &table("t"))
+            .unwrap();
+        s.insert_in_db(&SessionContext::new(db, 0), "t", vec![row(id)])
+            .unwrap();
     }
 
-    assert_eq!(s.scan_in_db("d1", "t").expect("d1"), vec![row(1)]);
-    assert_eq!(s.scan_in_db("d2", "t").expect("d2"), vec![row(2)]);
     assert_eq!(
-        s.scan_in_db("d1", "t").unwrap()[0][0],
+        s.scan_in_db(&SessionContext::new("d1", 0), "t")
+            .expect("d1"),
+        vec![row(1)]
+    );
+    assert_eq!(
+        s.scan_in_db(&SessionContext::new("d2", 0), "t")
+            .expect("d2"),
+        vec![row(2)]
+    );
+    assert_eq!(
+        s.scan_in_db(&SessionContext::new("d1", 0), "t").unwrap()[0][0],
         Value::Integer(1),
         "#5192: d1.t returned d2's row — a cross-database read"
     );
@@ -189,11 +214,14 @@ fn wal_storage_flush_does_not_drop_rows_of_a_named_database() {
     let mut s = WalStorage::new(inner, wal).unwrap();
 
     s.create_database("aud").unwrap();
-    s.create_table_in_db("aud", &table("t")).unwrap();
-    s.insert_in_db("aud", "t", vec![row(1), row(2)]).unwrap();
+    s.create_table_in_db(&SessionContext::new("aud", 0), &table("t"))
+        .unwrap();
+    s.insert_in_db(&SessionContext::new("aud", 0), "t", vec![row(1), row(2)])
+        .unwrap();
 
     assert_eq!(
-        s.scan_in_db("aud", "t").expect("before flush"),
+        s.scan_in_db(&SessionContext::new("aud", 0), "t")
+            .expect("before flush"),
         vec![row(1), row(2)],
         "#5192: precondition — the rows are visible before the flush"
     );
@@ -201,7 +229,8 @@ fn wal_storage_flush_does_not_drop_rows_of_a_named_database() {
     s.flush().expect("flush");
 
     assert_eq!(
-        s.scan_in_db("aud", "t").expect("after flush"),
+        s.scan_in_db(&SessionContext::new("aud", 0), "t")
+            .expect("after flush"),
         vec![row(1), row(2)],
         "#5192: flush() dropped committed rows. The table was registered \
          under the current database while the rows were buffered under the \
@@ -222,15 +251,16 @@ fn wal_storage_creates_the_table_in_the_stated_database() {
     let mut s = WalStorage::new(inner, wal).unwrap();
 
     s.create_database("aud").unwrap();
-    s.create_table_in_db("aud", &table("t")).unwrap();
+    s.create_table_in_db(&SessionContext::new("aud", 0), &table("t"))
+        .unwrap();
 
     assert!(
-        s.has_table_in("aud", "t"),
+        s.has_table_in(&SessionContext::new("aud", 0), "t"),
         "#5192: the table must be registered under the database it was \
          created in"
     );
     assert!(
-        !s.has_table_in("default", "t"),
+        !s.has_table_in(&SessionContext::new("default", 0), "t"),
         "#5192: the table must NOT also be registered under the current \
          database — that is the state in which flush() drops rows"
     );

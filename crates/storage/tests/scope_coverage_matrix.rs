@@ -29,7 +29,9 @@
 //! reviewable statement rather than an oversight.
 
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
-use sqlrustgo_storage::{FileStorage, MvccStorage, Record, StorageEngine, Value, WalStorage};
+use sqlrustgo_storage::WalStorage;
+use sqlrustgo_storage::{FileStorage, MvccStorage, Record, SessionContext, StorageEngine};
+use sqlrustgo_types::Value;
 use std::path::PathBuf;
 
 const NON_DEFAULT_DB: &str = "aud";
@@ -42,7 +44,7 @@ fn dir(tag: &str) -> PathBuf {
 }
 
 fn rows_of<S: StorageEngine + ?Sized>(s: &S) -> usize {
-    s.scan_in_db(NON_DEFAULT_DB, "t")
+    s.scan_in_db(&SessionContext::new(NON_DEFAULT_DB, 0), "t")
         .map(|v: Vec<Record>| v.len())
         .unwrap_or(usize::MAX)
 }
@@ -78,21 +80,21 @@ fn check<S: StorageEngine>(tag: &str, make: impl Fn(&PathBuf) -> S) {
         ],
         ..Default::default()
     };
-    s.create_table_in_db(NON_DEFAULT_DB, &info)
+    s.create_table_in_db(&SessionContext::new(NON_DEFAULT_DB, 0), &info)
         .unwrap_or_else(|e| panic!("{tag}: create_table_in_db: {e}"));
 
     assert!(
-        s.has_table_in(NON_DEFAULT_DB, "t"),
+        s.has_table_in(&SessionContext::new(NON_DEFAULT_DB, 0), "t"),
         "{tag}: the table must exist in the database it was created in"
     );
     assert!(
-        !s.has_table_in("default", "t"),
+        !s.has_table_in(&SessionContext::new("default", 0), "t"),
         "{tag}: the table must NOT also exist in the current database — that \
          is the state in which flush() drops rows"
     );
 
     let row: Vec<Record> = vec![vec![Value::Integer(1), Value::Integer(10)]];
-    s.insert_in_db(NON_DEFAULT_DB, "t", row.clone())
+    s.insert_in_db(&SessionContext::new(NON_DEFAULT_DB, 0), "t", row.clone())
         .unwrap_or_else(|e| panic!("{tag}: insert_in_db: {e}"));
 
     assert_eq!(
@@ -110,7 +112,7 @@ fn check<S: StorageEngine>(tag: &str, make: impl Fn(&PathBuf) -> S) {
         "{tag}: flush() dropped committed rows of `{NON_DEFAULT_DB}`"
     );
     assert_eq!(
-        s.scan_in_db("default", "t")
+        s.scan_in_db(&SessionContext::new("default", 0), "t")
             .map(|v| v.len())
             .unwrap_or(usize::MAX),
         0,
@@ -166,9 +168,10 @@ fn listing_answers_for_the_stated_database() {
                 }],
                 ..Default::default()
             };
-            s.create_table_in_db(NON_DEFAULT_DB, &info).unwrap();
+            s.create_table_in_db(&SessionContext::new(NON_DEFAULT_DB, 0), &info)
+                .unwrap();
 
-            let listed = s.list_tables_in_db(NON_DEFAULT_DB);
+            let listed = s.list_tables_in_db(&SessionContext::new(NON_DEFAULT_DB, 0));
             assert!(
             listed.contains(&"t".to_string()),
             "{tag}: list_tables_in_db({NON_DEFAULT_DB}) = {listed:?}, expected it to contain `t`. \

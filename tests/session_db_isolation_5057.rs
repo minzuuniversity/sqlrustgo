@@ -237,22 +237,28 @@ fn concurrent_reads_stay_isolated() {
 /// whichever connection wrote last, and every SELECT test here would still
 /// pass because they go through `*_in_db`.
 #[test]
-fn shared_current_db_still_agrees_with_the_last_use() {
-    let (mut a, mut b, storage, dir) = two_connections();
+fn use_writes_only_the_connection_session_db() {
+    let (mut a, mut b, _storage, dir) = two_connections();
     seed(&mut a);
 
     a.execute("USE d1").unwrap();
     assert_eq!(
-        storage.read().current_db(),
+        a.session_db(),
         "d1",
-        "connection A's USE did not reach the storage mirror"
+        "connection A's USE must write its own session_db"
     );
 
     b.execute("USE d2").unwrap();
     assert_eq!(
-        storage.read().current_db(),
+        b.session_db(),
         "d2",
-        "connection B's USE did not reach the storage mirror"
+        "connection B's USE must write its own session_db"
+    );
+    // A must not follow B's switch.
+    assert_eq!(
+        a.session_db(),
+        "d1",
+        "connection A must not follow connection B's USE"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -264,21 +270,26 @@ fn shared_current_db_still_agrees_with_the_last_use() {
 /// second is the actual isolation guarantee. Asserting only the first
 /// would pass with the defect in place.
 #[test]
-fn last_use_wins_on_the_mirror_but_not_on_the_connection() {
-    let (mut a, mut b, storage, dir) = two_connections();
+fn last_use_wins_per_connection_but_not_across_connections() {
+    let (mut a, mut b, _storage, dir) = two_connections();
     seed(&mut a);
     a.execute("USE d1").unwrap();
-    b.execute("USE d2").unwrap(); // B writes the mirror last
+    b.execute("USE d2").unwrap(); // B switches its own session last
 
     assert_eq!(
-        storage.read().current_db(),
+        b.session_db(),
         "d2",
-        "the mirror should hold the last USE"
+        "connection B's session must reflect its own USE"
+    );
+    assert_eq!(
+        a.session_db(),
+        "d1",
+        "connection A must not follow connection B's switch"
     );
     assert_eq!(
         ids(&mut a),
         vec![sqlrustgo_types::Value::Integer(1)],
-        "connection A must not follow the mirror"
+        "connection A must still read its own database"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

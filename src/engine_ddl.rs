@@ -18,7 +18,9 @@ use sqlrustgo_parser::parser::{
     ShowStatement,
 };
 use sqlrustgo_parser::Expression;
-use sqlrustgo_storage::{ColumnDefinition, SessionContext, StorageEngine, TableInfo, Value as StorageValue};
+use sqlrustgo_storage::{
+    ColumnDefinition, SessionContext, StorageEngine, TableInfo, Value as StorageValue,
+};
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_grant(&mut self, grant: &GrantStatement) -> SqlResult<ExecutorResult> {
@@ -343,9 +345,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// validate a user-qualified `FROM db.table` before taking locks.
     pub(crate) fn ensure_database_known(&self, db: &str) -> SqlResult<()> {
         let storage = self.storage.read();
-        if db.eq_ignore_ascii_case(&storage.current_db())
-            || db.eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE)
-        {
+        if db.eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE) {
             return Ok(());
         }
         if storage

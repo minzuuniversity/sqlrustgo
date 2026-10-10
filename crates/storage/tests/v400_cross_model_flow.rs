@@ -2,6 +2,7 @@
 //! tracker is installed, every SQL/vector/graph/audit write fires the
 //! register_write callback.
 
+use sqlrustgo_types::Value;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
@@ -17,7 +18,7 @@ fn test_lock() -> &'static Mutex<()> {
 
 use sqlrustgo_storage::cross_model_tracker::{self};
 use sqlrustgo_storage::engine::StorageEngine;
-use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, TableInfo, Value};
+use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, TableInfo};
 use sqlrustgo_storage::{CrossModelWriteTracker, MvccStorage};
 
 struct CountingTracker {

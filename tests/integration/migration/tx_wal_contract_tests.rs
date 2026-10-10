@@ -459,6 +459,7 @@ fn test_recovery_begin_then_crash_rolls_back() {
     //   - storage remains empty
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -470,6 +471,7 @@ fn test_recovery_begin_then_crash_rolls_back() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Insert,
         table_id: 3645, // hash("t1")
@@ -525,6 +527,7 @@ fn test_recovery_insert_then_crash_rolls_back() {
     // Begin + 2x Insert (no Commit)
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -536,6 +539,7 @@ fn test_recovery_insert_then_crash_rolls_back() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Insert,
         table_id: 3645, // hash("t1")
@@ -547,6 +551,7 @@ fn test_recovery_insert_then_crash_rolls_back() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Insert,
         table_id: 1,
@@ -593,6 +598,7 @@ fn test_recovery_prepare_then_crash_rolls_back() {
     // Begin + Prepare (no Commit) — 2PC phase 1 done, phase 2 crash
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -604,6 +610,7 @@ fn test_recovery_prepare_then_crash_rolls_back() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Prepare,
         table_id: 0,
@@ -615,6 +622,7 @@ fn test_recovery_prepare_then_crash_rolls_back() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Insert,
         table_id: 1,
@@ -692,6 +700,7 @@ fn test_recovery_partial_insert_write() {
 
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -711,6 +720,7 @@ fn test_recovery_partial_insert_write() {
         data.extend_from_slice(val.1.as_bytes());
         data.push(0);
         wal.append(WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Insert,
             table_id: 3645,
@@ -761,6 +771,7 @@ fn test_recovery_partial_update_write() {
     // tx 1: Begin + Insert(id=1, "original") + Commit
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -776,6 +787,7 @@ fn test_recovery_partial_update_write() {
     data.extend_from_slice(&1i64.to_le_bytes());
     data.extend_from_slice(b"s:original\x00");
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Insert,
         table_id: 3645,
@@ -787,6 +799,7 @@ fn test_recovery_partial_update_write() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Commit,
         table_id: 0,
@@ -799,6 +812,7 @@ fn test_recovery_partial_update_write() {
     .unwrap();
     // tx 2: Begin + Update(id=1, "updated") — NO Commit
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -814,6 +828,7 @@ fn test_recovery_partial_update_write() {
     upd.extend_from_slice(&1i64.to_le_bytes());
     upd.extend_from_slice(b"s:updated\x00");
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Update,
         table_id: 3645,
@@ -873,6 +888,7 @@ fn test_recovery_partial_delete_write() {
     let mut wal = MemoryWalManager::new();
     // tx 1: Begin + Insert(1) + Commit
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -884,6 +900,7 @@ fn test_recovery_partial_delete_write() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Insert,
         table_id: 3645,
@@ -895,6 +912,7 @@ fn test_recovery_partial_delete_write() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Commit,
         table_id: 0,
@@ -907,6 +925,7 @@ fn test_recovery_partial_delete_write() {
     .unwrap();
     // tx 2: Begin + Insert(2) + Commit
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -918,6 +937,7 @@ fn test_recovery_partial_delete_write() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Insert,
         table_id: 3645,
@@ -929,6 +949,7 @@ fn test_recovery_partial_delete_write() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Commit,
         table_id: 0,
@@ -941,6 +962,7 @@ fn test_recovery_partial_delete_write() {
     .unwrap();
     // tx 3: Begin + Delete(1) — NO Commit (crash before commit)
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 3,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -952,6 +974,7 @@ fn test_recovery_partial_delete_write() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 3,
         entry_type: WalEntryType::Delete,
         table_id: 3645,
@@ -1004,6 +1027,7 @@ fn test_recovery_partial_commit_flush() {
     // Begin + Insert + Commit (full commit)
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -1015,6 +1039,7 @@ fn test_recovery_partial_commit_flush() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Insert,
         table_id: 3645,
@@ -1026,6 +1051,7 @@ fn test_recovery_partial_commit_flush() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Commit,
         table_id: 0,
@@ -1070,6 +1096,7 @@ fn test_recovery_multiple_tx_crash_order() {
     // tx 2: Begin + Insert(2) — NO Commit (crash mid-tx2)
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -1081,6 +1108,7 @@ fn test_recovery_multiple_tx_crash_order() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Insert,
         table_id: 3645,
@@ -1092,6 +1120,7 @@ fn test_recovery_multiple_tx_crash_order() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Commit,
         table_id: 0,
@@ -1104,6 +1133,7 @@ fn test_recovery_multiple_tx_crash_order() {
     .unwrap();
     // tx 2 begins after tx 1 commits
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -1115,6 +1145,7 @@ fn test_recovery_multiple_tx_crash_order() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Insert,
         table_id: 3645,
@@ -1172,6 +1203,7 @@ fn test_recovery_wal_replay_ordering() {
     // tx 2: Begin + Update(1, "second") + Commit
     let mut wal = MemoryWalManager::new();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -1187,6 +1219,7 @@ fn test_recovery_wal_replay_ordering() {
     ins.extend_from_slice(&1i64.to_le_bytes());
     ins.extend_from_slice(b"s:first\x00");
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Insert,
         table_id: 3645,
@@ -1198,6 +1231,7 @@ fn test_recovery_wal_replay_ordering() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Commit,
         table_id: 0,
@@ -1209,6 +1243,7 @@ fn test_recovery_wal_replay_ordering() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -1224,6 +1259,7 @@ fn test_recovery_wal_replay_ordering() {
     upd.extend_from_slice(&1i64.to_le_bytes());
     upd.extend_from_slice(b"s:second\x00");
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Update,
         table_id: 3645,
@@ -1235,6 +1271,7 @@ fn test_recovery_wal_replay_ordering() {
     })
     .unwrap();
     wal.append(WalEntry {
+        database_name: None,
         tx_id: 2,
         entry_type: WalEntryType::Commit,
         table_id: 0,

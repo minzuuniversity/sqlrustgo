@@ -24,7 +24,8 @@
 //! the other one's row behind — no duplication, no loss, on disk as well
 //! as in cache.
 
-use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 use std::sync::{Arc, RwLock};
 
 fn counter_table(name: &str) -> TableInfo {

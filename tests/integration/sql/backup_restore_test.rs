@@ -518,6 +518,7 @@ fn test_pitr_replays_checkpoints() {
     let mut reader = sqlrustgo_storage::wal_legacy::WalReader::new(&wal).unwrap();
     let mut entries = reader.read_all().unwrap();
     let checkpoint = WalEntry {
+        database_name: None,
         tx_id: 0,
         entry_type: WalEntryType::Checkpoint,
         table_id: 0,

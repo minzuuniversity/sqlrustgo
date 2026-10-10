@@ -70,6 +70,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                     in_tx = true;
                     lsn += 1;
                     wal.append(WalEntry {
+                        database_name: None,
                         tx_id,
                         entry_type: WalEntryType::Begin,
                         table_id: 0,
@@ -92,6 +93,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                     data.extend_from_slice(b"i:");
                     data.extend_from_slice(&id.to_le_bytes());
                     wal.append(WalEntry {
+                        database_name: None,
                         tx_id,
                         entry_type: WalEntryType::Insert,
                         table_id: 116, // hash("t")
@@ -113,6 +115,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                     data.extend_from_slice(b"i:");
                     data.extend_from_slice(&target_id.to_le_bytes());
                     wal.append(WalEntry {
+                        database_name: None,
                         tx_id,
                         entry_type: WalEntryType::Update,
                         table_id: 116, // hash("t")
@@ -131,6 +134,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                     let target_id = rng.gen_range(1..next_id);
                     lsn += 1;
                     wal.append(WalEntry {
+                        database_name: None,
                         tx_id,
                         entry_type: WalEntryType::Delete,
                         table_id: 116, // hash("t")
@@ -149,6 +153,7 @@ fn run_episode(rng: &mut StdRng, n_ops: usize, crash_after: usize) -> (usize, u6
                     lsn += 1;
                     let commit = rng.gen_bool(0.7); // 70% commit, 30% rollback
                     wal.append(WalEntry {
+                        database_name: None,
                         tx_id,
                         entry_type: if commit {
                             WalEntryType::Commit

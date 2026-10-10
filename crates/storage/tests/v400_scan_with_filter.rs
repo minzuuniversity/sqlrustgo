@@ -13,6 +13,7 @@
 use sqlrustgo_storage::engine::ColumnDefinition;
 use sqlrustgo_storage::engine::TableInfo;
 use sqlrustgo_storage::{FileStorage, MemoryStorage, StorageEngine, Value as SqlValue};
+use sqlrustgo_types::Value;
 use tempfile::TempDir;
 
 // --------------------------------------------------------------------------

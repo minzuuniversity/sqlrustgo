@@ -1,3 +1,4 @@
+use sqlrustgo_types::Value;
 // BLK-2 — the `*_transaction_lockfree(&self)` paths must not derive a
 // `&mut S` from a shared reference.
 //

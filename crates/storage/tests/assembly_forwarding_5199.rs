@@ -18,8 +18,9 @@
 
 use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo};
 use sqlrustgo_storage::{
-    FileBackedWalManager, FileStorage, MvccStorage, ParallelWalStorage, Value, WalStorage,
+    FileBackedWalManager, FileStorage, MvccStorage, ParallelWalStorage, SessionContext, WalStorage,
 };
+use sqlrustgo_types::Value;
 
 fn info() -> TableInfo {
     TableInfo {
@@ -167,21 +168,27 @@ fn wal_chain_scan_in_db_forwards_db() {
     let mut s = wal_chain(dir.path());
     s.create_database("aud").expect("create_database");
     s.create_table_in_db(
-        "aud",
+        &SessionContext::new("aud", 0),
         &TableInfo {
             name: "t".to_string(),
             ..info()
         },
     )
     .expect("create_table_in_db");
-    s.insert_in_db("aud", "t", vec![vec![Value::Integer(1)]])
-        .expect("insert_in_db");
+    s.insert_in_db(
+        &SessionContext::new("aud", 0),
+        "t",
+        vec![vec![Value::Integer(1)]],
+    )
+    .expect("insert_in_db");
     s.create_table(&info()).expect("create default t");
     s.insert("t", vec![vec![Value::Integer(999)]])
         .expect("insert default");
     s.flush().expect("flush");
 
-    let rows = s.scan_in_db("aud", "t").expect("scan_in_db");
+    let rows = s
+        .scan_in_db(&SessionContext::new("aud", 0), "t")
+        .expect("scan_in_db");
     assert_eq!(
         rows.len(),
         1,
@@ -202,21 +209,27 @@ fn parallel_chain_scan_in_db_forwards_db() {
     let mut s = parallel_chain(dir.path());
     s.create_database("aud").expect("create_database");
     s.create_table_in_db(
-        "aud",
+        &SessionContext::new("aud", 0),
         &TableInfo {
             name: "t".to_string(),
             ..info()
         },
     )
     .expect("create_table_in_db");
-    s.insert_in_db("aud", "t", vec![vec![Value::Integer(1)]])
-        .expect("insert_in_db");
+    s.insert_in_db(
+        &SessionContext::new("aud", 0),
+        "t",
+        vec![vec![Value::Integer(1)]],
+    )
+    .expect("insert_in_db");
     s.create_table(&info()).expect("create default t");
     s.insert("t", vec![vec![Value::Integer(999)]])
         .expect("insert default");
     s.flush().expect("flush");
 
-    let rows = s.scan_in_db("aud", "t").expect("scan_in_db");
+    let rows = s
+        .scan_in_db(&SessionContext::new("aud", 0), "t")
+        .expect("scan_in_db");
     assert_eq!(
         rows.len(),
         1,
@@ -233,7 +246,7 @@ fn wal_chain_scan_with_index_in_db_forwards_db() {
     let mut s = wal_chain(dir.path());
     s.create_database("aud").expect("create_database");
     s.create_table_in_db(
-        "aud",
+        &SessionContext::new("aud", 0),
         &TableInfo {
             name: "t".to_string(),
             ..info()
@@ -241,13 +254,22 @@ fn wal_chain_scan_with_index_in_db_forwards_db() {
     )
     .expect("create_table_in_db");
     for i in 1..=10i64 {
-        s.insert_in_db("aud", "t", vec![vec![Value::Integer(i)]])
-            .expect("insert_in_db");
+        s.insert_in_db(
+            &SessionContext::new("aud", 0),
+            "t",
+            vec![vec![Value::Integer(i)]],
+        )
+        .expect("insert_in_db");
     }
     s.flush().expect("flush");
 
     let rows = s
-        .scan_with_index_in_db("aud", "t", "id", &Value::Integer(5))
+        .scan_with_index_in_db(
+            &SessionContext::new("aud", 0),
+            "t",
+            "id",
+            &Value::Integer(5),
+        )
         .expect("scan_with_index_in_db");
     assert_eq!(
         rows.len(),
@@ -265,7 +287,7 @@ fn parallel_chain_scan_with_index_in_db_forwards_db() {
     let mut s = parallel_chain(dir.path());
     s.create_database("aud").expect("create_database");
     s.create_table_in_db(
-        "aud",
+        &SessionContext::new("aud", 0),
         &TableInfo {
             name: "t".to_string(),
             ..info()
@@ -273,13 +295,22 @@ fn parallel_chain_scan_with_index_in_db_forwards_db() {
     )
     .expect("create_table_in_db");
     for i in 1..=10i64 {
-        s.insert_in_db("aud", "t", vec![vec![Value::Integer(i)]])
-            .expect("insert_in_db");
+        s.insert_in_db(
+            &SessionContext::new("aud", 0),
+            "t",
+            vec![vec![Value::Integer(i)]],
+        )
+        .expect("insert_in_db");
     }
     s.flush().expect("flush");
 
     let rows = s
-        .scan_with_index_in_db("aud", "t", "id", &Value::Integer(5))
+        .scan_with_index_in_db(
+            &SessionContext::new("aud", 0),
+            "t",
+            "id",
+            &Value::Integer(5),
+        )
         .expect("scan_with_index_in_db");
     assert_eq!(
         rows.len(),
@@ -298,7 +329,12 @@ fn wal_chain_pk_index_is_populated() {
     seed(&mut s, 100);
 
     let hit = s
-        .scan_with_index_in_db("default", "t", "id", &Value::Integer(50))
+        .scan_with_index_in_db(
+            &SessionContext::new("default", 0),
+            "t",
+            "id",
+            &Value::Integer(50),
+        )
         .expect("index lookup");
     assert_eq!(
         hit.len(),

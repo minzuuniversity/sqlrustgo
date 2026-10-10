@@ -40,8 +40,9 @@
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::{
-    ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value, WalStorage,
+    ColumnDefinition, FileStorage, Record, SessionContext, StorageEngine, TableInfo, WalStorage,
 };
+use sqlrustgo_types::Value;
 use std::path::PathBuf;
 
 fn col(n: &str, pk: bool) -> ColumnDefinition {
@@ -87,8 +88,9 @@ fn replay_wal(d: &PathBuf) -> FileBackedWalManager {
 }
 
 fn ids(s: &Stack, db: &str) -> Vec<i64> {
+    let ctx = sqlrustgo_storage::SessionContext::new(db, 0);
     let rows: Vec<Record> = s
-        .scan_in_db(db, "t")
+        .scan_in_db(&ctx, "t")
         .unwrap_or_else(|e| panic!("scan {db}.t: {e}"));
     let mut v: Vec<i64> = rows
         .iter()
@@ -112,9 +114,14 @@ fn committed_rows_in_a_named_database_survive_recovery() {
     {
         let mut s = stack(&d);
         s.create_database("aud").unwrap();
-        s.create_table_in_db("aud", &table("t")).unwrap();
-        s.insert_in_db("aud", "t", vec![row(1), row(2), row(3)])
+        s.create_table_in_db(&SessionContext::new("aud", 0), &table("t"))
             .unwrap();
+        s.insert_in_db(
+            &SessionContext::new("aud", 0),
+            "t",
+            vec![row(1), row(2), row(3)],
+        )
+        .unwrap();
         s.flush().unwrap();
         assert_eq!(ids(&s, "aud"), vec![1, 2, 3], "precondition");
 
@@ -161,8 +168,14 @@ fn two_databases_with_the_same_table_name_replay_into_the_right_one() {
         let mut s = stack(&d);
         for (db, id) in [("d1", 1_i64), ("d2", 2)] {
             s.create_database(db).unwrap();
-            s.create_table_in_db(db, &table("t")).unwrap();
-            s.insert_in_db(db, "t", vec![row(id)]).unwrap();
+            s.create_table_in_db(&sqlrustgo_storage::SessionContext::new(db, 0), &table("t"))
+                .unwrap();
+            s.insert_in_db(
+                &sqlrustgo_storage::SessionContext::new(db, 0),
+                "t",
+                vec![row(id)],
+            )
+            .unwrap();
         }
         s.flush().unwrap();
     }
@@ -182,7 +195,7 @@ fn two_databases_with_the_same_table_name_replay_into_the_right_one() {
     assert_eq!(ids(&s, "d1"), vec![1], "#5192: d1.t lost its row");
     assert_eq!(ids(&s, "d2"), vec![2], "#5192: d2.t lost its row");
 
-    let d1: Vec<Record> = s.scan_in_db("d1", "t").unwrap();
+    let d1: Vec<Record> = s.scan_in_db(&SessionContext::new("d1", 0), "t").unwrap();
     assert_eq!(
         d1[0][1],
         Value::Integer(10),
@@ -202,9 +215,14 @@ fn committed_rows_in_the_default_database_survive_recovery() {
 
     {
         let mut s = stack(&d);
-        s.create_table_in_db("default", &table("t")).unwrap();
-        s.insert_in_db("default", "t", vec![row(7), row(8)])
+        s.create_table_in_db(&SessionContext::new("default", 0), &table("t"))
             .unwrap();
+        s.insert_in_db(
+            &SessionContext::new("default", 0),
+            "t",
+            vec![row(7), row(8)],
+        )
+        .unwrap();
         s.flush().unwrap();
     }
 
@@ -234,8 +252,10 @@ fn unflushed_rows_in_a_named_database_are_recovered_or_refused() {
     {
         let mut s = stack(&d);
         s.create_database("aud").unwrap();
-        s.create_table_in_db("aud", &table("t")).unwrap();
-        s.insert_in_db("aud", "t", vec![row(1), row(2)]).unwrap();
+        s.create_table_in_db(&SessionContext::new("aud", 0), &table("t"))
+            .unwrap();
+        s.insert_in_db(&SessionContext::new("aud", 0), "t", vec![row(1), row(2)])
+            .unwrap();
         // deliberately NOT flushed: the WAL is the only copy
     }
 

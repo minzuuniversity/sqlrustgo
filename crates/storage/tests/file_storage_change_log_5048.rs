@@ -14,7 +14,8 @@
 //! against a real temp directory — not against a helper.
 
 use sqlrustgo_storage::file_storage::{ChangeOp, FileStorage};
-use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 use std::path::Path;
 
 fn tbl(name: &str) -> TableInfo {

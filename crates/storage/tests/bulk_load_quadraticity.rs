@@ -21,11 +21,11 @@
 //! Run with:
 //!   cargo test -p sqlrustgo-storage --test bulk_load_quadraticity -- --nocapture
 
+use sqlrustgo_types::Value;
 use std::time::Instant;
 use tempfile::tempdir;
 
 use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo};
-use sqlrustgo_types::Value;
 
 fn make_supplier_info() -> TableInfo {
     TableInfo {

@@ -7,7 +7,7 @@
 //! `MemoryStorage` is not a test-only backend: `mysql-server` builds one
 //! for `--memory` and the CLI defaults to it.
 
-use sqlrustgo_storage::engine::{StorageEngine, TableInfo};
+use sqlrustgo_storage::engine::{SessionContext, StorageEngine, TableInfo};
 use sqlrustgo_storage::MemoryStorage;
 
 fn table(name: &str) -> TableInfo {
@@ -22,8 +22,8 @@ fn seeded() -> MemoryStorage {
     s.create_database("d1").unwrap();
     s.create_database("d2").unwrap();
     for db in ["d1", "d2"] {
-        s.set_current_db(db).unwrap();
-        s.create_table(&table("t")).unwrap();
+        s.create_table_in_db(&SessionContext::new(db, 0), &table("t"))
+            .unwrap();
     }
     s
 }
@@ -31,13 +31,16 @@ fn seeded() -> MemoryStorage {
 #[test]
 fn create_table_in_db_lands_in_the_named_database() {
     let mut s = seeded();
-    // Stored state says d2 throughout.
-    s.set_current_db("d2").unwrap();
-    s.create_table_in_db("d1", &table("made")).unwrap();
+    // #5057: no shared current_db; the stated database is the only source.
+    s.create_table_in_db(&SessionContext::new("d1", 0), &table("made"))
+        .unwrap();
 
-    assert!(s.has_table_in("d1", "made"), "d1 should have the new table");
     assert!(
-        !s.has_table_in("d2", "made"),
+        s.has_table_in(&SessionContext::new("d1", 0), "made"),
+        "d1 should have the new table"
+    );
+    assert!(
+        !s.has_table_in(&SessionContext::new("d2", 0), "made"),
         "the table must not appear in whichever database happens to be stored"
     );
 }
@@ -45,11 +48,15 @@ fn create_table_in_db_lands_in_the_named_database() {
 #[test]
 fn drop_table_in_db_leaves_the_other_database_alone() {
     let mut s = seeded();
-    s.drop_table_in_db("d1", "t").unwrap();
+    s.drop_table_in_db(&SessionContext::new("d1", 0), "t")
+        .unwrap();
 
-    assert!(!s.has_table_in("d1", "t"), "d1's table was dropped");
     assert!(
-        s.has_table_in("d2", "t"),
+        !s.has_table_in(&SessionContext::new("d1", 0), "t"),
+        "d1's table was dropped"
+    );
+    assert!(
+        s.has_table_in(&SessionContext::new("d2", 0), "t"),
         "d2 has a table of the same name and must keep it"
     );
 }

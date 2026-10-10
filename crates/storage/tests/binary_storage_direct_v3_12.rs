@@ -9,6 +9,7 @@
 use sqlrustgo_storage::binary_storage::BinaryTableStorage;
 use sqlrustgo_storage::engine::{ColumnDefinition, TableData, TableInfo};
 use sqlrustgo_storage::{Record, StorageEngine, Value as SqlValue};
+use sqlrustgo_types::Value;
 use tempfile::TempDir;
 
 fn make_info() -> TableInfo {

@@ -9,7 +9,8 @@
 //! cannot pass by coincidence.
 
 use sqlrustgo_storage::engine::StorageEngine;
-use sqlrustgo_storage::{FileStorage, Record, Value};
+use sqlrustgo_storage::{FileStorage, Record, SessionContext};
+use sqlrustgo_types::Value;
 
 /// `t(id, v)` with `id` as the primary key.
 fn table_info() -> sqlrustgo_storage::TableInfo {
@@ -41,15 +42,15 @@ fn seeded(dir: &std::path::Path) -> FileStorage {
     s.create_database("d1").expect("create d1");
     s.create_database("d2").expect("create d2");
 
-    s.create_table_in_db("d1", &table_info()).expect("t in d1");
-    s.insert_in_db("d1", "t", vec![row(1, 10, 100)])
+    s.create_table_in_db(&SessionContext::new("d1", 0), &table_info())
+        .expect("t in d1");
+    s.insert_in_db(&SessionContext::new("d1", 0), "t", vec![row(1, 10, 100)])
         .expect("insert into d1");
 
-    s.create_table_in_db("d2", &table_info()).expect("t in d2");
-    s.insert_in_db("d2", "t", vec![row(2, 20, 200)])
+    s.create_table_in_db(&SessionContext::new("d2", 0), &table_info())
+        .expect("t in d2");
+    s.insert_in_db(&SessionContext::new("d2", 0), "t", vec![row(2, 20, 200)])
         .expect("insert into d2");
-
-    s.set_current_db("d2").expect("current db is d2");
     s
 }
 
@@ -60,7 +61,7 @@ fn scan_with_filter_in_db_reads_the_named_database() {
     let s = seeded(tmp.path());
 
     let rows = s
-        .scan_with_filter_in_db("d1", "t", &|_| true)
+        .scan_with_filter_in_db(&SessionContext::new("d1", 0), "t", &|_| true)
         .expect("scan d1");
 
     assert_eq!(
@@ -78,7 +79,9 @@ fn scan_with_filter_in_db_filters_the_named_database() {
     let s = seeded(tmp.path());
 
     let rows = s
-        .scan_with_filter_in_db("d1", "t", &|r| r[1] == Value::Integer(20))
+        .scan_with_filter_in_db(&SessionContext::new("d1", 0), "t", &|r| {
+            r[1] == Value::Integer(20)
+        })
         .expect("scan d1");
 
     assert!(
@@ -95,7 +98,7 @@ fn parallel_scan_in_db_partitions_the_named_database() {
     let s = seeded(tmp.path());
 
     let mut rows: Vec<Record> = s
-        .parallel_scan_in_db("d1", "t", 4)
+        .parallel_scan_in_db(&SessionContext::new("d1", 0), "t", 4)
         .expect("scan d1")
         .into_iter()
         .flat_map(|p| p.collect::<Vec<Record>>())
@@ -117,10 +120,10 @@ fn the_two_forms_agree_within_one_database() {
     let s = seeded(tmp.path());
 
     let mut scanned = s
-        .scan_with_filter_in_db("d1", "t", &|_| true)
+        .scan_with_filter_in_db(&SessionContext::new("d1", 0), "t", &|_| true)
         .expect("scan d1");
     let mut partitioned: Vec<Record> = s
-        .parallel_scan_in_db("d1", "t", 4)
+        .parallel_scan_in_db(&SessionContext::new("d1", 0), "t", 4)
         .expect("scan d1")
         .into_iter()
         .flat_map(|p| p.collect::<Vec<Record>>())
@@ -142,26 +145,27 @@ fn scan_with_filter_in_db_honours_a_rejecting_filter() {
     let s = seeded(tmp.path());
 
     assert!(s
-        .scan_with_filter_in_db("d1", "t", &|_| false)
+        .scan_with_filter_in_db(&SessionContext::new("d1", 0), "t", &|_| false)
         .expect("scan d1")
         .is_empty());
     assert!(s
-        .scan_with_filter_in_db("d2", "t", &|_| false)
+        .scan_with_filter_in_db(&SessionContext::new("d2", 0), "t", &|_| false)
         .expect("scan d2")
         .is_empty());
 }
 
-/// The current-database variants still work — the fix moved their bodies into
-/// `_in` variants and must not have changed what they return.
+/// The current-database variants still work — they now resolve against
+/// `DEFAULT_DATABASE` (the storage no longer tracks a mutable current db).
+/// The tables here live in d1/d2, so the bare form finds nothing.
 #[test]
 fn the_current_database_variants_are_unchanged() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let s = seeded(tmp.path()); // current db is d2
+    let s = seeded(tmp.path());
 
     assert_eq!(
         s.scan_with_filter("t", &|_| true).expect("scan"),
-        vec![row(2, 20, 200)],
-        "the no-db form follows current_db, which is d2 here"
+        vec![row(0, 0, 0)][..0].to_vec(),
+        "the no-db form resolves against DEFAULT_DATABASE, where no t exists"
     );
     let mut partitioned: Vec<Record> = s
         .parallel_scan("t", 4)
@@ -170,5 +174,9 @@ fn the_current_database_variants_are_unchanged() {
         .flat_map(|p| p.collect::<Vec<Record>>())
         .collect();
     partitioned.sort_by_key(|r| format!("{r:?}"));
-    assert_eq!(partitioned, vec![row(2, 20, 200)]);
+    assert_eq!(
+        partitioned,
+        vec![row(0, 0, 0)][..0].to_vec(),
+        "the no-db parallel_scan resolves against DEFAULT_DATABASE, where no t exists"
+    );
 }

@@ -4,7 +4,8 @@
 //! Its job is to show which directory each dirty table's rows reach, and
 //! what `dirty_tables` currently contains after writes to two databases.
 
-use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, SessionContext, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 
 fn tbl(name: &str) -> TableInfo {
     TableInfo {
@@ -79,22 +80,29 @@ fn probe_two_databases_same_table_name() {
 
     // Both databases hold a table with the SAME name.
     storage
-        .create_table_in_db("d1", &tbl("t"))
+        .create_table_in_db(&SessionContext::new("d1", 0), &tbl("t"))
         .expect("create d1.t");
     storage
-        .create_table_in_db("d2", &tbl("t"))
+        .create_table_in_db(&SessionContext::new("d2", 0), &tbl("t"))
         .expect("create d2.t");
 
     // Rows that are unmistakably different, so a misrouted write shows up.
     storage
-        .insert_in_db("d1", "t", vec![row(11), row(12), row(13)])
+        .insert_in_db(
+            &SessionContext::new("d1", 0),
+            "t",
+            vec![row(11), row(12), row(13)],
+        )
         .expect("insert d1.t");
     storage
-        .insert_in_db("d2", "t", vec![row(21), row(22), row(23)])
+        .insert_in_db(
+            &SessionContext::new("d2", 0),
+            "t",
+            vec![row(21), row(22), row(23)],
+        )
         .expect("insert d2.t");
 
     // Select the database whose flush will run.
-    storage.set_current_db("d1").expect("use d1");
 
     println!("current_db is now d1; flushing");
 
@@ -103,8 +111,14 @@ fn probe_two_databases_same_table_name() {
     println!("flush() -> {flushed:?}");
 
     // What does the storage still report, in memory?
-    let d1 = storage.scan_in_db("d1", "t").expect("scan d1.t").len();
-    let d2 = storage.scan_in_db("d2", "t").expect("scan d2.t").len();
+    let d1 = storage
+        .scan_in_db(&SessionContext::new("d1", 0), "t")
+        .expect("scan d1.t")
+        .len();
+    let d2 = storage
+        .scan_in_db(&SessionContext::new("d2", 0), "t")
+        .expect("scan d2.t")
+        .len();
     println!("in memory: d1.t={d1} rows, d2.t={d2} rows");
 
     show_dir(&root, "data_dir");
@@ -129,7 +143,7 @@ fn probe_two_databases_same_table_name() {
     let rd1 = reopened.scan("t").map(|v| v.len()).unwrap_or(usize::MAX);
     println!("after reopen, scan(\"t\") on current_db={rd1} rows");
     let rd2 = reopened
-        .scan_in_db("d2", "t")
+        .scan_in_db(&SessionContext::new("d2", 0), "t")
         .map(|v| v.len())
         .unwrap_or(usize::MAX);
     println!("after reopen, scan_in_db(\"d2\",\"t\") = {rd2} rows");
@@ -144,18 +158,20 @@ fn probe_update_path_dirty_marker() {
     storage.create_database("d1").expect("create d1");
     storage.create_database("d2").expect("create d2");
     storage
-        .create_table_in_db("d1", &tbl("t"))
+        .create_table_in_db(&SessionContext::new("d1", 0), &tbl("t"))
         .expect("create d1.t");
     storage
-        .create_table_in_db("d2", &tbl("t"))
+        .create_table_in_db(&SessionContext::new("d2", 0), &tbl("t"))
         .expect("create d2.t");
-    storage.insert_in_db("d1", "t", vec![row(11)]).expect("i1");
-    storage.insert_in_db("d2", "t", vec![row(21)]).expect("i2");
+    storage
+        .insert_in_db(&SessionContext::new("d1", 0), "t", vec![row(11)])
+        .expect("i1");
+    storage
+        .insert_in_db(&SessionContext::new("d2", 0), "t", vec![row(21)])
+        .expect("i2");
 
     // Delete one row from d2 only, via the db-named path.
-    let _ = storage.delete_in_db("d2", "t", &[Value::Integer(21)]);
-
-    storage.set_current_db("d1").expect("use d1");
+    let _ = storage.delete_in_db(&SessionContext::new("d2", 0), "t", &[Value::Integer(21)]);
     println!("current_db is d1; a delete touched d2.t");
     let flushed = storage.flush();
     println!("flush() -> {flushed:?}");

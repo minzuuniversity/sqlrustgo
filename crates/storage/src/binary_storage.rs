@@ -3,9 +3,8 @@
 //! Fast binary format for table storage, replacing JSON.
 
 use crate::engine::{
-    SessionContext,
-    ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
-    TableData, TableInfo, TriggerInfo, Value,
+    ColumnDefinition, Record, RowFilter, RowMutation, SessionContext, SqlError, SqlResult,
+    StorageEngine, TableData, TableInfo, TriggerInfo, Value,
 };
 use std::any::Any;
 use std::collections::HashMap;
@@ -684,13 +683,6 @@ impl StorageEngine for BoxStorageEngine {
     /// trait default (`Ok(())` that changes nothing) makes `USE` report
     /// success while every query still resolves against the previous
     /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        (**self).set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        (**self).current_db()
-    }
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         (**self).insert(table, records)
     }
@@ -702,20 +694,35 @@ impl StorageEngine for BoxStorageEngine {
     /// entries per statement. The replayed one carried the database name
     /// and the other did not, and the nameless one was then skipped as
     /// unrecoverable, leaving `skipped_entries` non-zero on every restart.
-    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        records: Vec<Record>,
+    ) -> SqlResult<()> {
         (**self).insert_in_db(ctx, table, records)
     }
     fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
         (**self).force_insert(table, record)
     }
-    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+    fn force_insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        record: Vec<Value>,
+    ) -> SqlResult<()> {
         (**self).force_insert_in_db(ctx, table, record)
     }
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
         (**self).delete(table, filters)
     }
     /// #5192: see [`Self::insert_in_db`] — the same double-logging applies.
-    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+    fn delete_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<usize> {
         (**self).delete_in_db(ctx, table, filters)
     }
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {

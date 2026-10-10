@@ -1039,7 +1039,7 @@ pub type RowFilter = Box<dyn Fn(&Record) -> bool + Send + Sync>;
 
 /// StorageEngine trait - abstraction for table storage
 /// Enables multiple storage backends (FileStorage, MemoryStorage, etc.)
-    /// #5057: the database this connection selected with `USE`, plus the
+/// #5057: the database this connection selected with `USE`, plus the
 /// reading transaction id, bundled into one value passed explicitly to
 /// every table operation.
 ///
@@ -1076,7 +1076,6 @@ impl SessionContext {
         Self::new(DEFAULT_DATABASE, 0)
     }
 }
-
 
 pub trait StorageEngine: Send + Sync {
     /// Scan all rows from a table
@@ -1275,26 +1274,6 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
-/// #5025: the database subsequent table operations resolve against.
-    ///
-    /// `USE <db>` used to be an accepted no-op, so every database shared
-    /// one table namespace. Storing the name here lets table lookup be
-    /// scoped without changing the signature of the ~19 trait methods
-    /// that take a table name.
-    ///
-    /// Implementations return the bare database name; scoping into table
-    /// keys is the implementation's business.
-    fn current_db(&self) -> String {
-        DEFAULT_DATABASE.to_string()
-    }
-
-    /// #5025: switch the active database. Returns an error when the
-    /// database is unknown, so `USE missing_db` fails loudly instead of
-    /// silently resolving against the previous database.
-    fn set_current_db(&mut self, _db_name: &str) -> SqlResult<()> {
-        Ok(())
-    }
-
     /// Drop a database (directory). No-op for in-memory engines.
     fn drop_database(&mut self, _db_name: &str) -> SqlResult<()> {
         Err(SqlError::ExecutionError(
@@ -1349,9 +1328,9 @@ pub trait StorageEngine: Send + Sync {
     /// transaction' is whichever wrote last, not whoever is reading". The
     /// database is no different, so it takes the same shape.
     fn get_table_info_in(&self, ctx: &SessionContext, table: &str) -> SqlResult<TableInfo> {
-            let _ = ctx;
-            self.get_table_info(table)
-        }
+        let _ = ctx;
+        self.get_table_info(table)
+    }
 
     /// #5025: `list_tables` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
@@ -1459,18 +1438,33 @@ pub trait StorageEngine: Send + Sync {
     }
 
     /// #5057: `insert` into a stated database.
-    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        records: Vec<Record>,
+    ) -> SqlResult<()> {
         let _ = ctx;
         self.insert(table, records)
     }
 
     /// #5057: `force_insert` into a stated database.
-    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+    fn force_insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        record: Vec<Value>,
+    ) -> SqlResult<()> {
         self.insert_in_db(ctx, table, vec![record])
     }
 
     /// #5057: `delete` within a stated database.
-    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+    fn delete_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<usize> {
         let _ = ctx;
         self.delete(table, filters)
     }
@@ -1487,7 +1481,12 @@ pub trait StorageEngine: Send + Sync {
     }
 
     /// #5057: `delete_if` within a stated database.
-    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+    fn delete_if_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filter: &RowFilter,
+    ) -> SqlResult<usize> {
         let _ = ctx;
         self.delete_if(table, filter)
     }
@@ -1995,7 +1994,6 @@ pub struct MemoryStorage {
     /// so that `d1.t` and `d2.t` are distinct rows. Changing it is a
     /// plain field write, which is why every table-keyed method routes its
     /// argument through `tbl()` rather than indexing with the raw name.
-    current_db: String,
     /// Tracks the current transaction ID for VtuGuard::assert_dml_safe.
     /// VtuGuard checks S::in_transaction() which returns `current_tx_id != 0`.
     ///
@@ -2071,10 +2069,11 @@ pub struct TxLog {
 }
 
 impl MemoryStorage {
-    /// #5025: scope a bare table name to the active database.
+    /// #5057: scope a bare table name to the default database.
+    /// Callers that need a stated database use the `*_in_db` family.
     #[inline]
     fn tbl(&self, table: impl AsRef<str>) -> String {
-        scoped_key(&self.current_db, table.as_ref())
+        scoped_key(DEFAULT_DATABASE, table.as_ref())
     }
 
     // --- #5057: table operations with the storage key already resolved
@@ -2599,7 +2598,6 @@ impl MemoryStorage {
             // #5025: the implicit database must itself be registered, or
             //  would fail as "unknown".
             databases: HashSet::from([DEFAULT_DATABASE.to_string()]),
-            current_db: DEFAULT_DATABASE.to_string(),
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
             next_tx_id: 1,
             tx_log: None,
@@ -3093,7 +3091,12 @@ impl StorageEngine for MemoryStorage {
     }
 
     /// #5057: `insert` into a stated database.
-    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        records: Vec<Record>,
+    ) -> SqlResult<()> {
         self.insert_in_key(table, scoped_key(&ctx.db, table), records)
     }
 
@@ -3109,7 +3112,12 @@ impl StorageEngine for MemoryStorage {
     }
 
     /// #5057: `delete` against a stated database.
-    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+    fn delete_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<usize> {
         self.delete_in_key(table, scoped_key(&ctx.db, table), filters)
     }
 
@@ -3139,7 +3147,12 @@ impl StorageEngine for MemoryStorage {
     }
 
     /// #5057: `delete_if` against a stated database.
-    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+    fn delete_if_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filter: &RowFilter,
+    ) -> SqlResult<usize> {
         self.delete_if_in_key(table, scoped_key(&ctx.db, table), filter)
     }
 
@@ -3201,27 +3214,6 @@ impl StorageEngine for MemoryStorage {
         // 内存模式: 仅记录数据库名
         self.databases.insert(db_name.to_string());
         Ok(())
-    }
-
-    /// #5025: switch the active database.
-    ///
-    /// Rejects an unknown database so `USE missing_db` fails instead of
-    /// silently continuing against the previous one — the exact failure
-    /// mode this issue was filed about.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        let key = db_name.to_lowercase();
-        if !self.databases.contains(&key) {
-            return Err(SqlError::ExecutionError(format!(
-                "Unknown database: {}",
-                db_name
-            )));
-        }
-        self.current_db = key;
-        Ok(())
-    }
-
-    fn current_db(&self) -> String {
-        self.current_db.clone()
     }
 
     /// #5057: resolve against the stated database rather than the stored
@@ -3314,7 +3306,7 @@ impl StorageEngine for MemoryStorage {
         // `db\x01table` key stripped back to the bare name. Returning the
         // raw keys would make `SHOW TABLES` display `d1\u{1}t` and list
         // every database's tables.
-        let prefix = format!("{}\u{1}", self.current_db.to_lowercase());
+        let prefix = format!("{}\u{1}", DEFAULT_DATABASE.to_lowercase());
         self.table_infos
             .iter()
             .filter_map(|(key, info)| key.strip_prefix(&prefix).map(|_| info.name.clone()))
@@ -5195,23 +5187,26 @@ mod tests {
         s.create_database("d1").unwrap();
         s.create_database("d2").unwrap();
 
-        s.set_current_db("d1").unwrap();
-        s.create_table(&test_table("t", &["v"])).unwrap();
-        s.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        let ctx1 = SessionContext::new("d1", 0);
+        let ctx2 = SessionContext::new("d2", 0);
 
-        s.set_current_db("d2").unwrap();
-        s.create_table(&test_table("t", &["v"])).unwrap();
-        s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+        s.create_table_in_db(&ctx1, &test_table("t", &["v"]))
+            .unwrap();
+        s.insert_in_db(&ctx1, "t", vec![vec![Value::Integer(1)]])
+            .unwrap();
 
-        s.set_current_db("d1").unwrap();
+        s.create_table_in_db(&ctx2, &test_table("t", &["v"]))
+            .unwrap();
+        s.insert_in_db(&ctx2, "t", vec![vec![Value::Integer(2)]])
+            .unwrap();
+
         assert_eq!(
-            s.scan("t").unwrap(),
+            s.scan_in_db(&ctx1, "t").unwrap(),
             vec![vec![Value::Integer(1)]],
             "d1 must not see d2's rows"
         );
-        s.set_current_db("d2").unwrap();
         assert_eq!(
-            s.scan("t").unwrap(),
+            s.scan_in_db(&ctx2, "t").unwrap(),
             vec![vec![Value::Integer(2)]],
             "d2 must not see d1's rows"
         );
@@ -5226,15 +5221,20 @@ mod tests {
         s.create_database("d1").unwrap();
         s.create_database("d2").unwrap();
 
-        s.set_current_db("d1").unwrap();
-        s.create_table(&test_table("alpha", &["v"])).unwrap();
-        s.set_current_db("d2").unwrap();
-        s.create_table(&test_table("beta", &["v"])).unwrap();
+        let ctx1 = SessionContext::new("d1", 0);
+        let ctx2 = SessionContext::new("d2", 0);
 
-        s.set_current_db("d1").unwrap();
-        assert_eq!(s.list_tables(), vec!["alpha".to_string()]);
-        s.set_current_db("d2").unwrap();
-        assert_eq!(s.list_tables(), vec!["beta".to_string()]);
+        s.create_table_in_db(&ctx1, &test_table("alpha", &["v"]))
+            .unwrap();
+        s.create_table_in_db(&ctx2, &test_table("beta", &["v"]))
+            .unwrap();
+
+        let mut d1 = s.list_tables_in_db(&ctx1);
+        d1.sort();
+        assert_eq!(d1, vec!["alpha".to_string()]);
+        let mut d2 = s.list_tables_in_db(&ctx2);
+        d2.sort();
+        assert_eq!(d2, vec!["beta".to_string()]);
     }
 
     /// `SHOW TABLES FROM <db>` needs a target-database listing under a
@@ -5247,49 +5247,20 @@ mod tests {
         s.create_database("d1").unwrap();
         s.create_database("d2").unwrap();
 
-        s.set_current_db("d1").unwrap();
-        s.create_table(&test_table("alpha", &["v"])).unwrap();
-        s.set_current_db("d2").unwrap();
-        s.create_table(&test_table("beta", &["v"])).unwrap();
+        let ctx1 = SessionContext::new("d1", 0);
+        let ctx2 = SessionContext::new("d2", 0);
 
-        let mut d1 = s.list_tables_in_db("d1");
+        s.create_table_in_db(&ctx1, &test_table("alpha", &["v"]))
+            .unwrap();
+        s.create_table_in_db(&ctx2, &test_table("beta", &["v"]))
+            .unwrap();
+
+        let mut d1 = s.list_tables_in_db(&ctx1);
         d1.sort();
         assert_eq!(d1, vec!["alpha".to_string()]);
-        let mut d2 = s.list_tables_in_db("d2");
+        let mut d2 = s.list_tables_in_db(&ctx2);
         d2.sort();
         assert_eq!(d2, vec!["beta".to_string()]);
-        assert_eq!(
-            s.current_db(),
-            "d2",
-            "list_tables_in_db must not mutate the engine-wide current database"
-        );
-    }
-
-    /// `USE missing_db` used to be accepted silently, which is how two
-    /// databases ended up sharing a namespace without anyone noticing.
-    #[test]
-    fn set_current_db_rejects_unknown_database() {
-        let mut s = MemoryStorage::new();
-        s.create_database("d1").unwrap();
-        s.set_current_db("d1").unwrap();
-        let err = s.set_current_db("nope").unwrap_err();
-        assert!(
-            err.to_string().contains("Unknown database"),
-            "error should name the problem, got: {}",
-            err
-        );
-        // The failed switch must leave the previous database active.
-        assert_eq!(s.current_db(), "d1");
-    }
-
-    /// The implicit database is registered on construction, so `USE default`
-    /// is a no-op rather than an "unknown database" error.
-    #[test]
-    fn default_database_is_always_usable() {
-        let s = MemoryStorage::new();
-        assert_eq!(s.current_db(), DEFAULT_DATABASE);
-        let mut s = s;
-        s.set_current_db(DEFAULT_DATABASE).unwrap();
     }
 
     /// Table names are matched case-insensitively and the database component
@@ -5301,18 +5272,27 @@ mod tests {
         s.create_database("a").unwrap();
         s.create_database("a.b").unwrap();
 
-        s.set_current_db("a").unwrap();
-        s.create_table(&test_table("b.t", &["v"])).unwrap();
-        s.insert("b.t", vec![vec![Value::Integer(1)]]).unwrap();
+        let ctx_ab = SessionContext::new("a.b", 0);
+        let ctx_a = SessionContext::new("a", 0);
 
-        s.set_current_db("a.b").unwrap();
-        s.create_table(&test_table("t", &["v"])).unwrap();
-        s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+        s.create_table_in_db(&ctx_a, &test_table("b.t", &["v"]))
+            .unwrap();
+        s.insert_in_db(&ctx_a, "b.t", vec![vec![Value::Integer(1)]])
+            .unwrap();
 
-        s.set_current_db("a").unwrap();
-        assert_eq!(s.scan("b.t").unwrap(), vec![vec![Value::Integer(1)]]);
-        s.set_current_db("a.b").unwrap();
-        assert_eq!(s.scan("t").unwrap(), vec![vec![Value::Integer(2)]]);
+        s.create_table_in_db(&ctx_ab, &test_table("t", &["v"]))
+            .unwrap();
+        s.insert_in_db(&ctx_ab, "t", vec![vec![Value::Integer(2)]])
+            .unwrap();
+
+        assert_eq!(
+            s.scan_in_db(&ctx_a, "b.t").unwrap(),
+            vec![vec![Value::Integer(1)]]
+        );
+        assert_eq!(
+            s.scan_in_db(&ctx_ab, "t").unwrap(),
+            vec![vec![Value::Integer(2)]]
+        );
     }
 
     // ── #4948: COMMIT shares rows instead of deep-copying the database ───────
@@ -5562,37 +5542,34 @@ mod tests {
 // `#4951 scan_in` already does for the transaction id.
 
 #[test]
-fn in_methods_ignore_the_stored_current_db() {
+fn in_methods_ignore_stored_context_state() {
     let mut s = MemoryStorage::new();
     s.create_database("d1").unwrap();
     s.create_database("d2").unwrap();
 
-    for (db, id) in [("d1", 1i64), ("d2", 2)] {
-        s.set_current_db(db).unwrap();
+    let ctx1 = SessionContext::new("d1", 0);
+    let ctx2 = SessionContext::new("d2", 0);
+
+    for (ctx, id) in [(&ctx1, 1i64), (&ctx2, 2)] {
         let mut info: TableInfo = TableInfo::default();
         info.name = "t".into();
         info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
-        s.create_table(&info).unwrap();
-        s.insert("t", vec![vec![Value::Integer(id)]]).unwrap();
+        s.create_table_in_db(ctx, &info).unwrap();
+        s.insert_in_db(ctx, "t", vec![vec![Value::Integer(id)]])
+            .unwrap();
     }
 
-    // Whichever database is currently stored, the explicit one wins.
-    for stored in ["d1", "d2"] {
-        s.set_current_db(stored).unwrap();
-        assert_eq!(
-            s.scan_in_db("d1", "t").unwrap(),
-            vec![vec![Value::Integer(1)]],
-            "scan_in_db must not follow the stored current database \
-                 (stored was {})",
-            stored
-        );
-        assert_eq!(
-            s.scan_in_db("d2", "t").unwrap(),
-            vec![vec![Value::Integer(2)]]
-        );
-        assert!(s.has_table_in("d1", "t") && s.has_table_in("d2", "t"));
-        assert!(s.get_table_info_in("d1", "t").is_ok());
-    }
+    // The explicit database context wins.
+    assert_eq!(
+        s.scan_in_db(&ctx1, "t").unwrap(),
+        vec![vec![Value::Integer(1)]],
+    );
+    assert_eq!(
+        s.scan_in_db(&ctx2, "t").unwrap(),
+        vec![vec![Value::Integer(2)]]
+    );
+    assert!(s.has_table_in(&ctx1, "t") && s.has_table_in(&ctx2, "t"));
+    assert!(s.get_table_info_in(&ctx1, "t").is_ok());
 }
 
 /// A table that exists in one database must not be visible from
@@ -5603,16 +5580,18 @@ fn in_methods_do_not_cross_databases() {
     s.create_database("d1").unwrap();
     s.create_database("d2").unwrap();
 
-    s.set_current_db("d1").unwrap();
+    let ctx1 = SessionContext::new("d1", 0);
+    let ctx2 = SessionContext::new("d2", 0);
+
     let mut info: TableInfo = TableInfo::default();
     info.name = "only_in_d1".into();
     info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
-    s.create_table(&info).unwrap();
+    s.create_table_in_db(&ctx1, &info).unwrap();
 
-    assert!(s.has_table_in("d1", "only_in_d1"));
+    assert!(s.has_table_in(&ctx1, "only_in_d1"));
     assert!(
-        !s.has_table_in("d2", "only_in_d1"),
+        !s.has_table_in(&ctx2, "only_in_d1"),
         "a table in d1 must not be visible from d2"
     );
-    assert!(s.get_table_info_in("d2", "only_in_d1").is_err());
+    assert!(s.get_table_info_in(&ctx2, "only_in_d1").is_err());
 }

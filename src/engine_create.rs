@@ -203,7 +203,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
             // Insert rows from SELECT result
             let insert_count = if !select_result.rows.is_empty() {
-                storage.insert_in_db(&SessionContext::new(self.session_db(), 0),
+                storage.insert_in_db(
+                    &SessionContext::new(self.session_db(), 0),
                     &create.name,
                     select_result.rows.clone(),
                 )?;
@@ -403,7 +404,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // Create ClusteredTable
             let ct = ClusteredTable::new(info.clone(), pk_col_idx);
             // Also register with Heap so other code paths (catalog, schema checks) find it
-            storage.create_table_in_db(&SessionContext::new(self.session_db(), 0),
+            storage.create_table_in_db(
+                &SessionContext::new(self.session_db(), 0),
                 &TableInfo {
                     name: info.name.clone(),
                     columns,

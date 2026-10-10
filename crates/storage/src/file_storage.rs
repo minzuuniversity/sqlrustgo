@@ -3,9 +3,9 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::engine::{
-    SessionContext,
     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
-    SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
+    SessionContext, SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo,
+    UniqueConstraint, ViewInfo,
 };
 use crate::wal::{WalEntry, WalEntryType};
 use sqlrustgo_types::{SqlError, SqlResult, Value};
@@ -5995,7 +5995,12 @@ impl StorageEngine for FileStorage {
     /// Callers that hold the database should prefer this: the storage is
     /// shared by every connection, so `insert` resolves against whichever
     /// connection last ran `USE`, not against the caller.
-    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        records: Vec<Record>,
+    ) -> SqlResult<()> {
         self.insert_at(&ctx.db, table, records)
     }
 
@@ -6009,7 +6014,12 @@ impl StorageEngine for FileStorage {
     }
 
     /// #5057: [`force_insert`](Self::force_insert) into a stated database.
-    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+    fn force_insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        record: Vec<Value>,
+    ) -> SqlResult<()> {
         self.insert_direct(&ctx.db, table, vec![record])
     }
 
@@ -6019,7 +6029,12 @@ impl StorageEngine for FileStorage {
     }
 
     /// #5057: [`delete`](Self::delete) against a stated database.
-    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+    fn delete_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<usize> {
         self.delete_at(&ctx.db, table, filters)
     }
 
@@ -6050,7 +6065,12 @@ impl StorageEngine for FileStorage {
     }
 
     /// #5057: [`delete_if`](Self::delete_if) against a stated database.
-    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+    fn delete_if_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filter: &RowFilter,
+    ) -> SqlResult<usize> {
         self.delete_if_at(&ctx.db, table, filter)
     }
 
@@ -6516,28 +6536,6 @@ impl StorageEngine for FileStorage {
         let db_path = self.data_dir.join(db_name);
         std::fs::create_dir_all(&db_path)
             .map_err(|e| SqlError::ExecutionError(format!("create_database: {}", e)))
-    }
-
-    /// #5025: switch the active database.
-    ///
-    /// A database exists when its directory does. The implicit `default`
-    /// database always resolves, even before any file is written — it is
-    /// where pre-#5025 tables live, and rejecting `USE default` on a
-    /// fresh installation would be surprising.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        let key = db_name.to_lowercase();
-        if key != crate::engine::DEFAULT_DATABASE && !self.data_dir.join(&key).is_dir() {
-            return Err(SqlError::ExecutionError(format!(
-                "Unknown database: {}",
-                db_name
-            )));
-        }
-        *self.current_db.write().unwrap() = key;
-        Ok(())
-    }
-
-    fn current_db(&self) -> String {
-        self.current_db.read().unwrap().clone()
     }
 
     /// #5057: resolve against the stated database, never the stored one.
@@ -7143,29 +7141,34 @@ mod db_isolation_tests {
         fs.create_database("d1").unwrap();
         fs.create_database("d2").unwrap();
 
-        for (db, id) in [("d1", 1i64), ("d2", 2)] {
-            fs.set_current_db(db).unwrap();
+        let ctx1 = SessionContext::new("d1", 0);
+        let ctx2 = SessionContext::new("d2", 0);
+
+        for (ctx, id) in [(&ctx1, 1i64), (&ctx2, 2)] {
             let mut info = TableInfo::default();
             info.name = "t".to_string();
             info.columns = vec![ColumnDefinition::new("id", "INTEGER")];
-            fs.create_table(&info).unwrap();
-            fs.force_insert("t", vec![Value::Integer(id)]).unwrap();
+            fs.create_table_in_db(ctx, &info).unwrap();
+            fs.force_insert_in_db(ctx, "t", vec![Value::Integer(id)])
+                .unwrap();
         }
 
-        fs.set_current_db("d1").unwrap();
-        assert_eq!(fs.scan("t").unwrap(), vec![vec![Value::Integer(1)]]);
-        assert_eq!(fs.list_tables(), vec!["t".to_string()]);
-        fs.set_current_db("d2").unwrap();
-        assert_eq!(fs.scan("t").unwrap(), vec![vec![Value::Integer(2)]]);
+        assert_eq!(
+            fs.scan_in_db(&ctx1, "t").unwrap(),
+            vec![vec![Value::Integer(1)]]
+        );
+        let mut d1_tables = fs.list_tables_in_db(&ctx1);
+        d1_tables.sort();
+        assert_eq!(d1_tables, vec!["t".to_string()]);
+        assert_eq!(
+            fs.scan_in_db(&ctx2, "t").unwrap(),
+            vec![vec![Value::Integer(2)]]
+        );
 
         // Separate files, not one file written twice.
         assert!(dir.join("d1").join("t.json").exists(), "d1/t.json missing");
         assert!(dir.join("d2").join("t.json").exists(), "d2/t.json missing");
         assert!(!dir.join("t.json").exists(), "a table landed in the root");
-
-        // Unknown database is an error; the failed switch changes nothing.
-        assert!(fs.set_current_db("nope").is_err());
-        assert_eq!(fs.current_db(), "d2");
 
         let _ = remove_dir_all(&dir);
     }

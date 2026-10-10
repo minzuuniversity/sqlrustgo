@@ -1,7 +1,8 @@
 //! Ignored measurement: how long does an explicit `flush()` hold the internal
 //! `with_write_lock`? Run against pre-B2.2 and post-B2.2 builds.
 use sqlrustgo_storage::mvcc_storage::MvccStorage;
-use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 use std::time::Instant;
 
 fn table_info(name: &str) -> TableInfo {

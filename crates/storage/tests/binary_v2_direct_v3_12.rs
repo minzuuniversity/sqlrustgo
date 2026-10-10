@@ -7,6 +7,7 @@
 use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
 use sqlrustgo_storage::Record;
+use sqlrustgo_types::Value;
 use tempfile::TempDir;
 
 fn make_dir() -> (TempDir, BinaryTableStorageV2) {

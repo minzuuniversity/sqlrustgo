@@ -27,8 +27,9 @@
 
 use sqlrustgo_parser::IndexColumnSpec;
 use sqlrustgo_storage::{
-    ColumnDefinition, FileStorage, IndexInfo, Record, StorageEngine, TableInfo, Value,
+    ColumnDefinition, FileStorage, IndexInfo, Record, SessionContext, StorageEngine, TableInfo,
 };
+use sqlrustgo_types::Value;
 use std::path::PathBuf;
 
 const DB: &str = "default";
@@ -94,7 +95,7 @@ fn index_built_before_flush_still_finds_buffered_rows() {
     s.flush().ok();
 
     let found = s
-        .scan_with_index_in_db(DB, "t", "k", &Value::Integer(20))
+        .scan_with_index_in_db(&SessionContext::new(DB, 0), "t", "k", &Value::Integer(20))
         .expect("index scan");
     assert!(
         !found.is_empty(),
@@ -106,7 +107,7 @@ fn index_built_before_flush_still_finds_buffered_rows() {
     assert_eq!(found[0][0], Value::Integer(2), "#5209: wrong row returned");
 
     assert!(
-        s.scan_with_index_in_db(DB, "t", "k", &Value::Integer(999))
+        s.scan_with_index_in_db(&SessionContext::new(DB, 0), "t", "k", &Value::Integer(999))
             .expect("index scan")
             .is_empty(),
         "#5209: a key with no row must still return nothing"
@@ -133,7 +134,7 @@ fn index_covers_every_buffered_row() {
     let mut missing = Vec::new();
     for i in 1..=50i64 {
         let key = Value::Integer(i * 10);
-        if s.scan_with_index_in_db(DB, "t", "k", &key)
+        if s.scan_with_index_in_db(&SessionContext::new(DB, 0), "t", "k", &key)
             .expect("index scan")
             .is_empty()
         {
@@ -165,7 +166,7 @@ fn index_built_after_flush_works() {
     StorageEngine::create_index(&mut s, idx_info()).expect("create index");
 
     let found = s
-        .scan_with_index_in_db(DB, "t", "k", &Value::Integer(70))
+        .scan_with_index_in_db(&SessionContext::new(DB, 0), "t", "k", &Value::Integer(70))
         .expect("index scan");
     assert_eq!(found.len(), 1, "#5209: post-flush index must find the row");
     assert_eq!(found[0][0], Value::Integer(7));

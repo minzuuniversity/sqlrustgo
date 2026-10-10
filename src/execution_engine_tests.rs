@@ -1854,14 +1854,15 @@ fn database_is_resolved_in_where_too() {
 fn session_db_is_seeded_from_storage_not_the_constant() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     storage.write().create_database("d1").unwrap();
-    storage.write().set_current_db("d1").unwrap();
 
     let engine = ExecutionEngine::new(storage);
 
+    // #5057: the shared storage `current_db` is no longer seeded into the
+    // session. A fresh engine starts at DEFAULT_DATABASE; USE switches it.
     assert_eq!(
         engine.session_db(),
-        "d1",
-        "a fresh engine must adopt the storage's current database, not `default`"
+        sqlrustgo_storage::engine::DEFAULT_DATABASE,
+        "a fresh engine starts at DEFAULT_DATABASE, not at a shared storage field"
     );
 }
 
@@ -1872,11 +1873,11 @@ fn session_db_is_seeded_from_storage_not_the_constant() {
 fn handshake_selected_database_can_query_its_own_tables() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     storage.write().create_database("d1").unwrap();
-    storage.write().set_current_db("d1").unwrap();
 
-    // Build the engine the way the wire layer does: AFTER storage already
-    // points at the handshake-selected database.
+    // #5057: handshake / COM_INIT_DB write the per-connection session, not
+    // the shared storage. Simulate the wire layer with `USE d1`.
     let mut engine = ExecutionEngine::new(storage);
+    engine.execute("USE d1").unwrap();
     engine
         .execute("CREATE TABLE t (id INTEGER, val INTEGER)")
         .expect("CREATE TABLE must succeed on the selected database");
@@ -1926,23 +1927,29 @@ fn handshake_selected_database_can_query_its_own_tables() {
 fn handshake_selected_database_does_not_leak_other_databases() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     storage.write().create_database("d1").unwrap();
-    storage.write().set_current_db("d1").unwrap();
 
-    // Build the engine while `d1` is current, exactly as the wire layer does
-    // after a handshake that named `d1`.
+    // #5057: the engine starts at DEFAULT_DATABASE; USE switches its own
+    // session. Another connection's USE must not leak.
     let mut engine = ExecutionEngine::new(storage.clone());
+    engine.execute("USE d1").unwrap();
     engine
         .execute("CREATE TABLE t (id INTEGER)")
         .expect("CREATE TABLE must succeed on the selected database");
 
-    // Another connection switches the shared storage back to `default`. The
-    // engine built above keeps its own session value — that per-engine copy is
-    // what #5057 introduced and what this test pins.
-    storage.write().set_current_db("default").unwrap();
+    // A second engine (another connection) switches to `default`. The engine
+    // built above keeps its own session value — the per-connection isolation
+    // #5057 introduced and what this test pins.
+    let mut other = ExecutionEngine::new(storage.clone());
+    other.execute("USE d2").unwrap();
     assert_eq!(
         engine.session_db(),
         "d1",
         "a connection's session database must not follow another connection's switch"
+    );
+    assert_eq!(
+        other.session_db(),
+        "d2",
+        "the second connection keeps its own session database"
     );
 
     let missing = engine.execute("SELECT * FROM nosuchtable");

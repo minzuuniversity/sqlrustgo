@@ -19,9 +19,8 @@
 //! counter.
 
 use crate::engine::{
-    SessionContext,
-    ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
-    TriggerInfo, Value,
+    ColumnDefinition, Record, RowFilter, RowMutation, SessionContext, SqlResult, StorageEngine,
+    TableInfo, TriggerInfo, Value,
 };
 use crate::mvcc::{find_visible, VersionedTable};
 use std::any::Any;
@@ -220,7 +219,7 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         // `current_db` here. That is only correct for callers that have no
         // database of their own to state — see [`mvcc_table_in`](Self::mvcc_table_in)
         // for why the per-connection path cannot use it.
-        self.mvcc_table_in(&self.inner.current_db(), table_name)
+        self.mvcc_table_in(crate::engine::DEFAULT_DATABASE, table_name)
     }
 
     /// #5105: the version store for `(db, table)`.
@@ -420,7 +419,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
         // #5105: keep the transaction and resolve the database the way the
         // rest of this impl does, so both halves come from the same place.
-        let db = self.inner.current_db();
+        let db = crate::engine::DEFAULT_DATABASE;
         self.scan_in_tx_db(&SessionContext::new(db, reader_tx), table)
     }
 
@@ -534,7 +533,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// `engine.rs:1333`, which resolves against the *current* database —
     /// so a row written with `insert_in_db("aud", ..)` was invisible to
     /// `scan_in_db("aud", ..)`. `mvcc_table` is scoped by
-    /// `self.inner.current_db()`, which is exactly the value the stated
+    /// `crate::engine::DEFAULT_DATABASE`, which is exactly the value the stated
     /// database is meant to override.
     ///
     /// The inner storage already scopes correctly, so delegate rather than
@@ -633,7 +632,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // #5192: resolve the database before the mutable borrows below, so
         // the inner write and the MVCC version chain both land in the
         // database this statement targets.
-        let db = self.inner.current_db();
+        let db = crate::engine::DEFAULT_DATABASE;
         self.insert_in_db(&SessionContext::new(db, 0), table, records)
     }
 
@@ -642,7 +641,12 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// The trait default (`engine.rs:1424`) drops `db` and forwards to
     /// `insert`, which resolves against the storage's *current* database
     /// instead of the one the caller named.
-    fn insert_in_db(&mut self, ctx: &SessionContext, table: &str, records: Vec<Record>) -> SqlResult<()> {
+    fn insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        records: Vec<Record>,
+    ) -> SqlResult<()> {
         // First, write to the inner engine.
         self.inner.insert_in_db(ctx, table, records.clone())?;
         // Then, append to the MVCC chain under the next snapshot.
@@ -826,7 +830,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
         self.inner.drop_table(table)?;
         // #5025: same scoped key `mvcc_table` uses.
-        let key = crate::engine::scoped_key(&self.inner.current_db(), table);
+        let key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, table);
         self.mvcc.write().remove(&key);
         Ok(())
     }
@@ -872,13 +876,6 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// trait default (`Ok(())` that changes nothing) makes `USE` report
     /// success while every query still resolves against the previous
     /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        self.inner.current_db()
-    }
     /// #5009: forward. Without this the MVCC layer would answer the
     /// trait default (empty list) and `SHOW DATABASES` would report
     /// nothing at all when the server runs on the MVCC engine.
@@ -988,10 +985,10 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn rename_table(&mut self, old: &str, new: &str) -> SqlResult<()> {
         // Move MVCC state under the new name.
         // #5025: move the version store with the table.
-        let old_key = crate::engine::scoped_key(&self.inner.current_db(), old);
+        let old_key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, old);
         let mvcc_state = self.mvcc.write().remove(&old_key);
         if let Some(state) = mvcc_state {
-            let new_key = crate::engine::scoped_key(&self.inner.current_db(), new);
+            let new_key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, new);
             self.mvcc.write().insert(new_key, state);
         }
         self.inner.rename_table(old, new)
@@ -1169,11 +1166,21 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         self.inner_mut().drop_table_in_db(ctx, table)
     }
 
-    fn force_insert_in_db(&mut self, ctx: &SessionContext, table: &str, record: Vec<Value>) -> SqlResult<()> {
+    fn force_insert_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        record: Vec<Value>,
+    ) -> SqlResult<()> {
         self.inner_mut().force_insert_in_db(ctx, table, record)
     }
 
-    fn delete_in_db(&mut self, ctx: &SessionContext, table: &str, filters: &[Value]) -> SqlResult<usize> {
+    fn delete_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<usize> {
         self.inner_mut().delete_in_db(ctx, table, filters)
     }
 
@@ -1187,7 +1194,12 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             .delete_collect_pks_in_db(ctx, table, filters)
     }
 
-    fn delete_if_in_db(&mut self, ctx: &SessionContext, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+    fn delete_if_in_db(
+        &mut self,
+        ctx: &SessionContext,
+        table: &str,
+        filter: &RowFilter,
+    ) -> SqlResult<usize> {
         self.inner_mut().delete_if_in_db(ctx, table, filter)
     }
 
@@ -1500,21 +1512,22 @@ mod db_isolation_tests {
         mvcc.create_database("d1").unwrap();
         mvcc.create_database("d2").unwrap();
 
-        for (db, id) in [("d1", 1i64), ("d2", 2)] {
-            mvcc.set_current_db(db).unwrap();
-            mvcc.create_table(&table("t")).unwrap();
-            mvcc.insert("t", vec![vec![Value::Integer(id)]]).unwrap();
+        let ctx1 = SessionContext::new("d1", 0);
+        let ctx2 = SessionContext::new("d2", 0);
+
+        for (ctx, id) in [(&ctx1, 1i64), (&ctx2, 2)] {
+            mvcc.create_table_in_db(ctx, &table("t")).unwrap();
+            mvcc.insert_in_db(ctx, "t", vec![vec![Value::Integer(id)]])
+                .unwrap();
         }
 
-        mvcc.set_current_db("d1").unwrap();
         assert_eq!(
-            mvcc.scan("t").unwrap(),
+            mvcc.scan_in_db(&ctx1, "t").unwrap(),
             vec![vec![Value::Integer(1)]],
             "d1 must not see d2's version"
         );
-        mvcc.set_current_db("d2").unwrap();
         assert_eq!(
-            mvcc.scan("t").unwrap(),
+            mvcc.scan_in_db(&ctx2, "t").unwrap(),
             vec![vec![Value::Integer(2)]],
             "d2 must not see d1's version"
         );

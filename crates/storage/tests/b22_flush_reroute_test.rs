@@ -1,3 +1,4 @@
+use sqlrustgo_types::Value;
 // B2.2 reroute — the live flush path is the `StorageEngine::flush` trait
 // override, and both `flush` implementations must behave identically.
 //
@@ -20,7 +21,6 @@
 
 use sqlrustgo_storage::engine::StorageEngine;
 use sqlrustgo_storage::file_storage::FileStorage;
-use sqlrustgo_types::Value;
 use std::path::PathBuf;
 
 fn table_info(name: &str) -> sqlrustgo_storage::engine::TableInfo {

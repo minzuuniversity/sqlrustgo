@@ -14,7 +14,7 @@
 
 use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo};
 use sqlrustgo_storage::file_storage::FileStorage;
-use sqlrustgo_storage::Value;
+use sqlrustgo_types::Value;
 
 fn info() -> TableInfo {
     TableInfo {
@@ -107,6 +107,7 @@ fn pk_lookup_cost_must_not_scale_with_table_size() {
 fn wal_wrapped_pk_lookup_must_not_scan() {
     use sqlrustgo_storage::engine::TableInfo;
     use sqlrustgo_storage::{FileBackedWalManager, FileStorage, MvccStorage, WalStorage};
+    use sqlrustgo_types::Value;
 
     fn measure(rows: i64) -> std::time::Duration {
         let dir = tempfile::tempdir().expect("tmpdir");

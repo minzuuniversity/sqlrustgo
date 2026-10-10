@@ -27,7 +27,7 @@
 use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::FileStorage;
-use sqlrustgo_storage::Value;
+use sqlrustgo_types::Value;
 use std::sync::Arc;
 
 fn create_engine(dir: &std::path::Path) -> ExecutionEngine<FileStorage> {

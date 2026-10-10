@@ -1,3 +1,4 @@
+use sqlrustgo_types::Value;
 // BLK-3 / Issue #4945 — AUTO_INCREMENT sequences must be monotonic across
 // concurrent autocommit connections.
 //
@@ -19,7 +20,7 @@
 // Each test below pins a different aspect of the contract.
 
 use parking_lot::RwLock;
-use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::engine::{ColumnDefinition, MemoryStorage, StorageEngine, TableInfo};
 use std::sync::Arc;
 
 fn table_with_auto_inc(name: &str) -> TableInfo {

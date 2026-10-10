@@ -12,6 +12,7 @@ use sqlrustgo_storage::{
     checkpoint::CheckpointManager, ColumnDefinition, MemoryStorage, Record, StorageEngine,
     WalStorage, WalSyncMode,
 };
+use sqlrustgo_types::Value;
 
 use std::sync::Arc;
 use tempfile::TempDir;

@@ -17,7 +17,8 @@
 //! read comes back empty and the test "proves" the wrong thing. (Same trap
 //! as #4938 and #4995.)
 
-use sqlrustgo_storage::{FileStorage, StorageEngine, Value};
+use sqlrustgo_storage::{FileStorage, SessionContext, StorageEngine};
+use sqlrustgo_types::Value;
 use std::path::Path;
 
 fn make_db(dir: &Path) -> FileStorage {
@@ -42,19 +43,23 @@ fn issue_5025_file_storage_tables_are_scoped_per_database() {
     storage.create_database("d1").expect("create d1");
     storage.create_database("d2").expect("create d2");
 
-    // The same table name in both databases must not clash — that clash
-    // ("Table 't1' already exists") is the exact symptom #5025 reported.
-    storage.set_current_db("d1").expect("switch to d1");
-    storage.create_table(&t1_table()).expect("create t1 in d1");
-    insert_and_flush(&mut storage, "t1", vec![vec![Value::Integer(1)]]);
+    let ctx1 = SessionContext::new("d1", 0);
+    let ctx2 = SessionContext::new("d2", 0);
 
-    storage.set_current_db("d2").expect("switch to d2");
+    // The same table name in both databases must not clash.
     storage
-        .create_table(&t1_table())
+        .create_table_in_db(&ctx1, &t1_table())
+        .expect("create t1 in d1");
+    storage
+        .insert_in_db(&ctx1, "t1", vec![vec![Value::Integer(1)]])
+        .expect("insert into d1");
+    storage.flush().expect("flush");
+    storage
+        .create_table_in_db(&ctx2, &t1_table())
         .expect("same table name in d2 must not clash with d1's");
 
     // d2's t1 is a different table: empty.
-    let rows = storage.scan("t1").expect("scan d2's t1");
+    let rows = storage.scan_in_db(&ctx2, "t1").expect("scan d2's t1");
     assert!(
         rows.is_empty(),
         "d2's t1 must not contain d1's row (shared namespace), got {} rows",
@@ -62,8 +67,7 @@ fn issue_5025_file_storage_tables_are_scoped_per_database() {
     );
 
     // d1's t1 still has its row.
-    storage.set_current_db("d1").expect("switch back to d1");
-    let rows = storage.scan("t1").expect("scan d1's t1");
+    let rows = storage.scan_in_db(&ctx1, "t1").expect("scan d1's t1");
     assert_eq!(rows.len(), 1, "d1's t1 must still hold exactly its own row");
 }
 
@@ -75,57 +79,32 @@ fn issue_5025_file_storage_list_tables_is_scoped() {
 
     storage.create_database("d1").expect("create d1");
     storage.create_database("d2").expect("create d2");
-
-    storage.set_current_db("d1").expect("d1");
+    let ctx1 = SessionContext::new("d1", 0);
+    let ctx2 = SessionContext::new("d2", 0);
     storage
-        .create_table(&tbl("only_in_d1"))
+        .create_table_in_db(&ctx1, &tbl("only_in_d1"))
         .expect("create d1 table");
-
-    storage.set_current_db("d2").expect("d2");
     storage
-        .create_table(&tbl("only_in_d2"))
+        .create_table_in_db(&ctx2, &tbl("only_in_d2"))
         .expect("create d2 table");
-
-    storage.set_current_db("d1").expect("back to d1");
-    let tables = storage.list_tables();
-    assert!(
-        tables.iter().any(|t| t == "only_in_d1"),
-        "d1 must list its own table, got {tables:?}"
+    let mut tables = storage.list_tables_in_db(&ctx1);
+    tables.sort();
+    assert_eq!(
+        tables,
+        vec!["only_in_d1".to_string()],
+        "d1 must list only its own table"
     );
-    assert!(
-        !tables.iter().any(|t| t == "only_in_d2"),
-        "d1 must NOT list d2's table (shared namespace), got {tables:?}"
-    );
-    // The internal scoping key must never reach the caller. MemoryStorage
-    // uses `db\u{1}table`; if FileStorage ever adopts that, the raw key
-    // would leak into SHOW TABLES output.
-    assert!(
-        !tables.iter().any(|t| t.contains('\u{1}')),
-        "internal scoping separator leaked into list_tables: {tables:?}"
+    let mut tables = storage.list_tables_in_db(&ctx2);
+    tables.sort();
+    assert_eq!(
+        tables,
+        vec!["only_in_d2".to_string()],
+        "d2 must list only its own table"
     );
 }
 
 /// Switching to a database that does not exist must fail and must not
 /// change the active database.
-#[test]
-fn issue_5025_file_storage_unknown_database_is_rejected() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let mut storage = make_db(tmp.path());
-    storage.create_database("d1").expect("create d1");
-
-    let before = storage.current_db();
-    let r = storage.set_current_db("no_such_db");
-    assert!(
-        r.is_err(),
-        "switching to an unknown database must error, got {:?}",
-        r.map(|_| "Ok")
-    );
-    assert_eq!(
-        storage.current_db(),
-        before,
-        "a rejected switch must leave the active database unchanged"
-    );
-}
 
 fn t1_table() -> sqlrustgo_storage::TableInfo {
     tbl("t1")
@@ -165,16 +144,20 @@ fn issue_5025_list_tables_in_db_returns_target_database_tables() {
 
     storage.create_database("d1").expect("create d1");
     storage.create_database("d2").expect("create d2");
-
-    storage.set_current_db("d1").expect("switch to d1");
-    storage.create_table(&tbl("t1")).expect("create t1 in d1");
-
-    storage.set_current_db("d2").expect("switch to d2");
-    storage.create_table(&tbl("t1")).expect("create t1 in d2");
-    storage.create_table(&tbl("t2")).expect("create t2 in d2");
+    let ctx1 = SessionContext::new("d1", 0);
+    let ctx2 = SessionContext::new("d2", 0);
+    storage
+        .create_table_in_db(&ctx1, &tbl("t1"))
+        .expect("create t1 in d1");
+    storage
+        .create_table_in_db(&ctx2, &tbl("t1"))
+        .expect("create t1 in d2");
+    storage
+        .create_table_in_db(&ctx2, &tbl("t2"))
+        .expect("create t2 in d2");
 
     // current_db stays d2 throughout — the answer must not depend on it.
-    let mut d1_tables = storage.list_tables_in_db("d1");
+    let mut d1_tables = storage.list_tables_in_db(&SessionContext::new("d1", 0));
     d1_tables.sort();
     assert_eq!(
         d1_tables,
@@ -182,18 +165,12 @@ fn issue_5025_list_tables_in_db_returns_target_database_tables() {
         "list_tables_in_db(d1) must list only d1's tables while current_db=d2"
     );
 
-    let mut d2_tables = storage.list_tables_in_db("d2");
+    let mut d2_tables = storage.list_tables_in_db(&SessionContext::new("d2", 0));
     d2_tables.sort();
     assert_eq!(
         d2_tables,
         vec!["t1".to_string(), "t2".to_string()],
         "list_tables_in_db(d2) must list d2's tables"
-    );
-
-    assert_eq!(
-        storage.current_db(),
-        "d2",
-        "list_tables_in_db must not mutate the engine-wide current database"
     );
 }
 
@@ -209,15 +186,15 @@ fn issue_5025_file_storage_default_database_does_not_leak_named_database_tables(
     let mut storage = make_db(tmp.path());
 
     storage.create_database("d1").expect("create d1");
-    storage.set_current_db("d1").expect("switch to d1");
+    let ctx1 = SessionContext::new("d1", 0);
     storage
-        .create_table(&tbl("only_in_d1"))
+        .create_table_in_db(&ctx1, &tbl("only_in_d1"))
         .expect("create table in d1");
-
-    storage.set_current_db("default").expect("back to default");
-    let tables = storage.list_tables();
-    assert!(
-        !tables.iter().any(|t| t == "only_in_d1"),
-        "default's list_tables must NOT leak d1's table, got: {tables:?}"
+    let mut tables = storage.list_tables_in_db(&SessionContext::new("default", 0));
+    tables.sort();
+    assert_eq!(
+        tables,
+        Vec::<String>::new(),
+        "default's list_tables must NOT leak d1's table"
     );
 }

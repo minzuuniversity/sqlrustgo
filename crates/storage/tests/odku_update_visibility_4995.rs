@@ -24,7 +24,8 @@
 //! 重复键被正确识别、语句成功返回，**唯独赋值那段没接上**。
 
 use sqlrustgo_storage::engine::ColumnDefinition;
-use sqlrustgo_storage::{MvccStorage, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{MvccStorage, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 
 fn col(name: &str, pk: bool) -> ColumnDefinition {
     ColumnDefinition {

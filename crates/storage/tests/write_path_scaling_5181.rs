@@ -12,7 +12,8 @@
 //! that reorders surviving rows corrupts ROLLBACK.
 
 use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo};
-use sqlrustgo_storage::{FileStorage, Value};
+use sqlrustgo_storage::{FileStorage, SessionContext};
+use sqlrustgo_types::Value;
 use std::time::Instant;
 
 fn info() -> TableInfo {
@@ -64,17 +65,33 @@ fn per_row_delete(n: i64) -> f64 {
     let key = Value::Integer(n);
     let iters = 40;
     for _ in 0..iters {
-        s.delete_in_db("default", "t", std::slice::from_ref(&key))
-            .expect("delete");
-        s.insert_in_db("default", "t", vec![vec![key.clone(), Value::Integer(0)]])
-            .expect("insert");
+        s.delete_in_db(
+            &SessionContext::new("default", 0),
+            "t",
+            std::slice::from_ref(&key),
+        )
+        .expect("delete");
+        s.insert_in_db(
+            &SessionContext::new("default", 0),
+            "t",
+            vec![vec![key.clone(), Value::Integer(0)]],
+        )
+        .expect("insert");
     }
     let t = Instant::now();
     for _ in 0..iters {
-        s.delete_in_db("default", "t", std::slice::from_ref(&key))
-            .expect("delete");
-        s.insert_in_db("default", "t", vec![vec![key.clone(), Value::Integer(0)]])
-            .expect("insert");
+        s.delete_in_db(
+            &SessionContext::new("default", 0),
+            "t",
+            std::slice::from_ref(&key),
+        )
+        .expect("delete");
+        s.insert_in_db(
+            &SessionContext::new("default", 0),
+            "t",
+            vec![vec![key.clone(), Value::Integer(0)]],
+        )
+        .expect("insert");
     }
     t.elapsed().as_secs_f64() / iters as f64
 }
@@ -109,13 +126,21 @@ fn report_single_row_delete_cost() {
 fn delete_preserves_surviving_row_order() {
     let (_d, mut s) = seeded(100);
     // delete an interior row and an interior range
-    s.delete_in_db("default", "t", &[Value::Integer(50)])
-        .expect("delete 50");
-    s.delete_in_db("default", "t", &[Value::Integer(10)])
-        .expect("delete 10");
+    s.delete_in_db(
+        &SessionContext::new("default", 0),
+        "t",
+        &[Value::Integer(50)],
+    )
+    .expect("delete 50");
+    s.delete_in_db(
+        &SessionContext::new("default", 0),
+        "t",
+        &[Value::Integer(10)],
+    )
+    .expect("delete 10");
 
     let ids: Vec<i64> = s
-        .scan_in_db("default", "t")
+        .scan_in_db(&SessionContext::new("default", 0), "t")
         .expect("scan")
         .iter()
         .map(|r| match r[0] {
@@ -137,19 +162,33 @@ fn delete_preserves_surviving_row_order() {
 fn delete_with_no_match_is_a_noop() {
     let (_d, mut s) = seeded(100);
     let n = s
-        .delete_in_db("default", "t", &[Value::Integer(9999)])
+        .delete_in_db(
+            &SessionContext::new("default", 0),
+            "t",
+            &[Value::Integer(9999)],
+        )
         .expect("delete");
     assert_eq!(n, 0);
-    assert_eq!(s.scan_in_db("default", "t").expect("scan").len(), 100);
+    assert_eq!(
+        s.scan_in_db(&SessionContext::new("default", 0), "t")
+            .expect("scan")
+            .len(),
+        100
+    );
 }
 
 /// Full-table delete (empty filter) must still remove everything.
 #[test]
 fn empty_filter_deletes_everything() {
     let (_d, mut s) = seeded(100);
-    let n = s.delete_in_db("default", "t", &[]).expect("delete all");
+    let n = s
+        .delete_in_db(&SessionContext::new("default", 0), "t", &[])
+        .expect("delete all");
     assert_eq!(n, 100);
-    assert!(s.scan_in_db("default", "t").expect("scan").is_empty());
+    assert!(s
+        .scan_in_db(&SessionContext::new("default", 0), "t")
+        .expect("scan")
+        .is_empty());
 }
 
 /// ROLLBACK after deleting several rows must restore the table exactly.
@@ -163,16 +202,22 @@ fn rollback_after_multi_row_delete_restores_order() {
     s.begin_transaction_for(1).expect("begin");
 
     for key in [5i64, 10, 17, 22, 29] {
-        s.delete_in_db("default", "t", &[Value::Integer(key)])
-            .expect("delete");
+        s.delete_in_db(
+            &SessionContext::new("default", 0),
+            "t",
+            &[Value::Integer(key)],
+        )
+        .expect("delete");
     }
-    let mid = s.scan_in_db("default", "t").expect("scan");
+    let mid = s
+        .scan_in_db(&SessionContext::new("default", 0), "t")
+        .expect("scan");
     assert_eq!(mid.len(), 25, "all five deletes must have landed");
 
     s.rollback_transaction_for(1).expect("rollback");
 
     let after: Vec<i64> = s
-        .scan_in_db("default", "t")
+        .scan_in_db(&SessionContext::new("default", 0), "t")
         .expect("scan")
         .iter()
         .map(|r| match r[0] {

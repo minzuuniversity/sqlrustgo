@@ -49,6 +49,7 @@ fn fresh_storage() -> MemoryStorage {
 /// Append a single WAL entry with the given LSN, type, tx_id.
 fn append(wal: &mut MemoryWalManager, lsn: u64, tx_id: u64, entry_type: WalEntryType) {
     wal.append(WalEntry {
+        database_name: None,
         tx_id,
         entry_type,
         table_id: 0,
@@ -93,6 +94,7 @@ fn r2_orphan_commit_no_begin() {
     // Commit without preceding Begin. RecoveryEngine should not panic
     // and should treat it as an incomplete-or-singleton-commit group.
     let entries = vec![WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Commit,
         table_id: 0,
@@ -115,6 +117,7 @@ fn r2_orphan_commit_no_begin() {
 fn r2_orphan_begin_no_commit() {
     // Begin with no Commit. The classic "incomplete" case.
     let entries = vec![WalEntry {
+        database_name: None,
         tx_id: 1,
         entry_type: WalEntryType::Begin,
         table_id: 0,
@@ -136,6 +139,7 @@ fn r2_duplicate_lsn() {
     // two separate entries; key requirement: no panic.
     let entries = vec![
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -146,6 +150,7 @@ fn r2_duplicate_lsn() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Begin, // duplicate Begin, same LSN
             table_id: 0,
@@ -156,6 +161,7 @@ fn r2_duplicate_lsn() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Commit,
             table_id: 0,
@@ -180,6 +186,7 @@ fn r2_lsn_gaps() {
     // separate entries (no implicit reordering).
     let entries = vec![
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -190,6 +197,7 @@ fn r2_lsn_gaps() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Commit,
             table_id: 0,
@@ -200,6 +208,7 @@ fn r2_lsn_gaps() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 2,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -210,6 +219,7 @@ fn r2_lsn_gaps() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 2,
             entry_type: WalEntryType::Commit,
             table_id: 0,
@@ -235,6 +245,7 @@ fn r2_interleaved_transactions_out_of_order() {
     // interleaved pattern.
     let entries = vec![
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -245,6 +256,7 @@ fn r2_interleaved_transactions_out_of_order() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 2,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -255,6 +267,7 @@ fn r2_interleaved_transactions_out_of_order() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Commit,
             table_id: 0,
@@ -265,6 +278,7 @@ fn r2_interleaved_transactions_out_of_order() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 2,
             entry_type: WalEntryType::Commit,
             table_id: 0,
@@ -287,6 +301,7 @@ fn r2_multi_rollback() {
     // a single rolled-back tx.
     let entries = vec![
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -297,6 +312,7 @@ fn r2_multi_rollback() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Rollback,
             table_id: 0,
@@ -307,6 +323,7 @@ fn r2_multi_rollback() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Rollback, // duplicate
             table_id: 0,
@@ -330,6 +347,7 @@ fn r2_empty_tx_begin_commit_no_dml() {
     // Begin + Commit with no DML. Should be a single committed tx.
     let entries = vec![
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -340,6 +358,7 @@ fn r2_empty_tx_begin_commit_no_dml() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Commit,
             table_id: 0,
@@ -363,6 +382,7 @@ fn r2_long_tx_with_checkpoint() {
     // The Checkpoint entry should not affect the committed count.
     let entries = vec![
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -373,6 +393,7 @@ fn r2_long_tx_with_checkpoint() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Insert,
             table_id: HASH_T,
@@ -383,6 +404,7 @@ fn r2_long_tx_with_checkpoint() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 0, // checkpoint is not associated with a tx
             entry_type: WalEntryType::Checkpoint,
             table_id: 0,
@@ -393,6 +415,7 @@ fn r2_long_tx_with_checkpoint() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Commit,
             table_id: 0,
@@ -424,6 +447,7 @@ fn r2_many_tx_id_gaps() {
     for (i, tx_id) in [1u64, 5, 10, 100, 1000].iter().enumerate() {
         let lsn_base = (i as u64 + 1) * 10;
         entries.push(WalEntry {
+            database_name: None,
             tx_id: *tx_id,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -434,6 +458,7 @@ fn r2_many_tx_id_gaps() {
             timestamp: 0,
         });
         entries.push(WalEntry {
+            database_name: None,
             tx_id: *tx_id,
             entry_type: WalEntryType::Commit,
             table_id: 0,
@@ -456,6 +481,7 @@ fn r2_all_incomplete() {
     let mut entries = Vec::new();
     for i in 0..10 {
         entries.push(WalEntry {
+            database_name: None,
             tx_id: i + 1,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -477,6 +503,7 @@ fn r2_mixed_commit_rollback_incomplete() {
     // tx 1: commit, tx 2: rollback, tx 3: incomplete
     let entries = vec![
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -487,6 +514,7 @@ fn r2_mixed_commit_rollback_incomplete() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 1,
             entry_type: WalEntryType::Commit,
             table_id: 0,
@@ -497,6 +525,7 @@ fn r2_mixed_commit_rollback_incomplete() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 2,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -507,6 +536,7 @@ fn r2_mixed_commit_rollback_incomplete() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 2,
             entry_type: WalEntryType::Rollback,
             table_id: 0,
@@ -517,6 +547,7 @@ fn r2_mixed_commit_rollback_incomplete() {
             timestamp: 0,
         },
         WalEntry {
+            database_name: None,
             tx_id: 3,
             entry_type: WalEntryType::Begin,
             table_id: 0,
@@ -570,6 +601,7 @@ fn r2_random_fuzz_smoke_500_iterations() {
                 _ => WalEntryType::Prepare,
             };
             entries.push(WalEntry {
+                database_name: None,
                 tx_id,
                 entry_type,
                 table_id: HASH_T, // hash("t"), so Insert/Update/Delete can resolve
@@ -643,6 +675,7 @@ fn r2_random_fuzz_full_50k_iterations() {
                 _ => WalEntryType::Prepare,
             };
             entries.push(WalEntry {
+                database_name: None,
                 tx_id,
                 entry_type,
                 table_id: 0,
@@ -699,6 +732,7 @@ fn r2_seed_reproducibility() {
             )
             .then(|| b"i:\x01\0\0\0\0\0\0\0".to_vec());
             entries.push(WalEntry {
+                database_name: None,
                 tx_id,
                 entry_type,
                 table_id: HASH_T,

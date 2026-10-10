@@ -63,6 +63,7 @@
 //! rewrites are NOT quadratic), and the 4-test
 //! `e2e_crash_recovery_proof`.
 
+use sqlrustgo_types::Value;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::thread;
@@ -70,7 +71,7 @@ use std::time::Duration;
 
 use tempfile::tempdir;
 
-use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo};
 
 /// Helper: build a minimal TableInfo for the race tests.
 fn make_counter_table(name: &str) -> TableInfo {

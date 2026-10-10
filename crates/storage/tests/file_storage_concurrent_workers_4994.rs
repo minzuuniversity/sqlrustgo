@@ -40,7 +40,8 @@
 //! give each worker its own `tx_id`, which is what "8 independent
 //! connections" means at this layer.
 
-use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo};
+use sqlrustgo_types::Value;
 use std::sync::{Arc, RwLock};
 
 /// Rounds 1..=DELETE_FROM are never deleted; a worker keeps the ones it
