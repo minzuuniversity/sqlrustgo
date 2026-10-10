@@ -563,7 +563,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ]);
         }
 
-        Ok(ExecutorResult::new(rows, row_count))
+        // #5271: the catalog view has a fixed five-column shape —
+        // table type, name, engine, estimated rows, DDL — independent of how
+        // many tables were found. An empty catalog still has five columns.
+        Ok(ExecutorResult::with_columns(
+            vec![
+                crate::ResultColumn {
+                    name: "table_type".into(),
+                    data_type: Some("TEXT".into()),
+                },
+                crate::ResultColumn {
+                    name: "name".into(),
+                    data_type: Some("TEXT".into()),
+                },
+                crate::ResultColumn {
+                    name: "engine".into(),
+                    data_type: Some("TEXT".into()),
+                },
+                crate::ResultColumn {
+                    name: "rows".into(),
+                    data_type: Some("BIGINT".into()),
+                },
+                crate::ResultColumn {
+                    name: "sql".into(),
+                    data_type: Some("TEXT".into()),
+                },
+            ],
+            rows,
+            row_count,
+        ))
     }
 
     /// V312-76 / Issue #4682: column layout of the synthesized SQLite
@@ -642,7 +670,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             rows.push(vec![Value::Text(name), Value::Integer(seq)]);
         }
         let row_count = rows.len();
-        Ok(ExecutorResult::new(rows, row_count))
+        // #5271: index listing is two columns wide whether or not any index
+        // exists — the shape belongs to the view, not to the rows it returns.
+        Ok(ExecutorResult::with_columns(
+            vec![
+                crate::ResultColumn {
+                    name: "name".into(),
+                    data_type: Some("TEXT".into()),
+                },
+                crate::ResultColumn {
+                    name: "seq".into(),
+                    data_type: Some("BIGINT".into()),
+                },
+            ],
+            rows,
+            row_count,
+        ))
     }
 
     /// V312-67 / Issue #4686: execute a scalar subquery used in the
@@ -920,8 +963,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // normal projection step.
                 let expand_star =
                     select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
-                let rows = if expand_star {
-                    rows
+                let projected: Vec<Vec<Value>> = if expand_star {
+                    rows.clone()
                 } else {
                     let mut projected = Vec::with_capacity(rows.len());
                     for row in &rows {
@@ -940,8 +983,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                     projected
                 };
-                let filtered_count = rows.len();
-                return Ok(ExecutorResult::new(rows, filtered_count));
+                // #5271: the projection above is the query's output shape.
+                // Returning `rows` here threw that projection away, so a
+                // `SELECT id, v FROM t WHERE …` reported the base table's
+                // columns (and its rows) instead of the selected ones.
+                let filtered_count = projected.len();
+                let filter_columns: Vec<crate::ResultColumn> = if expand_star {
+                    ti.columns
+                        .iter()
+                        .map(|c| crate::ResultColumn {
+                            name: c.name.clone(),
+                            data_type: Some(c.data_type.clone()),
+                        })
+                        .collect()
+                } else {
+                    select
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            crate::ResultColumn::unnamed_type(
+                                c.alias.clone().unwrap_or_else(|| c.name.clone()),
+                            )
+                        })
+                        .collect()
+                };
+                return Ok(ExecutorResult::with_columns(
+                    filter_columns,
+                    projected,
+                    filtered_count,
+                ));
             }
         }
         // invoked from `pre_evaluate_correlated_exists`) short-circuits on
@@ -1871,7 +1941,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         &having_schema,
                         &having_subq_eval,
                     ) {
-                        return Ok(ExecutorResult::new(vec![], 0));
+                        // #5271: a false HAVING yields no rows, but the
+                        // projection's shape is unchanged. Reporting "no
+                        // columns" here would make the zero-row case
+                        // indistinguishable from a command reply.
+                        let empty_columns: Vec<crate::ResultColumn> = if select.columns.is_empty()
+                            || select.columns.iter().any(|c| c.name == "*")
+                        {
+                            having_schema
+                                .columns
+                                .iter()
+                                .map(|c| crate::ResultColumn::unnamed_type(c.name.clone()))
+                                .collect()
+                        } else {
+                            select
+                                .columns
+                                .iter()
+                                .map(|c| {
+                                    crate::ResultColumn::unnamed_type(
+                                        c.alias.clone().unwrap_or_else(|| c.name.clone()),
+                                    )
+                                })
+                                .collect()
+                        };
+                        return Ok(ExecutorResult::with_columns(empty_columns, vec![], 0));
                     }
                 }
 
@@ -1926,8 +2019,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         .collect();
                     vec![row]
                 };
+                let agg_schema = build_aggregate_schema(&[], &select.aggregates)?;
                 let row_count = projected.len();
-                return Ok(ExecutorResult::new(projected, row_count));
+                // #5271: an aggregate query is still a result set. Its shape
+                // comes from the projection list, or from the aggregate schema
+                // when the projection is `*` — never from the row, which for
+                // `COUNT(*)` over an empty table is a single row of one value
+                // regardless of how many aggregates were requested.
+                let agg_columns: Vec<crate::ResultColumn> =
+                    if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
+                        agg_schema
+                            .columns
+                            .iter()
+                            .map(|c| crate::ResultColumn {
+                                name: c.name.clone(),
+                                // Aggregate output types are R2-B; an unresolved
+                                // type is not a reason to drop the column.
+                                data_type: None,
+                            })
+                            .collect()
+                    } else {
+                        select
+                            .columns
+                            .iter()
+                            .map(|c| {
+                                crate::ResultColumn::unnamed_type(
+                                    c.alias.clone().unwrap_or_else(|| c.name.clone()),
+                                )
+                            })
+                            .collect()
+                    };
+                return Ok(ExecutorResult::with_columns(
+                    agg_columns,
+                    projected,
+                    row_count,
+                ));
             } else {
                 // B1.1 / #4914 (F-07): group on structured `Value` keys instead
                 // of a NUL-joined string. The old shape stringified every
@@ -2742,7 +2868,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 };
 
                 let row_count = agg_result_rows.len();
-                return Ok(ExecutorResult::new(agg_result_rows, row_count));
+                // #5271: the grouped path projects like any other — names from
+                // the projection list, or the aggregate schema for `*`. A
+                // HAVING that filters every group out leaves no rows, but the
+                // result still has the columns the query asked for.
+                let grouped_columns: Vec<crate::ResultColumn> =
+                    if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
+                        table_info
+                            .columns
+                            .iter()
+                            .map(|c| crate::ResultColumn {
+                                name: c.name.clone(),
+                                data_type: Some(c.data_type.clone()),
+                            })
+                            .collect()
+                    } else {
+                        select
+                            .columns
+                            .iter()
+                            .map(|c| {
+                                crate::ResultColumn::unnamed_type(
+                                    c.alias.clone().unwrap_or_else(|| c.name.clone()),
+                                )
+                            })
+                            .collect()
+                    };
+                return Ok(ExecutorResult::with_columns(
+                    grouped_columns,
+                    agg_result_rows,
+                    row_count,
+                ));
             }
         }
 
