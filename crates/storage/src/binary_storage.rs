@@ -300,6 +300,30 @@ impl BinaryTableStorage {
 }
 
 impl StorageEngine for BinaryTableStorage {
+    /// #5266 S1: BinaryTableStorage keeps one flat namespace, so it can serve `default`
+    /// only. A foreign database is refused rather than answered from `default`
+    /// — both methods return `SqlResult`, so refusing is possible and
+    /// guessing is not necessary.
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "BinaryTableStorage has no database namespace; cannot describe '{}.{}'",
+                db, table
+            )));
+        }
+        self.get_table_info(table)
+    }
+
+    /// #5266 S1: see `get_table_info_in`.
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "BinaryTableStorage has no database namespace; cannot scan '{}.{}'",
+                db, table
+            )));
+        }
+        self.scan(table)
+    }
     /// #5250: a single flat namespace — this storage can only answer for
     /// `default`. Any other database is reported absent rather than answered
     /// from the wrong namespace.
@@ -713,6 +737,17 @@ impl std::ops::DerefMut for BoxStorageEngine {
 }
 
 impl StorageEngine for BoxStorageEngine {
+    /// #5266 S1: reads must be asked of the stated database. The old trait
+    /// default resolved them against the current one, so a read of `BoxStorageEngine`'s
+    /// inner `d1.t` could return `default.t`'s rows or report it missing.
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        self.inner.get_table_info_in(db, table)
+    }
+
+    /// #5266 S1: see `get_table_info_in` — the database must be carried through.
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_db(db, table)
+    }
     /// #5250: ask the inner storage about the *stated* database. The old trait
     /// default resolved the question against the current database instead.
     fn has_table_in(&self, db: &str, table: &str) -> bool {

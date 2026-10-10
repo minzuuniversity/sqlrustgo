@@ -505,10 +505,6 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.list_databases()
     }
 
-    fn has_table_in(&self, db: &str, table: &str) -> bool {
-        self.inner.has_table_in(db, table)
-    }
-
     fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
         self.inner.get_table_info_in(db, table)
     }
@@ -547,14 +543,6 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         num_partitions: usize,
     ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
         self.inner.parallel_scan_in_db(db, table, num_partitions)
-    }
-
-    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
-        self.inner.create_table_in_db(db, info)
-    }
-
-    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
-        self.inner.drop_table_in_db(db, table)
     }
 
     fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {

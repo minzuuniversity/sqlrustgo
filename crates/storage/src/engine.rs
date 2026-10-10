@@ -1309,10 +1309,16 @@ pub trait StorageEngine: Send + Sync {
     /// "the storage is shared by every connection, so any stored 'current
     /// transaction' is whichever wrote last, not whoever is reading". The
     /// database is no different, so it takes the same shape.
-    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
-        let _ = db;
-        self.get_table_info(table)
-    }
+    /// #5266 S1: metadata for a table in a *stated* database.
+    ///
+    /// The old default did `let _ = db; self.get_table_info(table)`. That is
+    /// why `SELECT COUNT(*) FROM d1.t` answered `Table not found` even though
+    /// `d1.t` existed: the lookup itself resolved against `default`, where
+    /// the table does not exist.
+    ///
+    /// Deliberately no default body. A storage that cannot address `db` must
+    /// say so — a `SqlResult` can, so there is no excuse for guessing.
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo>;
 
     /// #5025: `list_tables` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
@@ -1330,10 +1336,14 @@ pub trait StorageEngine: Send + Sync {
 
     /// #5057 / #5025: `scan` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
-    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan(table)
-    }
+    /// #5266 S1: rows of a table in a *stated* database.
+    ///
+    /// The old default did `let _ = db; self.scan(table)`, so a read against
+    /// `d1.t` returned `default.t`'s rows — or reported the table missing.
+    /// Reads cross namespaces as easily as writes do.
+    ///
+    /// Deliberately no default body; see `get_table_info_in`.
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>>;
 
     /// #5250: existence check against a *stated* database.
     ///

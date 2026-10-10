@@ -83,6 +83,17 @@ impl<S: 'static> VtuGuard<S> {
 }
 
 impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
+    /// #5266 S1: reads must be asked of the stated database. The old trait
+    /// default resolved them against the current one, so a read of `VtuGuard`'s
+    /// inner `d1.t` could return `default.t`'s rows or report it missing.
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        self.inner.get_table_info_in(db, table)
+    }
+
+    /// #5266 S1: see `get_table_info_in` — the database must be carried through.
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_db(db, table)
+    }
     /// #5250: the check must be asked of the stated database. The old trait
     /// default resolved this question against the current database, so a
     /// storage could correctly refuse a write and still answer `true` here.
