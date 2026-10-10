@@ -5333,15 +5333,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
         };
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
-        // #5025: re-assert this connection's database before every command.
-        // The engine's `current_db` is one shared value, so another
-        // connection may have changed it since the last statement.
-        if cmd != packet_type::COM_QUIT {
-            storage
-                .write()
-                .set_current_db(conn_db)
-                .unwrap_or_else(|e| tracing::warn!("re-assert database {}: {}", conn_db, e));
-        }
         // MySQL/MariaDB protocol: every new client command starts with
         // pkt_seq=0, and the server resets its response seq to 0
         // (so the first response packet uses seq=1). pymysql and
@@ -5390,12 +5381,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // re-assert before the next command would otherwise switch
                 // this connection straight back.
                 if db.is_empty() {
-                    storage
-                        .write()
-                        .set_current_db(sqlrustgo_storage::engine::DEFAULT_DATABASE)?;
                     *conn_db = String::from(sqlrustgo_storage::engine::DEFAULT_DATABASE);
                 } else {
-                    storage.write().set_current_db(&db)?;
                     *conn_db = db;
                 }
                 seq = write_ok_packets(
@@ -5846,9 +5833,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         // The engine guard is dropped before taking the
                         // storage lock, matching the engine -> storage lock
                         // order the engine already uses internally.
+                        // #5057: `USE` no longer touches shared storage
+                        // `current_db`; `execute_use_database` writes only
+                        // this engine's `session_db`, and the protocol layer
+                        // already tracks `conn_db` per-connection.
                         let r = eng.execute(stmt_sql);
-                        drop(eng);
-                        *conn_db = storage.read().current_db();
                         r
                     };
                     // V312-18e: time every dispatched statement; the log
@@ -6210,9 +6199,9 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // updates only the shared storage, so copy the result
                     // back onto this connection or the next command's
                     // re-assert reverts it.
+                    // #5057: same as COM_QUERY above — no shared
+                    // current_db to copy back.
                     let r = eng.execute(&final_sql);
-                    drop(eng);
-                    *conn_db = storage.read().current_db();
                     r
                 };
                 // V312-18e: prepared-statement executions are timed too.
@@ -6457,13 +6446,8 @@ fn handle_connection(
             // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
             // without this the selection is parsed, logged, and discarded.
             if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
-                match storage.write().set_current_db(db) {
-                    Ok(()) => {
-                        conn_db = db.to_string();
-                        tracing::info!("handshake selected database: {}", db);
-                    }
-                    Err(e) => tracing::warn!("handshake database {:?} rejected: {}", db, e),
-                }
+                conn_db = db.to_string();
+                tracing::info!("handshake selected database: {}", db);
             }
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             // V312-WIRE-5: Vec<Packet> — write all packets (OK + optional
@@ -6539,13 +6523,8 @@ fn handle_connection(
     // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
     // without this the selection is parsed, logged, and discarded.
     if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
-        match storage.write().set_current_db(db) {
-            Ok(()) => {
-                conn_db = db.to_string();
-                tracing::info!("handshake selected database: {}", db);
-            }
-            Err(e) => tracing::warn!("handshake database {:?} rejected: {}", db, e),
-        }
+        conn_db = db.to_string();
+        tracing::info!("handshake selected database: {}", db);
     }
     tracing::info!("Auth accepted, sending OK packet, seq=2");
     // V312-WIRE-5: Vec<Packet> — emit OK + optional session_state_info.

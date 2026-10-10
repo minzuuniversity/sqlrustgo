@@ -732,16 +732,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     // to keep execution_engine.rs under 1500 lines (C-ARCH-05 AD-001).
 
     pub(super) fn execute_use_database(&self, db: &str) -> SqlResult<ExecutorResult> {
-        // #5025: `USE` used to be an accepted no-op, so every database
-        // shared one table namespace. It now switches the storage's active
-        // database, and an unknown name is an error rather than a silent
-        // fall-through to the previous database.
-        //
-        // #5057: `USE` is connection-level in the MySQL protocol, so it
-        // also records the choice on **this engine** — the storage field is
-        // one shared value, and without the per-engine copy one connection's
-        // switch redirects another's reads.
-        self.storage.write().set_current_db(db)?;
+        // #5057: `USE` is connection-level in the MySQL protocol. It writes
+        // only this engine's per-connection `session_db`; the shared
+        // storage `current_db` is no longer consulted (and will be removed
+        // in a follow-up). An unknown name is validated lazily on first
+        // table access via the existing `*_in_db` methods.
         *self.session_db.write() = db.to_lowercase();
         Ok(ExecutorResult::empty())
     }
