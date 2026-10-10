@@ -290,6 +290,39 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
             .clone()
     }
 
+    /// #5277: the identity a new row's version chain is keyed by.
+    ///
+    /// A declared PRIMARY KEY is a real identity, so it is used directly.
+    /// Without one there is no column that can serve — the previous code took
+    /// `row[0]`, which turned three rows sharing a first value into three
+    /// versions of a single record and made a scan return only the newest.
+    /// Those rows now get a hidden identity instead.
+    ///
+    /// A UNIQUE column is not used as a fallback: it may be nullable, and
+    /// SQL allows several NULLs under a UNIQUE constraint.
+    fn row_identity(&self, mvcc: &VersionedTable, db: &str, table: &str, row: &[Value]) -> Value {
+        // The key must be the primary key *value*, unchanged, so that
+        // `get_visible(pk, …)` and `delete(pk, …)` — which look up by that
+        // same value — keep working. The previous `row[0]` matched the first
+        // value against nothing in particular; matching a *value* against a
+        // column *name* was wrong in a second way.
+        let pk_index = self
+            .inner
+            .get_table_info_in(db, table)
+            .ok()
+            .and_then(|info| info.columns.iter().position(|c| c.primary_key));
+
+        match pk_index {
+            // A declared PRIMARY KEY is a real identity, used verbatim.
+            Some(i) => row
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| mvcc.next_row_identity()),
+            // No declared key: the row still needs its own identity.
+            None => mvcc.next_row_identity(),
+        }
+    }
+
     /// Snapshot the current MVCC timestamp for use in a query.
     /// Equivalent to `begin_snapshot()` on the first MVCC table, but
     /// reads the global counter (which is the same counter for all
@@ -351,7 +384,7 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
                 if row.is_empty() {
                     continue;
                 }
-                let pk = row[0].clone();
+                let pk = self.row_identity(&mvcc, "default", &table_name, &row);
                 mvcc.put(pk, row, ts, 0);
             }
         }
@@ -649,7 +682,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             if row.is_empty() {
                 continue;
             }
-            let pk = row[0].clone();
+            let pk = self.row_identity(&mvcc, db, table, &row);
             let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             mvcc.put(pk, row, ts, tx_id);
@@ -803,7 +836,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         self.inner.force_insert(table, record.clone())?;
         if !record.is_empty() {
             let mvcc = self.mvcc_table(table);
-            let pk = record[0].clone();
+            let pk = self.row_identity(&mvcc, &self.inner.current_db().to_string(), table, &record);
             let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             mvcc.put(pk, record, ts, tx_id);

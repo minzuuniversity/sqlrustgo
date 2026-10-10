@@ -1412,10 +1412,20 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// `MvccStorage` needs both: `db` selects the table namespace, `reader_tx`
     /// selects which versions are visible.
-    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan_in(table, reader_tx)
-    }
+    /// #5277: a transactional scan against a *stated* database.
+    ///
+    /// The default body was `let _ = db; self.scan_in(table, reader_tx)`, and
+    /// `BoxStorageEngine` did not override it — so a query that reached
+    /// `scan_for_reader_in_db` on the boxed stack fell through to the default
+    /// and resolved the table against the storage's current database instead
+    /// of the stated one. Measured on the production stack: the same three
+    /// rows came back from `scan_in_db` and one row from `scan_in_tx_db`.
+    ///
+    /// Deliberately no default body. A wrapper that cannot carry the database
+    /// and the reader transaction has to say so, not quietly read something
+    /// else. Implementations must delegate to a storage that honours both
+    /// rather than substituting `scan_in_db`, which would drop the snapshot.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>>;
 
     /// #5057: `scan_with_index` against a stated database.
     fn scan_with_index_in_db(

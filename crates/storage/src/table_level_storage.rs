@@ -43,6 +43,18 @@ impl TableLevelStorage {
 }
 
 impl crate::engine::StorageEngine for TableLevelStorage {
+    /// #5277: this storage has no database namespace, so it can only serve
+    /// `default`. A stated database it cannot address is an error rather than
+    /// a silent read of whatever is current.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot scan '{}.{}' in db '{}'",
+                table, reader_tx, db
+            )));
+        }
+        self.scan_in(table, reader_tx)
+    }
     /// #5266 S1: TableLevelStorage keeps one flat namespace, so it can serve `default`
     /// only. A foreign database is refused rather than answered from `default`
     /// — both methods return `SqlResult`, so refusing is possible and

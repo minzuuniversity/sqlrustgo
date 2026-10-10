@@ -83,6 +83,12 @@ impl<S: 'static> VtuGuard<S> {
 }
 
 impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
+    /// #5277: forward `(db, table, reader_tx)`. Without this the type
+    /// inherited the trait default, which dropped `db` and resolved the table
+    /// against the storage's current database. The guard must not disturb the wrapped storage.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_tx_db(db, table, reader_tx)
+    }
     /// #5266 S1: reads must be asked of the stated database. The old trait
     /// default resolved them against the current one, so a read of `VtuGuard`'s
     /// inner `d1.t` could return `default.t`'s rows or report it missing.
