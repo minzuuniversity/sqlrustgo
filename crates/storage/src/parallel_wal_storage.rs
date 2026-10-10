@@ -113,8 +113,27 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
 impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     for ParallelWalStorage<S, W>
 {
+    /// #5250: the check must be asked of the stated database. The old trait
+    /// default resolved this question against the current database, so a
+    /// storage could correctly refuse a write and still answer `true` here.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        self.inner.has_table_in(db, table)
+    }
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         self.inner.insert(table, records)
+    }
+
+    /// #5250: delegate with the stated database — this wrapper holds a single inner storage
+    /// The old trait default did `let _ = db;` and operated on whatever
+    /// database happened to be current, which silently created or dropped
+    /// the wrong table.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.inner.create_table_in_db(db, info)
+    }
+
+    /// #5250: see `create_table_in_db` — same contract, the database must be used.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        self.inner.drop_table_in_db(db, table)
     }
 
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {

@@ -1335,12 +1335,22 @@ pub trait StorageEngine: Send + Sync {
         self.scan(table)
     }
 
-    /// #5057 / #5025: `has_table` against a stated database. See
-    /// [`get_table_info_in`](Self::get_table_info_in).
-    fn has_table_in(&self, db: &str, table: &str) -> bool {
-        let _ = db;
-        self.has_table(table)
-    }
+    /// #5250: existence check against a *stated* database.
+    ///
+    /// The old default did `let _ = db; self.has_table(table)`, so the question
+    /// was answered about the current database. #5192 fixed the concrete
+    /// storages but left this default in place, and the shared contract test
+    /// caught the consequence: a storage that correctly *refused*
+    /// `create_table_in_db("d1", ..)` still reported `has_table_in("d1", "t")`
+    /// as `true`, because the check itself resolved to `default`.
+    ///
+    /// This one is worse than a `SqlResult` method: a `bool` cannot report a
+    /// problem, so a wrong answer is silently acted on.
+    ///
+    /// Deliberately no default body. Each implementation either consults `db`
+    /// or reports `false` for a database it cannot address — and must not
+    /// have side effects either way.
+    fn has_table_in(&self, db: &str, table: &str) -> bool;
 
     // ---------------------------------------------------------------------
     // #5057: the rest of the `*_in_db` family.
@@ -1482,16 +1492,29 @@ pub trait StorageEngine: Send + Sync {
     }
 
     /// #5057: `create_table` within a stated database.
-    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
-        let _ = db;
-        self.create_table(info)
-    }
+    /// #5250: create a table in a *stated* database.
+    ///
+    /// This was a default body that did `let _ = db; self.create_table(info)`
+    /// — it silently discarded the explicit database and created the table
+    /// in whatever database happened to be current. Because `CREATE TABLE
+    /// d1.t` while the session was in `default` produced a real table under
+    /// `default`, the mistake was invisible from SQL: no error, and the table
+    /// simply appeared in the wrong database.
+    ///
+    /// It is the fifth recurrence of this shape (#5192 fixed the same omission
+    /// in `has_table_in`), so there is deliberately no default body: every
+    /// implementation must either use `db` or delegate to a storage that does.
+    ///
+    /// A storage that cannot honour a stated database must return an error
+    /// rather than quietly fall back to the current one.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()>;
 
-    /// #5057: `drop_table` within a stated database.
-    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
-        let _ = db;
-        self.drop_table(table)
-    }
+    /// #5250: drop a table in a *stated* database.
+    ///
+    /// Same contract as `create_table_in_db` — the old default did
+    /// `let _ = db; self.drop_table(table)`, so `DROP TABLE d1.t` could
+    /// delete `default.t` instead. No default body, by design.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()>;
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo>;
 

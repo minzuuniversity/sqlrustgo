@@ -43,6 +43,45 @@ impl TableLevelStorage {
 }
 
 impl crate::engine::StorageEngine for TableLevelStorage {
+    /// #5250: this storage has a single flat namespace, so it can only answer
+    /// for `default`. Any other database is reported as absent rather than
+    /// answered from the wrong namespace.
+    ///
+    /// A `bool` cannot distinguish "does not exist" from "cannot address that
+    /// database". Until a `SqlResult` API exists for that distinction, `false`
+    /// is the safe answer — it never claims a table is present when it is not.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        db.eq_ignore_ascii_case("default") && self.has_table(table)
+    }
+
+    /// #5250: this storage has no database namespace — tables live in one
+    /// flat registry. The trait used to answer these by dropping `db` and
+    /// touching the current database, so `DROP TABLE d1.t` could remove the
+    /// wrong table with no error.
+    ///
+    /// Refusing is safer than guessing: a stated database other than
+    /// `default` is an error, and `default` is accepted because it is the
+    /// only namespace this storage has.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot create table in '{}'",
+                db
+            )));
+        }
+        self.create_table(info)
+    }
+
+    /// #5250: same contract as `create_table_in_db`.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot drop table '{}' in '{}'",
+                table, db
+            )));
+        }
+        self.drop_table(table)
+    }
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         self.tables.insert(table, records)
     }
