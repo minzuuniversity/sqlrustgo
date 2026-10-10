@@ -1,5 +1,11 @@
 # SQLRustGo v4.1.0 实现真实性与系统集成审计计划（IAIA-410）
 
+> **迁移说明（2026-10-10）**：本文件保留 2026-10-09 的原始计划、阶段执行记录和方法论教训，
+> 不再承担正式审计协议或实时状态 SSOT。正式执行统一以
+> [`IAIA_410_SSOT.md`](IAIA_410_SSOT.md) 和 Gitea
+> [Master Issue #5235](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5235)
+> 为入口；Issue/PR 状态必须实时查询，不得从本文的历史表格推导。
+
 > **文档性质**: 审计计划，不是审计报告，也不是执行结果。
 > **制定日期**: 2026-10-09
 > **审计代号**: IAIA-410（Implementation Authenticity & Integration Audit）
