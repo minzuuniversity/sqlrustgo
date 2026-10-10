@@ -1968,6 +1968,33 @@ mod tests {
         }
 
         impl StorageEngine for ScanCountingStorage {
+            // #5277: every `*_in_db` / `*_in` method added to the trait since
+            // #5267 and now, forwarded to the wrapped storage. This type
+            // only existed under the fault-injection feature, so the missing
+            // methods only surfaced now that those defaults were removed.
+            fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+                self.inner.create_table_in_db(db, info)
+            }
+            fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+                self.inner.drop_table_in_db(db, table)
+            }
+            fn has_table_in(&self, db: &str, table: &str) -> bool {
+                self.inner.has_table_in(db, table)
+            }
+            fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+                self.inner.get_table_info_in(db, table)
+            }
+            fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+                self.inner.scan_in_db(db, table)
+            }
+            fn scan_in_tx_db(
+                &self,
+                db: &str,
+                table: &str,
+                reader_tx: u64,
+            ) -> SqlResult<Vec<Record>> {
+                self.inner.scan_in_tx_db(db, table, reader_tx)
+            }
             fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
                 self.scan_calls.fetch_add(1, Ordering::SeqCst);
                 self.inner.scan(table)
