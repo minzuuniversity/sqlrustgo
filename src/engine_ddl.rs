@@ -594,7 +594,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             rows.push(vec![Value::Text(name.clone())]);
         }
-        Ok(ExecutorResult::new(rows, 1))
+        // #5271: `SHOW TABLES` is a one-column listing. The shape belongs to
+        // the command, not to how many tables exist — an empty database still
+        // has its `Tables_in_*` column.
+        Ok(ExecutorResult::with_columns(
+            vec![crate::ResultColumn {
+                name: "Tables_in_db".into(),
+                data_type: Some("TEXT".into()),
+            }],
+            rows,
+            1,
+        ))
     }
 
     pub(crate) fn execute_show_databases(&self) -> SqlResult<ExecutorResult> {
@@ -1086,7 +1096,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         let count = rows.len();
-        Ok(ExecutorResult::new(rows, count))
+        // #5271: `SHOW INDEX` reports the twelve MySQL 5.7 columns whether or
+        // not any index exists — the shape is the command's, not the rows'.
+        Ok(ExecutorResult::with_columns(
+            [
+                "Table",
+                "Non_unique",
+                "Key_name",
+                "Seq_in_index",
+                "Column_name",
+                "Collation",
+                "Cardinality",
+                "Sub_part",
+                "Packed",
+                "Null",
+                "Index_type",
+                "Comment",
+            ]
+            .into_iter()
+            .map(|n| crate::ResultColumn::unnamed_type(n))
+            .collect(),
+            rows,
+            count,
+        ))
     }
 
     pub(crate) fn execute_show_grants_for(&self, user_spec: &str) -> SqlResult<ExecutorResult> {
