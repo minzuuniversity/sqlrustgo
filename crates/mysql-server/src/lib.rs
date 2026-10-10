@@ -25,8 +25,11 @@ use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
 
-/// V312-18e Issue #4021 — Prometheus `/metrics` endpoint.
 mod metrics_endpoint;
+
+/// #5271: the result-set adapter, separated so its rules can be tested
+/// against the code that actually runs.
+pub mod result_set;
 
 /// v3.10.0 Issue #3703: read intra-query executor parallelism from
 /// the `SQLRUSTGO_EXECUTOR_PARALLELISM` env var (set by
@@ -5891,67 +5894,52 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             // When no schema is declared, fall back to the old
                             // derivation rather than emitting a zero-column
                             // result set that no client can read.
-                            // #5271: reject a result whose rows disagree with
-                            // its declared schema rather than putting a
-                            // Column Count / row width mismatch on the wire,
-                            // which is what produced `ERROR 2027`. Truncating
-                            // columns or padding rows would both hide the bug.
-                            if !r.columns.is_empty()
-                                && r.rows.iter().any(|row| row.len() != r.columns.len())
-                            {
-                                let bad = r
-                                    .rows
-                                    .iter()
-                                    .position(|row| row.len() != r.columns.len())
-                                    .unwrap_or(0);
-                                make_err_packet(
-                                    seq,
-                                    1063u16,
-                                    "42000",
-                                    &format!(
-                                        "result schema mismatch: row {bad} has {} values but {} columns are declared",
-                                        r.rows[bad].len(),
-                                        r.columns.len()
-                                    ),
-                                )
-                                .write_to(stream)?;
-                                seq = seq.wrapping_add(1);
-                                had_error = true;
-                                continue;
-                            }
-                            let declared: Vec<String> =
-                                r.columns.iter().map(|c| c.name.clone()).collect();
-                            let derived_from_rows =
-                                |n: usize| -> Vec<String> { (0..n).map(|i| format!("col_{}", i + 1)).collect() };
-                            let real_col_names: Vec<String> = if let Some(headers) =
-                                parsed.as_ref().ok().and_then(show_column_headers)
-                            {
-                                headers
-                            } else if declared.is_empty() {
-                                let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
-                                derived_from_rows(n)
-                            } else {
-                                declared
+                            // #5271: the shape comes from the result's own
+                            // schema. It used to be recovered from the query
+                            // text and from the width of the first row, which
+                            // made a zero-row result a zero-column result —
+                            // reported by clients as `ERROR 2027` — and gave
+                            // a populated result synthesized `col_1`, `col_2`
+                            // names whatever the table was called.
+                            //
+                            // `show_column_headers` still wins: it is an
+                            // explicit request for a different shape.
+                            //
+                            // With no declared schema there is nothing to
+                            // describe. Deriving one from the rows keeps such
+                            // results readable; #5271 R2 removes the need by
+                            // giving every SELECT exit a real schema.
+                            let prepared = match crate::result_set::prepare_result_set(&r) {
+                                Ok(p) => p,
+                                Err(msg) => {
+                                    make_err_packet(seq, 1063u16, "42000", &msg)
+                                        .write_to(stream)?;
+                                    seq = seq.wrapping_add(1);
+                                    had_error = true;
+                                    continue;
+                                }
                             };
-                            let cols: Vec<String> = real_col_names;
-                            // #5271: use the declared type when there is one.
-                            // `None` means the type is not resolved yet (R2);
-                            // the placeholder keeps the wire encoding valid
-                            // without claiming the column is VARCHAR.
-                            let ctypes: Vec<String> = if r.columns.len() == cols.len()
-                                && !r.columns.is_empty()
-                            {
-                                r.columns
-                                    .iter()
-                                    .map(|c| {
-                                        c.data_type
-                                            .clone()
-                                            .unwrap_or_else(|| "VARCHAR(255)".to_string())
-                                    })
-                                    .collect()
-                            } else {
-                                cols.iter().map(|_| "VARCHAR(255)".to_string()).collect()
-                            };
+                            let (cols, ctypes) =
+                                if let Some(headers) = parsed.as_ref().ok().and_then(show_column_headers)
+                                {
+                                    // The requested headers may not match the
+                                    // declared width, so the type list has to
+                                    // follow them rather than the schema.
+                                    let types = headers
+                                        .iter()
+                                        .map(|_| crate::result_set::UNRESOLVED_TYPE.to_string())
+                                        .collect();
+                                    (headers, types)
+                                } else if prepared.column_names.is_empty() {
+                                    let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                    let names: Vec<String> =
+                                        (0..n).map(|i| format!("col_{}", i + 1)).collect();
+                                    let types =
+                                        names.iter().map(|_| crate::result_set::UNRESOLVED_TYPE.to_string()).collect();
+                                    (names, types)
+                                } else {
+                                    (prepared.column_names.clone(), prepared.column_types.clone())
+                                };
                             seq = send_result_set_with_more(
                                 stream,
                                 &cols,
