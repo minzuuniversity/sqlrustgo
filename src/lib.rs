@@ -37,7 +37,7 @@ mod execution_engine_tests;
 pub use sqlrustgo_executor::parallel_executor::{
     ParallelExecutor, ParallelVolcanoExecutor, PARALLEL_MIN_ROWS,
 };
-pub use sqlrustgo_executor::{Executor, ExecutorResult};
+pub use sqlrustgo_executor::{Executor, ExecutorResult, ResultColumn};
 pub use sqlrustgo_optimizer::Optimizer as QueryOptimizer;
 pub use sqlrustgo_parser::lexer::tokenize;
 pub use sqlrustgo_parser::{parse, Lexer, Statement, Token};

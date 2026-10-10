@@ -2837,22 +2837,44 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             None
         };
-        let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
-            let names: Vec<String> = if !table_info.columns.is_empty()
-                && table_info.columns.len() == rows.first().map(|r| r.len()).unwrap_or(0)
-            {
-                table_info.columns.iter().map(|c| c.name.clone()).collect()
+        // #5271: the output schema comes from the table's own columns, not
+        // from the first row. An empty table still has a shape — `SELECT *`
+        // over an empty `t(id INT, v INT)` is two columns and no rows — and
+        // the old `rows.first()` width test collapsed that to zero columns
+        // and then to synthesized `c1`/`c2` names.
+        let projected_with_names: (Vec<crate::ResultColumn>, Vec<Vec<Value>>) = if is_star {
+            // `table_info` already carries the star expansion, in order. Only
+            // fall back to row-derived names when there is no schema at all
+            // (a storage without metadata), which is strictly better than
+            // inventing names for a table that *does* have columns.
+            let columns: Vec<crate::ResultColumn> = if !table_info.columns.is_empty() {
+                table_info
+                    .columns
+                    .iter()
+                    .map(|c| crate::ResultColumn {
+                        name: c.name.clone(),
+                        data_type: Some(c.data_type.clone()),
+                    })
+                    .collect()
             } else {
-                (1..=rows.first().map(|r| r.len()).unwrap_or(0))
-                    .map(|i| format!("c{}", i))
+                (0..rows.first().map(|r| r.len()).unwrap_or(0))
+                    .map(|i| crate::ResultColumn::unnamed_type(format!("c{}", i + 1)))
                     .collect()
             };
-            (names, rows)
+            (columns, rows)
         } else {
-            let names: Vec<String> = select
+            // #5271: names come from the projection list, as before. The
+            // semantic type is not resolved on this path yet — expressions,
+            // aggregates and casts need the type inference tracked in #5271's
+            // R2. `None` marks "type unknown", never "column absent".
+            let names: Vec<crate::ResultColumn> = select
                 .columns
                 .iter()
-                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                .map(|c| {
+                    crate::ResultColumn::unnamed_type(
+                        c.alias.clone().unwrap_or_else(|| c.name.clone()),
+                    )
+                })
                 .collect();
             // Issue #4511 — session variables were already resolved by
             // the entry-point pass in `execute_select`, so projection
@@ -2939,7 +2961,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             })()?;
             (names, rows)
         };
-        let (projected_column_names, projected_rows) = projected_with_names;
+        let (projected_columns, projected_rows) = projected_with_names;
+        let projected_column_names: Vec<String> =
+            projected_columns.iter().map(|c| c.name.clone()).collect();
         // Step 6: DISTINCT — apply deduplication if select.distinct is set.
         // V380 F-12 fix: parser sets select.distinct but executor was ignoring it.
         // Use a HashSet of Value vectors to track seen rows.
@@ -3125,7 +3149,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
 
         let row_count = projected_rows.len();
-        Ok(ExecutorResult::new(projected_rows, row_count))
+        Ok(ExecutorResult::with_columns(
+            projected_columns,
+            projected_rows,
+            row_count,
+        ))
     }
 
     fn compute_aggregates(
