@@ -5875,47 +5875,83 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             // SELECT projection extractor, and finally
                             // to col_1, col_2... for ambiguous shapes
                             // (e.g. SELECT *).
+                            // #5271: the result's own schema is the only
+                            // source for the column count and the names.
+                            //
+                            // Both used to be recovered from the SQL text and
+                            // from the width of the first row. That made a
+                            // zero-row result a zero-column result — which the
+                            // client reports as `ERROR 2027` — and gave a
+                            // populated result synthesized `col_1`, `col_2`
+                            // names regardless of the table.
+                            //
+                            // `show_column_headers` stays ahead of this: it is
+                            // an explicit request for a different shape.
+                            //
+                            // When no schema is declared, fall back to the old
+                            // derivation rather than emitting a zero-column
+                            // result set that no client can read.
+                            // #5271: reject a result whose rows disagree with
+                            // its declared schema rather than putting a
+                            // Column Count / row width mismatch on the wire,
+                            // which is what produced `ERROR 2027`. Truncating
+                            // columns or padding rows would both hide the bug.
+                            if !r.columns.is_empty()
+                                && r.rows.iter().any(|row| row.len() != r.columns.len())
+                            {
+                                let bad = r
+                                    .rows
+                                    .iter()
+                                    .position(|row| row.len() != r.columns.len())
+                                    .unwrap_or(0);
+                                make_err_packet(
+                                    seq,
+                                    1063u16,
+                                    "42000",
+                                    &format!(
+                                        "result schema mismatch: row {bad} has {} values but {} columns are declared",
+                                        r.rows[bad].len(),
+                                        r.columns.len()
+                                    ),
+                                )
+                                .write_to(stream)?;
+                                seq = seq.wrapping_add(1);
+                                had_error = true;
+                                continue;
+                            }
+                            let declared: Vec<String> =
+                                r.columns.iter().map(|c| c.name.clone()).collect();
+                            let derived_from_rows =
+                                |n: usize| -> Vec<String> { (0..n).map(|i| format!("col_{}", i + 1)).collect() };
                             let real_col_names: Vec<String> = if let Some(headers) =
                                 parsed.as_ref().ok().and_then(show_column_headers)
                             {
                                 headers
-                            } else if stmt_sql.to_uppercase().starts_with("SELECT")
-                                && stmt_sql.to_uppercase().contains(" FROM ")
-                            {
-                                let upper = stmt_sql.to_uppercase();
-                                if let Some(from_pos) = upper.find(" FROM ") {
-                                    let select_part = stmt_sql[..from_pos].trim();
-                                    let cols_str = select_part
-                                        .strip_prefix("SELECT")
-                                        .or_else(|| select_part.strip_prefix("select"))
-                                        .unwrap_or("")
-                                        .trim();
-                                    if !cols_str.is_empty() && !cols_str.contains('*') {
-                                        cols_str
-                                            .split(',')
-                                            .map(|s: &str| {
-                                                s.trim()
-                                                    .split('.')
-                                                    .next_back()
-                                                    .unwrap_or(s.trim())
-                                                    .to_string()
-                                            })
-                                            .collect()
-                                    } else {
-                                        let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
-                                        (0..n).map(|i| format!("col_{}", i + 1)).collect()
-                                    }
-                                } else {
-                                    let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
-                                    (0..n).map(|i| format!("col_{}", i + 1)).collect()
-                                }
-                            } else {
+                            } else if declared.is_empty() {
                                 let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
-                                (0..n).map(|i| format!("col_{}", i + 1)).collect()
+                                derived_from_rows(n)
+                            } else {
+                                declared
                             };
                             let cols: Vec<String> = real_col_names;
-                            let ctypes: Vec<String> =
-                                cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                            // #5271: use the declared type when there is one.
+                            // `None` means the type is not resolved yet (R2);
+                            // the placeholder keeps the wire encoding valid
+                            // without claiming the column is VARCHAR.
+                            let ctypes: Vec<String> = if r.columns.len() == cols.len()
+                                && !r.columns.is_empty()
+                            {
+                                r.columns
+                                    .iter()
+                                    .map(|c| {
+                                        c.data_type
+                                            .clone()
+                                            .unwrap_or_else(|| "VARCHAR(255)".to_string())
+                                    })
+                                    .collect()
+                            } else {
+                                cols.iter().map(|_| "VARCHAR(255)".to_string()).collect()
+                            };
                             seq = send_result_set_with_more(
                                 stream,
                                 &cols,
