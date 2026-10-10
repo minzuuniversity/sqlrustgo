@@ -7,7 +7,7 @@
 - source_agent：codex
 - source_run：`iaia-410-formalization-20261010`
 - timestamp：`2026-10-10T00:28:23+08:00`
-- evidence_ref：`docs/plans/2026-10-10-iaia-410-formalization-design.md@a65f87ceed`
+- evidence_ref：`docs/plans/2026-10-10-iaia-410-formalization-design.md` 的创建时内容快照，由下列 SHA-256 寻址
 - evidence_hash：`sha256:97490c7ed1c08c2ba46a193860a71c1d363ec5af2474c884e6dd82879b676dc7`
 - conflict_resolution：`review-findings-applied-before-delivery`
 - 编写来源基线：`f1b77bf32cd38c95105de3c6191d75b8bb3687f0`（不是正式 `assessed_commit`）
