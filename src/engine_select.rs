@@ -3026,9 +3026,26 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .columns
                 .iter()
                 .map(|c| {
-                    crate::ResultColumn::unnamed_type(
-                        c.alias.clone().unwrap_or_else(|| c.name.clone()),
-                    )
+                    // #5271 R2-A: a projection of a plain column reports
+                    // that column's type. Everything else stays unresolved —
+                    // aggregates, arithmetic and casts are R2-B, and a wrong
+                    // type is worse than an absent one.
+                    //
+                    // The lookup uses `c.name`, the *source* column, never
+                    // the alias: `SELECT v AS id` is a VARCHAR named `id`, and
+                    // matching on the output name would report INT.
+                    let output_name = c.alias.clone().unwrap_or_else(|| c.name.clone());
+                    match table_info
+                        .columns
+                        .iter()
+                        .find(|col| col.name.eq_ignore_ascii_case(&c.name))
+                    {
+                        Some(col) => crate::ResultColumn {
+                            name: output_name,
+                            data_type: Some(col.data_type.clone()),
+                        },
+                        None => crate::ResultColumn::unnamed_type(output_name),
+                    }
                 })
                 .collect();
             // Issue #4511 — session variables were already resolved by
