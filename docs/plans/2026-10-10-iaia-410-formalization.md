@@ -1,6 +1,12 @@
 # IAIA-410 Formalization Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **source_agent:** codex
+> **source_run:** `iaia-410-formalization-20261010`
+> **timestamp:** `2026-10-10T00:24:00+08:00`
+> **evidence_ref:** `docs/plans/2026-10-10-iaia-410-formalization-design.md@a3c2597cf8`
+> **evidence_hash:** `sha256:97490c7ed1c08c2ba46a193860a71c1d363ec5af2474c884e6dd82879b676dc7`
+> **conflict_resolution:** none
 
 **Goal:** 建立 IAIA-410 正式审计 SSOT、可验收的 Gitea Issue DAG 和可复现证据契约。
 
@@ -21,6 +27,8 @@
 **Step 2:** 创建 IAIA-410 Master Issue，链接全部子 Issue 和已有 finding Issue。
 
 **Step 3:** 用 `tea issues` 逐条查询编号、标题和 open 状态，保存核验输出。
+
+**Step 4:** A01–A10 在提交证据后进入 `evidence_ready` 并保持 open；A11 verdict 完成后再按关闭验证流程逐项关闭。
 
 ### Task 2: 编写正式审计 SSOT
 
@@ -64,4 +72,3 @@
 **Step 3:** 推送 `codex/docs-iaia-410-ssot` 到 Gitea 并创建面向 `develop/v4.1.0` 的 PR。
 
 **Step 4:** 在 Master Issue 中补充 PR、commit、验证命令、退出码和 evidence hash；不在 PR 合并前关闭任何 Issue。
-

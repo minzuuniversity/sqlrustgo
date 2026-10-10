@@ -5,7 +5,14 @@
 > **目标分支**：`develop/v4.1.0`
 > **source_agent**：codex
 > **source_run**：iaia-410-formalization-20261010
-> **assessed_commit**：`f1b77bf32cd38c95105de3c6191d75b8bb3687f0`
+> **timestamp**：`2026-10-10T00:23:00+08:00`
+> **authoring_source_commit**：`f1b77bf32cd38c95105de3c6191d75b8bb3687f0`
+> **evidence_ref**：`docs/releases/v4.1.0/IAIA_410_AUDIT_PLAN.md` at `authoring_source_commit`
+> **evidence_hash**：`sha256:908ba30ec98546a3be4b3010e29e58faf292b91d48834f16d27ad78e6f20fb84`
+> **conflict_resolution**：none
+
+`authoring_source_commit` 只标识编写本设计时读取的源码和历史计划版本；正式审计的
+`assessed_commit` 只能由 A01 run manifest 冻结。
 
 ## 1. 背景
 
@@ -75,4 +82,3 @@ SSOT 回答“如何执行和判定”，不写任何未经当前 run 实跑支�
 4. finding 和 manifest schema 含完整 provenance 字段；
 5. 文档 gate 按仓库规则实跑并记录退出码；
 6. 由未参与编写的 reviewer 对 SSOT 与 Issue DAG 做独立审查。
-
