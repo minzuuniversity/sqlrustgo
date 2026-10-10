@@ -21,6 +21,7 @@ fn make_entry(
         // `None` is the honest representation of a legacy entry and
         // keeps the legacy-decode paths under test.
         table_name: None,
+        database_name: None,
         key,
         data,
         lsn: 0,

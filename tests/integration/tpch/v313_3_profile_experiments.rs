@@ -230,6 +230,7 @@ fn experiment_b_smoke_1k() {
 const TMPFS_ROOT: &str = "/dev/shm/sqlrustgo_v313_3_exp_c";
 
 /// Run a load with the data directory on tmpfs (RAM-backed FS).
+#[cfg(target_os = "linux")]
 fn run_load_experiment_c(n_rows: usize) -> (Duration, usize, u64) {
     let dir = std::path::Path::new(TMPFS_ROOT);
     std::fs::create_dir_all(dir).expect("create tmpfs dir");
