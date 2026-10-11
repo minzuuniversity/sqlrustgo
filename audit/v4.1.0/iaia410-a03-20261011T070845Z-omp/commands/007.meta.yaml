@@ -1,0 +1,36 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+command_id: 007
+description: 尝试用 grep 枚举零调用的 StorageEngine trait 方法
+target_commit: 728631c253
+tool: grep（多种模式）
+exit_code: 0
+result: INCONCLUSIVE — 方法本身不可靠，不作为判定依据
+attempted_patterns:
+  - "storage\\.$m\\("      漏报：无法匹配 inner_mut() / as_any() 等非 receiver 形式
+  - "\\b$m\\b 排除定义与测试" 仍漏报 as_any（trait 方法在 impl 内直接调用）
+false_negatives_proven:
+  - symbol: delete_collect_pks_in_db
+    false_report: 零引用
+    actual_call_sites:
+      - crates/storage/src/mvcc_storage.rs:1194  .delete_collect_pks_in_db(db, table, filters)
+      - crates/storage/src/mvcc_storage.rs:1227  .delete_collect_pks_in_db(db, table, filters)
+    note: >
+      该方法正是 #5285 UPDATE/DELETE 缺陷调查中的关键调用点。
+      若采信 grep 的「零引用」结论，会直接漏掉缺陷链条的一环。
+  - symbol: as_any
+    false_report: 零引用
+    actual_call_sites:
+      - src/execution_engine_methods.rs:198  storage.as_any_mut().downcast_mut::<BinaryTableStorageV2>()
+      - crates/planner/src/planner.rs:152  exec.as_mut().as_any().downcast_ref::<SeqScanExec>()
+methodological_conclusion:
+  rule: grep 无引用 ≠ 不可达
+  reason: >
+    Rust 的 trait 方法可经 impl 内直接调用、泛型单态化、宏展开、
+    字符串反射（FFI/动态加载）等多种形式到达，
+    静态文本搜索无法穷尽。
+  implication: >
+    commands/006 中「零引用」类判定一律降级为 Potentially Dead 或 Unverified，
+    不得据 grep 单独判 Confirmed Dead。
+  confirmed_dead_requires: 人工通读 + 逐个调用入口穷举 + 必要的编译期/运行时验证
