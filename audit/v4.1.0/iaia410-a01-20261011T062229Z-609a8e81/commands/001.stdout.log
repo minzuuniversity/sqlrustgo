@@ -1,0 +1,5 @@
+assessed_commit=609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+head_commit=609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+branch_or_detached=feature/a01-refreeze-5223
+cargo_lock_sha256=d8bba914c5223bece0146c28e7cc1cb48f25c27de84275bb03ef65d5a84e5a2d
+frozen-commit-check ok
