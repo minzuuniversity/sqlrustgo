@@ -1,0 +1,60 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+command_id: 006
+description: test-only / dead-path inventory（只读清查，不修改任何生产代码）
+target_commit: 728631c253（develop/v4.1.0 HEAD）
+tool: grep + 手工可达性判定
+exit_code: 0
+constraints_honoured:
+  - 未修改 UPDATE / DELETE / MVCC / RowId / snapshot / transaction / 查询可见性相关代码
+  - 未创建 #5281 或 #5285 的修复补丁
+  - 未删除或重构任何代码
+method_note: >
+  grep 无引用 ≠ 不可达。每项均记录文件、行号、调用入口与可达性判定依据。
+classification_scheme:
+  - Confirmed Dead      无任何调用点，且不经 trait 动态分发可达
+  - Test-Only           仅被 #[cfg(test)] 代码调用
+  - Potentially Dead    无静态引用，但可能经 trait object / 宏 / 字符串反射可达
+  - Unverified          证据不足，不下判定
+inventory:
+  StorageEngine_implementations:
+    total: 8
+    production_stack: [FileStorage, MvccStorage, ParallelWalStorage, BoxStorageEngine]
+    alternative_backends: [AppendOnlyStorage, BinaryTableStorage, BinaryTableStorageV2]
+    items:
+      - symbol: wal_storage.rs:1955 impl StorageEngine for ScanCountingStorage
+        gate: 所属模块 wal_storage.rs:1565-1566 #[cfg(test)] mod tests
+        classification: Test-Only
+        evidence: 定义位于测试模块内；引用点 :2086 同在该模块
+      - symbol: columnar/storage.rs:480 impl StorageEngine for ColumnarStorage
+        gate: none
+        classification: Potentially Dead
+        evidence: >
+          src/、crates/mysql-server/src/、crates/admin/src/ 中均无引用；
+          Cargo.toml 中无 bin 入口。未穷举 feature 门控，故不判 Confirmed Dead。
+        not_verified: 未检查全部 feature 组合下的可达性
+  dead_functions_in_production_entry:
+    - symbol: crates/admin/src/backup.rs:104 fn write_tar_end_marker
+      entry: sqlrustgo-admin（生产可达的运维入口）
+      call_sites: 0
+      classification: Potentially Dead
+      evidence: 全仓文本搜索无调用点（含测试）
+      downgraded_from: Confirmed Dead
+      downgraded_reason: >
+        commands/007 已证明文本搜索对本仓库存在假阴性
+        （delete_collect_pks_in_db 与 as_any 均被误报为零引用）。
+        在无人工穷举调用入口前，不得判 Confirmed Dead。
+    - symbol: crates/admin/src/backup.rs:164 fn tar_extract_one
+      entry: sqlrustgo-admin
+      call_sites: 1
+      call_site_detail: crates/admin/src/backup.rs:291 fn test_tar_extract_one
+      classification: Test-Only
+      evidence: 唯一调用点位于 #[cfg(test)] 测试函数内
+      confidence: high（调用点唯一且已确认在测试模块内，不依赖 grep 完备性）
+  dead_functions_bench_only:
+    - note: crates/bench/** 下多个 #[allow(dead_code)] 函数（print/to_json/with_max_id）
+      classification: Unverified
+      reason: >
+        bench crate 不在生产二进制入口清单内，属开发工具；
+        本轮未逐项判定其可达性，不计入生产 dead-path 统计。
