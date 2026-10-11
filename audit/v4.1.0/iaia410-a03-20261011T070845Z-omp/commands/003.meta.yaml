@@ -1,0 +1,47 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+command_id: 003
+description: 枚举全部生产入口的引擎/存储构造路径，识别 dead-path 与假集成
+target_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+tool: git show + grep + read
+exit_code: 0
+entry_matrix:
+  - entry: sqlrustgo-mysql-server
+    kind: 生产主服务
+    chain: main.rs -> run_server_v2 (lib.rs:6677)
+      -> run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql (6818)
+      -> engine 构造 lib.rs:6506 ExecutionEngine::new(storage.clone())
+      -> do_command_loop (5302)
+    storage_stack: BoxStorageEngine(ParallelWalStorage(MvccStorage(FileStorage)))
+    verified: true
+  - entry: sqlrustgo (CLI)
+    kind: 薄包装
+    finding: 全部子命令经 run_bin()/run_soak_repl() 代理外部进程
+    independent_execution_path: 0
+    verified: true
+  - entry: sqlrustgo-admin
+    kind: 运维工具（生产可达）
+    chain: main.rs:157 Commands::Pitr -> :168 parse_target_time
+      -> crates/admin/src/pitr.rs:42 FileStorage::new(data_dir)
+      -> :43 replay_entries_until(&mut storage, &entries, target_time)
+    storage_bypass: 直接构造 FileStorage，未经 Mvcc/Wal 包装
+    verified: true
+  - entry: crates/tools (6 bin)
+    kind: 辅助工具
+    engine_or_storage_construction: 0
+    verified: true
+suspected_findings:
+  - id: A03-SF-01
+    subject: crates/admin/src/pitr.rs:42
+    claim: >
+      PITR 恢复从生产 CLI 可达，且直接构造 FileStorage 绕过 MvccStorage/WalStorage。
+      其重放经 sqlrustgo_storage::pitr::replay_entries_until →
+      recovery_engine::apply_wal_entry → replace_by_key_in_db，
+      而该路径按 #5281 审计结论以 record[0]（首列内容）编码的 key 定位行。
+    evidence_level: 调用链已源码追踪（admin 入口 → FileStorage → replay）
+    NOT_verified:
+      - 重放是否实际丢失/错位逻辑行（未动态验证）
+      - 与 A06 的责任划分
+    routed_to: A06 / #5281
+    evidence_grade: source-proven-chain / behaviour-unverified
