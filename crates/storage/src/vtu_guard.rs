@@ -196,6 +196,91 @@ impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
         self.inner.has_table(table)
     }
 
+    /// #5266: the database must be carried through to the guarded engine.
+    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+        self.inner.list_tables_in_db(db)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn scan_with_filter_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner.scan_with_filter_in_db(db, table, filter)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner.scan_with_index_in_db(db, table, index_name, key)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn parallel_scan_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        self.inner.parallel_scan_in_db(db, table, num_partitions)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        self.inner_mut().insert_in_db(db, table, records)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.inner_mut().delete_in_db(db, table, filters)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        self.inner_mut()
+            .delete_collect_pks_in_db(db, table, filters)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.inner_mut().delete_if_in_db(db, table, filter)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        self.inner_mut().update_in_db(db, table, filters, updates)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        self.inner_mut()
+            .update_if_in_db(db, table, filter, mutation)
+    }
+
     fn list_tables(&self) -> Vec<String> {
         self.inner.list_tables()
     }
