@@ -1,0 +1,26 @@
+$ key module files + line counts (assessed_commit 609a8e81, worktree iaia-a02-baseline)
+   9853 src/engine_select.rs
+   2478 src/engine_dml.rs
+   1659 src/engine_ddl.rs
+   1273 src/execution_engine.rs
+   2099 src/execution_engine_methods.rs
+    427 src/engine_builder.rs
+   5621 crates/storage/src/engine.rs
+   7200 crates/storage/src/file_storage.rs
+   1730 crates/storage/src/binary_storage.rs
+    828 crates/storage/src/binary_storage_v2.rs
+   1522 crates/storage/src/mvcc_storage.rs
+   2413 crates/storage/src/wal_storage.rs
+   1639 crates/storage/src/recovery_engine.rs
+    358 crates/storage/src/checkpoint.rs
+    621 crates/storage/src/backup_coordinator.rs
+    368 crates/storage/src/restore_filespace.rs
+    434 crates/storage/src/pitr.rs
+    821 crates/planner/src/planner.rs
+    706 crates/planner/src/physical_plan.rs
+    834 crates/optimizer/src/unified_cost.rs
+  10136 crates/mysql-server/src/lib.rs
+   1661 crates/mysql-server/src/main.rs
+    593 crates/network/src/lib.rs
+     40 crates/security/src/lib.rs
+  55314 total

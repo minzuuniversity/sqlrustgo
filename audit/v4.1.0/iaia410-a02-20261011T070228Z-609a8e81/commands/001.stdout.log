@@ -1,0 +1,5 @@
+assessed_commit=609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+head_commit=01df92a5d176e5c7f7e498152dbdf9b500228953
+branch_or_detached=feature/a02-scope-matrix-5224
+cargo_lock_sha256=d8bba914c5223bece0146c28e7cc1cb48f25c27de84275bb03ef65d5a84e5a2d
+frozen-commit-check ok
