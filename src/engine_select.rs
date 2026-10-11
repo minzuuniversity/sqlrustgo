@@ -509,7 +509,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 None
             };
-        crate::system_tables::try_system_table_select(select, &*storage, auth_manager)
+        crate::system_tables::try_system_table_select(
+            select,
+            &*storage,
+            &self.session_db(),
+            auth_manager,
+        )
     }
 
     /// V312-76 / Issue #4682: synthesise the SQLite `sqlite_master`
@@ -520,11 +525,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn query_sqlite_master(&self) -> SqlResult<ExecutorResult> {
         use sqlrustgo_types::Value;
         let storage = self.storage.read();
-        let names = storage.list_tables();
+        let names = storage.list_tables_in_db(&self.session_db());
         let row_count = names.len();
         let mut rows: Vec<Vec<Value>> = Vec::with_capacity(names.len());
         for name in names {
-            let info = match storage.get_table_info(&name) {
+            let info = match storage.get_table_info_in(&self.session_db(), &name) {
                 Ok(info) => info,
                 Err(_) => continue,
             };
@@ -642,10 +647,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// table uses AUTOINCREMENT.
     fn query_sqlite_sequence(&self) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        let names = storage.list_tables();
+        let names = storage.list_tables_in_db(&self.session_db());
         let mut rows: Vec<Vec<Value>> = Vec::new();
         for name in names {
-            let info = match storage.get_table_info(&name) {
+            let info = match storage.get_table_info_in(&self.session_db(), &name) {
                 Ok(info) => info,
                 Err(_) => continue,
             };

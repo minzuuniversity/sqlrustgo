@@ -236,7 +236,7 @@ impl crate::engine::StorageEngine for TableLevelStorage {
     fn list_indexes(&self, _table: &str) -> Vec<(String, String)> {
         vec![]
     }
-    fn has_view(&self, _name: &str) -> bool {
+    fn has_view(&self, _db: &str, _name: &str) -> bool {
         false
     }
 

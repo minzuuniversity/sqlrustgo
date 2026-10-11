@@ -5337,13 +5337,27 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
         // #5025: re-assert this connection's database before every command.
-        // The engine's `current_db` is one shared value, so another
-        // connection may have changed it since the last statement.
+        // #5057: the engine's storage no longer keeps a shared `current_db`;
+        // `conn_db` is the per-connection state. Before every command we
+        // validate the database still exists AND seed the engine's
+        // `session_db` from `conn_db` so DML executes against the
+        // connection's selected database.
         if cmd != packet_type::COM_QUIT {
-            storage
-                .write()
-                .set_current_db(conn_db)
-                .unwrap_or_else(|e| tracing::warn!("re-assert database {}: {}", conn_db, e));
+            // Validate the database still exists (it could have been dropped).
+            let known = storage
+                .read()
+                .list_databases()
+                .map(|dbs| {
+                    dbs.iter().any(|d| d.eq_ignore_ascii_case(conn_db))
+                        || conn_db.eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE)
+                })
+                .unwrap_or(true);
+            if !known {
+                tracing::warn!("re-assert database {} failed: no longer exists", conn_db);
+            }
+            // #5057: seed the shared engine's session_db from this
+            // connection's `conn_db` before dispatching the command.
+            engine.write().set_session_db(conn_db);
         }
         // MySQL/MariaDB protocol: every new client command starts with
         // pkt_seq=0, and the server resets its response seq to 0
@@ -5392,13 +5406,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // #5025: also record it on the connection — the
                 // re-assert before the next command would otherwise switch
                 // this connection straight back.
+                // #5057: the storage no longer has a shared `current_db`;
+                // `conn_db` is the per-connection source of truth.
                 if db.is_empty() {
-                    storage
-                        .write()
-                        .set_current_db(sqlrustgo_storage::engine::DEFAULT_DATABASE)?;
                     *conn_db = String::from(sqlrustgo_storage::engine::DEFAULT_DATABASE);
                 } else {
-                    storage.write().set_current_db(&db)?;
                     *conn_db = db;
                 }
                 seq = write_ok_packets(
@@ -5850,8 +5862,10 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         // storage lock, matching the engine -> storage lock
                         // order the engine already uses internally.
                         let r = eng.execute(stmt_sql);
+                        // #5057: the engine's session_db is the per-connection
+                        // source of truth; sync it back onto conn_db.
+                        *conn_db = eng.session_db();
                         drop(eng);
-                        *conn_db = storage.read().current_db();
                         r
                     };
                     // V312-18e: time every dispatched statement; the log
@@ -6235,8 +6249,10 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // back onto this connection or the next command's
                     // re-assert reverts it.
                     let r = eng.execute(&final_sql);
+                    // #5057: the engine's session_db is the per-connection
+                    // source of truth; sync it back onto conn_db.
+                    *conn_db = eng.session_db();
                     drop(eng);
-                    *conn_db = storage.read().current_db();
                     r
                 };
                 // V312-18e: prepared-statement executions are timed too.
@@ -6480,14 +6496,11 @@ fn handle_connection(
             // the non-TLS path (the TLS path has the same block); a client
             // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
             // without this the selection is parsed, logged, and discarded.
+            // #5057: the storage no longer keeps a shared `current_db`; the engine
+            // session is seeded from conn_db below, so just record conn_db here.
             if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
-                match storage.write().set_current_db(db) {
-                    Ok(()) => {
-                        conn_db = db.to_string();
-                        tracing::info!("handshake selected database: {}", db);
-                    }
-                    Err(e) => tracing::warn!("handshake database {:?} rejected: {}", db, e),
-                }
+                conn_db = db.to_string();
+                tracing::info!("handshake selected database: {}", db);
             }
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             // V312-WIRE-5: Vec<Packet> — write all packets (OK + optional
@@ -6562,14 +6575,11 @@ fn handle_connection(
     // the non-TLS path (the TLS path has the same block); a client
     // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
     // without this the selection is parsed, logged, and discarded.
+    // #5057: the storage no longer keeps a shared `current_db`; the engine
+    // session is seeded from conn_db below, so just record conn_db here.
     if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
-        match storage.write().set_current_db(db) {
-            Ok(()) => {
-                conn_db = db.to_string();
-                tracing::info!("handshake selected database: {}", db);
-            }
-            Err(e) => tracing::warn!("handshake database {:?} rejected: {}", db, e),
-        }
+        conn_db = db.to_string();
+        tracing::info!("handshake selected database: {}", db);
     }
     tracing::info!("Auth accepted, sending OK packet, seq=2");
     // V312-WIRE-5: Vec<Packet> — emit OK + optional session_state_info.

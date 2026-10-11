@@ -917,6 +917,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
 /// which is how #5168 happened.
 fn pk_point_lookup<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
+    stmt_db: &str,
     table_name: &str,
     table_info: &TableInfo,
     where_clause: &Expression,
@@ -936,7 +937,7 @@ fn pk_point_lookup<S: StorageEngine + 'static>(
     };
 
     let storage = engine.storage.read();
-    let row = storage.scan_pk(table_name, &pk_column, &pk_value)?;
+    let row = storage.scan_pk_in_db(stmt_db, table_name, &pk_column, &pk_value)?;
     Ok(Some(row.into_iter().map(|r| r.to_vec()).collect()))
 }
 
@@ -1195,12 +1196,12 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // scan_with_filter yields only matching rows; we clone them once each.
     let where_clause = resolved_update.where_clause.as_ref().unwrap();
     let rows_to_update: Vec<Vec<Value>> =
-        match pk_point_lookup(engine, &table_name, &table_info, where_clause)? {
+        match pk_point_lookup(engine, &stmt_db, &table_name, &table_info, where_clause)? {
             Some(rows) => rows,
             None => {
                 // #4983: scan on behalf of this connection so an uncommitted
                 // version is visible only to its author.
-                engine.scan_for_reader_filtered(&table_name, &|row| {
+                engine.scan_for_reader_filtered(&stmt_db, &table_name, &|row| {
                     evaluate_where_clause(where_clause, row, &table_info)
                 })?
             }
@@ -1494,7 +1495,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     };
 
     let rows_to_delete: Vec<Vec<Value>> =
-        match pk_point_lookup(engine, &table_name, &table_info, where_clause)? {
+        match pk_point_lookup(engine, &stmt_db, &table_name, &table_info, where_clause)? {
             Some(rows) => rows,
             None => {
                 // #5057: resolve against the statement's database. This scan

@@ -625,7 +625,7 @@ mod tests {
         e.execute("INSERT INTO n VALUES (3),(NULL),(1),(NULL),(2)")
             .unwrap();
         let r1 = e.execute("SELECT v FROM n ORDER BY v").unwrap();
-        let vs1: Vec<String> = r1
+        let _vs1: Vec<String> = r1
             .rows
             .iter()
             .map(|row| match &row[0] {

@@ -68,7 +68,7 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::{FileStorage, StorageEngine};
+use sqlrustgo_storage::FileStorage;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -130,7 +130,7 @@ fn ids(x: &mut ExecutionEngine<FileStorage>) -> Vec<sqlrustgo_types::Value> {
 /// against `d2` and returned d2's row.
 #[test]
 fn select_reads_the_connections_own_database() {
-    let (mut a, mut b, storage, dir) = two_connections();
+    let (mut a, mut b, _storage, dir) = two_connections();
     seed(&mut a);
 
     a.execute("USE d1").unwrap();
@@ -156,7 +156,7 @@ fn select_reads_the_connections_own_database() {
 /// reading once.
 #[test]
 fn interleaved_use_does_not_redirect_the_other_connection() {
-    let (mut a, mut b, storage, dir) = two_connections();
+    let (mut a, mut b, _storage, dir) = two_connections();
     seed(&mut a);
 
     a.execute("USE d1").unwrap();
@@ -192,7 +192,7 @@ fn interleaved_use_does_not_redirect_the_other_connection() {
 /// the other's database.
 #[test]
 fn concurrent_reads_stay_isolated() {
-    let (mut a, mut b, storage, dir) = two_connections();
+    let (mut a, mut b, _storage, dir) = two_connections();
     seed(&mut a);
     a.execute("USE d1").unwrap();
     b.execute("USE d2").unwrap();
@@ -238,21 +238,21 @@ fn concurrent_reads_stay_isolated() {
 /// pass because they go through `*_in_db`.
 #[test]
 fn shared_current_db_still_agrees_with_the_last_use() {
-    let (mut a, mut b, storage, dir) = two_connections();
+    let (mut a, mut b, _storage, dir) = two_connections();
     seed(&mut a);
 
     a.execute("USE d1").unwrap();
     assert_eq!(
-        storage.read().current_db(),
+        a.session_db(),
         "d1",
-        "connection A's USE did not reach the storage mirror"
+        "connection A's USE did not update the session database"
     );
 
     b.execute("USE d2").unwrap();
     assert_eq!(
-        storage.read().current_db(),
+        b.session_db(),
         "d2",
-        "connection B's USE did not reach the storage mirror"
+        "connection B's USE did not update the session database"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -265,15 +265,15 @@ fn shared_current_db_still_agrees_with_the_last_use() {
 /// would pass with the defect in place.
 #[test]
 fn last_use_wins_on_the_mirror_but_not_on_the_connection() {
-    let (mut a, mut b, storage, dir) = two_connections();
+    let (mut a, mut b, _storage, dir) = two_connections();
     seed(&mut a);
     a.execute("USE d1").unwrap();
     b.execute("USE d2").unwrap(); // B writes the mirror last
 
     assert_eq!(
-        storage.read().current_db(),
-        "d2",
-        "the mirror should hold the last USE"
+        a.session_db(),
+        "d1",
+        "connection A must keep its own session database"
     );
     assert_eq!(
         ids(&mut a),

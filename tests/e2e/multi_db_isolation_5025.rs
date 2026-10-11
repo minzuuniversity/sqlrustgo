@@ -706,6 +706,9 @@ fn issue_5137_no_deadlock_derived_materialisation_under_writes() {
     let reader_storage = storage.clone();
     thread::spawn(move || {
         let mut reader = MemoryExecutionEngine::new(reader_storage);
+        // #5057: each engine owns its session database now; the
+        // storage-level `current_db` no longer leaks across engines.
+        reader.execute("USE d1").expect("reader: use d1");
         for _ in 0..50 {
             let rows = reader
                 .execute("SELECT t1.id FROM t1 CROSS JOIN (SELECT id FROM d2.t2) AS x")
@@ -724,6 +727,8 @@ fn issue_5137_no_deadlock_derived_materialisation_under_writes() {
     let writer_counter = writer_inserts.clone();
     thread::spawn(move || {
         let mut writer = MemoryExecutionEngine::new(writer_storage);
+        // #5057: session db is per-engine; scratch table `w` lives in d1.
+        writer.execute("USE d1").expect("writer: use d1");
         let start = Instant::now();
         while !writer_done.load(Ordering::SeqCst) && start.elapsed() < Duration::from_secs(60) {
             writer

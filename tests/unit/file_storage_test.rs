@@ -59,7 +59,7 @@ fn test_file_storage_get_index() {
 #[test]
 fn test_file_storage_drop_index() {
     let dir = create_temp_dir();
-    let mut storage = FileStorage::new(dir.path().to_path_buf()).unwrap();
+    let storage = FileStorage::new(dir.path().to_path_buf()).unwrap();
 
     let result = storage.drop_index("nonexistent", "column");
     assert!(result.is_ok());
