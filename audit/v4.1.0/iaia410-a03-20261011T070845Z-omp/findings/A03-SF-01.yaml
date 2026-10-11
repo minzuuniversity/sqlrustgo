@@ -24,9 +24,25 @@ chain_to_known_defect:
     若 admin PITR 从生产 CLI 可达，则该缺陷有实际触发入口。
 evidence_level: source-proven-chain
 evidence_grade: source-proven-chain / behaviour-unverified
+dynamic_verification_attempt:
+  run_command: commands/005.meta.yaml
+  binaries_built_from_frozen_commit: true
+  result: BLOCKED
+  observed:
+    before_pitr: "重复首列三行在写入阶段已合并为 [1 40]，t.json 物理行数=1"
+    pitr_stdout: "scanned=1 applied=0 skipped=0 failed=0"
+    wal_bytes: 45
+    wal_entry_contains_row_data: false
+  blocked_reason: >
+    无法构造含重复首列行数据的 WAL 样本：
+    (a) 写入阶段已合并，落盘与 WAL 均只剩一行；
+    (b) UPDATE/DELETE 路径本身有缺陷（#5285），以其产出的样本会把
+        写入侧缺陷污染进重放侧观察。
+  effect_on_this_finding: 本次执行不构成证实或证伪；维持 suspected
 NOT_verified:
-  - 尚未通过真实 admin CLI 动态复现 PITR 重放是否错位/丢失逻辑行
-  - 尚未确认 PITR 是否为运维常规操作路径
+  - PITR 重放是否实际错位/丢失逻辑行
+  - scanned=1 applied=0 中该 entry 未被应用的原因
+  - PITR 是否为运维常规操作路径
   - 与 #5281 的责任划分待 A06 裁决
 status: suspected
 routed_to: A06 / #5281

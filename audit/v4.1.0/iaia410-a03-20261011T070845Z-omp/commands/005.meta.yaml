@@ -1,0 +1,45 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+command_id: 005
+description: 尝试动态验证 A03-SF-01（admin PITR 重放是否按首列 key 错位行）
+target_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+binaries:
+  server: target/debug/sqlrustgo-mysql-server（冻结 commit 构建）
+  admin: target/debug/sqlrustgo-admin（冻结 commit 构建）
+exit_code: 0
+setup:
+  - "CREATE TABLE t(a INT, b INT)"
+  - "逐条 INSERT (1,10) / (1,20) / (1,40)"
+observed_before_pitr:
+  query_result: "[1 40]"
+  physical_rows_in_t_json: 1
+  note: >
+    重复首列的三行在【写入阶段】已合并为一行。
+    该合并发生在 MVCC/存储层（#5277 / #5285 域），早于 WAL 记录，
+    因此 WAL 中不存在可用于观察「重放错位」的样本。
+pitr_run:
+  cmd: "sqlrustgo-admin pitr --data-dir <d> --wal <d>/sqlrustgo.wal --target-time 99999999999"
+  stdout: "pitr: scanned=1 applied=0 skipped=0 failed=0 tables={}"
+wal_inspection:
+  size_bytes: 45
+  entry_count: 1
+  payload_contains_row_data: false
+  hexdump_head: "2900 0000 0100 0000 0000 0000 fa38 cb6a ..."
+  interpretation: 唯一 entry 不含 key/data 字段，非行数据 entry
+server_log:
+  wal_sync_mode: every
+  wal_file_size_at_startup: "0 MB"
+BLOCKED:
+  reason: >
+    无法构造「含重复首列行数据 entry」的 WAL 样本：
+    (a) 写入阶段已合并行，落盘与 WAL 中均只剩一行；
+    (b) UPDATE/DELETE 路径本身存在缺陷（#5285），
+        用其产生的 WAL 样本会把写入侧缺陷污染进重放侧观察。
+  secondary: "scanned=1 applied=0 —— 该 entry 未被应用，原因未查明"
+conclusion: >
+  A03-SF-01 维持 suspected，NOT upgraded to confirmed。
+  本次执行不构成对该 finding 的证实或证伪。
+next_step_for_a06:
+  - 修复 #5285 写入侧后重试本验证
+  - 或以构造的 WalEntry 直接驱动 replay_entries_until（绕过 server 写入路径）
