@@ -525,7 +525,19 @@ fn run_pg_docker(setup: &[&str], query: &str) -> EngineResult {
     script.push_str(";\n");
 
     let child = Command::new("docker")
-        .args(["exec", "-i", "a04-pg-ref", "psql", "-U", "a04", "-d", "a04ref", "-H", "-v", "ON_ERROR_STOP=0"])
+        .args([
+            "exec",
+            "-i",
+            "a04-pg-ref",
+            "psql",
+            "-U",
+            "a04",
+            "-d",
+            "a04ref",
+            "-H",
+            "-v",
+            "ON_ERROR_STOP=0",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -533,7 +545,9 @@ fn run_pg_docker(setup: &[&str], query: &str) -> EngineResult {
 
     let mut child = match child {
         Ok(c) => c,
-        Err(e) => return EngineResult::unavailable("postgres", &format!("docker spawn failed: {}", e)),
+        Err(e) => {
+            return EngineResult::unavailable("postgres", &format!("docker spawn failed: {}", e))
+        }
     };
     if let Some(stdin) = child.stdin.as_mut() {
         let _ = stdin.write_all(script.as_bytes());
@@ -757,13 +771,27 @@ fn parse_cli_csv(engine: &str, stdout: &str, stderr: &str, ok: bool) -> EngineRe
 
 fn classify_cli_error(stderr: &str) -> String {
     let l = stderr.to_lowercase();
-    if l.contains("doesn't exist") || l.contains("no such") || l.contains("unknown table") || l.contains("table not found") {
+    if l.contains("doesn't exist")
+        || l.contains("no such")
+        || l.contains("unknown table")
+        || l.contains("table not found")
+    {
         "missing_table".into()
-    } else if l.contains("unknown column") || l.contains("no such column") || (l.contains("column") && l.contains("not found")) {
+    } else if l.contains("unknown column")
+        || l.contains("no such column")
+        || (l.contains("column") && l.contains("not found"))
+    {
         "missing_table_or_column".into()
-    } else if l.contains("syntax error") || l.contains("you have an error in your sql") || l.contains("parse error") {
+    } else if l.contains("syntax error")
+        || l.contains("you have an error in your sql")
+        || l.contains("parse error")
+    {
         "syntax".into()
-    } else if l.contains("constraint") || l.contains("duplicate") || l.contains("not null") || l.contains("cannot be null") {
+    } else if l.contains("constraint")
+        || l.contains("duplicate")
+        || l.contains("not null")
+        || l.contains("cannot be null")
+    {
         "constraint".into()
     } else if l.contains("join condition") {
         "binder_error".into()
@@ -831,13 +859,16 @@ fn run_mysql_wire(setup: &[&str], query: &str) -> EngineResult {
     let handle = match start_ephemeral(EphemeralConfig::default()) {
         Ok(h) => h,
         Err(e) => {
-            return EngineResult::unavailable("mysql_wire", &format!("ephemeral start failed: {:?}", e));
+            return EngineResult::unavailable(
+                "mysql_wire",
+                &format!("ephemeral start failed: {:?}", e),
+            );
         }
     };
     let port = handle.port;
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
     // wait
-        let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         if std::net::TcpStream::connect(addr).is_ok() {
             break;
@@ -866,9 +897,17 @@ fn run_mysql_wire(setup: &[&str], query: &str) -> EngineResult {
                 log.push_str(&format!("  OK affected={}\n", affected_rows));
             }
             Ok(ResultSet::Select { columns, rows, .. }) => {
-                log.push_str(&format!("  SELECT cols={} rows={}\n", columns.len(), rows.len()));
+                log.push_str(&format!(
+                    "  SELECT cols={} rows={}\n",
+                    columns.len(),
+                    rows.len()
+                ));
             }
-            Ok(ResultSet::Error { error_code, error_message, .. }) => {
+            Ok(ResultSet::Error {
+                error_code,
+                error_message,
+                ..
+            }) => {
                 return EngineResult {
                     engine: "mysql_wire".into(),
                     columns: vec![],
@@ -891,11 +930,23 @@ fn run_mysql_wire(setup: &[&str], query: &str) -> EngineResult {
     // query
     log.push_str(&format!("QUERY> {}\n", query));
     match conn.execute(query) {
-        Ok(ResultSet::Select { columns, rows, status_flags }) => {
+        Ok(ResultSet::Select {
+            columns,
+            rows,
+            status_flags,
+        }) => {
             let names: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
             // MySQL wire column_type 是 u8; 映射到粗类别
-            let types: Vec<String> = columns.iter().map(|c| mysql_type_class(c.column_type)).collect();
-            log.push_str(&format!("  SELECT ncol={} nrow={} status=0x{:04x}\n", names.len(), rows.len(), status_flags));
+            let types: Vec<String> = columns
+                .iter()
+                .map(|c| mysql_type_class(c.column_type))
+                .collect();
+            log.push_str(&format!(
+                "  SELECT ncol={} nrow={} status=0x{:04x}\n",
+                names.len(),
+                rows.len(),
+                status_flags
+            ));
             log.push_str(&format!("  columns={:?}\n", names));
             log.push_str(&format!("  types={:?}\n", types));
             for (i, r) in rows.iter().enumerate().take(20) {
@@ -914,7 +965,13 @@ fn run_mysql_wire(setup: &[&str], query: &str) -> EngineResult {
                 available: true,
             }
         }
-        Ok(ResultSet::Ok { affected_rows, last_insert_id, status_flags, warnings, info }) => {
+        Ok(ResultSet::Ok {
+            affected_rows,
+            last_insert_id,
+            status_flags,
+            warnings,
+            info,
+        }) => {
             log.push_str(&format!(
                 "  OK affected={} last_id={} status=0x{:04x} warn={} info={}\n",
                 affected_rows, last_insert_id, status_flags, warnings, info
@@ -932,8 +989,15 @@ fn run_mysql_wire(setup: &[&str], query: &str) -> EngineResult {
                 available: true,
             }
         }
-        Ok(ResultSet::Error { error_code, sql_state, error_message }) => {
-            log.push_str(&format!("  ERR code={} state={} msg={}\n", error_code, sql_state, error_message));
+        Ok(ResultSet::Error {
+            error_code,
+            sql_state,
+            error_message,
+        }) => {
+            log.push_str(&format!(
+                "  ERR code={} state={} msg={}\n",
+                error_code, sql_state, error_message
+            ));
             let cat = classify_mysql_error(error_code, &error_message);
             EngineResult {
                 engine: "mysql_wire".into(),
@@ -942,7 +1006,10 @@ fn run_mysql_wire(setup: &[&str], query: &str) -> EngineResult {
                 rows: vec![],
                 errored: true,
                 error_category: cat,
-                error_raw: format!("{}: {}", error_code, error_message).chars().take(200).collect(),
+                error_raw: format!("{}: {}", error_code, error_message)
+                    .chars()
+                    .take(200)
+                    .collect(),
                 affected_rows: 0,
                 raw_log: log,
                 available: true,
@@ -987,7 +1054,9 @@ fn classify_mysql_error(code: u16, msg: &str) -> String {
         1064 => "syntax".into(),
         1062 | 1048 | 1452 => "constraint".into(),
         1105 if l.contains("join") => "binder_error".into(),
-        1105 if l.contains("unknown") || l.contains("not found") => "missing_table_or_column".into(),
+        1105 if l.contains("unknown") || l.contains("not found") => {
+            "missing_table_or_column".into()
+        }
         1105 if l.contains("cannot be null") || l.contains("null") => "constraint".into(),
         _ => {
             if l.contains("doesn't exist") {
@@ -1022,12 +1091,17 @@ fn run_mysql_cli(port: u16, setup: &[&str], query: &str) -> EngineResult {
 
     let out = Command::new("mysql")
         .args([
-            "-h", "127.0.0.1",
-            "-P", &port.to_string(),
-            "-u", "tester",
+            "-h",
+            "127.0.0.1",
+            "-P",
+            &port.to_string(),
+            "-u",
+            "tester",
             "-ptester",
-            "--protocol", "tcp",
-            "-e", &script,
+            "--protocol",
+            "tcp",
+            "-e",
+            &script,
             "--batch",
         ])
         .output();
@@ -1036,7 +1110,10 @@ fn run_mysql_cli(port: u16, setup: &[&str], query: &str) -> EngineResult {
         Ok(o) => {
             let stdout = String::from_utf8_lossy(&o.stdout).to_string();
             let stderr = String::from_utf8_lossy(&o.stderr).to_string();
-            let raw = format!("=== mysql CLI STDOUT ===\n{}\n=== STDERR ===\n{}\n", stdout, stderr);
+            let raw = format!(
+                "=== mysql CLI STDOUT ===\n{}\n=== STDERR ===\n{}\n",
+                stdout, stderr
+            );
             let ok = o.status.success() && !stderr.contains("ERROR");
             if ok {
                 parse_cli_delim("mysql_cli", &stdout, &stderr, true, '\t')
@@ -1097,7 +1174,10 @@ fn compare(ours: &EngineResult, ref_eng: &EngineResult, order_matters: bool) -> 
     // 双方都报错 → 比错误类别
     if ours.errored && ref_eng.errored {
         if ours.error_category == ref_eng.error_category {
-            return (Verdict::Match, format!("both error cat={}", ours.error_category));
+            return (
+                Verdict::Match,
+                format!("both error cat={}", ours.error_category),
+            );
         }
         return (
             Verdict::Mismatch,
@@ -1120,7 +1200,8 @@ fn compare(ours: &EngineResult, ref_eng: &EngineResult, order_matters: bool) -> 
             Verdict::SilentWrong,
             format!(
                 "ours ok ({} rows) but ref errored ({}) — possible silent wrong result",
-                ours.rows.len(), ref_eng.error_category
+                ours.rows.len(),
+                ref_eng.error_category
             ),
         );
     }
@@ -1147,7 +1228,10 @@ fn compare(ours: &EngineResult, ref_eng: &EngineResult, order_matters: bool) -> 
             Verdict::Mismatch,
             format!(
                 "column count: ours={} ref={} (ours_cols={:?} ref_cols={:?})",
-                ours.columns.len(), ref_eng.columns.len(), ours.columns, ref_eng.columns
+                ours.columns.len(),
+                ref_eng.columns.len(),
+                ours.columns,
+                ref_eng.columns
             ),
         );
     }
@@ -1190,7 +1274,10 @@ fn compare(ours: &EngineResult, ref_eng: &EngineResult, order_matters: bool) -> 
         }
     }
 
-    (Verdict::Match, format!("cols+rows match (n={})", our_rows.len()))
+    (
+        Verdict::Match,
+        format!("cols+rows match (n={})", our_rows.len()),
+    )
 }
 
 /// 数值宽松相等 + NULL 表示归一化（&nbsp; / &lt; / &gt; / &quot; / &#39; 为 HTML 实体）。
@@ -1199,8 +1286,18 @@ fn cell_equal(a: &str, b: &str) -> bool {
         return true;
     }
     // HTML 实体归一化
-    let a_norm = a.replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'");
-    let b_norm = b.replace("&nbsp;", " ").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'");
+    let a_norm = a
+        .replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'");
+    let b_norm = b
+        .replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'");
     if a_norm == b_norm {
         return true;
     }
@@ -1230,7 +1327,15 @@ fn a04_mysql_diff_matrix() {
 
     // 引擎可用性探测
     let pg_available = Command::new("docker")
-        .args(["exec", "a04-pg-ref", "pg_isready", "-U", "a04", "-d", "a04ref"])
+        .args([
+            "exec",
+            "a04-pg-ref",
+            "pg_isready",
+            "-U",
+            "a04",
+            "-d",
+            "a04ref",
+        ])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
@@ -1276,10 +1381,7 @@ fn a04_mysql_diff_matrix() {
         }
 
         // 参照：优先 sqlite；pg 作为第二参照
-        let ref_pairs: Vec<(&str, &EngineResult)> = vec![
-            ("sqlite", &lite),
-            ("postgres", &pg),
-        ];
+        let ref_pairs: Vec<(&str, &EngineResult)> = vec![("sqlite", &lite), ("postgres", &pg)];
 
         let mut comparisons = serde_json::Map::new();
         for (ref_name, ref_res) in &ref_pairs {
@@ -1385,8 +1487,11 @@ fn a04_mysql_diff_matrix() {
         "silent_wrong": silent_wrong_ids,
     });
     let matrix_path = root.join("matrix.json");
-    fs::write(&matrix_path, serde_json::to_string_pretty(&matrix_doc).unwrap())
-        .expect("write matrix.json");
+    fs::write(
+        &matrix_path,
+        serde_json::to_string_pretty(&matrix_doc).unwrap(),
+    )
+    .expect("write matrix.json");
     eprintln!("wrote {}", matrix_path.display());
 
     // 汇总 verdict

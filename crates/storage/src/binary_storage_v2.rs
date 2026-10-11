@@ -618,11 +618,12 @@ impl StorageEngine for BinaryTableStorageV2 {
         vec![]
     }
 
-    fn has_view(&self, _name: &str) -> bool {
+    fn has_view(&self, _db: &str, _name: &str) -> bool {
         false
     }
 
-    fn list_views(&self) -> Vec<String> {
+    fn list_views(&self, _db: &str) -> Vec<String> {
+        let _ = _db;
         vec![]
     }
 

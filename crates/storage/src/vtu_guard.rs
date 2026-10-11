@@ -106,8 +106,6 @@ impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
     fn has_table_in(&self, db: &str, table: &str) -> bool {
         self.inner.has_table_in(db, table)
     }
-    /// Scan — allowed (read-only)
-
     /// #5250: delegate with the stated database. This wrapper holds a
     /// single inner `StorageEngine`, so the database has to be carried
     /// through — the previous trait default dropped it (`let _ = db;`) and
@@ -238,8 +236,8 @@ impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
         self.inner.list_indexes(table)
     }
 
-    fn has_view(&self, name: &str) -> bool {
-        self.inner.has_view(name)
+    fn has_view(&self, db: &str, name: &str) -> bool {
+        self.inner.has_view(db, name)
     }
 
     fn as_any(&self) -> &dyn Any {

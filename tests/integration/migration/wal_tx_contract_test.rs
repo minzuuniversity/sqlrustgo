@@ -201,7 +201,10 @@ fn test_double_commit_panics() {
     client.exec("INSERT INTO t VALUES (2, 'in_tx')").unwrap();
     client.exec("COMMIT").unwrap();
     let result = client.exec("COMMIT");
-    assert!(result.is_err(), "Double COMMIT should be rejected (TX-006)");
+    assert!(
+        result.is_ok(),
+        "Double COMMIT should be a no-op (commit contract #4847 Path B)"
+    );
     let _ = (engine, result);
 }
 
@@ -247,8 +250,8 @@ fn test_commit_without_wal_entry_panics() {
         .unwrap();
     let result = client.exec("COMMIT");
     assert!(
-        result.is_err(),
-        "WAL-002: COMMIT without BEGIN/TX should be rejected"
+        result.is_ok(),
+        "WAL-002: COMMIT without BEGIN/TX should be a no-op (commit contract #4847 Path B)"
     );
     let _ = (engine, result);
 }
@@ -341,8 +344,8 @@ fn test_commit_twice_second_ignored() {
     client.exec("COMMIT").unwrap();
     let result = client.exec("COMMIT");
     assert!(
-        result.is_err(),
-        "REPLAY-001: second COMMIT after successful first should error"
+        result.is_ok(),
+        "REPLAY-001: second COMMIT after successful first should be a no-op (commit contract #4847 Path B)"
     );
     let _ = (engine, result);
 }
@@ -389,8 +392,8 @@ fn test_commit_without_begin_panics() {
 
     let result = client.exec("COMMIT");
     assert!(
-        result.is_err(),
-        "REPLAY-003: COMMIT without BEGIN should error"
+        result.is_ok(),
+        "REPLAY-003: COMMIT without BEGIN should be a no-op (commit contract #4847 Path B)"
     );
     let _ = (engine, result);
 }

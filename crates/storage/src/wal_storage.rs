@@ -599,10 +599,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        // #5192: the unscoped entry point records the storage's current
-        // database, matching the `insert` below it.
-        let db = self.inner().current_db();
-        self.insert_in_db(&db, table, records)
+        // #5057: the unscoped entry point records DEFAULT_DATABASE.
+        let db = crate::engine::DEFAULT_DATABASE;
+        self.insert_in_db(db, table, records)
     }
 
     /// #5192: WAL-logged insert that names the target database explicitly.
@@ -727,10 +726,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        // #5192: the unscoped entry point records the storage's current
-        // database, matching the `delete_in_db` below it.
-        let db = self.inner().current_db();
-        self.delete_in_db(&db, table, filters)
+        // #5057: the unscoped entry point records DEFAULT_DATABASE.
+        let db = crate::engine::DEFAULT_DATABASE;
+        self.delete_in_db(db, table, filters)
     }
 
     /// #5192: WAL-logged delete that names the target database explicitly.
@@ -778,7 +776,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
-        let db_name = self.inner().current_db();
+        let db_name = crate::engine::DEFAULT_DATABASE.to_string();
         let key = format!("RowFilter-{:p}", filter).into_bytes();
         self.log_delete(table_id, Some(table), Some(&db_name), key)?;
         self.inner_mut().delete_if(table, filter)
@@ -790,10 +788,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        // #5192: the unscoped entry point records the storage's current
-        // database, matching the `update_in_db` below it.
-        let db = self.inner().current_db();
-        self.update_in_db(&db, table, filters, updates)
+        // #5057: the unscoped entry point records DEFAULT_DATABASE.
+        let db = crate::engine::DEFAULT_DATABASE;
+        self.update_in_db(db, table, filters, updates)
     }
 
     /// #5192: WAL-logged update that names the target database explicitly.
@@ -869,8 +866,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // Encode the mutation as a debug string for WAL; on recovery the
         // RowFilter closure cannot be reconstructed, so this is best-effort.
         let data = format!("{:?}", mutation).into_bytes();
-        // #5192: bind the database before `inner_mut()` borrows self.
-        let current_db = self.inner().current_db();
+        // #5057: bind DEFAULT_DATABASE before `inner_mut()` borrows self.
+        let current_db = crate::engine::DEFAULT_DATABASE.to_string();
         self.log_update(table_id, Some(table), Some(&current_db), key, data)?;
         self.inner_mut().update_if(table, filter, mutation)
     }
@@ -887,18 +884,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// same "wrapper silently drops the method" defect shape as #4974.
     fn list_databases(&self) -> SqlResult<Vec<String>> {
         self.inner().list_databases()
-    }
-
-    /// #5025: forward the database switch. A wrapper that answers the
-    /// trait default (`Ok(())` that changes nothing) makes `USE` report
-    /// success while every query still resolves against the previous
-    /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner_mut().set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        self.inner().current_db()
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
@@ -957,8 +942,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner().list_indexes(table)
     }
 
-    fn has_view(&self, name: &str) -> bool {
-        self.inner().has_view(name)
+    fn has_view(&self, db: &str, name: &str) -> bool {
+        self.inner().has_view(db, name)
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
@@ -2082,8 +2067,8 @@ mod tests {
             fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
                 self.inner.list_indexes(table)
             }
-            fn has_view(&self, name: &str) -> bool {
-                self.inner.has_view(name)
+            fn has_view(&self, db: &str, name: &str) -> bool {
+                self.inner.has_view(db, name)
             }
             fn as_any(&self) -> &dyn std::any::Any {
                 self

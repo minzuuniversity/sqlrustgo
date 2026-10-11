@@ -84,9 +84,9 @@ fn acceptance_latency_5209() {
         );
     }
 
-    let (r100, mc100_i, s100_i, _, _) = rows_tbl[0];
+    let (r100, mc100_i, _s100_i, _, _) = rows_tbl[0];
     let (r10k, mc10k_i, s10k_i, _, _) = rows_tbl[2];
-    let (_, _, _, mc10k_n, s10k_n) = rows_tbl[2];
+    let (_, _, _, _mc10k_n, s10k_n) = rows_tbl[2];
     let _ = (r100, r10k);
 
     // Acceptance 1: two-column equality at 10k rows. Line: 200 µs.

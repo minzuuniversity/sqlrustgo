@@ -734,7 +734,7 @@ mod tests {
     //!     (WithDml INSERT/UPDATE/DELETE bodies)
 
     use crate::MemoryStorage;
-    use crate::{ExecutionEngine, MemoryExecutionEngine, Value};
+    use crate::{ExecutionEngine, Value};
     use parking_lot::RwLock;
     use std::sync::Arc;
 
@@ -932,7 +932,6 @@ mod tests {
     }
 
     use sqlrustgo_parser::parser::CommonTableExpression;
-    use sqlrustgo_storage::engine::ColumnDefinition;
 
     #[test]
     fn derive_cte_columns_explicit() {

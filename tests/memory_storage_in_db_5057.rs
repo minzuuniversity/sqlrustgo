@@ -22,8 +22,7 @@ fn seeded() -> MemoryStorage {
     s.create_database("d1").unwrap();
     s.create_database("d2").unwrap();
     for db in ["d1", "d2"] {
-        s.set_current_db(db).unwrap();
-        s.create_table(&table("t")).unwrap();
+        s.create_table_in_db(db, &table("t")).unwrap();
     }
     s
 }
@@ -32,7 +31,6 @@ fn seeded() -> MemoryStorage {
 fn create_table_in_db_lands_in_the_named_database() {
     let mut s = seeded();
     // Stored state says d2 throughout.
-    s.set_current_db("d2").unwrap();
     s.create_table_in_db("d1", &table("made")).unwrap();
 
     assert!(s.has_table_in("d1", "made"), "d1 should have the new table");

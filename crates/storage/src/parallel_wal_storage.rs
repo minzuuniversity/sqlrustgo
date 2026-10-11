@@ -190,18 +190,6 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.delete(table, filters)
     }
 
-    /// #5025: forward the database switch. A wrapper that answers the
-    /// trait default (`Ok(())` that changes nothing) makes `USE` report
-    /// success while every query still resolves against the previous
-    /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        self.inner.current_db()
-    }
-
     fn update(
         &mut self,
         table: &str,
@@ -413,8 +401,8 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
         self.inner.list_indexes(table)
     }
-    fn has_view(&self, name: &str) -> bool {
-        self.inner.has_view(name)
+    fn has_view(&self, db: &str, name: &str) -> bool {
+        self.inner.has_view(db, name)
     }
 
     fn as_any(&self) -> &dyn Any {

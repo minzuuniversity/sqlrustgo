@@ -215,11 +215,9 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
 
     /// Acquire (or lazily create) the MVCC table for `table_name`.
     fn mvcc_table(&self, table_name: &str) -> Arc<VersionedTable> {
-        // #5105: the database is resolved from the storage's shared
-        // `current_db` here. That is only correct for callers that have no
-        // database of their own to state — see [`mvcc_table_in`](Self::mvcc_table_in)
-        // for why the per-connection path cannot use it.
-        self.mvcc_table_in(&self.inner.current_db(), table_name)
+        // #5057: the database is resolved to DEFAULT_DATABASE. Callers
+        // that know their database must use [`mvcc_table_in`](Self::mvcc_table_in).
+        self.mvcc_table_in(crate::engine::DEFAULT_DATABASE, table_name)
     }
 
     /// #5105: the version store for `(db, table)`.
@@ -450,9 +448,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// transaction, and an uncommitted write becomes visible to a
     /// connection that did not make it.
     fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        // #5105: keep the transaction and resolve the database the way the
-        // rest of this impl does, so both halves come from the same place.
-        self.scan_in_tx_db(&self.inner.current_db(), table, reader_tx)
+        // #5057: resolve the database to DEFAULT_DATABASE.
+        self.scan_in_tx_db(crate::engine::DEFAULT_DATABASE, table, reader_tx)
     }
 
     /// #5105: snapshot read of `(db, table)` on behalf of `reader_tx`.
@@ -661,10 +658,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        // #5192: resolve the database before the mutable borrows below, so
-        // the inner write and the MVCC version chain both land in the
-        // database this statement targets.
-        let db = self.inner.current_db();
+        // #5057: resolve the database to DEFAULT_DATABASE.
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.insert_in_db(&db, table, records)
     }
 
@@ -836,7 +831,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         self.inner.force_insert(table, record.clone())?;
         if !record.is_empty() {
             let mvcc = self.mvcc_table(table);
-            let pk = self.row_identity(&mvcc, &self.inner.current_db().to_string(), table, &record);
+            let pk = self.row_identity(&mvcc, crate::engine::DEFAULT_DATABASE, table, &record);
             let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             mvcc.put(pk, record, ts, tx_id);
@@ -856,8 +851,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
         self.inner.drop_table(table)?;
-        // #5025: same scoped key `mvcc_table` uses.
-        let key = crate::engine::scoped_key(&self.inner.current_db(), table);
+        // #5057: same scoped key `mvcc_table` uses, resolved to DEFAULT.
+        let key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, table);
         self.mvcc.write().remove(&key);
         Ok(())
     }
@@ -883,8 +878,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
         self.inner.list_indexes(table)
     }
-    fn has_view(&self, name: &str) -> bool {
-        self.inner.has_view(name)
+    fn has_view(&self, db: &str, name: &str) -> bool {
+        self.inner.has_view(db, name)
     }
     fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
         self.inner.get_trigger(name)
@@ -899,17 +894,6 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         self.inner.drop_database(db_name)
     }
 
-    /// #5025: forward the database switch. A wrapper that answers the
-    /// trait default (`Ok(())` that changes nothing) makes `USE` report
-    /// success while every query still resolves against the previous
-    /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        self.inner.current_db()
-    }
     /// #5009: forward. Without this the MVCC layer would answer the
     /// trait default (empty list) and `SHOW DATABASES` would report
     /// nothing at all when the server runs on the MVCC engine.
@@ -1018,11 +1002,11 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
 
     fn rename_table(&mut self, old: &str, new: &str) -> SqlResult<()> {
         // Move MVCC state under the new name.
-        // #5025: move the version store with the table.
-        let old_key = crate::engine::scoped_key(&self.inner.current_db(), old);
+        // #5057: move the version store with the table, resolved to DEFAULT.
+        let old_key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, old);
         let mvcc_state = self.mvcc.write().remove(&old_key);
         if let Some(state) = mvcc_state {
-            let new_key = crate::engine::scoped_key(&self.inner.current_db(), new);
+            let new_key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, new);
             self.mvcc.write().insert(new_key, state);
         }
         self.inner.rename_table(old, new)
@@ -1205,7 +1189,32 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        self.inner_mut().delete_in_db(db, table, filters)
+        let removed_pks = self
+            .inner_mut()
+            .delete_collect_pks_in_db(db, table, filters)?;
+        if removed_pks.is_empty() {
+            if filters.is_empty() {
+                let mvcc = self.mvcc_table_in(db, table);
+                let tx_id = self.inner.current_tx_id();
+                let pairs = mvcc.scan_visible(mvcc.begin_snapshot(), tx_id);
+                let ts = mvcc.next_snapshot_ts();
+                for (pk, _) in pairs {
+                    mvcc.delete(&pk, ts, tx_id);
+                }
+            }
+            self.register_sql_write("DELETE");
+            self.maybe_gc();
+            return Ok(0);
+        }
+        let mvcc = self.mvcc_table_in(db, table);
+        let tx_id = self.inner.current_tx_id();
+        let ts = mvcc.next_snapshot_ts();
+        for pk in &removed_pks {
+            mvcc.delete(pk, ts, tx_id);
+        }
+        self.register_sql_write("DELETE");
+        self.maybe_gc();
+        Ok(removed_pks.len())
     }
 
     fn delete_collect_pks_in_db(
@@ -1532,20 +1541,18 @@ mod db_isolation_tests {
         mvcc.create_database("d2").unwrap();
 
         for (db, id) in [("d1", 1i64), ("d2", 2)] {
-            mvcc.set_current_db(db).unwrap();
-            mvcc.create_table(&table("t")).unwrap();
-            mvcc.insert("t", vec![vec![Value::Integer(id)]]).unwrap();
+            mvcc.create_table_in_db(db, &table("t")).unwrap();
+            mvcc.insert_in_db(db, "t", vec![vec![Value::Integer(id)]])
+                .unwrap();
         }
 
-        mvcc.set_current_db("d1").unwrap();
         assert_eq!(
-            mvcc.scan("t").unwrap(),
+            mvcc.scan_in_db("d1", "t").unwrap(),
             vec![vec![Value::Integer(1)]],
             "d1 must not see d2's version"
         );
-        mvcc.set_current_db("d2").unwrap();
         assert_eq!(
-            mvcc.scan("t").unwrap(),
+            mvcc.scan_in_db("d2", "t").unwrap(),
             vec![vec![Value::Integer(2)]],
             "d2 must not see d1's version"
         );

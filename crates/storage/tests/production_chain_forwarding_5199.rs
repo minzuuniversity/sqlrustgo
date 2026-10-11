@@ -141,7 +141,9 @@ fn production_chain_scan_pk_range_must_not_scale_with_table_size() {
 #[test]
 fn production_chain_pk_lookup_is_correct() {
     let s = build_chain(1_000);
-    let hit = s.scan_pk("t", "id", &sqlrustgo_storage::Value::Integer(999)).expect("scan_pk");
+    let hit = s
+        .scan_pk("t", "id", &sqlrustgo_storage::Value::Integer(999))
+        .expect("scan_pk");
     assert!(hit.is_some(), "present key must be found");
     let miss = s
         .scan_pk("t", "id", &sqlrustgo_storage::Value::Integer(9_999_999))

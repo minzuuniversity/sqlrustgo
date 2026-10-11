@@ -195,12 +195,16 @@ fn create_view_persists_across_restart() {
             vec!["id".to_string()],
             "SELECT id FROM base".to_string(),
         );
-        storage.create_view(info).expect("create_view");
-        assert!(storage.has_view("v"));
-        let fetched = storage.get_view("v").expect("get_view");
+        storage
+            .create_view(sqlrustgo_storage::engine::DEFAULT_DATABASE, info)
+            .expect("create_view");
+        assert!(storage.has_view(sqlrustgo_storage::engine::DEFAULT_DATABASE, "v"));
+        let fetched = storage
+            .get_view(sqlrustgo_storage::engine::DEFAULT_DATABASE, "v")
+            .expect("get_view");
         assert_eq!(fetched.name, "v");
         assert_eq!(fetched.columns, vec!["id".to_string()]);
-        let names = storage.list_views();
+        let names = storage.list_views(sqlrustgo_storage::engine::DEFAULT_DATABASE);
         assert_eq!(names, vec!["v".to_string()]);
     }
 
@@ -208,20 +212,27 @@ fn create_view_persists_across_restart() {
     {
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
         assert!(
-            storage.has_view("v"),
+            storage.has_view(sqlrustgo_storage::engine::DEFAULT_DATABASE, "v"),
             "view must survive restart — file reload failed"
         );
-        let fetched = storage.get_view("v").expect("get_view after restart");
+        let fetched = storage
+            .get_view(sqlrustgo_storage::engine::DEFAULT_DATABASE, "v")
+            .expect("get_view after restart");
         assert_eq!(fetched.name, "v");
         // drop_view must remove the on-disk row.
-        storage.drop_view("v").expect("drop_view");
-        assert!(!storage.has_view("v"));
+        storage
+            .drop_view(sqlrustgo_storage::engine::DEFAULT_DATABASE, "v")
+            .expect("drop_view");
+        assert!(!storage.has_view(sqlrustgo_storage::engine::DEFAULT_DATABASE, "v"));
     }
 
     // Third "process": confirm drop persisted.
     {
         let storage = FileStorage::new(temp_dir.clone()).unwrap();
-        assert!(!storage.has_view("v"), "drop_view must persist to disk");
+        assert!(
+            !storage.has_view(sqlrustgo_storage::engine::DEFAULT_DATABASE, "v"),
+            "drop_view must persist to disk"
+        );
     }
 
     let _ = std::fs::remove_dir_all(&temp_dir);
