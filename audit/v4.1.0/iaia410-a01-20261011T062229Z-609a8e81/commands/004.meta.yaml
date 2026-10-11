@@ -1,0 +1,12 @@
+schema_version: iaia410-command-meta/v1
+command_id: '004'
+name: docs-links-check
+argv:
+- bash
+- scripts/gate/check_docs_links.sh
+- entry
+cwd: .
+timeout_sec: 600
+started_at: '2026-10-11T06:23:32Z'
+finished_at: '2026-10-11T06:23:32Z'
+exit_code: 0

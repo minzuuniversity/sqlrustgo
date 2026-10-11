@@ -1,0 +1,219 @@
+warning: unused import: `MemoryExecutionEngine`
+   --> src/engine_cte.rs:737:34
+    |
+737 |     use crate::{ExecutionEngine, MemoryExecutionEngine, Value};
+    |                                  ^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `sqlrustgo_storage::engine::ColumnDefinition`
+   --> src/engine_cte.rs:935:9
+    |
+935 |     use sqlrustgo_storage::engine::ColumnDefinition;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `vs1`
+   --> src/engine_setops.rs:628:13
+    |
+628 |         let vs1: Vec<String> = r1
+    |             ^^^ help: if this is intentional, prefix it with an underscore: `_vs1`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `s100_i`
+  --> tests/integration/dml/eq_index_acceptance_latency_5209.rs:87:25
+   |
+87 |     let (r100, mc100_i, s100_i, _, _) = rows_tbl[0];
+   |                         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_s100_i`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `mc10k_n`
+  --> tests/integration/dml/eq_index_acceptance_latency_5209.rs:89:19
+   |
+89 |     let (_, _, _, mc10k_n, s10k_n) = rows_tbl[2];
+   |                   ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_mc10k_n`
+
+warning: `sqlrustgo` (lib test) generated 3 warnings (run `cargo fix --lib -p sqlrustgo --tests` to apply 3 suggestions)
+warning: `sqlrustgo` (test "eq_index_acceptance_latency_5209") generated 2 warnings (run `cargo fix --test "eq_index_acceptance_latency_5209" -p sqlrustgo` to apply 2 suggestions)
+warning: static `CONJUNCT_1_EVALS` is never used
+  --> tests/integration/tpch/q4_nested_and_short_circuit_test.rs:31:8
+   |
+31 | static CONJUNCT_1_EVALS: AtomicU64 = AtomicU64::new(0);
+   |        ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: static `CONJUNCT_2_EVALS` is never used
+  --> tests/integration/tpch/q4_nested_and_short_circuit_test.rs:32:8
+   |
+32 | static CONJUNCT_2_EVALS: AtomicU64 = AtomicU64::new(0);
+   |        ^^^^^^^^^^^^^^^^
+
+warning: static `CONJUNCT_3_EVALS` is never used
+  --> tests/integration/tpch/q4_nested_and_short_circuit_test.rs:33:8
+   |
+33 | static CONJUNCT_3_EVALS: AtomicU64 = AtomicU64::new(0);
+   |        ^^^^^^^^^^^^^^^^
+
+warning: function `reset_sentinels` is never used
+  --> tests/integration/tpch/q4_nested_and_short_circuit_test.rs:49:4
+   |
+49 | fn reset_sentinels() {
+   |    ^^^^^^^^^^^^^^^
+
+warning: unused import: `StorageEngine`
+  --> tests/view_db_isolation_5140.rs:22:38
+   |
+22 | use sqlrustgo_storage::{FileStorage, StorageEngine};
+   |                                      ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+  --> tests/unit/file_storage_test.rs:62:9
+   |
+62 |     let mut storage = FileStorage::new(dir.path().to_path_buf()).unwrap();
+   |         ----^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `StorageEngine`
+  --> tests/read_path_db_5113.rs:48:38
+   |
+48 | use sqlrustgo_storage::{FileStorage, StorageEngine};
+   |                                      ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo` (test "q4_nested_and_short_circuit_test") generated 4 warnings
+warning: `sqlrustgo` (test "view_db_isolation_5140") generated 1 warning (run `cargo fix --test "view_db_isolation_5140" -p sqlrustgo` to apply 1 suggestion)
+warning: `sqlrustgo` (test "file_storage_test") generated 1 warning (run `cargo fix --test "file_storage_test" -p sqlrustgo` to apply 1 suggestion)
+warning: `sqlrustgo` (test "read_path_db_5113") generated 1 warning (run `cargo fix --test "read_path_db_5113" -p sqlrustgo` to apply 1 suggestion)
+warning: constant `COLS` is never used
+  --> tests/operators/pragma_table_info.rs:38:7
+   |
+38 | const COLS: [&str; 6] = ["cid", "name", "type", "notnull", "dflt_value", "pk"];
+   |       ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `StorageEngine`
+  --> tests/mvcc_reader_tx_5105.rs:51:51
+   |
+51 | use sqlrustgo_storage::{FileStorage, MvccStorage, StorageEngine};
+   |                                                   ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo` (test "operators_pragma_table_info") generated 1 warning
+warning: `sqlrustgo` (test "mvcc_reader_tx_5105") generated 1 warning (run `cargo fix --test "mvcc_reader_tx_5105" -p sqlrustgo` to apply 1 suggestion)
+warning: unused variable: `tag`
+   --> tests/integration/sql/backup_restore_test.rs:319:17
+    |
+319 | fn empty_target(tag: &str) -> (TempDir, std::path::PathBuf) {
+    |                 ^^^ help: if this is intentional, prefix it with an underscore: `_tag`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `StorageEngine`
+  --> tests/multi_table_update_5117.rs:41:38
+   |
+41 | use sqlrustgo_storage::{FileStorage, StorageEngine};
+   |                                      ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `storage`
+   --> tests/session_db_isolation_5057.rs:133:24
+    |
+133 |     let (mut a, mut b, storage, dir) = two_connections();
+    |                        ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_storage`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `storage`
+   --> tests/session_db_isolation_5057.rs:159:24
+    |
+159 |     let (mut a, mut b, storage, dir) = two_connections();
+    |                        ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_storage`
+
+warning: unused variable: `storage`
+   --> tests/session_db_isolation_5057.rs:195:24
+    |
+195 |     let (mut a, mut b, storage, dir) = two_connections();
+    |                        ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_storage`
+
+warning: `sqlrustgo` (test "backup_restore_test") generated 1 warning (run `cargo fix --test "backup_restore_test" -p sqlrustgo` to apply 1 suggestion)
+warning: `sqlrustgo` (test "multi_table_update_5117") generated 1 warning (run `cargo fix --test "multi_table_update_5117" -p sqlrustgo` to apply 1 suggestion)
+warning: `sqlrustgo` (test "session_db_isolation_5057") generated 3 warnings (run `cargo fix --test "session_db_isolation_5057" -p sqlrustgo` to apply 3 suggestions)
+warning: unused import: `StorageEngine`
+  --> tests/database_fn_dml_5141.rs:19:38
+   |
+19 | use sqlrustgo_storage::{FileStorage, StorageEngine};
+   |                                      ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo` (test "database_fn_dml_5141") generated 1 warning (run `cargo fix --test "database_fn_dml_5141" -p sqlrustgo` to apply 1 suggestion)
+warning: unused import: `StorageEngine`
+  --> tests/blk1_auto_increment_concurrency_test.rs:22:40
+   |
+22 | use sqlrustgo_storage::{MemoryStorage, StorageEngine};
+   |                                        ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `MvccStorage` and `StorageEngine`
+  --> tests/dml_read_db_5106.rs:32:38
+   |
+32 | use sqlrustgo_storage::{FileStorage, MvccStorage, StorageEngine};
+   |                                      ^^^^^^^^^^^  ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `dir`
+  --> tests/insert_db_isolation_5057.rs:38:17
+   |
+38 |     let (mut x, dir) = engine();
+   |                 ^^^ help: if this is intentional, prefix it with an underscore: `_dir`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `dir`
+  --> tests/insert_db_isolation_5057.rs:56:17
+   |
+56 |     let (mut x, dir) = engine();
+   |                 ^^^ help: if this is intentional, prefix it with an underscore: `_dir`
+
+warning: function `row_text` is never used
+  --> tests/integration/sql/repro_v312_85.rs:41:4
+   |
+41 | fn row_text(row: &[Value]) -> Vec<String> {
+   |    ^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo` (test "blk1_auto_increment_concurrency_test") generated 1 warning (run `cargo fix --test "blk1_auto_increment_concurrency_test" -p sqlrustgo` to apply 1 suggestion)
+warning: `sqlrustgo` (test "dml_read_db_5106") generated 1 warning (run `cargo fix --test "dml_read_db_5106" -p sqlrustgo` to apply 1 suggestion)
+warning: `sqlrustgo` (test "insert_db_isolation_5057") generated 2 warnings (run `cargo fix --test "insert_db_isolation_5057" -p sqlrustgo` to apply 2 suggestions)
+warning: `sqlrustgo` (test "repro_v312_85") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.65s
+     Running unittests src/lib.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/sqlrustgo-763a405841d5811c)
+     Running tests/integration/sql/_q15_q16_check.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/_q15_q16_check-759f9708ff64be6c)
+     Running tests/integration/compat/a04_mysql_diff_matrix_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/a04_mysql_diff_matrix-22ffddcb7895421f)
+     Running tests/integration/sql/adaptive_hash_index_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/adaptive_hash_index_test-bb77e52f198aa57b)
+     Running tests/integration/storage/adaptive_hash_main_path_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/adaptive_hash_main_path_test-077b9c8af4e3a256)
+     Running tests/integration/sql/aggregate_functions_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/aggregate_functions_test-7740236807c80217)
+     Running tests/integration/sql/aggregate_smoke_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/aggregate_smoke_test-34ad76962b1fcb1f)
+     Running tests/anomaly/aggregate_type_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/aggregate_type_test-18d4bfcb6e252587)
+     Running tests/integration/sql/boundary_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/anomaly_boundary_test-a7c9e5380f526a85)
+     Running tests/integration/sql/long_run_stability_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/anomaly_long_run_stability_test-ef86a37f8d523c68)
+     Running tests/benchmark/qps_benchmark_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/anomaly_qps_benchmark_test-b9eb4376471b828d)
+     Running tests/integration/sql/anti_join_main_path_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/anti_join_main_path_test-c10084794fdfb84b)
+     Running tests/integration/dml/arch2_dml_api_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/arch2_dml_api_test-279ad51a2143530d)
+     Running tests/integration/optimizer/arch3_vtu_main_path_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/arch3_vtu_main_path_test-f1a530d7c1d34565)
+     Running tests/integration/optimizer/arch_sem_debt_gate_test.rs (/home/openclaw/dev/sqlrustgo/target/debug/deps/arch_sem_debt_gate_test-ef798f684c489741)
+error: test failed, to rerun pass `--test arch_sem_debt_gate_test`

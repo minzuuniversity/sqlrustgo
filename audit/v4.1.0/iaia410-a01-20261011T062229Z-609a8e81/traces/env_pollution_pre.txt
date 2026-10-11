@@ -1,0 +1,79 @@
+== env pollution pre ==
+timestamp_utc=2026-10-11T06:23:21Z
+hostname=gaoyuanai-HPZ6G4
+
+== sqlrustgo-related processes ==
+   5224 openclaw  1-07:47:41 aoci            /home/openclaw/.local/bin/aoci --repo /home/openclaw/sqlrustgo mcp
+2678264 openclaw    14:37:03 aoci            /home/openclaw/.local/bin/aoci ui --repo /home/openclaw/dev/sqlrustgo --port 0 --host 127.0.0.1 --discover=true --json
+3495871 root           06:03 regression_test /workspace/openclaw/sqlrustgo/repo/target/debug/deps/regression_test-85cc1f19f780e566 --quiet
+3507943 openclaw       04:27 aoci            /tmp/aoci_install/aoci mcp --repo /home/openclaw/sqlrustgo
+3539766 root           00:23 physical_backup /workspace/openclaw/sqlrustgo/repo/target/debug/deps/physical_backup_test-56611bd9a975ba17 --nocapture
+3539770 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo test -p sqlrustgo-tools -- --nocapture
+3539774 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- backup
+3539779 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- --help
+3539782 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- restore --dir /tmp/.tmpPO2Wov/nonexistent_backup --target /tmp/.tmpPO2Wov/restore_target
+3539783 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- list --dir /tmp/.tmpI9ffWI/empty_backups
+3539784 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- backup --help
+3539785 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo test -p sqlrustgo-tools physical_backup -- --nocapture
+3539786 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- prune --dir /tmp/.tmp2OPIaI/empty_backups
+3539787 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- prune --help
+3539788 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- prune --dir /tmp/.tmpGF4OmK/nonexistent_backup_dir --keep 3
+3539789 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- verify --dir /tmp/.tmpdvUtSL/nonexistent_backup
+3539790 root           00:23 cargo           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/cargo run --bin physical-backup -p sqlrustgo-tools -- prune --dir /tmp/.tmpTxMFG0/backups --keep 2 --dry-run
+3544223 root           00:10 build-script-ma /workspace/openclaw/sqlrustgo/repo/target/debug/build/aws-lc-sys-bbec86ec20d64265/build-script-main
+3544831 root           00:09 cc              cc -O0 -ffunction-sections -fdata-sections -fPIC -g -gdwarf-4 -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -m64 -std=c11 -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/generated-include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/third_party/s2n-bignum/include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/third_party/s2n-bignum/s2n-bignum-imported/include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/third_party/jitterentropy/jitterentropy-library -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/third_party/jitterentropy/jitterentropy-library/src -Wall -Wextra -Wno-unused-parameter -pthread -D_XOPEN_SOURCE=700 -DBORINGSSL_IMPLEMENTATION=1 -DBORINGSSL_PREFIX=aws_lc_0_45_0 -DAWS_LC_STDALIGN_AVAILABLE=1 -DAWS_LC_BUILTIN_SWAP_SUPPORTED=1 -DHAVE_LINUX_RANDOM_H=1 -o /workspace/openclaw/sqlrustgo/repo/target/debug/build/aws-lc-sys-fc2b00cc6b2ca24e/out/f8e4fd781484bd36-bcm.o -c /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/crypto/fipsmodule/bcm.c
+3544835 root           00:09 cc1             /usr/libexec/gcc/x86_64-alpine-linux-musl/15.2.0/cc1 -quiet -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/generated-include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/third_party/s2n-bignum/include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/third_party/s2n-bignum/s2n-bignum-imported/include -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/third_party/jitterentropy/jitterentropy-library -I /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/third_party/jitterentropy/jitterentropy-library/src -D_REENTRANT -D _XOPEN_SOURCE=700 -D BORINGSSL_IMPLEMENTATION=1 -D BORINGSSL_PREFIX=aws_lc_0_45_0 -D AWS_LC_STDALIGN_AVAILABLE=1 -D AWS_LC_BUILTIN_SWAP_SUPPORTED=1 -D HAVE_LINUX_RANDOM_H=1 /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/aws-lc-sys-0.45.0/aws-lc/crypto/fipsmodule/bcm.c -quiet -dumpdir /workspace/openclaw/sqlrustgo/repo/target/debug/build/aws-lc-sys-fc2b00cc6b2ca24e/out/ -dumpbase f8e4fd781484bd36-bcm.c -dumpbase-ext .c -mno-omit-leaf-frame-pointer -m64 -mtune=generic -march=x86-64 -g -gdwarf-4 -O0 -Wall -Wextra -Wno-unused-parameter -std=c11 -ffunction-sections -fdata-sections -fPIC -fno-omit-frame-pointer -o /tmp/ccAaCOMC.s
+3545795 root           00:02 rustc           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/rustc --crate-name sqlrustgo_parser --edition=2021 crates/parser/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 --check-cfg cfg(docsrs,test) --check-cfg cfg(feature, values()) -C metadata=d1d22a3c9ed8d8a5 -C extra-filename=-e02f5a9089d473bb --out-dir /workspace/openclaw/sqlrustgo/repo/target/debug/deps -C incremental=/workspace/openclaw/sqlrustgo/repo/target/debug/incremental -L dependency=/workspace/openclaw/sqlrustgo/repo/target/debug/deps --extern log=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/liblog-83bf249eb6ea778d.rmeta --extern serde=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libserde-617af7f116cc61ae.rmeta --extern serde_json=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libserde_json-c1b766a3d9524281.rmeta --extern sqlrustgo_common=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libsqlrustgo_common-7d2df0706e0148b4.rmeta --extern thiserror=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libthiserror-a547658a1226db03.rmeta -L native=/workspace/openclaw/sqlrustgo/repo/target/debug/build/zstd-sys-882314fc28b50088/out
+3545796 root           00:02 rustc           /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/rustc --crate-name sqlrustgo_catalog --edition=2021 crates/catalog/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 --check-cfg cfg(docsrs,test) --check-cfg cfg(feature, values()) -C metadata=87eb3ff094cff49f -C extra-filename=-3a880d4160bb1fbd --out-dir /workspace/openclaw/sqlrustgo/repo/target/debug/deps -C incremental=/workspace/openclaw/sqlrustgo/repo/target/debug/incremental -L dependency=/workspace/openclaw/sqlrustgo/repo/target/debug/deps --extern hmac=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libhmac-5b89df0ac53c7ff5.rmeta --extern log=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/liblog-83bf249eb6ea778d.rmeta --extern parking_lot=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libparking_lot-e01ac3feae2181ea.rmeta --extern pbkdf2=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libpbkdf2-253ce358b5d4f9c9.rmeta --extern rand=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/librand-2503db4373604955.rmeta --extern serde=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libserde-617af7f116cc61ae.rmeta --extern sha2=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libsha2-49217aafd8e2ab46.rmeta --extern sqlrustgo_common=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libsqlrustgo_common-7d2df0706e0148b4.rmeta --extern sqlrustgo_types=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libsqlrustgo_types-d1a441e3e068a256.rmeta --extern thiserror=/workspace/openclaw/sqlrustgo/repo/target/debug/deps/libthiserror-a547658a1226db03.rmeta -L native=/workspace/openclaw/sqlrustgo/repo/target/debug/build/zstd-sys-882314fc28b50088/out
+
+== listening TCP ports ==
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
+LISTEN 0      4096   127.0.0.53%lo:53         0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:42389      0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:38217      0.0.0.0:*          
+LISTEN 0      512        127.0.0.1:34497      0.0.0.0:*          
+LISTEN 0      70         127.0.0.1:33060      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:222        0.0.0.0:*          
+LISTEN 0      100          0.0.0.0:25         0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:22         0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:3000       0.0.0.0:*          
+LISTEN 0      511          0.0.0.0:8002       0.0.0.0:*          
+LISTEN 0      512          0.0.0.0:8001       0.0.0.0:*          
+LISTEN 0      511        127.0.0.1:18789      0.0.0.0:*          
+LISTEN 0      4096      127.0.0.54:53         0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:11434      0.0.0.0:*          
+LISTEN 0      200        127.0.0.1:5432       0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:631        0.0.0.0:*          
+LISTEN 0      151        127.0.0.1:3306       0.0.0.0:*          
+LISTEN 0      4096           [::1]:631           [::]:*          
+LISTEN 0      4096               *:52345            *:*          
+LISTEN 0      511            [::1]:18789         [::]:*          
+LISTEN 0      4096            [::]:222           [::]:*          
+LISTEN 0      100             [::]:25            [::]:*          
+LISTEN 0      4096            [::]:22            [::]:*          
+LISTEN 0      4096               *:2017             *:*          
+LISTEN 0      4096            [::]:3000          [::]:*          
+LISTEN 0      4096               *:4648             *:*          
+LISTEN 0      4096               *:4646             *:*          
+LISTEN 0      4096               *:4647             *:*          
+LISTEN 0      511             [::]:8002          [::]:*          
+LISTEN 0      4096               *:20170            *:*          
+LISTEN 0      4096               *:20171            *:*          
+LISTEN 0      4096               *:20172            *:*          
+
+== data dirs ==
+/tmp/iaia-a01-refreeze (dir, files=6202, mtime=openclaw)
+/tmp/iaia_issues (dir, files=27, mtime=openclaw)
+
+== behavior-relevant env var names (names only, no values) ==
+CARGO_TARGET_DIR
+CARGO_TERM_PROGRESS_WHEN
+
+== cpu/memory pressure ==
+loadavg=11.73 9.53 11.98 6/2746 3546079
+nproc=80
+               total        used        free      shared  buff/cache   available
+Mem:          414464       22465      340102         360       55599      391998
+
+== reference DB dataset hash ==
+none (A01 baseline run has no reference dataset)

@@ -1,0 +1,13 @@
+schema_version: iaia410-command-meta/v1
+command_id: '003'
+name: fmt-check
+argv:
+- cargo
+- fmt
+- --check
+- --all
+cwd: .
+timeout_sec: 600
+started_at: '2026-10-11T06:23:21Z'
+finished_at: '2026-10-11T06:23:32Z'
+exit_code: 1

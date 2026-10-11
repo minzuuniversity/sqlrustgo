@@ -1,0 +1,388 @@
+
+running 164 tests
+test engine_collation::tests::collect_column_collations_empty_when_no_table ... ok
+test engine_collation::tests::collect_column_collations_non_select_returns_empty ... ok
+test engine_collation::tests::collect_column_collations_empty_when_table_missing ... ok
+test engine_collation::tests::collect_column_collations_alias_name_match ... ok
+test engine_collation::tests::collect_column_collations_star_uses_physical_order ... ok
+test engine_collation::tests::collect_column_collations_per_column ... ok
+test engine_collation::tests::expand_column_names_star_expands_to_physical ... ok
+test engine_collation::tests::expand_column_names_non_select_returns_empty ... ok
+test engine_collation::tests::expand_column_names_star_table_missing_falls_back_to_subquery ... ok
+test engine_collation::tests::expand_column_names_walks_left_of_setop ... ok
+test engine_collation::tests::leftmost_column_names_non_select_returns_empty ... ok
+test engine_collation::tests::expand_column_names_plain_columns_passthrough ... ok
+test engine_collation::tests::leftmost_column_names_plain_select_with_aliases ... ok
+test engine_collation::tests::leftmost_column_names_walks_union_intersect_except ... ok
+test engine_collation::tests::leftmost_select_walks_nested_setops ... ok
+test engine_collation::tests::multiset_entries_binary_distinct ... ok
+test engine_collation::tests::multiset_entries_empty_input_empty_map ... ok
+test engine_collation::tests::multiset_entries_counts_with_nocase_folding ... ok
+test engine_collation::tests::normalize_row_applies_per_column_collation ... ok
+test engine_collation::tests::normalize_row_empty_collations_returns_copy ... ok
+test engine_collation::tests::normalize_row_truncates_collations ... ok
+test engine_collation::tests::normalize_value_binary_passthrough ... ok
+test engine_collation::tests::normalize_value_no_collation_passthrough ... ok
+test engine_collation::tests::normalize_value_nocase_non_text_passthrough ... ok
+test engine_collation::tests::normalize_value_nocase_uppercases_ascii ... ok
+test engine_collation::tests::order_by_expr_identifier_match ... ok
+test engine_collation::tests::order_by_expr_identifier_miss_returns_null ... ok
+test engine_collation::tests::order_by_expr_literal_out_of_range_returns_null ... ok
+test engine_collation::tests::order_by_expr_literal_position_one_based ... ok
+test engine_collation::tests::order_by_expr_literal_zero_saturates_to_first ... ok
+test engine_collation::tests::order_by_expr_non_integer_literal_returns_null ... ok
+test engine_collation::tests::order_by_expr_other_expression_returns_null ... ok
+test engine_cte::tests::decompose_recursive_body_non_union_rejected ... ok
+test engine_cte::tests::derive_cte_columns_explicit ... ok
+test engine_cte::tests::derive_cte_columns_fallback_col_i ... ok
+test engine_cte::tests::decompose_recursive_body_union_distinct_ok ... ok
+test engine_cte::tests::decompose_recursive_body_union_all_ok ... ok
+test engine_cte::tests::rewrite_step_join_clause ... ok
+test engine_cte::tests::rewrite_step_preserves_unrelated_tables ... ok
+test engine_cte::tests::rewrite_step_top_level_from ... ok
+test engine_cte::tests::rewrite_step_subquery_in_where ... ok
+test engine_cte::tests::with_select_alias_column_name_resolution ... ok
+test engine_cte::tests::with_dml_delete_via_cte ... ok
+test engine_cte::tests::with_dml_insert_from_cte ... ok
+test engine_select::chain_builder_tests::build_chain_from_start_q21_completes ... ok
+test engine_select_pk::range_tests::test_between_id_eq_falls_back_to_eq ... ok
+test engine_select_pk::range_tests::test_id_between ... ok
+test engine_select_pk::range_tests::test_id_between_no_where ... ok
+test engine_select::chain_builder_tests::build_chain_from_start_q21_orders_start_completes ... ok
+test engine_select_pk::range_tests::test_other_column ... ok
+test engine_cte::tests::with_select_basic ... ok
+test engine_cte::tests::with_select_empty_cte_result ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_id_default ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_no_pk_falls_back_to_id ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_picks_first_when_multi_pk_flagged ... ok
+test engine_cte::tests::with_select_cleanup_after_query ... ok
+test engine_cte::tests::with_select_multiple_ctes ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_returns_named_pk ... ok
+test engine_cte::tests::with_dml_update_via_cte ... ok
+test engine_select_pk::tests::test_compound_identifier_rejected ... ok
+test engine_select_pk::tests::test_no_where ... ok
+test engine_select_pk::tests::test_non_equality ... ok
+test engine_cte::tests::with_select_recursive_now_supported ... ok
+test engine_select_pk::tests::test_other_column ... ok
+test engine_cte::tests::with_select_referenced_multiple_times ... ok
+test engine_select_pk::tests::test_reverse_literal_left ... ok
+test engine_select_pk::tests::test_simple_id_eq_int ... ok
+test engine_setops::tests::touch_setop_stmt_construction ... ok
+test engine_setops::tests::apply_trailing_descending ... ok
+test engine_setops::tests::apply_trailing_offset_via_union ... ok
+test engine_setops::tests::apply_trailing_star_expansion_sort ... ok
+test engine_setops::tests::apply_trailing_nulls_first_then_last ... ok
+test engine_setops::tests::except_distinct ... ok
+test engine_setops::tests::intersect_nocase_folding ... ok
+test engine_setops::tests::intersect_distinct ... ok
+test engine_setops::tests::except_with_trailing_order_limit_offset ... ok
+test execution_engine_tests::session_db_is_seeded_from_storage_not_the_constant ... ok
+test engine_setops::tests::union_distinct_dedup ... ok
+test engine_setops::tests::union_all_concatenates ... ok
+test engine_setops::tests::intersect_with_trailing_order_by ... ok
+test engine_setops::tests::union_distinct_nocase_folding ... ok
+test engine_setops::tests::union_trailing_limit_truncates ... ok
+test engine_setops::tests::union_trailing_offset_beyond_yields_empty ... ok
+test execution_engine_tests::schema_and_current_database_are_synonyms ... ok
+test execution_engine_tests::database_is_resolved_in_where_too ... ok
+test execution_engine_tests::handshake_selected_database_does_not_leak_other_databases ... ok
+test execution_engine_tests::test_engine_adaptive_hash_index_default_present ... ok
+test engine_setops::tests::union_of_union_nested ... ok
+test engine_setops::tests::union_trailing_offset_partial_drain ... ok
+test execution_engine_tests::database_reports_the_selected_database ... ok
+test engine_setops::tests::union_with_trailing_order_by_and_limit ... ok
+test execution_engine_tests::test_engine_grant_column_requires_catalog ... ok
+test execution_engine_tests::test_engine_set_adaptive_hash_index_replaces_instance ... ok
+test execution_engine_tests::test_cbo_disable ... ok
+test execution_engine_tests::handshake_selected_database_can_query_its_own_tables ... ok
+test execution_engine_tests::test_engine_adaptive_hash_index_invalidate ... ok
+test execution_engine_tests::test_engine_grant_select_multiple_columns ... ok
+test execution_engine_tests::test_execution_stats_default ... ok
+test execution_engine_tests::test_ahi_fires_on_select_from_table ... ok
+test execution_engine_tests::test_engine_adaptive_hash_index_record_and_lookup ... ok
+test execution_engine_tests::test_engine_grant_select_column_stores_in_catalog ... ok
+test execution_engine_tests::test_executor_kill_v312_35 ... ok
+test execution_engine_tests::test_executor_kill_via_sql_v312_35 ... ok
+test execution_engine_tests::test_analyze_table_stats ... ok
+test execution_engine_tests::test_executor_show_full_processlist_via_sql_v312_35 ... ok
+test execution_engine_tests::test_estimate_row_count ... ok
+test execution_engine_tests::test_executor_show_processlist_v312_35 ... ok
+test execution_engine_tests::test_executor_show_processlist_via_sql_v312_35 ... ok
+test execution_engine_tests::test_parallel_default_n1_no_env_var ... ok
+test execution_engine_tests::test_memory_engine_with_cbo ... ok
+test execution_engine_tests::test_select_literal_no_from_returns_one_row ... ok
+test execution_engine_tests::test_ahi_lookup_succeeds_after_promotion ... ok
+test execution_engine_tests::test_executor_quantile_array_out_of_range_v312_46 ... ok
+test execution_engine_tests::test_tx_lifecycle_update_without_tx_autocommits ... ok
+test execution_engine_tests::test_table_statistics ... ok
+test execution_engine_tests::test_ahi_promotes_after_threshold_selects ... ok
+test execution_engine_tests::test_executor_quantile_cont_array_v312_46 ... ok
+test execution_engine_tests::test_executor_quantile_disc_array_single_frac_v312_46 ... ok
+test execution_engine_tests::test_executor_quantile_disc_array_v312_46 ... ok
+test sequence_state::tests::currval_before_nextval_errors ... ok
+test sequence_state::tests::hydrate_replaces_state ... ok
+test execution_engine_tests::test_tx_lifecycle_double_commit_is_noop ... ok
+test execution_engine_tests::test_select_string_literal_no_from_returns_one_row ... ok
+test execution_engine_tests::test_select_arithmetic_no_from_returns_one_row ... ok
+test sequence_state::tests::next_value_overflow_cycle_wraps ... ok
+test sequence_state::tests::next_value_overflow_no_cycle_errors ... ok
+test sequence_state::tests::next_value_unknown_errors ... ok
+test execution_engine_tests::test_tx_lifecycle_delete_without_tx_autocommits ... ok
+test execution_engine_tests::test_tx_lifecycle_insert_without_tx_autocommits ... ok
+test execution_engine_tests::test_v410_atomic_cbo_enabled_getter_returns_initial_value ... ok
+test execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one ... ok
+test execution_engine_tests::test_select_count_star_no_from_returns_one_one_row ... ok
+test sequence_state::tests::next_value_basic_increment ... ok
+test execution_engine_tests::test_v410_execute_read_only_rejects_mutating_statements ... ok
+test execution_engine_tests::test_v410_execute_read_only_select_routes_via_ref_engine ... ok
+test execution_engine_tests::test_v410_execute_select_is_usable_via_ref_engine ... ok
+test execution_engine_tests::test_v410_execute_read_only_explain_show_describe_pragma_work ... ok
+test execution_engine_tests::test_v410_atomic_cbo_enabled_and_parallel_degree_getter_consistency ... ok
+test execution_engine_tests::test_tx_lifecycle_insert_after_commit_autocommits ... ok
+test sequence_state::tests::drop_sequence_removes_entry ... ok
+test execution_engine_tests::test_wal_contract_update_without_wal_panics - should panic ... ok
+test execution_engine_tests::test_v411_group_by_distinguishes_integer_and_text_key ... ok
+test execution_engine_tests::test_wal_contract_delete_without_wal_panics - should panic ... ok
+test execution_engine_tests::test_wal_contract_insert_without_wal_panics - should panic ... ok
+test execution_engine_tests::test_parallel_scan_partitions_evenly ... ok
+test execution_engine_tests::test_tx_lifecycle_insert_after_rollback_autocommits ... ok
+test execution_engine_tests::test_v411_group_by_key_values_keep_their_types ... ok
+test execution_engine_tests::test_v411_group_by_text_value_looking_numeric_stays_text ... ok
+test execution_engine_tests::test_ahi_does_not_promote_for_different_tables ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_single_chunk_falls_through_v312_26 ... ok
+test execution_engine_tests::test_estimate_join_cost ... ok
+test execution_engine_tests::test_estimate_selectivity ... ok
+test execution_engine_tests::test_v410_phase3_concurrent_inserts ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_zero_chunk_size_disables_chunking_v312_26 ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_uneven_remainder_v312_26 ... ok
+test execution_engine_tests::test_optimize_join_order_after_analyze ... ok
+test execution_engine_tests::test_parallel_n1_eq_n4_cell_match ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_multi_chunk_v312_26 ... ok
+test execution_engine_tests::test_optimize_join_order ... ok
+test execution_engine_tests::test_v410_concurrent_tps ... ok
+test execution_engine_tests::test_v410_concurrent_selects_via_ref_engine ... ok
+test execution_engine_tests::test_estimate_index_benefit ... ok
+test execution_engine_tests::test_parallel_100k_cell_match_n1_vs_n4 ... ok
+test execution_engine_tests::test_should_use_index ... ok
+
+test result: ok. 164 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 50.72s
+
+
+running 2 tests
+test test_q15_subquery_from ... ok
+test test_q16_not_in_subquery ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test a04_mysql_diff_matrix ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.22s
+
+
+running 7 tests
+test test_basic_lookup ... ok
+test test_demote_on_table_drop ... ok
+test test_hit_rate_tracking ... ok
+test test_invalidate_page ... ok
+test test_multiple_tables_isolation ... ok
+test test_no_promote_below_threshold ... ok
+test test_promotion_after_threshold ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test ahi_accessor_returns_valid_instance ... ok
+test single_scan_records_access_via_scan_with_ahi ... ok
+test repeated_scans_eventually_promote_to_ahi ... ok
+test ahi_hit_rate_grows_with_repeated_queries ... ok
+test multiple_tables_have_isolated_ahi_state ... ok
+test ahi_accessor_works_across_query_types ... ok
+test queries_with_join_use_ahi_via_base_table_scan ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 9 tests
+test test_parse_avg ... ok
+test test_parse_aggregate_in_having ... ok
+test test_parse_count_star ... ok
+test test_parse_count_column ... ok
+test test_parse_count_distinct ... ok
+test test_parse_max ... ok
+test test_parse_min ... ok
+test test_parse_multiple_aggregates ... ok
+test test_parse_sum ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test aggregate_group_by ... ok
+test aggregate_having ... ok
+test aggregate_5_basics ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 10 tests
+test tests::test_aggregate_empty_table ... ok
+test tests::test_count_star ... ok
+test tests::test_count_column ... ok
+test tests::test_sum_aggregate ... ok
+test tests::test_max_aggregate ... ok
+test tests::test_avg_aggregate ... ok
+test tests::test_min_aggregate ... ok
+test tests::test_aggregate_negative_values ... ok
+test tests::test_multiple_aggregates ... ok
+test tests::test_aggregate_single_row ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 29 tests
+test test_bool_true_false ... ok
+test test_bit_value ... ok
+test test_empty_string ... ok
+test test_large_float ... ok
+test test_hex_value ... ok
+test test_large_integer_positive ... ok
+test test_cast_as_type_parsing ... ok
+test test_large_integer_negative ... ok
+test test_max_column_name_length ... ok
+test test_max_table_name_length ... ok
+test test_minimal_from_subquery ... ok
+test test_nested_from_subquery_with_alias ... ok
+test test_null_handling_in_select ... ok
+test test_null_handling_in_join ... ok
+test test_many_values_in_insert ... ok
+test test_null_handling_in_where ... ok
+test test_q7_volume_shipping_subquery ... ok
+test test_many_columns_in_select ... ok
+test test_q8_national_market_subquery ... ok
+test test_special_characters_chinese ... ok
+test test_special_characters_emoji ... ok
+test test_q9_product_profit_subquery ... ok
+test test_tab_and_newline_in_string ... ok
+test test_whitespace_handling ... ok
+test test_special_characters_sql_injection_attempt ... ok
+test test_zero_division_parsing ... ok
+test test_q7_full_subquery ... ok
+test test_q9_full_subquery ... ok
+test test_q8_full_subquery ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 10 tests
+test test_repeated_create_drop_stability ... ok
+test test_list_tables_stability ... ok
+test test_table_info_consistency_under_load ... ok
+test test_stress_table_operations ... ok
+test test_memory_stability_under_load ... ok
+test test_sustained_read_load ... ok
+test test_concurrent_read_write_stability ... ok
+test test_rapid_burst_writes ... ok
+test test_interleaved_read_write_consistency ... ok
+test test_sustained_write_load ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.04s
+
+
+running 10 tests
+test test_qps_aggregation ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_complex_where ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_concurrent_mixed ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_concurrent_select ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_delete ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_insert ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_join ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_order_by ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_simple_select ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_update ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+
+test result: ok. 0 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test mixed_exists_and_not_exists_in_q21_shape ... ignored, engine bug: test expectation incorrect (Beta has l_o=200, not l_o=2), needs separate fix; see src/engine_select.rs:2812
+test not_exists_returns_rows_with_no_inner_match ... ok
+test not_in_equivalent_correctness ... ok
+test not_exists_with_residual_predicate ... ok
+test large_scale_not_exists_under_5s has been running for over 60 seconds
+test large_scale_not_exists_under_5s ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 62.15s
+
+
+running 4 tests
+test arch2_dml_api_is_public ... ok
+test arch2_dml_error_handling ... ok
+test arch2_dml_api_callable ... ok
+test arch2_dml_autocommit_int1 ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test test_vtu_guard_assert_path_for_dml_noop ... ok
+test test_vtu_guard_assert_path_for_dml_called_in_openclaw_endpoints ... ok
+test test_vtu_guard_assert_path_for_dml_called_in_execution_engine ... ok
+test test_vtu_guard_storage_path_no_bypass_keywords ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 8 tests
+test test_d8_gate_exists ... ok
+test test_d8_gate_3_exit_codes ... ok
+test test_d8_no_p0_missing_in_plan ... ok
+test test_d8_remediation_plan_effort ... ok
+test test_d8_remediation_plan_exists ... ok
+test test_d8_remediation_plan_v390_target ... ok
+test test_d8_tracks_all_7_items ... ok
+test test_d8_gate_runs_correctly ... FAILED
+
+failures:
+
+---- test_d8_gate_runs_correctly stdout ----
+D8 Gate stdout:
+=== D8: Architecture/Semantic Debt Gate (5-Principle P5) ===
+  SSOT: /tmp/iaia-a01-refreeze/docs/governance/debt/debt-registry.yaml
+
+  [ARCH-1] state=CLOSED ✅
+  [ARCH-2] state=CLOSED ✅
+  [ARCH-3] state=CLOSED ✅
+  [SEM-1] state=CLOSED ✅
+  [SEM-2] state=CLOSED ✅
+  [SEM-3] state=CLOSED (100%) ✅
+  [SEM-4] state=OPEN (87.64%) (no plan) ❌
+
+=== D8 Arch/Sem Debt Summary ===
+  CLOSED:               6
+  IN_PROGRESS/BLOCKED:  0 (with plan)
+  OPEN w/o plan:        1
+  UNKNOWN:              0
+
+=== Failed Items ===
+  - SEM-4 (OPEN without plan)
+
+❌ D8 Arch/Sem Debt: FAILED
+   5-Principle P5 violated: OPEN debt must be either:
+     1. Closed (resolved and validated)
+     2. IN_PROGRESS/BLOCKED with target_release in /tmp/iaia-a01-refreeze/docs/governance/debt/debt-registry.yaml
+
+D8 Gate exit code: 1
+
+thread 'test_d8_gate_runs_correctly' (3569439) panicked at tests/integration/optimizer/arch_sem_debt_gate_test.rs:101:5:
+D8 gate should PASS (0) or DRIFT (2), got 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    test_d8_gate_runs_correctly
+
+test result: FAILED. 7 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+
