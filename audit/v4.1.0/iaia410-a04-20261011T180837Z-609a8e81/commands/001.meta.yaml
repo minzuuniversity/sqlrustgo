@@ -1,0 +1,15 @@
+schema_version: iaia410-command-meta/v1
+command_id: '001'
+name: build-server
+argv:
+- cargo
+- build
+- -p
+- sqlrustgo-mysql-server
+- --bin
+- sqlrustgo-mysql-server
+cwd: .
+timeout_sec: 1800
+started_at: '2026-10-11T18:09:16Z'
+finished_at: '2026-10-11T18:09:16Z'
+exit_code: 0

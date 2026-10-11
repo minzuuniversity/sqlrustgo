@@ -1,0 +1,140 @@
+{
+  "id": "A04-HAVING-002",
+  "domain": "having",
+  "query": "SELECT dept, SUM(v) AS s FROM hv_e2 GROUP BY dept HAVING SUM(v) >= 15 ORDER BY dept",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[15, 15] ref=[3, 246]",
+  "aspects": [
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-HAVING-002",
+    "role": "subject",
+    "port": 14519,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS hv_e2",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE hv_e2 (id INT, dept INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO hv_e2 VALUES (1,1,10),(2,1,20),(3,2,5),(4,2,15)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 4
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "dept",
+        "s"
+      ],
+      "types": [
+        15,
+        15
+      ],
+      "rows": [
+        [
+          "1",
+          "30"
+        ],
+        [
+          "2",
+          "20"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-HAVING-002",
+    "role": "ref",
+    "port": 14619,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS hv_e2",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE hv_e2 (id INT, dept INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO hv_e2 VALUES (1,1,10),(2,1,20),(3,2,5),(4,2,15)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 4
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "dept",
+        "s"
+      ],
+      "types": [
+        3,
+        246
+      ],
+      "rows": [
+        [
+          1,
+          "30"
+        ],
+        [
+          2,
+          "20"
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-HAVING-002_.subj.wire",
+    "ref": "cases/A04-HAVING-002_.ref.wire"
+  }
+}

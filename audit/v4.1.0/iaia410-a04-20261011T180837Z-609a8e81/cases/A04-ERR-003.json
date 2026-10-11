@@ -1,0 +1,106 @@
+{
+  "id": "A04-ERR-003",
+  "domain": "error",
+  "query": "SELECT id FROM er_t WHERE",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "both error, same code 1064",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-ERR-003",
+    "role": "subject",
+    "port": 14542,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS er_t3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE er_t3 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO er_t3 VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 1064,
+      "error_msg": "Parse error: Expected expression\u0000"
+    }
+  },
+  "ref": {
+    "case_id": "A04-ERR-003",
+    "role": "ref",
+    "port": 14642,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS er_t3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE er_t3 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO er_t3 VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 1064,
+      "error_msg": "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '' at line 1"
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-ERR-003_.subj.wire",
+    "ref": "cases/A04-ERR-003_.ref.wire"
+  }
+}

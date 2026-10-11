@@ -1,0 +1,148 @@
+{
+  "id": "A04-AGG-001",
+  "domain": "aggregate",
+  "query": "SELECT dept, COUNT(*) AS c FROM agg_e GROUP BY dept ORDER BY dept",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[15, 15] ref=[3, 8]",
+  "aspects": [
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-AGG-001",
+    "role": "subject",
+    "port": 14513,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS agg_e",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE agg_e (id INT, dept INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO agg_e VALUES (1,1),(2,1),(3,2),(4,2),(5,3)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 5
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "dept",
+        "c"
+      ],
+      "types": [
+        15,
+        15
+      ],
+      "rows": [
+        [
+          "1",
+          "2"
+        ],
+        [
+          "2",
+          "2"
+        ],
+        [
+          "3",
+          "1"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-AGG-001",
+    "role": "ref",
+    "port": 14613,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS agg_e",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE agg_e (id INT, dept INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO agg_e VALUES (1,1),(2,1),(3,2),(4,2),(5,3)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 5
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "dept",
+        "c"
+      ],
+      "types": [
+        3,
+        8
+      ],
+      "rows": [
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          1
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.52,
+  "wire": {
+    "subj": "cases/A04-AGG-001_.subj.wire",
+    "ref": "cases/A04-AGG-001_.ref.wire"
+  }
+}

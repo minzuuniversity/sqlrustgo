@@ -1,0 +1,106 @@
+{
+  "id": "A04-CONSTRAINT-001",
+  "domain": "constraint",
+  "query": "INSERT INTO ct_pk VALUES (1,'dup')",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "both error, same code 1062",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-CONSTRAINT-001",
+    "role": "subject",
+    "port": 14551,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS ct_pk",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE ct_pk (id INT PRIMARY KEY, s VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO ct_pk VALUES (1,'a')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 1062,
+      "error_msg": "Duplicate entry '1' for key 'PRIMARY'\u0000"
+    }
+  },
+  "ref": {
+    "case_id": "A04-CONSTRAINT-001",
+    "role": "ref",
+    "port": 14651,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS ct_pk",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE ct_pk (id INT PRIMARY KEY, s VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO ct_pk VALUES (1,'a')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 1062,
+      "error_msg": "Duplicate entry '1' for key 'ct_pk.PRIMARY'"
+    }
+  },
+  "elapsed_s": 0.54,
+  "wire": {
+    "subj": "cases/A04-CONSTRAINT-001_.subj.wire",
+    "ref": "cases/A04-CONSTRAINT-001_.ref.wire"
+  }
+}

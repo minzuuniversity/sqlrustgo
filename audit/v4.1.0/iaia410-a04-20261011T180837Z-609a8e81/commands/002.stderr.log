@@ -1,0 +1,62 @@
+2026-10-11T16:56:14.427280Z  WARN sqlrustgo_mysql_server: SQL error 1064 (42000): Parse error: Expected '(' after DATE in expression position; DATE as statement requires a table target
+2026-10-11T16:56:14.429156Z  WARN sqlrustgo_mysql_server: SQL error 1064 (42000): Parse error: Expected number after -
+2026-10-11T17:14:26.456078Z  WARN sqlrustgo_mysql_server: SQL error 1105 (42000): Execution error: Binder error: column 'badcol' not found in schema
+2026-10-11T17:14:26.874371Z  WARN sqlrustgo_mysql_server: SQL error 1146 (42000): Table not found: definitely_not_a_table
+2026-10-11T17:14:28.504134Z  WARN sqlrustgo_mysql_server: SQL error 1062 (42000): Duplicate entry '1' for key 'PRIMARY'
+
+thread 'mysql-server-worker-0' (828) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+2026-10-11T17:29:32.899184Z ERROR sqlrustgo_mysql_server::testing: worker 0: connection handler panicked: "unknown"
+2026-10-11T17:31:14.369113Z  WARN sqlrustgo_mysql_server: SQL error 1105 (42000): Execution error: Binder error: column 'badcol' not found in schema
+2026-10-11T17:31:14.796103Z  WARN sqlrustgo_mysql_server: SQL error 1146 (42000): Table not found: definitely_not_a_table
+2026-10-11T17:31:15.322032Z  WARN sqlrustgo_mysql_server: SQL error 1064 (42000): Parse error: Expected expression
+2026-10-11T17:31:20.413296Z  WARN sqlrustgo_mysql_server: SQL error 1062 (42000): Duplicate entry '1' for key 'PRIMARY'
+
+thread 'mysql-server-worker-2' (830) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T17:53:57.286827Z ERROR sqlrustgo_mysql_server::testing: worker 2: connection handler panicked: "unknown"
+
+thread 'mysql-server-worker-3' (831) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T17:53:58.385359Z ERROR sqlrustgo_mysql_server::testing: worker 3: connection handler panicked: "unknown"
+
+thread 'mysql-server-worker-4' (832) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T17:53:59.487333Z ERROR sqlrustgo_mysql_server::testing: worker 4: connection handler panicked: "unknown"
+
+thread 'mysql-server-worker-8' (836) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T17:54:03.896478Z ERROR sqlrustgo_mysql_server::testing: worker 8: connection handler panicked: "unknown"
+
+thread 'mysql-server-worker-1' (829) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T18:10:41.499590Z ERROR sqlrustgo_mysql_server::testing: worker 1: connection handler panicked: "unknown"
+2026-10-11T18:12:22.881133Z  WARN sqlrustgo_mysql_server: SQL error 1105 (42000): Execution error: Binder error: column 'badcol' not found in schema
+2026-10-11T18:12:23.304103Z  WARN sqlrustgo_mysql_server: SQL error 1146 (42000): Table not found: definitely_not_a_table
+2026-10-11T18:12:23.829018Z  WARN sqlrustgo_mysql_server: SQL error 1064 (42000): Parse error: Expected expression
+2026-10-11T18:12:28.738207Z  WARN sqlrustgo_mysql_server: SQL error 1062 (42000): Duplicate entry '1' for key 'PRIMARY'
+
+thread 'mysql-server-worker-7' (835) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T18:44:09.590607Z ERROR sqlrustgo_mysql_server::testing: worker 7: connection handler panicked: "unknown"
+2026-10-11T18:45:50.943089Z  WARN sqlrustgo_mysql_server: SQL error 1105 (42000): Execution error: Binder error: column 'badcol' not found in schema
+2026-10-11T18:45:51.363080Z  WARN sqlrustgo_mysql_server: SQL error 1146 (42000): Table not found: definitely_not_a_table
+2026-10-11T18:45:51.896999Z  WARN sqlrustgo_mysql_server: SQL error 1064 (42000): Parse error: Expected expression
+2026-10-11T18:45:56.795168Z  WARN sqlrustgo_mysql_server: SQL error 1062 (42000): Duplicate entry '1' for key 'PRIMARY'
+
+thread 'mysql-server-worker-12' (840) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T18:51:03.779376Z ERROR sqlrustgo_mysql_server::testing: worker 12: connection handler panicked: "unknown"
+
+thread 'mysql-server-worker-13' (841) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T18:51:04.961195Z ERROR sqlrustgo_mysql_server::testing: worker 13: connection handler panicked: "unknown"
+
+thread 'mysql-server-worker-14' (842) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T18:51:06.137970Z ERROR sqlrustgo_mysql_server::testing: worker 14: connection handler panicked: "unknown"
+
+thread 'mysql-server-worker-2' (830) panicked at crates/executor/src/executor.rs:70:9:
+row width 4 does not match the 1 declared columns
+2026-10-11T18:51:10.890078Z ERROR sqlrustgo_mysql_server::testing: worker 2: connection handler panicked: "unknown"

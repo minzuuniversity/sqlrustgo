@@ -1,0 +1,124 @@
+{
+  "id": "A04-TYPE-002",
+  "domain": "coltype",
+  "query": "SELECT i FROM t_int",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "identical (names/types/rows)",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-TYPE-002",
+    "role": "subject",
+    "port": 14501,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS t_int",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE t_int (i INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO t_int VALUES (42)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "i"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          42
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-TYPE-002",
+    "role": "ref",
+    "port": 14601,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS t_int",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE t_int (i INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO t_int VALUES (42)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "i"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          42
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.53,
+  "wire": {
+    "subj": "cases/A04-TYPE-002_.subj.wire",
+    "ref": "cases/A04-TYPE-002_.ref.wire"
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "id": "A04-CAST-002",
+  "domain": "typeconv",
+  "query": "SELECT id FROM tc_s WHERE s = '42' ORDER BY id",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "identical (names/types/rows)",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-CAST-002",
+    "role": "subject",
+    "port": 14536,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS tc_s",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE tc_s (id INT, s VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO tc_s VALUES (1,'42'),(2,'42x'),(3,' 42 ')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          1
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-CAST-002",
+    "role": "ref",
+    "port": 14636,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS tc_s",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE tc_s (id INT, s VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO tc_s VALUES (1,'42'),(2,'42x'),(3,' 42 ')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          1
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-CAST-002_.subj.wire",
+    "ref": "cases/A04-CAST-002_.ref.wire"
+  }
+}

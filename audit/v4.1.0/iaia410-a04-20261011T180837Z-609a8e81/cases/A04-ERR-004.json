@@ -1,0 +1,113 @@
+{
+  "id": "A04-ERR-004",
+  "domain": "error",
+  "query": "SELECT id FROM er_t4 WHERE id = (SELECT 1 FROM nonexist_tbl)",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "reference errored (code 1146) but other returned rows: Table 'a04_diff.nonexist_tbl' doesn't exist",
+  "aspects": [
+    "error_presence"
+  ],
+  "subj": {
+    "case_id": "A04-ERR-004",
+    "role": "subject",
+    "port": 14543,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS er_t4",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE er_t4 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO er_t4 VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id"
+      ],
+      "types": [
+        3
+      ],
+      "rows": []
+    }
+  },
+  "ref": {
+    "case_id": "A04-ERR-004",
+    "role": "ref",
+    "port": 14643,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS er_t4",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE er_t4 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO er_t4 VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 1146,
+      "error_msg": "Table 'a04_diff.nonexist_tbl' doesn't exist"
+    }
+  },
+  "elapsed_s": 0.56,
+  "wire": {
+    "subj": "cases/A04-ERR-004_.subj.wire",
+    "ref": "cases/A04-ERR-004_.ref.wire"
+  }
+}
