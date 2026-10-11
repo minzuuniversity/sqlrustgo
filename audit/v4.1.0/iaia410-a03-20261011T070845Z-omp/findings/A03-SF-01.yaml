@@ -1,0 +1,35 @@
+finding_id: A03-SF-01
+work_package: A03
+title: admin PITR 从生产入口可达，且绕过 MVCC/WAL 包装直接构造 FileStorage
+symbol_location: crates/admin/src/pitr.rs:42
+caller: crates/admin/src/pitr.rs:43 replay_entries_until(&mut storage, &entries, target_time)
+production_entry: >
+  sqlrustgo-admin -> main.rs:157 Commands::Pitr -> :168 pitr::parse_target_time
+  -> crates/admin/src/pitr.rs
+storage_bypass:
+  observed: FileStorage::new(data_dir) — 直接构造，未包 MvccStorage / WalStorage
+  contrast: >
+    mysql-server 生产栈为
+    BoxStorageEngine(ParallelWalStorage(MvccStorage(FileStorage)))
+    (见 commands/003.meta.yaml)
+defect_class: F7-F8（仅测试/旁路可达的恢复路径）与生产入口耦合
+chain_to_known_defect:
+  target: '#5281 D10/D11 — WAL key 以 record[0] 编码'
+  path: >
+    replay_entries_until -> recovery_engine::apply_wal_entry (recovery_engine.rs:705)
+    -> WalEntryType::Update (:795) -> replace_by_key_in_db (:339)
+    -> key_to_filter_values(key) -> storage.insert_in_db
+  relevance: >
+    #5281 的静态审计已证明该路径按首列内容编码的 key 定位行。
+    若 admin PITR 从生产 CLI 可达，则该缺陷有实际触发入口。
+evidence_level: source-proven-chain
+evidence_grade: source-proven-chain / behaviour-unverified
+NOT_verified:
+  - 尚未通过真实 admin CLI 动态复现 PITR 重放是否错位/丢失逻辑行
+  - 尚未确认 PITR 是否为运维常规操作路径
+  - 与 #5281 的责任划分待 A06 裁决
+status: suspected
+routed_to: A06 / #5281
+acceptance_note: >
+  按 A03 验收标准第 2 条，不得因调用链存在即判 confirmed。
+  需 A06 侧的动态验证方可升级。
