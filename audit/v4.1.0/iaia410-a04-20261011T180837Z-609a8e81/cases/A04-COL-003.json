@@ -1,0 +1,127 @@
+{
+  "id": "A04-COL-003",
+  "domain": "colname",
+  "query": "SELECT a + b FROM cn_t3",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column names differ: subj=['BinaryOp(Identifier(\"a\"), \"+\", Identifier(\"b\"))'] ref=['a + b']; column types differ: subj=[15] ref=[8]",
+  "aspects": [
+    "column_name",
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-COL-003",
+    "role": "subject",
+    "port": 14546,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS cn_t3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE cn_t3 (a INT, b INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO cn_t3 VALUES (1,2)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "BinaryOp(Identifier(\"a\"), \"+\", Identifier(\"b\"))"
+      ],
+      "types": [
+        15
+      ],
+      "rows": [
+        [
+          "3"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-COL-003",
+    "role": "ref",
+    "port": 14646,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS cn_t3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE cn_t3 (a INT, b INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO cn_t3 VALUES (1,2)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "a + b"
+      ],
+      "types": [
+        8
+      ],
+      "rows": [
+        [
+          3
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-COL-003_.subj.wire",
+    "ref": "cases/A04-COL-003_.ref.wire"
+  }
+}

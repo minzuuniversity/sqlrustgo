@@ -1,0 +1,126 @@
+{
+  "id": "A04-DDL-003",
+  "domain": "ddl",
+  "query": "SELECT COUNT(*) AS c FROM dd_t3",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[15] ref=[8]",
+  "aspects": [
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-DDL-003",
+    "role": "subject",
+    "port": 14550,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS dd_t3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE dd_t3 (id INT NOT NULL, s VARCHAR(20) DEFAULT 'x')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO dd_t3 (id) VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "c"
+      ],
+      "types": [
+        15
+      ],
+      "rows": [
+        [
+          "1"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-DDL-003",
+    "role": "ref",
+    "port": 14650,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS dd_t3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE dd_t3 (id INT NOT NULL, s VARCHAR(20) DEFAULT 'x')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO dd_t3 (id) VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "c"
+      ],
+      "types": [
+        8
+      ],
+      "rows": [
+        [
+          1
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.54,
+  "wire": {
+    "subj": "cases/A04-DDL-003_.subj.wire",
+    "ref": "cases/A04-DDL-003_.ref.wire"
+  }
+}

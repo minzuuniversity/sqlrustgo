@@ -1,0 +1,140 @@
+{
+  "id": "A04-NULL-004",
+  "domain": "null",
+  "query": "SELECT id, v + NULL AS r FROM nl_t4 ORDER BY id",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[3, 15] ref=[3, 5]",
+  "aspects": [
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-NULL-004",
+    "role": "subject",
+    "port": 14528,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS nl_t4",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE nl_t4 (id INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO nl_t4 VALUES (1,10),(2,20)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "r"
+      ],
+      "types": [
+        3,
+        15
+      ],
+      "rows": [
+        [
+          1,
+          null
+        ],
+        [
+          2,
+          null
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-NULL-004",
+    "role": "ref",
+    "port": 14628,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS nl_t4",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE nl_t4 (id INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO nl_t4 VALUES (1,10),(2,20)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "r"
+      ],
+      "types": [
+        3,
+        5
+      ],
+      "rows": [
+        [
+          1,
+          null
+        ],
+        [
+          2,
+          null
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-NULL-004_.subj.wire",
+    "ref": "cases/A04-NULL-004_.ref.wire"
+  }
+}

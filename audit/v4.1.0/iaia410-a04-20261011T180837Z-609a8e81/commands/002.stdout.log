@@ -1,0 +1,9 @@
+SQLRustGo v3.8.0-beta (Strong Beta, 8.0/10)
+MySQL wire-protocol server
+  Listen:     127.0.0.1:3309
+  Data dir:   /tmp/a04-sqlrustgo-data
+  Max conn:   100
+  Auth mode:  none
+  Storage:    file
+  Exec par:   1 (Issue #3703, --executor-parallelism)
+Ready to accept connections.

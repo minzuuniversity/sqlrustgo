@@ -1,0 +1,281 @@
+{
+  "id": "A04-JOIN-005",
+  "domain": "join",
+  "query": "SELECT a.id, b.name, c.tag FROM j_3a a JOIN j_3b b ON a.bid=b.id JOIN j_3c c ON b.id=c.id ORDER BY a.id",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column names differ: subj=['a.id', 'b.name', 'c.tag'] ref=['id', 'name', 'tag']; column types differ: subj=[15, 15, 15] ref=[3, 253, 253]",
+  "aspects": [
+    "column_name",
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-JOIN-005",
+    "role": "subject",
+    "port": 14512,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS j_3a",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_3a (id INT, bid INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_3a VALUES (1,10),(2,20)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      },
+      {
+        "stmt": "DROP TABLE IF EXISTS j_3b",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_3b (id INT, name VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_3b VALUES (10,'x'),(20,'y')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      },
+      {
+        "stmt": "DROP TABLE IF EXISTS j_3c",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_3c (id INT, tag VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_3c VALUES (10,'T'),(20,'U')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "a.id",
+        "b.name",
+        "c.tag"
+      ],
+      "types": [
+        15,
+        15,
+        15
+      ],
+      "rows": [
+        [
+          "1",
+          "x",
+          "T"
+        ],
+        [
+          "2",
+          "y",
+          "U"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-JOIN-005",
+    "role": "ref",
+    "port": 14612,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS j_3a",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_3a (id INT, bid INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_3a VALUES (1,10),(2,20)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      },
+      {
+        "stmt": "DROP TABLE IF EXISTS j_3b",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_3b (id INT, name VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_3b VALUES (10,'x'),(20,'y')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      },
+      {
+        "stmt": "DROP TABLE IF EXISTS j_3c",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_3c (id INT, tag VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_3c VALUES (10,'T'),(20,'U')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "name",
+        "tag"
+      ],
+      "types": [
+        3,
+        253,
+        253
+      ],
+      "rows": [
+        [
+          1,
+          "x",
+          "T"
+        ],
+        [
+          2,
+          "y",
+          "U"
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.82,
+  "wire": {
+    "subj": "cases/A04-JOIN-005_.subj.wire",
+    "ref": "cases/A04-JOIN-005_.ref.wire"
+  }
+}

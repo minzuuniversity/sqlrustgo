@@ -1,0 +1,7435 @@
+{
+  "corpus_sha256": "ea9fe1cf3adb06296730cbcc31f05f537577ad592073d87b15d7044ab8056c3e",
+  "seed": 410,
+  "cases": [
+    {
+      "id": "A04-TYPE-001",
+      "domain": "coltype",
+      "query": "SELECT 1 AS i, 'x' AS s, 3.5 AS d, NULL AS n, 1.0 AS f",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15, 15, 15, 15, 15] ref=[8, 253, 246, 6, 246]; multiset differs (same count 1): only_subj=[('1', 'x', '3.5', 'NULL', '1')] only_ref=[('1', 'x', '3.5', 'NULL', '1.0')]",
+      "aspects": [
+        "column_type",
+        "value"
+      ],
+      "subj": {
+        "case_id": "A04-TYPE-001",
+        "role": "subject",
+        "port": 14500,
+        "setup": [],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "i",
+            "s",
+            "d",
+            "n",
+            "f"
+          ],
+          "types": [
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "1",
+              "x",
+              "3.5",
+              null,
+              "1"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-TYPE-001",
+        "role": "ref",
+        "port": 14600,
+        "setup": [],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "i",
+            "s",
+            "d",
+            "n",
+            "f"
+          ],
+          "types": [
+            8,
+            253,
+            246,
+            6,
+            246
+          ],
+          "rows": [
+            [
+              1,
+              "x",
+              "3.5",
+              null,
+              "1.0"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.4,
+      "wire": {
+        "subj": "cases/A04-TYPE-001_.subj.wire",
+        "ref": "cases/A04-TYPE-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-TYPE-002",
+      "domain": "coltype",
+      "query": "SELECT i FROM t_int",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-TYPE-002",
+        "role": "subject",
+        "port": 14501,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_int",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_int (i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_int VALUES (42)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "i"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              42
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-TYPE-002",
+        "role": "ref",
+        "port": 14601,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_int",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_int (i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_int VALUES (42)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "i"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              42
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.53,
+      "wire": {
+        "subj": "cases/A04-TYPE-002_.subj.wire",
+        "ref": "cases/A04-TYPE-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-TYPE-003",
+      "domain": "coltype",
+      "query": "SELECT COUNT(*) AS c, SUM(i) AS s, MAX(i) AS m, MIN(i) AS n FROM t_int3",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15, 15, 15, 15] ref=[8, 246, 3, 3]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-TYPE-003",
+        "role": "subject",
+        "port": 14502,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_int3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_int3 (i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_int3 VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "c",
+            "s",
+            "m",
+            "n"
+          ],
+          "types": [
+            15,
+            15,
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "3",
+              "6",
+              "3",
+              "1"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-TYPE-003",
+        "role": "ref",
+        "port": 14602,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_int3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_int3 (i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_int3 VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "c",
+            "s",
+            "m",
+            "n"
+          ],
+          "types": [
+            8,
+            246,
+            3,
+            3
+          ],
+          "rows": [
+            [
+              3,
+              "6",
+              3,
+              1
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-TYPE-003_.subj.wire",
+        "ref": "cases/A04-TYPE-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-TYPE-004",
+      "domain": "coltype",
+      "query": "SELECT b FROM t_big",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-TYPE-004",
+        "role": "subject",
+        "port": 14503,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_big",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_big (b BIGINT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_big VALUES (9999999999)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "b"
+          ],
+          "types": [
+            8
+          ],
+          "rows": [
+            [
+              9999999999
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-TYPE-004",
+        "role": "ref",
+        "port": 14603,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_big",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_big (b BIGINT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_big VALUES (9999999999)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "b"
+          ],
+          "types": [
+            8
+          ],
+          "rows": [
+            [
+              9999999999
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.56,
+      "wire": {
+        "subj": "cases/A04-TYPE-004_.subj.wire",
+        "ref": "cases/A04-TYPE-004_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-TYPE-005",
+      "domain": "coltype",
+      "query": "SELECT d FROM t_dbl",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-TYPE-005",
+        "role": "subject",
+        "port": 14504,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_dbl",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_dbl (d DOUBLE)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_dbl VALUES (3.25)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "d"
+          ],
+          "types": [
+            5
+          ],
+          "rows": [
+            [
+              3.25
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-TYPE-005",
+        "role": "ref",
+        "port": 14604,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_dbl",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_dbl (d DOUBLE)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_dbl VALUES (3.25)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "d"
+          ],
+          "types": [
+            5
+          ],
+          "rows": [
+            [
+              3.25
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-TYPE-005_.subj.wire",
+        "ref": "cases/A04-TYPE-005_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-TYPE-006",
+      "domain": "coltype",
+      "query": "SELECT d FROM t_dec",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-TYPE-006",
+        "role": "subject",
+        "port": 14505,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_dec",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_dec (d DECIMAL(10,2))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_dec VALUES (12.34)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "d"
+          ],
+          "types": [
+            246
+          ],
+          "rows": [
+            [
+              "12.34"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-TYPE-006",
+        "role": "ref",
+        "port": 14605,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_dec",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_dec (d DECIMAL(10,2))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_dec VALUES (12.34)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "d"
+          ],
+          "types": [
+            246
+          ],
+          "rows": [
+            [
+              "12.34"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.54,
+      "wire": {
+        "subj": "cases/A04-TYPE-006_.subj.wire",
+        "ref": "cases/A04-TYPE-006_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-TYPE-007",
+      "domain": "coltype",
+      "query": "SELECT dt FROM t_date",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-TYPE-007",
+        "role": "subject",
+        "port": 14506,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_date",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_date (dt DATE)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_date VALUES ('2024-01-15')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dt"
+          ],
+          "types": [
+            10
+          ],
+          "rows": [
+            [
+              "2024-01-15"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-TYPE-007",
+        "role": "ref",
+        "port": 14606,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_date",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_date (dt DATE)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_date VALUES ('2024-01-15')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dt"
+          ],
+          "types": [
+            10
+          ],
+          "rows": [
+            [
+              "2024-01-15"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.56,
+      "wire": {
+        "subj": "cases/A04-TYPE-007_.subj.wire",
+        "ref": "cases/A04-TYPE-007_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-TYPE-008",
+      "domain": "coltype",
+      "query": "SELECT id, s, d, dt FROM t_multi ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[3, 15, 246, 10] ref=[3, 253, 246, 10]; multiset differs (same count 1): only_subj=[('1', 'a', '1.5', '2024-01-01')] only_ref=[('1', 'a', '1.50', '2024-01-01')]",
+      "aspects": [
+        "column_type",
+        "value"
+      ],
+      "subj": {
+        "case_id": "A04-TYPE-008",
+        "role": "subject",
+        "port": 14507,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_multi",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_multi (id INT, s VARCHAR(20), d DECIMAL(10,2), dt DATE)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_multi VALUES (1,'a',1.50,'2024-01-01')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "s",
+            "d",
+            "dt"
+          ],
+          "types": [
+            3,
+            15,
+            246,
+            10
+          ],
+          "rows": [
+            [
+              1,
+              "a",
+              "1.5",
+              "2024-01-01"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-TYPE-008",
+        "role": "ref",
+        "port": 14607,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS t_multi",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE t_multi (id INT, s VARCHAR(20), d DECIMAL(10,2), dt DATE)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO t_multi VALUES (1,'a',1.50,'2024-01-01')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "s",
+            "d",
+            "dt"
+          ],
+          "types": [
+            3,
+            253,
+            246,
+            10
+          ],
+          "rows": [
+            [
+              1,
+              "a",
+              "1.50",
+              "2024-01-01"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-TYPE-008_.subj.wire",
+        "ref": "cases/A04-TYPE-008_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-JOIN-001",
+      "domain": "join",
+      "query": "SELECT j_a.id, j_b.name FROM j_a JOIN j_b ON j_a.bid=j_b.id ORDER BY j_a.id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column names differ: subj=['j_a.id', 'j_b.name'] ref=['id', 'name']; column types differ: subj=[3, 15] ref=[3, 253]",
+      "aspects": [
+        "column_name",
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-JOIN-001",
+        "role": "subject",
+        "port": 14508,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_a",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_a (id INT, bid INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_a VALUES (1,10),(2,20),(3,30)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_b",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_b (id INT, name VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_b VALUES (10,'x'),(20,'y')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "j_a.id",
+            "j_b.name"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              "x"
+            ],
+            [
+              2,
+              "y"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-JOIN-001",
+        "role": "ref",
+        "port": 14608,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_a",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_a (id INT, bid INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_a VALUES (1,10),(2,20),(3,30)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_b",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_b (id INT, name VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_b VALUES (10,'x'),(20,'y')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "name"
+          ],
+          "types": [
+            3,
+            253
+          ],
+          "rows": [
+            [
+              1,
+              "x"
+            ],
+            [
+              2,
+              "y"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.69,
+      "wire": {
+        "subj": "cases/A04-JOIN-001_.subj.wire",
+        "ref": "cases/A04-JOIN-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-JOIN-002",
+      "domain": "join",
+      "query": "SELECT j_a2.id, j_b2.name FROM j_a2 LEFT JOIN j_b2 ON j_a2.bid=j_b2.id ORDER BY j_a2.id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column names differ: subj=['j_a2.id', 'j_b2.name'] ref=['id', 'name']; column types differ: subj=[3, 15] ref=[3, 253]",
+      "aspects": [
+        "column_name",
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-JOIN-002",
+        "role": "subject",
+        "port": 14509,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_a2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_a2 (id INT, bid INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_a2 VALUES (1,10),(2,99)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_b2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_b2 (id INT, name VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_b2 VALUES (10,'x')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "j_a2.id",
+            "j_b2.name"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              "x"
+            ],
+            [
+              2,
+              null
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-JOIN-002",
+        "role": "ref",
+        "port": 14609,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_a2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_a2 (id INT, bid INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_a2 VALUES (1,10),(2,99)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_b2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_b2 (id INT, name VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_b2 VALUES (10,'x')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "name"
+          ],
+          "types": [
+            3,
+            253
+          ],
+          "rows": [
+            [
+              1,
+              "x"
+            ],
+            [
+              2,
+              null
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.71,
+      "wire": {
+        "subj": "cases/A04-JOIN-002_.subj.wire",
+        "ref": "cases/A04-JOIN-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-JOIN-003",
+      "domain": "join",
+      "query": "SELECT j_c.id, j_d.name FROM j_c, j_d WHERE j_c.bid=j_d.id ORDER BY j_c.id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column names differ: subj=['j_c.id', 'j_d.name'] ref=['id', 'name']; column types differ: subj=[3, 15] ref=[3, 253]",
+      "aspects": [
+        "column_name",
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-JOIN-003",
+        "role": "subject",
+        "port": 14510,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_c",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_c (id INT, bid INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_c VALUES (1,10),(2,20)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_d",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_d (id INT, name VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_d VALUES (10,'x'),(20,'y')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "j_c.id",
+            "j_d.name"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              "x"
+            ],
+            [
+              2,
+              "y"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-JOIN-003",
+        "role": "ref",
+        "port": 14610,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_c",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_c (id INT, bid INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_c VALUES (1,10),(2,20)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_d",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_d (id INT, name VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_d VALUES (10,'x'),(20,'y')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "name"
+          ],
+          "types": [
+            3,
+            253
+          ],
+          "rows": [
+            [
+              1,
+              "x"
+            ],
+            [
+              2,
+              "y"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.68,
+      "wire": {
+        "subj": "cases/A04-JOIN-003_.subj.wire",
+        "ref": "cases/A04-JOIN-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-JOIN-004",
+      "domain": "join",
+      "query": "SELECT a.id, b.id FROM j_self a JOIN j_self b ON a.id < b.id ORDER BY a.id, b.id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column names differ: subj=['a.id', 'b.id'] ref=['id', 'id']",
+      "aspects": [
+        "column_name"
+      ],
+      "subj": {
+        "case_id": "A04-JOIN-004",
+        "role": "subject",
+        "port": 14511,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_self",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_self (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_self VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "a.id",
+            "b.id"
+          ],
+          "types": [
+            3,
+            3
+          ],
+          "rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              3
+            ],
+            [
+              2,
+              3
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-JOIN-004",
+        "role": "ref",
+        "port": 14611,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_self",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_self (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_self VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "id"
+          ],
+          "types": [
+            3,
+            3
+          ],
+          "rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              3
+            ],
+            [
+              2,
+              3
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.57,
+      "wire": {
+        "subj": "cases/A04-JOIN-004_.subj.wire",
+        "ref": "cases/A04-JOIN-004_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-JOIN-005",
+      "domain": "join",
+      "query": "SELECT a.id, b.name, c.tag FROM j_3a a JOIN j_3b b ON a.bid=b.id JOIN j_3c c ON b.id=c.id ORDER BY a.id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column names differ: subj=['a.id', 'b.name', 'c.tag'] ref=['id', 'name', 'tag']; column types differ: subj=[15, 15, 15] ref=[3, 253, 253]",
+      "aspects": [
+        "column_name",
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-JOIN-005",
+        "role": "subject",
+        "port": 14512,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_3a",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_3a (id INT, bid INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_3a VALUES (1,10),(2,20)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_3b",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_3b (id INT, name VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_3b VALUES (10,'x'),(20,'y')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_3c",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_3c (id INT, tag VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_3c VALUES (10,'T'),(20,'U')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "a.id",
+            "b.name",
+            "c.tag"
+          ],
+          "types": [
+            15,
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "1",
+              "x",
+              "T"
+            ],
+            [
+              "2",
+              "y",
+              "U"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-JOIN-005",
+        "role": "ref",
+        "port": 14612,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS j_3a",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_3a (id INT, bid INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_3a VALUES (1,10),(2,20)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_3b",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_3b (id INT, name VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_3b VALUES (10,'x'),(20,'y')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS j_3c",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE j_3c (id INT, tag VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO j_3c VALUES (10,'T'),(20,'U')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "name",
+            "tag"
+          ],
+          "types": [
+            3,
+            253,
+            253
+          ],
+          "rows": [
+            [
+              1,
+              "x",
+              "T"
+            ],
+            [
+              2,
+              "y",
+              "U"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.82,
+      "wire": {
+        "subj": "cases/A04-JOIN-005_.subj.wire",
+        "ref": "cases/A04-JOIN-005_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-AGG-001",
+      "domain": "aggregate",
+      "query": "SELECT dept, COUNT(*) AS c FROM agg_e GROUP BY dept ORDER BY dept",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15, 15] ref=[3, 8]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-AGG-001",
+        "role": "subject",
+        "port": 14513,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e VALUES (1,1),(2,1),(3,2),(4,2),(5,3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dept",
+            "c"
+          ],
+          "types": [
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "1",
+              "2"
+            ],
+            [
+              "2",
+              "2"
+            ],
+            [
+              "3",
+              "1"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-AGG-001",
+        "role": "ref",
+        "port": 14613,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e VALUES (1,1),(2,1),(3,2),(4,2),(5,3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dept",
+            "c"
+          ],
+          "types": [
+            3,
+            8
+          ],
+          "rows": [
+            [
+              1,
+              2
+            ],
+            [
+              2,
+              2
+            ],
+            [
+              3,
+              1
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.52,
+      "wire": {
+        "subj": "cases/A04-AGG-001_.subj.wire",
+        "ref": "cases/A04-AGG-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-AGG-002",
+      "domain": "aggregate",
+      "query": "SELECT dept, AVG(v) AS a, MIN(v) AS lo, MAX(v) AS hi FROM agg_e2 GROUP BY dept ORDER BY dept",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15, 15, 15, 15] ref=[3, 246, 3, 3]; multiset differs (same count 2): only_subj=[('1', '15', '10', '20'), ('2', '10', '5', '15')] only_ref=[('1', '15.0000', '10', '20'), ('2', '10.0000', '5', '15')]",
+      "aspects": [
+        "column_type",
+        "value"
+      ],
+      "subj": {
+        "case_id": "A04-AGG-002",
+        "role": "subject",
+        "port": 14514,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e2 (id INT, dept INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e2 VALUES (1,1,10),(2,1,20),(3,2,5),(4,2,15)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 4
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dept",
+            "a",
+            "lo",
+            "hi"
+          ],
+          "types": [
+            15,
+            15,
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "1",
+              "15",
+              "10",
+              "20"
+            ],
+            [
+              "2",
+              "10",
+              "5",
+              "15"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-AGG-002",
+        "role": "ref",
+        "port": 14614,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e2 (id INT, dept INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e2 VALUES (1,1,10),(2,1,20),(3,2,5),(4,2,15)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 4
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dept",
+            "a",
+            "lo",
+            "hi"
+          ],
+          "types": [
+            3,
+            246,
+            3,
+            3
+          ],
+          "rows": [
+            [
+              1,
+              "15.0000",
+              10,
+              20
+            ],
+            [
+              2,
+              "10.0000",
+              5,
+              15
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.56,
+      "wire": {
+        "subj": "cases/A04-AGG-002_.subj.wire",
+        "ref": "cases/A04-AGG-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-AGG-003",
+      "domain": "aggregate",
+      "query": "SELECT COUNT(*) AS c, SUM(v) AS s FROM agg_e3",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15, 15] ref=[8, 246]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-AGG-003",
+        "role": "subject",
+        "port": 14515,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e3 (id INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e3 VALUES (1,10),(2,20),(3,30)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "c",
+            "s"
+          ],
+          "types": [
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "3",
+              "60"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-AGG-003",
+        "role": "ref",
+        "port": 14615,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e3 (id INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e3 VALUES (1,10),(2,20),(3,30)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "c",
+            "s"
+          ],
+          "types": [
+            8,
+            246
+          ],
+          "rows": [
+            [
+              3,
+              "60"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-AGG-003_.subj.wire",
+        "ref": "cases/A04-AGG-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-AGG-004",
+      "domain": "aggregate",
+      "query": "SELECT a, b, COUNT(*) AS c FROM agg_e4 GROUP BY a, b ORDER BY a, b",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15, 15, 15] ref=[3, 3, 8]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-AGG-004",
+        "role": "subject",
+        "port": 14516,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e4 (id INT, a INT, b INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e4 VALUES (1,1,1),(2,1,1),(3,1,2),(4,2,1),(5,2,2),(6,2,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 6
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "a",
+            "b",
+            "c"
+          ],
+          "types": [
+            15,
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "1",
+              "1",
+              "2"
+            ],
+            [
+              "1",
+              "2",
+              "1"
+            ],
+            [
+              "2",
+              "1",
+              "1"
+            ],
+            [
+              "2",
+              "2",
+              "2"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-AGG-004",
+        "role": "ref",
+        "port": 14616,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e4 (id INT, a INT, b INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e4 VALUES (1,1,1),(2,1,1),(3,1,2),(4,2,1),(5,2,2),(6,2,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 6
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "a",
+            "b",
+            "c"
+          ],
+          "types": [
+            3,
+            3,
+            8
+          ],
+          "rows": [
+            [
+              1,
+              1,
+              2
+            ],
+            [
+              1,
+              2,
+              1
+            ],
+            [
+              2,
+              1,
+              1
+            ],
+            [
+              2,
+              2,
+              2
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-AGG-004_.subj.wire",
+        "ref": "cases/A04-AGG-004_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-AGG-005",
+      "domain": "aggregate",
+      "query": "SELECT COUNT(DISTINCT dept) AS cd FROM agg_e5",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15] ref=[8]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-AGG-005",
+        "role": "subject",
+        "port": 14517,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e5",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e5 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e5 VALUES (1,1),(2,1),(3,2),(4,2),(5,3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "cd"
+          ],
+          "types": [
+            15
+          ],
+          "rows": [
+            [
+              "3"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-AGG-005",
+        "role": "ref",
+        "port": 14617,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS agg_e5",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE agg_e5 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO agg_e5 VALUES (1,1),(2,1),(3,2),(4,2),(5,3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "cd"
+          ],
+          "types": [
+            8
+          ],
+          "rows": [
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-AGG-005_.subj.wire",
+        "ref": "cases/A04-AGG-005_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-HAVING-001",
+      "domain": "having",
+      "query": "SELECT dept, COUNT(*) AS c FROM hv_e GROUP BY dept HAVING COUNT(*) > 1 ORDER BY dept",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15, 15] ref=[3, 8]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-HAVING-001",
+        "role": "subject",
+        "port": 14518,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS hv_e",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE hv_e (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO hv_e VALUES (1,1),(2,1),(3,2),(4,2),(5,3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dept",
+            "c"
+          ],
+          "types": [
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "1",
+              "2"
+            ],
+            [
+              "2",
+              "2"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-HAVING-001",
+        "role": "ref",
+        "port": 14618,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS hv_e",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE hv_e (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO hv_e VALUES (1,1),(2,1),(3,2),(4,2),(5,3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dept",
+            "c"
+          ],
+          "types": [
+            3,
+            8
+          ],
+          "rows": [
+            [
+              1,
+              2
+            ],
+            [
+              2,
+              2
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-HAVING-001_.subj.wire",
+        "ref": "cases/A04-HAVING-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-HAVING-002",
+      "domain": "having",
+      "query": "SELECT dept, SUM(v) AS s FROM hv_e2 GROUP BY dept HAVING SUM(v) >= 15 ORDER BY dept",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15, 15] ref=[3, 246]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-HAVING-002",
+        "role": "subject",
+        "port": 14519,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS hv_e2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE hv_e2 (id INT, dept INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO hv_e2 VALUES (1,1,10),(2,1,20),(3,2,5),(4,2,15)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 4
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dept",
+            "s"
+          ],
+          "types": [
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "1",
+              "30"
+            ],
+            [
+              "2",
+              "20"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-HAVING-002",
+        "role": "ref",
+        "port": 14619,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS hv_e2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE hv_e2 (id INT, dept INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO hv_e2 VALUES (1,1,10),(2,1,20),(3,2,5),(4,2,15)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 4
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dept",
+            "s"
+          ],
+          "types": [
+            3,
+            246
+          ],
+          "rows": [
+            [
+              1,
+              "30"
+            ],
+            [
+              2,
+              "20"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-HAVING-002_.subj.wire",
+        "ref": "cases/A04-HAVING-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-HAVING-003",
+      "domain": "having",
+      "query": "SELECT dept FROM hv_e3 GROUP BY dept HAVING COUNT(*) = 2 ORDER BY dept",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "subject errored (code 2013) but other returned rows: Lost connection to MySQL server during query (The read operation timed out)",
+      "aspects": [
+        "error_presence"
+      ],
+      "subj": {
+        "case_id": "A04-HAVING-003",
+        "role": "subject",
+        "port": 14520,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS hv_e3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE hv_e3 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO hv_e3 VALUES (1,1),(2,1),(3,2),(4,3),(5,3),(6,4)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 6
+            }
+          }
+        ],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 2013,
+          "error_msg": "Lost connection to MySQL server during query (The read operation timed out)"
+        }
+      },
+      "ref": {
+        "case_id": "A04-HAVING-003",
+        "role": "ref",
+        "port": 14620,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS hv_e3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE hv_e3 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO hv_e3 VALUES (1,1),(2,1),(3,2),(4,3),(5,3),(6,4)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 6
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "dept"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ],
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 90.6,
+      "wire": {
+        "subj": "cases/A04-HAVING-003_.subj.wire",
+        "ref": "cases/A04-HAVING-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-SUBQ-001",
+      "domain": "subquery",
+      "query": "SELECT id FROM sq_t WHERE v > (SELECT AVG(v) FROM sq_t) ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-SUBQ-001",
+        "role": "subject",
+        "port": 14521,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t (id INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t VALUES (1,10),(2,20),(3,30),(4,40)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 4
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              3
+            ],
+            [
+              4
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-SUBQ-001",
+        "role": "ref",
+        "port": 14621,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t (id INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t VALUES (1,10),(2,20),(3,30),(4,40)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 4
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              3
+            ],
+            [
+              4
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.54,
+      "wire": {
+        "subj": "cases/A04-SUBQ-001_.subj.wire",
+        "ref": "cases/A04-SUBQ-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-SUBQ-002",
+      "domain": "subquery",
+      "query": "SELECT id FROM sq_t2 WHERE dept IN (SELECT dept FROM sq_t2 WHERE dept IN (1,3)) ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-SUBQ-002",
+        "role": "subject",
+        "port": 14522,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t2 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t2 VALUES (1,1),(2,2),(3,3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ],
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-SUBQ-002",
+        "role": "ref",
+        "port": 14622,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t2 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t2 VALUES (1,1),(2,2),(3,3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ],
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.54,
+      "wire": {
+        "subj": "cases/A04-SUBQ-002_.subj.wire",
+        "ref": "cases/A04-SUBQ-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-SUBQ-003",
+      "domain": "subquery",
+      "query": "SELECT id FROM sq_t3 WHERE EXISTS (SELECT 1 FROM sq_t4 WHERE sq_t4.id = sq_t3.id) ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-SUBQ-003",
+        "role": "subject",
+        "port": 14523,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t3 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t3 VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t4 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t4 VALUES (1),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ],
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-SUBQ-003",
+        "role": "ref",
+        "port": 14623,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t3 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t3 VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t4 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t4 VALUES (1),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ],
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.68,
+      "wire": {
+        "subj": "cases/A04-SUBQ-003_.subj.wire",
+        "ref": "cases/A04-SUBQ-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-SUBQ-004",
+      "domain": "subquery",
+      "query": "SELECT id, (SELECT MAX(v) FROM sq_t5 WHERE sq_t5.id = sq_t6.id) AS mv FROM sq_t6 ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[3, 15] ref=[3, 3]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-SUBQ-004",
+        "role": "subject",
+        "port": 14524,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t5",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t5 (id INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t5 VALUES (1,10),(2,20),(3,30)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t6",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t6 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t6 VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "mv"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              "10"
+            ],
+            [
+              2,
+              "20"
+            ],
+            [
+              3,
+              "30"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-SUBQ-004",
+        "role": "ref",
+        "port": 14624,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t5",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t5 (id INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t5 VALUES (1,10),(2,20),(3,30)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          },
+          {
+            "stmt": "DROP TABLE IF EXISTS sq_t6",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE sq_t6 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO sq_t6 VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "mv"
+          ],
+          "types": [
+            3,
+            3
+          ],
+          "rows": [
+            [
+              1,
+              10
+            ],
+            [
+              2,
+              20
+            ],
+            [
+              3,
+              30
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.7,
+      "wire": {
+        "subj": "cases/A04-SUBQ-004_.subj.wire",
+        "ref": "cases/A04-SUBQ-004_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-NULL-001",
+      "domain": "null",
+      "query": "SELECT id FROM nl_t WHERE dept = NULL",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-NULL-001",
+        "role": "subject",
+        "port": 14525,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t VALUES (1,NULL),(2,1),(3,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": []
+        }
+      },
+      "ref": {
+        "case_id": "A04-NULL-001",
+        "role": "ref",
+        "port": 14625,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t VALUES (1,NULL),(2,1),(3,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": []
+        }
+      },
+      "elapsed_s": 0.57,
+      "wire": {
+        "subj": "cases/A04-NULL-001_.subj.wire",
+        "ref": "cases/A04-NULL-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-NULL-002",
+      "domain": "null",
+      "query": "SELECT id FROM nl_t2 WHERE dept IS NULL ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-NULL-002",
+        "role": "subject",
+        "port": 14526,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t2 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t2 VALUES (1,NULL),(2,1),(3,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-NULL-002",
+        "role": "ref",
+        "port": 14626,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t2 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t2 VALUES (1,NULL),(2,1),(3,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-NULL-002_.subj.wire",
+        "ref": "cases/A04-NULL-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-NULL-003",
+      "domain": "null",
+      "query": "SELECT id FROM nl_t3 WHERE dept <> NULL ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-NULL-003",
+        "role": "subject",
+        "port": 14527,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t3 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t3 VALUES (1,NULL),(2,1),(3,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": []
+        }
+      },
+      "ref": {
+        "case_id": "A04-NULL-003",
+        "role": "ref",
+        "port": 14627,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t3 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t3 VALUES (1,NULL),(2,1),(3,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": []
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-NULL-003_.subj.wire",
+        "ref": "cases/A04-NULL-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-NULL-004",
+      "domain": "null",
+      "query": "SELECT id, v + NULL AS r FROM nl_t4 ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[3, 15] ref=[3, 5]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-NULL-004",
+        "role": "subject",
+        "port": 14528,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t4 (id INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t4 VALUES (1,10),(2,20)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "r"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              null
+            ],
+            [
+              2,
+              null
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-NULL-004",
+        "role": "ref",
+        "port": 14628,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t4 (id INT, v INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t4 VALUES (1,10),(2,20)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "r"
+          ],
+          "types": [
+            3,
+            5
+          ],
+          "rows": [
+            [
+              1,
+              null
+            ],
+            [
+              2,
+              null
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-NULL-004_.subj.wire",
+        "ref": "cases/A04-NULL-004_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-NULL-005",
+      "domain": "null",
+      "query": "SELECT id, COALESCE(dept, -1) AS d FROM nl_t5 ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[3, 15] ref=[3, 8]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-NULL-005",
+        "role": "subject",
+        "port": 14529,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t5",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t5 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t5 VALUES (1,NULL),(2,5)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "d"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              "-1"
+            ],
+            [
+              2,
+              "5"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-NULL-005",
+        "role": "ref",
+        "port": 14629,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t5",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t5 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t5 VALUES (1,NULL),(2,5)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "d"
+          ],
+          "types": [
+            3,
+            8
+          ],
+          "rows": [
+            [
+              1,
+              -1
+            ],
+            [
+              2,
+              5
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.57,
+      "wire": {
+        "subj": "cases/A04-NULL-005_.subj.wire",
+        "ref": "cases/A04-NULL-005_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-NULL-006",
+      "domain": "null",
+      "query": "SELECT id FROM nl_t6 WHERE dept IS NOT NULL ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-NULL-006",
+        "role": "subject",
+        "port": 14530,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t6",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t6 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t6 VALUES (1,NULL),(2,1),(3,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              2
+            ],
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-NULL-006",
+        "role": "ref",
+        "port": 14630,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS nl_t6",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE nl_t6 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO nl_t6 VALUES (1,NULL),(2,1),(3,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              2
+            ],
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.54,
+      "wire": {
+        "subj": "cases/A04-NULL-006_.subj.wire",
+        "ref": "cases/A04-NULL-006_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-ORDER-001",
+      "domain": "order_limit",
+      "query": "SELECT id FROM od_t ORDER BY id DESC LIMIT 3",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-ORDER-001",
+        "role": "subject",
+        "port": 14531,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS od_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE od_t (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO od_t VALUES (5),(1),(3),(2),(4)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              5
+            ],
+            [
+              4
+            ],
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-ORDER-001",
+        "role": "ref",
+        "port": 14631,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS od_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE od_t (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO od_t VALUES (5),(1),(3),(2),(4)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              5
+            ],
+            [
+              4
+            ],
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.56,
+      "wire": {
+        "subj": "cases/A04-ORDER-001_.subj.wire",
+        "ref": "cases/A04-ORDER-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-ORDER-002",
+      "domain": "order_limit",
+      "query": "SELECT id FROM od_t2 ORDER BY id LIMIT 1, 3",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-ORDER-002",
+        "role": "subject",
+        "port": 14532,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS od_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE od_t2 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO od_t2 VALUES (1),(2),(3),(4),(5)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              2
+            ],
+            [
+              3
+            ],
+            [
+              4
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-ORDER-002",
+        "role": "ref",
+        "port": 14632,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS od_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE od_t2 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO od_t2 VALUES (1),(2),(3),(4),(5)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 5
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              2
+            ],
+            [
+              3
+            ],
+            [
+              4
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-ORDER-002_.subj.wire",
+        "ref": "cases/A04-ORDER-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-ORDER-003",
+      "domain": "order_limit",
+      "query": "SELECT id, dept FROM od_t3 ORDER BY dept, id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-ORDER-003",
+        "role": "subject",
+        "port": 14533,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS od_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE od_t3 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO od_t3 VALUES (1,1),(2,2),(3,1),(4,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 4
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "dept"
+          ],
+          "types": [
+            3,
+            3
+          ],
+          "rows": [
+            [
+              1,
+              1
+            ],
+            [
+              3,
+              1
+            ],
+            [
+              2,
+              2
+            ],
+            [
+              4,
+              2
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-ORDER-003",
+        "role": "ref",
+        "port": 14633,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS od_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE od_t3 (id INT, dept INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO od_t3 VALUES (1,1),(2,2),(3,1),(4,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 4
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "dept"
+          ],
+          "types": [
+            3,
+            3
+          ],
+          "rows": [
+            [
+              1,
+              1
+            ],
+            [
+              3,
+              1
+            ],
+            [
+              2,
+              2
+            ],
+            [
+              4,
+              2
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-ORDER-003_.subj.wire",
+        "ref": "cases/A04-ORDER-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-ORDER-004",
+      "domain": "order_limit",
+      "query": "SELECT id FROM od_t4 LIMIT 2",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "multiset differs (same count 2): only_subj=[('5',)] only_ref=[('7',)]",
+      "aspects": [
+        "value"
+      ],
+      "subj": {
+        "case_id": "A04-ORDER-004",
+        "role": "subject",
+        "port": 14534,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS od_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE od_t4 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO od_t4 VALUES (7),(2),(5)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              2
+            ],
+            [
+              5
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-ORDER-004",
+        "role": "ref",
+        "port": 14634,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS od_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE od_t4 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO od_t4 VALUES (7),(2),(5)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              7
+            ],
+            [
+              2
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.56,
+      "wire": {
+        "subj": "cases/A04-ORDER-004_.subj.wire",
+        "ref": "cases/A04-ORDER-004_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-CAST-001",
+      "domain": "typeconv",
+      "query": "SELECT i + 1 AS p, i * 2 AS d2 FROM tc_i ORDER BY i",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15, 15] ref=[8, 8]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-CAST-001",
+        "role": "subject",
+        "port": 14535,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_i",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_i (i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_i VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "p",
+            "d2"
+          ],
+          "types": [
+            15,
+            15
+          ],
+          "rows": [
+            [
+              "2",
+              "2"
+            ],
+            [
+              "3",
+              "4"
+            ],
+            [
+              "4",
+              "6"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-CAST-001",
+        "role": "ref",
+        "port": 14635,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_i",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_i (i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_i VALUES (1),(2),(3)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "p",
+            "d2"
+          ],
+          "types": [
+            8,
+            8
+          ],
+          "rows": [
+            [
+              2,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              4,
+              6
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-CAST-001_.subj.wire",
+        "ref": "cases/A04-CAST-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-CAST-002",
+      "domain": "typeconv",
+      "query": "SELECT id FROM tc_s WHERE s = '42' ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-CAST-002",
+        "role": "subject",
+        "port": 14536,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_s",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_s (id INT, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_s VALUES (1,'42'),(2,'42x'),(3,' 42 ')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-CAST-002",
+        "role": "ref",
+        "port": 14636,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_s",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_s (id INT, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_s VALUES (1,'42'),(2,'42x'),(3,' 42 ')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-CAST-002_.subj.wire",
+        "ref": "cases/A04-CAST-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-CAST-003",
+      "domain": "typeconv",
+      "query": "SELECT id, CAST(i AS CHAR) AS c FROM tc_c ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[3, 15] ref=[3, 253]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-CAST-003",
+        "role": "subject",
+        "port": 14537,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_c",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_c (id INT, i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_c VALUES (1,10),(2,20)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "c"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              "10"
+            ],
+            [
+              2,
+              "20"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-CAST-003",
+        "role": "ref",
+        "port": 14637,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_c",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_c (id INT, i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_c VALUES (1,10),(2,20)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "c"
+          ],
+          "types": [
+            3,
+            253
+          ],
+          "rows": [
+            [
+              1,
+              "10"
+            ],
+            [
+              2,
+              "20"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-CAST-003_.subj.wire",
+        "ref": "cases/A04-CAST-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-CAST-004",
+      "domain": "typeconv",
+      "query": "SELECT id, CONCAT(s, '-') AS g FROM tc_g ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[3, 15] ref=[3, 253]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-CAST-004",
+        "role": "subject",
+        "port": 14538,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_g",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_g (id INT, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_g VALUES (1,'a'),(2,'b')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "g"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              "a-"
+            ],
+            [
+              2,
+              "b-"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-CAST-004",
+        "role": "ref",
+        "port": 14638,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_g",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_g (id INT, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_g VALUES (1,'a'),(2,'b')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "g"
+          ],
+          "types": [
+            3,
+            253
+          ],
+          "rows": [
+            [
+              1,
+              "a-"
+            ],
+            [
+              2,
+              "b-"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.54,
+      "wire": {
+        "subj": "cases/A04-CAST-004_.subj.wire",
+        "ref": "cases/A04-CAST-004_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-CAST-005",
+      "domain": "typeconv",
+      "query": "SELECT id FROM tc_n WHERE i = '5' ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "rowcount differs: subj=0 ref=1",
+      "aspects": [
+        "rowcount"
+      ],
+      "subj": {
+        "case_id": "A04-CAST-005",
+        "role": "subject",
+        "port": 14539,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_n",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_n (id INT, i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_n VALUES (1,5),(2,50),(3,500)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": []
+        }
+      },
+      "ref": {
+        "case_id": "A04-CAST-005",
+        "role": "ref",
+        "port": 14639,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS tc_n",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE tc_n (id INT, i INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO tc_n VALUES (1,5),(2,50),(3,500)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 3
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.56,
+      "wire": {
+        "subj": "cases/A04-CAST-005_.subj.wire",
+        "ref": "cases/A04-CAST-005_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-ERR-001",
+      "domain": "error",
+      "query": "SELECT badcol FROM er_t",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "both error, DIFFERENT codes: subj=1105 ref=1054",
+      "aspects": [
+        "error_code"
+      ],
+      "subj": {
+        "case_id": "A04-ERR-001",
+        "role": "subject",
+        "port": 14540,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS er_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE er_t (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO er_t VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 1105,
+          "error_msg": "Execution error: Binder error: column 'badcol' not found in schema\u0000"
+        }
+      },
+      "ref": {
+        "case_id": "A04-ERR-001",
+        "role": "ref",
+        "port": 14640,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS er_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE er_t (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO er_t VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 1054,
+          "error_msg": "Unknown column 'badcol' in 'field list'"
+        }
+      },
+      "elapsed_s": 0.54,
+      "wire": {
+        "subj": "cases/A04-ERR-001_.subj.wire",
+        "ref": "cases/A04-ERR-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-ERR-002",
+      "domain": "error",
+      "query": "SELECT * FROM definitely_not_a_table",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "both error, same code 1146",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-ERR-002",
+        "role": "subject",
+        "port": 14541,
+        "setup": [],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 1146,
+          "error_msg": "Table not found: definitely_not_a_table\u0000"
+        }
+      },
+      "ref": {
+        "case_id": "A04-ERR-002",
+        "role": "ref",
+        "port": 14641,
+        "setup": [],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 1146,
+          "error_msg": "Table 'a04_diff.definitely_not_a_table' doesn't exist"
+        }
+      },
+      "elapsed_s": 0.41,
+      "wire": {
+        "subj": "cases/A04-ERR-002_.subj.wire",
+        "ref": "cases/A04-ERR-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-ERR-003",
+      "domain": "error",
+      "query": "SELECT id FROM er_t WHERE",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "both error, same code 1064",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-ERR-003",
+        "role": "subject",
+        "port": 14542,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS er_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE er_t3 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO er_t3 VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 1064,
+          "error_msg": "Parse error: Expected expression\u0000"
+        }
+      },
+      "ref": {
+        "case_id": "A04-ERR-003",
+        "role": "ref",
+        "port": 14642,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS er_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE er_t3 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO er_t3 VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 1064,
+          "error_msg": "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '' at line 1"
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-ERR-003_.subj.wire",
+        "ref": "cases/A04-ERR-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-ERR-004",
+      "domain": "error",
+      "query": "SELECT id FROM er_t4 WHERE id = (SELECT 1 FROM nonexist_tbl)",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "reference errored (code 1146) but other returned rows: Table 'a04_diff.nonexist_tbl' doesn't exist",
+      "aspects": [
+        "error_presence"
+      ],
+      "subj": {
+        "case_id": "A04-ERR-004",
+        "role": "subject",
+        "port": 14543,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS er_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE er_t4 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO er_t4 VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": []
+        }
+      },
+      "ref": {
+        "case_id": "A04-ERR-004",
+        "role": "ref",
+        "port": 14643,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS er_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE er_t4 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO er_t4 VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 1146,
+          "error_msg": "Table 'a04_diff.nonexist_tbl' doesn't exist"
+        }
+      },
+      "elapsed_s": 0.56,
+      "wire": {
+        "subj": "cases/A04-ERR-004_.subj.wire",
+        "ref": "cases/A04-ERR-004_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-COL-001",
+      "domain": "colname",
+      "query": "SELECT id AS x, s AS y FROM cn_t ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[3, 15] ref=[3, 253]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-COL-001",
+        "role": "subject",
+        "port": 14544,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS cn_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE cn_t (id INT, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO cn_t VALUES (1,'a')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "x",
+            "y"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              "a"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-COL-001",
+        "role": "ref",
+        "port": 14644,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS cn_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE cn_t (id INT, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO cn_t VALUES (1,'a')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "x",
+            "y"
+          ],
+          "types": [
+            3,
+            253
+          ],
+          "rows": [
+            [
+              1,
+              "a"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.53,
+      "wire": {
+        "subj": "cases/A04-COL-001_.subj.wire",
+        "ref": "cases/A04-COL-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-COL-002",
+      "domain": "colname",
+      "query": "SELECT * FROM cn_t2 ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[3, 15] ref=[3, 253]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-COL-002",
+        "role": "subject",
+        "port": 14545,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS cn_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE cn_t2 (id INT, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO cn_t2 VALUES (1,'a')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "s"
+          ],
+          "types": [
+            3,
+            15
+          ],
+          "rows": [
+            [
+              1,
+              "a"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-COL-002",
+        "role": "ref",
+        "port": 14645,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS cn_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE cn_t2 (id INT, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO cn_t2 VALUES (1,'a')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "s"
+          ],
+          "types": [
+            3,
+            253
+          ],
+          "rows": [
+            [
+              1,
+              "a"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-COL-002_.subj.wire",
+        "ref": "cases/A04-COL-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-COL-003",
+      "domain": "colname",
+      "query": "SELECT a + b FROM cn_t3",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column names differ: subj=['BinaryOp(Identifier(\"a\"), \"+\", Identifier(\"b\"))'] ref=['a + b']; column types differ: subj=[15] ref=[8]",
+      "aspects": [
+        "column_name",
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-COL-003",
+        "role": "subject",
+        "port": 14546,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS cn_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE cn_t3 (a INT, b INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO cn_t3 VALUES (1,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "BinaryOp(Identifier(\"a\"), \"+\", Identifier(\"b\"))"
+          ],
+          "types": [
+            15
+          ],
+          "rows": [
+            [
+              "3"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-COL-003",
+        "role": "ref",
+        "port": 14646,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS cn_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE cn_t3 (a INT, b INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO cn_t3 VALUES (1,2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "a + b"
+          ],
+          "types": [
+            8
+          ],
+          "rows": [
+            [
+              3
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-COL-003_.subj.wire",
+        "ref": "cases/A04-COL-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-COL-004",
+      "domain": "colname",
+      "query": "SELECT id, id AS id2 FROM cn_t4 ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-COL-004",
+        "role": "subject",
+        "port": 14547,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS cn_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE cn_t4 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO cn_t4 VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "id2"
+          ],
+          "types": [
+            3,
+            3
+          ],
+          "rows": [
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-COL-004",
+        "role": "ref",
+        "port": 14647,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS cn_t4",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE cn_t4 (id INT)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO cn_t4 VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "id2"
+          ],
+          "types": [
+            3,
+            3
+          ],
+          "rows": [
+            [
+              1,
+              1
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.58,
+      "wire": {
+        "subj": "cases/A04-COL-004_.subj.wire",
+        "ref": "cases/A04-COL-004_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-DDL-001",
+      "domain": "ddl",
+      "query": "SELECT id, s, d FROM dd_t ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[3, 15, 246] ref=[3, 253, 246]; multiset differs (same count 1): only_subj=[('1', 'a', '1.5')] only_ref=[('1', 'a', '1.50')]",
+      "aspects": [
+        "column_type",
+        "value"
+      ],
+      "subj": {
+        "case_id": "A04-DDL-001",
+        "role": "subject",
+        "port": 14548,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS dd_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE dd_t (id INT PRIMARY KEY, s VARCHAR(20), d DECIMAL(10,2))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO dd_t VALUES (1,'a',1.50)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "s",
+            "d"
+          ],
+          "types": [
+            3,
+            15,
+            246
+          ],
+          "rows": [
+            [
+              1,
+              "a",
+              "1.5"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-DDL-001",
+        "role": "ref",
+        "port": 14648,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS dd_t",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE dd_t (id INT PRIMARY KEY, s VARCHAR(20), d DECIMAL(10,2))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO dd_t VALUES (1,'a',1.50)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id",
+            "s",
+            "d"
+          ],
+          "types": [
+            3,
+            253,
+            246
+          ],
+          "rows": [
+            [
+              1,
+              "a",
+              "1.50"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.52,
+      "wire": {
+        "subj": "cases/A04-DDL-001_.subj.wire",
+        "ref": "cases/A04-DDL-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-DDL-002",
+      "domain": "ddl",
+      "query": "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='dd_t2' ORDER BY ORDINAL_POSITION",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "result kind differs: subj=ok ref=resultset",
+      "aspects": [
+        "kind"
+      ],
+      "subj": {
+        "case_id": "A04-DDL-002",
+        "role": "subject",
+        "port": 14549,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS dd_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE dd_t2 (id INT, s VARCHAR(20), d DECIMAL(10,2))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      "ref": {
+        "case_id": "A04-DDL-002",
+        "role": "ref",
+        "port": 14649,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS dd_t2",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE dd_t2 (id INT, s VARCHAR(20), d DECIMAL(10,2))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "COLUMN_NAME",
+            "DATA_TYPE"
+          ],
+          "types": [
+            253,
+            252
+          ],
+          "rows": [
+            [
+              "id",
+              "int"
+            ],
+            [
+              "s",
+              "varchar"
+            ],
+            [
+              "d",
+              "decimal"
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.52,
+      "wire": {
+        "subj": "cases/A04-DDL-002_.subj.wire",
+        "ref": "cases/A04-DDL-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-DDL-003",
+      "domain": "ddl",
+      "query": "SELECT COUNT(*) AS c FROM dd_t3",
+      "order_sensitive": false,
+      "verdict": "mismatch",
+      "detail": "column types differ: subj=[15] ref=[8]",
+      "aspects": [
+        "column_type"
+      ],
+      "subj": {
+        "case_id": "A04-DDL-003",
+        "role": "subject",
+        "port": 14550,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS dd_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE dd_t3 (id INT NOT NULL, s VARCHAR(20) DEFAULT 'x')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO dd_t3 (id) VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "c"
+          ],
+          "types": [
+            15
+          ],
+          "rows": [
+            [
+              "1"
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-DDL-003",
+        "role": "ref",
+        "port": 14650,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS dd_t3",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE dd_t3 (id INT NOT NULL, s VARCHAR(20) DEFAULT 'x')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO dd_t3 (id) VALUES (1)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "c"
+          ],
+          "types": [
+            8
+          ],
+          "rows": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.54,
+      "wire": {
+        "subj": "cases/A04-DDL-003_.subj.wire",
+        "ref": "cases/A04-DDL-003_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-CONSTRAINT-001",
+      "domain": "constraint",
+      "query": "INSERT INTO ct_pk VALUES (1,'dup')",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "both error, same code 1062",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-CONSTRAINT-001",
+        "role": "subject",
+        "port": 14551,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS ct_pk",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE ct_pk (id INT PRIMARY KEY, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO ct_pk VALUES (1,'a')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 1062,
+          "error_msg": "Duplicate entry '1' for key 'PRIMARY'\u0000"
+        }
+      },
+      "ref": {
+        "case_id": "A04-CONSTRAINT-001",
+        "role": "ref",
+        "port": 14651,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS ct_pk",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE ct_pk (id INT PRIMARY KEY, s VARCHAR(20))",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO ct_pk VALUES (1,'a')",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 1
+            }
+          }
+        ],
+        "query": {
+          "ok": false,
+          "kind": "error",
+          "error_code": 1062,
+          "error_msg": "Duplicate entry '1' for key 'ct_pk.PRIMARY'"
+        }
+      },
+      "elapsed_s": 0.54,
+      "wire": {
+        "subj": "cases/A04-CONSTRAINT-001_.subj.wire",
+        "ref": "cases/A04-CONSTRAINT-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-CONSTRAINT-002",
+      "domain": "constraint",
+      "query": "INSERT INTO ct_uq VALUES (1) ON DUPLICATE KEY UPDATE id=1",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "side-effect(affected): subj=1 ref=1",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-CONSTRAINT-002",
+        "role": "subject",
+        "port": 14552,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS ct_uq",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE ct_uq (id INT UNIQUE)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      },
+      "ref": {
+        "case_id": "A04-CONSTRAINT-002",
+        "role": "ref",
+        "port": 14652,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS ct_uq",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE ct_uq (id INT UNIQUE)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      },
+      "elapsed_s": 0.51,
+      "wire": {
+        "subj": "cases/A04-CONSTRAINT-002_.subj.wire",
+        "ref": "cases/A04-CONSTRAINT-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-CONSTRAINT-003",
+      "domain": "constraint",
+      "query": "SELECT id FROM ct_nn ORDER BY id",
+      "order_sensitive": false,
+      "verdict": "match",
+      "detail": "identical (names/types/rows)",
+      "aspects": [],
+      "subj": {
+        "case_id": "A04-CONSTRAINT-003",
+        "role": "subject",
+        "port": 14553,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS ct_nn",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE ct_nn (id INT NOT NULL)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO ct_nn VALUES (1),(2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ]
+        }
+      },
+      "ref": {
+        "case_id": "A04-CONSTRAINT-003",
+        "role": "ref",
+        "port": 14653,
+        "setup": [
+          {
+            "stmt": "DROP TABLE IF EXISTS ct_nn",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "CREATE TABLE ct_nn (id INT NOT NULL)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 0
+            }
+          },
+          {
+            "stmt": "INSERT INTO ct_nn VALUES (1),(2)",
+            "res": {
+              "ok": true,
+              "kind": "ok",
+              "columns": [],
+              "types": [],
+              "rows": [],
+              "affected": 2
+            }
+          }
+        ],
+        "query": {
+          "ok": true,
+          "kind": "resultset",
+          "columns": [
+            "id"
+          ],
+          "types": [
+            3
+          ],
+          "rows": [
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ]
+        }
+      },
+      "elapsed_s": 0.55,
+      "wire": {
+        "subj": "cases/A04-CONSTRAINT-003_.subj.wire",
+        "ref": "cases/A04-CONSTRAINT-003_.ref.wire"
+      }
+    }
+  ],
+  "summary": {
+    "match": 22,
+    "mismatch": 32,
+    "not_comparable": 0
+  }
+}

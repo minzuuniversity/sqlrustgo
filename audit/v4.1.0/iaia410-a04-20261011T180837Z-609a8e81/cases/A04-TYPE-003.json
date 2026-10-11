@@ -1,0 +1,144 @@
+{
+  "id": "A04-TYPE-003",
+  "domain": "coltype",
+  "query": "SELECT COUNT(*) AS c, SUM(i) AS s, MAX(i) AS m, MIN(i) AS n FROM t_int3",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[15, 15, 15, 15] ref=[8, 246, 3, 3]",
+  "aspects": [
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-TYPE-003",
+    "role": "subject",
+    "port": 14502,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS t_int3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE t_int3 (i INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO t_int3 VALUES (1),(2),(3)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "c",
+        "s",
+        "m",
+        "n"
+      ],
+      "types": [
+        15,
+        15,
+        15,
+        15
+      ],
+      "rows": [
+        [
+          "3",
+          "6",
+          "3",
+          "1"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-TYPE-003",
+    "role": "ref",
+    "port": 14602,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS t_int3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE t_int3 (i INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO t_int3 VALUES (1),(2),(3)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "c",
+        "s",
+        "m",
+        "n"
+      ],
+      "types": [
+        8,
+        246,
+        3,
+        3
+      ],
+      "rows": [
+        [
+          3,
+          "6",
+          3,
+          1
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-TYPE-003_.subj.wire",
+    "ref": "cases/A04-TYPE-003_.ref.wire"
+  }
+}

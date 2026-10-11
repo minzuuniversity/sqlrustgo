@@ -1,0 +1,41 @@
+{
+  "id": "A04-PREP-001",
+  "domain": "prepared",
+  "sql": "SELECT %s AS a, %s AS b",
+  "params": [
+    1,
+    "x"
+  ],
+  "verdict": "mismatch",
+  "detail": "subject errored (1047) other returned rows",
+  "subj": {
+    "case_id": "A04-PREP-001",
+    "role": "subject",
+    "kind": "error",
+    "error_code": 1047,
+    "error_msg": "Unknown command"
+  },
+  "ref": {
+    "case_id": "A04-PREP-001",
+    "role": "ref",
+    "kind": "resultset",
+    "columns": [
+      "a",
+      "b"
+    ],
+    "types": [
+      8,
+      253
+    ],
+    "rows": [
+      [
+        1,
+        "x"
+      ]
+    ]
+  },
+  "wire": {
+    "subj": "cases/A04-PREP-001_.subj.wire",
+    "ref": "cases/A04-PREP-001_.ref.wire"
+  }
+}

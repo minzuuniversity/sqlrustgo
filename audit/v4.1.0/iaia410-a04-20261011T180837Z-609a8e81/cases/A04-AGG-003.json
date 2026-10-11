@@ -1,0 +1,132 @@
+{
+  "id": "A04-AGG-003",
+  "domain": "aggregate",
+  "query": "SELECT COUNT(*) AS c, SUM(v) AS s FROM agg_e3",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[15, 15] ref=[8, 246]",
+  "aspects": [
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-AGG-003",
+    "role": "subject",
+    "port": 14515,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS agg_e3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE agg_e3 (id INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO agg_e3 VALUES (1,10),(2,20),(3,30)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "c",
+        "s"
+      ],
+      "types": [
+        15,
+        15
+      ],
+      "rows": [
+        [
+          "3",
+          "60"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-AGG-003",
+    "role": "ref",
+    "port": 14615,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS agg_e3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE agg_e3 (id INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO agg_e3 VALUES (1,10),(2,20),(3,30)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "c",
+        "s"
+      ],
+      "types": [
+        8,
+        246
+      ],
+      "rows": [
+        [
+          3,
+          "60"
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-AGG-003_.subj.wire",
+    "ref": "cases/A04-AGG-003_.ref.wire"
+  }
+}

@@ -1,0 +1,207 @@
+{
+  "id": "A04-JOIN-002",
+  "domain": "join",
+  "query": "SELECT j_a2.id, j_b2.name FROM j_a2 LEFT JOIN j_b2 ON j_a2.bid=j_b2.id ORDER BY j_a2.id",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column names differ: subj=['j_a2.id', 'j_b2.name'] ref=['id', 'name']; column types differ: subj=[3, 15] ref=[3, 253]",
+  "aspects": [
+    "column_name",
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-JOIN-002",
+    "role": "subject",
+    "port": 14509,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS j_a2",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_a2 (id INT, bid INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_a2 VALUES (1,10),(2,99)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      },
+      {
+        "stmt": "DROP TABLE IF EXISTS j_b2",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_b2 (id INT, name VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_b2 VALUES (10,'x')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "j_a2.id",
+        "j_b2.name"
+      ],
+      "types": [
+        3,
+        15
+      ],
+      "rows": [
+        [
+          1,
+          "x"
+        ],
+        [
+          2,
+          null
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-JOIN-002",
+    "role": "ref",
+    "port": 14609,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS j_a2",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_a2 (id INT, bid INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_a2 VALUES (1,10),(2,99)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      },
+      {
+        "stmt": "DROP TABLE IF EXISTS j_b2",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE j_b2 (id INT, name VARCHAR(20))",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO j_b2 VALUES (10,'x')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "name"
+      ],
+      "types": [
+        3,
+        253
+      ],
+      "rows": [
+        [
+          1,
+          "x"
+        ],
+        [
+          2,
+          null
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.71,
+  "wire": {
+    "subj": "cases/A04-JOIN-002_.subj.wire",
+    "ref": "cases/A04-JOIN-002_.ref.wire"
+  }
+}

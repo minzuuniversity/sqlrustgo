@@ -1,0 +1,128 @@
+{
+  "cases": [
+    {
+      "id": "A04-PREP-001",
+      "domain": "prepared",
+      "sql": "SELECT %s AS a, %s AS b",
+      "params": [
+        1,
+        "x"
+      ],
+      "verdict": "mismatch",
+      "detail": "subject errored (1047) other returned rows",
+      "subj": {
+        "case_id": "A04-PREP-001",
+        "role": "subject",
+        "kind": "error",
+        "error_code": 1047,
+        "error_msg": "Unknown command"
+      },
+      "ref": {
+        "case_id": "A04-PREP-001",
+        "role": "ref",
+        "kind": "resultset",
+        "columns": [
+          "a",
+          "b"
+        ],
+        "types": [
+          8,
+          253
+        ],
+        "rows": [
+          [
+            1,
+            "x"
+          ]
+        ]
+      },
+      "wire": {
+        "subj": "cases/A04-PREP-001_.subj.wire",
+        "ref": "cases/A04-PREP-001_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-PREP-002",
+      "domain": "prepared",
+      "sql": "SELECT %s + 1 AS p, %s AS s",
+      "params": [
+        5,
+        "z"
+      ],
+      "verdict": "mismatch",
+      "detail": "subject errored (1047) other returned rows",
+      "subj": {
+        "case_id": "A04-PREP-002",
+        "role": "subject",
+        "kind": "error",
+        "error_code": 1047,
+        "error_msg": "Unknown command"
+      },
+      "ref": {
+        "case_id": "A04-PREP-002",
+        "role": "ref",
+        "kind": "resultset",
+        "columns": [
+          "p",
+          "s"
+        ],
+        "types": [
+          8,
+          253
+        ],
+        "rows": [
+          [
+            6,
+            "z"
+          ]
+        ]
+      },
+      "wire": {
+        "subj": "cases/A04-PREP-002_.subj.wire",
+        "ref": "cases/A04-PREP-002_.ref.wire"
+      }
+    },
+    {
+      "id": "A04-PREP-003",
+      "domain": "prepared",
+      "sql": "SELECT id FROM pp_t WHERE id = %s ORDER BY id",
+      "params": [
+        2
+      ],
+      "verdict": "mismatch",
+      "detail": "subject errored (1047) other returned rows",
+      "subj": {
+        "case_id": "A04-PREP-003",
+        "role": "subject",
+        "kind": "error",
+        "error_code": 1047,
+        "error_msg": "Unknown command"
+      },
+      "ref": {
+        "case_id": "A04-PREP-003",
+        "role": "ref",
+        "kind": "resultset",
+        "columns": [
+          "id"
+        ],
+        "types": [
+          3
+        ],
+        "rows": [
+          [
+            2
+          ]
+        ]
+      },
+      "wire": {
+        "subj": "cases/A04-PREP-003_.subj.wire",
+        "ref": "cases/A04-PREP-003_.ref.wire"
+      }
+    }
+  ],
+  "summary": {
+    "match": 0,
+    "mismatch": 3,
+    "not_comparable": 0
+  }
+}

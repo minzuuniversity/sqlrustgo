@@ -1,0 +1,120 @@
+{
+  "id": "A04-HAVING-003",
+  "domain": "having",
+  "query": "SELECT dept FROM hv_e3 GROUP BY dept HAVING COUNT(*) = 2 ORDER BY dept",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "subject errored (code 2013) but other returned rows: Lost connection to MySQL server during query (The read operation timed out)",
+  "aspects": [
+    "error_presence"
+  ],
+  "subj": {
+    "case_id": "A04-HAVING-003",
+    "role": "subject",
+    "port": 14520,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS hv_e3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE hv_e3 (id INT, dept INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO hv_e3 VALUES (1,1),(2,1),(3,2),(4,3),(5,3),(6,4)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 6
+        }
+      }
+    ],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 2013,
+      "error_msg": "Lost connection to MySQL server during query (The read operation timed out)"
+    }
+  },
+  "ref": {
+    "case_id": "A04-HAVING-003",
+    "role": "ref",
+    "port": 14620,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS hv_e3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE hv_e3 (id INT, dept INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO hv_e3 VALUES (1,1),(2,1),(3,2),(4,3),(5,3),(6,4)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 6
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "dept"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          1
+        ],
+        [
+          3
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 90.6,
+  "wire": {
+    "subj": "cases/A04-HAVING-003_.subj.wire",
+    "ref": "cases/A04-HAVING-003_.ref.wire"
+  }
+}

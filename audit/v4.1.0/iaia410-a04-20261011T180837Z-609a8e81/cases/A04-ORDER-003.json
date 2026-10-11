@@ -1,0 +1,154 @@
+{
+  "id": "A04-ORDER-003",
+  "domain": "order_limit",
+  "query": "SELECT id, dept FROM od_t3 ORDER BY dept, id",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "identical (names/types/rows)",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-ORDER-003",
+    "role": "subject",
+    "port": 14533,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS od_t3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE od_t3 (id INT, dept INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO od_t3 VALUES (1,1),(2,2),(3,1),(4,2)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 4
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "dept"
+      ],
+      "types": [
+        3,
+        3
+      ],
+      "rows": [
+        [
+          1,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          4,
+          2
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-ORDER-003",
+    "role": "ref",
+    "port": 14633,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS od_t3",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE od_t3 (id INT, dept INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO od_t3 VALUES (1,1),(2,2),(3,1),(4,2)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 4
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "dept"
+      ],
+      "types": [
+        3,
+        3
+      ],
+      "rows": [
+        [
+          1,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          4,
+          2
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-ORDER-003_.subj.wire",
+    "ref": "cases/A04-ORDER-003_.ref.wire"
+  }
+}

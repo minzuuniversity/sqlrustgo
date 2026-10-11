@@ -1,0 +1,145 @@
+{
+  "id": "A04-TYPE-008",
+  "domain": "coltype",
+  "query": "SELECT id, s, d, dt FROM t_multi ORDER BY id",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[3, 15, 246, 10] ref=[3, 253, 246, 10]; multiset differs (same count 1): only_subj=[('1', 'a', '1.5', '2024-01-01')] only_ref=[('1', 'a', '1.50', '2024-01-01')]",
+  "aspects": [
+    "column_type",
+    "value"
+  ],
+  "subj": {
+    "case_id": "A04-TYPE-008",
+    "role": "subject",
+    "port": 14507,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS t_multi",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE t_multi (id INT, s VARCHAR(20), d DECIMAL(10,2), dt DATE)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO t_multi VALUES (1,'a',1.50,'2024-01-01')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "s",
+        "d",
+        "dt"
+      ],
+      "types": [
+        3,
+        15,
+        246,
+        10
+      ],
+      "rows": [
+        [
+          1,
+          "a",
+          "1.5",
+          "2024-01-01"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-TYPE-008",
+    "role": "ref",
+    "port": 14607,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS t_multi",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE t_multi (id INT, s VARCHAR(20), d DECIMAL(10,2), dt DATE)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO t_multi VALUES (1,'a',1.50,'2024-01-01')",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "s",
+        "d",
+        "dt"
+      ],
+      "types": [
+        3,
+        253,
+        246,
+        10
+      ],
+      "rows": [
+        [
+          1,
+          "a",
+          "1.50",
+          "2024-01-01"
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-TYPE-008_.subj.wire",
+    "ref": "cases/A04-TYPE-008_.ref.wire"
+  }
+}
