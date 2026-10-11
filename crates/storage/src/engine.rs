@@ -1336,10 +1336,11 @@ pub trait StorageEngine: Send + Sync {
     /// current database. Backends without a per-database table namespace
     /// defer to the current-database listing; the ones that scope keys
     /// override.
-    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
-        let _ = db;
-        self.list_tables()
-    }
+    /// #5266: deliberately no default body — a default that did
+    /// `let _ = db; self.list_tables()` answered `SHOW TABLES FROM d1`
+    /// with `default`'s tables. Every implementation must either use `db`
+    /// or return an empty listing for a database it cannot address.
+    fn list_tables_in_db(&self, db: &str) -> Vec<String>;
 
     /// #5057 / #5025: `scan` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
@@ -1391,15 +1392,13 @@ pub trait StorageEngine: Send + Sync {
     // ---------------------------------------------------------------------
 
     /// #5057: `scan_with_filter` against a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn scan_with_filter_in_db(
         &self,
         db: &str,
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
-    ) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan_with_filter(table, filter)
-    }
+    ) -> SqlResult<Vec<Record>>;
 
     /// #5057: `scan_with_filter_in` against a stated database — both the
     /// reading transaction and the database are supplied by the caller.
@@ -1435,33 +1434,27 @@ pub trait StorageEngine: Send + Sync {
     fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>>;
 
     /// #5057: `scan_with_index` against a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn scan_with_index_in_db(
         &self,
         db: &str,
         table: &str,
         index_name: &str,
         key: &Value,
-    ) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan_with_index(table, index_name, key)
-    }
+    ) -> SqlResult<Vec<Record>>;
 
     /// #5057: `parallel_scan` against a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn parallel_scan_in_db(
         &self,
         db: &str,
         table: &str,
         num_partitions: usize,
-    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        let _ = db;
-        self.parallel_scan(table, num_partitions)
-    }
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>>;
 
     /// #5057: `insert` into a stated database.
-    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let _ = db;
-        self.insert(table, records)
-    }
+    /// #5266: deliberately no default body — see `get_table_info_in`.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()>;
 
     /// #5057: `force_insert` into a stated database.
     fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
@@ -1472,51 +1465,41 @@ pub trait StorageEngine: Send + Sync {
     }
 
     /// #5057: `delete` within a stated database.
-    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        let _ = db;
-        self.delete(table, filters)
-    }
+    /// #5266: deliberately no default body — see `get_table_info_in`.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize>;
 
     /// #5057: `delete_collect_pks` within a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn delete_collect_pks_in_db(
         &mut self,
         db: &str,
         table: &str,
         filters: &[Value],
-    ) -> SqlResult<Vec<Value>> {
-        let _ = db;
-        self.delete_collect_pks(table, filters)
-    }
+    ) -> SqlResult<Vec<Value>>;
 
     /// #5057: `delete_if` within a stated database.
-    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        let _ = db;
-        self.delete_if(table, filter)
-    }
+    /// #5266: deliberately no default body — see `get_table_info_in`.
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize>;
 
     /// #5057: `update` within a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn update_in_db(
         &mut self,
         db: &str,
         table: &str,
         filters: &[Value],
         updates: &[(usize, Value)],
-    ) -> SqlResult<usize> {
-        let _ = db;
-        self.update(table, filters, updates)
-    }
+    ) -> SqlResult<usize>;
 
     /// #5057: `update_if` within a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn update_if_in_db(
         &mut self,
         db: &str,
         table: &str,
         filter: &RowFilter,
         mutation: &RowMutation,
-    ) -> SqlResult<usize> {
-        let _ = db;
-        self.update_if(table, filter, mutation)
-    }
+    ) -> SqlResult<usize>;
 
     /// #5057: `create_table` within a stated database.
     /// #5250: create a table in a *stated* database.
