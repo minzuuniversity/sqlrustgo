@@ -1,0 +1,49 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+command_id: 008
+description: >
+  按裁决要求补齐 ColumnarStorage 的多路径可达性分析
+  （trait object / feature gating / 工厂注册 / 动态加载 / 测试与 bench 实例化）
+target_commit: 728631c253
+tool: 目录遍历 + mod 声明枚举 + 全仓文本搜索
+exit_code: 0
+paths_checked:
+  - path: 显式引用
+    result: 仅 crates/storage/src/columnar/ 内部自引用
+    detail: >
+      mod.rs:15 pub use storage::{ColumnarStorage, TableStore};
+      storage.rs:292-312 定义与 Debug impl
+      src/、crates/mysql-server/src/、crates/admin/src/、crates/tools/src/ 均无引用
+  - path: bin 入口
+    result: 无
+    detail: crates/storage/Cargo.toml 无 [[bin]]；workspace 内无 columnar 相关 bin 目标
+  - path: 编译可达性（关键）
+    result: NOT_COMPILED
+    detail: >
+      crates/storage/src/lib.rs 共 60 条 `mod` 声明，
+      其中不存在 columnar 条目；
+      crates/storage/src/columnar/ 目录（含 6 个 .rs 文件）未纳入编译单元。
+    decisive: 无论 feature 如何组合，该模块均不参与编译
+  - path: feature gating
+    result: 不适用
+    detail: crates/columnar/ 无独立 Cargo.toml；columnar 无 feature 门控需求，因其根本未编译
+  - path: 工厂 / 动态注册
+    result: 未发现
+    detail: 全仓无 ColumnarStorage 的工厂注册、match 分支或 trait object 转型
+  - path: 测试与 bench 实例化
+    result: 未发现
+    detail: tests/ 与 benches/ 下无引用
+  - path: 动态加载 / FFI
+    result: 未发现
+    detail: 无 dlopen/libloading 相关引用指向 columnar
+classification_update:
+  symbol: crates/storage/src/columnar/storage.rs:480 impl StorageEngine for ColumnarStorage
+  previous: Potentially Dead
+  current: Confirmed Dead
+  basis: >
+    模块未纳入编译（lib.rs 无 mod 声明），为编译期事实而非文本搜索推断。
+    该结论不依赖 grep 完备性，故不受 commands/007 假阴性的影响。
+  scope_caveat: >
+    「未编译」限定于当前 Cargo 配置；若未来 lib.rs 增加 mod columnar，
+    或该目录被独立 crate 化并加入 workspace，则此判定失效。

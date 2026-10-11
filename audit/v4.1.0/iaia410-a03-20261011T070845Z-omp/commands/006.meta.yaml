@@ -28,12 +28,11 @@ inventory:
         classification: Test-Only
         evidence: 定义位于测试模块内；引用点 :2086 同在该模块
       - symbol: columnar/storage.rs:480 impl StorageEngine for ColumnarStorage
-        gate: none
-        classification: Potentially Dead
-        evidence: >
-          src/、crates/mysql-server/src/、crates/admin/src/ 中均无引用；
-          Cargo.toml 中无 bin 入口。未穷举 feature 门控，故不判 Confirmed Dead。
-        not_verified: 未检查全部 feature 组合下的可达性
+        gate: crates/storage/src/lib.rs 无 mod columnar 声明 → 模块未纳入编译
+        classification: Confirmed Dead
+        upgraded_from: Potentially Dead
+        basis: 见 commands/008 —— 属编译期事实，不依赖文本搜索
+        scope_caveat: 若未来增加 mod 声明或独立 crate 化，判定失效
   dead_functions_in_production_entry:
     - symbol: crates/admin/src/backup.rs:104 fn write_tar_end_marker
       entry: sqlrustgo-admin（生产可达的运维入口）
