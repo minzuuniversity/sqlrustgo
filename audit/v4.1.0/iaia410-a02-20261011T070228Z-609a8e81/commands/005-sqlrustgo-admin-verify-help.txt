@@ -1,0 +1,7 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-admin verify --help
+Usage: sqlrustgo-admin verify --input <INPUT>
+
+Options:
+      --input <INPUT>  
+  -h, --help           Print help
+EXIT=0

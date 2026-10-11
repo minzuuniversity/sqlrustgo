@@ -1,0 +1,12 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server exec --help
+Execute a single SQL statement and print the result, then exit
+
+Usage: sqlrustgo-mysql-server exec [OPTIONS] <SQL>
+
+Arguments:
+  <SQL>  
+
+Options:
+      --log-level <LOG_LEVEL>  [default: info]
+  -h, --help                   Print help
+EXIT=0

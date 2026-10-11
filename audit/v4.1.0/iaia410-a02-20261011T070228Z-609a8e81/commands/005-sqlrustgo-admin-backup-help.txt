@@ -1,0 +1,9 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-admin backup --help
+Usage: sqlrustgo-admin backup [OPTIONS] --data-dir <DATA_DIR>
+
+Options:
+      --data-dir <DATA_DIR>  
+      --wal <WAL>            
+      --output <OUTPUT>      [default: ./backup.tar.gz]
+  -h, --help                 Print help
+EXIT=0

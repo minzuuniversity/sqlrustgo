@@ -1,0 +1,10 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-admin status --help
+Usage: sqlrustgo-admin status [OPTIONS]
+
+Options:
+      --host <HOST>          [default: 127.0.0.1]
+      --port <PORT>          [default: 3306]
+      --user <USER>          [default: root]
+      --password <PASSWORD>  [default: ""]
+  -h, --help                 Print help
+EXIT=0

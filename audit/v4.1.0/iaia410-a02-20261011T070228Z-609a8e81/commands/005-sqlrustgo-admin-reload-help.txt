@@ -1,0 +1,6 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-admin reload --help
+Usage: sqlrustgo-admin reload
+
+Options:
+  -h, --help  Print help
+EXIT=0

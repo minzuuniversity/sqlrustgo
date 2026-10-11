@@ -1,0 +1,10 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo serve --help
+Start the MySQL wire-protocol server
+
+Usage: sqlrustgo serve [OPTIONS]
+
+Options:
+      --port <PORT>          [default: 3307]
+      --data-dir <DATA_DIR>  
+  -h, --help                 Print help
+EXIT=0

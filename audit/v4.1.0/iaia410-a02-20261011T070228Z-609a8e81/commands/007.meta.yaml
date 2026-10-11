@@ -1,0 +1,12 @@
+schema_version: iaia410-command-meta/v1
+command_id: '007'
+name: module-inventory
+argv:
+- bash
+- -c
+- wc -l of 25 key engine/storage/planner/optimizer/mysql-server/network/security modules at assessed_commit
+cwd: .
+timeout_sec: 300
+started_at: '2026-10-11T07:11:03Z'
+finished_at: '2026-10-11T07:11:03Z'
+exit_code: 0
