@@ -1,0 +1,9 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-admin pitr --help
+Usage: sqlrustgo-admin pitr --data-dir <DATA_DIR> --wal <WAL> --target-time <TARGET_TIME>
+
+Options:
+      --data-dir <DATA_DIR>        
+      --wal <WAL>                  
+      --target-time <TARGET_TIME>  
+  -h, --help                       Print help
+EXIT=0

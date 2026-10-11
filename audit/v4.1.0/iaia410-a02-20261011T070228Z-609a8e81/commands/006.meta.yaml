@@ -1,0 +1,11 @@
+schema_version: iaia410-command-meta/v1
+command_id: '006'
+name: sqlrustgo-mysql-server-cli-help
+argv:
+- /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server
+- --help
+cwd: .
+timeout_sec: 300
+started_at: '2026-10-11T07:08:37Z'
+finished_at: '2026-10-11T07:08:37Z'
+exit_code: 0

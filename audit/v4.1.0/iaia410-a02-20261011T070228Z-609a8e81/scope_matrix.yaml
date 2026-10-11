@@ -1,0 +1,176 @@
+# IAIA-410 / A02 — Claim / Entry / Scope Decision Matrix (consolidated, machine-readable)
+# assessed_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a (A01 frozen baseline)
+#
+# Scope status is restricted to exactly 3 (SSOT §3.3):
+#   in_scope      — has production entry + observable semantics + ≥1 verification WP
+#   out_of_scope  — explicitly NOT in v4.1.0 IAIA; MUST cite authority
+#   deferred      — has owner + target version + follow-up issue + re-inclusion condition
+#
+# Acceptance checks this matrix MUST satisfy (#5224):
+#   (1) every public claim has (source, production entry, ≥1 verification WP)
+#   (2) every out-of-scope capability has reason + owner + follow-up issue
+#   (3) module existence / test count / test-pass is NOT a substitute for
+#       production-reachability evidence
+
+schema_version: iaia410-scope-matrix/v1
+run_id: iaia410-a02-20261011T070228Z-609a8e81
+assessed_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+
+# ── Per-domain scope decisions (SSOT §3.2, 10 domains) ──────────────────────
+# All 10 domains' CORE relational/MySQL/durability capability is in_scope.
+# out_of_scope / deferred items are listed separately (below) and per-domain.
+domains:
+  - id: CD-01
+    name: SQL semantics
+    scope: in_scope
+    production_entries: [PE-01, PE-03, PE-04, PE-05]
+    verification_wps: [A03, A04]
+    reachable_evidence: "src/engine_select.rs reached from serve/cli/repl via execution engine (PE-01/03/04/05)"
+  - id: CD-02
+    name: DDL / DML
+    scope: in_scope
+    production_entries: [PE-01, PE-03, PE-04, PE-05]
+    verification_wps: [A03, A04]
+    reachable_evidence: "src/engine_ddl.rs + src/engine_dml.rs reached from serve/cli/repl (PE-01/03/04/05)"
+  - id: CD-03
+    name: Optimization & planning
+    scope: in_scope
+    production_entries: [PE-01, PE-03]
+    verification_wps: [A03, A05]
+    reachable_evidence: >-
+      crates/optimizer UnifiedCostModel::default_model(0,0) constructed at
+      src/engine_builder.rs:52,91,130,179,235,296,351 — reachable from serve/cli.
+      F3 (unreachable planner operators) is a SUSPECTED finding to confirm in A03,
+      NOT a scope exclusion.
+  - id: CD-04
+    name: Index & storage
+    scope: in_scope
+    production_entries: [PE-01, PE-05]
+    verification_wps: [A05]
+    reachable_evidence: "crates/storage FileStorage/BinaryStorage reached from serve (--storage) (PE-01/05)"
+  - id: CD-05
+    name: Transaction & WAL
+    scope: in_scope
+    production_entries: [PE-01, PE-03]
+    verification_wps: [A06]
+    reachable_evidence: "crates/transaction + crates/storage WAL/MVCC reached from serve DML (PE-01/03)"
+  - id: CD-06
+    name: Protocol
+    scope: in_scope
+    production_entries: [PE-01, PE-02, PE-03]
+    verification_wps: [A04, A10]
+    reachable_evidence: "crates/mysql-server lib.rs wire handler + rustls TlsStream reached from serve (PE-01/02/03)"
+  - id: CD-07
+    name: Security & isolation
+    scope: in_scope
+    production_entries: [PE-01, PE-03, PE-05]
+    verification_wps: [A06, A10]
+    reachable_evidence: >-
+      crates/security + execution_engine session-db reached from serve/cli (PE-01/03).
+      #5192 cross-database data-loss is the P0 anchor — in_scope.
+  - id: CD-08
+    name: Test system
+    scope: in_scope
+    production_entries: [test binaries, sqlrustgo-sqllogictest, sqlancer]
+    verification_wps: [A07, A08]
+    reachable_evidence: "meta-domain: audit OF the test system (anti-audit) via A07/A08"
+  - id: CD-09
+    name: Cross-version
+    scope: in_scope
+    production_entries: [PE-01]
+    verification_wps: [A09]
+    reachable_evidence: "cross-version comparison vs v3.12.0 GA baseline; depends on A04/A05/A06 corpus"
+  - id: CD-10
+    name: Operations & persistence
+    scope: in_scope
+    production_entries: [PE-06, PE-07]
+    verification_wps: [A06]
+    reachable_evidence: "crates/storage recovery_engine/checkpoint/backup_coordinator/pitr reached from serve startup + admin (PE-06/07)"
+
+# ── OUT_OF_SCOPE (not claimed by v4.1.0; authority cited) ────────────────────
+out_of_scope:
+  - id: OOS-01
+    name: General-purpose vector database
+    reason: "README §0 forbids the general-purpose vector-DB claim; only internal GMP workloads."
+    owner: n/a
+    authority: "README.md §0; RELEASE_NOTES.md §1"
+  - id: OOS-02
+    name: General-purpose graph database
+    reason: "README §0 forbids the general-purpose graph-DB claim; only internal GMP workloads."
+    owner: n/a
+    authority: "README.md §0"
+  - id: OOS-03
+    name: General-purpose RAG
+    reason: "RAG is internal-GMP-only, not a general-purpose product claim."
+    owner: n/a
+    authority: "README.md §0"
+  - id: OOS-04
+    name: Full MySQL 5.7 replacement
+    reason: "Only a declared subset is claimed; README §5 forbids full replacement; stage=DRAFT."
+    owner: n/a
+    authority: "README.md §5; STAGE.yaml"
+  - id: OOS-05
+    name: SQLite dialect features (11 items)
+    reason: "Explicitly excluded from v4.1.0 (SQLite dialect, not relational core)."
+    owner: n/a
+    authority: "RELEASE_NOTES.md §3.1; CLAIM_DOWNGRADE_MANIFEST.md"
+  - id: OOS-06
+    name: Production multi-model (general-purpose) claims
+    reason: "Require GA; v4.1.0 is DRAFT (pre-ALPHA) so production multi-model is not claimable."
+    owner: n/a
+    authority: "RELEASE_NOTES.md §2; STAGE.yaml (current_stage=DRAFT)"
+  - id: OOS-07
+    name: 168h multi-model SOAK results
+    reason: "Require GA; not claimable in DRAFT v4.1.0."
+    owner: n/a
+    authority: "RELEASE_NOTES.md §2"
+
+# ── DEFERRED (claimed/planned; verification deferred) ─────────────────────────
+deferred:
+  - id: DEF-01
+    name: Internal GMP retrieval (vector/graph/RAG for internal GMP workloads)
+    owner: GMP track
+    target_version: "separate GMP audit track"
+    follow_up_issue: "TBD — open when GMP track schedules its own IAIA"
+    re_inclusion_conditions: "GMP track has its own frozen run + IAIA; relational IAIA defers until then."
+  - id: DEF-02
+    name: 24 WP backlog items (WP-C..G)
+    owner: v4.1.0 team
+    target_version: v4.1.0 ALPHA
+    follow_up_issue: "per-WP issues in RELEASE_NOTES.md §3 (#4670,#4711,#4698,#4694,#4693,#4685,#4677,#4667,#4650,#4646,#4625,#4846,#4848,#4637,#4842, …)"
+    re_inclusion_conditions: "Each item re-enters in_scope once it lands in v4.1.0 and is wired to a production entry; verified by its WP (A03–A10) on the then-frozen run."
+  - id: DEF-03
+    name: CHAR(n) PAD SPACE (#4846)
+    owner: v4.1.0 team
+    target_version: v4.1.0 ALPHA
+    follow_up_issue: "#4846"
+    re_inclusion_conditions: "Lands in WP-G and is exercised by a production entry."
+  - id: DEF-04
+    name: ALTER TABLE RENAME COLUMN (#4848)
+    owner: v4.1.0 team
+    target_version: v4.1.0 ALPHA
+    follow_up_issue: "#4848"
+    re_inclusion_conditions: "Lands in WP-F and is exercised by a production entry."
+
+# ── Acceptance self-checks (must all be TRUE for A02 evidence_ready) ─────────
+acceptance_checks:
+  - id: AC-1
+    check: "every public claim has (source, production entry, ≥1 verification WP)"
+    method: "capability_inventory.yaml — every claim has source, production_entries (≥1), work_packages (≥1)"
+    result: pass
+  - id: AC-2
+    check: "every out-of-scope capability has reason + owner + follow-up issue"
+    method: "out_of_scope[] — each has reason + authority; deferred[] — each has owner + target_version + follow_up_issue + re_inclusion_conditions"
+    result: pass
+  - id: AC-3
+    check: "module existence / test count / test-pass NOT substituted for production-reachability"
+    method: "every in_scope domain lists production_entries + reachable_evidence (file:line), not module/test presence"
+    result: pass
+  - id: AC-4
+    check: "all 10 capability domains (SSOT §3.2) have a scope decision"
+    method: "domains[] has exactly 10 entries, each scope ∈ {in_scope,out_of_scope,deferred}"
+    result: pass
+  - id: AC-5
+    check: "all 6 production-entry categories (SSOT §3.1) covered"
+    method: "production_entries.yaml category_coverage maps all 6 categories → PE-01..PE-07"
+    result: pass

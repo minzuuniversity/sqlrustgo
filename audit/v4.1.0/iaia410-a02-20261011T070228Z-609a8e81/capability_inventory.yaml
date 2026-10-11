@@ -1,0 +1,481 @@
+# IAIA-410 / A02 — Capability Inventory + Declaration Sources & Freshness (SSOT §2, §3.2)
+# assessed_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a (A01 frozen baseline)
+#
+# Every PUBLIC claim is listed with: statement, source (file:anchor), source_freshness,
+# production entries that reach it, required modules, observable semantics, and the
+# verification work packages (WP) that must prove it on the frozen run.
+#
+# Freshness model (SSOT §0): v4.1.0 is DRAFT (not ALPHA). v4.0.0 GA was REVOKED
+# 2026-09-30 (v4.1.0 is the continuation). README §1–§8 top-level claims are
+# v3.12.0-GA-based and SELF-FLAGGED stale — they MUST be re-verified on the frozen
+# v4.1.0 run, NOT trusted. STAGE.yaml / RELEASE_NOTES.md / CORE_PATH_INVENTORY.md
+# are v4.1.0-dated (fresh). "stale" does NOT mean false — it means re-verify.
+
+schema_version: iaia410-capability-inventory/v1
+run_id: iaia410-a02-20261011T070228Z-609a8e81
+assessed_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+
+# ── Declaration sources & freshness ─────────────────────────────────────────
+declaration_sources:
+  - id: DS-01
+    file: README.md
+    status: stale
+    basis: >-
+      Top-level claims (§1 SQL subset, §2 features, §3 MySQL compat, §8 ops) are
+      v3.12.0-GA-based; README self-flags v4.0.0-GA revocation. Must re-verify on
+      frozen v4.1.0 run.
+  - id: DS-02
+    file: STAGE.yaml
+    status: fresh
+    basis: current_stage = DRAFT (v4.1.0), not ALPHA; gates all claim boundaries.
+  - id: DS-03
+    file: RELEASE_NOTES.md
+    status: fresh
+    basis: >-
+      v4.1.0-dated. Defines SQL WP-A (partial) / WP-B (partial) / WP-C..G (deferred),
+      11 SQLite-dialect exclusions (§3.1), 24 backlog items, and the pre-ALPHA /
+      pre-BETA claim boundary (§2).
+  - id: DS-04
+    file: CORE_PATH_INVENTORY.md
+    status: fresh
+    basis: >-
+      33-file production-core nav; F-series suspected findings (F3 unreachable planner
+      operators, F7 BufferPool 0 pages, F9 insert_in_db db-dropping trait default with
+      11 impls of which 3 define it).
+  - id: DS-05
+    file: SQL92_COMPLIANCE.md
+    status: weak
+    basis: parse-only 18/18 — a WEAK claim (parsing ≠ execution); not a GA basis.
+  - id: DS-06
+    file: docs/releases/v4.1.0/IAIA_410_SSOT.md
+    status: authoritative
+    basis: governing protocol; scope statuses, run protocol, manifest schema.
+  - id: DS-07
+    file: CLI help (deterministic capture, commands/003–005)
+    status: fresh
+    basis: captured at assessed commit; defines the declared command surface.
+
+# ── Capability domains (SSOT §3.2) ──────────────────────────────────────────
+# Each domain: scope (core in_scope), claims, out_of_scope_items, deferred_items.
+capability_domains:
+
+  - id: CD-01
+    name: SQL semantics
+    min_checks: [parser, binder/name-resolution, execution, column-metadata, error-semantics]
+    scope: in_scope
+    scope_rationale: Core relational capability; claimed and wired to production entries PE-01/03/04/05.
+    claims:
+      - id: CD-01-C1
+        statement: "SQL-92 subset (SELECT, DML, DDL, expressions, operators, functions) executes correctly"
+        source: "README.md §1 (DS-01); RELEASE_NOTES.md SQL WP-A (DS-03)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01, PE-03, PE-04, PE-05]
+        required_modules: [src/engine_select.rs, crates/parser, crates/planner, crates/catalog]
+        observable_semantics: "row results, column names/types, row counts, error messages"
+        work_packages: [A03, A04]
+      - id: CD-01-C2
+        statement: "TPC-H 22-query subset (16 full, 6 partial) produces correct results"
+        source: "README.md §2 (DS-01)"
+        source_freshness: stale
+        production_entries: [PE-01, PE-03]
+        required_modules: [src/engine_select.rs]
+        observable_semantics: "TPC-H query result sets vs reference"
+        work_packages: [A04]
+      - id: CD-01-C3
+        statement: "column metadata (name, type, NULL-ability) is correct in results"
+        source: "RELEASE_NOTES.md SQL WP-A column-type metadata (DS-03); CORE_PATH_INVENTORY.md (DS-04)"
+        source_freshness: fresh
+        production_entries: [PE-01, PE-03, PE-04]
+        required_modules: [src/execution_engine_methods.rs, crates/catalog]
+        observable_semantics: "result column names, SQL types, NULL flags"
+        work_packages: [A04]
+      - id: CD-01-C4
+        statement: "error semantics (SQLState codes, messages) are correct and stable"
+        source: "README.md §1 (DS-01); CORE_PATH_INVENTORY.md (DS-04)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01, PE-03, PE-04]
+        required_modules: [src/execution_engine_methods.rs, crates/types]
+        observable_semantics: "error code + message on bad SQL / constraint / type errors"
+        work_packages: [A03, A04]
+
+  - id: CD-02
+    name: DDL / DML
+    min_checks: [tables, indexes, constraints, duplicate-keys, UPDATE, DELETE]
+    scope: in_scope
+    scope_rationale: Core relational capability; claimed and wired to PE-01/03/04/05.
+    claims:
+      - id: CD-02-C1
+        statement: "CREATE/ALTER/DROP TABLE and INDEX round-trip correctly"
+        source: "README.md §1 (DS-01); RELEASE_NOTES.md (DS-03)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01, PE-03, PE-04, PE-05]
+        required_modules: [src/engine_ddl.rs]
+        observable_semantics: "schema introspection after DDL; index visibility"
+        work_packages: [A03, A04]
+      - id: CD-02-C2
+        statement: "INSERT/UPDATE/DELETE mutate correctly; duplicate-key handled"
+        source: "README.md §1 (DS-01); CORE_PATH_INVENTORY.md (DS-04)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01, PE-03]
+        required_modules: [src/engine_dml.rs, crates/storage]
+        observable_semantics: "row counts after DML; duplicate-key error; row contents"
+        work_packages: [A03, A04]
+      - id: CD-02-C3
+        statement: "constraint enforcement (PK, FK, NOT NULL, UNIQUE)"
+        source: "README.md §1 (DS-01); RELEASE_NOTES.md (DS-03)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01, PE-03]
+        required_modules: [src/engine_dml.rs, crates/catalog]
+        observable_semantics: "constraint-violation errors; valid mutations succeed"
+        work_packages: [A04]
+
+  - id: CD-03
+    name: Optimization & planning
+    min_checks: [declared-rules-production-reachable, plans-observable]
+    scope: in_scope
+    scope_rationale: >-
+      Claimed (planner/optimizer + UnifiedCostModel). F3 (unreachable planner operators)
+      and F7 (BufferPool 0 pages) are SUSPECTED findings to be CONFIRMED in A03/A05,
+      not scope exclusions — the domain is in_scope precisely because reachability is the audit target.
+    claims:
+      - id: CD-03-C1
+        statement: "planner/optimizer produces the declared execution plans"
+        source: "README.md (DS-01); CORE_PATH_INVENTORY.md F3 (DS-04)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01, PE-03]   # via execution engine, not a direct user flag
+        required_modules: [crates/planner/src/planner.rs, crates/planner/src/physical_plan.rs, crates/optimizer]
+        observable_semantics: "plan structure (scan/join/order ops) reachable from a real query"
+        work_packages: [A03]
+      - id: CD-03-C2
+        statement: "UnifiedCostModel cost-based optimization is production-reachable"
+        source: "CORE_PATH_INVENTORY.md (DS-04)"
+        source_freshness: fresh
+        production_entries: [PE-01, PE-03]   # via src/engine_builder.rs (7 construction sites)
+        required_modules: [crates/optimizer/src/unified_cost.rs, src/engine_builder.rs]
+        observable_semantics: "cost model invoked during planning; stats-driven choices"
+        work_packages: [A03, A05]
+        note: >-
+          UnifiedCostModel::default_model(0,0) constructed at src/engine_builder.rs
+          :52,91,130,179,235,296,351 — reachable but with NO measured stats (suspected).
+
+  - id: CD-04
+    name: Index & storage
+    min_checks: [PK, secondary-index, range, BufferPool, FileStorage]
+    scope: in_scope
+    scope_rationale: Core durability capability; claimed and wired to PE-01/05.
+    claims:
+      - id: CD-04-C1
+        statement: "B+ tree PK + secondary indexes + range scans are correct"
+        source: "README.md §1 (DS-01); CORE_PATH_INVENTORY.md (DS-04)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01, PE-05]   # PE-05 --storage binary exercises BinaryStorage
+        required_modules: [crates/storage/src/file_storage.rs, crates/storage/src/binary_storage.rs, crates/storage]
+        observable_semantics: "index lookup/range results; index maintenance after DML"
+        work_packages: [A05]
+      - id: CD-04-C2
+        statement: "Buffer Pool (LRU) page management is correct"
+        source: "README.md §1 (DS-01); CORE_PATH_INVENTORY.md F7 (DS-04)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01]
+        required_modules: [crates/storage]
+        observable_semantics: "page cache hit/miss; page eviction; no corruption"
+        work_packages: [A05]
+        note: F7 = BufferPool observed 0 pages (suspected) — confirm in A05.
+      - id: CD-04-C3
+        statement: "FileStorage durable storage is correct and crash-safe"
+        source: "README.md §1 (DS-01); CORE_PATH_INVENTORY.md (DS-04)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01]
+        required_modules: [crates/storage/src/file_storage.rs]
+        observable_semantics: "durable writes; read-back after restart; no torn pages"
+        work_packages: [A05, A06]
+
+  - id: CD-05
+    name: Transaction & WAL
+    min_checks: [begin, commit, rollback, isolation, failure-propagation, recovery]
+    scope: in_scope
+    scope_rationale: Core durability capability; claimed (V400-05/06/07) and wired to PE-01/03.
+    claims:
+      - id: CD-05-C1
+        statement: "BEGIN/COMMIT/ROLLBACK transactions behave correctly"
+        source: "README.md §1 (DS-01); RELEASE_NOTES.md V400-05/06/07 (DS-03)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01, PE-03]
+        required_modules: [crates/transaction, crates/storage]
+        observable_semantics: "commit durability; rollback restores prior state"
+        work_packages: [A06]
+        note: #4847 explicit-transaction caveat (partial) — confirm in A06.
+      - id: CD-05-C2
+        statement: "MVCC isolation levels behave as claimed"
+        source: "RELEASE_NOTES.md V400-06 (DS-03); CORE_PATH_INVENTORY.md (DS-04)"
+        source_freshness: fresh
+        production_entries: [PE-01, PE-03]
+        required_modules: [crates/storage/src/mvcc_storage.rs, crates/storage/src/mvcc.rs]
+        observable_semantics: "read isolation; write visibility; no phantom/lost update in claimed levels"
+        work_packages: [A06, A10]
+      - id: CD-05-C3
+        statement: "WAL (write-ahead log) durability + failure propagation"
+        source: "RELEASE_NOTES.md V400-05 (DS-03); CORE_PATH_INVENTORY.md (DS-04)"
+        source_freshness: fresh
+        production_entries: [PE-01]
+        required_modules: [crates/storage/src/wal_storage.rs]
+        observable_semantics: "committed txns survive crash; uncommitted do not; failure propagates to client"
+        work_packages: [A06]
+
+  - id: CD-06
+    name: Protocol
+    min_checks: [handshake, database-selection, error-packets, column-types, TLS-parity]
+    scope: in_scope
+    scope_rationale: Core MySQL-wire capability; claimed and wired to PE-01/02/03.
+    claims:
+      - id: CD-06-C1
+        statement: "MySQL wire protocol (handshake, COM_QUERY, COM_STMT_PREPARE/EXECUTE) is correct"
+        source: "README.md §3 (DS-01)"
+        source_freshness: stale
+        production_entries: [PE-01, PE-02, PE-03]
+        required_modules: [crates/mysql-server/src/lib.rs, crates/network]
+        observable_semantics: "handshake success; query round-trip; prepared-stmt prepare/execute; error packets"
+        work_packages: [A04, A10]
+      - id: CD-06-C2
+        statement: "TLS 1.3 handshake + TLS/non-TLS parity"
+        source: "README.md §3 (DS-01); RELEASE_NOTES.md (DS-03)"
+        source_freshness: stale+fresh
+        production_entries: [PE-02]
+        required_modules: [crates/mysql-server/src/lib.rs (rustls TlsStream), crates/network]
+        observable_semantics: "TLS handshake; same query results over TLS as non-TLS"
+        work_packages: [A04, A10]
+      - id: CD-06-C3
+        statement: "database selection (USE), error packets, column type encoding"
+        source: "CORE_PATH_INVENTORY.md (DS-04); RELEASE_NOTES.md (DS-03)"
+        source_freshness: fresh
+        production_entries: [PE-01, PE-03]
+        required_modules: [crates/mysql-server/src/lib.rs]
+        observable_semantics: "USE switches session db; error packet format; column type wire encoding"
+        work_packages: [A04, A10]
+
+  - id: CD-07
+    name: Security & isolation
+    min_checks: [auth, privilege, cross-database, cross-connection, multi-instance, sensitive-logs]
+    scope: in_scope
+    scope_rationale: >-
+      Core isolation capability; claimed (RBAC, audit hash-chain) and wired to PE-01/03/05.
+      This is where the P0 cross-database data-loss (#5192) lives — definitely in_scope.
+    claims:
+      - id: CD-07-C1
+        statement: "authentication + RBAC privilege enforcement (root/admin/user)"
+        source: "README.md §3 (DS-01)"
+        source_freshness: stale
+        production_entries: [PE-01, PE-03]
+        required_modules: [crates/security, crates/mysql-server]
+        observable_semantics: "auth success/denial; privilege-gated operations"
+        work_packages: [A10]
+      - id: CD-07-C2
+        statement: "cross-database data isolation (no cross-db leakage/loss)"
+        source: "CORE_PATH_INVENTORY.md #5192 (cross-db data loss), #5191 session_db (DS-04)"
+        source_freshness: fresh
+        production_entries: [PE-01, PE-03]
+        required_modules: [src/execution_engine.rs, crates/storage (session_db / per-connection db)]
+        observable_semantics: "operation on db A never reads/writes db B; session db is per-connection"
+        work_packages: [A06, A10]
+        note: >-
+          #5192 = cross-database data loss (P0). At assessed commit the db-dropping
+          insert_in_db trait default (#5266 fix is POST-freeze) and shared current_db
+          (#5057 fix is POST-freeze) are still present — confirm in A03/A06.
+      - id: CD-07-C3
+        statement: "multi-connection / multi-instance isolation"
+        source: "README.md §3 (DS-01); CORE_PATH_INVENTORY.md (DS-04)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01]
+        required_modules: [crates/mysql-server, crates/storage]
+        observable_semantics: "concurrent connections do not interleave/leak state"
+        work_packages: [A10]
+      - id: CD-07-C4
+        statement: "audit hash-chain + sensitive-data log hygiene"
+        source: "README.md §3 (DS-01); RELEASE_NOTES.md (DS-03)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01, PE-05]
+        required_modules: [crates/security]
+        observable_semantics: "audit trail integrity; no secrets/passwords in logs"
+        work_packages: [A10]
+
+  - id: CD-08
+    name: Test system
+    min_checks: [ignored-tests, disabled-binaries, mutation, production-entry-coverage]
+    scope: in_scope
+    scope_rationale: >-
+      Meta-domain: audit OF the test system itself (anti-audit). Audited by A07 (mutation
+      REVIEW) and A08 (disabled-binary re-review). In_scope because a disabled/ignored
+      test can mask a production defect.
+    claims:
+      - id: CD-08-C1
+        statement: "no ignored/disabled tests mask production-path defects"
+        source: "README.md governance (DS-01); check_no_disabled_tests.sh"
+        source_freshness: fresh
+        production_entries: [test binaries, sqlrustgo-sqllogictest, sqlancer]
+        required_modules: [test infrastructure, check_no_disabled_tests.sh]
+        observable_semantics: "ignored/disabled test inventory; none gating a production path"
+        work_packages: [A07, A08]
+      - id: CD-08-C2
+        statement: "test suite covers the production entries (PE-01..PE-07)"
+        source: "CORE_PATH_INVENTORY.md (DS-04); RELEASE_NOTES.md (DS-03)"
+        source_freshness: fresh
+        production_entries: [test binaries]
+        required_modules: [test infrastructure]
+        observable_semantics: "each production entry has at least one exercising test"
+        work_packages: [A07]
+
+  - id: CD-09
+    name: Cross-version
+    min_checks: [correctness, compatibility, performance, resources, first-regression-scope]
+    scope: in_scope
+    scope_rationale: >-
+      Cross-version correctness/compat/perf/resources vs the prior GA (v3.12.0). Audited
+      by A09 (depends on A04/A05/A06 corpus). In_scope: v4.1.0 is the v4.0.0 continuation.
+    claims:
+      - id: CD-09-C1
+        statement: "cross-version correctness (v3.11 vs v3.12 TPC-H) holds for v4.1.0"
+        source: "README.md §2 (DS-01)"
+        source_freshness: stale
+        production_entries: [PE-01]
+        required_modules: [cross-version comparison harness]
+        observable_semantics: "identical/correct results vs reference version"
+        work_packages: [A09]
+      - id: CD-09-C2
+        statement: "cross-version performance/resource regression scope is bounded"
+        source: "README.md §2 (DS-01); RELEASE_NOTES.md (DS-03)"
+        source_freshness: stale+fresh
+        production_entries: [PE-01]
+        required_modules: [cross-version comparison harness]
+        observable_semantics: "perf/resource deltas within declared regression scope"
+        work_packages: [A09]
+
+  - id: CD-10
+    name: Operations & persistence
+    min_checks: [data-dir, crash-recovery, backup-restore, format-compatibility, resource-limits]
+    scope: in_scope
+    scope_rationale: Core durability/ops capability; claimed (crash recovery 7+4+4, backup/restore, PITR) and wired to PE-06/07.
+    claims:
+      - id: CD-10-C1
+        statement: "crash recovery (7+4+4 scenarios) restores durable state"
+        source: "README.md §8 (DS-01); RELEASE_NOTES.md V400-07 (DS-03)"
+        source_freshness: stale+fresh
+        production_entries: [PE-06, PE-07]
+        required_modules: [crates/storage/src/recovery_engine.rs, crates/storage/src/wal_storage.rs]
+        observable_semantics: "after crash, committed state intact, uncommitted absent"
+        work_packages: [A06]
+      - id: CD-10-C2
+        statement: "backup/restore round-trip is correct"
+        source: "README.md §8 (DS-01); RELEASE_NOTES.md (DS-03)"
+        source_freshness: stale+fresh
+        production_entries: [PE-05, PE-07]
+        required_modules: [crates/storage/src/backup_coordinator.rs, crates/storage/src/restore_filespace.rs, crates/admin]
+        observable_semantics: "backup→restore yields identical data; restore is idempotent/safe"
+        work_packages: [A06]
+      - id: CD-10-C3
+        statement: "PITR (point-in-time recovery) is correct"
+        source: "RELEASE_NOTES.md (DS-03)"
+        source_freshness: fresh
+        production_entries: [PE-05, PE-07]
+        required_modules: [crates/storage/src/pitr.rs, crates/admin/src/pitr.rs]
+        observable_semantics: "restore to timestamp T yields state as of T"
+        work_packages: [A06]
+      - id: CD-10-C4
+        statement: "storage format compatibility across versions"
+        source: "README.md §8 (DS-01)"
+        source_freshness: stale
+        production_entries: [PE-05, PE-07]
+        required_modules: [crates/storage]
+        observable_semantics: "old-format data readable; no silent data loss on open"
+        work_packages: [A06]
+
+# ── Cross-cutting OUT_OF_SCOPE items (not claimed by v4.1.0; authority cited) ──
+# These capabilities are EXCLUDED from v4.1.0 IAIA scope. Each cites authority.
+out_of_scope:
+  - id: OOS-01
+    name: "General-purpose vector database"
+    reason: "README §0 explicitly forbids claiming a general-purpose vector DB; only internal GMP workloads."
+    authority: "README.md §0; RELEASE_NOTES.md §1"
+  - id: OOS-02
+    name: "General-purpose graph database"
+    reason: "README §0 explicitly forbids claiming a general-purpose graph DB; only internal GMP workloads."
+    authority: "README.md §0"
+  - id: OOS-03
+    name: "General-purpose RAG"
+    reason: "RAG is internal-GMP-only; not a general-purpose product claim."
+    authority: "README.md §0"
+  - id: OOS-04
+    name: "Full MySQL 5.7 replacement"
+    reason: "Only a declared subset is claimed; README §5 forbids the full-replacement claim; stage is DRAFT."
+    authority: "README.md §5; STAGE.yaml"
+  - id: OOS-05
+    name: "SQLite dialect features (11 items: #4719,#4711,#4698,#4694,#4693,#4685,#4677,#4667,#4650,#4646,#4625)"
+    reason: "Explicitly excluded from v4.1.0 (SQLite dialect, not relational core)."
+    authority: "RELEASE_NOTES.md §3.1; CLAIM_DOWNGRADE_MANIFEST.md"
+  - id: OOS-06
+    name: "Production multi-model (general-purpose) claims"
+    reason: "Require GA; v4.1.0 is DRAFT (pre-ALPHA), so production multi-model is not claimable yet."
+    authority: "RELEASE_NOTES.md §2; STAGE.yaml (current_stage=DRAFT)"
+  - id: OOS-07
+    name: "168h multi-model SOAK results"
+    reason: "Require GA; not claimable in DRAFT v4.1.0."
+    authority: "RELEASE_NOTES.md §2"
+
+# ── Cross-cutting DEFERRED items (claimed/planned; verification deferred) ──
+# Each has owner + target version + follow-up issue + re-inclusion condition.
+deferred:
+  - id: DEF-01
+    name: "Internal GMP retrieval (vector/graph/RAG for internal GMP workloads)"
+    owner: "GMP track"
+    target_version: "separate GMP audit track (not v4.1.0 relational IAIA)"
+    follow_up_issue: "TBD — open when GMP track schedules its own IAIA"
+    re_inclusion_conditions: "GMP track has its own frozen run + IAIA; relational IAIA defers until then."
+  - id: DEF-02
+    name: "24 WP backlog items (WP-C..G: #4670,#4711,#4698,#4694,#4693,#4685,#4677,#4667,#4650,#4646,#4625,#4846,#4848,#4637,#4842, …)"
+    owner: "v4.1.0 team"
+    target_version: "v4.1.0 ALPHA"
+    follow_up_issue: "per-WP issues (listed in RELEASE_NOTES.md §3)"
+    re_inclusion_conditions: "Each item re-enters in_scope once it lands in v4.1.0 and is wired to a production entry; verified by its WP (A03–A10) on the then-frozen run."
+  - id: DEF-03
+    name: "CHAR(n) PAD SPACE (#4846)"
+    owner: "v4.1.0 team"
+    target_version: "v4.1.0 ALPHA"
+    follow_up_issue: "#4846"
+    re_inclusion_conditions: "Lands in WP-G and is exercised by a production entry."
+  - id: DEF-04
+    name: "ALTER TABLE RENAME COLUMN (#4848)"
+    owner: "v4.1.0 team"
+    target_version: "v4.1.0 ALPHA"
+    follow_up_issue: "#4848"
+    re_inclusion_conditions: "Lands in WP-F and is exercised by a production entry."
+
+# ── Per-domain out_of_scope / deferred (specific to that domain) ─────────────
+domain_out_of_scope:
+  CD-01:
+    - name: "SQLite dialect expressions (GREATEST/LEAST #4698, SET TIMEZONE #4694, etc.)"
+      reason: "Excluded SQLite dialect."
+      authority: "RELEASE_NOTES.md §3.1"
+  CD-02:
+    - name: "multi-table UPDATE/DELETE USING (#4685)"
+      reason: "Excluded SQLite dialect."
+      authority: "RELEASE_NOTES.md §3.1"
+    - name: "TRUNCATE / LIKE ESCAPE (#4677)"
+      reason: "Excluded SQLite dialect."
+      authority: "RELEASE_NOTES.md §3.1"
+  CD-06:
+    - name: "Full MySQL 5.7 protocol compatibility"
+      reason: "Only declared subset claimed."
+      authority: "README.md §5; STAGE.yaml"
+
+domain_deferred:
+  CD-01:
+    - name: "CEIL/FLOOR/TRUNCATE/HEX/MD5/SHA completion (#4670)"
+      owner: "v4.1.0 team"
+      target_version: "v4.1.0 ALPHA"
+      follow_up_issue: "#4670"
+      re_inclusion_conditions: "Lands in WP-B; exercised by production entry."
+  CD-02:
+    - name: "ON CONFLICT (#4711)"
+      owner: "v4.1.0 team"
+      target_version: "v4.1.0 ALPHA"
+      follow_up_issue: "#4711"
+      re_inclusion_conditions: "Lands in WP-B; exercised by production entry."

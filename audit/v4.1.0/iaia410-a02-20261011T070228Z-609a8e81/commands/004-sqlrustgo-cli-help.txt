@@ -1,0 +1,15 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo cli --help
+Connect to a running server and execute a query (NEW)
+
+Usage: sqlrustgo cli [OPTIONS] <QUERY>
+
+Arguments:
+  <QUERY>  
+
+Options:
+  -p, --port <PORT>          [default: 3307]
+      --host <HOST>          [default: 127.0.0.1]
+  -u, --user <USER>          
+  -w, --password <PASSWORD>  
+  -h, --help                 Print help
+EXIT=0

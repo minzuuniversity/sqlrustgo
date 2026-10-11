@@ -1,0 +1,12 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server restore --help
+Restore database from a backup file
+
+Usage: sqlrustgo-mysql-server restore [OPTIONS] <INPUT>
+
+Arguments:
+  <INPUT>  Input file path to restore from
+
+Options:
+      --log-level <LOG_LEVEL>  [default: info]
+  -h, --help                   Print help
+EXIT=0

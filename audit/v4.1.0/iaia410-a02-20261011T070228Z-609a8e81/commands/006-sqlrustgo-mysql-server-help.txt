@@ -1,0 +1,21 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server --help
+SQLRustGo canonical execution entry point (v3.8.0+)
+
+Usage: sqlrustgo-mysql-server [OPTIONS] [COMMAND]
+
+Commands:
+  serve    Start the MySQL wire-protocol server (default if no subcommand is given)
+  exec     Execute a single SQL statement and print the result, then exit
+  repl     Interactive REPL over stdin. Type SQL statements; end input with a `.exit` command or EOF
+  bench    Benchmark runner (placeholder; see `crates/bench` for the current full implementation; full migration is tracked in the openspec change)
+  gmp      GMP (AI Native) workflow (placeholder)
+  diag     Diagnostics / catalog dump (placeholder)
+  backup   Backup database to a file
+  restore  Restore database from a backup file
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+      --log-level <LOG_LEVEL>  [default: info]
+  -h, --help                   Print help
+  -V, --version                Print version
+EXIT=0

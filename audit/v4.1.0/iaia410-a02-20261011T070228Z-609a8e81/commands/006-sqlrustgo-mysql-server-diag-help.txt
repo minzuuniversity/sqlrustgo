@@ -1,0 +1,9 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server diag --help
+Diagnostics / catalog dump (placeholder)
+
+Usage: sqlrustgo-mysql-server diag [OPTIONS]
+
+Options:
+      --log-level <LOG_LEVEL>  [default: info]
+  -h, --help                   Print help
+EXIT=0

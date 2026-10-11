@@ -1,0 +1,22 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-admin --help
+SQLRustGo admin CLI: backup, restore, verify, PITR, mysqladmin
+
+Usage: sqlrustgo-admin <COMMAND>
+
+Commands:
+  backup        
+  restore       
+  verify        
+  pitr          
+  status        
+  reload        
+  refresh       
+  flush-tables  
+  processlist   
+  kill          
+  help          Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+EXIT=0

@@ -1,0 +1,6 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo bench --help
+Usage: sqlrustgo bench
+
+Options:
+  -h, --help  Print help
+EXIT=0

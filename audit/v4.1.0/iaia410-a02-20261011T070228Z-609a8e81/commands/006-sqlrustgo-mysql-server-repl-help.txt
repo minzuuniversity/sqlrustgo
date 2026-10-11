@@ -1,0 +1,20 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server repl --help
+Interactive REPL over stdin. Type SQL statements; end input with a `.exit` command or EOF.
+
+CLI-01 Stage 3: cross-session persistence via SQL replay. `--init-sql <file>`: SQL file replayed on startup (CREATE TABLE, INSERT statements to bootstrap state). `--save-on-exit <file>`: on `.exit`, dump current catalog as CREATE TABLE + INSERT statements. This avoids needing FileStorage in the REPL hot path (which would require a generic ExecutionEngine<S: StorageEngine>).
+
+Usage: sqlrustgo-mysql-server repl [OPTIONS]
+
+Options:
+      --init-sql <INIT_SQL>
+          SQL file to replay on startup (CREATE TABLE + INSERT)
+
+      --log-level <LOG_LEVEL>
+          [default: info]
+
+      --save-on-exit <SAVE_ON_EXIT>
+          SQL file to dump current state to on exit
+
+  -h, --help
+          Print help (see a summary with '-h')
+EXIT=0

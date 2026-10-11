@@ -1,0 +1,23 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo --help
+SQLRustGo canonical CLI
+
+Usage: sqlrustgo [COMMAND]
+
+Commands:
+  serve    Start the MySQL wire-protocol server
+  exec     Execute a single SQL statement and print the result
+  repl     Interactive REPL (local stdin mode; mysql-server repl does not accept --port)
+  bench    
+  gmp      
+  diag     
+  backup   
+  restore  
+  cli      Connect to a running server and execute a query (NEW)
+  soak     Soak REPL mode: hold a persistent MySQL connection and serve queries read from stdin, writing tab-separated results to stdout. Designed for SOAK testing (PR #3347 alternative to mysql CLI)
+  sqlite   sqlite3-like local DB mode (BustubX-EDU teaching CLI)
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+EXIT=0

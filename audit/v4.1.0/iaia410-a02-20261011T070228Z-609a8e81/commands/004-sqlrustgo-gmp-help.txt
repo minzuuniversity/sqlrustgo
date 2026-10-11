@@ -1,0 +1,6 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo gmp --help
+Usage: sqlrustgo gmp
+
+Options:
+  -h, --help  Print help
+EXIT=0

@@ -1,0 +1,10 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo restore --help
+Usage: sqlrustgo restore <BACKUP_ID> <DATABASE>
+
+Arguments:
+  <BACKUP_ID>  
+  <DATABASE>   
+
+Options:
+  -h, --help  Print help
+EXIT=0

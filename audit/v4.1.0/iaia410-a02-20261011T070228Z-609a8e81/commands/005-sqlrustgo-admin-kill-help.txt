@@ -1,0 +1,11 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-admin kill --help
+Usage: sqlrustgo-admin kill [OPTIONS] --id <ID>
+
+Options:
+      --id <ID>              
+      --host <HOST>          [default: 127.0.0.1]
+      --port <PORT>          [default: 3306]
+      --user <USER>          [default: root]
+      --password <PASSWORD>  [default: ""]
+  -h, --help                 Print help
+EXIT=0
