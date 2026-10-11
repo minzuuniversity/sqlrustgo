@@ -1,0 +1,64 @@
+== env pollution pre ==
+timestamp_utc=2026-10-11T07:11:02Z
+hostname=gaoyuanai-HPZ6G4
+
+== sqlrustgo-related processes ==
+   5224 openclaw  1-08:35:22 aoci            /home/openclaw/.local/bin/aoci --repo /home/openclaw/sqlrustgo mcp
+3735400 openclaw       26:42 aoci            /tmp/aoci_install/aoci ui --repo /home/openclaw/sqlrustgo
+3950809 root           00:24 build-script-bu /workspace/openclaw/sqlrustgo/repo/target/release/build/libsqlite3-sys-97961deb20448401/build-script-build
+3950813 root           00:24 cc              cc -O3 -ffunction-sections -fdata-sections -fPIC -m64 -w -DSQLITE_CORE -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_ENABLE_API_ARMOR -DSQLITE_ENABLE_COLUMN_METADATA -DSQLITE_ENABLE_DBSTAT_VTAB -DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_JSON1 -DSQLITE_ENABLE_LOAD_EXTENSION=1 -DSQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_STAT4 -DSQLITE_SOUNDEX -DSQLITE_THREADSAFE=1 -DSQLITE_USE_URI -DHAVE_USLEEP=1 -DHAVE_ISNAN -D_POSIX_THREAD_SAFE_FUNCTIONS -DHAVE_LOCALTIME_R -o /workspace/openclaw/sqlrustgo/repo/target/release/build/libsqlite3-sys-9cb1097a8ee0cace/out/c877a2978823c39d-sqlite3.o -c sqlite3/sqlite3.c
+3950814 root           00:24 cc1             /usr/libexec/gcc/x86_64-alpine-linux-musl/15.2.0/cc1 -quiet -D SQLITE_CORE -D SQLITE_DEFAULT_FOREIGN_KEYS=1 -D SQLITE_ENABLE_API_ARMOR -D SQLITE_ENABLE_COLUMN_METADATA -D SQLITE_ENABLE_DBSTAT_VTAB -D SQLITE_ENABLE_FTS3 -D SQLITE_ENABLE_FTS3_PARENTHESIS -D SQLITE_ENABLE_FTS5 -D SQLITE_ENABLE_JSON1 -D SQLITE_ENABLE_LOAD_EXTENSION=1 -D SQLITE_ENABLE_MEMORY_MANAGEMENT -D SQLITE_ENABLE_RTREE -D SQLITE_ENABLE_STAT4 -D SQLITE_SOUNDEX -D SQLITE_THREADSAFE=1 -D SQLITE_USE_URI -D HAVE_USLEEP=1 -D HAVE_ISNAN -D _POSIX_THREAD_SAFE_FUNCTIONS -D HAVE_LOCALTIME_R sqlite3/sqlite3.c -quiet -dumpdir /workspace/openclaw/sqlrustgo/repo/target/release/build/libsqlite3-sys-9cb1097a8ee0cace/out/ -dumpbase c877a2978823c39d-sqlite3.c -dumpbase-ext .c -m64 -mtune=generic -march=x86-64 -O3 -w -ffunction-sections -fdata-sections -fPIC -o /tmp/ccPkbeIK.s
+
+== listening TCP ports ==
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
+LISTEN 0      4096   127.0.0.53%lo:53         0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:38217      0.0.0.0:*          
+LISTEN 0      512        127.0.0.1:34497      0.0.0.0:*          
+LISTEN 0      70         127.0.0.1:33060      0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:36681      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:222        0.0.0.0:*          
+LISTEN 0      100          0.0.0.0:25         0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:22         0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:3000       0.0.0.0:*          
+LISTEN 0      511          0.0.0.0:8002       0.0.0.0:*          
+LISTEN 0      512          0.0.0.0:8001       0.0.0.0:*          
+LISTEN 0      511        127.0.0.1:18789      0.0.0.0:*          
+LISTEN 0      4096      127.0.0.54:53         0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:11434      0.0.0.0:*          
+LISTEN 0      200        127.0.0.1:5432       0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:631        0.0.0.0:*          
+LISTEN 0      151        127.0.0.1:3306       0.0.0.0:*          
+LISTEN 0      4096           [::1]:631           [::]:*          
+LISTEN 0      4096               *:52345            *:*          
+LISTEN 0      511            [::1]:18789         [::]:*          
+LISTEN 0      4096            [::]:222           [::]:*          
+LISTEN 0      100             [::]:25            [::]:*          
+LISTEN 0      4096            [::]:22            [::]:*          
+LISTEN 0      4096               *:2017             *:*          
+LISTEN 0      4096            [::]:3000          [::]:*          
+LISTEN 0      4096               *:4648             *:*          
+LISTEN 0      4096               *:4646             *:*          
+LISTEN 0      4096               *:4647             *:*          
+LISTEN 0      511             [::]:8002          [::]:*          
+LISTEN 0      4096               *:20170            *:*          
+LISTEN 0      4096               *:20171            *:*          
+LISTEN 0      4096               *:20172            *:*          
+
+== data dirs ==
+/tmp/iaia_5223_comment_draft.md (file, mtime=openclaw)
+/tmp/iaia-a01-refreeze (dir, files=6272, mtime=openclaw)
+/tmp/iaia-a02-baseline (dir, files=6195, mtime=openclaw)
+/tmp/iaia-a02-baseline-target (dir, files=3496, mtime=openclaw)
+/tmp/iaia_issues (dir, files=27, mtime=openclaw)
+
+== behavior-relevant env var names (names only, no values) ==
+CARGO_TERM_PROGRESS_WHEN
+
+== cpu/memory pressure ==
+loadavg=8.44 11.65 15.95 2/2678 3954280
+nproc=80
+               total        used        free      shared  buff/cache   available
+Mem:          414464       22458      352902         361       42806      392005
+
+== reference DB dataset hash ==
+none (A01 baseline run has no reference dataset)
