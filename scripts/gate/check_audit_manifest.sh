@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# A01 gate: every committed audit run must pass evidence_hash verify (Issue #5223).
+# A01 gate: every committed audit run must pass verify (Issue #5223).
+#
+# Scans both run layouts:
+#   legacy      audit/v4.1.0/runs/<run_id>/manifest.yaml   (schema_version 1)
+#   iaia410/v1  audit/v4.1.0/<run_id>/manifest.yaml        (SSOT section 5)
+# `runs/` itself holds no manifest.yaml, so the two globs cannot double-count.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-RUNS_DIR="${REPO_ROOT}/audit/v4.1.0/runs"
-TOOL="${REPO_ROOT}/audit/v4.1.0/audit_run.py"
-
-if [[ ! -d "${RUNS_DIR}" ]]; then
-    echo "PASS: no audit runs committed yet (audit/v4.1.0/runs absent)"
-    exit 0
-fi
+AUDIT_DIR="${REPO_ROOT}/audit/v4.1.0"
+RUNS_DIR="${AUDIT_DIR}/runs"
+TOOL="${AUDIT_DIR}/audit_run.py"
 
 shopt -s nullglob
-manifests=("${RUNS_DIR}"/*/manifest.yaml)
+manifests=("${RUNS_DIR}"/*/manifest.yaml "${AUDIT_DIR}"/*/manifest.yaml)
 if [[ ${#manifests[@]} -eq 0 ]]; then
-    echo "PASS: runs/ exists but contains no manifest.yaml"
+    echo "PASS: no audit runs committed yet"
     exit 0
 fi
 

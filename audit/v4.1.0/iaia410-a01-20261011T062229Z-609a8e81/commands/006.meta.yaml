@@ -1,0 +1,12 @@
+schema_version: iaia410-command-meta/v1
+command_id: '006'
+name: full-test-suite
+argv:
+- bash
+- audit/v4.1.0/run_full_test_suite.sh
+- iaia410-a01-20261011T062229Z-609a8e81
+cwd: .
+timeout_sec: 10800
+started_at: '2026-10-11T06:23:33Z'
+finished_at: '2026-10-11T06:25:35Z'
+exit_code: 101
