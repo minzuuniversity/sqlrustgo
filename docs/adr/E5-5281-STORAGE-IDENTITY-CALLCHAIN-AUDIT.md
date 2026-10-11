@@ -237,3 +237,118 @@ pub struct WalEntry {
 
 P0-a 的实际起点不是「让 `MvccStorage` 用对 Key」，而是
 **从 `StorageEngine` trait 开始建立身份通道**，并在 `FileStorage` 的行存储中落地。
+
+---
+
+# E5-R Addendum：WAL Record Identity and Recovery Contract
+
+补充审计。**未执行任何恢复测试**，下述结论均来自源码阅读，
+凡未经执行验证者已标注。
+
+## 1. 源码证据
+
+### 1.1 `record_key` 的完整编码规则
+
+`crates/storage/src/wal_record_codec.rs:74`：
+
+```rust
+pub fn record_key(record: &[Value]) -> Vec<u8> {
+    if record.is_empty() { return Vec::new(); }
+    match &record[0] {                                  // 首列
+        Value::Integer(i) => i.to_le_bytes().to_vec(),  // 8 字节
+        Value::Text(s)    => s.as_bytes().to_vec(),     // 原始字节，无长度前缀
+        Value::Boolean(b) => vec![*b as u8],             // 1 字节
+        Value::Null       => Vec::new(),                // 空
+        Value::Float(f)   => f.to_bits().to_le_bytes().to_vec(),
+        Value::Blob(b)    => b.clone(),
+    }
+}
+```
+
+**无类型标签、无长度前缀、无表作用域、无不可复用保证。**
+
+### 1.2 写入上下文
+
+`crates/storage/src/wal_storage.rs:819`：
+
+```rust
+let rows_to_update: Vec<(Vec<u8>, Vec<Value>)> = if filters.is_empty() {
+    storage.scan_in_db(db, table)?.map(|r| (Self::record_key(r), r.clone()))
+} else {
+    storage.scan_in_db(db, table)?.map(|r| (Self::record_key(&r), r))
+};
+```
+
+`:851` 写入：`self.log_update(table_id, Some(table), Some(&db_name), key, new_data)?`
+
+## 2. 传播路径（逐节点）
+
+| 节点 | 位置 | 是否使用 Key 定位 |
+|---|---|---|
+| Key 生成 | `wal_record_codec.rs:74` | **内容寻址** —— `record[0]` |
+| 写入 WalEntry | `wal_storage.rs:851` | 携带 key |
+| 取回日志 | `wal_storage.rs:515` `recover()` | 不定位 |
+| 事务分组 | `transaction/recovery.rs:192` | **不定位** —— 只按 `tx_id` 分组、判定 committed/aborted |
+| PITR 重放 | `storage/pitr.rs:88` | 转交，不定位 |
+| **应用条目** | **`storage/recovery_engine.rs:705` `apply_wal_entry`** | **定位** |
+| Update 应用 | `:795-800` | `replace_by_key_in_db(storage, db, table, key, new_record)` |
+| 定位实现 | `:339` | `key_to_filter_values(key)` → `storage.insert_in_db(...)` |
+
+**结论：重放确实以 `key` 定位行，且该 key 是首列内容的字节编码。**
+
+## 3. 冲突分析
+
+| 场景 | 后果 | 证据状态 |
+|---|---|---|
+| 首列重复的三行 | key 相同 → UPDATE 重放命中同一行，另两行**得不到更新** | 源码可证；**未执行验证** |
+| 首列为 NULL | `Vec::new()` → 所有 NULL 首列行 key 相同且为空 | 源码可证 |
+| 跨类型编码 | `Integer(1)` = 8 字节；`Text` = 原始字节，无长度前缀 → 可能碰撞 | 源码可证；**未构造碰撞样本** |
+| 复合主键 | key 只含首列 | 源码可证 |
+| 主键非首列 | key 含的是非主键列的值 | 源码可证 |
+| 表作用域 | `WalEntry` 另有 `table_id` 与 `table` 字段，但**未参与 key 构造** | 源码可证 |
+
+**表级命名空间不能解决同一表内重复首列的问题** —— 作用域已在 entry 上，
+缺的是行级区分。
+
+## 4. 正确性约束（当前违反）
+
+| 约束 | 状态 |
+|---|---|
+| INSERT 创建身份 | **未实现** —— 无身份 |
+| UPDATE/DELETE 引用同一身份 | **未实现** —— 按内容寻址 |
+| WAL 重放不得重新推断身份 | **违反** —— `key_to_filter_values` 把字节还原成值再匹配 |
+
+## 5. 兼容方案要求
+
+新增身份后，WAL 需版本化：
+
+- 旧记录（无身份字段）读取时，**不得**用 `record[0]` 推断身份，
+  应标记为「需重建」并按物理行顺序分配
+- 升级中断：恢复必须能从两种格式并存状态启动
+- 恢复失败：需明确报告而非静默跳过
+
+**以上为设计要求，尚未实现，也未经 Reviewer 评审。**
+
+## 6. 证据状态汇总
+
+| 结论 | 证据 |
+|---|---|
+| `record_key` 是首列内容编码 | **源码已证** |
+| UPDATE 重放按该 key 定位 | **源码已证**（`recovery_engine.rs:795-800`） |
+| 重复首列会导致重放更新错行 | **源码可推，未执行验证** |
+| 跨类型 key 碰撞的具体实例 | **未验证** |
+| 崩溃恢复后身份是否漂移 | **未验证** |
+
+## 7. 对 ADR 分期的影响
+
+「WAL 携带稳定 LogicalRowId」必须从 ADR 方案 B 的后续阶段
+**前移到 P0-a 的必要范围**。
+
+但 P0-a **不必重写整个 WAL 引擎** —— Reviewer 需在三者中裁决：
+
+1. 在 `WalEntry` 增加独立身份字段
+2. 扩展现有 `key` 编码，加入类型标签与作用域
+3. 引入版本化的 WAL 操作类型
+
+无论何种，D10（WAL 身份持久化）与 D11（Recovery 恢复身份）
+均需在 P0-a 阶段一并完成架构审核。
