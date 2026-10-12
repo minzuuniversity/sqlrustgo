@@ -3530,9 +3530,12 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn next_sequence_value(&mut self, name: &str) -> SqlResult<i64> {
+        // #5262: sequences are stored under scoped keys (`default\x01name`),
+        // but callers pass bare names. Use `self.tbl(name)` to resolve.
+        let key = self.tbl(name);
         let seq = self
             .sequences
-            .get_mut(name)
+            .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Sequence '{}' not found", name)))?;
         let next = seq.current_value + seq.increment_by;
         if next > seq.maxvalue {
@@ -3562,9 +3565,12 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn current_sequence_value(&self, name: &str) -> SqlResult<i64> {
+        // #5262: sequences are stored under scoped keys (`default\x01name`),
+        // but callers pass bare names. Use `self.tbl(name)` to resolve.
+        let key = self.tbl(name);
         let seq = self
             .sequences
-            .get(name)
+            .get(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Sequence '{}' not found", name)))?;
         Ok(seq.current_value)
     }
@@ -3574,7 +3580,16 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn list_sequences(&self) -> Vec<String> {
-        self.sequences.keys().cloned().collect()
+        // #5262: sequences are stored under scoped keys (`default\x01name`),
+        // but callers expect bare names. Strip the `db\x01` prefix.
+        self.sequences
+            .keys()
+            .map(|k| {
+                k.split_once(DB_SEP)
+                    .map(|(_, t)| t.to_string())
+                    .unwrap_or_else(|| k.clone())
+            })
+            .collect()
     }
 
     fn get_sequence(&self, name: &str) -> Option<SequenceInfo> {

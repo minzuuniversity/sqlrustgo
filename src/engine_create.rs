@@ -496,7 +496,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     s.parse::<i64>().ok()
                 }
             })
-            .unwrap_or(1);
+            // #5262: SQL standard — when MINVALUE is omitted, derive it
+            // from the increment direction. Positive increment → i64::MIN
+            // (no lower bound). Negative increment → start_with (the
+            // sequence counts down, so start_with is the effective floor).
+            .unwrap_or(if increment_by >= 0 {
+                i64::MIN
+            } else {
+                start_with
+            });
         let maxvalue = seq_stmt
             .maxvalue
             .as_ref()

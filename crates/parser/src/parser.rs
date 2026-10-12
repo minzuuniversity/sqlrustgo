@@ -9924,7 +9924,12 @@ impl Parser {
             // affects SELECT-expression parsing.
             // V312-79 / Issue #4670: TRUNCATE(expr, digits) — same pattern.
             | Some(Token::Truncate)
-            | Some(Token::User) => {
+            | Some(Token::User)
+            // #5262: REPEAT(str, count) — lexer emits Token::Repeat, but
+            // parse_primary_expression only handled Token::Identifier and
+            // a curated keyword list. Add Repeat so `SELECT REPEAT(s, 3)`
+            // parses as FunctionCall instead of ParseError.
+            | Some(Token::Repeat) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
                     Some(Token::Right) => "RIGHT",
@@ -9943,6 +9948,7 @@ impl Parser {
                     Some(Token::Database) => "DATABASE",
                     Some(Token::Truncate) => "TRUNCATE",
                     Some(Token::User) => "USER",
+                    Some(Token::Repeat) => "REPEAT",
                     _ => unreachable!(),
                 };
                 self.next();
