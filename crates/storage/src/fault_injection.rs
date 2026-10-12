@@ -44,17 +44,43 @@ pub enum FaultPoint {
     /// it is the durability boundary. Tests must express which one they
     /// mean.
     AfterCommitFsync,
+
+    /// Immediately after a WAL entry has been appended to the log file,
+    /// *before* any `flush`/`fsync`.
+    ///
+    /// This is the **append** boundary, not a durability boundary. A crash
+    /// here may lose the entry (it was only `write(2)`'d into the kernel
+    /// page cache). Tests use it to check the recovery path copes with a
+    /// torn or missing trailing entry, and that earlier `fsync`ed entries
+    /// still replay.
+    AfterWALAppend,
+
+    /// Immediately after the on-disk secondary index has been updated to
+    /// point at a just-written page, but *before* that page's data has
+    /// been flushed.
+    ///
+    /// This is the window where an index entry can reference a page whose
+    /// contents never reached disk. Recovery must either re-derive the
+    /// index from the page store or refuse to serve reads that would hit
+    /// the dangling entry (fail closed), never silently return wrong rows.
+    AfterIndexUpdate,
 }
 
 impl FaultPoint {
     pub fn as_str(self) -> &'static str {
         match self {
             FaultPoint::AfterCommitFsync => "after_commit_fsync",
+            FaultPoint::AfterWALAppend => "after_wal_append",
+            FaultPoint::AfterIndexUpdate => "after_index_update",
         }
     }
 
     pub fn all() -> &'static [FaultPoint] {
-        &[FaultPoint::AfterCommitFsync]
+        &[
+            FaultPoint::AfterCommitFsync,
+            FaultPoint::AfterWALAppend,
+            FaultPoint::AfterIndexUpdate,
+        ]
     }
 
     pub fn parse(s: &str) -> Option<Self> {
