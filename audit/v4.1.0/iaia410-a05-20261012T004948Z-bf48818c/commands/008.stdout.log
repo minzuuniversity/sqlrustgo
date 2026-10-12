@@ -1,0 +1,26 @@
+warning: unused import: `Path`
+  --> crates/storage/src/fault_injection.rs:30:17
+   |
+30 | use std::path::{Path, PathBuf};
+   |                 ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-storage` (lib) generated 1 warning (run `cargo fix --lib -p sqlrustgo-storage` to apply 1 suggestion)
+   Compiling sqlrustgo-storage v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.79s
+     Running tests/assembly_forwarding_5199.rs (target/debug/deps/assembly_forwarding_5199-e59eff733a4409a8)
+
+running 9 tests
+test wal_chain_scan_with_index_in_db_forwards_db ... ok
+test parallel_chain_scan_with_index_in_db_forwards_db ... ok
+test parallel_chain_scan_in_db_forwards_db ... ok
+test wal_chain_scan_in_db_forwards_db ... ok
+test wal_chain_pk_index_is_populated ... ok
+test parallel_chain_scan_pk_is_flat_in_table_size ... ok
+test parallel_chain_scan_pk_range_is_flat_in_table_size ... ok
+test wal_chain_scan_pk_range_is_flat_in_table_size ... ok
+test wal_chain_scan_pk_is_flat_in_table_size ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.02s
+

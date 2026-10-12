@@ -1,0 +1,71 @@
+   Compiling scopeguard v1.2.0
+   Compiling crc32fast v1.5.2
+   Compiling tracing-core v0.1.36
+   Compiling regex-automata v0.4.18
+   Compiling itertools v0.13.0
+   Compiling anstream v1.0.0
+   Compiling clap_builder v4.6.7
+   Compiling page_size v0.6.0
+   Compiling lock_api v0.4.14
+   Compiling alloca v0.4.0
+   Compiling encoding_rs v0.8.41
+   Compiling sqlrustgo-wal-verification v0.1.0 (/home/openclaw/dev/sqlrustgo/crates/wal-verification)
+   Compiling flate2 v1.1.10
+   Compiling parking_lot v0.12.5
+   Compiling tracing v0.1.44
+   Compiling tokio v1.53.1
+   Compiling sqlrustgo-common v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/common)
+   Compiling sqlrustgo-spill v0.1.0 (/home/openclaw/dev/sqlrustgo/crates/spill)
+   Compiling sqlrustgo-parser v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/parser)
+   Compiling sqlrustgo-catalog v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/catalog)
+   Compiling criterion-plot v0.8.2
+   Compiling clap v4.6.7
+   Compiling regex v1.13.1
+   Compiling information-schema v0.1.0 (/home/openclaw/dev/sqlrustgo/crates/information-schema)
+   Compiling actix-router v0.5.4
+   Compiling env_filter v2.0.0
+   Compiling criterion v0.8.2
+   Compiling env_logger v0.11.11
+   Compiling sqlrustgo-storage v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/storage)
+   Compiling sqlrustgo-cache v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/cache)
+warning: unused import: `Path`
+  --> crates/storage/src/fault_injection.rs:30:17
+   |
+30 | use std::path::{Path, PathBuf};
+   |                 ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling tokio-util v0.7.19
+   Compiling tokio-native-tls v0.3.1
+   Compiling tower v0.5.3
+   Compiling actix-rt v2.15.0
+   Compiling actix-server v2.9.5
+   Compiling tower-http v0.6.11
+   Compiling h2 v0.4.19
+   Compiling actix-codec v0.5.4
+   Compiling h2 v0.3.27
+   Compiling sqlrustgo-optimizer v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/optimizer)
+   Compiling sqlrustgo-security v0.1.0 (/home/openclaw/dev/sqlrustgo/crates/security)
+   Compiling sqlrustgo-transaction v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/transaction)
+   Compiling sqlrustgo-planner v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/planner)
+warning: `sqlrustgo-storage` (lib) generated 1 warning (run `cargo fix --lib -p sqlrustgo-storage` to apply 1 suggestion)
+   Compiling actix-http v3.13.6
+   Compiling hyper v1.11.1
+   Compiling hyper-util v0.1.20
+   Compiling actix-web v4.15.0
+   Compiling hyper-tls v0.6.0
+   Compiling reqwest v0.12.28
+   Compiling sqlrustgo-executor v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/executor)
+   Compiling sqlrustgo-server v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/server)
+   Compiling sqlrustgo v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 20.76s
+     Running tests/index_covers_insert_buffer_5209.rs (target/debug/deps/index_covers_insert_buffer_5209-9b23054c52779cca)
+
+running 3 tests
+test index_built_after_flush_works ... ok
+test index_built_before_flush_still_finds_buffered_rows ... ok
+test index_covers_every_buffered_row ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

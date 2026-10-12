@@ -1,0 +1,14 @@
+=== Static evidence: explain_select_plan (src/execution_engine.rs:728-808) ===
+timestamp: 2026-10-12T01:05:48Z
+
+Operator lines emitted (NO cost / estimated rows / page-visit counter):
+  - IndexScan <table> / SeqScan <table>
+  - Filter <expr>
+  - GroupBy <keys> / Sort (TEMP B-TREE FOR GROUP BY)
+  - Sort <keys> / Sort (TEMP B-TREE FOR ORDER BY)
+  - Limit <n> [Offset <n>]
+  - Distinct
+  - Projection <cols> cols
+
+AHI page_id (engine_select.rs:3726-3736) = hash(table name), synthetic (not a real page-visit counter).
+=> Spec 「计划/页访问量」 (plan cost/rows/pages) NOT satisfied.

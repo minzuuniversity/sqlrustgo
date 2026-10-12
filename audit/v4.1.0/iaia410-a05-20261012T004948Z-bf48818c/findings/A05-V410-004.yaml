@@ -1,0 +1,52 @@
+schema_version: iaia410-finding/v1
+id: A05-V410-004
+run_id: iaia410-a05-20261012T004948Z-bf48818c
+work_package: A05
+module: storage/index
+category: F-positive-pk-index-real-and-used
+severity: info
+status: confirmed
+
+source_agent: omp/A11
+source_run: omp-a05-20261012-00
+timestamp: '2026-10-12T00:49:48Z'
+evidence_hash: 29473ee97b5212ed0ada27093df4fb226f1c41b3a25b111604d8640dbd3aafe9
+conflict_resolution: none
+
+claim:
+  text: 'The primary-key index is real and actually used by the execution path (SELECT/INSERT/DELETE on PK).'
+  source_type: test-contract
+  source_ref: 'tests/integration/dml/equality_index_routing_5209.rs (and #5209 regression net)'
+  freshness: v4.1.0
+
+production_entry: 'crates/mysql-server/src/lib.rs:4477-4713 (PK index write maintenance) -> scan via PK index'
+assessed_commit: bf48818cd41369ea9728017b0afeed96d223386f
+source_locations:
+  - 'crates/mysql-server/src/lib.rs:4477-4515 (insert_direct: PK index maintained)'
+  - 'crates/mysql-server/src/lib.rs:4596-4640 (insert_buffered: PK index maintained)'
+  - 'crates/mysql-server/src/lib.rs:4642-4675 (flush_buffer: PK index maintained)'
+  - 'crates/mysql-server/src/lib.rs:4683-4713 (update_pk_index)'
+  - 'crates/storage/src/bplus_tree/mod.rs:33-35 (BPlusTree = BTreeMap<i64,Vec<u32>>)'
+
+expected: 'PK index is maintained on DML and used for point lookups; #5209 regression tests pass.'
+actual: 'All 7 index/storage tests pass (5+6+1+3+5+4+9 = 33 passed, 0 failed), including equality_index_routing_5209 (5 passed), eq_index_routing_decision_5209 (6 passed), eq_index_acceptance_latency_5209 (1 passed, 125.51s), index_covers_insert_buffer_5209 (3 passed). PK index is REAL and USED.'
+evidence:
+  static:
+    - 'crates/mysql-server/src/lib.rs:4477-4713 (PK index write maintenance on DML)'
+  dynamic:
+    - 'commands/002.stdout.log (equality_index_routing_5209: 5 passed)'
+    - 'commands/003.stdout.log (eq_index_routing_decision_5209: 6 passed)'
+    - 'commands/004.stdout.log (eq_index_acceptance_latency_5209: 1 passed, 125.51s)'
+    - 'commands/005.stdout.log (index_covers_insert_buffer_5209: 3 passed)'
+  differential: []
+  reproduction_command_ids: [002, 003, 004, 005]
+  counterexample_attempts: []
+
+linked_issue: 5227
+linked_prs: []
+review:
+  reviewer: null
+  source_run: null
+  timestamp: null
+  evidence_hash: null
+  verdict: null
