@@ -1521,7 +1521,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     let ct = ct_arc.read();
                     ct.lookup_pk(&pk_value).cloned()
                 } else {
-                    storage.scan_pk(lookup_table, &pk_column, &pk_value)?
+                    // #5268: route the PK point lookup by the connection's
+                    // database. `scan_pk` resolves through `tbl()` →
+                    // `scoped_key(DEFAULT_DATABASE, name)`, which silently
+                    // yields 0 rows for a table in a non-default database.
+                    // `scan_pk_in_db` is the db-aware counterpart.
+                    storage.scan_pk_in_db(&base_db, lookup_table, &pk_column, &pk_value)?
                 };
                 self.instrumentation.on_seq_scan_start(lookup_table);
                 // Phase B Step 4.2: also record the AHI access so the
