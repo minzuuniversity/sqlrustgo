@@ -1,0 +1,51 @@
+schema_version: iaia410-finding/v1
+id: A05-V410-002
+run_id: iaia410-a05-20261012T004948Z-bf48818c
+work_package: A05
+module: storage/buffer-pool
+category: F-buffer-pool-not-in-prod-path
+severity: P2
+status: confirmed
+
+source_agent: omp/A11
+source_run: omp-a05-20261012-00
+timestamp: '2026-10-12T00:49:48Z'
+evidence_hash: 6e1f266109f90f313c033ad839c336a89a70727121adfe75bfd350adeaacd34e
+conflict_resolution: none
+
+claim:
+  text: '「Buffer Pool」is an advertised storage capability (page-cached disk-backed buffer pool in the production path).'
+  source_type: user-doc
+  source_ref: 'crates/storage/src/buffer_pool.rs (BufferPool, LRU), page.rs, heap.rs; bplus_tree/index.rs (disk B+Tree)'
+  freshness: v4.1.0
+
+production_entry: 'crates/mysql-server/src/main.rs:234-236 (--storage file default) -> FileStorage (crates/mysql-server/src/file_storage.rs:25-77)'
+assessed_commit: bf48818cd41369ea9728017b0afeed96d223386f
+source_locations:
+  - 'src/lib.rs:47-49 (pub use sqlrustgo_storage::{BPlusTree, BufferPool, FileStorage, MemoryStorage, Page, StorageEngine} — RE-EXPORT only)'
+  - 'crates/storage/src/buffer_pool.rs (BufferPool LRU — zero instantiations in src/, crates/mysql-server, crates/server)'
+  - 'crates/storage/src/page.rs (Page — zero instantiations in prod path)'
+  - 'crates/storage/src/heap.rs (Heap — dead)'
+  - 'crates/storage/src/bplus_tree/index.rs (disk B+Tree — dead; prod BPlusTree is crates/storage/src/bplus_tree/mod.rs:33-35 BTreeMap<i64,Vec<u32>>)'
+  - 'crates/mysql-server/src/file_storage.rs:25-77 (FileStorage = in-mem HashMap + insert_buffer, NOT paged)'
+
+expected: 'The production storage path uses a page-cached BufferPool over a disk B+Tree (the advertised capability).'
+actual: 'BufferPool / page.rs / heap.rs / disk B+Tree (bplus_tree/index.rs) are NOT in the prod path: zero instantiations across src/, crates/mysql-server/src, crates/server/src. The only reference is the re-export at src/lib.rs:48. Prod FileStorage is an in-mem HashMap + JSON insert_buffer (not paged). The advertised Buffer Pool capability is dead code.'
+evidence:
+  static:
+    - 'grep BufferPool over src;crates/mysql-server/src;crates/server/src -> only src/lib.rs:48 (re-export), no instantiation'
+    - 'crates/mysql-server/src/file_storage.rs:25-77 (FileStorage in-mem HashMap + insert_buffer, not paged)'
+  dynamic:
+    - 'commands/001.stdout.log (cargo build --all-features: prod path compiles without BufferPool instantiation)'
+  differential: []
+  reproduction_command_ids: [001]
+  counterexample_attempts: []
+
+linked_issue: 5304
+linked_prs: []
+review:
+  reviewer: null
+  source_run: null
+  timestamp: null
+  evidence_hash: null
+  verdict: null
