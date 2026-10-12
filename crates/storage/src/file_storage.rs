@@ -1431,6 +1431,9 @@ impl FileStorage {
         writer.write_all(json.as_bytes())?;
         writer.flush()?;
 
+        #[cfg(feature = "fault-injection")]
+        crate::fault_injection::reach(crate::fault_injection::FaultPoint::AfterIndexUpdate);
+
         Ok(())
     }
 

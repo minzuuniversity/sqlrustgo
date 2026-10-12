@@ -431,6 +431,10 @@ impl WalWriter {
         }
 
         self.lsn += 1;
+
+        #[cfg(feature = "fault-injection")]
+        crate::fault_injection::reach(crate::fault_injection::FaultPoint::AfterWALAppend);
+
         Ok(lsn)
     }
 
