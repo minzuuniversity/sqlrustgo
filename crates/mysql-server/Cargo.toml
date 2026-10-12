@@ -59,6 +59,9 @@ sqlrustgo-graph = { path = "../graph" }
 
 [features]
 jemalloc-prof = ["dep:tikv-jemallocator", "dep:tikv-jemalloc-sys", "dep:tikv-jemalloc-ctl", "dep:libc"]
+# A06/#5228: 透传 fault-injection，让 kill -9 崩溃恢复矩阵的 server 子进程
+# 能命中 WAL append / index update / commit fsync 故障点。非默认，仅测试构建启用。
+fault-injection = ["sqlrustgo-storage/fault-injection"]
 
 [lib]
 name = "sqlrustgo_mysql_server"
