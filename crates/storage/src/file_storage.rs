@@ -5057,21 +5057,32 @@ impl FileStorage {
                     }
                 }
 
-                // Collect PKs of rows that match the filter (before deletion).
+                // `pks` must list exactly the rows being removed: callers
+                // (e.g. mvcc_storage::delete) tombstone by this list and
+                // return `pks.len()` as the affected-row count. A row's PK is
+                // its first column (#5057); NULL/absent falls back to the
+                // ordinal position so the length stays exact.
                 let pks: Vec<Value> = if filters.is_empty() {
-                    // Full table wipe: caller (MVCC) handles by tombstoning
-                    // all visible rows. Return empty to signal that.
-                    Vec::new()
+                    data.rows
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, row)| {
+                            row.first().cloned().unwrap_or(Value::Integer(idx as i64))
+                        })
+                        .collect()
                 } else {
                     data.rows
                         .iter()
-                        .filter(|row| {
+                        .enumerate()
+                        .filter(|(_, row)| {
                             filters
                                 .iter()
                                 .enumerate()
                                 .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
                         })
-                        .filter_map(|row| row.first().cloned()) // PK = column 0
+                        .map(|(idx, row)| {
+                            row.first().cloned().unwrap_or(Value::Integer(idx as i64))
+                        })
                         .collect()
                 };
 
