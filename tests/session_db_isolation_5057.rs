@@ -282,3 +282,42 @@ fn last_use_wins_on_the_mirror_but_not_on_the_connection() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// #5268: the PK point-lookup fast path must resolve tables against the
+/// connection's database, not the DEFAULT_DATABASE scoped key.
+///
+/// `scan_pk` resolves through `tbl()` → `scoped_key(DEFAULT_DATABASE, name)`,
+/// which silently yields 0 rows for a table in a non-default database.
+/// `scan_pk_in_db` is the db-aware counterpart.
+#[test]
+fn pk_point_lookup_resolves_against_session_database() {
+    let (mut a, _b, _storage, dir) = two_connections();
+    a.execute("CREATE DATABASE d1").unwrap();
+    a.execute("USE d1").unwrap();
+    a.execute("CREATE TABLE nt (id INT PRIMARY KEY, v INT)")
+        .unwrap();
+    a.execute("INSERT INTO nt VALUES (1, 10)").unwrap();
+    a.execute("INSERT INTO nt VALUES (2, 20)").unwrap();
+
+    let rows = a
+        .execute("SELECT * FROM nt WHERE id = 1")
+        .expect("pk point lookup must succeed")
+        .rows;
+    assert_eq!(rows.len(), 1, "pk point lookup must return 1 row");
+    assert_eq!(rows[0][0], sqlrustgo_types::Value::Integer(1));
+    assert_eq!(rows[0][1], sqlrustgo_types::Value::Integer(10));
+
+    let range_rows = a
+        .execute("SELECT * FROM nt WHERE id > 0")
+        .expect("range query must succeed")
+        .rows;
+    assert_eq!(range_rows.len(), 2, "range query must return 2 rows");
+
+    let non_pk_rows = a
+        .execute("SELECT * FROM nt WHERE v = 10")
+        .expect("non-pk filter must succeed")
+        .rows;
+    assert_eq!(non_pk_rows.len(), 1, "non-pk filter must return 1 row");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
