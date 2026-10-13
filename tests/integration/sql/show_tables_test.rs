@@ -158,12 +158,16 @@ fn show_index_on_table_without_catalog_returns_empty() {
         .query_rows("SHOW INDEX FROM orders")
         .expect("SHOW INDEX should succeed");
 
+    // #5262: SHOW INDEX now returns the PRIMARY KEY index even without
+    // an explicit catalog. The old test asserted "expected empty (no
+    // catalog)" — that documented-current-behavior test is now stale.
     assert!(
-        rows.is_empty(),
-        "expected empty (no catalog), got {} rows: {:?}",
+        rows.len() == 1,
+        "expected 1 row (PRIMARY KEY), got {} rows: {:?}",
         rows.len(),
         rows
     );
+    assert_eq!(rows[0][2].as_str(), "PRIMARY", "got {:?}", rows[0]);
 }
 
 #[test]

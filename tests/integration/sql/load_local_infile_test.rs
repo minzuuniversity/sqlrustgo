@@ -155,6 +155,8 @@ fn test_load_local_infile_path_outside_data_dir() {
     fs::write(&bad, "0|AFRICA|secret|\n").unwrap();
 
     let mut client = connect_shared();
+    client.exec("DROP TABLE IF EXISTS region").ok();
+    client.exec("DROP TABLE IF EXISTS region").ok();
     client.exec(TPC_H_REGION_SCHEMA).expect("create region");
 
     let result = client.load_local_infile(&bad, "region");
@@ -173,6 +175,7 @@ fn test_load_local_infile_client_refuses() {
     let mut client = connect_shared();
     let bad: PathBuf = data_dir().join("nonexistent.tbl");
 
+    client.exec("DROP TABLE IF EXISTS region").ok();
     client.exec(TPC_H_REGION_SCHEMA).expect("create region");
 
     let result = client.load_local_infile(&bad, "region");

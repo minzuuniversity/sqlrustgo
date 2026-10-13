@@ -22,6 +22,17 @@ use std::process::{Command, Stdio};
 /// and the spawned process exits silently, leaving the SELECT assertions
 /// with empty output.
 fn run_sql(sql: &str) -> Result<String, String> {
+    // #5262: SQLRUSTGO_REPO_ROOT may not be set. Fall back to the
+    // workspace root derived from CARGO_MANIFEST_DIR (this file lives
+    // at tests/integration/dml/, so ../.. is the workspace root).
+    let repo_root = std::env::var("SQLRUSTGO_REPO_ROOT").unwrap_or_else(|_| {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        manifest
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| ".".to_string())
+    });
     let mut child = Command::new("cargo")
         .args([
             "run",
@@ -33,10 +44,7 @@ fn run_sql(sql: &str) -> Result<String, String> {
             "exec",
             sql,
         ])
-        .current_dir(
-            std::env::var("SQLRUSTGO_REPO_ROOT")
-                .map_err(|_| "SQLRUSTGO_REPO_ROOT env var must be set to repo root".to_string())?,
-        )
+        .current_dir(&repo_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -73,7 +81,7 @@ fn test_replace_into_new_row() {
          REPLACE INTO rep1 VALUES (1, 'apple', 100);\
          SELECT * FROM rep1 WHERE id = 1;",
     )
-    .unwrap_or_default();
+    .expect("run_sql should succeed");
     assert!(
         !out.contains("Error"),
         "REPLACE INTO should succeed, got: {}",
@@ -91,7 +99,7 @@ fn test_replace_into_existing_row() {
          REPLACE INTO rep2 VALUES (1, 'banana', 200);\
          SELECT * FROM rep2 WHERE id = 1;",
     )
-    .unwrap_or_default();
+    .expect("run_sql should succeed");
     assert!(
         !out.contains("Error"),
         "REPLACE INTO should succeed, got: {}",
@@ -117,7 +125,7 @@ fn test_replace_into_with_autoincrement() {
          SELECT name FROM rep3 WHERE id = 1;\
          SELECT name FROM rep3 WHERE id = 3;",
     )
-    .unwrap_or_default();
+    .expect("run_sql should succeed");
     assert!(
         !out.contains("Error"),
         "REPLACE/SELECT chain should succeed, got: {}",
@@ -141,7 +149,7 @@ fn test_replace_into_affects_rows() {
          SELECT value FROM rep4 WHERE id = 1;\
          SELECT COUNT(*) FROM rep4;",
     )
-    .unwrap_or_default();
+    .expect("run_sql should succeed");
     assert!(
         !out.contains("Error"),
         "replace/select chain should succeed: {}",

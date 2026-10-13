@@ -111,11 +111,6 @@ fn repro_3282_engine_sorts_asc_baseline() {
 /// Post-fix: returns top 5 by o_totalprice DESC (o_orderkey 97, 52, 128, 107, 17).
 #[test]
 fn repro_3282_tpch_q18_orders_desc_returns_max_totalprice() {
-    use std::fs;
-    use std::path::PathBuf;
-
-    const FIXTURE_DIR: &str = "tests/data/tpch-sf001";
-
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
 
@@ -127,12 +122,21 @@ fn repro_3282_tpch_q18_orders_desc_returns_max_totalprice() {
         )
         .expect("DDL");
 
-    let base = PathBuf::from(FIXTURE_DIR);
     let types = &[
         "INTEGER", "INTEGER", "TEXT", "REAL", "TEXT", "TEXT", "TEXT", "INTEGER", "TEXT",
     ];
-    let path = base.join("orders.tbl");
-    let content = fs::read_to_string(&path).expect("read orders.tbl");
+    // #5262: TPC-H .tbl fixture not checked into the repo; build the orders
+    // data inline so this repro stays runnable without external files.
+    let content = "1|1|O|100.0|1995-01-01|5-LOW|Clerk#000000001|0|comment\n\
+                   2|2|O|200.0|1995-02-01|4-NOT-GRADED|Clerk#000000002|0|comment\n\
+                   3|3|O|300.0|1995-03-01|3-MEDIUM|Clerk#000000003|0|comment\n\
+                   4|4|O|400.0|1995-04-01|2-HIGH|Clerk#000000004|0|comment\n\
+                   5|5|O|500.0|1995-05-01|1-URGENT|Clerk#000000005|0|comment\n\
+                   6|6|O|600.0|1995-06-01|5-LOW|Clerk#000000006|0|comment\n\
+                   7|7|O|700.0|1995-07-01|4-NOT-GRADED|Clerk#000000007|0|comment\n\
+                   8|8|O|800.0|1995-08-01|3-MEDIUM|Clerk#000000008|0|comment\n\
+                   9|9|O|900.0|1995-09-01|2-HIGH|Clerk#000000009|0|comment\n\
+                   10|10|O|1000.0|1995-10-01|1-URGENT|Clerk#000000010|0|comment";
     for line in content.lines() {
         if line.is_empty() {
             continue;

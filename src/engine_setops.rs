@@ -50,13 +50,9 @@ pub fn execute_union<S: StorageEngine + 'static>(
         // Walk rows keeping the FIRST occurrence (leftmost wins).
         let mut seen: std::collections::HashSet<Vec<Value>> = std::collections::HashSet::new();
         let mut out: Vec<Vec<Value>> = Vec::with_capacity(left_result.rows.len());
-        for row in &left_result.rows {
-            // Determine which collation set applies: pick left's if
-            // available, otherwise right's. For UNION, both sides
-            // contribute one collation context; rows from each side
-            // are normalized under their own side's collation before
-            // being inserted into the seen set.
-            let row_coll = if out.is_empty() {
+        let left_count = left_result.rows.len();
+        for (idx, row) in left_result.rows.iter().enumerate() {
+            let row_coll = if idx < left_count {
                 &left_coll
             } else {
                 &right_coll
@@ -67,9 +63,17 @@ pub fn execute_union<S: StorageEngine + 'static>(
             }
         }
         left_result.rows = out;
-        // SQL requires output order to be implementation-defined for
-        // UNION DISTINCT; preserve insertion order which is the order
-        // rows were first seen (left side wins ties).
+        left_result.rows.sort_by(|a, b| {
+            for (i, va) in a.iter().enumerate() {
+                if let Some(vb) = b.get(i) {
+                    let ord = va.cmp(vb);
+                    if ord != std::cmp::Ordering::Equal {
+                        return ord;
+                    }
+                }
+            }
+            std::cmp::Ordering::Equal
+        });
     }
 
     // Trailing ORDER BY / LIMIT / OFFSET (C-2c).

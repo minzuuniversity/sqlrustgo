@@ -84,7 +84,23 @@ pub fn try_system_table_select(
         .map(|row| {
             projection_indices
                 .iter()
-                .map(|i| Value::Text(row[*i].clone()))
+                .map(|i| {
+                    let raw = &row[*i];
+                    // #5262: rootpage is INTEGER in SQLite's sqlite_master
+                    // schema; coerce numeric strings so typed columns keep
+                    // their INTEGER/REAL semantics instead of always Text.
+                    match schema[*i].as_str() {
+                        "rootpage" => raw
+                            .parse::<i64>()
+                            .map(Value::Integer)
+                            .unwrap_or_else(|_| Value::Text(raw.clone())),
+                        "seq" => raw
+                            .parse::<i64>()
+                            .map(Value::Integer)
+                            .unwrap_or_else(|_| Value::Text(raw.clone())),
+                        _ => Value::Text(raw.clone()),
+                    }
+                })
                 .collect()
         })
         .collect();

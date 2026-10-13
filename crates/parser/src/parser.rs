@@ -2945,10 +2945,20 @@ impl Parser {
             }
             SavepointOp::RollbackTo
         };
-        // Parse the savepoint name.
+        // Parse the savepoint name. Keywords like OUTER/INNER can legally
+        // be used as identifiers in this position (SQL standard treats them
+        // as non-reserved), so accept any word-like token and fold it back
+        // to its source text via to_string().
         let name = match self.next() {
             Some(Token::Identifier(n)) => n,
-            Some(t) => return Err(format!("Expected savepoint name (identifier), got {:?}", t)),
+            Some(t) => {
+                let s = t.to_string();
+                if s.chars().all(|c| c.is_alphanumeric() || c == '_') && !s.is_empty() {
+                    s
+                } else {
+                    return Err(format!("Expected savepoint name (identifier), got {:?}", t));
+                }
+            }
             None => return Err("Expected savepoint name, got EOF".to_string()),
         };
         Ok(Statement::SavepointStatement { name, op })

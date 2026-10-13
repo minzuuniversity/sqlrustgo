@@ -246,9 +246,9 @@ fn test_update_with_complex_where() {
 
 #[test]
 fn test_transaction_rollback() {
-    // NOTE: BEGIN/ROLLBACK are not yet implemented — they are accepted as
-    // no-ops. Rows inserted before or during "BEGIN" persist regardless.
-    // This test documents current behavior (no actual rollback).
+    // #5262: ROLLBACK IS NOW IMPLEMENTED (was a no-op). The previous
+    // version of this test asserted "3 rows survive because ROLLBACK
+    // is a no-op" — that documented-current-behavior test is now stale.
     let (_handle, mut conn) = make_client();
     conn.execute("CREATE TABLE t (n INTEGER)").expect("CREATE");
     conn.execute("INSERT INTO t VALUES (1)")
@@ -261,7 +261,6 @@ fn test_transaction_rollback() {
         .expect("INSERT in txn");
     conn.execute("ROLLBACK").expect("ROLLBACK");
 
-    // All 3 rows survive because ROLLBACK is a no-op
     let r = conn
         .execute("SELECT COUNT(*) FROM t")
         .expect("SELECT COUNT after rollback");
@@ -269,8 +268,8 @@ fn test_transaction_rollback() {
         ResultSet::Select { rows, .. } => {
             assert_eq!(rows.len(), 1);
             assert_eq!(
-                rows[0][0], "3",
-                "expected 3 rows (rollback not implemented), got {:?}",
+                rows[0][0], "1",
+                "ROLLBACK should undo the 2 inserts, leaving 1 row, got {:?}",
                 rows
             );
         }

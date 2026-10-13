@@ -163,7 +163,7 @@ fn p34_spill_to_disk_oracle() {
 /// Oracle: 测试文件存在且 5 类别覆盖
 #[test]
 fn p34_test_file_categories_oracle() {
-    let content = std::fs::read_to_string("tests/parallel_executor_test.rs")
+    let content = std::fs::read_to_string("tests/integration/sql/parallel_executor_test.rs")
         .expect("Oracle: parallel_executor_test.rs must exist");
     let n_tests = content.matches("#[test]").count();
     assert!(
@@ -192,7 +192,7 @@ fn p34_test_file_categories_oracle() {
 /// Oracle: 全部 5 类别有 ≥1 测试
 #[test]
 fn p34_all_categories_have_tests_oracle() {
-    let content = std::fs::read_to_string("tests/parallel_executor_test.rs")
+    let content = std::fs::read_to_string("tests/integration/sql/parallel_executor_test.rs")
         .expect("Oracle: parallel_executor_test.rs must exist");
     // 简单 keyword 覆盖检查
     let required_keywords = ["partition", "exchange", "spill", "worker", "basic"];

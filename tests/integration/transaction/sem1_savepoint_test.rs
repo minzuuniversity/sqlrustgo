@@ -91,7 +91,9 @@ fn test_sem1_active_transaction_has_savepoint_manager() {
 fn test_sem1_executor_dispatches_savepoint() {
     // execution_engine.rs must have an execute_savepoint method and
     // route Statement::SavepointStatement to it.
-    let ee = read_source("src/execution_engine.rs");
+    // #5262: C-ARCH-05 refactor moved execute_savepoint into
+    // execution_engine_methods.rs; update the file the test reads.
+    let ee = read_source("src/execution_engine_methods.rs");
     assert!(
         ee.contains("fn execute_savepoint"),
         "ExecutionEngine must have execute_savepoint method"

@@ -87,8 +87,14 @@ fn test_replace_parsing() {
 
 #[test]
 fn test_insert_ignore_parsing() {
+    // #5262: INSERT IGNORE is parsed by the MySQL-compat path (V311-23).
+    // The old test panicked with "not yet implemented - see SEM-3",
+    // which blocked the binary from passing. Now verify the parser
+    // accepts it and sets is_ignore.
     let stmt = parse("INSERT IGNORE INTO t VALUES (1, 'a')").unwrap();
-    if let sqlrustgo_parser::parser::Statement::Insert(_insert) = stmt {
-        panic!("INSERT IGNORE not yet implemented - see SEM-3");
+    if let sqlrustgo_parser::parser::Statement::Insert(insert) = stmt {
+        assert!(insert.is_ignore, "INSERT IGNORE must set is_ignore");
+    } else {
+        panic!("expected Statement::Insert, got {:?}", stmt);
     }
 }
