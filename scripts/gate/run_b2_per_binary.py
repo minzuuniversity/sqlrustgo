@@ -82,19 +82,14 @@ DISABLED_BINARIES = [
     "diag_q6_filter",
     "diag_q6_where_parsed",
     "diag_shipdate_type",
-    "e2e_canonical_subprocess",
     "eval_22_vs_sf01",
     "eval_22_vs_sqlite",
     "int2_substance_parallel_test",
     "parallel_main_path_test",
     "io_delay_fault_test",
-    "load_local_infile_test",
     "mysql_client_e2e_test",
     "oracle_g1_tpch_sha256",
-    "oracle_g5_sem1",
-    "oracle_p34_parallel_executor",
     "parallel_perf_baseline_test",
-    "l3_canonical_binary",
     "q13_subquery_repro",
     "q16_notin_subquery_regression",
     "q21_cell_regression_test",
@@ -102,14 +97,8 @@ DISABLED_BINARIES = [
     # === Added 2026-08-24 from per-binary B2 run (Issue #4413) ===
     "diag_q7_subset_columns",
     "regression_test",
-    "replace_test",
-    "repro_3282_orderby_desc",
-    "sem1_savepoint_test",
-    "sequence_test",
     "server01_server_test",
-    "show_tables_test",
     "stored_proc_catalog_test",
-    "string_funcs_test",
     "teaching_corpus_oracle_test",
     "tpch_22_mysql_cli_wire_test",
     "tpch_22_queries_wire_test",
@@ -136,12 +125,9 @@ DISABLED_BINARIES = [
     "tpch_value_test_v2",
     "tpch_wire_smoke",
     "tx_wal_contract_tests",
-    "union_set_operations_test",
-    "upsert_test",
     "v312_13_load_data_sf10_test",
     "recovery_fuzzer_test",
     "recovery_scenarios_test",
-    "types_value_test",
     # === Added 2026-09-06 from per-binary B2 run (Issue #4444 / V312 RC audit) ===
     # Environmental: requires /tmp/tpch-sf1 fixture with sqlrustgo.wal; only
     # populated post-SOAK. Test asserts on `data_dir.exists()` and panics
@@ -158,11 +144,7 @@ DISABLED_BINARIES = [
     # triaged before the next release; see the per-entry root cause in the
     # disabled registry (docs/releases/v3.12.0/b2-disabled-test-binary-
     # registry.md Section C).
-    "v312_71_sqlite_master_test",
-    "show_full_tables_test",
-    "wal_tx_contract_test",
-    "g13_oltp1_concurrent_select_test",
-]
+    "show_full_tables_test",]
 DISABLED_SET = frozenset(DISABLED_BINARIES)
 
 # Perf-only test binaries excluded by --skip per-binary from the correctness B2

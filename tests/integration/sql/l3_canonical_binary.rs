@@ -69,10 +69,20 @@ fn spawn_canonical_server() -> SubprocessHandle {
     let port = probe.local_addr().expect("probe local_addr").port();
     drop(probe);
 
+    // #5262: use a unique temp data dir per spawn. Without this the
+    // server falls back to the shared default `/tmp/sqlrustgo-data`, so
+    // `CREATE TABLE l3` collides with a stale `l3` table left by a
+    // prior run and the test fails with "Table 'l3' already exists".
+    // Mirrors the isolation used by e2e_canonical_subprocess.
+    let data_dir =
+        std::env::temp_dir().join(format!("sqlrustgo_l3_{}_{}", std::process::id(), port));
+    std::fs::create_dir_all(&data_dir).expect("create l3 temp data dir");
+
     let child = Command::new(&bin)
         .arg("serve")
         .args(["--host", "127.0.0.1"])
         .args(["--port", &port.to_string()])
+        .args(["--data-dir", data_dir.to_str().unwrap()])
         .args(["--log-level", "warn"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
