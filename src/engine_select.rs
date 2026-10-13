@@ -1743,7 +1743,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         // Step 3: GROUP BY + AGGREGATE
-        if !select.aggregates.is_empty() {
+        // #5301: also enter when there is a GROUP BY but no aggregates —
+        // a bare GROUP BY must still collapse duplicate groups. The grouping
+        // `else` branch is safe here: compute_aggregates(&[]) returns an empty
+        // tail, so the row is just [group_cols..., fd_snapshot...] and the
+        // re-project stage picks the group columns.
+        if !select.aggregates.is_empty() || !select.group_by.is_empty() {
             let group_exprs = &select.group_by;
             if group_exprs.is_empty() {
                 let mut agg_values =
