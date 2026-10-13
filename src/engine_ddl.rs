@@ -859,7 +859,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
         }
         let ddl = format!("CREATE TABLE {} ({})", table, parts.join(", "));
-        Ok(ExecutorResult::new(vec![vec![Value::Text(ddl)]], 1))
+        // MySQL SHOW CREATE TABLE returns 2 columns: Table_name, Create Table.
+        Ok(ExecutorResult::new(
+            vec![vec![Value::Text(table.to_string()), Value::Text(ddl)]],
+            1,
+        ))
     }
 
     /// DESCRIBE table — return one row per column with Field/Type/Null/Key/Default/Extra.

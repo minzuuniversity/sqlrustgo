@@ -222,7 +222,7 @@ fn show_create_table_returns_single_ddl_row() {
         "SHOW CREATE TABLE should return exactly 1 row, got {}",
         rows.len()
     );
-    let ddl = rows[0][0].as_str();
+    let ddl = rows[0][1].as_str();
     assert!(
         ddl.starts_with("CREATE TABLE widgets ("),
         "DDL should start with table name + opening paren, got: {}",
@@ -239,7 +239,6 @@ fn show_create_table_returns_single_ddl_row() {
         ddl
     );
 }
-
 #[test]
 fn show_create_table_preserves_not_null_clause() {
     let mut client = clean_client();
@@ -252,7 +251,7 @@ fn show_create_table_preserves_not_null_clause() {
         .expect("SHOW CREATE TABLE should succeed");
 
     assert_eq!(rows.len(), 1);
-    let ddl = rows[0][0].as_str();
+    let ddl = rows[0][1].as_str();
     assert!(
         ddl.contains("login") && ddl.contains("NOT NULL"),
         "DDL should preserve `NOT NULL` on `login`, got: {}",
@@ -288,7 +287,7 @@ fn show_create_table_after_alter_adds_new_column() {
         .query_rows("SHOW CREATE TABLE ledger")
         .expect("SHOW CREATE TABLE before ALTER");
     assert_eq!(pre.len(), 1);
-    let pre_ddl = pre[0][0].as_str();
+    let pre_ddl = pre[0][1].as_str();
     assert!(pre_ddl.contains("amount"));
     assert!(
         !pre_ddl.contains("memo"),
@@ -305,7 +304,7 @@ fn show_create_table_after_alter_adds_new_column() {
         .query_rows("SHOW CREATE TABLE ledger")
         .expect("SHOW CREATE TABLE after ALTER");
     assert_eq!(post.len(), 1);
-    let post_ddl = post[0][0].as_str();
+    let post_ddl = post[0][1].as_str();
     assert!(
         post_ddl.contains("memo"),
         "post-alter DDL should contain `memo`, got: {}",
@@ -331,7 +330,7 @@ fn show_create_table_roundtrip_yields_equivalent_schema() {
         .query_rows("SHOW CREATE TABLE roundtrip_src")
         .expect("SHOW CREATE TABLE roundtrip_src");
     assert_eq!(rows.len(), 1);
-    let ddl = rows[0][0].as_str();
+    let ddl = rows[0][1].as_str();
 
     // The introspected DDL must contain every column from the original CREATE
     // (the executor currently does not preserve PRIMARY KEY in the
