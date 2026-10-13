@@ -1111,6 +1111,15 @@ fn eq_cross(left: &Value, right: &Value) -> bool {
         (Value::Integer(a), Value::Float(b)) | (Value::Float(b), Value::Integer(a)) => {
             (*a as f64) == *b
         }
+        // #5300: numeric-vs-string comparison coerces the string to a
+        // number (MySQL implicit cast), so `WHERE i = '5'` matches the
+        // integer column instead of silently returning 0 rows.
+        (Value::Integer(a), Value::Text(b)) | (Value::Text(b), Value::Integer(a)) => {
+            (*a as f64) == b.trim().parse::<f64>().unwrap_or(0.0)
+        }
+        (Value::Float(a), Value::Text(b)) | (Value::Text(b), Value::Float(a)) => {
+            *a == b.trim().parse::<f64>().unwrap_or(0.0)
+        }
         _ => false,
     }
 }
