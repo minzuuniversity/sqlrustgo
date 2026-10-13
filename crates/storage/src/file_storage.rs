@@ -4640,6 +4640,19 @@ impl FileStorage {
     /// extract PK values for `count` rows.
     ///
     /// Acquires `indexes.write()` to perform the B+Tree inserts.
+    /// V400-PERF-FIX → #5303: maintain the table's PRIMARY-KEY B+Tree index
+    /// *and* every secondary B+Tree index registered in `indexes` for this
+    /// table.
+    ///
+    /// #5303 root cause: the original code only ever updated the PK column's
+    /// index (keyed by `column_name`). A secondary index created by
+    /// `CREATE INDEX` lives in the same `indexes` map under
+    /// `(scoped_table, other_col)` but was never touched by DML, so any row
+    /// flushed after the index existed was silently invisible to an
+    /// index-scan on that column (index-scan 143 vs full-scan 144 in the
+    /// reproduction). This function now iterates every indexed column for
+    /// the table and inserts the `(value → row_id)` entry, keeping each
+    /// index consistent with the row window that was just appended.
     fn update_pk_index(
         &self,
         db: &str,
@@ -4648,24 +4661,42 @@ impl FileStorage {
         records: &[Vec<Value>],
         start_row_id: usize,
     ) {
-        let pk_col_idx = columns.iter().position(|c| c.primary_key);
-        let Some(pk_idx) = pk_col_idx else { return };
-        let pk_col_name = columns[pk_idx].name.clone();
-        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(records.len());
-        for (i, row) in records.iter().enumerate() {
-            if let Some(v) = row.get(pk_idx) {
-                if let Some(ikey) = v.to_index_key() {
-                    updates.push((ikey, (start_row_id + i) as u32));
-                }
-            }
-        }
-        if updates.is_empty() {
+        // Map column NAME → position in the row so we can derive the value
+        // for every indexed column without re-scanning the schema.
+        let col_pos: HashMap<&str, usize> = columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.name.as_str(), i))
+            .collect();
+        // Collect which column names actually have a B+Tree registered for
+        // this table (PK or secondary). If none, nothing to do — same
+        // no-op fast path as before when the PK index is absent.
+        let scoped = self.tbl_in(db, table);
+        let indexed_cols: Vec<String> = match self.indexes.read() {
+            Ok(indexes) => indexes
+                .keys()
+                .filter(|(t, _)| t == &scoped)
+                .map(|(_, col)| col.clone())
+                .collect(),
+            Err(_) => return,
+        };
+        if indexed_cols.is_empty() {
             return;
         }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(self.tbl_in(db, table), pk_col_name.clone())) {
-                for (ikey, rid) in updates {
-                    index.insert(ikey, rid);
+            for col_name in indexed_cols {
+                let Some(&ci) = col_pos.get(col_name.as_str()) else {
+                    continue;
+                };
+                let Some(index) = indexes.get_mut(&(scoped.clone(), col_name)) else {
+                    continue;
+                };
+                for (i, row) in records.iter().enumerate() {
+                    if let Some(v) = row.get(ci) {
+                        if let Some(ikey) = v.to_index_key() {
+                            index.insert(ikey, (start_row_id + i) as u32);
+                        }
+                    }
                 }
             }
         }
@@ -4674,7 +4705,8 @@ impl FileStorage {
     /// V400-PERF-FIX: variant of `update_pk_index` for callers that
     /// have already moved the records into `data.rows` and only know
     /// the row-id window. Reads ONLY that window — O(row_count) not
-    /// O(table_size).
+    /// O(table_size). #5303: also maintains secondary (non-PK) indexes,
+    /// the same way `update_pk_index` now does.
     fn update_pk_index_window(
         &self,
         db: &str,
@@ -4686,9 +4718,23 @@ impl FileStorage {
         if count == 0 {
             return;
         }
-        let pk_col_idx = columns.iter().position(|c| c.primary_key);
-        let Some(pk_idx) = pk_col_idx else { return };
-        let pk_col_name = columns[pk_idx].name.clone();
+        let col_pos: HashMap<&str, usize> = columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.name.as_str(), i))
+            .collect();
+        let scoped = self.tbl_in(db, table);
+        let indexed_cols: Vec<String> = match self.indexes.read() {
+            Ok(indexes) => indexes
+                .keys()
+                .filter(|(t, _)| t == &scoped)
+                .map(|(_, col)| col.clone())
+                .collect(),
+            Err(_) => return,
+        };
+        if indexed_cols.is_empty() {
+            return;
+        }
         // Snapshot only the [start_row_id, start_row_id+count) window
         // so we don't pay O(table_size) for an O(count) operation.
         let rows_snapshot = Self::with_write_lock(self, |s| {
@@ -4705,21 +4751,20 @@ impl FileStorage {
         if rows.is_empty() {
             return;
         }
-        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(rows.len());
-        for (i, row) in rows.iter().enumerate() {
-            if let Some(v) = row.get(pk_idx) {
-                if let Some(ikey) = v.to_index_key() {
-                    updates.push((ikey, (start_row_id + i) as u32));
-                }
-            }
-        }
-        if updates.is_empty() {
-            return;
-        }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(self.tbl_in(db, table), pk_col_name.clone())) {
-                for (ikey, rid) in updates {
-                    index.insert(ikey, rid);
+            for col_name in indexed_cols {
+                let Some(&ci) = col_pos.get(col_name.as_str()) else {
+                    continue;
+                };
+                let Some(index) = indexes.get_mut(&(scoped.clone(), col_name)) else {
+                    continue;
+                };
+                for (i, row) in rows.iter().enumerate() {
+                    if let Some(v) = row.get(ci) {
+                        if let Some(ikey) = v.to_index_key() {
+                            index.insert(ikey, (start_row_id + i) as u32);
+                        }
+                    }
                 }
             }
         }
