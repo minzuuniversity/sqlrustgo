@@ -1,0 +1,148 @@
+{
+  "id": "A04-CAST-001",
+  "domain": "typeconv",
+  "query": "SELECT i + 1 AS p, i * 2 AS d2 FROM tc_i ORDER BY i",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[15, 15] ref=[8, 8]",
+  "aspects": [
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-CAST-001",
+    "role": "subject",
+    "port": 14535,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS tc_i",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE tc_i (i INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO tc_i VALUES (1),(2),(3)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "p",
+        "d2"
+      ],
+      "types": [
+        15,
+        15
+      ],
+      "rows": [
+        [
+          "2",
+          "2"
+        ],
+        [
+          "3",
+          "4"
+        ],
+        [
+          "4",
+          "6"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-CAST-001",
+    "role": "ref",
+    "port": 14635,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS tc_i",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE tc_i (i INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO tc_i VALUES (1),(2),(3)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "p",
+        "d2"
+      ],
+      "types": [
+        8,
+        8
+      ],
+      "rows": [
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          4,
+          6
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.55,
+  "wire": {
+    "subj": "cases/A04-CAST-001_.subj.wire",
+    "ref": "cases/A04-CAST-001_.ref.wire"
+  }
+}

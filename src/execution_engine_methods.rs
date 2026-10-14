@@ -129,14 +129,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// #4983: predicate variant of [`scan_for_reader`](Self::scan_for_reader).
+    /// #5057: resolves against `db` so the scan targets the statement's database.
     pub(crate) fn scan_for_reader_filtered(
         &self,
+        db: &str,
         table: &str,
         filter: &dyn Fn(&sqlrustgo_storage::engine::Record) -> bool,
     ) -> SqlResult<Vec<sqlrustgo_storage::engine::Record>> {
         let reader_tx = self.reader_tx();
         self.storage_read()
-            .scan_with_filter_in(table, filter, reader_tx)
+            .scan_with_filter_in_tx_db(db, table, filter, reader_tx)
     }
 
     /// Write-lock the storage with fair ordering.
@@ -347,7 +349,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 let table_names: Vec<String> = match analyze.table_name.as_ref() {
                     Some(name) => vec![name.clone()],
                     None => {
-                        let tables = self.storage.read().list_tables();
+                        let tables = self.storage.read().list_tables_in_db(&self.session_db());
                         if tables.is_empty() {
                             // Empty catalog — still report success so callers
                             // don't choke on the legacy "table name is
@@ -733,15 +735,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     pub(super) fn execute_use_database(&self, db: &str) -> SqlResult<ExecutorResult> {
         // #5025: `USE` used to be an accepted no-op, so every database
-        // shared one table namespace. It now switches the storage's active
+        // shared one table namespace. It now switches the session's active
         // database, and an unknown name is an error rather than a silent
         // fall-through to the previous database.
         //
-        // #5057: `USE` is connection-level in the MySQL protocol, so it
-        // also records the choice on **this engine** — the storage field is
-        // one shared value, and without the per-engine copy one connection's
-        // switch redirects another's reads.
-        self.storage.write().set_current_db(db)?;
+        // #5057: `USE` is connection-level in the MySQL protocol. The
+        // per-engine `session_db` is the single source of the current
+        // database; the storage no longer keeps a shared `current_db`.
+        // #5025: an unknown name must be rejected before the switch
+        // (the pre-#5057 code validated via the storage-level
+        // `current_db`; the validation now runs against session state).
+        self.ensure_database_known(db)?;
         *self.session_db.write() = db.to_lowercase();
         Ok(ExecutorResult::empty())
     }
@@ -938,6 +942,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // V312-64d / Issue #4664: also persist the view to storage so
         // `sqlite_master` introspection sees the row, alongside the
         // in-memory view cache used by the view-rewrite path.
+        let db = self.session_db();
         let mut storage = self.storage.write();
         let query_sql = match view.query.as_ref() {
             sqlrustgo_parser::Statement::Select(sel) => {
@@ -951,7 +956,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             query_sql,
             crate::ddl_to_sql::format_create_view_sql(view),
         );
-        storage.create_view(info)?;
+        storage.create_view(&db, info)?;
         Ok(ExecutorResult::empty())
     }
     pub(super) fn execute_drop_view(
@@ -971,10 +976,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 &drop_view.name,
             ))
             .is_some();
-        let storage_present = self.storage.read().has_view(&drop_view.name);
+        let db = self.session_db();
+        let storage_present = self.storage.read().has_view(&db, &drop_view.name);
         if in_memory_present || storage_present {
             // Persist the removal — idempotent on the storage side.
-            self.storage.write().drop_view(&drop_view.name)?;
+            self.storage.write().drop_view(&db, &drop_view.name)?;
             Ok(ExecutorResult::empty())
         } else if drop_view.if_exists {
             Ok(ExecutorResult::empty())
@@ -2059,7 +2065,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// sqlite3-like teaching CLI (`.tables` dot-command) to enumerate
     /// user-created tables without going through `information_schema`.
     pub fn list_tables(&self) -> Vec<String> {
-        self.storage.read().list_tables()
+        self.storage.read().list_tables_in_db(&self.session_db())
     }
 
     // ── Set-operation handlers (V310-06 PR2 / Issue #3723 C-2) ──────

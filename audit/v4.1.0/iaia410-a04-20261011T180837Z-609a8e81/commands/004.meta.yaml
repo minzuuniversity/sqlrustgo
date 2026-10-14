@@ -1,0 +1,12 @@
+schema_version: iaia410-command-meta/v1
+command_id: '004'
+name: prepared-statement-diff
+argv:
+- python3
+- /tmp/a04/prepared_diff.py
+- /tmp/iaia-a04-run/audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/prepared
+cwd: .
+timeout_sec: 300
+started_at: '2026-10-11T18:50:57Z'
+finished_at: '2026-10-11T18:51:03Z'
+exit_code: 0

@@ -1,0 +1,34 @@
+finding_id: A03-SF-02
+work_package: A03
+title: SHOW TABLES FROM <db> 在生产路径上丢失数据库限定
+symbol_location: crates/storage/src/engine.rs:1332 (trait 默认实现 list_tables_in_db)
+caller: src/engine_ddl.rs:545  storage.list_tables_in_db(d)
+production_entry: sqlrustgo-mysql-server -> do_command_loop -> execute_show_tables
+defect_class: F1-F4 (接口声明与实现语义不符)
+mechanism: >
+  BoxStorageEngine（生产栈最外层）未覆盖 list_tables_in_db，
+  调用落到 trait 默认实现 `let _ = db; self.list_tables()`，
+  后者解析 storage 的 current_db 而非传入的 d。
+trigger_condition: >
+  SHOW TABLES FROM <d>，且 d != 当前连接的 current_db。
+  若 d == current_db，行为与正确实现一致，不可区分。
+expected: 返回数据库 d 的表清单
+observed_static: 默认实现丢弃 db，返回 current_db 的表清单
+evidence_level: dynamically-confirmed
+dynamic_verification:
+  run_command: commands/004.meta.yaml
+  exit_code: 0
+  control_correct: "USE d1; SHOW TABLES -> [marker]"
+  observation_wrong: "SHOW TABLES FROM d1 -> [content documents vectors]"
+  decisive: 同一视图两种语法一对一错，唯一差异是走 list_tables_in_db(d) 路径
+still_unverified:
+  - BoxStorageEngine 是否为唯一未覆盖点（未穷举其它 impl 的全部方法）
+counter_evidence_considered: >
+  已核对 FileStorage / MvccStorage / ParallelWalStorage 三层均覆盖
+  list_tables_in_db（11/11），故缺陷仅在 BoxStorageEngine 触发。
+same_pattern_non_reachable:
+  - scan_with_filter_in_db 同样未覆盖，但 Executor 层调用集为
+    {list_tables, scan, scan_pk, scan_with_index, scan_with_index_in_db}，
+    不含 scan_with_filter_in_db → 判定为 dead-path，非缺陷
+routed_to: A03 finding（生产调用链审计范畴）
+status: confirmed

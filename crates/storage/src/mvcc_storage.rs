@@ -215,11 +215,9 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
 
     /// Acquire (or lazily create) the MVCC table for `table_name`.
     fn mvcc_table(&self, table_name: &str) -> Arc<VersionedTable> {
-        // #5105: the database is resolved from the storage's shared
-        // `current_db` here. That is only correct for callers that have no
-        // database of their own to state — see [`mvcc_table_in`](Self::mvcc_table_in)
-        // for why the per-connection path cannot use it.
-        self.mvcc_table_in(&self.inner.current_db(), table_name)
+        // #5057: the database is resolved to DEFAULT_DATABASE. Callers
+        // that know their database must use [`mvcc_table_in`](Self::mvcc_table_in).
+        self.mvcc_table_in(crate::engine::DEFAULT_DATABASE, table_name)
     }
 
     /// #5105: the version store for `(db, table)`.
@@ -290,6 +288,86 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
             .clone()
     }
 
+    /// #5277: the identity a new row's version chain is keyed by.
+    ///
+    /// A declared PRIMARY KEY is a real identity, so it is used directly.
+    /// Without one there is no column that can serve — the previous code took
+    /// `row[0]`, which turned three rows sharing a first value into three
+    /// versions of a single record and made a scan return only the newest.
+    /// Those rows now get a hidden identity instead.
+    ///
+    /// A UNIQUE column is not used as a fallback: it may be nullable, and
+    /// SQL allows several NULLs under a UNIQUE constraint.
+    fn row_identity(&self, mvcc: &VersionedTable, db: &str, table: &str, row: &[Value]) -> Value {
+        // The key must be the primary key *value*, unchanged, so that
+        // `get_visible(pk, …)` and `delete(pk, …)` — which look up by that
+        // same value — keep working. The previous `row[0]` matched the first
+        // value against nothing in particular; matching a *value* against a
+        // column *name* was wrong in a second way.
+        let pk_index = self
+            .inner
+            .get_table_info_in(db, table)
+            .ok()
+            .and_then(|info| info.columns.iter().position(|c| c.primary_key));
+
+        match pk_index {
+            // A declared PRIMARY KEY is a real identity, used verbatim.
+            Some(i) => row
+                .get(i)
+                .cloned()
+                .unwrap_or_else(|| mvcc.next_row_identity()),
+            // No declared key: the row still needs its own identity.
+            None => mvcc.next_row_identity(),
+        }
+    }
+
+    /// #5281: declared PRIMARY KEY position of `(db, table)`, if any.
+    fn pk_index_in(inner: &S, db: &str, table: &str) -> Option<usize> {
+        inner
+            .get_table_info_in(db, table)
+            .ok()
+            .and_then(|info| info.columns.iter().position(|c| c.primary_key))
+    }
+
+    /// #5281: does `row` satisfy the DML `filters`?
+    ///
+    /// A declared PRIMARY KEY at index `k` with a short filter list means
+    /// "these PK values" (the `apply_odku` / point-delete convention).
+    /// Otherwise the filter is a positional full-row (prefix) match —
+    /// never `row[0]` alone, which turned `UPDATE ... WHERE a=1 AND b=20`
+    /// on a no-PK table into "rewrite every row whose first column is 1".
+    fn filter_matches(pk_index: Option<usize>, row: &[Value], filters: &[Value]) -> bool {
+        if filters.is_empty() {
+            return true;
+        }
+        match pk_index {
+            Some(k) if filters.len() < row.len() => row.get(k).is_some_and(|v| filters.contains(v)),
+            _ => filters
+                .iter()
+                .enumerate()
+                .all(|(i, f)| row.get(i) == Some(f)),
+        }
+    }
+
+    /// #5281: collect `(identity, row)` for every visible row matching
+    /// `filters`. UPDATE/DELETE must address rows by the SAME identity
+    /// INSERT assigned (`row_identity`), never re-derive it from a
+    /// business column — see the invariant in issue #5281.
+    fn matched_visible(
+        &self,
+        mvcc: &Arc<VersionedTable>,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> Vec<(Value, Vec<Value>)> {
+        let tx_id = self.inner.current_tx_id();
+        let pk_index = Self::pk_index_in(&self.inner, db, table);
+        mvcc.scan_visible(mvcc.begin_snapshot(), tx_id)
+            .into_iter()
+            .filter(|(_, row)| Self::filter_matches(pk_index, row, filters))
+            .collect()
+    }
+
     /// Snapshot the current MVCC timestamp for use in a query.
     /// Equivalent to `begin_snapshot()` on the first MVCC table, but
     /// reads the global counter (which is the same counter for all
@@ -351,11 +429,186 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
                 if row.is_empty() {
                     continue;
                 }
-                let pk = row[0].clone();
+                let pk = self.row_identity(&mvcc, "default", &table_name, &row);
                 mvcc.put(pk, row, ts, 0);
             }
         }
         Ok(())
+    }
+
+    /// #5281: identity-based DELETE core, shared by the scoped and
+    /// unscoped entry points.
+    ///
+    /// The old body asked the inner engine for `delete_collect_pks`,
+    /// which derives each row's key from `row.first()`. On a no-PK table
+    /// whose rows share a first value, every physical row got removed
+    /// while the chain tombstones landed on one wrong identity — so the
+    /// rows stayed *visible* through the merge in `scan_in_tx_db`
+    /// (DELETE reported success, the rows never disappeared), and the
+    /// surviving identities kept stale versions forever. The fix
+    /// collects the matched `(identity, row)` pairs from the chain
+    /// *first*, removes the matching physical rows by their full row
+    /// contents, then tombstones exactly the identities INSERT had
+    /// assigned.
+    pub(crate) fn delete_scoped(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<usize> {
+        let mvcc = self.mvcc_table_in(db, table);
+        let tx_id = self.inner.current_tx_id();
+        let snapshot_ts = mvcc.begin_snapshot();
+        let pk_index = Self::pk_index_in(&self.inner, db, table);
+        let matched: Vec<(Value, Vec<Value>)> = mvcc
+            .scan_visible(snapshot_ts, tx_id)
+            .into_iter()
+            .filter(|(_, row)| Self::filter_matches(pk_index, row, filters))
+            .collect();
+        if filters.is_empty() {
+            let ts = mvcc.next_snapshot_ts();
+            for (id, _) in &matched {
+                mvcc.delete(id, ts, tx_id);
+            }
+            let n = self.inner_mut().delete_in_db(db, table, filters)?;
+            self.register_sql_write("DELETE");
+            self.maybe_gc();
+            return Ok(n.max(matched.len()));
+        }
+        // 回滚未提交 INSERT 时，undo 记录调用 `storage.delete(table, key)`。
+        // 该行未提交、不在 MVCC 可见集，`matched` 为 0；若仅按 `matched`
+        // 删 inner，inner 真删会被跳过，行残留在 `FileStorage::insert_buffer`
+        // 并被 `scan_in_tx_db` 的 merge 合回结果（#5313 回归）。故始终
+        // 按原始 `filters` 对 inner 真删一次（PK 表 undo 传 PK 值，精确
+        // 匹配；no-PK 表 undo 传整行前缀，亦精确匹配）。
+        let n_inner = self.inner_mut().delete_in_db(db, table, filters)?;
+        let ts = mvcc.next_snapshot_ts();
+        for (id, _) in &matched {
+            mvcc.delete(id, ts, tx_id);
+        }
+        self.register_sql_write("DELETE");
+        self.maybe_gc();
+        Ok(n_inner.max(matched.len()))
+    }
+
+    /// #5281: closure-filtered DELETE must tombstone only the rows the
+    /// predicate matched, not every visible row in the table.
+    pub(crate) fn delete_if_scoped(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+    ) -> SqlResult<usize> {
+        let mvcc = self.mvcc_table_in(db, table);
+        let tx_id = self.inner.current_tx_id();
+        let snapshot_ts = mvcc.begin_snapshot();
+        let matched: Vec<Value> = mvcc
+            .scan_visible(snapshot_ts, tx_id)
+            .into_iter()
+            .filter(|(_, row)| filter(row))
+            .map(|(id, _)| id)
+            .collect();
+        let n = self.inner_mut().delete_if_in_db(db, table, filter)?;
+        let ts = mvcc.next_snapshot_ts();
+        for id in &matched {
+            mvcc.delete(id, ts, tx_id);
+        }
+        self.register_sql_write("DELETE");
+        self.maybe_gc();
+        Ok(n.max(matched.len()))
+    }
+
+    /// #5281: identity-preserving UPDATE core, shared by the scoped and
+    /// unscoped entry points.
+    ///
+    /// The old body re-derived each row's MVCC key from `row.first()`
+    /// after the inner update. On a no-PK table whose rows share a first
+    /// value that collapsed every touched row into one identity, so the
+    /// table grew a duplicate row on every UPDATE. The chain key must be
+    /// the identity `row_identity` assigned at INSERT; this collects the
+    /// matched `(identity, row)` pairs *before* mutating and re-`put`s
+    /// each under its own identity.
+    pub(crate) fn update_scoped(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        let mvcc = self.mvcc_table_in(db, table);
+        let matched = self.matched_visible(&mvcc, db, table, filters);
+        let n = self.inner_mut().update_in_db(db, table, filters, updates)?;
+        if n > 0 {
+            let tx_id = self.inner.current_tx_id();
+            let ts = mvcc.next_snapshot_ts();
+            if matched.is_empty() {
+                let pk_index = Self::pk_index_in(&self.inner, db, table);
+                let updated_rows = self.inner().scan_in_db(db, table)?;
+                for row in updated_rows {
+                    if !filters.is_empty() && !Self::filter_matches(pk_index, &row, filters) {
+                        continue;
+                    }
+                    let pk = self.row_identity(&mvcc, db, table, &row);
+                    mvcc.put(pk, row, ts, tx_id);
+                }
+            } else {
+                for (id, old_row) in &matched {
+                    let mut new_row = old_row.clone();
+                    for &(idx, ref v) in updates {
+                        if idx < new_row.len() {
+                            new_row[idx] = v.clone();
+                        }
+                    }
+                    mvcc.put(id.clone(), new_row, ts, tx_id);
+                }
+            }
+        }
+        self.register_sql_write("UPDATE");
+        self.maybe_gc();
+        Ok(n)
+    }
+
+    /// #5281: closure-mutated UPDATE, identity-preserving.
+    ///
+    /// The old body `put` every visible `(pk, row)` straight back after
+    /// the inner update — re-appending the *pre-update* row contents as
+    /// the newest chain version, which shadows the inner engine's update
+    /// forever (the same invisibility class as #4995's `update`). This
+    /// collects the predicate-matched identities first, then re-`put`s
+    /// only those, with the mutation's declarative assignments applied
+    /// to the old contents, each under its own identity.
+    pub(crate) fn update_if_scoped(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        let mvcc = self.mvcc_table_in(db, table);
+        let tx_id = self.inner.current_tx_id();
+        let matched: Vec<(Value, Vec<Value>)> = mvcc
+            .scan_visible(mvcc.begin_snapshot(), tx_id)
+            .into_iter()
+            .filter(|(_, row)| filter(row))
+            .collect();
+        let n = self
+            .inner_mut()
+            .update_if_in_db(db, table, filter, mutation)?;
+        if n > 0 {
+            let ts = mvcc.next_snapshot_ts();
+            for (id, old_row) in &matched {
+                let mut new_row = old_row.clone();
+                for &(idx, ref v) in mutation.assignments() {
+                    if idx < new_row.len() {
+                        new_row[idx] = v.clone();
+                    }
+                }
+                mvcc.put(id.clone(), new_row, ts, tx_id);
+            }
+        }
+        self.register_sql_write("UPDATE");
+        self.maybe_gc();
+        Ok(n)
     }
 }
 
@@ -383,6 +636,31 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // thanks to the auto-built PK B+Tree index (see
         // FileStorage::rebuild_pk_indexes / create_table).
         self.inner.scan_pk(table, pk_column, pk)
+    }
+
+    /// #5281: `scan_pk_in_db` must address the row by its declared
+    /// primary-key value, not by `row.first()`. The trait default
+    /// matches the first column, so a PK declared on a later column
+    /// (e.g. `b` in `t(a, b PRIMARY KEY)`) returned nothing and the
+    /// SQL layer's PK point lookup (`pk_point_lookup` in
+    /// engine_dml.rs) reported 0 rows affected. The MVCC identity
+    /// IS the primary-key value (see `row_identity`), so the same
+    /// `get_visible` lookup `scan_pk` uses answers this too; the
+    /// inner fallback covers rebuild lag / GC eviction the same way.
+    fn scan_pk_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        pk_column: &str,
+        pk: &Value,
+    ) -> SqlResult<Option<Record>> {
+        let mvcc = self.mvcc_table_in(db, table);
+        let tx_id = self.inner.current_tx_id();
+        let snapshot_ts = mvcc.begin_snapshot();
+        if let Some(row) = mvcc.get_visible(pk, snapshot_ts, tx_id) {
+            return Ok(Some(row));
+        }
+        self.inner.scan_pk_in_db(db, table, pk_column, pk)
     }
 
     /// Phase B Step 4.3: O(log N + k) PK range scan. Returns the
@@ -417,9 +695,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     /// transaction, and an uncommitted write becomes visible to a
     /// connection that did not make it.
     fn scan_in(&self, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        // #5105: keep the transaction and resolve the database the way the
-        // rest of this impl does, so both halves come from the same place.
-        self.scan_in_tx_db(&self.inner.current_db(), table, reader_tx)
+        // #5057: resolve the database to DEFAULT_DATABASE.
+        self.scan_in_tx_db(crate::engine::DEFAULT_DATABASE, table, reader_tx)
     }
 
     /// #5105: snapshot read of `(db, table)` on behalf of `reader_tx`.
@@ -628,10 +905,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        // #5192: resolve the database before the mutable borrows below, so
-        // the inner write and the MVCC version chain both land in the
-        // database this statement targets.
-        let db = self.inner.current_db();
+        // #5057: resolve the database to DEFAULT_DATABASE.
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.insert_in_db(&db, table, records)
     }
 
@@ -649,7 +924,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             if row.is_empty() {
                 continue;
             }
-            let pk = row[0].clone();
+            let pk = self.row_identity(&mvcc, db, table, &row);
             let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             mvcc.put(pk, row, ts, tx_id);
@@ -662,66 +937,11 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn delete(&mut self, table: &str, _filters: &[Value]) -> SqlResult<usize> {
-        // Phase 4.1: prefer `delete_collect_pks` so we can tombstone
-        // only the affected rows instead of the whole table. The
-        // default impl returns an empty Vec, in which case we fall
-        // back to the pre-Step-4.1 coarse "tombstone all visible
-        // rows" behavior.
-        let removed_pks = self.inner.delete_collect_pks(table, _filters)?;
-        if removed_pks.is_empty() {
-            // Either nothing was deleted, or the engine doesn't know
-            // which PKs were deleted (default impl). If filters were
-            // empty (full-table delete) we still need to tombstone
-            // every visible row.
-            if _filters.is_empty() {
-                let mvcc = self.mvcc_table(table);
-                let tx_id = self.inner.current_tx_id();
-                let pairs = mvcc.scan_visible(mvcc.begin_snapshot(), tx_id);
-                let tx_id = self.inner.current_tx_id();
-                let ts = mvcc.next_snapshot_ts();
-                for (pk, _) in pairs {
-                    mvcc.delete(&pk, ts, tx_id);
-                }
-            }
-            self.register_sql_write("DELETE");
-            // V400-MVCC-GC: reap old versions after every write path.
-            self.maybe_gc();
-            return Ok(0);
-        }
-        // Tombstone exactly the affected PKs.
-        let mvcc = self.mvcc_table(table);
-        let tx_id = self.inner.current_tx_id();
-        let ts = mvcc.next_snapshot_ts();
-        for pk in &removed_pks {
-            mvcc.delete(pk, ts, tx_id);
-        }
-        self.register_sql_write("DELETE");
-        // V400-MVCC-GC: reap old versions after every write path.
-        self.maybe_gc();
-        Ok(removed_pks.len())
+        self.delete_scoped(crate::engine::DEFAULT_DATABASE, table, _filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        // Phase 4: coarse delete. We delegate to inner, then
-        // tombstone all visible MVCC rows. If the filter is finer-
-        // grained than the MVCC's PK match, readers might see
-        // *un-deleted* rows for one extra snapshot until GC catches
-        // up. Acceptable for read-heavy workloads; tighter semantics
-        // come in Step 4.1.
-        let n = self.inner.delete_if(table, filter)?;
-        if n > 0 {
-            let mvcc = self.mvcc_table(table);
-            let tx_id = self.inner.current_tx_id();
-            let pairs = mvcc.scan_visible(mvcc.begin_snapshot(), tx_id);
-            let tx_id = self.inner.current_tx_id();
-            let ts = mvcc.next_snapshot_ts();
-            for (pk, _) in pairs {
-                mvcc.delete(&pk, ts, tx_id);
-            }
-        }
-        self.register_sql_write("DELETE");
-        self.maybe_gc();
-        Ok(n)
+        self.delete_if_scoped(crate::engine::DEFAULT_DATABASE, table, filter)
     }
 
     fn update(
@@ -730,51 +950,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        // Phase 4: coarse update via inner. Then append a new MVCC
-        // version with the same PK and the updated row.
-        let n = self.inner.update(table, filters, updates)?;
-        if n > 0 {
-            let mvcc = self.mvcc_table(table);
-            let tx_id = self.inner.current_tx_id();
-            let ts = mvcc.next_snapshot_ts();
-            // #4995: read the post-update row contents from the **inner
-            // engine**, not from the MVCC chain.
-            //
-            // The old body did `mvcc.scan_visible(...)` here and re-`put`
-            // whatever came back. But `self.inner.update(...)` only
-            // touches the inner engine — the MVCC chain still holds the
-            // *pre-update* versions, so the loop appended a brand-new
-            // version whose contents were the **old row**. Every reader
-            // resolves the newest version for a PK from the tail of the
-            // chain, so the freshly appended old-row version shadowed the
-            // real data and the update was invisible forever.
-            //
-            // End to end that is: `UPDATE ... SET k=222` returns
-            // success, no error, and a following `SELECT` reads the
-            // original value back. It reached production through
-            // `apply_odku` (`ON DUPLICATE KEY UPDATE`), which is why ODKU
-            // "worked" (duplicate detected, statement succeeded) while
-            // never actually changing a row.
-            //
-            // The inner engine is now the authority on current contents;
-            // the chain is the authority on *visibility*.
-            let updated_rows = self.inner.scan(table)?;
-            for row in updated_rows {
-                let Some(pk) = row.first().cloned() else {
-                    continue;
-                };
-                // `filters` carries the primary key values of the rows the
-                // update actually touched (see `apply_odku`, which passes
-                // `pk_values`). An empty filter means the whole table.
-                if !filters.is_empty() && !filters.contains(&pk) {
-                    continue;
-                }
-                mvcc.put(pk, row, ts, tx_id);
-            }
-        }
-        self.register_sql_write("UPDATE");
-        self.maybe_gc();
-        Ok(n)
+        self.update_scoped(crate::engine::DEFAULT_DATABASE, table, filters, updates)
     }
 
     fn update_if(
@@ -783,27 +959,14 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        let n = self.inner.update_if(table, filter, mutation)?;
-        if n > 0 {
-            let mvcc = self.mvcc_table(table);
-            let tx_id = self.inner.current_tx_id();
-            let pairs = mvcc.scan_visible(mvcc.begin_snapshot(), tx_id);
-            let tx_id = self.inner.current_tx_id();
-            let ts = mvcc.next_snapshot_ts();
-            for (pk, row) in pairs {
-                mvcc.put(pk, row, ts, tx_id);
-            }
-        }
-        self.register_sql_write("UPDATE");
-        self.maybe_gc();
-        Ok(n)
+        self.update_if_scoped(crate::engine::DEFAULT_DATABASE, table, filter, mutation)
     }
 
     fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
         self.inner.force_insert(table, record.clone())?;
         if !record.is_empty() {
             let mvcc = self.mvcc_table(table);
-            let pk = record[0].clone();
+            let pk = self.row_identity(&mvcc, crate::engine::DEFAULT_DATABASE, table, &record);
             let tx_id = self.inner.current_tx_id();
             let ts = mvcc.next_snapshot_ts();
             mvcc.put(pk, record, ts, tx_id);
@@ -823,8 +986,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
 
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
         self.inner.drop_table(table)?;
-        // #5025: same scoped key `mvcc_table` uses.
-        let key = crate::engine::scoped_key(&self.inner.current_db(), table);
+        // #5057: same scoped key `mvcc_table` uses, resolved to DEFAULT.
+        let key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, table);
         self.mvcc.write().remove(&key);
         Ok(())
     }
@@ -850,8 +1013,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
         self.inner.list_indexes(table)
     }
-    fn has_view(&self, name: &str) -> bool {
-        self.inner.has_view(name)
+    fn has_view(&self, db: &str, name: &str) -> bool {
+        self.inner.has_view(db, name)
     }
     fn get_trigger(&self, name: &str) -> Option<TriggerInfo> {
         self.inner.get_trigger(name)
@@ -866,17 +1029,6 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         self.inner.drop_database(db_name)
     }
 
-    /// #5025: forward the database switch. A wrapper that answers the
-    /// trait default (`Ok(())` that changes nothing) makes `USE` report
-    /// success while every query still resolves against the previous
-    /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        self.inner.current_db()
-    }
     /// #5009: forward. Without this the MVCC layer would answer the
     /// trait default (empty list) and `SHOW DATABASES` would report
     /// nothing at all when the server runs on the MVCC engine.
@@ -985,11 +1137,11 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
 
     fn rename_table(&mut self, old: &str, new: &str) -> SqlResult<()> {
         // Move MVCC state under the new name.
-        // #5025: move the version store with the table.
-        let old_key = crate::engine::scoped_key(&self.inner.current_db(), old);
+        // #5057: move the version store with the table, resolved to DEFAULT.
+        let old_key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, old);
         let mvcc_state = self.mvcc.write().remove(&old_key);
         if let Some(state) = mvcc_state {
-            let new_key = crate::engine::scoped_key(&self.inner.current_db(), new);
+            let new_key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, new);
             self.mvcc.write().insert(new_key, state);
         }
         self.inner.rename_table(old, new)
@@ -1111,6 +1263,25 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         self.inner().list_tables_in_db(db)
     }
 
+    /// #5192: table metadata for a stated database.
+    ///
+    /// Same omission as the `*_in_db` family, and it is the one that broke
+    /// WAL replay: `apply_wal_entry` validates the table with
+    /// `get_table_info_in(db, table)` before inserting, and the trait
+    /// default at `engine.rs:1312` answers for the *current* database. A
+    /// row committed in `aud` therefore looked like a row naming a table
+    /// that does not exist, and every entry was skipped:
+    ///
+    /// ```text
+    /// apply_wal_entry: table "aud"."t" named by this entry does not exist
+    /// ```
+    ///
+    /// (the message prints the two arguments — `aud` is the database, `t`
+    /// the table — which reads like one mangled name; it is not.)
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        self.inner().get_table_info_in(db, table)
+    }
+
     fn scan_with_filter_in_db(
         &self,
         db: &str,
@@ -1153,7 +1324,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        self.inner_mut().delete_in_db(db, table, filters)
+        self.delete_scoped(db, table, filters)
     }
 
     fn delete_collect_pks_in_db(
@@ -1167,7 +1338,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
     }
 
     fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        self.inner_mut().delete_if_in_db(db, table, filter)
+        self.delete_if_scoped(db, table, filter)
     }
 
     fn update_in_db(
@@ -1177,7 +1348,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        self.inner_mut().update_in_db(db, table, filters, updates)
+        self.update_scoped(db, table, filters, updates)
     }
 
     fn update_if_in_db(
@@ -1187,8 +1358,7 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        self.inner_mut()
-            .update_if_in_db(db, table, filter, mutation)
+        self.update_if_scoped(db, table, filter, mutation)
     }
 
     fn has_table_in(&self, db: &str, table: &str) -> bool {
@@ -1480,20 +1650,18 @@ mod db_isolation_tests {
         mvcc.create_database("d2").unwrap();
 
         for (db, id) in [("d1", 1i64), ("d2", 2)] {
-            mvcc.set_current_db(db).unwrap();
-            mvcc.create_table(&table("t")).unwrap();
-            mvcc.insert("t", vec![vec![Value::Integer(id)]]).unwrap();
+            mvcc.create_table_in_db(db, &table("t")).unwrap();
+            mvcc.insert_in_db(db, "t", vec![vec![Value::Integer(id)]])
+                .unwrap();
         }
 
-        mvcc.set_current_db("d1").unwrap();
         assert_eq!(
-            mvcc.scan("t").unwrap(),
+            mvcc.scan_in_db("d1", "t").unwrap(),
             vec![vec![Value::Integer(1)]],
             "d1 must not see d2's version"
         );
-        mvcc.set_current_db("d2").unwrap();
         assert_eq!(
-            mvcc.scan("t").unwrap(),
+            mvcc.scan_in_db("d2", "t").unwrap(),
             vec![vec![Value::Integer(2)]],
             "d2 must not see d1's version"
         );

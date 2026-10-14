@@ -1,0 +1,148 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a01-20261011T062229Z-609a8e81
+work_package: A01
+source_agent: OMP
+source_run: omp-20261011T062229Z
+timestamp_started: '2026-10-11T06:22:44Z'
+timestamp_finished: '2026-10-11T06:25:35Z'
+conflict_resolution: none
+repository:
+  canonical_remote: http://192.168.0.252:3000/openclaw/sqlrustgo.git
+  commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+  branch_or_detached: feature/a01-refreeze-5223
+  status_porcelain_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  cargo_lock_sha256: d8bba914c5223bece0146c28e7cc1cb48f25c27de84275bb03ef65d5a84e5a2d
+environment:
+  os: linux
+  arch: x86_64
+  cpu: 80x Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz
+  memory_bytes: 434597134336
+  filesystem: ext4
+  rustc: rustc 1.99.0 (b940084d7 2026-09-28)
+  cargo: cargo 1.99.0 (5f94df478 2026-08-27)
+  features:
+  - aes256
+  - bin_storage_default
+  - default
+  - fault-injection
+  - jemalloc-prof
+  - parallel-executor
+  - q7-trace
+  - simd
+  - sqlrustgo
+  - sqlrustgo-storage
+  - sqlrustgo-types
+  - v313_3_profile
+  profile: debug
+  reference_dbms: []
+  process_pollution_check: traces/env_pollution_pre.txt
+datasets: []
+commands:
+- id: '001'
+  name: freeze-commit-check
+  argv:
+  - bash
+  - audit/v4.1.0/freeze_commit_check.sh
+  - 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+  cwd: .
+  timeout_sec: 600
+  started_at: '2026-10-11T06:23:21Z'
+  finished_at: '2026-10-11T06:23:21Z'
+  exit_code: 0
+  stdout: commands/001.stdout.log
+  stderr: commands/001.stderr.log
+  stdout_sha256: cf9b4f55495a54ddb5725d4718fddfca9e006833be46c60bcaa4138ba61fc5dc
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '002'
+  name: env-pollution-pre
+  argv:
+  - bash
+  - audit/v4.1.0/env_pollution_check.sh
+  - iaia410-a01-20261011T062229Z-609a8e81
+  - pre
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T06:23:21Z'
+  finished_at: '2026-10-11T06:23:21Z'
+  exit_code: 0
+  stdout: commands/002.stdout.log
+  stderr: commands/002.stderr.log
+  stdout_sha256: c5998962e7100c3cec1ea5d2d5e6ffabd31af904945151e434038714eb78a6eb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '003'
+  name: fmt-check
+  argv:
+  - cargo
+  - fmt
+  - --check
+  - --all
+  cwd: .
+  timeout_sec: 600
+  started_at: '2026-10-11T06:23:21Z'
+  finished_at: '2026-10-11T06:23:32Z'
+  exit_code: 1
+  stdout: commands/003.stdout.log
+  stderr: commands/003.stderr.log
+  stdout_sha256: e055829849ec5b0c267849a6590c4bbe9958f6ee44c289bbffe502c8b8475bea
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '004'
+  name: docs-links-check
+  argv:
+  - bash
+  - scripts/gate/check_docs_links.sh
+  - entry
+  cwd: .
+  timeout_sec: 600
+  started_at: '2026-10-11T06:23:32Z'
+  finished_at: '2026-10-11T06:23:32Z'
+  exit_code: 0
+  stdout: commands/004.stdout.log
+  stderr: commands/004.stderr.log
+  stdout_sha256: d6aec487ebb33131619f06041f87bf2d82dd3cb2021259f5eb98ee4cbbd51981
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '005'
+  name: docs-consistency-check
+  argv:
+  - bash
+  - scripts/gate/check_docs_consistency.sh
+  cwd: .
+  timeout_sec: 600
+  started_at: '2026-10-11T06:23:32Z'
+  finished_at: '2026-10-11T06:23:33Z'
+  exit_code: 0
+  stdout: commands/005.stdout.log
+  stderr: commands/005.stderr.log
+  stdout_sha256: e6bc1f2d749d68c1c522fff9cd9bbcd122428f136aa053598c3e1ec44805de77
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '006'
+  name: full-test-suite
+  argv:
+  - bash
+  - audit/v4.1.0/run_full_test_suite.sh
+  - iaia410-a01-20261011T062229Z-609a8e81
+  cwd: .
+  timeout_sec: 10800
+  started_at: '2026-10-11T06:23:33Z'
+  finished_at: '2026-10-11T06:25:35Z'
+  exit_code: 101
+  stdout: commands/006.stdout.log
+  stderr: commands/006.stderr.log
+  stdout_sha256: 3f1b5df030d78a169173053d8016490e0800bbbe0838fbfd5faf74fec43fa444
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '007'
+  name: env-pollution-post
+  argv:
+  - bash
+  - audit/v4.1.0/env_pollution_check.sh
+  - iaia410-a01-20261011T062229Z-609a8e81
+  - post
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T06:25:35Z'
+  finished_at: '2026-10-11T06:25:35Z'
+  exit_code: 0
+  stdout: commands/007.stdout.log
+  stderr: commands/007.stderr.log
+  stdout_sha256: 68a94bbf9210ccfaedc29c50277078b8d060669f6eb8198d66b69bbb5157782c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+manifest_sha256: sha256:cecc1378953f80c576b24e5896b3d439da68206b712bdd572f3ca03ea2a32443

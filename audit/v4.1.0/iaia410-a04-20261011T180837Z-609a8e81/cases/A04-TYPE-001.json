@@ -1,0 +1,83 @@
+{
+  "id": "A04-TYPE-001",
+  "domain": "coltype",
+  "query": "SELECT 1 AS i, 'x' AS s, 3.5 AS d, NULL AS n, 1.0 AS f",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[15, 15, 15, 15, 15] ref=[8, 253, 246, 6, 246]; multiset differs (same count 1): only_subj=[('1', 'x', '3.5', 'NULL', '1')] only_ref=[('1', 'x', '3.5', 'NULL', '1.0')]",
+  "aspects": [
+    "column_type",
+    "value"
+  ],
+  "subj": {
+    "case_id": "A04-TYPE-001",
+    "role": "subject",
+    "port": 14500,
+    "setup": [],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "i",
+        "s",
+        "d",
+        "n",
+        "f"
+      ],
+      "types": [
+        15,
+        15,
+        15,
+        15,
+        15
+      ],
+      "rows": [
+        [
+          "1",
+          "x",
+          "3.5",
+          null,
+          "1"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-TYPE-001",
+    "role": "ref",
+    "port": 14600,
+    "setup": [],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "i",
+        "s",
+        "d",
+        "n",
+        "f"
+      ],
+      "types": [
+        8,
+        253,
+        246,
+        6,
+        246
+      ],
+      "rows": [
+        [
+          1,
+          "x",
+          "3.5",
+          null,
+          "1.0"
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.4,
+  "wire": {
+    "subj": "cases/A04-TYPE-001_.subj.wire",
+    "ref": "cases/A04-TYPE-001_.ref.wire"
+  }
+}

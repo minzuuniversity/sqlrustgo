@@ -1,0 +1,37 @@
+== env pollution post ==
+timestamp_utc=2026-10-11T19:19:37Z
+hostname=gaoyuanai-HPZ6G4
+
+== sqlrustgo-related processes ==
+openclaw     808  0.3  0.0 1875984 35712 ?       Sl   00:47   0:29 ./target/debug/sqlrustgo-mysql-server serve --host 127.0.0.1 --port 3309 --data-dir /tmp/a04-sqlrustgo-data --auth-mode none --log-level warn
+openclaw    5224  1.5  0.0 1291716 32608 pts/4   Sl+  Oct10  41:19 /home/openclaw/.local/bin/aoci --repo /home/openclaw/sqlrustgo mcp
+root     1232915  0.0  0.0   1712  1416 ?        S    03:19   0:00 /workspace/openclaw/sqlrustgo/repo/target/release/build/libsqlite3-sys-97961deb20448401/build-script-build
+root     1232919  0.0  0.0   3320  2232 ?        S    03:19   0:00 cc -O3 -ffunction-sections -fdata-sections -fPIC -m64 -w -DSQLITE_CORE -DSQLITE_DEFAULT_FOREIGN_KEYS=1 -DSQLITE_ENABLE_API_ARMOR -DSQLITE_ENABLE_COLUMN_METADATA -DSQLITE_ENABLE_DBSTAT_VTAB -DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_JSON1 -DSQLITE_ENABLE_LOAD_EXTENSION=1 -DSQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_STAT4 -DSQLITE_SOUNDEX -DSQLITE_THREADSAFE=1 -DSQLITE_USE_URI -DHAVE_USLEEP=1 -DHAVE_ISNAN -D_POSIX_THREAD_SAFE_FUNCTIONS -DHAVE_LOCALTIME_R -o /workspace/openclaw/sqlrustgo/repo/target/release/build/libsqlite3-sys-9cb1097a8ee0cace/out/c877a2978823c39d-sqlite3.o -c sqlite3/sqlite3.c
+root     1232920  100  0.0 362056 319540 ?       R    03:19   0:17 /usr/libexec/gcc/x86_64-alpine-linux-musl/15.2.0/cc1 -quiet -D SQLITE_CORE -D SQLITE_DEFAULT_FOREIGN_KEYS=1 -D SQLITE_ENABLE_API_ARMOR -D SQLITE_ENABLE_COLUMN_METADATA -D SQLITE_ENABLE_DBSTAT_VTAB -D SQLITE_ENABLE_FTS3 -D SQLITE_ENABLE_FTS3_PARENTHESIS -D SQLITE_ENABLE_FTS5 -D SQLITE_ENABLE_JSON1 -D SQLITE_ENABLE_LOAD_EXTENSION=1 -D SQLITE_ENABLE_MEMORY_MANAGEMENT -D SQLITE_ENABLE_RTREE -D SQLITE_ENABLE_STAT4 -D SQLITE_SOUNDEX -D SQLITE_THREADSAFE=1 -D SQLITE_USE_URI -D HAVE_USLEEP=1 -D HAVE_ISNAN -D _POSIX_THREAD_SAFE_FUNCTIONS -D HAVE_LOCALTIME_R sqlite3/sqlite3.c -quiet -dumpdir /workspace/openclaw/sqlrustgo/repo/target/release/build/libsqlite3-sys-9cb1097a8ee0cace/out/ -dumpbase c877a2978823c39d-sqlite3.c -dumpbase-ext .c -m64 -mtune=generic -march=x86-64 -O3 -w -ffunction-sections -fdata-sections -fPIC -o /tmp/ccNbinnC.s
+root     1233143  101  0.0 291440 167848 ?       Sl   03:19   0:04 /root/.rustup/toolchains/stable-x86_64-unknown-linux-musl/bin/rustc --crate-name chrono --edition=2021 /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/chrono-0.4.45/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C opt-level=3 -C linker-plugin-lto -C codegen-units=1 --cfg feature="alloc" --cfg feature="clock" --cfg feature="default" --cfg feature="iana-time-zone" --cfg feature="js-sys" --cfg feature="now" --cfg feature="oldtime" --cfg feature="serde" --cfg feature="std" --cfg feature="wasm-bindgen" --cfg feature="wasmbind" --cfg feature="winapi" --cfg feature="windows-link" --check-cfg cfg(docsrs,test) --check-cfg cfg(feature, values("__internal_bench", "alloc", "arbitrary", "clock", "core-error", "default", "defmt", "iana-time-zone", "js-sys", "libc", "now", "oldtime", "pure-rust-locales", "rkyv", "rkyv-16", "rkyv-32", "rkyv-64", "rkyv-validation", "serde", "std", "unstable-locales", "wasm-bindgen", "wasmbind", "winapi", "windows-link")) -C metadata=0f8cb96ad2045a75 -C extra-filename=-b34906c04ab4afea --out-dir /workspace/openclaw/sqlrustgo/repo/target/release/deps -C strip=debuginfo -L dependency=/workspace/openclaw/sqlrustgo/repo/target/release/deps --extern iana_time_zone=/workspace/openclaw/sqlrustgo/repo/target/release/deps/libiana_time_zone-13ae320963a618cf.rmeta --extern num_traits=/workspace/openclaw/sqlrustgo/repo/target/release/deps/libnum_traits-84956051dfaed639.rmeta --extern serde=/workspace/openclaw/sqlrustgo/repo/target/release/deps/libserde-2cc453117e2199bc.rmeta --cap-lints allow
+openclaw 3735400  0.0  0.0 1289888 26832 ?       Sl   Oct11   0:20 /tmp/aoci_install/aoci ui --repo /home/openclaw/sqlrustgo
+
+== listening TCP ports (3306/3307/3309) ==
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
+LISTEN 0      70         127.0.0.1:33060      0.0.0.0:*          
+LISTEN 0      128        127.0.0.1:3309       0.0.0.0:*          
+LISTEN 0      151        127.0.0.1:3306       0.0.0.0:*
+
+== data dirs ==
+/tmp/a04
+/tmp/a04-sqlrustgo-data
+/tmp/iaia-a04-run
+
+== behavior-relevant env var names (names only, no values) ==
+CARGO_TERM_PROGRESS_WHEN
+MYSQL_PAGER
+
+== cpu/memory pressure ==
+03:19:37 up 2 days,  6:41,  9 users,  load average: 4.87, 8.06, 12.87
+nproc=80
+               total        used        free      shared  buff/cache   available
+Mem:          414464       21037      339559         426       57636      393426
+Swap:           8191        1690        6501
+
+== reference DB dataset hash ==
+corpus_sha256=ea9fe1cf3adb06296730cbcc31f05f537577ad592073d87b15d7044ab8056c3e (a04_full, seed 410, 54 cases, 12 domains)

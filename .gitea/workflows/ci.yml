@@ -286,6 +286,36 @@ jobs:
           set -euo pipefail
           chmod +x scripts/gate/check_path_casefold_conflict.sh
           bash scripts/gate/check_path_casefold_conflict.sh
+      # Issue #5193 option C: `planner`/`executor` are declared not to be on
+      # the production execution path. This gate is what keeps that
+      # declaration honest — it fails if one of them is referenced from a
+      # production engine module without going back through the audit, and
+      # it fails if the exclusion registry itself goes stale. Without it in
+      # CI the declaration is a comment nobody checks.
+      - name: Off-production-path registry check (#5193 option C)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_off_production_path_registry.sh
+          bash scripts/gate/check_off_production_path_registry.sh
+      # Issue #5199 item 3 (F6): a correctness test green on a non-production
+      # storage proves nothing about production. The server's production
+      # storage-selection block must keep its default file-backed and must not
+      # introduce MemoryStorage. Without this in CI the "tests cover the
+      # production config" invariant is a comment nobody checks.
+      - name: Production storage default check (#5199 item 3)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_correctness_tests_production_storage.sh
+          bash scripts/gate/check_correctness_tests_production_storage.sh
+      # Issue #5192: a storage wrapper that fails to forward a
+      # database-scoped StorageEngine method silently answers for the current
+      # database. Nine such omissions were each found after a separate
+      # investigation; this makes the tenth a CI failure instead.
+      - name: Storage DB-scope coverage check (#5192)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_storage_db_scope_coverage.sh
+          bash scripts/gate/check_storage_db_scope_coverage.sh
       - name: Fix-PR Test Registry Check (v4.1.0+) — every fix PR's test file must exist + compile
         if: contains(github.ref, 'develop/v4.1.0') || contains(github.ref, 'develop/v4.') || contains(github.ref, 'release/v4.')
         run: |

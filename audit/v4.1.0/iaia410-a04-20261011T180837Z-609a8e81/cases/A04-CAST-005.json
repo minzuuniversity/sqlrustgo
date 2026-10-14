@@ -1,0 +1,122 @@
+{
+  "id": "A04-CAST-005",
+  "domain": "typeconv",
+  "query": "SELECT id FROM tc_n WHERE i = '5' ORDER BY id",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "rowcount differs: subj=0 ref=1",
+  "aspects": [
+    "rowcount"
+  ],
+  "subj": {
+    "case_id": "A04-CAST-005",
+    "role": "subject",
+    "port": 14539,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS tc_n",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE tc_n (id INT, i INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO tc_n VALUES (1,5),(2,50),(3,500)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id"
+      ],
+      "types": [
+        3
+      ],
+      "rows": []
+    }
+  },
+  "ref": {
+    "case_id": "A04-CAST-005",
+    "role": "ref",
+    "port": 14639,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS tc_n",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE tc_n (id INT, i INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO tc_n VALUES (1,5),(2,50),(3,500)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          1
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.56,
+  "wire": {
+    "subj": "cases/A04-CAST-005_.subj.wire",
+    "ref": "cases/A04-CAST-005_.ref.wire"
+  }
+}

@@ -1,0 +1,6 @@
+=== STDOUT ===
+v AS renamed
+7
+
+=== STDERR ===
+

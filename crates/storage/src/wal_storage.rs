@@ -588,6 +588,21 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner().scan_pk(table, pk_column, pk)
     }
 
+    /// #5281: same forwarding obligation as `scan_pk` above — the
+    /// trait default for the `_in_db` variant still matches
+    /// `row.first()`, so a PK declared on a non-first column never
+    /// reached the identity-aware `MvccStorage` lookup below us and
+    /// the SQL point lookup reported 0 rows affected.
+    fn scan_pk_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        pk_column: &str,
+        pk: &Value,
+    ) -> SqlResult<Option<Record>> {
+        self.inner().scan_pk_in_db(db, table, pk_column, pk)
+    }
+
     /// #5168: same forwarding obligation for the range variant, whose
     /// default is also a full scan plus a filter.
     fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
@@ -599,10 +614,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        // #5192: the unscoped entry point records the storage's current
-        // database, matching the `insert` below it.
-        let db = self.inner().current_db();
-        self.insert_in_db(&db, table, records)
+        // #5057: the unscoped entry point records DEFAULT_DATABASE.
+        let db = crate::engine::DEFAULT_DATABASE;
+        self.insert_in_db(db, table, records)
     }
 
     /// #5192: WAL-logged insert that names the target database explicitly.
@@ -727,10 +741,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        // #5192: the unscoped entry point records the storage's current
-        // database, matching the `delete_in_db` below it.
-        let db = self.inner().current_db();
-        self.delete_in_db(&db, table, filters)
+        // #5057: the unscoped entry point records DEFAULT_DATABASE.
+        let db = crate::engine::DEFAULT_DATABASE;
+        self.delete_in_db(db, table, filters)
     }
 
     /// #5192: WAL-logged delete that names the target database explicitly.
@@ -767,9 +780,16 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     self.log_delete(table_id, Some(table), Some(&db_name), key)?;
                 }
             }
-        } else {
+        } else if filters.len() == 1 {
             let pk_value = filters[0].clone();
             let key = Self::record_key(std::slice::from_ref(&pk_value));
+            self.log_delete(table_id, Some(table), Some(&db_name), key)?;
+        } else {
+            // #5281: a multi-value filter is a full-row address (the no-PK
+            // delete/update convention). Logging only `filters[0]` made
+            // recovery replay `delete([first_col])`, wiping every row that
+            // shares the first column. Log the whole address.
+            let key = Self::record_key(filters);
             self.log_delete(table_id, Some(table), Some(&db_name), key)?;
         }
 
@@ -778,7 +798,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
         let table_id = Self::table_name_to_id(table);
-        let db_name = self.inner().current_db();
+        let db_name = crate::engine::DEFAULT_DATABASE.to_string();
         let key = format!("RowFilter-{:p}", filter).into_bytes();
         self.log_delete(table_id, Some(table), Some(&db_name), key)?;
         self.inner_mut().delete_if(table, filter)
@@ -790,10 +810,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        // #5192: the unscoped entry point records the storage's current
-        // database, matching the `update_in_db` below it.
-        let db = self.inner().current_db();
-        self.update_in_db(&db, table, filters, updates)
+        // #5057: the unscoped entry point records DEFAULT_DATABASE.
+        let db = crate::engine::DEFAULT_DATABASE;
+        self.update_in_db(db, table, filters, updates)
     }
 
     /// #5192: WAL-logged update that names the target database explicitly.
@@ -869,8 +888,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // Encode the mutation as a debug string for WAL; on recovery the
         // RowFilter closure cannot be reconstructed, so this is best-effort.
         let data = format!("{:?}", mutation).into_bytes();
-        // #5192: bind the database before `inner_mut()` borrows self.
-        let current_db = self.inner().current_db();
+        // #5057: bind DEFAULT_DATABASE before `inner_mut()` borrows self.
+        let current_db = crate::engine::DEFAULT_DATABASE.to_string();
         self.log_update(table_id, Some(table), Some(&current_db), key, data)?;
         self.inner_mut().update_if(table, filter, mutation)
     }
@@ -887,18 +906,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     /// same "wrapper silently drops the method" defect shape as #4974.
     fn list_databases(&self) -> SqlResult<Vec<String>> {
         self.inner().list_databases()
-    }
-
-    /// #5025: forward the database switch. A wrapper that answers the
-    /// trait default (`Ok(())` that changes nothing) makes `USE` report
-    /// success while every query still resolves against the previous
-    /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner_mut().set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        self.inner().current_db()
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
@@ -957,8 +964,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner().list_indexes(table)
     }
 
-    fn has_view(&self, name: &str) -> bool {
-        self.inner().has_view(name)
+    fn has_view(&self, db: &str, name: &str) -> bool {
+        self.inner().has_view(db, name)
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {
@@ -1031,6 +1038,18 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                 }
                 WalSyncMode::Every => {
                     self.wal.lock().sync()?;
+                    // B-1 (#5177): durability boundary, NOT the point
+                    // where the client is told COMMIT succeeded. The two
+                    // differ and tests must say which they mean.
+                    //
+                    // Gated, because the module only exists with the
+                    // feature; an ungated call would break the production
+                    // build. Inside, `reach` is a no-op when the harness is
+                    // not armed.
+                    #[cfg(feature = "fault-injection")]
+                    crate::fault_injection::reach(
+                        crate::fault_injection::FaultPoint::AfterCommitFsync,
+                    );
                 }
                 WalSyncMode::GroupCommit { .. } => {
                     // WalStorage path doesn't install a coordinator;
@@ -1481,6 +1500,25 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     // to name the database, not to reimplement the operation.
     fn list_tables_in_db(&self, db: &str) -> Vec<String> {
         self.inner().list_tables_in_db(db)
+    }
+
+    /// #5192: table metadata for a stated database.
+    ///
+    /// Same omission as the `*_in_db` family, and it is the one that broke
+    /// WAL replay: `apply_wal_entry` validates the table with
+    /// `get_table_info_in(db, table)` before inserting, and the trait
+    /// default at `engine.rs:1312` answers for the *current* database. A
+    /// row committed in `aud` therefore looked like a row naming a table
+    /// that does not exist, and every entry was skipped:
+    ///
+    /// ```text
+    /// apply_wal_entry: table "aud"."t" named by this entry does not exist
+    /// ```
+    ///
+    /// (the message prints the two arguments — `aud` is the database, `t`
+    /// the table — which reads like one mangled name; it is not.)
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        self.inner().get_table_info_in(db, table)
     }
 
     fn scan_with_filter_in_db(
@@ -1937,6 +1975,33 @@ mod tests {
         }
 
         impl StorageEngine for ScanCountingStorage {
+            // #5277: every `*_in_db` / `*_in` method added to the trait since
+            // #5267 and now, forwarded to the wrapped storage. This type
+            // only existed under the fault-injection feature, so the missing
+            // methods only surfaced now that those defaults were removed.
+            fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+                self.inner.create_table_in_db(db, info)
+            }
+            fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+                self.inner.drop_table_in_db(db, table)
+            }
+            fn has_table_in(&self, db: &str, table: &str) -> bool {
+                self.inner.has_table_in(db, table)
+            }
+            fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+                self.inner.get_table_info_in(db, table)
+            }
+            fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+                self.inner.scan_in_db(db, table)
+            }
+            fn scan_in_tx_db(
+                &self,
+                db: &str,
+                table: &str,
+                reader_tx: u64,
+            ) -> SqlResult<Vec<Record>> {
+                self.inner.scan_in_tx_db(db, table, reader_tx)
+            }
             fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
                 self.scan_calls.fetch_add(1, Ordering::SeqCst);
                 self.inner.scan(table)
@@ -2024,8 +2089,8 @@ mod tests {
             fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
                 self.inner.list_indexes(table)
             }
-            fn has_view(&self, name: &str) -> bool {
-                self.inner.has_view(name)
+            fn has_view(&self, db: &str, name: &str) -> bool {
+                self.inner.has_view(db, name)
             }
             fn as_any(&self) -> &dyn std::any::Any {
                 self

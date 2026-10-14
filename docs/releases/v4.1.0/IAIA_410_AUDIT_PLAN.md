@@ -1,5 +1,11 @@
 # SQLRustGo v4.1.0 实现真实性与系统集成审计计划（IAIA-410）
 
+> **迁移说明（2026-10-10）**：本文件保留 2026-10-09 的原始计划、阶段执行记录和方法论教训，
+> 不再承担正式审计协议或实时状态 SSOT。正式执行统一以
+> [`IAIA_410_SSOT.md`](IAIA_410_SSOT.md) 和 Gitea
+> [Master Issue #5235](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5235)
+> 为入口；Issue/PR 状态必须实时查询，不得从本文的历史表格推导。
+
 > **文档性质**: 审计计划，不是审计报告，也不是执行结果。
 > **制定日期**: 2026-10-09
 > **审计代号**: IAIA-410（Implementation Authenticity & Integration Audit）
@@ -850,3 +856,117 @@ WAL recovery: total=8 committed_txns=1 rows_inserted=5 skipped=0
 - #5204 治理阻塞已按受支持流程解开（根因：提交态 config 11 条规则 vs baseline 7 条规则身份矛盾），更正评论已附该 issue
 - 不计入 IAIA-410 评分，仅状态记录
 
+---
+
+## 16. 第三阶段复核：#5167 / #5209 状态核验（2026-10-09）
+
+> 基线 `5a59c2f701`（`develop/v4.1.0`）
+> source_agent: mcode (MiniMax-M3.1-Flash-Preview)
+> source_run: iaia410-phase3-verify-20261009
+> 方法：本地编译 debug 二进制 + 真实 pymysql 客户端 + `--storage file`
+> （`serve` 的默认模式）+ SQLite 作独立参照引擎
+
+### 16.1 结论摘要
+
+| Issue | 声称状态 | 实测判定 | 依据 |
+|---|---|---|---|
+| #5167 | open（曾被拟为 `refuted`） | **`refuted`** —— 当前 HEAD 无法复现 | §16.2 |
+| #5209 | open，3 个 PR 已合并 | **部分 `confirmed`** —— 主张已修，但发现**新缺陷 F5** | §16.3 |
+| #5192 | closed | 维持 closed | PR #5208 已合并 |
+| #5193 | open，选项 C 已裁决 | 三条要求全部落地 | PR #5207 / #5214 |
+
+### 16.2 #5167：`refuted` 成立，但原 issue 的前提需更正
+
+Issue 报告的核心症状是 `--storage file` 下 `COUNT(*)` / `SUM` / 范围扫描返回 0。
+在 `5a59c2f701` 上以同配置实测（10000 行、10 批插入、跨越 insert buffer 阈值）：
+
+```
+SELECT COUNT(*) FROM big          -> 10000   ✓
+SELECT SUM(k)    FROM big         -> 与 SQLite 一致 ✓
+SELECT MIN/MAX(k)                  -> 10, 100000 ✓
+COUNT(*) WHERE id>=1 AND id<=10000 -> 10000  ✓
+COUNT(*) WHERE id>5000             -> 5000   ✓
+COUNT(*) WHERE k>0                -> 10000  ✓
+LIMIT 3                            -> 3 行   ✓
+point_hits（13 个抽样 id 逐个点查） -> 13/13  ✓
+```
+
+**与 SQLite 逐项交叉验证**（10000 行同构表）：
+
+| 查询 | SQLite | SQLRustGo | 判定 |
+|---|---|---|---|
+| `SUM(k)` | 500050000 | 500050000 | MATCH |
+| `SUM(id)` | 50005000 | 50005000 | MATCH |
+| `COUNT(*)` | 10000 | 10000 | MATCH |
+| `AVG(k)` | 50005.0 | 50005 | 值相等（整数/浮点表示差异） |
+| `SUM(k+k)` | 1000100000 | 1000100000 | MATCH |
+| `SUM(id*10)` | 500050000 | 500050000 | MATCH |
+
+**判定 `refuted`**，附两点更正：
+
+1. **原 issue 归因的两条路径均不成立。** 报告建议优先确认「扫描只看 `tables[key].rows`
+   而漏 `insert_buffer`」—— 该假设在报告当时（`316a48e0aa`）就已不成立，
+   `scan_in_db` 当时已合并 `insert_buffer`（#5025）。
+2. **复核者用内存存储测试得出的「无法复现」结论是对的**，此前判定
+   `confirmed` 所依据的复现同样成立 —— 两个结论指向同一事实：
+   **该缺陷在 `--storage file` 与内存存储之间无差异，HEAD 上两者都正确。**
+   因此引发争议的因素不是存储引擎，而是报告所基于的更早提交。
+
+### 16.3 #5209：性能主张成立，但复核中发现新的 F5 语义缺陷
+
+已合并的三个 PR（#5210 / #5213 / #5215）修复的是 CREATE INDEX 空树、
+B+Tree 单键多 row_id、等值谓词路由。实测确认这些生效：
+
+```
+CREATE TABLE t2(id INT PRIMARY KEY, k INT); INSERT 3 行;
+CREATE INDEX idx_k ON t2(k);              -- 索引曾为空树（#5210）
+SELECT COUNT(*) FROM t2 WHERE k=20       -> 1 ✓
+```
+
+**但复核中新发现一个 F5 缺陷：MySQL 逗号形式 `LIMIT a,b` 的第二个数字被静默丢弃。**
+
+20 行小表即可复现（规模、索引、并发均已排除）：
+
+| 查询 | 实得 | 期望 | 判定 |
+|---|---|---|---|
+| `LIMIT 3` | 3 行 | 3 行 | OK |
+| `LIMIT 0,3` | **0 行** | 3 行 | DEFECT |
+| `LIMIT 5,3` | **5 行**（1,2,3,4,5） | 3 行（6,7,8） | DEFECT |
+| `LIMIT 18,3` | **18 行** | 2 行 | DEFECT |
+| `ORDER BY id LIMIT 5,3` | **5 行**（1..5） | 3 行（6,7,8） | DEFECT |
+| `ORDER BY id DESC LIMIT 5,3` | **5 行**（20..16） | 3 行（18,19,20） | DEFECT |
+
+**根因**：`crates/parser/src/parser.rs:7778-7884` 的 LIMIT 解析只取**一个**值即
+结束，未检查其后是否为逗号。因此 `LIMIT 5,3` 中 `5` 成为 `limit`，`,3` 被丢弃。
+执行端 [`engine_select.rs:3080-3090`](../../crates/engine_select.rs#L3080-L3090)
+的 `skip(offset).take(limit)` 逻辑本身**正确**（offset=0 时退化为 `take(limit)`，
+与观测到的「返回 limit 行」完全吻合）。
+
+**为何长期未被发现**：现有测试
+[`test_select_order_by_limit_offset`](../../crates/parser/src/parser.rs#L18464-L18475)
+只断言 `LIMIT 10 OFFSET 5`（关键字形式），**没有覆盖 MySQL 逗号形式**。
+
+**严重度**：F5 语义退化 + 命中 §5 一票否决项第 3 条「复杂 SQL 静默返回错误结果」。
+分页场景下 `LIMIT 9998,3` 返回 9998 行而非 2 行，下游分页逻辑会静默出错。
+
+### 16.4 本阶段的方法论教训
+
+复核过程中我犯了一个**被自己的实验证伪的错误**，值得记录：
+
+初测 `SUM(k)` 得 500050000 而手算期望 50005000（差 10 倍），一度判为新缺陷并
+开始定位聚合实现（`engine_select.rs:3099` 的 `compute_aggregates`，确认其
+`int_sum += n` 无溢出问题）。随后发现：
+
+- 逐行点查 10/10 全对，数据本身无误
+- **SQLite 同构表给出同样的 500050000** —— 是我手算错了（1..10000 的 10 倍和
+  本就是 500050000）
+
+若没有外部参照引擎交叉验证，这个**审计者的算术错误会被写成一条 P0 缺陷**。
+这正是 IAIA-410 §5「差分测试」要求的必要性：单引擎自证不足以定性。
+
+### 16.5 待办
+
+- [ ] `LIMIT a,b` 解析修复（parser 层）+ 覆盖两种形式的回归测试
+- [ ] #5167 按 `refuted` 关闭，需先补 `--storage file` 的回归测试用例，
+      否则缺陷若由其他提交重新引入将无网可拦
+- [ ] #5209 的性能修复已验证，但需在合并后补跑 B2 per-binary

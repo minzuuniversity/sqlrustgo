@@ -1081,6 +1081,25 @@ pub trait StorageEngine: Send + Sync {
             })
             .collect())
     }
+    /// #5057: `scan_pk` against a stated database.
+    ///
+    /// The default falls back to a full `scan_in_db` + linear find, which
+    /// is correct but not indexed. Engines with a real PK index override
+    /// this to address the right B+Tree via `scoped_key(db, table)`.
+    fn scan_pk_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        pk_column: &str,
+        pk: &Value,
+    ) -> SqlResult<Option<Record>> {
+        let _ = pk_column;
+        let pk = pk.clone();
+        Ok(self
+            .scan_in_db(db, table)?
+            .into_iter()
+            .find(|row| row.first() == Some(&pk)))
+    }
     /// Phase B Step 3 follow-up #2: variant of `commit_transaction`
     /// that ALSO flushes the inner storage engine synchronously. Use
     /// this when the caller needs strong durability (the on-disk
@@ -1236,26 +1255,14 @@ pub trait StorageEngine: Send + Sync {
         ))
     }
 
-    /// #5025: the database subsequent table operations resolve against.
+    /// #5057: `current_db` / `set_current_db` were removed. The shared
+    /// per-engine "active database" field made every connection race on
+    /// the same mutable slot: `USE d1` on one connection silently
+    /// redirected reads issued by a peer on `default`. Database scoping
+    /// now lives in the `*_in_db` methods, which take an explicit
+    /// `db: &str`. The database-less methods (e.g. `get_table_info`)
+    /// resolve against `DEFAULT_DATABASE`.
     ///
-    /// `USE <db>` used to be an accepted no-op, so every database shared
-    /// one table namespace. Storing the name here lets table lookup be
-    /// scoped without changing the signature of the ~19 trait methods
-    /// that take a table name.
-    ///
-    /// Implementations return the bare database name; scoping into table
-    /// keys is the implementation's business.
-    fn current_db(&self) -> String {
-        DEFAULT_DATABASE.to_string()
-    }
-
-    /// #5025: switch the active database. Returns an error when the
-    /// database is unknown, so `USE missing_db` fails loudly instead of
-    /// silently resolving against the previous database.
-    fn set_current_db(&mut self, _db_name: &str) -> SqlResult<()> {
-        Ok(())
-    }
-
     /// Drop a database (directory). No-op for in-memory engines.
     fn drop_database(&mut self, _db_name: &str) -> SqlResult<()> {
         Err(SqlError::ExecutionError(
@@ -1309,10 +1316,16 @@ pub trait StorageEngine: Send + Sync {
     /// "the storage is shared by every connection, so any stored 'current
     /// transaction' is whichever wrote last, not whoever is reading". The
     /// database is no different, so it takes the same shape.
-    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
-        let _ = db;
-        self.get_table_info(table)
-    }
+    /// #5266 S1: metadata for a table in a *stated* database.
+    ///
+    /// The old default did `let _ = db; self.get_table_info(table)`. That is
+    /// why `SELECT COUNT(*) FROM d1.t` answered `Table not found` even though
+    /// `d1.t` existed: the lookup itself resolved against `default`, where
+    /// the table does not exist.
+    ///
+    /// Deliberately no default body. A storage that cannot address `db` must
+    /// say so — a `SqlResult` can, so there is no excuse for guessing.
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo>;
 
     /// #5025: `list_tables` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
@@ -1323,24 +1336,39 @@ pub trait StorageEngine: Send + Sync {
     /// current database. Backends without a per-database table namespace
     /// defer to the current-database listing; the ones that scope keys
     /// override.
-    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
-        let _ = db;
-        self.list_tables()
-    }
+    /// #5266: deliberately no default body — a default that did
+    /// `let _ = db; self.list_tables()` answered `SHOW TABLES FROM d1`
+    /// with `default`'s tables. Every implementation must either use `db`
+    /// or return an empty listing for a database it cannot address.
+    fn list_tables_in_db(&self, db: &str) -> Vec<String>;
 
     /// #5057 / #5025: `scan` against a stated database. See
     /// [`get_table_info_in`](Self::get_table_info_in).
-    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan(table)
-    }
+    /// #5266 S1: rows of a table in a *stated* database.
+    ///
+    /// The old default did `let _ = db; self.scan(table)`, so a read against
+    /// `d1.t` returned `default.t`'s rows — or reported the table missing.
+    /// Reads cross namespaces as easily as writes do.
+    ///
+    /// Deliberately no default body; see `get_table_info_in`.
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>>;
 
-    /// #5057 / #5025: `has_table` against a stated database. See
-    /// [`get_table_info_in`](Self::get_table_info_in).
-    fn has_table_in(&self, db: &str, table: &str) -> bool {
-        let _ = db;
-        self.has_table(table)
-    }
+    /// #5250: existence check against a *stated* database.
+    ///
+    /// The old default did `let _ = db; self.has_table(table)`, so the question
+    /// was answered about the current database. #5192 fixed the concrete
+    /// storages but left this default in place, and the shared contract test
+    /// caught the consequence: a storage that correctly *refused*
+    /// `create_table_in_db("d1", ..)` still reported `has_table_in("d1", "t")`
+    /// as `true`, because the check itself resolved to `default`.
+    ///
+    /// This one is worse than a `SqlResult` method: a `bool` cannot report a
+    /// problem, so a wrong answer is silently acted on.
+    ///
+    /// Deliberately no default body. Each implementation either consults `db`
+    /// or reports `false` for a database it cannot address — and must not
+    /// have side effects either way.
+    fn has_table_in(&self, db: &str, table: &str) -> bool;
 
     // ---------------------------------------------------------------------
     // #5057: the rest of the `*_in_db` family.
@@ -1364,15 +1392,13 @@ pub trait StorageEngine: Send + Sync {
     // ---------------------------------------------------------------------
 
     /// #5057: `scan_with_filter` against a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn scan_with_filter_in_db(
         &self,
         db: &str,
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
-    ) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan_with_filter(table, filter)
-    }
+    ) -> SqlResult<Vec<Record>>;
 
     /// #5057: `scan_with_filter_in` against a stated database — both the
     /// reading transaction and the database are supplied by the caller.
@@ -1383,8 +1409,8 @@ pub trait StorageEngine: Send + Sync {
         filter: &dyn Fn(&Record) -> bool,
         reader_tx: u64,
     ) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan_with_filter_in(table, filter, reader_tx)
+        let _ = reader_tx;
+        self.scan_with_filter_in_db(db, table, filter)
     }
 
     /// #5057: `scan_in` against a stated database — both the reading
@@ -1392,39 +1418,43 @@ pub trait StorageEngine: Send + Sync {
     ///
     /// `MvccStorage` needs both: `db` selects the table namespace, `reader_tx`
     /// selects which versions are visible.
-    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan_in(table, reader_tx)
-    }
+    /// #5277: a transactional scan against a *stated* database.
+    ///
+    /// The default body was `let _ = db; self.scan_in(table, reader_tx)`, and
+    /// `BoxStorageEngine` did not override it — so a query that reached
+    /// `scan_for_reader_in_db` on the boxed stack fell through to the default
+    /// and resolved the table against the storage's current database instead
+    /// of the stated one. Measured on the production stack: the same three
+    /// rows came back from `scan_in_db` and one row from `scan_in_tx_db`.
+    ///
+    /// Deliberately no default body. A wrapper that cannot carry the database
+    /// and the reader transaction has to say so, not quietly read something
+    /// else. Implementations must delegate to a storage that honours both
+    /// rather than substituting `scan_in_db`, which would drop the snapshot.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>>;
 
     /// #5057: `scan_with_index` against a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn scan_with_index_in_db(
         &self,
         db: &str,
         table: &str,
         index_name: &str,
         key: &Value,
-    ) -> SqlResult<Vec<Record>> {
-        let _ = db;
-        self.scan_with_index(table, index_name, key)
-    }
+    ) -> SqlResult<Vec<Record>>;
 
     /// #5057: `parallel_scan` against a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn parallel_scan_in_db(
         &self,
         db: &str,
         table: &str,
         num_partitions: usize,
-    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
-        let _ = db;
-        self.parallel_scan(table, num_partitions)
-    }
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>>;
 
     /// #5057: `insert` into a stated database.
-    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let _ = db;
-        self.insert(table, records)
-    }
+    /// #5266: deliberately no default body — see `get_table_info_in`.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()>;
 
     /// #5057: `force_insert` into a stated database.
     fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
@@ -1435,63 +1465,66 @@ pub trait StorageEngine: Send + Sync {
     }
 
     /// #5057: `delete` within a stated database.
-    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        let _ = db;
-        self.delete(table, filters)
-    }
+    /// #5266: deliberately no default body — see `get_table_info_in`.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize>;
 
     /// #5057: `delete_collect_pks` within a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn delete_collect_pks_in_db(
         &mut self,
         db: &str,
         table: &str,
         filters: &[Value],
-    ) -> SqlResult<Vec<Value>> {
-        let _ = db;
-        self.delete_collect_pks(table, filters)
-    }
+    ) -> SqlResult<Vec<Value>>;
 
     /// #5057: `delete_if` within a stated database.
-    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        let _ = db;
-        self.delete_if(table, filter)
-    }
+    /// #5266: deliberately no default body — see `get_table_info_in`.
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize>;
 
     /// #5057: `update` within a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn update_in_db(
         &mut self,
         db: &str,
         table: &str,
         filters: &[Value],
         updates: &[(usize, Value)],
-    ) -> SqlResult<usize> {
-        let _ = db;
-        self.update(table, filters, updates)
-    }
+    ) -> SqlResult<usize>;
 
     /// #5057: `update_if` within a stated database.
+    /// #5266: deliberately no default body — see `get_table_info_in`.
     fn update_if_in_db(
         &mut self,
         db: &str,
         table: &str,
         filter: &RowFilter,
         mutation: &RowMutation,
-    ) -> SqlResult<usize> {
-        let _ = db;
-        self.update_if(table, filter, mutation)
-    }
+    ) -> SqlResult<usize>;
 
     /// #5057: `create_table` within a stated database.
-    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
-        let _ = db;
-        self.create_table(info)
-    }
+    /// #5250: create a table in a *stated* database.
+    ///
+    /// This was a default body that did `let _ = db; self.create_table(info)`
+    /// — it silently discarded the explicit database and created the table
+    /// in whatever database happened to be current. Because `CREATE TABLE
+    /// d1.t` while the session was in `default` produced a real table under
+    /// `default`, the mistake was invisible from SQL: no error, and the table
+    /// simply appeared in the wrong database.
+    ///
+    /// It is the fifth recurrence of this shape (#5192 fixed the same omission
+    /// in `has_table_in`), so there is deliberately no default body: every
+    /// implementation must either use `db` or delegate to a storage that does.
+    ///
+    /// A storage that cannot honour a stated database must return an error
+    /// rather than quietly fall back to the current one.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()>;
 
-    /// #5057: `drop_table` within a stated database.
-    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
-        let _ = db;
-        self.drop_table(table)
-    }
+    /// #5250: drop a table in a *stated* database.
+    ///
+    /// Same contract as `create_table_in_db` — the old default did
+    /// `let _ = db; self.drop_table(table)`, so `DROP TABLE d1.t` could
+    /// delete `default.t` instead. No default body, by design.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()>;
 
     fn get_table_info(&self, table: &str) -> SqlResult<TableInfo>;
 
@@ -1596,36 +1629,41 @@ pub trait StorageEngine: Send + Sync {
     /// List all indexes for a table, returns Vec of (column_name, index_name)
     fn list_indexes(&self, table: &str) -> Vec<(String, String)>;
 
-    /// Check if a view exists
-    fn has_view(&self, name: &str) -> bool;
+    /// Check if a view exists in `db`.
+    /// #5057: views are per-database objects — the db must be explicit.
+    fn has_view(&self, db: &str, name: &str) -> bool;
 
-    /// Round-21 / Issue #4218: create a view in this storage backend.
+    /// Round-21 / Issue #4218: create a view in `db` in this storage backend.
     /// Default impl returns "not supported" so backends opt in.
-    fn create_view(&mut self, _info: ViewInfo) -> SqlResult<()> {
+    fn create_view(&mut self, db: &str, _info: ViewInfo) -> SqlResult<()> {
+        let _ = db;
         Err(SqlError::ExecutionError(
             "create_view not supported by this storage engine".to_string(),
         ))
     }
 
-    /// Round-21 / Issue #4218: look up a view by name.
+    /// Round-21 / Issue #4218: look up a view by name in `db`.
     /// Default impl returns None so backends opt in.
-    fn get_view(&self, _name: &str) -> Option<ViewInfo> {
+    fn get_view(&self, db: &str, _name: &str) -> Option<ViewInfo> {
+        let _ = db;
         None
     }
 
-    /// Round-21 / Issue #4218: list all view names.
+    /// Round-21 / Issue #4218: list all view names in `db`.
     /// Default impl returns empty so backends opt in.
-    fn list_views(&self) -> Vec<String> {
+    fn list_views(&self, db: &str) -> Vec<String> {
+        let _ = db;
         Vec::new()
     }
 
-    /// V312-95 v2 / Issue #4814: drop a view from this storage backend.
+    /// V312-95 v2 / Issue #4814: drop a view from `db` in this storage backend.
     /// Returns `Ok(())` even if the view does not exist (matches the
     /// `IF EXISTS` semantics already used by `execute_drop_view`); the
     /// caller is expected to validate existence first when `IF EXISTS`
     /// is NOT specified. Default impl returns "not supported" so backends
     /// opt in.
-    fn drop_view(&mut self, _name: &str) -> SqlResult<()> {
+    fn drop_view(&mut self, db: &str, _name: &str) -> SqlResult<()> {
+        let _ = db;
         Err(SqlError::ExecutionError(
             "drop_view not supported by this storage engine".to_string(),
         ))
@@ -1956,11 +1994,10 @@ pub struct MemoryStorage {
     sequences: HashMap<String, SequenceInfo>,
     /// 内存中的数据库集合 (CREATE DATABASE 注册的, in-memory 模式)
     databases: HashSet<String>,
-    /// #5025: the active database. Table maps are keyed by `scoped_key`
-    /// so that `d1.t` and `d2.t` are distinct rows. Changing it is a
-    /// plain field write, which is why every table-keyed method routes its
-    /// argument through `tbl()` rather than indexing with the raw name.
-    current_db: String,
+    /// #5057: `current_db` field removed. Table maps are keyed by
+    /// `scoped_key(DEFAULT_DATABASE, table)` for the database-less
+    /// methods; the `*_in_db` methods compute the key from their explicit
+    /// `db: &str` argument.
     /// Tracks the current transaction ID for VtuGuard::assert_dml_safe.
     /// VtuGuard checks S::in_transaction() which returns `current_tx_id != 0`.
     ///
@@ -2036,10 +2073,13 @@ pub struct TxLog {
 }
 
 impl MemoryStorage {
-    /// #5025: scope a bare table name to the active database.
+    /// #5057: scope a bare table name to the default database. The
+    /// `current_db` field was removed; database-less methods always
+    /// resolve against `DEFAULT_DATABASE`. Callers that need a named
+    /// database must use the `*_in_db` methods.
     #[inline]
     fn tbl(&self, table: impl AsRef<str>) -> String {
-        scoped_key(&self.current_db, table.as_ref())
+        scoped_key(DEFAULT_DATABASE, table.as_ref())
     }
 
     // --- #5057: table operations with the storage key already resolved
@@ -2451,9 +2491,17 @@ impl MemoryStorage {
                 }
                 count += 1;
             }
-        } else if let Some(filter_val) = filters.first() {
+        } else {
+            // #5281: match the filter positionally across the row, not just
+            // against `record.first()`. A single-value PK filter behaves the
+            // same for leading-column keys; a full-row filter (the no-PK
+            // delete/update convention) now pins exactly the intended row
+            // instead of every row sharing its first column.
             for record in records.iter_mut() {
-                let matches = record.first().map(|v| v == filter_val).unwrap_or(false);
+                let matches = filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| record.get(i) == Some(f));
                 if matches {
                     let prior = record.clone();
                     for &(col_idx, ref new_val) in updates {
@@ -2564,7 +2612,6 @@ impl MemoryStorage {
             // #5025: the implicit database must itself be registered, or
             //  would fail as "unknown".
             databases: HashSet::from([DEFAULT_DATABASE.to_string()]),
-            current_db: DEFAULT_DATABASE.to_string(),
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
             next_tx_id: 1,
             tx_log: None,
@@ -3168,27 +3215,6 @@ impl StorageEngine for MemoryStorage {
         Ok(())
     }
 
-    /// #5025: switch the active database.
-    ///
-    /// Rejects an unknown database so `USE missing_db` fails instead of
-    /// silently continuing against the previous one — the exact failure
-    /// mode this issue was filed about.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        let key = db_name.to_lowercase();
-        if !self.databases.contains(&key) {
-            return Err(SqlError::ExecutionError(format!(
-                "Unknown database: {}",
-                db_name
-            )));
-        }
-        self.current_db = key;
-        Ok(())
-    }
-
-    fn current_db(&self) -> String {
-        self.current_db.clone()
-    }
-
     /// #5057: resolve against the stated database rather than the stored
     /// one, so a concurrent `USE` on another connection cannot redirect a
     /// read that is already in flight.
@@ -3280,11 +3306,11 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn list_tables(&self) -> Vec<String> {
-        // #5025: only the current database's tables, with the internal
-        // `db\x01table` key stripped back to the bare name. Returning the
-        // raw keys would make `SHOW TABLES` display `d1\u{1}t` and list
-        // every database's tables.
-        let prefix = format!("{}\u{1}", self.current_db.to_lowercase());
+        // #5057: only the default database's tables, with the internal
+        // `db\x01table` key stripped back to the bare name. The
+        // `current_db` field was removed; callers that need a named
+        // database must use `list_tables_in_db`.
+        let prefix = format!("{}\u{1}", DEFAULT_DATABASE.to_lowercase());
         self.table_infos
             .iter()
             .filter_map(|(key, info)| key.strip_prefix(&prefix).map(|_| info.name.clone()))
@@ -3445,41 +3471,47 @@ impl StorageEngine for MemoryStorage {
             .collect()
     }
 
-    fn has_view(&self, name: &str) -> bool {
-        self.views.contains(name)
+    fn has_view(&self, db: &str, name: &str) -> bool {
+        self.views.contains(&scoped_key(db, name))
     }
 
-    fn create_view(&mut self, info: ViewInfo) -> SqlResult<()> {
-        if self.views.contains(&info.name) {
+    fn create_view(&mut self, db: &str, info: ViewInfo) -> SqlResult<()> {
+        // #5025: views are per-database objects, keyed the same way.
+        let key = scoped_key(db, &info.name);
+        if self.views.contains(&key) {
             return Err(SqlError::ExecutionError(format!(
                 "View '{}' already exists",
                 info.name
             )));
         }
-        // #5025: views are per-database objects, keyed the same way.
-        let key = self.tbl(&info.name);
         self.view_defs.insert(key.clone(), info);
         self.views.insert(key);
         Ok(())
     }
 
-    fn get_view(&self, name: &str) -> Option<ViewInfo> {
-        self.view_defs.get(&self.tbl(name)).cloned()
+    fn get_view(&self, db: &str, name: &str) -> Option<ViewInfo> {
+        self.view_defs.get(&scoped_key(db, name)).cloned()
     }
 
-    fn list_views(&self) -> Vec<String> {
-        let mut names: Vec<String> = self.view_defs.keys().cloned().collect();
+    fn list_views(&self, db: &str) -> Vec<String> {
+        let prefix = format!("{}\0", db);
+        let mut names: Vec<String> = self
+            .view_defs
+            .keys()
+            .filter_map(|k| k.strip_prefix(&prefix).map(|s| s.to_string()))
+            .collect();
         names.sort();
         names
     }
 
-    fn drop_view(&mut self, name: &str) -> SqlResult<()> {
+    fn drop_view(&mut self, db: &str, name: &str) -> SqlResult<()> {
         // V312-95 v2 / Issue #4814: idempotent — the executor already
         // guards the IF EXISTS / not-found error path; storage just
         // evicts whatever it has. Removing from `view_defs` even if the
         // name is missing is harmless (HashMap::remove is a no-op).
-        self.view_defs.remove(&self.tbl(name));
-        self.views.remove(&self.tbl(name));
+        let key = scoped_key(db, name);
+        self.view_defs.remove(&key);
+        self.views.remove(&key);
         Ok(())
     }
 
@@ -3506,9 +3538,12 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn next_sequence_value(&mut self, name: &str) -> SqlResult<i64> {
+        // #5262: sequences are stored under scoped keys (`default\x01name`),
+        // but callers pass bare names. Use `self.tbl(name)` to resolve.
+        let key = self.tbl(name);
         let seq = self
             .sequences
-            .get_mut(name)
+            .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Sequence '{}' not found", name)))?;
         let next = seq.current_value + seq.increment_by;
         if next > seq.maxvalue {
@@ -3538,9 +3573,12 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn current_sequence_value(&self, name: &str) -> SqlResult<i64> {
+        // #5262: sequences are stored under scoped keys (`default\x01name`),
+        // but callers pass bare names. Use `self.tbl(name)` to resolve.
+        let key = self.tbl(name);
         let seq = self
             .sequences
-            .get(name)
+            .get(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Sequence '{}' not found", name)))?;
         Ok(seq.current_value)
     }
@@ -3550,7 +3588,16 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn list_sequences(&self) -> Vec<String> {
-        self.sequences.keys().cloned().collect()
+        // #5262: sequences are stored under scoped keys (`default\x01name`),
+        // but callers expect bare names. Strip the `db\x01` prefix.
+        self.sequences
+            .keys()
+            .map(|k| {
+                k.split_once(DB_SEP)
+                    .map(|(_, t)| t.to_string())
+                    .unwrap_or_else(|| k.clone())
+            })
+            .collect()
     }
 
     fn get_sequence(&self, name: &str) -> Option<SequenceInfo> {
@@ -5153,74 +5200,53 @@ mod tests {
         s.commit_transaction().unwrap();
     }
 
-    // --- #5025: per-database table isolation ---
+    // --- #5057: per-database table isolation (no shared current_db) ---
 
     /// Two databases may hold a table of the same name; each must see only
-    /// its own. Before #5025 every table lived in one flat namespace keyed
-    /// by the bare name, so `d1.t` and `d2.t` were the same table and
-    /// `USE` was a no-op.
+    /// its own. Before #5057 every connection raced on one shared
+    /// `current_db` slot; the `*_in_db` methods take an explicit `db: &str`
+    /// so isolation is structural, not sequential.
     #[test]
     fn tables_are_isolated_per_database() {
         let mut s = MemoryStorage::new();
         s.create_database("d1").unwrap();
         s.create_database("d2").unwrap();
 
-        s.set_current_db("d1").unwrap();
-        s.create_table(&test_table("t", &["v"])).unwrap();
-        s.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
+        s.create_table_in_db("d1", &test_table("t", &["v"]))
+            .unwrap();
+        s.insert_in_db("d1", "t", vec![vec![Value::Integer(1)]])
+            .unwrap();
 
-        s.set_current_db("d2").unwrap();
-        s.create_table(&test_table("t", &["v"])).unwrap();
-        s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+        s.create_table_in_db("d2", &test_table("t", &["v"]))
+            .unwrap();
+        s.insert_in_db("d2", "t", vec![vec![Value::Integer(2)]])
+            .unwrap();
 
-        s.set_current_db("d1").unwrap();
         assert_eq!(
-            s.scan("t").unwrap(),
+            s.scan_in_db("d1", "t").unwrap(),
             vec![vec![Value::Integer(1)]],
             "d1 must not see d2's rows"
         );
-        s.set_current_db("d2").unwrap();
         assert_eq!(
-            s.scan("t").unwrap(),
+            s.scan_in_db("d2", "t").unwrap(),
             vec![vec![Value::Integer(2)]],
             "d2 must not see d1's rows"
         );
     }
 
-    /// `list_tables` feeds `SHOW TABLES`, which must show bare names for the
-    /// current database only — not the internal `db\x01table` keys, and not
+    /// `list_tables_in_db` feeds `SHOW TABLES FROM <db>`: bare names for the
+    /// stated database only — not the internal `db\x01table` keys, and not
     /// another database's tables.
     #[test]
-    fn list_tables_is_scoped_and_unscoped_keys() {
+    fn list_tables_in_db_is_scoped_and_unscoped_keys() {
         let mut s = MemoryStorage::new();
         s.create_database("d1").unwrap();
         s.create_database("d2").unwrap();
 
-        s.set_current_db("d1").unwrap();
-        s.create_table(&test_table("alpha", &["v"])).unwrap();
-        s.set_current_db("d2").unwrap();
-        s.create_table(&test_table("beta", &["v"])).unwrap();
-
-        s.set_current_db("d1").unwrap();
-        assert_eq!(s.list_tables(), vec!["alpha".to_string()]);
-        s.set_current_db("d2").unwrap();
-        assert_eq!(s.list_tables(), vec!["beta".to_string()]);
-    }
-
-    /// `SHOW TABLES FROM <db>` needs a target-database listing under a
-    /// shared read lock, where `set_current_db` (`&mut self`) is
-    /// unreachable — hence `list_tables_in_db` must answer for a stated
-    /// database without touching `current_db`.
-    #[test]
-    fn list_tables_in_db_answers_for_stated_database_without_switching() {
-        let mut s = MemoryStorage::new();
-        s.create_database("d1").unwrap();
-        s.create_database("d2").unwrap();
-
-        s.set_current_db("d1").unwrap();
-        s.create_table(&test_table("alpha", &["v"])).unwrap();
-        s.set_current_db("d2").unwrap();
-        s.create_table(&test_table("beta", &["v"])).unwrap();
+        s.create_table_in_db("d1", &test_table("alpha", &["v"]))
+            .unwrap();
+        s.create_table_in_db("d2", &test_table("beta", &["v"]))
+            .unwrap();
 
         let mut d1 = s.list_tables_in_db("d1");
         d1.sort();
@@ -5228,38 +5254,6 @@ mod tests {
         let mut d2 = s.list_tables_in_db("d2");
         d2.sort();
         assert_eq!(d2, vec!["beta".to_string()]);
-        assert_eq!(
-            s.current_db(),
-            "d2",
-            "list_tables_in_db must not mutate the engine-wide current database"
-        );
-    }
-
-    /// `USE missing_db` used to be accepted silently, which is how two
-    /// databases ended up sharing a namespace without anyone noticing.
-    #[test]
-    fn set_current_db_rejects_unknown_database() {
-        let mut s = MemoryStorage::new();
-        s.create_database("d1").unwrap();
-        s.set_current_db("d1").unwrap();
-        let err = s.set_current_db("nope").unwrap_err();
-        assert!(
-            err.to_string().contains("Unknown database"),
-            "error should name the problem, got: {}",
-            err
-        );
-        // The failed switch must leave the previous database active.
-        assert_eq!(s.current_db(), "d1");
-    }
-
-    /// The implicit database is registered on construction, so `USE default`
-    /// is a no-op rather than an "unknown database" error.
-    #[test]
-    fn default_database_is_always_usable() {
-        let s = MemoryStorage::new();
-        assert_eq!(s.current_db(), DEFAULT_DATABASE);
-        let mut s = s;
-        s.set_current_db(DEFAULT_DATABASE).unwrap();
     }
 
     /// Table names are matched case-insensitively and the database component
@@ -5271,18 +5265,24 @@ mod tests {
         s.create_database("a").unwrap();
         s.create_database("a.b").unwrap();
 
-        s.set_current_db("a").unwrap();
-        s.create_table(&test_table("b.t", &["v"])).unwrap();
-        s.insert("b.t", vec![vec![Value::Integer(1)]]).unwrap();
+        s.create_table_in_db("a", &test_table("b.t", &["v"]))
+            .unwrap();
+        s.insert_in_db("a", "b.t", vec![vec![Value::Integer(1)]])
+            .unwrap();
 
-        s.set_current_db("a.b").unwrap();
-        s.create_table(&test_table("t", &["v"])).unwrap();
-        s.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
+        s.create_table_in_db("a.b", &test_table("t", &["v"]))
+            .unwrap();
+        s.insert_in_db("a.b", "t", vec![vec![Value::Integer(2)]])
+            .unwrap();
 
-        s.set_current_db("a").unwrap();
-        assert_eq!(s.scan("b.t").unwrap(), vec![vec![Value::Integer(1)]]);
-        s.set_current_db("a.b").unwrap();
-        assert_eq!(s.scan("t").unwrap(), vec![vec![Value::Integer(2)]]);
+        assert_eq!(
+            s.scan_in_db("a", "b.t").unwrap(),
+            vec![vec![Value::Integer(1)]]
+        );
+        assert_eq!(
+            s.scan_in_db("a.b", "t").unwrap(),
+            vec![vec![Value::Integer(2)]]
+        );
     }
 
     // ── #4948: COMMIT shares rows instead of deep-copying the database ───────
@@ -5528,7 +5528,7 @@ mod tests {
 // resolved their tables against the other database — the common case,
 // not a rare interleaving.
 //
-// The `_in` methods take the database explicitly, which is what
+// The `_in_db` methods take the database explicitly, which is what
 // `#4951 scan_in` already does for the transaction id.
 
 #[test]
@@ -5538,46 +5538,40 @@ fn in_methods_ignore_the_stored_current_db() {
     s.create_database("d2").unwrap();
 
     for (db, id) in [("d1", 1i64), ("d2", 2)] {
-        s.set_current_db(db).unwrap();
         let mut info: TableInfo = TableInfo::default();
         info.name = "t".into();
         info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
-        s.create_table(&info).unwrap();
-        s.insert("t", vec![vec![Value::Integer(id)]]).unwrap();
+        s.create_table_in_db(db, &info).unwrap();
+        s.insert_in_db(db, "t", vec![vec![Value::Integer(id)]])
+            .unwrap();
     }
 
-    // Whichever database is currently stored, the explicit one wins.
-    for stored in ["d1", "d2"] {
-        s.set_current_db(stored).unwrap();
-        assert_eq!(
-            s.scan_in_db("d1", "t").unwrap(),
-            vec![vec![Value::Integer(1)]],
-            "scan_in_db must not follow the stored current database \
-                 (stored was {})",
-            stored
-        );
-        assert_eq!(
-            s.scan_in_db("d2", "t").unwrap(),
-            vec![vec![Value::Integer(2)]]
-        );
-        assert!(s.has_table_in("d1", "t") && s.has_table_in("d2", "t"));
-        assert!(s.get_table_info_in("d1", "t").is_ok());
-    }
+    // Whichever database is used, the explicit one wins.
+    assert_eq!(
+        s.scan_in_db("d1", "t").unwrap(),
+        vec![vec![Value::Integer(1)]],
+        "scan_in_db must not follow any stored state"
+    );
+    assert_eq!(
+        s.scan_in_db("d2", "t").unwrap(),
+        vec![vec![Value::Integer(2)]]
+    );
+    assert!(s.has_table_in("d1", "t") && s.has_table_in("d2", "t"));
+    assert!(s.get_table_info_in("d1", "t").is_ok());
 }
 
 /// A table that exists in one database must not be visible from
-/// another through the `_in` methods.
+/// another through the `_in_db` methods.
 #[test]
 fn in_methods_do_not_cross_databases() {
     let mut s = MemoryStorage::new();
     s.create_database("d1").unwrap();
     s.create_database("d2").unwrap();
 
-    s.set_current_db("d1").unwrap();
     let mut info: TableInfo = TableInfo::default();
     info.name = "only_in_d1".into();
     info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
-    s.create_table(&info).unwrap();
+    s.create_table_in_db("d1", &info).unwrap();
 
     assert!(s.has_table_in("d1", "only_in_d1"));
     assert!(

@@ -1,0 +1,96 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+source_agent: OMP
+source_run: omp-20261011T070845Z
+timestamp_started: '2026-10-11T07:08:45Z'
+conflict_resolution: none
+
+repository:
+  canonical_remote: http://192.168.0.252:3000/openclaw/sqlrustgo.git
+  # 审计对象 = A01 冻结基线，非本分支 HEAD。
+  commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+  branch_or_detached: detached（审计期间临时 checkout 冻结 commit）
+  authoring_commit: 01df92a5d176e5c7f7e498152dbdf9b500228953
+  status_porcelain_sha256: a201ce14214c48bb3ecc7c9e46b761d0d694f45c4ba478e30d9e870e21969bcd
+  cargo_lock_sha256: d8bba914c5223bece0146c28e7cc1cb48f25c27de84275bb03ef65d5a84e5a2d
+
+environment:
+  # 与 A01 冻结环境不同（Darwin/arm64 vs linux/x86_64）。
+  # 静态审计与 SF-02 动态验证均在该环境下执行，结论适用范围以此为准。
+  os: darwin
+  arch: arm64
+  cpu: Apple Silicon
+  filesystem: apfs
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  features:
+  - default
+
+baseline_verification:
+  cargo_lock_matches_a01: true
+  a01_run_dir: audit/v4.1.0/iaia410-a01-20261011T062229Z-609a8e81
+  note: >
+    冻结 commit 的 Cargo.lock sha256 与 A01 manifest 记录一致，
+    确认审计对象与 A01 基线为同一 commit。
+
+dependency_status:
+  A01_5223:
+    issue_state: open
+    pr: '#5286 merged'
+    usable: true
+  A02_5224:
+    issue_state: open
+    pr: 未见合并
+    usable: false
+    gap: >
+      对外声明与生产入口范围矩阵未就绪，A03 的范围边界存在缺口，
+      本 run 的结论以「冻结 commit 上全量生产二进制」为准。
+
+scope:
+  production_binaries:
+  - sqlrustgo-mysql-server
+  - sqlrustgo
+  - sqlrustgo-admin
+  - tbl2bin
+  - bench_client
+  - physical_backup
+  - ha
+  - log-rotation
+  excluded_from_production:
+  - name: repro_4564
+    reason: 名称指向 issue 复现工具，疑似非生产；未进一步确认
+
+deliverables:
+  entry_matrix: commands/003.meta.yaml
+  suspected_findings:
+  - A03-SF-01.yaml
+  - A03-SF-02.yaml
+
+findings_summary:
+  confirmed: 1
+  suspected: 1
+  refuted_hypotheses: 1
+
+refuted:
+- id: build_engine_with_parallelism
+  initial_claim: 生产路径绕过该函数 ⇒ 并行度配置失效
+  refuted_by: src/execution_engine.rs:301 ExecutionEngine::new 自身读取
+    SQLRUSTGO_EXECUTOR_PARALLELISM，与 read_executor_parallelism() 同源
+  verdict: 冗余包装（dead-path），非假集成
+  recorded_in: commands/002.meta.yaml
+
+non_findings:
+- id: scan_with_filter_in_db
+  reason: >
+    BoxStorageEngine 未覆盖该方法，但 Executor 层实际调用集为
+    {list_tables, scan, scan_pk, scan_with_index, scan_with_index_in_db}，
+    不含 scan_with_filter_in_db ⇒ 生产不可达，判定 dead-path。
+  lesson: 15 个丢弃 db 的 trait 方法中，生产可达者仅 1 个。
+
+protocol_compliance:
+  no_documentation_as_pass: true
+  evidence_level_strict: true
+  notes: >
+    每条 finding 标注 evidence_grade（source-proven-chain / dynamically-confirmed）
+    并列出 NOT_verified 项；不因零调用次数或 TODO 单独判 confirmed。

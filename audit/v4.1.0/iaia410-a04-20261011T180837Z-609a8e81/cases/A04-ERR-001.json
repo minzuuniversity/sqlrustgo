@@ -1,0 +1,108 @@
+{
+  "id": "A04-ERR-001",
+  "domain": "error",
+  "query": "SELECT badcol FROM er_t",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "both error, DIFFERENT codes: subj=1105 ref=1054",
+  "aspects": [
+    "error_code"
+  ],
+  "subj": {
+    "case_id": "A04-ERR-001",
+    "role": "subject",
+    "port": 14540,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS er_t",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE er_t (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO er_t VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 1105,
+      "error_msg": "Execution error: Binder error: column 'badcol' not found in schema\u0000"
+    }
+  },
+  "ref": {
+    "case_id": "A04-ERR-001",
+    "role": "ref",
+    "port": 14640,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS er_t",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE er_t (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO er_t VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 1054,
+      "error_msg": "Unknown column 'badcol' in 'field list'"
+    }
+  },
+  "elapsed_s": 0.54,
+  "wire": {
+    "subj": "cases/A04-ERR-001_.subj.wire",
+    "ref": "cases/A04-ERR-001_.ref.wire"
+  }
+}

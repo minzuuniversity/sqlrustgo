@@ -1,0 +1,20 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+command_id: 001
+description: 枚举生产二进制入口（冻结 commit）
+target_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+tool: git show + grep
+exit_code: 0
+observed:
+  production_binaries:
+    - crates/mysql-server :: sqlrustgo-mysql-server
+    - crates/sqlrustgo-cli :: sqlrustgo
+    - crates/admin :: sqlrustgo-admin
+    - crates/tools :: tbl2bin
+    - crates/tools :: bench_client
+    - crates/tools :: physical-backup
+    - crates/tools :: ha
+    - crates/tools :: log-rotation
+  suspected_non_production:
+    - crates/tools :: repro_4564   # 名称指向 issue 复现，待确认

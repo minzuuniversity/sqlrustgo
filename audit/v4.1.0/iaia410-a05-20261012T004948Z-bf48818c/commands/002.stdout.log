@@ -1,0 +1,12 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.51s
+     Running tests/integration/dml/equality_index_routing_5209.rs (target/debug/deps/equality_index_routing_5209-5c8a410d3f6392ba)
+
+running 5 tests
+test unindexed_column_still_returns_correct_rows ... ok
+test or_predicate_is_not_routed_to_an_index_seek ... ok
+test range_predicate_is_not_routed_to_an_index_seek ... ok
+test non_unique_index_column_returns_every_matching_row ... ok
+test multi_column_equality_matches_the_full_scan ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.39s
+

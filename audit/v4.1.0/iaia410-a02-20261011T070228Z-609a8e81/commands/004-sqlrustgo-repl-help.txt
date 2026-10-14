@@ -1,0 +1,8 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo repl --help
+Interactive REPL (local stdin mode; mysql-server repl does not accept --port)
+
+Usage: sqlrustgo repl
+
+Options:
+  -h, --help  Print help
+EXIT=0

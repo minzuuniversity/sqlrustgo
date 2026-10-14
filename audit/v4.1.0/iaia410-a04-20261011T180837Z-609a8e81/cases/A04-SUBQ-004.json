@@ -1,0 +1,214 @@
+{
+  "id": "A04-SUBQ-004",
+  "domain": "subquery",
+  "query": "SELECT id, (SELECT MAX(v) FROM sq_t5 WHERE sq_t5.id = sq_t6.id) AS mv FROM sq_t6 ORDER BY id",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[3, 15] ref=[3, 3]",
+  "aspects": [
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-SUBQ-004",
+    "role": "subject",
+    "port": 14524,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS sq_t5",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE sq_t5 (id INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO sq_t5 VALUES (1,10),(2,20),(3,30)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      },
+      {
+        "stmt": "DROP TABLE IF EXISTS sq_t6",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE sq_t6 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO sq_t6 VALUES (1),(2),(3)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "mv"
+      ],
+      "types": [
+        3,
+        15
+      ],
+      "rows": [
+        [
+          1,
+          "10"
+        ],
+        [
+          2,
+          "20"
+        ],
+        [
+          3,
+          "30"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-SUBQ-004",
+    "role": "ref",
+    "port": 14624,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS sq_t5",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE sq_t5 (id INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO sq_t5 VALUES (1,10),(2,20),(3,30)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      },
+      {
+        "stmt": "DROP TABLE IF EXISTS sq_t6",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE sq_t6 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO sq_t6 VALUES (1),(2),(3)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "mv"
+      ],
+      "types": [
+        3,
+        3
+      ],
+      "rows": [
+        [
+          1,
+          10
+        ],
+        [
+          2,
+          20
+        ],
+        [
+          3,
+          30
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.7,
+  "wire": {
+    "subj": "cases/A04-SUBQ-004_.subj.wire",
+    "ref": "cases/A04-SUBQ-004_.ref.wire"
+  }
+}

@@ -1,0 +1,29 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+command_id: 002
+description: >
+  追踪 mysql-server 生产入口到 ExecutionEngine 的构造路径；
+  检验 build_engine_with_parallelism 是否为「仅测试可达」的假集成。
+target_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+tool: git show + grep
+exit_code: 0
+call_chain:
+  - crates/mysql-server/src/main.rs :: run_server_v2 (lib.rs:6677)
+  - run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sql (lib.rs:6818)
+  - do_command_loop (lib.rs:5302, engine: Arc<RwLock<ExecutionEngine<BoxStorageEngine>>>)
+  - engine 构造点 lib.rs:6506-6507  ExecutionEngine::new(storage.clone())
+observation:
+  build_engine_with_parallelism:
+    defined_at: lib.rs:175
+    production_callers: 0
+    test_callers: 1   # lib.rs:694
+    verdict: NOT_A_FINDING
+    reason: >
+      ExecutionEngine::new 自身在 execution_engine.rs:301 读取
+      SQLRUSTGO_EXECUTOR_PARALLELISM，与 build_engine_with_parallelism 内部的
+      read_executor_parallelism() 同源。绕过该包装不改变并行度语义。
+      属冗余包装（dead-path），非假集成。
+initial_hypothesis: >
+  曾判定「生产路径绕过 build_engine_with_parallelism ⇒ 并行度配置失效」。
+  经 execution_engine.rs:301 交叉验证后自我证伪。

@@ -6,7 +6,9 @@
 //! - WAL remains serial (must be ordered)
 //! - Table operations use per-table locks (concurrent on different tables)
 
-use crate::engine::{ColumnDefinition, Record, SqlError, SqlResult, TableInfo, Value};
+use crate::engine::{
+    ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, TableInfo, Value,
+};
 use crate::table_registry::TableRegistry;
 use crate::wal::WalManager;
 use std::any::Any;
@@ -43,6 +45,81 @@ impl TableLevelStorage {
 }
 
 impl crate::engine::StorageEngine for TableLevelStorage {
+    /// #5277: this storage has no database namespace, so it can only serve
+    /// `default`. A stated database it cannot address is an error rather than
+    /// a silent read of whatever is current.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot scan '{}.{}' in db '{}'",
+                table, reader_tx, db
+            )));
+        }
+        self.scan_in(table, reader_tx)
+    }
+    /// #5266 S1: TableLevelStorage keeps one flat namespace, so it can serve `default`
+    /// only. A foreign database is refused rather than answered from `default`
+    /// — both methods return `SqlResult`, so refusing is possible and
+    /// guessing is not necessary.
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot describe '{}.{}'",
+                db, table
+            )));
+        }
+        self.get_table_info(table)
+    }
+
+    /// #5266 S1: see `get_table_info_in`.
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot scan '{}.{}'",
+                db, table
+            )));
+        }
+        self.scan(table)
+    }
+    /// #5250: this storage has a single flat namespace, so it can only answer
+    /// for `default`. Any other database is reported as absent rather than
+    /// answered from the wrong namespace.
+    ///
+    /// A `bool` cannot distinguish "does not exist" from "cannot address that
+    /// database". Until a `SqlResult` API exists for that distinction, `false`
+    /// is the safe answer — it never claims a table is present when it is not.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        db.eq_ignore_ascii_case("default") && self.has_table(table)
+    }
+
+    /// #5250: this storage has no database namespace — tables live in one
+    /// flat registry. The trait used to answer these by dropping `db` and
+    /// touching the current database, so `DROP TABLE d1.t` could remove the
+    /// wrong table with no error.
+    ///
+    /// Refusing is safer than guessing: a stated database other than
+    /// `default` is an error, and `default` is accepted because it is the
+    /// only namespace this storage has.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot create table in '{}'",
+                db
+            )));
+        }
+        self.create_table(info)
+    }
+
+    /// #5250: same contract as `create_table_in_db`.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot drop table '{}' in '{}'",
+                table, db
+            )));
+        }
+        self.drop_table(table)
+    }
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         self.tables.insert(table, records)
     }
@@ -82,6 +159,146 @@ impl crate::engine::StorageEngine for TableLevelStorage {
 
     fn has_table(&self, table: &str) -> bool {
         self.tables.has_table(table)
+    }
+
+    /// #5266: no database namespace — only `default` can be listed.
+    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Vec::new();
+        }
+        self.list_tables()
+    }
+
+    /// #5266: see `get_table_info_in` — no database namespace.
+    fn scan_with_filter_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot scan '{}.{}'",
+                db, table
+            )));
+        }
+        self.scan_with_filter(table, filter)
+    }
+
+    /// #5266: see `get_table_info_in` — no database namespace.
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot scan index '{}.{}'",
+                db, table
+            )));
+        }
+        self.scan_with_index(table, index_name, key)
+    }
+
+    /// #5266: see `get_table_info_in` — no database namespace.
+    fn parallel_scan_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot parallel scan '{}.{}'",
+                db, table
+            )));
+        }
+        self.parallel_scan(table, num_partitions)
+    }
+
+    /// #5266: see `get_table_info_in` — no database namespace.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot insert into '{}.{}'",
+                db, table
+            )));
+        }
+        self.insert(table, records)
+    }
+
+    /// #5266: see `get_table_info_in` — no database namespace.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot delete from '{}.{}'",
+                db, table
+            )));
+        }
+        self.delete(table, filters)
+    }
+
+    /// #5266: see `get_table_info_in` — no database namespace.
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot delete from '{}.{}'",
+                db, table
+            )));
+        }
+        self.delete_collect_pks(table, filters)
+    }
+
+    /// #5266: see `get_table_info_in` — no database namespace.
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot delete from '{}.{}'",
+                db, table
+            )));
+        }
+        self.delete_if(table, filter)
+    }
+
+    /// #5266: see `get_table_info_in` — no database namespace.
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot update '{}.{}'",
+                db, table
+            )));
+        }
+        self.update(table, filters, updates)
+    }
+
+    /// #5266: see `get_table_info_in` — no database namespace.
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        if !db.eq_ignore_ascii_case("default") {
+            return Err(SqlError::ExecutionError(format!(
+                "TableLevelStorage has no database namespace; cannot update '{}.{}'",
+                db, table
+            )));
+        }
+        self.update_if(table, filter, mutation)
     }
 
     fn list_tables(&self) -> Vec<String> {
@@ -161,7 +378,7 @@ impl crate::engine::StorageEngine for TableLevelStorage {
     fn list_indexes(&self, _table: &str) -> Vec<(String, String)> {
         vec![]
     }
-    fn has_view(&self, _name: &str) -> bool {
+    fn has_view(&self, _db: &str, _name: &str) -> bool {
         false
     }
 

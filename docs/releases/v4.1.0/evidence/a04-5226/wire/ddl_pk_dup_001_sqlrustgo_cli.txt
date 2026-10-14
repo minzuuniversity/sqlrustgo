@@ -1,0 +1,7 @@
+=== STDOUT ===
+
+
+
+=== STDERR ===
+Error: sqlrustgo:error:runtime: Duplicate entry '1' for key 'PRIMARY'
+

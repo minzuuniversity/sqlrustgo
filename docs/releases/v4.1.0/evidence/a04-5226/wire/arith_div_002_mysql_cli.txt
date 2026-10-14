@@ -1,0 +1,6 @@
+=== STDOUT ===
+a	b	a / b
+7	2	3
+
+=== STDERR ===
+

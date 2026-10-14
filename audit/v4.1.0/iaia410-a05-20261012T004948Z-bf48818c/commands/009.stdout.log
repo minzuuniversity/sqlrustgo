@@ -1,0 +1,13 @@
+   Compiling sqlrustgo v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.64s
+     Running tests/integration/dml/a05_secondary_index_stale.rs (target/debug/deps/a05_secondary_index_stale-0453ebe1b4a093f6)
+
+running 1 test
+A05 STALE HAZARD CHECK: SELECT id FROM t WHERE k = 5
+  index-scan count = 143 (expected 144)
+  full-scan count (control, no index) = 144
+  RESULT: STALE HAZARD — index-scan 143 != full-scan 144 (missing 1 row(s))
+test a05_secondary_index_stale_after_flush ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+

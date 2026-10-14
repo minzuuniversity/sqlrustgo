@@ -134,18 +134,34 @@ fn non_equality_predicates_are_not_extracted() {
 #[test]
 fn engine_select_actually_calls_the_routing() {
     let src = include_str!("../../../src/engine_select.rs");
+    // Match the callee, not the exact spelling of the call: #5137 moved the
+    // function behind a `crate::engine_select_pk::` path and rustfmt split
+    // the storage call across lines. A literal full-string match broke on
+    // that reformat while the routing was demonstrably still wired -- which
+    // is exactly the failure this test must not have: it has to fail when the
+    // routing is *gone*, not when it is merely spelled differently. So count
+    // real call lines (comments excluded) rather than one exact substring.
+    let call_lines = src
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .filter(|l| l.contains("try_extract_eq_conjunct(&select.where_clause)"))
+        .count();
     assert_eq!(
-        src.matches("try_extract_eq_conjunct(&select.where_clause)")
-            .count(),
-        1,
-        "#5209: engine_select must route an equality conjunct to \\
-         scan_with_index_in_db; the decision function exists but if this \\
+        call_lines, 1,
+        "#5209: engine_select must route an equality conjunct to \
+         scan_with_index_in_db; the decision function exists but if this \
          call site is gone every query silently falls back to a full scan"
     );
+    // Count only real calls, not the prose: the routing branch's own
+    // doc comment names `scan_with_index_in_db`, so a bare substring count
+    // sees two and fails on a comment.
+    let storage_calls = src
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .filter(|l| l.contains("scan_with_index_in_db("))
+        .count();
     assert_eq!(
-        src.matches("scan_with_index_in_db(&current_db, lookup_table, &idx_column, &idx_value)")
-            .count(),
-        1,
+        storage_calls, 1,
         "#5209: the routed lookup must actually call the storage index"
     );
 }

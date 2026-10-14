@@ -1,0 +1,18 @@
+server_version=8.0.33-SQLRustGo
+SETUP> CREATE TABLE t_hv (g TEXT, n INTEGER)
+  OK affected=0
+SETUP> INSERT INTO t_hv VALUES ('a', 1)
+  OK affected=1
+SETUP> INSERT INTO t_hv VALUES ('a', 2)
+  OK affected=1
+SETUP> INSERT INTO t_hv VALUES ('a', 3)
+  OK affected=1
+SETUP> INSERT INTO t_hv VALUES ('b', 1)
+  OK affected=1
+SETUP> INSERT INTO t_hv VALUES ('b', 5)
+  OK affected=1
+QUERY> SELECT g, SUM(n) FROM t_hv GROUP BY g HAVING SUM(n) > 3 ORDER BY g
+  SELECT ncol=2 nrow=1 status=0x0002
+  columns=["g", "SUM(n)"]
+  types=["integer", "integer"]
+  row[0]=["b", "5"]

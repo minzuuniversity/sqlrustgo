@@ -1,0 +1,12 @@
+schema_version: iaia410-command-meta/v1
+command_id: '001'
+name: freeze-commit-check
+argv:
+- bash
+- audit/v4.1.0/freeze_commit_check.sh
+- 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+cwd: .
+timeout_sec: 600
+started_at: '2026-10-11T06:23:21Z'
+finished_at: '2026-10-11T06:23:21Z'
+exit_code: 0

@@ -35,7 +35,7 @@ fn seed(x: &mut ExecutionEngine<FileStorage>) {
 
 #[test]
 fn insert_resolves_against_the_selected_database() {
-    let (mut x, dir) = engine();
+    let (mut x, _dir) = engine();
     seed(&mut x);
 
     x.execute("USE d1").unwrap();
@@ -53,7 +53,7 @@ fn insert_resolves_against_the_selected_database() {
 
 #[test]
 fn update_touches_only_the_selected_database() {
-    let (mut x, dir) = engine();
+    let (mut x, _dir) = engine();
     seed(&mut x);
     for (db, id) in [("d1", 1), ("d2", 2)] {
         x.execute(&format!("USE {db}")).unwrap();

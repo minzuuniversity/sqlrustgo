@@ -1,0 +1,54 @@
+schema_version: iaia410-finding/v1
+id: A05-V410-001
+run_id: iaia410-a05-20261012T004948Z-bf48818c
+work_package: A05
+module: storage/index
+category: F-secondary-index-stale-hazard
+severity: P1
+status: confirmed
+
+source_agent: omp/A11
+source_run: omp-a05-20261012-00
+timestamp: '2026-10-12T00:49:48Z'
+evidence_hash: 45c69695ec3457d331a21fe618be06466352bd08662a1b6bcb9c69a9f838e4e9
+conflict_resolution: none
+
+claim:
+  text: 'Secondary indexes are maintained on INSERT/UPDATE/DELETE and return correct results.'
+  source_type: SSOT
+  source_ref: docs/releases/v4.1.0/IAIA_410_SSOT.md
+  freshness: v4.1.0
+
+production_entry: 'crates/mysql-server/src/main.rs:234-236 (--storage file default) -> crates/mysql-server/src/lib.rs:6876+ engine'
+assessed_commit: bf48818cd41369ea9728017b0afeed96d223386f
+source_locations:
+  - 'crates/mysql-server/src/lib.rs:4477-4515 (insert_direct: PK-only write maintenance)'
+  - 'crates/mysql-server/src/lib.rs:4596-4640 (insert_buffered: PK-only write maintenance)'
+  - 'crates/mysql-server/src/lib.rs:4642-4675 (flush_buffer: PK-only write maintenance)'
+  - 'crates/mysql-server/src/lib.rs:4683-4713 (update_pk_index: PK-only)'
+  - 'crates/mysql-server/src/lib.rs:5312-5389 (scan_with_index_in: index-only, no full-scan fallback)'
+  - 'crates/storage/src/bplus_tree/mod.rs:33-35 (BPlusTree = BTreeMap<i64,Vec<u32>>)'
+  - 'crates/mysql-server/src/file_storage.rs:25-77 (FileStorage in-mem HashMap + insert_buffer, NOT paged)'
+  - 'crates/mysql-server/src/file_storage.rs:1122-1127 (index file <table>_idx_<col>.json)'
+
+expected: 'After CREATE INDEX on a secondary column, INSERT of a new row -> the new row is visible through the index scan (index-scan count == full-scan count).'
+actual: 'Index-scan count = 143 (missing the 1 new row flushed after CREATE INDEX); full-scan count (control, no index) = 144 (correct). Secondary indexes are NEVER maintained by INSERT/UPDATE/DELETE -> silent stale-index hazard: index-scan silently drops rows that a full-scan would return.'
+evidence:
+  static:
+    - 'crates/mysql-server/src/lib.rs:4477-4713 (PK-only write maintenance; secondary indexes never updated on DML)'
+    - 'crates/mysql-server/src/lib.rs:5312-5389 (scan_with_index_in: index-only scan, no full-scan fallback on miss)'
+  dynamic:
+    - 'commands/009.stdout.log (a05_secondary_index_stale: index-scan 143 != full-scan 144, missing 1 row)'
+  differential:
+    - 'commands/009.stdout.log (index-scan vs full-scan differential: 143 vs 144)'
+  reproduction_command_ids: [009]
+  counterexample_attempts: []
+
+linked_issue: 5303
+linked_prs: []
+review:
+  reviewer: null
+  source_run: null
+  timestamp: null
+  evidence_hash: null
+  verdict: null

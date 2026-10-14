@@ -195,24 +195,32 @@ if it became a production-path test, remove it from OFF_PRODUCTION_PATH_BINARIES
 fi
 echo
 
-# ---- R5: #5193 路线状态 --------------------------------------------------
-echo "--- R5: #5193 still open (option C still the standing decision) ---"
-if curl -sf -u "${GITEA_USER:-openclaw}:${GITEA_PASS:-details8848}" \
-        "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5193" \
-        -o /tmp/_issue5193.json 2>/dev/null; then
-    STATE="$(python3 -c "
-import json
-print(json.load(open('/tmp/_issue5193.json')).get('state','?'))
-" 2>/dev/null || echo '?')"
-    if [ "$STATE" = "open" ]; then
-        add_pass "R5 #5193 still open — option C stands"
-    else
-        add_fail "R5 #5193 is '$STATE' — if the route changed to A or B, this \
-registry must be rewritten (exclusion may no longer apply)"
-    fi
-else
-    # 网络不可达不应让门禁变成假红：登记仍可静态验证（R1/R2/R4）。
-    echo "  [WARN] R5 could not reach Gitea API — skipped (network-dependent check)"
+# ---- R5: 选项 C 路线是否仍成立 --------------------------------------------
+#
+# 语义修正 (2026-10-10, #5193 关闭前置): 原实现把「#5193 issue state == open」
+# 当作路线判据。这与关闭验收互锁 —— 三要件完成、issue 正常关闭时，门禁反而
+# FAIL，把「选项 C 已落地」误读成「路线改成了 A/B」。issue 状态是流程 claim，
+# 不是路线 evidence；路线是否仍为选项 C，应由在树事实判定:
+#
+#   1. ARCHITECTURE.md 的「未接入生产」标注还在 (对外声明)
+#   2. planner crate 的 NOT-ON-PATH 显著标记还在 (对开发者声明)
+#
+# 判据越界成文件缺失即 FAIL，因此本规则不再需要网络，也不存在
+# IAIA_ALLOW_NETWORK_SKIP 式的静默跳过面 —— 比原实现更 fail-closed。
+echo "--- R5: option C's in-tree markers still present (route unchanged) ---"
+R5_OK=1
+if ! grep -q "未接入生产的部分（IAIA-410 F3，#5193 裁决为选项 C）" \
+        docs/releases/v4.1.0/ARCHITECTURE.md; then
+    add_fail "R5 ARCHITECTURE.md 缺少「未接入生产的部分(#5193 选项 C)」标注 — 对外声明丢失，登记理由无法追溯"
+    R5_OK=0
+fi
+if ! grep -q "NOT ON THE PRODUCTION EXECUTION PATH (#5193, option C)" \
+        crates/planner/src/lib.rs; then
+    add_fail "R5 crates/planner/src/lib.rs 缺少 NOT-ON-PATH 标记 — 对开发者的路线声明丢失"
+    R5_OK=0
+fi
+if [ "$R5_OK" -eq 1 ]; then
+    add_pass "R5 选项 C 在树标注完好 (ARCHITECTURE.md + planner 标记；issue 开/关状态不作判据)"
 fi
 echo
 

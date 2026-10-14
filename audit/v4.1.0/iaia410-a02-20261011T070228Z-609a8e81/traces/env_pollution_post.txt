@@ -1,0 +1,65 @@
+== env pollution post ==
+timestamp_utc=2026-10-11T07:14:02Z
+hostname=gaoyuanai-HPZ6G4
+
+== sqlrustgo-related processes ==
+   5224 openclaw  1-08:38:22 aoci            /home/openclaw/.local/bin/aoci --repo /home/openclaw/sqlrustgo mcp
+3735400 openclaw       29:41 aoci            /tmp/aoci_install/aoci ui --repo /home/openclaw/sqlrustgo
+3978550 openclaw       00:00 sh              /bin/sh -c /usr/local/bin/sqlrustgo-watch.sh --enable-oom-guard
+3978551 openclaw       00:00 sqlrustgo-watch /bin/bash /usr/local/bin/sqlrustgo-watch.sh --enable-oom-guard
+3978554 openclaw       00:00 sqlrustgo-watch /bin/bash /usr/local/bin/sqlrustgo-watch.sh --enable-oom-guard
+3980920 openclaw       00:00 sqlrustgo-watch /bin/bash /usr/local/bin/sqlrustgo-watch.sh --enable-oom-guard
+
+== listening TCP ports ==
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
+LISTEN 0      4096   127.0.0.53%lo:53         0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:38217      0.0.0.0:*          
+LISTEN 0      512        127.0.0.1:34497      0.0.0.0:*          
+LISTEN 0      70         127.0.0.1:33060      0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:36681      0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:222        0.0.0.0:*          
+LISTEN 0      100          0.0.0.0:25         0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:22         0.0.0.0:*          
+LISTEN 0      4096         0.0.0.0:3000       0.0.0.0:*          
+LISTEN 0      511          0.0.0.0:8002       0.0.0.0:*          
+LISTEN 0      512          0.0.0.0:8001       0.0.0.0:*          
+LISTEN 0      511        127.0.0.1:18789      0.0.0.0:*          
+LISTEN 0      4096      127.0.0.54:53         0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:11434      0.0.0.0:*          
+LISTEN 0      200        127.0.0.1:5432       0.0.0.0:*          
+LISTEN 0      4096       127.0.0.1:631        0.0.0.0:*          
+LISTEN 0      151        127.0.0.1:3306       0.0.0.0:*          
+LISTEN 0      4096           [::1]:631           [::]:*          
+LISTEN 0      4096               *:52345            *:*          
+LISTEN 0      511            [::1]:18789         [::]:*          
+LISTEN 0      4096            [::]:222           [::]:*          
+LISTEN 0      100             [::]:25            [::]:*          
+LISTEN 0      4096            [::]:22            [::]:*          
+LISTEN 0      4096               *:2017             *:*          
+LISTEN 0      4096            [::]:3000          [::]:*          
+LISTEN 0      4096               *:4648             *:*          
+LISTEN 0      4096               *:4646             *:*          
+LISTEN 0      4096               *:4647             *:*          
+LISTEN 0      511             [::]:8002          [::]:*          
+LISTEN 0      4096               *:20170            *:*          
+LISTEN 0      4096               *:20171            *:*          
+LISTEN 0      4096               *:20172            *:*          
+
+== data dirs ==
+/tmp/iaia_5223_comment_draft.md (file, mtime=openclaw)
+/tmp/iaia-a01-refreeze (dir, files=6277, mtime=openclaw)
+/tmp/iaia-a02-baseline (dir, files=6195, mtime=openclaw)
+/tmp/iaia-a02-baseline-target (dir, files=3496, mtime=openclaw)
+/tmp/iaia_issues (dir, files=27, mtime=openclaw)
+
+== behavior-relevant env var names (names only, no values) ==
+CARGO_TERM_PROGRESS_WHEN
+
+== cpu/memory pressure ==
+loadavg=6.13 8.81 14.05 4/2685 3981469
+nproc=80
+               total        used        free      shared  buff/cache   available
+Mem:          414464       22089      351892         361       44185      392374
+
+== reference DB dataset hash ==
+none (A01 baseline run has no reference dataset)

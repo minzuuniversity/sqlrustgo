@@ -25,8 +25,11 @@ use std::time::Duration;
 
 const SERVER_VERSION: &str = "8.0.33-SQLRustGo";
 
-/// V312-18e Issue #4021 — Prometheus `/metrics` endpoint.
 mod metrics_endpoint;
+
+/// #5271: the result-set adapter, separated so its rules can be tested
+/// against the code that actually runs.
+pub mod result_set;
 
 /// v3.10.0 Issue #3703: read intra-query executor parallelism from
 /// the `SQLRUSTGO_EXECUTOR_PARALLELISM` env var (set by
@@ -5334,13 +5337,27 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
         let cmd = pkt.payload.first().copied().unwrap_or(0);
         let payload = &pkt.payload[1..];
         // #5025: re-assert this connection's database before every command.
-        // The engine's `current_db` is one shared value, so another
-        // connection may have changed it since the last statement.
+        // #5057: the engine's storage no longer keeps a shared `current_db`;
+        // `conn_db` is the per-connection state. Before every command we
+        // validate the database still exists AND seed the engine's
+        // `session_db` from `conn_db` so DML executes against the
+        // connection's selected database.
         if cmd != packet_type::COM_QUIT {
-            storage
-                .write()
-                .set_current_db(conn_db)
-                .unwrap_or_else(|e| tracing::warn!("re-assert database {}: {}", conn_db, e));
+            // Validate the database still exists (it could have been dropped).
+            let known = storage
+                .read()
+                .list_databases()
+                .map(|dbs| {
+                    dbs.iter().any(|d| d.eq_ignore_ascii_case(conn_db))
+                        || conn_db.eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE)
+                })
+                .unwrap_or(true);
+            if !known {
+                tracing::warn!("re-assert database {} failed: no longer exists", conn_db);
+            }
+            // #5057: seed the shared engine's session_db from this
+            // connection's `conn_db` before dispatching the command.
+            engine.write().set_session_db(conn_db);
         }
         // MySQL/MariaDB protocol: every new client command starts with
         // pkt_seq=0, and the server resets its response seq to 0
@@ -5389,13 +5406,11 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 // #5025: also record it on the connection — the
                 // re-assert before the next command would otherwise switch
                 // this connection straight back.
+                // #5057: the storage no longer has a shared `current_db`;
+                // `conn_db` is the per-connection source of truth.
                 if db.is_empty() {
-                    storage
-                        .write()
-                        .set_current_db(sqlrustgo_storage::engine::DEFAULT_DATABASE)?;
                     *conn_db = String::from(sqlrustgo_storage::engine::DEFAULT_DATABASE);
                 } else {
-                    storage.write().set_current_db(&db)?;
                     *conn_db = db;
                 }
                 seq = write_ok_packets(
@@ -5847,8 +5862,10 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         // storage lock, matching the engine -> storage lock
                         // order the engine already uses internally.
                         let r = eng.execute(stmt_sql);
+                        // #5057: the engine's session_db is the per-connection
+                        // source of truth; sync it back onto conn_db.
+                        *conn_db = eng.session_db();
                         drop(eng);
-                        *conn_db = storage.read().current_db();
                         r
                     };
                     // V312-18e: time every dispatched statement; the log
@@ -5875,47 +5892,68 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             // SELECT projection extractor, and finally
                             // to col_1, col_2... for ambiguous shapes
                             // (e.g. SELECT *).
-                            let real_col_names: Vec<String> = if let Some(headers) =
-                                parsed.as_ref().ok().and_then(show_column_headers)
-                            {
-                                headers
-                            } else if stmt_sql.to_uppercase().starts_with("SELECT")
-                                && stmt_sql.to_uppercase().contains(" FROM ")
-                            {
-                                let upper = stmt_sql.to_uppercase();
-                                if let Some(from_pos) = upper.find(" FROM ") {
-                                    let select_part = stmt_sql[..from_pos].trim();
-                                    let cols_str = select_part
-                                        .strip_prefix("SELECT")
-                                        .or_else(|| select_part.strip_prefix("select"))
-                                        .unwrap_or("")
-                                        .trim();
-                                    if !cols_str.is_empty() && !cols_str.contains('*') {
-                                        cols_str
-                                            .split(',')
-                                            .map(|s: &str| {
-                                                s.trim()
-                                                    .split('.')
-                                                    .next_back()
-                                                    .unwrap_or(s.trim())
-                                                    .to_string()
-                                            })
-                                            .collect()
-                                    } else {
-                                        let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
-                                        (0..n).map(|i| format!("col_{}", i + 1)).collect()
-                                    }
-                                } else {
-                                    let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
-                                    (0..n).map(|i| format!("col_{}", i + 1)).collect()
+                            // #5271: the result's own schema is the only
+                            // source for the column count and the names.
+                            //
+                            // Both used to be recovered from the SQL text and
+                            // from the width of the first row. That made a
+                            // zero-row result a zero-column result — which the
+                            // client reports as `ERROR 2027` — and gave a
+                            // populated result synthesized `col_1`, `col_2`
+                            // names regardless of the table.
+                            //
+                            // `show_column_headers` stays ahead of this: it is
+                            // an explicit request for a different shape.
+                            //
+                            // When no schema is declared, fall back to the old
+                            // derivation rather than emitting a zero-column
+                            // result set that no client can read.
+                            // #5271: the shape comes from the result's own
+                            // schema. It used to be recovered from the query
+                            // text and from the width of the first row, which
+                            // made a zero-row result a zero-column result —
+                            // reported by clients as `ERROR 2027` — and gave
+                            // a populated result synthesized `col_1`, `col_2`
+                            // names whatever the table was called.
+                            //
+                            // `show_column_headers` still wins: it is an
+                            // explicit request for a different shape.
+                            //
+                            // With no declared schema there is nothing to
+                            // describe. Deriving one from the rows keeps such
+                            // results readable; #5271 R2 removes the need by
+                            // giving every SELECT exit a real schema.
+                            let prepared = match crate::result_set::prepare_result_set(&r) {
+                                Ok(p) => p,
+                                Err(msg) => {
+                                    make_err_packet(seq, 1063u16, "42000", &msg)
+                                        .write_to(stream)?;
+                                    seq = seq.wrapping_add(1);
+                                    had_error = true;
+                                    continue;
                                 }
-                            } else {
-                                let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
-                                (0..n).map(|i| format!("col_{}", i + 1)).collect()
                             };
-                            let cols: Vec<String> = real_col_names;
-                            let ctypes: Vec<String> =
-                                cols.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                            let (cols, ctypes) =
+                                if let Some(headers) = parsed.as_ref().ok().and_then(show_column_headers)
+                                {
+                                    // The requested headers may not match the
+                                    // declared width, so the type list has to
+                                    // follow them rather than the schema.
+                                    let types = headers
+                                        .iter()
+                                        .map(|_| crate::result_set::UNRESOLVED_TYPE.to_string())
+                                        .collect();
+                                    (headers, types)
+                                } else if prepared.column_names.is_empty() {
+                                    let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                    let names: Vec<String> =
+                                        (0..n).map(|i| format!("col_{}", i + 1)).collect();
+                                    let types =
+                                        names.iter().map(|_| crate::result_set::UNRESOLVED_TYPE.to_string()).collect();
+                                    (names, types)
+                                } else {
+                                    (prepared.column_names.clone(), prepared.column_types.clone())
+                                };
                             seq = send_result_set_with_more(
                                 stream,
                                 &cols,
@@ -6211,8 +6249,10 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     // back onto this connection or the next command's
                     // re-assert reverts it.
                     let r = eng.execute(&final_sql);
+                    // #5057: the engine's session_db is the per-connection
+                    // source of truth; sync it back onto conn_db.
+                    *conn_db = eng.session_db();
                     drop(eng);
-                    *conn_db = storage.read().current_db();
                     r
                 };
                 // V312-18e: prepared-statement executions are timed too.
@@ -6456,14 +6496,11 @@ fn handle_connection(
             // the non-TLS path (the TLS path has the same block); a client
             // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
             // without this the selection is parsed, logged, and discarded.
+            // #5057: the storage no longer keeps a shared `current_db`; the engine
+            // session is seeded from conn_db below, so just record conn_db here.
             if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
-                match storage.write().set_current_db(db) {
-                    Ok(()) => {
-                        conn_db = db.to_string();
-                        tracing::info!("handshake selected database: {}", db);
-                    }
-                    Err(e) => tracing::warn!("handshake database {:?} rejected: {}", db, e),
-                }
+                conn_db = db.to_string();
+                tracing::info!("handshake selected database: {}", db);
             }
             tracing::info!("Auth accepted, sending OK packet, seq=3");
             // V312-WIRE-5: Vec<Packet> — write all packets (OK + optional
@@ -6538,14 +6575,11 @@ fn handle_connection(
     // the non-TLS path (the TLS path has the same block); a client
     // connecting with `mysql -D db` never sends `USE` or `COM_INIT_DB`, so
     // without this the selection is parsed, logged, and discarded.
+    // #5057: the storage no longer keeps a shared `current_db`; the engine
+    // session is seeded from conn_db below, so just record conn_db here.
     if let Some(db) = resp.database.as_deref().filter(|d| !d.is_empty()) {
-        match storage.write().set_current_db(db) {
-            Ok(()) => {
-                conn_db = db.to_string();
-                tracing::info!("handshake selected database: {}", db);
-            }
-            Err(e) => tracing::warn!("handshake database {:?} rejected: {}", db, e),
-        }
+        conn_db = db.to_string();
+        tracing::info!("handshake selected database: {}", db);
     }
     tracing::info!("Auth accepted, sending OK packet, seq=2");
     // V312-WIRE-5: Vec<Packet> — emit OK + optional session_state_info.

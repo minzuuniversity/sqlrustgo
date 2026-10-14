@@ -1,0 +1,13 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.72s
+     Running tests/integration/dml/eq_index_routing_decision_5209.rs (target/debug/deps/eq_index_routing_decision_5209-b4d17c78b8a55ffb)
+
+running 6 tests
+test eq_conjunct_found_in_and_chain ... ok
+test eq_conjunct_found_in_later_and_branch ... ok
+test non_equality_predicates_are_not_extracted ... ok
+test literal_on_the_left_is_recognised ... ok
+test or_chain_is_never_decomposed ... ok
+test engine_select_actually_calls_the_routing ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+

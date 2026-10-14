@@ -1,0 +1,48 @@
+schema_version: iaia410-finding/v1
+id: A05-V410-005
+run_id: iaia410-a05-20261012T004948Z-bf48818c
+work_package: A05
+module: storage/persistence
+category: F-positive-persistent-storage-genuine
+severity: info
+status: confirmed
+
+source_agent: omp/A11
+source_run: omp-a05-20261012-00
+timestamp: '2026-10-12T00:49:48Z'
+evidence_hash: af085709910f376ea9ae2006092e49bf9eb705f347df5854622fc269c55c11d7
+conflict_resolution: none
+
+claim:
+  text: 'Persistent storage is genuine: tables + indexes survive restart, and WAL crash recovery works.'
+  source_type: test-contract
+  source_ref: 'tests/integration/dml/index_and_table_survive_restart_5025.rs, e2e_crash_recovery_proof.rs'
+  freshness: v4.1.0
+
+production_entry: 'crates/mysql-server/src/file_storage.rs (FileStorage: JSON + WAL) + crates/transaction (WAL)'
+assessed_commit: bf48818cd41369ea9728017b0afeed96d223386f
+source_locations:
+  - 'crates/mysql-server/src/file_storage.rs:25-77 (FileStorage: JSON + insert_buffer + WAL)'
+  - 'crates/transaction (WAL: pre-write log, begin/commit/rollback)'
+  - 'crates/mysql-server/src/file_storage.rs:1122-1127 (index file <table>_idx_<col>.json)'
+
+expected: 'Tables + indexes persist to disk (JSON + WAL) and survive process restart; WAL crash recovery restores committed state.'
+actual: 'index_and_table_survive_restart_5025 (5 passed) + e2e_crash_recovery_proof (4 passed) both pass: persistent storage is GENUINE (JSON + WAL, restart survival, crash recovery).'
+evidence:
+  static:
+    - 'crates/mysql-server/src/file_storage.rs:25-77 (FileStorage: JSON + WAL)'
+  dynamic:
+    - 'commands/006.stdout.log (index_and_table_survive_restart_5025: 5 passed)'
+    - 'commands/007.stdout.log (e2e_crash_recovery_proof: 4 passed)'
+  differential: []
+  reproduction_command_ids: [006, 007]
+  counterexample_attempts: []
+
+linked_issue: 5227
+linked_prs: []
+review:
+  reviewer: null
+  source_run: null
+  timestamp: null
+  evidence_hash: null
+  verdict: null

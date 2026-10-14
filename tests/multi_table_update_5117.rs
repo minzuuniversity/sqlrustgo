@@ -38,12 +38,19 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::{FileStorage, StorageEngine};
+use sqlrustgo_storage::FileStorage;
 use sqlrustgo_types::Value;
 use std::sync::Arc;
 
 fn engine() -> ExecutionEngine<FileStorage> {
-    let dir = std::env::temp_dir().join(format!("mt_update_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "mt_update_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     ExecutionEngine::new(Arc::new(RwLock::new(FileStorage::new(dir).unwrap())))

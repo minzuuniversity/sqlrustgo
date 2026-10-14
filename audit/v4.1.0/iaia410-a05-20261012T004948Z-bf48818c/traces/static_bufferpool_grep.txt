@@ -1,0 +1,10 @@
+=== Static evidence: BufferPool references in prod path ===
+scope: src/, crates/mysql-server/src/, crates/server/src/
+timestamp: 2026-10-12T01:05:48Z
+
+--- grep -rn BufferPool (src, crates/mysql-server/src, crates/server/src) ---
+src/lib.rs:48:    BPlusTree, BufferPool, FileStorage, MemoryStorage, Page, StorageEngine,
+
+--- Result ---
+Only src/lib.rs:48 (re-export of BufferPool from sqlrustgo-storage). ZERO instantiations in prod path.
+=> BufferPool / page.rs / heap.rs / bplus_tree/index.rs (disk B+Tree) are NOT in the prod path (dead code).

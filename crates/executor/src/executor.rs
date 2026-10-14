@@ -11,6 +11,40 @@ pub struct ExecutorResult {
     pub rows: Vec<Vec<Value>>,
     /// Number of affected rows (for INSERT/UPDATE/DELETE)
     pub affected_rows: usize,
+    /// #5271: the output schema — one entry per result column, in order.
+    ///
+    /// This exists because a result's shape must not be inferred from its
+    /// rows. A query returning zero rows still has columns: `SELECT * FROM t`
+    /// over an empty `t(id INT, v INT)` is a two-column result with no rows,
+    /// and the protocol layer needs both facts to build a result set. Reading
+    /// `rows.first()` to learn the column count gets that exactly backwards.
+    ///
+    /// Empty means "no result set" (DDL/DML command replies), which is
+    /// legitimate. It must never be inferred from an empty `rows`.
+    ///
+    /// `data_type: None` means the column exists but its semantic type is not
+    /// resolved yet — never that the column is missing, and never a licence to
+    /// drop the column.
+    pub columns: Vec<ResultColumn>,
+}
+
+/// #5271: one column of a result set's output schema.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ResultColumn {
+    /// The column name the client sees.
+    pub name: String,
+    /// The column's semantic type, when known.
+    pub data_type: Option<String>,
+}
+
+impl ResultColumn {
+    /// A column whose type has not been resolved.
+    pub fn unnamed_type(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            data_type: None,
+        }
+    }
 }
 
 impl ExecutorResult {
@@ -19,6 +53,30 @@ impl ExecutorResult {
         Self {
             rows,
             affected_rows,
+            columns: Vec::new(),
+        }
+    }
+
+    /// #5271: a result set with a known output schema.
+    ///
+    /// `columns` is the authoritative shape. `rows` is checked against it so a
+    /// caller that assembles them inconsistently fails here rather than
+    /// producing a result set whose Column Count disagrees with its rows.
+    pub fn with_columns(
+        columns: Vec<ResultColumn>,
+        rows: Vec<Vec<Value>>,
+        affected_rows: usize,
+    ) -> Self {
+        debug_assert!(
+            columns.is_empty() || rows.iter().all(|r| r.len() == columns.len()),
+            "row width {} does not match the {} declared columns",
+            rows.first().map(|r| r.len()).unwrap_or(0),
+            columns.len(),
+        );
+        Self {
+            rows,
+            affected_rows,
+            columns,
         }
     }
 
@@ -27,6 +85,7 @@ impl ExecutorResult {
         Self {
             rows: vec![],
             affected_rows: 0,
+            columns: Vec::new(),
         }
     }
 }
@@ -210,5 +269,56 @@ mod tests {
         let result = ExecutorResult::new(vec![], 0);
         assert!(result.rows.is_empty());
         assert_eq!(result.affected_rows, 0);
+    }
+}
+
+#[cfg(test)]
+mod result_schema_tests {
+    use super::*;
+
+    /// #5271: a result set's shape is a property of the schema, not of the
+    /// rows. A query over an empty table has no rows and still has columns —
+    /// if the protocol layer has to infer the column count from `rows`, this
+    /// is exactly the case it gets wrong.
+    #[test]
+    fn zero_rows_with_two_columns_keeps_its_columns() {
+        let result = ExecutorResult::with_columns(
+            vec![
+                ResultColumn {
+                    name: "id".into(),
+                    data_type: Some("INTEGER".into()),
+                },
+                ResultColumn {
+                    name: "v".into(),
+                    data_type: Some("INTEGER".into()),
+                },
+            ],
+            vec![],
+            0,
+        );
+        assert_eq!(result.columns.len(), 2);
+        assert!(result.rows.is_empty());
+    }
+
+    /// `columns` empty means "no result set" — legitimate for DDL and DML, and
+    /// must not be confused with a result set that happens to have no rows.
+    #[test]
+    fn command_replies_have_no_columns() {
+        let r = ExecutorResult::new(vec![], 3);
+        assert!(r.columns.is_empty());
+        assert_eq!(r.affected_rows, 3);
+    }
+
+    /// A column whose type is not resolved yet is still a column.
+    #[test]
+    fn unresolved_type_does_not_remove_the_column() {
+        let r = ExecutorResult::with_columns(
+            vec![ResultColumn::unnamed_type("expr_1")],
+            vec![vec![Value::Integer(1)]],
+            1,
+        );
+        assert_eq!(r.columns.len(), 1);
+        assert_eq!(r.columns[0].name, "expr_1");
+        assert_eq!(r.columns[0].data_type, None);
     }
 }

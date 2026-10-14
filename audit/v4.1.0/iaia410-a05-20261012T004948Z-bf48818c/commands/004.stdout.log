@@ -1,0 +1,24 @@
+warning: unused variable: `s100_i`
+  --> tests/integration/dml/eq_index_acceptance_latency_5209.rs:87:25
+   |
+87 |     let (r100, mc100_i, s100_i, _, _) = rows_tbl[0];
+   |                         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_s100_i`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `mc10k_n`
+  --> tests/integration/dml/eq_index_acceptance_latency_5209.rs:89:19
+   |
+89 |     let (_, _, _, mc10k_n, s10k_n) = rows_tbl[2];
+   |                   ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_mc10k_n`
+
+warning: `sqlrustgo` (test "eq_index_acceptance_latency_5209") generated 2 warnings (run `cargo fix --test "eq_index_acceptance_latency_5209" -p sqlrustgo` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.68s
+     Running tests/integration/dml/eq_index_acceptance_latency_5209.rs (target/debug/deps/eq_index_acceptance_latency_5209-a0f6334b57088bbc)
+
+running 1 test
+test acceptance_latency_5209 has been running for over 60 seconds
+test acceptance_latency_5209 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 125.51s
+

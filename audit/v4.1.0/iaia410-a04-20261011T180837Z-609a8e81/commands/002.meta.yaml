@@ -1,0 +1,21 @@
+schema_version: iaia410-command-meta/v1
+command_id: '002'
+name: mysql-server-serve
+argv:
+- ./target/debug/sqlrustgo-mysql-server
+- serve
+- --host
+- 127.0.0.1
+- --port
+- '3309'
+- --data-dir
+- /tmp/a04-sqlrustgo-data
+- --auth-mode
+- none
+- --log-level
+- warn
+cwd: .
+timeout_sec: 0
+started_at: '2026-10-11T16:56:14Z'
+finished_at: '2026-10-11T18:51:11Z'
+exit_code: 0

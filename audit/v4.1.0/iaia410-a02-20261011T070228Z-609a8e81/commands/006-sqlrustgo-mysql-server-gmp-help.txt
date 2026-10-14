@@ -1,0 +1,9 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server gmp --help
+GMP (AI Native) workflow (placeholder)
+
+Usage: sqlrustgo-mysql-server gmp [OPTIONS]
+
+Options:
+      --log-level <LOG_LEVEL>  [default: info]
+  -h, --help                   Print help
+EXIT=0

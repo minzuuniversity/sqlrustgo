@@ -1,0 +1,6 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo diag --help
+Usage: sqlrustgo diag
+
+Options:
+  -h, --help  Print help
+EXIT=0

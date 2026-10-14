@@ -1,0 +1,11 @@
+   Compiling anstream v1.0.0
+   Compiling sqlrustgo-storage v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/storage)
+   Compiling env_logger v0.11.11
+   Compiling sqlrustgo-optimizer v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/optimizer)
+   Compiling sqlrustgo-security v0.1.0 (/home/openclaw/dev/sqlrustgo/crates/security)
+   Compiling sqlrustgo-transaction v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/transaction)
+   Compiling sqlrustgo-planner v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/planner)
+   Compiling sqlrustgo-executor v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/executor)
+   Compiling sqlrustgo-server v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo/crates/server)
+   Compiling sqlrustgo v3.12.0-fix-zombie (/home/openclaw/dev/sqlrustgo)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.51s

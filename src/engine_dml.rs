@@ -917,6 +917,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
 /// which is how #5168 happened.
 fn pk_point_lookup<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
+    stmt_db: &str,
     table_name: &str,
     table_info: &TableInfo,
     where_clause: &Expression,
@@ -936,7 +937,7 @@ fn pk_point_lookup<S: StorageEngine + 'static>(
     };
 
     let storage = engine.storage.read();
-    let row = storage.scan_pk(table_name, &pk_column, &pk_value)?;
+    let row = storage.scan_pk_in_db(stmt_db, table_name, &pk_column, &pk_value)?;
     Ok(Some(row.into_iter().map(|r| r.to_vec()).collect()))
 }
 
@@ -1101,11 +1102,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
         // implementation called `storage.update(&table_name, &[], ...)`
         // which bypassed WAL logging entirely — recovered values were
         // stale after a crash (ISSUE-2741 / RECOVERY-009..011 L2 runtime).
-        let pk_idx = table_info
-            .columns
-            .iter()
-            .position(|c| c.primary_key)
-            .unwrap_or(0);
+        let pk_idx = table_info.columns.iter().position(|c| c.primary_key);
         // V4.0.0 / SOAK-leak fix: previous code did
         //   `let all_rows_no_where = engine.scan_for_reader(&table_name)?;`
         //   `let prior_rows_for_undo = all_rows_no_where.clone();`
@@ -1147,14 +1144,21 @@ pub fn execute_update<S: StorageEngine + 'static>(
             // duplicates from each subsequent iteration instead of replacing in
             // place. See tests/integration/dml/dml_integration_test.rs:
             // update_all_rows_when_no_where.
-            let pk_val = prior_row
-                .get(pk_idx)
-                .cloned()
-                .unwrap_or(sqlrustgo_types::Value::Null);
+            // #5281: without a declared PRIMARY KEY the address is the
+            // exact prior row, not `prior_row[0]` — the first-column
+            // fallback wiped every row sharing that value (the V4.0.0
+            // note above only deferred the corruption by one iteration).
+            let delete_key: Vec<Value> = match pk_idx {
+                Some(k) => vec![prior_row
+                    .get(k)
+                    .cloned()
+                    .unwrap_or(sqlrustgo_types::Value::Null)],
+                None => prior_row_ref.clone(),
+            };
             for (col_idx, new_val) in &updates {
                 prior_row[*col_idx] = new_val.clone();
             }
-            storage.delete_in_db(&stmt_db, &table_name, std::slice::from_ref(&pk_val))?;
+            storage.delete_in_db(&stmt_db, &table_name, &delete_key)?;
             if need_undo_snapshot {
                 new_rows_for_undo.push(prior_row.clone());
             }
@@ -1195,12 +1199,12 @@ pub fn execute_update<S: StorageEngine + 'static>(
     // scan_with_filter yields only matching rows; we clone them once each.
     let where_clause = resolved_update.where_clause.as_ref().unwrap();
     let rows_to_update: Vec<Vec<Value>> =
-        match pk_point_lookup(engine, &table_name, &table_info, where_clause)? {
+        match pk_point_lookup(engine, &stmt_db, &table_name, &table_info, where_clause)? {
             Some(rows) => rows,
             None => {
                 // #4983: scan on behalf of this connection so an uncommitted
                 // version is visible only to its author.
-                engine.scan_for_reader_filtered(&table_name, &|row| {
+                engine.scan_for_reader_filtered(&stmt_db, &table_name, &|row| {
                     evaluate_where_clause(where_clause, row, &table_info)
                 })?
             }
@@ -1331,17 +1335,21 @@ pub fn execute_update<S: StorageEngine + 'static>(
             validate_string_lengths(&table_info, record)?;
         }
 
-        let pk_idx = table_info
-            .columns
-            .iter()
-            .position(|c| c.primary_key)
-            .unwrap_or(0);
+        let pk_idx = table_info.columns.iter().position(|c| c.primary_key);
         for (prior_row, new_row) in rows_to_update.iter().zip(trigger_modified_rows.iter()) {
-            let pk_val = prior_row
-                .get(pk_idx)
-                .cloned()
-                .unwrap_or(sqlrustgo_types::Value::Null);
-            storage.delete_in_db(&stmt_db, &table_name, std::slice::from_ref(&pk_val))?;
+            // #5281: without a declared PRIMARY KEY there is no stable
+            // single-column address — delete by the exact prior row
+            // contents so only the matching row is removed. Deriving the
+            // key from `prior_row[0]` wiped every row sharing the first
+            // column (row collapse / wrong-row reinsert).
+            let delete_key: Vec<Value> = match pk_idx {
+                Some(k) => vec![prior_row
+                    .get(k)
+                    .cloned()
+                    .unwrap_or(sqlrustgo_types::Value::Null)],
+                None => prior_row.clone(),
+            };
+            storage.delete_in_db(&stmt_db, &table_name, &delete_key)?;
             storage.insert_in_db(&stmt_db, &table_name, vec![new_row.clone()])?;
         }
     }
@@ -1494,7 +1502,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
     };
 
     let rows_to_delete: Vec<Vec<Value>> =
-        match pk_point_lookup(engine, &table_name, &table_info, where_clause)? {
+        match pk_point_lookup(engine, &stmt_db, &table_name, &table_info, where_clause)? {
             Some(rows) => rows,
             None => {
                 // #5057: resolve against the statement's database. This scan

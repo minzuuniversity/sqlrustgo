@@ -1,0 +1,22 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+command_id: 004
+description: 动态验证 A03-SF-02（SHOW TABLES FROM <db> 丢失库限定）
+target_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+binary: target/debug/sqlrustgo-mysql-server（冻结 commit 构建）
+exit_code: 0
+setup:
+  - CREATE DATABASE d1
+  - CREATE TABLE d1.marker(id INT)
+  - 磁盘确认 d1/marker.json 存在
+control:
+  - "SELECT COUNT(*) FROM d1.marker -> 可查询，表真实存在"
+  - "USE d1; SHOW TABLES   -> [marker]            正确"
+observation:
+  - "SHOW TABLES FROM d1 -> [content documents vectors]  错误：返回 default 的表"
+decisive_contrast: >
+  同一 SHOW TABLES 视图，`USE d1; SHOW TABLES` 正确而 `SHOW TABLES FROM d1` 错误。
+  二者唯一差异是是否走 engine_ddl.rs:545 的 list_tables_in_db(d) 路径，
+  与 list_tables_in_db 默认实现丢弃 db 的机制分析完全吻合。
+conclusion: A03-SF-02 confirmed

@@ -1,0 +1,197 @@
+# IAIA-410 / A02 — Production-Entry Inventory (SSOT §3.1)
+# assessed_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a (A01 frozen baseline)
+# Scope: production-reachability evidence only. Module existence / test count is
+#       explicitly NOT a substitute (SSOT §0, §3).
+#
+# "reachable" lists the concrete storage/engine modules a real invocation reaches,
+# with file:line evidence at the assessed commit. A binary/subcommand counts as a
+# production entry only if a real user command can reach it.
+
+schema_version: iaia410-production-entries/v1
+run_id: iaia410-a02-20261011T070228Z-609a8e81
+assessed_commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+
+# All 25 [[bin]] targets at the assessed commit (deterministic source:
+# commands/003-bin-inventory.txt). Production bins are marked; the rest are
+# non-production (dev/test/archived) and excluded from reachability scope.
+bin_targets:
+  # ── Production (user-facing SQL / server / admin) ──
+  - sqlrustgo            # crates/sqlrustgo-cli (canonical CLI: serve/exec/repl/bench/gmp/diag/backup/restore/cli/soak/sqlite)
+  - sqlrustgo-admin      # crates/admin (backup/restore/verify/pitr/status/reload/refresh/flush-tables/processlist/kill)
+  - sqlrustgo-mysql-server # crates/mysql-server (legacy canonical binary, v3.8.0+: serve/exec/repl/bench/gmp/diag/backup/restore)
+  # ── Non-production: dev/test tools ──
+  - sqlrustgo-soak       # crates/cli (soak / bench / soak-repl)
+  - sqlrustgo-shard-router # crates/shard-router
+  - sqlrustgo-sqllogictest # crates/sqlrustgo_sqllogictest (test system, CD-08)
+  - sqlancer             # crates/sqlancer (fuzz, test system CD-08)
+  - bench_client         # crates/tools
+  - physical-backup      # crates/tools
+  - repro_4564           # crates/tools
+  - ha                   # crates/tools
+  - log-rotation         # crates/tools
+  - tbl2bin              # crates/tools
+  - gate                 # crates/graph-cli
+  - ingest               # crates/graph-cli
+  - test-runner          # crates/test-runner
+  - test-registry-cli    # crates/test-registry
+  - sql92-runner         # test/sql92
+  - compat-runner        # tools/compat-runner
+  - dead-modules         # tools/xtask
+  - architecture-check   # tools/xtask
+  # ── Non-production: archived v3.11 (NOT part of v4.1.0 tree; superseded) ──
+  - archive-gate         # archive/v3.11/archived-crates/graph-cli [[bin]] name="gate"
+  - archive-ingest       # archive/v3.11/archived-crates/graph-cli [[bin]] name="ingest"
+  - graph-gate           # archive/v3.11/archived-crates/sqlrustgo-gate
+  - graph-ingest         # archive/v3.11/archived-crates/sqlrustgo-gate
+
+# SSOT §3.1 — 6 production-entry categories (category 1 splits non-TLS / TLS).
+entries:
+  - id: PE-01
+    category: mysql-server-non-tls
+    bin: sqlrustgo
+    subcommand: serve
+    argv_example: [sqlrustgo, serve, --port, "3307", --data-dir, /tmp/iaia-a02-data]
+    tls: false
+    durable: true
+    reachable:
+      - "MvccStorage(FileStorage) — durable default path"
+        evidence: crates/mysql-server/src/lib.rs:6940-6947
+      - "WalStorage (write-ahead log, sync mode configurable)"
+        evidence: crates/mysql-server/src/lib.rs:5652,4659,4743
+      - "CheckpointManager (300s interval, wired at startup)"
+        evidence: crates/mysql-server/src/lib.rs:6884-6947
+      - "StatefulRecoveryEngine<FileStorage> (WAL replay at startup)"
+        evidence: crates/storage/src/recovery_engine.rs, crates/mysql-server/src/lib.rs:6887
+    notes: >-
+      Alternate backends selectable: `--storage binary` (BinaryStorage),
+      `--storage parallel` (ParallelWalStorage with parallel flush).
+      Default backend is the file/MVCC path above.
+
+  - id: PE-02
+    category: mysql-server-tls
+    bin: sqlrustgo
+    subcommand: serve
+    argv_example: [sqlrustgo, serve, --port, "3307", --tls]
+    tls: true
+    durable: true
+    reachable:
+      - "rustls TlsStream wraps the connection"
+        evidence: crates/mysql-server/src/lib.rs (TlsStream, rustls config)
+      - "same MvccStorage/FileStorage/Wal/Checkpoint as PE-01"
+        evidence: crates/mysql-server/src/lib.rs:6884-6947
+    notes: TLS parity with PE-01 is an explicit audit target (SSOT §3.2 CD-06).
+
+  - id: PE-03
+    category: real-mysql-client-prepared-stmt
+    bin: sqlrustgo
+    subcommand: cli
+    argv_example: [sqlrustgo, cli, --host, 127.0.0.1, --port, "3307", --user, root, "SELECT 1"]
+    tls: either   # follows the running server (PE-01/PE-02)
+    durable: n/a  # client; durability is the server's (PE-01/PE-02)
+    reachable:
+      - "COM_QUERY / COM_STMT_PREPARE / COM_STMT_EXECUTE over the wire"
+        evidence: crates/mysql-server/src/lib.rs (prepared-statement handler), crates/network
+      - "reaches PE-01/PE-02 storage path on the server side"
+        evidence: crates/mysql-server/src/lib.rs:6884-6947
+    notes: >-
+      A real MySQL-compatible client (bundled `sqlrustgo cli` and external
+      `mysql`) is the production client path. Prepared statements exercise
+      COM_STMT_*; plain queries exercise COM_QUERY.
+
+  - id: PE-04
+    category: repl
+    bin: sqlrustgo
+    subcommand: repl
+    argv_example: [sqlrustgo, repl]
+    tls: n/a   # in-process
+    durable: false
+    reachable:
+      - "MemoryExecutionEngine (in-process, non-durable)"
+        evidence: crates/mysql-server/src/main.rs:544,551
+    notes: >-
+      REPL/`exec` use MemoryExecutionEngine — a DISTINCT, non-file reachability
+      path. Results are in-memory only; not the durable serve path. `sqlrustgo
+      soak` (soak REPL) holds a persistent connection to a running server
+      (PE-01/PE-02) instead.
+
+  - id: PE-05
+    category: cli-admin-tools
+    bin: [sqlrustgo, sqlrustgo-admin]
+    subcommand: [exec, backup, restore, bench, gmp, diag, sqlite, | admin: backup, restore, verify, pitr, status, reload, refresh, flush-tables, processlist, kill]
+    argv_example:
+      - [sqlrustgo, exec, "SELECT 1"]
+      - [sqlrustgo, backup, /tmp/iaia-a02-backup]
+      - [sqlrustgo, restore, <BACKUP_ID>, <DATABASE>]
+      - [sqlrustgo-admin, status]
+      - [sqlrustgo-admin, pitr, --to, "2026-10-11T00:00:00Z"]
+    tls: n/a
+    durable: mixed   # exec→memory; backup/restore→file
+    reachable:
+      - "exec → MemoryExecutionEngine (in-process, non-durable)"
+        evidence: crates/mysql-server/src/main.rs:544,551; crates/sqlrustgo-cli/src/lib.rs
+      - "backup/restore → storage + admin (backup_coordinator / restore_filespace)"
+        evidence: crates/storage/src/backup_coordinator.rs, crates/storage/src/restore_filespace.rs, crates/admin
+      - "verify/pitr → storage (pitr.rs) + admin"
+        evidence: crates/storage/src/pitr.rs, crates/admin/src/pitr.rs, crates/admin/src/verify.rs
+    notes: >-
+      `sqlrustgo-admin status/reload/refresh/flush-tables/processlist/kill`
+      connect to a running server over the wire (PE-01/PE-02) for session-level
+      operations; backup/restore/verify/pitr operate on data files directly.
+
+  - id: PE-06
+    category: startup-recovery-shutdown
+    bin: sqlrustgo
+    subcommand: serve   # startup; shutdown via SIGINT/SIGTERM handler
+    argv_example: [sqlrustgo, serve, --port, "3307", --data-dir, /tmp/iaia-a02-data]
+    tls: n/a
+    durable: true
+    reachable:
+      - "startup → StatefulRecoveryEngine WAL replay (2 call sites)"
+        evidence: crates/storage/src/recovery_engine.rs, crates/mysql-server/src/lib.rs:6887
+      - "shutdown → signal handler flushes WAL/checkpoint"
+        evidence: crates/mysql-server/src/lib.rs (signal handler), crates/storage/src/wal_storage.rs
+    notes: Crash-recovery and clean-shutdown are explicit audit targets (CD-10, A06).
+
+  - id: PE-07
+    category: background-maint-checkpoint-backup-restore
+    bin: [sqlrustgo, sqlrustgo-admin]
+    subcommand: [serve (background CheckpointManager thread), backup, restore, verify, pitr]
+    argv_example:
+      - [sqlrustgo, backup, /tmp/iaia-a02-backup]
+      - [sqlrustgo, restore, <BACKUP_ID>, <DATABASE>]
+      - [sqlrustgo-admin, restore, <BACKUP_ID>, <DATABASE>]
+    tls: n/a
+    durable: true
+    reachable:
+      - "CheckpointManager background thread (300s interval)"
+        evidence: crates/mysql-server/src/lib.rs:6884-6947, crates/storage/src/checkpoint.rs
+      - "backup → backup_coordinator; restore → restore_filespace"
+        evidence: crates/storage/src/backup_coordinator.rs, crates/storage/src/restore_filespace.rs
+      - "PITR → pitr.rs (point-in-time recovery)"
+        evidence: crates/storage/src/pitr.rs
+    notes: >-
+      Background maintenance (checkpoint), backup, and restore are declared
+      production entry points (SSOT §3.1 #6). Fault-injection + format
+      compatibility are audit targets (CD-10, A06).
+
+# Category coverage map (SSOT §3.1 → entries)
+category_coverage:
+  mysql-server-non-tls-and-tls: [PE-01, PE-02]
+  real-mysql-client-prepared-stmt: [PE-03]
+  repl: [PE-04]
+  cli-admin-tools: [PE-05]
+  startup-recovery-shutdown: [PE-06]
+  background-maint-checkpoint-backup-restore: [PE-07]
+
+# Non-production bins (NOT production entries; excluded from reachability scope)
+non_production_bins:
+  - name: sqlrustgo-soak
+    reason: soak/bench harness, not a user-facing SQL path
+  - name: sqlrustgo-shard-router
+    reason: shard-router dev tool
+  - name: sqlrustgo-sqllogictest
+    reason: sqllogictest runner (test system, CD-08)
+  - name: sqlancer
+    reason: fuzzer (test system, CD-08)
+  - name: [bench_client, physical-backup, repro_4564, ha, log-rotation, tbl2bin, gate, ingest, test-runner, test-registry-cli]
+    reason: dev/test tools, not user-facing SQL production paths
