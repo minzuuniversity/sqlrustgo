@@ -228,7 +228,16 @@ fn normalize_plan_rows(rows: &[Vec<Value>]) -> String {
             {
                 continue;
             }
-            out.push(line);
+            // #5305: strip the `(est_rows=N, est_cost=M)` suffix that
+            // EXPLAIN now appends to each scan line. The SQLite golden
+            // does not surface cost/rows, so the suffix would falsely
+            // diverge the oracle diff.
+            let stripped = if let Some(idx) = line.find(" (est_rows=") {
+                &line[..idx]
+            } else {
+                &line
+            };
+            out.push(stripped.to_string());
         }
     }
     out.join("\n")

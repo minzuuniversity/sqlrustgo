@@ -738,15 +738,37 @@ pub(crate) fn explain_select_plan(
 
     // 1. FROM clause — pick scan kind from indexes + WHERE / COUNT(*).
     let primary_indexed = explain_choose_indexed_scan(select, storage);
+    // #5305: estimate the row count for the FROM table. For now
+    // use the storage's `table_row_count` (cheap, exact) as the
+    // estimate; a future cost model can fold in selectivity.
+    let base_table = select.table.split('|').next().unwrap_or(&select.table);
+    let base_est_rows = storage
+        .scan(base_table)
+        .map(|r| r.len() as u64)
+        .unwrap_or(0);
     if select.from_subquery.is_some() || select.join_clause.is_empty() {
         if primary_indexed.is_some() {
             // V312-62 / #4617, #4621: IndexScan is emitted in the same
             // shape as SeqScan (`<op> <table>`) so the plan_shape oracle
             // normalizer maps both to the canonical `IndexScan <table>`
             // form (mirrors SQLite `SEARCH <table> USING INDEX ...`).
-            lines.push(format!("IndexScan {}", select.table));
+            // #5305: append `est_rows=N, est_cost=M` so callers can
+            // see the planner's row/cost estimate without breaking
+            // the normalizer (which strips the suffix — see
+            // explain_plan_to_string in the test files).
+            lines.push(format!(
+                "IndexScan {} (est_rows={}, est_cost={:.1})",
+                select.table,
+                base_est_rows,
+                base_est_rows as f64 * 0.1
+            ));
         } else {
-            lines.push(format!("SeqScan {}", select.table));
+            lines.push(format!(
+                "SeqScan {} (est_rows={}, est_cost={:.1})",
+                select.table,
+                base_est_rows,
+                base_est_rows as f64 * 1.0
+            ));
         }
     } else {
         // #5326: For a JOIN, pick the inner table (the one referenced
@@ -836,12 +858,22 @@ pub(crate) fn explain_select_plan(
         // When the table has an alias (e.g. `users|u`), emit the alias
         // alone so the plan reads like `IndexScan u` to match the
         // SQLite golden (which prints the alias in the SEARCH line).
+        // #5305: append `est_rows=N` suffix per scan line, using the
+        // storage's `scan` to count rows per table.
         for (tbl, opt_alias) in &join_aliases {
             let label = opt_alias.clone();
+            let bare = tbl.split('|').next().unwrap_or(tbl);
+            let est = storage.scan(bare).map(|r| r.len() as u64).unwrap_or(0);
             if indexed_join_table.as_deref() == Some(tbl.as_str()) {
-                lines.push(format!("IndexScan {label}"));
+                lines.push(format!(
+                    "IndexScan {label} (est_rows={est}, est_cost={:.1})",
+                    est as f64 * 0.1
+                ));
             } else {
-                lines.push(format!("SeqScan {label}"));
+                lines.push(format!(
+                    "SeqScan {label} (est_rows={est}, est_cost={:.1})",
+                    est as f64 * 1.0
+                ));
             }
         }
         let join_kind = match select.join_clause.first().map(|j| &j.join_type) {

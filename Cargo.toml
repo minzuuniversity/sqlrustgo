@@ -1363,6 +1363,9 @@ path = "tests/integration/sql/show_index_test.rs"
 name = "show_create_table_test"
 path = "tests/integration/sql/show_create_table_test.rs"
 [[test]]
+name = "explain_est_rows_5305"
+path = "tests/integration/sql/explain_est_rows_5305.rs"
+[[test]]
 name = "show_warnings_errors_status_variables_test"
 path = "tests/integration/sql/show_warnings_errors_status_variables_test.rs"
 [[test]]
