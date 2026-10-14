@@ -79,7 +79,10 @@ fn test_ahi_hit_rate_converges_after_promotion() {
     // increments `hits`.
     for _ in 0..10 {
         let result = ahi.lookup("t", &[1u8]);
-        assert!(result.is_some(), "lookup against promoted key must return Some");
+        assert!(
+            result.is_some(),
+            "lookup against promoted key must return Some"
+        );
     }
 
     let lookups = ahi.total_lookups();
@@ -150,13 +153,19 @@ fn test_estimated_pages_for_empty_table_returns_zero() {
         let storage_lock = engine.storage_ref().read();
         storage_lock.estimated_pages_for_table("empty_t")
     };
-    assert_eq!(n_empty, 0, "empty table must yield 0 estimated pages, got {n_empty}");
+    assert_eq!(
+        n_empty, 0,
+        "empty table must yield 0 estimated pages, got {n_empty}"
+    );
 
     let n_missing = {
         let storage_lock = engine.storage_ref().read();
         storage_lock.estimated_pages_for_table("does_not_exist")
     };
-    assert_eq!(n_missing, 0, "non-existent table must yield 0 estimated pages");
+    assert_eq!(
+        n_missing, 0,
+        "non-existent table must yield 0 estimated pages"
+    );
 
     // Direct trait method via BufferPoolStats import confirms wiring.
     let stats: BufferPoolStats = BufferPoolStats::synthetic_zero();
