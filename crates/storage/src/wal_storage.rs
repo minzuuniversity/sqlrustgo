@@ -588,6 +588,21 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         self.inner().scan_pk(table, pk_column, pk)
     }
 
+    /// #5281: same forwarding obligation as `scan_pk` above — the
+    /// trait default for the `_in_db` variant still matches
+    /// `row.first()`, so a PK declared on a non-first column never
+    /// reached the identity-aware `MvccStorage` lookup below us and
+    /// the SQL point lookup reported 0 rows affected.
+    fn scan_pk_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        pk_column: &str,
+        pk: &Value,
+    ) -> SqlResult<Option<Record>> {
+        self.inner().scan_pk_in_db(db, table, pk_column, pk)
+    }
+
     /// #5168: same forwarding obligation for the range variant, whose
     /// default is also a full scan plus a filter.
     fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
@@ -765,9 +780,16 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     self.log_delete(table_id, Some(table), Some(&db_name), key)?;
                 }
             }
-        } else {
+        } else if filters.len() == 1 {
             let pk_value = filters[0].clone();
             let key = Self::record_key(std::slice::from_ref(&pk_value));
+            self.log_delete(table_id, Some(table), Some(&db_name), key)?;
+        } else {
+            // #5281: a multi-value filter is a full-row address (the no-PK
+            // delete/update convention). Logging only `filters[0]` made
+            // recovery replay `delete([first_col])`, wiping every row that
+            // shares the first column. Log the whole address.
+            let key = Self::record_key(filters);
             self.log_delete(table_id, Some(table), Some(&db_name), key)?;
         }
 

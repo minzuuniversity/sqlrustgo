@@ -181,6 +181,19 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.scan_pk(table, pk_column, pk)
     }
 
+    /// #5281: same forwarding obligation — the `_in_db` trait default
+    /// still matches `row.first()`, so a PK declared on a non-first
+    /// column never reached the identity-aware inner lookup.
+    fn scan_pk_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        pk_column: &str,
+        pk: &Value,
+    ) -> SqlResult<Option<Record>> {
+        self.inner.scan_pk_in_db(db, table, pk_column, pk)
+    }
+
     /// #5168: same for the range variant.
     fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
         self.inner.scan_pk_range(table, low, high)

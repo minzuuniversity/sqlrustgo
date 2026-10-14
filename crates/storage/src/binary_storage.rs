@@ -1216,6 +1216,21 @@ impl StorageEngine for BoxStorageEngine {
         (**self).scan_pk(table, pk_column, pk)
     }
 
+    /// #5281: same forwarding obligation as `scan_pk` above — the
+    /// `_in_db` trait default still matches `row.first()`, so a PK
+    /// declared on a non-first column returned nothing at this layer
+    /// even though the wrapped engine's identity-aware lookup would
+    /// have found the row.
+    fn scan_pk_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        pk_column: &str,
+        pk: &Value,
+    ) -> SqlResult<Option<Record>> {
+        (**self).scan_pk_in_db(db, table, pk_column, pk)
+    }
+
     fn gc(&self, gc_lag: u64) -> usize {
         // Delegate to the wrapped engine via the trait method (dyn
         // dispatch). For MvccStorage-wrapped engines this routes to

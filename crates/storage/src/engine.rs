@@ -2491,9 +2491,17 @@ impl MemoryStorage {
                 }
                 count += 1;
             }
-        } else if let Some(filter_val) = filters.first() {
+        } else {
+            // #5281: match the filter positionally across the row, not just
+            // against `record.first()`. A single-value PK filter behaves the
+            // same for leading-column keys; a full-row filter (the no-PK
+            // delete/update convention) now pins exactly the intended row
+            // instead of every row sharing its first column.
             for record in records.iter_mut() {
-                let matches = record.first().map(|v| v == filter_val).unwrap_or(false);
+                let matches = filters
+                    .iter()
+                    .enumerate()
+                    .all(|(i, f)| record.get(i) == Some(f));
                 if matches {
                     let prior = record.clone();
                     for &(col_idx, ref new_val) in updates {
