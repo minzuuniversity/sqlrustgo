@@ -23,12 +23,15 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tempfile::TempDir;
 
-const TPC_H_REGION_SCHEMA: &str = "CREATE TABLE region ( \
+// Use IF NOT EXISTS: the shared server persists across tests in this
+// binary, so multiple tests each create `region`/`nation`. Without
+// IF NOT EXISTS, the second create fails with "Table already exists".
+const TPC_H_REGION_SCHEMA: &str = "CREATE TABLE IF NOT EXISTS region ( \
     r_regionkey INTEGER, \
     r_name TEXT, \
     r_comment TEXT)";
 
-const TPC_H_NATION_SCHEMA: &str = "CREATE TABLE nation ( \
+const TPC_H_NATION_SCHEMA: &str = "CREATE TABLE IF NOT EXISTS nation ( \
     n_nationkey INTEGER, \
     n_name TEXT, \
     n_regionkey INTEGER, \

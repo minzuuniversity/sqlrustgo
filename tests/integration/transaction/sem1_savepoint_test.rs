@@ -89,11 +89,15 @@ fn test_sem1_active_transaction_has_savepoint_manager() {
 
 #[test]
 fn test_sem1_executor_dispatches_savepoint() {
-    // execution_engine.rs must have an execute_savepoint method and
-    // route Statement::SavepointStatement to it.
+    // execution_engine.rs / execution_engine_methods.rs must have an
+    // execute_savepoint method and route Statement::SavepointStatement to it.
+    // The source split into two files — check both.
     let ee = read_source("src/execution_engine.rs");
+    let ee_methods = read_source("src/execution_engine_methods.rs");
+    let has_method =
+        ee.contains("fn execute_savepoint") || ee_methods.contains("fn execute_savepoint");
     assert!(
-        ee.contains("fn execute_savepoint"),
+        has_method,
         "ExecutionEngine must have execute_savepoint method"
     );
     // The dispatch site uses either single-line or multi-line match; be
@@ -101,6 +105,10 @@ fn test_sem1_executor_dispatches_savepoint() {
     let has_dispatch = ee.contains(
         "Statement::SavepointStatement { ref name, op } => self.execute_savepoint(name, op)",
     ) || ee.contains(
+        "Statement::SavepointStatement { ref name, op } => {\n                self.execute_savepoint(name, op)\n            }",
+    ) || ee_methods.contains(
+        "Statement::SavepointStatement { ref name, op } => self.execute_savepoint(name, op)",
+    ) || ee_methods.contains(
         "Statement::SavepointStatement { ref name, op } => {\n                self.execute_savepoint(name, op)\n            }",
     );
     assert!(

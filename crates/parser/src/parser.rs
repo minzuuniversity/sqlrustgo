@@ -2946,9 +2946,28 @@ impl Parser {
             SavepointOp::RollbackTo
         };
         // Parse the savepoint name.
+        // G5-B (#5262): accept reserved keywords (OUTER, INNER, etc.) as
+        // savepoint names — MySQL 5.7 and SQLite both allow this. The
+        // previous single Identifier match rejected `SAVEPOINT outer`
+        // because OUTER lexes as a reserved keyword token.
         let name = match self.next() {
             Some(Token::Identifier(n)) => n,
-            Some(t) => return Err(format!("Expected savepoint name (identifier), got {:?}", t)),
+            // Accept any keyword/identifier token as savepoint name (G5-B).
+            Some(t) => {
+                // Extract the token's text representation (uppercase for
+                // keywords, exact for identifiers).
+                let name = match &t {
+                    Token::Identifier(n) => n.clone(),
+                    // Use Debug format as fallback for keyword tokens.
+                    other => format!("{:?}", other)
+                        .trim_start_matches("Token::")
+                        .trim_start_matches("Keyword")
+                        .trim_start_matches('"')
+                        .trim_end_matches('"')
+                        .to_string(),
+                };
+                name
+            }
             None => return Err("Expected savepoint name, got EOF".to_string()),
         };
         Ok(Statement::SavepointStatement { name, op })
