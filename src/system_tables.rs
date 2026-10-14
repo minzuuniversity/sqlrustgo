@@ -84,7 +84,22 @@ pub fn try_system_table_select(
         .map(|row| {
             projection_indices
                 .iter()
-                .map(|i| Value::Text(row[*i].clone()))
+                .map(|i| {
+                    // rootpage column is INTEGER in SQLite schema (V312-71
+                    // / Issue #4664). The previous all-Text conversion
+                    // produced Text("0") and failed the integration test
+                    // which asserts Value::Integer(0) for rootpage.
+                    let col_name = schema.get(*i).map(|s| s.as_str()).unwrap_or("");
+                    if col_name.eq_ignore_ascii_case("rootpage") {
+                        // Parse the string to Integer; fall back to Text on parse failure.
+                        row[*i]
+                            .parse::<i64>()
+                            .map(Value::Integer)
+                            .unwrap_or_else(|_| Value::Text(row[*i].clone()))
+                    } else {
+                        Value::Text(row[*i].clone())
+                    }
+                })
                 .collect()
         })
         .collect();
