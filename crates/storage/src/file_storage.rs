@@ -279,7 +279,14 @@ pub struct FileStorage {
     /// `let _wal_path = data_dir.join("sqlrustgo.wal")` and dropped it
     /// on the floor. Nothing was ever written, so `admin pitr` had an
     /// empty or absent WAL to "replay" and reported success anyway.
-    wal: Mutex<Option<Box<dyn crate::wal::WalManager>>>,
+    ///
+    /// #5317: the inner `Box<dyn WalManager>` became a
+    /// `SharedWalHandle = Arc<std::sync::Mutex<Arc<dyn WalManager>>>`
+    /// so the same physical file handle can be cloned and handed to the
+    /// wrapping `WalStorage` / `ParallelWalStorage`. Without sharing,
+    /// the production stack opens two `FileBackedWalManager` handles
+    /// over the same `sqlrustgo.wal`, racing on every fsync.
+    wal: Mutex<Option<crate::wal::SharedWalHandle>>,
     /// #5048: opt-in change log, the prerequisite for a real incremental
     /// backup. `None` unless a caller turns it on, so the ordinary path
     /// pays nothing.
@@ -475,6 +482,12 @@ impl FileStorage {
     /// the guard is strictly better than propagating the panic to every
     /// subsequent write.
     fn wal_enabled(&self) -> bool {
+        // #5317: the outer `Mutex<Option<SharedWalHandle>>` still answers
+        // "is a WAL attached". The shared handle inside (the inner
+        // `Arc<std::sync::Mutex<Arc<dyn WalManager>>>`) is locked only
+        // inside `wal_append`, never here — `wal_enabled` is a hot-path
+        // read and serialising it on the same lock that serialises
+        // commit fsyncs would block readers behind writers' I/O.
         self.wal.lock().map(|g| g.is_some()).unwrap_or(true)
     }
 
@@ -487,15 +500,22 @@ impl FileStorage {
         if entries.is_empty() {
             return Ok(());
         }
+        // #5317: lock the outer `Mutex<Option<SharedWalHandle>>` first
+        // (so the `Option` is stable while we read it), then lock the
+        // inner `std::sync::Mutex<Arc<dyn WalManager>>` that this handle
+        // shares with the wrapping `WalStorage` / `ParallelWalStorage`.
+        // Two layers writing the same file now serialise on one lock
+        // instead of racing on two file handles.
         let mut guard = match self.wal.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        let Some(wal) = guard.as_mut() else {
+        let Some(shared) = guard.as_mut() else {
             return Ok(());
         };
+        let mut inner = shared.lock().expect("SharedWalHandle inner mutex poisoned");
         for entry in entries {
-            wal.append(entry)?;
+            inner.append(entry)?;
         }
         Ok(())
     }
@@ -625,8 +645,16 @@ impl FileStorage {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
+        // #5317: the outer `Option<SharedWalHandle>` is the
+        // "no-WAL-attached" gate. When attached, lock the inner
+        // `Mutex<Box<dyn WalManager>>` shared with `WalStorage` /
+        // `ParallelWalStorage` so recovery sees the same view of the
+        // file as in-progress writers.
         match guard.as_mut() {
-            Some(wal) => wal.recover(),
+            Some(shared) => {
+                let mut inner = shared.lock().expect("SharedWalHandle inner mutex poisoned");
+                inner.recover()
+            }
             None => Ok(Vec::new()),
         }
     }
@@ -638,7 +666,13 @@ impl FileStorage {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        guard.as_ref().map(|w| w.current_lsn()).unwrap_or(0)
+        match guard.as_ref() {
+            Some(shared) => {
+                let inner = shared.lock().expect("SharedWalHandle inner mutex poisoned");
+                inner.current_lsn()
+            }
+            None => 0,
+        }
     }
 
     /// #5048: start recording changes so an incremental backup can be
@@ -926,12 +960,50 @@ impl FileStorage {
     /// durability, and quietly returning a storage without it is how
     /// the original bug existed in the first place.
     pub fn new_with_wal(data_dir: PathBuf) -> std::io::Result<Self> {
+        // #5317: still opens its own `FileBackedWalManager`, but wraps
+        // it in `SharedWalHandle` so callers that wrap this `FileStorage`
+        // in a `WalStorage` / `ParallelWalStorage` can use the same
+        // physical handle via `new_with_shared_wal_handle` /
+        // `new_with_shared_wal`. To get that property today without
+        // touching `lib.rs`, take the `wal` out of `Self` after the
+        // call with [`Self::take_shared_wal_handle`] and hand the clone
+        // to the wrapper. Production wiring is being switched to
+        // `new_with_external_wal` directly — see
+        // `crates/mysql-server/src/lib.rs`.
         fs::create_dir_all(&data_dir)?;
 
         let wal_path = data_dir.join("sqlrustgo.wal");
-        let wal = crate::wal::FileBackedWalManager::new(wal_path).map_err(|e| {
+        let fbwm = crate::wal::FileBackedWalManager::new(wal_path).map_err(|e| {
             std::io::Error::other(format!("failed to open WAL {}: {e}", data_dir.display()))
         })?;
+        // #5317: `Box<dyn WalManager>`, not `Arc<dyn WalManager>` —
+        // `WalManager::append` etc. need `&mut self`, which is only
+        // reachable when the inner Mutex owns the WAL outright.
+        let shared: crate::wal::SharedWalHandle =
+            std::sync::Arc::new(std::sync::Mutex::new(Box::new(fbwm)));
+
+        Self::new_with_external_wal(data_dir, shared)
+    }
+
+    /// #5317: construct a `FileStorage` that shares the given
+    /// `SharedWalHandle` with the wrapping `WalStorage` /
+    /// `ParallelWalStorage`. The previous design opened a fresh
+    /// `FileBackedWalManager` here and a second one in the wrapper,
+    /// producing the "two writers over one file" failure mode the
+    /// production wiring was already documenting for the
+    /// `GroupCommit` branch.
+    ///
+    /// `new_with_wal` is preserved for backward compatibility — it
+    /// still opens its own `FileBackedWalManager` and exposes it via
+    /// [`Self::take_shared_wal_handle`] so legacy callers that wrap
+    /// the resulting `FileStorage` in a `WalStorage` can hand the
+    /// shared handle over. New code should call this constructor
+    /// directly and pass clones of `wal` to the wrapper.
+    pub fn new_with_external_wal(
+        data_dir: PathBuf,
+        wal: crate::wal::SharedWalHandle,
+    ) -> std::io::Result<Self> {
+        fs::create_dir_all(&data_dir)?;
 
         let storage = Self {
             data_dir,
@@ -952,7 +1024,7 @@ impl FileStorage {
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
-            wal: Mutex::new(Some(Box::new(wal))),
+            wal: Mutex::new(Some(wal)),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
@@ -971,6 +1043,21 @@ impl FileStorage {
         storage.load_all_views()?;
 
         Ok(storage)
+    }
+
+    /// #5317: take the internal `SharedWalHandle` so the caller can
+    /// hand a clone to the wrapping `WalStorage` /
+    /// `ParallelWalStorage`. Returns `None` for `FileStorage::new`
+    /// (no WAL). After this call the `FileStorage` is left with
+    /// `wal = None`, which matches the old behaviour where
+    /// `set_wal(None)` (or any unwrap-based path) silently no-op'd
+    /// subsequent writes.
+    pub fn take_shared_wal_handle(&self) -> Option<crate::wal::SharedWalHandle> {
+        let mut guard = match self.wal.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        guard.take()
     }
 
     /// Create a new FileStorage with a shared GapLockManager for REPEATABLE-READ isolation.

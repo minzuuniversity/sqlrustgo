@@ -20,7 +20,18 @@ pub struct ParallelWalStorage<S: StorageEngine, W: WalManager> {
     /// `GroupCommitCoordinator` that shares the same lock. The lock is
     /// only held for the `sync()` syscall (the coordinator's leader
     /// holds it briefly; waiters don't).
+    ///
+    /// #5317: this is the legacy field. When
+    /// [`Self::install_shared_wal`] has installed a
+    /// `SharedWalHandle`, every WAL op routes through that handle
+    /// instead; this field keeps its concrete `W` (set by
+    /// [`Self::new`]) but is no longer the write target.
     wal: Arc<Mutex<W>>,
+    /// #5317: when `Some(_)`, every WAL op routes through this
+    /// `SharedWalHandle` — the same physical `FileBackedWalManager`
+    /// the inner `FileStorage` is holding. When `None`, writes go to
+    /// the legacy `wal` field; that is the pre-#5317 behaviour.
+    shared_wal: Option<crate::wal::SharedWalHandle>,
     sync_mode: WalSyncMode,
     /// Optional group-commit coordinator. When set, commit_transaction
     /// uses it instead of `wal.lock().sync()` directly. Created lazily
@@ -44,6 +55,11 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         Self {
             inner,
             wal: Arc::new(Mutex::new(wal)),
+            // #5317: legacy path. Use
+            // [`Self::install_shared_wal`] (or
+            // [`Self::new_with_shared_handle`]) to opt into sharing
+            // the WAL handle with the wrapping `FileStorage`.
+            shared_wal: None,
             sync_mode: WalSyncMode::Every,
             group_commit: None,
             writes_since_sync: 0,
@@ -59,6 +75,10 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         Self {
             inner,
             wal,
+            // #5317: see `new`. `Arc<Mutex<W>>` here is *not* the
+            // shared-with-`FileStorage` handle — `install_shared_wal`
+            // sets that separately.
+            shared_wal: None,
             sync_mode: WalSyncMode::Every,
             group_commit: None,
             writes_since_sync: 0,
@@ -66,6 +86,48 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
             next_lsn: 0,
         }
+    }
+
+    /// #5317: build a `ParallelWalStorage` that shares its
+    /// `FileBackedWalManager` with the inner `FileStorage`. The
+    /// `shared_wal` is the same `Arc<std::sync::Mutex<Box<dyn WalManager>>>`
+    /// that `FileStorage::new_with_external_wal` was given — the
+    /// concrete `W` here is `DynWalManager`, a newtype adapter
+    /// around the shared handle, so the struct's `W: WalManager`
+    /// bound stays satisfied without dropping type information on
+    /// the shared side.
+    ///
+    /// Mirrors `WalStorage::new_with_shared_wal_handle`.
+    ///
+    /// Free function (not a method on the generic impl) so the
+    /// struct's unconstrained `W` parameter doesn't have to be
+    /// inferred at every call site. Callers see
+    /// `ParallelWalStorage<S, DynWalManager>` directly.
+    #[allow(dead_code)]
+    pub fn new_with_shared_handle(
+        inner: S,
+        shared_wal: crate::wal::SharedWalHandle,
+    ) -> ParallelWalStorage<S, crate::wal::DynWalManager> {
+        // The free-function body lives next to the impl so the
+        // adapter wiring stays in one place. `Self::new` here
+        // refers to the generic `ParallelWalStorage<S, W>` —
+        // W is fixed to `DynWalManager` only in the return
+        // type annotation, which forces the inner `new` to be
+        // called with `W = DynWalManager`.
+        let adapter = crate::wal::DynWalManager(shared_wal.clone());
+        let mut s: ParallelWalStorage<S, crate::wal::DynWalManager> =
+            ParallelWalStorage::new(inner, adapter);
+        s.shared_wal = Some(shared_wal);
+        s
+    }
+
+    /// #5317: install a `SharedWalHandle` shared with the wrapping
+    /// `FileStorage`. From this point on every WAL op routes through
+    /// the shared handle; the legacy `wal: Arc<Mutex<W>>` field stays
+    /// around (still usable by `set_group_commit`) but is no longer
+    /// the write target. Pass `None` to revert to the legacy path.
+    pub fn install_shared_wal(&mut self, shared_wal: crate::wal::SharedWalHandle) {
+        self.shared_wal = Some(shared_wal);
     }
 
     /// Run garbage collection on the inner storage engine. This
@@ -93,6 +155,26 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         self.group_commit = coord;
     }
 
+    /// #5317: dispatch a WAL operation to either the shared handle
+    /// (`Some`) or the legacy `wal` field (`None`). Mirrors
+    /// `WalStorage::wal_do`; same rationale and same non-reentrancy
+    /// caveat for callers that already hold the inner lock.
+    fn wal_do<R>(
+        &self,
+        f: impl FnOnce(&mut dyn crate::wal::WalManager) -> SqlResult<R>,
+    ) -> SqlResult<Option<R>> {
+        if !self.wal_enabled {
+            return Ok(None);
+        }
+        if let Some(shared) = self.shared_wal.as_ref() {
+            let mut guard = shared.lock().expect("SharedWalHandle inner mutex poisoned");
+            Ok(Some(f(&mut **guard)?))
+        } else {
+            let mut guard = self.wal.lock().expect("wal mutex poisoned");
+            Ok(Some(f(&mut *guard)?))
+        }
+    }
+
     /// Returns a reference to the installed group-commit coordinator, if
     /// any.
     pub fn group_commit(&self) -> Option<&Arc<GroupCommitCoordinator<W>>> {
@@ -103,9 +185,11 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         let lsn = self.next_lsn;
         self.next_lsn += 1;
         entry.lsn = lsn;
-        let mut wal = self.wal.lock().expect("wal mutex poisoned");
-        wal.append(entry)
-            .map_err(|e| SqlError::ExecutionError(format!("WAL append error: {}", e)))?;
+        // #5317: route through `wal_do` so the shared handle
+        // (when `shared_wal` is `Some`) serialises with the inner
+        // `FileStorage`'s commits.
+        self.wal_do(|w| w.append(entry))
+            .and_then(|opt| opt.ok_or_else(|| SqlError::ExecutionError("WAL disabled".into())))?;
         Ok(lsn)
     }
 }
@@ -285,29 +369,42 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
                     WalSyncMode::Batch(n) => {
                         self.writes_since_sync += 1;
                         if self.writes_since_sync >= n as usize {
-                            let mut wal = self.wal.lock().expect("wal mutex poisoned");
-                            wal.sync().map_err(|e| {
-                                SqlError::ExecutionError(format!("WAL sync error: {}", e))
-                            })?;
-                            drop(wal);
+                            // #5317: route through `wal_do`.
+                            self.wal_do(|w| w.sync())
+                                .and_then(|opt| {
+                                    opt.ok_or_else(|| {
+                                        SqlError::ExecutionError("WAL disabled".into())
+                                    })
+                                })
+                                .map_err(|e| {
+                                    SqlError::ExecutionError(format!("WAL sync error: {}", e))
+                                })?;
                             self.writes_since_sync = 0;
                         }
                     }
                     WalSyncMode::Every => {
-                        let mut wal = self.wal.lock().expect("wal mutex poisoned");
-                        wal.sync().map_err(|e| {
-                            SqlError::ExecutionError(format!("WAL sync error: {}", e))
-                        })?;
+                        // #5317: route through `wal_do`.
+                        self.wal_do(|w| w.sync())
+                            .and_then(|opt| {
+                                opt.ok_or_else(|| SqlError::ExecutionError("WAL disabled".into()))
+                            })
+                            .map_err(|e| {
+                                SqlError::ExecutionError(format!("WAL sync error: {}", e))
+                            })?;
                     }
                     WalSyncMode::GroupCommit { .. } => {
                         // GroupCommit variant is informational; the
                         // coordinator (if installed) drives the actual
                         // fsync. Without a coordinator, fall back to
                         // every-tx fsync.
-                        let mut wal = self.wal.lock().expect("wal mutex poisoned");
-                        wal.sync().map_err(|e| {
-                            SqlError::ExecutionError(format!("WAL sync error: {}", e))
-                        })?;
+                        // #5317: route through `wal_do`.
+                        self.wal_do(|w| w.sync())
+                            .and_then(|opt| {
+                                opt.ok_or_else(|| SqlError::ExecutionError("WAL disabled".into()))
+                            })
+                            .map_err(|e| {
+                                SqlError::ExecutionError(format!("WAL sync error: {}", e))
+                            })?;
                     }
                 }
             }
