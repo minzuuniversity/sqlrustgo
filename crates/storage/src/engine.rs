@@ -3839,14 +3839,25 @@ impl Iterator for SharedSliceIter {
 // pre-existing breakage (see SDD ledger `progress.md` Ruling 4 v2). This
 // module is intentionally NOT behind `#[cfg(test)]` so it always compiles
 // during `cargo build --lib` (RED → GREEN discipline).
+//
+// Task 3 added `via_box_storage_engine` — same call shape routed through
+// `BoxStorageEngine`. The BoxStorageEngine forwarding override has no
+// observable behaviour difference on today's code (Ruling 8), but this
+// fn proves the override signature/body compiles cleanly.
 #[allow(dead_code)]
 mod _storage_engine_pr2_compile_check {
     use super::StorageEngine;
+    use crate::binary_storage::BoxStorageEngine;
     use crate::buffer_pool::BufferPoolStats;
 
     pub(crate) fn check(s: &dyn StorageEngine) {
         let _stats: Option<BufferPoolStats> = s.buffer_pool_stats();
         let _: u64 = s.estimated_pages_for_table("__nonexistent__");
+    }
+
+    pub(crate) fn via_box_storage_engine(boxed: &BoxStorageEngine) {
+        let _stats: Option<BufferPoolStats> = boxed.buffer_pool_stats();
+        let _: u64 = boxed.estimated_pages_for_table("__nonexistent__");
     }
 }
 
