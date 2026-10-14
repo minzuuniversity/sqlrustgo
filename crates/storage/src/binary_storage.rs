@@ -839,6 +839,42 @@ impl StorageEngine for BinaryTableStorage {
         Ok(())
     }
 
+    // #5262 / io_delay_fault_test: BinaryTableStorage is a simple
+    // file-backed store with no MVCC/WAL. It previously inherited the
+    // trait defaults that returned "Transactions not supported by this
+    // storage engine" for begin/commit/rollback — but the IO-delay
+    // integration test uses ExecutionEngine (which opens an implicit
+    // DML tx on INSERT) and only measures load/save latency, not
+    // transactional semantics. Implement no-op transaction methods
+    // that succeed so the engine can run against this storage.
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        // No MVCC: adopt a synthetic tx id (epoch micros) so the engine
+        // can track it; commit/rollback are no-ops below.
+        let tx_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_micros() as u64)
+            .unwrap_or(1);
+        Ok(tx_id)
+    }
+
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        Ok(())
+    }
+
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        Ok(())
+    }
+
+    fn in_transaction(&self) -> bool {
+        false
+    }
+
+    fn current_tx_id(&self) -> u64 {
+        0
+    }
+
+    fn set_current_tx_id(&mut self, _id: u64) {}
+
     fn is_wal_enabled(&self) -> bool {
         false
     }
