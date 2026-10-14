@@ -44,9 +44,23 @@ pub use sqlrustgo_parser::{parse, Lexer, Statement, Token};
 pub use sqlrustgo_planner::{
     DataType, Expr, Field, LogicalPlan, Optimizer, PhysicalPlan, Planner, Schema, SeqScanExec,
 };
-pub use sqlrustgo_storage::{
-    BPlusTree, BufferPool, FileStorage, MemoryStorage, Page, StorageEngine,
-};
+pub use sqlrustgo_storage::{FileStorage, MemoryStorage, StorageEngine};
+
+/// ⚠️ **Test-only capability. Not used by production `FileStorage`.**
+///
+/// Re-exported for storage-test code (`crates/storage/tests/*`,
+/// `crates/storage/benches/*`).
+///
+/// **Production `FileStorage` is an in-mem `HashMap` + JSON `insert_buffer`
+/// (not paged).** See #5304 and
+/// `docs/releases/v4.1.0/CLAIM_DOWNGRADE_MANIFEST.md` §3.1.
+pub use sqlrustgo_storage::BufferPool;
+
+/// ⚠️ **Test-only capability.** Same downgrade as [`BufferPool`]. See #5304.
+pub use sqlrustgo_storage::BPlusTree;
+
+/// ⚠️ **Test-only capability.** Same downgrade as [`BufferPool`]. See #5304.
+pub use sqlrustgo_storage::Page;
 pub use sqlrustgo_types::{SqlError, SqlResult, Value};
 
 pub use execution_engine::{ExecutionEngine, MemoryExecutionEngine};
