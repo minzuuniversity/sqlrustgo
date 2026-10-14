@@ -2101,6 +2101,19 @@ impl MemoryStorage {
         // which is what `SHOW TABLES` must display.
         let mut info = info.clone();
         info.name = info.name.to_lowercase();
+        // #5326: auto-register PK columns in `self.indexes` so
+        // `list_indexes` reports them and the planner's
+        // `explain_choose_indexed_scan` (plus the JOIN inner-table logic)
+        // can emit `IndexScan` for PK lookups. The PK is implicit
+        // (`CREATE TABLE t (id INT PRIMARY KEY ...)`) so the planner
+        // never gets an explicit `CREATE INDEX` for it.
+        for col in &info.columns {
+            if col.primary_key {
+                let table_name = info.name.clone();
+                self.indexes
+                    .insert((self.tbl(&table_name), col.name.clone()));
+            }
+        }
         self.table_infos.insert(key.clone(), info);
         self.tables.entry(key).or_default();
         Ok(())
@@ -3609,10 +3622,16 @@ impl StorageEngine for MemoryStorage {
         // convention as `FileStorage::list_indexes`. The planner only
         // uses this for "is there an index on column X?" so the precise
         // name string is not load-bearing beyond human-readability.
+        // #5326: use `self.tbl(table)` to match the key format produced
+        // by `create_index` (which calls `self.tbl(&table_lc)` →
+        // `scoped_key(DEFAULT_DATABASE, table)`). Without this the filter
+        // never matches and `explain_choose_indexed_scan` falls back to
+        // SeqScan even after a successful CREATE INDEX.
+        let key = self.tbl(table);
         self.indexes
             .iter()
-            .filter(|(t, _c)| t == &table.to_lowercase())
-            .map(|(t, c)| (c.clone(), format!("{t}_idx_{c}")))
+            .filter(|(t, _c)| t == &key)
+            .map(|(t, c)| (c.clone(), format!("{}_idx_{}", table.to_lowercase(), c)))
             .collect()
     }
 
