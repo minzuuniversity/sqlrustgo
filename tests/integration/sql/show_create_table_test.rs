@@ -14,7 +14,7 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 
 fn ddl(e: &mut ExecutionEngine<MemoryStorage>, sql: &str) -> String {
     let r = e.execute(sql).unwrap();
-    match &r.rows[0][0] {
+    match &r.rows[0][1] {
         sqlrustgo::Value::Text(s) => s.clone(),
         other => panic!("expected Text DDL, got {:?}", other),
     }

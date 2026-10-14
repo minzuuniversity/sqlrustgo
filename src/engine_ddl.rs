@@ -862,7 +862,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
         }
         let ddl = format!("CREATE TABLE {} ({})", table, parts.join(", "));
-        Ok(ExecutorResult::new(vec![vec![Value::Text(ddl)]], 1))
+        // MySQL SHOW CREATE TABLE returns 2 columns: Table, Create Table.
+        // The wire layer (crates/mysql-server/src/lib.rs:4340) declares
+        // these 2 column names, but this fn previously returned only 1
+        // value (the DDL string) — causing the client to read 2 fields
+        // from a 1-field row packet and fail with "row packet truncated".
+        Ok(ExecutorResult::new(
+            vec![vec![Value::Text(table.to_string()), Value::Text(ddl)]],
+            2,
+        ))
     }
 
     /// DESCRIBE table — return one row per column with Field/Type/Null/Key/Default/Extra.
