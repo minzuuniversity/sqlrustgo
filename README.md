@@ -315,6 +315,7 @@ bash scripts/gate/check_ga_v3.12.0.sh --full
 | [v4.1.0 README](docs/releases/v4.1.0/README.md) | v4.1.0 范围、阶段定位 |
 | [v4.1.0 STAGE](docs/releases/v4.1.0/STAGE.yaml) | 阶段 SSOT |
 | [v4.1.0 RELEASE_NOTES](docs/releases/v4.1.0/RELEASE_NOTES.md) | DRAFT 阶段发布说明草稿 |
+| [v4.1.0 CLAIM_DOWNGRADE](docs/releases/v4.1.0/CLAIM_DOWNGRADE_MANIFEST.md) | v4.1.0 范围声明降级清单（继承 v4.0.0 3 项 caveat + 新增 #5304 BufferPool / Page / 磁盘 B+Tree test-only 降级） |
 | [v4.1.0 ISSUES_PLAN](docs/releases/v4.1.0/ISSUES_PLAN.md) | 24 条 backlog 详细 |
 | [v4.1.0 LEGACY_LEDGER](docs/releases/v4.1.0/LEGACY_LEDGER_v3.6_to_v4.1.md) | 跨版本遗留台账（v3.6-v4.1） |
 | [v4.1.0 ALIGNMENT_AUDIT](docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md) | 12 项 F-01~F-12 发现 |
