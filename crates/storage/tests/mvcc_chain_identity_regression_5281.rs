@@ -157,19 +157,34 @@ fn rt2_delete_tombstones_the_chain_holding_the_row() {
 ///
 /// Two rows sharing `b` but differing in `a`: if the chain key is taken from
 /// the wrong column, both land on the same key and one disappears.
+///
+/// Faithful translation of the N5 report's RT-3
+/// (audit/v4.1.0/N5-5281-INDEPENDENT-ROOT-CAUSE-REPORT-2026-10-11.md
+/// L358-365): `UPDATE WHERE b=10 SET b=99` updates BOTH rows to `(*, 99)`.
+/// The earlier version of this test passed a positional `filters=[10]` to
+/// `update` and asserted the second row stayed put — neither matches the
+/// report nor any positional-filter convention the storage API defines.
+/// The predicate form (`update_if`) is the only API that can express
+/// `WHERE b=10` on a table without a declared key.
 #[test]
 fn rt3_rows_sharing_a_column_do_not_collapse() {
     let mut s = seeded("rt3", false, &[(1, 10), (2, 10)]);
 
-    s.update("t", &[Value::Integer(10)], &[(1usize, Value::Integer(99))])
-        .expect("update");
+    let filter: sqlrustgo_storage::RowFilter =
+        Box::new(|row: &sqlrustgo_storage::Record| row.len() == 2 && row[1] == Value::Integer(10));
+    let mutation = sqlrustgo_storage::RowMutation::new(vec![(1usize, Value::Integer(99))], 0);
+    s.update_if("t", &filter, &mutation).expect("update");
 
     let rows = scan(&s);
     assert_eq!(rows.len(), 2, "both rows must survive; got {rows:?}");
     assert!(contains(&rows, 1, 99), "first row not updated: {rows:?}");
-    assert!(contains(&rows, 2, 10), "second row was disturbed: {rows:?}");
+    assert!(contains(&rows, 2, 99), "second row not updated: {rows:?}");
     assert!(
         !contains(&rows, 1, 10),
+        "the pre-update value is still visible: {rows:?}"
+    );
+    assert!(
+        !contains(&rows, 2, 10),
         "the pre-update value is still visible: {rows:?}"
     );
 }
@@ -227,6 +242,33 @@ fn rt5_delete_touches_only_the_matching_row() {
         contains(&rows, 1, 40),
         "an unrelated row was lost: {rows:?}"
     );
+}
+
+/// RT-6 — `scan_pk_in_db` finds the row wherever the primary key sits.
+///
+/// The SQL layer's PK point lookup (`pk_point_lookup` in engine_dml.rs)
+/// calls `scan_pk_in_db`; the trait default matched `row.first()`, so a
+/// table whose primary key is column `b` returned nothing and an UPDATE
+/// `WHERE b = …` reported 0 rows affected end to end. The MVCC identity
+/// is the primary-key value, so the point lookup must address it the
+/// same way.
+#[test]
+fn rt6_scan_pk_in_db_finds_row_with_pk_in_second_column() {
+    let s = seeded("rt6", true, &[(1, 100), (1, 200)]);
+
+    let found = s
+        .scan_pk_in_db("default", "t", "b", &Value::Integer(200))
+        .expect("scan_pk_in_db");
+    assert_eq!(
+        found,
+        Some(vec![Value::Integer(1), Value::Integer(200)]),
+        "the PK point lookup must address the row by its declared key"
+    );
+
+    let miss = s
+        .scan_pk_in_db("default", "t", "b", &Value::Integer(999))
+        .expect("scan_pk_in_db miss");
+    assert_eq!(miss, None, "an absent key must not match anything");
 }
 
 /// The stack under test is the production one, not a bare FileStorage.
