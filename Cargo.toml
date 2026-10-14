@@ -489,6 +489,10 @@ name = "adaptive_hash_index_test"
 path = "tests/integration/sql/adaptive_hash_index_test.rs"
 
 [[test]]
+name = "ahi_explain_test"
+path = "tests/integration/sql/ahi_explain_test.rs"
+
+[[test]]
 name = "aggregate_functions_test"
 path = "tests/integration/sql/aggregate_functions_test.rs"
 
