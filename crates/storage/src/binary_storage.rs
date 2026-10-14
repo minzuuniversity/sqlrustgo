@@ -839,6 +839,42 @@ impl StorageEngine for BinaryTableStorage {
         Ok(())
     }
 
+    // #5262 / io_delay_fault_test: BinaryTableStorage is a simple
+    // file-backed store with no MVCC/WAL. It previously inherited the
+    // trait defaults that returned "Transactions not supported by this
+    // storage engine" for begin/commit/rollback — but the IO-delay
+    // integration test uses ExecutionEngine (which opens an implicit
+    // DML tx on INSERT) and only measures load/save latency, not
+    // transactional semantics. Implement no-op transaction methods
+    // that succeed so the engine can run against this storage.
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        // No MVCC: adopt a synthetic tx id (epoch micros) so the engine
+        // can track it; commit/rollback are no-ops below.
+        let tx_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_micros() as u64)
+            .unwrap_or(1);
+        Ok(tx_id)
+    }
+
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        Ok(())
+    }
+
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        Ok(())
+    }
+
+    fn in_transaction(&self) -> bool {
+        false
+    }
+
+    fn current_tx_id(&self) -> u64 {
+        0
+    }
+
+    fn set_current_tx_id(&mut self, _id: u64) {}
+
     fn is_wal_enabled(&self) -> bool {
         false
     }
@@ -849,6 +885,20 @@ impl StorageEngine for BinaryTableStorage {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    // #5320: view metadata is not persisted in BinaryTableStorage's
+    // .bin file format — the in-memory `self.views` cache in
+    // `ExecutionEngine` already tracks the view AST for query
+    // rewrite, and `SHOW FULL TABLES` reads it from there. Accept
+    // create_view/drop_view as no-ops so the wire path
+    // doesn't reject views. `has_view` is already a no-op at L821.
+    fn create_view(&mut self, _db: &str, _info: crate::engine::ViewInfo) -> SqlResult<()> {
+        Ok(())
+    }
+
+    fn drop_view(&mut self, _db: &str, _name: &str) -> SqlResult<()> {
+        Ok(())
     }
 }
 
@@ -1108,6 +1158,14 @@ impl StorageEngine for BoxStorageEngine {
     }
     fn has_view(&self, db: &str, name: &str) -> bool {
         (**self).has_view(db, name)
+    }
+    // #5320: forward view persistence to the boxed backend.
+    // Without these, the trait default ("not supported") is used.
+    fn create_view(&mut self, db: &str, info: crate::engine::ViewInfo) -> SqlResult<()> {
+        (**self).create_view(db, info)
+    }
+    fn drop_view(&mut self, db: &str, name: &str) -> SqlResult<()> {
+        (**self).drop_view(db, name)
     }
     fn begin_transaction(&mut self) -> SqlResult<u64> {
         (**self).begin_transaction()

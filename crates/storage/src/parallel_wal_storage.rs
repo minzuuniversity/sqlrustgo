@@ -6,7 +6,7 @@
 
 use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
-    TableInfo, Value,
+    TableInfo, Value, ViewInfo,
 };
 use crate::wal::{GroupCommitCoordinator, WalEntry, WalEntryType, WalManager};
 use crate::wal_storage::WalSyncMode;
@@ -513,6 +513,14 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     }
     fn has_view(&self, db: &str, name: &str) -> bool {
         self.inner.has_view(db, name)
+    }
+    // #5320: forward view persistence to the inner engine.
+    // Without these, the trait default ("not supported") is used.
+    fn create_view(&mut self, db: &str, info: ViewInfo) -> SqlResult<()> {
+        self.inner.create_view(db, info)
+    }
+    fn drop_view(&mut self, db: &str, name: &str) -> SqlResult<()> {
+        self.inner.drop_view(db, name)
     }
 
     fn as_any(&self) -> &dyn Any {
