@@ -1178,24 +1178,21 @@ fn eval_arithmetic(left: &Value, right: &Value, op: &str) -> Value {
     } else {
         let l = to_i64(left);
         let r = to_i64(right);
+        // #5326: division/modulo by zero returns Null to match MySQL
+        // and SQLite standard SQL semantics. The previous behavior
+        // (returning 0 for integer /0) diverged from the teaching
+        // corpus oracle (`SELECT 1 / 0` → NULL in SQLite) and from
+        // the legacy src/expr_utils.rs handler which already returned
+        // Null. The two arithmetic paths now agree.
+        if r == 0 && (op == "/" || op == "%") {
+            return Value::Null;
+        }
         let result = match op {
             "+" => l.wrapping_add(r),
             "-" => l.wrapping_sub(r),
             "*" => l.wrapping_mul(r),
-            "/" => {
-                if r == 0 {
-                    0
-                } else {
-                    l / r
-                }
-            }
-            "%" => {
-                if r == 0 {
-                    0
-                } else {
-                    l % r
-                }
-            }
+            "/" => l / r,
+            "%" => l % r,
             _ => unreachable!(),
         };
         Value::Integer(result)

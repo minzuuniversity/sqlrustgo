@@ -246,9 +246,10 @@ fn test_update_with_complex_where() {
 
 #[test]
 fn test_transaction_rollback() {
-    // NOTE: BEGIN/ROLLBACK are not yet implemented — they are accepted as
-    // no-ops. Rows inserted before or during "BEGIN" persist regardless.
-    // This test documents current behavior (no actual rollback).
+    // #5323: BEGIN/ROLLBACK are now properly implemented — rows inserted
+    // during a ROLLBACK'd transaction are undone. The initial INSERT
+    // (before BEGIN) is autocommit and survives; the two INSERTs inside
+    // the BEGIN/ROLLBACK block are rolled back.
     let (_handle, mut conn) = make_client();
     conn.execute("CREATE TABLE t (n INTEGER)").expect("CREATE");
     conn.execute("INSERT INTO t VALUES (1)")
@@ -261,7 +262,8 @@ fn test_transaction_rollback() {
         .expect("INSERT in txn");
     conn.execute("ROLLBACK").expect("ROLLBACK");
 
-    // All 3 rows survive because ROLLBACK is a no-op
+    // Only the initial INSERT (autocommit) survives; the two INSERTs
+    // inside the BEGIN/ROLLBACK block are properly undone.
     let r = conn
         .execute("SELECT COUNT(*) FROM t")
         .expect("SELECT COUNT after rollback");
@@ -269,8 +271,8 @@ fn test_transaction_rollback() {
         ResultSet::Select { rows, .. } => {
             assert_eq!(rows.len(), 1);
             assert_eq!(
-                rows[0][0], "3",
-                "expected 3 rows (rollback not implemented), got {:?}",
+                rows[0][0], "1",
+                "expected 1 row (ROLLBACK undid the 2 in-tx inserts), got {:?}",
                 rows
             );
         }

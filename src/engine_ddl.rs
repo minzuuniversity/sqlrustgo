@@ -345,6 +345,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let storage = self.storage.read();
         if db.eq_ignore_ascii_case(&self.session_db())
             || db.eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE)
+            // #5321: PostgreSQL convention — `public` is an alias for
+            // the default schema. `SHOW FULL TABLES FROM public` against
+            // a server whose session db is the default schema should
+            // list those tables, not error with "Unknown database".
+            || db.eq_ignore_ascii_case("public")
         {
             return Ok(());
         }
@@ -665,7 +670,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             self.ensure_database_known(d)?;
         }
         let storage = self.storage.read();
-        let mut names = match db {
+        // #5321: PostgreSQL convention — `public` is an alias for the
+        // default schema. When the FROM db resolves to `public` (i.e.
+        // session db is the default), list the default db's tables.
+        let effective_db: Option<String> = db.map(|d| {
+            if d.eq_ignore_ascii_case("public")
+                && self
+                    .session_db()
+                    .eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE)
+            {
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string()
+            } else {
+                d.to_string()
+            }
+        });
+        let mut names = match effective_db.as_deref() {
             None => {
                 let mut n = storage.list_tables_in_db(&self.session_db());
                 n.extend(views_for(&self.session_db()));
@@ -677,9 +696,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 n
             }
         };
-        let listed_db = db
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| self.session_db());
+        let listed_db = effective_db.clone().unwrap_or_else(|| self.session_db());
         let listed_views = views_for(&listed_db);
         let table_type = |name: &str| {
             if listed_views.iter().any(|v| v == name) {

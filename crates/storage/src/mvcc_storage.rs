@@ -20,7 +20,7 @@
 
 use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
-    TriggerInfo, Value,
+    TriggerInfo, Value, ViewInfo,
 };
 use crate::mvcc::{find_visible, VersionedTable};
 use std::any::Any;
@@ -1129,6 +1129,20 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    // #5320: MvccStorage wraps an inner storage engine and doesn't
+    // override the view methods — they fall through to the trait
+    // default that returns "not supported". Views are metadata only
+    // (no MVCC versioning needed), so forward to the inner engine
+    // which handles persistence. `has_view` is already forwarded at
+    // L1016.
+    fn create_view(&mut self, db: &str, info: ViewInfo) -> SqlResult<()> {
+        self.inner_mut().create_view(db, info)
+    }
+
+    fn drop_view(&mut self, db: &str, name: &str) -> SqlResult<()> {
+        self.inner_mut().drop_view(db, name)
     }
 
     fn add_column(&mut self, table: &str, col: ColumnDefinition) -> SqlResult<()> {

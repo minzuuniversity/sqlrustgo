@@ -1,7 +1,7 @@
 use crate::checkpoint::{CheckpointManager, CheckpointMetadata};
 use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
-    TableInfo, TriggerInfo, Value,
+    TableInfo, TriggerInfo, Value, ViewInfo,
 };
 use crate::wal::{SharedWalHandle, WalEntry, WalEntryType, WalManager};
 use std::any::Any;
@@ -1079,6 +1079,14 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
 
     fn has_view(&self, db: &str, name: &str) -> bool {
         self.inner().has_view(db, name)
+    }
+    // #5320: forward view persistence to the inner engine.
+    // Without these, the trait default ("not supported") is used.
+    fn create_view(&mut self, db: &str, info: ViewInfo) -> SqlResult<()> {
+        self.inner_mut().create_view(db, info)
+    }
+    fn drop_view(&mut self, db: &str, name: &str) -> SqlResult<()> {
+        self.inner_mut().drop_view(db, name)
     }
 
     fn begin_transaction(&mut self) -> SqlResult<u64> {

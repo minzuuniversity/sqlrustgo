@@ -886,6 +886,20 @@ impl StorageEngine for BinaryTableStorage {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
+
+    // #5320: view metadata is not persisted in BinaryTableStorage's
+    // .bin file format — the in-memory `self.views` cache in
+    // `ExecutionEngine` already tracks the view AST for query
+    // rewrite, and `SHOW FULL TABLES` reads it from there. Accept
+    // create_view/drop_view as no-ops so the wire path
+    // doesn't reject views. `has_view` is already a no-op at L821.
+    fn create_view(&mut self, _db: &str, _info: crate::engine::ViewInfo) -> SqlResult<()> {
+        Ok(())
+    }
+
+    fn drop_view(&mut self, _db: &str, _name: &str) -> SqlResult<()> {
+        Ok(())
+    }
 }
 
 /// A `StorageEngine` wrapper that forwards all calls through a `Box<dyn StorageEngine>`.
@@ -1144,6 +1158,14 @@ impl StorageEngine for BoxStorageEngine {
     }
     fn has_view(&self, db: &str, name: &str) -> bool {
         (**self).has_view(db, name)
+    }
+    // #5320: forward view persistence to the boxed backend.
+    // Without these, the trait default ("not supported") is used.
+    fn create_view(&mut self, db: &str, info: crate::engine::ViewInfo) -> SqlResult<()> {
+        (**self).create_view(db, info)
+    }
+    fn drop_view(&mut self, db: &str, name: &str) -> SqlResult<()> {
+        (**self).drop_view(db, name)
     }
     fn begin_transaction(&mut self) -> SqlResult<u64> {
         (**self).begin_transaction()
