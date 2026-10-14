@@ -66,11 +66,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Use explicit column names from CREATE TABLE (col1, col2, ...)
                 create.columns.iter().map(|c| c.name.clone()).collect()
             } else {
-                select_stmt
+                let ast_names: Vec<String> = select_stmt
                     .columns
                     .iter()
                     .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
-                    .collect()
+                    .collect();
+                // #5268: the parser emits a single placeholder column named
+                // `"*"` for `SELECT *`, and expands it to real columns only at
+                // execution time. Inferred names taken from the AST would
+                // therefore store `"*"` (plus a generic `columnN`) as the new
+                // table's schema, so any later `WHERE <col> = …` failed in the
+                // binder with "column not found". The executed `select_result`
+                // already carries the resolved schema, so fall back to it
+                // whenever the AST list is a bare star.
+                if ast_names.len() == 1 && ast_names[0] == "*" {
+                    select_result
+                        .columns
+                        .iter()
+                        .map(|c| c.name.clone())
+                        .collect()
+                } else {
+                    ast_names
+                }
             };
 
             // V312-18: OR REPLACE - drop existing table first
