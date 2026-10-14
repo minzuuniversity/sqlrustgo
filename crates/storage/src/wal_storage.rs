@@ -1,9 +1,9 @@
 use crate::checkpoint::{CheckpointManager, CheckpointMetadata};
 use crate::engine::{
-    ColumnDefinition, Record, RowFilter, RowMutation, SqlResult, StorageEngine, TableInfo,
-    TriggerInfo, Value,
+    ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
+    TableInfo, TriggerInfo, Value,
 };
-use crate::wal::{WalEntry, WalEntryType, WalManager};
+use crate::wal::{SharedWalHandle, WalEntry, WalEntryType, WalManager};
 use std::any::Any;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
@@ -71,7 +71,21 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     /// worse than readers blocked for an in-process atomic CAS.
     ///
     /// Phase B Step 3 optimization; see `docs/releases/v0.0.0/PERFORMANCE_PLAN.md`.
+    ///
+    /// #5317: this is the *legacy* path. When the wrapping
+    /// `WalStorage` is constructed with
+    /// [`WalStorage::new_with_shared_wal_handle`], all writes go
+    /// through [`Self::shared_wal`] instead — the same physical
+    /// `FileBackedWalManager` the inner `FileStorage` is holding.
+    /// `Some(_)` here without a matching `shared_wal` was the
+    /// double-writer bug: a fresh handle racing with `FileStorage`'s.
     wal: parking_lot::Mutex<T>,
+    /// #5317: when `Some(_)`, every WAL op routes through this
+    /// `SharedWalHandle` (an `Arc<std::sync::Mutex<Box<dyn WalManager>>>`
+    /// shared with the inner `FileStorage`). When `None`, the legacy
+    /// [`Self::wal`] field owns the WAL exclusively — the original
+    /// behaviour before #5317 introduced sharing.
+    shared_wal: Option<SharedWalHandle>,
     wal_enabled: bool,
     sync_mode: WalSyncMode,
     /// Counter for batch mode: tracks writes since last sync
@@ -110,6 +124,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         Ok(Self {
             inner: UnsafeCell::new(inner),
             wal: parking_lot::Mutex::new(wal),
+            // #5317: legacy path; the wrapping `WalStorage` does not
+            // share its WAL with the inner `FileStorage` when built
+            // through `new` / `new_with_sync_mode` / etc. — those are
+            // the call sites where the double-writer bug existed. Use
+            // `new_with_shared_wal_handle` to opt into sharing.
+            shared_wal: None,
             wal_enabled: true,
             sync_mode: WalSyncMode::default(),
             writes_since_sync: 0,
@@ -134,6 +154,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         Ok(Self {
             inner: UnsafeCell::new(inner),
             wal: parking_lot::Mutex::new(wal),
+            // #5317: legacy path; the wrapping `WalStorage` does not
+            // share its WAL with the inner `FileStorage` when built
+            // through `new` / `new_with_sync_mode` / etc. — those are
+            // the call sites where the double-writer bug existed. Use
+            // `new_with_shared_wal_handle` to opt into sharing.
+            shared_wal: None,
             wal_enabled: true,
             sync_mode,
             writes_since_sync: 0,
@@ -155,6 +181,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         Ok(Self {
             inner: UnsafeCell::new(inner),
             wal: parking_lot::Mutex::new(wal),
+            // #5317: legacy path; the wrapping `WalStorage` does not
+            // share its WAL with the inner `FileStorage` when built
+            // through `new` / `new_with_sync_mode` / etc. — those are
+            // the call sites where the double-writer bug existed. Use
+            // `new_with_shared_wal_handle` to opt into sharing.
+            shared_wal: None,
             wal_enabled: true,
             sync_mode,
             writes_since_sync: 0,
@@ -179,6 +211,65 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
         )
     }
 
+    /// #5317: build a `WalStorage` that shares its `FileBackedWalManager`
+    /// handle with the inner `FileStorage`. The `shared_wal` is the
+    /// same `Arc<std::sync::Mutex<Box<dyn WalManager>>>` that
+    /// `FileStorage::new_with_external_wal` returned; passing clones of
+    /// it through both constructors collapses the two-writer bug to one
+    /// writer. The `WalStorage`'s own `wal: parking_lot::Mutex<T>` field
+    /// is left empty — every WAL op routes through `shared_wal` via
+    /// [`Self::wal_do`].
+    pub fn new_with_shared_wal_handle(
+        inner: S,
+        wal: SharedWalHandle,
+        sync_mode: WalSyncMode,
+        checkpoint_manager: Option<Arc<RwLock<CheckpointManager>>>,
+    ) -> SqlResult<Self>
+    where
+        T: Default,
+    {
+        // The `wal: parking_lot::Mutex<T>` field is unused on the shared
+        // path; `T::default()` is a never-touched placeholder so the
+        // type parameter still satisfies the struct definition.
+        Ok(Self {
+            inner: UnsafeCell::new(inner),
+            wal: parking_lot::Mutex::new(T::default()),
+            shared_wal: Some(wal),
+            wal_enabled: true,
+            sync_mode,
+            writes_since_sync: 0,
+            pending_flush_count: std::sync::atomic::AtomicU64::new(0),
+            checkpoint_manager,
+            current_tx_id: AtomicU64::new(0),
+            next_lsn: AtomicU64::new(0),
+            active_txs: Mutex::new(HashMap::new()),
+        })
+    }
+
+    /// #5317: dispatch a WAL operation to either the shared handle
+    /// (`Some`) or the legacy `wal` field (`None`). Returns `Ok(None)`
+    /// when WAL is disabled, so callers can use this as a drop-in for
+    /// the previous `if self.wal_enabled { wal.lock().method()? }` shape
+    /// without the lock dance.
+    fn wal_do<R>(
+        &self,
+        f: impl FnOnce(&mut dyn crate::wal::WalManager) -> SqlResult<R>,
+    ) -> SqlResult<Option<R>> {
+        if !self.wal_enabled {
+            return Ok(None);
+        }
+        if let Some(shared) = self.shared_wal.as_ref() {
+            let mut guard = shared.lock().expect("SharedWalHandle inner mutex poisoned");
+            // `guard` is `MutexGuard<Box<dyn WalManager>>`; deref
+            // twice to reach `&mut dyn WalManager` (Box does not
+            // implement `WalManager` itself).
+            Ok(Some(f(&mut **guard)?))
+        } else {
+            let mut guard = self.wal.lock();
+            Ok(Some(f(&mut *guard)?))
+        }
+    }
+
     /// Returns true if transaction `tx_id` is currently active.
     pub fn is_tx_active(&self, tx_id: u64) -> bool {
         self.active_txs
@@ -199,10 +290,11 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
 
     /// Force a sync (useful for batch mode)
     pub fn force_sync(&mut self) -> SqlResult<()> {
-        if self.wal_enabled {
-            self.wal.lock().sync()?;
-            self.writes_since_sync = 0;
-        }
+        // #5317: route through `wal_do` so the shared handle
+        // (when `shared_wal` is `Some`) serialises with the inner
+        // `FileStorage`'s commits.
+        self.wal_do(|w| w.sync())?;
+        self.writes_since_sync = 0;
         Ok(())
     }
 
@@ -221,7 +313,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     fn append_wal_entry(&mut self, mut entry: WalEntry) -> SqlResult<u64> {
         let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
         entry.lsn = lsn;
-        self.wal.lock().append(entry)?;
+        // #5317: see `force_sync` for the rationale; same helper
+        // applies here.
+        self.wal_do(|w| w.append(entry))?;
         Ok(lsn)
     }
 
@@ -484,7 +578,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
                 table_name: None,
             };
             self.append_wal_entry(entry)?;
-            self.wal.lock().sync()?;
+            self.wal_do(|w| w.sync())?;
         }
         // Issue #3964: previously this called `self.inner_mut().flush()`,
         // which persisted the rolled-back tx's buffered inserts to
@@ -513,7 +607,12 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     }
 
     pub fn recover(&mut self) -> SqlResult<Vec<WalEntry>> {
-        self.wal.lock().recover()
+        // #5317: WAL disabled → empty vec (matches the previous
+        // `pub fn recover_wal_entries` contract on `FileStorage`).
+        match self.wal_do(|w| w.recover())? {
+            Some(v) => Ok(v),
+            None => Ok(Vec::new()),
+        }
     }
 }
 
@@ -643,10 +742,19 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // loader, sysbench prepare). Single-row INSERTs are unaffected because
         // the caller typically commits the transaction between calls.
         if self.wal_enabled && !records.is_empty() {
-            let prev_batch_mode = self.wal.lock().is_batch_mode();
-            let prev_threshold = self.wal.lock().flush_threshold();
-            self.wal.lock().set_batch_mode(true);
-            self.wal.lock().set_flush_threshold(usize::MAX);
+            // #5317: capture batch-mode state through `wal_do` so the
+            // shared handle sees the same value the legacy path would
+            // have read. `wal_do` is not reentrant, so we release the
+            // lock before calling `log_insert` (which itself calls
+            // `wal_do`).
+            let (prev_batch_mode, prev_threshold) = self
+                .wal_do(|w| Ok((w.is_batch_mode(), w.flush_threshold())))?
+                .unwrap_or((false, 100));
+            self.wal_do(|w| {
+                w.set_batch_mode(true);
+                w.set_flush_threshold(usize::MAX);
+                Ok(())
+            })?;
             let db_name = db.to_string();
             let result: SqlResult<()> = (|| {
                 for record in &records {
@@ -654,14 +762,19 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     let data = Self::record_to_bytes(record);
                     self.log_insert(table_id, Some(table), Some(&db_name), key, data)?;
                 }
-                self.wal.lock().flush()
+                self.wal_do(|w| w.flush()).and_then(|opt| {
+                    opt.ok_or_else(|| SqlError::ExecutionError("WAL disabled mid-batch".into()))
+                })
             })();
             // Restore prior settings (best-effort; WAL consistency is unaffected
             // either way because we flushed before restoring).
-            self.wal.lock().set_flush_threshold(prev_threshold);
-            if !prev_batch_mode {
-                self.wal.lock().set_batch_mode(false);
-            }
+            self.wal_do(|w| {
+                w.set_flush_threshold(prev_threshold);
+                if !prev_batch_mode {
+                    w.set_batch_mode(false);
+                }
+                Ok(())
+            })?;
             result?;
         } else {
             let db_name = db.to_string();
@@ -1032,12 +1145,13 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                 WalSyncMode::Batch(n) => {
                     self.writes_since_sync += 1;
                     if self.writes_since_sync >= n {
-                        self.wal.lock().sync()?;
+                        // #5317: route through `wal_do`.
+                        self.wal_do(|w| w.sync())?;
                         self.writes_since_sync = 0;
                     }
                 }
                 WalSyncMode::Every => {
-                    self.wal.lock().sync()?;
+                    self.wal_do(|w| w.sync())?;
                     // B-1 (#5177): durability boundary, NOT the point
                     // where the client is told COMMIT succeeded. The two
                     // differ and tests must say which they mean.
@@ -1055,7 +1169,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     // WalStorage path doesn't install a coordinator;
                     // fall back to every-tx fsync for safety. Use the
                     // ParallelWalStorage path for actual group commit.
-                    self.wal.lock().sync()?;
+                    // #5317: route through `wal_do`.
+                    self.wal_do(|w| w.sync())?;
                 }
             }
         }
@@ -1118,7 +1233,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             if let Some(cp) = &self.checkpoint_manager {
                 if let Ok(guard) = cp.read() {
                     if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
-                        let _ = self.wal.lock().truncate_before(cp_lsn);
+                        let _ = self.wal_do(|w| w.truncate_before(cp_lsn));
                     }
                 }
             }
@@ -1250,7 +1365,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
             let mut entry = entry;
             entry.lsn = lsn;
-            self.wal.lock().append(entry)?;
+            // #5317: route through `wal_do`.
+            self.wal_do(|w| w.append(entry))?;
             if tx_id != 0 {
                 if let Ok(mut active) = self.active_txs.lock() {
                     active.insert(tx_id, lsn);
@@ -1289,7 +1405,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
             let mut entry = entry;
             entry.lsn = lsn;
-            self.wal.lock().append(entry)?;
+            // #5317: route through `wal_do`.
+            self.wal_do(|w| w.append(entry))?;
         }
         // #4974: let the inner engine commit **before** the tx ids are
         // cleared.
@@ -1364,8 +1481,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
             let mut entry = entry;
             entry.lsn = lsn;
-            self.wal.lock().append(entry)?;
-            self.wal.lock().sync()?;
+            // #5317: route through `wal_do`.
+            self.wal_do(|w| w.append(entry))?;
+            self.wal_do(|w| w.sync())?;
         }
         // #4974: same delegation omission as the commit path, with the same
         // ordering constraint. `MvccStorage::rollback_transaction_lockfree`
@@ -1406,7 +1524,7 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                 table_name: None,
             };
             self.append_wal_entry(entry)?;
-            self.wal.lock().sync()?;
+            self.wal_do(|w| w.sync())?;
         }
         // #3223 Phase 1: remove from active set on rollback.
         if let Ok(mut active) = self.active_txs.lock() {

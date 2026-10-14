@@ -31,6 +31,98 @@ pub use crate::wal_legacy::{
 };
 
 use crate::engine::SqlResult;
+use std::sync::{Arc, Mutex};
+
+/// #5317: shared `FileBackedWalManager` handle for the production stack.
+///
+/// The previous design had `FileStorage::new_with_wal` open its own
+/// `FileBackedWalManager` internally while `ParallelWalStorage` /
+/// `WalStorage` opened a second, independent handle over the same
+/// `sqlrustgo.wal` file. Two independent writers racing on one file is
+/// exactly the failure mode the comment at
+/// `crates/mysql-server/src/lib.rs:6966-6972` warns about ("two
+/// independent BufWriters over one WAL file would interleave
+/// corruptly"), and the production code only enforced that for the
+/// `WalSyncMode::GroupCommit` branch. The remaining
+/// `WalSyncMode::Off / Batch / Every` branches plus the default
+/// `--storage file` stack all opened two handles, which is what issue
+/// #5317 captures as the double-FBWM bug.
+///
+/// `SharedWalHandle` is the contract that fixes it: a single
+/// `FileBackedWalManager` is wrapped in `Arc<dyn WalManager>` (so each
+/// consumer can hold an `Arc`) and then in `Arc<std::sync::Mutex<_>>`
+/// (so concurrent appends serialize on one lock — the same lock that
+/// already serializes `WalStorage` / `ParallelWalStorage`'s
+/// commit-path fsyncs). All three layers (`FileStorage`,
+/// `WalStorage`, `ParallelWalStorage`) hold clones of the same
+/// `SharedWalHandle`, so a single physical file handle is the only
+/// writer of `sqlrustgo.wal`.
+/// `Box<dyn WalManager>` rather than `Arc<dyn WalManager>`: every
+/// `WalManager` method takes `&mut self`, and `Arc<dyn WalManager>` is
+/// not reachable as `&mut dyn WalManager` (DerefMut is only implemented
+/// when the Arc has unique ownership, which `FileStorage` /
+/// `WalStorage` deliberately do *not* have). The `Box` lets the inner
+/// `std::sync::Mutex` give out `&mut dyn WalManager` through the lock
+/// guard. The outer `Arc` is only there to share the lock between
+/// `FileStorage` and the wrapping `WalStorage` / `ParallelWalStorage`
+/// — the inner `Box` is never cloned.
+pub type SharedWalHandle = Arc<Mutex<Box<dyn WalManager>>>;
+
+/// #5317: thin newtype around `SharedWalHandle` that implements
+/// `WalManager` by delegating each method through the shared inner
+/// mutex. `ParallelWalStorage<S, W>` is generic over `W: WalManager`,
+/// but the trait object `Box<dyn WalManager>` does not implement
+/// `WalManager` itself — `Box<DynTrait>` DerefMut gives `&mut DynTrait`
+/// but no impl exists. The newtype plugs that gap so the shared
+/// handle can be the storage layer's WAL instance.
+pub struct DynWalManager(pub SharedWalHandle);
+
+impl WalManager for DynWalManager {
+    fn append(&mut self, entry: WalEntry) -> SqlResult<()> {
+        let mut g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.append(entry)
+    }
+    fn flush(&mut self) -> SqlResult<()> {
+        let mut g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.flush()
+    }
+    fn sync(&mut self) -> SqlResult<()> {
+        let mut g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.sync()
+    }
+    fn recover(&mut self) -> SqlResult<Vec<WalEntry>> {
+        let mut g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.recover()
+    }
+    fn truncate_before(&mut self, lsn: u64) -> SqlResult<()> {
+        let mut g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.truncate_before(lsn)
+    }
+    fn current_lsn(&self) -> u64 {
+        let g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.current_lsn()
+    }
+    fn size(&self) -> SqlResult<u64> {
+        let g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.size()
+    }
+    fn is_batch_mode(&self) -> bool {
+        let g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.is_batch_mode()
+    }
+    fn set_batch_mode(&mut self, enable: bool) {
+        let mut g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.set_batch_mode(enable);
+    }
+    fn flush_threshold(&self) -> usize {
+        let g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.flush_threshold()
+    }
+    fn set_flush_threshold(&mut self, threshold: usize) {
+        let mut g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
+        g.set_flush_threshold(threshold);
+    }
+}
 
 /// WAL Manager trait for write-ahead log management.
 ///

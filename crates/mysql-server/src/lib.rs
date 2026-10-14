@@ -5933,27 +5933,29 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                     continue;
                                 }
                             };
-                            let (cols, ctypes) =
-                                if let Some(headers) = parsed.as_ref().ok().and_then(show_column_headers)
-                                {
-                                    // The requested headers may not match the
-                                    // declared width, so the type list has to
-                                    // follow them rather than the schema.
-                                    let types = headers
-                                        .iter()
-                                        .map(|_| crate::result_set::UNRESOLVED_TYPE.to_string())
-                                        .collect();
-                                    (headers, types)
-                                } else if prepared.column_names.is_empty() {
-                                    let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
-                                    let names: Vec<String> =
-                                        (0..n).map(|i| format!("col_{}", i + 1)).collect();
-                                    let types =
-                                        names.iter().map(|_| crate::result_set::UNRESOLVED_TYPE.to_string()).collect();
-                                    (names, types)
-                                } else {
-                                    (prepared.column_names.clone(), prepared.column_types.clone())
-                                };
+                            let (cols, ctypes) = if let Some(headers) =
+                                parsed.as_ref().ok().and_then(show_column_headers)
+                            {
+                                // The requested headers may not match the
+                                // declared width, so the type list has to
+                                // follow them rather than the schema.
+                                let types = headers
+                                    .iter()
+                                    .map(|_| crate::result_set::UNRESOLVED_TYPE.to_string())
+                                    .collect();
+                                (headers, types)
+                            } else if prepared.column_names.is_empty() {
+                                let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+                                let names: Vec<String> =
+                                    (0..n).map(|i| format!("col_{}", i + 1)).collect();
+                                let types = names
+                                    .iter()
+                                    .map(|_| crate::result_set::UNRESOLVED_TYPE.to_string())
+                                    .collect();
+                                (names, types)
+                            } else {
+                                (prepared.column_names.clone(), prepared.column_types.clone())
+                            };
                             seq = send_result_set_with_more(
                                 stream,
                                 &cols,
@@ -6891,11 +6893,26 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(bin_storage)))
         }
         Some("parallel") => {
-            // V311-09: ParallelWalStorage with parallel table flush
-            tracing::info!("Storage: parallel (ParallelWalStorage with parallel flush)");
-            let mut file_storage =
-                FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
+            // V311-09: ParallelWalStorage with parallel table flush.
+            //
+            // #5317: open the FBWM **once** and wrap in a
+            // `SharedWalHandle` shared by `FileStorage` and
+            // `ParallelWalStorage`. The legacy two-handle construction
+            // raced on the same `sqlrustgo.wal` file and produced the
+            // `[Insert, Commit, Commit]` / `committed_txns=0` pattern
+            // that #5250 captured. See
+            // `crates/storage/src/wal/mod.rs` for the contract.
+            tracing::info!("Storage: parallel (ParallelWalStorage with shared WAL)");
             let wal_path = wal_data_dir.join("sqlrustgo.wal");
+            let fbwm = FileBackedWalManager::new(wal_path.clone())
+                .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
+            let shared_wal: sqlrustgo_storage::wal::SharedWalHandle =
+                Arc::new(std::sync::Mutex::new(Box::new(fbwm)));
+            let mut file_storage = sqlrustgo_storage::FileStorage::new_with_external_wal(
+                wal_data_dir.clone(),
+                shared_wal.clone(),
+            )
+            .map_err(std::io::Error::other)?;
             // WAL recovery
             {
                 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
@@ -6941,8 +6958,8 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                     }
                 }
             }
-            let wal_manager = FileBackedWalManager::new(wal_path)
-                .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
+            // #5317: the FBWM handle is already constructed above
+            // (`shared_wal`); no second `FileBackedWalManager::new`.
             let wal_sync_mode =
                 std::env::var("SQLRUSTGO_WAL_SYNC").unwrap_or_else(|_| "every".to_string());
             let sync_mode = parse_wal_sync_mode(&wal_sync_mode);
@@ -6963,28 +6980,48 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 "MVCC layer rebuilt: {} tables, snapshot isolation enabled for reads",
                 mvcc_inner.list_tables().len()
             );
-            // #4913 / v4.1.0-perf (F-05): when group commit is requested,
-            // build the shared WAL lock FIRST and hand the same
-            // `Arc<Mutex<W>>` to both the storage and the coordinator —
-            // two independent BufWriters over one WAL file would interleave
-            // corruptly. The coordinator coalesces up to `max_batch`
-            // concurrent commits into a single fsync (InnoDB semantics)
-            // instead of one fsync per commit.
+            // #4913 / v4.1.0-perf (F-05): the `GroupCommit` branch routes
+            // fsync through a coordinator; the shared handle's inner
+            // Mutex is the lock the coordinator's leader holds briefly
+            // per fsync. The other sync modes share the handle
+            // directly via `new_with_shared_handle` so a single
+            // physical file handle is the only writer of
+            // `sqlrustgo.wal` (fixes #5317).
             let mut parallel_storage = match sync_mode {
                 sqlrustgo_storage::WalSyncMode::GroupCommit {
                     max_batch,
                     max_wait_us,
                 } => {
-                    let shared_wal = Arc::new(std::sync::Mutex::new(wal_manager));
+                    // #5317: the coordinator's `W` is `DynWalManager`
+                    // (an adapter that holds the same `SharedWalHandle`
+                    // and locks its inner mutex for every method), so
+                    // the coordinator's lock and `FileStorage`'s lock
+                    // are *one and the same* mutex — no double
+                    // BufWriter, no two-handle race.
+                    let coord_inner: Arc<std::sync::Mutex<sqlrustgo_storage::wal::DynWalManager>> =
+                        Arc::new(std::sync::Mutex::new(
+                            sqlrustgo_storage::wal::DynWalManager(shared_wal.clone()),
+                        ));
                     let coord = Arc::new(
                         sqlrustgo_storage::wal::group_commit::GroupCommitCoordinator::with_shared_inner(
-                            Arc::clone(&shared_wal),
+                            coord_inner,
                             max_batch as usize,
                             max_wait_us,
                         ),
                     );
-                    let mut storage =
-                        ParallelWalStorage::new_with_shared_wal(mvcc_inner, shared_wal);
+                    // #5317: pin `W = DynWalManager` via turbofish so the
+                    // generic `new_with_shared_handle` knows which
+                    // concrete type to instantiate. The struct's
+                    // legacy `wal: Arc<Mutex<W>>` field is then
+                    // backed by a `DynWalManager(shared_wal)`
+                    // adapter that locks the same inner mutex the
+                    // `FileStorage` holds.
+                    let mut storage = <sqlrustgo_storage::ParallelWalStorage<
+                        sqlrustgo_storage::MvccStorage<sqlrustgo_storage::FileStorage>,
+                        sqlrustgo_storage::wal::DynWalManager,
+                    >>::new_with_shared_handle(
+                        mvcc_inner, shared_wal.clone()
+                    );
                     storage.set_group_commit(Some(coord));
                     tracing::info!(
                         "WAL group commit ACTIVE: max_batch={}, max_wait_us={}",
@@ -6993,7 +7030,10 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                     );
                     storage
                 }
-                _ => ParallelWalStorage::new(mvcc_inner, wal_manager),
+                _ => <sqlrustgo_storage::ParallelWalStorage<
+                    sqlrustgo_storage::MvccStorage<sqlrustgo_storage::FileStorage>,
+                    sqlrustgo_storage::wal::DynWalManager,
+                >>::new_with_shared_handle(mvcc_inner, shared_wal.clone()),
             };
             parallel_storage.set_sync_mode(sync_mode);
             Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(
@@ -7001,10 +7041,21 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
             )))
         }
         _ => {
-            // WalStorage<FileStorage, FileBackedWalManager>
-            let mut file_storage =
-                FileStorage::new_with_wal(wal_data_dir.clone()).map_err(std::io::Error::other)?;
+            // WalStorage<FileStorage, FileBackedWalManager>.
+            //
+            // #5317: build the FBWM once, share it between
+            // `FileStorage` and `WalStorage` via `SharedWalHandle`.
+            // See the parallel branch above for the contract.
             let wal_path = wal_data_dir.join("sqlrustgo.wal");
+            let fbwm_file = FileBackedWalManager::new(wal_path.clone())
+                .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
+            let shared_wal_file: sqlrustgo_storage::wal::SharedWalHandle =
+                Arc::new(std::sync::Mutex::new(Box::new(fbwm_file)));
+            let mut file_storage = sqlrustgo_storage::FileStorage::new_with_external_wal(
+                wal_data_dir.clone(),
+                shared_wal_file.clone(),
+            )
+            .map_err(std::io::Error::other)?;
             if let Ok(meta) = std::fs::metadata(&wal_path) {
                 let size_mb = meta.len() / (1024 * 1024);
                 if size_mb >= 100 {
@@ -7087,17 +7138,10 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                 "MVCC layer rebuilt: {} tables, snapshot isolation enabled for reads",
                 mvcc_inner.list_tables().len()
             );
-            // #4913 / v4.1.0-perf (F-05): the default `file` engine uses
-            // `WalStorage`, whose own doc comment states that
-            // `WalSyncMode::GroupCommit` is IGNORED on this path
-            // (`crates/storage/src/wal_storage.rs:49-52`: "The fields are
-            // ignored on the `WalStorage` path ... To activate group commit,
-            // use `ParallelWalStorage::set_group_commit`"). `WalStorage`
-            // keeps its `Mutex<T>` private and has no shared-WAL
-            // constructor, so the coordinator cannot share its BufWriter
-            // without a storage-layer refactor. Warn loudly instead of
-            // silently accepting `--wal-sync group:N` and then doing one
-            // fsync per commit anyway.
+            // #4913 / v4.1.0-perf (F-05): GroupCommit remains a
+            // no-op on the `WalStorage` path (no coordinator).
+            // The shared-handle refactor for #5317 doesn't change
+            // that — see the parallel branch.
             if matches!(
                 sync_mode,
                 sqlrustgo_storage::WalSyncMode::GroupCommit { .. }
@@ -7109,11 +7153,23 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                      group commit, or --wal-sync batch:N on this path."
                 );
             }
-            let wal_storage = WalStorage::new_with_sync_mode_and_checkpoint(
-                mvcc_inner,
-                wal_manager,
-                sync_mode,
-                checkpoint_manager,
+            // #5317: use `new_with_shared_wal_handle` so the inner
+            // `FileStorage` and the wrapping `WalStorage` serialize
+            // on the same inner Mutex; otherwise the legacy
+            // construction opens a second FBWM and races with the
+            // first. The legacy `wal: parking_lot::Mutex<T>` field
+            // stays around (unused on the shared path) so existing
+            // `pub fn wal()` / `wal_mut()` accessors keep working
+            // for tests. The `T = MemoryWalManager` turbofish pins
+            // the placeholder type the function requires for
+            // `T: Default`; the field is never written on this
+            // path.
+            let wal_storage =
+                <WalStorage<_, sqlrustgo_storage::wal::MemoryWalManager>>::new_with_shared_wal_handle(
+                    mvcc_inner,
+                    shared_wal_file.clone(),
+                    sync_mode,
+                    Some(checkpoint_manager),
             )
             .map_err(|e| MySqlError::Sql(format!("WalStorage init failed: {}", e)))?;
             Arc::new(parking_lot::RwLock::new(BoxStorageEngine::new(wal_storage)))
