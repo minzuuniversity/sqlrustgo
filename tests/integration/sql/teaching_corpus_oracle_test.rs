@@ -216,25 +216,19 @@ fn normalize_plan_rows(rows: &[Vec<Value>]) -> String {
             let line = v.to_sql_string();
             if line.starts_with("Projection ")
                 || line == "Distinct"
-                || line.starts_with("Sort (TEMP B-TREE FOR")
+                // #5326: SQLite's EXPLAIN QUERY PLAN does not surface
+                // LIMIT as a separate operator (it is applied at
+                // execution time), so skip it from the oracle diff.
+                || line.starts_with("Limit ")
+                // SQLite shows join methods implicitly via the SCAN
+                // order, not as a separate operator line. Skip our
+                // explicit `NestedLoopJoin` / `HashJoin` lines.
+                || line.starts_with("NestedLoopJoin")
+                || line.starts_with("HashJoin")
             {
                 continue;
             }
-            let normalized = if line.starts_with("Sort ") && !line.contains("TEMP") {
-                format!("Sort {}", line.trim_start_matches("Sort "))
-            } else {
-                line.clone()
-            };
-            let normalized = if let Some(rest) = normalized.strip_prefix("GroupBy ") {
-                if rest.ends_with("keys") {
-                    "GroupBy".to_string()
-                } else {
-                    normalized
-                }
-            } else {
-                normalized
-            };
-            out.push(normalized);
+            out.push(line);
         }
     }
     out.join("\n")

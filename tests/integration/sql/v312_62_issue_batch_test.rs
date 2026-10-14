@@ -628,12 +628,15 @@ fn v312_62_optimizer_count_star_falls_back_to_seq_scan_without_index() {
     x.execute("CREATE TABLE t (id INTEGER, val INTEGER)")
         .unwrap();
     x.execute("INSERT INTO t VALUES (1, 10)").unwrap();
-    // No CREATE INDEX → COUNT(*) must stay SeqScan + GroupBy + Sort.
+    // No CREATE INDEX → COUNT(*) must stay SeqScan + GroupBy.
+    // #5326: the explain code now emits a single `GroupBy` line
+    // (the legacy `Sort (TEMP B-TREE FOR GROUP BY)` was removed
+    // because the teaching corpus oracle normalizer maps it to
+    // `GroupBy` and the duplicated line caused a spurious diff).
     let r = x.execute("EXPLAIN SELECT count(*) FROM t").unwrap();
     let plan = explain_plan_to_string(&r);
     assert!(plan.contains("SeqScan"), "got:\n{}", plan);
     assert!(plan.contains("GroupBy"), "got:\n{}", plan);
-    assert!(plan.contains("TEMP B-TREE FOR GROUP BY"), "got:\n{}", plan);
     assert!(!plan.contains("IndexScan"), "got:\n{}", plan);
 }
 
