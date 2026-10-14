@@ -475,17 +475,20 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
             self.maybe_gc();
             return Ok(n.max(matched.len()));
         }
-        for (_, row) in &matched {
-            self.inner_mut().delete_in_db(db, table, row)?;
-        }
+        // 回滚未提交 INSERT 时，undo 记录调用 `storage.delete(table, key)`。
+        // 该行未提交、不在 MVCC 可见集，`matched` 为 0；若仅按 `matched`
+        // 删 inner，inner 真删会被跳过，行残留在 `FileStorage::insert_buffer`
+        // 并被 `scan_in_tx_db` 的 merge 合回结果（#5313 回归）。故始终
+        // 按原始 `filters` 对 inner 真删一次（PK 表 undo 传 PK 值，精确
+        // 匹配；no-PK 表 undo 传整行前缀，亦精确匹配）。
+        let n_inner = self.inner_mut().delete_in_db(db, table, filters)?;
         let ts = mvcc.next_snapshot_ts();
         for (id, _) in &matched {
             mvcc.delete(id, ts, tx_id);
         }
-        let n = matched.len();
         self.register_sql_write("DELETE");
         self.maybe_gc();
-        Ok(n)
+        Ok(n_inner.max(matched.len()))
     }
 
     /// #5281: closure-filtered DELETE must tombstone only the rows the
