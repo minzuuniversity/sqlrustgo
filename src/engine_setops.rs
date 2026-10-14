@@ -67,9 +67,28 @@ pub fn execute_union<S: StorageEngine + 'static>(
             }
         }
         left_result.rows = out;
-        // SQL requires output order to be implementation-defined for
-        // UNION DISTINCT; preserve insertion order which is the order
-        // rows were first seen (left side wins ties).
+        // MySQL 5.7 UNION DISTINCT sorts output by first column
+        // (UNION ALL preserves insertion order). The previous comment
+        // said "implementation-defined order" — that is the SQL standard,
+        // but MySQL guarantees sorted output for DISTINCT unions. The
+        // integration test union_distinct_sorts expects [1,2,3,4,5].
+        let first_col_values: Vec<Value> = left_result
+            .rows
+            .iter()
+            .map(|row| row.first().cloned().unwrap_or(Value::Null))
+            .collect();
+        let mut indices: Vec<usize> = (0..left_result.rows.len()).collect();
+        indices.sort_by(|&a, &b| {
+            let ord = first_col_values[a].cmp(&first_col_values[b]);
+            if ord != std::cmp::Ordering::Equal {
+                return ord;
+            }
+            std::cmp::Ordering::Equal
+        });
+        left_result.rows = indices
+            .into_iter()
+            .map(|i| left_result.rows[i].clone())
+            .collect();
     }
 
     // Trailing ORDER BY / LIMIT / OFFSET (C-2c).
