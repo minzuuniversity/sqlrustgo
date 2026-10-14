@@ -123,7 +123,8 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // `current_db`, so a concurrent `USE` on another connection sends
     // the rows to the wrong database — measured at 6% under a writer
     // switching databases continuously.
-    let stmt_db = engine.session_db();
+    // qualified `INSERT INTO db.table`: explicit schema wins over session_db.
+    let stmt_db = insert.schema.clone().unwrap_or_else(|| engine.session_db());
     if engine.clustered_tables.read().contains_key(&insert.table) {
         return execute_insert_clustered(engine, insert);
     }

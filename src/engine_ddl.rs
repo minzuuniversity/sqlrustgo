@@ -378,7 +378,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // V312-58 / Issue #4516: LIKE filter support for
             // SHOW DATABASES (FROM is implicit; WHERE is uncommon).
             ShowStatement::Databases => self.execute_show_databases(),
-            ShowStatement::CreateTable { table } => self.execute_show_create_table(table),
+            ShowStatement::CreateTable { table, schema } => {
+                let db = schema.clone().unwrap_or_else(|| self.session_db());
+                self.execute_show_create_table_in(&db, &table)
+            }
             ShowStatement::Index { table } => self.execute_show_index(table),
             ShowStatement::Grants { user } => self.execute_show_grants(user.as_deref()),
             ShowStatement::Columns { table, pattern } => {
@@ -821,20 +824,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// flagged `primary_key = true` in `ColumnDefinition`. The output is
     /// not a full MySQL 5.7 round-trip; refer to the issue body for the
     /// explicit scope.
-    pub(crate) fn execute_show_create_table(&self, table: &str) -> SqlResult<ExecutorResult> {
+    pub(crate) fn execute_show_create_table_in(
+        &self,
+        db: &str,
+        table: &str,
+    ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        if !storage
-            .list_tables_in_db(&self.session_db())
-            .iter()
-            .any(|n| n == table)
-        {
+        if !storage.list_tables_in_db(db).iter().any(|n| n == table) {
             return Err(SqlError::ExecutionError(format!(
                 "Table '{}' does not exist",
                 table
             )));
         }
         let info = storage
-            .get_table_info_in(&self.session_db(), table)
+            .get_table_info_in(db, table)
             .map_err(|e| SqlError::ExecutionError(format!("cannot introspect {table}: {e}")))?;
         let cols: Vec<String> = info
             .columns

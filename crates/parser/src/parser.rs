@@ -971,6 +971,9 @@ pub struct SelectColumn {
 /// INSERT statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct InsertStatement {
+    /// Optional database qualifier from `INSERT INTO db.table`.
+    /// `None` for unqualified inserts (resolved against session_db).
+    pub schema: Option<String>,
     pub table: String,
     pub columns: Vec<String>,
     pub values: Vec<Vec<Expression>>,         // For INSERT VALUES
@@ -1278,6 +1281,8 @@ pub enum ShowStatement {
         user: Option<String>,
     },
     CreateTable {
+        /// Optional database qualifier from `SHOW CREATE TABLE db.table`.
+        schema: Option<String>,
         table: String,
     },
     Sequences,
@@ -8553,9 +8558,25 @@ impl Parser {
 
         self.expect(Token::Into)?;
 
-        let table = match self.next() {
-            Some(Token::Identifier(name)) => name,
-            _ => return Err("Expected table name".to_string()),
+        // `INSERT INTO db.table`: capture optional schema qualifier.
+        let (schema, table) = {
+            let first = match self.next() {
+                Some(Token::Identifier(name)) => name,
+                _ => return Err("Expected table name".to_string()),
+            };
+            if matches!(self.current(), Some(Token::Dot)) {
+                self.next(); // consume `.`
+                let t = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    Some(tok) => {
+                        return Err(format!("Expected table name after `.` , got {:?}", tok))
+                    }
+                    None => return Err("Expected table name after `schema.`".to_string()),
+                };
+                (Some(first), t)
+            } else {
+                (None, first)
+            }
         };
 
         // Check for column list: (col1, col2, ...)
@@ -8960,6 +8981,7 @@ impl Parser {
             returning = Some(cols);
         }
         let insert_stmt = Statement::Insert(InsertStatement {
+            schema,
             table,
             columns,
             values,
@@ -12919,11 +12941,27 @@ impl Parser {
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "CREATE" => {
                 self.next();
                 self.expect(Token::Table)?;
-                let table = match self.next() {
+                let first = match self.next() {
                     Some(Token::Identifier(name)) => name,
                     _ => return Err("Expected table name".to_string()),
                 };
-                Ok(Statement::Show(ShowStatement::CreateTable { table }))
+                let (schema, table) = if matches!(self.current(), Some(Token::Dot)) {
+                    self.next();
+                    let t = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        Some(tok) => {
+                            return Err(format!("Expected table name after `.`, got {:?}", tok))
+                        }
+                        None => return Err("Expected table name after `schema.`".to_string()),
+                    };
+                    (Some(first), t)
+                } else {
+                    (None, first)
+                };
+                Ok(Statement::Show(ShowStatement::CreateTable {
+                    schema,
+                    table,
+                }))
             }
             Some(Token::Create) => {
                 // V312-56A / #4251: the lexer promotes `CREATE` to
@@ -12932,11 +12970,27 @@ impl Parser {
                 // TABLE <name>` parses to `ShowStatement::CreateTable`.
                 self.next();
                 self.expect(Token::Table)?;
-                let table = match self.next() {
+                let first = match self.next() {
                     Some(Token::Identifier(name)) => name,
                     _ => return Err("Expected table name".to_string()),
                 };
-                Ok(Statement::Show(ShowStatement::CreateTable { table }))
+                let (schema, table) = if matches!(self.current(), Some(Token::Dot)) {
+                    self.next();
+                    let t = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        Some(tok) => {
+                            return Err(format!("Expected table name after `.`, got {:?}", tok))
+                        }
+                        None => return Err("Expected table name after `schema.`".to_string()),
+                    };
+                    (Some(first), t)
+                } else {
+                    (None, first)
+                };
+                Ok(Statement::Show(ShowStatement::CreateTable {
+                    schema,
+                    table,
+                }))
             }
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "COLUMNS" => {
                 self.next();
@@ -14601,6 +14655,70 @@ mod split_sql_statements_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // qualified INSERT: `INSERT INTO db.table VALUES(...)` 必须解析出
+    // schema=Some("db")、table="table"（MySQL 限定名）。此前 parse_insert
+    // 只吃单 Identifier，遇 `.` 报 "Expected VALUES..."。
+    #[test]
+    fn test_parse_qualified_insert() {
+        let sql = "INSERT INTO db1.t1 VALUES (1, 'a')";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed for {}: {:?}", sql, result);
+        match result.unwrap() {
+            Statement::Insert(ins) => {
+                assert_eq!(ins.schema.as_deref(), Some("db1"));
+                assert_eq!(ins.table, "t1");
+            }
+            other => panic!("Expected Insert, got {:?}", other),
+        }
+    }
+
+    // qualified INSERT 无 schema 时 schema 必须为 None（保持既有行为）。
+    #[test]
+    fn test_parse_unqualified_insert_schema_none() {
+        let sql = "INSERT INTO t1 VALUES (1, 'a')";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed for {}: {:?}", sql, result);
+        match result.unwrap() {
+            Statement::Insert(ins) => {
+                assert_eq!(ins.schema, None);
+                assert_eq!(ins.table, "t1");
+            }
+            other => panic!("Expected Insert, got {:?}", other),
+        }
+    }
+
+    // qualified SHOW CREATE TABLE: `SHOW CREATE TABLE db.table` 必须解析出
+    // schema=Some("db")、table="table"。此前 parse_show CreateTable 分支
+    // 只吃单 Identifier，把 `db1.t1` 整体当表名。
+    #[test]
+    fn test_parse_qualified_show_create_table() {
+        let sql = "SHOW CREATE TABLE db1.t1";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed for {}: {:?}", sql, result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::CreateTable { schema, table }) => {
+                assert_eq!(schema.as_deref(), Some("db1"));
+                assert_eq!(table, "t1");
+            }
+            other => panic!("Expected Show(CreateTable), got {:?}", other),
+        }
+    }
+
+    // unqualified SHOW CREATE TABLE 保持 schema=None。
+    #[test]
+    fn test_parse_unqualified_show_create_table() {
+        let sql = "SHOW CREATE TABLE t1";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed for {}: {:?}", sql, result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::CreateTable { schema, table }) => {
+                assert_eq!(schema, None);
+                assert_eq!(table, "t1");
+            }
+            other => panic!("Expected Show(CreateTable), got {:?}", other),
+        }
+    }
 
     #[test]
     fn test_parse_qualified_column_names() {
