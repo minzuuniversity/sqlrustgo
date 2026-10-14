@@ -632,6 +632,15 @@ pub fn sql_compare(op: &str, left: &Value, right: &Value) -> bool {
     // real BINARY-needs-trailing-space case.
     let text_eq = match (left, right) {
         (Value::Text(a), Value::Text(b)) => a.trim_end() == b.trim_end(),
+        // #5300: numeric-vs-string comparison coerces the string to a
+        // number (MySQL implicit cast), so `WHERE i = '5'` matches the
+        // integer column instead of silently returning 0 rows.
+        (Value::Integer(a), Value::Text(b)) | (Value::Text(b), Value::Integer(a)) => {
+            (*a as f64) == b.trim().parse::<f64>().unwrap_or(0.0)
+        }
+        (Value::Float(a), Value::Text(b)) | (Value::Text(b), Value::Float(a)) => {
+            *a == b.trim().parse::<f64>().unwrap_or(0.0)
+        }
         _ => left == right,
     };
 
