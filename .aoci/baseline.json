@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T11:38:22Z",
-  "updated_at": "2026-10-15T17:28:26Z",
+  "updated_at": "2026-10-15T17:52:27Z",
   "files": {
     ".cargo/audit.toml": {
       "role": "index",
@@ -611,9 +611,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "a98289fd8fb9e65054bc703a97942982658168553fc152bde5b22b71869dcec5",
-      "size": 1483098,
-      "normalized_sha256": "a98289fd8fb9e65054bc703a97942982658168553fc152bde5b22b71869dcec5"
+      "sha256": "df9bc5b9425b396ebeb42f5e0962e90364ce2cf5c12402ef662ffd2d446e8b50",
+      "size": 1497791,
+      "normalized_sha256": "df9bc5b9425b396ebeb42f5e0962e90364ce2cf5c12402ef662ffd2d446e8b50"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1766,6 +1766,234 @@
       "sha256": "d25b842d1c8b7d61561d86ed74a9c95876fee296217534229dfce41b5e159fb8",
       "size": 348,
       "normalized_sha256": "d25b842d1c8b7d61561d86ed74a9c95876fee296217534229dfce41b5e159fb8"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/005-sqlrustgo-admin-verify-help.txt": {
+      "role": "index",
+      "sha256": "4cff147f62a77967477451a49a070e41f6c503adb617a112133d1958ec0ed8c9",
+      "size": 189,
+      "normalized_sha256": "4cff147f62a77967477451a49a070e41f6c503adb617a112133d1958ec0ed8c9"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/005.meta.yaml": {
+      "role": "index",
+      "sha256": "49c18c50c3ce1da9c79aed5552d216cdea2ed16562259b5631452f7110c47b86",
+      "size": 266,
+      "normalized_sha256": "49c18c50c3ce1da9c79aed5552d216cdea2ed16562259b5631452f7110c47b86"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006-sqlrustgo-mysql-server-backup-help.txt": {
+      "role": "index",
+      "sha256": "3c0df6685e4cfca505af7000bd579e6da85977f933155366b78f1d47bd66c746",
+      "size": 320,
+      "normalized_sha256": "3c0df6685e4cfca505af7000bd579e6da85977f933155366b78f1d47bd66c746"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006-sqlrustgo-mysql-server-bench-help.txt": {
+      "role": "index",
+      "sha256": "9c543934563e084948ed8f3ff3acd1beec5f5226dbda0205c129d66d9831b4ac",
+      "size": 364,
+      "normalized_sha256": "9c543934563e084948ed8f3ff3acd1beec5f5226dbda0205c129d66d9831b4ac"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006-sqlrustgo-mysql-server-diag-help.txt": {
+      "role": "index",
+      "sha256": "4f92c629feb7f427e04ae8b5e71b1104f7b7db25e4d3a41495d6d04dde54b18b",
+      "size": 266,
+      "normalized_sha256": "4f92c629feb7f427e04ae8b5e71b1104f7b7db25e4d3a41495d6d04dde54b18b"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006-sqlrustgo-mysql-server-exec-help.txt": {
+      "role": "index",
+      "sha256": "5ab320e9df2b28b980ec483cb4cb210947804fc34bd081c0d76f0a54424c6130",
+      "size": 316,
+      "normalized_sha256": "5ab320e9df2b28b980ec483cb4cb210947804fc34bd081c0d76f0a54424c6130"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006-sqlrustgo-mysql-server-gmp-help.txt": {
+      "role": "index",
+      "sha256": "2bd68c0946e0327e2ed866df9469436a413cc1de5e169b002fa66cf65f1bd613",
+      "size": 262,
+      "normalized_sha256": "2bd68c0946e0327e2ed866df9469436a413cc1de5e169b002fa66cf65f1bd613"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006-sqlrustgo-mysql-server-help.txt": {
+      "role": "index",
+      "sha256": "7814816157145281667ef4dce6c2d362def9062dde19b15d2bd0dbd35b58a7a7",
+      "size": 995,
+      "normalized_sha256": "7814816157145281667ef4dce6c2d362def9062dde19b15d2bd0dbd35b58a7a7"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006-sqlrustgo-mysql-server-repl-help.txt": {
+      "role": "index",
+      "sha256": "d95451f1dc6df07931e66875c235315dbe4882ed5e558d477e3e97e229a5fbbe",
+      "size": 904,
+      "normalized_sha256": "d95451f1dc6df07931e66875c235315dbe4882ed5e558d477e3e97e229a5fbbe"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006-sqlrustgo-mysql-server-restore-help.txt": {
+      "role": "index",
+      "sha256": "cdce8dec7ed78af79d36f880f529a37b2bd285b7e413208aa37d63447e2e37ba",
+      "size": 330,
+      "normalized_sha256": "cdce8dec7ed78af79d36f880f529a37b2bd285b7e413208aa37d63447e2e37ba"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006-sqlrustgo-mysql-server-serve-help.txt": {
+      "role": "index",
+      "sha256": "098110fc037b09237630177b3b923e698c95bd31af32a2c4dd90e4efb320df0a",
+      "size": 3215,
+      "normalized_sha256": "098110fc037b09237630177b3b923e698c95bd31af32a2c4dd90e4efb320df0a"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/006.meta.yaml": {
+      "role": "index",
+      "sha256": "2301ed1e89f7e981b22716deca4034638bd27a97aa2f9491b623b38421ff676d",
+      "size": 280,
+      "normalized_sha256": "2301ed1e89f7e981b22716deca4034638bd27a97aa2f9491b623b38421ff676d"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/007.meta.yaml": {
+      "role": "index",
+      "sha256": "34dda2d83d39b86cc595047dddec897384de92a0695af5f7ef4bef124c247a70",
+      "size": 315,
+      "normalized_sha256": "34dda2d83d39b86cc595047dddec897384de92a0695af5f7ef4bef124c247a70"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/commands/008.meta.yaml": {
+      "role": "index",
+      "sha256": "00fd7d9c7cfb389a593ac4143adb4178c8261a31bef8e36c5d788c8a9d917338",
+      "size": 287,
+      "normalized_sha256": "00fd7d9c7cfb389a593ac4143adb4178c8261a31bef8e36c5d788c8a9d917338"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/manifest.yaml": {
+      "role": "index",
+      "sha256": "556afddd5460182ee2d931c8efd24bad61026f32683f1885ce0a5192d8b5a434",
+      "size": 5064,
+      "normalized_sha256": "556afddd5460182ee2d931c8efd24bad61026f32683f1885ce0a5192d8b5a434"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/production_entries.yaml": {
+      "role": "index",
+      "sha256": "4387bf8b5f7ac856fb4130f8c18322d48aa605356b9625bcbdce85a6bb1cbb17",
+      "size": 9609,
+      "normalized_sha256": "4387bf8b5f7ac856fb4130f8c18322d48aa605356b9625bcbdce85a6bb1cbb17"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/scope_matrix.md": {
+      "role": "index",
+      "sha256": "e3d9401e7530ddc4f2403329013eebdb340bef0e483c4efb4a889ec80cd07906",
+      "size": 6833,
+      "normalized_sha256": "e3d9401e7530ddc4f2403329013eebdb340bef0e483c4efb4a889ec80cd07906"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/scope_matrix.yaml": {
+      "role": "index",
+      "sha256": "f7b161f6f3a25cdd997217d1ff0ae0d1b52718bf9e63baec9a72cdbab390a24c",
+      "size": 8220,
+      "normalized_sha256": "f7b161f6f3a25cdd997217d1ff0ae0d1b52718bf9e63baec9a72cdbab390a24c"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/traces/env_pollution_post.txt": {
+      "role": "index",
+      "sha256": "dab5fdc8c044398212b118c0905bcc255cf7997fc25f3d7bcf006a6265d0c1f9",
+      "size": 3680,
+      "normalized_sha256": "dab5fdc8c044398212b118c0905bcc255cf7997fc25f3d7bcf006a6265d0c1f9"
+    },
+    "audit/v4.1.0/iaia410-a02-20261011T070228Z-609a8e81/traces/env_pollution_pre.txt": {
+      "role": "index",
+      "sha256": "5515bd85360a75ab71367cd7bd18ae92419ddcb0ead6693761ff89c1d5044897",
+      "size": 5002,
+      "normalized_sha256": "5515bd85360a75ab71367cd7bd18ae92419ddcb0ead6693761ff89c1d5044897"
+    },
+    "audit/v4.1.0/iaia410-a03-20261011T070845Z-omp/SHA256SUMS": {
+      "role": "index",
+      "sha256": "eaed0add70a3b1d0e55fd5c433d604bceb30bbcab897354ec904a0935c21a433",
+      "size": 721,
+      "normalized_sha256": "eaed0add70a3b1d0e55fd5c433d604bceb30bbcab897354ec904a0935c21a433"
+    },
+    "audit/v4.1.0/iaia410-a03-20261011T070845Z-omp/commands/001.meta.yaml": {
+      "role": "index",
+      "sha256": "b338aaa35a5ca8364dcf72ae41bc35c86cf43adc7b9eb23abf4a60b274876516",
+      "size": 691,
+      "normalized_sha256": "b338aaa35a5ca8364dcf72ae41bc35c86cf43adc7b9eb23abf4a60b274876516"
+    },
+    "audit/v4.1.0/iaia410-a03-20261011T070845Z-omp/commands/002.meta.yaml": {
+      "role": "index",
+      "sha256": "418823235021e557b4bd8d99f74fc071a70b6086c962c4b31db14f84080d602b",
+      "size": 1352,
+      "normalized_sha256": "418823235021e557b4bd8d99f74fc071a70b6086c962c4b31db14f84080d602b"
+    },
+    "audit/v4.1.0/iaia410-a03-20261011T070845Z-omp/commands/003.meta.yaml": {
+      "role": "index",
+      "sha256": "fb6083c8a910d3dec9e4d0c7b53bb8db58dbb61cc083c60a71f6ab76b0d2e83a",
+      "size": 2093,
+      "normalized_sha256": "fb6083c8a910d3dec9e4d0c7b53bb8db58dbb61cc083c60a71f6ab76b0d2e83a"
+    },
+    "audit/v4.1.0/iaia410-a03-20261011T070845Z-omp/commands/004.meta.yaml": {
+      "role": "index",
+      "sha256": "9eb585a09726b4d13d2745bd071c3486912511a84221aa77a09120f547101659",
+      "size": 980,
+      "normalized_sha256": "9eb585a09726b4d13d2745bd071c3486912511a84221aa77a09120f547101659"
+    },
+    "audit/v4.1.0/iaia410-a03-20261011T070845Z-omp/commands/005.meta.yaml": {
+      "role": "index",
+      "sha256": "d8a9284f977ffd5f0845381ed6cf6e5565cd43ad3a68da53091b365edb1493c5",
+      "size": 1964,
+      "normalized_sha256": "d8a9284f977ffd5f0845381ed6cf6e5565cd43ad3a68da53091b365edb1493c5"
+    },
+    "audit/v4.1.0/iaia410-a03-20261011T070845Z-omp/findings/A03-SF-01.yaml": {
+      "role": "index",
+      "sha256": "276811d91ab9c06ad363180b11ccb462b25938129651e4429a5d448c9e1cbfab",
+      "size": 2414,
+      "normalized_sha256": "276811d91ab9c06ad363180b11ccb462b25938129651e4429a5d448c9e1cbfab"
+    },
+    "audit/v4.1.0/iaia410-a03-20261011T070845Z-omp/findings/A03-SF-02.yaml": {
+      "role": "index",
+      "sha256": "1fcea9791526c12713afc0ceb79c1232996926cad51edeab23d979dadd3e17c3",
+      "size": 1832,
+      "normalized_sha256": "1fcea9791526c12713afc0ceb79c1232996926cad51edeab23d979dadd3e17c3"
+    },
+    "audit/v4.1.0/iaia410-a03-20261011T070845Z-omp/manifest.yaml": {
+      "role": "index",
+      "sha256": "88c6c4d8fbd67052d2f1544672939b7312cf76ec030d9fa3e4e6a1a348efcaff",
+      "size": 3173,
+      "normalized_sha256": "88c6c4d8fbd67052d2f1544672939b7312cf76ec030d9fa3e4e6a1a348efcaff"
+    },
+    "audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/SHA256SUMS": {
+      "role": "index",
+      "sha256": "abcac6732dfed843eae934cc6e638ccadc23d000367d448a67c20777e2c5fd2e",
+      "size": 18495,
+      "normalized_sha256": "abcac6732dfed843eae934cc6e638ccadc23d000367d448a67c20777e2c5fd2e"
+    },
+    "audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/cases/A04-AGG-001.json": {
+      "role": "index",
+      "sha256": "67e2da52ed16309210c3495a7d2b44dea41a55d140e0641d68478ddef9e73253",
+      "size": 2752,
+      "normalized_sha256": "67e2da52ed16309210c3495a7d2b44dea41a55d140e0641d68478ddef9e73253"
+    },
+    "audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/cases/A04-AGG-002.json": {
+      "role": "index",
+      "sha256": "09d288f412312d5525554d2a9cc640d65431dbfb90e9f95ed6aed45ccff77e78",
+      "size": 3145,
+      "normalized_sha256": "09d288f412312d5525554d2a9cc640d65431dbfb90e9f95ed6aed45ccff77e78"
+    },
+    "audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/cases/A04-AGG-003.json": {
+      "role": "index",
+      "sha256": "0a6a1e3bbdb014cbd3e2f463c8d6d0d46b76de38d3d8e035143fd9e685f38641",
+      "size": 2524,
+      "normalized_sha256": "0a6a1e3bbdb014cbd3e2f463c8d6d0d46b76de38d3d8e035143fd9e685f38641"
+    },
+    "audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/cases/A04-AGG-004.json": {
+      "role": "index",
+      "sha256": "5d2db73ffb38c713be753e0254a1ef444967aafe037ab4370eafb0c777f76377",
+      "size": 3061,
+      "normalized_sha256": "5d2db73ffb38c713be753e0254a1ef444967aafe037ab4370eafb0c777f76377"
+    },
+    "audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/cases/A04-AGG-005.json": {
+      "role": "index",
+      "sha256": "66931afab46af037a56975aa5c8ae48ff3c2ad998a71fc5647e49993eca7c657",
+      "size": 2458,
+      "normalized_sha256": "66931afab46af037a56975aa5c8ae48ff3c2ad998a71fc5647e49993eca7c657"
+    },
+    "audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/cases/A04-CAST-001.json": {
+      "role": "index",
+      "sha256": "203cdcb7e9a0a1a373dd8c9fbce2f1b424aafac4582812afe3d21329c39a8f65",
+      "size": 2674,
+      "normalized_sha256": "203cdcb7e9a0a1a373dd8c9fbce2f1b424aafac4582812afe3d21329c39a8f65"
+    },
+    "audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/cases/A04-CAST-002.json": {
+      "role": "index",
+      "sha256": "91bdf772a5605b48bd1d1c9866e2565ea3f57104b41da686b9b897463f314dea",
+      "size": 2424,
+      "normalized_sha256": "91bdf772a5605b48bd1d1c9866e2565ea3f57104b41da686b9b897463f314dea"
+    },
+    "audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/cases/A04-CAST-003.json": {
+      "role": "index",
+      "sha256": "4c4d8db4ff5735f57e7249c3d1ff5ad1eded957e3968b5741c8f2c42e46a7ff6",
+      "size": 2606,
+      "normalized_sha256": "4c4d8db4ff5735f57e7249c3d1ff5ad1eded957e3968b5741c8f2c42e46a7ff6"
     },
     "bench/.gitignore": {
       "role": "index",
