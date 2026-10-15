@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T11:38:22Z",
-  "updated_at": "2026-10-15T18:22:38Z",
+  "updated_at": "2026-10-15T18:35:07Z",
   "files": {
     ".cargo/audit.toml": {
       "role": "index",
@@ -611,9 +611,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "35e5b01ee194d4381a78066a6b4c1e932e321356d15f3c44c7f6a32720aef385",
-      "size": 1533727,
-      "normalized_sha256": "35e5b01ee194d4381a78066a6b4c1e932e321356d15f3c44c7f6a32720aef385"
+      "sha256": "06643e66af29b2eeecc21beea35e593766d76c1820547b60e0e2624942ea4b87",
+      "size": 1558328,
+      "normalized_sha256": "06643e66af29b2eeecc21beea35e593766d76c1820547b60e0e2624942ea4b87"
     },
     "aoci.meta.txt": {
       "role": "index",
