@@ -32,7 +32,9 @@
     ".coverage"
   ],
   "exclude_exts": [],
-  "curation_exclude": [],
+  "curation_exclude": [
+    "docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs"
+  ],
   "hook_strict": false,
   "ledger_enabled": true,
   "line_ending_tolerance": true,
