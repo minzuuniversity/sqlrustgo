@@ -5950,3 +5950,42 @@ fn memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited
         "pages_visited must not change post-rollback; mid={mid} after={after}"
     );
 }
+
+/// T5 / PR-B RED: scan on an empty table through BufferPool returns empty
+/// without bumping counters. Should pass today (current scan uses HashMap
+/// and returns `vec![]` for missing tables).
+#[test]
+fn memory_storage_scan_empty_table_returns_empty_with_bufferpool() {
+    use std::sync::Arc;
+    let pool = Arc::new(BufferPool::new(8));
+    let storage = MemoryStorage::new_with_bufferpool(pool.clone()).expect("new");
+    let rows = storage.scan("nonexistent_table").expect("scan empty");
+    assert!(rows.is_empty());
+}
+
+/// T5 / PR-B RED: scan after an insert-via-BufferPool must bump
+/// `pages_visited`. Currently FAILS — the legacy `scan` reads from
+/// `tables: HashMap<...>` which is empty when the BufferPool path was
+/// used, returning empty rows. Implementation lands in PR-B T6.
+#[test]
+fn memory_storage_scan_after_bufferpool_insert_bumps_pages_visited() {
+    use sqlrustgo_storage::{Record, Value};
+    use std::sync::Arc;
+
+    let pool = Arc::new(BufferPool::new(8));
+    let mut storage = MemoryStorage::new_with_bufferpool(pool.clone()).expect("new");
+    let before = storage.buffer_pool_stats().expect("stats").pages_visited();
+    let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
+    storage.insert("t", vec![record]).expect("insert");
+    let mid = storage.buffer_pool_stats().expect("stats").pages_visited();
+    let _rows = storage.scan("t").expect("scan");
+    let after = storage.buffer_pool_stats().expect("stats").pages_visited();
+    assert!(
+        mid > before,
+        "insert must bump pages_visited; before={before} mid={mid}"
+    );
+    assert!(
+        after > mid,
+        "scan must bump pages_visited; mid={mid} after={after}"
+    );
+}
