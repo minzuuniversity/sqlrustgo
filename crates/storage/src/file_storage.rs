@@ -7369,3 +7369,39 @@ mod db_isolation_tests {
         let _ = remove_dir_all(&dir);
     }
 }
+
+// --- #5305 PR-A: route FileStorage::insert/scan through the BufferPool ----
+//
+// T4 (RED): one INSERT against a BufferPool-backed FileStorage must bump
+// `pages_visited` and `disk_writes`. Currently the HashMap legacy path
+// takes the records without touching the pool, so the counter stays at 0.
+// The GREEN step (T5) replaces the body; this test pins the contract.
+
+#[cfg(test)]
+mod bufferpool_routing_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn file_storage_insert_via_bufferpool_bumps_pages_visited() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(8));
+        let mut storage = FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+            .expect("new_with_bufferpool");
+
+        let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
+        storage.insert("t", vec![record]).expect("insert");
+
+        let stats = storage.buffer_pool_stats().expect("FileStorage must have stats");
+        assert!(
+            stats.pages_visited() >= 1,
+            "1 INSERT must bump pages_visited; got {}",
+            stats.pages_visited()
+        );
+        assert!(
+            stats.disk_writes() >= 1,
+            "1 INSERT must bump disk_writes; got {}",
+            stats.disk_writes()
+        );
+    }
+}
