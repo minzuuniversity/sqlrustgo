@@ -1968,6 +1968,31 @@ pub trait StorageEngine: Send + Sync {
     /// T4.2 / BINT binary storage: mutable downcast for routing to
     /// BinaryTableStorageV2::insert_streaming when available.
     fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    /// PR2 / #5304 option B: page-equivalent counter for EXPLAIN's
+    /// `pages_visited` column (PR3 / #5305).
+    ///
+    /// Default returns `Some(BufferPoolStats::synthetic_zero())`. Engines
+    /// that later page through a real `BufferPool` override to return
+    /// `Some(stats)` from that pool. Returning `None` is reserved for
+    /// engines that don't track pages at all (no current engine).
+    ///
+    /// IMPORTANT: returning `Some(zero)` when a cache actually exists
+    /// is a documented anti-pattern — call `pool.stats()` instead.
+    fn buffer_pool_stats(&self) -> Option<crate::buffer_pool::BufferPoolStats> {
+        Some(crate::buffer_pool::BufferPoolStats::synthetic_zero())
+    }
+
+    /// PR2 / #5304 option B: estimated pages if this table were paged.
+    /// Used by EXPLAIN when `buffer_pool_stats()` returns
+    /// `Some(synthetic_zero)` to populate `pages_visited` instead of
+    /// literal zero. Returns `0` for an unreadable / non-existent table
+    /// (never panics).
+    fn estimated_pages_for_table(&self, table: &str) -> u64 {
+        self.scan(table)
+            .map(|rows| rows.len().div_ceil(32) as u64)
+            .unwrap_or(0)
+    }
 }
 
 /// In-memory storage implementation for testing and caching
@@ -3822,6 +3847,36 @@ impl Iterator for SharedSliceIter {
     fn size_hint(&self) -> (usize, Option<usize>) {
         let rem = self.remaining();
         (rem, Some(rem))
+    }
+}
+
+// PR2 / #5304: this private module holds the **compile-time contract test**
+// for the two default methods PR2 adds to `StorageEngine`. The body only
+// calls them through `&dyn StorageEngine`; if the methods are missing
+// from the trait, `cargo build --lib` fails with E0599. Live unit tests
+// live elsewhere because this crate's `#[cfg(test)] mod tests` block has
+// pre-existing breakage (see SDD ledger `progress.md` Ruling 4 v2). This
+// module is intentionally NOT behind `#[cfg(test)]` so it always compiles
+// during `cargo build --lib` (RED → GREEN discipline).
+//
+// Task 3 added `via_box_storage_engine` — same call shape routed through
+// `BoxStorageEngine`. The BoxStorageEngine forwarding override has no
+// observable behaviour difference on today's code (Ruling 8), but this
+// fn proves the override signature/body compiles cleanly.
+#[allow(dead_code)]
+mod _storage_engine_pr2_compile_check {
+    use super::StorageEngine;
+    use crate::binary_storage::BoxStorageEngine;
+    use crate::buffer_pool::BufferPoolStats;
+
+    pub(crate) fn check(s: &dyn StorageEngine) {
+        let _stats: Option<BufferPoolStats> = s.buffer_pool_stats();
+        let _: u64 = s.estimated_pages_for_table("__nonexistent__");
+    }
+
+    pub(crate) fn via_box_storage_engine(boxed: &BoxStorageEngine) {
+        let _stats: Option<BufferPoolStats> = boxed.buffer_pool_stats();
+        let _: u64 = boxed.estimated_pages_for_table("__nonexistent__");
     }
 }
 

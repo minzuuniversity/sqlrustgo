@@ -118,3 +118,17 @@ tag:
   binary-level off-production-path exclusion
 - `docs/governance/GATE_CONDITIONS.md` §2 — GA-claim-caveat definition
 - `docs/governance/ANTI_FABRICATION_POLICY.md` — claim discipline
+
+## Note (added by PR2 of #5304, post-#5328 merge)
+
+PR2 of #5304 (option B re-scope) lands **only trait-level plumbing**:
+`StorageEngine::buffer_pool_stats()` default `Some(synthetic_zero)` +
+`BoxStorageEngine` forwarding override + AHI state-machine tests +
+`estimated_pages_for_table()` default. **§3.1 above remains authoritative**:
+production v4.1.0 still does NOT page through a BufferPool. PR3 of #5305
+will read from this surface. The AHI read-side is wired only at the
+storage layer today; the secondary-index lookup path that drives
+`AdaptiveHashIndex::lookup()` from production execution is a separate
+epic. Detailed design:
+[`docs/superpowers/specs/2026-10-14-5304-pr2-bufferpool-production-wiring-design.md`](../../superpowers/specs/2026-10-14-5304-pr2-bufferpool-production-wiring-design.md).
+- `docs/governance/ANTI_FABRICATION_POLICY.md` — claim discipline
