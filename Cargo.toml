@@ -553,6 +553,10 @@ name = "bufferpool_pages_visited_test"
 path = "tests/integration/sql/bufferpool_pages_visited_test.rs"
 
 [[test]]
+name = "bufferpool_pages_visited_memory_test"
+path = "tests/integration/sql/bufferpool_pages_visited_memory_test.rs"
+
+[[test]]
 name = "expression_operators_test"
 path = "tests/integration/sql/expression_operators_test.rs"
 

@@ -8,6 +8,7 @@ use sqlrustgo_catalog::Catalog;
 use sqlrustgo_optimizer::unified_cost::UnifiedCostModel;
 use sqlrustgo_storage::{
     adaptive_hash_index::AdaptiveHashIndex,
+    buffer_pool::BufferPool,
     mvcc_storage::MvccStorage,
     recovery_engine::{RecoveryEngine, RecoveryEngineImpl, RecoveryReport, StatefulRecoveryEngine},
     wal::{FileBackedWalManager, MemoryWalManager},
@@ -61,6 +62,24 @@ impl ExecutionEngine<MemoryStorage> {
             session_vars: Arc::new(RwLock::new(std::collections::HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
             recursive_cte_max_rows: AtomicUsize::new(1_000_000),
+        }
+    }
+
+    /// PR-B / #5305: construct an execution engine backed by MemoryStorage
+    /// whose `buffer_pool_stats()` returns real stats from `pool`. Used by
+    /// the prod-mode SQL-path tests that want honest `pages_visited`
+    /// EXPLAIN signals.
+    ///
+    /// Spawned per-call: each `with_memory_and_bufferpool(pool)` invocation
+    /// produces a fresh `MemoryStorage` so state from concurrent tests does
+    /// not bleed across cases.
+    pub fn with_memory_and_bufferpool(pool: Arc<BufferPool>) -> Self {
+        Self {
+            storage: Arc::new(RwLock::new(
+                MemoryStorage::new_with_bufferpool(pool)
+                    .expect("MemoryStorage::new_with_bufferpool"),
+            )),
+            ..Self::with_memory()
         }
     }
 
