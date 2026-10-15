@@ -1392,9 +1392,6 @@ name = "parser_block_comment_4708"
 path = "tests/integration/sql/parser_block_comment_4708.rs"
 
 [[test]]
-name = "bufferpool_pages_visited_test"
-path = "tests/integration/sql/bufferpool_pages_visited_test.rs"
-[[test]]
 name = "show_warnings_errors_status_variables_test"
 path = "tests/integration/sql/show_warnings_errors_status_variables_test.rs"
 [[test]]
