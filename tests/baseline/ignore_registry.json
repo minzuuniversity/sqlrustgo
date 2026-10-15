@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
-  "captured_at_commit": "merged tree of develop/v4.1.0 @ fbb80e4744 + #4708 block comments (PR #5146)",
+  "captured_at_commit": "1ce91dd9e8e98473779b7d915b7b82cc87040b85",
   "captured_at_date": "2026-10-08",
-  "total_allowed": 115,
+  "total_allowed": 116,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 80,
@@ -1074,6 +1074,15 @@
       "test": "v312_ga_mixed_workload_demo",
       "line_at_capture": 177,
       "reason": "runs 1h demo; nightly-only via scripts/gate/run_ga_soak.sh",
+      "status": "ACTIVE",
+      "category": "FUNC_NOT_IMPL",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "crates/transaction/tests/audit_mutation_counters.rs",
+      "test": "node_id_display_uses_inner_value",
+      "line_at_capture": 234,
+      "reason": "see Counter #4 doc — NodeId::Display has no production caller; recorded as F1 evidence only; remove this `#[ignore]` once a production caller exists.",
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
