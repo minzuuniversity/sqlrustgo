@@ -2,8 +2,8 @@
 # check_p22_time_travel.sh - P2-2 (#3178) Time Travel Query G10 gate
 #
 # Verifies:
-# 1. tests/time_travel_harness.rs exists
-# 2. tests/time_travel_test.rs exists + registered in Cargo.toml
+# 1. tests/integration/sql/time_travel_harness.rs exists
+# 2. tests/integration/sql/time_travel_test.rs exists + registered in Cargo.toml
 # 3. 5 categories each have ≥1 test
 # 4. cargo check pass
 # 5. ≥20 tests pass
@@ -14,6 +14,8 @@
 #
 # Refs: docs/openspec/3178-time-travel.md
 #       V390_TEST_PLAN.md §G10
+
+# #5326: paths corrected for V310 → V3.12 directory restructure
 
 set -e
 
@@ -31,25 +33,25 @@ fi
 echo "=== G10 Gate (P2-2 #3178 Time Travel Query) ==="
 
 # 1. harness file
-[ -f tests/time_travel_harness.rs ] || {
-    echo "  ❌ FAIL: tests/time_travel_harness.rs not found"
+[ -f tests/integration/sql/time_travel_harness.rs ] || {
+    echo "  ❌ FAIL: tests/integration/sql/time_travel_harness.rs not found"
     exit 1
 }
-echo "  [1/7] ✅ PASS: tests/time_travel_harness.rs present"
+echo "  [1/7] ✅ PASS: tests/integration/sql/time_travel_harness.rs present"
 
 # 2. test file + registration
-[ -f tests/time_travel_test.rs ] || {
-    echo "  ❌ FAIL: tests/time_travel_test.rs not found"
+[ -f tests/integration/sql/time_travel_test.rs ] || {
+    echo "  ❌ FAIL: tests/integration/sql/time_travel_test.rs not found"
     exit 1
 }
 grep -q 'name = "time_travel_test"' Cargo.toml || {
     echo "  ❌ FAIL: time_travel_test not registered in Cargo.toml"
     exit 1
 }
-echo "  [2/7] ✅ PASS: tests/time_travel_test.rs present + registered"
+echo "  [2/7] ✅ PASS: tests/integration/sql/time_travel_test.rs present + registered"
 
 # 3. 5 categories covered
-N_TESTS=$(grep -c "^#\[test\]" tests/time_travel_test.rs || echo 0)
+N_TESTS=$(grep -c "^#\[test\]" tests/integration/sql/time_travel_test.rs || echo 0)
 if [ "$N_TESTS" -lt 20 ]; then
     echo "  ❌ FAIL: expected ≥20 tests, got $N_TESTS"
     exit 1
