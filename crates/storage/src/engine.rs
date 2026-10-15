@@ -6,6 +6,7 @@ pub use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use crate::buffer_pool::{BufferPool, BufferPoolStats};
 
 /// Referential action for foreign key constraints
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -2078,6 +2079,11 @@ pub struct MemoryStorage {
     /// existing `list_indexes(table)` query path that the EXPLAIN
     /// planner relies on.
     index_infos: HashMap<String, IndexInfo>,
+    /// PR-B / #5305: optional real BufferPool when constructed via
+    /// `new_with_bufferpool`. `None` when constructed via legacy `new()`
+    /// (back-compat — `buffer_pool_stats()` returns the trait default
+    /// `synthetic_zero` for backwards compatibility).
+    buffer_pool: Option<Arc<BufferPool>>,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -2660,7 +2666,21 @@ impl MemoryStorage {
             auto_inc_counters: std::sync::Arc::new(std::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),
+            buffer_pool: None,
         }
+    }
+
+    /// PR-B / #5305: construct a `MemoryStorage` whose `buffer_pool_stats()`
+    /// returns real stats from `pool`. Used by the BufferPool-backed prod-mode
+    /// path `ExecutionEngine::<MemoryStorage>::with_memory_and_bufferpool`.
+    ///
+    /// Returns `std::io::Result<Self>` for symmetry with the existing
+    /// `Self::new()` (which is currently infallible but may grow an I/O
+    /// dependency in a future PR-D shadow-mode pass).
+    pub fn new_with_bufferpool(pool: Arc<BufferPool>) -> std::io::Result<Self> {
+        let mut me = Self::new();
+        me.buffer_pool = Some(pool);
+        Ok(me)
     }
 
     /// V4.1.0: record that `table`'s rows changed. See
@@ -2940,6 +2960,17 @@ impl Default for MemoryStorage {
 }
 
 impl StorageEngine for MemoryStorage {
+    // PR-B / #5305: shadow the trait default so that legacy `MemoryStorage::new()`
+    // continues to return `Some(synthetic_zero)` (back-compat with the 200+ tests
+    // that pin EXPLAIN's "no pages_visited suffix" semantics), and
+    // `new_with_bufferpool` constructions return real `BufferPoolStats`.
+    fn buffer_pool_stats(&self) -> Option<BufferPoolStats> {
+        match &self.buffer_pool {
+            Some(p) => Some(p.stats()),
+            None => Some(BufferPoolStats::synthetic_zero()),
+        }
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         // #4948: `tables` stores `Arc<Vec<Record>>`; the trait returns owned
         // rows, so unwrap the handle here rather than handing back the Arc.
@@ -5653,4 +5684,45 @@ fn in_methods_do_not_cross_databases() {
         "a table in d1 must not be visible from d2"
     );
     assert!(s.get_table_info_in("d2", "only_in_d1").is_err());
+}
+
+// =============================================================================
+// PR-B / #5305 — BufferPool routing for MemoryStorage
+// =============================================================================
+
+#[test]
+fn memory_storage_new_with_bufferpool_exposes_real_buffer_pool_stats() {
+    use std::sync::Arc;
+    let pool = Arc::new(crate::buffer_pool::BufferPool::new(8));
+    let storage = MemoryStorage::new_with_bufferpool(pool.clone())
+        .expect("new_with_bufferpool");
+
+    let stats = storage
+        .buffer_pool_stats()
+        .expect("MemoryStorage with BufferPool must return Some(stats)");
+    assert_eq!(stats.pages_visited(), 0);
+
+    // Bump stats via the pool directly; MemoryStorage must observe.
+    pool.insert(Arc::new(crate::page::Page::new(0)));
+    let stats = storage
+        .buffer_pool_stats()
+        .expect("MemoryStorage with BufferPool must return Some(stats)");
+    assert_eq!(stats.pages_visited(), 1);
+    assert_eq!(stats.disk_writes(), 1);
+}
+
+/// T2 / PR-B back-compat: legacy `MemoryStorage::new()` continues to return
+/// `synthetic_zero` stats (because `with_memory()` is called by 200+ tests).
+/// Spec anti-goal #1: `with_memory()` semantics must NOT change.
+#[test]
+fn memory_storage_legacy_new_returns_synthetic_zero_stats() {
+    let storage = MemoryStorage::new();
+    let stats = storage
+        .buffer_pool_stats()
+        .expect("MemoryStorage must have stats");
+    assert_eq!(stats.pages_visited(), 0);
+    assert_eq!(stats.disk_writes(), 0);
+    assert_eq!(stats.cache_hits(), 0);
+    assert_eq!(stats.cache_misses(), 0);
+    assert_eq!(stats.disk_reads(), 0);
 }
