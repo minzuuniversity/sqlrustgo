@@ -1,10 +1,14 @@
 # SQLRustGo AI 协作安全规则
 
 > **⚠️ 此文档已弃用**
-> 
+>
 > AI 协作规范请参考：`docs/governance/AI_COLLABORATION.md`
-> 
+>
 > 此文件保留仅为向后兼容，不再更新。
+>
+> **2026-10-15 更新 (agent-harness refactor)**: 仓库的 Agent / AI 协作真实入口已迁移至
+> [`AGENTS.md`](AGENTS.md) (根) 和 [`docs/agent-harness/INDEX.md`](docs/agent-harness/INDEX.md)。
+> 本文件仅保留向后兼容,不在此处追加新规则。
 
 > **版本**: 1.0
 > **制定日期**: 2026-03-06
