@@ -2,6 +2,7 @@
 //! Persists table data to JSON files
 
 use crate::bplus_tree::BPlusTree;
+use crate::buffer_pool::{BufferPool, BufferPoolStats};
 use crate::engine::{
     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
     SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
@@ -305,6 +306,12 @@ pub struct FileStorage {
     /// boundaries, the other needs a sliceable LSN), not because the
     /// writes are different: both hooks sit in the same DML paths.
     change_log: Mutex<Option<ChangeLog>>,
+    /// PR-A / #5305: optional BufferPool. When `Some`, `FileStorage::insert`
+    /// and `FileStorage::scan` route through `BufferPool::get_or_load` and
+    /// `BufferPool::insert`, making `BufferPoolStats` an honest signal.
+    /// When `None` (legacy `FileStorage::new`), the in-memory HashMap path
+    /// is used and `buffer_pool_stats()` returns `synthetic_zero()`.
+    buffer_pool: Option<Arc<BufferPool>>,
 }
 
 /// #5048: a recorded change, as a backup delta needs it.
@@ -890,6 +897,8 @@ impl FileStorage {
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
+            // PR-A / #5305: BufferPool is opt-in via `new_with_bufferpool`.
+            buffer_pool: None,
         };
 
         // Load existing tables
@@ -935,6 +944,8 @@ impl FileStorage {
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
+            // PR-A / #5305: BufferPool is opt-in via `new_with_bufferpool`.
+            buffer_pool: None,
         };
 
         storage.load_all_tables()?;
@@ -1028,6 +1039,8 @@ impl FileStorage {
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
+            // PR-A / #5305: BufferPool is opt-in via `new_with_bufferpool`.
+            buffer_pool: None,
         };
 
         // Load existing tables
@@ -1100,12 +1113,26 @@ impl FileStorage {
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
+            // PR-A / #5305: BufferPool is opt-in via `new_with_bufferpool`.
+            buffer_pool: None,
         };
 
         storage.load_all_tables()?;
         storage.load_all_indexes()?;
         storage.load_all_views()?;
 
+        Ok(storage)
+    }
+
+    /// PR-A / #5305: construct a `FileStorage` whose `insert`/`scan` route
+    /// through the supplied `BufferPool`. Lets `BufferPoolStats` become an
+    /// honest EXPLAIN signal. Existing public methods are preserved.
+    pub fn new_with_bufferpool(
+        data_dir: PathBuf,
+        pool: Arc<BufferPool>,
+    ) -> std::io::Result<Self> {
+        let mut storage = Self::new(data_dir)?;
+        storage.buffer_pool = Some(pool);
         Ok(storage)
     }
 
@@ -5608,6 +5635,14 @@ impl FileStorage {
 }
 
 impl StorageEngine for FileStorage {
+    /// PR-A / #5305: override the trait default which returns `synthetic_zero`.
+    /// When constructed via `new_with_bufferpool`, return real stats from
+    /// the configured pool; otherwise keep the synthetic-zero back-compat
+    /// behavior (legacy `FileStorage::new` has no BufferPool).
+    fn buffer_pool_stats(&self) -> Option<BufferPoolStats> {
+        self.buffer_pool.as_ref().map(|p| p.stats())
+    }
+
     fn in_transaction(&self) -> bool {
         // #4951: this used to read a plain `u64` from `&self` while
         // `set_current_tx_id` wrote it through `as_mut_self` — an

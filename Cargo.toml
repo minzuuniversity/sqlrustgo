@@ -545,6 +545,10 @@ name = "exp_g_wal_contracts_verified"
 path = "tests/integration/migration/exp_g_wal_contracts_verified.rs"
 
 [[test]]
+name = "explain_ahi_promoted_test"
+path = "tests/integration/sql/explain_ahi_promoted_test.rs"
+
+[[test]]
 name = "expression_operators_test"
 path = "tests/integration/sql/expression_operators_test.rs"
 
