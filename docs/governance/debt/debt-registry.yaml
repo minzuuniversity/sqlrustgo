@@ -278,7 +278,7 @@ sem:
 
   - id: SEM-4
     title: "Coverage 测量差异 (跨机台测量口径不一致：同一 crate 在 Z6G4 与 Z440 上的读数差异)"
-    state: OPEN
+    state: IN_PROGRESS
     progress: 87.64%
     progress_metric: |
       v3.12.0 L1_8 平均覆盖率 84.44% >= 80% 阈值 (实测 2026-08-15, macmini M4).
