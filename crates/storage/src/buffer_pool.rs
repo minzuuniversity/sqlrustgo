@@ -25,6 +25,12 @@ pub struct BufferPoolStats {
     pub misses: u64,
     pub evictions: u64,
     pub prefetch_hits: u64,
+    // PR-A / #5305: 5 new fields mirroring the EXPLAIN suffix contract.
+    pub pages_visited: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub disk_reads: u64,
+    pub disk_writes: u64,
 }
 
 impl BufferPoolStats {
@@ -36,6 +42,11 @@ impl BufferPoolStats {
             misses: 0,
             evictions: 0,
             prefetch_hits: 0,
+            pages_visited: 0,
+            cache_hits: 0,
+            cache_misses: 0,
+            disk_reads: 0,
+            disk_writes: 0,
         }
     }
 
@@ -53,6 +64,23 @@ impl BufferPoolStats {
         self.hits as f64 / total as f64
     }
 
+    // PR-A / #5305: accessors for the 5 new fields.
+    pub fn pages_visited(&self) -> u64 {
+        self.pages_visited
+    }
+    pub fn cache_hits(&self) -> u64 {
+        self.cache_hits
+    }
+    pub fn cache_misses(&self) -> u64 {
+        self.cache_misses
+    }
+    pub fn disk_reads(&self) -> u64 {
+        self.disk_reads
+    }
+    pub fn disk_writes(&self) -> u64 {
+        self.disk_writes
+    }
+
     /// PR2 / #5304 option B: explicit zero-constructor for engines that
     /// don't page through a real BufferPool. Returning `Some(synthetic_zero)`
     /// means "this engine has no cache layer" — accurate when no
@@ -64,6 +92,11 @@ impl BufferPoolStats {
             misses: 0,
             evictions: 0,
             prefetch_hits: 0,
+            pages_visited: 0,
+            cache_hits: 0,
+            cache_misses: 0,
+            disk_reads: 0,
+            disk_writes: 0,
         }
     }
 }
@@ -226,6 +259,12 @@ impl BufferPool {
             misses: stats.misses,
             evictions: stats.evictions,
             prefetch_hits: stats.prefetch_hits,
+            // PR-A / #5305: 5 new stat fields
+            pages_visited: stats.pages_visited,
+            cache_hits: stats.cache_hits,
+            cache_misses: stats.cache_misses,
+            disk_reads: stats.disk_reads,
+            disk_writes: stats.disk_writes,
         }
     }
 
@@ -351,6 +390,22 @@ mod tests {
         let stats = pool.stats();
         assert_eq!(stats.hits, 1);
         assert_eq!(stats.misses, 1);
+    }
+
+    // PR-A / #5305: extend BufferPoolStats with 5 new fields + accessors.
+    // Fields are: pages_visited, cache_hits, cache_misses, disk_reads, disk_writes.
+    // All start at 0 from Default::default().
+    #[test]
+    fn buffer_pool_stats_exposes_five_new_fields_with_zero_init() {
+        let s = BufferPoolStats::new();
+        assert_eq!(s.pages_visited(), 0);
+        assert_eq!(s.cache_hits(), 0);
+        assert_eq!(s.cache_misses(), 0);
+        assert_eq!(s.disk_reads(), 0);
+        assert_eq!(s.disk_writes(), 0);
+        // existing fields still zero
+        assert_eq!(s.hits, 0);
+        assert_eq!(s.misses, 0);
     }
 
     #[test]
