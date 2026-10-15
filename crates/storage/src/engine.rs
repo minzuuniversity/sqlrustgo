@@ -5726,3 +5726,30 @@ fn memory_storage_legacy_new_returns_synthetic_zero_stats() {
     assert_eq!(stats.cache_misses(), 0);
     assert_eq!(stats.disk_reads(), 0);
 }
+
+#[test]
+fn memory_storage_insert_via_bufferpool_bumps_pages_visited() {
+    use sqlrustgo_storage::{Record, Value};
+    use std::sync::Arc;
+
+    let pool = Arc::new(BufferPool::new(8));
+    let mut storage = MemoryStorage::new_with_bufferpool(pool.clone())
+        .expect("new_with_bufferpool");
+
+    let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
+    storage.insert("t", vec![record]).expect("insert");
+
+    let stats = storage
+        .buffer_pool_stats()
+        .expect("MemoryStorage with BufferPool must return Some(stats)");
+    assert!(
+        stats.pages_visited() >= 1,
+        "1 INSERT must bump pages_visited; got {}",
+        stats.pages_visited()
+    );
+    assert!(
+        stats.disk_writes() >= 1,
+        "1 INSERT must bump disk_writes; got {}",
+        stats.disk_writes()
+    );
+}
