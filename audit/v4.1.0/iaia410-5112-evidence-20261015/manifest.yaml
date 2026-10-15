@@ -1,0 +1,95 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-5112-evidence-20261015
+work_package: A06
+
+source_agent: opencode+Mimo2.6Flash
+source_run: 5112-evidence-collection-20261015
+timestamp_started: 2026-10-15T07:30:00Z
+timestamp_finished: 2026-10-15T07:42:00Z
+conflict_resolution: none
+
+repository:
+  canonical_remote: http://192.168.0.250:3000/openclaw/sqlrustgo.git
+  commit: 994eb4688b
+  branch_or_detached: develop/v4.1.0
+  status_porcelain_sha256: TBD
+  cargo_lock_sha256: d8bba914c5223bece0146c28e7cc1cb48f25c27de84275bb03ef65d5a84e5a2d
+
+environment:
+  os: Linux
+  arch: x86_64
+  cpu: 28
+  memory_bytes: 0
+  filesystem: ext4
+  rustc: stable
+  cargo: 1.x
+  features: [all]
+  profile: dev
+  reference_dbms: []
+  process_pollution_check: evidence/environment_check.txt
+
+datasets: []
+
+commands:
+  - id: 001
+    argv: ["cargo", "test", "--all-features", "--test", "concurrent_rollback_isolation_test", "--", "--test-threads=1"]
+    cwd: .
+    started_at: 2026-10-15T07:30:00Z
+    finished_at: 2026-10-15T07:32:00Z
+    exit_code: 0
+    stdout: commands/001.stdout.log
+    stderr: commands/001.stderr.log
+    stdout_sha256: TBD
+    stderr_sha256: TBD
+  - id: 002
+    argv: ["cargo", "test", "--all-features", "--test", "wire_interleaved_tx_test", "--", "--test-threads=1"]
+    cwd: .
+    started_at: 2026-10-15T07:33:00Z
+    finished_at: 2026-10-15T07:34:00Z
+    exit_code: 0
+    stdout: commands/002.stdout.log
+    stderr: commands/002.stderr.log
+    stdout_sha256: TBD
+    stderr_sha256: TBD
+  - id: 003
+    argv: ["cargo", "test", "--all-features", "--test", "integration_savepoint_test", "--", "--test-threads=1"]
+    cwd: .
+    started_at: 2026-10-15T07:35:00Z
+    finished_at: 2026-10-15T07:35:01Z
+    exit_code: 0
+    stdout: commands/003.stdout.log
+    stderr: commands/003.stderr.log
+    stdout_sha256: TBD
+    stderr_sha256: TBD
+  - id: 004
+    argv: ["cargo", "test", "--all-features", "--test", "mvcc_transaction_test", "--", "--test-threads=1"]
+    cwd: .
+    started_at: 2026-10-15T07:36:00Z
+    finished_at: 2026-10-15T07:36:03Z
+    exit_code: 0
+    stdout: commands/004.stdout.log
+    stderr: commands/004.stderr.log
+    stdout_sha256: TBD
+    stderr_sha256: TBD
+  - id: 005
+    argv: ["bash", "scripts/gate/check_anti_ignore_gate.sh"]
+    cwd: .
+    started_at: 2026-10-15T07:40:00Z
+    finished_at: 2026-10-15T07:40:01Z
+    exit_code: 0
+    stdout: commands/005.stdout.log
+    stderr: commands/005.stderr.log
+    stdout_sha256: TBD
+    stderr_sha256: TBD
+  - id: 006
+    argv: ["bash", "scripts/gate/probe_hard_gate_mutation.sh"]
+    cwd: .
+    started_at: 2026-10-15T07:41:00Z
+    finished_at: 2026-10-15T07:41:02Z
+    exit_code: 0
+    stdout: commands/006.stdout.log
+    stderr: commands/006.stderr.log
+    stdout_sha256: TBD
+    stderr_sha256: TBD
+
+manifest_sha256: 99481068cd8a9d1b324a852a7906ec5a9546c21d98986f295567578db714338f
