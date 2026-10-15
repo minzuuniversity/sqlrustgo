@@ -5714,9 +5714,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             };
                         match graph_result {
                             Ok(exec) => {
-                                // Convert the graph `ExecutionResult` into the
-                                // shape expected by the rest of the MySQL
-                                // packet pipeline (header columns + row data).
+                                // #5342: graph engine returns bare names (no types) — see is_read_only branch for SQL engine.
                                 let col_names: Vec<String> = if exec.columns.is_empty() {
                                     vec!["value".to_string()]
                                 } else {
