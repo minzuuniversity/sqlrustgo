@@ -3,12 +3,12 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::buffer_pool::{BufferPool, BufferPoolStats};
-use crate::page::Page;
-use crate::record_page_codec::{self as record_codec};
 use crate::engine::{
     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
     SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
 };
+use crate::page::Page;
+use crate::record_page_codec::{self as record_codec};
 use crate::wal::{WalEntry, WalEntryType};
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
@@ -1168,10 +1168,7 @@ impl FileStorage {
     /// PR-A / #5305: construct a `FileStorage` whose `insert`/`scan` route
     /// through the supplied `BufferPool`. Lets `BufferPoolStats` become an
     /// honest EXPLAIN signal. Existing public methods are preserved.
-    pub fn new_with_bufferpool(
-        data_dir: PathBuf,
-        pool: Arc<BufferPool>,
-    ) -> std::io::Result<Self> {
+    pub fn new_with_bufferpool(data_dir: PathBuf, pool: Arc<BufferPool>) -> std::io::Result<Self> {
         let mut storage = Self::new(data_dir)?;
         storage.buffer_pool = Some(pool);
         // PR-A.5: counter / map are already empty from `Self::new`. Nothing
@@ -1369,7 +1366,19 @@ impl FileStorage {
                     {
                         if let Ok(info) = self.load_view(name) {
                             if let Ok(mut views) = self.views.write() {
-                                views.insert(name.to_string(), info);
+                                // #5350: `create_view` registers under
+                                // `scoped_key(db, name)` but this reload path
+                                // used the bare name, so every view vanished
+                                // across a restart. The on-disk format
+                                // (`view_<name>.json`) carries no database,
+                                // so default is the only scope it can express.
+                                views.insert(
+                                    crate::engine::scoped_key(
+                                        crate::engine::DEFAULT_DATABASE,
+                                        name,
+                                    ),
+                                    info,
+                                );
                             }
                         }
                     }
@@ -6824,11 +6833,17 @@ impl StorageEngine for FileStorage {
     fn list_views(&self, db: &str) -> Vec<String> {
         // #5140: keys carry the database, but callers expect the bare view
         // name back — mirrors `list_indexes`.
-        let prefix = format!("{}\0", db);
+        //
+        // #5350: this stripped a hard-coded `"{db}\0"` prefix while
+        // `scoped_key` joins with `DB_SEP` (`\u{1}`), so the strip never
+        // matched and `list_views` always returned an empty list. Split on
+        // the real separator instead of hand-spelling it.
         let views = self.views.read().unwrap();
         let mut names: Vec<String> = views
             .keys()
-            .filter_map(|k| k.strip_prefix(&prefix).map(|s| s.to_string()))
+            .filter_map(|k| crate::engine::split_scoped_key(k))
+            .filter(|(kdb, _)| *kdb == db.to_lowercase())
+            .map(|(_, name)| name.to_string())
             .collect();
         names.sort();
         names
@@ -7552,7 +7567,9 @@ mod bufferpool_routing_tests {
         let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
         storage.insert("t", vec![record]).expect("insert");
 
-        let stats = storage.buffer_pool_stats().expect("FileStorage must have stats");
+        let stats = storage
+            .buffer_pool_stats()
+            .expect("FileStorage must have stats");
         assert!(
             stats.pages_visited() >= 1,
             "1 INSERT must bump pages_visited; got {}",
@@ -7580,7 +7597,9 @@ mod bufferpool_routing_tests {
             .collect();
         storage.insert("t", records).expect("insert 100");
 
-        let stats = storage.buffer_pool_stats().expect("FileStorage must have stats");
+        let stats = storage
+            .buffer_pool_stats()
+            .expect("FileStorage must have stats");
         assert!(
             stats.pages_visited() >= 100,
             "100 inserts must touch >= 100 pages; got {}",
@@ -7653,9 +7672,8 @@ mod bufferpool_routing_tests {
             let s = storage.clone();
             handles.push(thread::spawn(move || {
                 let mut guard = s.lock().expect("poisoned");
-                let records: Vec<Record> = (0..25)
-                    .map(|i| vec![Value::Integer(t * 100 + i)])
-                    .collect();
+                let records: Vec<Record> =
+                    (0..25).map(|i| vec![Value::Integer(t * 100 + i)]).collect();
                 guard.insert("t", records).expect("insert");
             }));
         }

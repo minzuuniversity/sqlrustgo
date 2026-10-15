@@ -54,17 +54,6 @@ const TABLES_AND_PATHS: &[(&str, &str)] = &[
     ("lineitem", "lineitem.tbl"),
 ];
 
-const EXPECTED_COUNTS: &[(&str, usize)] = &[
-    ("region", 5),
-    ("nation", 25),
-    ("supplier", 10),
-    ("customer", 15),
-    ("part", 20),
-    ("partsupp", 80),
-    ("orders", 150),
-    ("lineitem", 501),
-];
-
 const SCHEMA_DDL: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
     "CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT NOT NULL, n_regionkey INTEGER NOT NULL, n_comment TEXT)",
@@ -160,30 +149,62 @@ fn test_load_local_infile_eagain_regression() {
         client.exec(ddl).expect("DDL");
     }
 
+    // #5350: LOAD DATA LOCAL INFILE is sandboxed to the server's data_dir,
+    // so the fixtures must be staged inside it. `tests/data/tpch-sf001` is
+    // a symlink to a shared /tmp directory, which the server correctly
+    // refuses to read. Copy the .tbl files next to the server storage
+    // before loading.
+    let staged_dir = shared()._server_data_dir.path().join("load_staging");
+    fs::create_dir_all(&staged_dir).expect("create staging dir");
+    for (_tbl, rel) in TABLES_AND_PATHS {
+        let src = data_dir.join(rel);
+        let dst = staged_dir.join(rel);
+        fs::copy(&src, &dst)
+            .unwrap_or_else(|e| panic!("stage {} -> {}: {}", src.display(), dst.display(), e));
+    }
+
     // Load all 8 tables via LOAD DATA LOCAL INFILE. **This is where
-    // the EAGAIN bug used to fire on orders.tbl (9 cols, 150 rows)
-    // and lineitem.tbl (16 cols, 614 rows)**.
+    // the EAGAIN bug used to fire on orders.tbl and lineitem.tbl**.
     for (table, rel_path) in TABLES_AND_PATHS {
-        let path = data_dir.join(rel_path);
+        let path = staged_dir.join(rel_path);
         let n = client
             .load_local_infile(&path, table)
             .unwrap_or_else(|e| panic!("load_local_infile {}: {}", table, e));
-        let expected = EXPECTED_COUNTS
-            .iter()
-            .find(|(t, _)| *t == *table)
-            .map(|(_, c)| *c)
-            .unwrap();
+        // #5350: the expected count now comes from the .tbl file that was
+        // just staged, instead of a hard-coded table written for a different
+        // fixture scale. The invariant under test is "every row in the file
+        // reached the table" — which is exactly what a truncated / EAGAIN
+        // interrupted LOAD DATA would break.
+        let expected = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("re-read {}: {}", path.display(), e))
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count();
         assert_eq!(
             n as usize, expected,
-            "{}: expected {} rows, loaded {}",
+            "{}: expected {} rows (from fixture), loaded {}",
             table, expected, n
         );
         eprintln!("  {}: {} rows (expected {})", table, n, expected);
     }
 
-    // Sanity: aggregate over the largest table.
+    // Sanity: aggregate over the largest table. #5350: same as the per-table
+    // assertions above, take the expected value from the staged fixture
+    // rather than a constant tied to one fixture scale.
+    let lineitem_rows: i64 = {
+        let p = shared()
+            ._server_data_dir
+            .path()
+            .join("load_staging")
+            .join("lineitem.tbl");
+        fs::read_to_string(&p)
+            .unwrap_or_else(|e| panic!("re-read {}: {}", p.display(), e))
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count() as i64
+    };
     let cnt: i64 = client
         .query_one_i64("SELECT COUNT(*) FROM lineitem")
         .expect("count lineitem");
-    assert_eq!(cnt, 501, "lineitem row count mismatch");
+    assert_eq!(cnt, lineitem_rows, "lineitem row count mismatch");
 }
