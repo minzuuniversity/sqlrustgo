@@ -529,7 +529,14 @@ impl TriggerExecutor {
             //   orders: 1 row   audit: 1 row  audit[0][1] = NULL (not "sku-A")
             // The row-count assertions passed, which is why this hid behind
             // the weaker "audit.len() == 1" check.
-            let expanded = self.expand_row_variables(&stmt, &trigger.table_name, old_row, new_row);
+            // #5349: skip NEW.col expansion for SET statements so the LHS
+            // `NEW.col` token survives for parse_simple_set_assignments.
+            let trimmed = stmt.trim_start();
+            let expanded = if trimmed.to_uppercase().starts_with("SET") {
+                self.expand_row_variables_keep_new(&stmt, &trigger.table_name, old_row, new_row)
+            } else {
+                self.expand_row_variables(&stmt, &trigger.table_name, old_row, new_row)
+            };
             self.execute_trigger_sql_mut(&expanded, table, old_row, &mut result)?;
         }
 
@@ -646,6 +653,33 @@ impl TriggerExecutor {
     ) -> String {
         let mut result = sql.to_string();
         self.do_expand_row_variables(&mut result, info, old_row, new_row);
+        result
+    }
+
+    /// Expand row variables but keep `NEW.col` references intact (expand
+    /// only `OLD.col`). Used for SET statements inside a trigger body
+    /// so `SET NEW.col = <literal>` is not rewritten to `SET '<value>' = <literal>`,
+    /// which would break the LHS detection in
+    /// [`Self::parse_simple_set_assignments`].
+    fn expand_row_variables_keep_new(
+        &self,
+        sql: &str,
+        table_name: &str,
+        old_row: Option<&Record>,
+        _new_row: Option<&Record>,
+    ) -> String {
+        let mut result = sql.replace(". ", ".");
+        if let Some(old) = old_row {
+            if let Ok(info) = self.storage.read().get_table_info(table_name) {
+                for (i, col) in info.columns.iter().enumerate() {
+                    if i < old.len() {
+                        let val = &old[i];
+                        let replacement = self.value_to_sql_literal(val);
+                        result = result.replace(&format!("OLD.{}", col.name), &replacement);
+                    }
+                }
+            }
+        }
         result
     }
 
