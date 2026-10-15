@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-09T11:38:22Z",
-  "updated_at": "2026-10-15T18:45:12Z",
+  "updated_at": "2026-10-15T19:12:15Z",
   "files": {
     ".cargo/audit.toml": {
       "role": "index",
@@ -47,9 +47,9 @@
     },
     ".gitea/workflows/ci.yml": {
       "role": "index",
-      "sha256": "92f580d5faa754bdcc37a16745bd076d024e61c2cefb8eb2ac0c0b2b243f455e",
-      "size": 20349,
-      "normalized_sha256": "92f580d5faa754bdcc37a16745bd076d024e61c2cefb8eb2ac0c0b2b243f455e"
+      "sha256": "d1c819ce09658d8f4bb82d52cbcd06d11162b0104e84ec32036fa38ebdb2cfef",
+      "size": 21702,
+      "normalized_sha256": "d1c819ce09658d8f4bb82d52cbcd06d11162b0104e84ec32036fa38ebdb2cfef"
     },
     ".gitea/workflows/gate.yml": {
       "role": "index",
@@ -611,9 +611,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "1a1dc9ba58109d906064956aab695384f16cf9c8f2e986a4930afade8433ba21",
-      "size": 1564169,
-      "normalized_sha256": "1a1dc9ba58109d906064956aab695384f16cf9c8f2e986a4930afade8433ba21"
+      "sha256": "ba0fb61384c1651a91d22209b59820e489efae800bee1734abefe985e029c482",
+      "size": 1564628,
+      "normalized_sha256": "ba0fb61384c1651a91d22209b59820e489efae800bee1734abefe985e029c482"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -17257,42 +17257,6 @@
       "size": 1266,
       "normalized_sha256": "d0396155a2c0cc7efc4eece01e924bc6db21a93f76b61a33eb1d20e0e264e674"
     },
-    "docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs/error_division_by_zero.diff": {
-      "role": "index",
-      "sha256": "f5b3f25b900334b2bc17478481e3a977aa78daddb04b9fd12dc1ce4a36ef3f4d",
-      "size": 145,
-      "normalized_sha256": "f5b3f25b900334b2bc17478481e3a977aa78daddb04b9fd12dc1ce4a36ef3f4d"
-    },
-    "docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs/explain_aggregate.diff": {
-      "role": "index",
-      "sha256": "b586d118341eaeb0768d347d18c850384ffe6329600addd23a4f7133322483d2",
-      "size": 200,
-      "normalized_sha256": "b586d118341eaeb0768d347d18c850384ffe6329600addd23a4f7133322483d2"
-    },
-    "docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs/explain_hash_join.diff": {
-      "role": "index",
-      "sha256": "55ec73f1009258a2b50fca3a44d5723812ea06d085229c096f66abe577e73a7d",
-      "size": 235,
-      "normalized_sha256": "55ec73f1009258a2b50fca3a44d5723812ea06d085229c096f66abe577e73a7d"
-    },
-    "docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs/explain_index_scan.diff": {
-      "role": "index",
-      "sha256": "eab26f433933261b07aa143c1979310be32aba6646ad3c2f3ec8f730c8e6dfcf",
-      "size": 193,
-      "normalized_sha256": "eab26f433933261b07aa143c1979310be32aba6646ad3c2f3ec8f730c8e6dfcf"
-    },
-    "docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs/explain_seq_scan.diff": {
-      "role": "index",
-      "sha256": "1d1c2902d90ea4a1f8efa93810e5b4c9caa33e267827ecdabf22e65b91e087a6",
-      "size": 187,
-      "normalized_sha256": "1d1c2902d90ea4a1f8efa93810e5b4c9caa33e267827ecdabf22e65b91e087a6"
-    },
-    "docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs/explain_sort_limit.diff": {
-      "role": "index",
-      "sha256": "e2869615809e5d2153ee6d09422a954a2b9e4d2333fcf6a6bcc4539ab2be9b77",
-      "size": 193,
-      "normalized_sha256": "e2869615809e5d2153ee6d09422a954a2b9e4d2333fcf6a6bcc4539ab2be9b77"
-    },
     "docs/releases/v3.12.0/evidence/teaching_corpus/teaching-corpus-report.md": {
       "role": "index",
       "sha256": "5ce07e750a822fcb0ef95b7a5b5185ffab1b852c69c90ac2b77270a5497118a2",
@@ -30518,6 +30482,12 @@
       "sha256": "ee9180e5f3f340293d61ef5bffe7aa36d608b1f3c1b516661f390c2d83c5e74e",
       "size": 19735,
       "normalized_sha256": "ee9180e5f3f340293d61ef5bffe7aa36d608b1f3c1b516661f390c2d83c5e74e"
+    },
+    "reports/2026-10-16-gates-env-contamination-audit.md": {
+      "role": "index",
+      "sha256": "a6f0beb1d73ecd6b828feb5aa948f2287af97db05ea148c54c7623f96500e3f1",
+      "size": 11174,
+      "normalized_sha256": "a6f0beb1d73ecd6b828feb5aa948f2287af97db05ea148c54c7623f96500e3f1"
     },
     "reports/ISSUE_CREATE_RESULT_2026-06-26.md": {
       "role": "index",
