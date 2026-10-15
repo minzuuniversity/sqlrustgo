@@ -2,8 +2,8 @@
 # check_p33_cost_optimizer.sh - P3-3 (#3182) Cost Optimizer G10 gate
 #
 # Verifies:
-# 1. tests/cost_optimizer_harness.rs exists
-# 2. tests/cost_optimizer_test.rs exists + registered in Cargo.toml
+# 1. tests/integration/optimizer/cost_optimizer_harness.rs exists
+# 2. tests/integration/optimizer/cost_optimizer_test.rs exists + registered in Cargo.toml
 # 3. 5 categories each have ≥1 test
 # 4. cargo check pass
 # 5. ≥20 tests pass
@@ -14,6 +14,8 @@
 #
 # Refs: docs/openspec/3182-cost-optimizer.md
 #       V390_TEST_PLAN.md §G10
+
+# #5326: paths corrected for V310 → V3.12 directory restructure
 
 set -e
 
@@ -31,25 +33,25 @@ fi
 echo "=== G10 Gate (P3-3 #3182 Cost Optimizer) ==="
 
 # 1. harness file
-[ -f tests/cost_optimizer_harness.rs ] || {
-    echo "  ❌ FAIL: tests/cost_optimizer_harness.rs not found"
+[ -f tests/integration/optimizer/cost_optimizer_harness.rs ] || {
+    echo "  ❌ FAIL: tests/integration/optimizer/cost_optimizer_harness.rs not found"
     exit 1
 }
-echo "  [1/7] ✅ PASS: tests/cost_optimizer_harness.rs present"
+echo "  [1/7] ✅ PASS: tests/integration/optimizer/cost_optimizer_harness.rs present"
 
 # 2. test file + registration
-[ -f tests/cost_optimizer_test.rs ] || {
-    echo "  ❌ FAIL: tests/cost_optimizer_test.rs not found"
+[ -f tests/integration/optimizer/cost_optimizer_test.rs ] || {
+    echo "  ❌ FAIL: tests/integration/optimizer/cost_optimizer_test.rs not found"
     exit 1
 }
 grep -q 'name = "cost_optimizer_test"' Cargo.toml || {
     echo "  ❌ FAIL: cost_optimizer_test not registered in Cargo.toml"
     exit 1
 }
-echo "  [2/7] ✅ PASS: tests/cost_optimizer_test.rs present + registered"
+echo "  [2/7] ✅ PASS: tests/integration/optimizer/cost_optimizer_test.rs present + registered"
 
 # 3. 5 categories covered
-N_TESTS=$(grep -c "^#\[test\]" tests/cost_optimizer_test.rs || echo 0)
+N_TESTS=$(grep -c "^#\[test\]" tests/integration/optimizer/cost_optimizer_test.rs || echo 0)
 if [ "$N_TESTS" -lt 20 ]; then
     echo "  ❌ FAIL: expected ≥20 tests, got $N_TESTS"
     exit 1

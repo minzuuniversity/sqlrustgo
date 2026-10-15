@@ -2,8 +2,8 @@
 # check_p23_hash_chain.sh - P2-3 (#3179) Immutable Audit Chain G10 gate
 #
 # Verifies:
-# 1. tests/hash_chain_harness.rs exists
-# 2. tests/hash_chain_test.rs exists + registered in Cargo.toml
+# 1. tests/integration/sql/hash_chain_harness.rs exists
+# 2. tests/integration/sql/hash_chain_test.rs exists + registered in Cargo.toml
 # 3. 4 categories each have ≥1 test
 # 4. cargo check pass
 # 5. ≥20 tests pass
@@ -14,6 +14,8 @@
 #
 # Refs: docs/openspec/3179-hash-chain.md
 #       V390_TEST_PLAN.md §G10
+
+# #5326: paths corrected for V310 → V3.12 directory restructure
 
 set -e
 
@@ -31,25 +33,25 @@ fi
 echo "=== G10 Gate (P2-3 #3179 Hash Chain) ==="
 
 # 1. harness file
-[ -f tests/hash_chain_harness.rs ] || {
-    echo "  ❌ FAIL: tests/hash_chain_harness.rs not found"
+[ -f tests/integration/sql/hash_chain_harness.rs ] || {
+    echo "  ❌ FAIL: tests/integration/sql/hash_chain_harness.rs not found"
     exit 1
 }
-echo "  [1/7] ✅ PASS: tests/hash_chain_harness.rs present"
+echo "  [1/7] ✅ PASS: tests/integration/sql/hash_chain_harness.rs present"
 
 # 2. test file + registration
-[ -f tests/hash_chain_test.rs ] || {
-    echo "  ❌ FAIL: tests/hash_chain_test.rs not found"
+[ -f tests/integration/sql/hash_chain_test.rs ] || {
+    echo "  ❌ FAIL: tests/integration/sql/hash_chain_test.rs not found"
     exit 1
 }
 grep -q 'name = "hash_chain_test"' Cargo.toml || {
     echo "  ❌ FAIL: hash_chain_test not registered in Cargo.toml"
     exit 1
 }
-echo "  [2/7] ✅ PASS: tests/hash_chain_test.rs present + registered"
+echo "  [2/7] ✅ PASS: tests/integration/sql/hash_chain_test.rs present + registered"
 
 # 3. 4 categories covered
-N_TESTS=$(grep -c "^#\[test\]" tests/hash_chain_test.rs || echo 0)
+N_TESTS=$(grep -c "^#\[test\]" tests/integration/sql/hash_chain_test.rs || echo 0)
 if [ "$N_TESTS" -lt 20 ]; then
     echo "  ❌ FAIL: expected ≥20 tests, got $N_TESTS"
     exit 1
@@ -99,8 +101,8 @@ fi
 # 7. SHA-256 hex character validation
 # The harness's link() output should be 16 hex chars (since the
 # harness uses a 64-bit hash for test simplicity, not 256-bit).
-HASH_OUT=$(grep -A 1 "pub fn link" tests/hash_chain_harness.rs | head -1)
-LEN_OUT=$(grep "format!" tests/hash_chain_harness.rs | head -1)
+HASH_OUT=$(grep -A 1 "pub fn link" tests/integration/sql/hash_chain_harness.rs | head -1)
+LEN_OUT=$(grep "format!" tests/integration/sql/hash_chain_harness.rs | head -1)
 if echo "$LEN_OUT" | grep -q ':016x'; then
     echo "  [7/7] ✅ PASS: link() output is 16 hex chars (64-bit simplified SHA-256, hex-only)"
 else

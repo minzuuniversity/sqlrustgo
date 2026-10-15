@@ -2,8 +2,8 @@
 # check_p32_statistics.sh - P3-2 (#3181) Statistics (ANALYZE TABLE) G10 gate
 #
 # Verifies:
-# 1. tests/statistics_harness.rs exists
-# 2. tests/statistics_test.rs exists + registered in Cargo.toml
+# 1. tests/integration/sql/statistics_harness.rs exists
+# 2. tests/integration/sql/statistics_test.rs exists + registered in Cargo.toml
 # 3. 5 categories each have ≥1 test
 # 4. cargo check pass
 # 5. ≥20 tests pass
@@ -14,6 +14,8 @@
 #
 # Refs: docs/openspec/3181-statistics.md
 #       V390_TEST_PLAN.md §G10
+
+# #5326: paths corrected for V310 → V3.12 directory restructure
 
 set -e
 
@@ -31,25 +33,25 @@ fi
 echo "=== G10 Gate (P3-2 #3181 Statistics) ==="
 
 # 1. harness file
-[ -f tests/statistics_harness.rs ] || {
-    echo "  ❌ FAIL: tests/statistics_harness.rs not found"
+[ -f tests/integration/sql/statistics_harness.rs ] || {
+    echo "  ❌ FAIL: tests/integration/sql/statistics_harness.rs not found"
     exit 1
 }
-echo "  [1/7] ✅ PASS: tests/statistics_harness.rs present"
+echo "  [1/7] ✅ PASS: tests/integration/sql/statistics_harness.rs present"
 
 # 2. test file + registration
-[ -f tests/statistics_test.rs ] || {
-    echo "  ❌ FAIL: tests/statistics_test.rs not found"
+[ -f tests/integration/sql/statistics_test.rs ] || {
+    echo "  ❌ FAIL: tests/integration/sql/statistics_test.rs not found"
     exit 1
 }
 grep -q 'name = "statistics_test"' Cargo.toml || {
     echo "  ❌ FAIL: statistics_test not registered in Cargo.toml"
     exit 1
 }
-echo "  [2/7] ✅ PASS: tests/statistics_test.rs present + registered"
+echo "  [2/7] ✅ PASS: tests/integration/sql/statistics_test.rs present + registered"
 
 # 3. 5 categories covered
-N_TESTS=$(grep -c "^#\[test\]" tests/statistics_test.rs || echo 0)
+N_TESTS=$(grep -c "^#\[test\]" tests/integration/sql/statistics_test.rs || echo 0)
 if [ "$N_TESTS" -lt 20 ]; then
     echo "  ❌ FAIL: expected ≥20 tests, got $N_TESTS"
     exit 1
