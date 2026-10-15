@@ -59,17 +59,18 @@ if ! grep -qE "pub fn partition_(scan|rows)|fn partition_scan" crates/executor/s
 fi
 echo "  [4/6] PASS: partition API is public"
 
-# 5. e2e tests present in tests/parallel_executor_integration_test.rs
-if [ ! -f tests/parallel_executor_integration_test.rs ]; then
-    echo "  [5/6] FAIL: tests/parallel_executor_integration_test.rs not found"
+# 5. e2e tests present in tests/integration/sql/parallel_executor_integration_test.rs
+# #5326: V310 → V3.12 directory restructure
+if [ ! -f tests/integration/sql/parallel_executor_integration_test.rs ]; then
+    echo "  [5/6] FAIL: tests/integration/sql/parallel_executor_integration_test.rs not found"
     exit 1
 fi
-TESTS=$(grep -c "^#\[test\]" tests/parallel_executor_integration_test.rs 2>/dev/null || true)
+TESTS=$(grep -c "^#\[test\]" tests/integration/sql/parallel_executor_integration_test.rs 2>/dev/null || true)
 if [ "$TESTS" -lt 7 ]; then
-    echo "  [5/6] FAIL: only $TESTS tests (expected >= 7) in tests/parallel_executor_integration_test.rs"
+    echo "  [5/6] FAIL: only $TESTS tests (expected >= 7) in tests/integration/sql/parallel_executor_integration_test.rs"
     exit 1
 fi
-echo "  [5/6] PASS: $TESTS tests in tests/parallel_executor_integration_test.rs"
+echo "  [5/6] PASS: $TESTS tests in tests/integration/sql/parallel_executor_integration_test.rs"
 
 # 6. clippy clean on sqlrustgo-executor (5min budget)
 echo "  [6/6] Running cargo clippy on sqlrustgo-executor (5min budget)..."

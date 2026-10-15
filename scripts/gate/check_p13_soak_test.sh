@@ -39,27 +39,31 @@ echo "=== G7 Gate: P1-3 (#3175) Soak Test ==="
 # ── Layer 1 checks (Rust harness) ────────────────────────────────────────────
 
 # 1. harness file
-[ -f tests/soak_test_harness.rs ] || {
-    echo "  [1/9] ❌ FAIL: tests/soak_test_harness.rs not found"
+# #5326: the harness lives under tests/integration/stress/ (see
+# Cargo.toml [[test]] entry). The openspec spec said tests/ but the
+# implementation chose the stress/ subdir; the gate was written
+# against the spec and has been red since.
+[ -f tests/integration/stress/soak_test_harness.rs ] || {
+    echo "  [1/9] ❌ FAIL: tests/integration/stress/soak_test_harness.rs not found"
     exit 1
 }
-echo "  [1/9] ✅ PASS: tests/soak_test_harness.rs present"
+echo "  [1/9] ✅ PASS: tests/integration/stress/soak_test_harness.rs present"
 
 # 2. test file + registration
-[ -f tests/soak_test.rs ] || {
-    echo "  [2/9] ❌ FAIL: tests/soak_test.rs not found"
+[ -f tests/integration/stress/soak_test.rs ] || {
+    echo "  [2/9] ❌ FAIL: tests/integration/stress/soak_test.rs not found"
     exit 1
 }
 grep -q 'name = "soak_test"' Cargo.toml || {
     echo "  [2/9] ❌ FAIL: soak_test not registered in Cargo.toml"
     exit 1
 }
-echo "  [2/9] ✅ PASS: tests/soak_test.rs present + registered"
+echo "  [2/9] ✅ PASS: tests/integration/stress/soak_test.rs present + registered"
 
 # 3. 3-level smoke equivalence constants
-SMOKE_24=$(grep -A 8 'fn smoke_seconds_for_level' tests/soak_test_harness.rs | grep '"24h" => Some' | head -1 || true)
-SMOKE_72=$(grep -A 8 'fn smoke_seconds_for_level' tests/soak_test_harness.rs | grep '"72h" => Some' | head -1 || true)
-SMOKE_168=$(grep -A 8 'fn smoke_seconds_for_level' tests/soak_test_harness.rs | grep '"168h" => Some' | head -1 || true)
+SMOKE_24=$(grep -A 8 'fn smoke_seconds_for_level' tests/integration/stress/soak_test_harness.rs | grep '"24h" => Some' | head -1 || true)
+SMOKE_72=$(grep -A 8 'fn smoke_seconds_for_level' tests/integration/stress/soak_test_harness.rs | grep '"72h" => Some' | head -1 || true)
+SMOKE_168=$(grep -A 8 'fn smoke_seconds_for_level' tests/integration/stress/soak_test_harness.rs | grep '"168h" => Some' | head -1 || true)
 if [ -z "$SMOKE_24" ] || [ -z "$SMOKE_72" ] || [ -z "$SMOKE_168" ]; then
     echo "  [3/9] ❌ FAIL: 3-level smoke equivalence constants missing"
     exit 1

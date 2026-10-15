@@ -4,7 +4,7 @@
 # Verifies P3-1 deliverables:
 #   1. crates/cache/ exists with PreparedStatementCache
 #   2. 3 new Statement variants (Prepare/Execute/Deallocate) in parser
-#   3. tests/prepared_stmt_test.rs has >= 20 tests
+#   3. tests/integration/sql/prepared_stmt_test.rs has >= 20 tests
 #   4. cargo test -p sqlrustgo-cache PASS
 #   5. cargo test --test prepared_stmt_test PASS
 #   6. End-to-end PREPARE/EXECUTE smoke test
@@ -12,6 +12,8 @@
 # Exit code: 0 = PASS, 1 = FAIL
 #
 # Refs: docs/openspec/3180-p31-prepared-stmt.md
+
+# #5326: paths corrected for V310 → V3.12 directory restructure
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -48,7 +50,7 @@ done
 echo "  [2/6] PASS: 3 new Statement variants (Prepare/Execute/Deallocate) defined"
 
 # 3. e2e test file has >= 20 tests
-TEST_FILE=tests/prepared_stmt_test.rs
+TEST_FILE=tests/integration/sql/prepared_stmt_test.rs
 if [ ! -f "$TEST_FILE" ]; then
     echo "  [3/6] FAIL: $TEST_FILE not found"
     exit 1
@@ -85,8 +87,9 @@ echo "  [6/6] Running end-to-end PREPARE/EXECUTE smoke test..."
 TMPDIR=$(mktemp -d)
 mkdir -p "$TMPDIR/data"
 cat > "$TMPDIR/smoke_test.rs" <<'RUST'
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[test]
 fn smoke_test() {

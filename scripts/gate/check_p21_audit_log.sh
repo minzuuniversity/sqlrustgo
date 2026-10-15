@@ -2,8 +2,8 @@
 # check_p21_audit_log.sh - P2-1 (#3177) Audit Log G10 gate
 #
 # Verifies:
-# 1. tests/audit_log_harness.rs exists
-# 2. tests/audit_log_test.rs exists + registered in Cargo.toml
+# 1. tests/integration/stress/audit_log_harness.rs exists
+# 2. tests/integration/stress/audit_log_test.rs exists + registered in Cargo.toml
 # 3. 8 audit fields (who/when/what/target/before/after/tx_id/source)
 #    are all present in the AuditEvent struct
 # 4. cargo check pass
@@ -15,6 +15,8 @@
 #
 # Refs: docs/openspec/3177-audit-log.md
 #       V390_TEST_PLAN.md §G10
+
+# #5326: paths corrected for V310 → V3.12 directory restructure
 
 set -e
 
@@ -32,26 +34,26 @@ fi
 echo "=== G10 Gate: P2-1 (#3177) Audit Log ==="
 
 # 1. harness file
-[ -f tests/audit_log_harness.rs ] || {
-    echo "  ❌ FAIL: tests/audit_log_harness.rs not found"
+[ -f tests/integration/stress/audit_log_harness.rs ] || {
+    echo "  ❌ FAIL: tests/integration/stress/audit_log_harness.rs not found"
     exit 1
 }
-echo "  [1/7] ✅ PASS: tests/audit_log_harness.rs present"
+echo "  [1/7] ✅ PASS: tests/integration/stress/audit_log_harness.rs present"
 
 # 2. test file + registration
-[ -f tests/audit_log_test.rs ] || {
-    echo "  ❌ FAIL: tests/audit_log_test.rs not found"
+[ -f tests/integration/stress/audit_log_test.rs ] || {
+    echo "  ❌ FAIL: tests/integration/stress/audit_log_test.rs not found"
     exit 1
 }
 grep -q 'name = "audit_log_test"' Cargo.toml || {
     echo "  ❌ FAIL: audit_log_test not registered in Cargo.toml"
     exit 1
 }
-echo "  [2/7] ✅ PASS: tests/audit_log_test.rs present + registered"
+echo "  [2/7] ✅ PASS: tests/integration/stress/audit_log_test.rs present + registered"
 
 # 3. 8 audit fields present
 N_FIELDS=$(grep -E "pub (user|timestamp|action|table|row_id|old_value|new_value|tx_id|source):" \
-    tests/audit_log_harness.rs | wc -l | tr -d ' ')
+    tests/integration/stress/audit_log_harness.rs | wc -l | tr -d ' ')
 if [ "$N_FIELDS" -lt 8 ]; then
     echo "  ❌ FAIL: expected ≥8 audit fields, got $N_FIELDS"
     exit 1
