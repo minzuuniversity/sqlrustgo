@@ -31,36 +31,38 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 echo "=== G8 Gate: P1-2 (#3174) Crash Test Framework ==="
+# #5326: paths corrected for V310 → V3.12 directory restructure
+# (integration tests moved under tests/integration/<subdir>/).
 
 # 1. framework + harness files
-[ -f tests/crash_test_framework.rs ] || {
-    echo "  ❌ FAIL: tests/crash_test_framework.rs not found"
+[ -f tests/integration/stress/crash_test_framework.rs ] || {
+    echo "  ❌ FAIL: tests/integration/stress/crash_test_framework.rs not found"
     exit 1
 }
-echo "  [1/7] ✅ PASS: tests/crash_test_framework.rs present"
-[ -f tests/crash_test_harness.rs ] || {
-    echo "  ❌ FAIL: tests/crash_test_harness.rs not found"
+echo "  [1/7] ✅ PASS: tests/integration/stress/crash_test_framework.rs present"
+[ -f tests/integration/stress/crash_test_harness.rs ] || {
+    echo "  ❌ FAIL: tests/integration/stress/crash_test_harness.rs not found"
     exit 1
 }
-echo "  [2/7] ✅ PASS: tests/crash_test_harness.rs present"
+echo "  [2/7] ✅ PASS: tests/integration/stress/crash_test_harness.rs present"
 
 # 3. 8 crash categories with ≥1 test each
-FRAMEWORK_TESTS=$(grep -c "^#\[test\]" tests/crash_test_framework.rs || echo 0)
+FRAMEWORK_TESTS=$(grep -c "^#\[test\]" tests/integration/stress/crash_test_framework.rs || echo 0)
 echo "  [3/7] ✅ PASS: crash_test_framework has $FRAMEWORK_TESTS tests (≥1 per category)"
 
 # 4. Total crash/fault tests ≥100
 TOTAL=0
-for f in tests/memory_fault_injection_test.rs \
-         tests/network_fault_injection_test.rs \
+for f in tests/integration/sql/memory_fault_injection_test.rs \
+         tests/integration/sql/network_fault_injection_test.rs \
          tests/e2e_trigger_wal_recovery.rs \
-         tests/wal_integration_test.rs \
-         tests/double_write_buffer_test.rs \
-         tests/wal_tx_contract_test.rs \
-         tests/exp_g_wal_contracts_verified.rs \
-         tests/tx_wal_contract_tests.rs \
+         tests/integration/migration/wal_integration_test.rs \
+         tests/integration/sql/double_write_buffer_test.rs \
+         tests/integration/migration/wal_tx_contract_test.rs \
+         tests/integration/migration/exp_g_wal_contracts_verified.rs \
+         tests/integration/migration/tx_wal_contract_tests.rs \
          crates/storage/tests/e2e_crash_recovery_proof.rs \
          crates/transaction/tests/deadlock_injection_test.rs \
-         tests/crash_test_framework.rs; do
+         tests/integration/stress/crash_test_framework.rs; do
     if [ -f "$f" ]; then
         n=$(grep -c '#\[test\]' "$f" || echo 0)
         TOTAL=$((TOTAL + n))
@@ -102,8 +104,8 @@ fi
 echo "  [6/7] ✅ PASS: crash_test_framework $PASSED"
 
 # 7. Pre-existing tests still present
-for f in tests/memory_fault_injection_test.rs \
-         tests/wal_tx_contract_test.rs \
+for f in tests/integration/sql/memory_fault_injection_test.rs \
+         tests/integration/migration/wal_tx_contract_test.rs \
          crates/transaction/tests/deadlock_injection_test.rs; do
     if [ ! -f "$f" ]; then
         echo "  ❌ FAIL: pre-existing test file $f missing"
