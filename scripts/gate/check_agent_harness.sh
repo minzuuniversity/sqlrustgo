@@ -5,7 +5,7 @@
 #
 # 检查项 (8):
 #   1. 根 AGENTS.md 存在且非空
-#   2. 根 CLAUDE.md 存在且非空
+#   2. 根 CLAUDE.md 存在且非空 *或* 被 gitignore（运行时注入，不入库）
 #   3. docs/agent-harness/INDEX.md 存在且非空
 #   4. docs/agent-harness/ 下 6 个必需文件全部存在
 #   5. AGENTS.md 引用 develop/v4.1.0 (当前主分支名)
@@ -31,12 +31,23 @@ else
     log_fail "AGENTS.md missing or empty"
 fi
 
-# 2. 根 CLAUDE.md 存在且非空
+# 2. 根 CLAUDE.md 存在且非空 —— 但它按设计不入库
+#
+# CLAUDE.md 由 Claude Code / GitNexus 在运行时注入，并被 .gitignore 排除
+#（"GitNexus tool artifacts (auto-injected, not for tracking)"）。
+# 因此干净 clone 里它必然不存在；原先的 `[ -s CLAUDE.md ] || log_fail`
+# 让本 gate 在任何 CI / 全新 clone 上恒为 FAIL，只在恰好被工具注入过
+# CLAUDE.md 的本地工作树里才通过 —— 那不是门禁，是环境泄漏。
+#
+# 正确的不变量是：要么它存在且非空，要么它被显式忽略。两者皆非才说明
+# 有人提交了一个空的 / 半截的 CLAUDE.md，那才是真问题。
 if [ -s CLAUDE.md ]; then
     CLAUDE_LINES=$(wc -l <CLAUDE.md | tr -d ' ')
     log_pass "CLAUDE.md exists (${CLAUDE_LINES} lines)"
+elif git check-ignore -q CLAUDE.md 2>/dev/null; then
+    log_pass "CLAUDE.md absent as expected (runtime-injected, gitignored)"
 else
-    log_fail "CLAUDE.md missing or empty"
+    log_fail "CLAUDE.md missing and NOT gitignored (expected: injected at runtime and ignored)"
 fi
 
 # 3. docs/agent-harness/INDEX.md 存在且非空
