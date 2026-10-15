@@ -560,10 +560,27 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let ahi_promoted = self.adaptive_hash_index().promoted_count();
         let ahi_suffix = format!(" | ahi_promoted={ahi_promoted}");
 
+        // PR-A.5 / #5305: snapshot `pages_visited` at EXPLAIN entry. Only
+        // emit the token when non-zero, so pre-PR-A outputs (and MemoryStorage,
+        // which always reports the synthetic-zero stats) are bit-identical
+        // to before. `StorageEngine::buffer_pool_stats` is `&self`, so the
+        // existing read guard suffices.
+        let pages_visited = self
+            .storage
+            .read()
+            .buffer_pool_stats()
+            .map(|s| s.pages_visited())
+            .unwrap_or(0);
+        let pages_suffix = if pages_visited > 0 {
+            format!(" | pages_visited={pages_visited}")
+        } else {
+            String::new()
+        };
+
         let lines = explain_select_plan(select, &*self.storage.read());
         let rows: Vec<Vec<Value>> = lines
             .into_iter()
-            .map(|line| vec![Value::Text(format!("{line}{ahi_suffix}"))])
+            .map(|line| vec![Value::Text(format!("{line}{ahi_suffix}{pages_suffix}"))])
             .collect();
         Ok(ExecutorResult::new(rows, 0))
     }
