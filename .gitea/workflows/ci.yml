@@ -277,6 +277,31 @@ jobs:
           set -euo pipefail
           chmod +x scripts/gate/check_anti_fabrication.sh
           bash scripts/gate/check_anti_fabrication.sh 2>&1 | tee anti_fabrication.log
+      # PR #5354 follow-up: wire check_agent_harness.sh into CI.
+      # Validates root AGENTS.md / CLAUDE.md + docs/agent-harness/ + version
+      # facts. Shell-only, ~1s, no cargo build required. Mirrors the pattern
+      # used by V312-19 below: capture PIPESTATUS, fail on rc=1, surface rc=2
+      # as a named DRIFT entry rather than a hard block. Defensive skip when
+      # the script is absent (older branches pre-dating #5354).
+      # PR #5355: the gate now ignores CLAUDE.md when .gitignore excludes it,
+      # so a fresh checkout is structurally valid.
+      - name: Agent Harness structural gate (D-AgentHarness, #5354+#5355)
+        run: |
+          set -euo pipefail
+          if [ ! -f scripts/gate/check_agent_harness.sh ]; then
+            echo "SKIP: scripts/gate/check_agent_harness.sh not present on this branch (pre-#5354)"
+            exit 0
+          fi
+          chmod +x scripts/gate/check_agent_harness.sh
+          bash scripts/gate/check_agent_harness.sh 2>&1 | tee agent_harness_gate.log
+          RC=${PIPESTATUS[0]}
+          echo "D-AgentHarness exit=$RC"
+          if [ "$RC" -eq 2 ]; then
+            echo "D-AgentHarness: DRIFT (exit 2) — recorded, not blocking"
+          elif [ "$RC" -ne 0 ]; then
+            echo "D-AgentHarness gate FAILED — see agent_harness_gate.log"
+            exit "$RC"
+          fi
       # Issue #5197: tracked paths differing only by case are one file on
       # macOS/Windows, so checkout breaks there while CI (Linux) stays
       # green. Detected over the index, since on a case-insensitive volume
