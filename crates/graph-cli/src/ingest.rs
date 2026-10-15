@@ -12,7 +12,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-use evidence_graph::{EdgeType, EvidenceIngestor, GraphNode, GraphStore, NodeType};
+use evidence_graph::{short_hash, EdgeType, EvidenceIngestor, GraphNode, GraphStore, NodeType};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -105,7 +105,7 @@ fn run_command(cmd: SubCommand) -> Result<()> {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&serde_json::json!({
-                    "ingested": format!("commit_{}", &hash[..8]),
+                    "ingested": format!("commit_{}", short_hash(&hash)),
                     "type": "commit"
                 }))?
             );

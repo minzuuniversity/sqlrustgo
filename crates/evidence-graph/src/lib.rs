@@ -209,6 +209,15 @@ pub struct GraphStore {
     conn: Connection,
 }
 
+/// Truncate a commit hash to the 8-character prefix used in node ids.
+///
+/// Returns the whole string when it is shorter than 8 bytes. `str::get`
+/// also yields `None` when 8 is not a char boundary, so a non-ASCII input
+/// degrades to the full hash instead of panicking.
+pub fn short_hash(hash: &str) -> &str {
+    hash.get(..8).unwrap_or(hash)
+}
+
 impl GraphStore {
     /// Open or create a graph store at the given path.
     pub fn open(path: &Path) -> GraphResult<Self> {
@@ -625,7 +634,7 @@ impl<'a> EvidenceIngestor<'a> {
     /// This is called by git hooks/CI, not by AI.
     pub fn ingest_git_commit(&self, hash: &str, author: &str, message: &str) -> GraphResult<()> {
         let node = GraphNode::new(
-            format!("commit_{}", &hash[..8]),
+            format!("commit_{}", short_hash(hash)),
             NodeType::Commit,
             message.lines().next().unwrap_or("").to_string(),
             "git",
@@ -666,7 +675,7 @@ impl<'a> EvidenceIngestor<'a> {
         self.store.add_node(&node)?;
 
         // Link CI → Commit
-        let commit_id = format!("commit_{}", &commit_hash[..8]);
+        let commit_id = format!("commit_{}", short_hash(commit_hash));
         if self.store.node_exists(&commit_id) {
             self.store.add_edge(&GraphEdge::new(
                 commit_id,
@@ -716,7 +725,7 @@ impl<'a> EvidenceIngestor<'a> {
     ///
     /// This establishes that the commit implements the task.
     pub fn link_task_to_commit(&self, task_id: &str, commit_hash: &str) -> GraphResult<()> {
-        let commit_id = format!("commit_{}", &commit_hash[..8]);
+        let commit_id = format!("commit_{}", short_hash(commit_hash));
         self.store.add_edge(&GraphEdge::new(
             task_id.to_string(),
             commit_id,
@@ -922,5 +931,66 @@ mod tests {
             !all_commits.is_empty(),
             "no commits found after ingest_git_commit"
         );
+    }
+
+    /// Reproduces the CI failure in `evidence-graph-gate`: ingesting a commit
+    /// with a short hash panicked with "byte index 8 is out of bounds of ``".
+    #[test]
+    fn short_hash_never_panics() {
+        assert_eq!(short_hash(""), "");
+        assert_eq!(short_hash("abc"), "abc");
+        assert_eq!(
+            short_hash("abc1234"),
+            "abc1234",
+            "exactly 7 bytes stays whole"
+        );
+        assert_eq!(
+            short_hash("abc12345"),
+            "abc12345",
+            "exactly 8 bytes is returned whole"
+        );
+        assert_eq!(
+            short_hash("abc123456"),
+            "abc12345",
+            "long hash is truncated"
+        );
+        // 2-byte chars put boundaries at 0/2/4/6/8, so offset 8 is valid here.
+        assert_eq!(
+            short_hash("\u{00e9}\u{00e9}\u{00e9}\u{00e9}\u{00e9}"),
+            "\u{00e9}\u{00e9}\u{00e9}\u{00e9}"
+        );
+        // 3-byte chars put boundaries at 0/3/6/9, so offset 8 is not a boundary
+        // and a byte slice would panic.
+        assert_eq!(
+            short_hash("\u{20ac}\u{20ac}\u{20ac}"),
+            "\u{20ac}\u{20ac}\u{20ac}"
+        );
+    }
+
+    #[test]
+    fn ingest_git_commit_accepts_short_hash() {
+        let store = create_test_store();
+        let ingestor = EvidenceIngestor::new(&store);
+
+        for hash in ["", "a", "abc1234", "abc1234567890"] {
+            assert!(
+                ingestor
+                    .ingest_git_commit(hash, "dev@example.com", "msg")
+                    .is_ok(),
+                "ingest failed for hash {hash:?}"
+            );
+        }
+
+        let ids: Vec<String> = store
+            .get_nodes_by_type(NodeType::Commit)
+            .unwrap()
+            .into_iter()
+            .map(|n| n.id)
+            .collect();
+        assert!(
+            ids.contains(&"commit_".to_string()),
+            "empty hash must still produce a node, got {ids:?}"
+        );
+        assert_eq!(ids.len(), 4, "every short hash must be ingested");
     }
 }
