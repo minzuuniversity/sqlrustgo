@@ -629,6 +629,12 @@ path = "tests/integration/transaction/concurrent_rollback_isolation_test.rs"
 name = "wire_interleaved_tx_test"
 path = "tests/integration/transaction/wire_interleaved_tx_test.rs"
 
+# #5112 AB-04: 8 threads x 1000 transactions each (= 8000 ops) reconciliation.
+# Local "small" version of the full 8000-tx CI SOAK.
+[[test]]
+name = "ab04_8thread_1000tx_reconcile_test"
+path = "tests/integration/transaction/ab04_8thread_1000tx_reconcile_test.rs"
+
 [[test]]
 name = "show_tables_test"
 path = "tests/integration/sql/show_tables_test.rs"
