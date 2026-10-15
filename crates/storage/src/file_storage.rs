@@ -3,6 +3,7 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::buffer_pool::{BufferPool, BufferPoolStats};
+use crate::page::Page;
 use crate::engine::{
     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
     SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
@@ -19,6 +20,34 @@ use std::sync::{Arc, Mutex, RwLock};
 // C.1: parking_lot::Mutex is used as a `Mutex<()>` for the write-side
 // synchronisation of the five fields that previously relied on the outer
 // `Arc<RwLock<FileStorage>>`. See PHASE_C_1_INTERNAL_LOCKING.md §2.
+
+/// PR-A.5 / #5305: serialise a `Record` (a row) into a self-describing
+/// byte slice for storage in a `Page.data` field. Layout is a 4-byte
+/// little-endian length prefix followed by the `serde_json` body.
+/// Length-prefixed so we can extend the format later (e.g., add a
+/// schema-id or a checksum) without breaking already-stored pages.
+fn serialize_record_to_page_bytes(record: &[Value]) -> Vec<u8> {
+    let body = serde_json::to_vec(record).expect("Record serialization must not fail");
+    let mut out = Vec::with_capacity(4 + body.len());
+    out.extend_from_slice(&(body.len() as u32).to_le_bytes());
+    out.extend_from_slice(&body);
+    out
+}
+
+/// PR-A.5 / #5305: inverse of [`serialize_record_to_page_bytes`].
+/// Returns `None` for truncated / non-JSON payloads; callers should
+/// silently skip those (a freshly-allocated `Page::new(page_id)` has
+/// zero data and would otherwise be reported as a real row).
+fn deserialize_record_from_page_bytes(data: &[u8]) -> Option<Vec<Value>> {
+    if data.len() < 4 {
+        return None;
+    }
+    let len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    if data.len() < 4 + len {
+        return None;
+    }
+    serde_json::from_slice(&data[4..4 + len]).ok()
+}
 
 /// #4951: the mutable state that `write_state` guards.
 ///
@@ -312,6 +341,16 @@ pub struct FileStorage {
     /// When `None` (legacy `FileStorage::new`), the in-memory HashMap path
     /// is used and `buffer_pool_stats()` returns `synthetic_zero()`.
     buffer_pool: Option<Arc<BufferPool>>,
+    /// PR-A.5 / #5305: monotonic counter for page-ids we hand to the
+    /// BufferPool. Per-instance (not per-table) so page-ids are globally
+    /// unique within one `FileStorage`. Initialised in `new_with_bufferpool`;
+    /// legacy `FileStorage::new` never touches it.
+    next_bufferpool_page_id: std::sync::atomic::AtomicU32,
+    /// PR-A.5 / #5305: when the BufferPool path is active, `insert_at`
+    /// records the page-id it used for each `(table, record)` here, in
+    /// insertion order. `scan_at` reads the same vec to iterate pages in
+    /// the order they were written. Legacy path is unaffected.
+    bufferpool_page_ids: Mutex<HashMap<String, Vec<u32>>>,
 }
 
 /// #5048: a recorded change, as a backup delta needs it.
@@ -899,6 +938,10 @@ impl FileStorage {
             views: RwLock::new(HashMap::new()),
             // PR-A / #5305: BufferPool is opt-in via `new_with_bufferpool`.
             buffer_pool: None,
+            // PR-A.5: counter + page-id map are unused on legacy
+            // constructors; they only matter when `buffer_pool = Some`.
+            next_bufferpool_page_id: std::sync::atomic::AtomicU32::new(0),
+            bufferpool_page_ids: Mutex::new(HashMap::new()),
         };
 
         // Load existing tables
@@ -946,6 +989,10 @@ impl FileStorage {
             views: RwLock::new(HashMap::new()),
             // PR-A / #5305: BufferPool is opt-in via `new_with_bufferpool`.
             buffer_pool: None,
+            // PR-A.5: counter + page-id map are unused on legacy
+            // constructors; they only matter when `buffer_pool = Some`.
+            next_bufferpool_page_id: std::sync::atomic::AtomicU32::new(0),
+            bufferpool_page_ids: Mutex::new(HashMap::new()),
         };
 
         storage.load_all_tables()?;
@@ -1041,6 +1088,10 @@ impl FileStorage {
             views: RwLock::new(HashMap::new()),
             // PR-A / #5305: BufferPool is opt-in via `new_with_bufferpool`.
             buffer_pool: None,
+            // PR-A.5: counter + page-id map are unused on legacy
+            // constructors; they only matter when `buffer_pool = Some`.
+            next_bufferpool_page_id: std::sync::atomic::AtomicU32::new(0),
+            bufferpool_page_ids: Mutex::new(HashMap::new()),
         };
 
         // Load existing tables
@@ -1115,6 +1166,10 @@ impl FileStorage {
             views: RwLock::new(HashMap::new()),
             // PR-A / #5305: BufferPool is opt-in via `new_with_bufferpool`.
             buffer_pool: None,
+            // PR-A.5: counter + page-id map are unused on legacy
+            // constructors; they only matter when `buffer_pool = Some`.
+            next_bufferpool_page_id: std::sync::atomic::AtomicU32::new(0),
+            bufferpool_page_ids: Mutex::new(HashMap::new()),
         };
 
         storage.load_all_tables()?;
@@ -1133,6 +1188,8 @@ impl FileStorage {
     ) -> std::io::Result<Self> {
         let mut storage = Self::new(data_dir)?;
         storage.buffer_pool = Some(pool);
+        // PR-A.5: counter / map are already empty from `Self::new`. Nothing
+        // to overwrite; we just keep them in sync with the BufferPool.
         Ok(storage)
     }
 
@@ -4620,6 +4677,101 @@ impl FileStorage {
         Ok(())
     }
 
+    /// PR-A.5 / #5305: BufferPool-side insert path.
+    ///
+    /// For each `Record`, allocate a fresh monotonic `page_id`, serialise
+    /// the record with serde_json + a 4-byte length prefix, build a
+    /// `Page` whose `data` field is that byte string, and hand it to
+    /// `BufferPool::get_or_load`. The pool bumps `pages_visited`,
+    /// `disk_reads`, and `disk_writes` per the standard mechanism; we
+    /// also record the page-id in `self.bufferpool_page_ids` keyed by
+    /// `(db, table)` so `scan_via_bufferpool` can iterate pages in the
+    /// order they were written.
+    ///
+    /// The helper takes `&mut self` because it mutates the page-id map;
+    /// the BufferPool itself sits behind an `Arc` so no `&mut` to it is
+    /// required. WAL, tx_undo, change_log, and dirty_tables are all
+    /// bypassed on this path — the BufferPool mode is for EXPLAIN-signal
+    /// observation, not for production durability.
+    fn insert_via_bufferpool(
+        &mut self,
+        db: &str,
+        table: &str,
+        records: Vec<Record>,
+    ) -> SqlResult<()> {
+        // `buffer_pool` is `Option<Arc<BufferPool>>`. Caller already
+        // checked `is_some()`, so unwrapping here is sound.
+        let pool = self
+            .buffer_pool
+            .as_ref()
+            .expect("insert_via_bufferpool called without BufferPool")
+            .clone();
+
+        let scoped = self.tbl_in(db, table);
+        let mut page_ids = self
+            .bufferpool_page_ids
+            .lock()
+            .expect("bufferpool_page_ids poisoned");
+        let entry = page_ids.entry(scoped).or_default();
+
+        for record in records {
+            let page_id = self
+                .next_bufferpool_page_id
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let bytes = serialize_record_to_page_bytes(&record);
+            let loader_bytes = bytes.clone();
+            // Cold path: page_ids are monotonic + unique, so this is
+            // always a miss → loader runs → `pool.insert` bumps
+            // `pages_visited` and `disk_writes`; `get_or_load` itself
+            // bumps `disk_reads`.
+            let _page = pool.get_or_load(page_id, move |_id| {
+                let mut p = Page::new(page_id);
+                p.data = loader_bytes;
+                Arc::new(p)
+            });
+            entry.push(page_id);
+        }
+        Ok(())
+    }
+
+    /// PR-A.5 / #5305: BufferPool-side scan path.
+    ///
+    /// For each `(db, table)` recorded by `insert_via_bufferpool`, we
+    /// have a list of page-ids in insertion order. We walk that list,
+    /// hand each `page_id` to `pool.get_or_load` (hot path → cache hit,
+    /// bumps `pages_visited` + `cache_hits`; cold path → loader runs
+    /// and inserts an empty page, bumps `pages_visited` + `disk_reads`),
+    /// then deserialise the page bytes back into a `Record`.
+    ///
+    /// The cold-cache loader returns a default `Page::new(page_id)`
+    /// whose `data` is all zeros. `deserialize_record_from_page_bytes`
+    /// sees `len < 4` and returns `None`, so the row is silently
+    /// dropped — semantically equivalent to "this page was evicted
+    /// and we have nowhere to read it back from", which is the right
+    /// behaviour for an EXPLAIN-signal mode.
+    fn scan_via_bufferpool(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        let pool = match self.buffer_pool.as_ref() {
+            Some(p) => p.clone(),
+            None => return Ok(Vec::new()),
+        };
+        let scoped = self.tbl_in(db, table);
+        let page_ids: Vec<u32> = {
+            let map = self
+                .bufferpool_page_ids
+                .lock()
+                .expect("bufferpool_page_ids poisoned");
+            map.get(&scoped).cloned().unwrap_or_default()
+        };
+        let mut records = Vec::with_capacity(page_ids.len());
+        for page_id in page_ids {
+            let page = pool.get_or_load(page_id, |_id| Arc::new(Page::new(page_id)));
+            if let Some(record) = deserialize_record_from_page_bytes(&page.data) {
+                records.push(record);
+            }
+        }
+        Ok(records)
+    }
+
     /// The one implementation of an insert, parameterised by database.
     ///
     /// #5057: this body used to read `self.current_db` inside the write
@@ -4629,6 +4781,14 @@ impl FileStorage {
     /// trait's `insert` and `insert_in_db` be one-line wrappers over the
     /// same code that give different answers.
     fn insert_at(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        // PR-A.5 / #5305: when a BufferPool is configured, route every
+        // record through it before any other side effect (WAL, tx_undo,
+        // change_log). `insert_via_bufferpool` returns `Ok(())` only when
+        // the BufferPool path actually handled the records; legacy path
+        // then falls through to the existing in-memory / on-disk logic.
+        if self.buffer_pool.is_some() {
+            return self.insert_via_bufferpool(db, table, records);
+        }
         // #5055: log before applying. This is the write-ahead half of
         // write-ahead logging — a crash between here and the buffer
         // flush must still leave the rows recoverable, which it cannot
@@ -6037,6 +6197,14 @@ impl StorageEngine for FileStorage {
     }
 
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
+        // PR-A.5 / #5305: when a BufferPool is configured, scan reads back
+        // the page-ids recorded by `insert_via_bufferpool` and
+        // deserialises each. Legacy HashMap path is bypassed entirely —
+        // see `scan_via_bufferpool` doc-comment for why.
+        if self.buffer_pool.is_some() {
+            let db = crate::engine::DEFAULT_DATABASE;
+            return self.scan_via_bufferpool(db, table);
+        }
         // #4951: one read guard covers both collections so the table rows
         // and the buffer cannot come from two different instants — a scan
         // that merged a `tables` snapshot with a *newer* `insert_buffer`
@@ -6753,6 +6921,12 @@ impl StorageEngine for FileStorage {
     }
 
     fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        // PR-A.5: BufferPool path mirrors `scan` — `scan_in_db` and `scan`
+        // share the same per-table page-ids map; only the database key
+        // differs.
+        if self.buffer_pool.is_some() {
+            return self.scan_via_bufferpool(db, table);
+        }
         let key = crate::engine::scoped_key(db, table);
         Ok(self.with_read_lock(|st| {
             let mut rows: Vec<Record> = st
@@ -7367,5 +7541,148 @@ mod db_isolation_tests {
         assert_eq!(fs.scan("legacy").unwrap(), vec![vec![Value::Integer(42)]]);
 
         let _ = remove_dir_all(&dir);
+    }
+}
+
+// --- #5305 PR-A: route FileStorage::insert/scan through the BufferPool ----
+//
+// T4 (RED): one INSERT against a BufferPool-backed FileStorage must bump
+// `pages_visited` and `disk_writes`. Currently the HashMap legacy path
+// takes the records without touching the pool, so the counter stays at 0.
+// The GREEN step (T5) replaces the body; this test pins the contract.
+
+#[cfg(test)]
+mod bufferpool_routing_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn file_storage_insert_via_bufferpool_bumps_pages_visited() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(8));
+        let mut storage = FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+            .expect("new_with_bufferpool");
+
+        let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
+        storage.insert("t", vec![record]).expect("insert");
+
+        let stats = storage.buffer_pool_stats().expect("FileStorage must have stats");
+        assert!(
+            stats.pages_visited() >= 1,
+            "1 INSERT must bump pages_visited; got {}",
+            stats.pages_visited()
+        );
+        assert!(
+            stats.disk_writes() >= 1,
+            "1 INSERT must bump disk_writes; got {}",
+            stats.disk_writes()
+        );
+    }
+
+    /// T5 Step 3 / Review Focus item 2: 100 INSERTs must touch at least
+    /// 100 distinct pages — confirms each record gets its own page and the
+    /// counter isn't deduped by `get_or_load` cache hits.
+    #[test]
+    fn file_storage_insert_100_records_bumps_pages_visited_at_least_100() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(256));
+        let mut storage = FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+            .expect("new_with_bufferpool");
+
+        let records: Vec<Record> = (0..100)
+            .map(|i| vec![Value::Integer(i), Value::Text(format!("row{i}").into())])
+            .collect();
+        storage.insert("t", records).expect("insert 100");
+
+        let stats = storage.buffer_pool_stats().expect("FileStorage must have stats");
+        assert!(
+            stats.pages_visited() >= 100,
+            "100 inserts must touch >= 100 pages; got {}",
+            stats.pages_visited()
+        );
+    }
+
+    // --- T6: RED — scan must round-trip through the BufferPool ---------
+    //
+    // First test (empty table) currently passes trivially because scan
+    // returns an empty vec regardless of route. Second test (scan after
+    // insert) is the real RED signal: today `scan` goes through the
+    // legacy HashMap and `pages_visited` does not move.
+
+    #[test]
+    fn file_storage_scan_empty_table_returns_empty_bufferpool() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(8));
+        let storage = FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+            .expect("new_with_bufferpool");
+
+        let rows = storage.scan("nonexistent_table").expect("scan empty");
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn file_storage_scan_after_insert_bumps_pages_visited() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(8));
+        let mut storage = FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+            .expect("new_with_bufferpool");
+
+        let before = storage.buffer_pool_stats().expect("stats").pages_visited();
+        let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
+        storage.insert("t", vec![record]).expect("insert");
+        let mid = storage.buffer_pool_stats().expect("stats").pages_visited();
+
+        let _rows = storage.scan("t").expect("scan");
+        let after = storage.buffer_pool_stats().expect("stats").pages_visited();
+
+        assert!(
+            mid > before,
+            "insert must bump pages_visited; before={before} mid={mid}"
+        );
+        assert!(
+            after > mid,
+            "scan must bump pages_visited; mid={mid} after={after}"
+        );
+    }
+
+    /// T7 Step 4 / Review Focus item 5: concurrent inserts through the
+    /// BufferPool must not corrupt the per-table page-id vec.
+    /// `std::sync::Mutex` (not `parking_lot::Mutex`) so the guard can
+    /// cross thread boundaries — parking_lot's `MutexGuard` is `!Send`
+    /// by design.
+    #[test]
+    fn file_storage_concurrent_inserts_via_bufferpool_do_not_corrupt() {
+        use std::sync::Mutex as StdMutex;
+        use std::thread;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(64));
+        let storage = Arc::new(StdMutex::new(
+            FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+                .expect("new_with_bufferpool"),
+        ));
+
+        let mut handles = vec![];
+        for t in 0..4 {
+            let s = storage.clone();
+            handles.push(thread::spawn(move || {
+                let mut guard = s.lock().expect("poisoned");
+                let records: Vec<Record> = (0..25)
+                    .map(|i| vec![Value::Integer(t * 100 + i)])
+                    .collect();
+                guard.insert("t", records).expect("insert");
+            }));
+        }
+        for h in handles {
+            h.join().expect("join");
+        }
+
+        let rows = storage.lock().expect("poisoned").scan("t").expect("scan");
+        assert_eq!(
+            rows.len(),
+            100,
+            "4 threads × 25 records = 100 rows; got {}",
+            rows.len()
+        );
     }
 }

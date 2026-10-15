@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn buffer_pool_bumps_pages_visited_on_get_or_load() {
         let pool = BufferPool::new(4);
-        let page = Arc::new(Page::new(0, vec![0u8; 16]));
+        let page = Arc::new(Page::new(0));
         let loader = |_id: u32| page.clone();
 
         // miss path: get_or_load bumps pages_visited AND cache_misses
@@ -450,7 +450,7 @@ mod tests {
     #[test]
     fn buffer_pool_bumps_disk_reads_on_loader_invocation() {
         let pool = BufferPool::new(4);
-        let page = Arc::new(Page::new(0, vec![0u8; 16]));
+        let page = Arc::new(Page::new(0));
         let _ = pool.get_or_load(0, |_| page.clone());
         assert_eq!(pool.stats().disk_reads(), 1);
     }
@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn buffer_pool_bumps_disk_writes_on_insert() {
         let pool = BufferPool::new(4);
-        pool.insert(Arc::new(Page::new(1, vec![0u8; 16])));
+        pool.insert(Arc::new(Page::new(1)));
         assert_eq!(pool.stats().disk_writes(), 1);
     }
 
