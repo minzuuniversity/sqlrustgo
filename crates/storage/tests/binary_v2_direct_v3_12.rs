@@ -38,6 +38,7 @@ fn make_bigint_info(name: &str) -> TableInfo {
         partition_info: None,
         collations: Default::default(),
         original_sql: String::new(),
+        clustered: false,
         compression: None,
     }
 }

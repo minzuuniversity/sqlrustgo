@@ -635,6 +635,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             compression: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         }
     }
 
@@ -1152,6 +1153,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 original_sql: String::new(),
+                clustered: false,
             };
             // When the inner SELECT is `SELECT *`, `ws.select.columns`
             // is a single placeholder column with name "*". Expand
@@ -1240,6 +1242,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 original_sql: String::new(),
+                clustered: false,
             };
             // V312-95 v3 / parallel_executor_integration_test
             // `test_parallel_with_subquery`: when the parser wraps
@@ -1406,6 +1409,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 original_sql: String::new(),
+                clustered: false,
             };
             (rows, info)
         } else if select.table.is_empty() {
@@ -1419,6 +1423,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 original_sql: String::new(),
+                clustered: false,
             };
             (vec![Vec::new()], empty_schema)
         } else {
@@ -3942,6 +3947,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     compression: None,
                     collations: std::collections::HashMap::new(),
                     original_sql: String::new(),
+                    clustered: false,
                 };
                 for col in &subq.columns {
                     let col_name = col.alias.clone().unwrap_or_else(|| col.name.clone());
@@ -5297,6 +5303,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     compression: None,
                     collations: std::collections::HashMap::new(),
                     original_sql: String::new(),
+                    clustered: false,
                 };
                 // V313-106 / P3-JOIN-001: apply the ON predicate as a
                 // post-filter on the cartesian product. The hash-join
@@ -5422,6 +5429,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     compression: None,
                     collations: std::collections::HashMap::new(),
                     original_sql: String::new(),
+                    clustered: false,
                 };
                 // Hash-based matching
                 // SQL semantics: NULL = NULL is UNKNOWN (not a match), so skip NULL keys
@@ -7511,6 +7519,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             compression: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
         let (correlated_keys, residual_expr) =
             find_correlated_equalities(where_expr, agg_arg_expr, &subq.table, &outer_table_info)

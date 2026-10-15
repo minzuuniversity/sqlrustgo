@@ -1,12 +1,12 @@
 //! Storage Engine trait - abstraction for storage backends
 //! Supports multiple storage implementations (File, Memory, etc.)
 
+use crate::buffer_pool::{BufferPool, BufferPoolStats};
 use serde::{Deserialize, Serialize};
 pub use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use crate::buffer_pool::{BufferPool, BufferPoolStats};
 
 /// Referential action for foreign key constraints
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -798,6 +798,15 @@ pub struct TableInfo {
     /// an empty string (renders as `""` in system table output).
     #[serde(default)]
     pub original_sql: String,
+    /// R1 (Issue #5228/#5233/#5234): the table was declared
+    /// `ENGINE=InnoDB CLUSTERED`, so its rows live in a `ClusteredTable`
+    /// B+ tree rather than the default heap layout.
+    ///
+    /// Persisted so a restarted engine can tell which tables to rebuild
+    /// their clustered index for. `#[serde(default)]` keeps catalogs written
+    /// before this field deserializing as non-clustered.
+    #[serde(default)]
+    pub clustered: bool,
 }
 
 /// True when `haystack`'s trailing dot-separated segments equal **all** of
@@ -2701,8 +2710,8 @@ impl MemoryStorage {
     /// that's by design: BufferPool is the cache, `tables` is the source of
     /// truth for transactions (`Arc<Vec<Record>>` MVCC snapshots, etc.).
     fn insert_via_bufferpool(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        use std::sync::atomic::Ordering;
         use crate::page::Page;
+        use std::sync::atomic::Ordering;
 
         let pool = self
             .buffer_pool
@@ -2748,8 +2757,8 @@ impl MemoryStorage {
         table: &str,
         records: Vec<Record>,
     ) -> SqlResult<()> {
-        use std::sync::atomic::Ordering;
         use crate::page::Page;
+        use std::sync::atomic::Ordering;
 
         let pool = self
             .buffer_pool
@@ -5871,8 +5880,7 @@ fn in_methods_do_not_cross_databases() {
 fn memory_storage_new_with_bufferpool_exposes_real_buffer_pool_stats() {
     use std::sync::Arc;
     let pool = Arc::new(crate::buffer_pool::BufferPool::new(8));
-    let storage = MemoryStorage::new_with_bufferpool(pool.clone())
-        .expect("new_with_bufferpool");
+    let storage = MemoryStorage::new_with_bufferpool(pool.clone()).expect("new_with_bufferpool");
 
     let stats = storage
         .buffer_pool_stats()
@@ -5910,8 +5918,8 @@ fn memory_storage_insert_via_bufferpool_bumps_pages_visited() {
     use std::sync::Arc;
 
     let pool = Arc::new(BufferPool::new(8));
-    let mut storage = MemoryStorage::new_with_bufferpool(pool.clone())
-        .expect("new_with_bufferpool");
+    let mut storage =
+        MemoryStorage::new_with_bufferpool(pool.clone()).expect("new_with_bufferpool");
 
     let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
     storage.insert("t", vec![record]).expect("insert");
@@ -5940,8 +5948,8 @@ fn memory_storage_insert_100_records_via_bufferpool_bumps_pages_visited_at_least
     use std::sync::Arc;
 
     let pool = Arc::new(BufferPool::new(256));
-    let mut storage = MemoryStorage::new_with_bufferpool(pool.clone())
-        .expect("new_with_bufferpool");
+    let mut storage =
+        MemoryStorage::new_with_bufferpool(pool.clone()).expect("new_with_bufferpool");
     let records: Vec<Record> = (0..100)
         .map(|i| vec![Value::Integer(i), Value::Text(format!("row{i}").into())])
         .collect();
@@ -5972,9 +5980,7 @@ fn memory_storage_concurrent_inserts_via_bufferpool_do_not_corrupt() {
         let s = storage.clone();
         handles.push(thread::spawn(move || {
             let mut g = s.lock();
-            let records: Vec<Record> = (0..25)
-                .map(|i| vec![Value::Integer(t * 100 + i)])
-                .collect();
+            let records: Vec<Record> = (0..25).map(|i| vec![Value::Integer(t * 100 + i)]).collect();
             g.insert("t", records).expect("insert");
         }));
     }
@@ -6091,7 +6097,9 @@ fn memory_storage_scan_with_filter_works_with_bufferpool_via_scan() {
         .expect("scan")
         .into_iter()
         .filter(|r| {
-            r.first().map(|v| matches!(v, Value::Integer(n) if *n >= 3)).unwrap_or(false)
+            r.first()
+                .map(|v| matches!(v, Value::Integer(n) if *n >= 3))
+                .unwrap_or(false)
         })
         .collect();
     assert_eq!(

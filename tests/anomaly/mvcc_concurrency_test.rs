@@ -27,6 +27,7 @@ mod tests {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
         storage.lock().unwrap().create_table(&info).unwrap();
 
@@ -72,6 +73,7 @@ mod tests {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
         storage.lock().unwrap().create_table(&info).unwrap();
 
@@ -125,6 +127,7 @@ mod tests {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
         storage1.lock().unwrap().create_table(&info).unwrap();
         storage1
@@ -177,6 +180,7 @@ mod tests {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
         storage.lock().unwrap().create_table(&info).unwrap();
 
@@ -239,6 +243,7 @@ mod tests {
                     partition_info: None,
                     collations: std::collections::HashMap::new(),
                     original_sql: String::new(),
+                    clustered: false,
                 };
 
                 s.create_table(&info).ok();
@@ -271,6 +276,7 @@ mod tests {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
         storage.lock().unwrap().create_table(&info).unwrap();
 

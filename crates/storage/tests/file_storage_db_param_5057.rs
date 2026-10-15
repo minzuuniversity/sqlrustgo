@@ -53,6 +53,7 @@ fn tbl(name: &str) -> TableInfo {
         collations: Default::default(),
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 

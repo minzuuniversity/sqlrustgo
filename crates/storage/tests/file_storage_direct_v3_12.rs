@@ -36,6 +36,7 @@ fn table_info() -> TableInfo {
         collations: Default::default(),
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 
@@ -81,6 +82,7 @@ fn table_info_multi() -> TableInfo {
         collations: Default::default(),
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 
@@ -283,6 +285,7 @@ fn cov_file_storage_insert_text() {
         collations: Default::default(),
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     };
     s.create_table(&info).unwrap();
     s.insert("t", vec![vec![SqlValue::Text("hello".to_string())]])
@@ -313,6 +316,7 @@ fn cov_file_storage_insert_float() {
         collations: Default::default(),
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     };
     s.create_table(&info).unwrap();
     s.insert("t", vec![vec![SqlValue::Float(1.5)]]).unwrap();
@@ -351,6 +355,7 @@ fn cov_file_storage_insert_bool() {
         collations: Default::default(),
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     };
     s.create_table(&info).unwrap();
     s.insert("t", vec![vec![SqlValue::Boolean(true)]]).unwrap();
@@ -573,6 +578,7 @@ fn cov_file_storage_scan_with_null_columns() {
         collations: Default::default(),
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     };
     s.create_table(&info).unwrap();
     s.insert("t", vec![vec![SqlValue::Null, SqlValue::Null]])

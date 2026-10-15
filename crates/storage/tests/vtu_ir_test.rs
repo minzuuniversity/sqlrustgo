@@ -141,6 +141,7 @@ fn make_table_info(columns: Vec<(&str, &str)>) -> TableInfo {
         partition_info: None,
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 

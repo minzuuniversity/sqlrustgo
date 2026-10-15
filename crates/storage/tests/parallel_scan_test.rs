@@ -33,6 +33,7 @@ fn make_test_storage() -> (FileStorage, TempDir) {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     };
     storage.create_table(&table_info).expect("create table");
     (storage, dir)

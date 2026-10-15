@@ -244,6 +244,7 @@ fn convert_table(
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     };
 
     let col_types: Vec<&str> = col_schema.iter().map(|(_, dt)| *dt).collect();
@@ -439,6 +440,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         let table_data = TableData {
             info,
@@ -482,6 +484,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         let table_data = TableData { info, rows: vec![] };
 
@@ -510,6 +513,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         let table_data = TableData {
             info,

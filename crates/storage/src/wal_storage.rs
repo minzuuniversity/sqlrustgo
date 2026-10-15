@@ -1877,6 +1877,7 @@ mod tests {
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
                 original_sql: String::new(),
+                clustered: false,
             })
             .unwrap();
 
@@ -2000,6 +2001,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2040,6 +2042,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2063,6 +2066,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2248,6 +2252,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
 
@@ -2296,6 +2301,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2350,6 +2356,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2375,6 +2382,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2399,6 +2407,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         storage.drop_table("t").unwrap();
@@ -2420,6 +2429,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         let got = storage.get_table_info("t").unwrap();
@@ -2442,6 +2452,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         assert!(storage.has_table("t"));
@@ -2465,6 +2476,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
@@ -2475,6 +2487,7 @@ mod tests {
                 columns: vec![sqlrustgo_parser::IndexColumnSpec::column("a")],
                 is_unique: false,
                 original_sql: String::new(),
+                clustered: false,
             })
             .unwrap();
         storage.drop_index("t", "a").unwrap();
@@ -2496,6 +2509,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).unwrap();
         storage
@@ -2517,6 +2531,7 @@ mod tests {
             body: "".into(),
             update_columns: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_trigger(trigger).unwrap();
         assert!(storage.get_trigger("trig1").is_some());

@@ -183,6 +183,7 @@ mod tests {
                 compression: None,
                 collations: Default::default(),
                 original_sql: String::new(),
+                clustered: false,
             },
             rows: vec![vec![Value::Integer(42)]],
         };
@@ -212,6 +213,7 @@ mod tests {
                 compression: None,
                 collations: Default::default(),
                 original_sql: String::new(),
+                clustered: false,
             },
             rows: vec![],
         };

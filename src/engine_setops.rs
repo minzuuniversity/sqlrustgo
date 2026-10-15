@@ -388,6 +388,7 @@ mod tests {
             partition_info: None,
             collations: Default::default(),
             original_sql: String::new(),
+            clustered: false,
             compression: None,
         };
         e.storage_ref().write().create_table(&info).unwrap();

@@ -216,6 +216,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         }
     }
 

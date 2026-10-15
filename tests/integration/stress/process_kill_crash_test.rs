@@ -57,6 +57,7 @@ fn make_table_info(name: &str, columns: usize) -> TableInfo {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 

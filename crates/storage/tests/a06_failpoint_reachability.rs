@@ -89,6 +89,7 @@ fn table_info() -> TableInfo {
         collations: Default::default(),
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 

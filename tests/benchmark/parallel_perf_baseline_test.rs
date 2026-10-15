@@ -138,6 +138,7 @@ fn test_parallel_memory_no_quadruple() {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
     for i in 0..1000i64 {

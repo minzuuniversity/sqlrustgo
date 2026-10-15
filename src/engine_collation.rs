@@ -297,6 +297,7 @@ mod tests {
             partition_info: None,
             collations: Default::default(),
             original_sql: String::new(),
+            clustered: false,
             compression: None,
         };
         s.create_table(&info).unwrap();

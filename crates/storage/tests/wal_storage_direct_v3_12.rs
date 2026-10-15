@@ -293,6 +293,7 @@ fn cov_wal_storage_full_insert_scan() {
                 partition_info: None,
                 collations: Default::default(),
                 original_sql: String::new(),
+                clustered: false,
                 compression: None,
             })
             .unwrap();
@@ -329,6 +330,7 @@ fn cov_wal_storage_full_update() {
                 partition_info: None,
                 collations: Default::default(),
                 original_sql: String::new(),
+                clustered: false,
                 compression: None,
             })
             .unwrap();
@@ -361,6 +363,7 @@ fn cov_wal_storage_full_delete() {
                 partition_info: None,
                 collations: Default::default(),
                 original_sql: String::new(),
+                clustered: false,
                 compression: None,
             })
             .unwrap();
@@ -393,6 +396,7 @@ fn cov_wal_storage_insert_many() {
                 partition_info: None,
                 collations: Default::default(),
                 original_sql: String::new(),
+                clustered: false,
                 compression: None,
             })
             .unwrap();

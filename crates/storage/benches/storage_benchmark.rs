@@ -51,6 +51,7 @@ fn setup_test_storage(
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     };
     storage.create_table(&table_info).unwrap();
 
@@ -302,6 +303,7 @@ fn bench_multi_table_insert(c: &mut Criterion) {
                     collations: std::collections::HashMap::new(),
                     partition_info: None,
                     original_sql: String::new(),
+                    clustered: false,
                 };
                 let _ = storage.create_table(&table_info);
             }
@@ -402,6 +404,7 @@ fn bench_b2_flush_dirty_tables(c: &mut Criterion) {
                     collations: std::collections::HashMap::new(),
                     partition_info: None,
                     original_sql: String::new(),
+                    clustered: false,
                 };
                 storage.create_table(&info).unwrap();
                 storage

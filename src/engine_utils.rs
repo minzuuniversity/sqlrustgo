@@ -1018,6 +1018,7 @@ pub fn build_combined_schema(
         compression: None,
         collations: std::collections::HashMap::new(),
         original_sql: String::new(),
+        clustered: false,
     })
 }
 
@@ -1050,6 +1051,7 @@ pub fn build_multi_table_combined_schema(infos: &[TableInfo], prefixes: &[String
         compression: None,
         collations: std::collections::HashMap::new(),
         original_sql: String::new(),
+        clustered: false,
     }
 }
 
@@ -1213,6 +1215,7 @@ pub fn build_aggregate_schema(
         compression: None,
         collations: std::collections::HashMap::new(),
         original_sql: String::new(),
+        clustered: false,
     })
 }
 
