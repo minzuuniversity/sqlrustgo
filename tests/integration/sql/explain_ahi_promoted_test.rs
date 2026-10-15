@@ -42,11 +42,12 @@ fn test_explain_includes_ahi_promoted_suffix_on_fresh_engine() {
     );
     for (i, row) in result.rows.iter().enumerate() {
         let line = first_cell_text(row, i);
-        let token = last_token(line)
-            .unwrap_or_else(|| panic!("row {i} must end with ' | ahi_promoted=<u64>'; got: {line}"));
-        let n: u64 = token.parse().unwrap_or_else(|_| {
-            panic!("ahi_promoted value must parse as u64; got: {token}")
+        let token = last_token(line).unwrap_or_else(|| {
+            panic!("row {i} must end with ' | ahi_promoted=<u64>'; got: {line}")
         });
+        let n: u64 = token
+            .parse()
+            .unwrap_or_else(|_| panic!("ahi_promoted value must parse as u64; got: {token}"));
         assert_eq!(
             n, ahi_at_explain,
             "row {i} snapshot must match AHI counter at EXPLAIN entry"
@@ -84,11 +85,12 @@ fn test_explain_ahi_promoted_reflects_promoted_entries_after_record_access() {
     assert!(!result.rows.is_empty());
     for (i, row) in result.rows.iter().enumerate() {
         let line = first_cell_text(row, i);
-        let token = last_token(line)
-            .unwrap_or_else(|| panic!("row {i} must end with ' | ahi_promoted=<u64>'; got: {line}"));
-        let n: u64 = token.parse().unwrap_or_else(|_| {
-            panic!("ahi_promoted value must parse as u64; got: {token}")
+        let token = last_token(line).unwrap_or_else(|| {
+            panic!("row {i} must end with ' | ahi_promoted=<u64>'; got: {line}")
         });
+        let n: u64 = token
+            .parse()
+            .unwrap_or_else(|_| panic!("ahi_promoted value must parse as u64; got: {token}"));
         assert_eq!(
             n, expected,
             "row {i} must reflect promoted count {expected} after record_access"
