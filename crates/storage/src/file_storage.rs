@@ -7550,4 +7550,47 @@ mod bufferpool_routing_tests {
             stats.pages_visited()
         );
     }
+
+    // --- T6: RED — scan must round-trip through the BufferPool ---------
+    //
+    // First test (empty table) currently passes trivially because scan
+    // returns an empty vec regardless of route. Second test (scan after
+    // insert) is the real RED signal: today `scan` goes through the
+    // legacy HashMap and `pages_visited` does not move.
+
+    #[test]
+    fn file_storage_scan_empty_table_returns_empty_bufferpool() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(8));
+        let storage = FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+            .expect("new_with_bufferpool");
+
+        let rows = storage.scan("nonexistent_table").expect("scan empty");
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn file_storage_scan_after_insert_bumps_pages_visited() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(8));
+        let mut storage = FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+            .expect("new_with_bufferpool");
+
+        let before = storage.buffer_pool_stats().expect("stats").pages_visited();
+        let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
+        storage.insert("t", vec![record]).expect("insert");
+        let mid = storage.buffer_pool_stats().expect("stats").pages_visited();
+
+        let _rows = storage.scan("t").expect("scan");
+        let after = storage.buffer_pool_stats().expect("stats").pages_visited();
+
+        assert!(
+            mid > before,
+            "insert must bump pages_visited; before={before} mid={mid}"
+        );
+        assert!(
+            after > mid,
+            "scan must bump pages_visited; mid={mid} after={after}"
+        );
+    }
 }
