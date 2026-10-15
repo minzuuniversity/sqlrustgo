@@ -549,10 +549,6 @@ name = "explain_ahi_promoted_test"
 path = "tests/integration/sql/explain_ahi_promoted_test.rs"
 
 [[test]]
-name = "bufferpool_pages_visited_test"
-path = "tests/integration/sql/bufferpool_pages_visited_test.rs"
-
-[[test]]
 name = "expression_operators_test"
 path = "tests/integration/sql/expression_operators_test.rs"
 
@@ -1386,6 +1382,10 @@ path = "tests/integration/sql/explain_est_rows_5305.rs"
 [[test]]
 name = "parser_block_comment_4708"
 path = "tests/integration/sql/parser_block_comment_4708.rs"
+
+[[test]]
+name = "bufferpool_pages_visited_test"
+path = "tests/integration/sql/bufferpool_pages_visited_test.rs"
 [[test]]
 name = "show_warnings_errors_status_variables_test"
 path = "tests/integration/sql/show_warnings_errors_status_variables_test.rs"
