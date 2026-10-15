@@ -5933,17 +5933,24 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                     continue;
                                 }
                             };
-                            let (cols, ctypes) = if let Some(headers) =
-                                parsed.as_ref().ok().and_then(show_column_headers)
-                            {
-                                // The requested headers may not match the
-                                // declared width, so the type list has to
-                                // follow them rather than the schema.
-                                let types = headers
-                                    .iter()
-                                    .map(|_| crate::result_set::UNRESOLVED_TYPE.to_string())
-                                    .collect();
-                                (headers, types)
+                            // #5341: column headers come from the engine's own
+                            // result schema (via #5271 R2's `ResultColumn`). The
+                            // `show_column_headers` helper is no longer called in
+                            // the protocol layer; the engine produces a complete
+                            // schema for every result, including zero-row SELECT.
+                            // If the engine reports an empty `columns` (e.g. a
+                            // command reply or a SELECT whose projection had no
+                            // declared columns), fall back to the legacy col_1, col_2
+                            // derivation so non-empty result sets stay readable
+                            // until the engine fills the schema in a follow-up.
+                            let (cols, ctypes) = if !r.columns.is_empty() {
+                                // Engine-declared schema is authoritative.
+                                let n = r.columns.iter().map(|c| c.name.clone()).collect();
+                                let t = r.columns.iter().map(|c| {
+                                    c.data_type.clone()
+                                        .unwrap_or_else(|| crate::result_set::UNRESOLVED_TYPE.to_string())
+                                }).collect();
+                                (n, t)
                             } else if prepared.column_names.is_empty() {
                                 let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
                                 let names: Vec<String> =
@@ -6269,15 +6276,16 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     .record_query("STMT_EXECUTE", std::time::Duration::from_millis(elapsed_ms));
                 match result {
                     Ok(r) if is_read_only.is_some() => {
-                        // V312-58 / Issue #4516: prefer the parser-
-                        // derived MySQL column headers for SHOW /
-                        // DESCRIBE prepared statements, falling back
-                        // to col_N when the parser did not return a
-                        // fixed schema (e.g. SELECT *).
-                        let c: Vec<String> = if let Some(headers) =
-                            parsed.as_ref().ok().and_then(show_column_headers)
-                        {
-                            headers
+                        // V312-58 / Issue #4516 + #5341: column headers come
+                        // from the engine's own result schema (via #5271 R2's
+                        // `ResultColumn`). The `show_column_headers` helper
+                        // is no longer called in the protocol layer. If the
+                        // engine reports an empty `columns`, fall back to the
+                        // legacy col_1, col_2 derivation so non-empty result
+                        // sets stay readable until the engine fills the
+                        // schema in a follow-up.
+                        let c: Vec<String> = if !r.columns.is_empty() {
+                            r.columns.iter().map(|c| c.name.clone()).collect()
                         } else {
                             r.rows
                                 .first()
@@ -6286,7 +6294,16 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                                 })
                                 .unwrap_or_else(|| vec!["result".to_string()])
                         };
-                        let t: Vec<String> = c.iter().map(|_| "VARCHAR(255)".to_string()).collect();
+                        // Type list: prefer engine-declared types (R2); fall
+                        // back to UNRESOLVED when engine gave us only names.
+                        let t: Vec<String> = if r.columns.iter().any(|c| c.data_type.is_some()) {
+                            r.columns.iter().map(|c| {
+                                c.data_type.clone()
+                                    .unwrap_or_else(|| crate::result_set::UNRESOLVED_TYPE.to_string())
+                            }).collect()
+                        } else {
+                            c.iter().map(|_| "VARCHAR(255)".to_string()).collect()
+                        };
                         let c_trimmed: Vec<String> =
                             c.into_iter().take(stmt_col_count as usize).collect();
                         let t_trimmed: Vec<String> =

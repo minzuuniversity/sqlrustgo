@@ -163,6 +163,7 @@ fn show_index_header_is_twelve_columns() {
 #[test]
 fn show_create_table_returns_table_and_create_table_columns() {
     let stmt = Statement::Show(ShowStatement::CreateTable {
+        schema: None,
         table: "t".to_string(),
     });
     let h = show_column_headers(&stmt).expect("should produce headers");
