@@ -52,6 +52,20 @@ impl BufferPoolStats {
         }
         self.hits as f64 / total as f64
     }
+
+    /// PR2 / #5304 option B: explicit zero-constructor for engines that
+    /// don't page through a real BufferPool. Returning `Some(synthetic_zero)`
+    /// means "this engine has no cache layer" — accurate when no
+    /// `BufferPool` is wired (today's state on `develop/v4.1.0`).
+    /// Field order matches `Default::default()` for layout-stable equality.
+    pub fn synthetic_zero() -> Self {
+        Self {
+            hits: 0,
+            misses: 0,
+            evictions: 0,
+            prefetch_hits: 0,
+        }
+    }
 }
 
 impl BufferPool {
@@ -414,5 +428,23 @@ mod tests {
         pool.free(buf); // Wrong size, should not be pooled
 
         assert_eq!(pool.free_count(), 0);
+    }
+
+    #[test]
+    fn test_buffer_pool_stats_synthetic_zero_field_order() {
+        // PR2 / #5304: synthetic_zero() must produce a layout-stable zero
+        // struct. Field order matches `Default::default()` (Review Focus #1).
+        let z = BufferPoolStats::synthetic_zero();
+        assert_eq!(z.hits, 0);
+        assert_eq!(z.misses, 0);
+        assert_eq!(z.evictions, 0);
+        assert_eq!(z.prefetch_hits, 0);
+        let d: BufferPoolStats = Default::default();
+        assert_eq!(
+            (z.hits, z.misses, z.evictions, z.prefetch_hits),
+            (d.hits, d.misses, d.evictions, d.prefetch_hits),
+            "synthetic_zero() must match Default::default() field-by-field"
+        );
+        assert_eq!(z.hit_rate(), 0.0);
     }
 }

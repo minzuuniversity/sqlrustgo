@@ -552,10 +552,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self,
         select: &sqlrustgo_parser::parser::SelectStatement,
     ) -> SqlResult<ExecutorResult> {
+        // PR3 / #5305: snapshot AHI counter at EXPLAIN entry so the value
+        // is stable across all emitted operator lines. This is the only AHI
+        // counter that the production path actually drives; PR2 spec §6.3
+        // opted out of exposing `pages_visited` / `ahi_lookups` /
+        // `ahi_hits` (always 0 today).
+        let ahi_promoted = self.adaptive_hash_index().promoted_count();
+        let ahi_suffix = format!(" | ahi_promoted={ahi_promoted}");
+
         let lines = explain_select_plan(select, &*self.storage.read());
         let rows: Vec<Vec<Value>> = lines
             .into_iter()
-            .map(|line| vec![Value::Text(line)])
+            .map(|line| vec![Value::Text(format!("{line}{ahi_suffix}"))])
             .collect();
         Ok(ExecutorResult::new(rows, 0))
     }

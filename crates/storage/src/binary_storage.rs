@@ -2,6 +2,7 @@
 //!
 //! Fast binary format for table storage, replacing JSON.
 
+use crate::buffer_pool::BufferPoolStats;
 use crate::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
     TableData, TableInfo, TriggerInfo, Value,
@@ -1255,6 +1256,28 @@ impl StorageEngine for BoxStorageEngine {
     }
     fn is_wal_enabled(&self) -> bool {
         (**self).is_wal_enabled()
+    }
+
+    /// PR2 / #5304: forward `buffer_pool_stats()` to the inner engine.
+    ///
+    /// Without this override, `&BoxStorageEngine` (which sits behind
+    /// `Arc<RwLock<...>>` in MySQL-server at `crates/mysql-server/src/lib.rs:6888`)
+    /// could not surface a real `BufferPool::stats()` once that override
+    /// exists on a future paged engine. Same forwarding pattern as
+    /// `scan_pk` / `scan_in` / `commit_transaction_lockfree`.
+    ///
+    /// Historic analog: the seven wrapper-drops-method fixes
+    /// #4974 / #5009 / #5105 / #5192 / #5266 / #5281 / #4912.
+    fn buffer_pool_stats(&self) -> Option<BufferPoolStats> {
+        (**self).buffer_pool_stats()
+    }
+
+    /// PR2 / #5304: forward `estimated_pages_for_table()` to the inner
+    /// engine. The default `self.scan(table)` would double-dispatch via
+    /// `&self` and call into `BoxStorageEngine::scan` which itself
+    /// forwards — semantically correct, but faster to forward directly.
+    fn estimated_pages_for_table(&self, table: &str) -> u64 {
+        (**self).estimated_pages_for_table(table)
     }
 
     fn as_any(&self) -> &dyn Any {
