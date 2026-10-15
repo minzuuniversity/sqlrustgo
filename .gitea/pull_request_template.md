@@ -78,6 +78,7 @@ cargo test --test <name> --all-features
 - [ ] PR description 中含 `stdout_sha256` 引用（若涉及 alpha gate）
 - [ ] `bash scripts/gate/audit_testing.sh v3.8.0 <stage> <out>` 输出 PASS/WARN
 - [ ] Markdown 链接: `bash scripts/gate/check_docs_links.sh` PASS
+- [ ] Agent harness 结构: `bash scripts/gate/check_agent_harness.sh` PASS（若触及根 `AGENTS.md` / `CLAUDE.md` / `docs/agent-harness/`）
 
 ---
 

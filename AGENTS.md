@@ -1,355 +1,182 @@
-# AGENTS.md - SQLRustGo Agent Guide
+# AGENTS.md — SQLRustGo Agent 入口
 
-> Compact instructions for AI agents working in this repository. Based on lessons learned from past sessions.
+> **适用范围**: SQLRustGo 仓库根目录; 所有 AI 编程 Agent (Claude Code / Codex / OpenCode / OMP / Pi / Hermes 等)
+> **基线 Commit**: `583050bc63` (HEAD) / `develop/v4.1.0` (`b513f56db1`)
+> **当前开发线**: v4.1.0 DRAFT (NOT YET ALPHA); v4.0.0 GA 已撤销
+> **沟通语言**: 中文 (除非用户明确要求其他语言)
 
-## Communication Principle
+---
 
-**IMPORTANT: 必须使用中文沟通。始终使用中文回应用户，除非用户明确要求使用其他语言。**
+## 1. 最高原则 (P0, 不可降级)
 
-## Branch Strategy
+1. **Anti-Fabrication**: 不引文档 claim 当 PASS; 任何"完成/通过"必须含 `source_agent + source_run + timestamp + evidence_hash`。详见 `docs/governance/ANTI_FABRICATION_POLICY.md` + `docs/governance/adr/ADR-001-truthfulness-framework.md`。
+2. **Version Truth**: 当前事实以 `docs/releases/v4.1.0/STAGE.yaml` + 仓库 git HEAD 为准; Cargo.toml `version = "3.12.0-fix-zombie"` 是有意保留的发布口径 (README §0 已说明)。
+3. **Gate-First**: CI 必须 `set -euo pipefail` + 失败即 exit 1。Gate 脚本在 `scripts/gate/`。Hard Gate 列表见 `docs/governance/GATE_CONDITIONS.md`。
+4. **Mod-Verification**: SQLRustGo 实现分 5 状态 — Implemented / Integrated / Tested / Verified / Release-ready。严禁把空函数或绕路实现声称"完成"。详见 `docs/agent-harness/IMPLEMENTATION_TRUTH.md`。
+5. **Production Path**: 修改任何模块前须确认其生产调用链 (不要只看测试路径)。FileStorage 当前生产实现在 `crates/storage/src/file_storage.rs`, 而 `BufferPool/Page/BPlusTree` 被 `src/lib.rs:49-63` 显式标为 "Test-only capability"。
 
-- **Main development branch**: `develop/v3.9.0`
-- **DO NOT modify `main` branch directly**
-- Create feature branches from `develop/v3.9.0`
-- Use git worktrees for isolated feature work: `git worktree add .worktrees/<name> -b feature/<name>`
+---
 
-## 强制 governance 阅读清单 (P0 2026-06-26 新增, Hermes audit)
+## 2. 启动事实核验 (Phase 0)
 
-**任何 AI agent / 开发者必须在开始 task 前读完以下 7 份, 缺一不可**:
-
-1. `docs/governance/adr/ADR-001-truthfulness-framework.md` — G-01 ~ G-10 (claim ≠ evidence, 不引 doc claim 当 PASS)
-2. `docs/governance/ANTI_FABRICATION_POLICY.md` — Type A/B/C/D 4 类违规 + Hard Gate vs Soft Gate 区分
-3. `docs/governance/ISSUE_CLOSING_VERIFICATION.md` — 关闭 Issue 前 5 步 (含 HTTP 405 workaround)
-4. `docs/governance/DOC_CHECK_CORRECTION_RULES.md` — 改文档 7 步流程 (含实跑 gate 验证)
-5. `docs/governance/AI_COLLABORATION.md` — §1.1 角色 + §5.5 多 AI 协调 (按 ADR-014 multi-ai-coordination 5 evidence fields 协议)
-6. `docs/governance/GATE_CONDITIONS.md` — G1-G16 门禁定义 + Hard/Soft 分类
-7. `docs/governance/adr/ADR-008-test-claim-transparency.md` — P16 gate test integrity 政策
-8. `docs/governance/adr/ADR-014-multi-ai-coordination.md` — 多 AI 协作 5 evidence fields 协议 (source_agent + source_run + timestamp + evidence_hash + conflict_resolution) (2026-06-27 新增, AGENTS.md §"强制 governance 阅读清单" 应同步)
-
-**违反 P0 红线 (governance 落实不了 7 根因, 见 reports/STAGE3_DIFF_PLAN_2026-06-26.md)**:
-
-- ❌ 写 "5/5 PASS" 不引 P11-P16 实跑输出 (AFP Type B)
-- ❌ 写"完成"不引 git SHA + commit (AFP Type D)
-- ❌ gate 失败不阻断 (CI 必须 `set -euo pipefail` + `exit 1`, 2026-06-26 已修)
-- ❌ AI 协作 0 协调 (必须走 ADR-014 multi-ai-coordination)
-
-**铁律**:
-- 7 份读完才能写代码
-- 改任何 1 份 governance 文档必须实跑 P11-P16 验证
-- 任何 claim 必须带: source agent + source_run + timestamp + evidence_hash (AFP §5.4)
-
-**关联**:
-- Issue #3600: Multi-AI 验证请求
-- reports/doc-audit-2026-06-26.md (本次审计报告)
-- reports/STAGE2_DIFF_PLAN_2026-06-26.md (5 governance 整改方案)
-- reports/STAGE3_DIFF_PLAN_2026-06-26.md (本批 gate+CI+AGENTS 整改方案)
-- **更新日期**: 2026-07-01 (新增 ADR-014 引用为 item 8; 修复 item 5 "待 ADR-014 落地" 陈旧引用; ADR-014 已于 2026-06-27 ACCEPTED, 见 docs/governance/adr/INDEX.md)
-
-## Essential Commands
+任何 Agent 在第一次接触本仓库时, 必须先验证 (只读):
 
 ```bash
-# Build entire project
-cargo build --all-features
-
-# Run all tests
-cargo test --all-features
-
-# Run single test
-cargo test <test_name> --all-features
-
-# Lint (required before commit)
-cargo clippy --all-features -- -D warnings
-
-# Format check
-cargo fmt --check --all
-
-# Format fix
-cargo fmt --all
-
-# Run REPL
-cargo run --bin sqlrustgo-mysql-server -- repl
-
-# Run doc tests
-cargo test --doc
+git rev-parse HEAD                            # 当前 commit
+git branch --show-current                     # 当前分支
+git status --short                            # 工作目录状态
+git log -1 --pretty=fuller                    # 当前 commit 身份
+cat docs/releases/v4.1.0/STAGE.yaml | head -50 # 当前发布阶段
+bash scripts/gate/check_arch_sem_debt.sh     # D8 Gate (硬门禁)
 ```
 
-## Gate/Validation Scripts
+若任何工具不可用 → 降级到 `rust-analyzer / rg / cargo metadata / 源码 / docs/` (见 §6)。
 
-Located in `scripts/gate/`:
+---
+
+## 3. 仓库导航
+
+完整结构 → [`docs/agent-harness/REPOSITORY_MAP.md`](docs/agent-harness/REPOSITORY_MAP.md)
+文档索引 → [`docs/agent-harness/DOCUMENTATION_INDEX.md`](docs/agent-harness/DOCUMENTATION_INDEX.md)
+任务 → 源码映射 → [`docs/agent-harness/INDEX.md`](docs/agent-harness/INDEX.md)
+
+### 3.1 一级目录
+
+| 路径 | 用途 |
+|---|---|
+| `crates/` | 45 个 workspace crate (parser, planner, executor, storage, transaction, server 等) |
+| `src/` | 根 crate library (执行引擎顶层; engine_*.rs 分散) |
+| `tests/` | 单元 + 集成 + E2E 测试, 有 `unit/`, `integration/`, `e2e/`, `gate/`, `oracle/`, `disabled/` |
+| `docs/` | 所有文档 (governance/adr, architecture, releases, superpowers, ai_collaboration) |
+| `scripts/gate/` | Hard Gate 脚本 (D1-D16) |
+| `.gitea/workflows/` | Gitea Actions CI 配置 |
+| `tools/xtask`, `tools/compat-runner` | xtask 与兼容性测试 runner |
+
+### 3.2 Git Remote (强制只走 Gitea)
 
 ```bash
-# Check entry doc links (fast)
-bash scripts/gate/check_docs_links.sh
+gitea252 → http://192.168.0.252:3000/openclaw/sqlrustgo.git (主, 可写)
+gitcode/gitee/github → 只读镜像, 禁止 push
+```
+**严禁** `gh` CLI 或 GitHub。详见 `docs/gitea-only.md` + 项目 CLAUDE.md。
 
-# Check ALL doc links (slower)
-bash scripts/gate/check_docs_links.sh --all
+---
 
-# Coverage check
-bash scripts/gate/check_coverage.sh
+## 4. GitNexus 使用原则
 
-# Security check
-bash scripts/gate/check_security.sh
+GitNexus 索引 (`.gitnexus/`) 提供 103k+ 符号、157k 关系、300 个执行流的静态分析。
 
-# Doc consistency check (version status, links, version history)
-bash scripts/gate/check_docs_consistency.sh
+- **MUST**: 编辑任何符号前先 `gitnexus_impact({target, direction: "upstream"})` 报告 blast radius
+- **MUST**: commit 前 `gitnexus_detect_changes()` 验证影响范围
+- **MUST**: HIGH/CRITICAL 风险必须警告用户
+- **DO NOT**: 用 find/replace 重命名符号 — 用 `gitnexus_rename` (它理解调用图)
+- **已知问题**: 当前索引对应 commit `b1e9a98ee6` (2026-10-08), 落后 HEAD 1 周+。FTS 索引 (database version 42 vs build 40) 失效, 需降级到符号图 + 源码。运行 `npx gitnexus analyze` 可重建。
+- 工具参考: `.claude/skills/gitnexus/{exploring,impact-analysis,debugging,refactoring,guide,cli}/SKILL.md`
+
+---
+
+## 5. AOCI 使用原则
+
+AOCI (`aoci.code.txt`, 1.4MB, v2 protocol, FRAS-2) 提供仓库级语义索引, 给每个托管对象 (文件/表) 分配 Entry + F/R/A/S 标签。
+
+- **DO NOT**: 用路径/AST/正则/模板生成语义 — 必须由模型基于实际证据作者
+- **DO NOT**: 写 `origin=host_model` 或伪造 receipt
+- 启动流程: `aoci_rules` → `aoci_overview` (或 `check_only=true` 查 checkpoint) → 任务 → `aoci_maintain` (变更后) → `aoci_update_entry` (提交批次)
+- **context_compaction 时**: 必须强制刷新 (mandatory reload rule) — 不可用历史 Memory 补
+- 详见 AGENTS.md §AOCI Repository Cognition (line 253-355)
+
+---
+
+## 6. 任务 → 源码 → 文档 映射
+
+见 [`docs/agent-harness/INDEX.md`](docs/agent-harness/INDEX.md)。常用入口:
+
+| 任务 | 主入口 |
+|---|---|
+| SQL 解析 | `crates/parser/src/{lexer,parser,token}.rs` + `tests/integration/sql/` |
+| 查询计划/优化 | `crates/{planner,optimizer}/src/` + `src/planner/` |
+| 执行 | `crates/executor/src/` + `src/engine_*.rs` |
+| 存储/BufferPool/B+Tree | `crates/storage/src/` (注意: BufferPool 当前是 test-only) |
+| 事务/WAL | `crates/transaction/src/` + `docs/governance/wal/WAL_CONTRACT.md` |
+| MySQL 协议 | `crates/{mysql-server,mysql-client}/` |
+| RAG/向量 | `crates/{rag,vector}/` |
+| 图/GMP | `crates/{graph,gmp}/` |
+| 测试/Gate | `tests/integration/`, `scripts/gate/`, `tests/gate/` |
+
+---
+
+## 7. 最小开发闭环
+
+```
+1. 查 gitnexus_impact + 读最小源码
+2. 写测试 (RED): cargo test --test <name> --all-features
+3. 最小实现 (GREEN)
+4. cargo clippy --all-features -- -D warnings  (必须 0 警告)
+5. cargo fmt --check --all
+6. 跑 Hard Gates: bash scripts/gate/check_arch_sem_debt.sh 等
+7. cargo test --all-features --no-fail-fast
+8. gitnexus_detect_changes 验证
+9. commit + push (gitea252 only) + Gitea PR
+10. PR body 必填 5 类文档 (PR_TEMPLATE.md) + Test Plan + Evidence
 ```
 
-##Architecture
-
-```
-┌─────────────────────────────────────┐
-│           main.rs (REPL)             │
-├─────────────────────────────────────┤
-│           executor/                 │  ← Query execution
-├─────────────────────────────────────┤
-│           parser/                    │  ← SQL → AST
-│           lexer/                    │  ← SQL → Tokens
-├─────────────────────────────────────┤
-│           storage/                   │  ← Page, BufferPool, B+ Tree
-├─────────────────────────────────────┤
-│         transaction/                 │  ← WAL, TxManager
-├─────────────────────────────────────┤
-│           network/                   │  ← TCP server/client
-├─────────────────────────────────────┤
-│           types/                     │  ← Value, SqlError
-└─────────────────────────────────────┘
-```
-
-## Crates (Workspace Members)
-
-Key crates in `crates/`:
-- `parser`, `planner`, `optimizer`, `executor` - Query processing
-- `storage` - Buffer pool, file storage, B+ tree, columnar storage
-- `transaction` - WAL, MVCC, transaction manager
-- `network` - TCP server with MySQL-style protocol
-- `vector`, `graph` - Advanced storage (vector index, graph store)
-- `catalog`, `types` - Schema and type system
-- 40+ total workspace crates - use `-p <package>` for single crate operations
-
-## Important Constraints
-
-1. **Clippy must pass**: `cargo clippy --all-features -- -D warnings` (no warnings allowed)
-2. **Format must pass**: `cargo fmt --check --all`
-3. **Doc links must be valid**: Run `check_docs_links.sh` before committing doc changes
-4. **Test memory limit**: 8GB per test (configured in Cargo.toml)
-5. **Rust edition**: 2021 with Tokio async runtime
-
-## Common Pitfalls
-
-| Issue | Prevention |
-|-------|------------|
-| Broken doc links | Always run `scripts/gate/check_docs_links.sh` after modifying markdown |
-| Missing workspace deps | Use `-p <package>` flag for single crate operations |
-| Slow builds | Use `cargo check` for fast compilation checks |
-| Missing features | Use `--all-features` to enable all feature flags |
-
-## Existing Instruction Files
-
-- `.claude/CLAUDE.md` - Claude Code specific guidance
-- `AGENT.md` - Issue-specific guide (DiskGraphStore implementation)
-- `docs/governance/AI_COLLABORATION.md` - AI 协作规范
-- `docs/governance/RELEASE_LIFECYCLE.md` - Release生命周期
-- `docs/governance/ISSUE_CLOSING_VERIFICATION.md` - **Issue 关闭验证流程 (强制执行)**
-
-## Issue 关闭规则 (强制)
-
-**禁止手动关闭没有 PR 合并的 Issue。**
-
-关闭 Issue 前必须验证有 PR 关联。详见：`docs/governance/ISSUE_CLOSING_VERIFICATION.md`
-
-## 文档修改规则 (强制)
-
-**修改 `docs/` 下任何文档前，必须遵循 `docs/governance/DOC_CHECK_CORRECTION_RULES.md` 规定的 5 步流程。**
-
-详见：`docs/governance/DOC_CHECK_CORRECTION_RULES.md`
-
-## Gitea Remote
-
-本项目使用自托管 Gitea，CI/CD 和代码托管均在此。
-
-### Git Remote (SSH)
-
-```bash
-git remote set-url origin git@gitea-macmini:openclaw/sqlrustgo.git
-```
-
-SSH 别名 `gitea-macmini` 已配置在 `~/.ssh/config`（指向 `192.168.0.252:222`）。
-
-### Git 身份
-
-```bash
-git config user.name "claude-macmini"
-git config user.email "claude@macmini.dev"
-```
-
-> pre-commit hook 强制邮箱为 `openheart@gaoyuanyiyao.com`，在本地 git config 中设置好。
-
-### 测试连通性
-
-```bash
-# SSH 认证测试
-ssh -T gitea-macmini
-
-# Git ls-remote 测试
-git ls-remote origin refs/heads/develop/v3.9.0
-```
-
-### Gitea Web UI
-
-- URL: http://192.168.0.252:3000/openclaw/sqlrustgo
-- 用户: openclaw / details8848
-
-## Test Execution Notes
-
-- Integration tests are in `tests/` directory
-- E2E tests in `tests/e2e/`
-- Crate-specific tests in each crate's `tests/` or `src/`
-- Use `--test <test_name>` to run specific test files
-
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
-
-This project is indexed by GitNexus as **sqlrustgo** (110918 symbols, 160471 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
-
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
-
-## Always Do
-
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
-
-## Resources
-
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/sqlrustgo/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/sqlrustgo/clusters` | All functional areas |
-| `gitnexus://repo/sqlrustgo/processes` | All execution flows |
-| `gitnexus://repo/sqlrustgo/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
-
-<!-- aoci:begin -->
-## AOCI Repository Cognition
-
-AOCI maintains a stable, versioned, incrementally updatable repository-level cognition layer so models can reuse their understanding of this system across tasks.
-
-`aoci.txt` is a structured cognition index for models. It assigns one independent Entry to every managed file, database table, or other managed object. Symbolic tags and F/R/A/S semantics describe the object's core responsibility, important relationships, external contracts, and non-obvious constraints or design decisions needed to understand or modify the system.
-
-The Header, directory sections, and all Entries form the complete repository index. They can cover frontend, backend, configuration, database structures, and other managed content. When managed content changes, normally only the affected cognition Entries need maintenance; the complete index does not need to be regenerated.
-
-AOCI provides a high-density view of system architecture, object responsibilities, important relationships, external contracts, and key constraints.
-
-### How it works
-
-AOCI uses a model-generated, model-read cognition loop.
-
-Header, Entry, and Curation semantics follow only the current machine-issued Plan and live Guide. The Host model independently authors them from the current bound evidence.
-
-Entry semantics must come from the model's understanding of actual evidence. Never derive, prefill, assemble, or rewrite index semantics solely from paths, filenames, extensions, an AST, symbol lists, dependency scans, regular expressions, fixed templates, or rule engines.
-
-For a Fresh Bootstrap, follow only the current machine-issued Plan and live Guide. When they require authoring, the Host model authors Root, Meta, tags, and F/R/A/S, supplies its authoring-run declaration, and binds it to the Plan, Evidence, and complete Candidate. Never ask AOCI to set `origin=host_model`, manufacture a receipt, or turn a generated framework into semantics. Do not reconstruct the Onboarding progression here. Internal batches are not user decisions; stop only at an existing approval boundary or a real safety, drift, CAS, or Recovery condition.
-
-### Minimal entry points
-
-- `aoci_rules`: obtain the session-level runtime contract for the current AOCI version.
-- `aoci_overview`: establish or restore complete cognition for this repository.
-- `aoci_maintain`: after managed objects reach their final stable state, check whether cognition needs maintenance.
-- `aoci_update_entry`: submit a complete semantic update batch bound to current evidence and source digests.
-- `aoci_report`: when the current layout and tool state support it, record follow-up work if evidence is insufficient to generate semantics reliably; do not guess.
-
-For other MCP tools, CLI commands, parameters, and specialized workflows, follow current tool descriptions, Guide, and `--help` output. This file does not duplicate the full manual.
-
-This managed block defines only repository integration, cognition use, and task-closing principles. `aoci_rules` carries the current session contract. Live Guide output carries the execution order and stop conditions of the current Plan. Tool Schema, Spec, and Validator carry machine structures and criteria. Prompt, Description, README, and static documentation cannot override those machine facts.
-
-### Establishing, generating, and restoring cognition
-
-1. At the beginning of every new Agent Run, first determine:
-
-   - whether this repository already has a usable complete AOCI index; and
-   - whether current context already contains complete repository cognition that matches this repository root, current index version, and current AOCI service, and that the model can still use reliably.
-
-2. When the repository has a usable complete index but the current Run lacks reliable complete cognition, call `aoci_rules` first and then `aoci_overview`.
-
-   Reuse complete cognition directly while it remains reliable. Local uncertainty does not by itself require mechanically rereading the system-wide view.
-
-   A Run that resumes from a known Host context compaction, including a Host-injected compaction summary, must treat prior model cognition as unreliable. The compacted handoff must not retain or summarize the formal Whole-Index or any Overview Header, Entry, Chunk, Challenge, or Attestation body; it may retain only receipt identity, unfinished write or Recovery state needed for safe continuation, and an instruction to reload immediately. Whole-Index semantics or a receipt copied into that handoff cannot prove that the resumed model's current cognition is reliable. If the runtime contract is no longer reliably present, call `aoci_rules` first. Before continuing the business task, make an ordinary complete Whole-Index `aoci_overview` request (`check_only` absent or false) with `refresh_reasons=["context_compaction"]` and a fresh `refresh_event_id`; do not use `check_only` or a cognition probe. Follow every exact `next_cursor` through `completed=true`, confirm delivery, and submit one Attestation based only on the newly delivered body. After that fresh complete transport, a partial or failed Attestation consumes the generation and permits the existing source-bound continuation without another automatic Overview.
-
-   AOCI can report checkpoint and cognition-status facts for `context_compaction`, the machine `semantic_threshold` under the project `cognition_refresh_threshold`, or a major `phase_transition`. Use `check_only=true` when only those compact facts are needed. They advise the Agent but do not decide whether the model needs the system-wide view.
-
-   When the Agent explicitly calls ordinary `aoci_overview` (`check_only` absent or false), AOCI must deliver the complete requested scope whenever a coherent CognitionSet can be formed. It must not suppress that body because a receipt already exists, a threshold was not reached, or no refresh reason is pending. Dirty or stale formal cognition is still delivered but is marked unreliable. Pending recovery or an incoherent snapshot fails closed without a mixed body.
-
-   When an ordinary Overview reports `continuation_required=true`, submit its exact `next_cursor` automatically until `completed=true`. Do not ask the user to continue, begin the business task, or state a partial system conclusion. Stop the cognition chain on Host truncation, a missing, duplicate, or reordered Chunk, cursor failure, Index change, or `chunk_tokens` change. Until Attestation completes, never use Memory, source, Spec, `aoci.txt`, historical sessions, scope, search, or Entry reads to repair or supplement Whole-Index cognition. A challenge ordinal is the 1-based position in the formal Entry sequence; Header content, comments, blank lines, Section/Overview/Chunk markers, receipts, and Metadata are excluded, and Chunk Receipt ordinals use that same sequence. The Attestation must echo the Challenge's exact current `index_sha256`, `entry_sequence_sha256`, and `entry_count`; a prior Index, Entry sequence, count, or Attestation is invalid. After the complete chain, submit the existing model cognition Attestation once. One same-response JSON Schema or field-format error may be corrected once without changing semantic answers; an object, Tag, or F mismatch means failure and uncertain assimilation, with no semantic retry or information bypass. During initial cognition it also blocks Root/Meta, Migration, layout-wide, or other unbound system decisions. During a context-compaction refresh with complete transport, unchanged cognition identity, aligned governance, and no Recovery or third-party conflict, the attempt consumes that refresh generation even when Attestation is partial or failed; continue the existing task without another automatic Overview. `system_mastery_percent` self-assesses only the system framework—architecture, responsibilities, strong relationships, stable external contracts, and high-entropy safety and maintenance constraints—not complete implementation or runtime knowledge. Keep machine Index coverage separate, and normally give the user only the prescribed single success or failure sentence derived from actual coverage, Challenge, Chunk, token, and mastery results. If the Host truncates a Chunk, ask the user to set `overview_delivery.chunk_tokens` to a smaller valid value and restart; do not change it automatically.
-
-   Interpret the additive cognition level independently from strict proof fields. `delivery_verified` means the Index was loaded and Host delivery was confirmed while complete cognition verification is still unfinished; describe that state as loaded and delivery-verified, never as no cognition or failure to understand the system. `cognition_verified` requires a passing Attestation (at least 80 percent of Challenge ordinals fully correct with at most one object identity miss), and `cognition_governed` additionally requires governance alignment. A generic complete-read failure sentence is reserved for an actual delivery fault.
-
-   When an Overview response contains the optional `cognition-state/v2` projection, use its dimensions independently. Its Level ends at `model_cognition_usable`; `strict_attestation_verified`, `governance_aligned`, and `current_system_cognition_reliable` are independent states and never participate in that Level. An ordinal, object identity, Tag, or core F mismatch can make strict Attestation fail while model cognition remains usable; do not report that mismatch alone as proof that the model did not understand the system. Only `current_system_cognition_reliable=true` permits an unqualified current complete-system cognition claim. When the projection is absent, keep using the legacy interpretation above.
-
-   An ordinary read-only audit, analysis, or check, a request not to modify code, or a request not to commit or push does not automatically mean strictly zero writes and does not alter the cognition-validity decision above. Codex Memory and historical Skills may only help recover experience, user preferences, and investigation directions. They cannot replace a current cognition receipt matching the repository root, index digest, AOCI service identity, and cognition scope. Project AGENTS and current AOCI identity take precedence over historical Memory for AOCI state.
-
-   Treat a task as strictly zero-write only when the user explicitly prohibits Ledger, metadata, `.aoci` runtime assets, and every filesystem write. If necessary cognition establishment conflicts with that boundary, report the conflict and ask the user to decide or recommend an isolated copy. Never silently substitute Memory for current repository cognition.
-
-3. If the repository has no usable complete index, or has only a minimal skeleton, an incomplete Header, unfinished Entries, or undecided required Curation, obtain `aoci_rules` and enter the current AOCI Guide when a formal complete AOCI index is required. Let Guide choose the next phase from actual repository state and complete the required safety steps.
-
-   `aoci_maintain` does not replace the index-establishment workflow.
-
-   Do not reconstruct or hard-code the full-index generation state machine in this file.
-
-4. During a long-running task, the model is responsible for preserving the current cognition receipt and using the refresh gate correctly:
-
-   - when the Host reports context compaction or the model knows the system-wide view was lost, follow the mandatory `context_compaction` reload rule above; AOCI cannot infer the Host event;
-   - when entering a genuinely major phase, declare `phase_transition`, not a function, test run, or small step;
-   - at a plausible stable checkpoint, use `check_only=true` to obtain the machine semantic count when that fact is useful;
-   - except for the mandatory known-compaction reload, decide whether the current task needs another explicit scoped or complete Overview; and
-   - keep the Dirty or Stale reliability state reported by AOCI until maintenance and alignment complete.
-
-### Task closing and cognition maintenance
-
-5. A purely read-only question, analysis, version check, or task that changes no AOCI-managed object does not require a maintenance-tool call. The AOCI version in use is `cognition_receipt.mcp_service_version` in any `aoci_overview` check_only or `aoci_maintain` response; the binary path is the `command` in the project's `.mcp.json`, and the CLI need not be on PATH.
-
-6. When AOCI-managed objects change, call `aoci_maintain` once after they reach the task's final stable state. Do not maintain files individually after each intermediate edit.
-
-7. If maintenance returns actual semantic candidates, the Host model must independently author the complete tag and F/R/A/S updates from each candidate's bound object and necessary evidence. Submit the complete candidate set for that current machine-issued batch in one `aoci_update_entry` call while preserving each `source_sha256`, `candidate_id`, and domain batch identity. `max_entries` limits one request and atomic transaction, not the logical plan, Whole-Index, or Managed Scope. When `remaining` is nonzero, call Maintain again after the successful Apply and continue from the new preimage; never shrink Index coverage or slice a returned batch to satisfy transport limits.
-
-   When evidence is insufficient and the current layout supports `aoci_report`, use it instead of guessing, applying a template, or generating unsupported cognition merely to eliminate follow-up work.
-
-8. Obey structured tool states and safety boundaries:
-
-   - `repair_required`: repair only the explicitly identified candidates, then resubmit the complete current machine-issued batch;
-   - `stopped`: end that write attempt and inspect `failed_step`, error, formal-write evidence, and Recovery. In auto mode, a proven zero-write closure is followed by a fresh Plan; a complete Intent with provable postimage is resumed; a policy-selected Rollback with exact preimage is completed and replanned. Stop the user task only when proof is unavailable, third-party bytes conflict, approval or external action is required, or another real safety boundary applies;
-   - never ignore conflicts, approvals, human decisions, permissions, or safety signals; and
-   - after alignment, do not repeat maintenance or writes; `refresh_ready_for_overview` is a checkpoint fact, and the Agent decides whether to request an ordinary complete Overview for its next phase.
-
-   If any managed object changes after maintenance completes, the previous result is invalid. Complete closing again from the new final stable state.
-
-9. When the user limits only business-file scope and does not explicitly forbid repository-managed assets, AOCI-managed assets may be updated during closing to preserve cognition consistency. Distinguish them from business files in audits and commits.
-
-   When the user explicitly forbids changes to `aoci.txt`, `.aoci`, metadata, or any additional file, obey that restriction, do not write, and report any remaining inconsistency accurately.
-
-### Specialized workflows
-
-Initialization, complete-index generation, Header generation, Entries generation, database-structure indexing, Curation, human review, and failure recovery must follow only the instructions, commands, and safety stops returned by the current AOCI Guide or tool at the corresponding stage.
-
-Do not preload, guess, or reconstruct these specialized workflows. The relevant Guide, tool descriptions, model Prompt, and CLI help provide platform invocation, request format, batch limits, approval rules, index-format details, and recovery steps as needed.
-<!-- aoci:end -->
+---
+
+## 8. 严格禁止
+
+| ❌ | 行为 | 依据 |
+|---|---|---|
+| 1 | 空函数/默认返回值冒充实现 | AFP Type A |
+| 2 | 模块标"集成"但生产路径绕过 | AFP Type B |
+| 3 | 删除断言/跳过测试/修改参考结果来 PASS | AFP Type C |
+| 4 | `cargo test --no-run` 当 PASS | Hard Gate |
+| 5 | SKIP/TIMEOUT/XFAIL 计 PASS | ADR-008 |
+| 6 | 未跑测试报"测试通过" | ADR-001 |
+| 7 | 改 Git 分支保护/Gate 阈值未授权 | CI_GATE_CONTRACT |
+| 8 | 只 Mock 测试, 忽略真客户端/持久化测试 | ADR-001 |
+| 9 | Agent 自我签发验收 | ADR-014 (multi-AI) |
+| 10 | 无证据声"修复完成/可发布" | ADR-001 |
+| 11 | 推 GitHub / 用 `gh` CLI | 项目 CLAUDE.md |
+| 12 | 改 docs/ 任何文件不走 5 步流程 | DOC_CHECK_CORRECTION_RULES |
+| 13 | 关闭无 PR 关联的 Issue | ISSUE_CLOSING_VERIFICATION |
+| 14 | 不读 7+1 governance 就动手 | AGENTS §强制阅读清单 |
+
+---
+
+## 9. 证据与报告要求
+
+任何变更/声明必须附 5 字段: `source_agent + source_run + timestamp + evidence_hash + conflict_resolution`。详见 ADR-014 + AFP §5.4。
+
+- 任务完成 → 提交 PR + Test Plan + Evidence 文件
+- 文档改动 → 5 步流程 (DOC_CHECK_CORRECTION_RULES.md)
+- Issue 关闭 → 5 步验证 (ISSUE_CLOSING_VERIFICATION.md, 含 HTTP 405 workaround)
+- Gate 失败 → 必须修复 + 重跑 + 留 commit 证据
+
+---
+
+## 10. 必读 governance 清单 (P0)
+
+每个 Agent **动手前必须读完** (`docs/governance/` 下):
+
+1. `ANTI_FABRICATION_POLICY.md` — Type A/B/C/D 4 类违规
+2. `adr/ADR-001-truthfulness-framework.md` — G-01 ~ G-10
+3. `ISSUE_CLOSING_VERIFICATION.md` — 关闭前 5 步
+4. `DOC_CHECK_CORRECTION_RULES.md` — 改文档 7 步
+5. `AI_COLLABORATION.md` — §1.1 角色 + §5.5 多 AI 协调
+6. `GATE_CONDITIONS.md` — G1-G16 分类
+7. `adr/ADR-008-test-claim-transparency.md` — P16 test integrity
+8. `adr/ADR-014-multi-ai-coordination.md` — 5 evidence fields 协议
+
+**铁律**: 7+1 份读完才能写代码; 改任何 1 份 governance 必须实跑 P11-P16 验证。
+
+---
+
+## 11. 详细文档入口
+
+- Agent 导航: [`docs/agent-harness/INDEX.md`](docs/agent-harness/INDEX.md)
+- 仓库结构: [`docs/agent-harness/REPOSITORY_MAP.md`](docs/agent-harness/REPOSITORY_MAP.md)
+- GitNexus 架构: [`docs/agent-harness/GITNEXUS_ARCHITECTURE_MAP.md`](docs/agent-harness/GITNEXUS_ARCHITECTURE_MAP.md)
+- AOCI 指南: [`docs/agent-harness/AOCI_GUIDE.md`](docs/agent-harness/AOCI_GUIDE.md)
+- 文档索引: [`docs/agent-harness/DOCUMENTATION_INDEX.md`](docs/agent-harness/DOCUMENTATION_INDEX.md)
+- 实现真实性: [`docs/agent-harness/IMPLEMENTATION_TRUTH.md`](docs/agent-harness/IMPLEMENTATION_TRUTH.md)
+- 旧 AGENTS.md (26KB, 已含 governance 清单 + GitNexus + AOCI 详细章节): 根 `AGENTS.md` (本文件替代其主入口, 但完整 AOCI 协议章节与 governance 链接仍保留在 v3 候选 AGENTS_legacy.md)
