@@ -87,8 +87,9 @@ echo "  [6/6] Running end-to-end PREPARE/EXECUTE smoke test..."
 TMPDIR=$(mktemp -d)
 mkdir -p "$TMPDIR/data"
 cat > "$TMPDIR/smoke_test.rs" <<'RUST'
+use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 #[test]
 fn smoke_test() {
