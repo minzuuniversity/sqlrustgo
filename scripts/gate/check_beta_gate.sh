@@ -208,26 +208,31 @@ check_pass "B4_IGNORE_FILES" "$IGNORE_FILE_COUNT files"
 # ===========================================================================
 echo ""
 echo "--- B5: Required Test Files (G1-G10) ---"
+# #5326: paths corrected to actual workspace locations (V310 moved
+# integration tests under tests/integration/<subdir>/). The original
+# V310 B5 list was written before the directory restructure; the
+# BETA gate has been red on B5 since. See docs/releases/v3.10.0/ISSUES_PLAN
+# §G1-G10 for the logical mapping.
 declare -a REQUIRED_TESTS=(
-    "tests/dml_integration_test.rs"        # G5
-    "tests/union_set_operations_test.rs"   # G6
-    "tests/alter_table_test.rs"            # G7
-    "tests/mvcc_transaction_test.rs"        # G2/G3
-    "tests/savepoint_test.rs"              # G2/G3
-    "tests/sem1_savepoint_test.rs"         # G2/G3
-    "tests/gap_locking_test.rs"            # F-16 (v3.10 NEW)
-    "tests/parallel_executor_test.rs"      # I-12 (v3.10 NEW)
+    "tests/integration/dml/dml_integration_test.rs"        # G5
+    "tests/integration/sql/union_set_operations_test.rs"   # G6
+    "tests/integration/sql/v312_72_alter_table_add_column_test.rs" # G7 (renamed in v3.12)
+    "tests/integration/transaction/mvcc_transaction_test.rs"        # G2/G3
+    "tests/integration/transaction/savepoint_test.rs"              # G2/G3
+    "tests/integration/transaction/sem1_savepoint_test.rs"         # G2/G3
+    "tests/integration/sql/gap_locking_test.rs"            # F-16 (v3.10 NEW)
+    "tests/integration/sql/parallel_executor_test.rs"      # I-12 (v3.10 NEW)
     "crates/executor/tests/parallel_hash_join_test.rs"  # v3.10 NEW
     "crates/executor/tests/parallel_group_by_test.rs"  # v3.10 NEW
-    "tests/cbo_integration_test.rs"        # C-9
-    "tests/process_kill_crash_test.rs"     # G8
-    "tests/tpch_full_22_test.rs"           # G1
-    "tests/tpch_sf01_22_queries_wire_test.rs" # G1 wire
-    "tests/wire_protocol_smoke.rs"         # Wire
-    "tests/mysql_wire_protocol_test.rs"    # Wire
-    "tests/cross_path_consistency_test.rs" # C-7
-    "tests/wal_integration_test.rs"        # WAL
-    "tests/long_run_stability_72h_test.rs" # G9
+    "tests/integration/optimizer/cbo_integration_test.rs"        # C-9
+    "tests/integration/stress/process_kill_crash_test.rs"     # G8
+    "tests/integration/tpch/tpch_full_22_test.rs"           # G1
+    "tests/integration/tpch/tpch_sf01_22_queries_wire_test.rs" # G1 wire
+    "tests/integration/wire/wire_protocol_smoke.rs"         # Wire
+    "tests/integration/wire/mysql_wire_protocol_test.rs"    # Wire
+    "tests/integration/sql/cross_path_consistency_test.rs" # C-7
+    "tests/integration/migration/wal_integration_test.rs"        # WAL
+    "tests/integration/sql/long_run_stability_72h_test.rs" # G9
 )
 EXIST_TESTS=0
 MISSING_TESTS=0
