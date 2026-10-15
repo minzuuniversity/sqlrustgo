@@ -137,12 +137,18 @@ impl BufferPool {
             // Update stats
             let mut stats = self.stats.write().unwrap();
             stats.hits += 1;
+            // PR-A / #5305: pages_visited + cache_hits
+            stats.pages_visited += 1;
+            stats.cache_hits += 1;
 
             Some(page)
         } else {
             // Update stats
             let mut stats = self.stats.write().unwrap();
             stats.misses += 1;
+            // PR-A / #5305: pages_visited + cache_misses
+            stats.pages_visited += 1;
+            stats.cache_misses += 1;
 
             None
         }
@@ -156,6 +162,12 @@ impl BufferPool {
         // Try to get from pool
         if let Some(page) = self.get(page_id) {
             return page;
+        }
+
+        // PR-A / #5305: bump disk_reads BEFORE invoking loader (disk read path)
+        {
+            let mut stats = self.stats.write().unwrap();
+            stats.disk_reads += 1;
         }
 
         // Load page
@@ -175,6 +187,9 @@ impl BufferPool {
         if pages.contains_key(&page_id) {
             lru.retain(|&id| id != page_id);
             lru.push_front(page_id);
+            // PR-A / #5305: bumping pages_visited on insert path
+            let mut stats = self.stats.write().unwrap();
+            stats.pages_visited += 1;
             return;
         }
 
@@ -190,6 +205,11 @@ impl BufferPool {
         // Insert new page
         pages.insert(page_id, page);
         lru.push_front(page_id);
+
+        // PR-A / #5305: bump disk_writes + pages_visited
+        let mut stats = self.stats.write().unwrap();
+        stats.pages_visited += 1;
+        stats.disk_writes += 1;
     }
 
     /// Allocate a new page
@@ -406,6 +426,40 @@ mod tests {
         // existing fields still zero
         assert_eq!(s.hits, 0);
         assert_eq!(s.misses, 0);
+    }
+
+    // PR-A / #5305: instrument BufferPool::get_or_load to bump pages_visited,
+    // cache_hits/cache_misses, and disk_reads.
+    #[test]
+    fn buffer_pool_bumps_pages_visited_on_get_or_load() {
+        let pool = BufferPool::new(4);
+        let page = Arc::new(Page::new(0, vec![0u8; 16]));
+        let loader = |_id: u32| page.clone();
+
+        // miss path: get_or_load bumps pages_visited AND cache_misses
+        let _ = pool.get_or_load(0, loader);
+        assert_eq!(pool.stats().pages_visited(), 1);
+        assert_eq!(pool.stats().cache_misses(), 1);
+
+        // hit path: get_or_load bumps pages_visited AND cache_hits
+        let _ = pool.get_or_load(0, |_| panic!("loader must not run on hit"));
+        assert_eq!(pool.stats().pages_visited(), 2);
+        assert_eq!(pool.stats().cache_hits(), 1);
+    }
+
+    #[test]
+    fn buffer_pool_bumps_disk_reads_on_loader_invocation() {
+        let pool = BufferPool::new(4);
+        let page = Arc::new(Page::new(0, vec![0u8; 16]));
+        let _ = pool.get_or_load(0, |_| page.clone());
+        assert_eq!(pool.stats().disk_reads(), 1);
+    }
+
+    #[test]
+    fn buffer_pool_bumps_disk_writes_on_insert() {
+        let pool = BufferPool::new(4);
+        pool.insert(Arc::new(Page::new(1, vec![0u8; 16])));
+        assert_eq!(pool.stats().disk_writes(), 1);
     }
 
     #[test]
