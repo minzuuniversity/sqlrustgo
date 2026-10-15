@@ -381,6 +381,7 @@ pub fn create_audit_log_table(storage: &mut dyn StorageEngine) -> SqlResult<()> 
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         })?;
     }
     Ok(())

@@ -126,6 +126,7 @@ fn table_info_round_trip_with_foreign_key() {
         partition_info: None,
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     };
     assert_eq!(table.foreign_keys.len(), 1);
     assert_eq!(

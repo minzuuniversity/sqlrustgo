@@ -207,6 +207,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     compression: None,
                     collations: std::collections::HashMap::new(),
                     original_sql: original_sql.clone(),
+                    clustered: matches!(create.storage_engine, Some(StorageEngineSpec::Clustered)),
                 };
                 storage.create_table_in_db(target_db, &info)?;
                 return Ok(ExecutorResult::new(vec![], 0));
@@ -223,6 +224,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 compression: None,
                 collations: std::collections::HashMap::new(),
                 original_sql,
+                clustered: matches!(create.storage_engine, Some(StorageEngineSpec::Clustered)),
             };
             storage.create_table_in_db(target_db, &info)?;
             // V400-02 (V4): see top-level hook.
@@ -415,6 +417,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             compression,
             collations: collations.clone(),
             original_sql: ddl_to_sql::format_create_table_sql(create),
+            clustered: matches!(create.storage_engine, Some(StorageEngineSpec::Clustered)),
         };
 
         // V311-01 F-23: route to ClusteredTable when storage_engine = Clustered.
@@ -442,6 +445,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     compression: None,
                     collations: HashMap::new(),
                     original_sql: info.original_sql.clone(),
+                    clustered: true,
                 },
             )?;
             self.clustered_tables

@@ -344,6 +344,7 @@ pub fn materialize_recursive_cte<S: StorageEngine + 'static>(
         compression: None,
         collations: std::collections::HashMap::new(),
         original_sql: String::new(),
+        clustered: false,
     };
     {
         let mut storage = engine.storage.write();
@@ -538,6 +539,7 @@ fn materialize_simple_cte<S: StorageEngine + 'static>(
         compression: None,
         collations: std::collections::HashMap::new(),
         original_sql: String::new(),
+        clustered: false,
     };
     let mut storage = engine.storage.write();
     storage

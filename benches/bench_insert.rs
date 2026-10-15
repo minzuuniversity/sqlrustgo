@@ -32,6 +32,7 @@ fn create_table_info() -> TableInfo {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 
@@ -131,6 +132,7 @@ fn bench_insert_multi_column(c: &mut Criterion) {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     };
 
     for size in [1_000, 10_000] {

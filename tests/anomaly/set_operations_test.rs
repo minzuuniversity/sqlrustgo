@@ -33,6 +33,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
 
         storage.create_table(&info).ok();
@@ -66,6 +67,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
 
         storage.create_table(&info).ok();
@@ -147,6 +149,7 @@ mod tests {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         storage.create_table(&info).ok();
         storage
@@ -208,6 +211,7 @@ mod tests {
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
                 original_sql: String::new(),
+                clustered: false,
             };
             storage.create_table(&info).ok();
             let table_name = format!("t{}", i);
@@ -249,6 +253,7 @@ mod tests {
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
                 original_sql: String::new(),
+                clustered: false,
             };
             storage.create_table(&info).unwrap();
             let records: Vec<Vec<Value>> = rows.iter().map(|v| vec![Value::Integer(*v)]).collect();

@@ -49,6 +49,7 @@ fn tbl(name: &str) -> sqlrustgo_storage::TableInfo {
         collations: Default::default(),
         compression: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 

@@ -265,6 +265,7 @@ mod resolve_pk_column_tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         }
     }
 
@@ -296,6 +297,7 @@ mod resolve_pk_column_tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
         assert_eq!(resolve_pk_column(&info), DEFAULT_PK_COLUMN);
     }
@@ -314,6 +316,7 @@ mod resolve_pk_column_tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
         assert_eq!(resolve_pk_column(&info), "first_pk");
     }

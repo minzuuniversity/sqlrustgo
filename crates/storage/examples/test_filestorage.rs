@@ -54,6 +54,7 @@ fn main() {
         partition_info: None,
         collations: std::collections::HashMap::new(),
         original_sql: String::new(),
+        clustered: false,
     };
 
     let start = Instant::now();

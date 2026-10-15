@@ -442,6 +442,7 @@ fn test_recovery_begin_then_crash_rolls_back() {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -514,6 +515,7 @@ fn test_recovery_insert_then_crash_rolls_back() {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -585,6 +587,7 @@ fn test_recovery_prepare_then_crash_rolls_back() {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -688,6 +691,7 @@ fn test_recovery_partial_insert_write() {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -758,6 +762,7 @@ fn test_recovery_partial_update_write() {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -872,6 +877,7 @@ fn test_recovery_partial_delete_write() {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -1014,6 +1020,7 @@ fn test_recovery_partial_commit_flush() {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -1082,6 +1089,7 @@ fn test_recovery_multiple_tx_crash_order() {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -1189,6 +1197,7 @@ fn test_recovery_wal_replay_ordering() {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 

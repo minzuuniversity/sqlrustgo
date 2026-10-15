@@ -114,6 +114,7 @@ fn create_tables(storage: &mut FileStorage) {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -133,6 +134,7 @@ fn create_tables(storage: &mut FileStorage) {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -156,6 +158,7 @@ fn create_tables(storage: &mut FileStorage) {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -181,6 +184,7 @@ fn create_tables(storage: &mut FileStorage) {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -202,6 +206,7 @@ fn create_tables(storage: &mut FileStorage) {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -226,6 +231,7 @@ fn create_tables(storage: &mut FileStorage) {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -251,6 +257,7 @@ fn create_tables(storage: &mut FileStorage) {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 
@@ -283,6 +290,7 @@ fn create_tables(storage: &mut FileStorage) {
             partition_info: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         })
         .unwrap();
 }

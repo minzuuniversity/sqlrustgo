@@ -296,6 +296,54 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Keeping the field list in one place prevents drift between `new` /
     /// `with_cbo` / `with_catalog` (was historically a 1535-line violation
     /// of C-ARCH-05 because the three ctors were spelled out separately).
+    /// R1 (Issue #5228/#5233/#5234): rebuild the in-memory clustered index
+    /// after a restart.
+    ///
+    /// `clustered_tables` starts empty in every constructor, but the rows
+    /// themselves are durable — `execute_insert_clustered` mirrors them into
+    /// `storage` so they reach the WAL and are reloaded. Without this pass a
+    /// restarted engine leaves the registry empty, the `clustered_tables`
+    /// dispatch checks in the DML/SELECT paths all miss, and the clustered
+    /// B+ tree is silently bypassed for the rest of the process lifetime.
+    pub(crate) fn rebuild_clustered_tables(&self) {
+        let storage = self.storage.read();
+        let mut dbs = vec![sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string()];
+        if let Ok(list) = storage.list_databases() {
+            for db in list {
+                if !dbs.iter().any(|d| d.eq_ignore_ascii_case(&db)) {
+                    dbs.push(db);
+                }
+            }
+        }
+
+        let mut registry = self.clustered_tables.write();
+        for db in dbs {
+            for name in storage.list_tables_in_db(&db) {
+                let Ok(info) = storage.get_table_info_in(&db, &name) else {
+                    continue;
+                };
+                if !info.clustered || registry.contains_key(&name) {
+                    continue;
+                }
+                let Some(pk_idx) = info.columns.iter().position(|c| c.primary_key) else {
+                    continue;
+                };
+                let Ok(rows) = storage.scan_in_db(&db, &name) else {
+                    continue;
+                };
+                let mut ct =
+                    sqlrustgo_storage::clustered_table::ClusteredTable::new(info.clone(), pk_idx);
+                for row in rows {
+                    // A duplicate PK among the recovered rows must not abort
+                    // startup; keep the first and let the next DML on this
+                    // table surface the conflict.
+                    let _ = ct.insert(row);
+                }
+                registry.insert(name, Arc::new(RwLock::new(ct)));
+            }
+        }
+    }
+
     fn base_with(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
         // v3.10.0 Issue #3703: --executor-parallelism env var (default 1 = sequential)
         #[rustfmt::skip] let parallel_degree = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok().and_then(|s| s.parse::<usize>().ok()).filter(|n| *n >= 1).unwrap_or(1);
@@ -335,7 +383,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // The per-engine session is now the single source of the current
         // database; the storage no longer keeps a shared `current_db` field.
         let session_db = sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string();
-        Self {
+        let engine = Self {
             storage,
             // V312-58 / Issue #4513: auto-initialize a default catalog so
             // CREATE / CALL / DROP PROCEDURE (and SHOW variants that
@@ -374,8 +422,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             session_vars: Arc::new(RwLock::new(HashMap::new())),
             sequence_state: Arc::new(crate::sequence_state::SequenceState::new()),
             recursive_cte_max_rows: AtomicUsize::new(1_000_000),
-        }
+        };
+        // R1: restore the clustered index for any CLUSTERED table that
+        // survived a restart. No-op for engines over an empty store.
+        engine.rebuild_clustered_tables();
+        engine
     }
+
     /// Get a handle to the shared Adaptive Hash Index used for hot-page tracking.
     /// V311-02 v2: the AHI is wired into production code via WHERE pk = ? hooks
     /// (see `src/engine_select.rs::filter_partitions_parallel`). Production queries

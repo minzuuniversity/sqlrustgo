@@ -70,6 +70,7 @@ impl BinaryTableStorageV2 {
             compression: None,
             collations: HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
         self.tables.insert(
             name.to_string(),

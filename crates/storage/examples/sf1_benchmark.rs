@@ -82,6 +82,7 @@ fn main() {
                         partition_info: None,
                         collations: std::collections::HashMap::new(),
                         original_sql: String::new(),
+                        clustered: false,
                     },
                     rows,
                 };
@@ -138,6 +139,7 @@ fn main() {
                 partition_info: None,
                 collations: std::collections::HashMap::new(),
                 original_sql: String::new(),
+                clustered: false,
             },
             rows: batch,
         };

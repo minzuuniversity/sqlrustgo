@@ -11,13 +11,17 @@
 //! shutdown), reopen the same data directory with `FileStorage::new_with_wal`,
 //! and verify that the committed rows are gone.
 //!
-//! Expected outcome (R1 confirmed): rows are lost after reopen, proving the
-//! WAL has no record of the CLUSTERED writes and cannot recover them.
+//! Expected outcome: the rows are still there after reopen. This file was
+//! originally the R1 evidence harness and asserted the *buggy* outcome
+//! (0 rows); the fix landed in `execute_insert_clustered` (rows mirrored
+//! into `storage` so they reach the WAL) plus `rebuild_clustered_tables`
+//! (the clustered B+ tree is rebuilt from the recovered rows on startup).
+//! The assertion is now inverted so the finding cannot silently come back.
 //!
 //! Evidence contract (per ADR-001 / ADR-014):
 //! - Source: `crates/storage/src/clustered_table.rs`, `src/engine_dml.rs`
 //! - Run: `cargo test -p sqlrustgo --test clustered_wal_bypass_r1_5228 --all-features`
-//! - Finding: R1 (CLUSTERED bypasses WAL) — P0 veto, suspected → confirmed
+//! - Finding: R1 (CLUSTERED bypassed WAL) — P0 veto, confirmed then fixed
 
 use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
@@ -34,7 +38,7 @@ fn engine_with_wal(data_dir: &std::path::Path) -> ExecutionEngine<FileStorage> {
 }
 
 #[test]
-fn r1_clustered_table_writes_lost_after_reopen() {
+fn r1_clustered_table_writes_survive_reopen() {
     let dir = TempDir::new().expect("tempdir");
     let data_dir = dir.path().join("r1_wal_bypass");
     fs::create_dir_all(&data_dir).unwrap();
@@ -82,14 +86,23 @@ fn r1_clustered_table_writes_lost_after_reopen() {
             Ok(r) => {
                 let count = r.rows[0][0].to_string();
                 assert_eq!(
-                    count, "0",
-                    "R1 CONFIRMED: CLUSTERED rows lost after reopen (WAL bypass). Got {count}."
+                    count, "3",
+                    "R1 FIXED: committed CLUSTERED rows must survive reopen. Got {count}."
                 );
             }
             Err(err) => {
-                panic!("R1 CONFIRMED (variant): CLUSTERED table not queryable after reopen: {err}");
+                panic!("R1 FIXED: CLUSTERED table must be queryable after reopen: {err}");
             }
         }
+
+        // The clustered index is rebuilt from the recovered rows, so primary
+        // key uniqueness must still be enforced after the restart.
+        let dup = e.execute("INSERT INTO orders VALUES (1, 'duplicate')");
+        assert!(
+            dup.is_err(),
+            "rebuilt clustered index must reject a duplicate PK, got {:?}",
+            dup.as_ref().ok().map(|r| &r.rows)
+        );
     }
 }
 

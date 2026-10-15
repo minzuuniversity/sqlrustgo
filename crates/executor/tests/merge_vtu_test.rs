@@ -111,6 +111,7 @@ fn test_storage_create_table() {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     };
     {
         let mut s = storage.write();
@@ -137,6 +138,7 @@ fn test_storage_insert_and_scan() {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     };
     {
         let mut s = storage.write();
@@ -166,6 +168,7 @@ fn test_storage_delete() {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     };
     {
         let mut s = storage.write();
@@ -211,6 +214,7 @@ fn test_table_info_default() {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     };
     assert_eq!(info.name, "default_t");
     assert!(info.columns.is_empty());

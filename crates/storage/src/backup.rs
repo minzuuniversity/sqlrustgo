@@ -259,6 +259,7 @@ impl DataRestorer {
             compression: None,
             collations: HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
 
         let count = rows.len();
@@ -334,6 +335,7 @@ impl DataRestorer {
             compression: None,
             collations: HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         };
 
         let count = rows.len();
@@ -384,6 +386,7 @@ impl DataRestorer {
                         compression: None,
                         collations: HashMap::new(),
                         original_sql: String::new(),
+                        clustered: false,
                     };
                     storage.create_table(&table_info)?;
                 }

@@ -520,6 +520,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         }
     }
 
@@ -539,6 +540,7 @@ mod tests {
             compression: None,
             collations: std::collections::HashMap::new(),
             original_sql: String::new(),
+            clustered: false,
         }
     }
 

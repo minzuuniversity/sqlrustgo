@@ -79,6 +79,7 @@ impl SimpleExecutor {
                     collations: std::collections::HashMap::new(),
                     partition_info: None,
                     original_sql: String::new(),
+                    clustered: false,
                 };
                 self.storage
                     .create_table(&info)
@@ -312,6 +313,7 @@ impl SimpleExecutor {
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
                 original_sql: String::new(),
+                clustered: false,
             };
             self.storage
                 .create_table(&table_info)
@@ -443,6 +445,7 @@ impl SimpleExecutor {
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
                 original_sql: String::new(),
+                clustered: false,
             };
             self.storage
                 .create_table(&table_info)
@@ -488,6 +491,7 @@ impl SimpleExecutor {
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
                 original_sql: String::new(),
+                clustered: false,
             };
             // Create table only if it doesn't exist yet
             let _ = self.storage.create_table(&table_info);
@@ -564,6 +568,7 @@ impl SimpleExecutor {
                 collations: std::collections::HashMap::new(),
                 partition_info: None,
                 original_sql: String::new(),
+                clustered: false,
             };
 
             // Nested-loop join. The combined row is
@@ -840,6 +845,7 @@ impl SimpleExecutor {
                         collations: std::collections::HashMap::new(),
                         partition_info: None,
                         original_sql: String::new(),
+                        clustered: false,
                     };
                     self.storage
                         .create_table(&table_info)
@@ -912,6 +918,7 @@ impl SimpleExecutor {
             collations: std::collections::HashMap::new(),
             partition_info: None,
             original_sql: String::new(),
+            clustered: false,
         };
         self.storage
             .create_table(&table_info)

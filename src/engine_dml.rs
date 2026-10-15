@@ -2187,6 +2187,18 @@ fn execute_insert_clustered<S: StorageEngine + 'static>(
         }
     }
 
+    // R1 (Issue #5228/#5233/#5234): the ClusteredTable B+ tree is an
+    // in-memory index — writing only to it made every committed CLUSTERED
+    // row vanish on restart while COMMIT still reported success. Mirror the
+    // rows into `storage` inside the same transaction so they land in the
+    // WAL and are reloaded on restart; Stage 3 rebuilds the B+ tree from
+    // these durable rows. Reads keep coming from the clustered index, so
+    // this copy is a durability record, not a second read path.
+    {
+        let mut storage = engine.storage.write();
+        storage.insert(&table_name, processed_records.clone())?;
+    }
+
     engine.commit_implicit_dml_tx(started_implicit)?;
     Ok(ExecutorResult::new(vec![], count))
 }
@@ -2258,6 +2270,7 @@ fn execute_update_clustered<S: StorageEngine + 'static>(
         .position(|c| c.primary_key)
         .unwrap_or(0);
 
+    let mut mirrored_rows: Vec<Vec<Value>> = Vec::new();
     {
         let mut ct = ct_arc.write();
         for row in &rows_to_update {
@@ -2273,7 +2286,27 @@ fn execute_update_clustered<S: StorageEngine + 'static>(
             // the clustered B+ tree.
             validate_string_lengths(&table_info, &new_row)?;
             let pk_val = row.get(pk_idx).cloned().unwrap_or(Value::Null);
-            ct.update_pk(&pk_val, new_row)?;
+            ct.update_pk(&pk_val, new_row.clone())?;
+            mirrored_rows.push(new_row);
+        }
+    }
+
+    // R1: mirror the post-SET rows into storage so the update survives a
+    // restart. Routed through delete+insert for the same reason as the heap
+    // path (#3971): the WAL layer only hooks delete/insert, so a direct
+    // `storage.update` would bypass the log and lose the change on crash.
+    if !mirrored_rows.is_empty() {
+        let stmt_db = engine.session_db();
+        let mut storage = engine.storage.write();
+        let stmt_db = stmt_db.as_str();
+        for new_row in &mirrored_rows {
+            let key: Vec<Value> = new_row
+                .get(pk_idx)
+                .cloned()
+                .map(|pk| vec![pk])
+                .unwrap_or_default();
+            storage.delete_in_db(stmt_db, &table_name, &key)?;
+            storage.insert_in_db(stmt_db, &table_name, vec![new_row.clone()])?;
         }
     }
 
@@ -2336,6 +2369,17 @@ fn execute_delete_clustered<S: StorageEngine + 'static>(
         let mut ct = ct_arc.write();
         for pk in &pks_to_delete {
             ct.delete_pk(pk);
+        }
+    }
+
+    // R1: mirror the deletes into storage so a restart does not resurrect
+    // the rows. See the INSERT path for the rationale.
+    if !pks_to_delete.is_empty() {
+        let stmt_db = engine.session_db();
+        let mut storage = engine.storage.write();
+        let stmt_db = stmt_db.as_str();
+        for pk in &pks_to_delete {
+            storage.delete_in_db(stmt_db, &table_name, std::slice::from_ref(pk))?;
         }
     }
 

@@ -723,6 +723,7 @@ mod tests {
             partition_info: None,
             compression: None,
             original_sql: String::new(),
+            clustered: false,
         }
     }
 

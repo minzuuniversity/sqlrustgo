@@ -56,6 +56,7 @@ pub fn simple_table_info(name: &str) -> TableInfo {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 
@@ -102,6 +103,7 @@ pub fn multi_column_table_info(name: &str) -> TableInfo {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 
@@ -138,6 +140,7 @@ pub fn orders_table_info() -> TableInfo {
         collations: std::collections::HashMap::new(),
         partition_info: None,
         original_sql: String::new(),
+        clustered: false,
     }
 }
 
