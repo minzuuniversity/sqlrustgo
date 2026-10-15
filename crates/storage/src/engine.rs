@@ -3631,7 +3631,7 @@ impl StorageEngine for MemoryStorage {
         self.indexes
             .iter()
             .filter(|(t, _c)| t == &key)
-            .map(|(t, c)| (c.clone(), format!("{}_idx_{}", table.to_lowercase(), c)))
+            .map(|(_t, c)| (c.clone(), format!("{}_idx_{}", table.to_lowercase(), c)))
             .collect()
     }
 

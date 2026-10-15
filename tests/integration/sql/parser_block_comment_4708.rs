@@ -19,33 +19,53 @@ fn run_parse(sql: &str) -> Result<sqlrustgo::Statement, String> {
 fn block_comment_inline() {
     // SELECT 1 /* comment */
     let r = run_parse("SELECT 1 /* comment */");
-    assert!(r.is_ok(), "block comment should parse: {:?}", r.as_ref().err());
+    assert!(
+        r.is_ok(),
+        "block comment should parse: {:?}",
+        r.as_ref().err()
+    );
 }
 
 #[test]
 fn block_comment_prefix() {
     // SELECT /* c1 */ 1
     let r = run_parse("SELECT /* c1 */ 1");
-    assert!(r.is_ok(), "block comment prefix should parse: {:?}", r.as_ref().err());
+    assert!(
+        r.is_ok(),
+        "block comment prefix should parse: {:?}",
+        r.as_ref().err()
+    );
 }
 
 #[test]
 fn block_comment_leading() {
     // /* header */ SELECT 1
     let r = run_parse("/* header */ SELECT 1");
-    assert!(r.is_ok(), "block comment leading should parse: {:?}", r.as_ref().err());
+    assert!(
+        r.is_ok(),
+        "block comment leading should parse: {:?}",
+        r.as_ref().err()
+    );
 }
 
 #[test]
 fn block_comment_unterminated() {
     // MySQL accepts /* unterminated to EOF.
     let r = run_parse("SELECT 1 /* never closed");
-    assert!(r.is_ok(), "unterminated block comment accepted by MySQL: {:?}", r.as_ref().err());
+    assert!(
+        r.is_ok(),
+        "unterminated block comment accepted by MySQL: {:?}",
+        r.as_ref().err()
+    );
 }
 
 #[test]
 fn block_comment_multiline() {
     // Multi-line block comment.
     let r = run_parse("SELECT /* line1\nline2\nline3 */ 1");
-    assert!(r.is_ok(), "multi-line block comment should parse: {:?}", r.as_ref().err());
+    assert!(
+        r.is_ok(),
+        "multi-line block comment should parse: {:?}",
+        r.as_ref().err()
+    );
 }
