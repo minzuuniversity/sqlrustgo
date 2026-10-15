@@ -16,6 +16,8 @@
 # Refs: docs/openspec/3176-upgrade-test.md
 #       V390_TEST_PLAN.md §G9
 
+# #5326: paths corrected for V310 → V3.12 directory restructure
+
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,7 +53,7 @@ grep -q 'name = "upgrade_test"' Cargo.toml || {
 echo "  [2/7] ✅ PASS: tests/integration/migration/upgrade_test.rs present + registered"
 
 # 3. 8 upgrade categories each have ≥1 test
-N_TESTS=$(grep -c "^#\[test\]" tests/upgrade_test.rs || echo 0)
+N_TESTS=$(grep -c "^#\[test\]" tests/integration/migration/upgrade_test.rs || echo 0)
 echo "  [3/7] ✅ PASS: 8 categories covered (total tests: $N_TESTS, ≥50)"
 
 # 4. cargo check

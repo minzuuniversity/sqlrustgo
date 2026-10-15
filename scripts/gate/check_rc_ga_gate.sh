@@ -23,6 +23,8 @@
 #   2  = DRIFT (acceptable with tracking)
 # =============================================================================
 
+# #5326: paths corrected for V310 → V3.12 directory restructure
+
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -498,7 +500,7 @@ run_d6_integration_tests() {
 
     # Build a one-shot manifest of all integration tests we should track.
     # Skip the duplicate placeholder "ci_test" and "embedded_harnesssmoke"
-    # (Cargo.toml has a separate "ci_test" path=tests/ci_test.rs entry;
+    # (Cargo.toml has a separate "ci_test" path=tests/ci/ci_test.rs entry;
     # "embedded_harnesssmoke" without underscore is a typo kept for robustness).
     # Bash 3.2 compatible: no associative arrays, no nested array expansions.
     local dedup_tests=""
