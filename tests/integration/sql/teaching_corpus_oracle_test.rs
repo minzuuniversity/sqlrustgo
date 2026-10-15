@@ -232,10 +232,19 @@ fn normalize_plan_rows(rows: &[Vec<Value>]) -> String {
             // EXPLAIN now appends to each scan line. The SQLite golden
             // does not surface cost/rows, so the suffix would falsely
             // diverge the oracle diff.
-            let stripped = if let Some(idx) = line.find(" (est_rows=") {
+            let without_cost = if let Some(idx) = line.find(" (est_rows=") {
                 &line[..idx]
             } else {
                 &line
+            };
+            // #5346: strip the ` | ahi_promoted=N` annotation that
+            // ExecutionEngine appends to GroupBy/HashJoin lines so the
+            // adaptive hash index statistics don't leak into plan shape
+            // diffs against SQLite's EXPLAIN QUERY PLAN.
+            let stripped = if let Some(idx) = without_cost.find(" | ahi_promoted=") {
+                &without_cost[..idx]
+            } else {
+                without_cost
             };
             out.push(stripped.to_string());
         }
