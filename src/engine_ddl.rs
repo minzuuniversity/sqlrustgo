@@ -817,20 +817,54 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     }
 
     /// V312-55A / Issue #4238: `SHOW PROCEDURE STATUS [LIKE 'pat']`.
-    ///
-    /// Stub implementation for the V312-56A rebase. The full handler
-    /// (catalog-walked procedure enumeration with LIKE filtering) lives
-    /// behind V312-55A gate work; for V312-56A we surface an explicit
-    /// error so callers don't see a silent empty result.
+    /// V312-55A / Issue #4238 / #5346: SHOW PROCEDURE STATUS — list
+    /// catalog procedures with name (TEXT) + param_count (INT) +
+    /// body_count (INT), sorted by name, optional LIKE filter on name.
     pub(crate) fn execute_show_procedure_status(
         &self,
-        _pattern: Option<&str>,
+        pattern: Option<&str>,
     ) -> SqlResult<ExecutorResult> {
-        Err(SqlError::ExecutionError(
-            "SHOW PROCEDURE STATUS is owned by V312-55A (#4238) and not \
-             yet wired into the v3.12.0 executor"
-                .to_string(),
-        ))
+        let snapshot: Vec<(String, i64, i64)> = {
+            let catalog_guard = self.catalog.as_ref().ok_or_else(|| {
+                SqlError::ExecutionError(
+                    "SHOW PROCEDURE STATUS requires stored procedure catalog".to_string(),
+                )
+            })?;
+            let catalog = catalog_guard.read();
+            catalog
+                .stored_procedures()
+                .iter()
+                .map(|p| {
+                    (
+                        p.name.clone(),
+                        p.params.len() as i64,
+                        p.body.len() as i64,
+                    )
+                })
+                .collect()
+        };
+
+        let mut filtered: Vec<(String, i64, i64)> = snapshot
+            .into_iter()
+            .filter(|(name, _, _)| match pattern {
+                Some(pat) => sql_like_match(name, pat),
+                None => true,
+            })
+            .collect();
+        filtered.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let rows: Vec<Vec<Value>> = filtered
+            .into_iter()
+            .map(|(name, params, body)| {
+                vec![
+                    Value::Text(name),
+                    Value::Integer(params),
+                    Value::Integer(body),
+                ]
+            })
+            .collect();
+
+        Ok(ExecutorResult::new(rows, 3))
     }
 
     /// SHOW CREATE TABLE — reconstruct CREATE TABLE from the live schema.

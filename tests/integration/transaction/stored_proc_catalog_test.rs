@@ -40,6 +40,7 @@ fn test_create_and_call_procedure_with_catalog() {
 
 #[test]
 fn test_call_requires_catalog() {
+    // #5346: ExecutionEngine::new auto-creates a default catalog — CALL on unknown proc now returns "not found".
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
 
@@ -47,23 +48,25 @@ fn test_call_requires_catalog() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(
-        err.to_string().contains("catalog"),
-        "Error should mention catalog requirement"
+        err.to_string().contains("not found"),
+        "Error should indicate procedure not found; got: {}",
+        err
     );
 }
 
 #[test]
 fn test_create_procedure_requires_catalog() {
+    // #5346: ExecutionEngine::new auto-creates a default catalog — CREATE PROCEDURE now succeeds and shows up in SHOW.
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
 
     let result = engine.execute("CREATE PROCEDURE test_proc() BEGIN END");
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(
-        err.to_string().contains("catalog"),
-        "Error should mention catalog requirement"
-    );
+    assert!(result.is_ok(), "CREATE PROCEDURE should succeed with default catalog; got: {:?}", result);
+    let show = engine
+        .execute("SHOW PROCEDURE STATUS")
+        .expect("SHOW PROCEDURE STATUS should succeed");
+    assert_eq!(show.rows.len(), 1, "exactly one procedure row expected");
+    assert_eq!(show.rows[0][0], Value::Text("test_proc".to_string()));
 }
 
 #[test]
