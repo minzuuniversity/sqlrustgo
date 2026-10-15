@@ -38,7 +38,6 @@ fn serialize_record_to_page_bytes(record: &[Value]) -> Vec<u8> {
 /// Returns `None` for truncated / non-JSON payloads; callers should
 /// silently skip those (a freshly-allocated `Page::new(page_id)` has
 /// zero data and would otherwise be reported as a real row).
-#[allow(dead_code)] // T7 (PR-A.5) uses this; suppressing until that commit lands.
 fn deserialize_record_from_page_bytes(data: &[u8]) -> Option<Vec<Value>> {
     if data.len() < 4 {
         return None;
@@ -4735,6 +4734,44 @@ impl FileStorage {
         Ok(())
     }
 
+    /// PR-A.5 / #5305: BufferPool-side scan path.
+    ///
+    /// For each `(db, table)` recorded by `insert_via_bufferpool`, we
+    /// have a list of page-ids in insertion order. We walk that list,
+    /// hand each `page_id` to `pool.get_or_load` (hot path → cache hit,
+    /// bumps `pages_visited` + `cache_hits`; cold path → loader runs
+    /// and inserts an empty page, bumps `pages_visited` + `disk_reads`),
+    /// then deserialise the page bytes back into a `Record`.
+    ///
+    /// The cold-cache loader returns a default `Page::new(page_id)`
+    /// whose `data` is all zeros. `deserialize_record_from_page_bytes`
+    /// sees `len < 4` and returns `None`, so the row is silently
+    /// dropped — semantically equivalent to "this page was evicted
+    /// and we have nowhere to read it back from", which is the right
+    /// behaviour for an EXPLAIN-signal mode.
+    fn scan_via_bufferpool(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        let pool = match self.buffer_pool.as_ref() {
+            Some(p) => p.clone(),
+            None => return Ok(Vec::new()),
+        };
+        let scoped = self.tbl_in(db, table);
+        let page_ids: Vec<u32> = {
+            let map = self
+                .bufferpool_page_ids
+                .lock()
+                .expect("bufferpool_page_ids poisoned");
+            map.get(&scoped).cloned().unwrap_or_default()
+        };
+        let mut records = Vec::with_capacity(page_ids.len());
+        for page_id in page_ids {
+            let page = pool.get_or_load(page_id, |_id| Arc::new(Page::new(page_id)));
+            if let Some(record) = deserialize_record_from_page_bytes(&page.data) {
+                records.push(record);
+            }
+        }
+        Ok(records)
+    }
+
     /// The one implementation of an insert, parameterised by database.
     ///
     /// #5057: this body used to read `self.current_db` inside the write
@@ -6160,6 +6197,14 @@ impl StorageEngine for FileStorage {
     }
 
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
+        // PR-A.5 / #5305: when a BufferPool is configured, scan reads back
+        // the page-ids recorded by `insert_via_bufferpool` and
+        // deserialises each. Legacy HashMap path is bypassed entirely —
+        // see `scan_via_bufferpool` doc-comment for why.
+        if self.buffer_pool.is_some() {
+            let db = crate::engine::DEFAULT_DATABASE;
+            return self.scan_via_bufferpool(db, table);
+        }
         // #4951: one read guard covers both collections so the table rows
         // and the buffer cannot come from two different instants — a scan
         // that merged a `tables` snapshot with a *newer* `insert_buffer`
@@ -6876,6 +6921,12 @@ impl StorageEngine for FileStorage {
     }
 
     fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        // PR-A.5: BufferPool path mirrors `scan` — `scan_in_db` and `scan`
+        // share the same per-table page-ids map; only the database key
+        // differs.
+        if self.buffer_pool.is_some() {
+            return self.scan_via_bufferpool(db, table);
+        }
         let key = crate::engine::scoped_key(db, table);
         Ok(self.with_read_lock(|st| {
             let mut rows: Vec<Record> = st
@@ -7591,6 +7642,47 @@ mod bufferpool_routing_tests {
         assert!(
             after > mid,
             "scan must bump pages_visited; mid={mid} after={after}"
+        );
+    }
+
+    /// T7 Step 4 / Review Focus item 5: concurrent inserts through the
+    /// BufferPool must not corrupt the per-table page-id vec.
+    /// `std::sync::Mutex` (not `parking_lot::Mutex`) so the guard can
+    /// cross thread boundaries — parking_lot's `MutexGuard` is `!Send`
+    /// by design.
+    #[test]
+    fn file_storage_concurrent_inserts_via_bufferpool_do_not_corrupt() {
+        use std::sync::Mutex as StdMutex;
+        use std::thread;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(64));
+        let storage = Arc::new(StdMutex::new(
+            FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+                .expect("new_with_bufferpool"),
+        ));
+
+        let mut handles = vec![];
+        for t in 0..4 {
+            let s = storage.clone();
+            handles.push(thread::spawn(move || {
+                let mut guard = s.lock().expect("poisoned");
+                let records: Vec<Record> = (0..25)
+                    .map(|i| vec![Value::Integer(t * 100 + i)])
+                    .collect();
+                guard.insert("t", records).expect("insert");
+            }));
+        }
+        for h in handles {
+            h.join().expect("join");
+        }
+
+        let rows = storage.lock().expect("poisoned").scan("t").expect("scan");
+        assert_eq!(
+            rows.len(),
+            100,
+            "4 threads × 25 records = 100 rows; got {}",
+            rows.len()
         );
     }
 }
