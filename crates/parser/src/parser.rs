@@ -62,6 +62,34 @@ pub fn get_and_clear_derived_subqueries() -> std::collections::HashMap<String, B
 /// we extract the inner payload because their `Display` impl emits
 /// `IDENTIFIER(x)` / `'x'` / `42` / `true` shapes that wouldn't
 /// survive the lexer's strict uppercase-keyword dispatch.
+/// #5350: tokens that may legally appear as an unquoted column name.
+///
+/// MySQL treats only a small set of words as fully reserved; `ROLE`,
+/// `KEY`, `VALUE` and friends are usable as column names. Structural
+/// punctuation and the tokens that introduce a table constraint are
+/// excluded so the `CREATE TABLE` column loop still routes them to the
+/// constraint arms.
+fn column_name_keyword_allowed(tok: &Token) -> bool {
+    !matches!(
+        tok,
+        Token::LParen
+            | Token::RParen
+            | Token::Comma
+            | Token::Semicolon
+            | Token::Dot
+            | Token::Primary
+            | Token::Key
+            | Token::Unique
+            | Token::Foreign
+            | Token::Check
+            | Token::Constraint
+            | Token::References
+            | Token::If
+            | Token::Not
+            | Token::Null
+    )
+}
+
 fn token_to_text(tok: &Token) -> String {
     match tok {
         Token::Identifier(s) => s.clone(),
@@ -11774,6 +11802,13 @@ impl Parser {
                         let col_def = self.parse_column_definition(&mut constraints)?;
                         columns.push(col_def);
                     }
+                    // #5350: non-reserved keywords are legal unquoted
+                    // column names (`role TEXT`, `id BLOB`); route them
+                    // through the same column-definition path.
+                    Some(tok) if column_name_keyword_allowed(tok) => {
+                        let col_def = self.parse_column_definition(&mut constraints)?;
+                        columns.push(col_def);
+                    }
                     Some(Token::Primary) => {
                         self.next();
                         self.expect(Token::Key)?;
@@ -11932,7 +11967,20 @@ impl Parser {
                     Some(Token::Comma) => {
                         self.next();
                     }
-                    _ => break,
+                    // #5350: this used to `break`, silently truncating the
+                    // column list whenever a name lexed as a keyword
+                    // (`role TEXT` -> the `role` column vanished). Fail
+                    // closed so a malformed table element is reported
+                    // instead of producing a short table. EOF still exits
+                    // the loop: a table constraint arm may legitimately
+                    // consume the closing paren on the final iteration.
+                    None => break,
+                    other => {
+                        return Err(format!(
+                            "Expected column definition or constraint in CREATE TABLE, got {:?}",
+                            other
+                        ))
+                    }
                 }
             }
         }
@@ -12143,6 +12191,10 @@ impl Parser {
     ) -> Result<ColumnDefinition, String> {
         let name = match self.next() {
             Some(Token::Identifier(name)) => name,
+            // #5350: MySQL accepts most non-reserved keywords (ROLE,
+            // KEY, VALUE, ...) as unquoted column names. Only structural
+            // and constraint-introducing tokens are rejected here.
+            Some(tok) if column_name_keyword_allowed(&tok) => tok.to_string(),
             _ => return Err("Expected column name".to_string()),
         };
 

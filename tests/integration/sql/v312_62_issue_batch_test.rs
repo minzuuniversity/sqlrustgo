@@ -176,18 +176,41 @@ fn v312_62_length_len_alias() {
 fn v312_62_compare_values_text_binary_strict() {
     let mut x = fresh();
     x.execute("CREATE TABLE s (courseno TEXT)").unwrap();
-    // Trailing-whitespace values are now distinct (BINARY).
     x.execute("INSERT INTO s VALUES ('c05103')").unwrap();
     let r = x
         .execute("SELECT COUNT(*) FROM s WHERE courseno = 'c05103'")
         .unwrap();
     assert_eq!(extract_int(&r, 0, 0), 1);
 
+    // #5350: this used to assert 0 here, i.e. that `=` on a TEXT column is
+    // trailing-space sensitive. That is not MySQL's rule. Per the MySQL
+    // manual, "for nonbinary strings (CHAR, VARCHAR, and TEXT values), the
+    // string collation pad attribute determines treatment in comparisons of
+    // trailing spaces": PAD SPACE collations — which includes most MySQL
+    // collations, e.g. utf8mb4_bin — treat trailing spaces as insignificant,
+    // and the manual's own example is `SELECT 'a ' = 'a'` returning 1 under
+    // utf8mb4_bin. Only NO PAD collations and binary string types
+    // (BINARY/VARBINARY/BLOB) make trailing spaces significant.
+    // https://dev.mysql.com/doc/en/charset-binary-collations.html
     let r2 = x
         .execute("SELECT COUNT(*) FROM s WHERE courseno = 'c05103   '")
         .unwrap();
-    // BINARY: the value with trailing spaces does NOT match.
-    assert_eq!(extract_int(&r2, 0, 0), 0);
+    assert_eq!(
+        extract_int(&r2, 0, 0),
+        1,
+        "PAD SPACE: trailing spaces are insignificant for `=` on TEXT"
+    );
+
+    // The BINARY aspect that does hold on a plain TEXT column is case
+    // sensitivity: PAD SPACE ignores trailing spaces, not letter case.
+    let r3 = x
+        .execute("SELECT COUNT(*) FROM s WHERE courseno = 'C05103'")
+        .unwrap();
+    assert_eq!(
+        extract_int(&r3, 0, 0),
+        0,
+        "BINARY collation: `=` on TEXT stays case-sensitive"
+    );
 }
 
 #[test]

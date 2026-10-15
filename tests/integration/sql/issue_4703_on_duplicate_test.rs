@@ -18,12 +18,16 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
 
 #[test]
 fn on_duplicate_key_update_multi_column_with_values_engine_api() {
-    // Engine API path: ON DUPLICATE KEY UPDATE + VALUES() still returns an
-    // error (the VALUES() reference is not wired through the v3.12 parser).
-    // This is the engine-side honest-path: the operation fails explicitly
-    // rather than silently executing partial logic.
+    // #5350: this used to assert that the engine *rejects* multi-column
+    // `ON DUPLICATE KEY UPDATE ... VALUES(col)`. That expectation described a
+    // parser gap, and the fixture had no PRIMARY KEY, so the statement could
+    // never have engaged ODKU anyway — it degenerated to a plain INSERT.
+    // `VALUES(col)` is now wired through, so lock down the real upsert
+    // semantics instead: the duplicate row is updated in place (no second
+    // row), `name` takes the incoming value, and `val = val + 50` applies to
+    // the *stored* value.
     let mut e = engine();
-    e.execute("CREATE TABLE m(id INTEGER, name TEXT, val INTEGER)")
+    e.execute("CREATE TABLE m(id INTEGER PRIMARY KEY, name TEXT, val INTEGER)")
         .unwrap();
     e.execute("INSERT INTO m VALUES (1, 'alice', 100)").unwrap();
     let r = e.execute(
@@ -31,11 +35,25 @@ fn on_duplicate_key_update_multi_column_with_values_engine_api() {
          ON DUPLICATE KEY UPDATE name = VALUES(name), val = val + 50",
     );
     assert!(
-        r.is_err(),
-        "ENGINE API: ON DUPLICATE KEY UPDATE multi-col + VALUES() must NOT \
-         silently succeed; expected Err. Got: {:?}",
-        r.as_ref().map(|er| format!("{:?}", er.rows.len()))
+        r.is_ok(),
+        "ENGINE API: multi-col ON DUPLICATE KEY UPDATE + VALUES() must execute; got: {:?}",
+        r.as_ref().err().map(|e| e.to_string())
     );
+
+    let rows = e
+        .execute("SELECT id, name, val FROM m")
+        .expect("SELECT after upsert")
+        .rows;
+    assert_eq!(
+        rows.len(),
+        1,
+        "upsert must update in place, not append: {rows:?}"
+    );
+    assert_eq!(
+        rows[0][1],
+        sqlrustgo::Value::Text("alice_updated".to_string())
+    );
+    assert_eq!(rows[0][2], sqlrustgo::Value::Integer(150));
 }
 
 #[test]

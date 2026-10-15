@@ -627,8 +627,13 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self,
         drop: &DropTableStatement,
     ) -> SqlResult<ExecutorResult> {
-        // No explicit PK-index invalidation: `drop_table` bumps the table's
-        // change stamp, so a cached index can no longer be trusted.
+        // #5350: `drop_table` bumps the table's change stamp, which is how a
+        // cached PK index is normally invalidated. That reasoning breaks for
+        // DROP + CREATE under the same name: the recreated table restarts
+        // from the initial stamp, so a stale index re-validates and keeps
+        // reporting the dropped rows' primary keys as duplicates. Invalidate
+        // explicitly instead of relying on the stamp.
+        self.pk_lookup_cache.write().remove(&drop.name);
         let mut storage = self.storage.write();
         if drop.if_exists && !storage.has_table(&drop.name) {
             // IF EXISTS specified and table doesn't exist → no-op, success
