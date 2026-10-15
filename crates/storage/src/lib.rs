@@ -33,6 +33,7 @@ pub mod mvcc;
 pub mod mvcc_gc;
 pub mod mvcc_storage;
 pub mod parallel_wal_storage;
+pub mod record_page_codec;
 pub mod table_engine;
 pub mod table_level_storage;
 pub mod table_registry;

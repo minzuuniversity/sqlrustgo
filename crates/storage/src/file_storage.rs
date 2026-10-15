@@ -4,6 +4,7 @@
 use crate::bplus_tree::BPlusTree;
 use crate::buffer_pool::{BufferPool, BufferPoolStats};
 use crate::page::Page;
+use crate::record_page_codec::{self as record_codec};
 use crate::engine::{
     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
     SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
@@ -21,32 +22,17 @@ use std::sync::{Arc, Mutex, RwLock};
 // synchronisation of the five fields that previously relied on the outer
 // `Arc<RwLock<FileStorage>>`. See PHASE_C_1_INTERNAL_LOCKING.md §2.
 
-/// PR-A.5 / #5305: serialise a `Record` (a row) into a self-describing
-/// byte slice for storage in a `Page.data` field. Layout is a 4-byte
-/// little-endian length prefix followed by the `serde_json` body.
-/// Length-prefixed so we can extend the format later (e.g., add a
-/// schema-id or a checksum) without breaking already-stored pages.
+// PR-A.5 / #5305: record ↔ page-bytes codec. Originally inline here;
+// PR-B T4 lifted to `crate::record_page_codec` so `MemoryStorage` can share
+// the same layout.
+#[inline]
 fn serialize_record_to_page_bytes(record: &[Value]) -> Vec<u8> {
-    let body = serde_json::to_vec(record).expect("Record serialization must not fail");
-    let mut out = Vec::with_capacity(4 + body.len());
-    out.extend_from_slice(&(body.len() as u32).to_le_bytes());
-    out.extend_from_slice(&body);
-    out
+    record_codec::serialize(record)
 }
 
-/// PR-A.5 / #5305: inverse of [`serialize_record_to_page_bytes`].
-/// Returns `None` for truncated / non-JSON payloads; callers should
-/// silently skip those (a freshly-allocated `Page::new(page_id)` has
-/// zero data and would otherwise be reported as a real row).
+#[inline]
 fn deserialize_record_from_page_bytes(data: &[u8]) -> Option<Vec<Value>> {
-    if data.len() < 4 {
-        return None;
-    }
-    let len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
-    if data.len() < 4 + len {
-        return None;
-    }
-    serde_json::from_slice(&data[4..4 + len]).ok()
+    record_codec::deserialize(data)
 }
 
 /// #4951: the mutable state that `write_state` guards.
