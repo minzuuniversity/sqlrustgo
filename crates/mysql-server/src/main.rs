@@ -308,6 +308,14 @@ enum Command {
     },
 }
 
+/// True when the user passed `--data-dir` (or `--data-dir=...`) on the
+/// command line. Used only to decide whether to warn about the /tmp
+/// default — the resolved value is unchanged either way.
+fn cmd_data_dir_was_explicit(args: &[String]) -> bool {
+    args.iter()
+        .any(|a| a == "--data-dir" || a.starts_with("--data-dir="))
+}
+
 fn main() -> ExitCode {
     // V312-59-D P0 leak hunt: install SIGUSR2 -> heap dump hook when
     // built with `--features jemalloc-prof`. Idempotent + no-op in
@@ -384,6 +392,23 @@ fn main() -> ExitCode {
             println!("MySQL wire-protocol server");
             println!("  Listen:     {}:{}", host, port);
             println!("  Data dir:   {}", data_dir);
+            // A10 / Issue #5232: the default data dir lives under /tmp, which
+            // the OS clears on reboot and any user can write to. A server
+            // started without an explicit --data-dir therefore loses its
+            // database silently across a reboot, which is the same
+            // "durability illusion" class as the CLUSTERED WAL bypass (R1).
+            // We do not relocate the default here because that would move an
+            // existing installation's data with no migration; instead the
+            // default is surfaced loudly so the choice is never silent.
+            let argv: Vec<String> = std::env::args().collect();
+            if !cmd_data_dir_was_explicit(&argv) && data_dir.starts_with("/tmp/") {
+                eprintln!(
+                    "WARNING: no --data-dir given; defaulting to {data_dir}, which is NOT durable.\n  \
+                     /tmp is cleared on reboot and is world-writable, so committed\n  \
+                     data will be lost on restart and is not private to this user.\n  \
+                     Pass --data-dir <persistent-path> for any real deployment."
+                );
+            }
             if let Some(ref lid) = load_infile_dir {
                 println!("  INFILE dir: {} (Issue #4020, --load-infile-dir)", lid);
             }

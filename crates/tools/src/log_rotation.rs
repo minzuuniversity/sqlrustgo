@@ -236,7 +236,9 @@ impl LogRotator {
 
         let file = File::open(&path)?;
         let reader = BufReader::new(file);
-        let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+        // `map_while`, not `filter_map`: a read error yields `Err`
+        // indefinitely, so `filter_map(|l| l.ok())` would spin forever.
+        let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
 
         Ok(lines.into_iter().rev().take(count).rev().collect())
     }
@@ -531,5 +533,90 @@ mod tests {
         let rotator = LogRotator::new(config).unwrap();
         let files = rotator.list_log_files().unwrap();
         assert!(files.is_empty());
+    }
+
+    /// Guards the `map_while` contract: reading stops at the first
+    /// undecodable line. Simplifying this back to `filter_map(|l| l.ok())`
+    /// reintroduces an unbounded scan, because `lines()` keeps yielding
+    /// `Err` once the reader hits a bad byte.
+    #[test]
+    fn test_read_logs_returns_tail_in_original_order() {
+        let dir = tempdir().unwrap();
+        let config = LogRotationConfig {
+            strategy: RotationStrategy::Size(100 * 1024 * 1024),
+            max_files: 5,
+            compress: false,
+            directory: dir.path().to_path_buf(),
+            prefix: "read".to_string(),
+        };
+
+        let mut rotator = LogRotator::new(config).unwrap();
+        for i in 0..5 {
+            rotator.write(&format!("line-{i}\n")).unwrap();
+        }
+
+        let all = rotator.read_logs(100).unwrap();
+        assert_eq!(all.len(), 5, "asking for more than exists returns all");
+        assert_eq!(all.first().map(String::as_str), Some("line-0"));
+        assert_eq!(all.last().map(String::as_str), Some("line-4"));
+
+        let tail = rotator.read_logs(2).unwrap();
+        assert_eq!(
+            tail,
+            vec!["line-3".to_string(), "line-4".to_string()],
+            "tail must preserve chronological order"
+        );
+    }
+
+    #[test]
+    fn test_read_logs_missing_file_is_empty_not_error() {
+        let dir = tempdir().unwrap();
+        let config = LogRotationConfig {
+            strategy: RotationStrategy::Size(100 * 1024 * 1024),
+            max_files: 5,
+            compress: false,
+            directory: dir.path().to_path_buf(),
+            prefix: "absent".to_string(),
+        };
+
+        let rotator = LogRotator::new(config).unwrap();
+        assert!(
+            rotator.read_logs(10).unwrap().is_empty(),
+            "a never-written log must read as empty rather than fail"
+        );
+    }
+
+    #[test]
+    fn test_read_logs_stops_at_invalid_utf8_instead_of_spinning() {
+        use std::io::Write;
+
+        let dir = tempdir().unwrap();
+        let config = LogRotationConfig {
+            strategy: RotationStrategy::Size(100 * 1024 * 1024),
+            max_files: 5,
+            compress: false,
+            directory: dir.path().to_path_buf(),
+            prefix: "bin".to_string(),
+        };
+
+        let rotator = LogRotator::new(config).unwrap();
+        let path = rotator.get_current_log_path();
+        // 0xFF is never valid UTF-8, so `lines()` yields Err at that offset and
+        // keeps yielding Err for the rest of the file. `map_while` stops
+        // there; `filter_map` would have consumed the whole file.
+        let mut raw = Vec::new();
+        raw.extend_from_slice(b"good-1\ngood-2\n");
+        raw.extend_from_slice(&[0xFF, b'\n']);
+        raw.extend_from_slice(b"unreachable-1\nunreachable-2\n");
+        let mut file = std::fs::File::create(&path).unwrap();
+        file.write_all(&raw).unwrap();
+        file.sync_all().unwrap();
+
+        let lines = rotator.read_logs(100).unwrap();
+        assert_eq!(
+            lines,
+            vec!["good-1".to_string(), "good-2".to_string()],
+            "reading must stop at the first undecodable line"
+        );
     }
 }
