@@ -1,0 +1,7 @@
+=== STDOUT ===
+id,x,id
+1,one,NULL
+2,two,1
+
+=== STDERR ===
+

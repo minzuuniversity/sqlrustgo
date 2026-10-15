@@ -1,0 +1,10 @@
+server_version=8.0.33-SQLRustGo
+SETUP> CREATE TABLE t_div (a INTEGER, b INTEGER)
+  OK affected=0
+SETUP> INSERT INTO t_div VALUES (7, 2)
+  OK affected=1
+QUERY> SELECT a, b, a / b FROM t_div
+  SELECT ncol=3 nrow=1 status=0x0002
+  columns=["a", "b", "a / b"]
+  types=["integer", "integer", "integer"]
+  row[0]=["7", "2", "3"]

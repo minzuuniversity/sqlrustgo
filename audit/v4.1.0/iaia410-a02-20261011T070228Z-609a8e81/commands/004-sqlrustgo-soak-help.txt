@@ -1,0 +1,12 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo soak --help
+Soak REPL mode: hold a persistent MySQL connection and serve queries read from stdin, writing tab-separated results to stdout. Designed for SOAK testing (PR #3347 alternative to mysql CLI)
+
+Usage: sqlrustgo soak [OPTIONS]
+
+Options:
+      --host <HOST>      [default: 127.0.0.1]
+  -p, --port <PORT>      [default: 3307]
+  -u, --user <USER>      
+  -w, --pass <PASSWORD>  
+  -h, --help             Print help
+EXIT=0

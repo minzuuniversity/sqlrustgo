@@ -65,12 +65,21 @@ pub struct VersionedRow {
 /// - `scan_visible()`: short-lived read lock on `versions`, then
 ///   per-chain binary search. Readers do NOT block writers.
 pub struct VersionedTable {
-    /// BTreeMap<primary_key, Vec<VersionedRow>> — versions are kept in
+    /// BTreeMap<row_identity, Vec<VersionedRow>> — versions are kept in
     /// ascending `visible_from_ts` order (oldest first).
+    ///
+    /// #5277: the key is the row's *identity*, not a business column. Using
+    /// the first column made three rows `(1,10)`, `(1,20)`, `(1,40)` into
+    /// three versions of one record, so a scan returned only the newest —
+    /// `(1,40)`. A table with no PRIMARY KEY has no column that can serve as
+    /// an identity, so those rows get a hidden one from `next_row_identity`.
     pub(crate) versions: parking_lot::RwLock<BTreeMap<Value, Vec<VersionedRow>>>,
     /// Global snapshot timestamp counter — incremented atomically.
     /// Each committed transaction that wrote a version advances this.
     snapshot_counter: AtomicU64,
+    /// #5277: source of hidden row identities for tables without a primary
+    /// key. Never handed out twice, so two identical rows stay distinct.
+    next_row_id: AtomicU64,
 }
 
 impl Default for VersionedTable {
@@ -80,10 +89,24 @@ impl Default for VersionedTable {
 }
 
 impl VersionedTable {
+    /// #5277: a fresh identity for a row whose table has no primary key.
+    ///
+    /// Tagged so it can never collide with a real column value: a table
+    /// holding the text `__mvcc_row_id__` would otherwise be indistinguishable
+    /// from this. The counter is per-table, and the tag is prepended, so the
+    /// result is a function the storage never produces on its own.
+    pub fn next_row_identity(&self) -> Value {
+        Value::Text(format!(
+            "__mvcc_row_id__{}",
+            self.next_row_id.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
     pub fn new() -> Self {
         Self {
             versions: RwLock::new(BTreeMap::new()),
             snapshot_counter: AtomicU64::new(0),
+            next_row_id: AtomicU64::new(0),
         }
     }
 

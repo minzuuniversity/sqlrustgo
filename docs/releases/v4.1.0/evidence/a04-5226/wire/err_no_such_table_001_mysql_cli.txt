@@ -1,0 +1,9 @@
+=== mysql CLI STDOUT ===
+
+=== STDERR ===
+--------------
+SELECT * FROM t_definitely_missing_xyz
+--------------
+
+ERROR 1146 (42000) at line 1: Table not found: t_definitely_missing_xyz
+

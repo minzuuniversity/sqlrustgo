@@ -1,0 +1,5 @@
+[A04-PREP-001] SELECT %s AS a, %s AS b -> mismatch  (subject errored (1047) other returned rows)
+[A04-PREP-002] SELECT %s + 1 AS p, %s AS s -> mismatch  (subject errored (1047) other returned rows)
+[A04-PREP-003] SELECT id FROM pp_t WHERE id = %s ORDER BY id -> mismatch  (subject errored (1047) other returned rows)
+
+== PREPARED SUMMARY == {'match': 0, 'mismatch': 3, 'not_comparable': 0}

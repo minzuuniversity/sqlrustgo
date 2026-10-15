@@ -194,14 +194,17 @@ pub(crate) fn bytes_to_filters(data: &[u8]) -> Result<Vec<Value>, crate::engine:
     bytes_to_record(data)
 }
 
-/// Force an insert during recovery, bypassing any insert buffer so subsequent
-/// scan/delete in the same recovery pass see the row in `data.rows` directly.
-pub(crate) fn recovery_force_insert<S: StorageEngine + ?Sized>(
+/// #5192: force-insert during recovery, bypassing any insert buffer so
+/// subsequent scan/delete in the same recovery pass see the row directly.
+/// The database is pinned, so a committed row is replayed into the database
+/// it was committed in rather than into whichever one happens to be current.
+pub(crate) fn recovery_force_insert_in_db<S: StorageEngine + ?Sized>(
     storage: &mut S,
+    db: &str,
     table: &str,
     record: Vec<Value>,
 ) -> Result<(), crate::engine::SqlError> {
-    storage.force_insert(table, record)
+    storage.force_insert_in_db(db, table, record)
 }
 
 #[allow(dead_code)]
@@ -330,15 +333,19 @@ fn key_to_filter_values(key: &[u8]) -> Result<Vec<Value>, crate::engine::SqlErro
     ))
 }
 
-fn replace_by_key<S: StorageEngine + ?Sized>(
+/// #5192: database-qualified delete+insert replacement. Replay must not
+/// depend on the storage's current database — after a restart that is
+/// `default`, not the database the row was committed in.
+fn replace_by_key_in_db<S: StorageEngine + ?Sized>(
     storage: &mut S,
+    db: &str,
     table: &str,
     key: &[u8],
     new_record: Vec<Value>,
 ) -> Result<(), crate::engine::SqlError> {
     let filter_values = key_to_filter_values(key)?;
-    storage.delete(table, &filter_values)?;
-    storage.insert(table, vec![new_record])?;
+    storage.delete_in_db(db, table, &filter_values)?;
+    storage.insert_in_db(db, table, vec![new_record])?;
     Ok(())
 }
 
@@ -708,6 +715,32 @@ pub(crate) fn apply_wal_entry(
         ))
     })?;
 
+    // #5192: a row entry must name the database it was committed in. Without
+    // it, replaying into a multi-database directory applies the row against
+    // whatever database is current — which is `default` after a restart —
+    // so a committed row is either written to the wrong database or reported
+    // as skipped while the server starts and accepts writes. Refuse instead:
+    // applying a committed row to the wrong database is worse than not
+    // recovering it, and a loud failure is what lets an operator act.
+    //
+    // Non-row entries (begin/commit/rollback) carry no table and no database.
+    let db_name = if is_row_entry_type(entry.entry_type) {
+        match entry.database_name.as_deref() {
+            Some(db) if !db.is_empty() => db,
+            _ => {
+                return Err(crate::engine::SqlError::ExecutionError(format!(
+                    "apply_wal_entry: row entry (tx_id={}, lsn={}, type={:?}) names table \
+                     {:?} but no database; it was written before #5192 or the writer did not \
+                     record one. Replaying it could apply a committed row to the wrong \
+                     database. Re-take the backup with a writer that records database names.",
+                    entry.tx_id, entry.lsn, entry.entry_type, table_name,
+                )))
+            }
+        }
+    } else {
+        ""
+    };
+
     // #5055: the table has to exist before anything is applied to it.
     //
     // `FileStorage::insert_direct` and `update` / `delete` all treat a
@@ -718,11 +751,17 @@ pub(crate) fn apply_wal_entry(
     // about, one layer down. It is also a genuine diagnostic: a WAL
     // entry naming a table the restore target does not have means the
     // base backup and the log are from different databases.
-    if is_row_entry_type(entry.entry_type) && storage.get_table_info(&table_name).is_err() {
+    //
+    // #5192: the lookup is database-qualified. Checking `get_table_info`
+    // (current database) against a table that lives in `aud` reported a
+    // false "table does not exist" and skipped the row.
+    if is_row_entry_type(entry.entry_type)
+        && storage.get_table_info_in(db_name, &table_name).is_err()
+    {
         return Err(crate::engine::SqlError::ExecutionError(format!(
-            "apply_wal_entry: table {:?} named by this entry does not exist in the \
+            "apply_wal_entry: table {:?}.{:?} named by this entry does not exist in the \
              target; the data directory and the WAL are not from the same database",
-            table_name
+            db_name, table_name
         )));
     }
 
@@ -740,7 +779,7 @@ pub(crate) fn apply_wal_entry(
             // restore work at all — replay runs on top of a restored
             // base backup that already holds every row the base had, so
             // re-applying the log would duplicate all of them.
-            if let Ok(existing) = storage.scan(&table_name) {
+            if let Ok(existing) = storage.scan_in_db(db_name, &table_name) {
                 if existing.iter().any(|r| r == &record) {
                     return Ok(ApplyOutcome::Skipped);
                 }
@@ -750,14 +789,14 @@ pub(crate) fn apply_wal_entry(
             // read `tables` only, so a row left in the buffer would be
             // invisible to a subsequent Update or Delete — the restore
             // would silently apply the first write and drop the rest.
-            recovery_force_insert(storage, &table_name, record)?;
+            recovery_force_insert_in_db(storage, db_name, &table_name, record)?;
             Ok(ApplyOutcome::Applied)
         }
         WalEntryType::Update => {
             if let Some(ref key) = entry.key {
                 if let Some(ref data) = entry.data {
                     let new_record = bytes_to_record(data)?;
-                    replace_by_key(storage, &table_name, key, new_record)?;
+                    replace_by_key_in_db(storage, db_name, &table_name, key, new_record)?;
                     Ok(ApplyOutcome::Applied)
                 } else {
                     log::warn!(
@@ -779,14 +818,14 @@ pub(crate) fn apply_wal_entry(
         WalEntryType::Delete => {
             if let Some(ref key) = entry.key {
                 let filter_values = key_to_filter_values(key)?;
-                storage.delete(&table_name, &filter_values)?;
+                storage.delete_in_db(db_name, &table_name, &filter_values)?;
                 Ok(ApplyOutcome::Applied)
             } else {
                 log::warn!(
                     "apply_wal_entry: DELETE entry without key for table {} - full table delete",
                     table_name
                 );
-                storage.delete(&table_name, &[])?;
+                storage.delete_in_db(db_name, &table_name, &[])?;
                 Ok(ApplyOutcome::Applied)
             }
         }
@@ -888,6 +927,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 0,
@@ -898,6 +938,7 @@ mod tests {
                 entry_type: WalEntryType::Insert,
                 table_id: 100,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: Some(b"i:{}" as &[u8]).map(|s| s.to_vec()),
                 lsn: 1,
@@ -908,6 +949,7 @@ mod tests {
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -918,6 +960,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 3,
@@ -928,6 +971,7 @@ mod tests {
                 entry_type: WalEntryType::Insert,
                 table_id: 100,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1074,6 +1118,10 @@ mod tests {
             entry_type: WalEntryType::Insert,
             table_id,
             table_name: table_name.map(|s| s.to_string()),
+            // #5192: absent = written before the field existed. These
+            // fixtures predate it deliberately — a row with a table name
+            // but no database must not be replayed into a guessed one.
+            database_name: None,
             key: None,
             data: None,
             lsn: 0,
@@ -1247,6 +1295,7 @@ mod tests {
             entry_type: crate::wal::WalEntryType::Insert,
             table_id: 0,
             table_name: None,
+            database_name: None,
             key: None,
             data: None,
             lsn: 0,
@@ -1264,6 +1313,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1274,6 +1324,7 @@ mod tests {
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1295,6 +1346,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1305,6 +1357,7 @@ mod tests {
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1315,6 +1368,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 3,
@@ -1325,6 +1379,7 @@ mod tests {
                 entry_type: WalEntryType::Rollback,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1335,6 +1390,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 5,
@@ -1361,6 +1417,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1371,6 +1428,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1381,6 +1439,7 @@ mod tests {
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 3,
@@ -1391,6 +1450,7 @@ mod tests {
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1414,6 +1474,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1424,6 +1485,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1436,6 +1498,7 @@ mod tests {
                 entry_type: WalEntryType::Insert,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: Some(vec![2u8]),
                 data: None,
                 lsn: 3,
@@ -1446,6 +1509,7 @@ mod tests {
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1456,6 +1520,7 @@ mod tests {
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 5,
@@ -1483,6 +1548,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 1,
@@ -1493,6 +1559,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 2,
@@ -1503,6 +1570,7 @@ mod tests {
                 entry_type: WalEntryType::Begin,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 3,
@@ -1513,6 +1581,7 @@ mod tests {
                 entry_type: WalEntryType::Commit,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 4,
@@ -1523,6 +1592,7 @@ mod tests {
                 entry_type: WalEntryType::Rollback,
                 table_id: 0,
                 table_name: None,
+                database_name: None,
                 key: None,
                 data: None,
                 lsn: 5,

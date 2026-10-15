@@ -1,0 +1,8 @@
+=== STDOUT ===
+
+
+renamed
+7
+
+=== STDERR ===
+

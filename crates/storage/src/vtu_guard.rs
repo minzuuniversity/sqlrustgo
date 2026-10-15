@@ -83,7 +83,46 @@ impl<S: 'static> VtuGuard<S> {
 }
 
 impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
-    /// Scan — allowed (read-only)
+    /// #5277: forward `(db, table, reader_tx)`. Without this the type
+    /// inherited the trait default, which dropped `db` and resolved the table
+    /// against the storage's current database. The guard must not disturb the wrapped storage.
+    fn scan_in_tx_db(&self, db: &str, table: &str, reader_tx: u64) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_tx_db(db, table, reader_tx)
+    }
+    /// #5266 S1: reads must be asked of the stated database. The old trait
+    /// default resolved them against the current one, so a read of `VtuGuard`'s
+    /// inner `d1.t` could return `default.t`'s rows or report it missing.
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        self.inner.get_table_info_in(db, table)
+    }
+
+    /// #5266 S1: see `get_table_info_in` — the database must be carried through.
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_db(db, table)
+    }
+    /// #5250: the check must be asked of the stated database. The old trait
+    /// default resolved this question against the current database, so a
+    /// storage could correctly refuse a write and still answer `true` here.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        self.inner.has_table_in(db, table)
+    }
+    /// #5250: delegate with the stated database. This wrapper holds a
+    /// single inner `StorageEngine`, so the database has to be carried
+    /// through — the previous trait default dropped it (`let _ = db;`) and
+    /// operated on whatever database was current.
+    /// #5250: delegate with the stated database — the guard must not disturb the wrapped storage
+    /// The old trait default did `let _ = db;` and operated on whatever
+    /// database happened to be current, which silently created or dropped
+    /// the wrong table.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.inner_mut().create_table_in_db(db, info)
+    }
+
+    /// #5250: see `create_table_in_db` — same contract, the database must be used.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        self.inner_mut().drop_table_in_db(db, table)
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         self.inner.scan(table)
     }
@@ -157,6 +196,91 @@ impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
         self.inner.has_table(table)
     }
 
+    /// #5266: the database must be carried through to the guarded engine.
+    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+        self.inner.list_tables_in_db(db)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn scan_with_filter_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner.scan_with_filter_in_db(db, table, filter)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner.scan_with_index_in_db(db, table, index_name, key)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn parallel_scan_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        self.inner.parallel_scan_in_db(db, table, num_partitions)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        self.inner_mut().insert_in_db(db, table, records)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.inner_mut().delete_in_db(db, table, filters)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        self.inner_mut()
+            .delete_collect_pks_in_db(db, table, filters)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.inner_mut().delete_if_in_db(db, table, filter)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        self.inner_mut().update_in_db(db, table, filters, updates)
+    }
+
+    /// #5266: delegate with the stated database.
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        self.inner_mut()
+            .update_if_in_db(db, table, filter, mutation)
+    }
+
     fn list_tables(&self) -> Vec<String> {
         self.inner.list_tables()
     }
@@ -197,8 +321,8 @@ impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
         self.inner.list_indexes(table)
     }
 
-    fn has_view(&self, name: &str) -> bool {
-        self.inner.has_view(name)
+    fn has_view(&self, db: &str, name: &str) -> bool {
+        self.inner.has_view(db, name)
     }
 
     fn as_any(&self) -> &dyn Any {

@@ -1,0 +1,5 @@
+=== STDOUT ===
+
+=== STDERR ===
+Error: in prepare, no such column: no_such_col (1)
+

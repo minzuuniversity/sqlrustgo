@@ -14,6 +14,56 @@ use sqlrustgo_parser::Expression;
 use sqlrustgo_storage::TableInfo;
 use sqlrustgo_types::Value;
 
+/// Extract the first `column = <literal>` equality conjunct from a WHERE
+/// clause, searching through top-level `AND` chains.
+///
+/// #5209: `try_extract_pk_eq_with_col` recognises only a WHERE clause that
+/// is *exactly* one equality. That made `WHERE id = 1` fast while
+/// `WHERE id = 1 AND k = 1` fell through to a full table scan, and — worse
+/// — a query against a table with a real secondary index was no faster
+/// than one without, because `CREATE INDEX` built the tree correctly but
+/// nothing called `scan_with_index` with a real key. Measured on
+/// FileStorage at 10,000 rows: single-column PK 25 µs (flat in row
+/// count), two-column predicate 4.23 ms (13x growth = O(N)).
+///
+/// Returns `(column, value)` so the caller can route to
+/// `scan_with_index_in_db`; `None` means "no equality", and the caller
+/// keeps its existing behaviour rather than seeking with a wrong key.
+///
+/// Only `AND` chains are decomposed. An `OR` chain cannot be served by an
+/// index seek for one branch — returning the first branch's equality
+/// there would silently drop rows, which is a correctness bug rather
+/// than a slow path.
+pub fn try_extract_eq_conjunct(where_expr: &Option<Expression>) -> Option<(String, Value)> {
+    let expr = where_expr.as_ref()?;
+    collect_eq_conjunct(expr)
+}
+
+fn collect_eq_conjunct(expr: &Expression) -> Option<(String, Value)> {
+    match expr {
+        Expression::BinaryOp(left, op, right) => {
+            let op_u = op.to_uppercase();
+            if op_u == "AND" {
+                collect_eq_conjunct(left).or_else(|| collect_eq_conjunct(right))
+            } else if op_u == "=" || op_u == "==" {
+                eq_as_column_value(left, right).or_else(|| eq_as_column_value(right, left))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// `col = literal` with the column on the left.
+fn eq_as_column_value(col_expr: &Expression, lit_expr: &Expression) -> Option<(String, Value)> {
+    let name = match col_expr {
+        Expression::Identifier(n) => n.clone(),
+        _ => return None,
+    };
+    extract_literal_value(lit_expr).map(|v| (name, v))
+}
+
 /// Default name of the primary-key column. Matches `FileStorage`'s
 /// PK convention (the schema's `primary_key: true` column).
 pub const DEFAULT_PK_COLUMN: &str = "id";

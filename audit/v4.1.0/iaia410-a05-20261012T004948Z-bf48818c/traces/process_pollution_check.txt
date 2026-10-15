@@ -1,0 +1,39 @@
+=== Process pollution check (A05 pre-run) ===
+timestamp: 2026-10-12T01:05:48Z
+
+--- SQLRustGo/MySQL-related processes ---
+openclaw                 808   0.3  0.0   1875984   29496 ?      Sl   00:47 01:35    ./target/debug/sqlrustgo-mysql-server serve --host 127.0.0.1 --port 3309 --data-dir /tmp/a04-sqlrustgo-data --auth-mode none --log-level warn
+earlyoom                3158   0.0  0.0      2712    1324 ?      Ss   Oct09 00:17    /usr/bin/earlyoom -m 3 -s 2 -r 3600 --avoid ^(init|systemd|sshd|postgresql|mysql|auditd|containerd|dockerd|chronyd|systemd-journald)$
+mysql                   3834   0.8  0.1   2737912  434172 ?      Ssl  Oct09 28:25    /usr/sbin/mysqld
+openclaw             2238248   0.1  0.0   1289156   23364 pts/4  Sl+  05:19 00:15    /home/openclaw/.local/bin/aoci --repo /home/openclaw/sqlrustgo mcp
+openclaw             3735400   0.0  0.0   1289888   21540 ?      Sl   14:44 00:23    /tmp/aoci_install/aoci ui --repo /home/openclaw/sqlrustgo
+
+--- Listening ports (3000/3306) ---
+LISTEN 0      70         127.0.0.1:33060      0.0.0.0:*                                            
+LISTEN 0      4096         0.0.0.0:3000       0.0.0.0:*                                            
+LISTEN 0      151        127.0.0.1:3306       0.0.0.0:*                                            
+LISTEN 0      4096            [::]:3000          [::]:*                                            
+
+--- Temp dirs/files used by this run ---
+-rw-rw-r-- 1 openclaw openclaw 882 Oct 12 08:13 /tmp/a05_build.log
+
+/tmp/a05_tests:
+total 3708
+drwxrwxr-x  2 openclaw openclaw    4096 Oct 12 08:27 .
+drwxrwxrwt 77 root     root     3747840 Oct 12 09:05 ..
+-rw-rw-r--  1 openclaw openclaw     650 Oct 12 08:39 a05_secondary_index_stale.log
+-rw-rw-r--  1 openclaw openclaw    1233 Oct 12 08:24 assembly_forwarding_5199.log
+-rw-rw-r--  1 openclaw openclaw     960 Oct 12 08:24 e2e_crash_recovery_proof.log
+-rw-rw-r--  1 openclaw openclaw    1240 Oct 12 08:24 eq_index_acceptance_latency_5209.log
+-rw-rw-r--  1 openclaw openclaw     610 Oct 12 08:22 eq_index_routing_decision_5209.log
+-rw-rw-r--  1 openclaw openclaw     607 Oct 12 08:22 equality_index_routing_5209.log
+-rw-rw-r--  1 openclaw openclaw    1067 Oct 12 08:24 index_and_table_survive_restart_5025.log
+-rw-rw-r--  1 openclaw openclaw    3343 Oct 12 08:24 index_covers_insert_buffer_5209.log
+
+--- Relevant env vars (CARGO/RUST/SQLRUST/MYSQL/DATA_DIR) ---
+CARGO_TERM_PROGRESS_WHEN=never
+MYSQL_PAGER=cat
+OLDPWD=/home/openclaw/dev/sqlrustgo
+PATH=/home/openclaw/.cargo/bin:/home/openclaw/.local/bin:/home/openclaw/bin:/home/openclaw/.qwenpaw/bin:/home/openclaw/.cargo/bin:/home/openclaw/.cargo/bin:/home/openclaw/.cargo/bin:/home/openclaw/.bun/bin:/home/openclaw/.local/bin:/home/openclaw/.opencode/bin:/home/openclaw/.cargo/bin:/home/openclaw/.nvm/versions/node/v24.13.1/bin:/usr/local/cuda-12.8/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/home/openclaw/.dotnet/tools
+PWD=/home/openclaw/dev/sqlrustgo
+XDG_DATA_DIRS=/usr/share/gnome:/usr/local/share:/usr/share:/var/lib/snapd/desktop

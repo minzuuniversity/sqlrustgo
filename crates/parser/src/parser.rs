@@ -971,6 +971,9 @@ pub struct SelectColumn {
 /// INSERT statement
 #[derive(Debug, Clone, PartialEq)]
 pub struct InsertStatement {
+    /// Optional database qualifier from `INSERT INTO db.table`.
+    /// `None` for unqualified inserts (resolved against session_db).
+    pub schema: Option<String>,
     pub table: String,
     pub columns: Vec<String>,
     pub values: Vec<Vec<Expression>>,         // For INSERT VALUES
@@ -1278,6 +1281,8 @@ pub enum ShowStatement {
         user: Option<String>,
     },
     CreateTable {
+        /// Optional database qualifier from `SHOW CREATE TABLE db.table`.
+        schema: Option<String>,
         table: String,
     },
     Sequences,
@@ -2946,9 +2951,28 @@ impl Parser {
             SavepointOp::RollbackTo
         };
         // Parse the savepoint name.
+        // G5-B (#5262): accept reserved keywords (OUTER, INNER, etc.) as
+        // savepoint names — MySQL 5.7 and SQLite both allow this. The
+        // previous single Identifier match rejected `SAVEPOINT outer`
+        // because OUTER lexes as a reserved keyword token.
         let name = match self.next() {
             Some(Token::Identifier(n)) => n,
-            Some(t) => return Err(format!("Expected savepoint name (identifier), got {:?}", t)),
+            // Accept any keyword/identifier token as savepoint name (G5-B).
+            Some(t) => {
+                // Extract the token's text representation (uppercase for
+                // keywords, exact for identifiers).
+                let name = match &t {
+                    Token::Identifier(n) => n.clone(),
+                    // Use Debug format as fallback for keyword tokens.
+                    other => format!("{:?}", other)
+                        .trim_start_matches("Token::")
+                        .trim_start_matches("Keyword")
+                        .trim_start_matches('"')
+                        .trim_end_matches('"')
+                        .to_string(),
+                };
+                name
+            }
             None => return Err("Expected savepoint name, got EOF".to_string()),
         };
         Ok(Statement::SavepointStatement { name, op })
@@ -5022,6 +5046,99 @@ impl Parser {
         })
     }
 
+    /// Parse one numeric bound of a LIMIT or OFFSET clause.
+    ///
+    /// Shared by both spellings so they cannot drift apart: `LIMIT count`,
+    /// `LIMIT count OFFSET skip` and `LIMIT skip, count` all reduce their
+    /// two numbers through this one function (#5217). `clause` names the
+    /// keyword for diagnostics.
+    ///
+    /// V313-10 / Issue #4038: a bound followed by an arithmetic operator is
+    /// parsed as an expression and constant-folded, so `LIMIT 2-1` yields 1
+    /// rather than being truncated to 2. An expression that cannot be folded
+    /// is a binder error, never a silently dropped clause.
+    fn parse_limit_value(&mut self, clause: &str) -> Result<Option<u64>, String> {
+        let peek_is_arith = matches!(
+            self.tokens.get(self.position + 1),
+            Some(Token::Plus)
+                | Some(Token::Minus)
+                | Some(Token::Star)
+                | Some(Token::Slash)
+                | Some(Token::Percent)
+        );
+        if peek_is_arith {
+            let saved_pos = self.position;
+            let expr = self.parse_expression()?;
+            return match constant_fold_u64(&expr) {
+                Some(v) => Ok(Some(v)),
+                None => {
+                    self.position = saved_pos;
+                    Err(classify_unfoldable_limit_expr(clause, &expr))
+                }
+            };
+        }
+        match self.current() {
+            Some(Token::NumberLiteral(n)) => {
+                // Handle both integer and float literals (LIMIT 1.25 -> 1 row)
+                let val = if let Ok(i) = n.parse::<u64>() {
+                    i
+                } else if let Ok(f) = n.parse::<f64>() {
+                    f as u64
+                } else {
+                    return Err(format!("Invalid {}: invalid digit found in string", clause));
+                };
+                self.next();
+                Ok(Some(val))
+            }
+            Some(Token::Identifier(ref s)) => {
+                // Support `LIMIT @var` and identifier-like column references.
+                // A pure integer string is accepted directly; a following `(`
+                // goes through parse_expression so a call like `row_number()`
+                // is classified properly; anything else is a column reference
+                // and gets a binder error rather than a silent None.
+                // V313-10 / Issue #4038.
+                if let Ok(val) = s.parse::<u64>() {
+                    self.next();
+                    Ok(Some(val))
+                } else if matches!(self.tokens.get(self.position + 1), Some(Token::LParen)) {
+                    let saved_pos = self.position;
+                    let expr = self.parse_expression()?;
+                    match constant_fold_u64(&expr) {
+                        Some(v) => Ok(Some(v)),
+                        None => {
+                            self.position = saved_pos;
+                            Err(classify_unfoldable_limit_expr(clause, &expr))
+                        }
+                    }
+                } else if clause == "LIMIT" {
+                    let ident = s.clone();
+                    Err(format!(
+                        "Binder Error: Referenced column '{}' not found in LIMIT",
+                        ident
+                    ))
+                } else {
+                    // OFFSET historically fell through to the binder instead of
+                    // erroring here, so a non-numeric offset yields no bound at
+                    // all. Preserved rather than made stricter: changing it
+                    // would alter behaviour for queries that parse today.
+                    Ok(None)
+                }
+            }
+            _ => {
+                // V312-19 #3972: accept an arithmetic expression, e.g. LIMIT 2-1.
+                let saved_pos = self.position;
+                let expr = self.parse_expression()?;
+                match constant_fold_u64(&expr) {
+                    Some(v) => Ok(Some(v)),
+                    None => {
+                        self.position = saved_pos;
+                        Err(classify_unfoldable_limit_expr(clause, &expr))
+                    }
+                }
+            }
+        }
+    }
+
     fn parse_select_statement(&mut self) -> Result<SelectStatement, String> {
         // V313-96 / Issue #4717: `FROM (WITH cte AS (...) SELECT ...)` subquery.
         if matches!(self.current(), Some(Token::With)) {
@@ -6140,37 +6257,55 @@ impl Parser {
                     let (name, consumed, _is_expression) = match self.current().cloned() {
                         Some(Token::Identifier(name)) => {
                             if matches!(self.peek(), Some(Token::Dot)) {
-                                let table = name.clone();
-                                self.next();
-                                self.expect(Token::Dot)?;
-                                match self.current().cloned() {
-                                    Some(Token::Identifier(col)) => {
-                                        self.next();
-                                        (format!("{}.{}", table, col), true, false)
+                                // #5137 AC4c: consume the FULL dot chain.
+                                // The old single-shot handling stopped after
+                                // `db.table`, left the second `Dot` in the
+                                // stream, and the next column-loop round hit
+                                // `Expected expression` on it (`SELECT
+                                // d2.t2.id`). The `db.table.col` form is kept
+                                // as one flat name — matching the existing
+                                // two-segment `table.col` convention; the
+                                // executor strips the leading database
+                                // segment at evaluation time.
+                                let mut qualified = name.clone();
+                                self.next(); // eat the first identifier
+                                while matches!(self.current(), Some(Token::Dot)) {
+                                    self.next(); // eat `.`
+                                    match self.current().cloned() {
+                                        Some(Token::Identifier(part)) => {
+                                            self.next();
+                                            qualified = format!("{}.{}", qualified, part);
+                                        }
+                                        // `Level` is a reserved token (used for
+                                        // transaction isolation levels) but can
+                                        // appear as a user-chosen column name in
+                                        // `tbl.Level` (e.g. `oc.level`). Accept
+                                        // it here as a column name.
+                                        Some(Token::Level) => {
+                                            self.next();
+                                            qualified = format!("{}.level", qualified);
+                                        }
+                                        // `table.*` — qualified star (e.g.
+                                        // `SELECT orders.* FROM orders JOIN users`).
+                                        // Emit a Star column with a special name
+                                        // so the executor can resolve it from
+                                        // the joined tables. Nothing valid
+                                        // follows `*`, so stop the chain here.
+                                        Some(Token::Star) => {
+                                            self.next();
+                                            qualified = format!("{}.*", qualified);
+                                            break;
+                                        }
+                                        Some(t) => {
+                                            return Err(format!(
+                                                "Expected column name, got {:?}",
+                                                t
+                                            ))
+                                        }
+                                        None => return Err("Expected column name".to_string()),
                                     }
-                                    // `Level` is a reserved token (used for
-                                    // transaction isolation levels) but can
-                                    // appear as a user-chosen column name in
-                                    // `tbl.Level` (e.g. `oc.level`). Accept
-                                    // it here as a column name.
-                                    Some(Token::Level) => {
-                                        self.next();
-                                        (format!("{}.level", table), true, false)
-                                    }
-                                    // `table.*` — qualified star (e.g.
-                                    // `SELECT orders.* FROM orders JOIN users`).
-                                    // Emit a Star column with a special name
-                                    // so the executor can resolve it from
-                                    // the joined tables.
-                                    Some(Token::Star) => {
-                                        self.next();
-                                        (format!("{}.*", table), true, false)
-                                    }
-                                    Some(t) => {
-                                        return Err(format!("Expected column name, got {:?}", t))
-                                    }
-                                    None => return Err("Expected column name".to_string()),
                                 }
+                                (qualified, true, false)
                             } else {
                                 (name.clone(), false, false)
                             }
@@ -7019,6 +7154,27 @@ impl Parser {
                         } else {
                             first_table.clone()
                         }
+                    } else if matches!(self.current(), Some(Token::As)) {
+                        // #5137 C1: explicit `FROM db.t AS alias` — the bare
+                        // alias branch above excludes `Token::As`, so without
+                        // this arm the `AS alias` (and every token after it,
+                        // including the comma list and WHERE) was silently
+                        // unconsumed: tables kept only the first name, the
+                        // comma loop never ran, and `where_clause` came out
+                        // as None. Encode the alias like the bare path does.
+                        self.next(); // consume `AS`
+                        match self.current().cloned() {
+                            Some(Token::Identifier(a)) => {
+                                self.next();
+                                format!("{}|{}", first_table, a)
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Expected alias after `AS` in FROM clause, got {:?}",
+                                    other
+                                ))
+                            }
+                        }
                     } else {
                         first_table.clone()
                     };
@@ -7091,7 +7247,7 @@ impl Parser {
                             });
                             continue;
                         }
-                        let consumed_name = match self.next() {
+                        let mut consumed_name = match self.next() {
                             Some(Token::Identifier(name)) => name,
                             Some(t) => {
                                 return Err(format!(
@@ -7102,6 +7258,28 @@ impl Parser {
                             }
                             None => return Err("Expected table name after comma".to_string()),
                         };
+                        // #5137 AC4e: a qualified table in the comma list
+                        // (`FROM t1, d2.t2`) arrives here as Identifier
+                        // ("d2") followed by Dot + Identifier ("t2"). Keep
+                        // the `db.table` form embedded in the table string
+                        // (per-table schema does not exist in the AST, so
+                        // the executor splits it back per table). Before
+                        // this, `d2` alone became the table name and the
+                        // query failed with `Table not found: d2`.
+                        if matches!(self.current(), Some(Token::Dot)) {
+                            self.next(); // consume `.`
+                            match self.next() {
+                                Some(Token::Identifier(tail)) => {
+                                    consumed_name = format!("{}.{}", consumed_name, tail);
+                                }
+                                other => {
+                                    return Err(format!(
+                                        "Expected table name after `{}.` in FROM list, got {:?}",
+                                        consumed_name, other
+                                    ))
+                                }
+                            }
+                        }
                         // Phase 2 (TPCH-01 Q7/Q21 fix): handle inline alias
                         // for *each* table in the comma list. The previous
                         // design attached the alias to the LAST table only,
@@ -7138,6 +7316,26 @@ impl Parser {
                                 tables.push(format!("{}|{}", consumed_name, a));
                             } else {
                                 tables.push(consumed_name);
+                            }
+                        } else if matches!(token_after, Some(Token::As)) {
+                            // #5137 C1: explicit `... , db.t AS alias` — same
+                            // silent-drop failure as the first-table arm: the
+                            // guard above excludes `Token::As`, so the alias
+                            // was never consumed, the loop then saw `As`
+                            // where it expected `Comma`, and the remainder of
+                            // the FROM list plus WHERE were discarded.
+                            self.next(); // consume `AS`
+                            match self.current().cloned() {
+                                Some(Token::Identifier(a)) => {
+                                    self.next();
+                                    tables.push(format!("{}|{}", consumed_name, a));
+                                }
+                                other => {
+                                    return Err(format!(
+                                        "Expected alias after `AS` in FROM list, got {:?}",
+                                        other
+                                    ))
+                                }
                             }
                         } else {
                             tables.push(consumed_name);
@@ -7774,191 +7972,45 @@ impl Parser {
             Vec::new()
         };
 
-        // Parse LIMIT clause
-        let limit = if matches!(self.current(), Some(Token::Limit)) {
+        // Parse LIMIT clause.
+        //
+        // MySQL has two spellings: `LIMIT count [OFFSET skip]` and the
+        // comma form `LIMIT skip, count`, where the offsets and counts are
+        // swapped relative to each other. #5217: only the first spelling
+        // used to be recognised — the comma form parsed its first number as
+        // the count and silently dropped the rest, so `LIMIT 5,3` returned 5
+        // rows starting at 1 and `LIMIT 0,3` returned none. Both clauses are
+        // folded to (offset, limit) here, so nothing downstream has to know
+        // which spelling was used.
+        let (limit, mut limit_offset) = if matches!(self.current(), Some(Token::Limit)) {
             self.next();
             // MySQL: LIMIT ALL = no limit (== LIMIT NULL)
             if matches!(self.current(), Some(Token::All)) {
                 self.next();
-                None
+                (None, None)
             } else {
-                // V313-10 / Issue #4038: peek whether the LIMIT value is followed
-                // by an arithmetic operator. If it is, parse the full expression
-                // through parse_expression + constant_fold_u64 so that
-                // `LIMIT 2-1` is folded to 1, not silently truncated to 2.
-                let peek_is_arith = matches!(
-                    self.tokens.get(self.position + 1),
-                    Some(Token::Plus)
-                        | Some(Token::Minus)
-                        | Some(Token::Star)
-                        | Some(Token::Slash)
-                        | Some(Token::Percent)
-                );
-                if peek_is_arith {
-                    // Arithmetic expression form: parse full expression.
-                    // V313-10 / Issue #4038: emit a classified binder error
-                    // when the expression cannot be constant-folded.
-                    let saved_pos = self.position;
-                    let expr = self.parse_expression()?;
-                    match constant_fold_u64(&expr) {
-                        Some(v) => Some(v),
-                        None => {
-                            self.position = saved_pos;
-                            return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                        }
-                    }
+                let first = self.parse_limit_value("LIMIT")?;
+                if matches!(self.current(), Some(Token::Comma)) {
+                    // Comma form: the number just parsed is the offset, and
+                    // the next one is the count.
+                    self.next();
+                    (self.parse_limit_value("LIMIT")?, first)
                 } else {
-                    match self.current() {
-                        Some(Token::NumberLiteral(n)) => {
-                            // Handle both integer and float literals (e.g., LIMIT 1.25 -> 1 row)
-                            let val = if let Ok(i) = n.parse::<u64>() {
-                                i
-                            } else if let Ok(f) = n.parse::<f64>() {
-                                f as u64
-                            } else {
-                                return Err(
-                                    "Invalid LIMIT: invalid digit found in string".to_string()
-                                );
-                            };
-                            self.next();
-                            Some(val)
-                        }
-                        Some(Token::Identifier(ref s)) => {
-                            // Support LIMIT variable (e.g., @limit) and
-                            // identifier-like column references. When the
-                            // identifier is a pure integer string we accept
-                            // it directly; when followed by `(` we let
-                            // parse_expression handle it (so `row_number()`
-                            // gets wrapped in a WindowCall / FunctionCall
-                            // and the classify step produces the right error);
-                            // otherwise we treat it as a column reference
-                            // and emit the binder error directly.
-                            // V313-10 / Issue #4038.
-                            if let Ok(val) = s.parse::<u64>() {
-                                self.next();
-                                Some(val)
-                            } else if matches!(
-                                self.tokens.get(self.position + 1),
-                                Some(Token::LParen)
-                            ) {
-                                // Looks like a function call (possibly
-                                // windowed) — let parse_expression build
-                                // the full AST, then classify.
-                                let saved_pos = self.position;
-                                let expr = self.parse_expression()?;
-                                match constant_fold_u64(&expr) {
-                                    Some(v) => Some(v),
-                                    None => {
-                                        self.position = saved_pos;
-                                        return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                                    }
-                                }
-                            } else {
-                                let ident = s.clone();
-                                return Err(format!(
-                                    "Binder Error: Referenced column '{}' not found in LIMIT",
-                                    ident
-                                ));
-                            }
-                        }
-                        _ => {
-                            // V312-19 #3972: accept arithmetic expression, e.g. LIMIT 2-1.
-                            // V313-10 / Issue #4038: if the expression contains
-                            // an aggregate, window function or column ref
-                            // that cannot be constant-folded, restore
-                            // position and emit a classified binder-style
-                            // error. Returning None would silently swallow
-                            // the LIMIT clause.
-                            let saved_pos = self.position;
-                            let expr = self.parse_expression()?;
-                            match constant_fold_u64(&expr) {
-                                Some(v) => Some(v),
-                                None => {
-                                    self.position = saved_pos;
-                                    return Err(classify_unfoldable_limit_expr("LIMIT", &expr));
-                                }
-                            }
-                        }
-                    }
+                    (first, None)
                 }
             }
         } else {
-            None
+            (None, None)
         };
 
         // Parse OFFSET clause
-        let offset = if matches!(self.current(), Some(Token::Offset)) {
+        let offset = if let Some(comma_form_offset) = limit_offset.take() {
+            // `LIMIT skip, count` already carried the offset; a trailing
+            // OFFSET would be a syntax error, so nothing more to consume.
+            Some(comma_form_offset)
+        } else if matches!(self.current(), Some(Token::Offset)) {
             self.next();
-            // V313-10 / Issue #4038: mirror the LIMIT fix — peek for an
-            // arithmetic operator so `OFFSET 5-1` folds to 4 instead
-            // of being silently truncated to 5.
-            let peek_is_arith = matches!(
-                self.tokens.get(self.position + 1),
-                Some(Token::Plus)
-                    | Some(Token::Minus)
-                    | Some(Token::Star)
-                    | Some(Token::Slash)
-                    | Some(Token::Percent)
-            );
-            if peek_is_arith {
-                let saved_pos = self.position;
-                let expr = self.parse_expression()?;
-                match constant_fold_u64(&expr) {
-                    Some(v) => Some(v),
-                    None => {
-                        self.position = saved_pos;
-                        return Err(classify_unfoldable_limit_expr("OFFSET", &expr));
-                    }
-                }
-            } else {
-                match self.current() {
-                    Some(Token::NumberLiteral(n)) => {
-                        let val = if let Ok(i) = n.parse::<u64>() {
-                            i
-                        } else if let Ok(f) = n.parse::<f64>() {
-                            f as u64
-                        } else {
-                            return Err("Invalid OFFSET: invalid digit found in string".to_string());
-                        };
-                        self.next();
-                        Some(val)
-                    }
-                    Some(Token::Identifier(ref s)) => {
-                        // V313-10 / Issue #4038: mirror the LIMIT fix —
-                        // non-numeric identifiers (likely column refs)
-                        // fall through to the binder rather than being
-                        // rejected here as 'Invalid OFFSET'.
-                        if let Ok(val) = s.parse::<u64>() {
-                            self.next();
-                            Some(val)
-                        } else {
-                            let saved_pos = self.position;
-                            let expr = self.parse_expression()?;
-                            match constant_fold_u64(&expr) {
-                                Some(v) => Some(v),
-                                None => {
-                                    self.position = saved_pos;
-                                    None
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        // V312-19 #3972: OFFSET also accepts arithmetic expression.
-                        // V313-10 / Issue #4038: emit a classified binder error
-                        // when the expression cannot be constant-folded.
-                        let saved_pos = self.position;
-                        let expr = self.parse_expression()?;
-                        match constant_fold_u64(&expr) {
-                            Some(v) => Some(v),
-                            None => {
-                                self.position = saved_pos;
-                                return Err(classify_unfoldable_limit_expr("OFFSET", &expr));
-                            }
-                        }
-                    }
-                }
-            }
+            self.parse_limit_value("OFFSET")?
         } else {
             None
         };
@@ -8340,7 +8392,27 @@ impl Parser {
             match self.current().cloned() {
                 Some(Token::Identifier(name)) => {
                     self.next();
-                    name
+                    // #5137 A2: consume the full `db.table` chain. The
+                    // single-shot parse kept only `d2` from `JOIN d2.t2`,
+                    // leaving the Dot in the stream and resolving the right
+                    // side as table `d2` → `Table not found: d2`. The flat
+                    // `db.table` string is understood downstream by
+                    // `execute_single_join` (which splits it per side).
+                    let mut qualified = name;
+                    while matches!(self.current(), Some(Token::Dot)) {
+                        self.next();
+                        match self.current().cloned() {
+                            Some(Token::Identifier(part)) => {
+                                self.next();
+                                qualified = format!("{}.{}", qualified, part);
+                            }
+                            Some(t) => {
+                                return Err(format!("Expected table name after '.', got {:?}", t))
+                            }
+                            None => return Err("Expected table name after '.'".to_string()),
+                        }
+                    }
+                    qualified
                 }
                 Some(t) => return Err(format!("Expected table name, got {:?}", t)),
                 None => return Err("Expected table name".to_string()),
@@ -8486,9 +8558,25 @@ impl Parser {
 
         self.expect(Token::Into)?;
 
-        let table = match self.next() {
-            Some(Token::Identifier(name)) => name,
-            _ => return Err("Expected table name".to_string()),
+        // `INSERT INTO db.table`: capture optional schema qualifier.
+        let (schema, table) = {
+            let first = match self.next() {
+                Some(Token::Identifier(name)) => name,
+                _ => return Err("Expected table name".to_string()),
+            };
+            if matches!(self.current(), Some(Token::Dot)) {
+                self.next(); // consume `.`
+                let t = match self.next() {
+                    Some(Token::Identifier(name)) => name,
+                    Some(tok) => {
+                        return Err(format!("Expected table name after `.` , got {:?}", tok))
+                    }
+                    None => return Err("Expected table name after `schema.`".to_string()),
+                };
+                (Some(first), t)
+            } else {
+                (None, first)
+            }
         };
 
         // Check for column list: (col1, col2, ...)
@@ -8893,6 +8981,7 @@ impl Parser {
             returning = Some(cols);
         }
         let insert_stmt = Statement::Insert(InsertStatement {
+            schema,
             table,
             columns,
             values,
@@ -9876,7 +9965,12 @@ impl Parser {
             // affects SELECT-expression parsing.
             // V312-79 / Issue #4670: TRUNCATE(expr, digits) — same pattern.
             | Some(Token::Truncate)
-            | Some(Token::User) => {
+            | Some(Token::User)
+            // #5262: REPEAT(str, count) — lexer emits Token::Repeat, but
+            // parse_primary_expression only handled Token::Identifier and
+            // a curated keyword list. Add Repeat so `SELECT REPEAT(s, 3)`
+            // parses as FunctionCall instead of ParseError.
+            | Some(Token::Repeat) => {
                 let name = match self.current() {
                     Some(Token::Left) => "LEFT",
                     Some(Token::Right) => "RIGHT",
@@ -9895,6 +9989,7 @@ impl Parser {
                     Some(Token::Database) => "DATABASE",
                     Some(Token::Truncate) => "TRUNCATE",
                     Some(Token::User) => "USER",
+                    Some(Token::Repeat) => "REPEAT",
                     _ => unreachable!(),
                 };
                 self.next();
@@ -10223,16 +10318,36 @@ impl Parser {
                 };
                 self.next();
                 if matches!(self.current(), Some(Token::Dot)) {
-                    self.next();
-                    match self.current() {
-                        Some(Token::Identifier(col)) => {
-                            let col_name = col.clone();
-                            self.next();
-                            Ok(Expression::Identifier(format!("{}.{}", name, col_name)))
+                    // #5137 A1: consume the FULL dot chain and emit one flat
+                    // name. The single-shot handling stopped after two
+                    // segments, so `d2.t2.id` in an expression context became
+                    // `SubqueryField(Identifier("d2.t2"), "id")` — whose
+                    // evaluation arm discards the field — and the WHERE
+                    // predicate silently never matched. Flattening here
+                    // matches the column-list loop's convention and routes
+                    // three-segment names through `eval_identifier`'s db-segment
+                    // stripping. `(expr).col` / `f(x).col` are unaffected:
+                    // their primaries are parenthesised and never enter this
+                    // branch.
+                    let mut qualified = name.clone();
+                    while matches!(self.current(), Some(Token::Dot)) {
+                        self.next();
+                        match self.current() {
+                            Some(Token::Identifier(part)) => {
+                                let part_name = part.clone();
+                                self.next();
+                                qualified = format!("{}.{}", qualified, part_name);
+                            }
+                            Some(t) => {
+                                return Err(format!(
+                                    "Expected column name after dot, got {:?}",
+                                    t
+                                ))
+                            }
+                            None => return Err("Expected column name after dot".to_string()),
                         }
-                        Some(t) => Err(format!("Expected column name after dot, got {:?}", t)),
-                        None => Err("Expected column name after dot".to_string()),
                     }
+                    Ok(Expression::Identifier(qualified))
                 } else if matches!(self.current(), Some(Token::LParen)) {
                     self.next();
                     // EXTRACT(field FROM expr) is a special function-call form
@@ -12826,11 +12941,27 @@ impl Parser {
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "CREATE" => {
                 self.next();
                 self.expect(Token::Table)?;
-                let table = match self.next() {
+                let first = match self.next() {
                     Some(Token::Identifier(name)) => name,
                     _ => return Err("Expected table name".to_string()),
                 };
-                Ok(Statement::Show(ShowStatement::CreateTable { table }))
+                let (schema, table) = if matches!(self.current(), Some(Token::Dot)) {
+                    self.next();
+                    let t = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        Some(tok) => {
+                            return Err(format!("Expected table name after `.`, got {:?}", tok))
+                        }
+                        None => return Err("Expected table name after `schema.`".to_string()),
+                    };
+                    (Some(first), t)
+                } else {
+                    (None, first)
+                };
+                Ok(Statement::Show(ShowStatement::CreateTable {
+                    schema,
+                    table,
+                }))
             }
             Some(Token::Create) => {
                 // V312-56A / #4251: the lexer promotes `CREATE` to
@@ -12839,11 +12970,27 @@ impl Parser {
                 // TABLE <name>` parses to `ShowStatement::CreateTable`.
                 self.next();
                 self.expect(Token::Table)?;
-                let table = match self.next() {
+                let first = match self.next() {
                     Some(Token::Identifier(name)) => name,
                     _ => return Err("Expected table name".to_string()),
                 };
-                Ok(Statement::Show(ShowStatement::CreateTable { table }))
+                let (schema, table) = if matches!(self.current(), Some(Token::Dot)) {
+                    self.next();
+                    let t = match self.next() {
+                        Some(Token::Identifier(name)) => name,
+                        Some(tok) => {
+                            return Err(format!("Expected table name after `.`, got {:?}", tok))
+                        }
+                        None => return Err("Expected table name after `schema.`".to_string()),
+                    };
+                    (Some(first), t)
+                } else {
+                    (None, first)
+                };
+                Ok(Statement::Show(ShowStatement::CreateTable {
+                    schema,
+                    table,
+                }))
             }
             Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "COLUMNS" => {
                 self.next();
@@ -14508,6 +14655,70 @@ mod split_sql_statements_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // qualified INSERT: `INSERT INTO db.table VALUES(...)` 必须解析出
+    // schema=Some("db")、table="table"（MySQL 限定名）。此前 parse_insert
+    // 只吃单 Identifier，遇 `.` 报 "Expected VALUES..."。
+    #[test]
+    fn test_parse_qualified_insert() {
+        let sql = "INSERT INTO db1.t1 VALUES (1, 'a')";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed for {}: {:?}", sql, result);
+        match result.unwrap() {
+            Statement::Insert(ins) => {
+                assert_eq!(ins.schema.as_deref(), Some("db1"));
+                assert_eq!(ins.table, "t1");
+            }
+            other => panic!("Expected Insert, got {:?}", other),
+        }
+    }
+
+    // qualified INSERT 无 schema 时 schema 必须为 None（保持既有行为）。
+    #[test]
+    fn test_parse_unqualified_insert_schema_none() {
+        let sql = "INSERT INTO t1 VALUES (1, 'a')";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed for {}: {:?}", sql, result);
+        match result.unwrap() {
+            Statement::Insert(ins) => {
+                assert_eq!(ins.schema, None);
+                assert_eq!(ins.table, "t1");
+            }
+            other => panic!("Expected Insert, got {:?}", other),
+        }
+    }
+
+    // qualified SHOW CREATE TABLE: `SHOW CREATE TABLE db.table` 必须解析出
+    // schema=Some("db")、table="table"。此前 parse_show CreateTable 分支
+    // 只吃单 Identifier，把 `db1.t1` 整体当表名。
+    #[test]
+    fn test_parse_qualified_show_create_table() {
+        let sql = "SHOW CREATE TABLE db1.t1";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed for {}: {:?}", sql, result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::CreateTable { schema, table }) => {
+                assert_eq!(schema.as_deref(), Some("db1"));
+                assert_eq!(table, "t1");
+            }
+            other => panic!("Expected Show(CreateTable), got {:?}", other),
+        }
+    }
+
+    // unqualified SHOW CREATE TABLE 保持 schema=None。
+    #[test]
+    fn test_parse_unqualified_show_create_table() {
+        let sql = "SHOW CREATE TABLE t1";
+        let result = parse(sql);
+        assert!(result.is_ok(), "Parse failed for {}: {:?}", sql, result);
+        match result.unwrap() {
+            Statement::Show(ShowStatement::CreateTable { schema, table }) => {
+                assert_eq!(schema, None);
+                assert_eq!(table, "t1");
+            }
+            other => panic!("Expected Show(CreateTable), got {:?}", other),
+        }
+    }
 
     #[test]
     fn test_parse_qualified_column_names() {
@@ -18100,6 +18311,102 @@ mod set_op_tests {
         match result.unwrap() {
             Statement::Select(s) => {
                 assert!(s.where_clause.is_some());
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    /// #5217: MySQL's `LIMIT skip, count` is the same statement as
+    /// `LIMIT count OFFSET skip`. Before this, only the `OFFSET` spelling was
+    /// recognised — the comma form took its first number as the count and
+    /// dropped the rest, so `LIMIT 5,3` parsed as limit=5/offset=None and
+    /// `LIMIT 0,3` as limit=0. Both silently returned the wrong rows instead
+    /// of erroring.
+    ///
+    /// The old test above only covered the keyword form, which is why this
+    /// survived: no assertion ever compared the two spellings.
+    #[test]
+    fn test_limit_comma_form_matches_offset_keyword_form() {
+        for (comma, keyword) in [
+            (
+                "SELECT * FROM t LIMIT 5,3",
+                "SELECT * FROM t LIMIT 3 OFFSET 5",
+            ),
+            (
+                "SELECT * FROM t LIMIT 0,3",
+                "SELECT * FROM t LIMIT 3 OFFSET 0",
+            ),
+            (
+                "SELECT * FROM t LIMIT 18,2",
+                "SELECT * FROM t LIMIT 2 OFFSET 18",
+            ),
+            (
+                "SELECT * FROM t ORDER BY a DESC LIMIT 7,4",
+                "SELECT * FROM t ORDER BY a DESC LIMIT 4 OFFSET 7",
+            ),
+        ] {
+            let a = parse(comma).unwrap_or_else(|e| panic!("{} failed: {}", comma, e));
+            let b = parse(keyword).unwrap_or_else(|e| panic!("{} failed: {}", keyword, e));
+            match (a, b) {
+                (Statement::Select(sa), Statement::Select(sb)) => {
+                    assert_eq!(
+                        (sa.offset, sa.limit),
+                        (sb.offset, sb.limit),
+                        "{} and {} must produce the same (offset, limit)",
+                        comma,
+                        keyword
+                    );
+                }
+                _ => panic!("Expected two Select statements"),
+            }
+        }
+    }
+
+    /// The comma form must not leak into the projection. `LIMIT 5,3` has a
+    /// comma between two bounds, not two result columns — a parser that
+    /// treats it as a column separator changes the result shape.
+    #[test]
+    fn test_limit_comma_form_does_not_add_a_column() {
+        match parse("SELECT id FROM t LIMIT 5,3").unwrap() {
+            Statement::Select(s) => {
+                assert_eq!(s.columns.len(), 1, "comma in LIMIT is not a column list");
+                assert_eq!(s.offset, Some(5));
+                assert_eq!(s.limit, Some(3));
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    /// `LIMIT 2-1` folds to 1 (V312-19 #3972) and still works in the comma
+    /// position, since both bounds go through the same folding path now.
+    #[test]
+    fn test_limit_comma_form_folds_arithmetic() {
+        match parse("SELECT * FROM t LIMIT 10-4,8-2").unwrap() {
+            Statement::Select(s) => {
+                assert_eq!(s.offset, Some(6));
+                assert_eq!(s.limit, Some(6));
+            }
+            other => panic!("Expected Select, got {:?}", other),
+        }
+    }
+
+    /// A dangling comma is a syntax error, not a silently ignored bound.
+    #[test]
+    fn test_limit_comma_form_rejects_missing_second_bound() {
+        assert!(
+            parse("SELECT * FROM t LIMIT 5,").is_err(),
+            "`LIMIT 5,` must not parse as `LIMIT 5`"
+        );
+    }
+
+    /// `LIMIT ALL` keeps its meaning (no bound) and must not be mistaken for
+    /// the start of a comma form.
+    #[test]
+    fn test_limit_all_is_unbounded() {
+        match parse("SELECT * FROM t LIMIT ALL").unwrap() {
+            Statement::Select(s) => {
+                assert_eq!(s.limit, None);
+                assert_eq!(s.offset, None);
             }
             other => panic!("Expected Select, got {:?}", other),
         }

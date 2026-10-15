@@ -1,0 +1,46 @@
+schema_version: iaia410-finding/v1
+id: A05-V410-003
+run_id: iaia410-a05-20261012T004948Z-bf48818c
+work_package: A05
+module: execution/explain
+category: F-explain-lacks-cost-rows-pages
+severity: P2
+status: confirmed
+
+source_agent: omp/A11
+source_run: omp-a05-20261012-00
+timestamp: '2026-10-12T00:49:48Z'
+evidence_hash: 6e1f266109f90f313c033ad839c336a89a70727121adfe75bfd350adeaacd34e
+conflict_resolution: none
+
+claim:
+  text: 'EXPLAIN reports plan cost / estimated rows / page visits (spec 「计划/页访问量」).'
+  source_type: SSOT
+  source_ref: docs/releases/v4.1.0/IAIA_410_SSOT.md
+  freshness: v4.1.0
+
+production_entry: 'EXPLAIN <select> via execution engine (src/execution_engine.rs)'
+assessed_commit: bf48818cd41369ea9728017b0afeed96d223386f
+source_locations:
+  - 'src/execution_engine.rs:728-808 (explain_select_plan: operator lines only — IndexScan/SeqScan/Filter/GroupBy/Sort/Limit/Distinct/Projection; NO cost/rows/pages)'
+  - 'crates/mysql-server/src/engine_select.rs:3726-3736 (AHI page_id = hash(table name), synthetic, not a real page-visit counter)'
+
+expected: 'EXPLAIN output includes per-operator estimated rows and page-visit counts (plan/页访问量), enabling plan-cost reasoning.'
+actual: 'explain_select_plan emits operator names only (IndexScan/SeqScan/Filter/GroupBy/Sort/Limit/Distinct/Projection). No cost, no estimated rows, no page-visit counter. AHI page_id is a synthetic hash of the table name, not a real page-visit metric. Spec 「计划/页访问量」 is not satisfied.'
+evidence:
+  static:
+    - 'src/execution_engine.rs:728-808 (explain_select_plan: no cost/rows/pages fields)'
+    - 'crates/mysql-server/src/engine_select.rs:3726-3736 (AHI page_id = hash(table name), synthetic)'
+  dynamic: []
+  differential: []
+  reproduction_command_ids: []
+  counterexample_attempts: []
+
+linked_issue: 5305
+linked_prs: []
+review:
+  reviewer: null
+  source_run: null
+  timestamp: null
+  evidence_hash: null
+  verdict: null

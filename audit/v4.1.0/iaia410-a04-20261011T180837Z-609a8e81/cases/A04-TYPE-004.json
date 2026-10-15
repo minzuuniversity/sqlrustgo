@@ -1,0 +1,124 @@
+{
+  "id": "A04-TYPE-004",
+  "domain": "coltype",
+  "query": "SELECT b FROM t_big",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "identical (names/types/rows)",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-TYPE-004",
+    "role": "subject",
+    "port": 14503,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS t_big",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE t_big (b BIGINT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO t_big VALUES (9999999999)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "b"
+      ],
+      "types": [
+        8
+      ],
+      "rows": [
+        [
+          9999999999
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-TYPE-004",
+    "role": "ref",
+    "port": 14603,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS t_big",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE t_big (b BIGINT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO t_big VALUES (9999999999)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "b"
+      ],
+      "types": [
+        8
+      ],
+      "rows": [
+        [
+          9999999999
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.56,
+  "wire": {
+    "subj": "cases/A04-TYPE-004_.subj.wire",
+    "ref": "cases/A04-TYPE-004_.ref.wire"
+  }
+}

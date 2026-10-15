@@ -1084,6 +1084,18 @@ path = "tests/integration/dml/dml_integration_test.rs"
 name = "dml_pk_fast_path_5177"
 path = "tests/integration/dml/dml_pk_fast_path_5177.rs"
 [[test]]
+name = "equality_index_routing_5209"
+path = "tests/integration/dml/equality_index_routing_5209.rs"
+[[test]]
+name = "eq_index_routing_decision_5209"
+path = "tests/integration/dml/eq_index_routing_decision_5209.rs"
+[[test]]
+name = "eq_index_acceptance_latency_5209"
+path = "tests/integration/dml/eq_index_acceptance_latency_5209.rs"
+[[test]]
+name = "a05_secondary_index_stale"
+path = "tests/integration/dml/a05_secondary_index_stale.rs"
+[[test]]
 name = "perf_eng_batched_insert_test"
 path = "tests/integration/dml/perf_eng_batched_insert_test.rs"
 [[test]]
@@ -1350,6 +1362,9 @@ path = "tests/integration/sql/show_index_test.rs"
 [[test]]
 name = "show_create_table_test"
 path = "tests/integration/sql/show_create_table_test.rs"
+[[test]]
+name = "explain_est_rows_5305"
+path = "tests/integration/sql/explain_est_rows_5305.rs"
 [[test]]
 name = "show_warnings_errors_status_variables_test"
 path = "tests/integration/sql/show_warnings_errors_status_variables_test.rs"
@@ -1776,6 +1791,10 @@ path = "tests/integration/fault_injection/row_crc_skip.rs"
 [[test]]
 name = "differential_corpus_test"
 path = "tests/integration/compat/differential_corpus_test.rs"
+
+[[test]]
+name = "a04_mysql_diff_matrix"
+path = "tests/integration/compat/a04_mysql_diff_matrix_test.rs"
 
 [[test]]
 name = "semantic_kernel_test"

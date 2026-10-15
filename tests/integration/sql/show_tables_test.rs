@@ -148,7 +148,7 @@ fn show_columns_nonexistent_table_returns_error() {
 }
 
 #[test]
-fn show_index_on_table_without_catalog_returns_empty() {
+fn show_index_reports_primary_for_pk_column_without_catalog() {
     let mut client = clean_client();
     client
         .exec("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total FLOAT)")
@@ -158,12 +158,19 @@ fn show_index_on_table_without_catalog_returns_empty() {
         .query_rows("SHOW INDEX FROM orders")
         .expect("SHOW INDEX should succeed");
 
-    assert!(
-        rows.is_empty(),
-        "expected empty (no catalog), got {} rows: {:?}",
+    // storage-only CREATE TABLE: catalog is empty (auto-provisioned but
+    // not populated by this path), so `execute_show_index` falls through
+    // to the ColumnDefinition.primary_key synthesis and reports a single
+    // PRIMARY row for the pk column.
+    assert_eq!(
+        rows.len(),
+        1,
+        "expected one synthesized PRIMARY row, got {} rows: {:?}",
         rows.len(),
         rows
     );
+    assert_eq!(rows[0][2].as_str(), "PRIMARY");
+    assert_eq!(rows[0][4].as_str(), "id");
 }
 
 #[test]
@@ -218,7 +225,7 @@ fn show_create_table_returns_single_ddl_row() {
         "SHOW CREATE TABLE should return exactly 1 row, got {}",
         rows.len()
     );
-    let ddl = rows[0][0].as_str();
+    let ddl = rows[0][1].as_str();
     assert!(
         ddl.starts_with("CREATE TABLE widgets ("),
         "DDL should start with table name + opening paren, got: {}",
@@ -248,7 +255,7 @@ fn show_create_table_preserves_not_null_clause() {
         .expect("SHOW CREATE TABLE should succeed");
 
     assert_eq!(rows.len(), 1);
-    let ddl = rows[0][0].as_str();
+    let ddl = rows[0][1].as_str();
     assert!(
         ddl.contains("login") && ddl.contains("NOT NULL"),
         "DDL should preserve `NOT NULL` on `login`, got: {}",
@@ -284,7 +291,7 @@ fn show_create_table_after_alter_adds_new_column() {
         .query_rows("SHOW CREATE TABLE ledger")
         .expect("SHOW CREATE TABLE before ALTER");
     assert_eq!(pre.len(), 1);
-    let pre_ddl = pre[0][0].as_str();
+    let pre_ddl = pre[0][1].as_str();
     assert!(pre_ddl.contains("amount"));
     assert!(
         !pre_ddl.contains("memo"),
@@ -301,7 +308,7 @@ fn show_create_table_after_alter_adds_new_column() {
         .query_rows("SHOW CREATE TABLE ledger")
         .expect("SHOW CREATE TABLE after ALTER");
     assert_eq!(post.len(), 1);
-    let post_ddl = post[0][0].as_str();
+    let post_ddl = post[0][1].as_str();
     assert!(
         post_ddl.contains("memo"),
         "post-alter DDL should contain `memo`, got: {}",
@@ -327,7 +334,7 @@ fn show_create_table_roundtrip_yields_equivalent_schema() {
         .query_rows("SHOW CREATE TABLE roundtrip_src")
         .expect("SHOW CREATE TABLE roundtrip_src");
     assert_eq!(rows.len(), 1);
-    let ddl = rows[0][0].as_str();
+    let ddl = rows[0][1].as_str();
 
     // The introspected DDL must contain every column from the original CREATE
     // (the executor currently does not preserve PRIMARY KEY in the

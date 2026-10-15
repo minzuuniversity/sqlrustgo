@@ -1,0 +1,130 @@
+{
+  "id": "A04-COL-004",
+  "domain": "colname",
+  "query": "SELECT id, id AS id2 FROM cn_t4 ORDER BY id",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "identical (names/types/rows)",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-COL-004",
+    "role": "subject",
+    "port": 14547,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS cn_t4",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE cn_t4 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO cn_t4 VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "id2"
+      ],
+      "types": [
+        3,
+        3
+      ],
+      "rows": [
+        [
+          1,
+          1
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-COL-004",
+    "role": "ref",
+    "port": 14647,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS cn_t4",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE cn_t4 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO cn_t4 VALUES (1)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 1
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "id2"
+      ],
+      "types": [
+        3,
+        3
+      ],
+      "rows": [
+        [
+          1,
+          1
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.58,
+  "wire": {
+    "subj": "cases/A04-COL-004_.subj.wire",
+    "ref": "cases/A04-COL-004_.ref.wire"
+  }
+}

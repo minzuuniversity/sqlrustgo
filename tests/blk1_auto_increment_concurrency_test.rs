@@ -19,7 +19,7 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, SqlResult};
-use sqlrustgo_storage::{MemoryStorage, StorageEngine};
+use sqlrustgo_storage::MemoryStorage;
 use std::sync::Arc;
 
 /// Shared storage, with an AUTO_INCREMENT table already created.

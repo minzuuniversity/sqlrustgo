@@ -1,0 +1,88 @@
+{
+  "id": "A04-CONSTRAINT-002",
+  "domain": "constraint",
+  "query": "INSERT INTO ct_uq VALUES (1) ON DUPLICATE KEY UPDATE id=1",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "side-effect(affected): subj=1 ref=1",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-CONSTRAINT-002",
+    "role": "subject",
+    "port": 14552,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS ct_uq",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE ct_uq (id INT UNIQUE)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "ok",
+      "columns": [],
+      "types": [],
+      "rows": [],
+      "affected": 1
+    }
+  },
+  "ref": {
+    "case_id": "A04-CONSTRAINT-002",
+    "role": "ref",
+    "port": 14652,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS ct_uq",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE ct_uq (id INT UNIQUE)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "ok",
+      "columns": [],
+      "types": [],
+      "rows": [],
+      "affected": 1
+    }
+  },
+  "elapsed_s": 0.51,
+  "wire": {
+    "subj": "cases/A04-CONSTRAINT-002_.subj.wire",
+    "ref": "cases/A04-CONSTRAINT-002_.ref.wire"
+  }
+}

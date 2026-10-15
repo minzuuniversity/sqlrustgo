@@ -5,7 +5,8 @@
 //! Key insight: WAL writes must be serial (ordering), but table flushes can be parallel.
 
 use crate::engine::{
-    ColumnDefinition, Record, SqlError, SqlResult, StorageEngine, TableInfo, Value,
+    ColumnDefinition, Record, RowFilter, RowMutation, SqlError, SqlResult, StorageEngine,
+    TableInfo, Value, ViewInfo,
 };
 use crate::wal::{GroupCommitCoordinator, WalEntry, WalEntryType, WalManager};
 use crate::wal_storage::WalSyncMode;
@@ -19,7 +20,18 @@ pub struct ParallelWalStorage<S: StorageEngine, W: WalManager> {
     /// `GroupCommitCoordinator` that shares the same lock. The lock is
     /// only held for the `sync()` syscall (the coordinator's leader
     /// holds it briefly; waiters don't).
+    ///
+    /// #5317: this is the legacy field. When
+    /// [`Self::install_shared_wal`] has installed a
+    /// `SharedWalHandle`, every WAL op routes through that handle
+    /// instead; this field keeps its concrete `W` (set by
+    /// [`Self::new`]) but is no longer the write target.
     wal: Arc<Mutex<W>>,
+    /// #5317: when `Some(_)`, every WAL op routes through this
+    /// `SharedWalHandle` — the same physical `FileBackedWalManager`
+    /// the inner `FileStorage` is holding. When `None`, writes go to
+    /// the legacy `wal` field; that is the pre-#5317 behaviour.
+    shared_wal: Option<crate::wal::SharedWalHandle>,
     sync_mode: WalSyncMode,
     /// Optional group-commit coordinator. When set, commit_transaction
     /// uses it instead of `wal.lock().sync()` directly. Created lazily
@@ -43,6 +55,11 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         Self {
             inner,
             wal: Arc::new(Mutex::new(wal)),
+            // #5317: legacy path. Use
+            // [`Self::install_shared_wal`] (or
+            // [`Self::new_with_shared_handle`]) to opt into sharing
+            // the WAL handle with the wrapping `FileStorage`.
+            shared_wal: None,
             sync_mode: WalSyncMode::Every,
             group_commit: None,
             writes_since_sync: 0,
@@ -58,6 +75,10 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         Self {
             inner,
             wal,
+            // #5317: see `new`. `Arc<Mutex<W>>` here is *not* the
+            // shared-with-`FileStorage` handle — `install_shared_wal`
+            // sets that separately.
+            shared_wal: None,
             sync_mode: WalSyncMode::Every,
             group_commit: None,
             writes_since_sync: 0,
@@ -65,6 +86,48 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
             next_lsn: 0,
         }
+    }
+
+    /// #5317: build a `ParallelWalStorage` that shares its
+    /// `FileBackedWalManager` with the inner `FileStorage`. The
+    /// `shared_wal` is the same `Arc<std::sync::Mutex<Box<dyn WalManager>>>`
+    /// that `FileStorage::new_with_external_wal` was given — the
+    /// concrete `W` here is `DynWalManager`, a newtype adapter
+    /// around the shared handle, so the struct's `W: WalManager`
+    /// bound stays satisfied without dropping type information on
+    /// the shared side.
+    ///
+    /// Mirrors `WalStorage::new_with_shared_wal_handle`.
+    ///
+    /// Free function (not a method on the generic impl) so the
+    /// struct's unconstrained `W` parameter doesn't have to be
+    /// inferred at every call site. Callers see
+    /// `ParallelWalStorage<S, DynWalManager>` directly.
+    #[allow(dead_code)]
+    pub fn new_with_shared_handle(
+        inner: S,
+        shared_wal: crate::wal::SharedWalHandle,
+    ) -> ParallelWalStorage<S, crate::wal::DynWalManager> {
+        // The free-function body lives next to the impl so the
+        // adapter wiring stays in one place. `Self::new` here
+        // refers to the generic `ParallelWalStorage<S, W>` —
+        // W is fixed to `DynWalManager` only in the return
+        // type annotation, which forces the inner `new` to be
+        // called with `W = DynWalManager`.
+        let adapter = crate::wal::DynWalManager(shared_wal.clone());
+        let mut s: ParallelWalStorage<S, crate::wal::DynWalManager> =
+            ParallelWalStorage::new(inner, adapter);
+        s.shared_wal = Some(shared_wal);
+        s
+    }
+
+    /// #5317: install a `SharedWalHandle` shared with the wrapping
+    /// `FileStorage`. From this point on every WAL op routes through
+    /// the shared handle; the legacy `wal: Arc<Mutex<W>>` field stays
+    /// around (still usable by `set_group_commit`) but is no longer
+    /// the write target. Pass `None` to revert to the legacy path.
+    pub fn install_shared_wal(&mut self, shared_wal: crate::wal::SharedWalHandle) {
+        self.shared_wal = Some(shared_wal);
     }
 
     /// Run garbage collection on the inner storage engine. This
@@ -92,6 +155,26 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         self.group_commit = coord;
     }
 
+    /// #5317: dispatch a WAL operation to either the shared handle
+    /// (`Some`) or the legacy `wal` field (`None`). Mirrors
+    /// `WalStorage::wal_do`; same rationale and same non-reentrancy
+    /// caveat for callers that already hold the inner lock.
+    fn wal_do<R>(
+        &self,
+        f: impl FnOnce(&mut dyn crate::wal::WalManager) -> SqlResult<R>,
+    ) -> SqlResult<Option<R>> {
+        if !self.wal_enabled {
+            return Ok(None);
+        }
+        if let Some(shared) = self.shared_wal.as_ref() {
+            let mut guard = shared.lock().expect("SharedWalHandle inner mutex poisoned");
+            Ok(Some(f(&mut **guard)?))
+        } else {
+            let mut guard = self.wal.lock().expect("wal mutex poisoned");
+            Ok(Some(f(&mut *guard)?))
+        }
+    }
+
     /// Returns a reference to the installed group-commit coordinator, if
     /// any.
     pub fn group_commit(&self) -> Option<&Arc<GroupCommitCoordinator<W>>> {
@@ -102,9 +185,11 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         let lsn = self.next_lsn;
         self.next_lsn += 1;
         entry.lsn = lsn;
-        let mut wal = self.wal.lock().expect("wal mutex poisoned");
-        wal.append(entry)
-            .map_err(|e| SqlError::ExecutionError(format!("WAL append error: {}", e)))?;
+        // #5317: route through `wal_do` so the shared handle
+        // (when `shared_wal` is `Some`) serialises with the inner
+        // `FileStorage`'s commits.
+        self.wal_do(|w| w.append(entry))
+            .and_then(|opt| opt.ok_or_else(|| SqlError::ExecutionError("WAL disabled".into())))?;
         Ok(lsn)
     }
 }
@@ -112,8 +197,27 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
 impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     for ParallelWalStorage<S, W>
 {
+    /// #5250: the check must be asked of the stated database. The old trait
+    /// default resolved this question against the current database, so a
+    /// storage could correctly refuse a write and still answer `true` here.
+    fn has_table_in(&self, db: &str, table: &str) -> bool {
+        self.inner.has_table_in(db, table)
+    }
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
         self.inner.insert(table, records)
+    }
+
+    /// #5250: delegate with the stated database — this wrapper holds a single inner storage
+    /// The old trait default did `let _ = db;` and operated on whatever
+    /// database happened to be current, which silently created or dropped
+    /// the wrong table.
+    fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
+        self.inner.create_table_in_db(db, info)
+    }
+
+    /// #5250: see `create_table_in_db` — same contract, the database must be used.
+    fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
+        self.inner.drop_table_in_db(db, table)
     }
 
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
@@ -161,6 +265,19 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.inner.scan_pk(table, pk_column, pk)
     }
 
+    /// #5281: same forwarding obligation — the `_in_db` trait default
+    /// still matches `row.first()`, so a PK declared on a non-first
+    /// column never reached the identity-aware inner lookup.
+    fn scan_pk_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        pk_column: &str,
+        pk: &Value,
+    ) -> SqlResult<Option<Record>> {
+        self.inner.scan_pk_in_db(db, table, pk_column, pk)
+    }
+
     /// #5168: same for the range variant.
     fn scan_pk_range(&self, table: &str, low: &Value, high: &Value) -> SqlResult<Vec<Record>> {
         self.inner.scan_pk_range(table, low, high)
@@ -168,18 +285,6 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
 
     fn delete(&mut self, table: &str, filters: &[crate::engine::Value]) -> SqlResult<usize> {
         self.inner.delete(table, filters)
-    }
-
-    /// #5025: forward the database switch. A wrapper that answers the
-    /// trait default (`Ok(())` that changes nothing) makes `USE` report
-    /// success while every query still resolves against the previous
-    /// database.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        self.inner.set_current_db(db_name)
-    }
-
-    fn current_db(&self) -> String {
-        self.inner.current_db()
     }
 
     fn update(
@@ -242,6 +347,7 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
                     .unwrap()
                     .as_secs(),
                 table_name: None,
+                database_name: None,
             };
             self.append_wal_entry(entry)?;
         }
@@ -263,29 +369,42 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
                     WalSyncMode::Batch(n) => {
                         self.writes_since_sync += 1;
                         if self.writes_since_sync >= n as usize {
-                            let mut wal = self.wal.lock().expect("wal mutex poisoned");
-                            wal.sync().map_err(|e| {
-                                SqlError::ExecutionError(format!("WAL sync error: {}", e))
-                            })?;
-                            drop(wal);
+                            // #5317: route through `wal_do`.
+                            self.wal_do(|w| w.sync())
+                                .and_then(|opt| {
+                                    opt.ok_or_else(|| {
+                                        SqlError::ExecutionError("WAL disabled".into())
+                                    })
+                                })
+                                .map_err(|e| {
+                                    SqlError::ExecutionError(format!("WAL sync error: {}", e))
+                                })?;
                             self.writes_since_sync = 0;
                         }
                     }
                     WalSyncMode::Every => {
-                        let mut wal = self.wal.lock().expect("wal mutex poisoned");
-                        wal.sync().map_err(|e| {
-                            SqlError::ExecutionError(format!("WAL sync error: {}", e))
-                        })?;
+                        // #5317: route through `wal_do`.
+                        self.wal_do(|w| w.sync())
+                            .and_then(|opt| {
+                                opt.ok_or_else(|| SqlError::ExecutionError("WAL disabled".into()))
+                            })
+                            .map_err(|e| {
+                                SqlError::ExecutionError(format!("WAL sync error: {}", e))
+                            })?;
                     }
                     WalSyncMode::GroupCommit { .. } => {
                         // GroupCommit variant is informational; the
                         // coordinator (if installed) drives the actual
                         // fsync. Without a coordinator, fall back to
                         // every-tx fsync.
-                        let mut wal = self.wal.lock().expect("wal mutex poisoned");
-                        wal.sync().map_err(|e| {
-                            SqlError::ExecutionError(format!("WAL sync error: {}", e))
-                        })?;
+                        // #5317: route through `wal_do`.
+                        self.wal_do(|w| w.sync())
+                            .and_then(|opt| {
+                                opt.ok_or_else(|| SqlError::ExecutionError("WAL disabled".into()))
+                            })
+                            .map_err(|e| {
+                                SqlError::ExecutionError(format!("WAL sync error: {}", e))
+                            })?;
                     }
                 }
             }
@@ -392,8 +511,16 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     fn list_indexes(&self, table: &str) -> Vec<(String, String)> {
         self.inner.list_indexes(table)
     }
-    fn has_view(&self, name: &str) -> bool {
-        self.inner.has_view(name)
+    fn has_view(&self, db: &str, name: &str) -> bool {
+        self.inner.has_view(db, name)
+    }
+    // #5320: forward view persistence to the inner engine.
+    // Without these, the trait default ("not supported") is used.
+    fn create_view(&mut self, db: &str, info: ViewInfo) -> SqlResult<()> {
+        self.inner.create_view(db, info)
+    }
+    fn drop_view(&mut self, db: &str, name: &str) -> SqlResult<()> {
+        self.inner.drop_view(db, name)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -459,6 +586,114 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
         r
+    }
+
+    // --- #5199: database-scoping forwards --------------------------------
+    //
+    // The same trait-default trap WalStorage fixed in #5192: without an
+    // override the default either answers for the *current* database
+    // (dropping `db`) or returns `Err("not supported")`. On the
+    // `--storage parallel` production assembly
+    // (`ParallelWalStorage<MvccStorage<FileStorage>>`) that means
+    // multi-database statements cannot run at all — `CREATE DATABASE`
+    // fails outright and `USE` + DDL/DML silently resolve against the
+    // wrong database. Exposed by the assembly-path consistency gate
+    // (`crates/storage/tests/assembly_forwarding_5199.rs`).
+    fn create_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.create_database(db_name)
+    }
+
+    fn drop_database(&mut self, db_name: &str) -> SqlResult<()> {
+        self.inner.drop_database(db_name)
+    }
+
+    fn list_databases(&self) -> SqlResult<Vec<String>> {
+        self.inner.list_databases()
+    }
+
+    fn get_table_info_in(&self, db: &str, table: &str) -> SqlResult<TableInfo> {
+        self.inner.get_table_info_in(db, table)
+    }
+
+    fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+        self.inner.list_tables_in_db(db)
+    }
+
+    fn scan_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
+        self.inner.scan_in_db(db, table)
+    }
+
+    fn scan_with_filter_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        filter: &dyn Fn(&Record) -> bool,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner.scan_with_filter_in_db(db, table, filter)
+    }
+
+    fn scan_with_index_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        index_name: &str,
+        key: &Value,
+    ) -> SqlResult<Vec<Record>> {
+        self.inner.scan_with_index_in_db(db, table, index_name, key)
+    }
+
+    fn parallel_scan_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        num_partitions: usize,
+    ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+        self.inner.parallel_scan_in_db(db, table, num_partitions)
+    }
+
+    fn insert_in_db(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        self.inner.insert_in_db(db, table, records)
+    }
+
+    fn force_insert_in_db(&mut self, db: &str, table: &str, record: Vec<Value>) -> SqlResult<()> {
+        self.inner.force_insert_in_db(db, table, record)
+    }
+
+    fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        self.inner.delete_in_db(db, table, filters)
+    }
+
+    fn delete_collect_pks_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+    ) -> SqlResult<Vec<Value>> {
+        self.inner.delete_collect_pks_in_db(db, table, filters)
+    }
+
+    fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
+        self.inner.delete_if_in_db(db, table, filter)
+    }
+
+    fn update_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filters: &[Value],
+        updates: &[(usize, Value)],
+    ) -> SqlResult<usize> {
+        self.inner.update_in_db(db, table, filters, updates)
+    }
+
+    fn update_if_in_db(
+        &mut self,
+        db: &str,
+        table: &str,
+        filter: &RowFilter,
+        mutation: &RowMutation,
+    ) -> SqlResult<usize> {
+        self.inner.update_if_in_db(db, table, filter, mutation)
     }
 }
 

@@ -1,0 +1,7 @@
+A 1col HAVING COUNT=2    panic_delta=1  ('ERR', 2013, "(2013, 'Lost connection to MySQL server during query')")
+B 1col HAVING COUNT>1    panic_delta=1  ('ERR', 2013, "(2013, 'Lost connection to MySQL server during query')")
+C 1col HAVING COUNT<3    panic_delta=1  ('ERR', 2013, "(2013, 'Lost connection to MySQL server during query')")
+D 2col HAVING COUNT=2    panic_delta=0  ('OK', (('1', '2'), ('3', '2')))
+E 1col no HAVING         panic_delta=0  ('OK', ((1,), (1,), (2,), (3,), (3,), (4,)))
+F 1col HAVING col=2      panic_delta=0  ('OK', ((1,), (1,), (2,), (3,), (3,), (4,)))
+G 1col HAVING SUM=2      panic_delta=1  ('ERR', 2013, "(2013, 'Lost connection to MySQL server during query')")

@@ -1,0 +1,17 @@
+suite=src/lib :: test result: ok. 164 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/integration/sql/_q15_q16_check :: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/integration/compat/a04_mysql_diff_matrix_test :: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/integration/sql/adaptive_hash_index_test :: test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/integration/storage/adaptive_hash_main_path_test :: test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/integration/sql/aggregate_functions_test :: test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/integration/sql/aggregate_smoke_test :: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/anomaly/aggregate_type_test :: test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/integration/sql/boundary_test :: test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/integration/sql/long_run_stability_test :: test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/benchmark/qps_benchmark_test :: test result: ok. 0 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out
+suite=tests/integration/sql/anti_join_main_path_test :: test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
+suite=tests/integration/dml/arch2_dml_api_test :: test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+suite=tests/integration/optimizer/arch3_vtu_main_path_test :: test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+failure=test_d8_gate_runs_correctly
+suite=tests/integration/optimizer/arch_sem_debt_gate_test :: test result: FAILED. 7 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+final_exit=101

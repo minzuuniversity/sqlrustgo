@@ -130,9 +130,9 @@ fn test_tx_lifecycle_insert_after_rollback_err() {
         result
     );
 }
-/// TX-006: Double COMMIT → Err("transaction already committed")
+/// TX-006: Double COMMIT → no-op (MySQL-compatible idempotence)
 #[test]
-fn test_tx_lifecycle_double_commit_err() {
+fn test_tx_lifecycle_double_commit_is_noop() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
 
@@ -145,16 +145,9 @@ fn test_tx_lifecycle_double_commit_err() {
 
     let result = engine.execute("COMMIT");
     assert!(
-        result.is_err(),
-        "Second COMMIT must return Err, got {:?}",
+        result.is_ok(),
+        "Second COMMIT must be an idempotent no-op, got {:?}",
         result
-    );
-
-    let err = result.unwrap_err();
-    assert!(
-        err.to_string().contains("commit") || err.to_string().contains("committed"),
-        "Error message must mention committed: {:?}",
-        err
     );
 }
 
@@ -381,16 +374,16 @@ fn test_replay_insert_twice_duplicate_ignored() {
     assert!(result.is_ok() || result.is_err());
 }
 
-/// REPLAY-003: COMMIT without BEGIN → Err
+/// REPLAY-003: COMMIT without BEGIN → no-op (MySQL compatibility)
 #[test]
-fn test_replay_commit_without_begin_err() {
+fn test_replay_commit_without_begin_is_noop() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
 
     engine.execute("CREATE TABLE t1 (id INTEGER)").unwrap();
 
     let result = engine.execute("COMMIT");
-    assert!(result.is_err(), "COMMIT without BEGIN must return Err");
+    assert!(result.is_ok(), "COMMIT without BEGIN must be a no-op");
 }
 
 /// REPLAY-004: DELETE twice — second ignored
@@ -463,6 +456,7 @@ fn test_recovery_begin_then_crash_rolls_back() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 1,
@@ -474,6 +468,7 @@ fn test_recovery_begin_then_crash_rolls_back() {
         entry_type: WalEntryType::Insert,
         table_id: 3645, // hash("t1")
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()), // Integer(1)
         lsn: 2,
@@ -529,6 +524,7 @@ fn test_recovery_insert_then_crash_rolls_back() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 1,
@@ -540,6 +536,7 @@ fn test_recovery_insert_then_crash_rolls_back() {
         entry_type: WalEntryType::Insert,
         table_id: 3645, // hash("t1")
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
         lsn: 2,
@@ -551,6 +548,7 @@ fn test_recovery_insert_then_crash_rolls_back() {
         entry_type: WalEntryType::Insert,
         table_id: 1,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
         lsn: 3,
@@ -597,6 +595,7 @@ fn test_recovery_prepare_then_crash_rolls_back() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 1,
@@ -608,6 +607,7 @@ fn test_recovery_prepare_then_crash_rolls_back() {
         entry_type: WalEntryType::Prepare,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 2,
@@ -619,6 +619,7 @@ fn test_recovery_prepare_then_crash_rolls_back() {
         entry_type: WalEntryType::Insert,
         table_id: 1,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
         lsn: 3,
@@ -696,6 +697,7 @@ fn test_recovery_partial_insert_write() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 1,
@@ -715,6 +717,7 @@ fn test_recovery_partial_insert_write() {
             entry_type: WalEntryType::Insert,
             table_id: 3645,
             table_name: None,
+            database_name: Some("default".to_string()),
             key: None,
             data: Some(data),
             lsn: (i + 2) as u64,
@@ -765,6 +768,7 @@ fn test_recovery_partial_update_write() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 1,
@@ -780,6 +784,7 @@ fn test_recovery_partial_update_write() {
         entry_type: WalEntryType::Insert,
         table_id: 3645,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(data),
         lsn: 2,
@@ -791,6 +796,7 @@ fn test_recovery_partial_update_write() {
         entry_type: WalEntryType::Commit,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 3,
@@ -803,6 +809,7 @@ fn test_recovery_partial_update_write() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 4,
@@ -818,7 +825,8 @@ fn test_recovery_partial_update_write() {
         entry_type: WalEntryType::Update,
         table_id: 3645,
         table_name: None,
-        key: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        database_name: Some("default".to_string()),
+        key: Some(1i64.to_le_bytes().to_vec()),
         data: Some(upd),
         lsn: 5,
         timestamp: 0,
@@ -877,6 +885,7 @@ fn test_recovery_partial_delete_write() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 1,
@@ -888,6 +897,7 @@ fn test_recovery_partial_delete_write() {
         entry_type: WalEntryType::Insert,
         table_id: 3645,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
         lsn: 2,
@@ -899,6 +909,7 @@ fn test_recovery_partial_delete_write() {
         entry_type: WalEntryType::Commit,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 3,
@@ -911,6 +922,7 @@ fn test_recovery_partial_delete_write() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 4,
@@ -922,6 +934,7 @@ fn test_recovery_partial_delete_write() {
         entry_type: WalEntryType::Insert,
         table_id: 3645,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
         lsn: 5,
@@ -933,6 +946,7 @@ fn test_recovery_partial_delete_write() {
         entry_type: WalEntryType::Commit,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 6,
@@ -945,6 +959,7 @@ fn test_recovery_partial_delete_write() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 7,
@@ -956,7 +971,8 @@ fn test_recovery_partial_delete_write() {
         entry_type: WalEntryType::Delete,
         table_id: 3645,
         table_name: None,
-        key: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        database_name: Some("default".to_string()),
+        key: Some(1i64.to_le_bytes().to_vec()),
         data: None,
         lsn: 8,
         timestamp: 0,
@@ -1008,6 +1024,7 @@ fn test_recovery_partial_commit_flush() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 1,
@@ -1019,6 +1036,7 @@ fn test_recovery_partial_commit_flush() {
         entry_type: WalEntryType::Insert,
         table_id: 3645,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
         lsn: 2,
@@ -1030,6 +1048,7 @@ fn test_recovery_partial_commit_flush() {
         entry_type: WalEntryType::Commit,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 3,
@@ -1074,6 +1093,7 @@ fn test_recovery_multiple_tx_crash_order() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 1,
@@ -1085,6 +1105,7 @@ fn test_recovery_multiple_tx_crash_order() {
         entry_type: WalEntryType::Insert,
         table_id: 3645,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
         lsn: 2,
@@ -1096,6 +1117,7 @@ fn test_recovery_multiple_tx_crash_order() {
         entry_type: WalEntryType::Commit,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 3,
@@ -1108,6 +1130,7 @@ fn test_recovery_multiple_tx_crash_order() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 4,
@@ -1119,6 +1142,7 @@ fn test_recovery_multiple_tx_crash_order() {
         entry_type: WalEntryType::Insert,
         table_id: 3645,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(b"i:\x02\x00\x00\x00\x00\x00\x00\x00".to_vec()),
         lsn: 5,
@@ -1176,6 +1200,7 @@ fn test_recovery_wal_replay_ordering() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 1,
@@ -1191,6 +1216,7 @@ fn test_recovery_wal_replay_ordering() {
         entry_type: WalEntryType::Insert,
         table_id: 3645,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(ins),
         lsn: 2,
@@ -1202,6 +1228,7 @@ fn test_recovery_wal_replay_ordering() {
         entry_type: WalEntryType::Commit,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 3,
@@ -1213,6 +1240,7 @@ fn test_recovery_wal_replay_ordering() {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 4,
@@ -1228,7 +1256,8 @@ fn test_recovery_wal_replay_ordering() {
         entry_type: WalEntryType::Update,
         table_id: 3645,
         table_name: None,
-        key: Some(b"i:\x01\x00\x00\x00\x00\x00\x00\x00".to_vec()),
+        database_name: Some("default".to_string()),
+        key: Some(1i64.to_le_bytes().to_vec()),
         data: Some(upd),
         lsn: 5,
         timestamp: 0,
@@ -1239,6 +1268,7 @@ fn test_recovery_wal_replay_ordering() {
         entry_type: WalEntryType::Commit,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn: 6,

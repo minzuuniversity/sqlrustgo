@@ -1,0 +1,132 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a05-20261012T004948Z-bf48818c
+work_package: A05
+
+source_agent: omp/A11
+source_run: omp-a05-20261012-00
+timestamp_started: '2026-10-12T00:49:48Z'
+timestamp_finished: null
+conflict_resolution: none
+
+repository:
+  canonical_remote: http://192.168.0.252:3000/openclaw/sqlrustgo.git
+  commit: bf48818cd41369ea9728017b0afeed96d223386f
+  branch_or_detached: 'develop/v4.1.0 @ 91d0c6dd78cd5fa03bc96ec866d4c9decc06cc50 (HEAD at run; 43 commits ahead of frozen bf48818c)'
+  status_porcelain_sha256: a7b0c5f2802945319ef948a5a419df072faa7c3b183147f771fea2dfac3cbca0
+  cargo_lock_sha256: d8bba914c5223bece0146c28e7cc1cb48f25c27de84275bb03ef65d5a84e5a2d
+
+environment:
+  os: Linux
+  arch: x86_64
+  cpu: 'Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz (80 cores)'
+  memory_bytes: 434597134336
+  filesystem: ext4
+  rustc: 'rustc 1.99.0 (b940084d7 2026-09-28)'
+  cargo: 'cargo 1.99.0 (5f94df478 2026-08-27)'
+  features: [all-features]
+  profile: debug
+  reference_dbms: []
+  process_pollution_check: traces/process_pollution_check.txt
+
+datasets: []
+
+commands:
+  - id: 001
+    argv: [cargo, build, --all-features]
+    cwd: .
+    started_at: '2026-10-12T00:13:00Z'
+    finished_at: '2026-10-12T00:13:13Z'
+    exit_code: 0
+    stdout: commands/001.stdout.log
+    stderr: commands/001.stderr.log
+    stdout_sha256: 6e1f266109f90f313c033ad839c336a89a70727121adfe75bfd350adeaacd34e
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: 002
+    argv: [cargo, test, -p, sqlrustgo, --test, equality_index_routing_5209, --all-features]
+    cwd: .
+    started_at: '2026-10-12T00:22:00Z'
+    finished_at: '2026-10-12T00:22:02Z'
+    exit_code: 0
+    stdout: commands/002.stdout.log
+    stderr: commands/002.stderr.log
+    stdout_sha256: 29473ee97b5212ed0ada27093df4fb226f1c41b3a25b111604d8640dbd3aafe9
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: 003
+    argv: [cargo, test, -p, sqlrustgo, --test, eq_index_routing_decision_5209, --all-features]
+    cwd: .
+    started_at: '2026-10-12T00:22:02Z'
+    finished_at: '2026-10-12T00:22:02Z'
+    exit_code: 0
+    stdout: commands/003.stdout.log
+    stderr: commands/003.stderr.log
+    stdout_sha256: 3da4432b49dc96a5a7b3a3887ad948dd87819ee2933c336cff68918be2c4c85b
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: 004
+    argv: [cargo, test, -p, sqlrustgo, --test, eq_index_acceptance_latency_5209, --all-features]
+    cwd: .
+    started_at: '2026-10-12T00:22:02Z'
+    finished_at: '2026-10-12T00:24:07Z'
+    exit_code: 0
+    stdout: commands/004.stdout.log
+    stderr: commands/004.stderr.log
+    stdout_sha256: d0b8984547ae255a3e5b3e0a2ce1a0817cb1c0ec37c1ed72efc2676db6d8ae91
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: 005
+    argv: [cargo, test, -p, sqlrustgo-storage, --test, index_covers_insert_buffer_5209, --all-features]
+    cwd: .
+    started_at: '2026-10-12T00:24:07Z'
+    finished_at: '2026-10-12T00:24:08Z'
+    exit_code: 0
+    stdout: commands/005.stdout.log
+    stderr: commands/005.stderr.log
+    stdout_sha256: cff9892fe6236251265c9cfaa856411d0e987feb5f2479a522a40fa5c11ce246
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: 006
+    argv: [cargo, test, -p, sqlrustgo-storage, --test, index_and_table_survive_restart_5025, --all-features]
+    cwd: .
+    started_at: '2026-10-12T00:24:08Z'
+    finished_at: '2026-10-12T00:24:08Z'
+    exit_code: 0
+    stdout: commands/006.stdout.log
+    stderr: commands/006.stderr.log
+    stdout_sha256: af085709910f376ea9ae2006092e49bf9eb705f347df5854622fc269c55c11d7
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: 007
+    argv: [cargo, test, -p, sqlrustgo-storage, --test, e2e_crash_recovery_proof, --all-features]
+    cwd: .
+    started_at: '2026-10-12T00:24:08Z'
+    finished_at: '2026-10-12T00:24:08Z'
+    exit_code: 0
+    stdout: commands/007.stdout.log
+    stderr: commands/007.stderr.log
+    stdout_sha256: db571a70580887ac894ce5c65b467887a3cdc7e6dd2998e8e1ac941fda8ea48d
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: 008
+    argv: [cargo, test, -p, sqlrustgo-storage, --test, assembly_forwarding_5199, --all-features]
+    cwd: .
+    started_at: '2026-10-12T00:24:08Z'
+    finished_at: '2026-10-12T00:25:09Z'
+    exit_code: 0
+    stdout: commands/008.stdout.log
+    stderr: commands/008.stderr.log
+    stdout_sha256: 61c0e498cd4a3a9c8393e2b238094d4d06b128dfcef1bea28ff5809aa3852a93
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: 009
+    argv: [cargo, test, -p, sqlrustgo, --test, a05_secondary_index_stale, --all-features, --, --nocapture]
+    cwd: .
+    started_at: '2026-10-12T00:39:00Z'
+    finished_at: '2026-10-12T00:39:04Z'
+    exit_code: 0
+    stdout: commands/009.stdout.log
+    stderr: commands/009.stderr.log
+    stdout_sha256: 45c69695ec3457d331a21fe618be06466352bd08662a1b6bcb9c69a9f838e4e9
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+findings:
+  - findings/A05-V410-001.yaml
+  - findings/A05-V410-002.yaml
+  - findings/A05-V410-003.yaml
+  - findings/A05-V410-004.yaml
+  - findings/A05-V410-005.yaml
+
+manifest_sha256: c6e2d250807f608257bf4116ca61184a9e77c232619444d7e9781dc247482eee

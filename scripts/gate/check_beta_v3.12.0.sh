@@ -142,6 +142,12 @@ if [ "$DISABLED_SYNC_OK" = "true" ]; then
     check "B2_PER_BINARY_SUMMARY" "test -s docs/releases/v3.12.0/b2-per-binary-summary.json"
     check "B2_PERF_EXCLUSION_REGISTRY" "test -f docs/releases/v3.12.0/b2-perf-test-exclusion-registry.md"
     check "B2_DISABLED_REGISTRY" "test -f docs/releases/v3.12.0/b2-disabled-test-binary-registry.md"
+    # #5193 option C: keeps the "not on the production execution path" set
+    # honest. R1/R2/R4a/R4b fail as soon as `crates/planner` grows an
+    # execute() or becomes enumerated, so unreachable code can never be
+    # counted as coverage again — and R3/R5 expire the exclusion if nobody
+    # looks at it (the #5186 mysqladmin_e2e_test lesson).
+    check "B2_OFF_PRODUCTION_PATH_REGISTRY" "bash scripts/gate/check_off_production_path_registry.sh"
 else
     warn "B2_INTEGRATION_TESTS" "false"
 fi

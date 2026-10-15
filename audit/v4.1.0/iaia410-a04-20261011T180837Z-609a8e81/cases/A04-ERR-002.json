@@ -1,0 +1,38 @@
+{
+  "id": "A04-ERR-002",
+  "domain": "error",
+  "query": "SELECT * FROM definitely_not_a_table",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "both error, same code 1146",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-ERR-002",
+    "role": "subject",
+    "port": 14541,
+    "setup": [],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 1146,
+      "error_msg": "Table not found: definitely_not_a_table\u0000"
+    }
+  },
+  "ref": {
+    "case_id": "A04-ERR-002",
+    "role": "ref",
+    "port": 14641,
+    "setup": [],
+    "query": {
+      "ok": false,
+      "kind": "error",
+      "error_code": 1146,
+      "error_msg": "Table 'a04_diff.definitely_not_a_table' doesn't exist"
+    }
+  },
+  "elapsed_s": 0.41,
+  "wire": {
+    "subj": "cases/A04-ERR-002_.subj.wire",
+    "ref": "cases/A04-ERR-002_.ref.wire"
+  }
+}

@@ -1,0 +1,130 @@
+{
+  "id": "A04-SUBQ-001",
+  "domain": "subquery",
+  "query": "SELECT id FROM sq_t WHERE v > (SELECT AVG(v) FROM sq_t) ORDER BY id",
+  "order_sensitive": false,
+  "verdict": "match",
+  "detail": "identical (names/types/rows)",
+  "aspects": [],
+  "subj": {
+    "case_id": "A04-SUBQ-001",
+    "role": "subject",
+    "port": 14521,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS sq_t",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE sq_t (id INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO sq_t VALUES (1,10),(2,20),(3,30),(4,40)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 4
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          3
+        ],
+        [
+          4
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-SUBQ-001",
+    "role": "ref",
+    "port": 14621,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS sq_t",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE sq_t (id INT, v INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO sq_t VALUES (1,10),(2,20),(3,30),(4,40)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 4
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          3
+        ],
+        [
+          4
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.54,
+  "wire": {
+    "subj": "cases/A04-SUBQ-001_.subj.wire",
+    "ref": "cases/A04-SUBQ-001_.ref.wire"
+  }
+}

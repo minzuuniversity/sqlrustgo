@@ -3,7 +3,7 @@
 use crate::execution_engine::*;
 use crate::Value;
 use parking_lot::RwLock;
-use sqlrustgo_storage::MemoryStorage;
+use sqlrustgo_storage::{MemoryStorage, StorageEngine};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -1854,14 +1854,14 @@ fn database_is_resolved_in_where_too() {
 fn session_db_is_seeded_from_storage_not_the_constant() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     storage.write().create_database("d1").unwrap();
-    storage.write().set_current_db("d1").unwrap();
-
-    let engine = ExecutionEngine::new(storage);
+    // #5057: the engine session starts at DEFAULT; USE d1 to switch it.
+    let mut engine = ExecutionEngine::new(storage);
+    engine.execute("USE d1").unwrap();
 
     assert_eq!(
         engine.session_db(),
         "d1",
-        "a fresh engine must adopt the storage's current database, not `default`"
+        "after `USE d1` the engine session must be d1, not `default`"
     );
 }
 
@@ -1872,11 +1872,10 @@ fn session_db_is_seeded_from_storage_not_the_constant() {
 fn handshake_selected_database_can_query_its_own_tables() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     storage.write().create_database("d1").unwrap();
-    storage.write().set_current_db("d1").unwrap();
 
-    // Build the engine the way the wire layer does: AFTER storage already
-    // points at the handshake-selected database.
+    // #5057: build the engine, then `USE d1` to select the handshake database.
     let mut engine = ExecutionEngine::new(storage);
+    engine.execute("USE d1").unwrap();
     engine
         .execute("CREATE TABLE t (id INTEGER, val INTEGER)")
         .expect("CREATE TABLE must succeed on the selected database");
@@ -1891,13 +1890,21 @@ fn handshake_selected_database_can_query_its_own_tables() {
     let all = engine
         .execute("SELECT * FROM t")
         .expect("SELECT on a handshake-selected database must succeed");
-    assert_eq!(
-        all.columns.len(),
-        2,
-        "expected 2 projected columns, got {} — a 0-column result is the #5191 symptom",
-        all.columns.len()
-    );
+    // `ExecutorResult` carries no column metadata — it is `rows` plus
+    // `affected_rows` — so the #5191 "0 columns" symptom is observed as
+    // rows that come back with zero width. Asserting on row shape rather
+    // than a field that does not exist is what makes this a real check
+    // instead of a compile error.
     assert_eq!(all.rows.len(), 3, "expected all 3 rows back");
+    for (i, row) in all.rows.iter().enumerate() {
+        assert_eq!(
+            row.len(),
+            2,
+            "row {i} has {} fields, expected 2 — rows of width 0 are the \
+             #5191 symptom (0-column result instead of an error)",
+            row.len()
+        );
+    }
 
     let count = engine
         .execute("SELECT COUNT(*) FROM t")
@@ -1918,23 +1925,21 @@ fn handshake_selected_database_can_query_its_own_tables() {
 fn handshake_selected_database_does_not_leak_other_databases() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     storage.write().create_database("d1").unwrap();
-    storage.write().set_current_db("d1").unwrap();
 
-    // Build the engine while `d1` is current, exactly as the wire layer does
-    // after a handshake that named `d1`.
-    let mut engine = ExecutionEngine::new(storage.clone());
+    // #5057: build the engine, then `USE d1` to select the handshake database.
+    let mut engine = ExecutionEngine::new(storage);
+    engine.execute("USE d1").unwrap();
     engine
         .execute("CREATE TABLE t (id INTEGER)")
         .expect("CREATE TABLE must succeed on the selected database");
 
-    // Another connection switches the shared storage back to `default`. The
-    // engine built above keeps its own session value — that per-engine copy is
-    // what #5057 introduced and what this test pins.
-    storage.write().set_current_db("default").unwrap();
+    // #5057: the per-engine `session_db` is the single source of the current
+    // database. The engine keeps its own session value after USE — that
+    // per-engine copy is what this test pins.
     assert_eq!(
         engine.session_db(),
         "d1",
-        "a connection's session database must not follow another connection's switch"
+        "a connection's session database must stay d1 after USE d1"
     );
 
     let missing = engine.execute("SELECT * FROM nosuchtable");

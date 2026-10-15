@@ -25,9 +25,18 @@
 //! red with the actual numbers rather than a downstream count quietly
 //! reporting 0.
 //!
-//! The engine was never at fault — `ExecutionEngine` over `MemoryStorage`
-//! computes all of these correctly, which is why the first bisect step
-//! was in-process rather than over the wire.
+//! The engine was never at fault — these all compute correctly on
+//! `develop/v4.1.0`, which is why the first bisect step was in-process
+//! rather than over the wire.
+//!
+//! Storage note (third-stage recheck, IAIA-410 §16): this file's servers are
+//! started with `storage: None`, which lands on the `_ =>` arm of
+//! `EphemeralConfig::storage` in `start_ephemeral` — i.e.
+//! `WalStorage<FileStorage, FileBackedWalManager>`, **file-backed with WAL
+//! persistence**, not an in-memory store. An earlier comment here claimed
+//! `MemoryStorage`; that was wrong, and `explicit_data_dir_persists_wal_and_
+//! aggregates_agree` below pins the on-disk reality so the claim cannot
+//! drift again.
 
 use sqlrustgo_mysql_client::{MySqlConnection, ResultSet};
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
@@ -55,6 +64,30 @@ fn start() -> sqlrustgo_mysql_server::testing::EphemeralHandle {
 fn connect(h: &sqlrustgo_mysql_server::testing::EphemeralHandle) -> MySqlConnection {
     let addr = format!("127.0.0.1:{}", h.port).parse().expect("addr");
     MySqlConnection::connect(&addr, "root", "", "test").expect("connect")
+}
+
+/// Same server as `start()`, but pinned to a caller-owned `data_dir` so the
+/// test can assert on the files the storage layer writes there. Lifecycle:
+/// `EphemeralConfig::data_dir` paths are owned by the caller (server Drop is
+/// a no-op on them), so the test drives cleanup through `tempfile::tempdir`.
+fn start_with_dir(dir: &std::path::Path) -> sqlrustgo_mysql_server::testing::EphemeralHandle {
+    start_ephemeral(EphemeralConfig {
+        data_dir: Some(dir.to_path_buf()),
+        port: None,
+        host: "127.0.0.1".to_string(),
+        bootstrap_users: true,
+        bootstrap_tables: false,
+        bootstrap_sql: Vec::new(),
+        bulk_insert_buffer_size: 1_048_576,
+        bulk_insert_rows_per_flush: 10_000,
+        load_infile_dir: None,
+        server_threads: 8,
+        storage: None,
+        slow_query_log: None,
+        metrics_port: None,
+        wal_sync_mode_override: None,
+    })
+    .expect("ephemeral server starts")
 }
 
 /// Single-column scalar as a string, or a panic naming the query.
@@ -115,6 +148,38 @@ fn aggregates_match_point_lookups_on_a_fresh_server() {
         "1",
         "#5167: the point lookup that already worked must keep working"
     );
+}
+
+/// Third-stage recheck (IAIA-410 §16): the "in-memory storage" reading of
+/// `storage: None` that partially refuted this issue was wrong — the config
+/// falls through to `WalStorage<FileStorage, FileBackedWalManager>`. This
+/// test pins that on a caller-owned `data_dir`: after inserts, `sqlrustgo.wal`
+/// must exist non-empty at that exact path, and the aggregates must still
+/// agree with point lookups while everything persists to disk.
+#[test]
+fn explicit_data_dir_persists_wal_and_aggregates_agree() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let h = start_with_dir(dir.path());
+    let mut c = connect(&h);
+    seed_small(&mut c);
+
+    let wal = dir.path().join("sqlrustgo.wal");
+    let meta = wal
+        .metadata()
+        .unwrap_or_else(|e| panic!("#5167: storage=None must persist a WAL at {wal:?}: {e}"));
+    assert!(
+        meta.len() > 0,
+        "#5167: WAL at {wal:?} must be non-empty after committed inserts (got 0 bytes)"
+    );
+
+    assert_eq!(
+        scalar(&mut c, "SELECT COUNT(*) FROM t"),
+        "3",
+        "#5167: COUNT must agree while running on disk"
+    );
+    assert_eq!(scalar(&mut c, "SELECT SUM(k) FROM t"), "60");
+    assert_eq!(row_count(&mut c, "SELECT id FROM t LIMIT 3"), 3);
+    assert_eq!(scalar(&mut c, "SELECT COUNT(*) FROM t WHERE id=2"), "1");
 }
 
 /// Range and OR predicates, which the issue reported as 0.

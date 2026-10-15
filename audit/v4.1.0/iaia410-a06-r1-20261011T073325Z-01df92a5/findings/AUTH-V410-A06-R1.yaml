@@ -1,0 +1,53 @@
+schema_version: iaia410-finding/v1
+id: AUTH-V410-A06-R1
+run_id: iaia410-a06-r1-20261011T073325Z-01df92a5
+work_package: A06
+module: transaction/wal
+category: F9-durability-illusion
+severity: P0
+status: confirmed
+
+source_agent: opencode+Mimo2.6Flash
+source_run: iaia410-a06-r1-20261011T073325Z
+timestamp: '2026-10-11T07:33:25Z'
+evidence_hash: sha256:fb5b06b3c8b58f9e174d2b8a7a3498bdaa3544bb52c86ab7643a0e0372ac4726
+conflict_resolution: none
+
+claim:
+  text: 'ENGINE=InnoDB CLUSTERED tables provide durable, WAL-protected storage of committed rows across process restarts'
+  source_type: architecture
+  source_ref: src/engine_create.rs:397-424
+  freshness: 2026-10-11
+
+production_entry: src/engine_dml.rs:execute_insert_clustered
+assessed_commit: 01df92a5d176e5c7f7e498152dbdf9b500228953
+source_locations:
+  - 'crates/storage/src/clustered_table.rs:1-50'
+  - 'src/engine_create.rs:397-424'
+  - 'src/engine_dml.rs:2018-2115'
+  - 'src/execution_engine.rs:165-171'
+
+expected: 'After process restart with WAL recovery, SELECT COUNT(*) FROM orders returns the committed row count (3)'
+actual: 'After process restart with FileStorage::new_with_wal, SELECT COUNT(*) FROM orders returns 0 — committed rows are lost because CLUSTERED writes bypass WAL entirely and live only in an in-memory BTreeMap'
+
+evidence:
+  static:
+    - 'crates/storage/src/clustered_table.rs: pk_index BTreeMap mutated directly; no WAL writes'
+    - 'src/engine_create.rs:397-424: ENGINE=Clustered routes to ClusteredTable::new + in-memory registry only'
+    - 'src/engine_dml.rs:2018-2115: execute_insert_clustered writes only to clustered_tables HashMap'
+    - 'src/execution_engine.rs:165-171: clustered_tables field is "in-memory registry"'
+  dynamic:
+    - 'tests/clustered_wal_bypass_r1_5228.rs: r1_clustered_table_writes_lost_after_reopen (PASS — 3 rows before drop, 0 after reopen)'
+    - 'tests/clustered_wal_bypass_r1_5228.rs: r1_heap_table_rows_survive_reopen_control (PASS — 2 rows survive, proving harness + WAL functional for heap)'
+  differential: 'CLUSTERED loses all rows; heap control retains all rows — difference isolates the bypass to the CLUSTERED code path'
+  reproduction_command_ids: ['001']
+  counterexample_attempts: []
+
+linked_issue: 'http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5228'
+linked_prs: []
+review:
+  reviewer: null
+  source_run: null
+  timestamp: null
+  evidence_hash: null
+  verdict: null

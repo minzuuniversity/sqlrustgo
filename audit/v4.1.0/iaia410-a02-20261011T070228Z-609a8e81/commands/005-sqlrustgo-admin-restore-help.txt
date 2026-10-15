@@ -1,0 +1,8 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-admin restore --help
+Usage: sqlrustgo-admin restore [OPTIONS] --input <INPUT>
+
+Options:
+      --input <INPUT>            
+      --target-dir <TARGET_DIR>  [default: ./restore-target]
+  -h, --help                     Print help
+EXIT=0

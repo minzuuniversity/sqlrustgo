@@ -1,0 +1,149 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a02-20261011T070228Z-609a8e81
+work_package: A02
+source_agent: OMP
+source_run: omp-20261011T070228Z
+timestamp_started: '2026-10-11T07:08:35Z'
+timestamp_finished: '2026-10-11T07:14:02Z'
+conflict_resolution: none
+repository:
+  canonical_remote: http://192.168.0.252:3000/openclaw/sqlrustgo.git
+  commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+  branch_or_detached: feature/a02-scope-matrix-5224
+  status_porcelain_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  cargo_lock_sha256: d8bba914c5223bece0146c28e7cc1cb48f25c27de84275bb03ef65d5a84e5a2d
+environment:
+  os: linux
+  arch: x86_64
+  cpu: 80x Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz
+  memory_bytes: 434597134336
+  filesystem: ext4
+  rustc: rustc 1.99.0 (b940084d7 2026-09-28)
+  cargo: cargo 1.99.0 (5f94df478 2026-08-27)
+  features:
+  - default
+  profile: debug
+  reference_dbms: []
+  process_pollution_check: traces/env_pollution_pre.txt
+datasets: []
+commands:
+- id: '001'
+  name: freeze-commit-check
+  argv:
+  - bash
+  - audit/v4.1.0/freeze_commit_check.sh
+  - 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+  cwd: .
+  timeout_sec: 600
+  started_at: '2026-10-11T07:11:02Z'
+  finished_at: '2026-10-11T07:11:02Z'
+  exit_code: 0
+  stdout: commands/001.stdout.log
+  stderr: commands/001.stderr.log
+  stdout_sha256: f9838e10bc9d26c537f4c2a21e86a48a5d367047dcc0e9cd42d0b8142184f76c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '002'
+  name: env-pollution-pre
+  argv:
+  - bash
+  - audit/v4.1.0/env_pollution_check.sh
+  - iaia410-a02-20261011T070228Z-609a8e81
+  - pre
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T07:11:03Z'
+  finished_at: '2026-10-11T07:11:03Z'
+  exit_code: 0
+  stdout: commands/002.stdout.log
+  stderr: commands/002.stderr.log
+  stdout_sha256: 5515bd85360a75ab71367cd7bd18ae92419ddcb0ead6693761ff89c1d5044897
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '003'
+  name: bin-inventory
+  argv:
+  - bash
+  - -c
+  - enumerate [[bin]] targets from all Cargo.toml at assessed_commit (grep/awk; see 003-bin-inventory.txt)
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T07:08:35Z'
+  finished_at: '2026-10-11T07:08:35Z'
+  exit_code: 0
+  stdout: commands/003-bin-inventory.txt
+  stderr: commands/003.stderr.log
+  stdout_sha256: 20336f0dbd7206cef2b8ab1dd433aeda3369f3c03334e34383da85c4c15fbd4c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '004'
+  name: sqlrustgo-cli-help
+  argv:
+  - /tmp/iaia-a02-baseline-target/debug/sqlrustgo
+  - --help
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T07:08:35Z'
+  finished_at: '2026-10-11T07:08:35Z'
+  exit_code: 0
+  stdout: commands/004-sqlrustgo-help.txt
+  stderr: commands/004.stderr.log
+  stdout_sha256: b268ea43be833492c8f7c0cb765ef69555352ee9545e5087a8213e634b568f49
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '005'
+  name: sqlrustgo-admin-cli-help
+  argv:
+  - /tmp/iaia-a02-baseline-target/debug/sqlrustgo-admin
+  - --help
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T07:08:36Z'
+  finished_at: '2026-10-11T07:08:36Z'
+  exit_code: 0
+  stdout: commands/005-sqlrustgo-admin-help.txt
+  stderr: commands/005.stderr.log
+  stdout_sha256: 12cc3253161f25b3c42f761945f6fdb4edf7c7f3c11526e5e6893fa74e77edab
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '006'
+  name: sqlrustgo-mysql-server-cli-help
+  argv:
+  - /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server
+  - --help
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T07:08:37Z'
+  finished_at: '2026-10-11T07:08:37Z'
+  exit_code: 0
+  stdout: commands/006-sqlrustgo-mysql-server-help.txt
+  stderr: commands/006.stderr.log
+  stdout_sha256: 7814816157145281667ef4dce6c2d362def9062dde19b15d2bd0dbd35b58a7a7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '007'
+  name: module-inventory
+  argv:
+  - bash
+  - -c
+  - wc -l of 25 key engine/storage/planner/optimizer/mysql-server/network/security modules at assessed_commit
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T07:11:03Z'
+  finished_at: '2026-10-11T07:11:03Z'
+  exit_code: 0
+  stdout: commands/007.stdout.log
+  stderr: commands/007.stderr.log
+  stdout_sha256: 6e6500a3c0d6fe4ef65be3e42e31923da04bb35c0dc9eb8bdf4576859da2e063
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 008
+  name: env-pollution-post
+  argv:
+  - bash
+  - audit/v4.1.0/env_pollution_check.sh
+  - iaia410-a02-20261011T070228Z-609a8e81
+  - post
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T07:14:02Z'
+  finished_at: '2026-10-11T07:14:02Z'
+  exit_code: 0
+  stdout: commands/008.stdout.log
+  stderr: commands/008.stderr.log
+  stdout_sha256: dab5fdc8c044398212b118c0905bcc255cf7997fc25f3d7bcf006a6265d0c1f9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+manifest_sha256: sha256:118bc8a87afe19335b0f2fda831990a3440c18debfe0e8c1a18f5044dce57e62

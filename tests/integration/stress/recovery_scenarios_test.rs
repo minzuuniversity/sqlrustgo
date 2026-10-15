@@ -50,6 +50,7 @@ fn insert_entry(tx_id: u64, lsn: u64, id: i64) -> WalEntry {
         entry_type: WalEntryType::Insert,
         table_id: HASH_T,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: None,
         data: Some(data),
         lsn,
@@ -63,6 +64,7 @@ fn delete_entry(tx_id: u64, lsn: u64, id: i64) -> WalEntry {
         entry_type: WalEntryType::Delete,
         table_id: HASH_T,
         table_name: None,
+        database_name: Some("default".to_string()),
         key: Some(format!("i:{id}").into_bytes()),
         data: None,
         lsn,
@@ -76,6 +78,7 @@ fn begin_entry(tx_id: u64, lsn: u64) -> WalEntry {
         entry_type: WalEntryType::Begin,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn,
@@ -89,6 +92,7 @@ fn commit_entry(tx_id: u64, lsn: u64) -> WalEntry {
         entry_type: WalEntryType::Commit,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn,
@@ -102,6 +106,7 @@ fn rollback_entry(tx_id: u64, lsn: u64) -> WalEntry {
         entry_type: WalEntryType::Rollback,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn,
@@ -115,6 +120,7 @@ fn prepare_entry(tx_id: u64, lsn: u64) -> WalEntry {
         entry_type: WalEntryType::Prepare,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn,
@@ -128,6 +134,7 @@ fn checkpoint_entry(lsn: u64) -> WalEntry {
         entry_type: WalEntryType::Checkpoint,
         table_id: 0,
         table_name: None,
+        database_name: None,
         key: None,
         data: None,
         lsn,
@@ -270,7 +277,8 @@ fn r3_a06_insert_then_delete_in_same_tx() {
 
 #[test]
 fn r3_a07_double_begin_same_tx() {
-    // Two Begin for the same tx_id. Should not crash.
+    // Two Begin markers for the same tx_id leave the first span incomplete;
+    // the second span is the one closed by Commit.
     let entries = vec![
         begin_entry(1, 1),
         begin_entry(1, 2),
@@ -279,7 +287,7 @@ fn r3_a07_double_begin_same_tx() {
     ];
     let r = recover_run(entries);
     assert_eq!(r.committed_txns, 1);
-    assert_eq!(r.incomplete_txns, 0);
+    assert_eq!(r.incomplete_txns, 1);
 }
 
 #[test]
@@ -780,6 +788,7 @@ fn r3_d02_lsn_zero() {
             entry_type: WalEntryType::Begin,
             table_id: 0,
             table_name: None,
+            database_name: None,
             key: None,
             data: None,
             lsn: 0,
@@ -790,6 +799,7 @@ fn r3_d02_lsn_zero() {
             entry_type: WalEntryType::Commit,
             table_id: 0,
             table_name: None,
+            database_name: None,
             key: None,
             data: None,
             lsn: 0,
@@ -836,17 +846,17 @@ fn r3_d06_single_entry_rollback_only() {
 fn r3_d07_single_entry_insert_only() {
     let entries = vec![insert_entry(1, 1, 100)];
     let r = recover_run(entries);
-    // Insert without Begin/Commit. Classified as incomplete (group has
-    // no Commit/Rollback).
-    assert_eq!(r.incomplete_txns, 1);
-    assert_eq!(r.rows_inserted, 0, "no Commit → no replay");
+    // DML without Begin/Commit is autocommit-class: it is replayed but does
+    // not create a transaction-status record or increment explicit-tx rows_*.
+    assert_eq!(r.incomplete_txns, 0);
+    assert_eq!(r.rows_inserted, 0);
 }
 
 #[test]
 fn r3_d08_single_entry_delete_only() {
     let entries = vec![delete_entry(1, 1, 100)];
     let r = recover_run(entries);
-    assert_eq!(r.incomplete_txns, 1);
+    assert_eq!(r.incomplete_txns, 0);
     assert_eq!(r.rows_deleted, 0);
 }
 

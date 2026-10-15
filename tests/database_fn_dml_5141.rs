@@ -16,7 +16,7 @@
 //! future statement type inherits the behaviour instead of regressing.
 
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::{FileStorage, StorageEngine};
+use sqlrustgo_storage::FileStorage;
 use sqlrustgo_types::Value;
 use std::sync::Arc;
 

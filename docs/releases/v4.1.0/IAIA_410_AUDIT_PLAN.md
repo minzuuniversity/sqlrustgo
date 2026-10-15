@@ -1,5 +1,11 @@
 # SQLRustGo v4.1.0 实现真实性与系统集成审计计划（IAIA-410）
 
+> **迁移说明（2026-10-10）**：本文件保留 2026-10-09 的原始计划、阶段执行记录和方法论教训，
+> 不再承担正式审计协议或实时状态 SSOT。正式执行统一以
+> [`IAIA_410_SSOT.md`](IAIA_410_SSOT.md) 和 Gitea
+> [Master Issue #5235](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5235)
+> 为入口；Issue/PR 状态必须实时查询，不得从本文的历史表格推导。
+
 > **文档性质**: 审计计划，不是审计报告，也不是执行结果。
 > **制定日期**: 2026-10-09
 > **审计代号**: IAIA-410（Implementation Authenticity & Integration Audit）
@@ -653,8 +659,8 @@ v4.1.0 在 `91ac4dcd48` 上存在 **2 项 GA 阻断**（F9 数据丢失 + F5 静
 | Issue | 分类 | 严重度 | 状态 |
 |---|---|---|---|
 | [#5191](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5191) | F5 握手选库未同步 `session_db` | P0 | **已修复**（PR #5195） |
-| [#5192](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5192) | F9 崩溃后已提交数据丢失 | P0 / GA 阻断 | 待整改 |
-| [#5193](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5193) | F3 planner/executor 未接入生产 | P0 | 待架构决策 |
+| [#5192](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5192) | F9 崩溃后已提交数据丢失 | P0 / GA 阻断 | **已修复**（PR #5208 已合并，见 §14.4） |
+| [#5193](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5193) | F3 planner/executor 未接入生产 | P0 | **已关闭**（选项 C 采纳，PR #5207，见 §15.1） |
 
 ### 14.2 #5191 整改结果
 
@@ -694,3 +700,273 @@ let session_db = storage.read().current_db();
    长期未被发现」**——答案是测试全部覆盖在另一条路径上。
 3. **未完成项**：`cargo test -p sqlrustgo --lib` 未跑完（crate 测试配置编译超
    10 分钟），新增测试的断言结果尚未验证，合入前需补跑。端到端验证已完成。
+### 14.4 #5192 整改结果（F9 持久性假象）
+
+**根因是三处叠加，而非审计初判的单点：**
+
+1. **`WalEntry` 缺失库标识。** #5055 给它加了 `table_name`，但对称的库标识从未存在。
+   回放时 `apply_wal_entry` 用不带库参数的 `get_table_info` / `scan` /
+   `force_insert` / `delete`，全部按「当前库」解析 —— 重启后当前库是 `default`。
+
+2. **真正写 WAL 的不是 `WalStorage::log_*`。** `WalStorage` 包裹的 `FileStorage`
+   自己 append 条目（`file_storage.rs` 的 `wal_insert_entries` /
+   `wal_update_entries` / `wal_delete_entries`），`WalStorage::log_insert` 与
+   `log_update` / `log_delete` **是死代码，从未被调用**。审计中通过在
+   `log_insert` 内埋 `eprintln!` 并实跑一次 INSERT，确认该路径零命中 ——
+   这修正了「在 WalStorage 修日志记录」的初始方案。
+
+3. **恢复失败不阻断启动。** `skipped_entries` 非零意味着有已提交事务未回放、
+   数据已经少了，但服务仅 WARN 继续对外服务并接受新写入。
+
+**改动：**
+
+- `WalEntry::database_name` + `DNAM` 尾部编码，沿用 #5055 的 magic + 长度前缀
+  模式，旧格式条目仍可反序列化；缺库标识的行条目**拒绝重放**而非猜测写入
+- `FileStorage::wal_row_entry` 记录当前库（真正的写入点）
+- 回放全路径库感知：`get_table_info_in` / `scan_in_db` / `force_insert_in_db` /
+  `delete_in_db` / `replace_by_key_in_db`
+- `WalStorage`、`BoxStorageEngine`、`MvccStorage` 补齐 `*_in_db` 覆盖，避免 trait
+  默认实现丢弃 `db` 后回落到无库版本
+- **恢复硬失败（`Err` 分支）时拒绝启动**，把静默丢数据变成运维可见的故障。
+  恢复不完整（`Ok(report)` 但 `skipped_entries > 0`）的拒绝启动由并行实现提供的
+  `guard_unrecoverable_commits` 负责（见 §14.5）
+
+**验证**（真实 pymysql，非 default 库，`kill -9` + 重启）：
+
+| | 修复前 | 修复后 |
+|---|---|---|
+| 恢复日志 | `rows_inserted=0 skipped=5` | `rows_inserted=5 skipped=0` |
+| 服务 | 启动并接受写入（静默丢数据） | 正常启动 |
+| 已提交数据 | **永久丢失** | **3 行完整恢复** |
+
+**方法论补充（与 #5191 同源）：** 两次整改都出现了「初判被自己的实验证伪」——
+#5191 是扫描路径 vs 库上下文，#5192 是 `WalStorage::log_*` vs `FileStorage`。
+两者的共同教训是：**审计的静态阅读指向的修复位置未必是真正执行的代码路径**，
+必须用埋点或实跑确认「改的地方确实被调用」再动手。
+
+### 14.5 与并行实现的分工（ADR-014 协作记录）
+
+rebase 到最新 `develop/v4.1.0` 时发现另一路实现已先行落地 #5192 的**拒绝启动**
+部分，且 `crates/storage/` 零改动。分工如下：
+
+| 范围 | 归属 |
+|---|---|
+| `guard_unrecoverable_commits`（拒绝启动 + `SQLRUSTGO_ALLOW_DATA_LOSS=1` 逃生开关） | 并行实现 |
+| 恢复硬失败（`Err` 分支）拒绝启动 | 本审计 |
+| **storage 层 WAL 库标识**（`WalEntry::database_name` / `FileStorage::wal_row_entry` / 库感知回放 / `*_in_db` 覆盖） | **本审计**（远端未做） |
+
+我先前自己实现的 `skipped_entries` 检查已在 rebase 后移除：二者并存时
+`guard_*` 先返回 `Err`，我那段永远走不到，`SQLRUSTGO_ALLOW_DATA_LOSS=1`
+会被架空成死开关。保留的是 `Err(e)` 分支 —— `guard_*` 只处理 `Ok(report)`
+路径，覆盖不到那里。
+
+- source_agent: codex-trae
+- conflict_resolution: 保留远端更完整的 `guard_*`（带逃生开关），移除本地重复实现；本地 `Err` 分支加固与远端无重叠，予以保留
+
+### 14.6 验证结果
+
+rebase 后实跑（真实 pymysql，非 default 库，`kill -9` + 重启）：
+
+```
+WAL recovery: total=8 committed_txns=1 rows_inserted=5 skipped=0
+✅ kill -9 后恢复: 3 行 -> (('1','10'), ('2','20'), ('3','30'))
+```
+
+`skipped=0` 使 `guard_unrecoverable_commits` 放行，与修复前
+（`skipped=5` → 服务静默丢数据）形成对照。
+
+## 15. 第三阶段：整改分析（截至 `8110ce8ae0`，2026-10-10）
+
+本节对 §8 十项与 §13.6 附带发现做现状复核。所有「存活/缺失」判定基于
+`develop/v4.1.0` HEAD `8110ce8ae0`（#5208 合并后）工作树的代码路径证据，
+不是 §13/§14 的外推。
+
+### 15.1 §14 之后新关闭的项
+
+| 项 | 关闭方式 | 证据 |
+|---|---|---|
+| #5193 F3 planner/executor 未接入生产 | **选项 C 采纳**：文档与实现一致（planner/executor 不进入生产链路，手写解释器为生产路径）；「待架构决策」状态关闭 | PR #5207（`c7b1a1e1e`）已合并 |
+| 附带发现 13.6.1 casefold 冲突 | 删除冲突副本 + 新增 casefold 门禁 | PR #5202（`afaa3de8e`）；`docs/releases/v2.9.0/` 下冲突名 `OPENCODE_STARTUP.md` 已不存在 |
+| #5105 连接级当前库引入的脏读回归 | `scan_for_reader_in_db` 改走 `scan_in_tx_db(db, table, reader_tx)`，读路径恢复事务快照隔离 | `7bad10f47`，在 HEAD |
+| #5106 多表 UPDATE/DELETE 未接语句的库 | 读写两侧库作用域接齐 | PR #5109（`5fdea59f3`），在 HEAD |
+| #4974 REPEATABLE READ 快照 | 快照在 BEGIN 时绑定，不再每次读重取 | `ac8e54ba4`，在 HEAD |
+
+### 15.2 未关闭整改项（按严重度）
+
+**R1（P0 / 同类 GA 阻断）—— CLUSTERED 表完全绕过 WAL（§13.5 结构风险 #1，确认存活）**
+
+- 触发：`CREATE TABLE … ENGINE=InnoDB CLUSTERED` → `ClusteredTable`（`src/engine_create.rs:397`）
+- 存放：`clustered_tables: RwLock<HashMap>` 纯内存（`src/execution_engine.rs:182,374`），启动时为空表，**全仓库无加载路径**（无 load/restore/recover 命中）
+- 写路径：`execute_insert_clustered` 直写内存 B+ 树（`src/engine_dml.rs:2171-2182`，`ct.insert(record)`），**零 WAL 行条目**，仅 `commit_implicit_dml_tx`
+- 失效模式：INSERT 成功（返回行数）→ 进程重启 → CLUSTERED 表全部数据静默丢失。与 F9（#5192）同类；#5208 的修复在 storage 层，不覆盖此路径
+- 按 §6 一票否决第 2 条（COMMIT 成功却发生数据丢失），确认即 GA 阻断
+- 整改选项（需裁决，同 #5193 三案模式）：
+  - 方案 A：CLUSTERED DML 行变更走库感知 WAL + 启动加载（真持久化，复用 #5208 的 `DNAM` 编码；工作量最大）
+  - 方案 B：显式声明 CLUSTERED 为非持久化引擎（文档 + `CREATE` 时告警/报错 + 证据矩阵登记），以「不声称持久化」关闭（工作量最小，但改变产品承诺）
+
+**R2（P1，R3 前置）—— 缺口 B：变异 spec 文件不在版本控制，且已不在工作树**
+
+- `scripts/gate/mutation_runner.py:11` 读 `tests/baseline/v4.1_mutation_specs.json`；该文件从未提交（`git log --all` 零命中），当前工作树亦不存在
+- 27 条 spec 的结果（16 KILLED / 11 REVIEW）目前**无法从树复现**
+- 整改：从 #5015 / #5012 等变异审计证据重建 spec 文件，纳入版本控制并冻结哈希
+
+**R3（P1）—— §8 第 8 项：11 条 REVIEW 债务定性**
+
+- 依赖 R2。每条定性三选一：补测试 / 承认功能未实现 / 判定不可变异
+
+**R4（P1，已解除阻断）—— §8 第 4/7 项：Join/EXISTS/GROUP BY/NULL 差分 + B+Tree 索引验证**
+
+- 阻断源 #003（非 PK 查询 0 列）已由 #5191（PR #5195）修复 → §8 表中两行「受 #003 阻断」失效，差分与索引验证**现在可执行**
+- 这是「核心功能真实性」（25 分）维度的最大剩余缺口
+
+**R5（P2）—— 缺口 A + 缺口 C：禁用二进制再验证**
+
+- `b2-disabled-test-binary-registry.md` 现有约 95 行登记（审计时 89），无再验证、排除登记无评审机制
+- 整改：逐个再验证并记录；排除登记加评审（谁禁用、为何、何时可恢复）
+
+**R6（P2）—— 附带发现 13.6.2：`--executor-parallelism` 静默降级（存活）**
+
+- `src/execution_engine.rs:300`：CLI 接受参数，运行时封顶 1，仅 help 文本自承。F10 类（静默行为变更）
+- 整改：生效、显式报错、或启动时 WARNING（三选一，不得静默）
+
+**R7（P2）—— 附带发现 13.6.3：默认数据目录 `/tmp/sqlrustgo-data`（存活）**
+
+- `crates/mysql-server/src/main.rs:208,353`：`/tmp` 清理即丢数据，多实例互相污染
+- 整改：默认改实例专属目录，或首跑强制显式指定
+
+**R8（P1）—— §8 第 9 项：跨版本回归（v3.12 / v4.0 / v4.1）**：无新证据，待执行
+
+**R9（P1）—— §8 第 10 项：证据矩阵 + 独立 GA 审核**：终项，依赖 R1–R8
+
+**R10（P2，验证债务）—— §14.3 遗留：`cargo test -p sqlrustgo --lib` 未跑完**
+
+- #5191 新增 3 条回归测试的断言结果未经全库测试套件验证，evidence/ 无补跑记录
+- 整改：补跑并归档
+
+### 15.3 对 GA 判定的影响
+
+- 原 2 项 GA 阻断（#5191 F5、#5192 F9）已修复并验证（§14.2 / §14.6）
+- **R1 为同类新 GA 阻断**（CLUSTERED 绕过 WAL = COMMIT 成功后重启丢数据）；若裁决走方案 B，降级为「文档化限制 + 证据矩阵登记」
+- 按 §6 一票否决：**当前状态仍不得晋级 GA**，直至 R1 关闭、R4/R3/R8 完成、R9 出具独立审核
+- 建议执行顺序：R2 → R3（可与 R1 裁决并行）→ R1 整改 → R4 差分 → R8 → R9 → R5/R6/R7/R10 清理
+
+### 15.4 关联状态：AOCI-CODE 治理（附带发现 13.6.1 后续）
+
+- casefold 门禁（PR #5202）就位后 `aoci init` 不再 fail-closed；全量索引构建在整改工作副本进行中（机械抽取条目，未提交）
+- #5204 治理阻塞已按受支持流程解开（根因：提交态 config 11 条规则 vs baseline 7 条规则身份矛盾），更正评论已附该 issue
+- 不计入 IAIA-410 评分，仅状态记录
+
+---
+
+## 16. 第三阶段复核：#5167 / #5209 状态核验（2026-10-09）
+
+> 基线 `5a59c2f701`（`develop/v4.1.0`）
+> source_agent: mcode (MiniMax-M3.1-Flash-Preview)
+> source_run: iaia410-phase3-verify-20261009
+> 方法：本地编译 debug 二进制 + 真实 pymysql 客户端 + `--storage file`
+> （`serve` 的默认模式）+ SQLite 作独立参照引擎
+
+### 16.1 结论摘要
+
+| Issue | 声称状态 | 实测判定 | 依据 |
+|---|---|---|---|
+| #5167 | open（曾被拟为 `refuted`） | **`refuted`** —— 当前 HEAD 无法复现 | §16.2 |
+| #5209 | open，3 个 PR 已合并 | **部分 `confirmed`** —— 主张已修，但发现**新缺陷 F5** | §16.3 |
+| #5192 | closed | 维持 closed | PR #5208 已合并 |
+| #5193 | open，选项 C 已裁决 | 三条要求全部落地 | PR #5207 / #5214 |
+
+### 16.2 #5167：`refuted` 成立，但原 issue 的前提需更正
+
+Issue 报告的核心症状是 `--storage file` 下 `COUNT(*)` / `SUM` / 范围扫描返回 0。
+在 `5a59c2f701` 上以同配置实测（10000 行、10 批插入、跨越 insert buffer 阈值）：
+
+```
+SELECT COUNT(*) FROM big          -> 10000   ✓
+SELECT SUM(k)    FROM big         -> 与 SQLite 一致 ✓
+SELECT MIN/MAX(k)                  -> 10, 100000 ✓
+COUNT(*) WHERE id>=1 AND id<=10000 -> 10000  ✓
+COUNT(*) WHERE id>5000             -> 5000   ✓
+COUNT(*) WHERE k>0                -> 10000  ✓
+LIMIT 3                            -> 3 行   ✓
+point_hits（13 个抽样 id 逐个点查） -> 13/13  ✓
+```
+
+**与 SQLite 逐项交叉验证**（10000 行同构表）：
+
+| 查询 | SQLite | SQLRustGo | 判定 |
+|---|---|---|---|
+| `SUM(k)` | 500050000 | 500050000 | MATCH |
+| `SUM(id)` | 50005000 | 50005000 | MATCH |
+| `COUNT(*)` | 10000 | 10000 | MATCH |
+| `AVG(k)` | 50005.0 | 50005 | 值相等（整数/浮点表示差异） |
+| `SUM(k+k)` | 1000100000 | 1000100000 | MATCH |
+| `SUM(id*10)` | 500050000 | 500050000 | MATCH |
+
+**判定 `refuted`**，附两点更正：
+
+1. **原 issue 归因的两条路径均不成立。** 报告建议优先确认「扫描只看 `tables[key].rows`
+   而漏 `insert_buffer`」—— 该假设在报告当时（`316a48e0aa`）就已不成立，
+   `scan_in_db` 当时已合并 `insert_buffer`（#5025）。
+2. **复核者用内存存储测试得出的「无法复现」结论是对的**，此前判定
+   `confirmed` 所依据的复现同样成立 —— 两个结论指向同一事实：
+   **该缺陷在 `--storage file` 与内存存储之间无差异，HEAD 上两者都正确。**
+   因此引发争议的因素不是存储引擎，而是报告所基于的更早提交。
+
+### 16.3 #5209：性能主张成立，但复核中发现新的 F5 语义缺陷
+
+已合并的三个 PR（#5210 / #5213 / #5215）修复的是 CREATE INDEX 空树、
+B+Tree 单键多 row_id、等值谓词路由。实测确认这些生效：
+
+```
+CREATE TABLE t2(id INT PRIMARY KEY, k INT); INSERT 3 行;
+CREATE INDEX idx_k ON t2(k);              -- 索引曾为空树（#5210）
+SELECT COUNT(*) FROM t2 WHERE k=20       -> 1 ✓
+```
+
+**但复核中新发现一个 F5 缺陷：MySQL 逗号形式 `LIMIT a,b` 的第二个数字被静默丢弃。**
+
+20 行小表即可复现（规模、索引、并发均已排除）：
+
+| 查询 | 实得 | 期望 | 判定 |
+|---|---|---|---|
+| `LIMIT 3` | 3 行 | 3 行 | OK |
+| `LIMIT 0,3` | **0 行** | 3 行 | DEFECT |
+| `LIMIT 5,3` | **5 行**（1,2,3,4,5） | 3 行（6,7,8） | DEFECT |
+| `LIMIT 18,3` | **18 行** | 2 行 | DEFECT |
+| `ORDER BY id LIMIT 5,3` | **5 行**（1..5） | 3 行（6,7,8） | DEFECT |
+| `ORDER BY id DESC LIMIT 5,3` | **5 行**（20..16） | 3 行（18,19,20） | DEFECT |
+
+**根因**：`crates/parser/src/parser.rs:7778-7884` 的 LIMIT 解析只取**一个**值即
+结束，未检查其后是否为逗号。因此 `LIMIT 5,3` 中 `5` 成为 `limit`，`,3` 被丢弃。
+执行端 [`engine_select.rs:3080-3090`](../../crates/engine_select.rs#L3080-L3090)
+的 `skip(offset).take(limit)` 逻辑本身**正确**（offset=0 时退化为 `take(limit)`，
+与观测到的「返回 limit 行」完全吻合）。
+
+**为何长期未被发现**：现有测试
+[`test_select_order_by_limit_offset`](../../crates/parser/src/parser.rs#L18464-L18475)
+只断言 `LIMIT 10 OFFSET 5`（关键字形式），**没有覆盖 MySQL 逗号形式**。
+
+**严重度**：F5 语义退化 + 命中 §5 一票否决项第 3 条「复杂 SQL 静默返回错误结果」。
+分页场景下 `LIMIT 9998,3` 返回 9998 行而非 2 行，下游分页逻辑会静默出错。
+
+### 16.4 本阶段的方法论教训
+
+复核过程中我犯了一个**被自己的实验证伪的错误**，值得记录：
+
+初测 `SUM(k)` 得 500050000 而手算期望 50005000（差 10 倍），一度判为新缺陷并
+开始定位聚合实现（`engine_select.rs:3099` 的 `compute_aggregates`，确认其
+`int_sum += n` 无溢出问题）。随后发现：
+
+- 逐行点查 10/10 全对，数据本身无误
+- **SQLite 同构表给出同样的 500050000** —— 是我手算错了（1..10000 的 10 倍和
+  本就是 500050000）
+
+若没有外部参照引擎交叉验证，这个**审计者的算术错误会被写成一条 P0 缺陷**。
+这正是 IAIA-410 §5「差分测试」要求的必要性：单引擎自证不足以定性。
+
+### 16.5 待办
+
+- [ ] `LIMIT a,b` 解析修复（parser 层）+ 覆盖两种形式的回归测试
+- [ ] #5167 按 `refuted` 关闭，需先补 `--storage file` 的回归测试用例，
+      否则缺陷若由其他提交重新引入将无网可拦
+- [ ] #5209 的性能修复已验证，但需在合并后补跑 B2 per-binary

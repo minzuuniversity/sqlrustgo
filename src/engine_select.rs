@@ -509,7 +509,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 None
             };
-        crate::system_tables::try_system_table_select(select, &*storage, auth_manager)
+        crate::system_tables::try_system_table_select(
+            select,
+            &*storage,
+            &self.session_db(),
+            auth_manager,
+        )
     }
 
     /// V312-76 / Issue #4682: synthesise the SQLite `sqlite_master`
@@ -520,11 +525,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     fn query_sqlite_master(&self) -> SqlResult<ExecutorResult> {
         use sqlrustgo_types::Value;
         let storage = self.storage.read();
-        let names = storage.list_tables();
+        let names = storage.list_tables_in_db(&self.session_db());
         let row_count = names.len();
         let mut rows: Vec<Vec<Value>> = Vec::with_capacity(names.len());
         for name in names {
-            let info = match storage.get_table_info(&name) {
+            let info = match storage.get_table_info_in(&self.session_db(), &name) {
                 Ok(info) => info,
                 Err(_) => continue,
             };
@@ -563,7 +568,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             ]);
         }
 
-        Ok(ExecutorResult::new(rows, row_count))
+        // #5271: the catalog view has a fixed five-column shape —
+        // table type, name, engine, estimated rows, DDL — independent of how
+        // many tables were found. An empty catalog still has five columns.
+        Ok(ExecutorResult::with_columns(
+            vec![
+                crate::ResultColumn {
+                    name: "table_type".into(),
+                    data_type: Some("TEXT".into()),
+                },
+                crate::ResultColumn {
+                    name: "name".into(),
+                    data_type: Some("TEXT".into()),
+                },
+                crate::ResultColumn {
+                    name: "engine".into(),
+                    data_type: Some("TEXT".into()),
+                },
+                crate::ResultColumn {
+                    name: "rows".into(),
+                    data_type: Some("BIGINT".into()),
+                },
+                crate::ResultColumn {
+                    name: "sql".into(),
+                    data_type: Some("TEXT".into()),
+                },
+            ],
+            rows,
+            row_count,
+        ))
     }
 
     /// V312-76 / Issue #4682: column layout of the synthesized SQLite
@@ -614,10 +647,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// table uses AUTOINCREMENT.
     fn query_sqlite_sequence(&self) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        let names = storage.list_tables();
+        let names = storage.list_tables_in_db(&self.session_db());
         let mut rows: Vec<Vec<Value>> = Vec::new();
         for name in names {
-            let info = match storage.get_table_info(&name) {
+            let info = match storage.get_table_info_in(&self.session_db(), &name) {
                 Ok(info) => info,
                 Err(_) => continue,
             };
@@ -642,7 +675,22 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             rows.push(vec![Value::Text(name), Value::Integer(seq)]);
         }
         let row_count = rows.len();
-        Ok(ExecutorResult::new(rows, row_count))
+        // #5271: index listing is two columns wide whether or not any index
+        // exists — the shape belongs to the view, not to the rows it returns.
+        Ok(ExecutorResult::with_columns(
+            vec![
+                crate::ResultColumn {
+                    name: "name".into(),
+                    data_type: Some("TEXT".into()),
+                },
+                crate::ResultColumn {
+                    name: "seq".into(),
+                    data_type: Some("BIGINT".into()),
+                },
+            ],
+            rows,
+            row_count,
+        ))
     }
 
     /// V312-67 / Issue #4686: execute a scalar subquery used in the
@@ -784,6 +832,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // switch. `session_db` is per engine, which is per connection.
         let current_db = self.session_db();
 
+        // #5137: a user-qualified `FROM db.table` resolves against `db`,
+        // not against the connection's current database. Validate the
+        // qualifier BEFORE any storage guard is taken —
+        // `ensure_database_known` takes its own short read guard and
+        // parking_lot read guards must not nest when a writer queues.
+        // `information_schema` is a virtual catalog (not a user
+        // database) and is short-circuited further down, so skip it.
+        if let Some(schema) = &select.schema {
+            if !schema.eq_ignore_ascii_case("information_schema") {
+                self.ensure_database_known(schema)?;
+            }
+        }
+        // The database the BASE table of this FROM resolves in: the
+        // parser's schema qualifier when present, else the connection's
+        // current database. All base-table lookups below use this —
+        // never the bare `current_db` — so `FROM other.t` reads `other`.
+        let base_db = select
+            .schema
+            .clone()
+            .filter(|s| !s.eq_ignore_ascii_case("information_schema"))
+            .unwrap_or_else(|| current_db.clone());
+
         let select_owned;
         let select: &SelectStatement = {
             let session_vars = self.session_vars.read();
@@ -898,8 +968,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // normal projection step.
                 let expand_star =
                     select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*");
-                let rows = if expand_star {
-                    rows
+                let projected: Vec<Vec<Value>> = if expand_star {
+                    rows.clone()
                 } else {
                     let mut projected = Vec::with_capacity(rows.len());
                     for row in &rows {
@@ -918,8 +988,35 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                     projected
                 };
-                let filtered_count = rows.len();
-                return Ok(ExecutorResult::new(rows, filtered_count));
+                // #5271: the projection above is the query's output shape.
+                // Returning `rows` here threw that projection away, so a
+                // `SELECT id, v FROM t WHERE …` reported the base table's
+                // columns (and its rows) instead of the selected ones.
+                let filtered_count = projected.len();
+                let filter_columns: Vec<crate::ResultColumn> = if expand_star {
+                    ti.columns
+                        .iter()
+                        .map(|c| crate::ResultColumn {
+                            name: c.name.clone(),
+                            data_type: Some(c.data_type.clone()),
+                        })
+                        .collect()
+                } else {
+                    select
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            crate::ResultColumn::unnamed_type(
+                                c.alias.clone().unwrap_or_else(|| c.name.clone()),
+                            )
+                        })
+                        .collect()
+                };
+                return Ok(ExecutorResult::with_columns(
+                    filter_columns,
+                    projected,
+                    filtered_count,
+                ));
             }
         }
         // invoked from `pre_evaluate_correlated_exists`) short-circuits on
@@ -1253,7 +1350,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // (reader owns lock → writer waits → reader tries reentrant read
         // → blocked by writer preference → deadlock).
         let (mut rows, table_info) = if !select.join_clause.is_empty() {
-            let (jrows, jinfo, _) = self.execute_joins(&mut select.clone(), &current_db)?;
+            let (jrows, jinfo, _) = self.execute_joins(&mut select.clone(), &base_db)?;
             (jrows, jinfo)
         } else if let Some((rows, info)) = materialized {
             (rows, info)
@@ -1388,7 +1485,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // (HashMap lookup on `Arc<RwLock>` metadata) and the same
             // `table_info` is reused by the binding / projection code
             // below.
-            let table_info = storage.get_table_info_in(&current_db, lookup_table)?;
+            let table_info = storage.get_table_info_in(&base_db, lookup_table)?;
             let pk_column = crate::engine_select_pk::resolve_pk_column(&table_info);
             // #4846: the fast path below skips `evaluate_where_clause`
             // entirely and returns the scanned row unfiltered, so it is
@@ -1398,8 +1495,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // equality finds nothing. Take the ordinary scan path there.
             let pk_lookup_semantics_ok =
                 crate::engine_select_pk::pk_fast_path_preserves_semantics(&table_info, &pk_column);
-            let pk_lookup_rows = if !pk_lookup_semantics_ok {
-                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &current_db)?
+            // #5137: `storage.scan_pk` takes no database parameter — it
+            // resolves the table through the storage's shared
+            // `current_db`. A qualified cross-database point lookup
+            // (`SELECT db.t WHERE pk = v` while `USE`d elsewhere) would
+            // therefore read the wrong database and silently yield 0
+            // rows. Send cross-database queries down `scan_with_ahi`,
+            // which routes by `base_db`; the WHERE clause is applied by
+            // the ordinary evaluation path below, so results stay
+            // correct (same-db lookups keep the fast path unchanged).
+            let cross_db_lookup = base_db != current_db;
+            let pk_lookup_rows = if !pk_lookup_semantics_ok || cross_db_lookup {
+                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &base_db)?
             } else if let Some(pk_value) = crate::engine_select_pk::try_extract_pk_eq_with_col(
                 &select.where_clause,
                 &pk_column,
@@ -1414,7 +1521,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     let ct = ct_arc.read();
                     ct.lookup_pk(&pk_value).cloned()
                 } else {
-                    storage.scan_pk(lookup_table, &pk_column, &pk_value)?
+                    // #5268: route the PK point lookup by the connection's
+                    // database. `scan_pk` resolves through `tbl()` →
+                    // `scoped_key(DEFAULT_DATABASE, name)`, which silently
+                    // yields 0 rows for a table in a non-default database.
+                    // `scan_pk_in_db` is the db-aware counterpart.
+                    storage.scan_pk_in_db(&base_db, lookup_table, &pk_column, &pk_value)?
                 };
                 self.instrumentation.on_seq_scan_start(lookup_table);
                 // Phase B Step 4.2: also record the AHI access so the
@@ -1431,8 +1543,67 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 self.adaptive_hash_index
                     .record_access(lookup_table, b"all", page_id, offset);
                 row.map(|r| vec![r]).unwrap_or_default()
+            } else if let Some((idx_column, idx_value)) =
+                crate::engine_select_pk::try_extract_eq_conjunct(&select.where_clause)
+            {
+                // #5209: the PK branch above fires only when the whole
+                // WHERE clause is one PK equality. Anything else — `id = 1
+                // AND k = 1`, or an equality on a secondary-index column —
+                // used to fall through to a full scan even when
+                // `CREATE INDEX` had built a tree for exactly that column.
+                //
+                // Measured on FileStorage at 10,000 rows before the fix:
+                // `WHERE id = 1` 25 µs and flat; `WHERE id = 1 AND k = 1`
+                // 4.23 ms growing 13x from 1,000 to 10,000 rows; `WHERE k =
+                // 1` on an indexed column 3.23 ms. The SELECT path called
+                // `scan_with_index` exactly once, with `&Value::Null` as
+                // the key, so the index was dead code.
+                //
+                // Safe to use now: `BPlusTree` stores a `Vec<u32>` per key
+                // (PR #5213), so a non-unique column returns every matching
+                // row rather than the last one inserted.
+                //
+                // No index for this column, or an engine without
+                // `scan_with_index_in_db`, both return `Err`/`None` and
+                // fall through to the ordinary scan — the pre-existing
+                // behaviour for every case the index does not cover.
+                //
+                // Reaching this branch at all means `pk_lookup_semantics_ok`
+                // held (the first arm above catches the `false` case), so
+                // the PK-vs-`sql_compare` divergence of #4846 — where an
+                // index seek and a filtered scan disagree on PAD SPACE —
+                // cannot be reached through here.
+                match storage.scan_with_index_in_db(
+                    &current_db,
+                    lookup_table,
+                    &idx_column,
+                    &idx_value,
+                ) {
+                    Ok(rows) => {
+                        self.instrumentation.on_seq_scan_start(lookup_table);
+                        let mut page_id: u64 = 0xcbf29ce484222325;
+                        for &b in lookup_table.as_bytes() {
+                            page_id ^= u64::from(b);
+                            page_id = page_id.wrapping_mul(0x100000001b3);
+                        }
+                        let offset = rows.len() as u32;
+                        self.adaptive_hash_index.record_access(
+                            lookup_table,
+                            idx_column.as_bytes(),
+                            page_id,
+                            offset,
+                        );
+                        rows
+                    }
+                    Err(_) => self.scan_with_ahi(
+                        &storage,
+                        lookup_table,
+                        &select.index_hints,
+                        &current_db,
+                    )?,
+                }
             } else {
-                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &current_db)?
+                self.scan_with_ahi(&storage, lookup_table, &select.index_hints, &base_db)?
             };
             let rows = pk_lookup_rows;
             // table_info was already fetched above (Phase D.1 moved it
@@ -1750,7 +1921,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         // Step 3: GROUP BY + AGGREGATE
-        if !select.aggregates.is_empty() {
+        // #5301: also enter when there is a GROUP BY but no aggregates —
+        // a bare GROUP BY must still collapse duplicate groups. The grouping
+        // `else` branch is safe here: compute_aggregates(&[]) returns an empty
+        // tail, so the row is just [group_cols..., fd_snapshot...] and the
+        // re-project stage picks the group columns.
+        if !select.aggregates.is_empty() || !select.group_by.is_empty() {
             let group_exprs = &select.group_by;
             if group_exprs.is_empty() {
                 let mut agg_values =
@@ -1780,7 +1956,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         &having_schema,
                         &having_subq_eval,
                     ) {
-                        return Ok(ExecutorResult::new(vec![], 0));
+                        // #5271: a false HAVING yields no rows, but the
+                        // projection's shape is unchanged. Reporting "no
+                        // columns" here would make the zero-row case
+                        // indistinguishable from a command reply.
+                        let empty_columns: Vec<crate::ResultColumn> = if select.columns.is_empty()
+                            || select.columns.iter().any(|c| c.name == "*")
+                        {
+                            having_schema
+                                .columns
+                                .iter()
+                                .map(|c| crate::ResultColumn::unnamed_type(c.name.clone()))
+                                .collect()
+                        } else {
+                            select
+                                .columns
+                                .iter()
+                                .map(|c| {
+                                    crate::ResultColumn::unnamed_type(
+                                        c.alias.clone().unwrap_or_else(|| c.name.clone()),
+                                    )
+                                })
+                                .collect()
+                        };
+                        return Ok(ExecutorResult::with_columns(empty_columns, vec![], 0));
                     }
                 }
 
@@ -1835,8 +2034,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         .collect();
                     vec![row]
                 };
+                let agg_schema = build_aggregate_schema(&[], &select.aggregates)?;
                 let row_count = projected.len();
-                return Ok(ExecutorResult::new(projected, row_count));
+                // #5271: an aggregate query is still a result set. Its shape
+                // comes from the projection list, or from the aggregate schema
+                // when the projection is `*` — never from the row, which for
+                // `COUNT(*)` over an empty table is a single row of one value
+                // regardless of how many aggregates were requested.
+                let agg_columns: Vec<crate::ResultColumn> =
+                    if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
+                        agg_schema
+                            .columns
+                            .iter()
+                            .map(|c| crate::ResultColumn {
+                                name: c.name.clone(),
+                                // Aggregate output types are R2-B; an unresolved
+                                // type is not a reason to drop the column.
+                                data_type: None,
+                            })
+                            .collect()
+                    } else {
+                        select
+                            .columns
+                            .iter()
+                            .map(|c| {
+                                crate::ResultColumn::unnamed_type(
+                                    c.alias.clone().unwrap_or_else(|| c.name.clone()),
+                                )
+                            })
+                            .collect()
+                    };
+                return Ok(ExecutorResult::with_columns(
+                    agg_columns,
+                    projected,
+                    row_count,
+                ));
             } else {
                 // B1.1 / #4914 (F-07): group on structured `Value` keys instead
                 // of a NUL-joined string. The old shape stringified every
@@ -2651,7 +2883,36 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 };
 
                 let row_count = agg_result_rows.len();
-                return Ok(ExecutorResult::new(agg_result_rows, row_count));
+                // #5271: the grouped path projects like any other — names from
+                // the projection list, or the aggregate schema for `*`. A
+                // HAVING that filters every group out leaves no rows, but the
+                // result still has the columns the query asked for.
+                let grouped_columns: Vec<crate::ResultColumn> =
+                    if select.columns.is_empty() || select.columns.iter().any(|c| c.name == "*") {
+                        table_info
+                            .columns
+                            .iter()
+                            .map(|c| crate::ResultColumn {
+                                name: c.name.clone(),
+                                data_type: Some(c.data_type.clone()),
+                            })
+                            .collect()
+                    } else {
+                        select
+                            .columns
+                            .iter()
+                            .map(|c| {
+                                crate::ResultColumn::unnamed_type(
+                                    c.alias.clone().unwrap_or_else(|| c.name.clone()),
+                                )
+                            })
+                            .collect()
+                    };
+                return Ok(ExecutorResult::with_columns(
+                    grouped_columns,
+                    agg_result_rows,
+                    row_count,
+                ));
             }
         }
 
@@ -2746,22 +3007,61 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             None
         };
-        let projected_with_names: (Vec<String>, Vec<Vec<Value>>) = if is_star {
-            let names: Vec<String> = if !table_info.columns.is_empty()
-                && table_info.columns.len() == rows.first().map(|r| r.len()).unwrap_or(0)
-            {
-                table_info.columns.iter().map(|c| c.name.clone()).collect()
+        // #5271: the output schema comes from the table's own columns, not
+        // from the first row. An empty table still has a shape — `SELECT *`
+        // over an empty `t(id INT, v INT)` is two columns and no rows — and
+        // the old `rows.first()` width test collapsed that to zero columns
+        // and then to synthesized `c1`/`c2` names.
+        let projected_with_names: (Vec<crate::ResultColumn>, Vec<Vec<Value>>) = if is_star {
+            // `table_info` already carries the star expansion, in order. Only
+            // fall back to row-derived names when there is no schema at all
+            // (a storage without metadata), which is strictly better than
+            // inventing names for a table that *does* have columns.
+            let columns: Vec<crate::ResultColumn> = if !table_info.columns.is_empty() {
+                table_info
+                    .columns
+                    .iter()
+                    .map(|c| crate::ResultColumn {
+                        name: c.name.clone(),
+                        data_type: Some(c.data_type.clone()),
+                    })
+                    .collect()
             } else {
-                (1..=rows.first().map(|r| r.len()).unwrap_or(0))
-                    .map(|i| format!("c{}", i))
+                (0..rows.first().map(|r| r.len()).unwrap_or(0))
+                    .map(|i| crate::ResultColumn::unnamed_type(format!("c{}", i + 1)))
                     .collect()
             };
-            (names, rows)
+            (columns, rows)
         } else {
-            let names: Vec<String> = select
+            // #5271: names come from the projection list, as before. The
+            // semantic type is not resolved on this path yet — expressions,
+            // aggregates and casts need the type inference tracked in #5271's
+            // R2. `None` marks "type unknown", never "column absent".
+            let names: Vec<crate::ResultColumn> = select
                 .columns
                 .iter()
-                .map(|c| c.alias.clone().unwrap_or_else(|| c.name.clone()))
+                .map(|c| {
+                    // #5271 R2-A: a projection of a plain column reports
+                    // that column's type. Everything else stays unresolved —
+                    // aggregates, arithmetic and casts are R2-B, and a wrong
+                    // type is worse than an absent one.
+                    //
+                    // The lookup uses `c.name`, the *source* column, never
+                    // the alias: `SELECT v AS id` is a VARCHAR named `id`, and
+                    // matching on the output name would report INT.
+                    let output_name = c.alias.clone().unwrap_or_else(|| c.name.clone());
+                    match table_info
+                        .columns
+                        .iter()
+                        .find(|col| col.name.eq_ignore_ascii_case(&c.name))
+                    {
+                        Some(col) => crate::ResultColumn {
+                            name: output_name,
+                            data_type: Some(col.data_type.clone()),
+                        },
+                        None => crate::ResultColumn::unnamed_type(output_name),
+                    }
+                })
                 .collect();
             // Issue #4511 — session variables were already resolved by
             // the entry-point pass in `execute_select`, so projection
@@ -2848,7 +3148,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             })()?;
             (names, rows)
         };
-        let (projected_column_names, projected_rows) = projected_with_names;
+        let (projected_columns, projected_rows) = projected_with_names;
+        let projected_column_names: Vec<String> =
+            projected_columns.iter().map(|c| c.name.clone()).collect();
         // Step 6: DISTINCT — apply deduplication if select.distinct is set.
         // V380 F-12 fix: parser sets select.distinct but executor was ignoring it.
         // Use a HashSet of Value vectors to track seen rows.
@@ -3034,7 +3336,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         };
 
         let row_count = projected_rows.len();
-        Ok(ExecutorResult::new(projected_rows, row_count))
+        Ok(ExecutorResult::with_columns(
+            projected_columns,
+            projected_rows,
+            row_count,
+        ))
     }
 
     fn compute_aggregates(
@@ -3608,77 +3914,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         current_db: &str,
     ) -> SqlResult<(Vec<Vec<Value>>, TableInfo, bool)> {
         COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = false);
-        let storage = self.storage_read();
-
-        // Sprint 5 v4: the parser encodes the inline alias into the
-        // table name as `table|alias` (e.g. `emp|e`). Storage has only
-        // the bare table name, so strip the `|alias` suffix before the
-        // storage lookup.  The alias (and the base_prefix below) are
-        // still used for column-name qualification.
-        let (base_table, base_alias) = match select.table.split_once('|') {
-            Some((t, a)) => (t.to_string(), Some(a.to_string())),
-            None => (select.table.clone(), select.from_alias.clone()),
-        };
-        let base_prefix = base_alias.as_ref().unwrap_or(&base_table);
-
-        // V311-02 v2: instrument base-table scan via AHI so repeated
-        // SELECTs against the same table get promoted after threshold.
-        // V312-85 / Issue #4625: pass index_hints for USE/IGNORE INDEX support.
-        let mut rows =
-            self.scan_with_ahi(&storage, &base_table, &select.index_hints, &current_db)?;
-        // Fast-path base-table predicate pushdown (single-table
-        // predicates that reference only the base table). For
-        // TPC-H Q2 (`FROM part WHERE p_size = 15 AND p_type LIKE
-        // '%BRASS'`) this collapses 20K part rows to ~400 rows
-        // before any join work, avoiding the full 5-table join
-        // explosion downstream.
-        let raw_info = storage.get_table_info_in(&current_db, &base_table)?;
-        let mut table_info = if base_alias.is_some() {
-            // Wrap the base columns in alias-prefixed names.
-            let mut new_info = raw_info.clone();
-            new_info.name = base_prefix.clone();
-            for col in &mut new_info.columns {
-                col.name = format!("{}.{}", base_prefix, col.name);
-            }
-            new_info
-        } else {
-            raw_info
-        };
-        // V311-05 F-29: apply RLS filter to base table scan after table_info is defined
-        rows = self.apply_rls_filter(&base_table, rows, &table_info)?;
-        if let Some(where_expr) = select.where_clause.as_ref() {
-            // Build the base table's qualified column-name set
-            // (TPC-H prefix + bare names).
-            let base_qualified: Vec<String> =
-                table_info.columns.iter().map(|c| c.name.clone()).collect();
-            let mut base_keys: Vec<String> = vec![
-                base_table.clone(),
-                base_prefix.clone(),
-                Self::tpch_table_prefix(&base_table).to_string(),
-            ];
-            base_keys.extend(base_qualified);
-            let base_preds = self.extract_single_table_predicates(where_expr, &base_keys);
-            let preds_opt = base_preds
-                .get(base_prefix)
-                .or_else(|| base_preds.get(&base_table))
-                .or_else(|| base_preds.get(Self::tpch_table_prefix(&base_table)));
-            if let Some(preds) = preds_opt {
-                if !preds.is_empty() {
-                    let before = rows.len();
-                    rows.retain(|r| preds.iter().all(|p| eval_predicate(p, r, &table_info)));
-                    tracing::debug!(
-                        target: "sqlrustgo.q2_fix",
-                        table = %base_table,
-                        before,
-                        after = rows.len(),
-                        "applied base-table pushdown"
-                    );
-                }
-            }
-        }
 
         // Phase 3 (TPCH-01 Q15): materialize any derived subqueries from
         // `FROM t, (SELECT ...) AS alias` before the join chain runs.
+        //
+        // #5137 B (phase-4 lock audit): this MUST stay above
+        // `storage_read()` below. Materialisation recurses into
+        // `execute_select`, whose entry calls `ensure_database_known`
+        // (a blocking `storage.read()` on this very RwLock). Holding
+        // this function's read guard across that recursion deadlocks as
+        // soon as a writer queues up in between: parking_lot parks the
+        // writer, then blocks the reentrant read behind it — the same
+        // writer-preference deadlock documented at the Step-1 site.
+        // Pinned by tests/e2e/multi_db_isolation_5025.rs
+        // `issue_5137_no_deadlock_derived_materialisation_under_writes`.
         let derived_subqueries = get_and_clear_derived_subqueries();
         if !derived_subqueries.is_empty() {
             for (name, subq) in &derived_subqueries {
@@ -3738,6 +3987,106 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
+        let storage = self.storage_read();
+
+        // Sprint 5 v4: the parser encodes the inline alias into the
+        // table name as `table|alias` (e.g. `emp|e`). Storage has only
+        // the bare table name, so strip the `|alias` suffix before the
+        // storage lookup.  The alias (and the base_prefix below) are
+        // still used for column-name qualification.
+        let (base_table, base_alias) = match select.table.split_once('|') {
+            Some((t, a)) => (t.to_string(), Some(a.to_string())),
+            None => (select.table.clone(), select.from_alias.clone()),
+        };
+        let base_prefix = base_alias.as_ref().unwrap_or(&base_table);
+        // #5137 C2: when the base table was written db-qualified and has
+        // no explicit alias, the QUALIFICATION prefix (table_info.name,
+        // which becomes `left_alias` inside execute_single_join) must
+        // keep the database segment (`d1.t1`, not `t1`). The bare name
+        // alone cannot disambiguate same-named tables across databases:
+        // `find_join_key_index` routes `d1.t1.id` / `d2.t1.id` by
+        // comparing the reference qualifier against left/right names,
+        // and two bare `t1` names would both route left. Storage
+        // lookups keep using the bare `base_table` above.
+        let qual_prefix: String = if base_alias.is_none() {
+            match select.schema.as_deref() {
+                Some(schema) if !schema.is_empty() => {
+                    format!("{}.{}", schema, base_table)
+                }
+                _ => base_prefix.clone(),
+            }
+        } else {
+            base_prefix.clone()
+        };
+
+        // V311-02 v2: instrument base-table scan via AHI so repeated
+        // SELECTs against the same table get promoted after threshold.
+        // V312-85 / Issue #4625: pass index_hints for USE/IGNORE INDEX support.
+        let mut rows =
+            self.scan_with_ahi(&storage, &base_table, &select.index_hints, &current_db)?;
+        // Fast-path base-table predicate pushdown (single-table
+        // predicates that reference only the base table). For
+        // TPC-H Q2 (`FROM part WHERE p_size = 15 AND p_type LIKE
+        // '%BRASS'`) this collapses 20K part rows to ~400 rows
+        // before any join work, avoiding the full 5-table join
+        // explosion downstream.
+        let raw_info = storage.get_table_info_in(&current_db, &base_table)?;
+        let mut table_info = if base_alias.is_some() {
+            // Wrap the base columns in alias-prefixed names.
+            let mut new_info = raw_info.clone();
+            new_info.name = base_prefix.clone();
+            for col in &mut new_info.columns {
+                col.name = format!("{}.{}", base_prefix, col.name);
+            }
+            new_info
+        } else if qual_prefix.as_str() != base_prefix.as_str() {
+            // #5137 C2: db-qualified base without alias — carry the
+            // database in the qualification name only; column names
+            // stay bare so NATURAL JOIN / USING bare-name matching and
+            // layer-4 tail resolution keep working unchanged.
+            let mut new_info = raw_info.clone();
+            new_info.name = qual_prefix.clone();
+            new_info
+        } else {
+            raw_info
+        };
+        // V311-05 F-29: apply RLS filter to base table scan after table_info is defined
+        rows = self.apply_rls_filter(&base_table, rows, &table_info)?;
+        if let Some(where_expr) = select.where_clause.as_ref() {
+            // Build the base table's qualified column-name set
+            // (TPC-H prefix + bare names).
+            let base_qualified: Vec<String> =
+                table_info.columns.iter().map(|c| c.name.clone()).collect();
+            let mut base_keys: Vec<String> = vec![
+                base_table.clone(),
+                base_prefix.clone(),
+                // #5137 C2: also key the extractor by the db-qualified
+                // qualifier so `d1.t1.x = ...` conjuncts can be extracted.
+                qual_prefix.clone(),
+                Self::tpch_table_prefix(&base_table).to_string(),
+            ];
+            base_keys.extend(base_qualified);
+            let base_preds = self.extract_single_table_predicates(where_expr, &base_keys);
+            let preds_opt = base_preds
+                .get(base_prefix)
+                .or_else(|| base_preds.get(&base_table))
+                .or_else(|| base_preds.get(&qual_prefix))
+                .or_else(|| base_preds.get(Self::tpch_table_prefix(&base_table)));
+            if let Some(preds) = preds_opt {
+                if !preds.is_empty() {
+                    let before = rows.len();
+                    rows.retain(|r| preds.iter().all(|p| eval_predicate(p, r, &table_info)));
+                    tracing::debug!(
+                        target: "sqlrustgo.q2_fix",
+                        table = %base_table,
+                        before,
+                        after = rows.len(),
+                        "applied base-table pushdown"
+                    );
+                }
+            }
+        }
+
         // Sprint 5 v15+ predicate pushdown (Q21 perf): collect
         // single-table WHERE predicates and apply them to each
         // right-side scan before the hash-join build.  For Q21
@@ -3755,7 +4104,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // (which extracts the underscore-prefix from
                 // unqualified `n_name`, `l_orderkey`, etc.)
                 // matches the table.
-                let mut joined: Vec<String> = vec![base_table.clone(), base_prefix.clone()];
+                let mut joined: Vec<String> =
+                    vec![base_table.clone(), base_prefix.clone(), qual_prefix.clone()];
                 for jc in &select.join_clause {
                     let (bare, _) = match jc.table.split_once('|') {
                         Some((t, a)) => (t.to_string(), Some(a.to_string())),
@@ -4696,8 +5046,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             Some((t, a)) => (t.to_string(), Some(a.to_string())),
             None => (join_clause.table.clone(), None),
         };
-        let right_table_name = right_bare;
-        let right_alias = join_clause.alias.as_ref().unwrap_or(&right_table_name);
+        // #5137 AC4e: the comma list keeps `db.table` embedded in the
+        // table string (per-table schema does not exist in the AST).
+        // Split it so the right side's rows AND columns are read from
+        // its own database; without this the lookup fell through to the
+        // connection's current database and raised `Table not found`
+        // for the schema part (or read the wrong database's table).
+        // The alias fallback must use the BARE table name — qualifiers
+        // match column prefixes (`t2.id`), never `db.table.id`.
+        let (right_db, right_table_name) = if let Some((db, tbl)) = right_bare.split_once('.') {
+            (db.to_string(), tbl.to_string())
+        } else {
+            (current_db.to_string(), right_bare.clone())
+        };
+        // #5137 C2: the qualification prefix must be the FULL right-hand
+        // name (`d2.t1`, or the explicit alias when one exists). The
+        // previous fallback used `right_table_name` (database stripped),
+        // so for same-named cross-database tables BOTH sides qualified
+        // as `t1` — every `db.t1.col` reference collapsed to `t1.col`
+        // and `find_join_key_index` / layer-1 exact matching resolved
+        // both sides to the right column. Non-db tables are unaffected:
+        // `right_bare` then equals `right_table_name`.
+        let right_alias = join_clause.alias.as_ref().unwrap_or(&right_bare);
 
         // Phase 3 (TPCH-01 Q15): if the right table is a synthetic __subq_N
         // from a derived subquery, use the materialized rows from the registry
@@ -4709,11 +5079,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         } else {
             (
                 // #4974: `storage` here is `&S`, not a guard.
-                // #5113: the schema line below already names `current_db`
-                // while this one did not — so the right table's COLUMNS
-                // came from the right database and its ROWS from another.
-                self.scan_for_reader_in_db(storage, &current_db, &right_table_name)?,
-                storage.get_table_info_in(&current_db, &right_table_name)?,
+                // #5113: schema and rows must name the same database.
+                // #5137: that database is `right_db` — the table's own
+                // schema prefix when the comma list qualified it,
+                // `current_db` otherwise (unchanged behaviour).
+                self.scan_for_reader_in_db(storage, &right_db, &right_table_name)?,
+                storage.get_table_info_in(&right_db, &right_table_name)?,
             )
         };
 
@@ -4874,7 +5245,28 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // info as-is with the right info prefixed by
                 // `right_alias`. The left info's columns are already
                 // qualified from prior cartesian steps.
-                let mut combined_columns = left_table_info.columns.clone();
+                // #5137 C2: the db-qualified base case is the exception —
+                // its columns are bare while `left_alias` carries the
+                // database (`d1.t1`). Prefix them here so BOTH sides of
+                // the combined schema are symmetrically qualified; else
+                // layer 3 (`part after first dot`) resolves a bare
+                // `t2.id` to the left's bare `id` column and the
+                // post-WHERE degenerates to `x = x` (all rows pass).
+                let mut combined_columns: Vec<sqlrustgo_storage::ColumnDefinition> =
+                    left_table_info
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            if left_alias.contains('.') && !c.name.contains('.') {
+                                sqlrustgo_storage::ColumnDefinition {
+                                    name: format!("{}.{}", left_alias, c.name),
+                                    ..c.clone()
+                                }
+                            } else {
+                                c.clone()
+                            }
+                        })
+                        .collect();
                 for col in &right_table_info.columns {
                     let bare_col = if join_clause.alias.is_some() {
                         col.name
@@ -5195,25 +5587,51 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 Ok(JoinKey::All)
             }
             Expression::Identifier(name) => {
-                if let Some((qualifier, col_name)) = name.split_once('.') {
-                    // Qualified name: must match either side
-                    if qualifier == left_name {
-                        let idx = lookup_column(left_info, col_name).ok_or_else(|| {
-                            SqlError::ExecutionError(format!(
-                                "Column '{}.{}' not found in {}",
-                                qualifier, col_name, left_name
-                            ))
-                        })?;
-                        Ok(JoinKey::Left(idx))
-                    } else if qualifier == right_name {
-                        let idx = lookup_column(right_info, col_name).ok_or_else(|| {
-                            SqlError::ExecutionError(format!(
-                                "Column '{}.{}' not found in {}",
-                                qualifier, col_name, right_name
-                            ))
-                        })?;
-                        Ok(JoinKey::Right(idx))
+                // #5137 C2: try the FULL qualifier (`d1.t1`) against the
+                // side names first — combined schemas qualify columns with
+                // the db-qualified name for cross-database tables. Then fall
+                // back to the A2 db-stripped qualifier (`t1`) for the
+                // established bare-name routing.
+                let qual_full = name.rsplit_once('.').map(|(rest, _)| rest);
+                let stripped: &str = match name.find('.') {
+                    Some(first) if name[first + 1..].contains('.') => &name[first + 1..],
+                    _ => name,
+                };
+                let qual_stripped = stripped.split_once('.').map(|(q, _)| q);
+                // `Some(true)` = left side, `Some(false)` = right side.
+                let side_of = |q: &str| -> Option<bool> {
+                    if q == left_name {
+                        Some(true)
+                    } else if q == right_name {
+                        Some(false)
                     } else {
+                        None
+                    }
+                };
+                let routed = qual_full
+                    .and_then(side_of)
+                    .or_else(|| qual_stripped.and_then(side_of));
+                if let Some(is_left) = routed {
+                    let col_name = stripped.rsplit('.').next().unwrap_or(stripped);
+                    let (info, side_name) = if is_left {
+                        (left_info, left_name)
+                    } else {
+                        (right_info, right_name)
+                    };
+                    let idx = lookup_column(info, col_name).ok_or_else(|| {
+                        SqlError::ExecutionError(format!(
+                            "Column '{}.{}' not found in {}",
+                            stripped, col_name, side_name
+                        ))
+                    })?;
+                    return Ok(if is_left {
+                        JoinKey::Left(idx)
+                    } else {
+                        JoinKey::Right(idx)
+                    });
+                }
+                if let Some((qualifier, col_name)) = stripped.split_once('.') {
+                    {
                         // Qualifier doesn't match left or right (e.g. an
                         // intermediate table already absorbed into left via
                         // build_combined_schema, where columns are named

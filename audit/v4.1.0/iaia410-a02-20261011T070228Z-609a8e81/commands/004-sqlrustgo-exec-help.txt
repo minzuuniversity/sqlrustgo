@@ -1,0 +1,11 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo exec --help
+Execute a single SQL statement and print the result
+
+Usage: sqlrustgo exec <SQL>
+
+Arguments:
+  <SQL>  
+
+Options:
+  -h, --help  Print help
+EXIT=0

@@ -45,7 +45,7 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::{FileStorage, StorageEngine};
+use sqlrustgo_storage::FileStorage;
 use sqlrustgo_types::Value;
 use std::path::PathBuf;
 use std::sync::Arc;

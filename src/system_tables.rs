@@ -27,6 +27,7 @@ pub const SQLITE_MASTER_SCHEMA: &[&str] = &["type", "name", "tbl_name", "rootpag
 pub fn try_system_table_select(
     select: &sqlrustgo_parser::SelectStatement,
     storage: &dyn StorageEngine,
+    db: &str,
     auth_manager: Option<&AuthManager>,
 ) -> Option<SqlResult<ExecutorResult>> {
     let table_name = normalize_table_name(&select.table);
@@ -37,7 +38,7 @@ pub fn try_system_table_select(
         .unwrap_or_else(|| table_name.clone());
 
     let rows: Vec<Vec<String>> = match qualified.as_str() {
-        "sqlite_master" | "sqlite_schema" => Some(build_sqlite_master_rows(storage)),
+        "sqlite_master" | "sqlite_schema" => Some(build_sqlite_master_rows(storage, db)),
         "mysql.user" => auth_manager.map(MysqlUserTable::rows),
         "mysql.db" => auth_manager.map(MysqlDbTable::rows),
         _ => None,
@@ -83,7 +84,22 @@ pub fn try_system_table_select(
         .map(|row| {
             projection_indices
                 .iter()
-                .map(|i| Value::Text(row[*i].clone()))
+                .map(|i| {
+                    // rootpage column is INTEGER in SQLite schema (V312-71
+                    // / Issue #4664). The previous all-Text conversion
+                    // produced Text("0") and failed the integration test
+                    // which asserts Value::Integer(0) for rootpage.
+                    let col_name = schema.get(*i).map(|s| s.as_str()).unwrap_or("");
+                    if col_name.eq_ignore_ascii_case("rootpage") {
+                        // Parse the string to Integer; fall back to Text on parse failure.
+                        row[*i]
+                            .parse::<i64>()
+                            .map(Value::Integer)
+                            .unwrap_or_else(|_| Value::Text(row[*i].clone()))
+                    } else {
+                        Value::Text(row[*i].clone())
+                    }
+                })
                 .collect()
         })
         .collect();
@@ -93,16 +109,16 @@ pub fn try_system_table_select(
 
 const SQLITE_MASTER_OR_SCHEMA: &[&str] = SQLITE_MASTER_SCHEMA;
 
-fn build_sqlite_master_rows(storage: &dyn StorageEngine) -> Vec<Vec<String>> {
+fn build_sqlite_master_rows(storage: &dyn StorageEngine, db: &str) -> Vec<Vec<String>> {
     let mut out: Vec<Vec<String>> = Vec::new();
     // Tables
-    let mut table_names = storage.list_tables();
+    let mut table_names = storage.list_tables_in_db(db);
     table_names.sort();
     for name in table_names {
         if is_reserved(&name) {
             continue;
         }
-        if let Ok(info) = storage.get_table_info(&name) {
+        if let Ok(info) = storage.get_table_info_in(db, &name) {
             out.push(vec![
                 "table".to_string(),
                 name.clone(),
@@ -113,10 +129,10 @@ fn build_sqlite_master_rows(storage: &dyn StorageEngine) -> Vec<Vec<String>> {
         }
     }
     // Views
-    let mut view_names = storage.list_views();
+    let mut view_names = storage.list_views(db);
     view_names.sort();
     for name in view_names {
-        if let Some(info) = storage.get_view(&name) {
+        if let Some(info) = storage.get_view(db, &name) {
             out.push(vec![
                 "view".to_string(),
                 name.clone(),
@@ -161,7 +177,7 @@ fn build_sqlite_master_rows(storage: &dyn StorageEngine) -> Vec<Vec<String>> {
     // given a non-matching table would otherwise double-list).
     let mut trigger_infos: Vec<sqlrustgo_storage::TriggerInfo> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut table_names_for_triggers = storage.list_tables();
+    let mut table_names_for_triggers = storage.list_tables_in_db(db);
     table_names_for_triggers.sort();
     for tbl in table_names_for_triggers {
         if is_reserved(&tbl) {

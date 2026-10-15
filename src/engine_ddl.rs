@@ -339,10 +339,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// only), and `USE default` is always legal. Takes its own short read
     /// guard — callers must NOT hold `self.storage` across it (parking_lot
     /// read guards must not nest when a writer may be queued).
-    fn ensure_database_known(&self, db: &str) -> SqlResult<()> {
+    /// #5137: `pub(crate)` so the SELECT path (`execute_select`) can
+    /// validate a user-qualified `FROM db.table` before taking locks.
+    pub(crate) fn ensure_database_known(&self, db: &str) -> SqlResult<()> {
         let storage = self.storage.read();
-        if db.eq_ignore_ascii_case(&storage.current_db())
+        if db.eq_ignore_ascii_case(&self.session_db())
             || db.eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE)
+            // #5321: PostgreSQL convention — `public` is an alias for
+            // the default schema. `SHOW FULL TABLES FROM public` against
+            // a server whose session db is the default schema should
+            // list those tables, not error with "Unknown database".
+            || db.eq_ignore_ascii_case("public")
         {
             return Ok(());
         }
@@ -376,7 +383,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // V312-58 / Issue #4516: LIKE filter support for
             // SHOW DATABASES (FROM is implicit; WHERE is uncommon).
             ShowStatement::Databases => self.execute_show_databases(),
-            ShowStatement::CreateTable { table } => self.execute_show_create_table(table),
+            ShowStatement::CreateTable { table, schema } => {
+                let db = schema.clone().unwrap_or_else(|| self.session_db());
+                self.execute_show_create_table_in(&db, &table)
+            }
             ShowStatement::Index { table } => self.execute_show_index(table),
             ShowStatement::Grants { user } => self.execute_show_grants(user.as_deref()),
             ShowStatement::Columns { table, pattern } => {
@@ -535,7 +545,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let storage = self.storage.read();
         let mut names = match db {
             None => {
-                let mut n = storage.list_tables();
+                let mut n = storage.list_tables_in_db(&self.session_db());
                 n.extend(views_for(&self.session_db()));
                 n
             }
@@ -592,7 +602,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
             rows.push(vec![Value::Text(name.clone())]);
         }
-        Ok(ExecutorResult::new(rows, 1))
+        // #5271: `SHOW TABLES` is a one-column listing. The shape belongs to
+        // the command, not to how many tables exist — an empty database still
+        // has its `Tables_in_*` column.
+        Ok(ExecutorResult::with_columns(
+            vec![crate::ResultColumn {
+                name: "Tables_in_db".into(),
+                data_type: Some("TEXT".into()),
+            }],
+            rows,
+            1,
+        ))
     }
 
     pub(crate) fn execute_show_databases(&self) -> SqlResult<ExecutorResult> {
@@ -650,9 +670,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             self.ensure_database_known(d)?;
         }
         let storage = self.storage.read();
-        let mut names = match db {
+        // #5321: PostgreSQL convention — `public` is an alias for the
+        // default schema. When the FROM db resolves to `public` (i.e.
+        // session db is the default), list the default db's tables.
+        let effective_db: Option<String> = db.map(|d| {
+            if d.eq_ignore_ascii_case("public")
+                && self
+                    .session_db()
+                    .eq_ignore_ascii_case(sqlrustgo_storage::engine::DEFAULT_DATABASE)
+            {
+                sqlrustgo_storage::engine::DEFAULT_DATABASE.to_string()
+            } else {
+                d.to_string()
+            }
+        });
+        let mut names = match effective_db.as_deref() {
             None => {
-                let mut n = storage.list_tables();
+                let mut n = storage.list_tables_in_db(&self.session_db());
                 n.extend(views_for(&self.session_db()));
                 n
             }
@@ -662,9 +696,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 n
             }
         };
-        let listed_db = db
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| self.session_db());
+        let listed_db = effective_db.clone().unwrap_or_else(|| self.session_db());
         let listed_views = views_for(&listed_db);
         let table_type = |name: &str| {
             if listed_views.iter().any(|v| v == name) {
@@ -736,7 +768,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
         let storage = self.storage.read();
         let names = match db {
-            None => storage.list_tables(),
+            None => storage.list_tables_in_db(&self.session_db()),
             Some(d) => storage.list_tables_in_db(d),
         };
         let mut rows = Vec::new();
@@ -809,16 +841,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// flagged `primary_key = true` in `ColumnDefinition`. The output is
     /// not a full MySQL 5.7 round-trip; refer to the issue body for the
     /// explicit scope.
-    pub(crate) fn execute_show_create_table(&self, table: &str) -> SqlResult<ExecutorResult> {
+    pub(crate) fn execute_show_create_table_in(
+        &self,
+        db: &str,
+        table: &str,
+    ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        if !storage.list_tables().iter().any(|n| n == table) {
+        if !storage.list_tables_in_db(db).iter().any(|n| n == table) {
             return Err(SqlError::ExecutionError(format!(
                 "Table '{}' does not exist",
                 table
             )));
         }
         let info = storage
-            .get_table_info(table)
+            .get_table_info_in(db, table)
             .map_err(|e| SqlError::ExecutionError(format!("cannot introspect {table}: {e}")))?;
         let cols: Vec<String> = info
             .columns
@@ -843,7 +879,15 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             parts.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
         }
         let ddl = format!("CREATE TABLE {} ({})", table, parts.join(", "));
-        Ok(ExecutorResult::new(vec![vec![Value::Text(ddl)]], 1))
+        // MySQL SHOW CREATE TABLE returns 2 columns: Table, Create Table.
+        // The wire layer (crates/mysql-server/src/lib.rs:4340) declares
+        // these 2 column names, but this fn previously returned only 1
+        // value (the DDL string) — causing the client to read 2 fields
+        // from a 1-field row packet and fail with "row packet truncated".
+        Ok(ExecutorResult::new(
+            vec![vec![Value::Text(table.to_string()), Value::Text(ddl)]],
+            2,
+        ))
     }
 
     /// DESCRIBE table — return one row per column with Field/Type/Null/Key/Default/Extra.
@@ -851,15 +895,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// call this on a read-lock guard.
     pub fn execute_describe(&self, desc: &DescribeStatement) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        if !storage.list_tables().iter().any(|n| n == &desc.table) {
+        if !storage
+            .list_tables_in_db(&self.session_db())
+            .iter()
+            .any(|n| n == &desc.table)
+        {
             return Err(SqlError::ExecutionError(format!(
                 "Table '{}' does not exist",
                 desc.table
             )));
         }
-        let info = storage.get_table_info(&desc.table).map_err(|e| {
-            SqlError::ExecutionError(format!("cannot introspect {}: {e}", desc.table))
-        })?;
+        let info = storage
+            .get_table_info_in(&self.session_db(), &desc.table)
+            .map_err(|e| {
+                SqlError::ExecutionError(format!("cannot introspect {}: {e}", desc.table))
+            })?;
         let rows = column_metadata_rows(&info.columns);
         Ok(ExecutorResult::new(rows, info.columns.len()))
     }
@@ -874,15 +924,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     SqlError::ExecutionError("PRAGMA table_info requires a table name".to_string())
                 })?;
                 let storage = self.storage.read();
-                if !storage.list_tables().iter().any(|n| n == table) {
+                if !storage
+                    .list_tables_in_db(&self.session_db())
+                    .iter()
+                    .any(|n| n == table)
+                {
                     return Err(SqlError::ExecutionError(format!(
                         "Table '{}' does not exist",
                         table
                     )));
                 }
-                let info = storage.get_table_info(table).map_err(|e| {
-                    SqlError::ExecutionError(format!("cannot introspect {table}: {e}"))
-                })?;
+                let info = storage
+                    .get_table_info_in(&self.session_db(), table)
+                    .map_err(|e| {
+                        SqlError::ExecutionError(format!("cannot introspect {table}: {e}"))
+                    })?;
                 let rows: Vec<Vec<Value>> = info
                     .columns
                     .iter()
@@ -934,14 +990,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         pattern: Option<&str>,
     ) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        if !storage.list_tables().iter().any(|n| n == table) {
+        if !storage
+            .list_tables_in_db(&self.session_db())
+            .iter()
+            .any(|n| n == table)
+        {
             return Err(SqlError::ExecutionError(format!(
                 "Table '{}' does not exist",
                 table
             )));
         }
         let info = storage
-            .get_table_info(table)
+            .get_table_info_in(&self.session_db(), table)
             .map_err(|e| SqlError::ExecutionError(format!("cannot introspect {table}: {e}")))?;
         let mut rows = column_metadata_rows(&info.columns);
         if let Some(pat) = pattern {
@@ -977,14 +1037,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     ///    PK information.
     pub(crate) fn execute_show_index(&self, table: &str) -> SqlResult<ExecutorResult> {
         let storage = self.storage.read();
-        if !storage.list_tables().iter().any(|n| n == table) {
+        if !storage
+            .list_tables_in_db(&self.session_db())
+            .iter()
+            .any(|n| n == table)
+        {
             return Err(SqlError::ExecutionError(format!(
                 "Table '{}' does not exist",
                 table
             )));
         }
         let info = storage
-            .get_table_info(table)
+            .get_table_info_in(&self.session_db(), table)
             .map_err(|e| SqlError::ExecutionError(format!("cannot introspect {table}: {e}")))?;
         drop(storage);
 
@@ -1084,7 +1148,29 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         }
 
         let count = rows.len();
-        Ok(ExecutorResult::new(rows, count))
+        // #5271: `SHOW INDEX` reports the twelve MySQL 5.7 columns whether or
+        // not any index exists — the shape is the command's, not the rows'.
+        Ok(ExecutorResult::with_columns(
+            [
+                "Table",
+                "Non_unique",
+                "Key_name",
+                "Seq_in_index",
+                "Column_name",
+                "Collation",
+                "Cardinality",
+                "Sub_part",
+                "Packed",
+                "Null",
+                "Index_type",
+                "Comment",
+            ]
+            .into_iter()
+            .map(crate::ResultColumn::unnamed_type)
+            .collect(),
+            rows,
+            count,
+        ))
     }
 
     pub(crate) fn execute_show_grants_for(&self, user_spec: &str) -> SqlResult<ExecutorResult> {

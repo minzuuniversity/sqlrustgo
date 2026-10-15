@@ -1,0 +1,135 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a04-20261011T180837Z-609a8e81
+work_package: A04
+source_agent: OMP
+source_run: omp-20261011T180837Z
+timestamp_started: '2026-10-11T18:08:37Z'
+timestamp_finished: '2026-10-11T18:51:11Z'
+conflict_resolution: none
+repository:
+  canonical_remote: http://192.168.0.252:3000/openclaw/sqlrustgo.git
+  commit: 609a8e81db79d41b1fa6aa1fb6f8f361c97ac53a
+  branch_or_detached: feature/a04-sql-protocol-diff-5226
+  status_porcelain_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  cargo_lock_sha256: d8bba914c5223bece0146c28e7cc1cb48f25c27de84275bb03ef65d5a84e5a2d
+environment:
+  os: linux
+  arch: x86_64
+  cpu: 80x Intel(R) Xeon(R) Gold 6138 CPU @ 2.00GHz
+  memory_bytes: 434597134336
+  filesystem: ext4
+  rustc: rustc 1.99.0 (b940084d7 2026-09-28)
+  cargo: cargo 1.99.0 (5f94df478 2026-08-27)
+  features:
+  - aes256
+  - bin_storage_default
+  - default
+  - fault-injection
+  - jemalloc-prof
+  - parallel-executor
+  - q7-trace
+  - simd
+  - sqlrustgo
+  - sqlrustgo-storage
+  - sqlrustgo-types
+  - v313_3_profile
+  profile: debug
+  reference_dbms:
+  - name: MySQL
+    version: 8.0.46
+  process_pollution_check: traces/env_pollution_pre.txt
+datasets:
+- id: a04_full
+  seed: 410
+  sha256: ea9fe1cf3adb06296730cbcc31f05f537577ad592073d87b15d7044ab8056c3e
+commands:
+- id: '001'
+  name: build-server
+  argv:
+  - cargo
+  - build
+  - -p
+  - sqlrustgo-mysql-server
+  - --bin
+  - sqlrustgo-mysql-server
+  cwd: .
+  timeout_sec: 1800
+  started_at: '2026-10-11T18:09:16Z'
+  finished_at: '2026-10-11T18:09:16Z'
+  exit_code: 0
+  stdout: commands/001.stdout.log
+  stderr: commands/001.stderr.log
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: beed191cf5cd39a57477a6d66e9acb53f3b4efe7566a30e0ada805357a0fe6ff
+- id: '002'
+  name: mysql-server-serve
+  argv:
+  - ./target/debug/sqlrustgo-mysql-server
+  - serve
+  - --host
+  - 127.0.0.1
+  - --port
+  - '3309'
+  - --data-dir
+  - /tmp/a04-sqlrustgo-data
+  - --auth-mode
+  - none
+  - --log-level
+  - warn
+  cwd: .
+  timeout_sec: 0
+  started_at: '2026-10-11T16:56:14Z'
+  finished_at: '2026-10-11T18:51:11Z'
+  exit_code: 0
+  stdout: commands/002.stdout.log
+  stderr: commands/002.stderr.log
+  stdout_sha256: 96362d5e7d37a16673d2f2e09a2ade751a2788156ab5c0debecd7b6c7d78d07b
+  stderr_sha256: f4976dfa9575814d8d8be3844e473496d9afa503171859656642d2e9587dd3c6
+- id: '003'
+  name: differential-harness
+  argv:
+  - python3
+  - /tmp/a04/harness.py
+  - --corpus
+  - /tmp/a04/corpus_full.json
+  - --out
+  - /tmp/iaia-a04-run/audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81
+  cwd: .
+  timeout_sec: 900
+  started_at: '2026-10-11T18:43:57Z'
+  finished_at: '2026-10-11T18:45:58Z'
+  exit_code: 0
+  stdout: commands/003.stdout.log
+  stderr: commands/003.stderr.log
+  stdout_sha256: f6e34c6e67a6114da5dbdd015c0882b73032470c44c39b3ecd278a15318d8020
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '004'
+  name: prepared-statement-diff
+  argv:
+  - python3
+  - /tmp/a04/prepared_diff.py
+  - /tmp/iaia-a04-run/audit/v4.1.0/iaia410-a04-20261011T180837Z-609a8e81/prepared
+  cwd: .
+  timeout_sec: 300
+  started_at: '2026-10-11T18:50:57Z'
+  finished_at: '2026-10-11T18:51:03Z'
+  exit_code: 0
+  stdout: commands/004.stdout.log
+  stderr: commands/004.stderr.log
+  stdout_sha256: 35fbea7c256195577112fbbbc1882614b99338f8dc635e3a7b5f05295ec3189b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: '005'
+  name: having-crash-repro
+  argv:
+  - python3
+  - /tmp/a04/repro_having.py
+  cwd: .
+  timeout_sec: 120
+  started_at: '2026-10-11T18:51:03Z'
+  finished_at: '2026-10-11T18:51:11Z'
+  exit_code: 0
+  stdout: commands/005.stdout.log
+  stderr: commands/005.stderr.log
+  stdout_sha256: bc8bc6b4b0f07211d4a7edb61e2a5dbd1af1e264bb02fcaaf0b37a2368a20c4b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+manifest_sha256: sha256:535f6ba988c29eed291a53cab42d4720b37672461ff1453b3277388503334eed

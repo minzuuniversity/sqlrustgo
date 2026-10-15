@@ -1,0 +1,7 @@
+=== STDOUT ===
+col_1	col_2	col_3	col_4	col_5
+x	1	2	2	2
+y	1	10	10	10
+
+=== STDERR ===
+

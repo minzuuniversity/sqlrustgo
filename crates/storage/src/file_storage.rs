@@ -218,7 +218,6 @@ pub struct FileStorage {
     /// the default database keeps the historical `data_dir/{table}.json`
     /// layout so an existing installation is untouched. The in-memory
     /// cache is keyed the same way the on-disk layout is, via `tbl()`.
-    current_db: RwLock<String>,
     /// B+ Tree indexes protected by RwLock for concurrent access.
     /// Keyed by (table, column) because the on-disk layout is one
     /// file per (table, column) pair.
@@ -280,7 +279,14 @@ pub struct FileStorage {
     /// `let _wal_path = data_dir.join("sqlrustgo.wal")` and dropped it
     /// on the floor. Nothing was ever written, so `admin pitr` had an
     /// empty or absent WAL to "replay" and reported success anyway.
-    wal: Mutex<Option<Box<dyn crate::wal::WalManager>>>,
+    ///
+    /// #5317: the inner `Box<dyn WalManager>` became a
+    /// `SharedWalHandle = Arc<std::sync::Mutex<Arc<dyn WalManager>>>`
+    /// so the same physical file handle can be cloned and handed to the
+    /// wrapping `WalStorage` / `ParallelWalStorage`. Without sharing,
+    /// the production stack opens two `FileBackedWalManager` handles
+    /// over the same `sqlrustgo.wal`, racing on every fsync.
+    wal: Mutex<Option<crate::wal::SharedWalHandle>>,
     /// #5048: opt-in change log, the prerequisite for a real incremental
     /// backup. `None` unless a caller turns it on, so the ordinary path
     /// pays nothing.
@@ -476,6 +482,12 @@ impl FileStorage {
     /// the guard is strictly better than propagating the panic to every
     /// subsequent write.
     fn wal_enabled(&self) -> bool {
+        // #5317: the outer `Mutex<Option<SharedWalHandle>>` still answers
+        // "is a WAL attached". The shared handle inside (the inner
+        // `Arc<std::sync::Mutex<Arc<dyn WalManager>>>`) is locked only
+        // inside `wal_append`, never here — `wal_enabled` is a hot-path
+        // read and serialising it on the same lock that serialises
+        // commit fsyncs would block readers behind writers' I/O.
         self.wal.lock().map(|g| g.is_some()).unwrap_or(true)
     }
 
@@ -488,15 +500,22 @@ impl FileStorage {
         if entries.is_empty() {
             return Ok(());
         }
+        // #5317: lock the outer `Mutex<Option<SharedWalHandle>>` first
+        // (so the `Option` is stable while we read it), then lock the
+        // inner `std::sync::Mutex<Arc<dyn WalManager>>` that this handle
+        // shares with the wrapping `WalStorage` / `ParallelWalStorage`.
+        // Two layers writing the same file now serialise on one lock
+        // instead of racing on two file handles.
         let mut guard = match self.wal.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        let Some(wal) = guard.as_mut() else {
+        let Some(shared) = guard.as_mut() else {
             return Ok(());
         };
+        let mut inner = shared.lock().expect("SharedWalHandle inner mutex poisoned");
         for entry in entries {
-            wal.append(entry)?;
+            inner.append(entry)?;
         }
         Ok(())
     }
@@ -510,12 +529,27 @@ impl FileStorage {
     /// than one that refuses.
     fn wal_row_entry(
         &self,
+        db: &str,
         entry_type: WalEntryType,
         table: &str,
         key: Vec<u8>,
         data: Option<Vec<u8>>,
     ) -> WalEntry {
         WalEntry {
+            // #5192: this is the WAL-writing path that actually runs —
+            // `WalStorage::log_insert` and friends are never called, because
+            // `WalStorage` wraps a `FileStorage` that appends its own
+            // entries. Recording the database here is what makes a replay
+            // able to put the row back where it was committed.
+            //
+            // It must be the database the caller *named*, not
+            // `crate::engine::DEFAULT_DATABASE.to_string()`: an autocommit insert into a named
+            // database while another one is current wrote `default` here,
+            // and the replay then refused the entry as "no database" or
+            // applied it to the wrong one. Measured at the end of this
+            // issue: `entries_total=3, skipped_entries=3` for a three-row
+            // table in `aud`.
+            database_name: Some(db.to_string()),
             tx_id: self
                 .current_tx_id
                 .load(std::sync::atomic::Ordering::Acquire),
@@ -539,6 +573,7 @@ impl FileStorage {
             entry_type,
             table_id: 0,
             table_name: None,
+            database_name: None,
             key: None,
             data: None,
             lsn,
@@ -550,11 +585,12 @@ impl FileStorage {
     }
 
     /// Encode one row into the `Insert` entries for it.
-    fn wal_insert_entries(&self, table: &str, records: &[Record]) -> Vec<WalEntry> {
+    fn wal_insert_entries(&self, db: &str, table: &str, records: &[Record]) -> Vec<WalEntry> {
         records
             .iter()
             .map(|r| {
                 self.wal_row_entry(
+                    db,
                     WalEntryType::Insert,
                     table,
                     crate::wal_record_codec::record_key(r),
@@ -566,10 +602,11 @@ impl FileStorage {
 
     /// Encode one row into the `Delete` entries for it. A delete logs
     /// only the key, not the row: replay removes by key.
-    fn wal_delete_entries(&self, table: &str, rows: &[Record]) -> Vec<WalEntry> {
+    fn wal_delete_entries(&self, db: &str, table: &str, rows: &[Record]) -> Vec<WalEntry> {
         rows.iter()
             .map(|r| {
                 self.wal_row_entry(
+                    db,
                     WalEntryType::Delete,
                     table,
                     crate::wal_record_codec::record_key(r),
@@ -582,10 +619,11 @@ impl FileStorage {
     /// Encode one row into the `Update` entry for it. An update logs
     /// the key *and* the full post-image, so replay is a blind
     /// overwrite and does not need to re-evaluate the predicate.
-    fn wal_update_entries(&self, table: &str, rows: &[Record]) -> Vec<WalEntry> {
+    fn wal_update_entries(&self, db: &str, table: &str, rows: &[Record]) -> Vec<WalEntry> {
         rows.iter()
             .map(|r| {
                 self.wal_row_entry(
+                    db,
                     WalEntryType::Update,
                     table,
                     crate::wal_record_codec::record_key(r),
@@ -607,8 +645,16 @@ impl FileStorage {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
+        // #5317: the outer `Option<SharedWalHandle>` is the
+        // "no-WAL-attached" gate. When attached, lock the inner
+        // `Mutex<Box<dyn WalManager>>` shared with `WalStorage` /
+        // `ParallelWalStorage` so recovery sees the same view of the
+        // file as in-progress writers.
         match guard.as_mut() {
-            Some(wal) => wal.recover(),
+            Some(shared) => {
+                let mut inner = shared.lock().expect("SharedWalHandle inner mutex poisoned");
+                inner.recover()
+            }
             None => Ok(Vec::new()),
         }
     }
@@ -620,7 +666,13 @@ impl FileStorage {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        guard.as_ref().map(|w| w.current_lsn()).unwrap_or(0)
+        match guard.as_ref() {
+            Some(shared) => {
+                let inner = shared.lock().expect("SharedWalHandle inner mutex poisoned");
+                inner.current_lsn()
+            }
+            None => 0,
+        }
     }
 
     /// #5048: start recording changes so an incremental backup can be
@@ -810,7 +862,6 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
-            current_db: RwLock::new(crate::engine::DEFAULT_DATABASE.to_string()),
             write_state: parking_lot::RwLock::new(WriteState {
                 tables: HashMap::new(),
                 insert_buffer: HashMap::new(),
@@ -865,7 +916,6 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
-            current_db: RwLock::new(crate::engine::DEFAULT_DATABASE.to_string()),
             write_state: parking_lot::RwLock::new(WriteState {
                 tables: HashMap::new(),
                 insert_buffer: HashMap::new(),
@@ -910,16 +960,53 @@ impl FileStorage {
     /// durability, and quietly returning a storage without it is how
     /// the original bug existed in the first place.
     pub fn new_with_wal(data_dir: PathBuf) -> std::io::Result<Self> {
+        // #5317: still opens its own `FileBackedWalManager`, but wraps
+        // it in `SharedWalHandle` so callers that wrap this `FileStorage`
+        // in a `WalStorage` / `ParallelWalStorage` can use the same
+        // physical handle via `new_with_shared_wal_handle` /
+        // `new_with_shared_wal`. To get that property today without
+        // touching `lib.rs`, take the `wal` out of `Self` after the
+        // call with [`Self::take_shared_wal_handle`] and hand the clone
+        // to the wrapper. Production wiring is being switched to
+        // `new_with_external_wal` directly — see
+        // `crates/mysql-server/src/lib.rs`.
         fs::create_dir_all(&data_dir)?;
 
         let wal_path = data_dir.join("sqlrustgo.wal");
-        let wal = crate::wal::FileBackedWalManager::new(wal_path).map_err(|e| {
+        let fbwm = crate::wal::FileBackedWalManager::new(wal_path).map_err(|e| {
             std::io::Error::other(format!("failed to open WAL {}: {e}", data_dir.display()))
         })?;
+        // #5317: `Box<dyn WalManager>`, not `Arc<dyn WalManager>` —
+        // `WalManager::append` etc. need `&mut self`, which is only
+        // reachable when the inner Mutex owns the WAL outright.
+        let shared: crate::wal::SharedWalHandle =
+            std::sync::Arc::new(std::sync::Mutex::new(Box::new(fbwm)));
+
+        Self::new_with_external_wal(data_dir, shared)
+    }
+
+    /// #5317: construct a `FileStorage` that shares the given
+    /// `SharedWalHandle` with the wrapping `WalStorage` /
+    /// `ParallelWalStorage`. The previous design opened a fresh
+    /// `FileBackedWalManager` here and a second one in the wrapper,
+    /// producing the "two writers over one file" failure mode the
+    /// production wiring was already documenting for the
+    /// `GroupCommit` branch.
+    ///
+    /// `new_with_wal` is preserved for backward compatibility — it
+    /// still opens its own `FileBackedWalManager` and exposes it via
+    /// [`Self::take_shared_wal_handle`] so legacy callers that wrap
+    /// the resulting `FileStorage` in a `WalStorage` can hand the
+    /// shared handle over. New code should call this constructor
+    /// directly and pass clones of `wal` to the wrapper.
+    pub fn new_with_external_wal(
+        data_dir: PathBuf,
+        wal: crate::wal::SharedWalHandle,
+    ) -> std::io::Result<Self> {
+        fs::create_dir_all(&data_dir)?;
 
         let storage = Self {
             data_dir,
-            current_db: RwLock::new(crate::engine::DEFAULT_DATABASE.to_string()),
             write_state: parking_lot::RwLock::new(WriteState {
                 tables: HashMap::new(),
                 insert_buffer: HashMap::new(),
@@ -937,7 +1024,7 @@ impl FileStorage {
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
-            wal: Mutex::new(Some(Box::new(wal))),
+            wal: Mutex::new(Some(wal)),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
             views: RwLock::new(HashMap::new()),
@@ -956,6 +1043,21 @@ impl FileStorage {
         storage.load_all_views()?;
 
         Ok(storage)
+    }
+
+    /// #5317: take the internal `SharedWalHandle` so the caller can
+    /// hand a clone to the wrapping `WalStorage` /
+    /// `ParallelWalStorage`. Returns `None` for `FileStorage::new`
+    /// (no WAL). After this call the `FileStorage` is left with
+    /// `wal = None`, which matches the old behaviour where
+    /// `set_wal(None)` (or any unwrap-based path) silently no-op'd
+    /// subsequent writes.
+    pub fn take_shared_wal_handle(&self) -> Option<crate::wal::SharedWalHandle> {
+        let mut guard = match self.wal.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        guard.take()
     }
 
     /// Create a new FileStorage with a shared GapLockManager for REPEATABLE-READ isolation.
@@ -977,7 +1079,6 @@ impl FileStorage {
 
         let storage = Self {
             data_dir,
-            current_db: RwLock::new(crate::engine::DEFAULT_DATABASE.to_string()),
             write_state: parking_lot::RwLock::new(WriteState {
                 tables: HashMap::new(),
                 insert_buffer: HashMap::new(),
@@ -1045,7 +1146,7 @@ impl FileStorage {
     /// the database directory holds nothing, so tables written before the
     /// layout change stay visible.
     fn table_path(&self, table_name: &str) -> PathBuf {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.table_path_in(&db, table_name)
     }
 
@@ -1094,7 +1195,7 @@ impl FileStorage {
 
     /// #5025: read side for an index file; see `table_path`.
     fn index_path(&self, table_name: &str, column_name: &str) -> PathBuf {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.index_path_in(&db, table_name, column_name)
     }
 
@@ -1130,7 +1231,7 @@ impl FileStorage {
     }
 
     fn index_path_for_write(&self, table_name: &str, column_name: &str) -> PathBuf {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.index_path_for_write_in(&db, table_name, column_name)
     }
 
@@ -1395,7 +1496,7 @@ impl FileStorage {
         column_name: &str,
         index: &BPlusTree,
     ) -> std::io::Result<()> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.save_index_in(&db, table_name, column_name, index)
     }
 
@@ -1416,6 +1517,9 @@ impl FileStorage {
 
         writer.write_all(json.as_bytes())?;
         writer.flush()?;
+
+        #[cfg(feature = "fault-injection")]
+        crate::fault_injection::reach(crate::fault_injection::FaultPoint::AfterIndexUpdate);
 
         Ok(())
     }
@@ -1768,7 +1872,7 @@ impl FileStorage {
 
     /// Insert a new table
     pub fn insert_table(&self, name: String, table_data: TableData) -> std::io::Result<()> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.insert_table_in(&db, name, table_data)
     }
 
@@ -1793,7 +1897,7 @@ impl FileStorage {
 
     /// Drop (delete) a table
     pub fn drop_table(&self, name: &str) -> std::io::Result<()> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.drop_table_in(&db, name)
     }
 
@@ -1822,7 +1926,10 @@ impl FileStorage {
         // databases' tables under `default`. Bare (unscoped) keys are kept:
         // they are pre-#5025 root-layout entries that belong to default.
         self.with_read_lock(|st| {
-            let prefix = format!("{}\u{1}", self.current_db_name().to_lowercase());
+            let prefix = format!(
+                "{}\u{1}",
+                crate::engine::DEFAULT_DATABASE.to_string().to_lowercase()
+            );
             st.tables
                 .iter()
                 .filter_map(|(k, v)| {
@@ -1849,7 +1956,7 @@ impl FileStorage {
         // touch `data_dir`, `last_saved_row_count` and the filesystem.
         //
         // #5057: `db` is the entry's OWN database, carried out of the dirty
-        // set. It used to be `self.current_db_name()`, one value for the
+        // set. It used to be `crate::engine::DEFAULT_DATABASE.to_string()`, one value for the
         // whole loop — so every dirty table was written under whichever
         // database was active at flush time.
         for (db, name, window, total) in &pending {
@@ -1898,7 +2005,7 @@ impl FileStorage {
     /// cold-start / shrink / compaction branches.
     ///
     /// #5057: the database comes back out of the set, not from `current_db`.
-    /// Callers used to do `let db = self.current_db_name()` and hand that
+    /// Callers used to do `let db = crate::engine::DEFAULT_DATABASE.to_string()` and hand that
     /// same value to every entry, which is how one table's rows ended up
     /// written into another table's file. Now each entry carries its own.
     fn drain_dirty_windowed(&self) -> Vec<(String, String, TableData, usize)> {
@@ -1952,14 +2059,14 @@ impl FileStorage {
     /// both in memory and on disk.
     #[inline]
     fn tbl(&self, name: impl AsRef<str>) -> String {
-        crate::engine::scoped_key(&self.current_db.read().unwrap(), name.as_ref())
+        crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, name.as_ref())
     }
 
     /// #5025: the directory a database's tables live in, if it is not the
     /// implicit default. `None` means "use `data_dir` directly".
     #[inline]
     fn db_dir(&self) -> Option<std::path::PathBuf> {
-        self.db_dir_for(&self.current_db_name())
+        self.db_dir_for(crate::engine::DEFAULT_DATABASE)
     }
 
     /// #5025: the database named explicitly, instead of resolved from
@@ -1971,15 +2078,6 @@ impl FileStorage {
         } else {
             Some(self.data_dir.join(db))
         }
-    }
-
-    /// #5025: `current_db` as an owned `String`, so a caller can pass the
-    /// name on to `*_in` helpers without holding the `current_db` read
-    /// guard across them. Those helpers call `db_dir_for`, and parking_lot
-    /// read locks are not safe to nest when a writer may be queued.
-    #[inline]
-    fn current_db_name(&self) -> String {
-        self.current_db.read().unwrap().clone()
     }
 
     /// #5057: scope a bare table name to an explicitly named database.
@@ -2141,7 +2239,7 @@ impl FileStorage {
     pub fn persist_table(&self, name: &str) -> std::io::Result<()> {
         // #5025: scoped cache key.
         let key = self.tbl(name);
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.with_read_lock(|st| match st.tables.get(&key) {
             Some(table_data) => self.save_table(&db, st, name, table_data),
             None => Ok(()),
@@ -4509,7 +4607,7 @@ impl FileStorage {
         // flush must still leave the rows recoverable, which it cannot
         // if the log is written after the mutation.
         if self.wal_enabled() {
-            self.wal_append(self.wal_insert_entries(table, &records))?;
+            self.wal_append(self.wal_insert_entries(db, table, &records))?;
         }
 
         // C.1.2: in_transaction / insert_buffered / insert_direct are
@@ -4611,7 +4709,7 @@ impl FileStorage {
             // `records: Vec<Record>` is owned by this function
             // and the closure took ownership of the move
             // (`buffered.extend(records.iter().cloned())` does
-            // clone, then `s.insert_buffer.remove(&crate::engine::scoped_key(&self.current_db.read().unwrap(), table))` moves
+            // clone, then `s.insert_buffer.remove(&crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, table))` moves
             // the buffer out — but `records` is still owned by
             // us at this point because we cloned into the buffer),
             // we can pass &records to read PKs directly.
@@ -4647,7 +4745,7 @@ impl FileStorage {
         if let Some((start_row_id, row_count, columns)) = snap {
             // V400-PERF-FIX: flush_buffer has no caller-side records
             // (they were consumed by the closure via
-            // `s.insert_buffer.remove(&crate::engine::scoped_key(&self.current_db.read().unwrap(), table))`). Use a separate
+            // `s.insert_buffer.remove(&crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, table))`). Use a separate
             // helper that reads ONLY the [start_row_id, +row_count)
             // window of data.rows — O(row_count) not O(table_size).
             Self::update_pk_index_window(self, db, table, &columns, start_row_id, row_count);
@@ -4661,6 +4759,19 @@ impl FileStorage {
     /// extract PK values for `count` rows.
     ///
     /// Acquires `indexes.write()` to perform the B+Tree inserts.
+    /// V400-PERF-FIX → #5303: maintain the table's PRIMARY-KEY B+Tree index
+    /// *and* every secondary B+Tree index registered in `indexes` for this
+    /// table.
+    ///
+    /// #5303 root cause: the original code only ever updated the PK column's
+    /// index (keyed by `column_name`). A secondary index created by
+    /// `CREATE INDEX` lives in the same `indexes` map under
+    /// `(scoped_table, other_col)` but was never touched by DML, so any row
+    /// flushed after the index existed was silently invisible to an
+    /// index-scan on that column (index-scan 143 vs full-scan 144 in the
+    /// reproduction). This function now iterates every indexed column for
+    /// the table and inserts the `(value → row_id)` entry, keeping each
+    /// index consistent with the row window that was just appended.
     fn update_pk_index(
         &self,
         db: &str,
@@ -4669,24 +4780,42 @@ impl FileStorage {
         records: &[Vec<Value>],
         start_row_id: usize,
     ) {
-        let pk_col_idx = columns.iter().position(|c| c.primary_key);
-        let Some(pk_idx) = pk_col_idx else { return };
-        let pk_col_name = columns[pk_idx].name.clone();
-        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(records.len());
-        for (i, row) in records.iter().enumerate() {
-            if let Some(v) = row.get(pk_idx) {
-                if let Some(ikey) = v.to_index_key() {
-                    updates.push((ikey, (start_row_id + i) as u32));
-                }
-            }
-        }
-        if updates.is_empty() {
+        // Map column NAME → position in the row so we can derive the value
+        // for every indexed column without re-scanning the schema.
+        let col_pos: HashMap<&str, usize> = columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.name.as_str(), i))
+            .collect();
+        // Collect which column names actually have a B+Tree registered for
+        // this table (PK or secondary). If none, nothing to do — same
+        // no-op fast path as before when the PK index is absent.
+        let scoped = self.tbl_in(db, table);
+        let indexed_cols: Vec<String> = match self.indexes.read() {
+            Ok(indexes) => indexes
+                .keys()
+                .filter(|(t, _)| t == &scoped)
+                .map(|(_, col)| col.clone())
+                .collect(),
+            Err(_) => return,
+        };
+        if indexed_cols.is_empty() {
             return;
         }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(self.tbl_in(db, table), pk_col_name.clone())) {
-                for (ikey, rid) in updates {
-                    index.insert(ikey, rid);
+            for col_name in indexed_cols {
+                let Some(&ci) = col_pos.get(col_name.as_str()) else {
+                    continue;
+                };
+                let Some(index) = indexes.get_mut(&(scoped.clone(), col_name)) else {
+                    continue;
+                };
+                for (i, row) in records.iter().enumerate() {
+                    if let Some(v) = row.get(ci) {
+                        if let Some(ikey) = v.to_index_key() {
+                            index.insert(ikey, (start_row_id + i) as u32);
+                        }
+                    }
                 }
             }
         }
@@ -4695,7 +4824,8 @@ impl FileStorage {
     /// V400-PERF-FIX: variant of `update_pk_index` for callers that
     /// have already moved the records into `data.rows` and only know
     /// the row-id window. Reads ONLY that window — O(row_count) not
-    /// O(table_size).
+    /// O(table_size). #5303: also maintains secondary (non-PK) indexes,
+    /// the same way `update_pk_index` now does.
     fn update_pk_index_window(
         &self,
         db: &str,
@@ -4707,9 +4837,23 @@ impl FileStorage {
         if count == 0 {
             return;
         }
-        let pk_col_idx = columns.iter().position(|c| c.primary_key);
-        let Some(pk_idx) = pk_col_idx else { return };
-        let pk_col_name = columns[pk_idx].name.clone();
+        let col_pos: HashMap<&str, usize> = columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| (c.name.as_str(), i))
+            .collect();
+        let scoped = self.tbl_in(db, table);
+        let indexed_cols: Vec<String> = match self.indexes.read() {
+            Ok(indexes) => indexes
+                .keys()
+                .filter(|(t, _)| t == &scoped)
+                .map(|(_, col)| col.clone())
+                .collect(),
+            Err(_) => return,
+        };
+        if indexed_cols.is_empty() {
+            return;
+        }
         // Snapshot only the [start_row_id, start_row_id+count) window
         // so we don't pay O(table_size) for an O(count) operation.
         let rows_snapshot = Self::with_write_lock(self, |s| {
@@ -4726,21 +4870,20 @@ impl FileStorage {
         if rows.is_empty() {
             return;
         }
-        let mut updates: Vec<(i64, u32)> = Vec::with_capacity(rows.len());
-        for (i, row) in rows.iter().enumerate() {
-            if let Some(v) = row.get(pk_idx) {
-                if let Some(ikey) = v.to_index_key() {
-                    updates.push((ikey, (start_row_id + i) as u32));
-                }
-            }
-        }
-        if updates.is_empty() {
-            return;
-        }
         if let Ok(mut indexes) = self.indexes.write() {
-            if let Some(index) = indexes.get_mut(&(self.tbl_in(db, table), pk_col_name.clone())) {
-                for (ikey, rid) in updates {
-                    index.insert(ikey, rid);
+            for col_name in indexed_cols {
+                let Some(&ci) = col_pos.get(col_name.as_str()) else {
+                    continue;
+                };
+                let Some(index) = indexes.get_mut(&(scoped.clone(), col_name)) else {
+                    continue;
+                };
+                for (i, row) in rows.iter().enumerate() {
+                    if let Some(v) = row.get(ci) {
+                        if let Some(ikey) = v.to_index_key() {
+                            index.insert(ikey, (start_row_id + i) as u32);
+                        }
+                    }
                 }
             }
         }
@@ -4885,7 +5028,7 @@ impl FileStorage {
         }
         if wal_on {
             let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
-            self.wal_append(self.wal_update_entries(table, &posts))?;
+            self.wal_append(self.wal_update_entries(db, table, &posts))?;
         }
         Ok(count)
     }
@@ -4968,7 +5111,7 @@ impl FileStorage {
         // file I/O.
         if wal_on {
             let posts: Vec<Record> = updated.into_iter().map(|(_, post)| post).collect();
-            self.wal_append(self.wal_update_entries(table, &posts))?;
+            self.wal_append(self.wal_update_entries(db, table, &posts))?;
         }
         Ok(count)
     }
@@ -5018,7 +5161,7 @@ impl FileStorage {
             }
         }
         if wal_on {
-            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+            self.wal_append(self.wal_delete_entries(db, table, &removed_rows))?;
         }
         Ok(removed_rows.len())
     }
@@ -5078,21 +5221,32 @@ impl FileStorage {
                     }
                 }
 
-                // Collect PKs of rows that match the filter (before deletion).
+                // `pks` must list exactly the rows being removed: callers
+                // (e.g. mvcc_storage::delete) tombstone by this list and
+                // return `pks.len()` as the affected-row count. A row's PK is
+                // its first column (#5057); NULL/absent falls back to the
+                // ordinal position so the length stays exact.
                 let pks: Vec<Value> = if filters.is_empty() {
-                    // Full table wipe: caller (MVCC) handles by tombstoning
-                    // all visible rows. Return empty to signal that.
-                    Vec::new()
+                    data.rows
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, row)| {
+                            row.first().cloned().unwrap_or(Value::Integer(idx as i64))
+                        })
+                        .collect()
                 } else {
                     data.rows
                         .iter()
-                        .filter(|row| {
+                        .enumerate()
+                        .filter(|(_, row)| {
                             filters
                                 .iter()
                                 .enumerate()
                                 .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
                         })
-                        .filter_map(|row| row.first().cloned()) // PK = column 0
+                        .map(|(idx, row)| {
+                            row.first().cloned().unwrap_or(Value::Integer(idx as i64))
+                        })
                         .collect()
                 };
 
@@ -5271,7 +5425,7 @@ impl FileStorage {
         // #5055: outside the storage write lock on purpose — this does
         // file I/O.
         if wal_on {
-            self.wal_append(self.wal_delete_entries(table, &removed_rows))?;
+            self.wal_append(self.wal_delete_entries(db, table, &removed_rows))?;
         }
         Ok(removed_rows.len())
     }
@@ -5426,7 +5580,7 @@ impl FileStorage {
             let data = st.tables.get(&self.tbl(table))?;
             let mut all: Vec<Record> = data.rows.clone();
             if let Some(buffered) = st.insert_buffer.get(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
+                crate::engine::DEFAULT_DATABASE,
                 table,
             )) {
                 all.extend(buffered.iter().cloned());
@@ -5752,13 +5906,13 @@ impl StorageEngine for FileStorage {
                         original,
                     } => {
                         if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
+                            crate::engine::DEFAULT_DATABASE,
                             &table,
                         )) {
                             if row_idx < data.rows.len() {
                                 data.rows[row_idx] = original;
                                 s.dirty_tables
-                                    .insert((self.current_db.read().unwrap().clone(), table));
+                                    .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
                             }
                         }
                     }
@@ -5768,13 +5922,13 @@ impl StorageEngine for FileStorage {
                         original,
                     } => {
                         if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
+                            crate::engine::DEFAULT_DATABASE,
                             &table,
                         )) {
                             let idx = row_idx.min(data.rows.len());
                             data.rows.insert(idx, original);
                             s.dirty_tables
-                                .insert((self.current_db.read().unwrap().clone(), table));
+                                .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
                         }
                     }
                     UndoOp::DeleteAll {
@@ -5782,12 +5936,12 @@ impl StorageEngine for FileStorage {
                         original_rows,
                     } => {
                         if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
+                            crate::engine::DEFAULT_DATABASE,
                             &table,
                         )) {
                             data.rows = original_rows;
                             s.dirty_tables
-                                .insert((self.current_db.read().unwrap().clone(), table));
+                                .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
                         }
                     }
                     // #5055 / #5060: the row was inserted by *this*
@@ -5797,7 +5951,7 @@ impl StorageEngine for FileStorage {
                     // concurrent work.
                     UndoOp::BufferedInsert { table, row } => {
                         let key =
-                            crate::engine::scoped_key(&self.current_db.read().unwrap(), &table);
+                            crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, &table);
                         if let Some(buffered) = s.insert_buffer.get_mut(&key) {
                             if let Some(pos) = buffered.iter().position(|r| *r == row) {
                                 buffered.remove(pos);
@@ -5806,7 +5960,7 @@ impl StorageEngine for FileStorage {
                     }
                     UndoOp::BufferedDelete { table, row } => {
                         let key =
-                            crate::engine::scoped_key(&self.current_db.read().unwrap(), &table);
+                            crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, &table);
                         s.insert_buffer.entry(key).or_default().push(row);
                     }
                     // #5060: put the pre-image back where the post-image
@@ -5819,7 +5973,7 @@ impl StorageEngine for FileStorage {
                         original,
                     } => {
                         if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
+                            crate::engine::DEFAULT_DATABASE,
                             &table,
                         )) {
                             if let Some(pos) = buffered.iter().position(|r| *r == post) {
@@ -5861,7 +6015,7 @@ impl StorageEngine for FileStorage {
             // F-09 fix: merge insert_buffer so same-transaction SELECT/UPDATE sees
             // the rows that were just inserted (and not yet flushed to data.rows).
             if let Some(buffered) = st.insert_buffer.get(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
+                crate::engine::DEFAULT_DATABASE,
                 table,
             )) {
                 rows.extend(buffered.iter().cloned());
@@ -5881,7 +6035,7 @@ impl StorageEngine for FileStorage {
         table: &str,
         filter: &dyn Fn(&Record) -> bool,
     ) -> SqlResult<Vec<Record>> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.scan_with_filter_in(&db, table, filter)
     }
 
@@ -5925,13 +6079,37 @@ impl StorageEngine for FileStorage {
             .find(|row| row.first() == Some(pk)))
     }
 
+    /// #5057: `scan_pk` against a stated database — uses the B+Tree via
+    /// `scan_with_index_in` when available, falls back to `scan_in_db`.
+    fn scan_pk_in_db(
+        &self,
+        db: &str,
+        table: &str,
+        pk_column: &str,
+        pk: &Value,
+    ) -> SqlResult<Option<Record>> {
+        if let Ok(info) = self.get_table_info_in(db, table) {
+            if info.columns.iter().any(|c| c.primary_key) {
+                let rows = self.scan_with_index_in(db, table, pk_column, pk)?;
+                if !rows.is_empty() {
+                    return Ok(rows.into_iter().next());
+                }
+            }
+        }
+        let pk = pk.clone();
+        Ok(self
+            .scan_in_db(db, table)?
+            .into_iter()
+            .find(|row| row.first() == Some(&pk)))
+    }
+
     fn scan_with_index(
         &self,
         table: &str,
         index_name: &str,
         key: &Value,
     ) -> SqlResult<Vec<Record>> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.scan_with_index_in(&db, table, index_name, key)
     }
 
@@ -5950,7 +6128,7 @@ impl StorageEngine for FileStorage {
         // rows in a length-prefixed binary format, so row-level seek is
         // possible but requires iterating from the start to find partition
         // boundaries. A future optimization can add that.
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.parallel_scan_in(&db, table, num_partitions)
     }
 
@@ -5966,7 +6144,7 @@ impl StorageEngine for FileStorage {
     }
 
     fn insert(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.insert_at(&db, table, records)
     }
 
@@ -5984,7 +6162,7 @@ impl StorageEngine for FileStorage {
     /// see the row in `data.rows` directly, avoiding the "3 rows expected 1"
     /// regression caused by buffered inserts piling up during replay.
     fn force_insert(&mut self, table: &str, record: Vec<Value>) -> SqlResult<()> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.insert_direct(&db, table, vec![record])
     }
 
@@ -5994,7 +6172,7 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.delete_at(&db, table, filters)
     }
 
@@ -6010,7 +6188,7 @@ impl StorageEngine for FileStorage {
     /// that by tombstoning all visible rows (correct semantics for
     /// "delete everything").
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.delete_collect_pks_at(&db, table, filters)
     }
 
@@ -6025,7 +6203,7 @@ impl StorageEngine for FileStorage {
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.delete_if_at(&db, table, filter)
     }
 
@@ -6040,7 +6218,7 @@ impl StorageEngine for FileStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.update_at(&db, table, filters, updates)
     }
 
@@ -6061,7 +6239,7 @@ impl StorageEngine for FileStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.update_if_at(&db, table, filter, mutation)
     }
 
@@ -6077,7 +6255,7 @@ impl StorageEngine for FileStorage {
     }
 
     fn create_table(&mut self, info: &TableInfo) -> SqlResult<()> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.create_table_at(&db, info)
     }
 
@@ -6099,7 +6277,7 @@ impl StorageEngine for FileStorage {
     // inherent `&self` implementation.
     #[allow(unconditional_recursion, clippy::only_used_in_recursion)]
     fn drop_table(&mut self, table: &str) -> SqlResult<()> {
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.drop_table_in_db(&db, table)
     }
 
@@ -6182,6 +6360,22 @@ impl StorageEngine for FileStorage {
     }
 
     fn create_index(&mut self, info: crate::engine::IndexInfo) -> SqlResult<()> {
+        // #5209: promote buffered inserts into `tables.rows` before
+        // building the tree. Without this the B+ tree is built over an
+        // empty (or partial) `tables.rows` while the actual rows sit in
+        // `insert_buffer`, so the index silently contains nothing —
+        // and `scan_with_index_in` cannot recover them either, because
+        // its `insert_buffer` fallback stops matching once those rows
+        // are flushed into `tables.rows`. Observed directly: create a
+        // table, insert rows, `CREATE INDEX` on a non-PK column without
+        // an intervening flush, then query — 0 rows returned, where the
+        // pre-index full scan had returned the right answer.
+        //
+        // Row ids in the index are positions in `tables.rows`, so the
+        // buffer must be drained *before* ids are assigned, not merged
+        // in afterwards.
+        self.flush_all_buffers()?;
+
         // Inline the implementation to avoid potential recursion issues
         // Get table from tables
         let table = info.table.as_str();
@@ -6277,10 +6471,10 @@ impl StorageEngine for FileStorage {
 
     fn add_column(&mut self, table: &str, column: ColumnDefinition) -> SqlResult<()> {
         // #5057: read the database before taking the state lock.
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         Self::with_write_lock(self, |s| {
             if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                &self.current_db.read().unwrap(),
+                crate::engine::DEFAULT_DATABASE,
                 table,
             )) {
                 data.info.columns.push(column);
@@ -6335,7 +6529,7 @@ impl StorageEngine for FileStorage {
         };
         table_data.info.name = new_name.to_string();
 
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.with_read_lock(|st| self.save_table(&db, st, new_name, &table_data))?;
 
         if old_path.exists() {
@@ -6406,13 +6600,13 @@ impl StorageEngine for FileStorage {
             .collect()
     }
 
-    fn has_view(&self, name: &str) -> bool {
+    fn has_view(&self, db: &str, name: &str) -> bool {
         // #5140: keyed by scoped name — see `create_view`.
         let views = self.views.read().unwrap();
-        views.contains_key(&self.tbl(name))
+        views.contains_key(&crate::engine::scoped_key(db, name))
     }
 
-    fn create_view(&mut self, info: ViewInfo) -> SqlResult<()> {
+    fn create_view(&mut self, db: &str, info: ViewInfo) -> SqlResult<()> {
         // V312-95 v2 / Issue #4814: persist to disk first (WAL-style:
         // write-ahead, then mutate in-memory) — mirrors `create_trigger`.
         self.save_view(&info)
@@ -6421,7 +6615,7 @@ impl StorageEngine for FileStorage {
         // the scoped name — the same treatment #5025 gave base tables. With a
         // bare key, `CREATE VIEW v` in d2 failed with "already exists" after
         // d1 had one.
-        let key = self.tbl(&info.name);
+        let key = crate::engine::scoped_key(db, &info.name);
         let mut views = self.views.write().unwrap();
         if views.contains_key(&key) {
             return Err(SqlError::ExecutionError(format!(
@@ -6433,15 +6627,15 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
-    fn get_view(&self, name: &str) -> Option<ViewInfo> {
+    fn get_view(&self, db: &str, name: &str) -> Option<ViewInfo> {
         let views = self.views.read().unwrap();
-        views.get(&self.tbl(name)).cloned()
+        views.get(&crate::engine::scoped_key(db, name)).cloned()
     }
 
-    fn list_views(&self) -> Vec<String> {
+    fn list_views(&self, db: &str) -> Vec<String> {
         // #5140: keys carry the database, but callers expect the bare view
         // name back — mirrors `list_indexes`.
-        let prefix = format!("{}\0", self.current_db_name());
+        let prefix = format!("{}\0", db);
         let views = self.views.read().unwrap();
         let mut names: Vec<String> = views
             .keys()
@@ -6451,16 +6645,16 @@ impl StorageEngine for FileStorage {
         names
     }
 
-    fn drop_view(&mut self, name: &str) -> SqlResult<()> {
-        // V312-95 v2 / Issue #4814: idempotent — the executor guards the
-        // IF EXISTS / not-found error path; storage just removes what it
-        // has. Best-effort disk removal (missing file is OK).
+    fn drop_view(&mut self, db: &str, name: &str) -> SqlResult<()> {
+        // V312-95 v2 / Issue #4814: idempotent — the executor guards
+        // the IF EXISTS / not-found error path; storage just removes
+        // the entry. Best-effort disk removal (missing file is OK).
         self.remove_view_file(name)
             .map_err(|e| SqlError::ExecutionError(format!("remove view: {}", e)))?;
         // #5140: keyed by scoped name — dropping d2's `v` must not remove
         // d1's.
         let mut views = self.views.write().unwrap();
-        views.remove(&self.tbl(name));
+        views.remove(&crate::engine::scoped_key(db, name));
         Ok(())
     }
 
@@ -6480,28 +6674,6 @@ impl StorageEngine for FileStorage {
         let db_path = self.data_dir.join(db_name);
         std::fs::create_dir_all(&db_path)
             .map_err(|e| SqlError::ExecutionError(format!("create_database: {}", e)))
-    }
-
-    /// #5025: switch the active database.
-    ///
-    /// A database exists when its directory does. The implicit `default`
-    /// database always resolves, even before any file is written — it is
-    /// where pre-#5025 tables live, and rejecting `USE default` on a
-    /// fresh installation would be surprising.
-    fn set_current_db(&mut self, db_name: &str) -> SqlResult<()> {
-        let key = db_name.to_lowercase();
-        if key != crate::engine::DEFAULT_DATABASE && !self.data_dir.join(&key).is_dir() {
-            return Err(SqlError::ExecutionError(format!(
-                "Unknown database: {}",
-                db_name
-            )));
-        }
-        *self.current_db.write().unwrap() = key;
-        Ok(())
-    }
-
-    fn current_db(&self) -> String {
-        self.current_db.read().unwrap().clone()
     }
 
     /// #5057: resolve against the stated database, never the stored one.
@@ -6663,7 +6835,7 @@ impl StorageEngine for FileStorage {
             let table_data = st
                 .tables
                 .get_mut(&crate::engine::scoped_key(
-                    &self.current_db.read().unwrap(),
+                    crate::engine::DEFAULT_DATABASE,
                     table,
                 ))
                 .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
@@ -6694,7 +6866,7 @@ impl StorageEngine for FileStorage {
         };
         // `save_table` needs `&self` (for `data_dir` / `last_saved_row_count`),
         // so it cannot run while the `&mut` borrow above is live.
-        let db = self.current_db_name();
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
         self.with_read_lock(|st| self.save_table(&db, st, table, &table_data_clone))?;
         Ok(())
     }
@@ -7004,13 +7176,13 @@ impl FileStorage {
                     original,
                 } => {
                     if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        &self.current_db.read().unwrap(),
+                        crate::engine::DEFAULT_DATABASE,
                         &table,
                     )) {
                         if row_idx < data.rows.len() {
                             data.rows[row_idx] = original;
                             s.dirty_tables
-                                .insert((self.current_db.read().unwrap().clone(), table));
+                                .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
                         }
                     }
                 }
@@ -7020,13 +7192,13 @@ impl FileStorage {
                     original,
                 } => {
                     if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        &self.current_db.read().unwrap(),
+                        crate::engine::DEFAULT_DATABASE,
                         &table,
                     )) {
                         let idx = row_idx.min(data.rows.len());
                         data.rows.insert(idx, original);
                         s.dirty_tables
-                            .insert((self.current_db.read().unwrap().clone(), table));
+                            .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
                     }
                 }
                 UndoOp::DeleteAll {
@@ -7034,17 +7206,17 @@ impl FileStorage {
                     original_rows,
                 } => {
                     if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        &self.current_db.read().unwrap(),
+                        crate::engine::DEFAULT_DATABASE,
                         &table,
                     )) {
                         data.rows = original_rows;
                         s.dirty_tables
-                            .insert((self.current_db.read().unwrap().clone(), table));
+                            .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
                     }
                 }
                 UndoOp::BufferedInsert { table, row } => {
                     if let Some(buf) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                        &self.current_db.read().unwrap(),
+                        crate::engine::DEFAULT_DATABASE,
                         &table,
                     )) {
                         buf.retain(|r| r != &row);
@@ -7054,7 +7226,7 @@ impl FileStorage {
                 UndoOp::BufferedDelete { table, row } => {
                     s.insert_buffer
                         .entry(crate::engine::scoped_key(
-                            &self.current_db.read().unwrap(),
+                            crate::engine::DEFAULT_DATABASE,
                             &table,
                         ))
                         .or_default()
@@ -7067,7 +7239,7 @@ impl FileStorage {
                     original,
                 } => {
                     if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                        &self.current_db.read().unwrap(),
+                        crate::engine::DEFAULT_DATABASE,
                         &table,
                     )) {
                         if let Some(pos) = buffered.iter().position(|r| *r == post) {
@@ -7108,28 +7280,27 @@ mod db_isolation_tests {
         fs.create_database("d2").unwrap();
 
         for (db, id) in [("d1", 1i64), ("d2", 2)] {
-            fs.set_current_db(db).unwrap();
             let mut info = TableInfo::default();
             info.name = "t".to_string();
             info.columns = vec![ColumnDefinition::new("id", "INTEGER")];
-            fs.create_table(&info).unwrap();
-            fs.force_insert("t", vec![Value::Integer(id)]).unwrap();
+            fs.create_table_in_db(db, &info).unwrap();
+            fs.force_insert_in_db(db, "t", vec![Value::Integer(id)])
+                .unwrap();
         }
 
-        fs.set_current_db("d1").unwrap();
-        assert_eq!(fs.scan("t").unwrap(), vec![vec![Value::Integer(1)]]);
-        assert_eq!(fs.list_tables(), vec!["t".to_string()]);
-        fs.set_current_db("d2").unwrap();
-        assert_eq!(fs.scan("t").unwrap(), vec![vec![Value::Integer(2)]]);
+        assert_eq!(
+            fs.scan_in_db("d1", "t").unwrap(),
+            vec![vec![Value::Integer(1)]]
+        );
+        assert_eq!(
+            fs.scan_in_db("d2", "t").unwrap(),
+            vec![vec![Value::Integer(2)]]
+        );
 
         // Separate files, not one file written twice.
         assert!(dir.join("d1").join("t.json").exists(), "d1/t.json missing");
         assert!(dir.join("d2").join("t.json").exists(), "d2/t.json missing");
         assert!(!dir.join("t.json").exists(), "a table landed in the root");
-
-        // Unknown database is an error; the failed switch changes nothing.
-        assert!(fs.set_current_db("nope").is_err());
-        assert_eq!(fs.current_db(), "d2");
 
         let _ = remove_dir_all(&dir);
     }

@@ -60,8 +60,15 @@ SLOW_THRESHOLD_SEC = 30  # binaries taking longer than this go to the slow group
 
 # Mirror the DISABLED_TESTS_LIST from scripts/gate/check_beta_v3.12.0.sh.
 # Source of truth: docs/releases/v3.12.0/b2-disabled-test-binary-registry.md.
+# === A08 audit 2026-10-09 (Issue #5230) ===
+# 12 binaries reactivated: ddl_e2e_test, savepoint_test, mvcc_transaction_test,
+# operators_join, window_function_test, differential_corpus_test,
+# issue_4491_join_groupby_alias_col_and_scalar_subquery, dml_integration_test,
+# diag_q22_cell_level, tpch_sf01_perf_baseline_test, physical_backup_test,
+# repro_v312_85. Evidence: docs/releases/v4.1.0/A08_DISABLED_BINARIES_REVIEW_2026-10-09.md
+# source_agent: opencode+Mimo2.6Flash, evidence_hash: e50c409ee46825ce66a0989111a8bf22111be7341786d7c57cc76d5f452d42f2
+# === end A08 audit ===
 DISABLED_BINARIES = [
-    "ddl_e2e_test",
     "diag_q11",
     "diag_q11_3way",
     "diag_q11_having",
@@ -91,14 +98,12 @@ DISABLED_BINARIES = [
     "q13_subquery_repro",
     "q16_notin_subquery_regression",
     "q21_cell_regression_test",
-    "physical_backup_test",
     "q2_q17_repro_test",
     # === Added 2026-08-24 from per-binary B2 run (Issue #4413) ===
     "diag_q7_subset_columns",
     "regression_test",
     "replace_test",
     "repro_3282_orderby_desc",
-    "savepoint_test",
     "sem1_savepoint_test",
     "sequence_test",
     "server01_server_test",
@@ -124,7 +129,6 @@ DISABLED_BINARIES = [
     "tpch_sf01_22_vs_sqlite_test",
     "tpch_sf01_inprocess_test",
     "tpch_sf01_oracle_dump",
-    "tpch_sf01_perf_baseline_test",
     "tpch_sf1_gate_contract_test",
     "tpch_soak_qps",
     "tpch_soak_test",
@@ -135,7 +139,6 @@ DISABLED_BINARIES = [
     "union_set_operations_test",
     "upsert_test",
     "v312_13_load_data_sf10_test",
-    "window_function_test",
     "recovery_fuzzer_test",
     "recovery_scenarios_test",
     "types_value_test",
@@ -156,16 +159,9 @@ DISABLED_BINARIES = [
     # disabled registry (docs/releases/v3.12.0/b2-disabled-test-binary-
     # registry.md Section C).
     "v312_71_sqlite_master_test",
-    "repro_v312_85",
-    "mvcc_transaction_test",
     "show_full_tables_test",
     "wal_tx_contract_test",
     "g13_oltp1_concurrent_select_test",
-    "operators_join",
-    "dml_integration_test",
-    "issue_4491_join_groupby_alias_col_and_scalar_subquery",
-    "diag_q22_cell_level",
-    "differential_corpus_test",
 ]
 DISABLED_SET = frozenset(DISABLED_BINARIES)
 
@@ -177,6 +173,36 @@ PERF_ONLY_BINARIES = [
     "parallel_perf_baseline_test",   # 500K-row INSERT loop
     "parallel_main_path_test",       # 600K-row INSERT × 7 tests
     "int2_substance_parallel_test",  # 200K-row INSERT × 9 tests
+]
+
+# Tests that must stay OUT of the enumerated set, and why.
+#
+# These are NOT excluded for being slow (PERF_ONLY_BINARIES) or for failing
+# (DISABLED_BINARIES) — they pass today, and they are not enumerated at all:
+# `list_test_binaries()` only reads the root manifest's [[test]] entries plus
+# `EXTRA_TEST_PACKAGES` (sqlrustgo-mysql-server), so `sqlrustgo-planner`'s
+# targets are invisible to the gate. That is the correct state — a green
+# planner suite would be evidence about nothing a user can observe, since the
+# physical-plan layer has no `execute()` and no production caller (IAIA-410 F3,
+# #5193, route decision option C).
+#
+# Keeping the names here makes that a checked invariant rather than a property
+# of two manifests nobody diffs together. If a future change adds
+# `sqlrustgo-planner` to EXTRA_TEST_PACKAGES, the gate would start counting
+# unreachable code as coverage; `check_off_production_path_registry.sh` R4
+# fails on that and forces an explicit decision instead of silent inflation.
+#
+# `crates/executor` needs no such entry: 2 of its 68 targets
+# (distinct_test, multi_join_test) shadow root-manifest names and do run in
+# the gate, but they drive the real interpreter via `sqlrustgo::ExecutionEngine`,
+# so their green is real.
+#
+# Source of truth for each entry and its expiry condition:
+# docs/releases/v4.1.0/b2-off-production-path-registry.md
+OFF_PRODUCTION_PATH_BINARIES = [
+    "planner_chain_tests",  # imports sqlrustgo_planner only; no ExecutionEngine
+    "coverage_v3_12",       # imports sqlrustgo_planner only; no ExecutionEngine
+    "statement_tests",      # planner AST types only (Expr / MergeStatement)
 ]
 
 # Per-binary `cargo test` thread override. The default test runner runs each
@@ -191,6 +217,8 @@ PERF_ONLY_BINARIES = [
 TEST_THREADS_OVERRIDE = {
     "q4_residual_filter_test": 1,
 }
+
+OFF_PROD_SET = frozenset(OFF_PRODUCTION_PATH_BINARIES)
 
 # Patterns extracted from cargo test output.
 # Examples observed at HEAD:
@@ -213,7 +241,7 @@ FAILED_LINE = re.compile(r"^FAILED\b", re.MULTILINE)
 @dataclasses.dataclass
 class BinaryResult:
     name: str
-    status: str           # 'PASS' | 'FAIL' | 'TIMEOUT' | 'SKIP_DISABLED' | 'SKIP_PERF' | 'INFRA_FAIL'
+    status: str           # 'PASS' | 'FAIL' | 'TIMEOUT' | 'SKIP_DISABLED' | 'SKIP_PERF' | 'SKIP_OFF_PROD' | 'INFRA_FAIL'
     elapsed_sec: float
     passed: int
     failed: int
@@ -388,6 +416,11 @@ def main() -> int:
         "--include-perf", action="store_true",
         help="Run PERF binaries anyway (perf-only path, separate gate)",
     )
+    parser.add_argument(
+        "--include-off-production-path", action="store_true",
+        help="Run OFF_PRODUCTION_PATH binaries anyway (#5193 option C: "
+             "crate coverage, not database correctness)",
+    )
     args = parser.parse_args()
 
     fast_timeout = int(os.environ.get("B2_FAST_TIMEOUT_SEC", DEFAULT_FAST_TIMEOUT_SEC))
@@ -431,6 +464,15 @@ def main() -> int:
                 group="perf",
             ))
             continue
+        if not args.include_off_production_path and name in OFF_PROD_SET:
+            results.append(BinaryResult(
+                name=name, status="SKIP_OFF_PROD",
+                elapsed_sec=0.0, passed=0, failed=0, ignored=0,
+                exit_code=0,
+                log_path="",
+                group="off_production_path",
+            ))
+            continue
         print(f"  → running {name}", flush=True)
         result = run_one_binary(name, slow_timeout)
         results.append(result)
@@ -450,6 +492,7 @@ def main() -> int:
     n_timeout = sum(1 for r in results if r.status == "TIMEOUT")
     n_skip_disabled = sum(1 for r in results if r.status == "SKIP_DISABLED")
     n_skip_perf = sum(1 for r in results if r.status == "SKIP_PERF")
+    n_skip_off_prod = sum(1 for r in results if r.status == "SKIP_OFF_PROD")
     n_infra = sum(1 for r in results if r.status == "INFRA_FAIL")
     n_fast = sum(1 for r in results if r.group == "fast")
     n_slow = sum(1 for r in results if r.group == "slow")
@@ -475,6 +518,7 @@ def main() -> int:
             "timed_out": n_timeout,
             "skipped_disabled": n_skip_disabled,
             "skipped_perf": n_skip_perf,
+            "skipped_off_production_path": n_skip_off_prod,
             "infra_fail": n_infra,
             "group_fast": n_fast,
             "group_slow": n_slow,
@@ -494,6 +538,8 @@ def main() -> int:
     print(f"  TIMEOUT          : {n_timeout}")
     print(f"  SKIP_DISABLED    : {n_skip_disabled}")
     print(f"  SKIP_PERF        : {n_skip_perf}")
+    print(f"  SKIP_OFF_PROD    : {n_skip_off_prod}  (#5193 option C — not on the "
+          f"production execution path)")
     print(f"  INFRA_FAIL       : {n_infra}")
     print(f"  fast group (<30s): {n_fast}")
     print(f"  slow group (≥30s): {n_slow}")

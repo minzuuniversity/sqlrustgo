@@ -31,7 +31,7 @@ pub mod vec_simd;
 pub mod window_executor;
 
 pub use execution::trace::ExecutionTrace;
-pub use executor::{Executor, ExecutorResult, VolcanoExecutor};
+pub use executor::{Executor, ExecutorResult, ResultColumn, VolcanoExecutor};
 pub use executor_metrics::ExecutorMetrics;
 pub use join::hash_join::{hash_join_inner_outer, multi_way_hash_chain};
 pub use sql_executor::{ExecutionResult, SqlExecutor};

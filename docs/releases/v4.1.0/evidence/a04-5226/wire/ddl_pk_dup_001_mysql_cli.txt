@@ -1,0 +1,9 @@
+=== mysql CLI STDOUT ===
+
+=== STDERR ===
+--------------
+INSERT INTO t_pk VALUES (1, 'b')
+--------------
+
+ERROR 1062 (42000) at line 3: Duplicate entry '1' for key 'PRIMARY'
+

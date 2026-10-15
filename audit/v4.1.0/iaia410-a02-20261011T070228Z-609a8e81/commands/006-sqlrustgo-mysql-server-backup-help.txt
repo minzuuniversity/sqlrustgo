@@ -1,0 +1,12 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server backup --help
+Backup database to a file
+
+Usage: sqlrustgo-mysql-server backup [OPTIONS] <OUTPUT>
+
+Arguments:
+  <OUTPUT>  Output file path for the backup
+
+Options:
+      --log-level <LOG_LEVEL>  [default: info]
+  -h, --help                   Print help
+EXIT=0

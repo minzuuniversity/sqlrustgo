@@ -1,0 +1,9 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo backup --help
+Usage: sqlrustgo backup <OUTPUT_DIR>
+
+Arguments:
+  <OUTPUT_DIR>  
+
+Options:
+  -h, --help  Print help
+EXIT=0

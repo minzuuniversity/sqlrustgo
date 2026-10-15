@@ -812,21 +812,24 @@ impl StorageEngine for ColumnarStorage {
         Vec::new()
     }
 
-    fn create_view(&mut self, _info: ViewInfo) -> crate::engine::SqlResult<()> {
+    fn create_view(&mut self, _db: &str, _info: ViewInfo) -> crate::engine::SqlResult<()> {
+        let _ = _db;
         Err(crate::engine::SqlError::ExecutionError(
             "Views not yet implemented for ColumnarStorage".to_string(),
         ))
     }
 
-    fn get_view(&self, _name: &str) -> Option<ViewInfo> {
+    fn get_view(&self, _db: &str, _name: &str) -> Option<ViewInfo> {
+        let _ = _db;
         None
     }
 
-    fn list_views(&self) -> Vec<String> {
+    fn list_views(&self, _db: &str) -> Vec<String> {
+        let _ = _db;
         Vec::new()
     }
 
-    fn has_view(&self, _name: &str) -> bool {
+    fn has_view(&self, _db: &str, _name: &str) -> bool {
         false
     }
 

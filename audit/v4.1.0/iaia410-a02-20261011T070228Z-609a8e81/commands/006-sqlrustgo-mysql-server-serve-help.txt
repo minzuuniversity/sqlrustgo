@@ -1,0 +1,37 @@
+$ /tmp/iaia-a02-baseline-target/debug/sqlrustgo-mysql-server serve --help
+Start the MySQL wire-protocol server (default if no subcommand is given)
+
+Usage: sqlrustgo-mysql-server serve [OPTIONS]
+
+Options:
+      --host <HOST>
+          [default: 127.0.0.1]
+      --log-level <LOG_LEVEL>
+          [default: info]
+      --port <PORT>
+          [default: 3306]
+      --data-dir <DATA_DIR>
+          SERVER-01: data directory (currently used for temp WAL location) [default: /tmp/sqlrustgo-data]
+      --load-infile-dir <LOAD_INFILE_DIR>
+          Issue #4020: directory used as the LOAD DATA LOCAL INFILE whitelist. When set, files must canonicalize inside THIS path (not the storage `data_dir`) to be accepted. When unset (default), the whitelist falls back to `data_dir` — preserving the V312-13 sandbox semantics so existing tests (`test_load_local_infile_path_outside_data_dir`) continue to pass unchanged. Use this when the LOAD DATA fixtures live outside the storage dir (e.g. the TPC-H bulk-load runner keeps `region.tbl` / `nation.tbl` / `supplier.tbl` under `/tmp/tpch-sf10` and wants the storage WAL under `$RUN_DIR/data`)
+      --max-connections <MAX_CONNECTIONS>
+          SERVER-01: max concurrent connections (semaphore limit) [default: 100]
+      --server-threads <SERVER_THREADS>
+          SERVER-02: max concurrent connection-handler worker threads (0 = legacy unbounded thread::spawn; 1..=80 = bounded pool) [default: 16]
+      --auth-mode <AUTH_MODE>
+          SERVER-01: auth mode (none = allow all, password = require password) [default: none]
+      --storage <STORAGE>
+          Storage engine: "file" (default, WAL+FileStorage) or "binary" (BinaryTableStorage, fast TPC-H load) [default: file]
+      --wal-sync <WAL_SYNC>
+          WAL sync mode: "every" (default), "batch:N", or "off" [default: every]
+      --executor-parallelism <EXECUTOR_PARALLELISM>
+          INTRA-QUERY PARALLEL EXECUTOR (Issue #3703, OpenSpec issue-3703-*): N = number of worker threads for parallel scan/join/agg pipelines within a single query. Default 1 = sequential (zero regression). Set to num_cpus for large analytic queries. Requires `--features parallel-executor` at build time to take effect (otherwise capped to 1 at runtime) [env: SQLRUSTGO_EXECUTOR_PARALLELISM=] [default: 1]
+      --bulk-insert-rows-per-flush <BULK_INSERT_ROWS_PER_FLUSH>
+          Round-21 / Issue #4217: number of rows per `bulk_insert_records` flush during LOAD DATA LOCAL INFILE. Default 10_000 (raises the previous hard-coded 100-row constant so large tables like TPC-H SF=10 lineitem can avoid paying write-lock + Vec allocation cost on every 100 rows). Set to 0 to disable the periodic flush and fall back to the legacy "flush only when the per-packet byte buffer fully drains" behavior [default: 10000]
+      --verbose
+          SERVER-01: show detailed startup banner
+      --metrics-port <METRICS_PORT>
+          V312-26 / Issue #4021: optional Prometheus `/metrics` endpoint port. When set, the server spawns a background thread serving `GET /metrics` (Prometheus text exposition format 0.0.4) on this port. When unset, no metrics endpoint is started (default — backwards-compatible)
+  -h, --help
+          Print help
+EXIT=0

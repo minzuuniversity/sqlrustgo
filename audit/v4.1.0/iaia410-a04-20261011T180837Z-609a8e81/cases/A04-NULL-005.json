@@ -1,0 +1,140 @@
+{
+  "id": "A04-NULL-005",
+  "domain": "null",
+  "query": "SELECT id, COALESCE(dept, -1) AS d FROM nl_t5 ORDER BY id",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "column types differ: subj=[3, 15] ref=[3, 8]",
+  "aspects": [
+    "column_type"
+  ],
+  "subj": {
+    "case_id": "A04-NULL-005",
+    "role": "subject",
+    "port": 14529,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS nl_t5",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE nl_t5 (id INT, dept INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO nl_t5 VALUES (1,NULL),(2,5)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "d"
+      ],
+      "types": [
+        3,
+        15
+      ],
+      "rows": [
+        [
+          1,
+          "-1"
+        ],
+        [
+          2,
+          "5"
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-NULL-005",
+    "role": "ref",
+    "port": 14629,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS nl_t5",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE nl_t5 (id INT, dept INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO nl_t5 VALUES (1,NULL),(2,5)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 2
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id",
+        "d"
+      ],
+      "types": [
+        3,
+        8
+      ],
+      "rows": [
+        [
+          1,
+          -1
+        ],
+        [
+          2,
+          5
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.57,
+  "wire": {
+    "subj": "cases/A04-NULL-005_.subj.wire",
+    "ref": "cases/A04-NULL-005_.ref.wire"
+  }
+}

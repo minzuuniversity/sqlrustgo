@@ -1,0 +1,132 @@
+{
+  "id": "A04-ORDER-004",
+  "domain": "order_limit",
+  "query": "SELECT id FROM od_t4 LIMIT 2",
+  "order_sensitive": false,
+  "verdict": "mismatch",
+  "detail": "multiset differs (same count 2): only_subj=[('5',)] only_ref=[('7',)]",
+  "aspects": [
+    "value"
+  ],
+  "subj": {
+    "case_id": "A04-ORDER-004",
+    "role": "subject",
+    "port": 14534,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS od_t4",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE od_t4 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO od_t4 VALUES (7),(2),(5)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          2
+        ],
+        [
+          5
+        ]
+      ]
+    }
+  },
+  "ref": {
+    "case_id": "A04-ORDER-004",
+    "role": "ref",
+    "port": 14634,
+    "setup": [
+      {
+        "stmt": "DROP TABLE IF EXISTS od_t4",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "CREATE TABLE od_t4 (id INT)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 0
+        }
+      },
+      {
+        "stmt": "INSERT INTO od_t4 VALUES (7),(2),(5)",
+        "res": {
+          "ok": true,
+          "kind": "ok",
+          "columns": [],
+          "types": [],
+          "rows": [],
+          "affected": 3
+        }
+      }
+    ],
+    "query": {
+      "ok": true,
+      "kind": "resultset",
+      "columns": [
+        "id"
+      ],
+      "types": [
+        3
+      ],
+      "rows": [
+        [
+          7
+        ],
+        [
+          2
+        ]
+      ]
+    }
+  },
+  "elapsed_s": 0.56,
+  "wire": {
+    "subj": "cases/A04-ORDER-004_.subj.wire",
+    "ref": "cases/A04-ORDER-004_.ref.wire"
+  }
+}
