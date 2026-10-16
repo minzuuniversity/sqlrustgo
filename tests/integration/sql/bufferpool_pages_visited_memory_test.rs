@@ -32,7 +32,9 @@ fn test_explain_appends_pages_visited_suffix_via_with_memory_and_bufferpool() {
     let pool = Arc::new(BufferPool::new(64));
     let mut engine = ExecutionEngine::<MemoryStorage>::with_memory_and_bufferpool(pool);
 
-    engine.execute("CREATE TABLE t (id INTEGER);").expect("create");
+    engine
+        .execute("CREATE TABLE t (id INTEGER);")
+        .expect("create");
     engine
         .execute("INSERT INTO t VALUES (1), (2);")
         .expect("insert 2 rows");
@@ -58,7 +60,9 @@ fn test_explain_omits_pages_visited_suffix_for_legacy_with_memory() {
     // Back-compat: legacy `with_memory()` continues to use synthetic_zero
     // stats; `pages_visited` stays 0; suffix is omitted.
     let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
-    engine.execute("CREATE TABLE t (id INTEGER);").expect("create");
+    engine
+        .execute("CREATE TABLE t (id INTEGER);")
+        .expect("create");
     engine.execute("INSERT INTO t VALUES (1);").expect("insert");
     let result = engine
         .execute("EXPLAIN SELECT id FROM t;")
