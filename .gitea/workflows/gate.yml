@@ -116,7 +116,10 @@ jobs:
           cd repo
           RESULT=$(./target/release/gate evaluate "gate_test_$EV_SHA_SHORT" --db "$DB_PATH" 2>&1)
           echo "Gate result: $RESULT"
-          echo "$RESULT" | grep -q '"result":"PASS"' && GATE_PASS=1 || GATE_PASS=0
+          # `gate evaluate` emits pretty-printed JSON, so the key is spaced:
+          # `"result": "PASS"`. The previous '"result":"PASS"' pattern could
+          # never match, which turned every PASS into a gate FAIL.
+          echo "$RESULT" | grep -qE '"result"[[:space:]]*:[[:space:]]*"PASS"' && GATE_PASS=1 || GATE_PASS=0
           echo "GATE_PASS=$GATE_PASS" >> $GITHUB_ENV
           echo "$RESULT"
 
