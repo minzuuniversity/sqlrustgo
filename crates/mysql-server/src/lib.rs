@@ -5944,10 +5944,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             let (cols, ctypes) = if !r.columns.is_empty() {
                                 // Engine-declared schema is authoritative.
                                 let n = r.columns.iter().map(|c| c.name.clone()).collect();
-                                let t = r.columns.iter().map(|c| {
-                                    c.data_type.clone()
-                                        .unwrap_or_else(|| crate::result_set::UNRESOLVED_TYPE.to_string())
-                                }).collect();
+                                let t = r
+                                    .columns
+                                    .iter()
+                                    .map(|c| {
+                                        c.data_type.clone().unwrap_or_else(|| {
+                                            crate::result_set::UNRESOLVED_TYPE.to_string()
+                                        })
+                                    })
+                                    .collect();
                                 (n, t)
                             } else if prepared.column_names.is_empty() {
                                 let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
@@ -6295,10 +6300,14 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         // Type list: prefer engine-declared types (R2); fall
                         // back to UNRESOLVED when engine gave us only names.
                         let t: Vec<String> = if r.columns.iter().any(|c| c.data_type.is_some()) {
-                            r.columns.iter().map(|c| {
-                                c.data_type.clone()
-                                    .unwrap_or_else(|| crate::result_set::UNRESOLVED_TYPE.to_string())
-                            }).collect()
+                            r.columns
+                                .iter()
+                                .map(|c| {
+                                    c.data_type.clone().unwrap_or_else(|| {
+                                        crate::result_set::UNRESOLVED_TYPE.to_string()
+                                    })
+                                })
+                                .collect()
                         } else {
                             c.iter().map(|_| "VARCHAR(255)".to_string()).collect()
                         };

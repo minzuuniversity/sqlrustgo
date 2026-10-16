@@ -41,14 +41,17 @@ fn tmpdir(tag: &str) -> PathBuf {
 fn a05_secondary_index_stale_after_flush() {
     let dir = tmpdir("stale");
     let mut e = engine_with(&dir);
-    e.execute("CREATE TABLE t(id INT PRIMARY KEY, k INT)").expect("create");
+    e.execute("CREATE TABLE t(id INT PRIMARY KEY, k INT)")
+        .expect("create");
     // 1000 rows; k = i % 7, so k=5 occurs for i=5,12,...,999 (143 rows).
     for cs in (1..=1_000).step_by(500) {
         let vals: Vec<String> = (cs..cs + 500).map(|i| format!("({i},{})", i % 7)).collect();
-        e.execute(&format!("INSERT INTO t VALUES {}", vals.join(","))).expect("insert");
+        e.execute(&format!("INSERT INTO t VALUES {}", vals.join(",")))
+            .expect("insert");
     }
     e.flush().ok();
-    e.execute("CREATE INDEX idx_k ON t(k)").expect("create index");
+    e.execute("CREATE INDEX idx_k ON t(k)")
+        .expect("create index");
 
     // A new row with k=5, flushed AFTER the secondary index exists.
     e.execute("INSERT INTO t VALUES (1001, 5)").expect("insert");
@@ -63,13 +66,16 @@ fn a05_secondary_index_stale_after_flush() {
     // Control: a separate table WITHOUT the index (full scan).
     let dir2 = tmpdir("control");
     let mut e2 = engine_with(&dir2);
-    e2.execute("CREATE TABLE t(id INT PRIMARY KEY, k INT)").expect("create");
+    e2.execute("CREATE TABLE t(id INT PRIMARY KEY, k INT)")
+        .expect("create");
     for cs in (1..=1_000).step_by(500) {
         let vals: Vec<String> = (cs..cs + 500).map(|i| format!("({i},{})", i % 7)).collect();
-        e2.execute(&format!("INSERT INTO t VALUES {}", vals.join(","))).expect("insert");
+        e2.execute(&format!("INSERT INTO t VALUES {}", vals.join(",")))
+            .expect("insert");
     }
     e2.flush().ok();
-    e2.execute("INSERT INTO t VALUES (1001, 5)").expect("insert");
+    e2.execute("INSERT INTO t VALUES (1001, 5)")
+        .expect("insert");
     e2.flush().ok();
     let full_count = count(&mut e2, "SELECT id FROM t WHERE k = 5");
     eprintln!("  full-scan count (control, no index) = {}", full_count);

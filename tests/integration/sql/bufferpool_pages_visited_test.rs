@@ -39,20 +39,15 @@ fn test_explain_appends_pages_visited_suffix_after_insert_via_bufferpool() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let pool = Arc::new(BufferPool::new(64));
     let storage = Arc::new(parking_lot::RwLock::new(
-        sqlrustgo_storage::FileStorage::new_with_bufferpool(
-            tmp.path().to_path_buf(),
-            pool,
-        )
-        .expect("FileStorage::new_with_bufferpool"),
+        sqlrustgo_storage::FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool)
+            .expect("FileStorage::new_with_bufferpool"),
     ));
     let mut engine = ExecutionEngine::new(storage);
 
     engine
         .execute("CREATE TABLE t (id INTEGER);")
         .expect("create");
-    engine
-        .execute("INSERT INTO t VALUES (1);")
-        .expect("insert");
+    engine.execute("INSERT INTO t VALUES (1);").expect("insert");
 
     let result = engine
         .execute("EXPLAIN SELECT id FROM t WHERE id = 1;")
@@ -62,9 +57,7 @@ fn test_explain_appends_pages_visited_suffix_after_insert_via_bufferpool() {
     for (i, row) in result.rows.iter().enumerate() {
         let line = first_cell_text(row, i);
         let n = last_pages_visited_token(line).unwrap_or_else(|| {
-            panic!(
-                "row {i} must end with ' | pages_visited=<u64>'; got: {line}"
-            )
+            panic!("row {i} must end with ' | pages_visited=<u64>'; got: {line}")
         });
         assert!(
             n >= 1,
