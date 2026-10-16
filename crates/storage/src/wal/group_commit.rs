@@ -217,7 +217,7 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
 
         // Phase 2: wait until the epoch fills or time is up.
         loop {
-            let mut state = self.state.lock().expect("state lock poisoned");
+            let state = self.state.lock().expect("state lock poisoned");
             let epoch_full = state
                 .epoch
                 .as_ref()
@@ -231,11 +231,14 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
 
             // Wait for new waiters or the time bound.
             let remaining = wait_deadline.saturating_duration_since(Instant::now());
-            let (new_state, _timeout) = self
+            // `wait_timeout` re-acquires the lock before returning, so bind the
+            // guard and hold it until we loop back — the old code rebound
+            // `state` here purely for that purpose, and re-reading it on the
+            // next iteration is what actually decides whether to break.
+            let (_state, _timeout) = self
                 .cv
                 .wait_timeout(state, remaining)
                 .expect("cv wait failed");
-            state = new_state;
             // Loop back and re-check.
         }
 
