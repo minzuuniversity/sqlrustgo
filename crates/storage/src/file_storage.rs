@@ -3301,7 +3301,7 @@ mod tests {
         let storage = FileStorage::new(temp_dir.clone()).unwrap();
 
         // Test has_view returns false
-        assert!(!storage.has_view("test_view"));
+        assert!(!storage.has_view(crate::engine::DEFAULT_DATABASE, "test_view"));
 
         let _ = remove_dir_all(&temp_dir);
     }
@@ -3951,7 +3951,6 @@ mod tests {
             body: "BEGIN UPDATE stats SET n = n + 1; END".into(),
             update_columns: None,
             original_sql: String::new(),
-            clustered: false,
         };
         storage.create_trigger(trigger).unwrap();
         let got = storage.get_trigger("trig1");
@@ -4000,7 +3999,7 @@ mod tests {
     #[test]
     fn test_has_view_storage() {
         let storage = make_storage("fs_has_view");
-        assert!(!storage.has_view("v"));
+        assert!(!storage.has_view(crate::engine::DEFAULT_DATABASE, "v"));
     }
 
     #[test]
@@ -4261,7 +4260,6 @@ mod tests {
             body: "BEGIN UPDATE s SET n = n + 1; END".to_string(),
             update_columns: None,
             original_sql: String::new(),
-            clustered: false,
         };
         storage.create_trigger(trigger).unwrap();
         drop(storage);
@@ -4785,17 +4783,22 @@ impl FileStorage {
     ///
     /// For each `(db, table)` recorded by `insert_via_bufferpool`, we
     /// have a list of page-ids in insertion order. We walk that list,
-    /// hand each `page_id` to `pool.get_or_load` (hot path → cache hit,
-    /// bumps `pages_visited` + `cache_hits`; cold path → loader runs
-    /// and inserts an empty page, bumps `pages_visited` + `disk_reads`),
-    /// then deserialise the page bytes back into a `Record`.
+    /// look each `page_id` up in the pool, and deserialise the page
+    /// bytes back into a `Record`.
     ///
-    /// The cold-cache loader returns a default `Page::new(page_id)`
-    /// whose `data` is all zeros. `deserialize_record_from_page_bytes`
-    /// sees `len < 4` and returns `None`, so the row is silently
-    /// dropped — semantically equivalent to "this page was evicted
-    /// and we have nowhere to read it back from", which is the right
-    /// behaviour for an EXPLAIN-signal mode.
+    /// #5375: the lookup is a plain `BufferPool::get`, not a
+    /// `get_or_load`. The old code used `get_or_load` with a loader
+    /// that returned a default empty `Page`; `get_or_load` *inserted*
+    /// that blank page into the pool, so every page-id that had been
+    /// evicted was re-inserted as a blank page and evicted a live page
+    /// in turn. With a 64-page pool holding 100 rows that cascade
+    /// wiped every surviving page, and the scan returned 0 rows
+    /// instead of the 64 that were still resident.
+    ///
+    /// A miss now means exactly what the old doc comment claimed it
+    /// meant — "this page was evicted and we have nowhere to read it
+    /// back from" — so the row is dropped, and unlike before, dropping
+    /// it does not disturb the pages that are still cached.
     fn scan_via_bufferpool(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
         let pool = match self.buffer_pool.as_ref() {
             Some(p) => p.clone(),
@@ -4811,7 +4814,9 @@ impl FileStorage {
         };
         let mut records = Vec::with_capacity(page_ids.len());
         for page_id in page_ids {
-            let page = pool.get_or_load(page_id, |_id| Arc::new(Page::new(page_id)));
+            let Some(page) = pool.get(page_id) else {
+                continue;
+            };
             if let Some(record) = deserialize_record_from_page_bytes(&page.data) {
                 records.push(record);
             }
@@ -7709,13 +7714,30 @@ mod bufferpool_routing_tests {
     /// `std::sync::Mutex` (not `parking_lot::Mutex`) so the guard can
     /// cross thread boundaries — parking_lot's `MutexGuard` is `!Send`
     /// by design.
+    ///
+    /// #5375: the pool is sized **above** the row count. The old
+    /// version used a 64-page pool for 100 records and expected 100
+    /// rows back, which no implementation could ever satisfy: the
+    /// BufferPool is the only store on this path (`insert_at` returns
+    /// before the WAL path runs), and an LRU pool with 64 slots
+    /// evicts 36 of the 100 pages at insert time, with no recovery
+    /// path. That test was measuring cache-capacity policy, not
+    /// "concurrent inserts do not corrupt pages". Its MemoryStorage
+    /// sibling (`memory_storage_concurrent_inserts_via_bufferpool_do_
+    /// not_corrupt`, `engine.rs`) had already been corrected the same
+    /// way — a 256-page pool plus a `pages_visited` assertion — so
+    /// this test now matches it.
+    ///
+    /// The eviction behaviour is still pinned, but by its own test
+    /// below, which states the real invariant.
     #[test]
     fn file_storage_concurrent_inserts_via_bufferpool_do_not_corrupt() {
+        use std::collections::HashSet;
         use std::sync::Mutex as StdMutex;
         use std::thread;
 
         let tmp = tempfile::tempdir().expect("tempdir");
-        let pool = Arc::new(BufferPool::new(64));
+        let pool = Arc::new(BufferPool::new(256));
         let storage = Arc::new(StdMutex::new(
             FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
                 .expect("new_with_bufferpool"),
@@ -7742,5 +7764,87 @@ mod bufferpool_routing_tests {
             "4 threads × 25 records = 100 rows; got {}",
             rows.len()
         );
+
+        // "do not corrupt" means more than a row count: every value
+        // written must come back exactly once, with nothing lost and
+        // nothing duplicated by a torn page.
+        let mut seen = HashSet::new();
+        for row in &rows {
+            let value = match row.as_slice() {
+                [Value::Integer(v)] => *v,
+                other => panic!("unexpected row shape: {other:?}"),
+            };
+            assert!(seen.insert(value), "value {value} was returned twice");
+            let thread = value / 100;
+            let offset = value % 100;
+            assert!(
+                thread < 4 && offset < 25,
+                "value {value} was not one of the inserted values"
+            );
+        }
+        assert_eq!(seen.len(), 100, "expected 100 distinct values");
+    }
+
+    /// #5375: an over-subscribed pool must lose only the pages it
+    /// actually evicted — the scan must not take live pages down with
+    /// it.
+    ///
+    /// Before the fix, `scan_via_bufferpool` re-inserted a *blank*
+    /// page for every page-id that had been evicted, and each of those
+    /// blank pages evicted a live page in turn. With 100 rows in a
+    /// 64-page pool the cascade wiped every surviving page and the
+    /// scan returned 0 rows.
+    ///
+    /// The invariant this pins: after 100 inserts into a 64-page pool
+    /// the pool holds exactly 64 pages (36 evicted), the scan returns
+    /// exactly those 64 rows, and the scan itself evicts nothing.
+    #[test]
+    fn file_storage_scan_after_bufferpool_eviction_keeps_the_pages_that_survived() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let pool = Arc::new(BufferPool::new(64));
+        let mut storage = FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool.clone())
+            .expect("new_with_bufferpool");
+
+        let records: Vec<Record> = (0..100).map(|i| vec![Value::Integer(i)]).collect();
+        storage.insert("t", records).expect("insert 100");
+
+        // 100 inserts into a 64-slot LRU pool: exactly 36 pages evicted.
+        assert_eq!(
+            pool.stats().evictions,
+            36,
+            "100 inserts into a 64-page pool must evict exactly 36 pages"
+        );
+        assert_eq!(pool.len(), 64, "the pool must stay at capacity");
+
+        let evictions_before_scan = pool.stats().evictions;
+        let rows = storage.scan("t").expect("scan");
+
+        assert_eq!(
+            rows.len(),
+            64,
+            "the scan must return every page still resident in the pool"
+        );
+        assert_eq!(
+            pool.stats().evictions,
+            evictions_before_scan,
+            "the scan must not evict any page — an evicted page must not \
+             be replaced by a blank one"
+        );
+
+        // And the survivors must be intact, not blank: every returned
+        // row is one of the inserted values, and none is duplicated.
+        let mut seen = HashSet::new();
+        for row in &rows {
+            let value = match row.as_slice() {
+                [Value::Integer(v)] => *v,
+                other => panic!("unexpected row shape: {other:?}"),
+            };
+            assert!(seen.insert(value), "value {value} was returned twice");
+            assert!(
+                (0..100).contains(&value),
+                "value {value} was not one of the inserted values"
+            );
+        }
+        assert_eq!(seen.len(), 64, "the 64 survivors must be 64 distinct rows");
     }
 }

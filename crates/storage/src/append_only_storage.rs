@@ -882,7 +882,7 @@ mod tests {
         .unwrap();
         s.drop_index("t", "idx_t_id").unwrap();
         assert!(s.list_indexes("t").is_empty());
-        assert!(!s.has_view("v"));
+        assert!(!s.has_view(crate::engine::DEFAULT_DATABASE, "v"));
         s.add_column(
             "t",
             ColumnDefinition {

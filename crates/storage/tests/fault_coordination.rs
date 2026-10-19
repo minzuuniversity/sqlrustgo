@@ -48,10 +48,65 @@ pub fn run_id(tag: &str) -> String {
     format!("{tag}_{}", std::process::id())
 }
 
+/// The server binary under test.
+///
+/// #5375: this used to be the bare relative path
+/// `target/release/sqlrustgo-mysql-server`, which can never resolve:
+/// cargo runs an integration test with the *package* directory as its
+/// working directory, so the path was looked for under
+/// `crates/storage/target/release/` — a directory that does not exist.
+/// Every crash test therefore died at `spawn server: No such file or
+/// directory`, which looked like a missing binary but was a path bug.
+///
+/// The path is now resolved from the workspace root, which
+/// `CARGO_MANIFEST_DIR` points into. `SQLRUSTGO_SERVER_BIN` still wins,
+/// so a caller that wants a specific build can point at it.
+///
+/// `debug` is preferred over `release`: `cargo build --all-features`
+/// produces the debug binary, and the debug build is the one the fault
+/// points are exercised against. The server must be built with
+/// `--all-features` (or at least the `fault-injection` feature) for the
+/// arming to reach the boundary at all.
 pub fn server_bin() -> PathBuf {
-    std::env::var("SQLRUSTGO_SERVER_BIN")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("target/release/sqlrustgo-mysql-server"))
+    if let Ok(explicit) = std::env::var("SQLRUSTGO_SERVER_BIN") {
+        return PathBuf::from(explicit);
+    }
+    // `CARGO_MANIFEST_DIR` is `<workspace>/crates/storage`; two levels up
+    // is the workspace root, which owns `target/`.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    for profile in ["debug", "release"] {
+        let candidate = root
+            .join("target")
+            .join(profile)
+            .join("sqlrustgo-mysql-server");
+        if candidate.is_file() {
+            return candidate;
+        }
+    }
+    // Nothing built yet: return the path `cargo build` would produce, so
+    // the error message names a real location.
+    root.join("target")
+        .join("debug")
+        .join("sqlrustgo-mysql-server")
+}
+
+/// The same path, with a check — the spawn error alone ("No such file or
+/// directory") does not say *which* file was missing or how to build it.
+pub fn require_server_bin() -> PathBuf {
+    let bin = server_bin();
+    assert!(
+        bin.is_file(),
+        "server binary not found at {}.\n\
+         Build it with `cargo build -p sqlrustgo-mysql-server --all-features` \
+         (the `fault-injection` feature must be on for the arming to reach \
+         the boundary), or point SQLRUSTGO_SERVER_BIN at an existing build.",
+        bin.display()
+    );
+    bin
 }
 
 pub fn mysql_bin() -> PathBuf {

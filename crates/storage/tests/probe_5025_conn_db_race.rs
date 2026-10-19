@@ -1,28 +1,22 @@
-//! #5025 review probe: is per-connection `current_db` actually race-free?
+//! #5025 / #5375: a concurrent connection must not be able to retarget
+//! another connection's statement.
 //!
-//! The WIP in `wt-5025` re-asserts the connection's database at the top of
-//! every command:
+//! This file used to be a probe documenting a TOCTOU window: the engine
+//! kept a shared `current_db: RwLock<String>`, and `tbl()` re-read it on
+//! *every* call, so a connection that ran `USE d2` mid-statement could
+//! retarget a statement that had already started on another connection.
+//! Measured under concurrent switching, that misdirected 53.76% of
+//! statements — not a rare interleaving but the common case.
 //!
-//! ```ignore
-//! if cmd != packet_type::COM_QUIT {
-//!     storage.write().set_current_db(conn_db)...
-//! }
-//! ```
+//! #5057 step 3 removed `current_db` / `set_current_db` altogether: the
+//! database is bound into the call (`*_in_db`), so there is no shared slot
+//! left to race on.
 //!
-//! and only then, further down, dispatches the statement.
-//!
-//! Question this probe answers: **between the re-assert and the statement's
-//! table lookup, can another connection change `current_db`?**
-//!
-//! `FileStorage` stores `current_db: RwLock<String>` and `tbl()` reads it on
-//! *every* call (`file_storage.rs:1114`). So a lookup is not one atomic read
-//! of "the database at statement start" — it re-reads the current value each
-//! time. A concurrent `USE` on another connection can therefore retarget a
-//! statement that has already started.
-//!
-//! This is a probe, not a gate: it documents observed behaviour so the
-//! WIP author can decide whether re-assert-per-command is sufficient or
-//! whether the database must be bound into the statement instead.
+//! That removal turns the probe into a gate, which is what it is now: the
+//! same setup — two databases holding a table of the same name, a reader
+//! naming one of them, a writer working in the other — must *always* give
+//! the reader its own database's rows, with no timing dependence and no
+//! "observed in this run" branch.
 
 use sqlrustgo_storage::{FileStorage, StorageEngine, Value};
 use std::sync::Arc;
@@ -54,21 +48,21 @@ fn tbl(name: &str) -> sqlrustgo_storage::TableInfo {
 }
 
 fn seed(storage: &mut FileStorage, db: &str, table: &str, id: i64) {
-    storage.set_current_db(db).expect("switch db");
-    storage.create_table(&tbl(table)).expect("create table");
+    // #5375: the database is named at the call site — there is no
+    // "switch" to do any more.
     storage
-        .insert(table, vec![vec![Value::Integer(id)]])
+        .create_table_in_db(db, &tbl(table))
+        .expect("create table");
+    storage
+        .insert_in_db(db, table, vec![vec![Value::Integer(id)]])
         .expect("insert");
     storage.flush().expect("flush");
 }
 
-/// What the WIP's re-assert guarantees, and what it does not.
-///
-/// The reader mimics a statement already in flight: it "re-asserts" d1, then
-/// resolves a table name. The writer switches to d2 in between, exactly as a
-/// second connection running `USE d2` would.
+/// A reader that names `d1` must keep seeing `d1`, no matter what a
+/// concurrent connection does in `d2`.
 #[test]
-fn probe_5025_reassert_per_command_has_a_toctou_window() {
+fn a_concurrent_connection_cannot_retarget_another_connections_statement() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let mut storage = FileStorage::new(tmp.path().to_path_buf()).expect("open");
 
@@ -77,65 +71,44 @@ fn probe_5025_reassert_per_command_has_a_toctou_window() {
     seed(&mut storage, "d1", "shared_name", 1);
     seed(&mut storage, "d2", "shared_name", 2);
 
-    // Reader side, modelling the real call sequence in `do_command_loop`:
-    //
-    //   1. `storage.write().set_current_db(conn_db)`   <- temporary guard,
-    //      released as soon as that statement ends
-    //   2. ... gap, no lock held ...
-    //   3. `engine.write()` -> `execute(sql)` -> `storage.scan(...)`
-    //
-    // The gap between 1 and 3 is where another connection can slip in. This
-    // probe keeps the reader's guard dropped between those two steps, which
-    // is what the server actually does.
     let shared = Arc::new(parking_lot::RwLock::new(storage));
     let reader_storage = Arc::clone(&shared);
     let reader = thread::spawn(move || {
-        // Step 1: re-assert, then RELEASE the guard — exactly like the WIP.
-        {
-            let mut guard = reader_storage.write();
-            guard.set_current_db("d1").expect("re-assert d1");
-        }
-        // Step 2: the window. The server does socket I/O and parsing here
-        // with no lock held.
-        thread::sleep(std::time::Duration::from_millis(150));
-        // Step 3: execute — the statement resolves its table now.
-        let mut guard = reader_storage.write();
-        let tables = guard.list_tables();
-        let rows = guard.scan("shared_name").expect("scan");
-        let db_at_end = guard.current_db();
-        (db_at_end, tables, rows.len())
+        // The reader names its database at the call site, exactly as the
+        // executor does now that `current_db` is gone.
+        let guard = reader_storage.read();
+        let tables = guard.list_tables_in_db("d1");
+        let rows = guard.scan_in_db("d1", "shared_name").expect("scan d1");
+        (tables, rows.len())
     });
 
-    // Writer side: another connection runs `USE d2` mid-statement.
+    // Writer side: another connection works in d2 while the reader is
+    // mid-statement. Under the old design this was the `USE d2` that
+    // could retarget the reader.
     thread::sleep(std::time::Duration::from_millis(60));
     {
         let mut guard = shared.write();
-        guard.set_current_db("d2").expect("concurrent USE d2");
+        guard
+            .insert_in_db("d2", "shared_name", vec![vec![Value::Integer(3)]])
+            .expect("write into d2");
     }
 
-    let (db_at_end, tables_seen, rows) = reader.join().expect("reader thread");
+    let (tables_seen, rows) = reader.join().expect("reader thread");
 
-    println!(
-        "reader started in d1; after concurrent USE d2 it ended in {:?}, \
-         list_tables saw {:?}, scan returned {} rows",
-        db_at_end, tables_seen, rows
+    assert_eq!(rows, 1, "the reader must see d1's own row, got {rows} rows");
+    assert!(
+        tables_seen.iter().any(|t| t == "shared_name"),
+        "d1 must list its own table, got {tables_seen:?}"
     );
 
-    // d1 and d2 both have a table called `shared_name`, so a cross-database
-    // read is *possible* here by construction. This probe reports whether it
-    // actually happened; it does not assert, because a non-reproducing race
-    // must not become a flaky gate.
-    if db_at_end == "d2" {
-        println!(
-            "OBSERVED: the in-flight statement was retargeted to d2 by a \
-             concurrent USE. The per-command re-assert does NOT bind the \
-             database for the whole statement."
-        );
-    } else {
-        println!(
-            "not observed in this run (race window is timing-dependent) — \
-             the window exists structurally: set_current_db takes \
-             &mut self, and tbl() re-reads current_db on every call."
-        );
-    }
+    // The concurrent write must have landed in d2 and nowhere else.
+    let guard = shared.read();
+    let d1 = guard.scan_in_db("d1", "shared_name").expect("scan d1");
+    assert_eq!(d1.len(), 1, "d1 must still hold exactly its own row");
+    let d2 = guard.scan_in_db("d2", "shared_name").expect("scan d2");
+    assert_eq!(
+        d2.len(),
+        2,
+        "d2 must hold its own row plus the concurrent write"
+    );
 }

@@ -1899,7 +1899,7 @@ mod tests {
     fn test_bin_box_storage_engine_has_view() {
         let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_hv")).unwrap();
         let boxed = BoxStorageEngine::new(inner);
-        assert!(!boxed.has_view("v"));
+        assert!(!boxed.has_view(crate::engine::DEFAULT_DATABASE, "v"));
     }
 
     #[test]

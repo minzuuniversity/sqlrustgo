@@ -237,6 +237,7 @@ mod tests {
 
             partition_info: None,
             compression: None,
+            clustered: false,
         }
     }
 
@@ -294,6 +295,7 @@ mod tests {
 
             partition_info: None,
             compression: None,
+            clustered: false,
         }
     }
 

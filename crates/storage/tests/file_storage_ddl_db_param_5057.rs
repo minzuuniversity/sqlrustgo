@@ -70,18 +70,28 @@ fn issue_5057_create_table_in_db_creates_in_the_named_database() {
     );
 }
 
-/// The counterpart: without a database, `create_table` still follows
-/// `current_db`. This is the control that would catch a refactor merging
-/// the two families.
+/// The counterpart: without a database, `create_table` lands in
+/// `DEFAULT_DATABASE`. This is the control that would catch a refactor
+/// merging the two families.
+///
+/// #5375: the engine-wide "current database" slot was removed in
+/// #5057 step 3, so there is nothing to follow any more — the
+/// database-less DDL resolves against `default`, full stop.
 #[test]
-fn issue_5057_create_table_without_a_database_still_follows_current_db() {
+fn issue_5057_create_table_without_a_database_lands_in_the_default_database() {
     let (_tmp, mut s) = fresh();
     s.create_database("d1").expect("create d1");
 
-    s.set_current_db("d1").expect("switch to d1");
     s.create_table(&tbl("t")).expect("create");
 
-    assert!(s.has_table_in("d1", "t"), "must land in d1");
+    assert!(
+        s.has_table_in("default", "t"),
+        "a database-less create_table must land in `default`"
+    );
+    assert!(
+        !s.has_table_in("d1", "t"),
+        "a database-less create_table must not land in d1"
+    );
 }
 
 /// Two databases, same table name: both must keep their own.
@@ -170,15 +180,18 @@ fn issue_5057_drop_table_in_db_removes_only_the_named_databases_table() {
     );
 }
 
-/// Without a database, `drop_table` still follows `current_db`.
+/// Without a database, `drop_table` drops from `DEFAULT_DATABASE`.
+///
+/// #5375: same migration as the create counterpart above — the
+/// engine-wide "current database" slot is gone, so the database-less
+/// DDL resolves against `default`.
 #[test]
-fn issue_5057_drop_table_without_a_database_still_follows_current_db() {
+fn issue_5057_drop_table_without_a_database_drops_from_the_default_database() {
     let (_tmp, mut s) = fresh();
     s.create_database("d1").expect("create d1");
-    s.set_current_db("d1").expect("switch to d1");
     s.create_table(&tbl("t")).expect("create");
 
     s.drop_table("t").expect("drop");
 
-    assert!(!s.has_table_in("d1", "t"), "must drop from d1");
+    assert!(!s.has_table_in("default", "t"), "must drop from `default`");
 }

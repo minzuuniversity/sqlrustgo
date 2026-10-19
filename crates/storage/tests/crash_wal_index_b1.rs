@@ -44,7 +44,7 @@ use sqlrustgo_storage::fault_injection::FaultPoint;
 /// durability boundary (see `FaultPoint::AfterWALAppend`).
 #[test]
 fn wal_append_crash_recovers_gracefully_without_resurrecting_rows() {
-    let bin = server_bin();
+    let bin = require_server_bin();
     let my = mysql_bin();
     let scratch = Scratch::new("wal_append");
     let port = free_port();
@@ -143,7 +143,7 @@ fn wal_append_crash_recovers_gracefully_without_resurrecting_rows() {
 /// correct set.
 #[test]
 fn index_update_crash_does_not_serve_dangling_rows() {
-    let bin = server_bin();
+    let bin = require_server_bin();
     let my = mysql_bin();
     let scratch = Scratch::new("index_update");
     let port = free_port();
