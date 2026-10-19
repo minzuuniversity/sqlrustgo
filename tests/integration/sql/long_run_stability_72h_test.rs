@@ -8,7 +8,9 @@ use std::time::Instant;
 #[ignore = "long_run_stability_72h: 72-hour stress test stub; use --ignored for full run"]
 fn long_run_stability_72h_smoke() {
     let duration_secs = 5u64;
-    let mut client = start_sf01();
+    let Some(mut client) = start_sf01() else {
+        return;
+    };
     let start = Instant::now();
     let mut queries = 0u64;
     while start.elapsed().as_secs() < duration_secs {

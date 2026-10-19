@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "updated_at": "2026-10-20T00:05:00Z",
+  "entries": [
+    {
+      "case_id": "tpch:Q13",
+      "target": "*",
+      "query_id": "Q13",
+      "kind": "cell_values",
+      "expected_row_count": 23,
+      "actual_row_count": 23,
+      "oracle_row_count": 23,
+      "issue": "#5394",
+      "owner": "sqlrustgo-maintainers",
+      "since": "2026-10-20",
+      "detail": "TPC-H Q13 counts, per customer, how many of their orders survive the ON-clause filter o_comment NOT LIKE '%special%requests%'. The engine drops the customers whose every order is filtered out (71 customers), instead of emitting them with a count of 0. The engine therefore accounts for 1429 of the 1500 customers while the oracle accounts for all 1500. The two sides return the same 23 groups and the same row count, so only a cell-level comparison detects it."
+    }
+  ]
+}

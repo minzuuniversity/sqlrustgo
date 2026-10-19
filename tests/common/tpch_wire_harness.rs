@@ -1,6 +1,7 @@
 //! TPC-H wire-protocol test harness — shared helper for 13 in-process
 //! → wire protocol migration tests/tpch_*.rs files.
 
+use super::tpch_wire_scope;
 use super::MySqlTestClient;
 use serde_json::Value as JsonValue;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
@@ -10,15 +11,132 @@ use std::time::{Duration, Instant};
 pub const SF001_DIR: &str = "tests/data/tpch-sf001";
 pub const SF01_DIR: &str = "tests/data/tpch-sf01";
 
+/// Marker prefix for a test that could not run.
+///
+/// The canonical definition lives in `tests/common/tpch_fixture.rs`; the two
+/// must stay in sync — the CI summary counts every log line containing this
+/// prefix as a `not_run` test (never as a passed one).
+pub const NOT_RUN_MARKER: &str = "TPCH-NOT-RUN";
+
+/// Repository-local fixture candidates, tried when `TPCH_DATA_DIR` is unset.
+///
+/// The former entries `tests/data/tpch-sf01` and `tests/data/tpch-sf001` were
+/// symlinks pointing at `/tmp` — they resolved on exactly one machine and
+/// nowhere else, which is why every fixture-dependent test panicked in CI
+/// (issue #5379). Both symlinks were removed; the fixture is now generated
+/// at run time and handed over through `TPCH_DATA_DIR`.
+const FIXTURE_CANDIDATES: [&str; 2] = ["tests/data/tpch-fixture", "data/tpch-sf01"];
+
+/// Resolve the TPC-H fixture directory **at run time**.
+///
+/// `TPCH_DATA_DIR` wins (that is how CI provides the generated fixture);
+/// otherwise the repository-local candidates are tried. The old code baked
+/// the path in at compile time through `option_env!`, which could never see
+/// a run-time environment variable.
+pub fn resolve_fixture_dir() -> Option<PathBuf> {
+    match std::env::var("TPCH_DATA_DIR") {
+        Ok(dir) if !dir.trim().is_empty() => {
+            let path = PathBuf::from(dir.trim());
+            if path.join("lineitem.tbl").is_file() {
+                Some(path)
+            } else {
+                None
+            }
+        }
+        _ => FIXTURE_CANDIDATES
+            .iter()
+            .map(PathBuf::from)
+            .find(|p| p.join("lineitem.tbl").is_file()),
+    }
+}
+
+/// Name of the manifest file written next to a generated fixture.
+pub const FIXTURE_MANIFEST_FILE: &str = "tpch_fixture_manifest.json";
+
+/// Scale factor of the fixture that is actually on disk.
+///
+/// `None` when the fixture has no manifest, or the manifest is unreadable —
+/// an *unknown* profile. Callers that compare against a calibrated baseline
+/// must treat `None` as a mismatch rather than as "compatible": a test
+/// calibrated against one dataset cannot be trusted to hold against an
+/// unidentified one.
+pub fn fixture_scale_factor() -> Option<f64> {
+    let dir = resolve_fixture_dir()?;
+    let raw = std::fs::read_to_string(dir.join(FIXTURE_MANIFEST_FILE)).ok()?;
+    let v: JsonValue = serde_json::from_str(&raw).ok()?;
+    v.get("sf").and_then(|s| s.as_f64())
+}
+
+/// Report that a test could not run, in the machine-readable form the CI
+/// summary counts.
+pub fn report_not_run(target: &str, reason: &str, detail: &str) {
+    let line = format!("{NOT_RUN_MARKER}: {target} reason={reason} detail={detail}");
+    println!("{line}");
+    if let Ok(path) = std::env::var("TPCH_NOT_RUN_FILE") {
+        if !path.trim().is_empty() {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path.trim())
+            {
+                let _ = writeln!(f, "{line}");
+            }
+        }
+    }
+}
+
+/// The name of the synthetic leading column that the wire harness adds to
+/// the two TPC-H tables whose first column is **not** unique.
+///
+/// The file-storage backend keys a row by the **table's first column**:
+/// rows that share the first column's value collapse into a single visible
+/// row. `partsupp` (four rows per part) and `lineitem` (one to seven rows
+/// per order) are exactly that shape, so without the synthetic column the
+/// wire layer sees a quarter of the fixture while LOAD DATA cheerfully
+/// reports every row as loaded.
+///
+/// This is a workaround for an engine defect (issue #5392), not a schema
+/// improvement: the column is not referenced by any query, and it exists
+/// only so the storage backend can tell the rows apart. The harness asserts
+/// after every load that the number of rows the engine can see equals the
+/// number of rows in the fixture, so the defect cannot come back silently.
+pub const ROWID_COLUMN: &str = "tpch_rowid";
+
+/// The tables whose first column is not unique and therefore need the
+/// synthetic leading column.
+const NEEDS_ROWID: [&str; 2] = ["partsupp", "lineitem"];
+
+/// The canonical TPC-H schema, used by every wire-protocol test that loads
+/// the fixture through this harness.
+///
+/// The `orders` table declares all **nine** canonical columns. It used to
+/// declare only eight — `o_totalprice` was missing — while the `.tbl` files
+/// carry nine fields, so every column after `o_orderstatus` was shifted by
+/// one: `o_orderdate` read the price, `o_clerk` read the date, and
+/// `o_comment` fell off the end of the row.
+///
+/// The damage was silent. A filter on `o_orderstatus` still matched the
+/// right rows (it is the third column, before the shift), so the tests
+/// looked healthy, while every later column held the wrong value. The
+/// in-process path failed loudly instead ("row width 9 does not match the 8
+/// declared columns"), and the symptom that finally made it visible was a
+/// `LIKE` filter matching nothing: `o_comment LIKE '%special%requests%'`
+/// selected 0 rows because the engine was comparing the *price* column.
+///
+/// `partsupp` and `lineitem` carry the synthetic [`ROWID_COLUMN`] as their
+/// first column — see its documentation for why.
+///
+/// The schema is kept in sync with `tests/common/tpch_cli_harness.rs`.
 pub const SCHEMA_DDL: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
     "CREATE TABLE nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT NOT NULL, n_regionkey INTEGER NOT NULL, n_comment TEXT)",
     "CREATE TABLE supplier (s_suppkey INTEGER PRIMARY KEY, s_name TEXT NOT NULL, s_address TEXT NOT NULL, s_nationkey INTEGER NOT NULL, s_phone TEXT NOT NULL, s_acctbal REAL NOT NULL, s_comment TEXT)",
     "CREATE TABLE customer (c_custkey INTEGER PRIMARY KEY, c_name TEXT NOT NULL, c_address TEXT NOT NULL, c_nationkey INTEGER NOT NULL, c_phone TEXT NOT NULL, c_acctbal REAL NOT NULL, c_mktsegment TEXT, c_comment TEXT)",
     "CREATE TABLE part (p_partkey INTEGER PRIMARY KEY, p_name TEXT NOT NULL, p_mfgr TEXT NOT NULL, p_brand TEXT NOT NULL, p_type TEXT NOT NULL, p_size INTEGER NOT NULL, p_container TEXT NOT NULL, p_retailprice REAL NOT NULL, p_comment TEXT)",
-    "CREATE TABLE partsupp (ps_partkey INTEGER NOT NULL, ps_suppkey INTEGER NOT NULL, ps_availqty INTEGER NOT NULL, ps_supplycost REAL NOT NULL, ps_comment TEXT, PRIMARY KEY (ps_partkey, ps_suppkey))",
-    "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, o_custkey INTEGER NOT NULL, o_orderstatus TEXT NOT NULL, o_orderdate TEXT NOT NULL, o_orderpriority TEXT NOT NULL, o_clerk TEXT NOT NULL, o_shippriority INTEGER NOT NULL, o_comment TEXT NOT NULL)",
-    "CREATE TABLE lineitem (l_orderkey INTEGER NOT NULL, l_partkey INTEGER NOT NULL, l_suppkey INTEGER NOT NULL, l_linenumber INTEGER NOT NULL, l_quantity REAL NOT NULL, l_extendedprice REAL NOT NULL, l_discount REAL NOT NULL, l_tax REAL NOT NULL, l_returnflag TEXT NOT NULL, l_linestatus TEXT NOT NULL, l_shipdate TEXT NOT NULL, l_commitdate TEXT NOT NULL, l_receiptdate TEXT NOT NULL, l_shipinstruct TEXT NOT NULL, l_shipmode TEXT NOT NULL, l_comment TEXT NOT NULL)",
+    "CREATE TABLE partsupp (tpch_rowid INTEGER NOT NULL, ps_partkey INTEGER NOT NULL, ps_suppkey INTEGER NOT NULL, ps_availqty INTEGER NOT NULL, ps_supplycost REAL NOT NULL, ps_comment TEXT, PRIMARY KEY (ps_partkey, ps_suppkey))",
+    "CREATE TABLE orders (o_orderkey INTEGER PRIMARY KEY, o_custkey INTEGER NOT NULL, o_orderstatus TEXT NOT NULL, o_totalprice REAL NOT NULL, o_orderdate TEXT NOT NULL, o_orderpriority TEXT NOT NULL, o_clerk TEXT NOT NULL, o_shippriority INTEGER NOT NULL, o_comment TEXT NOT NULL)",
+    "CREATE TABLE lineitem (tpch_rowid INTEGER NOT NULL, l_orderkey INTEGER NOT NULL, l_partkey INTEGER NOT NULL, l_suppkey INTEGER NOT NULL, l_linenumber INTEGER NOT NULL, l_quantity REAL NOT NULL, l_extendedprice REAL NOT NULL, l_discount REAL NOT NULL, l_tax REAL NOT NULL, l_returnflag TEXT NOT NULL, l_linestatus TEXT NOT NULL, l_shipdate TEXT NOT NULL, l_commitdate TEXT NOT NULL, l_receiptdate TEXT NOT NULL, l_shipinstruct TEXT NOT NULL, l_shipmode TEXT NOT NULL, l_comment TEXT NOT NULL)",
 ];
 
 pub const TABLES: &[&str] = &[
@@ -29,24 +147,49 @@ pub const TABLES: &[&str] = &[
 ///
 /// `timeout_s`: Some(s) → set read/write timeouts to s seconds; None → use
 /// the `MySqlTestClient` default (5s for read, 5s for write).
-fn start_with_fixture(fixture_dir: &str, timeout_s: Option<u64>) -> MySqlTestClient {
-    let data_dir = PathBuf::from(fixture_dir);
-    // The TPC-H fixtures are generated, not committed: tests/data/tpch-sf001
-    // is a symlink into /tmp, which does not survive a reboot. Without this
-    // check the ephemeral server starts against a missing directory and the
-    // TCP connection is reset, which reads like a protocol bug rather than
-    // a missing prerequisite.
-    if !data_dir.join("lineitem.tbl").exists() {
-        panic!(
-            "TPC-H data not found at {}.\n\
-             tests/data/tpch-sf001 is a symlink into /tmp and is wiped on reboot.\n\
-             Generate the dataset with `dbgen` and either restore the symlink or\n\
-             re-point the SF001_DIR / SF01_DIR constants in this file at it.",
-            data_dir.display()
+///
+/// Returns `None` when the fixture is unavailable. The NOT-RUN marker is
+/// printed in that case, so the test is disclosed as *not run* by the CI
+/// summary instead of being counted as passed.
+fn start_with_fixture(
+    fixture_dir: &Path,
+    timeout_s: Option<u64>,
+    target: &str,
+) -> Option<MySqlTestClient> {
+    // The TPC-H fixtures are generated, not committed: `tests/data/tpch-sf01`
+    // used to be a symlink into /tmp, which did not survive a reboot and did
+    // not exist on CI at all. Without this check the ephemeral server starts
+    // against a missing directory and the TCP connection is reset, which
+    // reads like a protocol bug rather than a missing prerequisite.
+    if !fixture_dir.join("lineitem.tbl").exists() {
+        report_not_run(
+            target,
+            "fixture_missing",
+            &format!("TPC-H data not found at {}", fixture_dir.display()),
         );
+        return None;
     }
     let config = EphemeralConfig {
-        data_dir: Some(data_dir),
+        // The server's **storage** directory must NOT be the fixture
+        // directory. The server persists every table it receives through
+        // LOAD DATA into the storage dir as JSON row files
+        // (`lineitem.json` alone is ~40 MB at SF=0.01). A second
+        // `start_sf001()` in the same process therefore had to deserialize
+        // the *previous* run's JSON before it could accept a connection:
+        // the client hit the 5 s handshake timeout, `connect_handle`
+        // returned an error, and the handle's `Drop` — which joins the
+        // server thread — blocked forever. That turned every test file
+        // with more than one `start_sf001()` call into a hang.
+        //
+        // `data_dir: None` makes the server create a unique temporary
+        // storage dir and remove it on drop.
+        data_dir: None,
+        // The `.tbl` files are the LOAD DATA *source*; they live in the
+        // fixture directory, which is a different directory from the
+        // storage one. `load_infile_dir` is the LOAD DATA LOCAL INFILE
+        // whitelist; without it the whitelist would fall back to the
+        // storage dir and every load would be rejected.
+        load_infile_dir: Some(fixture_dir.to_path_buf()),
         bootstrap_tables: false,
         bootstrap_users: true,
         metrics_port: None,
@@ -60,21 +203,76 @@ fn start_with_fixture(fixture_dir: &str, timeout_s: Option<u64>) -> MySqlTestCli
             .set_timeouts(Duration::from_secs(t), Duration::from_secs(t))
             .expect("set_timeouts");
     }
-    load_fixture(&mut client, fixture_dir);
-    client
+    load_fixture(
+        &mut client,
+        fixture_dir
+            .to_str()
+            .expect("fixture directory is not valid UTF-8"),
+    );
+    Some(client)
 }
 
-/// Start ephemeral server + load SF=0.001 fixture (5s default timeouts).
-pub fn start_sf001() -> MySqlTestClient {
-    start_with_fixture(SF001_DIR, None)
+/// Start ephemeral server + load the TPC-H fixture (5s default timeouts).
+///
+/// The fixture is resolved at run time through `TPCH_DATA_DIR` (see
+/// [`resolve_fixture_dir`]). Returns `None` when it is unavailable.
+pub fn start_sf001() -> Option<MySqlTestClient> {
+    start_sf001_named("tpch_wire_harness")
 }
 
-/// Start ephemeral server + load SF=0.1 fixture (60s timeouts for larger data).
-pub fn start_sf01() -> MySqlTestClient {
-    start_with_fixture(SF01_DIR, Some(60))
+/// Start ephemeral server + load the TPC-H fixture, naming `target` in the
+/// NOT-RUN marker.
+///
+/// The marker has to carry the **cargo target name** so that a reader of the
+/// CI log can tell which target was skipped. The generic
+/// `tpch_wire_harness` label that [`start_sf001`] uses does not identify a
+/// target, which makes the summary ambiguous.
+pub fn start_sf001_named(target: &str) -> Option<MySqlTestClient> {
+    let Some(dir) = resolve_fixture_dir() else {
+        report_not_run(
+            target,
+            "fixture_missing",
+            "no TPC-H fixture found (set TPCH_DATA_DIR to a directory with the 8 .tbl files)",
+        );
+        return None;
+    };
+    start_with_fixture(&dir, None, target)
 }
 
-/// Load all 8 .tbl files via LOAD DATA LOCAL INFILE
+/// Start ephemeral server + load the TPC-H fixture (60s timeouts for larger data).
+///
+/// Returns `None` when the fixture is unavailable.
+pub fn start_sf01() -> Option<MySqlTestClient> {
+    start_sf01_named("tpch_wire_harness")
+}
+
+/// Start ephemeral server + load the TPC-H fixture (60s timeouts), naming
+/// `target` in the NOT-RUN marker.
+pub fn start_sf01_named(target: &str) -> Option<MySqlTestClient> {
+    let Some(dir) = resolve_fixture_dir() else {
+        report_not_run(
+            target,
+            "fixture_missing",
+            "no TPC-H fixture found (set TPCH_DATA_DIR to a directory with the 8 .tbl files)",
+        );
+        return None;
+    };
+    start_with_fixture(&dir, Some(60), target)
+}
+
+/// Load all 8 `.tbl` files via LOAD DATA LOCAL INFILE.
+///
+/// The fixture is first **staged**: the tables whose first column is not
+/// unique get a synthetic unique leading column (see [`ROWID_COLUMN`]),
+/// because the file-storage backend collapses rows that share the first
+/// column's value (issue #5392). The staged copy lives inside the fixture
+/// directory so that it stays inside the server's LOAD DATA whitelist.
+///
+/// After every table the harness asks the engine how many rows it can
+/// actually *see* and compares that with the number of rows in the source
+/// file. The comparison is the guard that makes the workaround safe: if the
+/// storage defect ever comes back, the tests fail loudly instead of
+/// silently asserting against a quarter of the fixture.
 pub fn load_fixture(client: &mut MySqlTestClient, fixture_dir: &str) {
     for ddl in SCHEMA_DDL {
         client
@@ -82,20 +280,144 @@ pub fn load_fixture(client: &mut MySqlTestClient, fixture_dir: &str) {
             .unwrap_or_else(|e| panic!("exec DDL `{ddl}`: {e}"));
     }
     let dir = PathBuf::from(fixture_dir);
+    let staged = stage_fixture_for_wire(&dir);
     for tbl in TABLES {
-        let path = dir.join(format!("{tbl}.tbl"));
+        let path = staged.join(format!("{tbl}.tbl"));
         if !path.exists() {
             panic!("fixture not found: {}", path.display());
         }
+        let source_rows = count_tbl_rows(&staged.join(format!("{tbl}.tbl")));
         let n = client
             .load_local_infile(&path, tbl)
             .unwrap_or_else(|e| panic!("load_local_infile {}: {}", path.display(), e));
+        let visible = client
+            .query_one_i64(&format!("SELECT COUNT(*) FROM {tbl}"))
+            .unwrap_or_else(|e| panic!("counting the loaded {tbl} rows: {e}"));
         eprintln!("  loaded {tbl}: {n} rows");
+        assert_eq!(
+            visible, source_rows,
+            "the engine can only see {visible} of the {source_rows} rows of `{tbl}` — \
+             the storage backend is dropping rows (see issue #5392)"
+        );
     }
+    let _ = std::fs::remove_dir_all(&staged);
 }
 
-/// Run a single query with timing, return (Result<rows>, elapsed)
+/// Number of data rows in a `.tbl` file.
+fn count_tbl_rows(path: &Path) -> i64 {
+    std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count() as i64
+}
+
+/// Materialise a "wire-ready" copy of the fixture inside the fixture
+/// directory.
+///
+/// The copy carries a synthetic unique leading column for the tables whose
+/// first column is not unique, so that the storage backend can tell their
+/// rows apart (issue #5392). Every other table is copied verbatim.
+fn stage_fixture_for_wire(fixture_dir: &Path) -> PathBuf {
+    let staged = fixture_dir.join(".tpch-wire-staging");
+    let _ = std::fs::remove_dir_all(&staged);
+    std::fs::create_dir_all(&staged).unwrap_or_else(|e| panic!("create {}: {e}", staged.display()));
+
+    for tbl in TABLES {
+        let source = fixture_dir.join(format!("{tbl}.tbl"));
+        let target = staged.join(format!("{tbl}.tbl"));
+        if NEEDS_ROWID.contains(tbl) {
+            let content = std::fs::read_to_string(&source)
+                .unwrap_or_else(|e| panic!("read {}: {e}", source.display()));
+            let mut out = String::with_capacity(content.len() + content.len() / 8);
+            for (i, line) in content.lines().enumerate() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                out.push_str(&(i + 1).to_string());
+                out.push('|');
+                out.push_str(line);
+                out.push('\n');
+            }
+            std::fs::write(&target, out)
+                .unwrap_or_else(|e| panic!("write {}: {e}", target.display()));
+        } else {
+            std::fs::copy(&source, &target).unwrap_or_else(|e| {
+                panic!("copy {} -> {}: {e}", source.display(), target.display())
+            });
+        }
+    }
+    staged
+}
+
+/// A statement that was **not** executed because it is outside the wire
+/// scope.
+#[derive(Debug, Clone)]
+pub struct WireSkip {
+    /// The query identifier that was refused.
+    pub qid: String,
+    /// Controlled reason code.
+    pub reason: String,
+    /// The issue that tracks the defect.
+    pub issue: String,
+    /// What was measured.
+    pub detail: String,
+}
+
+/// The outcome of handing a statement to the wire path.
+#[derive(Debug)]
+pub enum WireOutcome {
+    /// The statement was executed. `Err` carries the server's error message.
+    Ran(Result<Vec<Vec<String>>, String>, Duration),
+    /// The statement is outside the **wire scope** and was **not** executed.
+    ///
+    /// Executing it would exhaust the machine (issue #5393): the engine
+    /// process is killed by the operating system, and with it the whole test
+    /// binary. The caller must disclose the skip — see
+    /// [`tpch_wire_scope::report_wire_exclusions`].
+    Skipped(WireSkip),
+}
+
+/// Run a single **standard TPC-H** query with timing.
+///
+/// The query id is mandatory on purpose: it is what makes the wire scope
+/// enforceable at compile time. A statement outside the scope is **not**
+/// executed — the runner returns [`WireOutcome::Skipped`] instead. Every
+/// call site therefore has to name the statement it wants to run, and a
+/// statement that is known to be unrunnable on the file-storage backend
+/// cannot be executed by accident.
+///
+/// A statement that is *not* one of the 22 standard queries is executed
+/// normally — the scope governs the standard set only. Use
+/// [`run_custom_query_timed`] for such statements so the intent stays
+/// visible at the call site.
 pub fn run_query_timed(
+    client: &mut MySqlTestClient,
+    qid: &str,
+    sql: &str,
+    timeout_s: u64,
+) -> WireOutcome {
+    if tpch_wire_scope::is_standard_query(qid) && !tpch_wire_scope::in_wire_scope(qid) {
+        let exclusion = tpch_wire_scope::wire_exclusion(qid);
+        return WireOutcome::Skipped(WireSkip {
+            qid: qid.to_string(),
+            reason: exclusion
+                .map(|e| e.reason.to_string())
+                .unwrap_or_else(|| "unregistered".to_string()),
+            issue: exclusion.map(|e| e.issue.to_string()).unwrap_or_default(),
+            detail: exclusion.map(|e| e.detail.to_string()).unwrap_or_default(),
+        });
+    }
+    let (result, elapsed) = run_custom_query_timed(client, sql, timeout_s);
+    WireOutcome::Ran(result, elapsed)
+}
+
+/// Run a statement that is **not** one of the 22 standard TPC-H queries.
+///
+/// The wire scope does not apply here: it governs the standard set. The
+/// separate function exists so that a call site says out loud that it is
+/// running custom SQL.
+pub fn run_custom_query_timed(
     client: &mut MySqlTestClient,
     sql: &str,
     timeout_s: u64,

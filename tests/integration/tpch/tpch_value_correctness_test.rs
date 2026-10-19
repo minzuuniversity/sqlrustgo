@@ -1,10 +1,14 @@
 #[path = "../../common/mod.rs"]
 mod common;
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
 use common::tpch_wire_harness::start_sf001;
 
 #[test]
 fn tpch_value_correctness_synthetic_data() {
-    let mut client = start_sf001();
+    let Some(mut client) = start_sf001() else {
+        return;
+    };
     // Use `exec` for DDL/DML (which return OK packets, not result sets),
     // and `query_rows` only for SELECT (which return result sets).
     // Using `query_rows` for DDL caused issue #3307-style EAGAIN panics
@@ -39,17 +43,32 @@ fn tpch_value_correctness_synthetic_data() {
 
 #[test]
 fn tpch_value_correctness_q1_count() {
-    let mut client = start_sf001();
+    let Some(mut client) = start_sf001() else {
+        return;
+    };
     let result = client
         .query_rows("SELECT COUNT(*) FROM lineitem")
         .expect("count");
     assert!(!result.is_empty());
     let v = &result[0][0];
-    // `lineitem.tbl` is a git-lfs pointer file in this environment (no
-    // actual data loaded) so COUNT(*) is 0. On a CI runner that pulls
-    // the lfs content it would be 614 for SF=0.001.
+    // The expected count comes from the **fixture manifest**, not from a
+    // number hard-coded in this test. The test used to assert "501", the
+    // lineitem count of a dbgen SF=0.001 dataset that the repository never
+    // carried; the fixture is now generated at run time, so a hard-coded
+    // count is either wrong or right by accident. Asserting against the
+    // manifest checks the property that matters — the engine sees every row
+    // the fixture file holds — and fails loudly if the storage backend drops
+    // rows (issue #5392).
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require("tpch_value_correctness_q1_count") else {
+        return;
+    };
+    let expected = fixture
+        .row_count("lineitem")
+        .expect("the fixture manifest has no lineitem row count");
     assert_eq!(
-        v, "501",
-        "lineitem COUNT(*) with real SF=0.001 data (501 rows)"
+        v,
+        &expected.to_string(),
+        "the engine sees {v} lineitem rows but the fixture file holds {expected}"
     );
 }

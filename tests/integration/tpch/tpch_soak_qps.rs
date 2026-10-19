@@ -12,8 +12,14 @@ const QUERIES: &[&str] = &[
     "SELECT o_custkey, COUNT(*) FROM orders GROUP BY o_custkey LIMIT 10",
 ];
 
-fn run_thread_benchmark(tid: usize, duration: Duration) -> (u64, u64, u64) {
-    let mut client = common::tpch_wire_harness::start_sf01();
+/// Runs the benchmark loop on one thread.
+///
+/// Returns `None` when the TPC-H fixture is unavailable — the harness has
+/// already printed the NOT-RUN marker in that case.
+fn run_thread_benchmark(tid: usize, duration: Duration) -> Option<(u64, u64, u64)> {
+    let Some(mut client) = common::tpch_wire_harness::start_sf01() else {
+        return None;
+    };
     let mut local_q = 0u64;
     let mut local_err = 0u64;
     let mut local_rows = 0u64;
@@ -40,7 +46,7 @@ fn run_thread_benchmark(tid: usize, duration: Duration) -> (u64, u64, u64) {
         }
     }
 
-    (local_q, local_err, local_rows)
+    Some((local_q, local_err, local_rows))
 }
 
 #[test]
@@ -59,6 +65,17 @@ fn test_tpch_qps_30s_multi_threaded() {
     println!("Duration: {}s", duration_secs);
     println!();
 
+    // Resolve the fixture once, up front: otherwise every one of the
+    // spawned threads would report its own NOT-RUN marker.
+    if common::tpch_wire_harness::resolve_fixture_dir().is_none() {
+        common::tpch_wire_harness::report_not_run(
+            "test_tpch_qps_30s_multi_threaded",
+            "fixture_missing",
+            "no TPC-H fixture found (set TPCH_DATA_DIR to a directory with the 8 .tbl files)",
+        );
+        return;
+    }
+
     let duration = Duration::from_secs(duration_secs);
     let start = Instant::now();
 
@@ -69,13 +86,22 @@ fn test_tpch_qps_30s_multi_threaded() {
     let mut total_q = 0u64;
     let mut total_err = 0u64;
     let mut total_rows = 0u64;
+    let mut not_run = false;
 
     for (i, h) in handles.into_iter().enumerate() {
-        let (q, e, r) = h.join().unwrap();
+        let Some((q, e, r)) = h.join().unwrap() else {
+            // Fixture vanished mid-run — the harness already reported it.
+            not_run = true;
+            continue;
+        };
         total_q += q;
         total_err += e;
         total_rows += r;
         println!("Thread {} done: {} queries, {} errors, {} rows", i, q, e, r);
+    }
+
+    if not_run {
+        return;
     }
 
     let elapsed = start.elapsed().as_secs_f64();

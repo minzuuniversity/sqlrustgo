@@ -7,12 +7,26 @@ use parking_lot::RwLock;
 use serde_json::Value as JsonValue;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-const FIXTURE_DIR: &str = "tests/data/tpch-sf001";
+#[path = "../../common/mod.rs"]
+mod common;
+use common::tpch_wire_harness::{report_not_run, resolve_fixture_dir};
+
 const QUERIES_DIR: &str = "queries";
-const EXPECTED_DIR: &str = "tests/data/tpch-sf001/expected";
+
+/// Candidate directories for the three-way baseline JSONs (`Q*_three_way.json`).
+///
+/// The original location was `tests/data/tpch-sf001/expected/`, which was
+/// never a real directory in this repository: it only ever existed *behind*
+/// the `tests/data/tpch-sf001` symlink into `/tmp`. The symlink is gone, so
+/// the baseline has to be looked up at run time next to the resolved fixture.
+const EXPECTED_CANDIDATES: [&str; 3] = [
+    "tests/data/tpch-sf001/expected",
+    "tests/data/tpch-fixture/expected",
+    "data/tpch-sf01/expected",
+];
 
 const DDL: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)",
@@ -57,13 +71,12 @@ fn lookup_col_types(table: &str) -> Vec<&'static str> {
     vec![]
 }
 
-fn make_engine() -> ExecutionEngine<MemoryStorage> {
+fn make_engine(base: &Path) -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     for d in DDL {
         engine.execute(d).expect("DDL");
     }
-    let base = PathBuf::from(FIXTURE_DIR);
     for tbl in TABLES {
         let path = base.join(format!("{}.tbl", tbl));
         let content = fs::read_to_string(&path).expect("read .tbl");
@@ -102,8 +115,16 @@ fn read_q_sql(qnum: u32) -> String {
         .to_string()
 }
 
-fn expected_row_count(qnum: u32) -> Option<i64> {
-    let path = PathBuf::from(EXPECTED_DIR).join(format!("Q{}_three_way.json", qnum));
+/// Locate the directory holding the three-way baseline JSONs.
+fn resolve_expected_dir(fixture: &Path) -> Option<PathBuf> {
+    let mut candidates = vec![fixture.join("expected")];
+    candidates.extend(EXPECTED_CANDIDATES.iter().map(PathBuf::from));
+    candidates.into_iter().find(|p| p.is_dir())
+}
+
+/// Read the consensus row count for `qnum` from the baseline directory.
+fn expected_row_count(expected_dir: &Path, qnum: u32) -> Option<i64> {
+    let path = expected_dir.join(format!("Q{}_three_way.json", qnum));
     let text = fs::read_to_string(&path).expect("read json");
     let json: JsonValue = serde_json::from_str(&text).expect("parse json");
     json.get("consensus_row_count").and_then(|v| v.as_i64())
@@ -111,7 +132,48 @@ fn expected_row_count(qnum: u32) -> Option<i64> {
 
 #[test]
 fn eval_22_in_process_vs_sqlite() {
-    let mut engine = make_engine();
+    // The fixture path was hard-coded to `tests/data/tpch-sf001`, a symlink
+    // into /tmp that resolved on exactly one machine. It is now resolved at
+    // run time; without it there is nothing to compare, so the test is
+    // disclosed as *not run* rather than panicking.
+    let Some(base) = resolve_fixture_dir() else {
+        report_not_run(
+            "eval_22_in_process_vs_sqlite",
+            "fixture_missing",
+            "no TPC-H fixture found (set TPCH_DATA_DIR to a directory with the 8 .tbl files)",
+        );
+        return;
+    };
+
+    // The baseline JSONs (`Q*_three_way.json`) lived behind the same deleted
+    // symlink and have never been committed to this repository. Without them
+    // the comparison has no reference values, so the test is *not run*.
+    let Some(expected_dir) = resolve_expected_dir(&base) else {
+        report_not_run(
+            "eval_22_in_process_vs_sqlite",
+            "fixture_missing",
+            "baseline JSON directory not found (tried the fixture's expected/ subdirectory and the repository-local candidates)",
+        );
+        return;
+    };
+    let missing_baselines: Vec<String> = (1u32..=22)
+        .filter(|q| !expected_dir.join(format!("Q{q}_three_way.json")).is_file())
+        .map(|q| format!("Q{q}_three_way.json"))
+        .collect();
+    if !missing_baselines.is_empty() {
+        report_not_run(
+            "eval_22_in_process_vs_sqlite",
+            "fixture_missing",
+            &format!(
+                "baseline JSONs missing in {}: {}",
+                expected_dir.display(),
+                missing_baselines.join(", ")
+            ),
+        );
+        return;
+    }
+
+    let mut engine = make_engine(&base);
     let mut passed = 0u32;
     let mut mismatched = 0u32;
     let mut err = 0u32;
@@ -119,7 +181,7 @@ fn eval_22_in_process_vs_sqlite() {
 
     for q in 1u32..=22 {
         let sql = read_q_sql(q);
-        let expected = expected_row_count(q);
+        let expected = expected_row_count(&expected_dir, q);
         match engine.execute(&sql) {
             Ok(r) => {
                 if let Some(exp) = expected {

@@ -31,14 +31,19 @@ use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-const FIXTURE_DIR: &str = match option_env!("TPCH_DATA_DIR") {
-    Some(p) => p,
-    None => "tests/data/tpch-sf01",
-};
+#[path = "../../common/mod.rs"]
+mod common;
+#[path = "../../common/sqlite_oracle.rs"]
+mod sqlite_oracle;
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
+use common::tpch_wire_harness::{report_not_run, resolve_fixture_dir};
+use sqlite_oracle::adapt_sql;
+
 const QUERIES_DIR: &str = "queries";
 const TMP_DIR: &str = "/tmp/tpch_22_sf01_audit";
 
@@ -59,6 +64,40 @@ const TABLES: &[&str] = &[
     "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
 ];
 
+/// Split a DDL column list at **top-level** commas only.
+///
+/// A naive `split(',')` breaks on table-level constraints such as
+/// `PRIMARY KEY (l_orderkey, l_linenumber)`: the comma inside the
+/// parentheses splits one constraint into two fragments, and the second
+/// fragment (`l_linenumber)`) no longer starts with a constraint keyword,
+/// so it is mistaken for a column. The column count then comes out one
+/// too high, every `.tbl` row fails the `cols.len() != n_cols` check, and
+/// the table is loaded with **zero** rows — silently, because the mismatch
+/// is only ever skipped, never reported.
+///
+/// That is what happened to `lineitem` (17 vs 16) and `partsupp` (6 vs 5)
+/// here: the SQLite side of this audit was empty for the two largest
+/// tables, which turned Q1/Q3/Q4/Q12/Q15 into false MISMATCHED verdicts
+/// against a perfectly correct engine.
+fn split_top_level_commas(cols_str: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+    for (i, ch) in cols_str.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                out.push(&cols_str[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(&cols_str[start..]);
+    out
+}
+
 fn lookup_col_types(table: &str) -> Vec<&'static str> {
     for ddl in SCHEMA_SQL {
         if let Some(rest) = ddl.strip_prefix("CREATE TABLE ") {
@@ -67,8 +106,8 @@ fn lookup_col_types(table: &str) -> Vec<&'static str> {
                 if rest[..open].trim() != table {
                     continue;
                 }
-                return cols_str
-                    .split(',')
+                return split_top_level_commas(cols_str)
+                    .into_iter()
                     .filter_map(|c| {
                         let c = c.trim();
                         // Skip "PRIMARY KEY (...)" / "FOREIGN KEY ..." table
@@ -152,19 +191,20 @@ fn load_tbl_file(
     Ok(count)
 }
 
-fn build_sqlite_init_sql() -> String {
+fn build_sqlite_init_sql(base: &Path) -> String {
     let mut sql_buffer = String::new();
     for ddl in SCHEMA_SQL {
         sql_buffer.push_str(ddl);
         sql_buffer.push(';');
         sql_buffer.push('\n');
     }
-    let base = PathBuf::from(FIXTURE_DIR);
     for tbl in TABLES {
         let path = base.join(format!("{}.tbl", tbl));
         let content = std::fs::read_to_string(&path).expect("read fixture");
         let col_types = lookup_col_types(tbl);
         let n_cols = col_types.len();
+        let mut skipped = 0usize;
+        let mut observed_fields: Option<usize> = None;
         for line in content.lines() {
             if line.is_empty() {
                 continue;
@@ -172,6 +212,8 @@ fn build_sqlite_init_sql() -> String {
             let trimmed = line.trim_end_matches('|');
             let cols: Vec<&str> = trimmed.split('|').collect();
             if cols.len() != n_cols {
+                skipped += 1;
+                observed_fields = Some(cols.len());
                 continue;
             }
             let vals: Vec<String> = cols
@@ -192,15 +234,25 @@ fn build_sqlite_init_sql() -> String {
                 vals.join(",")
             ));
         }
+        // A dropped row here empties the SQLite side of the audit while the
+        // engine side stays correct, which surfaces as a false MISMATCHED
+        // verdict against the engine. Refuse to continue instead.
+        assert!(
+            skipped == 0,
+            "fixture loader dropped {skipped} row(s) of `{tbl}`: the .tbl rows have {} fields but \
+             the DDL implies {n_cols} columns. Silently skipping rows makes the SQLite oracle \
+             incomplete and turns correct engine results into false mismatches.",
+            observed_fields.unwrap_or(0)
+        );
     }
     sql_buffer
 }
 
-fn load_sqlite_with_sf01() -> String {
+fn load_sqlite_with_sf01(base: &Path) -> String {
     let _ = fs::create_dir_all(TMP_DIR);
     let db_path = format!("{}/tpch_sf01.sqlite", TMP_DIR);
     let _ = fs::remove_file(&db_path);
-    let sql = build_sqlite_init_sql();
+    let sql = build_sqlite_init_sql(base);
     let sql_file = format!("{}/init.sql", TMP_DIR);
     fs::write(&sql_file, &sql).expect("write init.sql");
     let status = Command::new("sqlite3")
@@ -212,8 +264,32 @@ fn load_sqlite_with_sf01() -> String {
     db_path
 }
 
-fn sqlite_count(sql: &str, db_path: &str) -> Option<usize> {
-    let wrapped = format!("SELECT COUNT(*) FROM ({}) sub", sql);
+/// What the SQLite oracle had to say about one query.
+enum OracleVerdict {
+    /// SQLite ran the query and produced this many rows.
+    Count(usize),
+    /// The query uses a construct SQLite cannot run, even after adaptation.
+    ///
+    /// This is kept apart from [`OracleVerdict::Error`] on purpose: "the
+    /// oracle cannot express this" and "the oracle ran it and got a different
+    /// answer" are different findings and must not be lumped together.
+    Unsupported(String),
+    /// SQLite was asked to run the query and failed.
+    Error(String),
+}
+
+/// Row count of `sql` according to the SQLite oracle.
+///
+/// The query is first adapted to SQLite's dialect — `EXTRACT(YEAR FROM x)`
+/// becomes `strftime('%Y', x)`, which is the only rewrite
+/// [`adapt_sql`] performs. Without it, Q7/Q8/Q9 fail to parse in SQLite and
+/// silently drop out of the comparison.
+fn sqlite_count(sql: &str, db_path: &str) -> OracleVerdict {
+    let adapted = adapt_sql(sql);
+    if !adapted.unsupported.is_empty() {
+        return OracleVerdict::Unsupported(adapted.unsupported.join("; "));
+    }
+    let wrapped = format!("SELECT COUNT(*) FROM ({}) sub", adapted.sql);
     let out = Command::new("sqlite3")
         .arg(db_path)
         .arg(&wrapped)
@@ -221,18 +297,34 @@ fn sqlite_count(sql: &str, db_path: &str) -> Option<usize> {
         .expect("sqlite3 exec");
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        eprintln!("SQLite ERR: {}", err.lines().next().unwrap_or(""));
-        return None;
+        return OracleVerdict::Error(err.lines().next().unwrap_or("").to_string());
     }
     let stdout = String::from_utf8_lossy(&out.stdout);
-    stdout.trim().parse::<usize>().ok()
+    match stdout.trim().parse::<usize>() {
+        Ok(n) => OracleVerdict::Count(n),
+        Err(_) => OracleVerdict::Error(format!("unparsable count {:?}", stdout.trim())),
+    }
 }
 
 #[test]
 fn eval_22_vs_sqlite_sf01_canonical() {
+    // The fixture path used to be baked in at compile time through
+    // `option_env!("TPCH_DATA_DIR")`, which can never see a run-time
+    // environment variable — the CI-provided fixture was therefore never
+    // found. It is now resolved at run time; without it there is nothing
+    // to audit, so the test is disclosed as *not run*.
+    let Some(base) = resolve_fixture_dir() else {
+        report_not_run(
+            "eval_22_vs_sqlite_sf01_canonical",
+            "fixture_missing",
+            "no TPC-H fixture found (set TPCH_DATA_DIR to a directory with the 8 .tbl files)",
+        );
+        return;
+    };
+
     println!(
         "\n=== TPC-H 22 audit on CANONICAL SF=0.01 fixture ({}) ===\n",
-        FIXTURE_DIR
+        base.display()
     );
 
     // 1. Create storage + engine *first* so TableInfo is consistent for
@@ -251,7 +343,6 @@ fn eval_22_vs_sqlite_sf01_canonical() {
 
     // 3. Load fixture via direct storage.insert (batched).
     eprintln!("[2/3] Loading fixture via storage.insert() in batches of 10000 ...");
-    let base = PathBuf::from(FIXTURE_DIR);
     let mut total_rows = 0usize;
     for tbl in TABLES {
         let tbl_path = base.join(format!("{}.tbl", tbl));
@@ -265,23 +356,30 @@ fn eval_22_vs_sqlite_sf01_canonical() {
 
     // 4. SQLite baseline.
     eprintln!("[3/3] Loading SQLite baseline ...");
-    let db_path = load_sqlite_with_sf01();
+    let db_path = load_sqlite_with_sf01(&base);
     eprintln!("  SQLite ready at {db_path}");
 
     // 5. Run 22 queries.
+    //
+    //    Each query must land in exactly one category, and the categories must
+    //    partition all 22. The previous version of this loop counted a query
+    //    as `SQLITE_ERR` twice (once before the match, once inside it) and
+    //    then asserted only `total >= 22` — a condition that is true by
+    //    construction, so the double count and the 3 unadapted queries were
+    //    both invisible. The counts are now disjoint and the totals are
+    //    asserted to be exactly 22.
     let mut matched = 0usize;
-    let mut mismatched = 0usize;
-    let mut err_count = 0usize;
-    let mut sqlite_err = 0usize;
+    let mut mismatched: Vec<String> = Vec::new();
+    let mut known_diffs: Vec<String> = Vec::new();
+    let mut err_count: Vec<String> = Vec::new();
+    let mut unsupported: Vec<String> = Vec::new();
+    let mut oracle_err: Vec<String> = Vec::new();
     for q in 1..=22u8 {
         let sql_path = format!("{}/q{}.sql", QUERIES_DIR, q);
         let sql = fs::read_to_string(&sql_path).unwrap_or_else(|_| panic!("read {}", sql_path));
         let sql = sql.trim().trim_end_matches(';');
 
-        let sqlite_count = sqlite_count(sql, &db_path);
-        if sqlite_count.is_none() {
-            sqlite_err += 1;
-        }
+        let verdict = sqlite_count(sql, &db_path);
 
         let engine_count: Option<usize> =
             match engine.execute(&format!("SELECT COUNT(*) FROM ({}) sub", sql)) {
@@ -300,38 +398,92 @@ fn eval_22_vs_sqlite_sf01_canonical() {
                 }
             };
 
-        let cat = match (engine_count, sqlite_count) {
-            (Some(e), Some(s)) if e == s => {
+        let case_id = format!("eval_22_vs_sf01:Q{q}");
+        let cat = match (&verdict, engine_count) {
+            (OracleVerdict::Count(s), Some(e)) if e == *s => {
                 matched += 1;
                 "MATCHED"
             }
-            (Some(_), Some(_)) => {
-                mismatched += 1;
+            (OracleVerdict::Count(s), Some(e)) => {
+                let detail = format!("engine={e} sqlite={s}");
+                match tpch_fixture::lookup_known_difference(&case_id) {
+                    Some(entry) => {
+                        tpch_fixture::report_known_difference(&entry, &detail);
+                        known_diffs.push(case_id.clone());
+                    }
+                    None => mismatched.push(format!("Q{q}: {detail}")),
+                }
                 "MISMATCHED"
             }
-            (None, _) => {
-                err_count += 1;
+            (OracleVerdict::Count(s), None) => {
+                err_count.push(format!("Q{q}: engine error, sqlite={s}"));
                 "ERR"
             }
-            (_, None) => {
-                sqlite_err += 1;
+            (OracleVerdict::Unsupported(why), _) => {
+                unsupported.push(format!("Q{q}: {why}"));
+                "UNSUPPORTED"
+            }
+            (OracleVerdict::Error(msg), _) => {
+                oracle_err.push(format!("Q{q}: {msg}"));
                 "SQLITE_ERR"
             }
         };
+        let sqlite_n = match &verdict {
+            OracleVerdict::Count(s) => Some(*s),
+            _ => None,
+        };
         println!(
             "Q{:>2}: engine={:>6?} sqlite={:>6?}  {}",
-            q, engine_count, sqlite_count, cat
+            q, engine_count, sqlite_n, cat
         );
     }
     println!("\n=== Totals ({} rows loaded) ===", total_rows);
     println!("MATCHED   : {matched}/22");
-    println!("MISMATCHED: {mismatched}/22");
-    println!("ERR(engine): {err_count}/22");
-    println!("SQLiteERR : {sqlite_err}/22");
-    let total = matched + mismatched + err_count + sqlite_err;
+    println!("MISMATCHED: {}/22", mismatched.len());
+    println!("KNOWN-DIFF: {}/22", known_diffs.len());
+    println!("ERR(engine): {}/22", err_count.len());
+    println!("UNSUPPORTED: {}/22", unsupported.len());
+    println!("SQLiteERR : {}/22", oracle_err.len());
+
+    // The categories must partition the 22 queries: no query may be counted
+    // twice and none may be dropped.
+    assert_eq!(
+        matched
+            + mismatched.len()
+            + known_diffs.len()
+            + err_count.len()
+            + unsupported.len()
+            + oracle_err.len(),
+        22,
+        "the 22 queries must fall into exactly one category each"
+    );
+    // A query the oracle cannot express is not a pass — it is an uncompared
+    // query, and it must be registered instead of being quietly skipped.
     assert!(
-        total >= 22,
-        "category counts do not add up to 22: {}",
-        total
+        unsupported.is_empty(),
+        "SQLite cannot run {} query/queries after adaptation: {unsupported:?} — \
+         each one needs a dialect adaptation or a registered known difference",
+        unsupported.len()
+    );
+    assert!(
+        oracle_err.is_empty(),
+        "the SQLite oracle failed on {} query/queries: {oracle_err:?}",
+        oracle_err.len()
+    );
+    assert!(
+        err_count.is_empty(),
+        "the engine failed on {} query/queries: {err_count:?}",
+        err_count.len()
+    );
+    assert!(
+        mismatched.is_empty(),
+        "engine and SQLite disagree on {} query/queries: {mismatched:?} — \
+         register a known difference with an issue and an owner, or fix the engine",
+        mismatched.len()
+    );
+    assert_eq!(
+        matched + known_diffs.len(),
+        22,
+        "every query must be compared against the oracle and agree with it"
     );
 }
