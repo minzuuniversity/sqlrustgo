@@ -12,7 +12,7 @@ use sqlrustgo_parser::{parse, Statement};
 use sqlrustgo_storage::wal::FileBackedWalManager;
 use sqlrustgo_storage::{
     BinaryTableStorage, BoxStorageEngine, CheckpointManager, FileStorage, MemoryStorage,
-    ParallelWalStorage, StorageEngine, WalStorage,
+    StorageEngine, WalStorage,
 };
 use sqlrustgo_types::{SqlError, Value};
 use std::collections::HashMap;
@@ -7141,7 +7141,13 @@ pub(crate) fn run_server_with_listener_and_shutdown_with_bootstrap_tables_and_sq
                     }
                 }
             }
-            let wal_manager = FileBackedWalManager::new(wal_path)
+            // The manager is opened here on purpose (it creates/opens the WAL
+            // file and its initialisation errors must abort the startup),
+            // but the handle itself is not used afterwards. The underscore
+            // prefix keeps the value alive until the end of this scope, so
+            // the drop point — and therefore the WAL file's lifetime — is
+            // exactly what it was before.
+            let _wal_manager = FileBackedWalManager::new(wal_path)
                 .map_err(|e| MySqlError::Sql(format!("WAL manager init failed: {}", e)))?;
             let checkpoint_manager = Arc::new(std::sync::RwLock::new(CheckpointManager::default()));
             let wal_sync_mode =
