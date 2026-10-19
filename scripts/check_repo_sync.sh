@@ -18,7 +18,10 @@ set -e
 REPO="${1:-openclaw/sqlrustgo}"
 
 # Remotes
-TOKEN_GITEA="${GITEA_TOKEN:-cc19b2ad677e18c96b9d049f6dc2b46e02176883}"
+# The Gitea token used to be hardcoded here. Those values were live and
+# are tracked as a leak in #5381 — there is no baked-in fallback.
+: "${GITEA_TOKEN:?GITEA_TOKEN must be set (e.g. export GITEA_TOKEN=\"\$(cat ~/.ssh/openclaw-gitea.PAT)\") — see #5381}"
+TOKEN_GITEA="${GITEA_TOKEN}"
 GITEA_HOSTS=("192.168.0.252" "192.168.0.250")
 GITCODE_URL="https://gitcode.com/BreavHeart/sqlrustgo.git"
 GITHUB_URL="git@github.com:yinglichina8848/sqlrustgo-public.git"

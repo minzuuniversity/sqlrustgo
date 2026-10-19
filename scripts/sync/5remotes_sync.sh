@@ -26,6 +26,29 @@
 # host rather than letting ssh cycle through every identity until the
 # server drops it with "Too many authentication failures".
 #
+# SSH is also made independent of the caller's ssh-agent state
+# (`IdentityAgent=none`). When SSH_AUTH_SOCK points at a dead agent —
+# macOS launchd leaves the socket file behind after the agent exits —
+# OpenSSH blocks on the agent round-trip and produces no output at all.
+# That is what made this script hang for 900s on #5380. See the SSH_OPTS
+# block below for the measured before/after.
+#
+# Environment:
+#   GITEA_USER      Gitea user for HTTP auth. Required for the
+#                   protected-branch path (gitea250 / gitea252).
+#   GITEA_TOKEN     Gitea token or password for HTTP auth. Required
+#                   for the protected-branch path.
+#                   These used to be hardcoded in this file; those values
+#                   are live and are tracked as a leak in #5381. There is
+#                   no silent fallback to a baked-in credential.
+#   GITEA_HOSTS     Space-separated "host:ssh_user" list to sync.
+#                   Default: "192.168.0.250:liying 192.168.0.252:liying"
+#   GITEA_PUSH_URL  Where to push the temporary ref. Default: derived
+#                   from the host and GITEA_USER/GITEA_TOKEN.
+#   GIT_SSH_COMMAND If set, it wins — otherwise the script sets it from
+#                   its own SSH options so git's SSH channel is equally
+#                   immune to a dead agent.
+#
 # Usage:
 #   scripts/sync/5remotes_sync.sh <branch> [<source-remote>]
 #       Default source remote: gitea252
@@ -48,12 +71,68 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 ALL_BRANCHES=("develop/v4.1.0" "main" "release/v4.0.0")
 
+# ── SSH 通道选项（唯一来源）────────────────────────────────────────────────
+#
+# 每一处 ssh 调用都必须经过这里，漏掉一处就复现 #5380 的挂起。
+#
+# IdentityAgent=none 是本段里唯一不可协商的选项:
+# 当 SSH_AUTH_SOCK 指向一个"socket 文件还在但 agent 已经死了"的路径时
+# （macOS launchd 的 socket 常常如此），OpenSSH 会去连那个 agent;
+# unix socket 只要文件存在 connect() 就不立刻失败，于是 ssh 阻塞在
+# agent 往返上且**没有任何输出**。
+#
+# BatchMode=yes 只禁止交互式口令提示，IdentitiesOnly=yes 只限制提供哪些身份,
+# 两者都**不能**切断这条路径。只有 IdentityAgent=none 能让 ssh 完全不去碰 agent。
+#
+# 实测（本机，agent 已死）:
+#   ssh -T git@github.com                              → 挂起，无输出
+#   ssh -o IdentityAgent=none -T git@github.com        → 认证成功
+#   ssh -o IdentitiesOnly=yes -o IdentityAgent=none \
+#       -T git@{github,gitee,gitcode}.com               → 3/3 认证成功
+#
+# ServerAliveInterval/CountMax 给"连上了但服务端不应答"这条路径封顶 ~45s。
+SSH_OPTS=(
+    -o BatchMode=yes
+    -o ConnectTimeout=10
+    -o IdentitiesOnly=yes
+    -o IdentityAgent=none
+    -o StrictHostKeyChecking=accept-new
+    -o ServerAliveInterval=15
+    -o ServerAliveCountMax=3
+)
+
+# git 的 SSH 通道（push / fetch）走的是 GIT_SSH_COMMAND，不走上面的数组。
+# 调用方没有设置时由本脚本设置，否则 git 会继承调用方那个失效的 agent 而挂起。
+if [ -z "${GIT_SSH_COMMAND:-}" ]; then
+    export GIT_SSH_COMMAND="ssh ${SSH_OPTS[*]}"
+fi
+
+# ── Gitea 凭据（外置，不允许硬编码）────────────────────────────────────────
+#
+# 曾经本脚本内嵌了明文的 Gitea 口令与 token。经实测这些凭据**仍然有效**
+# （见 #5381），即仓库读权限 == Gitea 写权限。
+# 现在一律从环境变量读取，缺失就明确报错退出——不静默回落到任何硬编码值。
+GITEA_USER="${GITEA_USER:-}"
+GITEA_TOKEN="${GITEA_TOKEN:-}"
+
+# ── 覆盖开关 ──────────────────────────────────────────────────────────────
+#
+# GITEA_HOSTS   同步哪些主机，格式 "host:ssh_user" 空格分隔
+# GITEA_PUSH_URL 临时 ref 推到哪（默认由 host + 凭据算出）
+#
+# 这两个开关既让脚本可被离线测试，也是"只同步部分主机""推到镜像仓库"的真实需求。
+GITEA_HOSTS="${GITEA_HOSTS:-192.168.0.250:liying 192.168.0.252:liying}"
+GITEA_PUSH_URL="${GITEA_PUSH_URL:-}"
+
 usage() {
-    sed -n '2,30p' "$0"
+    # Print the header comment block (everything between the shebang and the
+    # first code line) — a fixed line range would truncate it whenever the
+    # header grows.
+    sed -n '2,/^set -uo/p' "$0" | sed '$d'
     exit 4
 }
 
@@ -199,29 +278,48 @@ echo "Step 3: SSH container update-ref for gitea250 / gitea252"
 # changes the ID, so a stale value makes `docker exec` fail against a
 # host that was merely recreated.
 ALL_FAILED=0
-GITEA_HOSTS=("192.168.0.250:liying"
-             "192.168.0.252:liying")
+# GITEA_HOSTS: 空格分隔的 "host:ssh_user"，可用环境变量覆盖
+read -r -a GITEA_HOST_LIST <<< "${GITEA_HOSTS}"
+# bash 3.2 (still the system bash on macOS) treats an empty array expansion
+# under `set -u` as an unbound variable, so refuse an empty list explicitly.
+if [ "${#GITEA_HOST_LIST[@]}" -eq 0 ]; then
+    echo "ERROR: GITEA_HOSTS is empty — no Gitea host to sync"
+    exit 4
+fi
 
 # Print "<container_id> <repo_path>" for the container on $host that
 # serves gitea on port 3000 and holds the openclaw/sqlrustgo repo.
 # Resolved on every run: the path differs between the two hosts
 # (/git/... on 250, /data/git/repositories/... on 252) and has changed
 # before.
+#
+# The repo path is found by PROBING the layouts Gitea actually uses, not by
+# searching the whole container filesystem. `find / -maxdepth 6` has to walk
+# every mount in the container and was measured taking more than 9 minutes on
+# 250 — long enough to eat the entire budget of the run that contains it.
+# The known layouts cover both hosts; the narrowed `find` stays as a
+# fallback for anything else.
 discover_gitea_target() {
     local host=$1
-    ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 \
+    ssh "${SSH_OPTS[@]}" \
         "$host" '
         cid=$(docker ps --format "{{.ID}}|{{.Ports}}" \
               | grep "0.0.0.0:3000->3000/tcp" | head -1 | cut -d"|" -f1)
         [ -n "$cid" ] || { echo "NO_CONTAINER"; exit 1; }
-        path=$(docker exec "$cid" bash -c \
-               "find / -maxdepth 6 -type d -name sqlrustgo.git 2>/dev/null | head -1")
+        path=$(docker exec "$cid" bash -c "
+            for p in /git/*/sqlrustgo.git \
+                     /data/git/repositories/*/sqlrustgo.git \
+                     /data/git/gitea-repositories/*/sqlrustgo.git; do
+                if [ -d \"\$p\" ]; then echo \"\$p\"; exit 0; fi
+            done
+            find /git /data/git -maxdepth 4 -type d -name sqlrustgo.git 2>/dev/null | head -1
+        ")
         [ -n "$path" ] || { echo "NO_REPO"; exit 1; }
         echo "$cid $path"
     ' 2>/dev/null
 }
 
-for entry in "${GITEA_HOSTS[@]}"; do
+for entry in "${GITEA_HOST_LIST[@]}"; do
     IFS=':' read -r host ssh_user <<< "$entry"
     # BatchMode=yes: never fall back to an interactive password prompt.
     # With BatchMode=no a wrong or missing key makes ssh try every
@@ -230,6 +328,9 @@ for entry in "${GITEA_HOSTS[@]}"; do
     # this script still named a user (`z440`) that does not exist
     # there. Auth is expected to work non-interactively; if it cannot,
     # failing fast is the correct outcome.
+    #
+    # IdentityAgent=none (in SSH_OPTS) is what keeps this from hanging
+    # when the caller's SSH_AUTH_SOCK points at a dead agent — see #5380.
     target=$(discover_gitea_target "$host")
     if [ -z "$target" ] || [ "${target%% *}" = "NO_CONTAINER" ] \
        || [ "${target%% *}" = "NO_REPO" ]; then
@@ -241,12 +342,28 @@ for entry in "${GITEA_HOSTS[@]}"; do
     repo_path="${target#* }"
     echo "  [$host / $container_id / $repo_path]"
 
-    if ! ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 \
+    if ! ssh "${SSH_OPTS[@]}" \
             "$ssh_user@$host" true 2>/dev/null; then
         echo "  [$host] ERROR: non-interactive SSH auth as '$ssh_user' failed. Skipping."
         ALL_FAILED=1
         continue
     fi
+
+    # The protected-branch path needs Gitea credentials. They used to be
+    # hardcoded in this script; those values were live and are now tracked
+    # as a leak in #5381. They come from the environment and there is no
+    # silent fallback to a baked-in value.
+    if [ -z "${GITEA_USER}" ] || [ -z "${GITEA_TOKEN}" ]; then
+        echo "  [$host] ERROR: GITEA_USER / GITEA_TOKEN not set — cannot read or"
+        echo "         update a protected branch. Skipping."
+        echo "         export GITEA_USER=<user> GITEA_TOKEN=<token>   # see #5381"
+        ALL_FAILED=1
+        continue
+    fi
+    # Basic auth header, so the credential never travels inside a URL
+    # (a URL leaks into the process table, .git/config and CI logs).
+    # Basic encoding accepts either a token or a password as GITEA_TOKEN.
+    auth_header="Authorization: Basic $(printf '%s:%s' "${GITEA_USER}" "${GITEA_TOKEN}" | base64 | tr -d '\n')"
 
     for branch in "${branches[@]}"; do
         case "$branch" in
@@ -258,7 +375,7 @@ for entry in "${GITEA_HOSTS[@]}"; do
         tmp_ref="tmp-sync-$$-$branch"
 
         current=$(curl -sf --max-time 5 \
-            -u "openclaw:details8848" \
+            -H "$auth_header" \
             "http://$host:3000/api/v1/repos/openclaw/sqlrustgo/git/refs/heads/$branch" 2>/dev/null \
             | python3 -c "import json,sys;r=json.load(sys.stdin);print((r[0] if isinstance(r,list) else r).get('object',{}).get('sha',''))" 2>/dev/null)
         if [ "$current" = "$sha" ]; then
@@ -271,8 +388,14 @@ for entry in "${GITEA_HOSTS[@]}"; do
         # Step 3a: push to a temporary ref so the commit objects land
         # in the container's object pool. update-ref will not pull
         # commits across HTTP.
-        if ! git push --no-verify \
-             "http://liying:cc19b2ad677e18c96b9d049f6dc2b46e02176883@$host:3000/openclaw/sqlrustgo.git" \
+        #
+        # The credential travels in an http.extraheader rather than inside
+        # the URL: a credential in the URL gets echoed by git on failure and
+        # is the shape that ended up committed in this file before.
+        push_url="${GITEA_PUSH_URL:-http://${host}:3000/openclaw/sqlrustgo.git}"
+        if ! git -c "http.extraheader=$auth_header" \
+             push --no-verify \
+             "$push_url" \
              "$sha:refs/heads/$tmp_ref" 2>&1 | tail -3; then
             echo "    ERROR: temp-ref push to $host failed"
             continue
@@ -285,7 +408,7 @@ git -c safe.directory=* update-ref refs/heads/$branch $sha
 git -c safe.directory=* update-ref -d refs/heads/$tmp_ref 2>/dev/null
 echo final: \$(cat refs/heads/$branch)
 '"
-        if ! ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15 \
+        if ! ssh "${SSH_OPTS[@]}" \
              "$ssh_user@$host" "$update_cmd" 2>&1 | tail -5; then
             echo "    ERROR: ssh update-ref to $host/$branch failed"
             ALL_FAILED=1
@@ -322,7 +445,9 @@ done
 # the first thing that went wrong, in the order things can go wrong.
 if [ "${ALL_FAILED:-0}" -ne 0 ]; then
     echo ""
-    echo "FAILED: one or more protected-branch updates did not complete (see above)"
+    echo "FAILED: one or more protected-branch updates did not complete or were"
+    echo "        skipped (see above). Refusing to report success: without"
+    echo "        completing that step the remotes are not proven to be in sync."
     exit 2
 fi
 [ $ALL_OK -eq 0 ] && exit 1
