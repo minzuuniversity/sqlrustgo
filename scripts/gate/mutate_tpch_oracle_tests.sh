@@ -63,6 +63,19 @@ ENGINE_FILE="src/engine_select.rs"
 
 # The target that can actually detect a given mutation. A mutation paired
 # with a target that cannot express it would "survive" for the wrong reason.
+# Wall-clock bound for a single baseline/mutation run. The diagnostic
+# targets normally finish in well under a minute; 15 minutes is a generous
+# ceiling that still keeps a hung run from eating the whole CI container.
+RUN_TIMEOUT_S="${RUN_TIMEOUT_S:-900}"
+
+# `timeout` is not part of a bare macOS install (coreutils' `gtimeout` is),
+# but the CI runner is Linux and the repository already relies on `timeout`
+# elsewhere. Fail with a clear message rather than with "command not found".
+if ! command -v timeout >/dev/null 2>&1; then
+    echo "ERROR: 'timeout' is required to bound the mutation runs (install coreutils or set PATH)" >&2
+    exit 2
+fi
+
 MUT1_TARGET="diag_q11"
 MUT2_TARGET="diag_q11"
 MUT3_TARGET="diag_q12"
@@ -122,8 +135,18 @@ run_baseline() {
     log "== BASELINE: the unmutated '$target' must pass, otherwise CAUGHT is meaningless"
     local out rc
     out="$(mktemp -t mutate_tpch_base.XXXXXX)"
-    TPCH_DATA_DIR="$FIXTURE_DIR" cargo test --test "$target" -- --nocapture >"$out" 2>&1
+    # The run is bounded: a gate that can hang is a gate that eats the whole
+    # CI container. A timeout is reported as a harness error, never as a
+    # "caught" mutation — the point of a mutation run is that the *test*
+    # failed, not that the process died.
+    TPCH_DATA_DIR="$FIXTURE_DIR" timeout "$RUN_TIMEOUT_S" \
+        cargo test --test "$target" -- --nocapture >"$out" 2>&1
     rc=$?
+    if [ $rc -eq 124 ]; then
+        log "${RED}ERROR${NC}: the BASELINE run of '$target' TIMED OUT after ${RUN_TIMEOUT_S}s"
+        rm -f "$out"
+        return 1
+    fi
     if [ $rc -ne 0 ]; then
         log "${RED}ERROR${NC}: the BASELINE run of '$target' failed (rc=$rc) — the mutation results would be meaningless"
         grep -E "^test .* FAILED|panicked at|error\[|^error" "$out" | head -10
@@ -163,8 +186,21 @@ run_mutation() {
 
     local out rc
     out="$(mktemp -t mutate_tpch_out.XXXXXX)"
-    TPCH_DATA_DIR="$FIXTURE_DIR" cargo test --test "$target" -- --nocapture >"$out" 2>&1
+    TPCH_DATA_DIR="$FIXTURE_DIR" timeout "$RUN_TIMEOUT_S" \
+        cargo test --test "$target" -- --nocapture >"$out" 2>&1
     rc=$?
+
+    if [ $rc -eq 124 ]; then
+        # A timeout is NOT a caught mutation: the test did not fail, the
+        # process was killed. Reporting it as CAUGHT would make the gate
+        # green for the wrong reason.
+        log "${RED}ERROR${NC}: ${id}: the mutated run TIMED OUT after ${RUN_TIMEOUT_S}s — this is a harness error, not a caught mutation"
+        ERRORS=$((ERRORS + 1))
+        rm -f "$out"
+        restore_engine
+        assert_engine_pristine
+        return
+    fi
 
     if [ $rc -ne 0 ]; then
         log "${GREEN}CAUGHT${NC} (${id}): the test failed as it should"
