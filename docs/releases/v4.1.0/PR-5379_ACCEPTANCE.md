@@ -1,6 +1,7 @@
 # PR-5379 ACCEPTANCE — TPC-H fixture 自包含化与 CI 执行完整性
 
-> **PR Number**: 待建（分支 `fix/5379-tpch-fixture-hermeticity`）
+> **PR Number**: #5396（`http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/5396`）
+> **Commits**: `ee498d00f7`（基线 clippy 修复）→ `de50610a66`（TPC-H 主变更）→ `7eccfe0c8d`（变异脚本超时上限）
 > **Issue**: #5379
 > **Version**: v4.1.0
 > **Base**: `d8365606d69c`（`develop/v4.1.0`）
