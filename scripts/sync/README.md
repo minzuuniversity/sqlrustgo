@@ -42,6 +42,71 @@ Exit codes:
 - 3: network/SSH error
 - 4: argument error
 
+#### Environment
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `GITEA_USER` | yes, for the protected-branch path | — | Gitea user for HTTP auth |
+| `GITEA_TOKEN` | yes, for the protected-branch path | — | Gitea token or password for HTTP auth |
+| `GITEA_HOSTS` | no | `192.168.0.250:liying 192.168.0.252:liying` | space-separated `host:ssh_user` list to sync |
+| `GITEA_PUSH_URL` | no | derived from host + credentials | where the temporary ref is pushed |
+| `GIT_SSH_COMMAND` | no | set by the script | caller wins; otherwise the script sets it from its own SSH options |
+
+```bash
+export GITEA_USER=openclaw
+export GITEA_TOKEN="$(cat ~/.ssh/openclaw-gitea.PAT)"
+scripts/sync/5remotes_sync.sh develop/v4.1.0
+```
+
+`GITEA_USER` / `GITEA_TOKEN` used to be hardcoded in the script. Those values
+were **live** and are tracked as a credential leak in [#5381](https://192.168.0.252:3000/openclaw/sqlrustgo/issues/5381).
+There is deliberately no silent fallback to a baked-in credential: the script
+reports which variable to set and skips that host.
+
+#### SSH is independent of the caller's ssh-agent
+
+`SSH_OPTS` in the script is the single source of SSH options, and every
+`ssh` call plus git's own SSH channel go through it. The load-bearing
+option is `IdentityAgent=none`:
+
+> When `SSH_AUTH_SOCK` points at a dead agent — macOS `launchd` leaves the
+> socket file behind after the agent exits — OpenSSH blocks on the agent
+> round-trip and produces **no output at all**. `BatchMode=yes` only
+> suppresses interactive password prompts and `IdentitiesOnly=yes` only
+> limits which identities are offered; neither stops the agent round-trip.
+
+Measured on the same machine, same network, same key:
+
+| Command | Result |
+|---|---|
+| `ssh -T git@github.com` | hangs, no output |
+| `ssh -o IdentityAgent=none -T git@github.com` | authenticates |
+| `ssh -o IdentitiesOnly=yes -o IdentityAgent=none -T git@{github,gitee,gitcode}.com` | 3/3 authenticate |
+
+Before this was fixed, the script hung for 900s in `discover_gitea_target`
+and three public remotes were wrongly reported as "unreachable" — see
+[#5380](https://192.168.0.252:3000/openclaw/sqlrustgo/issues/5380).
+
+### `test_5remotes_sync_ssh.sh` — regression test for the SSH channel
+
+```bash
+bash scripts/sync/test_5remotes_sync_ssh.sh
+```
+
+Fully offline. The five remotes are local bare repositories, and `ssh` /
+`curl` are stubs. The `ssh` stub is a **behavioural double**: it blocks
+exactly like real `ssh` does when `SSH_AUTH_SOCK` points at a dead agent
+and the arguments lack `IdentityAgent=none`. The script under test
+therefore hangs — and the test fails — if the option is ever dropped.
+
+```bash
+bash scripts/sync/mutate_5remotes_sync_ssh.sh   # mutation check for the test itself
+```
+
+Three mutations (drop `IdentityAgent=none`, restore the whole-filesystem
+`find /`, drop the `GIT_SSH_COMMAND` export) are all required to be
+CAUGHT.
+
 ### `5remotes_drift_check.sh` — read-only health check
 
 ```bash
@@ -111,10 +176,13 @@ environment overrides (defaults match the sibling scripts).
 - The SSH update-ref path requires the operator to have `ssh` access
   to `z440@192.168.0.250` and `liying@192.168.0.252`. Without
   that, the gitea remotes cannot be advanced.
-- The container IDs (`fd56a3da85f0` for gitea250,
-  `fff98c53f6f5` for gitea252) are hard-coded. If the Gitea
-  containers get recreated with different IDs, edit the
-  `GITEA_HOSTS` array at the top of `5remotes_sync.sh`.
+- The container IDs and repository paths are **discovered on every run** —
+  they are not hardcoded. `discover_gitea_target()` finds the container
+  whose docker port mapping is `0.0.0.0:3000->3000/tcp` and then probes
+  the layouts Gitea actually uses (`/git/*/`, `/data/git/repositories/*/`,
+  `/data/git/gitea-repositories/*/`). A whole-filesystem `find /` used to
+  be used for this and was measured taking more than 9 minutes on 250.
+  A container restart therefore needs no edit; only a *new* layout would.
 - `develop/v4.0.0` is intentionally NOT in the `--all` branch list
   because gitcode retains 5 gitcode-only commits on that branch
   (BINARY collation, Windows compat, etc.) that should not be lost.

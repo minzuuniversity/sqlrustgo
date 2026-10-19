@@ -20,7 +20,9 @@ DURATIONS = [
     ("72h", 72*60,  999_999_999),
 ]
 THREADS = 8
-GITEA_TOKEN = "5518d1752693805a72096591a3cdfee718b6d049"
+# The Gitea token used to be hardcoded here. Those values were live and
+# are tracked as a leak in #5381 - there is no baked-in fallback.
+GITEA_TOKEN = os.environ.get("GITEA_TOKEN", "")
 GITEA_HOST  = "192.168.0.250"
 REPO        = "openclaw/sqlrustgo"
 ISSUE       = 3225

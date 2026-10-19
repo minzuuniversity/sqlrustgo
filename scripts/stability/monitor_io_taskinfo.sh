@@ -13,7 +13,11 @@ fi
 DIR=$(ls -td test_results/wired_soak_72h_* 2>/dev/null | head -1)
 REPORT_FILE="$DIR/io_reports.log"
 
-if ! echo "details8488" | sudo -S true 2>/dev/null; then
+# The sudo password used to be hardcoded here. That value was live and is
+# tracked as a leak in #5381 - there is no baked-in fallback.
+: "${SUDO_PASS:?SUDO_PASS must be set (e.g. export SUDO_PASS=...) - see #5381}"
+
+if ! echo "$SUDO_PASS" | sudo -S true 2>/dev/null; then
     echo "FATAL: sudo failed" >&2
     exit 1
 fi
@@ -27,7 +31,7 @@ while true; do
     TS=$(date '+%Y-%m-%d %H:%M:%S')
     
     # taskinfo + python parse for unit safety
-    PARSED=$(echo "details8488" | sudo -S taskinfo $SERVER_PID 2>/dev/null | python3 -c "
+    PARSED=$(echo "$SUDO_PASS" | sudo -S taskinfo $SERVER_PID 2>/dev/null | python3 -c "
 import sys, re
 for line in sys.stdin:
     if line.startswith('bytes read:'):

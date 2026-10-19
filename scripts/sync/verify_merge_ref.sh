@@ -35,7 +35,9 @@
 # Environment (defaults match the sibling sync scripts):
 #   GITEA_URL   default http://192.168.0.252:3000
 #   GITEA_USER  default openclaw
-#   GITEA_PASS  default details8848
+#   GITEA_PASS  REQUIRED — no default. It used to be a hardcoded value;
+#               that value was live and is tracked as a leak in #5381.
+#               export GITEA_PASS="$(cat ~/.ssh/openclaw-gitea.PAT)"
 #   GITEA_REPO  default openclaw/sqlrustgo
 #
 # Exit codes:
@@ -48,13 +50,20 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 GITEA_URL="${GITEA_URL:-http://192.168.0.252:3000}"
 GITEA_USER="${GITEA_USER:-openclaw}"
-GITEA_PASS="${GITEA_PASS:-details8848}"
+# The password used to default to a hardcoded value. That value was live
+# and is tracked as a leak in #5381 — there is no baked-in fallback.
+: "${GITEA_PASS:?GITEA_PASS must be set (e.g. export GITEA_PASS=\"\$(cat ~/.ssh/openclaw-gitea.PAT)\") — see #5381}"
+GITEA_PASS="${GITEA_PASS}"
 GITEA_REPO="${GITEA_REPO:-openclaw/sqlrustgo}"
-AUTH_URL="http://${GITEA_USER}:${GITEA_PASS}@${GITEA_URL#http://}/${GITEA_REPO}.git"
+REPO_URL="${GITEA_URL}/${GITEA_REPO}.git"
+# The credential travels in an http.extraheader rather than inside the
+# URL: a credential in a URL leaks into the process table, .git/config
+# and CI logs. Basic encoding accepts either a token or a password.
+AUTH_HEADER="Authorization: Basic $(printf '%s:%s' "${GITEA_USER}" "${GITEA_PASS}" | base64 | tr -d '\n')"
 API="${GITEA_URL}/api/v1/repos/${GITEA_REPO}"
 
 MODE=""
@@ -108,7 +117,7 @@ verify_core() {
 
     echo "  RESULT: base ref $tip != merge_commit_sha $expected"
     echo "  fetching base branch to test reachability..."
-    if ! git fetch --no-tags --quiet "$AUTH_URL" \
+    if ! git -c "http.extraheader=$AUTH_HEADER" fetch --no-tags --quiet "$REPO_URL" \
          "+refs/heads/${base}:refs/verify-merge/base" 2>/dev/null; then
         echo "  ERROR: fetch failed" >&2
         return 2
@@ -158,7 +167,7 @@ print(d.get('merged', False), d.get('merge_commit_sha') or '-', d.get('base',{})
         exit 1
     fi
 
-    tip=$(git ls-remote "$AUTH_URL" "refs/heads/$base" 2>/dev/null | awk '{print $1}')
+    tip=$(git -c "http.extraheader=$AUTH_HEADER" ls-remote "$REPO_URL" "refs/heads/$base" 2>/dev/null | awk '{print $1}')
     [ -n "$tip" ] || { echo "ERROR: cannot read refs/heads/$base" >&2; exit 2; }
     echo "  ref tip:  ${tip:0:12}"
 
@@ -176,7 +185,7 @@ cleanup() {
     if [ -n "$PR_CREATED" ] && [ "$MERGED_OK" != "yes" ]; then
         api DELETE "/pulls/$PR_CREATED" >/dev/null 2>&1 || true
     fi
-    git push --no-verify -q "$AUTH_URL" \
+    git -c "http.extraheader=$AUTH_HEADER" push --no-verify -q "$REPO_URL" \
         ":refs/heads/$BASE" ":refs/heads/$FEAT" >/dev/null 2>&1 || true
     git update-ref -d refs/verify-merge/base 2>/dev/null || true
 }
@@ -196,7 +205,7 @@ tree=$(GIT_INDEX_FILE="$idx" git write-tree)
 rm -f "$idx"
 feat_sha=$(printf 'selftest: verify_merge_ref AC4 payload %s\n' "$ts" | git commit-tree "$tree" -p "$base_sha")
 
-git push --no-verify -q "$AUTH_URL" \
+git -c "http.extraheader=$AUTH_HEADER" push --no-verify -q "$REPO_URL" \
     "$base_sha:refs/heads/$BASE" "$feat_sha:refs/heads/$FEAT" \
     || { echo "ERROR: push selftest branches failed" >&2; exit 2; }
 echo "  pushed $BASE / $FEAT"
@@ -239,7 +248,7 @@ if [ "$sha" = "-" ] || [ -z "$sha" ]; then
     exit 1
 fi
 
-tip=$(git ls-remote "$AUTH_URL" "refs/heads/$BASE" 2>/dev/null | awk '{print $1}')
+tip=$(git -c "http.extraheader=$AUTH_HEADER" ls-remote "$REPO_URL" "refs/heads/$BASE" 2>/dev/null | awk '{print $1}')
 [ -n "$tip" ] || { echo "ERROR: cannot read refs/heads/$BASE" >&2; exit 2; }
 echo "  ref tip:  ${tip:0:12}"
 

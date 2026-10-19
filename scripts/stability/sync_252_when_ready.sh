@@ -15,7 +15,11 @@ cd "$PROJECT_ROOT"
 
 GITEA_252="http://192.168.0.252:3000"
 GITEA_250="http://192.168.0.250:3000"
-AUTH="openclaw:details8848"
+# The Gitea credentials used to be hardcoded here. Those values were live
+# and are tracked as a leak in #5381 — there is no baked-in fallback.
+: "${GITEA_USER:?GITEA_USER must be set (e.g. export GITEA_USER=openclaw) — see #5381}"
+: "${GITEA_TOKEN:?GITEA_TOKEN must be set (e.g. export GITEA_TOKEN=\"\$(cat ~/.ssh/openclaw-gitea.PAT)\") — see #5381}"
+AUTH="${GITEA_USER}:${GITEA_TOKEN}"
 
 log() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] $*"; }
 err() { echo "[$(date '+%Y-%m-%dT%H:%M:%S')] ERROR: $*" >&2; }
