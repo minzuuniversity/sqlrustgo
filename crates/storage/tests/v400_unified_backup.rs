@@ -177,7 +177,10 @@ fn storage_engine_current_tx_id_zero_initially() {
 #[test]
 fn storage_engine_has_view_false_initially() {
     let storage = MemoryStorage::default();
-    assert!(!storage.has_view("any"));
+    // #5375: `has_view` takes the database explicitly — the engine-wide
+    // "current database" slot was removed in #5057 step 3, so a
+    // database-less view lookup is no longer expressible.
+    assert!(!storage.has_view("default", "any"));
 }
 
 // ===========================================================================

@@ -16,6 +16,16 @@
 //! Seed data must be flushed before asserting, or a backup/export-style
 //! read comes back empty and the test "proves" the wrong thing. (Same trap
 //! as #4938 and #4995.)
+//!
+//! ## #5375: no more `current_db`
+//!
+//! `current_db` / `set_current_db` were removed from the engine in #5057
+//! step 3 — the shared per-engine "active database" slot made every
+//! connection race on the same mutable field. The database is now named
+//! at the call site (`*_in_db`), and the database-less calls resolve
+//! against `DEFAULT_DATABASE`. These tests are migrated to that
+//! contract: where they used to switch databases and then act, they now
+//! name the database in the act itself.
 
 use sqlrustgo_storage::{FileStorage, StorageEngine, Value};
 use std::path::Path;
@@ -24,10 +34,10 @@ fn make_db(dir: &Path) -> FileStorage {
     FileStorage::new(dir.to_path_buf()).expect("open FileStorage")
 }
 
-fn insert_and_flush(storage: &mut FileStorage, table: &str, vals: Vec<Vec<Value>>) {
+fn insert_and_flush(storage: &mut FileStorage, db: &str, table: &str, vals: Vec<Vec<Value>>) {
     storage
-        .insert(table, vals)
-        .unwrap_or_else(|e| panic!("insert into {table}: {e:?}"));
+        .insert_in_db(db, table, vals)
+        .unwrap_or_else(|e| panic!("insert into {db}.{table}: {e:?}"));
     // Without this the row is still in the insert buffer and `scan` cannot
     // see it.
     storage.flush().expect("flush");
@@ -44,17 +54,17 @@ fn issue_5025_file_storage_tables_are_scoped_per_database() {
 
     // The same table name in both databases must not clash — that clash
     // ("Table 't1' already exists") is the exact symptom #5025 reported.
-    storage.set_current_db("d1").expect("switch to d1");
-    storage.create_table(&t1_table()).expect("create t1 in d1");
-    insert_and_flush(&mut storage, "t1", vec![vec![Value::Integer(1)]]);
-
-    storage.set_current_db("d2").expect("switch to d2");
     storage
-        .create_table(&t1_table())
+        .create_table_in_db("d1", &t1_table())
+        .expect("create t1 in d1");
+    insert_and_flush(&mut storage, "d1", "t1", vec![vec![Value::Integer(1)]]);
+
+    storage
+        .create_table_in_db("d2", &t1_table())
         .expect("same table name in d2 must not clash with d1's");
 
     // d2's t1 is a different table: empty.
-    let rows = storage.scan("t1").expect("scan d2's t1");
+    let rows = storage.scan_in_db("d2", "t1").expect("scan d2's t1");
     assert!(
         rows.is_empty(),
         "d2's t1 must not contain d1's row (shared namespace), got {} rows",
@@ -62,8 +72,7 @@ fn issue_5025_file_storage_tables_are_scoped_per_database() {
     );
 
     // d1's t1 still has its row.
-    storage.set_current_db("d1").expect("switch back to d1");
-    let rows = storage.scan("t1").expect("scan d1's t1");
+    let rows = storage.scan_in_db("d1", "t1").expect("scan d1's t1");
     assert_eq!(rows.len(), 1, "d1's t1 must still hold exactly its own row");
 }
 
@@ -76,18 +85,15 @@ fn issue_5025_file_storage_list_tables_is_scoped() {
     storage.create_database("d1").expect("create d1");
     storage.create_database("d2").expect("create d2");
 
-    storage.set_current_db("d1").expect("d1");
     storage
-        .create_table(&tbl("only_in_d1"))
+        .create_table_in_db("d1", &tbl("only_in_d1"))
         .expect("create d1 table");
 
-    storage.set_current_db("d2").expect("d2");
     storage
-        .create_table(&tbl("only_in_d2"))
+        .create_table_in_db("d2", &tbl("only_in_d2"))
         .expect("create d2 table");
 
-    storage.set_current_db("d1").expect("back to d1");
-    let tables = storage.list_tables();
+    let tables = storage.list_tables_in_db("d1");
     assert!(
         tables.iter().any(|t| t == "only_in_d1"),
         "d1 must list its own table, got {tables:?}"
@@ -105,25 +111,33 @@ fn issue_5025_file_storage_list_tables_is_scoped() {
     );
 }
 
-/// Switching to a database that does not exist must fail and must not
-/// change the active database.
+/// An operation that names a database which was never created must fail,
+/// and must leave the real databases untouched.
+///
+/// #5375: the old assertion was "switching to an unknown database must
+/// fail and must not change the active database". There is no active
+/// database any more, so the property that survives — and the one that
+/// still protects a caller — is that naming a non-existent database
+/// errors instead of silently answering about `default`.
 #[test]
 fn issue_5025_file_storage_unknown_database_is_rejected() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let mut storage = make_db(tmp.path());
     storage.create_database("d1").expect("create d1");
+    storage
+        .create_table_in_db("d1", &tbl("t1"))
+        .expect("create t1 in d1");
 
-    let before = storage.current_db();
-    let r = storage.set_current_db("no_such_db");
+    let r = storage.get_table_info_in("no_such_db", "t1");
     assert!(
         r.is_err(),
-        "switching to an unknown database must error, got {:?}",
+        "naming an unknown database must error, got {:?}",
         r.map(|_| "Ok")
     );
-    assert_eq!(
-        storage.current_db(),
-        before,
-        "a rejected switch must leave the active database unchanged"
+
+    assert!(
+        storage.has_table_in("d1", "t1"),
+        "a rejected lookup must not disturb d1"
     );
 }
 
@@ -157,8 +171,8 @@ fn tbl(name: &str) -> sqlrustgo_storage::TableInfo {
 }
 
 /// `list_tables_in_db` must enumerate a stated database's tables without
-/// flipping the engine-wide `current_db` — the read lock held by
-/// `SHOW TABLES FROM` cannot do that (`set_current_db` needs `&mut`).
+/// touching any other database — the read lock held by
+/// `SHOW TABLES FROM` cannot mutate the engine's state at all.
 #[test]
 fn issue_5025_list_tables_in_db_returns_target_database_tables() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -167,20 +181,23 @@ fn issue_5025_list_tables_in_db_returns_target_database_tables() {
     storage.create_database("d1").expect("create d1");
     storage.create_database("d2").expect("create d2");
 
-    storage.set_current_db("d1").expect("switch to d1");
-    storage.create_table(&tbl("t1")).expect("create t1 in d1");
+    storage
+        .create_table_in_db("d1", &tbl("t1"))
+        .expect("create t1 in d1");
 
-    storage.set_current_db("d2").expect("switch to d2");
-    storage.create_table(&tbl("t1")).expect("create t1 in d2");
-    storage.create_table(&tbl("t2")).expect("create t2 in d2");
+    storage
+        .create_table_in_db("d2", &tbl("t1"))
+        .expect("create t1 in d2");
+    storage
+        .create_table_in_db("d2", &tbl("t2"))
+        .expect("create t2 in d2");
 
-    // current_db stays d2 throughout — the answer must not depend on it.
     let mut d1_tables = storage.list_tables_in_db("d1");
     d1_tables.sort();
     assert_eq!(
         d1_tables,
         vec!["t1".to_string()],
-        "list_tables_in_db(d1) must list only d1's tables while current_db=d2"
+        "list_tables_in_db(d1) must list only d1's tables"
     );
 
     let mut d2_tables = storage.list_tables_in_db("d2");
@@ -191,31 +208,33 @@ fn issue_5025_list_tables_in_db_returns_target_database_tables() {
         "list_tables_in_db(d2) must list d2's tables"
     );
 
+    // #5375: there is no engine-wide current database left to be
+    // mutated. The property that survives is that the call is read-only:
+    // repeating it must give the same answer.
+    let mut d1_tables_again = storage.list_tables_in_db("d1");
+    d1_tables_again.sort();
     assert_eq!(
-        storage.current_db(),
-        "d2",
-        "list_tables_in_db must not mutate the engine-wide current database"
+        d1_tables_again, d1_tables,
+        "list_tables_in_db must be read-only"
     );
 }
 
-/// While `current_db` is the implicit default, a named database's tables
-/// must not leak into `list_tables()`. The `db_dir() == None` branch in
-/// `table_names()` lists every cache entry unfiltered, but every cache
-/// key is scoped (`tbl()` always applies `scoped_key`) — so the unscoped
-/// "list everything" shortcut reports named databases' tables under
-/// `default`.
+/// The default database's `list_tables` must not leak a named database's
+/// tables. The `db_dir() == None` branch in `table_names()` lists every
+/// cache entry unfiltered, but every cache key is scoped (`tbl()` always
+/// applies `scoped_key`) — so the unscoped "list everything" shortcut
+/// must still not report named databases' tables under `default`.
 #[test]
 fn issue_5025_file_storage_default_database_does_not_leak_named_database_tables() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let mut storage = make_db(tmp.path());
 
     storage.create_database("d1").expect("create d1");
-    storage.set_current_db("d1").expect("switch to d1");
     storage
-        .create_table(&tbl("only_in_d1"))
+        .create_table_in_db("d1", &tbl("only_in_d1"))
         .expect("create table in d1");
 
-    storage.set_current_db("default").expect("back to default");
+    // The database-less listing resolves against `default`.
     let tables = storage.list_tables();
     assert!(
         !tables.iter().any(|t| t == "only_in_d1"),

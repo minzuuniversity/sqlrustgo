@@ -2132,6 +2132,84 @@ mod tests {
             ) -> SqlResult<Vec<Record>> {
                 self.inner.scan_in_tx_db(db, table, reader_tx)
             }
+            fn list_tables_in_db(&self, db: &str) -> Vec<String> {
+                self.inner.list_tables_in_db(db)
+            }
+            fn scan_with_filter_in_db(
+                &self,
+                db: &str,
+                table: &str,
+                filter: &dyn Fn(&Record) -> bool,
+            ) -> SqlResult<Vec<Record>> {
+                self.inner.scan_with_filter_in_db(db, table, filter)
+            }
+            fn scan_with_index_in_db(
+                &self,
+                db: &str,
+                table: &str,
+                index_name: &str,
+                key: &Value,
+            ) -> SqlResult<Vec<Record>> {
+                self.inner.scan_with_index_in_db(db, table, index_name, key)
+            }
+            fn parallel_scan_in_db(
+                &self,
+                db: &str,
+                table: &str,
+                num_partitions: usize,
+            ) -> SqlResult<Vec<Box<dyn Iterator<Item = Record> + Send>>> {
+                self.inner.parallel_scan_in_db(db, table, num_partitions)
+            }
+            fn insert_in_db(
+                &mut self,
+                db: &str,
+                table: &str,
+                records: Vec<Record>,
+            ) -> SqlResult<()> {
+                self.inner.insert_in_db(db, table, records)
+            }
+            fn delete_in_db(
+                &mut self,
+                db: &str,
+                table: &str,
+                filters: &[Value],
+            ) -> SqlResult<usize> {
+                self.inner.delete_in_db(db, table, filters)
+            }
+            fn delete_collect_pks_in_db(
+                &mut self,
+                db: &str,
+                table: &str,
+                filters: &[Value],
+            ) -> SqlResult<Vec<Value>> {
+                self.inner.delete_collect_pks_in_db(db, table, filters)
+            }
+            fn delete_if_in_db(
+                &mut self,
+                db: &str,
+                table: &str,
+                filter: &RowFilter,
+            ) -> SqlResult<usize> {
+                self.inner.delete_if_in_db(db, table, filter)
+            }
+            fn update_in_db(
+                &mut self,
+                db: &str,
+                table: &str,
+                filters: &[Value],
+                updates: &[(usize, Value)],
+            ) -> SqlResult<usize> {
+                self.inner.update_in_db(db, table, filters, updates)
+            }
+            fn update_if_in_db(
+                &mut self,
+                db: &str,
+                table: &str,
+                filter: &RowFilter,
+                mutation: &RowMutation,
+            ) -> SqlResult<usize> {
+                self.inner.update_if_in_db(db, table, filter, mutation)
+            }
             fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
                 self.scan_calls.fetch_add(1, Ordering::SeqCst);
                 self.inner.scan(table)
@@ -2487,7 +2565,6 @@ mod tests {
                 columns: vec![sqlrustgo_parser::IndexColumnSpec::column("a")],
                 is_unique: false,
                 original_sql: String::new(),
-                clustered: false,
             })
             .unwrap();
         storage.drop_index("t", "a").unwrap();
@@ -2531,7 +2608,6 @@ mod tests {
             body: "".into(),
             update_columns: None,
             original_sql: String::new(),
-            clustered: false,
         };
         storage.create_trigger(trigger).unwrap();
         assert!(storage.get_trigger("trig1").is_some());
@@ -2547,7 +2623,7 @@ mod tests {
         let storage = WalStorage::new(inner, wal).unwrap();
         let indexes = storage.list_indexes("t");
         assert!(indexes.is_empty());
-        assert!(!storage.has_view("v"));
+        assert!(!storage.has_view(crate::engine::DEFAULT_DATABASE, "v"));
     }
 
     #[test]

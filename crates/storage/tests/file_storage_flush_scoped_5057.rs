@@ -40,9 +40,16 @@
 //! 2. A delete in a non-active database is persisted too — the delete
 //!    marker is scoped the same way the insert marker is.
 //! 3. The two families stay distinct: naming a database routes there,
-//!    omitting it still follows `current_db`. A refactor that merged them
-//!    would let a caller who named `d2` write into the last `USE`.
+//!    omitting it lands in `DEFAULT_DATABASE`. A refactor that merged them
+//!    would let a caller who named `d2` write into `default`.
 //! 4. Delta files stay per-database.
+//!
+//! #5375: `current_db` / `set_current_db` were removed from the engine in
+//! #5057 step 3. `flush()` is now database-agnostic — every dirty entry
+//! carries its own database — and the database-less family resolves
+//! against `DEFAULT_DATABASE`. The tests below are migrated accordingly:
+//! where they used to switch the active database and then act, they now
+//! name the database in the act itself.
 
 use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo, Value};
 
@@ -124,9 +131,9 @@ fn issue_5057_flush_persists_rows_of_every_database() {
     let (tmp, mut storage) = fresh();
     two_databases(&mut storage);
 
-    // Flush while d1 is the active database, so d2 is the one being
-    // proved reachable.
-    storage.set_current_db("d1").expect("use d1");
+    // #5375: `flush()` is database-agnostic now — every dirty entry
+    // carries its own database, and there is no "active database" to
+    // be in. d2 is the one being proved reachable.
     storage.flush().expect("flush");
 
     // Read the files directly. `scan_in_db` merges the write buffer, so it
@@ -153,7 +160,6 @@ fn issue_5057_flush_persists_rows_of_every_database() {
 fn issue_5057_cross_db_flush_survives_reopen() {
     let (tmp, mut storage) = fresh();
     two_databases(&mut storage);
-    storage.set_current_db("d1").expect("use d1");
     storage.flush().expect("flush");
     drop(storage);
 
@@ -183,7 +189,6 @@ fn issue_5057_cross_db_delete_is_persisted() {
         .delete_in_db("d2", "t", &[Value::Integer(22)])
         .expect("delete from d2.t");
 
-    storage.set_current_db("d1").expect("use d1");
     storage.flush().expect("flush");
     drop(storage);
 
@@ -191,12 +196,12 @@ fn issue_5057_cross_db_delete_is_persisted() {
     assert_eq!(
         ids(&reopened.scan_in_db("d2", "t").expect("scan d2.t")),
         vec![21, 23],
-        "the deletion in the non-active database was not persisted"
+        "the deletion in d2 was not persisted"
     );
     assert_eq!(
         ids(&reopened.scan_in_db("d1", "t").expect("scan d1.t")),
         vec![11, 12, 13],
-        "the deletion leaked into the active database"
+        "the deletion leaked into d1"
     );
 }
 
@@ -207,7 +212,6 @@ fn issue_5057_cross_db_delete_is_persisted() {
 fn issue_5057_second_flush_does_not_duplicate_rows() {
     let (_tmp, mut storage) = fresh();
     two_databases(&mut storage);
-    storage.set_current_db("d1").expect("use d1");
 
     storage.flush().expect("first flush");
     storage.flush().expect("second flush");
@@ -232,35 +236,43 @@ fn issue_5057_second_flush_does_not_duplicate_rows() {
 // 2. Control group: the two families must stay distinct
 // ---------------------------------------------------------------------
 
-/// Control group. Inserting without naming a database still follows
-/// `current_db`.
+/// Control group. Inserting without naming a database lands in
+/// `DEFAULT_DATABASE`.
+///
+/// #5375: the engine-wide "current database" slot was removed in #5057
+/// step 3, so the database-less family has nothing to follow — it
+/// resolves against `default`, and `default`'s tables live in the
+/// storage's root directory rather than in a `default/` sub-directory.
 ///
 /// If a refactor routed the database-less family through the `(db, table)`
 /// plumbing incorrectly — or, worse, made the named family fall back to
-/// `current_db` — this fails first. The named-database assertions above
+/// `default` — this fails first. The named-database assertions above
 /// would still pass, because they name their target on every call.
 #[test]
-fn issue_5057_unnamed_family_still_follows_current_db() {
+fn issue_5057_unnamed_family_lands_in_the_default_database() {
     let (tmp, mut storage) = fresh();
     storage.create_database("d1").expect("create d1");
     storage.create_database("d2").expect("create d2");
-    storage.set_current_db("d2").expect("use d2");
-    storage.create_table(&tbl("t")).expect("create t in d2");
+    storage
+        .create_table(&tbl("t"))
+        .expect("create t in default");
     storage.insert("t", vec![row(31), row(32)]).expect("insert");
 
     assert_eq!(
-        ids(&storage.scan_in_db("d2", "t").expect("scan d2.t")),
+        ids(&storage.scan_in_db("default", "t").expect("scan default.t")),
         vec![31, 32],
-        "the database-less family stopped following current_db"
+        "the database-less family must land in `default`"
     );
 
     storage.flush().expect("flush");
-    let body = std::fs::read_to_string(tmp.path().join("d2/t.json")).expect("read d2/t.json");
+    // `default`'s tables live in the storage root — there is no
+    // `default/` sub-directory.
+    let body = std::fs::read_to_string(tmp.path().join("t.json")).expect("read default/t.json");
     let json: serde_json::Value = serde_json::from_str(&body).expect("valid json");
     assert_eq!(
         json["rows"].as_array().expect("rows").len(),
         2,
-        "the database-less family's rows were not persisted under current_db"
+        "the database-less family's rows were not persisted under `default`"
     );
 }
 
@@ -277,7 +289,6 @@ fn issue_5057_unnamed_family_still_follows_current_db() {
 fn issue_5057_delta_files_are_per_database() {
     let (tmp, mut storage) = fresh();
     two_databases(&mut storage);
-    storage.set_current_db("d1").expect("use d1");
     storage.flush().expect("flush");
 
     let d1_delta = tmp.path().join("d1/t.delta");

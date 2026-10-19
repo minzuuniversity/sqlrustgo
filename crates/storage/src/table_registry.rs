@@ -171,6 +171,7 @@ mod tests {
 
             partition_info: None,
             compression: None,
+            clustered: false,
         }
     }
 

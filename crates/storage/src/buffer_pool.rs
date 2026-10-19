@@ -146,8 +146,17 @@ impl BufferPool {
             // Update stats
             let mut stats = self.stats.write().unwrap();
             stats.misses += 1;
-            // PR-A / #5305: pages_visited + cache_misses
-            stats.pages_visited += 1;
+            // PR-A / #5305: cache_misses.
+            //
+            // #5375: this branch must NOT bump `pages_visited`. A miss
+            // means the page was *not* in the pool, so no pool page was
+            // visited — the visit is counted by whoever actually brings
+            // the page in (`insert()`, or `get_or_load`'s loader path).
+            // Bumping here made `get_or_load` count the same page twice
+            // on a cold path (miss here + insert there), so a single
+            // `get_or_load` reported `pages_visited == 2` while touching
+            // exactly one page. `pages_visited` is an EXPLAIN signal
+            // about page traffic, so it must count pages, not events.
             stats.cache_misses += 1;
 
             None

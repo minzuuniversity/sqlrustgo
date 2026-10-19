@@ -17,10 +17,16 @@
 //!
 //! (3) is what the pre-existing `test_e2e_index_survives_restart` was
 //! failing on; (1) and (2) had no coverage at all.
+//!
+//! #5375: `current_db` / `set_current_db` were removed from the engine in
+//! #5057 step 3. The database-less helpers (`insert_table`, `insert`,
+//! `create_index`, `has_index`, `get_table`, `scan`) all resolve against
+//! `DEFAULT_DATABASE` now, so the database is named at the call site:
+//! `create_table_in_db` / `insert_in_db` for the write side, and
+//! `get_table_info_in` / `scan_in_db` / `scan_with_index_in_db` for the
+//! read side.
 
-use sqlrustgo_storage::{
-    ColumnDefinition, FileStorage, StorageEngine, TableData, TableInfo, Value,
-};
+use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo, Value};
 use std::path::{Path, PathBuf};
 
 fn tbl(name: &str) -> TableInfo {
@@ -55,23 +61,19 @@ fn fresh_data_dir(tag: &str) -> PathBuf {
     data
 }
 
-/// Create `db`, write one row and one index into `table`, then flush.
+/// Create the table in `db`, write one row into it, and flush.
+///
+/// `create_table_in_db` also pre-creates the primary-key index under the
+/// named database's own scoped key and writes it into that database's
+/// directory — which is what the restart tests below read back.
 fn write_one(data: &Path, db: &str, table: &str, id: i64) {
     let mut fs = FileStorage::new(data.to_path_buf()).unwrap();
     if db != "default" {
         fs.create_database(db).unwrap();
     }
-    fs.set_current_db(db).unwrap();
-    fs.insert_table(
-        table.into(),
-        TableData {
-            info: tbl(table),
-            rows: vec![],
-        },
-    )
-    .unwrap();
-    fs.insert(table, vec![vec![Value::Integer(id)]]).unwrap();
-    fs.create_index(table, "id", 0).unwrap();
+    fs.create_table_in_db(db, &tbl(table)).unwrap();
+    fs.insert_in_db(db, table, vec![vec![Value::Integer(id)]])
+        .unwrap();
     fs.flush().unwrap();
 }
 
@@ -87,13 +89,12 @@ fn table_in_a_named_database_survives_restart() {
         "precondition: shop/t.json must exist on disk"
     );
 
-    let mut fs = FileStorage::new(data.clone()).unwrap();
-    fs.set_current_db("shop").unwrap();
+    let fs = FileStorage::new(data.clone()).unwrap();
     assert!(
-        fs.get_table("t").is_some(),
+        fs.get_table_info_in("shop", "t").is_ok(),
         "table must be back in the cache after reopening"
     );
-    let rows = fs.scan("t").unwrap();
+    let rows = fs.scan_in_db("shop", "t").unwrap();
     assert_eq!(
         rows.len(),
         1,
@@ -108,10 +109,14 @@ fn index_in_a_named_database_survives_restart() {
     write_one(&data, "shop", "t", 1);
     assert!(data.join("shop").join("t_idx_id.json").exists());
 
-    let mut fs = FileStorage::new(data.clone()).unwrap();
-    fs.set_current_db("shop").unwrap();
+    let fs = FileStorage::new(data.clone()).unwrap();
+    // The index must come back under the *named* database's scoped key.
+    // `scan_with_index_in_db` is the database-scoped form of the lookup
+    // (`has_index` is database-less and therefore only ever sees
+    // `default`), so it is what proves the scoped key was used.
     assert!(
-        fs.has_index("t", "id"),
+        fs.scan_with_index_in_db("shop", "t", "id", &Value::Integer(1))
+            .is_ok(),
         "the index must load back under the scoped key"
     );
 }
@@ -134,17 +139,25 @@ fn same_table_name_in_two_databases_stays_separate_across_restart() {
     write_one(&data, "d1", "shared", 11);
     write_one(&data, "d2", "shared", 22);
 
-    let mut fs = FileStorage::new(data.clone()).unwrap();
-    fs.set_current_db("d1").unwrap();
-    let a = fs.scan("shared").unwrap();
-    fs.set_current_db("d2").unwrap();
-    let b = fs.scan("shared").unwrap();
+    let fs = FileStorage::new(data.clone()).unwrap();
+    let a = fs.scan_in_db("d1", "shared").unwrap();
+    let b = fs.scan_in_db("d2", "shared").unwrap();
 
     assert_eq!(a.len(), 1, "d1 must see exactly its own row, got {a:?}");
     assert_eq!(b.len(), 1, "d2 must see exactly its own row, got {b:?}");
     assert_eq!(a[0][0], Value::Integer(11));
     assert_eq!(b[0][0], Value::Integer(22));
-    assert!(fs.has_index("shared", "id"), "d2's index must load too");
+    // Both databases' indexes must load back under their own scoped keys.
+    assert!(
+        fs.scan_with_index_in_db("d1", "shared", "id", &Value::Integer(11))
+            .is_ok(),
+        "d1's index must load back under its own scoped key"
+    );
+    assert!(
+        fs.scan_with_index_in_db("d2", "shared", "id", &Value::Integer(22))
+            .is_ok(),
+        "d2's index must load back under its own scoped key"
+    );
 }
 
 /// NOTE: this test does **not** pin the `_idx_` skip in `load_all_tables`.

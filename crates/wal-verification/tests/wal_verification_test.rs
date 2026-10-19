@@ -1,6 +1,5 @@
 use sqlrustgo_wal_verification::{
-    PropertySeverity, WALInvariant, WALInvariantResult, WALLog, WALOperation, WALProperty,
-    WALRecord, WALState,
+    PropertySeverity, WALInvariant, WALLog, WALOperation, WALProperty, WALRecord, WALState,
 };
 
 #[test]

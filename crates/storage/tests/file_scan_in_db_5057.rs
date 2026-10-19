@@ -1,12 +1,18 @@
 //! #5057: `FileStorage`'s `parallel_scan_in_db` / `scan_with_filter_in_db`
-//! must resolve against the database they are given, not the shared
-//! `current_db`.
+//! must resolve against the database they are given, not the engine-wide
+//! "current database".
 //!
 //! Both used to fall through to the `StorageEngine` trait defaults, which
 //! discard the database argument and delegate to the `current_db` variants.
 //! `d1` and `d2` here hold tables of *different shapes* (`d1`'s row has two
 //! values, `d2`'s has three), so a scan that resolves the wrong database
 //! cannot pass by coincidence.
+//!
+//! #5375: `current_db` / `set_current_db` were removed from the engine
+//! (#5057 step 3). The database-less variants now resolve against
+//! `DEFAULT_DATABASE`, so `default` is seeded with a `t` of its own —
+//! distinguishable from both `d1` and `d2` — and the database-less
+//! assertions below pin that.
 
 use sqlrustgo_storage::engine::StorageEngine;
 use sqlrustgo_storage::{FileStorage, Record, Value};
@@ -34,8 +40,8 @@ fn row(id: i64, v: i64, w: i64) -> Record {
     vec![Value::Integer(id), Value::Integer(v), Value::Integer(w)]
 }
 
-/// A `FileStorage` holding `t` in both `d1` and `d2`, current database left
-/// at `d2` so every call below has to name its database explicitly.
+/// A `FileStorage` holding `t` in `d1`, `d2` and `default`, each with a
+/// row of its own.
 fn seeded(dir: &std::path::Path) -> FileStorage {
     let mut s = FileStorage::new(dir.to_path_buf()).expect("open");
     s.create_database("d1").expect("create d1");
@@ -49,7 +55,11 @@ fn seeded(dir: &std::path::Path) -> FileStorage {
     s.insert_in_db("d2", "t", vec![row(2, 20, 200)])
         .expect("insert into d2");
 
-    s.set_current_db("d2").expect("current db is d2");
+    s.create_table_in_db("default", &table_info())
+        .expect("t in default");
+    s.insert_in_db("default", "t", vec![row(3, 30, 300)])
+        .expect("insert into default");
+
     s
 }
 
@@ -151,17 +161,20 @@ fn scan_with_filter_in_db_honours_a_rejecting_filter() {
         .is_empty());
 }
 
-/// The current-database variants still work — the fix moved their bodies into
+/// The database-less variants still work — the fix moved their bodies into
 /// `_in` variants and must not have changed what they return.
+///
+/// #5375: they resolve against `DEFAULT_DATABASE` now, so they answer
+/// with `default`'s row — not `d1`'s and not `d2`'s.
 #[test]
-fn the_current_database_variants_are_unchanged() {
+fn the_database_less_variants_resolve_against_the_default_database() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let s = seeded(tmp.path()); // current db is d2
+    let s = seeded(tmp.path());
 
     assert_eq!(
         s.scan_with_filter("t", &|_| true).expect("scan"),
-        vec![row(2, 20, 200)],
-        "the no-db form follows current_db, which is d2 here"
+        vec![row(3, 30, 300)],
+        "the no-db form resolves against `default`"
     );
     let mut partitioned: Vec<Record> = s
         .parallel_scan("t", 4)
@@ -170,5 +183,5 @@ fn the_current_database_variants_are_unchanged() {
         .flat_map(|p| p.collect::<Vec<Record>>())
         .collect();
     partitioned.sort_by_key(|r| format!("{r:?}"));
-    assert_eq!(partitioned, vec![row(2, 20, 200)]);
+    assert_eq!(partitioned, vec![row(3, 30, 300)]);
 }

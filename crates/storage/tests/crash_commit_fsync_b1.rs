@@ -16,13 +16,13 @@
 mod coord;
 
 use coord::*;
-use sqlrustgo_storage::fault_injection::FaultPoint;
+use sqlrustgo_storage::fault_injection::{FaultPoint, Signal};
 
 /// A committed transaction must survive `SIGKILL` taken at the
 /// durability boundary.
 #[test]
 fn committed_transaction_survives_sigkill_at_commit_fsync() {
-    let bin = server_bin();
+    let bin = require_server_bin();
     let my = mysql_bin();
     let scratch = Scratch::new("commit_fsync");
     let port = free_port();
@@ -99,14 +99,28 @@ fn committed_transaction_survives_sigkill_at_commit_fsync() {
     );
 }
 
-/// The control: the same crash with **no** committed transaction beyond
-/// the seeded rows must leave exactly those rows — not more, not fewer.
+/// The control: the scenario issues exactly **one** commit — the
+/// autocommit seed — so the fault point fires there and nowhere else.
+/// After the crash, exactly the seeded rows must remain: not more, not
+/// fewer.
 ///
 /// Without this, the test above could pass on a harness that simply
 /// never crashed anything and happened to see the right data.
+///
+/// #5375: the old version asserted the fault point must **not** fire
+/// ("this scenario issues no COMMIT"). That premise is false: an
+/// autocommit INSERT *is* a commit, so the point fires on the seed. The
+/// product was right and the assertion was wrong — and it was wrong in
+/// the direction that would have let a harness which never reached the
+/// boundary look healthy.
+///
+/// What the control is actually for — proving the harness reached the
+/// boundary at all — is now asserted directly: the signal must exist
+/// and must name this run's id, this server's pid, and the armed point.
+/// A leftover signal from an earlier run cannot stand in for this one.
 #[test]
 fn crash_without_new_commit_preserves_exactly_the_seeded_rows() {
-    let bin = server_bin();
+    let bin = require_server_bin();
     let my = mysql_bin();
     let scratch = Scratch::new("control");
     let port = free_port();
@@ -124,14 +138,28 @@ fn crash_without_new_commit_preserves_exactly_the_seeded_rows() {
     )
     .expect("seed");
 
-    // The fault point only fires on a COMMIT, and this scenario issues
-    // none, so it must never be reached — and the test says so rather
-    // than blocking for the timeout.
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    assert!(
-        !arm.signal_file().exists(),
-        "control: the fault point fired without any COMMIT, so the hook is \
-         not where this test assumes it is"
+    // The seed's autocommit commit is the only commit this scenario
+    // issues, so the fault point must have been reached there — and the
+    // signal must be this run's and this server's.
+    let raw = std::fs::read_to_string(arm.signal_file()).unwrap_or_else(|e| {
+        panic!(
+            "control: the fault point must be reached at the seed's commit \
+             (an autocommit INSERT commits): {e}"
+        )
+    });
+    let sig = Signal::parse(&raw).expect("control: the signal file must parse");
+    assert_eq!(
+        sig.run_id, arm.run_id,
+        "control: the signal is from a different run"
+    );
+    assert_eq!(
+        sig.pid, child_pid,
+        "control: the signal is from a different server"
+    );
+    assert_eq!(
+        sig.point,
+        FaultPoint::AfterCommitFsync.as_str(),
+        "control: the signal names the wrong fault point"
     );
     assert_eq!(
         scalar(&my, server.port(), "SELECT IFNULL(SUM(id),0) FROM d1.t").unwrap(),
@@ -149,7 +177,7 @@ fn crash_without_new_commit_preserves_exactly_the_seeded_rows() {
         sync_mode: arm.sync_mode.clone(),
         run_id: arm.run_id.clone(),
         child_pid,
-        reached: false,
+        reached: true,
         expected_sum: 3,
         actual_sum: after.clone(),
         outcome: "PASS".into(),

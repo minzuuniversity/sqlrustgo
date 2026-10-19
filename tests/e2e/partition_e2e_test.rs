@@ -49,6 +49,10 @@ fn test_storage_partition_info_field() {
         check_constraints: vec![],
         collations: std::collections::HashMap::new(),
         original_sql: String::new(),
+        // #5375: `TableInfo` gained the `clustered` flag; this literal
+        // predates it and stopped compiling. The test is about
+        // `partition_info`, so the flag stays at its default.
+        clustered: false,
         partition_info: Some(PartitionInfo {
             partition_type: PartitionType::Range,
             column: "id".to_string(),

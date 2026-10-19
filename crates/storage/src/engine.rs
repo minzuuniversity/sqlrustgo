@@ -2793,8 +2793,16 @@ impl MemoryStorage {
     /// returns owned `Vec<Record>`. `tables: HashMap<...>` is intentionally
     /// untouched — the source of truth for transactions / filter scans
     /// remains there.
+    ///
+    /// #5375: the lookup is a plain `BufferPool::get`, not a
+    /// `get_or_load`. The old cold-path loader returned an empty `Page`
+    /// and `get_or_load` *inserted* that blank page into the pool, so
+    /// every evicted page-id re-entered the cache as a blank page and
+    /// evicted a live page in turn — a cascade that wiped every
+    /// surviving page whenever the row count exceeded the pool
+    /// capacity. A miss now means "this page was evicted", the row is
+    /// dropped, and the pages that are still cached are left alone.
     fn scan_via_bufferpool(&self, table: &str) -> SqlResult<Vec<Record>> {
-        use crate::page::Page;
         let pool = self
             .buffer_pool
             .as_ref()
@@ -2806,13 +2814,9 @@ impl MemoryStorage {
         };
         let mut records = Vec::with_capacity(ids.len());
         for &page_id in ids {
-            let page = pool.get_or_load(page_id, |_id| {
-                // Cold-cache fallback (PR-A.5 precedent): return an empty
-                // page for an unknown page-id; the deserialiser will return
-                // `None` and the slot is skipped, so the scan returns the
-                // records it can read. Disk persistence lands in a future PR.
-                Arc::new(Page::new(page_id))
-            });
+            let Some(page) = pool.get(page_id) else {
+                continue;
+            };
             if let Some(record) = crate::record_page_codec::deserialize(&page.data) {
                 records.push(record);
             }
@@ -2825,7 +2829,6 @@ impl MemoryStorage {
     /// `tbl()` returns) so `SELECT * FROM db.t` reads from `db`'s
     /// page-id list.
     fn scan_via_bufferpool_in_db(&self, db: &str, table: &str) -> SqlResult<Vec<Record>> {
-        use crate::page::Page;
         let pool = self
             .buffer_pool
             .as_ref()
@@ -2837,7 +2840,9 @@ impl MemoryStorage {
         };
         let mut records = Vec::with_capacity(ids.len());
         for &page_id in ids {
-            let page = pool.get_or_load(page_id, |_id| Arc::new(Page::new(page_id)));
+            let Some(page) = pool.get(page_id) else {
+                continue;
+            };
             if let Some(record) = crate::record_page_codec::deserialize(&page.data) {
                 records.push(record);
             }
@@ -4162,13 +4167,13 @@ mod tests {
     #[test]
     fn test_storage_engine_api_surface_v312_35() {
         fn _check_create_view<E: StorageEngine>(e: &mut E) {
-            let _f: fn(&mut E, crate::engine::ViewInfo) -> SqlResult<()> = E::create_view;
+            let _f: fn(&mut E, &str, crate::engine::ViewInfo) -> SqlResult<()> = E::create_view;
         }
         fn _check_get_view<E: StorageEngine>(e: &E) {
-            let _f: fn(&E, &str) -> Option<crate::engine::ViewInfo> = E::get_view;
+            let _f: fn(&E, &str, &str) -> Option<crate::engine::ViewInfo> = E::get_view;
         }
         fn _check_list_views<E: StorageEngine>(e: &E) {
-            let _f: fn(&E) -> Vec<String> = E::list_views;
+            let _f: fn(&E, &str) -> Vec<String> = E::list_views;
         }
         fn _check_set_cancel_flag<E: StorageEngine>(e: &mut E) {
             let _f: fn(&mut E, u64) -> SqlResult<()> = E::set_cancel_flag;
@@ -4189,10 +4194,11 @@ mod tests {
     fn test_storage_engine_api_surface_defaults_v312_35() {
         let storage = MemoryStorage::new();
         // Default-impl methods should be callable and return safe defaults.
-        assert!(!storage.has_view("does_not_exist"));
-        let views = StorageEngine::list_views(&storage);
+        assert!(!storage.has_view(crate::engine::DEFAULT_DATABASE, "does_not_exist"));
+        let views = StorageEngine::list_views(&storage, crate::engine::DEFAULT_DATABASE);
         assert!(views.is_empty(), "list_views default should be empty");
-        let got = StorageEngine::get_view(&storage, "does_not_exist");
+        let got =
+            StorageEngine::get_view(&storage, crate::engine::DEFAULT_DATABASE, "does_not_exist");
         assert!(got.is_none(), "get_view default should be None");
         let cancelled = StorageEngine::check_cancelled(&storage, 1);
         assert!(!cancelled, "check_cancelled default should be false");
@@ -4961,7 +4967,7 @@ mod tests {
     #[test]
     fn test_storage_engine_has_view_false() {
         let s = MemoryStorage::new();
-        assert!(!s.has_view("v"));
+        assert!(!s.has_view(crate::engine::DEFAULT_DATABASE, "v"));
     }
 
     #[test]
@@ -5346,7 +5352,7 @@ mod tests {
     #[test]
     fn test_has_view_default_false() {
         let s = MemoryStorage::new();
-        assert!(!s.has_view("v"));
+        assert!(!s.has_view(crate::engine::DEFAULT_DATABASE, "v"));
     }
 
     #[test]
@@ -5914,7 +5920,7 @@ fn memory_storage_legacy_new_returns_synthetic_zero_stats() {
 
 #[test]
 fn memory_storage_insert_via_bufferpool_bumps_pages_visited() {
-    use sqlrustgo_storage::{Record, Value};
+    use crate::engine::{Record, Value};
     use std::sync::Arc;
 
     let pool = Arc::new(BufferPool::new(8));
@@ -5944,7 +5950,7 @@ fn memory_storage_insert_via_bufferpool_bumps_pages_visited() {
 /// `file_storage_insert_100_records_*` regression.
 #[test]
 fn memory_storage_insert_100_records_via_bufferpool_bumps_pages_visited_at_least_100() {
-    use sqlrustgo_storage::{Record, Value};
+    use crate::engine::{Record, Value};
     use std::sync::Arc;
 
     let pool = Arc::new(BufferPool::new(256));
@@ -5967,7 +5973,7 @@ fn memory_storage_insert_100_records_via_bufferpool_bumps_pages_visited_at_least
 /// `file_storage_concurrent_inserts_via_bufferpool_do_not_corrupt`.
 #[test]
 fn memory_storage_concurrent_inserts_via_bufferpool_do_not_corrupt() {
-    use sqlrustgo_storage::{Record, Value};
+    use crate::engine::{Record, Value};
     use std::sync::Arc;
     use std::thread;
 
@@ -6008,7 +6014,7 @@ fn memory_storage_concurrent_inserts_via_bufferpool_do_not_corrupt() {
 /// doesn't surprise users.
 #[test]
 fn memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited() {
-    use sqlrustgo_storage::{Record, Value};
+    use crate::engine::{Record, Value};
     use std::sync::Arc;
 
     let pool = Arc::new(BufferPool::new(8));
@@ -6043,7 +6049,7 @@ fn memory_storage_scan_empty_table_returns_empty_with_bufferpool() {
 /// used, returning empty rows. Implementation lands in PR-B T6.
 #[test]
 fn memory_storage_scan_after_bufferpool_insert_bumps_pages_visited() {
-    use sqlrustgo_storage::{Record, Value};
+    use crate::engine::{Record, Value};
     use std::sync::Arc;
 
     let pool = Arc::new(BufferPool::new(8));
@@ -6080,7 +6086,7 @@ fn memory_storage_scan_after_bufferpool_insert_bumps_pages_visited() {
 /// sanity check, NOT a `scan_with_filter` round trip.
 #[test]
 fn memory_storage_scan_with_filter_works_with_bufferpool_via_scan() {
-    use sqlrustgo_storage::{Record, Value};
+    use crate::engine::{Record, Value};
     use std::sync::Arc;
 
     let pool = Arc::new(BufferPool::new(16));

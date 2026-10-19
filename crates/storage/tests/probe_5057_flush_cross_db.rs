@@ -3,6 +3,13 @@
 //! Prints only — asserts nothing, so it does not lock in current behaviour.
 //! Its job is to show which directory each dirty table's rows reach, and
 //! what `dirty_tables` currently contains after writes to two databases.
+//!
+//! #5375: `current_db` / `set_current_db` were removed from the engine in
+//! #5057 step 3, so there is no "active database" to select before a
+//! flush. `flush()` is now database-agnostic: every dirty entry carries its
+//! own database, and each database's rows are written to its own
+//! directory. The probe below still shows the on-disk layout, and the
+//! database-less read at the end now resolves against `default`.
 
 use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo, Value};
 
@@ -94,10 +101,7 @@ fn probe_two_databases_same_table_name() {
         .insert_in_db("d2", "t", vec![row(21), row(22), row(23)])
         .expect("insert d2.t");
 
-    // Select the database whose flush will run.
-    storage.set_current_db("d1").expect("use d1");
-
-    println!("current_db is now d1; flushing");
+    println!("flushing; no database is selected — flush is database-agnostic");
 
     // No assertion: show where the rows land.
     let flushed = storage.flush();
@@ -127,8 +131,11 @@ fn probe_two_databases_same_table_name() {
         println!("  top: {:?}", e.path());
     }
     let reopened = FileStorage::new(root.clone()).expect("reopen");
-    let rd1 = reopened.scan("t").map(|v| v.len()).unwrap_or(usize::MAX);
-    println!("after reopen, scan(\"t\") on current_db={rd1} rows");
+    let rd1 = reopened
+        .scan_in_db("d1", "t")
+        .map(|v| v.len())
+        .unwrap_or(usize::MAX);
+    println!("after reopen, scan_in_db(\"d1\",\"t\") = {rd1} rows");
     let rd2 = reopened
         .scan_in_db("d2", "t")
         .map(|v| v.len())
@@ -156,9 +163,8 @@ fn probe_update_path_dirty_marker() {
     // Delete one row from d2 only, via the db-named path.
     let _ = storage.delete_in_db("d2", "t", &[Value::Integer(21)]);
 
-    storage.set_current_db("d1").expect("use d1");
-    println!("current_db is d1; a delete touched d2.t");
+    println!("a delete touched d2.t; flushing");
     let flushed = storage.flush();
     println!("flush() -> {flushed:?}");
-    show_dir(&root, "data_dir after cross-db delete + flush from d1");
+    show_dir(&root, "data_dir after cross-db delete + flush");
 }
