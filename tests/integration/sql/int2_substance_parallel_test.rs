@@ -65,12 +65,39 @@ fn test_int2_sequential_skips_parallel() {
     engine
         .execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER)")
         .unwrap();
-    for i in 0..(PARALLEL_MIN_ROWS / 10) as i64 {
-        // Below threshold + degree 1 = definitely sequential
-        engine
-            .execute(&format!("INSERT INTO t VALUES ({}, {})", i, i % 100))
-            .unwrap();
-    }
+    // The rows are the same as before (200 000 of them, i.e. a tenth of the
+    // production parallel threshold) and the assertion below is unchanged —
+    // only the LOADING PATH differs.
+    //
+    // Why (issue #5379): one `INSERT` statement per row through
+    // `engine.execute` is O(N^2) for a table with a PRIMARY KEY. The
+    // engine's duplicate-key check consults `pk_lookup_cache`, but that
+    // cache is only usable while the table's change stamp is unchanged
+    // (`StorageEngine::table_change_stamp`), and every row mutation bumps
+    // the stamp — so the cache is invalidated by the very insert it would
+    // have accelerated, and each statement falls back to a full table scan.
+    // The engine's own comment records the shape of that cost: "measured
+    // 44s for 15000 rows" (O(N^2) ⇒ ~130 min for 200 000 rows).
+    //
+    // Measured on the CI runner (run 8081, `test` job 16520): this target
+    // was still running after 40+ minutes at 100% CPU, and the job's
+    // `timeout 9000` budget was about to be exhausted — which would have
+    // made "all 446 declared targets execute" (AC-2) impossible to
+    // demonstrate.
+    //
+    // `bulk_insert_records` inserts the same rows in ONE storage call
+    // (O(N)); the values and their order are identical, and the engine's
+    // public API is used — no storage-layer reach-in.
+    //
+    // The engine characteristic itself is filed separately (#5412); this PR
+    // does not change engine behaviour (AC-10).
+    let n = (PARALLEL_MIN_ROWS / 10) as i64;
+    let records: Vec<sqlrustgo_storage::Record> = (0..n)
+        .map(|i| vec![Value::Integer(i), Value::Integer(i % 100)])
+        .collect();
+    let inserted = engine.bulk_insert_records("t", records).unwrap();
+    assert_eq!(inserted as i64, n, "all rows must be inserted");
+    // Below threshold + degree 1 = definitely sequential
     let r = engine.execute("SELECT COUNT(*) FROM t").unwrap();
     assert!(!r.rows.is_empty());
 }

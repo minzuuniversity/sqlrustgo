@@ -183,6 +183,20 @@
       复核顺带查出桩自身两个坑（`cp` 写穿软链打到系统 `/usr/bin/mktemp`；
       本机 `rm` 是会挂起的可恢复删除 shim）→ 桩改为装在独立目录 + 前置 `PATH` +
       每例先断言桩生效 + harness 零删除，**四个场景在同一轮**实测通过
+- [x] **5.3m** CI 首次全量执行的**中间轮**实测（run 8081 / `test` job 16520，证据 §7.19）：
+      **446 个声明目标只执行了 150 个、296 个从未开始**（其中 53 个 TPC-H 目标）；
+      已产生结果的 158 个 = **155 ok / 2 FAILED**、累计 **2073.2 s**；
+      2 个失败**都做了基线对照**——#5398（g13：run 8031 改造前同用例同样 FAILED）/
+      #5411（`insert_db_isolation_5057`：基线 commit 直跑并行 300 次失败 5 次、单线程 150 次全过）
+      ⇒ **均非本 PR 引入**；`tpch_q6_q19_oracle_test` 未跑到 ⇒ **AC-2/AC-8 本轮无正面证据**
+- [x] **5.3n** 第 5、第 6 处降本（证据 §7.19(c-1)）：`int2_substance_parallel_test`
+      （200 000 行带主键逐行 INSERT = **O(N²)**，实测 > 43 min 未结束、外推 ≈130 min）与
+      `parallel_main_path_test`（`populate()` × 8 = **480 万条**逐行 INSERT）→
+      改用引擎**公开 API** `bulk_insert_records`（O(N)），
+      **数据行数与断言语义一个都没改**（`cargo check` → 0 error / 0 warning）；
+      顺带全仓程序化扫描 `tests/**/*.rs`（480 个文件）确认无同类漏网，
+      并新立 **#5412**（引擎带主键逐行 INSERT 的 O(N²)，本 PR 不改引擎）/
+      **#5413**（`parallel_main_path_test` 600k < 并行阈值 2M ⇒ 判别力为零）
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---

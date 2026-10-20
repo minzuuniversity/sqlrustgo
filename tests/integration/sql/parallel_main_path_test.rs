@@ -27,11 +27,24 @@ fn populate(engine: &mut ExecutionEngine<MemoryStorage>) {
     engine
         .execute("CREATE TABLE t (k INTEGER, v INTEGER)")
         .unwrap();
-    for i in 0..ROWS {
-        engine
-            .execute(&format!("INSERT INTO t VALUES ({}, {})", i % 1000, i))
-            .unwrap();
-    }
+    // The rows and the row count are unchanged — only the LOADING PATH is.
+    //
+    // Why (issue #5379): `populate()` is called 8 times across this file
+    // (6 call sites — one of them sits inside the `for parallel in [1, 2, 4]`
+    // loop and therefore runs 3 times), and each call used to issue 600 000
+    // single-row `INSERT` statements through `engine.execute` — 4.8 million
+    // full parse → plan → execute cycles on the CI runner.
+    // `bulk_insert_records` inserts the same rows in ONE storage call (O(N)),
+    // using the engine's public API.
+    //
+    // The table has no PRIMARY KEY, so this is not the O(N^2) duplicate-key
+    // path (see #5412) — it is simply 4.8 million statements that do not
+    // need to be statements.
+    let records: Vec<sqlrustgo_storage::Record> = (0..ROWS)
+        .map(|i| vec![Value::Integer(i as i64 % 1000), Value::Integer(i as i64)])
+        .collect();
+    let inserted = engine.bulk_insert_records("t", records).unwrap();
+    assert_eq!(inserted as usize, ROWS, "all rows must be inserted");
 }
 
 #[test]

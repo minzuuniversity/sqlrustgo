@@ -101,6 +101,24 @@ panic** —— 它们写死了本 PR 已删除的悬空符号链接目录（`tes
 `timeout -k 30 9000 cargo test … > test_report.log 2>&1`。实测证据见证据 §7.18(f)，
 立项 **#5408**。
 
+**补充（本轮新增，见证据 §7.19）——「446 个目标全部执行」在本轮仍未达成**：
+
+第 5、第 6 处降本**之前**的那一轮（run 8081 / `test` job 16520，09:47Z 容器内实测）：
+
+| 项 | 实测 |
+|---|---|
+| 446 个声明目标中被执行的 | **150**（33.6%） |
+| **从未开始** | **296**（66.4%），其中 **53 个**在 `tests/integration/tpch/` 下 |
+| `tpch_q6_q19_oracle_test`（Q19「引擎 vs SQLite」预言机比较，AC-2/AC-8 的核心） | **落在未执行的 296 个里** ⇒ **本轮无正面证据**（不是"通过"，是"没跑到"） |
+| 已产生结果的 158 个测试二进制 | **155 ok / 2 FAILED**，累计墙钟 **2073.2 s** |
+| 失败 ① `g13_oltp1_concurrent_selects_run_in_parallel`（contended/alone = 0.50） | run 8031（**本 PR 改造前**）**同一用例同样 FAILED** ⇒ 基线既有（#5398） |
+| 失败 ② `insert_db_isolation_5057::insert_resolves_against_the_selected_database`（`Unknown database: d1`） | **基线 commit `d8365606d69c` 直跑**：并行 300 次失败 5 次、单线程 150 次全过 ⇒ 基线既有（#5411） |
+
+两个失败**都做了基线对照**，**都不是本 PR 引入**；本 PR **不弱化断言、不改门禁判定口径**。
+「446/446」在第 5、第 6 处降本之后才有达成的可能
+（把 `int2_substance_parallel_test` 的 ≈130 min 与 `parallel_main_path_test` 的
+480 万条逐行 INSERT 移出 9000 s 预算瓶颈）⇒ **终态结果见证据 §7.20**。
+
 ---
 
 ### AC-3: 零断言文件必须变成真断言
@@ -360,6 +378,9 @@ import 删除 + 变量重命名（无行为变化）。
 | **CI `test` job 的历史结论全量统计** | ⚠️ **全部 400 次 run 里 `test` job 零次 `success`**（skipped 181 / cancelled 10 / failure 6）——它**从来没绿过**。基线提交那次只执行了 **71 / 446** 个目标（fail-fast 在第 71 个 TPC-H panic 处中止）→ 证据 §7.17(a)(b)，立项 **#5407** |
 | **CI run 8031 的 `test` job 时间账**（145 个已执行目标） | 合计 **3 380.0 s**（用每个目标自己的 `finished in` 统计），其中 3 个 TPC-H 目标独占 **2 403.2 s**（71%）。最慢：`eval_22_vs_sf01` 1419.5 s、`four_way_compare_test` 862.0 s、`dml_pk_fast_path_5177` 485.7 s。第 146 个目标 `harness_validation_test` **挂死**（05:59:01Z 之后日志冻结）→ 证据 §7.18(a) |
 | **446 个目标的 fixture 装载形态全量清点** | `BATCH` 40 / `ROW_INSERT` 4 / `SQLITE_SCRIPT` 1 / `SKIP_OR_IGNORE` 35 / `PANIC_ON_MISSING` 7 / `NO_FIXTURE` 359（求和 = 446，已程序化校验）→ 证据 §7.18(b) |
+| **CI run 8081 / job 16520 的实测（首次全量执行的中间轮）** | **150 / 446** 个声明目标被执行、**296 个从未开始**；已产生结果的 158 个 = **155 ok / 2 FAILED**，累计 **2073.2 s**；2 个失败均有基线对照（#5398 / #5411）→ 证据 §7.19(d) |
+| **第 5、第 6 处降本的编译验证** | ✅ `cargo check --test int2_substance_parallel_test --test parallel_main_path_test` → **0 error / 0 warning**；**行数与断言均未变**（`int2` 仍 200 000 行、`parallel_main_path` 仍 600 000 行 × 8 次调用 = 480 万条），只把逐行 `execute` 换成引擎**公开 API** `bulk_insert_records`（O(N)） |
+| **全仓扫描「隐藏巨兽」** | `tests/**/*.rs`（480 个文件）程序化扫描：上界 ≥ 100 000 的逐行 SQL 循环 **2** 个（已降本）、10 000 的 1 个（实测 40.21 s）、1 000–2 000 的 8 个（可接受）、`tests/integration/tpch/` 下 **0** 个、`recovery_fuzzer_test` 的 50 000 次是 `#[ignore]` → 证据 §7.19(c-2) |
 | **引擎对未知 INSERT 列名的行为** | ⚠️ **不报错，静默写 NULL 行**（实测 `INSERT INTO t (c0,c1)` 在 `(a,b)` 表上产出 `NULL\|NULL`）→ 引擎缺陷，立项 **#5409**；本 PR 不改引擎行为（AC-10） |
 | `cargo check --test harness_validation_test --test tpch_q6_q19_oracle_test --test eval_22_vs_sf01 --test four_way_compare_test --test four_way_cell_diff_test --test _q15_q16_check -j 4` | ⏳ 待本轮提交前跑（0 warning / 0 error 为准） |
 | **`cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli`** | ✅ 产出 `target/debug/sqlrustgo-mysql-server`（51 957 896 B）与 `target/debug/sqlrustgo`（32 190 072 B）；二进制在位时 `e2e_canonical_subprocess` 的 2 个用例 **ok / 1.01s**（修复前必然 panic 在 `e2e_canonical_subprocess.rs:68`） |
@@ -422,26 +443,39 @@ import 删除 + 变量重命名（无行为变化）。
 ## 8. 验收清单
 
 - [x] AC-1 fixture 自包含
-- [x] AC-2 目标执行完整性（含本轮新增的 7 个 panic 目标改三态披露）
+- [ ] AC-2 目标执行完整性 —— **本轮实测 150/446，296 个从未开始**；
+      门禁本身已就绪并能抓漏跑（改造前实测 `382 missing` → exit 1）；
+      第 5、第 6 处降本后的新周期待验（证据 §7.19(d) / §7.20）
 - [x] AC-3 零断言 → 真断言
 - [x] AC-4 独立预言机（含本轮新增的 `tpch_q6_q19_oracle_test`：期望值从硬编码的化石改为预言机）
-- [ ] AC-5 变异测试实跑（脚本就绪，运行时由 CI 承接）
+- [ ] AC-5 变异测试实跑（脚本就绪 + 四场景桩测试已实测，**真实运行由 CI 的 `mutation` job 承接**；
+      `mktemp` 可移植性缺陷已修（`6053ca6d4b`），待新周期取得真实结论）
 - [x] AC-6 三态披露
 - [x] AC-7 wire 路径不崩溃
-- [x] AC-8 已知差异登记
-- [ ] AC-9 clippy（fmt 已绿）
-- [ ] 全量 `cargo test`（本机不执行，CI 承接）
+- [x] AC-8 已知差异登记（1 条 `tpch:Q13` cell_values）
+- [ ] AC-9 clippy（fmt 已绿；clippy 本地 0 warning / 0 error，CI `lint-build` job 绿）
+- [ ] 全量 `cargo test`（本机不执行，CI 承接；本轮已实测 **155 ok / 2 FAILED**，2 个失败均有基线对照）
 - [x] AC-10 改动集不含引擎源码（相对基线 `d8365606d69c`，`crates/` 只有
-      `crates/mysql-server/src/lib.rs` 的 8 行零语义 clippy 修复）
-- [ ] CI 绿灯
+      `crates/mysql-server/src/lib.rs` 的 8 行零语义 clippy 修复；
+      第 5、第 6 处降本**只换装载路径、不改数据行数、不改断言语义**）
+- [ ] CI 绿灯 —— **`test` job 在全部 400 次历史 run 中零次成功**（#5407）；
+      本 PR 的 2 个失败均经基线对照证伪为非本 PR 引入（#5398 / #5411）
 - [ ] 合并 + 5 远端同步
+
+**本轮（证据 §7.19）新增的、未打勾的项与原因**：
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| 446 个目标全部执行 | ❌ **150/446** | 296 个从未开始（其中 53 个 TPC-H 目标）。**根因已量化**：`int2_substance_parallel_test` 的 200 000 行带主键逐行 INSERT 是 O(N²)（≈130 min）、`parallel_main_path_test` 是 8 × 600 000 = 480 万条逐行 INSERT ⇒ 单前者一个就吃光 `timeout 9000`。**第 5、第 6 处降本已改用 `bulk_insert_records`（O(N)），行数与断言不变** ⇒ 新周期待验 |
+| Q19「引擎 vs SQLite」比较一致 | ⏳ **本轮未跑到** | `tpch_q6_q19_oracle_test` 落在未执行的 296 个里 ⇒ **无证据**（不是"通过"）。若新周期不一致 = **新发现的引擎缺陷**，按 AC-8 登记并立项，**不弱化断言** |
+| `mutation` job 的真实结论 | ⏳ 待新周期 | run 8081 的 mutation job 16475 实锤了 `mktemp` 缺陷（**三个变异片段一个都没生成** ⇒ `CAUGHT=0/SURVIVED=0/ERRORS=3` ⇒ exit 2，门禁**没有报假绿**，但 job 永远不可能变绿）。已修（`6053ca6d4b`）+ 四场景桩测试实测（Lesson-22）⇒ 待新周期取得真实结论 |
+| `test` job 恒红 | ⚠️ 已知 | 2 个失败（#5398 的 g13 flaky、#5411 的 `insert_db_isolation_5057` 竞态）**均有基线对照**；本 PR 不弱化断言、不改门禁判定口径 |
 
 **本轮（证据 §7.18）新增的、未打勾的项与原因**：
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| `harness_validation_test` 不再挂死 | ⏳ CI run 8075 实测 | 本地无法验证（不跑 TPC-H 测试） |
-| `eval_22_vs_sf01` 耗时下降 | ⏳ CI run 8075 实测 | 同上 |
-| Q19「引擎 vs SQLite」比较一致 | ⏳ CI run 8075 实测 | 本仓库尚无 Q19 的先例；若不一致 = **新发现的引擎缺陷**，按 AC-8 登记并立项，**不弱化断言** |
-| 7 个原 panic 目标在 CI 里不再 panic | ⏳ CI run 8075 实测 | 改为 `TPCH-NOT-RUN`，由 CI 的 NOT-RUN 计数披露 |
+| `harness_validation_test` 不再挂死 | ✅ **CI run 8081 / job 16520 实测 6.64s / 10 passed** | 本地无法验证（不跑 TPC-H 测试）；改造前挂死 37+ min |
+| `eval_22_vs_sf01` 耗时下降 | ✅ **CI 实测 66.10s / 40 passed**（改造前 1419.49s ⇒ **21.5×**） | 同上 |
+| 7 个原 panic 目标在 CI 里不再 panic | ✅ **CI 实测 0 个 panic** | 改为 `TPCH-NOT-RUN`，由 CI 的 NOT-RUN 计数披露（本轮 NOT-RUN = 0） |
 | 5 远端同步 | ✅ 环境可达 | 第一次探测时 `git ls-remote` 对 `gitee` / `github` / `gitcode` 三个 SSH 远端全部 exit 124（超时），一度被记成"环境受限"。**复查后确认那是本机 ssh-agent socket 已死导致的挂起**（#5380 同一个坑），加上 `-o IdentityAgent=none` 后三个远端全部成功：`gitee` 102 个分支 / `github` 26 个 / `gitcode` 498 个。`5remotes_sync.sh` 本身已经强制 `IdentityAgent=none`（脚本第 88–100 行的 `SSH_OPTS`），同步路径不受影响 |
