@@ -131,10 +131,13 @@
 
 ## Phase 5 — PR
 
-- [ ] **5.1** 逐行核对 `git diff`（提交前）
-- [ ] **5.2** PR 正文按 `PR_TEMPLATE.md` 填 5 类文档 + Test Plan + Evidence；
+- [x] **5.1** 逐行核对 `git diff`（提交前）
+- [x] **5.2** PR 正文按 `PR_TEMPLATE.md` 填 5 类文档 + Test Plan + Evidence；
       **先写文件再用 python `json.dump` 生成 JSON，最后 `curl --data-binary @file`**
-- [ ] **5.3** 推送至 gitea252，开 PR，评论关联 issue #5379
+- [x] **5.3** 推送至 gitea252，开 PR（#5396），评论关联 issue #5379
+- [x] **5.3b** CI run 7804 编译阶段报出 15 个告警 → 逐条归属基线，**只有 2 个是本 PR 引入的**
+      （`unused variable: oracle` ×2，在本 PR 整份重写的两个文件里）→ commit `de74efcafd` 修掉；
+      其余 13 个属基线，不夹带进本 PR（详见证据文档 §7.11 / Lesson-14）
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---
@@ -146,7 +149,7 @@
 - [x] **6.2** lessons `docs/governance/lessons/LESSON_5379_TPCH_FIXTURE_2026-10-20.md`
 - [x] **6.3** 新立 issue：SF=1 规模层接入（dbgen 不可得的原因）+ ADR-008 例外续期（v311 例外 2026-09-01 已过期）
 - [x] **6.4** 新立 issue：382 个首次暴露目标的失败归因分流（真实缺陷部分）
-- [ ] **6.5** issue 评论附证据（5 字段：`source_agent` + `source_run` + `timestamp` + `evidence_hash` + `conflict_resolution`）
+- [x] **6.5** issue 评论附证据（5 字段：`source_agent` + `source_run` + `timestamp` + `evidence_hash` + `conflict_resolution`）
 - [x] **6.5b** 新立 issue：#5391（剩余 19 个零断言文件）/ #5392（file storage 按表首列建键导致行塌缩）
       / #5393（wire 路径 Q9/Q18 资源耗尽 + Q19 解析失败）/ #5394（LEFT JOIN 的 ON 条件过滤丢弃左表行）
 - [x] **6.5c** PR 文档补齐第 5 类：`PR-5379_ACCEPTANCE.md`（含 Gate Integration Declaration、
