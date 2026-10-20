@@ -186,15 +186,27 @@ jobs:
           # is collected in TPCH_NOT_RUN_FILE. They are disclosed and are
           # NOT counted as passed (AGENTS.md §8 #5).
           NOT_RUN=0
+          NOT_RUN_RECORDS=0
           if [ -n "${TPCH_NOT_RUN_FILE:-}" ] && [ -f "${TPCH_NOT_RUN_FILE}" ]; then
-            NOT_RUN=$(grep -c 'TPCH-NOT-RUN:' "${TPCH_NOT_RUN_FILE}" 2>/dev/null | head -1)
+            # NOT-RUN 计数：**逐条切分 + 去重**后计数，两个数都打印。
+            #   - `grep -o 'TPCH-NOT-RUN:.*'` 逐条输出 ⇒ 即使某条记录丢了换行
+            #     （多个测试二进制并发写同一文件时可能发生），也能被逐条数出来；
+            #     行数口径（`grep -c`）会把这样的粘连记录少算一条。
+            #   - `sort -u` 折叠**逐字相同**的重复记录：`regression_test` 这个
+            #     meta 套件用子进程重跑目标，同一批 NOT-RUN 记录会被写两遍。
+            # 实测 run 8185：原始 114 条记录里有 83 条是单元测试的合成记录，
+            # 去重后只剩 20 条真实条目 ⇒ 旧口径的 `not_run=113` 虚高 3.6 倍，
+            # 并让下面的 `PASSED=$((TEST_OK - NOT_RUN))` 少报 82 个 passed。
+            NOT_RUN_RECORDS=$(grep -o 'TPCH-NOT-RUN:.*' "${TPCH_NOT_RUN_FILE}" 2>/dev/null | wc -l | tr -d '[:space:]')
+            NOT_RUN=$(grep -o 'TPCH-NOT-RUN:.*' "${TPCH_NOT_RUN_FILE}" 2>/dev/null | sort -u | wc -l | tr -d '[:space:]')
             NOT_RUN=${NOT_RUN:-0}
+            NOT_RUN_RECORDS=${NOT_RUN_RECORDS:-0}
             echo "--- not-run tests (disclosed; NOT counted as passed) ---"
             cat "${TPCH_NOT_RUN_FILE}"
           fi
           PASSED=$((TEST_OK - NOT_RUN))
           if [ "$PASSED" -lt 0 ]; then PASSED=0; fi
-          echo "Tests: passed=$PASSED failed=$TEST_FAIL not_run=$NOT_RUN ignored=$TEST_IGNORED"
+          echo "Tests: passed=$PASSED failed=$TEST_FAIL not_run=$NOT_RUN not_run_records=$NOT_RUN_RECORDS ignored=$TEST_IGNORED"
           echo "Test binaries: ok=$BIN_OK failed=$BIN_FAIL"
           if [ "$TEST_FAIL" -gt 0 ]; then exit 1; fi
           if [ "$((BIN_OK + BIN_FAIL))" -eq 0 ]; then

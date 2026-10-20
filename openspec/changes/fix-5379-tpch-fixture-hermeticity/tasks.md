@@ -351,6 +351,20 @@
       / #5459（`docs/governance/PR_STAGE_CONTROL_FRAMEWORK.md` 是未合并 PR 的正文进了治理目录）
 - [x] **6.5g** Lessons 32–33：门禁失效的**第三种形态**（判据根本不存在）、
       引用规范前先确认被引用物存在（含本 PR 自己的任务文件）
+- [x] **5.3z** **本 PR 自己引入的 NOT-RUN 计数缺陷**（证据 §7.31）：
+      核对 run 8185 容器里的 NOT-RUN 收集文件 ⇒ **114 条记录里 83 条（73%）是本模块
+      单元测试写进共享文件的合成记录** ⇒ CI 的 `not_run` 虚高 3.6 倍、
+      `PASSED=$((TEST_OK - NOT_RUN))` 少报 82；
+      另有 meta 套件子进程重跑致记录翻倍、标记只记 cargo target、`writeln!` 多次
+      `write()` 并发丢换行 3 个成因。
+      **RED→GREEN 本机实测**（`TPCH_NOT_RUN_FILE=/tmp/nr_check.log` 定点验证）：
+      修复前该文件出现 1 条合成记录，修复后**文件不存在**
+- [x] **6.5h** 修 F1（`tests/common/tpch_fixture.rs`：`report_not_run` 单次 `write_all`
+      写完整记录 ⇒ 原子；抽出纯函数 `not_run_line()`；新增无副作用的
+      `FixtureState::available()`；单元测试改用二者 ⇒ 不再写共享文件）
+      + F2（`ci.yml` 的 `Test summary`：`grep -o` 逐条切分 + `sort -u` 去重，
+      `not_run` 与 `not_run_records` 两个数都打印）
+      + Lessons 34：**自己引入的度量缺陷要在自己手里修**
 - [ ] **6.6** 5 远端同步 `bash scripts/sync/5remotes_sync.sh develop/v4.1.0`
 - [ ] **6.7** 清理：删除已合并的远端/本地分支与 worktree（先 `git merge-base --is-ancestor` 核实）
 

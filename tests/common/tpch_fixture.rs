@@ -354,24 +354,38 @@ impl FixtureState {
         }
     }
 
-    /// Return the fixture, or report `NOT-RUN` and return `None`.
-    pub fn require(&self, target: &str) -> Option<&Fixture> {
+    /// Is a fixture available at all — **without reporting anything**.
+    ///
+    /// `require` / `require_profile` answer the same question but *also* write
+    /// a `NOT-RUN` record. Unit tests must not use those: this module is
+    /// `#[path]`-included by 30+ test binaries, so every one of them would
+    /// run the module's own unit test and write one **synthetic** record into
+    /// the shared `TPCH_NOT_RUN_FILE`. Measured on CI run 8185: 83 of the
+    /// 114 records (73%) were such synthetic lines, which inflated the CI's
+    /// `not_run` count 3.6× and made `PASSED=$((TEST_OK - NOT_RUN))`
+    /// under-report 82 passed tests.
+    pub fn available(&self) -> Option<&Fixture> {
         match self {
             FixtureState::Present(f) => Some(f),
+            FixtureState::Missing { .. } | FixtureState::ProfileMismatch { .. } => None,
+        }
+    }
+
+    /// Return the fixture, or report `NOT-RUN` and return `None`.
+    pub fn require(&self, target: &str) -> Option<&Fixture> {
+        if let Some(f) = self.available() {
+            return Some(f);
+        }
+        match self {
             FixtureState::Missing { detail } => {
                 report_not_run(target, reason::FIXTURE_MISSING, detail);
-                None
             }
-            FixtureState::ProfileMismatch {
-                expected,
-                actual,
-                detail,
-            } => {
+            FixtureState::ProfileMismatch { detail, .. } => {
                 report_not_run(target, reason::PROFILE_MISMATCH, detail);
-                let _ = (expected, actual);
-                None
             }
+            FixtureState::Present(_) => unreachable!("available() returned None for Present"),
         }
+        None
     }
 
     /// Return the fixture only if its scale profile matches `expected_sf`.
@@ -409,13 +423,31 @@ impl FixtureState {
     }
 }
 
+/// Build the machine-readable NOT-RUN marker line (pure, no side effects).
+///
+/// Kept separate from [`report_not_run`] so that unit tests can assert the
+/// exact format **without** writing into the shared `TPCH_NOT_RUN_FILE`.
+pub fn not_run_line(target: &str, reason: &str, detail: &str) -> String {
+    format!("{NOT_RUN_MARKER}: {target} reason={reason} detail={detail}")
+}
+
 /// Print the machine-readable NOT-RUN marker.
 ///
 /// Also appends to the file named by `TPCH_NOT_RUN_FILE` when that variable
 /// is set, so a CI summary can count not-run tests without parsing the whole
 /// cargo log.
+///
+/// The record is written with **one** `write_all` of `line + "\n"` on purpose.
+/// The file is opened with `O_APPEND` and is shared by every test binary of
+/// the run, so the processes write to it concurrently. `writeln!` formats
+/// through `write_fmt`, which may issue **several** `write()` syscalls for a
+/// single format string; two processes interleaving between them can split a
+/// record and cost it its trailing newline. Measured on CI run 8185: one
+/// record of `q16_notin_subquery_regression` was glued to the next one on
+/// the same line, so a line-based count (114 records in 113 lines) disagreed
+/// with the real number of records.
 pub fn report_not_run(target: &str, reason: &str, detail: &str) {
-    let line = format!("{NOT_RUN_MARKER}: {target} reason={reason} detail={detail}");
+    let line = not_run_line(target, reason, detail);
     println!("{line}");
     if let Ok(path) = std::env::var("TPCH_NOT_RUN_FILE") {
         if !path.trim().is_empty() {
@@ -425,7 +457,8 @@ pub fn report_not_run(target: &str, reason: &str, detail: &str) {
                 .append(true)
                 .open(path.trim())
             {
-                let _ = writeln!(f, "{line}");
+                // One syscall for the whole record **including** the newline.
+                let _ = f.write_all(format!("{line}\n").as_bytes());
             }
         }
     }
@@ -681,7 +714,20 @@ mod tests {
         let state = FixtureState::Missing {
             detail: "unit test".to_string(),
         };
-        assert!(state.require("some_target").is_none());
+        // 语义断言：缺失状态没有 fixture 可用。
+        //
+        // **刻意不调用 `require()`**：它会往共享的 `TPCH_NOT_RUN_FILE` 写一行
+        // 合成记录，而本模块被 30+ 个测试二进制以 `#[path]` 引入
+        // ⇒ 每个二进制都会跑一次这个单元测试，各写一行。
+        // 实测 CI run 8185：114 条 NOT-RUN 记录里 **83 条**是这种合成记录（73%），
+        // CI 的 `not_run` 因此虚高 3.6 倍，并让 `PASSED=$((TEST_OK - NOT_RUN))`
+        // 少报 82 个 passed。
+        // 报告行本身的格式由下面这个纯函数用例覆盖（不触碰任何文件）。
+        assert!(state.available().is_none());
+        assert_eq!(
+            not_run_line("some_target", reason::FIXTURE_MISSING, "unit test"),
+            "TPCH-NOT-RUN: some_target reason=fixture_missing detail=unit test"
+        );
     }
 
     #[test]
