@@ -97,7 +97,24 @@ fn tpch_soak_sf001_q1_q6() {
     eprintln!("Iterations: {iterations}");
     eprintln!();
 
-    let server = start_sf001_cli().expect("start sf001 server");
+    // The SF=0.001 fixture is resolved inside `start_sf001_cli`. When it is
+    // missing, or when the fixture on disk is not at the SF=0.001 profile this
+    // soak's expectations were calibrated against, the harness prints the
+    // `TPCH-NOT-RUN` marker (reason=fixture_missing / reason=profile_mismatch)
+    // and returns `Err`.
+    //
+    // The NOT-RUN marker has already been printed by `start_sf001_cli` at this
+    // point, so this call site must not print a second marker (CI subtracts
+    // one marker per not-run test from the passed count). It only records the
+    // error and ends the test normally — a missing fixture is a disclosed
+    // state, not a panic and not a silent pass.
+    let server = match start_sf001_cli() {
+        Ok(server) => server,
+        Err(e) => {
+            eprintln!("[not-run] tpch_soak_test: {e}");
+            return;
+        }
+    };
     let host = "127.0.0.1";
     let port = server.port();
     let user = "tester";

@@ -9,25 +9,59 @@ use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
-/// Load SF=1 simplified TPC-H data into a fresh in-memory engine.
-fn make_engine_with_data() -> Option<ExecutionEngine<MemoryStorage>> {
-    let dir = std::env::var("TPCH_DATA_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/tpch_sf01_v2"));
-    if !dir.exists() {
-        eprintln!("Data dir not found: {}", dir.display());
-        return None;
-    }
+// The shared TPC-H fixture resolver and batch loader (issue #5379).
+//
+// Fixture resolution, the NOT-RUN marker and the loader live in one place,
+// so a missing fixture is an *explicit, disclosed state* instead of the
+// silent `None` this file used to return — which made every test in it pass
+// vacuously when the fixture was unreachable.
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
+
+use tpch_fixture::FixtureState;
+
+/// Cargo target name — used in the NOT-RUN marker.
+const TARGET: &str = "harness_validation_test";
+
+/// Tables this test loads, with their TPC-H column counts.
+const TABLES: [(&str, usize); 2] = [("lineitem", 16), ("part", 9)];
+
+/// Load the TPC-H fixture into a fresh in-memory engine.
+///
+/// The rows are loaded through the storage layer in 10 000-row batches.
+///
+/// The previous loader issued **one `INSERT` statement per row** (~62 000
+/// statements per call, and this file calls it once per test — four calls per
+/// test binary). That cost was invisible while the fixture was unreachable:
+/// the target then returned `None` before loading anything and every test
+/// passed vacuously in milliseconds.
+///
+/// Issue #5379 made the fixture reachable at run time, and the cost appeared
+/// for the first time: on CI run 8031 this target started at 05:58:01Z and
+/// had **not finished 37 minutes later** (all four tests were reported as
+/// "running for over 60 seconds"), so the job's `timeout 9000` would cut the
+/// whole `test` job short — 146 of 446 declared targets would never run.
+///
+/// The two loaders are equivalent: both derive the same typed values
+/// (integer / float / text) from the same TBL text, and the shared loader
+/// additionally maps an empty field to NULL. The generated fixture has no
+/// empty field inside a row (every empty field is the trailing one after the
+/// final `|`, which is dropped together with the row terminator), so the two
+/// loaders put the same values into the same tables.
+fn make_engine_with_data() -> Option<Box<ExecutionEngine<MemoryStorage>>> {
+    let state = FixtureState::resolve();
+    let fixture = state.require(TARGET)?.clone();
+
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage);
+    let mut engine = ExecutionEngine::new(storage.clone());
     for ddl in [
         "CREATE TABLE lineitem (l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, l_quantity REAL, l_extendedprice REAL, l_discount REAL, l_tax REAL, l_returnflag TEXT, l_linestatus TEXT, l_shipdate TEXT, l_commitdate TEXT, l_receiptdate TEXT, l_shipinstruct TEXT, l_shipmode TEXT, l_comment TEXT)",
         "CREATE TABLE part (p_partkey INTEGER, p_name TEXT, p_mfgr TEXT, p_brand TEXT, p_type TEXT, p_size INTEGER, p_container TEXT, p_retailprice REAL, p_comment TEXT)",
     ] {
         let _ = engine.execute(ddl);
     }
-    for table in ["lineitem", "part"] {
-        let path = dir.join(format!("{}.tbl", table));
+    for (table, ncols) in TABLES {
+        let path = fixture.table_path(table);
         if !path.exists() {
             continue;
         }
@@ -35,36 +69,29 @@ fn make_engine_with_data() -> Option<ExecutionEngine<MemoryStorage>> {
             Ok(c) => c,
             Err(_) => continue,
         };
-        for line in content.lines() {
-            if line.is_empty() {
-                continue;
-            }
-            let line_trimmed = line.trim_end_matches('|');
-            let cols: Vec<&str> = line_trimmed.split('|').collect();
-            let mut vals: Vec<String> = Vec::new();
-            for c in &cols {
-                if c.parse::<i64>().is_ok() || c.parse::<f64>().is_ok() {
-                    vals.push(c.to_string());
-                } else {
-                    let esc = c.replace('\'', "''");
-                    vals.push(format!("'{}'", esc));
-                }
-            }
-            let sql = format!("INSERT INTO {} VALUES ({})", table, vals.join(","));
-            let _ = engine.execute(&sql);
-        }
+        let rows = tpch_fixture::parse_tbl(&content);
+        let _ = tpch_fixture::load_rows_into_storage(&storage, &rows, table, ncols)
+            .unwrap_or_else(|e| panic!("loading table `{table}`: {e}"));
     }
-    Some(engine)
+    Some(Box::new(engine))
 }
 
 /// Run sqlrustgo and return row count.
-fn run_count(engine: &mut ExecutionEngine<MemoryStorage>, sql: &str) -> Option<usize> {
+///
+/// The query runs on a worker thread so that a query which does not terminate
+/// cannot hang the test binary. The worker is given a **raw pointer** into
+/// the engine, so the engine must outlive the worker: on the timeout path the
+/// allocation is leaked instead of freed, because the worker may still be
+/// reading it. Before issue #5379 this path was unreachable (the fixture was
+/// missing, so the engine was never built and `run_count` was never called);
+/// making the fixture reachable turned it into a live use-after-free.
+fn run_count(engine: &mut Box<ExecutionEngine<MemoryStorage>>, sql: &str) -> Option<usize> {
     // Use mpsc channel + worker thread for timeout
     use std::sync::mpsc;
     use std::time::Duration;
     let (tx, rx) = mpsc::channel::<Option<usize>>();
     let sql_owned = sql.to_string();
-    let engine_addr: usize = engine as *mut _ as usize;
+    let engine_addr: usize = &mut **engine as *mut _ as usize;
     let handle = std::thread::spawn(move || unsafe {
         let engine_ptr = engine_addr as *mut ExecutionEngine<MemoryStorage>;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -84,7 +111,11 @@ fn run_count(engine: &mut ExecutionEngine<MemoryStorage>, sql: &str) -> Option<u
             payload
         }
         Err(_) => {
-            // timeout
+            // timeout: the worker still holds a pointer into the engine, so
+            // the allocation must not be freed. Leak it — the test binary is
+            // about to exit anyway.
+            let leaked = std::mem::replace(engine, Box::new(ExecutionEngine::with_memory()));
+            std::mem::forget(leaked);
             None
         }
     }
@@ -92,9 +123,10 @@ fn run_count(engine: &mut ExecutionEngine<MemoryStorage>, sql: &str) -> Option<u
 
 #[test]
 fn test_q6_aggregate_returns_one_row() {
-    // Sprint 5 (#3288): SUM(empty)=NULL means Q6 returns 1 row with
-    // NULL when filter matches nothing. But Q6 with v2 data matches
-    // some rows (6076.93), so we get 1 row with REAL value.
+    // Q6 is a scalar aggregate: SUM over the filtered rows always produces
+    // exactly one row — with a NULL value when the filter matches nothing,
+    // and with a REAL value when it matches. The assertion is therefore
+    // data-independent; it is the *row count* that is checked, not the sum.
     let Some(mut engine) = make_engine_with_data() else {
         return;
     };
@@ -118,10 +150,10 @@ fn test_q14_aggregate_returns_one_row() {
 
 #[test]
 fn test_q1_groupby_returns_six_rows() {
-    // Q1: GROUP BY l_returnflag, l_linestatus. v2 data has 6 distinct
-    // (returnflag, linestatus) combinations because simplified data
-    // has 6 buckets (R+O, R+F, A+O, A+F + 2 more from cross-products).
-    // Sprint 1.5: Q1 expected 6 in PG, sqlrustgo returns 6 → match.
+    // Q1: GROUP BY l_returnflag, l_linestatus. The TPC-H domain has exactly
+    // six combinations (R/A/N × O/F), so a dataset that contains all of them
+    // produces exactly six groups. The generated fixture draws both columns
+    // uniformly, so every combination occurs thousands of times.
     let Some(mut engine) = make_engine_with_data() else {
         return;
     };
@@ -134,16 +166,25 @@ fn test_q1_groupby_returns_six_rows() {
 
 #[test]
 fn test_q11_in_subquery_returns_zero() {
-    // Q11: IN subquery. Should return 0 rows with v2 data (no big suppliers).
-    // Or whatever the data shows. We just verify it completes.
+    // DISCLOSURE (issue #5409): this statement references `partsupp`,
+    // `supplier` and `nation` — none of which this file creates. The
+    // statement therefore fails, `run_count` returns `None`, and the
+    // assertion at the bottom is **never reached**: the test passes without
+    // checking anything. That was true before issue #5379 as well (the
+    // fixture was unreachable, so the whole file passed vacuously).
+    //
+    // Making it real means loading the three extra tables and re-basing the
+    // expectation, which changes what this test asserts; that is filed
+    // separately instead of being done here.
     let Some(mut engine) = make_engine_with_data() else {
         return;
     };
     let q11 = "SELECT ps_partkey, SUM(ps_supplycost * ps_availqty) AS value FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY' GROUP BY ps_partkey HAVING SUM(ps_supplycost * ps_availqty) > (SELECT SUM(ps_supplycost * ps_availqty) * 0.0001000000 FROM partsupp, supplier, nation WHERE ps_suppkey = s_suppkey AND s_nationkey = n_nationkey AND n_name = 'GERMANY') ORDER BY value DESC";
     let count = run_count(&mut engine, q11);
-    // Q11 may timeout due to N^2 - that's OK
+    // The statement cannot be executed (missing tables) or may time out due
+    // to the N^2 join — in both cases `run_count` returns `None`.
     if count.is_none() {
-        eprintln!("Q11 timeout - skipping");
+        eprintln!("Q11 could not be executed (missing tables) or timed out — skipping");
         return;
     }
     // If it completes, just verify we got a non-negative result

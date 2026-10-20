@@ -198,6 +198,19 @@ fn build_sqlite_init_sql(base: &Path) -> String {
         sql_buffer.push(';');
         sql_buffer.push('\n');
     }
+    // One transaction for the whole load.
+    //
+    // Without it, every one of the ~86,000 INSERT statements below is its own
+    // implicit transaction, and SQLite commits each of them to disk
+    // separately. That is ~86,000 fsyncs, and it is what made this target
+    // the single most expensive one in the CI `test` job: 1419.49 s on CI run
+    // 8031, against a `timeout 9000` budget for the whole job.
+    //
+    // The statements themselves are unchanged — the same rows, in the same
+    // order, with the same values. Only the transaction boundaries differ,
+    // and SQLite's atomicity guarantees make the resulting database
+    // byte-identical.
+    sql_buffer.push_str("BEGIN TRANSACTION;\n");
     for tbl in TABLES {
         let path = base.join(format!("{}.tbl", tbl));
         let content = std::fs::read_to_string(&path).expect("read fixture");
@@ -245,6 +258,7 @@ fn build_sqlite_init_sql(base: &Path) -> String {
             observed_fields.unwrap_or(0)
         );
     }
+    sql_buffer.push_str("COMMIT;\n");
     sql_buffer
 }
 

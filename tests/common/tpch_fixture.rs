@@ -436,6 +436,12 @@ pub fn load_into_storage(
 }
 
 /// Load already-parsed rows into an in-memory storage under `table`.
+///
+/// The insert error is **not** swallowed. A failed batch insert leaves the
+/// table empty, and every assertion of the calling test would then run
+/// against an empty table and pass vacuously — which is precisely the
+/// failure mode this loader exists to prevent. The row count returned is
+/// the number of rows that were actually handed to the storage layer.
 pub fn load_rows_into_storage(
     storage: &Arc<RwLock<MemoryStorage>>,
     rows: &[Vec<String>],
@@ -446,13 +452,23 @@ pub fn load_rows_into_storage(
     let mut batch: Vec<Vec<SqlValue>> = Vec::with_capacity(BATCH_SIZE);
     let mut count = 0usize;
 
-    let mut flush = |storage: &Arc<RwLock<MemoryStorage>>, batch: &mut Vec<Vec<SqlValue>>| {
-        if !batch.is_empty() {
-            let mut s = storage.write();
-            let _ = s.insert(table, batch.clone());
-            count += batch.len();
-            batch.clear();
+    let mut flush = |storage: &Arc<RwLock<MemoryStorage>>,
+                     batch: &mut Vec<Vec<SqlValue>>|
+     -> Result<(), String> {
+        if batch.is_empty() {
+            return Ok(());
         }
+        let n = batch.len();
+        // Move the batch out instead of cloning it: a clone of 10,000 rows
+        // per batch is pure overhead on the hot path.
+        let data = std::mem::replace(batch, Vec::with_capacity(BATCH_SIZE));
+        {
+            let mut s = storage.write();
+            s.insert(table, data)
+                .map_err(|e| format!("insert into `{table}`: {e}"))?;
+        }
+        count += n;
+        Ok(())
     };
 
     for values in rows {
@@ -462,10 +478,10 @@ pub fn load_rows_into_storage(
         let record: Vec<SqlValue> = values[..ncols].iter().map(|v| parse_value(v)).collect();
         batch.push(record);
         if batch.len() >= BATCH_SIZE {
-            flush(storage, &mut batch);
+            flush(storage, &mut batch)?;
         }
     }
-    flush(storage, &mut batch);
+    flush(storage, &mut batch)?;
     Ok(count)
 }
 

@@ -123,6 +123,18 @@ jobs:
           # short, the summary reports the partial result and the execution
           # accounting gate below names the targets that never ran.
           #
+          # `timeout` must wrap the **redirect**, not a pipeline. With
+          # `timeout … cargo test | tee …`, `tee` sits outside the process
+          # group `timeout` signals, so it keeps the step's stdout pipe open
+          # long after cargo is gone — the step never ends and the runner
+          # holds the container until somebody kills it by hand. Measured on
+          # CI run 8031: `harness_validation_test` hung at 05:59:01Z, the
+          # 9000 s deadline passed at ~07:28Z, and the job was still
+          # "in progress" at 08:45Z with its log frozen — 1 h 47 m past the
+          # deadline. `timeout` signals the child's whole process group, so
+          # without the pipe the hung test binary is killed too and the step
+          # returns.
+          #
           # 9000 s (2.5 h) rather than 7200 s (2 h): the fixture became
           # reachable in this PR, so the ~31 fixture-dependent targets now
           # do real work instead of silently running against empty tables.
@@ -137,7 +149,13 @@ jobs:
           # cargo runs (each rebuilding the engine crate). It now has its
           # own job so that its cost does not eat into this budget, and so
           # that the two do not compete for the runner's CPU and memory.
-          timeout 9000 cargo test --all-features --no-fail-fast 2>&1 | tee test_report.log
+          timeout -k 30 9000 cargo test --all-features --no-fail-fast > test_report.log 2>&1
+          status=$?
+          echo "cargo test exited with status ${status}"
+          # Keep the tail of the run in the job log: on a timeout it names
+          # the target that was stuck.
+          tail -n 200 test_report.log || true
+          exit ${status}
       - name: Test summary
         if: always()
         run: |

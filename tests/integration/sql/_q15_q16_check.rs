@@ -48,7 +48,8 @@ fn load_into_sqlrustgo() -> sqlrustgo::ExecutionEngine<sqlrustgo::MemoryStorage>
         // text, verified cell-by-cell over all 8 tables and 86,482 rows.
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         let rows = tpch_fixture::parse_tbl(&content);
-        let _ = tpch_fixture::load_rows_into_storage(&storage, &rows, table, *cols);
+        let _ = tpch_fixture::load_rows_into_storage(&storage, &rows, table, *cols)
+            .unwrap_or_else(|e| panic!("loading table `{table}`: {e}"));
     }
     engine
 }

@@ -47,10 +47,26 @@
 //! - [x] No new Cargo deps
 //! - [x] No new public APIs
 
+// The shared TPC-H fixture resolver (issue #5379).
+//
+// This test is calibrated against the SF=0.001 dataset, so it needs both
+// the fixture *and* the three-way baseline JSONs. Neither the
+// `tests/data/tpch-sf001` symlink nor the baseline JSONs were ever
+// committed, so both absences are disclosed explicitly (NOT-RUN) instead of
+// panicking.
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
+
 use serde_json::Value as JsonValue;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
+
+/// Cargo test target this file belongs to (used as the NOT-RUN label).
+const TARGET: &str = "tpch_22_mysql_cli_wire_test";
+
+/// The scale profile this test's expectations were calibrated against.
+const EXPECTED_SF: f64 = 0.001;
 
 /// Default TCP probe timeout.
 const READINESS_TIMEOUT: Duration = Duration::from_secs(10);
@@ -211,19 +227,56 @@ fn read_three_way(data_dir: &Path, qnum: u8) -> Option<(u64, Vec<String>)> {
 
 #[test]
 fn test_tpch_22_mysql_cli_wire() {
-    // Sanity: data dir present
-    let data_dir = PathBuf::from("tests/data/tpch-sf001");
-    if !data_dir.exists() {
-        panic!("[FAIL] data dir not found: {}. Generate SF=1 fixture via dbgen -s 1 -f, or restore tests/data/tpch-sf001 via git lfs pull.", data_dir.display());
+    // The fixture this test is calibrated against is SF=0.001. When it is
+    // absent, or when the fixture on disk is at a different scale profile
+    // (CI generates SF=0.01), the test discloses itself as NOT-RUN and ends
+    // normally — it never panics and never passes silently.
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require_profile(TARGET, EXPECTED_SF) else {
+        return;
+    };
+    let data_dir = fixture.dir.clone();
+
+    // The per-table .tbl files must be present, otherwise the load below
+    // cannot work.
+    let missing_tables: Vec<&str> = TABLES
+        .iter()
+        .copied()
+        .filter(|tbl| !data_dir.join(format!("{tbl}.tbl")).is_file())
+        .collect();
+    if !missing_tables.is_empty() {
+        tpch_fixture::report_not_run(
+            TARGET,
+            tpch_fixture::reason::FIXTURE_MISSING,
+            &format!(
+                "fixture table file(s) missing in {}: {:?}",
+                data_dir.display(),
+                missing_tables
+            ),
+        );
+        return;
     }
-    for tbl in TABLES {
-        let p = data_dir.join(format!("{}.tbl", tbl));
-        if !p.exists() {
-            panic!(
-                "[FAIL] missing fixture: {}. Generate SF=1 fixture via dbgen -s 1 -f.",
-                p.display()
-            );
-        }
+
+    // The three-way reference JSONs were never committed to the repository:
+    // they only existed behind the removed `tests/data/tpch-sf001` symlink.
+    // Without them every query would land in the "no ref" branch, so the
+    // test would compare nothing at all — disclose that instead.
+    let expected_dir = data_dir.join("expected");
+    let missing_baselines: Vec<String> = (1..=22u8)
+        .map(|q| format!("Q{q}_three_way.json"))
+        .filter(|f| !expected_dir.join(f).is_file())
+        .collect();
+    if !missing_baselines.is_empty() {
+        tpch_fixture::report_not_run(
+            TARGET,
+            tpch_fixture::reason::FIXTURE_MISSING,
+            &format!(
+                "baseline JSON not committed to the repository (missing {} of Q1..Q22 under {})",
+                missing_baselines.len(),
+                expected_dir.display()
+            ),
+        );
+        return;
     }
 
     // `mysql` CLI must be installed

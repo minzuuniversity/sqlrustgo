@@ -78,6 +78,29 @@ exit 1
 ```
 **Status: ✅ PASS**（门禁能抓住改造前的 382 个漏跑目标；CI 上对改造后的日志退出码 0）
 
+**补充（本轮新增，见证据 §7.18）**：让 446 个目标真跑之后，有 **7 个目标在 CI 里
+panic** —— 它们写死了本 PR 已删除的悬空符号链接目录（`tests/data/tpch-sf01`、
+`tests/data/tpch-sf001`）或本机绝对路径（`/home/openclaw/...`、`/tmp/tpch-sf10`）。
+**这 7 个是本 PR 新暴露的**（基线 `cargo test` 没有 `--no-fail-fast`，
+在第 71 个目标的 panic 处就中止了；`--no-fail-fast` 是本 PR 为了让本条门禁
+能够成立才加的）⇒ 按 Lesson-18 归本 PR 处理：改为**三态披露**
+（profile 不匹配 / 基线未提交 → `TPCH-NOT-RUN`），既不 panic，也不静默通过。
+
+| 目标 | 写死的路径 | 处置 |
+|---|---|---|
+| `tpch_soak_test` | `tests/data/tpch-sf001` | profile 0.001 不匹配 → NOT-RUN |
+| `tpch_22_mysql_cli_wire_test` | `tests/data/tpch-sf001` | profile 不匹配 + 基线 JSON 未提交 → NOT-RUN |
+| `repro_3282_orderby_desc` | `tests/data/tpch-sf001` | profile 0.001 不匹配 → NOT-RUN |
+| `q21_cell_regression_test` | `tests/data/tpch-sf01` | profile 0.1 不匹配 + 基线 JSON 未提交 → NOT-RUN |
+| `q2_q17_repro_test` | `data/tpch-sf01` | profile 0.1 不匹配 → NOT-RUN |
+| `v312_13_load_data_sf10_test` | `/tmp/tpch-sf10` | 规模层 → NOT-RUN（`scale_layer_only`） |
+| `q16_notin_subquery_regression` | `/home/openclaw/.../tests/data/tpch-sf01` | profile 0.1 不匹配 → NOT-RUN |
+
+**另修**：`timeout 9000 … | tee …` 的写法让超时**杀不掉**挂死的测试二进制
+（`tee` 在被信号覆盖的进程组之外，step 永不结束）⇒ 改为
+`timeout -k 30 9000 cargo test … > test_report.log 2>&1`。实测证据见证据 §7.18(f)，
+立项 **#5408**。
+
 ---
 
 ### AC-3: 零断言文件必须变成真断言
@@ -311,7 +334,8 @@ import 删除 + 变量重命名（无行为变化）。
 | G1（TPC-H 22/22 baseline） | **仍然 NOT RUN**（CI 无 dbgen、无 SF=1 fixture）；注释已修正为只陈述事实 | 不变 |
 | `check_stage.sh` | **不覆盖 TPC-H**：实测零 TPC-H 引用，STAGE_CONFIG 的 `required_gates` 也没有 G1。原注释声称它是 SF=1 的兜底，**该声明不成立，已更正** | 澄清 |
 | 规模层（SF=1） | 本 PR **不接入**，见 #5387 | 递延 |
-| CI 时间预算 | fixture 到位后 `test` job 从「几分钟」变成「以小时计」（实测 `_q15_q16_check` > 23 min，run 7971 实测 **> 74 min 未结束**）→ 变异门禁拆独立 job + `test` job 上限 7200 → 9000 s；**降本手段（批量装载）已在本 PR 内落地**（原计划另做，见 #5399 / 证据 §7.16） | 调整 |
+| CI 时间预算 | fixture 到位后 `test` job 从「几分钟」变成「以小时计」（实测 `_q15_q16_check` > 23 min，run 7971 实测 **> 74 min 未结束**）→ 变异门禁拆独立 job + `test` job 上限 7200 → 9000 s；**降本手段（批量装载）已在本 PR 内落地**（原计划另做，见 #5399 / 证据 §7.16）。**本轮（证据 §7.18）再降 4 处**：`harness_validation_test`（247 408 条 → 4 次批量）、`tpch_q6_q19_oracle_test`（185 556 条 → 2 次批量）、`eval_22_vs_sf01` 的 SQLite 侧（86 482 个隐式事务 → 1 个事务）、共享装载器的批量 insert 改为传播错误 | 调整 |
+| **`test` job 的超时机制** | `timeout … \| tee` **杀不掉**挂死的测试二进制（管道让超时失效）→ 改为 `timeout -k 30 9000 cargo test … > test_report.log 2>&1`。实测：run 8031 的 job 在超时到期 1 h 17 min 后仍是 `in_progress`，日志字节数与 2 h 前完全相同 | 修复（#5408） |
 | `postcheck` job（发布门禁聚合 + 6 个硬阻塞 meta-gate） | **本 PR 未改动**。但实测发现它在 **600 次历史 CI run 中从未成功执行过一次**（190 次 `skipped`、0 次 `success`）——本 PR 修好基线 clippy 红之后它才第一次会真跑，届时暴露出 **5 个基线既有红灯点**（5 个独立断口）。本 PR **不弱化门禁**去消掉红灯，改为归属 + 立项 + 披露 | 归属（#5400 / #5401 / #5402 / #5403） |
 
 ---
@@ -326,6 +350,10 @@ import 删除 + 变量重命名（无行为变化）。
 | `cargo clippy --all-features -j 4 -- -D warnings` | ✅ 0 warning / 0 error（本地）+ CI `lint-build` 绿 |
 | `cargo test --all-features --no-fail-fast` | ⏳ 待 CI（**本机不执行**：wire 路径峰值已实测到 817 MB，本机内存不足以承担全量）→ CI run 8031 已实测：`diag_q11` **ok 14 passed / 0.59s**、`_q15_q16_check` **ok 8 passed / 2.92s**（降本前 > 74 min 未结束）、`eval_22_vs_sf01` **ok 34 passed / 1419.5s**（sqlite3 CLI 在位） |
 | **CI `test` job 的历史结论全量统计** | ⚠️ **全部 400 次 run 里 `test` job 零次 `success`**（skipped 181 / cancelled 10 / failure 6）——它**从来没绿过**。基线提交那次只执行了 **71 / 446** 个目标（fail-fast 在第 71 个 TPC-H panic 处中止）→ 证据 §7.17(a)(b)，立项 **#5407** |
+| **CI run 8031 的 `test` job 时间账**（145 个已执行目标） | 合计 **3 380.0 s**（用每个目标自己的 `finished in` 统计），其中 3 个 TPC-H 目标独占 **2 403.2 s**（71%）。最慢：`eval_22_vs_sf01` 1419.5 s、`four_way_compare_test` 862.0 s、`dml_pk_fast_path_5177` 485.7 s。第 146 个目标 `harness_validation_test` **挂死**（05:59:01Z 之后日志冻结）→ 证据 §7.18(a) |
+| **446 个目标的 fixture 装载形态全量清点** | `BATCH` 40 / `ROW_INSERT` 4 / `SQLITE_SCRIPT` 1 / `SKIP_OR_IGNORE` 35 / `PANIC_ON_MISSING` 7 / `NO_FIXTURE` 359（求和 = 446，已程序化校验）→ 证据 §7.18(b) |
+| **引擎对未知 INSERT 列名的行为** | ⚠️ **不报错，静默写 NULL 行**（实测 `INSERT INTO t (c0,c1)` 在 `(a,b)` 表上产出 `NULL\|NULL`）→ 引擎缺陷，立项 **#5409**；本 PR 不改引擎行为（AC-10） |
+| `cargo check --test harness_validation_test --test tpch_q6_q19_oracle_test --test eval_22_vs_sf01 --test four_way_compare_test --test four_way_cell_diff_test --test _q15_q16_check -j 4` | ⏳ 待本轮提交前跑（0 warning / 0 error 为准） |
 | **`cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli`** | ✅ 产出 `target/debug/sqlrustgo-mysql-server`（51 957 896 B）与 `target/debug/sqlrustgo`（32 190 072 B）；二进制在位时 `e2e_canonical_subprocess` 的 2 个用例 **ok / 1.01s**（修复前必然 panic 在 `e2e_canonical_subprocess.rs:68`） |
 | `bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --log /tmp/testjob.log` | ✅ exit 1（改造前日志，正确抓出 382 个漏跑） |
 | `bash scripts/gate/check_tpch_known_differences.sh` | ✅ PASS（1 条登记 / 上限 1） |

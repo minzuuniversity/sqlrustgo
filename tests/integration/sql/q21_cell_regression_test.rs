@@ -3,6 +3,21 @@ use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine, Value};
 use std::sync::Arc;
 use std::time::Instant;
 
+// The shared TPC-H fixture resolver (issue #5379).
+//
+// This test is calibrated against the SF=0.1 dataset and its cell-level
+// baseline JSON. Neither the `tests/data/tpch-sf01` symlink nor the baseline
+// were ever committed, so both absences are disclosed as NOT-RUN instead of
+// panicking.
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
+
+/// Cargo test target this file belongs to (used as the NOT-RUN label).
+const TARGET: &str = "q21_cell_regression_test";
+
+/// The scale profile this test's expectations were calibrated against.
+const EXPECTED_SF: f64 = 0.1;
+
 type Engine = ExecutionEngine<MemoryStorage>;
 
 const BATCH_SIZE: usize = 2000;
@@ -50,9 +65,9 @@ fn load_tpch_table(
     tbl: &str,
     ncols: usize,
     path: &std::path::Path,
-) -> usize {
+) -> Result<usize, String> {
     let content =
-        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let mut batch = Vec::with_capacity(BATCH_SIZE);
     let mut count = 0usize;
     for line in content.lines() {
@@ -73,18 +88,26 @@ fn load_tpch_table(
         count += 1;
         if batch.len() >= BATCH_SIZE {
             let mut st = storage.write();
-            let _ = st.insert(tbl, batch);
+            // The insert error must not be swallowed: a failed batch insert
+            // leaves the table empty and every assertion below would then run
+            // against an empty table and pass vacuously.
+            st.insert(tbl, batch)
+                .map_err(|e| format!("insert into `{tbl}`: {e}"))?;
             batch = Vec::with_capacity(BATCH_SIZE);
         }
     }
     if !batch.is_empty() {
         let mut st = storage.write();
-        let _ = st.insert(tbl, batch);
+        st.insert(tbl, batch)
+            .map_err(|e| format!("insert into `{tbl}`: {e}"))?;
     }
-    count
+    Ok(count)
 }
 
-fn load_sf01(storage: &Arc<RwLock<MemoryStorage>>, data_dir: &std::path::Path) {
+fn load_sf01(
+    storage: &Arc<RwLock<MemoryStorage>>,
+    data_dir: &std::path::Path,
+) -> Result<(), String> {
     let tables: &[(&str, usize, &str)] = &[
         ("region", 3, "region.tbl"),
         ("nation", 4, "nation.tbl"),
@@ -94,16 +117,21 @@ fn load_sf01(storage: &Arc<RwLock<MemoryStorage>>, data_dir: &std::path::Path) {
     ];
     for (tbl, ncols, filename) in tables {
         let p = data_dir.join(filename);
-        let n = load_tpch_table(storage, tbl, *ncols, &p);
+        let n = load_tpch_table(storage, tbl, *ncols, &p)?;
         eprintln!("  loaded {tbl}: {n} rows");
     }
+    Ok(())
 }
 
-fn read_baseline(path: &std::path::Path) -> (usize, Vec<Vec<String>>) {
+fn read_baseline(path: &std::path::Path) -> Result<(usize, Vec<Vec<String>>), String> {
     let content = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("read baseline {}: {e}", path.display()));
-    let v: serde_json::Value = serde_json::from_str(&content).unwrap();
-    let row_count = v["row_count"].as_u64().unwrap() as usize;
+        .map_err(|e| format!("read baseline {}: {e}", path.display()))?;
+    let v: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("parse baseline {}: {e}", path.display()))?;
+    let row_count = v["row_count"]
+        .as_u64()
+        .ok_or_else(|| format!("baseline {} has no row_count", path.display()))?
+        as usize;
     let mut first_3: Vec<Vec<String>> = Vec::new();
     if let Some(arr) = v["first_3_rows"].as_array() {
         for row in arr {
@@ -116,20 +144,43 @@ fn read_baseline(path: &std::path::Path) -> (usize, Vec<Vec<String>>) {
             first_3.push(r);
         }
     }
-    (row_count, first_3)
+    Ok((row_count, first_3))
 }
 
 #[test]
 fn q21_cell_regression_sf01() {
-    let data_dir = std::path::PathBuf::from("tests/data/tpch-sf01");
-    if !data_dir.exists() {
-        panic!("SF=0.1 fixture missing at {}", data_dir.display());
+    // The fixture is resolved through the shared resolver (issue #5379): a
+    // missing fixture, or a fixture whose scale profile is not the SF=0.1
+    // profile this test was calibrated against, is disclosed as NOT-RUN and
+    // the test ends normally.
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require_profile(TARGET, EXPECTED_SF) else {
+        return;
+    };
+    let data_dir = fixture.dir.clone();
+
+    // The cell-level baseline JSON was never committed to the repository: it
+    // only existed behind the removed `tests/data/tpch-sf01` symlink.
+    let baseline_path = data_dir.join("expected/Q21_sf01_baseline.json");
+    if !baseline_path.is_file() {
+        tpch_fixture::report_not_run(
+            TARGET,
+            tpch_fixture::reason::FIXTURE_MISSING,
+            &format!(
+                "baseline JSON not committed to the repository ({})",
+                baseline_path.display()
+            ),
+        );
+        return;
     }
 
     eprintln!("=== Q21 cell-level regression test at SF=0.1 ===");
     let (mut engine, storage) = fresh_engine();
     create_tables(&mut engine);
-    load_sf01(&storage, &data_dir);
+    if let Err(e) = load_sf01(&storage, &data_dir) {
+        tpch_fixture::report_not_run(TARGET, tpch_fixture::reason::FIXTURE_MISSING, &e);
+        return;
+    }
 
     let q21_sql = "SELECT s_name, COUNT(*) AS numwait \
         FROM supplier, lineitem l1, orders, nation \
@@ -158,8 +209,13 @@ fn q21_cell_regression_sf01() {
 
     eprintln!("Q21 completed in {:.3}s, returned {} rows", secs, rows);
 
-    let baseline_path = data_dir.join("expected/Q21_sf01_baseline.json");
-    let (expected_rc, expected_first_3) = read_baseline(&baseline_path);
+    let (expected_rc, expected_first_3) = match read_baseline(&baseline_path) {
+        Ok(v) => v,
+        Err(e) => {
+            tpch_fixture::report_not_run(TARGET, tpch_fixture::reason::FIXTURE_MISSING, &e);
+            return;
+        }
+    };
 
     assert_eq!(
         rows, expected_rc,

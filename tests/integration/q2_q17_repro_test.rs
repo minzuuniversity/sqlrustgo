@@ -2,15 +2,24 @@ use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
-// TPC-H SF=1 regression for V312-35 / #4182:
+// TPC-H SF=0.1 regression for V312-35 / #4182:
 // correlated scalar subqueries (Q2 MIN-over-join, Q17 AVG threshold).
 // Row counts / values must match the SQLite oracle:
 //   Q2  = 44 rows   (full query incl. ORDER BY)
 //   Q17 = 23512.7528571429
 //
-// data/tpch-tiny is a symlink to data/tpch-sf01 in the repo, so this
-// works regardless of which constant name is used.
-const DATA_DIR: &str = "data/tpch-sf01";
+// The fixture directory is resolved through the shared resolver (issue
+// #5379) instead of a hard-coded path: the old `data/tpch-sf01` path was
+// never committed, so a missing fixture (or a fixture at a different scale
+// profile) is disclosed as NOT-RUN instead of panicking.
+#[path = "../common/tpch_fixture.rs"]
+mod tpch_fixture;
+
+/// Cargo test target this file belongs to (used as the NOT-RUN label).
+const TARGET: &str = "q2_q17_repro_test";
+
+/// The scale profile these tests' expectations were calibrated against.
+const EXPECTED_SF: f64 = 0.1;
 
 const SCHEMAS: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
@@ -27,7 +36,7 @@ const TBL_FILES: &[&str] = &[
     "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",
 ];
 
-fn setup() -> ExecutionEngine<MemoryStorage> {
+fn setup(data_dir: &std::path::Path) -> Result<ExecutionEngine<MemoryStorage>, String> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
     for s in SCHEMAS {
@@ -36,11 +45,12 @@ fn setup() -> ExecutionEngine<MemoryStorage> {
     {
         let mut st = storage.write();
         for t in TBL_FILES {
-            let path = format!("{}/{}.tbl", DATA_DIR, t);
-            st.bulk_load_tbl_file(t, &path).unwrap();
+            let path = data_dir.join(format!("{t}.tbl"));
+            st.bulk_load_tbl_file(t, path.to_str().unwrap_or_default())
+                .map_err(|e| format!("load {t} from {}: {e}", path.display()))?;
         }
     }
-    engine
+    Ok(engine)
 }
 
 fn scalar_float(rows: &[Vec<sqlrustgo::Value>]) -> f64 {
@@ -57,7 +67,22 @@ fn q2_correlated_min_over_join() {
     // The subquery's own columns (ps_partkey, s_suppkey, n_*, r_*) must NOT
     // be substituted with outer-row values, while the outer `p_partkey`
     // must be. A wrong substitution yields 0 rows; the oracle is 44.
-    let mut engine = setup();
+    //
+    // The fixture is resolved through the shared resolver (issue #5379): a
+    // missing fixture, or a fixture whose scale profile is not the SF=0.1
+    // profile this expectation was calibrated against, is disclosed as
+    // NOT-RUN and the test ends normally.
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require_profile(TARGET, EXPECTED_SF) else {
+        return;
+    };
+    let mut engine = match setup(&fixture.dir) {
+        Ok(engine) => engine,
+        Err(e) => {
+            tpch_fixture::report_not_run(TARGET, tpch_fixture::reason::FIXTURE_MISSING, &e);
+            return;
+        }
+    };
     let q2 = "SELECT s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment FROM supplier, nation, region, part, partsupp WHERE p_partkey = ps_partkey AND s_suppkey = ps_suppkey AND p_size = 15 AND p_type LIKE '%BRASS' AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = 'EUROPE' AND ps_supplycost = (SELECT MIN(ps_supplycost) FROM partsupp, supplier, nation, region WHERE p_partkey = ps_partkey AND s_suppkey = ps_suppkey AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = 'EUROPE') ORDER BY s_acctbal DESC, n_name, s_name, p_partkey LIMIT 100";
     let res = engine
         .execute(q2)
@@ -78,7 +103,22 @@ fn q17_avg_threshold_subquery() {
     // must be re-evaluated per row in the post-join filter. If the WHERE
     // is wrongly marked consumed, the result equals the no-filter sum
     // (3087989897.177311), far from the oracle 23512.7528571429.
-    let mut engine = setup();
+    //
+    // The fixture is resolved through the shared resolver (issue #5379): a
+    // missing fixture, or a fixture whose scale profile is not the SF=0.1
+    // profile this expectation was calibrated against, is disclosed as
+    // NOT-RUN and the test ends normally.
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require_profile(TARGET, EXPECTED_SF) else {
+        return;
+    };
+    let mut engine = match setup(&fixture.dir) {
+        Ok(engine) => engine,
+        Err(e) => {
+            tpch_fixture::report_not_run(TARGET, tpch_fixture::reason::FIXTURE_MISSING, &e);
+            return;
+        }
+    };
     let q17_nof = "SELECT SUM(l_extendedprice) / 7.0 AS avg_yearly FROM lineitem, part WHERE p_partkey = l_partkey AND p_brand = 'Brand#23' AND p_container = 'MED BOX'";
     let r_nof = engine
         .execute(q17_nof)
