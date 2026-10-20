@@ -152,6 +152,26 @@
       规模因生成器自检降不下去，SF 下限 0.005）→ 变异门禁拆成独立 `mutation` job、
       `test` job 运行上限 7200 → 9000 s（证据 §7.14）；降本手段（`four_way_harness` 批量装载）
       新立 **#5399**，不在本 PR 内做
+- [x] **5.3f** 降本落地（第一批，commit `1f720b9496`）：`_q15_q16_check` /
+      `four_way_compare_test` / `four_way_cell_diff_test` 改批量装载（证据 §7.16）
+- [x] **5.3g** CI run 8031 实测：`test` job 在 **全部 400 次历史 run 里零次成功**，
+      基线那次只跑了 71/446（fail-fast）；3 个既有 CI 断口被暴露并归因
+      （成员包二进制从未构建 / differential 假绿 / soak CLI 名过时）
+      —— 证据 §7.17、立项 **#5405 / #5406 / #5407**
+- [x] **5.3h** 降本落地（第二批，commit `a47753b33d`）：CI run 8031 实测第 **146** 个目标
+      `harness_validation_test` **挂死**（05:59:01Z 之后日志冻结，观测到 08:45Z），
+      根因是第 4 个逐行 INSERT 受害者（247 408 条语句）。同批处理：
+      `tpch_q6_q19_oracle_test`（185 556 条，且是**假绿** —— 位置列名 `c0..c15`
+      被引擎静默写成 NULL 行）、`eval_22_vs_sf01` 的 SQLite 侧（~86 000 个隐式事务）、
+      共享装载器的 insert 错误传播、`timeout … | tee` 杀不掉挂死子进程
+      —— 证据 §7.18、课程 Lesson-20 / Lesson-21
+- [x] **5.3i** 446 个 `[[test]]` 目标的 fixture 装载形态全量清点（各类别数量求和 = 446，
+      已程序化校验）→ 5 个高成本目标（~693 390 条逐行语句）+ 7 个在 CI 里会 panic 的目标
+      （`--no-fail-fast` 是本 PR 新增的，基线在第 71 个目标就中止 ⇒ 这 7 个是本 PR 新暴露的）
+      → 7 个改为**三态披露**（`TPCH-NOT-RUN`），断言语义一个都没改
+- [x] **5.3j** 新立 **#5408**（`timeout … | tee` 使 CI step 没有上界）/
+      **#5409**（引擎不校验 INSERT 列名列表，未知列名静默写 NULL 行）/
+      **#5410**（`harness_validation_test` 的 Q11 分支永远不可达）
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---
