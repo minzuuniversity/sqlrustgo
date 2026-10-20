@@ -241,6 +241,35 @@
       **同分支对照实测**：正确写法 `cargo clippy --all-features --quiet -- -D warnings`
       → **exit 0 / 0 warning / 0 error** ⇒ **代码是绿的，是脚本命令写错**
       ⇒ 立项 **#5416**（**本 PR 不改 `scripts/gate/legacy/`**，AC-10）
+- [x] **5.3r** **GA 门禁的逐维度实测与基线对照**（证据 §7.25）：
+      - 仓库脚本**零改动**；`check_rc_ga_gate.sh` 用**临时副本**执行，
+        只改两处且不改变判定口径（强制 `GATE="all"`；D6 列表按本机内存约束剔除
+        `tpch_full_22_test`/`tpch_gate_test`），副本已移出仓库
+      - 逐维度结果（PR `c7ac66ee24` vs 基线 `d8365606d69c`）：
+        **D1 9/10**（A2 FAIL：E0428，**基线同命令 exit 101、错误块逐字相同**）、
+        **D2 5/6**（B6 FAIL：产物缺失，两 worktree 皆缺）、
+        **D3 5/5 PASS**、**D4 5/5 PASS**、**D5 6/10**（4 WARN，逐条归因）、
+        **D6 0/0**（**本机不可验证**，非 PASS）、
+        **D7 exit 0**、**D8 exit 2 DRIFT**（与基线逐字相同）、**D9 exit 0**
+        + 聚合器三个内联维度（Test Plan / PR Template / Evidence Generation）
+        + 本 PR 新增的 2 个 TPC-H 门禁（已知差异登记 exit 0；fixture 真实生成 8 表 / 86 482 行 / 22 查询全过）
+      - ⇒ **两个 blocker 均经基线对照证伪为基线既有** ⇒ **本 PR 未引入任何红灯**
+      - 原始日志落盘：`docs/releases/v4.1.0/logs/gate_ga_c7ac66ee24_20261020_151643Z.log`（441 行；
+        按仓库约定该目录被 `.gitignore:130` 排除，是本地产物）
+- [x] **5.3s** **GA 取证过程中新立 5 个门禁自身缺陷**（证据 §7.25.6）：
+      **#5419**（D6a 的 `${ARRAY}` 在 bash 3.2 只展开第 1 个 + 47/51 目标路径失效 ⇒ 覆盖 ≤4/51）、
+      **#5420**（A2 无 `--all-features` ⇒ `fault_injection.rs` 的 `reach` 重复定义 ⇒ E0428）、
+      **#5421**（B6 要求仓库未跟踪的 `target/*.json`，门禁自己不产出 ⇒ fresh checkout 必缺）、
+      **#5422**（`check_cross_version_debt.sh` 的 `UNKNOWN_COUNT`/`OPEN_COUNT` 未初始化 ⇒ FAIL 判定永久不可达）、
+      **#5423**（根包 lib 测试 `test_v410_atomic_parallel_degree_getter_clamps_to_one` 随机失败：
+      `env::set_var` 改写进程级变量与并发测试竞态 ⇒ **CI `test` job 约 1/3 量级随机红灯**）
+      ⇒ 5 个恒绿 + 2 个恒红 + 1 个随机红 ⇒ **恒绿与恒红是同一种病：门禁不再对代码的真实状态作出区分**
+- [x] **5.3t** **不勾选 GA 清单项**「GA：G1-G16 PASS」（证据 §7.25.7）：
+      模板 `AGENT_PROMPT_TEMPLATE.md:35`「**不得自批 Gate**」；
+      且治理自身已判定该说法夸大（ADR-007:202 评为 🔴 NO (overstated)；
+      `META_GATE_AUDIT_2026-06.md:245` 写明 16 个里只有 6 个有真实脚本；
+      `GATE_CONDITIONS.md` 的 GA Gate 小节本身只定义 G1–G6，与模板的 G1–G16 不是同一套编号）
+      ⇒ 本迭代交付 GA 门禁的**取证与立案**，不是勾选 PASS
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---

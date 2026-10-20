@@ -906,6 +906,146 @@ exit ${status}
 
 ---
 
+## Lesson-23: 恒绿与恒红是**同一种病** —— 门禁不再对代码的真实状态作出区分
+
+**上下文**：本轮做 GA 门禁取证（治理模板 `AGENT_PROMPT_TEMPLATE.md:135` 的
+`[ ] GA：G1-G16 PASS`）。为了得到真实结论，逐维度单独执行了 `check_rc_ga_gate.sh`
+与 `check_full_gate_verification.sh` 背后的每个脚本，并与基线 `d8365606d69c` 对照。
+
+**观察**（实测，不是推断）：
+
+| 方向 | 门禁 | 症状 |
+|---|---|---|
+| **恒绿** | `check_full_gate_verification.sh:69` | `output=$(bash "$script" 2>&1 \|\| true)` ⇒ `code` 恒为 0 ⇒ **8 个维度无论实际怎样都判 PASS**（#5417） |
+| **恒绿** | `check_rc_ga_gate.sh:963` | `local GATE="${1:-all}"` 让 `--skip-a5` 占据维度选择器 ⇒ 7 个维度被静默跳过，汇总显示 0/0，却报 "All dimensions validated"（#5418） |
+| **恒绿** | `check_rc_ga_gate.sh:507` | `for t in ${D6_INTEGRATION_TESTS}` 在 bash 3.2 只展开第 1 个元素 ⇒ D6a **实际执行 0 个测试**却报 `✓ PASS 0/0`；即使在 bash 5 上路径规则也只解析得到 4/51（#5419） |
+| **恒绿** | `check_cross_version_debt.sh:430/487` | `UNKNOWN_COUNT`/`OPEN_COUNT` 从未初始化 ⇒ 「❌ FAIL (UNKNOWN items)」**永久不可达**（#5422） |
+| **恒红** | `legacy/check_alpha.sh:20` | `--quiet` 位置错 ⇒ rustc 收到 `Unrecognized option: 'quiet'` ⇒ 编译必然失败（#5416） |
+| **恒红** | `check_rc_ga_gate.sh:141`（A2） | 无 `--all-features` ⇒ `fault_injection.rs` 的 `reach` 重复定义 ⇒ E0428 ⇒ 编译失败（#5420） |
+| **恒红** | `check_rc_ga_gate.sh:337`（B6） | 要求**仓库未跟踪**且**门禁自己不产出**的 `target/*.json` ⇒ fresh checkout 必缺（#5421） |
+
+**根因**：这些门禁都**没有把"被检查对象的真实状态"传导到退出码**。
+恒绿是因为退出码被吞掉或判定条件永远为假；恒红是因为判定条件与代码状态无关（恒定的编译错误、恒缺的产物）。
+
+**行动**：
+- 取证**不采信聚合器结论**，逐维度单独执行、各取真实退出码；
+- 每个 FAIL 都做**基线对照**（同命令、同基线提交），只有"输出逐字相同"才判"基线既有"；
+- 每个失效点**单独立 issue**，写清位置、症状、方向（恒绿/恒红/随机）与复现命令。
+
+**规则**：
+
+> **恒绿与恒红是同一种病：门禁不再对代码的真实状态作出区分。**
+>
+> 判据不是"它是绿的还是红的"，而是：**改一处代码，这个门禁的结论会不会变？**
+> 不会变 ⇒ 它没有在工作，无论报什么颜色。
+
+---
+
+## Lesson-24: 「取证」与「勾选 Gate」是两件事 —— 实现者不得批准自己的 Gate
+
+**上下文**：治理模板把 GA 的成功标准写成 `[ ] GA：G1-G16 PASS`。
+本轮做完了 GA 取证（逐维度实测 + 基线对照 + 8 个失效点立项），那么能不能把这一项勾上？
+
+**不能。** 三条理由：
+
+1. **模板硬约束**：`AGENT_PROMPT_TEMPLATE.md:35`「**不得自批 Gate：实现者不得批准自己的 Gate**」。
+2. **清单项与定义文档在仓库内就对不齐**：
+   - `GATE_CONDITIONS.md` 的 GA Gate 小节只定义了 **G1–G6**（另加 G17/G18/G19），
+     而模板写的是 **G1–G16**；
+   - `docs/governance/META_GATE_AUDIT_2026-06.md:245` 写明「16 个里**只有 6 个**有真实脚本
+     （G1、G11、G12、G13、G14、G16），G11–G14 是"基础设施就绪"但从未运行」；
+   - `docs/governance/adr/ADR-007-truthfulness-recovery-sequence.md:202` 把
+     "G1-G16 PASS as a single claim" 评为 🔴 **NO (overstated)**。
+3. **实测本身也不支持"全绿"**：D1 与 D2 各有一个 blocker，D6 在本机不可验证。
+
+**行动**：把交付物定义成**取证与立案**，而不是勾选：
+- 逐维度表格（结论 + 基线对照 + 归属）；
+- 失效点 issue；
+- 明确写「本 PR 不勾选 GA 清单项，批准权在独立评审 / CI」。
+
+**规则**：
+
+> **一个迭代能交付的是"门禁的真实状态"，不是"门禁被批准"。**
+> 把「我有证据」和「我有权批准」分开 —— 前者是自己该做的，后者不是。
+>
+> 推论：门禁红/绿与 PR 是否可合并是**两个问题**；
+> 正确做法是"把红的归属钉死 + 逐项披露"，而不是"把红的消掉"。
+
+---
+
+## Lesson-25: `${ARRAY}` 未加引号，在 bash 3.2 下只展开第 1 个元素
+
+**上下文**：`scripts/gate/check_rc_ga_gate.sh:507` 遍历 51 个集成测试目标：
+
+```bash
+for t in ${D6_INTEGRATION_TESTS}; do   # 数组未加引号
+```
+
+本机 `/bin/bash` 是 **3.2.57**（macOS 自带）。实测：
+
+```
+$ /bin/bash -c 'A=("a" "b" "c"); for t in ${A}; do echo "item=$t"; done'
+item=a
+```
+
+在 **bash 4+** 中 `${ARRAY}` 展开为全部元素，在 **bash 3.2** 中等价于 `${ARRAY[0]}`。
+⇒ 循环体只跑一次；第 0 项恰好路径不匹配 ⇒ `continue` ⇒ `D6_TOTAL=0`
+⇒ 门禁打印 **`✓ PASS D6 summary: 0/0 integration tests PASS`**。
+
+讽刺的是，脚本第 505 行的注释自称 *"Bash 3.2 compatible"* ——
+**兼容性声明与实现相反**，而没有任何测试会发现它。
+
+（第二层问题与此独立：即使在 bash 5 的 CI 上，路径规则 `tests/<name>.rs` 也只解析得到 **4/51**，
+其余 47 个文件都在 `tests/integration/...` 等子目录 ⇒ 覆盖率约 8%。）
+
+**行动**：取证时不改仓库脚本，用**临时副本**只改两处（强制 `GATE="all"`；按本机约束剔除 2 个 TPC-H 目标），
+副本跑完移出仓库；失效点立 issue（#5419）。
+
+**规则**：
+
+> **门禁脚本里凡是"按名字收集一批目标"的写法，都必须在两种 bash 上验证过。**
+> `${ARRAY}` 与 `"${ARRAY[@]}"` 在 bash 3.2 与 4+ 之间是**语义差异**，不是风格差异。
+>
+> 推论：**"门禁在本机跑了并报 PASS"这句话本身需要证据** ——
+> 要同时回答「跑了多少个目标」（0 个也叫 PASS）和「判据覆盖了哪些目标」（4/51 还是 51/51）。
+
+---
+
+## Lesson-26: 进程级环境变量不能当测试夹具 —— 它让 CI 的红灯变成随机数
+
+**上下文**：GA 取证时，D5-10 维度报 "Recent test failures: 1"。基线对照时同样复现：
+
+| 位置 | 次数 | 失败次数 |
+|---|---|---|
+| PR 分支 `c7ac66ee24` | 5 | **2** |
+| 基线 `d8365606d69c` | 3 | **1** |
+| PR 分支（`--test-threads=4`） | 6 | 0 |
+
+失败用例固定为 `execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one`
+（`left: 4 / right: 1`）。
+
+**根因**：`ExecutionEngine::base_with`（`src/execution_engine.rs:349`）**每次构造引擎都读进程级**
+`SQLRUSTGO_EXECUTOR_PARALLELISM`；而 `src/execution_engine_tests.rs` 的多个用例
+（`:559`/`:618` 的 `set_var`，`:561`/`:586`/`:592`/`:620`/`:659` 的 `remove_var`）
+**并发改写同一个进程的环境表**。Rust 测试默认多线程 ⇒ 读取方偶尔读到别的用例刚写进去的 4。
+Rust 2024 起 `env::set_var` 已是 `unsafe`，其文档明确写着在多线程程序中调用是未定义行为。
+
+**影响**：CI 的 `test` job 执行 `cargo test --all-features --no-fail-fast`，
+根包 lib 测试就在其中 ⇒ **该 job 存在约 1/3 量级的随机红灯**。
+
+**行动**：立项 #5423（**本 PR 不改**：范围是 TPC-H fixture 自包含，不是并发测试卫生）；
+CI 判读一律用「同命令复跑 + 基线对照」甄别。
+
+**规则**：
+
+> **进程级状态（env、全局原子、全局池）不能当测试夹具。**
+> 测试夹具必须只影响被测实例本身。
+>
+> 推论：**当一个 CI job 有随机红灯时，"这次红了"和"这次绿了"都是不可靠的信号** ——
+> 在把任何 CI 红灯归因给某次变更之前，先问："它复现吗？基线也这样吗？"
+
+---
+
 ## 附：本轮形成的可复用检查
 
 | 工具 | 作用 | 复现命令 |
