@@ -27,8 +27,7 @@
 
 #[path = "../../common/mod.rs"]
 mod common;
-#[path = "../../common/tpch_fixture.rs"]
-mod tpch_fixture;
+use common::tpch_cli_harness::tpch_fixture;
 use common::tpch_wire_harness::*;
 use common::tpch_wire_scope;
 

@@ -14,8 +14,11 @@
 #   4. `owner` is non-empty      (no unowned differences)
 #   5. `case_id` is unique across the whole registry
 #   6. the number of entries does not exceed --max-entries
-#      (default 1 => the registry holds the single difference that is
-#       registered today; known differences may not grow silently)
+#      (default 2 => the registry holds the two differences that are
+#       registered today: `tpch:Q13` (#5394) and
+#       `tpch_value_test_v2:Q8` (#5462); known differences may not grow
+#       silently -- every growth must come with a new issue, a new entry
+#       here, and a deliberate bump of this limit)
 #   7. `since` is a YYYY-MM-DD date
 #   8. an entry of kind `row_count` whose `actual_row_count` equals its
 #      `oracle_row_count` is stale — the difference no longer exists and
@@ -29,7 +32,7 @@
 #   --registry <path>    registry file
 #                        (default: tests/baseline/tpch_known_differences.json)
 #   --max-entries <N>    maximum number of registered entries
-#                        (default: 1)
+#                        (default: 2)
 #   -h, --help           Show this help.
 #
 # Exit codes:
@@ -46,7 +49,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 REGISTRY="${REPO_ROOT}/tests/baseline/tpch_known_differences.json"
-MAX_ENTRIES=1
+# Two differences are registered today (`tpch:Q13` -> #5394 and
+# `tpch_value_test_v2:Q8` -> #5462). The limit is a tripwire: raising it is
+# a deliberate act that must come with a new issue and a new registry entry,
+# never a side effect of adding an entry.
+MAX_ENTRIES=2
 
 color_red()   { printf '\033[0;31m%s\033[0m' "$*"; }
 color_green() { printf '\033[0;32m%s\033[0m' "$*"; }
@@ -64,7 +71,7 @@ Usage: bash scripts/gate/check_tpch_known_differences.sh \
 
   --registry <path>    registry file
                        (default: tests/baseline/tpch_known_differences.json)
-  --max-entries <N>    maximum number of registered entries (default: 1)
+  --max-entries <N>    maximum number of registered entries (default: 2)
   -h, --help           this message
 USAGE
 }

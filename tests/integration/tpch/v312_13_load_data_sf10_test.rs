@@ -44,8 +44,7 @@ mod common;
 // part of the repository and is not produced by the CI fixture step (which
 // generates SF=0.01). Its absence is therefore disclosed with the
 // `scale_layer_only` reason code instead of panicking.
-#[path = "../../common/tpch_fixture.rs"]
-mod tpch_fixture;
+use common::tpch_cli_harness::tpch_fixture;
 
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};

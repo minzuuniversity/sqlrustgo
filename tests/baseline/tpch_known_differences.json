@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-20T00:05:00Z",
+  "updated_at": "2026-10-20T20:40:00Z",
   "entries": [
     {
       "case_id": "tpch:Q13",
@@ -14,6 +14,19 @@
       "owner": "sqlrustgo-maintainers",
       "since": "2026-10-20",
       "detail": "TPC-H Q13 counts, per customer, how many of their orders survive the ON-clause filter o_comment NOT LIKE '%special%requests%'. The engine drops the customers whose every order is filtered out (71 customers), instead of emitting them with a count of 0. The engine therefore accounts for 1429 of the 1500 customers while the oracle accounts for all 1500. The two sides return the same 23 groups and the same row count, so only a cell-level comparison detects it."
+    },
+    {
+      "case_id": "tpch_value_test_v2:Q8",
+      "target": "tpch_value_test_v2",
+      "query_id": "Q8",
+      "kind": "row_count",
+      "expected_row_count": 2,
+      "actual_row_count": 1,
+      "oracle_row_count": 2,
+      "issue": "#5462",
+      "owner": "sqlrustgo-maintainers",
+      "since": "2026-10-21",
+      "detail": "This target runs a modified Q8 (r_name = 'AMERICA' AND p_type = 'ECONOMY ANODIZED STEEL') whose GROUP BY key is o_year, the alias of EXTRACT(YEAR FROM o_orderdate). The engine does not resolve an alias in the GROUP BY clause: it takes the identifier as a string constant, so every row lands in one group and the engine returns 1 row where the oracle returns 2 (1995 and 1996). Verified independently with plain SQLite on the same fixture (no rewriting at all): that statement really does produce two groups. Note this is NOT the canonical queries/q8.sql variant (r_name = 'EUROPE', n2.n_name = 'GERMANY'), which matches the oracle — hence the difference is registered under a target-qualified case id and not under the target-independent tpch:Q8."
     }
   ]
 }

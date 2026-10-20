@@ -81,17 +81,16 @@
 mod common;
 #[path = "../../common/sqlite_oracle.rs"]
 mod sqlite_oracle;
-#[path = "../../common/tpch_fixture.rs"]
-mod tpch_fixture;
+use common::tpch_cli_harness::tpch_fixture;
 
 use std::time::Instant;
 
+use common::tpch_cli_harness::tpch_fixture::{reason, report_known_difference, report_not_run};
 use common::tpch_wire_harness::{
     resolve_fixture_dir, run_query_timed, start_sf01_named, WireOutcome,
 };
 use common::tpch_wire_scope;
 use sqlite_oracle::{adapt_sql, SqliteOracle, TPC_H_ALL_TABLES};
-use tpch_fixture::{reason, report_known_difference, report_not_run};
 
 /// Cargo target name — used in the NOT-RUN marker and in the `case_id` of
 /// the known-difference registry.

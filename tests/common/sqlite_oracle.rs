@@ -100,6 +100,45 @@ const TPC_H_SCHEMA: [(&str, &str); 8] = [
     ),
 ];
 
+/// The indexes the TPC-H specification defines for its schema.
+///
+/// The oracle is the **reference implementation** of every statement the
+/// wire tests compare against. Without these indexes it answers the
+/// standard statements by brute force: `queries/q21.sql` (two correlated
+/// `EXISTS` / `NOT EXISTS` subqueries over `lineitem`) needs **41 seconds**
+/// in SQLite, against **441 ms** for the engine, which has the same
+/// indexes.
+///
+/// That gap is not merely slow — it breaks the test. The server reaps
+/// connections that have been idle for longer than
+/// `SQLRUSTGO_IDLE_TIMEOUT_SECS` (30 s by default, issue #4682). A client
+/// that spends 41 s computing the reference leaves the engine's connection
+/// idle for longer than that, the server closes it, and the **next** engine
+/// statement fails with `read packet header: failed to fill whole buffer` —
+/// a failure that looks exactly like an engine crash and is attributed to
+/// the engine (issue #5464).
+///
+/// An index does not change a query's *result*, only how fast the reference
+/// finds it, so adding them keeps the oracle an independent reference while
+/// making it fast enough not to starve the engine's connection. Every
+/// conforming TPC-H database has these indexes.
+const TPC_H_INDEXES: [&str; 14] = [
+    "CREATE INDEX idx_nation_region ON nation(n_regionkey)",
+    "CREATE INDEX idx_supplier_nation ON supplier(s_nationkey)",
+    "CREATE INDEX idx_supplier_name ON supplier(s_name)",
+    "CREATE INDEX idx_customer_nation ON customer(c_nationkey)",
+    "CREATE INDEX idx_customer_name ON customer(c_name)",
+    "CREATE INDEX idx_part_brand_type_size ON part(p_brand, p_type, p_size)",
+    "CREATE INDEX idx_part_name ON part(p_name)",
+    "CREATE INDEX idx_partsupp_suppkey ON partsupp(ps_suppkey)",
+    "CREATE INDEX idx_orders_custkey ON orders(o_custkey)",
+    "CREATE INDEX idx_orders_orderdate ON orders(o_orderdate)",
+    "CREATE INDEX idx_lineitem_partkey ON lineitem(l_partkey)",
+    "CREATE INDEX idx_lineitem_suppkey ON lineitem(l_suppkey)",
+    "CREATE INDEX idx_lineitem_orderkey ON lineitem(l_orderkey)",
+    "CREATE INDEX idx_lineitem_shipdate ON lineitem(l_shipdate)",
+];
+
 /// Number of leading `.tbl` fields that map to each table's columns.
 ///
 /// The `.tbl` format appends one trailing `|` after the comment column, so a
@@ -135,7 +174,29 @@ impl SqliteOracle {
         for table in tables {
             oracle.load_table(fixture, table)?;
         }
+        oracle.create_indexes()?;
         Ok(oracle)
+    }
+
+    /// Create the TPC-H indexes (see [`TPC_H_INDEXES`]).
+    ///
+    /// The indexes are created **after** the bulk load, which is both
+    /// faster and the order a real database would use. A table that was
+    /// not loaded cannot get an index — the statements are skipped, so
+    /// SQLite would refuse to create the index.
+    fn create_indexes(&mut self) -> Result<(), String> {
+        for ddl in TPC_H_INDEXES {
+            if let Err(e) = self.conn.execute_batch(ddl) {
+                // A missing table is not a failure of the oracle: the
+                // caller asked for a subset of the tables.
+                let msg = e.to_string();
+                if msg.contains("no such table") {
+                    continue;
+                }
+                return Err(format!("create index `{ddl}`: {e}"));
+            }
+        }
+        Ok(())
     }
 
     /// Load one table from the fixture into SQLite.
@@ -570,6 +631,46 @@ pub fn check_wire_row_count_against_oracle(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tpch_indexes_are_created() {
+        // The indexes are not a performance nicety: without them the oracle
+        // needs 41 s for `queries/q21.sql`, the server reaps the engine's
+        // idle connection after 30 s, and the *next* engine statement is
+        // misreported as an engine crash (issue #5464).
+        let conn = Connection::open_in_memory().expect("open sqlite");
+        for (_, ddl) in TPC_H_SCHEMA.iter() {
+            conn.execute_batch(ddl).expect("create table");
+        }
+        let mut oracle = SqliteOracle { conn };
+        oracle.create_indexes().expect("create indexes");
+
+        let mut found: Vec<String> = oracle
+            .conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
+            .expect("prepare")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query")
+            .filter_map(|r| r.ok())
+            .collect();
+        found.sort();
+        assert_eq!(
+            found.len(),
+            TPC_H_INDEXES.len(),
+            "every TPC-H index must exist: {found:?}"
+        );
+        for ddl in TPC_H_INDEXES {
+            let name = ddl
+                .split_whitespace()
+                .nth(2)
+                .expect("index name")
+                .trim_end_matches('(');
+            assert!(
+                found.iter().any(|f| f == name),
+                "index `{name}` is missing: {found:?}"
+            );
+        }
+    }
 
     #[test]
     fn extracts_year_is_rewritten() {

@@ -39,8 +39,7 @@ use std::sync::Arc;
 mod common;
 #[path = "../../common/sqlite_oracle.rs"]
 mod sqlite_oracle;
-#[path = "../../common/tpch_fixture.rs"]
-mod tpch_fixture;
+use common::tpch_cli_harness::tpch_fixture;
 use common::tpch_wire_harness::{report_not_run, resolve_fixture_dir};
 use sqlite_oracle::adapt_sql;
 

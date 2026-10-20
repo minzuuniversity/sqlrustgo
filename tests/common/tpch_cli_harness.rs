@@ -25,9 +25,14 @@ use serde_json::Value as JsonValue;
 // resolver turns "no fixture" / "fixture of the wrong scale profile" into an
 // explicit `TPCH-NOT-RUN` disclosure instead of a panic or a silent pass.
 //
-// The path is relative to this file's own directory (`tests/common/`), so it
-// resolves identically whether this file is compiled as the `tpch_cli_harness`
-// test target or as the `common::tpch_cli_harness` module.
+// This file is the **single** entry point of the fixture module. It is
+// compiled both as a module (`common::tpch_cli_harness`) and as a test target
+// of its own, so the `#[path]` has to be relative to *this* file's directory
+// — a `super::` path would not resolve in the standalone-target case.
+//
+// It must stay the only declaration: a test file that also declared the
+// module would compile this file a second time (rustc's `duplicate_mod`),
+// and the unit tests inside it would then run twice in every binary.
 #[path = "tpch_fixture.rs"]
 pub mod tpch_fixture;
 

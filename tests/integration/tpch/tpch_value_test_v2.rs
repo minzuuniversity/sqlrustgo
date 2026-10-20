@@ -58,13 +58,14 @@
 mod common;
 #[path = "../../common/sqlite_oracle.rs"]
 mod sqlite_oracle;
-#[path = "../../common/tpch_fixture.rs"]
-mod tpch_fixture;
+use common::tpch_cli_harness::tpch_fixture;
 
+use common::tpch_cli_harness::tpch_fixture::{
+    lookup_target_known_difference, report_known_difference,
+};
 use common::tpch_wire_harness::{run_query_timed, start_sf001_named, WireOutcome};
 use common::tpch_wire_scope;
 use sqlite_oracle::{SqliteOracle, TPC_H_ALL_TABLES};
-use tpch_fixture::{lookup_statement_known_difference, report_known_difference};
 
 /// Cargo target name — used in the NOT-RUN marker.
 const TARGET: &str = "tpch_value_test_v2";
@@ -215,7 +216,7 @@ fn test_tpch_22_value_assertions() {
             }
             Some(diff) => {
                 compared += 1;
-                match lookup_statement_known_difference(qid) {
+                match lookup_target_known_difference(TARGET, qid) {
                     // A difference that stems from the engine's SQL semantics
                     // is registered once (with an issue and an owner) and
                     // applies to every target that runs the statement. It is

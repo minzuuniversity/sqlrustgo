@@ -39,12 +39,11 @@ use std::sync::Arc;
 mod common;
 #[path = "../../common/sqlite_oracle.rs"]
 mod sqlite_oracle;
-#[path = "../../common/tpch_fixture.rs"]
-mod tpch_fixture;
+use common::tpch_cli_harness::tpch_fixture;
 
+use common::tpch_cli_harness::tpch_fixture::Fixture;
 use common::tpch_wire_harness::{report_not_run, SCHEMA_DDL};
 use sqlite_oracle::{check_against_oracle, engine_rows_to_strings, SqliteOracle};
-use tpch_fixture::Fixture;
 
 /// The cargo target name, used in the NOT-RUN marker.
 const TARGET: &str = "q13_subquery_repro";

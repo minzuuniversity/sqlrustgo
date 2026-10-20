@@ -125,6 +125,24 @@ pub fn statement_case_id(qid: &str) -> String {
     format!("tpch:{qid}")
 }
 
+/// The case id used for a difference that belongs to **one target's
+/// statement text**.
+///
+/// The target-independent id ([`statement_case_id`]) says "the engine gets
+/// this statement wrong". That is only true when every target runs the
+/// *same* SQL. It is not true in general: `queries/q8.sql` and the Q8 in
+/// `tpch_value_test_v2` are two different statements that share a name.
+/// The standard Q8 matches the oracle; the other one does not. Registering
+/// the difference under `tpch:Q8` would therefore claim that the standard
+/// Q8 is broken, which it is not.
+///
+/// The registry's schema already anticipates this: every entry carries a
+/// `target` field, and `"*"` is documented as "every target". A
+/// target-qualified id is that field's natural key.
+pub fn target_statement_case_id(target: &str, qid: &str) -> String {
+    format!("{target}:{qid}")
+}
+
 /// Repository-local candidate fixture directories, tried in order when
 /// `TPCH_DATA_DIR` is not set.
 ///
@@ -659,6 +677,19 @@ pub fn lookup_statement_known_difference(qid: &str) -> Option<KnownDifference> {
     lookup_known_difference(&statement_case_id(qid))
 }
 
+/// Look up the registered difference for a statement, **preferring the
+/// target-qualified entry**.
+///
+/// The target-qualified entry wins because it is the more specific claim:
+/// it says "this target's statement text differs from the oracle", while
+/// the target-independent entry says "the statement differs". A target that
+/// runs the canonical `queries/q8.sql` must not inherit a difference that
+/// was found in a *different* Q8 text (see [`target_statement_case_id`]).
+pub fn lookup_target_known_difference(target: &str, qid: &str) -> Option<KnownDifference> {
+    lookup_known_difference(&target_statement_case_id(target, qid))
+        .or_else(|| lookup_statement_known_difference(qid))
+}
+
 /// Print the known-difference marker for a registered mismatch.
 ///
 /// The registry entry is echoed in full (issue, owner, date) so that a reader
@@ -733,5 +764,22 @@ mod tests {
     #[test]
     fn statement_case_id_is_target_independent() {
         assert_eq!(statement_case_id("Q13"), "tpch:Q13");
+    }
+
+    #[test]
+    fn target_qualified_case_id_is_distinct_from_the_shared_one() {
+        // Two different statements are called "Q8" in this repository
+        // (`queries/q8.sql` and the one in `tpch_value_test_v2`). A
+        // difference found in one of them must not be registered as if it
+        // applied to the other.
+        assert_eq!(statement_case_id("Q8"), "tpch:Q8");
+        assert_eq!(
+            target_statement_case_id("tpch_value_test_v2", "Q8"),
+            "tpch_value_test_v2:Q8"
+        );
+        assert_ne!(
+            target_statement_case_id("tpch_value_test_v2", "Q8"),
+            statement_case_id("Q8")
+        );
     }
 }

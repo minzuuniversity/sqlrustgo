@@ -63,16 +63,15 @@
 mod common;
 #[path = "../../common/sqlite_oracle.rs"]
 mod sqlite_oracle;
-#[path = "../../common/tpch_fixture.rs"]
-mod tpch_fixture;
+use common::tpch_cli_harness::tpch_fixture;
 
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
+use common::tpch_cli_harness::tpch_fixture::{reason, report_known_difference, report_not_run};
 use common::tpch_wire_harness::{run_query_timed, start_sf01_named, WireOutcome};
 use common::tpch_wire_scope;
 use sqlite_oracle::{adapt_sql, diff_rows, SqliteOracle, NULL_CELL, TPC_H_ALL_TABLES};
-use tpch_fixture::{reason, report_known_difference, report_not_run};
 
 /// Cargo target name — used in the NOT-RUN marker and in the `case_id` of
 /// the known-difference registry.
@@ -595,7 +594,7 @@ fn tpch_sf01_22_vs_mariadb_cell() {
         }
     }
 
-    compare_against_other_engine("mariadb", |sql| run_mysql(sql));
+    compare_against_other_engine("mariadb", run_mysql);
 }
 
 /// The PostgreSQL leg — needs the `psql` client and a live
@@ -663,5 +662,5 @@ fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
         }
     }
 
-    compare_against_other_engine("postgresql", |sql| run_psql(sql));
+    compare_against_other_engine("postgresql", run_psql);
 }
