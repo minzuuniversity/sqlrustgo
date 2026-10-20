@@ -1,7 +1,7 @@
 # PR-5379 ACCEPTANCE — TPC-H fixture 自包含化与 CI 执行完整性
 
 > **PR Number**: #5396（`http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/5396`）
-> **Commits**: `ee498d00f7`（基线 clippy 修复）→ `de50610a66`（TPC-H 主变更）→ `7eccfe0c8d`（变异脚本超时上限）→ `0c35738d80`（文档补记）→ `de74efcafd`（消除本 PR 新增的 2 个编译告警）→ `774645000d`（证据 §7.11 / Lesson-14 补记）→ `4e31685347`（变异脚本 SHA-256 工具回退链）
+> **Commits**: `ee498d00f7`（基线 clippy 修复）→ `de50610a66`（TPC-H 主变更）→ `7eccfe0c8d`（变异脚本超时上限）→ `0c35738d80`（文档补记）→ `de74efcafd`（消除本 PR 新增的 2 个编译告警）→ `774645000d`（证据 §7.11 / Lesson-14 补记）→ `4e31685347`（变异脚本 SHA-256 工具回退链）→ `2b4dd36a82`（证据 §7.12 / Lesson-15 补记）→ `ec745d1167`（变异门禁拆独立 job + test job 上限 9000s + 证据 §7.13/§7.14 + Lesson-16）
 > **Issue**: #5379
 > **Version**: v4.1.0
 > **Base**: `d8365606d69c`（`develop/v4.1.0`）
@@ -307,10 +307,11 @@ import 删除 + 变量重命名（无行为变化）。
 | `check_test_target_execution.sh`（新增） | CI `test` job 的**新增步骤**，在摘要之后执行；漏跑即红 | 接入 |
 | `check_tpch_known_differences.sh`（新增） | 登记准入；默认上限 1 条（当前 1 条） | 接入 |
 | `prepare_tpch_fixture.sh`（新增） | CI `test` job 的**新增步骤**，生成 fixture 并写 manifest | 接入 |
-| `mutate_tpch_oracle_tests.sh`（新增） | 变异验证脚本，CI `test` job 承接运行时验证 | 就绪（机械逻辑已用桩 `cargo` 实测，见 AC-5） |
+| `mutate_tpch_oracle_tests.sh`（新增） | 变异验证脚本；**独立成 `mutation` job**（`needs: [test]` + `if: always()`），在 `test` 之后串行运行，不与 446 目标运行抢 runner 的 CPU/内存 | 就绪（机械逻辑已用桩 `cargo` 实测，见 AC-5） |
 | G1（TPC-H 22/22 baseline） | **仍然 NOT RUN**（CI 无 dbgen、无 SF=1 fixture）；注释已修正为只陈述事实 | 不变 |
 | `check_stage.sh` | **不覆盖 TPC-H**：实测零 TPC-H 引用，STAGE_CONFIG 的 `required_gates` 也没有 G1。原注释声称它是 SF=1 的兜底，**该声明不成立，已更正** | 澄清 |
 | 规模层（SF=1） | 本 PR **不接入**，见 #5387 | 递延 |
+| CI 时间预算 | fixture 到位后 `test` job 从「几分钟」变成「以小时计」（实测 `_q15_q16_check` > 23 min）→ 变异门禁拆独立 job + `test` job 上限 7200 → 9000 s；降本手段（批量装载）见 **#5399** | 调整 |
 
 ---
 
