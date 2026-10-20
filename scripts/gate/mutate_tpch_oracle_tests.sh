@@ -42,7 +42,11 @@
 #
 # # Usage
 #
-#   bash scripts/gate/mutate_tpch_oracle_tests.sh [--keep-fixture]
+#   bash scripts/gate/mutate_tpch_oracle_tests.sh
+#
+# The fixture directory is NEVER removed by this script (it lives in
+# $RUNNER_TEMP or $TMPDIR and is left in place for post-mortem inspection);
+# there is no --keep-fixture switch, because there is nothing to switch off.
 #
 # Exit codes: 0 = every mutation CAUGHT · 1 = a mutation SURVIVED
 #             2 = the harness itself failed (mutation did not apply, build
@@ -89,6 +93,39 @@ ERRORS=0
 ENGINE_SHA_BEFORE=""
 
 log() { printf '%s\n' "$*"; }
+
+# --- temporary files ---------------------------------------------------------
+#
+# `mktemp` is called **without a template** on purpose.
+#
+# The CI runner image's `mktemp` does not accept a template that carries a
+# suffix after the `X`s: `mktemp -t name.XXXXXX.py` fails there with
+#
+#   mktemp: : Invalid argument
+#
+# and — because this script does not run under `set -e` — that failure was
+# swallowed: the command substitution yielded an EMPTY path, and the script
+# went on to write its three Python snippets to "" ("No such file or
+# directory") and then report mutation results that had never been produced.
+# Measured on CI run 8081 (mutation job 16475).
+#
+# A bare `mktemp` is what the rest of this repository uses (20+ call sites in
+# scripts/gate/*.sh) and it is known to work in that image.
+#
+# The helper **fails loudly** instead of returning an empty path, so a
+# harness that cannot create its scratch files stops the gate rather than
+# reporting a verdict it did not actually measure.
+#
+# The error goes to stderr, because the callers capture stdout.
+make_temp_file() {
+    local f
+    f="$(mktemp 2>/dev/null)" || f=""
+    if [ -z "$f" ] || [ ! -f "$f" ]; then
+        echo "ERROR: cannot create a temporary file (mktemp failed) — refusing to continue with an empty path" >&2
+        return 1
+    fi
+    printf '%s' "$f"
+}
 
 # --- SHA-256 of a file, portable across Linux/macOS -------------------------
 # `shasum` is a Perl script and is NOT guaranteed to exist on a slim CI
@@ -153,7 +190,10 @@ run_baseline() {
     log ""
     log "== BASELINE: the unmutated '$target' must pass, otherwise CAUGHT is meaningless"
     local out rc
-    out="$(mktemp -t mutate_tpch_base.XXXXXX)"
+    out="$(make_temp_file)" || {
+        log "${RED}ERROR${NC}: cannot create the baseline output file"
+        return 1
+    }
     # The run is bounded: a gate that can hang is a gate that eats the whole
     # CI container. A timeout is reported as a harness error, never as a
     # "caught" mutation — the point of a mutation run is that the *test*
@@ -189,7 +229,11 @@ run_mutation() {
     log ""
     log "== ${id}: ${desc}  (target: ${target})"
 
-    BACKUP_FILE="$(mktemp -t mutate_tpch_engine.XXXXXX)"
+    BACKUP_FILE="$(make_temp_file)" || {
+        log "${RED}ERROR${NC}: cannot create the engine backup file"
+        ERRORS=$((ERRORS + 1))
+        return
+    }
     cp "$ENGINE_FILE" "$BACKUP_FILE" || {
         log "${RED}ERROR${NC}: cannot back up $ENGINE_FILE"
         ERRORS=$((ERRORS + 1))
@@ -204,7 +248,12 @@ run_mutation() {
     fi
 
     local out rc
-    out="$(mktemp -t mutate_tpch_out.XXXXXX)"
+    out="$(make_temp_file)" || {
+        log "${RED}ERROR${NC}: cannot create the mutation output file"
+        ERRORS=$((ERRORS + 1))
+        restore_engine
+        return
+    }
     TPCH_DATA_DIR="$FIXTURE_DIR" timeout "$RUN_TIMEOUT_S" \
         cargo test --test "$target" -- --nocapture >"$out" 2>&1
     rc=$?
@@ -237,9 +286,9 @@ run_mutation() {
 
 # --- mutation snippets ------------------------------------------------------
 # Three standalone temp files (no directory) so cleanup never needs `rm -rf`.
-MUT1_SNIPPET="$(mktemp -t mutate_tpch_mut1.XXXXXX.py)"
-MUT2_SNIPPET="$(mktemp -t mutate_tpch_mut2.XXXXXX.py)"
-MUT3_SNIPPET="$(mktemp -t mutate_tpch_mut3.XXXXXX.py)"
+MUT1_SNIPPET="$(make_temp_file)" || { log "${RED}ERROR${NC}: cannot create the MUT-1 snippet file"; exit 2; }
+MUT2_SNIPPET="$(make_temp_file)" || { log "${RED}ERROR${NC}: cannot create the MUT-2 snippet file"; exit 2; }
+MUT3_SNIPPET="$(make_temp_file)" || { log "${RED}ERROR${NC}: cannot create the MUT-3 snippet file"; exit 2; }
 trap 'rm -f "$MUT1_SNIPPET" "$MUT2_SNIPPET" "$MUT3_SNIPPET"; restore_engine; assert_engine_pristine' EXIT INT TERM
 
 cat > "$MUT1_SNIPPET" <<'PY'
