@@ -414,15 +414,26 @@ import 删除 + 变量重命名（无行为变化）。
 ## 8. 验收清单
 
 - [x] AC-1 fixture 自包含
-- [x] AC-2 目标执行完整性
+- [x] AC-2 目标执行完整性（含本轮新增的 7 个 panic 目标改三态披露）
 - [x] AC-3 零断言 → 真断言
-- [x] AC-4 独立预言机
+- [x] AC-4 独立预言机（含本轮新增的 `tpch_q6_q19_oracle_test`：期望值从硬编码的化石改为预言机）
 - [ ] AC-5 变异测试实跑（脚本就绪，运行时由 CI 承接）
 - [x] AC-6 三态披露
 - [x] AC-7 wire 路径不崩溃
 - [x] AC-8 已知差异登记
 - [ ] AC-9 clippy（fmt 已绿）
 - [ ] 全量 `cargo test`（本机不执行，CI 承接）
-- [x] AC-10 改动集不含引擎源码
+- [x] AC-10 改动集不含引擎源码（相对基线 `d8365606d69c`，`crates/` 只有
+      `crates/mysql-server/src/lib.rs` 的 8 行零语义 clippy 修复）
 - [ ] CI 绿灯
 - [ ] 合并 + 5 远端同步
+
+**本轮（证据 §7.18）新增的、未打勾的项与原因**：
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| `harness_validation_test` 不再挂死 | ⏳ CI run 8075 实测 | 本地无法验证（不跑 TPC-H 测试） |
+| `eval_22_vs_sf01` 耗时下降 | ⏳ CI run 8075 实测 | 同上 |
+| Q19「引擎 vs SQLite」比较一致 | ⏳ CI run 8075 实测 | 本仓库尚无 Q19 的先例；若不一致 = **新发现的引擎缺陷**，按 AC-8 登记并立项，**不弱化断言** |
+| 7 个原 panic 目标在 CI 里不再 panic | ⏳ CI run 8075 实测 | 改为 `TPCH-NOT-RUN`，由 CI 的 NOT-RUN 计数披露 |
+| 5 远端同步 | ⚠️ 环境受限 | 本机到 `gitee` / `github` / `gitcode` 的 **SSH 不可达**（实测 `git ls-remote` 三个远端均 exit 124 = 超时）；`gitea250` / `gitea252` 走 HTTP 可达。同步结果以脚本实测输出为准并如实披露 |
