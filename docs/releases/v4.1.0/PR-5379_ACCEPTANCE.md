@@ -217,8 +217,21 @@ TPCH_NOT_RUN_FILE=... bash .gitea/workflows/ci.yml 的 Test summary 步骤
 
 **通过标准**：`passed = TEST_OK - NOT_RUN`，且 NOT-RUN 清单在日志里可见。
 
-**实测**：CI `test` job 已接线（fixture 准备 → `cargo test --all-features --no-fail-fast` + `timeout 7200`
-→ 三态摘要 → 目标执行核对门禁）。算术已用合成日志验证。**Status: ✅ PASS**（证据 §4.4）
+**实测**：CI `test` job 已接线（fixture 准备 → `cargo test --all-features --no-fail-fast` + `timeout 9000`
+→ 三态摘要 → 目标执行核对门禁）。
+
+> **⚠️ 本 AC 的计数口径在本 PR 内被修正过一次**（证据 §7.31）：
+> run 8185 的实测发现，NOT-RUN 收集文件里 **114 条记录有 83 条是本模块单元测试写进去的
+> 合成记录**（该模块被 30+ 个测试二进制以 `#[path]` 引入 ⇒ 每个二进制各写一行），
+> 另有 meta 套件以子进程重跑目标导致记录翻倍、标记只记 cargo target 而非测试函数、
+> `writeln!` 多次 `write()` 并发丢换行 3 个成因
+> ⇒ 旧口径的 `not_run=113` **虚高 3.6 倍**，并让 `passed` **少报 82**。
+> 已修：`report_not_run` 单次 `write_all`（原子）+ 单元测试不再写共享文件 +
+> `ci.yml` 改 `grep -o` 逐条切分 + `sort -u` 去重计数（`not_run` 与 `not_run_records` 两个数都打印）。
+> **残留**：同一 target 下的多个未执行函数会被去重折叠 ⇒ `not_run` 偏小、`passed` 偏大（实测约 3 条）。
+> **不把"约 3"写成"精确"。**
+
+**Status: ✅ PASS**（证据 §4.4；计数口径的修正见 §7.31，RED→GREEN 本机实测）
 
 ---
 
