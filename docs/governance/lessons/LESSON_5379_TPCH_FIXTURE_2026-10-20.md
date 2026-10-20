@@ -518,6 +518,50 @@ CI run 7804 的 `test` job 在编译 446 个测试目标时报出 **15 个告警
 
 ---
 
+## Lesson-15: 门禁脚本的第一次执行不应该是 CI
+
+### Observation
+
+`scripts/gate/mutate_tpch_oracle_tests.sh` 交付时**从未运行过**。盲审时审核者
+也只把三个变异片段应用到引擎文件的**副本**上，从未跑过脚本本身
+（`PR-5379_TEST_REVIEW.md` §"审核者未执行 … 全程"）。
+
+而证据文档 §5 却写着「结果见 §7（实测输出）」—— §7 里**根本没有**这个输出。
+一句指向不存在的证据的话，比没有这句话更糟：它会让读者以为已经验过了。
+
+用桩 `cargo` 做机械逻辑实测时，还查出脚本里一个**只会在 CI 上暴露**的缺陷：
+它只用 `shasum` 算引擎文件的 SHA-256。`shasum` 是 Perl 脚本，精简 CI 镜像
+不保证有；`sha256sum` 来自 GNU coreutils，同一台 runner 上已被别的门禁证明存在。
+实测对照：只有 `sha256sum` 时，修复前 `exit 2`（`cannot checksum`），修复后 `exit 0`。
+
+### Root Cause
+
+1. **「脚本写完了」被当成了「脚本有效」。** 门禁脚本的失败模式不是报错，而是
+   *报绿*或*报错*——两种都需要真跑一次才能知道。
+2. **CI 是最贵的地方，不该是第一次试运行的地方。** 在 CI 上第一次跑一个未验证的
+   门禁，等于用一小时的 runner 时间去换一个本可以在本地秒级得到的结论。
+3. **假设工具一定存在。** 本机有 `shasum`（macOS 自带）、CI 镜像有 `sha256sum`
+   （coreutils），但脚本只写了其中一个。开发机和 CI 的工具集是不同的两套。
+
+### Action
+
+1. 用**桩 `cargo`**（只看引擎文件内容决定返回 0 还是 101）在一次性假仓库里跑
+   脚本的机械逻辑 —— 不加载 fixture、不执行任何 TPC-H 用例，秒级完成。
+   三个退出码路径全部实测：0（全捕获）/ 1（有存活）/ 2（harness 错误）。
+2. 哈希工具改用**回退链**（`shasum` → `sha256sum` → 空串并报错），
+   与 `scripts/gate/prepare_tpch_fixture.sh` 同款。
+3. 证据文档的假指针改成事实陈述：机械逻辑已实测，端到端首跑在 CI。
+4. 端到端仍未实测的部分单独列一节说明，不藏在别处。
+
+### Rule
+
+> **门禁脚本的第一次执行不应该是 CI。** 交付一个从未运行过的门禁脚本，等于
+> 交付一个「不知道会不会红」的红灯。写完之后必须先在**一次性沙箱**里把它的
+> 机械逻辑跑通（用桩替掉昂贵的那一半），再把它接进 CI。
+> 另外：**不要假设一个工具在开发机和 CI 上都存在** —— 用回退链，或者先查证。
+
+---
+
 ## 附：本轮形成的可复用检查
 
 | 工具 | 作用 | 复现命令 |
@@ -526,6 +570,7 @@ CI run 7804 的 `test` job 在编译 446 个测试目标时报出 **15 个告警
 | `scripts/gate/check_test_target_execution.sh` | 声明目标必须全部执行 | `bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --log test_report.log` |
 | `scripts/gate/check_tpch_known_differences.sh` | 已知差异必须有 issue + owner，且不得无声增长 | `bash scripts/gate/check_tpch_known_differences.sh` |
 | `scripts/gate/mutate_tpch_oracle_tests.sh` | 证明新断言能杀引擎缺陷 | `bash scripts/gate/mutate_tpch_oracle_tests.sh` |
+| 桩 `cargo` 机械逻辑实测 | 不加载 fixture 就验证门禁脚本的退出码与还原逻辑 | 见证据 §7.12（一次性假仓库 + 桩 `PATH`） |
 
 四个工具对**任何**"测试需要外部数据"的场景都适用，不限于 TPC-H。
 

@@ -1,7 +1,7 @@
 # PR-5379 ACCEPTANCE — TPC-H fixture 自包含化与 CI 执行完整性
 
 > **PR Number**: #5396（`http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/5396`）
-> **Commits**: `ee498d00f7`（基线 clippy 修复）→ `de50610a66`（TPC-H 主变更）→ `7eccfe0c8d`（变异脚本超时上限）→ `0c35738d80`（文档补记）→ `de74efcafd`（消除本 PR 新增的 2 个编译告警）
+> **Commits**: `ee498d00f7`（基线 clippy 修复）→ `de50610a66`（TPC-H 主变更）→ `7eccfe0c8d`（变异脚本超时上限）→ `0c35738d80`（文档补记）→ `de74efcafd`（消除本 PR 新增的 2 个编译告警）→ `774645000d`（证据 §7.11 / Lesson-14 补记）→ `4e31685347`（变异脚本 SHA-256 工具回退链）
 > **Issue**: #5379
 > **Version**: v4.1.0
 > **Base**: `d8365606d69c`（`develop/v4.1.0`）
@@ -130,7 +130,28 @@ bash scripts/gate/mutate_tpch_oracle_tests.sh
 **实测**：脚本本身在本轮被发现并修掉 3 个缺陷（no-op 突变、缺基线会假绿、参照目标选错），
 三个注入锚点已实测各精确命中 1 次，三个 snippet 干跑验证「应用后文件改变 + 可逐字节还原」。
 **完整 5 次 cargo 运行（1 基线 + 3 变异 + 1 复跑）在本机未执行**——本机内存有限，
-由 CI `test` job 承接。**Status: ⚠️ PARTIAL**（脚本就绪并已静态验证，运行时验证由 CI 承接）
+由 CI `test` job 承接。
+
+**补充实测（用桩 `cargo` 验证脚本的机械逻辑，不执行任何 TPC-H 用例）**：
+在一次性假仓库里把 `cargo` 换成只看引擎文件内容的桩，验证了脚本的**三个退出码路径**
+与**还原保证**（证据 §7.12）：
+
+| 场景 | 期望 | 实测 |
+|---|---|---|
+| 3 个变异全被"测试"抓到 | exit 0 | **exit 0**（`CAUGHT=3 SURVIVED=0 ERRORS=0`） |
+| 运行超时 | exit 2（harness 错误，**不**计 CAUGHT） | **exit 2** |
+| 变异存活 | exit 1 | **exit 1**（`SURVIVED=3`） |
+| 变异后引擎文件还原 | 逐字节一致 | **一致** |
+| 真实工作区未被触碰 | `git diff` 为空 | **为空** |
+
+**同一套桩测试顺带查出一个只会在 CI 上暴露的缺陷并已修掉**：脚本原先只用 `shasum`
+算 SHA-256，而 `shasum` 是 Perl 脚本、精简 CI 镜像不保证有（`sha256sum` 来自 GNU
+coreutils，已被同 runner 上的 `check_evidence_binding.sh` 证明存在）。
+对照实测：只有 `sha256sum` 时，**修复前 `exit 2`（`cannot checksum`）、修复后 `exit 0`**。
+已改为回退链（`shasum` → `sha256sum` → 报错），与 `prepare_tpch_fixture.sh` 同款。
+
+**Status: ⚠️ PARTIAL**（脚本机械逻辑已实测，含三个退出码路径；**断言的实际杀伤力**
+需真引擎 + 真 TPC-H 用例，由 CI `test` job 首跑承接）
 
 ---
 
@@ -286,7 +307,7 @@ import 删除 + 变量重命名（无行为变化）。
 | `check_test_target_execution.sh`（新增） | CI `test` job 的**新增步骤**，在摘要之后执行；漏跑即红 | 接入 |
 | `check_tpch_known_differences.sh`（新增） | 登记准入；默认上限 1 条（当前 1 条） | 接入 |
 | `prepare_tpch_fixture.sh`（新增） | CI `test` job 的**新增步骤**，生成 fixture 并写 manifest | 接入 |
-| `mutate_tpch_oracle_tests.sh`（新增） | 变异验证脚本，CI `test` job 承接运行时验证 | 就绪 |
+| `mutate_tpch_oracle_tests.sh`（新增） | 变异验证脚本，CI `test` job 承接运行时验证 | 就绪（机械逻辑已用桩 `cargo` 实测，见 AC-5） |
 | G1（TPC-H 22/22 baseline） | **仍然 NOT RUN**（CI 无 dbgen、无 SF=1 fixture）；注释已修正为只陈述事实 | 不变 |
 | `check_stage.sh` | **不覆盖 TPC-H**：实测零 TPC-H 引用，STAGE_CONFIG 的 `required_gates` 也没有 G1。原注释声称它是 SF=1 的兜底，**该声明不成立，已更正** | 澄清 |
 | 规模层（SF=1） | 本 PR **不接入**，见 #5387 | 递延 |

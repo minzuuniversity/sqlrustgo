@@ -138,6 +138,10 @@
 - [x] **5.3b** CI run 7804 编译阶段报出 15 个告警 → 逐条归属基线，**只有 2 个是本 PR 引入的**
       （`unused variable: oracle` ×2，在本 PR 整份重写的两个文件里）→ commit `de74efcafd` 修掉；
       其余 13 个属基线，不夹带进本 PR（详见证据文档 §7.11 / Lesson-14）
+- [x] **5.3c** 变异脚本的 SHA-256 工具改用回退链（`shasum` → `sha256sum`）→ commit `4e31685347`。
+      对照实测：只有 `sha256sum` 的 PATH 下，修复前 `exit 2`（cannot checksum）、修复后 `exit 0`。
+      脚本的**三个退出码路径**（0 全捕获 / 1 有存活 / 2 harness 错误）与**逐字节还原**
+      已用桩 `cargo` 在一次性假仓库实测，不执行任何 TPC-H 用例（证据 §7.12 / Lesson-15）
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---
