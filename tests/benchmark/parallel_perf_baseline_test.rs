@@ -5,6 +5,7 @@
 //! existed before the fix.
 
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
+use sqlrustgo_types::Value;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -19,15 +20,32 @@ fn populate(engine: &mut ExecutionEngine<MemoryStorage>, rows: usize, distinct_k
     engine
         .execute("CREATE TABLE t (k INTEGER, v INTEGER)")
         .unwrap();
-    for i in 0..rows {
-        engine
-            .execute(&format!(
-                "INSERT INTO t VALUES ({}, {})",
-                i % distinct_keys,
-                i
-            ))
-            .unwrap();
-    }
+    // The rows and the row count are unchanged — only the LOADING PATH is.
+    //
+    // Why (issue #5379): this file calls `populate()` three times with
+    // 600 000 rows each — 1.8 million single-row `INSERT` statements through
+    // `engine.execute`, i.e. 1.8 million full parse → plan → execute cycles
+    // on the CI runner. Measured on the CI runner (run 8113, `test` job
+    // 16564): this target was still running after 51 minutes at 100% CPU.
+    //
+    // The table has no PRIMARY KEY, so this is not the O(N^2) duplicate-key
+    // path (see #5412) — it is simply 1.8 million statements that do not
+    // need to be statements.
+    //
+    // The measured window is unaffected: `median_ms` and the assertions only
+    // time the QUERY (`SELECT k, v FROM t WHERE k < 100`), never the loading.
+    // `bulk_insert_records` inserts the same rows in ONE storage call (O(N)),
+    // using the engine's public API.
+    let records: Vec<sqlrustgo_storage::Record> = (0..rows)
+        .map(|i| {
+            vec![
+                Value::Integer(i as i64 % distinct_keys as i64),
+                Value::Integer(i as i64),
+            ]
+        })
+        .collect();
+    let inserted = engine.bulk_insert_records("t", records).unwrap();
+    assert_eq!(inserted as usize, rows, "all rows must be inserted");
 }
 
 /// Run a query N times and return median wall-clock time

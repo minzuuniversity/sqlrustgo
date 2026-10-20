@@ -379,8 +379,13 @@ import 删除 + 变量重命名（无行为变化）。
 | **CI run 8031 的 `test` job 时间账**（145 个已执行目标） | 合计 **3 380.0 s**（用每个目标自己的 `finished in` 统计），其中 3 个 TPC-H 目标独占 **2 403.2 s**（71%）。最慢：`eval_22_vs_sf01` 1419.5 s、`four_way_compare_test` 862.0 s、`dml_pk_fast_path_5177` 485.7 s。第 146 个目标 `harness_validation_test` **挂死**（05:59:01Z 之后日志冻结）→ 证据 §7.18(a) |
 | **446 个目标的 fixture 装载形态全量清点** | `BATCH` 40 / `ROW_INSERT` 4 / `SQLITE_SCRIPT` 1 / `SKIP_OR_IGNORE` 35 / `PANIC_ON_MISSING` 7 / `NO_FIXTURE` 359（求和 = 446，已程序化校验）→ 证据 §7.18(b) |
 | **CI run 8081 / job 16520 的实测（首次全量执行的中间轮）** | **150 / 446** 个声明目标被执行、**296 个从未开始**；已产生结果的 158 个 = **155 ok / 2 FAILED**，累计 **2073.2 s**；2 个失败均有基线对照（#5398 / #5411）→ 证据 §7.19(d) |
+| **CI run 8113 attempt 1** | ❌ 3 个 job（`test` / `mutation` / `test-soak-detach`）**全部**在 Checkout 阶段 `git clone https://github.com/actions/checkout` 超时 ⇒ **`test result:` 行数 0，一个测试都没跑到** ⇒ 属 **#5397**（与本 PR 无关）；已 `rerun-failed-jobs` → attempt 2 |
+| **CI run 8113 attempt 2（第 5、6 处降本的硬证据）** | ✅ `int2_substance_parallel_test` **0.96 s / ok**（中间轮：>50 min 未结束，O(N²) 外推 ≈130 min）；✅ `parallel_main_path_test` **14.13 s / ok, 7 passed**（原 8 × 600 000 = 480 万条逐行 INSERT）；与中间轮**共同完成的 157 个目标逐个比对**，耗时差异全部落在噪声内（最大 -2.1%）⇒ **降本生效且未波及其它目标** → 证据 §7.20(b)(c) |
+| **第 7 处降本（`parallel_perf_baseline_test`）** | ✅ 该目标在 attempt 2 连续跑 **51 min 40 s** 未结束（100% CPU、内存 1.87 GiB/94.2 GiB ⇒ 非内存问题）⇒ 定位到 `populate(engine, rows, …)` 的 **180 万条逐行 INSERT**（**参数化上界**，正是 §7.19(c-2) 扫描器的盲点）⇒ 改用 `bulk_insert_records`；**行数与断言不变**，且该文件只对**查询**计时（装载从不进入计时窗口）⇒ 不影响被测对象 → 证据 §7.20(g) |
+| **`oracle_g15_tpch_sf01` 的 Q22 失败** | ❌ Q22 `ERROR (write payload: Broken pipe)` 仅 **36.412 µs** ⇒ server 在 Q21 之后已死；**已排除 OOM**（容器无内存限制、`OOMKilled=false`、宿主 94.2 GiB 只用 1.9 GiB、`dmesg` 无 OOM）⇒ 指向 server 自身崩溃但 **stderr 未捕获** ⇒ 根因未确定 ⇒ 立项 **#5415**；**本 PR 已把断言顺序改成"先报失败语句本身"**（原措辞把真实失败伪装成"计数对不上"） |
 | **第 5、第 6 处降本的编译验证** | ✅ `cargo check --test int2_substance_parallel_test --test parallel_main_path_test` → **0 error / 0 warning**；**行数与断言均未变**（`int2` 仍 200 000 行、`parallel_main_path` 仍 600 000 行 × 8 次调用 = 480 万条），只把逐行 `execute` 换成引擎**公开 API** `bulk_insert_records`（O(N)） |
-| **全仓扫描「隐藏巨兽」** | `tests/**/*.rs`（480 个文件）程序化扫描：上界 ≥ 100 000 的逐行 SQL 循环 **2** 个（已降本）、10 000 的 1 个（实测 40.21 s）、1 000–2 000 的 8 个（可接受）、`tests/integration/tpch/` 下 **0** 个、`recovery_fuzzer_test` 的 50 000 次是 `#[ignore]` → 证据 §7.19(c-2) |
+| **全仓扫描「隐藏巨兽」（第 1 轮）** | `tests/**/*.rs`（480 个文件）程序化扫描：上界 ≥ 100 000 的逐行 SQL 循环 **2** 个（已降本）、10 000 的 1 个（实测 40.21 s）、1 000–2 000 的 8 个（可接受）、`tests/integration/tpch/` 下 **0** 个、`recovery_fuzzer_test` 的 50 000 次是 `#[ignore]` → 证据 §7.19(c-2) |
+| **⚠️ 上述扫描的盲点与更正** | 上一版「**无漏网**」的说法**当时不成立**：扫描口径只覆盖「上界是**字面量**」⇒ 漏掉 `tests/benchmark/parallel_perf_baseline_test.rs` 的**参数化上界**形态（`for i in 0..rows`，实参 600 000 ×3 = **180 万条**）⇒ **第 7 处降本**。补扫（用 grep 定位全部逐行 INSERT 调用点再逐个核对上界）后确认：**除已降本的 3 处外，其余全部可接受** → 证据 §7.19(c-2) 更正 + §7.19(c-3) + §7.20(g) |
 | **引擎对未知 INSERT 列名的行为** | ⚠️ **不报错，静默写 NULL 行**（实测 `INSERT INTO t (c0,c1)` 在 `(a,b)` 表上产出 `NULL\|NULL`）→ 引擎缺陷，立项 **#5409**；本 PR 不改引擎行为（AC-10） |
 | `cargo check --test harness_validation_test --test tpch_q6_q19_oracle_test --test eval_22_vs_sf01 --test four_way_compare_test --test four_way_cell_diff_test --test _q15_q16_check -j 4` | ⏳ 待本轮提交前跑（0 warning / 0 error 为准） |
 | **`cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli`** | ✅ 产出 `target/debug/sqlrustgo-mysql-server`（51 957 896 B）与 `target/debug/sqlrustgo`（32 190 072 B）；二进制在位时 `e2e_canonical_subprocess` 的 2 个用例 **ok / 1.01s**（修复前必然 panic 在 `e2e_canonical_subprocess.rs:68`） |
@@ -443,9 +448,10 @@ import 删除 + 变量重命名（无行为变化）。
 ## 8. 验收清单
 
 - [x] AC-1 fixture 自包含
-- [ ] AC-2 目标执行完整性 —— **本轮实测 150/446，296 个从未开始**；
+- [ ] AC-2 目标执行完整性 —— 中间轮实测 **150/446**（296 个从未开始）；
       门禁本身已就绪并能抓漏跑（改造前实测 `382 missing` → exit 1）；
-      第 5、第 6 处降本后的新周期待验（证据 §7.19(d) / §7.20）
+      降本后的新周期 **attempt 2 正在跑**（已确认 `int2_substance_parallel_test`
+      从「>50 min 未结束」降到 **0.96 s**），终态待验（证据 §7.19(d) / §7.20 / §7.21）
 - [x] AC-3 零断言 → 真断言
 - [x] AC-4 独立预言机（含本轮新增的 `tpch_q6_q19_oracle_test`：期望值从硬编码的化石改为预言机）
 - [ ] AC-5 变异测试实跑（脚本就绪 + 四场景桩测试已实测，**真实运行由 CI 的 `mutation` job 承接**；
@@ -466,7 +472,8 @@ import 删除 + 变量重命名（无行为变化）。
 
 | 项 | 状态 | 说明 |
 |---|---|---|
-| 446 个目标全部执行 | ❌ **150/446** | 296 个从未开始（其中 53 个 TPC-H 目标）。**根因已量化**：`int2_substance_parallel_test` 的 200 000 行带主键逐行 INSERT 是 O(N²)（≈130 min）、`parallel_main_path_test` 是 8 × 600 000 = 480 万条逐行 INSERT ⇒ 单前者一个就吃光 `timeout 9000`。**第 5、第 6 处降本已改用 `bulk_insert_records`（O(N)），行数与断言不变** ⇒ 新周期待验 |
+| 446 个目标全部执行 | ⏳ **attempt 2 进行中**（中间轮 150/446） | 中间轮 296 个从未开始（其中 53 个 TPC-H 目标）。**根因已量化并已修**：`int2_substance_parallel_test` 的 200 000 行带主键逐行 INSERT 是 O(N²)（≈130 min）、`parallel_main_path_test` 是 8 × 600 000 = 480 万条逐行 INSERT ⇒ 单前者一个就吃光 `timeout 9000`。**第 5 处降本已实测生效：`int2_substance_parallel_test` 0.96 s（原来 >50 min 未结束）** ⇒ 终态待验（证据 §7.20(b) / §7.21） |
+| **新发现的失败：`null_handling_test` 的两个 `green_4154_*`** | ❌ exit 1（2 failed / 51 passed） | `ALTER COLUMN … SET/DROP DEFAULT` 在 `MemoryStorage` 上必然报 `Table not found: t` —— `set_column_default` 漏了 `scoped_key` 键解析。**基线 commit `d8365606d69c` 直跑同样失败、同样行号 879/896** ⇒ 基线既有 ⇒ 立项 **#5414**；**本 PR 不改引擎**（AC-10） |
 | Q19「引擎 vs SQLite」比较一致 | ⏳ **本轮未跑到** | `tpch_q6_q19_oracle_test` 落在未执行的 296 个里 ⇒ **无证据**（不是"通过"）。若新周期不一致 = **新发现的引擎缺陷**，按 AC-8 登记并立项，**不弱化断言** |
 | `mutation` job 的真实结论 | ⏳ 待新周期 | run 8081 的 mutation job 16475 实锤了 `mktemp` 缺陷（**三个变异片段一个都没生成** ⇒ `CAUGHT=0/SURVIVED=0/ERRORS=3` ⇒ exit 2，门禁**没有报假绿**，但 job 永远不可能变绿）。已修（`6053ca6d4b`）+ 四场景桩测试实测（Lesson-22）⇒ 待新周期取得真实结论 |
 | `test` job 恒红 | ⚠️ 已知 | 2 个失败（#5398 的 g13 flaky、#5411 的 `insert_db_isolation_5057` 竞态）**均有基线对照**；本 PR 不弱化断言、不改门禁判定口径 |

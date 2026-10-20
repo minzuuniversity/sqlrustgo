@@ -217,6 +217,11 @@ fn run_range(start: usize, end: usize) {
         let mut known = 0usize;
         let mut not_run = 0usize;
         let mut failed = 0usize;
+        // Which statement failed, and why. Without this, a statement that
+        // could not be executed is reported only as a *count* mismatch
+        // ("4 compared + 2 not run does not account for the 7 statements"),
+        // which hides the actual cause behind an arithmetic complaint.
+        let mut failed_detail: Vec<String> = Vec::new();
         let mut excluded: Vec<String> = Vec::new();
         // The statements of this range that the file-storage wire path must
         // not execute, and the ones it must. Both counts are checked
@@ -259,6 +264,7 @@ fn run_range(start: usize, end: usize) {
                 WireOutcome::Ran(Ok(rows), elapsed) => (rows, elapsed),
                 WireOutcome::Ran(Err(e), elapsed) => {
                     failed += 1;
+                    failed_detail.push(format!("{qid}: the wire path failed ({e}) in {elapsed:?}"));
                     eprintln!("  {qid:3}: ERROR ({e}) in {elapsed:?}");
                     continue;
                 }
@@ -280,6 +286,9 @@ fn run_range(start: usize, end: usize) {
                 Ok(rows) => rows,
                 Err(e) => {
                     failed += 1;
+                    failed_detail.push(format!(
+                        "{qid}: the SQLite oracle failed on this statement ({e})"
+                    ));
                     eprintln!("  {qid:3}: the SQLite oracle failed on this statement ({e})");
                     continue;
                 }
@@ -316,14 +325,28 @@ fn run_range(start: usize, end: usize) {
             eprintln!("=== Excluded: {line}");
         }
 
+        // A statement that could not be executed is the most direct fact this
+        // test can report, so it is asserted FIRST and with the statement id
+        // and the reason attached. Asserting the arithmetic first turned a
+        // real engine failure into a misleading "the counts do not add up"
+        // complaint — Q22's `Broken pipe` was reported as "18 compared + 3
+        // not run does not account for the 22 statements", where the count
+        // was only a symptom and the broken pipe was the cause.
+        assert_eq!(
+            failed,
+            0,
+            "{TARGET}: {failed} statement(s) of this range could not be executed on one of \
+             the two sides:\n  {}",
+            failed_detail.join("\n  ")
+        );
         // Every statement of the range must be accounted for: either it was
         // compared against the independent oracle, or it was skipped for a
-        // registered reason. Nothing may disappear in between.
+        // registered reason, or it failed. Nothing may disappear in between.
         assert_eq!(
-            compared + not_run,
+            compared + not_run + failed,
             end - start,
-            "{TARGET}: {compared} compared + {not_run} not run does not account for the \
-             {} statements of this range",
+            "{TARGET}: {compared} compared + {not_run} not run + {failed} failed does not \
+             account for the {} statements of this range",
             end - start
         );
         // ... and the skipped ones must be exactly the ones the shared wire
@@ -351,10 +374,9 @@ fn run_range(start: usize, end: usize) {
              (If this is a known engine defect, register it in \
              tests/baseline/tpch_known_differences.json with an issue and an owner.)"
         );
-        assert_eq!(
-            failed, 0,
-            "{TARGET}: {failed} statement(s) could not be executed on one of the two sides"
-        );
+        // `failed` is asserted above, before the counting, so that a statement
+        // that could not be executed reports itself instead of surfacing as
+        // an arithmetic mismatch.
 
         // Disclose the statements this function did not execute. One marker
         // per test function keeps the CI arithmetic exact: the summary

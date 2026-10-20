@@ -197,6 +197,31 @@
       顺带全仓程序化扫描 `tests/**/*.rs`（480 个文件）确认无同类漏网，
       并新立 **#5412**（引擎带主键逐行 INSERT 的 O(N²)，本 PR 不改引擎）/
       **#5413**（`parallel_main_path_test` 600k < 并行阈值 2M ⇒ 判别力为零）
+- [x] **5.3o** 降本后的新周期（run 8113，证据 §7.20）：
+      attempt 1 的 3 个 job 全部在 Checkout 阶段因 `github.com/actions/checkout` 拉取超时
+      而失败（`test result:` 行数 0 ⇒ **一个测试都没跑到**）⇒ 属 **#5397**，与本 PR 无关；
+      attempt 2 取得**第 5 处降本的硬证据**：`int2_substance_parallel_test`
+      **0.96 s / ok**（中间轮 >50 min 未结束）⇒ 降本确实生效；
+      与中间轮**共同完成的 157 个目标逐个比对**，耗时差异全部落在噪声内
+      ⇒ **降本未波及其它任何目标**；
+      期间**新发现** `null_handling_test` 的两个 `green_4154_*` 失败
+      （`ALTER COLUMN … SET/DROP DEFAULT` 在 `MemoryStorage` 上必然报 `Table not found`）
+      → **基线 commit 直跑同样失败、同样行号** ⇒ 基线既有 ⇒ 立项 **#5414**
+      （根因：`set_column_default` 漏了 `scoped_key` 键解析，是 #5025/#5057 改造的漏改点；
+      `MemoryStorage` 也是 `mysql-server --memory` 与 CLI 的默认后端 ⇒ 生产路径同样受影响；
+      **本 PR 不改引擎**，AC-10 不变）；
+      另新立 **#5415**（`oracle_g15_tpch_sf01` 的 Q22 在 wire 路径上 36 µs 内 `Broken pipe`
+      ⇒ server 崩溃且 stderr 未捕获；**已排除 OOM** ⇒ 根因未确定，**不猜测**）；
+      并修掉本 PR **自身的债**：计数守恒断言漏了 `failed`，
+      会把"Q22 真的失败了"报成"计数对不上" ⇒ 改为
+      **先断言 `failed == 0`（附失败 qid 与原因）**、计数守恒含 `failed`
+      ⇒ **判定强度不变，披露更准**；
+      并做**第 7 处降本**（`tests/benchmark/parallel_perf_baseline_test.rs`：
+      attempt 2 实测该目标连续跑 **51 min 40 s** 未结束 ⇒ 定位到
+      `populate(engine, rows, …)` 的 **180 万条逐行 INSERT**；
+      该形态是**参数化上界**，正是 §7.19(c-2) 扫描器的盲点
+      ⇒ 上一版「全仓扫描无漏网」的说法**当时不成立**，已如实更正并补扫
+      （§7.19(c-3)：除已降本的 3 处外，其余全部可接受）
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---
