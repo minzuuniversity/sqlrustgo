@@ -324,7 +324,9 @@ import 删除 + 变量重命名（无行为变化）。
 | `cargo build --all-features` | ✅ CI `lint-build` job 绿（run 7917，job 16133） |
 | `cargo check --test tpch_sf01_22_vs_3engines --test tpch_sf01_22_vs_3engines_test -j 4` | ✅ 0 warning / 0 error（本 PR 新增的 2 个目标；修掉了 2 个属本 PR 的编译告警） |
 | `cargo clippy --all-features -j 4 -- -D warnings` | ✅ 0 warning / 0 error（本地）+ CI `lint-build` 绿 |
-| `cargo test --all-features --no-fail-fast` | ⏳ 待 CI（**本机不执行**：wire 路径峰值已实测到 817 MB，本机内存不足以承担全量） |
+| `cargo test --all-features --no-fail-fast` | ⏳ 待 CI（**本机不执行**：wire 路径峰值已实测到 817 MB，本机内存不足以承担全量）→ CI run 8031 已实测：`diag_q11` **ok 14 passed / 0.59s**、`_q15_q16_check` **ok 8 passed / 2.92s**（降本前 > 74 min 未结束）、`eval_22_vs_sf01` **ok 34 passed / 1419.5s**（sqlite3 CLI 在位） |
+| **CI `test` job 的历史结论全量统计** | ⚠️ **全部 400 次 run 里 `test` job 零次 `success`**（skipped 181 / cancelled 10 / failure 6）——它**从来没绿过**。基线提交那次只执行了 **71 / 446** 个目标（fail-fast 在第 71 个 TPC-H panic 处中止）→ 证据 §7.17(a)(b)，立项 **#5407** |
+| **`cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli`** | ✅ 产出 `target/debug/sqlrustgo-mysql-server`（51 957 896 B）与 `target/debug/sqlrustgo`（32 190 072 B）；二进制在位时 `e2e_canonical_subprocess` 的 2 个用例 **ok / 1.01s**（修复前必然 panic 在 `e2e_canonical_subprocess.rs:68`） |
 | `bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --log /tmp/testjob.log` | ✅ exit 1（改造前日志，正确抓出 382 个漏跑） |
 | `bash scripts/gate/check_tpch_known_differences.sh` | ✅ PASS（1 条登记 / 上限 1） |
 | `bash scripts/gate/prepare_tpch_fixture.sh --out /tmp/tpch-fx3 --sf 0.01 --seed 42` | ✅ 5 类自检全绿，manifest 写出 |

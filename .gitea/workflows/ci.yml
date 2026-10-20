@@ -70,7 +70,31 @@ jobs:
         with:
           fetch-depth: 1
       - name: Build
-        run: cargo build --all-features
+        # `cargo build` inside a workspace that has a **root package** builds
+        # ONLY that root package — the member packages' binaries are never
+        # produced. Several test targets spawn a real server binary and abort
+        # when it is missing; `tests/e2e/e2e_canonical_subprocess.rs:68` says
+        # so verbatim ("canonical binary not found at …; run `cargo build -p
+        # sqlrustgo-mysql-server` first") and 14 of its tests failed on that
+        # assertion alone in CI run 8031.
+        #
+        # The root package `sqlrustgo` has no `src/main.rs` at all, so even
+        # `target/debug/sqlrustgo` comes from the member package
+        # `crates/sqlrustgo-cli` — it is missing for the same reason.
+        #
+        # These builds are the *same* crates the test step compiles anyway
+        # (in the test profile); this only adds their dev-profile artifacts.
+        #
+        # `--all-features` is deliberately **not** used for the member packages:
+        # it would activate `sqlrustgo-mysql-server/jemalloc-prof`, which
+        # requires `JEMALLOC_SYS_WITH_MALLOC_CONF` at build time and is not
+        # what the test step builds either (at the workspace root, cargo
+        # selects the root package only, so the member's features are not
+        # activated there either). The command is the one the failing test
+        # itself prescribes: "run `cargo build -p sqlrustgo-mysql-server` first".
+        run: |
+          cargo build --all-features
+          cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli
       - name: Prepare TPC-H fixture (issue #5379)
         # The TPC-H fixture used to be a symlink into /tmp that resolved on
         # exactly one machine, so every fixture-dependent test panicked here
