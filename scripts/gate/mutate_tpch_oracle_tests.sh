@@ -90,6 +90,25 @@ ENGINE_SHA_BEFORE=""
 
 log() { printf '%s\n' "$*"; }
 
+# --- SHA-256 of a file, portable across Linux/macOS -------------------------
+# `shasum` is a Perl script and is NOT guaranteed to exist on a slim CI
+# image; `sha256sum` comes from GNU coreutils. The CI runner is only
+# *proven* to have coreutils (`sha256sum` is used by
+# scripts/gate/check_evidence_binding.sh, which runs in the
+# evidence-graph-gate job). So try `shasum` first, fall back to
+# `sha256sum`, and — if neither exists — fail loudly instead of silently
+# treating an empty hash as "the file is unchanged".
+# (scripts/gate/prepare_tpch_fixture.sh uses the same fallback chain.)
+sha256_of() {
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
+    elif command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" 2>/dev/null | awk '{print $1}'
+    else
+        echo ""
+    fi
+}
+
 # --- ensure a fixture exists -------------------------------------------------
 if [ ! -f "$FIXTURE_DIR/lineitem.tbl" ]; then
     log "== preparing fixture: $FIXTURE_DIR"
@@ -116,7 +135,7 @@ assert_engine_pristine() {
         return
     fi
     local now
-    now="$(shasum -a 256 "$ENGINE_FILE" 2>/dev/null | awk '{print $1}')"
+    now="$(sha256_of "$ENGINE_FILE")"
     if [ "$now" != "$ENGINE_SHA_BEFORE" ]; then
         log "${RED}ERROR${NC}: $ENGINE_FILE was not restored to its pristine state (sha256 $now != $ENGINE_SHA_BEFORE)"
         ERRORS=$((ERRORS + 1))
@@ -308,7 +327,7 @@ log "=== TPC-H assertion mutation testing (issue #5379) ==="
 log "engine file : $ENGINE_FILE"
 log "fixture     : $FIXTURE_DIR"
 
-ENGINE_SHA_BEFORE="$(shasum -a 256 "$ENGINE_FILE" 2>/dev/null | awk '{print $1}')"
+ENGINE_SHA_BEFORE="$(sha256_of "$ENGINE_FILE")"
 if [ -z "$ENGINE_SHA_BEFORE" ]; then
     log "${RED}ERROR${NC}: cannot checksum $ENGINE_FILE"
     exit 2
