@@ -23,14 +23,23 @@
 #   MUT-3  COUNT(DISTINCT x) ignored   — the de-duplication is lost
 #
 # `tests/integration/oracle/diag_q11.rs` carries the SQLite comparison AND
-# the data-independent invariants, so it can kill MUT-1 (HAVING) and MUT-2
-# (SUM). MUT-3 (COUNT DISTINCT) needs a target where COUNT(DISTINCT x)
-# actually differs from COUNT(x) — on this fixture `diag_q11`'s
-# `COUNT(DISTINCT ps_partkey)` over the GERMANY join equals
+# the data-independent invariants, so it is the target that must kill MUT-1
+# (HAVING) and MUT-2 (SUM). MUT-3 (COUNT DISTINCT) needs a target where
+# COUNT(DISTINCT x) actually differs from COUNT(x) — on this fixture
+# `diag_q11`'s `COUNT(DISTINCT ps_partkey)` over the GERMANY join equals
 # `COUNT(ps_partkey)` (320 = 320, every partkey occurs exactly once), so the
 # mutation would be invisible there. `diag_q12` compares
 # `COUNT(DISTINCT l_shipmode)` against the SQLite oracle, where the distinct
 # count is ~7 and the plain count is ~10^4 — the mutation is unmissable.
+#
+# **The anchor of MUT-1 must cover BOTH HAVING paths.** The first version of
+# this script anchored only on the no-GROUP-BY path
+# (`if !eval_predicate_with_subq(...)`); `diag_q11` exercises the
+# with-GROUP-BY path (`agg_result_rows.retain(|row| eval(...))`), so the
+# mutation never reached the code under test and MUT-1 SURVIVED on CI
+# (run 8115, mutation job 16571: CAUGHT=2 SURVIVED=1 ERRORS=0). The gate
+# reported the survival honestly instead of faking a pass — that is what a
+# mutation gate is for.
 #
 # # Impact analysis (CLAUDE.md requires it before touching a symbol)
 #
@@ -292,24 +301,53 @@ MUT3_SNIPPET="$(make_temp_file)" || { log "${RED}ERROR${NC}: cannot create the M
 trap 'rm -f "$MUT1_SNIPPET" "$MUT2_SNIPPET" "$MUT3_SNIPPET"; restore_engine; assert_engine_pristine' EXIT INT TERM
 
 cat > "$MUT1_SNIPPET" <<'PY'
-# MUT-1: invert the HAVING predicate.
-# The aggregate path evaluates the HAVING expression and keeps the group only
-# when the predicate is FALSE (`if !eval_predicate_with_subq(...)`). Dropping
-# the `!` inverts the filter.
+# MUT-1: invert the HAVING predicate on BOTH of the engine's HAVING paths.
+#
+# `src/engine_select.rs` implements HAVING twice:
+#   (a) no GROUP BY (a whole-table aggregate): `if !eval(having)` guards the
+#       "the HAVING predicate is false -> return zero rows" branch, so
+#       dropping the `!` inverts that path;
+#   (b) with GROUP BY: `agg_result_rows.retain(|row| eval(having))` keeps the
+#       groups whose HAVING predicate is TRUE, so adding the `!` inverts that
+#       path.
+#
+# BOTH must be inverted. A mutation that touches only one of them is invisible
+# to every test that exercises the other one — which is exactly how MUT-1
+# survived on CI (run 8115, mutation job 16571: CAUGHT=2 SURVIVED=1 ERRORS=0):
+# the anchor sat on path (a) while `diag_q11`'s `GROUP BY … HAVING` goes
+# through path (b), so the mutation never touched the code under test.
 import sys
 
 path = sys.argv[1]
-old = """                    if !crate::engine_utils::eval_predicate_with_subq(
-                        having_expr,"""
-new = """                    if crate::engine_utils::eval_predicate_with_subq(
-                        having_expr,"""
+
+REPLACEMENTS = [
+    # (a) no GROUP BY — drop the `!`
+    (
+        """                    if !crate::engine_utils::eval_predicate_with_subq(
+                        having_expr,""",
+        """                    if crate::engine_utils::eval_predicate_with_subq(
+                        having_expr,""",
+    ),
+    # (b) with GROUP BY — add the `!`
+    (
+        """                    agg_result_rows.retain(|row| {
+                        crate::engine_utils::eval_predicate_with_subq(
+                            having_expr,""",
+        """                    agg_result_rows.retain(|row| {
+                        !crate::engine_utils::eval_predicate_with_subq(
+                            having_expr,""",
+    ),
+]
+
 text = open(path, encoding="utf-8").read()
-count = text.count(old)
-if count != 1:
-    print(f"anchor found {count} times (expected 1)", file=sys.stderr)
-    sys.exit(1)
-open(path, "w", encoding="utf-8").write(text.replace(old, new))
-print("MUT-1 applied: HAVING predicate inverted")
+for old, new in REPLACEMENTS:
+    count = text.count(old)
+    if count != 1:
+        print(f"anchor found {count} times (expected 1):\n{old}", file=sys.stderr)
+        sys.exit(1)
+    text = text.replace(old, new)
+open(path, "w", encoding="utf-8").write(text)
+print("MUT-1 applied: HAVING predicate inverted on BOTH implementation paths")
 PY
 
 cat > "$MUT2_SNIPPET" <<'PY'

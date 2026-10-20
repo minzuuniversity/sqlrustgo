@@ -222,6 +222,25 @@
       该形态是**参数化上界**，正是 §7.19(c-2) 扫描器的盲点
       ⇒ 上一版「全仓扫描无漏网」的说法**当时不成立**，已如实更正并补扫
       （§7.19(c-3)：除已降本的 3 处外，其余全部可接受）
+- [x] **5.3p** 变异门禁的**首次真实结论**（run 8115 / mutation job 16571，13:28:11→13:39:43）：
+      **`mktemp` 修复生效**（三个变异片段全部生成并应用，对比修复前的 ERRORS=3、一个都没生成）
+      ⇒ **`CAUGHT=2 / SURVIVED=1 / ERRORS=0` / exit 1**；
+      存活的是 **MUT-1（HAVING 反转）**
+      ⇒ 根因**不是断言不力，而是锚点选错了路径**：
+      `src/engine_select.rs` 有**两条 HAVING 实现路径**
+      （`:1958` 无 GROUP BY 的 `if !eval(…)` / `:2206` 有 GROUP BY 的 `retain(|row| eval(…))`），
+      而 `diag_q11` 的 `GROUP BY … HAVING` 走的是**后者** ⇒ 变异从未作用到被测代码
+      ⇒ MUT-1 改为**同时反转两条路径**
+      （本地只做文本级验证：片段退出码 0、两个锚点各 1 次、diff 恰好 2 处、真文件 SHA-256 未变；
+      **未实跑 TPC-H 测试** ⇒ 杀伤力由下一周期 CI 实测确认）
+      ⇒ **门禁诚实报出存活而不是假绿** —— 这正是变异门禁的价值
+- [x] **5.3q** `legacy-gate` 的 R7 clippy FAIL 的归因（#5416）：
+      `scripts/gate/legacy/check_alpha.sh:20` 的
+      `cargo clippy --all-features -- -D warnings --quiet` 把 `--quiet` 传给了 **rustc**
+      ⇒ `Unrecognized option: 'quiet'` ⇒ 编译必然失败 ⇒ **恒红、丧失判别力**；
+      **同分支对照实测**：正确写法 `cargo clippy --all-features --quiet -- -D warnings`
+      → **exit 0 / 0 warning / 0 error** ⇒ **代码是绿的，是脚本命令写错**
+      ⇒ 立项 **#5416**（**本 PR 不改 `scripts/gate/legacy/`**，AC-10）
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---

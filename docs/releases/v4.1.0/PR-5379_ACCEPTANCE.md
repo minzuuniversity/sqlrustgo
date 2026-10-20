@@ -380,6 +380,8 @@ import 删除 + 变量重命名（无行为变化）。
 | **446 个目标的 fixture 装载形态全量清点** | `BATCH` 40 / `ROW_INSERT` 4 / `SQLITE_SCRIPT` 1 / `SKIP_OR_IGNORE` 35 / `PANIC_ON_MISSING` 7 / `NO_FIXTURE` 359（求和 = 446，已程序化校验）→ 证据 §7.18(b) |
 | **CI run 8081 / job 16520 的实测（首次全量执行的中间轮）** | **150 / 446** 个声明目标被执行、**296 个从未开始**；已产生结果的 158 个 = **155 ok / 2 FAILED**，累计 **2073.2 s**；2 个失败均有基线对照（#5398 / #5411）→ 证据 §7.19(d) |
 | **CI run 8113 attempt 1** | ❌ 3 个 job（`test` / `mutation` / `test-soak-detach`）**全部**在 Checkout 阶段 `git clone https://github.com/actions/checkout` 超时 ⇒ **`test result:` 行数 0，一个测试都没跑到** ⇒ 属 **#5397**（与本 PR 无关）；已 `rerun-failed-jobs` → attempt 2 |
+| **`legacy-gate` 的 R7 clippy FAIL** | ❌ 根因 = **命令参数位置写错**：`cargo clippy --all-features -- -D warnings --quiet` 把 `--quiet` 传给了 rustc ⇒ `Unrecognized option: 'quiet'` ⇒ 编译必然失败 ⇒ **恒红、丧失判别力**。**同分支对照实测**：正确写法 `cargo clippy --all-features --quiet -- -D warnings` → **exit 0 / 0 warning / 0 error** ⇒ **代码是绿的** ⇒ 立项 **#5416**（**本 PR 不改 `scripts/gate/legacy/`**，AC-10） |
+| **CI run 8115 的 mutation job 16571（修复后的真实结论）** | ❌ **`CAUGHT=2 / SURVIVED=1 / ERRORS=0` / exit 1**；`mktemp` 修复生效（三个变异片段全部生成并应用）⇒ 门禁从「永远不可能变绿」变成「能跑出真实结论」；MUT-1 存活的根因 = **锚点选错了 HAVING 的实现路径**（本 PR 自身的债，已修，待下周期实测确认）→ 证据 §7.23 |
 | **CI run 8113 attempt 2 的终态** | ⚠️ **248 / 446**（244 ok / 3 FAILED，累计 2840.3 s，NOT-RUN 0）；第 249 个目标 `parallel_perf_baseline_test` **连续 94 min 未结束**（降本前的巨兽）⇒ **被新周期取代而主动取消**（不是超时砍断）；3 个失败均已归因（#5398 / #5414 / #5415）→ 证据 §7.21 |
 | **#5397 在新周期立刻复发** | ❌ run 8115 的 `lint-build` 16569 死在 Checkout（`github.com/actions/checkout` TLS handshake timeout）⇒ `test` 16570 被 `needs` 连带 skipped；run 8115 卡在 `queued`（`rerun`/`rerun-failed-jobs` 均 HTTP 400）⇒ 只能另起周期。**runner 主机实测**：github **可达但极慢**（curl HTTP 200 耗时 **6.81 s**），且 act 缓存在宿主机**不存在** ⇒ 每个 job 的新容器都要重新 clone ⇒ 抖动窗口内必然 timeout → 证据 §7.21(c) |
 | **CI run 8113 attempt 2（第 5、6 处降本的硬证据）** | ✅ `int2_substance_parallel_test` **0.96 s / ok**（中间轮：>50 min 未结束，O(N²) 外推 ≈130 min）；✅ `parallel_main_path_test` **14.13 s / ok, 7 passed**（原 8 × 600 000 = 480 万条逐行 INSERT）；与中间轮**共同完成的 157 个目标逐个比对**，耗时差异全部落在噪声内（最大 -2.1%）⇒ **降本生效且未波及其它目标** → 证据 §7.20(b)(c) |
@@ -456,8 +458,13 @@ import 删除 + 变量重命名（无行为变化）。
       从「>50 min 未结束」降到 **0.96 s**），终态待验（证据 §7.19(d) / §7.20 / §7.21）
 - [x] AC-3 零断言 → 真断言
 - [x] AC-4 独立预言机（含本轮新增的 `tpch_q6_q19_oracle_test`：期望值从硬编码的化石改为预言机）
-- [ ] AC-5 变异测试实跑（脚本就绪 + 四场景桩测试已实测，**真实运行由 CI 的 `mutation` job 承接**；
-      `mktemp` 可移植性缺陷已修（`6053ca6d4b`），待新周期取得真实结论）
+- [ ] AC-5 变异测试实跑 —— **已取得第一次真实结论**（run 8115 / mutation 16571）：
+      `mktemp` 修复**生效**（三个变异片段全部生成并应用），
+      **`CAUGHT=2 / SURVIVED=1 / ERRORS=0` / exit 1**。
+      存活的是 **MUT-1（HAVING 反转）**，根因已定位为**变异锚点选错了 HAVING 的实现路径**
+      （引擎有两条路径，`diag_q11` 的 `GROUP BY … HAVING` 走的不是被锚定的那条）
+      ⇒ 锚点已改为**同时反转两条路径**；**本地只做了文本级验证（未实跑 TPC-H 测试）**，
+      杀伤力由下一周期 CI 实测确认 → 证据 §7.23
 - [x] AC-6 三态披露
 - [x] AC-7 wire 路径不崩溃
 - [x] AC-8 已知差异登记（1 条 `tpch:Q13` cell_values）
@@ -477,7 +484,7 @@ import 删除 + 变量重命名（无行为变化）。
 | 446 个目标全部执行 | ⏳ **attempt 2 进行中**（中间轮 150/446） | 中间轮 296 个从未开始（其中 53 个 TPC-H 目标）。**根因已量化并已修**：`int2_substance_parallel_test` 的 200 000 行带主键逐行 INSERT 是 O(N²)（≈130 min）、`parallel_main_path_test` 是 8 × 600 000 = 480 万条逐行 INSERT ⇒ 单前者一个就吃光 `timeout 9000`。**第 5 处降本已实测生效：`int2_substance_parallel_test` 0.96 s（原来 >50 min 未结束）** ⇒ 终态待验（证据 §7.20(b) / §7.21） |
 | **新发现的失败：`null_handling_test` 的两个 `green_4154_*`** | ❌ exit 1（2 failed / 51 passed） | `ALTER COLUMN … SET/DROP DEFAULT` 在 `MemoryStorage` 上必然报 `Table not found: t` —— `set_column_default` 漏了 `scoped_key` 键解析。**基线 commit `d8365606d69c` 直跑同样失败、同样行号 879/896** ⇒ 基线既有 ⇒ 立项 **#5414**；**本 PR 不改引擎**（AC-10） |
 | Q19「引擎 vs SQLite」比较一致 | ⏳ **本轮未跑到** | `tpch_q6_q19_oracle_test` 落在未执行的 296 个里 ⇒ **无证据**（不是"通过"）。若新周期不一致 = **新发现的引擎缺陷**，按 AC-8 登记并立项，**不弱化断言** |
-| `mutation` job 的真实结论 | ⏳ 待新周期 | run 8081 的 mutation job 16475 实锤了 `mktemp` 缺陷（**三个变异片段一个都没生成** ⇒ `CAUGHT=0/SURVIVED=0/ERRORS=3` ⇒ exit 2，门禁**没有报假绿**，但 job 永远不可能变绿）。已修（`6053ca6d4b`）+ 四场景桩测试实测（Lesson-22）⇒ 待新周期取得真实结论 |
+| **`mutation` job 的真实结论** | ❌ **已取得**（run 8115 / mutation 16571，13:28:11→13:39:43）：**`CAUGHT=2 / SURVIVED=1 / ERRORS=0` / exit 1**。`mktemp` 修复**生效**（三个变异片段全部生成并应用）。MUT-2/MUT-3 被杀；**MUT-1 存活** ⇒ 根因是**锚点选错了 HAVING 的实现路径**（`engine_select.rs:1958` 无 GROUP BY 路径 vs `:2206` 有 GROUP BY 路径，而 `diag_q11` 走后者）⇒ 锚点已改为**同时反转两条路径**；**门禁诚实报出存活而不是假绿** → 证据 §7.23 |
 | `test` job 恒红 | ⚠️ 已知 | 2 个失败（#5398 的 g13 flaky、#5411 的 `insert_db_isolation_5057` 竞态）**均有基线对照**；本 PR 不弱化断言、不改门禁判定口径 |
 
 **本轮（证据 §7.18）新增的、未打勾的项与原因**：
