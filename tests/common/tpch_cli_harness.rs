@@ -29,7 +29,7 @@ use serde_json::Value as JsonValue;
 // resolves identically whether this file is compiled as the `tpch_cli_harness`
 // test target or as the `common::tpch_cli_harness` module.
 #[path = "tpch_fixture.rs"]
-mod tpch_fixture;
+pub mod tpch_fixture;
 
 use tpch_fixture::FixtureState;
 

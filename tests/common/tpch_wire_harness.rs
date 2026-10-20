@@ -6,7 +6,17 @@ use super::MySqlTestClient;
 use serde_json::Value as JsonValue;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
+
+/// Process-wide counter that makes every wire staging directory unique.
+///
+/// The tests of one binary run in parallel and each of them stages the
+/// fixture into a directory inside the shared fixture directory. A fixed
+/// directory name let one test's cleanup delete the directory another test
+/// was copying into (CI run 8117: "copy .../.tpch-wire-staging/region.tbl:
+/// No such file or directory").
+static STAGING_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub const SF001_DIR: &str = "tests/data/tpch-sf001";
 pub const SF01_DIR: &str = "tests/data/tpch-sf01";
@@ -281,6 +291,11 @@ pub fn load_fixture(client: &mut MySqlTestClient, fixture_dir: &str) {
     }
     let dir = PathBuf::from(fixture_dir);
     let staged = stage_fixture_for_wire(&dir);
+    // The staging directory is removed when this guard goes out of scope —
+    // including when a test panics below (the harness panics on every load
+    // failure), so a failed test cannot leave staging directories behind in
+    // the fixture directory.
+    let _staging = StagedFixture(staged.clone());
     for tbl in TABLES {
         let path = staged.join(format!("{tbl}.tbl"));
         if !path.exists() {
@@ -300,7 +315,15 @@ pub fn load_fixture(client: &mut MySqlTestClient, fixture_dir: &str) {
              the storage backend is dropping rows (see issue #5392)"
         );
     }
-    let _ = std::fs::remove_dir_all(&staged);
+}
+
+/// Removes a staging directory when it goes out of scope.
+struct StagedFixture(PathBuf);
+
+impl Drop for StagedFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Number of data rows in a `.tbl` file.
@@ -318,8 +341,25 @@ fn count_tbl_rows(path: &Path) -> i64 {
 /// The copy carries a synthetic unique leading column for the tables whose
 /// first column is not unique, so that the storage backend can tell their
 /// rows apart (issue #5392). Every other table is copied verbatim.
+///
+/// **Every call gets its own directory.** The tests of one binary run in
+/// parallel and each of them stages the fixture, so a shared, fixed
+/// directory name let one test's cleanup delete the directory another test
+/// was copying into. CI run 8117 hit exactly that:
+///
+/// ```text
+/// copy /tmp/tpch-fixture/.tpch-wire-staging/region.tbl
+///   -> /tmp/tpch-fixture/.tpch-wire-staging/region.tbl:
+///   No such file or directory (os error 2)
+/// ```
+///
+/// The name carries the process id and a process-wide counter, so it is
+/// unique across threads *and* across processes.
 fn stage_fixture_for_wire(fixture_dir: &Path) -> PathBuf {
-    let staged = fixture_dir.join(".tpch-wire-staging");
+    let seq = STAGING_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let staged = fixture_dir.join(format!(".tpch-wire-staging-{}-{seq}", std::process::id()));
+    // A previous run of the same process (or a killed one) may have left the
+    // directory behind.
     let _ = std::fs::remove_dir_all(&staged);
     std::fs::create_dir_all(&staged).unwrap_or_else(|e| panic!("create {}: {e}", staged.display()));
 
@@ -529,8 +569,59 @@ pub fn compare_cells(
 
 #[cfg(test)]
 mod tests {
-    use super::{compare_cells, JsonValue};
+    use super::{compare_cells, stage_fixture_for_wire, JsonValue, TABLES};
     use serde_json::json;
+
+    /// RED (regression guard for the CI run 8117 failure).
+    ///
+    /// Every test of a binary runs in parallel and each of them stages the
+    /// fixture into a directory **inside the shared fixture directory**.
+    /// With a single, fixed directory name, one test's cleanup
+    /// (`remove_dir_all`) deletes the directory another test is still
+    /// copying into. CI run 8117 hit exactly that:
+    ///
+    /// ```text
+    /// copy /tmp/tpch-fixture/.tpch-wire-staging/region.tbl
+    ///   -> /tmp/tpch-fixture/.tpch-wire-staging/region.tbl:
+    ///   No such file or directory (os error 2)
+    /// ```
+    ///
+    /// The assertion below does not need the race to be timed: two
+    /// consecutive stagings that return the **same** path are already the
+    /// defect, and that is deterministic.
+    #[test]
+    fn consecutive_stagings_must_not_share_a_directory() {
+        let dir = std::env::temp_dir().join(format!(
+            "tpch-wire-staging-guard-{}-{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("t")
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create the scratch fixture dir");
+        for tbl in TABLES {
+            std::fs::write(dir.join(format!("{tbl}.tbl")), "").expect("write the scratch table");
+        }
+
+        let first = stage_fixture_for_wire(&dir);
+        let second = stage_fixture_for_wire(&dir);
+
+        assert_ne!(
+            first,
+            second,
+            "two stagings returned the same directory ({}) — parallel tests would \
+             delete each other's staged data",
+            first.display()
+        );
+        assert!(
+            first.exists(),
+            "the first staging was removed by the second one ({})",
+            first.display()
+        );
+
+        let _ = std::fs::remove_dir_all(&first);
+        let _ = std::fs::remove_dir_all(&second);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn baseline(row_count: u64, first_3_rows: &[&str]) -> JsonValue {
         json!({

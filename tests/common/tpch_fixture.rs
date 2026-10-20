@@ -98,6 +98,21 @@ pub mod reason {
     /// registered (with an issue and an owner) in the known-difference
     /// registry.
     pub const KNOWN_DIFFERENCE: &str = "known_difference";
+    /// The check needs an **external service** (a MySQL / PostgreSQL server)
+    /// that the environment does not provide.
+    ///
+    /// A distinct reason from [`FIXTURE_MISSING`] on purpose: the fixture is
+    /// present and the test is ready to run — what is missing is a server
+    /// that only the CI job could start.
+    pub const EXTERNAL_SERVICE_UNAVAILABLE: &str = "external_service_unavailable";
+    /// The check needs a **pre-built local artefact** (a WAL directory, a
+    /// pre-built SQLite database) that neither the repository content nor
+    /// any CI step produces.
+    ///
+    /// Same reasoning as [`EXTERNAL_SERVICE_UNAVAILABLE`]: such a test can
+    /// say nothing about the code here, so it must be counted as *not run*
+    /// (and disclosed), never as *passed*.
+    pub const PREBUILT_DATA_UNAVAILABLE: &str = "prebuilt_data_unavailable";
 }
 
 /// The case id used for a statement-level engine-vs-oracle difference.

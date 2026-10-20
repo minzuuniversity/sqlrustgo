@@ -99,9 +99,7 @@ fn load(
 /// SF=0.1 profile these expectations were calibrated against).
 fn resolve_fixture() -> Option<std::path::PathBuf> {
     let state = tpch_fixture::FixtureState::resolve();
-    let Some(fixture) = state.require_profile(TARGET, EXPECTED_SF) else {
-        return None;
-    };
+    let fixture = state.require_profile(TARGET, EXPECTED_SF)?;
     Some(fixture.dir.clone())
 }
 
