@@ -238,7 +238,6 @@ fn binary_available(binary: &str) -> bool {
 /// `None` when the other engine could not run it at all.
 fn compare_against_other_engine(
     leg: &str,
-    oracle: &SqliteOracle,
     mut run: impl FnMut(&str) -> Result<Vec<Vec<String>>, String>,
 ) {
     with_client(|client| {
@@ -596,7 +595,7 @@ fn tpch_sf01_22_vs_mariadb_cell() {
         }
     }
 
-    compare_against_other_engine("mariadb", &oracle, |sql| run_mysql(sql));
+    compare_against_other_engine("mariadb", |sql| run_mysql(sql));
 }
 
 /// The PostgreSQL leg — needs the `psql` client and a live
@@ -664,5 +663,5 @@ fn tpch_sf01_22_vs_postgresql_pgdate_cell() {
         }
     }
 
-    compare_against_other_engine("postgresql", &oracle, |sql| run_psql(sql));
+    compare_against_other_engine("postgresql", |sql| run_psql(sql));
 }
