@@ -365,7 +365,9 @@ import 删除 + 变量重命名（无行为变化）。
 | `postcheck` job（发布门禁聚合 + 6 个硬阻塞 meta-gate） | **本 PR 未改动**。但实测发现它在 **600 次历史 CI run 中从未成功执行过一次**（190 次 `skipped`、0 次 `success`）——本 PR 修好基线 clippy 红之后它才第一次会真跑，届时暴露出 **5 个基线既有红灯点**（5 个独立断口）。本 PR **不弱化门禁**去消掉红灯，改为归属 + 立项 + 披露 | 归属（#5400 / #5401 / #5402 / #5403） |
 | **RC/GA 统一门禁（D1–D9）** | 本 PR 未改动，但**逐维度实测**（PR 分支 `c7ac66ee24` vs 基线 `d8365606d69c`）：D1 **9/10**（A2 FAIL，E0428）、D2 **5/6**（B6 产物缺失）——**两个 blocker 均经基线对照证伪为基线既有（#5420 / #5421）**；D3 5/5、D4 5/5 **PASS**；D5 6/10（4 WARN，归因见证据 §7.25.4）；D6 **本机不可验证**（D6a 实际执行 0 个测试却报 PASS ⇒ #5419）；D7 exit 0、D8 exit 2（DRIFT），与基线输出逐字相同 | 取证 + 归属（证据 §7.25） |
 | **8 维聚合门禁** `check_full_gate_verification.sh` | **不可采信**：`:69` 的 `output=$(bash "$script" 2>&1 \|\| true)` 把退出码吞成 0 ⇒ 8 维恒绿（#5417）；`:91` 把 `--skip-a5` 拼进脚本路径 ⇒ 该分支恒为 "Script not found"。本 PR 改为**逐维度单独执行**取真实退出码 | 归属（#5417） |
-| **GA 清单项「G1–G16 PASS」** | **本 PR 不勾选**：模板 `AGENT_PROMPT_TEMPLATE.md:35`「不得自批 Gate」；且治理自身已判定该说法夸大（ADR-007:202 评为 🔴 NO (overstated)；`META_GATE_AUDIT_2026-06.md:245` 写明 16 个里只有 6 个有真实脚本）。本迭代交付的是**取证与立案** | 不勾选（证据 §7.25.7） |
+| **GA 清单项「G1–G16 PASS」** | **本 PR 不勾选**：模板 `AGENT_PROMPT_TEMPLATE.md:35`「不得自批 Gate」；且治理自身已判定该说法夸大（ADR-007:202 评为 🔴 NO (overstated)；`META_GATE_AUDIT_2026-06.md:245` 写明 16 个里只有 6 个有真实脚本）。本迭代交付的是**取证与立案** | 不勾选（证据 §7.25.9） |
+| **GA 阶段的权威清单**（`STAGE_CONFIG.yaml` 的 `GA.required_gates`，20 项） | 本 PR 未改动，但**逐项实跑过**：14 项可在本机判定 → **11 PASS / 2 DRIFT（基线既有）/ 1 恒绿不可采信（#5417）**；3 项（#5 anti-fabrication / #14 coverage 全量 / #15 sql-corpus）因本机资源约束未跑，交 CI 承接。`ga` 模式实测还揭出 3 个披露缺陷（D1/D2 未执行却报 "All dimensions validated"、**汇总行省略 D6**、`--help` 与 dispatch 不一致） | 取证 + 归属（证据 §7.25.7） |
+| **GA 的三项附加门禁**（Perf Regression / Release Evidence / Security） | Security：**本机 exit 0**（SC-1~SC-4 全过，基线一致）但 **CI 从不执行**（`ci.yml:308` 只匹配 v3.12.0 分支 ⇒ #5424）；Perf Regression：**部分 PASS**（4 个子门禁 exit 0；`check_g15_perf_report.sh` 的子门禁链因**直接跑 `tpch_gate_test`** 被本机主动中止）；Release Evidence：两项 **FAIL 但均基线既有**（`check_release_binary` exit 1、`check_evidence_binding v3.7.0` 74 项违规，与基线逐字相同） | 取证 + 归属（证据 §7.25.8、#5424） |
 
 ---
 

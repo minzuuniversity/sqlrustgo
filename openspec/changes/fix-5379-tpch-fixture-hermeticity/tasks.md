@@ -264,12 +264,26 @@
       **#5423**（根包 lib 测试 `test_v410_atomic_parallel_degree_getter_clamps_to_one` 随机失败：
       `env::set_var` 改写进程级变量与并发测试竞态 ⇒ **CI `test` job 约 1/3 量级随机红灯**）
       ⇒ 5 个恒绿 + 2 个恒红 + 1 个随机红 ⇒ **恒绿与恒红是同一种病：门禁不再对代码的真实状态作出区分**
-- [x] **5.3t** **不勾选 GA 清单项**「GA：G1-G16 PASS」（证据 §7.25.7）：
+- [x] **5.3t** **不勾选 GA 清单项**「GA：G1-G16 PASS」（证据 §7.25.9）：
       模板 `AGENT_PROMPT_TEMPLATE.md:35`「**不得自批 Gate**」；
       且治理自身已判定该说法夸大（ADR-007:202 评为 🔴 NO (overstated)；
       `META_GATE_AUDIT_2026-06.md:245` 写明 16 个里只有 6 个有真实脚本；
       `GATE_CONDITIONS.md` 的 GA Gate 小节本身只定义 G1–G6，与模板的 G1–G16 不是同一套编号）
       ⇒ 本迭代交付 GA 门禁的**取证与立案**，不是勾选 PASS
+- [x] **5.3u** **GA 阶段权威清单（`STAGE_CONFIG.yaml` 的 `GA.required_gates`，20 项）逐项实跑**
+      （证据 §7.25.7）：
+      - 14 项可在本机判定 → **11 PASS / 2 DRIFT（基线既有）/ 1 恒绿不可采信（#5417）**；
+        3 项（#5 anti-fabrication 的 `cargo test --workspace --no-run` /
+        #14 coverage 全量 `cargo llvm-cov test` / #15 sql-corpus 的 release 构建 + 全量语料测试）
+        **因本机资源约束未跑**，如实标注并交 CI 承接
+      - `check_rc_ga_gate.sh ga` **实测**：D3/D4/D5/D7/D8/D9 真跑，**D1/D2 = 0/0（未执行）**
+        ⇒ 揭出 3 个披露缺陷：**未执行的维度却报 "All dimensions validated"**、
+        **汇总行完全省略 D6**（一个 GA 必需维度在 GA 结论摘要里不可见）、**`--help` 与 dispatch 不一致**
+      - 另立 **#5424**（GA 的 Security 门禁在 v4.x 上 100% skipped —— 调度条件只匹配 v3.12.0 分支，
+        但脚本本机实测 exit 0）、**#5425**（anti_ignore 阈值三处不一致：55/100 vs 80/150 vs 47/96）、
+        **#5426**（P14/P16 两个"防吞退出码"的自检门禁只匹配 `cargo ... || true` ⇒ 漏检 #5417）
+      ⇒ 连同 #5416–#5423，本迭代共立 **11 个门禁自身失效点**
+      （6 恒绿 + 2 恒红 + 1 随机红 + 1 恒跳过 + 1 判据不定）
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---
