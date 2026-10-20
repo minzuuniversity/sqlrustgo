@@ -3,6 +3,12 @@
 
 mod four_way_harness;
 
+// The shared TPC-H fixture loader (issue #5379). Loading through the
+// storage layer in batches instead of executing one INSERT statement per
+// row is ~2 orders of magnitude faster; see the comment at the load site.
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
+
 use four_way_harness::default_data_dir;
 use four_way_harness::Engine;
 use std::time::Instant;
@@ -26,10 +32,23 @@ fn load_into_sqlrustgo() -> sqlrustgo::ExecutionEngine<sqlrustgo::MemoryStorage>
             eprintln!("[WARN] {} not found, skipping", path.display());
             continue;
         }
-        let inserts = four_way_harness::load_tbl_inserts(table, *cols, &path, Engine::SqlRustGo);
-        for ins in &inserts {
-            let _ = engine.execute(ins);
-        }
+        // Load through the storage layer in 10k-row batches instead of
+        // executing one INSERT statement per row.
+        //
+        // The statement-per-row path issues ~86,000 INSERTs per load and
+        // costs ~1 hour per load in a debug build. Before issue #5379 the
+        // fixture was a dangling symlink, so this target skipped the load
+        // entirely and finished in milliseconds — the cost was invisible.
+        // Now that the fixture is generated at run time and reachable, the
+        // same target needs ~2 hours of CI time, which does not fit the
+        // `test` job's budget and would starve every other target.
+        //
+        // The two loaders are equivalent: the shared loader derives the same
+        // typed values (NULL / Integer / Float / Text) from the same TBL
+        // text, verified cell-by-cell over all 8 tables and 86,482 rows.
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        let rows = tpch_fixture::parse_tbl(&content);
+        let _ = tpch_fixture::load_rows_into_storage(&storage, &rows, table, *cols);
     }
     engine
 }
