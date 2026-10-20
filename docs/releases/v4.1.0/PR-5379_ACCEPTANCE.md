@@ -367,6 +367,8 @@ import 删除 + 变量重命名（无行为变化）。
 | **8 维聚合门禁** `check_full_gate_verification.sh` | **不可采信**：`:69` 的 `output=$(bash "$script" 2>&1 \|\| true)` 把退出码吞成 0 ⇒ 8 维恒绿（#5417）；`:91` 把 `--skip-a5` 拼进脚本路径 ⇒ 该分支恒为 "Script not found"。本 PR 改为**逐维度单独执行**取真实退出码 | 归属（#5417） |
 | **GA 清单项「G1–G16 PASS」** | **本 PR 不勾选**：模板 `AGENT_PROMPT_TEMPLATE.md:35`「不得自批 Gate」；且治理自身已判定该说法夸大（ADR-007:202 评为 🔴 NO (overstated)；`META_GATE_AUDIT_2026-06.md:245` 写明 16 个里只有 6 个有真实脚本）。本迭代交付的是**取证与立案** | 不勾选（证据 §7.25.9） |
 | **GA 阶段的权威清单**（`STAGE_CONFIG.yaml` 的 `GA.required_gates`，20 项） | 本 PR 未改动，但**逐项实跑过**：14 项可在本机判定 → **11 PASS / 2 DRIFT（基线既有）/ 1 恒绿不可采信（#5417）**；3 项（#5 anti-fabrication / #14 coverage 全量 / #15 sql-corpus）因本机资源约束未跑，交 CI 承接。`ga` 模式实测还揭出 3 个披露缺陷（D1/D2 未执行却报 "All dimensions validated"、**汇总行省略 D6**、`--help` 与 dispatch 不一致） | 取证 + 归属（证据 §7.25.7） |
+| **CI 的构建依赖链** | **无任何 cargo registry 缓存步骤**，每次构建从 `static.crates.io` 重下 ~455 个 crate；runner 容器到该 CDN **实测超时**（`index.crates.io` 正常）⇒ cargo 重试预算耗尽即整个 job 失败。run 8185 的 `test` job 即死于此（**一行测试都没跑**） | 取证 + 归属（证据 §7.27(a2)，#5451） |
+| **`RELEASE_GATE_CHECKLIST.md` 的发布门禁脚本** | 规定的 4 个脚本 **3 个不存在**（`check_links.sh` / `check_format.sh` / `generate_documentation_report.sh`）、**1 个从不被调用**（`check_documentation.sh`）；`RELEASE_LIFECYCLE.md` 全篇零可执行判据且停在 v3.9.0 ⇒ **「发布门禁」这一步在仓库里没有可执行实现** | 取证 + 归属（证据 §7.28(e)，#5450） |
 | **GA 阶段的发布产物**（`STAGE_CONFIG.yaml` 的 `GA.required_files` 5 项 + `doc_artifacts` 6 项） | **v4.1.0 缺 4/5 + 2/6**（`GA_GATE_REPORT.md` / `GA_RELEASE_TIMELINE.md` / `EVIDENCE_STATUS.md` / `POST_GA_PLAN.md` 都没有）；`check_evidence_binding.sh` 只扫**已存在**的 `.md`（`:479-501`）⇒ **缺口对门禁不可见** | 取证 + 归属（证据 §7.28(c)，#5439） |
 | **GA 的分支形态**（`GA.branch_pattern` = `main` / `release/v*` / `hotfix/v*`） | 实际发布线是 `develop/v4.1.0`（**不在列表内**）；`release/v4.1.0` 不存在；`main` 停在 2026-09-30 ⇒ **GA 在定义上无法被合法触发** | 取证 + 归属（证据 §7.28(d)，#5436） |
 | **GA 清单的判据唯一性** | 同一个仓库对「GA 有多少门禁」给出 **20 / 16 / 9 / 6** 四个答案、对「G1~G6 是什么」给出 **3 套互斥语义**；`STAGE_CONFIG.yaml` 自己的 G→脚本映射也错位（G7→聚合器 / G8→漂移 / G9→跨版本债 / G10→反捏造） | 取证 + 归属（证据 §7.28(b)，#5437 / #5438） |
@@ -483,13 +485,14 @@ import 删除 + 变量重命名（无行为变化）。
       446 全量计数与 NOT-RUN 计数**仍待一个真跑完的周期**（证据 §7.27）
 - [x] AC-3 零断言 → 真断言
 - [x] AC-4 独立预言机（含本轮新增的 `tpch_q6_q19_oracle_test`：期望值从硬编码的化石改为预言机）
-- [ ] AC-5 变异测试实跑 —— **已取得第一次真实结论**（run 8115 / mutation 16571）：
-      `mktemp` 修复**生效**（三个变异片段全部生成并应用），
-      **`CAUGHT=2 / SURVIVED=1 / ERRORS=0` / exit 1**。
-      存活的是 **MUT-1（HAVING 反转）**，根因已定位为**变异锚点选错了 HAVING 的实现路径**
-      （引擎有两条路径，`diag_q11` 的 `GROUP BY … HAVING` 走的不是被锚定的那条）
-      ⇒ 锚点已改为**同时反转两条路径**；**本地只做了文本级验证（未实跑 TPC-H 测试）**，
-      杀伤力由下一周期 CI 实测确认 → 证据 §7.23
+- [x] AC-5 变异测试实跑 —— **已取得真实结论并达成目标**：
+      * **run 8115**（mutation 16571，SHA `06e352d5dc`）：`mktemp` 修复生效，
+        `CAUGHT=2 / SURVIVED=1 / ERRORS=0 / exit 1` —— 存活的是 **MUT-1（HAVING 反转）**，
+        根因定位为**变异锚点选错了 HAVING 的实现路径**（引擎有两条路径）；
+      * 锚点改为**同时反转两条路径**（`c7ac66ee24`）；
+      * **run 8185**（mutation 16700，SHA `d68dd7f886`，2026-10-20T17:59:10Z）实测：
+        **`CAUGHT=3 / SURVIVED=0`** —— MUT-1 / MUT-2 / MUT-3 **全部被杀**
+        → 证据 §7.23(d2)
 - [x] AC-6 三态披露
 - [x] AC-7 wire 路径不崩溃
 - [x] AC-8 已知差异登记（1 条 `tpch:Q13` cell_values）
@@ -502,7 +505,7 @@ import 删除 + 变量重命名（无行为变化）。
       本 PR 的失败均经基线对照证伪为非本 PR 引入（#5398 / #5411 / #5414 / #5415）；
       ⚠️ **run 8153 的 `test`/`mutation` 失败是基础设施假红**（死在 `git clone actions/checkout`，
       一行项目代码都没执行）⇒ **不可作为任何证据**，必须重取（证据 §7.27，#5448）
-- [x] **GA 发布流程审阅** —— 四维差距清单 + **14 个新 issue（#5436–#5449）**，
+- [x] **GA 发布流程审阅** —— 四维差距清单 + **16 个新 issue（#5436–#5451）**，
       并经**独立 verifier 子代理盲审**交叉验证（一致 8 组 / 补充 9 组已逐条自验后采纳）→ 证据 §7.28
 - [x] **13 个失败目标逐个归因** → 证据 §7.26(a)
 - [x] **本 PR 引入的 staging 竞态 RED→GREEN** → 证据 §7.26(b)
@@ -531,7 +534,7 @@ import 删除 + 变量重命名（无行为变化）。
 | 446 个目标全部执行 | ⏳ **attempt 2 进行中**（中间轮 150/446） | 中间轮 296 个从未开始（其中 53 个 TPC-H 目标）。**根因已量化并已修**：`int2_substance_parallel_test` 的 200 000 行带主键逐行 INSERT 是 O(N²)（≈130 min）、`parallel_main_path_test` 是 8 × 600 000 = 480 万条逐行 INSERT ⇒ 单前者一个就吃光 `timeout 9000`。**第 5 处降本已实测生效：`int2_substance_parallel_test` 0.96 s（原来 >50 min 未结束）** ⇒ 终态待验（证据 §7.20(b) / §7.21） |
 | **新发现的失败：`null_handling_test` 的两个 `green_4154_*`** | ❌ exit 1（2 failed / 51 passed） | `ALTER COLUMN … SET/DROP DEFAULT` 在 `MemoryStorage` 上必然报 `Table not found: t` —— `set_column_default` 漏了 `scoped_key` 键解析。**基线 commit `d8365606d69c` 直跑同样失败、同样行号 879/896** ⇒ 基线既有 ⇒ 立项 **#5414**；**本 PR 不改引擎**（AC-10） |
 | Q19「引擎 vs SQLite」比较一致 | ⏳ **本轮未跑到** | `tpch_q6_q19_oracle_test` 落在未执行的 296 个里 ⇒ **无证据**（不是"通过"）。若新周期不一致 = **新发现的引擎缺陷**，按 AC-8 登记并立项，**不弱化断言** |
-| **`mutation` job 的真实结论** | ❌ **已取得**（run 8115 / mutation 16571，13:28:11→13:39:43）：**`CAUGHT=2 / SURVIVED=1 / ERRORS=0` / exit 1**。`mktemp` 修复**生效**（三个变异片段全部生成并应用）。MUT-2/MUT-3 被杀；**MUT-1 存活** ⇒ 根因是**锚点选错了 HAVING 的实现路径**（`engine_select.rs:1958` 无 GROUP BY 路径 vs `:2206` 有 GROUP BY 路径，而 `diag_q11` 走后者）⇒ 锚点已改为**同时反转两条路径**；**门禁诚实报出存活而不是假绿** → 证据 §7.23 |
+| **`mutation` job 的真实结论** | ✅ **已达成目标** | **run 8185 / mutation 16700**（SHA `d68dd7f886`，17:44→17:59）：**`CAUGHT=3 / SURVIVED=0`** —— MUT-1 的锚点修正（**同时反转两条 HAVING 路径**）经 CI 实测生效，三个变异**全部被杀**；此前 run 8115 是 `CAUGHT=2 / SURVIVED=1`（MUT-1 存活）。⇒ **AC-5 达成**：新写的断言真的能杀死注入的缺陷 → 证据 §7.23(d2) |
 | `test` job 恒红 | ⚠️ 已知 | 2 个失败（#5398 的 g13 flaky、#5411 的 `insert_db_isolation_5057` 竞态）**均有基线对照**；本 PR 不弱化断言、不改门禁判定口径 |
 
 **本轮（证据 §7.18）新增的、未打勾的项与原因**：
@@ -552,7 +555,7 @@ import 删除 + 变量重命名（无行为变化）。
 
 ### 9.1 审阅结论
 
-**当前仓库状态下，「GA 全绿」是一个不可声称的结论。** 至少 5 条各自独立地使它失真：
+**当前仓库状态下，「GA 全绿」是一个不可声称的结论。** 至少 6 条各自独立地使它失真：
 
 | # | 失真来源 | 代表 issue |
 |---|---|---|
@@ -561,12 +564,13 @@ import 删除 + 变量重命名（无行为变化）。
 | 3 | **被判据本身恒绿** —— 20 项里至少 4 项无论代码怎么写都会通过 | #5417 / #5419 / #5445 |
 | 4 | **CI 的判读不可靠** —— 失败可以被吞、被错配（字符集）、被自己写进去 | #5443 / #5444 / #5447 |
 | 5 | **证据链不成立** —— 产物缺失不可见、连 GA 日志都进不了版本控制 | #5439 / #5441 |
+| 6 | **发布门禁本身没有可执行实现** —— `RELEASE_GATE_CHECKLIST.md` 规定的 4 个脚本 **3 个不存在、1 个从不被调用**；`RELEASE_LIFECYCLE.md` 全篇零可执行判据且停在 v3.9.0 | #5450 |
 
 ### 9.2 本 PR 的立场
 
 - **不勾选任何 GA 门禁项**（模板 `AGENT_PROMPT_TEMPLATE.md:35`「不得自批 Gate」）。
 - 本 PR 交付的是 **GA 流程的取证与差距清单**，不是「GA 已通过」的结论。
-- 全部 14 条差距**分流为独立 issue**，本 PR 不改治理配置、不改工作流（AC-10）。
+- 全部 **16** 条差距（**#5436–#5451**）**分流为独立 issue**，本 PR 不改治理配置、不改工作流（AC-10）。
 
 ### 9.3 审阅方法的可信度
 
