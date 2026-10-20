@@ -76,6 +76,11 @@ tests/data/tpch-sf001/*.wal
 tests/data/tpch-sf01/*.json
 tests/data/tpch-sf01/*.wal
 
+# TPC-H wire-harness staging directories: created inside the fixture directory
+# at run time, one per concurrent test (see tests/common/tpch_wire_harness.rs).
+# They are build output, never repository content.
+.tpch-wire-staging*/
+
 # Stability test output directories (timestamps appended) — not for tracking
 test_results/
 

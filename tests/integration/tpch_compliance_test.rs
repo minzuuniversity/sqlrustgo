@@ -1,28 +1,47 @@
 //! TPC-H Q1-Q22 合规性测试
 //!
-//! 使用标准 TPC-H SF=0.1 数据对比 SQLRustGo 与 SQLite 的查询结果
+//! 使用标准 TPC-H 数据对比 SQLRustGo 与 SQLite 的查询结果
 //!
 //! 运行方式:
 //!   cargo test --test tpch_compliance_test        # SQLRustGo vs SQLite
 //!   cargo test --test tpch_compliance_test -- --nocapture  # 显示详细输出
+//!
+//! **自包含（issue #5427）**：本测试原先依赖仓库里**根本不存在**的两样东西：
+//! `data/tpch-tiny/*.tbl`（引擎侧的装载源）与 `data/tpch-tiny/tpch.db`
+//! （SQLite 侧的预建数据库）。二者都不是 git 跟踪文件，也没有任何 CI 步骤生成它们
+//! ⇒ **任何干净 checkout 上这个目标都必然失败**（CI run 8117 实测：
+//! `unable to open database file: data/tpch-tiny/tpch.db`）。
+//!
+//! 现在两侧都从**运行期生成的 fixture** 取数：
+//!   - SQLite 侧用独立预言机 `tests/common/sqlite_oracle.rs`
+//!     （它自己解析 `.tbl`，**不经过引擎的装载器**
+//!     ⇒ 装载器的缺陷不会同时污染预言机）；
+//!   - 引擎侧从同一份 fixture 装载。
+//!
+//! ⇒ 期望值仍然只来自独立预言机（AC-4），比较逻辑复用标准的
+//! `check_against_oracle`（含已知差异登记机制：登记过的差异会被披露而不是 panic）。
+//! fixture 缺失时走三态披露的 NOT-RUN（单独计数，绝不计入 passed）。
 
-#![allow(dead_code)]
+#[path = "../common/sqlite_oracle.rs"]
+mod sqlite_oracle;
+#[path = "../common/tpch_fixture.rs"]
+mod tpch_fixture;
 
 use parking_lot::RwLock;
-use rusqlite::Connection;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_storage::{ColumnDefinition, TableInfo};
 use std::sync::Arc;
 
-// Use tiny dataset for quick testing, change to "data/tpch-sf001" for full SF=0.1 test
-const TBL_DATA_DIR: &str = "data/tpch-tiny";
-const TBL_SQLITE_DB: &str = "data/tpch-tiny/tpch.db";
+/// The target name used for the NOT-RUN disclosure.
+const TARGET: &str = "tpch_compliance_test";
 
-fn create_sqlite_conn() -> Connection {
-    Connection::open(TBL_SQLITE_DB).unwrap()
+/// Build the independent SQLite oracle from the runtime fixture.
+fn create_sqlite_oracle(fixture: &tpch_fixture::Fixture) -> sqlite_oracle::SqliteOracle {
+    sqlite_oracle::SqliteOracle::open(fixture, &sqlite_oracle::TPC_H_ALL_TABLES)
+        .unwrap_or_else(|e| panic!("build the SQLite oracle from the fixture: {e}"))
 }
 
-fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
+fn setup_sqlrustgo_engine(fixture: &tpch_fixture::Fixture) -> ExecutionEngine<MemoryStorage> {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let engine = ExecutionEngine::new(storage.clone());
 
@@ -887,245 +906,56 @@ fn setup_sqlrustgo_engine() -> ExecutionEngine<MemoryStorage> {
         ];
 
         for table_name in tables {
-            let filepath = format!("{}/{}.tbl", TBL_DATA_DIR, table_name);
-            match storage.bulk_load_tbl_file(table_name, &filepath) {
-                Ok(count) => println!("  Loaded {} rows into {}", count, table_name),
-                Err(e) => println!("  Failed to load {}: {:?}", table_name, e),
-            }
+            let filepath = fixture.table_path(table_name);
+            // A failed load must NOT be swallowed: an empty table would make
+            // every assertion below run against **no data at all** and pass
+            // vacuously. That is exactly the fake-green channel this test
+            // used to have.
+            let count = storage
+                .bulk_load_tbl_file(table_name, &filepath.to_string_lossy())
+                .unwrap_or_else(|e| {
+                    panic!("load {} from {}: {e:?}", table_name, filepath.display())
+                });
+            println!("  Loaded {} rows into {}", count, table_name);
         }
     }
 
     engine
 }
 
-struct QueryResult {
-    name: String,
-    sqlite_ok: bool,
-    sqlite_rows: usize,
-    sqlite_error: Option<String>,
-    sqlite_data: Vec<Vec<String>>,
-    sqlrustgo_ok: bool,
-    sqlrustgo_error: Option<String>,
-    sqlrustgo_rows: usize,
-    sqlrustgo_data: Vec<Vec<String>>,
-    match_result: Option<bool>,
-}
-
-impl QueryResult {
-    fn new(name: &str, _sql: &str) -> Self {
-        let _ = _sql; // Kept for API compatibility
-        QueryResult {
-            name: name.to_string(),
-            sqlite_ok: false,
-            sqlite_rows: 0,
-            sqlite_error: None,
-            sqlite_data: Vec::new(),
-            sqlrustgo_ok: false,
-            sqlrustgo_error: None,
-            sqlrustgo_rows: 0,
-            sqlrustgo_data: Vec::new(),
-            match_result: None,
-        }
-    }
-
-    fn set_sqlite_result(
-        &mut self,
-        ok: bool,
-        rows: usize,
-        data: Vec<Vec<String>>,
-        error: Option<String>,
-    ) {
-        self.sqlite_ok = ok;
-        self.sqlite_rows = rows;
-        self.sqlite_data = data;
-        self.sqlite_error = error;
-    }
-
-    fn set_sqlrustgo_result(
-        &mut self,
-        ok: bool,
-        rows: usize,
-        data: Vec<Vec<String>>,
-        error: Option<String>,
-    ) {
-        self.sqlrustgo_ok = ok;
-        self.sqlrustgo_rows = rows;
-        self.sqlrustgo_data = data;
-        self.sqlrustgo_error = error;
-    }
-
-    fn compare_results(&mut self) {
-        if self.sqlite_ok && self.sqlrustgo_ok {
-            let mut sqlite_sorted = self.sqlite_data.clone();
-            let mut sqlrustgo_sorted = self.sqlrustgo_data.clone();
-
-            for row in sqlite_sorted.iter_mut() {
-                row.sort_by_key(|a| a.to_string());
-            }
-            for row in sqlrustgo_sorted.iter_mut() {
-                row.sort_by_key(|a| a.to_string());
-            }
-
-            sqlite_sorted.sort_by(|a, b| {
-                let a_str = a.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("|");
-                let b_str = b.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("|");
-                a_str.cmp(&b_str)
-            });
-            sqlrustgo_sorted.sort_by(|a, b| {
-                let a_str = a.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("|");
-                let b_str = b.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("|");
-                a_str.cmp(&b_str)
-            });
-
-            let match_flag =
-                Self::compare_data_with_tolerance(&sqlite_sorted, &sqlrustgo_sorted, &self.name);
-
-            if !match_flag && self.name == "Q6" {
-                println!(
-                    "DEBUG Q6: sqlite={:?}, sqlrustgo={:?}",
-                    sqlite_sorted, sqlrustgo_sorted
-                );
-            }
-
-            self.match_result = Some(match_flag);
-        } else {
-            self.match_result = Some(false);
-        }
-    }
-
-    fn compare_data_with_tolerance(a: &[Vec<String>], b: &[Vec<String>], query_name: &str) -> bool {
-        if a.len() != b.len() {
-            println!(
-                "DEBUG {}: row count mismatch {} vs {}",
-                query_name,
-                a.len(),
-                b.len()
-            );
-            return false;
-        }
-        for (i, (row_a, row_b)) in a.iter().zip(b.iter()).enumerate() {
-            if row_a.len() != row_b.len() {
-                println!(
-                    "DEBUG {} row {}: column count mismatch {} vs {}",
-                    query_name,
-                    i,
-                    row_a.len(),
-                    row_b.len()
-                );
-                return false;
-            }
-            for (j, (val_a, val_b)) in row_a.iter().zip(row_b.iter()).enumerate() {
-                if !Self::compare_values_with_tolerance(val_a, val_b) {
-                    println!(
-                        "DEBUG {} row {} col {}: '{}' vs '{}'",
-                        query_name, i, j, val_a, val_b
-                    );
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    fn compare_values_with_tolerance(a: &str, b: &str) -> bool {
-        if a == b {
-            return true;
-        }
-
-        if let (Ok(num_a), Ok(num_b)) = (a.parse::<f64>(), b.parse::<f64>()) {
-            let tolerance = 0.000001f64;
-            if (num_a - num_b).abs() < tolerance {
-                return true;
-            }
-            let max_magnitude = num_a.abs().max(num_b.abs());
-            if max_magnitude > 0.0 && (num_a - num_b).abs() / max_magnitude < tolerance {
-                return true;
-            }
-        }
-
-        a == b
-    }
-}
-
-fn run_sqlite_query(
-    conn: &Connection,
-    sql: &str,
-) -> (bool, usize, Vec<Vec<String>>, Option<String>) {
-    let mut stmt = match conn.prepare(sql) {
-        Ok(s) => s,
-        Err(e) => return (false, 0, Vec::new(), Some(e.to_string())),
-    };
-
-    let column_count = stmt.column_count();
-    let mut rows: Vec<Vec<String>> = Vec::new();
-    let mut row_count = 0;
-
-    let mut result_rows = match stmt.query([]) {
-        Ok(r) => r,
-        Err(e) => return (false, 0, Vec::new(), Some(e.to_string())),
-    };
-
-    while let Some(row) = result_rows.next().unwrap() {
-        let mut row_data: Vec<String> = Vec::new();
-        for i in 0..column_count {
-            let value: String = match row.get_ref(i) {
-                Ok(rusqlite::types::ValueRef::Null) => "NULL".to_string(),
-                Ok(rusqlite::types::ValueRef::Integer(i)) => i.to_string(),
-                Ok(rusqlite::types::ValueRef::Real(f)) => f.to_string(),
-                Ok(rusqlite::types::ValueRef::Text(s)) => String::from_utf8_lossy(s).to_string(),
-                Ok(rusqlite::types::ValueRef::Blob(b)) => format!("BLOB[{}]", b.len()),
-                Err(_) => "ERROR".to_string(),
-            };
-            row_data.push(value);
-        }
-        rows.push(row_data);
-        row_count += 1;
-    }
-
-    (true, row_count, rows, None)
-}
-
-fn run_sqlite_query_safe(
-    conn: &Connection,
-    sql: &str,
-) -> (bool, usize, Vec<Vec<String>>, Option<String>) {
-    match run_sqlite_query(conn, sql) {
-        (ok, rows, data, None) => (ok, rows, data, None),
-        (_, _, _, Some(e)) => (false, 0, Vec::new(), Some(e)),
-    }
-}
 #[test]
 fn test_tpch_q1_simple() {
-    let sqlite_conn = create_sqlite_conn();
-    let mut sqlrustgo_engine = setup_sqlrustgo_engine();
+    // The fixture is resolved at run time; when it is missing the shared
+    // resolver reports the NOT-RUN (with its reason) and we simply stop.
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require(TARGET) else {
+        return;
+    };
+
+    let oracle = create_sqlite_oracle(fixture);
+    let mut engine = setup_sqlrustgo_engine(fixture);
 
     let sql = "SELECT l_returnflag, SUM(l_quantity) FROM lineitem WHERE l_shipdate <= '1995-12-01' GROUP BY l_returnflag";
 
     println!("Running Q1...");
 
-    // Run SQLite query
-    let mut stmt = sqlite_conn.prepare(sql).unwrap();
-    let sqlite_result: Vec<(String, i64)> = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })
-        .unwrap()
-        .map(|r| r.unwrap())
-        .collect();
-    println!("SQLite returned {} rows", sqlite_result.len());
+    let oracle_rows = oracle
+        .query(sql)
+        .unwrap_or_else(|e| panic!("Q1 on the independent SQLite oracle: {e}"));
+    println!("SQLite returned {} rows", oracle_rows.len());
 
-    // Run SQLRustGo query
-    let result = sqlrustgo_engine.execute(sql);
-    match result {
-        Ok(r) => {
-            println!("SQLRustGo returned {} rows", r.rows.len());
-            for row in r.rows.iter().take(5) {
-                println!("  {:?}", row);
-            }
-        }
-        Err(e) => {
-            println!("SQLRustGo ERROR: {:?}", e);
-            panic!("Q1 execution failed: {:?}", e);
-        }
+    let result = engine
+        .execute(sql)
+        .unwrap_or_else(|e| panic!("Q1 on the engine: {e:?}"));
+    println!("SQLRustGo returned {} rows", result.rows.len());
+    for row in result.rows.iter().take(5) {
+        println!("  {:?}", row);
     }
+
+    // The expectation comes from the **independent** oracle, never from the
+    // engine's own output (AC-4). `check_against_oracle` sorts both sides
+    // (GROUP BY does not define an order) and consults the known-difference
+    // registry before failing.
+    let engine_rows = sqlite_oracle::engine_rows_to_strings(&result.rows);
+    sqlite_oracle::check_against_oracle("tpch:q1", &engine_rows, &oracle_rows);
 }

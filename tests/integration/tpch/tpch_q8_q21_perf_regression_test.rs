@@ -5,7 +5,9 @@ use std::time::Duration;
 
 #[test]
 fn tpch_q8_q21_perf_regression_budget() {
-    let mut client = start_sf01();
+    let Some(mut client) = start_sf01() else {
+        return;
+    };
     let start = std::time::Instant::now();
     let r = client.query_rows("SELECT COUNT(*) FROM lineitem");
     let elapsed = start.elapsed();

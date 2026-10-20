@@ -8,39 +8,73 @@
 //! share. The PG "0 rows" is a fixture schema artifact (PG uses a
 //! different lineitem shape on the simplified data).
 //!
-//! This test exercises Q6 + Q19 in-process on the same simplified
-//! SF=0.001 fixture and asserts the values that Sprint 5 oracle
-//! (#3284) should treat as the authoritative ground truth:
+//! This test exercises Q6 + Q19 in-process and asserts the values that
+//! Sprint 5 oracle (#3284) should treat as the authoritative ground truth.
 //!
-//!   Q6: 1 row, revenue=34352.7263 (canonical queries/q6.sql)
-//!   Q19: 1 row, count=0
+//! # What changed (issue #5379)
 //!
-//! These values match `tests/data/tpch-sf001/expected/Q6_three_way.json`
-//! and `Q19_three_way.json` (consensus_row_count=1).
+//! Three defects in this file were found while the TPC-H fixture was made
+//! reachable at run time. All three are fixed here; the file's *assertions*
+//! are not weakened — they are re-based on an independent oracle.
 //!
-//! Z440-runnable: no PG, no MySQL, no SQLite. Uses
-//! `ExecutionEngine::with_memory()` directly. Sprint 4 root cause D
-//! decision: Q6/Q19 are NOT engine bugs, oracle just needs to use
-//! SQLite as the truth source for these two queries.
+//! 1. **The loader never loaded anything.** Every row was inserted with
+//!    `INSERT INTO lineitem (c0, c1, ..., c15) VALUES (...)` — positional
+//!    names that the table does not have. The engine does **not** reject an
+//!    unknown column name in an INSERT column list: it inserts a row of
+//!    NULLs instead (verified with the built binary:
+//!    `INSERT INTO t (c0, c1) VALUES (1, 2)` on a table `(a, b)` produces the
+//!    row `NULL | NULL`). The tables therefore held ~62 000 rows of NULLs,
+//!    every filter matched nothing, and the assertions below passed on
+//!    garbage.
 //!
-//! Refs: issue #3288, SPRINT4_MASTER_PLAN.md §1 root cause D,
+//! 2. **The expected values were hard-coded and profile-bound.** `Q19` was
+//!    expected to count `0` rows — true only for the hand-built "simplified
+//!    SF=0.001" fixture that this repository has never contained. On the
+//!    generated fixture the same query matches a different number of rows,
+//!    so a hard-coded number is not an expectation, it is a leftover.
+//!    The expectations now come from the **independent in-process SQLite
+//!    oracle** (`tests/common/sqlite_oracle.rs`), loaded from the same
+//!    fixture — which is what this file's own header always promised
+//!    ("oracle just needs to use SQLite as the truth source for these two
+//!    queries").
+//!
+//! 3. **The load cost the CI `test` job its budget.** One INSERT statement
+//!    per row, three times over, is ~186 000 statement executions per run.
+//!    The rows are now loaded through the storage layer in 10 000-row
+//!    batches.
+//!
+//! The data-independent invariants stay: an aggregate without a `GROUP BY`
+//! produces exactly one row, and the cell is a finite number.
+//!
+//! Z440-runnable: no PG, no MySQL. Uses the in-process engine plus the
+//! in-process SQLite oracle.
+//!
+//! Refs: issue #3288, issue #5379, SPRINT4_MASTER_PLAN.md §1 root cause D,
 //! docs/audit/status/2026-06-07-q6-q19-investigation-3288.md
 
-use sqlrustgo::{ExecutionEngine, SqlError, Value as SqlValue};
-use sqlrustgo_executor::ExecutorResult;
-use std::path::PathBuf;
+#[path = "../../common/sqlite_oracle.rs"]
+mod sqlite_oracle;
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
 
-/// Locate the SF=0.001 fixture directory.
-fn data_dir() -> PathBuf {
-    std::env::var("TPCH_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            PathBuf::from(home).join("sqlrustgo-tpch").join("data")
-        })
-}
+use parking_lot::RwLock;
+use sqlrustgo::{ExecutionEngine, MemoryStorage, Value as SqlValue};
+use std::sync::Arc;
 
-/// Hand-build the lineitem table schema and load 614 rows.
+use sqlite_oracle::SqliteOracle;
+use tpch_fixture::FixtureState;
+
+/// Cargo target name — used in the NOT-RUN marker.
+const TARGET: &str = "tpch_q6_q19_oracle_test";
+
+/// Tables this test loads, with their TPC-H column counts.
+///
+/// The `part` table has **nine** columns. The previous DDL in this file had
+/// only seven (it dropped `p_retailprice` and moved `p_comment` into its
+/// place), which did not match the TPC-H schema the fixture is written in —
+/// nor the schema the SQLite oracle uses.
+const TABLES: [(&str, usize); 2] = [("lineitem", 16), ("part", 9)];
+
 const SCHEMA_SQL: &[&str] = &[
     "CREATE TABLE lineitem (\
         l_orderkey INTEGER, l_partkey INTEGER, l_suppkey INTEGER, l_linenumber INTEGER, \
@@ -50,7 +84,8 @@ const SCHEMA_SQL: &[&str] = &[
     )",
     "CREATE TABLE part (\
         p_partkey INTEGER, p_name TEXT, p_mfgr TEXT, p_brand TEXT, \
-        p_type TEXT, p_size INTEGER, p_container TEXT, p_comment TEXT\
+        p_type TEXT, p_size INTEGER, p_container TEXT, p_retailprice REAL, \
+        p_comment TEXT\
     )",
 ];
 
@@ -70,99 +105,104 @@ const Q19_CANONICAL: &str = "SELECT COUNT(*) AS cnt \
       AND l_shipmode IN ('AIR', 'AIR REG') \
       AND l_shipinstruct = 'DELIVER IN PERSON'";
 
-fn setup_engine() -> Result<ExecutionEngine<sqlrustgo::MemoryStorage>, String> {
-    let dir = data_dir();
-    if !dir.exists() {
-        return Err(format!("TPC-H data not found at {}", dir.display()));
-    }
-    let mut engine = ExecutionEngine::with_memory();
+/// The engine under test plus the independent oracle, both loaded from the
+/// same fixture.
+struct Ctx {
+    engine: ExecutionEngine<MemoryStorage>,
+    oracle: SqliteOracle,
+}
+
+/// Build the engine and the independent oracle from the resolved fixture.
+///
+/// Returns `None` when the fixture is missing — the shared resolver has
+/// already printed the NOT-RUN marker in that case (issue #5379: a missing
+/// fixture is an explicit, disclosed state, never a panic and never a silent
+/// pass).
+fn setup() -> Option<Ctx> {
+    let state = FixtureState::resolve();
+    let fixture = state.require(TARGET)?.clone();
+
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage.clone());
     for ddl in SCHEMA_SQL {
         engine
             .execute(ddl)
-            .map_err(|e| format!("DDL failed: {} - {}", ddl, e))?;
+            .unwrap_or_else(|e| panic!("DDL failed: {ddl} - {e}"));
     }
-    // Load .tbl files
-    let tables = [("lineitem", 16usize), ("part", 7usize)];
-    for (tbl, ncols) in tables {
-        let path = dir.join(format!("{}.tbl", tbl));
-        if !path.exists() {
-            return Err(format!("fixture not found: {}", path.display()));
-        }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("read {}: {}", path.display(), e))?;
-        let mut loaded = 0usize;
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let values: Vec<&str> = line.split('|').collect();
-            if values.len() < ncols {
-                continue;
-            }
-            let col_list: Vec<String> = (0..ncols).map(|i| format!("c{}", i)).collect();
-            let val_list: Vec<String> = values[..ncols]
-                .iter()
-                .map(|v| {
-                    let s = v.trim();
-                    if s.is_empty() {
-                        "NULL".to_string()
-                    } else if s.parse::<i64>().is_ok() || s.parse::<f64>().is_ok() {
-                        s.to_string()
-                    } else {
-                        format!("'{}'", s.replace('\'', "''"))
-                    }
-                })
-                .collect();
-            let insert = format!(
-                "INSERT INTO {} ({}) VALUES ({})",
-                tbl,
-                col_list.join(", "),
-                val_list.join(", ")
-            );
-            let _ = engine.execute(&insert);
-            loaded += 1;
-        }
-        eprintln!("  Loaded {} rows into {}", loaded, tbl);
+    for (table, ncols) in TABLES {
+        let loaded = tpch_fixture::load_into_storage(&storage, &fixture, table, ncols)
+            .unwrap_or_else(|e| panic!("loading table `{table}`: {e}"));
+        assert!(loaded > 0, "table `{table}` loaded 0 rows");
     }
-    Ok(engine)
+
+    // The independent oracle: same fixture, different engine.
+    let oracle =
+        SqliteOracle::open(&fixture, &["lineitem", "part"]).expect("opening the SQLite oracle");
+
+    Some(Ctx { engine, oracle })
 }
 
-fn rows_of(r: Result<ExecutorResult, SqlError>) -> Vec<Vec<SqlValue>> {
-    match r {
-        Ok(v) => v.rows,
-        Err(e) => panic!("query failed: {}", e),
+/// Run `sql` on the independent SQLite oracle, after dialect adaptation.
+///
+/// Returns `None` when SQLite cannot run the query at all. That is never
+/// silent: the reason is printed so the gap shows up in the CI log, and the
+/// caller falls back to data-independent invariants for that query.
+fn oracle_rows(oracle: &SqliteOracle, case_id: &str, sql: &str) -> Option<Vec<Vec<String>>> {
+    let adapted = sqlite_oracle::adapt_sql(sql);
+    if !adapted.unsupported.is_empty() {
+        eprintln!(
+            "TPCH-NO-ORACLE: {case_id} unsupported={:?} — this query is checked by \
+             data-independent invariants only",
+            adapted.unsupported
+        );
+        return None;
     }
+    for a in &adapted.adaptations {
+        eprintln!("TPCH-ORACLE-ADAPT: {case_id} {a}");
+    }
+    Some(
+        oracle
+            .query(&adapted.sql)
+            .unwrap_or_else(|e| panic!("{case_id}: SQLite oracle query failed: {e}")),
+    )
+}
+
+/// Execute `sql` on the engine, compare the result with the independent
+/// oracle, and return the engine's rows.
+fn run_and_compare(ctx: &mut Ctx, case_id: &str, sql: &str) -> Vec<Vec<SqlValue>> {
+    let result = ctx
+        .engine
+        .execute(sql)
+        .unwrap_or_else(|e| panic!("{case_id}: {e}"));
+    if let Some(expected) = oracle_rows(&ctx.oracle, case_id, sql) {
+        sqlite_oracle::check_against_oracle(
+            case_id,
+            &sqlite_oracle::engine_rows_to_strings(&result.rows),
+            &expected,
+        );
+    }
+    result.rows
 }
 
 #[test]
 fn test_tpch_q6_cell_value_against_sqlite_ground_truth() {
-    let mut engine = match setup_engine() {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("[SKIP] {}", e);
-            return;
-        }
+    let Some(mut ctx) = setup() else {
+        return;
     };
 
-    let rows = rows_of(engine.execute(Q6_CANONICAL));
+    let rows = run_and_compare(&mut ctx, "tpch:Q6", Q6_CANONICAL);
     assert_eq!(
         rows.len(),
         1,
         "Q6 should return exactly 1 row (per SQLite ground truth), got {}",
         rows.len()
     );
-    // Cell value should match SQLite: 34352.7263 (per
-    // tests/data/tpch-sf001/expected/Q6_three_way.json).
+    // The expected *value* comes from the independent oracle (checked above).
+    // What is asserted here is the data-independent shape: the cell is a
+    // finite number.
     let v = &rows[0][0];
     let s = format!("{:?}", v);
     eprintln!("Q6 returned: {}", s);
-
-    // #3285 root cause A: SUM(REAL) currently returns 0. The expected
-    // SQLite value is 34352.7263, but sqlrustgo likely returns 0.0 due
-    // to the SUM(REAL)=0 engine bug. We accept BOTH outcomes and just
-    // assert the row count and the field is parseable as a number.
-    // Once #3285 is fixed, this should become a strict assertion.
     let parsed: Result<f64, _> = s.trim_start_matches("Float(").trim_end_matches(')').parse();
     assert!(
         parsed.is_ok(),
@@ -170,34 +210,25 @@ fn test_tpch_q6_cell_value_against_sqlite_ground_truth() {
         s
     );
     let val = parsed.unwrap();
-    // For now we just confirm it's a real number (not NaN, not Inf).
     assert!(val.is_finite(), "Q6 revenue should be finite, got {}", val);
-    eprintln!(
-        "Q6 cell value = {} (expected 34352.7263 if #3285 fixed)",
-        val
-    );
+    eprintln!("Q6 cell value = {}", val);
 }
 
 #[test]
 fn test_tpch_q19_cell_value_against_sqlite_ground_truth() {
-    let mut engine = match setup_engine() {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("[SKIP] {}", e);
-            return;
-        }
+    let Some(mut ctx) = setup() else {
+        return;
     };
 
-    let rows = rows_of(engine.execute(Q19_CANONICAL));
+    let rows = run_and_compare(&mut ctx, "tpch:Q19", Q19_CANONICAL);
     assert_eq!(
         rows.len(),
         1,
         "Q19 should return exactly 1 row (per SQLite ground truth), got {}",
         rows.len()
     );
-    // Per tests/data/tpch-sf001/expected/Q19_three_way.json:
-    //   sqlite row_count=1, first_3_rows=[] (empty COUNT=0)
-    // So we expect count=0 on the simplified SF=0.001 fixture.
+    // The expected count comes from the independent oracle. What is asserted
+    // here is the data-independent shape: the cell is an integer.
     let v = &rows[0][0];
     let s = format!("{:?}", v);
     eprintln!("Q19 returned: {}", s);
@@ -208,12 +239,6 @@ fn test_tpch_q19_cell_value_against_sqlite_ground_truth() {
     assert!(
         parsed.is_ok(),
         "Q19 first cell should be parseable as i64, got: {}",
-        s
-    );
-    assert_eq!(
-        parsed.unwrap(),
-        0,
-        "Q19 count on simplified SF=0.001 fixture should be 0 (per SQLite), got {}",
         s
     );
 }
@@ -230,15 +255,11 @@ fn test_tpch_q6_v2_discount_05_07_quantity_24() {
           AND l_discount BETWEEN 0.05 AND 0.07 \
           AND l_quantity < 24";
 
-    let mut engine = match setup_engine() {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!("[SKIP] {}", e);
-            return;
-        }
+    let Some(mut ctx) = setup() else {
+        return;
     };
 
-    let rows = rows_of(engine.execute(Q6_V2));
+    let rows = run_and_compare(&mut ctx, "tpch:Q6-v2", Q6_V2);
     assert_eq!(rows.len(), 1, "Q6 v2 should return 1 row");
     eprintln!("Q6 v2 returned: {:?}", rows[0][0]);
 }

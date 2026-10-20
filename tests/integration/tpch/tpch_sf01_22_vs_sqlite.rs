@@ -1,75 +1,428 @@
-//! TPC-H 22/22 wire protocol on SF=0.1 fixture, compared against the
-//! SQLite baseline at `tests/data/tpch-sf01/expected/Q{N}_sf01_baseline.json`.
+//! TPC-H 22/22 wire protocol vs the **independent** in-process SQLite oracle.
 //!
-//! Migration: in-process `ExecutionEngine` + `MemoryStorage` + `load_tbl`
-//! replaced with wire protocol via `start_sf01()` + `client.query_rows()`.
+//! # What changed (issue #5379)
+//!
+//! This test used to compare the wire-protocol result against
+//! `tests/data/tpch-sf01/expected/Q{N}_sf01_baseline.json`. Those files were
+//! **never committed**: `tests/data/tpch-sf01` was a symlink into `/tmp`, and
+//! the JSON lived behind it. Every query therefore hit the
+//! `expected_path.exists()` guard, took the `SKIP` branch, and the test
+//! finished with
+//!
+//! ```text
+//! === Summary: pass=0 fail=0 skip=22 ===
+//! ```
+//!
+//! — and then reported `test result: ok` **without a single assertion**.
+//! The file even said so: "Diagnostic test, not a hard gate."
+//!
+//! # What this test is now
+//!
+//! A hard gate with three properties:
+//!
+//! 1. **The expected value comes from a different engine.** The same
+//!    statement is executed by an in-process SQLite loaded from the same
+//!    fixture (`tests/common/sqlite_oracle.rs`, `rusqlite` with the
+//!    `bundled` feature — no external binary, no network). The engine's own
+//!    output is never fed back in as its own expectation.
+//! 2. **Every one of the 22 statements is compared**, and the test asserts
+//!    that it really compared 22 — a run that compares nothing can never
+//!    report success.
+//! 3. **A mismatch is a failure.** There is no "pre-existing, separate
+//!    Sprint work" escape hatch any more.
+//!
+//! # The two phases
+//!
+//! * **Phase 1 — data integrity.** The engine's row count per table is
+//!   compared with the row count the independent oracle loaded from the
+//!   same `.tbl` file. A difference means the engine did not load the whole
+//!   fixture, and every result that depends on that table is meaningless.
+//!   This phase exists because a truncated dataset produces *plausible*
+//!   results: the query returns rows, they are just not the right ones.
+//! * **Phase 2 — statement comparison.** All 22 statements of
+//!   `queries/q{1..22}.sql` are run over the wire protocol and compared
+//!   with the oracle's result for the same statement.
+//!
+//! The comparison is deliberately *row-count only*: the wire protocol
+//! renders a float differently from SQLite (`17` vs `17.0`), and the
+//! full-cell comparison belongs to `oracle_g15_tpch_sf01.rs`, which checks
+//! the values as well.
+//!
+//! # How a difference may be tolerated
+//!
+//! Only through `tests/baseline/tpch_known_differences.json`: an entry with
+//! a `case_id` of `<cargo-target>:<query-id>`, an `issue` and an `owner`.
+//! A registered difference is disclosed through the `TPCH-KNOWN-DIFF`
+//! marker and does not fail the test; an unregistered one does.
+//!
+//! # Prerequisites
+//!
+//! A TPC-H fixture. It is resolved at run time (`TPCH_DATA_DIR` first), and
+//! a missing fixture is disclosed as `TPCH-NOT-RUN` with the reason code
+//! `fixture_missing` — never as a pass.
+//!
+//! # The wire scope
+//!
+//! Three of the 22 standard statements — **Q9**, **Q18** and **Q19** — cannot be
+//! executed on the file-storage wire path: Q9's intermediate result grows past
+//! 1.5 GB within a second, Q18 kills the server process, and Q19 cannot be
+//! parsed by the wire front end (all three: issue #5393). A killed process
+//! takes the **whole test binary** with it, so the CI job would die with
+//! `signal: 9` instead of reporting a test failure.
+//!
+//! The shared **wire scope** (`tests/common/tpch_wire_scope.rs`) refuses to
+//! execute those statements: `run_query_timed` takes the query id and returns
+//! `WireOutcome::Skipped` for them. This file therefore executes the 19
+//! in-scope statements, discloses the 3 skips through the `TPCH-NOT-RUN`
+//! marker, and asserts that exactly those 3 were skipped — neither more (a
+//! silently dropped statement) nor fewer (a statement that could have run).
 
 #[path = "../../common/mod.rs"]
 mod common;
-use common::tpch_wire_harness::start_sf01;
-use std::path::PathBuf;
+#[path = "../../common/sqlite_oracle.rs"]
+mod sqlite_oracle;
+use common::tpch_cli_harness::tpch_fixture;
 
+use std::time::Instant;
+
+use common::tpch_cli_harness::tpch_fixture::{reason, report_known_difference, report_not_run};
+use common::tpch_wire_harness::{
+    resolve_fixture_dir, run_query_timed, start_sf01_named, WireOutcome,
+};
+use common::tpch_wire_scope;
+use sqlite_oracle::{adapt_sql, SqliteOracle, TPC_H_ALL_TABLES};
+
+/// Cargo target name — used in the NOT-RUN marker and in the `case_id` of
+/// the known-difference registry.
+const TARGET: &str = "tpch_sf01_22_vs_sqlite";
+
+/// Directory holding `q1.sql` … `q22.sql`, relative to the package root
+/// (the working directory `cargo test` runs in).
 const QUERIES_DIR: &str = "queries";
-const EXPECTED_DIR: &str = "tests/data/tpch-sf01/expected";
+
+/// The TPC-H query set has exactly 22 statements; the test asserts that all
+/// of them were compared.
+const EXPECTED_QUERIES: usize = 22;
+
+/// Per-statement timeout in seconds.
+const TIMEOUT_S: u64 = 60;
+
+/// The ephemeral server and the connection the statements run on.
+struct Wire {
+    /// Keeps the server alive. The statement connections carry a detached
+    /// handle, so dropping one of them does not stop the server.
+    server: common::MySqlTestClient,
+    /// The connection the statements run on.
+    active: common::MySqlTestClient,
+}
+
+impl Wire {
+    /// Open a fresh connection to the server.
+    fn connect(&self) -> common::MySqlTestClient {
+        common::MySqlTestClient::connect_at(
+            ("127.0.0.1", self.server.handle.port),
+            "tester",
+            "tester",
+        )
+        .expect("connect to the ephemeral server")
+    }
+
+    /// Run one statement over the wire protocol.
+    ///
+    /// `qid` names the statement: for the 22 standard TPC-H statements it is
+    /// the query id (`Q1` … `Q22`), which is what makes the **wire scope**
+    /// enforceable — a statement outside the scope is *not* executed. For a
+    /// statement that is not one of the 22, `"custom"` is used; the scope
+    /// governs the standard set only.
+    ///
+    /// A **transport** failure — the server closed the connection, e.g.
+    /// because the statement took the engine down — is recovered from: the
+    /// connection is re-established and the statement is run again. The
+    /// first failure is printed, so the transport defect stays visible in
+    /// the log instead of being hidden, and a statement that fails twice
+    /// is reported as a failure of that statement.
+    fn run(&mut self, qid: &str, sql: &str) -> WireOutcome {
+        match run_query_timed(&mut self.active, qid, sql, TIMEOUT_S) {
+            WireOutcome::Ran(result, elapsed) => match result {
+                Ok(rows) => WireOutcome::Ran(Ok(rows), elapsed),
+                Err(e) => {
+                    eprintln!(
+                        "  [transport] the first attempt failed ({e}); reconnecting and retrying"
+                    );
+                    self.active = self.connect();
+                    run_query_timed(&mut self.active, qid, sql, TIMEOUT_S)
+                }
+            },
+            // Outside the wire scope: the statement is NOT executed. It must
+            // not be retried either — the retry would run it.
+            WireOutcome::Skipped(skip) => WireOutcome::Skipped(skip),
+        }
+    }
+}
+
+/// The shared ephemeral server.
+static WIRE: std::sync::OnceLock<std::sync::Mutex<Option<Wire>>> = std::sync::OnceLock::new();
+
+/// Run `f` with the shared wire server.
+fn with_wire<R>(f: impl FnOnce(&mut Wire) -> R) -> R {
+    let slot = WIRE.get_or_init(|| std::sync::Mutex::new(None));
+    let mut guard = slot.lock().unwrap_or_else(|e| e.into_inner());
+    if guard.is_none() {
+        let server = start_sf01_named(TARGET)
+            .expect("the fixture was resolved, so the ephemeral server must start");
+        let active = common::MySqlTestClient::connect_at(
+            ("127.0.0.1", server.handle.port),
+            "tester",
+            "tester",
+        )
+        .expect("connect to the ephemeral server");
+        *guard = Some(Wire { server, active });
+    }
+    f(guard.as_mut().expect("a wire is present"))
+}
+
+/// Compare the wire-protocol rows with the oracle's rows.
+///
+/// Returns `None` when the two sides agree, and a description of the first
+/// difference otherwise. The comparison is a **sorted multiset** comparison:
+/// row order is implementation-defined for a statement without `ORDER BY`,
+/// and comparing sequences would turn every such difference into a false
+/// failure.
+fn compare_rows(wire_rows: &[Vec<String>], oracle_rows: &[Vec<String>]) -> Option<String> {
+    if wire_rows.len() != oracle_rows.len() {
+        return Some(format!(
+            "row count differs: wire={} oracle={}",
+            wire_rows.len(),
+            oracle_rows.len()
+        ));
+    }
+    let mut wire = wire_rows.to_vec();
+    let mut oracle = oracle_rows.to_vec();
+    wire.sort();
+    oracle.sort();
+    sqlite_oracle::diff_rows(&wire, &oracle)
+}
 
 #[test]
 fn tpch_sf01_22_vs_sqlite() {
-    let data_dir = PathBuf::from("tests/data/tpch-sf01");
-    if !data_dir.exists() {
-        panic!("fixture {} not present; skipping", data_dir.display());
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require(TARGET) else {
+        // `require` has already printed the NOT-RUN marker.
+        return;
+    };
+
+    let oracle = SqliteOracle::open(fixture, &TPC_H_ALL_TABLES)
+        .unwrap_or_else(|e| panic!("{TARGET}: cannot build the independent SQLite oracle: {e}"));
+
+    if resolve_fixture_dir().is_none() {
+        // The harness prints the NOT-RUN marker for the missing fixture.
+        start_sf01_named(TARGET);
+        return;
     }
-    eprintln!("=== Starting wire server with SF=0.1 fixture ===");
-    let mut client = start_sf01();
-    eprintln!();
-    eprintln!("=== Running 22 TPC-H queries vs SQLite baseline ===");
-    let mut pass = 0usize;
-    let mut fail = 0usize;
-    let mut skip = 0usize;
-    for n in 1..=22usize {
-        let sql_path = format!("{}/q{}.sql", QUERIES_DIR, n);
-        let sql = std::fs::read_to_string(&sql_path).expect(&sql_path);
-        let expected_path = format!("{}/Q{}_sf01_baseline.json", EXPECTED_DIR, n);
-        let expected_rc: Option<usize> = if PathBuf::from(&expected_path).exists() {
-            let s = std::fs::read_to_string(&expected_path).unwrap();
-            let v: serde_json::Value = serde_json::from_str(&s).unwrap();
-            Some(v["row_count"].as_u64().unwrap() as usize)
-        } else {
-            None
-        };
-        let t0 = std::time::Instant::now();
-        let res = client.query_rows(&sql);
-        let elapsed = t0.elapsed();
-        match res {
-            Ok(rows) => {
-                let status = match expected_rc {
-                    Some(er) if er == rows.len() => {
-                        pass += 1;
-                        format!("PASS (rc={}, expected={})", rows.len(), er)
-                    }
-                    Some(er) => {
-                        fail += 1;
-                        format!("FAIL (rc={}, expected={})", rows.len(), er)
-                    }
-                    None => {
-                        skip += 1;
-                        format!("SKIP (no baseline, rc={})", rows.len())
-                    }
-                };
-                eprintln!("  Q{:2}: {} in {:?}", n, status, elapsed);
-            }
-            Err(e) => {
-                fail += 1;
-                eprintln!("  Q{:2}: ERROR ({}) in {:?}", n, e, elapsed);
+
+    // ------------------------------------------------------------------
+    // Phase 1 — data integrity.
+    //
+    // The engine must have loaded the whole fixture. A table that came
+    // back short is reported here, because the statement comparison below
+    // would otherwise show a difference whose cause (a truncated table)
+    // is invisible in the numbers.
+    // ------------------------------------------------------------------
+    with_wire(|wire| {
+        eprintln!("=== Phase 1: data integrity (engine vs oracle row counts) ===");
+        let mut truncated_tables = 0usize;
+        for table in TPC_H_ALL_TABLES {
+            let sql = format!("SELECT COUNT(*) FROM {table}");
+            let engine_count = match wire.run("custom", &sql) {
+                WireOutcome::Ran(Ok(rows), _) => rows
+                    .first()
+                    .and_then(|r| r.first())
+                    .and_then(|c| c.parse::<i64>().ok()),
+                WireOutcome::Ran(Err(e), _) => {
+                    eprintln!("  {table:9}: ERROR ({e})");
+                    None
+                }
+                // A row count is not one of the 22 standard statements, so the
+                // wire scope never refuses it.
+                WireOutcome::Skipped(skip) => {
+                    eprintln!(
+                        "  {table:9}: SKIPPED ({} issue={})",
+                        skip.reason, skip.issue
+                    );
+                    None
+                }
+            };
+            let oracle_count = oracle.table_row_count(table).unwrap_or_else(|e| {
+                panic!("{TARGET}: the SQLite oracle cannot count {table}: {e}")
+            });
+            match engine_count {
+                Some(n) if n == oracle_count => {
+                    eprintln!("  {table:9}: {n} row(s) — complete");
+                }
+                Some(n) => {
+                    truncated_tables += 1;
+                    eprintln!(
+                        "  {table:9}: {n} row(s) in the engine, {oracle_count} in the fixture — \
+                     DATA LOSS"
+                    );
+                }
+                None => {
+                    truncated_tables += 1;
+                    eprintln!("  {table:9}: the engine could not report a row count");
+                }
             }
         }
-    }
-    eprintln!();
-    eprintln!("=== Summary: pass={} fail={} skip={} ===", pass, fail, skip);
-    // Diagnostic test, not a hard gate.
-    if fail > 0 {
+
+        // ------------------------------------------------------------------
+        // Phase 2 — statement comparison.
+        // ------------------------------------------------------------------
+        eprintln!();
+        eprintln!("=== Phase 2: 22 TPC-H statements (wire) vs the SQLite oracle ===");
+
+        let mut compared = 0usize;
+        let mut mismatched = 0usize;
+        let mut known = 0usize;
+        let mut not_run = 0usize;
+        let mut failed = 0usize;
+        // The statements the file-storage wire path must not execute, and the
+        // ones it must. Both counts are checked against the shared scope
+        // afterwards, so a statement can neither slip through nor disappear.
+        let mut skipped_scope: Vec<&'static str> = Vec::new();
+        let expected_scoped = (1..=EXPECTED_QUERIES)
+            .filter(|n| tpch_wire_scope::in_wire_scope(tpch_wire_scope::TPC_H_QUERY_IDS[n - 1]))
+            .count();
+        let expected_skipped = EXPECTED_QUERIES - expected_scoped;
+
+        for n in 1..=EXPECTED_QUERIES {
+            let sql = std::fs::read_to_string(format!("{QUERIES_DIR}/q{n}.sql"))
+                .unwrap_or_else(|e| panic!("{TARGET}: cannot read {QUERIES_DIR}/q{n}.sql: {e}"));
+            let qid = tpch_wire_scope::TPC_H_QUERY_IDS[n - 1];
+            let not_run_label = format!("{TARGET}:{qid}");
+
+            // The SQLite oracle only rewrites an explicit whitelist of
+            // constructs. Anything else is reported here instead of being
+            // silently rewritten — comparing the engine against a *different*
+            // statement would prove nothing.
+            let adapted = adapt_sql(&sql);
+            if !adapted.unsupported.is_empty() {
+                report_not_run(
+                    &not_run_label,
+                    reason::SCALE_LAYER_ONLY,
+                    &format!(
+                        "the SQLite oracle cannot execute this statement ({:?}); \
+                     it belongs to the cross-engine dialect layer",
+                        adapted.unsupported
+                    ),
+                );
+                not_run += 1;
+                continue;
+            }
+
+            let t0 = Instant::now();
+            let wire_rows = match wire.run(qid, &sql) {
+                WireOutcome::Ran(Ok(rows), _) => rows,
+                WireOutcome::Ran(Err(e), _) => {
+                    failed += 1;
+                    eprintln!("  {qid:2}: ERROR ({e}) after {:?}", t0.elapsed());
+                    continue;
+                }
+                WireOutcome::Skipped(skip) => {
+                    // Outside the wire scope: the statement is NOT executed.
+                    // Executing it would exhaust the machine and kill the test
+                    // binary with it (issue #5393).
+                    not_run += 1;
+                    skipped_scope.push(qid);
+                    eprintln!(
+                        "  {qid:2}: SKIPPED ({} issue={}) — {}",
+                        skip.reason, skip.issue, skip.detail
+                    );
+                    continue;
+                }
+            };
+            let elapsed = t0.elapsed();
+
+            let oracle_rows = match oracle.query(&adapted.sql) {
+                Ok(rows) => rows,
+                Err(e) => {
+                    failed += 1;
+                    eprintln!("  {qid:2}: the SQLite oracle failed on this statement ({e})");
+                    continue;
+                }
+            };
+
+            match compare_rows(&wire_rows, &oracle_rows) {
+                None => {
+                    compared += 1;
+                    eprintln!("  {qid:2}: MATCH (rows={}) in {elapsed:?}", wire_rows.len());
+                }
+                Some(diff) => match tpch_fixture::lookup_statement_known_difference(qid) {
+                    Some(entry) => {
+                        report_known_difference(&entry, &diff);
+                        known += 1;
+                        compared += 1;
+                        eprintln!("  {qid:2}: KNOWN-DIFF (registered) {diff}");
+                    }
+                    None => {
+                        compared += 1;
+                        mismatched += 1;
+                        eprintln!("  {qid:2}: MISMATCH {diff}");
+                    }
+                },
+            }
+        }
+
+        eprintln!();
         eprintln!(
-            "NOTE: {} queries fail vs SQLite (pre-existing, separate Sprint work)",
-            fail
+            "=== Summary: compared={compared} mismatched={mismatched} known={known} \
+         not_run={not_run} failed={failed} truncated_tables={truncated_tables} ==="
         );
-    }
+
+        // Every statement must be accounted for: either it was compared against
+        // the independent oracle, or it was skipped for a registered reason.
+        assert_eq!(
+            mismatched, 0,
+            "{TARGET}: {mismatched} TPC-H statements did not match the independent SQLite oracle. \
+         (If this is a known engine defect, register it in \
+         tests/baseline/tpch_known_differences.json with an issue and an owner.)"
+        );
+        assert_eq!(
+            failed, 0,
+            "{TARGET}: {failed} TPC-H statement(s) could not be executed on one of the two sides"
+        );
+        assert_eq!(
+            compared + not_run + failed,
+            EXPECTED_QUERIES,
+            "{TARGET}: {compared} compared + {not_run} not run + {failed} failed does not account for the \
+         {EXPECTED_QUERIES} TPC-H statements of this file"
+        );
+        // ... and the skipped ones must be exactly the ones the shared wire
+        // scope excludes — neither more (a silently dropped statement) nor
+        // fewer (a statement that could have been compared).
+        assert_eq!(
+            skipped_scope.len(),
+            expected_skipped,
+            "{TARGET}: {skipped_scope:?} were skipped, but the wire scope excludes \
+         {expected_skipped} statement(s) from this file"
+        );
+        assert_eq!(
+            compared, expected_scoped,
+            "{TARGET}: {compared} of the {expected_scoped} in-scope statements were compared \
+         against the independent SQLite oracle"
+        );
+        assert!(
+            compared > 0,
+            "{TARGET}: this run compared nothing at all; a run that compares nothing must not \
+         report success"
+        );
+        assert_eq!(
+            truncated_tables, 0,
+            "{TARGET}: the engine did not load the whole fixture — {truncated_tables} table(s) came \
+         back with a different row count than the independent oracle. Every result that \
+         depends on such a table is untrustworthy."
+        );
+
+        // Disclose the statements this function did not execute. One marker
+        // per test function keeps the CI arithmetic exact.
+        tpch_wire_scope::report_wire_exclusions(TARGET, &skipped_scope);
+    });
 }

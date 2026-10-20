@@ -9,6 +9,16 @@
 //! MySQL/PostgreSQL 测试（需要配置环境变量）:
 //!   MYSQL_HOST=localhost MYSQL_USER=root MYSQL_PASSWORD=password cargo test --test tpch_full_test
 //!   PGHOST=localhost PGUSER=postgres PGPASSWORD=password cargo test --test tpch_full_test
+//!
+//! **外部服务不可用时的三态披露**：MySQL / PostgreSQL 这两个对照引擎需要**真实的
+//! 数据库服务**，而 CI 的 `test` job 不启动任何 MySQL / PostgreSQL
+//! ⇒ 客户端存在但服务器不可达。CI run 8117 实测这 3 个用例因此硬失败：
+//! `MySQL connection failed` / `PostgreSQL connection failed`。
+//! 现在它们走 `EXTERNAL_SERVICE_UNAVAILABLE` 的 **NOT-RUN** 披露
+//! （单独计数、绝不计入 passed），见 issue #5429。
+
+#[path = "../common/tpch_fixture.rs"]
+mod tpch_fixture;
 
 #[cfg(test)]
 mod tests {
@@ -514,7 +524,28 @@ mod tests {
                 .map_err(|e| format!("MySQL command failed: {}", e))?;
 
             if !output.status.success() {
-                return Err(String::from_utf8_lossy(&output.stderr).to_string());
+                // Some client builds report the failure on stdout and leave
+                // stderr empty; an empty reason string makes the NOT-RUN
+                // disclosure useless ("detail=" with nothing after it).
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let raw = if !stderr.is_empty() {
+                    stderr
+                } else if !stdout.is_empty() {
+                    stdout
+                } else {
+                    format!("mysql client exited with status {}", output.status)
+                };
+                // The client may dump its whole help text; keep the
+                // disclosure to one short line so the NOT-RUN log stays
+                // readable (and bounded).
+                let one_line: String = raw.lines().next().unwrap_or("").trim().to_string();
+                let reason = if one_line.len() > 200 {
+                    format!("{}…", &one_line[..200])
+                } else {
+                    one_line
+                };
+                return Err(reason);
             }
 
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -522,30 +553,70 @@ mod tests {
 
         #[test]
         fn test_mysql_connection() {
-            if let Some((host, user, _, database)) = get_mysql_config() {
-                let result = run_mysql_query("SELECT 1");
-                assert!(
-                    result.is_ok(),
-                    "MySQL connection failed: {:?}",
-                    result.err()
-                );
-                println!("MySQL: Connected to {}@{}:{}", user, host, database);
-            } else {
-                println!("MySQL: Not available (mysql command not found)");
+            match get_mysql_config() {
+                Some((host, user, _, database)) => match run_mysql_query("SELECT 1") {
+                    Ok(_) => println!("MySQL: Connected to {}@{}:{}", user, host, database),
+                    Err(e) => {
+                        // The client is installed but no server answered:
+                        // this environment cannot run the check at all.
+                        // Report it as NOT-RUN (counted separately, never as
+                        // passed) instead of failing the whole target for a
+                        // reason that has nothing to do with the code.
+                        crate::tpch_fixture::report_not_run(
+                            "tpch_full_test::test_mysql_connection",
+                            crate::tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+                            &e,
+                        );
+                    }
+                },
+                None => {
+                    crate::tpch_fixture::report_not_run(
+                        "tpch_full_test::test_mysql_connection",
+                        crate::tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+                        "the mysql client is not installed",
+                    );
+                }
+            }
+        }
+
+        /// Probe the server before the real queries.
+        ///
+        /// An unreachable server is an **environment fact** (reported as
+        /// NOT-RUN, never counted as a pass); a query that fails on a
+        /// *reachable* server is a **real defect** and must fail the test.
+        /// The previous shape (`if let Ok(...) { println! }`) swallowed both
+        /// cases: with no server at all the test still reported "ok" while
+        /// having executed no query at all.
+        fn require_mysql(target: &str) -> bool {
+            match run_mysql_query("SELECT 1") {
+                Ok(_) => true,
+                Err(e) => {
+                    crate::tpch_fixture::report_not_run(
+                        target,
+                        crate::tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+                        &e,
+                    );
+                    false
+                }
             }
         }
 
         #[test]
         fn test_mysql_tpch_q1() {
-            let sql = "SELECT COUNT(*) FROM lineitem";
-            let result = run_mysql_query(sql);
-            if let Ok(ref r) = result {
-                println!("MySQL Q1: {:?}", r);
+            if !require_mysql("tpch_full_test::test_mysql_tpch_q1") {
+                return;
             }
+            let sql = "SELECT COUNT(*) FROM lineitem";
+            let result = run_mysql_query(sql)
+                .unwrap_or_else(|e| panic!("MySQL Q1 on a reachable server failed: {e}"));
+            println!("MySQL Q1: {:?}", result);
         }
 
         #[test]
         fn test_mysql_all_queries() {
+            if !require_mysql("tpch_full_test::test_mysql_all_queries") {
+                return;
+            }
             let queries = vec![
                 ("Q1", "SELECT COUNT(*) FROM lineitem"),
                 ("Q2", "SELECT COUNT(*) FROM orders"),
@@ -553,9 +624,9 @@ mod tests {
             ];
 
             for (name, sql) in queries {
-                if let Ok(result) = run_mysql_query(sql) {
-                    println!("MySQL {}: {}", name, result.lines().next().unwrap_or(""));
-                }
+                let result = run_mysql_query(sql)
+                    .unwrap_or_else(|e| panic!("MySQL {name} on a reachable server failed: {e}"));
+                println!("MySQL {}: {}", name, result.lines().next().unwrap_or(""));
             }
         }
     }
@@ -594,22 +665,70 @@ mod tests {
                 .map_err(|e| format!("psql command failed: {}", e))?;
 
             if !output.status.success() {
-                return Err(String::from_utf8_lossy(&output.stderr).to_string());
+                // Some client builds report the failure on stdout and leave
+                // stderr empty; an empty reason string makes the NOT-RUN
+                // disclosure useless ("detail=" with nothing after it).
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let raw = if !stderr.is_empty() {
+                    stderr
+                } else if !stdout.is_empty() {
+                    stdout
+                } else {
+                    format!("psql client exited with status {}", output.status)
+                };
+                // The client may dump its whole help text; keep the
+                // disclosure to one short line so the NOT-RUN log stays
+                // readable (and bounded).
+                let one_line: String = raw.lines().next().unwrap_or("").trim().to_string();
+                let reason = if one_line.len() > 200 {
+                    format!("{}…", &one_line[..200])
+                } else {
+                    one_line
+                };
+                return Err(reason);
             }
 
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         }
 
         fn setup_tpch_tables() -> Result<(), String> {
-            let check_sql = "SELECT COUNT(*) FROM pg_tables WHERE tablename = 'lineitem'";
-            if let Ok(result) = run_pg_query(check_sql) {
-                if result.trim() == "1" {
+            // Probe **all eight** tables, not just one.
+            //
+            // The previous probe asked only whether `lineitem` existed and
+            // skipped the whole setup when it did. A partially provisioned
+            // schema (some tables present, others missing — the state this
+            // very test leaves behind when a previous run was interrupted)
+            // was therefore never repaired, and the queries below then ran
+            // against a missing relation. The old code hid that behind
+            // `if let Ok(...) { println! }`, so the test reported "ok" while
+            // having executed nothing.
+            const TABLES: [&str; 8] = [
+                "nation", "region", "part", "supplier", "partsupp", "customer", "orders",
+                "lineitem",
+            ];
+            let check_sql = format!(
+                "SELECT COUNT(*) FROM pg_tables WHERE tablename IN ({})",
+                TABLES
+                    .iter()
+                    .map(|t| format!("'{}'", t))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+            if let Ok(result) = run_pg_query(&check_sql) {
+                if result.trim() == TABLES.len().to_string() {
                     println!("PostgreSQL: TPC-H tables already exist, skipping setup");
                     return Ok(());
                 }
+                println!(
+                    "PostgreSQL: partial TPC-H schema detected ({} of {} tables) — repairing",
+                    result.trim(),
+                    TABLES.len()
+                );
             }
 
             let setup_sql = r#"
+SELECT pg_advisory_lock(5379001);
 CREATE TABLE IF NOT EXISTS nation (n_nationkey INTEGER PRIMARY KEY, n_name TEXT, n_regionkey INTEGER, n_comment TEXT);
 CREATE TABLE IF NOT EXISTS region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT, r_comment TEXT);
 CREATE TABLE IF NOT EXISTS part (p_partkey INTEGER PRIMARY KEY, p_name TEXT, p_mfgr TEXT, p_brand TEXT, p_type TEXT, p_size INTEGER, p_container TEXT, p_retailprice REAL, p_comment TEXT);
@@ -627,6 +746,7 @@ INSERT INTO part VALUES (1, 'Part1', 'MFGR#1', 'Brand#1', 'ECONOMY', 10, 'MED PK
 INSERT INTO partsupp VALUES (1, 1, 100, 500.00, 'PartSupp1'); INSERT INTO partsupp VALUES (2, 2, 200, 600.00, 'PartSupp2'); INSERT INTO partsupp VALUES (3, 3, 150, 700.00, 'PartSupp3');
 INSERT INTO orders VALUES (1, 1, 'O', 15000.00, '2024-01-15', '1-URGENT', 'Clerk#1', 0, 'comment'); INSERT INTO orders VALUES (2, 2, 'O', 5000.00, '2024-01-20', '5-LOW', 'Clerk#2', 0, 'comment'); INSERT INTO orders VALUES (3, 3, 'F', 8000.00, '2024-02-01', '3-MEDIUM', 'Clerk#3', 0, 'comment'); INSERT INTO orders VALUES (4, 1, 'O', 25000.00, '2024-02-15', '1-URGENT', 'Clerk#1', 0, 'comment'); INSERT INTO orders VALUES (5, 2, 'O', 3000.00, '2024-03-01', '2-HIGH', 'Clerk#2', 0, 'comment');
 INSERT INTO lineitem VALUES (1, 1, 1, 1, 15, 15000.00, 0.05, 1.2, 'N', 'O', '2024-01-20', '2024-01-18', '2024-01-25', 'NONE', 'AIR', 'comment1'); INSERT INTO lineitem VALUES (1, 2, 2, 2, 20, 20000.00, 0.05, 1.6, 'N', 'O', '2024-01-20', '2024-01-18', '2024-01-25', 'NONE', 'AIR', 'comment2'); INSERT INTO lineitem VALUES (2, 3, 3, 1, 5, 5000.00, 0.10, 0.4, 'N', 'O', '2024-01-25', '2024-01-23', '2024-01-30', 'NONE', 'TRUCK', 'comment3'); INSERT INTO lineitem VALUES (3, 1, 1, 1, 8, 8000.00, 0.08, 0.64, 'N', 'O', '2024-02-10', '2024-02-08', '2024-02-15', 'NONE', 'RAIL', 'comment4'); INSERT INTO lineitem VALUES (3, 2, 2, 1, 25, 25000.00, 0.03, 2.0, 'A', 'F', '2024-02-10', '2024-02-08', '2024-02-15', 'NONE', 'AIR', 'comment5'); INSERT INTO lineitem VALUES (4, 3, 3, 1, 10, 10000.00, 0.06, 0.8, 'N', 'O', '2024-02-20', '2024-02-18', '2024-02-25', 'NONE', 'SHIP', 'comment6'); INSERT INTO lineitem VALUES (5, 1, 1, 1, 12, 12000.00, 0.04, 0.96, 'R', 'F', '2024-03-05', '2024-03-03', '2024-03-10', 'NONE', 'AIR', 'comment7');
+SELECT pg_advisory_unlock(5379001);
 "#;
 
             run_pg_query(setup_sql)?;
@@ -635,6 +755,17 @@ INSERT INTO lineitem VALUES (1, 1, 1, 1, 15, 15000.00, 0.05, 1.2, 'N', 'O', '202
 
         #[test]
         fn test_postgres_setup() {
+            // A failure to reach the server is an environment fact, a
+            // failure to create the tables on a reachable server is a real
+            // defect. Only the first one is reported as NOT-RUN.
+            if let Err(e) = run_pg_query("SELECT 1") {
+                crate::tpch_fixture::report_not_run(
+                    "tpch_full_test::test_postgres_setup",
+                    crate::tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+                    &e,
+                );
+                return;
+            }
             match setup_tpch_tables() {
                 Ok(_) => println!("PostgreSQL: TPC-H tables created successfully"),
                 Err(e) => {
@@ -646,73 +777,101 @@ INSERT INTO lineitem VALUES (1, 1, 1, 1, 15, 15000.00, 0.05, 1.2, 'N', 'O', '202
 
         #[test]
         fn test_postgres_connection() {
-            if let Some((host, user, _, database)) = get_pg_config() {
-                let result = run_pg_query("SELECT 1");
-                assert!(
-                    result.is_ok(),
-                    "PostgreSQL connection failed: {:?}",
-                    result.err()
-                );
-                println!("PostgreSQL: Connected to {}@{}:{}", user, host, database);
-            } else {
-                println!("PostgreSQL: Not available (psql command not found)");
+            match get_pg_config() {
+                Some((host, user, _, database)) => match run_pg_query("SELECT 1") {
+                    Ok(_) => println!("PostgreSQL: Connected to {}@{}:{}", user, host, database),
+                    Err(e) => {
+                        crate::tpch_fixture::report_not_run(
+                            "tpch_full_test::test_postgres_connection",
+                            crate::tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+                            &e,
+                        );
+                    }
+                },
+                None => {
+                    crate::tpch_fixture::report_not_run(
+                        "tpch_full_test::test_postgres_connection",
+                        crate::tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+                        "the psql client is not installed",
+                    );
+                }
+            }
+        }
+
+        /// Probe the server before the real queries — see the MySQL twin
+        /// (`require_mysql`) for the rationale: unreachable ⇒ NOT-RUN,
+        /// reachable-but-failing ⇒ real defect ⇒ fail.
+        fn require_postgres(target: &str) -> bool {
+            match run_pg_query("SELECT 1") {
+                Ok(_) => true,
+                Err(e) => {
+                    crate::tpch_fixture::report_not_run(
+                        target,
+                        crate::tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+                        &e,
+                    );
+                    false
+                }
             }
         }
 
         #[test]
         fn test_postgres_tpch_q1() {
+            if !require_postgres("tpch_full_test::test_postgres_tpch_q1") {
+                return;
+            }
             let _ = setup_tpch_tables();
             let sql = "SELECT COUNT(*) FROM lineitem";
-            let result = run_pg_query(sql);
-            match result {
-                Ok(output) => println!("PostgreSQL Q1:\n{}", output),
-                Err(e) => println!("PostgreSQL Q1 Error: {}", e),
-            }
+            let result = run_pg_query(sql)
+                .unwrap_or_else(|e| panic!("PostgreSQL Q1 on a reachable server failed: {e}"));
+            println!("PostgreSQL Q1:\n{}", result);
         }
 
         #[test]
         fn test_postgres_tpch_q6() {
-            let sql = "SELECT SUM(l_extendedprice * l_discount) FROM lineitem WHERE l_discount > 0";
-            let result = run_pg_query(sql);
-            match result {
-                Ok(output) => println!("PostgreSQL Q6:\n{}", output.trim()),
-                Err(e) => println!("PostgreSQL Q6 Error: {}", e),
+            if !require_postgres("tpch_full_test::test_postgres_tpch_q6") {
+                return;
             }
+            let sql = "SELECT SUM(l_extendedprice * l_discount) FROM lineitem WHERE l_discount > 0";
+            let result = run_pg_query(sql)
+                .unwrap_or_else(|e| panic!("PostgreSQL Q6 on a reachable server failed: {e}"));
+            println!("PostgreSQL Q6:\n{}", result.trim());
         }
 
         #[test]
         fn test_postgres_all_queries() {
+            if !require_postgres("tpch_full_test::test_postgres_all_queries") {
+                return;
+            }
             let _ = setup_tpch_tables();
 
             println!("\n=== PostgreSQL TPC-H Q1-Q22 Results ===");
 
-            if let Ok(r) =
-                run_pg_query("SELECT SUM(l_extendedprice) FROM lineitem WHERE l_discount > 0")
-            {
-                println!("Q1 (Revenue): {}", r.trim());
-            }
+            let q1 = run_pg_query("SELECT SUM(l_extendedprice) FROM lineitem WHERE l_discount > 0")
+                .unwrap_or_else(|e| panic!("PostgreSQL Q1 on a reachable server failed: {e}"));
+            println!("Q1 (Revenue): {}", q1.trim());
 
-            if let Ok(r) = run_pg_query("SELECT COUNT(*) FROM part") {
-                println!("Q2 (Parts): {}", r.trim());
-            }
+            let q2 = run_pg_query("SELECT COUNT(*) FROM part")
+                .unwrap_or_else(|e| panic!("PostgreSQL Q2 on a reachable server failed: {e}"));
+            println!("Q2 (Parts): {}", q2.trim());
 
-            if let Ok(r) = run_pg_query("SELECT COUNT(*) FROM orders") {
-                println!("Q3 (Orders): {}", r.trim());
-            }
+            let q3 = run_pg_query("SELECT COUNT(*) FROM orders")
+                .unwrap_or_else(|e| panic!("PostgreSQL Q3 on a reachable server failed: {e}"));
+            println!("Q3 (Orders): {}", q3.trim());
 
-            if let Ok(r) = run_pg_query("SELECT COUNT(*) FROM customer") {
-                println!("Q4 (Customers): {}", r.trim());
-            }
+            let q4 = run_pg_query("SELECT COUNT(*) FROM customer")
+                .unwrap_or_else(|e| panic!("PostgreSQL Q4 on a reachable server failed: {e}"));
+            println!("Q4 (Customers): {}", q4.trim());
 
-            if let Ok(r) = run_pg_query("SELECT COUNT(*) FROM supplier") {
-                println!("Q5 (Suppliers): {}", r.trim());
-            }
+            let q5 = run_pg_query("SELECT COUNT(*) FROM supplier")
+                .unwrap_or_else(|e| panic!("PostgreSQL Q5 on a reachable server failed: {e}"));
+            println!("Q5 (Suppliers): {}", q5.trim());
 
-            if let Ok(r) = run_pg_query(
+            let q6 = run_pg_query(
                 "SELECT SUM(l_extendedprice) FROM lineitem WHERE l_discount BETWEEN 0.05 AND 0.07",
-            ) {
-                println!("Q6 (Discounted Revenue): {}", r.trim());
-            }
+            )
+            .unwrap_or_else(|e| panic!("PostgreSQL Q6 on a reachable server failed: {e}"));
+            println!("Q6 (Discounted Revenue): {}", q6.trim());
         }
     }
 

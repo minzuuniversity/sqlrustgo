@@ -16,7 +16,9 @@ const Q6: &str = "SELECT SUM(l_extendedprice * l_discount) AS revenue \
 
 #[test]
 fn tpch_22_queries_wire_harness_q1_q6() {
-    let mut client = start_sf001();
+    let Some(mut client) = start_sf001() else {
+        return;
+    };
     let r1 = client.query_rows(Q1).expect("Q1");
     assert!(!r1.is_empty());
     let r6 = client.query_rows(Q6).expect("Q6");

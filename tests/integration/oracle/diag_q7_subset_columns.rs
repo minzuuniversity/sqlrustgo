@@ -14,7 +14,7 @@
 
 #[path = "../../common/mod.rs"]
 mod common;
-use common::tpch_wire_harness::load_fixture;
+use common::tpch_wire_harness::{load_fixture, report_not_run, resolve_fixture_dir};
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::path::PathBuf;
@@ -22,11 +22,23 @@ use std::time::Instant;
 
 #[test]
 fn diag_q7_subset_columns() {
-    // 1. Copy /tmp/tpch-sf01_real to a local fixture dir under target/.
-    let src = PathBuf::from("/tmp/tpch-sf01_real");
-    if !src.exists() {
-        panic!("missing source subset fixture: {}", src.display());
-    }
+    // 1. Resolve the fixture at run time.
+    //
+    //    The source used to be the hand-built `/tmp/tpch-sf01_real` DE/FR
+    //    subset, a path that only ever existed on one machine. The fixture
+    //    is now handed over through `TPCH_DATA_DIR` (see
+    //    `tpch_wire_harness::resolve_fixture_dir`). When it is absent there
+    //    is nothing to run, so the test is disclosed as *not run* rather
+    //    than panicking.
+    let Some(src) = resolve_fixture_dir() else {
+        report_not_run(
+            "diag_q7_subset_columns",
+            "fixture_missing",
+            "no TPC-H fixture found (set TPCH_DATA_DIR to a directory with the 8 .tbl files)",
+        );
+        return;
+    };
+    // Copy the fixture to a local dir under target/.
     let dst = PathBuf::from("target/test_fixtures/tpch-de-fr-subset");
     if dst.exists() {
         std::fs::remove_dir_all(&dst).ok();

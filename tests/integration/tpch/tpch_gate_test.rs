@@ -8,11 +8,30 @@
 //! separate tests (tpch_value_test_v2, tpch_sf01_perf_baseline_test).
 //!
 //! Run: cargo test --test tpch_gate_test -- --nocapture
+//!
+//! # The wire scope
+//!
+//! Three of the 22 standard statements — **Q9**, **Q18** and **Q19** — cannot be
+//! executed on the file-storage wire path: Q9's intermediate result grows past
+//! 1.5 GB within a second, Q18 kills the server process, and Q19 cannot be
+//! parsed by the wire front end (all three: issue #5393). A killed process
+//! takes the **whole test binary** with it, so the CI job would die with
+//! `signal: 9` instead of reporting a test failure.
+//!
+//! The shared **wire scope** (`tests/common/tpch_wire_scope.rs`) refuses to
+//! execute those statements: `run_query_timed` takes the query id and returns
+//! `WireOutcome::Skipped` for them. This file therefore executes the 19
+//! in-scope statements, discloses the 3 skips through the `TPCH-NOT-RUN`
+//! marker, and asserts that exactly those 3 were skipped — neither more (a
+//! silently dropped statement) nor fewer (a statement that could have run).
 
 #[path = "../../common/mod.rs"]
 mod common;
 use common::tpch_wire_harness::*;
-use common::MySqlTestClient;
+use common::tpch_wire_scope;
+
+/// Cargo target name — used in the NOT-RUN marker.
+const TARGET: &str = "tpch_gate_test";
 
 /// TPC-H 22 queries (simplified SQLRustGo-compatible versions)
 /// Kept in sync with `tpch_sf01_inprocess_test::tpch_queries` — same SQL strings.
@@ -95,29 +114,61 @@ fn tpch_queries() -> Vec<(&'static str, &'static str)> {
 #[test]
 fn tpch_gate_completes() {
     eprintln!("=== TPC-H G1 Gate (wire protocol, SF=0.1) ===");
-    let mut client: MySqlTestClient = start_sf01();
+    let Some(mut client) = start_sf01_named(TARGET) else {
+        return;
+    };
     let queries = tpch_queries();
     let total = queries.len();
     let mut passed = 0;
+    let mut not_run = 0;
     let mut failed: Vec<(&str, String, std::time::Duration)> = Vec::new();
     let mut total_elapsed = std::time::Duration::ZERO;
+    // The statements the file-storage wire path must not execute, and the
+    // ones it must. Both counts are checked against the shared scope
+    // afterwards, so a statement can neither slip through nor disappear.
+    let mut skipped_scope: Vec<&'static str> = Vec::new();
+    let expected_scoped = queries
+        .iter()
+        .filter(|(qid, _)| tpch_wire_scope::in_wire_scope(qid))
+        .count();
+    let expected_skipped = total - expected_scoped;
 
     eprintln!("[Run] {total} queries at SF=0.1 (60K lineitem)...");
     for (q_name, q_sql) in &queries {
-        let (result, elapsed) = run_query_timed(&mut client, q_sql, 120);
+        let qid: &'static str = q_name;
+        let outcome = run_query_timed(&mut client, qid, q_sql, 120);
+        let (result, elapsed) = match outcome {
+            WireOutcome::Ran(result, elapsed) => (result, elapsed),
+            WireOutcome::Skipped(skip) => {
+                // Outside the wire scope: the statement is NOT executed.
+                // Executing it would exhaust the machine and kill the test
+                // binary with it (issue #5393).
+                not_run += 1;
+                skipped_scope.push(qid);
+                eprintln!(
+                    "  ⏭ {qid}: SKIPPED ({} issue={}) — {}",
+                    skip.reason, skip.issue, skip.detail
+                );
+                continue;
+            }
+        };
         total_elapsed += elapsed;
         match result {
             Ok(rows) => {
-                eprintln!("  ✅ {q_name}: {} rows in {:.2?}", rows.len(), elapsed);
+                eprintln!("  ✅ {qid}: {} rows in {:.2?}", rows.len(), elapsed);
                 passed += 1;
             }
             Err(e) => {
-                eprintln!("  ❌ {q_name}: {e} ({}ms)", elapsed.as_millis());
-                failed.push((q_name, e, elapsed));
+                eprintln!("  ❌ {qid}: {e} ({}ms)", elapsed.as_millis());
+                failed.push((qid, e, elapsed));
             }
         }
     }
-    eprintln!("\n=== TPC-H G1 Gate: {passed}/{total} passed in {total_elapsed:.2?} ===");
+    eprintln!(
+        "\n=== TPC-H G1 Gate: {passed}/{total} passed, {not_run} not run, {} failed in \
+         {total_elapsed:.2?} ===",
+        failed.len()
+    );
 
     // G1 gate contract: 22/22 跑通 (与之前 in-process 一样严格)
     if !failed.is_empty() {
@@ -128,5 +179,34 @@ fn tpch_gate_completes() {
             failed
         );
     }
-    assert_eq!(passed, total, "G1 gate must be 22/22");
+
+    // G1 gate contract: every statement is accounted for — either it ran, it
+    // failed, or it was skipped for a registered reason. Nothing may disappear.
+    assert_eq!(
+        passed + not_run + failed.len(),
+        total,
+        "G1 gate must account for all {total} statements"
+    );
+    // ... and the skipped ones must be exactly the ones the shared wire
+    // scope excludes — neither more (a silently dropped statement) nor
+    // fewer (a statement that could have been run).
+    assert_eq!(
+        skipped_scope.len(),
+        expected_skipped,
+        "{TARGET}: {skipped_scope:?} were skipped, but the wire scope excludes \
+         {expected_skipped} statement(s) from this file"
+    );
+    assert_eq!(
+        passed, expected_scoped,
+        "{TARGET}: {passed} of the {expected_scoped} in-scope statements ran"
+    );
+    assert!(
+        passed > 0,
+        "{TARGET}: this run executed nothing at all; a run that executes nothing must not \
+         report success"
+    );
+
+    // Disclose the statements this function did not execute. One marker
+    // per test function keeps the CI arithmetic exact.
+    tpch_wire_scope::report_wire_exclusions(TARGET, &skipped_scope);
 }

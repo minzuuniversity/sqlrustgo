@@ -31,6 +31,21 @@ use parking_lot::RwLock;
 use sqlrustgo::{parse, ExecutionEngine, MemoryStorage, Statement, Value};
 use std::sync::Arc;
 
+// The shared TPC-H fixture resolver (issue #5379).
+//
+// The Q18 repro below is calibrated against the SF=0.001 dataset; the
+// `tests/data/tpch-sf001` symlink it used to read from was never committed,
+// so a missing fixture (or a fixture at a different scale profile) is now
+// disclosed as NOT-RUN instead of panicking.
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
+
+/// Cargo test target this file belongs to (used as the NOT-RUN label).
+const TARGET: &str = "repro_3282_orderby_desc";
+
+/// The scale profile this test's expectations were calibrated against.
+const EXPECTED_SF: f64 = 0.001;
+
 fn engine() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
 }
@@ -112,9 +127,15 @@ fn repro_3282_engine_sorts_asc_baseline() {
 #[test]
 fn repro_3282_tpch_q18_orders_desc_returns_max_totalprice() {
     use std::fs;
-    use std::path::PathBuf;
 
-    const FIXTURE_DIR: &str = "tests/data/tpch-sf001";
+    // The fixture is resolved through the shared resolver (issue #5379): a
+    // missing fixture, or a fixture whose scale profile is not the SF=0.001
+    // profile this test was calibrated against, is disclosed as NOT-RUN and
+    // the test ends normally.
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require_profile(TARGET, EXPECTED_SF) else {
+        return;
+    };
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
@@ -127,12 +148,21 @@ fn repro_3282_tpch_q18_orders_desc_returns_max_totalprice() {
         )
         .expect("DDL");
 
-    let base = PathBuf::from(FIXTURE_DIR);
     let types = &[
         "INTEGER", "INTEGER", "TEXT", "REAL", "TEXT", "TEXT", "TEXT", "INTEGER", "TEXT",
     ];
-    let path = base.join("orders.tbl");
-    let content = fs::read_to_string(&path).expect("read orders.tbl");
+    let path = fixture.table_path("orders");
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            tpch_fixture::report_not_run(
+                TARGET,
+                tpch_fixture::reason::FIXTURE_MISSING,
+                &format!("cannot read {}: {e}", path.display()),
+            );
+            return;
+        }
+    };
     for line in content.lines() {
         if line.is_empty() {
             continue;

@@ -38,11 +38,22 @@
 #[path = "../../common/mod.rs"]
 mod common;
 
+// The shared TPC-H fixture resolver (issue #5379).
+//
+// This test belongs to the SF=10 scale layer: the dataset it needs is not
+// part of the repository and is not produced by the CI fixture step (which
+// generates SF=0.01). Its absence is therefore disclosed with the
+// `scale_layer_only` reason code instead of panicking.
+use common::tpch_cli_harness::tpch_fixture;
+
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::path::PathBuf;
 use std::time::Instant;
 use tempfile::TempDir;
+
+/// Cargo test target this file belongs to (used as the NOT-RUN label).
+const TARGET: &str = "v312_13_load_data_sf10_test";
 
 const SF10_REGION_ROWS: u64 = 5;
 const SF10_NATION_ROWS: u64 = 25;
@@ -88,17 +99,33 @@ fn v312_13_load_data_sf10_region_nation_supplier_smoke() {
         ("nation", &nation_path),
         ("supplier", &supplier_path),
     ] {
-        assert!(
-            p.exists(),
-            "SF=10 fixture missing: {}. Generate with:\n  cd /tmp/tpch-dbgen && \
-             ./dbgen -s 10 -f -T r && ./dbgen -s 10 -f -T n && ./dbgen -s 10 -f -T s && \
-             mv *.tbl /tmp/tpch-sf10/",
-            p.display(),
-        );
-        let lines = std::fs::read_to_string(p)
-            .unwrap_or_else(|e| panic!("read {}: {}", p.display(), e))
-            .lines()
-            .count() as u64;
+        // SF=10 is a scale-layer fixture: it is not part of the repository and
+        // is not produced by the CI fixture step (which generates SF=0.01).
+        // A missing dataset is an explicit, disclosed state — the test ends
+        // normally with a NOT-RUN marker instead of panicking.
+        if !p.exists() {
+            tpch_fixture::report_not_run(
+                TARGET,
+                tpch_fixture::reason::SCALE_LAYER_ONLY,
+                &format!(
+                    "SF=10 fixture {label}.tbl is absent ({}); the SF=10 scale layer is \
+                     not part of this repository (scale layer tracked separately)",
+                    p.display()
+                ),
+            );
+            return;
+        }
+        let lines = match std::fs::read_to_string(p) {
+            Ok(content) => content.lines().count() as u64,
+            Err(e) => {
+                tpch_fixture::report_not_run(
+                    TARGET,
+                    tpch_fixture::reason::FIXTURE_MISSING,
+                    &format!("cannot read {}: {e}", p.display()),
+                );
+                return;
+            }
+        };
         match label {
             "region" => assert_eq!(
                 lines, SF10_REGION_ROWS,

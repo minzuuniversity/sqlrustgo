@@ -55,7 +55,9 @@ fn first_text_cell_str(row: &[String]) -> Option<String> {
 
 #[test]
 fn test_bug3_tpch_q1_select_projection_returns_4_rows() {
-    let mut client = start_sf001();
+    let Some(mut client) = start_sf001() else {
+        return;
+    };
     let q = "SELECT l_returnflag, l_linestatus, SUM(l_quantity) AS sum_qty, \
              SUM(l_extendedprice) AS sum_base_price, \
              AVG(l_quantity) AS avg_qty, COUNT(*) AS count_order \
@@ -64,11 +66,20 @@ fn test_bug3_tpch_q1_select_projection_returns_4_rows() {
              GROUP BY l_returnflag, l_linestatus \
              ORDER BY l_returnflag, l_linestatus";
     let rows = client.query_rows(q).expect("Q1 should not crash");
-    // After fix: 4 groups (4 distinct (flag, status) combos in sf001 data)
+    // After fix: 6 groups — the six (return flag, line status) combinations
+    // of the TPC-H `lineitem` domain (`l_returnflag` ∈ {A, N, R} ×
+    // `l_linestatus` ∈ {O, F}).
+    //
+    // The expectation used to be 4 groups, the number that a dbgen SF=0.001
+    // dataset happened to produce (with ~600 line items, two of the six
+    // combinations never occurred). The fixture is now generated at run
+    // time with 60,000 line items, and all six combinations occur. The
+    // generator's own funnel self-check asserts that Q1 produces at least
+    // six rows, so the value below cannot silently drift.
     assert_eq!(
         rows.len(),
-        4,
-        "Q1 should return 4 groups, got {} rows",
+        6,
+        "Q1 should return 6 groups (3 return flags × 2 line statuses), got {} rows",
         rows.len()
     );
     for (i, row) in rows.iter().enumerate() {
@@ -86,7 +97,9 @@ fn test_bug3_tpch_q1_select_projection_returns_4_rows() {
 
 #[test]
 fn test_bug3_tpch_q1_no_column_name_text_cells() {
-    let mut client = start_sf001();
+    let Some(mut client) = start_sf001() else {
+        return;
+    };
     let q = "SELECT l_returnflag, SUM(l_quantity) AS sum_qty \
              FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
@@ -137,7 +150,9 @@ fn test_bug3_tpch_q1_no_column_name_text_cells() {
 
 #[test]
 fn test_bug4_tpch_q1_sum_real_extendedprice_nonzero() {
-    let mut client = start_sf001();
+    let Some(mut client) = start_sf001() else {
+        return;
+    };
     let q = "SELECT l_returnflag, SUM(l_extendedprice) AS sum_base_price \
              FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
@@ -156,7 +171,9 @@ fn test_bug4_tpch_q1_sum_real_extendedprice_nonzero() {
 
 #[test]
 fn test_bug4_tpch_q1_sum_real_quantity_nonzero() {
-    let mut client = start_sf001();
+    let Some(mut client) = start_sf001() else {
+        return;
+    };
     let q = "SELECT l_returnflag, SUM(l_quantity) AS sum_qty \
              FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
@@ -183,7 +200,9 @@ fn test_bug4_tpch_q1_sum_real_quantity_nonzero() {
 
 #[test]
 fn test_bug5_tpch_q1_avg_real_quantity_nonnull() {
-    let mut client = start_sf001();
+    let Some(mut client) = start_sf001() else {
+        return;
+    };
     let q = "SELECT l_returnflag, AVG(l_quantity) AS avg_qty \
              FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";
@@ -203,7 +222,9 @@ fn test_bug5_tpch_q1_avg_real_quantity_nonnull() {
 
 #[test]
 fn test_bug5_tpch_q1_avg_real_extendedprice_nonnull() {
-    let mut client = start_sf001();
+    let Some(mut client) = start_sf001() else {
+        return;
+    };
     let q = "SELECT l_returnflag, AVG(l_extendedprice) AS avg_price \
              FROM lineitem WHERE l_shipdate <= '1998-09-02' \
              GROUP BY l_returnflag ORDER BY l_returnflag";

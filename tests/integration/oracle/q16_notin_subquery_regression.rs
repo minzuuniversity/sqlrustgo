@@ -22,11 +22,30 @@ use sqlrustgo_types::Value as SqlValue;
 use std::fs;
 use std::sync::Arc;
 
-const FIXTURE: &str = "/home/openclaw/sqlrustgo_work/tests/data/tpch-sf01";
+// The shared TPC-H fixture resolver (issue #5379).
+//
+// The fixture used to be read from the absolute path
+// `/home/openclaw/sqlrustgo_work/tests/data/tpch-sf01`, i.e. one author's
+// home directory — it never existed on any CI runner. The fixture is now
+// resolved through the shared resolver, and a missing fixture (or a fixture
+// at a different scale profile) is disclosed as NOT-RUN instead of panicking.
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
 
-fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize {
-    let path = format!("{}/{}.tbl", FIXTURE, tbl);
-    let content = fs::read_to_string(&path).expect("read");
+/// Cargo test target this file belongs to (used as the NOT-RUN label).
+const TARGET: &str = "q16_notin_subquery_regression";
+
+/// The scale profile this test's expectations were calibrated against.
+const EXPECTED_SF: f64 = 0.1;
+
+fn load(
+    storage: &Arc<RwLock<MemoryStorage>>,
+    fixture_dir: &std::path::Path,
+    tbl: &str,
+    ncols: usize,
+) -> Result<usize, String> {
+    let path = fixture_dir.join(format!("{tbl}.tbl"));
+    let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
     const BATCH_SIZE: usize = 10000;
     let mut batch: Vec<Vec<SqlValue>> = Vec::with_capacity(BATCH_SIZE);
     let mut count = 0;
@@ -57,25 +76,46 @@ fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize 
         batch.push(record);
         if batch.len() >= BATCH_SIZE {
             let mut s = storage.write();
-            let _ = s.insert(tbl, batch.clone());
+            // The insert error must not be swallowed: a failed batch insert
+            // leaves the table empty and the assertions below would then run
+            // against an empty table and pass vacuously.
+            s.insert(tbl, batch.clone())
+                .map_err(|e| format!("insert into `{tbl}`: {e}"))?;
             count += batch.len();
             batch.clear();
         }
     }
     if !batch.is_empty() {
         let mut s = storage.write();
-        let _ = s.insert(tbl, batch.clone());
+        s.insert(tbl, batch.clone())
+            .map_err(|e| format!("insert into `{tbl}`: {e}"))?;
         count += batch.len();
     }
-    count
+    Ok(count)
+}
+
+/// Resolve the TPC-H fixture for this target, or disclose NOT-RUN and return
+/// `None` (a missing fixture, or a fixture whose scale profile is not the
+/// SF=0.1 profile these expectations were calibrated against).
+fn resolve_fixture() -> Option<std::path::PathBuf> {
+    let state = tpch_fixture::FixtureState::resolve();
+    let fixture = state.require_profile(TARGET, EXPECTED_SF)?;
+    Some(fixture.dir.clone())
 }
 
 #[test]
 fn q16_canonical_subquery_only() {
+    let Some(fixture_dir) = resolve_fixture() else {
+        return;
+    };
+
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
     engine.execute("CREATE TABLE supplier (s_suppkey INTEGER PRIMARY KEY, s_name TEXT NOT NULL, s_address TEXT NOT NULL, s_nationkey INTEGER NOT NULL, s_phone TEXT NOT NULL, s_acctbal REAL NOT NULL, s_comment TEXT)").unwrap();
-    load(&storage, "supplier", 7);
+    if let Err(e) = load(&storage, &fixture_dir, "supplier", 7) {
+        tpch_fixture::report_not_run(TARGET, tpch_fixture::reason::FIXTURE_MISSING, &e);
+        return;
+    }
 
     let r = engine
         .execute("SELECT s_suppkey FROM supplier WHERE s_comment LIKE '%Customer%Complaints%' ORDER BY s_suppkey")
@@ -89,15 +129,27 @@ fn q16_canonical_subquery_only() {
 
 #[test]
 fn q16_canonical_notin_full() {
+    let Some(fixture_dir) = resolve_fixture() else {
+        return;
+    };
+
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
 
     engine.execute("CREATE TABLE part (p_partkey INTEGER PRIMARY KEY, p_name TEXT NOT NULL, p_mfgr TEXT NOT NULL, p_brand TEXT NOT NULL, p_type TEXT NOT NULL, p_size INTEGER NOT NULL, p_container TEXT NOT NULL, p_retailprice REAL NOT NULL, p_comment TEXT)").unwrap();
     engine.execute("CREATE TABLE partsupp (ps_partkey INTEGER NOT NULL, ps_suppkey INTEGER NOT NULL, ps_availqty INTEGER NOT NULL, ps_supplycost REAL NOT NULL, ps_comment TEXT, PRIMARY KEY (ps_partkey, ps_suppkey))").unwrap();
     engine.execute("CREATE TABLE supplier (s_suppkey INTEGER PRIMARY KEY, s_name TEXT NOT NULL, s_address TEXT NOT NULL, s_nationkey INTEGER NOT NULL, s_phone TEXT NOT NULL, s_acctbal REAL NOT NULL, s_comment TEXT)").unwrap();
-    load(&storage, "part", 9);
-    load(&storage, "partsupp", 5);
-    load(&storage, "supplier", 7);
+    for tbl in ["part", "partsupp", "supplier"] {
+        let ncols = match tbl {
+            "part" => 9,
+            "partsupp" => 5,
+            _ => 7,
+        };
+        if let Err(e) = load(&storage, &fixture_dir, tbl, ncols) {
+            tpch_fixture::report_not_run(TARGET, tpch_fixture::reason::FIXTURE_MISSING, &e);
+            return;
+        }
+    }
 
     let sql = "SELECT p_brand, p_type, p_size, COUNT(DISTINCT ps_suppkey) AS supplier_cnt \
                FROM partsupp, part \

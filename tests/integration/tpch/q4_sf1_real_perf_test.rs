@@ -28,17 +28,39 @@
 //!
 //! See docs/releases/v3.12.0/evidence/V312-58-SPRINT5-HASH-SEMI-JOIN-CALL-SITE.md
 //! for the broader V312-58 perf capture plan.
+//!
+//! # The wire scope
+//!
+//! Three of the 22 standard statements — **Q9**, **Q18** and **Q19** — cannot be
+//! executed on the file-storage wire path: Q9's intermediate result grows past
+//! 1.5 GB within a second, Q18 kills the server process, and Q19 cannot be
+//! parsed by the wire front end (all three: issue #5393). A killed process
+//! takes the **whole test binary** with it, so the CI job would die with
+//! `signal: 9` instead of reporting a test failure.
+//!
+//! The shared **wire scope** (`tests/common/tpch_wire_scope.rs`) refuses to
+//! execute those statements: `run_query_timed` takes the query id and returns
+//! `WireOutcome::Skipped` for them. This file therefore executes the 19
+//! in-scope statements, discloses the 3 skips through the `TPCH-NOT-RUN`
+//! marker, and asserts that exactly those 3 were skipped — neither more (a
+//! silently dropped statement) nor fewer (a statement that could have run).
 
 #[path = "../../common/mod.rs"]
 mod common;
 
-use common::tpch_wire_harness::{load_fixture, read_baseline, run_query_timed, TABLES};
+use common::tpch_wire_harness::{
+    load_fixture, read_baseline, run_query_timed, WireOutcome, TABLES,
+};
+use common::tpch_wire_scope;
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 const SF1_DIR: &str = "/tmp/tpch-sf1";
+
+/// Cargo target name — used in the NOT-RUN marker.
+const TARGET: &str = "q4_sf1_real_perf_test";
 
 /// Canonical TPC-H Q4 SQL — the residual `l_commitdate < l_receiptdate`
 /// is the case `HashSemiJoinIndex` now serves (post PR #4464).
@@ -114,7 +136,23 @@ fn q4_sf1_real_perf_canonical_residual() {
         .expect("set_timeouts(query)");
 
     eprintln!("[q4_sf1] Running canonical Q4 with residual filter ...");
-    let (result, elapsed) = run_query_timed(&mut client, Q4_REAL_SQL, query_timeout_s);
+    let outcome = run_query_timed(&mut client, "Q4", Q4_REAL_SQL, query_timeout_s);
+    let (result, elapsed) = match outcome {
+        WireOutcome::Ran(result, elapsed) => (result, elapsed),
+        WireOutcome::Skipped(skip) => {
+            // Q4 is inside the wire scope, so this branch must not be
+            // reachable. It is handled anyway: a statement that is silently
+            // not executed must never be reported as a perf measurement.
+            // Exactly **one** NOT-RUN marker per test function keeps the CI
+            // arithmetic exact.
+            eprintln!(
+                "[q4_sf1] SKIPPED ({} issue={}) — {}",
+                skip.reason, skip.issue, skip.detail
+            );
+            tpch_wire_scope::report_wire_exclusions(TARGET, &["Q4"]);
+            return;
+        }
+    };
     let rows = match result {
         Ok(r) => r,
         Err(e) => panic!("Q4 SF=1 query failed: {e}"),

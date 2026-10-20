@@ -13,7 +13,9 @@ const Q6_SF01: &str = "SELECT COUNT(*) FROM lineitem \
 
 #[test]
 fn tpch_sf01_22_queries_wire_harness_q1_q6() {
-    let mut client = start_sf01();
+    let Some(mut client) = start_sf01() else {
+        return;
+    };
     let r1 = client.query_rows(Q1_SF01).expect("Q1");
     assert!(!r1.is_empty());
     let r6 = client.query_rows(Q6_SF01).expect("Q6");

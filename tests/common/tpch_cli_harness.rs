@@ -18,6 +18,26 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value as JsonValue;
 
+// The shared TPC-H fixture resolver (issue #5379).
+//
+// `start_sf001_cli` used to hard-code `tests/data/tpch-sf001`, which was a
+// symlink into `/tmp` and therefore resolved on exactly one machine. The
+// resolver turns "no fixture" / "fixture of the wrong scale profile" into an
+// explicit `TPCH-NOT-RUN` disclosure instead of a panic or a silent pass.
+//
+// This file is the **single** entry point of the fixture module. It is
+// compiled both as a module (`common::tpch_cli_harness`) and as a test target
+// of its own, so the `#[path]` has to be relative to *this* file's directory
+// — a `super::` path would not resolve in the standalone-target case.
+//
+// It must stay the only declaration: a test file that also declared the
+// module would compile this file a second time (rustc's `duplicate_mod`),
+// and the unit tests inside it would then run twice in every binary.
+#[path = "tpch_fixture.rs"]
+pub mod tpch_fixture;
+
+use tpch_fixture::FixtureState;
+
 // ============================================================================
 // Server subprocess wrapper
 // ============================================================================
@@ -316,18 +336,35 @@ pub fn cli_load_fixture(
 }
 
 /// Start a CLI server with the SF=0.001 fixture loaded.
+///
+/// The fixture is resolved through the shared resolver (issue #5379):
+///
+/// - fixture missing            → `TPCH-NOT-RUN ... reason=fixture_missing`
+/// - fixture present, wrong SF  → `TPCH-NOT-RUN ... reason=profile_mismatch`
+/// - fixture present at SF=0.001 → the server is started and loaded
+///
+/// Both non-runnable states are reported as `Err` (never a panic), and the
+/// marker is printed by [`FixtureState::require_profile`] before the `Err` is
+/// returned.
 pub fn start_sf001_cli() -> Result<CliServer, String> {
-    let data_dir = PathBuf::from("tests/data/tpch-sf001");
-    // `exists()` follows symlinks, so a dangling link into /tmp returns false
-    // only after the target is gone — check a file we actually need too, so
-    // the error names the real prerequisite.
-    if !data_dir.exists() || !data_dir.join("lineitem.tbl").exists() {
-        return Err(format!(
-            "fixture not found: {}\n\
-             tests/data/tpch-sf001 is a symlink into /tmp and is wiped on reboot; \
-             generate the dataset with `dbgen` and restore the symlink target.",
-            data_dir.display()
-        ));
+    let state = FixtureState::resolve();
+    let Some(fixture) = state.require_profile("tpch_soak_test", 0.001) else {
+        // The NOT-RUN marker has already been printed by require_profile.
+        return Err(
+            "SF=0.001 TPC-H fixture is unavailable — see the TPCH-NOT-RUN marker above".to_string(),
+        );
+    };
+    let data_dir = fixture.dir.clone();
+    // A manifest can describe a profile while a data file is still absent.
+    // `exists()` follows symlinks, so check the file we actually need too, so
+    // the disclosure names the real prerequisite.
+    if !data_dir.join("lineitem.tbl").exists() {
+        tpch_fixture::report_not_run(
+            "tpch_soak_test",
+            tpch_fixture::reason::FIXTURE_MISSING,
+            &format!("lineitem.tbl not found in {}", data_dir.display()),
+        );
+        return Err(format!("fixture not found: {}", data_dir.display()));
     }
     let server = CliServer::start(&data_dir)?;
     eprintln!("[cli] server started on port {}", server.port);

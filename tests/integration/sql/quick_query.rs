@@ -8,12 +8,38 @@ fn quick_query_sfid1() {
     use std::path::Path;
 
     let data_dir = Path::new("/tmp/tpch-sf1");
-    assert!(data_dir.exists());
 
-    // Truncate WAL before starting — we want to recover from the existing WAL,
-    // not create a new empty one.
-    let wal_path = data_dir.join("sqlrustgo.wal");
-    assert!(wal_path.exists(), "WAL must exist");
+    // The pre-built WAL directory is **not** repository content and no CI
+    // step produces it: it only exists on a machine where somebody ran the
+    // TPC-H SF=1 workload once and left the WAL behind. Asserting on it
+    // made this target fail on every clean environment (CI run 8117:
+    // "assertion failed: data_dir.exists()").
+    //
+    // The honest state of such a check here is **not run** — counted
+    // separately from the passed tests and disclosed in the CI summary,
+    // never counted as passed. See issue #5428 for the real fix (the test
+    // has to build its own precondition).
+    let missing = if !data_dir.exists() {
+        Some(format!(
+            "the WAL directory {} does not exist",
+            data_dir.display()
+        ))
+    } else if !data_dir.join("sqlrustgo.wal").exists() {
+        Some(format!(
+            "the WAL file {} does not exist",
+            data_dir.join("sqlrustgo.wal").display()
+        ))
+    } else {
+        None
+    };
+    if let Some(detail) = missing {
+        common::tpch_cli_harness::tpch_fixture::report_not_run(
+            "quick_query::quick_query_sfid1",
+            common::tpch_cli_harness::tpch_fixture::reason::PREBUILT_DATA_UNAVAILABLE,
+            &detail,
+        );
+        return;
+    }
 
     let config = EphemeralConfig {
         data_dir: Some(data_dir.to_path_buf()),

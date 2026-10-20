@@ -13,16 +13,26 @@
 
 #[path = "../../common/mod.rs"]
 mod common;
-use common::tpch_wire_harness::start_sf01;
+use common::tpch_wire_harness::{report_not_run, resolve_fixture_dir, start_sf01};
 
 #[test]
 #[ignore] // Heavy: SF=1 lineitem is 6M rows
 fn q7_sf1_real_count() {
-    let data_dir = std::path::PathBuf::from("tests/data/tpch-sf01");
-    if !data_dir.exists() {
-        panic!("fixture missing: {}", data_dir.display());
+    // The fixture used to be the `tests/data/tpch-sf01` symlink into /tmp;
+    // it is now resolved at run time (TPCH_DATA_DIR first). A missing
+    // fixture means the query cannot run, which is disclosed as *not run*
+    // instead of panicking.
+    if resolve_fixture_dir().is_none() {
+        report_not_run(
+            "q7_sf1_real_count",
+            "fixture_missing",
+            "no TPC-H fixture found (set TPCH_DATA_DIR to a directory with the 8 .tbl files)",
+        );
+        return;
     }
-    let mut client = start_sf01();
+    let Some(mut client) = start_sf01() else {
+        return;
+    };
     let sql = std::fs::read_to_string("queries/q7.sql").unwrap();
     let t0 = std::time::Instant::now();
     let rows = client
