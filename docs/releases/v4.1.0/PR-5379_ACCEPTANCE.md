@@ -312,7 +312,7 @@ import 删除 + 变量重命名（无行为变化）。
 | `check_stage.sh` | **不覆盖 TPC-H**：实测零 TPC-H 引用，STAGE_CONFIG 的 `required_gates` 也没有 G1。原注释声称它是 SF=1 的兜底，**该声明不成立，已更正** | 澄清 |
 | 规模层（SF=1） | 本 PR **不接入**，见 #5387 | 递延 |
 | CI 时间预算 | fixture 到位后 `test` job 从「几分钟」变成「以小时计」（实测 `_q15_q16_check` > 23 min）→ 变异门禁拆独立 job + `test` job 上限 7200 → 9000 s；降本手段（批量装载）见 **#5399** | 调整 |
-| `postcheck` job（发布门禁聚合 + 6 个硬阻塞 meta-gate） | **本 PR 未改动**。但实测发现它在 **600 次历史 CI run 中从未成功执行过一次**（190 次 `skipped`、0 次 `success`）——本 PR 修好基线 clippy 红之后它才第一次会真跑，届时暴露出 2 个**基线既有**红灯门禁。本 PR **不弱化门禁**去消掉红灯，改为归属 + 立项 + 披露 | 归属（#5400 / #5401 / #5402） |
+| `postcheck` job（发布门禁聚合 + 6 个硬阻塞 meta-gate） | **本 PR 未改动**。但实测发现它在 **600 次历史 CI run 中从未成功执行过一次**（190 次 `skipped`、0 次 `success`）——本 PR 修好基线 clippy 红之后它才第一次会真跑，届时暴露出 **5 个基线既有红灯点**（5 个独立断口）。本 PR **不弱化门禁**去消掉红灯，改为归属 + 立项 + 披露 | 归属（#5400 / #5401 / #5402 / #5403） |
 
 ---
 
@@ -331,8 +331,12 @@ import 删除 + 变量重命名（无行为变化）。
 | `cargo test --test tpch_gate_test` | ✅ 21/21（含 4 个 wire 语句范围单元测试） |
 | `bash scripts/gate/mutate_tpch_oracle_tests.sh`（桩 `cargo` 机械逻辑） | ✅ exit 0 / exit 1 / exit 2 三条路径全部实测（见 AC-5） |
 | **postcheck 的 6 个硬阻塞 meta-gate**（P11–P16） | ✅ 全部 PASS（本地实测，见证据 §7.15(b)） |
-| **postcheck 的 `check_correctness_tests_production_storage.sh`** | ❌ FAIL（R2/R4）——**基线既有**，基线对照实测与本 PR 无关 → **#5400** |
-| **postcheck 的 `check_storage_db_scope_coverage.sh`** | ❌ FAIL（9 处）——**基线既有**，基线对照实测与本 PR 无关 → **#5401** |
+| **postcheck 的 `check_correctness_tests_production_storage.sh`** | ❌ exit 1（R2/R4）——**基线既有**，基线对照实测与本 PR 无关 → **#5400** |
+| **postcheck 的 `check_storage_db_scope_coverage.sh`** | ❌ exit 1（9 处）——**基线既有**，基线对照实测与本 PR 无关 → **#5401** |
+| **postcheck 的 `check_coverage.sh`（Gate L1 — Coverage 步骤）** | ❌ exit 2——该脚本 2026-08-10 起就是弃用桩，CI 接线未更新 → **#5403** |
+| **postcheck 的 `check_evidence_binding.sh v3.7.0`** | ❌ exit 1（`FAIL=74`）——本 PR 未触碰 v3.7.0 文档 → **#5403** |
+| **postcheck 的 `auto_env_blocker.sh v3.8.0`** | ❌ exit 1（`set -euo pipefail` 下遇无 H1 的 .md 中止；副作用改写 56 个受控文件，已还原）→ **#5403** |
+| **postcheck 的 D8（经 D9 聚合）** | ❌ exit 2（DRIFT：`SEM-4` 87.64% IN_PROGRESS，2026-07-16 快照）→ **#5403** |
 
 ---
 

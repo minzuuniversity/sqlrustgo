@@ -617,10 +617,13 @@ CI run 7804 的 `test` job 在编译 446 个测试目标时报出 **15 个告警
 ### Observation
 
 本 PR 修好基线 clippy 红之后，`postcheck` job 第一次有机会真实执行。
-合并前在本地预跑它的每一步，发现其中 2 个门禁是红的：
+合并前在本地预跑它的每一步，发现其中 **5 个红灯点**（5 个独立断口）：
 
 - `check_correctness_tests_production_storage.sh`（R2 / R4）
 - `check_storage_db_scope_coverage.sh`（9 处 wrapper×方法 缺失覆盖）
+- `check_coverage.sh`（2026-08-10 起的弃用桩，CI 步骤仍在调它 → exit 2）
+- `check_evidence_binding.sh v3.7.0`（74 项证据绑定违规）
+- `auto_env_blocker.sh`（`set -euo pipefail` 下遇无 H1 的 .md 中止；副作用改写 56 个受控文件）
 
 第一反应是「本 PR 弄坏的」。查证之后发现两者**与本 PR 无关**：
 
@@ -633,6 +636,8 @@ CI run 7804 的 `test` job 在编译 446 个测试目标时报出 **15 个告警
    - db-scope 门禁自动派生 trait 里所有 `db: &str` 方法，#5192 关闭之后
      trait 又新增了 `get_view` / `list_views` / `scan_via_bufferpool_in_db`
      （`d8de15178b`、`a0875a7499`），包装层没跟上 → **门禁漂移**。
+   - 另外 3 个是**接线层**断口：调用的脚本已被弃用、目标版本目录的证据绑定
+     违规、以及一个会在 `set -e` 下中途死掉并改写 56 个受控文件的脚本。
 
 再往上一层查，发现了更根本的事实：**`postcheck` job 在 600 次历史 CI run 中
 从未成功执行过一次**（190 次 `skipped`、7 次 `cancelled`、0 次 `success`）——
@@ -651,8 +656,8 @@ CI run 7804 的 `test` job 在编译 446 个测试目标时报出 **15 个告警
 1. **改动前先建立基线对照**：在基线 commit 上建临时 worktree，跑同一个脚本，
    比对输出是否逐字相同。相同 → 与本次变更无关，走归属而不是修复。
 2. **归属到具体 commit**：`git log -S "<旧字面量>" -- <file>` 定位到引入漂移的那个
-   commit，红灯的成因才有名字（#5400 / #5401）。
-3. **登记而不吸收**：另立 issue（#5400 / #5401 / #5402），在证据文档与 PR 正文里
+   commit，红灯的成因才有名字（#5400 / #5401 / #5403）。
+3. **登记而不吸收**：另立 issue（#5400 / #5401 / #5402 / #5403），在证据文档与 PR 正文里
    如实披露，并写明「门禁变红不是本 PR 的债，弱化门禁去消掉它才是」。
 4. **顺藤摸瓜查上游**：发现红灯不是本 PR 引入之后，追问「它为什么能存活这么久」，
    查到 `postcheck` 从未执行过（#5402）—— 这才是真正值得修的东西。
