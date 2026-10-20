@@ -365,6 +365,27 @@
       + F2（`ci.yml` 的 `Test summary`：`grep -o` 逐条切分 + `sort -u` 去重，
       `not_run` 与 `not_run_records` 两个数都打印）
       + Lessons 34：**自己引入的度量缺陷要在自己手里修**
+- [x] **5.3aa** **收尾根因排查：一次归因更正 + 2 个新引擎缺陷 + 1 个门禁覆盖缺口**
+      （证据 §7.32）：
+      - **归因更正**：§7.26(f) 的「Q22 崩溃 = 既有引擎缺陷」**作废** ⇒ 真因是
+        预言机的 `queries/q21.sql` 要 **41 秒** ⇒ 引擎连接空闲 41 秒 ⇒ 被服务端
+        **30 秒空闲回收器**（#4682）关掉 ⇒ **下一条**语句才报错（→ #5464）
+      - **#5462**：`GROUP BY` 引用 SELECT 列表别名时被当成**字符串常量** ⇒ 所有行并成一组
+      - **#5463**：`GROUP BY` 引用未知标识符时不报错 ⇒ 执行器 panic ⇒ 整个 server 挂掉
+      - **#5465**：CI 的 clippy 缺 `--all-targets` ⇒ `tests/` 的 446 个目标**从不被检查**
+      - 最后 4 个待补的失败二进制：本地复跑定位 2 个（`tpch_sf01_22_vs_sqlite_test` /
+        `tpch_value_test_v2`）、2 个绿；剩余 2 个名字仍不可恢复（如实标注）
+- [x] **6.5i** 本 PR 内修三处（RED→GREEN 本机实测）：
+      - **F5** SQLite 预言机补 TPC-H 索引（`tests/common/sqlite_oracle.rs`）：
+        预言机 `q21.sql` **41 s → 56.5 ms**，最坏单条 **41 s → 0.36 s**
+        ⇒ 消除本 PR 新增的空闲饥饿 ⇒ 3 个目标由红转绿
+      - **F6** Q8 差异按**目标限定 id** 登记（`tpch_value_test_v2:Q8`）：
+        新增 `target_statement_case_id()` + `lookup_target_known_difference()`
+        （目标优先、回落目标无关）+ 登记门禁 `--max-entries` **显式** 1 → 2
+      - **F7** 模块去重：`tests/common/tpch_fixture.rs` 改为唯一入口 `common::tpch_fixture`
+        ⇒ 消除 11 处 `duplicate_mod` + 2 处 `redundant closure`，
+        并让单元测试不再跑两遍、NOT-RUN 合成记录不再写两遍
+      + Lessons 35（归因按因果链）/ 36（门禁覆盖不到 = 没有门禁）/ 37（模块重复引入）
 - [ ] **6.6** 5 远端同步 `bash scripts/sync/5remotes_sync.sh develop/v4.1.0`
 - [ ] **6.7** 清理：删除已合并的远端/本地分支与 worktree（先 `git merge-base --is-ancestor` 核实）
 

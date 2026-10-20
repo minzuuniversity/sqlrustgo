@@ -1321,6 +1321,143 @@ TPCH_NOT_RUN_FILE=/tmp/nr_check.log cargo test --test <target> <unit_test_name>
 
 ---
 
+## Lesson-35: 归因要按**因果链**，不能按「报错的那条语句」
+
+§7.32 记录了一次**归因更正**。
+
+run 8185 的失败清单里，`tpch_sf01_22_vs_3engines` 与
+`tpch_sf01_22_vs_sqlite_test` 都在 **Q22** 上报
+`read packet header: failed to fill whole buffer`。
+§7.26(f) 据此写成「Q22 上 wire server 崩溃 ⇒ 同一个既有引擎缺陷」。
+
+**这个归因是错的。** 实际的因果链是：
+
+```
+预言机算 queries/q21.sql 要 41 秒（没有索引的 SQLite）
+        ↓
+这 41 秒里引擎的连接完全空闲
+        ↓
+服务端 30 秒空闲连接回收器把连接强制关掉（#4682）
+        ↓
+下一条语句（Q22）才报错 —— 它只是「正好是下一条」
+```
+
+Q22 本身**没有任何问题**：单独跑是好的（7 行，与预言机逐行一致），
+连续跑 22 条也是好的。**被报错的那条语句与真正的故障毫无关系。**
+
+### 为什么错得很自然
+
+- 报错确实出现在 Q22 上 ⇒ 「Q22 崩了」看起来是**观测到的事实**；
+- 崩溃确实表现为「连接断了」⇒ 「server 崩了」看起来也像事实；
+- 但真正的触发条件在**上一条语句之后**：一个**慢到超过 30 秒**的参考计算。
+
+⇒ **症状落在最后一步，因果在倒数第二步。**
+把症状当成原因，就会把「测试基础设施的时序问题」记成「引擎的 SQL 缺陷」，
+然后去引擎里找一个**根本不存在的**缺陷。
+
+### 可复用检查（任何「A 失败 ⇒ B 崩」的归因都该跑一遍）
+
+```bash
+# 1) 失败的那条语句**单独**跑一次 —— 如果它自己是对的，症状就不是原因
+cargo test --test <target> <the_failing_case>
+# 2) 把前一步的**前置条件**换掉再跑：去掉慢的参考计算 / 去掉外部引擎腿
+#    —— 如果不崩，因果在��一步，不在被报错的那一步
+# 3) 查「谁会在客户端**不作为**的时候把连接关掉」：空闲超时 / reaper / keepalive
+grep -rn "IDLE_TIMEOUT\|idle_timeout\|reaper\|wait_timeout" crates/
+```
+
+### 附带的一条纪律
+
+**归因结论必须能指出「如果不是这个原因，会看到什么不一样的现象」。**
+「Q22 崩了」这句话无法回答这个问题（「Q22 崩了」本身就是它），
+「预言机 41 秒 ⇒ 30 秒回收 ⇒ 下一条才报错」可以回答
+（「去掉预言机腿就不崩了」「把预言机索引补上就不崩了」——
+这两条都实测过）。
+
+⇒ 与 Lesson-34 配套：**自己引入的因果链，自己修**。
+本 PR 新增的 SQLite 预言机腿制造了那 41 秒的空洞 ⇒ 修在预言机（补索引），
+而不是去修引擎。
+
+---
+
+## Lesson-36: 门禁覆盖不到的地方，等于**没有门禁**
+
+§7.32 又查出一条：**CI 的 clippy 步骤是**
+`cargo clippy --all-features -- -D warnings`，
+**没有 `--all-targets`** ⇒ cargo 的默认目标集是 lib + bins，
+**`tests/` 下的 446 个测试目标一个都不检查**。
+
+而本仓库的业务逻辑主体**恰恰在 `tests/`**：
+`tests/common/` 是共享 harness，`tests/integration/**` 是全部测试目标。
+
+实测后果：本 PR 自己引入的三条 clippy 告警
+（11 个文件重复编译同一个模块 + 2 处 `redundant closure`）
+**在 run 8185 的 `lint-build` job 里全程没有提示** —— 那个 job 是 **success**。
+本地用 `--test` 严格跑才看得见。
+
+⇒ 门禁的强度不是「脚本写了什么」，而是「**它实际检查了哪些东西**」。
+一条不覆盖测试目标的 clippy 步骤，对测试代码来说是**装饰**。
+
+### 可复用检查
+
+```bash
+# 1) 门禁命令实际覆盖的目标集合
+grep -rn "cargo clippy" .gitea/workflows/ | sed 's/^/  /'
+#    没有 --all-targets ⇒ tests/ 不在覆盖范围内
+# 2) 本 PR 实际改动的测试目标，逐个严格跑一遍（门禁没跑的那部分自己跑）
+git diff --name-only <base>..HEAD | grep '^tests/.*\.rs$' | sed 's|.*/||; s|\.rs$||' | sort -u
+#    然后：cargo clippy --all-features --test <每个目标> -- -D warnings
+```
+
+⇒ **可复用的判据**：**门禁声称覆盖的范围 == 门禁实际覆盖的范围。**
+对不上时，要么改门禁，要么把「不在覆盖范围内」写进门禁的文档里，
+让读门禁结果的人知道自己没被检查。
+
+---
+
+## Lesson-37: 同一个文件被**编译两次**，会让计数和单元测试一起失真
+
+§7.32 修掉的 `duplicate_mod` 告警背后是一个更实际的问题：
+`tests/common/tpch_fixture.rs` 在**每个**包含 `common` 的测试二进制里
+被编译了**两次**（一次经 `common::tpch_cli_harness::tpch_fixture`，
+一次经测试文件自己的 `#[path] mod tpch_fixture;`）。
+
+后果不是「多占一点编译时间」，而是：
+
+- 它的**单元测试在每个二进制里跑两遍**
+  （日志里 `common::tpch_cli_harness::tpch_fixture::tests::…` 与
+  `tpch_fixture::tests::…` 同名出现）；
+- 单元测试里对共享文件的写入**发生两次**
+  ⇒ §7.31 里「合成记录」的一个成因就在这里；
+- 测试函数计数**偏大**（去重后 `tpch_value_test_v2` 从 42 passed 变成 39 passed）。
+
+⇒ **模块去重不是洁癖，是计数正确性的一部分。**
+
+### 可复用检查
+
+```bash
+# 同一个文件被几个二进制当成模块引入？
+cargo clippy --all-features --test <target> -- -D warnings 2>&1 | grep "loaded as a module multiple times"
+# 同一个文件的单元测试在日志里出现两次？
+cargo test --test <target> -- --nocapture 2>&1 | grep "tests::" | sort | uniq -c | awk '$1>1'
+```
+
+⇒ **一个文件应当只有一个「声明入口」。**
+需要多处使用就 `pub use` 再导出，不要 `#[path]` 再声明一次。
+
+**附带的一条纪律（这一节自己踩了）**：去重的**第一版**用 `super::` 再导出，
+而 `tests/common/tpch_cli_harness.rs` **同时也是一个独立的 test target**
+（crate root 就是它自己）⇒ 那里 `super::` 不存在 ⇒ **该目标编译失败**。
+
+抓出它的是 `cargo test --no-run --all-features`（**462 个测试目标全量编译**），
+不是「clippy 打 11 个目标」—— **那个独立目标不在那 11 个里**。
+
+⇒ **局部 lint ≠ 能编译。** 改动共享模块时，
+「把所有测试目标编译一遍」比「lint 几个代表性目标」更能拦住问题。
+（CI 的 `lint-build` 也覆盖不到测试目标，见 Lesson-36 / #5465。）
+
+---
+
 ## 附：本轮形成的可复用检查
 
 | 工具 | 作用 | 复现命令 |
@@ -1342,6 +1479,9 @@ TPCH_NOT_RUN_FILE=/tmp/nr_check.log cargo test --test <target> <unit_test_name>
 | **判据存在性体检** | 找出"清单上有、仓库里没有"的门禁脚本 | 从判据表抽出所有 `scripts/gate/*.sh` 引用逐个 `ls` 验证（见 Lesson-32） |
 | **规范引用体检** | 找出"规范引用了不存在的文件"，含本 PR 自己的任务文件 | `grep -rn "<文件名>" docs/governance/ AGENTS.md openspec/`，对每个路径做存在性验证（见 Lesson-33） |
 | **共享计数文件体检** | 找出「写入方不止生产路径 / 记录被写多遍 / 计数单位错位 / 并发写丢换行」 | 比较 `grep -o 'MARKER:' f \| wc -l` 与 `wc -l < f`、去重前后条数（见 Lesson-34） |
+| **因果链归因体检** | 找出「症状落在最后一步、因果在倒数第二步」的误归因 | 失败的那条语句**单独**跑一次 + 把上一步的前置条件换掉再跑（见 Lesson-35） |
+| **门禁覆盖范围体检** | 找出「门禁声称覆盖、实际没跑」的部分（如 clippy 缺 `--all-targets`） | `grep -rn "cargo clippy" .gitea/workflows/` + 对本 PR 改动的测试目标逐个严格跑（见 Lesson-36） |
+| **模块重复引入体检** | 找出「同一个文件被编译两次」造成的计数失真 | `cargo clippy … 2>&1 \| grep "loaded as a module multiple times"` + 日志里同名单元测试出现两次（见 Lesson-37） |
 
 这九个工具对**任何**"测试需要外部数据"的场景都适用，不限于 TPC-H；
 其中后两个（基线对照 worktree、CI job 结论全量统计）对**任何**门禁归因都适用。
