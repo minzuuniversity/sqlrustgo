@@ -98,7 +98,22 @@ jobs:
           # job until the 3 h container limit. On timeout the run is cut
           # short, the summary reports the partial result and the execution
           # accounting gate below names the targets that never ran.
-          timeout 7200 cargo test --all-features --no-fail-fast 2>&1 | tee test_report.log
+          #
+          # 9000 s (2.5 h) rather than 7200 s (2 h): the fixture became
+          # reachable in this PR, so the ~31 fixture-dependent targets now
+          # do real work instead of silently running against empty tables.
+          # Measured on the CI runner (run 7837): the slowest single target
+          # (`_q15_q16_check`, which loads ~100k rows one INSERT at a time
+          # in a debug build) already needs > 20 min. The budget arithmetic
+          # for the 3 h container limit is: checkout + `cargo build
+          # --all-features` + fixture generation + the summary/gate steps
+          # ≈ 20 min, which leaves ≈ 2.5 h for the test run itself.
+          #
+          # The mutation gate used to live in this job and needed 4 more
+          # cargo runs (each rebuilding the engine crate). It now has its
+          # own job so that its cost does not eat into this budget, and so
+          # that the two do not compete for the runner's CPU and memory.
+          timeout 9000 cargo test --all-features --no-fail-fast 2>&1 | tee test_report.log
       - name: Test summary
         if: always()
         run: |
@@ -200,17 +215,39 @@ jobs:
         # filled in" — that hash has been filled in since 545814c3d1, and the
         # real blocker is the missing SF=1 fixture, not the hash.
 
+  # The mutation gate gets its OWN job (issue #5379).
+  #
+  # It injects three defects into the ENGINE implementation (never into the
+  # test code) and requires the new TPC-H assertions to catch each one.
+  #
+  # Why a separate job:
+  #   * the script needs 4 cargo runs (2 baselines for the two reference
+  #     targets + 3 mutations) and every mutation rebuilds the engine crate;
+  #     inside the `test` job that cost ate into the 3 h container budget
+  #     that the 446-target run already needs;
+  #   * `needs: [test]` + `if: always()` makes it run *after* the test job,
+  #     so the two never compete for the runner's CPU and memory (the
+  #     fixture-dependent targets are memory-hungry);
+  #   * it still produces its evidence when the test job fails, which is
+  #     when the mutation evidence matters most.
+  #
+  # The script restores the mutated engine file byte-for-byte after every
+  # mutation and verifies the SHA-256 of the restored file; the workspace
+  # stays clean, and nothing is committed.
+  mutation:
+    runs-on: [hp-z6g4]
+    needs: [test]
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
       - name: Mutation test — the new TPC-H assertions really kill defects (issue #5379)
         if: always() && github.event_name == 'pull_request'
         run: |
-          # A test that cannot fail proves nothing. This step injects three
-          # defects into the ENGINE implementation (never into the test
-          # code) and requires the new TPC-H assertions to catch each one.
-          #
-          # The script restores the mutated engine file byte-for-byte after
-          # every mutation and verifies the SHA-256 of the restored file;
-          # the workspace stays clean, and nothing is committed.
           bash scripts/gate/mutate_tpch_oracle_tests.sh
+
   ga3-security-scan:
     # Issue #4532 — GA-3 SC-1 cargo audit: pre-install cargo-audit + pre-fetch
     # advisory DB. Without pre-install, `cargo audit` would take 4m46s to

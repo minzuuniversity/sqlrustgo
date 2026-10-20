@@ -142,6 +142,16 @@
       对照实测：只有 `sha256sum` 的 PATH 下，修复前 `exit 2`（cannot checksum）、修复后 `exit 0`。
       脚本的**三个退出码路径**（0 全捕获 / 1 有存活 / 2 harness 错误）与**逐字节还原**
       已用桩 `cargo` 在一次性假仓库实测，不执行任何 TPC-H 用例（证据 §7.12 / Lesson-15）
+- [x] **5.3d** 基线 18 个失败目标里**与 TPC-H 无关的 2 个**已归因：
+      `e2e_canonical_subprocess` 是构建顺序依赖（CI 先 `cargo build --all-features` → 能过）；
+      `g13_oltp1_concurrent_select_test` 是**既有的、判别力为零的时序回归守卫**
+      （无 bug 0.67/0.72/0.72 vs 有 bug 0.67/0.83/0.83，分布重叠）→ **本 PR 不改它的语义**
+      （无法在非 Z6G4 机器上重新标定阈值），如实披露于证据 §7.13 / Lesson-16，
+      并新立 **#5398** 跟踪重做
+- [x] **5.3e** fixture 到位后 CI 的时间预算成为硬约束（`_q15_q16_check` 实测 > 23 min；
+      规模因生成器自检降不下去，SF 下限 0.005）→ 变异门禁拆成独立 `mutation` job、
+      `test` job 运行上限 7200 → 9000 s（证据 §7.14）；降本手段（`four_way_harness` 批量装载）
+      新立 **#5399**，不在本 PR 内做
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---
