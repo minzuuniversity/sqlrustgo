@@ -859,6 +859,53 @@ exit ${status}
 
 ---
 
+## Lesson-22: 桩测试自己也会骗你 —— "测过了"必须先断言"桩生效了"
+
+**上下文**：本轮用桩 `cargo` 验证变异门禁 `scripts/gate/mutate_tpch_oracle_tests.sh`
+的退出码路径。上一版证据写的是「`exit 0 / exit 1 / exit 2` 三条路径全部实测」。
+本轮复核发现：**exit 2 那一条是夸大的** —— 超时路径**从未真正触发**。
+
+**根因（两层，两层都是"失败被静默吞掉"）**：
+
+1. **桩没装上**。桩 `timeout` 的安装条件写成"仅当文件不存在时才创建"，
+   而 PATH 桩循环早就把 homebrew 的**真** `timeout` 软链进了桩目录 ⇒
+   强制超时的桩**从未安装** ⇒ 那次跑的其实是正常路径。
+   更隐蔽的一层：安装失败桩时用了
+   `cp fail.mktemp "$STUBBIN/mktemp"` —— 这会**穿过**指向 `/usr/bin/mktemp`
+   的软链去写**系统二进制**；macOS SIP 拒绝写入，`cp` 失败，而桩脚本**没有
+   `set -e`** ⇒ 失败桩**从未生效**，而 CASE 3 却"通过"了。
+2. **桩的删除动作会挂起**。本机 agent shell 里的 `rm` 是**可恢复删除 shim**
+   （转发到 Finder 的 `osascript`），在**非交互 shell** 里**会挂起** ——
+   整个 harness 卡死在 `osascript -e tell application "Finder" to delete …`，
+   输出文件 0 字节。
+
+**行动**：
+
+- 桩一律装在**独立目录**并**前置到 `PATH`**，**不覆盖、不删除**任何已有文件；
+- 每个用例**先断言桩确实生效**（例如 `PATH="$TIMEBIN:$STUBBIN" timeout 1 true`
+  必须返回 124），**再**执行被测断言；
+- harness **零删除动作**：一次性目录用 `$$` 后缀，天然不与上一轮冲突；
+- 被测脚本侧：新增 `make_temp_file()`，用裸 `mktemp`（本仓库 20+ 处的既有用法），
+  **拿不到路径就大声失败**，绝不用空路径继续（这正是 CI 上真实发生的缺陷形态：
+  `mktemp -t x.XXXXXX.py` 在 runner 镜像上失败 → 空路径 → 三个变异片段**从未生成**
+  → 三个变异**从未被应用** ⇒ 门禁 `ERRORS=3` / exit 2 / job 变红）。
+
+**规则**：
+
+> **一个"测试"如果不能自证"我的桩生效了"，它测的就是环境，不是被测物。**
+>
+> 具体到桩测试：
+> - 桩**不覆盖**已有文件（`cp` 会写穿软链），**不删除**任何东西（`rm` 可能是会挂起的
+>   可恢复删除 shim）；
+> - 每个用例**先断言桩生效**，再断言被测行为；
+> - 桩脚本报错**不等于**桩生效 —— 必须**回读**它的实际行为。
+>
+> 推论：**当"结论对但过程假"时，证据必须降级**。上一版的"exit 0/1/2 全部实测"
+> 是在结论上碰巧正确、过程上完全没发生；本轮把它改成"exit 2 当时是夸大的"
+> 并重测，而不是把表格留着蒙混过去。
+
+---
+
 ## 附：本轮形成的可复用检查
 
 | 工具 | 作用 | 复现命令 |
@@ -868,6 +915,8 @@ exit ${status}
 | `scripts/gate/check_tpch_known_differences.sh` | 已知差异必须有 issue + owner，且不得无声增长 | `bash scripts/gate/check_tpch_known_differences.sh` |
 | `scripts/gate/mutate_tpch_oracle_tests.sh` | 证明新断言能杀引擎缺陷 | `bash scripts/gate/mutate_tpch_oracle_tests.sh` |
 | 桩 `cargo` 机械逻辑实测 | 不加载 fixture 就验证门禁脚本的退出码与还原逻辑 | 见证据 §7.12（一次性假仓库 + 桩 `PATH`） |
+| **桩生效自检** | 断言桩**真的**在生效，否则"测过了"是误会 | 装桩后先跑一次"桩的预期行为"（如 `PATH=… timeout 1 true` 必须返回 124），再跑被测断言（见 Lesson-22） |
+| **零删除 harness** | 避免 `rm`（本机是可恢复删除 shim，非交互 shell 里会挂起） | 一次性目录用 `$$` 后缀；桩装在独立目录并前置 `PATH`，不覆盖也不删除 |
 | 基线对照 worktree | 判断「门禁红」是否由本次变更引入 | `git worktree add --detach /tmp/wt-base <base-sha>` → 同一脚本跑基线与分支 → 比对输出是否逐字相同（见证据 §7.15） |
 | CI job 结论全量统计 | 区分「最近一次是什么」与「历史上成功过几次」 | 遍历全部 run 的 jobs，统计 `success` / `skipped` / `cancelled` 的分布（见证据 §7.15） |
 | 成员包二进制存在性检查 | 区分「测试失败」与「CI 根本没搭好前置条件」 | `cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli` → 检查 `target/debug/` 下是否产出（见证据 §7.17(c)） |

@@ -156,16 +156,24 @@ bash scripts/gate/mutate_tpch_oracle_tests.sh
 由 CI `test` job 承接。
 
 **补充实测（用桩 `cargo` 验证脚本的机械逻辑，不执行任何 TPC-H 用例）**：
-在一次性假仓库里把 `cargo` 换成只看引擎文件内容的桩，验证了脚本的**三个退出码路径**
-与**还原保证**（证据 §7.12）：
+在一次性假仓库里把 `cargo` 换成只看引擎文件内容的桩，验证了脚本的**四个场景**
+与**还原保证**（证据 §7.12，权威结果是**同一轮**跑完的 4 个用例）：
 
 | 场景 | 期望 | 实测 |
 |---|---|---|
 | 3 个变异全被"测试"抓到 | exit 0 | **exit 0**（`CAUGHT=3 SURVIVED=0 ERRORS=0`） |
-| 运行超时 | exit 2（harness 错误，**不**计 CAUGHT） | **exit 2** |
+| 运行超时 | exit 2（harness 错误，**不**计 CAUGHT） | **exit 2**（`the BASELINE run of 'diag_q11' TIMED OUT after 900s`） |
+| `mktemp` 失败（CI 镜像的既有缺陷形态） | exit 2（拒绝继续，**不**给结论） | **exit 2**（`refusing to continue with an empty path`） |
 | 变异存活 | exit 1 | **exit 1**（`SURVIVED=3`） |
 | 变异后引擎文件还原 | 逐字节一致 | **一致** |
 | 真实工作区未被触碰 | `git diff` 为空 | **为空** |
+
+> ⚠️ **对上一版记录的一处如实更正**：上一版写的「`exit 0 / exit 1 / exit 2` 三条路径
+> 全部实测」中，**exit 2 那一条当时是夸大的** —— 桩 `timeout` 实际**从未安装成功**
+> （PATH 桩循环已软链了真 `timeout`），超时路径没有被真正触发。复核时还查出桩测试
+> 自身两个坑（`cp` 写穿符号链接打到系统 `/usr/bin/mktemp`；本机 `rm` 是会挂起的
+> 可恢复删除 shim）。现已改为"桩装在独立目录 + 前置 PATH + 每个用例先断言桩生效"，
+> 四个场景在**同一轮**内实测通过。详见证据 §7.12 与 §7.12.1。
 
 **同一套桩测试顺带查出一个只会在 CI 上暴露的缺陷并已修掉**：脚本原先只用 `shasum`
 算 SHA-256，而 `shasum` 是 Perl 脚本、精简 CI 镜像不保证有（`sha256sum` 来自 GNU
@@ -359,7 +367,7 @@ import 删除 + 变量重命名（无行为变化）。
 | `bash scripts/gate/check_tpch_known_differences.sh` | ✅ PASS（1 条登记 / 上限 1） |
 | `bash scripts/gate/prepare_tpch_fixture.sh --out /tmp/tpch-fx3 --sf 0.01 --seed 42` | ✅ 5 类自检全绿，manifest 写出 |
 | `cargo test --test tpch_gate_test` | ✅ 21/21（含 4 个 wire 语句范围单元测试） |
-| `bash scripts/gate/mutate_tpch_oracle_tests.sh`（桩 `cargo` 机械逻辑） | ✅ exit 0 / exit 1 / exit 2 三条路径全部实测（见 AC-5） |
+| `bash scripts/gate/mutate_tpch_oracle_tests.sh`（桩 `cargo` 机械逻辑） | ✅ 四个场景在同一轮实测：exit 0 / exit 1 / exit 2（超时）/ exit 2（`mktemp` 失败）（见 AC-5 与证据 §7.12.1 的如实更正） |
 | **postcheck 的 6 个硬阻塞 meta-gate**（P11–P16） | ✅ 全部 PASS（本地实测，见证据 §7.15(b)） |
 | **postcheck 的 `check_correctness_tests_production_storage.sh`** | ❌ exit 1（R2/R4）——**基线既有**，基线对照实测与本 PR 无关 → **#5400** |
 | **postcheck 的 `check_storage_db_scope_coverage.sh`** | ❌ exit 1（9 处）——**基线既有**，基线对照实测与本 PR 无关 → **#5401** |
@@ -436,4 +444,4 @@ import 删除 + 变量重命名（无行为变化）。
 | `eval_22_vs_sf01` 耗时下降 | ⏳ CI run 8075 实测 | 同上 |
 | Q19「引擎 vs SQLite」比较一致 | ⏳ CI run 8075 实测 | 本仓库尚无 Q19 的先例；若不一致 = **新发现的引擎缺陷**，按 AC-8 登记并立项，**不弱化断言** |
 | 7 个原 panic 目标在 CI 里不再 panic | ⏳ CI run 8075 实测 | 改为 `TPCH-NOT-RUN`，由 CI 的 NOT-RUN 计数披露 |
-| 5 远端同步 | ⚠️ 环境受限 | 本机到 `gitee` / `github` / `gitcode` 的 **SSH 不可达**（实测 `git ls-remote` 三个远端均 exit 124 = 超时）；`gitea250` / `gitea252` 走 HTTP 可达。同步结果以脚本实测输出为准并如实披露 |
+| 5 远端同步 | ✅ 环境可达 | 第一次探测时 `git ls-remote` 对 `gitee` / `github` / `gitcode` 三个 SSH 远端全部 exit 124（超时），一度被记成"环境受限"。**复查后确认那是本机 ssh-agent socket 已死导致的挂起**（#5380 同一个坑），加上 `-o IdentityAgent=none` 后三个远端全部成功：`gitee` 102 个分支 / `github` 26 个 / `gitcode` 498 个。`5remotes_sync.sh` 本身已经强制 `IdentityAgent=none`（脚本第 88–100 行的 `SSH_OPTS`），同步路径不受影响 |

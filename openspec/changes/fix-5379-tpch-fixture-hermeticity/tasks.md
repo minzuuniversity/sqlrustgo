@@ -172,6 +172,17 @@
 - [x] **5.3j** 新立 **#5408**（`timeout … | tee` 使 CI step 没有上界）/
       **#5409**（引擎不校验 INSERT 列名列表，未知列名静默写 NULL 行）/
       **#5410**（`harness_validation_test` 的 Q11 分支永远不可达）
+- [x] **5.3k** 变异门禁的 `mktemp` 可移植性修复（CI run 8081 的 `mutation` job 16475 实锤：
+      `mktemp -t x.XXXXXX.py` 在 runner 镜像上失败 → 空路径 → **三个变异片段从未生成** →
+      三个变异从未被应用 ⇒ `ERRORS=3` / exit 2 / job 必红）
+      → 抽出 `make_temp_file()`：裸 `mktemp`（仓库内 20+ 处既有用法）+ **拿不到路径就
+      大声失败**，6 处调用点全部替换；用法说明里那个**从未被解析**的 `--keep-fixture`
+      一并更正
+- [x] **5.3l** 桩测试的**如实更正**（Lesson-22）：上一版「exit 0/1/2 三条路径全部实测」
+      中 **exit 2 是夸大的**（桩 `timeout` 实际从未安装成功 ⇒ 超时路径从未触发）；
+      复核顺带查出桩自身两个坑（`cp` 写穿软链打到系统 `/usr/bin/mktemp`；
+      本机 `rm` 是会挂起的可恢复删除 shim）→ 桩改为装在独立目录 + 前置 `PATH` +
+      每例先断言桩生效 + harness 零删除，**四个场景在同一轮**实测通过
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---
