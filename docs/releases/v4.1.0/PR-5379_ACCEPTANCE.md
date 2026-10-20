@@ -367,6 +367,15 @@ import 删除 + 变量重命名（无行为变化）。
 | **8 维聚合门禁** `check_full_gate_verification.sh` | **不可采信**：`:69` 的 `output=$(bash "$script" 2>&1 \|\| true)` 把退出码吞成 0 ⇒ 8 维恒绿（#5417）；`:91` 把 `--skip-a5` 拼进脚本路径 ⇒ 该分支恒为 "Script not found"。本 PR 改为**逐维度单独执行**取真实退出码 | 归属（#5417） |
 | **GA 清单项「G1–G16 PASS」** | **本 PR 不勾选**：模板 `AGENT_PROMPT_TEMPLATE.md:35`「不得自批 Gate」；且治理自身已判定该说法夸大（ADR-007:202 评为 🔴 NO (overstated)；`META_GATE_AUDIT_2026-06.md:245` 写明 16 个里只有 6 个有真实脚本）。本迭代交付的是**取证与立案** | 不勾选（证据 §7.25.9） |
 | **GA 阶段的权威清单**（`STAGE_CONFIG.yaml` 的 `GA.required_gates`，20 项） | 本 PR 未改动，但**逐项实跑过**：14 项可在本机判定 → **11 PASS / 2 DRIFT（基线既有）/ 1 恒绿不可采信（#5417）**；3 项（#5 anti-fabrication / #14 coverage 全量 / #15 sql-corpus）因本机资源约束未跑，交 CI 承接。`ga` 模式实测还揭出 3 个披露缺陷（D1/D2 未执行却报 "All dimensions validated"、**汇总行省略 D6**、`--help` 与 dispatch 不一致） | 取证 + 归属（证据 §7.25.7） |
+| **GA 阶段的发布产物**（`STAGE_CONFIG.yaml` 的 `GA.required_files` 5 项 + `doc_artifacts` 6 项） | **v4.1.0 缺 4/5 + 2/6**（`GA_GATE_REPORT.md` / `GA_RELEASE_TIMELINE.md` / `EVIDENCE_STATUS.md` / `POST_GA_PLAN.md` 都没有）；`check_evidence_binding.sh` 只扫**已存在**的 `.md`（`:479-501`）⇒ **缺口对门禁不可见** | 取证 + 归属（证据 §7.28(c)，#5439） |
+| **GA 的分支形态**（`GA.branch_pattern` = `main` / `release/v*` / `hotfix/v*`） | 实际发布线是 `develop/v4.1.0`（**不在列表内**）；`release/v4.1.0` 不存在；`main` 停在 2026-09-30 ⇒ **GA 在定义上无法被合法触发** | 取证 + 归属（证据 §7.28(d)，#5436） |
+| **GA 清单的判据唯一性** | 同一个仓库对「GA 有多少门禁」给出 **20 / 16 / 9 / 6** 四个答案、对「G1~G6 是什么」给出 **3 套互斥语义**；`STAGE_CONFIG.yaml` 自己的 G→脚本映射也错位（G7→聚合器 / G8→漂移 / G9→跨版本债 / G10→反捏造） | 取证 + 归属（证据 §7.28(b)，#5437 / #5438） |
+| **GA 清单的执行点** | `STAGE_CONFIG.yaml` 自称 SSOT，但其唯一执行器 `scripts/gate/check_stage.sh` **从不被任何 CI job 调用**（工作流里出现的两处都是注释）⇒ 20 项里 CI 只触及 **6** 个 shell 门禁，**10 个「只存在于脚本里」** | 取证 + 归属（证据 §7.28(b)(iii)，#5440） |
+| **GA 证据的落盘位置** | `.gitignore:135` 的 `docs/releases/*/logs/` 正好把 `GATE_CONDITIONS.md:186-195` 要求的 GA 门禁日志目录排除出版本控制 ⇒ **GA 证据链在设计上就无法入库** | 取证 + 归属（证据 §7.28(d)，#5441） |
+| **CI 对 GA 结论的判读** | ① RC/GA 步骤**无 pipefail**（恒绿）+ 兜底 grep 用 `❌`(U+274C) 而脚本输出 `✗`(U+2717) ⇒ **D3 硬失败可让 postcheck 全绿**（实测同一份 GA 日志：`grep -c '❌ FAIL'`=0，`grep -c '✗ FAIL'`=3）② `ci.yml:455` 调的是**废弃桩** `check_coverage.sh`(exit 2)，失败被三重吞掉 ③ `gate.yml` 的 `evidence-graph-gate` 把 `PASS` **写进**证据图再从图里读出 `PASS` | 取证 + 归属（证据 §7.28(e)，#5443 / #5444 / #5447） |
+| **`postcheck` 的版本参数** | 版本探测只认 `v3.7.0`/`v3.8.0`（`ci.yml:442-446`），而 `fetch-depth: 1` + Gitea 上没有这两个分支 ⇒ **在 v4.x 上恒检 `v3.7.0`**；另有 4 步硬编码 `v3.8.0` | 取证 + 归属（证据 §7.28(e)，#5446） |
+| **CI 的基础设施层** | act_runner **每个 job 都从 GitHub 重新 clone** `actions/checkout` ⇒ GitHub 出口间歇性不可达时，job 在跑任何项目代码之前就判 `failure` ⇒ **CI 的红不区分「代码红」与「基础设施红」**（run 8153 的 `test`/`mutation` 即死于此） | 取证 + 归属（证据 §7.27，#5448） |
+| **「446 个测试目标」这个数字** | 另有 15 个顶层 `tests/*.rs` 被 Cargo 自动发现执行但未声明；**4 个文件共 22 个 `#[test]`（含 `SIGN()` 的 4 个）从未被任何 CI 周期执行过**，`check_test_target_execution.sh` 的口径只覆盖已声明目标 ⇒ 看不见它们 | 取证 + 归属（证据 §7.28(f)，#5449） |
 | **GA 的三项附加门禁**（Perf Regression / Release Evidence / Security） | Security：**本机 exit 0**（SC-1~SC-4 全过，基线一致）但 **CI 从不执行**（`ci.yml:308` 只匹配 v3.12.0 分支 ⇒ #5424）；Perf Regression：**部分 PASS**（4 个子门禁 exit 0；`check_g15_perf_report.sh` 的子门禁链因**直接跑 `tpch_gate_test`** 被本机主动中止）；Release Evidence：两项 **FAIL 但均基线既有**（`check_release_binary` exit 1、`check_evidence_binding v3.7.0` 74 项违规，与基线逐字相同） | 取证 + 归属（证据 §7.25.8、#5424） |
 
 ---
@@ -410,6 +419,15 @@ import 删除 + 变量重命名（无行为变化）。
 | **postcheck 的 `check_evidence_binding.sh v3.7.0`** | ❌ exit 1（`FAIL=74`）——本 PR 未触碰 v3.7.0 文档 → **#5403** |
 | **postcheck 的 `auto_env_blocker.sh v3.8.0`** | ❌ exit 1（`set -euo pipefail` 下遇无 H1 的 .md 中止；副作用改写 56 个受控文件，已还原）→ **#5403** |
 | **postcheck 的 D8（经 D9 聚合）** | ❌ exit 2（DRIFT：`SEM-4` 87.64% IN_PROGRESS，2026-07-16 快照）→ **#5403** |
+| **run 8117 的 13 个失败目标**（SHA `2b06e601e3`，`test` job 16578） | 逐个归因完毕：**1 个是本 PR 引入**（wire harness staging 目录竞态 ⇒ RED→GREEN 已修）、**3 个是环境阻塞型**（`quick_query` / `tpch_compliance_test` / `tpch_full_test` ⇒ 已改 NOT-RUN 或自包含）、**9 个是引擎/测试/性能缺陷**（已分流 #5414 / #5415 / #5393 / #5398 / #5430~#5435）→ 证据 §7.26(a) |
+| **wire harness 的 staging 竞态（RED → GREEN）** | RED：`consecutive_stagings_must_not_share_a_directory` FAILED（两次 staging 返回同一目录）⇒ GREEN：`.tpch-wire-staging-{pid}-{seq}` + `StagedFixture` 的 `Drop` 清理 ⇒ `cargo test --test tpch_bug_regression_test common::tpch_wire_harness::tests::` → **9 passed / 0 failed** → 证据 §7.26(b) |
+| **3 处环境阻塞型测试的 NOT-RUN 改造** | `quick_query` → `28 passed / 0 failed` + `reason=prebuilt_data_unavailable`；`tpch_compliance_test` → `14 passed / 0 failed` + `reason=fixture_missing`；`tpch_full_test` → `40 passed / 0 failed`（**3 连跑稳定**）+ `reason=external_service_unavailable`。**改前改后的 `#[test]` 清单逐字一致** ⇒ 无断言覆盖损失 → 证据 §7.26(c) |
+| **本轮新暴露的真缺陷：`setup_tpch_tables` 的单表探针 + 并发不安全** | 假绿 → 真红 → 定位：探针只问 `lineitem` 一张表 ⇒ 半初始化 schema 永不修复；且多个用例**并行**调用 setup 各自 DELETE+INSERT ⇒ 主键冲突。修法：探针核对**全部 8 张表** + 建表脚本首尾加 **PostgreSQL advisory lock**（`pg_advisory_lock(5379001)`）⇒ **3 连跑 40 passed / 0 failed** → 证据 §7.26(e) |
+| **编译与 lint 的三处修复** | ① `tpch_fixture::resolve()` → `tpch_fixture::FixtureState::resolve()`（E0425，`resolve` 是**关联函数**不是自由函数）② `q16_notin_subquery_regression.rs:102` 的 `let…else` 改 `?`（本 PR 引入的 lint 债）③ `cargo fmt --all`（**159 处**差异，全部在本 PR 改动的 3 个文件；不改会让 CI 的 `lint-build` 红）→ 证据 §7.26(d) |
+| **最终 lint 口径** | `cargo clippy --all-features -- -D warnings` → **exit 0**；`cargo clippy --all-features --test <5 个改动目标> -- -D warnings` → **exit 0**；`cargo test --no-run --test <5 个改动目标>` → 5 个 Executable 全部产出；`cargo fmt --all -- --check` → **exit 0 / 0 差异** → 证据 §7.26(d) |
+| **CI 历史 50 个 run 的 job × 结论机器统计** | `test` **0 次 success**（8 failure / 16 cancelled / 1 skipped）｜`mutation` **0 次 success**（12 failure）｜`ga3-security-scan` **25/25 skipped**｜`postcheck` **0 次 success**（16 cancelled / 9 skipped）｜`lint-build` 21 success｜`test-soak-detach` 20 success｜`evidence-graph-gate` 20 success｜`legacy-gate` 13 success → 证据 §7.27(b) |
+| **run 8153 的 `test`/`mutation` 失败归因** | ❌ **不是代码红**：两个 job 都死在 `Checkout` 的 `git clone https://github.com/actions/checkout`（`unexpected EOF` / `dial tcp 20.205.243.166:443: i/o timeout`）⇒ **一行项目代码都没执行** ⇒ run 8153 的结论**不可用作任何证据**，446 目标计数与 MUT-1 杀伤力必须重取 → 证据 §7.27(a) |
+| **GA 发布流程审阅（4 个维度）** | 清单唯一性 / 可执行性 / CI 覆盖 / 发布产物 / 版本线与分支 / CI 判读，**四维差距清单 + 14 个新 issue（#5436–#5449）**；并经一个**只读 verifier 子代理独立盲审**交叉验证（一致项 8 组、盲审补充项 9 组已逐条自验后采纳）→ 证据 §7.28 |
 
 ---
 
@@ -457,10 +475,12 @@ import 删除 + 变量重命名（无行为变化）。
 ## 8. 验收清单
 
 - [x] AC-1 fixture 自包含
-- [ ] AC-2 目标执行完整性 —— 中间轮实测 **150/446**（296 个从未开始）；
-      门禁本身已就绪并能抓漏跑（改造前实测 `382 missing` → exit 1）；
-      降本后的新周期 **attempt 2 正在跑**（已确认 `int2_substance_parallel_test`
-      从「>50 min 未结束」降到 **0.96 s**），终态待验（证据 §7.19(d) / §7.20 / §7.21）
+- [ ] AC-2 目标执行完整性 —— 最新一轮（run 8117）实测 **390 个目标执行 / 446 个声明**
+      （CI 自报 `executed test targets: 461`，含 15 个 Cargo 自动发现的顶层目标；
+      见 #5449：**另有 4 个文件 22 个用例从未执行**）；
+      13 个失败目标**已逐个归因**（1 个本 PR 引入 / 3 个环境阻塞型 / 9 个引擎缺陷）→ 证据 §7.26(a)；
+      ⚠️ 本轮的两个新周期（run 8153 / 8154）**一个死在 Checkout、一个是 gate.yml**，
+      446 全量计数与 NOT-RUN 计数**仍待一个真跑完的周期**（证据 §7.27）
 - [x] AC-3 零断言 → 真断言
 - [x] AC-4 独立预言机（含本轮新增的 `tpch_q6_q19_oracle_test`：期望值从硬编码的化石改为预言机）
 - [ ] AC-5 变异测试实跑 —— **已取得第一次真实结论**（run 8115 / mutation 16571）：
@@ -478,9 +498,31 @@ import 删除 + 变量重命名（无行为变化）。
 - [x] AC-10 改动集不含引擎源码（相对基线 `d8365606d69c`，`crates/` 只有
       `crates/mysql-server/src/lib.rs` 的 8 行零语义 clippy 修复；
       第 5、第 6 处降本**只换装载路径、不改数据行数、不改断言语义**）
-- [ ] CI 绿灯 —— **`test` job 在全部 400 次历史 run 中零次成功**（#5407）；
-      本 PR 的 2 个失败均经基线对照证伪为非本 PR 引入（#5398 / #5411）
+- [ ] CI 绿灯 —— **`test` job 在 50 次历史 run 中零次成功**（8 failure / 16 cancelled / 1 skipped，#5407）；
+      本 PR 的失败均经基线对照证伪为非本 PR 引入（#5398 / #5411 / #5414 / #5415）；
+      ⚠️ **run 8153 的 `test`/`mutation` 失败是基础设施假红**（死在 `git clone actions/checkout`，
+      一行项目代码都没执行）⇒ **不可作为任何证据**，必须重取（证据 §7.27，#5448）
+- [x] **GA 发布流程审阅** —— 四维差距清单 + **14 个新 issue（#5436–#5449）**，
+      并经**独立 verifier 子代理盲审**交叉验证（一致 8 组 / 补充 9 组已逐条自验后采纳）→ 证据 §7.28
+- [x] **13 个失败目标逐个归因** → 证据 §7.26(a)
+- [x] **本 PR 引入的 staging 竞态 RED→GREEN** → 证据 §7.26(b)
+- [x] **3 处环境阻塞型测试改 NOT-RUN**（新增 2 个受控原因码）→ 证据 §7.26(c)
+- [x] **本轮新暴露的真缺陷**（`setup_tpch_tables` 单表探针 + 并发不安全）→ 证据 §7.26(e)
 - [ ] 合并 + 5 远端同步
+
+**本轮（证据 §7.26–§7.28）新增的、未打勾的项与原因**：
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| 446 目标的全量计数 + NOT-RUN 计数 | ⏳ **待一个真跑完的周期** | run 8117 跑到 390 个（13 个失败已归因）；run 8153 的 `test`/`mutation` **死在 Checkout**（基础设施假红，#5448）⇒ 不可用 |
+| **`mutation` job 在锚点修正后的杀伤力** | ⏳ **待验** | 已知唯一一次真跑完的周期是 run 8115（`CAUGHT=2 / SURVIVED=1`，MUT-1 存活）；锚点已改为**同时反转两条 HAVING 路径**（`c7ac66ee24`），**修正后的结果至今没有实测** |
+| **GA 门禁的全绿结论** | ❌ **不可声称** | 5 条各自独立的失真来源（清单不唯一 / 执行点不存在 / 判据恒绿 / CI 判读不可靠 / 证据链不成立）→ 证据 §7.28(h) |
+| **v4.1.0 的 GA 级证据** | ❌ **不存在** | 缺 4/5 份 `required_files` + 2/6 份 `doc_artifacts`；标准证据结构 0/11；且 `check_evidence_binding.sh` 抓不到（#5439） |
+| **GA 的合法分支形态** | ❌ **不存在** | `develop/v4.1.0` 不在 `branch_pattern` 内；`release/v4.1.0` 不存在；`main` 停在 2026-09-30（#5436） |
+| **GA 证据能否入库** | ❌ **不能** | `.gitignore:135` 排除了 GA 门禁日志目录（#5441） |
+| **`postcheck` 何时能真跑** | ❌ **在 v4.x 上跑不对版本** | 版本探测恒落到 `v3.7.0`；4 步硬编码 `v3.8.0`（#5446） |
+| **CI 的红绿是否可信** | ⚠️ **部分可信** | 基础设施红与代码红不可区分（#5448）；`✗`/`❌` 字符集不匹配让 D3 硬失败可绿过（#5443） |
+| **「446 个测试目标」这个数字** | ⚠️ **是分裂的** | 15 个自动发现未声明 + 4 个文件 22 个用例从未执行（#5449） |
 
 **本轮（证据 §7.19）新增的、未打勾的项与原因**：
 
@@ -500,3 +542,42 @@ import 删除 + 变量重命名（无行为变化）。
 | `eval_22_vs_sf01` 耗时下降 | ✅ **CI 实测 66.10s / 40 passed**（改造前 1419.49s ⇒ **21.5×**） | 同上 |
 | 7 个原 panic 目标在 CI 里不再 panic | ✅ **CI 实测 0 个 panic** | 改为 `TPCH-NOT-RUN`，由 CI 的 NOT-RUN 计数披露（本轮 NOT-RUN = 0） |
 | 5 远端同步 | ✅ 环境可达 | 第一次探测时 `git ls-remote` 对 `gitee` / `github` / `gitcode` 三个 SSH 远端全部 exit 124（超时），一度被记成"环境受限"。**复查后确认那是本机 ssh-agent socket 已死导致的挂起**（#5380 同一个坑），加上 `-o IdentityAgent=none` 后三个远端全部成功：`gitee` 102 个分支 / `github` 26 个 / `gitcode` 498 个。`5remotes_sync.sh` 本身已经强制 `IdentityAgent=none`（脚本第 88–100 行的 `SSH_OPTS`），同步路径不受影响 |
+
+---
+
+## 9. GA 发布流程审阅（本轮新增交付）
+
+> 本轮指令要求「按照 governance 规范，检查整个开发过程和 GA 发布的流程」。
+> 本节是该审阅的**结论摘要**；完整取证见证据文档 §7.28。
+
+### 9.1 审阅结论
+
+**当前仓库状态下，「GA 全绿」是一个不可声称的结论。** 至少 5 条各自独立地使它失真：
+
+| # | 失真来源 | 代表 issue |
+|---|---|---|
+| 1 | **清单不唯一** —— 「GA 有多少门禁」有 4 个答案、「G1~G6 是什么」有 3 套语义 | #5437 / #5438 |
+| 2 | **执行点不存在** —— SSOT 的唯一执行器从不被调用；20 项里 CI 只触及 6 个 | #5440 |
+| 3 | **被判据本身恒绿** —— 20 项里至少 4 项无论代码怎么写都会通过 | #5417 / #5419 / #5445 |
+| 4 | **CI 的判读不可靠** —— 失败可以被吞、被错配（字符集）、被自己写进去 | #5443 / #5444 / #5447 |
+| 5 | **证据链不成立** —— 产物缺失不可见、连 GA 日志都进不了版本控制 | #5439 / #5441 |
+
+### 9.2 本 PR 的立场
+
+- **不勾选任何 GA 门禁项**（模板 `AGENT_PROMPT_TEMPLATE.md:35`「不得自批 Gate」）。
+- 本 PR 交付的是 **GA 流程的取证与差距清单**，不是「GA 已通过」的结论。
+- 全部 14 条差距**分流为独立 issue**，本 PR 不改治理配置、不改工作流（AC-10）。
+
+### 9.3 审阅方法的可信度
+
+- 审阅覆盖 `STAGE_CONFIG.yaml`（20 项 `required_gates` / 5 项 `required_files` / 6 项 `doc_artifacts` /
+  `branch_pattern` / `merge_policy` / `exit_criteria`）、4 份发布流程文档、`scripts/gate/`（含 `legacy/`）、
+  2 个工作流、`docs/releases/v4.1.0|v4.0.0|v3.12.0/`、`git tag` / `git ls-remote`、Cargo.toml，
+  以及 **Gitea Actions API 的 50 个 run 的 job × 结论机器统计**。
+- **交叉验证**：另派一个**只读 verifier 子代理独立盲审**同一批文件与问题（不预先告知本会话结论）。
+  盲审的 9 组补充发现**全部经本会话逐条自验**（跑命令确认）后采纳；
+  其中包括一个**对本会话既有说法的更正**：`docs/governance/AGENT_PROMPT_TEMPLATE.md`
+  **在本分支上并不存在**（只存在于 `fix/4597-chaos-t8d-awk-portability` 分支的 commit `9fbb63bfbc`），
+  引用该模板的硬约束时必须注明这一点。
+
+---

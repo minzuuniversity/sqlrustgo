@@ -1092,6 +1092,109 @@ CI 判读一律用「同命令复跑 + 基线对照」甄别。
 
 ---
 
+## Lesson-28: 「失败」要分成三种：代码红、环境阻塞、**基础设施红**
+
+run 8153 的 `test` 与 `mutation` job 都是 `failure`，但它们**一行项目代码都没执行** ——
+两个 job 都死在 `Checkout` 步骤的 `git clone https://github.com/actions/checkout`
+（`unexpected EOF` / `dial tcp 20.205.243.166:443: i/o timeout`）。
+
+CI 的 job 结论只有三个取值：`success` / `failure` / `skipped`。
+**基础设施失败与代码失败都落在 `failure` 上，API 层面无法区分。**
+
+⇒ 后果是**误导归因**：一个正确的 commit 可能因为 GitHub 出口抖动而被当成代码回归去回滚。
+
+**判据**：拿到一个 `failure`，先看**它跑了几行项目代码**。
+日志里出现 `error: test failed` 或 `test result:` 才说明代码跑过了；
+只有 `🏁 Job failed` 而没有任何测试输出 = 基础设施失败。
+
+**可复用检查**：
+```bash
+# 从 job 日志里找 Checkout 阶段的网络错误
+grep -E "git clone 'https://github.com/actions/checkout'|unexpected EOF|i/o timeout" job.log
+```
+
+---
+
+## Lesson-29: 一个只 `println!` 的测试，报 "ok" 时不代表它执行过任何东西
+
+本轮把 `tpch_full_test` 的 5 个零断言查询测试改成
+「服务不可达 ⇒ NOT-RUN；可达但查询失败 ⇒ panic」之后，本地立刻**变红**：
+
+```
+PostgreSQL Q2 on a reachable server failed: ERROR: relation "part" does not exist
+```
+
+追下去是两层：
+
+1. `setup_tpch_tables()` 的存在性探针**只问 `lineitem` 一张表**，
+   命中就跳过整套建表 ⇒ **半初始化的 schema 永远不会被修复**；
+2. 多个 postgres 用例**并行**调用 setup，各自 `DELETE` + `INSERT` 同一批表 ⇒ 主键冲突。
+
+修法：探针核对**全部 8 张表**；建表脚本首尾加 **PostgreSQL advisory lock**
+（`pg_advisory_lock(5379001)` / `pg_advisory_unlock(5379001)`）⇒ 并行调用被数据库层串行化。
+
+**教训**：**假绿 → 真红**的转换本身就是成果 ——
+一个只打印结果的测试，它报告 "ok" 时可能**一个查询都没发出去**。
+把「环境阻塞 ⇒ NOT-RUN」与「能跑 ⇒ 报错就红」两条规则同时落下去，假绿才会消失。
+
+**判据**：把被测对象换成任何东西，这个测试还会 "ok" 吗？⇒ 会 ⇒ 它是假绿。
+
+---
+
+## Lesson-30: 「发布流程」也是代码 —— 门禁的判据同样要满足「改一处代码，结论会不会变」
+
+本轮把 Lesson-23（恒绿与恒红是同一种病）的判据**用到了发布链路本身**，立刻查出 5 类问题：
+
+- **清单不唯一**：「GA 有多少门禁」在同一个仓库里有 **20 / 16 / 9 / 6** 四个答案，
+  「G1~G6 是什么」有 **3 套互斥语义**；
+- **执行点不存在**：`STAGE_CONFIG.yaml` 自称 SSOT，但其唯一执行器
+  `scripts/gate/check_stage.sh` **从不被任何 CI job 调用**（工作流里出现的两处都是注释）；
+- **判据恒绿**：`check_architecture_freeze.sh:125` 与 `:130` **两个分支都是 `exit 0`**；
+- **CI 判读不可靠**：RC/GA 步骤无 pipefail（恒绿），而兜底 grep 用 `❌`(U+274C)、
+  门禁实际输出 `✗`(U+2717) ⇒ **一次 D3 硬失败可以让 postcheck 全绿**；
+- **证据链不成立**：`check_evidence_binding.sh` 只扫**已存在**的文件 ⇒
+  **缺失的 GA 产物对门禁完全不可见**。
+
+**方法论**：审计发布流程时，对每一个「PASS」的来源问三句 ——
+① 它的判据在哪一行？② 改一处代码，结论会不会变？③ 它的结论能不能被独立复现？
+
+**可复用检查**：
+```bash
+# ① 权威清单到底有几项
+grep -A25 'GA:' docs/governance/STAGE_CONFIG.yaml | sed -n '/required_gates/,/optional_gates/p'
+# ② SSOT 的执行器有没有被调用
+grep -rn "check_stage.sh" .gitea/workflows/ | grep -v '^\s*#'
+# ③ 失败标记的字符集是否一致（脚本 vs CI 的 grep）
+grep -n 'FAIL' scripts/gate/check_rc_ga_gate.sh | head -3
+grep -n "grep -c '❌ FAIL" .gitea/workflows/ci.yml
+```
+
+---
+
+## Lesson-31: 独立的盲审要**自己复核**它的每一条结论
+
+本轮派了一个**只读 verifier 子代理**独立审阅 GA 发布流程（不预先告知本会话的结论）。
+它的 9 组补充发现**全部正确**，但其中一条**更正了本会话此前的说法**：
+
+> `docs/governance/AGENT_PROMPT_TEMPLATE.md` **在本分支上并不存在**。
+
+复核确认：该文件只存在于 commit `9fbb63bfbc`（在 `fix/4597-chaos-t8d-awk-portability` 分支上），
+**不是本分支的祖先**。
+
+⇒ 两条纪律：
+
+1. **盲审的结论要逐条自己跑一遍命令再采纳**（本轮 9 组补充发现全部经复核后才写进证据与 issue）；
+2. **引用治理文档的硬约束时，要确认那份文档在当前分支上存在** ——
+   否则「按第 35 行执行」这句话本身就没有可执行的落点。
+
+**可复用检查**：
+```bash
+git cat-file -e HEAD:docs/governance/AGENT_PROMPT_TEMPLATE.md && echo 存在 || echo 不存在
+git merge-base --is-ancestor <引入该文件的 commit> HEAD && echo 在本分支线上 || echo 不在
+```
+
+---
+
 ## 附：本轮形成的可复用检查
 
 | 工具 | 作用 | 复现命令 |

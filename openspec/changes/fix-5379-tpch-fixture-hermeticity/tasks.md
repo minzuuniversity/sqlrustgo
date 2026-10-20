@@ -284,6 +284,36 @@
         **#5426**（P14/P16 两个"防吞退出码"的自检门禁只匹配 `cargo ... || true` ⇒ 漏检 #5417）
       ⇒ 连同 #5416–#5423，本迭代共立 **11 个门禁自身失效点**
       （6 恒绿 + 2 恒红 + 1 随机红 + 1 恒跳过 + 1 判据不定）
+- [x] **5.3v** **CI 暴露的 13 个失败目标逐个归因 → 本轮整改闭环**（证据 §7.26）：
+      - 归因表：**1 个是本 PR 引入**（wire harness staging 目录竞态 ⇒ RED 测试 `consecutive_stagings_must_not_share_a_directory`
+        实测 FAILED ⇒ 改 `.tpch-wire-staging-{pid}-{seq}` + `StagedFixture` 的 `Drop` 清理 ⇒ **9 passed / 0 failed**）、
+        **3 个是环境阻塞型**（`quick_query` / `tpch_compliance_test` / `tpch_full_test`）、
+        **9 个是引擎/测试/性能缺陷**（已分流 #5414 / #5415 / #5393 / #5398 / #5430–#5435）
+      - 3 处环境阻塞型测试改 **NOT-RUN**（新增受控原因码 `EXTERNAL_SERVICE_UNAVAILABLE` /
+        `PREBUILT_DATA_UNAVAILABLE`）；`tpch_compliance_test` **重写为自包含**
+        （1131 → 965 行，删死代码，改用独立 `SqliteOracle` 做引擎 vs 预言机比对，
+        **改前改后的 `#[test]` 清单逐字一致 ⇒ 无断言覆盖损失**）
+      - 本轮**新暴露**的真缺陷：`setup_tpch_tables` 的**单表探针**（半初始化 schema 永不修复）
+        + **并发不安全**（并行 DELETE+INSERT ⇒ 主键冲突）⇒ 探针改为核对全部 8 张表 +
+        **PostgreSQL advisory lock** 串行化 ⇒ **3 连跑 40 passed / 0 failed**
+      - 编译与 lint 三处修复：`tpch_fixture::resolve()` → `tpch_fixture::FixtureState::resolve()`（E0425）、
+        `q16_notin_subquery_regression.rs:102` 的 `let…else` 改 `?`、`cargo fmt --all`（**159 处**差异）
+      - 最终口径：`cargo clippy --all-features -- -D warnings` → exit 0；
+        5 个改动目标 `clippy --all-targets` 口径 → exit 0；`cargo fmt --all -- --check` → exit 0
+- [x] **5.3w** **run 8153 终态取证：CI 在跑任何项目代码之前就失败**（证据 §7.27）：
+      - `test`(16644) 与 `mutation`(16645) 都死在 `Checkout` 的 `git clone https://github.com/actions/checkout`
+        （`unexpected EOF` / `dial tcp 20.205.243.166:443: i/o timeout`）⇒ **run 8153 的结论不可用作任何证据**
+      - CI 历史 **50 个 run** 的 job × 结论机器统计：`test` **0 success**（8 fail / 16 cancel / 1 skip）、
+        `mutation` **0 success**（12 fail）、`ga3-security-scan` **25/25 skipped**、`postcheck` **0 success**
+      - ⇒ 446 目标计数与 MUT-1 杀伤力**必须再取一个周期**；**基础设施红与代码红不可区分** ⇒ 立 **#5448**
+- [x] **5.3x** **GA 发布流程审阅**（证据 §7.28，回应「按 governance 规范检查开发过程与 GA 发布流程」）：
+      - 四个维度：**清单唯一性/可执行性/CI 覆盖**、**发布产物**、**版本线与分支**、**CI 判读**
+      - 关键结论：**「GA 全绿」当前不可声称** —— 5 条各自独立的失真来源
+        （清单不唯一 / 执行点不存在 / 判据恒绿 / CI 判读不可靠 / 证据链不成立）
+      - 交叉验证：派**只读 verifier 子代理独立盲审**（不预先告知本会话结论），
+        其 9 组补充发现**全部经本会话逐条自验后采纳**；其中一条**更正了本会话此前的说法**
+        （`docs/governance/AGENT_PROMPT_TEMPLATE.md` **在本分支上并不存在**）
+      - ⇒ 新立 **14 个 issue（#5436–#5449）**，本 PR 不改治理配置与工作流（AC-10）
 - [ ] **5.4** CI 全绿后合并；记录 merge commit
 
 ---
@@ -300,6 +330,14 @@
       / #5393（wire 路径 Q9/Q18 资源耗尽 + Q19 解析失败）/ #5394（LEFT JOIN 的 ON 条件过滤丢弃左表行）
 - [x] **6.5c** PR 文档补齐第 5 类：`PR-5379_ACCEPTANCE.md`（含 Gate Integration Declaration、
       Test Command Output、Evidence 清单、合并检查、风险评估）
+- [x] **6.5d** 新立 issue（GA 流程与 CI 取证面，**14 个**）：#5436（GA `branch_pattern` 不含 `develop/*`）
+      / #5437（GA 门禁 4 个项数 + 3 套语义）/ #5438（G→脚本映射错位）/ #5439（v4.1.0 缺 GA 产物）
+      / #5440（`check_stage.sh` 从不被调用）/ #5441（GA 日志被 gitignore）/ #5442（Cargo 版本失联）
+      / #5443（`✗` vs `❌` 字符集不匹配）/ #5444（废弃的 coverage 桩）/ #5445（2 个恒绿门禁）
+      / #5446（postcheck 版本探测）/ #5447（gate.yml 占位 PASS）/ #5448（checkout 基础设施假红）
+      / #5449（22 个用例从未执行）
+- [x] **6.5e** Lessons 28–31：失败的三种分类（代码红 / 环境阻塞 / 基础设施红）、
+      零断言测试的假绿、发布流程也是代码、盲审结论要自己复核
 - [ ] **6.6** 5 远端同步 `bash scripts/sync/5remotes_sync.sh develop/v4.1.0`
 - [ ] **6.7** 清理：删除已合并的远端/本地分支与 worktree（先 `git merge-base --is-ancestor` 核实）
 
