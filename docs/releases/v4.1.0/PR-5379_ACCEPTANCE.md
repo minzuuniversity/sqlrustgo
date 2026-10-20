@@ -312,6 +312,7 @@ import 删除 + 变量重命名（无行为变化）。
 | `check_stage.sh` | **不覆盖 TPC-H**：实测零 TPC-H 引用，STAGE_CONFIG 的 `required_gates` 也没有 G1。原注释声称它是 SF=1 的兜底，**该声明不成立，已更正** | 澄清 |
 | 规模层（SF=1） | 本 PR **不接入**，见 #5387 | 递延 |
 | CI 时间预算 | fixture 到位后 `test` job 从「几分钟」变成「以小时计」（实测 `_q15_q16_check` > 23 min）→ 变异门禁拆独立 job + `test` job 上限 7200 → 9000 s；降本手段（批量装载）见 **#5399** | 调整 |
+| `postcheck` job（发布门禁聚合 + 6 个硬阻塞 meta-gate） | **本 PR 未改动**。但实测发现它在 **600 次历史 CI run 中从未成功执行过一次**（190 次 `skipped`、0 次 `success`）——本 PR 修好基线 clippy 红之后它才第一次会真跑，届时暴露出 2 个**基线既有**红灯门禁。本 PR **不弱化门禁**去消掉红灯，改为归属 + 立项 + 披露 | 归属（#5400 / #5401 / #5402） |
 
 ---
 
@@ -320,13 +321,18 @@ import 删除 + 变量重命名（无行为变化）。
 | 命令 | 结果 |
 |---|---|
 | `cargo fmt --all -- --check` | ✅ 0 处差异 |
-| `cargo build --test oracle_g15_tpch_sf01 -j 4` | ✅ 编译通过 |
-| `cargo build --test <其余 12 个目标> -j 4` | ⏳ 待 worker 完成后填入 |
-| `cargo clippy --all-features -- -D warnings` | ⏳ 待 CI（注意 mysql-server 的 2 个基线既有警告） |
+| `cargo build --all-features` | ✅ CI `lint-build` job 绿（run 7917，job 16133） |
+| `cargo check --test tpch_sf01_22_vs_3engines --test tpch_sf01_22_vs_3engines_test -j 4` | ✅ 0 warning / 0 error（本 PR 新增的 2 个目标；修掉了 2 个属本 PR 的编译告警） |
+| `cargo clippy --all-features -j 4 -- -D warnings` | ✅ 0 warning / 0 error（本地）+ CI `lint-build` 绿 |
 | `cargo test --all-features --no-fail-fast` | ⏳ 待 CI（**本机不执行**：wire 路径峰值已实测到 817 MB，本机内存不足以承担全量） |
 | `bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --log /tmp/testjob.log` | ✅ exit 1（改造前日志，正确抓出 382 个漏跑） |
 | `bash scripts/gate/check_tpch_known_differences.sh` | ✅ PASS（1 条登记 / 上限 1） |
 | `bash scripts/gate/prepare_tpch_fixture.sh --out /tmp/tpch-fx3 --sf 0.01 --seed 42` | ✅ 5 类自检全绿，manifest 写出 |
+| `cargo test --test tpch_gate_test` | ✅ 21/21（含 4 个 wire 语句范围单元测试） |
+| `bash scripts/gate/mutate_tpch_oracle_tests.sh`（桩 `cargo` 机械逻辑） | ✅ exit 0 / exit 1 / exit 2 三条路径全部实测（见 AC-5） |
+| **postcheck 的 6 个硬阻塞 meta-gate**（P11–P16） | ✅ 全部 PASS（本地实测，见证据 §7.15(b)） |
+| **postcheck 的 `check_correctness_tests_production_storage.sh`** | ❌ FAIL（R2/R4）——**基线既有**，基线对照实测与本 PR 无关 → **#5400** |
+| **postcheck 的 `check_storage_db_scope_coverage.sh`** | ❌ FAIL（9 处）——**基线既有**，基线对照实测与本 PR 无关 → **#5401** |
 
 ---
 
@@ -352,7 +358,7 @@ import 删除 + 变量重命名（无行为变化）。
 |---|---|---|
 | 改动集不含 `src/` / `crates/` | ✅ | gitnexus detect-changes：42 文件全部测试层 |
 | 符号重命名未用 find-and-replace | ✅ | 本 PR 无重命名 |
-| 提交前逐行核对 `git diff` | ⏳ | 提交前执行 |
+| 提交前逐行核对 `git diff` | ✅ | 每个 commit 前逐行核对；终审 `git diff d8365606d69c` = 65 文件 |
 | 5 远端同步 | ⏳ | 合并后 `bash scripts/sync/5remotes_sync.sh develop/v4.1.0` |
 | 主工作区未被改动 | ✅ | 全程在 `wt-5379-tpch` worktree 操作 |
 

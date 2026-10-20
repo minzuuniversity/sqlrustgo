@@ -612,6 +612,68 @@ CI run 7804 的 `test` job 在编译 446 个测试目标时报出 **15 个告警
 
 ---
 
+## Lesson-17: 「门禁是红的」这句话，本身需要证据
+
+### Observation
+
+本 PR 修好基线 clippy 红之后，`postcheck` job 第一次有机会真实执行。
+合并前在本地预跑它的每一步，发现其中 2 个门禁是红的：
+
+- `check_correctness_tests_production_storage.sh`（R2 / R4）
+- `check_storage_db_scope_coverage.sh`（9 处 wrapper×方法 缺失覆盖）
+
+第一反应是「本 PR 弄坏的」。查证之后发现两者**与本 PR 无关**：
+
+1. 在基线 commit `d8365606d69c` 上建临时 worktree，跑同样两个脚本 ——
+   **输出逐字相同**（同样 R2/R4 失败、同样 9 条 FAIL）；
+2. 根因各自定位到具体 commit：
+   - R2/R4 grep 的是**旧构造器拼写**（`WalStorage::new_with_sync_mode_and_checkpoint`、
+     `FileStorage::new_with_wal`），被 `654e579032`（fix #5317）整体移除 →
+     **假阳性**：生产路径仍 file-backed、仍带 WAL，但门禁看不见了；
+   - db-scope 门禁自动派生 trait 里所有 `db: &str` 方法，#5192 关闭之后
+     trait 又新增了 `get_view` / `list_views` / `scan_via_bufferpool_in_db`
+     （`d8de15178b`、`a0875a7499`），包装层没跟上 → **门禁漂移**。
+
+再往上一层查，发现了更根本的事实：**`postcheck` job 在 600 次历史 CI run 中
+从未成功执行过一次**（190 次 `skipped`、7 次 `cancelled`、0 次 `success`）——
+它声明 `needs: [test]`，而 `test` 自 2026-10-14 起恒红，于是
+「一个红灯藏住了另一个红灯」。
+
+### Root Cause
+
+- **「门禁红」有两种完全不同的成因**：本 PR 引入的，和基线就有的。
+  两者在 CI 输出里长得一模一样（都是 `FAIL` + exit 1），**不查基线就无法区分**。
+- 而「不查基线」很容易做到 —— 直接改门禁让它变绿最快。
+  这正是本轮差点犯的错误。
+
+### Action
+
+1. **改动前先建立基线对照**：在基线 commit 上建临时 worktree，跑同一个脚本，
+   比对输出是否逐字相同。相同 → 与本次变更无关，走归属而不是修复。
+2. **归属到具体 commit**：`git log -S "<旧字面量>" -- <file>` 定位到引入漂移的那个
+   commit，红灯的成因才有名字（#5400 / #5401）。
+3. **登记而不吸收**：另立 issue（#5400 / #5401 / #5402），在证据文档与 PR 正文里
+   如实披露，并写明「门禁变红不是本 PR 的债，弱化门禁去消掉它才是」。
+4. **顺藤摸瓜查上游**：发现红灯不是本 PR 引入之后，追问「它为什么能存活这么久」，
+   查到 `postcheck` 从未执行过（#5402）—— 这才是真正值得修的东西。
+
+### Rule
+
+> **「门禁是红的」这句话，本身需要证据。** 判断一个红灯是否由本次变更引入，
+> 唯一站得住的方法是**在基线上跑同一个脚本，比对输出**；「大概不是吧」不是证据。
+>
+> 推论一：**永远不要为了让 CI 变绿而改门禁的判定口径**。门禁变红不是你的债，
+> 弱化门禁去消掉它才是新的债。
+>
+> 推论二：**一个从未执行过的门禁等于不存在**。统计 job 结论时要看
+> `skipped` / `cancelled` / `success` 的**全量分布**，而不是看最近一次是什么 ——
+> 「最近一次是 skipped」和「600 次里 0 次 success」是两个完全不同的结论。
+>
+> 推论三：**基线对照要留档**。临时 worktree 跑完就删，等于什么都没证明；
+> 必须把「同一个脚本、基线与分支、输出逐字相同」写进证据文档。
+
+---
+
 ## 附：本轮形成的可复用检查
 
 | 工具 | 作用 | 复现命令 |
@@ -621,8 +683,11 @@ CI run 7804 的 `test` job 在编译 446 个测试目标时报出 **15 个告警
 | `scripts/gate/check_tpch_known_differences.sh` | 已知差异必须有 issue + owner，且不得无声增长 | `bash scripts/gate/check_tpch_known_differences.sh` |
 | `scripts/gate/mutate_tpch_oracle_tests.sh` | 证明新断言能杀引擎缺陷 | `bash scripts/gate/mutate_tpch_oracle_tests.sh` |
 | 桩 `cargo` 机械逻辑实测 | 不加载 fixture 就验证门禁脚本的退出码与还原逻辑 | 见证据 §7.12（一次性假仓库 + 桩 `PATH`） |
+| 基线对照 worktree | 判断「门禁红」是否由本次变更引入 | `git worktree add --detach /tmp/wt-base <base-sha>` → 同一脚本跑基线与分支 → 比对输出是否逐字相同（见证据 §7.15） |
+| CI job 结论全量统计 | 区分「最近一次是什么」与「历史上成功过几次」 | 遍历全部 run 的 jobs，统计 `success` / `skipped` / `cancelled` 的分布（见证据 §7.15） |
 
-四个工具对**任何**"测试需要外部数据"的场景都适用，不限于 TPC-H。
+这六个工具对**任何**"测试需要外部数据"的场景都适用，不限于 TPC-H；
+其中后两个（基线对照 worktree、CI job 结论全量统计）对**任何**门禁归因都适用。
 
 ---
 
