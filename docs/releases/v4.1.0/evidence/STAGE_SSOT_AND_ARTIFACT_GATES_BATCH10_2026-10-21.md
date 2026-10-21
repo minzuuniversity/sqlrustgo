@@ -118,6 +118,42 @@ GA   （披露）: 5 齐 / 6 缺  GA_GATE_REPORT.md, GA_RELEASE_TIMELINE.md,
 - 一致性门禁：**6/6 规则**（C1–C6）逐条可判别
 - 产物门禁：完整集 PASS / 缺一件 FAIL 且点名
 
+### 6.1 证据链的**端到端实证**（不是设计说明，是实跑）
+
+在 commit `4d8c8deb10` 上**实跑**了驱动（取最轻的 DRAFT 阶段，
+因为它只要求 2 个产物 + 2 个门禁，其中 `cargo build --all-features`
+复用已热的 target 目录）：
+
+```
+$ bash scripts/gate/check_stage.sh --version v4.1.0 --stage DRAFT
+--- Required files & doc artifacts ---
+  [OK]  docs/releases/v4.1.0/VERSION_PLAN.md
+  [OK]  docs/releases/v4.1.0/ARCHITECTURE.md
+  [OK]  docs/releases/v4.1.0/VERSION_PLAN.md
+  [OK]  docs/releases/v4.1.0/ARCHITECTURE.md
+  [OK]  docs/releases/v4.1.0/ROADMAP.md
+--- Required gates (2) ---
+  [PASS] check_docs_links.sh
+  [PASS] cargo build --all-features
+--- Optional gates (1, informational) ---
+  [INFO] check_arch_invariants.sh (optional)
+==================================================================
+  Stage DRAFT (v4.1.0): 7 PASS, 0 FAIL
+  gate logs: docs/releases/v4.1.0/logs/gates/
+  run log:   docs/releases/v4.1.0/logs/gate_draft_4d8c8deb10_20261021_142051Z.log
+```
+
+产出的**决策记录随本 PR 入库**：
+
+```
+docs/releases/v4.1.0/logs/gate_draft_4d8c8deb10_20261021_142051Z.log   ← 入库
+docs/releases/v4.1.0/logs/gates/check_docs_links.sh.log                ← 不入库
+docs/releases/v4.1.0/logs/gates/cargo_build_--all-features.log          ← 不入库
+```
+
+`git status --untracked-files=all` 只列出第一个文件 —— **入库边界与设计一致**。
+在此之前，「GA 门禁跑过了没有」在仓库里**查不到**（#5441）。
+
 ---
 
 ## 7. 本批次**顺带抓出**的真实缺陷（不是本批次引入的）
