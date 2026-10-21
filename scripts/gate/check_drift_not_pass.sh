@@ -39,7 +39,7 @@ FINDINGS=()
 # ---------------------------------------------------------------------------
 # Check 1: gate scripts that accept exit 2 as success
 # ---------------------------------------------------------------------------
-echo "[1/4] Scanning for DRIFT-accepting patterns..."
+echo "[1/5] Scanning for DRIFT-accepting patterns..."
 
 # B fix: grep for DRIFT-handling in gate scripts, excluding P14 self (self-reference is by design)
 drift_pattern=$(grep -rnE '\[\s*"\$?(code|exit_code|status)"?\s*-eq\s*2\s*\]' \
@@ -65,10 +65,22 @@ fi
 # Check 2: `|| true` to swallow exit codes (V6)
 # ---------------------------------------------------------------------------
 echo
-echo "[2/4] Scanning for '|| true' patterns that swallow errors..."
+echo "[2/5] Scanning for '|| true' patterns that swallow errors..."
 
-swallow_pattern=$(grep -rnE 'cargo [a-z]+ [^|]+\|\|\s*true|>\s*/[^[:space:]]+\s*2>&1\s*\|\|\s*true' \
-    scripts/gate/ 2>/dev/null | head -20)
+# The scan strips trailing comments first, exactly like the P16 detector in
+# check_gate_test_integrity.sh (its V312-31 refinement). Without that, the
+# *documentation* of an anti-pattern — e.g. a comment quoting
+# `cargo test ... || true` — is reported as the anti-pattern itself, and
+# the baseline has to absorb the false positives instead of the real ones.
+swallow_pattern=$(find "$SCRIPT_DIR" -name '*.sh' -type f -print0 2>/dev/null \
+| while IFS= read -r -d '' f; do
+    sed 's/[[:space:]]*#.*$//' "$f" \
+    | grep -nE 'cargo [a-z]+ [^|]+\|\|\s*true|>\s*/[^[:space:]]+\s*2>&1\s*\|\|\s*true' \
+    | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*(step|pass|fail|warn|echo|printf)[[:space:]]' \
+    | while IFS= read -r hit; do
+        echo "$f:${hit%%:*}:$(echo "$hit" | cut -d: -f2-)"
+    done
+done | head -20)
 
 if [ -n "$swallow_pattern" ]; then
     echo "  Found $(echo "$swallow_pattern" | wc -l | tr -d ' ') sites using '|| true' or swallow patterns"
@@ -83,7 +95,7 @@ fi
 # Check 3: gate scripts that use `grep` on test output without verifying pattern
 # ---------------------------------------------------------------------------
 echo
-echo "[3/4] Scanning for grep-on-stdout without result validation..."
+echo "[3/5] Scanning for grep-on-stdout without result validation..."
 
 grep_pattern=$(grep -rnE 'cargo test[^|]+\|[^|]*grep' scripts/gate/ 2>/dev/null | head -10)
 
@@ -105,7 +117,7 @@ fi
 # Check 4: Verify run_gate() in check_full_gate_verification.sh specifically
 # ---------------------------------------------------------------------------
 echo
-echo "[4/4] Specific check: check_full_gate_verification.sh run_gate()"
+echo "[4/5] Specific check: check_full_gate_verification.sh run_gate()"
 
 full_gate_script="$SCRIPT_DIR/check_full_gate_verification.sh"
 if [ -f "$full_gate_script" ]; then
@@ -128,6 +140,63 @@ if [ -f "$full_gate_script" ]; then
     fi
 else
     echo "  ⚠️  INFO: $full_gate_script not found (D-gate may be inactive)"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 5 (#5426): a swallowed exit code that is then read
+# ---------------------------------------------------------------------------
+# Checks 2 and 4 only looked for `cargo ... || true`. They therefore
+# missed the #5417 shape:
+#
+#     output=$(bash "$script" 2>&1 || true)
+#     local code=$?
+#
+# `|| true` forces the command substitution to exit 0, so `$?` is
+# permanently 0 and the gate reports PASS for a failing sub-gate. The
+# same shape appeared twice more in check_rc_ga_gate.sh (B5 integration
+# gate, D4 WAL invariants).
+#
+# The general form is: a `|| true` whose exit status is read on the
+# next line. That is what this check detects. It is deliberately narrow
+# — a `|| true` that is NOT followed by an exit-status read is a
+# different (and usually benign) pattern, e.g. a log redirection whose
+# failure is irrelevant.
+echo ""
+echo "[5/5] Scanning for '|| true' whose exit status is read afterwards..."
+
+# The two detectors are excluded: their own source contains the pattern
+# they look for (self-reference is by design, same as Check 1).
+SWALLOW_READ=$(find "$SCRIPT_DIR" -name '*.sh' -type f \
+    ! -name 'check_drift_not_pass.sh' \
+    ! -name 'check_gate_test_integrity.sh' \
+    -print0 2>/dev/null \
+| while IFS= read -r -d '' f; do
+    awk -v file="$f" '
+        {
+            line = $0
+            sub(/^[ \t]+/, "", line)
+            # comment lines are documentation, not code
+            if (substr(line, 1, 1) == "#") { was_or_true = 0; next }
+            if (was_or_true && index(line, "$?") > 0) {
+                printf "%s:%d: `|| true` swallows the exit code, which is read on the next line\n", file, NR
+            }
+            was_or_true = (line ~ /\|\|[[:space:]]*true/)
+        }
+    ' "$f"
+done)
+
+SWALLOW_READ_COUNT=0
+if [ -n "$SWALLOW_READ" ]; then
+    while IFS= read -r site; do
+        [ -z "$site" ] && continue
+        FINDINGS+=("$site")
+        FAIL=$((FAIL+1))
+        SWALLOW_READ_COUNT=$((SWALLOW_READ_COUNT + 1))
+        echo "    ❌ $site"
+    done <<< "$SWALLOW_READ"
+    echo "  ❌ $SWALLOW_READ_COUNT site(s) where a swallowed exit code is read afterwards"
+else
+    echo "  ✅ PASS: no swallowed exit code is read afterwards"
 fi
 
 # ---------------------------------------------------------------------------
