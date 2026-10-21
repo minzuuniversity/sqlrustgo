@@ -7,6 +7,27 @@
 
 ---
 
+> ## ⚠️ 判据唯一性声明 (#5437)
+>
+> **一个判据只能有一个来源。** 阶段门禁的**权威判据**是
+> `docs/governance/STAGE_CONFIG.yaml` 的 `stages.<STAGE>.required_gates`
+> （脚本路径清单）。本文件的各阶段小节是**可读摘要**，不是第二份判据；
+> 两者不一致时以 SSOT 为准。
+>
+> **本文件的 ID 命名空间与 SSOT 的 G 编号无关。**
+> 本文件用 `A1~A5`(Alpha) / `B1~B5`(Beta) / `R1~R4`(RC) / `GA1~GA6`(GA)
+> 表示**本文件这一条轴**上的检查项；
+> SSOT 的 `G1~G16` 是**门禁关注点别名**（对应具体脚本）。
+> 两者曾经都叫「G1~G6」，语义两两不相交 —— 那正是 #5437 记录的现象：
+> 审阅者按不同文档去数门禁，会数出不同的项数与不同的语义。
+> 现在 GA 小节的编号已改为 `GA1~GA6`。
+>
+> 机器可判定版本见 `scripts/gate/check_stage_config_consistency.sh`：
+> 它检查 SSOT 自身是否自洽（G 编号是否名实相符、路径是否存在、
+> 产物条目是不是纯路径）。
+
+---
+
 ## 核心原则
 
 ### G1: 门禁检查必须可执行、可验证
@@ -158,26 +179,43 @@ Beta Gate 不仅检查基础设施（Build/Test/Clippy/Fmt），还必须追踪�
 
 ## GA Gate
 
+> **权威判据**：`docs/governance/STAGE_CONFIG.yaml` → `stages.GA.required_gates`
+> —— **20 项**（16 个门禁脚本 + 4 条 cargo 命令），由
+> `scripts/gate/check_stage.sh --stage GA` 逐项执行。
+> 下面两张表是这一清单的**可读摘要**，用于说明「GA 要证明什么」；
+> 它们**不是**另一份门禁清单，条目数与 SSOT 不必相同。
+> (#5437)
+
 ### 入口条件
 
 | ID | 检查项 | 方法 |
 |----|-------|------|
 | GE1 | RC Gate PASS | 检查 RC_GATE_REPORT.md |
-| GE2 | RC_GATE_REPORT.md 存在 | `ls docs/releases/v{VERSION}/RC_GATE_REPORT.md` |
-| GE3 | PERFORMANCE_REPORT.md 存在 | `ls docs/releases/v{VERSION}/PERFORMANCE_REPORT.md` |
-| GE4 | SECURITY_AUDIT.md 存在 | `ls docs/releases/v{VERSION}/SECURITY_AUDIT.md` |
+| GE2 | SSOT 判据的 GA 必需产物全部存在 | `bash scripts/gate/check_release_artifacts.sh --version v{VERSION} --stage GA` |
+| GE3 | 阶段配置自洽（G 编号名实相符、路径存在、产物条目为纯路径） | `bash scripts/gate/check_stage_config_consistency.sh` |
+| GE4 | GA 阶段门禁清单可被驱动完整解析 | `bash scripts/gate/check_stage.sh --version v{VERSION} --stage GA --dry-run` |
 | GE5 | 所有 RC 前置 Issue 已关闭 | Gitea API 查询 |
+
+> GE2 取代了旧版的「`ls PERFORMANCE_REPORT.md` / `ls SECURITY_AUDIT.md`」
+> 三条 `ls` 检查：那两个文件既不在 SSOT 的 GA `required_files` 里，
+> 也不在 `doc_artifacts` 里 —— 它们是一条**无判据来源**的清单。
+> 缺件判据现在只有一份：`STAGE_CONFIG.yaml`。
 
 ### PASS 标准
 
 | ID | Check | Method | Threshold |
 |----|-------|--------|-----------|
-| G1 | R1-R4 | 所有 RC 指标 | PASS |
-| G2 | Full test | `cargo test --workspace` | PASS |
-| G3 | Full coverage | L1 avg ≥ 85%, 每 crate ≥ 80% | PASS |
-| G4 | TPC-H SF=1 | `bash scripts/gate/check_tpch_sf1.sh --sf1-dir $SF1_DIR` (issue #3732, v3.10.0+) | 22/22 PASS |
-| G5 | Security | `cargo audit` + 手动审计 | PASS |
-| G6 | Documentation | API reference, CHANGELOG, UPGRADE_GUIDE | PASS |
+| GA1 | R1-R4 | 所有 RC 指标 | PASS |
+| GA2 | Full test | `cargo test --workspace` | PASS |
+| GA3 | Full coverage | L1 avg ≥ 85%, 每 crate ≥ 80% | PASS |
+| GA4 | TPC-H SF=1 | `bash scripts/gate/check_tpch_sf1.sh --sf1-dir $SF1_DIR` (issue #3732, v3.10.0+) | 22/22 PASS |
+| GA5 | Security | `cargo audit` + 手动审计 | PASS |
+| GA6 | Documentation | API reference, CHANGELOG, UPGRADE_GUIDE | PASS |
+
+> **编号变更说明（#5437）**：本表原用 `G1~G6`，与 SSOT 的 `G1~G16`
+> 门禁关注点别名**同名不同义** —— 同一个「G7」在两处指两件不同的事。
+> 现改为 `GA1~GA6`。**历史条目不改写**（改写会让证据描述一个从未存在过
+> 的状态）；本表是**当前**判据摘要，历史版本见 git 历史。
 
 ---
 
@@ -193,6 +231,24 @@ logs/gate_beta_<commit>_<timestamp>.log
 logs/gate_rc_<commit>_<timestamp>.log
 logs/gate_ga_<commit>_<timestamp>.log
 ```
+
+**入库要求（#5441）**：上面 4 类**运行决策记录**必须进入版本控制
+（`.gitignore` 已放行 `docs/releases/*/logs/gate_*.log`）——
+「GA 门禁跑过了没有、用的哪个 commit、日志内容是什么」必须能在仓库里
+查到，而不是只存在于某次会话的临时文件里。
+
+同一目录下的 `logs/gates/*.log` 是**每个门禁的原始 stdout 落盘**，
+每次运行都会重新生成、体积不受控，因此**不入库**。
+判据（要跑哪些门禁）与证据（这次跑的决策记录）现在说的是同一件事。
+
+执行入口：
+
+```bash
+bash scripts/gate/check_stage.sh --version v{VERSION} --stage GA
+```
+
+该命令按 SSOT 逐项执行 `stages.GA.required_gates`，并把本次运行写入
+`logs/gate_ga_<commit>_<timestamp>.log`。
 
 ### 脚本实现要求
 

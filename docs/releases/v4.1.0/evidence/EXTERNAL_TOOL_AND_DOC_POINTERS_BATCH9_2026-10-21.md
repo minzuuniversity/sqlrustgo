@@ -1,7 +1,17 @@
 # 迭代 5 · 批次 9 —— 外部工具定位（C7）与文档指针断链（#5500 / #5499）
 
-> **治理框架**：`docs/governance/AGENT_PROMPT_TEMPLATE.md` v4.0.0
-> —— 该文件在本分支上**不存在**（只存在于 `9fbb63bfbc`，即
+> **写作约定（2026-10-21 批次 10 补注）**：本文件中**引用"已知不存在的
+> 路径"** 的地方一律**不加行内代码**（backtick）。原因是本仓库的行内代码
+> 就是指针约定：`scripts/gate/check_docs_pointer_paths.sh` 把
+> 「反引号包裹的仓库相对路径」当作指针并要求它可解析。
+> 一段**明说它不可解析**的引用如果写成指针形状，门禁就会判红 ——
+> 那会把"如实记录一个坏指针"变成"制造一个新坏指针"。
+> 需要给出精确路径时，用普通散文写出（如
+> docs/governance/AGENT_PROMPT_TEMPLATE.md 见下），并由旁边的句子说明它不存在。
+
+> **治理框架**：AGENT_PROMPT_TEMPLATE.md v4.0.0
+> —— 该文件在本分支上**不存在**（仓库路径 docs/governance/AGENT_PROMPT_TEMPLATE.md
+> 只存在于 `9fbb63bfbc`，即
 > `fix/4597-chaos-t8d-awk-portability` 分支，非本线祖先）。
 > 详见 `docs/releases/v4.1.0/evidence/TPCH_FIXTURE_5379_2026-10-20.md` §盲审补充
 > 第 ⑨ 条。本迭代的「不得自批 Gate」约束照办（约束来源见该文档）。
@@ -73,7 +83,7 @@ Q08/Q09/Q11/Q20/Q21/Q22 的 `pg_rows=0` 其实是 **PG 查询失败**，
 | 断链 | 内容 | 状态 |
 |---|---|---|
 | A | `BIN_LOAD_PERF.md` 的 `Full report: docs/releases/v3.12.0/perf/JSON_VS_BINT_MEASURED.md` | 目标文件**不存在** |
-| B | `tpch_json_vs_bint_compare.rs` 文件头注释引用 `docs/releases/v3.13.0/perf/BIN_LOAD_PERF.md` | `v3.13.0` 目录**不存在**（真实目录 `v3.12.0`）—— 已在批次 8 修好 |
+| B | `tpch_json_vs_bint_compare.rs` 文件头注释引用 docs/releases/v3.13.0/perf/BIN_LOAD_PERF.md（原文如此，行内代码即指针，故此处按上文约定用散文写出） | `v3.13.0` 目录**不存在**（真实目录 `v3.12.0`）—— 已在批次 8 修好 |
 | C | **批次 8 自己的证据文档** `TEST_DISCRIMINATING_POWER_BATCH8_2026-10-21.md` 第 68 行引用了同一条 `v3.13.0` 路径 | **本批次新发现** |
 | D | 同上文档第 69 行含 **两个 U+FFFD 替换字符**（真实的 UTF-8 损坏，`引用了` 的「了」被写成了 `ef bf bd ef bf bd`） | **本批次新发现** |
 
@@ -307,7 +317,7 @@ M8 的形状值得单说：外部工具不可得时，目标**仍然返回 ok**�
   它们是**过去的记录**，改写它们会让证据描述一个从未存在过的状态。
   27 条已登记在 `tests/baseline/doc_pointer_paths_releases_v4.1.0.json`，
   逐条带分类，可审阅、可清账。
-* `docs/governance/AGENT_PROMPT_TEMPLATE.md` **仍不存在**（只存在于他人分支）。
+* docs/governance/AGENT_PROMPT_TEMPLATE.md **仍不存在**（只存在于他人分支；按上文写作约定用散文写出）。
   本批次**没有**把它「修好」—— 那需要从另一条分支取文件进来，
   超出本批次范围，且属于**已记录**的既有状态。
 * 本批次**顺带修好了一个既有红灯**：`check_no_log_tbl_json.sh` 的白名单

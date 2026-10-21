@@ -41,6 +41,15 @@ ALLOWLIST_PATTERNS=(
     # budget baseline). A gate that is red on the committed tree is a gate
     # nobody runs.
     "tests/baseline/.*\.json$"
+    # #5441: the per-run stage/GA gate decision record is the governance
+    # evidence chain — docs/governance/GATE_CONDITIONS.md "门禁执行要求 /
+    # 日志保存" requires it at
+    # `docs/releases/v{VERSION}/logs/gate_<stage>_<commit>_<timestamp>.log`,
+    # and `.gitignore` explicitly negates it (`!docs/releases/*/logs/gate_*.log`).
+    # This gate and `.gitignore` must agree about the same file; when they
+    # disagreed in batch 9 (baseline JSON), the gate was red on files that
+    # were already committed.
+    "docs/releases/.*/logs/gate_.*\.log$"
 )
 
 check_allowed() {
@@ -75,6 +84,7 @@ fi
 
 VIOLATIONS=0
 ALLOWED_JSON_COUNT=0
+ALLOWED_LOG_COUNT=0
 for file in $CHANGED_FILES; do
     # 检查文件大小 (超过 100MB)
     if [[ -f "$file" ]]; then
@@ -88,8 +98,12 @@ for file in $CHANGED_FILES; do
     # 检查文件类型
     case "$file" in
         *.log)
-            echo -e "${RED}✗ 禁止 .log 文件: $file${NC}"
-            VIOLATIONS=$((VIOLATIONS + 1))
+            if check_allowed "$file"; then
+                ALLOWED_LOG_COUNT=$((ALLOWED_LOG_COUNT + 1))
+            else
+                echo -e "${RED}✗ 禁止 .log 文件: $file${NC}"
+                VIOLATIONS=$((VIOLATIONS + 1))
+            fi
             ;;
         *.tbl)
             echo -e "${RED}✗ 禁止 .tbl 文件: $file${NC}"
@@ -110,6 +124,7 @@ echo ""
 echo "=== 检查结果 ==="
 echo "变更文件总数: $(echo "$CHANGED_FILES" | wc -l)"
 echo "允许的 .json 文件: $ALLOWED_JSON_COUNT"
+echo "允许的 .log 文件: $ALLOWED_LOG_COUNT"
 
 if [[ "$VIOLATIONS" -gt 0 ]]; then
     echo -e "${RED}✗ 发现 $VIOLATIONS 个违规文件${NC}"

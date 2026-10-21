@@ -105,7 +105,7 @@ stages:
       - "CHANGELOG.md"
       - "RELEASE_NOTES.md"
       - "STAGE.yaml"
-      - "FEATURE_MATRIX.md (draft)"
+      - "FEATURE_MATRIX.md"
     exit_criteria:
       - "All alpha-targeted issues closed (tracked in STAGE.yaml)"
       - "Coverage >= {COVERAGE_MIN_ALPHA}%"
@@ -146,7 +146,7 @@ stages:
       - "TEST_PLAN.md"
       - "FEATURE_CHECKLIST.md"
       - "STAGE.yaml"
-      - "FEATURE_MATRIX.md (frozen)"
+      - "FEATURE_MATRIX.md"
     exit_criteria:
       - "All feature items CLOSED or DEFERRED (in debt-registry.yaml)"
       - "Coverage >= {COVERAGE_MIN_BETA}%"
@@ -188,7 +188,7 @@ stages:
       approval: codeowner + governance + human-architect
       ci_required: [lint, build, test, full-gate, anti-fab]
     doc_artifacts:
-      - "RELEASE_NOTES.md (final)"
+      - "RELEASE_NOTES.md"
       - "RELEASE_GATE_CHECKLIST.md"
       - "PERFORMANCE_TARGETS.md"
       - "STAGE.yaml"
@@ -204,11 +204,20 @@ stages:
     description: "正式发布版本 (general availability, hotfix only)"
     branch_pattern: ["main", "release/v*", "hotfix/v*"]
     required_files:
-      - "docs/releases/v{VER}/STAGE.yaml (state=GA)"
-      - "docs/releases/v{VER}/RELEASE_NOTES.md (GA)"
+      # #5439: the state expectations used to be glued onto the path
+      # ("STAGE.yaml (state=GA)"), which made the entry **unresolvable**:
+      # 3 of the 5 GA required files were reported MISS although the files
+      # were sitting right there in the release directory. The expectation
+      # now lives in `required_file_expectations` and the path stays a path.
+      - "docs/releases/v{VER}/STAGE.yaml"
+      - "docs/releases/v{VER}/RELEASE_NOTES.md"
       - "docs/releases/v{VER}/GA_GATE_REPORT.md"
       - "docs/releases/v{VER}/GA_RELEASE_TIMELINE.md"
-      - "docs/releases/v{VER}/CHANGELOG.md (GA entry)"
+      - "docs/releases/v{VER}/CHANGELOG.md"
+    required_file_expectations:
+      "docs/releases/v{VER}/STAGE.yaml": "current_stage must be GA"
+      "docs/releases/v{VER}/RELEASE_NOTES.md": "must be the GA release notes"
+      "docs/releases/v{VER}/CHANGELOG.md": "must contain the GA entry"
     required_gates:
       - "scripts/gate/check_rc_ga_gate.sh ga"  # full mode
       - "scripts/gate/check_arch_invariants.sh"
@@ -231,18 +240,27 @@ stages:
       - "cargo fmt --check"
       - "cargo clippy --all-features -- -D warnings"
     optional_gates:
-      - "scripts/gate/check_soak_gate.sh"  # if available
-      - "scripts/gate/check_p13_soak.sh"    # if available
+      # #5439: both entries used to be dangling references — the scripts
+      # `check_soak_gate.sh` and `check_p13_soak.sh` do not exist in the
+      # repository. A gate list that names scripts which are not there is
+      # a promise nobody can keep. The real soak gates are listed instead;
+      # `check_p13_soak_test.sh` is the G7 gate (#5438).
+      - "scripts/gate/check_p13_soak_test.sh"
+      - "scripts/gate/check_chaos_soak.sh"
     merge_policy:
       reviewers: 3
       approval: codeowner + governance + human-architect + release-manager
       ci_required: [lint, build, test, full-gate, anti-fab, soak, stability]
     doc_artifacts:
-      - "RELEASE_NOTES.md (GA)"
+      # #5439: resolved **relative to the version's release directory**
+      # (rule R3 in scripts/gate/stage_config_common.sh). The state
+      # expectations used to be glued onto the names, which made them
+      # unresolvable.
+      - "RELEASE_NOTES.md"
       - "GA_GATE_REPORT.md"
       - "GA_RELEASE_TIMELINE.md"
-      - "STAGE.yaml (state=GA)"
-      - "EVIDENCE_STATUS.md (GA)"
+      - "STAGE.yaml"
+      - "EVIDENCE_STATUS.md"
       - "POST_GA_PLAN.md"
     exit_criteria:
       - "All 5 dimensions + stability gates PASS"
@@ -326,6 +344,31 @@ common_required_files:
 # section provides the G-numbering for governance traceability and ADR
 # cross-references.
 #
+# ⚠️ THE G NUMBER IS AN ALIAS, NOT THE CRITERION  (#5437)
+# ---------------------------------------------------------------
+# The authoritative GA criterion is the **`required_gates` script-path list**
+# of the GA stage block above. It is **one** list, in **one** file.
+# The G-numbers here exist for traceability and ADR cross-references only.
+#
+# Before #5437 the repository gave **four different counts** and **three
+# mutually exclusive G semantics** for "how many GA gates are there":
+#
+#   STAGE_CONFIG.yaml required_gates (GA)        = 20 items  (16 scripts + 4 cargo)
+#   STAGE_CONFIG.yaml's own "GA requires: G1-G16" = 16 items  ← contradicted the list above
+#   GATE_CONDITIONS.md's GA Gate section          =  6 items  (G1~G6, a different axis)
+#   CONVERGENCE_TRACKER.md's "G1-G16" table       = 16 items
+#
+# ⇒ Any GA conclusion phrased as "G1-G16 all PASS" was **unauditable**:
+#   a reviewer counting gates got a different number depending on which
+#   document they trusted.
+#
+# The rule now:
+#   * the GA criterion is `stages.GA.required_gates` — say so, and say it
+#     here so the file stops contradicting itself;
+#   * a G number must name a script that is **recognisable from the G's own
+#     name** (see scripts/gate/stage_config_common.sh, rule R4). That is
+#     what makes "G7 (24h Soak) -> the full-gate aggregator" detectable.
+#
 # Per-version: V390_TEST_PLAN.md (and siblings) provide version-specific
 # detail (work-effort, scenarios, perf targets). STAGE_CONFIG.yaml only
 # records the **name -> script** mapping, which is constant.
@@ -335,6 +378,14 @@ common_required_files:
 #   - V390_TEST_PLAN_SUPPLEMENT_PERF.md (G11-G15 detail)
 #   - V390_TEST_PLAN_ROUND2_REVIEW.md (G13/G16 rebalance)
 #   - GATE_CONDITIONS.md (Hard/Soft classification)
+#
+# #5438: G5/G7/G8/G9/G10 used to point at scripts that had nothing to do
+# with what the G number names (Soak -> the full-gate aggregator, Crash
+# Matrix -> the drift detector, Upgrade -> the cross-version debt ledger,
+# Audit Log -> the anti-fabrication check, Savepoint -> the architecture
+# semantic-debt gate). Each corrected mapping now points at a script that
+# declares its own G number in its header, so the mapping is checkable
+# rather than merely plausible.
 gate_definitions:
   G1:  # TPC-H 22/22 baseline (regression)
     name: "TPC-H 22/22 baseline (regression)"
@@ -344,12 +395,24 @@ gate_definitions:
     stage_min: ALPHA  # must pass from ALPHA onward
   G2:  # INT-2 ParallelExecutor integration
     name: "INT-2 ParallelExecutor integration"
-    script: "scripts/gate/check_int_debt.sh"
+    # #5438: was `check_int_debt.sh` — the cross-version INT **debt
+    # ledger**, which tracks whether INT-1~INT-4 carry a remediation
+    # plan. It is not the INT-2 integration gate. The INT-2 gate
+    # declares itself ("INT-2 (#3171) ParallelExecutor main-path G2
+    # gate").
+    script: "scripts/gate/check_int2_no_orphan.sh"
+    additional_scripts:
+      - "scripts/gate/check_int_debt.sh"
     type: e2e+perf
     stage_min: BETA
   G3:  # INT-3 Single Expression
     name: "INT-3 Single Expression (expr merge)"
-    script: "scripts/gate/check_int_debt.sh"
+    # #5438: was `check_int_debt.sh` (the debt ledger, not the gate).
+    # The INT-3 gate declares itself ("INT-3 (#3170) Single Expression
+    # Engine G3 gate").
+    script: "scripts/gate/check_int3_single_expr.sh"
+    additional_scripts:
+      - "scripts/gate/check_int_debt.sh"
     type: unit+regression
     stage_min: BETA
   G4:  # ARCH-3 VtuGuard main path
@@ -359,7 +422,10 @@ gate_definitions:
     stage_min: ALPHA  # per ADR-006a: VtuGuard must be enforced from ALPHA
   G5:  # SEM-1 Savepoint MVCC
     name: "SEM-1 Savepoint MVCC snapshot restore"
-    script: "scripts/gate/check_arch_sem_debt.sh"
+    # #5438: was `check_arch_sem_debt.sh` — the architecture semantic-debt
+    # gate, not the savepoint gate. The savepoint gate declares itself
+    # ("SEM-1 (#3172) Savepoint G5 gate").
+    script: "scripts/gate/check_sem1_savepoint.sh"
     type: unit+e2e
     stage_min: BETA
   G6:  # Backup/Restore 100+ scenarios
@@ -369,23 +435,39 @@ gate_definitions:
     stage_min: BETA
   G7:  # 24h Soak (compressed-time)
     name: "24h Soak (compressed-time, real 24h pending)"
-    script: "scripts/gate/check_full_gate_verification.sh"
+    # #5438: was `check_full_gate_verification.sh` — the full-gate
+    # AGGREGATOR, which validates that gates are wired, not that a soak
+    # ran. The soak gate declares itself ("P1-3 (#3175) Soak Test G7
+    # gate").
+    script: "scripts/gate/check_p13_soak_test.sh"
     type: long-running
     stage_min: RC
     note: "Per V390_TEST_PLAN_ROUND2_REVIEW: real 24h only at RC/GA, compressed-time for early stages"
   G8:  # Crash Matrix 100+ scenarios
     name: "Crash Matrix 100+ scenarios (kill -9 / OOM / disk full)"
-    script: "scripts/gate/check_drift_not_pass.sh"
+    # #5438: was `check_drift_not_pass.sh` — the drift detector, which has
+    # nothing to do with crash scenarios. The crash gate declares itself
+    # ("P1-2 (#3174) Crash Test Framework G8 gate").
+    script: "scripts/gate/check_p12_crash_test.sh"
     type: unit+mock
     stage_min: RC
   G9:  # Upgrade Test
     name: "Upgrade Test (v3.6/v3.7/v3.8 -> v3.9, 50+ paths)"
-    script: "scripts/gate/check_cross_version_debt.sh"
+    # #5438: was `check_cross_version_debt.sh` — the cross-version DEBT
+    # ledger, which is a bookkeeping check, not an upgrade run. The upgrade
+    # gate declares itself ("P1-4 (#3176) Upgrade Test G9 gate").
+    script: "scripts/gate/check_p14_upgrade_test.sh"
     type: automated
     stage_min: RC
   G10: # Audit Log + Time Travel
     name: "Audit Log + Time Travel (40+ tests)"
-    script: "scripts/gate/check_anti_fabrication.sh"
+    # #5438: was `check_anti_fabrication.sh` — the anti-fabrication check.
+    # G10 covers TWO concerns and therefore TWO gates; both declare
+    # themselves ("P2-1 (#3177) Audit Log G10 gate" / "P2-2 (#3178) Time
+    # Travel Query G10 gate").
+    script: "scripts/gate/check_p21_audit_log.sh"
+    additional_scripts:
+      - "scripts/gate/check_p22_time_travel.sh"
     type: unit+e2e
     stage_min: RC
   G11: # QPS/TPS Benchmark
@@ -420,11 +502,24 @@ gate_definitions:
     type: upgrade
     stage_min: GA
 
-# Per-stage required_gates (above) reference these G-numbers. Cross-reference:
+# The authoritative GA criterion is `stages.GA.required_gates` above —
+# **20 items** (16 gate scripts + 4 cargo commands) as of #5437.
+#
+# The G-numbers in `gate_definitions` below are **aliases** for
+# traceability and ADR cross-references. They are NOT a second, competing
+# list of GA gates, and "GA requires G1-G16" is **not** a valid restatement
+# of the criterion: G1~G16 name sixteen *concerns*, while the GA stage
+# requires sixteen *scripts* plus four cargo commands — the two sets are
+# related, but they are not the same set.
+#
+# Cross-reference:
 #   - ALPHA requires: G4 (VtuGuard)
 #   - BETA requires: G2, G3, G4, G5, G6
 #   - RC requires: G4-G16 (all except G13 if hardware-blocked)
-#   - GA requires: G1-G16 (full)
+#   - GA requires: the `required_gates` list of the GA stage block above
+#     (the scripts for G1~G16 plus the architecture/debt/coverage/corpus
+#     gates and the four cargo commands)
+#
 # (The actual required_gates in each stage block above uses script paths,
 # not G-numbers, because the framework reads the YAML, not the G-labels.)
 

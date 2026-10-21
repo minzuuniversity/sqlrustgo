@@ -646,6 +646,54 @@ jobs:
           chmod +x scripts/gate/check_docs_pointer_paths.sh
           bash scripts/gate/check_docs_pointer_paths.sh --selftest
           bash scripts/gate/check_docs_pointer_paths.sh --scope docs/releases/v4.1.0
+      # Issues #5437 / #5438: `docs/governance/STAGE_CONFIG.yaml` calls itself
+      # the single source of truth for the stage framework, but it contradicted
+      # itself — the same G number meant three different things in three files,
+      # and five G numbers pointed at scripts that had nothing to do with what
+      # the G number names (Soak -> the full-gate aggregator, Crash -> the
+      # drift detector, Upgrade -> the cross-version debt ledger, Audit Log ->
+      # the anti-fabrication check, Savepoint -> the architecture semantic-debt
+      # gate). "GA has N gates" was therefore unauditable: a reviewer counting
+      # gates got a different number depending on which document they trusted.
+      #
+      # This gate checks the SSOT against itself: every path it names exists,
+      # every G alias names a script that *declares that G number* and is
+      # recognisable from the G's own name, and every artifact entry is a
+      # path rather than a path with an annotation glued on. The gate's
+      # `--selftest` proves it can still tell a violation from a clean sample.
+      - name: Stage-config consistency gate (#5437, #5438)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_stage_config_consistency.sh
+          bash scripts/gate/check_stage_config_consistency.sh --selftest
+          bash scripts/gate/check_stage_config_consistency.sh
+      # Issue #5440: `scripts/gate/check_stage.sh` was the SSOT's only
+      # executor and **no CI job ever called it** — the stage framework was a
+      # declarative document with nobody consuming it. This step makes the SSOT
+      # executable in CI: the driver resolves the current stage's gate list
+      # and artifact list from `STAGE_CONFIG.yaml` and reports what it would
+      # run. `--dry-run` is used on purpose — the *full* stage gate is
+      # executed at promotion time, not on every push, because a gate list
+      # that must run on every commit is a gate list that is always red.
+      - name: Stage driver resolves the SSOT (#5440)
+        run: |
+          set -euo pipefail
+          bash scripts/gate/check_stage.sh --version v4.1.0 --dry-run
+      # Issue #5439: v4.1.0 was missing 4 of the 5 GA `required_files` and
+      # 4 of the 6 GA `doc_artifacts`, and **nothing noticed** — the
+      # evidence-binding gate only walks the `.md` files that exist, and
+      # `doc_artifacts` were never read by any code at all. This gate is the
+      # missing "required document list": it reads the same list the driver
+      # reads and fails when an artifact of the current stage is missing. It
+      # also *discloses* what the later stages still need, so "we are nowhere
+      # near GA" is a fact somebody can read instead of a fact that has to be
+      # re-derived by hand.
+      - name: Release-artifact presence gate (#5439)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_release_artifacts.sh
+          bash scripts/gate/check_release_artifacts.sh --selftest
+          bash scripts/gate/check_release_artifacts.sh --version v4.1.0
       # Issue #5193 option C: `planner`/`executor` are declared not to be on
       # the production execution path. This gate is what keeps that
       # declaration honest — it fails if one of them is referenced from a

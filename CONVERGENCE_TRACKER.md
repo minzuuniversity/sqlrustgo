@@ -333,6 +333,29 @@ Issue #3315 留 open，分类为 P3 / future-sprint。
 
 ## Sprint 8 完成 (2026-06-11, ALL GATES PASS @ 041d3e63)
 
+> ### ⚠️ 横幅：这张表是**历史记录**，不是当前的 GA 判据 (#5437)
+>
+> **下面这张 "G1-G16 GA Gates 全部 PASS" 表记录的是 2026-06-11、
+> commit `041d3e63` 那一刻发生过的事**（v3.9.0 时期的一次收敛）。
+> 它**保留原样**，因为改写历史条目会让证据描述一个从未存在过的状态。
+>
+> 但它**不能**被当作当前的 GA 判据，原因是：
+>
+> 1. **判据只有一份**：GA 阶段的权威判据是
+>    `docs/governance/STAGE_CONFIG.yaml` → `stages.GA.required_gates`
+>    （脚本路径清单）。"G1-G16 全部 PASS" **不是**该判据的有效改写 ——
+>    G1~G16 说的是 16 个**关注点**，GA 阶段要求的是 16 个**脚本**
+>    加 4 条 cargo 命令，两者是相关但不同的集合。
+> 2. **G 编号是别名**：SSOT 的 `G1~G16` 映射到具体脚本，且该映射必须
+>    **名实相符**（脚本自述的 G 编号 = 别名指向的 G 编号）。这一条在
+>    #5438 中被发现大面积错位（G7→聚合器、G8→漂移检测器、G9→跨版本债务、
+>    G10→反捏造），因此 "按编号执行" 曾长期跑的是**另一组检查**。
+> 3. **这张表里的 ✅ 是 2026-06-11 的 ✅**，不是今天的 ✅。
+>
+> 机器可判定的当前状态请看：
+> `bash scripts/gate/check_stage_config_consistency.sh`（SSOT 自洽）与
+> `bash scripts/gate/check_stage.sh --stage GA --dry-run`（GA 判据清单）。
+
 ### G1-G16 GA Gates 全部 PASS
 
 | Gate | Status | Detail |
