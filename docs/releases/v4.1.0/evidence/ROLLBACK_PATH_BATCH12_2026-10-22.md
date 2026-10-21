@@ -330,22 +330,57 @@ CI 的 clippy 门禁是
 | 目标 | 结果 |
 |---|---|
 | `crash_commit_fsync_b1` | **2 passed / 0 failed** |
-| `crash_wal_index_b1` | `index_update_crash_does_not_serve_dangling_rows` **FAILED**；另一用例在本机负载下**挂住**（等待一个始终没有到达的故障信号），已终止 |
+| `crash_wal_index_b1` | `index_update_crash_does_not_serve_dangling_rows` **FAILED** —— **基线既存红**，已用基线对照判定，见 §9 |
 
-⇒ `crash_wal_index_b1` 的红灯**必须与基线对照**才能判定归属；
-见 §9。
+⇒ `crash_wal_index_b1` 的红灯**已与基线对照**；判定见 §9。
 
 
 ---
 
-## 9. `crash_wal_index_b1` 红灯的归属判定
+## 9. `crash_wal_index_b1` 红灯的归属判定（基线对照已完成）
 
 该用例**不含任何 ROLLBACK**：它建库、建表、插行、建二级索引，
 在 `AfterIndexUpdate` 故障点被 `SIGKILL`，重启后比较
 「全表扫描的 SUM(id)」与「走索引的 SUM(id)」是否一致。
 
 本批次改的是**回滚路径**，与该用例的路径无交集；但**基线对照仍是唯一硬证据**，
-判定结果见 §8 表格下方的基线跑分。
+所以做了完整对照：还原基线源码 → 重建 server 二进制 → 跑 → 还原修复版 → 重建 → 再跑。
+
+| 案例 | server 二进制来自 | 结果 |
+|---|---|---|
+| **BASE** | `0dea6393c821`（本批次之前） | `index_update_crash_does_not_serve_dangling_rows` **FAILED**，`crash_wal_index_b1.rs:164:25`，**481.09s** |
+| **FIXED** | `42077e8e2e`（本批次修复后） | `index_update_crash_does_not_serve_dangling_rows` **FAILED**，`crash_wal_index_b1.rs:164:25`，**481.09s** |
+
+⇒ **逐字相同**（同一断言行、同一耗时）⇒ 该红灯是**基线既存红**，
+**不是本批次引入**。
+
+### 红灯的真实原因（不是崩溃恢复逻辑）
+
+失败信息不是「扫描与索引不一致」，而是**种子 SQL 本身就没跑成**：
+
+```
+seed sql: script failed: CREATE DATABASE d1; USE d1; CREATE TABLE t(...); ... CREATE INDEX idx_v ON t(v);
+stderr=--------------
+CREATE INDEX idx_v ON t(v)
+--------------
+
+ERROR 1146 (42000) at line 1: Table not found: t
+```
+
+⇒ `CREATE INDEX` 在**命名库**下找不到表 ⇒ **#5377**
+（`create_index` 没有 `_in_db` 变体：命名库的索引既建不了也查不到）的症状。
+
+⇒ 也就是说：**这个用例从来没走到它声称要验证的崩溃恢复断言**，
+它在准备阶段就死了。这与 #5376 记录的
+「崩溃测试 harness：SIGKILL 落在边界之后 —— 崩溃测试没有证明它声称证明的事」
+是同一族问题。
+
+> 附：该用例天然很慢（**481s**）。故障点 `reach()` 会**自旋 120 秒**
+> 等外部 SIGKILL（`crates/storage/src/fault_injection.rs`），
+> 加上重启与 60 秒启动超时，单用例 ≈ 8 分钟。
+> 对照脚本因此给看门狗 **900 秒** —— 第一版给 300 秒时，
+> 两个案例都被误判成「挂住」，差点把一个**可判定的对照**变成不可判定。
+> 记录在此，是因为「工具的边界设窄了」和「代码有 bug」会长得一模一样。
 
 ---
 
