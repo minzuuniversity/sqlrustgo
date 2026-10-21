@@ -141,7 +141,7 @@ develop/v3.9.0 比旧版更严格:
 ### 6.1 查看当前规则
 
 ```bash
-curl -s -u "hermes:TOKEN" \
+curl -s -u "<user>:<token>" \
   "http://192.168.0.250:3000/api/v1/repos/openclaw/sqlrustgo/branch_protections" \
   | python3 -m json.tool | grep -A 50 'develop/v3.9.0'
 ```
@@ -149,7 +149,7 @@ curl -s -u "hermes:TOKEN" \
 ### 6.2 更新规则
 
 ```bash
-curl -s -u "hermes:TOKEN" \
+curl -s -u "<user>:<token>" \
   -X PATCH \
   -H "Content-Type: application/json" \
   -d '{"required_approvals": 2, ...}' \
@@ -159,7 +159,7 @@ curl -s -u "hermes:TOKEN" \
 ### 6.3 删除规则(rollback)
 
 ```bash
-curl -s -u "hermes:TOKEN" \
+curl -s -u "<user>:<token>" \
   -X DELETE \
   "http://192.168.0.250:3000/api/v1/repos/openclaw/sqlrustgo/branch_protections/develop/v3.9.0"
 ```

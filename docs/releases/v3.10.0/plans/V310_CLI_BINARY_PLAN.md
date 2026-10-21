@@ -90,14 +90,14 @@ $ cargo build --all-features    # ✅ exit 0
 |------|-------------|--------|
 | P2-1 | Extract `MySqlTestClient` from `tests/common/mod.rs:422-812` → rename `MySqlClient` | 8h |
 | P2-2 | Publish `wire_err::Error` → `sqlrustgo_mysql_client::Error`, remove `EphemeralHandle` | 2h |
-| P2-3 | Add `Client::connect_url("mysql://user:pass@host:port/db")` URL parser | 3h |
+| P2-3 | Add `Client::connect_url("mysql://user:<password>@host:port/db")` URL parser | 3h |
 | P2-4 | Add async API via tokio wrapper | 3h |
 | P2-5 | Update `tests/common/mod.rs` to `pub use sqlrustgo_mysql_client::*` | 1h |
 
 **Acceptance**:
 - `Client::connect_at(("127.0.0.1", 3306), "tester", "tester")` returns connected client
 - `client.query_rows("SELECT 1+1 AS two")` returns `[["2"]]`
-- `Client::connect_url("mysql://tester:tester@127.0.0.1:3306/")` parses and connects
+- `Client::connect_url("mysql://tester:<password>@127.0.0.1:3306/")` parses and connects
 
 ---
 
