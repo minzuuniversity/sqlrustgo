@@ -116,8 +116,23 @@ fi
 # 曾经本脚本内嵌了明文的 Gitea 口令与 token。经实测这些凭据**仍然有效**
 # （见 #5381），即仓库读权限 == Gitea 写权限。
 # 现在一律从环境变量读取，缺失就明确报错退出——不静默回落到任何硬编码值。
+#
+# #5520: 环境的缺失并不等于「没有凭据」——本机的 git credential store 里
+# 就存着一套可用凭据。解析规则（来源优先级、失败语义、绝不进 URL）由
+# scripts/sync/gitea_credential_common.sh 统一定义，三个脚本共用一份实现。
 GITEA_USER="${GITEA_USER:-}"
 GITEA_TOKEN="${GITEA_TOKEN:-}"
+if [ ! -f "${REPO_ROOT}/scripts/sync/gitea_credential_common.sh" ]; then
+    echo "ERROR: missing ${REPO_ROOT}/scripts/sync/gitea_credential_common.sh" >&2
+    echo "       (the shared credential resolver — see #5520). Refusing to run" >&2
+    echo "       without it: a silently absent resolver would look like" >&2
+    echo "       'no credential available' and skip every Gitea host." >&2
+    exit 2
+fi
+source "${REPO_ROOT}/scripts/sync/gitea_credential_common.sh"
+
+# 凭据 store 里查哪个 host（252 才是存凭据的那台）。
+GITEA_CREDENTIAL_HOST="${GITEA_CREDENTIAL_HOST:-192.168.0.252:3000}"
 
 # ── 覆盖开关 ──────────────────────────────────────────────────────────────
 #
@@ -319,6 +334,69 @@ discover_gitea_target() {
     ' 2>/dev/null
 }
 
+# Move a commit into a Gitea container's object pool **without any HTTP
+# credential**: the objects travel as a git bundle piped over SSH.
+#
+#   $1 host          $2 ssh user      $3 container id
+#   $4 repo path     $5 target sha
+#   $6 the remote's current sha (the bundle's prerequisite)
+#   $7 temporary ref name to create inside the container
+#
+# gitea250 rejects the HTTP credential outright (401 on the API and on the
+# git handshake) while its SSH channel works, so this is the only way to get
+# the objects in there. The update-ref itself still happens over SSH, inside
+# the container, because the branch is protected.
+transfer_objects_over_ssh() {
+    local host="$1" ssh_user="$2" container_id="$3" repo_path="$4"
+    local sha="$5" base_sha="$6" tmp_ref="$7"
+    local bundle remote_bundle bundle_ref
+
+    bundle=$(mktemp "${TMPDIR:-/tmp}/5remotes-sync.XXXXXX.bundle") || return 1
+    remote_bundle="/tmp/5remotes-sync-$$.bundle"
+    # A fixed-per-run ref name. The bundle's HEAD has to be a REF NAME: with
+    # a bare sha `git bundle create` says "Refusing to create empty bundle"
+    # because it cannot name the bundle's head (measured, #5520). The
+    # receiving side then has to ask for that exact name.
+    bundle_ref="refs/heads/sync-transfer-head-$$"
+
+    # The remote's current sha is the bundle's prerequisite: it is by
+    # definition an object the remote already has, so the receiver applies
+    # a few-hundred-KB delta instead of the whole history (~33 MB).
+    git update-ref "$bundle_ref" "$sha" 2>/dev/null || return 1
+    if [ -n "$base_sha" ] && git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+        git bundle create "$bundle" "$bundle_ref" "^$base_sha" >/dev/null 2>&1 \
+            || git bundle create "$bundle" "$bundle_ref" >/dev/null 2>&1 \
+            || { git update-ref -d "$bundle_ref"; rm -f "$bundle"; return 1; }
+    else
+        git bundle create "$bundle" "$bundle_ref" >/dev/null 2>&1 \
+            || { git update-ref -d "$bundle_ref"; rm -f "$bundle"; return 1; }
+    fi
+    git update-ref -d "$bundle_ref"
+
+    if ! ssh "${SSH_OPTS[@]}" "$ssh_user@$host" \
+            "docker exec -i $container_id bash -c 'cat > $remote_bundle'" \
+            < "$bundle" >/dev/null 2>&1; then
+        rm -f "$bundle"
+        echo "    (bundle upload to $host failed)"
+        return 1
+    fi
+    rm -f "$bundle"
+
+    # `git fetch <bundle> <head-ref>` — naming the head ref is required:
+    # `git fetch <bundle>` alone looks for a HEAD the bundle does not have,
+    # and `git fetch <bundle> FETCH_HEAD` reads FETCH_HEAD as the name of
+    # a ref to fetch (both measured, #5520).
+    if ! ssh "${SSH_OPTS[@]}" "$ssh_user@$host" \
+            "docker exec $container_id bash -c 'cd $repo_path && \
+             git -c safe.directory=* fetch $remote_bundle $bundle_ref && \
+             git -c safe.directory=* update-ref refs/heads/$tmp_ref FETCH_HEAD && \
+             rm -f $remote_bundle'" >/dev/null 2>&1; then
+        echo "    (bundle fetch inside $host failed)"
+        return 1
+    fi
+    return 0
+}
+
 for entry in "${GITEA_HOST_LIST[@]}"; do
     IFS=':' read -r host ssh_user <<< "$entry"
     # BatchMode=yes: never fall back to an interactive password prompt.
@@ -351,19 +429,24 @@ for entry in "${GITEA_HOST_LIST[@]}"; do
 
     # The protected-branch path needs Gitea credentials. They used to be
     # hardcoded in this script; those values were live and are now tracked
-    # as a leak in #5381. They come from the environment and there is no
-    # silent fallback to a baked-in value.
-    if [ -z "${GITEA_USER}" ] || [ -z "${GITEA_TOKEN}" ]; then
-        echo "  [$host] ERROR: GITEA_USER / GITEA_TOKEN not set — cannot read or"
+    # as a leak in #5381. They come from the environment — with the local
+    # git credential store as a fallback (#5520) — and there is no silent
+    # fallback to a baked-in value.
+    if ! gitea_credential_resolve "${GITEA_CREDENTIAL_HOST}"; then
+        echo "  [$host] ERROR: no Gitea credential available — cannot read or"
         echo "         update a protected branch. Skipping."
         echo "         export GITEA_USER=<user> GITEA_TOKEN=<token>   # see #5381"
+        echo "         (or store one for ${GITEA_CREDENTIAL_HOST} in your git"
+        echo "          credential store — see #5520)"
         ALL_FAILED=1
         continue
     fi
     # Basic auth header, so the credential never travels inside a URL
     # (a URL leaks into the process table, .git/config and CI logs).
     # Basic encoding accepts either a token or a password as GITEA_TOKEN.
-    auth_header="Authorization: Basic $(printf '%s:%s' "${GITEA_USER}" "${GITEA_TOKEN}" | base64 | tr -d '\n')"
+    # The encoding itself lives in the shared helper — one implementation
+    # of "how do we turn a credential into a header" (C2 of the helper).
+    auth_header="$(gitea_credential_basic_header)"
 
     for branch in "${branches[@]}"; do
         case "$branch" in
@@ -374,31 +457,75 @@ for entry in "${GITEA_HOST_LIST[@]}"; do
         esac
         tmp_ref="tmp-sync-$$-$branch"
 
-        current=$(curl -sf --max-time 5 \
-            -H "$auth_header" \
-            "http://$host:3000/api/v1/repos/openclaw/sqlrustgo/git/refs/heads/$branch" 2>/dev/null \
-            | python3 -c "import json,sys;r=json.load(sys.stdin);print((r[0] if isinstance(r,list) else r).get('object',{}).get('sha',''))" 2>/dev/null)
+        # Read what the remote ACTUALLY holds.
+        #
+        # Two probes, because the two Gitea hosts differ: 252 accepts the
+        # credential, 250 **rejects** it (401 on the API) while the
+        # repository itself is anonymously readable. The anonymous probe is
+        # therefore a real fallback, not a guess.
+        #
+        # If BOTH probes fail we do not know what the remote holds. Treating
+        # that as "behind" is what made this tool report success while
+        # silently skipping the update (#5520) — so it is an error now.
+        probe_ref() {
+            local mode="$1"
+            local url="http://$host:3000/api/v1/repos/openclaw/sqlrustgo/git/refs/heads/$branch"
+            if [ "$mode" = "authenticated" ]; then
+                curl -sf --max-time 5 -H "$auth_header" "$url" 2>/dev/null
+            else
+                curl -sf --max-time 5 "$url" 2>/dev/null
+            fi | python3 -c "import json,sys;r=json.load(sys.stdin);print((r[0] if isinstance(r,list) else r).get('object',{}).get('sha',''))" 2>/dev/null
+        }
+        current=$(probe_ref authenticated)
+        probe_mode="authenticated"
+        if [ -z "$current" ]; then
+            current=$(probe_ref anonymous)
+            probe_mode="anonymous"
+        fi
+        if [ -z "$current" ]; then
+            echo "    ERROR: cannot read refs/heads/$branch from $host"
+            echo "           (the authenticated and the anonymous probe both failed)."
+            echo "           Refusing to treat 'unknown' as 'behind'."
+            ALL_FAILED=1
+            continue
+        fi
         if [ "$current" = "$sha" ]; then
-            echo "    $branch: already at $sha ✓"
+            echo "    $branch: already at $sha ✓ (probe: ${probe_mode})"
             continue
         fi
 
-        echo "    $branch: current=${current:0:12}, target=${sha:0:12}"
+        echo "    $branch: current=${current:0:12}, target=${sha:0:12} (probe: ${probe_mode})"
 
-        # Step 3a: push to a temporary ref so the commit objects land
-        # in the container's object pool. update-ref will not pull
-        # commits across HTTP.
+        # Step 3a: make the commit objects land in the container's object
+        # pool. `update-ref` will not pull commits across HTTP.
         #
-        # The credential travels in an http.extraheader rather than inside
-        # the URL: a credential in the URL gets echoed by git on failure and
-        # is the shape that ended up committed in this file before.
+        # Primary path: HTTP push to a temporary ref. The credential travels
+        # in an http.extraheader rather than inside the URL: a credential in
+        # the URL gets echoed by git on failure and is the shape that ended
+        # up committed in this file before.
+        #
+        # Fallback path: **gitea250 rejects the HTTP credential outright**
+        # (401 on both the API and the git handshake) while its SSH channel
+        # works fine — there the objects are carried by a git bundle over
+        # SSH instead, which needs no credential at all. Before #5520 the
+        # failure of this step ended in a bare `continue`, so the update-ref
+        # below never ran and 250 was never advanced.
         push_url="${GITEA_PUSH_URL:-http://${host}:3000/openclaw/sqlrustgo.git}"
-        if ! git -c "http.extraheader=$auth_header" \
+        if git -c "http.extraheader=$auth_header" \
              push --no-verify \
              "$push_url" \
-             "$sha:refs/heads/$tmp_ref" 2>&1 | tail -3; then
-            echo "    ERROR: temp-ref push to $host failed"
-            continue
+             "$sha:refs/heads/$tmp_ref" >/dev/null 2>&1; then
+            :
+        else
+            echo "    HTTP temp-ref push to $host failed — carrying the objects by a bundle over SSH instead"
+            if transfer_objects_over_ssh "$host" "$ssh_user" "$container_id" "$repo_path" \
+                                       "$sha" "$current" "$tmp_ref"; then
+                :
+            else
+                echo "    ERROR: could not move the objects to $host"
+                ALL_FAILED=1
+                continue
+            fi
         fi
 
         # Step 3b: SSH into the host and update-ref + delete temp ref
