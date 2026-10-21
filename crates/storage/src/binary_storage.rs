@@ -1145,6 +1145,22 @@ impl StorageEngine for BoxStorageEngine {
     ) -> SqlResult<()> {
         (**self).modify_column(table, column, new_def)
     }
+    /// #5471: forward `set_column_default` to the inner engine.
+    ///
+    /// Without this override the trait default runs and answers
+    /// "set_column_default not supported by this storage engine" -- the
+    /// DDL was impossible on every wrapped backend, and every
+    /// server-created storage is wrapped.
+    fn set_column_default(
+        &mut self,
+        table: &str,
+        column: &str,
+        default_value: Option<String>,
+    ) -> SqlResult<()> {
+                self.inner.set_column_default(table, column, default_value)
+
+    }
+
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
         (**self).create_trigger(info)
     }

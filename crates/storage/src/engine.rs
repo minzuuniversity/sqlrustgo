@@ -3971,11 +3971,29 @@ impl StorageEngine for MemoryStorage {
             .table_infos
             .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        // V313-followup-1 / Issue #4154: case-exact column match.
+        // #5472: the column match was **case-exact** (`c.name == column`),
+        // while all three sibling methods in this same impl match
+        // case-**insensitively**:
+        //
+        // | method | matching |
+        // |---|---|
+        // | `drop_column` | `c.name.to_lowercase() == column.to_lowercase()` |
+        // | `modify_column` | `c.name.to_lowercase() == column.to_lowercase()` |
+        // | `rename_column` | `c.name.to_lowercase() == old_name.to_lowercase()` |
+        // | `set_column_default` | `c.name == column` ← **the odd one out** |
+        //
+        // The stored name is not a stable function of what the user
+        // wrote: `create_table` keeps the column name as given, but
+        // `modify_column` and `rename_column` **lowercase** it. So after
+        // a single ALTER the column is stored as `b` while the DDL still
+        // says `B` — and SET/DROP DEFAULT was the only column-level DDL
+        // that could no longer find it.
+        //
+        // Fix: match case-insensitively, like the siblings.
         let col = info
             .columns
             .iter_mut()
-            .find(|c| c.name == column)
+            .find(|c| c.name.to_lowercase() == column.to_lowercase())
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         col.default_value = default_value;
         Ok(())
