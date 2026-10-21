@@ -73,7 +73,7 @@ use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManag
 use sqlrustgo_types::Value as SqlValue;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 /// Execution engine for SQL statements
@@ -150,6 +150,33 @@ pub struct ExecutionEngine<S: StorageEngine> {
     // V4.1.0 / Issue #4910 §3.1: convert from `usize` to `AtomicUsize` so the
     // `&self` SELECT path can read parallelism without the engine write lock.
     pub(crate) parallel_degree: AtomicUsize,
+    /// #5413: override for the minimum row count that engages the parallel
+    /// filter path. `0` (the default) means "use the production threshold".
+    ///
+    /// Why this exists: the production threshold is
+    /// [`PARALLEL_MIN_ROWS`](sqlrustgo_executor::parallel_executor::PARALLEL_MIN_ROWS)
+    /// = 2_000_000 rows, and with the CBO enabled (the default) the decision
+    /// does not even look at the scanned row count — it goes through
+    /// `UnifiedCostModel::should_parallelize`. So there was **no way** for a
+    /// test to make `execute_select` take the parallel path without
+    /// allocating a multi-million-row fixture.
+    ///
+    /// Without an injectable threshold, every "parallel path" test degenerates
+    /// into a test that runs the *sequential* path and asserts the same thing
+    /// either way — zero discriminating power (issue #5413).
+    ///
+    /// This knob is deliberately checked **before** the CBO branch, so it
+    /// controls the decision on both paths.
+    pub(crate) parallel_min_rows_override: AtomicUsize,
+    /// #5413: how many times the parallel filter path actually ran.
+    ///
+    /// A test cannot tell "the parallel path ran and produced the right
+    /// rows" from "the sequential path ran and produced the same rows" by
+    /// looking at the output alone — that is precisely why the old tests had
+    /// zero discriminating power. This counter is the observable that makes
+    /// the difference visible. Same pattern as the `DIAG_*` counters in
+    /// `src/engine_select.rs`.
+    pub(crate) parallel_filter_runs: AtomicU64,
     /// #4910 Phase 3: behind a lock so `execute_*` need not take
     /// `&mut self`. Reads (`execute_with_sql`, `stats`) dominate the
     /// access pattern, so a `RwLock` rather than a `Mutex`.
@@ -412,6 +439,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             session_null_order_first: None,
             checkpoint_manager: None,
             parallel_degree: AtomicUsize::new(parallel_degree),
+            parallel_min_rows_override: AtomicUsize::new(0),
+            parallel_filter_runs: AtomicU64::new(0),
             stmt_cache: parking_lot::RwLock::new(sqlrustgo_cache::PreparedStatementCache::new(100)),
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             views: parking_lot::RwLock::new(HashMap::new()),
@@ -585,6 +614,40 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub fn set_parallel_degree(&mut self, degree: usize) {
         self.parallel_degree.store(degree.max(1), Ordering::Relaxed);
     }
+
+    /// #5413: override the minimum row count that engages the parallel filter
+    /// path. `0` restores the production threshold.
+    ///
+    /// This exists so a test can make `execute_select` genuinely take the
+    /// parallel path without allocating the 2M-row fixture the production
+    /// threshold implies. It is **not** a production knob — nothing in the
+    /// server sets it.
+    pub fn set_parallel_min_rows_override(&mut self, min_rows: usize) {
+        self.parallel_min_rows_override
+            .store(min_rows, Ordering::Relaxed);
+    }
+
+    /// #5413: the effective parallel threshold — the override when one is set,
+    /// otherwise the production constant.
+    pub fn parallel_min_rows(&self) -> usize {
+        match self.parallel_min_rows_override.load(Ordering::Relaxed) {
+            0 => sqlrustgo_executor::parallel_executor::PARALLEL_MIN_ROWS,
+            n => n,
+        }
+    }
+
+    /// #5413: how many times the parallel filter path actually ran.
+    ///
+    /// A test asserting "the parallel path was engaged" needs an observable
+    /// for it — the result rows are identical either way.
+    pub fn parallel_filter_runs(&self) -> u64 {
+        self.parallel_filter_runs.load(Ordering::Relaxed)
+    }
+
+    /// #5413: reset the parallel-path counter (test helper).
+    pub fn reset_parallel_filter_runs(&mut self) {
+        self.parallel_filter_runs.store(0, Ordering::Relaxed);
+    }
     pub fn build_parallel_executor(
         &self,
     ) -> sqlrustgo_executor::parallel_executor::ParallelVolcanoExecutor {
@@ -621,6 +684,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         where_clause: Option<&Expression>,
         rows: usize,
     ) -> bool {
+        // #5413: an injected threshold short-circuits the whole decision.
+        //
+        // It has to be checked **here**, before the CBO branch: with the CBO
+        // enabled (the default) the scanned row count is not consulted at all
+        // — `UnifiedCostModel::should_parallelize` works off the cost model's
+        // *statistics* and the predicate's estimated selectivity. A knob that
+        // only affected the non-CBO branch would therefore be inert in the
+        // default configuration.
+        let override_rows = self.parallel_min_rows_override.load(Ordering::Relaxed);
+        if override_rows > 0 {
+            return rows >= override_rows;
+        }
         if !self.cbo_enabled.load(Ordering::Relaxed) {
             return rows >= sqlrustgo_executor::parallel_executor::PARALLEL_MIN_ROWS;
         }

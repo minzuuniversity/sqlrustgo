@@ -17,7 +17,7 @@ use sqlrustgo_storage::{
 use sqlrustgo_transaction::{IsolationLevel as TmIsolationLevel, TransactionManager};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 use std::sync::Arc;
 
 use crate::execution_engine::{ExecutionEngine, ExecutionStats, TxSession, TxStatus};
@@ -52,6 +52,9 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: AtomicUsize::new(1),
+            // #5413: 并行阈值的注入点与「并行路径真的跑了」的计数器。
+            parallel_min_rows_override: AtomicUsize::new(0),
+            parallel_filter_runs: AtomicU64::new(0),
             stmt_cache: parking_lot::RwLock::new(sqlrustgo_cache::PreparedStatementCache::new(100)),
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -109,6 +112,9 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: AtomicUsize::new(1),
+            // #5413: 并行阈值的注入点与「并行路径真的跑了」的计数器。
+            parallel_min_rows_override: AtomicUsize::new(0),
+            parallel_filter_runs: AtomicU64::new(0),
             stmt_cache: parking_lot::RwLock::new(sqlrustgo_cache::PreparedStatementCache::new(100)),
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -148,6 +154,9 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: AtomicUsize::new(1),
+            // #5413: 并行阈值的注入点与「并行路径真的跑了」的计数器。
+            parallel_min_rows_override: AtomicUsize::new(0),
+            parallel_filter_runs: AtomicU64::new(0),
             stmt_cache: parking_lot::RwLock::new(sqlrustgo_cache::PreparedStatementCache::new(100)),
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -198,6 +207,9 @@ impl ExecutionEngine<MemoryStorage> {
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             checkpoint_manager: None,
             parallel_degree: AtomicUsize::new(1),
+            // #5413: 并行阈值的注入点与「并行路径真的跑了」的计数器。
+            parallel_min_rows_override: AtomicUsize::new(0),
+            parallel_filter_runs: AtomicU64::new(0),
             stmt_cache: parking_lot::RwLock::new(sqlrustgo_cache::PreparedStatementCache::new(100)),
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -253,6 +265,9 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: AtomicUsize::new(1),
+            // #5413: 并行阈值的注入点与「并行路径真的跑了」的计数器。
+            parallel_min_rows_override: AtomicUsize::new(0),
+            parallel_filter_runs: AtomicU64::new(0),
             stmt_cache: parking_lot::RwLock::new(sqlrustgo_cache::PreparedStatementCache::new(100)),
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -314,6 +329,9 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: None,
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: AtomicUsize::new(1),
+            // #5413: 并行阈值的注入点与「并行路径真的跑了」的计数器。
+            parallel_min_rows_override: AtomicUsize::new(0),
+            parallel_filter_runs: AtomicU64::new(0),
             stmt_cache: parking_lot::RwLock::new(sqlrustgo_cache::PreparedStatementCache::new(100)),
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
@@ -369,6 +387,9 @@ impl ExecutionEngine<MemoryStorage> {
             checkpoint_manager: checkpoint_manager.map(|cp| Arc::new(RwLock::new(cp))),
             cost_model: parking_lot::RwLock::new(UnifiedCostModel::default_model(0, 0)),
             parallel_degree: AtomicUsize::new(1),
+            // #5413: 并行阈值的注入点与「并行路径真的跑了」的计数器。
+            parallel_min_rows_override: AtomicUsize::new(0),
+            parallel_filter_runs: AtomicU64::new(0),
             stmt_cache: parking_lot::RwLock::new(sqlrustgo_cache::PreparedStatementCache::new(100)),
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),

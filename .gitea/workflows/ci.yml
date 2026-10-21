@@ -222,6 +222,20 @@ jobs:
           # impossible: on CI run 7613, 382 of 446 declared targets never
           # executed and nothing reported it.
           bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --log test_report.log
+      - name: Test manifest honesty (issue #5449)
+        if: always()
+        run: |
+          # #5449: the gate above compares the *declared* targets against the
+          # *executed* ones. It cannot see a file that is neither declared nor
+          # executed — and that is exactly how 6 sub-directory test files
+          # (63 `#[test]` functions) and 1 top-level file that cargo silently
+          # drops (name collision) never ran in this repository's history.
+          #
+          # This gate is static: every test-bearing file under tests/ must be a
+          # declared [[test]] target or reachable from one, every top-level
+          # file must have its own declaration, and the declared count must
+          # equal the number of test targets cargo actually builds.
+          bash scripts/gate/check_test_manifest_honesty.sh
       - name: Gate — TPC-H known-difference registry (issue #5379)
         if: always()
         run: |

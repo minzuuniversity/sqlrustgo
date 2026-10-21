@@ -30,9 +30,7 @@ fn v312_90_sign_integer_inputs() {
     x.execute("CREATE TABLE t (n INT)").unwrap();
     x.execute("INSERT INTO t VALUES (-5), (-1), (0), (1), (5)")
         .unwrap();
-    let res = x
-        .execute("SELECT n, SIGN(n) FROM t ORDER BY n")
-        .unwrap();
+    let res = x.execute("SELECT n, SIGN(n) FROM t ORDER BY n").unwrap();
     assert_eq!(res.rows.len(), 5);
     // n=-5  → -1
     assert_eq!(col_i(&res.rows[0], 0), -5);
@@ -65,14 +63,22 @@ fn v312_90_sign_float_inputs() {
 #[test]
 fn v312_90_sign_null_input_returns_null() {
     let mut x = fresh();
-    x.execute("CREATE TABLE t (n INT)").unwrap();
-    x.execute("INSERT INTO t VALUES (NULL), (3)").unwrap();
-    let res = x.execute("SELECT n, SIGN(n) FROM t ORDER BY n").unwrap();
+    x.execute("CREATE TABLE t (id INT, n INT)").unwrap();
+    x.execute("INSERT INTO t VALUES (1, NULL), (2, 3)").unwrap();
+    // ORDER BY on the non-null key `id`, NOT on `n`.
+    //
+    // The NULL placement of the ORDER BY key is a separate question from
+    // SIGN's semantics: the engine's default is NULLS LAST (#4748 / #4763,
+    // matching SQLite 3.51), while older SQLite and MySQL default to
+    // NULLS FIRST. Ordering by `n` would make this test assert the sort
+    // convention instead of SIGN — and it did, when it finally ran.
+    let res = x.execute("SELECT id, SIGN(n) FROM t ORDER BY id").unwrap();
     assert_eq!(res.rows.len(), 2);
-    // NULL → NULL
-    assert_eq!(res.rows[0][0], Value::Null);
+    // id=1 ⇒ n is NULL ⇒ SIGN(NULL) is NULL
+    assert_eq!(res.rows[0][0], Value::Integer(1));
     assert_eq!(res.rows[0][1], Value::Null);
-    // 3 → 1
+    // id=2 ⇒ n=3 ⇒ SIGN(3) = 1
+    assert_eq!(res.rows[1][0], Value::Integer(2));
     assert_eq!(col_i(&res.rows[1], 1), 1);
 }
 

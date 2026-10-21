@@ -271,6 +271,8 @@ mod tests {
 
     #[test]
     fn test_value_hash_consistency() {
+        use std::hash::Hasher;
+
         let v1 = SemanticValue::integer(42);
         let v2 = SemanticValue::integer(42);
         let mut hasher1 = std::collections::hash_map::DefaultHasher::new();
