@@ -290,6 +290,6 @@ if [ "$BLOCKERS" -eq 0 ]; then
     exit 0
 else
     echo ""
-    echo "❌ FAIL — $BLOCKERS blocker(s) found"
+    echo "❌ [FAIL] — $BLOCKERS blocker(s) found"
     exit 1
 fi

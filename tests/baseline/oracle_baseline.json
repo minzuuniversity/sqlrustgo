@@ -1,0 +1,12 @@
+{
+  "created_at": "2026-10-21T04:15:05Z",
+  "total_correctness_gates": 6,
+  "gates_without_oracle": [
+    "scripts/gate/check_p14_upgrade_test.sh",
+    "scripts/gate/check_p22_time_travel.sh",
+    "scripts/gate/check_p23_hash_chain.sh",
+    "scripts/gate/check_p34_parallel_executor.sh",
+    "scripts/gate/check_sysbench_oltp.sh",
+    "scripts/gate/check_tpch_sf10.sh"
+  ]
+}

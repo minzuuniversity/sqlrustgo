@@ -86,15 +86,44 @@ jobs:
           cd repo
           ./target/release/ingest commit "$EV_SHA" "ci-system" "CI ingestion" --db "$DB_PATH"
 
+      - name: Verify the checked-out tree (real check → CI result)
+        run: |
+          cd repo
+          # #5447: this job used to ingest the **literal** `PASS` as the CI
+          # result and then read its verdict back out of the graph it had
+          # just written — the job graded its own homework, and a green
+          # `gate.yml` said nothing whatsoever about the tree.
+          #
+          # The result now comes from a real check of this checkout.
+          # `check_path_casefold_conflict.sh` is pure shell and costs
+          # milliseconds; it detects tracked paths that differ only by case,
+          # which break checkout on case-insensitive volumes.
+          if bash scripts/gate/check_path_casefold_conflict.sh; then
+            EV_RESULT=PASS
+          else
+            EV_RESULT=FAIL
+          fi
+          echo "EV_RESULT=$EV_RESULT" >> $GITHUB_ENV
+          echo "tree verification: $EV_RESULT"
+
       - name: Ingest CI Event
         run: |
           cd repo
-          ./target/release/ingest ci "$EV_RUN_ID" "$EV_SHA" PASS --db "$DB_PATH"
+          ./target/release/ingest ci "$EV_RUN_ID" "$EV_SHA" "$EV_RESULT" --db "$DB_PATH"
 
       - name: Ingest Artifact
         run: |
           cd repo
-          ./target/release/ingest artifact "$EV_RUN_ID" "$EV_RUN_ID" "binary" "sha256-placeholder" --db "$DB_PATH"
+          # #5447: the artifact hash used to be the literal string
+          # "sha256-placeholder". Use the real hash of the binary this job
+          # actually built.
+          ARTIFACT_SHA="$(sha256sum ./target/release/ingest 2>/dev/null | awk '{print $1}')"
+          if [ -z "$ARTIFACT_SHA" ]; then
+            ARTIFACT_SHA="$(shasum -a 256 ./target/release/ingest 2>/dev/null | awk '{print $1}')"
+          fi
+          ARTIFACT_SHA="${ARTIFACT_SHA:-unknown}"
+          echo "artifact sha256=$ARTIFACT_SHA"
+          ./target/release/ingest artifact "$EV_RUN_ID" "$EV_RUN_ID" "binary" "$ARTIFACT_SHA" --db "$DB_PATH"
 
       - name: Ingest Test Result
         run: |
@@ -139,9 +168,23 @@ jobs:
             exit 1
           fi
 
-  # Parallel: legacy shell gate (for comparison)
+  # Parallel: the current version's Alpha gate
   legacy-gate:
     runs-on: [hp-z6g4]
+    # #5447: this job used to run `scripts/gate/legacy/check_alpha.sh` — the
+    # v2.9.0-era script — and then discard its exit code with `|| true`.
+    # Two independent defects in one step: the green signal was unrelated to
+    # the tree, and the script ran the **entire** test suite unbounded, which
+    # is what pinned the single runner `hp-z6g4` for 2.5 h and queued every
+    # other job behind it.
+    #
+    # `docs/governance/STAGE_CONFIG.yaml`'s ALPHA stage says explicitly:
+    # "v2.9.0's check_alpha.sh is hardcoded with v2.9.0 paths and references
+    # crates that no longer exist ... Each version provides its own
+    # check_alpha_v{VER}.sh that references the version's own worktree paths
+    # and gate set." This job now runs the current version's real, bounded
+    # gate: `scripts/gate/check_alpha_v410.sh`.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         run: |
@@ -156,18 +199,20 @@ jobs:
             git checkout HEAD
           fi
 
-      - name: Run Legacy Gate
+      - name: Run the current version's Alpha gate
         run: |
           cd repo
-          # #5026: the script lives under scripts/gate/legacy/, not
-          # scripts/gate/. The wrong path made `chmod` fail, and because
-          # the runner uses `bash -e -o pipefail` that exited the step
-          # before the `|| true` below could ever apply — so the job
+          # #5026: the script lives under scripts/gate/, not
+          # scripts/gate/legacy/ — the wrong path made `chmod` fail, and
+          # because the runner uses `bash -e -o pipefail` that exited the
+          # step before any `|| true` could ever apply — so the job
           # reported a failure that had nothing to do with the gate.
-          GATE="scripts/gate/legacy/check_alpha.sh"
+          GATE="scripts/gate/check_alpha_v410.sh"
           if [ ! -f "$GATE" ]; then
-            echo "::error::legacy gate script not found at $GATE"
+            echo "::error::current-version alpha gate not found at $GATE"
             exit 1
           fi
           chmod +x "$GATE"
-          bash "$GATE" 2>&1 || true
+          # #5447: the exit code is no longer discarded. A gate that cannot
+          # fail is not a gate.
+          bash "$GATE"
