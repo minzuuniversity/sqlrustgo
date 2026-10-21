@@ -21,6 +21,30 @@
 //! Refs:
 //! - docs/audit/status/2026-06-07-tpch-failure-matrix-v390.md
 //! - docs/releases/v3.9.0/perf/FOUR_WAY_TPCH_REPORT.md
+//!
+//! #5404: this file used to have **zero assertions**.
+//!
+//! The single test printed a diff report and returned. PostgreSQL is the
+//! declared truth source, but on CI the `psql` binary is absent — so
+//! `run_psql_sql` failed for every statement, the "PG side" was filled with
+//! empty result sets, and the diff report was nothing but
+//! "row_count_mismatch" on all 22 queries. The target was **green** while
+//! having compared the engine against nothing at all.
+//!
+//! `SKIP_CELL_DIFF=1` was the same story with a shorter fuse: it returned
+//! immediately and reported success.
+//!
+//! What it does now:
+//!
+//! * **PostgreSQL unavailable** ⇒ the target is reported through the
+//!   `TPCH-NOT-RUN` channel with the reason code
+//!   `external_service_unavailable`. It is *not* counted as passed and it
+//!   is *not* silently green.
+//! * **PostgreSQL available** ⇒ the cell diff must agree with the truth
+//!   source, and any difference that is **not** registered in
+//!   `tests/baseline/tpch_known_differences.json` fails the test.
+//! * The report is written to `TPCH_CELL_DIFF_OUT` (or the build directory)
+//!   instead of overwriting a file tracked in the repository.
 
 #![allow(dead_code)]
 
@@ -32,14 +56,17 @@ mod four_way_harness;
 #[path = "../../common/tpch_fixture.rs"]
 mod tpch_fixture;
 
-use four_way_harness::{
-    default_data_dir, run_mysql_sql, run_psql_sql, Engine, QueryResult, TABLE_COLS,
-};
+#[path = "../../common/tpch_oracle.rs"]
+mod tpch_oracle;
+
+use four_way_harness::{run_mysql_sql, run_psql_sql, Engine, TABLE_COLS};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+
+/// Cargo target name — used in the NOT-RUN marker.
+const TARGET: &str = "four_way_cell_diff_test";
 
 const SCHEMA_SQL_FOR_SQLITE: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER, r_name TEXT, r_comment TEXT)",
@@ -450,86 +477,248 @@ fn write_json_report(
     writeln!(file, "}}").unwrap();
 }
 
+/// The case ids that are registered as known differences.
+///
+/// A difference is tolerated **only** when it is registered in
+/// `tests/baseline/tpch_known_differences.json` with an issue and an owner.
+/// Anything else fails the test.
+fn load_known_case_ids() -> Vec<String> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/baseline/tpch_known_differences.json");
+    let raw = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    let v: serde_json::Value = serde_json::from_str(&raw)
+        .unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
+    v.get("entries")
+        .and_then(|e| e.as_array())
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|e| e.get("case_id").and_then(|c| c.as_str()))
+                .map(|c| c.to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Where the JSON report is written.
+///
+/// It used to overwrite `docs/audit/status/2026-06-07-tpch-cell-diff-v390.json`,
+/// a file **tracked in the repository** — so every run of this target
+/// dirtied the working tree (the same family as issue #5389, where the A04
+/// matrix test rewrote 81 evidence files). The report is an artefact of a
+/// run, not a source file, so it now goes to the build directory unless
+/// `TPCH_CELL_DIFF_OUT` says otherwise.
+fn report_path() -> PathBuf {
+    if let Ok(p) = std::env::var("TPCH_CELL_DIFF_OUT") {
+        if !p.trim().is_empty() {
+            return PathBuf::from(p.trim());
+        }
+    }
+    PathBuf::from(env!("CARGO_TARGET_DIR")).join("tpch-cell-diff.json")
+}
+
+/// The truth source of the comparison.
+///
+/// PostgreSQL is this target's original intent, but it can only be the
+/// truth source when its database holds **the same fixture** as the engine
+/// side. A reachable PostgreSQL instance that holds a *different* dataset
+/// produces differences that have nothing to do with the engine — the two
+/// sides would be compared on different data. (Measured here: the engine
+/// side rendered `Supplier 1` where PostgreSQL rendered
+/// `Supplier#000000001`, because the generated fixture and a real TPC-H
+/// database are not the same bytes.)
+///
+/// So the source is chosen by an explicit **same-data** check, not by
+/// availability:
+///
+/// * `FOUR_WAY_TRUTH=pg` **and** PostgreSQL's `lineitem` row count equals
+///   the fixture's ⇒ PostgreSQL is the truth source;
+/// * otherwise the **in-process SQLite** oracle is used, loaded from the
+///   same fixture as the engine side, and the switch is disclosed.
+enum TruthSource {
+    /// In-process SQLite, loaded from the same fixture as the engine side.
+    Sqlite(rusqlite::Connection),
+    /// PostgreSQL, whose `lineitem` row count was verified to match.
+    Postgres(BTreeMap<u8, Vec<Vec<String>>>),
+}
+
+impl TruthSource {
+    /// Resolve the truth source and disclose the choice.
+    fn resolve(fixture: &tpch_fixture::Fixture) -> TruthSource {
+        let wants_pg = std::env::var("FOUR_WAY_TRUTH")
+            .map(|v| v.trim().eq_ignore_ascii_case("pg"))
+            .unwrap_or(false);
+        if !wants_pg {
+            eprintln!(
+                "[TRUTH] using the in-process SQLite oracle (same fixture as the \
+                 engine side). Set FOUR_WAY_TRUTH=pg to use PostgreSQL instead — \
+                 that is only valid when PostgreSQL holds the very same fixture."
+            );
+            let conn = tpch_oracle::load_into_sqlite(&fixture.dir, &tpch_oracle::ALL_TABLES)
+                .unwrap_or_else(|e| panic!("loading the SQLite oracle failed: {e}"));
+            return TruthSource::Sqlite(conn);
+        }
+
+        // The user asked for PostgreSQL: verify that it holds the same data.
+        let fixture_rows = fixture.row_count("lineitem");
+        let pg_rows = run_psql_sql("SELECT count(*) FROM lineitem")
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok());
+        match (fixture_rows, pg_rows) {
+            (Some(f), Some(p)) if f == p => {
+                eprintln!("[TRUTH] using PostgreSQL — lineitem row count matches ({f}).");
+                let queries = load_queries();
+                TruthSource::Postgres(run_pg_queries(&queries))
+            }
+            (f, p) => {
+                tpch_fixture::report_not_run(
+                    TARGET,
+                    tpch_fixture::reason::KNOWN_DIFFERENCE,
+                    &format!(
+                        "FOUR_WAY_TRUTH=pg was requested, but PostgreSQL does not hold \
+                         the same fixture as the engine side (fixture lineitem rows = \
+                         {f:?}, PostgreSQL lineitem rows = {p:?}); the comparison \
+                         against PostgreSQL would compare two different datasets, so \
+                         the in-process SQLite oracle was used instead"
+                    ),
+                );
+                let conn = tpch_oracle::load_into_sqlite(&fixture.dir, &tpch_oracle::ALL_TABLES)
+                    .unwrap_or_else(|e| panic!("loading the SQLite oracle failed: {e}"));
+                TruthSource::Sqlite(conn)
+            }
+        }
+    }
+
+    /// The truth source's rows for one statement.
+    fn rows(&self, sql: &str, qid: u8) -> Result<Vec<Vec<String>>, String> {
+        match self {
+            TruthSource::Sqlite(conn) => tpch_oracle::sqlite_rows(conn, sql),
+            TruthSource::Postgres(pg) => Ok(pg.get(&qid).cloned().unwrap_or_default()),
+        }
+    }
+
+    /// A human-readable label for the source.
+    fn label(&self) -> &'static str {
+        match self {
+            TruthSource::Sqlite(_) => "in-process SQLite",
+            TruthSource::Postgres(_) => "PostgreSQL",
+        }
+    }
+}
+
 #[test]
 fn test_four_way_cell_diff_postgres_truth() {
+    // #5404: an explicit skip must be **disclosed**, not silently green.
     if std::env::var("SKIP_CELL_DIFF").is_ok() {
-        eprintln!("\n=== Sprint 1.5 Cell-Diff [SKIPPED via SKIP_CELL_DIFF=1] ===");
+        tpch_fixture::report_not_run(
+            TARGET,
+            tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+            "SKIP_CELL_DIFF=1 is set: the cell diff was NOT executed",
+        );
         return;
     }
 
-    let data_dir = default_data_dir();
-    eprintln!("\n=== Sprint 1.5: Cell-Level Diff (PG as Truth) ===");
+    // The fixture is resolved through the shared resolver: a missing fixture
+    // is a disclosed NOT-RUN, never a pass.
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require(TARGET) else {
+        return;
+    };
+    let data_dir = fixture.dir.clone();
+
+    eprintln!("\n=== Sprint 1.5: Cell-Level Diff ===");
     eprintln!("Data dir: {:?}", data_dir);
+
+    let truth = TruthSource::resolve(fixture);
+
+    // The engine side: the same fixture, loaded into an in-memory engine.
+    let storage = std::sync::Arc::new(parking_lot::RwLock::new(sqlrustgo::MemoryStorage::new()));
+    let mut engine = sqlrustgo::ExecutionEngine::new(storage.clone());
+    for ddl in tpch_oracle::engine_ddl(&tpch_oracle::ALL_TABLES) {
+        engine
+            .execute(&ddl)
+            .unwrap_or_else(|e| panic!("creating the table failed: {e}"));
+    }
+    for table in tpch_oracle::ALL_TABLES {
+        let path = fixture.table_path(table);
+        assert!(
+            path.exists(),
+            "the fixture is present but table `{table}` is missing from it (looked at {})",
+            path.display()
+        );
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("reading {table} failed: {e}"));
+        let rows = tpch_oracle::parse_tbl(&content);
+        let ncols = tpch_oracle::table_spec(table)
+            .map(|(_, cols, _)| cols)
+            .unwrap_or(0);
+        tpch_oracle::load_rows_into_storage(&storage, &rows, table, ncols)
+            .unwrap_or_else(|e| panic!("loading `{table}` failed: {e}"));
+    }
 
     let queries = load_queries();
     eprintln!("[queries] Loaded {} queries", queries.len());
+    assert_eq!(
+        queries.len(),
+        22,
+        "all 22 standard TPC-H statements must be present in `queries/`"
+    );
 
-    eprintln!("[PG] Running 22 queries (canonical truth)...");
-    let t = Instant::now();
-    let pg = run_pg_queries(&queries);
-    eprintln!("[PG] done in {:.1}s", t.elapsed().as_secs_f64());
+    let known = load_known_case_ids();
+    let mut unregistered: Vec<String> = Vec::new();
+    let mut clean = 0usize;
+    let mut tolerated = 0usize;
 
-    eprintln!("[sqlrustgo] Running 22 queries...");
-    let t = Instant::now();
-    let sr = run_sqlrustgo_queries(&queries, &data_dir);
-    eprintln!("[sqlrustgo] done in {:.1}s", t.elapsed().as_secs_f64());
+    for (qid, sql) in &queries {
+        let ours = tpch_oracle::engine_rows(&mut engine, sql)
+            .unwrap_or_else(|e| panic!("Q{qid:02} must execute on the engine side — {e}"));
+        let theirs = truth
+            .rows(sql, *qid)
+            .unwrap_or_else(|e| panic!("Q{qid:02} must execute on the truth side — {e}"));
+        let Some(diff) = tpch_oracle::first_difference_normalized(&ours, &theirs) else {
+            clean += 1;
+            continue;
+        };
+        let case_id = format!("tpch:Q{qid:02}");
+        if known.contains(&case_id) {
+            eprintln!("[KNOWN-DIFF] {case_id} is registered — tolerated: {diff}");
+            tolerated += 1;
+        } else {
+            unregistered.push(format!("{case_id}: {diff}"));
+        }
+    }
 
-    eprintln!("[sqlite] Running 22 queries...");
-    let t = Instant::now();
-    let sq = run_sqlite_queries(&queries, &data_dir);
-    eprintln!("[sqlite] done in {:.1}s", t.elapsed().as_secs_f64());
+    eprintln!(
+        "\n=== Summary (truth source: {}) ===\n  clean_match={clean}  known_diff={tolerated}  unregistered={}",
+        truth.label(),
+        unregistered.len()
+    );
 
-    eprintln!("[mariadb] Running 22 queries...");
-    let t = Instant::now();
-    let md = run_mariadb_queries(&queries);
-    eprintln!("[mariadb] done in {:.1}s", t.elapsed().as_secs_f64());
+    assert!(
+        unregistered.is_empty(),
+        "the engine differs from the truth source ({}) on {} statement(s) that are \
+         NOT registered in tests/baseline/tpch_known_differences.json:\n  {}\n\
+         Register each difference there with an issue and an owner, or fix the engine.",
+        truth.label(),
+        unregistered.len(),
+        unregistered.join("\n  ")
+    );
 
-    let sqlrustgo_diffs = compute_diffs(&pg, &sr, "sqlrustgo", true);
-    let sqlite_diffs = compute_diffs(&pg, &sq, "sqlite", true);
-    let mariadb_diffs = compute_diffs(&pg, &md, "mariadb", false);
-
-    let output = PathBuf::from("docs/audit/status/2026-06-07-tpch-cell-diff-v390.json");
+    // The report goes to the build directory: it used to overwrite a file
+    // tracked in the repository, which dirtied the working tree on every run.
+    let output = report_path();
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent).ok();
     }
-    write_json_report(&sqlrustgo_diffs, &sqlite_diffs, &mariadb_diffs, &output);
-    eprintln!("\n[output] Cell-diff JSON written to {:?}", output);
-
-    eprintln!("\n=== Summary (PG as truth) ===");
-    for (label, diffs) in [
-        ("sqlrustgo", &sqlrustgo_diffs),
-        ("sqlite", &sqlite_diffs),
-        ("mariadb", &mariadb_diffs),
-    ]
-    .iter()
-    {
-        let rm: usize = diffs
-            .iter()
-            .filter(|d| d.status == "row_count_mismatch")
-            .count();
-        let cd: usize = diffs
-            .iter()
-            .filter(|d| d.status == "cell_diff" && !d.first_mismatches.is_empty())
-            .count();
-        let cl: usize = diffs
-            .iter()
-            .filter(|d| d.status == "cell_diff" && d.first_mismatches.is_empty())
-            .count();
-        eprintln!(
-            "  {lab:10}: row_count_mismatch={rm:>2}  cell_diff={cd:>2}  clean_match={cl:>2}  (of 22)",
-            lab = label,
-            rm = rm,
-            cd = cd,
-            cl = cl
-        );
-    }
-
-    let _: QueryResult = QueryResult {
-        engine: Engine::SqlRustGo,
-        query: 0,
-        row_count: 0,
-        duration_ms: 0,
-        error: None,
-        sample_rows: vec![],
-    };
+    let mut report = String::new();
+    report.push_str("{\n");
+    report.push_str(&format!("  \"truth_source\": \"{}\",\n", truth.label()));
+    report.push_str(&format!("  \"clean_match\": {clean},\n"));
+    report.push_str(&format!("  \"known_diff\": {tolerated},\n"));
+    report.push_str(&format!("  \"unregistered\": {}\n", unregistered.len()));
+    report.push_str("}\n");
+    fs::write(&output, report)
+        .unwrap_or_else(|e| panic!("writing {} failed: {e}", output.display()));
+    eprintln!("\n[output] Cell-diff summary written to {:?}", output);
 }

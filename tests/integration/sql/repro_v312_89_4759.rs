@@ -38,8 +38,8 @@ fn rec_cte_walk_with_column_alias_4759() {
     );
     let rows = r.unwrap().rows;
     assert_eq!(rows.len(), 5, "expected 5 rows, got {}", rows.len());
-    for i in 0..5 {
-        assert_eq!(rows[i][0], Value::Integer((i + 1) as i64));
+    for (i, row) in rows.iter().enumerate() {
+        assert_eq!(row[0], Value::Integer((i + 1) as i64));
     }
 }
 
@@ -57,8 +57,8 @@ fn rec_cte_walk_select_star_4759() {
     assert!(r.is_ok(), "walk(n) with SELECT * failed: {:?}", r.err());
     let rows = r.unwrap().rows;
     assert_eq!(rows.len(), 5, "expected 5 rows, got {}", rows.len());
-    for i in 0..5 {
-        assert_eq!(rows[i][0], Value::Integer((i + 1) as i64));
+    for (i, row) in rows.iter().enumerate() {
+        assert_eq!(row[0], Value::Integer((i + 1) as i64));
     }
 }
 

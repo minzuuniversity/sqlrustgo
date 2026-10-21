@@ -26,12 +26,12 @@
 //! the one that regressed when an earlier version of this routing landed.
 
 use sqlrustgo_storage::FileStorage;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-fn engine_with(dir: &PathBuf) -> sqlrustgo::ExecutionEngine<FileStorage> {
-    let storage =
-        FileStorage::new_with_buffer_config(dir.clone(), 1_000_000, true).expect("FileStorage");
+fn engine_with(dir: &Path) -> sqlrustgo::ExecutionEngine<FileStorage> {
+    let storage = FileStorage::new_with_buffer_config(dir.to_path_buf(), 1_000_000, true)
+        .expect("FileStorage");
     sqlrustgo::ExecutionEngine::<FileStorage>::new(Arc::new(parking_lot::RwLock::new(storage)))
 }
 

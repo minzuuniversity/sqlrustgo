@@ -20,14 +20,14 @@
 
 use sqlrustgo::ExecutionEngine;
 use sqlrustgo_storage::FileStorage;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 type FS = FileStorage;
 
-fn engine(dir: &PathBuf) -> ExecutionEngine<FS> {
+fn engine(dir: &Path) -> ExecutionEngine<FS> {
     let storage = Arc::new(parking_lot::RwLock::new(
-        FS::new(dir.clone()).expect("open"),
+        FS::new(dir.to_path_buf()).expect("open"),
     ));
     ExecutionEngine::new(storage)
 }

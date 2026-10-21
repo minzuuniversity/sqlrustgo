@@ -56,6 +56,12 @@ pub struct DifferentialTest {
     setup_sql: Vec<String>,
 }
 
+impl Default for DifferentialTest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DifferentialTest {
     pub fn new() -> Self {
         Self {
@@ -273,16 +279,16 @@ impl std::fmt::Display for DifferentialResult {
         if self.passed {
             write!(f, "PASS: {} steps ran, all matched", self.steps_run)
         } else {
-            write!(
+            writeln!(
                 f,
-                "FAIL: {} steps ran, {} failures:\n",
+                "FAIL: {} steps ran, {} failures:",
                 self.steps_run,
                 self.failures.len()
             )?;
             for failure in &self.failures {
-                write!(
+                writeln!(
                     f,
-                    "  Step {}: {:?} - {}\n",
+                    "  Step {}: {:?} - {}",
                     failure.step, failure.kind, failure.message
                 )?;
             }
@@ -326,6 +332,12 @@ fn missing_binary_error(which: &str, env_var: &str) -> String {
 pub struct SqliteDifferentialRunner {
     sqlrustgo_bin: Option<String>,
     sqlite_bin: Option<String>,
+}
+
+impl Default for SqliteDifferentialRunner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SqliteDifferentialRunner {
@@ -416,6 +428,12 @@ pub struct MysqlDifferentialRunner {
     mysql_user: String,
     mysql_password: String,
     mysql_database: String,
+}
+
+impl Default for MysqlDifferentialRunner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MysqlDifferentialRunner {

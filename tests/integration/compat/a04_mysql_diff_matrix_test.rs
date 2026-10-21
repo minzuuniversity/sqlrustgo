@@ -33,7 +33,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write as _;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -619,7 +619,7 @@ fn run_pg_docker(setup: &[&str], query: &str) -> EngineResult {
         .filter_map(|seg| seg.split('>').nth(1))
         .filter_map(|val| val.split("</th>").next())
         .map(|s| s.trim_end_matches("</th").trim())
-        .map(|s| html_unescape(s))
+        .map(html_unescape)
         .collect();
     let col_types = vec!["unknown".to_string(); columns.len()];
     let rows: Vec<Vec<String>> = result_html
@@ -632,7 +632,7 @@ fn run_pg_docker(setup: &[&str], query: &str) -> EngineResult {
                 .filter_map(|seg| seg.split('>').nth(1))
                 .filter_map(|val| val.split("</td>").next())
                 .map(|s| s.trim_end_matches("</td").trim())
-                .map(|s| html_unescape(s))
+                .map(html_unescape)
                 .collect()
         })
         .collect();

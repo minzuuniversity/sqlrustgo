@@ -66,7 +66,21 @@ pub mod wire_err {
 // =========================================================================
 // MySQL packet framing helpers.
 // =========================================================================
-pub mod bin_resolver;
+// `bin_resolver` is re-exported from `tpch_cli_harness` rather than
+// declared here, so that the module has exactly **one** instance in the
+// tree: `tpch_cli_harness` is compiled both as a cargo target of its own
+// and as `common::tpch_cli_harness`, and it is the one that owns the
+// `#[path = "bin_resolver.rs"]` declaration.
+//
+// Declaring it here as well would give the two compilations two separate
+// copies — two sets of unit tests, and two places where the binary lookup
+// could drift apart again (the failure mode issue #5477 was filed for).
+//
+// The `unused_imports` allowance is needed because whether the re-export is
+// used depends on the target: some targets call `common::bin_resolver::…`
+// directly, others only reach it through `common::tpch_cli_harness`.
+#[allow(unused_imports)]
+pub use tpch_cli_harness::bin_resolver;
 pub mod oracle_framework;
 pub mod tpch_cli_harness;
 pub mod tpch_wire_harness;

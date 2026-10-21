@@ -317,7 +317,7 @@ fn users_table() -> TableInfo {
 
 /// An empty data directory with a `users` table, ready to be restored
 /// into. Returns the TempDir so the caller keeps it alive.
-fn empty_target(tag: &str) -> (TempDir, std::path::PathBuf) {
+fn empty_target(_tag: &str) -> (TempDir, std::path::PathBuf) {
     let dir = TempDir::new().unwrap();
     let p = dir.path().to_path_buf();
     let mut s = FileStorage::new(p.clone()).unwrap();

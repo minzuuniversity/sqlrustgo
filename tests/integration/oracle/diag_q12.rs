@@ -238,12 +238,8 @@ fn diag_q12_case_when() {
     // This is the reason step 1 and step 2 must agree: the join is 1:1 and
     // every lineitem row finds its order.
     let q2b = "SELECT COUNT(*) FROM orders, lineitem WHERE l_orderkey = o_orderkey";
-    let unfiltered_join = count_with_oracle(
-        &mut engine,
-        &oracle,
-        "diag_q12:step2b_unfiltered_join",
-        &q2b,
-    );
+    let unfiltered_join =
+        count_with_oracle(&mut engine, &oracle, "diag_q12:step2b_unfiltered_join", q2b);
     let lineitem_rows = count_with_oracle(
         &mut engine,
         &oracle,
@@ -253,7 +249,7 @@ fn diag_q12_case_when() {
 
     // ---- Step 3: a `CASE WHEN` aggregate over `orders` alone ------------
     let q3 = "SELECT SUM(CASE WHEN o_orderpriority = '1-URGENT' THEN 1 ELSE 0 END) FROM orders";
-    let urgent_only = count_with_oracle(&mut engine, &oracle, "diag_q12:step3_sum_case", &q3);
+    let urgent_only = count_with_oracle(&mut engine, &oracle, "diag_q12:step3_sum_case", q3);
     let orders_rows = count_with_oracle(
         &mut engine,
         &oracle,
@@ -396,7 +392,7 @@ fn diag_q12_case_when() {
             .iter()
             .find(|r| match &r[0] {
                 Value::Text(s) => s == &mode,
-                v => &v.to_sql_string() == &mode,
+                v => v.to_sql_string() == mode,
             })
             .unwrap_or_else(|| {
                 panic!(

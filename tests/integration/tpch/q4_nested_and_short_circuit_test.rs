@@ -28,8 +28,20 @@ fn fresh_engine() -> ExecutionEngine<MemoryStorage> {
 /// Sentinel counters. Each conjunct's eval increments its counter.
 /// The short-circuit property is: when conjunct N is false, conjunct
 /// N+1 must NOT be evaluated for the same row.
+///
+/// # These counters are not wired up yet
+///
+/// The engine does not currently expose a per-conjunct evaluation counter,
+/// so the sentinels are never incremented and `reset_sentinels` is never
+/// called. The tests below therefore assert the *functional* result and
+/// that the hash-semi-join path was taken — **not** the short-circuit
+/// behaviour itself. Tracked as a discriminating-power gap: see the
+/// evidence document for iteration 5 batch 8.
+#[allow(dead_code)]
 static CONJUNCT_1_EVALS: AtomicU64 = AtomicU64::new(0);
+#[allow(dead_code)]
 static CONJUNCT_2_EVALS: AtomicU64 = AtomicU64::new(0);
+#[allow(dead_code)]
 static CONJUNCT_3_EVALS: AtomicU64 = AtomicU64::new(0);
 
 fn counter_value(snap: &str, key: &str) -> u64 {
@@ -46,6 +58,7 @@ fn counter_value(snap: &str, key: &str) -> u64 {
     0
 }
 
+#[allow(dead_code)]
 fn reset_sentinels() {
     CONJUNCT_1_EVALS.store(0, AtomicOrdering::SeqCst);
     CONJUNCT_2_EVALS.store(0, AtomicOrdering::SeqCst);

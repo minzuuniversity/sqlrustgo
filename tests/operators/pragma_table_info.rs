@@ -35,6 +35,10 @@ fn first_row_on(e: &mut ExecutionEngine<MemoryStorage>, sql: &str) -> Vec<String
 }
 
 /// Columns of PRAGMA table_info: cid, name, type, notnull, dflt_value, pk
+///
+/// Kept as the documented column order of `PRAGMA table_info`; the checks
+/// below address the columns by index, so the constant is not read.
+#[allow(dead_code)]
 const COLS: [&str; 6] = ["cid", "name", "type", "notnull", "dflt_value", "pk"];
 
 fn check_col(row: &[String], idx: usize, expected: &str) {

@@ -257,7 +257,7 @@ impl WorkloadDriver {
     }
 
     fn run_loop(&mut self, stop_at: Instant, ops_per_min_target: u32) {
-        let ops_per_sec = (ops_per_min_target + 59) / 60;
+        let ops_per_sec = ops_per_min_target.div_ceil(60);
         let sleep_between = Duration::from_micros((1_000_000 / ops_per_sec.max(1)) as u64);
         while Instant::now() < stop_at {
             let result = self.execute_one();

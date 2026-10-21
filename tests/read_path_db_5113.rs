@@ -83,7 +83,7 @@ fn seed(x: &mut Conn) {
         x.execute(&format!("USE {db}")).unwrap();
         x.execute("CREATE TABLE t (id INT PRIMARY KEY, k INT)")
             .unwrap();
-        x.execute(&format!("CREATE TABLE u (id INT PRIMARY KEY, k INT)"))
+        x.execute("CREATE TABLE u (id INT PRIMARY KEY, k INT)")
             .unwrap();
         x.execute(&format!("INSERT INTO t VALUES ({tag}, {tag})"))
             .unwrap();

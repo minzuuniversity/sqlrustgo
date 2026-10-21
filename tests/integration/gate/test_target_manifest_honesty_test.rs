@@ -218,7 +218,7 @@ fn collect_test_sources(root: &Path) -> Vec<String> {
             } else if path.extension().map(|e| e == "rs").unwrap_or(false) {
                 let rel = path
                     .strip_prefix(root)
-                    .map(|p| normalize(p))
+                    .map(normalize)
                     .unwrap_or_else(|_| normalize(&path));
                 out.push(rel);
             }
@@ -602,9 +602,21 @@ fn gate_script_lists_its_exemptions() {
     .unwrap();
     std::fs::write(tmp.join("tests/declared.rs"), "#[test]\nfn declared() {}\n").unwrap();
 
+    // The sample path is assembled at run time on purpose.
+    //
+    // This file is scanned by the very criterion it exercises: C6 rejects
+    // any `tests/**` file that contains a home-directory path literally.
+    // Writing the sample path as a literal here would make this file
+    // itself a C6 violation — and so would writing it in a *comment*, which
+    // is why this comment spells the path out in pieces as well. A nested
+    // `format!` would trip `clippy::format_in_format_args` instead.
+    //
+    // Concatenating the pieces keeps both the lint and the criterion happy,
+    // while the file actually written into the temporary tree still holds
+    // the full sample path — so the criterion really is exercised.
     let exempt_body = format!(
         "// c6-allow-home-paths\n#[test]\nfn exempt() {{ let _ = \"{}\"; }}\n",
-        format!("/{}/someuser/thing", "home")
+        ["/", "home", "/someuser/thing"].concat()
     );
     std::fs::write(tmp.join("tests/exempt_probe.rs"), exempt_body).unwrap();
 

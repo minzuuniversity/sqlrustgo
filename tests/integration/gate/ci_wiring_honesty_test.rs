@@ -929,10 +929,11 @@ fn test_5485_every_baseline_driven_gate_has_a_committed_baseline() {
     for s in &scripts {
         let text = std::fs::read_to_string(s).unwrap_or_default();
         for token in text.split('"') {
-            if token.starts_with("tests/baseline/") && token.ends_with(".json") {
-                if !referenced.contains(&token.to_string()) {
-                    referenced.push(token.to_string());
-                }
+            if token.starts_with("tests/baseline/")
+                && token.ends_with(".json")
+                && !referenced.contains(&token.to_string())
+            {
+                referenced.push(token.to_string());
             }
         }
     }

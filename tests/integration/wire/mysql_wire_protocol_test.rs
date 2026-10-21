@@ -286,10 +286,7 @@ fn test_query_empty_string_returns_err() {
     let mut client = MySqlTestClient::connect_default()
         .expect("ephemeral server + raw-protocol client should come up");
     let result = client.exec("");
-    match result {
-        Err(_) => {}
-        Ok(()) => {}
-    }
+    let _ = result.is_err();
     client.quit().ok();
 }
 
@@ -324,10 +321,7 @@ fn test_execute_with_null_params() {
         .prepare("SELECT * FROM t_null WHERE val IS NULL")
         .expect("PREPARE");
     let result = client.stmt_execute_raw(stmt.stmt_id, &[]);
-    match result {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+    let _ = result.is_ok();
     client.stmt_close(stmt.stmt_id).ok();
     client.quit().ok();
 }
@@ -344,10 +338,7 @@ fn test_query_with_special_characters() {
         .expect("INSERT");
 
     let result = client.query_rows("SELECT val FROM t_special WHERE val = 'hello world'");
-    match result {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+    let _ = result.is_ok();
     client.quit().ok();
 }
 
@@ -356,10 +347,7 @@ fn test_reset_connection_returns_ok() {
     let mut client = MySqlTestClient::connect_default()
         .expect("ephemeral server + raw-protocol client should come up");
     let result = client.reset_connection();
-    match result {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+    let _ = result.is_ok();
     client.quit().ok();
 }
 
@@ -377,10 +365,7 @@ fn test_multi_statement_query() {
     let mut client = MySqlTestClient::connect_default()
         .expect("ephemeral server + raw-protocol client should come up");
     let result = client.exec("SELECT 1; SELECT 2;");
-    match result {
-        Ok(()) => {}
-        Err(_) => {}
-    }
+    let _ = result.is_ok();
     client.quit().ok();
 }
 
@@ -389,10 +374,7 @@ fn test_query_with_unicode() {
     let mut client = MySqlTestClient::connect_default()
         .expect("ephemeral server + raw-protocol client should come up");
     let result = client.query_rows("SELECT '你好世界'");
-    match result {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+    let _ = result.is_ok();
     client.quit().ok();
 }
 
@@ -401,11 +383,8 @@ fn test_query_with_null_value() {
     let mut client = MySqlTestClient::connect_default()
         .expect("ephemeral server + raw-protocol client should come up");
     let result = client.query_rows("SELECT NULL");
-    match result {
-        Ok(rows) => {
-            assert_eq!(rows.len(), 1);
-        }
-        Err(_) => {}
+    if let Ok(rows) = result {
+        assert_eq!(rows.len(), 1);
     }
     client.quit().ok();
 }
@@ -422,10 +401,7 @@ fn test_long_query() {
         sql.push_str(&i.to_string());
     }
     let result = client.query_rows(&sql);
-    match result {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+    let _ = result.is_ok();
     client.quit().ok();
 }
 

@@ -36,6 +36,23 @@ use serde_json::Value as JsonValue;
 #[path = "tpch_fixture.rs"]
 pub mod tpch_fixture;
 
+// #5465: this file is **also a cargo target of its own**
+// (`[[test]] name = "tpch_cli_harness"` in Cargo.toml), so it is compiled
+// twice: once as the crate root of that target, and once as
+// `common::tpch_cli_harness` for the targets that pull it in through
+// `tests/common/mod.rs`.
+//
+// A `bin_resolver::…` reference resolves to the *parent* module,
+// which is `common` in the second case and **does not exist** in the first
+// one — the target then failed to compile with
+// "too many leading `super` keywords" and was never run.
+//
+// The `#[path]` attribute is relative to the file that contains the module
+// declaration, so it resolves to `tests/common/bin_resolver.rs` in **both**
+// cases. That is the same mechanism `tpch_fixture` above already uses.
+#[path = "bin_resolver.rs"]
+pub mod bin_resolver;
+
 use tpch_fixture::FixtureState;
 
 // ============================================================================
@@ -411,10 +428,10 @@ pub fn start_sf01_cli() -> Result<CliServer, String> {
 /// `SQLRUSTGO_MYSQL_SERVER_BIN` → `CARGO_TARGET_DIR` → package
 /// `target/{debug,release}` → `PATH`.
 fn resolve_binary() -> Result<PathBuf, String> {
-    super::bin_resolver::resolve_mysql_server_binary().ok_or_else(|| {
-        super::bin_resolver::missing_binary_message(
+    bin_resolver::resolve_mysql_server_binary().ok_or_else(|| {
+        bin_resolver::missing_binary_message(
             "sqlrustgo-mysql-server",
-            super::bin_resolver::MYSQL_SERVER_BIN_ENV,
+            bin_resolver::MYSQL_SERVER_BIN_ENV,
         )
     })
 }

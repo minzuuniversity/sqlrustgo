@@ -68,6 +68,15 @@ fn v312_62_parse_lit_float_preserves_fractional_part() {
     }
 }
 
+// `3.14` here is the **SQL literal under test**, not a mathematical constant:
+// this test checks that the parser turns the literal `3.14` into
+// `Value::Float(3.14)`. `clippy::approx_constant` is deny-by-default, and it
+// fires on the literal — which is the whole point of the test.
+//
+// The lint is only visible when clippy runs with `--all-targets`; the CI
+// clippy step did not use that flag until issue #5465, so this false
+// positive sat in the tree unnoticed.
+#[allow(clippy::approx_constant)]
 #[test]
 fn v312_62_parse_lit_pi_literal() {
     let mut x = fresh();
@@ -104,6 +113,9 @@ fn v312_62_parse_lit_arithmetic_mixed_int_and_float() {
     }
 }
 
+// See the note on `v312_62_parse_lit_pi_literal`: `-3.14` is the SQL literal
+// under test, not a mathematical constant.
+#[allow(clippy::approx_constant)]
 #[test]
 fn v312_62_parse_lit_negative_float() {
     let mut x = fresh();
