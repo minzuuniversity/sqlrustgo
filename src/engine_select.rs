@@ -840,8 +840,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // parking_lot read guards must not nest when a writer queues.
         // `information_schema` is a virtual catalog (not a user
         // database) and is short-circuited further down, so skip it.
+        // #5433: `mysql` is the MySQL system schema — a virtual catalog
+        // too. Its `user` / `db` tables are synthesised from the
+        // catalog's AuthManager by `system_tables::try_system_table_select`,
+        // but that interception runs *after* this check, so without the
+        // bypass `SELECT ... FROM mysql."user"` died with
+        // `Unknown database: mysql`.
         if let Some(schema) = &select.schema {
-            if !schema.eq_ignore_ascii_case("information_schema") {
+            if !crate::system_tables::is_virtual_schema(schema) {
                 self.ensure_database_known(schema)?;
             }
         }
