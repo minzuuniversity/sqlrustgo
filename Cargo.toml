@@ -349,6 +349,10 @@ name = "repro_v312_64b"
 path = "tests/integration/sql/repro_v312_64b.rs"
 
 [[test]]
+name = "group_by_projection_width_5432"
+path = "tests/integration/sql/group_by_projection_width_5432.rs"
+
+[[test]]
 name = "repro_v312_64c"
 path = "tests/integration/sql/repro_v312_64c.rs"
 
@@ -909,10 +913,6 @@ path = "tests/integration/wire/compatibility_harness.rs"
 name = "incremental_backup_datasource_4938"
 path = "crates/tools/tests/incremental_backup_datasource_4938.rs"
 
-
-[[test]]
-name = "replace_test"
-path = "tests/integration/dml/replace_test.rs"
 
 [[test]]
 name = "int4_explicit_tx_test"

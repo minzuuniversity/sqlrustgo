@@ -840,8 +840,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // parking_lot read guards must not nest when a writer queues.
         // `information_schema` is a virtual catalog (not a user
         // database) and is short-circuited further down, so skip it.
+        // #5433: `mysql` is the MySQL system schema — a virtual catalog
+        // too. Its `user` / `db` tables are synthesised from the
+        // catalog's AuthManager by `system_tables::try_system_table_select`,
+        // but that interception runs *after* this check, so without the
+        // bypass `SELECT ... FROM mysql."user"` died with
+        // `Unknown database: mysql`.
         if let Some(schema) = &select.schema {
-            if !schema.eq_ignore_ascii_case("information_schema") {
+            if !crate::system_tables::is_virtual_schema(schema) {
                 self.ensure_database_known(schema)?;
             }
         }
@@ -2593,9 +2599,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         );
                     }
                 }
-                let agg_result_rows = if is_star_agg || select.columns.len() <= 1 {
-                    // Star / single column: no re-projection needed
+                let agg_result_rows = if is_star_agg {
+                    // Star projection: the table's own columns. They are the
+                    // **tail** of the aggregate row — after the group keys
+                    // and the aggregates:
+                    //
+                    //   [group_key..., aggregate..., table_column...]
+                    //
+                    // Returning the row unprojected would make it wider than
+                    // the declared columns (`table_info.columns`), which the
+                    // ResultSet's own width check rejects (issue #5432).
+                    let fd_start = group_exprs.len() + select.aggregates.len();
                     agg_result_rows
+                        .into_iter()
+                        .map(|row| row.iter().skip(fd_start).cloned().collect::<Vec<Value>>())
+                        .collect::<Vec<Vec<Value>>>()
                 } else {
                     // Build group-by schema (column names in order).
                     // Identifier expressions use their name. For

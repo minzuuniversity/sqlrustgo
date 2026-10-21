@@ -3754,11 +3754,22 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn list_views(&self, db: &str) -> Vec<String> {
-        let prefix = format!("{}\0", db);
+        // #5350 follow-up / Issue #5433: this stripped a hard-coded
+        // `"{db}\0"` prefix while `scoped_key` joins with `DB_SEP`
+        // (`\u{1}`), so the strip never matched and `list_views` always
+        // returned an empty list. #5350 fixed exactly this defect in
+        // `FileStorage::list_views`; this is the MemoryStorage twin that
+        // was left behind. The consequence was silent: `CREATE VIEW`
+        // succeeded, `has_view`/`get_view` found the view, but
+        // `sqlite_master` (which lists views through `list_views`) reported
+        // no view at all. Split on the real separator instead of
+        // hand-spelling it.
         let mut names: Vec<String> = self
             .view_defs
             .keys()
-            .filter_map(|k| k.strip_prefix(&prefix).map(|s| s.to_string()))
+            .filter_map(|k| split_scoped_key(k))
+            .filter(|(kdb, _)| *kdb == db.to_lowercase())
+            .map(|(_, name)| name.to_string())
             .collect();
         names.sort();
         names

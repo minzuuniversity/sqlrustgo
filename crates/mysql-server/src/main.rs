@@ -587,8 +587,8 @@ fn exec_one(sql: &str) -> Result<(), String> {
 /// each non-empty statement in order against the same shared engine. This
 /// matches REPL behavior (where `CREATE TABLE; INSERT; SELECT` all share
 /// one engine) and lets integration tests exercise CREATE/INSERT/SELECT
-/// sequences within a single spawned process. See tests/integration/dml/
-/// replace_test.rs.
+/// sequences within a single spawned process. See
+/// crates/mysql-server/tests/replace_exec_test.rs.
 fn exec_multi(sql: &str) -> Result<(), String> {
     let mut engine = make_shared_engine();
     let mut count = 0usize;
