@@ -131,36 +131,60 @@ fn load_queries() -> Vec<(u8, String)> {
     queries
 }
 
-fn run_pg_queries(queries: &[(u8, String)]) -> BTreeMap<u8, Vec<Vec<String>>> {
+/// Run the 22 statements on PostgreSQL.
+///
+/// #5500: a statement that **failed** must not be recorded as an empty
+/// result set. "The query failed" and "the query matched no rows" are
+/// different claims, and folding the first into the second is what made
+/// this target report `pg_rows=0` for Q08/Q09/Q11/Q20/Q21/Q22 — six
+/// "differences" that were really six *errors*.
+///
+/// A missing client is a different thing again: the whole comparison
+/// cannot run, which is a NOT-RUN, not a failure.
+fn run_pg_queries(queries: &[(u8, String)]) -> Result<BTreeMap<u8, Vec<Vec<String>>>, String> {
     let mut out = BTreeMap::new();
     for (q, sql) in queries {
         match run_psql_sql(sql) {
             Ok(stdout) => {
                 out.insert(*q, parse_psql_output(&stdout));
             }
+            Err(e) if e.is_unavailable() => {
+                return Err(format!(
+                    "the PostgreSQL client is unavailable — the comparison against \
+                     PostgreSQL was NOT executed: {e}"
+                ));
+            }
             Err(e) => {
-                eprintln!("[PG] Q{} error: {}", q, e);
-                out.insert(*q, vec![]);
+                return Err(format!("Q{q:02} failed on PostgreSQL: {e}"));
             }
         }
     }
-    out
+    Ok(out)
 }
 
-fn run_mariadb_queries(queries: &[(u8, String)]) -> BTreeMap<u8, Vec<Vec<String>>> {
+/// Run the 22 statements on MariaDB.
+///
+/// #5500: same rule as [`run_pg_queries`] — a failure is a failure, never
+/// an empty result set.
+fn run_mariadb_queries(queries: &[(u8, String)]) -> Result<BTreeMap<u8, Vec<Vec<String>>>, String> {
     let mut out = BTreeMap::new();
     for (q, sql) in queries {
         match run_mysql_sql(sql) {
             Ok(stdout) => {
                 out.insert(*q, parse_mysql_output(&stdout));
             }
+            Err(e) if e.is_unavailable() => {
+                return Err(format!(
+                    "the MariaDB client is unavailable — the comparison against \
+                     MariaDB was NOT executed: {e}"
+                ));
+            }
             Err(e) => {
-                eprintln!("[MariaDB] Q{} error: {}", q, e);
-                out.insert(*q, vec![]);
+                return Err(format!("Q{q:02} failed on MariaDB: {e}"));
             }
         }
     }
-    out
+    Ok(out)
 }
 
 fn run_sqlite_queries(queries: &[(u8, String)], data_dir: &Path) -> BTreeMap<u8, Vec<Vec<String>>> {
@@ -565,28 +589,49 @@ impl TruthSource {
         let pg_rows = run_psql_sql("SELECT count(*) FROM lineitem")
             .ok()
             .and_then(|s| s.trim().parse::<u64>().ok());
-        match (fixture_rows, pg_rows) {
-            (Some(f), Some(p)) if f == p => {
-                eprintln!("[TRUTH] using PostgreSQL — lineitem row count matches ({f}).");
-                let queries = load_queries();
-                TruthSource::Postgres(run_pg_queries(&queries))
-            }
-            (f, p) => {
-                tpch_fixture::report_not_run(
-                    TARGET,
-                    tpch_fixture::reason::KNOWN_DIFFERENCE,
-                    &format!(
-                        "FOUR_WAY_TRUTH=pg was requested, but PostgreSQL does not hold \
-                         the same fixture as the engine side (fixture lineitem rows = \
-                         {f:?}, PostgreSQL lineitem rows = {p:?}); the comparison \
-                         against PostgreSQL would compare two different datasets, so \
-                         the in-process SQLite oracle was used instead"
-                    ),
-                );
-                let conn = tpch_oracle::load_into_sqlite(&fixture.dir, &tpch_oracle::ALL_TABLES)
-                    .unwrap_or_else(|e| panic!("loading the SQLite oracle failed: {e}"));
-                TruthSource::Sqlite(conn)
-            }
+        let same_data = match (fixture_rows, pg_rows) {
+            (Some(f), Some(p)) => f == p,
+            _ => false,
+        };
+        if same_data {
+            eprintln!(
+                "[TRUTH] using PostgreSQL — lineitem row count matches ({}).",
+                fixture_rows.unwrap_or(0)
+            );
+            let queries = load_queries();
+            // #5500: a statement that failed on PostgreSQL is a **failure**,
+            // not an empty result set. Falling back to another truth source
+            // here would compare the engine against something the caller
+            // explicitly did not ask for, so it fails the target instead.
+            let pg = run_pg_queries(&queries).unwrap_or_else(|e| {
+                panic!(
+                    "FOUR_WAY_TRUTH=pg was requested and PostgreSQL holds the same \
+                     fixture, but a statement failed: {e}\n\
+                     Switching to another truth source here would compare the engine \
+                     against a source the caller did not ask for — so this is a failure."
+                )
+            });
+            TruthSource::Postgres(pg)
+        } else {
+            let detail = match pg_rows {
+                Some(p) => format!(
+                    "FOUR_WAY_TRUTH=pg was requested, but PostgreSQL does not hold \
+                     the same fixture as the engine side (fixture lineitem rows = \
+                     {fixture_rows:?}, PostgreSQL lineitem rows = {p}); the comparison \
+                     against PostgreSQL would compare two different datasets, so \
+                     the in-process SQLite oracle was used instead"
+                ),
+                None => format!(
+                    "FOUR_WAY_TRUTH=pg was requested, but PostgreSQL could not be \
+                     queried at all (the psql client is unavailable, or the count \
+                     query failed); fixture lineitem rows = {fixture_rows:?}. The \
+                     in-process SQLite oracle was used instead"
+                ),
+            };
+            tpch_fixture::report_not_run(TARGET, tpch_fixture::reason::KNOWN_DIFFERENCE, &detail);
+            let conn = tpch_oracle::load_into_sqlite(&fixture.dir, &tpch_oracle::ALL_TABLES)
+                .unwrap_or_else(|e| panic!("loading the SQLite oracle failed: {e}"));
+            TruthSource::Sqlite(conn)
         }
     }
 

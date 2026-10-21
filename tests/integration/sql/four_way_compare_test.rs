@@ -21,7 +21,10 @@ mod four_way_harness;
 // row is ~2 orders of magnitude faster; see the comment at the load site.
 #[path = "../../common/tpch_fixture.rs"]
 mod tpch_fixture;
-use four_way_harness::{default_data_dir, setup_external_db, Engine, QueryResult, TABLE_COLS};
+use four_way_harness::{setup_external_db, Engine, QueryResult, TABLE_COLS};
+
+/// Cargo target name — used in the NOT-RUN marker.
+const TARGET: &str = "four_way_compare_test";
 
 /// One entry per (engine, query) produced by the harness.
 #[derive(Debug, Default)]
@@ -32,19 +35,25 @@ struct FourWayResults {
 
 #[test]
 fn test_four_way_tpch_22() {
+    // #5500: an explicit skip must be **disclosed**, not silently green.
     if std::env::var("SKIP_FOUR_WAY").is_ok() {
-        eprintln!("\n=== G17 4-Way TPC-H [SKIPPED via SKIP_FOUR_WAY=1] ===");
-        return;
-    }
-
-    let data_dir = default_data_dir();
-    if !data_dir.exists() {
-        eprintln!(
-            "\n=== G17 4-Way TPC-H [SKIPPED — TPCH_DATA_DIR={:?} not found] ===",
-            data_dir
+        tpch_fixture::report_not_run(
+            TARGET,
+            tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+            "SKIP_FOUR_WAY=1 is set: the 4-way comparison was NOT executed",
         );
         return;
     }
+
+    // The fixture is resolved through the shared resolver (#5379). It used
+    // to fall back to a hardcoded `/tmp/tpch_sf01`, a directory that exists
+    // only on the machine where dbgen happened to run — on every other
+    // machine the target skipped itself and reported success.
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require(TARGET) else {
+        return;
+    };
+    let data_dir = fixture.dir.clone();
 
     eprintln!("\n=== G17 4-Way TPC-H Horizontal Comparison ===");
     eprintln!("Data dir: {:?}", data_dir);
@@ -53,13 +62,40 @@ fn test_four_way_tpch_22() {
     let mut results = FourWayResults::default();
 
     // ---- 1. Setup external DBs (MariaDB + PostgreSQL) ----
-    eprintln!("[setup] MariaDB...");
-    if let Err(e) = setup_external_db(Engine::MariaDb, &data_dir) {
-        eprintln!("[setup] MariaDB error: {}", e);
+    // An external client that is **not installed** is an unavailable
+    // service, not a failed comparison: the engine is disclosed as
+    // NOT-RUN and simply does not take part.
+    let mariadb_available = four_way_harness::external_client_available(Engine::MariaDb);
+    let postgres_available = four_way_harness::external_client_available(Engine::PostgreSql);
+    for (engine, available, env_var) in [
+        (Engine::MariaDb, mariadb_available, "SQLRUSTGO_MYSQL_BIN"),
+        (Engine::PostgreSql, postgres_available, "SQLRUSTGO_PSQL_BIN"),
+    ] {
+        if available {
+            continue;
+        }
+        tpch_fixture::report_not_run(
+            TARGET,
+            tpch_fixture::reason::EXTERNAL_SERVICE_UNAVAILABLE,
+            &format!(
+                "the {} client is not installed / not on PATH — set {env_var} to its \
+                 absolute path to include this engine in the comparison",
+                engine.name()
+            ),
+        );
     }
-    eprintln!("[setup] PostgreSQL...");
-    if let Err(e) = setup_external_db(Engine::PostgreSql, &data_dir) {
-        eprintln!("[setup] PostgreSQL error: {}", e);
+
+    if mariadb_available {
+        eprintln!("[setup] MariaDB...");
+        if let Err(e) = setup_external_db(Engine::MariaDb, &data_dir) {
+            eprintln!("[setup] MariaDB error: {}", e);
+        }
+    }
+    if postgres_available {
+        eprintln!("[setup] PostgreSQL...");
+        if let Err(e) = setup_external_db(Engine::PostgreSql, &data_dir) {
+            eprintln!("[setup] PostgreSQL error: {}", e);
+        }
     }
 
     // ---- 2. Read 22 query SQL files ----
@@ -98,24 +134,28 @@ fn test_four_way_tpch_22() {
         .insert(Engine::Sqlite, start.elapsed().as_millis());
 
     // ---- 5. Run on MariaDB (subprocess mysql) ----
-    eprintln!("[mariadb] Running 22 queries...");
-    let start = Instant::now();
-    results
-        .by_engine
-        .insert(Engine::MariaDb, run_mariadb(&queries));
-    results
-        .durations_ms
-        .insert(Engine::MariaDb, start.elapsed().as_millis());
+    if mariadb_available {
+        eprintln!("[mariadb] Running 22 queries...");
+        let start = Instant::now();
+        results
+            .by_engine
+            .insert(Engine::MariaDb, run_mariadb(&queries));
+        results
+            .durations_ms
+            .insert(Engine::MariaDb, start.elapsed().as_millis());
+    }
 
     // ---- 6. Run on PostgreSQL (subprocess psql) ----
-    eprintln!("[postgresql] Running 22 queries...");
-    let start = Instant::now();
-    results
-        .by_engine
-        .insert(Engine::PostgreSql, run_postgresql(&queries));
-    results
-        .durations_ms
-        .insert(Engine::PostgreSql, start.elapsed().as_millis());
+    if postgres_available {
+        eprintln!("[postgresql] Running 22 queries...");
+        let start = Instant::now();
+        results
+            .by_engine
+            .insert(Engine::PostgreSql, run_postgresql(&queries));
+        results
+            .durations_ms
+            .insert(Engine::PostgreSql, start.elapsed().as_millis());
+    }
 
     // ---- 7. Compare + report ----
     print_summary(&results);
@@ -282,7 +322,10 @@ fn run_mariadb(queries: &[(u8, String)]) -> Vec<QueryResult> {
                 sample.sort();
                 qr.sample_rows = sample;
             }
-            Err(e) => qr.error = Some(e),
+            // #5500: a failed query is a **failure**, not an empty result
+            // set. It is recorded as an error so the summary shows ERR
+            // instead of a plausible "0 rows".
+            Err(e) => qr.error = Some(e.to_string()),
         }
         out.push(qr);
     }
@@ -311,7 +354,8 @@ fn run_postgresql(queries: &[(u8, String)]) -> Vec<QueryResult> {
                 sample.sort();
                 qr.sample_rows = sample;
             }
-            Err(e) => qr.error = Some(e),
+            // #5500: see `run_mariadb`.
+            Err(e) => qr.error = Some(e.to_string()),
         }
         out.push(qr);
     }
@@ -383,32 +427,29 @@ fn print_summary(results: &FourWayResults) {
     }
 }
 
-fn write_report(results: &FourWayResults) {
-    // Resolve the actual workspace root (CARGO_MANIFEST_DIR for the
-    // workspace root crate is the current dir; for a sub-crate it's
-    // the sub-crate dir, hence the .. walk).
-    let report_path = if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
-        let p = std::path::PathBuf::from(manifest);
-        // Walk up until we find the workspace root (has Cargo.toml with [workspace])
-        let mut cur = p.as_path();
-        loop {
-            if cur.join("Cargo.toml").exists()
-                && std::fs::read_to_string(cur.join("Cargo.toml"))
-                    .map(|s| s.contains("[workspace]"))
-                    .unwrap_or(false)
-            {
-                break;
-            }
-            match cur.parent() {
-                Some(p) => cur = p,
-                None => break,
-            }
+/// Where the comparison report is written.
+///
+/// It used to overwrite `docs/releases/v3.9.0/perf/FOUR_WAY_TPCH_REPORT.md`,
+/// a file **tracked in the repository** — so every run of this target
+/// dirtied the working tree (the same family as issue #5389, where the A04
+/// matrix test rewrote 81 evidence files, and as #5404, where the cell-diff
+/// target did the same). The report is an artefact of a run, not a source
+/// file, so it now goes to the build directory unless `TPCH_FOUR_WAY_OUT`
+/// says otherwise.
+fn report_path() -> PathBuf {
+    if let Ok(p) = std::env::var("TPCH_FOUR_WAY_OUT") {
+        if !p.trim().is_empty() {
+            return PathBuf::from(p.trim());
         }
-        cur.join("docs/releases/v3.9.0/perf/FOUR_WAY_TPCH_REPORT.md")
-    } else {
-        std::path::PathBuf::from("docs/releases/v3.9.0/perf/FOUR_WAY_TPCH_REPORT.md")
-    };
-    std::fs::create_dir_all(report_path.parent().unwrap()).ok();
+    }
+    PathBuf::from(env!("CARGO_TARGET_DIR")).join("four-way-tpch-report.md")
+}
+
+fn write_report(results: &FourWayResults) {
+    let report_path = report_path();
+    if let Some(parent) = report_path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
 
     let mut out = String::new();
     out.push_str("# G17 4-Way TPC-H Comparison Report (v3.9.0)\n\n");

@@ -620,6 +620,32 @@ jobs:
           set -euo pipefail
           chmod +x scripts/gate/check_path_casefold_conflict.sh
           bash scripts/gate/check_path_casefold_conflict.sh
+      # Issue #5500: C6 covers "no home-rooted absolute path"; this is the
+      # **separate** criterion for the other machine-specific shape — an
+      # absolute path under an install root (`/opt/homebrew/…`) and a
+      # literal credential for an external database client. A test tree
+      # that pins one machine's homebrew prefix and one machine's user name
+      # silently degrades to "the external client was never there".
+      # The gate's own `--selftest` proves it can still tell a violation
+      # from a clean sample.
+      - name: External-tool path check (#5500, C7)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_test_external_tool_paths.sh
+          bash scripts/gate/check_test_external_tool_paths.sh --selftest
+          bash scripts/gate/check_test_external_tool_paths.sh
+      # Issue #5499: a documentation pointer that reads like evidence but
+      # does not resolve (`Full report: `docs/…/MISSING.md``) is a broken
+      # link that the markdown-link checker cannot see, because it only
+      # looks at `[text](path)` syntax. This gate covers the release line
+      # being shipped: no **new** broken pointer, and the recorded debt is
+      # enumerated with a reason for each entry.
+      - name: Documentation pointer-path check (#5499)
+        run: |
+          set -euo pipefail
+          chmod +x scripts/gate/check_docs_pointer_paths.sh
+          bash scripts/gate/check_docs_pointer_paths.sh --selftest
+          bash scripts/gate/check_docs_pointer_paths.sh --scope docs/releases/v4.1.0
       # Issue #5193 option C: `planner`/`executor` are declared not to be on
       # the production execution path. This gate is what keeps that
       # declaration honest — it fails if one of them is referenced from a

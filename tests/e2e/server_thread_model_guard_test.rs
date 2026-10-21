@@ -1,3 +1,8 @@
+//! c7-allow-local-credentials: this test starts the repository's **own**
+//! server (`sqlrustgo-mysql-server` / `start_ephemeral` / a docker
+//! container), so the `tester` credential below is created by the test
+//! itself and belongs to no particular machine.
+
 //! Guard: pin the thread-execution model that the transaction-context
 //! design depends on.
 //!

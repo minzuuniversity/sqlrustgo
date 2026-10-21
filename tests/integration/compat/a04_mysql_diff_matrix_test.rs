@@ -1,3 +1,8 @@
+//! c7-allow-local-credentials: this test starts the repository's **own**
+//! server (`sqlrustgo-mysql-server` / `start_ephemeral` / a docker
+//! container), so the `tester` credential below is created by the test
+//! itself and belongs to no particular machine.
+
 //! A04 SQL/MySQL Protocol Differential Matrix (Issue #5226)
 //!
 //! 从真实 MySQL 客户端（`mysql` CLI + `sqlrustgo_mysql_client`）验证

@@ -1,3 +1,8 @@
+//! c7-allow-local-credentials: this test starts the repository's **own**
+//! server (`sqlrustgo-mysql-server` / `start_ephemeral` / a docker
+//! container), so the `tester` credential below is created by the test
+//! itself and belongs to no particular machine.
+
 //! TPC-H 22/22 wire-protocol test using `mysql` CLI client (Phase 3).
 //!
 //! # Why this test exists
