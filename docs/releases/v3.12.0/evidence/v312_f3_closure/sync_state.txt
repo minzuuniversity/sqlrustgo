@@ -12,7 +12,7 @@ scripts/gate/check_v312_01_blocker_closed.sh Gap 7 (5 remotes synced)
 
 ## Additional Fix
 gitee remote URL switched from HTTPS (embedded token) to SSH:
-  - BEFORE: https://yinglichina8848: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@gitee.com/yinglichina/sqlrustgo.git
+  - BEFORE: https://<user>:<token>@gitee.com/yinglichina/sqlrustgo.git
             ↑ token invalid (HTTP 401 "Access token does not exist" since 2026-08-11)
   - AFTER:  git@gitee.com:yinglichina/sqlrustgo.git
             ↑ uses ~/.ssh/id_ed25519 (also registered to gitee.com profile)

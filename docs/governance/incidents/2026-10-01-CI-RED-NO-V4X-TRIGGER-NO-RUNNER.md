@@ -113,7 +113,7 @@ branch protection 已使"无审批直接合入"不再可能, 补上了治理链�
 ## 6. 复现命令
 
 ```bash
-A="openclaw:details8848"; U="http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo"
+A="${GITEA_USER}:${GITEA_TOKEN}"; U="http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo"
 
 # 根因 A: 列出各工作流实际触发的分支
 for f in .gitea/workflows/*.yml; do

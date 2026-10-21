@@ -594,7 +594,7 @@ Expected: branch created on remote. Project CLAUDE.md forbids GitHub pushes.
 - [ ] **Step 3: Open PR via Gitea API**
 
 ```bash
-TOKEN=04bcda86dd601364a53eec33dc37aa6efa98a5b7
+TOKEN=${GITEA_TOKEN}
 PR_BODY=$(cat <<'EOF'
 ## Summary
 

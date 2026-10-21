@@ -766,7 +766,7 @@ Per project CLAUDE.md / rules: Gitea-only; do not push to GitHub/Gitee/GitCode m
 - [ ] **Step 7: Create MR on gitea252 via API**
 
 ```bash
-TOKEN="04bcda86dd601364a53eec33dc37aa6efa98a5b7"
+TOKEN="${GITEA_TOKEN}"
 GITEA="http://192.168.0.252:3000"
 
 curl -X POST "$GITEA/api/v1/repos/openclaw/sqlrustgo/pulls" \
