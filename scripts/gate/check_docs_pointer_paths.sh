@@ -27,6 +27,17 @@
 # path that names a file with a known extension must resolve to a file that
 # exists.**
 #
+# ==> Writing convention: inline code IS the pointer convention in this
+#     repository. A document that *quotes* a path known to be broken (a
+#     defect being documented, a file that lives on another branch) must
+#     write it as plain prose — otherwise the document that documents a
+#     broken pointer **becomes** a broken pointer.
+#
+# ==> Process: run this gate **after** writing the evidence document, not
+#     before. Batch 9 ran the gate, then wrote its evidence document with
+#     two pointer-shaped quotations; the next run found them. The gate was
+#     right and the ordering was wrong.
+#
 # The scope is deliberately narrow — the **release line being shipped** —
 # because the repository also carries ~2 300 historical pointers into
 # documents that were never committed or have since been restructured.

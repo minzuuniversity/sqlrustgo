@@ -13,8 +13,14 @@
 #   2. Maps state → stage (DRAFT/ALPHA/BETA/RC/GA)
 #   3. Looks up the stage in STAGE_CONFIG.yaml
 #   4. Runs required_gates in order; reports PASS/FAIL
-#   5. Checks required_files exist
-#   6. Exits 0 if all PASS, 1 if any FAIL, 2 if DRIFT
+#   5. Checks required_files + doc_artifacts exist
+#   6. Writes a run log under docs/releases/<version>/logs/
+#   7. Exits 0 if all PASS, 1 if any FAIL, 2 if DRIFT
+#
+# #5440: this script was the SSOT's only executor and **no CI job ever
+# called it** — the SSOT was a declarative document with nobody consuming
+# it. It is now wired into CI (.gitea/workflows/ci.yml) and is the
+# authoritative entry point for a stage's gate list.
 #
 # Usage:
 #   bash scripts/gate/check_stage.sh                    # auto-detect stage
@@ -27,9 +33,11 @@
 #
 # Companion files:
 #   - docs/governance/STAGE_CONFIG.yaml (stage definitions SSOT)
+#   - scripts/gate/stage_config_common.sh (the resolution rules — one
+#     implementation, shared with the consistency and artifact gates)
 #   - docs/releases/vX.Y.Z/STAGE.yaml (per-version override, optional)
 #
-# This script does NOT replace the existing 4 stage-specific scripts
+# This script does NOT replace the existing stage-specific scripts
 # (check_alpha.sh, check_beta_gate.sh, check_rc_ga_gate.sh,
 # check_alpha_v380.sh). They are listed in STAGE_CONFIG.yaml's
 # required_gates for each stage. The framework is the driver; the
@@ -41,6 +49,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 STAGE_CONFIG="${REPO_ROOT}/docs/governance/STAGE_CONFIG.yaml"
+
+# The shared resolution rules (annotation stripping, {VER} spellings, doc
+# artifact resolution, G-name matching, the one artifact check). The
+# driver, the consistency gate and the artifact gate all source this
+# file, so the three cannot disagree about what a path means — see
+# scripts/gate/stage_config_common.sh.
+# shellcheck source=scripts/gate/stage_config_common.sh
+source "${SCRIPT_DIR}/stage_config_common.sh"
 
 # ---- Argument parsing ----
 VERSION=""
@@ -189,17 +205,6 @@ fi
 VERSION=$(detect_version)
 STAGE=$(detect_stage "$VERSION")
 
-# Substitute {VERSION} placeholder in gate paths
-expand_version() {
-    local path="$1"
-    # Two placeholders:
-    #   {VERSION} expands to "v3.9.0" (with v prefix)
-    #   {VER} expands to "3.9.0" (just the version, for use after a literal v)
-    local v_full="$VERSION"
-    local v_short="${VERSION#v}"  # strip leading v
-    printf '%s\n' "$path" | sed -e "s|{VERSION}|$v_full|g" -e "s|{VER}|$v_short|g"
-}
-
 # Read stage config
 read_stage_info() {
     python3 - "$STAGE_CONFIG" "$STAGE" <<'EOF'
@@ -226,6 +231,7 @@ STAGE_INFO=$(read_stage_info)
 REQ_GATES=()
 OPT_GATES=()
 REQ_FILES=()
+DOC_ARTIFACTS=()
 DESCRIPTION=""
 if command -v jq >/dev/null 2>&1; then
     # Use jq (faster, cleaner)
@@ -238,42 +244,93 @@ if command -v jq >/dev/null 2>&1; then
     while IFS= read -r line; do
         [[ -n "$line" ]] && REQ_FILES+=("$line")
     done < <(echo "$STAGE_INFO" | jq -r '.required_files[]?' 2>/dev/null)
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && DOC_ARTIFACTS+=("$line")
+    done < <(echo "$STAGE_INFO" | jq -r '.doc_artifacts[]?' 2>/dev/null)
     DESCRIPTION=$(echo "$STAGE_INFO" | jq -r '.description' 2>/dev/null)
 else
     # Fallback: use python
     REQ_GATES=($(echo "$STAGE_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(g) for g in d.get('required_gates', [])]" 2>/dev/null))
     OPT_GATES=($(echo "$STAGE_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(g) for g in d.get('optional_gates', [])]" 2>/dev/null))
     REQ_FILES=($(echo "$STAGE_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f) for f in d.get('required_files', [])]" 2>/dev/null))
+    DOC_ARTIFACTS=($(echo "$STAGE_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f) for f in d.get('doc_artifacts', [])]" 2>/dev/null))
     DESCRIPTION=$(echo "$STAGE_INFO" | python3 -c "import json,sys; print(json.load(sys.stdin).get('description', ''))" 2>/dev/null)
 fi
 
-# Header
-echo "=================================================================="
-echo "  Stage Gate Check: $STAGE"
-echo "  Version: $VERSION"
-echo "  Branch: $(git symbolic-ref --short HEAD 2>/dev/null || echo 'detached')"
-echo "  Description: $DESCRIPTION"
-echo "=================================================================="
-echo ""
+# ---- Run log ----
+# #5441: governance requires every gate run to leave its log in
+# `docs/releases/<version>/logs/`, and `.gitignore` used to exclude exactly
+# that directory — so the required evidence chain could not be committed by
+# construction. The log name follows docs/governance/GATE_CONDITIONS.md:
+# `logs/gate_<stage>_<commit>_<timestamp>.log`.
+LOG_DIR="docs/releases/${VERSION}/logs"
+RUN_LOG=""
+if [[ "$DRY_RUN" != true ]]; then
+    mkdir -p "$LOG_DIR/gates"
+    COMMIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    TIMESTAMP="$(date -u +%Y%m%d_%H%M%SZ)"
+    RUN_LOG="${LOG_DIR}/gate_$(printf '%s' "$STAGE" | tr '[:upper:]' '[:lower:]')_${COMMIT_SHA}_${TIMESTAMP}.log"
+    : >"$RUN_LOG"
+fi
 
-# ---- Check required files ----
+# say — print a line to stdout AND append it to the run log.
+say() {
+    printf '%s\n' "$*"
+    if [[ -n "$RUN_LOG" ]]; then
+        printf '%s\n' "$*" >>"$RUN_LOG"
+    fi
+}
+
+# ---- Header ----
+say "=================================================================="
+say "  Stage Gate Check: $STAGE"
+say "  Version: $VERSION"
+say "  Branch: $(git symbolic-ref --short HEAD 2>/dev/null || echo 'detached')"
+say "  Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+say "  Description: $DESCRIPTION"
+say "  Mode:    $([[ "$DRY_RUN" == true ]] && echo 'DRY-RUN (nothing executed)' || echo 'EXECUTE')"
+say "=================================================================="
+say ""
+
+# ---- Required files + doc artifacts ----
+# #5439: the artifact check is the **one** implementation, in
+# scripts/gate/stage_config_common.sh (stage_artifact_status). This driver
+# and scripts/gate/check_release_artifacts.sh both call it, so the two
+# cannot report different verdicts for the same stage.
 FILE_PASS=0
 FILE_FAIL=0
 FILE_FAIL_LIST=()
-if [[ ${#REQ_FILES[@]} -gt 0 ]]; then
-    echo "--- Required files ---"
-    for f in "${REQ_FILES[@]}"; do
-        f_expanded=$(expand_version "$f")
-        if [[ -f "$f_expanded" ]]; then
-            echo "  [OK]  $f_expanded"
-            FILE_PASS=$((FILE_PASS + 1))
-        else
-            echo "  [MISS] $f_expanded"
-            FILE_FAIL=$((FILE_FAIL + 1))
-            FILE_FAIL_LIST+=("$f_expanded")
-        fi
-    done
-    echo ""
+ART_PASS=0
+ART_FAIL=0
+ART_FAIL_LIST=()
+if [[ ${#REQ_FILES[@]} -gt 0 || ${#DOC_ARTIFACTS[@]} -gt 0 ]]; then
+    say "--- Required files & doc artifacts ---"
+    while IFS=$'\t' read -r status kind path; do
+        [[ -z "${status:-}" ]] && continue
+        case "$kind" in
+            required_file)
+                if [[ "$status" == "OK" ]]; then
+                    say "  [OK]  $path"
+                    FILE_PASS=$((FILE_PASS + 1))
+                else
+                    say "  [MISS] $path"
+                    FILE_FAIL=$((FILE_FAIL + 1))
+                    FILE_FAIL_LIST+=("$path")
+                fi
+                ;;
+            doc_artifact)
+                if [[ "$status" == "OK" ]]; then
+                    say "  [OK]  $path"
+                    ART_PASS=$((ART_PASS + 1))
+                else
+                    say "  [MISS] $path"
+                    ART_FAIL=$((ART_FAIL + 1))
+                    ART_FAIL_LIST+=("$path")
+                fi
+                ;;
+        esac
+    done < <(stage_artifact_status "$VERSION" "$STAGE")
+    say ""
 fi
 
 # ---- Run required gates ----
@@ -282,68 +339,66 @@ GATE_FAIL=0
 GATE_FAIL_LIST=()
 
 if [[ ${#REQ_GATES[@]} -gt 0 ]]; then
-    echo "--- Required gates (${#REQ_GATES[@]}) ---"
+    say "--- Required gates (${#REQ_GATES[@]}) ---"
     for g in "${REQ_GATES[@]}"; do
-        # Strip trailing args (e.g. "check_rc_ga_gate.sh ga" -> "check_rc_ga_gate.sh")
-        # for the -f existence check below.
-        # 2026-07-11: Apply {VER}/{VERSION} expansion to script_path too,
-        # otherwise per-version gate paths like check_alpha_v{VER}.sh fail
-        # the existence check (and incorrectly mark as SKIP/NOT FOUND).
-        g_expanded=$(expand_version "$g")
-        script_path="${g_expanded%% *}"
+        # The resolution tries the dot-stripped / dash / underscore
+        # spellings of {VER} — the repository names per-version gates
+        # inconsistently (check_alpha_v410.sh vs
+        # check_alpha_v3.12.0.sh), and an exact match reported the ALPHA
+        # gate of every v4.x release as "not found".
+        g_expanded="$(stage_expand_vars "$g" "$VERSION")"
+        script_path="$(stage_resolve_gate "$g" "$VERSION")"
         if [[ "$g_expanded" =~ ^cargo ]]; then
             label="$g_expanded"
             if [[ "$DRY_RUN" == true ]]; then
-                echo "  [DRY]  $g_expanded"
+                say "  [DRY]  $g_expanded"
                 continue
             fi
-            if eval "$g_expanded" >/tmp/stage_gate_$$.log 2>&1; then
-                echo "  [PASS] $label"
+            if eval "$g_expanded" >"${LOG_DIR}/gates/${label//[^A-Za-z0-9._-]/_}.log" 2>&1; then
+                say "  [PASS] $label"
                 GATE_PASS=$((GATE_PASS + 1))
             else
-                echo "  [FAIL] $label"
+                say "  [FAIL] $label"
                 GATE_FAIL=$((GATE_FAIL + 1))
                 GATE_FAIL_LIST+=("$g_expanded")
             fi
-        # Strip trailing args to check if the script file exists
-        # (e.g. "scripts/gate/check_rc_ga_gate.sh ga" -> check "scripts/gate/check_rc_ga_gate.sh")
-        elif [[ -f "$script_path" ]] || [[ -f "${REPO_ROOT}/${script_path}" ]]; then
+        elif [[ -n "$script_path" ]]; then
             label=$(basename "$g_expanded")
             if [[ "$DRY_RUN" == true ]]; then
-                echo "  [DRY]  $g_expanded"
+                say "  [DRY]  $g_expanded -> $script_path"
                 continue
             fi
-            if bash "$g_expanded" >/tmp/stage_gate_$$.log 2>&1; then
-                echo "  [PASS] $label"
+            if bash "$script_path" >"${LOG_DIR}/gates/${label//[^A-Za-z0-9._-]/_}.log" 2>&1; then
+                say "  [PASS] $label"
                 GATE_PASS=$((GATE_PASS + 1))
             else
-                echo "  [FAIL] $label"
+                say "  [FAIL] $label"
                 GATE_FAIL=$((GATE_FAIL + 1))
                 GATE_FAIL_LIST+=("$g_expanded")
             fi
         else
-            echo "  [SKIP] $g_expanded (not found, may need install)"
+            say "  [MISS] $g_expanded (script not found — a gate that names a missing script cannot pass)"
             GATE_FAIL=$((GATE_FAIL + 1))
             GATE_FAIL_LIST+=("$g_expanded (NOT FOUND)")
         fi
     done
-    echo ""
+    say ""
 fi
 
 # ---- Optional gates (informational) ----
 if [[ ${#OPT_GATES[@]} -gt 0 ]]; then
-    echo "--- Optional gates (${#OPT_GATES[@]}, informational) ---"
+    say "--- Optional gates (${#OPT_GATES[@]}, informational) ---"
     for g in "${OPT_GATES[@]}"; do
-        g_expanded=$(expand_version "$g")
-        script_path="${g_expanded%% *}"
+        g_expanded="$(stage_expand_vars "$g" "$VERSION")"
+        script_path="$(stage_resolve_gate "$g" "$VERSION")"
         label=$(basename "$g_expanded")
-        if [[ -f "$script_path" ]] || [[ -f "${REPO_ROOT}/${script_path}" ]]; then
-            echo "  [INFO] $label (optional)"
+        if [[ -n "$script_path" ]]; then
+            say "  [INFO] $label (optional)"
         else
-            echo "  [INFO] $label (optional, not installed)"
+            say "  [INFO] $label (optional, script not found)"
         fi
     done
-    echo ""
+    say ""
 fi
 
 # ---- JSON output ----
@@ -352,34 +407,39 @@ if [[ "$JSON_OUTPUT" == true ]]; then
     # Disable set -u around array expansion to avoid unbound errors when empty
     set +u
     file_fail_csv=$(IFS=,; echo "${FILE_FAIL_LIST[*]+"${FILE_FAIL_LIST[*]}"}")
+    art_fail_csv=$(IFS=,; echo "${ART_FAIL_LIST[*]+"${ART_FAIL_LIST[*]}"}")
     gate_fail_csv=$(IFS=,; echo "${GATE_FAIL_LIST[*]+"${GATE_FAIL_LIST[*]}"}")
     set -u
     # Use heredoc to avoid bash variable expansion conflicts in python -c
-    python3 - "${VERSION}" "${STAGE}" "${DESCRIPTION}" "${FILE_PASS}" "${FILE_FAIL}" "${file_fail_csv}" "${GATE_PASS}" "${GATE_FAIL}" "${gate_fail_csv}" <<'PYEOF'
+    json="$(python3 - "${VERSION}" "${STAGE}" "${DESCRIPTION}" "${FILE_PASS}" "${FILE_FAIL}" "${file_fail_csv}" "${ART_PASS}" "${ART_FAIL}" "${art_fail_csv}" "${GATE_PASS}" "${GATE_FAIL}" "${gate_fail_csv}" <<'PYEOF'
 import json, sys
-version, stage, description, file_pass, file_fail, file_fail_csv, gate_pass, gate_fail, gate_fail_csv = sys.argv[1:10]
+(version, stage, description, file_pass, file_fail, file_fail_csv,
+ art_pass, art_fail, art_fail_csv, gate_pass, gate_fail, gate_fail_csv) = sys.argv[1:13]
 file_failed = [f for f in file_fail_csv.split(",") if f] if file_fail_csv else []
+art_failed = [f for f in art_fail_csv.split(",") if f] if art_fail_csv else []
 gate_failed = [f for f in gate_fail_csv.split(",") if f] if gate_fail_csv else []
 result = {
     "version": version,
     "stage": stage,
     "description": description,
     "files": {"pass": int(file_pass), "fail": int(file_fail), "failed": file_failed},
+    "doc_artifacts": {"pass": int(art_pass), "fail": int(art_fail), "failed": art_failed},
     "gates": {"pass": int(gate_pass), "fail": int(gate_fail), "failed": gate_failed},
-    "overall": "PASS" if (int(file_fail) + int(gate_fail)) == 0 else "FAIL",
+    "overall": "PASS" if (int(file_fail) + int(art_fail) + int(gate_fail)) == 0 else "FAIL",
 }
 print(json.dumps(result, indent=2, ensure_ascii=False))
 PYEOF
+)"
+    say "$json"
 fi
 
 # ---- Summary ----
-TOTAL_FAIL=$((FILE_FAIL + GATE_FAIL))
-echo "=================================================================="
-echo "  Stage $STAGE ($VERSION): $(($FILE_PASS + $GATE_PASS)) PASS, $TOTAL_FAIL FAIL"
-echo "=================================================================="
-
-# Cleanup
-rm -f /tmp/stage_gate_$$.log
+TOTAL_FAIL=$((FILE_FAIL + ART_FAIL + GATE_FAIL))
+say "=================================================================="
+say "  Stage $STAGE ($VERSION): $(($FILE_PASS + ART_PASS + GATE_PASS)) PASS, $TOTAL_FAIL FAIL"
+say "  gate logs: $LOG_DIR/gates/"
+[[ -n "$RUN_LOG" ]] && say "  run log:   $RUN_LOG" || true
+say "=================================================================="
 
 # Exit code
 if [[ $TOTAL_FAIL -eq 0 ]]; then

@@ -132,7 +132,20 @@ docs/formal/*_TTrace_*.bin
 
 # Build helper outputs + release-time log dumps
 scripts/usage/*.xlsx
-docs/releases/*/logs/
+# #5441: the governance docs require every stage/GA gate run to leave its
+# log in `docs/releases/<version>/logs/gate_<stage>_<commit>_<ts>.log`
+# (docs/governance/GATE_CONDITIONS.md "门禁执行要求 / 日志保存"), but this
+# rule excluded exactly that directory — so the required evidence chain
+# could not enter version control **by construction**.
+#
+# The split is now deliberate:
+#   * `logs/gate_*.log` — the per-run decision record. This IS the
+#     evidence ("which commit, which stage, which gates, what verdict"),
+#     so it is tracked.
+#   * `logs/gates/` — the per-gate raw stdout dumps. Regenerated on every
+#     run, unbounded in size, and not the decision record; not tracked.
+docs/releases/*/logs/*
+!docs/releases/*/logs/gate_*.log
 # Security / server audit logs (runtime side effects from crates/security and crates/server)
 crates/security/audit.log
 crates/server/audit.log
@@ -179,6 +192,12 @@ docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
 !docs/governance/*.json
 !docs/releases/*/manifest.json
 !docs/releases/*/evidence/*/summary.json
+# #5441: the per-run stage/GA gate decision record IS the governance
+# evidence chain — docs/governance/GATE_CONDITIONS.md "门禁执行要求 / 日志保存"
+# requires it at `docs/releases/v{VERSION}/logs/gate_<stage>_<commit>_<ts>.log`.
+# The broad `*.log` rule above (and `docs/releases/*/logs/*`) used to make it
+# uncommittable by construction; this negation is the deliberate exception.
+!docs/releases/*/logs/gate_*.log
 # TPC-H result-hash baselines required by tests/integration/tpch/tpch_hash_test.rs
 # via include_str!(); the test cannot compile without them.
 !tests/tpch_hashes_v380.json

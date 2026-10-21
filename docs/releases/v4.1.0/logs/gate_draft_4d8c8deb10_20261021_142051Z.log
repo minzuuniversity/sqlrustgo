@@ -1,0 +1,28 @@
+==================================================================
+  Stage Gate Check: DRAFT
+  Version: v4.1.0
+  Branch: fix/stage-ssot-and-artifact-gates-batch10
+  Commit: 4d8c8deb10
+  Description: 设计与架构阶段 (design + architecture + prototype)
+  Mode:    EXECUTE
+==================================================================
+
+--- Required files & doc artifacts ---
+  [OK]  docs/releases/v4.1.0/VERSION_PLAN.md
+  [OK]  docs/releases/v4.1.0/ARCHITECTURE.md
+  [OK]  docs/releases/v4.1.0/VERSION_PLAN.md
+  [OK]  docs/releases/v4.1.0/ARCHITECTURE.md
+  [OK]  docs/releases/v4.1.0/ROADMAP.md
+
+--- Required gates (2) ---
+  [PASS] check_docs_links.sh
+  [PASS] cargo build --all-features
+
+--- Optional gates (1, informational) ---
+  [INFO] check_arch_invariants.sh (optional)
+
+==================================================================
+  Stage DRAFT (v4.1.0): 7 PASS, 0 FAIL
+  gate logs: docs/releases/v4.1.0/logs/gates/
+  run log:   docs/releases/v4.1.0/logs/gate_draft_4d8c8deb10_20261021_142051Z.log
+==================================================================
