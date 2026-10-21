@@ -40,8 +40,8 @@
 //! * persist through the delta path instead of a full snapshot → the
 //!   restart case fails.
 
-use sqlrustgo_storage::engine::{ColumnDefinition, IndexInfo, StorageEngine, TableInfo, Value};
 use sqlrustgo_parser::IndexColumnSpec;
+use sqlrustgo_storage::engine::{ColumnDefinition, IndexInfo, StorageEngine, TableInfo, Value};
 use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::mvcc_storage::MvccStorage;
 use sqlrustgo_storage::wal::FileBackedWalManager;
@@ -161,10 +161,7 @@ fn file_storage_persists_the_default_when_the_table_grew_since_the_last_save() {
         store.flush().expect("flush — writes the base snapshot");
 
         store
-            .insert(
-                "t",
-                vec![vec![Value::Integer(3), Value::Integer(30)]],
-            )
+            .insert("t", vec![vec![Value::Integer(3), Value::Integer(30)]])
             .expect("insert 1 more row");
 
         // Draining the buffer without saving is what `create_index` does.

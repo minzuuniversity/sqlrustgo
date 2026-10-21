@@ -832,10 +832,9 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         column: &str,
         default_value: Option<String>,
     ) -> SqlResult<()> {
-                self.inner_mut().set_column_default(table, column, default_value)
-
+        self.inner_mut()
+            .set_column_default(table, column, default_value)
     }
-
 
     /// #5192: existence check against a stated database.
     ///

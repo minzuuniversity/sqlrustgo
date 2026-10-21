@@ -1340,10 +1340,8 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         column: &str,
         default_value: Option<String>,
     ) -> SqlResult<()> {
-                self.inner.set_column_default(table, column, default_value)
-
+        self.inner.set_column_default(table, column, default_value)
     }
-
 
     fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {
         self.inner_mut().drop_table_in_db(db, table)

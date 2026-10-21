@@ -1157,8 +1157,7 @@ impl StorageEngine for BoxStorageEngine {
         column: &str,
         default_value: Option<String>,
     ) -> SqlResult<()> {
-                self.inner.set_column_default(table, column, default_value)
-
+        self.inner.set_column_default(table, column, default_value)
     }
 
     fn create_trigger(&mut self, info: TriggerInfo) -> SqlResult<()> {
