@@ -5179,6 +5179,134 @@ impl FileStorage {
         Ok(())
     }
 
+    /// #5506: undo **exactly one** transaction's buffered writes.
+    ///
+    /// Shared by the `&mut self` rollback and the `&self` (lock-free)
+    /// rollback, so both paths undo the same way.
+    ///
+    /// The lock-free path used to skip the undo entirely: it only dropped
+    /// the transaction's entries from the undo log
+    /// (`s.tx_undo_log.retain(|e| e.tx_id != tx_id)`) and then addressed
+    /// the buffer key `""` — a key no table ever has. The rows the aborted
+    /// transaction had buffered therefore stayed in `insert_buffer`, and
+    /// the next `flush()` persisted rows the ROLLBACK was meant to cancel.
+    ///
+    /// The undo is by **value**, not by position: `insert` records a
+    /// `BufferedInsert` per row and `delete` records a `BufferedDelete`,
+    /// and this removes exactly those. A blanket sweep would also delete
+    /// *other* connections' buffered rows — the buffer is instance-level,
+    /// not connection-level (#5060) — turning a rollback into data loss.
+    fn undo_transaction_in_place(s: &mut WriteState, rolling_back_tx: u64) {
+        // #5112: drain this transaction's entries and KEEP everyone
+        // else's.
+        //
+        // The loop used to be `while let Some(entry) =
+        // s.tx_undo_log.pop()`, and `continue`d when the entry belonged
+        // to a peer — but popping had already removed it from the log,
+        // so `continue` DISCARDED it. A peer whose undo was discarded has
+        // no way to roll itself back, and its ROLLBACK silently did
+        // nothing while reporting success.
+        //
+        // Measured at ~2/600 trials, and it showed up in BOTH directions:
+        // sometimes a committed DELETE came back, sometimes a rolled-back
+        // one stayed deleted. Neither mode is possible if every entry
+        // survives until its own transaction drains it.
+        let mut mine: Vec<TxUndoEntry> = Vec::new();
+        s.tx_undo_log.retain(|e| {
+            if e.tx_id == rolling_back_tx {
+                mine.push(e.clone());
+                false
+            } else {
+                true
+            }
+        });
+        // Reverse order: the undo log is a stack, so the last change is
+        // undone first.
+        for entry in mine.into_iter().rev() {
+            match entry.op {
+                UndoOp::UpdateRow {
+                    table,
+                    row_idx,
+                    original,
+                } => {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                        crate::engine::DEFAULT_DATABASE,
+                        &table,
+                    )) {
+                        if row_idx < data.rows.len() {
+                            data.rows[row_idx] = original;
+                            s.dirty_tables
+                                .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
+                        }
+                    }
+                }
+                UndoOp::DeleteRow {
+                    table,
+                    row_idx,
+                    original,
+                } => {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                        crate::engine::DEFAULT_DATABASE,
+                        &table,
+                    )) {
+                        let idx = row_idx.min(data.rows.len());
+                        data.rows.insert(idx, original);
+                        s.dirty_tables
+                            .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
+                    }
+                }
+                UndoOp::DeleteAll {
+                    table,
+                    original_rows,
+                } => {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
+                        crate::engine::DEFAULT_DATABASE,
+                        &table,
+                    )) {
+                        data.rows = original_rows;
+                        s.dirty_tables
+                            .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
+                    }
+                }
+                // #5055 / #5060: the row was inserted by *this*
+                // transaction and never became committed, so it
+                // goes back out of the buffer. Keyed by value, not
+                // position — the buffer is drained and refilled by
+                // concurrent work.
+                UndoOp::BufferedInsert { table, row } => {
+                    let key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, &table);
+                    if let Some(buffered) = s.insert_buffer.get_mut(&key) {
+                        if let Some(pos) = buffered.iter().position(|r| *r == row) {
+                            buffered.remove(pos);
+                        }
+                    }
+                }
+                UndoOp::BufferedDelete { table, row } => {
+                    let key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, &table);
+                    s.insert_buffer.entry(key).or_default().push(row);
+                }
+                // #5060: put the pre-image back where the post-image
+                // was. If the post-image is gone the buffered copy
+                // has moved on (flushed, or updated again) and the
+                // `tables` copy is covered by `UpdateRow`.
+                UndoOp::BufferedUpdate {
+                    table,
+                    post,
+                    original,
+                } => {
+                    if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
+                        crate::engine::DEFAULT_DATABASE,
+                        &table,
+                    )) {
+                        if let Some(pos) = buffered.iter().position(|r| *r == post) {
+                            buffered[pos] = original;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Discard all buffered in-memory inserts without persisting them.
     /// Used by `WalStorage::rollback_transaction` so the rolled-back
     /// transaction's writes are not visible to subsequent reads or to
@@ -6065,13 +6193,18 @@ impl StorageEngine for FileStorage {
         if tx_id == 0 {
             return Ok(());
         }
+        // #5506: the lock-free rollback now performs the **same**
+        // per-transaction undo as the `&mut self` path. It used to only
+        // drop this transaction's entries from the undo log and then
+        // address the buffer key `""` — a key no table ever has — so the
+        // aborted transaction's buffered rows stayed in `insert_buffer`
+        // and a later `flush()` persisted them.
+        //
+        // The undo is scoped to this transaction: a blanket `clear()` is
+        // data loss under concurrency (the buffer is instance-level, not
+        // connection-level — #5060).
         Self::with_write_lock(self, |s| {
-            // Scoped to this transaction — see the `&mut` variant for why
-            // a blanket `clear()` is data loss under concurrency.
-            s.tx_undo_log.retain(|e| e.tx_id != tx_id);
-            if let Some(buf) = s.insert_buffer.get_mut(&String::new()) {
-                let _ = buf;
-            }
+            Self::undo_transaction_in_place(s, tx_id);
         });
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
@@ -6120,116 +6253,7 @@ impl StorageEngine for FileStorage {
         // buffered rows — the buffer is instance-level, not
         // connection-level (#5060) — turning a rollback into data loss.
         Self::with_write_lock(self, |s| {
-            // #5112: drain this transaction's entries and KEEP everyone
-            // else's.
-            //
-            // The loop used to be `while let Some(entry) =
-            // s.tx_undo_log.pop()`, and `continue`d when the entry belonged
-            // to a peer — but popping had already removed it from the log,
-            // so `continue` DISCARDED it. A peer whose undo was discarded has
-            // no way to roll itself back, and its ROLLBACK silently did
-            // nothing while reporting success.
-            //
-            // Measured at ~2/600 trials, and it showed up in BOTH directions:
-            // sometimes a committed DELETE came back, sometimes a rolled-back
-            // one stayed deleted. Neither mode is possible if every entry
-            // survives until its own transaction drains it.
-            let mut mine: Vec<TxUndoEntry> = Vec::new();
-            s.tx_undo_log.retain(|e| {
-                if e.tx_id == rolling_back_tx {
-                    mine.push(e.clone());
-                    false
-                } else {
-                    true
-                }
-            });
-            // Reverse order: the undo log is a stack, so the last change is
-            // undone first.
-            for entry in mine.into_iter().rev() {
-                match entry.op {
-                    UndoOp::UpdateRow {
-                        table,
-                        row_idx,
-                        original,
-                    } => {
-                        if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                            crate::engine::DEFAULT_DATABASE,
-                            &table,
-                        )) {
-                            if row_idx < data.rows.len() {
-                                data.rows[row_idx] = original;
-                                s.dirty_tables
-                                    .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
-                            }
-                        }
-                    }
-                    UndoOp::DeleteRow {
-                        table,
-                        row_idx,
-                        original,
-                    } => {
-                        if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                            crate::engine::DEFAULT_DATABASE,
-                            &table,
-                        )) {
-                            let idx = row_idx.min(data.rows.len());
-                            data.rows.insert(idx, original);
-                            s.dirty_tables
-                                .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
-                        }
-                    }
-                    UndoOp::DeleteAll {
-                        table,
-                        original_rows,
-                    } => {
-                        if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                            crate::engine::DEFAULT_DATABASE,
-                            &table,
-                        )) {
-                            data.rows = original_rows;
-                            s.dirty_tables
-                                .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
-                        }
-                    }
-                    // #5055 / #5060: the row was inserted by *this*
-                    // transaction and never became committed, so it
-                    // goes back out of the buffer. Keyed by value, not
-                    // position — the buffer is drained and refilled by
-                    // concurrent work.
-                    UndoOp::BufferedInsert { table, row } => {
-                        let key =
-                            crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, &table);
-                        if let Some(buffered) = s.insert_buffer.get_mut(&key) {
-                            if let Some(pos) = buffered.iter().position(|r| *r == row) {
-                                buffered.remove(pos);
-                            }
-                        }
-                    }
-                    UndoOp::BufferedDelete { table, row } => {
-                        let key =
-                            crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, &table);
-                        s.insert_buffer.entry(key).or_default().push(row);
-                    }
-                    // #5060: put the pre-image back where the post-image
-                    // was. If the post-image is gone the buffered copy
-                    // has moved on (flushed, or updated again) and the
-                    // `tables` copy is covered by `UpdateRow`.
-                    UndoOp::BufferedUpdate {
-                        table,
-                        post,
-                        original,
-                    } => {
-                        if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                            crate::engine::DEFAULT_DATABASE,
-                            &table,
-                        )) {
-                            if let Some(pos) = buffered.iter().position(|r| *r == post) {
-                                buffered[pos] = original;
-                            }
-                        }
-                    }
-                }
-            }
+            Self::undo_transaction_in_place(s, rolling_back_tx);
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
@@ -6573,17 +6597,64 @@ impl StorageEngine for FileStorage {
             .map_err(|e| SqlError::ExecutionError(format!("flush storage: {}", e)))
     }
 
-    // C.1.2: delegate to the inherent `&self` implementation; this is
-    // NOT recursion (different declaration, same name). The
-    // `unconditional_recursion` lint can't tell trait-vs-inherent
-    // dispatch apart from a syntactic `self.method()` call.
-    #[allow(unconditional_recursion)]
+    // #5480: this used to be `self.discard_all_buffers()`, which the
+    // method resolver sends straight back to THIS trait method. The
+    // receiver candidate `&mut FileStorage` is matched by value, and the
+    // trait method's own `self` type is `&mut FileStorage` — so the trait
+    // method wins before the inherent `&self` implementation is ever
+    // considered. The result was infinite recursion: stack overflow and
+    // SIGABRT, which killed the whole server process on every ROLLBACK
+    // against a file-backed store.
+    //
+    // `drop_table_in_db` above hit exactly the same trap and was fixed
+    // with a fully-qualified path; do the same here. The
+    // `FileStorage::` prefix is what selects the inherent `&self`
+    // implementation, and `&mut FileStorage` coerces to `&FileStorage`.
     fn discard_all_buffers(&mut self) {
-        // StorageEngine::discard_all_buffers default is a no-op; for
-        // FileStorage we actually drop the buffered inserts. Issue
-        // #3964: rollback must NOT persist. Delegate to the inherent
-        // `&self` implementation which already takes the write_lock.
-        self.discard_all_buffers();
+        FileStorage::discard_all_buffers(self);
+    }
+
+    /// #5480 / #5506: the `&self` counterpart of [`discard_all_buffers`].
+    ///
+    /// #5506 originally read as "this method is missing, so the rolled-back
+    /// transaction's rows survive". That diagnosis was **half** right, and the
+    /// obvious repair — implement it as the blanket clear — is what this
+    /// comment exists to prevent.
+    ///
+    /// The lock-free rollback path is:
+    ///
+    /// ```text
+    /// WalStorage::rollback_transaction_lockfree_for(tx_id)
+    ///   ① WAL `Rollback` entry + sync
+    ///   ② inner().rollback_transaction_lockfree_for(tx_id)  → per-transaction undo
+    ///   ③ inner().discard_all_buffers_shared()              → THIS method
+    /// ```
+    ///
+    /// Step ② is where the abort is actually undone: it removes exactly this
+    /// transaction's own `UndoOp::BufferedInsert` entries, by value
+    /// ([`undo_transaction_in_place`], #5055 / #5060). Before this batch,
+    /// step ② was a no-op for `FileStorage` — it dropped the transaction's
+    /// undo-log entries and then addressed the buffer key `""`, a key no
+    /// table ever has — so the aborted rows stayed buffered and a later
+    /// `flush()` persisted them. **Step ② was the bug; step ③ was never the
+    /// fix.**
+    ///
+    /// Step ③, on the other hand, **must not** clear the buffer wholesale:
+    /// `insert_buffer` is **instance-level**, not connection-level (#5060),
+    /// and `FileStorage::insert` always buffers — so the buffer also holds
+    /// other connections' pending rows and already-committed-but-unflushed
+    /// rows. A blanket clear here turns one connection's ROLLBACK into
+    /// everyone else's data loss, which is exactly the contract pinned by
+    /// `crates/mysql-server/tests/verify_4957_rollback_buffer_test.rs`
+    /// ("A's ROLLBACK must not discard B's pending rows").
+    ///
+    /// So this override is deliberately a **no-op**: the per-transaction undo
+    /// in step ② has already done the work, and it is the only mechanism that
+    /// can do it without touching a peer's rows. The override exists (rather
+    /// than being left to the trait default) so that the decision is explicit
+    /// and a later reader does not "fix" it into a blanket clear.
+    fn discard_all_buffers_shared(&self) {
+        // Intentionally empty — see the doc comment above.
     }
 
     fn has_table(&self, table: &str) -> bool {

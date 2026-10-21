@@ -561,36 +561,20 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
     }
 
     pub fn rollback_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self.current_tx_id.load(Ordering::Relaxed);
-        if self.wal_enabled {
-            let entry = WalEntry {
-                database_name: None,
-                tx_id,
-                entry_type: WalEntryType::Rollback,
-                table_id: 0,
-                key: None,
-                data: None,
-                lsn: 0,
-                timestamp: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-                table_name: None,
-            };
-            self.append_wal_entry(entry)?;
-            self.wal_do(|w| w.sync())?;
-        }
-        // Issue #3964: previously this called `self.inner_mut().flush()`,
-        // which persisted the rolled-back tx's buffered inserts to
-        // data.rows and then to disk via the post-flush dirty-table
-        // save path. ROLLBACK must discard in-memory writes without
-        // persisting them, so we discard the buffer instead.
-        self.inner_mut().discard_all_buffers();
-        // #3223 Phase 1: remove from active set on rollback.
-        if let Ok(mut active) = self.active_txs.lock() {
-            active.remove(&tx_id);
-        }
-        Ok(())
+        // Delegate to the trait impl so the inner engine's rollback, the
+        // buffer discard and the tx-id reset live in ONE place (the
+        // StorageEngine vtable path). UFCS call ensures the trait version
+        // is used.
+        //
+        // #5480: this used to be a second, INCOMPLETE copy of the trait
+        // method. It appended the WAL entry and dropped the write buffer
+        // but never called `inner.rollback_transaction()`, so
+        // `MvccStorage`'s pending versions were never discarded and an
+        // aborted transaction's rows stayed visible. Being an inherent
+        // `&mut self` method it also SHADOWED the trait method at the
+        // method-resolution step, so every caller — including the engine
+        // — reached this copy and never the fixed trait implementation.
+        <Self as StorageEngine>::rollback_transaction(self)
     }
 
     pub fn in_transaction(&self) -> bool {
@@ -1542,13 +1526,31 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
         // which persisted the rolled-back tx's buffered inserts to
         // data.rows and then to disk via the post-flush dirty-table
         // save path. ROLLBACK must discard in-memory writes without
-        // persisting them, so we discard the buffer instead.
+        // persisting them.
+        //
         // #4974 follow-up: same missing delegation as the commit path.
         // Without it `MvccStorage::rollback_transaction`'s
         // `discard_pending()` is never reached from the `&mut` rollback, so
         // an aborted transaction's versions stay pending forever.
+        //
+        // #5480: the inner engine's own rollback is the mechanism that
+        // discards the aborted transaction's writes — and it does so
+        // **per transaction** (`FileStorage::rollback_transaction_for`
+        // removes exactly this transaction's buffered rows by value,
+        // #5055 / #5060).
+        //
+        // A blanket `self.inner_mut().discard_all_buffers()` used to
+        // follow this call. It is not needed, and it is harmful: the
+        // inner engine's write buffer is **instance-level**, not
+        // connection-level, and `FileStorage::insert` always buffers — so
+        // clearing it wholesale during one connection's ROLLBACK also
+        // drops *other* connections' pending rows **and** rows that have
+        // already committed but have not been flushed yet.
+        // `crates/mysql-server/tests/verify_4957_rollback_buffer_test.rs`
+        // pins exactly that contract ("A's ROLLBACK must not discard B's
+        // pending rows"), and it is the per-transaction undo above that
+        // satisfies it.
         self.inner_mut().rollback_transaction()?;
-        self.inner_mut().discard_all_buffers();
         self.current_tx_id.store(0, Ordering::Relaxed);
         Ok(())
     }
