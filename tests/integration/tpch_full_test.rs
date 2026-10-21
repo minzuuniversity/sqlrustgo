@@ -641,7 +641,12 @@ mod tests {
 
         fn get_pg_config() -> Option<(String, String, String, String)> {
             let host = env::var("PGHOST").unwrap_or_else(|_| "/tmp".to_string());
-            let user = env::var("PGUSER").unwrap_or_else(|_| "liying".to_string());
+            // #5500: no hardcoded user name. `PGUSER` is libpq's own
+            // variable; when it is unset the client falls back to the
+            // operating-system user, which is the right default on every
+            // machine. A literal name here made this target unrunnable
+            // everywhere except the machine that owns it.
+            let user = env::var("PGUSER").unwrap_or_default();
             let password = env::var("PGPASSWORD").unwrap_or_else(|_| "".to_string());
             let database = env::var("PGDATABASE").unwrap_or_else(|_| "postgres".to_string());
 

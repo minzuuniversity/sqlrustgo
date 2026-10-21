@@ -196,8 +196,10 @@ fn run_psql(sql: &str) -> Result<Vec<Vec<String>>, String> {
             "psql",
             "-h",
             "localhost",
-            "-U",
-            "liying",
+            // #5500: no `-U <name>` here. The client takes the user from
+            // `PGUSER` (libpq's own variable) and falls back to the
+            // operating-system user — hardcoding one machine's user name
+            // made this target unrunnable everywhere else.
             "-d",
             "tpch_sf01_pgdate",
             "-A",

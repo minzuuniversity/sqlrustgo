@@ -1,0 +1,143 @@
+{
+  "version": 1,
+  "scope": "docs/releases/v4.1.0",
+  "updated_at": "2026-10-21T09:31:25Z",
+  "note": "Known-broken documentation pointers in the release line. The gate fails on any pointer that is NOT listed here. Each entry is a reviewable debt item, not a suppression: the category says why the pointer is broken (the path was moved by the crates/ -> src/ flattening, the artifact was planned but never committed, or the target lives on another branch only).",
+  "entries": [
+    {
+      "file": "ALIGNMENT_AUDIT_2026-09-30.md",
+      "target": "crates/executor/src/execution_engine.rs",
+      "category": "path_moved_after_crates_flattening"
+    },
+    {
+      "file": "DEFECTS_AND_ISSUES.md",
+      "target": "tests/soak_test_harness.rs",
+      "category": "path_moved_after_restructure"
+    },
+    {
+      "file": "IAIA_410_AUDIT_PLAN.md",
+      "target": "tests/baseline/v4.1_mutation_specs.json",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "ISSUES_PLAN.md",
+      "target": "crates/executor/src/execution_engine.rs",
+      "category": "path_moved_after_crates_flattening"
+    },
+    {
+      "file": "LEGACY_LEDGER_v3.6_to_v4.1.md",
+      "target": "tests/soak_test_harness.rs",
+      "category": "path_moved_after_restructure"
+    },
+    {
+      "file": "PHASE_1_SCOPE.md",
+      "target": "crates/executor/src/execution_engine.rs",
+      "category": "path_moved_after_crates_flattening"
+    },
+    {
+      "file": "PR-5379_ACCEPTANCE.md",
+      "target": "docs/governance/AGENT_PROMPT_TEMPLATE.md",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "SEMISYNC_4937_RELEASE_NOTES.md",
+      "target": "crates/storage/src/binary_server.rs",
+      "category": "path_moved_after_crates_flattening"
+    },
+    {
+      "file": "TRANSACTION_ISOLATION_DESIGN_2026-10-04.md",
+      "target": "crates/mysql-server/tests/zz_probe_snapshot.rs",
+      "category": "path_moved_after_crates_flattening"
+    },
+    {
+      "file": "evidence/5025_NAMED_DB_RESTART_2026-10-06.md",
+      "target": "crates/storage/tests/probe_5025_restart_scoped.rs",
+      "category": "path_moved_after_crates_flattening"
+    },
+    {
+      "file": "evidence/ENGINE_SEMANTICS_5431_5433_2026-10-21.md",
+      "target": "docs/governance/AGENT_PROMPT_TEMPLATE.md",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "evidence/ENGINE_SEMANTICS_5431_5433_2026-10-21.md",
+      "target": "tests/integration/dml/replace_test.rs",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "evidence/EXEC_DML_WRITE_LOCK_DEADLOCK_4944_2026-10-06.md",
+      "target": "tests/integration/dml/replace_test.rs",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "evidence/GATE_HONESTY_5417_5419_2026-10-21.md",
+      "target": "docs/governance/AGENT_PROMPT_TEMPLATE.md",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "evidence/GATE_HONESTY_5417_5419_2026-10-21.md",
+      "target": "tests/wal_integration_test.rs",
+      "category": "path_moved_after_restructure"
+    },
+    {
+      "file": "evidence/MUTATION_AUDIT_5015_STALE_BINARY_2026-10-09.md",
+      "target": "tests/integration/ddl/show_databases_test.rs",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "evidence/PITR_REAL_REPLAY_5055_2026-10-06.md",
+      "target": "tests/integration/ddl/alter_table_test.rs",
+      "category": "path_moved_after_restructure"
+    },
+    {
+      "file": "evidence/TEST_SELF_CONTAINMENT_5467_5469_2026-10-21.md",
+      "target": "docs/governance/AGENT_PROMPT_TEMPLATE.md",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "evidence/TEST_SELF_CONTAINMENT_5467_5469_2026-10-21.md",
+      "target": "tests/tpch_sf1_22_vs_3engines_test.rs",
+      "category": "path_moved_after_restructure"
+    },
+    {
+      "file": "evidence/TPCH_FIXTURE_5379_2026-10-20.md",
+      "target": "docs/governance/AGENT_PROMPT_TEMPLATE.md",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "evidence/TPCH_FIXTURE_5379_2026-10-20.md",
+      "target": "docs/governance/PR_TEMPLATE.md",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "evidence/TPCH_FIXTURE_5379_2026-10-20.md",
+      "target": "scripts/gate/verify_pr_dag.sh",
+      "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "evidence/TPCH_FIXTURE_5379_2026-10-20.md",
+      "target": "src/local_bin.rs",
+      "category": "path_moved_after_restructure"
+    },
+    {
+      "file": "evidence/TPCH_FIXTURE_5379_2026-10-20.md",
+      "target": "src/main.rs",
+      "category": "path_moved_after_restructure"
+    },
+    {
+      "file": "evidence/TPCH_FIXTURE_5379_2026-10-20.md",
+      "target": "tests/wal_integration_test.rs",
+      "category": "path_moved_after_restructure"
+    },
+    {
+      "file": "evidence/gmp_consumer_gate_20261005.md",
+      "target": "crates/gmp-storage/src/cypher_engine.rs",
+      "category": "path_moved_after_crates_flattening"
+    },
+    {
+      "file": "evidence/gmp_consumer_gate_20261005.md",
+      "target": "docs/eval/408_RETRIEVAL_ZERO_ROOTCAUSE.md",
+      "category": "planned_artifact_never_committed"
+    }
+  ]
+}

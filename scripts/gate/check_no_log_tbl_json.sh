@@ -31,6 +31,16 @@ ALLOWLIST_PATTERNS=(
     "tests/data/t\.json$"
     "tests/tpch_hashes_.*\.json$"
     "tests/oracle/baselines/.*\.json$"
+    # Gate baselines are gate **inputs**, not build output: `.gitignore`
+    # already negates them (`!tests/baseline/*.json`, with the comment
+    # "P16 gate baselines. These are gate INPUTS, not build output").
+    # This allowlist was simply out of sync with `.gitignore`, and the
+    # mismatch made the gate red on files that are already committed:
+    # `tests/baseline/test_count.json` and
+    # `tests/baseline/test_target_lint_budget.json` (the batch-8 lint
+    # budget baseline). A gate that is red on the committed tree is a gate
+    # nobody runs.
+    "tests/baseline/.*\.json$"
 )
 
 check_allowed() {
