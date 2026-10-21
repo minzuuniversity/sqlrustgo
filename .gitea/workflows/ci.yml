@@ -80,6 +80,22 @@ jobs:
         # number, and that a re-baseline is an explicit, reviewable act
         # (`--update`) rather than a side effect of a CI run.
         run: bash scripts/gate/check_test_target_lint_budget.sh
+      - name: Workflow expression gate (issue #5517)
+        # #5517: a workflow whose expression template the platform cannot
+        # parse is **ignored entirely** — no job is ever created, so the run
+        # fails instantly with zero jobs and nothing in the repo says why.
+        # The trigger was a step-output template written inside a *comment* of
+        # a `run:` block: the platform scans the whole scalar, comments
+        # included, and the angle brackets of a documentation placeholder are
+        # not legal expression symbols.
+        #
+        # (This very comment is an example of the discipline: the template is
+        # *described*, never written out.)
+        #
+        # This gate is static and costs nothing: it refuses an expression that
+        # carries angle brackets, and refuses anything richer than a plain
+        # dotted path inside a comment.
+        run: bash scripts/gate/check_workflow_expressions.sh
       - name: Format check
         run: cargo fmt --check --all
       - name: Build
