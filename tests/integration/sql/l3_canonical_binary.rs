@@ -26,18 +26,26 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 use tempfile::TempDir;
 
-/// Locate the workspace root from `CARGO_MANIFEST_DIR` (which for
-/// integration tests is the root package).
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
+/// #5477: locate the canonical MySQL server binary.
+///
+/// This used to hardcode `<workspace>/target/debug/sqlrustgo-mysql-server`,
+/// which **ignores `CARGO_TARGET_DIR`**. With a shared target dir (or any
+/// isolated build), the binary lands somewhere else and the test failed with
+/// "canonical binary not found" — a message that misleadingly said "you
+/// didn't build it".
+///
+/// The shared resolver honours `CARGO_TARGET_DIR` first, then the package's
+/// own `target/{debug,release}`, then `PATH`.
 fn canonical_binary() -> PathBuf {
-    let mut p = workspace_root();
-    p.push("target");
-    p.push("debug");
-    p.push("sqlrustgo-mysql-server");
-    p
+    common::bin_resolver::resolve_mysql_server_binary().unwrap_or_else(|| {
+        panic!(
+            "{}",
+            common::bin_resolver::missing_binary_message(
+                "sqlrustgo-mysql-server",
+                common::bin_resolver::MYSQL_SERVER_BIN_ENV
+            )
+        )
+    })
 }
 
 struct SubprocessHandle {

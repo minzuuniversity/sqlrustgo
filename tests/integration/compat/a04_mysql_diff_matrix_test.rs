@@ -37,6 +37,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+// #5406 / #5477：二进制定位收敛到共享 helper。
+#[path = "../../common/bin_resolver.rs"]
+mod bin_resolver;
+
 // ============================================================================
 // Corpus 定义
 // ============================================================================
@@ -396,21 +400,17 @@ fn save_wire_log(case_id: &str, engine: &str, content: &str) {
 // SQLite CLI runner
 // ============================================================================
 
+/// 定位引擎二进制。
+///
+/// #5406 / #5477：这里原本硬编码的是**某台开发机家目录**下的绝对路径
+/// （`/home/<某用户>/sqlrustgo/target-a04/debug/sqlrustgo` 之类）——
+/// 那条路径在任何别的机器上都不存在，于是 A04 的差分矩阵在 CI 上
+/// **每次都走 `not_comparable` 分支**，看起来「全绿」却一次都没比对。
+///
+/// 现在统一走共享 helper（`tests/common/bin_resolver.rs`）：
+/// `SQLRUSTGO_BIN` → `CARGO_TARGET_DIR` → 包根 `target/{debug,release}` → `PATH`。
 fn find_sqlrustgo_bin() -> Option<String> {
-    if let Ok(p) = std::env::var("SQLRUSTGO_BIN") {
-        if Path::new(&p).exists() {
-            return Some(p);
-        }
-    }
-    let candidates = [
-        "/home/ai/sqlrustgo/target-a04/debug/sqlrustgo",
-        "/home/ai/sqlrustgo/target/debug/sqlrustgo",
-        "target/debug/sqlrustgo",
-    ];
-    candidates
-        .iter()
-        .find(|c| Path::new(c).exists())
-        .map(|s| s.to_string())
+    bin_resolver::resolve_engine_binary().map(|p| p.display().to_string())
 }
 
 fn make_db_dir() -> PathBuf {

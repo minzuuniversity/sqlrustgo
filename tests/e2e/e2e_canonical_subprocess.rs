@@ -20,17 +20,22 @@ use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
-/// Locate the workspace root from `CARGO_MANIFEST_DIR`.
-fn workspace_root() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
-
+/// #5477: locate the canonical MySQL server binary.
+///
+/// This used to hardcode `<workspace>/target/debug/sqlrustgo-mysql-server`,
+/// which **ignores `CARGO_TARGET_DIR`** — so under a shared target dir the
+/// binary was invisible and every test in this target failed with
+/// "canonical binary not found".
 fn canonical_binary() -> std::path::PathBuf {
-    let mut p = workspace_root();
-    p.push("target");
-    p.push("debug");
-    p.push("sqlrustgo-mysql-server");
-    p
+    common::bin_resolver::resolve_mysql_server_binary().unwrap_or_else(|| {
+        panic!(
+            "{}",
+            common::bin_resolver::missing_binary_message(
+                "sqlrustgo-mysql-server",
+                common::bin_resolver::MYSQL_SERVER_BIN_ENV
+            )
+        )
+    })
 }
 
 /// Owns the subprocess server for the lifetime of the test.
@@ -433,18 +438,25 @@ fn e2e_bench_subcommand_prints_migration_notice() {
 
 #[test]
 fn e2e_legacy_binary_sqlrustgo_deprecated() {
-    let bin = workspace_root()
-        .join("target")
-        .join("debug")
-        .join("sqlrustgo");
-    if !bin.exists() {
-        eprintln!("skipping: {} not built", bin.display());
-        return;
-    }
-    let out = Command::new(&bin).output().expect("run sqlrustgo");
-    assert!(out.status.success(), "canonical sqlrustgo should exit 0");
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
+    // #5406 / #5477：这里原本硬编码 `<workspace>/target/debug/sqlrustgo`
+    // （忽略 `CARGO_TARGET_DIR`），且**找不到就静默 `return`** ——
+    // 在任何没构建该二进制的机器上，这个用例「通过」却什么都没验。
+    //
+    // 现在走共享 resolver：找不到就**明确失败**，并点名该设哪个环境变量。
+    let Some(bin) = common::bin_resolver::resolve_engine_binary() else {
+        panic!(
+            "{}",
+            common::bin_resolver::missing_binary_message(
+                "engine",
+                common::bin_resolver::ENGINE_BIN_ENV
+            )
+        );
+    };
+    let stdout_delegated;
+    let stderr_delegated;
+
+    // ---- 契约 1：能委托时，裸调用必须委托给 server 的 --help -------------
+    //
     // v3.10.0 binary cleanup (18c174ce92, V310_CLI_BINARY_PLAN.md)
     // intentionally REMOVED the stderr DEPRECATED shim: root `sqlrustgo`
     // is now the canonical CLI wrapper and bare invocation delegates to
@@ -452,12 +464,72 @@ fn e2e_legacy_binary_sqlrustgo_deprecated() {
     // old shim; migrated per the registered disposition in
     // docs/releases/v3.12.0/b2-disabled-test-binary-registry.md row 13
     // ("migrate to sqlrustgo-mysql-server harness").
+    //
+    // #5477: 断言此前**从未被执行**——旧代码在二进制缺失时静默 `return`，
+    // 于是「裸调用必须委托」这条契约一次都没被验证过。
+    //
+    // 委托目标由 wrapper 通过 `PATH` 查找，所以这里把 server 二进制所在
+    // 目录加进 `PATH`，让契约的验证**与 cwd 无关**。
+    let server_bin = common::bin_resolver::resolve_mysql_server_binary().unwrap_or_else(|| {
+        panic!(
+            "{}",
+            common::bin_resolver::missing_binary_message(
+                "sqlrustgo-mysql-server",
+                common::bin_resolver::MYSQL_SERVER_BIN_ENV
+            )
+        )
+    });
+    let server_dir = server_bin.parent().expect("server binary has a parent dir");
+    let path_with_server = format!(
+        "{}:{}",
+        server_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = Command::new(&bin)
+        .env("PATH", &path_with_server)
+        .output()
+        .expect("run sqlrustgo");
+    stdout_delegated = String::from_utf8_lossy(&out.stdout).into_owned();
+    stderr_delegated = String::from_utf8_lossy(&out.stderr).into_owned();
+
     assert!(
-        stdout.contains("Usage: sqlrustgo-mysql-server"),
-        "bare invocation should delegate to sqlrustgo-mysql-server help, stdout: {stdout}"
+        out.status.success(),
+        "canonical sqlrustgo should exit 0 when it can delegate; stderr: {stderr_delegated}"
     );
     assert!(
-        !stderr.contains("DEPRECATED"),
-        "the v3.10.0-removed DEPRECATED shim must not come back, stderr: {stderr}"
+        stdout_delegated.contains("Usage: sqlrustgo-mysql-server"),
+        "bare invocation should delegate to sqlrustgo-mysql-server help, stdout: {stdout_delegated}"
+    );
+    assert!(
+        !stderr_delegated.contains("DEPRECATED"),
+        "the v3.10.0-removed DEPRECATED shim must not come back, stderr: {stderr_delegated}"
+    );
+
+    // ---- 契约 2：不能委托时，必须**诚实失败** ----------------------------
+    //
+    // 找不到 `sqlrustgo-mysql-server` 时，wrapper 必须以非零退出并给出
+    // 明确提示 —— 绝不能「静默成功」。
+    //
+    // 这里把 cwd 指向一个空临时目录（消掉 `./target/debug/...` 这类
+    // cwd 相对候选），并清空 `PATH`，让「找不到」成为确定事实，
+    // 而不是取决于这台机器上恰好有没有本地 `target/` 目录。
+    let empty_dir = std::env::temp_dir().join(format!("e2e-no-server-{}", std::process::id()));
+    std::fs::create_dir_all(&empty_dir).expect("create empty dir");
+    let out = Command::new(&bin)
+        .current_dir(&empty_dir)
+        .env("PATH", "")
+        .output()
+        .expect("run sqlrustgo without a reachable server");
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    let _ = std::fs::remove_dir_all(&empty_dir);
+
+    assert!(
+        !out.status.success(),
+        "the wrapper must NOT report success when it cannot delegate; \
+         stdout: {stdout_delegated} stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("sqlrustgo-mysql-server not found"),
+        "the wrapper must name what it could not find, stderr: {stderr}"
     );
 }

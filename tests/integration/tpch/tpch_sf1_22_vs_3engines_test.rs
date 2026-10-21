@@ -220,9 +220,9 @@ fn emit_skip_message() {
     eprintln!(
         "tpch_sf1_22_vs_3engines_test: SF=1.0 fixture not present at {}. \
          Generate it with:\n  \
-         /home/openclaw/tpch-dbgen-master/dbgen -s 1 -f\n  \
+         <your dbgen checkout>/dbgen -s 1 -f\n  \
          mkdir -p {}\n  \
-         mv /home/openclaw/tpch-dbgen-master/*.tbl {}/\n\
+         mv <your dbgen checkout>/*.tbl {}/\n\
          (or `scripts/generate_tpch_data.sh --sf 1 --backend dbgen`).\n\
          The test is marked #[ignore] so it does not consume the 10-minute budget.",
         dir, dir, dir

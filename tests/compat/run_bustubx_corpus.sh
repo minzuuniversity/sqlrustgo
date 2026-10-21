@@ -2,26 +2,37 @@
 # BustubX-EDU B-Track Corpus Runner
 #
 # Runs the SQL corpus as differential tests against SQLite.
-# Usage: ./run_bustubx_corpus.sh [sqlite_bin] [sqlrustgo_bin]
+# Usage: ./run_bustustx_corpus.sh [sqlite_bin] [sqlrustgo_bin]
 #
 # Exit codes:
-#   0 - All tests passed
-#   1 - Some tests failed
+#   0  - All tests passed
+#   1  - Some tests failed
+#   2  - Usage error (corpus / sqlite3 missing)
+#   77 - NOT RUN (the engine binary could not be located) — disclosed, never
+#        counted as "passed" (#5406)
 
 set -uo pipefail
 
-SQLITE_BIN="${1:-${SQLITE_BIN:-/usr/bin/sqlite3}}"
-SQLRUSTGO_BIN="${2:-${SQLRUSTGO_BIN:-/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo}}"
+# #5406 / #5477: the engine binary was located through a hardcoded path
+# inside one developer's home directory. That path exists on exactly one
+# machine, so everywhere else this runner printed "SKIP" and exited 0 —
+# a caller reads that as "the corpus passed" while nothing was compared.
+#
+# Now: explicit env var -> CARGO_TARGET_DIR -> repo target/ -> PATH, and a
+# missing binary is disclosed as NOT-RUN with exit code 77 (not 0).
+source "$(dirname "$0")/../common/resolve_bin.sh"
+
+SQLITE_BIN="${1:-${SQLITE_BIN:-sqlite3}}"
+SQLRUSTGO_BIN="${2:-}"
 CORPUS="$(dirname "$0")/bustubx_b_track_corpus.sql"
 
-if [ ! -x "$SQLITE_BIN" ]; then
-    echo "ERROR: sqlite3 not found at $SQLITE_BIN"
-    exit 2
+if [ -z "$SQLRUSTGO_BIN" ]; then
+    SQLRUSTGO_BIN="$(resolve_sqlrustgo_bin "run_bustubx_corpus")" || exit $?
 fi
 
-if [ ! -x "$SQLRUSTGO_BIN" ]; then
-    echo "SKIP: sqlrustgo not built at $SQLRUSTGO_BIN"
-    exit 0
+if ! command -v "$SQLITE_BIN" >/dev/null 2>&1 && [ ! -x "$SQLITE_BIN" ]; then
+    echo "ERROR: sqlite3 not found at $SQLITE_BIN"
+    exit 2
 fi
 
 if [ ! -f "$CORPUS" ]; then

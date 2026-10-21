@@ -15,14 +15,20 @@
 
 set -euo pipefail
 
-BIN="${SQLRUSTGO_CLI:-/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo}"
+# #5406 / #5477: the engine binary was located through a hardcoded path
+# inside one developer's home directory. That path exists on exactly one
+# machine, so everywhere else this script printed "SKIP" and exited 0 —
+# which a caller reads as "the regression passed" while nothing was tested.
+#
+# Now: explicit env var -> CARGO_TARGET_DIR -> repo target/ -> PATH, and a
+# missing binary is disclosed as NOT-RUN with exit code 77 (not 0).
+source "$(dirname "$0")/../../common/resolve_bin.sh"
+
+TARGET_NAME="$(basename "$0" .sh)"
+BIN="$(resolve_sqlrustgo_bin "$TARGET_NAME")" || exit $?
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-
-if [ ! -x "$BIN" ]; then
-  echo "SKIP: $BIN not built (cargo build -p sqlrustgo-cli --all-features first)"
-  exit 0
-fi
 
 # CASE 1 — sub-bug #1 (multi-col + VALUES()) MUST reject explicitly
 SCRIPT1=$(

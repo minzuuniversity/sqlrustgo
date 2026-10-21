@@ -57,6 +57,10 @@
 #[path = "../../common/tpch_fixture.rs"]
 mod tpch_fixture;
 
+// #5477: 二进制定位收敛到共享 helper。
+#[path = "../../common/bin_resolver.rs"]
+mod bin_resolver;
+
 use serde_json::Value as JsonValue;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -79,28 +83,20 @@ struct Server {
 
 impl Server {
     fn start(data_dir: &Path) -> Result<Self, String> {
-        // Build the binary in debug mode if not present.
-        // Use CARGO_TARGET_DIR if set, else fall back to target/debug/ relative to repo root.
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .to_path_buf();
-        let target_dir = std::env::var("CARGO_TARGET_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| repo_root.join("target"));
-        let bin = target_dir.join("debug").join("sqlrustgo-mysql-server");
-        let bin = if bin.exists() {
-            bin
-        } else {
-            // Fallback to repo_root/target/debug (for non-CARGO_TARGET_DIR environments)
-            repo_root
-                .join("target")
-                .join("debug")
-                .join("sqlrustgo-mysql-server")
-        };
-        if !bin.exists() {
-            return Err(format!("binary not found at {:?}", bin));
-        }
+        // #5477: locate the canonical binary through the shared resolver
+        // (`SQLRUSTGO_MYSQL_SERVER_BIN` → `CARGO_TARGET_DIR` → package
+        // `target/{debug,release}` → `PATH`).
+        //
+        // This used to be a third independent implementation of the same
+        // lookup. Three implementations drift; one of them eventually
+        // hardcodes a machine path, and the test then "finds the binary" on
+        // exactly one machine and nowhere else.
+        let bin = bin_resolver::resolve_mysql_server_binary().ok_or_else(|| {
+            bin_resolver::missing_binary_message(
+                "sqlrustgo-mysql-server",
+                bin_resolver::MYSQL_SERVER_BIN_ENV,
+            )
+        })?;
 
         // Find a free port.
         let listener =

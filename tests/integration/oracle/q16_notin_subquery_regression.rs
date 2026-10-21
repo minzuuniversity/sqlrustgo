@@ -24,11 +24,12 @@ use std::sync::Arc;
 
 // The shared TPC-H fixture resolver (issue #5379).
 //
-// The fixture used to be read from the absolute path
-// `/home/openclaw/sqlrustgo_work/tests/data/tpch-sf01`, i.e. one author's
+// The fixture used to be read from an absolute path inside one author's
 // home directory — it never existed on any CI runner. The fixture is now
 // resolved through the shared resolver, and a missing fixture (or a fixture
 // at a different scale profile) is disclosed as NOT-RUN instead of panicking.
+// (The exact former path is deliberately not spelled out here: a home
+// directory path in the test tree is what the C6 gate forbids.)
 #[path = "../../common/tpch_fixture.rs"]
 mod tpch_fixture;
 

@@ -6,8 +6,8 @@
 //!
 //! 1. `make_db_dir()` 被调用但**从未定义** ⇒ 编译失败；
 //! 2. 引擎二进制路径硬编码为
-//!    `/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo` —— 一台个人机器的
-//!    绝对路径，既忽略 `CARGO_TARGET_DIR`，也在任何 CI 上都不存在。
+//!    **开发机上的绝对路径**（形如 `<某人的家目录>/dev/sqlrustgo/target/debug/
+//!    sqlrustgo`）—— 既忽略 `CARGO_TARGET_DIR`，也在任何 CI 上都不存在。
 //!    这正是 #5477 刚清掉的同一类反模式。
 //!
 //! 修法不是「把路径改成另一个路径」，而是**去掉这个外部依赖**：
@@ -30,11 +30,12 @@ use rusqlite::types::ValueRef;
 use rusqlite::Connection;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, Value};
 
-/// NULL 的哨兵表示 —— 不可能与真实文本 `"NULL"` 撞上。
-const NULL_CELL: &str = "\u{0}NULL";
+// #5406：方言适配与数值感知比较已抽到共享模块，
+// `tests/integration/compat/differential_corpus_test.rs` 用的是同一份。
+#[path = "../common/sqlite_dialect.rs"]
+mod sqlite_dialect;
 
-/// 浮点比较的相对容差。
-const FLOAT_REL_TOLERANCE: f64 = 1e-9;
+use sqlite_dialect::{adapt_for_sqlite, cells_equal, format_real, NULL_CELL};
 
 /// 把脚本切成一条条语句。
 fn split(script: &str) -> Vec<String> {
@@ -43,112 +44,6 @@ fn split(script: &str) -> Vec<String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
-}
-
-/// 找到 `needle` 在 `haystack` 中的词边界位置（前后都不能是标识符字符）。
-fn find_keyword(haystack: &str, needle: &str) -> Option<usize> {
-    let bytes = haystack.as_bytes();
-    let mut start = 0usize;
-    while let Some(rel) = haystack[start..].find(needle) {
-        let abs = start + rel;
-        let before_ok = abs == 0
-            || !bytes[abs - 1].to_ascii_lowercase().is_ascii_alphanumeric()
-                && bytes[abs - 1] != b'_';
-        let after = abs + needle.len();
-        let after_ok = after >= bytes.len()
-            || (!bytes[after].to_ascii_lowercase().is_ascii_alphanumeric() && bytes[after] != b'_');
-        if before_ok && after_ok {
-            return Some(abs);
-        }
-        start = abs + 1;
-        if start >= haystack.len() {
-            break;
-        }
-    }
-    None
-}
-
-/// 找到 `(` 在 `open_idx` 处对应的 `)`。
-fn matching_paren(s: &str, open_idx: usize) -> Option<usize> {
-    let bytes = s.as_bytes();
-    let mut depth = 0i32;
-    for (i, b) in bytes.iter().enumerate().skip(open_idx) {
-        match b {
-            b'(' => depth += 1,
-            b')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// 在括号深度 0 处按逗号切分参数。
-fn split_top_level(args: &str) -> Option<(String, String)> {
-    let bytes = args.as_bytes();
-    let mut depth = 0i32;
-    let mut split_at = None;
-    for (i, b) in bytes.iter().enumerate() {
-        match b {
-            b'(' => depth += 1,
-            b')' => depth -= 1,
-            b',' if depth == 0 => {
-                split_at = Some(i);
-                break;
-            }
-            _ => {}
-        }
-    }
-    let at = split_at?;
-    Some((
-        args[..at].trim().to_string(),
-        args[at + 1..].trim().to_string(),
-    ))
-}
-
-/// 把引擎的函数名改写成 SQLite 的等价写法。
-///
-/// 只收**语义完全等价**的映射，而且**每一条改写都会被打印出来** ——
-/// 静默改写会让差分测试拿引擎去和**另一个查询**比较，什么也证明不了
-/// （`tests/common/sqlite_oracle.rs` 的 `adapt_sql` 守的是同一条规矩）。
-///
-/// * `CHAR_LENGTH(x)` → `LENGTH(x)` —— SQLite 的 `LENGTH` 就是字符数；
-/// * `MOD(a, b)` → `((a) % (b))` —— SQLite 的 `%` 就是取模。
-///
-/// SQLite **没有** `MOD` 与 `CHAR_LENGTH` 这两个函数名，所以不改写就
-/// `no such function` —— 那种失败不是引擎的缺陷，是 oracle 的方言差异。
-fn adapt_for_sqlite(sql: &str) -> (String, Vec<String>) {
-    let mut out = sql.to_string();
-    let mut notes: Vec<String> = Vec::new();
-
-    while let Some(pos) = find_keyword(&out, "CHAR_LENGTH") {
-        let open = pos + "CHAR_LENGTH".len();
-        let Some(close) = matching_paren(&out, open) else {
-            break;
-        };
-        let inner = out[open + 1..close].to_string();
-        out = format!("{}LENGTH({}){}", &out[..pos], inner, &out[close + 1..]);
-        notes.push(format!("CHAR_LENGTH({}) → LENGTH({})", inner, inner));
-    }
-
-    while let Some(pos) = find_keyword(&out, "MOD") {
-        let open = pos + "MOD".len();
-        let Some(close) = matching_paren(&out, open) else {
-            break;
-        };
-        let inner = out[open + 1..close].to_string();
-        let Some((a, b)) = split_top_level(&inner) else {
-            break;
-        };
-        out = format!("{}(({}) % ({})){}", &out[..pos], a, b, &out[close + 1..]);
-        notes.push(format!("MOD({}, {}) → (({}) % ({}))", a, b, a, b));
-    }
-
-    (out, notes)
 }
 
 /// 引擎侧：跑完整个脚本，取**最后一条语句**的结果行。
@@ -244,35 +139,6 @@ fn sqlite_cell(v: ValueRef<'_>) -> String {
         ValueRef::Real(f) => format_real(f),
         ValueRef::Text(s) => String::from_utf8_lossy(s).to_string(),
         ValueRef::Blob(b) => b.iter().map(|x| format!("{:02x}", x)).collect(),
-    }
-}
-
-/// 整数值浮点不带 `.0` 后缀，这样 `17` 与 `17.0` 渲染一致。
-fn format_real(f: f64) -> String {
-    if f.is_finite() && f.fract() == 0.0 && f.abs() < 9.007_199_254_740_992e15 {
-        format!("{}", f as i64)
-    } else {
-        format!("{}", f)
-    }
-}
-
-/// 两个单元格是否代表同一个值。
-fn cells_equal(a: &str, b: &str) -> bool {
-    if a == b {
-        return true;
-    }
-    match (a.parse::<f64>(), b.parse::<f64>()) {
-        (Ok(x), Ok(y)) => {
-            if x == y {
-                return true;
-            }
-            let denom = x.abs().max(y.abs());
-            if denom == 0.0 {
-                return x == y;
-            }
-            (x - y).abs() / denom <= FLOAT_REL_TOLERANCE
-        }
-        _ => false,
     }
 }
 
