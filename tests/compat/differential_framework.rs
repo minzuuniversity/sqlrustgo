@@ -1,5 +1,13 @@
 // #5449：这个文件此前从未被编译过，`use std::collections::HashMap;` 是未使用的
 // import（编译告警）。它在这里没有任何引用，直接删掉。
+
+// #5406：二进制定位收敛到共享 helper（`tests/common/bin_resolver.rs`），
+// 与 #5477 的 6 处重复逻辑共用同一套规则。这里原本有一份**独立实现**，
+// 两份实现会各自漂移 —— 而其中任何一份回退到硬编码家目录路径，
+// 差分对照就会重新变成「静默跳过 ⇒ 假绿」。
+#[path = "../common/bin_resolver.rs"]
+mod bin_resolver;
+
 #[derive(Debug, Clone)]
 pub struct SqlResult {
     pub columns: Vec<String>,
@@ -287,19 +295,44 @@ pub trait DifferentialOracle {
     fn execute_both(&mut self, sql: &str) -> (SqlResult, SqlResult);
 }
 
+/// 定位引擎二进制。
+///
+/// 顺序：`SQLRUSTGO_BIN` → `CARGO_TARGET_DIR` → 仓库相对
+/// `target/{debug,release}` → `PATH`。
+///
+/// #5406：这里原本硬编码的是**开发机上的绝对路径**
+/// （形如 `<某人的家目录>/dev/sqlrustgo/target/debug/sqlrustgo`）——
+/// 一台个人机器的路径，在任何 CI runner 上都不存在，
+/// 于是差分对照在 CI 上**静默降级**为「什么都不做」并报告「通过」。
+pub fn resolve_engine_binary() -> Option<String> {
+    bin_resolver::resolve_engine_binary().map(|p| p.display().to_string())
+}
+
+/// 定位 sqlite3：环境变量 → `CARGO_TARGET_DIR` → `PATH`。
+pub fn resolve_sqlite_binary() -> Option<String> {
+    bin_resolver::resolve_sqlite_binary().map(|p| p.display().to_string())
+}
+
+// #5406 / #5477：通用二进制查找的实现已收敛到共享 helper
+// `tests/common/bin_resolver.rs`。这里原本有一份**独立实现** ——
+// 两份实现会各自漂移，而其中任何一份回退到硬编码家目录路径，
+// 差分对照就会重新变成「静默跳过 ⇒ 假绿」。
+
+/// 二进制缺失时的统一错误（调用方拿得到「该做什么」，而不是一个空结果）。
+fn missing_binary_error(which: &str, env_var: &str) -> String {
+    bin_resolver::missing_binary_message(which, env_var)
+}
+
 pub struct SqliteDifferentialRunner {
-    sqlrustgo_bin: String,
-    sqlite_bin: String,
+    sqlrustgo_bin: Option<String>,
+    sqlite_bin: Option<String>,
 }
 
 impl SqliteDifferentialRunner {
     pub fn new() -> Self {
         Self {
-            sqlrustgo_bin: std::env::var("SQLRUSTGO_BIN").unwrap_or_else(|_| {
-                "/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo".to_string()
-            }),
-            sqlite_bin: std::env::var("SQLITE_BIN")
-                .unwrap_or_else(|_| "/usr/bin/sqlite3".to_string()),
+            sqlrustgo_bin: resolve_engine_binary(),
+            sqlite_bin: resolve_sqlite_binary(),
         }
     }
 }
@@ -315,7 +348,16 @@ impl DifferentialOracle for SqliteDifferentialRunner {
 impl SqliteDifferentialRunner {
     fn execute_sqlrustgo(&self, sql: &str) -> SqlResult {
         use std::process::Command;
-        let output = Command::new(&self.sqlrustgo_bin)
+        let Some(bin) = self.sqlrustgo_bin.as_deref() else {
+            return SqlResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                affected_rows: 0,
+                error: Some(missing_binary_error("engine", "SQLRUSTGO_BIN")),
+                error_code: None,
+            };
+        };
+        let output = Command::new(bin)
             .args([
                 "sqlite",
                 "--batch",
@@ -341,7 +383,16 @@ impl SqliteDifferentialRunner {
 
     fn execute_sqlite(&self, sql: &str) -> SqlResult {
         use std::process::Command;
-        let output = Command::new(&self.sqlite_bin)
+        let Some(bin) = self.sqlite_bin.as_deref() else {
+            return SqlResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                affected_rows: 0,
+                error: Some(missing_binary_error("sqlite3", "SQLITE_BIN")),
+                error_code: None,
+            };
+        };
+        let output = Command::new(bin)
             .args(["-csv", "-header", ":memory:"])
             .arg(sql)
             .output();
@@ -359,7 +410,7 @@ impl SqliteDifferentialRunner {
 }
 
 pub struct MysqlDifferentialRunner {
-    sqlrustgo_bin: String,
+    sqlrustgo_bin: Option<String>,
     mysql_host: String,
     mysql_port: u16,
     mysql_user: String,
@@ -370,9 +421,7 @@ pub struct MysqlDifferentialRunner {
 impl MysqlDifferentialRunner {
     pub fn new() -> Self {
         Self {
-            sqlrustgo_bin: std::env::var("SQLRUSTGO_BIN").unwrap_or_else(|_| {
-                "/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo".to_string()
-            }),
+            sqlrustgo_bin: resolve_engine_binary(),
             mysql_host: std::env::var("MYSQL_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
             mysql_port: std::env::var("MYSQL_PORT")
                 .unwrap_or_else(|_| "3306".to_string())
@@ -396,7 +445,16 @@ impl DifferentialOracle for MysqlDifferentialRunner {
 impl MysqlDifferentialRunner {
     fn execute_sqlrustgo(&self, sql: &str) -> SqlResult {
         use std::process::Command;
-        let output = Command::new(&self.sqlrustgo_bin)
+        let Some(bin) = self.sqlrustgo_bin.as_deref() else {
+            return SqlResult {
+                columns: Vec::new(),
+                rows: Vec::new(),
+                affected_rows: 0,
+                error: Some(missing_binary_error("engine", "SQLRUSTGO_BIN")),
+                error_code: None,
+            };
+        };
+        let output = Command::new(bin)
             .args([
                 "sqlite",
                 "--batch",
@@ -541,14 +599,87 @@ mod tests {
             .sql("INSERT INTO t VALUES (1, 'alice')")
             .expect_rows("SELECT * FROM t", vec![vec!["1", "alice"]]);
 
-        // This would run against real databases in production
-        // For now, just verify the framework compiles
-        assert!(test.steps.len() == 3);
+        // #5406：原来这里只有 `assert!(test.steps.len() == 3)` ——
+        // 那是在断言**构造器自己刚放进去的东西**，与框架是否有用无关。
+        // 现在断言的是框架真正承诺的三件事：步骤被记下来了、
+        // 期望值被挂在了**最后一条**语句上、描述被保留。
+        assert_eq!(test.steps.len(), 3, "every statement must become a step");
+        let last = test.steps.last().expect("at least one step");
+        assert_eq!(last.sql, "SELECT * FROM t");
+        assert!(
+            last.expected_result.is_some(),
+            "expect_rows must attach the expectation to the step it belongs to"
+        );
+        assert_eq!(
+            last.expected_result.as_ref().unwrap().rows,
+            vec![vec!["1".to_string(), "alice".to_string()]]
+        );
+        assert!(
+            test.steps[0].expected_result.is_none(),
+            "a plain .sql() step must not inherit a later expectation"
+        );
     }
 
     #[test]
     fn test_mysql_oracle_available() {
         let runner = MysqlDifferentialRunner::new();
-        assert!(!runner.mysql_host.is_empty());
+        // #5406：原来只有 `assert!(!runner.mysql_host.is_empty())` ——
+        // 默认值是 "127.0.0.1"，**永远**非空 ⇒ 断言恒真。
+        // 现在断言的是「这个 host 真的能被解析成一个 socket 地址」。
+        let addr = format!("{}:{}", runner.mysql_host, runner.mysql_port);
+        assert!(
+            addr.parse::<std::net::SocketAddr>().is_ok(),
+            "MYSQL_HOST/MYSQL_PORT must form a valid socket address, got {:?}",
+            addr
+        );
+        assert!(!runner.mysql_user.is_empty());
+        assert!(!runner.mysql_database.is_empty());
+    }
+
+    /// #5406：二进制缺失时必须给出**明确的错误**，而不是一个空结果 ——
+    /// 「空结果」会被读成「查询没有返回行」，也就是又一次假绿。
+    #[test]
+    fn test_missing_binary_yields_an_explicit_error() {
+        let mut runner = SqliteDifferentialRunner {
+            sqlrustgo_bin: None,
+            sqlite_bin: None,
+        };
+        let (ours, theirs) = runner.execute_both("SELECT 1");
+        for (side, res) in [("engine", &ours), ("sqlite3", &theirs)] {
+            let err = res.error.as_deref().unwrap_or_else(|| {
+                panic!(
+                    "{} side must report an error when the binary is missing",
+                    side
+                )
+            });
+            assert!(
+                err.contains("not found"),
+                "{} side error must say the binary was not found, got {:?}",
+                side,
+                err
+            );
+            assert!(
+                err.contains("SQLRUSTGO_BIN") || err.contains("SQLITE_BIN"),
+                "{} side error must name the env var to set, got {:?}",
+                side,
+                err
+            );
+            assert!(res.rows.is_empty(), "{} side must not fabricate rows", side);
+        }
+    }
+
+    /// #5406：二进制解析**不得**回退到任何机器相关的绝对路径。
+    #[test]
+    fn test_binary_resolution_has_no_machine_specific_default() {
+        let src = include_str!("differential_framework.rs");
+        // 拼在运行时构造这个字面量 —— 否则**本断言自己**就把它写进了源文件，
+        // 于是这个测试永远失败（自指）。
+        for needle in [format!("/{}", "Users"), format!("/{}", "home")] {
+            assert!(
+                !src.contains(&needle),
+                "differential_framework.rs must not contain a machine-specific absolute path ({})",
+                needle
+            );
+        }
     }
 }

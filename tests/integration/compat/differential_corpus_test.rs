@@ -1,209 +1,192 @@
-use std::path::Path;
-use std::process::Command;
+//! #5406：差分对照语料（36 例）—— 曾经是「假绿」
+//!
+//! ## 曾经的现象
+//!
+//! ```
+//! Running tests/integration/compat/differential_corpus_test.rs
+//! test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+//!              finished in 0.00s
+//! ```
+//!
+//! **`finished in 0.00s` 是关键**：36 个用例「通过」，耗时 0.00 秒 ——
+//! **一次差分比对都没执行**。
+//!
+//! 成因：两侧都用**外部二进制**做对照，路径是硬编码的 macOS 路径：
+//!
+//! ```rust
+//! sqlrustgo_bin: std::env::var("SQLRUSTGO_BIN")
+//!     .unwrap_or_else(|_| "<某人的家目录>/dev/sqlrustgo/target/debug/sqlrustgo".to_string()),
+//! ```
+//!
+//! CI 的 runner 是 Linux 容器 ⇒ 该路径不存在 ⇒ 引擎起不来 ⇒
+//! [`run_sql`] 返回 `None` ⇒ 测试走
+//!
+//! ```rust
+//! None => { println!("  SKIP: {} (sqlrustgo not available)", test_name); return; }
+//! ```
+//!
+//! ⇒ **报告「通过」，但对引擎行为零验证**。与 #5379 要消灭的
+//! 「fixture 悬空 → 目标跑空表 → 断言是空的」是同一类缺陷，
+//! 只是断口从「数据」换成了「引擎二进制」。
+//!
+//! ## 现在的做法
+//!
+//! 两侧都改成**进程内**，于是这个文件**没有任何外部依赖**：
+//!
+//! * 引擎侧：`ExecutionEngine<MemoryStorage>`（root 包的公开 API）；
+//! * oracle 侧：`rusqlite`（root 包的依赖，`bundled` feature ⇒ SQLite 的
+//!   C 源码随仓库编译，CI 不需要额外二进制、不需要网络）；
+//! * SQLite 独有的 `MOD` / `CHAR_LENGTH` 由共享的
+//!   [`sqlite_dialect`](../../common/sqlite_dialect.rs) 做**显式**改写。
+//!
+//! ⇒ 没有硬编码路径，没有「环境缺失就当通过」的降级路径，
+//! 也就**不可能假绿**。
+//!
+//! 语料本身（36 条 SQL）未做任何改动。
 
-fn find_sqlrustgo_bin() -> Option<String> {
-    if let Ok(path) = std::env::var("SQLRUSTGO_BIN") {
-        if Path::new(&path).exists() {
-            return Some(path);
-        }
-    }
-    let candidates = [
-        "/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo",
-        "/Users/liying/dev/sqlrustgo/target/release/sqlrustgo",
-        "target/debug/sqlrustgo",
-        "target/release/sqlrustgo",
-    ];
-    for candidate in &candidates {
-        if Path::new(candidate).exists() {
-            return Some(candidate.to_string());
-        }
-    }
-    None
+#[path = "../../common/sqlite_dialect.rs"]
+mod sqlite_dialect;
+
+use rusqlite::types::ValueRef;
+use rusqlite::Connection;
+use sqlite_dialect::{adapt_for_sqlite, cells_equal, format_real, NULL_CELL};
+use sqlrustgo::{ExecutionEngine, MemoryStorage, Value};
+
+/// 把脚本切成一条条语句。
+fn split(script: &str) -> Vec<String> {
+    sqlrustgo_parser::split_sql_statements(script)
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
-fn sqlite_bin() -> String {
-    std::env::var("SQLITE_BIN").unwrap_or_else(|_| "/usr/bin/sqlite3".to_string())
-}
+/// 引擎侧：跑完整个脚本，取**最后一条语句**的结果行。
+fn engine_rows(script: &str) -> Result<Vec<Vec<String>>, String> {
+    let storage = std::sync::Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
+    let mut engine = ExecutionEngine::new(storage);
 
-/// Unique per-run DB directory.
-///
-/// sqlrustgo's `sqlite` subcommand documents `<DB>` as "Path to local DB
-/// (file or directory)" — it has no `:memory:` mode (passing `:memory:`
-/// creates a literal `:memory:/` directory in the CWD and leaks schema
-/// across runs, which breaks differential comparisons). sqlite3 keeps
-/// using its real `:memory:`; a fresh temp dir gives equivalent per-run
-/// isolation for sqlrustgo.
-fn make_db_dir() -> std::path::PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static N: AtomicU64 = AtomicU64::new(0);
-    let mut dir = std::env::temp_dir();
-    dir.push(format!(
-        "sqlrustgo_differential_{}_{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::Relaxed)
-    ));
-    dir
-}
-
-/// Returns (stdout, exit_ok).
-///
-/// sqlite3 side passes `-nullvalue NULL`: sqlite3's CSV default renders
-/// NULL as an EMPTY field, while sqlrustgo intentionally renders the
-/// MySQL-style `NULL` marker (Issue #4806, pinned by cli unit tests).
-/// Without the flag every NULL comparison mismatches on formatting
-/// alone.
-fn run_sql(sqlrustgo: bool, sql: &str) -> Option<(String, bool)> {
-    let bin = if sqlrustgo {
-        find_sqlrustgo_bin()?
-    } else {
-        sqlite_bin()
+    let stmts = split(script);
+    let Some((last, setup)) = stmts.split_last() else {
+        return Err("脚本里没有语句".to_string());
     };
-
-    let output = if sqlrustgo {
-        let db_dir = make_db_dir();
-        let out = Command::new(&bin)
-            .args([
-                "sqlite",
-                "--batch",
-                "--mode",
-                "csv",
-                "--headers",
-                "true",
-                "--cmd",
-            ])
-            .arg(sql)
-            .arg(&db_dir)
-            .output()
-            .ok()?;
-        let _ = std::fs::remove_dir_all(&db_dir);
-        out
-    } else {
-        Command::new(&bin)
-            .args(["-csv", "-header", "-nullvalue", "NULL", ":memory:"])
-            .arg(sql)
-            .output()
-            .ok()?
-    };
-
-    let ok = output.status.success();
-    Some((String::from_utf8_lossy(&output.stdout).to_string(), ok))
+    for stmt in setup {
+        engine
+            .execute(stmt)
+            .map_err(|e| format!("engine 执行 `{}` 失败: {}", stmt, e))?;
+    }
+    let res = engine
+        .execute(last)
+        .map_err(|e| format!("engine 执行 `{}` 失败: {}", last, e))?;
+    Ok(res
+        .rows
+        .iter()
+        .map(|row| row.iter().map(engine_cell).collect())
+        .collect())
 }
 
-/// Split one CSV line into unquoted fields (RFC 4180: quoted fields may
-/// contain commas/quotes/newlines; `""` escapes a literal quote). Needed
-/// because sqlite3 quotes fields containing SPACES (`"hello rust"`)
-/// while sqlrustgo only quotes per RFC 4180 (comma/quote/newline) —
-/// line-level string compare would flag identical values as different.
-fn split_csv_line(line: &str) -> Vec<String> {
-    let mut fields = Vec::new();
-    let mut cur = String::new();
-    let mut in_quotes = false;
-    let mut chars = line.chars().peekable();
-    while let Some(c) = chars.next() {
-        if in_quotes {
-            if c == '"' {
-                if chars.peek() == Some(&'"') {
-                    cur.push('"');
-                    chars.next();
-                } else {
-                    in_quotes = false;
-                }
-            } else {
-                cur.push(c);
+/// SQLite 侧：跑完整个脚本，取**最后一条语句**的结果行。
+fn sqlite_rows(script: &str) -> Result<Vec<Vec<String>>, String> {
+    let conn = Connection::open_in_memory().map_err(|e| format!("打开内存 SQLite 失败: {}", e))?;
+
+    let stmts = split(script);
+    let Some((last, setup)) = stmts.split_last() else {
+        return Err("脚本里没有语句".to_string());
+    };
+    let setup_sql = setup.join(";\n");
+    if !setup_sql.trim().is_empty() {
+        let (sqlite_setup, notes) = adapt_for_sqlite(&setup_sql);
+        for note in &notes {
+            eprintln!("[SQLite 方言改写] {}", note);
+        }
+        conn.execute_batch(&sqlite_setup)
+            .map_err(|e| format!("SQLite 执行准备语句失败: {}", e))?;
+    }
+
+    // oracle 侧的方言改写 —— 改写内容必须可见。
+    let (sqlite_last, notes) = adapt_for_sqlite(last);
+    for note in &notes {
+        eprintln!("[SQLite 方言改写] {}", note);
+    }
+
+    let mut stmt = conn
+        .prepare(&sqlite_last)
+        .map_err(|e| format!("SQLite 准备 `{}` 失败: {}", sqlite_last, e))?;
+    let ncols = stmt.column_count();
+    let mut rows = stmt
+        .query([])
+        .map_err(|e| format!("SQLite 执行 `{}` 失败: {}", sqlite_last, e))?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next().map_err(|e| format!("读行失败: {}", e))? {
+        let mut cells = Vec::new();
+        for idx in 0..ncols {
+            let v = row
+                .get_ref(idx)
+                .map_err(|e| format!("读第 {} 列失败: {}", idx, e))?;
+            cells.push(sqlite_cell(v));
+        }
+        out.push(cells);
+    }
+    Ok(out)
+}
+
+/// 把引擎的 `Value` 渲染成可比较的字符串。
+fn engine_cell(v: &Value) -> String {
+    match v {
+        Value::Null => NULL_CELL.to_string(),
+        Value::Boolean(b) => b.to_string(),
+        Value::Integer(i) => i.to_string(),
+        Value::Float(f) => format_real(*f),
+        Value::Text(s) => s.clone(),
+        Value::Blob(b) => b.iter().map(|x| format!("{:02x}", x)).collect(),
+        Value::Point(x, y) => format!("({},{})", x, y),
+        Value::Json(j) => j.to_string(),
+    }
+}
+
+/// 把 SQLite 的单元格渲染成可比较的字符串。
+fn sqlite_cell(v: ValueRef<'_>) -> String {
+    match v {
+        ValueRef::Null => NULL_CELL.to_string(),
+        ValueRef::Integer(i) => i.to_string(),
+        ValueRef::Real(f) => format_real(f),
+        ValueRef::Text(s) => String::from_utf8_lossy(s).to_string(),
+        ValueRef::Blob(b) => b.iter().map(|x| format!("{:02x}", x)).collect(),
+    }
+}
+
+/// 断言两侧结果一致，不一致时把第一处差异打印出来。
+fn assert_match(test_name: &str, script: &str) {
+    let ours = engine_rows(script).unwrap_or_else(|e| panic!("{}: {}", test_name, e));
+    let theirs = sqlite_rows(script).unwrap_or_else(|e| panic!("{}: {}", test_name, e));
+
+    if ours.len() != theirs.len() {
+        panic!(
+            "差分测试失败: {}\n  SQL: {}\n  引擎 {} 行，SQLite {} 行\n  引擎: {:?}\n  SQLite: {:?}",
+            test_name,
+            script,
+            ours.len(),
+            theirs.len(),
+            ours,
+            theirs
+        );
+    }
+    for (i, (o, t)) in ours.iter().zip(theirs.iter()).enumerate() {
+        if o.len() != t.len() {
+            panic!(
+                "差分测试失败: {}\n  SQL: {}\n  第 {} 行列数不同: 引擎={} SQLite={}\n  引擎: {:?}\n  SQLite: {:?}",
+                test_name, script, i, o.len(), t.len(), ours, theirs
+            );
+        }
+        for (j, (oc, tc)) in o.iter().zip(t.iter()).enumerate() {
+            if !cells_equal(oc, tc) {
+                panic!(
+                    "差分测试失败: {}\n  SQL: {}\n  第 {} 行第 {} 列不同: 引擎={:?} SQLite={:?}\n  引擎: {:?}\n  SQLite: {:?}",
+                    test_name, script, i, j, oc, tc, ours, theirs
+                );
             }
-        } else if c == '"' {
-            in_quotes = true;
-        } else if c == ',' {
-            fields.push(std::mem::take(&mut cur));
-        } else {
-            cur.push(c);
         }
     }
-    fields.push(cur);
-    fields
-}
-
-fn normalize_csv(csv: &str) -> String {
-    csv.lines()
-        .filter(|l| !l.trim().is_empty())
-        .skip(1)
-        .map(|l| split_csv_line(l.trim()).join("\t"))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// Value-level equality after CSV normalization: equal strings, or
-/// pairwise field-wise equality where fields that both parse as f64 are
-/// compared numerically. CSV is typeless, so `1` (sqlrustgo integer
-/// MOD) and `1.0` (sqlite3 float MOD) are the same value — direct
-/// string compare would flag a type-formatting difference as a
-/// behavioral diff.
-fn csv_values_equal(a: &str, b: &str) -> bool {
-    if a == b {
-        return true;
-    }
-    let (ar, br): (Vec<&str>, Vec<&str>) = (a.lines().collect(), b.lines().collect());
-    if ar.len() != br.len() {
-        return false;
-    }
-    ar.iter().zip(br.iter()).all(|(x, y)| {
-        if x == y {
-            return true;
-        }
-        let (xf, yf): (Vec<&str>, Vec<&str>) = (x.split('\t').collect(), y.split('\t').collect());
-        xf.len() == yf.len()
-            && xf.iter().zip(yf.iter()).all(|(p, q)| {
-                p == q
-                    || match (p.parse::<f64>(), q.parse::<f64>()) {
-                        (Ok(pv), Ok(qv)) => pv == qv,
-                        _ => false,
-                    }
-            })
-    })
-}
-
-fn assert_match(test_name: &str, sql: &str) {
-    let (ours, _) = match run_sql(true, sql) {
-        Some(r) => r,
-        None => {
-            println!("  SKIP: {} (sqlrustgo not available)", test_name);
-            return;
-        }
-    };
-    let (theirs, theirs_ok) = match run_sql(false, sql) {
-        Some(r) => r,
-        None => {
-            println!("  SKIP: {} (sqlite3 not available)", test_name);
-            return;
-        }
-    };
-
-    let ours_norm = normalize_csv(&ours);
-    let theirs_norm = normalize_csv(&theirs);
-
-    if theirs_ok && csv_values_equal(&ours_norm, &theirs_norm) {
-        println!("  PASS: {}", test_name);
-        return;
-    }
-    if !theirs_ok && !ours_norm.is_empty() {
-        // sqlite3 cannot execute this SQL (e.g. MySQL-extension function
-        // CHAR_LENGTH → "no such function"), so no oracle comparison is
-        // possible; sqlrustgo produced a result → execution is the only
-        // assertion available.
-        println!("  PASS (sqlite3 oracle unavailable): {}", test_name);
-        return;
-    }
-
-    println!("  FAIL: {}", test_name);
-    println!(
-        "    SQLRustGo: {}",
-        ours_norm.lines().next().unwrap_or("(empty)")
-    );
-    println!(
-        "    SQLite:    {}",
-        theirs_norm.lines().next().unwrap_or("(empty)")
-    );
-    panic!("Differential test failed: {}", test_name);
 }
 
 #[test]

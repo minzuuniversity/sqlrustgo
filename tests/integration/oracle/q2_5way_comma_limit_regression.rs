@@ -27,9 +27,15 @@ use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use std::sync::Arc;
 
-// SF=1 fixture — `/home/openclaw/tpch_baseline/sf1/{table}.tbl`.
-// Override with TPCH_SF1_DIR env var to point at another location.
-const DATA_DIR: &str = "/home/openclaw/tpch_baseline/sf1";
+// #5406 / #5428：SF=1 夹具目录此前硬编码成某台开发机家目录下的绝对路径。
+// 那条路径只在一台机器上存在 ⇒ 别的机器上要么 panic（`unwrap`），
+// 要么被「找不到就跳过」吞掉（假绿）。现在走共享解析器：
+// `TPCH_SF1_DIR` → `TPCH_DATA_DIR` → 缺失（披露 NOT-RUN，绝不回退硬编码）。
+#[path = "../../common/sf1_fixture.rs"]
+mod sf1_fixture;
+
+/// Cargo 测试目标名（用作 NOT-RUN 标签）。
+const TARGET: &str = "q2_5way_comma_limit_regression";
 
 const SCHEMAS: &[&str] = &[
     "CREATE TABLE region (r_regionkey INTEGER PRIMARY KEY, r_name TEXT NOT NULL, r_comment TEXT)",
@@ -41,25 +47,25 @@ const SCHEMAS: &[&str] = &[
 
 const TBL_FILES: &[&str] = &["region", "nation", "supplier", "part", "partsupp"];
 
-fn resolve_data_dir() -> String {
-    std::env::var("TPCH_SF1_DIR").unwrap_or_else(|_| DATA_DIR.to_string())
-}
-
-fn setup() -> ExecutionEngine<MemoryStorage> {
+/// 装载 SF=1 夹具；夹具缺失时**披露 NOT-RUN** 并返回 `None`。
+fn setup() -> Option<ExecutionEngine<MemoryStorage>> {
+    let data_dir = sf1_fixture::require_sf1_dir(TARGET)?;
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
-    let data_dir = resolve_data_dir();
     for s in SCHEMAS {
         engine.execute(s).unwrap();
     }
     {
         let mut st = storage.write();
         for t in TBL_FILES {
-            let path = format!("{}/{}.tbl", data_dir, t);
-            st.bulk_load_tbl_file(t, &path).unwrap();
+            let path = data_dir.join(format!("{t}.tbl"));
+            // 装载失败必须**显式失败**：一个空的 partsupp 表会让下面
+            // 「返回 20 行」的断言变成空洞的通过。
+            st.bulk_load_tbl_file(t, path.to_str().expect("utf-8 fixture path"))
+                .unwrap_or_else(|e| panic!("loading {t} from {} failed: {e}", path.display()));
         }
     }
-    engine
+    Some(engine)
 }
 
 const Q2_SQL: &str =
@@ -78,7 +84,11 @@ const Q2_SQL: &str =
 #[test]
 #[ignore] // Heavy: 200K part + 800K partsupp + 10K supplier at SF=1
 fn q2_canonical_5way_comma_limit() {
-    let mut engine = setup();
+    // 夹具缺失 ⇒ 已在 require_sf1_dir 里披露 NOT-RUN，直接返回。
+    // 绝不 panic，也绝不停在「什么都没跑却算通过」。
+    let Some(mut engine) = setup() else {
+        return;
+    };
     let r = engine
         .execute(Q2_SQL)
         .unwrap_or_else(|e| panic!("Q2 failed: {}", e));

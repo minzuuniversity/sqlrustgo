@@ -4,8 +4,8 @@
 //! V312-58 / Issue #4376 — empirical verification of "175 vs 7" claim.
 //!
 //! Uses `tpch_wire_harness::start_sf01()` (the constant name is misleading —
-//! it actually points at `/home/openclaw/tpch_baseline/sf1`, the SF=1 fixture,
-//! because `tests/data/tpch-sf01` is a symlink).
+//! the fixture it points at is the SF=1 one, because `tests/data/tpch-sf01`
+//! was a symlink into a developer's home directory).
 //!
 //! Run:
 //!   cargo test --test diag_q7_sf1_real_count --all-features -- \

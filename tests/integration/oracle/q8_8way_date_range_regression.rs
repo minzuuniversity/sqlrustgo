@@ -21,12 +21,39 @@ use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 
-const FIXTURE: &str = "/home/openclaw/sqlrustgo_work/tests/data/tpch-sf01";
+// #5406: the fixture directory was hardcoded to an absolute path under one
+// developer's home directory. That path exists on exactly one machine, so
+// everywhere else this target panicked on `expect("read")`.
+//
+// The fixture is now resolved at run time through the shared resolver
+// (`tests/common/tpch_fixture.rs`, issue #5379) and a missing fixture is
+// disclosed as NOT-RUN instead of panicking.
+#[path = "../../common/tpch_fixture.rs"]
+mod tpch_fixture;
 
-fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize {
-    let path = format!("{}/{}.tbl", FIXTURE, tbl);
+/// Cargo test target name (used as the NOT-RUN label).
+const TARGET: &str = "q8_8way_date_range_regression";
+
+/// The scale profile this test's expectations were calibrated against.
+const EXPECTED_SF: f64 = 0.1;
+
+/// Resolve the TPC-H fixture, or disclose NOT-RUN and return `None`.
+fn resolve_fixture() -> Option<std::path::PathBuf> {
+    let state = tpch_fixture::FixtureState::resolve();
+    let fixture = state.require_profile(TARGET, EXPECTED_SF)?;
+    Some(fixture.dir.clone())
+}
+
+fn load(
+    storage: &Arc<RwLock<MemoryStorage>>,
+    fixture_dir: &Path,
+    tbl: &str,
+    ncols: usize,
+) -> usize {
+    let path = fixture_dir.join(format!("{tbl}.tbl"));
     let content = fs::read_to_string(&path).expect("read");
     const BATCH_SIZE: usize = 10000;
     let mut batch: Vec<Vec<SqlValue>> = Vec::with_capacity(BATCH_SIZE);
@@ -74,6 +101,12 @@ fn load(storage: &Arc<RwLock<MemoryStorage>>, tbl: &str, ncols: usize) -> usize 
 #[test]
 #[ignore] // Heavy: requires ~6M lineitem rows; run with --ignored
 fn q8_canonical_8way_date_range() {
+    // Fixture missing (or at another scale) => NOT-RUN already disclosed by
+    // resolve_fixture(). Never panic, never count as "passed".
+    let Some(fixture_dir) = resolve_fixture() else {
+        return;
+    };
+
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
 
@@ -122,12 +155,12 @@ fn q8_canonical_8way_date_range() {
         )
         .unwrap();
 
-    load(&storage, "customer", 8);
-    load(&storage, "orders", 9);
-    load(&storage, "lineitem", 16);
-    load(&storage, "supplier", 7);
-    load(&storage, "nation", 4);
-    load(&storage, "region", 3);
+    load(&storage, &fixture_dir, "customer", 8);
+    load(&storage, &fixture_dir, "orders", 9);
+    load(&storage, &fixture_dir, "lineitem", 16);
+    load(&storage, &fixture_dir, "supplier", 7);
+    load(&storage, &fixture_dir, "nation", 4);
+    load(&storage, &fixture_dir, "region", 3);
 
     let sql = "SELECT EXTRACT(YEAR FROM o_orderdate) AS o_year, \
                       SUM(CASE WHEN n2.n_name = 'GERMANY' THEN l_extendedprice * (1 - l_discount) ELSE 0 END) \

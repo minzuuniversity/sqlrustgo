@@ -472,7 +472,7 @@ fn gate_script_detects_an_injected_orphan() {
         "#[test]\nfn orphan_probe() {}\n",
     )
     .unwrap();
-    std::fs::write(tmp.join("Cargo.toml"), "[[package]]\nname = \"probe\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[test]]\nname = \"declared\"\npath = \"tests/declared.rs\"\n").unwrap();
+    std::fs::write(tmp.join("Cargo.toml"), "[[package]]\nname = \"probe\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n\n[[test]]\nname = \"declared\"\npath = \"tests/declared.rs\"\n").unwrap();
     std::fs::write(tmp.join("tests/declared.rs"), "#[test]\nfn declared() {}\n").unwrap();
 
     // 把门禁脚本复制过去（C1..C5 都是静态分析，不需要真实 cargo 工程）。
@@ -494,6 +494,139 @@ fn gate_script_detects_an_injected_orphan() {
     assert!(
         stdout.contains("orphan_probe.rs"),
         "门禁脚本的输出没有点名孤儿文件:\n{}",
+        stdout
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// 门禁的 C6 判据（家目录绝对路径）必须真的会因为注入而红。
+///
+/// #5406 / #5477：C6 之前只匹配「家目录 → 含 `sqlrustgo` 段」这一种形态，
+/// 于是 `/home/<u>/tpch_baseline/sf1`、`/home/<u>/tpch-dbgen-master/dbgen`
+/// 等同族命中全部漏过 —— 判据在报告 PASS，而树里还有 12 处机器路径。
+///
+/// 这个用例证明新判据（**任何**家目录绝对路径）有判别力：
+/// 注入三种**不同形态**的机器路径，每一种都必须让门禁判红并点名文件。
+#[test]
+fn gate_script_detects_injected_home_directory_paths() {
+    let root = repo_root();
+    let tmp = std::env::temp_dir().join(format!(
+        "test-manifest-honesty-{}-{}",
+        std::process::id(),
+        "homepath"
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("tests")).unwrap();
+    std::fs::create_dir_all(tmp.join("scripts/gate")).unwrap();
+    std::fs::write(tmp.join("Cargo.toml"), "[[package]]\nname = \"probe\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n\n[[test]]\nname = \"declared\"\npath = \"tests/declared.rs\"\n").unwrap();
+    std::fs::write(tmp.join("tests/declared.rs"), "#[test]\nfn declared() {}\n").unwrap();
+
+    let src =
+        std::fs::read_to_string(root.join("scripts/gate/check_test_manifest_honesty.sh")).unwrap();
+    std::fs::write(tmp.join("scripts/gate/check_test_manifest_honesty.sh"), src).unwrap();
+
+    // 三种形态：检出树 / 数据夹具 / 外部工具。
+    // 路径在**运行时**拼出来，否则这个断言自己就把字面量写进了源文件，
+    // 于是门禁会永远判这个测试文件红（自指）。
+    let probes = [
+        (
+            "probe_checkout.rs",
+            format!("/{}/someuser/dev/sqlrustgo/target/debug/sqlrustgo", "home"),
+        ),
+        (
+            "probe_fixture.rs",
+            format!("/{}/someuser/tpch_baseline/sf1", "home"),
+        ),
+        (
+            "probe_tool.rs",
+            format!("/{}/someuser/tpch-dbgen-master/dbgen", "Users"),
+        ),
+    ];
+
+    for (name, needle) in &probes {
+        std::fs::write(
+            tmp.join("tests").join(name),
+            format!("#[test]\nfn probe() {{ let _ = \"{needle}\"; }}\n"),
+        )
+        .unwrap();
+    }
+
+    let out = Command::new("bash")
+        .arg(tmp.join("scripts/gate/check_test_manifest_honesty.sh"))
+        .current_dir(&tmp)
+        .output()
+        .expect("run gate on probe tree");
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+
+    assert!(
+        !out.status.success(),
+        "门禁脚本对含家目录绝对路径的仓库判了 PASS —— 它没有判别力:\n{}",
+        stdout
+    );
+    for (name, _) in &probes {
+        assert!(
+            stdout.contains(name),
+            "门禁脚本的输出没有点名注入的文件 {}:\n{}",
+            name,
+            stdout
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// C6 的豁免机制必须**显式且可审计**，而不是隐式放行。
+///
+/// 一个带 `c6-allow-home-paths` 标记的文件里出现机器路径 ⇒ 门禁放行，
+/// 但**必须在输出里列出这个文件** —— 否则「谁豁免了什么」就无从查起。
+#[test]
+fn gate_script_lists_its_exemptions() {
+    let root = repo_root();
+    let tmp = std::env::temp_dir().join(format!(
+        "test-manifest-honesty-{}-{}",
+        std::process::id(),
+        "exempt"
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(tmp.join("tests")).unwrap();
+    std::fs::create_dir_all(tmp.join("scripts/gate")).unwrap();
+
+    // 一个**声明了豁免**的文件：它含机器路径，但必须被放行并被列出。
+    // 它必须**同时**是一个已声明的目标，否则 C3/C4 会先判红，
+    // 那样就分不清「C6 放行了它」和「门禁因为别的原因红了」。
+    std::fs::write(
+        tmp.join("Cargo.toml"),
+        "[[package]]\nname = \"probe\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n\n[[test]]\nname = \"declared\"\npath = \"tests/declared.rs\"\n\n[[test]]\nname = \"exempt_probe\"\npath = \"tests/exempt_probe.rs\"\n",
+    )
+    .unwrap();
+    std::fs::write(tmp.join("tests/declared.rs"), "#[test]\nfn declared() {}\n").unwrap();
+
+    let exempt_body = format!(
+        "// c6-allow-home-paths\n#[test]\nfn exempt() {{ let _ = \"{}\"; }}\n",
+        format!("/{}/someuser/thing", "home")
+    );
+    std::fs::write(tmp.join("tests/exempt_probe.rs"), exempt_body).unwrap();
+
+    let src =
+        std::fs::read_to_string(root.join("scripts/gate/check_test_manifest_honesty.sh")).unwrap();
+    std::fs::write(tmp.join("scripts/gate/check_test_manifest_honesty.sh"), src).unwrap();
+
+    let out = Command::new("bash")
+        .arg(tmp.join("scripts/gate/check_test_manifest_honesty.sh"))
+        .current_dir(&tmp)
+        .output()
+        .expect("run gate on probe tree");
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+
+    assert!(
+        out.status.success(),
+        "带显式豁免标记的文件必须被放行:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("exempt_probe.rs"),
+        "豁免必须在门禁输出里被列出 —— 否则「谁豁免了什么」无从查起:\n{}",
         stdout
     );
 

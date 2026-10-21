@@ -173,12 +173,22 @@ fn build_bootstrap_sql() -> Result<Vec<String>, String> {
 // Canonical subprocess bring-up (lifted from tpch_wire_smoke.rs).
 // =========================================================================
 
+/// #5477: locate the canonical MySQL server binary.
+///
+/// This used to hardcode `<workspace>/target/debug/sqlrustgo-mysql-server`,
+/// which **ignores `CARGO_TARGET_DIR`** — under a shared target dir the
+/// binary was invisible and the test failed with a misleading
+/// "canonical binary not found" message.
 fn canonical_binary() -> std::path::PathBuf {
-    let mut p = workspace_root();
-    p.push("target");
-    p.push("debug");
-    p.push("sqlrustgo-mysql-server");
-    p
+    common::bin_resolver::resolve_mysql_server_binary().unwrap_or_else(|| {
+        panic!(
+            "{}",
+            common::bin_resolver::missing_binary_message(
+                "sqlrustgo-mysql-server",
+                common::bin_resolver::MYSQL_SERVER_BIN_ENV
+            )
+        )
+    })
 }
 
 struct SubprocessHandle {

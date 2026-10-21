@@ -328,6 +328,97 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 1b. C6 — no machine-specific home-directory path in the test tree
+# ---------------------------------------------------------------------------
+step "Step 1b/3: machine-specific path scan"
+
+# #5406 / #5477: a test that resolves a binary (or a fixture) through a
+# developer's home directory runs on exactly one machine. When the path does
+# not resolve, the usual reaction is to degrade to "skip" — which turns the
+# test into a fake green.
+#
+# THE INVARIANT
+# -------------
+#
+#   **The test tree must not contain an absolute path rooted in a user's
+#   home directory** (`/home/<user>/…` or `/Users/<user>/…`).
+#
+# Why this and not a narrower rule:
+#
+#   * A home-directory path is *by construction* machine-specific. It is the
+#     single most reliable marker of "this only ever worked on one box".
+#   * The earlier version of this check matched only `/home/<x>/sqlrustgo`
+#     — i.e. it looked for the *checkout* under the home directory. That is
+#     a string heuristic, not an invariant: it missed `/home/<u>/tpch_baseline/sf1`
+#     (a fixture path), `/home/<u>/tpch-dbgen-master/dbgen` (a tool path),
+#     and every layout where the checkout is not directly under the home
+#     directory. Measured on the pre-change tree: 16 hits, of which the old
+#     regex saw 4. The check was reporting "PASS" while 12 machine-specific
+#     paths were still in the tree.
+#   * Machine-specific-ness is a property of the *path*, not of what the
+#     path names (checkout vs. fixture vs. tool). So the criterion must be
+#     about the path.
+#
+# THE EXCEPTION
+# -------------
+#
+# A file may opt out with the marker `c6-allow-home-paths` in its first 20
+# lines. The marker exists for exactly one reason: **the checker and the
+# shared resolver need sample paths to test themselves against**. Those
+# files are *about* machine-specific paths; requiring them to contain none
+# would make it impossible to test the detector at all.
+#
+# The exception is explicit and auditable (it is a visible marker in the
+# source, not a hidden path list), it is scoped per-file, and every exempt
+# file is listed in the gate output so a reviewer can see them.
+
+C6_EXEMPT_MARKER="c6-allow-home-paths"
+C6_HITS=""
+C6_EXEMPT_LIST=""
+
+while IFS= read -r file; do
+    [[ -z "${file}" ]] && continue
+    rel="${file#"${REPO_ROOT}/"}"
+    # The exemption marker must appear near the top of the file, so that a
+    # stray marker deep inside a real test cannot silently exempt it.
+    if head -20 "${file}" | grep -qF "${C6_EXEMPT_MARKER}"; then
+        C6_EXEMPT_LIST="${C6_EXEMPT_LIST}${rel}"$'
+'
+        continue
+    fi
+    # Report the file once, with the offending lines.
+    file_hits="$(grep -nE '(^|[^A-Za-z0-9_])/(Users|home)/[A-Za-z0-9_.-]+' "${file}" 2>/dev/null || true)"
+    if [[ -n "${file_hits}" ]]; then
+        while IFS= read -r hit; do
+            [[ -z "${hit}" ]] && continue
+            C6_HITS="${C6_HITS}${rel}:${hit}"$'
+'
+        done <<< "${file_hits}"
+    fi
+done < <(find "${REPO_ROOT}/tests" -type f \( -name '*.rs' -o -name '*.sh' \) 2>/dev/null | sort)
+
+if [[ -n "${C6_HITS}" ]]; then
+    fail "C6: the test tree contains a machine-specific home-directory path:"
+    while IFS= read -r hit; do
+        [[ -z "${hit}" ]] && continue
+        echo "    ${hit}"
+    done <<< "${C6_HITS}"
+    echo "    (fix: resolve the path at run time — tests/common/bin_resolver.rs for"
+    echo "     binaries, tests/common/sf1_fixture.rs for the SF=1 fixture)"
+    FAILURES=$((FAILURES + 1))
+else
+    pass "C6: no machine-specific home-directory path in the test tree"
+fi
+
+if [[ -n "${C6_EXEMPT_LIST}" ]]; then
+    note "C6 exemptions (files that legitimately contain sample paths):"
+    while IFS= read -r ex; do
+        [[ -z "${ex}" ]] && continue
+        echo "    ${ex}"
+    done <<< "${C6_EXEMPT_LIST}"
+fi
+
+# ---------------------------------------------------------------------------
 # 2. C5 — cross-check against cargo's own view of the target list
 # ---------------------------------------------------------------------------
 step "Step 2/3: cross-check against cargo metadata"

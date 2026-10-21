@@ -403,27 +403,20 @@ pub fn start_sf01_cli() -> Result<CliServer, String> {
 // ============================================================================
 
 /// Resolve the `sqlrustgo-mysql-server` binary path.
-/// Uses CARGO_TARGET_DIR and CARGO_MANIFEST_DIR to find the binary
-/// regardless of the current working directory.
+///
+/// #5477: this used to be a **second, independent** implementation of the
+/// binary lookup. Two implementations drift — and any one of them can fall
+/// back to a machine-specific path while the other does not. The shared
+/// helper (`tests/common/bin_resolver.rs`) honours, in order:
+/// `SQLRUSTGO_MYSQL_SERVER_BIN` → `CARGO_TARGET_DIR` → package
+/// `target/{debug,release}` → `PATH`.
 fn resolve_binary() -> Result<PathBuf, String> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let target_dir = std::env::var("CARGO_TARGET_DIR")
-        .ok()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| manifest_dir.join("target"));
-    let profile = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
-    let bin = target_dir.join(profile).join("sqlrustgo-mysql-server");
-    if bin.exists() {
-        return Ok(bin);
-    }
-    Err(format!(
-        "sqlrustgo-mysql-server binary not found at {:?}",
-        bin
-    ))
+    super::bin_resolver::resolve_mysql_server_binary().ok_or_else(|| {
+        super::bin_resolver::missing_binary_message(
+            "sqlrustgo-mysql-server",
+            super::bin_resolver::MYSQL_SERVER_BIN_ENV,
+        )
+    })
 }
 
 /// Resolve the `mysql` CLI binary path.
