@@ -414,6 +414,15 @@ echo "=== Cross-Version Debt Summary ==="
 
 ACTIVE_COUNT=0
 CLOSED_COUNT=0
+# #5422: 这四个计数器此前**只自增、不初始化**。bash 的算术展开把未定义的变量
+# 当作 0，所以自增本身是对的；但只要计数为 0（从未自增过），
+# `[ "$X" -gt 0 ]` 就是 `[ "" -gt 0 ]` ⇒ 打印
+# "integer expression expected" 并返回 2（在 `if` 里按「假」处理）。
+# 后果是每次运行都留下 shell 报错噪声，且 DEFERRED 计数打印为空。
+DEFERRED_COUNT=0
+PARTIAL_COUNT=0
+OPEN_COUNT=0
+UNKNOWN_COUNT=0
 
 # Bash 3.2 compatible: no process substitution; use named pipe via PIPE
 # Accumulate status counts directly in the loop over the sorted CSV

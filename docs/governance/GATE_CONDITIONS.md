@@ -252,9 +252,21 @@ Test target: `cargo test --release -p sqlrustgo-sql-corpus --test corpus_test te
 
 | Stage | Threshold | Script |
 |-------|-----------|--------|
-| BETA | active <= 47, total_allowed <= 96 | scripts/gate/check_anti_ignore_gate.sh |
-| RC | active <= 47, total_allowed <= 96 | scripts/gate/check_anti_ignore_gate.sh |
-| GA | active <= 47, total_allowed <= 96 | scripts/gate/check_anti_ignore_gate.sh |
+| BETA | active <= 80, total_allowed <= 150 | scripts/gate/check_anti_ignore_gate.sh |
+| RC | active <= 80, total_allowed <= 150 | scripts/gate/check_anti_ignore_gate.sh |
+| GA | active <= 80, total_allowed <= 150 | scripts/gate/check_anti_ignore_gate.sh |
+
+Threshold source (#5425): the numbers above are the registry's own `limits`
+field (`tests/baseline/ignore_registry.json` → `limits.active_max` /
+`limits.total_allowed_max`); the script reads them from there rather than
+hard-coding a second copy. Before #5425 the threshold existed in **three**
+mutually inconsistent places — this table said 47/96, the script's header
+comment said 55/100, and the script's code said 80/150 — so the same
+repository got a different verdict depending on which document you read.
+
+The active ceiling (69) and the total ceiling (116) are both below the
+limits, so the gate passes today; the point of #5425 is that it now passes
+for **one** documented reason instead of three competing ones.
 
 Active = entries in `tests/baseline/ignore_registry.json` with status=ACTIVE.
 

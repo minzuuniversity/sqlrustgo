@@ -447,8 +447,38 @@ run_d2_beta() {
     # Validates that the canonical SQLancer + test-runner binaries produce
     # target/sqlancer-report.json + target/test-runner-report.json. Without
     # this check, V312-24 work can be merged but never wired into the gate.
+    #
+    # #5421: the check used to require artifacts that **the gate does not
+    # produce**. They live in `target/`, which is not tracked, so on any
+    # fresh checkout — a CI runner, a new worktree, anyone's clone — they
+    # are absent and this sub-check is red for a reason that has nothing to
+    # do with the code. It could only go green if somebody had happened to
+    # generate them beforehand: a random green.
+    #
+    # The gate now produces what it checks. Both generators are cheap:
+    # `test-runner` without a manifest falls back to a `cargo --version`
+    # probe (~15 ms), and `sqlancer` honours a short duration cap
+    # (1000 iterations complete in ~0.01 s). The check validates the
+    # artifacts' *schema and wiring*, not fuzzing depth.
     D2_TOTAL=$((D2_TOTAL+1))
     echo -n "  [B6] V312-24 SQLancer + test-runner artifacts ... "
+    if [ ! -s "${REPO_ROOT}/target/sqlancer-report.json" ] || \
+       [ ! -s "${REPO_ROOT}/target/test-runner-report.json" ]; then
+        echo ""
+        echo "       artifacts absent — the gate generates them"
+        mkdir -p "${REPO_ROOT}/target"
+        # The real exit codes are captured and reported, never swallowed
+        # (P14: `|| true` on a command whose status is discarded is exactly
+        # the anti-pattern this gate exists to catch).
+        SQLANCER_RC=0
+        TEST_RUNNER_RC=0
+        ( cd "${REPO_ROOT}" && cargo run -q -p sqlancer -- \
+              --duration "${SQLANCER_DURATION:-5}" \
+              --out target/sqlancer-report.json ) >/dev/null 2>&1 || SQLANCER_RC=$?
+        ( cd "${REPO_ROOT}" && cargo run -q -p test-runner -- \
+              --out target/test-runner-report.json ) >/dev/null 2>&1 || TEST_RUNNER_RC=$?
+        echo "       generation rc: sqlancer=$SQLANCER_RC test-runner=$TEST_RUNNER_RC"
+    fi
     if [ -s "${REPO_ROOT}/target/sqlancer-report.json" ] && \
        [ -s "${REPO_ROOT}/target/test-runner-report.json" ]; then
         # Validate JSON schema (same checks as check_anti_fabrication.sh CHECK 1.5)
@@ -467,7 +497,7 @@ for k in ('started_at','finished_at','config','summary','results'):
             D2_BLOCKERS=$((D2_BLOCKERS+1))
         fi
     else
-        log_fail "B6 V312-24: report artifacts missing (run: cargo run -p sqlancer -- --duration 30 + cargo run -p test-runner)"
+        log_fail "B6 V312-24: report artifacts could not be produced (cargo run -p sqlancer -- --duration ${SQLANCER_DURATION:-5} + cargo run -p test-runner)"
         D2_BLOCKERS=$((D2_BLOCKERS+1))
     fi
 
