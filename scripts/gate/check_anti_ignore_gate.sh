@@ -1,6 +1,19 @@
 #!/bin/bash
 # V312-37: Anti-Ignore gate (G19)
-# Threshold: active entries <= 55, total_allowed <= 100
+#
+# Threshold: **taken from the registry's own `limits` field** — see
+# `tests/baseline/ignore_registry.json`.
+#
+# #5425: the thresholds used to live in **three** places that disagreed:
+#   - this header claimed   active 55 / total_allowed 100
+#   - the code set          ACTIVE_MAX 80 / TOTAL_ALLOWED_MAX 150
+#   - GATE_CONDITIONS.md G19 claimed  active 47 / total_allowed 96
+# ⇒ the same repository, at the same moment, got three different verdicts
+#   depending on which document you read. The registry already declares the
+#   authoritative pair in its `limits` field (80 / 150, with the note
+#   "Increased at v4.1.0-alpha2 promotion to accommodate fix PR drift"),
+#   so the script now reads it from there and the other two places point at
+#   the same source.
 # V312-17 round-17 (ADR-008 exception): 9 e2e_wire_protocol #[ignore] markers
 # consolidated into 1 registry entry. New baseline total_allowed = 73 + 23
 # (round-16) = 96. The 73 v3.9.0 baseline is preserved as v3.9.0_legacy field.
@@ -48,13 +61,34 @@
 set -e
 
 REGISTRY="tests/baseline/ignore_registry.json"
-ACTIVE_MAX=80
-TOTAL_ALLOWED_MAX=150
+
+# Fallback thresholds, used only when the registry carries no `limits` block.
+# They are the same values the registry currently declares, so the fallback
+# cannot silently loosen the gate.
+FALLBACK_ACTIVE_MAX=80
+FALLBACK_TOTAL_ALLOWED_MAX=150
 
 if [ ! -f "$REGISTRY" ]; then
     echo "FAIL: $REGISTRY not found" >&2
     exit 1
 fi
+
+# The single source of truth for the thresholds (#5425).
+read_limits() {
+    python3 <<PYEOF
+import json
+with open("$REGISTRY") as f:
+    data = json.load(f)
+lim = data.get("limits") or {}
+print(int(lim.get("active_max", $FALLBACK_ACTIVE_MAX)),
+      int(lim.get("total_allowed_max", $FALLBACK_TOTAL_ALLOWED_MAX)))
+PYEOF
+}
+
+read_limits > /tmp/anti_ignore_limits.txt
+ACTIVE_MAX=$(awk '{print $1}' /tmp/anti_ignore_limits.txt)
+TOTAL_ALLOWED_MAX=$(awk '{print $2}' /tmp/anti_ignore_limits.txt)
+rm -f /tmp/anti_ignore_limits.txt
 
 # Read counts via python3 (avoid jq dependency)
 read_counts() {
