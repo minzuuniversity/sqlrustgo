@@ -1,4 +1,4 @@
-//! `sqlrustgo-cli repl` — Interactive REPL shell.
+//! `sqlrustgo-soak repl` — Interactive REPL shell.
 //!
 //! Connects to a running server and provides a readline-based
 //! interactive SQL console with history.

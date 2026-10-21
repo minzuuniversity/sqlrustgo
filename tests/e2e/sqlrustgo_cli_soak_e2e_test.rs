@@ -1,6 +1,6 @@
-//! sqlrustgo-cli Soak REPL E2E 测试
+//! sqlrustgo Soak REPL E2E 测试 —— #5405。
 //!
-//! 测试 sqlrustgo-cli 的 `soak` 子命令，验证:
+//! 测试**规范 CLI 二进制 `sqlrustgo`** 的 `soak` 子命令，验证:
 //! 1. 持久连接 (REPL 接收多条 SQL)
 //! 2. DML 正确返回 OK 标签
 //! 3. SELECT 正确返回 ROWS/COL/DATA/ROW 标签 (IGNORED - server bug)
@@ -9,8 +9,17 @@
 //!
 //! 注意: SELECT 测试标记为 ignored, 因为 server 端 column_def 包格式 bug
 //! (缺 org_name 字段), DML 路径不受影响.
+//!
+//! #5405 — 这个目标此前找的是 `target/debug/sqlrustgo-cli`，
+//! 而仓库里**没有**任何 bin 叫 `sqlrustgo-cli`：
+//! 它是 package `sqlrustgo-cli` 的**包名**，该包的 bin 叫 `sqlrustgo`。
+//! 规范入口由 `tests/common/bin_resolver.rs` 统一解析（`SQLRUSTGO_BIN`
+//! 可覆盖），不再由测试各自手写路径。
 
 #![allow(dead_code)]
+
+#[path = "../common/mod.rs"]
+mod common;
 
 use sqlrustgo_mysql_client::MySqlConnection;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
@@ -33,20 +42,58 @@ fn wait_for_server(port: u16) -> SocketAddr {
     }
 }
 
+/// 定位规范 CLI 二进制 `sqlrustgo` —— #5405。
+///
+/// 二进制名由 `tests/common/bin_resolver.rs` 统一持有（一个判据只有一份
+/// 实现）；找不到时**报错**而不是跳过 —— 跳过会把这个目标变成假绿。
 fn binary_path() -> String {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
-    let path = std::path::Path::new(&manifest_dir).join("target/debug/sqlrustgo-cli");
-    if path.exists() {
-        return path.to_string_lossy().to_string();
-    }
-    let alt = std::path::Path::new("target/debug/sqlrustgo-cli");
-    if alt.exists() {
-        return alt.to_string_lossy().to_string();
-    }
-    panic!(
-        "sqlrustgo-cli binary not found. cwd={:?}, manifest_dir={}",
-        std::env::current_dir(),
-        manifest_dir
+    common::bin_resolver::resolve_canonical_cli_binary()
+        .unwrap_or_else(|| {
+            panic!(
+                "{}",
+                common::bin_resolver::missing_binary_message(
+                    "sqlrustgo (canonical CLI / soak REPL)",
+                    common::bin_resolver::ENGINE_BIN_ENV,
+                )
+            )
+        })
+        .display()
+        .to_string()
+}
+
+/// 回归守卫：解析到的必须是**规范 CLI**，不是那个名字相近的
+/// `sqlrustgo-soak` —— #5405。
+///
+/// 仓库里有两个名字很接近的二进制：
+///
+/// | bin | 产出包 | 是什么 |
+/// |---|---|---|
+/// | `sqlrustgo` | `sqlrustgo-cli` | 规范 CLI：`serve`/`exec`/`soak`/…，其 `soak` 是 **REPL** |
+/// | `sqlrustgo-soak` | `sqlrustgo-soak` | 压测客户端：`exec`/`repl`/`soak`，其 `soak` 是**跑子** |
+///
+/// 两者都提供 `soak` 子命令，所以「命令跑起来了」**证明不了**是哪一个。
+/// 唯一可靠的判据是二进制自己报告的 usage 行 —— 它写的是自己的名字。
+///
+/// 这条守卫的意义在于：当解析器再次漂移到「包名」或「另一个二进制」时，
+/// 失败信息直接指出**是哪一个**，而不是让下面的用例以
+/// `spawn ... No such file or directory` 的形式集体炸掉。
+#[test]
+fn resolved_binary_reports_itself_as_the_canonical_cli() {
+    let out = Command::new(binary_path())
+        .arg("--help")
+        .output()
+        .expect("canonical CLI --help should run");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let combined = format!("{stdout}{}", String::from_utf8_lossy(&out.stderr));
+
+    assert!(
+        combined.contains("Usage: sqlrustgo "),
+        "the resolved binary must report itself as `sqlrustgo`; got: {combined}"
+    );
+    assert!(
+        !combined.contains("sqlrustgo-soak"),
+        "the resolved binary must NOT be `sqlrustgo-soak` — that is the load \
+         generator and its `soak` subcommand is not the REPL; got: {combined}"
     );
 }
 
@@ -72,7 +119,7 @@ fn test_soak_repl_dml_persistent_connection() {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn sqlrustgo-cli soak");
+        .expect("spawn sqlrustgo soak");
 
     let stdin = child.stdin.as_mut().unwrap();
     let mut stdout = child.stdout.take().unwrap();

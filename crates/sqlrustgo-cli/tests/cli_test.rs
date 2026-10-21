@@ -8,19 +8,27 @@
 //!   - stable error codes (parse/runtime)
 //!   - --continue-on-error semantics
 //!   - --help showing sqlite subcommand
+//!
+//! #5405 — 二进制的定位方式
+//!
+//! 本文件此前手写 `target/debug/sqlrustgo-cli`，而**仓库里没有**任何 bin
+//! 叫 `sqlrustgo-cli`：那是**包名**。该包的 `[[bin]] name` 是 `sqlrustgo`。
+//! 手写路径的结果是「找不到文件」，而且它**忽略 `CARGO_TARGET_DIR`**
+//! （#5477 的同一类病）。
+//!
+//! 现在改用 `env!("CARGO_BIN_EXE_sqlrustgo")`：cargo 只为**本包**的
+//! `[[bin]]` 设置这个变量，且在**编译期**展开 ——
+//! 二进制一旦改名，这里**编译不过**，而不是等到运行期才 panic。
 
 use std::path::PathBuf;
 use std::process::Command;
 
+/// 规范 CLI 二进制的绝对路径 —— #5405。
+///
+/// `CARGO_BIN_EXE_<name>` 由 cargo 为本包的 `[[bin]] name = "<name>"`
+/// 设置。改名 ⇒ 编译失败（而不是运行期找不到）。
 fn cli_bin() -> PathBuf {
-    // The crate's target/debug binary is named sqlrustgo-cli
-    let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    p.push("..");
-    p.push("..");
-    p.push("target");
-    p.push("debug");
-    p.push("sqlrustgo-cli");
-    p
+    PathBuf::from(env!("CARGO_BIN_EXE_sqlrustgo"))
 }
 
 fn tmp_db_path(tag: &str) -> PathBuf {

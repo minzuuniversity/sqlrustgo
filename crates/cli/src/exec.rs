@@ -1,4 +1,4 @@
-//! `sqlrustgo-cli` — one-off query execution.
+//! `sqlrustgo-soak exec` — one-off query execution.
 //!
 //! Connects to a running server, executes a single SQL statement,
 //! and prints the result set or affected-row count.

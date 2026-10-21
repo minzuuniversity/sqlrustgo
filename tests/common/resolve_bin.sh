@@ -60,6 +60,14 @@ _test_bin_not_found() {
 # 优先 `SQLRUSTGO_BIN`，其次 `SQLRUSTGO_CLI`（历史名字），
 # 再按 CARGO_TARGET_DIR / 仓库 target/ / PATH 找。
 #
+# #5405 — 候选名**只有** `sqlrustgo`
+#
+# `sqlrustgo-cli` 是**包名**（`crates/sqlrustgo-cli`），不是二进制名：
+# 该包的 `[[bin]] name` 是 `sqlrustgo`。把它列为候选名，解析器就多走一条
+# 永远落空的路径，并让「这个二进制叫什么」出现第二个来源。
+# 权威的候选名由 `tests/common/bin_resolver.rs` 持有（Rust 侧），
+# 本脚本是它在 shell 侧的等价物 —— 两侧必须一致。
+#
 # 找不到时**返回非零**（77），并打印 NOT-RUN 披露。
 resolve_sqlrustgo_bin() {
   local target="${1:-$(basename "${0}")}"
@@ -90,11 +98,6 @@ resolve_sqlrustgo_bin() {
         printf '%s\n' "$candidate"
         return 0
       fi
-      candidate="$base/$profile/sqlrustgo-cli"
-      if [ -x "$candidate" ]; then
-        printf '%s\n' "$candidate"
-        return 0
-      fi
     done
   done
 
@@ -108,7 +111,7 @@ resolve_sqlrustgo_bin() {
   IFS=':' read -ra _path_dirs <<< "${PATH:-}"
   for dir in "${_path_dirs[@]}"; do
     [ -n "$dir" ] || continue
-    for name in sqlrustgo sqlrustgo-cli; do
+    for name in sqlrustgo; do
       candidate="$dir/$name"
       if [ -x "$candidate" ]; then
         printf '%s\n' "$candidate"

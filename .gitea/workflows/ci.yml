@@ -260,6 +260,22 @@ jobs:
           # file must have its own declaration, and the declared count must
           # equal the number of test targets cargo actually builds.
           bash scripts/gate/check_test_manifest_honesty.sh
+      - name: Gate — CLI binary names (issue #5405)
+        if: always()
+        run: |
+          # #5405: `tests/e2e/sqlrustgo_cli_soak_e2e_test.rs` looked for
+          # `target/debug/sqlrustgo-cli` — a name no bin has. `sqlrustgo-cli`
+          # is the **package** name of `crates/sqlrustgo-cli`; that package's
+          # `[[bin]] name` is `sqlrustgo`.
+          #
+          # The typo was the symptom. The disease was that "what is this binary
+          # called" had two answers (the package name and the bin name) and the
+          # test tree was free to pick either. This gate makes the manifest the
+          # only source of a bin name and cross-checks everything else against
+          # it: duplicate [[bin]] names, CARGO_BIN_EXE references borrowed from
+          # another package, `target/<profile>/<name>` literals that name
+          # nothing, and resolver candidate lists that drifted.
+          bash scripts/gate/check_cli_binary_names.sh
       - name: Gate — TPC-H known-difference registry (issue #5379)
         if: always()
         run: |
