@@ -21,6 +21,27 @@ use sqlrustgo_storage::StorageEngine;
 ///   type TEXT, name TEXT, tbl_name TEXT, rootpage INTEGER, sql TEXT.
 pub const SQLITE_MASTER_SCHEMA: &[&str] = &["type", "name", "tbl_name", "rootpage", "sql"];
 
+/// #5433: virtual system schemas — catalogs that are not user databases and
+/// therefore have no directory in the storage backend.
+///
+/// * `information_schema` — the standard SQL virtual catalog, routed to
+///   `execute_information_schema_select` since V312-56A / #4251.
+/// * `mysql` — the MySQL system schema, whose `user` / `db` tables are
+///   synthesised from the catalog's `AuthManager` by
+///   [`try_system_table_select`].
+///
+/// Both must bypass the "unknown database" check in the SELECT path:
+/// `ensure_database_known` answers "is this a directory the storage knows
+/// about", and a virtual schema never is one. Without the bypass,
+/// `SELECT ... FROM mysql."user"` failed with `Unknown database: mysql`
+/// before the interception could run.
+pub fn is_virtual_schema(db: &str) -> bool {
+    matches!(
+        db.trim().to_ascii_lowercase().as_str(),
+        "information_schema" | "mysql"
+    )
+}
+
 /// Decide whether `select` targets a system table and, if so, return the
 /// projected rows. Returns `None` when the FROM clause is a normal user
 /// table — the caller should fall through to the standard scan path.
