@@ -7153,6 +7153,72 @@ impl StorageEngine for FileStorage {
         Ok(())
     }
 
+    /// #5471: `ALTER TABLE ... ALTER COLUMN ... SET/DROP DEFAULT` on the
+    /// file backend.
+    ///
+    /// The `StorageEngine` trait default answers
+    /// `"set_column_default not supported by this storage engine"`, and
+    /// only `MemoryStorage` overrode it — so the DDL was **impossible on
+    /// every on-disk backend**, including the production one.
+    ///
+    /// The default lives in the **schema** (`info.columns[i].default_value`),
+    /// not in the rows, so persisting it needs a **schema write**, not a
+    /// row append:
+    ///
+    /// * `save_table` would take the *delta* path whenever the in-memory
+    ///   row count is ahead of the last save — the delta file only
+    ///   carries rows, so the new default would never reach the disk;
+    /// * `save_table_full` writes the whole snapshot **including**
+    ///   `info.columns` and drops the now-redundant delta file.
+    ///
+    /// ⇒ this calls `save_table_full` directly. The delta file is a
+    /// strict subset of `table_data.rows` (it is appended *from* it), so
+    /// writing the snapshot and removing the delta loses nothing.
+    ///
+    /// The column match is **case-exact**, like this backend's other
+    /// column-level DDL (`drop_column` / `modify_column`). Making it
+    /// case-insensitive here alone would split `FileStorage` into two
+    /// conventions; the whole-backend question is tracked separately in
+    /// **#5509**.
+    fn set_column_default(
+        &mut self,
+        table: &str,
+        column: &str,
+        default_value: Option<String>,
+    ) -> SqlResult<()> {
+        // #4951: `&mut self`, so `get_mut` needs no lock; the mutate and
+        // the persist happen back-to-back with no lock in between — the
+        // exclusive borrow is what guarantees no concurrent flush can
+        // observe the new default without it reaching disk.
+        let table_data_clone = {
+            // #5025: resolve the key first — `self.tbl()` borrows `self`,
+            // which conflicts with the `get_mut()` below.
+            let key = self.tbl(table);
+            let st = self.write_state.get_mut();
+            let table_data = st
+                .tables
+                .get_mut(&key)
+                .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
+            let col_idx = table_data
+                .info
+                .columns
+                .iter()
+                .position(|c| c.name == column)
+                .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+            table_data.info.columns[col_idx].default_value = default_value;
+            table_data.clone()
+        };
+        // `save_table_full` needs `&self` (for `data_dir` /
+        // `last_saved_row_count`), so it cannot run while the `&mut`
+        // borrow above is live.
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
+        self.with_read_lock(|_| {
+            self.save_table_full(&db, table, &table_data_clone)
+                .map_err(|e| SqlError::ExecutionError(format!("set_column_default: {}", e)))
+        })?;
+        Ok(())
+    }
+
     // Issue #4848: rename a column in a table. Row data in FileStorage
     // is positional (Vec<Vec<Value>>), so renaming only requires
     // updating the schema (info.columns[col_idx].name); the row data

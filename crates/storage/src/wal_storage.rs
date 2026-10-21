@@ -820,6 +820,22 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     fn create_table_in_db(&mut self, db: &str, info: &TableInfo) -> SqlResult<()> {
         self.inner_mut().create_table_in_db(db, info)
     }
+    /// #5471: forward `set_column_default` to the inner engine.
+    ///
+    /// Without this override the trait default runs and answers
+    /// "set_column_default not supported by this storage engine" -- the
+    /// DDL was impossible on every wrapped backend, and every
+    /// server-created storage is wrapped.
+    fn set_column_default(
+        &mut self,
+        table: &str,
+        column: &str,
+        default_value: Option<String>,
+    ) -> SqlResult<()> {
+                self.inner_mut().set_column_default(table, column, default_value)
+
+    }
+
 
     /// #5192: existence check against a stated database.
     ///
