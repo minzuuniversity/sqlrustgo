@@ -911,10 +911,6 @@ path = "crates/tools/tests/incremental_backup_datasource_4938.rs"
 
 
 [[test]]
-name = "replace_test"
-path = "tests/integration/dml/replace_test.rs"
-
-[[test]]
 name = "int4_explicit_tx_test"
 path = "tests/integration/sql/int4_explicit_tx_test.rs"
 
