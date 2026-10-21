@@ -22,6 +22,7 @@ use common::MySqlTestClient;
 use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
+use tempfile::TempDir;
 
 /// Locate the workspace root from `CARGO_MANIFEST_DIR`.
 fn workspace_root() -> std::path::PathBuf {
@@ -40,6 +41,10 @@ struct SubprocessHandle {
     child: Child,
     #[allow(dead_code)]
     port: u16,
+    /// #5468: the per-server throwaway data directory. It is held by the
+    /// handle so it is removed only after the child has been killed
+    /// (`Drop` kills the child first; the field is dropped afterwards).
+    _data_dir: TempDir,
 }
 
 impl Drop for SubprocessHandle {
@@ -60,10 +65,23 @@ fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
     let port = probe.local_addr().expect("probe local_addr").port();
     drop(probe);
 
+    // #5468: the `serve` subcommand defaults `--data-dir` to the
+    // process-wide `/tmp/sqlrustgo-data` (crates/mysql-server/src/main.rs).
+    // Sharing that directory across runs makes a second run fail with
+    // "Table '...' already exists" and pollutes a shared /tmp. Give this
+    // server its own throwaway data directory instead.
+    let data_dir = TempDir::new().expect("temp data dir for canonical server");
+    let data_dir_arg = data_dir
+        .path()
+        .to_str()
+        .expect("canonical server data dir must be valid UTF-8")
+        .to_string();
+
     let child = Command::new(&bin)
         .arg("serve")
         .args(["--host", "127.0.0.1"])
         .args(["--port", &port.to_string()])
+        .args(["--data-dir", &data_dir_arg])
         .args(["--log-level", "warn"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -81,7 +99,14 @@ fn spawn_canonical_with_client() -> (SubprocessHandle, MySqlTestClient) {
 
     let client = MySqlTestClient::connect_at(("127.0.0.1", port), "root", "")
         .expect("MySqlTestClient should connect to canonical subprocess server");
-    (SubprocessHandle { child, port }, client)
+    (
+        SubprocessHandle {
+            child,
+            port,
+            _data_dir: data_dir,
+        },
+        client,
+    )
 }
 
 const TPCH_TINY_DDL: &[&str] = &[
