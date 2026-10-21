@@ -406,6 +406,22 @@ fn tpch_sf01_22_vs_sqlite_oracle() {
             .count();
         let expected_skipped = EXPECTED_QUERIES - expected_scoped;
 
+        // #5464: the engine side and the oracle side are **not** interleaved.
+        //
+        // The server reaps connections that have been idle for
+        // `SQLRUSTGO_IDLE_TIMEOUT_SECS` (default 30 s). An interleaved loop
+        // leaves the engine's connection idle for the whole duration of each
+        // oracle computation — and a slow reference computation (an
+        // un-indexed SQLite `EXISTS` over `lineitem` took 41 s) is enough for
+        // the reaper to close it. The **next** engine statement then dies with
+        // `read packet header: failed to fill whole buffer` — a failure that
+        // has nothing to do with the statement it is attributed to.
+        //
+        // Pass A runs every statement on the engine and keeps the rows; pass B
+        // then asks the oracle and compares. The connection is never idle
+        // *between* two engine statements.
+        // ---- Pass A: the engine side, for every statement. ----
+        let mut engine_side: Vec<(&'static str, String, Vec<Vec<String>>)> = Vec::new();
         for n in 1..=EXPECTED_QUERIES {
             let sql = std::fs::read_to_string(format!("{QUERIES_DIR}/q{n}.sql"))
                 .unwrap_or_else(|e| panic!("{TARGET}: cannot read {QUERIES_DIR}/q{n}.sql: {e}"));
@@ -448,7 +464,12 @@ fn tpch_sf01_22_vs_sqlite_oracle() {
                     continue;
                 }
             };
-            let oracle_rows = match oracle.query(&adapted.sql) {
+            engine_side.push((qid, adapted.sql, engine_rows));
+        }
+
+        // ---- Pass B: the oracle side, then the comparison. ----
+        for (qid, oracle_sql, engine_rows) in &engine_side {
+            let oracle_rows = match oracle.query(oracle_sql) {
                 Ok(rows) => rows,
                 Err(e) => {
                     failed += 1;
@@ -457,8 +478,8 @@ fn tpch_sf01_22_vs_sqlite_oracle() {
                 }
             };
 
-            let content = !ROW_COUNT_ONLY.contains(&qid);
-            match compare_rows(&engine_rows, &oracle_rows, content) {
+            let content = !ROW_COUNT_ONLY.contains(qid);
+            match compare_rows(engine_rows, &oracle_rows, content) {
                 None => {
                     compared += 1;
                     eprintln!("  {qid:2}: MATCH (rows={})", engine_rows.len());
