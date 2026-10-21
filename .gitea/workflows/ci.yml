@@ -55,7 +55,31 @@ jobs:
         with:
           fetch-depth: 1
       - name: Clippy
-        run: cargo clippy --all-features -- -D warnings
+        # #5465: this used to be
+        #     cargo clippy --all-features -- -D warnings
+        # which checks the library and the binaries but **not** the 446 test
+        # targets. Every lint in `tests/` was therefore invisible to the gate.
+        #
+        # That blindness had a concrete cost: a deny-by-default false
+        # positive (`clippy::approx_constant` in
+        # `tests/integration/sql/v312_62_issue_batch_test.rs`) sat in the tree
+        # unnoticed, and — worse — a *compile error* introduced by PR #5493
+        # (`super::bin_resolver::…` in `tests/common/tpch_cli_harness.rs`,
+        # which is a cargo target of its own) meant that target never
+        # compiled and therefore never ran. Neither was visible to a gate
+        # that does not build the test targets.
+        #
+        # The test tree's lint backlog (55 warnings across 25 lint names)
+        # was paid down in the same change, so `--all-targets` can be turned
+        # on outright instead of being papered over with an allowance.
+        run: cargo clippy --all-features --all-targets -- -D warnings
+      - name: Test-target lint budget (issue #5465)
+        # Quantifies the lint debt of the test targets and compares it with
+        # the recorded baseline. With the backlog at zero this is a no-op
+        # today; its value is that it answers "how much do we owe?" with a
+        # number, and that a re-baseline is an explicit, reviewable act
+        # (`--update`) rather than a side effect of a CI run.
+        run: bash scripts/gate/check_test_target_lint_budget.sh
       - name: Format check
         run: cargo fmt --check --all
       - name: Build

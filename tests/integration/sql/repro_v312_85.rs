@@ -38,10 +38,6 @@ fn as_text(v: &Value) -> String {
     }
 }
 
-fn row_text(row: &[Value]) -> Vec<String> {
-    row.iter().map(as_text).collect()
-}
-
 // ============================================================================
 // Issue #4761 — SUBSTRING/SUBSTR accepts negative start
 // ============================================================================

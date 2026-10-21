@@ -106,6 +106,56 @@ fn split_top_level(args: &str) -> Option<(String, String)> {
     ))
 }
 
+/// The SQLite `strftime` format for each `EXTRACT` field this module maps.
+///
+/// Only the fields that appear in the repository's TPC-H statements are
+/// mapped. An unmapped field is a **hard error**, never a silent
+/// pass-through: a pass-through would make SQLite fail to prepare the
+/// statement, which is loud — but a *wrong* mapping would make it prepare
+/// and return different numbers, which is not.
+const EXTRACT_FIELD_FORMATS: [(&str, &str); 3] = [("YEAR", "%Y"), ("MONTH", "%m"), ("DAY", "%d")];
+
+/// Rewrite `EXTRACT(<field> FROM <expr>)` into SQLite's equivalent.
+///
+/// SQLite has no `EXTRACT`. The equivalent is
+/// `CAST(strftime('<fmt>', <expr>) AS INTEGER)`.
+///
+/// `EXTRACT` appears in TPC-H Q7 (`EXTRACT(YEAR FROM o_orderdate)`), which
+/// the four-way cell diff and the TPC-H differential tests both execute.
+///
+/// Rewrites are **visible**: every one of them is returned to the caller,
+/// which prints it. A silent rewrite would compare the engine against a
+/// *different query* and prove nothing.
+fn rewrite_extract(out: &mut String, notes: &mut Vec<String>) {
+    loop {
+        let Some(pos) = find_keyword(out, "EXTRACT") else {
+            return;
+        };
+        let open = pos + "EXTRACT".len();
+        let Some(close) = matching_paren(out, open) else {
+            return;
+        };
+        let inner = out[open + 1..close].to_string();
+
+        // `inner` is `<field> FROM <expr>`.
+        let Some(from_at) = find_keyword(&inner, "FROM") else {
+            return;
+        };
+        let field = inner[..from_at].trim().to_uppercase();
+        let expr = inner[from_at + "FROM".len()..].trim().to_string();
+
+        let Some((_, fmt)) = EXTRACT_FIELD_FORMATS.iter().find(|(f, _)| *f == field) else {
+            // Not mapped: leave the statement untouched. SQLite will refuse
+            // to prepare it, which is a loud, honest failure.
+            return;
+        };
+
+        let replacement = format!("CAST(strftime('{fmt}', {expr}) AS INTEGER)");
+        *out = format!("{}{}{}", &out[..pos], replacement, &out[close + 1..]);
+        notes.push(format!("EXTRACT({field} FROM {expr}) → {replacement}"));
+    }
+}
+
 /// 把引擎的函数名改写成 SQLite 的等价写法。
 ///
 /// 返回 `(改写后的 SQL, 改写说明列表)`。调用方**必须**把说明打印出来 ——
@@ -136,6 +186,8 @@ pub fn adapt_for_sqlite(sql: &str) -> (String, Vec<String>) {
         out = format!("{}(({}) % ({})){}", &out[..pos], a, b, &out[close + 1..]);
         notes.push(format!("MOD({}, {}) → (({}) % ({}))", a, b, a, b));
     }
+
+    rewrite_extract(&mut out, &mut notes);
 
     (out, notes)
 }

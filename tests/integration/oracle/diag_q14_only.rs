@@ -340,7 +340,7 @@ fn diag_q14_only() {
 
         // ---- Invariant 5: the ratio is a share, so it lies in [0, 100] ----
         assert!(
-            ratio >= 0.0 && ratio <= 100.0,
+            (0.0..=100.0).contains(&ratio),
             "the promotional revenue of the {label} window is a share of the \
              total revenue and must lie in [0, 100], got {ratio}"
         );

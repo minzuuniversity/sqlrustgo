@@ -13,14 +13,20 @@ pub enum SemanticType {
     Json,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum Collation {
+    #[default]
     Binary,
     NoCase,
     RTrim,
 }
 
 impl Collation {
+    // This is an inherent constructor, not the `FromStr` trait method: it has
+    // no `Err` case (an unknown name falls back to `Binary`), and it is not
+    // used as `FromStr` anywhere. Implementing the trait would force every
+    // caller into a `Result` for a conversion that cannot fail.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_uppercase().as_str() {
             "NOCASE" => Collation::NoCase,
@@ -43,12 +49,6 @@ impl Collation {
             Collation::NoCase => a.to_uppercase().cmp(&b.to_uppercase()),
             Collation::RTrim => a.trim_end().cmp(b.trim_end()),
         }
-    }
-}
-
-impl Default for Collation {
-    fn default() -> Self {
-        Collation::Binary
     }
 }
 
@@ -123,7 +123,7 @@ impl SemanticValue {
                 let b: i64 = other.raw.parse().unwrap_or(0);
                 SemanticResult::Bool(a < b)
             }
-            (SemanticType::Text(c1), SemanticType::Text(c2)) => {
+            (SemanticType::Text(c1), SemanticType::Text(_c2)) => {
                 SemanticResult::Bool(c1.cmp(&self.raw, &other.raw).is_lt())
             }
             _ => SemanticResult::Null,

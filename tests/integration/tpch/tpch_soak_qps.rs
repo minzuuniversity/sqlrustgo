@@ -17,9 +17,7 @@ const QUERIES: &[&str] = &[
 /// Returns `None` when the TPC-H fixture is unavailable — the harness has
 /// already printed the NOT-RUN marker in that case.
 fn run_thread_benchmark(tid: usize, duration: Duration) -> Option<(u64, u64, u64)> {
-    let Some(mut client) = common::tpch_wire_harness::start_sf01() else {
-        return None;
-    };
+    let mut client = common::tpch_wire_harness::start_sf01()?;
     let mut local_q = 0u64;
     let mut local_err = 0u64;
     let mut local_rows = 0u64;

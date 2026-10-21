@@ -452,8 +452,6 @@ fn e2e_legacy_binary_sqlrustgo_deprecated() {
             )
         );
     };
-    let stdout_delegated;
-    let stderr_delegated;
 
     // ---- 契约 1：能委托时，裸调用必须委托给 server 的 --help -------------
     //
@@ -489,8 +487,8 @@ fn e2e_legacy_binary_sqlrustgo_deprecated() {
         .env("PATH", &path_with_server)
         .output()
         .expect("run sqlrustgo");
-    stdout_delegated = String::from_utf8_lossy(&out.stdout).into_owned();
-    stderr_delegated = String::from_utf8_lossy(&out.stderr).into_owned();
+    let stdout_delegated = String::from_utf8_lossy(&out.stdout).into_owned();
+    let stderr_delegated = String::from_utf8_lossy(&out.stderr).into_owned();
 
     assert!(
         out.status.success(),

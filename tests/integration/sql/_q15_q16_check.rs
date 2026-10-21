@@ -1,120 +1,159 @@
-//! TPC-H Q15 + Q16 isolated check (sqlrustgo in-process vs PG).
+//! TPC-H Q15 + Q16 isolated check (sqlrustgo in-process vs in-process SQLite).
+//!
 //! Q15: subquery in FROM (view). Q16: NOT IN subquery.
+//!
+//! #5404: this file used to have **zero assertions**. Both tests only
+//! `println!`ed their result, and the error branches only printed
+//! `"✗ Q15 failed to execute"` — so the engine could return an error, zero
+//! rows, or entirely wrong data and the target still reported success.
+//!
+//! The comparison against PostgreSQL that the header comment promised was
+//! also never performed: the `Err` branch of a PG call is indistinguishable
+//! from "PG is not installed" in the old code path, and the result was only
+//! printed.
+//!
+//! ## What it does now
+//!
+//! The truth source is an **independent in-process SQLite** (bundled
+//! `rusqlite`, so no external binary and no network), loaded from the same
+//! fixture as the engine. The engine's rows and the oracle's rows are
+//! compared **cell by cell**, and a statement that fails is a **failure**,
+//! not a printout.
+//!
+//! The statements themselves still come from the repository's authoritative
+//! `queries/q15.sql` / `queries/q16.sql`, located via `CARGO_MANIFEST_DIR`
+//! rather than the current working directory.
 
-mod four_way_harness;
-
-// The shared TPC-H fixture loader (issue #5379). Loading through the
-// storage layer in batches instead of executing one INSERT statement per
-// row is ~2 orders of magnitude faster; see the comment at the load site.
 #[path = "../../common/tpch_fixture.rs"]
 mod tpch_fixture;
 
-use four_way_harness::default_data_dir;
-use four_way_harness::Engine;
-use std::time::Instant;
+#[path = "../../common/tpch_oracle.rs"]
+mod tpch_oracle;
 
-fn load_into_sqlrustgo() -> sqlrustgo::ExecutionEngine<sqlrustgo::MemoryStorage> {
-    use parking_lot::RwLock;
-    use sqlrustgo::{ExecutionEngine, MemoryStorage};
-    use std::sync::Arc;
+use std::path::PathBuf;
 
-    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(Arc::clone(&storage));
+/// Cargo target name — used in the NOT-RUN marker.
+const TARGET: &str = "_q15_q16_check";
 
-    for ddl in four_way_harness::tpc_h_schema(Engine::SqlRustGo) {
-        let _ = engine.execute(&ddl);
+/// Read one of the repository's canonical TPC-H statements.
+///
+/// `CARGO_MANIFEST_DIR` is used instead of a relative path: `cargo test`
+/// happens to run with the package root as the working directory, but a
+/// test that depends on the caller's working directory is one more
+/// machine-specific assumption.
+fn canonical_query(name: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("queries/{name}.sql"));
+    let raw = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    raw.trim().trim_end_matches(';').to_string()
+}
+
+/// Load the given tables and run `sql` on the engine and on the oracle.
+///
+/// Returns the engine's rows together with the number of rows loaded per
+/// table, so the caller can state an upper bound that is derived from the
+/// data rather than from a hard-coded number.
+fn compare_with_oracle(
+    tables: &[&str],
+    sql: &str,
+    label: &str,
+) -> (Vec<Vec<String>>, Vec<(String, usize)>) {
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require(TARGET) else {
+        // `require` has already written the NOT-RUN record: the target did
+        // not run, and must not be counted as passed.
+        return (Vec::new(), Vec::new());
+    };
+
+    let storage = std::sync::Arc::new(parking_lot::RwLock::new(sqlrustgo::MemoryStorage::new()));
+    let mut engine = sqlrustgo::ExecutionEngine::new(storage.clone());
+    for ddl in tpch_oracle::engine_ddl(tables) {
+        engine
+            .execute(&ddl)
+            .unwrap_or_else(|e| panic!("{label}: creating the table failed: {e}"));
+    }
+    let mut loaded = Vec::new();
+    for table in tables {
+        let path = fixture.table_path(table);
+        assert!(
+            path.exists(),
+            "{label}: the fixture is present but table `{table}` is missing from it \
+             (looked at {})",
+            path.display()
+        );
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{label}: reading {table} failed: {e}"));
+        let rows = tpch_oracle::parse_tbl(&content);
+        let ncols = tpch_oracle::table_spec(table)
+            .map(|(_, cols, _)| cols)
+            .unwrap_or(0);
+        let n = tpch_oracle::load_rows_into_storage(&storage, &rows, table, ncols)
+            .unwrap_or_else(|e| panic!("{label}: loading `{table}` failed: {e}"));
+        loaded.push((table.to_string(), n));
     }
 
-    let data_dir = default_data_dir();
-    for (table, cols) in four_way_harness::TABLE_COLS {
-        let path = data_dir.join(format!("{}.tbl", table));
-        if !path.exists() {
-            eprintln!("[WARN] {} not found, skipping", path.display());
-            continue;
-        }
-        // Load through the storage layer in 10k-row batches instead of
-        // executing one INSERT statement per row.
-        //
-        // The statement-per-row path issues ~86,000 INSERTs per load and
-        // costs ~1 hour per load in a debug build. Before issue #5379 the
-        // fixture was a dangling symlink, so this target skipped the load
-        // entirely and finished in milliseconds — the cost was invisible.
-        // Now that the fixture is generated at run time and reachable, the
-        // same target needs ~2 hours of CI time, which does not fit the
-        // `test` job's budget and would starve every other target.
-        //
-        // The two loaders are equivalent: the shared loader derives the same
-        // typed values (NULL / Integer / Float / Text) from the same TBL
-        // text, verified cell-by-cell over all 8 tables and 86,482 rows.
-        let content = std::fs::read_to_string(&path).unwrap_or_default();
-        let rows = tpch_fixture::parse_tbl(&content);
-        let _ = tpch_fixture::load_rows_into_storage(&storage, &rows, table, *cols)
-            .unwrap_or_else(|e| panic!("loading table `{table}`: {e}"));
-    }
-    engine
+    let conn = tpch_oracle::load_into_sqlite(&fixture.dir, tables)
+        .unwrap_or_else(|e| panic!("{label}: loading the SQLite oracle failed: {e}"));
+
+    let ours = tpch_oracle::engine_rows(&mut engine, sql)
+        .unwrap_or_else(|e| panic!("{label}: the statement must execute — {e}"));
+    let theirs = tpch_oracle::sqlite_rows(&conn, sql)
+        .unwrap_or_else(|e| panic!("{label}: the SQLite oracle must execute the statement — {e}"));
+
+    tpch_oracle::assert_rows_match(label, &ours, &theirs);
+    (ours, loaded)
 }
 
 #[test]
 fn test_q15_subquery_from() {
-    let mut engine = load_into_sqlrustgo();
-    let q15 = std::fs::read_to_string("queries/q15.sql")
-        .expect("read q15.sql")
-        .trim()
-        .trim_end_matches(';')
-        .to_string();
-    let t = Instant::now();
-    let res = engine.execute(&q15);
-    let dur = t.elapsed();
-    match res {
-        Ok(r) => {
-            println!(
-                "\n=== sqlrustgo Q15: {} rows in {:?} ===",
-                r.rows.len(),
-                dur
-            );
-            for (i, row) in r.rows.iter().take(5).enumerate() {
-                println!("  row {}: {:?}", i, row);
-            }
-            if r.rows.is_empty() {
-                println!("✗ Q15 returned 0 rows (expected ~10)");
-            }
-        }
-        Err(e) => {
-            println!("\n=== sqlrustgo Q15 ERROR: {} ===", e);
-            println!("✗ Q15 failed to execute");
-        }
-    }
+    let sql = canonical_query("q15");
+
+    let (rows, loaded) = compare_with_oracle(&["supplier", "lineitem"], &sql, "Q15");
+
+    assert!(
+        !rows.is_empty(),
+        "Q15 must return at least one row: the fixture has lineitem rows in \
+         the Q15 date window and suppliers to join them to"
+    );
+
+    // Data-independent invariant: Q15 groups by `l_suppkey` and then joins
+    // the result to `supplier` on `s_suppkey`, so every output row
+    // corresponds to exactly one supplier and the result can never have
+    // more rows than there are suppliers.
+    let suppliers = loaded
+        .iter()
+        .find(|(t, _)| t == "supplier")
+        .map(|(_, n)| *n)
+        .unwrap_or(0);
+    assert!(
+        rows.len() <= suppliers,
+        "Q15 returned {} rows but the fixture only has {suppliers} suppliers",
+        rows.len()
+    );
 }
 
 #[test]
 fn test_q16_not_in_subquery() {
-    let mut engine = load_into_sqlrustgo();
-    let q16 = std::fs::read_to_string("queries/q16.sql")
-        .expect("read q16.sql")
-        .trim()
-        .trim_end_matches(';')
-        .to_string();
-    let t = Instant::now();
-    let res = engine.execute(&q16);
-    let dur = t.elapsed();
-    match res {
-        Ok(r) => {
-            println!(
-                "\n=== sqlrustgo Q16: {} rows in {:?} ===",
-                r.rows.len(),
-                dur
-            );
-            for (i, row) in r.rows.iter().take(5).enumerate() {
-                println!("  row {}: {:?}", i, row);
-            }
-            // PG Q16 returns 284 rows. 0 rows likely means NOT IN evaluator fails.
-            if r.rows.is_empty() {
-                println!("✗ Q16 returned 0 rows (expected ~284 per PG)");
-            }
-        }
-        Err(e) => {
-            println!("\n=== sqlrustgo Q16 ERROR: {} ===", e);
-            println!("✗ Q16 failed to execute");
-        }
-    }
+    let sql = canonical_query("q16");
+
+    let (rows, loaded) = compare_with_oracle(&["partsupp", "part", "supplier"], &sql, "Q16");
+
+    assert!(
+        !rows.is_empty(),
+        "Q16 must return at least one row: the fixture has partsupp rows for \
+         parts whose brand/type/size pass the filter"
+    );
+
+    // Data-independent invariant: Q16 groups by (p_brand, p_type, p_size),
+    // so the result can never have more rows than there are partsupp rows.
+    let partsupp = loaded
+        .iter()
+        .find(|(t, _)| t == "partsupp")
+        .map(|(_, n)| *n)
+        .unwrap_or(0);
+    assert!(
+        rows.len() <= partsupp,
+        "Q16 returned {} rows but the fixture only has {partsupp} partsupp rows",
+        rows.len()
+    );
 }

@@ -262,16 +262,35 @@ fn test_injected_threshold_is_what_engages_the_parallel_path() {
     let mut engine = ExecutionEngine::new(Arc::new(parking_lot::RwLock::new(MemoryStorage::new())));
     // 默认（无注入）⇒ 生效阈值就是生产常量。
     assert_eq!(engine.parallel_min_rows(), PARALLEL_MIN_ROWS);
-    assert_eq!(PARALLEL_MIN_ROWS, 2_000_000);
 
-    // 本文件装载的行数**不足以**单靠行数触发并行路径 ——
-    // 所以注入的阈值确实是那个起作用的开关。
-    assert!(
-        ROWS < PARALLEL_MIN_ROWS,
-        "ROWS ({ROWS}) must stay below PARALLEL_MIN_ROWS ({PARALLEL_MIN_ROWS}), \
-         otherwise the injected threshold would not be what engages the parallel path"
-    );
-    assert!(TEST_PARALLEL_MIN_ROWS < ROWS);
+    // The production threshold is **pinned** here on purpose: if the
+    // production constant moves, this test must go red — the data loaded
+    // below is sized against it.
+    //
+    // These two assertions compare constants, so clippy's
+    // `assertions_on_constants` fires on them. The lint is allowed here
+    // with a reason: the assertion *is* the check. Moving it to a
+    // compile-time `const { assert!(..) }` was tried and rejected — a
+    // compile-time panic may not carry a formatted message (E0015), and a
+    // moved production constant should turn this **test** red, not stop
+    // the target from compiling at all.
+    #[allow(clippy::assertions_on_constants)]
+    {
+        assert!(
+            PARALLEL_MIN_ROWS == 2_000_000,
+            "the production parallel threshold moved: expected 2_000_000, got \
+             {PARALLEL_MIN_ROWS}"
+        );
+
+        // 本文件装载的行数**不足以**单靠行数触发并行路径 ——
+        // 所以注入的阈值确实是那个起作用的开关。
+        assert!(
+            ROWS < PARALLEL_MIN_ROWS,
+            "ROWS ({ROWS}) must stay below PARALLEL_MIN_ROWS ({PARALLEL_MIN_ROWS}), \
+             otherwise the injected threshold would not be what engages the parallel path"
+        );
+        assert!(TEST_PARALLEL_MIN_ROWS < ROWS);
+    }
 
     // 注入后生效阈值变成注入值。
     engine.set_parallel_min_rows_override(TEST_PARALLEL_MIN_ROWS);

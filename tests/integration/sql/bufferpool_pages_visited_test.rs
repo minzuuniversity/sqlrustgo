@@ -22,7 +22,7 @@ fn last_pages_visited_token(line: &str) -> Option<u64> {
         .and_then(|s| s.parse::<u64>().ok())
 }
 
-fn first_cell_text<'a>(row: &'a [sqlrustgo_types::Value], i: usize) -> &'a str {
+fn first_cell_text(row: &[sqlrustgo_types::Value], i: usize) -> &str {
     row.first()
         .and_then(|v| match v {
             sqlrustgo_types::Value::Text(s) => Some(s.as_str()),

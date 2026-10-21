@@ -1349,9 +1349,9 @@ fn test_executor_bulk_insert_chunked_uneven_remainder_v312_26() {
 fn test_v410_atomic_cbo_enabled_getter_returns_initial_value() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
-    assert_eq!(engine.is_cbo_enabled(), true);
+    assert!(engine.is_cbo_enabled());
     engine.set_cbo_enabled(false);
-    assert_eq!(engine.is_cbo_enabled(), false);
+    assert!(!engine.is_cbo_enabled());
 }
 
 #[test]
@@ -1380,7 +1380,11 @@ fn test_v410_atomic_cbo_enabled_and_parallel_degree_getter_consistency() {
         let cbo = engine.is_cbo_enabled();
         let pd = engine.parallel_degree();
         // pd must always be in [1, 8] (AtomicUsize enforces this via setter clamp)
-        assert!(pd >= 1 && pd <= 8, "parallel_degree out of range: {}", pd);
+        assert!(
+            (1..=8).contains(&pd),
+            "parallel_degree out of range: {}",
+            pd
+        );
         // cbo must be either true or false
         let _ = cbo;
     }
