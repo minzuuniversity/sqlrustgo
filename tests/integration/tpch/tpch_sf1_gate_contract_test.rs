@@ -36,7 +36,12 @@ fn tpch_sf1_baseline_uses_canonical_dbgen_lineitem_count() {
 
 #[test]
 fn tpch_sf1_test_can_use_operator_supplied_fixture_dir() {
-    let test_path = repo_root().join("tests/tpch_sf1_22_vs_3engines_test.rs");
+    // #5467: the file was moved to `tests/integration/tpch/` when the
+    // integration test tree was reorganized; this contract test still
+    // pointed at the old top-level path, so `expect("read tpch sf1 test")`
+    // panicked *before* the assertion could run — the test never checked
+    // the contract it claimed to check.
+    let test_path = repo_root().join("tests/integration/tpch/tpch_sf1_22_vs_3engines_test.rs");
     let content = std::fs::read_to_string(&test_path).expect("read tpch sf1 test");
     assert!(
         content.contains("TPCH_SF1_DIR"),
