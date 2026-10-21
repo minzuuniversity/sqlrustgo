@@ -2593,9 +2593,21 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         );
                     }
                 }
-                let agg_result_rows = if is_star_agg || select.columns.len() <= 1 {
-                    // Star / single column: no re-projection needed
+                let agg_result_rows = if is_star_agg {
+                    // Star projection: the table's own columns. They are the
+                    // **tail** of the aggregate row — after the group keys
+                    // and the aggregates:
+                    //
+                    //   [group_key..., aggregate..., table_column...]
+                    //
+                    // Returning the row unprojected would make it wider than
+                    // the declared columns (`table_info.columns`), which the
+                    // ResultSet's own width check rejects (issue #5432).
+                    let fd_start = group_exprs.len() + select.aggregates.len();
                     agg_result_rows
+                        .into_iter()
+                        .map(|row| row.iter().skip(fd_start).cloned().collect::<Vec<Value>>())
+                        .collect::<Vec<Vec<Value>>>()
                 } else {
                     // Build group-by schema (column names in order).
                     // Identifier expressions use their name. For

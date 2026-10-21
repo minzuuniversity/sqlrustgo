@@ -349,6 +349,10 @@ name = "repro_v312_64b"
 path = "tests/integration/sql/repro_v312_64b.rs"
 
 [[test]]
+name = "group_by_projection_width_5432"
+path = "tests/integration/sql/group_by_projection_width_5432.rs"
+
+[[test]]
 name = "repro_v312_64c"
 path = "tests/integration/sql/repro_v312_64c.rs"
 
