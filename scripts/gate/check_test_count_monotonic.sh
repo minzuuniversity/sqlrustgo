@@ -24,6 +24,27 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 BASELINE="$PROJECT_ROOT/tests/baseline/test_count.json"
+
+# The version recorded in the baseline must be the **current** release
+# version, not a literal left over from whenever this script was written
+# (it used to hardcode "v3.9.0-rc7" in *both* the create and the update
+# branch, so every version since then was recorded as v3.9.0-rc7).
+current_version() {
+    local v=""
+    for vf in docs/releases/v4.1.0/STAGE.yaml docs/releases/v3.12.0/STAGE.yaml; do
+        if [ -f "$vf" ]; then
+            v="$(grep -m1 -E '^version:' "$vf" \
+              | sed -E 's/^version:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/')"
+            break
+        fi
+    done
+    if [ -z "$v" ] || [ "$v" = "unknown" ]; then
+        if [ -f VERSION ]; then
+            v="$(grep -m1 -E '^v[0-9]' VERSION | tr -d '[:space:]')"
+        fi
+    fi
+    printf '%s' "${v:-unknown}"
+}
 RESULT_TMP=$(mktemp)
 
 echo "=== P13 Test Count Monotonicity ==="
@@ -57,9 +78,10 @@ if [ ! -f "$BASELINE" ]; then
     echo "  ⚠️  DRIFT: baseline file not found: $BASELINE"
     echo "          First run: creating baseline from current state."
     mkdir -p "$(dirname "$BASELINE")"
+    BASELINE_VERSION="$(current_version)"
     cat > "$BASELINE" <<EOF
 {
-  "version": "v3.9.0-rc7",
+  "version": "$BASELINE_VERSION",
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "cargo_tests": $cargo_tests,
   "active_tests": $active_tests,
@@ -146,9 +168,10 @@ echo "  Baseline counts: cargo=$baseline_cargo, active=$baseline_active, ignored
 if [ "$cargo_tests" -ge "$baseline_cargo" ] && \
    [ "$active_tests" -ge "$baseline_active" ] && \
    [ "$ignored_tests" -le "$baseline_ignored" ]; then
+    BASELINE_VERSION="$(current_version)"
     cat > "$BASELINE" <<EOF
 {
-  "version": "v3.9.0-rc7",
+  "version": "$BASELINE_VERSION",
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "cargo_tests": $cargo_tests,
   "active_tests": $active_tests,

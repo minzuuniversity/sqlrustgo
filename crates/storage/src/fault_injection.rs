@@ -153,6 +153,24 @@ impl FaultConfig {
 ///
 /// Returns immediately when fault injection is off or when a different
 /// point is armed, so one binary serves both cases.
+///
+/// #5420: this definition **must** be gated on the feature, exactly like the
+/// no-op twin below. The module itself is compiled when `cfg(test)` is on
+/// *or* the feature is on (`crates/storage/src/lib.rs`), so in a **lib-test
+/// build with the feature off** both definitions used to exist at the same
+/// time and rustc rejected the crate:
+///
+/// ```text
+/// error[E0428]: the name `reach` is defined multiple times
+///    --> crates/storage/src/fault_injection.rs:188:1
+///     |
+/// 156 | pub fn reach(point: FaultPoint) {
+///     | ------------------------------- previous definition of the value `reach` here
+/// ```
+///
+/// That broke `cargo test --lib -p sqlrustgo-storage` (the RC/GA gate's
+/// D1-A2 dimension), which is exactly the configuration the gate runs.
+#[cfg(feature = "fault-injection")]
 pub fn reach(point: FaultPoint) {
     let Some(cfg) = from_env() else { return };
     if cfg.point != point {
@@ -169,6 +187,10 @@ pub fn reach(point: FaultPoint) {
     }
 }
 
+/// #5420: gated with its only caller — in a build without the feature this
+/// function would be dead code, and the crate already carries a warning
+/// budget it should not spend on that.
+#[cfg(feature = "fault-injection")]
 fn write_signal(cfg: &FaultConfig) {
     let _ = std::fs::create_dir_all(&cfg.signal_dir);
     let sig = Signal {

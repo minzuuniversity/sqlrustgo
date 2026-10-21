@@ -102,7 +102,7 @@ run_gate() {
         DRIFT_COUNT=$((DRIFT_COUNT + 1))
         RESULTS+=("$name: DRIFT")
     else
-        echo "  ❌ FAIL (exit $code, expected $expect_code)"
+        echo "  ❌ [FAIL] (exit $code, expected $expect_code)"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         RESULTS+=("$name: FAIL (exit $code)")
     fi
@@ -163,7 +163,7 @@ main() {
             PASS_COUNT=$((PASS_COUNT + 1))
             RESULTS+=("Test Plan Consistency: PASS")
         else
-            echo "  ❌ FAIL (plan=$PLAN_TESTS, cargo=$CARGO_TESTS)"
+            echo "  ❌ [FAIL] (plan=$PLAN_TESTS, cargo=$CARGO_TESTS)"
             FAIL_COUNT=$((FAIL_COUNT + 1))
             RESULTS+=("Test Plan Consistency: FAIL")
         fi
@@ -190,12 +190,12 @@ main() {
             PASS_COUNT=$((PASS_COUNT + 1))
             RESULTS+=("PR Template: PASS")
         else
-            echo "  ❌ FAIL (template missing 5-类文档 or 5-原则)"
+            echo "  ❌ [FAIL] (template missing 5-类文档 or 5-原则)"
             FAIL_COUNT=$((FAIL_COUNT + 1))
             RESULTS+=("PR Template: FAIL")
         fi
     else
-        echo "  ❌ FAIL (template not found)"
+        echo "  ❌ [FAIL] (template not found)"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         RESULTS+=("PR Template: FAIL")
     fi
@@ -251,7 +251,7 @@ $(for r in "${RESULTS[@]}"; do echo "        \"$r\","; done | sed '$ s/,$//')
 EOF
 
     if [ $FAIL_COUNT -gt 0 ]; then
-        echo "❌ D9 Full Gate Verification: FAILED ($FAIL_COUNT dimensions failed)"
+        echo "❌ [FAIL] D9 Full Gate Verification: FAILED ($FAIL_COUNT dimensions failed)"
         exit 1
     fi
 

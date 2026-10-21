@@ -262,6 +262,10 @@ jobs:
             exit 0
           fi
           chmod +x scripts/gate/check_g1_tpch_baseline.sh
+          # #5443: without `pipefail` the step's exit code came from `tee`
+          # (always 0), so the baseline check could never turn this step
+          # red — the comment below claimed the opposite.
+          set -euo pipefail
           bash scripts/gate/check_g1_tpch_baseline.sh 2>&1 | tee g1_report.log
         # NOTE: this step fails hard when the SF=1 fixture IS present and the
         # baseline check does not pass. The earlier comment claimed it "fails
@@ -290,7 +294,10 @@ jobs:
   # stays clean, and nothing is committed.
   mutation:
     runs-on: [hp-z6g4]
-    needs: [test]
+    # #5455: `needs: [test]` masked this job too — the `test` job has never
+    # succeeded, so the mutation analysis never ran once. It is a
+    # post-test criterion, so it must not be gated behind the test job.
+    needs: []
     if: always()
     steps:
       - name: Checkout
@@ -317,7 +324,10 @@ jobs:
     # (one-shot per job), so we re-fetch inside this job. cargo-audit itself
     # is installed with --locked (deterministic version pin).
     runs-on: [hp-z6g4]
-    if: contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
+    # #5424: the condition only matched `develop/v3.12.0` / `ci/v3.12.0-`,
+    # so on the v4.x line the job was **skipped** and the GA Security
+    # criterion had never been executed by CI on this branch.
+    if: contains(github.ref, 'develop/v4.') || contains(github.ref, 'release/v4.') || contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -441,7 +451,12 @@ jobs:
 
   postcheck:
     runs-on: [hp-z6g4]
-    needs: [test]
+    # #5455: `needs: [test]` completely masked this job. The `test` job has
+    # never succeeded (0 success / 8 fail / 16 cancel / 1 skip over 50 CI
+    # cycles), so postcheck's 18 steps — the last set of criteria before a
+    # release — **never executed once**. A post-release check has to run on
+    # a branch that is already known to be red; otherwise it does not exist.
+    needs: []
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -450,21 +465,69 @@ jobs:
       - name: Version detection
         id: version
         run: |
-          # Detect version from branch or VERSION file
-          VERSION="v3.7.0"
-          if git rev-parse --verify origin/develop/v3.8.0 &>/dev/null; then
-            VERSION="v3.8.0"
-          elif git rev-parse --verify origin/develop/v3.7.0 &>/dev/null; then
-            VERSION="v3.7.0"
+          set -euo pipefail
+          # Detect version from branch, release metadata or the VERSION file.
+          #
+          # #5444: the previous implementation only ever chose between
+          # `origin/develop/v3.8.0` and `origin/develop/v3.7.0`, and the
+          # checkout uses `fetch-depth: 1` — so neither remote branch exists
+          # and the detection was **v3.7.0 on every branch**, v4.1.0
+          # included. Every version-sensitive gate in this job then ran
+          # against the v3.7.0 contract.
+          VERSION=""
+          BRANCH="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")}"
+          case "$BRANCH" in
+            */v[0-9]*) VERSION="${BRANCH##*/}" ;;
+          esac
+          if [ -z "$VERSION" ]; then
+            # Fall back to the current release line's own stage manifest.
+            for d in docs/releases/v4.1.0 docs/releases/v3.12.0 docs/releases/v3.11.0; do
+              if [ -f "$d/STAGE.yaml" ]; then
+                VERSION="$(grep -m1 -E '^version:' "$d/STAGE.yaml" \
+                  | sed -E 's/^version:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/')"
+                break
+              fi
+            done
           fi
+          if [ -z "$VERSION" ] && [ -f VERSION ]; then
+            VERSION="$(grep -m1 -E '^v[0-9]' VERSION | tr -d '[:space:]')"
+          fi
+          VERSION="${VERSION:-v3.7.0}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "detected version: $VERSION (branch=${BRANCH:-unknown})"
       - name: Gate L1 — Code Quality
         run: |
+          # #5443: without `pipefail` the step's exit code came from `tee`
+          # (always 0), so this gate could never turn the step red.
+          set -euo pipefail
           chmod +x gate/gate.sh
-          bash gate/gate.sh "${version}" 2>&1 | tee gate_report.log
-      - name: Gate L1 — Coverage
+          # #5444: `"${version}"` was a **bash variable that is never set**
+          # — a step output has to be read as `${{ steps.<id>.outputs.<name> }}`.
+          # With `set -u` (added by #5443) the unbound variable aborted the
+          # step outright, and without it the gate silently ran against the
+          # script's own default version.
+          bash gate/gate.sh "${{ steps.version.outputs.version }}" 2>&1 | tee gate_report.log
+      - name: Gate L1 — Coverage (real gate — #5444)
         run: |
-          bash scripts/gate/check_coverage.sh 2>&1 | tee coverage_report.log
+          set -euo pipefail
+          # #5444: this step used to call `scripts/gate/check_coverage.sh`,
+          # a 288-byte **deprecated stub** whose whole body is
+          # "deprecated" + `exit 2`. The real gate is
+          # `check_coverage_v312.sh` — the very script STAGE_CONFIG.yaml's
+          # GA `required_gates` lists. Coverage was neither measured nor
+          # reported.
+          #
+          # `check_coverage_v312.sh` drives `cargo llvm-cov` over 8 crates,
+          # so it needs the `cargo-llvm-cov` subcommand. When the runner
+          # does not have it, that is an **environment blocker**, not a
+          # code failure: it is recorded as NOT-RUN with a controlled
+          # reason code rather than silently passing.
+          if ! cargo llvm-cov --version >/dev/null 2>&1; then
+            echo "NOT-RUN: reason=COVERAGE_TOOL_MISSING (cargo-llvm-cov is not installed on this runner)" \
+              | tee coverage_report.log
+            exit 0
+          fi
+          bash scripts/gate/check_coverage_v312.sh 2>&1 | tee coverage_report.log
       - name: Auto env:blocked (SPEC-021)
         run: |
           set -euo pipefail
@@ -474,7 +537,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p gate/evidence_binding_out
-          bash scripts/gate/check_evidence_binding.sh "${version}" "gate/evidence_binding_out/" 2>&1 | tee evidence_binding.log
+          # #5444: same unbound-variable defect as the "Gate L1 — Code
+          # Quality" step: this step already had `set -euo pipefail`, so
+          # `"${version}"` aborted it with "version: unbound variable" —
+          # the step had been failing all along, unnoticed because
+          # postcheck never executed (#5455).
+          bash scripts/gate/check_evidence_binding.sh "${{ steps.version.outputs.version }}" "gate/evidence_binding_out/" 2>&1 | tee evidence_binding.log
       - name: Anti-Fabrication Check (AFP v3.8.0+) — FIX 2026-06-26 Hermes / pipefail
         run: |
           set -euo pipefail
@@ -568,6 +636,9 @@ jobs:
           bash scripts/gate/check_alpha_v380.sh 2>&1 | tee alpha_gate.log
       - name: RC/GA Gate — Unified 6-Dim (Issue #2882)
         run: |
+          # #5443: without `pipefail` the step's exit code came from `tee`
+          # (always 0) — a hard D3 failure could not turn this step red.
+          set -euo pipefail
           bash scripts/gate/check_rc_ga_gate.sh ga 2>&1 | tee rc_ga_gate.log
       - name: V312-19 Release Gates (Issue #3906) — SQL corpus + R2 + signoff freshness
         if: contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
@@ -623,20 +694,46 @@ jobs:
       - name: Gate summary
         if: always()
         run: |
-          GATE_FAIL=$(grep -c '\[FAIL\]' gate_report.log 2>/dev/null || echo "0")
-          COVERAGE_FAIL=$(grep -c 'FAIL\|failed' coverage_report.log 2>/dev/null || echo "0")
-          EVIDENCE_FAIL=$(grep -c 'FAIL\|failed\|error' evidence_binding.log 2>/dev/null || echo "0")
-          AFP_FAIL=$(grep -c 'FAIL\|failed\|error' anti_fabrication.log 2>/dev/null || echo "0")
-          DOCS_FAIL=$(grep -c 'FAIL\|failed\|error' docs_consistency.log 2>/dev/null || echo "0")
-          ALPHA_FAIL=$(grep -c '❌ FAIL' alpha_gate.log 2>/dev/null || echo "0")
-          RC_GA_FAIL=$(grep -c '❌ FAIL\|blocker' rc_ga_gate.log 2>/dev/null || echo "0")
-          AUDIT_FAIL=$(grep -c 'RESULT: FAIL' audit_testing.log 2>/dev/null || echo "0")
-          D9_FAIL=$(grep -c '❌ FAIL\|exit 1' full_gate_verification.log 2>/dev/null || echo "0")
+          set -uo pipefail
+          # #5456: `grep -c` prints the count **and exits 1 on zero matches**.
+          # The old `|| echo "0"` therefore appended a *second* 0, so the
+          # variable became the two-line string "0\n0"; `[ "0\n0" -gt 0 ]`
+          # could not parse it, returned 2, and an `if` treats 2 as false.
+          # In other words: in the only normal case (zero failures) all ten
+          # counters were skipped through a parse error, and every run left
+          # ten lines of "integer expression expected" in the job log.
+          #
+          # #5483: the `if` block was never closed — the whole step body was
+          # a bash syntax error and always exited 2, so this summary had
+          # never judged anything at all.
+          #
+          # count_matches() normalises all three cases (0 matches / missing
+          # file / N matches) into exactly one integer.
+          count_matches() {
+            local n
+            n="$(grep -c -- "$1" "$2" 2>/dev/null | head -1 || true)"
+            printf '%s' "${n:-0}"
+          }
+          # The canonical failure marker is the ASCII token `[FAIL]`, which
+          # `gate/gate.sh` already emits and which the three gate scripts
+          # below now emit too (#5443: the visual ❌/✗ variants drifted apart
+          # and the CI greps matched a different code point than the scripts
+          # printed, so the counters were structurally 0).
+          GATE_FAIL=$(count_matches '\[FAIL\]' gate_report.log)
+          COVERAGE_FAIL=$(count_matches 'FAIL\|failed' coverage_report.log)
+          EVIDENCE_FAIL=$(count_matches 'FAIL\|failed\|error' evidence_binding.log)
+          AFP_FAIL=$(count_matches 'FAIL\|failed\|error' anti_fabrication.log)
+          DOCS_FAIL=$(count_matches 'FAIL\|failed\|error' docs_consistency.log)
+          ALPHA_FAIL=$(count_matches '\[FAIL\]' alpha_gate.log)
+          RC_GA_FAIL=$(count_matches '\[FAIL\]\|blocker' rc_ga_gate.log)
+          AUDIT_FAIL=$(count_matches 'RESULT: FAIL' audit_testing.log)
+          D9_FAIL=$(count_matches '\[FAIL\]' full_gate_verification.log)
           V312_19_FAIL=0
           if [ -f v312_19_release_gates.log ]; then
-            V312_19_FAIL=$(grep -c 'V312-19 release gates FAILED\|blockers: [^0]' v312_19_release_gates.log 2>/dev/null || echo "0")
+            V312_19_FAIL=$(count_matches 'V312-19 release gates FAILED\|blockers: [^0]' v312_19_release_gates.log)
           fi
           echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL d9=$D9_FAIL v312_19=$V312_19_FAIL"
           if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$AFP_FAIL" -gt 0 ] || [ "$DOCS_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ] || [ "$V312_19_FAIL" -gt 0 ]; then
             echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate / V312-19 release gates)"
             exit 1
+          fi

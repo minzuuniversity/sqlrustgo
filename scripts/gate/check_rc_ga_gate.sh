@@ -198,7 +198,7 @@ log_pass() {
 }
 
 log_fail() {
-    echo -e "    ${RED}✗ FAIL${NC} $1"
+    echo -e "    ${RED}✗ [FAIL]${NC} $1"
 }
 
 log_warn() {
@@ -1392,9 +1392,9 @@ ${NC}"
         local why=""
         [[ -n "$MISSING_DIMS" ]] && why="missing dimension(s):${MISSING_DIMS}"
         if [[ -n "$why" ]]; then
-            echo -e "  ${RED}✗ GATE: FAIL${NC} — ${why}"
+            echo -e "  ${RED}✗ [FAIL] GATE: FAIL${NC} — ${why}"
         else
-            echo -e "  ${RED}✗ GATE: FAIL${NC} — D3_FAILS=${D3_FAILS}, D6_FAIL=${D6_FAIL:-0}, D7_BLOCKERS=${D7_BLOCKERS:-0}, D1/D2/D8/D9 blockers>0"
+            echo -e "  ${RED}✗ [FAIL] GATE: FAIL${NC} — D3_FAILS=${D3_FAILS}, D6_FAIL=${D6_FAIL:-0}, D7_BLOCKERS=${D7_BLOCKERS:-0}, D1/D2/D8/D9 blockers>0"
         fi
     fi
 

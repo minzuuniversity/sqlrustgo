@@ -1025,8 +1025,8 @@ fn parse_lit(s: &str) -> Value {
 ///   - Either operand `Float` → `Float` (Integer promotes to Float)
 ///   - Either operand `Null` (and the other non-Null) → `Null`
 ///   - Both `Null` → `Null`
-///   - Division by zero `Integer` → 0 (SQLite/MariaDB parity);
-///     division by zero `Float` → `Null` (standard SQL).
+///   - Division or modulo by zero → `Null` for both `Integer` and `Float`
+///     (#5326: MySQL / SQLite standard SQL semantics).
 /// - Unknown operators return `Value::Null`.
 ///
 /// The `src/expr_utils.rs::evaluate_expression` `BinaryOp` arm
@@ -1152,9 +1152,11 @@ fn eq_cross(left: &Value, right: &Value) -> bool {
 }
 
 /// Arithmetic helper. Returns `Null` if either operand is `Null`.
-/// Promotes to `Float` if either operand is `Float`. Division by zero
-/// returns `0` for `Integer` (SQLite/MariaDB parity) and `Null` for
-/// `Float` (standard SQL). Boolean operands are treated as `0`/`1`.
+/// Promotes to `Float` if either operand is `Float`. Division and modulo by
+/// zero return `Null` for both `Integer` and `Float` (#5326 — MySQL and
+/// SQLite standard SQL semantics; the previous `Integer` → 0 behaviour was
+/// a leftover of the pre-#5326 parity rule). Boolean operands are treated
+/// as `0`/`1`.
 fn eval_arithmetic(left: &Value, right: &Value, op: &str) -> Value {
     if matches!(left, Value::Null) || matches!(right, Value::Null) {
         return Value::Null;
@@ -4493,12 +4495,20 @@ mod tests {
 
     #[test]
     fn test_eval_arithmetic_modulo_by_zero_returns_null() {
-        // Division/modulo by zero → Null (per standard SQL semantics for Float;
-        // Integer parity with SQLite/MariaDB returns 0; matches the
-        // existing `/` behavior so the fix stays symmetric).
+        // #5326 (f73c20fd01) changed the *implementation* so that division and
+        // modulo by zero return `Null` for `Integer` as well — matching
+        // MySQL (`SELECT 5 % 0` → NULL, warning 1365) and SQLite's standard
+        // SQL semantics, and the legacy `src/expr_utils.rs` handler.
+        //
+        // This test was written by #4036 against the **old** behaviour
+        // (`Integer` → 0) and was never updated: the implementation and the
+        // test's own name disagreed, so the assertion below was stale. It
+        // stayed invisible because the RC/GA gate's D1-A2 dimension
+        // (`cargo test --lib -p ... sqlrustgo-storage ...`) could not even
+        // compile — see #5420 — so this file's lib tests never ran there.
         assert_eq!(
             eval_arithmetic(&Value::Integer(5), &Value::Integer(0), "%"),
-            Value::Integer(0)
+            Value::Null
         );
         assert_eq!(
             eval_arithmetic(&Value::Float(5.0), &Value::Float(0.0), "%"),

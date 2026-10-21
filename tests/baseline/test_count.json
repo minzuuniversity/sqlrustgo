@@ -1,0 +1,8 @@
+{
+  "version": "v4.1.0",
+  "timestamp": "2026-10-21T04:23:03Z",
+  "cargo_tests": 451,
+  "active_tests": 14100,
+  "ignored_tests": 171,
+  "note": "Updated by check_test_count_monotonic.sh"
+}
