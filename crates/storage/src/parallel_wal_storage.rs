@@ -226,10 +226,8 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
         column: &str,
         default_value: Option<String>,
     ) -> SqlResult<()> {
-                self.inner.set_column_default(table, column, default_value)
-
+        self.inner.set_column_default(table, column, default_value)
     }
-
 
     /// #5250: see `create_table_in_db` — same contract, the database must be used.
     fn drop_table_in_db(&mut self, db: &str, table: &str) -> SqlResult<()> {

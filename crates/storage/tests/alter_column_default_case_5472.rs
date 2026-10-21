@@ -38,7 +38,8 @@ fn table_info(name: &str) -> TableInfo {
 
 fn seeded() -> MemoryStorage {
     let mut s = MemoryStorage::new();
-    s.create_table(&table_info("t")).expect("CREATE TABLE must succeed");
+    s.create_table(&table_info("t"))
+        .expect("CREATE TABLE must succeed");
     s
 }
 

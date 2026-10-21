@@ -262,8 +262,10 @@ test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 | 目标 | 结果 |
 |---|---|
-| 92 个目标 | 见下 |
-| 2 个 crash 目标（`crash_commit_fsync_b1` / `crash_wal_index_b1`） | **NOT-RUN**：测试从 `<workspace>/target/debug/sqlrustgo-mysql-server` 解析 server 二进制，本批次用独立的 `CARGO_TARGET_DIR` ⇒ 报 `server binary not found` ⇒ **受控原因码 `server-binary-missing`**，**不是代码红** |
+| 92 个目标 | **全部绿** |
+| 2 个 crash 目标（`crash_commit_fsync_b1` / `crash_wal_index_b1`） | 首跑 **NOT-RUN**：测试从 `<workspace>/target/debug/sqlrustgo-mysql-server` 解析 server 二进制，本批次用独立的 `CARGO_TARGET_DIR` ⇒ 报 `server binary not found` ⇒ **受控原因码 `server-binary-missing`**，**不是代码红** |
+| `crash_commit_fsync_b1`（补 server 二进制后重跑） | **2 passed / 0 failed**（241.64s） |
+| `crash_wal_index_b1` | **基线既存红**（批次 12 已做基线对照：BASE 与 FIXED **逐字相同** —— 同一断言行 `crash_wal_index_b1.rs:164:25`、同样 481.09s）⇒ 见批次 12 证据 §9 |
 
 ---
 
