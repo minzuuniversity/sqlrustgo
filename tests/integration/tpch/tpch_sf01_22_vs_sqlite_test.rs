@@ -150,26 +150,52 @@ fn tpch_sf01_22_vs_sqlite() {
     // back short is reported here, because the statement comparison below
     // would otherwise show a difference whose cause (a truncated table)
     // is invisible in the numbers.
+    //
+    // #5464: the two sides are **not** interleaved. Every engine row
+    // count is collected first, and only then is the oracle asked.
+    //
+    // Why this matters: the server reaps connections that have been idle
+    // for `SQLRUSTGO_IDLE_TIMEOUT_SECS` (default 30 s,
+    // `crates/mysql-server/src/lib.rs::read_idle_timeout_secs`). An
+    // interleaved loop leaves the engine's connection idle for the whole
+    // duration of each oracle computation — and a slow reference
+    // computation (an un-indexed SQLite `EXISTS` over `lineitem` took
+    // 41 s) is enough for the reaper to close it. The **next** engine
+    // statement then fails with a transport error
+    // (`read packet header: failed to fill whole buffer`) that has
+    // nothing to do with the statement being run — a misattributed
+    // failure.
+    //
+    // Fetching the engine side first removes the interleaving entirely:
+    // the connection is never idle *between* two engine statements.
     // ------------------------------------------------------------------
     eprintln!("=== Phase 1: data integrity (engine vs oracle row counts) ===");
     let mut truncated_tables = 0usize;
-    for table in TPC_H_ALL_TABLES {
-        let sql = format!("SELECT COUNT(*) FROM {table}");
-        let engine_count = match client.query_rows(&sql) {
-            Ok(rows) => rows
-                .first()
-                .and_then(|r| r.first())
-                .and_then(|c| c.parse::<i64>().ok()),
-            Err(e) => {
-                eprintln!("  {table:9}: ERROR ({e})");
-                None
-            }
-        };
+    // Engine side first — every count, no oracle in between.
+    let engine_counts: Vec<(&str, Option<i64>)> = TPC_H_ALL_TABLES
+        .iter()
+        .map(|table| {
+            let sql = format!("SELECT COUNT(*) FROM {table}");
+            let engine_count = match client.query_rows(&sql) {
+                Ok(rows) => rows
+                    .first()
+                    .and_then(|r| r.first())
+                    .and_then(|c| c.parse::<i64>().ok()),
+                Err(e) => {
+                    eprintln!("  {table:9}: ERROR ({e})");
+                    None
+                }
+            };
+            (*table, engine_count)
+        })
+        .collect();
+    // Oracle side second.
+    for (table, engine_count) in &engine_counts {
         let oracle_count = oracle
             .table_row_count(table)
             .unwrap_or_else(|e| panic!("{TARGET}: the SQLite oracle cannot count {table}: {e}"));
         match engine_count {
-            Some(n) if n == oracle_count => {
+            Some(n) if *n == oracle_count => {
                 eprintln!("  {table:9}: {n} row(s) — complete");
             }
             Some(n) => {
@@ -188,6 +214,26 @@ fn tpch_sf01_22_vs_sqlite() {
 
     // ------------------------------------------------------------------
     // Phase 2 — statement comparison.
+    //
+    // #5464: like Phase 1, the two sides are **not** interleaved.
+    //
+    // Pass A runs every statement on the **engine** and keeps the rows.
+    // Pass B then asks the **oracle** for the same statements and compares.
+    //
+    // The reason is the idle-connection reaper: while the oracle computes
+    // a statement, the engine's connection is idle. A slow reference
+    // computation (41 s for an un-indexed SQLite `EXISTS` over
+    // `lineitem`) exceeds the 30 s default idle timeout, the server
+    // closes the connection, and the **next** engine statement dies with
+    // `read packet header: failed to fill whole buffer` — a failure that
+    // has nothing to do with the statement it is attributed to.
+    //
+    // Fetching the engine side first removes the window entirely: the
+    // connection is only ever idle *between* two engine statements.
+    //
+    // The accounting is unchanged: every statement is still compared,
+    // skipped or failed exactly once, and the same assertions run at the
+    // end.
     // ------------------------------------------------------------------
     eprintln!();
     eprintln!("=== Phase 2: 22 TPC-H statements (wire) vs the SQLite oracle ===");
@@ -205,6 +251,12 @@ fn tpch_sf01_22_vs_sqlite() {
         .filter(|n| tpch_wire_scope::in_wire_scope(tpch_wire_scope::TPC_H_QUERY_IDS[n - 1]))
         .count();
     let expected_skipped = EXPECTED_QUERIES - expected_scoped;
+
+    // ---- Pass A: the engine side, for every statement. ----
+    // The oracle is not touched here, so the engine's connection is
+    // never idle while a reference computation runs.
+    let mut engine_side: Vec<(&'static str, String, Vec<Vec<String>>, std::time::Duration)> =
+        Vec::new();
 
     for n in 1..=EXPECTED_QUERIES {
         let sql = std::fs::read_to_string(format!("{QUERIES_DIR}/q{n}.sql"))
@@ -253,8 +305,13 @@ fn tpch_sf01_22_vs_sqlite() {
             }
         };
         let elapsed = t0.elapsed();
+        eprintln!("  {qid:2}: engine rows={} in {elapsed:?}", wire_rows.len());
+        engine_side.push((qid, adapted.sql, wire_rows, elapsed));
+    }
 
-        let oracle_rows = match oracle.query(&adapted.sql) {
+    // ---- Pass B: the oracle side, then the comparison. ----
+    for (qid, oracle_sql, wire_rows, elapsed) in &engine_side {
+        let oracle_rows = match oracle.query(oracle_sql) {
             Ok(rows) => rows,
             Err(e) => {
                 failed += 1;
@@ -263,7 +320,7 @@ fn tpch_sf01_22_vs_sqlite() {
             }
         };
 
-        match compare_rows(&wire_rows, &oracle_rows) {
+        match compare_rows(wire_rows, &oracle_rows) {
             None => {
                 compared += 1;
                 eprintln!("  {qid:2}: MATCH (rows={}) in {elapsed:?}", wire_rows.len());
