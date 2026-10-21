@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-
+// #5449：这个文件此前从未被编译过，`use std::collections::HashMap;` 是未使用的
+// import（编译告警）。它在这里没有任何引用，直接删掉。
 #[derive(Debug, Clone)]
 pub struct SqlResult {
     pub columns: Vec<String>,
@@ -80,7 +80,10 @@ impl DifferentialTest {
             sql: sql.to_string(),
             expected_result: Some(SqlResult {
                 columns: Vec::new(),
-                rows: rows.into_iter().map(|r| r.into_iter().map(String::from).collect()).collect(),
+                rows: rows
+                    .into_iter()
+                    .map(|r| r.into_iter().map(String::from).collect())
+                    .collect(),
                 affected_rows: 0,
                 error: None,
                 error_code: None,
@@ -146,7 +149,12 @@ impl DifferentialTest {
         result
     }
 
-    fn compare_results(&self, ours: &SqlResult, theirs: &SqlResult, step: usize) -> Option<TestFailure> {
+    fn compare_results(
+        &self,
+        ours: &SqlResult,
+        theirs: &SqlResult,
+        step: usize,
+    ) -> Option<TestFailure> {
         // Compare errors first
         match (&ours.error, &theirs.error) {
             (Some(e1), Some(e2)) => {
@@ -180,7 +188,10 @@ impl DifferentialTest {
             return Some(TestFailure {
                 step,
                 kind: FailureKind::ColumnMismatch,
-                message: format!("Columns mismatch: {:?} vs {:?}", ours.columns, theirs.columns),
+                message: format!(
+                    "Columns mismatch: {:?} vs {:?}",
+                    ours.columns, theirs.columns
+                ),
             });
         }
 
@@ -189,7 +200,10 @@ impl DifferentialTest {
             return Some(TestFailure {
                 step,
                 kind: FailureKind::AffectedRowsMismatch,
-                message: format!("Affected rows mismatch: {} vs {}", ours.affected_rows, theirs.affected_rows),
+                message: format!(
+                    "Affected rows mismatch: {} vs {}",
+                    ours.affected_rows, theirs.affected_rows
+                ),
             });
         }
 
@@ -211,7 +225,10 @@ impl DifferentialTest {
             return Some(TestFailure {
                 step,
                 kind: FailureKind::RowMismatch,
-                message: format!("Row mismatch:\n  Ours:   {:?}\n  Theirs: {:?}", our_rows, their_rows),
+                message: format!(
+                    "Row mismatch:\n  Ours:   {:?}\n  Theirs: {:?}",
+                    our_rows, their_rows
+                ),
             });
         }
 
@@ -248,11 +265,18 @@ impl std::fmt::Display for DifferentialResult {
         if self.passed {
             write!(f, "PASS: {} steps ran, all matched", self.steps_run)
         } else {
-            write!(f, "FAIL: {} steps ran, {} failures:\n",
-                self.steps_run, self.failures.len())?;
+            write!(
+                f,
+                "FAIL: {} steps ran, {} failures:\n",
+                self.steps_run,
+                self.failures.len()
+            )?;
             for failure in &self.failures {
-                write!(f, "  Step {}: {:?} - {}\n",
-                    failure.step, failure.kind, failure.message)?;
+                write!(
+                    f,
+                    "  Step {}: {:?} - {}\n",
+                    failure.step, failure.kind, failure.message
+                )?;
             }
             Ok(())
         }
@@ -271,8 +295,9 @@ pub struct SqliteDifferentialRunner {
 impl SqliteDifferentialRunner {
     pub fn new() -> Self {
         Self {
-            sqlrustgo_bin: std::env::var("SQLRUSTGO_BIN")
-                .unwrap_or_else(|_| "/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo".to_string()),
+            sqlrustgo_bin: std::env::var("SQLRUSTGO_BIN").unwrap_or_else(|_| {
+                "/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo".to_string()
+            }),
             sqlite_bin: std::env::var("SQLITE_BIN")
                 .unwrap_or_else(|_| "/usr/bin/sqlite3".to_string()),
         }
@@ -291,7 +316,15 @@ impl SqliteDifferentialRunner {
     fn execute_sqlrustgo(&self, sql: &str) -> SqlResult {
         use std::process::Command;
         let output = Command::new(&self.sqlrustgo_bin)
-            .args(["sqlite", "--batch", "--mode", "csv", "--headers", "true", ":memory:"])
+            .args([
+                "sqlite",
+                "--batch",
+                "--mode",
+                "csv",
+                "--headers",
+                "true",
+                ":memory:",
+            ])
             .arg(sql)
             .output();
         match output {
@@ -337,20 +370,17 @@ pub struct MysqlDifferentialRunner {
 impl MysqlDifferentialRunner {
     pub fn new() -> Self {
         Self {
-            sqlrustgo_bin: std::env::var("SQLRUSTGO_BIN")
-                .unwrap_or_else(|_| "/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo".to_string()),
-            mysql_host: std::env::var("MYSQL_HOST")
-                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            sqlrustgo_bin: std::env::var("SQLRUSTGO_BIN").unwrap_or_else(|_| {
+                "/Users/liying/dev/sqlrustgo/target/debug/sqlrustgo".to_string()
+            }),
+            mysql_host: std::env::var("MYSQL_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
             mysql_port: std::env::var("MYSQL_PORT")
                 .unwrap_or_else(|_| "3306".to_string())
                 .parse()
                 .unwrap_or(3306),
-            mysql_user: std::env::var("MYSQL_USER")
-                .unwrap_or_else(|_| "root".to_string()),
-            mysql_password: std::env::var("MYSQL_PASSWORD")
-                .unwrap_or_else(|_| "".to_string()),
-            mysql_database: std::env::var("MYSQL_DATABASE")
-                .unwrap_or_else(|_| "test".to_string()),
+            mysql_user: std::env::var("MYSQL_USER").unwrap_or_else(|_| "root".to_string()),
+            mysql_password: std::env::var("MYSQL_PASSWORD").unwrap_or_else(|_| "".to_string()),
+            mysql_database: std::env::var("MYSQL_DATABASE").unwrap_or_else(|_| "test".to_string()),
         }
     }
 }
@@ -367,7 +397,15 @@ impl MysqlDifferentialRunner {
     fn execute_sqlrustgo(&self, sql: &str) -> SqlResult {
         use std::process::Command;
         let output = Command::new(&self.sqlrustgo_bin)
-            .args(["sqlite", "--batch", "--mode", "csv", "--headers", "true", ":memory:"])
+            .args([
+                "sqlite",
+                "--batch",
+                "--mode",
+                "csv",
+                "--headers",
+                "true",
+                ":memory:",
+            ])
             .arg(sql)
             .output();
         match output {
@@ -386,12 +424,16 @@ impl MysqlDifferentialRunner {
         use std::process::Command;
         let output = Command::new("mysql")
             .args([
-                "-h", &self.mysql_host,
-                "-P", &self.mysql_port.to_string(),
-                "-u", &self.mysql_user,
+                "-h",
+                &self.mysql_host,
+                "-P",
+                &self.mysql_port.to_string(),
+                "-u",
+                &self.mysql_user,
                 &format!("-p{}", self.mysql_password),
                 &self.mysql_database,
-                "-e", sql,
+                "-e",
+                sql,
                 "--batch",
                 "--raw",
             ])
@@ -471,19 +513,12 @@ fn parse_tab_output(output: &str) -> SqlResult {
         };
     }
 
-    let columns: Vec<String> = lines[0]
-        .split('\t')
-        .map(|s| s.trim().to_string())
-        .collect();
+    let columns: Vec<String> = lines[0].split('\t').map(|s| s.trim().to_string()).collect();
 
     let rows: Vec<Vec<String>> = lines[1..]
         .iter()
         .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            l.split('\t')
-                .map(|s| s.trim().to_string())
-                .collect()
-        })
+        .map(|l| l.split('\t').map(|s| s.trim().to_string()).collect())
         .collect();
 
     SqlResult {

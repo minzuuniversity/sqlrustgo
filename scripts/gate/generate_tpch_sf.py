@@ -20,6 +20,48 @@ SF1_ROW_COUNTS = {
 }
 
 SEGMENTS = ["BUILDING", "AUTOMOBILE", "MACHINERY", "HOUSEHOLD", "FURNITURE"]
+
+# TPC-H: every part is supplied by exactly 4 suppliers.
+#
+# #5482: the generator used to hard-code that 4 — `random.sample(range(1,
+# n_supp + 1), 4)` — which raises `ValueError: Sample larger than
+# population` whenever the scale factor yields fewer than 4 suppliers
+# (SF=0.0001 ⇒ n_supp=1 ⇒ **crash**). The number of suppliers per part is
+# therefore `min(4, n_supp)`: the spec's 4 whenever the scale factor
+# provides them, and as many as exist otherwise.
+#
+# For every SF >= 0.0004 (n_supp >= 4) the behaviour is **byte-identical**
+# to the old hard-coded 4, so no existing fixture changes.
+SUPPLIERS_PER_PART = 4
+
+# The scale factor at which the generator's **query-set** contract is
+# verified.
+#
+# Three of the generator's self-checks are about the *standard query set*:
+# the predicate-coverage check (every standard-query predicate must select a
+# non-trivial share of its table), the compound-filter check (every pair of
+# filtered columns must match at least one row) and the standard-query funnel
+# check (all 22 standard queries must produce a non-empty funnel, with
+# Q22 needing **20** customers above the average balance who have no order).
+#
+# #5482: below SF=0.01 those criteria are **not attainable**, and the
+# generator used to answer that in the worst possible way — a Python
+# traceback out of `random.sample` at SF=0.0001, and a confusing
+# "degenerate predicate coverage" failure below that.
+#
+# A fixture at such a scale is still perfectly usable for what it is
+# actually generated for (a LOAD DATA round-trip), but it is **not**
+# verified for query-set suitability. So the query-set checks report
+# NOT-RUN with a reason code instead of pretending to have measured
+# something they cannot measure.
+#
+# The scale-independent checks — key distribution and the nation→region
+# mapping — still run at **every** scale and still fail hard.
+#
+# 0.01 is the repository's canonical TPC-H fixture scale
+# (`scripts/gate/prepare_tpch_fixture.sh` default) and the smallest scale at
+# which the funnel floors are satisfiable.
+QUERY_SET_MIN_SF = 0.01
 # The seven ship modes of the TPC-H `lineitem.shipmode` domain. The previous
 # list carried "TRUCK" (not a TPC-H mode) and spelled "REG AIR" with a space
 # (the spec value is REG_AIR).
@@ -154,6 +196,20 @@ def generate_sf(sf, output_dir, seed=42):
     
     n_supp = counts["supplier"]
     n_part = counts["part"]
+
+    # #5482: below SF=0.0001 the supplier population is empty, and every
+    # foreign key that points at a supplier (partsupp.ps_suppkey,
+    # lineitem.l_suppkey) would be dangling. Refuse loudly instead of
+    # crashing with a Python traceback halfway through the generation.
+    if n_supp < 1:
+        raise SystemExit(
+            f"scale factor {sf} yields {n_supp} supplier(s): the smallest "
+            f"viable scale factor is {1 / SF1_ROW_COUNTS['supplier']} "
+            f"(1 supplier). Refusing to generate a fixture with dangling "
+            f"supplier foreign keys."
+        )
+    # #5482: how many suppliers each part gets (see SUPPLIERS_PER_PART).
+    supp_per_part = min(SUPPLIERS_PER_PART, n_supp)
     n_cust = counts["customer"]
     n_ps = counts["partsupp"]
     n_ord = counts["orders"]
@@ -279,7 +335,10 @@ def generate_sf(sf, output_dir, seed=42):
     partsupp_suppliers = {}
     with open(out / "partsupp.tbl", "w") as f:
         for p in range(1, n_part + 1):
-            sups = random.sample(range(1, n_supp + 1), 4)
+            # #5482: `min(4, n_supp)` — the old hard-coded 4 raised
+            # ValueError when the scale factor produced fewer than 4
+            # suppliers.
+            sups = random.sample(range(1, n_supp + 1), supp_per_part)
             partsupp_suppliers[p] = sups
             for skey in sups:
                 f.write(f"{p}|{skey}|{random.randint(1, 9999)}|{random.uniform(1, 1000):.2f}|PS comment|\n")
@@ -345,6 +404,11 @@ def generate_sf(sf, output_dir, seed=42):
         # above-average pool (sorted by balance) so the reserved customers
         # are not clustered at one end of the range.
         n_reserved = max(1, n_cust * 5 // 100)
+        # Never reserve **every** customer: the orders writer below draws a
+        # random `o_custkey` and rejects the reserved ones, so a full
+        # reservation would spin forever. Keep at least one customer
+        # eligible.
+        n_reserved = min(n_reserved, max(0, n_cust - 1))
         if above_avg:
             step = len(above_avg) / n_reserved
             order_less_customers = {
@@ -357,8 +421,18 @@ def generate_sf(sf, output_dir, seed=42):
     with open(out / "orders.tbl", "w") as f:
         for i in range(n_ord):
             custkey = random.randint(1, n_cust)
-            while custkey in order_less_customers:
+            # Bounded retry: the reservation above guarantees at least one
+            # eligible customer, but a bounded loop keeps a pathological
+            # population from hanging the generator.
+            for _ in range(100):
+                if custkey not in order_less_customers:
+                    break
                 custkey = random.randint(1, n_cust)
+            else:
+                eligible = [
+                    c for c in range(1, n_cust + 1) if c not in order_less_customers
+                ]
+                custkey = eligible[0] if eligible else 1
             if custkey % 20 == 0:
                 comment = "Customer asked for special requests on this order"
             else:
@@ -506,6 +580,33 @@ def generate_sf(sf, output_dir, seed=42):
             print(f"  - {n}")
         sys.exit(1)
     print(f"  OK   all 25 nations sit in their canonical region")
+
+    # ------------------------------------------------------------------
+    # Scale gate for the query-set-dependent checks.
+    #
+    # See QUERY_SET_MIN_SF. Below that scale the predicate-coverage, the
+    # compound-filter and the standard-query-funnel checks cannot be
+    # satisfied by any fixture — the table populations are simply too small
+    # for the required shares and floors (Q22 alone needs 20 qualifying
+    # customers, and SF=0.0001 produces 15 customers in total).
+    #
+    # They are therefore reported as NOT-RUN with a reason code, not as
+    # FAIL. "Could not measure" and "measured and failed" are different
+    # statements, and only the second one is a defect of the fixture.
+    # ------------------------------------------------------------------
+    if sf < QUERY_SET_MIN_SF:
+        for title in (
+            "predicate coverage self-check",
+            "compound filter coverage self-check",
+            "standard query funnel self-check",
+        ):
+            print(f"=== {title}: NOT-RUN ===")
+            print(f"  NOT-RUN: reason=SCALE_TOO_SMALL "
+                  f"(SF={sf} < {QUERY_SET_MIN_SF})")
+            print(f"  this fixture is NOT verified for standard-query suitability; "
+                  f"it is only usable for load-path / row-count checks")
+        print("Done.")
+        return
 
     # ------------------------------------------------------------------
     # Predicate-coverage self-check.

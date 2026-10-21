@@ -1871,3 +1871,118 @@ path = "tests/database_fn_dml_5141.rs"
 [[test]]
 name = "view_db_isolation_5140"
 path = "tests/view_db_isolation_5140.rs"
+
+# ---------------------------------------------------------------------------
+# #5449 — 测试清单诚实性
+#
+# 下面这些目标此前**没有被声明**：
+#
+#   * 15 个顶层 `tests/*.rs` 由 cargo **自动发现**执行 —— 它们在跑，但
+#     Cargo.toml 里查不到，所有基于清单的审计都看不见它们；
+#   * `tests/sequence_test.rs` 更隐蔽：cargo 按**文件名**推导自动发现的
+#     目标名，而上面已有一条 `[[test]] name = "sequence_test"` 指向
+#     `tests/integration/sql/sequence_test.rs`。名字被占 ⇒ cargo **静默丢弃**
+#     自动发现的结果，没有任何诊断 ⇒ 它的 10 个 `#[test]` 从未执行；
+#   * 6 个子目录文件既没被声明、也不在顶层 ⇒ **从未被编译**（34 个 `#[test]`）。
+#
+# 显式声明把「cargo 自动发现了什么」变成清单里可审计的事实。
+# 不变量由 `scripts/gate/check_test_manifest_honesty.sh` 守住。
+# ---------------------------------------------------------------------------
+
+[[test]]
+name = "blk1_auto_increment_concurrency_test"
+path = "tests/blk1_auto_increment_concurrency_test.rs"
+
+[[test]]
+name = "blk2_shared_tx_path_test"
+path = "tests/blk2_shared_tx_path_test.rs"
+
+[[test]]
+name = "blk2_walstorage_no_escape_hatch_test"
+path = "tests/blk2_walstorage_no_escape_hatch_test.rs"
+
+[[test]]
+name = "change_buffer_main_path_test"
+path = "tests/change_buffer_main_path_test.rs"
+
+[[test]]
+name = "clustered_wal_bypass_r1_5228"
+path = "tests/clustered_wal_bypass_r1_5228.rs"
+
+[[test]]
+name = "ctas_select_star_schema_5268"
+path = "tests/ctas_select_star_schema_5268.rs"
+
+[[test]]
+name = "dml_read_db_5106"
+path = "tests/dml_read_db_5106.rs"
+
+[[test]]
+name = "double_write_main_path_test"
+path = "tests/double_write_main_path_test.rs"
+
+[[test]]
+name = "multi_table_update_5117"
+path = "tests/multi_table_update_5117.rs"
+
+[[test]]
+name = "mvcc_reader_tx_5105"
+path = "tests/mvcc_reader_tx_5105.rs"
+
+[[test]]
+name = "mvcc_same_db_second_table_delete_5106"
+path = "tests/mvcc_same_db_second_table_delete_5106.rs"
+
+[[test]]
+name = "read_path_db_5113"
+path = "tests/read_path_db_5113.rs"
+
+[[test]]
+name = "result_column_types_5271"
+path = "tests/result_column_types_5271.rs"
+
+[[test]]
+name = "result_schema_5271"
+path = "tests/result_schema_5271.rs"
+
+[[test]]
+name = "session_db_isolation_5057"
+path = "tests/session_db_isolation_5057.rs"
+
+# `tests/sequence_test.rs` 的目标名不能叫 `sequence_test` —— 那个名字已经被
+# `tests/integration/sql/sequence_test.rs` 占用，cargo 会静默丢弃自动发现的
+# 结果。用一个带前缀的名字把它显式钉进清单。
+[[test]]
+name = "toplevel_sequence_test"
+path = "tests/sequence_test.rs"
+
+# 以下 6 个文件此前**从未被编译**：它们既不在顶层（cargo 不会自动发现），
+# 也没有 `[[test]]` 声明 ⇒ 它们的 34 个 `#[test]` 从未执行过。
+[[test]]
+name = "bustubx_differential_test"
+path = "tests/compat/bustubx_differential_test.rs"
+
+[[test]]
+name = "differential_framework"
+path = "tests/compat/differential_framework.rs"
+
+[[test]]
+name = "semantic_kernel"
+path = "tests/compat/semantic_kernel.rs"
+
+[[test]]
+name = "v312_90_sign_function_test"
+path = "tests/integration/sql/v312_90_sign_function_test.rs"
+
+[[test]]
+name = "storage_engine_api_test"
+path = "tests/integration/storage_engine_api_test.rs"
+
+[[test]]
+name = "v312_mixed_soak"
+path = "tests/soak/v312_mixed_soak.rs"
+
+# #5449 的门禁自身。
+[[test]]
+name = "test_target_manifest_honesty_test"
+path = "tests/integration/gate/test_target_manifest_honesty_test.rs"

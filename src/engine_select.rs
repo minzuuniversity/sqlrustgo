@@ -1690,6 +1690,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             let t_start = Instant::now();
             let n_rows_in = rows.len();
             if let Some(where_expr) = &select.where_clause {
+                // #5413: count the engagement so a test can tell "the parallel
+                // path ran" from "the sequential path ran and produced the same
+                // rows". Without it, every parallel-path test has zero
+                // discriminating power.
+                self.parallel_filter_runs.fetch_add(1, Ordering::SeqCst);
                 let parallel = ParallelVolcanoExecutor::new(self.parallel_degree());
                 let partitions = parallel.partition_scan(rows, self.parallel_degree());
                 let n_partitions = partitions.len();

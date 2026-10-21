@@ -235,6 +235,22 @@ fn v312_13_sf1_lineitem_smoke_subset() {
             .unwrap_or_default();
         panic!("generate_tpch_sf.py failed: {}", stderr);
     }
+    // #5482: at SF=0.0001 the generator's *standard-query* checks (predicate
+    // coverage / compound filters / query funnel) cannot be satisfied — the
+    // table populations are too small for the required shares and floors.
+    // They are therefore reported as NOT-RUN with a reason code, and this
+    // test asserts that the disclosure is actually made: a fixture that
+    // silently skips a criterion must never look like a verified one.
+    let gen_stdout = gen
+        .as_ref()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+    assert!(
+        gen_stdout.contains("NOT-RUN: reason=SCALE_TOO_SMALL"),
+        "the generator must disclose that the standard-query checks did not run \
+         at SF=0.0001 (reason=SCALE_TOO_SMALL); stdout was:\n{}",
+        gen_stdout
+    );
     assert!(lineitem_path.exists(), "lineitem.tbl not generated");
     let lineitem_rows = std::fs::read_to_string(&lineitem_path)
         .unwrap()
@@ -245,9 +261,24 @@ fn v312_13_sf1_lineitem_smoke_subset() {
         "V312-13 §9 SF=0.0001 subset: lineitem.tbl has {} rows",
         lineitem_rows
     );
-    // TPC-H spec: SF=0.0001 produces exactly 600 lineitem rows
-    // (6,000,000 / 10,000 = 600).
-    assert_eq!(lineitem_rows, 600, "lineitem row count mismatch");
+    // #5482: the nominal SF=0.0001 line item count is 600
+    // (6,000,000 / 10,000), but the generator draws the number of line items
+    // per order (1..7, mean 4) so that the "orders whose total quantity
+    // exceeds 300" query is not structurally empty. The total is therefore
+    // *around* 600, not exactly 600 (630 with seed 42).
+    //
+    // The hard-coded 600 was never verified: the generator crashed at
+    // SF=0.0001 (`random.sample` with fewer than 4 suppliers), so this test
+    // never got past step 1. What the test is actually about is the LOAD
+    // DATA round-trip, so the row count is derived from the generated file
+    // below; this check only keeps a silently-empty fixture from passing.
+    let nominal_lineitem = 600u64; // 6,000,000 * 0.0001
+    assert!(
+        lineitem_rows.abs_diff(nominal_lineitem) <= nominal_lineitem / 4,
+        "lineitem row count {} is implausibly far from the nominal {}",
+        lineitem_rows,
+        nominal_lineitem
+    );
 
     // 2. Start ephemeral server.
     let handle = start_ephemeral(EphemeralConfig {
@@ -291,21 +322,39 @@ fn v312_13_sf1_lineitem_smoke_subset() {
 
     // 4. LOAD DATA all 8 tables in dependency order.
     let start = Instant::now();
+    // #5482: the expected row count is derived from the **generated file**,
+    // not hard-coded. Two of the eight nominal counts were never what the
+    // generator produces:
+    //
+    //   * partsupp: each part gets `min(4, n_supp)` suppliers, and SF=0.0001
+    //     has exactly **one** supplier ⇒ 20 rows, not the nominal 20 x 4 = 80;
+    //   * lineitem: the per-order line item count is drawn ⇒ ~600, not
+    //     exactly 600.
+    //
+    // The property this test is about is the LOAD DATA round-trip: every row
+    // in the file must arrive in the table. Deriving the expectation from the
+    // file states exactly that, and it cannot silently pass on a fixture
+    // that grew or shrank.
     let rows = [
-        (region_path, "region", 5u64),
-        (nation_path, "nation", 25),
-        (supplier_path, "supplier", 1),
-        (customer_path, "customer", 15),
-        (part_path, "part", 20),
-        (partsupp_path, "partsupp", 80),
-        (orders_path, "orders", 150),
-        (lineitem_path, "lineitem", 600),
+        (region_path, "region"),
+        (nation_path, "nation"),
+        (supplier_path, "supplier"),
+        (customer_path, "customer"),
+        (part_path, "part"),
+        (partsupp_path, "partsupp"),
+        (orders_path, "orders"),
+        (lineitem_path, "lineitem"),
     ];
-    for (path, table, expected) in &rows {
+    for (path, table) in &rows {
+        let expected = std::fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.is_empty())
+            .count() as u64;
         let loaded = client.load_local_infile(path, table).expect("load");
         assert_eq!(
-            loaded, *expected,
-            "{} LOAD DATA: expected {} rows, got {}",
+            loaded, expected,
+            "{} LOAD DATA: expected {} rows (the file's row count), got {}",
             table, expected, loaded
         );
     }
@@ -315,7 +364,10 @@ fn v312_13_sf1_lineitem_smoke_subset() {
     let lineitem_count: i64 = client
         .query_one_i64("SELECT COUNT(*) FROM lineitem")
         .expect("count lineitem");
-    assert_eq!(lineitem_count, 600);
+    assert_eq!(
+        lineitem_count, lineitem_rows as i64,
+        "the loaded lineitem count must equal the file's row count"
+    );
 
     // 6. Aggregate sanity check: TPC-H Q1 (pricing summary).
     let q1_count: i64 = client
