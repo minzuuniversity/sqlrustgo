@@ -55,8 +55,30 @@ for arg in "$@"; do
     esac
 done
 
+# #5417: the exit code of the gate script under test must be captured
+# *before* it is discarded.
+#
+# The previous form was:
+#
+#     output=$(bash "$script" 2>&1 || true)
+#     local code=$?
+#
+# `|| true` forces the command substitution to exit 0, so `$?` was
+# ALWAYS 0 ⇒ every dimension reported "✅ PASS (exit 0)" no matter what
+# the gate actually returned. The whole 8-dimension aggregate gate was
+# therefore **structurally incapable of failing** — a green light with
+# no signal behind it.
+#
+# `local output` must be declared separately from the assignment: in
+# bash, `local output=$(...)` makes the exit status that of `local`
+# (always 0), which would reintroduce the very same defect.
+#
+# The script path and the script arguments are two different things: the
+# previous call site passed "$SCRIPT_DIR/check_rc_ga_gate.sh --skip-a5"
+# as the *path*, which does not exist ⇒ "❌ Script not found".
 run_gate() {
     local name="$1" script="$2" expect_code="${3:-0}"
+    shift 3 2>/dev/null || shift $#
     echo "--- [$name] ---"
     if [ ! -f "$script" ]; then
         echo "  ❌ Script not found: $script"
@@ -66,8 +88,9 @@ run_gate() {
     fi
 
     local output
-    output=$(bash "$script" 2>&1 || true)
-    local code=$?
+    local code
+    output=$(bash "$script" "$@" 2>&1)
+    code=$?
     echo "$output" | tail -3
 
     if [ "$code" -eq "$expect_code" ]; then
@@ -86,128 +109,133 @@ run_gate() {
     echo
 }
 
-# 1. D1-D5: RC/GA gate (must PASS)
-if [ "$SKIP_A5" -eq 1 ]; then
-    run_gate "D1-D5 RC/GA (--skip-a5)" "$SCRIPT_DIR/check_rc_ga_gate.sh --skip-a5" 0
-else
-    run_gate "D1-D5 RC/GA" "$SCRIPT_DIR/check_rc_ga_gate.sh" 0
-fi
-
-# 2. D6b: Test inventory (must PASS or DRIFT) — distinct from D6a-Integration in check_rc_ga_gate.sh
-run_gate "D6b Test Inventory" "$SCRIPT_DIR/check_test_inventory.sh" 0
-
-# 3. D7: INT debt (DRIFT acceptable with plan)
-run_gate "D7 INT Debt" "$SCRIPT_DIR/check_int_debt.sh" 0
-
-# 4. D8: Arch/Sem debt (DRIFT acceptable with plan)
-run_gate "D8 Arch/Sem Debt" "$SCRIPT_DIR/check_arch_sem_debt.sh" 0
-
-# 5. Cross-Version Debt (must PASS)
-run_gate "Cross-Version Debt" "$SCRIPT_DIR/check_cross_version_debt.sh" 0
-
-# 6. Test Plan Consistency
-echo "--- [Test Plan Consistency] ---"
-# v3.8.0 PR-2933 reorganized docs into categorized subdirectories.
-# TEST_PLAN_INTEGRATED.md may live under test-design/ (preferred) or directly
-# under docs/releases/v3.8.0/ (legacy).
-PLAN_PRIMARY="$REPO_ROOT/docs/releases/v3.8.0/test-design/TEST_PLAN_INTEGRATED.md"
-PLAN_LEGACY="$REPO_ROOT/docs/releases/v3.8.0/TEST_PLAN_INTEGRATED.md"
-if [ -f "$PLAN_PRIMARY" ]; then
-    PLAN="$PLAN_PRIMARY"
-elif [ -f "$PLAN_LEGACY" ]; then
-    PLAN="$PLAN_LEGACY"
-else
-    PLAN=""
-fi
-if [ -z "$PLAN" ]; then
-    echo "  ❌ TEST_PLAN_INTEGRATED.md not found (tried test-design/ and legacy)"
-    FAIL_COUNT=$((FAIL_COUNT + 1))
-    RESULTS+=("Test Plan Consistency: FAIL")
-else
-    # Count test name occurrences (e.g. "ci_test", "wal_tx_contract_test")
-    PLAN_TESTS=$(grep -oE '\b[a-z_]+_test\b' "$PLAN" 2>/dev/null | sort -u | wc -l)
-    CARGO_TESTS=$(grep -c "\[\[test\]\]" "$REPO_ROOT/Cargo.toml")
-    echo "  TEST_PLAN_INTEGRATED.md rows: $PLAN_TESTS"
-    echo "  Cargo.toml [[test]] entries: $CARGO_TESTS"
-    # Test plan docs evolve (P1-3 wrote plan, may have grown)
-    if [ "$PLAN_TESTS" -ge 30 ] && [ "$CARGO_TESTS" -ge 50 ]; then
-        echo "  ✅ PASS (plan has $PLAN_TESTS tests, cargo has $CARGO_TESTS entries)"
-        PASS_COUNT=$((PASS_COUNT + 1))
-        RESULTS+=("Test Plan Consistency: PASS")
+# The gate-invocation body below is wrapped in main() so that the
+# regression suite can `source` this file and exercise run_gate() in
+# isolation (tests/integration/gate/gate_honesty_test.rs) without
+# paying for the full 8-dimension run.
+main() {
+    # 1. D1-D5: RC/GA gate (must PASS)
+    if [ "$SKIP_A5" -eq 1 ]; then
+        run_gate "D1-D5 RC/GA (--skip-a5)" "$SCRIPT_DIR/check_rc_ga_gate.sh" 0 --skip-a5
     else
-        echo "  ❌ FAIL (plan=$PLAN_TESTS, cargo=$CARGO_TESTS)"
+        run_gate "D1-D5 RC/GA" "$SCRIPT_DIR/check_rc_ga_gate.sh" 0
+    fi
+
+    # 2. D6b: Test inventory (must PASS or DRIFT) — distinct from D6a-Integration in check_rc_ga_gate.sh
+    run_gate "D6b Test Inventory" "$SCRIPT_DIR/check_test_inventory.sh" 0
+
+    # 3. D7: INT debt (DRIFT acceptable with plan)
+    run_gate "D7 INT Debt" "$SCRIPT_DIR/check_int_debt.sh" 0
+
+    # 4. D8: Arch/Sem debt (DRIFT acceptable with plan)
+    run_gate "D8 Arch/Sem Debt" "$SCRIPT_DIR/check_arch_sem_debt.sh" 0
+
+    # 5. Cross-Version Debt (must PASS)
+    run_gate "Cross-Version Debt" "$SCRIPT_DIR/check_cross_version_debt.sh" 0
+
+    # 6. Test Plan Consistency
+    echo "--- [Test Plan Consistency] ---"
+    # v3.8.0 PR-2933 reorganized docs into categorized subdirectories.
+    # TEST_PLAN_INTEGRATED.md may live under test-design/ (preferred) or directly
+    # under docs/releases/v3.8.0/ (legacy).
+    PLAN_PRIMARY="$REPO_ROOT/docs/releases/v3.8.0/test-design/TEST_PLAN_INTEGRATED.md"
+    PLAN_LEGACY="$REPO_ROOT/docs/releases/v3.8.0/TEST_PLAN_INTEGRATED.md"
+    if [ -f "$PLAN_PRIMARY" ]; then
+        PLAN="$PLAN_PRIMARY"
+    elif [ -f "$PLAN_LEGACY" ]; then
+        PLAN="$PLAN_LEGACY"
+    else
+        PLAN=""
+    fi
+    if [ -z "$PLAN" ]; then
+        echo "  ❌ TEST_PLAN_INTEGRATED.md not found (tried test-design/ and legacy)"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         RESULTS+=("Test Plan Consistency: FAIL")
-    fi
-fi
-echo
-
-# 7. PR Template
-echo "--- [PR Template] ---"
-TEMPLATE="$REPO_ROOT/.gitea/pull_request_template.md"
-if [ -f "$TEMPLATE" ]; then
-    # P1-5 PR-2927 wrote the template using "5-类文档" but encoded 5-原则
-    # as "5-Principle" (English in the front-matter). Accept either form
-    # so a future doc-only Chinese rewrite doesn't break this gate.
-    HAS_DOCS=0
-    if grep -q "5-类文档" "$TEMPLATE" || grep -q "5-类文档清单" "$TEMPLATE"; then
-        HAS_DOCS=1
-    fi
-    HAS_PRINCIPLE=0
-    if grep -q "5-原则" "$TEMPLATE" || grep -q "5-Principle" "$TEMPLATE"; then
-        HAS_PRINCIPLE=1
-    fi
-    if [ "$HAS_DOCS" -eq 1 ] && [ "$HAS_PRINCIPLE" -eq 1 ]; then
-        echo "  ✅ PASS (template has 5-类文档 + 5-原则)"
-        PASS_COUNT=$((PASS_COUNT + 1))
-        RESULTS+=("PR Template: PASS")
     else
-        echo "  ❌ FAIL (template missing 5-类文档 or 5-原则)"
+        # Count test name occurrences (e.g. "ci_test", "wal_tx_contract_test")
+        PLAN_TESTS=$(grep -oE '\b[a-z_]+_test\b' "$PLAN" 2>/dev/null | sort -u | wc -l)
+        CARGO_TESTS=$(grep -c "\[\[test\]\]" "$REPO_ROOT/Cargo.toml")
+        echo "  TEST_PLAN_INTEGRATED.md rows: $PLAN_TESTS"
+        echo "  Cargo.toml [[test]] entries: $CARGO_TESTS"
+        # Test plan docs evolve (P1-3 wrote plan, may have grown)
+        if [ "$PLAN_TESTS" -ge 30 ] && [ "$CARGO_TESTS" -ge 50 ]; then
+            echo "  ✅ PASS (plan has $PLAN_TESTS tests, cargo has $CARGO_TESTS entries)"
+            PASS_COUNT=$((PASS_COUNT + 1))
+            RESULTS+=("Test Plan Consistency: PASS")
+        else
+            echo "  ❌ FAIL (plan=$PLAN_TESTS, cargo=$CARGO_TESTS)"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            RESULTS+=("Test Plan Consistency: FAIL")
+        fi
+    fi
+    echo
+
+    # 7. PR Template
+    echo "--- [PR Template] ---"
+    TEMPLATE="$REPO_ROOT/.gitea/pull_request_template.md"
+    if [ -f "$TEMPLATE" ]; then
+        # P1-5 PR-2927 wrote the template using "5-类文档" but encoded 5-原则
+        # as "5-Principle" (English in the front-matter). Accept either form
+        # so a future doc-only Chinese rewrite doesn't break this gate.
+        HAS_DOCS=0
+        if grep -q "5-类文档" "$TEMPLATE" || grep -q "5-类文档清单" "$TEMPLATE"; then
+            HAS_DOCS=1
+        fi
+        HAS_PRINCIPLE=0
+        if grep -q "5-原则" "$TEMPLATE" || grep -q "5-Principle" "$TEMPLATE"; then
+            HAS_PRINCIPLE=1
+        fi
+        if [ "$HAS_DOCS" -eq 1 ] && [ "$HAS_PRINCIPLE" -eq 1 ]; then
+            echo "  ✅ PASS (template has 5-类文档 + 5-原则)"
+            PASS_COUNT=$((PASS_COUNT + 1))
+            RESULTS+=("PR Template: PASS")
+        else
+            echo "  ❌ FAIL (template missing 5-类文档 or 5-原则)"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            RESULTS+=("PR Template: FAIL")
+        fi
+    else
+        echo "  ❌ FAIL (template not found)"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         RESULTS+=("PR Template: FAIL")
     fi
-else
-    echo "  ❌ FAIL (template not found)"
-    FAIL_COUNT=$((FAIL_COUNT + 1))
-    RESULTS+=("PR Template: FAIL")
-fi
-echo
+    echo
 
-# 8. Evidence Generation
-echo "--- [Evidence Generation] ---"
-EVIDENCE_DIR="$REPO_ROOT/artifacts/gate/v3.8.0"
-mkdir -p "$EVIDENCE_DIR"
-D6_EVIDENCE="$EVIDENCE_DIR/d6_test_inventory.json"
-D6_EVIDENCE_OK=0
-if [ -f "$D6_EVIDENCE" ] || bash "$SCRIPT_DIR/check_test_inventory.sh" >/dev/null 2>&1; then
-    D6_EVIDENCE_OK=1
-fi
+    # 8. Evidence Generation
+    echo "--- [Evidence Generation] ---"
+    EVIDENCE_DIR="$REPO_ROOT/artifacts/gate/v3.8.0"
+    mkdir -p "$EVIDENCE_DIR"
+    D6_EVIDENCE="$EVIDENCE_DIR/d6_test_inventory.json"
+    D6_EVIDENCE_OK=0
+    if [ -f "$D6_EVIDENCE" ] || bash "$SCRIPT_DIR/check_test_inventory.sh" >/dev/null 2>&1; then
+        D6_EVIDENCE_OK=1
+    fi
 
-if [ $D6_EVIDENCE_OK -eq 1 ]; then
-    echo "  ✅ PASS (evidence dirs ready)"
-    PASS_COUNT=$((PASS_COUNT + 1))
-    RESULTS+=("Evidence Generation: PASS")
-else
-    echo "  ⚠️  PARTIAL (some evidence not generated yet)"
-    DRIFT_COUNT=$((DRIFT_COUNT + 1))
-    RESULTS+=("Evidence Generation: PARTIAL")
-fi
-echo
+    if [ $D6_EVIDENCE_OK -eq 1 ]; then
+        echo "  ✅ PASS (evidence dirs ready)"
+        PASS_COUNT=$((PASS_COUNT + 1))
+        RESULTS+=("Evidence Generation: PASS")
+    else
+        echo "  ⚠️  PARTIAL (some evidence not generated yet)"
+        DRIFT_COUNT=$((DRIFT_COUNT + 1))
+        RESULTS+=("Evidence Generation: PARTIAL")
+    fi
+    echo
 
-# Summary
-echo "=== D9 Full Gate Verification Summary ==="
-echo "  PASS:    $PASS_COUNT"
-echo "  FAIL:    $FAIL_COUNT"
-echo "  DRIFT:   $DRIFT_COUNT"
-echo
-echo "--- Results ---"
-for r in "${RESULTS[@]}"; do
-    echo "  $r"
-done
-echo
+    # Summary
+    echo "=== D9 Full Gate Verification Summary ==="
+    echo "  PASS:    $PASS_COUNT"
+    echo "  FAIL:    $FAIL_COUNT"
+    echo "  DRIFT:   $DRIFT_COUNT"
+    echo
+    echo "--- Results ---"
+    for r in "${RESULTS[@]}"; do
+        echo "  $r"
+    done
+    echo
 
-# Write evidence
-mkdir -p "$EVIDENCE_DIR"
+    # Write evidence
+    mkdir -p "$EVIDENCE_DIR"
 cat > "$EVIDENCE_DIR/d9_full_gate.json" <<EOF
 {
     "gate": "D9",
@@ -222,15 +250,21 @@ $(for r in "${RESULTS[@]}"; do echo "        \"$r\","; done | sed '$ s/,$//')
 }
 EOF
 
-if [ $FAIL_COUNT -gt 0 ]; then
-    echo "❌ D9 Full Gate Verification: FAILED ($FAIL_COUNT dimensions failed)"
-    exit 1
-fi
+    if [ $FAIL_COUNT -gt 0 ]; then
+        echo "❌ D9 Full Gate Verification: FAILED ($FAIL_COUNT dimensions failed)"
+        exit 1
+    fi
 
-if [ $DRIFT_COUNT -gt 0 ]; then
-    echo "⚠️  D9 Full Gate Verification: PASS-WITH-DRIFT ($DRIFT_COUNT drift)"
-    exit 2
-fi
+    if [ $DRIFT_COUNT -gt 0 ]; then
+        echo "⚠️  D9 Full Gate Verification: PASS-WITH-DRIFT ($DRIFT_COUNT drift)"
+        exit 2
+    fi
 
-echo "✅ D9 Full Gate Verification: ALL PASS"
-exit 0
+    echo "✅ D9 Full Gate Verification: ALL PASS"
+    exit 0
+}
+
+# CLI entry point — only when executed, not when sourced.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

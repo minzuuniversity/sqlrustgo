@@ -38,16 +38,124 @@ if ! command -v cargo >/dev/null 2>&1; then
      fi
  fi
 
-# V313-#3942: parse --skip-a5 flag so the R2 evidence-refresh
-# driver can invoke this gate within its 60-second budget by
-# short-circuiting the 8-crate cargo llvm-cov run.
+# =============================================================================
+# CLI PARSING / DIMENSION PLAN / VERDICT — side-effect-free helpers
+# =============================================================================
+# #5418: the flag namespace and the dimension-selector namespace are two
+# different things, and the verdict must be a *function* of what actually
+# executed — not of an unchecked argument.
+#
+# The previous form was `GATE_TYPE="${1:-all}"` → `main "$GATE_TYPE"` →
+# `local GATE="${1:-all}"`, so `check_rc_ga_gate.sh --skip-a5` set
+# GATE="--skip-a5", which matched NONE of the
+# `if [[ "$GATE" == "all" || "$GATE" == "alpha" ]]` branches ⇒ D1 / D2 /
+# D5 / D6 / D7 / D8 / D9 were ALL SKIPPED, while the summary still printed
+#
+#     ✓ GATE: PASS — All dimensions validated
+#
+# i.e. it claimed to have validated 7 dimensions while validating zero.
+#
+# The three helpers below are deliberately free of side effects so that the
+# regression suite can `source` this file and exercise the *decision logic*
+# directly (tests/integration/gate/gate_honesty_test.rs) without paying for
+# the full cargo-based gate run.
+
+GATE_TYPE="all"
 SKIP_A5=0
-for arg in "$@"; do
-    case "$arg" in
-        --skip-a5) SKIP_A5=1 ;;
-        *) ;;
+
+usage() {
+    cat <<'USAGE'
+Usage: $0 [alpha|beta|rc|ga|all] [--skip-a5]
+
+  all    — Full gate (default): D1 D2 D3 D4 D5 D6 D7 D8 D9
+  alpha  — D1 (+ D3/D4, which always run)
+  beta   — D1 + D2 (+ D3/D4)
+  rc     — D1 + D2 + D3 + D4 + D5 + D9
+  ga     — all of the above
+
+  --skip-a5 — skip the A5 coverage sub-check inside D1 (R2 budget)
+USAGE
+}
+
+# gate_parse_args <args...>
+#   Sets GATE_TYPE and SKIP_A5. Return codes:
+#     0 = parsed OK
+#     2 = unknown argument (usage error — never silently reinterpreted)
+#     3 = help requested
+gate_parse_args() {
+    local arg
+    GATE_TYPE="all"
+    SKIP_A5=0
+    for arg in "$@"; do
+        case "$arg" in
+            --skip-a5) SKIP_A5=1 ;;
+            --help|-h) return 3 ;;
+            alpha|beta|rc|ga|all) GATE_TYPE="$arg" ;;
+            *)
+                echo "Unknown argument: $arg" >&2
+                return 2
+                ;;
+        esac
+    done
+    return 0
+}
+
+# gate_expected_dims <mode> — the dimensions that MUST execute for <mode>.
+# A dimension that is expected but did not execute is a gate failure, not
+# a pass (#5418).
+gate_expected_dims() {
+    case "${1:-all}" in
+        alpha)  echo "D1 D3 D4" ;;
+        beta)   echo "D1 D2 D3 D4" ;;
+        rc)     echo "D1 D2 D3 D4 D5 D9" ;;
+        ga|all) echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
+        *)      echo "" ;;
     esac
-done
+}
+
+# gate_verdict_for <mode> <executed_csv> <d1_blk> <d2_blk> <d8_blk>
+#                <d9_blk> <d6_fail> <d7_blk> <d3_fails> <d3_drifts>
+#
+# Sets GATE_VERDICT (PASS|FAIL|DRIFT), GATE_EXIT_CODE and GATE_MISSING_DIMS.
+#
+# #5419: D6 (Integration Test Coverage Gate) and D7 (Reliability Gate)
+# set their own failure counters, but the verdict only looked at the
+# D1/D2/D8/D9 blockers and the D3 failures ⇒ **a failing D6 or D7 still
+# produced "GATE: PASS"**.
+gate_verdict_for() {
+    local mode="$1" executed="$2"
+    local d1="$3" d2="$4" d8="$5" d9="$6" d6="$7" d7="$8" d3f="$9" d3d="${10:-0}"
+    local d4f="${11:-0}"
+    local expected d
+
+    GATE_MISSING_DIMS=""
+    expected="$(gate_expected_dims "$mode")"
+    for d in $expected; do
+        case " $executed " in
+            *" $d "*) ;;
+            *) GATE_MISSING_DIMS="$GATE_MISSING_DIMS $d" ;;
+        esac
+    done
+    GATE_MISSING_DIMS="${GATE_MISSING_DIMS# }"
+
+    if [[ "$d1" -gt 0 ]] || [[ "$d2" -gt 0 ]] || [[ "$d8" -gt 0 ]] || [[ "$d9" -gt 0 ]] \
+       || [[ "$d6" -gt 0 ]] || [[ "$d7" -gt 0 ]] || [[ "$d4f" -gt 0 ]]; then
+        GATE_VERDICT="FAIL"
+        GATE_EXIT_CODE=1
+    elif [[ -n "$GATE_MISSING_DIMS" ]]; then
+        GATE_VERDICT="FAIL"
+        GATE_EXIT_CODE=1
+    elif [[ "$d3f" -gt 0 ]]; then
+        GATE_VERDICT="FAIL"
+        GATE_EXIT_CODE=1
+    elif [[ "$d3d" -gt 0 ]]; then
+        GATE_VERDICT="DRIFT"
+        GATE_EXIT_CODE=2
+    else
+        GATE_VERDICT="PASS"
+        GATE_EXIT_CODE=0
+    fi
+}
 
 # =============================================================================
 # CONFIGURATION — Unified Rule Registry
@@ -112,7 +220,7 @@ log_drift() {
 D1_PASS=0; D1_TOTAL=0; D1_BLOCKERS=0
 D2_PASS=0; D2_TOTAL=0; D2_BLOCKERS=0
 D3_PASS=0; D3_TOTAL=0; D3_FAILS=0; D3_DRIFTS=0
-D4_PASS=0; D4_TOTAL=0
+D4_PASS=0; D4_TOTAL=0; D4_FAILS=0
 D5_PASS=0; D5_TOTAL=0
 
 # =============================================================================
@@ -317,15 +425,22 @@ run_d2_beta() {
     # B5: Integration Gate (C-ARCH + SGL + WAL)
     D2_TOTAL=$((D2_TOTAL+1))
     echo -n "  [B5] Integration Gate ... "
-    IG_OUTPUT=$(bash scripts/gate/check_integration_gate.sh 2>&1 || true)
+    IG_OUTPUT=$(bash scripts/gate/check_integration_gate.sh 2>&1)
     IG_EXIT=$?
     IG_SUMMARY=$(echo "$IG_OUTPUT" | grep "Result:" | tail -1)
     echo "  → $IG_SUMMARY"
-    if echo "$IG_SUMMARY" | grep -q "PASS"; then
+    # #5426: the previous form was
+    #     IG_OUTPUT=$(bash ... 2>&1 || true)
+    #     IG_EXIT=$?
+    # `|| true` forced the exit status to 0, so IG_EXIT was always 0 and
+    # a failing integration gate was downgraded to a warning — D2 could
+    # report "5/6" with zero blockers and the gate would still be green.
+    if [ "$IG_EXIT" -eq 0 ] && echo "$IG_SUMMARY" | grep -q "PASS"; then
         log_pass "B5 Integration Gate"
         D2_PASS=$((D2_PASS+1))
     else
-        log_warn "B5 Integration Gate: review output"
+        log_fail "B5 Integration Gate (exit $IG_EXIT): ${IG_SUMMARY:-no summary}"
+        D2_BLOCKERS=$((D2_BLOCKERS+1))
     fi
 
     # B6: V312-24 test infrastructure artifacts (ISSUE #3911 acceptance criterion 1)
@@ -396,7 +511,9 @@ run_d4_wal() {
     log_header "D4: WAL Invariant Validation"
 
     if [ -x scripts/test/wal_invariant.sh ]; then
-        WAL_INV_OUTPUT=$(bash scripts/test/wal_invariant.sh 2>&1 || true)
+        # #5426: same swallowed-exit-code shape as B5 — `|| true` made
+        # WAL_INV_EXIT permanently 0.
+        WAL_INV_OUTPUT=$(bash scripts/test/wal_invariant.sh 2>&1)
         WAL_INV_EXIT=$?
 
         echo "$WAL_INV_OUTPUT" | grep -E "INV-|Passed|Failed|Summary|Result|Validated" | \
@@ -409,16 +526,29 @@ run_d4_wal() {
 
         D4_TOTAL=5
         D4_PASS=$((WAL_PASSED))
+        # #5426: a WAL invariant script that exits non-zero (or reports
+        # failed invariants) must be visible to the verdict. Before the
+        # exit code was swallowed, D4 could report "2/5" and the gate
+        # would still be green.
+        if [ "${WAL_INV_EXIT:-0}" -ne 0 ] || [ "${WAL_FAILED:-0}" -gt 0 ]; then
+            D4_FAILS=$((D4_TOTAL - D4_PASS))
+            if [ "$D4_FAILS" -lt 1 ]; then D4_FAILS=1; fi
+        fi
 
-        echo -e "\n  D4 Result: $WAL_PASSED/5 passed"
+        echo -e "\n  D4 Result: $WAL_PASSED/5 passed (failures: $D4_FAILS, exit $WAL_INV_EXIT)"
     else
         # Fallback: run exp_g_wal_contracts_verified
-        WAL_EXP_OUTPUT=$(cargo test --test exp_g_wal_contracts_verified 2>&1 || echo "0")
+        WAL_EXP_OUTPUT=$(cargo test --test exp_g_wal_contracts_verified 2>&1)
+        WAL_EXP_EXIT=$?
         WAL_EXP_PASSED=$(echo "$WAL_EXP_OUTPUT" | grep -oE '[0-9]+ passed' | head -1 | grep -oE '[0-9]+' || echo "0")
         WAL_EXP_FAILED=$(echo "$WAL_EXP_OUTPUT" | grep -oE '[0-9]+ failed' | head -1 | grep -oE '[0-9]+' || echo "0")
 
         D4_TOTAL=5
         D4_PASS=$((WAL_EXP_PASSED))
+        if [ "${WAL_EXP_EXIT:-0}" -ne 0 ] || [ "${WAL_EXP_FAILED:-0}" -gt 0 ]; then
+            D4_FAILS=$((D4_TOTAL - D4_PASS))
+            if [ "$D4_FAILS" -lt 1 ]; then D4_FAILS=1; fi
+        fi
 
         echo "  WAL Invariant: $WAL_EXP_PASSED passed (fallback to exp_g_wal_contracts_verified)"
         log_pass "D4 WAL: $WAL_EXP_PASSED/5 passed"
@@ -436,6 +566,96 @@ D6_TOTAL=0
 D6_PASS=0
 D6_FAIL=0
 D6_FAILED_TESTS=()
+D6_UNRESOLVED=()
+D6_TARGETS=()
+
+# #5419: resolve a curated entry to the Cargo test target that actually
+# exists. `cargo test --test <name>` needs the **target name** (Cargo's
+# `[[test]] name=` field), not a file path. The curated list below mixes
+# both spellings — "wal_integration_test" is a target name, while
+# "ci/ci_test" is a path — so resolve in three steps:
+#
+#   1. exact target name;
+#   2. the last path segment used as a file stem (Cargo's auto-discovery
+#      names a target after its file stem, e.g. tests/ci/ci_test.rs
+#      becomes the target `ci_test`);
+#   3. the one known typo alias in the list.
+#
+# Measured on this tree: 44 of the 51 curated entries correspond to a
+# real file under tests/, but only 4 of them live at `tests/<name>.rs`
+# — the rest are in subdirectories (tests/integration/..., tests/e2e/...,
+# tests/ci/..., tests/benchmark/...), which the old existence probe
+# `tests/${test_name}.rs` could never see.
+D6_TARGET_NAME_TO_STEM=""
+
+build_d6_target_map() {
+    D6_TARGET_NAME_TO_STEM=$(awk '
+        /^\[\[test\]\]/ { in_test=1; next }
+        /^\[/ && !/^\[\[test\]\]/ { in_test=0 }
+        in_test && /^[[:space:]]*name[[:space:]]*=/ {
+            n=$0; sub(/^[^"]*"/, "", n); sub(/".*$/, "", n); name=n
+        }
+        in_test && /^[[:space:]]*path[[:space:]]*=/ {
+            p=$0; sub(/^[^"]*"/, "", p); sub(/".*$/, "", p)
+            stem=p; sub(/^.*\//, "", stem); sub(/\.rs$/, "", stem)
+            if (name != "") print name "=" stem
+        }
+    ' "$REPO_ROOT/Cargo.toml" | tr '\n' ' ')
+
+    D6_TARGET_NAME_TO_PATH=$(awk '
+        /^\[\[test\]\]/ { in_test=1; next }
+        /^\[/ && !/^\[\[test\]\]/ { in_test=0 }
+        in_test && /^[[:space:]]*name[[:space:]]*=/ {
+            n=$0; sub(/^[^"]*"/, "", n); sub(/".*$/, "", n); name=n
+        }
+        in_test && /^[[:space:]]*path[[:space:]]*=/ {
+            p=$0; sub(/^[^"]*"/, "", p); sub(/".*$/, "", p)
+            if (name != "") print name "=" p
+        }
+    ' "$REPO_ROOT/Cargo.toml" | tr '\n' ' ')
+}
+
+# Echo the Cargo target name that owns a test source path; return 1 if unknown.
+resolve_d6_target_by_path() {
+    local want="$1" pair name path
+    for pair in $D6_TARGET_NAME_TO_PATH; do
+        name="${pair%%=*}"
+        path="${pair#*=}"
+        if [ "$path" = "$want" ]; then echo "$name"; return 0; fi
+    done
+    return 1
+}
+
+# Echo the Cargo target name for a curated entry; return 1 if unresolved.
+resolve_d6_target() {
+    local entry="$1" last seg pair name stem
+    last="${entry##*/}"
+    seg="${entry//\//-}"
+
+    # 1. exact target name
+    for pair in $D6_TARGET_NAME_TO_STEM; do
+        name="${pair%%=*}"
+        if [ "$name" = "$entry" ]; then echo "$name"; return 0; fi
+    done
+    # 2. file stem → target (handles "ci/ci_test" → target "ci_test")
+    for pair in $D6_TARGET_NAME_TO_STEM; do
+        name="${pair%%=*}"
+        stem="${pair#*=}"
+        if [ "$stem" = "$last" ] || [ "$stem" = "$seg" ] || [ "$stem" = "$entry" ]; then
+            echo "$name"; return 0
+        fi
+    done
+    # 3. the one known typo alias ("embedded_harnesssmoke" has no
+    #    underscore; the real file is tests/e2e/embedded_harness_smoke.rs)
+    if [ "$entry" = "embedded_harnesssmoke" ]; then
+        for pair in $D6_TARGET_NAME_TO_STEM; do
+            name="${pair%%=*}"
+            stem="${pair#*=}"
+            if [ "$stem" = "embedded_harness_smoke" ]; then echo "$name"; return 0; fi
+        done
+    fi
+    return 1
+}
 
 # Full list of v3.8.0 integration tests (Issue #2874: 35 previously-untracked tests)
 # + 14 previously-tracked tests. Path is relative to tests/; subdirs use forward slash.
@@ -451,11 +671,16 @@ D6_INTEGRATION_TESTS=(
     "binary_format_test"
     "page_io_benchmark_test"
     "ci/ci_test"
-    "ci/buffer_pool_test"
     "ci/buffer_pool_benchmark_test"
     "e2e/e2e_query_test"
     "e2e/monitoring_test"
-    "e2e/observability_test"
+    # #5419: "ci/buffer_pool_test" and "e2e/observability_test" were
+    # REMOVED from this list on 2026-10-21. Both files were deleted in
+    # v3.12.0 ("retire: remove dead tests + unregister from Cargo.toml",
+    # commit c3c6bc675d) — the list was never updated, so the two entries
+    # could never resolve to a Cargo target. Keeping them would mean the
+    # coverage contract is permanently unmet; the retirement was
+    # deliberate, so the list is corrected instead of the gate.
     # 35 previously-untracked tests (P0-1, Issue #2874)
     "adaptive_hash_index_test"
     "aggregate_functions_test"
@@ -498,51 +723,141 @@ D6_INTEGRATION_TESTS=(
 run_d6_integration_tests() {
     log_header "D6a: Integration Test Coverage Gate (Issue #2874) — see check_full_gate_verification.sh for D6 Test Inventory"
 
-    # Build a one-shot manifest of all integration tests we should track.
-    # Skip the duplicate placeholder "ci_test" and "embedded_harnesssmoke"
-    # (Cargo.toml has a separate "ci_test" path=tests/ci/ci_test.rs entry;
-    # "embedded_harnesssmoke" without underscore is a typo kept for robustness).
-    # Bash 3.2 compatible: no associative arrays, no nested array expansions.
-    local dedup_tests=""
-    for t in ${D6_INTEGRATION_TESTS}; do
-        case "$dedup_tests" in
-            *"$t"*) ;;
-            *) dedup_tests="$dedup_tests $t" ;;
+    # #5419: the previous loop was
+    #
+    #     for t in ${D6_INTEGRATION_TESTS}; do
+    #
+    # In bash, `${ARRAY}` without an index expands to `${ARRAY[0]}` and
+    # nothing else (measured: a 3-element array yields exactly ONE
+    # iteration). The curated list has 51 entries, so the loop only ever
+    # saw the first one — "wal_integration_test" — which is not at
+    # `tests/wal_integration_test.rs` (it lives at
+    # tests/integration/migration/) ⇒ the entry was skipped as "file not
+    # found" ⇒ D6_TOTAL stayed 0 ⇒ the summary printed
+    #
+    #     D6 summary: 0/0 integration tests PASS
+    #
+    # and the dimension counted as a pass. **A gate that ran nothing
+    # must not report PASS.**
+    #
+    # The `for t in ${...}` form is also why the old existence probe
+    # `tests/${test_name}.rs` only ever matched the 4 entries that live
+    # at the top level of tests/ — the other 40 are in subdirectories.
+    # Resolution now goes through Cargo's own `[[test]]` declarations.
+    build_d6_target_map
+
+    local dedup_targets=""
+    local entry target
+    D6_TARGETS=()
+    for entry in ${D6_INTEGRATION_TESTS[@]+"${D6_INTEGRATION_TESTS[@]}"}; do
+        if ! target=$(resolve_d6_target "$entry"); then
+            D6_UNRESOLVED+=("$entry")
+            continue
+        fi
+        case " $dedup_targets " in
+            *" $target "*) continue ;;
+            *) dedup_targets="$dedup_targets $target" ;;
         esac
+        D6_TARGETS+=("$target")
     done
 
-    for test_name in $dedup_tests; do
-        # Skip tests that don't exist as files (defensive)
-        if [[ ! -f "tests/${test_name}.rs" ]]; then
-            # Some subdir tests use / separator
-            if [[ ! -f "tests/${test_name}.rs" ]] && [[ ! -f "tests/$(echo "$test_name" | tr / -).rs" ]]; then
-                log_info "D6: skip $test_name (file not found)"
-                continue
-            fi
+    # A curated entry that does not map to a Cargo test target means the
+    # coverage contract is NOT met. That is a gate failure, not a note:
+    # the whole point of D6 is to prove these tests exist and pass.
+    if [[ ${#D6_UNRESOLVED[@]} -gt 0 ]]; then
+        log_fail "D6: ${#D6_UNRESOLVED[@]} curated entries do not map to any Cargo test target: ${D6_UNRESOLVED[*]}"
+        D6_FAIL=$((D6_FAIL+1))
+        for entry in "${D6_UNRESOLVED[@]}"; do
+            D6_FAILED_TESTS+=("unresolved:${entry}")
+        done
+    fi
+
+    D6_TOTAL=${#D6_TARGETS[@]}
+    if [[ "$D6_TOTAL" -eq 0 ]]; then
+        # The defect this replaces reported "0/0 ... PASS".
+        log_fail "D6 summary: 0 integration tests actually ran — a gate that ran nothing cannot PASS"
+        D6_FAIL=$((D6_FAIL+1))
+        D6_FAILED_TESTS+=("(no target executed)")
+        return
+    fi
+
+    # One cargo invocation for the whole set: a single compilation pass
+    # (all 49 test binaries share the same dependency graph) instead of
+    # 49 separate cargo startups. `--no-fail-fast` is mandatory — without
+    # it cargo stops at the first failing test binary and the remaining
+    # targets are silently not executed.
+    local cargo_args=()
+    for target in "${D6_TARGETS[@]}"; do
+        cargo_args+=(--test "$target")
+    done
+    # The log path must be unique per process. A fixed path meant that a
+    # second gate run (e.g. the regression suite driving the gate with a
+    # stub cargo) overwrote the first run's evidence while it was still
+    # being parsed — the run then reported verdicts parsed from somebody
+    # else's output.
+    local D6_LOG="${D6_LOG_PATH:-/tmp/d6_integration_tests_$$.log}"
+    echo "  [D6] running ${D6_TOTAL} integration test targets (log: $D6_LOG)"
+    cargo test --no-fail-fast "${cargo_args[@]}" > "$D6_LOG" 2>&1
+    local cargo_rc=$?
+
+    # Per-target attribution: cargo prints
+    #      Running <source path> (target/debug/deps/<name>-<hash>)
+    # followed by
+    #      test result: ok. N passed; ...
+    #      test result: FAILED. ...
+    local verdict_file
+    verdict_file=$(mktemp)
+    awk '
+        /Running / { for (i = 1; i <= NF; i++) if ($i ~ /\.rs$/) { cur = $i; break } }
+        /test result:/ {
+            if (cur == "") next
+            if ($0 ~ /test result: ok\./) print "PASS\t" cur
+            else print "FAIL\t" cur
+        }
+    ' "$D6_LOG" > "$verdict_file"
+
+    local verdicted="" tname
+    while IFS=$'\t' read -r verdict srcpath; do
+        [[ -z "$verdict" ]] && continue
+        tname="$srcpath"
+        if ! tname=$(resolve_d6_target_by_path "$srcpath"); then
+            tname="$srcpath"
         fi
-
-        D6_TOTAL=$((D6_TOTAL+1))
-        echo -n "  [D6-${D6_TOTAL}] cargo test --test ${test_name} ... "
-
-        # Run test, capture output. Set timeout via cargo (no timeout cmd available).
-        local out
-        out=$(cargo test --test "${test_name}" --quiet 2>&1 || echo "0")
-        # PASS if "0 failed" in last lines, or "test result: ok"
-        if echo "$out" | grep -qE 'test result: ok\.?\s*$|0 failed'; then
-            log_pass "D6-${D6_TOTAL}: ${test_name}"
+        case " $verdicted " in
+            *" $tname "*) continue ;;
+            *) verdicted="$verdicted $tname" ;;
+        esac
+        if [[ "$verdict" == "PASS" ]]; then
+            log_pass "D6: ${tname}"
             D6_PASS=$((D6_PASS+1))
         else
-            log_fail "D6-${D6_TOTAL}: ${test_name} (FAIL)"
+            log_fail "D6: ${tname} (FAIL)"
             D6_FAIL=$((D6_FAIL+1))
-            D6_FAILED_TESTS+=("${test_name}")
+            D6_FAILED_TESTS+=("${tname}")
         fi
+    done < "$verdict_file"
+    rm -f "$verdict_file"
+
+    # A target that produced no "test result:" line at all (compile error,
+    # crash before the harness started, ...) counts as a failure — it was
+    # supposed to run and did not produce a verdict. A target that was
+    # never even started is equally a failure.
+    for target in "${D6_TARGETS[@]}"; do
+        case " $verdicted " in
+            *" $target "*) ;;
+            *)
+                log_fail "D6: ${target} (no verdict — not executed or crashed before reporting)"
+                D6_FAIL=$((D6_FAIL+1))
+                D6_FAILED_TESTS+=("${target}")
+                ;;
+        esac
     done
 
     echo ""
     if [[ "$D6_FAIL" -eq 0 ]]; then
         log_pass "D6 summary: ${D6_PASS}/${D6_TOTAL} integration tests PASS"
     else
-        log_warn "D6 summary: ${D6_PASS}/${D6_TOTAL} PASS, ${D6_FAIL} FAIL"
+        log_fail "D6 summary: ${D6_PASS}/${D6_TOTAL} PASS, ${D6_FAIL} FAIL (cargo exit $cargo_rc)"
         log_info "Failed tests: ${D6_FAILED_TESTS[*]}"
     fi
 }
@@ -980,30 +1295,43 @@ ${NC}"
     echo ""
 
     # Run all dimensions
+    # #5418: record which dimensions actually executed. The summary used
+    # to print "✓ GATE: PASS — All dimensions validated" unconditionally,
+    # so a run that executed *zero* of the gated dimensions (which is
+    # exactly what an unrecognised $1 produced) still claimed that all of
+    # them had been validated.
+    EXECUTED_DIMS=()
     if [[ "$GATE" == "all" ]] || [[ "$GATE" == "alpha" ]]; then
         run_d1_alpha
+        EXECUTED_DIMS+=("D1")
     fi
 
     if [[ "$GATE" == "all" ]] || [[ "$GATE" == "beta" ]]; then
         run_d2_beta
+        EXECUTED_DIMS+=("D2")
     fi
 
     run_d3_sgl
+    EXECUTED_DIMS+=("D3")
     run_d4_wal
+    EXECUTED_DIMS+=("D4")
 
     if [[ "$GATE" == "all" ]] || [[ "$GATE" == "rc" ]] || [[ "$GATE" == "ga" ]]; then
         run_d5_deepseek
         check_carch_unified
+        EXECUTED_DIMS+=("D5")
     fi
 
     if [[ "$GATE" == "all" ]] || [[ "$GATE" == "ga" ]]; then
         # D6: Integration Test Coverage Gate (Issue #2874)
         # 跑 49+ integration tests, FAIL 即 blocker
         run_d6_integration_tests
+        EXECUTED_DIMS+=("D6")
 
         # D7: Reliability Gate (G6-G10) — Hermes 2026-06-12 审计新增
         # 真实生产环境关键门禁: 备份/Soak/Crash/Upgrade/Audit
         run_d7_reliability
+        EXECUTED_DIMS+=("D7")
 
         # D8: V312-19 Release Gates (Issue #3906)
         # SQL corpus all-targets report + R2 invariant report + reviewer
@@ -1012,6 +1340,7 @@ ${NC}"
         # Strict close condition #7: v3.12.0 RC/GA cannot pass without
         # the three V312-19 artifacts.
         run_d8_v312_19_release_gates
+        EXECUTED_DIMS+=("D8")
     fi
 
     if [[ "$GATE" == "all" ]] || [[ "$GATE" == "rc" ]] || [[ "$GATE" == "ga" ]]; then
@@ -1020,6 +1349,7 @@ ${NC}"
         # is enabled by V312_COVERAGE_FULL=1 and uses the same canonical script
         # that writes the evidence artifact.
         run_d9_v312_coverage_framework
+        EXECUTED_DIMS+=("D9")
     fi
 
     # =======================================================================
@@ -1029,33 +1359,43 @@ ${NC}"
     echo "  D1-Alpha:  $D1_PASS/$D1_TOTAL (blockers: $D1_BLOCKERS)"
     echo "  D2-Beta:   $D2_PASS/$D2_TOTAL (blockers: ${D2_BLOCKERS:-0})"
     echo "  D3-SGL:    PASS=$D3_PASS | FAIL=$D3_FAILS | DRIFT=$D3_DRIFTS"
-    echo "  D4-WAL:    $D4_PASS/$D4_TOTAL"
+    echo "  D4-WAL:    $D4_PASS/$D4_TOTAL (failures: ${D4_FAILS:-0})"
     echo "  D5-DeepSeek: $D5_PASS/$D5_TOTAL"
+    echo "  D6-Integration: $D6_PASS/$D6_TOTAL (failures: ${D6_FAIL:-0})  (curated integration test targets — Issue #2874)"
     echo "  D7-Reliability: $D7_PASS/$D7_TOTAL (blockers: $D7_BLOCKERS)  (G6-G10: Backup/Soak/Crash/Upgrade/Audit — Hermes 2026-06-12 审计新增)"
     echo "  D8-V312-19:     $D8_PASS/$D8_TOTAL (blockers: $D8_BLOCKERS)  (corpus/R2/signoff freshness — V312-19 / Issue #3906)"
     echo "  D9-Coverage:    $D9_PASS/$D9_TOTAL (blockers: $D9_BLOCKERS)  (v3.12 L0-L5 test framework + per-crate coverage baseline)"
 
-    # Determine gate verdict
-    local VERDICT="PASS"
-    local EXIT_CODE=0
+    # Determine gate verdict (pure function — see gate_verdict_for).
+    local executed_csv
+    # ${arr[*]} on an empty array is an "unbound variable" error under
+    # `set -u` in bash < 4.4 (macOS ships 3.2) — use the + guard.
+    executed_csv="${EXECUTED_DIMS[*]+${EXECUTED_DIMS[*]}}"
+    gate_verdict_for "$GATE" "$executed_csv" \
+        "$D1_BLOCKERS" "${D2_BLOCKERS:-0}" "$D8_BLOCKERS" "$D9_BLOCKERS" \
+        "${D6_FAIL:-0}" "${D7_BLOCKERS:-0}" "$D3_FAILS" "${D3_DRIFTS:-0}" \
+        "${D4_FAILS:-0}"
+    local VERDICT="$GATE_VERDICT"
+    local EXIT_CODE="$GATE_EXIT_CODE"
+    local MISSING_DIMS="$GATE_MISSING_DIMS"
 
-    if [[ "$D1_BLOCKERS" -gt 0 ]] || [[ "${D2_BLOCKERS:-0}" -gt 0 ]] || [[ "$D8_BLOCKERS" -gt 0 ]] || [[ "$D9_BLOCKERS" -gt 0 ]]; then
-        VERDICT="FAIL"
-        EXIT_CODE=1
-    elif [[ "$D3_FAILS" -gt 0 ]]; then
-        VERDICT="FAIL"
-        EXIT_CODE=1
-    elif [[ "$D3_DRIFTS" -gt 0 ]]; then
-        VERDICT="DRIFT"
-        EXIT_CODE=2
-    fi
+    # Always state which dimensions actually ran — the pre-fix summary
+    # claimed "All dimensions validated" regardless of what executed.
+    echo "  Dimensions executed: ${executed_csv:-<none>}"
+    echo "  Dimensions expected: $(gate_expected_dims "$GATE")"
 
     if [[ "$VERDICT" == "PASS" ]]; then
-        echo -e "  ${GREEN}✓ GATE: PASS${NC} — All dimensions validated"
+        echo -e "  ${GREEN}✓ GATE: PASS${NC} — ${#EXECUTED_DIMS[@]} dimension(s) validated: ${executed_csv}"
     elif [[ "$VERDICT" == "DRIFT" ]]; then
         echo -e "  ${YELLOW}⚡ GATE: DRIFT${NC} — Drift detected, tracked, not blocking"
     else
-        echo -e "  ${RED}✗ GATE: FAIL${NC} — $D3_FAILS hard failures detected"
+        local why=""
+        [[ -n "$MISSING_DIMS" ]] && why="missing dimension(s):${MISSING_DIMS}"
+        if [[ -n "$why" ]]; then
+            echo -e "  ${RED}✗ GATE: FAIL${NC} — ${why}"
+        else
+            echo -e "  ${RED}✗ GATE: FAIL${NC} — D3_FAILS=${D3_FAILS}, D6_FAIL=${D6_FAIL:-0}, D7_BLOCKERS=${D7_BLOCKERS:-0}, D1/D2/D8/D9 blockers>0"
+        fi
     fi
 
     echo ""
@@ -1081,16 +1421,37 @@ ${NC}"
     exit $EXIT_CODE
 }
 
-# Parse arguments
-GATE_TYPE="${1:-all}"
-if [[ "$GATE_TYPE" == "--help" ]] || [[ "$GATE_TYPE" == "-h" ]]; then
-    echo "Usage: $0 [alpha|beta|rc|ga|all]"
-    echo "  all    — Full five-dimension gate (default)"
-    echo "  alpha  — D1 only"
-    echo "  beta   — D1 + D2"
-    echo "  rc     — D1 + D2 + D3 + D4 + D5"
-    echo "  ga     — D1 + D2 + D3 + D4 + D5 + RC-to-GA checklist"
-    exit 0
-fi
+# CLI entry point
+# =============================================================================
+# #5418: the dimension selector and the flags are two different things.
+#
+# The previous form was `GATE_TYPE="${1:-all}"` followed by
+# `main "$GATE_TYPE"`, and main() reads `local GATE="${1:-all}"`. So
+# `check_rc_ga_gate.sh --skip-a5` set GATE="--skip-a5", which matches
+# NONE of the `if [[ "$GATE" == "all" || "$GATE" == "alpha" ]]` branches
+# ⇒ D1 / D2 / D5 / D6 / D7 / D8 / D9 were ALL SKIPPED, while the
+# summary still printed
+#
+#     ✓ GATE: PASS — All dimensions validated
+#
+# i.e. it claimed to have validated 7 dimensions while validating zero.
+#
+# An unrecognised argument is now an error (exit 2) instead of being
+# silently reinterpreted as a dimension selector.
+#
+# The whole CLI block is guarded by the "executed, not sourced" test so
+# that the regression suite can `source` this file and exercise
+# gate_parse_args / gate_expected_dims / gate_verdict_for directly.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    gate_parse_args "$@"
+    PARSE_RC=$?
+    if [[ "$PARSE_RC" -eq 3 ]]; then
+        usage
+        exit 0
+    elif [[ "$PARSE_RC" -ne 0 ]]; then
+        usage >&2
+        exit 2
+    fi
 
-main "$GATE_TYPE"
+    main "$GATE_TYPE"
+fi

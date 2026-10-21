@@ -396,6 +396,54 @@ else
     fail "$OR_TRUE_VIOLATIONS \`cargo test || true\` masks in gate scripts"
 fi
 
+# ============================================================================
+# 3.6 #5426: a swallowed exit code that is then read
+#
+# The detector above only matched `cargo test ... || true`. It therefore
+# missed the #5417 shape:
+#
+#     output=$(bash "$script" 2>&1 || true)
+#     local code=$?
+#
+# `|| true` forces the substitution to exit 0, so `$?` is permanently 0
+# and the gate reports PASS for a failing sub-gate. The general form is a
+# `|| true` whose exit status is read on the next line — that is what is
+# detected here. It is deliberately narrow: a `|| true` that is NOT
+# followed by an exit-status read is a different (usually benign) shape.
+# ============================================================================
+step "P16 step 2.6/3: verify no swallowed exit code is read afterwards"
+
+SWALLOW_READ_VIOLATIONS=0
+while IFS= read -r -d '' gate_script; do
+    [[ -z "$gate_script" ]] && continue
+    # The detectors are excluded: their own source contains the pattern
+    # they look for (self-reference is by design).
+    case "$(basename "$gate_script")" in
+        check_gate_test_integrity.sh|check_drift_not_pass.sh) continue ;;
+    esac
+    while IFS= read -r line_no; do
+        [[ -z "$line_no" ]] && continue
+        fail "$gate_script: swallowed exit code read afterwards (line $line_no)"
+        SWALLOW_READ_VIOLATIONS=$((SWALLOW_READ_VIOLATIONS + 1))
+    done < <(
+        awk '
+            {
+                line = $0
+                sub(/^[ \t]+/, "", line)
+                if (substr(line, 1, 1) == "#") { was_or_true = 0; next }
+                if (was_or_true && index(line, "$?") > 0) print NR
+                was_or_true = (line ~ /\|\|[[:space:]]*true/)
+            }
+        ' "$gate_script"
+    )
+done < <(find "${GATE_SCRIPTS_DIR}" -maxdepth 1 -name "*.sh" -type f -print0 2>/dev/null)
+
+if [[ "$SWALLOW_READ_VIOLATIONS" -eq 0 ]]; then
+    pass "no swallowed exit code is read afterwards in any gate script"
+else
+    fail "$SWALLOW_READ_VIOLATIONS site(s) where a swallowed exit code is read afterwards"
+fi
+
  # ============================================================================
  # 4. Baseline
  # ============================================================================

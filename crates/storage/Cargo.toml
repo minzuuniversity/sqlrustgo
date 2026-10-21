@@ -53,3 +53,7 @@ path = "tests/file_scan_in_db_5057.rs"
 [[test]]
 name = "memory_list_views_5433"
 path = "tests/memory_list_views_5433.rs"
+
+[[test]]
+name = "memory_set_column_default_4154"
+path = "tests/memory_set_column_default_4154.rs"
