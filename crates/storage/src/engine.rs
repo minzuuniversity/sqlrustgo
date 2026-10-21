@@ -3941,9 +3941,24 @@ impl StorageEngine for MemoryStorage {
         column: &str,
         default_value: Option<String>,
     ) -> SqlResult<()> {
+        // Key resolved first: `self.tbl()` borrows `self`, which would
+        // otherwise conflict with the mutable borrow below (#5025) — the
+        // same pattern the three sibling methods (drop_column,
+        // modify_column, rename_column) already use.
+        //
+        // The lookup used to be `&table.to_lowercase()`, i.e. the *bare*
+        // table name, while `create_table` stores the table under the
+        // scoped key `db\u{1}table` (see `scoped_key` / `tbl`). The two
+        // can never be equal, so the lookup always missed and every
+        // `ALTER TABLE ... ALTER COLUMN ... SET/DROP DEFAULT` failed
+        // with "Table not found: <table>" — the feature was completely
+        // non-functional. Surfaced by the D6 integration gate, which
+        // for the first time actually executed its test list
+        // (see docs/releases/v4.1.0/evidence/GATE_HONESTY_5417_5419_2026-10-21.md).
+        let key = self.tbl(table);
         let info = self
             .table_infos
-            .get_mut(&table.to_lowercase())
+            .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         // V313-followup-1 / Issue #4154: case-exact column match.
         let col = info
