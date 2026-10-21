@@ -180,6 +180,8 @@ FAIL: the workflow contains an expression the platform's parser cannot read:
 ⇒ 在 CI 恢复之前，GA 的证据只能来自**本地运行**，且必须写明
 「本项未由 CI 承接」—— 不能写成「CI 已验证」。
 
+> **后续状态**：CI 已恢复，见 §9。
+
 ---
 
 ## 7. 本批次**没有**做的事
@@ -199,3 +201,70 @@ FAIL: the workflow contains an expression the platform's parser cannot read:
 - #5517 —— 本批次关闭的 issue
 - #5455 / #5402 / #5403 / #5446 / #5447 —— 同一族（`postcheck` 从未执行）
 - #5363 —— 现象相似但根因不同（runner 是 online 的）
+
+---
+
+## 9. 合并后决定性验证（PR #5518 → `develop/v4.1.0`）
+
+合并提交：`7136bddadae5788b8ef3d391520eb61f7e03a19d`（合并时刻 `2026-10-21T22:49:27Z`）
+
+### 9.1 job 物化数：0 → 6
+
+`GET /api/v1/repos/openclaw/sqlrustgo/actions/runs/<id>/jobs` 的 `total_count`：
+
+| run | 事件 | head SHA | ci.yml job 数 | 判读 |
+|-----|------|----------|--------------|------|
+| 8610 | push | `9c4f64833b` | **0** | 修复前：workflow 被忽略，无 job |
+| 8616 | push | `7136bddada` | **6** ✅ | 修复后 |
+| 8614 | pull_request | `400ceb49ed` | **6** ✅ | 修复后 |
+
+6 个 job 全部物化并可执行：
+`lint-build` / `test` / `mutation` / `ga3-security-scan` / `test-soak-detach` / `postcheck`。
+
+### 9.2 CI dispatcher 恢复
+
+`GET /actions/runs` 的 `total_count`：
+
+- 修复前：停在 **3641**（自 `2026-10-21T22:21Z` 起不再创建任何 run —— 因为 develop 上的 `ci.yml`
+  无效 ⇒ dispatcher 找不到可运行的 workflow ⇒ 连 run 都不建）；
+- 修复后：新增 run **8614 / 8615 / 8616 / 8617** ⇒ 回到 **3645**。
+
+⇒ 这一条同时解释了「CI 停了 26 小时」的现象：**不是 runner 挂了，是 workflow 根本没被解析出来**。
+
+### 9.3 服务端日志：合并后不再有解析失败
+
+```
+ssh liying@192.168.0.252 'docker logs --since 30m openclaw-gitea-1 2>&1 \
+  | grep -E "Failed to parse workflow|ignore invalid workflow|DetectWorkflows"'
+```
+
+- 修复前：`22:21:04` ~ `22:47:26` 共 **98** 条
+  `ignore invalid workflow "ci.yml"` + `getActionWorkflowEntry: Failed to parse workflow`；
+- 合并时刻 `22:49:27` 之后：**0 条**。
+
+### 9.4 5 远端一致性
+
+`develop/v4.1.0` 在 gitcode / gitea250 / gitea252 / gitee / github 五个远端
+**全部 = `7136bddadae5788b8ef3d391520eb61f7e03a19d`**（PASS-EXACT）。
+
+> gitea250 无 HTTP 凭据，走 bundle + SSH `update-ref` 路径推进
+> （`git bundle create` → `docker exec` 灌入 → `git update-ref refs/heads/develop/v4.1.0`）。
+
+### 9.5 门禁是否真的拦得住（防复发）
+
+新增的 `scripts/gate/check_workflow_expressions.sh` 已接入 `ci.yml` 的 `lint-build` job：
+
+- `--selftest` **4/4** 通过（含一条「合法表达式写在注释里 ⇒ 必须 PASS」，防假阳性）；
+- 负对照（把坏模板放回 `ci.yml`）**红 2 处**、修后**绿**；
+- **该门禁在提交那一刻抓到了作者本人**（新写的 CI 注释里原本也带模板）。
+
+⇒ 同一类错误（表达式模板写进注释）不会再无声复发。
+
+### 9.6 对 GA 的影响
+
+§6 里「GA 门禁不能依赖 CI」这个约束**已解除**：CI 恢复后，`postcheck` / `mutation` /
+`ga3-security-scan` 这些原本从未执行的 job 现在真的在跑。
+但本次修复**只恢复了执行通道**，不代表这些 job 的**内容**已经正确 ——
+`#5402` / `#5403` / `#5446` / `#5447` 描述的内容断口依然存在，
+它们现在会第一次真正暴露出来（详见 §7 的去向表）。
+
