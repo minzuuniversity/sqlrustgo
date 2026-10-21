@@ -741,6 +741,10 @@ name = "pr_template_and_full_gate_test"
 path = "tests/integration/sql/pr_template_and_full_gate_test.rs"
 
 [[test]]
+name = "gate_honesty_test"
+path = "tests/integration/gate/gate_honesty_test.rs"
+
+[[test]]
 name = "tpch_value_correctness_test"
 path = "tests/integration/tpch/tpch_value_correctness_test.rs"
 
