@@ -480,6 +480,44 @@ CI 镜像的 `mktemp` 不接受（`mktemp: : Invalid argument`）；
 两个 helper 都**失败即报错**，绝不返回空路径让调用方带着空路径继续。
 （`sha256_of` 同样要移植：`shasum` 是 Perl 脚本，瘦身镜像上未必有。）
 
+**根因 F：CI 镜像换成 Alpine/musl ⇒ 缺静态 zlib ⇒ 任何要链接的 job 都红。**
+
+`gate.yml` 的 `legacy-gate`（本批刚改成真跑当前版本的 alpha gate）里：
+
+```
+error: linking with `cc` failed: exit status: 1
+  = note: … "-static-pie" "-Wl,-Bstatic" … "-lz" …
+  = note: /usr/lib/gcc/x86_64-alpine-linux-musl/15.2.0/…/ld: cannot find -lz: No such file or directory
+        have you installed the static version of the z library ?
+```
+
+Alpine 把静态 zlib 放在 **`zlib-static`** 包里，默认镜像不含；
+musl 目标默认静态链接 ⇒ 必须有 `libz.a`。
+⇒ `ci.yml` 的 `test` job、`mutation` job、alpha gate 的 Q2 **全部**会红
+（镜像不修，任何 PR 都无法在 CI 上走完全绿）。
+
+**仓库侧的解法**：让 zlib **从 vendored 源码静态构建**，二进制不再依赖系统
+zlib —— 对数据库来说这本来就更稳（没有系统库版本错配、没有动态链接意外），
+而且 CI 与发布产物构建的是同一份东西：
+
+```toml
+# [workspace.dependencies]
+libz-sys = { version = "1.1", features = ["static"] }
+# [dependencies]（根包）
+libz-sys.workspace = true
+```
+
+`libz-sys/static` 这个 feature **必须**从直接依赖上打开（feature 只能由直接
+依赖启用），而 Cargo 的 feature 是全图统一的，所以这一行覆盖 workspace 里
+每一个 `flate2`。
+
+本地验证（macOS，机制侧）：`cargo tree` 显示 `libz-sys feature "static"` 已开；
+`cargo clean -p libz-sys` 后重建，构建目录里出现了 **15 个 `.o` 与
+`libz.a`**（`out/lib/libz.a`）⇒ zlib 确实是从 vendored 源码编出来的，
+不再需要系统 `libz.a`。musl 那一半只能由 CI 验证。
+
+镜像本身仍然应该修（固定工具链版本 + 装 `zlib-static`）—— 已开 **#5528**。
+
 
 ### 7.2 门禁自检
 
