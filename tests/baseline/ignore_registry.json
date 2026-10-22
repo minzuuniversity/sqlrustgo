@@ -3,7 +3,7 @@
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
   "captured_at_commit": "1ce91dd9e8e98473779b7d915b7b82cc87040b85",
   "captured_at_date": "2026-10-08",
-  "total_allowed": 116,
+  "total_allowed": 117,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 80,
@@ -28,17 +28,17 @@
     "PARKED": "Reason is an external prerequisite (live server, --release, large memory, platform permission, dedicated script). Not actionable in normal development."
   },
   "known_deficiencies": {
-    "active": 66,
-    "parked": 47,
+    "active": 69,
+    "parked": 48,
     "categories": {
       "AUTO_REG_AT_PROMOTION": 2,
-      "EXTERNAL_PREREQ": 45,
-      "FUNC_NOT_IMPL": 22,
-      "GAP_DOCUMENTED": 11,
-      "NO_REASON": 33
+      "EXTERNAL_PREREQ": 46,
+      "FUNC_NOT_IMPL": 23,
+      "GAP_DOCUMENTED": 14,
+      "NO_REASON": 32
     },
-    "missing_reason_text": 33,
-    "detail": "33 of 113 attributes carry no #[ignore = \"...\"] reason, which ADR-008-test-claim-transparency requires. They are registered as ACTIVE so the deficit is visible in the counts rather than hidden. Remediation is tracked as an openspec change."
+    "missing_reason_text": 34,
+    "detail": "34 of 117 attributes carry no #[ignore = \"...\"] reason, which ADR-008-test-claim-transparency requires. They are registered as ACTIVE so the deficit is visible in the counts rather than hidden. Remediation is tracked as an openspec change."
   },
   "counting_rule": "total_allowed equals the number of entries below. The gate compares it to limits.total_allowed_max and counts entries whose status is \"ACTIVE\" against limits.active_max.",
   "note_on_line_numbers": "line_at_capture refers to the position of the #[ignore] attribute at commit 6ba04fa07 (2026-10-07); later edits may shift it, so it is a locator hint, not an assertion.",
@@ -1086,6 +1086,15 @@
       "status": "ACTIVE",
       "category": "FUNC_NOT_IMPL",
       "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "crates/storage/src/wal_legacy.rs",
+      "test": "test_wal_perf_1000_insert",
+      "line_at_capture": 1543,
+      "reason": "wall-clock measurement harness — run manually, results go in the evidence doc",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
     }
   ],
   "resolved_removed_ignores": [
