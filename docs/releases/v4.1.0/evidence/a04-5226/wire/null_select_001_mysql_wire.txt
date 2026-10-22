@@ -8,6 +8,6 @@ SETUP> INSERT INTO t_null VALUES (2, NULL)
 QUERY> SELECT id, v FROM t_null ORDER BY id
   SELECT ncol=2 nrow=2 status=0x0002
   columns=["id", "v"]
-  types=["integer", "integer"]
+  types=["text", "text"]
   row[0]=["1", "has"]
   row[1]=["2", "NULL"]

@@ -1,6 +1,6 @@
 === STDOUT ===
-col_1	col_2	col_3	col_4	col_5
-x	1	2	2	2
+g	__agg_1	__agg_2	__agg_3	__agg_4
+x	2	3	1	2
 y	1	10	10	10
 
 === STDERR ===
