@@ -15,12 +15,17 @@
 
 ## 0. 摘要
 
-| 优先级 | 项数 | 主要类别 |
-|---|---|---|
-| **P0** 阻断任何 release | **8** | 门禁空转、#4708 假 DONE、v4.0.0 GA 撤销、5 远端漂移、debt-registry 残留占位符、YAML 自相矛盾、.gitignore 静默屏蔽新 release 文档、WAL 恢复逐条整表重写 |
-| **P1** 阻断 ALPHA 推进 | **7** | 覆盖率 60.58%、Q20 oracle 缺产物、WP-A RE-OPENED + 20 条 backlog、crate 状态描述错误、G13 门禁红 |
-| **P2** 不阻断但需记录 | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
-| **合计** | **22** | |
+> **计数更新（2026-10-23）**：本表原始计数来自 2026-10-01 的那次审计。此后
+> **P0-01 / P0-02 / P0-05 / P1-01 已销账**（各条目的 verdict 段给出实测依据与
+> 证据文件），未销账的 P0 由 8 条降到 **5** 条，P1 由 7 条降到 **6** 条。
+> 证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`。
+
+| 优先级 | 项数（2026-10-01 原始） | 仍未销账（2026-10-23） | 主要类别 |
+|---|---|---|---|
+| **P0** 阻断任何 release | **8** | **5** | 门禁空转、#4708 假 DONE、v4.0.0 GA 撤销、5 远端漂移、debt-registry 残留占位符、YAML 自相矛盾、.gitignore 静默屏蔽新 release 文档、WAL 恢复逐条整表重写 |
+| **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、WP-A RE-OPENED + 20 条 backlog、crate 状态描述错误、G13 门禁红 |
+| **P2** 不阻断但需记录 | **7** | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
+| **合计** | **22** | **18** | |
 
 **性能状态**：A1/B2 A/B 实测已落地 (见 `PERF_A1_4912_AB_MEASUREMENT.md` /
 `PERF_B2_4915_AB_MEASUREMENT.md`)，B2.1 在 22x-39x 范围，但发现一处 regression
@@ -38,7 +43,15 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-01 `check_anti_ignore_gate.sh` 是空转门禁 (AFP Type B / P16 违规)
 
-- **verdict**: `OPEN`
+- **verdict**: `CLOSED` (2026-10-23)
+- **销账依据**: 门禁现在用**与 registry 同一套规则**重算源码树里的真实 `#[ignore]`
+  数（`count_tree()`，`scripts/gate/check_anti_ignore_gate.sh:123-159`），两者不等时走
+  `FAIL: registry drift` 判定 ⇒ 不再是空转，且 fail-closed。
+  实测（2026-10-23, macmini M4）：`ignore_registry.json: total_allowed=119 (max=150),
+  active=69 (max=80)` + `tree recount: real #[ignore] attributes in tests/ + crates/ = 119`，
+  exit 0 —— 树确实被扫了，且与 registry 相符。
+  证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §3 / §7；
+  `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
 - **位置**: `scripts/gate/check_anti_ignore_gate.sh` 全文 + `tests/baseline/ignore_registry.json`
 - **证据**: `docs/releases/v4.1.0/evidence/anti-ignore-gate-hollow-2026-09-30/anti_ignore_gate_hollow.txt`
   (sha256 `fedcb27f2a80c6bb33bf9a4777383bbe30e0450d3703866f5d23787d03ef5e46`)
@@ -60,7 +73,13 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-02 `#4708` 是假 DONE — 块注释 `/* */` parser 完全不支持
 
-- **verdict**: `NOT FIXED` (RE-OPENED 2026-09-30)
+- **verdict**: `CLOSED` (2026-10-23)
+- **销账依据**: 实测 2026-10-23 —— parser 的 lexer **已有** `/* ... */` 分支
+  （`crates/parser/src/lexer.rs:78`，含 EOF 未闭合的收尾路径），且
+  `crates/parser/tests/wp_a_legacy.rs:68` 的 `#[ignore]` 已移除（该行现为说明其已被
+  移除的注释）⇒ 支持确实存在，且不再被未登记的 ignore 掩盖。
+  证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §7；
+  `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
 - **位置**: Gitea issue `#4708` (closed 2026-09-03T18:46:27Z, PR #4746)；缺陷在
   `crates/parser/src/{parser.rs,token.rs,lexer.rs}`
 - **证据**: `docs/releases/v4.1.0/evidence/wp-a-reverify-2026-09-30/wp_a_reverify.txt`
@@ -121,7 +140,18 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-05 `debt-registry.yaml` `SEM-4` 关闭根因仍是占位符 "XYZ"
 
-- **verdict**: `INCONSISTENT_STATE` (CLOSED 但 issue 未真正解)
+- **verdict**: `CLOSED` (2026-10-23)
+- **销账依据**: `SEM-4` 已由 `IN_PROGRESS` 改为 `CLOSED`（`closed_at: "2026-10-23"`，
+  `closing_pr: [5126, 5537]`），字面占位符 `'XYZ'` 被**实测根因**替换：
+  覆盖率原先用 `cargo llvm-cov` 的**默认并行 test 线程**测量，读数随机器负载漂移 ——
+  这正是跨机台读数不一致的来源；2026-10-22 commit `2fef945260`（#5537）把
+  `--test-threads=1` 钉死后测量转为确定性。
+  关闭前提均已满足：executor 套件实测 777 passed / 0 failed / 0 ignored（#5103 由
+  PR #5126 修复）+ 修正后门禁完整 8-crate 实跑（L1_8 平均 **87.80 %** ≥ 80.0 %，
+  `parser 86.46 %` —— 75.16 % 与 60.58 % 两个旧值均不复现）。
+  确定性验证：同机同代码连续两遍测 `sqlrustgo-transaction` 得 93.29 % / 93.29 %。
+  证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1；
+  `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
 - **位置**: `docs/governance/debt/debt-registry.yaml:293`
 - **证据**: 第 293 行原文 `note: "CLOSED 2026-08-15: L1_8 avg 84.44% >= 80% threshold. parser 75.16% ... Z440 32% issue (XYZ) recorded but does not block v3.12.0 close."`
 - **影响**:
@@ -218,7 +248,16 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P1-01 `#3302` parser 覆盖率 60.58% (目标 80%, 缺 19.42pp)
 
-- **verdict**: `OPEN`
+- **verdict**: `CLOSED` (2026-10-23) —— 关闭的是**门禁 fail-open 那一半**；
+  **阈值之争（50 % vs 80 %）不在本条范围内**，仍属 stage framework 的决定
+- **销账依据**: `check_coverage_v312.sh` 现在 fail-closed —— 测不出数据的 crate 进
+  `FAILED_CRATES` 并最终 `exit 1`，另有「测出的 crate 数必须等于 L1_8 全集」的数量
+  校验（`scripts/gate/check_coverage_v312.sh:315-349`；该处注释记录了 #4944 P1-01 的
+  旧形状是 `continue`，会把 crate 同时从分子和分母里丢掉）。
+  另实测 2026-10-23（macmini M4）：parser 行覆盖率 **86.46 %**（不是 60.58 %），
+  L1_8 8-crate 平均 **87.80 %** ≥ 80.0 %，exit 0。
+  证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1.3 / §7；
+  `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
 - **位置**: `crates/parser/src/parser.rs` (56.50% 单文件) / `crates/parser/` 总
 - **证据**: 实跑 `cargo llvm-cov --lib -p sqlrustgo-parser --no-fail-fast`
   ```

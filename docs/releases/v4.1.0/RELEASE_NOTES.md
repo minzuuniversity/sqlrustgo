@@ -433,18 +433,21 @@ Every entry names the document it was read from.
 
 ### 8.1 The seven open issues registered in the stage SSOT
 
-`docs/releases/v4.1.0/STAGE.yaml` → `open_issues` carries seven entries.
-**None of them is closed by anything in §7.**
+`docs/releases/v4.1.0/STAGE.yaml` → `open_issues` carried seven entries.
+**None of them was closed by anything in §7** — but **five were closed on
+2026-10-23**, outside this section. The closures are recorded in
+[`evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`](evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md)
+and in `STAGE.yaml` → `resolved_issues_2026_10_23`; **two remain open.**
 
-| # | Registered open issue | Why it is still open |
+| # | Registered open issue | Status as of 2026-10-23 |
 |---|---|---|
-| 1 | The current-version file and the v4.0.0 release notes still describe v4.0.0 as "GA (CONDITIONAL PASS)", which contradicts the `REVOKED` verdict in the v4.0.0 stage file | A wording conflict, not a code defect |
-| 2 | P0-01 — `scripts/gate/check_anti_ignore_gate.sh` was a hollow gate (it did not scan the source tree), so rule P16 was never actually enforced | Recorded in `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md`. The gate now recounts the tree (§7.5), but the issue's own wording still stands |
-| 3 | P0-02 — #4708 is a false DONE: the parser does not support block comments at all, masked by an unregistered ignore attribute in the parser legacy test | `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` and `docs/releases/v4.1.0/ISSUES_PLAN.md` §4.0 |
-| 4 | P0-05 — the recorded root cause for the debt-registry SEM-4 entry is still the literal placeholder `XYZ`, and the parser figure of 75.16 % recorded there is not reproducible (60.58 % measured) | `docs/governance/debt/debt-registry.yaml`; `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` |
-| 5 | P1-01 — parser line coverage measured 60.58 % against the ALPHA threshold of 80 %, a gap of 19.42 pp; the coverage gate fails open when its extraction at `scripts/gate/check_coverage_v312.sh:30` cannot proceed | `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` |
-| 6 | P1-02 — the #4540 Q20 oracle is not closed: the Q20 file is missing and the cross-engine hash check records it as absent, contradicting the "Q20 PASS" line in the v3.12.0 TPC-H report | `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` |
-| 7 | P0-08 — WAL recovery rewrites the whole table row by row: measured, the first full-table query after a restart took 24 min 22 s (the immediately following identical query took 0.08 s) under 68,288 rows / 58,288 inserts / 8.0 MB of WAL, with the delta-append path never reached; recovery completes before the listener, so the server is hard-unavailable during startup, and no historical SOAK covered it because the harness never restarts mid-run | `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` and `docs/releases/v4.1.0/ISSUE-RECOVERY-QUADRATIC-REPLAY.md` |
+| 1 | The current-version file and the v4.0.0 release notes still describe v4.0.0 as "GA (CONDITIONAL PASS)", which contradicts the `REVOKED` verdict in the v4.0.0 stage file | **RESOLVED** — both files now carry the SSOT's wording. The code was published (2026-09-19, tag `v4.0.0-final` @ `54571eeca0`, on all five remotes' `main`), but v4.0.0 never legitimately reached GA and is not a GA release |
+| 2 | P0-01 — `scripts/gate/check_anti_ignore_gate.sh` was a hollow gate (it did not scan the source tree), so rule P16 was never actually enforced | **RESOLVED** — the gate recounts the tree with the registry's own rule and fails closed on drift; measured 119 == 119, exit 0 |
+| 3 | P0-02 — #4708 is a false DONE: the parser does not support block comments at all, masked by an unregistered ignore attribute in the parser legacy test | **RESOLVED** — the parser has a `/* ... */` branch (`crates/parser/src/lexer.rs:78`) and the `#[ignore]` at `crates/parser/tests/wp_a_legacy.rs:68` is gone |
+| 4 | P0-05 — the recorded root cause for the debt-registry SEM-4 entry is still the literal placeholder `XYZ`, and the parser figure of 75.16 % recorded there is not reproducible (60.58 % measured) | **RESOLVED** — `SEM-4` is `CLOSED` (`closed_at: "2026-10-23"`, `closing_pr: [5126, 5537]`) with a measured root cause: the coverage had been taken with parallel test threads, so the reading depended on machine load. Measured: 8/8 crates, L1_8 **87.80 %**, `parser 86.46 %` |
+| 5 | P1-01 — parser line coverage measured 60.58 % against the ALPHA threshold of 80 %, a gap of 19.42 pp; the coverage gate fails open when its extraction at `scripts/gate/check_coverage_v312.sh:30` cannot proceed | **RESOLVED** for the fail-open: a crate that cannot be measured now fails the gate (`check_coverage_v312.sh:315-349`), and the measured parser figure is **86.46 %** (L1_8 87.80 %), not 60.58 %. The threshold itself remains the stage framework's call |
+| 6 | P1-02 — the #4540 Q20 oracle is not closed: the Q20 file is missing and the cross-engine hash check records it as absent, contradicting the "Q20 PASS" line in the v3.12.0 TPC-H report | **OPEN** — `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` |
+| 7 | P0-08 — WAL recovery rewrites the whole table row by row: measured, the first full-table query after a restart took 24 min 22 s (the immediately following identical query took 0.08 s) under 68,288 rows / 58,288 inserts / 8.0 MB of WAL, with the delta-append path never reached; recovery completes before the listener, so the server is hard-unavailable during startup, and no historical SOAK covered it because the harness never restarts mid-run | **OPEN** — `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` and `docs/releases/v4.1.0/ISSUE-RECOVERY-QUADRATIC-REPLAY.md` |
 
 ### 8.2 The 168-hour SOAK (V400-09)
 
@@ -476,12 +479,13 @@ process never ran to completion. This gap blocks the ALPHA → BETA transition.
 
 ### 8.4 The parser coverage figure and the ALPHA threshold are both unsettled
 
-Two parser-coverage measurements exist and the repository does not pick one:
+Three parser-coverage measurements exist and the repository does not pick one:
 
 | Figure | Source | Date |
 |---|---|---|
 | 60.58 % | `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` (P1-01) | 2026-10-01 |
 | 86.20 % | `docs/releases/v4.1.0/evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md` (COV-01 recorded as `DONE` in the stage file) | 2026-10-07 |
+| 86.46 % (full L1_8 run; L1_8 average 87.80 %) | `docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1.3 — the first reading taken with `--test-threads=1`, so it does not depend on machine load (two consecutive runs of the same crate agree exactly) | 2026-10-23 |
 
 The threshold is unsettled as well: the stage framework sets
 `COVERAGE_MIN_ALPHA: 50` and the stage file's exit criteria say

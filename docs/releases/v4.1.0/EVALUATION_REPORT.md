@@ -77,6 +77,7 @@ than estimating one.
 | storage / parser / executor / mysql-server | 81.45 % / 74.51 % / ~82 % / ~75 % | `STAGE.yaml` → `last_transition.reason` | 2026-10-07 |
 | parser line coverage (COV-01) | 86.20 % (13 495 lines, 1 862 missed; 24/24 test binaries ok) | `evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md`; `STAGE.yaml` COV-01 `DONE` | 2026-10-07 |
 | mysql-server coverage (COV-02) | 87.89 % (baseline recorded as 76.31 %) | `evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md`; `STAGE.yaml` COV-02 `DONE` | 2026-10-07 |
+| full L1_8 run of the corrected gate | **87.80 %** average (parser 86.46 / planner 88.91 / executor 82.74 / transaction 93.29 / storage 80.61 / catalog 87.33 / optimizer 87.85 / types 95.28) | `evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1.3 | 2026-10-23 |
 
 **Discrepancy**: four parser figures (74.32 %, 74.51 %, 60.58 %, 86.20 %) and
 two mysql-server figures (~75 %, 87.89 %) are all in the repository. They are
@@ -154,7 +155,7 @@ verdict, which is neither PASS nor FAIL.
 | Estimated work to close the backlog | 6–10 weeks | `ISSUES_PLAN.md` §4 (and `PHASE_1_SCOPE.md` §2.2, "6-8 weeks") |
 | Legacy headline | v4.1.0 closes only ~15 % of historical legacy issues | `STAGE.yaml` → `legacy_chain_audit_2026_09_30.headline_finding` |
 | Unresolved document contradictions | 19 | `STAGE.yaml` → `legacy_chain_audit_2026_09_30.doc_contradictions_unresolved` |
-| Open issues registered against the stage | 7 | `STAGE.yaml` → `open_issues` |
+| Open issues registered against the stage | 2 (was 7; five closed 2026-10-23 — see §5.2) | `STAGE.yaml` → `open_issues` / `resolved_issues_2026_10_23` |
 
 ### 2.6 Performance and stability measurements
 
@@ -224,15 +225,16 @@ Only things the repository records as passing are listed here.
 
 | # | Criterion | Repository position | Verdict |
 |---|---|---|---|
-| 1 | All v4.1.0 ALPHA gate failures resolved (3 inherited from v4.0.0) | 3 cleared 2026-09-30 with archived real gate runs | **MET** — but one of the three, `scripts/gate/check_anti_ignore_gate.sh`, is afterwards found to be a hollow gate that never scans the source tree (`open_issues` P0-01), so its PASS does not mean what it appears to mean |
+| 1 | All v4.1.0 ALPHA gate failures resolved (3 inherited from v4.0.0) | 3 cleared 2026-09-30 with archived real gate runs | **MET** — and the caveat that made it doubtful is now closed: `scripts/gate/check_anti_ignore_gate.sh` was afterwards found to be a hollow gate that never scanned the source tree (`open_issues` P0-01). Since 2026-10-23 it recounts the tree with the registry's own rule and fails closed on drift (measured 119 == 119, exit 0) |
 | 2 | V400-09 168 h SOAK completed with a report whose body states a completed run (or an explicit deferral recorded) | `known_gaps.V400_09_soak.status: "NOT MET"`; `STAGE.yaml` states explicitly that the criterion "is therefore NOT satisfied by that record" | **NOT MET** |
 | 3 | `known_gaps.V400_09_soak.decision` is no longer `OPEN` | `decision: "OPEN"` — whether to re-run the 168 h SOAK is left to the architect | **NOT MET** |
 | 4 | WP-C/D/F/G deferred items migrated from v4.0.0 into v4.1.0 scope | Migration completed 2026-09-30 (`ISSUES_PLAN.md` §4.1–§4.4 = 12 items). **Implementation is recorded as NOT STARTED** | **MET** for the migration criterion only |
 | 5 | Coverage >= 50 % (`COVERAGE_MIN_ALPHA`) | The lowest recorded crate figure is 74.51 %; the later parser figure (86.20 %) and the earlier one (60.58 %) are both also above 50 % | **MET** under every recorded parser figure |
 
 `docs/governance/STAGE_CONFIG.yaml` → `stages.ALPHA.exit_criteria` additionally requires
-**"No P0 bugs open"**. Four P0 items are registered open against the stage
-(P0-01, P0-02, P0-05, P0-08) → **NOT MET**.
+**"No P0 bugs open"**. **One** P0 item is still registered open against the stage
+(P0-08, WAL recovery rewrites the whole table per record) → **NOT MET**.
+(P0-01, P0-02 and P0-05 were closed on 2026-10-23 — see §5.2.)
 
 ### 4.2 Other recorded failures
 
@@ -245,14 +247,20 @@ Only things the repository records as passing are listed here.
    (`crates/storage/tests/no_namespace_db_refusal_5266.rs:16,22`). A concrete
    instance of the `FMT_DRIFT_MAX: 0` criterion not holding at that commit.
 4. **The earlier ALPHA stage-gate run of the same day failed**
-   (`scripts/gate/check_coverage_v312.sh` FAIL, 15 PASS / 1 FAIL) — the coverage gate is
-   not deterministic across runs.
+   (`scripts/gate/check_coverage_v312.sh` FAIL, 15 PASS / 1 FAIL) — the coverage
+   gate is not deterministic across runs. **Root cause identified 2026-10-23:**
+   the coverage had been taken with `cargo llvm-cov`'s **default parallel test
+   threads**, so the reading depended on machine load; `--test-threads=1` is now
+   pinned (commit `2fef945260`, #5537), and two consecutive runs of the same
+   crate on the same machine now agree exactly (93.29 % / 93.29 %).
+   (`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1)
 5. **`scripts/gate/check_g13_stability.sh` is recorded as currently exit 1**
    — `[1/9] ❌ FAIL: tests/soak_test_harness.rs not found`
    (`DEFECTS_AND_ISSUES.md` P1-07).
 6. **The coverage gate fails open**: `check_coverage_v312.sh:30` prints
    "WARN: could not extract coverage for $crate, skipping" instead of failing
-   (`DEFECTS_AND_ISSUES.md` P1-01).
+   (`DEFECTS_AND_ISSUES.md` P1-01). **Closed 2026-10-23** — a crate that cannot
+   be measured now fails the gate (`check_coverage_v312.sh:315-349`).
 7. **The mandatory-document gate for v4.1.0 does not pass.** Under
    `scripts/gate/check_document_completeness.sh` the list is
    `QUICK_START.md` (≥ 5000), `FEATURE_MATRIX.md` (≥ 15000),
@@ -287,15 +295,19 @@ Only things the repository records as passing are listed here.
 
 ### 5.2 The seven registered open issues (`STAGE.yaml` → `open_issues`)
 
-| Ref | Gap |
-|---|---|
-| — | `CURRENT_VERSION.md` and `docs/releases/v4.0.0/RELEASE_NOTES.md` still write v4.0.0 as "GA (CONDITIONAL PASS)", contradicting `docs/releases/v4.0.0/STAGE.yaml` → `ga_promotion_status.verdict = "REVOKED 2026-09-30"` |
-| P0-01 | `scripts/gate/check_anti_ignore_gate.sh` is a hollow gate — it never scans the source tree, and `active` is structurally always 0 because no registry entry carries a `status` field. P16 is unenforced |
-| P0-02 | #4708 is a false DONE — the parser has no block-comment support at all, masked by an unregistered `#[ignore]` at `crates/parser/tests/wp_a_legacy.rs:68` |
-| P0-05 | `docs/governance/debt/debt-registry.yaml` SEM-4's closing root cause is still the literal placeholder `XYZ`; the registry's `parser 75.16 %` is not reproducible (measured 60.58 %) |
-| P1-01 | parser line coverage measured 60.58 %; the threshold named in the same entry is 80 %; `check_coverage_v312.sh:30` fails open |
-| P1-02 | #4540 Q20 oracle is not closed — the `sqlrustgo/q20.tsv` oracle is missing (22 files, 1 absent) and the hash record `CROSS_ENGINE_HASH_CHECK.json` reports `present:false`, contradicting the "Q20 PASS" in `docs/releases/v3.12.0/evidence/v312-59/GA5_TPCH_SF1_REPORT.md`. Neither oracle artefact is present in the current tree: `docs/releases/v3.12.0/evidence/tpch/cross_engine_sf1/` holds only `build_cross_engine_summary.py` |
-| P0-08 | WAL recovery rewrites the whole table per record — the first full-table query after a restart took 24 min 22 s (next identical query: 0.08 s) at 68 288 rows / 58 288 INSERTs / 8.0 MB WAL; recovery completes before the listener accepts connections, and no historical SOAK covered it |
+Five of the seven were closed on 2026-10-23; the closures are recorded in
+[`evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`](evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md)
+and in `STAGE.yaml` → `resolved_issues_2026_10_23`.
+
+| Ref | Gap | Status |
+|---|---|---|
+| — | `CURRENT_VERSION.md` and `docs/releases/v4.0.0/RELEASE_NOTES.md` still write v4.0.0 as "GA (CONDITIONAL PASS)", contradicting `docs/releases/v4.0.0/STAGE.yaml` → `ga_promotion_status.verdict = "REVOKED 2026-09-30"` | **RESOLVED 2026-10-23** — the wording now matches the SSOT: the code was published (2026-09-19, tag `v4.0.0-final` @ `54571eeca0`, on all five remotes' `main`), but v4.0.0 never legitimately reached GA |
+| P0-01 | `scripts/gate/check_anti_ignore_gate.sh` is a hollow gate — it never scans the source tree, and `active` is structurally always 0 because no registry entry carries a `status` field. P16 is unenforced | **RESOLVED 2026-10-23** — the gate now recounts the tree with the registry's own rule and fails closed on drift; measured 119 == 119, exit 0 |
+| P0-02 | #4708 is a false DONE — the parser has no block-comment support at all, masked by an unregistered `#[ignore]` at `crates/parser/tests/wp_a_legacy.rs:68` | **RESOLVED 2026-10-23** — the parser has a `/* ... */` branch (`crates/parser/src/lexer.rs:78`) and the `#[ignore]` is gone |
+| P0-05 | `docs/governance/debt/debt-registry.yaml` SEM-4's closing root cause is still the literal placeholder `XYZ`; the registry's `parser 75.16 %` is not reproducible (measured 60.58 %) | **RESOLVED 2026-10-23** — `SEM-4` is `CLOSED` with a measured root cause; 8/8 crates measured, L1_8 **87.80 %**, `parser 86.46 %` |
+| P1-01 | parser line coverage measured 60.58 %; the threshold named in the same entry is 80 %; `check_coverage_v312.sh:30` fails open | **RESOLVED 2026-10-23** — the gate fails closed on an unmeasurable crate (`check_coverage_v312.sh:315-349`); measured `parser 86.46 %`, L1_8 87.80 %. The threshold itself remains the stage framework's call |
+| P1-02 | #4540 Q20 oracle is not closed — the `sqlrustgo/q20.tsv` oracle is missing (22 files, 1 absent) and the hash record `CROSS_ENGINE_HASH_CHECK.json` reports `present:false`, contradicting the "Q20 PASS" in `docs/releases/v3.12.0/evidence/v312-59/GA5_TPCH_SF1_REPORT.md`. Neither oracle artefact is present in the current tree: `docs/releases/v3.12.0/evidence/tpch/cross_engine_sf1/` holds only `build_cross_engine_summary.py` | **OPEN** |
+| P0-08 | WAL recovery rewrites the whole table per record — the first full-table query after a restart took 24 min 22 s (next identical query: 0.08 s) at 68 288 rows / 58 288 INSERTs / 8.0 MB WAL; recovery completes before the listener accepts connections, and no historical SOAK covered it | **OPEN** |
 
 ### 5.3 Gaps named by the assessment sources
 
@@ -323,10 +335,10 @@ Only things the repository records as passing are listed here.
 | # | Subject | Reading A | Reading B | Status |
 |---|---|---|---|---|
 | D1 | Stage | `STAGE.yaml` → `current_stage: "ALPHA"` (re-entered 2026-10-06) | `ARCHITECTURE.md` (2026-10-07) "DRAFT (NOT YET ALPHA)"; `RELEASE_NOTES.md` "DRAFT — NOT YET ALPHA"; `COMPREHENSIVE_ASSESSMENT_REPORT.md` (2026-10-05) DRAFT; `DEFECTS_AND_ISSUES.md` §6 "current_stage: DRAFT" | `docs/governance/STAGE_CONFIG.yaml` makes `STAGE.yaml` the per-version SSOT; the other four documents are stale |
-| D2 | Parser coverage | 60.58 % (`DEFECTS_AND_ISSUES.md` P1-01, 2026-10-01) | 86.20 % (`evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md`, 2026-10-07; `STAGE.yaml` COV-01 `DONE`) | Unresolved — different dates, different trees, different scopes (region vs line) |
+| D2 | Parser coverage | 60.58 % (`DEFECTS_AND_ISSUES.md` P1-01, 2026-10-01) | 86.20 % (`evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md`, 2026-10-07; `STAGE.yaml` COV-01 `DONE`); **86.46 %** (2026-10-23, macmini M4, full 8-crate run of the corrected gate — `evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1.3) | **Partly resolved.** The 2026-10-23 measurement supersedes the 2026-10-01 one: it was taken with `--test-threads=1` (pinned 2026-10-22 by #5537), and two consecutive runs of the same crate now agree exactly. The 60.58 % figure was taken under the old load-sensitive measurement and is not reproducible. The **region-vs-line scope** difference behind the original discrepancy is not adjudicated here |
 | D3 | ALPHA coverage threshold | 50 % (`docs/governance/STAGE_CONFIG.yaml` `COVERAGE_MIN_ALPHA`; `STAGE.yaml` `exit_criteria.alpha_to_beta`) | 80 % (`DEFECTS_AND_ISSUES.md` P1-01; `ARCHITECTURE.md` §1) | 80 % is the **Beta** figure (`COVERAGE_MIN_BETA: 75`; `ALPHA_TO_BETA_GATE_PLAN.md` §2 applies the stricter G17 Beta 80 %) — a governance inconsistency to reconcile, not a measurement dispute |
 | D4 | #5167 | `refuted` (`IAIA_410_AUDIT_PLAN.md` §16.1/§16.2, baseline `5a59c2f701`, `--storage file`, real pymysql client, SQLite oracle) | still reproducible (`CHANGELOG.md` SOAK-evidence bullet, HEAD `345ee9539c`, `--storage file`; the audit's new regression tests used `storage: None`) | Unresolved. The changelog's supporting evidence is filed as comments on #5167 and three audit PRs — **not in this repository**. The audit plan's own §16.5 checklist leaves "#5167 closed as `refuted`" unchecked pending a `--storage file` regression test |
-| D5 | Defect counts | P0 × 8 / P1 × 7 / P2 × 7 = 22 (`DEFECTS_AND_ISSUES.md` §0) | P0×6 + P1×7 + P2×7 (`RELEASE_NOTES.md`; `ARCHITECTURE.md` §4) | Unresolved wording conflict |
+| D5 | Defect counts | P0 × 8 / P1 × 7 / P2 × 7 = 22 (`DEFECTS_AND_ISSUES.md` §0, as counted 2026-10-01) | P0×6 + P1×7 + P2×7 (`RELEASE_NOTES.md`; `ARCHITECTURE.md` §4) | Unresolved wording conflict — **and a third reading now exists**: after the 2026-10-23 closures (P0-01, P0-02, P0-05, P1-01) the still-open count is P0 × 5 / P1 × 6 / P2 × 7 = **18** (`DEFECTS_AND_ISSUES.md` §0, updated) |
 | D6 | WP-A | `docs/releases/v4.1.0/LEGACY_ISSUES.md` §2 records WP-A as `DONE` — "None (inherited DONE)" | `STAGE.yaml` → `legacy_chain_audit_2026_09_30.false_done_wp_a`: `DONE_REOPENED_2026-09-30`, #4708 `NOT FIXED` | `STAGE.yaml` is newer; `LEGACY_ISSUES.md` is stale |
 | D7 | 5-remote drift | `DEFECTS_AND_ISSUES.md` P0-04 (2026-10-01): `develop/v4.1.0` inconsistent across the 5 remotes (gitea250/gitee ahead 15, github behind 34) | `STAGE.yaml` → `last_status_refresh` (2026-10-03): `develop/v4.1.0` 5/5 remotes identical at `d59dbffd` | Two dated records; not merged here |
 | D8 | Backlog count | 24 (`ISSUES_PLAN.md` §4.7 `Total`; `VERSION_PLAN.md` §1) | 20 — the earlier figure retained inside `ISSUES_PLAN.md` §4 as a superseded correction note (18 → 20 → 24) | 24 is current; 20 is retained history |

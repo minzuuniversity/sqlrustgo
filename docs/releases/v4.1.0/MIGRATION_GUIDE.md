@@ -535,19 +535,22 @@ Your restore point is the filesystem copy of the data directory plus
 
 ### 7.5 Registered open issues at the ALPHA stage
 
-`STAGE.yaml` → `open_issues` records seven items that nothing in the delta
+`STAGE.yaml` → `open_issues` recorded **seven** items that nothing in the delta
 matrix resolves ([`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) §1.6 gives each one
-a row with the defect-catalog entry it corresponds to):
+a row with the defect-catalog entry it corresponds to). **Five of them were
+closed on 2026-10-23**; the closures are recorded in
+[`evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`](evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md)
+and in `STAGE.yaml` → `resolved_issues_2026_10_23`. **Two remain open.**
 
-| Item | Summary |
-|---|---|
-| O-01 / P0-03 | The **v4.0.0 "GA (CONDITIONAL PASS)" wording conflict** — `CURRENT_VERSION.md` and `docs/releases/v4.0.0/RELEASE_NOTES.md` still write v4.0.0 as "GA (CONDITIONAL PASS)", contradicting `docs/releases/v4.0.0/STAGE.yaml` → `ga_promotion_status.verdict=REVOKED` (v4.0.0's GA was revoked on 2026-09-30) |
-| P0-01 | `check_anti_ignore_gate.sh` is a **no-op gate** — it reads two numbers out of the registry JSON and compares them to hard-coded limits; it never scans the source tree. The `active` count keys on a `status` field that no registry entry carries, so `active` is structurally always 0 |
-| P0-02 | #4708 is a false "DONE" — block comments (`/* */`) are not supported by the parser at all, masked by an unregistered `#[ignore]` at `crates/parser/tests/wp_a_legacy.rs:68` |
-| P0-05 | `docs/governance/debt/debt-registry.yaml` `SEM-4`'s closure root cause is still the literal placeholder `XYZ`; `closing_pr` is `[]`, and the registry's `parser 75.16%` is not reproducible (measured 60.58 %) |
-| P1-01 | parser coverage gap — see the table below; the figure **and** the threshold are both unsettled |
-| P1-02 | #4540 Q20 oracle is not closed — `sqlrustgo/q20.tsv` does not exist (21/22 files present) and `CROSS_ENGINE_HASH_CHECK.json` records `present:false`, contradicting the "Q20 PASS" in `docs/releases/v3.12.0/evidence/v312-59/GA5_TPCH_SF1_REPORT.md` |
-| P0-08 | WAL recovery rewrites the whole table per record — the measured instance is a **24 min 22 s** first query after restart, and recovery completes before the listener accepts connections |
+| Item | Summary | Status |
+|---|---|---|
+| O-01 / P0-03 | The **v4.0.0 "GA (CONDITIONAL PASS)" wording conflict** — `CURRENT_VERSION.md` and `docs/releases/v4.0.0/RELEASE_NOTES.md` still write v4.0.0 as "GA (CONDITIONAL PASS)", contradicting `docs/releases/v4.0.0/STAGE.yaml` → `ga_promotion_status.verdict=REVOKED` (v4.0.0's GA was revoked on 2026-09-30) | **RESOLVED 2026-10-23** — both files now carry the SSOT's wording: the code was published (2026-09-19, tag `v4.0.0-final` @ `54571eeca0`, on all five remotes' `main`), but v4.0.0 never legitimately reached GA and is not a GA release |
+| P0-01 | `check_anti_ignore_gate.sh` is a **no-op gate** — it reads two numbers out of the registry JSON and compares them to hard-coded limits; it never scans the source tree. The `active` count keys on a `status` field that no registry entry carries, so `active` is structurally always 0 | **RESOLVED 2026-10-23** — the gate recounts the tree with the registry's own rule and fails closed on drift; measured tree count 119 == registry `total_allowed` 119, exit 0 |
+| P0-02 | #4708 is a false "DONE" — block comments (`/* */`) are not supported by the parser at all, masked by an unregistered `#[ignore]` at `crates/parser/tests/wp_a_legacy.rs:68` | **RESOLVED 2026-10-23** — the parser has a `/* ... */` branch (`crates/parser/src/lexer.rs:78`) and the `#[ignore]` at `wp_a_legacy.rs:68` is gone |
+| P0-05 | `docs/governance/debt/debt-registry.yaml` `SEM-4`'s closure root cause is still the literal placeholder `XYZ`; `closing_pr` is `[]`, and the registry's `parser 75.16%` is not reproducible (measured 60.58 %) | **RESOLVED 2026-10-23** — `SEM-4` is `CLOSED` (`closed_at: "2026-10-23"`, `closing_pr: [5126, 5537]`) and the placeholder root cause is replaced by a measurement (the coverage had been taken with parallel test threads, so the reading depended on machine load). Measured: 8/8 crates, L1_8 **87.80 %**, `parser 86.46 %` |
+| P1-01 | parser coverage gap — see the table below; the figure **and** the threshold are both unsettled | **RESOLVED 2026-10-23** for the fail-open half: a crate that cannot be measured now fails the gate (`check_coverage_v312.sh:315-349`), and the measured parser figure is **86.46 %** (L1_8 87.80 %), not 60.58 %. The *threshold* question stays with the stage framework |
+| P1-02 | #4540 Q20 oracle is not closed — `sqlrustgo/q20.tsv` does not exist (21/22 files present) and `CROSS_ENGINE_HASH_CHECK.json` records `present:false`, contradicting the "Q20 PASS" in `docs/releases/v3.12.0/evidence/v312-59/GA5_TPCH_SF1_REPORT.md` | **OPEN** |
+| P0-08 | WAL recovery rewrites the whole table per record — the measured instance is a **24 min 22 s** first query after restart, and recovery completes before the listener accepts connections | **OPEN** |
 
 Plus the wider catalog in [`DEFECTS_AND_ISSUES.md`](DEFECTS_AND_ISSUES.md) and
 the **24-issue** backlog in `ISSUES_PLAN.md` §4.
@@ -559,13 +562,14 @@ the **24-issue** backlog in `ISSUES_PLAN.md` §4.
 and deliberately does not pick one. Either way, **eight or six P0 items are
 open**, and the catalog explicitly says P0 blocks any release.
 
-**Parser coverage — three figures coexist, and the threshold is disputed too.**
+**Parser coverage — four figures coexist, and the threshold is disputed too.**
 
 | Figure | Source | Date |
 |---|---|---|
 | **60.58 %** (682 passed / 0 failed) | `DEFECTS_AND_ISSUES.md` P1-01; root `README.md` §1 | 2026-10-01 |
 | **74.51 %** | `STAGE.yaml` → `last_transition` (alongside storage 81.45 %, executor ~82 %, mysql-server ~75 %) | 2026-10-06 |
 | **86.20 %** | `evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md`; recorded as **COV-01 `DONE`** in `STAGE.yaml` | 2026-10-07 |
+| **86.46 %** (full L1_8 run, L1_8 average 87.80 %) | `evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1.3 — taken with `--test-threads=1`, which is what makes the reading independent of machine load | 2026-10-23 |
 
 `FEATURE_MATRIX.md` §3 items 6 and 7 quote the 60.58 % and 86.20 %
 measurements with their dates and call **neither "the" number**. The
@@ -576,9 +580,10 @@ says "Coverage >= 50 %", while `DEFECTS_AND_ISSUES.md` P1-01 and
 (`COVERAGE_MIN_BETA: 75`; `ALPHA_TO_BETA_GATE_PLAN.md` §2 applies the
 stricter G17 Beta 80 %).
 
-**Do not treat parser coverage as a settled upgrade gate.** The three
-readings point in different directions, and the repository itself declines
-to choose.
+**Do not treat parser coverage as a settled upgrade gate.** The readings point
+in different directions, and the repository itself declines to choose — though
+the 2026-10-23 measurement is the first one taken under a measurement
+**convention** that does not depend on machine load.
 
 ### 7.6 V400-09 — the 168 h SOAK is NOT MET
 
