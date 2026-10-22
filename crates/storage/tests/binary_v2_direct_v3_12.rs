@@ -1,3 +1,19 @@
+//! This test imports `sqlrustgo_storage::BinaryTableStorageV2`, `sqlrustgo_storage::binary_storage_v2`, which `crates/storage/src/lib.rs` gates
+//! behind the `bin_storage_default` feature. An integration test links the library
+//! without `cfg(test)`, so that item does not exist for it unless the
+//! feature is on — and the test then fails to COMPILE rather than
+//! failing at run time:
+//!
+//!     error[E0432]: unresolved import `sqlrustgo_storage::BinaryTableStorageV2`
+//!
+//! `cargo test --workspace` does not pass `--all-features`, so the
+//! test is compiled out there instead of breaking the build. This is
+//! deliberately NOT `#[ignore]`: an ignored test stays visible as
+//! "N ignored" in the output, which is how a gate reports PASS while
+//! the test never ran (ADR-008 Policy 2). A `cfg` gate removes the
+//! test from the binary outright, and it IS built by the invocation
+//! that enables the feature.
+#![cfg(feature = "bin_storage_default")]
 //! V312-12 coverage improvement tests for `sqlrustgo_storage::BinaryTableStorageV2`
 //! (Issue #4431 followup — B8 COVERAGE_MIN_PER_CRATE).
 //!
