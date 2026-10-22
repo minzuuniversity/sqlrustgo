@@ -32,6 +32,29 @@
 
 ---
 
+## 0.1 版本号策略（#5442）
+
+**发布线号 = 二进制自报版本 = `Cargo.toml` 的 `[workspace.package] version`。**
+
+| 概念 | 取值 | 唯一来源 |
+|---|---|---|
+| 发布线号（`v4.1.0`） | 记录在 `docs/releases/v4.1.0/STAGE.yaml`、tag、发布文档 | `docs/releases/<ver>/STAGE.yaml` |
+| 包版本（`4.1.0`） | cargo 的包版本 | `Cargo.toml` 的 `[workspace.package] version` |
+| 规范 CLI 自报版本 | `sqlrustgo <包版本>` | 同上（`crates/sqlrustgo-cli` 用 `version.workspace = true`） |
+
+规则：
+
+1. **发布线号推进 ⇒ 包版本同步推进**。本仓库此前把包版本停在
+   `3.12.0-fix-zombie`，而发布线是 `v4.1.0` —— 锚点与发布线失联，
+   且**没有任何门禁会发现**（`check_release_binary.sh` 此前只
+   `grep -q "sqlrustgo"`，任何版本都算过）。
+2. **判据必须是相等，不是「含有」**。`scripts/gate/check_release_binary.sh`
+   现在读取 `Cargo.toml` 的 `[workspace.package] version`，
+   要求 `sqlrustgo --version` 的输出**等于**它。
+   门禁里**不再**写第二份版本字面量 —— 一个规则只有一份实现。
+3. **规范 CLI 的版本跟随 workspace**。`crates/sqlrustgo-cli` 用
+   `version.workspace = true`，因此「发布二进制自报什么版本」只有一个来源。
+
 ## 3. 版本推进总流程
 
 ```

@@ -63,11 +63,31 @@ check "verification script syntax" "bash -n scripts/verify_binary_checksum.sh"
 # 3. --version flag
 echo ""
 echo "--- Version Flag ---"
-if cargo run --package sqlrustgo-cli -- --version 2>/dev/null | grep -q "sqlrustgo"; then
-    echo "  [PASS] sqlrustgo-cli --version works"
+# #5442 —— 版本判据必须是**相等**，不是「含有 sqlrustgo」。
+#
+# 旧判据 `grep -q "sqlrustgo"` 只要输出里出现这个名字就算过：
+# `3.12.0-fix-zombie`、`3.9.0`、`4.1.0` 一视同仁。于是发布出去的二进制
+# 自报 3.9.0、发布线却是 v4.1.0 时，**没有任何门禁会发现**。
+#
+# 期望版本取自 `Cargo.toml` 的 `[workspace.package] version` ——
+# 版本号的**唯一**来源（策略见 VERSION_PROMOTION_SOP.md §0.1），
+# 不在门禁里再写一份字面量。
+EXPECTED_VERSION="$(awk '
+  /^\[workspace\.package\]/{f=1;next}
+  /^\[/{f=0}
+  f && /^version[[:space:]]*=[[:space:]]*"/{
+    gsub(/.*=[[:space:]]*"/,""); gsub(/".*/,""); print; exit
+  }' Cargo.toml)"
+ACTUAL_VERSION="$(cargo run --package sqlrustgo-cli -- --version 2>/dev/null | head -1 | awk '{print $NF}')"
+if [ -z "$EXPECTED_VERSION" ]; then
+    echo "  [FAIL] cannot read [workspace.package] version from Cargo.toml"
+    FAIL=$((FAIL+1))
+elif [ "$ACTUAL_VERSION" = "$EXPECTED_VERSION" ]; then
+    echo "  [PASS] sqlrustgo-cli --version reports $ACTUAL_VERSION (== Cargo.toml [workspace.package] version)"
     PASS=$((PASS+1))
 else
-    echo "  [FAIL] sqlrustgo-cli --version not working"
+    echo "  [FAIL] sqlrustgo-cli --version reports '$ACTUAL_VERSION' but the release line is '$EXPECTED_VERSION'"
+    echo "         (the release binary must self-report the release line version)"
     FAIL=$((FAIL+1))
 fi
 

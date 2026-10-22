@@ -49,7 +49,16 @@ members = [
 ]
 
 [workspace.package]
-version = "3.12.0-fix-zombie"
+# #5442 —— 版本号是发布治理的**锚**：RC 报告、证据绑定、发布二进制校验
+# 都读它。它此前停在 `3.12.0-fix-zombie`，而发布线是 `v4.1.0` ——
+# 锚点与发布线失联，而且**没有任何门禁会发现**（`check_release_binary.sh`
+# 此前只 `grep -q "sqlrustgo"`，3.12.0 与 4.1.0 一视同仁）。
+#
+# 策略：**跟随发布线**。版本策略写在
+# `docs/governance/VERSION_PROMOTION_SOP.md` §0.1；
+# `scripts/gate/check_release_binary.sh` 现在校验二进制自报版本
+# **等于**这里的值。
+version = "4.1.0"
 edition = "2021"
 authors = ["SQLRustGo Team"]
 license = "MIT"

@@ -313,6 +313,20 @@ last_rollback_record:
 current_state:
   head: "2f96229f620a7f65961360ac75eb31944e27dab5"
   branch: "develop/v4.1.0"
+  # #5436 —— GA 的承载分支。GA 的 `branch_pattern` 是
+  # ["main", "release/v*", "hotfix/v*"]，**不含** `develop/*`；
+  # 而 v4.1.0 的整条开发线都在 `develop/v4.1.0` 上 ⇒ 按定义，
+  # 「在开发线上宣布 GA」不成立。
+  #
+  # 合法路径（VERSION_PROMOTION_SOP §9）：RC 判定通过 ⇒ 切 `v4.1.0-rc1`
+  # ⇒ 从该 tag 切出 `release/v4.1.0` ⇒ 在 `release/v4.1.0` 上做 GA 判定
+  # ⇒ 合入 `main` ⇒ 打 `v4.1.0` tag。
+  #
+  # 这一条由 `scripts/gate/check_stage.sh` 强制（`carrier_enforced: true`）：
+  # 谁把 `current_stage` 改成 GA 而没有合法承载分支，门禁立刻红。
+  ga_carrier_branch: "release/v4.1.0"
+  ga_declared: false
+  ga_carrier_note: "no release/v4.1.0 branch exists yet; GA has NOT been declared and MUST NOT be claimed on develop/v4.1.0"
   last_modified: "2026-10-06"
   source: "local git + 5 remotes (gitea250/252, github, gitcode, gitee)"
   note: "develop/v4.1.0 carries v4.0.0 GA gate commit (38566af0f8) plus: (a) cherry-picks of the 4 review-queue commits (6603820f1e / daad2c687d / 82772919e2) and the empty merges (fca71cb525 / a65497e276 / 7e30fbc0cb) that bring 3 doc-only v4.0.0 commits into v4.1.0 graph; (b) the zombie-fix core merge (9c6767a512) carrying v4.0.0 code forward; (c) the closed review queue audit (0bbb044da3)."
