@@ -304,7 +304,7 @@ bash scripts/gate/auto_env_blocker.sh --check "${{ steps.version.outputs.version
 
 ## 7. 验证
 
-### 7.1 CI 已经是红的 —— 而两个根因都落在本批范围内
+### 7.1 CI 已经是红的 —— 而三个根因都落在本批范围内
 
 在动手之前先看了 CI 的真实状态（run 8632，develop/v4.1.0 @ `653096dd17`）：
 
@@ -317,7 +317,38 @@ test-soak-detach   | completed | success
 postcheck          | completed | failure      ← Auto env:blocked 步骤失败
 ```
 
-**根因 A：`lint-build` 的 Clippy 步骤。**
+**根因 A：`lint-build` 的第一个红点 —— 是**编译错误**，不是 lint。**
+
+PR #5524 的第一次 CI（run 8648）仍然红在 `lint-build`，但日志里根本不是
+clippy lint，而是：
+
+```
+error: environment variable `CARGO_TARGET_DIR` not defined at compile time
+  --> tests/integration/sql/four_way_compare_test.rs:445:19
+  --> tests/integration/sql/four_way_cell_diff_test.rs:542:19
+error: could not compile `sqlrustgo` (test "four_way_compare_test") due to 1 previous error
+```
+
+`env!("CARGO_TARGET_DIR")` 是**编译期**宏。CI 没有设 `CARGO_TARGET_DIR` ⇒
+宏展开直接是编译错误 ⇒ 整个 test target 编译不过 ⇒
+`cargo clippy --all-targets` 失败 ⇒ `test` / `mutation` /
+`ga3-security-scan` 连带跳过或失败。
+
+**这是一个既有缺陷，不是本批引入的**，但它落在本批要修的同一个 job 上，
+必须一起修，否则 `lint-build` 不可能绿。
+
+修法：改成**运行期**解析路径 —— `std::env::var`（运行期）→
+`option_env!`（编译期可选，编译时若设过则带上）→
+`env!("CARGO_MANIFEST_DIR")/target`（cargo 默认目标目录）。
+两个 `report_path()` 用的就是这个。
+
+> **订正声明**：本文件早期版本在 §7.2 里写「CI 精确 clippy 命令 … exit 0」。
+> 那个结论**只在 `CARGO_TARGET_DIR` 已设的环境下成立** —— 我本地跑命令时
+> 一直带着这个环境变量，于是编译期宏展开成功，把 CI 上真实存在的编译错误
+> 整个遮住了。**只跑本地绿命令不足以证明 CI 绿**，必须复现 CI 的环境
+> （不设该变量）再验一次。下面 §7.2 的表格已经按订正后的口径重写。
+
+**根因 B：`lint-build` 的第二个红点 —— `clippy::collapsible_match`。**
 `clippy::collapsible_match` 在 `crates/mysql-server/src/lib.rs` 的
 `split_top_level_statements` 里报了一条。CI 跑的是 `-D warnings` ⇒ 直接红。
 本机默认 1.97.0 **不报这条**（只有 1.95.0 报），所以本地「看着是绿的」，
@@ -341,7 +372,7 @@ CI 却是红的 —— **只有用 CI 的工具链验证才能看见**。
 末尾的 `_ => {}` 兜底臂 —— 同样什么也不做（中间的 `'-'` / `'/'` / `';'`
 都是别的字面量，匹配不上 `)`）。相关 23 个测试全绿。
 
-**根因 B：`postcheck` 的「Auto env:blocked (SPEC-021)」步骤。**
+**根因 C：`postcheck` 的「Auto env:blocked (SPEC-021)」步骤。**
 就是 §5 那个 `pipefail` 中止。用 git 里的原版脚本在沙箱里复现：
 
 ```console
@@ -360,7 +391,9 @@ EXIT=0
 
 | 检查 | 命令 | 结果 |
 |---|---|---|
-| CI 精确 clippy 命令 | `cargo +1.95.0 clippy --all-features --all-targets -- -D warnings` | **exit 0**（修复前 exit 101） |
+| **CI 等价 clippy（不设 `CARGO_TARGET_DIR`，复现 CI 环境）** | `env -u CARGO_TARGET_DIR cargo +1.95.0 clippy --all-features --all-targets --target-dir <dir> -- -D warnings` | **exit 0** |
+| 同一命令的**负对照**（恢复原版 `env!` 宏） | 同上 | **exit 101**，`error: environment variable \`CARGO_TARGET_DIR\` not defined at compile time`（行号 445 / 542，与 CI 日志逐字一致） |
+| CI 精确 clippy 命令（**旧口径，已订正**） | `cargo +1.95.0 clippy --all-features --all-targets -- -D warnings` | exit 0 **但只在 `CARGO_TARGET_DIR` 已设时成立**；该口径会掩盖 CI 上的编译错误，见 §7.1 订正声明 |
 | 全 workspace clippy | `cargo +1.95.0 clippy --workspace --all-features --all-targets` | **0 错误**，703 警告 / 68 个 lint 名 |
 | lint 预算（root scope） | `check_test_target_lint_budget.sh` | **PASS**，0 ≤ 0，基线未被改写 |
 | lint 预算（workspace scope） | `check_test_target_lint_budget.sh --scope workspace` | **PASS**，703 ≤ 703，基线未被改写 |
@@ -395,6 +428,12 @@ EXIT=0
   每次重新基线化。
 * `resolve_alpha_gate.sh v3.12.0` 一开始解析失败（双 `v`）⇒ **门禁在开发
   过程中抓到了作者本人的 bug**；修正后各版本全部解析正确。
+* **`env!` 编译期宏的负对照**：把两处 `report_path()` 恢复成原版
+  `env!("CARGO_TARGET_DIR")`，并在**不设**该环境变量的条件下跑同一条
+  clippy 命令 ⇒ **exit 101**，报错文本与行号（`four_way_compare_test.rs:445`、
+  `four_way_cell_diff_test.rs:542`）与 CI 日志逐字一致 ⇒ 确认这次修的
+  就是 CI 真实红因，不是换了个环境把问题绕过去。恢复修复后同一条命令
+  exit 0。
 
 ---
 
