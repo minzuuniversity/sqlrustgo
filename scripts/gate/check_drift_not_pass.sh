@@ -97,7 +97,19 @@ fi
 echo
 echo "[3/5] Scanning for grep-on-stdout without result validation..."
 
-grep_pattern=$(grep -rnE 'cargo test[^|]+\|[^|]*grep' scripts/gate/ 2>/dev/null | head -10)
+# #5403: this used to end in `| head -10`, which truncated the scan to the
+# first ten matches **in filesystem order**. That made the gate's verdict
+# depend on which files the filesystem happened to list first: on a
+# developer machine the ten it saw were all already in the baseline (so it
+# reported "no NEW anti-patterns" and passed), while on CI the order put
+# `check_p21_audit_log.sh`, `check_p13_soak_test.sh` and `check_p35_simd.sh`
+# inside the first ten, none of which were registered, so the same tree was
+# reported as a P0 hard-block failure.
+#
+# A gate whose result changes with directory listing order is not a gate.
+# The scan now covers **every** match; the baseline records the real debt
+# (24 sites), and any new one is still a failure.
+grep_pattern=$(grep -rnE 'cargo test[^|]+\|[^|]*grep' scripts/gate/ 2>/dev/null || true)
 
 if [ -n "$grep_pattern" ]; then
     echo "  Found $(echo "$grep_pattern" | wc -l | tr -d ' ') grep-on-stdout sites"
@@ -211,7 +223,13 @@ if [ ! -f "$DRIFT_BASELINE" ]; then
     {
         echo "{"
         echo "  \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
-        echo "  \"total_findings\": $FAIL,"
+        # #5473: this used to write the **counter** $FAIL, which is not the
+        # number of entries in the list below it — the counter is bumped once
+        # per *check*, while the list holds one entry per *finding*. The
+        # baseline therefore claimed 22 findings and listed 29. Nothing read
+        # the field, so the mismatch was invisible until a human did.
+        # It is now the length of the list, which is what it says it is.
+        echo "  \"total_findings\": ${#FINDINGS[@]},"
         echo "  \"findings\": ["
         first=1
         for f in "${FINDINGS[@]}"; do
