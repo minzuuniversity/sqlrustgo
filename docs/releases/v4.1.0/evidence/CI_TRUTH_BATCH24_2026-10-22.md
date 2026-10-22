@@ -476,6 +476,62 @@ CI 上 `mutation` job 的**第一次真正跑通**仍待观察 —— 本节的�
 
 ---
 
+## 6bis. `lint-build` job 也红了 —— 工具链版本漂移（#5540）
+
+批次 24 的 run 8750 的 `lint-build` job：
+
+```
+error: very complex type used. Consider factoring parts into `type` definitions
+  --> tests/integration/sql/_q15_q16_check.rs:74:6
+   |
+74 | ) -> Option<(Vec<Vec<String>>, Vec<(String, usize)>)> {
+   = help: ... rust-clippy/rust-1.95.0/index.html#type_complexity
+   = note: `-D clippy::type-complexity` implied by `-D warnings`
+error: could not compile `sqlrustgo` (test "_q15_q16_check") due to 1 previous error
+```
+
+### 6bis.1 因果链
+
+1. 批次 23 的 `f917dc2b0e`（#5515）把 `compare_with_oracle` 的返回类型改成
+   `Option<(Vec<Vec<String>>, Vec<(String, usize)>)>` —— 这个改动**本身正确**
+   （它把「fixture 缺失 ⇒ panic」改成「返回 None ⇒ 记 NOT-RUN 后不判失败」）。
+2. 该拼写在 **CI 的 clippy 1.95.0** 下触发 `clippy::type_complexity`，
+   而**本地默认工具链 1.97.0 不触发**（clippy 的复杂度评分在版本间变过）。
+3. 批次 19 的 lint 预算门禁是在**本地工具链**上跑的 ⇒ baseline 里没有这个
+   新 lint ⇒ 门禁放行；而 CI 的 `lint-build` 步骤是
+   `cargo clippy --all-features --all-targets -- -D warnings`（**零容忍**）⇒ 直接红。
+4. 批次 23 从未单独跑过 CI（它要随 #5535 一起合并）⇒ 这个 lint 在
+   **第一次真正跑到它的那次 CI** 才暴露。
+
+⇒ 这是「CI 从未跑绿测试套件」的又一个直接后果。
+
+### 6bis.2 修法与**两个对照**（都用 CI 的工具链）
+
+修法：把返回类型命名 —— `type OracleRows = Vec<Vec<String>>;`、
+`type LoadedTables = Vec<(String, usize)>;` ⇒ 签名读起来更清楚，
+且**对任何 clippy 版本都不触发**该 lint。
+
+| 对照 | 命令 | 结果 |
+|---|---|---|
+| **负对照**（临时还原旧签名） | `cargo +1.95.0 clippy --all-features --test _q15_q16_check -- -D warnings` | **RC=101**，报 `type_complexity` ✓ |
+| **正对照**（修复后，同一条命令） | 同上 | **RC=0** ✓ |
+| **CI 等价命令**（根包全 target） | `cargo +1.95.0 clippy --all-features --all-targets -- -D warnings` | **RC=0**（0 error） ✓ |
+
+⚠️ 之所以能对上是**因为本地装了与 CI 同一个 clippy（1.95.0）**：
+`rustup toolchain list` ⇒ `1.91.0` / `1.95.0` / `1.97.0` 都在。
+本地默认的 1.97.0 **不会**报这个 lint —— 这正是它漏过门禁的原因。
+
+### 6bis.3 附带发现（值得单独立规则）
+
+lint 预算门禁在「当前工具链没有自己的 baseline 条目」时回退到
+「各 lint 跨版本的最大计数」⇒ **本地绿、CI 红**的情形会被放过。
+门禁脚本其实已经支持 `SQLRUSTGO_CLIPPY_TOOLCHAIN` 固定工具链（这是对的），
+但没有任何东西**要求**生成 baseline 时用它。
+⇒ 建议的规则：**生成/更新 baseline 必须用与 CI 相同的 clippy 版本**，
+否则这次的漂移会重演（登记为 #5540 的「附带发现」）。
+
+---
+
 ## 7. 身份与协作
 
 - 身份串：`openclaw-mcode`（Mac Mini / Minimax-Code）
