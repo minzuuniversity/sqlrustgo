@@ -277,7 +277,61 @@ Q22  TIMEOUT    61s
 
 ---
 
-## 6. 遗留与登记
+## 6. 本批跑测试时暴露的两件事（都不是本批引入的）
+
+本批第一次**真的运行** `crates/sqlrustgo-cli` 与 `crates/mysql-server`
+的测试（`cargo test -p sqlrustgo-cli -p sqlrustgo-mysql-server --no-fail-fast`），
+暴露了两个**既有**问题 —— 它们之所以是「既有」，正是因为 CI 从来不跑
+`crates/*` 的测试目标（**#5515**）。
+
+### 6.1 `cli_test` 10 个失败 —— 测试树里的同一个病
+
+`crates/sqlrustgo-cli/tests/cli_test.rs` 的 `cli_bin()`：
+
+```rust
+let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+p.push(".."); p.push(".."); p.push("target"); p.push("debug");
+p.push("sqlrustgo-cli");        // ← 包名，不是二进制名；且硬编码 target/debug
+```
+
+⇒ 拼出来的路径**永远不存在**，10 个测试全部 panic 在
+`binary should run: Os { code: 2, kind: NotFound }`。
+
+这是 #5516 的**测试树孪生体**。**批次 15（#5405）已经修好了它**
+（改用 `env!("CARGO_BIN_EXE_sqlrustgo")` —— 仓库既有的写法，
+`crates/mysql-server/tests/` 下多个文件都是这么写的），
+本分支基于 develop、还没合入批次 15，所以这里仍然是红的。
+⇒ **不在本批重复修**，等批次 15 合并即可。
+
+### 6.2 `client_local_infile_test` 1 个失败 —— 断言的前提是错的
+
+```rust
+assert_eq!(count(&mut conn, "t"), 4,
+    "re-loading the same ids overwrites (first column is the row key), …")
+```
+
+实测 `left: 6 / right: 4` ⇒ **重复导入是追加，不是覆盖**。
+
+核对下来，这条断言的前提**不成立**：本引擎的 DML **没有**「首列即行键」的规则
+（首列只是 MVCC 记账用的 tombstone key，见
+`crates/storage/src/engine.rs` 的
+「collect primary keys (column 0) of deleted rows」）；
+普通 `INSERT` 走的也是追加语义。而 MySQL 在**没有声明键**的表上
+同样是追加 —— 表 `CREATE TABLE t (id INT, name TEXT)` 没有主键，
+所以 6 行才是**与 MySQL 一致**的结果。
+
+⇒ 断言改成真实语义（6 行，并写明为什么），测试真正的目的
+（**连接在 LOCAL INFILE 往返之后仍然可用**，协议序号不错位）保持不变。
+该测试目标现在 **7/7 绿**。
+
+**但由此暴露了一个真分叉**：`LOAD DATA` **完全不检查重复键** ——
+表**声明了** `PRIMARY KEY` 时，MySQL 会报
+`ERROR 1062 Duplicate entry '1' for key 'PRIMARY'`，本引擎仍然静默追加。
+已开 **#5527**。
+
+---
+
+## 7. 遗留与登记
 
 * **#5525**（新开）：逻辑备份/恢复是骨架 —— `backup` 枚举 0 张表、
   `restore` 只数 `INSERT` 行数、`schema_only`/`compress`/`drop_first`
