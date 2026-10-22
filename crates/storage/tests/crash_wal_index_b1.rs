@@ -1,3 +1,19 @@
+//! This test imports `sqlrustgo_storage::fault_injection`, which `crates/storage/src/lib.rs` gates
+//! behind the `fault-injection` feature. An integration test links the library
+//! without `cfg(test)`, so that item does not exist for it unless the
+//! feature is on — and the test then fails to COMPILE rather than
+//! failing at run time:
+//!
+//!     error[E0432]: unresolved import `sqlrustgo_storage::fault_injection`
+//!
+//! `cargo test --workspace` does not pass `--all-features`, so the
+//! test is compiled out there instead of breaking the build. This is
+//! deliberately NOT `#[ignore]`: an ignored test stays visible as
+//! "N ignored" in the output, which is how a gate reports PASS while
+//! the test never ran (ADR-008 Policy 2). A `cfg` gate removes the
+//! test from the binary outright, and it IS built by the invocation
+//! that enables the feature.
+#![cfg(feature = "fault-injection")]
 //! A06 / #5228: kill -9 crash-recovery matrix for the two new fault
 //! boundaries `AfterWALAppend` and `AfterIndexUpdate`.
 //!
