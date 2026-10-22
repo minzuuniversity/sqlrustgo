@@ -4,9 +4,9 @@
 # 用于第一周上机: 环境准备 + 第一条 SQL 运行记录。
 #
 # 用法 (在仓库根目录下运行):
-#   bash docs/teaching-labs/setup-sqlrustgo-cli.sh            # build (debug) + 冒烟
-#   RELEASE=1 bash docs/teaching-labs/setup-sqlrustgo-cli.sh  # release 构建
-#   SKIP_SMOKE=1 bash docs/teaching-labs/setup-sqlrustgo-cli.sh  # 跳过冒烟测试
+#   bash scripts/teaching-labs/setup-sqlrustgo-cli.sh            # build (debug) + 冒烟
+#   RELEASE=1 bash scripts/teaching-labs/setup-sqlrustgo-cli.sh  # release 构建
+#   SKIP_SMOKE=1 bash scripts/teaching-labs/setup-sqlrustgo-cli.sh  # 跳过冒烟测试
 #
 # 说明: 本仓库根包 sqlrustgo 是库 (无 bin), 必须用 -p 显式选包。
 # sqlrustgo-cli 是 sqlrustgo-mysql-server 的薄包装, 运行时通过子进程调用后者,
@@ -57,7 +57,7 @@ build_bins() {
   log "cargo build $profile_arg -p sqlrustgo-cli -p sqlrustgo-mysql-server ..."
   if cargo build $profile_arg -p sqlrustgo-cli -p sqlrustgo-mysql-server; then
     ok "cargo build 成功"
-    ok "可执行程序: $REPO_ROOT/$TARGET_DIR/sqlrustgo-cli (CLI 薄包装)"
+    ok "可执行程序: $REPO_ROOT/$TARGET_DIR/sqlrustgo (CLI 薄包装)"
     ok "            $REPO_ROOT/$TARGET_DIR/sqlrustgo-mysql-server (实际执行入口)"
   else
     err "cargo build 失败 (常见: 依赖下载慢 -> 配置 rsproxy 镜像; rusqlite bundled 需要 build-essential)。"
@@ -72,17 +72,17 @@ smoke_test() {
   fi
 
   cd "$REPO_ROOT" || return 1
-  local CLI="./$TARGET_DIR/sqlrustgo-cli"
+  local CLI="./$TARGET_DIR/sqlrustgo"
   local SRV="./$TARGET_DIR/sqlrustgo-mysql-server"
 
-  log "冒烟 1/3: sqlrustgo-cli exec 单条 SQL ..."
+  log "冒烟 1/3: sqlrustgo exec 单条 SQL ..."
   if $CLI exec "SELECT 1" 2>&1 | sed 's/^/    /'; then
     ok "exec 单条 SQL 通过"
   else
     warn "exec 单条 SQL 失败 (exit $?)"
   fi
 
-  log "冒烟 2/3: sqlrustgo-cli repl ..."
+  log "冒烟 2/3: sqlrustgo repl ..."
   local out2
   out2="$(printf 'SELECT 1;\n.exit\n' | timeout 15 $CLI repl 2>&1)"
   printf '%s\n' "$out2" | sed 's/^/    /'
@@ -121,13 +121,13 @@ main() {
 $(ok "全部完成。可用入口:")
   交互式 REPL (会话内持久, 推荐用于第一周 SQL 验证):
     cd $REPO_ROOT && ./$TARGET_DIR/sqlrustgo-mysql-server repl
-  sqlrustgo-cli repl:
-    cd $REPO_ROOT && ./$TARGET_DIR/sqlrustgo-cli repl
+  sqlrustgo repl:
+    cd $REPO_ROOT && ./$TARGET_DIR/sqlrustgo repl
   单条 SQL:
-    cd $REPO_ROOT && ./$TARGET_DIR/sqlrustgo-cli exec "SELECT 1"
+    cd $REPO_ROOT && ./$TARGET_DIR/sqlrustgo exec "SELECT 1"
   连接运行中的 server 执行 query:
-    cd $REPO_ROOT && ./$TARGET_DIR/sqlrustgo-cli serve --port 3307 &
-    ./$TARGET_DIR/sqlrustgo-cli cli -p 3307 "SELECT 1"
+    cd $REPO_ROOT && ./$TARGET_DIR/sqlrustgo serve --port 3307 &
+    ./$TARGET_DIR/sqlrustgo cli -p 3307 "SELECT 1"
 EOF
 }
 

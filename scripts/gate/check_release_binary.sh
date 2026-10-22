@@ -78,15 +78,49 @@ EXPECTED_VERSION="$(awk '
   f && /^version[[:space:]]*=[[:space:]]*"/{
     gsub(/.*=[[:space:]]*"/,""); gsub(/".*/,""); print; exit
   }' Cargo.toml)"
-ACTUAL_VERSION="$(cargo run --package sqlrustgo-cli -- --version 2>/dev/null | head -1 | awk '{print $NF}')"
+
+# #5442 —— the version check must be able to fail **with a reason**.
+#
+# The old form was `cargo run --package sqlrustgo-cli -- --version 2>/dev/null`
+# piped into `awk`. When cargo could not run — which is exactly what happened
+# while the package produced **two** binaries (`sqlrustgo` from the manifest's
+# `[[bin]]`, plus the auto-discovered `sqlrustgo-cli` from `src/main.rs`),
+# because cargo then refuses to choose one — the stderr was thrown away and
+# the gate could only report `reports '' but the release line is '4.1.0'`,
+# with no hint about the cause.
+#
+# stdout and stderr are captured separately now: stdout carries the version,
+# stderr carries cargo's own diagnostics, and a failure prints the tail of
+# stderr so the cause is on the CI log.
+# shellcheck source=scripts/gate/common.sh
+source "$REPO_ROOT/scripts/gate/common.sh"
+VERSION_STDOUT="$(make_temp_file)" || exit 2
+VERSION_STDERR="$(make_temp_file)" || exit 2
+ACTUAL_VERSION=""
+if cargo run --package sqlrustgo-cli -- --version >"$VERSION_STDOUT" 2>"$VERSION_STDERR"; then
+    ACTUAL_VERSION="$(head -1 "$VERSION_STDOUT" | awk '{print $NF}')"
+    if [ -z "$ACTUAL_VERSION" ]; then
+        echo "  [FAIL] the release binary ran but printed no parsable version:"
+        tail -n 10 "$VERSION_STDOUT" | sed 's/^/         /'
+    fi
+else
+    echo "  [FAIL] the release binary could not be built or run:"
+    tail -n 20 "$VERSION_STDERR" | sed 's/^/         /'
+fi
+rm -f "$VERSION_STDOUT" "$VERSION_STDERR"
+
 if [ -z "$EXPECTED_VERSION" ]; then
     echo "  [FAIL] cannot read [workspace.package] version from Cargo.toml"
     FAIL=$((FAIL+1))
-elif [ "$ACTUAL_VERSION" = "$EXPECTED_VERSION" ]; then
-    echo "  [PASS] sqlrustgo-cli --version reports $ACTUAL_VERSION (== Cargo.toml [workspace.package] version)"
+elif [ -n "$ACTUAL_VERSION" ] && [ "$ACTUAL_VERSION" = "$EXPECTED_VERSION" ]; then
+    echo "  [PASS] sqlrustgo --version reports $ACTUAL_VERSION (== Cargo.toml [workspace.package] version)"
     PASS=$((PASS+1))
+elif [ -z "$ACTUAL_VERSION" ]; then
+    echo "  [FAIL] the release binary reported no version, but the release line is '$EXPECTED_VERSION'"
+    echo "         (the release binary must self-report the release line version)"
+    FAIL=$((FAIL+1))
 else
-    echo "  [FAIL] sqlrustgo-cli --version reports '$ACTUAL_VERSION' but the release line is '$EXPECTED_VERSION'"
+    echo "  [FAIL] sqlrustgo --version reports '$ACTUAL_VERSION' but the release line is '$EXPECTED_VERSION'"
     echo "         (the release binary must self-report the release line version)"
     FAIL=$((FAIL+1))
 fi

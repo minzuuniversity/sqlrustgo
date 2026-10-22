@@ -1,5 +1,5 @@
 #!/bin/bash
-# soak_1h.sh - 1h soak test using sqlrustgo-cli soak
+# soak_1h.sh - 1h soak test using the sqlrustgo binary (soak subcommand)
 # 24 threads, 40k table, realistic OLTP workload via bash-piped CLI
 set -euo pipefail
 
@@ -39,7 +39,7 @@ SOAK_LOG="$RESULTS_DIR/soak.log"
 SERVER_LOG="$RESULTS_DIR/server.log"
 
 echo "=========================================="
-echo "SQLRustGo 1h Soak Test (sqlrustgo-cli soak)"
+echo "SQLRustGo 1h Soak Test (sqlrustgo soak)"
 echo "=========================================="
 echo "Hours: $HOURS"
 echo "Threads: $THREADS"
@@ -149,7 +149,12 @@ echo "[3/5] Starting $THREADS soak workers..."
             initial_rss_kb=$rss_kb
         fi
         rss_delta=$(awk "BEGIN {printf \"%.1f\", ($rss_kb - $initial_rss_kb)/1024}")
-        running=$(pgrep -f "sqlrustgo-cli soak" 2>/dev/null | wc -l || echo 0)
+        # The worker processes are the `sqlrustgo` binary running the `soak`
+        # subcommand — the process name has been `sqlrustgo` since #5516, so the
+        # old pattern "sqlrustgo-cli soak" could never match and the worker
+        # count in the metrics file was silently always 0. Match on the
+        # resolved binary name instead of a hard-coded one.
+        running=$(pgrep -f "$(basename "${CLI_BIN:-sqlrustgo}") soak" 2>/dev/null | wc -l || echo 0)
         echo "$(date -u +%Y-%m-%dT%H:%M:%SZ),$elapsed_h,$rss_mb,$rss_delta,$fd_count,0,0,0,RUNNING" >> "$METRICS_FILE"
         if [ $((sample % 4)) -eq 0 ] && [ $sample -gt 0 ]; then
             remain=$((end_ts - $(date +%s)))

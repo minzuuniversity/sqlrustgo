@@ -43,6 +43,11 @@
 #       declared external tool — and the external-tool list is read from
 #       that same file, so "what is not a workspace bin" has one source
 #
+#   C5  a package that declares `[[bin]]` targets produces **no binary the
+#       manifest does not declare** — cargo auto-discovers `src/main.rs`
+#       and `src/bin/<name>.rs`, and an auto-discovered binary is named
+#       after the **package**, which is exactly the name #5405 banned
+#
 # Exit codes:
 #   0  [PASS] — every bin name traces back to the manifest that produces it
 #   1  [FAIL] — at least one invariant is violated
@@ -218,9 +223,25 @@ EOF
     rm -f "${TMP_DIR}/c4ext/tests/common/bin_resolver.rs.bak"
     expect_verdict "${TMP_DIR}/c4ext" FAIL "C4 undeclared external tool" || SELFTEST_FAILURES=$((SELFTEST_FAILURES + 1))
 
+    # 7. a package that declares a [[bin]] AND still lets cargo auto-discover
+    #    an extra binary from `src/main.rs` → FAIL (C5)
+    make_fixture "${TMP_DIR}/c5"
+    sed -i.bak 's|path = "src/main.rs"|path = "src/local_bin.rs"|' "${TMP_DIR}/c5/crates/app/Cargo.toml"
+    rm -f "${TMP_DIR}/c5/crates/app/Cargo.toml.bak"
+    cat > "${TMP_DIR}/c5/crates/app/src/local_bin.rs" <<'EOF'
+fn main() {}
+EOF
+    # The auto-discovered entry point has to exist for the violation to be
+    # real: a declared [[bin]] whose path points elsewhere, plus a
+    # `src/main.rs` that cargo would turn into a second binary.
+    cat > "${TMP_DIR}/c5/crates/app/src/main.rs" <<'EOF'
+fn main() {}
+EOF
+    expect_verdict "${TMP_DIR}/c5" FAIL "C5 undeclared auto-discovered binary" || SELFTEST_FAILURES=$((SELFTEST_FAILURES + 1))
+
     echo ""
     if [[ "${SELFTEST_FAILURES}" -eq 0 ]]; then
-        pass "CLI binary name gate self-test: 6/6 fixtures behaved as expected"
+        pass "CLI binary name gate self-test: 7/7 fixtures behaved as expected"
         exit 0
     fi
     fail "CLI binary name gate self-test: ${SELFTEST_FAILURES} fixture(s) misbehaved"
@@ -267,6 +288,12 @@ elif key == "bad_resolver_candidates":
 elif key == "c3_exempt":
     for e in data.get("c3_exempt", []):
         print(e)
+elif key == "implicit_bins":
+    for e in data.get("implicit_bins", []):
+        print("%s -> declares %s but also produces %s" % (
+            e["package"],
+            ",".join(e.get("declared_bins", [])),
+            ",".join(e.get("implicit_entries", []))))
 else:
     print(data.get(key, ""))
 PYEOF
@@ -330,6 +357,21 @@ if [[ -n "${BAD_C4}" ]]; then
     FAILURES=$((FAILURES + 1))
 else
     pass "C4: every resolver candidate is a workspace bin or a declared external tool"
+fi
+
+# C5 — a package that declares `[[bin]]` targets must not also produce a
+# binary that the manifest never declared (cargo's auto-discovery of
+# `src/main.rs` / `src/bin/<name>.rs`).
+IMPLICIT="$(read_field implicit_bins)"
+if [[ -n "${IMPLICIT}" ]]; then
+    fail "C5: a package produces a binary its manifest does not declare:"
+    while IFS= read -r h; do
+        [[ -z "${h}" ]] && continue
+        echo "    ${h}"
+    done <<< "${IMPLICIT}"
+    FAILURES=$((FAILURES + 1))
+else
+    pass "C5: every package produces exactly the binaries its manifest declares"
 fi
 
 EXEMPT="$(read_field c3_exempt)"
