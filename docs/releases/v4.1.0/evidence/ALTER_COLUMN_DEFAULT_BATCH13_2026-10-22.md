@@ -119,7 +119,8 @@ if total_rows <= last_saved            { return self.save_table_full(...); }
 
 1. **`BinaryTableStorage` 不实现**。
    BINT 格式里**根本没有 `default_value` 这个字段**
-   （`crates/storage/src/bin_format.rs` 全文无 `default_value`）
+   （BINT 落盘格式 `crates/storage/src/bin_segment.rs` 里没有 `default_value` 这个字段 ——
+    该文件里唯一一处 `default_value` 是内存侧 `ColumnDefinition` 的字段，恒为 `None`）
    ⇒ 实现了也存不下来，重启即丢 ⇒ **静默的错误答案比崩溃更危险**。
    它保持 trait 默认的「not supported」——那是**诚实的失败**。
    同族的 `BinaryTableStorageV2` / `AppendOnlyStorage` 同理

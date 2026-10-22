@@ -508,14 +508,33 @@ fn e2e_legacy_binary_sqlrustgo_deprecated() {
     // 找不到 `sqlrustgo-mysql-server` 时，wrapper 必须以非零退出并给出
     // 明确提示 —— 绝不能「静默成功」。
     //
-    // 这里把 cwd 指向一个空临时目录（消掉 `./target/debug/...` 这类
-    // cwd 相对候选），并清空 `PATH`，让「找不到」成为确定事实，
-    // 而不是取决于这台机器上恰好有没有本地 `target/` 目录。
+    // #5548 — 这里原本只把 cwd 指向一个空临时目录并清空 `PATH`，但
+    // wrapper 的候选表里**还有第三个候选**：
+    //
+    //   crates/sqlrustgo-cli/src/lib.rs → mysql_server_bin()
+    //     2. $CARGO_TARGET_DIR/{debug,release}/sqlrustgo-mysql-server
+    //     3. **current_exe().parent()**/sqlrustgo-mysql-server
+    //     4. ./target/{debug,release}/sqlrustgo-mysql-server（相对 cwd）
+    //     5. $PATH
+    //
+    // 候选 3 跟着 **wrapper 自己所在目录**走。CI 里 wrapper 与 server 二进制
+    // 同在 `target/debug/`，所以「空 cwd + 空 PATH」根本**造不出**「找不到
+    // server」这个前提 —— wrapper 照样委托成功，测试反而因为
+    // 「必须失败却成功了」而红。这条契约在 CI 里从来没有被真正验证过。
+    //
+    // 修法（只改测试，不改生产行为）：把 wrapper **复制**到空目录后再执行，
+    // 于是 `current_exe().parent()` 指向空目录；再把 `CARGO_TARGET_DIR` 指向
+    // 空目录、cwd 指向空目录、`PATH` 清空、并显式移除 `SQLRUSTGO_SERVER_BIN`。
+    // 五个候选全部落空 ⇒「找不到」成为确定事实。
     let empty_dir = std::env::temp_dir().join(format!("e2e-no-server-{}", std::process::id()));
     std::fs::create_dir_all(&empty_dir).expect("create empty dir");
-    let out = Command::new(&bin)
+    let isolated_wrapper = empty_dir.join("sqlrustgo");
+    std::fs::copy(&bin, &isolated_wrapper).expect("copy wrapper into the isolated dir");
+    let out = Command::new(&isolated_wrapper)
         .current_dir(&empty_dir)
         .env("PATH", "")
+        .env("CARGO_TARGET_DIR", &empty_dir)
+        .env_remove("SQLRUSTGO_SERVER_BIN")
         .output()
         .expect("run sqlrustgo without a reachable server");
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();

@@ -32,6 +32,73 @@ on:
       - ci/v3.8.0-*
       - "ci/v4.*"
 
+concurrency:
+  # #5550 — **one CI run at a time for this workflow**, and **CI only counts
+  # the newest run**.
+  #
+  # Why this has to be a repository-wide group and not a per-ref one:
+  #
+  # The CI container has **no cargo cache** (#5451 — still open), so every
+  # job rebuilds the whole workspace from scratch: a `cargo build` of this
+  # tree takes ~7m30s of *CPU-bound* compilation. The runner pool has three
+  # `hp-z6g4` runners, so the server was compiling three workspaces
+  # concurrently, each cargo defaulting to **all 80 cores** of the host —
+  # 240 rustc processes on 80 cores.
+  #
+  # Measured on the host on 2026-10-22: four runs were pushed at once
+  # (runs 8914–8921, four branches). The load average reached **147.8** and
+  # the host **kernel-panicked** at 22:57:32 CST (kdump-tools wrote a
+  # vmcore to /var/crash/202610222257). Every CI container died with the
+  # host, so all nine jobs of those runs were reported as failed with no
+  # test result at all — an infrastructure red, not a code red.
+  #
+  # ---- Gitea 28.1.0 的 concurrency 语义（与 GitHub 不同，两次实测） ----
+  #
+  # (1) **新 run 加入 group 时，会把同 group 里「尚未开始」的 run 取消掉**。
+  #     实测：同一 PR 的两个 run 在同一秒创建、共用一个 group
+  #     （8997=ci.yml / 8998=gate.yml）：
+  #
+  #         8997 | status=cancelled | started=0 | stopped=创建同秒
+  #         8998 | status=blocked
+  #
+  #     ⇒ 两个 workflow **不能**共用一个 group，否则同一 PR 上必然有一个被
+  #     取消，PR 上出现 cancelled 的 required check ⇒ 永远合不进去。
+  #     所以本仓库按 **workflow 文件** 分组：`ci.yml` 一个组、`gate.yml`
+  #     另一个组。跨分支的串行化（真正保护宿主机的那一条）仍然成立 ——
+  #     每个 workflow 的 group 依然是**固定串**。
+  #
+  # (2) **卡死的 run 会永久占着并发组**。实测：一个 run 的 task 卡死在一台
+  #     **远端** runner 上（`sqlrustgo-ci-01`，act_runner v0.5.0，日志停止
+  #     增长、runner 心跳却正常），run 永远停在 Running，同组的后续 run
+  #     全部卡在 Blocked；`POST …/cancel` 返回 409（库里已经是 cancelled，
+  #     进程内状态却还是 running）。
+  #
+  #     ⇒ `cancel-in-progress: true`：**下一次推送**直接取消这个卡死的 run
+  #     ⇒ 槽位立刻释放，不需要人工去动 Gitea 的库。
+  #
+  # 代价（明确接受）：往一个正在跑的分支上再推一次，前一次的 run 会被取消，
+  # PR 上那个 check 显示 cancelled —— 但**最新**那次 run 会给出新的 check，
+  # 而我们要的证据本来就必须绑定在**最终**那次 run 上。
+  #
+  # 并发上限本来是由 runner 池决定的（3 台 `hp-z6g4`），配合
+  # `CARGO_BUILD_JOBS=16` ⇒ 最多 3 × 16 = 48 个 rustc 抢 80 核。
+  #
+  # ---- group 名的 `-v2` 后缀（实测绕过，不是设计） ----------------------
+  #
+  # Gitea 28.1.0 的 concurrency 实现还有一个更隐蔽的坑：
+  # **一个卡在 Blocked 的 run 会连累它的后继** —— 后继加入同组时先取消
+  # 前一个，自己却因为「组里还有没结束的 run」而被判为 Blocked。
+  # 观测到的序列（`action_run` 表）：
+  #
+  #     8999 running(卡在远端 runner) → 9001 blocked → 9003 blocked
+  #     → 9007 blocked → … 每一次新 run 都取消前一个、自己又被判 Blocked
+  #
+  # ⇒ **换一个全新的 group 名**才能解开（组里没有任何历史 run ⇒ 不会被判
+  # Blocked）。这是对 Gitea 实现的绕过，语义不变：**同一个 workflow 的 run
+  # 仍然一次只跑一个**。
+  group: sqlrustgo-ci-pipeline-v2
+  cancel-in-progress: true
+
 # NOTE: do NOT override CARGO_HOME / RUSTUP_HOME here.
 # `${{ runner.temp }}` is evaluated to the literal string `/tmp` by act_runner
 # (the expression log shows `%!t(string=/tmp/.rustup)`), so these overrides
@@ -62,6 +129,18 @@ env:
   CARGO_NET_RETRY: "10"
   CARGO_HTTP_TIMEOUT: "120"
   CARGO_HTTP_LOW_SPEED_LIMIT: "1"
+  # #5550 — bound the **per-container** compile parallelism.
+  #
+  # cargo defaults to one rustc per core. The host has 80 cores and the
+  # runner pool runs three `hp-z6g4` jobs at a time, so the default meant
+  # up to 240 concurrent rustc processes on 80 cores — the state the host
+  # was in when it kernel-panicked (see the `concurrency` block above).
+  #
+  # 16 keeps the three concurrent jobs inside the host's real capacity
+  # (3 × 16 = 48 ≤ 80) while still using it: the workspace is far too
+  # large to compile serially, and a build that takes 7m30s on 80 cores
+  # takes ~10m on 16 — an acceptable price for a machine that stays up.
+  CARGO_BUILD_JOBS: "16"
 
 # Combined lint + build: share one clone, build once
 jobs:

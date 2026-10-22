@@ -48,8 +48,37 @@ const HEAVY_SELECT: &str = "SELECT COUNT(*) FROM content c1, content c2 \
                             WHERE c1.hash < c2.hash";
 
 const ROW_COUNT: i64 = 500;
-const ALONE_DURATION: Duration = Duration::from_secs(2);
-const CONTENDED_DURATION: Duration = Duration::from_secs(2);
+
+// #5549 — the fixed 2-second windows that used to live here
+// (`ALONE_DURATION` / `CONTENDED_DURATION`) are replaced by a window
+// derived from a **measured** iteration; see `MIN_WINDOW` /
+// `MAX_WINDOW` / `WINDOW_ITERATIONS` below.
+
+/// #5549 — the measurement window must scale with the machine.
+///
+/// The original premise was "the heavy query must complete **more than
+/// once** inside a fixed 2-second window". That premise is a statement
+/// about the *host*, not about the code under test: the heavy query is a
+/// 3-way self-join over 500 rows (~8M row comparisons). On an idle
+/// development machine it takes tens of milliseconds and the window holds
+/// dozens of iterations; on a loaded CI container (or a slow laptop) a
+/// single iteration can take more than a second, the window then holds
+/// **one** iteration, and the test fails with
+///
+///     baseline (no contention): thread A only ran 1 queries — the heavy
+///     query is too slow for the test to be meaningful
+///
+/// i.e. the failure is reported by the very assertion that is supposed to
+/// *guard* the measurement's meaningfulness — the measurement was never
+/// made.
+///
+/// The fix keeps the contract and removes the host dependence: the window
+/// is derived from one **measured** iteration, so it always spans several
+/// iterations no matter how slow the host is. The comparison in step 5
+/// uses the same window on both sides, so the ratio stays meaningful.
+const MIN_WINDOW: Duration = Duration::from_secs(2);
+const MAX_WINDOW: Duration = Duration::from_secs(60);
+const WINDOW_ITERATIONS: u32 = 3;
 
 #[test]
 fn g13_oltp1_concurrent_selects_run_in_parallel() {
@@ -96,30 +125,51 @@ fn g13_oltp1_concurrent_selects_run_in_parallel() {
         let _ = admin.quit();
     }
 
-    // 3) Run the heavy query ALONE for ALONE_DURATION. Record throughput.
-    let alone_q = run_heavy_for(host, port, ALONE_DURATION, None);
+    // 3) Measure ONE iteration of the heavy query, then derive the
+    //    measurement window from it (#5549). The window must span several
+    //    iterations on any host, otherwise the "throughput" comparison in
+    //    step 5 compares a single iteration against a single iteration.
+    let one_iteration = {
+        let mut probe =
+            MySqlTestClient::connect_at((host, port), "tester", "tester").expect("probe connect");
+        let _ = probe.set_timeouts(Duration::from_secs(120), Duration::from_secs(120));
+        let t0 = std::time::Instant::now();
+        probe
+            .query_rows(HEAVY_SELECT)
+            .expect("probe heavy query succeeds");
+        t0.elapsed()
+    };
+    eprintln!("[test] one heavy query takes {one_iteration:?}");
+    let window = std::cmp::min(
+        std::cmp::max(MIN_WINDOW, one_iteration * WINDOW_ITERATIONS),
+        MAX_WINDOW,
+    );
+    eprintln!("[test] measurement window = {window:?}");
+
+    // 4) Run the heavy query ALONE for the derived window. Record throughput.
+    let alone_q = run_heavy_for(host, port, window, None);
     eprintln!(
-        "ALONE: thread A completed {alone_q} heavy queries in {}s",
-        ALONE_DURATION.as_secs()
+        "ALONE: thread A completed {alone_q} heavy queries in {:?}",
+        window
     );
     assert!(
         alone_q > 1,
-        "baseline (no contention): thread A only ran {alone_q} queries — the \
-         heavy query is too slow for the test to be meaningful. Lower \
+        "baseline (no contention): thread A only ran {alone_q} queries in {window:?} — \
+         the heavy query is too slow for the test to be meaningful. Lower \
          ROW_COUNT or the join depth."
     );
 
-    // 4) Run the heavy query WHILE thread B hammers with `SELECT 1`.
+    // 5) Run the heavy query WHILE thread B hammers with `SELECT 1`.
     //    The bug-present code makes both A and B contend for the same
     //    write lock. With server_threads=4, A still gets to run between
     //    B's probes, but B's frequent lock acquisitions (every ~1ms)
     //    starve A. With the fix, B's SELECT 1 takes the read lock and
     //    A's heavy query runs concurrently.
-    let contended_q = run_heavy_for(host, port, CONTENDED_DURATION, Some(HEAVY_SELECT));
+    let contended_q = run_heavy_for(host, port, window, Some(HEAVY_SELECT));
     eprintln!(
-        "CONTESTED: thread A completed {contended_q} heavy queries in {}s \
+        "CONTESTED: thread A completed {contended_q} heavy queries in {:?} \
          (with thread B hammering SELECT 1)",
-        CONTENDED_DURATION.as_secs()
+        window
     );
 
     // 5) G13-OLTP-1 regression assertion. With the bug, the
