@@ -1,5 +1,7 @@
 === STDOUT ===
 
 === STDERR ===
-Error: in prepare, no such column: no_such_col (1)
+Parse error in 6th command line argument: no such column: no_such_col
+  SELECT no_such_col FROM t_ec; 
+         ^--- error here
 

@@ -1,5 +1,5 @@
 === STDOUT ===
-n	n + 0
+n	BinaryOp(Identifier("n"), "+", Literal("0"))
 42	42
 
 === STDERR ===

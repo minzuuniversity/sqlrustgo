@@ -14,7 +14,7 @@ SETUP> INSERT INTO t_ol VALUES (4)
 QUERY> SELECT n FROM t_ol ORDER BY n DESC LIMIT 3
   SELECT ncol=1 nrow=3 status=0x0002
   columns=["n"]
-  types=["integer"]
+  types=["text"]
   row[0]=["5"]
   row[1]=["4"]
   row[2]=["3"]

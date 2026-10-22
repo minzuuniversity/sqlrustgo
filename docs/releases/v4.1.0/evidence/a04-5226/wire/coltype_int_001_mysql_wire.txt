@@ -6,5 +6,5 @@ SETUP> INSERT INTO t_ct VALUES (1, 1.5, 'x')
 QUERY> SELECT i, r, s FROM t_ct
   SELECT ncol=3 nrow=1 status=0x0002
   columns=["i", "r", "s"]
-  types=["integer", "integer", "integer"]
+  types=["text", "text", "text"]
   row[0]=["1", "1.5", "x"]

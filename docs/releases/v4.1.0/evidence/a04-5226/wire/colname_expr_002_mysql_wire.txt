@@ -5,6 +5,6 @@ SETUP> INSERT INTO t_ce VALUES (2, 3)
   OK affected=1
 QUERY> SELECT a + b FROM t_ce
   SELECT ncol=1 nrow=1 status=0x0002
-  columns=["a + b"]
+  columns=["BinaryOp(Identifier(\"a\"), \"+\", Identifier(\"b\"))"]
   types=["integer"]
   row[0]=["5"]

@@ -130,6 +130,38 @@ shell 侧解析器里那个同样是**幽灵候选**的 `sqlrustgo-cli` 删掉�
 
 见 §5。
 
+### 3.7 顺带修掉一个**会让本次改动变脆**的进程级 env 竞态（#5423）
+
+`tests/common/bin_resolver.rs` 里有两个单元用例改的是**同一个进程级**环境变量，
+而其中一个开头还会 `remove_var` 另一个刚设的值：
+
+```rust
+// external_tool_resolution_prefers_the_explicit_env_var
+std::env::set_var(PSQL_BIN_ENV, &fake);
+let resolved = resolve_psql_binary();     // ← 并发时这里可能已被别人抹掉
+std::env::remove_var(PSQL_BIN_ENV);
+
+// external_tool_resolution_never_invents_an_absolute_path
+std::env::remove_var(PSQL_BIN_ENV);        // ← 抹掉并发用例刚设的值
+std::env::remove_var(MYSQL_BIN_ENV);
+```
+
+libtest 默认并行跑用例 ⇒ 两者互相踩。**批次 11 的全量回归里就有 3 个目标
+因此偶发变红**（断言拿到的是 PATH 上的 `/opt/homebrew/bin/psql`，而不是用例
+自己设的临时路径）：
+
+- `e2e_canonical_subprocess`
+- `tpch_q8_q21_perf_regression_test`
+- `v312_13_load_data_sf10_test`
+
+**这为什么是本批次的必修项**：#5405 的 e2e 测试读的是 `SQLRUSTGO_BIN`
+（`ENGINE_BIN_ENV`），而 `explicit_env_var_wins_over_every_other_candidate`
+正好在**改这个变量** ⇒ 不修的话，本次改动会**新增**一个偶发红灯的目标。
+⇒ 每个用例现在只碰**自己**的变量名
+（`SQLRUSTGO_RESOLVER_SELFTEST_{ENGINE,PSQL,ABSENT}_BIN`），
+`SQLRUSTGO_BIN` / `SQLRUSTGO_PSQL_BIN` / `SQLRUSTGO_MYSQL_BIN`
+**不再被任何用例改动**。
+
 ---
 
 ## 4. 判别力
@@ -159,6 +191,22 @@ status: FAIL failures: 8
 ```
 
 ⇒ **8 处红灯，其中 2 处正是 #5405 本身**。修复后同一棵树 **0 红灯**。
+
+### 4.2 env 竞态修复的判别力
+
+| # | 变异 | 预期 | 实测 |
+|---|---|---|---|
+| M5 | 把两个用例改回共用 `PSQL_BIN_ENV`（并保留那个 `remove_var`） | 红（**偶发**） | 批次 11 的全量回归里 3 个目标偶发红：`e2e_canonical_subprocess` / `tpch_q8_q21_perf_regression_test` / `v312_13_load_data_sf10_test`，断言拿到 `/opt/homebrew/bin/psql` |
+
+⚠️ M5 是**偶发**红灯 —— 它不会每次都出现。正因如此，它比确定性红灯更危险：
+一个「有时红」的测试目标，在门禁里会被当成「 flaky，忽略」。
+⇒ 这也是为什么本批次把它**修掉**而不是登记为已知差异。
+
+修复后的可观察差异（不是「有时红」而是「结构上不可能红」）：
+**`SQLRUSTGO_BIN` / `SQLRUSTGO_PSQL_BIN` / `SQLRUSTGO_MYSQL_BIN`
+在整个测试树里再也没有任何用例去改** —— 文本检索可验证：
+`grep -rn "set_var\|remove_var" tests/ crates/*/tests/` 的结果里，
+`bin_resolver.rs` 只剩三个 `SQLRUSTGO_RESOLVER_SELFTEST_*` 变量。
 
 ---
 
@@ -205,13 +253,112 @@ C3 有一条**显式豁免**：`tests/common/bin_resolver.rs` 带着标记
 
 ### 5.4 既有门禁复跑
 
-见 §6。
+本分支上与「二进制名 / 测试清单诚实性」相关的既有门禁实测：
+
+| 门禁 | 结果 |
+|---|---|
+| `scripts/gate/check_cli_binary_names.sh` | **PASS**（20 个 bin 名全部溯源到 manifest；C1–C4 全过） |
+| `scripts/gate/check_cli_binary_names.sh --selftest` | **PASS**（6/6 个 fixture 行为符合预期） |
+
+C3 的豁免清单里只有 `tests/common/bin_resolver.rs` 一项，且门禁自己把它打印出来
+（「files that deliberately carry sample paths」）—— 豁免是**可见的**，不是静默的。
+
+其余门禁的复跑结果见 §6。
 
 ---
 
 ## 6. 本批次的验证结果
 
-> （待填：编译 / 测试 / fmt / clippy 的实测输出）
+### 6.1 全量回归 R1（根包，474 个测试目标）
+
+命令与环境：
+
+```bash
+cd /Volumes/workspace/dev/sqlrustgo-worktrees/wt-v410-batch15
+export CARGO_TARGET_DIR=/Volumes/workspace/dev/sqlrustgo-worktrees/wt-v410-loop1/target
+export TMPDIR=/Volumes/workspace/dev/.mavis-tmp
+export TPCH_DATA_DIR=/Volumes/workspace/dev/.mavis-tmp/tpch-fixture
+cargo build -p sqlrustgo-cli -p sqlrustgo-mysql-server   # BUILD_EXIT=0
+cargo test --all-features --no-fail-fast                  # EXIT=101
+```
+
+结果：**474 / 474 个测试目标执行完毕**，其中 **2 个目标为红**，其余 472 个绿。
+
+| 红灯目标 | 失败用例 | 归因 |
+|---|---|---|
+| `--lib`（根包 lib 测试） | `execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one` | **既有缺陷 #5423**（并行度 getter 未钳到 1；断言 `left: 4 / right: 1`） |
+| `--test regression_test` | `test_regression_suite`（内部 3 个失败） | **基础设施红**（负载导致的时序抖动，见 §6.2） |
+
+两个红灯都与本批次改动无关：
+
+- 红灯① 位于 `src/execution_engine_tests.rs`，本批次**未触碰**该文件；它是 #5423
+  的既知随机失败，批次 17 已修（PR #5521），本分支尚未合入。
+- 红灯② 的 3 个失败**全部**来自 `page_io_benchmark_test` 的吞吐阈值断言，
+  与本批次改动的二进制名解析无关（见 §6.2）。
+
+### 6.2 `page_io_benchmark_test` 的 3 个失败 = 负载导致的时序抖动（基础设施红）
+
+`regression_test` 是一个**跨目标的 meta 套件**，它把别的测试目标的失败算成自己的失败。
+本次运行中，它报告的 3 个失败全部来自 `page_io_benchmark_test`：
+
+```
+❌ page_io_benchmark_test    5 / 3 / 0  (64096ms) [test test_page_throughput_random_read...]
+```
+
+**归因实测**：在全量回归**之外**、低负载条件下单独复跑同一目标：
+
+```
+$ cargo test --test page_io_benchmark_test
+test test_page_throughput_random_read ... ok
+test test_page_throughput_small_io ... ok
+test test_page_throughput_buffered_sequential_read ... ok
+test test_page_throughput_sequential_read ... ok
+test test_page_throughput_sync_overhead ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.89s
+```
+
+同一目标在低负载下 **8 / 8 全绿** ⇒ 失败来自**满负载下的吞吐阈值抖动**，
+不是代码缺陷。这是**基础设施红**，不计入本批次的代码红灯。
+
+### 6.3 `regression_test` 自身报告的缺陷（#5434，不在本批范围）
+
+harness 的失败清单里列出了约 40 个**未跑**的文件（错误消息为空），而实际失败计数是 3。
+清单与计数不一致，是 #5434 记录的问题；本批次只记录，不修。
+
+### 6.4 回归运行对仓库证据文件的改写（#5389）
+
+全量回归运行后，`docs/releases/v4.1.0/evidence/a04-5226/wire/` 下有 **61 个文件**
+被测试重新生成（#5389 记录的「差分矩阵测试跑一次就改写仓库里的证据文件」）。
+逐个核对后按两类处理：
+
+| 类别 | 文件数 | 处理 | 依据 |
+|---|---|---|---|
+| 被 `ENGINE_UNAVAILABLE: container a04-pg-ref not running` 覆盖 | 20 | **还原** | 本机没有 postgres 容器 ⇒ 记录的是**环境缺失**，不是产品行为。还原后保留的是此前一次**有环境**时的真实输出 |
+| 真实实跑结果 | 41 | **保留** | 见下 |
+
+对保留的 41 个，逐个核对了 diff 的语义。样例
+`wire/agg_group_001_mysql_wire.txt`：
+
+```
+-  columns=["col_1", "col_2", "col_3", "col_4", "col_5"]
+-  row[0]=["x", "1", "2", "2", "2"]
++  columns=["g", "__agg_1", "__agg_2", "__agg_3", "__agg_4"]
++  row[0]=["x", "2", "3", "1", "2"]
+```
+
+建表数据是 `('x',1), ('x',2), ('y',10)` ⇒ x 组正确的聚合是
+COUNT=2、SUM=3、MIN=1、MAX=2。**旧记录（1/2/2/2）是错的**，与同批 sqlite 记录
+（2/3/1/2）矛盾；新记录与 sqlite 一致 ⇒ **旧证据文件是手写的、与实际行为不符的假数据**，
+新的是真实实跑产物。这与 #5466（"A04 差分矩阵已入库证据内部自相矛盾且无法从 clean
+checkout 复现"）描述的现象吻合。
+
+列名 `__agg_N` 则是 **#5360** 记录的既有缺陷（未加别名的聚合列名暴露 Rust Debug AST），
+本批次**不修**，也不因为它而丢弃数值正确的记录。
+
+### 6.5 门禁复跑
+
+见 §5.4。
 
 ---
 
@@ -224,7 +371,7 @@ C3 有一条**显式豁免**：`tests/common/bin_resolver.rs` 带着标记
 | 没有把 `scripts/` 纳入 C3 扫描范围 | 同上；纳入会让本门禁的结论依赖一个正在别处关闭的积压 | #5516 |
 | 没有修顶层 `cargo test` 不覆盖 `crates/*` 的问题 | 那是 **GA 门禁有效性问题**，量级远大于本批次 | **#5515**（本批次新立） |
 | 没有改 `crates/sqlrustgo-cli/src/lib.rs::mysql_server_bin()` | 它不看 `CARGO_TARGET_DIR` —— 是同一个族，但不是本 issue | #5494（已存在） |
-| 没有动 `bin_resolver` 单元测试里的 `env::set_var` 竞态 | #5423；本批次**刻意**没有新增第二个 `set_var(ENGINE_BIN_ENV, …)` 的用例，以免引入新的偶发红灯 | #5423 |
+| 没有**全面**治理 `env::set_var` 竞态 | #5423 覆盖整个仓库的进程级 env 变更。本批次只修了 `tests/common/bin_resolver.rs` 里**与本次改动直接相关**的那一处（§3.7）；`tests/integration/sql/{io_delay_fault,parallel_main_path,multi_statement}_test.rs` 等处仍有同类写法 | #5423 |
 | 没有让 e2e 测试的 `SELECT` 用例复活 | 仍受 server 的 `column_def` 包格式 bug 限制（`#3165`） | — |
 
 ---
