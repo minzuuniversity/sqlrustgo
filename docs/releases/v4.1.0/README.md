@@ -1,5 +1,6 @@
 # SQLRustGo v4.1.0
 
+> **基线**：`develop/v4.1.0` @ `8ea6d0e5923aab86bf34e2f0f6faf07d4e413915`
 > **Date**: 2026-09-29
 > **Status**: DRAFT (per `docs/releases/v4.1.0/STAGE.yaml`)
 > **Base version**: v4.0.0 (post-GA maintenance continuation)

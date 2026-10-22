@@ -579,6 +579,6 @@ libz-sys.workspace = true
   预算门禁的作用是**让它不再增长**，而不是假装它是零。
 * `postcheck` 的其余步骤（证据绑定检查等）仍有 #5402 记录的既有债，
   **不在本批范围内**，本批只修掉「Auto env:blocked」这一条中止。
-* `scripts/gate/check_no_process_env_mutation.sh`（批次 17 的门禁）不在
-  develop 上（PR #5521 尚未合并），故本批无法在本地复跑该门禁。
+* 批次 17 的「进程环境变量突变」门禁脚本尚未落到 develop 上
+  （对应 PR #5521 未合并），故本批无法在本地复跑该门禁。
 

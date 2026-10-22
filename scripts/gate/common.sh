@@ -84,3 +84,121 @@ sha256_of() {
         echo ""
     fi
 }
+
+# --- provenance: does this document anchor its claims to a real commit? ----
+#
+# The rule is implemented **once** here, because a second implementation is a
+# second set of assumptions — and this rule has already been wrong once:
+#
+# `check_evidence_binding.sh` used to recognise a document's provenance with
+# **fifteen** hard-coded regular expressions (one per format that had ever
+# shown up: `**Commit:**`, `**Commits**:`, `| ... | commit | ... |`,
+# `**Branch**:`, `**Status**:`, `**Source Issue**:` + `**Agent**:`, …).
+# Measured on `docs/releases/v4.1.0` (93 documents): those fifteen patterns
+# recognised the anchor of **2** of the 56 documents the gate then flagged.
+# Every other document — including 51 whose header *does* carry a real commit
+# SHA, written as `**基线**：`develop/v4.1.0` @ `0ba527dd…`` — fell through to
+# the line-by-line scan and produced 335 "Type A/B" failures. The gate was
+# therefore not detecting fabrication; it was failing to recognise our own
+# house style.
+#
+# The replacement is one rule with a **verifiable** predicate:
+#
+#     a document has provenance iff its header contains a git SHA that
+#     resolves to a real commit object in this repository.
+#
+# Two properties make this strictly stronger than the fifteen patterns:
+#
+#  1. It is **format-agnostic**. It does not care whether the author wrote
+#     `**基线**：`, `base:`, `**Source commit**:`, `source_head:` or a table
+#     cell — it only asks "is there a commit here?".
+#  2. It is **falsifiable**. `git cat-file -t <sha>` distinguishes a real
+#     commit from an invented one, so a fabricated document cannot buy
+#     itself an exemption by typing a plausible-looking hash. The fifteen
+#     patterns had no such power: any string matching the shape was enough.
+#
+# A SHA that resolves to a **blob or tree** is not an anchor — it is file
+# content that happens to look like a hash.
+#
+# `evidence_binding_has_provenance <doc_path>` prints the resolving SHA on
+# stdout and returns 0 when the document is anchored; it returns 1 when it is
+# not, and 2 when the answer cannot be established (see below).
+#
+# Why 2 matters: the verification needs the **history**. A checkout with
+# `fetch-depth: 1` (what the `postcheck` job used) contains exactly one
+# commit, so every historical SHA fails to resolve — and the honest answer
+# is "cannot tell", not "no provenance". Returning 2 lets the caller record
+# that as a disclosed environment limitation instead of a fabricated
+# failure. The CI job now checks out with full history precisely so this
+# function can answer for real.
+#
+# `evidence_binding_has_provenance` returns 2 when the repository's history
+# is too shallow to resolve anything at all: it distinguishes "this
+# repository has one commit" (shallow) from "this document genuinely has no
+# anchor".
+evidence_binding_has_provenance() {
+    local doc_path="$1"
+    local sha
+
+    [ -f "$doc_path" ] || return 1
+
+    # Header only (first 60 lines): the anchor lives in the document's
+    # metadata block, not in its body.
+    sha="$(evidence_binding_resolve_commit_in_text "$(head -60 "$doc_path" 2>/dev/null)")"
+    if [ -n "$sha" ]; then
+        printf '%s' "$sha"
+        return 0
+    fi
+
+    # No anchor resolved. If this checkout is a **shallow** clone, the history
+    # is too shallow to tell "no anchor" from "the anchor was not fetched" —
+    # say so instead of guessing.
+    #
+    # The question is asked of git itself (`git rev-parse
+    # --is-shallow-repository`) rather than inferred from the commit count: a
+    # shallow clone can hold **any** number of commits, and `fetch-depth: 1`
+    # is only the default. Counting commits would therefore classify a
+    # 2-commit shallow checkout as "history complete" and start reporting
+    # failures it cannot substantiate.
+    local is_shallow
+    is_shallow="$(git rev-parse --is-shallow-repository 2>/dev/null || echo false)"
+    if [ "$is_shallow" = "true" ]; then
+        return 2
+    fi
+    return 1
+}
+
+# Resolve the first SHA in a piece of text that is a **real commit** in this
+# repository; prints it, or nothing.
+#
+# The SHA candidates are extracted with `grep -o` rather than a shell loop so
+# that the whole thing is one pipeline: a `while` loop in a pipeline runs in
+# a subshell, and under `set -e` a failing `git cat-file` inside it aborted
+# the entire gate script (measured while fixing #5402 — the script stopped
+# after two documents and produced no report at all).
+#
+# A SHA that resolves to a blob or a tree is **not** an anchor: it is file
+# content that happens to look like a hash.
+evidence_binding_resolve_commit_in_text() {
+    local text="$1"
+    local candidate
+
+    [ -n "$text" ] || return 0
+
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        if [ "$(git cat-file -t "$candidate" 2>/dev/null || true)" = "commit" ]; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done <<EOF
+$(printf '%s\n' "$text" | grep -oE '(^|[^0-9a-zA-Z])[0-9a-f]{7,40}([^0-9a-zA-Z]|$)' \
+    | grep -oE '[0-9a-f]{7,40}' | head -20)
+EOF
+    return 0
+}
+
+# Resolve the first real commit SHA cited on **one line** of text.
+evidence_binding_resolve_commit_in_line() {
+    evidence_binding_resolve_commit_in_text "$1"
+}

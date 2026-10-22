@@ -544,7 +544,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # #5402: the evidence-binding gate verifies a document's provenance
+          # by resolving the commit SHA in its header against the repository's
+          # history (`git cat-file -t`). With `fetch-depth: 1` the checkout
+          # contains exactly one commit, so every historical SHA fails to
+          # resolve — the gate then cannot tell "this document has no anchor"
+          # from "the anchor was not fetched", and the check it performs is
+          # not the check it claims to perform.
+          #
+          # Full history for this job costs one extra fetch; measured against
+          # this Gitea server it is a full clone in ~13 s. The gate degrades
+          # honestly instead of guessing when the history *is* too shallow
+          # (see `evidence_binding_has_provenance` in scripts/gate/common.sh).
+          fetch-depth: 0
       - name: Version detection
         id: version
         run: |
