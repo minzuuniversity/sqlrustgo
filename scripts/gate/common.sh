@@ -17,6 +17,11 @@
 # "the thing I was supposed to measure produced nothing" and a gate that
 # reports a verdict it did not measure is worse than a gate that stops.
 
+# Where this file lives — resolved here rather than taken from the caller,
+# because a helper that depends on the sourcing script's idea of SCRIPT_DIR
+# breaks the moment it is sourced from somewhere else.
+COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # --- temporary files ---------------------------------------------------------
 #
 # `mktemp` is called **without a template** on purpose.
@@ -215,4 +220,27 @@ EOF
 # Resolve the first real commit SHA cited on **one line** of text.
 evidence_binding_resolve_commit_in_line() {
     evidence_binding_resolve_commit_in_text "$1"
+}
+
+# Extract the TOTAL line-coverage percentage from a `cargo llvm-cov` text
+# report.
+#
+# Reads the report on stdin; prints the percentage (e.g. "86.46") or nothing
+# when the report does not contain one. Two gates need this rule — the v4.1.0
+# coverage gate (check_coverage_v312.sh) and the 10-principles R5 rule
+# (check_10_principles_v310.sh) — so it lives here, once.
+#
+# The rule itself is in scripts/gate/coverage_total_percent.py: it addresses
+# the Lines group by name in the report's header structure, because "take the
+# last percentage in the TOTAL row" is only accidentally right while the
+# Branches group happens to be empty — and silently reports *branch* coverage
+# the moment that stops being true.
+coverage_extract_total_percent() {
+    python3 "$COMMON_SH_DIR/coverage_total_percent.py"
+}
+
+# Run the extraction rule's own fixtures. A measurement rule that can silently
+# pick the wrong column needs a regression test that runs without cargo.
+coverage_total_percent_selftest() {
+    python3 "$COMMON_SH_DIR/coverage_total_percent.py" --selftest
 }

@@ -1181,6 +1181,18 @@ jobs:
       - name: Gate L1 — Coverage (real gate — #5444)
         run: |
           set -euo pipefail
+          # The coverage percentage is read out of `cargo llvm-cov`'s text
+          # report, whose TOTAL row carries one percentage per group
+          # (Regions / Functions / Lines / Branches). The extraction used to
+          # take the LAST percentage in that row and call it line coverage —
+          # right only while the Branches group happens to be empty, and
+          # silently reporting *branch* coverage the moment it is not.
+          #
+          # The rule now addresses the Lines group by name in the report's
+          # header structure. Its fixtures prove it can still tell the two
+          # apart, and they cost no cargo time — so they run before the
+          # expensive measurement, not after it.
+          python3 scripts/gate/coverage_total_percent.py --selftest
           # #5444: this step used to call `scripts/gate/check_coverage.sh`,
           # a 288-byte **deprecated stub** whose whole body is
           # "deprecated" + `exit 2`. The real gate is

@@ -30,6 +30,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
+# The coverage-percentage extraction rule lives in common.sh — one rule, one
+# implementation (the v4.1.0 coverage gate uses the same one).
+# shellcheck source=scripts/gate/common.sh
+source "$SCRIPT_DIR/common.sh"
+
 mkdir -p "$OUT_DIR"
 
 RELEASE_DIR="$REPO_ROOT/docs/releases/$VERSION"
@@ -120,7 +125,21 @@ fi
 # ============================================================
 echo "=== R4: Format ==="
 r4_start=$(date +%s)
-cargo fmt --all > /dev/null 2>&1
+# Check-only. This gate MUST NOT rewrite the tree it is auditing.
+#
+# The previous shape ran `cargo fmt --all` (apply) and then
+# `cargo fmt --all -- --check`, which made R4 hollow in two ways at once:
+# (a) the apply step made the check pass by construction — R4 could never
+#     fail, so a formatting violation was invisible;
+# (b) the apply step silently rewrote the audited checkout, so a developer
+#     running this gate saw a clean tree afterwards and never learned that
+#     the committed code was not fmt-clean.
+#
+# (b) is how a real defect stayed hidden: commit 8aa60a384a (#5384) shipped
+# crates/vector/tests/cosine_similarity_5384.rs in a non-fmt-clean form.
+# CI's own `cargo fmt --check --all` step would have caught it, but that step
+# sits AFTER the lint-budget step in the lint-build job, so the job died on
+# the budget violation first and never reached the format check.
 if cargo fmt --all -- --check > "$OUT_DIR/r4_format.log" 2>&1; then
   r4_dur=$(( $(date +%s) - r4_start ))
   echo "  [PASS] R4: Format (${r4_dur}s)"
@@ -142,10 +161,33 @@ else
   cov_fail=0
   for crate in sqlrustgo-parser sqlrustgo-planner sqlrustgo-executor \
                sqlrustgo-storage sqlrustgo-transaction sqlrustgo-catalog; do
-    cov_out=$(cargo llvm-cov --tests --codecov幻 --output-fn \
-      -p "$crate" 2>&1 || true)
-    pct=$(echo "$cov_out" | grep -oE "[0-9]+\.[0-9]+%" | tail -1 || echo "0%")
-    pct_int=${pct%.*}
+    # The previous invocation carried a corrupted flag — `--codecov幻`, with a
+    # stray CJK character glued onto `--codecov`. cargo rejected the option
+    # ("error: invalid option '--codecov幻'"), the `|| true` swallowed the
+    # failure, the percentage grep then found nothing, and the `|| echo "0%"`
+    # fallback turned "no measurement" into "0%" — so every crate reported 0%
+    # and R5 failed for a reason that had nothing to do with coverage.
+    #
+    # Two rules follow from that: a measurement that did not happen must never
+    # be reported as a number, and a failed measurement must fail the rule
+    # instead of being masked. Hence no `|| true`, no `|| echo "0%"`, and the
+    # shared extraction that reports nothing rather than a wrong number.
+    set +e
+    cov_out=$(cargo llvm-cov --tests -p "$crate" 2>&1)
+    cov_rc=$?
+    set -e
+    if [ "$cov_rc" -ne 0 ]; then
+      echo "  [FAIL] $crate: cargo llvm-cov failed (exit $cov_rc)"
+      cov_fail=$((cov_fail + 1))
+      continue
+    fi
+    pct=$(printf '%s\n' "$cov_out" | coverage_extract_total_percent)
+    if [ -z "$pct" ]; then
+      echo "  [FAIL] $crate: no coverage data in the llvm-cov report"
+      cov_fail=$((cov_fail + 1))
+      continue
+    fi
+    pct_int=${pct%%.*}
 
     # v3.10.0 coverage target: 47% for parser/planner, 42% others (from V310_10_COVERAGE_PLAN.md)
     case "$crate" in
@@ -154,9 +196,9 @@ else
     esac
 
     if [ "$pct_int" -ge "$threshold" ]; then
-      echo "  [PASS] $crate: ${pct} (target ${threshold}%)"
+      echo "  [PASS] $crate: ${pct}% (target ${threshold}%)"
     else
-      echo "  [FAIL] $crate: ${pct} (below ${threshold}%)"
+      echo "  [FAIL] $crate: ${pct}% (below ${threshold}%)"
       cov_fail=$((cov_fail + 1))
     fi
   done
