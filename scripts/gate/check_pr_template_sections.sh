@@ -73,12 +73,15 @@ echo
 
 BODY=""
 if [ -n "$PR_BODY_FILE" ]; then
-    if [ ! -f "$PR_BODY_FILE" ]; then
-        echo "❌ PR body file not found: $PR_BODY_FILE"
+    # `-f` rejects process substitution (`/dev/fd/N`), so fall back to
+    # "readable" rather than "regular file". A fifo, a pipe, or /dev/fd/N
+    # are all legitimate ways to hand a PR body to this gate.
+    if [ ! -r "$PR_BODY_FILE" ]; then
+        echo "❌ PR body file not found or unreadable: $PR_BODY_FILE"
         echo "   Cannot judge — DRIFT, not PASS."
         exit 2
     fi
-    BODY=$(cat "$PR_BODY_FILE")
+    BODY=$(cat "$PR_BODY_FILE" 2>/dev/null || true)
 else
     BODY=$(cat)
 fi
