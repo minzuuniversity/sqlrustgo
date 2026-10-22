@@ -438,10 +438,24 @@ run 9009 的 `lint-build` / `test` / `test-crates` 三个 job 是**运维误杀*
 * **阶段跃迁需人类审批**：`docs/governance/STAGE_CONFIG.yaml` 的
   transitions 段三段跃迁全部 `requires_human_approval: true`。
   本批不推进任何跃迁，也不自批任何 Gate。
-* **服务器在本批中途重启过一次**（2026-10-22 20:23 UTC 前后，容器全部
-  `Up N minutes`，runner 心跳从 20:29 恢复）。这与批次 26 记录的
-  「宿主机内核 panic → 重启」是同一类基础设施事件，**不产出任何 PASS/FAIL 证据**，
-  不得当成代码缺陷去追。
+* **服务器在本批中途重启过两次**（第一次 2026-10-22 20:23 UTC 前后，
+  容器全部 `Up N minutes`，runner 心跳从 20:29 恢复；第二次在本批写作
+  期间，HTTP 000 + SSH refused 持续约 45 分钟，主机 ping 通但所有服务
+  端口拒绝）。这与批次 26 记录的「宿主机内核 panic → 重启」是同一类
+  基础设施事件，**不产出任何 PASS/FAIL 证据**，不得当成代码缺陷去追。
+* **本批新增的一个操作性坑**：仓库里有 **100 个被 git 跟踪的测试产物**
+  （`docs/releases/v4.1.0/evidence/a04-5226/wire/*.txt`），它们由
+  `tests/integration/compat/a04_mysql_diff_matrix_test.rs` 在**每次跑测试
+  时重写**。在没有 PostgreSQL 服务时那些文件会被写成**空的**。
+  ⇒ **跑完门禁必须还原它们**，否则会把「测试跑过之后的空文件」误提交。
+  本批踩到过两次，都已用
+  `git checkout -- docs/releases/v4.1.0/evidence/a04-5226/wire/` 还原。
+  （这批产物是否应当入库，是一个独立的设计问题，不在本批范围内。）
+* **另一个同类坑**：`scripts/gate/resolve_release_version.sh` 的**文件模式**
+  会被门禁里的 `chmod +x` 改成 755。跑完门禁要用
+  `git checkout -- scripts/gate/resolve_release_version.sh` 复位 ——
+  **不要整体 checkout `scripts/gate/`**（那会丢掉本批对
+  `check_gate_test_integrity.sh` 的修复）。
 
 ---
 
