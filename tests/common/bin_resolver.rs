@@ -409,6 +409,42 @@ pub fn is_home_directory_path(path: &str) -> bool {
 mod tests {
     use super::*;
 
+    // #5515 —— 环境变量是**进程级**的，而同一个测试二进制里的这些用例
+    // **并行**执行。一个用例的 `remove_var` 可以落在另一个用例的
+    // `set_var` 与解析之间 ⇒ 被干扰的那个用例读到被清掉的环境变量，
+    // 退回 `PATH` 上真实安装的客户端 ⇒ **偶发红灯**。
+    //
+    // 实测（#5515 的全工作区首跑，`cargo test --workspace --all-features`）：
+    // `external_tool_resolution_prefers_the_explicit_env_var` 拿到的是
+    // `/opt/homebrew/bin/psql`（`PATH` 上的真 psql），而不是它自己刚写进去的
+    // 那个临时假 psql —— 正是 `external_tool_resolution_never_invents_an_
+    // absolute_path` 的 `remove_var(PSQL_BIN_ENV)` 插进来造成的。
+    //
+    // 这几个用例之间没有依赖关系，串行化不改变任何断言，只是把它们对
+    // 进程级状态的修改隔开。
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// 取环境变量锁。**任何改动环境变量的用例都必须先拿这把锁。**
+    fn env_guard() -> std::sync::MutexGuard<'static, ()> {
+        // 中毒（poisoned）也照样放行：失败的是别的断言，不是这把锁的状态。
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// 改动环境变量前先把它原来的值存下来，测完原样放回去。
+    ///
+    /// 少了这一步，一个用例即使**独占**这把锁，也仍然会把进程的环境
+    /// 留在「被改过」的状态里，污染同一个二进制里的其它用例。
+    fn save_env(key: &str) -> Option<std::ffi::OsString> {
+        std::env::var_os(key)
+    }
+
+    fn restore_env(key: &str, saved: Option<std::ffi::OsString>) {
+        match saved {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+    }
+
     #[test]
     fn home_directory_detection_matches_the_gate_criterion() {
         // 家目录（两种常见布局）
@@ -437,6 +473,7 @@ mod tests {
 
     #[test]
     fn explicit_env_var_wins_over_every_other_candidate() {
+        let _env = env_guard();
         // 造一个临时的「假二进制」，用环境变量指过去。
         let dir = std::env::temp_dir().join(format!("bin-resolver-env-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
@@ -444,11 +481,11 @@ mod tests {
         std::fs::write(&fake, b"#!/bin/sh\nexit 0\n").expect("write fake binary");
         let fake = fake.display().to_string();
 
-        // 注意：环境变量是**进程级**的，测试并行时可能互相干扰。
-        // 这里只断言「显式路径被选中」，不依赖其他候选是否存在。
+        // 环境变量是**进程级**的 ⇒ 改动期间必须独占（见 `ENV_LOCK`）。
+        let saved = save_env(ENGINE_BIN_ENV);
         std::env::set_var(ENGINE_BIN_ENV, &fake);
         let resolved = resolve_engine_binary();
-        std::env::remove_var(ENGINE_BIN_ENV);
+        restore_env(ENGINE_BIN_ENV, saved);
 
         let resolved = resolved.expect("explicit env var must resolve");
         assert_eq!(
@@ -480,15 +517,17 @@ mod tests {
 
     #[test]
     fn external_tool_resolution_prefers_the_explicit_env_var() {
+        let _env = env_guard();
         let dir = std::env::temp_dir().join(format!("ext-tool-env-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let fake = dir.join("psql");
         std::fs::write(&fake, b"#!/bin/sh\nexit 0\n").expect("write fake client");
         let fake = fake.display().to_string();
 
+        let saved = save_env(PSQL_BIN_ENV);
         std::env::set_var(PSQL_BIN_ENV, &fake);
         let resolved = resolve_psql_binary();
-        std::env::remove_var(PSQL_BIN_ENV);
+        restore_env(PSQL_BIN_ENV, saved);
 
         let resolved = resolved.expect("explicit env var must resolve");
         assert_eq!(
@@ -503,8 +542,11 @@ mod tests {
 
     #[test]
     fn external_tool_resolution_never_invents_an_absolute_path() {
+        let _env = env_guard();
         // 找不到时返回 None —— 调用方必须把它变成 NOT-RUN 或错误，
         // 绝不能回退到某个开发机的绝对路径。
+        let saved_psql = save_env(PSQL_BIN_ENV);
+        let saved_mysql = save_env(MYSQL_BIN_ENV);
         std::env::remove_var(PSQL_BIN_ENV);
         std::env::remove_var(MYSQL_BIN_ENV);
 
@@ -515,6 +557,8 @@ mod tests {
         std::env::set_var(PSQL_BIN_ENV, absent.display().to_string());
         let resolved = resolve_psql_binary();
         std::env::remove_var(PSQL_BIN_ENV);
+        restore_env(PSQL_BIN_ENV, saved_psql);
+        restore_env(MYSQL_BIN_ENV, saved_mysql);
         let _ = std::fs::remove_dir_all(&dir);
 
         if let Some(found) = resolved {
