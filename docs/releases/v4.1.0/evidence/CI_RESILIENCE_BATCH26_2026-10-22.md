@@ -3,8 +3,10 @@
 - **分支**：`fix/ci-truth-batch24`（PR #5535）
 - **基线**：`develop/v4.1.0` @ `b68671895c`
 - **本批新增**：#5547（wal_legacy 余下 2 个墙钟断言测试）、#5548（wrapper 委托失败契约在 CI 里从未真正被验证）、
-  #5549（g13 并发测试的速度敏感前提）、#5550（CI 并发把宿主机拖到内核 panic）
+  #5549（g13 并发测试的速度敏感前提）、#5550（CI 并发把宿主机拖到内核 panic）、
+  #5551（docker 地址池被占满 ⇒ CI job 一个都没跑）
 - **本批收口**：#5400（门禁重写 + selftest）、#5401（storage db-scope 覆盖门禁）、#5502（文档指针门禁）
+- **本批并入**：批次 17（#5423 的 env 竞争修复）—— 它的修法必须与本 PR 一起在 CI 上验
 
 ---
 
@@ -93,6 +95,22 @@ CI 容器**没有跑完任何一个 job**，更没有跑出任何一条测试断
 
 已取消的排队 run（8916–8921）同样不产出任何 PASS，理由记在协作台账。
 
+### 1.4 第二个基础设施红：run 8991 的「一个 job 都没跑」
+
+宿主机重启后，**第一个** CI run（8991，head `0535a95e5e`）的 7 个 job 又全部
+失败 —— 但这次日志只有 **10 行**，而且失败点在 act_runner **建 job 网络**那一步：
+
+```
+🚀  Start image=sqlrustgo-runner:v1
+🐳  docker pull sqlrustgo-runner:v1
+Image exists? true
+Cleaning up network for job test, and network name is: GITEA-ACTIONS-TASK-6875-…-test-network
+Error response from daemon: all predefined address pools have been fully subnetted
+```
+
+⇒ **测试套件一行都没执行**。这也是**基础设施红**，同样**不产出任何 FAIL 证据**。
+详见新登记的 **#5551**（含服务器侧处置：清理脚本 + cron）。
+
 ---
 
 ## 2. 触发条件是什么 ⇒ #5550 的两条修法
@@ -104,21 +122,48 @@ runner 池有 3 台 `hp-z6g4`，而 cargo 默认「一个核一个 rustc」，�
 （28 个 job 排队抢 3 台 runner）和一次 `docker compose up -d` 重启 runner 池，
 就把宿主机推进了内核 panic。
 
-### 2.1 修法一：workflow 级 `concurrency` —— 仓库内**一次只跑一个 CI**
+### 2.1 修法一：workflow 级 `concurrency` —— 每个 workflow 一次只跑一个 run
 
-`.gitea/workflows/ci.yml` 与 `.gitea/workflows/gate.yml` 顶层各加：
+`.gitea/workflows/ci.yml` 顶层加：
 
 ```yaml
 concurrency:
-  group: sqlrustgo-ci
+  group: sqlrustgo-ci-pipeline
+  cancel-in-progress: false
+```
+
+`.gitea/workflows/gate.yml` 顶层加：
+
+```yaml
+concurrency:
+  group: sqlrustgo-gate
   cancel-in-progress: false
 ```
 
 * `group` 是**仓库级固定串**（不是 per-ref）：per-ref 的话 4 个分支仍然会同时跑，
-  正是崩溃的条件；固定串把并发压到 1。
-* 两个 workflow 用**同一个 group**，保证 pipeline 与 gate 不会同时编译。
+  正是崩溃的条件；固定串把**同一个 workflow** 的并发压到 1。
 * `cancel-in-progress: false`：新推送**排队**而不是杀掉在跑的那个 ——
   被杀的 run 同样不产出证据，而证据链必须完整。
+
+#### 2.1.1 实测修订：两个 workflow **不能**共用一个 group
+
+第一版把 `ci.yml` 与 `gate.yml` 都设成 `group: sqlrustgo-ci`。实测
+（2026-10-23，Gitea 28.1.0，同一 PR 的两个 run 在**同一秒**创建）：
+
+```
+8997 | status=cancelled | started=0 | stopped=创建同秒   ← ci.yml
+8998 | status=waiting                                 ← gate.yml
+```
+
+⇒ **Gitea 的 concurrency 语义与 GitHub 不同：新 run 加入 group 时，会把同 group 里
+「尚未开始」的 run 取消掉**（`cancel-in-progress: false` 只保护「已经在跑」的那个）。
+两个 workflow 共用一个 group ⇒ 同一 PR 上必然有一个被取消 ⇒ PR 上出现
+cancelled 的 required check ⇒ **永远合不进去**。
+
+⇒ 修法：**一个 workflow 文件一个 group**。跨分支的串行化（真正保护宿主机的
+那一条）仍然成立 —— 每个 workflow 的 group 依然是固定串。
+并发上限本来�� runner 池决定（3 台 `hp-z6g4`），配合
+`CARGO_BUILD_JOBS=16` ⇒ 最多 3 × 16 = 48 个 rustc 抢 80 核。
 
 ### 2.2 修法二：`CARGO_BUILD_JOBS: "16"` —— 限制**每个容器**的编译并行度
 
@@ -133,6 +178,17 @@ cargo 默认按核数派 rustc。限到 16 之后，3 个并发 job 合计 48 �
 | `python3 -c "yaml.safe_load(...)"` 两个 workflow | 解析通过，`concurrency`/`env` 字段落地 |
 | `scripts/gate/check_workflow_expressions.sh` | **PASS**（7 个 workflow 全部扫描） |
 | `scripts/gate/check_ci_checkout_consistency.sh` | **PASS**（C1–C4 全过，含「每个非门禁 workflow 都要有豁免理由」） |
+| 运行时 | 推新 head 后：`8999`（ci.yml）在跑、`9000`（gate.yml）排队 —— **没有互相取消** |
+
+### 2.4 服务器侧配套（#5551）
+
+CI job 泄漏的 docker 网络/卷会耗尽 docker 的地址池，重启后的**第一个** run
+会「一个 job 都没跑」就全灭。已落地：
+
+* `/usr/local/bin/ci-docker-cleanup.sh` —— 只回收**没有任何容器在用**的
+  `GITEA-ACTIONS-TASK-*` 网络与卷；
+* `/etc/cron.d/ci-docker-cleanup` —— 每 10 分钟一次；
+* 首次执行：卷 **193 → 89**，磁盘 **1.1T → 899G**。
 
 ---
 
@@ -293,6 +349,69 @@ assert!(alone_q > 1, "… the heavy query is too slow …");
 
 契约没变（仍然是「有竞争时的吞吐 vs 无竞争时的吞吐」），只是把「窗口」从
 「对机器的假设」变成「对机器的测量」。
+
+---
+
+## 5bis. 本地全量测试扫描 —— 找出 CI 还会红的两处
+
+CI 的 job 日志在 Gitea 上会被截断（被杀的 job 只剩头部，
+实测 `action_task.log_size` 只有 946–987 字节），所以「跑一次完整的测试套件」
+是唯一可靠的办法。本地跑 `cargo test --all-features --no-fail-fast`
+（446 个测试目标）拿到两个失败：
+
+### 5bis.1 真红：env 竞争（#5423，批次 17 的修法，必须并进来）
+
+```
+---- execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one ----
+panicked at src/execution_engine_tests.rs:1365:5:
+assertion `left == right` failed
+  left: 4
+ right: 1
+```
+
+根因：`src/execution_engine_tests.rs` 用
+`std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", …)` 改写**进程级**环境表，
+而根包 lib 测试二进制里 ~160 个用例是**并发**跑的 ⇒ 构造 engine 的那个用例
+会读到别的用例刚写进去的值（`src/execution_engine.rs:376` 在构造时读 env）。
+
+这正是 **#5423** 修的缺陷，修法在**批次 17 的分支**上（并行度改成显式注入
+`ExecutionEngine::with_parallel_degree` + 纯函数 `resolve_parallel_degree`），
+而那个分支还没进本 PR ⇒ 本 PR 的 CI 也会红。
+
+⇒ **处置**：把批次 17 的分支并进本 PR（`chore(merge): 并入批次 17`），
+并在 CI 上一起验。合并后新增的门禁
+`scripts/gate/check_no_process_env_mutation.sh` 本地 PASS：
+
+```
+PASS: C1 — the root package does not mutate process-global environment variables
+=== RESULT: [PASS] ===
+```
+
+### 5bis.2 假红：本地 macOS bash 3.2 的 `source <(...)` 不支持
+
+```
+---- coverage_gate_derives_the_features_storage_actually_needs ----
+panicked at tests/integration/gate/alpha_gate_blocker_test.rs:78:5:
+the derivation must find the fault-injection feature. Got: ""
+```
+
+该用例用 `source <(sed -n …)` 把门禁脚本里的两个函数抽出来单独调用。
+本机是 **GNU bash 3.2.57**（macOS 自带），它在这个上下文里**不支持进程替换**：
+
+```
+$ bash -c 'source <(echo "f(){ echo hi; }"); f'
+bash: f: command not found
+```
+
+CI 主机是 **GNU bash 5.2.21**（Linux），同一片段**正常工作**：
+
+```
+$ bash -c 'source <(echo "f(){ echo hi; }"); f'
+hi
+```
+
+⇒ 这条**不是 CI 红**，是本地假红。**不修**（它不阻塞 CI，且该文件属于
+另一 Agent 的 #5537 范围），但在此**如实记账**，免得下一个人把它当成真红去追。
 
 ---
 
