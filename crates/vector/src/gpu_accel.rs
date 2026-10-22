@@ -103,11 +103,17 @@ impl CpuSimdAccelerator {
     /// Compute cosine similarity with SIMD hints
     #[inline]
     pub fn cosine_similarity(&self, a: &[f32], b: &[f32]) -> f32 {
-        debug_assert_eq!(a.len(), b.len());
+        // #5384 — the norm is `crate::metrics::l2_norm`, the same rule the
+        // scalar and the SIMD cosine implementations use. A mismatched pair
+        // scores 0.0 (as in `crate::metrics::cosine_similarity`) instead of
+        // reading out of bounds.
+        if a.len() != b.len() || a.is_empty() {
+            return 0.0;
+        }
 
         let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-        let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-        let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let norm_a = crate::metrics::l2_norm(a);
+        let norm_b = crate::metrics::l2_norm(b);
 
         if norm_a == 0.0 || norm_b == 0.0 {
             return 0.0;
