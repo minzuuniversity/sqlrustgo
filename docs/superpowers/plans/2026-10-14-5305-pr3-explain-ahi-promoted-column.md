@@ -362,7 +362,7 @@ git push -u gitea252 fix/5305-pr3-explain-ahi-promoted
 - [ ] **Step 3: Open the PR via Gitea API**
 
 ```bash
-TOKEN=04bcda86dd601364a53eec33dc37aa6efa98a5b7
+TOKEN=${GITEA_TOKEN}
 BODY=$(cat <<'EOF'
 PR3 / #5305 — Append `ahi_promoted` suffix to EXPLAIN output.
 

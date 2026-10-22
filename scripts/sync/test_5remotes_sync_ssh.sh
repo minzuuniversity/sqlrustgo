@@ -274,6 +274,10 @@ done
 # 复制后 REPO_ROOT 就是这个临时克隆，测试不碰真实仓库。
 mkdir -p "${CLONE_DIR}/scripts/sync"
 cp "${SYNC_SCRIPT}" "${CLONE_DIR}/scripts/sync/5remotes_sync.sh"
+# 凭据解析的共用实现也必须一起复制 —— 脚本 source 它，缺了它脚本会
+# fail-fast(#5520)。只复制被测脚本会让测试测到的是"依赖缺失"而不是被测行为。
+cp "${SCRIPT_DIR}/gitea_credential_common.sh" \
+   "${CLONE_DIR}/scripts/sync/gitea_credential_common.sh"
 
 # ── 跑被测脚本 ─────────────────────────────────────────────────────────────
 # GITEA_HOSTS / GITEA_PUSH_URL / GITEA_USER / GITEA_TOKEN 是脚本提供的覆盖开关；

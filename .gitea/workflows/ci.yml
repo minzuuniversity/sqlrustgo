@@ -108,6 +108,17 @@ jobs:
         # (This comment names the mechanism, never a code pattern the
         # platform might scan — see the workflow expression gate above.)
         run: bash scripts/gate/check_no_process_env_mutation.sh
+      - name: Hardcoded credential gate (issues #5381 / #5520)
+        # The repository is mirrored to a **public** GitHub repository, so any
+        # credential-shaped string in a tracked file is world-readable. Five
+        # such strings were found (all of them already revoked); they lived in
+        # markdown as often as in scripts, which is why the scan covers docs
+        # too and not just the executable code.
+        #
+        # The gate is static, costs nothing, and can be pointed at any tree
+        # with --repo-root — that is how the leftovers on a *branch* were
+        # found, since they are invisible to a scan of the checked-out one.
+        run: bash scripts/gate/check_no_hardcoded_secrets.sh
       - name: Format check
         run: cargo fmt --check --all
       - name: Build
