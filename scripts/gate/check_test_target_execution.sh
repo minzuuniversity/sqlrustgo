@@ -17,15 +17,29 @@
 #
 # Usage:
 #   bash scripts/gate/check_test_target_execution.sh \
-#       --cargo-toml <path> --log <cargo-test-log> [--log <log2> ...] [--json <out>]
+#       --cargo-toml <path> --log <cargo-test-log> [--log <log2> ...] \
+#       [--scope all|root|crates] [--json <out>]
 #
 # Options:
 #   --cargo-toml <path>  Cargo.toml to read the `[[test]]` declarations from
 #                        (required)
 #   --log <path>         cargo test log to parse. May be given more than
 #                        once; all logs are merged into one executed set.
+#   --scope <scope>      Which slice of the workspace this invocation is
+#                        responsible for (default: all):
+#                          all     — every workspace member's test targets
+#                          root    — the **root package**'s test targets only
+#                          crates  — the member packages' (`crates/*`) targets
 #   --json <path>        Optional: write a machine-readable result there.
 #   -h, --help           Show this help.
+#
+# Why --scope exists:
+#   CI runs the root package and the member packages in **two separate jobs**
+#   (the root's own test run already needs 86–147 min on the runner, and the
+#   runner's container limit is 3 h — the two cannot share one job). Each job
+#   has its own cargo test log, and each job is responsible for exactly the
+#   targets it ran. The scope is the **only** thing that differs between the
+#   two invocations; the comparison rule itself is one implementation.
 #
 # Log parsing:
 #   cargo prints one line per executed test binary:
@@ -53,6 +67,7 @@ set -uo pipefail
 CARGO_TOML=""
 LOGS=()
 JSON_OUT=""
+SCOPE="all"
 
 color_red()   { printf '\033[0;31m%s\033[0m' "$*"; }
 color_green() { printf '\033[0;32m%s\033[0m' "$*"; }
@@ -66,10 +81,12 @@ warn() { echo "  $(color_yellow WARN): $*"; }
 usage() {
     cat <<'USAGE'
 Usage: bash scripts/gate/check_test_target_execution.sh \
-         --cargo-toml <path> --log <cargo-test-log> [--log <log> ...] [--json <out>]
+         --cargo-toml <path> --log <cargo-test-log> [--log <log> ...] \
+         [--scope all|root|crates] [--json <out>]
 
   --cargo-toml <path>  Cargo.toml holding the [[test]] declarations (required)
   --log <path>         cargo test log to parse (repeatable)
+  --scope <scope>      all (default) | root | crates
   --json <path>        optional machine-readable result file
   -h, --help           this message
 USAGE
@@ -96,6 +113,8 @@ while [[ $# -gt 0 ]]; do
         --log=*)        LOGS+=("${1#--log=}"); shift ;;
         --json)         need_value "$1" $#; JSON_OUT="$2"; shift 2 ;;
         --json=*)       JSON_OUT="${1#--json=}"; shift ;;
+        --scope)        need_value "$1" $#; SCOPE="$2"; shift 2 ;;
+        --scope=*)      SCOPE="${1#--scope=}"; shift ;;
         -h|--help)      usage; exit 0 ;;
         *)              usage_error "unknown argument: $1" ;;
     esac
@@ -107,6 +126,10 @@ done
 if [[ -z "${CARGO_TOML}" ]]; then
     usage_error "--cargo-toml <path> is required"
 fi
+case "${SCOPE}" in
+    all|root|crates) ;;
+    *) usage_error "--scope must be one of: all, root, crates (got '${SCOPE}')" ;;
+esac
 if [[ ! -f "${CARGO_TOML}" ]]; then
     usage_error "Cargo.toml not found: ${CARGO_TOML}"
 fi
@@ -161,7 +184,7 @@ if ! cargo metadata --no-deps --format-version 1 > "${METADATA_FILE}" 2>/dev/nul
     exit 2
 fi
 
-python3 - "${METADATA_FILE}" > "${TMP_DIR}/declared.tsv" <<'PYEOF'
+python3 - "${METADATA_FILE}" > "${TMP_DIR}/declared_all.tsv" <<'PYEOF'
 import json
 import os
 import sys
@@ -172,37 +195,74 @@ with open(sys.argv[1]) as fh:
 workspace_root = meta.get("workspace_root") or os.getcwd()
 members = set(meta.get("workspace_members") or [])
 
+# The **root package** is the one whose manifest sits directly in the
+# workspace root (a workspace can have a root *package* as well as members).
+root_manifest = os.path.normpath(os.path.join(workspace_root, "Cargo.toml"))
+
+
+def is_root_package(manifest_path):
+    return os.path.normpath(manifest_path) == root_manifest
+
+
 declared = []
 for pkg in meta.get("packages") or []:
     # Only workspace members count: a dependency's test targets are not
     # this repository's test suite.
     if pkg.get("id") not in members:
         continue
-    pkg_dir = pkg.get("manifest_path") or ""
-    pkg_dir = os.path.dirname(pkg_dir)
+    manifest_path = pkg.get("manifest_path") or ""
+    pkg_dir = os.path.dirname(manifest_path)
+    is_root = 1 if is_root_package(manifest_path) else 0
     for target in pkg.get("targets") or []:
         kinds = target.get("kind") or []
         if "test" not in kinds:
             continue
         src = target.get("src_path") or ""
         if os.path.isabs(src):
-            rel = os.path.relpath(src, workspace_root)
+            ws_rel = os.path.relpath(src, workspace_root)
+            # cargo prints the "Running ..." line **relative to the package's
+            # manifest directory**, not to the workspace root. Comparing a
+            # workspace-relative path against that line can never match for a
+            # member package: cargo says `tests/admin_coverage_tests.rs`
+            # while the workspace-relative path is
+            # `crates/admin/tests/admin_coverage_tests.rs`.
+            pkg_rel = os.path.relpath(src, pkg_dir)
         else:
-            rel = src
-        rel = rel.replace(os.sep, "/")
-        declared.append((target.get("name") or "", rel))
+            ws_rel = src
+            pkg_rel = src
+        declared.append((
+            target.get("name") or "",
+            pkg_rel.replace(os.sep, "/"),
+            ws_rel.replace(os.sep, "/"),
+            pkg.get("name") or "",
+            str(is_root),
+        ))
 
 declared.sort()
-for name, path in declared:
-    print("%s\t%s" % (name, path))
+for name, pkg_rel, ws_rel, pkg_name, is_root in declared:
+    print("%s\t%s\t%s\t%s\t%s" % (name, pkg_rel, ws_rel, pkg_name, is_root))
 PYEOF
 
+# The scope decides which slice of the workspace this invocation is
+# responsible for. The comparison rule itself is one implementation; only
+# the set of declared targets differs.
+case "${SCOPE}" in
+    all)    cp "${TMP_DIR}/declared_all.tsv" "${TMP_DIR}/declared.tsv" ;;
+    root)   awk -F'\t' '$5 == "1"' "${TMP_DIR}/declared_all.tsv" > "${TMP_DIR}/declared.tsv" ;;
+    crates) awk -F'\t' '$5 != "1"' "${TMP_DIR}/declared_all.tsv" > "${TMP_DIR}/declared.tsv" ;;
+esac
+
 DECLARED_RAW_COUNT=$(wc -l < "${TMP_DIR}/declared.tsv" | tr -d '[:space:]')
-if [[ "${DECLARED_RAW_COUNT}" -eq 0 ]]; then
+ALL_RAW_COUNT=$(wc -l < "${TMP_DIR}/declared_all.tsv" | tr -d '[:space:]')
+if [[ "${ALL_RAW_COUNT}" -eq 0 ]]; then
     fail "cargo metadata reported no test targets — cannot verify execution"
     exit 2
 fi
-pass "declared test targets (whole workspace): ${DECLARED_RAW_COUNT}"
+if [[ "${DECLARED_RAW_COUNT}" -eq 0 ]]; then
+    fail "scope '${SCOPE}' selected no test targets — cannot verify execution"
+    exit 2
+fi
+pass "declared test targets (scope=${SCOPE}): ${DECLARED_RAW_COUNT} / ${ALL_RAW_COUNT} in the workspace"
 
 # Report the per-package breakdown, because a gate that only prints a
 # total can hide a blind spot behind a healthy-looking number.
@@ -256,13 +316,13 @@ done
 # ---------------------------------------------------------------------------
 step "Step 3/3: compare declared vs executed"
 
-python3 - "${TMP_DIR}" "${PACKAGE_ROOT}" "${CARGO_TOML_ABS}" "${JSON_OUT}" <<'PYEOF'
+python3 - "${TMP_DIR}" "${PACKAGE_ROOT}" "${CARGO_TOML_ABS}" "${JSON_OUT}" "${SCOPE}" <<'PYEOF'
 import json
 import os
 import re
 import sys
 
-tmp_dir, package_root, cargo_toml, json_out = sys.argv[1:5]
+tmp_dir, package_root, cargo_toml, json_out, scope = sys.argv[1:6]
 
 # #5515: the old pattern required the binary path to start with `target/`,
 # i.e. it only matched cargo's **relative** output form:
@@ -298,22 +358,35 @@ def norm(path):
     return p
 
 
-# --- declared -------------------------------------------------------------
-declared = []
-with open(os.path.join(tmp_dir, "declared.tsv")) as fh:
-    for line in fh:
-        line = line.rstrip("\n")
-        if not line:
-            continue
-        name, path = line.split("\t", 1)
-        declared.append((name, path))
+def read_declared(fname):
+    """-> {pkg_rel_path: [ {name, ws_rel, pkg}, ... ]}"""
+    out = {}
+    with open(os.path.join(tmp_dir, fname)) as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) < 4:
+                continue
+            name, pkg_rel, ws_rel, pkg = parts[0], parts[1], parts[2], parts[3]
+            out.setdefault(pkg_rel, []).append(
+                {"name": name, "pkg_rel": pkg_rel, "ws_rel": ws_rel, "pkg": pkg})
+    return out
 
-declared_by_path = {}
-for name, path in declared:
-    declared_by_path.setdefault(norm(path), {"name": name, "path": path})
+
+# --- declared -------------------------------------------------------------
+scope_entries = read_declared("declared.tsv")
+all_entries = read_declared("declared_all.tsv")
+all_counts = {k: len(v) for k, v in all_entries.items()}
 
 # --- executed -------------------------------------------------------------
-executed = {}          # normalized path -> {"path", "log", "line"}
+# The key is the **package-relative** path — the form cargo prints. The
+# value is how many times it was announced. A count (not a set) is what
+# makes the few same-named paths across packages resolvable: cargo ran one
+# of them, we know one ran, we do not know which — and the gate says so
+# instead of guessing.
+log_counts = {}
 binaries = []          # lib/bin unit-test binaries
 running_lines = 0
 
@@ -340,19 +413,35 @@ for fname in sorted(os.listdir(tmp_dir)):
                                  "line": line_no})
                 continue
             p = norm(target)
-            if p not in executed:
-                executed[p] = {"path": p, "log_index": log_index, "line": line_no}
+            log_counts[p] = log_counts.get(p, 0) + 1
 
 # --- diff -----------------------------------------------------------------
-missing = []
-for key in sorted(declared_by_path):
-    if key not in executed:
-        missing.append(declared_by_path[key])
+missing = []       # exactly one package declares this path -> nameable
+ambiguous = []     # several packages declare it -> only the shortfall is known
+for key in sorted(scope_entries):
+    entries = scope_entries[key]
+    ran = log_counts.get(key, 0)
+    if ran >= len(entries):
+        continue
+    if len(entries) == 1:
+        missing.append(entries[0])
+    else:
+        ambiguous.append({
+            "pkg_rel": key,
+            "shortfall": len(entries) - ran,
+            "ran": ran,
+            "declared": len(entries),
+            "candidates": [e["pkg"] for e in entries],
+        })
 
+# "executed but undeclared" is judged against the **whole workspace**, not
+# the scope: in scope=crates the root package's targets are not ours, and
+# reporting them as undeclared would be noise, not signal.
 undeclared = []
-for key in sorted(executed):
-    if key not in declared_by_path:
-        undeclared.append(executed[key])
+for key in sorted(log_counts):
+    extra = log_counts[key] - all_counts.get(key, 0)
+    if extra > 0:
+        undeclared.append({"path": key, "extra": extra})
 
 extra_binaries = []
 seen_bin = set()
@@ -362,18 +451,23 @@ for b in binaries:
     seen_bin.add(b["target"])
     extra_binaries.append(b)
 
-status = "FAIL" if missing else "PASS"
+status = "FAIL" if (missing or ambiguous) else "PASS"
 
 summary = {
     "status": status,
+    "scope": scope,
     "cargo_toml": cargo_toml,
-    "declared_count": len(declared),
-    "executed_count": len(executed),
+    "declared_count": sum(len(v) for v in scope_entries.values()),
+    "workspace_declared_count": sum(len(v) for v in all_entries.values()),
+    "executed_count": sum(log_counts.values()),
+    "executed_paths": len(log_counts),
     "running_lines": running_lines,
     "extra_binaries_count": len(extra_binaries),
     "extra_binaries": [b["target"] for b in extra_binaries],
     "missing_count": len(missing),
     "missing": missing,
+    "ambiguous_count": len(ambiguous),
+    "ambiguous": ambiguous,
     "executed_but_undeclared_count": len(undeclared),
     "executed_but_undeclared": undeclared,
 }
@@ -384,15 +478,26 @@ with open(os.path.join(tmp_dir, "summary.json"), "w") as fh:
 
 with open(os.path.join(tmp_dir, "missing.tsv"), "w") as fh:
     for entry in missing:
-        fh.write("%s\t%s\n" % (entry["name"], entry["path"]))
+        fh.write("%s\t%s\t%s\t%s\n" % (entry["name"], entry["pkg_rel"],
+                                        entry["ws_rel"], entry["pkg"]))
+
+with open(os.path.join(tmp_dir, "ambiguous.tsv"), "w") as fh:
+    for entry in ambiguous:
+        fh.write("%s\t%d\t%d\t%s\n" % (entry["pkg_rel"], entry["shortfall"],
+                                       entry["declared"],
+                                       ",".join(entry["candidates"])))
 
 with open(os.path.join(tmp_dir, "undeclared.tsv"), "w") as fh:
     for entry in undeclared:
-        fh.write("%s\n" % entry["path"])
+        fh.write("%s\t%d\n" % (entry["path"], entry["extra"]))
 
 with open(os.path.join(tmp_dir, "counts.txt"), "w") as fh:
-    fh.write("%d %d %d %d %d\n" % (
-        len(declared), len(executed), len(extra_binaries), len(missing),
+    fh.write("%d %d %d %d %d %d\n" % (
+        sum(len(v) for v in scope_entries.values()),
+        sum(log_counts.values()),
+        len(extra_binaries),
+        len(missing),
+        len(ambiguous),
         len(undeclared)))
 
 if json_out:
@@ -406,14 +511,16 @@ if [[ ! -f "${TMP_DIR}/counts.txt" ]]; then
     exit 2
 fi
 
-read -r DECLARED_TOTAL EXECUTED_TOTAL EXTRA_BINARIES MISSING_COUNT UNDECLARED_COUNT < "${TMP_DIR}/counts.txt"
+read -r DECLARED_TOTAL EXECUTED_TOTAL EXTRA_BINARIES MISSING_COUNT AMBIGUOUS_COUNT UNDECLARED_COUNT < "${TMP_DIR}/counts.txt"
 
 echo ""
-echo "  declared test targets:   ${DECLARED_TOTAL}"
-echo "  executed test targets:   ${EXECUTED_TOTAL}"
-echo "  extra lib/bin binaries:  ${EXTRA_BINARIES}"
-echo "  missing test targets:    ${MISSING_COUNT}"
-echo "  executed but undeclared: ${UNDECLARED_COUNT}"
+echo "  scope:                     ${SCOPE}"
+echo "  declared test targets:     ${DECLARED_TOTAL}"
+echo "  executed test targets:     ${EXECUTED_TOTAL}"
+echo "  extra lib/bin binaries:    ${EXTRA_BINARIES}"
+echo "  missing test targets:      ${MISSING_COUNT}"
+echo "  same-named paths short:    ${AMBIGUOUS_COUNT}"
+echo "  executed but undeclared:   ${UNDECLARED_COUNT}"
 
 if [[ "${EXTRA_BINARIES}" -gt 0 ]]; then
     echo ""
@@ -431,28 +538,39 @@ fi
 if [[ "${MISSING_COUNT}" -gt 0 ]]; then
     echo ""
     echo "  missing test targets (declared in Cargo.toml but never executed):"
-    while IFS=$'\t' read -r miss_name miss_path; do
-        [[ -z "${miss_path}" ]] && continue
-        fail "target '${miss_name}' was declared but never executed (path: ${miss_path})"
+    while IFS=$'\t' read -r miss_name miss_pkg_rel miss_ws_rel miss_pkg; do
+        [[ -z "${miss_ws_rel}" ]] && continue
+        fail "target '${miss_name}' was declared in package '${miss_pkg}' but never executed (path: ${miss_ws_rel})"
     done < "${TMP_DIR}/missing.tsv"
+fi
+
+if [[ "${AMBIGUOUS_COUNT}" -gt 0 ]]; then
+    echo ""
+    echo "  same-named paths (several packages declare the same package-relative path):"
+    echo "  the shortfall is exact; WHICH package missed it is not knowable from the log."
+    while IFS=$'\t' read -r amb_path amb_short amb_declared amb_candidates; do
+        [[ -z "${amb_path}" ]] && continue
+        fail "path '${amb_path}': ${amb_short} of ${amb_declared} declared target(s) never ran (candidate packages: ${amb_candidates})"
+    done < "${TMP_DIR}/ambiguous.tsv"
 fi
 
 if [[ "${UNDECLARED_COUNT}" -gt 0 ]]; then
     echo ""
-    warn "${UNDECLARED_COUNT} executed target(s) are not declared as [[test]] in Cargo.toml:"
-    while IFS= read -r extra_path; do
+    echo "  executed target(s) that are not declared as test targets in the workspace:"
+    while IFS=$'\t' read -r extra_path extra_n; do
         [[ -z "${extra_path}" ]] && continue
-        echo "    ${extra_path}"
+        warn "${extra_path} (${extra_n} run(s)) is not declared as a test target"
     done < "${TMP_DIR}/undeclared.tsv"
 fi
 
 echo ""
-if [[ "${MISSING_COUNT}" -eq 0 ]]; then
-    echo "Test target execution gate PASS: all ${DECLARED_TOTAL} declared test targets were executed."
+TOTAL_SHORTFALL=$((MISSING_COUNT + AMBIGUOUS_COUNT))
+if [[ "${TOTAL_SHORTFALL}" -eq 0 ]]; then
+    echo "Test target execution gate PASS (scope=${SCOPE}): all ${DECLARED_TOTAL} declared test targets were executed."
     exit 0
 fi
 
-echo "Test target execution gate FAIL: ${MISSING_COUNT} of ${DECLARED_TOTAL} declared test targets never ran."
+echo "Test target execution gate FAIL (scope=${SCOPE}): ${TOTAL_SHORTFALL} of ${DECLARED_TOTAL} declared test targets never ran."
 if [[ -n "${JSON_OUT}" ]]; then
     echo "  machine-readable result: ${JSON_OUT}"
 fi

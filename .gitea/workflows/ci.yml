@@ -272,7 +272,7 @@ jobs:
           # run. This is the gate that makes a silently truncated test run
           # impossible: on CI run 7613, 382 of 446 declared targets never
           # executed and nothing reported it.
-          bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --log test_report.log
+          bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --scope root --log test_report.log
       - name: Test manifest honesty (issue #5449)
         if: always()
         run: |
@@ -337,6 +337,137 @@ jobs:
         # by design until the baseline hash in tests/tpch_hashes_v380.json is
         # filled in" — that hash has been filled in since 545814c3d1, and the
         # real blocker is the missing SF=1 fixture, not the hash.
+
+  # The **member packages** get their OWN job (issue #5515).
+  #
+  # Why a separate job:
+  #   * `cargo test` at the workspace root selects the **root package only**
+  #     (the workspace root is itself a package), so the **301** test targets
+  #     under `crates/*` never ran in CI — and nothing reported it;
+  #   * the root package's own run already needs **86-147 min** on the runner
+  #     (measured over CI runs 8113 / 8117 / 8031 / 8342 / 8264 / 8185) and
+  #     the runner's container limit is **3 h** ⇒ the two cannot share one
+  #     job: the root run alone can consume 147 of the 180 minutes;
+  #   * a separate job also means a separate log, and the execution-accounting
+  #     gate then checks each job against **the slice it is responsible for**
+  #     (`--scope root` / `--scope crates`). One comparison rule, two scopes.
+  #
+  # The job runs **after** `lint-build` (a clippy failure is a P0 stop, and
+  # the runner has a single worker — running the crates' tests on top of a
+  # known-red clippy would only burn the queue).
+  test-crates:
+    runs-on: [hp-z6g4]
+    needs: [lint-build]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Build member binaries
+        # Same reason as the root job's Build step: several member test
+        # targets spawn a real server binary and abort when it is missing
+        # ("canonical binary not found at ...").
+        run: |
+          cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli
+      - name: Prepare TPC-H fixture (issue #5379)
+        # The member packages have TPC-H-dependent targets too, and the
+        # fixture is generated at run time (the repository forbids committing
+        # *.tbl). Same generator, same seed => same bytes as the root job.
+        run: |
+          bash scripts/gate/prepare_tpch_fixture.sh --out "${RUNNER_TEMP:-/tmp}/tpch-fixture" --sf 0.01 --seed 42
+          echo "TPCH_DATA_DIR=${RUNNER_TEMP:-/tmp}/tpch-fixture" >> "$GITHUB_ENV"
+          echo "TPCH_NOT_RUN_FILE=${RUNNER_TEMP:-/tmp}/tpch_not_run.log" >> "$GITHUB_ENV"
+      - name: Run member-package tests (issue #5515)
+        run: |
+          set -o pipefail
+          # `--exclude sqlrustgo` drops the root package: it has its own job
+          # above. Every other workspace member runs here.
+          #
+          # `--all-features` is deliberately **not** used at workspace scope:
+          # it would activate `sqlrustgo-mysql-server/jemalloc-prof`, whose
+          # build runs jemalloc's `configure` + `make` — and the CI image
+          # (Alpine/musl) does not ship `make`. The root job's `--all-features`
+          # never applied to the member packages either (cargo selects the
+          # root package only there), so this is **not** a coverage loss:
+          # what runs here is each member package's own test suite, with its
+          # default features — exactly what `cargo test -p <crate>` does.
+          #
+          # 5400 s (1.5 h) instead of the root job's 9000 s: the member
+          # targets are individually much smaller than the root package's
+          # fixture-heavy ones, and this job has the 3 h container limit to
+          # itself.
+          timeout -k 30 5400 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1
+          status=$?
+          echo "cargo test exited with status ${status}"
+          # Keep the tail of the run in the job log: on a timeout it names
+          # the target that was stuck.
+          tail -n 200 test_report.log || true
+          exit ${status}
+      - name: Test summary
+        if: always()
+        run: |
+          # `grep -c` prints 0 AND exits 1 when there is no match, so
+          # `grep -c ... || echo 0` appends a second 0 and yields the two-line
+          # value "0\n0" — which then breaks the integer test below. Taking
+          # the first line keeps this a single number.
+          #
+          # Two granularities are reported on purpose (ADR-008 §Policy 1:
+          # a PASS claim must state how many tests actually ran):
+          #   * per test binary  — "test result: ok" lines
+          #   * per test function — "test <name> ... ok" lines
+          # The old summary only counted binaries, which is how 382 unexecuted
+          # targets could hide behind a near-green line.
+          BIN_OK=$(grep -c 'test result: ok' test_report.log 2>/dev/null | head -1)
+          BIN_FAIL=$(grep -c 'test result: FAILED' test_report.log 2>/dev/null | head -1)
+          BIN_OK=${BIN_OK:-0}
+          BIN_FAIL=${BIN_FAIL:-0}
+          TEST_OK=$(grep -cE '^test .* \.\.\. ok$' test_report.log 2>/dev/null | head -1)
+          TEST_FAIL=$(grep -cE '^test .* \.\.\. FAILED$' test_report.log 2>/dev/null | head -1)
+          TEST_IGNORED=$(grep -cE '^test .* \.\.\. ignored$' test_report.log 2>/dev/null | head -1)
+          TEST_OK=${TEST_OK:-0}
+          TEST_FAIL=${TEST_FAIL:-0}
+          TEST_IGNORED=${TEST_IGNORED:-0}
+          # Tests that could not run (no fixture, or a fixture whose scale
+          # profile does not match the one their expectations were calibrated
+          # against) report themselves through the TPCH-NOT-RUN marker, which
+          # is collected in TPCH_NOT_RUN_FILE. They are disclosed and are
+          # NOT counted as passed (AGENTS.md §8 #5).
+          NOT_RUN=0
+          NOT_RUN_RECORDS=0
+          if [ -n "${TPCH_NOT_RUN_FILE:-}" ] && [ -f "${TPCH_NOT_RUN_FILE}" ]; then
+            # NOT-RUN 计数：**逐条切分 + 去重**后计数，两个数都打印。
+            #   - `grep -o 'TPCH-NOT-RUN:.*'` 逐条输出 ⇒ 即使某条记录丢了换行
+            #     （多个测试二进制并发写同一文件时可能发生），也能被逐条数出来；
+            #     行数口径（`grep -c`）会把这样的粘连记录少算一条。
+            #   - `sort -u` 折叠**逐字相同**的重复记录：`regression_test` 这个
+            #     meta 套件用子进程重跑目标，同一批 NOT-RUN 记录会被写两遍。
+            # 实测 run 8185：原始 114 条记录里有 83 条是单元测试的合成记录，
+            # 去重后只剩 20 条真实条目 ⇒ 旧口径的 `not_run=113` 虚高 3.6 倍，
+            # 并让下面的 `PASSED=$((TEST_OK - NOT_RUN))` 少报 82 个 passed。
+            NOT_RUN_RECORDS=$(grep -o 'TPCH-NOT-RUN:.*' "${TPCH_NOT_RUN_FILE}" 2>/dev/null | wc -l | tr -d '[:space:]')
+            NOT_RUN=$(grep -o 'TPCH-NOT-RUN:.*' "${TPCH_NOT_RUN_FILE}" 2>/dev/null | sort -u | wc -l | tr -d '[:space:]')
+            NOT_RUN=${NOT_RUN:-0}
+            NOT_RUN_RECORDS=${NOT_RUN_RECORDS:-0}
+            echo "--- not-run tests (disclosed; NOT counted as passed) ---"
+            cat "${TPCH_NOT_RUN_FILE}"
+          fi
+          PASSED=$((TEST_OK - NOT_RUN))
+          if [ "$PASSED" -lt 0 ]; then PASSED=0; fi
+          echo "Tests: passed=$PASSED failed=$TEST_FAIL not_run=$NOT_RUN not_run_records=$NOT_RUN_RECORDS ignored=$TEST_IGNORED"
+          echo "Test binaries: ok=$BIN_OK failed=$BIN_FAIL"
+          if [ "$TEST_FAIL" -gt 0 ]; then exit 1; fi
+          if [ "$((BIN_OK + BIN_FAIL))" -eq 0 ]; then
+            echo "No 'test result' lines in test_report.log — the test run did not complete."
+            echo "Treating as failure rather than as a clean run."
+            exit 1
+          fi
+      - name: Test target execution accounting (issue #5379 / #5515)
+        if: always()
+        run: |
+          # This job is responsible for the **member packages'** targets.
+          # `--scope crates` is the only difference from the root job's
+          # invocation — the comparison rule is one implementation.
+          bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --scope crates --log test_report.log
 
   # The mutation gate gets its OWN job (issue #5379).
   #
