@@ -37,7 +37,8 @@ concurrency:
   # The measurement behind the whole change: four concurrent runs drove the
   # host to load average 147.8 and a kernel panic (2026-10-22 22:57:32
   # CST). See the `concurrency` block in `.gitea/workflows/ci.yml`.
-  group: sqlrustgo-gate
+  # 同样的 Blocked 连累缺陷（见 ci.yml 的注释）⇒ 同样换新组名解开。
+  group: sqlrustgo-gate-v2
   cancel-in-progress: false
 
 env:

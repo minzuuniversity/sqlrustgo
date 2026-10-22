@@ -82,7 +82,21 @@ concurrency:
   #
   # 并发上限本来是由 runner 池决定的（3 台 `hp-z6g4`），配合
   # `CARGO_BUILD_JOBS=16` ⇒ 最多 3 × 16 = 48 个 rustc 抢 80 核。
-  group: sqlrustgo-ci-pipeline
+  #
+  # ---- group 名的 `-v2` 后缀（实测绕过，不是设计） ----------------------
+  #
+  # Gitea 28.1.0 的 concurrency 实现还有一个更隐蔽的坑：
+  # **一个卡在 Blocked 的 run 会连累它的后继** —— 后继加入同组时先取消
+  # 前一个，自己却因为「组里还有没结束的 run」而被判为 Blocked。
+  # 观测到的序列（`action_run` 表）：
+  #
+  #     8999 running(卡在远端 runner) → 9001 blocked → 9003 blocked
+  #     → 9007 blocked → … 每一次新 run 都取消前一个、自己又被判 Blocked
+  #
+  # ⇒ **换一个全新的 group 名**才能解开（组里没有任何历史 run ⇒ 不会被判
+  # Blocked）。这是对 Gitea 实现的绕过，语义不变：**同一个 workflow 的 run
+  # 仍然一次只跑一个**。
+  group: sqlrustgo-ci-pipeline-v2
   cancel-in-progress: true
 
 # NOTE: do NOT override CARGO_HOME / RUSTUP_HOME here.
