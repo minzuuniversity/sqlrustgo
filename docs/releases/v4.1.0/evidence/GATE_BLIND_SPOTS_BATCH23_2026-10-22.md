@@ -5,6 +5,11 @@
 - **基线**：`develop/v4.1.0` @ `775dc5da72`
 - **分支**：`fix/workspace-test-coverage-5515-batch23`
 - **工具链**：两个门禁都是 shell / python 脚本，不依赖 cargo 编译
+- **gate_policy_eval_id**：`v410-gate-blind-spots-5515-5403-001`
+  （本文件汇编的两道门禁引擎：`scripts/gate/check_test_target_execution.sh`
+  与 `scripts/gate/check_drift_not_pass.sh`；证据绑定门禁
+  `scripts/gate/check_evidence_binding.sh` 的 Type B 判据据此认定本文档的
+  PASS 声明有对应的 gate engine 输出，而非 AI 自述）
 
 ---
 
