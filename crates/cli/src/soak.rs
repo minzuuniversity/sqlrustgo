@@ -1,4 +1,4 @@
-//! `sqlrustgo-cli soak` — Real SQL SOAK test runner.
+//! `sqlrustgo-soak soak` — Real SQL SOAK test runner.
 //!
 //! Connects to a running server and executes a continuous workload
 //! of SQL queries for a specified duration, collecting latency,

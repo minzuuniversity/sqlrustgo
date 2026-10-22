@@ -1,5 +1,5 @@
 === STDOUT ===
 
 === STDERR ===
-Error: stepping, UNIQUE constraint failed: t_pk.id (19)
+Error in 6th command line argument: UNIQUE constraint failed: t_pk.id
 

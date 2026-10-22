@@ -2,7 +2,7 @@
 #
 # tests/common/resolve_bin.sh
 #
-# 统一的「外部可执行文件定位」—— #5406 / #5477。
+# 统一的「外部可执行文件定位」—— #5406 / #5477 / #5405 / #5516。
 #
 # 用法：
 #   source "$(dirname "${BASH_SOURCE[0]}")/resolve_bin.sh"

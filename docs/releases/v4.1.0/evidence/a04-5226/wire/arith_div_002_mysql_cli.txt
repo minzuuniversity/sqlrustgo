@@ -1,5 +1,5 @@
 === STDOUT ===
-a	b	a / b
+a	b	BinaryOp(Identifier("a"), "/", Identifier("b"))
 7	2	3
 
 === STDERR ===

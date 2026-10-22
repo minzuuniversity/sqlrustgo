@@ -1,5 +1,5 @@
 === STDOUT ===
 
 === STDERR ===
-Error: stepping, NOT NULL constraint failed: t_nn.id (19)
+Error in 6th command line argument: NOT NULL constraint failed: t_nn.id
 

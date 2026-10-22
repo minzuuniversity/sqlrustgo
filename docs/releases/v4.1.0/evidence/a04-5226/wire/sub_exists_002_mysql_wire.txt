@@ -12,5 +12,5 @@ SETUP> INSERT INTO t_ex_child VALUES (1, 100)
 QUERY> SELECT id FROM t_ex_parent p WHERE EXISTS (SELECT 1 FROM t_ex_child c WHERE c.pid = p.id) ORDER BY id
   SELECT ncol=1 nrow=1 status=0x0002
   columns=["id"]
-  types=["integer"]
+  types=["text"]
   row[0]=["1"]

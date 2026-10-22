@@ -5,6 +5,6 @@ SETUP> INSERT INTO t_cn VALUES (7)
   OK affected=1
 QUERY> SELECT v AS renamed FROM t_cn
   SELECT ncol=1 nrow=1 status=0x0002
-  columns=["v AS renamed"]
-  types=["integer"]
+  columns=["renamed"]
+  types=["text"]
   row[0]=["7"]
