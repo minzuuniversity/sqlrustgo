@@ -198,19 +198,24 @@ fn verify_pr_dag_reports_drift_for_unresolvable_base() {
 
 #[test]
 fn verify_pr_dag_detects_a_false_pass() {
-    // The dangerous direction: a PR declared as merged with no merge commit
-    // behind it. The fixture declares PR-800 as merged, but PR-800 has no
-    // merge commit in the repository's history.
+    // The dangerous direction: a PR declared as merged with no implementation
+    // commit behind it.
+    //
+    // PR-810 is used because it genuinely has ZERO implementation commits
+    // in the repository's history (measured 2026-10-22) — it is one of the
+    // ADR-010 ghost PRs. PR-800 was used before, but it turned out to have
+    // 8 implementation commits, so declaring it merged was no longer a
+    // false pass and the test stopped testing what it claimed to.
     let fixture = "\
 ## 2. PR DAG（依赖执行图）
 
-PR-800  COM_QUERY AST Routing (L0)           ← 入口重构（先做）
+PR-810  ExecutionEngine → Router            ← 解耦层（先做）
 
 ### 2.1 PR DAG 实际执行状态
 
 | PR | 规划阶段 | 实际状态 | 说明 |
 |----|----------|----------|------|
-| PR-800 (COM_QUERY AST Routing) | Phase 0 | ✅ 已合并 | fabricated |
+| PR-810 (ExecutionEngine → Router) | Phase 0 | ✅ 已合并 | fabricated |
 ";
     let path = write_temp_fixture("false_pass_plan.md", fixture);
     let (code, out) = run_script("verify_pr_dag.sh", &["--plan", path.to_str().unwrap()]);
@@ -233,7 +238,7 @@ fn verify_pr_dag_detects_an_inverted_dependency() {
 
 PR-810  ExecutionEngine → Router            ← 解耦层（依赖900）
    ↓
-PR-900  ExecutionEngine 拆分清理             ← 收尾重构（依赖890）
+PR-900  ExecutionEngine 拆分清理             ← 收尾重构
 
 ### 2.1 PR DAG 实际执行状态
 
@@ -242,15 +247,26 @@ PR-900  ExecutionEngine 拆分清理             ← 收尾重构（依赖890）
 | PR-810 (ExecutionEngine → Router) | Phase 0 | ❌ 未合并 | 无 Issue 追踪 |
 | PR-900 (ExecutionEngine 拆分清理) | Phase 4 | ❌ 未合并 | 无 Issue 追踪 |
 ";
-    let path = write_temp_fixture("inverted_dep_plan.md", fixture);
+    // The fixture name deliberately does NOT contain the word "inverted":
+    // the script echoes the plan path, so a fixture named "inverted_*.md"
+    // would satisfy a substring assertion even when the check was disabled.
+    // (That was the defect: the assertion was satisfied by the PATH.)
+    let path = write_temp_fixture("dep_order_plan.md", fixture);
     let (code, out) = run_script("verify_pr_dag.sh", &["--plan", path.to_str().unwrap()]);
     assert_eq!(
         code, 1,
         "an inverted dependency must FAIL (exit 1). Output:\n{out}"
     );
     assert!(
-        out.contains("inverted"),
+        out.contains("Dependency order inverted"),
         "the failure must say the dependency order is inverted. Output:\n{out}"
+    );
+    // Guard against a second path to exit 1: the fixture must trigger the
+    // INVERSION specifically, not some other structural error.
+    assert!(
+        !out.contains("which is not a node in the §2 chain"),
+        "the fixture must isolate the inversion check; it also tripped an \
+         unrelated structural error. Output:\n{out}"
     );
 }
 
@@ -601,20 +617,38 @@ fn pr_template_reference_in_agent_guide_points_at_a_real_file() {
     let agents_md = repo_root().join("AGENTS.md");
     let text = fs::read_to_string(&agents_md).expect("read AGENTS.md");
 
-    // Every `*.md` path mentioned in the PR_TEMPLATE line must exist.
-    // Only check that specific line, to keep the test focused and free of
-    // false positives from prose.
-    if let Some(line) = text.lines().find(|l| l.contains("PR_TEMPLATE")) {
-        for token in line.split_whitespace() {
-            let token = token.trim_matches(|c: char| c == '`' || c == '(' || c == ')' || c == ',');
-            if token.ends_with(".md") && !token.contains('*') {
-                let path = repo_root().join(token);
-                assert!(
-                    path.exists(),
-                    "AGENTS.md references '{token}' but that file does not exist.\n\
-                     offending line: {line}"
-                );
-            }
+    // Locate the line by a STABLE marker rather than by the file name it
+    // happens to mention. The previous version searched for the literal
+    // "PR_TEMPLATE" — but this PR's own fix changed that line to
+    // ".gitea/pull_request_template.md" (lowercase), so the search
+    // returned None and the ENTIRE assertion block was skipped. The test
+    // passed vacuously: pointing AGENTS.md at a non-existent .md still
+    // passed. (Independently verified by the review on 2026-10-22.)
+    let line = text
+        .lines()
+        .find(|l| l.contains("5 类文档") || l.contains("5-类文档"))
+        .expect(
+            "AGENTS.md must contain a line describing the required PR-body \
+             documents; if that line was renamed, this test must be updated \
+             rather than silently skipping its assertion",
+        );
+
+    let mut checked = 0;
+    for token in line.split_whitespace() {
+        let token = token.trim_matches(|c: char| c == '`' || c == '(' || c == ')' || c == ',');
+        if token.ends_with(".md") && !token.contains('*') {
+            let path = repo_root().join(token);
+            assert!(
+                path.exists(),
+                "AGENTS.md references '{token}' but that file does not exist.\n\
+                 offending line: {line}"
+            );
+            checked += 1;
         }
     }
+    assert!(
+        checked > 0,
+        "the AGENTS.md line must reference at least one .md file, otherwise \
+         this test asserts nothing. offending line: {line}"
+    );
 }

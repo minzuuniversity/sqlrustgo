@@ -12,20 +12,21 @@
     "AGENTS.md"
   ],
   "known_missing": {
-    "scripts/check_format.sh": "Issue #5450. Cited by RELEASE_GATE_CHECKLIST.md:122 as a release gate step. Never committed — the check has no implementation. The release gate checklist is therefore not executable as written.",
-    "scripts/check_links.sh": "Issue #5450. Cited by RELEASE_GATE_CHECKLIST.md:119 as a release gate step. Never committed — the check has no implementation. The release gate checklist is therefore not executable as written.",
-    "scripts/generate_documentation_report.sh": "Issue #5450. Cited by RELEASE_GATE_CHECKLIST.md:125 as a release gate step. Never committed — the check has no implementation. The release gate checklist is therefore not executable as written.",
-    "scripts/gate/check_alpha.sh": "Cited by STAGE_CONFIG.yaml. The implementation was moved to scripts/gate/legacy/check_alpha.sh when the v2.9.0 paths were hardcoded (see the comment at scripts/gate/check_alpha_v3.10.0.sh:7). The SSOT still cites the pre-rename path. Fix: update STAGE_CONFIG.yaml to the legacy/ path, or restore the script at the cited path.",
-    "scripts/gate/check_docs.sh": "Cited by STAGE_CONFIG.yaml. The implementation was moved to scripts/gate/legacy/check_docs.sh. The SSOT still cites the pre-rename path. Fix: update STAGE_CONFIG.yaml to the legacy/ path, or restore the script at the cited path.",
-    "scripts/gate/gate_webhook.sh": "Cited by GATE_CI_CD.md. The implementation was moved to scripts/gate/legacy/gate_webhook.sh. The document still cites the pre-rename path. Fix: update GATE_CI_CD.md to the legacy/ path, or restore the script at the cited path.",
-    "scripts/gate/check_user_guides.sh": "Cited by INDEX.md. No implementation anywhere under scripts/ — the user-guide coverage check was never written. Fix: implement it or drop the citation.",
-    "scripts/gate/run_hermes_gate.sh": "Cited by GATE_CI_CD.md. No implementation anywhere under scripts/ — the Hermes gate runner was never written. Fix: implement it or drop the citation."
+    "scripts/check_format.sh": "Issue #5450. Cited by RELEASE_GATE_CHECKLIST.md:122 as a release gate step. Never committed — the check has no implementation anywhere under scripts/. The release gate checklist is therefore not executable as written. Fix: implement it, or remove the step from the checklist.",
+    "scripts/check_links.sh": "Issue #5450. Cited by RELEASE_GATE_CHECKLIST.md:119 as a release gate step. Never committed — the check has no implementation anywhere under scripts/. The release gate checklist is therefore not executable as written. Fix: implement it, or remove the step from the checklist.",
+    "scripts/generate_documentation_report.sh": "Issue #5450. Cited by RELEASE_GATE_CHECKLIST.md:125 as a release gate step. Never committed — the check has no implementation anywhere under scripts/. The release gate checklist is therefore not executable as written. Fix: implement it, or remove the step from the checklist.",
+    "scripts/gate/check_alpha.sh": "Cited by STAGE_CONTROL_FRAMEWORK.md:196 (live) and STAGE_CONFIG.yaml:541 (inside a commented-out list). The implementation was moved to scripts/gate/legacy/check_alpha.sh when the v2.9.0 paths were hardcoded (see the comment at scripts/gate/check_alpha_v3.10.0.sh:7). Fix: update the citations to the legacy/ path, or restore the script at the cited path.",
+    "scripts/gate/check_docs.sh": "Cited by INDEX.md:71, GA_RELEASE_TIMELINE.md:226 and GA_SCRIPTS_SKILLS_REGISTRY.md:48. The implementation was moved to scripts/gate/legacy/check_docs.sh. Fix: update the citations to the legacy/ path, or restore the script at the cited path.",
+    "scripts/gate/check_user_guides.sh": "Cited by RC_TO_GA_GATE_CHECKLIST.md:97. No implementation anywhere under scripts/ — the user-guide coverage check was never written. Fix: implement it, or drop the citation.",
+    "scripts/gate/gate_webhook.sh": "Cited by GATE_CI_CD.md:79,82. The implementation was moved to scripts/gate/legacy/gate_webhook.sh. Fix: update the citation to the legacy/ path, or restore the script at the cited path.",
+    "scripts/gate/run_hermes_gate.sh": "Cited by GATE_CI_CD.md:130. No implementation anywhere under scripts/ — the Hermes gate runner was never written. Fix: implement it, or drop the citation."
   },
   "status": "PASS",
   "notes": [
     "A missing script that IS listed here is reported as a WARNING (known debt).",
     "A missing script that is NOT listed here is reported as a FAIL (a new instance of the defect this gate exists to catch).",
-    "Every entry carries a reason. An entry without a reason would be a hidden problem rather than tracked debt.",
-    "Regenerate with: bash scripts/gate/check_gate_script_refs.sh --update-baseline (after verifying each new entry by hand)."
+    "Every entry carries a reason AND names the file:line that cites it, so the entry can be re-verified. An entry without a reason would be a hidden problem rather than tracked debt.",
+    "Each citation was re-verified with `grep -rn <path> docs/governance/ AGENTS.md` on 2026-10-22. Three entries previously named the wrong source document and were corrected.",
+    "This file is maintained BY HAND. The gate does not have a --update-baseline mode; adding one is deliberately left to a separate change so that no tool can silently rewrite a debt ledger."
   ]
 }

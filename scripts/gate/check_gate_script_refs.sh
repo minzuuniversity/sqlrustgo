@@ -84,6 +84,27 @@ CRITERION_DOCS=(
 
 BASELINE="tests/baseline/gate_script_refs_baseline.json"
 
+# This gate deliberately has NO --update-baseline mode. The baseline is a
+# DEBT LEDGER: every entry names the file:line that cites the missing
+# script and says what to do about it. A tool that rewrote it automatically
+# would let debt disappear without anyone deciding to retire it.
+#
+# The previous version of the baseline file advertised
+#   "Regenerate with: bash scripts/gate/check_gate_script_refs.sh --update-baseline"
+# while the script had no argument parsing at all — the flag was silently
+# ignored and the command just re-printed the report. An advertised
+# capability that does not exist is an AFP Type A claim. The flag is now
+# rejected with an explanation instead of being ignored.
+for arg in "$@"; do
+    if [ "$arg" = "--update-baseline" ]; then
+        echo "❌ --update-baseline is not supported, by design."
+        echo "   The baseline is a debt ledger whose entries name the citing"
+        echo "   file:line and say what to do about them. Add an entry by"
+        echo "   hand after verifying the citation yourself."
+        exit 2
+    fi
+done
+
 # --- house-style counters (see check_anti_fabrication.sh) ----------------------
 ERRORS=0
 WARNINGS=0
@@ -142,8 +163,28 @@ CITED_COUNT=$(printf '%s\n' "$CITED" | grep -c .)
 log_info "distinct script paths cited: $CITED_COUNT"
 echo
 
+# --- Sourced libraries ----------------------------------------------------------
+# Gate files that are `source`d by a driver rather than executed. They MUST
+# NOT carry the executable bit, so requiring it would be a false alarm.
+#
+# The list is explicit: inferring "is this sourced?" by grepping is exactly
+# the kind of judgment this gate exists to avoid.
+SOURCED_LIBRARIES=(
+    "scripts/gate/stage_config_common.sh"
+)
+
+is_sourced_library() {
+    local candidate="$1"
+    local lib
+    for lib in "${SOURCED_LIBRARIES[@]}"; do
+        [ "$candidate" = "$lib" ] && return 0
+    done
+    return 1
+}
+
 # --- Phase 4: existence check -------------------------------------------------
 EXISTS=0
+NOT_EXEC=0
 MISSING=0
 BASELINED=0
 NEW_MISSING=0
@@ -152,7 +193,25 @@ NEW_MISSING_LIST=()
 while IFS= read -r path; do
     [ -z "$path" ] && continue
     if [ -f "$path" ]; then
-        EXISTS=$((EXISTS + 1))
+        # A cited script that exists but is NOT executable is unusable when
+        # it is meant to be RUN. But some gate files are LIBRARIES that
+        # are `source`d by a driver (e.g. scripts/gate/stage_config_common.sh,
+        # sourced by check_stage.sh) — those must NOT be executable, and
+        # requiring it would be a false alarm.
+        #
+        # The distinction is observable: a file that is sourced elsewhere
+        # is not invoked as a command. This list is explicit rather than
+        # inferred, because "infer it from a grep" is exactly the kind of
+        # judgment this gate exists to avoid.
+        if [ -x "$path" ]; then
+            EXISTS=$((EXISTS + 1))
+        elif is_sourced_library "$path"; then
+            EXISTS=$((EXISTS + 1))
+        else
+            NOT_EXEC=$((NOT_EXEC + 1))
+            NEW_MISSING_LIST+=("$path (exists but is not executable)")
+            log_error "$path — cited by a criterion document, exists, but is NOT executable (mode $(stat -c '%a' "$path" 2>/dev/null || echo '?')). The criterion cannot be executed."
+        fi
         continue
     fi
 
@@ -186,7 +245,8 @@ done <<< "$CITED"
 echo
 echo "--- Summary ---"
 echo "  cited paths:        $CITED_COUNT"
-echo "  exist:              $EXISTS"
+echo "  exist + executable: $EXISTS"
+echo "  exist, not exec:    $NOT_EXEC"
 echo "  missing (total):    $MISSING"
 echo "  missing (baselined):$BASELINED"
 echo "  missing (NEW):      $NEW_MISSING"
@@ -195,7 +255,7 @@ echo "  warnings:           $WARNINGS"
 
 if [ "$NEW_MISSING" -gt 0 ]; then
     echo
-    echo "❌ FAIL: ${NEW_MISSING} newly-missing referenced script(s):"
+    echo "❌ FAIL: ${NEW_MISSING} referenced script(s) that cannot be executed"
     for m in "${NEW_MISSING_LIST[@]}"; do
         echo "     - $m"
     done
@@ -213,5 +273,5 @@ if [ "$ERRORS" -gt 0 ]; then
 fi
 
 echo
-echo "✅ PASS: all $EXISTS existing citations verified; $BASELINED known-debt entries reported as warnings."
+echo "✅ PASS: all $EXISTS existing citations verified (present AND executable); $BASELINED known-debt entries reported as warnings."
 exit 0

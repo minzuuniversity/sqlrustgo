@@ -300,7 +300,7 @@ evidence_hash:
   check_gate_script_refs.sh  sha256:a9d9a7449ffa0f555f708c9321ca9b1122462c38e0e4ee524fdfdffdc0c2b81b
   check_pr_template_sections sha256:07a2337fdfcfeff40cc8e054b13700b6623277531b5806f76a9a3ca53bbceac7
 conflict_resolution:
-  无文件级冲突。新增 6 个文件（远端 168 个 fix/docs 分支零触及）；
+  无文件级冲突。新增 6 个文件【待订正：冲突面实测见下方表格】；
   改动 4 个既有文件：check_anti_fabrication.sh（+1 数组元素 +9 行注释）、
   AGENTS.md（1 行）、pull_request_template.md（+10 行）、
   Cargo.toml（+3 行 [[test]] 块）。

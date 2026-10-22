@@ -186,6 +186,26 @@ if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
     exit 2
 fi
 log_info "base ref resolved: $BASE_REF ($(git rev-parse --short "$BASE_REF"))"
+
+SHALLOW_FILE="$(git rev-parse --git-dir 2>/dev/null)/shallow"
+if [ -f "$SHALLOW_FILE" ]; then
+    shallow_depth=$(git rev-list --count "$BASE_REF" 2>/dev/null || echo 0)
+    echo
+    echo "⚠️  DRIFT: this is a SHALLOW checkout (.git/shallow present)."
+    echo "   history depth reachable from $BASE_REF: $shallow_depth commit(s)"
+    echo
+    echo "   The gate cannot answer 'does PR-X have a merge commit?' on a"
+    echo "   truncated history — every answer would be 'no', which would"
+    echo "   turn a legitimately merged PR into a FALSE PASS."
+    echo
+    echo "   Remedy (operator's choice):"
+    echo "     - fetch enough history:  git fetch --unshallow <remote>"
+    echo "     - or run the gate against a full mirror of the repository"
+    echo "     - or point --base at a ref whose history IS complete"
+    echo
+    echo "   Cannot judge — DRIFT, not PASS."
+    exit 2
+fi
 echo
 
 # --- Phase 3: parse §2 (dependency chain) and §2.1 (status table) -------------
@@ -200,22 +220,23 @@ echo
 #   chain: "PR-800 <dep-list>"   (dep list = the （依赖NNN） numbers)
 #   table: "PR-800 <status>"
 CHAIN=$(awk '
-    /PR DAG/ { in_dag = 1 }
+    /PR DAG/ { in_dag = 1; next }
+    in_dag && /^##[^#]/ { in_dag = 0 }
     in_dag && /^PR-[0-9]+/ {
         line = $0
-        # planning number
         match(line, /PR-[0-9]+/)
         pr = substr(line, RSTART, RLENGTH)
-        # dependency list: every （依赖NNN）
         deps = ""
         rest = line
-        while (match(rest, /（依赖[0-9]+）/)) {
+        while (match(rest, /依赖[ ]*[0-9]+/)) {
             d = substr(rest, RSTART, RLENGTH)
             gsub(/[^0-9]/, "", d)
             deps = deps (deps == "" ? "" : ",") d
             rest = substr(rest, RSTART + RLENGTH)
         }
-        print pr "\t" deps
+        mentioned = (line ~ /依赖/) ? 1 : 0
+        state = (mentioned && deps == "") ? "UNPARSED" : "OK"
+        print pr "|" deps "|" state
     }
 ' "$PLAN_FILE")
 
@@ -226,7 +247,7 @@ TABLE=$(awk -F'|' '
         gsub(/^[ \t]+|[ \t]+$/, "", st);
         match(pr, /PR-[0-9]+/)
         pr = substr(pr, RSTART, RLENGTH)
-        if (pr != "") print pr "\t" st
+        if (pr != "") print pr "|" st
     }
 ' "$PLAN_FILE")
 
@@ -251,15 +272,21 @@ echo
 # One pass over the merge commits: for every "Merge pull request" commit we
 # extract the planning number and the Gitea number that appear in its title.
 # This is the authoritative planning-number -> Gitea-number mapping.
-GITEA_MAPPING=$(git log --format='%H|%cI|%s' "$BASE_REF" 2>/dev/null \
-    | grep -E "Merge pull request" \
-    | while IFS='|' read -r sha when subj; do
-        gitea=$(printf '%s' "$subj" | grep -oE '\(#[0-9]+\)' | head -1 | tr -d '()#')
-        plan=$(printf '%s' "$subj" | grep -oE 'PR-[0-9]+[A-Z]?' | head -1)
-        [ -z "$plan" ] && continue
-        [ -z "$gitea" ] && continue
-        echo "$plan|$gitea|$sha|$when"
-    done)
+GIT_LOG_TMP="$(mktemp)"
+trap 'rm -f "$GIT_LOG_TMP"' EXIT
+git log --format='%s' "$BASE_REF" 2>/dev/null > "$GIT_LOG_TMP" || true
+
+GITEA_MAPPING=$(awk '
+    /^Merge pull request / {
+        if (!match($0, /\(#[0-9]+\)/)) next
+        gitea = substr($0, RSTART + 2, RLENGTH - 3)
+        if (!match($0, /\047[^\047]*\047/)) next
+        title = substr($0, RSTART + 1, RLENGTH - 2)
+        if (!match(title, /PR-[0-9]+[A-Z]?/)) next
+        plan = substr(title, RSTART, RLENGTH)
+        print plan "|" gitea "|" $0
+    }
+' "$GIT_LOG_TMP" 2>/dev/null)
 
 # Resolve the Gitea number for a planning id, including the letter-suffixed
 # children (PR-830 -> PR-830A .. PR-830F). Returns "<gitea>|<sha>".
@@ -267,34 +294,60 @@ resolve_gitea_ref() {
     local ident="$1"
     printf '%s\n' "$GITEA_MAPPING" \
         | awk -F'|' -v p="$ident" '
-            $1 == p { print $2 "|" $3; found=1; exit }
+            $1 == p { print $2 "|" $3; exit }
             $1 ~ ("^" p "[A-Z]$") { if (!found) { print $2 "|" $3; found=1 } }
-        '
+        ' | head -1
 }
 
-count_merge_commits() {
-    # How many merge commits in the base ref mention this planning number.
-    #
-    # A parent node may be implemented by letter-suffixed children: §2.1
-    # says "PR-830 | ✅ 已合并 | PR-830A~E + PR-830F". So PR-830 is merged
-    # when PR-830A..PR-830F are. The pattern below matches the parent
-    # number ONLY when it is not followed by another digit (word boundary),
-    # and the child pattern explicitly allows the letter suffix.
-    local ident="$1"
-    git log --format='%s' "$BASE_REF" 2>/dev/null \
-        | grep -cE "Merge pull request .*(^|[^A-Za-z0-9-])${ident}([^0-9A-Za-z]|$)"
+build_merge_counts() {
+    awk '
+        /^Merge pull request .(feat|fix|refactor|perf)/ {
+            if (match($0, /\047[^\047]*\047/)) {
+                title = substr($0, RSTART + 1, RLENGTH - 2)
+            } else {
+                next
+            }
+            if ($0 !~ /\(#[0-9]+\)/) next
+            rest = title
+            while (match(rest, /PR-[0-9]+[A-Z]?/)) {
+                id = substr(rest, RSTART, RLENGTH)
+                rest = substr(rest, RSTART + RLENGTH)
+                after = substr(rest, 1, 1)
+                if (after ~ /[0-9A-Za-z]/) continue
+                counts[id]++
+                if (id ~ /[A-Z]$/) {
+                    parent = substr(id, 1, length(id) - 1)
+                    counts[parent]++
+                }
+            }
+            next
+        }
+        /^(feat|fix|refactor|perf)/ {
+            rest = $0
+            while (match(rest, /PR-[0-9]+[A-Z]?/)) {
+                id = substr(rest, RSTART, RLENGTH)
+                rest = substr(rest, RSTART + RLENGTH)
+                after = substr(rest, 1, 1)
+                if (after ~ /[0-9A-Za-z]/) continue
+                counts[id]++
+                if (id ~ /[A-Z]$/) {
+                    parent = substr(id, 1, length(id) - 1)
+                    counts[parent]++
+                }
+            }
+        }
+        END {
+            for (id in counts) print id "|" counts[id]
+        }
+    ' "$GIT_LOG_TMP" 2>/dev/null
 }
 
 count_merge_commits_with_children() {
-    # Same as count_merge_commits, but also counts letter-suffixed children
-    # (PR-830A .. PR-830F) as evidence that the parent was implemented.
     local ident="$1"
-    local n
-    n=$(count_merge_commits "$ident")
-    n=$((n + $(git log --format='%s' "$BASE_REF" 2>/dev/null \
-        | grep -cE "Merge pull request .*(^|[^A-Za-z0-9-])${ident}[A-Z]([^0-9A-Za-z]|$)")))
-    echo "$n"
+    printf '%s\n' "$MERGE_COUNTS" | awk -F'|' -v p="$ident" '$1 == p { print $2; exit }'
 }
+
+MERGE_COUNTS=$(build_merge_counts)
 
 DECLARED_MERGED=0
 DECLARED_NOT_MERGED=0
@@ -305,7 +358,7 @@ STALE_ROW=0
 CHAIN_ONLY=""
 TABLE_ONLY=""
 
-while IFS=$'\t' read -r pr deps; do
+while IFS='|' read -r pr deps dep_state; do
     [ -z "$pr" ] && continue
 
     # --- declared status from the §2.1 table --------------------------------
@@ -314,20 +367,20 @@ while IFS=$'\t' read -r pr deps; do
     # silently ignore the second, which is how a false green hides.
     # (Measured: a table with "❌ 未合并" then "✅ 已合并" for PR-800 used
     # to be judged by the first row only.)
-    row_count=$(printf '%s\n' "$TABLE" | awk -F'\t' -v p="$pr" '$1 == p { c++ } END { print c+0 }')
+    row_count=$(printf '%s\n' "$TABLE" | awk -F'|' -v p="$pr" '$1 == p { c++ } END { print c+0 }')
     if [ "$row_count" -gt 1 ]; then
         log_error "$pr — appears $row_count times in the §2.1 status table. The rows must be unique."
         FALSE_PASS=$((FALSE_PASS + 1))
         continue
     fi
-    status=$(printf '%s\n' "$TABLE" | awk -F'\t' -v p="$pr" '$1 == p { print $2; exit }')
+    status=$(printf '%s\n' "$TABLE" | awk -F'|' -v p="$pr" '$1 == p { print $2; exit }')
     if [ -z "$status" ]; then
         log_error "$pr — present in the §2 chain but missing from the §2.1 status table"
         FALSE_PASS=$((FALSE_PASS + 1))
         CHAIN_ONLY="$CHAIN_ONLY $pr"
         continue
     fi
-    if ! printf '%s\n' "$CHAIN" | awk -F'\t' -v p="$pr" '$1 == p { found=1 } END { exit !found }'; then
+    if ! printf '%s\n' "$CHAIN" | awk -F'|' -v p="$pr" '$1 == p { found=1 } END { exit !found }'; then
         log_error "$pr — present in the §2.1 status table but missing from the §2 chain"
         CHAIN_ONLY="$CHAIN_ONLY $pr"
         continue
@@ -346,18 +399,18 @@ while IFS=$'\t' read -r pr deps; do
         ACTUALLY_MERGED=$((ACTUALLY_MERGED + 1))
         gitea_ref=$(resolve_gitea_ref "$pr")
         gitea="${gitea_ref%%|*}"
-        sha="${gitea_ref#*|}"
+        subj="${gitea_ref#*|}"
         gitea_label="${gitea:-?}"
-        sha_label="${sha:0:12}"
-        [ "$sha_label" = "" ] && sha_label="(no merge-commit title match)"
+        subj_label="${subj:0:72}"
+        [ "$subj_label" = "" ] && subj_label="(no merge commit with this id; the evidence is a squash/direct implementation commit)"
 
         if printf '%s' "$status" | grep -q "已合并"; then
-            log_pass "$pr — declared 已合并, $n_commits merge commit(s) in git (Gitea #$gitea_label, $sha_label)"
+            log_pass "$pr — declared 已合并, $n_commits implementation commit line(s) in git (Gitea #$gitea_label, $subj_label)"
         else
             # Declared not-merged (or partially) but git says otherwise.
             # That is DOCUMENT DRIFT, not a gate failure — see the header.
             STALE_ROW=$((STALE_ROW + 1))
-            log_warn "$pr — declared '$status' but $n_commits merge commit(s) exist in git (Gitea #$gitea_label, $sha_label). Status row is stale."
+            log_warn "$pr — declared '$status' but $n_commits implementation commit line(s) exist in git (Gitea #$gitea_label, $subj_label). Status row is stale."
         fi
     else
         if printf '%s' "$status" | grep -q "已合并"; then
@@ -370,12 +423,16 @@ while IFS=$'\t' read -r pr deps; do
     fi
 
     # --- dependency edge check ---------------------------------------------
+    if [ "$dep_state" = "UNPARSED" ]; then
+        log_error "$pr — the row mentions a dependency but no dependency number could be parsed from it. The dependency check did NOT run for this row."
+        FALSE_PASS=$((FALSE_PASS + 1))
+    fi
     if [ -n "$deps" ]; then
         for dep in $(printf '%s' "$deps" | tr ',' ' '); do
             dep_pr="PR-$dep"
             # Position of the dependency vs this node in the chain.
-            dep_pos=$(printf '%s\n' "$CHAIN" | awk -F'\t' -v p="$dep_pr" '$1 == p { print NR; exit }')
-            node_pos=$(printf '%s\n' "$CHAIN" | awk -F'\t' -v p="$pr" '$1 == p { print NR; exit }')
+            dep_pos=$(printf '%s\n' "$CHAIN" | awk -F'|' -v p="$dep_pr" '$1 == p { print NR; exit }')
+            node_pos=$(printf '%s\n' "$CHAIN" | awk -F'|' -v p="$pr" '$1 == p { print NR; exit }')
             if [ -z "$dep_pos" ]; then
                 log_error "$pr — declares dependency $dep_pr, which is not a node in the §2 chain"
                 FALSE_PASS=$((FALSE_PASS + 1))
@@ -395,9 +452,9 @@ done <<< "$CHAIN"
 # false green this gate exists to remove.
 #
 # Every §2.1 row must correspond to a §2 chain node.
-while IFS=$'\t' read -r pr status; do
+while IFS='|' read -r pr status; do
     [ -z "$pr" ] && continue
-    if ! printf '%s\n' "$CHAIN" | awk -F'\t' -v p="$pr" '$1 == p { found=1 } END { exit !found }'; then
+    if ! printf '%s\n' "$CHAIN" | awk -F'|' -v p="$pr" '$1 == p { found=1 } END { exit !found }'; then
         log_error "$pr — present in the §2.1 status table (status: $status) but NOT a node in the §2 chain. It would otherwise never be verified."
         FALSE_PASS=$((FALSE_PASS + 1))
         TABLE_ONLY="$TABLE_ONLY $pr"

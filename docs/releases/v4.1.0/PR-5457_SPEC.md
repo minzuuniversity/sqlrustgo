@@ -214,18 +214,38 @@ agent 身份（`openspec/changes/v312-28-corpus-activation/proposal.md` 已有
 
 **文件面冲突热区**（实测 168 个远端 fix/docs 分支）：
 
-| 文件 | 被触及分支数 | 本 PR |
-|---|---|---|
-| `scripts/gate/verify_pr_dag.sh` | 0 | 新增 |
-| `scripts/gate/check_pr_dag.sh` | 0 | 新增 |
-| `scripts/gate/check_gate_script_refs.sh` | 0 | 新增 |
-| `scripts/gate/check_pr_template_sections.sh` | 0 | 新增 |
-| `tests/integration/gate/gate_criterion_existence_test.rs` | 0 | 新增 |
-| `tests/baseline/gate_script_refs_baseline.json` | 0 | 新增 |
-| `scripts/gate/check_anti_fabrication.sh` | 3 | 改 1 个数组元素 |
-| `AGENTS.md` | 3 | 改 1 行 |
-| `.gitea/pull_request_template.md` | 2 | 改 10 行 |
-| `Cargo.toml` | 4 | 改 3 行（`[[test]]` 块）|
+| 文件 | 触及它的远端分支 | 本 PR 改动量 | 实际冲突风险 |
+|---|---|---|---|
+| `scripts/gate/verify_pr_dag.sh` | **0** | 新增 | 无 |
+| `scripts/gate/check_pr_dag.sh` | **0** | 新增 | 无 |
+| `scripts/gate/check_gate_script_refs.sh` | **0** | 新增 | 无 |
+| `scripts/gate/check_pr_template_sections.sh` | **0** | 新增 | 无 |
+| `tests/integration/gate/gate_criterion_existence_test.rs` | **0** | 新增 | 无 |
+| `tests/baseline/gate_script_refs_baseline.json` | **0** | 新增 | 无 |
+| `scripts/gate/check_anti_fabrication.sh` | **3** | 改 1 个数组元素（+9 行注释）| **中** — `origin/fix/omp-ignore-registry-5098` 改的是**同一行** `local allowed=(...)` 数组（同样加一个邮箱）⇒ 文本冲突，需 rebase 后重加 |
+| `AGENTS.md` | **3** | 改 1 行 | 低 — 三个分支的改动在别处 |
+| `.gitea/pull_request_template.md` | **2** | 改 10 行 | 低 — 两个分支的改动在别处 |
+| `Cargo.toml` | **4** | 改 3 行（`[[test]]` 块）| **中** — `origin/fix/clippy-workspace-coverage-5508-batch19`（**同日**）也改 `Cargo.toml` |
+| `.gitea/workflows/ci.yml` | 5 | **不改** | — |
+| `crates/mysql-server/src/lib.rs` | 7 | **不改** | — |
+| `src/execution_engine.rs` | 5 | **不改** | — |
+
+**实测方法**（可复现）：
+
+```bash
+git for-each-ref --format='%(refname:short)' refs/remotes/origin | grep 'origin/fix\|origin/docs' \
+  | while read b; do
+      n=$(git log --format=%H origin/develop/v4.1.0.."$b" -- <file> | wc -l)
+      [ "$n" -gt 0 ] && echo "$b : $n"
+    done
+```
+
+统计的是**各分支自己的 commit**（不是 `diff base..branch`）—— 后者会把
+基线漂移算成该分支的改动。
+
+> **订正说明**：本 PR 的初版文档写的是「168 个远端 fix/docs 分支**零触及**」。
+> 那句话**不成立**：实测 168 个分支中有 8 个触及本 PR 修改的 4 个文件。
+> 冲突面已按文件逐条重测，并把风险等级写进上表。
 | `.gitea/workflows/ci.yml` | 5 | **不改** |
 | `crates/mysql-server/src/lib.rs` | 7 | **不改** |
 | `src/execution_engine.rs` | 5 | **不改** |
