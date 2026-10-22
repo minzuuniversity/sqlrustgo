@@ -35,6 +35,21 @@ use std::path::PathBuf;
 /// Cargo target name — used in the NOT-RUN marker.
 const TARGET: &str = "_q15_q16_check";
 
+/// The oracle's result rows — one `Vec<String>` per row.
+///
+/// #5539: the pair of return types used to be written inline as
+/// `Option<(Vec<Vec<String>>, Vec<(String, usize)>)>`. That spelling trips
+/// `clippy::type_complexity` on the **CI toolchain** (clippy 1.95.0), while
+/// the locally-default toolchain (1.97.0) does not — so the lint budget
+/// gate, which runs on the local toolchain, never saw it and the
+/// `lint-build` job (`-D warnings`) went red on the first run that
+/// contained this file. The types are therefore named, which keeps the
+/// signature readable and the lint quiet on **every** toolchain.
+type OracleRows = Vec<Vec<String>>;
+
+/// The tables that were actually loaded, with their row counts.
+type LoadedTables = Vec<(String, usize)>;
+
 /// Read one of the repository's canonical TPC-H statements.
 ///
 /// `CARGO_MANIFEST_DIR` is used instead of a relative path: `cargo test`
@@ -71,7 +86,7 @@ fn compare_with_oracle(
     tables: &[&str],
     sql: &str,
     label: &str,
-) -> Option<(Vec<Vec<String>>, Vec<(String, usize)>)> {
+) -> Option<(OracleRows, LoadedTables)> {
     let state = tpch_fixture::FixtureState::resolve();
     let Some(fixture) = state.require(TARGET) else {
         // `require` has already written the NOT-RUN record: the target did

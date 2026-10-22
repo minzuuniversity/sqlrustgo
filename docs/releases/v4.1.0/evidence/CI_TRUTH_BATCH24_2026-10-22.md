@@ -476,6 +476,114 @@ CI 上 `mutation` job 的**第一次真正跑通**仍待观察 —— 本节的�
 
 ---
 
+## 6bis. `lint-build` job 也红了 —— 工具链版本漂移（#5540）
+
+批次 24 的 run 8750 的 `lint-build` job：
+
+```
+error: very complex type used. Consider factoring parts into `type` definitions
+  --> tests/integration/sql/_q15_q16_check.rs:74:6
+   |
+74 | ) -> Option<(Vec<Vec<String>>, Vec<(String, usize)>)> {
+   = help: ... rust-clippy/rust-1.95.0/index.html#type_complexity
+   = note: `-D clippy::type-complexity` implied by `-D warnings`
+error: could not compile `sqlrustgo` (test "_q15_q16_check") due to 1 previous error
+```
+
+### 6bis.1 因果链
+
+1. 批次 23 的 `f917dc2b0e`（#5515）把 `compare_with_oracle` 的返回类型改成
+   `Option<(Vec<Vec<String>>, Vec<(String, usize)>)>` —— 这个改动**本身正确**
+   （它把「fixture 缺失 ⇒ panic」改成「返回 None ⇒ 记 NOT-RUN 后不判失败」）。
+2. 该拼写在 **CI 的 clippy 1.95.0** 下触发 `clippy::type_complexity`，
+   而**本地默认工具链 1.97.0 不触发**（clippy 的复杂度评分在版本间变过）。
+3. 批次 19 的 lint 预算门禁是在**本地工具链**上跑的 ⇒ baseline 里没有这个
+   新 lint ⇒ 门禁放行；而 CI 的 `lint-build` 步骤是
+   `cargo clippy --all-features --all-targets -- -D warnings`（**零容忍**）⇒ 直接红。
+4. 批次 23 从未单独跑过 CI（它要随 #5535 一起合并）⇒ 这个 lint 在
+   **第一次真正跑到它的那次 CI** 才暴露。
+
+⇒ 这是「CI 从未跑绿测试套件」的又一个直接后果。
+
+### 6bis.2 修法与**两个对照**（都用 CI 的工具链）
+
+修法：把返回类型命名 —— `type OracleRows = Vec<Vec<String>>;`、
+`type LoadedTables = Vec<(String, usize)>;` ⇒ 签名读起来更清楚，
+且**对任何 clippy 版本都不触发**该 lint。
+
+| 对照 | 命令 | 结果 |
+|---|---|---|
+| **负对照**（临时还原旧签名） | `cargo +1.95.0 clippy --all-features --test _q15_q16_check -- -D warnings` | **RC=101**，报 `type_complexity` ✓ |
+| **正对照**（修复后，同一条命令） | 同上 | **RC=0** ✓ |
+| **CI 等价命令**（根包全 target） | `cargo +1.95.0 clippy --all-features --all-targets -- -D warnings` | **RC=0**（0 error） ✓ |
+
+⚠️ 之所以能对上是**因为本地装了与 CI 同一个 clippy（1.95.0）**：
+`rustup toolchain list` ⇒ `1.91.0` / `1.95.0` / `1.97.0` 都在。
+本地默认的 1.97.0 **不会**报这个 lint —— 这正是它漏过门禁的原因。
+
+### 6bis.3 附带发现（值得单独立规则）
+
+lint 预算门禁在「当前工具链没有自己的 baseline 条目」时回退到
+「各 lint 跨版本的最大计数」⇒ **本地绿、CI 红**的情形会被放过。
+门禁脚本其实已经支持 `SQLRUSTGO_CLIPPY_TOOLCHAIN` 固定工具链（这是对的），
+但没有任何东西**要求**生成 baseline 时用它。
+⇒ 建议的规则：**生成/更新 baseline 必须用与 CI 相同的 clippy 版本**，
+否则这次的漂移会重演（登记为 #5540 的「附带发现」）。
+
+---
+
+## 6ter. `lint-build` job 也红了 —— 批次 24 自己破坏了 `cargo fmt --check`（#5544）
+
+CI run **8831** / job **18459**（PR #5535 的 head `cd4a02c6b5`）在 `lint-build` 这一步红：
+
+```
+Diff in crates/storage/tests/no_namespace_db_refusal_5266.rs:16:
+ use sqlrustgo_storage::append_only_storage::AppendOnlyStorage;
++use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
+ use sqlrustgo_storage::engine::{
+...
+Diff in crates/storage/tests/no_namespace_db_refusal_5266.rs:22:
+-use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
+ use sqlrustgo_storage::table_level_storage::TableLevelStorage;
+  ❌  Failure - Main Format check
+exitcode '1': failure
+```
+
+**根因是流程缺陷，不是代码缺陷**：本批的提交 `489aa8cb0e`（修 5266 测试的 `error[E0432]`）
+把新 import 放在了不符合 rustfmt 排序的位置；而批次 24 的本地验证跑了门禁脚本、
+clippy 预算门禁、AFP 门禁，**唯独没有跑 `cargo fmt --check --all`**。
+CI 把它排在 `lint-build` 的最后一步，于是它成了第一个发现问题的步骤。
+
+⇒ **本地绿灯不等于 CI 绿灯**：两边跑的不是同一份命令清单（#5544 的流程侧修复）。
+本批已改为：提交前在本地**镜像 CI `lint-build` job 的全部 7 个步骤**
+（clippy / 两个 lint 预算门禁 / workflow 表达式门禁 / 硬编码凭据门禁 / fmt / build），
+并用 `SQLRUSTGO_CLIPPY_TOOLCHAIN=1.95.0` 把工具链钉成 CI 那一个。
+
+代码侧修复：把 import 移到 rustfmt 要求的位置（`cargo fmt --all` 只改这一个文件）。
+
+Refs #5544
+
+---
+
+## 7bis. 批次 24b —— PR-DAG 门禁的 base ref 恒不可解析（#5542）
+
+本批**追加**一个提交，修掉一个会让 CI `test` job **必红**的缺陷：
+`scripts/gate/verify_pr_dag.sh` 的默认 base `origin/develop/v4.1.0`
+在本地（没有 `origin` 远端）和 CI（只 fetch 单个 SHA ⇒ 不生成远程跟踪分支）
+**都解析不到** ⇒ 门禁恒判 DRIFT(exit 2) ⇒
+`tests/integration/gate/gate_criterion_existence_test.rs` 的 5 个用例每个 run 都红。
+
+修法：**显式 `--base` 逐字使用、永不回退**；默认 base 改成「发布线规格 + 一条确定的解析链」，
+门禁打印它实际用的 ref。附带修掉 `:409` 的 `[ "" -gt 0 ]` 整数比较噪声。
+另给门禁加 `--selftest`，并在 CI 的 `lint-build` job 里跑一次。
+
+完整 SPEC / 实测 / 正负对照 / CI 形态 checkout 的前后对照见
+**`docs/releases/v4.1.0/evidence/PR_DAG_BASE_RESOLUTION_5542_2026-10-22.md`**。
+
+Refs #5542
+
+---
+
 ## 7. 身份与协作
 
 - 身份串：`openclaw-mcode`（Mac Mini / Minimax-Code）
@@ -494,3 +602,5 @@ Refs #5448
 Refs #5532
 Refs #5533
 Refs #5534
+Refs #5542
+Refs #5544

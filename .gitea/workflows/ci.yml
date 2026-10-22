@@ -1181,6 +1181,26 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/gate/check_stage.sh --version v4.1.0 --dry-run
+      # Issue #5542: `scripts/gate/verify_pr_dag.sh` is the executable criterion
+      # behind BE5 / B-F5 (docs/governance/GATE_CONDITIONS.md:103/129), but its
+      # default base ref (`origin/develop/v4.1.0`) could not be resolved in
+      # EITHER environment: this repository has no `origin` remote, and the CI
+      # checkout fetches a single SHA, which creates no remote-tracking branch.
+      # The gate therefore answered DRIFT (exit 2) everywhere — the criterion
+      # was never executable, and the five regression cases in
+      # tests/integration/gate/gate_criterion_existence_test.rs failed on every
+      # CI run. The base ref is now a release LINE resolved through a
+      # deterministic chain; its `--selftest` proves the chain still tells a
+      # resolvable checkout from an unresolvable one, and that an explicitly
+      # requested base is never silently replaced.
+      #
+      # The gate itself is NOT run here: on the runner's shallow checkout it
+      # correctly refuses to judge (DRIFT), and BE5 / B-F5 are release-time
+      # criteria — the same arrangement as `check_stage.sh --dry-run` above.
+      - name: PR-DAG gate base-ref resolution (#5542)
+        run: |
+          set -euo pipefail
+          bash scripts/gate/verify_pr_dag.sh --selftest
       # Issue #5439: v4.1.0 was missing 4 of the 5 GA `required_files` and
       # 4 of the 6 GA `doc_artifacts`, and **nothing noticed** — the
       # evidence-binding gate only walks the `.md` files that exist, and
