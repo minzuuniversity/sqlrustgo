@@ -624,16 +624,35 @@ known_gaps:
     decision: "OPEN — 是否重跑 168h SOAK 属架构师裁决，本 SSOT 不代为决定。"
 
 open_issues:
+  # 2026-10-23 复核：7 条中 5 条已由实测证据销账，移入
+  # resolved_issues_2026_10_23 留档；余下 2 条仍 open。
   # 2026-10-03 销账审计：原 7 条经实跑核实，6 条已解决并移入
   # resolved_issues_2026_10_03 留档；1 条改写为仍 open（口径矛盾）。
   # 新增 5 条来自 DEFECTS_AND_ISSUES.md 的 P0/P1 实测项。
-  - "CURRENT_VERSION.md 与 docs/releases/v4.0.0/RELEASE_NOTES.md 仍写 v4.0.0 为 'GA (CONDITIONAL PASS)'，与 v4.0.0/STAGE.yaml 的 ga_promotion_status.verdict=REVOKED 矛盾，需统一措辞。"
-  - "P0-01 check_anti_ignore_gate.sh 为空转门禁（不扫源码树），P16 实际未强制。详见 DEFECTS_AND_ISSUES.md。"
-  - "P0-02 #4708 假 DONE：parser 完全不支持块注释 /* */，被 crates/parser/tests/wp_a_legacy.rs:68 的未登记 #[ignore] 掩盖。详见 DEFECTS_AND_ISSUES.md + ISSUES_PLAN.md §4.0。"
-  - "P0-05 debt-registry.yaml SEM-4 关闭根因仍是字面占位符 'XYZ'，且其中 parser 75.16% 不可复现（实测 60.58%）。详见 DEFECTS_AND_ISSUES.md。"
-  - "P1-01 parser 行覆盖率实测 60.58%，ALPHA 门槛 80%，缺 19.42pp；check_coverage_v312.sh:30 提取失败时 fail-open 跳过。详见 DEFECTS_AND_ISSUES.md。"
   - "P1-02 #4540 Q20 oracle 未闭环：sqlrustgo/q20.tsv 缺失，CROSS_ENGINE_HASH_CHECK.json 记 present:false，与 GA5_TPCH_SF1_REPORT.md:40 的 'Q20 PASS' 矛盾。详见 DEFECTS_AND_ISSUES.md。"
   - "P0-08 WAL 恢复逐条整表重写：实测重启后首条全表查询 24min22s（紧接同一条 0.08s），68,288 行 / 58,288 条 INSERT / 8.0MB WAL 下 save_table_full 被逐条调用、delta 追加路径一次未走到。恢复在 listener 之前完成 → 硬性启动不可用，且历史所有 SOAK 均未覆盖（harness 从不中途重启）。详见 DEFECTS_AND_ISSUES.md + ISSUE-RECOVERY-QUADRATIC-REPLAY.md。"
+
+resolved_issues_2026_10_23:
+  - id: "v4.0.0 GA 判定措辞矛盾（CURRENT_VERSION.md + v4.0.0/RELEASE_NOTES.md）"
+    was: "CURRENT_VERSION.md 与 docs/releases/v4.0.0/RELEASE_NOTES.md 仍写 v4.0.0 为 'GA (CONDITIONAL PASS)'，与 v4.0.0/STAGE.yaml 的 ga_promotion_status.verdict=REVOKED 矛盾，需统一措辞。"
+    resolved: "2026-10-23 两处措辞改为与 SSOT 一致：v4.0.0 代码确已发布（2026-09-19，tag v4.0.0-final @ 54571eeca0 → 07178c9d66，5 远端 main 均含该 commit），但 ga_promotion_status.verdict='REVOKED 2026-09-30'、current_stage='DRAFT' ⇒ 从未合法达到 GA，不构成 GA 发布。CURRENT_VERSION.md 内共 6 处引用旧口径（最近已发布标题 / GA 门禁报告条目 / 里程碑条目 / 治理约束段 / 版本概述 / 变更历史表），一并对齐。"
+    evidence: "docs/releases/v4.0.0/STAGE.yaml:29-41 + docs/releases/v4.0.0/GA_GATE_REPORT.md:1-25 + docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md"
+  - id: "P0-01 check_anti_ignore_gate.sh 空转门禁"
+    was: "门禁 exit 0 但从不扫描源码树，P16 实际未强制（known_hollow_gate 同款指控）"
+    resolved: "2026-10-23 实测：脚本已带 tree recount（count_tree()，用与 registry 同一规则重算树内真实 #[ignore] 数），实跑输出 'ignore_registry.json: total_allowed=119 (max=150), active=69 (max=80)' + 'tree recount: real #[ignore] attributes in tests/ + crates/ = 119'，树内计数与 registry 相等；两者不等时走 'FAIL: registry drift' 判定 ⇒ 门禁现在真扫树且 fail-closed，exit 0 不再是空转。"
+    evidence: "scripts/gate/check_anti_ignore_gate.sh:123-159 + 实跑输出（2026-10-23, RC=0）"
+  - id: "P0-02 #4708 parser 块注释假 DONE"
+    was: "parser 完全不支持块注释 /* */，被 crates/parser/tests/wp_a_legacy.rs:68 的未登记 #[ignore] 掩盖"
+    resolved: "2026-10-23 实测：crates/parser/src/lexer.rs:78 起已有 #4708 块注释分支（含 EOF 未闭合的收尾路径）；crates/parser/tests/wp_a_legacy.rs:68 的 #[ignore] 已移除 —— 该行现为说明其已被移除的注释 ⇒ 支持已实现且不再被 ignore 掩盖。"
+    evidence: "crates/parser/src/lexer.rs:78-90 + crates/parser/tests/wp_a_legacy.rs:68"
+  - id: "P1-01 check_coverage_v312.sh fail-open"
+    was: "提取失败时静默跳过，parser 行覆盖率实测 60.58%，ALPHA 门槛 80%，缺 19.42pp"
+    resolved: "2026-10-23 实测：脚本已 fail-closed —— 测不出数据的 crate 进 FAILED_CRATES 并最终 exit 1，另有 COUNT != L1_8_CRATES 数量校验（scripts/gate/check_coverage_v312.sh:315-349，注释明确记录 #4944 P1-01 的旧形状是 continue，会把 crate 同时从分子分母里丢掉）。另实测 parser 行覆盖率 86.46%（不是 60.58%），L1_8 8-crate 平均 87.80% ≥ 80.0%，exit 0。"
+    evidence: "scripts/gate/check_coverage_v312.sh:315-349 + 2026-10-23 全 8-crate 实跑日志"
+  - id: "P0-05 debt-registry.yaml SEM-4 关闭根因是字面占位符 'XYZ'"
+    was: "SEM-4 的关闭根因写的是字面占位符 'XYZ'，且其中 parser 75.16% 不可复现（称实测 60.58%）"
+    resolved: "2026-10-23 实测重写：根因已从占位符换成实测事实 —— 覆盖率原先用 cargo llvm-cov 默认并行 test 线程测量，读数随机器负载漂移，这正是跨机台读数不一致的来源；2026-10-22 commit 2fef945260 (#5537) 钉死 --test-threads=1 后测量转为确定性（脚本内已有证据：planner 在同一 checkout 上 --test-threads=1 得 88.91% 且 PASS、默认线程数则 FAIL）。两项关闭前提均满足：executor 套件实测 777 passed / 0 failed / 0 ignored（#5103 由 PR #5126 修复）+ 修正后门禁完整 8-crate 实跑 L1_8 87.80%。确定性验证：同机同代码连续两遍测 sqlrustgo-transaction 得 93.29% / 93.29% 完全一致。parser 实测 86.46%，'60.58%' 不复现。SEM-4 状态 IN_PROGRESS → CLOSED，closed_at=2026-10-23，closing_pr=[5126, 5537]。"
+    evidence: "docs/governance/debt/debt-registry.yaml (SEM-4, state=CLOSED, closed_at=2026-10-23, closing_pr=[5126, 5537])"
 
 resolved_issues_2026_10_03:
   - id: "v4.0.0 STAGE.yaml / GA_GATE_REPORT.md 矛盾"
