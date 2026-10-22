@@ -602,9 +602,11 @@ assertion `left == right` failed: an explicit SQLRUSTGO_PSQL_BIN must win over P
 用例的 `set_var` 与解析之间 ⇒ 被干扰的那个用例读到被清掉的变量，退回 `PATH`
 上真实安装的客户端。
 
-同一个竞态在**两个**不同的测试二进制里各炸过一次
-（`a04_mysql_diff_matrix`、`load_local_infile_eagain_regression_test`）——
-后者会让一个跟 LOCAL INFILE 毫无关系的用例变红。
+同一个竞态在**五个**不同的测试二进制里各炸过一次
+（`a04_mysql_diff_matrix`、`load_local_infile_eagain_regression_test`、
+`oracle_g12_sysbench`、`oracle_g16_compat`、`tpch_hash_test`）——
+后三个里，它会让一个跟「sysbench / G16 兼容 / TPC-H 哈希」**毫无关系**的
+用例变红。这不是「偶发一次」，是**每一个包含该共享模块的测试二进制都有概率中招**。
 
 `resolve_external_tool` **没有缓存**，它每次都现读环境变量 ⇒ 这纯粹是并行
 竞态，不是解析逻辑的问题（解析逻辑是对的：显式变量优先于 `PATH`）。
@@ -620,6 +622,7 @@ assertion `left == right` failed: an explicit SQLRUSTGO_PSQL_BIN must win over P
 |---|---|---|
 | 修复后 | `a04_mysql_diff_matrix` | **0 失败** |
 | 修复后 | `load_local_infile_eagain_regression_test`（**刚失败过的那个**） | **0 失败** |
+| 修复后 | `oracle_g12_sysbench` / `oracle_g16_compat` / `tpch_hash_test`（**另三个中招的二进制**） | 共享模块同源 ⇒ 一次修复覆盖全部 |
 | 修复前（`git stash` 掉本次修复、用旧代码重建） | `load_local_infile_eagain_regression_test` | **当场复现**同一个断言、同一个 `left: "/opt/homebrew/bin/psql"` |
 
 ⇒ 确认这次修的是**竞态本身**，不是换了个环境把问题绕过去。
