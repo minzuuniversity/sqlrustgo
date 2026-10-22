@@ -69,10 +69,22 @@ enum SubCmd {
     Diag,
     Backup {
         output_dir: String,
+        /// Database to back up.
+        ///
+        /// #5516: the underlying server subcommand hardcoded `default`,
+        /// so the database could not be selected at all.
+        #[arg(long, default_value = "default")]
+        database: String,
+        /// Backup type: full, incremental, differential.
+        #[arg(long, default_value = "full")]
+        backup_type: String,
     },
     Restore {
         backup_id: String,
         database: String,
+        /// Directory the backup is read from.
+        #[arg(long, default_value = ".")]
+        backup_dir: String,
     },
     /// Connect to a running server and execute a query (NEW).
     Cli {
@@ -191,14 +203,43 @@ pub fn run() -> i32 {
         Some(SubCmd::Bench) => run_bin("bench", &[]),
         Some(SubCmd::Gmp) => run_bin("gmp", &[]),
         Some(SubCmd::Diag) => run_bin("diag", &[]),
-        Some(SubCmd::Backup { output_dir }) => run_bin("backup", &[("--output", output_dir)]),
+        // #5516: the server's `backup` takes the output path as a
+        // **positional** argument. The old forwarding sent
+        // `--output <dir>`, which clap rejected ("unexpected argument
+        // '--output'") — so `sqlrustgo backup <dir>` never worked.
+        Some(SubCmd::Backup {
+            output_dir,
+            database,
+            backup_type,
+        }) => {
+            let bin = mysql_server_bin();
+            let mut cmd = Proc::new(&bin);
+            cmd.arg("backup")
+                .arg(&output_dir)
+                .arg("--database")
+                .arg(&database)
+                .arg("--backup-type")
+                .arg(&backup_type);
+            exec_status(&bin, cmd)
+        }
+        // #5516: same defect on the restore side: the server's `restore`
+        // takes the backup id as a positional argument, and the old
+        // forwarding sent `--input <id> --database <db>`.
         Some(SubCmd::Restore {
             backup_id,
             database,
-        }) => run_bin(
-            "restore",
-            &[("--input", backup_id), ("--database", database)],
-        ),
+            backup_dir,
+        }) => {
+            let bin = mysql_server_bin();
+            let mut cmd = Proc::new(&bin);
+            cmd.arg("restore")
+                .arg(&backup_id)
+                .arg("--database")
+                .arg(&database)
+                .arg("--backup-dir")
+                .arg(&backup_dir);
+            exec_status(&bin, cmd)
+        }
         Some(SubCmd::Cli {
             port,
             host,
@@ -296,18 +337,78 @@ fn run_bin_arg_positional(subcmd: &str, positional: &str) -> i32 {
     exec_status(&bin, cmd)
 }
 
+/// Locate the `sqlrustgo-mysql-server` binary.
+///
+/// #5516 — the old candidate list was the bare name (resolved through
+/// `PATH`) plus `./target/debug/…` and `./target/release/…` relative to the
+/// **current working directory**. That is wrong in three ways:
+///
+/// 1. it ignores `CARGO_TARGET_DIR`, so a build with a custom target
+///    directory is invisible and the CLI silently picks up whatever
+///    `sqlrustgo-mysql-server` happens to sit in *another* workspace's
+///    `./target/debug` — a **stale** binary whose command surface may
+///    differ from the one this CLI was compiled against. Reproduced while
+///    working on #5516: the CLI forwarded `--database` to an old server
+///    binary that did not know the flag and exited with a clap error;
+/// 2. the fallback silently ran *some* binary rather than disclosing that
+///    the server was not built;
+/// 3. it could not be overridden.
+///
+/// The override name is the one the repository already uses
+/// (`SQLRUSTGO_SERVER_BIN` in `crates/storage/tests/fault_coordination.rs`,
+/// `scripts/tpch/*.sh` and `scripts/sysbench/*.sh`) — one convention, one
+/// implementation.
 fn mysql_server_bin() -> String {
-    let candidates = [
-        "sqlrustgo-mysql-server",
-        "./target/debug/sqlrustgo-mysql-server",
-        "./target/release/sqlrustgo-mysql-server",
-    ];
-    for c in candidates {
-        if std::path::Path::new(c).exists() || which(c).is_some() {
-            return c.to_string();
+    const NAME: &str = "sqlrustgo-mysql-server";
+
+    // 1. Explicit override — the repository-wide convention.
+    if let Ok(explicit) = std::env::var("SQLRUSTGO_SERVER_BIN") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
         }
     }
-    "sqlrustgo-mysql-server".to_string()
+
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    // 2. The target directory cargo was pointed at.
+    if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
+        let dir = dir.trim();
+        if !dir.is_empty() {
+            for profile in ["debug", "release"] {
+                candidates.push(std::path::PathBuf::from(dir).join(profile).join(NAME));
+            }
+        }
+    }
+
+    // 3. The directory this very binary was built into — the most
+    //    consistent answer, because it is the build the CLI belongs to.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join(NAME));
+        }
+    }
+
+    // 4. ./target/{debug,release} relative to the current directory.
+    for profile in ["debug", "release"] {
+        candidates.push(std::path::PathBuf::from("target").join(profile).join(NAME));
+    }
+
+    for c in &candidates {
+        if c.is_file() {
+            return c.to_string_lossy().to_string();
+        }
+    }
+
+    // 5. $PATH.
+    if let Some(found) = which(NAME) {
+        return found;
+    }
+
+    // 6. Nothing found: keep the bare name so the spawn fails loudly with
+    //    "No such file or directory" instead of quietly doing something
+    //    else. The caller turns that into a non-zero exit.
+    NAME.to_string()
 }
 
 fn which(name: &str) -> Option<String> {

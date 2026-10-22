@@ -644,7 +644,14 @@ mod batch_tests {
         };
         let mut writer = BatchVectorWriter::with_config(DistanceMetric::Cosine, config);
         writer.insert(1, vec![1.0, 2.0]).unwrap();
-        assert!(writer.pending() > 0 || writer.indexed_count() >= 0);
+        // The `|| writer.indexed_count() >= 0` half of the old assertion was
+        // vacuous — a `usize` is always `>= 0`, which is what
+        // `clippy::absurd_extreme_comparisons` reports (#5508). The two real
+        // facts are: the vector is still pending, and nothing has been flushed
+        // to the index yet (flush_threshold is 50, one insert does not reach
+        // it).
+        assert!(writer.pending() > 0);
+        assert_eq!(writer.indexed_count(), 0);
     }
 }
 
@@ -782,6 +789,9 @@ mod hybrid_tests {
         let _not = SqlPredicate::not(p1.clone());
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn hybrid_search_sql_value_variants() {
         let f = SqlValue::Float(3.14);
@@ -796,6 +806,9 @@ mod hybrid_tests {
         assert_eq!(n.as_i64(), None);
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn hybrid_search_sql_value_text_to_f64() {
         let t = SqlValue::Text("3.14".to_string());

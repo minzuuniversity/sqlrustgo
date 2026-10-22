@@ -41,6 +41,10 @@ fn is_null(result: &sqlrustgo::ExecutorResult) -> bool {
 }
 
 // TRUNCATE tests
+// `3.141` is the **SQL literal under test** — the result of
+// `TRUNC(3.14159, 3)` — not a mathematical constant.
+// `clippy::approx_constant` is deny-by-default and flags it (see #5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn truncate_positive_decimals() {
     let mut e = engine();
@@ -80,6 +84,9 @@ fn truncate_null_input() {
     assert!(is_null(&r), "TRUNC(NULL, 2) must be NULL");
 }
 
+// `3.141` is the **SQL literal under test**, not a mathematical constant;
+// `clippy::approx_constant` is deny-by-default and flags it (#5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn truncate_trunc_alias() {
     let mut e = engine();
@@ -127,6 +134,9 @@ fn hex_text() {
     assert_eq!(first_text(&r), "48656C6C6F", "HEX('Hello') = '48656C6C6F'");
 }
 
+// `3.14` is the **SQL literal under test**, not a mathematical constant;
+// `clippy::approx_constant` is deny-by-default and flags it (#5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn truncate_table_usage() {
     let mut e = engine();

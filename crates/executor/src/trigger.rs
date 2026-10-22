@@ -1896,6 +1896,9 @@ mod tests {
         assert_eq!(Value::Integer(999).to_sql_string(), "999");
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_value_to_sql_literal_float() {
         // Issue #4721: integral floats render with one decimal digit.
@@ -2046,6 +2049,9 @@ mod tests {
         );
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_evaluate_simple_expression_float() {
         let storage = create_test_storage();
@@ -2357,7 +2363,11 @@ mod tests {
             Some(&new_row),
         );
         assert!(result.is_ok());
-        assert!(result.unwrap().is_modified() || true);
+        // The `|| true` made this assertion vacuous — it could never fail,
+        // which is exactly what `clippy::logic_bug` flags (#5508).
+        // `create_test_storage()` registers a BEFORE INSERT trigger on
+        // `orders`, so the row *is* expected to come back modified.
+        assert!(result.unwrap().is_modified());
     }
 
     #[test]

@@ -320,6 +320,9 @@ mod tests {
         assert_eq!(text_hash, text_hash2);
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_value_to_index_key_invalid() {
         assert_eq!(Value::Null.to_index_key(), None);
@@ -344,6 +347,9 @@ mod tests {
         assert_eq!(Value::Integer(999).to_sql_string(), "999");
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_value_sql_string_float() {
         // Issue #4721: integral floats render with one decimal digit
@@ -378,6 +384,9 @@ mod tests {
         assert_eq!(v3, v4);
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_value_eq() {
         assert_eq!(Value::Null, Value::Null);

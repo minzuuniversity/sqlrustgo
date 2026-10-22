@@ -99,18 +99,30 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
 # --- ADR-014 5 evidence fields -------------------------------------------------
-SOURCE_AGENT="${SOURCE_AGENT:-opencode-z440}"
-SOURCE_RUN="${SOURCE_RUN:-opencode-z440-20261022-pr-dag}"
+# The defaults identify WHO is running the gate and WHICH run it is; both can
+# be overridden from the environment. `source_run` is bound to the commit
+# under test, so an artifact can be tied back to the exact tree it judged.
+SOURCE_AGENT="${SOURCE_AGENT:-openclaw-mcode}"
+SOURCE_RUN="${SOURCE_RUN:-openclaw-mcode-pr-dag-$(git rev-parse --short HEAD 2>/dev/null || echo nohead)}"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # --- Configuration -------------------------------------------------------------
 PLAN_FILE=""
-BASE_REF="origin/develop/v4.1.0"
+# The release line the gate judges against. The DEFAULT is a *specification*
+# ("develop/v4.1.0"), NOT a literal ref: it is resolved against the refs the
+# current checkout actually has (see resolve_base_ref). An explicitly
+# requested --base is used verbatim and is NEVER fallen back on.
+BASE_REF_SPEC="develop/v4.1.0"
+BASE_REF=""
+BASE_REF_EXPLICIT=0
 # Bypasses the shallow-history refusal. The gate cannot judge on a
 # truncated history, so it reports DRIFT (exit 2) — which is correct for
 # a CI runner, but would prevent the test suite from exercising the
 # detection logic there. Only the tests set this.
 ALLOW_SHALLOW=0
+# Scratch directory of the self-test. It is a GLOBAL on purpose: the EXIT
+# trap that removes it runs after the function has returned.
+PR_DAG_SELFTEST_TMP=""
 
 usage() {
     cat <<'EOF'
@@ -119,29 +131,204 @@ Usage: bash scripts/gate/verify_pr_dag.sh [options]
 Options:
   --plan <path>   Path to the release plan holding the "PR DAG" section
                   (default: docs/releases/v3.8.0/plans/DEVELOPMENT_PLAN.md)
-  --base <ref>    Base ref to verify against
-                  (default: origin/develop/v4.1.0)
+  --base <ref>    Base ref to verify against. Used VERBATIM: if it cannot be
+                  resolved the gate reports DRIFT (exit 2) and never falls
+                  back to another ref.
+                  (default: the release line "develop/v4.1.0", resolved
+                  against the refs this checkout has — see below)
   --allow-shallow Proceed even on a truncated history, instead of
                   reporting DRIFT. The gate CANNOT judge on a truncated
                   history, so the default is to refuse. This flag exists
                   for the test suite, which needs to exercise the
                   detection logic in a shallow checkout.
+  --selftest      Run the gate's own self-test (base-ref resolution over
+                  throwaway git repositories) and exit. No plan is read.
   -h, --help      Show this help
+
+Default base resolution (deterministic, and the gate PRINTS the ref it used):
+  1. refs/remotes/<remote>/develop/v4.1.0, remotes tried in the fixed order
+     origin -> gitea252 -> gitea250 -> github -> gitcode -> gitee
+  2. the same line on any other remote (sorted => deterministic)
+  3. refs/heads/develop/v4.1.0
+  4. HEAD — the only ref a SHA-only CI checkout has
+  If none of them resolves, the gate reports DRIFT (exit 2).
 
 Environment:
   SOURCE_AGENT / SOURCE_RUN
 EOF
 }
 
+# --- base-ref resolution (issue #5542) ---------------------------------------
+#
+# The gate judges ONE question: "is there a merge commit for PR-X behind the
+# release line?". The question does not change between environments; only
+# the place the history is READ from does:
+#
+#   * a local worktree of this project has NO `origin` remote at all — its
+#     remotes are `gitea252` / `gitee` / `github` / `gitcode` / `gitea250`;
+#   * the CI runner checks out a single SHA (`git init` + `git remote add
+#     origin` + `git fetch origin +<SHA>`), which creates NO remote-tracking
+#     branch — only `HEAD`.
+#
+# Pinning the default to one literal ref (`origin/develop/v4.1.0`) therefore
+# made the gate answer DRIFT(exit 2) EVERYWHERE: the BE5 / B-F5 criterion was
+# never executable, and the five regression cases in
+# tests/integration/gate/gate_criterion_existence_test.rs failed for exactly
+# that reason (measured on the batch-24 tree `cd4a02c6b5`).
+#
+# The order below is deterministic, and the gate prints the ref it actually
+# used — a fallback must never be silent.
+resolve_base_ref() {
+    local repo="${1:-$REPO_ROOT}"
+    local spec="$2"
+    local remote ref
+
+    # 1. the release line as a remote-tracking branch, in a fixed priority
+    for remote in origin gitea252 gitea250 github gitcode gitee; do
+        ref="refs/remotes/$remote/$spec"
+        if git -C "$repo" rev-parse --verify --quiet "$ref" >/dev/null 2>&1; then
+            printf '%s\n' "$ref"
+            return 0
+        fi
+    done
+
+    # 2. the same line on any other remote (sorted => deterministic)
+    for ref in $(git -C "$repo" for-each-ref --format='%(refname)' "refs/remotes/*/$spec" 2>/dev/null | sort); do
+        printf '%s\n' "$ref"
+        return 0
+    done
+
+    # 3. a local branch of the same name
+    ref="refs/heads/$spec"
+    if git -C "$repo" rev-parse --verify --quiet "$ref" >/dev/null 2>&1; then
+        printf '%s\n' "$ref"
+        return 0
+    fi
+
+    # 4. HEAD — the only ref a SHA-only CI checkout has
+    if git -C "$repo" rev-parse --verify --quiet HEAD >/dev/null 2>&1; then
+        printf '%s\n' "HEAD"
+        return 0
+    fi
+
+    return 1
+}
+
+# --- selftest (issue #5542) ----------------------------------------------------
+#
+# The base-ref resolution is a RULE, so it is testable on its own: the
+# self-test builds throwaway git repositories shaped like the three checkouts
+# the gate meets in the wild (a full worktree, a SHA-only CI checkout, an
+# explicitly broken --base).
+run_selftest() {
+    local pass=0 fail=0 tmp repo_a repo_b got rc out
+    local spec="develop/v4.1.0"
+
+    # The scratch directory is a GLOBAL: the EXIT trap below runs after this
+    # function has returned, when its `local` variables are already gone.
+    PR_DAG_SELFTEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/sqlrustgo-prdag-selftest.XXXXXX" 2>/dev/null)" || PR_DAG_SELFTEST_TMP=""
+    tmp="$PR_DAG_SELFTEST_TMP"
+    if [ -z "$tmp" ] || [ ! -d "$tmp" ]; then
+        echo "[FAIL] selftest: cannot create a temporary directory — refusing to report a verdict"
+        return 1
+    fi
+    trap 'rm -rf -- "$PR_DAG_SELFTEST_TMP"' EXIT
+
+    # fixture A: a checkout that HAS the release line as a remote-tracking branch
+    repo_a="$tmp/with-origin"
+    mkdir -p "$repo_a"
+    git -C "$repo_a" init -q >/dev/null 2>&1
+    git -C "$repo_a" -c user.name=selftest -c user.email=selftest@example.invalid \
+        commit -q --allow-empty -m "selftest" >/dev/null 2>&1
+    git -C "$repo_a" update-ref refs/remotes/origin/develop/v4.1.0 HEAD >/dev/null 2>&1
+
+    # fixture B: a SHA-only CI checkout — no remote-tracking branch at all
+    repo_b="$tmp/head-only"
+    mkdir -p "$repo_b"
+    git -C "$repo_b" init -q >/dev/null 2>&1
+    git -C "$repo_b" -c user.name=selftest -c user.email=selftest@example.invalid \
+        commit -q --allow-empty -m "selftest" >/dev/null 2>&1
+
+    # case 1: the release line as a remote-tracking branch is preferred
+    got="$(resolve_base_ref "$repo_a" "$spec")"
+    if [ "$got" = "refs/remotes/origin/develop/v4.1.0" ]; then
+        echo "[PASS] selftest: a checkout carrying the release line resolves to the remote-tracking branch"
+        pass=$((pass + 1))
+    else
+        echo "[FAIL] selftest: expected refs/remotes/origin/develop/v4.1.0, got '$got'"
+        fail=$((fail + 1))
+    fi
+
+    # case 2: a SHA-only checkout falls back to HEAD
+    got="$(resolve_base_ref "$repo_b" "$spec")"
+    if [ "$got" = "HEAD" ]; then
+        echo "[PASS] selftest: a SHA-only checkout resolves to HEAD"
+        pass=$((pass + 1))
+    else
+        echo "[FAIL] selftest: expected HEAD, got '$got'"
+        fail=$((fail + 1))
+    fi
+
+    # case 3: an explicitly requested base ref is NEVER fallen back on
+    out="$(bash "$SCRIPT_DIR/verify_pr_dag.sh" --base refs/heads/definitely_nonexistent_selftest_zzz 2>&1)"
+    rc=$?
+    if [ "$rc" -eq 2 ] && printf '%s\n' "$out" | grep -q "base ref cannot be resolved"; then
+        echo "[PASS] selftest: an unresolvable explicit --base stays DRIFT (exit 2) — no fallback"
+        pass=$((pass + 1))
+    else
+        echo "[FAIL] selftest: an unresolvable explicit --base must be DRIFT (exit 2), got exit $rc"
+        fail=$((fail + 1))
+    fi
+
+    # case 4: the gate must not print integer-expression noise on stderr
+    out="$(bash "$SCRIPT_DIR/verify_pr_dag.sh" 2>&1 >/dev/null)"
+    if printf '%s\n' "$out" | grep -q "integer expression expected"; then
+        echo "[FAIL] selftest: the gate still emits 'integer expression expected' on stderr"
+        fail=$((fail + 1))
+    else
+        echo "[PASS] selftest: the gate emits no integer-expression noise on stderr"
+        pass=$((pass + 1))
+    fi
+
+    # case 5: the resolved ref must be visible in the gate's own output
+    out="$(bash "$SCRIPT_DIR/verify_pr_dag.sh" 2>/dev/null)"
+    if printf '%s\n' "$out" | grep -q "base ref resolved:"; then
+        echo "[PASS] selftest: the gate prints the base ref it actually used"
+        pass=$((pass + 1))
+    else
+        echo "[FAIL] selftest: the gate must print the base ref it actually used"
+        fail=$((fail + 1))
+    fi
+
+    echo
+    echo "--- selftest summary ---"
+    echo "  passed: $pass"
+    echo "  failed: $fail"
+    if [ "$fail" -gt 0 ]; then
+        echo
+        echo "❌ selftest FAILED"
+        return 1
+    fi
+    echo
+    echo "✅ selftest PASS"
+    return 0
+}
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --plan) PLAN_FILE="$2"; shift 2 ;;
-        --base) BASE_REF="$2"; shift 2 ;;
+        --base) BASE_REF="$2"; BASE_REF_EXPLICIT=1; shift 2 ;;
         --allow-shallow) ALLOW_SHALLOW=1; shift ;;
+        --selftest) SELFTEST=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1"; usage; exit 2 ;;
     esac
 done
+
+if [ "${SELFTEST:-0}" -eq 1 ]; then
+    run_selftest
+    exit $?
+fi
 
 # --- house-style counters (see check_anti_fabrication.sh) ----------------------
 ERRORS=0
@@ -157,7 +344,11 @@ echo "=== PR-DAG Consistency Gate (issue #5457) ==="
 echo "  source_agent: $SOURCE_AGENT"
 echo "  source_run:   $SOURCE_RUN"
 echo "  timestamp:    $TIMESTAMP"
-echo "  base_ref:     $BASE_REF"
+if [ "$BASE_REF_EXPLICIT" -eq 1 ]; then
+    echo "  base_ref:     $BASE_REF (explicitly requested — used verbatim)"
+else
+    echo "  base_ref:     $BASE_REF_SPEC (release line — resolved below)"
+fi
 echo
 
 # --- Phase 1: locate the plan document ----------------------------------------
@@ -191,10 +382,27 @@ if ! grep -q "PR DAG" "$PLAN_FILE"; then
 fi
 
 # --- Phase 2: resolve the base ref --------------------------------------------
-if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
-    echo "❌ base ref cannot be resolved: $BASE_REF"
-    echo "   Cannot judge — DRIFT, not PASS."
-    exit 2
+# An explicitly requested --base is used VERBATIM: if it cannot be resolved
+# the gate cannot judge and says so (DRIFT). It is never replaced by another
+# ref — a silent fallback would let an operator believe the gate judged the
+# range they asked for.
+if [ "$BASE_REF_EXPLICIT" -eq 1 ]; then
+    if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
+        echo "❌ base ref cannot be resolved: $BASE_REF (explicitly requested — no fallback is attempted)"
+        echo "   Cannot judge — DRIFT, not PASS."
+        exit 2
+    fi
+else
+    # The default is the release LINE, not one literal ref: where that line
+    # lives differs per checkout (issue #5542). The resolved ref is printed
+    # below, so a fallback is never silent.
+    resolved_base="$(resolve_base_ref "$REPO_ROOT" "$BASE_REF_SPEC")" || resolved_base=""
+    if [ -z "$resolved_base" ]; then
+        echo "❌ no ref could be resolved for the release line: $BASE_REF_SPEC"
+        echo "   Cannot judge — DRIFT, not PASS."
+        exit 2
+    fi
+    BASE_REF="$resolved_base"
 fi
 log_info "base ref resolved: $BASE_REF ($(git rev-parse --short "$BASE_REF"))"
 
@@ -406,6 +614,14 @@ while IFS='|' read -r pr deps dep_state; do
 
     # --- actual state in git -----------------------------------------------
     n_commits=$(count_merge_commits_with_children "$pr")
+    # The helper prints NOTHING when the PR has no counted merge commit, and
+    # `[ "" -gt 0 ]` is an undefined comparison — bash wrote
+    # "[: : integer expression expected" to stderr for every such PR
+    # (issue #5542), burying the gate's real diagnostics. Normalise here:
+    # empty or non-numeric means "no counted merge commit".
+    case "$n_commits" in
+        ''|*[!0-9]*) n_commits=0 ;;
+    esac
     if [ "$n_commits" -gt 0 ]; then
         ACTUALLY_MERGED=$((ACTUALLY_MERGED + 1))
         gitea_ref=$(resolve_gitea_ref "$pr")

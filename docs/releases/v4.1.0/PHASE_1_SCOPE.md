@@ -1,5 +1,6 @@
 # v4.1.0 — PHASE_1_SCOPE
 
+> **基线**：`develop/v4.1.0` @ `8ea6d0e5923aab86bf34e2f0f6faf07d4e413915`
 > **Date**: 2026-09-29
 > **Status**: DRAFT (per `docs/releases/v4.1.0/STAGE.yaml`)
 > **Purpose**: Consolidated work plan for v4.1.0 PHASE 1 (DRAFT → ALPHA)

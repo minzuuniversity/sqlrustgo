@@ -6,12 +6,12 @@
 //! Usage:
 //!   cargo run -p sqlrustgo-bench --example tpch_fast_importer -- --input /path/to/tpch-data --storage-path /path/to/storage
 
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-use std::thread;
+
 use std::time::{Duration, Instant};
 
 /// Progress tracker

@@ -2,7 +2,7 @@
 
 use sqlrustgo_storage::binary_storage::BinaryTableStorage;
 use sqlrustgo_storage::{FileStorage, StorageEngine};
-use sqlrustgo_types::Value;
+
 use std::path::PathBuf;
 use std::time::Instant;
 

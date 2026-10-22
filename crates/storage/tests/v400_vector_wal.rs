@@ -510,7 +510,7 @@ fn hnsw_options_parsing() {
     let options = entry.index_options.as_ref().expect("options should exist");
     assert_eq!(options.len(), 3);
     assert!(options.iter().any(|(k, v)| k == "m" && v == "16"));
-    assert!(options.iter().any(|(k, v)| k == "ef_construction"));
+    assert!(options.iter().any(|(k, _v)| k == "ef_construction"));
 }
 
 #[test]

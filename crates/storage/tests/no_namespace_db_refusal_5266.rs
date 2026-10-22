@@ -32,13 +32,14 @@
 //! * `default` itself is accepted and delegates to the db-less version.
 
 use sqlrustgo_storage::append_only_storage::AppendOnlyStorage;
+use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::engine::{
     RowFilter, RowMutation, SqlError, StorageEngine, TableInfo, Value,
 };
 use sqlrustgo_storage::table_level_storage::TableLevelStorage;
 use sqlrustgo_storage::vtu_guard::VtuGuard;
 use sqlrustgo_storage::wal::MemoryWalManager;
-use sqlrustgo_storage::{BinaryTableStorage, BinaryTableStorageV2};
+use sqlrustgo_storage::BinaryTableStorage;
 
 fn table(name: &str) -> TableInfo {
     let mut info = TableInfo::default();

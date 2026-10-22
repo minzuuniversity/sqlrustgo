@@ -10,7 +10,7 @@
 #
 # Issue: #3264 (S2 24h), #3225 (真实性), #3228 (un-ignore 14 long tests)
 #
-#   USE_CLI_SOAK=1    — use `sqlrustgo-cli soak` instead of sysbench
+#   USE_CLI_SOAK=1    — use the `sqlrustgo-soak` load generator instead of sysbench
 #   CLI_SOAK_RATE=5   — queries per second for CLI soak (default: 5)
 #   CLI_SOAK_QUERIES  — path to custom query file for CLI soak
  # Usage: HOURS=24 INTERVAL=60 PORT=3396 ./scripts/stability/run_24h_soak_v2.sh
@@ -19,6 +19,18 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
+
+# #5516: the CLI-soak branch used to run `./target/release/sqlrustgo-cli soak
+# --host … --duration … --rate … --query-file …`. `sqlrustgo-cli` is the
+# **package** name; the binary is `sqlrustgo`, and its `soak` subcommand is
+# the **REPL** form (reads SQL on stdin, prints `ROW\t` lines) — it takes no
+# `--duration` / `--rate` / `--query-file` at all.
+#
+# The parameter面 that `sqlrustgo-soak` has (a load generator: `--duration`
+# / `--rate` / `--report-interval` / `--query-file`) belongs to the binary
+# `sqlrustgo-soak`, produced by the package `crates/cli`. That is what this
+# branch actually wants, so that is what it now runs.
+source "$PROJECT_ROOT/scripts/common/resolve_bin.sh"
 
 HOURS=${HOURS:-24}
 INTERVAL=${INTERVAL:-60}
@@ -42,12 +54,22 @@ CLI_SOAK_LOG="$RESULTS_DIR/cli_soak.log"
 METRICS_FILE="$RESULTS_DIR/metrics.csv"
 SYSBENCH_LOG="$RESULTS_DIR/sysbench.log"
 
+if [ "$USE_CLI_SOAK" = "1" ]; then
+    CLI_SOAK_BIN="${CLI_SOAK_BIN:-$(resolve_cargo_bin sqlrustgo-soak SQLRUSTGO_SOAK_BIN run_24h_soak_v2)}" || {
+        echo "  FAIL: the sqlrustgo-soak binary was not found."
+        echo "        Build it (cargo build -p sqlrustgo-soak --release) or point"
+        echo "        SQLRUSTGO_SOAK_BIN / CLI_SOAK_BIN at an existing binary."
+        exit 1
+    }
+    echo "  CLI soak binary: $CLI_SOAK_BIN"
+fi
+
 mkdir -p "$RESULTS_DIR"
 
 if [ "$USE_CLI_SOAK" != "1" ]; then
     if ! command -v sysbench >/dev/null 2>&1; then
         echo "  FAIL: sysbench not found in PATH. Install via brew install sysbench"
-        echo "  Or set USE_CLI_SOAK=1 to use the built-in sqlrustgo-cli soak runner."
+        echo "  Or set USE_CLI_SOAK=1 to use the built-in sqlrustgo-soak runner."
         exit 1
     fi
 fi
@@ -106,10 +128,10 @@ if [ "$USE_CLI_SOAK" = "1" ]; then
     if [ -n "$CLI_SOAK_QUERIES" ]; then
         CLI_SOAK_ARGS="$CLI_SOAK_ARGS --query-file $CLI_SOAK_QUERIES"
     fi
-    echo "[3/4] Starting sqlrustgo-cli soak (${HOURS}h, ${CLI_SOAK_RATE} qps)..."
-    nohup ./target/release/sqlrustgo-cli soak $CLI_SOAK_ARGS > "$CLI_SOAK_LOG" 2>&1 &
+    echo "[3/4] Starting sqlrustgo-soak (${HOURS}h, ${CLI_SOAK_RATE} qps)..."
+    nohup "$CLI_SOAK_BIN" $CLI_SOAK_ARGS > "$CLI_SOAK_LOG" 2>&1 &
     LOAD_PID=$!
-    echo "  sqlrustgo-cli PID: $LOAD_PID"
+    echo "  sqlrustgo-soak PID: $LOAD_PID"
 else
     echo "[3/4] Starting sysbench oltp_read_write (${HOURS}h, $THREADS threads)..."
     nohup sysbench oltp_read_write \
@@ -132,7 +154,7 @@ CRASH_DETECTED=0
 cleanup() {
     echo ""
     if [ "$USE_CLI_SOAK" = "1" ]; then
-        echo "[cleanup] Stopping sqlrustgo-cli soak (PID ${LOAD_PID:-unknown})..."
+        echo "[cleanup] Stopping sqlrustgo-soak (PID ${LOAD_PID:-unknown})..."
         kill ${LOAD_PID:-} 2>/dev/null || true
         wait ${LOAD_PID:-} 2>/dev/null || true
     else
@@ -256,7 +278,7 @@ CRASH_STATUS=$([ $CRASH_DETECTED -eq 0 ] && echo "Zero crashes" || echo "CRASH D
     echo "| Port | $PORT |"
     echo "| Data dir | $DATA_DIR |"
     if [ "$USE_CLI_SOAK" = "1" ]; then
-        echo "| Load generator | sqlrustgo-cli soak (rate=${CLI_SOAK_RATE} qps) |"
+        echo "| Load generator | sqlrustgo-soak (rate=${CLI_SOAK_RATE} qps) |"
     else
         echo "| Threads | $THREADS (sysbench oltp_read_write) |"
     fi
@@ -281,7 +303,7 @@ CRASH_STATUS=$([ $CRASH_DETECTED -eq 0 ] && echo "Zero crashes" || echo "CRASH D
     echo "| Final WAL | < 10240 MB | ${FINAL_WAL} MB | $([ ${FINAL_WAL:-99999} -lt 10240 ] && echo "PASS" || echo "WARN") |"
     echo ""
     if [ "$USE_CLI_SOAK" = "1" ]; then
-        echo "## sqlrustgo-cli soak Results"
+        echo "## sqlrustgo-soak Results"
     else
         echo "## sysbench Results"
     fi
@@ -296,7 +318,7 @@ CRASH_STATUS=$([ $CRASH_DETECTED -eq 0 ] && echo "Zero crashes" || echo "CRASH D
     echo "- \`metrics.csv\` — $(($(wc -l < "$METRICS_FILE") - 1)) samples, sampled every ${INTERVAL}s"
     echo "- \`sqlrustgo.log\` — server log"
     if [ "$USE_CLI_SOAK" = "1" ]; then
-        echo "- \`cli_soak.log\` — sqlrustgo-cli soak output"
+        echo "- \`cli_soak.log\` — sqlrustgo-soak output"
     else
         echo "- \`sysbench.log\` — sysbench output"
     fi

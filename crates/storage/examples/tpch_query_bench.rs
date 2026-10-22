@@ -51,7 +51,7 @@ fn main() {
         let mut engine = ExecutionEngine::new(storage.clone());
 
         let start = Instant::now();
-        let parsed = parse(sql).expect("Failed to parse SQL");
+        let _parsed = parse(sql).expect("Failed to parse SQL");
         let result = engine.execute(sql);
         let elapsed = start.elapsed();
 
@@ -102,7 +102,7 @@ fn main() {
 
     let avg_ms: f64 = results
         .iter()
-        .map(|(name, rows, e, ok)| e.as_secs_f64() * 1000.0)
+        .map(|(_name, _rows, e, _ok)| e.as_secs_f64() * 1000.0)
         .sum::<f64>()
         / results.len() as f64;
     println!("Average query time: {:.2}ms", avg_ms);

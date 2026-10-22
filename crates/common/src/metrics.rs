@@ -424,6 +424,9 @@ mod tests {
         assert_eq!(value.as_f64(), Some(42.0));
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_metric_value_gauge() {
         let value = MetricValue::Gauge(3.14);

@@ -1,5 +1,6 @@
 # SQLRustGo v4.1.0 — Defects & Issues Catalog (DRAFT)
 
+> **基线**：`develop/v4.1.0` @ `862c034776687dcecea1a19664b059a282faa0a3`
 > **Date**: 2026-10-01
 > **Status**: DRAFT — per `docs/releases/v4.1.0/STAGE.yaml` (`DRAFT` not yet `ALPHA`)
 > **Audience**: release managers, reviewers, contributors
