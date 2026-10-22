@@ -367,8 +367,22 @@ jobs:
         # Same reason as the root job's Build step: several member test
         # targets spawn a real server binary and abort when it is missing
         # ("canonical binary not found at ...").
+        #
+        # `sqlrustgo-mysql-server/fault-injection` is **required**, not
+        # optional: the crash tests in `crates/storage/tests/` arm a fault
+        # point and wait for the server to announce it. The hooks live behind
+        # `#[cfg(any(test, feature = "fault-injection"))]`, so a binary built
+        # without the feature **silently never reaches the boundary** and the
+        # test fails with "server never reached fault point after_commit_fsync
+        # within 60s".
+        #
+        # These tests never ran in CI before (#5515) — the whole `crates/*`
+        # suite was invisible to CI — which is exactly why this wiring bug
+        # survived: the test's own message says "Build it with `cargo build -p
+        # sqlrustgo-mysql-server --all-features`", and CI never did that.
         run: |
-          cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli
+          cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli \
+            --features sqlrustgo-mysql-server/fault-injection
       - name: Prepare TPC-H fixture (issue #5379)
         # The member packages have TPC-H-dependent targets too, and the
         # fixture is generated at run time (the repository forbids committing
