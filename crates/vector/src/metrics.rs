@@ -30,6 +30,18 @@ impl DistanceMetric {
     }
 }
 
+/// Compute the L2 norm (the Euclidean length) of a vector.
+///
+/// #5384: this rule used to be spelled inline in four places, and the SIMD
+/// copy spelled it **wrong** — it took the euclidean distance of a vector to
+/// **itself**, which is always 0, so `cosine_similarity_simd` returned 0.0
+/// for every input and the cosine ranking of `FlatIndex` and `HNSW` carried
+/// no information at all. The rule now lives here, once, and every cosine
+/// implementation calls it.
+pub fn l2_norm(v: &[f32]) -> f32 {
+    v.iter().map(|x| x * x).sum::<f32>().sqrt()
+}
+
 /// Compute cosine similarity between two vectors
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
@@ -40,8 +52,8 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
 
     let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let magnitude_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let magnitude_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let magnitude_a = l2_norm(a);
+    let magnitude_b = l2_norm(b);
 
     if magnitude_a == 0.0 || magnitude_b == 0.0 {
         return 0.0;

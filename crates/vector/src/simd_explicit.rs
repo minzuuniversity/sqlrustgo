@@ -139,9 +139,28 @@ pub fn euclidean_distance_simd(a: &[f32], b: &[f32]) -> f32 {
 /// Compute cosine similarity using SIMD
 #[inline]
 pub fn cosine_similarity_simd(a: &[f32], b: &[f32]) -> f32 {
+    // #5384 — the norms used to be computed as
+    // `euclidean_distance_simd(a, a).sqrt()`, i.e. the distance of a vector
+    // to **itself**, which is always 0. The function therefore returned 0.0
+    // for **every** input, and every caller inherited that: the cosine
+    // branch of `FlatIndex::search` (`flat.rs`), of `HNSW`
+    // (`hnsw.rs`), of `compute_similarity_simd` and of
+    // `batch_cosine_distance_simd` all produced the same score for every
+    // candidate, so the ranking carried no information at all.
+    //
+    // The rule ("a norm is the L2 length") lives in
+    // `crate::metrics::l2_norm`, which the scalar implementation uses too —
+    // one implementation of the rule, so the two cannot drift apart again.
+    //
+    // The length/empty checks mirror the scalar version: a mismatched pair
+    // scores 0.0 instead of reading out of bounds.
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+
     let dot = dot_product_simd(a, b);
-    let norm_a = euclidean_distance_simd(a, a).sqrt();
-    let norm_b = euclidean_distance_simd(b, b).sqrt();
+    let norm_a = crate::metrics::l2_norm(a);
+    let norm_b = crate::metrics::l2_norm(b);
 
     if norm_a == 0.0 || norm_b == 0.0 {
         return 0.0;
@@ -265,6 +284,24 @@ where
     vectors
         .iter()
         .map(|v| l2_distance_simd(query, v.as_ref()))
+        .collect()
+}
+
+/// Batch compute cosine **similarities**: query against multiple vectors
+///
+/// #5384 — the counterpart of `batch_cosine_distance_simd`. `FlatIndex`
+/// sorts by "higher is better", and for the cosine metric that number is
+/// the **similarity** (1.0 for an identical vector), not the distance
+/// (`1 - similarity`). Returning the distance there made the cosine
+/// ranking of `FlatIndex` come out **reversed** on top of the similarity
+/// itself being constantly 0.
+pub fn batch_cosine_similarity_simd<'a, V>(query: &'a [f32], vectors: &'a [V]) -> Vec<f32>
+where
+    V: AsRef<[f32]>,
+{
+    vectors
+        .iter()
+        .map(|v| cosine_similarity_simd(query, v.as_ref()))
         .collect()
 }
 

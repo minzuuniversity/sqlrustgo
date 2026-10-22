@@ -3,7 +3,7 @@
 use crate::error::{VectorError, VectorResult};
 use crate::metrics::DistanceMetric;
 use crate::simd_explicit::{
-    batch_cosine_distance_simd, batch_dot_product_simd, batch_l2_distance_simd,
+    batch_cosine_similarity_simd, batch_dot_product_simd, batch_l2_distance_simd,
 };
 use crate::traits::{IndexEntry, VectorIndex, VectorRecord};
 
@@ -78,7 +78,12 @@ impl VectorIndex for FlatIndex {
                 .into_iter()
                 .map(|d| -d)
                 .collect(),
-            DistanceMetric::Cosine => batch_cosine_distance_simd(query, &vector_refs),
+            // #5384 — for the cosine metric the score has to be the
+            // **similarity** (1.0 for an identical vector): the entries are
+            // sorted by "higher is better", and the cosine *distance*
+            // (`1 - similarity`) is a "lower is better" number. Returning
+            // the distance here put the **most dissimilar** vector first.
+            DistanceMetric::Cosine => batch_cosine_similarity_simd(query, &vector_refs),
             DistanceMetric::DotProduct => batch_dot_product_simd(query, &vector_refs),
             DistanceMetric::Manhattan => self
                 .vectors

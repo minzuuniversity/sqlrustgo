@@ -317,7 +317,19 @@ impl VectorIndex for HnswIndex {
 
         let mut entries: Vec<_> = results
             .into_iter()
-            .map(|(idx, dist)| IndexEntry::new(self.nodes[idx].id, -dist))
+            .map(|(idx, dist)| {
+                // #5384 — an entry's score is "higher is better" for every
+                // metric: euclidean and manhattan negate their distance,
+                // dot product is already a score. For cosine the internal
+                // value is the **distance** `1 - similarity`, so the score
+                // has to be converted back into the **similarity** — the
+                // same number `FlatIndex` returns for the same metric.
+                let score = match self.metric {
+                    DistanceMetric::Cosine => 1.0 - dist,
+                    _ => -dist,
+                };
+                IndexEntry::new(self.nodes[idx].id, score)
+            })
             .collect();
 
         entries.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());

@@ -21,10 +21,21 @@ pub mod simd {
     /// Compute cosine similarity using explicit SIMD intrinsics
     #[inline]
     pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+        // #5384 — the norm used to be spelled `dot_product(a, a).sqrt()`
+        // here and `euclidean_distance_simd(a, a).sqrt()` in
+        // `simd_explicit.rs`, and **the second one was wrong**: the
+        // euclidean distance of a vector to itself is always 0, so the SIMD
+        // cosine returned 0.0 for every input. The rule now lives in
+        // `crate::metrics::l2_norm`, which every cosine implementation
+        // calls — one implementation of "what a norm is", so the copies
+        // cannot drift apart again.
+        if a.len() != b.len() || a.is_empty() {
+            return 0.0;
+        }
+
         let dot = dot_product(a, b);
-        // Norm is sqrt(dot_product), not euclidean_distance to self (which is always 0)
-        let norm_a = dot_product(a, a).sqrt();
-        let norm_b = dot_product(b, b).sqrt();
+        let norm_a = crate::metrics::l2_norm(a);
+        let norm_b = crate::metrics::l2_norm(b);
 
         if norm_a == 0.0 || norm_b == 0.0 {
             return 0.0;
