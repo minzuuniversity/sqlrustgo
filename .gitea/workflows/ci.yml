@@ -165,7 +165,29 @@ jobs:
 
   test:
     runs-on: [hp-z6g4]
-    needs: [lint-build]
+    # ── #5533 — `needs: [lint-build]` made this job **never run**. ──────────
+    #
+    # On this Gitea (28.1.0) a job that declares a non-empty `needs:` stays
+    # in status **Waiting** and is never handed to a runner.  Measured on the
+    # server's own job table (`action_run_job`, `needs` non-empty):
+    #
+    #   needs=["lint-build"]  →  success:   0   failure:  29
+    #                            cancelled: 643  skipped:  779  waiting: 1
+    #
+    # ⇒ the job that actually runs the test suite had **never once** reached
+    # a green conclusion.  Every "CI is green" claim in this repository was
+    # therefore made **without the test suite ever running**: the run was
+    # green because the job was *skipped*, not because the tests passed.
+    #
+    # The two jobs that carry the `needs:` (this one and `test-crates`) are
+    # the two that matter most, and they are exactly the two that were
+    # dead.  The dependency is therefore expressed the way this repository
+    # already expresses it elsewhere (`mutation`, `postcheck`): an empty
+    # `needs` plus `if: always()`.  The cost is that the test suite now
+    # starts in parallel with `lint-build` instead of after it; the benefit
+    # is that the test suite runs **at all**.
+    needs: []
+    if: always()
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
@@ -457,7 +479,11 @@ jobs:
   # known-red clippy would only burn the queue).
   test-crates:
     runs-on: [hp-z6g4]
-    needs: [lint-build]
+    # #5533 — same defect as the root `test` job: a non-empty `needs:` never
+    # leaves status Waiting on this Gitea, so this job would have been dead
+    # on arrival.  See the long explanation on the root `test` job.
+    needs: []
+    if: always()
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
