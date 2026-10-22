@@ -54,7 +54,25 @@ concurrency:
   # `cancel-in-progress: false` means a newer push **queues** behind the
   # running one instead of killing it: a killed run produces no evidence
   # either, and the evidence trail must stay complete.
-  group: sqlrustgo-ci
+  #
+  # #5550 (实测修订) — 这个 group **只属于 ci.yml**，不能和 `gate.yml`
+  # 共用。Gitea 28.1.0 的 concurrency 语义与 GitHub 不同：实测（同秒创建
+  # 的两个 run，8997=ci.yml / 8998=gate.yml，同一个 group）——
+  #
+  #     8997 | status=cancelled | started=0 | stopped=创建同秒
+  #     8998 | status=waiting
+  #
+  # ⇒ **新 run 加入 group 时，会把同 group 里尚未开始的 run 取消掉**
+  # （`cancel-in-progress: false` 只保证「不取消已经在跑的」）。两个
+  # workflow 共用一个 group ⇒ 同一 PR 上必然有一个被取消 ⇒ PR 显示
+  # cancelled 的 required check ⇒ 永远合不进去。
+  #
+  # 因此本仓库按 **workflow 文件** 分组：`ci.yml` 一个组、`gate.yml`
+  # 另一个组。跨分支仍然被同一个 workflow 的组串行化（这正是要防的
+  # 「四个分支同时编译」），而两个 workflow 各自的 run 不再互相取消。
+  # 并发上限本来�� runner 池决定的（3 台 `hp-z6g4`），配合
+  # `CARGO_BUILD_JOBS=16` ⇒ 最多 3 × 16 = 48 个 rustc 抢 80 核。
+  group: sqlrustgo-ci-pipeline
   cancel-in-progress: false
 
 # NOTE: do NOT override CARGO_HOME / RUSTUP_HOME here.

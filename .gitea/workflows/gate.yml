@@ -19,13 +19,25 @@ on:
       - "develop/v4.*"
 
 concurrency:
-  # #5550 — this workflow shares the **same group** as `ci.yml`
-  # (`sqlrustgo-ci`), so the gate jobs and the pipeline jobs never compile
-  # at the same time on the shared host. See the `concurrency` block in
-  # `.gitea/workflows/ci.yml` for the measurement: four concurrent runs
-  # drove the host to load average 147.8 and a kernel panic
-  # (2026-10-22 22:57:32 CST).
-  group: sqlrustgo-ci
+  # #5550 — this workflow has its **own** group, separate from `ci.yml`'s
+  # `sqlrustgo-ci-pipeline`.
+  #
+  # Reason (measured on Gitea 28.1.0, 2026-10-23): when a new run joins a
+  # concurrency group, Gitea **cancels the runs in that group that have not
+  # started yet** — `cancel-in-progress: false` only protects the one that
+  # is already running. Two workflows sharing one group therefore kill
+  # each other: on the same PR, `ci.yml` (run 8997) and `gate.yml`
+  # (run 8998) were created in the same second with the same group, and
+  # 8997 was cancelled in that same second.
+  #
+  # ⇒ one group **per workflow file**. Cross-branch serialization (the
+  # thing that actually protects the host) is preserved because each
+  # workflow still has a single, fixed group.
+  #
+  # The measurement behind the whole change: four concurrent runs drove the
+  # host to load average 147.8 and a kernel panic (2026-10-22 22:57:32
+  # CST). See the `concurrency` block in `.gitea/workflows/ci.yml`.
+  group: sqlrustgo-gate
   cancel-in-progress: false
 
 env:
