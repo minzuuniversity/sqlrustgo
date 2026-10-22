@@ -518,6 +518,111 @@ libz-sys.workspace = true
 
 镜像本身仍然应该修（固定工具链版本 + 装 `zlib-static`）—— 已开 **#5528**。
 
+**根因 G：`sqlrustgo-storage` 的集成测试根本编译不过（#5515 的直接后果）。**
+
+修完 A–F 之后，`legacy-gate` 仍然红，但这次不是链接，是**编译**：
+
+```
+error[E0432]: unresolved import `sqlrustgo_storage::fault_injection`
+  --> crates/storage/tests/fault_coordination.rs:36:24
+   |
+36 | use sqlrustgo_storage::fault_injection::{FaultPoint, Signal};
+   |                        ^^^^^^^^^^^^^^ could not find `fault_injection` in `sqlrustgo_storage`
+   |
+note: found an item that was configured out
+  --> crates/storage/src/lib.rs:29:9
+   |
+28 | #[cfg(any(test, feature = "fault-injection"))]
+   |          ----------------------------------- the item is gated here
+29 | pub mod fault_injection;
+```
+
+`crates/storage/src/lib.rs` 把 `fault_injection` 模块门控在
+`#[cfg(any(test, feature = "fault-injection"))]` 下。**集成测试是独立 crate**，
+`cfg(test)` 对它们**不生效** ⇒ 模块被编译掉 ⇒ 四个集成测试目标
+（`fault_coordination` / `crash_commit_fsync_b1` / `crash_wal_index_b1` /
+`a06_failpoint_reachability`）**一个都编不出来**。
+
+在 CI 上的可见后果是 AFP 门禁（`legacy-gate` 的 Q2）红：
+
+```
+cargo test --no-run --release -p sqlrustgo-executor -p sqlrustgo-storage -p sqlrustgo-tools
+⇒ sqlrustgo-storage 这个包构建失败 ⇒ 测试二进制没产出
+⇒ test-runner 把 3 个 manifest 条目记成 Crashed
+   （error_message: "Failed to execute …: No such file or directory (os error 2)"）
+⇒ [Q2_ANTI_FAB] FAILED with 3 error(s) ⇒ ALPHA QUALITY BLOCKED
+```
+
+**这正是 #5515 的代价**：那 301 个 `crates/*` 测试目标在 CI 里**从未执行过**，
+所以「它们根本编译不过」这件事一直没有人看见。
+
+修法：用**自依赖 dev-dependency**，只在构建测试目标时打开该 feature：
+
+```toml
+[dev-dependencies]
+sqlrustgo-storage = { path = ".", features = ["fault-injection"] }
+```
+
+Cargo 在构建测试目标时把包自身的 feature 与其 dev-dependency 的 feature 合并；
+生产 `cargo build` **不构建** dev-dependency ⇒ feature 不开 ⇒ 发布产物里仍然
+没有这些钩子。实测（`cargo tree -e features`）：
+
+| 解析口径 | `fault-injection` 出现次数 |
+|---|---|
+| 含 dev（= 构建测试目标） | **1** |
+| `--no-dev`（= 生产解析） | **0** |
+
+`reach()` 的真实现只在 `SQLRUSTGO_FAULT_POINT` 存在时才阻塞，否则立即返回 ⇒
+打开 feature 不会让其它测试挂死。
+
+验证：
+
+```
+cargo test -p sqlrustgo-storage --no-run \
+  --test fault_coordination --test crash_commit_fsync_b1 \
+  --test crash_wal_index_b1 --test a06_failpoint_reachability
+⇒ EXIT=0，四个可执行文件全部产出
+```
+
+**根因 H：改进程级环境变量的用例并行跑 ⇒ 偶发红灯。**
+
+上面那个缺陷是 #5515 的**全工作区首跑**抓出来的。那一轮
+（`cargo test --workspace --all-features --no-fail-fast`）同时抓到第三个缺陷：
+
+```
+---- external_tool_resolution_prefers_the_explicit_env_var stdout ----
+assertion `left == right` failed: an explicit SQLRUSTGO_PSQL_BIN must win over PATH
+  left: "/opt/homebrew/bin/psql"
+ right: ".../ext-tool-env-37640/psql"
+```
+
+`tests/common/bin_resolver.rs` 里有三个用例改**进程级**环境变量
+（`SQLRUSTGO_CLI_BIN` / `SQLRUSTGO_PSQL_BIN` / `SQLRUSTGO_MYSQL_BIN`）。
+同一个测试二进制里它们**并行**执行 ⇒ 一个用例的 `remove_var` 可以落在另一个
+用例的 `set_var` 与解析之间 ⇒ 被干扰的那个用例读到被清掉的变量，退回 `PATH`
+上真实安装的客户端。
+
+同一个竞态在**两个**不同的测试二进制里各炸过一次
+（`a04_mysql_diff_matrix`、`load_local_infile_eagain_regression_test`）——
+后者会让一个跟 LOCAL INFILE 毫无关系的用例变红。
+
+`resolve_external_tool` **没有缓存**，它每次都现读环境变量 ⇒ 这纯粹是并行
+竞态，不是解析逻辑的问题（解析逻辑是对的：显式变量优先于 `PATH`）。
+
+修法：一把 `ENV_LOCK` 把改动环境变量的用例串起来；改动前把原值存下来，测完
+原样放回去（少了这一步，用例即使独占锁，也仍然会把进程环境留在「被改过」的
+状态里，污染同一个二进制里的其它用例）。这三个用例之间没有依赖关系，串行化
+不改变任何断言。
+
+**正反对照**（同一个二进制，两种代码）：
+
+| 代码 | 二进制 | 10 轮结果 |
+|---|---|---|
+| 修复后 | `a04_mysql_diff_matrix` | **0 失败** |
+| 修复后 | `load_local_infile_eagain_regression_test`（**刚失败过的那个**） | **0 失败** |
+| 修复前（`git stash` 掉本次修复、用旧代码重建） | `load_local_infile_eagain_regression_test` | **当场复现**同一个断言、同一个 `left: "/opt/homebrew/bin/psql"` |
+
+⇒ 确认这次修的是**竞态本身**，不是换了个环境把问题绕过去。
 
 ### 7.2 门禁自检
 
@@ -549,6 +654,9 @@ libz-sys.workspace = true
 | `crates/mysql-server` `split_top_level*`（collapsible_match 改动） | 23/23 绿 |
 | `crates/executor`（14 个改动用例） | 14/14 绿 |
 | `crates/admin` / `crates/graph` / `crates/tools` 改动用例 | 逐个绿 |
+| `crates/storage` 四个故障注入集成测试（根因 G 修好后） | **4/4 目标编译通过**（`--no-run` ⇒ 四个可执行文件全部产出） |
+| `sqlrustgo` `a04_mysql_diff_matrix`（根因 H 修好后） | **10/10 绿**，连跑 10 轮 0 失败 |
+| `sqlrustgo` `load_local_infile_eagain_regression_test`（根因 H 修好后） | **10/10 绿**，连跑 10 轮 0 失败 |
 
 ### 7.4 负对照：门禁必须还能分辨
 
@@ -581,4 +689,15 @@ libz-sys.workspace = true
   **不在本批范围内**，本批只修掉「Auto env:blocked」这一条中止。
 * 批次 17 的「进程环境变量突变」门禁脚本尚未落到 develop 上
   （对应 PR #5521 未合并），故本批无法在本地复跑该门禁。
+* **#5515 的全工作区首跑（`cargo test --workspace --all-features --no-fail-fast`）
+  抓到的、本批**未修**的项**，按失败类型分开登记：
+
+  | 目标 | 判据 | 类型 |
+  |---|---|---|
+  | `sqlrustgo --test _q15_q16_check` | fixture 缺失时**先写 NOT-RUN 记录再 panic** ⇒ 环境阻塞被记成产品红灯 | **代码红（已定性，归 #5515 批次修）**：全树 21 个 fixture 门控目标里**只有这一个**偏离了 `else { return; }` 的既有写法 |
+  | `sqlrustgo --test g13_oltp1_concurrent_select_test` | 吞吐比值断言（contended/alone = 0.60 < 阈值） | **环境阻塞（负载）**：同代码在 b15 R1（低负载）通过；本机 load 9.8（别的项目的 cargo test + 桌面进程）⇒ 归因于机器负载，不是产品缺陷 |
+  | `sqlrustgo --test dml_pk_fast_path_5177` | 三个比值型用例 > 60 秒 | **环境阻塞（负载）**：同上，判据是时间比值 |
+
+  ⇒ 这三条**不在本批修**：前者的归属批次已有明确边界，后两者在低负载下复跑
+  即绿；把它们混进本批会让本批的「修了什么」变得不可核验。
 
