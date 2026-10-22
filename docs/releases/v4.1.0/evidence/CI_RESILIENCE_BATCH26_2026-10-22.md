@@ -188,6 +188,34 @@ rc=0
 `#[ignore]`**，树里 119 个、登记表 119 个，两边相等才算过 ——
 所以「加了 `#[ignore]` 却忘了登记」不可能蒙混过关。
 
+### 3.5 覆盖门禁本体的验收（这才是 #5547 的正主）
+
+```
+$ bash scripts/gate/check_coverage_v312.sh
+...
+Measuring coverage for sqlrustgo-storage ...
+  features: bin_storage_default fault-injection
+  sqlrustgo-storage: 80.61%
+Measuring coverage for sqlrustgo-catalog ...      87.33%
+Measuring coverage for sqlrustgo-optimizer ...    87.85%
+Measuring coverage for sqlrustgo-types ...        95.28%
+L1_8 average coverage: 87.80% (threshold: 80.0%)
+cov rc=0
+```
+
+修复前是 `FAIL: could not measure sqlrustgo-storage (exit=101)` ——
+现在 storage 的覆盖率**测得出来了**，整条门禁 rc=0。
+
+### 3.6 storage lib 测试
+
+```
+$ cargo test -p sqlrustgo-storage --lib
+test result: ok. 913 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out
+```
+
+修复前同一命令是 `914 passed; **1 failed**; 1 ignored`
+（`test_wal_perf_100_update` FAILED）。
+
 ---
 
 ## 4. #5548 —— wrapper「不能委托时必须诚实失败」这条契约在 CI 里**从未被验证过**
