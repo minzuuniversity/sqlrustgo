@@ -53,6 +53,19 @@ make_temp_file() {
     printf '%s' "$f"
 }
 
+# A temporary **directory**, with the same contract as `make_temp_file`:
+# a bare `mktemp -d` (no template — see above), and a loud failure instead
+# of an empty path.
+make_temp_dir() {
+    local d
+    d="$(mktemp -d 2>/dev/null)" || d=""
+    if [ -z "$d" ] || [ ! -d "$d" ]; then
+        echo "ERROR: cannot create a temporary directory (mktemp -d failed) — refusing to continue with an empty path" >&2
+        return 1
+    fi
+    printf '%s' "$d"
+}
+
 # --- SHA-256 of a file, portable across Linux/macOS -------------------------
 # `shasum` is a Perl script and is NOT guaranteed to exist on a slim CI
 # image; `sha256sum` comes from GNU coreutils. The CI runner is only
