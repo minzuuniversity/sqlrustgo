@@ -6,7 +6,7 @@
 > **Commit**: `2252a50d28`
 > **Author**: `opencode-z440 <opencode-z440@gaoyuanyiyao.com>`
 > **Created**: 2026-10-22
-> **Status**: PASS（本地实跑）— 待 CI 验证后确认
+> **Status**: PASS（本地实跑）— 经独立评审 REQUEST-CHANGES 后修复全部 BLOCKER，待 CI 验证后确认
 > **配套文档**: `PR-5457_SPEC.md` / `PR-5457_TEST_PLAN.md` / `PR-5457_TEST_DESIGN.md` / `PR-5457_TEST_REVIEW.md`
 > **设计文档**: `docs/superpowers/specs/2026-10-22-gate-criterion-existence-design.md`
 
@@ -256,6 +256,71 @@ test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ```
 
 **PASS** ✅ —— 21 个用例，**0 ignored**（ADR-008 Policy 2）。
+
+---
+
+## 2·五、独立评审后的修复（2026-10-22）
+
+独立评审返回 **REQUEST-CHANGES**，5 个 BLOCKER 全部**独立复现成立**。逐条修复：
+
+| # | 缺陷 | 独立复现 | 修复 | 修复后实测 |
+|---|---|---|---|---|
+| **B1** | 浅克隆下门禁 exit 1，**打挂 CI 的 test job** | `git clone --depth=1` 后 `verify_pr_dag.sh` → exit 1 | 检测 `.git/shallow` ⇒ 判 **DRIFT (exit 2)** | 浅克隆 → **exit 2**；完整克隆 → exit 0 |
+| **B2** | 纯文档 PR 提到规划号即被算作"已合并" | 合成 `docs: add notes about PR-800 roadmap` ⇒ 门禁 PASS | 只认**实现型**（feat/fix/refactor/perf）且规划号在**引号内标题**、带 `(#NNNN)` | 同一 fixture → **exit 1**（正确判虚假通过）|
+| **B3** | 依赖解析被一个空格静默关闭，且**无任何诊断** | `（依赖 900）` ⇒ 倒置检查根本没跑，仍 PASS | 容错解析 + 解析失败**显式报错** | 同一 fixture → **exit 1**（检出倒置）|
+| **B4** | `AGENTS.md` 引用测试**空转通过** | 把 AGENTS.md 指向不存在的 .md，测试仍 PASS | 按稳定标记定位行 + 断言真实存在 + 行缺失即 FAIL | 同一变异 → **测试 FAILED** ✅ |
+| **B5** | 依赖倒置断言被**夹具文件名**满足 | 关掉倒置检测，测试仍 PASS | 断言只有诊断信息才产生的短语 + 夹具改名 + 隔离断言 | 同一变异 → **测试 FAILED** ✅ |
+
+**同时修复的 SHOULD-FIX**：
+
+| # | 缺陷 | 修复 |
+|---|---|---|
+| **S1** | PR body 的「168 个分支零触及」**不成立** | 实测 8 个分支触及本 PR 修改的 4 个文件；按文件重测并写入 PR body / SPEC / ACCEPTANCE |
+| **S2** | 存在性门禁只查存在不查可执行 | 加 `-x` 检查；被 `source` 的库文件有显式豁免清单 |
+| **S3** | baseline 宣称有 `--update-baseline` 能力，脚本却无参数解析（**能力伪造**，AFP Type A 形态）| 该 flag 改为**显式拒绝**并说明理由 |
+| **S4** | 8 条 baseline 里 3 条的 reason 引错源文档 | 逐条 grep 复核并订正，每条现在都带 file:line |
+| **S5** | 单次 41s（22,510 次 execve）| 一次 awk 遍历替代 per-line 循环 ⇒ **1.1s** |
+| **S7** | squash merge 不可见 ⇒ 门禁**永远红** | 非 merge 的实现型 commit 同样算落地证据（实测历史里 136 条）|
+| **S8** | `in_dag` 从不复位 ⇒ §2 之外的 PR- 行被当成链节点 | §2 边界复位 |
+| **N1** | 「72 merge commits」是行数不是 commit 数 | 措辞改为 "implementation commit line(s)" |
+| **N2** | `resolve_gitea_ref` 可能输出多行 | 加 `head -1` |
+
+### 修复后的验证矩阵
+
+| # | 命令 | 结果 |
+|---|---|---|
+| V1 | `bash scripts/gate/verify_pr_dag.sh` | exit **0**；1.1s（此前 41s）|
+| V2 | `bash scripts/gate/check_pr_dag.sh` | exit **0**（alias 一致）|
+| V3 | `bash scripts/gate/check_gate_script_refs.sh` | exit **0**；61 引用、53 存在且可执行、8 已知债、**0 新增缺失** |
+| V4 | `bash scripts/gate/check_pr_template_sections.sh --pr-body .gitea/pull_request_template.md` | exit **0**；5/5 |
+| V5 | `cargo test --test gate_criterion_existence_test --all-features` | **23 passed; 0 failed; 0 ignored**（0.96s，此前 65s）|
+| V6 | `cargo fmt --check --all` | exit **0** |
+| V7 | `cargo clippy --all-features -- -D warnings` | exit **0**，0 warnings |
+| V8 | `bash scripts/gate/check_drift_not_pass.sh` | 新脚本**不在** findings 里 |
+| V9 | `bash scripts/gate/check_gate_test_integrity.sh`（P16）| exit **0** |
+| V10 | `bash scripts/gate/check_gate_self_verification.sh`（P11）| exit **0** |
+| V11 | `cargo test --test test_target_manifest_honesty_test --all-features` | 15 passed; 0 failed |
+| V12 | `cargo test --test gate_honesty_test --all-features` | 11 passed; 0 failed |
+
+### 修复后的负向路径
+
+| fixture | 期望 | 实测 |
+|---|---|---|
+| 浅克隆（`.git/shallow` 存在）| 2 (DRIFT) | **2** |
+| 纯文档 PR 提到规划号 | 1 (虚假通过) | **1** |
+| `（依赖 900）` 带空格 + 倒置 | 1 (倒置) | **1** |
+| 虚构 PR-999（表外行）| 1 | **1** |
+| 同一 PR 两行状态 | 1 | **1** |
+| 空 plan / 无 PR DAG 段 | 2 | **2** |
+| 坏 base ref | 2 | **2** |
+| 缺 section 标记的 PR 正文 | 1 | **1** |
+| 空 PR 正文 | 2 | **2** |
+
+### 修复后的反向变异
+
+M1–M4 全部「改坏 → 转绿 → 还原 → 转红」成立。M3 与 M5 变异后仍报 FAIL，
+是因为该缺陷被**两处对称检查双重覆盖**（变异任一处都不足以让它逃逸）——
+已在 `PR-5457_TEST_REVIEW.md` §2 记录，不是缺陷。
 
 ---
 
