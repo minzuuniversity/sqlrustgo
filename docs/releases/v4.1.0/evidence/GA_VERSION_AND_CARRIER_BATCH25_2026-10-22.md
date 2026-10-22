@@ -59,12 +59,16 @@ EXPECTED_VERSION="$(awk '
   f && /^version[[:space:]]*=[[:space:]]*"/{
     gsub(/.*=[[:space:]]*"/,""); gsub(/".*/,""); print; exit
   }' Cargo.toml)"
-ACTUAL_VERSION="$(cargo run --package sqlrustgo-cli -- --version 2>/dev/null | head -1 | awk '{print $NF}')"
+# stdout 与 stderr 分开捕获；失败时把 cargo 自己的诊断打进日志
+cargo run --package sqlrustgo-cli -- --version >"$OUT" 2>"$ERR"
+ACTUAL_VERSION="$(head -1 "$OUT" | awk '{print $NF}')"
 [ "$ACTUAL_VERSION" = "$EXPECTED_VERSION" ] || FAIL
 ```
 
 **期望版本不在门禁里写第二份字面量** —— 它从 `Cargo.toml` 读，
 所以「版本号的唯一来源」只有一处（§0.1 的表格写明了这三者的对应关系）。
+
+⚠️ **实测时发现：这条命令原本根本跑不起来**，详见 §1.4。
 
 `Cargo.lock` 随之更新（22 个 workspace 成员的版本条目）。
 
@@ -78,6 +82,80 @@ $ awk '...同上...' Cargo.toml
 `--version` 的输出由 clap 的 `version` 属性打印，取的是
 `crates/sqlrustgo-cli` 的 `CARGO_PKG_VERSION`；该 crate 现在用
 `version.workspace = true` ⇒ 二进制自报 `sqlrustgo 4.1.0`。
+
+**门禁的真实输出**（不是手敲的，是门禁自己打的）：
+
+```
+--- Version Flag ---
+  [PASS] sqlrustgo --version reports 4.1.0 (== Cargo.toml [workspace.package] version)
+```
+
+### 1.4 实测中发现的一个真缺陷：package 产出**两个** binary（#5538）
+
+第一次真跑这条判据，得到的是：
+
+```
+$ cargo run --package sqlrustgo-cli -- --version
+error: `cargo run` could not determine which binary to run. Use the `--bin` option to specify a binary, or the `default-run` manifest key.
+available binaries: sqlrustgo, sqlrustgo-cli
+```
+
+⇒ **cargo 拒绝选择**，因为 `crates/sqlrustgo-cli` 同时产出两个 binary：
+
+| 来源 | binary 名 | 源文件 |
+|---|---|---|
+| manifest 的 `[[bin]] name = "sqlrustgo"` | `sqlrustgo` | `src/local_bin.rs` |
+| cargo 的**自动发现**（`src/main.rs`） | `sqlrustgo-cli` | `src/main.rs` |
+
+两个 `main()` 的函数体完全一样（都是 `sqlrustgo_cli::run()`）。
+
+**这意味着 #5442 的版本判据从来没有真正执行过**：旧写法
+`cargo run … 2>/dev/null | awk` 把 cargo 的诊断丢掉了，门禁只能报
+「reports '' but the release line is '4.1.0'」—— 看起来像版本不一致，
+实际是命令根本没跑起来。
+
+而 `scripts/gate/check_cli_binary_names.py` 的注释写着
+「No bin is called `sqlrustgo-cli` — that is the **package** name」，
+**与事实不符** ⇒ 「二进制名只有一个来源」这个不变量当时是假的。
+
+它还**掩盖了两处真的坏路径**（C3 判据「每个 `target/<profile>/<name>`
+字面量都指向一个真实产出的 binary」在这种情况下查不出来）：
+
+| 位置 | 坏在哪 |
+|---|---|
+| `scripts/stability/soak_1h.sh` | `pgrep -f "sqlrustgo-cli soak"` —— 进程名其实是 `sqlrustgo` ⇒ **worker 计数恒为 0**，metrics 文件里 `workers` 列一直是 0 |
+| `scripts/teaching-labs/setup-sqlrustgo-cli.sh` | 打印并执行 `./$TARGET_DIR/sqlrustgo-cli` —— 该文件不存在 ⇒ **教学冒烟测试跑的是一个不存在的二进制**；其头部用法说明还把路径写成了 `docs/teaching-labs/…`（实际在 `scripts/teaching-labs/`） |
+
+**修法**：
+
+1. 删 `crates/sqlrustgo-cli/src/main.rs` ⇒ `[[bin]] name = "sqlrustgo"` 成为
+   唯一来源；
+2. **新增门禁判据 C5**（`scripts/gate/check_cli_binary_names.{sh,py}`）：
+   声明了 `[[bin]]` 的 package **不得**再产生 manifest 没声明的 binary
+   （cargo 对 `src/main.rs` / `src/bin/<name>.rs` 的自动发现）。
+   判据精确到「`[[bin]]` 的 `path` 是否指向该入口」⇒ **不误伤**那 12 个
+   「`[[bin]] path = "src/main.rs"`」的 package；实测精确规则下全仓**只有**
+   `sqlrustgo-cli` 一个违规者；
+3. 修上面那两处残留；
+4. `check_release_binary.sh` 不再吞 stderr。
+
+**负向 selftest**：新增第 7 个 fixture —— 一个 package 声明了 `[[bin]]`
+（`path` 指向 `src/local_bin.rs`）却仍留着 `src/main.rs` ⇒ 判 **FAIL**。
+自测 **7/7** 通过（`--selftest`）。
+
+**修完后的实测**：
+
+```
+$ bash scripts/gate/check_release_binary.sh
+--- Version Flag ---
+  [PASS] sqlrustgo --version reports 4.1.0 (== Cargo.toml [workspace.package] version)
+...
+PASS: 9
+FAIL: 0
+```
+
+`check_cli_binary_names.sh` 同步 **PASS**（C1–C5 全绿，`20 bin names,
+all traced to their manifest`）。
 
 ---
 
@@ -198,6 +276,12 @@ release/v4.1.0 ── GA 判定（门禁强制承载分支合法）──▶  �
 | 同上，负对照（`current_stage: GA`） | **EXIT=1**（承载分支不合法） |
 | `Cargo.toml` 版本提取自检 | `4.1.0` ✓ |
 | `STAGE_CONFIG.yaml` / `STAGE.yaml` YAML 解析 | 通过 |
+| `check_release_binary.sh` | **PASS 9 / FAIL 0**（含 §1.3 的版本自报 `4.1.0`） |
+| `check_cli_binary_names.sh` | **PASS**（C1–C5 全绿，20 bin names 全部溯源到 manifest） |
+| `check_cli_binary_names.sh --selftest` | **7/7**（含新增的 C5 负向 fixture） |
+| `check_evidence_binding.sh v4.1.0` | **PASS=106 WARN=106 FAIL=0 UNVERIFIED=0**（合入批次 24 后归零；此前 343 FAIL） |
+| `bash -n` × 4 个改动的 shell 脚本 | EXIT=0 |
+| `python3 -m py_compile check_cli_binary_names.py` | EXIT=0 |
 
 ---
 
@@ -212,9 +296,14 @@ release/v4.1.0 ── GA 判定（门禁强制承载分支合法）──▶  �
    `EVIDENCE_STATUS.md`、`POST_GA_PLAN.md` + RC 的 2 份）。
 4. **版本号改动尚未在 CI 上验证** —— `check_release_binary.sh` 需要
    `cargo run --package sqlrustgo-cli`，在 CI 上会真跑一次。
-   本批只做了版本提取与判据逻辑的自检。
+   本地已跑通（§1.3、§1.4 的实测输出），CI 的实测结果待补。
 5. **`Cargo.lock` 的 22 处版本更新**由 `cargo update --workspace --offline`
    生成；CI 会用 `cargo build --all-features` 复核锁文件是否自洽。
+6. **删掉 `crates/sqlrustgo-cli/src/main.rs` 之后，`cargo build -p
+   sqlrustgo-cli` 只产出 `sqlrustgo`** ⇒ 任何仍在找 `target/*/sqlrustgo-cli`
+   的外部脚本都会失效。仓内已逐处核对（只剩历史版本文档 `docs/releases/
+   v3.9.0/*`、`v3.10.0/*` 里的示例路径，属历史记录，不改）；**仓外**的使用者
+   需要自行改用 `sqlrustgo`。
 
 ---
 
@@ -222,8 +311,12 @@ release/v4.1.0 ── GA 判定（门禁强制承载分支合法）──▶  �
 
 - 身份串：`openclaw-mcode`（Mac Mini / Minimax-Code）
 - 协作台账：#5531
-- 涉及 Issue：#5436 #5442 #5439 #5450
+- 涉及 Issue：#5436 #5442 #5439 #5450 **#5538**（本批实测中新发现并登记）
+- 本批并入的既有批次：批次 24（PR #5535）—— 本批的证据绑定门禁原本有
+  **343 个 FAIL**，缺的是批次 22 的 provenance 修复（在批次 23/24 里）；
+  合入后归零（见 §4）。
 - **只写 `Refs`，不写 `Closes`**。
 
 Refs #5436
 Refs #5442
+Refs #5538
