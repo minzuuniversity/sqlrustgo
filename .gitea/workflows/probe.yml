@@ -1,0 +1,17 @@
+name: Volume Probe
+on:
+  push:
+    branches: ["probe-volume-test"]
+jobs:
+  probe:
+    runs-on: [hp-z6g4]
+    container:
+      volumes:
+        - sqlrustgo-cargo-cache:/probe-cache
+    steps:
+      - name: Probe
+        run: |
+          echo "--- probe-cache contents ---"
+          ls /probe-cache 2>&1 | head -5
+          du -sh /probe-cache 2>/dev/null
+          echo "PROBE_DONE"
