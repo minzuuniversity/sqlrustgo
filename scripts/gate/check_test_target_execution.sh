@@ -129,73 +129,104 @@ TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/test-target-exec.XXXXXX")"
 trap 'rm -rf -- "${TMP_DIR}"' EXIT
 
 # ---------------------------------------------------------------------------
-# 1. Declared targets — every [[test]] section of the Cargo.toml
+# 1. Declared targets — every test target in the **whole workspace**
 # ---------------------------------------------------------------------------
-step "Step 1/3: parse [[test]] declarations"
+step "Step 1/3: collect declared test targets (cargo metadata)"
 
-python3 - "${CARGO_TOML_ABS}" > "${TMP_DIR}/declared.tsv" <<'PYEOF'
-import re
+# #5515: this step used to hand-scan the [[test]] sections of ONE
+# Cargo.toml — the root manifest. That made the gate structurally blind to
+# the workspace's member packages: `cargo metadata` reports **773** test
+# targets across 26 packages, of which the root manifest's [[test]]
+# sections name **472**. The other **301** (`crates/*`) were invisible to
+# the gate, so it kept reporting PASS while a third of the test suite had
+# never been executed by anything.
+#
+# The single source of truth for "which test targets exist" is cargo
+# itself. `cargo metadata --no-deps` enumerates every target of every
+# workspace member, including the ones cargo **auto-discovers** (a file
+# under `tests/` with no explicit [[test]] entry) — a hand-rolled scan of
+# [[test]] sections cannot see those at all.
+#
+# The path cargo reports is the authoritative one (it is the path the test
+# binary is compiled from), so the comparison against the `Running ...`
+# lines in the log becomes an exact match instead of a guess.
+#
+# `cargo metadata` is used rather than `tomllib` because the CI images do
+# not guarantee python >= 3.11, and because metadata is the only answer
+# that includes auto-discovered targets.
+
+METADATA_FILE="${TMP_DIR}/metadata.json"
+if ! cargo metadata --no-deps --format-version 1 > "${METADATA_FILE}" 2>/dev/null; then
+    fail "cargo metadata failed — cannot establish which test targets exist"
+    exit 2
+fi
+
+python3 - "${METADATA_FILE}" > "${TMP_DIR}/declared.tsv" <<'PYEOF'
+import json
+import os
 import sys
 
-# Hand-rolled scan: the repo's CI images do not guarantee python >= 3.11
-# (tomllib), and Cargo.toml's [[test]] sections are a flat name/path pair.
 with open(sys.argv[1]) as fh:
-    lines = fh.read().split("\n")
+    meta = json.load(fh)
+
+workspace_root = meta.get("workspace_root") or os.getcwd()
+members = set(meta.get("workspace_members") or [])
 
 declared = []
-in_test = False
-name = None
-path = None
-
-
-def flush():
-    global name, path
-    if in_test and name is not None:
-        declared.append((name, path))
-    name = None
-    path = None
-
-
-for line in lines:
-    stripped = line.strip()
-    if stripped.startswith("#"):
+for pkg in meta.get("packages") or []:
+    # Only workspace members count: a dependency's test targets are not
+    # this repository's test suite.
+    if pkg.get("id") not in members:
         continue
-    if stripped == "[[test]]":
-        flush()
-        in_test = True
-        name = None
-        path = None
-        continue
-    if in_test:
-        m = re.match(r'^\s*\[\[?[A-Za-z]', line)
-        if m:
-            # another table header ends this [[test]] section
-            flush()
-            in_test = False
+    pkg_dir = pkg.get("manifest_path") or ""
+    pkg_dir = os.path.dirname(pkg_dir)
+    for target in pkg.get("targets") or []:
+        kinds = target.get("kind") or []
+        if "test" not in kinds:
             continue
-        m = re.match(r'^\s*name\s*=\s*"([^"]*)"', line)
-        if m:
-            name = m.group(1)
-            continue
-        m = re.match(r'^\s*path\s*=\s*"([^"]*)"', line)
-        if m:
-            path = m.group(1)
-            continue
-flush()
+        src = target.get("src_path") or ""
+        if os.path.isabs(src):
+            rel = os.path.relpath(src, workspace_root)
+        else:
+            rel = src
+        rel = rel.replace(os.sep, "/")
+        declared.append((target.get("name") or "", rel))
 
+declared.sort()
 for name, path in declared:
-    if path is None:
-        # cargo's default location for an integration test target
-        path = "tests/%s.rs" % name
     print("%s\t%s" % (name, path))
 PYEOF
 
 DECLARED_RAW_COUNT=$(wc -l < "${TMP_DIR}/declared.tsv" | tr -d '[:space:]')
 if [[ "${DECLARED_RAW_COUNT}" -eq 0 ]]; then
-    fail "no [[test]] targets found in ${CARGO_TOML_ABS}"
+    fail "cargo metadata reported no test targets — cannot verify execution"
     exit 2
 fi
-pass "declared test targets: ${DECLARED_RAW_COUNT}"
+pass "declared test targets (whole workspace): ${DECLARED_RAW_COUNT}"
+
+# Report the per-package breakdown, because a gate that only prints a
+# total can hide a blind spot behind a healthy-looking number.
+python3 - "${TMP_DIR}/declared.tsv" <<'PYEOF'
+import collections
+import sys
+
+counts = collections.Counter()
+with open(sys.argv[1]) as fh:
+    for line in fh:
+        line = line.rstrip("\n")
+        if not line:
+            continue
+        _name, path = line.split("\t", 1)
+        # crates/<pkg>/... -> the package directory
+        parts = path.split("/")
+        if len(parts) >= 2 and parts[0] in ("crates", "tools"):
+            counts["%s/%s" % (parts[0], parts[1])] += 1
+        else:
+            counts["<root package>"] += 1
+
+for key in sorted(counts):
+    print("    %-40s %d" % (key, counts[key]))
+PYEOF
 
 # ---------------------------------------------------------------------------
 # 2. Executed targets — the `Running <path>` lines of the cargo test log
@@ -233,7 +264,23 @@ import sys
 
 tmp_dir, package_root, cargo_toml, json_out = sys.argv[1:5]
 
-RUNNING_RE = re.compile(r'Running\s+(.*?)\s+\(target/')
+# #5515: the old pattern required the binary path to start with `target/`,
+# i.e. it only matched cargo's **relative** output form:
+#
+#     Running tests/foo.rs (target/debug/deps/foo-abc123)
+#
+# Current cargo prints an **absolute** path:
+#
+#     Running tests/foo.rs (/abs/workspace/target/debug/deps/foo-abc123)
+#
+# so the pattern matched **nothing** and the gate reported every declared
+# target as "never executed" — measured on a full regression log that ran
+# 472/472 root-package targets: the gate said "472 of 472 declared test
+# targets never ran".
+#
+# The target path is what follows `Running ` up to the opening parenthesis;
+# the binary path inside the parentheses is irrelevant to the comparison.
+RUNNING_RE = re.compile(r'Running\s+(.*?)\s+\(')
 
 
 def norm(path):
