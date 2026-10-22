@@ -1,5 +1,13 @@
 # 迭代 5 · 批次 19 —— clippy 只覆盖了根包：44 个 crate、301 个测试目标从未被 lint（#5508 / #5446 / #5447 / #5403）
 
+- **Issue**: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5508（另含 #5446 / #5447 / #5403）
+- **PR**: http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/5524
+- **分支**: `fix/clippy-workspace-coverage-5508-batch19` → `develop/v4.1.0`
+- **commit**: `fef2f3183b`（主体）、`52ba8bdb2e`（CI 编译错误修复与本文件订正）
+- **基线**: `775dc5da72`（develop/v4.1.0）
+- **工具链**: CI runner `hp-z6g4` ⇒ rustc/clippy **1.95.0**（本机默认 1.97.0，本轮全部验证用 `cargo +1.95.0` 执行）
+- **执行**: 本机 worktree `/Volumes/workspace/dev/sqlrustgo-worktrees/wt-v410-batch19`，未触碰主工作区
+
 **关闭**：#5508、#5446、#5447、#5403
 **基线**：`develop/v4.1.0` @ `653096dd17`
 **分支**：`fix/clippy-workspace-coverage-5508-batch19`
@@ -305,7 +313,6 @@ bash scripts/gate/auto_env_blocker.sh --check "${{ steps.version.outputs.version
 ## 7. 验证
 
 ### 7.1 CI 已经是红的 —— 而三个根因都落在本批范围内
-
 在动手之前先看了 CI 的真实状态（run 8632，develop/v4.1.0 @ `653096dd17`）：
 
 ```
@@ -386,6 +393,67 @@ EXIT=0
 
 `docs/releases/v3.8.0/` 下 `INSTALL.md`、`DEPLOYMENT_GUIDE.md`、
 `MIGRATION_GUIDE.md` **没有 H1** ⇒ 原版脚本必然在它们身上中止。
+
+**根因 D：CI 的 clippy **版本不固定** ⇒ 「本地绿」根本不能代表「CI 绿」。**
+
+这是本轮最贵的教训。PR #5524 的第一次 CI（run 8650）里，`lint-build` 又红了，
+但这次的报错是：
+
+```
+error: parameter is only used in recursion
+  --> crates/vector/src/sql_vector_hybrid.rs:367:24
+= help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.91.0/index.html#only_used_in_recursion
+```
+
+**`rust-1.91.0`。** 而 develop 上那次 run（8638，01:36 UTC）的报错 URL 是
+`rust-clippy/rust-1.95.0`。同一个 runner label（`hp-z6g4`）、同一个镜像
+（`192.168.0.252:5000/act_runner:node-rust`），**相隔一小时跑出了两种 clippy**。
+
+怎么确认 URL 里那个数字就是工具链版本？本地用 1.95.0 触发
+`clippy::redundant_clone`，URL 打的是 `rust-clippy/rust-1.95.0/index.html#redundant_clone`
+—— 而 `redundant_clone` 这个 lint 本身是 1.59 就有的，所以那个数字**只能是
+工具链版本**，不是 lint 的引入版本。
+
+后果是实打实的：
+
+| lint | 1.91.0 | 1.95.0 | 本机默认 1.97.0 |
+|---|---|---|---|
+| `clippy::only_used_in_recursion`（`crates/vector`，`&self` 只用于递归） | **报** | 不报 | 不报 |
+| `unused-assignments`（`crates/mysql-server/src/lib.rs` 6 处死赋值） | **报** | 不报 | 不报 |
+| `clippy::collapsible_match`（`crates/mysql-server/src/lib.rs`） | 报 | 报 | 不报 |
+| `error: duplicated attribute`（`src/execution_engine_tests.rs`） | **报** | 不报 | 不报 |
+
+⇒ **只在本机跑一遍 clippy，无法判断 CI 会不会红。** 本机默认 1.97.0 一条都不报。
+
+本批的处理：
+
+1. **代码在 1.91.0 / 1.95.0 下都要 `-D warnings` 干净**：
+   * `crates/vector`：`eval_predicate` 的 `&self` 只用于递归 ⇒ 改成**关联函数**
+     （`Self::eval_predicate`），不是加 `#[allow]`；
+   * `crates/mysql-server/src/lib.rs`：6 处 `seq = seq.wrapping_add(1)` 是**死赋值**
+     （`seq` 在 `loop {}` 内部声明，每轮重新初始化）⇒ 删掉；
+     `send_binary_result_set` 的返回值同样是死的，但**调用本身有写流副作用**，
+     只去掉赋值、保留调用；
+   * `src/execution_engine_tests.rs`：文件头的 `#![cfg(test)]` 与 `src/lib.rs`
+     的 `#[cfg(test)] mod …` **重复** ⇒ 删掉文件头那个。
+2. **lint 预算基线改为按工具链分条目**（基线格式 v2）：
+   `tests/baseline/{test_target,workspace}_lint_budget.json` 现在是
+   `{"version": 2, "toolchains": {"1.91.0": {…}, "1.95.0": {…}}}`。
+   门禁在**有本工具链条目**时做严格比较（逐 lint 名、逐计数、含「条目失效」）；
+   没有条目时用**所有已记录条目的并集**比较（逐 lint 名取各工具链见过的最大值），
+   并**大声打印**当前用的是并集模式。
+   两种模式都是**真比较**：任何工具链都没产生过的 lint 名仍然是红，
+   超过所有已记录上限的计数仍然是红；只有「这个工具链不存在这个 lint」
+   不再被误判成「基线条目失效」。
+3. 工具链漂移本身已开 **#5526**（runner 镜像不固定 clippy 版本），
+   建议镜像固定工具链并在仓库里补 `rust-toolchain.toml`
+   （现有的 `cargo-toolchain.toml` **不是** rustup 认的文件名）。
+
+> **订正声明（第二次）**：本文件早期版本写「CI 的工具链是 rustc/clippy **1.95.0**」。
+> 那个结论来自「本地能复现 CI 的报错」，但**复现的是 develop 那次 run 的工具链**，
+> 而不是 PR 这边 runner 实际用的那个。CI 的 clippy 版本**会漂**，
+> 所以现在基线按工具链分条目记，而不是假设某一个版本。
+
 
 ### 7.2 门禁自检
 

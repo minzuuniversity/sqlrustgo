@@ -1,4 +1,8 @@
-#![cfg(test)]
+// #5508: the inner `#![cfg(test)]` was **redundant** — `src/lib.rs` already
+// gates this module with `#[cfg(test)]`. CI's clippy toolchain (1.91.0)
+// rejects the duplication with `error: duplicated attribute`, which fails
+// the whole lib test target before any test runs. The module-level gate in
+// `lib.rs` is the one that matters, so the inner attribute is gone.
 
 use crate::execution_engine::*;
 use crate::Value;

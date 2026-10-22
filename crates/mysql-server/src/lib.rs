@@ -6192,7 +6192,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     if cap & capability::DEPRECATE_EOF == 0 {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                     }
                 }
                 // Issue #3694: force-drain ALL TLS cipher records before
@@ -6213,7 +6212,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     make_err_packet(seq, 1047, "HY000", "Malformed COM_STMT_EXECUTE")
                         .write_to(stream)?;
                     *server_last_sent_seq = seq;
-                    seq = seq.wrapping_add(1);
                     continue;
                 }
 
@@ -6230,7 +6228,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         make_err_packet(seq, 1243, "HY000", "Unknown statement handler")
                             .write_to(stream)?;
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                         continue;
                     }
                 };
@@ -6334,7 +6331,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             .into_iter()
                             .map(|row| row.into_iter().take(stmt_col_count as usize).collect())
                             .collect();
-                        seq = send_binary_result_set(
+                        send_binary_result_set(
                             stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
                         )?;
                     }
@@ -6350,7 +6347,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         let code = e.mysql_error_code();
                         make_err_packet(seq, code, "42000", &e.to_string()).write_to(stream)?;
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                     }
                 }
             }
@@ -6376,7 +6372,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
             _ => {
                 make_err_packet(seq, 1047, "HY000", "Unknown command").write_to(stream)?;
                 *server_last_sent_seq = seq;
-                seq = seq.wrapping_add(1);
             }
         }
     }
