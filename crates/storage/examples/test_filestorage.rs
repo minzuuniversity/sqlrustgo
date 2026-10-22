@@ -95,7 +95,7 @@ fn main() {
     drop(storage);
 
     let start = Instant::now();
-    let mut storage = FileStorage::new(db_path.clone()).expect("Failed to reopen");
+    let storage = FileStorage::new(db_path.clone()).expect("Failed to reopen");
     println!("  Reopened in {:.2}s", start.elapsed().as_secs_f64());
 
     // Scan to verify data

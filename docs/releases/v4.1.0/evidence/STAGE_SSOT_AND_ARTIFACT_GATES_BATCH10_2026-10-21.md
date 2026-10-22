@@ -1,6 +1,10 @@
 # 迭代 5 · 批次 10 —— GA 判据唯一化 + 执行者接线（#5437 / #5438 / #5439 / #5440 / #5441）
 
 > **日期**: 2026-10-21
+> **gate_policy_eval_id**: `v410-stage-ssot-artifact-gates-5437-5441-001`
+> （本文件汇编 `check_stage_config_consistency.sh` 与
+> `check_release_artifacts.sh` 两道门禁的实跑输出；下文出现的 PASS/FAIL
+> 字样为这两道引擎的**原始输出或对引擎行为的描述**，非本文档自述的门禁结论）
 > **分支**: `fix/stage-ssot-and-artifact-gates-batch10`
 > **基线**: `develop/v4.1.0` @ `5fbc6b498113`（批次 9 的 merge commit）
 > **范围**: 治理层（SSOT / 驱动 / 门禁 / 文档指针）。**未触碰任何 Rust 代码**

@@ -2,6 +2,10 @@
 
 use sqlrustgo_mysql_server::parse_tbl_line;
 
+// `3.14` is the **literal under test** — the parser has to recognise the
+// text "3.14" as a float — not a mathematical constant.
+// `clippy::approx_constant` is deny-by-default and flags it (see #5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_parse_tbl_line_basic() {
     let result = parse_tbl_line("1|foo|3.14||", 4).unwrap();
@@ -41,6 +45,9 @@ fn test_parse_tbl_line_integers() {
     );
 }
 
+// `2.718` is the **literal under test**, not an approximation of e;
+// `clippy::approx_constant` is deny-by-default and flags it (see #5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_parse_tbl_line_floats() {
     let result = parse_tbl_line("1.5|2.718|99.99||", 4).unwrap();
@@ -50,6 +57,9 @@ fn test_parse_tbl_line_floats() {
     assert_eq!(result[3], sqlrustgo_types::Value::Null);
 }
 
+// `3.14` is the **literal under test**, not a mathematical constant;
+// `clippy::approx_constant` is deny-by-default and flags it (see #5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_parse_tbl_line_mixed() {
     let result = parse_tbl_line("42|text|3.14||", 4).unwrap();

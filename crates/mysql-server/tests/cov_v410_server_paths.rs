@@ -270,12 +270,35 @@ fn shutdown_listener_honors_data_dir_env_override() {
 fn ephemeral_handle_drop_cleans_autocreated_data_dir() {
     let _g = serial();
     let handle: EphemeralHandle = start_ephemeral(base_config()).expect("start");
-    let dir = std::path::PathBuf::from(format!("{:?}", handle));
-    assert!(dir.exists() || true, "handle debug carries data_dir");
-    let data_dir_debug = format!("{:?}", handle);
+    // The handle's `Debug` output carries the auto-created data dir as
+    // `data_dir: "<path>"`. Recovering the path from it is the only way to
+    // reach the directory: the field itself is private.
+    //
+    // The previous check was `PathBuf::from(format!("{:?}", handle)).exists()
+    // || true` — it built a path out of the **Debug string** (which is not a
+    // path) and then made the result vacuous with `|| true`. That is what
+    // `clippy::overly_complex_bool_expr` reports (#5508): the assertion could
+    // never fail, so a server that never cleaned up anything would still
+    // have passed it.
+    let debug = format!("{:?}", handle);
+    let data_dir = std::path::PathBuf::from(
+        debug
+            .split_once("data_dir: \"")
+            .expect("handle debug carries data_dir")
+            .1
+            .split('"')
+            .next()
+            .expect("the data_dir path is quoted"),
+    );
+    // The server auto-created this directory (`base_config` leaves
+    // `data_dir: None`), so it owns the cleanup.
+    assert!(
+        data_dir.exists(),
+        "the auto-created data dir must exist while the handle is alive: {data_dir:?}"
+    );
     drop(handle);
     assert!(
-        !data_dir_debug.is_empty(),
-        "drop path exercised (autocreated dir removal runs inside Drop)"
+        !data_dir.exists(),
+        "drop must remove the auto-created data dir: {data_dir:?}"
     );
 }

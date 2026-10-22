@@ -23,6 +23,10 @@ mod test_4721_round_function {
         assert_eq!(expected_type, "REAL", "ROUND should return REAL type");
     }
 
+    // `3.142` is the **SQL value under test** — the result of
+    // `ROUND(3.14159, 3)` — not a mathematical constant. `clippy::
+    // approx_constant` is deny-by-default and flags it (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_round_with_precision() {
         // round(real, int) should respect precision
@@ -160,10 +164,13 @@ mod test_4676_math_functions {
     #[test]
     fn test_power_real() {
         let sql = "SELECT POWER(2.0, 0.5)";
-        // Should return sqrt(2) ≈ 1.414
-        let expected = 1.414213562;
+        // Should return sqrt(2). The hand-written approximation
+        // `1.414213562` was flagged by `clippy::approx_constant` (#5508) —
+        // the standard constant says it exactly, and it makes the
+        // comparison tight enough to be worth having.
+        let expected = std::f64::consts::SQRT_2;
         let result = 2.0_f64.powf(0.5);
-        assert!((result - expected).abs() < 0.0001);
+        assert!((result - expected).abs() < 1e-12);
     }
 
     #[test]
@@ -177,10 +184,12 @@ mod test_4676_math_functions {
     #[test]
     fn test_exp() {
         let sql = "SELECT EXP(1)";
-        // Should return e ≈ 2.718
-        let expected = 2.718281828;
+        // Should return e. The hand-written approximation `2.718281828` was
+        // flagged by `clippy::approx_constant` (#5508); the standard constant
+        // says it exactly.
+        let expected = std::f64::consts::E;
         let result = std::f64::consts::E;
-        assert!((result - expected).abs() < 0.0001);
+        assert!((result - expected).abs() < 1e-12);
     }
 
     #[test]
@@ -193,10 +202,11 @@ mod test_4676_math_functions {
     #[test]
     fn test_ln() {
         let sql = "SELECT LN(2.718281828)";
-        // Should return approximately 1
+        // Should return approximately 1. The hand-written approximation
+        // `2.718281828` was flagged by `clippy::approx_constant` (#5508).
         let expected = 1.0;
-        let result = 2.718281828_f64.ln();
-        assert!((result - expected).abs() < 0.0001);
+        let result = std::f64::consts::E.ln();
+        assert!((result - expected).abs() < 1e-12);
     }
 
     #[test]

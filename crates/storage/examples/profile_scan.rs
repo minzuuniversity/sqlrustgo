@@ -31,7 +31,7 @@ fn main() {
     // Step 2: JSON parsing time
     println!("\n[2] JSON parsing:");
     let start = Instant::now();
-    let parsed: serde_json::Value = serde_json::from_slice(&contents).unwrap();
+    let _parsed: serde_json::Value = serde_json::from_slice(&contents).unwrap();
     let parse_time = start.elapsed();
     println!("  Parse time: {:.2}ms", parse_time.as_secs_f64() * 1000.0);
 

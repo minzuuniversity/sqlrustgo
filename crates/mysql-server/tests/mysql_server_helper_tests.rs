@@ -206,22 +206,32 @@ fn test_active_connections_accessible() {
 #[test]
 fn test_total_connections_counter() {
     use sqlrustgo_mysql_server::TOTAL_CONNECTIONS_ACCEPTED;
-    let val = TOTAL_CONNECTIONS_ACCEPTED.load(std::sync::atomic::Ordering::Relaxed);
-    assert!(val >= 0);
+    // The counter is global and shared with the rest of the test binary, so
+    // its absolute value is not predictable. What **is** a property of an
+    // atomic counter is that it never goes backwards. The old `val >= 0`
+    // could never fail for a `u64` — that is what
+    // `clippy::absurd_extreme_comparisons` reports (#5508).
+    let before = TOTAL_CONNECTIONS_ACCEPTED.load(std::sync::atomic::Ordering::Relaxed);
+    let after = TOTAL_CONNECTIONS_ACCEPTED.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(after >= before);
 }
 
 #[test]
 fn test_total_queries_served() {
     use sqlrustgo_mysql_server::TOTAL_QUERIES_SERVED;
-    let val = TOTAL_QUERIES_SERVED.load(std::sync::atomic::Ordering::Relaxed);
-    assert!(val >= 0);
+    // See the note on `test_total_connections_counter` (#5508).
+    let before = TOTAL_QUERIES_SERVED.load(std::sync::atomic::Ordering::Relaxed);
+    let after = TOTAL_QUERIES_SERVED.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(after >= before);
 }
 
 #[test]
 fn test_total_query_errors() {
     use sqlrustgo_mysql_server::TOTAL_QUERY_ERRORS;
-    let val = TOTAL_QUERY_ERRORS.load(std::sync::atomic::Ordering::Relaxed);
-    assert!(val >= 0);
+    // See the note on `test_total_connections_counter` (#5508).
+    let before = TOTAL_QUERY_ERRORS.load(std::sync::atomic::Ordering::Relaxed);
+    let after = TOTAL_QUERY_ERRORS.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(after >= before);
 }
 
 // ============ TlsStream test ============

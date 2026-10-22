@@ -54,7 +54,7 @@ fn main() {
 
     // Reopen and verify
     println!("\nReopening storage to verify persistence...");
-    let mut storage = FileStorage::new(data_dir.clone()).expect("Failed to reopen");
+    let storage = FileStorage::new(data_dir.clone()).expect("Failed to reopen");
 
     // Count rows in each table
     let tables = [

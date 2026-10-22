@@ -205,6 +205,9 @@ mod tests {
         assert_eq!(parse_literal("  100  "), Value::Integer(100));
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_parse_literal_float() {
         assert_eq!(parse_literal("3.14"), Value::Float(3.14));

@@ -1,5 +1,6 @@
 # PR-5379 TEST_DESIGN — 断言与门禁的设计
 
+> **基线**：`develop/v4.1.0` @ `de50610a66495559b3524e08f74aa3d5b79e24a3`
 > 关联: `PR-5379_SPEC.md` · `PR-5379_TEST_PLAN.md` · 证据: `docs/releases/v4.1.0/evidence/TPCH_FIXTURE_5379_2026-10-20.md`
 > OpenSpec: `openspec/changes/fix-5379-tpch-fixture-hermeticity/design.md`
 

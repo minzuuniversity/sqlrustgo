@@ -30,3 +30,8 @@ parking_lot.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# #5508: `benches/scheduler_bench.rs` uses criterion, but the crate never
+# declared it — so the bench target could not compile (`E0432: unresolved
+# import criterion`) and was never built by any gate. Same version as the
+# other workspace benches (rag / storage / vector).
+criterion = "0.8"

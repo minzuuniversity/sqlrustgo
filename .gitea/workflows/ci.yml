@@ -80,6 +80,24 @@ jobs:
         # number, and that a re-baseline is an explicit, reviewable act
         # (`--update`) rather than a side effect of a CI run.
         run: bash scripts/gate/check_test_target_lint_budget.sh
+      - name: Workspace lint budget (issue #5508)
+        # The Clippy step above covers the **root package** only. In a
+        # workspace whose root is also a package, cargo's default members
+        # are that one package — so the 44 `crates/*` members (301 test
+        # targets among them) were never linted by any gate. That blindness
+        # had a concrete cost: `crates/server/benches/scheduler_bench.rs`
+        # used `criterion` without declaring it, `crates/storage/benches/
+        # storage_benchmark.rs` had an un-inferrable closure, and a dozen
+        # vacuous assertions (`x >= 0` on a `usize`) sat in the tree — none
+        # of them visible to a gate that does not build those targets.
+        #
+        # Turning the whole workspace into `-D warnings` is not an option:
+        # it would stop the pipeline over a debt nobody can act on in one
+        # change. The **same rule** the root scope uses is therefore applied
+        # to the workspace scope — it must compile (a target that does not
+        # compile is a target nobody runs), and no lint name may exceed its
+        # recorded baseline. One implementation, two scopes.
+        run: bash scripts/gate/check_test_target_lint_budget.sh --scope workspace
       - name: Workflow expression gate (issue #5517)
         # #5517: a workflow whose expression template the platform cannot
         # parse is **ignored entirely** — no job is ever created, so the run
@@ -542,40 +560,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # #5402: the evidence-binding gate verifies a document's provenance
+          # by resolving the commit SHA in its header against the repository's
+          # history (`git cat-file -t`). With `fetch-depth: 1` the checkout
+          # contains exactly one commit, so every historical SHA fails to
+          # resolve — the gate then cannot tell "this document has no anchor"
+          # from "the anchor was not fetched", and the check it performs is
+          # not the check it claims to perform.
+          #
+          # Full history for this job costs one extra fetch; measured against
+          # this Gitea server it is a full clone in ~13 s. The gate degrades
+          # honestly instead of guessing when the history *is* too shallow
+          # (see `evidence_binding_has_provenance` in scripts/gate/common.sh).
+          fetch-depth: 0
       - name: Version detection
         id: version
         run: |
           set -euo pipefail
-          # Detect version from branch, release metadata or the VERSION file.
+          # Detect the release line this checkout belongs to.
           #
-          # #5444: the previous implementation only ever chose between
+          # #5446: the previous implementation only ever chose between
           # `origin/develop/v3.8.0` and `origin/develop/v3.7.0`, and the
           # checkout uses `fetch-depth: 1` — so neither remote branch exists
           # and the detection was **v3.7.0 on every branch**, v4.1.0
           # included. Every version-sensitive gate in this job then ran
-          # against the v3.7.0 contract.
-          VERSION=""
-          BRANCH="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")}"
-          case "$BRANCH" in
-            */v[0-9]*) VERSION="${BRANCH##*/}" ;;
-          esac
-          if [ -z "$VERSION" ]; then
-            # Fall back to the current release line's own stage manifest.
-            for d in docs/releases/v4.1.0 docs/releases/v3.12.0 docs/releases/v3.11.0; do
-              if [ -f "$d/STAGE.yaml" ]; then
-                VERSION="$(grep -m1 -E '^version:' "$d/STAGE.yaml" \
-                  | sed -E 's/^version:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/')"
-                break
-              fi
-            done
-          fi
-          if [ -z "$VERSION" ] && [ -f VERSION ]; then
-            VERSION="$(grep -m1 -E '^v[0-9]' VERSION | tr -d '[:space:]')"
-          fi
-          VERSION="${VERSION:-v3.7.0}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "detected version: $VERSION (branch=${BRANCH:-unknown})"
+          # against the v3.7.0 contract. The old default (`v3.7.0`) is gone:
+          # a wrong-but-plausible version is worse than a visible failure,
+          # because it makes a gate check a release line nobody asked about.
+          #
+          # The rule now lives in **one** script, shared with gate.yml, so
+          # the two workflows cannot drift apart again.
+          chmod +x scripts/gate/resolve_release_version.sh
+          VER="$(bash scripts/gate/resolve_release_version.sh)"
+          echo "detected version: ${VER}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
       - name: Gate L1 — Code Quality
         run: |
           # #5443: without `pipefail` the step's exit code came from `tee`
@@ -619,7 +637,20 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x scripts/gate/auto_env_blocker.sh
-          bash scripts/gate/auto_env_blocker.sh v3.8.0 2>&1 | tee auto_env_block.log
+          # #5446: the version was hardcoded to `v3.8.0`, so on every other
+          # branch this step tagged a 2024 release line's documents while
+          # claiming to tag the current one.
+          #
+          # #5403: this script is a **pre-commit helper that rewrites
+          # files**. Running the write mode inside CI rewrote the runner's
+          # working tree (92 .md files under docs/releases/v4.1.0) — the
+          # rewrite was never committed and the modified files then fed the
+          # later steps. It also aborted half-way on a heading-less document:
+          # `grep -n "^# " <file> | head -1` returns 1 under `pipefail` when
+          # the file has no H1, so `set -e` killed the script before it
+          # reached its own "no H1" branch. `--check` is read-only and does
+          # not have that defect.
+          bash scripts/gate/auto_env_blocker.sh --check "${{ steps.version.outputs.version }}" 2>&1 | tee auto_env_block.log
       - name: Evidence Binding Check
         run: |
           set -euo pipefail
@@ -788,13 +819,41 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x scripts/gate/check_document_completeness.sh
-          mkdir -p artifacts/gate/v3.8.0/document_completeness
-          bash scripts/gate/check_document_completeness.sh v3.8.0 artifacts/gate/v3.8.0/document_completeness/ 2>&1 | tee document_completeness.log
+          # #5446: this step hardcoded `v3.8.0` — the script reads
+          # `docs/releases/$VERSION/`, so on the v4.1.0 branch it was checking
+          # a 2024 release line's documents while claiming to check the
+          # current one. The version comes from the detection step now.
+          mkdir -p "artifacts/gate/${{ steps.version.outputs.version }}/document_completeness"
+          bash scripts/gate/check_document_completeness.sh "${{ steps.version.outputs.version }}" "artifacts/gate/${{ steps.version.outputs.version }}/document_completeness/" 2>&1 | tee document_completeness.log
       - name: Alpha Gate (SPEC-021)
         run: |
           set -euo pipefail
-          mkdir -p artifacts/gate/v3.8.0
-          bash scripts/gate/check_alpha_v380.sh 2>&1 | tee alpha_gate.log
+          # #5446: this step ran `check_alpha_v380.sh` — the **v3.8.0** alpha
+          # gate — no matter which branch the workflow ran on. The gate
+          # scripts are named per version and the spelling is not uniform
+          # (`check_alpha_v410.sh` vs `check_alpha_v3.12.0.sh`).
+          #
+          # The naming rule now lives in one script, shared with gate.yml,
+          # so the two workflows cannot drift apart again.
+          VER="${{ steps.version.outputs.version }}"
+          set +e
+          GATE="$(bash scripts/gate/resolve_alpha_gate.sh "$VER")"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 3 ]; then
+            # No gate script exists for this release line. That is a
+            # configuration gap, not a pass: it is recorded as NOT-RUN with
+            # a reason code rather than as a green result.
+            echo "NOT-RUN: reason=ALPHA_GATE_NOT_FOUND (no check_alpha_v*.sh serves version ${VER})"
+            exit 0
+          fi
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::alpha gate resolution failed (rc=${RC})"
+            exit "$RC"
+          fi
+          echo "alpha gate: ${GATE}"
+          mkdir -p "artifacts/gate/${VER}"
+          bash "$GATE" 2>&1 | tee alpha_gate.log
       - name: RC/GA Gate — Unified 6-Dim (Issue #2882)
         run: |
           # #5443: without `pipefail` the step's exit code came from `tee`
@@ -822,8 +881,11 @@ jobs:
       - name: Test Plan Audit (Issue #2881 → mandatory via #2882)
         run: |
           set -euo pipefail
-          mkdir -p artifacts/audit/v3.8.0
-          bash scripts/gate/audit_testing.sh v3.8.0 ga artifacts/audit/v3.8.0 2>&1 | tee audit_testing.log
+          # #5446: the version was hardcoded to `v3.8.0`; the script reads
+          # `docs/releases/$VERSION/`, so on any other branch it audited the
+          # wrong release line.
+          mkdir -p "artifacts/audit/${{ steps.version.outputs.version }}"
+          bash scripts/gate/audit_testing.sh "${{ steps.version.outputs.version }}" ga "artifacts/audit/${{ steps.version.outputs.version }}" 2>&1 | tee audit_testing.log
       - name: "D9 Full Gate Verification (8 dim: D1-D8 + cross-version + test plan + PR template)"
         run: |
           set -euo pipefail

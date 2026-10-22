@@ -1,5 +1,6 @@
 # 迭代 5 · 批次 12 —— ROLLBACK 路径：进程级 SIGABRT 与「回滚后行仍可见」（#5480 / #5506）
 
+> **基线**：`develop/v4.1.0` @ `42077e8e2eb34725152962033f0ba951cb4d7bb9`
 > **日期**: 2026-10-22
 > **分支**: `fix/rollback-path-5480-batch12`
 > **基线**: `develop/v4.1.0` @ 批次 11 的 merge commit
