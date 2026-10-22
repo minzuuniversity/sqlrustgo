@@ -32,6 +32,31 @@ on:
       - ci/v3.8.0-*
       - "ci/v4.*"
 
+concurrency:
+  # #5550 — **one CI run at a time for this repository**.
+  #
+  # Why this has to be a repository-wide group and not a per-ref one:
+  #
+  # The CI container has **no cargo cache** (#5451 — still open), so every
+  # job rebuilds the whole workspace from scratch: a `cargo build` of this
+  # tree takes ~7m30s of *CPU-bound* compilation. The runner pool has three
+  # `hp-z6g4` runners, so the server was compiling three workspaces
+  # concurrently, each cargo defaulting to **all 80 cores** of the host —
+  # 240 rustc processes on 80 cores.
+  #
+  # Measured on the host on 2026-10-22: four runs were pushed at once
+  # (runs 8914–8921, four branches). The load average reached **147.8** and
+  # the host **kernel-panicked** at 22:57:32 CST (kdump-tools wrote a
+  # vmcore to /var/crash/202610222257). Every CI container died with the
+  # host, so all nine jobs of those runs were reported as failed with no
+  # test result at all — an infrastructure red, not a code red.
+  #
+  # `cancel-in-progress: false` means a newer push **queues** behind the
+  # running one instead of killing it: a killed run produces no evidence
+  # either, and the evidence trail must stay complete.
+  group: sqlrustgo-ci
+  cancel-in-progress: false
+
 # NOTE: do NOT override CARGO_HOME / RUSTUP_HOME here.
 # `${{ runner.temp }}` is evaluated to the literal string `/tmp` by act_runner
 # (the expression log shows `%!t(string=/tmp/.rustup)`), so these overrides
@@ -62,6 +87,18 @@ env:
   CARGO_NET_RETRY: "10"
   CARGO_HTTP_TIMEOUT: "120"
   CARGO_HTTP_LOW_SPEED_LIMIT: "1"
+  # #5550 — bound the **per-container** compile parallelism.
+  #
+  # cargo defaults to one rustc per core. The host has 80 cores and the
+  # runner pool runs three `hp-z6g4` jobs at a time, so the default meant
+  # up to 240 concurrent rustc processes on 80 cores — the state the host
+  # was in when it kernel-panicked (see the `concurrency` block above).
+  #
+  # 16 keeps the three concurrent jobs inside the host's real capacity
+  # (3 × 16 = 48 ≤ 80) while still using it: the workspace is far too
+  # large to compile serially, and a build that takes 7m30s on 80 cores
+  # takes ~10m on 16 — an acceptable price for a machine that stays up.
+  CARGO_BUILD_JOBS: "16"
 
 # Combined lint + build: share one clone, build once
 jobs:

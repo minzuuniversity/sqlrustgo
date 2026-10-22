@@ -18,6 +18,16 @@ on:
       - develop/v4.1.0
       - "develop/v4.*"
 
+concurrency:
+  # #5550 — this workflow shares the **same group** as `ci.yml`
+  # (`sqlrustgo-ci`), so the gate jobs and the pipeline jobs never compile
+  # at the same time on the shared host. See the `concurrency` block in
+  # `.gitea/workflows/ci.yml` for the measurement: four concurrent runs
+  # drove the host to load average 147.8 and a kernel panic
+  # (2026-10-22 22:57:32 CST).
+  group: sqlrustgo-ci
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
   # #5451 / #5533 —— crates.io 是 CI 的**第三个**外部依赖（另两个是
@@ -38,6 +48,9 @@ env:
   CARGO_NET_RETRY: "10"
   CARGO_HTTP_TIMEOUT: "120"
   CARGO_HTTP_LOW_SPEED_LIMIT: "1"
+  # #5550 — same bound as `ci.yml`: cargo defaults to one rustc per core,
+  # and the host has 80 cores shared by three concurrent CI jobs.
+  CARGO_BUILD_JOBS: "16"
 
 jobs:
   evidence-graph-gate:
