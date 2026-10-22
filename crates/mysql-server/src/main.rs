@@ -300,11 +300,30 @@ enum Command {
     Backup {
         /// Output file path for the backup.
         output: String,
+        /// Database to back up.
+        ///
+        /// #5516: the subcommand used to hardcode `default`, so the
+        /// database could not be selected at all — the `database` field of
+        /// the underlying `BackupCommand` was unreachable from the CLI.
+        #[arg(long, default_value = "default")]
+        database: String,
+        /// Backup type: full, incremental, differential.
+        #[arg(long, default_value = "full")]
+        backup_type: String,
     },
     /// Restore database from a backup file.
     Restore {
         /// Input file path to restore from.
         input: String,
+        /// Database to restore into.
+        #[arg(long, default_value = "default")]
+        database: String,
+        /// Directory the backup is read from.
+        ///
+        /// #5516: this used to be hardcoded to `.` — the `backup_dir` field
+        /// of the underlying `RestoreCommand` was unreachable.
+        #[arg(long, default_value = ".")]
+        backup_dir: String,
     },
 }
 
@@ -522,14 +541,22 @@ fn main() -> ExitCode {
             eprintln!("diag: full features migrate in a follow-up");
             ExitCode::from(2)
         }
-        Command::Backup { output } => match run_backup(&output) {
+        Command::Backup {
+            output,
+            database,
+            backup_type,
+        } => match run_backup(&output, &database, &backup_type) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("backup error: {e}");
                 ExitCode::from(1)
             }
         },
-        Command::Restore { input } => match run_restore(&input) {
+        Command::Restore {
+            input,
+            database,
+            backup_dir,
+        } => match run_restore(&input, &database, &backup_dir) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("restore error: {e}");
@@ -932,22 +959,22 @@ fn handle_dot_command(
     }
 }
 
-fn run_backup(output: &str) -> Result<(), String> {
+fn run_backup(output: &str, database: &str, backup_type: &str) -> Result<(), String> {
     let cmd = BackupCommand {
-        database: "default".to_string(),
+        database: database.to_string(),
         output_dir: output.to_string(),
-        backup_type: "full".to_string(),
+        backup_type: backup_type.to_string(),
         schema_only: false,
         compress: false,
     };
     tools_backup(cmd).map_err(|e| e.to_string())
 }
 
-fn run_restore(input: &str) -> Result<(), String> {
+fn run_restore(input: &str, database: &str, backup_dir: &str) -> Result<(), String> {
     let cmd = RestoreCommand {
-        database: "default".to_string(),
+        database: database.to_string(),
         backup_id: input.to_string(),
-        backup_dir: ".".to_string(),
+        backup_dir: backup_dir.to_string(),
         drop_first: false,
     };
     tools_restore(cmd).map_err(|e| e.to_string())

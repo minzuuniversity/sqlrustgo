@@ -2,7 +2,7 @@
 # run_sf10.sh — Run TPC-H SF=10 benchmark
 #
 # Usage:
-#   bash scripts/tpch/run_sf10.sh [DATA_DIR] [TIMEOUT]
+#   bash scripts/tpch/run_sf10.sh [DATA_DIR] [TIMEOUT] [all|summary|Q#]
 #
 # Runs all 22 TPC-H queries against SF=10 data and records
 # execution time and memory usage.
@@ -13,9 +13,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# #5516: the binary lookup goes through the repo's single shell-side
+# resolver (CARGO_TARGET_DIR-aware) instead of a hardcoded
+# `./target/release/...` path.
+source "$REPO_ROOT/scripts/common/resolve_bin.sh"
+
 # Configuration
 DATA_DIR="${1:-/tmp/tpch-sf10}"
 TIMEOUT="${2:-600}"  # 10 minutes per query
+# The mode is the **third** argument. `main` is called without positional
+# parameters, so `case "${1:-all}"` inside `main` used to look at an empty
+# `$1` and always fall through to the `all` branch — the documented
+# `Q#` mode was unreachable dead code.
+MODE="${3:-all}"
 RESULTS_DIR="${RESULTS_DIR:-/tmp/tpch-sf10-results}"
 
 # Colors
@@ -61,45 +71,79 @@ run_query() {
 
     log_query "$q: Starting..."
 
-    # Check if tpch_runner exists
-    local runner=""
-    if [ -x "$REPO_ROOT/target/release/tpch_runner" ]; then
-        runner="$REPO_ROOT/target/release/tpch_runner"
-    elif [ -x "$REPO_ROOT/target/debug/tpch_runner" ]; then
-        runner="$REPO_ROOT/target/debug/tpch_runner"
-    fi
-
+    # #5516: the runner used to be `tpch_runner`. **That binary has never
+    # existed in this repository** — no Rust source, no Cargo target, in the
+    # entire git history (the script was introduced by "GA-P1 #3607" already
+    # referring to it). The lookup therefore always failed, and the script
+    # wrote a stub "SKIPPED" report and returned 0 — so every SF=10 run
+    # reported "22/22 PASS" while **not one query had ever been executed**.
+    #
+    # The real runner is the cargo example `tpch_run_query`
+    # (`crates/bench/examples/tpch_run_query.rs`): it takes
+    # `--query <name>` (reading `queries/<name>.sql`), `--data-dir` and
+    # `--timeout`, and prints one JSON object.
+    #
+    # A missing runner is a **hard failure**: a benchmark that did not run
+    # must not be able to report a pass. The runner is resolved once, in
+    # `main`, before any query is attempted.
+    local runner="${TPCH_RUNNER:-}"
     if [ -z "$runner" ]; then
-        log_warn "tpch_runner not found. Recording stub result."
-        echo "SKIPPED: tpch_runner not built" > "$log_file"
-        return 0
+        log_error "internal: the tpch runner was not resolved before the query"
+        return 1
     fi
 
-    # Run query with timeout
-    if timeout "$TIMEOUT" "$runner" --query "$q" --sf 10 --data-dir "$DATA_DIR" > "$log_file" 2>&1; then
-        local end_time=$(date +%s)
-        local duration=$((end_time - start_time))
+    # Run query with timeout.
+    #
+    # `tpch_run_query` exits 0 even when the query itself failed — the
+    # error is inside the JSON it prints. Judging by the exit code alone
+    # would therefore turn 22 failed queries into "22/22 PASSED", which is
+    # exactly the claim the governance audit had to retract once already.
+    # The verdict is read from the JSON's `error` field.
+    local raw_out=""
+    local exit_code=0
+    raw_out="$(timeout "$TIMEOUT" "$runner" --query "$q" --data-dir "$DATA_DIR" \
+        --timeout "$TIMEOUT" 2>&1)" || exit_code=$?
 
-        log_query "$q: PASS (${duration}s)"
-        echo "PASS" >> "$log_file"
-        echo "Duration: ${duration}s" >> "$log_file"
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+
+    printf '%s\n' "$raw_out" > "$log_file"
+    echo "Duration: ${duration}s" >> "$log_file"
+
+    if [ "$exit_code" -eq 124 ]; then
+        status="TIMEOUT"
+        log_error "Q$q: TIMEOUT after ${TIMEOUT}s"
+    elif [ "$exit_code" -ne 0 ]; then
+        status="FAIL"
+        log_error "Q$q: FAIL (exit $exit_code, ${duration}s)"
+    elif ! printf '%s' "$raw_out" | grep -q '"error"[[:space:]]*:[[:space:]]*null'; then
+        # The runner exited 0 but reported an error, or printed something
+        # that is not the expected JSON at all. Either way it did not pass.
+        status="FAIL"
+        log_error "Q$q: FAIL (the runner reported an error)"
+    elif printf '%s' "$raw_out" | grep -q '"timed_out"[[:space:]]*:[[:space:]]*true'; then
+        # The runner finished on its own but reports that it blew through its
+        # own deadline. The exit code says nothing about that, so the JSON has
+        # to be consulted as well — otherwise a query that ran for twice the
+        # allowed time would be counted as a pass.
+        status="TIMEOUT"
+        log_error "Q$q: TIMEOUT (the runner reported timed_out=true, ${duration}s)"
     else
-        local exit_code=$?
-        local end_time=$(date +%s)
-        local duration=$((end_time - start_time))
+        status="PASS"
+        log_query "$q: PASS (${duration}s)"
+    fi
 
-        if [ $exit_code -eq 124 ]; then
-            status="TIMEOUT"
-            log_error "Q$q: TIMEOUT after ${TIMEOUT}s"
-        else
-            status="FAIL"
-            log_error "Q$q: FAIL (exit $exit_code, ${duration}s)"
-        fi
-
-        echo "$status" >> "$log_file"
-        echo "Duration: ${duration}s" >> "$log_file"
+    # The **status line goes last**: `run_all` and `show_summary` read the
+    # verdict with `tail -1`, so anything appended after it would be read as
+    # the verdict instead.
+    if [ "$status" != "PASS" ]; then
         echo "Exit code: $exit_code" >> "$log_file"
     fi
+    echo "$status" >> "$log_file"
+    if [ "$status" != "PASS" ]; then
+        return 1
+    fi
+    return 0
 }
 
 # Run all 22 queries
@@ -116,7 +160,10 @@ run_all() {
     local timeout_count=0
 
     for q in $(seq 1 22); do
-        run_query "$q"
+        # A failed query must not abort the sweep — the point of the sweep is
+        # the tally. It is not swallowed either: the failure is reported and
+        # counted below.
+        run_query "$q" || log_warn "Q$q did not pass (see $RESULTS_DIR/q${q}.log)"
         local result=$(tail -1 "$RESULTS_DIR/q${q}.log" 2>/dev/null || echo "UNKNOWN")
 
         case "$result" in
@@ -167,22 +214,46 @@ show_summary() {
 main() {
     check_data || exit 1
 
-    case "${1:-all}" in
+    # #5516: the runner is resolved **once**, up front. A benchmark whose
+    # runner is missing must fail immediately and loudly — the old code
+    # looked for `tpch_runner` (which has never existed) inside the
+    # per-query loop, wrote a "SKIPPED" stub and returned 0, so the whole
+    # SF=10 run reported success without executing a single query.
+    if [ -z "${TPCH_RUNNER:-}" ]; then
+        TPCH_RUNNER="$(resolve_cargo_bin tpch_run_query TPCH_RUNNER run_sf10)" || {
+            log_error "the tpch_run_query binary was not found."
+            log_error "Build it: cargo build -p sqlrustgo-bench --example tpch_run_query"
+            log_error "or point TPCH_RUNNER at an existing binary."
+            exit 1
+        }
+    fi
+    log_info "Runner: $TPCH_RUNNER"
+
+    case "$MODE" in
         all)
-            run_all
+            # The verdict has to survive `show_summary`: without capturing it
+            # here the script would exit with the status of the *last* command
+            # in the branch (`show_summary`, i.e. 0) and a run with failed
+            # queries would still report success.
+            local overall=0
+            run_all || overall=$?
             show_summary
+            return "$overall"
             ;;
         summary)
             show_summary
+            return 0
             ;;
         q[0-9]*|q[0-9][0-9]*)
             local qnum="${1#q}"
-            run_query "$qnum"
+            local overall=0
+            run_query "$qnum" || overall=$?
             cat "$RESULTS_DIR/q${qnum}.log"
+            return "$overall"
             ;;
         *)
-            echo "Usage: $0 [all|summary|Q#]"
-            exit 1
+            echo "Usage: $0 [DATA_DIR] [TIMEOUT] [all|summary|Q#]"
+            return 1
             ;;
     esac
 }
