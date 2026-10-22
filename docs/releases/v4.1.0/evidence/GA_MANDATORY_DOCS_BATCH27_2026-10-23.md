@@ -324,6 +324,58 @@ commit 重写到该身份串。
 旧 SHA 的 run 9078/9079 与 9083/9084 均被 `cancel-in-progress` 取消，
 **不产生任何 PASS**。
 
+### 6.5 #5547 的遗留真 bug：`#[ignore]` 把 `#[test]` 顶掉了
+
+第二轮 CI（run 9096，head `31ea00c2be`）的 `lint-build` 又红，但**失败点变了**：
+
+```
+[FAIL] 1 lint budget violation(s):
+       dead_code: 27 warning(s) — baseline allows 26
+```
+
+先做归因 —— 在 **develop 基线**（`3a3350f660`，未含本批任何改动）上跑同一道
+门禁：
+
+| 树 | dead_code | unused_imports | 违规 |
+|---|---|---|---|
+| develop `3a3350f660` | 27 | 46 | dead_code **和** unused_imports 都超 |
+| 本批分支 | 27 | **45** | 只有 dead_code 超 |
+
+⇒ `unused_imports` 从 46 修回 45 是本批的功劳；
+**`dead_code: 27` 是 develop 上已存在的漂移**，与本批无关。
+
+但它必须被修掉才能绿。把 27 条 dead_code 逐条列出后，第 11 条是：
+
+```
+11 crates/storage/src/wal_legacy.rs:1590 :: function `test_wal_perf_100_update` is never used
+```
+
+同文件里另外两个同样 `#[ignore]` 的测量测试（`test_wal_perf_1000_insert`、
+`test_wal_perf_recovery_1mb`）都同时带 `#[test]`，**只有这个漏了**。
+
+查 `git show d14aa977ef^` 确认：#5547 加 `#[ignore]` 时是把原有的 `#[test]`
+**替换**掉了，而不是叠加。
+
+⇒ 后果比门禁红更严重：**它携带的墙钟断言从未被任何一次运行执行过** ——
+不是「在 CI 上偶尔红」，而是**根本没跑**。`#[ignore]` 的 reason 里写的
+手动运行方式（`cargo test --lib -- --ignored`）对它也无效，因为它压根不是
+测试。
+
+修法：`#[ignore]` 与 `#[test]` 并存。
+
+实测：
+* clippy `--workspace --all-features --all-targets` ⇒ dead_code **27 → 26**
+  （恰好回到 baseline 的 26），`test_wal_perf_100_update` 从列表中消失；
+* `check_test_target_lint_budget.sh --scope workspace` ⇒
+  `lint warnings: 703 across 68 lint name(s)` /
+  `[OK] no lint exceeds the baseline (total 703 <= 703, comparison=strict)`；
+* `check_anti_ignore_gate.sh` ⇒ RC=0，tree recount 119 == total_allowed 119
+  （`#[ignore]` 属性仍在，ignore 登记不受影响）。
+
+> **教训**：给一个测试加 `#[ignore]` 时，`#[test]` 必须**并存**而不是被顶掉。
+> 一个丢了 `#[test]` 的「测试」在编译期看起来只是 dead_code，在运行期
+> 则是**静默地不执行**。
+
 ---
 
 ## 7. 运维误杀自记（批次 26 的欠账，本批一并记账）
