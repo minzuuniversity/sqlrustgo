@@ -648,7 +648,10 @@ mod tests {
     #[test]
     fn test_page_free_space() {
         let page = Page::new_data(1, 100);
-        assert!(page.free_space() >= 0);
+        // A freshly built page has not stored any row yet, so the whole data
+        // area is free. The old `page.free_space() >= 0` could never fail
+        // for a `u32` (#5508).
+        assert_eq!(page.free_space() as usize, PAGE_DATA_SIZE);
     }
 
     #[test]

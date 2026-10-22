@@ -99,14 +99,39 @@ where
             .expect("Failed to create histogram"),
     ));
     let ops_count = Arc::new(AtomicU64::new(0));
-    let barrier = Arc::new(tokio::sync::Barrier::new(total_threads + 1));
+    // Two **separate** barriers — one per phase.
+    //
+    // `tokio::sync::Barrier` releases **once**: after the last participant
+    // arrives, the generation completes and every later `wait()` waits for a
+    // generation that will never come. The measurement phase therefore needs
+    // its own barrier instance.
+    //
+    // This used to be one barrier used twice: the warmup threads waited on
+    // `barrier`, and the measurement threads waited on **the same**
+    // `barrier` — while a second one, `warmup_barrier`, was created and
+    // never used. The first generation completed during warmup; the
+    // measurement phase then blocked forever.
+    //
+    // The defect was invisible because `crates/bench`'s test targets had
+    // never been executed by anything (#5515: the top-level `cargo test`
+    // only runs the root package, so the 301 `crates/*` targets were in
+    // neither CI nor any local full regression). It surfaces as a **hang**,
+    // not a failure — the test process sat there for 31 minutes with 0.02 s
+    // of CPU time.
+    //
+    // The participant count matters as much: it is `total_threads`, **not**
+    // `total_threads + 1`. Only the worker threads call `wait()`; the
+    // caller waits for them with `join()` and never joins the barrier. With
+    // `+ 1` the barrier was short one participant in **both** phases, so
+    // neither generation ever completed.
+    let warmup_barrier = Arc::new(tokio::sync::Barrier::new(total_threads));
 
     // Warmup phase
     let warmup_hist = Arc::new(std::sync::Mutex::new(
         Histogram::<u64>::new_with_max(3_600_000_000_000u64, 3)
             .expect("Failed to create warmup histogram"),
     ));
-    let warmup_barrier = Arc::new(tokio::sync::Barrier::new(total_threads + 1));
+    let measurement_barrier = Arc::new(tokio::sync::Barrier::new(total_threads));
 
     // Run warmup phase
     let warmup_handles: Vec<_> = (0..total_threads)
@@ -149,7 +174,7 @@ where
     // Run measurement phase
     let handles: Vec<_> = (0..total_threads)
         .map(|thread_id| {
-            let barrier = barrier.clone();
+            let barrier = measurement_barrier.clone();
             let hist = hist.clone();
             let ops_count = ops_count.clone();
             let sql_gen = sql_gen.clone();

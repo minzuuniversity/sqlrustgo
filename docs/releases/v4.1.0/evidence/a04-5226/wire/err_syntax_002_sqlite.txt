@@ -1,5 +1,7 @@
 === STDOUT ===
 
 === STDERR ===
-Error: in prepare, near "SELEC": syntax error (1)
+Parse error in 6th command line argument: near "SELEC": syntax error
+  SELEC 1; 
+  ^--- error here
 

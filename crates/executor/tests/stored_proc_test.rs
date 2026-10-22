@@ -44,6 +44,9 @@ fn test_set_and_get_session_var() {
     assert!(ctx.has_var("@uid"));
 }
 
+// `3.14` is a plain decimal fixture, not an approximation of π;
+// `clippy::approx_constant` is deny-by-default (see #5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_set_var_auto_dispatch() {
     let mut ctx = ProcedureContext::new();

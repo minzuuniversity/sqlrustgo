@@ -1,5 +1,5 @@
 === STDOUT ===
-a + b
+BinaryOp(Identifier("a"), "+", Identifier("b"))
 5
 
 === STDERR ===

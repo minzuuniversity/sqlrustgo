@@ -27,7 +27,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpSocket, TcpStream};
+use tokio::net::TcpStream;
 use tokio_util::sync::CancellationToken;
 
 use crate::parser_ext::{try_route, RoutingDecision};

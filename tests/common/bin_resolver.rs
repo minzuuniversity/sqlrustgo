@@ -11,6 +11,13 @@
 //! R2（字面量凭据）在本文件**依然生效** —— 下面的自证样例因此
 //! 必须运行期拼接，不能把完整形态写进源码。
 //!
+//! cli-bin-allow-samples — 本文件同时是 C3 门禁
+//! （`scripts/gate/check_cli_binary_names.sh`）的**检测器**：
+//! 它必须带着**故意的**样本路径（`target/debug/x`）才能自证有判别力。
+//! C3 判定的是「代码里的 `target/<profile>/<name>` 字面量指向一个
+//! 真实存在的二进制」，而本文件里的 `x` 是**故意的假名** —— 它不解析
+//! 任何东西，只用来证明检测器抓得到东西。
+//!
 //! # 为什么这个模块存在
 //!
 //! 本仓库里有两代写法，都坏了：
@@ -59,13 +66,35 @@
 use std::path::{Path, PathBuf};
 
 /// 引擎 CLI 二进制的环境变量名。
+///
+/// 这**也是**规范 CLI（见 [`CANONICAL_CLI_BIN`]）的环境变量名 ——
+/// 两者是同一个二进制、同一个变量。#5405 的教训：同一个二进制一旦有了
+/// 两个环境变量，就等于有了两个来源，迟早会指向不同的东西。
 pub const ENGINE_BIN_ENV: &str = "SQLRUSTGO_BIN";
+
+/// 规范 CLI 二进制的**文件名** —— #5405。
+///
+/// 产出它的是 package `sqlrustgo-cli`（`crates/sqlrustgo-cli`），
+/// 它的 `[[bin]] name = "sqlrustgo"`。
+///
+/// ⚠️ `sqlrustgo-cli` 是**包名**，不是二进制名。仓库里**没有任何** bin
+/// 叫 `sqlrustgo-cli`。把它当候选名，解析器会永远落空；更糟的是它让
+/// 「这个二进制到底叫什么」出现了**第二个来源**：包名被抄进测试当二进制名，
+/// 测试就会去找一个不存在的文件，然后以 `binary not found` 的形式炸掉
+/// —— #5405 记录的就是这个（测试找 `target/debug/sqlrustgo-cli`，
+/// 而真正产出它的 bin 叫 `sqlrustgo`）。
+pub const CANONICAL_CLI_BIN: &str = "sqlrustgo";
 
 /// SQLite CLI 二进制的环境变量名。
 pub const SQLITE_BIN_ENV: &str = "SQLITE_BIN";
 
 /// MySQL server 二进制的环境变量名。
 pub const MYSQL_SERVER_BIN_ENV: &str = "SQLRUSTGO_MYSQL_SERVER_BIN";
+
+/// MySQL server 的**二进制名** —— #5405。
+///
+/// 它由 package `sqlrustgo-mysql-server` 产出（`[[bin]] name`）。
+pub const MYSQL_SERVER_BIN_NAME: &str = "sqlrustgo-mysql-server";
 
 /// PostgreSQL 客户端（`psql`）的环境变量名 —— #5500。
 ///
@@ -79,6 +108,38 @@ pub const PSQL_BIN_ENV: &str = "SQLRUSTGO_PSQL_BIN";
 ///
 /// 同 [`PSQL_BIN_ENV`]：外部工具，位置随机器而变。
 pub const MYSQL_BIN_ENV: &str = "SQLRUSTGO_MYSQL_BIN";
+
+/// SQLite CLI 的**二进制名** —— #5405。
+pub const SQLITE_BIN_NAME: &str = "sqlite3";
+
+/// MySQL 客户端的**二进制名** —— #5405。
+pub const MYSQL_BIN_NAME: &str = "mysql";
+
+/// PostgreSQL 客户端的**二进制名** —— #5405。
+pub const PSQL_BIN_NAME: &str = "psql";
+
+/// 外部数据库客户端的二进制名清单 —— #5405。
+///
+/// 它们**不是**本仓库的构建产物：由包管理器安装，位置随机器而变
+/// （homebrew 的 `/opt/homebrew/opt/postgresql@16/bin/psql`、Debian 的
+/// `/usr/lib/postgresql/16/bin/psql`、发行版的 `/usr/bin/psql`……）。
+///
+/// 这份清单是「**什么不是 workspace bin**」的**唯一**权威来源：
+/// 门禁 `scripts/gate/check_cli_binary_names.sh` 直接读它，
+/// 从而避免「外部工具」这个概念在门禁里也出现第二份清单
+/// —— 一个判据只能有一份实现。
+pub const EXTERNAL_TOOL_BINS: &[&str] = &[SQLITE_BIN_NAME, MYSQL_BIN_NAME, PSQL_BIN_NAME];
+
+/// 单元测试**专属**的环境变量名 —— #5423 / #5405。
+///
+/// 进程级环境变量是**全局**的。两个用例若各改各的变量，就不会互相踩；
+/// 若都去改同一个（例如 `SQLRUSTGO_BIN`），并发的用例就会偶发红灯 ——
+/// 而「偶发红灯」对一个门禁来说是**最坏**的失败模式。
+///
+/// 这些名字**只**用于自证解析器的优先级，不承担任何生产语义。
+const SELFTEST_ENGINE_ENV: &str = "SQLRUSTGO_RESOLVER_SELFTEST_ENGINE_BIN";
+const SELFTEST_PSQL_ENV: &str = "SQLRUSTGO_RESOLVER_SELFTEST_PSQL_BIN";
+const SELFTEST_ABSENT_ENV: &str = "SQLRUSTGO_RESOLVER_SELFTEST_ABSENT_BIN";
 
 /// 机器专属的「安装根」前缀 —— C7 判据（#5500）的核心词表。
 ///
@@ -123,25 +184,44 @@ pub const CLIENT_CREDENTIAL_FLAGS: &[&str] = &["-U", "-u", "--user", "--password
 /// cargo 的构建 profile 目录，按此顺序尝试。
 const PROFILES: [&str; 2] = ["debug", "release"];
 
-/// 定位引擎 CLI（`sqlrustgo` / `sqlrustgo-cli`）。
+/// 定位规范 CLI 二进制（`sqlrustgo`）—— #5405。
 ///
 /// 依次尝试环境变量 [`ENGINE_BIN_ENV`]、`CARGO_TARGET_DIR`、包根 `target/`、`PATH`。
+///
+/// **这是 soak REPL 的规范入口**：
+/// `sqlrustgo soak -p <port> -u <user> --pass <pass>`。
+/// 它产出 tab-separated 协议（`OK\t` / `ROWS\t` / `COL\t` / `DATA\t` /
+/// `ROW\t` / `ERR\t`），实现见 `crates/sqlrustgo-cli/src/lib.rs` 的
+/// `run_soak_repl`。
+///
+/// ⚠️ 它**不是** package `sqlrustgo-soak`（`crates/cli`）。后者也有一个
+/// `soak` 子命令，但那是**压测跑子**（`--duration` / `--rate` /
+/// `--query-file`）：它不读 stdin，也没有 tab-separated 协议。两个
+/// `soak` 是不同的东西 —— #5405 的测试要的是**这一个**。
+pub fn resolve_canonical_cli_binary() -> Option<PathBuf> {
+    resolve_binary(ENGINE_BIN_ENV, &[CANONICAL_CLI_BIN])
+}
+
+/// 定位引擎 CLI（`sqlrustgo`）—— #5405。
+///
+/// 等价于 [`resolve_canonical_cli_binary`]：两个名字指的是**同一个**
+/// 二进制。旧名保留是为了不打断既有调用点，**实现只有一份**。
 pub fn resolve_engine_binary() -> Option<PathBuf> {
-    resolve_binary(ENGINE_BIN_ENV, &["sqlrustgo-cli", "sqlrustgo"])
+    resolve_canonical_cli_binary()
 }
 
 /// 定位 SQLite CLI（`sqlite3`）。
 ///
 /// 依次尝试环境变量 [`SQLITE_BIN_ENV`]、`CARGO_TARGET_DIR`、包根 `target/`、`PATH`。
 pub fn resolve_sqlite_binary() -> Option<PathBuf> {
-    resolve_binary(SQLITE_BIN_ENV, &["sqlite3"])
+    resolve_binary(SQLITE_BIN_ENV, &[SQLITE_BIN_NAME])
 }
 
 /// 定位 MySQL server 二进制（`sqlrustgo-mysql-server`）。
 ///
 /// 依次尝试环境变量 [`MYSQL_SERVER_BIN_ENV`]、`CARGO_TARGET_DIR`、包根 `target/`、`PATH`。
 pub fn resolve_mysql_server_binary() -> Option<PathBuf> {
-    resolve_binary(MYSQL_SERVER_BIN_ENV, &["sqlrustgo-mysql-server"])
+    resolve_binary(MYSQL_SERVER_BIN_ENV, &[MYSQL_SERVER_BIN_NAME])
 }
 
 /// 定位 PostgreSQL 客户端（`psql`）—— #5500。
@@ -152,14 +232,14 @@ pub fn resolve_mysql_server_binary() -> Option<PathBuf> {
 /// cargo 的构建产物**，去 `CARGO_TARGET_DIR` / 包根 `target/` 里找它
 /// 只会制造一条永远走不通的候选路径（看起来「找过」，实际必然落空）。
 pub fn resolve_psql_binary() -> Option<PathBuf> {
-    resolve_external_tool(PSQL_BIN_ENV, &["psql"])
+    resolve_external_tool(PSQL_BIN_ENV, &[PSQL_BIN_NAME])
 }
 
 /// 定位 MySQL 客户端（`mysql`）—— #5500。
 ///
 /// 顺序：**显式环境变量** [`MYSQL_BIN_ENV`] → **`PATH`**。
 pub fn resolve_mysql_binary() -> Option<PathBuf> {
-    resolve_external_tool(MYSQL_BIN_ENV, &["mysql"])
+    resolve_external_tool(MYSQL_BIN_ENV, &[MYSQL_BIN_NAME])
 }
 
 /// 外部工具的通用定位逻辑：显式环境变量 → `PATH`。
@@ -322,8 +402,9 @@ pub fn inline_password_literals(text: &str) -> Vec<String> {
 pub fn missing_binary_message(which: &str, env_var: &str) -> String {
     format!(
         "{which} binary not found — set {env_var} to its absolute path, \
-         or build it first (`cargo build -p sqlrustgo-cli` for the engine, \
-         `cargo build -p sqlrustgo-mysql-server` for the MySQL server)"
+         or build it first (`cargo build -p sqlrustgo-cli` builds the \
+         `sqlrustgo` binary, `cargo build -p sqlrustgo-mysql-server` builds \
+         the MySQL server)"
     )
 }
 
@@ -440,25 +521,69 @@ mod tests {
         // 造一个临时的「假二进制」，用环境变量指过去。
         let dir = std::env::temp_dir().join(format!("bin-resolver-env-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
-        let fake = dir.join("sqlrustgo-cli");
+        let fake = dir.join(CANONICAL_CLI_BIN);
         std::fs::write(&fake, b"#!/bin/sh\nexit 0\n").expect("write fake binary");
         let fake = fake.display().to_string();
 
-        // 注意：环境变量是**进程级**的，测试并行时可能互相干扰。
-        // 这里只断言「显式路径被选中」，不依赖其他候选是否存在。
-        std::env::set_var(ENGINE_BIN_ENV, &fake);
-        let resolved = resolve_engine_binary();
-        std::env::remove_var(ENGINE_BIN_ENV);
+        // ⚠️ 用**本用例专属**的环境变量名 —— #5423 / #5405。
+        //
+        // 进程级环境变量是**全局**的：libtest 默认并行跑用例，两个用例各改
+        // 各的变量才不会互相踩。之前这里改的是 `SQLRUSTGO_BIN`
+        // （[`ENGINE_BIN_ENV`]），而同一个模块里另一个用例开头还会
+        // `remove_var(PSQL_BIN_ENV)` / `remove_var(MYSQL_BIN_ENV)`
+        // —— 并发时会把本用例刚设的值抹掉，偶发红灯。
+        //
+        // 那个偶发红灯**不是假象**：迭代 5 批次 11 的全量回归里，
+        // `e2e_canonical_subprocess` / `tpch_q8_q21_perf_regression_test` /
+        // `v312_13_load_data_sf10_test` 三个目标都因为它变红，断言拿到的是
+        // PATH 上的 `/opt/homebrew/bin/psql`，而不是用例自己设的临时路径。
+        //
+        // 更要紧的是：**任何**读 `SQLRUSTGO_BIN` 的测试都会踩到同一个坑
+        // —— #5405 的 e2e 测试正是读它的。
+        std::env::set_var(SELFTEST_ENGINE_ENV, &fake);
+        let resolved = resolve_binary(SELFTEST_ENGINE_ENV, &[CANONICAL_CLI_BIN]);
+        std::env::remove_var(SELFTEST_ENGINE_ENV);
 
         let resolved = resolved.expect("explicit env var must resolve");
         assert_eq!(
             resolved.display().to_string(),
             fake,
             "an explicit {} must win over every other candidate",
-            ENGINE_BIN_ENV
+            SELFTEST_ENGINE_ENV
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn engine_cli_and_canonical_cli_are_the_same_binary() {
+        // #5405: 「引擎 CLI」与「规范 CLI」是**同一个**二进制 ⇒ 同一个
+        // 环境变量 ⇒ 同一个解析结果。两个名字、两份实现，就是漂移的起点。
+        //
+        // 这条断言是**无竞态**的：它不修改任何进程级环境变量
+        // （`SQLRUSTGO_BIN` 现在**没有**任何用例会去改它），
+        // 两个调用读到的是同一个值。
+        assert_eq!(
+            resolve_engine_binary(),
+            resolve_canonical_cli_binary(),
+            "the engine CLI and the canonical CLI must resolve to the same binary"
+        );
+    }
+
+    #[test]
+    fn canonical_cli_bin_name_is_not_its_package_name() {
+        // #5405 的根因：**包名**被当成了**二进制名**。
+        //
+        //   产出 canonical CLI 的包  = `sqlrustgo-cli`
+        //   它的 `[[bin]] name`      = `sqlrustgo`
+        //
+        // 仓库里**没有**任何 bin 叫 `sqlrustgo-cli`。这条断言把这条
+        // 不变量钉死：谁想把包名改回候选名，这条用例立刻红。
+        assert_eq!(CANONICAL_CLI_BIN, "sqlrustgo");
+        assert_ne!(
+            CANONICAL_CLI_BIN, "sqlrustgo-cli",
+            "the canonical CLI binary must never be named after its package"
+        );
     }
 
     #[test]
@@ -482,20 +607,25 @@ mod tests {
     fn external_tool_resolution_prefers_the_explicit_env_var() {
         let dir = std::env::temp_dir().join(format!("ext-tool-env-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
-        let fake = dir.join("psql");
+        let fake = dir.join(PSQL_BIN_NAME);
         std::fs::write(&fake, b"#!/bin/sh\nexit 0\n").expect("write fake client");
         let fake = fake.display().to_string();
 
-        std::env::set_var(PSQL_BIN_ENV, &fake);
-        let resolved = resolve_psql_binary();
-        std::env::remove_var(PSQL_BIN_ENV);
+        // ⚠️ 用**本用例专属**的环境变量名 —— #5423。
+        // 之前这里改的是 `SQLRUSTGO_PSQL_BIN`，而下面的
+        // `external_tool_resolution_never_invents_an_absolute_path`
+        // 会 `remove_var(PSQL_BIN_ENV)` —— 并发时把本用例刚设的值抹掉，
+        // 断言于是拿到 PATH 上的真实 `psql` 而不是临时路径 ⇒ 偶发红灯。
+        std::env::set_var(SELFTEST_PSQL_ENV, &fake);
+        let resolved = resolve_external_tool(SELFTEST_PSQL_ENV, &[PSQL_BIN_NAME]);
+        std::env::remove_var(SELFTEST_PSQL_ENV);
 
         let resolved = resolved.expect("explicit env var must resolve");
         assert_eq!(
             resolved.display().to_string(),
             fake,
             "an explicit {} must win over PATH",
-            PSQL_BIN_ENV
+            SELFTEST_PSQL_ENV
         );
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -505,16 +635,20 @@ mod tests {
     fn external_tool_resolution_never_invents_an_absolute_path() {
         // 找不到时返回 None —— 调用方必须把它变成 NOT-RUN 或错误，
         // 绝不能回退到某个开发机的绝对路径。
-        std::env::remove_var(PSQL_BIN_ENV);
-        std::env::remove_var(MYSQL_BIN_ENV);
+        //
+        // ⚠️ 这里**曾经**有一对 `remove_var(PSQL_BIN_ENV)` /
+        // `remove_var(MYSQL_BIN_ENV)` —— 那是批次 11 全量回归里 3 个目标
+        // 偶发变红的直接原因（#5423）：进程级环境变量是全局的，
+        // 并发用例会把别人的值抹掉。现在每个用例只碰**自己**的变量名，
+        // 谁也不动别人的。
 
         // 环境变量指向一个**不存在的文件**时，不得被当成解析成功。
         let dir = std::env::temp_dir().join(format!("ext-tool-absent-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let absent = dir.join("psql-does-not-exist");
-        std::env::set_var(PSQL_BIN_ENV, absent.display().to_string());
-        let resolved = resolve_psql_binary();
-        std::env::remove_var(PSQL_BIN_ENV);
+        std::env::set_var(SELFTEST_ABSENT_ENV, absent.display().to_string());
+        let resolved = resolve_external_tool(SELFTEST_ABSENT_ENV, &[PSQL_BIN_NAME]);
+        std::env::remove_var(SELFTEST_ABSENT_ENV);
         let _ = std::fs::remove_dir_all(&dir);
 
         if let Some(found) = resolved {

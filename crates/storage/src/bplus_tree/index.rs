@@ -1621,7 +1621,12 @@ mod tests {
         index.insert(3, 300);
 
         let results = index.range_query(1, 3);
-        assert!(results.is_empty() || results.len() >= 0);
+        // The range is half-open (`k >= start && k < end`), so keys 1 and 2
+        // match and key 3 does not. The old `results.is_empty() ||
+        // results.len() >= 0` was vacuous — `len() >= 0` is always true for
+        // a `usize` — which is what `clippy::absurd_extreme_comparisons`
+        // reports (#5508).
+        assert_eq!(results, vec![100, 200]);
     }
 
     #[test]
@@ -1810,7 +1815,9 @@ mod tests {
         }
 
         let results = index.range_query(3, 7);
-        assert!(results.len() >= 0);
+        // Half-open range over keys 1..=10 ⇒ keys 3, 4, 5, 6. The old
+        // `results.len() >= 0` could never fail (#5508).
+        assert_eq!(results, vec![3, 4, 5, 6]);
     }
 
     #[test]
@@ -2210,8 +2217,10 @@ mod tests {
         let start = CompositeKey::new(vec![Value::Integer(2)]);
         let end = CompositeKey::new(vec![Value::Integer(8)]);
         let results = index.range_query(&start, &end);
-        // Should return values in range
-        assert!(results.len() >= 0);
+        // Half-open range over the single-column composite keys 1, 5, 10 ⇒
+        // only key 5 is inside [2, 8). The old `results.len() >= 0` could
+        // never fail (#5508).
+        assert_eq!(results, vec![200]);
     }
 
     #[test]

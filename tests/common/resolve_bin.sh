@@ -2,7 +2,7 @@
 #
 # tests/common/resolve_bin.sh
 #
-# 统一的「外部可执行文件定位」—— #5406 / #5477。
+# 统一的「外部可执行文件定位」—— #5406 / #5477 / #5405 / #5516。
 #
 # 用法：
 #   source "$(dirname "${BASH_SOURCE[0]}")/resolve_bin.sh"
@@ -55,25 +55,44 @@ _test_bin_not_found() {
   return "${TEST_SKIP_EXIT_CODE}"
 }
 
-# 定位 sqlrustgo CLI。
+# 定位一个 cargo 产出的二进制 —— **唯一的查找实现**。
 #
-# 优先 `SQLRUSTGO_BIN`，其次 `SQLRUSTGO_CLI`（历史名字），
-# 再按 CARGO_TARGET_DIR / 仓库 target/ / PATH 找。
+# 用法：
+#   BIN="$(resolve_cargo_bin <binary-name> [env-var] [target-label])" || exit $?
 #
-# 找不到时**返回非零**（77），并打印 NOT-RUN 披露。
-resolve_sqlrustgo_bin() {
-  local target="${1:-$(basename "${0}")}"
+# $1 = 二进制**名字**（不是包名！`sqlrustgo-cli` 是包名，`sqlrustgo` 才是
+#      二进制名 —— 权威映射见 `scripts/gate/check_cli_binary_names.py`）
+# $2 = 可选：显式覆盖用的环境变量名
+# $3 = 可选：NOT-RUN 披露里用的标签（默认用 $1）
+#
+# 定位顺序（从最具体到最宽泛）：
+#   1. 显式环境变量（若给了 $2）
+#   2. $CARGO_TARGET_DIR/{debug,release}/<name>
+#   3. $CARGO_TARGET_DIR/{debug,release}/examples/<name>  ← cargo 的 example/bench 产物
+#   4. <repo>/target/{debug,release}/<name>（含 examples/）
+#   5. $PATH
+#
+# 找不到时打印 NOT-RUN 披露并返回 77（automake 的 "skipped"）——
+# **绝不**返回 0：那会被调用方读成「跑过了并通过」。
+resolve_cargo_bin() {
+  local name="${1:-}"
+  local env_var="${2:-}"
+  local target="${3:-$name}"
+
+  if [ -z "$name" ]; then
+    echo "resolve_cargo_bin: the binary name is required" >&2
+    return "${TEST_SKIP_EXIT_CODE}"
+  fi
+
   local candidate
 
-  for env_var in SQLRUSTGO_BIN SQLRUSTGO_CLI; do
-    if [ -n "${!env_var:-}" ]; then
-      candidate="${!env_var}"
-      if [ -x "$candidate" ]; then
-        printf '%s\n' "$candidate"
-        return 0
-      fi
+  if [ -n "$env_var" ] && [ -n "${!env_var:-}" ]; then
+    candidate="${!env_var}"
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
     fi
-  done
+  fi
 
   local repo_root
   repo_root="$(resolve_bin_repo_root)"
@@ -85,12 +104,13 @@ resolve_sqlrustgo_bin() {
 
   for base in "${bases[@]}"; do
     for profile in debug release; do
-      candidate="$base/$profile/sqlrustgo"
+      candidate="$base/$profile/$name"
       if [ -x "$candidate" ]; then
         printf '%s\n' "$candidate"
         return 0
       fi
-      candidate="$base/$profile/sqlrustgo-cli"
+      # cargo 的 example / bench 产物落在 examples/ 子目录里
+      candidate="$base/$profile/examples/$name"
       if [ -x "$candidate" ]; then
         printf '%s\n' "$candidate"
         return 0
@@ -108,14 +128,41 @@ resolve_sqlrustgo_bin() {
   IFS=':' read -ra _path_dirs <<< "${PATH:-}"
   for dir in "${_path_dirs[@]}"; do
     [ -n "$dir" ] || continue
-    for name in sqlrustgo sqlrustgo-cli; do
-      candidate="$dir/$name"
+    candidate="$dir/$name"
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  _test_bin_not_found "$target" "$name" "${env_var:-SQLRUSTGO_BIN}"
+}
+
+# 定位 sqlrustgo CLI。
+#
+# 优先 `SQLRUSTGO_BIN`，其次 `SQLRUSTGO_CLI`（历史名字），
+# 再按 CARGO_TARGET_DIR / 仓库 target/ / PATH 找。
+#
+# #5405 / #5516 — 候选名**只有** `sqlrustgo`：
+# `sqlrustgo-cli` 是**包名**（`crates/sqlrustgo-cli`），不是二进制名；
+# 该包的 `[[bin]] name` 是 `sqlrustgo`。把包名列为候选名，解析器就多走一条
+# 永远落空的路径，并让「这个二进制叫什么」出现第二个来源。
+# 权威的候选名由 `scripts/gate/check_cli_binary_names.py` 持有。
+#
+# 找不到时**返回非零**（77），并打印 NOT-RUN 披露。
+resolve_sqlrustgo_bin() {
+  local target="${1:-$(basename "${0}")}"
+  local candidate
+
+  for env_var in SQLRUSTGO_BIN SQLRUSTGO_CLI; do
+    if [ -n "${!env_var:-}" ]; then
+      candidate="${!env_var}"
       if [ -x "$candidate" ]; then
         printf '%s\n' "$candidate"
         return 0
       fi
-    done
+    fi
   done
 
-  _test_bin_not_found "$target" "sqlrustgo" "SQLRUSTGO_BIN"
+  resolve_cargo_bin "sqlrustgo" "" "$target"
 }

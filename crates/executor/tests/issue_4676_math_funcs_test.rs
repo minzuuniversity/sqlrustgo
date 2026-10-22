@@ -93,8 +93,11 @@ fn sqrt_two() {
     let mut e = engine();
     let r = e.execute("SELECT SQRT(2)").unwrap();
     let v = first_float(&r);
+    // The hand-written approximation `1.4142135623730951` was flagged by
+    // `clippy::approx_constant` (#5508); the standard constant says it
+    // exactly.
     assert!(
-        (v - 1.4142135623730951).abs() < 1e-10,
+        (v - std::f64::consts::SQRT_2).abs() < 1e-10,
         "SQRT(2) ≈ 1.414..., got {}",
         v
     );
@@ -134,8 +137,11 @@ fn exp_one() {
     let mut e = engine();
     let r = e.execute("SELECT EXP(1)").unwrap();
     let v = first_float(&r);
+    // The hand-written approximation `2.718281828` was flagged by
+    // `clippy::approx_constant` (#5508); the standard constant says it
+    // exactly.
     assert!(
-        (v - 2.718281828).abs() < 1e-6,
+        (v - std::f64::consts::E).abs() < 1e-6,
         "EXP(1) ≈ 2.718..., got {}",
         v
     );
@@ -184,7 +190,7 @@ fn table_column_usage() {
     assert!((get_float(&r, 0, 1) - 2.0).abs() < 1e-10, "MOD(2,3)=2.0");
     assert!((get_float(&r, 0, 2) - 4.0).abs() < 1e-10, "POWER(2,2)=4.0");
     assert!(
-        (get_float(&r, 0, 3) - 1.4142135623730951).abs() < 1e-10,
+        (get_float(&r, 0, 3) - std::f64::consts::SQRT_2).abs() < 1e-10,
         "SQRT(2)"
     );
 

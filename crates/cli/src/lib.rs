@@ -1,4 +1,4 @@
-//! sqlrustgo-cli — CLI client for SQLRustGo.
+//! `sqlrustgo-soak` — CLI client for SQLRustGo.
 //!
 //! Subcommands:
 //! - `exec`  — execute a one-off SQL query and print results

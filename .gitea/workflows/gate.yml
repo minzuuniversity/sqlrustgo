@@ -20,22 +20,67 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # #5451 / #5533 —— crates.io 是 CI 的**第三个**外部依赖（另两个是
+  # github.com 与 index.crates.io 背后的同一片网络）。
+  #
+  # 实测（CI run 8348，根包 `test` job 的 Build 步骤）：
+  #
+  #   error: failed to get `chrono` as a dependency of package
+  #          `evidence-graph v0.1.0`
+  #   Caused by: failed to download from
+  #              `https://index.crates.io/ch/ro/chrono`
+  #   Caused by: [28] Timeout was reached (Operation too slow.
+  #              Less than 10 bytes/sec transferred the last 30 seconds)
+  #
+  # 锁文件里的 crate 必须取到，下载本身不是可选项；但**网络抖动**不该
+  # 让整个 job 死掉。cargo 自带重试，只是默认次数太少、低速阈值太高。
+  # 这里只调**重试与超时**，不动 CARGO_HOME / RUSTUP_HOME（见上面的 NOTE）。
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: "120"
+  CARGO_HTTP_LOW_SPEED_LIMIT: "1"
 
 jobs:
   evidence-graph-gate:
     runs-on: [hp-z6g4]
     steps:
       - name: Checkout
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        env:
+          CI_CHECKOUT_DIR: "repo"
         run: |
-          REPO="openclaw/sqlrustgo"
-          SHA="${GITHUB_SHA:-${GITEA_SHA:-$(git rev-parse HEAD)}}"
-          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
-          cd repo
-          if [ -n "$SHA" ] && [ "$SHA" != "0000000000000000000000000000000000000000" ]; then
-            git fetch --depth=1 origin "$SHA" 2>/dev/null || true
-            git checkout "$SHA" 2>/dev/null || git checkout HEAD
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
           else
-            git checkout HEAD
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
           fi
 
       - name: Build graph-cli
@@ -187,16 +232,43 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        env:
+          CI_CHECKOUT_DIR: "repo"
         run: |
-          REPO="openclaw/sqlrustgo"
-          SHA="${GITHUB_SHA:-${GITEA_SHA:-$(git rev-parse HEAD)}}"
-          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
-          cd repo
-          if [ -n "$SHA" ] && [ "$SHA" != "0000000000000000000000000000000000000000" ]; then
-            git fetch --depth=1 origin "$SHA" 2>/dev/null || true
-            git checkout "$SHA" 2>/dev/null || git checkout HEAD
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
           else
-            git checkout HEAD
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
           fi
 
       - name: Run the current version's Alpha gate
@@ -207,11 +279,30 @@ jobs:
           # because the runner uses `bash -e -o pipefail` that exited the
           # step before any `|| true` could ever apply — so the job
           # reported a failure that had nothing to do with the gate.
-          GATE="scripts/gate/check_alpha_v410.sh"
-          if [ ! -f "$GATE" ]; then
-            echo "::error::current-version alpha gate not found at $GATE"
-            exit 1
+          #
+          # #5446: the gate was hardcoded to `check_alpha_v410.sh`. On a
+          # v4.0.0 checkout that runs the **v4.1.0** gate — the mirror
+          # image of the postcheck defect (which ran the v3.8.0 gate on
+          # v4.1.0). Both call sites now resolve the gate through the same
+          # two scripts, so the naming rule has exactly one implementation.
+          VER="$(bash scripts/gate/resolve_release_version.sh)"
+          echo "release version: ${VER}"
+          set +e
+          GATE="$(bash scripts/gate/resolve_alpha_gate.sh "$VER")"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 3 ]; then
+            # No gate script exists for this release line. That is a
+            # configuration gap, not a pass: it is recorded as NOT-RUN with
+            # a reason code rather than as a green result.
+            echo "NOT-RUN: reason=ALPHA_GATE_NOT_FOUND (no check_alpha_v*.sh serves version ${VER})"
+            exit 0
           fi
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::alpha gate resolution failed (rc=${RC})"
+            exit "$RC"
+          fi
+          echo "alpha gate: ${GATE}"
           chmod +x "$GATE"
           # #5447: the exit code is no longer discarded. A gate that cannot
           # fail is not a gate.

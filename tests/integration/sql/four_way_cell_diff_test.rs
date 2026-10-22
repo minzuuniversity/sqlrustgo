@@ -533,13 +533,43 @@ fn load_known_case_ids() -> Vec<String> {
 /// matrix test rewrote 81 evidence files). The report is an artefact of a
 /// run, not a source file, so it now goes to the build directory unless
 /// `TPCH_CELL_DIFF_OUT` says otherwise.
+/// The cargo target directory, resolved at **runtime**.
+///
+/// `env!("CARGO_TARGET_DIR")` is a *compile-time* macro. When cargo is not
+/// invoked with `CARGO_TARGET_DIR` set — which is the case on CI — the
+/// macro expands to a compile error ("environment variable
+/// `CARGO_TARGET_DIR` not defined at compile time") and the **whole test
+/// target fails to build**. That is what made the CI `lint-build` job red:
+/// `cargo clippy --all-targets` compiles this test target, and the error
+/// is a hard build failure, not a lint.
+///
+/// The path has to be resolved when the test runs, not when it is compiled.
+fn cargo_target_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
+        if !dir.trim().is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+    // `option_env!` is the compile-time-optional variant: it yields the
+    // value when cargo *was* invoked with the variable set.
+    if let Some(dir) = option_env!("CARGO_TARGET_DIR") {
+        if !dir.trim().is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+    // The default: cargo puts the artifacts in `<package root>/target`.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target")
+}
+
+/// Report file location. `TPCH_CELL_DIFF_OUT` overrides it; otherwise the
+/// report lands next to the build artifacts.
 fn report_path() -> PathBuf {
     if let Ok(p) = std::env::var("TPCH_CELL_DIFF_OUT") {
         if !p.trim().is_empty() {
             return PathBuf::from(p.trim());
         }
     }
-    PathBuf::from(env!("CARGO_TARGET_DIR")).join("tpch-cell-diff.json")
+    cargo_target_dir().join("tpch-cell-diff.json")
 }
 
 /// The truth source of the comparison.

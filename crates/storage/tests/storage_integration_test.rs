@@ -88,7 +88,7 @@ fn test_file_storage_create() {
 #[test]
 fn test_file_storage_insert_and_drop() {
     let dir = temp_dir("fsid");
-    let mut fs = FileStorage::new(dir.clone()).unwrap();
+    let fs = FileStorage::new(dir.clone()).unwrap();
     let info = TableInfo {
         name: "t".into(),
         ..Default::default()
@@ -104,7 +104,7 @@ fn test_file_storage_insert_and_drop() {
 #[test]
 fn test_file_storage_multiple() {
     let dir = temp_dir("fsm");
-    let mut fs = FileStorage::new(dir.clone()).unwrap();
+    let fs = FileStorage::new(dir.clone()).unwrap();
     for n in &["a", "b", "c"] {
         let info = TableInfo {
             name: (*n).into(),
@@ -120,7 +120,7 @@ fn test_file_storage_multiple() {
 #[test]
 fn test_file_storage_persist() {
     let dir = temp_dir("fsp");
-    let mut fs = FileStorage::new(dir.clone()).unwrap();
+    let fs = FileStorage::new(dir.clone()).unwrap();
     let info = TableInfo {
         name: "pt".into(),
         ..Default::default()

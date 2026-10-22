@@ -21,7 +21,7 @@ fn main() {
     std::fs::create_dir_all(&data_dir).unwrap();
 
     // Create FileStorage
-    let mut storage = FileStorage::new(data_dir).expect("Failed to create storage");
+    let storage = FileStorage::new(data_dir).expect("Failed to create storage");
 
     // Import lineitem
     let lineitem_path = tpch_dir.join("lineitem.tbl");
@@ -86,7 +86,7 @@ fn main() {
                     },
                     rows,
                 };
-                let batch_len = batch.len();
+                let _batch_len = batch.len();
                 storage
                     .insert_table("lineitem".to_string(), table_data)
                     .unwrap();

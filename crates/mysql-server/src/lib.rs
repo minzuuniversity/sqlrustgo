@@ -493,7 +493,10 @@ mod helpers_tests {
     fn connection_tracker_touch_resets_idle() {
         let tracker = ConnectionTracker::new();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        assert!(tracker.idle_secs() >= 0);
+        // `idle_secs` is a `u64`, so `>= 0` could never fail — that is what
+        // `clippy::absurd_extreme_comparisons` reports (#5508). A 20 ms pause
+        // is well under a second, so the idle time in seconds is 0.
+        assert_eq!(tracker.idle_secs(), 0, "20 ms is less than a second");
         tracker.touch();
         assert!(tracker.idle_secs() <= 1, "touch should reset idle to ~0");
     }
@@ -565,6 +568,10 @@ mod helpers_tests {
 
     // ---------- value_to_string ----------
 
+    // `3.14` is the **literal under test** — the renderer has to produce the
+    // text "3.14" — not a mathematical constant. `clippy::approx_constant` is
+    // deny-by-default and flags it (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn value_to_string_renders_basic_types() {
         assert_eq!(value_to_string(&Value::Null), "NULL");
@@ -4578,10 +4585,17 @@ fn split_top_level_statements(q: &str) -> Vec<&str> {
             '\'' => in_single = true,
             '"' => in_double = true,
             '(' => paren_depth += 1,
-            ')' => {
-                if paren_depth > 0 {
-                    paren_depth -= 1;
-                }
+            // #5508: `clippy::collapsible_match` (warn-by-default, but the
+            // CI clippy step runs with `-D warnings`, so this was **failing
+            // the lint-build job** on every push).
+            //
+            // The behaviour is unchanged: an unbalanced `)` at depth 0 used
+            // to match this arm and do nothing, and now it falls through to
+            // the `_ => {}` arm at the end of the match — which also does
+            // nothing. The arms between them (`'-'`, `'/'`, `';'`) are
+            // different literals and cannot match `)`.
+            ')' if paren_depth > 0 => {
+                paren_depth -= 1;
             }
             '-' if next == '-' => {
                 in_line_comment = true;
@@ -6189,7 +6203,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     if cap & capability::DEPRECATE_EOF == 0 {
                         make_eof_packet(seq, 0x0002).write_to(stream)?;
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                     }
                 }
                 // Issue #3694: force-drain ALL TLS cipher records before
@@ -6210,7 +6223,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     make_err_packet(seq, 1047, "HY000", "Malformed COM_STMT_EXECUTE")
                         .write_to(stream)?;
                     *server_last_sent_seq = seq;
-                    seq = seq.wrapping_add(1);
                     continue;
                 }
 
@@ -6227,7 +6239,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         make_err_packet(seq, 1243, "HY000", "Unknown statement handler")
                             .write_to(stream)?;
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                         continue;
                     }
                 };
@@ -6331,7 +6342,7 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                             .into_iter()
                             .map(|row| row.into_iter().take(stmt_col_count as usize).collect())
                             .collect();
-                        seq = send_binary_result_set(
+                        send_binary_result_set(
                             stream, &c_trimmed, &t_trimmed, &r_trimmed, seq, cap,
                         )?;
                     }
@@ -6347,7 +6358,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         let code = e.mysql_error_code();
                         make_err_packet(seq, code, "42000", &e.to_string()).write_to(stream)?;
                         *server_last_sent_seq = seq;
-                        seq = seq.wrapping_add(1);
                     }
                 }
             }
@@ -6373,7 +6383,6 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
             _ => {
                 make_err_packet(seq, 1047, "HY000", "Unknown command").write_to(stream)?;
                 *server_last_sent_seq = seq;
-                seq = seq.wrapping_add(1);
             }
         }
     }
@@ -7525,6 +7534,9 @@ mod integration_tests {
         assert_eq!(value_to_string(&Value::Integer(-100)), "-100".to_string());
     }
 
+    // `3.14` is the **literal under test**, not a mathematical constant;
+    // `clippy::approx_constant` is deny-by-default and flags it (#5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_value_to_string_float() {
         use sqlrustgo_types::Value;
@@ -8244,6 +8256,9 @@ mod integration_tests {
         assert!(buf.len() > 0);
     }
 
+    // `3.14159` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default and flags it (#5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_send_result_set_single_row() {
         use sqlrustgo_types::Value;

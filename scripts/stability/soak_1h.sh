@@ -15,7 +15,22 @@ PORT=${PORT:-3307}
 HOST=${HOST:-127.0.0.1}
 RESULTS_DIR=${RESULTS_DIR:-"test_results/soak_1h_$(date +%Y%m%d_%H%M%S)"}
 INTERVAL=${INTERVAL:-30}
-CLI_BIN="${CLI_BIN:-./target/release/sqlrustgo-cli}"
+
+# #5516: `sqlrustgo-cli` is the **package** name (`crates/sqlrustgo-cli`); the
+# binary it produces is called `sqlrustgo`. The old default
+# `./target/release/sqlrustgo-cli` therefore pointed at a path that can never
+# exist, and the script died at the first CLI call.
+#
+# The lookup goes through the repo's single shell-side resolver, so it is
+# also CARGO_TARGET_DIR-aware. `CLI_BIN` still overrides it.
+source "$PROJECT_ROOT/scripts/common/resolve_bin.sh"
+CLI_BIN="${CLI_BIN:-$(resolve_cargo_bin sqlrustgo SQLRUSTGO_BIN soak_1h)}" || {
+    echo "ERROR: the sqlrustgo binary was not found."
+    echo "       Build it (cargo build -p sqlrustgo-cli --release) or point"
+    echo "       SQLRUSTGO_BIN / CLI_BIN at an existing binary."
+    exit 1
+}
+echo "CLI binary: $CLI_BIN"
 
 mkdir -p "$RESULTS_DIR"
 METRICS_FILE="$RESULTS_DIR/metrics.csv"
@@ -80,10 +95,16 @@ echo "[2/5] Checking / initializing sbtest table..."
 EXISTING=$("$CLI_BIN" cli "SELECT COUNT(*) FROM sbtest" --port "$PORT" 2>/dev/null | grep -c "row" || echo 0)
 if [ "$EXISTING" -eq 0 ]; then
     echo "  Creating sbtest table with $TABLE_SIZE rows..."
-    "$CLI_BIN" exec "CREATE TABLE IF NOT EXISTS sbtest (
+    # #5516: `exec` is the **local** single-statement mode — it has no
+    # `--port` and it does not talk to the running server. Passing
+    # `--port` to it made clap exit 2, and because the script runs under
+    # `set -e` that killed the whole soak (with the error sent to
+    # /dev/null, so the log showed nothing). The server-facing path is
+    # `cli`, which speaks the MySQL wire protocol.
+    "$CLI_BIN" cli "CREATE TABLE IF NOT EXISTS sbtest (
         id INT NOT NULL, k INT NOT NULL DEFAULT 0,
         c CHAR(120) NOT NULL DEFAULT '', pad CHAR(60) NOT NULL DEFAULT '',
-        PRIMARY KEY(id), INDEX idx_k(k))" --port "$PORT" 2>/dev/null
+        PRIMARY KEY(id), INDEX idx_k(k))" --port "$PORT"
 
     # Insert in batches
     BATCH=1000
@@ -97,7 +118,7 @@ for i in range($offset, min($offset+$BATCH, $TABLE_SIZE)):
     else:
         print()
 ")
-        "$CLI_BIN" exec "INSERT INTO sbtest (id,k,c,pad) VALUES $VALUES" --port "$PORT" 2>/dev/null
+        "$CLI_BIN" cli "INSERT INTO sbtest (id,k,c,pad) VALUES $VALUES" --port "$PORT"
         echo -ne "\r  Inserted $(min $offset $TABLE_SIZE)/$TABLE_SIZE"
     done
     echo

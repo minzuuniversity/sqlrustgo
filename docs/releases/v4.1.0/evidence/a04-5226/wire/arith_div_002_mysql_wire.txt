@@ -5,6 +5,6 @@ SETUP> INSERT INTO t_div VALUES (7, 2)
   OK affected=1
 QUERY> SELECT a, b, a / b FROM t_div
   SELECT ncol=3 nrow=1 status=0x0002
-  columns=["a", "b", "a / b"]
-  types=["integer", "integer", "integer"]
+  columns=["a", "b", "BinaryOp(Identifier(\"a\"), \"/\", Identifier(\"b\"))"]
+  types=["text", "text", "integer"]
   row[0]=["7", "2", "3"]

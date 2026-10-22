@@ -24,6 +24,23 @@ sqlrustgo = { path = "../../" }
 sqlrustgo-wal-verification = { path = "../wal-verification" }
 tempfile.workspace = true
 criterion = "0.8"
+# #5515: the `fault_injection` module is gated behind
+# `#[cfg(any(test, feature = "fault-injection"))]`. An **integration test is
+# its own crate**, so `cfg(test)` does not apply to it — the module was
+# compiled out and every integration test that imports it failed to compile:
+#
+#     error[E0432]: unresolved import `sqlrustgo_storage::fault_injection`
+#        --> crates/storage/tests/fault_coordination.rs:36:24
+#     note: found an item that was configured out
+#
+# Affected targets: `fault_coordination`, `crash_commit_fsync_b1`,
+# `crash_wal_index_b1`, `a06_failpoint_reachability`.
+#
+# A self dev-dependency turns the feature on **only while the test targets
+# are being built** (Cargo unifies the features of the package with those of
+# its dev-dependency); a production `cargo build` keeps the feature off, so
+# the hooks stay out of the shipped binary.
+sqlrustgo-storage = { path = ".", features = ["fault-injection"] }
 
 [features]
 default = []

@@ -29,6 +29,11 @@ pub fn parse_sql_literal(s: &str) -> Value {
 mod tests {
     use super::*;
 
+    // `3.14` is the **SQL literal under test**, not a mathematical constant:
+    // this test checks that the parser turns the literal `3.14` into
+    // `Value::Float(3.14)`. `clippy::approx_constant` is deny-by-default and
+    // it flags it (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_parse_sql_literal() {
         assert_eq!(parse_sql_literal("NULL"), Value::Null);
@@ -49,6 +54,9 @@ mod tests {
         assert_eq!(parse_sql_literal("false"), Value::Boolean(false));
     }
 
+    // `-3.14` is the SQL literal under test, not a mathematical constant —
+    // see the note on `test_parse_sql_literal` (#5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_parse_sql_literal_negative() {
         assert_eq!(parse_sql_literal("-42"), Value::Integer(-42));

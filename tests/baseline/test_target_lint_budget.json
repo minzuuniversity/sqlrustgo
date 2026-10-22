@@ -1,7 +1,16 @@
 {
-  "version": 1,
-  "updated_at": "2026-10-21T08:34:23Z",
-  "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
-  "total": 0,
-  "by_lint": {}
+  "version": 2,
+  "updated_at": "2026-10-22T03:56:42Z",
+  "toolchains": {
+    "1.91.0": {
+      "rustc": "cargo 1.91.0 (ea2d97820 2025-10-10)",
+      "total": 0,
+      "by_lint": {}
+    },
+    "1.95.0": {
+      "rustc": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+      "total": 0,
+      "by_lint": {}
+    }
+  }
 }

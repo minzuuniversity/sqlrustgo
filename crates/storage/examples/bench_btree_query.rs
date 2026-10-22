@@ -87,7 +87,7 @@ fn main() {
 
     // COUNT(*) query
     println!("\n[3] COUNT(*) for all rows");
-    let scan_start = Instant::now();
+    let _scan_start = Instant::now();
     let total_count = table.rows.len();
     let scan_time = scan_time;
     println!(

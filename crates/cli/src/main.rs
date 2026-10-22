@@ -1,17 +1,28 @@
-//! SQLRustGo CLI — exec, repl, soak.
+//! `sqlrustgo-soak` — exec, repl, soak.
 //!
 //! Usage:
-//!   sqlrustgo-cli exec [options] <sql>
-//!   sqlrustgo-cli repl [options]
-//!   sqlrustgo-cli soak [options]
+//!   sqlrustgo-soak exec [options] <sql>
+//!   sqlrustgo-soak repl [options]
+//!   sqlrustgo-soak soak [options]
 //!
 //! Connects to a running `sqlrustgo-mysql-server` via MySQL wire protocol.
+//!
+//! #5405 — 二进制名
+//!
+//! 本 crate 的 package 是 `sqlrustgo-soak`，它的 `[[bin]] name` 也是
+//! `sqlrustgo-soak`。此前这里写的是 `sqlrustgo-cli` —— 那是**另一个包**
+//! （`crates/sqlrustgo-cli`，规范 CLI，bin 叫 `sqlrustgo`）的**包名**。
+//! 两个名字只差一个连字符，抄错就会指向一个**不存在**的二进制。
+//!
+//! ⚠️ 本二进制的 `soak` 子命令是**压测跑子**（`--duration` / `--rate` /
+//! `--query-file`）；**REPL 形态**的 soak 在规范 CLI `sqlrustgo soak` 里
+//! （`crates/sqlrustgo-cli`）。两者是不同的东西。
 
 use clap::parser::ValueSource;
 use clap::{CommandFactory, Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "sqlrustgo-cli", about = "SQLRustGo CLI client")]
+#[command(name = "sqlrustgo-soak", about = "SQLRustGo soak / exec / repl client")]
 struct Cli {
     #[command(subcommand)]
     command: Command,

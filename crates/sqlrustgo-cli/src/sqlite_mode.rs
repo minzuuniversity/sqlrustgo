@@ -267,7 +267,7 @@ impl SqliteMode {
         //   Comments starting with `--` are NOT rejected (sub-bug #2 already
         //   works post-`da40e01b14` lexer fix and is consistent with B-track
         //   Python/CLI output style which mixes Chinese comments with ASCII DDL).
-        let has_backtick = sql.contains('`');
+        let _has_backtick = sql.contains('`');
         // V313-109 / Issue #4708: backtick-quoted identifiers and non-ASCII
         // identifiers are now supported. The lexer maps `` `id` `` to the same
         // Identifier token as `"id"`, and non-ASCII chars in identifiers
@@ -297,7 +297,7 @@ impl SqliteMode {
         // simplicity (per the same clause).
         let trimmed = sql.trim_start();
         let upper = trimmed.to_ascii_uppercase();
-        let mut eff = upper
+        let eff = upper
             .strip_suffix(';')
             .map(|s| s.to_string())
             .unwrap_or(upper);

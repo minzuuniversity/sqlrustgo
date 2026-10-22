@@ -38,7 +38,7 @@ fn test_e2e_write_and_reload() {
 
     // Write phase
     {
-        let mut fs = FileStorage::new(dir.join("data")).unwrap();
+        let fs = FileStorage::new(dir.join("data")).unwrap();
         fs.insert_table(tbl_name.into(), make_table(tbl_name))
             .unwrap();
         fs.persist_table(tbl_name).unwrap();
@@ -61,7 +61,7 @@ fn test_e2e_multiple_tables_persist() {
 
     // Write all tables
     {
-        let mut fs = FileStorage::new(dir.join("data")).unwrap();
+        let fs = FileStorage::new(dir.join("data")).unwrap();
         for t in &tables {
             fs.insert_table(t.to_string(), make_table(t)).unwrap();
         }
@@ -93,7 +93,7 @@ fn test_e2e_drop_and_reload() {
     let dir = temp_dir("e2e_dr");
 
     {
-        let mut fs = FileStorage::new(dir.join("data")).unwrap();
+        let fs = FileStorage::new(dir.join("data")).unwrap();
         fs.insert_table("temp".into(), make_table("temp")).unwrap();
         fs.insert_table("keep".into(), make_table("keep")).unwrap();
         fs.persist_table("temp").unwrap();
@@ -119,7 +119,7 @@ fn test_e2e_drop_and_reload() {
 fn test_e2e_buffer_pool_with_file_storage() {
     let dir = temp_dir("e2e_bp");
     let pool = BufferPool::new(10);
-    let mut fs = FileStorage::new(dir.join("data")).unwrap();
+    let fs = FileStorage::new(dir.join("data")).unwrap();
 
     // Insert table via FileStorage
     fs.insert_table("bp_test".into(), make_table("bp_test"))
@@ -199,7 +199,7 @@ fn test_e2e_table_metadata_after_reload() {
     };
 
     {
-        let mut fs = FileStorage::new(dir.join("data")).unwrap();
+        let fs = FileStorage::new(dir.join("data")).unwrap();
         fs.insert_table(
             "meta_test".into(),
             TableData {
@@ -231,7 +231,7 @@ fn test_e2e_many_tables() {
     let count = 50;
 
     {
-        let mut fs = FileStorage::new(dir.join("data")).unwrap();
+        let fs = FileStorage::new(dir.join("data")).unwrap();
         for i in 0..count {
             let name = format!("table_{}", i);
             fs.insert_table(name.clone(), make_table(&name)).unwrap();
@@ -260,7 +260,7 @@ fn test_e2e_create_write_read_cycle() {
 
     // Create
     {
-        let mut fs = FileStorage::new(dir.join("data")).unwrap();
+        let fs = FileStorage::new(dir.join("data")).unwrap();
         fs.insert_table("cycle".into(), make_table("cycle"))
             .unwrap();
         fs.flush().unwrap();
@@ -274,7 +274,7 @@ fn test_e2e_create_write_read_cycle() {
 
     // Drop
     {
-        let mut fs = FileStorage::new(dir.join("data")).unwrap();
+        let fs = FileStorage::new(dir.join("data")).unwrap();
         fs.drop_table("cycle").unwrap();
         fs.flush().unwrap();
     }
