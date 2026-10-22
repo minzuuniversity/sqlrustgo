@@ -309,6 +309,17 @@ while IFS=$'\t' read -r pr deps; do
     [ -z "$pr" ] && continue
 
     # --- declared status from the §2.1 table --------------------------------
+    # A PR MUST appear exactly once in the status table. Two rows for the
+    # same PR is a self-contradictory document: taking the first row would
+    # silently ignore the second, which is how a false green hides.
+    # (Measured: a table with "❌ 未合并" then "✅ 已合并" for PR-800 used
+    # to be judged by the first row only.)
+    row_count=$(printf '%s\n' "$TABLE" | awk -F'\t' -v p="$pr" '$1 == p { c++ } END { print c+0 }')
+    if [ "$row_count" -gt 1 ]; then
+        log_error "$pr — appears $row_count times in the §2.1 status table. The rows must be unique."
+        FALSE_PASS=$((FALSE_PASS + 1))
+        continue
+    fi
     status=$(printf '%s\n' "$TABLE" | awk -F'\t' -v p="$pr" '$1 == p { print $2; exit }')
     if [ -z "$status" ]; then
         log_error "$pr — present in the §2 chain but missing from the §2.1 status table"
@@ -375,6 +386,23 @@ while IFS=$'\t' read -r pr deps; do
         done
     fi
 done <<< "$CHAIN"
+
+# --- Phase 4b: status-table rows that are not in the chain ---------------------
+# The loop above walks the §2 CHAIN. A §2.1 row whose PR is NOT a chain node
+# would therefore never be checked at all — measured 2026-10-22: a table
+# with an extra "PR-999 | ✅ 已合并" row was judged PASS, because nothing
+# ever looked at it. A claimed-merged PR nobody verifies is exactly the
+# false green this gate exists to remove.
+#
+# Every §2.1 row must correspond to a §2 chain node.
+while IFS=$'\t' read -r pr status; do
+    [ -z "$pr" ] && continue
+    if ! printf '%s\n' "$CHAIN" | awk -F'\t' -v p="$pr" '$1 == p { found=1 } END { exit !found }'; then
+        log_error "$pr — present in the §2.1 status table (status: $status) but NOT a node in the §2 chain. It would otherwise never be verified."
+        FALSE_PASS=$((FALSE_PASS + 1))
+        TABLE_ONLY="$TABLE_ONLY $pr"
+    fi
+done <<< "$TABLE"
 
 # --- Phase 5: verdict ------------------------------------------------------------
 echo

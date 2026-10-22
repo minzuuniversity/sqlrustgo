@@ -255,6 +255,67 @@ PR-900  ExecutionEngine 拆分清理             ← 收尾重构（依赖890）
 }
 
 #[test]
+fn verify_pr_dag_detects_duplicate_status_rows() {
+    // A PR appearing TWICE in the §2.1 status table is a self-contradictory
+    // document. Taking the first row would silently ignore the second, which
+    // is exactly how a false green hides. (Found by adversarial testing on
+    // 2026-10-22: a table with "❌ 未合并" then "✅ 已合并" was judged by
+    // the first row only.)
+    let fixture = "\
+## 2. PR DAG（依赖执行图）
+
+PR-800  COM_QUERY AST Routing (L0)           ← 入口重构（先做）
+
+### 2.1 PR DAG 实际执行状态
+
+| PR | 规划阶段 | 实际状态 | 说明 |
+|----|----------|----------|------|
+| PR-800 (COM_QUERY AST Routing) | Phase 0 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-800 (COM_QUERY AST Routing) | Phase 0 | ✅ 已合并 | duplicate row |
+";
+    let path = write_temp_fixture("duplicate_rows_plan.md", fixture);
+    let (code, out) = run_script("verify_pr_dag.sh", &["--plan", path.to_str().unwrap()]);
+    assert_eq!(
+        code, 1,
+        "a PR with duplicate status rows must FAIL (exit 1). Output:\n{out}"
+    );
+    assert!(
+        out.contains("times in the §2.1 status table"),
+        "the failure must say the rows are duplicated. Output:\n{out}"
+    );
+}
+
+#[test]
+fn verify_pr_dag_detects_a_status_row_outside_the_chain() {
+    // A §2.1 row whose PR is not a §2 chain node would never be checked by
+    // a chain-driven loop — so a claimed-merged PR nobody verifies is
+    // exactly the false green this gate exists to remove. (Found by
+    // adversarial testing on 2026-10-22.)
+    let fixture = "\
+## 2. PR DAG（依赖执行图）
+
+PR-800  COM_QUERY AST Routing (L0)           ← 入口重构（先做）
+
+### 2.1 PR DAG 实际执行状态
+
+| PR | 规划阶段 | 实际状态 | 说明 |
+|----|----------|----------|------|
+| PR-800 (COM_QUERY AST Routing) | Phase 0 | ❌ 未合并 | 无 Issue 追踪 |
+| PR-999 (not a chain node) | Phase 9 | ✅ 已合并 | fabricated |
+";
+    let path = write_temp_fixture("row_outside_chain_plan.md", fixture);
+    let (code, out) = run_script("verify_pr_dag.sh", &["--plan", path.to_str().unwrap()]);
+    assert_eq!(
+        code, 1,
+        "a status row outside the chain must FAIL (exit 1). Output:\n{out}"
+    );
+    assert!(
+        out.contains("NOT a node in the §2 chain"),
+        "the failure must say the row is outside the chain. Output:\n{out}"
+    );
+}
+
+#[test]
 fn verify_pr_dag_passes_on_the_real_repository() {
     // The real release plan must satisfy the gate. If this fails, either
     // the plan is genuinely inconsistent or the gate is wrong — either way
