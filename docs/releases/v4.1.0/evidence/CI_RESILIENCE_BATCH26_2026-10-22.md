@@ -129,7 +129,7 @@ runner 池有 3 台 `hp-z6g4`，而 cargo 默认「一个核一个 rustc」，�
 ```yaml
 concurrency:
   group: sqlrustgo-ci-pipeline
-  cancel-in-progress: false
+  cancel-in-progress: true
 ```
 
 `.gitea/workflows/gate.yml` 顶层加：
@@ -142,8 +142,8 @@ concurrency:
 
 * `group` 是**仓库级固定串**（不是 per-ref）：per-ref 的话 4 个分支仍然会同时跑，
   正是崩溃的条件；固定串把**同一个 workflow** 的并发压到 1。
-* `cancel-in-progress: false`：新推送**排队**而不是杀掉在跑的那个 ——
-  被杀的 run 同样不产出证据，而证据链必须完整。
+* `ci.yml` 用 `cancel-in-progress: true`、`gate.yml` 用 `false` ——
+  理由见 §2.1.2：卡死的 run 会**永久**占着并发组，而 API 没有任何办法释放它。
 
 #### 2.1.1 实测修订：两个 workflow **不能**共用一个 group
 
@@ -162,8 +162,42 @@ cancelled 的 required check ⇒ **永远合不进去**。
 
 ⇒ 修法：**一个 workflow 文件一个 group**。跨分支的串行化（真正保护宿主机的
 那一条）仍然成立 —— 每个 workflow 的 group 依然是固定串。
-并发上限本来�� runner 池决定（3 台 `hp-z6g4`），配合
+并发上限本来是由 runner 池决定（3 台 `hp-z6g4`），配合
 `CARGO_BUILD_JOBS=16` ⇒ 最多 3 × 16 = 48 个 rustc 抢 80 核。
+
+#### 2.1.2 实测修订之二：卡死的 run 会**永久**占着并发组
+
+第一版两个 workflow 都是 `cancel-in-progress: false`（理由是「被杀掉的 run
+同样不产出证据」）。实测发现这个理由站不住，而且 `false` 还有个更硬的坑：
+
+* 一个 run 的 task 卡死在一台**远端** runner 上（`sqlrustgo-ci-01`，
+  act_runner **v0.5.0**，日志停止增长、runner 心跳却正常）⇒ 这个 run 永远
+  停在 **Running**；
+* 它占着的并发组也就**永远不放** ⇒ 同组的后续 run 全部卡在 **Blocked**；
+* `POST …/actions/runs/8999/cancel` 返回 **409**（库里已经是 cancelled，
+  进程内状态却还是 running）⇒ **API 上没有任何办法释放这个槽位**；
+* 重启 Gitea 容器也不够：被标成 Blocked 的 run 不会被**重新评估**
+  （9003 在重启后仍然是 Blocked）—— 只有**新 run 加入该组**才会触发重算。
+
+⇒ `ci.yml` 改成 `cancel-in-progress: true`：**下一次推送**直接取消这个卡死的
+run ⇒ 槽位立刻释放，不需要人工去动 Gitea 的库。
+
+代价（明确接受）：往一个正在跑的分支上再推一次，前一次的 run 会被取消，
+PR 上那个 check 显示 cancelled —— 但**最新**那次 run 会给出新的 check，
+而我们要的证据本来就必须绑定在**最终**那次 run 上。
+
+`gate.yml` 保持 `cancel-in-progress: false`：它只有一个长 job
+（`legacy-gate` 跑整套 ALPHA 质量门禁，含 release + fat-LTO 的全量编译，
+实测 30 分钟以上），推一次就把它杀掉太浪费；而 gate 组卡死的概率低
+（它的 task 都在本机 runner 上，本机卡死时容器还在、状态能收回来）。
+
+#### 2.1.3 因此产生的运维动作（记账）
+
+| run | head | 处置 | 理由 |
+|---|---|---|---|
+| 8999 | `1debcb16c6` | 库里置为 cancelled + **重启 Gitea 容器** | task 卡在远端 runner，API 释放不了；重启后重算阻塞关系 |
+| 9002 | `d5b02dede8` | 容器停掉 | head 已被取代，证据绑不到最终 SHA，价值归零 |
+| 9003 | `2f43705d4b` | 被下一次推送取消 | Blocked 状态不会被重算，只有新 run 进组才会 |
 
 ### 2.2 修法二：`CARGO_BUILD_JOBS: "16"` —— 限制**每个容器**的编译并行度
 

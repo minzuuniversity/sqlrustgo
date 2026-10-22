@@ -80,7 +80,7 @@ concurrency:
   # PR 上那个 check 显示 cancelled —— 但**最新**那次 run 会给出新的 check，
   # 而我们要的证据本来就必须绑定在**最终**那次 run 上。
   #
-  # 并发上限本来�� runner 池决定的（3 台 `hp-z6g4`），配合
+  # 并发上限本来是由 runner 池决定的（3 台 `hp-z6g4`），配合
   # `CARGO_BUILD_JOBS=16` ⇒ 最多 3 × 16 = 48 个 rustc 抢 80 核。
   group: sqlrustgo-ci-pipeline
   cancel-in-progress: true
