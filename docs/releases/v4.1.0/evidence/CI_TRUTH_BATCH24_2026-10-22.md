@@ -3,21 +3,31 @@
 - **分支**：`fix/ci-truth-batch24`
 - **基线**：`develop/v4.1.0` @ `378f014529`
 - **合并进来的既有批次**：#5508/#5446/#5447/#5403（批次 19）、#5515（批次 23）、#5516（批次 20）
-- **本批新增**：#5533（`needs` 使 job 从未被调度）、#5534（gate.yml 静默检出错误的树）
+- **本批新增**：#5533（`needs` 使 job 启动推迟 12 分钟 ~ 7 小时，1452 次里只有 30 次真的启动）、
+  #5534（gate.yml 静默检出错误的树）
 
 ---
 
 ## 0. 一句话
 
-**这个仓库的 CI 从来没有跑过测试套件。** 原因是 `ci.yml` 里 `test` job 的
-`needs: [lint-build]` 在这台 Gitea 上会让它永远停在 `Waiting`；于是每一次
-「CI 全绿」都是因为那个 job 被 **skipped**，不是因为测试通过。
+**这个仓库的 CI 从来没有跑绿过测试套件。** 逐条定性 1452 次机会里的那 30 次：
 
-本批把这个事实修掉，并且顺手拆掉了 CI 对 GitHub 的依赖。
+* **10 次**在跑任何一行测试之前就死了 —— 6 次死在从 `github.com` 拉
+  `actions/checkout`，4 次死在从 `index.crates.io` 拉 crate；
+* **19 次**跑到了测试，因**真实的测试失败**而死；
+* **1 次**（本批这次）正在跑；
+* **成功 0 次**。
+
+剩下 1422 次机会，`test` job 被 **skipped**（779）或在启动前被
+**cancelled**（631）—— 于是 run 显示「绿」。
+
+本批拆掉这条因果链上的两个**外部网络依赖**（GitHub / crates.io），
+并让 `test` job 不再等「别的 job 结束」才起跑；19 次真实测试失败由本批
+合并进来的批次 19 / 20 / 23 负责。
 
 ---
 
-## 1. 根因 A —— 声明了非空 `needs:` 的 job 从未被调度（#5533）
+## 1. 根因 A —— `test` job 几乎从不启动，且**从未成功过**（#5533）
 
 ### 1.1 现象
 
@@ -29,52 +39,82 @@
     needs: [lint-build]
 ```
 
-在这台 Gitea（28.1.0）上，这个 job 的 `status` 一直是 **5（Waiting）**，
-`task_id` 恒为 0，`started_at` 恒为 0 ⇒ **runner 从未接到过它**。
+在这台 Gitea（28.1.0）上，这个 job 的启动被**严重推迟**：它在
+`lint-build` 结束之后，还要再等**别的 job 结束**才被唤醒。
 
-### 1.2 证据：查服务器自己的 job 表
+### 1.2 证据一：启动延迟的实测分布
 
-Gitea 的 job 状态表 `action_run_job` 直接给出答案：
+服务器自己的 job 表（`action_run_job`）：
 
 ```sql
-SELECT name, status, count(*), min(created) AS first_seen
-  FROM action_run_job
- WHERE needs = '["lint-build"]'
- GROUP BY name, status;
+SELECT j.run_id, j.status, (j.started - p.stopped) AS delay_s
+  FROM action_run_job j
+  JOIN action_run_job p ON j.run_id = p.run_id AND p.name = 'lint-build'
+ WHERE j.needs = '["lint-build"]' AND j.started > 0
+ ORDER BY j.run_id DESC;
 ```
 
-| name | status | 含义 | 次数 | 首次出现 |
-|---|---|---|---|---|
-| test | **1** | **success** | **0** | — |
-| test | 2 | failure | 29 | 1782642434 |
-| test | 3 | cancelled | 641 | 1780012079 |
-| test | 4 | skipped | 745 | 1780063089 |
-| test | 5 | waiting | 1 | 1792658030 |
+| run | status | 相对 `lint-build` 结束的延迟 |
+|---|---|---|
+| 8724 | running | 1298 s |
+| 8673 | failure | 937 s |
+| 8264 | failure | 3969 s |
+| 8242 | failure | 2305 s |
+| 8348 | failure | 23818 s（≈6.6 h） |
+| 8346 | failure | 25441 s（≈7.1 h） |
+| 8344 | failure | 20521 s（≈5.7 h） |
 
-⇒ 从 2026-05-29 至今，**1452 个实例，0 次成功**。其中 745 次被标成
-**skipped** —— 也就是说，CI 报「绿」是因为它**根本没跑**。
+⇒ 延迟从 **12 分钟到 7 小时**。本批这次 run 更直观：`lint-build` 在
+09:14:57 结束，而 `test` 直到 **09:36:35**（`postcheck` 结束的那一刻）
+才被调度。
 
-### 1.3 同一张表上的旁证
+### 1.3 证据二：1452 个实例，只有 30 个真的启动过
 
-全表里 `needs` 非空的 job 共 3815 个，`needs` 为空的只有 44 个；
-而 `["gate-baseline"]`（旧版本 ci.yml 里的依赖）有 157 次 success ——
-说明 `needs` **本来是能工作的**，问题出在**这台** Gitea 的调度器上，
-而出问题的只有 `ci.yml` 这条线。
+```sql
+SELECT status,
+       count(*) FILTER (WHERE started > 0) AS actually_started,
+       count(*) AS total
+  FROM action_run_job
+ WHERE needs = '["lint-build"]'
+ GROUP BY status;
+```
 
-### 1.4 为什么之前没人发现
+| status | 含义 | 真正启动过 | 总数 |
+|---|---|---|---|
+| 2 | failure | 29 | 29 |
+| 3 | cancelled | 12 | 643 |
+| 4 | skipped | 2 | 779 |
+| 6 | running | 1 | 1 |
+| **合计** | | **30 / 1452 = 2.1%** | 1452 |
 
-`mutation` 与 `postcheck` 两个 job 早前（#5455）把 `needs: [test]` 改成了
-`needs: []` + `if: always()`，当时的注释写着：
+⇒ **1452 次机会，30 次真的跑起来，0 次成功。**
 
-> the `test` job has never succeeded, so the mutation analysis never ran once
+### 1.4 证据三：那 29 次失败**没有一次**是「测试没过」以外的原因吗？—— 逐条定性
 
-方向完全正确 —— 但**根因没被拔掉**：让 `test` 死掉的是 `test` 自己身上的
-`needs: [lint-build]`。那两处改动只是让**下游**先跑起来，让上游的死
-变得更刺眼而已。
+29 份 job 日志全部下载并分类（`/tmp/tlogs/<job_id>.log`）：
 
-### 1.5 修法
+| 类别 | 次数 | 判据（原文） | job id |
+|---|---|---|---|
+| **GitHub checkout 死亡**（测试一行都没跑） | **6** | `Get "https://github.com/actions/checkout/info/refs?service=git-upload-pack": unexpected EOF` / `TLS handshake timeout` / `dial tcp 20.205.243.166:443: i/o timeout` | 15967, 16556, 16644, 16474, 16986, 17866 |
+| **crates.io 下载/索引中断**（Build 步骤就死） | **4** | `failed to download from \`https://index.crates.io/config.json\`` / `[28] Timeout was reached (Operation too slow. Less than 10 bytes/sec …)` | 16699, 16951, 16994, 11557（日志在 `Updating crates.io index` 处截断） |
+| **真的跑到了测试并失败** | **19** | `❌ Failure - Main Run tests` + `❌ Failure - Main Test summary`，其中可指名者：`--test alter_table_test` ×4、`--test diag_q11` ×4 | 其余 19 个 |
+| **成功** | **0** | | |
 
-沿用这个仓库已经在用的写法：
+⇒ **结论（必须照实说）**：CI 依赖**两个外部网络**（`github.com` 与
+`index.crates.io`）。10/29 次在**跑任何一行测试之前**就死了；
+19/29 次跑到了测试并因**真实的测试失败**而死；**0 次成功**。
+
+### 1.5 因此「CI 全绿」意味着什么
+
+`test` job 绝大多数时候被 **skipped**（779 次）或在启动前被 **cancelled**
+（631 次）⇒ run 显示绿。剩下 30 次里，**一次都没绿过**。
+
+⇒ 仓库里所有关于「CI 绿 ⇒ 可以合并」的判断，其证据强度是：
+**「lint / 变异 / 后置门禁绿了，且测试 job 没跑」**。
+
+### 1.6 修法
+
+沿用这个仓库已经在用的写法（`mutation` / `postcheck` 就是这么写的）：
 
 ```yaml
   test:
@@ -87,12 +127,15 @@ SELECT name, status, count(*), min(created) AS first_seen
 一起改掉。
 
 **代价**：测试套件与 `lint-build` 并行启动，而不是在它之后启动。
-**收益**：测试套件**真的会跑**。
+**收益**：测试套件不再等「别的 job 结束」才被唤醒，**与流水线同时起跑**。
 
 本批之后，受门禁的两个 workflow（`ci.yml` / `gate.yml`）里**不再有任何
 非空 `needs:`**。
 
----
+> **诚实标注**：本项修的是「启动延迟 12 分钟 ~ 7 小时」与「1452 次里
+> 只有 30 次启动」。它**不能**解释 19 次真实测试失败 —— 那些由本批合并
+> 进来的批次 19 / 20 / 23 负责；而 10 次外部网络死亡由 §2（checkout）与
+> §2bis（cargo 抗抖动）负责。三者合起来才是完整的因果链。
 
 ## 2. 根因 B —— checkout 有两个缺陷（#5448 / #5532 / #5534）
 
@@ -191,6 +234,38 @@ workflow 步骤在检出之前拿不到仓库里的脚本，这段实现只能�
 | develop 顶 `378f014529`（depth=1） | rc=0，HEAD=`378f014529` ✓ |
 | develop 顶（depth=0） | rc=0，历史 24483 个 commit ✓ |
 | 够不到的 commit（`0000…`） | rc≠0（硬失败）✓ |
+
+---
+
+## 2bis. 根因 C —— crates.io 也是外部依赖（#5451 的一部分）
+
+§1.4 的分类里，**4/29** 次失败死在下载 crate 上。实测（CI run 8348，
+根包 `test` job 的 Build 步骤）：
+
+```
+error: failed to get `chrono` as a dependency of package
+       `evidence-graph v0.1.0 (/workspace/openclaw/sqlrustgo/crates/evidence-graph)`
+Caused by: failed to download from `https://index.crates.io/ch/ro/chrono`
+Caused by: [28] Timeout was reached (Operation too slow.
+            Less than 10 bytes/sec transferred the last 30 seconds)
+```
+
+锁文件里的 crate 必须取到，**下载本身不是可选项**；但网络抖动不该让整个
+job 死掉。cargo 自带重试，只是默认次数太少、低速阈值太高。
+
+本批在 `ci.yml` / `gate.yml` 的 `env:` 里只调**重试与超时**：
+
+```yaml
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: "120"
+  CARGO_HTTP_LOW_SPEED_LIMIT: "1"
+```
+
+**没有动** `CARGO_HOME` / `RUSTUP_HOME`（`ci.yml` 顶部有一条明确的 NOTE：
+在 act_runner 上覆盖它们会让每个 job 的 rustup 指向空工具链）。
+
+> **未做**：真正的**缓存**（跨 job 复用的 registry 目录）需要动 runner 的
+> 容器配置，属于基础设施改动，登记在 #5451，本批只做「抖动不该致死」这一半。
 
 ---
 

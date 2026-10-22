@@ -20,6 +20,24 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # #5451 / #5533 —— crates.io 是 CI 的**第三个**外部依赖（另两个是
+  # github.com 与 index.crates.io 背后的同一片网络）。
+  #
+  # 实测（CI run 8348，根包 `test` job 的 Build 步骤）：
+  #
+  #   error: failed to get `chrono` as a dependency of package
+  #          `evidence-graph v0.1.0`
+  #   Caused by: failed to download from
+  #              `https://index.crates.io/ch/ro/chrono`
+  #   Caused by: [28] Timeout was reached (Operation too slow.
+  #              Less than 10 bytes/sec transferred the last 30 seconds)
+  #
+  # 锁文件里的 crate 必须取到，下载本身不是可选项；但**网络抖动**不该
+  # 让整个 job 死掉。cargo 自带重试，只是默认次数太少、低速阈值太高。
+  # 这里只调**重试与超时**，不动 CARGO_HOME / RUSTUP_HOME（见上面的 NOTE）。
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: "120"
+  CARGO_HTTP_LOW_SPEED_LIMIT: "1"
 
 jobs:
   evidence-graph-gate:
