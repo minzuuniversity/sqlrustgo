@@ -43,9 +43,20 @@
 # reporting a verdict it did not actually measure.
 #
 # The error goes to stderr, because the callers capture stdout.
+#
+# The bare `mktemp` is the first choice because it is what the CI image is
+# proven to accept. When it fails — **BSD/macOS `mktemp` requires a
+# template**, so on a macOS workstation every gate that sources this file
+# aborted with "cannot create a temporary file" — a **prefixed** template is
+# tried as the fallback. A prefixed template carries no suffix after the
+# Xs, which is exactly the shape the CI image accepts (the failure mode
+# documented above was `name.XXXXXX.py`, not a bare template).
 make_temp_file() {
     local f
     f="$(mktemp 2>/dev/null)" || f=""
+    if [ -z "$f" ] || [ ! -f "$f" ]; then
+        f="$(mktemp "${TMPDIR:-/tmp}/sqlrustgo-gate.XXXXXX" 2>/dev/null)" || f=""
+    fi
     if [ -z "$f" ] || [ ! -f "$f" ]; then
         echo "ERROR: cannot create a temporary file (mktemp failed) — refusing to continue with an empty path" >&2
         return 1
@@ -54,11 +65,14 @@ make_temp_file() {
 }
 
 # A temporary **directory**, with the same contract as `make_temp_file`:
-# a bare `mktemp -d` (no template — see above), and a loud failure instead
-# of an empty path.
+# a bare `mktemp -d` first, a prefixed template as the fallback (BSD/macOS),
+# and a loud failure instead of an empty path.
 make_temp_dir() {
     local d
     d="$(mktemp -d 2>/dev/null)" || d=""
+    if [ -z "$d" ] || [ ! -d "$d" ]; then
+        d="$(mktemp -d "${TMPDIR:-/tmp}/sqlrustgo-gate.XXXXXX" 2>/dev/null)" || d=""
+    fi
     if [ -z "$d" ] || [ ! -d "$d" ]; then
         echo "ERROR: cannot create a temporary directory (mktemp -d failed) — refusing to continue with an empty path" >&2
         return 1

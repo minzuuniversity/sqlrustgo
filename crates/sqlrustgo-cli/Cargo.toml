@@ -1,6 +1,10 @@
 [package]
 name = "sqlrustgo-cli"
-version = "3.9.0"
+# #5442 —— 发布二进制必须自报**发布线**版本。`--version` 由 clap 的
+# `version` 属性打印，取的是本 crate 的 `CARGO_PKG_VERSION`；
+# 写死 3.9.0 时，发布出去的 v4.1.0 二进制自称 3.9.0，
+# 而没有任何门禁会发现 ⇒ 改为跟随 workspace 版本这一个来源。
+version.workspace = true
 edition = "2021"
 license.workspace = true
 description = "SQLRustGo canonical CLI entry point"

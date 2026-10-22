@@ -154,6 +154,50 @@ def bin_names_of(text):
     return out
 
 
+def bin_targets_of(text):
+    """Every ``[[bin]]`` target of a manifest as ``(name, path_or_None)``.
+
+    The path matters for #5442's C5: cargo only *auto-discovers* an entry
+    point as an extra binary when no declared ``[[bin]]`` already points at
+    that very file. A package that declares ``[[bin]] name = "x"`` with
+    ``path = "src/main.rs"`` produces exactly one binary; a package that
+    declares ``[[bin]] name = "x"`` with ``path = "src/local_bin.rs"`` while
+    ``src/main.rs`` also exists produces **two** binaries — the declared one
+    and an auto-discovered one the manifest never mentions.
+    """
+    out = []
+    for kind, name, body in iter_sections(text):
+        if kind == "array" and name == "bin":
+            body_text = "\n".join(body)
+            nm = NAME_IN_SECTION_RE.search(body_text)
+            pt = re.search(r'^\s*path\s*=\s*"([^"]+)"', body_text, re.M)
+            out.append((nm.group(1) if nm else None, pt.group(1) if pt else None))
+    return out
+
+
+def implicit_bin_entries(pkg_dir, declared_paths):
+    """Entry points cargo would auto-discover as **extra** binaries.
+
+    Returns the manifest-relative paths of the entry points that a package
+    produces but does not declare: ``src/main.rs`` and every
+    ``src/bin/<name>.rs``, minus the ones a declared ``[[bin]]`` already
+    points at.
+    """
+    found = []
+    main_rs = os.path.join(pkg_dir, "src", "main.rs")
+    if os.path.isfile(main_rs) and "src/main.rs" not in declared_paths:
+        found.append("src/main.rs")
+    bin_dir = os.path.join(pkg_dir, "src", "bin")
+    if os.path.isdir(bin_dir):
+        for fn in sorted(os.listdir(bin_dir)):
+            if not fn.endswith(".rs"):
+                continue
+            rel = "src/bin/" + fn
+            if rel not in declared_paths:
+                found.append(rel)
+    return found
+
+
 def workspace_members(text):
     """The ``[workspace] members = [...]`` list of a manifest."""
     for kind, name, body in iter_sections(text):
@@ -181,7 +225,11 @@ def collect_packages(root):
         pkg = package_name_of(text)
         if pkg is None:
             continue
-        packages[pkg] = {"dir": rel, "bins": bin_names_of(text)}
+        packages[pkg] = {
+            "dir": rel,
+            "bins": bin_names_of(text),
+            "bin_targets": bin_targets_of(text),
+        }
     return packages
 
 
@@ -434,6 +482,39 @@ def analyze(root):
         else:
             cand["known"] = cand["name"] in workspace_bins or cand["name"] in external_set
 
+    # --- C5: a package must not produce an **undeclared** binary -------------
+    #
+    # Cargo gives a binary its name from **two** places: the manifest's
+    # `[[bin]] name`, and the auto-discovery of `src/main.rs` /
+    # `src/bin/<name>.rs`. A package that uses both produces two binaries
+    # while the manifest mentions only one — and the second one is called
+    # after the *package*, which is exactly the name #5405 banned.
+    #
+    # `crates/sqlrustgo-cli` was in that state: `[[bin]] name = "sqlrustgo"`
+    # (path `src/local_bin.rs`) **and** an auto-discovered `src/main.rs`
+    # (binary `sqlrustgo-cli`). The consequences were not cosmetic:
+    #   * `cargo run --package sqlrustgo-cli -- --version` cannot choose a
+    #     binary, so the #5442 release-version check could never run;
+    #   * C3 could not see that `target/debug/sqlrustgo-cli` names a binary
+    #     the manifest does not declare, so the leftover paths stayed.
+    implicit_bins = []
+    for pkg, info in packages.items():
+        targets = info.get("bin_targets") or []
+        if not targets:
+            continue
+        declared_paths = {p for _, p in targets if p}
+        entries = implicit_bin_entries(
+            os.path.join(root, info["dir"]), declared_paths
+        )
+        if entries:
+            implicit_bins.append(
+                {
+                    "package": pkg,
+                    "declared_bins": sorted(n for n, _ in targets if n),
+                    "implicit_entries": entries,
+                }
+            )
+
     return {
         "package_count": len(packages),
         "workspace_bins": sorted(workspace_bins),
@@ -443,6 +524,7 @@ def analyze(root):
         "target_literals": target_literals,
         "c3_exempt": sorted(c3_exempt),
         "resolver_candidates": resolver_candidates,
+        "implicit_bins": implicit_bins,
     }
 
 
@@ -471,6 +553,8 @@ def main(argv):
     for cand in report["resolver_candidates"]:
         if not cand.get("known"):
             failures += 1
+    for entry in report["implicit_bins"]:
+        failures += 1
 
     report["failure_count"] = failures
     report["status"] = "PASS" if failures == 0 else "FAIL"

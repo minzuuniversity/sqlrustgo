@@ -220,6 +220,8 @@ out = {
     'optional_gates': info.get('optional_gates', []),
     'required_files': info.get('required_files', []),
     'doc_artifacts': info.get('doc_artifacts', []),
+    'branch_pattern': info.get('branch_pattern', []),
+    'carrier_enforced': bool(info.get('carrier_enforced', False)),
 }
 print(json.dumps(out))
 EOF
@@ -232,6 +234,7 @@ REQ_GATES=()
 OPT_GATES=()
 REQ_FILES=()
 DOC_ARTIFACTS=()
+BRANCH_PATTERNS=()
 DESCRIPTION=""
 if command -v jq >/dev/null 2>&1; then
     # Use jq (faster, cleaner)
@@ -248,6 +251,9 @@ if command -v jq >/dev/null 2>&1; then
         [[ -n "$line" ]] && DOC_ARTIFACTS+=("$line")
     done < <(echo "$STAGE_INFO" | jq -r '.doc_artifacts[]?' 2>/dev/null)
     DESCRIPTION=$(echo "$STAGE_INFO" | jq -r '.description' 2>/dev/null)
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && BRANCH_PATTERNS+=("$line")
+    done < <(echo "$STAGE_INFO" | jq -r '.branch_pattern[]?' 2>/dev/null)
 else
     # Fallback: use python
     REQ_GATES=($(echo "$STAGE_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(g) for g in d.get('required_gates', [])]" 2>/dev/null))
@@ -255,7 +261,9 @@ else
     REQ_FILES=($(echo "$STAGE_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f) for f in d.get('required_files', [])]" 2>/dev/null))
     DOC_ARTIFACTS=($(echo "$STAGE_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(f) for f in d.get('doc_artifacts', [])]" 2>/dev/null))
     DESCRIPTION=$(echo "$STAGE_INFO" | python3 -c "import json,sys; print(json.load(sys.stdin).get('description', ''))" 2>/dev/null)
+    BRANCH_PATTERNS=($(echo "$STAGE_INFO" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(p) for p in d.get('branch_pattern', [])]" 2>/dev/null))
 fi
+CARRIER_ENFORCED="$(echo "$STAGE_INFO" | python3 -c "import json,sys; print('true' if json.load(sys.stdin).get('carrier_enforced') else 'false')" 2>/dev/null)"
 
 # ---- Run log ----
 # #5441: governance requires every gate run to leave its log in
@@ -290,6 +298,41 @@ say "  Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 say "  Description: $DESCRIPTION"
 say "  Mode:    $([[ "$DRY_RUN" == true ]] && echo 'DRY-RUN (nothing executed)' || echo 'EXECUTE')"
 say "=================================================================="
+say ""
+
+# ---- Branch pattern (the stage's own carrier rule) ----
+# #5436 —— `STAGE_CONFIG.yaml` 的 `branch_pattern` 此前是**一句没有任何代码
+# 读它的话**：全仓没有任何脚本消费这个字段。于是「GA 只允许在
+# main / release/* / hotfix/* 上发生」这条规则**从未被强制**，
+# 只要在 develop/v4.1.0 上把清单勾上，就可以「宣布 GA」——
+# 而 GA 的定义本身并不允许这件事在这个分支上发生。
+#
+# 现在这条声明**活起来**了：当前分支必须匹配当前阶段的 `branch_pattern`。
+# GA 的模式里**没有** `develop/v*` —— 所以要把 v4.1.0 的 `current_stage`
+# 推到 GA，就必须先切出合法的承载分支（`release/v4.1.0`）或合入 `main`。
+# 这不是给 GA 开后门，而是把「后门本来就开着」这件事关上。
+BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo '')"
+BRANCH_OK=false
+for pat in "${BRANCH_PATTERNS[@]}"; do
+    if [[ -n "$pat" && "$BRANCH" == $pat ]]; then
+        BRANCH_OK=true
+        break
+    fi
+done
+say "--- Branch Pattern ---"
+say "  stage:     $STAGE"
+say "  pattern:   ${BRANCH_PATTERNS[*]:-<none declared>}"
+say "  branch:    ${BRANCH:-<detached>}"
+say "  enforced:  $CARRIER_ENFORCED"
+if [ "$CARRIER_ENFORCED" != true ]; then
+    say "  [INFO] carrier rule is declared but not enforced for this stage (development stage)"
+elif [ "$BRANCH_OK" = true ]; then
+    say "  [PASS] branch matches the stage's carrier rule"
+else
+    say "  [FAIL] branch '${BRANCH:-<detached>}' does not match the stage's carrier rule"
+    say "         this stage cannot be carried out on this branch (#5436)"
+    BRANCH_VIOLATION=true
+fi
 say ""
 
 # ---- Required files + doc artifacts ----
@@ -434,9 +477,15 @@ PYEOF
 fi
 
 # ---- Summary ----
-TOTAL_FAIL=$((FILE_FAIL + ART_FAIL + GATE_FAIL))
+# #5436 —— 分支承载规则不满足 ⇒ 整个阶段判定无效（不是「少一项」）。
+BRANCH_FAIL=0
+if [[ "${BRANCH_VIOLATION:-false}" == true ]]; then
+    BRANCH_FAIL=1
+fi
+TOTAL_FAIL=$((FILE_FAIL + ART_FAIL + GATE_FAIL + BRANCH_FAIL))
 say "=================================================================="
 say "  Stage $STAGE ($VERSION): $(($FILE_PASS + ART_PASS + GATE_PASS)) PASS, $TOTAL_FAIL FAIL"
+[[ $BRANCH_FAIL -gt 0 ]] && say "  branch carrier rule: FAIL (the current branch cannot carry this stage)"
 say "  gate logs: $LOG_DIR/gates/"
 [[ -n "$RUN_LOG" ]] && say "  run log:   $RUN_LOG" || true
 say "=================================================================="
