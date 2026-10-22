@@ -422,7 +422,7 @@ for k in ('started_at', 'finished_at', 'config', 'summary', 'results'):
     if k not in d:
         print('missing key: ' + k); sys.exit(1)
 # The previous check only verified that these keys EXIST. An empty
-# `results` satisfied it, so a run that executed nothing looked valid.
+# 'results' satisfied it, so a run that executed nothing looked valid.
 results = d['results']
 if not isinstance(results, list) or not results:
     print('results is empty — no test actually ran'); sys.exit(1)

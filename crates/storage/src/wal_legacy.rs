@@ -1520,6 +1520,27 @@ mod tests {
     // PB-03: WAL Performance Benchmarks
 
     #[test]
+    // #5545: this is a **measurement**, not a correctness test — it asserts a
+    // WALL-CLOCK bound (1000 × 1KB INSERT < 2s), and a wall-clock bound
+    // cannot be asserted on a machine that is doing anything else.
+    // Measured on this host: **80ms** on an idle box, **2.39s** with three
+    // concurrent cargo builds running (load average 6.7–17.8 on 10 cores) —
+    // a 30× spread, with the threshold at 2.0s.
+    //
+    // Consequence: this test lives in `sqlrustgo_storage`'s lib-test binary,
+    // which the Anti-Fabrication gate runs as part of its **mandatory** set
+    // (`config/test-runner-manifest.toml` → `storage-lib`), and the AFP gate
+    // is a step of CI's `postcheck` job. So a loaded machine made the AFP
+    // gate — and therefore the CI run — red for a reason that has nothing to
+    // do with the code under test.
+    //
+    // It is `#[ignore]`d on purpose, following the same convention as
+    // `crates/storage/tests/measure_commit_clone_4948.rs` and
+    // `crates/storage/tests/b22_flush_wall.rs`: a measurement is run
+    // manually, and its numbers go into the evidence document.
+    // The correctness half (the WAL really holds 1000 records and recovers
+    // them) is covered by the neighbouring non-measurement tests.
+    #[ignore = "wall-clock measurement harness — run manually (`cargo test --lib -- --ignored`), results go in the evidence doc"]
     fn test_wal_perf_1000_insert() {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
