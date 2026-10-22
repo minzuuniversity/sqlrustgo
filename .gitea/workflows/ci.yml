@@ -202,6 +202,18 @@ jobs:
         # carries angle brackets, and refuses anything richer than a plain
         # dotted path inside a comment.
         run: bash scripts/gate/check_workflow_expressions.sh
+      - name: Process-global env mutation gate (issue #5423)
+        # The root lib test binary runs its ~160 unit tests concurrently in
+        # ONE process. A test that mutates the process environment table is
+        # visible to every sibling test running at the same moment, which
+        # turned one default-value assertion into a ~1-in-3 random CI red.
+        #
+        # The rule is scoped to the root package on purpose: `crates/*` are
+        # separate test binaries and carry their own locking discipline.
+        #
+        # (This comment names the mechanism, never a code pattern the
+        # platform might scan — see the workflow expression gate above.)
+        run: bash scripts/gate/check_no_process_env_mutation.sh
       - name: Hardcoded credential gate (issues #5381 / #5520)
         # The repository is mirrored to a **public** GitHub repository, so any
         # credential-shaped string in a tracked file is world-readable. Five

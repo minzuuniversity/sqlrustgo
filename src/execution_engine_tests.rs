@@ -558,14 +558,14 @@ fn test_parallel_scan_partitions_evenly() {
 /// benchmarks with 6M+ rows live in the 22-query test suite.
 #[test]
 fn test_parallel_n1_eq_n4_cell_match() {
+    // #5423: the parallelism is **injected per engine** instead of being set
+    // through the process environment. `std::env::set_var` mutates the whole
+    // process environment table, and Rust runs this binary's tests
+    // concurrently — so the old env-based fixture raced with every other
+    // test in this binary that constructs an engine.
     let setup = |par: usize| {
-        if par > 1 {
-            std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", par.to_string());
-        } else {
-            std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
-        }
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
+        let mut engine = ExecutionEngine::with_parallel_degree(storage, par);
         engine
             .execute("CREATE TABLE big (id INTEGER, payload TEXT)")
             .unwrap();
@@ -587,15 +587,30 @@ fn test_parallel_n1_eq_n4_cell_match() {
         "row count N=1 vs N=4 must match"
     );
     assert_eq!(r1.rows, r4.rows, "cell-level diff must be 0");
-    std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
 }
 
 /// Task 3.9 regression: default build (no env var) preserves sequential behavior.
+///
+/// #5423: the default is exercised through the **pure** resolver and the
+/// raw-value ctor seam instead of `std::env::remove_var`. The environment
+/// table is process-global, so mutating it raced with every other test in
+/// this binary (the root lib test binary runs ~160 tests concurrently).
 #[test]
 fn test_parallel_default_n1_no_env_var() {
-    std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
+    // The resolution rule, exhaustively and without touching any global:
+    assert_eq!(resolve_parallel_degree(None), 1, "unset ⇒ 1");
+    assert_eq!(resolve_parallel_degree(Some("")), 1, "empty ⇒ 1");
+    assert_eq!(
+        resolve_parallel_degree(Some("not_a_number")),
+        1,
+        "unparsable ⇒ 1"
+    );
+    assert_eq!(resolve_parallel_degree(Some("0")), 1, "0 ⇒ 1");
+    assert_eq!(resolve_parallel_degree(Some("8")), 8, "8 ⇒ 8");
+
+    // ... and the same rule as the engine sees it when no value is supplied.
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let engine = ExecutionEngine::new(storage);
+    let engine = ExecutionEngine::base_with_raw(storage, true, None);
     assert_eq!(
         engine.parallel_degree(),
         1,
@@ -616,16 +631,17 @@ fn test_parallel_100k_cell_match_n1_vs_n4() {
     const N: usize = 100_000;
 
     let setup_and_query = |par: usize| -> Vec<Vec<Value>> {
-        // Set / clear env var BEFORE constructing the engine so the
-        // `base_with` ctor reads the right value.
-        if par > 1 {
-            std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", par.to_string());
-        } else {
-            std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
-        }
+        // #5423: inject the parallelism instead of setting the process
+        // environment variable. `env::set_var` is process-global, so the old
+        // env-based fixture raced with every other test running concurrently
+        // in this binary (including the one that asserts the default is 1).
         let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-        let mut engine = ExecutionEngine::new(storage);
-        assert_eq!(engine.parallel_degree(), par, "ctor must read env var");
+        let mut engine = ExecutionEngine::with_parallel_degree(storage, par);
+        assert_eq!(
+            engine.parallel_degree(),
+            par,
+            "ctor must use injected degree"
+        );
 
         engine
             .execute("CREATE TABLE t (id INTEGER, val INTEGER, tag TEXT)")
@@ -657,10 +673,6 @@ fn test_parallel_100k_cell_match_n1_vs_n4() {
         r1, r4,
         "cell-level match N=1 vs N=4 required (parallel path must be byte-identical)"
     );
-
-    // Cleanup env var so subsequent tests in the same process see the
-    // default.
-    std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
 }
 
 // ============ V311-09 F-36 column-level privilege e2e (GRANT path) ============
@@ -1360,8 +1372,14 @@ fn test_v410_atomic_cbo_enabled_getter_returns_initial_value() {
 
 #[test]
 fn test_v410_atomic_parallel_degree_getter_clamps_to_one() {
+    // #5423: construct with an **explicit** degree instead of relying on the
+    // ambient `SQLRUSTGO_EXECUTOR_PARALLELISM` value. Concurrently running
+    // tests used to overwrite that process-global variable, so this
+    // assertion intermittently observed 4 instead of the default 1 — the
+    // ~1-in-3 CI flake this issue tracks. The "default is 1" rule itself is
+    // covered by `test_parallel_default_n1_no_env_var`.
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
-    let mut engine = ExecutionEngine::new(storage);
+    let mut engine = ExecutionEngine::with_parallel_degree(storage, 1);
     assert_eq!(engine.parallel_degree(), 1);
     // Issue #4910 §3.1: setter must clamp 0 → 1 (no parallelism < 1)
     engine.set_parallel_degree(0);

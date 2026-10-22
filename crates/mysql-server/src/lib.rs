@@ -357,6 +357,13 @@ mod helpers_tests {
 
     #[test]
     fn read_executor_parallelism_honors_env() {
+        // #5423: every test that mutates a process-global env var in this
+        // binary must hold the same lock. This one did not, so it could
+        // clobber `read_executor_parallelism_defaults_to_one` (which does
+        // hold it) — the same race class the root package had.
+        let _guard = super::utilities_tests::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok();
         std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", "8");
         assert_eq!(read_executor_parallelism(), 8);
@@ -369,6 +376,10 @@ mod helpers_tests {
 
     #[test]
     fn read_executor_parallelism_clamps_zero_and_invalid() {
+        // #5423: same lock discipline as the two tests above.
+        let _guard = super::utilities_tests::ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok();
         std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", "0");
         assert_eq!(read_executor_parallelism(), 1);
