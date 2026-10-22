@@ -118,14 +118,20 @@ where
     // neither CI nor any local full regression). It surfaces as a **hang**,
     // not a failure — the test process sat there for 31 minutes with 0.02 s
     // of CPU time.
-    let warmup_barrier = Arc::new(tokio::sync::Barrier::new(total_threads + 1));
+    //
+    // The participant count matters as much: it is `total_threads`, **not**
+    // `total_threads + 1`. Only the worker threads call `wait()`; the
+    // caller waits for them with `join()` and never joins the barrier. With
+    // `+ 1` the barrier was short one participant in **both** phases, so
+    // neither generation ever completed.
+    let warmup_barrier = Arc::new(tokio::sync::Barrier::new(total_threads));
 
     // Warmup phase
     let warmup_hist = Arc::new(std::sync::Mutex::new(
         Histogram::<u64>::new_with_max(3_600_000_000_000u64, 3)
             .expect("Failed to create warmup histogram"),
     ));
-    let measurement_barrier = Arc::new(tokio::sync::Barrier::new(total_threads + 1));
+    let measurement_barrier = Arc::new(tokio::sync::Barrier::new(total_threads));
 
     // Run warmup phase
     let warmup_handles: Vec<_> = (0..total_threads)
