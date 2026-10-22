@@ -52,6 +52,25 @@
 #     exemption without a reason is a FAIL — a silent skip is exactly the
 #     anti-pattern this repository's P-rules forbid.
 #
+# C5  **No step that runs a script from this repository may come before the
+#     `Checkout` step.**  A step that says `bash scripts/…` is asking for a
+#     file that only exists *after* the checkout; with the step ordered
+#     first, the job runs it in an empty workspace and dies with
+#
+#         bash: scripts/ci/cache_cargo_registry.sh: No such file or directory
+#         exitcode '127': command not found
+#
+#     That is not hypothetical: #5451 put the "Restore cargo registry
+#     cache" step ahead of the checkout in all five cargo jobs, and CI run
+#     9157 came back with every one of them red in 2-3 seconds — a red
+#     pipeline whose message says nothing about the code under test.
+#     The order that works is
+#
+#         Checkout -> Restore cargo registry cache -> <cargo steps> -> Save
+#
+#     because the checkout needs no cargo, and the restore only has to be
+#     in place before the first cargo invocation.
+#
 # USAGE
 # -----
 #   bash scripts/gate/check_ci_checkout_consistency.sh
@@ -315,6 +334,122 @@ check_exemptions() {
   pass "C4 every non-gated workflow carries an exemption with a reason"
 }
 
+# --- C5: a step that runs a repository script must come after the checkout --
+
+# NOTE ON THE EMBEDDED PYTHON
+# --------------------------
+# The python body below lives in a **quoted** here-document
+# (`<<'PY'`).  The bash that ships with macOS (3.2.57) mis-parses a quoted
+# here-document that contains a backslash immediately in front of a single
+# quote: the backslash-quote pair leaks out of the here-document and the
+# script dies with "unexpected EOF while looking for matching `''".
+#
+# That is why the single quote in the regular expression is built with
+# `chr(39)` at run time instead of being written as `\'`: the here-document
+# then contains no backslash-quote pair at all.  Do not "simplify" it back.
+#
+# The step directories that hold executables belonging to this repository.
+# A `run:` body that names one of them needs the file to be present, and the
+# file only appears after the checkout.
+REPO_SCRIPT_DIRS=(scripts gate tools)
+
+STEP_ORDER_PY=$(cat <<'PY'
+import re, sys
+
+# A `run:` that names a path inside one of the repository script
+# directories.  The path has to start the command or follow a shell
+# metacharacter, so that `echo "see scripts/README"` does not count.
+script_dirs = sys.argv[1].split(',')
+# The single quote is built at run time on purpose: a backslash directly in
+# front of a quote inside a quoted here-document breaks the parse of the
+# bash that ships with macOS (3.2).  See the note in the shell section
+# above the C5 check.
+Q = chr(39)
+path_re = re.compile(
+    r'(?:^|[\s"' + Q + r'(=;|&])(?:\./)?(' + '|'.join(re.escape(d) for d in script_dirs) +
+    r'/[A-Za-z0-9_][A-Za-z0-9_./-]*)'
+)
+
+step_re = re.compile(r'^(\s*)- name:\s*(.*?)\s*$')
+job_re = re.compile(r'^  [A-Za-z0-9_-]+:\s*$')
+run_block_re = re.compile(r'^(\s*)run:\s*\|\s*$')
+run_inline_re = re.compile(r'^(\s*)run:\s*(\S.*)$')
+
+rc = 0
+for path in sys.argv[2:]:
+    lines = open(path, encoding='utf-8').read().split('\n')
+    job_hdr = [i for i, l in enumerate(lines) if job_re.match(l)]
+    for j, start in enumerate(job_hdr):
+        end = job_hdr[j + 1] if j + 1 < len(job_hdr) else len(lines)
+        job = lines[start].strip()
+        steps = []
+        for i in range(start, end):
+            m = step_re.match(lines[i])
+            if m and len(m.group(1)) == 6:
+                steps.append((i, m.group(2)))
+        checkout_at = next((k for k, (_i, n) in enumerate(steps) if n == 'Checkout'), None)
+        if checkout_at is None:
+            continue
+        for k in range(checkout_at):
+            i, name = steps[k]
+            stop = steps[k + 1][0] if k + 1 < len(steps) else end
+            block = lines[i:stop]
+            # the executable part: the `run:` body only.  Comment lines are
+            # documentation and may mention any path at all.
+            body = []
+            r = 0
+            while r < len(block):
+                rm = run_block_re.match(block[r])
+                if rm:
+                    base = len(rm.group(1))
+                    r += 1
+                    while r < len(block):
+                        line = block[r]
+                        if line.strip() == '':
+                            body.append('')
+                            r += 1
+                            continue
+                        cur = len(line) - len(line.lstrip())
+                        if cur <= base:
+                            break
+                        body.append(line[base + 2:] if len(line) > base + 2 else '')
+                        r += 1
+                    continue
+                im = run_inline_re.match(block[r])
+                if im:
+                    body.append(im.group(2))
+                r += 1
+            text = '\n'.join(l for l in body if not l.strip().startswith('#'))
+            hits = sorted(set(path_re.findall(text)))
+            if hits:
+                print("EARLY\t%s\t%s\tstep %r runs a repository script before the checkout: %s"
+                      % (path, job, name, ', '.join(hits)))
+                rc = 1
+sys.exit(rc)
+PY
+)
+
+check_repo_scripts_after_checkout() {
+  local dir="${1:-.gitea/workflows}" f
+  local joined
+  joined="$(IFS=,; echo "${REPO_SCRIPT_DIRS[*]}")"
+  local out rc
+  out="$(mktemp "${TMPDIR:-/tmp}/ci_step_order.XXXXXX")" || return 1
+  python3 -c "$STEP_ORDER_PY" "$joined" "$dir"/*.yml >"$out" 2>&1
+  rc=$?
+  if [ $rc -ne 0 ]; then
+    while IFS=$'\t' read -r kind path job detail; do
+      [ "$kind" = "EARLY" ] || continue
+      fail "$path: $job — $detail"
+    done <"$out"
+    grep -v $'^EARLY\t' "$out" | sed 's/^/    /' >&2
+  else
+    pass "C5 no step runs a repository script before its checkout step"
+  fi
+  rm -f "$out"
+  return 0
+}
+
 # --- selftest ---------------------------------------------------------------
 
 run_selftest() {
@@ -416,6 +551,58 @@ DRIFT
   fi
   echo "  selftest OK: a drifted checkout body is detected"
 
+  # 5. A step that runs a repository script BEFORE the checkout must be
+  #    caught.  This is the #5451 / CI run 9157 defect: the restore step
+  #    ran `bash scripts/ci/cache_cargo_registry.sh` in an empty workspace
+  #    and every cargo job died with exit 127.
+  local wfdir3="$tmp/wf3/.gitea/workflows"
+  mkdir -p "$wfdir3"
+  cat >"$wfdir3/ci.yml" <<'EARLY'
+name: early
+on: [push]
+jobs:
+  early:
+    runs-on: [hp-z6g4]
+    steps:
+      - name: Restore cargo registry cache (issue #5451)
+        run: bash scripts/ci/cache_cargo_registry.sh restore
+      - name: Checkout
+        run: |
+          git init -q -b main .
+EARLY
+  local before3="$FAILURES"
+  check_repo_scripts_after_checkout "$tmp/wf3/.gitea/workflows" >/dev/null 2>&1
+  if [ "$FAILURES" -le "$before3" ]; then
+    echo "  selftest FAIL: a repository script running before the checkout was not caught" >&2
+    return 1
+  fi
+  FAILURES="$before3"
+
+  # 5b. The same script AFTER the checkout must NOT be flagged.
+  cat >"$wfdir3/ci.yml" <<'LATE'
+name: late
+on: [push]
+jobs:
+  late:
+    runs-on: [hp-z6g4]
+    steps:
+      - name: Checkout
+        run: |
+          git init -q -b main .
+      - name: Restore cargo registry cache (issue #5451)
+        # scripts/ci/cache_cargo_registry.sh is mentioned in this comment
+        # on purpose: a comment is not an invocation.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
+LATE
+  local before4="$FAILURES"
+  check_repo_scripts_after_checkout "$tmp/wf3/.gitea/workflows" >/dev/null 2>&1
+  if [ "$FAILURES" -gt "$before4" ]; then
+    echo "  selftest FAIL: a repository script running AFTER the checkout was flagged" >&2
+    return 1
+  fi
+  FAILURES="$before4"
+  echo "  selftest OK: a repository script before the checkout is detected, and one after it is not"
+
   return 0
 }
 
@@ -436,6 +623,7 @@ check_no_github_checkout
 check_canonical_bodies
 check_input_overrides
 check_exemptions
+check_repo_scripts_after_checkout
 
 if [ "$FAILURES" -gt 0 ]; then
   echo ""

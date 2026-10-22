@@ -154,14 +154,6 @@ jobs:
       volumes:
         - sqlrustgo-cargo-cache:/opt/cargo-cache
     steps:
-      - name: Restore cargo registry cache (issue #5451)
-        # Without this every job re-downloads ~164 crates from
-        # `static.crates.io` — ~75 s of wall clock, and the only reason a
-        # job could die with "failed to get `chrono` as a dependency"
-        # before a single test ran (run 8185). The runner image ships a
-        # populated registry, but a job container's `CARGO_HOME` points at
-        # an empty directory, so cargo never sees it.
-        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
         # itself.  The runner used to download `actions/checkout` from GitHub
@@ -199,6 +191,14 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # Without this every job re-downloads ~164 crates from
+        # `static.crates.io` — ~75 s of wall clock, and the only reason a
+        # job could die with "failed to get `chrono` as a dependency"
+        # before a single test ran (run 8185). The runner image ships a
+        # populated registry, but a job container's `CARGO_HOME` points at
+        # an empty directory, so cargo never sees it.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Clippy
         # #5465: this used to be
         #     cargo clippy --all-features -- -D warnings
@@ -322,10 +322,6 @@ jobs:
     needs: []
     if: always()
     steps:
-      - name: Restore cargo registry cache (issue #5451)
-        # See the `lint-build` job for why this exists: without it every job
-        # re-downloads ~164 crates from `static.crates.io`.
-        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
         # itself.  The runner used to download `actions/checkout` from GitHub
@@ -363,6 +359,10 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # See the `lint-build` job for why this exists: without it every job
+        # re-downloads ~164 crates from `static.crates.io`.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Build
         # `cargo build` inside a workspace that has a **root package** builds
         # ONLY that root package — the member packages' binaries are never
@@ -631,10 +631,6 @@ jobs:
     needs: []
     if: always()
     steps:
-      - name: Restore cargo registry cache (issue #5451)
-        # See the `lint-build` job for why this exists: without it every job
-        # re-downloads ~164 crates from `static.crates.io`.
-        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
         # itself.  The runner used to download `actions/checkout` from GitHub
@@ -672,6 +668,10 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # See the `lint-build` job for why this exists: without it every job
+        # re-downloads ~164 crates from `static.crates.io`.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Build member binaries
         # Same reason as the root job's Build step: several member test
         # targets spawn a real server binary and abort when it is missing
@@ -828,10 +828,6 @@ jobs:
     needs: []
     if: always()
     steps:
-      - name: Restore cargo registry cache (issue #5451)
-        # See the `lint-build` job for why this exists: without it every job
-        # re-downloads ~164 crates from `static.crates.io`.
-        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
         # itself.  The runner used to download `actions/checkout` from GitHub
@@ -869,6 +865,10 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # See the `lint-build` job for why this exists: without it every job
+        # re-downloads ~164 crates from `static.crates.io`.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Mutation test — the new TPC-H assertions really kill defects (issue #5379)
         if: always() && github.event_name == 'pull_request'
         run: |
@@ -1096,10 +1096,6 @@ jobs:
     # a branch that is already known to be red; otherwise it does not exist.
     needs: []
     steps:
-      - name: Restore cargo registry cache (issue #5451)
-        # See the `lint-build` job for why this exists: without it every job
-        # re-downloads ~164 crates from `static.crates.io`.
-        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
         # itself.  The runner used to download `actions/checkout` from GitHub
@@ -1139,6 +1135,10 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # See the `lint-build` job for why this exists: without it every job
+        # re-downloads ~164 crates from `static.crates.io`.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Version detection
         id: version
         run: |
