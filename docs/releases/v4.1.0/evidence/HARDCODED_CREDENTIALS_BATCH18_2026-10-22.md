@@ -24,7 +24,7 @@
 在 develop（`effa1bcabd`）上实测：
 
 ```bash
-$ grep -rInE "openclaw:details8848|cc19b2ad677e18c96b9d049f6dc2b46e02176883" \
+$ grep -rInE "<gitea-user>:<gitea-password>|<gitea-token-40hex>" \
       . --exclude-dir=archive --exclude-dir=target --exclude-dir=.git
 (空)
 ```
@@ -54,18 +54,29 @@ develop 上这些脚本早已改好（**#5381** 跟踪）：
 ```bash
 $ curl -s "https://api.github.com/repos/yinglichina8848/sqlrustgo-public/contents/\
 docs/releases/v3.12.0/SCOPE_TABLE_v3.12.md?ref=develop/v4.1.0" | base64 -d | grep details8848
-  L151: | W4: comments posted | `curl -s -u openclaw:details8848 'http://localhost:3000/...'`
+  L151: | W4: comments posted | `curl -s -u <gitea-user>:<gitea-password> 'http://localhost:3000/...'`
 ```
 
 ### 2.2 完整清单：**5 个凭据**，逐个实测有效性
 
+> **脱敏说明**：本节原先逐字列出这 5 个凭据。而本文件自己也在 develop 的历史里，
+> 而 develop/v4.1.0 在 **public** 的 GitHub 镜像上 ⇒ 匿名可读。
+> **一个证据文档把凭据复述一遍，就等于把凭据又公开一遍** ——
+> 而且这是本批次新增的门禁在提交那一刻抓到的（`check_no_hardcoded_secrets.sh`
+> 在本文档上报红）。
+> 现已全部替换为形状占位符；**表格的每一行结论（位置、形态、有效性）一字未改**，
+> 只是不再复述凭据本身。要核对具体值请看 git 历史里本文件的上一版
+> （**注意**：那正是被清理掉的那一版 —— 它在公开镜像上仍可读到，
+> 但这些凭据**全部已失效**，见本节的 401 结论）。
+
+
 | # | 凭据 | 形态 | 出现位置 | 有效性实测 |
 |---|------|------|----------|-----------|
-| 1 | `openclaw:details8848` | Gitea 口令 | develop 的 14 个文档 + **gitcode 分支的 3 个脚本** | **401（已失效）** |
-| 2 | `cc19b2ad677e18c96b9d049f6dc2b46e02176883` | Gitea token | develop 的 2 个文档 | **401（已失效）** |
-| 3 | `04bcda86dd601364a53eec33dc37aa6efa98a5b7` | Gitea token | develop 的 5 个文档 | **401（已失效）** |
-| 4 | `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` | **GitHub PAT** | develop 的 1 个文档 | **401 "Bad credentials"** |
-| 5 | `5518d1752693805a72096591a3cdfee718b6d049` | Gitea token | **只在 gitcode 分支的 `scripts/soak/*.py`（可执行代码！）** | **401（已失效）** |
+| 1 | `<gitea-user>:<gitea-password>` | Gitea 口令 | develop 的 14 个文档 + **gitcode 分支的 3 个脚本** | **401（已失效）** |
+| 2 | `<gitea-token-40hex>` | Gitea token | develop 的 2 个文档 | **401（已失效）** |
+| 3 | `<gitea-token-40hex>` | Gitea token | develop 的 5 个文档 | **401（已失效）** |
+| 4 | `<github-pat-ghp>` | **GitHub PAT** | develop 的 1 个文档 | **401 "Bad credentials"** |
+| 5 | `<gitea-token-40hex>` | Gitea token | **只在 gitcode 分支的 `scripts/soak/*.py`（可执行代码！）** | **401（已失效）** |
 
 > 第 3/4/5 个是**本批次用新门禁挖出来的** —— 前两个在初版 issue 里就被发现了。
 
@@ -141,7 +152,7 @@ SYNC_EXIT=0
 | 规则 | 内容 |
 |------|------|
 | C1 | 来源优先级：环境变量 `GITEA_USER`/`GITEA_TOKEN` > 本机 **git credential store**（`git credential fill`） |
-| C2 | 凭据**绝不**出现在 URL 里（`http://user:pass@host` 会进 `.git/config`、进程列表、CI 日志） |
+| C2 | 凭据**绝不**出现在 URL 里（`http://<user>:<password>@host` 会进 `.git/config`、进程列表、CI 日志） |
 | C3 | 取不到凭据时**明确失败**，绝不回落到任何写死的值 |
 | C4 | 任何函数都**不得**把凭据打印到 stdout/stderr |
 
@@ -215,13 +226,13 @@ SYNC_EXIT=0
 ```
 $ bash scripts/gate/check_no_hardcoded_secrets.sh --repo-root <gitcode 分支的 scripts+docs>
 FAIL — 凭据名变量被赋了长十六进制字面量:
-  scripts/soak/mysql_ladder_soak.py:23:GITEA_TOKEN = "5518d1752693805a72096591a3cdfee718b6d049"
-  scripts/soak/long_running_soak.py:23:GITEA_TOKEN = "5518d1752693805a72096591a3cdfee718b6d049"
+  scripts/soak/mysql_ladder_soak.py:23:GITEA_TOKEN = "<gitea-token-40hex>"
+  scripts/soak/long_running_soak.py:23:GITEA_TOKEN = "<gitea-token-40hex>"
   docs/superpowers/plans/2026-08-15-q21-chain-order-assert-fix.md:549:TOKEN=04bcda86...
 FAIL — 发现字面量的「名字:口令」对:
-  scripts/push_q21_merge_to_gitea.sh:36:  curl -s -u "openclaw:details8848" -X POST \
-  scripts/stability/sync_252_when_ready.sh:18:AUTH="openclaw:details8848"
-  scripts/sync/5remotes_sync.sh:261:            -u "openclaw:details8848" \
+  scripts/push_q21_merge_to_gitea.sh:36:  curl -s -u "<gitea-user>:<gitea-password>" -X POST \
+  scripts/stability/sync_252_when_ready.sh:18:AUTH="<gitea-user>:<gitea-password>"
+  scripts/sync/5remotes_sync.sh:261:            -u "<gitea-user>:<gitea-password>" \
   ...
 ```
 
