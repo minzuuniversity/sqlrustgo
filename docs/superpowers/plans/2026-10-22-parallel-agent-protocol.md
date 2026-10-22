@@ -143,21 +143,21 @@ anti-fabrication job 会直接红。**
 当前名单（在 `scripts/gate/check_anti_fabrication.sh` 里 `local allowed=(...)`）：
 
 ```
-openheart@gaoyuanyiao.com
-openclaw@gaoyuanyiao.com
-hermes-z6g4@gaoyuanyiao.com
-hermes-macmini@gaoyuanyiao.com
-claude-macmini@gaoyuanyiao.com
-claude-z6g4@gaoyuanyiao.com
-claude-z440@gaoyuanyiao.com
-omp-z440@gaoyuanyiao.com
+openheart@gaoyuanyiyao.com
+openclaw@gaoyuanyiyao.com
+hermes-z6g4@gaoyuanyiyao.com
+hermes-macmini@gaoyuanyiyao.com
+claude-macmini@gaoyuanyiyao.com
+claude-z6g4@gaoyuanyiyao.com
+claude-z440@gaoyuanyiyao.com
+omp-z440@gaoyuanyiyao.com
 ci@sqlrustgo.dev
 claude@macmini.dev
 ```
 
 **如果你要用一个不在名单里的 email，请：**
 
-1. 你的 Gitea 账号 email 用 `xxx@gaoyuanyiao.com` 形式；
+1. 你的 Gitea 账号 email 用 `xxx@gaoyuanyiyao.com` 形式；
 2. 在你的 PR 里**顺手把该 email 加进白名单数组**，并写上与
    2026-10-08 为 `omp-z440` 加入时同风格的注释：
 
