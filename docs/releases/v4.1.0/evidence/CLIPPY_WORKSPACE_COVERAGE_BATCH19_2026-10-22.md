@@ -454,6 +454,32 @@ error: parameter is only used in recursion
 > 而不是 PR 这边 runner 实际用的那个。CI 的 clippy 版本**会漂**，
 > 所以现在基线按工具链分条目记，而不是假设某一个版本。
 
+**根因 E：本批的门禁脚本在 CI 的 `mktemp` 上炸了（既有坑，我自己又踩了一次）。**
+
+修完 A–D 之后，PR #5524 的第二次 CI（run 8662）`lint-build` 还是红，
+但这次不是 lint，是**门禁脚本自己崩了**：
+
+```
+mktemp: : Invalid argument
+scripts/gate/check_test_target_lint_budget.sh: line 172: : No such file or directory
+FileNotFoundError: [Errno 2] No such file or directory: ''
+❌  Failure - Main Test-target lint budget (issue #5465)
+```
+
+根因：`mktemp -t lint_budget.XXXXXX.json` —— **X 后面带后缀**的模板，
+CI 镜像的 `mktemp` 不接受（`mktemp: : Invalid argument`）；
+脚本又没跑在 `set -e` 下 ⇒ 失败被**吞掉** ⇒ 路径为空 ⇒ python 读到 `''` ⇒ 崩。
+
+**这个坑仓库里早就记过**：`scripts/gate/mutate_tpch_oracle_tests.sh` 的注释里
+写着同样的话（实测于 CI run 8081 / job 16475），并规定用**不带模板的
+`mktemp`**。我在写本批的门禁时没有查到那条约定，又踩了一次。
+
+⇒ 修法不是「再写一份」，而是**把已有实现抽成一处**：
+新增 `scripts/gate/common.sh`（`make_temp_file` / `sha256_of`），
+`mutate_tpch_oracle_tests.sh` 与 `check_test_target_lint_budget.sh` 都 source 它；
+两个 helper 都**失败即报错**，绝不返回空路径让调用方带着空路径继续。
+（`sha256_of` 同样要移植：`shasum` 是 Perl 脚本，瘦身镜像上未必有。）
+
 
 ### 7.2 门禁自检
 

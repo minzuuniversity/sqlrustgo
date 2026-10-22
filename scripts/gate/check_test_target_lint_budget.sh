@@ -79,6 +79,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+# The scratch-file and digest helpers live in one place (see the file for
+# why the bare `mktemp` matters on the CI runner image).
+# shellcheck source=scripts/gate/common.sh
+source "$SCRIPT_DIR/common.sh"
+
 SCOPE="root"
 BASELINE="tests/baseline/test_target_lint_budget.json"
 CARGO_SCOPE_ARGS=""
@@ -160,10 +165,23 @@ fi
 # run silently re-baselined instead of comparing.)
 BASELINE_SHA_BEFORE=""
 if [ -f "$BASELINE" ]; then
-    BASELINE_SHA_BEFORE=$(sha256sum "$BASELINE" | awk '{print $1}')
+    BASELINE_SHA_BEFORE="$(sha256_of "$BASELINE")"
+    if [ -z "$BASELINE_SHA_BEFORE" ]; then
+        echo "  [FAIL] cannot compute the SHA-256 of $BASELINE (neither shasum nor sha256sum is available)." >&2
+        exit 1
+    fi
 fi
 
-RAW="$(mktemp -t lint_budget.XXXXXX.json)"
+# `mktemp` is called **without a template** on purpose: the CI runner image's
+# `mktemp` rejects a template that carries a suffix after the `X`s
+# (`mktemp -t name.XXXXXX.json` → `mktemp: : Invalid argument`), and under
+# `set -uo pipefail` (no `-e`) that failure was **swallowed**: the empty path
+# reached the python step, which died with `FileNotFoundError: ''` and the
+# gate reported a crash instead of a verdict. Measured on CI run 8662
+# (lint-build job 17827).
+# The shared helper also fails **loudly** when it cannot create the file.
+# See scripts/gate/common.sh for the full story.
+RAW="$(make_temp_file)" || exit 1
 trap 'rm -f "$RAW"' EXIT
 
 # `--message-format=json` gives one JSON object per line, so the output can
@@ -402,7 +420,7 @@ GATE_STATUS=$?
 # afterwards. If it changed, the gate re-baselined instead of comparing,
 # and its verdict means nothing.
 if [ "$UPDATE" -eq 0 ] && [ -n "$BASELINE_SHA_BEFORE" ] && [ -f "$BASELINE" ]; then
-    BASELINE_SHA_AFTER=$(sha256sum "$BASELINE" | awk '{print $1}')
+    BASELINE_SHA_AFTER="$(sha256_of "$BASELINE")"
     if [ "$BASELINE_SHA_BEFORE" != "$BASELINE_SHA_AFTER" ]; then
         echo "  [FAIL] the gate modified $BASELINE while running in compare mode."
         echo "         A gate that re-baselines on every run compares nothing and is"
