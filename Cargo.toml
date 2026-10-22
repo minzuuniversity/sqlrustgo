@@ -757,6 +757,10 @@ name = "gate_dimension_honesty_test"
 path = "tests/integration/gate/gate_dimension_honesty_test.rs"
 
 [[test]]
+name = "gate_criterion_existence_test"
+path = "tests/integration/gate/gate_criterion_existence_test.rs"
+
+[[test]]
 name = "tpch_value_correctness_test"
 path = "tests/integration/tpch/tpch_value_correctness_test.rs"
 
