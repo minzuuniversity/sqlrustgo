@@ -60,22 +60,19 @@ log "[PASS] cargo build"
 # Determine binary path. The root crate name `sqlrustgo` is the binary
 # target that re-exports sqlrustgo_cli::run (per develop's
 # scripts/gate/check_bustubx_edu_cli_v312.sh).
-BIN=""
-for candidate in \
-    "$REPO_ROOT/target/debug/sqlrustgo" \
-    "$REPO_ROOT/target/debug/sqlrustgo-cli" \
-    ; do
-    if [ -x "$candidate" ]; then
-        BIN="$candidate"
-        break
-    fi
-done
-
-if [ -z "$BIN" ]; then
-    log "[FATAL] sqlrustgo binary not found under target/debug/"
+#
+# #5516: the candidate list used to contain `target/debug/sqlrustgo-cli` —
+# but `sqlrustgo-cli` is the **package** name (`crates/sqlrustgo-cli`); the
+# binary it produces is called `sqlrustgo`. That second candidate was a path
+# that could never exist, and it made "what is this binary called" have two
+# answers. The lookup now goes through the repo's single shell-side
+# resolver, which is also CARGO_TARGET_DIR-aware.
+source "$REPO_ROOT/scripts/common/resolve_bin.sh"
+BIN="$(resolve_cargo_bin sqlrustgo SQLRUSTGO_BIN bustubx_edu_cli_smoke_v312)" || {
+    log "[FATAL] sqlrustgo binary not found (CARGO_TARGET_DIR / target/ / PATH)"
     log "STATUS: BUSTUBX_EDU_CLI_SMOKE_V312_BLOCKED"
     exit 1
-fi
+}
 
 log "Binary: $BIN"
 export SQLRUSTGO_BIN="$BIN"
