@@ -3045,6 +3045,9 @@ mod tests {
         assert_eq!(executor.evaluate_constant("-10"), Value::Integer(-10));
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_evaluate_constant_float() {
         let catalog = Arc::new(Catalog::new("test"));
@@ -3779,6 +3782,9 @@ mod tests {
         assert_eq!(executor.expand_variables_in_sql(sql, &ctx), "\x01\x02\x03");
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_expand_variables_in_sql_float_var() {
         let catalog = Arc::new(Catalog::new("test"));
@@ -3991,8 +3997,8 @@ mod tests {
         let catalog = Arc::new(catalog);
         let executor = StoredProcExecutor::new_for_test(catalog);
         let names = executor.list_procedures();
-        assert!(names.contains(&"p1".into()));
-        assert!(names.contains(&"p2".into()));
+        assert!(names.contains(&"p1"));
+        assert!(names.contains(&"p2"));
     }
 
     #[test]

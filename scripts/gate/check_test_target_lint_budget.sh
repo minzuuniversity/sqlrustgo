@@ -32,12 +32,26 @@
 #
 #     bash scripts/gate/check_test_target_lint_budget.sh --update
 #
+# #5508: the scope above is the **root package** only. In a workspace whose
+# root is also a package, cargo's default members are that one package — so
+# `crates/*` (44 members, 301 test targets) had never been linted at all. The
+# same rule is now available for the whole workspace:
+#
+#     bash scripts/gate/check_test_target_lint_budget.sh --scope workspace
+#
+# The rule is implemented once and parameterised by scope: same compile-must-
+# pass rule, same "per lint name, not above the baseline" rule, same
+# "a lint name absent from the baseline is red" rule, same "never re-baseline
+# in compare mode" self-check. The workspace scope has its own baseline file
+# (`tests/baseline/workspace_lint_budget.json`), because the two scopes have
+# very different amounts of debt and one number for both would hide that.
+#
 # Exit codes:
 #   0  PASS — no compile error, no lint above the baseline
 #   1  FAIL — see the message
 #   2  usage error
 #
-# Refs: issue #5465
+# Refs: issue #5465 (root package), issue #5508 (whole workspace)
 
 set -uo pipefail
 
@@ -45,15 +59,45 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
+SCOPE="root"
 BASELINE="tests/baseline/test_target_lint_budget.json"
+CARGO_SCOPE_ARGS=""
 UPDATE=0
 
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         --update) UPDATE=1 ;;
-        -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
-        *) echo "usage: $0 [--update]" >&2; exit 2 ;;
+        --scope)
+            shift
+            case "${1:-}" in
+                root)
+                    SCOPE="root"
+                    BASELINE="tests/baseline/test_target_lint_budget.json"
+                    CARGO_SCOPE_ARGS=""
+                    ;;
+                workspace)
+                    SCOPE="workspace"
+                    BASELINE="tests/baseline/workspace_lint_budget.json"
+                    CARGO_SCOPE_ARGS="--workspace"
+                    ;;
+                *) echo "usage: $0 [--scope root|workspace] [--update]" >&2; exit 2 ;;
+            esac
+            ;;
+        --scope=*)
+            case "${1#--scope=}" in
+                root)
+                    SCOPE="root"; BASELINE="tests/baseline/test_target_lint_budget.json"; CARGO_SCOPE_ARGS=""
+                    ;;
+                workspace)
+                    SCOPE="workspace"; BASELINE="tests/baseline/workspace_lint_budget.json"; CARGO_SCOPE_ARGS="--workspace"
+                    ;;
+                *) echo "usage: $0 [--scope root|workspace] [--update]" >&2; exit 2 ;;
+            esac
+            ;;
+        -h|--help) sed -n '2,55p' "$0"; exit 0 ;;
+        *) echo "usage: $0 [--scope root|workspace] [--update]" >&2; exit 2 ;;
     esac
+    shift
 done
 
 if ! command -v cargo >/dev/null 2>&1; then
@@ -71,7 +115,22 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 echo "=== Test-Target Lint Budget Gate ==="
+echo "  scope:    ${SCOPE}"
 echo "  baseline: $BASELINE"
+
+# The lint set a toolchain produces is a property of the toolchain, not only of
+# the source. CI runs the pinned runner toolchain (rustc/clippy 1.95.0), so a
+# baseline generated on a different version compares apples to oranges. The
+# toolchain can therefore be pinned explicitly, and the recorded version is
+# checked against the running one below.
+CLIPPY_TOOLCHAIN="${SQLRUSTGO_CLIPPY_TOOLCHAIN:-}"
+if [ -n "$CLIPPY_TOOLCHAIN" ]; then
+    CARGO_CMD=(cargo "+${CLIPPY_TOOLCHAIN}")
+    echo "  toolchain: pinned to ${CLIPPY_TOOLCHAIN}"
+else
+    CARGO_CMD=(cargo)
+    echo "  toolchain: default (cargo on PATH)"
+fi
 
 # Self-check: without `--update`, this gate must not touch the baseline.
 # The gate exists to keep the lint debt from growing; a gate that rewrites
@@ -89,14 +148,16 @@ trap 'rm -f "$RAW"' EXIT
 
 # `--message-format=json` gives one JSON object per line, so the output can
 # be read incrementally and a truncated run still yields partial data.
-echo "  running: cargo clippy --all-features --all-targets --message-format=json"
-cargo clippy --all-features --all-targets --message-format=json >"$RAW" 2>/dev/null
+echo "  running: ${CARGO_CMD[*]} clippy ${CARGO_SCOPE_ARGS} --all-features --all-targets --message-format=json"
+"${CARGO_CMD[@]}" clippy ${CARGO_SCOPE_ARGS} --all-features --all-targets --message-format=json >"$RAW" 2>/dev/null
 CLIPPY_STATUS=$?
 
-python3 - "$RAW" "$BASELINE" "$UPDATE" "$CLIPPY_STATUS" <<'PYEOF'
+python3 - "$RAW" "$BASELINE" "$UPDATE" "$CLIPPY_STATUS" "$CLIPPY_TOOLCHAIN" "$SCOPE" <<'PYEOF'
 import json, sys, subprocess, datetime
 
 raw_path, baseline_path, update_arg, clippy_status = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+toolchain = sys.argv[5] if len(sys.argv) > 5 else ""
+scope = sys.argv[6] if len(sys.argv) > 6 else "root"
 
 # `--update` is passed as the string "1" or "0". The comparison must be an
 # exact string comparison: a bare truthiness test would treat the "0" that
@@ -137,8 +198,16 @@ with open(raw_path, "r", errors="replace") as fh:
         total += 1
 
 def rustc_version():
+    # The version must come from the **same** toolchain the clippy run used.
+    # Asking the default `rustc` would record 1.97 while the lints were
+    # produced by 1.95, and the baseline would claim a toolchain it was not
+    # measured with.
+    cmd = ["cargo"]
+    if toolchain:
+        cmd.append("+" + toolchain)
+    cmd.append("--version")
     try:
-        out = subprocess.run(["rustc", "--version"], capture_output=True, text=True, timeout=30)
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         return out.stdout.strip()
     except Exception:
         return "unknown"
@@ -192,6 +261,25 @@ base_total = baseline.get("total")
 if not isinstance(base_by_lint, dict):
     print(f"  [FAIL] {baseline_path} has no usable `by_lint` map")
     sys.exit(1)
+
+# The set of lints a toolchain produces is a property of the toolchain, not
+# only of the source. A baseline measured with a different rustc/clippy than
+# the one running now compares two different things — so the mismatch is
+# reported prominently. It is not a hard failure: a toolchain bump legitimately
+# changes the numbers, and failing here would turn every upgrade into a red
+# build that nobody can act on. The baseline stays honest because it records
+# the toolchain it was measured with.
+base_rustc = baseline.get("rustc")
+now_rustc = rustc_version()
+if base_rustc and now_rustc != "unknown" and base_rustc != now_rustc:
+    print(f"  [NOTE] toolchain mismatch:")
+    print(f"         baseline was measured with: {base_rustc}")
+    print(f"         this run used:                {now_rustc}")
+    print(f"         The lint set is a property of the toolchain. The comparison")
+    print(f"         below is therefore approximate. Re-generate the baseline with")
+    print(f"         the CI toolchain when the toolchain changes:")
+    print(f"           SQLRUSTGO_CLIPPY_TOOLCHAIN=<version> \\")
+    print(f"             bash scripts/gate/check_test_target_lint_budget.sh --scope {scope} --update")
 
 violations = []
 for code, count in sorted(by_lint.items()):

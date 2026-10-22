@@ -241,6 +241,9 @@ mod tests {
         assert!(matches!(result.rows[0][0], Value::Null));
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_executor_result_with_float() {
         let rows = vec![

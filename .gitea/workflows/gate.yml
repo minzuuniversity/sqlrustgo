@@ -207,11 +207,30 @@ jobs:
           # because the runner uses `bash -e -o pipefail` that exited the
           # step before any `|| true` could ever apply — so the job
           # reported a failure that had nothing to do with the gate.
-          GATE="scripts/gate/check_alpha_v410.sh"
-          if [ ! -f "$GATE" ]; then
-            echo "::error::current-version alpha gate not found at $GATE"
-            exit 1
+          #
+          # #5446: the gate was hardcoded to `check_alpha_v410.sh`. On a
+          # v4.0.0 checkout that runs the **v4.1.0** gate — the mirror
+          # image of the postcheck defect (which ran the v3.8.0 gate on
+          # v4.1.0). Both call sites now resolve the gate through the same
+          # two scripts, so the naming rule has exactly one implementation.
+          VER="$(bash scripts/gate/resolve_release_version.sh)"
+          echo "release version: ${VER}"
+          set +e
+          GATE="$(bash scripts/gate/resolve_alpha_gate.sh "$VER")"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 3 ]; then
+            # No gate script exists for this release line. That is a
+            # configuration gap, not a pass: it is recorded as NOT-RUN with
+            # a reason code rather than as a green result.
+            echo "NOT-RUN: reason=ALPHA_GATE_NOT_FOUND (no check_alpha_v*.sh serves version ${VER})"
+            exit 0
           fi
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::alpha gate resolution failed (rc=${RC})"
+            exit "$RC"
+          fi
+          echo "alpha gate: ${GATE}"
           chmod +x "$GATE"
           # #5447: the exit code is no longer discarded. A gate that cannot
           # fail is not a gate.

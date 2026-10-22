@@ -4677,6 +4677,7 @@ version = "3.12.0-fix-zombie"
 dependencies = [
  "actix-web",
  "async-trait",
+ "criterion 0.8.2",
  "ctrlc",
  "env_logger",
  "log",

@@ -482,7 +482,10 @@ mod helpers_tests {
     fn connection_tracker_touch_resets_idle() {
         let tracker = ConnectionTracker::new();
         std::thread::sleep(std::time::Duration::from_millis(20));
-        assert!(tracker.idle_secs() >= 0);
+        // `idle_secs` is a `u64`, so `>= 0` could never fail — that is what
+        // `clippy::absurd_extreme_comparisons` reports (#5508). A 20 ms pause
+        // is well under a second, so the idle time in seconds is 0.
+        assert_eq!(tracker.idle_secs(), 0, "20 ms is less than a second");
         tracker.touch();
         assert!(tracker.idle_secs() <= 1, "touch should reset idle to ~0");
     }
@@ -554,6 +557,10 @@ mod helpers_tests {
 
     // ---------- value_to_string ----------
 
+    // `3.14` is the **literal under test** — the renderer has to produce the
+    // text "3.14" — not a mathematical constant. `clippy::approx_constant` is
+    // deny-by-default and flags it (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn value_to_string_renders_basic_types() {
         assert_eq!(value_to_string(&Value::Null), "NULL");
@@ -4567,10 +4574,17 @@ fn split_top_level_statements(q: &str) -> Vec<&str> {
             '\'' => in_single = true,
             '"' => in_double = true,
             '(' => paren_depth += 1,
-            ')' => {
-                if paren_depth > 0 {
-                    paren_depth -= 1;
-                }
+            // #5508: `clippy::collapsible_match` (warn-by-default, but the
+            // CI clippy step runs with `-D warnings`, so this was **failing
+            // the lint-build job** on every push).
+            //
+            // The behaviour is unchanged: an unbalanced `)` at depth 0 used
+            // to match this arm and do nothing, and now it falls through to
+            // the `_ => {}` arm at the end of the match — which also does
+            // nothing. The arms between them (`'-'`, `'/'`, `';'`) are
+            // different literals and cannot match `)`.
+            ')' if paren_depth > 0 => {
+                paren_depth -= 1;
             }
             '-' if next == '-' => {
                 in_line_comment = true;
@@ -7514,6 +7528,9 @@ mod integration_tests {
         assert_eq!(value_to_string(&Value::Integer(-100)), "-100".to_string());
     }
 
+    // `3.14` is the **literal under test**, not a mathematical constant;
+    // `clippy::approx_constant` is deny-by-default and flags it (#5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_value_to_string_float() {
         use sqlrustgo_types::Value;
@@ -8233,6 +8250,9 @@ mod integration_tests {
         assert!(buf.len() > 0);
     }
 
+    // `3.14159` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default and flags it (#5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_send_result_set_single_row() {
         use sqlrustgo_types::Value;

@@ -196,6 +196,9 @@ fn convert_text_as_unsigned_clamps_negative_to_zero() {
     }
 }
 
+// `3.14` is the **SQL literal under test**, not a mathematical constant;
+// `clippy::approx_constant` is deny-by-default and flags it (#5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn convert_text_as_float_returns_float() {
     let mut e = engine();

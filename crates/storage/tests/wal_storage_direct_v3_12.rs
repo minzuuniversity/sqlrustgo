@@ -9,8 +9,7 @@ use sqlrustgo_storage::engine::TableInfo;
 use sqlrustgo_storage::wal::FileBackedWalManager;
 use sqlrustgo_storage::Value as SqlValue;
 use sqlrustgo_storage::{
-    checkpoint::CheckpointManager, ColumnDefinition, MemoryStorage, Record, StorageEngine,
-    WalStorage, WalSyncMode,
+    ColumnDefinition, MemoryStorage, Record, StorageEngine, WalStorage, WalSyncMode,
 };
 
 use std::sync::Arc;
@@ -157,20 +156,20 @@ fn cov_wal_storage_active_tx_ids() {
     let initial = w.active_tx_ids();
     let _ = initial;
     let _tx = w.begin_transaction().unwrap();
-    let active = w.active_tx_ids();
+    let _active = w.active_tx_ids();
 }
 
 #[test]
 fn cov_wal_storage_is_tx_active_after_commit() {
     let (_t, mut w) = make_wal_storage();
-    let tx = w.begin_transaction().unwrap();
+    let _tx = w.begin_transaction().unwrap();
     w.commit_transaction().unwrap();
 }
 
 #[test]
 fn cov_wal_storage_is_tx_active_after_rollback() {
     let (_t, mut w) = make_wal_storage();
-    let tx = w.begin_transaction().unwrap();
+    let _tx = w.begin_transaction().unwrap();
     w.rollback_transaction().unwrap();
 }
 
@@ -188,7 +187,7 @@ fn cov_wal_storage_recover_empty() {
 #[test]
 fn cov_wal_storage_recover_with_entries() {
     let (_t, mut w) = make_wal_storage();
-    let tx_id = w.begin_transaction().unwrap();
+    let _tx_id = w.begin_transaction().unwrap();
     w.commit_transaction().unwrap();
     let entries = w.recover().unwrap();
     assert!(!entries.is_empty());
@@ -250,19 +249,19 @@ fn cov_wal_storage_flush() {
 #[test]
 fn cov_wal_storage_multiple_concurrent_tx() {
     let (_t, mut w) = make_wal_storage();
-    let tx1 = w.begin_transaction().unwrap();
-    let tx2 = w.begin_transaction().unwrap();
-    let tx3 = w.begin_transaction().unwrap();
-    let active = w.active_tx_ids();
+    let _tx1 = w.begin_transaction().unwrap();
+    let _tx2 = w.begin_transaction().unwrap();
+    let _tx3 = w.begin_transaction().unwrap();
+    let _active = w.active_tx_ids();
 }
 
 #[test]
 fn cov_wal_storage_tx_rollback_invalidates() {
     let (_t, mut w) = make_wal_storage();
-    let tx = w.begin_transaction().unwrap();
+    let _tx = w.begin_transaction().unwrap();
     w.rollback_transaction().unwrap();
     // After rollback, can begin new tx
-    let tx2 = w.begin_transaction().unwrap();
+    let _tx2 = w.begin_transaction().unwrap();
 }
 // --------------------------------------------------------------------------
 // Full StorageEngine trait method coverage (uses split() to access inner)
@@ -413,7 +412,7 @@ fn cov_wal_storage_full_flush() {
     w.flush().unwrap();
     // flush after a write
     {
-        let (inner, _wal) = w.split();
+        let (_inner, _wal) = w.split();
         // (legacy path removed)
     }
     w.insert("t", vec![(vec![SqlValue::Integer(1)])]).unwrap();

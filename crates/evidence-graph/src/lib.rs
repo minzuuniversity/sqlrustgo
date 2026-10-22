@@ -758,7 +758,6 @@ impl<'a> EvidenceIngestor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
 
     fn create_test_store() -> GraphStore {
         // Use /tmp directly instead of tempfile::tempdir()
@@ -896,7 +895,7 @@ mod tests {
             ))
             .unwrap();
 
-        let (has_path, path) = store.check_task_completion("task_1").unwrap();
+        let (has_path, _path) = store.check_task_completion("task_1").unwrap();
         // CI does not have status=PASS in our test data, so path is incomplete
         assert!(!has_path);
     }

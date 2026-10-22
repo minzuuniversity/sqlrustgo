@@ -2,7 +2,6 @@
 
 use sqlrustgo_storage::bin_compactor::BinCompactor;
 use sqlrustgo_storage::bin_compactor::CompactorConfig;
-use tempfile::TempDir;
 
 #[test]
 fn cov_bin_compactor_new() {

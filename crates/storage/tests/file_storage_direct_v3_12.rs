@@ -120,7 +120,7 @@ fn cov_file_storage_create_table_multi_columns() {
 
 #[test]
 fn cov_file_storage_table_names_empty() {
-    let (_t, mut s) = make_storage();
+    let (_t, s) = make_storage();
     assert!(s.table_names().is_empty());
 }
 
@@ -149,7 +149,7 @@ fn cov_file_storage_get_table() {
 
 #[test]
 fn cov_file_storage_get_table_missing() {
-    let (_t, mut s) = make_storage();
+    let (_t, s) = make_storage();
     let _t_data = s.get_table("missing");
 }
 
@@ -170,7 +170,7 @@ fn cov_file_storage_drop_table() {
 
 #[test]
 fn cov_file_storage_insert_table() {
-    let (_t, mut s) = make_storage();
+    let (_t, s) = make_storage();
     let t_data = sqlrustgo_storage::engine::TableData {
         info: table_info(),
         rows: vec![],
@@ -192,20 +192,20 @@ fn cov_file_storage_clear_all_tables() {
 
 #[test]
 fn cov_file_storage_create_database() {
-    let (_t, mut s) = make_storage();
+    let (_t, s) = make_storage();
     s.create_database("testdb").unwrap();
 }
 
 #[test]
 fn cov_file_storage_drop_database() {
-    let (_t, mut s) = make_storage();
+    let (_t, s) = make_storage();
     s.create_database("testdb").unwrap();
     s.drop_database("testdb").unwrap();
 }
 
 #[test]
 fn cov_file_storage_flush() {
-    let (_t, mut s) = make_storage();
+    let (_t, s) = make_storage();
     s.flush().unwrap();
 }
 
@@ -222,7 +222,7 @@ fn cov_file_storage_persist_table() {
 
 #[test]
 fn cov_file_storage_scan_empty() {
-    let (_t, mut s) = make_storage();
+    let (_t, s) = make_storage();
     let rows = s.scan("t").unwrap();
     assert!(rows.is_empty());
 }
@@ -487,7 +487,7 @@ fn cov_file_storage_flush_indexes() {
 
 #[test]
 fn cov_file_storage_flush_all_buffers() {
-    let (_t, mut s) = make_storage();
+    let (_t, s) = make_storage();
     s.flush_all_buffers().unwrap();
 }
 
@@ -536,7 +536,7 @@ fn cov_file_storage_flush_parallel() {
 
 #[test]
 fn cov_file_storage_discard_all_buffers() {
-    let (_t, mut s) = make_storage();
+    let (_t, s) = make_storage();
     s.discard_all_buffers();
 }
 

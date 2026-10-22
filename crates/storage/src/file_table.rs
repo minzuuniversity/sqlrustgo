@@ -343,6 +343,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn serialize_deserialize_roundtrip_all_value_types() {
         // Exercise the type_byte switch: 0 (Null), 1 (Integer), 2 (Float),

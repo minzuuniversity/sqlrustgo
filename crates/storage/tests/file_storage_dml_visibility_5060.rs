@@ -280,7 +280,7 @@ fn rollback_restores_a_committed_but_unflushed_row_deleted_in_the_transaction() 
     );
     drop(s);
     // ...and it must have reached disk, not just the cache.
-    let mut reopened = FileStorage::new(d.clone()).unwrap();
+    let reopened = FileStorage::new(d.clone()).unwrap();
     assert_eq!(reopened.scan("users").unwrap(), vec![alice()]);
 }
 

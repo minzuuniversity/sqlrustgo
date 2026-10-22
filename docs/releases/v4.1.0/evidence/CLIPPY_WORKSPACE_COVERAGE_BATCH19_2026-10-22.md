@@ -1,0 +1,413 @@
+# 迭代 5 · 批次 19 —— clippy 只覆盖了根包：44 个 crate、301 个测试目标从未被 lint（#5508 / #5446 / #5447 / #5403）
+
+**关闭**：#5508、#5446、#5447、#5403
+**基线**：`develop/v4.1.0` @ `653096dd17`
+**分支**：`fix/clippy-workspace-coverage-5508-batch19`
+**工具链**：CI runner `hp-z6g4` ⇒ rustc/clippy **1.95.0**（本机默认 1.97.0，本轮全部验证用 `cargo +1.95.0` 执行）
+
+---
+
+## 0. 一句话
+
+CI 的 lint 步骤是
+
+```
+cargo clippy --all-features --all-targets -- -D warnings
+```
+
+在「workspace 根目录同时也是一个 package」的仓库里，cargo 的**默认成员只有根 package**
+⇒ `crates/*` 的 **44 个成员、301 个测试目标**从来没有被任何门禁 lint 过。
+
+把 `--workspace` 打开之后，workspace **编译不过**：17 处 deny-by-default 的
+lint 在 `--all-targets` 下变成编译级错误（`clippy::approx_constant` 等），
+外加 3 个**从未编译过**的 target（`criterion` 未声明、闭包参数类型不可推断）。
+
+---
+
+## 1. 现象：门禁的覆盖范围与它宣称的不一致
+
+`.gitea/workflows/ci.yml` 的 `lint-build` job（修复前）：
+
+```yaml
+- name: Clippy
+  run: cargo clippy --all-features --all-targets -- -D warnings
+```
+
+`--all-targets` 看起来已经覆盖了测试目标，但**没有 `--workspace`**。
+实测（`cargo metadata`）：workspace 共 44 个成员，根 package 之外有 43 个 `crates/*`。
+
+**根 package 之外的代码没有任何 lint 覆盖**，实测后果：
+
+| 缺陷 | 位置 | 为什么门禁看不见 |
+|---|---|---|
+| `criterion` 未声明为 dev-dependency | `crates/server/benches/scheduler_bench.rs` | bench target **从未编译过**（`E0432`） |
+| 闭包参数类型不可推断 | `crates/storage/benches/storage_benchmark.rs` | bench target **从未编译过**（`E0282`） |
+| 12 处恒真断言（`x >= 0` on `usize`） | `crates/storage`、`crates/vector`、`crates/admin`、`crates/mysql-server` | 断言**永远不会失败** |
+| 1 处 `|| true` 恒真断言 | `crates/mysql-server/tests/cov_v410_server_paths.rs` | 同上 |
+| 1 处 `let _ = <lock guard>` | `crates/storage/src/wal_storage.rs` | 锁被立刻释放 |
+
+「从未编译过」这一类是最严重的：**一个编译不过的 target 是一个谁都没跑过的 target**，
+和 #5465 在根包侧发现的是同一类缺陷，只是这一侧一个都没被发现。
+
+---
+
+## 2. 全 workspace 首扫（clippy 1.95.0）
+
+```bash
+cargo +1.95.0 clippy --workspace --all-features --all-targets --message-format=json
+```
+
+首轮（未修）**编译级错误 17 处**，全部落在 deny-by-default 的 lint 上：
+
+| lint | 处数 | 性质 |
+|---|---|---|
+| `clippy::approx_constant` | 13 | `3.14` / `2.718` / `3.14159` 等字面量被判定为 π/e 的近似 |
+| `clippy::absurd_extreme_comparisons` | 3 | 对无符号整数做 `>= 0` 比较 |
+| `clippy::overly_complex_bool_expr` | 1 | `x \|\| true` |
+
+> `clippy::approx_constant` 属于 `correctness` 组，**默认 deny** ⇒ 在
+> `--all-targets` 下不是「警告」而是**编译失败**。
+
+### 2.1 `approx_constant`：仓库里已���先例
+
+仓库根包侧早已遇到过同一个 lint，处理方式写在
+`tests/integration/sql/v312_62_issue_batch_test.rs:71-79`：
+
+```rust
+// `3.14` here is the **SQL literal under test**, not a mathematical constant:
+// this test checks that the parser turns the literal `3.14` into
+// `Value::Float(3.14)`. `clippy::approx_constant` is deny-by-default, and it
+#[allow(clippy::approx_constant)]
+```
+
+本轮沿用同一形式：**函数级 `#[allow]` + 一句说明「这是被测字面量，不是数学常量」**，
+共 14 处。仓库内已存在的 `crates/types/src/value.rs:233,297` 两处 allow 同源。
+
+### 2.2 恒真断言：把「永远不会失败」换成真断言
+
+这 4 处不是 lint 洁癖，是**测试层在骗人**——断言恒真，测试就不可能发现回归。
+
+| 位置 | 原来 | 现在 |
+|---|---|---|
+| `crates/storage/src/bplus_tree/index.rs:1624` | `assert!(results.is_empty() \|\| results.len() >= 0)` | `assert_eq!(results, vec![100, 200])`（区间是半开 `[1,3)`） |
+| `crates/storage/src/bplus_tree/index.rs:1813` | `assert!(results.len() >= 0)` | `assert_eq!(results, vec![3, 4, 5, 6])` |
+| `crates/storage/src/bplus_tree/index.rs:2214` | `assert!(results.len() >= 0)` | `assert_eq!(results, vec![200])` |
+| `crates/storage/src/page.rs:651` | `assert!(page.free_space() >= 0)` | `assert_eq!(page.free_space() as usize, PAGE_DATA_SIZE)` |
+| `crates/types/tests/coverage_v3_12.rs:172` | `assert!(v.estimate_memory_size() >= 0)` | `assert_eq!(v.estimate_memory_size(), 0)` |
+| `crates/mysql-server/tests/mysql_server_helper_tests.rs`（3 处） | `assert!(val >= 0)`（原子计数器） | 两次读之间的单调性 `after >= before` |
+| `crates/admin/tests/wire_client_integration_tests.rs` | `assert!(status.uptime_seconds >= 0)` | `uptime_seconds < 60` + `active_connections < 1000` + `server_version` 非空 |
+| `crates/mysql-server/src/lib.rs:485` | `assert!(tracker.idle_secs() >= 0)` | `assert_eq!(tracker.idle_secs(), 0)`（20 ms < 1 s） |
+| `crates/vector/tests/vector_coverage_tests.rs:647` | `assert!(writer.pending() > 0 \|\| writer.indexed_count() >= 0)` | `pending() > 0` 且 `indexed_count() == 0`（阈值 50，未 flush） |
+| `crates/mysql-server/tests/cov_v410_server_paths.rs:274` | `assert!(dir.exists() \|\| true)` | 真正从 `Debug` 里取出 data_dir 路径，断言 **drop 前存在、drop 后消失** |
+| `crates/executor/src/trigger.rs:2360` | `assert!(result.unwrap().is_modified() \|\| true)` | `assert!(result.unwrap().is_modified())`（该测试确实注册了 BEFORE INSERT 触发器） |
+| `crates/security/tests/v400_unified_acl_audit.rs:258` | `!self.entries.is_empty() \|\| true` | `!self.entries.is_empty()` |
+
+> `cov_v410_server_paths.rs` 那一处特别值得记：旧代码把 `format!("{:?}", handle)`
+> （**Debug 字符串**，不是路径）当成路径去 `exists()`，再用 `|| true` 兜底。
+> 改完之后这个测试**第一次真正验证了「drop 会清掉自建 data 目录」**——
+> 而这正是该测试的名字所声称的行为。
+
+### 2.3 三个从未编译过的 target
+
+| target | 错误 | 修法 |
+|---|---|---|
+| `crates/server/benches/scheduler_bench.rs` | `E0432: unresolved import criterion` | `crates/server/Cargo.toml` 补 `criterion = "0.8"`（与 rag/storage/vector 同版本） |
+| `crates/storage/benches/storage_benchmark.rs` | `E0282: type annotations needed` | 闭包参数标注 `&Vec<sqlrustgo_types::Value>`，并按编译器建议加 `&` 以便转型为 `&dyn Fn` |
+| `crates/parser/tests/coverage_v3_12.rs` | 704 条 lint 警告 | 见下 |
+
+`crates/parser/tests/coverage_v3_12.rs` 里 352 处同一机械写法：
+
+```rust
+let _ = parse("...")
+    .map(|s| std::mem::drop(s))
+    .unwrap_or_default();
+```
+
+`let_unit_value`（`let _ =` 绑了一个 unit 值）+ `redundant_closure` 各 352 条。
+改为：
+
+```rust
+parse("...")
+    .map(std::mem::drop)
+    .unwrap_or_default();
+```
+
+**该文件 704 条警告 → 0 条**，测试 366/366 通过。
+
+---
+
+## 3. 门禁：一套规则，两个 scope
+
+`scripts/gate/check_test_target_lint_budget.sh`（#5465 建立）原本只管根 package。
+本轮**扩展**它而不是另写一个 —— 一个规则只能有一份实现：
+
+```bash
+bash scripts/gate/check_test_target_lint_budget.sh                      # 根 package（既有）
+bash scripts/gate/check_test_target_lint_budget.sh --scope workspace    # 全 workspace（新增）
+```
+
+两个 scope 共用**同一条规则**：
+
+1. `--all-targets` 必须**编译通过**（编译不过的 target 是谁都没跑过的 target ⇒ 硬失败）；
+2. 每个 lint 名的警告数不得超过基线；
+3. 基线里没有的 lint 名 ⇒ 红（防止「拿 A 类债换 B 类债」）；
+4. compare 模式下基线文件必须**字节不变**（防止门禁自己悄悄重新基线化）。
+
+基线文件：`tests/baseline/test_target_lint_budget.json`（根）、
+`tests/baseline/workspace_lint_budget.json`（workspace，新增）。
+
+### 3.1 工具链一致性
+
+lint 集合是**工具链的属性**，不只是源码的属性。CI runner 固定 1.95.0，
+本机默认 1.97.0 ⇒ 基线必须用 CI 的工具链生成，否则版本差异会造成假红。
+
+因此：
+
+* 脚本支持 `SQLRUSTGO_CLIPPY_TOOLCHAIN` 显式固定工具链；
+* 基线里记录生成它时的 `cargo --version`；
+* compare 模式下工具链不一致会**显著打印**一条 NOTE（不硬失败：升级工具链
+  本来就会改数字，硬失败只会让每次升级都变成一个没人能处理的红）。
+
+---
+
+## 4. #5446 —— 版本探测恒为 v3.7.0，4 处硬编码 v3.8.0
+
+### 4.1 版本探测
+
+原实现只可能在 `origin/develop/v3.8.0` 与 `origin/develop/v3.7.0` 之间二选一，
+而 checkout 用 `fetch-depth: 1` ⇒ 两个远程跟踪引用都不存在；Gitea 上**这两个分支
+根本不存在** ⇒ 在 `develop/v4.1.0` 上 `${version}` **恒为 `v3.7.0`**。
+
+现在版本探测有**唯一实现**：`scripts/gate/resolve_release_version.sh`
+（`ci.yml` 与 `gate.yml` 共用）：
+
+```
+显式参数 → $GITHUB_REF / $GITEA_REF → $GITHUB_REF_NAME → git 分支
+        → docs/releases 下版本号最高的目录 → VERSION 文件
+```
+
+**旧的 `v3.7.0` 兜底默认值被删除**：一个「看起来合理但是错的」版本比一次
+可见的失败更危险 —— 它会让所有版本相关的门禁去检查一条没人要求的发布线，
+而步骤本身还是绿的。检测不到版本 ⇒ 明确 `exit 1`。
+
+### 4.2 4 处硬编码 `v3.8.0`
+
+| 步骤 | 原来 | 现在 |
+|---|---|---|
+| `auto_env_blocker.sh` | `v3.8.0` | `${{ steps.version.outputs.version }}`（只读模式，见 §5） |
+| `check_document_completeness.sh` | `v3.8.0` | `${{ steps.version.outputs.version }}` |
+| `check_alpha_v380.sh` | 写死 v3.8.0 的 alpha 门禁 | `scripts/gate/resolve_alpha_gate.sh` 解析 |
+| `audit_testing.sh` | `v3.8.0` | `${{ steps.version.outputs.version }}` |
+
+alpha 门禁脚本的命名不统一（`check_alpha_v410.sh` vs `check_alpha_v3.12.0.sh`），
+解析规则也抽成唯一实现 `scripts/gate/resolve_alpha_gate.sh`：
+
+```bash
+v4.1.0    -> scripts/gate/check_alpha_v410.sh
+v3.12.0   -> scripts/gate/check_alpha_v3.12.0.sh
+v3.11.0   -> scripts/gate/check_alpha_v3.11.0.sh
+v3.10.0   -> scripts/gate/check_alpha_v3.10.0.sh
+v3.8.0    -> scripts/gate/check_alpha_v380.sh
+v4.0.0    -> (rc=3) 没有门禁脚本 ⇒ NOT-RUN + reason code
+```
+
+> 解析脚本在自查时抓到了**作者本人**的一个 bug：候选名写成了
+> `check_alpha_v${VER}`，而 `VER` 已经带 `v` ⇒ `check_alpha_vv3.12.0.sh`
+> ⇒ `v3.12.0` 解析不到。已修正为 `check_alpha_${VER}`。
+
+---
+
+## 5. #5403 —— `auto_env_blocker` 「中止」的真因，以及它为什么不能跑在 CI 里
+
+### 5.1 真因不是 `((c++))`
+
+`auto_env_blocker.sh` 用 `((total_processed++))` 计数，而 `((expr))` 在表达式
+取值为 0 时返回**退出码 1**。直觉上这会在 `set -e` 下中止脚本。**实测不中止**：
+
+```console
+$ bash -c 'set -e; c=0; ((c++)); echo "after c=$c"'
+after c=1
+$ echo $?
+0
+```
+
+（`((c++))` 是后置递增，返回**旧值** 0，但 bash 对 `(( ))` 的 errexit 处理
+与「命令返回非零」不同——这一条经验已写进证据，避免后人重复踩。）
+
+### 5.2 真正的中止点：`pipefail` + 无 H1 的文件
+
+```bash
+h1_line=$(grep -n "^# " "$md_file" | head -1 | cut -d: -f1)
+if [ -z "$h1_line" ]; then
+    # No H1, insert at top
+    h1_line=0
+fi
+```
+
+脚本有 `set -euo pipefail`。一个**没有 H1 标题**的 `.md` 文件 ⇒ `grep` 退出码 1
+⇒ 整个管道退出码 1 ⇒ `set -e` **当场中止** ⇒ 脚本里「无 H1 就插到文件顶部」
+的那段处理是**不可达的死代码**。
+
+实测（最小对照）：
+
+```console
+$ bash -c 'set -euo pipefail; x=$(grep -n "^# " noh1.md | head -1 | cut -d: -f1); echo reached'
+EXIT=1          ← 没有 "reached"
+$ bash -c 'set -euo pipefail; x=$(grep -n "^# " h1.md | head -1 | cut -d: -f1); echo reached'
+reached: x=[1]
+EXIT=0
+```
+
+仓库里这样的 `.md` 有 **26 个**（含 `docs/releases/v4.1.0/PERF_4956_COMMIT_FLUSH_AB_2026-10-04.md`）。
+
+修法：改用 `awk '/^# /{print NR; exit}'`（对可读文件恒返回 0，无匹配时打印空），
+「无 H1」分支因此**第一次真正可达**。顺带发现并修掉了被 abort 掩盖的第二个 bug：
+`h1_line=0` 时 `awk` 的 `NR == 0` 永不匹配，标记根本没插进去（现在插到首行之前）。
+
+### 5.3 它不能以写模式跑在 CI 里
+
+`auto_env_blocker` 是一个**改写文件的 pre-commit 工具**。在 CI 里跑写模式会：
+
+1. 改写 runner 的工作树 —— 实测 `docs/releases/v4.1.0` 下有 **92 个** `.md`
+   会被改写；改写结果不会被提交，却会**污染后续步骤读到的文件**；
+2. 在第一个无 H1 的文件处**半途中止**，留下一个改了一半的工作树。
+
+因此新增 `--check` **只读模式**：不写任何文件，只报告哪些文件缺少标记。
+CI 步骤改用它：
+
+```
+bash scripts/gate/auto_env_blocker.sh --check "${{ steps.version.outputs.version }}"
+```
+
+实测：`Processed: 92 / Would add: 92 (read-only: no file was modified)`，
+`git status docs/` 保持为空。
+
+---
+
+## 6. #5447 —— `gate.yml` 的两个 job
+
+两个 job 的「绿色」此前与被检查对象无关：
+
+* `evidence-graph-gate` 把 `PASS` 字面量写进证据图，再从图里读出 `PASS`（自己给自己打分）；
+  改用真检查（`check_path_casefold_conflict.sh`）的结果，并摄入**真实**的
+  artifact sha256（原来是 `"sha256-placeholder"`）。
+* `legacy-gate` 跑 v2.9.0 时代的 `scripts/gate/legacy/check_alpha.sh` 并用
+  `|| true` 收尾；改为跑当前版本的真门禁、去掉 `|| true`、加 45 分钟 timeout。
+
+本轮**追加**：`legacy-gate` 里原本写死的 `scripts/gate/check_alpha_v410.sh`
+是 #5446 的**镜像缺陷** —— 在 v4.0.0 的 checkout 上它跑的是 **v4.1.0** 的门禁。
+现在改为通过 `resolve_release_version.sh` + `resolve_alpha_gate.sh` 解析，
+与 `ci.yml` 共用同一套规则。该版本没有门禁脚本时记录
+`NOT-RUN: reason=ALPHA_GATE_NOT_FOUND`（**不是** PASS）。
+
+---
+
+## 7. 验证
+
+### 7.1 CI 已经是红的 —— 而两个根因都落在本批范围内
+
+在动手之前先看了 CI 的真实状态（run 8632，develop/v4.1.0 @ `653096dd17`）：
+
+```
+lint-build         | completed | failure      ← Clippy 步骤失败
+test               | completed | skipped      ← needs: [lint-build]
+mutation           | completed | failure      ← 连带
+ga3-security-scan  | completed | failure      ← 连带
+test-soak-detach   | completed | success
+postcheck          | completed | failure      ← Auto env:blocked 步骤失败
+```
+
+**根因 A：`lint-build` 的 Clippy 步骤。**
+`clippy::collapsible_match` 在 `crates/mysql-server/src/lib.rs` 的
+`split_top_level_statements` 里报了一条。CI 跑的是 `-D warnings` ⇒ 直接红。
+本机默认 1.97.0 **不报这条**（只有 1.95.0 报），所以本地「看着是绿的」，
+CI 却是红的 —— **只有用 CI 的工具链验证才能看见**。
+
+```rust
+')' => {
+    if paren_depth > 0 {
+        paren_depth -= 1;
+    }
+}
+```
+→
+```rust
+')' if paren_depth > 0 => {
+    paren_depth -= 1;
+}
+```
+
+行为等价：深度为 0 的失衡 `)` 原来匹配 `')'` 臂什么也不做，现在落到 match
+末尾的 `_ => {}` 兜底臂 —— 同样什么也不做（中间的 `'-'` / `'/'` / `';'`
+都是别的字面量，匹配不上 `)`）。相关 23 个测试全绿。
+
+**根因 B：`postcheck` 的「Auto env:blocked (SPEC-021)」步骤。**
+就是 §5 那个 `pipefail` 中止。用 git 里的原版脚本在沙箱里复现：
+
+```console
+$ bash scripts/gate/auto_env_blocker.sh v3.8.0     # 原版脚本
+  Added: docs/releases/v3.8.0/TEST_MANUAL.md
+EXIT=1                                                 ← 中止
+$ bash scripts/gate/auto_env_blocker.sh --check v3.8.0   # 新版
+  Would add: 95 (read-only: no file was modified)
+EXIT=0
+```
+
+`docs/releases/v3.8.0/` 下 `INSTALL.md`、`DEPLOYMENT_GUIDE.md`、
+`MIGRATION_GUIDE.md` **没有 H1** ⇒ 原版脚本必然在它们身上中止。
+
+### 7.2 门禁自检
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| CI 精确 clippy 命令 | `cargo +1.95.0 clippy --all-features --all-targets -- -D warnings` | **exit 0**（修复前 exit 101） |
+| 全 workspace clippy | `cargo +1.95.0 clippy --workspace --all-features --all-targets` | **0 错误**，703 警告 / 68 个 lint 名 |
+| lint 预算（root scope） | `check_test_target_lint_budget.sh` | **PASS**，0 ≤ 0，基线未被改写 |
+| lint 预算（workspace scope） | `check_test_target_lint_budget.sh --scope workspace` | **PASS**，703 ≤ 703，基线未被改写 |
+| 用法错误 | `check_test_target_lint_budget.sh --scope bogus` | exit 2 |
+| workflow 表达式门禁 | `check_workflow_expressions.sh` | PASS（7 个 workflow 文件） |
+| 格式 | `cargo +1.95.0 fmt --all -- --check` | 零输出 |
+| 版本探测 SSOT | `resolve_release_version.sh` | `v4.1.0`；指定 `develop/v9.9.9`（无该目录）→ 回退到 `v4.1.0` |
+| alpha gate 解析 | `resolve_alpha_gate.sh` | v4.1.0→`check_alpha_v410.sh`、v3.12.0→`check_alpha_v3.12.0.sh`、v3.8.0→`check_alpha_v380.sh`、v4.0.0→rc=3 |
+
+### 7.3 受影响测试
+
+| 范围 | 结果 |
+|---|---|
+| `crates/storage` lib（11 个改动用例） | 11/11 绿 |
+| `crates/types` `wp_b_legacy` + `coverage_v3_12` | 36/36 绿 |
+| `crates/common` `metrics` | 1/1 绿 |
+| `crates/vector` `vector_coverage_tests` | 66/66 绿 |
+| `crates/parser` `coverage_v3_12` | 366/366 绿 |
+| `crates/mysql-server` lib（4 个改动用例） | 4/4 绿 |
+| `crates/mysql-server` `cov_v410_server_paths`（新强断言） | 1/1 绿 |
+| `crates/mysql-server` `split_top_level*`（collapsible_match 改动） | 23/23 绿 |
+| `crates/executor`（14 个改动用例） | 14/14 绿 |
+| `crates/admin` / `crates/graph` / `crates/tools` 改动用例 | 逐个绿 |
+
+### 7.4 负对照：门禁必须还能分辨
+
+* `--check` 模式跑完 `git status docs/` 为**空** ⇒ 确认它没有改写工作树；
+  写模式在同一个树上会改写 **92** 个文件。
+* 原版脚本在 `v3.8.0` 上 exit 1 / 新版 exit 0 ⇒ 确认修的是「中止」本身，
+  不是把失败藏起来。
+* lint 预算门禁在 compare 模式下报告「基线未被改写」⇒ 确认它比较而不是
+  每次重新基线化。
+* `resolve_alpha_gate.sh v3.12.0` 一开始解析失败（双 `v`）⇒ **门禁在开发
+  过程中抓到了作者本人的 bug**；修正后各版本全部解析正确。
+
+---
+
+## 8. 遗留与登记
+
+* `docs/releases/v4.1.0` 下 92 个 `.md` 缺少 `env:blocked:no-ci` 标记 ——
+  `--check` 模式只报告、不改写；这是一个**已量化的文档卫生债**，
+  由 pre-commit hook 在提交时补齐，不由 CI 改写工作树。
+* workspace lint 基线为 **703 条 / 68 个 lint 名**（本轮已从首扫的 951 条降到
+  703 条，其中 704 条来自 `crates/parser/tests/coverage_v3_12.rs` 的单一机械模式）。
+  预算门禁的作用是**让它不再增长**，而不是假装它是零。
+* `postcheck` 的其余步骤（证据绑定检查等）仍有 #5402 记录的既有债，
+  **不在本批范围内**，本批只修掉「Auto env:blocked」这一条中止。
+* `scripts/gate/check_no_process_env_mutation.sh`（批次 17 的门禁）不在
+  develop 上（PR #5521 尚未合并），故本批无法在本地复跑该门禁。
+
