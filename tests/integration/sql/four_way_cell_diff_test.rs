@@ -533,13 +533,42 @@ fn load_known_case_ids() -> Vec<String> {
 /// matrix test rewrote 81 evidence files). The report is an artefact of a
 /// run, not a source file, so it now goes to the build directory unless
 /// `TPCH_CELL_DIFF_OUT` says otherwise.
+/// The cargo target directory, resolved at RUNTIME.
+///
+/// `env!("CARGO_TARGET_DIR")` is expanded at COMPILE time, so the variable
+/// must exist when the test is compiled — and neither CI nor a plain
+/// local checkout guarantees that:
+///
+///     error: environment variable `CARGO_TARGET_DIR` not defined at compile time
+///
+/// `option_env!` yields `None` instead of failing to compile, and the
+/// value is then resolved at runtime from the environment the test was
+/// actually launched with. The final fallback derives the workspace
+/// `target/` directory, which is where cargo puts its artifacts by
+/// default.
+fn target_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
+        if !dir.trim().is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+    if let Some(dir) = option_env!("CARGO_TARGET_DIR") {
+        if !dir.trim().is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+    // CARGO_MANIFEST_DIR is the workspace root for the root package, and
+    // cargo's default target dir is `<workspace>/target`.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target")
+}
+
 fn report_path() -> PathBuf {
     if let Ok(p) = std::env::var("TPCH_CELL_DIFF_OUT") {
         if !p.trim().is_empty() {
             return PathBuf::from(p.trim());
         }
     }
-    PathBuf::from(env!("CARGO_TARGET_DIR")).join("tpch-cell-diff.json")
+    target_dir().join("tpch-cell-diff.json")
 }
 
 /// The truth source of the comparison.
