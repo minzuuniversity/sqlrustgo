@@ -337,10 +337,14 @@ assert_eq!(count(&mut conn, "t"), 4,
   `restore` 只数 `INSERT` 行数、`schema_only`/`compress`/`drop_first`
   被静默忽略、备份格式从第一行猜 DDL 且**空表会从备份里消失**。
   这是本批**揭开**的一层，需要单独一批实现。
-* **`scripts/` 纳入 `check_cli_binary_names.py` 的 C3 扫描范围**：
-  该门禁脚本目前只在批次 15 分支上（develop 尚无），
-  因此这条扩展必须**加在门禁 owner（批次 15）**上，不能在批次 20 复制一份。
-  #5516 要等两者都合并后才可关闭。
+* **`scripts/` 纳入 `check_cli_binary_names.py` 的 C3 扫描范围 —— 本批已做**。
+  该门禁脚本由批次 15 引入（develop 尚无），所以本批先把批次 15 合了进来
+  （冲突只有 `tests/common/resolve_bin.sh` 一处，解法取两边并集），
+  再在**同一份**实现上扩范围 —— 不复制第二份门禁。
+  扩范围后实测：`scripts/` 侧**零断口**，门禁整体 EXIT=0。
+  原本考虑把扩展放在批次 15，但那样批次 15 单独合并即 CI 红（C3 抓到
+  `scripts/` 尚未修的 9 处断口）⇒ 两个 PR 就都不能独立合并。
+  放在本批（修断口的这一批）则合并后立即全绿，**两个 PR 各自独立可合并**。
 * `crates/tools/src/backup_restore.rs` 里 `BackupCommand`/`RestoreCommand`
   仍然没有任何 binary 暴露它们（只有 `sqlrustgo` 这条路径经服务端转发），
   属于 #5525 的范围。

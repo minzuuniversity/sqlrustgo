@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 #
+# cli-bin-allow-samples — the synthetic fixtures below (a fake `app-bin`
+# package, a fake `app-cli` path) are **sample paths this gate tests itself
+# against**. Requiring this file to be free of them would make the C3
+# detector untestable. The exemption is a visible string in the source, and
+# the gate lists every exempt file in its output.
+#
 # scripts/gate/check_cli_binary_names.sh
 #
 # Meta-gate: the name of a build artifact must have **exactly one** source
