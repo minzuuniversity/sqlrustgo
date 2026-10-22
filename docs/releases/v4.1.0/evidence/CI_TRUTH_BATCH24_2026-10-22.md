@@ -532,6 +532,58 @@ lint 预算门禁在「当前工具链没有自己的 baseline 条目」时回�
 
 ---
 
+## 6ter. `lint-build` job 也红了 —— 批次 24 自己破坏了 `cargo fmt --check`（#5544）
+
+CI run **8831** / job **18459**（PR #5535 的 head `cd4a02c6b5`）在 `lint-build` 这一步红：
+
+```
+Diff in crates/storage/tests/no_namespace_db_refusal_5266.rs:16:
+ use sqlrustgo_storage::append_only_storage::AppendOnlyStorage;
++use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
+ use sqlrustgo_storage::engine::{
+...
+Diff in crates/storage/tests/no_namespace_db_refusal_5266.rs:22:
+-use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
+ use sqlrustgo_storage::table_level_storage::TableLevelStorage;
+  ❌  Failure - Main Format check
+exitcode '1': failure
+```
+
+**根因是流程缺陷，不是代码缺陷**：本批的提交 `489aa8cb0e`（修 5266 测试的 `error[E0432]`）
+把新 import 放在了不符合 rustfmt 排序的位置；而批次 24 的本地验证跑了门禁脚本、
+clippy 预算门禁、AFP 门禁，**唯独没有跑 `cargo fmt --check --all`**。
+CI 把它排在 `lint-build` 的最后一步，于是它成了第一个发现问题的步骤。
+
+⇒ **本地绿灯不等于 CI 绿灯**：两边跑的不是同一份命令清单（#5544 的流程侧修复）。
+本批已改为：提交前在本地**镜像 CI `lint-build` job 的全部 7 个步骤**
+（clippy / 两个 lint 预算门禁 / workflow 表达式门禁 / 硬编码凭据门禁 / fmt / build），
+并用 `SQLRUSTGO_CLIPPY_TOOLCHAIN=1.95.0` 把工具链钉成 CI 那一个。
+
+代码侧修复：把 import 移到 rustfmt 要求的位置（`cargo fmt --all` 只改这一个文件）。
+
+Refs #5544
+
+---
+
+## 7bis. 批次 24b —— PR-DAG 门禁的 base ref 恒不可解析（#5542）
+
+本批**追加**一个提交，修掉一个会让 CI `test` job **必红**的缺陷：
+`scripts/gate/verify_pr_dag.sh` 的默认 base `origin/develop/v4.1.0`
+在本地（没有 `origin` 远端）和 CI（只 fetch 单个 SHA ⇒ 不生成远程跟踪分支）
+**都解析不到** ⇒ 门禁恒判 DRIFT(exit 2) ⇒
+`tests/integration/gate/gate_criterion_existence_test.rs` 的 5 个用例每个 run 都红。
+
+修法：**显式 `--base` 逐字使用、永不回退**；默认 base 改成「发布线规格 + 一条确定的解析链」，
+门禁打印它实际用的 ref。附带修掉 `:409` 的 `[ "" -gt 0 ]` 整数比较噪声。
+另给门禁加 `--selftest`，并在 CI 的 `lint-build` job 里跑一次。
+
+完整 SPEC / 实测 / 正负对照 / CI 形态 checkout 的前后对照见
+**`docs/releases/v4.1.0/evidence/PR_DAG_BASE_RESOLUTION_5542_2026-10-22.md`**。
+
+Refs #5542
+
+---
+
 ## 7. 身份与协作
 
 - 身份串：`openclaw-mcode`（Mac Mini / Minimax-Code）
@@ -550,3 +602,5 @@ Refs #5448
 Refs #5532
 Refs #5533
 Refs #5534
+Refs #5542
+Refs #5544
