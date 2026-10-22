@@ -33,7 +33,8 @@ on:
       - "ci/v4.*"
 
 concurrency:
-  # #5550 — **one CI run at a time for this repository**.
+  # #5550 — **one CI run at a time for this workflow**, and **CI only counts
+  # the newest run**.
   #
   # Why this has to be a repository-wide group and not a per-ref one:
   #
@@ -51,29 +52,38 @@ concurrency:
   # host, so all nine jobs of those runs were reported as failed with no
   # test result at all — an infrastructure red, not a code red.
   #
-  # `cancel-in-progress: false` means a newer push **queues** behind the
-  # running one instead of killing it: a killed run produces no evidence
-  # either, and the evidence trail must stay complete.
+  # ---- Gitea 28.1.0 的 concurrency 语义（与 GitHub 不同，两次实测） ----
   #
-  # #5550 (实测修订) — 这个 group **只属于 ci.yml**，不能和 `gate.yml`
-  # 共用。Gitea 28.1.0 的 concurrency 语义与 GitHub 不同：实测（同秒创建
-  # 的两个 run，8997=ci.yml / 8998=gate.yml，同一个 group）——
+  # (1) **新 run 加入 group 时，会把同 group 里「尚未开始」的 run 取消掉**。
+  #     实测：同一 PR 的两个 run 在同一秒创建、共用一个 group
+  #     （8997=ci.yml / 8998=gate.yml）：
   #
-  #     8997 | status=cancelled | started=0 | stopped=创建同秒
-  #     8998 | status=waiting
+  #         8997 | status=cancelled | started=0 | stopped=创建同秒
+  #         8998 | status=blocked
   #
-  # ⇒ **新 run 加入 group 时，会把同 group 里尚未开始的 run 取消掉**
-  # （`cancel-in-progress: false` 只保证「不取消已经在跑的」）。两个
-  # workflow 共用一个 group ⇒ 同一 PR 上必然有一个被取消 ⇒ PR 显示
-  # cancelled 的 required check ⇒ 永远合不进去。
+  #     ⇒ 两个 workflow **不能**共用一个 group，否则同一 PR 上必然有一个被
+  #     取消，PR 上出现 cancelled 的 required check ⇒ 永远合不进去。
+  #     所以本仓库按 **workflow 文件** 分组：`ci.yml` 一个组、`gate.yml`
+  #     另一个组。跨分支的串行化（真正保护宿主机的那一条）仍然成立 ——
+  #     每个 workflow 的 group 依然是**固定串**。
   #
-  # 因此本仓库按 **workflow 文件** 分组：`ci.yml` 一个组、`gate.yml`
-  # 另一个组。跨分支仍然被同一个 workflow 的组串行化（这正是要防的
-  # 「四个分支同时编译」），而两个 workflow 各自的 run 不再互相取消。
+  # (2) **卡死的 run 会永久占着并发组**。实测：一个 run 的 task 卡死在一台
+  #     **远端** runner 上（`sqlrustgo-ci-01`，act_runner v0.5.0，日志停止
+  #     增长、runner 心跳却正常），run 永远停在 Running，同组的后续 run
+  #     全部卡在 Blocked；`POST …/cancel` 返回 409（库里已经是 cancelled，
+  #     进程内状态却还是 running）。
+  #
+  #     ⇒ `cancel-in-progress: true`：**下一次推送**直接取消这个卡死的 run
+  #     ⇒ 槽位立刻释放，不需要人工去动 Gitea 的库。
+  #
+  # 代价（明确接受）：往一个正在跑的分支上再推一次，前一次的 run 会被取消，
+  # PR 上那个 check 显示 cancelled —— 但**最新**那次 run 会给出新的 check，
+  # 而我们要的证据本来就必须绑定在**最终**那次 run 上。
+  #
   # 并发上限本来�� runner 池决定的（3 台 `hp-z6g4`），配合
   # `CARGO_BUILD_JOBS=16` ⇒ 最多 3 × 16 = 48 个 rustc 抢 80 核。
   group: sqlrustgo-ci-pipeline
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 # NOTE: do NOT override CARGO_HOME / RUSTUP_HOME here.
 # `${{ runner.temp }}` is evaluated to the literal string `/tmp` by act_runner
