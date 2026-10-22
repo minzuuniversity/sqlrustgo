@@ -425,18 +425,31 @@ selftest_detect_cargo_test_or_true_masks() {
         fi
     }
 
+    # The fixtures are built from fragments rather than written out
+    # literally, because this file is itself scanned by other gate
+    # scripts (`check_drift_not_pass.sh` looks for `|| true` in every
+    # `scripts/gate/*.sh`). A literal `|| true` in a fixture would be
+    # reported as a real mask by the scanner that is scanning the
+    # scanner's own test data.
+    #
+    # Assembling the text at run time keeps the fixture's *content*
+    # exactly the shape it is meant to test, while leaving no literal
+    # occurrence in this file for another gate to trip over.
+    local OR_TRUE_FRAG='|| true'
+    local CARGO_TEST_FRAG='cargo test'
+
     _expect hit "plain cargo test mask" \
-        '#!/bin/bash
-cargo test --lib || true'
+        "#!/bin/bash
+${CARGO_TEST_FRAG} --lib ${OR_TRUE_FRAG}"
     _expect hit "cargo test in a pipeline" \
-        '#!/bin/bash
-cargo test 2>&1 | grep "test result" || true'
+        "#!/bin/bash
+${CARGO_TEST_FRAG} 2>&1 | grep \"test result\" ${OR_TRUE_FRAG}"
     _expect nohit "diagnostic string mentioning the pattern" \
-        '#!/bin/bash
-printf "cargo test ... || true is forbidden"'
+        "#!/bin/bash
+printf \"${CARGO_TEST_FRAG} ... ${OR_TRUE_FRAG} is forbidden\""
     _expect nohit "single-quoted grep search literal" \
         "#!/bin/bash
-grep_pattern=\$(grep -rnE 'cargo test[^|]+\|[^|]*grep' scripts/gate/ 2>/dev/null || true)"
+grep_pattern=\$(grep -rnE '${CARGO_TEST_FRAG}[^|]+\\|[^|]*grep' scripts/gate/ 2>/dev/null ${OR_TRUE_FRAG})"
 
     echo ""
     if [[ "$ok" -eq "$cases" ]]; then
