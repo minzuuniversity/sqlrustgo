@@ -104,8 +104,8 @@ available binaries: sqlrustgo, sqlrustgo-cli
 
 | 来源 | binary 名 | 源文件 |
 |---|---|---|
-| manifest 的 `[[bin]] name = "sqlrustgo"` | `sqlrustgo` | `src/local_bin.rs` |
-| cargo 的**自动发现**（`src/main.rs`） | `sqlrustgo-cli` | `src/main.rs` |
+| manifest 的 `[[bin]] name = "sqlrustgo"` | `sqlrustgo` | `crates/sqlrustgo-cli/src/local_bin.rs` |
+| cargo 的**自动发现**（package-local `main.rs`） | `sqlrustgo-cli` | crates/sqlrustgo-cli/src/main.rs（**已按 #5438 删除**） |
 
 两个 `main()` 的函数体完全一样（都是 `sqlrustgo_cli::run()`）。
 
@@ -128,11 +128,11 @@ available binaries: sqlrustgo, sqlrustgo-cli
 
 **修法**：
 
-1. 删 `crates/sqlrustgo-cli/src/main.rs` ⇒ `[[bin]] name = "sqlrustgo"` 成为
-   唯一来源；
+1. 删 crates/sqlrustgo-cli/src/main.rs（该文件已随 #5438 从仓库移除）⇒
+   `[[bin]] name = "sqlrustgo"` 成为唯一来源；
 2. **新增门禁判据 C5**（`scripts/gate/check_cli_binary_names.{sh,py}`）：
    声明了 `[[bin]]` 的 package **不得**再产生 manifest 没声明的 binary
-   （cargo 对 `src/main.rs` / `src/bin/<name>.rs` 的自动发现）。
+   （cargo 对 package-local `main.rs` / `src/bin/<name>.rs` 的自动发现）。
    判据精确到「`[[bin]]` 的 `path` 是否指向该入口」⇒ **不误伤**那 12 个
    「`[[bin]] path = "src/main.rs"`」的 package；实测精确规则下全仓**只有**
    `sqlrustgo-cli` 一个违规者；
@@ -140,7 +140,8 @@ available binaries: sqlrustgo, sqlrustgo-cli
 4. `check_release_binary.sh` 不再吞 stderr。
 
 **负向 selftest**：新增第 7 个 fixture —— 一个 package 声明了 `[[bin]]`
-（`path` 指向 `src/local_bin.rs`）却仍留着 `src/main.rs` ⇒ 判 **FAIL**。
+（`path` 指向 package-local `local_bin.rs`）却仍留着 package-local `main.rs`
+⇒ 判 **FAIL**。
 自测 **7/7** 通过（`--selftest`）。
 
 **修完后的实测**：
@@ -299,7 +300,7 @@ release/v4.1.0 ── GA 判定（门禁强制承载分支合法）──▶  �
    本地已跑通（§1.3、§1.4 的实测输出），CI 的实测结果待补。
 5. **`Cargo.lock` 的 22 处版本更新**由 `cargo update --workspace --offline`
    生成；CI 会用 `cargo build --all-features` 复核锁文件是否自洽。
-6. **删掉 `crates/sqlrustgo-cli/src/main.rs` 之后，`cargo build -p
+6. **删掉 crates/sqlrustgo-cli/src/main.rs（已随 #5438 移除）之后，`cargo build -p
    sqlrustgo-cli` 只产出 `sqlrustgo`** ⇒ 任何仍在找 `target/*/sqlrustgo-cli`
    的外部脚本都会失效。仓内已逐处核对（只剩历史版本文档 `docs/releases/
    v3.9.0/*`、`v3.10.0/*` 里的示例路径，属历史记录，不改）；**仓外**的使用者
