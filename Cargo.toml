@@ -67,6 +67,22 @@ scopeguard = "1"
 sqlrustgo-common = { path = "crates/common" }
 rayon = "1.10"
 flate2 = "1.0"
+# #5528: the CI runner image is Alpine/musl and ships **no static zlib**
+# (`ld: cannot find -lz`), while a musl target links statically by default
+# (`-static-pie` + `-Wl,-Bstatic`) ⇒ every job that has to *link* a test
+# binary (the `test` job, the `mutation` job, the alpha gate's Q2) fails.
+#
+# `libz-sys`'s `static` feature builds zlib from the **vendored source**
+# instead of looking for a system `libz.a`, so the binary no longer depends
+# on the system zlib at all — which is the better trade for a database
+# anyway (no system-library version skew, no dynamic-link surprises), and it
+# makes CI build the same thing the release artifacts build.
+#
+# The dependency is declared directly on purpose: `libz-sys/static` is a
+# feature of `libz-sys`, and a feature can only be switched on from a direct
+# dependency. Cargo unifies features across the whole graph, so this one
+# line covers every `flate2` in the workspace.
+libz-sys = { version = "1.1", features = ["static"] }
 lz4 = "1.24"
 zstd = "0.13"
 chrono = "0.4"
@@ -175,6 +191,12 @@ parallel-executor = ["sqlrustgo-executor/parallel-executor"]
 q7-trace = []
 
 [dependencies]
+# #5528: see the note in [workspace.dependencies] — the feature has to be
+# switched on from a **direct** dependency, and Cargo unifies features
+# across the whole graph, so this one line covers every `flate2` in the
+# workspace. The binary then carries its own zlib instead of needing a
+# system `libz.a` (which the CI runner image does not have).
+libz-sys.workspace = true
 sqlrustgo-common.workspace = true
 sqlrustgo-types.workspace = true
 sqlrustgo-parser.workspace = true
@@ -764,6 +786,10 @@ path = "tests/integration/gate/ci_wiring_honesty_test.rs"
 [[test]]
 name = "gate_dimension_honesty_test"
 path = "tests/integration/gate/gate_dimension_honesty_test.rs"
+
+[[test]]
+name = "gate_criterion_existence_test"
+path = "tests/integration/gate/gate_criterion_existence_test.rs"
 
 [[test]]
 name = "tpch_value_correctness_test"

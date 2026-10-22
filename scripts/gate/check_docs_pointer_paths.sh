@@ -94,7 +94,13 @@ echo "  baseline: $BASELINE"
 
 # The scanner lives in one Python program so that the gate and its
 # self-test exercise **the same code**.
-SCANNER_FILE="$(mktemp -t docptr_scanner.XXXXXX.py)"
+# #5528: `mktemp -t <name>.XXXXXX.py` (a suffix after the Xs) is rejected
+# by the CI runner image's mktemp, and the failure used to be swallowed
+# into an empty path. The shared helper uses a bare `mktemp` and fails
+# loudly. See scripts/gate/common.sh.
+# shellcheck source=scripts/gate/common.sh
+source "$SCRIPT_DIR/common.sh"
+SCANNER_FILE="$(make_temp_file)" || exit 1
 trap 'rm -f "$SCANNER_FILE"' EXIT
 
 cat > "$SCANNER_FILE" <<'PYEOF'
@@ -235,7 +241,7 @@ if __name__ == "__main__":
 PYEOF
 
 if [ "$SELFTEST" -eq 1 ]; then
-    SELFTEST_DIR="$(mktemp -d -t docptr_selftest.XXXXXX)"
+    SELFTEST_DIR="$(make_temp_dir)" || exit 1
     trap 'rm -f "$SCANNER_FILE"; rm -rf "$SELFTEST_DIR"' EXIT
     ( cd "$SELFTEST_DIR" && python3 "$SCANNER_FILE" selftest "$SELFTEST_DIR" )
     STATUS=$?

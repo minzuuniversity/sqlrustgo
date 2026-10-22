@@ -79,6 +79,10 @@ fn curtime_returns_time_text() {
     }
 }
 
+// `3.14` is the **SQL literal under test** — the result of
+// `ROUND(3.14159, 2)` — not a mathematical constant.
+// `clippy::approx_constant` is deny-by-default and flags it (see #5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn round_two_decimals() {
     let mut e = engine();

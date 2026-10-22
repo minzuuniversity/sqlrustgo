@@ -117,7 +117,7 @@ AOCI (`aoci.code.txt`, 1.4MB, v2 protocol, FRAS-2) 提供仓库级语义索引, 
 7. cargo test --all-features --no-fail-fast
 8. gitnexus_detect_changes 验证
 9. commit + push (gitea252 only) + Gitea PR
-10. PR body 必填 5 类文档 (PR_TEMPLATE.md) + Test Plan + Evidence
+10. PR body 必填 5 类文档 (`.gitea/pull_request_template.md` 的 §一) + Test Plan + Evidence
 ```
 
 ---

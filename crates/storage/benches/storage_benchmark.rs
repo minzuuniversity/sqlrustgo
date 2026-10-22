@@ -471,7 +471,13 @@ fn bench_b2_full_snapshot_and_filtered_scan(c: &mut Criterion) {
             |b, _| {
                 b.iter(|| {
                     let hit = storage
-                        .scan_with_filter("test_table", |row| row.first() == Some(&target))
+                        // #5508: the closure parameter type could not be
+                        // inferred (`E0282: type annotations needed`), so this
+                        // bench target did not compile at all and was never
+                        // built by any gate. `Record` is `Vec<Value>`.
+                        .scan_with_filter("test_table", &|row: &Vec<sqlrustgo_types::Value>| {
+                            row.first() == Some(&target)
+                        })
                         .unwrap();
                     black_box(hit.len());
                 });

@@ -852,6 +852,9 @@ mod tests {
         assert_ne!(table_name_to_id("orders"), table_name_to_id("order"));
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_bytes_to_record_roundtrip() {
         let values = vec![

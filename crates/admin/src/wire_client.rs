@@ -126,7 +126,6 @@ impl WireAdmin {
             }
         };
 
-        let mut server_version = String::new();
         let mut total_queries: u64 = 0;
         let mut slow_queries: u64 = 0;
         let mut uptime_seconds: u64 = 0;
@@ -139,7 +138,6 @@ impl WireAdmin {
             let var = row[0].as_str();
             let val = row[1].as_str();
             match var {
-                "version" => server_version = val.to_string(),
                 "Queries" => total_queries = val.parse().unwrap_or(0),
                 "Slow_queries" => slow_queries = val.parse().unwrap_or(0),
                 "Uptime" => uptime_seconds = val.parse().unwrap_or(0),
@@ -152,6 +150,23 @@ impl WireAdmin {
         if uptime_seconds == 0 {
             uptime_seconds = self.connected_at.elapsed().as_secs();
         }
+
+        // `version` is **not** one of the status variables: `SELECT
+        // @@global_status` returns the counters (Queries, Slow_queries,
+        // Uptime, Threads_connected, …) and nothing else. Reading
+        // `server_version` out of that result therefore produced an **empty
+        // string, every time** — the field was structurally incapable of
+        // carrying a version, and the assertion that exposed it was
+        // `assert!(!status.server_version.is_empty())`.
+        //
+        // `version` is a system variable, and this type already knows how to
+        // read it: `WireAdmin::version()` runs `SELECT @@version`. So the
+        // fix is to ask the right question, not to widen the status scan.
+        //
+        // A failure to read the version must not sink the whole status
+        // report — the counters are still worth returning. An empty
+        // `server_version` is the honest value in that case.
+        let server_version = self.version().unwrap_or_default();
 
         Ok(StatusReport {
             server_version,

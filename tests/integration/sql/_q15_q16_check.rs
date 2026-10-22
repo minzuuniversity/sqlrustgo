@@ -53,16 +53,30 @@ fn canonical_query(name: &str) -> String {
 /// Returns the engine's rows together with the number of rows loaded per
 /// table, so the caller can state an upper bound that is derived from the
 /// data rather than from a hard-coded number.
+///
+/// `None` means **the target did not run** — the TPC-H fixture is not
+/// available. `require` has already written the NOT-RUN record in that
+/// case, and the caller must return without asserting anything: the
+/// fixture being absent is an *environment* fact, not a product failure.
+///
+/// #5515: this used to return `(vec![], vec![])` for the missing-fixture
+/// case, and the callers then asserted "the query must return at least one
+/// row" — so a missing fixture turned into a **red test** even though the
+/// NOT-RUN disclosure had already been written. The disclosure and the
+/// verdict contradicted each other: the target was reported as both
+/// "did not run" and "failed". Every other fixture-gated target in the
+/// tree (20+ of them, e.g. `tpch_value_correctness_test.rs`) uses
+/// `else { return; }` — this file was the only one that didn't.
 fn compare_with_oracle(
     tables: &[&str],
     sql: &str,
     label: &str,
-) -> (Vec<Vec<String>>, Vec<(String, usize)>) {
+) -> Option<(Vec<Vec<String>>, Vec<(String, usize)>)> {
     let state = tpch_fixture::FixtureState::resolve();
     let Some(fixture) = state.require(TARGET) else {
         // `require` has already written the NOT-RUN record: the target did
         // not run, and must not be counted as passed.
-        return (Vec::new(), Vec::new());
+        return None;
     };
 
     let storage = std::sync::Arc::new(parking_lot::RwLock::new(sqlrustgo::MemoryStorage::new()));
@@ -101,14 +115,18 @@ fn compare_with_oracle(
         .unwrap_or_else(|e| panic!("{label}: the SQLite oracle must execute the statement — {e}"));
 
     tpch_oracle::assert_rows_match(label, &ours, &theirs);
-    (ours, loaded)
+    Some((ours, loaded))
 }
 
 #[test]
 fn test_q15_subquery_from() {
     let sql = canonical_query("q15");
 
-    let (rows, loaded) = compare_with_oracle(&["supplier", "lineitem"], &sql, "Q15");
+    let Some((rows, loaded)) = compare_with_oracle(&["supplier", "lineitem"], &sql, "Q15") else {
+        // The fixture is not available: `require` has already written the
+        // NOT-RUN record. Nothing to assert — the target did not run.
+        return;
+    };
 
     assert!(
         !rows.is_empty(),
@@ -136,7 +154,12 @@ fn test_q15_subquery_from() {
 fn test_q16_not_in_subquery() {
     let sql = canonical_query("q16");
 
-    let (rows, loaded) = compare_with_oracle(&["partsupp", "part", "supplier"], &sql, "Q16");
+    let Some((rows, loaded)) = compare_with_oracle(&["partsupp", "part", "supplier"], &sql, "Q16")
+    else {
+        // The fixture is not available: `require` has already written the
+        // NOT-RUN record. Nothing to assert — the target did not run.
+        return;
+    };
 
     assert!(
         !rows.is_empty(),

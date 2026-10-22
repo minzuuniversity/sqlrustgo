@@ -1,5 +1,6 @@
 # v4.1.0 / Issue #4910 §3.1 Phase 3 Plan
 
+> **基线**：`develop/v4.1.0` @ `f5125fedeb46e901517dbf5a75aeaf1e522ab822`
 > **Date**: 2026-10-03
 > **Status**: PLAN (no code changes)
 > **Author**: omp-z440

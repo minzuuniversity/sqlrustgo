@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::sync::Arc;
 use std::time::Instant;
 

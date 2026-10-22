@@ -57,7 +57,7 @@ fn columns(pk_second: bool) -> TableInfo {
     }
 }
 
-fn stack(tag: &str, pk_second: bool) -> BoxStorageEngine {
+fn stack(tag: &str, _pk_second: bool) -> BoxStorageEngine {
     let file = FileStorage::new(dir(tag)).expect("FileStorage");
     let mvcc = MvccStorage::new(file);
     BoxStorageEngine::new(ParallelWalStorage::new(mvcc, MemoryWalManager::new()))

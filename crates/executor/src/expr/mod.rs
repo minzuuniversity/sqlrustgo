@@ -4325,6 +4325,9 @@ mod tests {
         );
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_parse_lit_more() {
         assert_eq!(parse_lit("  42  "), Value::Integer(42));
@@ -4676,6 +4679,9 @@ mod tests {
         );
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_to_f64_variants() {
         assert_eq!(to_f64(&Value::Integer(42)), 42.0);
@@ -4687,6 +4693,9 @@ mod tests {
         assert_eq!(to_f64(&Value::Blob(vec![])), 0.0);
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_to_i64_variants() {
         assert_eq!(to_i64(&Value::Integer(42)), 42);
@@ -4781,6 +4790,9 @@ mod tests {
         );
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_literal_from_str() {
         assert_eq!(eval_literal_from_str("NULL"), Value::Null);

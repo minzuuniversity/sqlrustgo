@@ -231,6 +231,9 @@ mod tests {
         assert_eq!(bytes[0], 1); // type indicator for Integer
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_value_to_bytes_float() {
         let value = Value::Float(3.14);
@@ -271,6 +274,9 @@ mod tests {
         assert_eq!(original, restored);
     }
 
+    // `2.71828` is a plain decimal fixture, not an approximation of e;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_value_roundtrip_float() {
         let original = Value::Float(2.71828);
@@ -331,6 +337,9 @@ mod tests {
         assert_eq!(format!("{}", err), "Data too large: 100 bytes");
     }
 
+    // `3.14` / `2.71` are plain decimal fixtures, not approximations of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_value_roundtrip_point() {
         use sqlrustgo_types::Value;

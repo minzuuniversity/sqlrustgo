@@ -336,7 +336,7 @@ impl HybridSearcher {
         let all_ids: Vec<(u64, f32)> = (0..self.vector_index.len() as u64)
             .filter_map(|id| {
                 let row = row_data.get(&id)?;
-                if self.eval_predicates(predicates, row) {
+                if Self::eval_predicates(predicates, row) {
                     let sql_score = self.compute_sql_score_from_row(row);
                     Some((id, sql_score))
                 } else {
@@ -352,19 +352,22 @@ impl HybridSearcher {
     }
 
     /// Evaluate predicates against a row
-    fn eval_predicates(
-        &self,
-        predicates: &[SqlPredicate],
-        row: &HashMap<String, SqlValue>,
-    ) -> bool {
+    ///
+    /// #5508: this is an **associated function**, not a method: it reads no
+    /// instance state. CI runs clippy 1.91.0, whose
+    /// `clippy::only_used_in_recursion` fires on a `&self` parameter that is
+    /// only ever passed on to recursive calls — which is exactly what
+    /// `eval_predicate` did. The parameter carried no information, so it was
+    /// dropped rather than silenced with an `#[allow]`.
+    fn eval_predicates(predicates: &[SqlPredicate], row: &HashMap<String, SqlValue>) -> bool {
         if predicates.is_empty() {
             return true;
         }
-        predicates.iter().all(|p| self.eval_predicate(p, row))
+        predicates.iter().all(|p| Self::eval_predicate(p, row))
     }
 
     /// Evaluate a single predicate against a row
-    fn eval_predicate(&self, predicate: &SqlPredicate, row: &HashMap<String, SqlValue>) -> bool {
+    fn eval_predicate(predicate: &SqlPredicate, row: &HashMap<String, SqlValue>) -> bool {
         match predicate {
             SqlPredicate::Equal { column, value } => {
                 row.get(column).map(|v| v == value).unwrap_or(false)
@@ -389,12 +392,12 @@ impl HybridSearcher {
                 row.get(column).map(|v| values.contains(v)).unwrap_or(false)
             }
             SqlPredicate::And(left, right) => {
-                self.eval_predicate(left, row) && self.eval_predicate(right, row)
+                Self::eval_predicate(left, row) && Self::eval_predicate(right, row)
             }
             SqlPredicate::Or(left, right) => {
-                self.eval_predicate(left, row) || self.eval_predicate(right, row)
+                Self::eval_predicate(left, row) || Self::eval_predicate(right, row)
             }
-            SqlPredicate::Not(p) => !self.eval_predicate(p, row),
+            SqlPredicate::Not(p) => !Self::eval_predicate(p, row),
         }
     }
 

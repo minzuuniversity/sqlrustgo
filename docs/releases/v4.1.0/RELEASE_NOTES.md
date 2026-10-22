@@ -1,5 +1,6 @@
 # SQLRustGo v4.1.0 — Release Notes (DRAFT)
 
+> **基线**：`develop/v4.1.0` @ `c1a73a5320a500ce2aa4e7fc16ebd59a802824af`
 > **Status**: DRAFT (per `docs/releases/v4.1.0/STAGE.yaml`) — **NOT YET ALPHA**
 > **Branch**: `develop/v4.1.0`
 > **Base**: v4.0.0 GA **已被撤销** (2026-09-30, verdict: REVOKED，见

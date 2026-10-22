@@ -251,22 +251,31 @@ def has_c3_exemption(abs_path):
 
 
 def in_c3_scope(rel):
-    """C3 scans the **test trees** and the crate sources.
+    """C3 scans the **test trees**, the crate sources, and `scripts/`.
 
     The test trees are where #5405 lived and where the C6 gate (home
     directory paths) already draws its line. Crate sources are included
     because a production path that hardcodes a binary name drifts exactly
     the same way.
 
-    `scripts/` and `docs/` are deliberately **out of scope**: `docs/`
-    holds historical evidence records (they describe the past, they do
-    not run), and `scripts/` has its own, separate backlog of
-    package-name-as-binary-name breakages (tracked separately) — mixing
-    them in here would make this gate's verdict depend on a backlog that
-    is being closed elsewhere.
+    `scripts/` is now included as well (#5516). It used to be excluded with
+    the reason "it has its own backlog, tracked separately — mixing them in
+    here would make this gate's verdict depend on a backlog that is being
+    closed elsewhere". That reason expired when the backlog was closed:
+    #5516's own breakage (six scripts treating a **package name** as a
+    **binary name**, one of which silently recorded a stub instead of a
+    failure) is fixed, so the exclusion no longer protected anything — it
+    only hid the next occurrence of the same mistake.
+
+    `docs/` stays out of scope: it holds historical evidence records (they
+    describe the past, they do not run).
     """
     rel = rel.replace(os.sep, "/")
-    return rel.startswith("tests/") or rel.startswith("crates/")
+    return (
+        rel.startswith("tests/")
+        or rel.startswith("crates/")
+        or rel.startswith("scripts/")
+    )
 
 
 def const_map(text):

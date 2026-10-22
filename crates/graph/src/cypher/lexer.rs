@@ -530,6 +530,10 @@ mod tests {
         assert!(matches!(k[9], TokenKind::DashGt));
     }
 
+    // `3.14` is the **literal under test** — the lexer has to recognise the
+    // text "3.14" as a float — not a mathematical constant.
+    // `clippy::approx_constant` is deny-by-default and flags it (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn lex_integers_and_floats() {
         let k = kinds("42 3.14 0.5 .5");

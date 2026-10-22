@@ -126,6 +126,9 @@ fn test_expression_to_value_literal_int() {
     assert_eq!(result, Value::Integer(42));
 }
 
+// `3.14` is the **literal under test**, not a mathematical constant;
+// `clippy::approx_constant` is deny-by-default and flags it (#5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_expression_to_value_literal_float() {
     let record = make_record(vec![1]);

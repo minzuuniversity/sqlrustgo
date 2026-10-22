@@ -136,11 +136,29 @@ fn connection_is_usable_after_the_upload() {
     );
 
     load(&mut conn, &first);
+    // The table has **no declared key**, so re-loading the same file
+    // **appends** — that is what MySQL does too (`LOAD DATA` into a table
+    // without a PRIMARY KEY / unique index appends; it only raises
+    // "Duplicate entry" when a key exists to collide on).
+    //
+    // The previous assertion claimed the opposite ("the first column is the
+    // row key, so the count must stay flat"): the engine has **no**
+    // "column 0 is the key" rule for DML — column 0 is only used as the
+    // tombstone key inside the MVCC bookkeeping
+    // (`storage/src/engine.rs`: "collect primary keys (column 0) of deleted
+    // rows"), and the plain `INSERT` path appends as well. The assertion
+    // therefore asserted a contract that neither this engine nor MySQL has,
+    // and it failed as soon as the test was actually executed — which, until
+    // #5515, never happened (the `crates/*` test targets are not run by CI).
+    //
+    // The point of this test is the **connection surviving the round trip**;
+    // the row accounting is only the setup, so it now states the real
+    // semantics. The "LOAD DATA ignores duplicate keys even when the table
+    // *does* declare a PRIMARY KEY" divergence is tracked separately.
     assert_eq!(
         count(&mut conn, "t"),
-        4,
-        "re-loading the same ids overwrites (first column is the row key), \
-         so the count must stay flat rather than grow"
+        6,
+        "re-loading the same file appends: the table declares no key"
     );
 
     conn.execute("INSERT INTO t VALUES (99, 'after')")
