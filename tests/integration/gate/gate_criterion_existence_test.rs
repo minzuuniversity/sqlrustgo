@@ -168,7 +168,10 @@ fn verify_pr_dag_rejects_a_plan_without_a_pr_dag_section() {
         "no_dag_plan.md",
         "# Some Release Plan\n\n## 1. Goals\n\nNothing to verify here.\n",
     );
-    let (code, out) = run_script("verify_pr_dag.sh", &["--plan", path.to_str().unwrap()]);
+    let (code, out) = run_script(
+        "verify_pr_dag.sh",
+        &["--plan", path.to_str().unwrap(), "--allow-shallow"],
+    );
     assert_eq!(
         code, 2,
         "a plan without a PR DAG section must be DRIFT (exit 2), not PASS. Output:\n{out}"
@@ -218,7 +221,10 @@ PR-810  ExecutionEngine → Router            ← 解耦层（先做）
 | PR-810 (ExecutionEngine → Router) | Phase 0 | ✅ 已合并 | fabricated |
 ";
     let path = write_temp_fixture("false_pass_plan.md", fixture);
-    let (code, out) = run_script("verify_pr_dag.sh", &["--plan", path.to_str().unwrap()]);
+    let (code, out) = run_script(
+        "verify_pr_dag.sh",
+        &["--plan", path.to_str().unwrap(), "--allow-shallow"],
+    );
     assert_eq!(
         code, 1,
         "a PR declared merged with no merge commit must FAIL (exit 1). Output:\n{out}"
@@ -252,7 +258,10 @@ PR-900  ExecutionEngine 拆分清理             ← 收尾重构
     // would satisfy a substring assertion even when the check was disabled.
     // (That was the defect: the assertion was satisfied by the PATH.)
     let path = write_temp_fixture("dep_order_plan.md", fixture);
-    let (code, out) = run_script("verify_pr_dag.sh", &["--plan", path.to_str().unwrap()]);
+    let (code, out) = run_script(
+        "verify_pr_dag.sh",
+        &["--plan", path.to_str().unwrap(), "--allow-shallow"],
+    );
     assert_eq!(
         code, 1,
         "an inverted dependency must FAIL (exit 1). Output:\n{out}"
@@ -290,7 +299,10 @@ PR-800  COM_QUERY AST Routing (L0)           ← 入口重构（先做）
 | PR-800 (COM_QUERY AST Routing) | Phase 0 | ✅ 已合并 | duplicate row |
 ";
     let path = write_temp_fixture("duplicate_rows_plan.md", fixture);
-    let (code, out) = run_script("verify_pr_dag.sh", &["--plan", path.to_str().unwrap()]);
+    let (code, out) = run_script(
+        "verify_pr_dag.sh",
+        &["--plan", path.to_str().unwrap(), "--allow-shallow"],
+    );
     assert_eq!(
         code, 1,
         "a PR with duplicate status rows must FAIL (exit 1). Output:\n{out}"
@@ -320,7 +332,10 @@ PR-800  COM_QUERY AST Routing (L0)           ← 入口重构（先做）
 | PR-999 (not a chain node) | Phase 9 | ✅ 已合并 | fabricated |
 ";
     let path = write_temp_fixture("row_outside_chain_plan.md", fixture);
-    let (code, out) = run_script("verify_pr_dag.sh", &["--plan", path.to_str().unwrap()]);
+    let (code, out) = run_script(
+        "verify_pr_dag.sh",
+        &["--plan", path.to_str().unwrap(), "--allow-shallow"],
+    );
     assert_eq!(
         code, 1,
         "a status row outside the chain must FAIL (exit 1). Output:\n{out}"
@@ -331,11 +346,64 @@ PR-800  COM_QUERY AST Routing (L0)           ← 入口重构（先做）
     );
 }
 
+/// True when this checkout has a truncated history, in which case the gate
+/// reports DRIFT instead of a verdict.
+///
+/// CI checks out with a shallow depth (see .gitea/workflows/ci.yml), so the
+/// gate cannot judge there — it says so and exits 2. A test that demanded
+/// exit 0 unconditionally would therefore FAIL the CI test job for a
+/// reason that has nothing to do with the code under test.
+fn checkout_is_shallow() -> bool {
+    let out = Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .current_dir(repo_root())
+        .output()
+        .expect("git rev-parse");
+    if !out.status.success() {
+        return false;
+    }
+    let git_dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let mut shallow = std::path::PathBuf::from(&git_dir);
+    shallow.push("shallow");
+    shallow.exists()
+}
+
 #[test]
 fn verify_pr_dag_passes_on_the_real_repository() {
     // The real release plan must satisfy the gate. If this fails, either
     // the plan is genuinely inconsistent or the gate is wrong — either way
     // it must be surfaced, not silenced.
+    //
+    // On a truncated history the gate cannot judge at all: it reports
+    // DRIFT (exit 2) and says why. Demanding exit 0 there would fail the
+    // CI test job for a reason unrelated to the code — the exact defect
+    // this suite exists to prevent, one level up.
+    if checkout_is_shallow() {
+        // The DEFAULT behaviour on a truncated history is to refuse and
+        // report DRIFT — that is what protects a CI runner from being
+        // handed a verdict it cannot justify.
+        let (code, out) = run_script("verify_pr_dag.sh", &[]);
+        assert_eq!(
+            code, 2,
+            "on a shallow checkout the gate must report DRIFT (exit 2), not a \
+             verdict. Output:\n{out}"
+        );
+        assert!(
+            out.contains("SHALLOW"),
+            "the DRIFT message must say the checkout is shallow. Output:\n{out}"
+        );
+
+        // And with --allow-shallow it must proceed to a real verdict
+        // (whatever that verdict is — the point is that it is reached).
+        let (allowed_code, allowed_out) = run_script("verify_pr_dag.sh", &["--allow-shallow"]);
+        assert_ne!(
+            allowed_code, 2,
+            "--allow-shallow must let the gate reach a verdict instead of \
+             reporting DRIFT. Output:\n{allowed_out}"
+        );
+        return;
+    }
+
     let (code, out) = run_script("verify_pr_dag.sh", &[]);
     assert_eq!(
         code, 0,
@@ -347,7 +415,7 @@ fn verify_pr_dag_passes_on_the_real_repository() {
 fn verify_pr_dag_emits_evidence_fields() {
     // ADR-014 requires source_agent / source_run / timestamp in the output
     // of every agent-produced artifact.
-    let (_, out) = run_script("verify_pr_dag.sh", &[]);
+    let (_, out) = run_script("verify_pr_dag.sh", &["--allow-shallow"]);
     assert!(
         out.contains("source_agent:") && out.contains("source_run:") && out.contains("timestamp:"),
         "the gate output must carry the ADR-014 evidence fields. Output:\n{out}"

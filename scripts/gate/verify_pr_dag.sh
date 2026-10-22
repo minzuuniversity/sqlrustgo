@@ -106,6 +106,11 @@ TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # --- Configuration -------------------------------------------------------------
 PLAN_FILE=""
 BASE_REF="origin/develop/v4.1.0"
+# Bypasses the shallow-history refusal. The gate cannot judge on a
+# truncated history, so it reports DRIFT (exit 2) — which is correct for
+# a CI runner, but would prevent the test suite from exercising the
+# detection logic there. Only the tests set this.
+ALLOW_SHALLOW=0
 
 usage() {
     cat <<'EOF'
@@ -116,6 +121,11 @@ Options:
                   (default: docs/releases/v3.8.0/plans/DEVELOPMENT_PLAN.md)
   --base <ref>    Base ref to verify against
                   (default: origin/develop/v4.1.0)
+  --allow-shallow Proceed even on a truncated history, instead of
+                  reporting DRIFT. The gate CANNOT judge on a truncated
+                  history, so the default is to refuse. This flag exists
+                  for the test suite, which needs to exercise the
+                  detection logic in a shallow checkout.
   -h, --help      Show this help
 
 Environment:
@@ -127,6 +137,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --plan) PLAN_FILE="$2"; shift 2 ;;
         --base) BASE_REF="$2"; shift 2 ;;
+        --allow-shallow) ALLOW_SHALLOW=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1"; usage; exit 2 ;;
     esac
@@ -188,7 +199,7 @@ fi
 log_info "base ref resolved: $BASE_REF ($(git rev-parse --short "$BASE_REF"))"
 
 SHALLOW_FILE="$(git rev-parse --git-dir 2>/dev/null)/shallow"
-if [ -f "$SHALLOW_FILE" ]; then
+if [ -f "$SHALLOW_FILE" ] && [ "$ALLOW_SHALLOW" -eq 0 ]; then
     shallow_depth=$(git rev-list --count "$BASE_REF" 2>/dev/null || echo 0)
     echo
     echo "⚠️  DRIFT: this is a SHALLOW checkout (.git/shallow present)."
