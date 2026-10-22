@@ -1,10 +1,13 @@
 # 迭代 5 · 批次 24 —— 让 CI 第一次**真的**跑测试（#5508 / #5515 / #5516 / #5533 / #5534）
 
 - **分支**：`fix/ci-truth-batch24`
-- **基线**：`develop/v4.1.0` @ `378f014529`
+- **基线**：`develop/v4.1.0` @ `378f014529`，本批中途又并入了 develop 的
+  `6f26128890`（PR #5536，PR-DAG 门禁族 #5457/#5458）
 - **合并进来的既有批次**：#5508/#5446/#5447/#5403（批次 19）、#5515（批次 23）、#5516（批次 20）
 - **本批新增**：#5533（`needs` 使 job 启动推迟 12 分钟 ~ 7 小时，1452 次里只有 30 次真的启动）、
   #5534（gate.yml 静默检出错误的树）
+- **本批还修的两个缺陷**：`mutation` job 的诊断输出被吞（§6.1）、900 秒预算同时覆盖
+  5m57s 的编译（§6.2）
 
 ---
 
@@ -325,6 +328,14 @@ develop 那一侧是**更优解**（进程级变量是全局的，让每个用�
 | `check_cli_binary_names.sh` | EXIT=0 |
 | `check_test_manifest_honesty.sh` | EXIT=0 |
 | `check_path_casefold_conflict.sh` | EXIT=0 |
+| `check_anti_fabrication.sh` | EXIT=0（ERRORS=0 / WARNINGS=0） |
+| `check_gate_script_refs.sh`（develop 新带进来的） | EXIT=0（53 条既有引用全部在位且可执行；8 条已登记欠账按 warning 报告） |
+| `check_pr_dag.sh`（develop 新带进来的） | EXIT=0（本地无 `origin/develop/v4.1.0` ⇒ 判 **DRIFT**，不是 PASS，也不是 FAIL） |
+| `check_pr_template_sections.sh`（develop 新带进来的） | EXIT=0（同上，PR body 为空 ⇒ DRIFT） |
+| `bash -n` + `shellcheck -S error`（mutation 脚本） | EXIT=0 |
+| `cargo test -p sqlrustgo-storage --test no_namespace_db_refusal_5266` | 5 passed / 0 failed |
+| `cargo test --test diag_q11 -- --nocapture`（TPCH_DATA_DIR 指向 SF=0.01/seed=42 fixture） | 16 passed / 0 failed |
+| `mutate_tpch_oracle_tests.sh` 完整脚本 | CAUGHT=3 / SURVIVED=0 / ERRORS=0，EXIT=0 |
 
 `ci.yml` / `gate.yml` 的 YAML 解析实测通过（`python3 -c "yaml.safe_load(...)"`），
 两个 workflow 的 job 清单与 `needs`/`if` 全部核对过。
@@ -336,13 +347,14 @@ develop 那一侧是**更优解**（进程级变量是全局的，让每个用�
 | 事项 | 状态 |
 |---|---|
 | `test` job 第一次真正运行后**会暴露什么** | **未知** —— 这正是本批要拿到的事实。已知的 12 个红目标里，8 个由批次 19/20/23 修掉；`g13_oltp1_concurrent_select_test` 是负载型环境阻塞；`tls_read_spin_5099` 读 `/proc`，Linux 上会绿 |
-| `mutation` job 的 BASELINE 失败（rc=101，无可辨识错误输出） | **待查** —— 见 §6 |
+| `mutation` job 的 BASELINE 失败（rc=101，无可辨识错误输出） | **已结案**（§6）：两个独立缺陷 —— 诊断输出被窄 grep 吞掉、900 秒预算同时覆盖 5m57s 的编译。两者都已修，并有正/负对照 |
+| CI 上 `mutation` job 的**首次跑通** | **待观察** —— §6 的结论来自日志取证 + 本机复现，CI 实测结果待补 |
 | #5451（cargo registry 缓存） | 未做。runner 镜像已自带 registry，但本次复现时 `cargo test` 仍在 `Updating crates.io index` 上耗时间 |
 | runner 并行度 | 未动。runner 配置 `capacity: 4`（`/opt/devstack/runner/config.yaml`），宿主机 80 核 / 404 GB，当前负载 58 |
 
 ---
 
-## 6. `mutation` job 的 BASELINE 失败（未结案）
+## 6. `mutation` job 的 BASELINE 失败 —— 已结案（两个独立缺陷）
 
 CI run 8724 的 `mutation` job 红：
 
@@ -352,14 +364,115 @@ CI run 8724 的 `mutation` job 红：
 ```
 
 基线跑了 132 秒后以 rc=101 退出，而脚本用来诊断的
-`grep -E "^test .* FAILED|panicked at|error\[|^error"` **一条都没匹配上** ——
-即 cargo 的输出里既没有 `error`，也没有 `panicked at`，也没有 `FAILED`。
+`grep -E "^test .* FAILED|panicked at|error\[|^error"` **一条都没匹配上**。
 
-**已排除**：本机用同一份 fixture 直接跑 `diag_q11` 的预编译二进制 ⇒
-**16 passed / 0 failed**（`/tmp/diagq11_local.log`）。
+### 6.1 缺陷 D —— 根因被**吞掉**，失败不可诊断
 
-**正在做**：在 runner 主机上用**同一个 CI 镜像**（`sqlrustgo-runner:v1`）
-复现，拿到 cargo 的原始输出。
+脚本失败时唯一的诊断是那条窄 grep。它匹配不到时，CI 日志里就**只剩一行
+"rc=101"**，根因必须靠人工翻原始 job 日志才能找到。这正是 run 8724 的情形：
+`grep` 输出为空 ⇒ 日志里没有任何线索指向"到底是 cargo 下载失败、编译失败、
+链接失败，还是测试进程被信号杀死"。
+
+**修法**（`report_run_output`）：失败时**在 grep 之外**再打印运行的输出尾部
+（BASELINE 60 行 / 变异 25 行）。grep 仍然第一个出现，tail 负责 grep 不可能
+知道的一切 —— cargo 的下载错误、编译错误、链接错误、OOM killer 的输出。
+
+### 6.2 缺陷 E —— 900 秒预算同时覆盖「编译」和「执行」，而编译就要 6 分钟
+
+从服务器上 mutation job 的原始日志读出的 runner 实况：
+
+| 事实 | 值 | 出处 |
+|---|---|---|
+| runner | `sqlrustgo-ci-01(version:v0.5.0)` | job 18223 日志首行 |
+| job 镜像 | `192.168.0.252:5000/act_runner:node-rust` | `🚀 Start image=` |
+| 容器 | **每个 job 新建**（`docker create` + `docker run`） | 同上 |
+| `$CARGO_HOME` | **ephemeral**（容器内 `/root/.cargo`） | 容器级隔离 |
+| checkout | **每个 job 从 `github.com` clone 一次** | `☁ git clone 'https://github.com/actions/checkout'` |
+
+⇒ **容器里没有任何 cargo 缓存**：`cargo test` 的每一次都要从零编译整棵依赖树。
+
+本机实测（批次 24 树，同一份 fixture）：
+
+```
+cargo test --test diag_q11 -- --nocapture
+   Compiling … (actix-http / hyper / reqwest / sqlrustgo-* …)
+   Finished `test` profile [unoptimized + debuginfo] target(s) in 5m 57s
+   Running tests/integration/oracle/diag_q11.rs
+   test result: ok. 16 passed; 0 failed; … finished in 0.19s
+```
+
+**编译 5m57s，测试 0.19s。** 而脚本的 `RUN_TIMEOUT_S=900`（15 分钟）覆盖的是
+「编译 + 执行」**两段**，且三个变异各自还要重编一次 engine crate。
+
+历史 job 的耗时把这事坐实了：
+
+| job | run | 树 | 结果 | BASELINE 段耗时 |
+|---|---|---|---|---|
+| 18184 | 8712 | `4d31535527` | rc=**143**（SIGTERM） | **恰好 900 s** |
+| 18223 | 8724 | `d6b4fe97e0`（批次 19） | rc=**101** | 132 s |
+
+* job 18184：**正好 900 秒**被 `timeout` 杀掉 ⇒ 超时是在 cargo **还在编译**的时候
+  触发的（CI 上多个 job 抢同一台 CPU，编译比本机更慢）。
+* job 18223：132 秒就以 101 退出 ⇒ cargo 在**编译/依赖获取阶段**就失败了
+  （101 也是 cargo 的编译错误退出码）。依赖获取走 crates.io 出口 —— 正是
+  §2bis 已登记的第二个外部单点。
+
+⇒ **两个失败模式，一个是环境（超时预算），一个是外部依赖（crates.io）。**
+
+**修法**（编译/执行预算分离）：
+
+* 新增 `COMPILE_TIMEOUT_S`（默认 3600），用于 `cargo test --no-run`；
+* 编译**只做一次**（`diag_q11` + `diag_q12` 一次编译），三个变异复用构建产物，
+  每次只需重编被改动的 engine crate；
+* `RUN_TIMEOUT_S`（默认 900）只覆盖**测试执行**；
+* 超时判定从 `rc -eq 124` 扩到 `124` **或** `143`（后者是超时信号打到 job 本身
+  时 shell 报的码；job 18184 就是它）。
+
+### 6.3 两个对照
+
+**正向对照**（批次 24 树，本地跑完整脚本）：
+
+```
+== compiling the mutation targets (budget 3600s) — the CI container has no cargo cache, so this is the expensive part
+   compiled OK
+== BASELINE: the unmutated 'diag_q11' must pass, otherwise CAUGHT is meaningless
+   baseline OK
+== MUT-1: HAVING predicate inverted  (target: diag_q11)
+   CAUGHT (MUT-1): the test failed as it should
+== MUT-2: SUM drops the first value of each group  (target: diag_q11)
+   CAUGHT (MUT-2): the test failed as it should
+== MUT-3: COUNT(DISTINCT x) loses de-duplication  (target: diag_q12)
+   CAUGHT (MUT-3): the test failed as it should
+=== mutation summary ===
+CAUGHT   : 3
+SURVIVED : 0
+ERRORS   : 0
+PASS: all 3 mutation(s) were caught by the TPC-H assertions
+```
+
+退出码 **0**。
+
+**负向对照 A（严格复刻缺陷 D 的场景）**：把 BASELINE 的 cargo 调用换成
+「立刻 rc=101、且输出不含 `^test … FAILED` / `panicked at` / `error[` / `^error`
+任何一种模式」的桩 ⇒ **旧脚本的 grep 零命中**（根因消失），**新脚本打印出**：
+
+```
+   --- last 60 lines of the run output ---
+   | DIAGNOSTIC-MARKER-7f3a: cargo died before producing any test result
+   --- end of the run output ---
+```
+
+退出码 2（harness error，不是「caught」）。
+
+**负向对照 B（编译阶段失败）**：把 `MUT1_TARGET` 改成不存在的 target 名 ⇒
+编译阶段失败 ⇒ 脚本打印出 cargo 的错误尾部（含可用 target 列表）并以 2 退出。
+
+两个负向对照用的副本脚本用完即删，仓库里不留痕迹。
+
+### 6.4 仍未结案
+
+CI 上 `mutation` job 的**第一次真正跑通**仍待观察 —— 本节的所有结论都来自
+日志取证 + 本机复现，CI 的实测结果待补（登记在 §5 的未结案表里）。
 
 ---
 
