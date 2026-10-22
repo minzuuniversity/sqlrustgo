@@ -1079,6 +1079,17 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
     fn has_view(&self, db: &str, name: &str) -> bool {
         self.inner().has_view(db, name)
     }
+    // #5401: forward the view lookups to the inner engine. The trait default
+    // returns `None` / an empty list **and ignores `db` altogether** — a
+    // wrapper that does not override them answers for the wrong database,
+    // which is exactly the #5192 failure mode the db-scope coverage gate
+    // exists to keep out.
+    fn get_view(&self, db: &str, name: &str) -> Option<ViewInfo> {
+        self.inner().get_view(db, name)
+    }
+    fn list_views(&self, db: &str) -> Vec<String> {
+        self.inner().list_views(db)
+    }
     // #5320: forward view persistence to the inner engine.
     // Without these, the trait default ("not supported") is used.
     fn create_view(&mut self, db: &str, info: ViewInfo) -> SqlResult<()> {
