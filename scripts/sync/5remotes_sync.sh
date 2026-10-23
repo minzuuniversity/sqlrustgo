@@ -597,9 +597,11 @@ for entry in "${GITEA_HOST_LIST[@]}"; do
         # pool. `update-ref` will not pull commits across HTTP.
         #
         # Primary path: HTTP push to a temporary ref. The credential travels
-        # in an http.extraheader rather than inside the URL: a credential in
-        # the URL gets echoed by git on failure and is the shape that ended
-        # up committed in this file before.
+        # in a 0600 config file pulled in with `git -c include.path=…` —
+        # **不在 URL 里，也不在 argv 里**：
+        # 嵌在 URL 里的凭据会被 git 在失败时回显（这正是这个文件当初
+        # 被提交进仓库的那两个凭据的形态），
+        # 放在 argv 里的凭据则 `ps aux` 就能读到（#5520 验收）。
         #
         # Fallback path: **gitea250 rejects the HTTP credential outright**
         # (401 on both the API and the git handshake) while its SSH channel

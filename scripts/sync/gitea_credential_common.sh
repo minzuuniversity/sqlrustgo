@@ -20,9 +20,12 @@
 #       环境变量优先，因为 CI 里通常只能通过环境注入。
 #
 #   C2  凭据**绝不**出现在 URL 里（`http://user:pass@host` 会进
-#       `.git/config`、进程列表和 CI 日志）。git 侧用
-#       `git -c http.extraheader="Authorization: Basic …"`，
-#       curl 侧用 `-H`。
+#       `.git/config`、进程列表和 CI 日志）。
+#       #5520 追加：**也不出现在 argv 里** —— `curl -H` 与
+#       `git -c http.extraheader=…` 都会让 `ps aux` 读到凭据。
+#       ⇒ git 侧用 `git -c include.path=<0600 配置文件>`，
+#       curl 侧用 `curl -K <0600 配置文件>`
+#       （见本文件末尾的两个 `*_config_file` 函数）。
 #
 #   C3  取不到凭据时**明确失败**（返回非零），
 #       **绝不**回落到任何写死的值。
