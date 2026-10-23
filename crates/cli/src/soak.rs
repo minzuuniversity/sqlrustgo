@@ -133,12 +133,7 @@ pub fn run_soak(config: &SoakConfig) -> anyhow::Result<SoakReport> {
                     eprintln!("SOAK error: {e}");
                 }
                 // Reconnect: a reset connection must not kill the run.
-                match Client::connect(
-                    &config.host,
-                    config.port,
-                    &config.user,
-                    &config.password,
-                ) {
+                match Client::connect(&config.host, config.port, &config.user, &config.password) {
                     Ok(c) => {
                         client = c;
                         reconnects += 1;
