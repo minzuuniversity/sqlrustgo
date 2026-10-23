@@ -34,13 +34,20 @@
 # block below for the measured before/after.
 #
 # Environment:
-#   GITEA_USER      Gitea user for HTTP auth. Required for the
-#                   protected-branch path (gitea250 / gitea252).
-#   GITEA_TOKEN     Gitea token or password for HTTP auth. Required
-#                   for the protected-branch path.
+#   GITEA_USER      Gitea user for HTTP auth. Optional when the local
+#                   git credential store holds an entry for the Gitea
+#                   host (see GITEA_CREDENTIAL_HOST) — the store is the
+#                   fallback, the environment wins (C1 of the shared
+#                   resolver, scripts/sync/gitea_credential_common.sh).
+#   GITEA_TOKEN     Gitea token or password for HTTP auth. Same source
+#                   priority as GITEA_USER.
 #                   These used to be hardcoded in this file; those values
 #                   are live and are tracked as a leak in #5381. There is
-#                   no silent fallback to a baked-in credential.
+#                   no silent fallback to a baked-in credential, and the
+#                   script refuses to start without a usable credential.
+#   GITEA_CREDENTIAL_HOST
+#                   host:port looked up in the git credential store.
+#                   Default: 192.168.0.252:3000
 #   GITEA_HOSTS     Space-separated "host:ssh_user" list to sync.
 #                   Default: "192.168.0.250:liying 192.168.0.252:liying"
 #   GITEA_PUSH_URL  Where to push the temporary ref. Default: derived
@@ -60,10 +67,12 @@
 #       post-v4.0.0 trio) using gitea252 as the source of truth.
 #
 # Exit codes:
-#   0 — all 5 remotes + local have the same tip
-#   1 — drift detected (printed, nothing pushed)
-#   2 — protected-branch update failed on a Gitea remote
-#   3 — network/SSH error to a Gitea container
+#   0 — all 5 remotes hold the target tip (verified against the servers)
+#   1 — drift detected: at least one remote does not hold the target
+#   2 — protected-branch update failed on a Gitea remote, a push to an
+#       unprotected remote failed, or no credential was available
+#   3 — a remote did not answer, so 'all remotes agree' could not be
+#       established (cannot tell ≠ in sync)
 #   4 — argument error
 #   5 — refused to sync: could not fetch, or the local ref disagrees with what
 #       the source remote actually holds (nothing pushed)
@@ -134,6 +143,39 @@ source "${REPO_ROOT}/scripts/sync/gitea_credential_common.sh"
 # 凭据 store 里查哪个 host（252 才是存凭据的那台）。
 GITEA_CREDENTIAL_HOST="${GITEA_CREDENTIAL_HOST:-192.168.0.252:3000}"
 
+# 凭据必须在**任何远端操作之前**解析完。
+#
+# 修复前：凭据是在 Step 3（真正要推受保护分支时）才解析的，
+# 而且解析不到时的后果是「跳过这台主机」—— 脚本会带着「没有凭据」
+# 继续去查远端，把 401 当成「落后」。#5520 的验收要求是
+# 「凭据不可用时明确报错退出，不得把『查不到』当成『落后』」，
+# 所以这里提前 fail-fast：拿不到凭据就退出，什么都不做。
+if ! gitea_credential_resolve "${GITEA_CREDENTIAL_HOST}"; then
+    echo "ERROR: no Gitea credential available for ${GITEA_CREDENTIAL_HOST}." >&2
+    echo "       export GITEA_USER=<user> GITEA_TOKEN=<token>   # see #5381" >&2
+    echo "       (or store one for ${GITEA_CREDENTIAL_HOST} in your git" >&2
+    echo "        credential store — see #5520)" >&2
+    echo "       Refusing to run: without a credential every protected-branch" >&2
+    echo "       query answers 401, and '401' must never be read as 'behind'." >&2
+    exit 2
+fi
+
+# 凭据不进 argv（#5520 验收：凭据不得出现在进程列表 / .git/config / 日志里）。
+#   git  → git -c include.path=<file>   （0600 的 git 配置，不写进 .git/config）
+#   curl → curl -K <file>               （0600 的 curl 配置）
+# 两条通道的 argv 里只有一个**路径**。
+GIT_AUTH_CFG="$(gitea_credential_git_config_file)" || {
+    echo "ERROR: cannot create the temporary git auth config file" >&2
+    exit 2
+}
+CURL_AUTH_CFG="$(gitea_credential_curl_config_file)" || {
+    echo "ERROR: cannot create the temporary curl auth config file" >&2
+    rm -f "$GIT_AUTH_CFG"
+    exit 2
+}
+cleanup_auth_files() { rm -f "$GIT_AUTH_CFG" "$CURL_AUTH_CFG"; }
+trap cleanup_auth_files EXIT
+
 # ── 覆盖开关 ──────────────────────────────────────────────────────────────
 #
 # GITEA_HOSTS   同步哪些主机，格式 "host:ssh_user" 空格分隔
@@ -203,15 +245,34 @@ declare -a SOURCE_SHA_VARS=()  # list of variable names to look up later
 # recoverable, a rewind on five remotes is not.
 echo ""
 echo "Step 0: fetch before reading any SHA"
-if ! git fetch "$source_remote" --no-tags 2>&1 | tail -3; then
-    echo "ERROR: fetch from $source_remote failed; refusing to continue"
+#
+# `cmd | tail -3` 的退出码是 **tail** 的 ⇒ git 失败也会被当成成功。
+# 这正是「取不到就当落后」的同类错误：这里必须看 git 自己的退出码。
+fetch_out=$(git -c include.path="$GIT_AUTH_CFG" fetch "$source_remote" --no-tags 2>&1)
+fetch_rc=$?
+printf '%s\n' "$fetch_out" | tail -3
+if [ "$fetch_rc" -ne 0 ]; then
+    echo "ERROR: fetch from $source_remote failed (rc=$fetch_rc); refusing to continue"
     echo "       without a confirmed-fresh view of the source refs"
     exit 5
 fi
-if ! git fetch --all --no-tags --prune 2>&1 | tail -3; then
-    echo "ERROR: 'git fetch --all' failed; refusing to continue"
-    exit 5
-fi
+
+# 其余远端逐个 fetch，失败的**逐个点名**。
+# 这一步不再决定任何事：远端的真实状态一律由 Step 4 直接查询服务器得到
+# （本地 tracking ref 可能过期 —— 过期就会让 --force-with-lease 误拒，
+#  也会让「一致性」结论失真）。gitea250 对当前凭据一律 401，这里失败是预期的。
+echo ""
+echo "Step 0b: fetch the remaining remotes (best effort, each one reported)"
+for r in $(git remote); do
+    [ "$r" = "$source_remote" ] && continue
+    fetch_out=$(git -c include.path="$GIT_AUTH_CFG" fetch "$r" --no-tags --prune 2>&1)
+    fetch_rc=$?
+    if [ "$fetch_rc" -ne 0 ]; then
+        echo "WARNING: fetch from $r failed (rc=$fetch_rc): $(printf '%s' "$fetch_out" | tail -1)"
+        echo "         (gitea250 rejects the current credential with 401 — that is expected;"
+        echo "          its state is verified directly in Step 4, never via a fetch)"
+    fi
+done
 
 for branch in "${branches[@]}"; do
     if ! git rev-parse --verify "$source_remote/$branch" >/dev/null 2>&1; then
@@ -219,7 +280,15 @@ for branch in "${branches[@]}"; do
         exit 4
     fi
     local_sha=$(git rev-parse "$source_remote/$branch")
-    actual_sha=$(git ls-remote "$source_remote" "refs/heads/$branch" 2>/dev/null | cut -f1)
+    # 直接问服务器（ls-remote 不看本地缓存）。带凭据问一次；
+    # 问不到就**匿名**再问一次（250 的仓库匿名可读）——
+    # 两次都问不到 ⇒ 「查不到」，不是「落后」，下面会明确报错退出。
+    actual_sha=$(GIT_TERMINAL_PROMPT=0 git -c include.path="$GIT_AUTH_CFG" \
+        ls-remote "$source_remote" "refs/heads/$branch" 2>/dev/null | cut -f1)
+    if [ -z "$actual_sha" ]; then
+        actual_sha=$(GIT_TERMINAL_PROMPT=0 git -c credential.helper= \
+            ls-remote "$source_remote" "refs/heads/$branch" 2>/dev/null | cut -f1)
+    fi
     if [ -z "$actual_sha" ]; then
         # ls-remote answers from the server, so an empty answer means the query
         # failed or the branch is gone upstream. Either way we do not know what
@@ -268,16 +337,30 @@ for branch in "${branches[@]}"; do
         develop/v4.0.0)  sha="$source_sha_develop_v400" ;;
     esac
     for r in gitcode gitee github; do
-        current=$(git rev-parse --verify "$r/$branch" 2>/dev/null || echo MISSING)
+        # 「远端现在是什么」必须**问服务器**（ls-remote），
+        # 不能看本地 tracking ref —— 本地那份可能是过期的，
+        # 而过期的 --force-with-lease 会误拒一次本来正确的推送。
+        # 问不到 ⇒ 「查不到」⇒ 明确报错，不猜。
+        current=$(GIT_TERMINAL_PROMPT=0 git -c include.path="$GIT_AUTH_CFG" \
+            ls-remote "$r" "refs/heads/$branch" 2>/dev/null | cut -f1)
+        if [ -z "$current" ]; then
+            echo "  ERROR: cannot read refs/heads/$branch from $r — refusing to push on a guess"
+            PUSH_OK=0
+            continue
+        fi
         if [ "$current" = "$sha" ]; then
             echo "  $r/$branch: already at $sha ✓"
             continue
         fi
         echo "  $r/$branch: pushing $sha (was ${current:0:12})"
-        if git push --force-with-lease "$r" "$sha:refs/heads/$branch" 2>&1 | tail -3; then
-            :
-        else
-            echo "  ERROR: push to $r/$branch failed"
+        # 退出码必须是 git 自己的：`git … | tail -3` 的退出码是 tail 的 ⇒
+        # 推失败也会被当成成功（这正是 #5520 里「静默 exit 0」的一类成因）。
+        push_out=$(git push --force-with-lease="refs/heads/$branch:$current" \
+            "$r" "$sha:refs/heads/$branch" 2>&1)
+        push_rc=$?
+        printf '%s\n' "$push_out" | tail -3
+        if [ "$push_rc" -ne 0 ]; then
+            echo "  ERROR: push to $r/$branch failed (rc=$push_rc)"
             PUSH_OK=0
         fi
     done
@@ -427,26 +510,9 @@ for entry in "${GITEA_HOST_LIST[@]}"; do
         continue
     fi
 
-    # The protected-branch path needs Gitea credentials. They used to be
-    # hardcoded in this script; those values were live and are now tracked
-    # as a leak in #5381. They come from the environment — with the local
-    # git credential store as a fallback (#5520) — and there is no silent
-    # fallback to a baked-in value.
-    if ! gitea_credential_resolve "${GITEA_CREDENTIAL_HOST}"; then
-        echo "  [$host] ERROR: no Gitea credential available — cannot read or"
-        echo "         update a protected branch. Skipping."
-        echo "         export GITEA_USER=<user> GITEA_TOKEN=<token>   # see #5381"
-        echo "         (or store one for ${GITEA_CREDENTIAL_HOST} in your git"
-        echo "          credential store — see #5520)"
-        ALL_FAILED=1
-        continue
-    fi
-    # Basic auth header, so the credential never travels inside a URL
-    # (a URL leaks into the process table, .git/config and CI logs).
-    # Basic encoding accepts either a token or a password as GITEA_TOKEN.
-    # The encoding itself lives in the shared helper — one implementation
-    # of "how do we turn a credential into a header" (C2 of the helper).
-    auth_header="$(gitea_credential_basic_header)"
+    # 凭据在脚本开头就解析好了（取不到 ⇒ 早已 fail-fast 退出）。
+    # 这里只需要两个**不含凭据**的配置文件：curl 用 -K，git 用 include.path。
+    # 凭据既不进 URL，也不进 argv（#5520 验收：凭据不得出现在进程列表）。
 
     for branch in "${branches[@]}"; do
         case "$branch" in
@@ -464,45 +530,78 @@ for entry in "${GITEA_HOST_LIST[@]}"; do
         # repository itself is anonymously readable. The anonymous probe is
         # therefore a real fallback, not a guess.
         #
-        # If BOTH probes fail we do not know what the remote holds. Treating
-        # that as "behind" is what made this tool report success while
-        # silently skipping the update (#5520) — so it is an error now.
+        # The three answers must stay apart (#5520 §4.A.1):
+        #
+        #   200 → the branch exists, this is its SHA
+        #   404 → the branch does **not exist** on that remote
+        #          （合法的状态：下面的 update-ref 会把它**建出来**；
+        #            把它当成「查不到」会让这个工具永远建不了新分支）
+        #   其它 → **查不到**（401 / 500 / 网络错误）
+        #          「查不到」不是「落后」⇒ 明确报错退出，绝不猜。
+        #
+        # 注意用 `-o <file> -w '%{http_code}'` 而不是 `-f`：
+        # `-f` 会把 404 变成「无输出」，于是「不存在」和「问不到」又混回去了。
+        probe_body="$(mktemp "${TMPDIR:-/tmp}/5remotes-probe.XXXXXX")"
         probe_ref() {
             local mode="$1"
             local url="http://$host:3000/api/v1/repos/openclaw/sqlrustgo/git/refs/heads/$branch"
+            local code sha=""
             if [ "$mode" = "authenticated" ]; then
-                curl -sf --max-time 5 -H "$auth_header" "$url" 2>/dev/null
+                code=$(curl -s --max-time 5 -K "$CURL_AUTH_CFG" \
+                    -o "$probe_body" -w '%{http_code}' "$url" 2>/dev/null)
             else
-                curl -sf --max-time 5 "$url" 2>/dev/null
-            fi | python3 -c "import json,sys;r=json.load(sys.stdin);print((r[0] if isinstance(r,list) else r).get('object',{}).get('sha',''))" 2>/dev/null
+                code=$(curl -s --max-time 5 \
+                    -o "$probe_body" -w '%{http_code}' "$url" 2>/dev/null)
+            fi
+            if [ "$code" = "200" ]; then
+                sha=$(python3 -c "import json,sys;r=json.load(sys.stdin);print((r[0] if isinstance(r,list) else r).get('object',{}).get('sha',''))" < "$probe_body" 2>/dev/null)
+            fi
+            printf '%s %s' "$code" "$sha"
         }
-        current=$(probe_ref authenticated)
+        probe_result=$(probe_ref authenticated)
+        probe_code="${probe_result%% *}"
+        current="${probe_result#* }"
         probe_mode="authenticated"
-        if [ -z "$current" ]; then
-            current=$(probe_ref anonymous)
+        if [ "$probe_code" != "200" ] && [ "$probe_code" != "404" ]; then
+            # 认证探测失败（250 上是 401）⇒ 匿名再探一次
+            probe_result=$(probe_ref anonymous)
+            probe_code="${probe_result%% *}"
+            current="${probe_result#* }"
             probe_mode="anonymous"
         fi
-        if [ -z "$current" ]; then
-            echo "    ERROR: cannot read refs/heads/$branch from $host"
-            echo "           (the authenticated and the anonymous probe both failed)."
+        if [ "$probe_code" = "404" ]; then
+            current=""
+            branch_state="missing"
+        elif [ "$probe_code" != "200" ]; then
+            rm -f "$probe_body"
+            echo "    ERROR: cannot read refs/heads/$branch from $host (HTTP ${probe_code:-<no answer>})"
             echo "           Refusing to treat 'unknown' as 'behind'."
             ALL_FAILED=1
             continue
+        else
+            branch_state="present"
         fi
-        if [ "$current" = "$sha" ]; then
+        rm -f "$probe_body"
+        if [ "$branch_state" = "present" ] && [ "$current" = "$sha" ]; then
             echo "    $branch: already at $sha ✓ (probe: ${probe_mode})"
             continue
         fi
 
-        echo "    $branch: current=${current:0:12}, target=${sha:0:12} (probe: ${probe_mode})"
+        if [ "$branch_state" = "missing" ]; then
+            echo "    $branch: does not exist on $host yet — it will be created (probe: ${probe_mode})"
+        else
+            echo "    $branch: current=${current:0:12}, target=${sha:0:12} (probe: ${probe_mode})"
+        fi
 
         # Step 3a: make the commit objects land in the container's object
         # pool. `update-ref` will not pull commits across HTTP.
         #
         # Primary path: HTTP push to a temporary ref. The credential travels
-        # in an http.extraheader rather than inside the URL: a credential in
-        # the URL gets echoed by git on failure and is the shape that ended
-        # up committed in this file before.
+        # in a 0600 config file pulled in with `git -c include.path=…` —
+        # **不在 URL 里，也不在 argv 里**：
+        # 嵌在 URL 里的凭据会被 git 在失败时回显（这正是这个文件当初
+        # 被提交进仓库的那两个凭据的形态），
+        # 放在 argv 里的凭据则 `ps aux` 就能读到（#5520 验收）。
         #
         # Fallback path: **gitea250 rejects the HTTP credential outright**
         # (401 on both the API and the git handshake) while its SSH channel
@@ -511,7 +610,7 @@ for entry in "${GITEA_HOST_LIST[@]}"; do
         # failure of this step ended in a bare `continue`, so the update-ref
         # below never ran and 250 was never advanced.
         push_url="${GITEA_PUSH_URL:-http://${host}:3000/openclaw/sqlrustgo.git}"
-        if git -c "http.extraheader=$auth_header" \
+        if git -c include.path="$GIT_AUTH_CFG" \
              push --no-verify \
              "$push_url" \
              "$sha:refs/heads/$tmp_ref" >/dev/null 2>&1; then
@@ -529,43 +628,97 @@ for entry in "${GITEA_HOST_LIST[@]}"; do
         fi
 
         # Step 3b: SSH into the host and update-ref + delete temp ref
+        #
+        # `ssh … | tail -5` 的退出码是 **tail** 的 ⇒ ssh 失败也会被当成成功。
+        # 这是 #5520 里「静默 exit 0」最直接的一处：远端没更新，脚本却往下走。
+        # 现在取 ssh 自己的退出码，并**回读**远端的 SHA 确认它真的到位了。
         update_cmd="docker exec $container_id bash -c '
 cd $repo_path
 git -c safe.directory=* update-ref refs/heads/$branch $sha
 git -c safe.directory=* update-ref -d refs/heads/$tmp_ref 2>/dev/null
-echo final: \$(cat refs/heads/$branch)
+echo final: \$(git -c safe.directory=* rev-parse refs/heads/$branch 2>/dev/null)
 '"
-        if ! ssh "${SSH_OPTS[@]}" \
-             "$ssh_user@$host" "$update_cmd" 2>&1 | tail -5; then
-            echo "    ERROR: ssh update-ref to $host/$branch failed"
+        ssh_out_file="$(mktemp "${TMPDIR:-/tmp}/5remotes-ssh-out.XXXXXX")"
+        ssh "${SSH_OPTS[@]}" \
+             "$ssh_user@$host" "$update_cmd" > "$ssh_out_file" 2>&1
+        ssh_rc=$?
+        printf '%s\n' "$(cat "$ssh_out_file")" | tail -5
+        ssh_out="$(cat "$ssh_out_file")"
+        rm -f "$ssh_out_file"
+        if [ "$ssh_rc" -ne 0 ]; then
+            echo "    ERROR: ssh update-ref to $host/$branch failed (rc=$ssh_rc)"
             ALL_FAILED=1
+            continue
+        fi
+        final_sha=$(printf '%s\n' "$ssh_out" | sed -n 's/^final: //p' | tail -1)
+        if [ "$final_sha" != "$sha" ]; then
+            echo "    ERROR: $host/$branch now holds '${final_sha:-<unknown>}', expected $sha"
+            ALL_FAILED=1
+            continue
         fi
     done
 done
 
 echo ""
-echo "Step 4: fetch + verify"
-git fetch --all --no-tags --prune 2>&1 | tail -3
-
+echo "Step 4: verify against what the remotes ACTUALLY hold"
+#
+# 修复前这里比的是**本地 tracking ref**（`git rev-parse $r/$branch`）。
+# 本地那份可能是过期的 ⇒ 一个根本没被推进的远端也会被判成「一致」。
+# #5520 的原文就是：「250 上的推送失败了，脚本却报告 all 10 pairs consistent
+# 并 exit 0」。现在**逐个远端直接问服务器**（ls-remote）：
+#   - 问到的 SHA ≠ 目标 ⇒ 分歧（exit 1）
+#   - 问不到（远端没回答 / 没有这个 remote）⇒ **无法验证**（exit 3），
+#     绝不把「问不到」当成「一致」。
 ALL_OK=1
+VERIFY_UNREACHABLE=0
 for branch in "${branches[@]}"; do
+    case "$branch" in
+        main)            sha="$source_sha_main" ;;
+        release/v4.0.0)  sha="$source_sha_release_v400" ;;
+        develop/v4.1.0)  sha="$source_sha_develop_v410" ;;
+        develop/v4.0.0)  sha="$source_sha_develop_v400" ;;
+    esac
     echo ""
-    echo "[$branch]"
+    echo "[$branch] target = $sha"
     for r in gitcode gitea250 gitea252 gitee github; do
-        sha=$(git rev-parse --verify "$r/$branch" 2>/dev/null | cut -c1-12)
-        echo "  $r = $sha"
-    done
-    for pair in "gitcode gitea250" "gitcode gitea252" "gitcode gitee" "gitcode github" "gitea250 gitea252" "gitea250 gitee" "gitea250 github" "gitea252 gitee" "gitea252 github" "gitee github"; do
-        set -- $pair
-        a=$1; b=$2
-        ab=$(git rev-list --count "$a/$branch" "^$b/$branch" 2>/dev/null)
-        ba=$(git rev-list --count "$b/$branch" "^$a/$branch" 2>/dev/null)
-        if [ "$ab" -ne 0 ] || [ "$ba" -ne 0 ]; then
-            printf "  ✗ %-9s vs %-9s : ahead=%d behind=%d\n" "$a" "$b" "$ab" "$ba"
+        if ! git remote get-url "$r" >/dev/null 2>&1; then
+            echo "  $r = <no such remote> — cannot verify"
+            VERIFY_UNREACHABLE=1
+            continue
+        fi
+        if [ "$r" = "gitea250" ]; then
+            # 250 拒绝当前凭据（401），但仓库匿名可读 ⇒ 匿名查。
+            # `-c credential.helper=` 关掉本机 credential store，确保这次
+            # 真的是匿名查询（否则 git 会自动带上 store 里的凭据再吃一个 401）。
+            ls_out=$(GIT_TERMINAL_PROMPT=0 git -c credential.helper= \
+                ls-remote "$r" "refs/heads/$branch" 2>/dev/null)
+        else
+            ls_out=$(GIT_TERMINAL_PROMPT=0 git -c include.path="$GIT_AUTH_CFG" \
+                ls-remote "$r" "refs/heads/$branch" 2>/dev/null)
+        fi
+        ls_rc=$?
+        remote_sha=$(printf '%s\n' "$ls_out" | cut -f1)
+        if [ "$ls_rc" -ne 0 ] && [ -z "$remote_sha" ]; then
+            echo "  $r = <could not read> — the remote did not answer (rc=$ls_rc)"
+            VERIFY_UNREACHABLE=1
+            continue
+        fi
+        if [ -z "$remote_sha" ]; then
+            # ls-remote 成功但没有这个 ref ⇒ 远端**没有这个分支**。
+            # 这是分歧（该推没推），不是「问不到」。
+            echo "  $r = <branch missing> — $r does not have $branch"
+            ALL_OK=0
+            continue
+        fi
+        echo "  $r = ${remote_sha:0:12}"
+        if [ "$remote_sha" != "$sha" ]; then
+            echo "  ✗ $r is NOT at the target SHA"
             ALL_OK=0
         fi
     done
-    [ $ALL_OK -eq 1 ] && echo "  ✓ all 10 pairs consistent"
+    if [ "$ALL_OK" -eq 1 ] && [ "$VERIFY_UNREACHABLE" -eq 0 ]; then
+        echo "  ✓ all 5 remotes hold $sha"
+    fi
 done
 
 # A failed step must not be masked by a later successful one: report
@@ -577,6 +730,13 @@ if [ "${ALL_FAILED:-0}" -ne 0 ]; then
     echo "        completing that step the remotes are not proven to be in sync."
     exit 2
 fi
-[ $ALL_OK -eq 0 ] && exit 1
-[ $PUSH_OK -eq 0 ] && exit 2
+if [ "${VERIFY_UNREACHABLE:-0}" -ne 0 ]; then
+    echo ""
+    echo "FAILED: at least one remote did not answer, so 'all remotes agree'"
+    echo "        could not be established. Refusing to report success:"
+    echo "        'cannot tell' is not 'in sync'."
+    exit 3
+fi
+[ "$ALL_OK" -eq 0 ] && exit 1
+[ "$PUSH_OK" -eq 0 ] && exit 2
 exit 0

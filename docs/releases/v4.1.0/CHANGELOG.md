@@ -163,6 +163,25 @@
   影响：任何依赖计数返回值的下游会得到静默错误结论，本次所有行数统计均改用
   逐 id 点查。详见 `evidence/TLS_READ_SPIN_HANG_5099_2026-10-09.md` §6。
 
+### 同步工具严格化 — 2026-10-23（#5520）
+
+- **#5520 同步工具：失败不再被吞，凭据不再进进程列表** —— 🟡 **部分修复**
+  （批次 18 已修掉「凭据进仓库」与「250 推不动」；本批次补上剩下的部分）。
+  实测定位到 4 处吞错：① 校验阶段比的是**本地 tracking ref**，
+  远端没有这条分支时 `git rev-list` 报错 → `[ "" -ne 0 ]` 抛
+  *integer expression expected* → 这一对**不被标记为分歧**，
+  输出照样打印「✓ all 10 pairs consistent」；② 探测用 `curl -sf`，
+  **404 也变成「无输出」** ⇒ 「远端没有这个分支」与「我查不到」塌成同一个信号；
+  ③ 凭据在 **argv** 里（`curl -H` / `git -c http.extraheader=`）⇒ `ps aux` 可读；
+  ④ 另外三个脚本各自为政（无 credential store 兜底、`cmd | tail` 吞退出码、
+  `check_repo_sync.sh` 把 401 当「网络不可达」**且不计入失败**）。
+  修法：凭据解析唯一实现扩展两条 argv-free 通道（curl `-K` 0600 配置 /
+  git `-c include.path=` 0600 配置）；探测升级为**三态**
+  （200=存在 / 404=不存在→**建出来** / 其它=查不到→明确报错）；
+  校验改为**逐个远端直接问服务器**并区分「问不到」(exit 3) 与
+  「远端没有这条分支」(exit 1)；三个脚本接入共用凭据实现、失败一律非 0 退出。
+  证据：`evidence/SYNC_TOOLS_STRICT_5520_2026-10-23.md`。
+
 ### Phase 0 (DRAFT doc scaffolding) — 2026-09-29
 
 - `STAGE.yaml` — initial DRAFT entry

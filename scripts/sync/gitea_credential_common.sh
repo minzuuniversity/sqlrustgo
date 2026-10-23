@@ -20,9 +20,12 @@
 #       环境变量优先，因为 CI 里通常只能通过环境注入。
 #
 #   C2  凭据**绝不**出现在 URL 里（`http://user:pass@host` 会进
-#       `.git/config`、进程列表和 CI 日志）。git 侧用
-#       `git -c http.extraheader="Authorization: Basic …"`，
-#       curl 侧用 `-H`。
+#       `.git/config`、进程列表和 CI 日志）。
+#       #5520 追加：**也不出现在 argv 里** —— `curl -H` 与
+#       `git -c http.extraheader=…` 都会让 `ps aux` 读到凭据。
+#       ⇒ git 侧用 `git -c include.path=<0600 配置文件>`，
+#       curl 侧用 `curl -K <0600 配置文件>`
+#       （见本文件末尾的两个 `*_config_file` 函数）。
 #
 #   C3  取不到凭据时**明确失败**（返回非零），
 #       **绝不**回落到任何写死的值。
@@ -84,4 +87,47 @@ gitea_credential_basic_header() {
     [ -n "${GITEA_USER:-}" ] && [ -n "${GITEA_TOKEN:-}" ] || return 1
     printf 'Authorization: Basic %s' \
         "$(printf '%s:%s' "${GITEA_USER}" "${GITEA_TOKEN}" | base64 | tr -d '\n')"
+}
+
+# ── 「凭据不进进程列表」的两条通道 ─────────────────────────────────────────
+#
+# C2 只说了凭据不能进 **URL**。但 `curl -H "Authorization: …"` 与
+# `git -c http.extraheader=…` 都会把凭据放进 **argv** ⇒ `ps aux` 就能读到它，
+# CI 的进程列表、崩溃报告、审计日志同样会留下它。
+#
+# 下面两条通道让 argv 里只剩一个**路径**：
+#
+#   curl → gitea_credential_curl_config_file
+#          用法: `curl -K "$file" …`（-K 读一个 curl 配置文件）
+#   git  → gitea_credential_git_config_file
+#          用法: `git -c include.path="$file" …`（include.path 引入一个 git 配置文件）
+#
+# 两条都不写进 `.git/config`（配置文件在仓库外、用完即删），
+# 也不出现在命令行上。两个文件都是 0600。
+#
+# base64 之后不含引号/反斜杠 ⇒ 直接写进配置文件是安全的。
+
+# Write a 0600 curl config file carrying the auth header; print its path.
+# The caller owns the file and MUST delete it (the scripts trap EXIT).
+gitea_credential_curl_config_file() {
+    local file header
+    [ -n "${GITEA_USER:-}" ] && [ -n "${GITEA_TOKEN:-}" ] || return 1
+    header="$(gitea_credential_basic_header)" || return 1
+    file="$(mktemp "${TMPDIR:-/tmp}/gitea-curl-auth.XXXXXX")" || return 1
+    chmod 600 "$file" 2>/dev/null || { rm -f "$file"; return 1; }
+    printf 'header = "%s"\n' "$header" > "$file" || { rm -f "$file"; return 1; }
+    printf '%s\n' "$file"
+}
+
+# Write a 0600 git config file carrying http.extraheader; print its path.
+# The caller owns the file and MUST delete it (the scripts trap EXIT).
+gitea_credential_git_config_file() {
+    local file header
+    [ -n "${GITEA_USER:-}" ] && [ -n "${GITEA_TOKEN:-}" ] || return 1
+    header="$(gitea_credential_basic_header)" || return 1
+    file="$(mktemp "${TMPDIR:-/tmp}/gitea-git-auth.XXXXXX")" || return 1
+    chmod 600 "$file" 2>/dev/null || { rm -f "$file"; return 1; }
+    printf '[http]\n\textraheader = "%s"\n' "$header" > "$file" \
+        || { rm -f "$file"; return 1; }
+    printf '%s\n' "$file"
 }

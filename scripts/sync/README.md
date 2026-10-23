@@ -107,6 +107,31 @@ Three mutations (drop `IdentityAgent=none`, restore the whole-filesystem
 `find /`, drop the `GIT_SSH_COMMAND` export) are all required to be
 CAUGHT.
 
+### `test_5remotes_sync_strict.sh` — regression test for **failure propagation**
+
+```bash
+bash scripts/sync/test_5remotes_sync_strict.sh
+```
+
+Fully offline (local bare repos as the five remotes; `ssh` / `curl` / `git`
+are stubs). It asserts that **every** failure is reported and blocks the
+run with a **non-zero** exit code — the anti-fabrication rule of this
+repository ("a failure must block, it must not pass silently"):
+
+| Case | What is injected | Expected |
+|---|---|---|
+| T1 | the SSH `update-ref` fails | exit ≠ 0, and the output names the reason |
+| T2 | one remote does not answer | exit ≠ 0 (**not** reported as "consistent") |
+| T3 | no usable credential | exit ≠ 0, and the output says the credential is missing |
+| T4 | — | the credential (plain **and** base64) appears in **no** argv, and not in `.git/config` |
+| T5 | the remote does **not** have the branch | the branch is **created** and advanced (exit 0) — "missing" is not "unknown" |
+
+T5 is the case that separates "the remote does not have this branch" from
+"I cannot tell" (#5520 §4.A.1). Against the pre-fix script the same test
+reports `PASS=7 FAIL=4` — the credential is in `curl`'s argv, the missing
+branch cannot be created, and the run still prints
+"✓ all 10 pairs consistent".
+
 ### `5remotes_drift_check.sh` — read-only health check
 
 ```bash
