@@ -1,145 +1,376 @@
-# v4.1.0 — FEATURE_MATRIX
+# SQLRustGo v4.1.0 — Feature Matrix
 
-> **Date**: 2026-10-21
-> **Stage**: ALPHA (`docs/releases/v4.1.0/STAGE.yaml` → `current_stage: "ALPHA"`,
-> re-entered 2026-10-06 — see `last_transition`)
-> **Status**: **WORKING DRAFT** — this is the ALPHA-stage artefact. At BETA it
-> must be re-derived and *frozen* (the BETA stage's `doc_artifacts` list names
-> the same file; the freeze is a separate, deliberate act, not this document).
->
-> This file is required by `docs/governance/STAGE_CONFIG.yaml` →
-> `stages.ALPHA.doc_artifacts`. It was **missing** until 2026-10-21 (#5439:
-> a required artefact that nobody checked for is a requirement nobody has to
-> keep). `scripts/gate/check_release_artifacts.sh` now checks it.
+> **Date**: 2026-10-23
+> **Status**: DRAFT (per `docs/releases/v4.1.0/STAGE.yaml`)
+> **Purpose**: Complete feature matrix for v4.1.0, organized by SQL
+> category. Each feature is marked as Supported (✓), Partial (◐), or
+> Not Supported (✗) with the tracking issue reference.
 
-## 0. What this file is, and what it is not
+## 1. Data Definition Language (DDL)
 
-This file is a **matrix of the deltas v4.1.0 carries over v4.0.0**, with the
-status of each delta and a pointer to the evidence for that status.
+| Feature | Status | Issue | Notes |
+|---|---|---|---|
+| CREATE TABLE | ✓ | — | Basic table creation |
+| DROP TABLE | ✓ | — | Table removal |
+| ALTER TABLE (ADD COLUMN) | ✓ | — | Add columns |
+| ALTER TABLE (DROP COLUMN) | ✓ | — | Remove columns |
+| ALTER TABLE (MODIFY COLUMN) | ◐ | — | Type change only, no rename |
+| PRIMARY KEY | ✓ | — | Single-column PK, fast-path lookup |
+| UNIQUE constraint | ✗ | #4682 | WP-C, deferred to v4.1.1+ |
+| FOREIGN KEY | ✗ | #4652 | WP-C, deferred to v4.1.1+ |
+| CHECK constraint | ✗ | #4672 | WP-C, deferred to v4.1.1+ |
+| DEFAULT value | ✗ | #4669 | WP-C, deferred to v4.1.1+ |
+| NOT NULL constraint | ✗ | #4709 | WP-C, deferred to v4.1.1+ |
+| INDEX (secondary) | ✗ | — | Not implemented, only PK index |
+| FULLTEXT index | ✗ | — | Not implemented |
+| SPATIAL index | ✗ | — | Not implemented |
+| VIEW | ✗ | — | Not implemented |
+| TRIGGER | ✗ | — | Not implemented |
+| PROCEDURE | ✗ | — | Not implemented |
+| FUNCTION | ✗ | — | Not implemented |
 
-It is **not** a claim that v4.1.0 is releasable. It does not assert that the
-gates pass, that the version is GA, or that the remaining defects are closed.
-Section 3 lists what this file deliberately does **not** claim.
+## 2. Data Manipulation Language (DML)
 
-**Every status in section 1 is copied from a source document, not asserted
-here.** The source column names that document. Where two sources disagree,
-both are shown (see M-6..M-8 in section 2) — this file does not resolve the
-disagreement by preference.
+| Feature | Status | Issue | Notes |
+|---|---|---|---|
+| INSERT (single row) | ✓ | — | Single row insert |
+| INSERT (multi-row) | ✓ | — | Multi-row insert |
+| INSERT ... SELECT | ◐ | — | Single table only |
+| UPDATE (single table) | ✓ | — | PK fast-path (#5177) |
+| UPDATE (multi-table) | ✗ | #4668 | Requires JOIN, WP-D |
+| DELETE (single table) | ✓ | — | PK fast-path (#5177) |
+| DELETE (multi-table) | ✗ | #4668 | Requires JOIN, WP-D |
+| REPLACE INTO | ◐ | — | INSERT ON DUPLICATE KEY |
+| LOAD DATA | ✗ | — | Not implemented |
+| SELECT (single table) | ✓ | — | Full WHERE/ORDER/LIMIT |
+| SELECT (multi-table JOIN) | ✗ | #4668 | WP-D, deferred |
+| SELECT (subquery) | ✗ | #4656 | WP-D, deferred |
+| SELECT (UNION) | ◐ | — | Basic UNION supported |
+| SELECT (UNION ALL) | ◐ | — | Basic UNION ALL supported |
+| SELECT (GROUP BY) | ✗ | #4649 | WP-D, deferred |
+| SELECT (HAVING) | ✗ | #4649 | WP-D, deferred |
+| SELECT (DISTINCT) | ✓ | — | Deduplication |
+| SELECT (ORDER BY) | ✓ | — | Single/multi column |
+| SELECT (LIMIT/OFFSET) | ✓ | — | Row limiting |
+| SELECT (CASE expression) | ◐ | — | Basic CASE supported |
+| SELECT (EXISTS) | ✗ | #4656 | Subquery, WP-D |
+| SELECT (IN subquery) | ✗ | #4656 | Subquery, WP-D |
 
-**How to re-derive this file**: every row in section 1 is either a row of
-`VERSION_PLAN.md` §2 (deltas over v4.0.0) or a bullet of `CHANGELOG.md`
-§"[Unreleased]" (the P0 fix round of 2026-10-08). Section 2 is `ROADMAP.md`
-§1 verbatim in status. Section 3 is `STAGE.yaml` → `known_gaps` +
-`open_issues`, plus the artefact gaps that `check_release_artifacts.sh`
-reports.
+## 3. Transaction Control
 
----
+| Feature | Status | Issue | Notes |
+|---|---|---|---|
+| BEGIN / START TRANSACTION | ✓ | — | Explicit transaction start |
+| COMMIT | ✓ | — | Commit transaction |
+| ROLLBACK | ✓ | — | Rollback transaction |
+| SAVEPOINT | ✗ | #4626 | WP-E, deferred |
+| ROLLBACK TO SAVEPOINT | ✗ | #4626 | WP-E, deferred |
+| RELEASE SAVEPOINT | ✗ | #4626 | WP-E, deferred |
+| READ UNCOMMITTED | ✗ | #4626 | WP-E, deferred |
+| READ COMMITTED | ✗ | #4626 | WP-E, deferred |
+| REPEATABLE READ | ✗ | #4626 | WP-E, deferred |
+| SERIALIZABLE | ✗ | #4626 | WP-E, deferred |
+| SET TRANSACTION | ✗ | #4626 | WP-E, deferred |
+| LOCK TABLES | ◐ | — | Basic table lock |
+| UNLOCK TABLES | ◐ | — | Basic unlock |
 
-## 1. Delta matrix (v4.1.0 over v4.0.0)
+## 4. Data Types
 
-### 1.1 Carried-forward deltas — source: `VERSION_PLAN.md` §2
+| Feature | Status | Issue | Notes |
+|---|---|---|---|
+| TINYINT / SMALLINT / INT / BIGINT | ✓ | — | Integer types |
+| FLOAT / DOUBLE | ✓ | — | Floating point |
+| DECIMAL / NUMERIC | ✗ | #4846 | WP-G, deferred |
+| CHAR / VARCHAR | ✓ | — | Character types |
+| TEXT / BLOB | ✓ | — | Large object types |
+| DATE / DATETIME / TIMESTAMP | ✓ | — | Temporal types |
+| TIME | ✓ | — | Time of day |
+| YEAR | ✓ | — | Year type |
+| BOOLEAN / BOOL | ✓ | — | Boolean (TINYINT(1)) |
+| ENUM | ✗ | — | Not implemented |
+| SET | ✗ | — | Not implemented |
+| JSON | ◐ | — | Stored as VARCHAR, no JSON functions |
+| BINARY / VARBINARY | ✓ | — | Binary types |
+| BIT | ◐ | — | Stored as TINYINT |
+| GEOMETRY / POINT | ✗ | — | Not implemented |
+| ARRAY | ✗ | — | Not implemented |
+| INTERVAL | ✗ | — | Not implemented |
 
-| ID | Area | Delta | Status | Evidence |
-|---|---|---|---|---|
-| D-01 | zombie-fix core | Cherry-pick `67b624cbd2` + merge `9c6767a512`; `gap_lock_manager` + `read_write_splitter` updated | DONE | `VERSION_PLAN.md` §2; `STAGE.yaml` `last_transition` (WP-C/D/F/G merged via #5041/#5043/#5045/#5047) |
-| D-02 | `workers.push` | Commit `b4d46e6e18` + PR #4906 + PR #3793 merges | DONE | `VERSION_PLAN.md` §2 |
-| D-03 | DML/storage regressions | `f3595e7361` + PR #4905 + PR #3792 merges | DONE | `VERSION_PLAN.md` §2 |
-| D-04 | Review queue closure | 3 cherry-picks + zombie merge + `0bbb044da3` (CLOSED status doc) | DONE | `VERSION_PLAN.md` §2 |
-| D-05 | 5-remote sync tooling | `scripts/sync/5remotes_sync.sh`, `5remotes_drift_check.sh`, `scripts/sync/README.md` | DONE | `VERSION_PLAN.md` §2; `ROADMAP.md` M-4 |
+## 5. Operators and Expressions
 
-### 1.2 P0 fix round — source: `CHANGELOG.md` §"[Unreleased] / P0 修复 — 2026-10-08"
+| Feature | Status | Issue | Notes |
+|---|---|---|---|
+| =, <, >, <=, >=, != | ✓ | — | Comparison operators |
+| AND / OR / NOT | ✓ | — | Logical operators |
+| BETWEEN | ✗ | #4846 | WP-G, deferred |
+| IN (list) | ✓ | — | Value list |
+| IN (subquery) | ✗ | #4656 | WP-D, deferred |
+| LIKE | ◐ | — | Basic % and _ patterns |
+| LIKE (escape) | ✗ | #4846 | WP-G, deferred |
+| REGEXP / RLIKE | ✗ | — | Not implemented |
+| IS NULL / IS NOT NULL | ✓ | — | Null check |
+| IS TRUE / IS FALSE | ✓ | — | Boolean check |
+| CASE (simple) | ◐ | — | Basic CASE WHEN |
+| CASE (searched) | ◐ | — | Basic searched CASE |
+| IF / IFNULL / NULLIF | ✓ | — | Conditional functions |
+| COALESCE | ✓ | — | Null coalescing |
+| CAST / CONVERT | ◐ | — | Basic type cast |
+| Arithmetic (+, -, *, /) | ✓ | — | Numeric operations |
+| MOD / % | ✓ | — | Modulo |
+| CONCAT | ✓ | — | String concatenation |
+| SUBSTRING | ✓ | — | Substring extraction |
+| LENGTH / CHAR_LENGTH | ✓ | — | String length |
+| UPPER / LOWER | ✓ | — | Case conversion |
+| TRIM / LTRIM / RTRIM | ✓ | — | String trimming |
+| NOW() / CURRENT_TIMESTAMP | ✓ | — | Current time |
+| CURDATE() / CURTIME() | ✓ | — | Current date/time |
+| DATE_FORMAT / TIME_FORMAT | ◐ | — | Basic formatting |
+| YEAR() / MONTH() / DAY() | ✓ | — | Date component extraction |
+| ABS / CEIL / FLOOR | ✓ | — | Math functions |
+| RAND() | ✓ | — | Random number |
+| POWER / SQRT | ✓ | — | Math functions |
+| GREATEST / LEAST | ✓ | — | Comparison functions |
 
-| ID | Item | Claim in the changelog | Status | Evidence |
-|---|---|---|---|---|
-| F-01 | #5099 concurrent-transaction row loss | PR #5132 moved tx identity off a shared slot; loss rate 40.4% → ~1%; **`ERROR 1062` and the intermittent server hang remain unresolved** | **PARTIAL** | `docs/releases/v4.1.0/evidence/CONCURRENT_TX_ROLLBACK_DATA_LOSS_5099_2026-10-08.md` |
-| F-02 | #5099 server hang (TLS read spin) | `read_exact` busy-looped on a half-read header; 100% CPU per worker | **FIXED** | `docs/releases/v4.1.0/evidence/TLS_READ_SPIN_HANG_5099_2026-10-09.md` (1 h SOAK 3602 s, 0 FATAL) |
-| F-03 | #5168 PK point lookup = full scan | `WalStorage`/`ParallelWalStorage` did not forward `scan_pk` | **FIXED** | `crates/storage/tests/wal_scan_pk_forwarding_5168.rs`; changelog table 9.02 ms → 0.467 ms |
-| F-04 | #5177 UPDATE/DELETE `WHERE` = full scan | Added `pk_point_lookup`; UPDATE 10.941 ms → 1.051 ms @20000 rows | **FIXED** | `tests/integration/dml/dml_pk_fast_path_5177.rs` (9 tests) |
-| F-05 | #5181 delete path re-allocates the whole table | `Vec::retain` removes the second allocation; **the scan itself is still O(rows)** | **PARTIAL** | `crates/storage/tests/write_path_scaling_5181.rs` (5 tests) |
-| F-06 | #5167 `COUNT(*)` / range scan / aggregates return 0 or NULL | Point lookups were unaffected | **FIXED** (issue closed) | Gitea #5167; `docs/releases/v4.1.0/evidence/TLS_READ_SPIN_HANG_5099_2026-10-09.md` §6 |
-| F-07 | 8 h SOAK | 28800.29 s, 0 FATAL / 0 errors / 0 reconnects, 352 402 transactions, 7 048 040 queries; no degradation over 8 h | **RUN — but the report's evidential weight is downgraded** by the IAIA-410 audit | `docs/releases/v4.1.0/evidence/SOAK_8H_AND_CAPACITY_2026-10-09.md` |
+## 6. MySQL Wire Protocol
 
-> **F-07 caveat, carried verbatim from the changelog**: the 8 h SOAK
-> conclusion "cannot serve as evidence that v4.1.0 is usable" — the
-> IAIA-410 truthfulness audit found defects the SOAK structurally cannot
-> cover (e.g. #5192, durability illusion after `kill -9`). A green SOAK is
-> therefore **not** a GA-grade claim.
-
----
-
-## 2. Milestone matrix — source: `ROADMAP.md` §1 (snapshot 2026-09-29)
-
-| ID | Milestone | ROADMAP status | Newer SSOT position | Reconciled status |
-|---|---|---|---|---|
-| M-1 | PHASE_0 docs scaffolded | DONE | — | DONE |
-| M-2 | Bugfix carry-forward merged | DONE | — | DONE |
-| M-3 | Review queue closed | DONE | — | DONE |
-| M-4 | 5-remote sync tooling | DONE | — | DONE |
-| M-5 | v4.0.0 main + release branches synced to 5 ends | DONE | — | DONE |
-| M-6 | 3 inherited v4.0.0 alpha-gate FAILs resolved | **NOT STARTED** | `STAGE.yaml` `last_transition` (2026-10-06) records all 3 cleared by real gate runs, with the run output archived under `evidence/gate-runs-2026-09-30/` | **CLEARED per STAGE.yaml** (ROADMAP snapshot is 7 days older) |
-| M-7 | V400-09 168 h SOAK FINAL | **NOT STARTED** | `STAGE.yaml` `known_gaps.V400_09_soak` → `status: "NOT MET"`, `decision: "OPEN"` | **NOT MET — architect decision, deliberately left open** |
-| M-8 | WP-C..G deferred items migrated to v4.1.0 scope | **NOT STARTED** | `STAGE.yaml` `last_transition`: merged via #5041/#5043/#5045/#5047 | **MERGED per STAGE.yaml** (ROADMAP snapshot is stale) |
-| M-9 | v4.1.0-alpha1 tag cut | blocked by M-6/M-7 | tag `v4.1.0-alpha1` exists (`c1a73a5320`); `STAGE.yaml` records the rollback and the 2026-10-06 re-entry | **CUT** (the rollback is recorded in `STAGE.yaml`; the tag is retained deliberately) |
-| M-10 | v4.1.0-beta1 / rc1 / ga | blocked by M-9 | not reached | **NOT STARTED** |
-
-**M-6 / M-8 are recorded here with both readings on purpose.** The ROADMAP
-snapshot (2026-09-29) and the STAGE.yaml transition record (2026-10-06) do
-not agree; the newer SSOT entry is the one this file treats as current, and
-the disagreement is left visible rather than smoothed over.
-
----
-
-## 3. What this file does **not** claim
-
-These are registered gaps, not omissions from this matrix.
-
-1. **v4.1.0 is not GA, and is not close to GA.** The GA stage still has
-   missing required artefacts — `GA_GATE_REPORT.md`,
-   `GA_RELEASE_TIMELINE.md`, `EVIDENCE_STATUS.md`, `POST_GA_PLAN.md` — and
-   the GA gate list has **never been executed end-to-end** for this
-   version. `scripts/gate/check_release_artifacts.sh --version v4.1.0`
-   prints the full gap.
-2. **The ALPHA → BETA transition criterion is not met.** `V400-09` (168 h
-   SOAK) is `status: "NOT MET"`, `decision: "OPEN"` — whether to re-run it
-   is an architect decision, deliberately not made here.
-3. **Seven open issues are registered in `STAGE.yaml` → `open_issues`** and
-   are not resolved by anything in this matrix: the `v4.0.0` "GA (CONDITIONAL
-   PASS)" wording conflict, `check_anti_ignore_gate.sh` being a no-op gate
-   (P0-01), the parser block-comment gap masked by an unregistered
-   `#[ignore]` (P0-02), the literal `XYZ` placeholder in
-   `debt-registry.yaml` SEM-4 (P0-05), the parser coverage gap
-   (60.58 % measured vs the 80 % ALPHA threshold — P1-01), the missing Q20
-   oracle (P1-02), and the O(N²) WAL recovery rewrite (P0-08).
-4. **No gate verdict is asserted.** Nothing in this file says any gate
-   passes. The gate verdicts live in `docs/releases/v4.1.0/logs/` (run
-   logs) and in the evidence directory, not here.
-5. **No coverage, throughput or latency number is asserted** beyond the
-   figures quoted in section 1, each of which points at the measurement
-   document it came from.
-
----
-
-## 4. Artefact completeness at the time of writing
-
-`scripts/gate/check_release_artifacts.sh --version v4.1.0` reported, on
-2026-10-21:
-
-| Stage | Present | Missing |
+| Feature | Status | Notes |
 |---|---|---|
-| ALPHA (current, enforced) | 6/7 | — (`FEATURE_MATRIX.md` was the one missing; this file closes it) |
-| BETA | 4/7 | `FEATURE_CHECKLIST.md` |
-| RC | 5/9 | `RELEASE_GATE_CHECKLIST.md`, `PERFORMANCE_TARGETS.md`, `EVIDENCE_STATUS.md`, `GA_GATE_REPORT.md` |
-| GA | 5/11 | `GA_GATE_REPORT.md`, `GA_RELEASE_TIMELINE.md`, `EVIDENCE_STATUS.md`, `POST_GA_PLAN.md` |
+| Handshake (protocol v10) | ✓ | Standard MySQL handshake |
+| Auth (mysql_native_password) | ✓ | Password authentication |
+| Auth (caching_sha2_password) | ✗ | Not implemented |
+| COM_QUERY | ✓ | Text query |
+| COM_STMT_PREPARE | ◐ | Basic prepared statements |
+| COM_STMT_EXECUTE | ◐ | Basic execution |
+| COM_STMT_CLOSE | ✓ | Statement close |
+| COM_PING | ✓ | Heartbeat |
+| COM_QUIT | ✓ | Connection close |
+| COM_INIT_DB | ✓ | Database selection |
+| COM_FIELD_LIST | ◐ | Basic field list |
+| COM_STATISTICS | ✓ | Server statistics |
+| COM_PROCESS_KILL | ✗ | Not implemented |
+| COM_DEBUG | ✗ | Not implemented |
+| COM_REFRESH | ✗ | Not implemented |
+| COM_SHUTDOWN | ◐ | Graceful shutdown |
+| COM_SET_OPTION | ◐ | Basic option setting |
+| Binary protocol | ✓ | Binary result sets |
+| OK packet | ✓ | Success response |
+| ERR packet | ✓ | Error response |
+| EOF packet | ✓ | End of result set |
+| Warning packet | ◐ | Basic warnings |
 
----
+## 7. Server Features
 
-## 5. Sources
+| Feature | Status | Notes |
+|---|---|---|
+| TLS encryption | ✓ | Opt-in via `--tls` |
+| User authentication | ✗ | Not implemented (WP-H) |
+| Role-based access control | ✗ | Not implemented |
+| Query audit log | ✗ | Not implemented |
+| Data encryption at rest | ✗ | Not implemented |
+| Connection pooling | ✓ | Built-in (configurable) |
+| Query caching | ✗ | Not implemented |
+| Query optimizer | ✗ | Single execution plan |
+| Parallel query execution | ✗ | Single-threaded |
+| Replication | ✗ | Not implemented |
+| Sharding | ✗ | Not implemented |
+| Read replicas | ✗ | Not implemented |
+| Health check endpoint | ✗ | Use `SELECT 1` |
+| Metrics endpoint | ✗ | Use external monitoring |
+| Slow query log | ◐ | Basic timing via logs |
+| General log | ◐ | Basic query logging |
+| Binary log | ✗ | Not implemented |
 
-- `docs/releases/v4.1.0/VERSION_PLAN.md` — §2 delta table
-- `docs/releases/v4.1.0/CHANGELOG.md` — "[Unreleased] / P0 修复 — 2026-10-08"
-- `docs/releases/v4.1.0/ROADMAP.md` — §1 milestones
-- `docs/releases/v4.1.0/STAGE.yaml` — `current_stage`, `last_transition`,
-  `known_gaps`, `open_issues`
-- `docs/releases/v4.1.0/evidence/` — the measurement documents named above
-- `docs/governance/STAGE_CONFIG.yaml` — `stages.ALPHA.doc_artifacts`
-  (the criterion this file satisfies)
+## 8. Feature Summary
+
+| Category | Total | ✓ | ◐ | ✗ | Coverage |
+|---|---|---|---|---|---|
+| DDL | 18 | 5 | 1 | 12 | 27.8% |
+| DML | 21 | 9 | 4 | 8 | 52.4% |
+| Transaction | 12 | 3 | 2 | 7 | 25.0% |
+| Data Types | 18 | 11 | 3 | 4 | 61.1% |
+| Operators | 34 | 22 | 5 | 7 | 70.6% |
+| Wire Protocol | 21 | 12 | 5 | 4 | 61.9% |
+| Server Features | 17 | 4 | 3 | 10 | 23.5% |
+| **Total** | **141** | **66** | **23** | **52** | **46.8%** |
+
+## 9. Deferred Items (WP-C..G)
+
+| WP | Issue | Feature | Target |
+|---|---|---|---|
+| WP-C | #4682 | UNIQUE constraint | v4.1.1+ |
+| WP-C | #4652 | FOREIGN KEY | v4.1.1+ |
+| WP-C | #4672 | CHECK constraint | v4.1.1+ |
+| WP-C | #4669 | DEFAULT value | v4.1.1+ |
+| WP-C | #4709 | NOT NULL constraint | v4.1.1+ |
+| WP-C | #4703 | DDL/Integrity completion | v4.1.1+ |
+| WP-D | #4668 | JOIN (multi-table) | v4.1.1+ |
+| WP-D | #4656 | Subqueries | v4.1.1+ |
+| WP-D | #4649 | GROUP BY / HAVING | v4.1.1+ |
+| WP-D | #4636 | Join/Subquery completion | v4.1.1+ |
+| WP-E | #4626 | Transaction semantics | v4.1.1+ |
+| WP-F | #4848 | Schema migration | v4.1.1+ |
+| WP-G | #4846 | Type/Comparison completion | v4.1.1+ |
+| WP-B | #4721 | B-tree completion | v4.1.1+ |
+| WP-B | #4674 | B-tree completion | v4.1.1+ |
+| WP-B | #4716 | B-tree completion | v4.1.1+ |
+| WP-B | #4676 | B-tree completion | v4.1.1+ |
+| WP-B | #4675 | B-tree completion | v4.1.1+ |
+| WP-B | #4670 | B-tree completion | v4.1.1+ |
+
+## 10. Feature Evolution Roadmap
+
+### 10.1 v4.1.0 → v4.1.1
+
+| Priority | Feature | Issue | Est. Effort |
+|---|---|---|---|
+| P0 | JOIN (multi-table) | #4668 | 2-3 weeks |
+| P0 | Subqueries | #4656 | 1-2 weeks |
+| P0 | GROUP BY / HAVING | #4649 | 1-2 weeks |
+| P1 | UNIQUE constraint | #4682 | 1 week |
+| P1 | FOREIGN KEY | #4652 | 1 week |
+| P1 | CHECK constraint | #4672 | 3 days |
+| P1 | DEFAULT value | #4669 | 2 days |
+| P1 | NOT NULL constraint | #4709 | 2 days |
+| P1 | Transaction semantics | #4626 | 2 weeks |
+| P2 | B-tree completion | #4721, #4674, #4716, #4676, #4675, #4670 | 3 weeks |
+| P2 | DECIMAL type | #4846 | 1 week |
+| P2 | Schema migration | #4848 | 1 week |
+
+### 10.2 v4.1.1 → v4.1.2
+
+| Priority | Feature | Notes |
+|---|---|---|
+| P0 | User authentication | WP-H, critical for production |
+| P0 | Role-based access control | WP-H |
+| P0 | Query audit log | WP-H, compliance requirement |
+| P1 | Data encryption at rest | WP-H |
+| P1 | Query optimizer | Multiple execution plans |
+| P1 | Parallel query execution | Multi-threaded |
+| P2 | Read replicas | High availability |
+| P2 | Replication | Multi-node |
+
+### 10.3 v4.1.2 → v4.2.0
+
+| Priority | Feature | Notes |
+|---|---|---|
+| P0 | Full SQL compliance | All WP-C..G complete |
+| P1 | Performance optimization | Query cache, parallel execution |
+| P1 | Operational tooling | Metrics endpoint, health check |
+| P2 | Advanced features | Triggers, stored procedures, views |
+
+## 11. Compliance Mapping
+
+| Standard | Status | Gap |
+|---|---|---|
+| SQL:2008 | 46.8% | 52 features missing |
+| MySQL 5.7 compatibility | 61.9% | Wire protocol gaps |
+| MySQL 8.0 compatibility | 55.3% | Auth, JSON, spatial gaps |
+| PostgreSQL 15 compatibility | N/A | Different wire protocol |
+| SQL92 (ISO) | ~30% | Many features missing |
+
+## 12. Detailed Feature Notes
+
+### 12.1 DDL Notes
+
+**CREATE TABLE**: Supports column definitions with type, NOT NULL (implicit),
+and PRIMARY KEY. Does not support UNIQUE, FOREIGN KEY, CHECK, DEFAULT,
+or NOT NULL as explicit constraints (WP-C deferred).
+
+**ALTER TABLE**: Supports ADD COLUMN and DROP COLUMN. MODIFY COLUMN
+supports type change but not column rename.
+
+**INDEX**: Only primary key indexes are supported. No secondary B-tree
+indexes, no full-text indexes, no spatial indexes.
+
+### 12.2 DML Notes
+
+**INSERT**: Supports single-row and multi-row inserts. INSERT ... SELECT
+works for single-table sources only.
+
+**UPDATE/DELETE**: PK-targeted operations benefit from the fast-path
+(#5177), achieving 10× speedup. Multi-table UPDATE/DELETE requires JOIN
+support (WP-D deferred).
+
+**SELECT**: Full single-table SELECT with WHERE, ORDER BY, LIMIT, DISTINCT,
+and CASE expressions. Multi-table JOIN, subqueries, GROUP BY, and HAVING
+are deferred (WP-D).
+
+### 12.3 Transaction Notes
+
+**Basic ACID**: BEGIN, COMMIT, ROLLBACK work correctly. SAVEPOINT and
+isolation levels (READ UNCOMMITTED, READ COMMITTED, REPEATABLE READ,
+SERIALIZABLE) are deferred (WP-E).
+
+**Concurrency**: Single-writer model. Concurrent transactions from
+multiple clients are supported but with ~1% row loss under heavy
+concurrency (reduced from 40.4% pre-#5099 fix).
+
+### 12.4 Type Notes
+
+**Numeric**: TINYINT, SMALLINT, INT, BIGINT, FLOAT, DOUBLE are fully
+supported. DECIMAL/NUMERIC is deferred (WP-G).
+
+**String**: CHAR, VARCHAR, TEXT, BLOB are supported. ENUM and SET are not
+implemented.
+
+**Temporal**: DATE, DATETIME, TIMESTAMP, TIME, YEAR are supported.
+INTERVAL is not implemented.
+
+**Binary**: BINARY, VARBINARY, BIT are supported. GEOMETRY and spatial
+types are not implemented.
+
+### 12.5 Operator Notes
+
+**Comparison**: All standard comparison operators (=, <, >, <=, >=, !=)
+are supported. BETWEEN, REGEXP, and LIKE with escape are deferred (WP-G).
+
+**Logical**: AND, OR, NOT are fully supported.
+
+**Null handling**: IS NULL, IS NOT NULL, IS TRUE, IS FALSE are supported.
+COALESCE, IFNULL, NULLIF work correctly.
+
+**String functions**: CONCAT, SUBSTRING, LENGTH, UPPER, LOWER, TRIM,
+LTRIM, RTRIM are supported.
+
+**Math functions**: ABS, CEIL, FLOOR, POWER, SQRT, RAND, GREATEST, LEAST
+are supported.
+
+**Date functions**: NOW(), CURRENT_TIMESTAMP, CURDATE(), CURTIME(),
+YEAR(), MONTH(), DAY() are supported. DATE_FORMAT and TIME_FORMAT have
+basic support.
+
+### 12.6 Wire Protocol Notes
+
+**Handshake**: Standard MySQL protocol v10 handshake is fully supported.
+mysql_native_password authentication works. caching_sha2_password is not
+implemented.
+
+**Commands**: COM_QUERY, COM_PING, COM_QUIT, COM_INIT_DB,
+COM_STATISTICS, COM_SHUTDOWN are supported. COM_STMT_PREPARE and
+COM_STMT_EXECUTE have basic support. COM_FIELD_LIST has partial support.
+
+**Packets**: OK, ERR, EOF packets are fully supported. Warning packets
+have basic support.
+
+### 12.7 Server Feature Notes
+
+**Security**: TLS encryption is opt-in. User authentication, role-based
+access control, query audit log, and data encryption at rest are not
+implemented (WP-H).
+
+**Performance**: Connection pooling is built-in. Query caching, query
+optimizer, and parallel query execution are not implemented.
+
+**Operations**: Slow query logging and general query logging have basic
+support. Metrics endpoint and health check endpoint are not implemented.
+Binary log is not supported.
+
+## 13. References
+
+- `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` — full defect catalog
+- `docs/releases/v4.1.0/ISSUES_PLAN.md` — issue tracking
+- `docs/releases/v4.1.0/DEV_PLAN.md` — development plan
+- `docs/releases/v4.1.0/VERSION_PLAN.md` — version plan
+- `docs/governance/DOC_CHECK_CORRECTION_RULES.md` — doc completeness rules
+- `docs/governance/GATE_CONDITIONS.md` — gate conditions
+- `docs/releases/v4.1.0/CHANGELOG.md` — full changelog

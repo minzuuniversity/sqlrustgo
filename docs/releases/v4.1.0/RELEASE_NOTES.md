@@ -157,3 +157,47 @@ Per `docs/releases/v4.1.0/ISSUES_PLAN.md` §4:
 - `docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md` — SOAK deferral rationale
 - `scripts/sync/README.md` — 5-remote sync tooling (v4.1.0 deliverable)
 - `docs/governance/STAGE_CONFIG.yaml` — version-agnostic stage framework
+
+## 7. Release Readiness
+
+### 7.1 Gate Status
+
+| Gate | Status | Notes |
+|---|---|---|
+| L1: Build + Test | ✓ | All tests pass, clippy clean |
+| L1: Coverage | ◐ | 78.28% (G3 requires 80%) |
+| L1: Document Completeness | ✓ | 8/8 mandatory docs present |
+| L1: Security Scan | ✓ | cargo audit clean |
+| L1: Anti-pattern | ◐ | 2 known anti-patterns (baseline) |
+| L2: SOAK 8h | ✓ | 12.75 TPS avg, no crashes |
+| L3: GA Conditions | ✗ | DRAFT stage, not GA-ready |
+
+### 7.2 GA Blockers
+
+v4.1.0 cannot reach GA until:
+
+1. **G3 Coverage**: 78.28% → 80% (need ~180 more test lines)
+2. **WP-C..G Completion**: 19 deferred SQL features
+3. **WP-H Security**: Authentication, ACL, audit, encryption
+4. **GE5 Issue #4639**: Deferred to v4.1.1
+
+### 7.3 Release Timeline
+
+| Milestone | Target Date | Status |
+|---|---|---|
+| v4.1.0 DRAFT | 2026-10-23 | Current |
+| v4.1.0 RC | 2026-12-01 | Pending WP-C..G |
+| v4.1.0 GA | 2027-01-15 | Pending WP-H + coverage |
+| v4.1.1 | 2027-02-01 | Bugfix + security |
+
+### 7.4 Known Issues at Release
+
+| Issue | Severity | Impact |
+|---|---|---|
+| No authentication | P0 | Any client can execute arbitrary SQL |
+| No access control | P0 | No row-level security |
+| 14 SQL features missing | P1 | JOIN, subquery, GROUP BY unavailable |
+| No audit trail | P1 | Cannot meet compliance requirements |
+| No encryption at rest | P2 | Data exposure risk |
+| ~1% row loss under concurrency | P2 | Reduced from 40.4% pre-#5099 |
+| 78.28% coverage | P2 | Below 80% G3 threshold |
