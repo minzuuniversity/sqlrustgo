@@ -235,18 +235,20 @@ Only things the repository records as passing are listed here.
 **"No P0 bugs open"**. `STAGE.yaml` → `open_issues` now carries **no P0 entry at
 all** — P0-08 was closed on 2026-10-23, leaving only P1-02. But the criterion is
 **still NOT MET**, because the authoritative defect catalogue
-(`DEFECTS_AND_ISSUES.md` §0) still carries **4 P0 entries that are not CLOSED**:
+(`DEFECTS_AND_ISSUES.md` §0) still carries **2 P0 entries that are not CLOSED**:
 
 | P0 | Verdict in the catalogue | Why it is still not CLOSED |
 |---|---|---|
 | P0-03 | `REVOKED` | a **state** (v4.0.0's GA was revoked), not a fixable defect — it needs a decision, not a patch |
 | P0-04 | `OPEN` | 5-remote `develop/v4.1.0` drift; the drift gate reports but does not block |
-| P0-06 | `CONTRADICTORY_STATE` | `historical-backlog-disposition.yml` has 6 entries that are both `CLOSED` and `deferred` |
-| P0-07 | `OPEN` | `.gitignore` anchoring — the code fix is in the tree, but the item was never re-verified and closed |
 
-Closing P0-08 removed the last P0 from the stage's **own** issue list; it did
-not empty the catalogue. (P0-01, P0-02, P0-05 and P0-08 were closed on
-2026-10-23 — see §5.2.)
+The 2026-10-23 batch closed the other six: P0-01, P0-02, P0-05 and P0-08 on
+measured evidence, and **P0-06 and P0-07 on re-verification** — in both cases the
+defect report's own premise turned out to be wrong (P0-06: the two fields are on
+different axes and the pairing it flagged occurs 14 times elsewhere in the same
+file; P0-07: the fix was already in the tree and `git check-ignore` now returns
+"not ignored"). Closing P0-08 removed the last P0 from the stage's **own** issue
+list; P0-06 and P0-07 removed two more from the catalogue. (See §5.2.)
 
 ### 4.2 Other recorded failures
 
@@ -351,7 +353,7 @@ and in `STAGE.yaml` → `resolved_issues_2026_10_23`.
 | D2 | Parser coverage | 60.58 % (`DEFECTS_AND_ISSUES.md` P1-01, 2026-10-01) | 86.20 % (`evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md`, 2026-10-07; `STAGE.yaml` COV-01 `DONE`); **86.46 %** (2026-10-23, macmini M4, full 8-crate run of the corrected gate — `evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1.3) | **Partly resolved.** The 2026-10-23 measurement supersedes the 2026-10-01 one: it was taken with `--test-threads=1` (pinned 2026-10-22 by #5537), and two consecutive runs of the same crate now agree exactly. The 60.58 % figure was taken under the old load-sensitive measurement and is not reproducible. The **region-vs-line scope** difference behind the original discrepancy is not adjudicated here |
 | D3 | ALPHA coverage threshold | 50 % (`docs/governance/STAGE_CONFIG.yaml` `COVERAGE_MIN_ALPHA`; `STAGE.yaml` `exit_criteria.alpha_to_beta`) | 80 % (`DEFECTS_AND_ISSUES.md` P1-01; `ARCHITECTURE.md` §1) | 80 % is the **Beta** figure (`COVERAGE_MIN_BETA: 75`; `ALPHA_TO_BETA_GATE_PLAN.md` §2 applies the stricter G17 Beta 80 %) — a governance inconsistency to reconcile, not a measurement dispute |
 | D4 | #5167 | `refuted` (`IAIA_410_AUDIT_PLAN.md` §16.1/§16.2, baseline `5a59c2f701`, `--storage file`, real pymysql client, SQLite oracle) | still reproducible (`CHANGELOG.md` SOAK-evidence bullet, HEAD `345ee9539c`, `--storage file`; the audit's new regression tests used `storage: None`) | Unresolved. The changelog's supporting evidence is filed as comments on #5167 and three audit PRs — **not in this repository**. The audit plan's own §16.5 checklist leaves "#5167 closed as `refuted`" unchecked pending a `--storage file` regression test |
-| D5 | Defect counts | P0 × 8 / P1 × 7 / P2 × 7 = 22 (`DEFECTS_AND_ISSUES.md` §0, as counted 2026-10-01) | P0×6 + P1×7 + P2×7 (`RELEASE_NOTES.md`; `ARCHITECTURE.md` §4) | Unresolved wording conflict — **and a third reading now exists**: after the 2026-10-23 closures (P0-01, P0-02, P0-05, P0-08, P1-01) the still-open count is P0 × 4 / P1 × 6 / P2 × 7 = **17** (`DEFECTS_AND_ISSUES.md` §0, updated). The four P0 entries that are not CLOSED are P0-03 (`REVOKED`), P0-04 (`OPEN`), P0-06 (`CONTRADICTORY_STATE`) and P0-07 (`OPEN`) |
+| D5 | Defect counts | P0 × 8 / P1 × 7 / P2 × 7 = 22 (`DEFECTS_AND_ISSUES.md` §0, as counted 2026-10-01) | P0×6 + P1×7 + P2×7 (`RELEASE_NOTES.md`; `ARCHITECTURE.md` §4) | Unresolved wording conflict — **and a third reading now exists**: after the 2026-10-23 closures (P0-01, P0-02, P0-05, P0-06, P0-07, P0-08, P1-01) the still-open count is P0 × 2 / P1 × 6 / P2 × 7 = **15** (`DEFECTS_AND_ISSUES.md` §0, updated). The two P0 entries that are not CLOSED are P0-03 (`REVOKED` — a state, not a defect) and P0-04 (`OPEN` — 5-remote drift) |
 | D6 | WP-A | `docs/releases/v4.1.0/LEGACY_ISSUES.md` §2 records WP-A as `DONE` — "None (inherited DONE)" | `STAGE.yaml` → `legacy_chain_audit_2026_09_30.false_done_wp_a`: `DONE_REOPENED_2026-09-30`, #4708 `NOT FIXED` | `STAGE.yaml` is newer; `LEGACY_ISSUES.md` is stale |
 | D7 | 5-remote drift | `DEFECTS_AND_ISSUES.md` P0-04 (2026-10-01): `develop/v4.1.0` inconsistent across the 5 remotes (gitea250/gitee ahead 15, github behind 34) | `STAGE.yaml` → `last_status_refresh` (2026-10-03): `develop/v4.1.0` 5/5 remotes identical at `d59dbffd` | Two dated records; not merged here |
 | D8 | Backlog count | 24 (`ISSUES_PLAN.md` §4.7 `Total`; `VERSION_PLAN.md` §1) | 20 — the earlier figure retained inside `ISSUES_PLAN.md` §4 as a superseded correction note (18 → 20 → 24) | 24 is current; 20 is retained history |

@@ -574,9 +574,10 @@ the **24-issue** backlog in `ISSUES_PLAN.md` §4.
 `RELEASE_NOTES.md` and `ARCHITECTURE.md` both quote **"P0×6 + P1×7 + P2×7"**.
 [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) §3 item 9 records the disagreement
 and deliberately does not pick one. After the 2026-10-23 closures (P0-01,
-P0-02, P0-05, **P0-08**, P1-01) the still-open count is
-**P0 × 4 / P1 × 6 / P2 × 7 = 17** (`DEFECTS_AND_ISSUES.md` §0, updated).
-Either way, P0 blocks any release, and four are still open.
+P0-02, P0-05, P0-06, P0-07, **P0-08**, P1-01) the still-open count is
+**P0 × 2 / P1 × 6 / P2 × 7 = 15** (`DEFECTS_AND_ISSUES.md` §0, updated).
+Either way, P0 blocks any release, and two are still open (P0-03 is a
+`REVOKED` state rather than a fixable defect).
 
 **Parser coverage — four figures coexist, and the threshold is disputed too.**
 

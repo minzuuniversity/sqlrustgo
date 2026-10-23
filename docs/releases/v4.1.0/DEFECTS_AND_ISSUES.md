@@ -16,17 +16,17 @@
 ## 0. 摘要
 
 > **计数更新（2026-10-23）**：本表原始计数来自 2026-10-01 的那次审计。此后
-> **P0-01 / P0-02 / P0-05 / P0-08 / P1-01 已销账**（各条目的 verdict 段给出实测依据与
-> 证据文件），未销账的 P0 由 8 条降到 **4** 条，P1 由 7 条降到 **6** 条。
+> **P0-01 / P0-02 / P0-05 / P0-06 / P0-07 / P0-08 / P1-01 已销账**（各条目的 verdict
+> 段给出实测依据与证据文件），未销账的 P0 由 8 条降到 **2** 条，P1 由 7 条降到 **6** 条。
 > 证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`、
 > `docs/releases/v4.1.0/evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`。
 
 | 优先级 | 项数（2026-10-01 原始） | 仍未销账（2026-10-23） | 主要类别 |
 |---|---|---|---|
-| **P0** 阻断任何 release | **8** | **4** | 门禁空转、#4708 假 DONE、v4.0.0 GA 撤销、5 远端漂移、debt-registry 残留占位符、YAML 自相矛盾、.gitignore 静默屏蔽新 release 文档 |
+| **P0** 阻断任何 release | **8** | **2** | v4.0.0 GA 撤销（`REVOKED`，是状态不是缺陷）、5 远端漂移 |
 | **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、WP-A RE-OPENED + 20 条 backlog、crate 状态描述错误、G13 门禁红 |
 | **P2** 不阻断但需记录 | **7** | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
-| **合计** | **22** | **17** | |
+| **合计** | **22** | **15** | |
 
 **性能状态**：A1/B2 A/B 实测已落地 (见 `PERF_A1_4912_AB_MEASUREMENT.md` /
 `PERF_B2_4915_AB_MEASUREMENT.md`)，B2.1 在 22x-39x 范围，但发现一处 regression
@@ -169,9 +169,37 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-06 `historical-backlog-disposition.yml` 6 条 `CLOSED`+`deferred` 自相矛盾
 
-- **verdict**: `CONTRADICTORY_STATE`
+- **verdict**: `CLOSED` (2026-10-23) —— **原报告的前提被实测推翻**
+- **销账依据**: 这 6 条**不是矛盾**，而是两个字段在**不同的轴**上；而且那 6 条
+  `current_state: CLOSED` 本身**事实正确**。实测：
+  - **同一个文件里 `current_state: CLOSED` + `disposition: superseded` 出现
+    14 次**（B-SHOW、B-TXN-ROUTING、INT-2、V390-SPRINT8-Q8/Q21、ISSUE-3399、
+    GA-COVERAGE-80、P1-3-SOAK-TEST、P2-1-MULTI-THREAD、TPCH-SF1-BASELINE、
+    G1-TPCH-BASELINE、UNIGNORE-14-LONG-STABILITY、admin、vector）
+    ⇒ 这个组合是**系统性的写法**，不是这 6 条的个别错误；
+  - 文件头自己定义了语义：`disposition ∈ {closed, superseded, carried,
+    deferred, retired}` 是**历史处置**（冻结，计数器 tally 的是它），
+    `current_state` 是**事由的当前状态**；
+  - 计数器自洽：`closed 55 + superseded 15 + deferred 11 + carried 0 +
+    retired 8 = 89`；
+  - 既无 `disposition` 也无 `current_state` 的 6 条是 `open_questions`
+    （Q1..Q6），**另一个 section**，本来就不在 89 的 tally 里；
+  - 那 6 条占位符的 `current_state: CLOSED` **事实正确**（其 `notes` 说的是
+    v3.12.0 当时的占位状态，事由此后由别的工作关闭了）：
+    **DEALLOCATE** 端到端支持（`crates/parser/src/token.rs:487`、
+    `lexer.rs:505`、`parser.rs:3109`）；test-inventory 门禁在
+    （`scripts/gate/check_test_inventory.sh`）；TPC-H CLI harness 在
+    （`scripts/gen_tpch`、`scripts/load_tpch_data.sh`）。
+- **做了什么**: `docs/releases/v3.12.0/historical-backlog-disposition.yml` 的文件头
+  增加 **TWO AXES** 说明段：写清两个字段各自的含义、14 次 `superseded`+`CLOSED`
+  组合是正常写法、`open_questions` 不在 tally 里、以及那 6 条占位符的复核结果。
+  **数据本身一个字节未改**（历史处置是冻结事实，不该被"跟随"改写）。
+- **原「修复方向」为什么没采纳**: 原文写「选定权威字段 (current_state 或
+  disposition)，另一字段跟随」。若照做，会把**历史处置**改写成当前状态
+  —— 那是在改写历史，而且会破坏计数器口径。实测证明两个字段本来就不冲突，
+  所以正确修法是**把语义写清楚**，不是改数据。
 - **位置**: `docs/releases/v3.12.0/historical-backlog-disposition.yml`
-- **冲突条目** (6 条)：
+- **原「冲突条目」** (6 条)：
   | ID | current_state | disposition |
   |---|---|---|
   | FIX-GATE-TEST-INVENTORY | CLOSED | deferred |
@@ -180,18 +208,33 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
   | FIX-GATE-ARCH-CARCH05 | CLOSED | deferred |
   | FIX-P3-1-DEALLOCATE | CLOSED | deferred |
   | FIX-G1-TPCH-CLI | CLOSED | deferred |
-- **影响**: 同一文件的 `current_state` 与 `disposition` 字段互相否定，无法用作 SSOT
-- **交叉**：这 6 条**与 C8 门禁债完全重合**（详见 P1-04）—— E 组文档矛盾与
+- **影响（原判）**: 同一文件的 `current_state` 与 `disposition` 字段互相否定，
+  无法用作 SSOT —— **实测不成立**（见上）。文件本身作为 v3.6–v3.10 的历史处置
+  台账是自洽的。
+- **交叉**: 这 6 条**与 C8 门禁债完全重合**（详见 P1-04）—— E 组文档矛盾与
   C 组门禁债实为同一缺陷，不应分别计数
-- **修复方向**: 选定权威字段 (current_state 或 disposition)，另一字段跟随
 
 ### P0-07 `.gitignore` 第 351 行 `releases/` 未锚定，**静默屏蔽 `docs/releases/` 下所有新增文件**
 
-- **verdict**: `OPEN`（2026-10-01 已在本 PR 内修复为 `/releases/`，但治理意义上仍 OPEN
-  直至 review 通过）
-- **位置**: `.gitignore:351` 原 `releases/`（unanchored），现 `/releases/`（anchored）
+- **verdict**: `CLOSED` (2026-10-23) —— **复核通过**（修复早已在树里，只是从未复核关单）
+- **销账依据**: 2026-10-23 实测复核，两条命令：
+  ```
+  $ git check-ignore -v docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md
+  (无输出)
+  $ echo $?
+  1
+  ```
+  `git check-ignore` 对该路径**不匹配任何规则**（rc=1）⇒
+  `docs/releases/v4.1.0/` 下的新文件**不再被静默屏蔽**。
+  `.gitignore` 里现在只剩**一条** `releases/` 规则，且是锚定的：
+  ```
+  127:/releases/  # repo-root release artifacts; docs/releases/ intentionally tracked
+  ```
+  原来第 351 行那条**未锚定**的 `releases/` 已**整条删除**（不是改成锚定形式），
+  所以「同一个模式写两遍、其中一遍漏锚定」这个坑本身不再存在。
+- **位置**: `.gitignore`（原 351 行，现只有 127 行一条）
 - **机制**:
-  - `.gitignore:122` 已正确锚定为 `/releases/`（带前导斜杠，**仅匹配仓库根的
+  - `.gitignore:122`（现 127）已正确锚定为 `/releases/`（带前导斜杠，**仅匹配仓库根的
     `releases/` 目录**——该目录存在且确需忽略）
   - `.gitignore:351` 原 `releases/`（无锚定），会被 git 解释为"匹配任意路径中
     含 `releases/` 的目录"，**包括 `docs/releases/v4.1.0/` 等所有版本文档目录**
@@ -199,7 +242,7 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
     > "Without the anchor this pattern also ignored every NEW file under
     > docs/releases/ (1828 files there are tracked, so the rule silently
     > blocked new release documentation)."
-- **可重现性**: 实测
+- **原「可重现性」**（2026-10-01 的状态）:
   ```
   $ git check-ignore -v docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md
   .gitignore:351:releases/  docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md
@@ -211,9 +254,9 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
   - 已经 tracked 的文件不受影响（git 不会 untrack 已跟踪文件除非重新 add）
   - 这意味着 v4.1.0 / v4.2.0 / 未来的 release 文档若依赖 `git add` 走默认
     流程，将**全部静默丢失**——只有 PR review 阶段才发现
-- **修复**: 把 `.gitignore:351` 的 `releases/` 改为 `/releases/`（与 line 122 一致）
-- **本 PR 已应用此修复**：line 351 现为 `/releases/  # anchored duplicate of line 122;
-  was unanchored ... (bug fixed 2026-10-01)`
+- **修复**: 删除 `.gitignore:351` 的未锚定 `releases/`（与 line 122/127 的
+  `/releases/` 重复且漏锚定）
+- **修复已在树里**（本批只做复核与关单，未再改 `.gitignore`）
 
 ### P0-08 WAL 恢复逐条整表重写，重启 24 分钟不可用
 
