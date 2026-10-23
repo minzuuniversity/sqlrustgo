@@ -26,7 +26,7 @@
 //! Cases 3 and 4 are the ones a stale index would get wrong, and getting
 //! them wrong loses committed data.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use sqlrustgo_storage::engine::{ColumnDefinition, TableData, TableInfo};
 use sqlrustgo_storage::file_storage::FileStorage;
@@ -122,8 +122,8 @@ fn delete_entry(lsn: u64, id: i64) -> WalEntry {
     }
 }
 
-fn storage_with_table(dir: &PathBuf) -> FileStorage {
-    let storage = FileStorage::new(dir.clone()).unwrap();
+fn storage_with_table(dir: &Path) -> FileStorage {
+    let storage = FileStorage::new(dir.to_path_buf()).unwrap();
     storage
         .insert_table(
             "t".into(),
@@ -150,7 +150,9 @@ fn p0_08_row_already_in_the_table_is_not_duplicated() {
     let mut storage = storage_with_table(&dir);
 
     // The base backup's row.
-    storage.force_insert_in_db("default", "t", row(1, 10)).unwrap();
+    storage
+        .force_insert_in_db("default", "t", row(1, 10))
+        .unwrap();
     assert_eq!(rows_of(&storage).len(), 1);
 
     let mut wal = MemoryWalManager::new();
@@ -270,7 +272,8 @@ fn p0_08_distinct_rows_are_all_applied() {
 
     let mut wal = MemoryWalManager::new();
     for i in 0..25i64 {
-        wal.append(insert_entry(i as u64 + 1, &row(i, i * 2))).unwrap();
+        wal.append(insert_entry(i as u64 + 1, &row(i, i * 2)))
+            .unwrap();
     }
 
     let mut engine = RecoveryEngineImpl;

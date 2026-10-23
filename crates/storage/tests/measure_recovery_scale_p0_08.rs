@@ -190,9 +190,7 @@ fn measure_recovery_write_cost_p0_08() {
 
     let start = Instant::now();
     for i in 0..n {
-        storage
-            .force_insert_in_db("default", "t", row(i))
-            .unwrap();
+        storage.force_insert_in_db("default", "t", row(i)).unwrap();
     }
     let elapsed = start.elapsed();
     let per_row_us = elapsed.as_secs_f64() * 1e6 / n as f64;
@@ -281,7 +279,8 @@ fn measure_recovery_wal_replay_p0_08() {
         per_row_us * 58_288.0 / 1e6
     );
     assert_eq!(
-        rows.len() as u64, n,
+        rows.len() as u64,
+        n,
         "every replayed row must be in the table"
     );
 
