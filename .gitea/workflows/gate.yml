@@ -10,6 +10,13 @@ on:
       - develop/v4.0.0
       - develop/v4.1.0
       - "develop/v4.*"
+      # #5570: GA 的承载分支（`STAGE_CONFIG.yaml` 的
+      # `stages.GA.branch_pattern` = ["main", "release/v*", "hotfix/v*"]）
+      # 原本**不在**本 workflow 的触发器里 ⇒ 一旦把 `release/v4.1.0` 切成
+      # GA 承载分支，那条分支上**一条门禁都不会跑**：GA 判据里的「CI 全绿」
+      # 将没有任何证据可依（只有一条 0 job 的空壳 run 记录）。
+      - "release/v*"
+      - "hotfix/v*"
   pull_request:
     branches:
       - develop
@@ -17,6 +24,13 @@ on:
       - develop/v4.0.0
       - develop/v4.1.0
       - "develop/v4.*"
+      # #5570: GA 的承载分支（`STAGE_CONFIG.yaml` 的
+      # `stages.GA.branch_pattern` = ["main", "release/v*", "hotfix/v*"]）
+      # 原本**不在**本 workflow 的触发器里 ⇒ 一旦把 `release/v4.1.0` 切成
+      # GA 承载分支，那条分支上**一条门禁都不会跑**：GA 判据里的「CI 全绿」
+      # 将没有任何证据可依（只有一条 0 job 的空壳 run 记录）。
+      - "release/v*"
+      - "hotfix/v*"
 
 concurrency:
   # #5550 — this workflow has its **own** group, separate from `ci.yml`'s
