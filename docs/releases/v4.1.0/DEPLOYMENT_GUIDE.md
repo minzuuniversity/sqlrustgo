@@ -391,10 +391,8 @@ back up with acknowledged writes missing.
 
 ### 5.4 Replay cost — plan restarts accordingly
 
-WAL recovery replays entries one at a time, rewriting the whole table per
-entry (`save_table_full` is called per record; the delta-append path is
-never reached). This is registered as an open defect, **P0-08** in
-[`DEFECTS_AND_ISSUES.md`](DEFECTS_AND_ISSUES.md): *"WAL recovery 逐条整表重写,
+WAL recovery replays entries one at a time. This was registered as a defect,
+**P0-08** in [`DEFECTS_AND_ISSUES.md`](DEFECTS_AND_ISSUES.md): *"WAL recovery 逐条整表重写,
 重启 24 分钟不可用"*.
 
 The measured instance behind that headline: the first full-table query after
@@ -403,8 +401,22 @@ a restart took **24 min 22 s** at 68 288 rows / 58 288 INSERTs / 8.0 MB WAL
 completes **before** the listener accepts connections, so this is a hard
 startup outage, and no historical SOAK covered it.
 
-A large WAL therefore implies a long restart. Measure it on your own data
-before scheduling a restart window.
+**Two corrections, both from measurement (2026-10-23):**
+
+1. The quadratic term was **not** the write path. The write path was already
+   taking the delta-append branch — the base snapshot stays at the 650-byte
+   schema while `t.delta` carries every row — and its per-row cost is
+   constant. The quadratic term was the **per-entry dedup scan**: every
+   replayed row paid a full-table scan *and* a full-table clone to ask "is
+   this row already there?". That term is now an index lookup, so the replay
+   cost is linear in the number of WAL entries (≈ 21× faster extrapolated to
+   58 288 entries).
+2. What did **not** change: recovery still runs **before** the listener, and
+   each replayed row still costs one delta fsync (a constant ≈ 86 µs/row).
+
+A large WAL therefore still implies a restart window — but one proportional to
+the WAL, not to the square of it. Measure it on your own data before scheduling
+a restart window.
 
 ---
 
@@ -699,7 +711,7 @@ a logical, schema-shaped artifact rather than as the sole restore point.
 | Connections accumulate in `CLOSE_WAIT` | The idle reaper did not run, or the idle timeout is too long | `SQLRUSTGO_IDLE_TIMEOUT_SECS` (default 30) and `SQLRUSTGO_REAPER_INTERVAL_SECS` (default 5) |
 | Workers peg the CPU at ~100% each with no traffic | The TLS read-path spin (#5099) — **recorded as fixed** in this line | Confirm you are on a build that includes the fix; the fix distinguishes "no data" (`Ok(0)`) from a half-read header via `complete_io`'s `rdlen` |
 | A `SELECT` returns 0 rows for a non-default database | The handshake-selected database was not synchronised with `engine.session_db` — #5191 | Recorded in this line's audit as a semantic-degradation finding; see [`DEFECTS_AND_ISSUES.md`](DEFECTS_AND_ISSUES.md) |
-| A restart takes a very long time | WAL recovery replays entry-by-entry, rewriting the whole table each time (P0-08) | Schedule a generous restart window; measure on your own data |
+| A restart takes a very long time | WAL recovery replays entry-by-entry before the listener opens; the quadratic per-entry scan was removed in v4.1.0 (P0-08), but recovery still precedes the listener | Schedule a generous restart window; measure on your own data |
 
 ---
 

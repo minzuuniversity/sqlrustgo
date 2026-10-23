@@ -434,10 +434,11 @@ Every entry names the document it was read from.
 ### 8.1 The seven open issues registered in the stage SSOT
 
 `docs/releases/v4.1.0/STAGE.yaml` → `open_issues` carried seven entries.
-**None of them was closed by anything in §7** — but **five were closed on
+**None of them was closed by anything in §7** — but **six were closed on
 2026-10-23**, outside this section. The closures are recorded in
 [`evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`](evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md)
-and in `STAGE.yaml` → `resolved_issues_2026_10_23`; **two remain open.**
+and [`evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`](evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md),
+and in `STAGE.yaml` → `resolved_issues_2026_10_23`; **one remains open.**
 
 | # | Registered open issue | Status as of 2026-10-23 |
 |---|---|---|
@@ -447,7 +448,7 @@ and in `STAGE.yaml` → `resolved_issues_2026_10_23`; **two remain open.**
 | 4 | P0-05 — the recorded root cause for the debt-registry SEM-4 entry is still the literal placeholder `XYZ`, and the parser figure of 75.16 % recorded there is not reproducible (60.58 % measured) | **RESOLVED** — `SEM-4` is `CLOSED` (`closed_at: "2026-10-23"`, `closing_pr: [5126, 5537]`) with a measured root cause: the coverage had been taken with parallel test threads, so the reading depended on machine load. Measured: 8/8 crates, L1_8 **87.80 %**, `parser 86.46 %` |
 | 5 | P1-01 — parser line coverage measured 60.58 % against the ALPHA threshold of 80 %, a gap of 19.42 pp; the coverage gate fails open when its extraction at `scripts/gate/check_coverage_v312.sh:30` cannot proceed | **RESOLVED** for the fail-open: a crate that cannot be measured now fails the gate (`check_coverage_v312.sh:315-349`), and the measured parser figure is **86.46 %** (L1_8 87.80 %), not 60.58 %. The threshold itself remains the stage framework's call |
 | 6 | P1-02 — the #4540 Q20 oracle is not closed: the Q20 file is missing and the cross-engine hash check records it as absent, contradicting the "Q20 PASS" line in the v3.12.0 TPC-H report | **OPEN** — `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` |
-| 7 | P0-08 — WAL recovery rewrites the whole table row by row: measured, the first full-table query after a restart took 24 min 22 s (the immediately following identical query took 0.08 s) under 68,288 rows / 58,288 inserts / 8.0 MB of WAL, with the delta-append path never reached; recovery completes before the listener, so the server is hard-unavailable during startup, and no historical SOAK covered it because the harness never restarts mid-run | **OPEN** — `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` and `docs/releases/v4.1.0/ISSUE-RECOVERY-QUADRATIC-REPLAY.md` |
+| 7 | P0-08 — WAL recovery rewrites the whole table row by row: measured, the first full-table query after a restart took 24 min 22 s (the immediately following identical query took 0.08 s) under 68,288 rows / 58,288 inserts / 8.0 MB of WAL, with the delta-append path never reached; recovery completes before the listener, so the server is hard-unavailable during startup, and no historical SOAK covered it because the harness never restarts mid-run | **RESOLVED** — and the report's **attribution was corrected by measurement**: the write path was already taking the delta-append branch (the base snapshot stays at the 650-byte schema while `t.delta` carries every row) and its per-row cost is **constant** (96.4 / 85.8 / 86.4 µs/row at 500 / 2,000 / 8,000 rows), so `save_table_full` was never called per record. The real quadratic term was the **per-entry dedup scan**, which cloned the whole table to ask "is this row already there?" (63.9 → 247.9 → 896.4 µs/row). Fixed with a per-table row index: one scan per table, then an O(1) lookup per replayed entry, with `Update`/`Delete` invalidating the affected table's index because a WAL entry carries no old row content. Measured after the fix on the real `RecoveryEngine::recover()`: 210.3 → 224.0 → 372.4 µs/row — 16× the rows costs only 1.8× per row; extrapolated to 58,288 rows ≈ 21.7 s vs ≈ 461 s before (**≈21×**). Semantics pinned by 5/5 PASS, including the two cases a stale index would silently lose committed data on. **Not claimed:** the recovery-before-listener ordering is unchanged, and the per-row delta fsync remains a constant cost. See `docs/releases/v4.1.0/evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md` |
 
 ### 8.2 The 168-hour SOAK (V400-09)
 

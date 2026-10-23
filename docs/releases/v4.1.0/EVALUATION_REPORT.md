@@ -155,7 +155,7 @@ verdict, which is neither PASS nor FAIL.
 | Estimated work to close the backlog | 6–10 weeks | `ISSUES_PLAN.md` §4 (and `PHASE_1_SCOPE.md` §2.2, "6-8 weeks") |
 | Legacy headline | v4.1.0 closes only ~15 % of historical legacy issues | `STAGE.yaml` → `legacy_chain_audit_2026_09_30.headline_finding` |
 | Unresolved document contradictions | 19 | `STAGE.yaml` → `legacy_chain_audit_2026_09_30.doc_contradictions_unresolved` |
-| Open issues registered against the stage | 2 (was 7; five closed 2026-10-23 — see §5.2) | `STAGE.yaml` → `open_issues` / `resolved_issues_2026_10_23` |
+| Open issues registered against the stage | 1 (was 7; six closed 2026-10-23 — see §5.2) | `STAGE.yaml` → `open_issues` / `resolved_issues_2026_10_23` |
 
 ### 2.6 Performance and stability measurements
 
@@ -232,9 +232,21 @@ Only things the repository records as passing are listed here.
 | 5 | Coverage >= 50 % (`COVERAGE_MIN_ALPHA`) | The lowest recorded crate figure is 74.51 %; the later parser figure (86.20 %) and the earlier one (60.58 %) are both also above 50 % | **MET** under every recorded parser figure |
 
 `docs/governance/STAGE_CONFIG.yaml` → `stages.ALPHA.exit_criteria` additionally requires
-**"No P0 bugs open"**. **One** P0 item is still registered open against the stage
-(P0-08, WAL recovery rewrites the whole table per record) → **NOT MET**.
-(P0-01, P0-02 and P0-05 were closed on 2026-10-23 — see §5.2.)
+**"No P0 bugs open"**. `STAGE.yaml` → `open_issues` now carries **no P0 entry at
+all** — P0-08 was closed on 2026-10-23, leaving only P1-02. But the criterion is
+**still NOT MET**, because the authoritative defect catalogue
+(`DEFECTS_AND_ISSUES.md` §0) still carries **4 P0 entries that are not CLOSED**:
+
+| P0 | Verdict in the catalogue | Why it is still not CLOSED |
+|---|---|---|
+| P0-03 | `REVOKED` | a **state** (v4.0.0's GA was revoked), not a fixable defect — it needs a decision, not a patch |
+| P0-04 | `OPEN` | 5-remote `develop/v4.1.0` drift; the drift gate reports but does not block |
+| P0-06 | `CONTRADICTORY_STATE` | `historical-backlog-disposition.yml` has 6 entries that are both `CLOSED` and `deferred` |
+| P0-07 | `OPEN` | `.gitignore` anchoring — the code fix is in the tree, but the item was never re-verified and closed |
+
+Closing P0-08 removed the last P0 from the stage's **own** issue list; it did
+not empty the catalogue. (P0-01, P0-02, P0-05 and P0-08 were closed on
+2026-10-23 — see §5.2.)
 
 ### 4.2 Other recorded failures
 
@@ -295,8 +307,9 @@ Only things the repository records as passing are listed here.
 
 ### 5.2 The seven registered open issues (`STAGE.yaml` → `open_issues`)
 
-Five of the seven were closed on 2026-10-23; the closures are recorded in
+Six of the seven were closed on 2026-10-23; the closures are recorded in
 [`evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`](evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md)
+and [`evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`](evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md),
 and in `STAGE.yaml` → `resolved_issues_2026_10_23`.
 
 | Ref | Gap | Status |
@@ -307,7 +320,7 @@ and in `STAGE.yaml` → `resolved_issues_2026_10_23`.
 | P0-05 | `docs/governance/debt/debt-registry.yaml` SEM-4's closing root cause is still the literal placeholder `XYZ`; the registry's `parser 75.16 %` is not reproducible (measured 60.58 %) | **RESOLVED 2026-10-23** — `SEM-4` is `CLOSED` with a measured root cause; 8/8 crates measured, L1_8 **87.80 %**, `parser 86.46 %` |
 | P1-01 | parser line coverage measured 60.58 %; the threshold named in the same entry is 80 %; `check_coverage_v312.sh:30` fails open | **RESOLVED 2026-10-23** — the gate fails closed on an unmeasurable crate (`check_coverage_v312.sh:315-349`); measured `parser 86.46 %`, L1_8 87.80 %. The threshold itself remains the stage framework's call |
 | P1-02 | #4540 Q20 oracle is not closed — the `sqlrustgo/q20.tsv` oracle is missing (22 files, 1 absent) and the hash record `CROSS_ENGINE_HASH_CHECK.json` reports `present:false`, contradicting the "Q20 PASS" in `docs/releases/v3.12.0/evidence/v312-59/GA5_TPCH_SF1_REPORT.md`. Neither oracle artefact is present in the current tree: `docs/releases/v3.12.0/evidence/tpch/cross_engine_sf1/` holds only `build_cross_engine_summary.py` | **OPEN** |
-| P0-08 | WAL recovery rewrites the whole table per record — the first full-table query after a restart took 24 min 22 s (next identical query: 0.08 s) at 68 288 rows / 58 288 INSERTs / 8.0 MB WAL; recovery completes before the listener accepts connections, and no historical SOAK covered it | **OPEN** |
+| P0-08 | WAL recovery rewrites the whole table per record — the first full-table query after a restart took 24 min 22 s (next identical query: 0.08 s) at 68 288 rows / 58 288 INSERTs / 8.0 MB WAL; recovery completes before the listener accepts connections, and no historical SOAK covered it | **RESOLVED 2026-10-23** — and the report's **attribution was corrected by measurement**: the write path was already taking the delta-append branch and its per-row cost is constant (96.4 / 85.8 / 86.4 µs/row at 500 / 2 000 / 8 000 rows), so `save_table_full` was never called per record. The real quadratic term was the **per-entry dedup scan**, which cloned the whole table to ask "is this row already there?" (63.9 → 247.9 → 896.4 µs/row). Fixed with a per-table `RecoveryRowIndex`: one scan per table, then an O(1) lookup per entry; `Update`/`Delete` invalidate the affected table's index because a WAL entry carries no old row content. Measured after the fix on the real `RecoveryEngine::recover()`: 210.3 → 224.0 → 372.4 µs/row (16× the rows ⇒ 1.8× per row); extrapolated to 58 288 rows ≈ 21.7 s vs ≈ 461 s before (**≈21×**). 5/5 semantic tests pass, including the two cases a stale index would silently **lose committed data** on. `Value`'s `Hash` was brought in line with its `PartialEq` as part of this. **Not claimed:** the recovery-before-listener ordering is unchanged, and the per-row delta fsync remains a constant cost |
 
 ### 5.3 Gaps named by the assessment sources
 
@@ -338,7 +351,7 @@ and in `STAGE.yaml` → `resolved_issues_2026_10_23`.
 | D2 | Parser coverage | 60.58 % (`DEFECTS_AND_ISSUES.md` P1-01, 2026-10-01) | 86.20 % (`evidence/COV_01_02_COVERAGE_GATE_2026-10-07.md`, 2026-10-07; `STAGE.yaml` COV-01 `DONE`); **86.46 %** (2026-10-23, macmini M4, full 8-crate run of the corrected gate — `evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1.3) | **Partly resolved.** The 2026-10-23 measurement supersedes the 2026-10-01 one: it was taken with `--test-threads=1` (pinned 2026-10-22 by #5537), and two consecutive runs of the same crate now agree exactly. The 60.58 % figure was taken under the old load-sensitive measurement and is not reproducible. The **region-vs-line scope** difference behind the original discrepancy is not adjudicated here |
 | D3 | ALPHA coverage threshold | 50 % (`docs/governance/STAGE_CONFIG.yaml` `COVERAGE_MIN_ALPHA`; `STAGE.yaml` `exit_criteria.alpha_to_beta`) | 80 % (`DEFECTS_AND_ISSUES.md` P1-01; `ARCHITECTURE.md` §1) | 80 % is the **Beta** figure (`COVERAGE_MIN_BETA: 75`; `ALPHA_TO_BETA_GATE_PLAN.md` §2 applies the stricter G17 Beta 80 %) — a governance inconsistency to reconcile, not a measurement dispute |
 | D4 | #5167 | `refuted` (`IAIA_410_AUDIT_PLAN.md` §16.1/§16.2, baseline `5a59c2f701`, `--storage file`, real pymysql client, SQLite oracle) | still reproducible (`CHANGELOG.md` SOAK-evidence bullet, HEAD `345ee9539c`, `--storage file`; the audit's new regression tests used `storage: None`) | Unresolved. The changelog's supporting evidence is filed as comments on #5167 and three audit PRs — **not in this repository**. The audit plan's own §16.5 checklist leaves "#5167 closed as `refuted`" unchecked pending a `--storage file` regression test |
-| D5 | Defect counts | P0 × 8 / P1 × 7 / P2 × 7 = 22 (`DEFECTS_AND_ISSUES.md` §0, as counted 2026-10-01) | P0×6 + P1×7 + P2×7 (`RELEASE_NOTES.md`; `ARCHITECTURE.md` §4) | Unresolved wording conflict — **and a third reading now exists**: after the 2026-10-23 closures (P0-01, P0-02, P0-05, P1-01) the still-open count is P0 × 5 / P1 × 6 / P2 × 7 = **18** (`DEFECTS_AND_ISSUES.md` §0, updated) |
+| D5 | Defect counts | P0 × 8 / P1 × 7 / P2 × 7 = 22 (`DEFECTS_AND_ISSUES.md` §0, as counted 2026-10-01) | P0×6 + P1×7 + P2×7 (`RELEASE_NOTES.md`; `ARCHITECTURE.md` §4) | Unresolved wording conflict — **and a third reading now exists**: after the 2026-10-23 closures (P0-01, P0-02, P0-05, P0-08, P1-01) the still-open count is P0 × 4 / P1 × 6 / P2 × 7 = **17** (`DEFECTS_AND_ISSUES.md` §0, updated). The four P0 entries that are not CLOSED are P0-03 (`REVOKED`), P0-04 (`OPEN`), P0-06 (`CONTRADICTORY_STATE`) and P0-07 (`OPEN`) |
 | D6 | WP-A | `docs/releases/v4.1.0/LEGACY_ISSUES.md` §2 records WP-A as `DONE` — "None (inherited DONE)" | `STAGE.yaml` → `legacy_chain_audit_2026_09_30.false_done_wp_a`: `DONE_REOPENED_2026-09-30`, #4708 `NOT FIXED` | `STAGE.yaml` is newer; `LEGACY_ISSUES.md` is stale |
 | D7 | 5-remote drift | `DEFECTS_AND_ISSUES.md` P0-04 (2026-10-01): `develop/v4.1.0` inconsistent across the 5 remotes (gitea250/gitee ahead 15, github behind 34) | `STAGE.yaml` → `last_status_refresh` (2026-10-03): `develop/v4.1.0` 5/5 remotes identical at `d59dbffd` | Two dated records; not merged here |
 | D8 | Backlog count | 24 (`ISSUES_PLAN.md` §4.7 `Total`; `VERSION_PLAN.md` §1) | 20 — the earlier figure retained inside `ISSUES_PLAN.md` §4 as a superseded correction note (18 → 20 → 24) | 24 is current; 20 is retained history |

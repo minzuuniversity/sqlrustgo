@@ -248,15 +248,28 @@ directory off `/tmp` as part of this upgrade**, not later.
 ls -l /var/lib/sqlrustgo/data/sqlrustgo.wal
 ```
 
-WAL recovery replays entries one at a time, rewriting the whole table per
-entry. This is registered as **P0-08** in
+WAL recovery replays entries one at a time. Until 2026-10-23 each replayed row
+paid a **full-table scan plus a full-table clone** to ask "is this row already
+there?", which made the restart cost quadratic in the table size. That was
+registered as **P0-08** in
 [`DEFECTS_AND_ISSUES.md`](DEFECTS_AND_ISSUES.md): *"WAL recovery 逐条整表重写,
 重启 24 分钟不可用"*. The measured instance behind that headline: the first
 full-table query after a restart took **24 min 22 s** at 68 288 rows /
 58 288 INSERTs / 8.0 MB WAL (the identical query immediately after: 0.08 s).
-Recovery completes **before** the listener accepts connections, so this is a
-hard startup outage. Measure the restart on a **copy** of your data
-directory before committing to a maintenance window.
+
+**As of v4.1.0 that quadratic term is gone** — a per-table row index makes the
+per-row cost constant (measured 210 → 224 → 372 µs/row at 500 / 2 000 /
+8 000 rows; extrapolated to 58 288 rows ≈ 21.7 s vs ≈ 461 s before). Two
+things did **not** change, and they still drive your maintenance window:
+
+* **Recovery still completes before the listener accepts connections**, so a
+  restart is still a **hard startup outage** for as long as recovery takes.
+* Each replayed row still costs one delta-file fsync — a **constant** cost
+  (≈ 86 µs/row ⇒ ≈ 5 s for 58 288 rows).
+
+So: measure the restart on a **copy** of your data directory before committing
+to a maintenance window, and keep the window proportional to the WAL size
+rather than to the square of it.
 
 ### 4.5 Take a filesystem-level backup while the server is running, then a second one while it is stopped
 
@@ -537,10 +550,11 @@ Your restore point is the filesystem copy of the data directory plus
 
 `STAGE.yaml` → `open_issues` recorded **seven** items that nothing in the delta
 matrix resolves ([`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) §1.6 gives each one
-a row with the defect-catalog entry it corresponds to). **Five of them were
+a row with the defect-catalog entry it corresponds to). **Six of them were
 closed on 2026-10-23**; the closures are recorded in
 [`evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`](evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md)
-and in `STAGE.yaml` → `resolved_issues_2026_10_23`. **Two remain open.**
+and [`evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`](evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md),
+and in `STAGE.yaml` → `resolved_issues_2026_10_23`. **One remains open.**
 
 | Item | Summary | Status |
 |---|---|---|
@@ -550,17 +564,19 @@ and in `STAGE.yaml` → `resolved_issues_2026_10_23`. **Two remain open.**
 | P0-05 | `docs/governance/debt/debt-registry.yaml` `SEM-4`'s closure root cause is still the literal placeholder `XYZ`; `closing_pr` is `[]`, and the registry's `parser 75.16%` is not reproducible (measured 60.58 %) | **RESOLVED 2026-10-23** — `SEM-4` is `CLOSED` (`closed_at: "2026-10-23"`, `closing_pr: [5126, 5537]`) and the placeholder root cause is replaced by a measurement (the coverage had been taken with parallel test threads, so the reading depended on machine load). Measured: 8/8 crates, L1_8 **87.80 %**, `parser 86.46 %` |
 | P1-01 | parser coverage gap — see the table below; the figure **and** the threshold are both unsettled | **RESOLVED 2026-10-23** for the fail-open half: a crate that cannot be measured now fails the gate (`check_coverage_v312.sh:315-349`), and the measured parser figure is **86.46 %** (L1_8 87.80 %), not 60.58 %. The *threshold* question stays with the stage framework |
 | P1-02 | #4540 Q20 oracle is not closed — `sqlrustgo/q20.tsv` does not exist (21/22 files present) and `CROSS_ENGINE_HASH_CHECK.json` records `present:false`, contradicting the "Q20 PASS" in `docs/releases/v3.12.0/evidence/v312-59/GA5_TPCH_SF1_REPORT.md` | **OPEN** |
-| P0-08 | WAL recovery rewrites the whole table per record — the measured instance is a **24 min 22 s** first query after restart, and recovery completes before the listener accepts connections | **OPEN** |
+| P0-08 | WAL recovery rewrites the whole table per record — the measured instance is a **24 min 22 s** first query after restart, and recovery completes before the listener accepts connections | **RESOLVED 2026-10-23** — the report's attribution was **corrected by measurement** (the write path was already using the delta-append branch and its per-row cost is constant; the real quadratic term was the per-entry dedup scan that cloned the whole table). Fixed with a per-table row index: one scan per table, then an O(1) lookup per replayed entry, with `Update`/`Delete` invalidating the affected table's index. Measured after the fix on the real `RecoveryEngine::recover()`: per-row cost 210.3 → 224.0 → 372.4 µs at 500 / 2 000 / 8 000 rows (16× the rows ⇒ 1.8× per row); extrapolated to 58 288 rows ≈ 21.7 s vs ≈ 461 s before (**≈21×**). 5/5 semantic tests pass. **Not claimed:** the recovery-before-listener ordering is unchanged, and the per-row delta fsync is still a constant cost |
 
 Plus the wider catalog in [`DEFECTS_AND_ISSUES.md`](DEFECTS_AND_ISSUES.md) and
 the **24-issue** backlog in `ISSUES_PLAN.md` §4.
 
-**Defect counts — two readings, both recorded.**
-`DEFECTS_AND_ISSUES.md` §0 records **P0 × 8 / P1 × 7 / P2 × 7 = 22**;
+**Defect counts — three readings, all recorded.**
+`DEFECTS_AND_ISSUES.md` §0 originally recorded **P0 × 8 / P1 × 7 / P2 × 7 = 22**;
 `RELEASE_NOTES.md` and `ARCHITECTURE.md` both quote **"P0×6 + P1×7 + P2×7"**.
 [`FEATURE_MATRIX.md`](FEATURE_MATRIX.md) §3 item 9 records the disagreement
-and deliberately does not pick one. Either way, **eight or six P0 items are
-open**, and the catalog explicitly says P0 blocks any release.
+and deliberately does not pick one. After the 2026-10-23 closures (P0-01,
+P0-02, P0-05, **P0-08**, P1-01) the still-open count is
+**P0 × 4 / P1 × 6 / P2 × 7 = 17** (`DEFECTS_AND_ISSUES.md` §0, updated).
+Either way, P0 blocks any release, and four are still open.
 
 **Parser coverage — four figures coexist, and the threshold is disputed too.**
 

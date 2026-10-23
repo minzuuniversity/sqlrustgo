@@ -16,16 +16,17 @@
 ## 0. 摘要
 
 > **计数更新（2026-10-23）**：本表原始计数来自 2026-10-01 的那次审计。此后
-> **P0-01 / P0-02 / P0-05 / P1-01 已销账**（各条目的 verdict 段给出实测依据与
-> 证据文件），未销账的 P0 由 8 条降到 **5** 条，P1 由 7 条降到 **6** 条。
-> 证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`。
+> **P0-01 / P0-02 / P0-05 / P0-08 / P1-01 已销账**（各条目的 verdict 段给出实测依据与
+> 证据文件），未销账的 P0 由 8 条降到 **4** 条，P1 由 7 条降到 **6** 条。
+> 证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`、
+> `docs/releases/v4.1.0/evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`。
 
 | 优先级 | 项数（2026-10-01 原始） | 仍未销账（2026-10-23） | 主要类别 |
 |---|---|---|---|
-| **P0** 阻断任何 release | **8** | **5** | 门禁空转、#4708 假 DONE、v4.0.0 GA 撤销、5 远端漂移、debt-registry 残留占位符、YAML 自相矛盾、.gitignore 静默屏蔽新 release 文档、WAL 恢复逐条整表重写 |
+| **P0** 阻断任何 release | **8** | **4** | 门禁空转、#4708 假 DONE、v4.0.0 GA 撤销、5 远端漂移、debt-registry 残留占位符、YAML 自相矛盾、.gitignore 静默屏蔽新 release 文档 |
 | **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、WP-A RE-OPENED + 20 条 backlog、crate 状态描述错误、G13 门禁红 |
 | **P2** 不阻断但需记录 | **7** | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
-| **合计** | **22** | **18** | |
+| **合计** | **22** | **17** | |
 
 **性能状态**：A1/B2 A/B 实测已落地 (见 `PERF_A1_4912_AB_MEASUREMENT.md` /
 `PERF_B2_4915_AB_MEASUREMENT.md`)，B2.1 在 22x-39x 范围，但发现一处 regression
@@ -216,31 +217,75 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-08 WAL 恢复逐条整表重写，重启 24 分钟不可用
 
-- **verdict**: `OPEN`（2026-10-08 实测复现，根因定位到 file:line）
-- **位置**: `crates/storage/src/recovery_engine.rs:274,767`（`recovery_force_insert`
-  逐条重放）→ `crates/storage/src/file_storage.rs:3328`（`insert_direct`）→
-  `:723,742`（`save_table_window` 冷启动分支）→ `:775`（`save_table_full` 整表
-  `to_writer_pretty` 重写）
+- **verdict**: `CLOSED` (2026-10-23)
+- **销账依据**: 二次项被定位并消除，且**原报告的归因被实测更正**。
+  - **原报告的归因不成立**：报告说「`save_table_full` 被逐条调用、delta 追加路径
+    一次未走到」。实测**不成立** —— 写入路径一直走的是 delta 追加分支
+    （基线快照 `t.json` 停在 650 B 的 schema，增量日志 `t.delta` 承载全部行），
+    而且它的**每行成本是常数**（500/2 000/8 000 行分别是 96.4 / 85.8 / 86.4 µs/行）。
+  - **真正的二次项是去重扫描**：`apply_wal_entry` 对每条被重放的 `Insert` 都要
+    **全表扫描 + 全表克隆**一次来判断「这一行是不是已经在了」⇒ 每行成本随表规模
+    增长（63.9 → 247.9 → 896.4 µs/行，行数 ×16 ⇒ 每行成本 ×14）。
+  - **修法**：新增 `RecoveryRowIndex`（`crates/storage/src/recovery_engine.rs`）——
+    每张表扫一次建索引，之后每条 `Insert` 的去重判定是一次 O(1) 哈希查找；
+    重放自己写入的行也进索引；`Update`/`Delete` 会改变表持有的行而 WAL entry 不带
+    旧行内容 ⇒ 这两类 entry **作废**受影响表的索引（重建 = 一次扫描）。
+  - **实测（修复后，真实 `RecoveryEngine::recover()`）**：每行成本
+    210.3 → 224.0 → 372.4 µs（500 / 2 000 / 8 000 行）—— 行数 ×16 只带来每行成本
+    ×1.8 ⇒ 总时间不再跟着表规模走。外推到 58 288 行：修复前按二次外推 ≈ 461 s，
+    修复后 ≈ 21.7 s ⇒ **约 21 倍**。
+  - **语义正确性**：`crates/storage/tests/wal_recovery_dedup_p0_08.rs` **5/5 PASS**，
+    钉住「表里已有的行 / 同次重放重复插入 / 先 Update 过 / 先 Delete 过 /
+    互不相同」五种情形 —— 后两种是陈旧索引会**丢已提交数据**的情形。
+  - **顺带修掉的既有隐患**：`crates/types/src/value.rs` 的 `Value` 的 `Hash` 按浮点
+    位模式散列，而 `PartialEq` 按 `==` 比较 ⇒ `0.0` 与 `-0.0` 相等却哈希不同。
+    仓库里 `HashSet<Vec<Value>>` / `HashMap<Value, _>` 用得很广（唯一约束判定
+    `src/engine_dml.rs:601`、executor 的 hash join、MVCC 键集）⇒ 一行只差零符号的
+    行会绕过表声明的唯一约束。已改为按 `PartialEq` 的口径散列（NaN 散列成常量）。
+  - **回归**：`cargo test -p sqlrustgo-storage`（跳过 6 个 fault-injection 用例，
+    原因见 §注）**97 个测试二进制全绿 / 1544 passed / 0 failed**；
+    `cargo test -p sqlrustgo-types` **152 passed / 0 failed**；
+    `cargo clippy --all-features --all-targets -- -D warnings`（钉 1.95.0）**0 error**。
+  - **证据**：`docs/releases/v4.1.0/evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`
+    （6 章：结论 / 测量台 / 修法 / 验证 / **对缺陷报告的更正** / 仍然没做的）；
+    `docs/releases/v4.1.0/ISSUE-RECOVERY-QUADRATIC-REPLAY.md` §9（更正与关闭条件逐条对照）；
+    `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
+- **原报告的位置线索仍然有效，但指向的是另一处**：
+  `crates/storage/src/recovery_engine.rs`（`apply_wal_entry` 的 `Insert` 分支的
+  去重扫描）→ `crates/storage/src/file_storage.rs` 的 `scan_in_db`
+  （整表克隆）。原报告写的 `recovery_force_insert` → `insert_direct` →
+  `save_table_window` → `save_table_full` 这条链，**实测没有在恢复期被逐条走**。
 - **完整 issue**: `docs/releases/v4.1.0/ISSUE-RECOVERY-QUADRATIC-REPLAY.md`
-- **证据**: `docs/releases/v4.1.0/SOAK_V410_1H_2026-10-08/`（含 `recovery_stack_sample.txt`
+- **原始证据（仍然有效，作为现象的来源）**:
+  `docs/releases/v4.1.0/SOAK_V410_1H_2026-10-08/`（含 `recovery_stack_sample.txt`
   原始 `sample` 输出 + 60 秒内 `sbtest1.json` 反复 13.6MB→0→13.6MB 的文件系统采样）
-- **实测数据**（v4.1.0 HEAD `b1e9a98ee6`，file storage，68,288 行，8.0 MB WAL）：
+- **原始实测数据**（v4.1.0 HEAD `b1e9a98ee6`，file storage，68,288 行，8.0 MB WAL）：
   - 重启后首条 `SELECT COUNT(*)` = **24 分 22 秒**；紧接同一条 = **0.08 秒**
-  - 58,288 条 INSERT 逐条触发整表 JSON 重写，delta 追加路径**一次未走到**
-    （任何采样点都不存在 `.delta` 文件）
-- **机制**: 恢复期 `last_saved_row_count == 0`，`save_table_window` 每次都命中
-  `total_rows == 0 || last_saved == 0 || …` 冷启动分支 → `save_table_full` 整表重写
-- **影响**:
+- **仍然没做的（明确不主张已解决）**:
+  - **恢复与 listener 的先后关系未变** —— 恢复仍在 listener 接受连接之前完成，
+    只是耗时从分钟级降到秒级 ⇒ 「硬性启动不可用」这一**结构性**结论不变
+    （那是独立问题，见 §影响）。
+  - **写入路径每行一次落盘**（`append_table_delta` 每次 open/write/flush/close）
+    ⇒ 约 86 µs/行，58 288 行 ≈ 5 s。它是**常数**成本，不是二次项。
+  - **`Update` / `Delete` 的路径**仍是每条 entry 扫一次表。与本报告的
+    「58 288 条 INSERT」场景无关，本批不扩大范围。
+  - **历史 SOAK 从未覆盖**（`scripts/soak/v400_1h_soak.sh` 从不中途重启服务器）
+    ⇒ 这是**覆盖面**问题，不是本缺陷的成因。
+- **影响**（原始，结论未变）:
   - 恢复在 listener 接受连接**之前**完成 → 硬性启动不可用，不是慢查询
-  - 代价随 soak 变长而恶化（重放量 ∝ WAL 条数，单次重写 ∝ 表大小）
+  - 代价随 soak 变长而恶化（重放量 ∝ WAL 条数）
   - 崩溃恢复 / 主从切换 / 备份还原 / 运维重启全部命中
-  - **历史 SOAK 从未覆盖**：`scripts/soak/v400_1h_soak.sh` 从不中途重启服务器，
-    v4.0.0 与 v4.1.0 的所有 SOAK 记录都没碰过这条路径
-- **修复方向**: (1) 恢复期按表批量重放；(2) 预置 `last_saved_row_count` 使其走
-  delta 分支（改动面最小）；(3) `save_table_full` 去 pretty 打印
 - **交叉**: 与 `docs/audit/issues/ISSUE-2740_crash_recovery_unverified.md`（P0，
   Status UNKNOWN）互补——那条是**正确性未验证**，本条是**复杂度/可用性**；
   但"恢复测试必须用 FileStorage 而非 MemoryStorage"的结论对本条修复同样适用。
+
+> **注（为什么回归跳过了 6 个用例）**：`crates/storage/tests/crash_*` 与
+> `a06_failpoint_reachability` 这 6 个用例走 fault-injection 路径，
+> `fault_injection::reach()` 在每个 WAL 追加点**自旋 120 秒**等外部 SIGKILL，
+> 而 harness 先阻塞在 `sql()`（等 mysql 客户端退出）才去读信号文件 ⇒
+> 单个用例的墙钟是「WAL 追加次数 × 120 s」。
+> 这与本条 P0-08 无关（实测发生时间早于本批改动），但它是 CI 成员 job
+> 5400 s 预算的一个真实风险，已单独登记为 issue。
 
 ---
 
