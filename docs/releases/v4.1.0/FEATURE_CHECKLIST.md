@@ -25,8 +25,8 @@ v4.1.0 当前树里的状态。
 1. **不是** GA 声明。v4.1.0 当前 `current_stage: "ALPHA"`，
    `STAGE.yaml` 的 `current_stage must be GA` 与 `CHANGELOG.md` 的
    `must contain the GA entry` 两项 `required_file_expectations` **仍未满足**；
-   GA 段的 `POST_GA_PLAN.md` 也仍缺（`scripts/gate/check_release_artifacts.sh`
-   实测见 §8.1）。
+   GA 段的**产物位已全部齐备**（`check_release_artifacts.sh` 实测 `GA: 11 present,
+   0 missing`），但**产物存在 ≠ 判据满足** —— §2.8 的判据逐条另算。
 2. **不是**门禁通过证明。§2 总表里的「实现位置」列是**代码位置**，不是门禁判定；
    「对应门禁」列是**该功能在阶段框架里由哪个门禁覆盖**，不是该门禁已 PASS。
    本轮**实跑**的门禁只有 3 个（§8.1），其余一律 `NOT RUN`（§8.2）。
@@ -47,8 +47,8 @@ v4.1.0 当前树里的状态。
 | 状态 | 含义 | 判定依据 |
 |---|---|---|
 | ✅ **Implemented** | 实现存在于所引路径，且仓库内有测试文件或证据文档可指 | 路径存在 + 测试/证据文件存在（**不等于**本轮实跑通过） |
-| ⚠️ **Partial** | 部分实现 / 部分通过，仓库文档已明确记录未完成项 | 引用文档明写 partial / 部分 |
-| 🚫 **Deferred** | 明确推迟到 v4.1.0 或更晚版本 | `ISSUES_PLAN.md` / `ROADMAP.md` / `FEATURE_MATRIX.md` 明写 DEFERRED |
+| ⚠️ **Partial** | 部分实现 / 部分通过 / 仍有未完成子项 | 引用文档明写 partial，**或**本轮实测发现只有部分子项有实现（附查证路径） |
+| 🚫 **Deferred** | 明确推迟，且推迟本身是有记录的决策 | `ISSUES_PLAN.md` / `ROADMAP.md` / `FEATURE_MATRIX.md` / `STAGE.yaml` 明写 DEFERRED / SCOPE_DEFERRED |
 | 🔴 **Known Gap** | 已登记的缺口，有可复现证据 | `STAGE.yaml` → `known_gaps` / `open_issues` / `DEFECTS_AND_ISSUES.md` |
 | ❌ **Not Implemented** | 查证过路径后确认不存在 | 列出查过的路径 |
 
@@ -66,7 +66,7 @@ v4.1.0 当前树里的状态。
 | F-01 | SQL 解析（含块注释 `/* */`） | ✅ Implemented | `crates/parser/src/lexer.rs:78`（`skip_whitespace` 的 `/* ... */` 分支）、`crates/parser/src/parser.rs`、`crates/parser/src/token.rs` | `check_arch_invariants.sh` | `crates/parser/tests/wp_a_legacy.rs:73`、`:353-364`（`test_4708_block_comments` 回归见证）；`evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §7 |
 | F-02 | 物理计划构建（Planner） | ✅ Implemented | `crates/planner/src/lib.rs`、`crates/planner/src/physical_plan.rs` | `check_int3_single_expr.sh`（G3） | `crates/planner/tests/`；`ARCHITECTURE_ROUTE_DECISION_5193.md` |
 | F-03 | 成本优化器（CBO） | ✅ Implemented | `crates/optimizer/src/lib.rs` | `check_p33_cost_optimizer.sh` | `crates/optimizer/tests/`；`tests/integration/optimizer_stats_test.rs` |
-| F-04 | DDL 执行（CREATE/ALTER/DROP） | ⚠️ Partial | `crates/executor/src/ddl_executor.rs`、`crates/catalog/src/lib.rs` | `check_g16_ddl_syntax.sh` | WP-C 6 条 `NOT STARTED`（§4）；`ISSUES_PLAN.md` §4.1 |
+| F-04 | DDL 执行（CREATE/ALTER/DROP） | ⚠️ Partial | `crates/executor/src/ddl_executor.rs`、`crates/catalog/src/lib.rs`、`src/engine_ddl.rs` | `check_g16_ddl_syntax.sh` | WP-C 6 条逐条实测见 §3.1 / §4（其中 4 条已实现、2 条部分）；`ISSUES_PLAN.md` §4.1 |
 | F-05 | DML 执行（INSERT/UPDATE/DELETE） | ✅ Implemented | `crates/executor/src/mutation_compiler.rs`、`crates/executor/src/update_compiler.rs`、`crates/executor/src/local_executor_dml.rs` | `check_v312_dml_integrity.sh` | `crates/executor/tests/`；`tests/integration/dml/` |
 | F-06 | 主键点查快路径 | ✅ Implemented | `crates/storage/src/wal_storage.rs`（`scan_pk` 转发）、`crates/storage/src/file_storage.rs` | `check_storage_index_wal.sh` | `crates/storage/tests/wal_scan_pk_forwarding_5168.rs`；`evidence/SOAK_8H_AND_CAPACITY_2026-10-09.md` §4.4 |
 | F-07 | UPDATE/DELETE `WHERE` 快路径 | ✅ Implemented | `src/engine_dml.rs:919`（`pk_point_lookup`，根包 `sqlrustgo`）、`crates/storage/src/file_storage.rs` | `check_storage_index_wal.sh` | `tests/integration/dml/dml_pk_fast_path_5177.rs` |
@@ -306,13 +306,14 @@ v4.1.0 当前树里的状态。
 `2f96229f62`（WP-C，28 个占位测试 → 真断言）、`7b8953a1b0`（WP-D，29 个占位测试）、
 `54e5a5fa83`（WP-F，8 个占位测试）、`e94613a7b0`（WP-G）。
 
-> ⚠️ **第三条读法（本文件实测得出）**：上表「当前树实测」列显示，**12 条里有 9 条
-> 在当前树上已经有实现**（#4682 / #4652（部分）/ #4709 / #4668 / #4649 / #4636 /
-> #4848 / #4846，另 #4656、#4669、#4672、#4703 为部分）。也就是说，口径 B 的
-> 「implementation NOT STARTED」在**当前树**上**已不准确**；口径 A 的「merged」
-> 指的是**回归测试矩阵**合入，而非功能合入。⇒ **三条口径都不能单独当作事实**，
-> 逐条状态以上表的「当前树实测」列为准。**这 9 条不一致需要属主裁决并订正
-> `ISSUES_PLAN.md` §4**（§5.4 登记）。本文件只记录，不代为销账。
+> ⚠️ **第三条读法（本文件实测得出）**：上表「当前树实测」列显示，**12 条里没有一条
+> 在当前树上完全未见实现** —— 其中 **7 条已完整实现**（#4682 / #4709 / #4668 /
+> #4649 / #4636 / #4848 / #4846），**5 条部分实现**（#4652 / #4672 / #4669 /
+> #4703 / #4656）。也就是说，口径 B 的「implementation NOT STARTED」在**当前树**上
+> **已不准确**；口径 A 的「merged」指的是**回归测试矩阵**合入，而非功能合入。
+> ⇒ **两条口径都不能单独当作事实**，逐条状态以上表的「当前树实测」列为准。
+> **这 12 条的 backlog 状态需要属主裁决并订正 `ISSUES_PLAN.md` §4**（§5.4 登记）。
+> 本文件只记录，不代为销账。
 
 **WP-B / WP-E / WP-H 继承项**（`ISSUES_PLAN.md` §4.5–§4.7）：
 WP-B 6 条（#4721 / #4674 / #4716 / #4676 / #4675 / #4670，Partial）、
@@ -360,7 +361,7 @@ v4.1.0 backlog 合计 **24** 条（本轮**未**逐条实测 WP-B/E/H 的代码�
 |---|---|---|---|
 | P0-03 | **REVOKED**（状态，非缺陷） | v4.0.0 的 GA 判定被撤销：`docs/releases/v4.0.0/STAGE.yaml` → `ga_promotion_status.verdict = "REVOKED 2026-09-30 — v4.0.0 never legitimately reached GA"`。**但 v4.0.0 代码确已发布**：2026-09-19，tag `v4.0.0-final` @ `54571eeca0` → `07178c9d66`，5 远端 `main` 均含该 commit | `STAGE.yaml` → `resolved_issues_2026_10_23` 首条 |
 | P0-04 | **OPEN** | 5 远端 `develop/v4.1.0` 漂移。2026-10-23 实测：`main` 在 5 远端**全部**为 `515ab236d0bf`（一致）；`develop/v4.1.0` 则 gitea252 = `2406559ac0`、github = `2406559ac0`、gitcode = `cc075f264fdd`、gitee = `cc075f264fdd`、gitea250(origin) = `878e1d62c3a5` ⇒ **未收敛** | `DEFECTS_AND_ISSUES.md` P0-04；本轮 `git ls-remote` 实测 |
-| WP-C..G 的 12 条 backlog 状态 | **SSOT 与代码有出入（12 条中 9 条不一致）** | `ISSUES_PLAN.md` §4.1–§4.4 把 12 条全部记为 `NOT STARTED`；本轮在 `2406559ac0` 上逐条查生产代码，**9 条已有实现**（#4682 / #4652（PROCEDURE 侧）/ #4709 / #4668 / #4649 / #4636 / #4848 / #4846；#4656、#4669、#4672、#4703 为部分）。逐条对照见 **§4 的「当前树实测」列**。⇒ **`ISSUES_PLAN.md` §4 需要属主裁决并订正**；本文件只记录，不代为销账 | 本轮实测（`grep` + 源码路径）；`ISSUES_PLAN.md` §4.1–§4.4 |
+| WP-C..G 的 12 条 backlog 状态 | **SSOT 与代码有出入（12 条全部不一致）** | `ISSUES_PLAN.md` §4.1–§4.4 把 12 条**全部**记为 `NOT STARTED`；本轮在 `2406559ac0` 上逐条查生产代码，**12 条里没有一条完全未见实现** —— **7 条已完整实现**（#4682 / #4709 / #4668 / #4649 / #4636 / #4848 / #4846），**5 条部分实现**（#4652 / #4672 / #4669 / #4703 / #4656）。逐条对照见 **§4 的「当前树实测」列**。⇒ **`ISSUES_PLAN.md` §4 需要属主裁决并订正**；本文件只记录，不代为销账 | 本轮实测（`grep` + 源码路径）；`ISSUES_PLAN.md` §4.1–§4.4 |
 | 半同步 `HeartbeatAck` | Partial（**SSOT 与代码有出入**） | `STAGE.yaml` → `hard_serial_edges` 记「#4936 → #4937（主库丢弃 `HeartbeatAck`，半同步无可等待对象）」，并指 `crates/storage/src/binlog_server.rs:238`。本轮实测当前树 `:388` 起的 `HeartbeatAck` 分支**已记录** ACK（写入 `acked_lsn`、回 `AckOk`），`:421` 起的 `BinlogAck` 走 `acked_pos`（注释明确标注 #4937）⇒ **STAGE.yaml 的行号引用指向更早的树状态**。本文件不替属主裁决，仅登记该出入 | `STAGE.yaml`；本轮实测 `crates/storage/src/binlog_server.rs` |
 | WAL 恢复与 listener 的先后关系 | Partial | 恢复在 listener 接受连接之前完成 ⇒ 重启是硬启动中断；P0-08 修复**未改变**该结构性结论 | `STAGE.yaml` → `resolved_issues_2026_10_23`（P0-08 条目「Not claimed」） |
 | 5 远端 `develop/v4.1.0` 收敛 | 未完成 | 见 P0-04 | — |
@@ -395,8 +396,8 @@ v4.1.0 backlog 合计 **24** 条（本轮**未**逐条实测 WP-B/E/H 的代码�
 
 | crate 目录 | package 名 | 在默认构建路径? | 在生产执行路径? | 状态 | 来源 |
 |---|---|---|---|---|---|
-| `crates/gmp` | `sqlrustgo-gmp` | ✅ 是 | ❌ 否 | ⚠️ **SCOPE_DEFERRED**（产品决策待定） | `STAGE.yaml` C7；`scripts/gate/check_gmp_consumer.sh`；`evidence/gmp_consumer_gate_20261005.md` |
-| `crates/rag` | `sqlrustgo-rag` | ✅ 是 | ❌ 否 | ⚠️ **SCOPE_DEFERRED** | `STAGE.yaml` C7 |
+| `crates/gmp` | `sqlrustgo-gmp` | ✅ 是 | ❌ 否 | 🚫 **Deferred**（`SCOPE_DEFERRED`，产品决策待定） | `STAGE.yaml` C7；`scripts/gate/check_gmp_consumer.sh`；`evidence/gmp_consumer_gate_20261005.md` |
+| `crates/rag` | `sqlrustgo-rag` | ✅ 是 | ❌ 否 | 🚫 **Deferred**（`SCOPE_DEFERRED`） | `STAGE.yaml` C7 |
 | `crates/graph` | `sqlrustgo-graph` | ✅ 是 | ❌ 否 | 🚫 **ARCHIVED** | `STAGE.yaml` C7 |
 | `crates/admin` | `sqlrustgo-admin` | ✅ 是 | ❌ 否 | ⚠️ **PARTIAL**（与 F-32 `mysqladmin` 的记载矛盾） | `STAGE.yaml` C7 |
 | `crates/vector` | `sqlrustgo-vector` | ✅ 是 | ❌ 否 | ⚠️ **SCOPE_INTERNAL** | `STAGE.yaml` C7；`evidence/VECTOR_COSINE_5384_2026-10-22.md`（#5384 修 cosine 恒为 0） |
@@ -482,9 +483,9 @@ v4.1.0 backlog 合计 **24** 条（本轮**未**逐条实测 WP-B/E/H 的代码�
 
 | 门禁 | 实测输出摘录 | 结论 |
 |---|---|---|
-| `scripts/gate/check_release_artifacts.sh --version v4.1.0` | 补齐前：`stage: ALPHA`；ALPHA 段 `required_file` ×3 + `doc_artifact` ×4 全 `OK`；`BETA: 5 present, 2 missing`（MISS `FEATURE_CHECKLIST.md` 的 required_file 与 doc_artifact）；`GA: 5 present, 6 missing`（MISS `GA_RELEASE_TIMELINE.md` ×2 等）；`RESULT: PASS`；`EXIT=0`。<br>**补齐后（本文件落盘后复跑）**：`BETA: 7 present, 0 missing`；`GA: 10 present, 1 missing`（仅 `POST_GA_PLAN.md`）；`RESULT: PASS`；`EXIT=0` | **PASS**（ALPHA 段）。本批次两份产物把 BETA 段的 2 个 MISS 与 GA 段的 `GA_RELEASE_TIMELINE.md` MISS 清零 |
+| `scripts/gate/check_release_artifacts.sh --version v4.1.0` | **补齐前**：ALPHA 段 `required_file` ×3 + `doc_artifact` ×4 全 `OK`；`BETA: 5 present, 2 missing`（MISS `FEATURE_CHECKLIST.md` 的 required_file 与 doc_artifact）；`GA: 5 present, 6 missing`（MISS `GA_RELEASE_TIMELINE.md` ×2 等）；`RESULT: PASS`；`EXIT=0`。<br>**补齐后（本批次全部产物落盘后复跑）**：`BETA: 7 present, 0 missing`；`RC: 9 present, 0 missing`；`GA: 11 present, 0 missing`；`RESULT: PASS`；`EXIT=0` | **PASS**（ALPHA 段）。本批次把 BETA 段的 2 个 MISS 与 GA 段的 `GA_RELEASE_TIMELINE.md` MISS 清零 |
 | `scripts/gate/check_evidence_binding.sh v4.1.0 <out_dir>` | `PASS=137, WARN=123, FAIL=0, UNVERIFIED=0`；`✅ Evidence binding check PASSED`；`EXIT=0` | **PASS**。⚠️ 该门禁枚举发布目录下的文档集合，**PASS 计数随文档集合变化**（本轮两次实测：补齐前 `PASS=127`、补齐后 `PASS=137`，WARN 恒为 123、FAIL 与 UNVERIFIED 恒为 0）。本行是**补齐后**的实测值 |
-| `scripts/gate/check_anti_fabrication.sh` | 见 §8.1 末尾说明 | **PASS**（`ERRORS=0, WARNINGS=0`） |
+| `scripts/gate/check_anti_fabrication.sh` | **本轮本机实跑（2026-10-23，完整跑完）**：CHECK 1 `[PASS] sqlrustgo-mysql-server: cargo check PASS`；CHECK 1.5 `[PASS] target/sqlancer-report.json valid (iterations=1000)`（`total_queries=1000 successful=1000 failed=0`）；CHECK 2 `[PASS] Test binaries compile PASS`；CHECK 3 扫过 5 份历史 gate 报告；CHECK 4 `[PASS] HEAD author email: openheart@gaoyuanyiyao.com (allowed multi-AI identity)`；CHECK 5 `[PASS] Scanned 428 markdown files in docs/releases + docs/governance`；**末两行** `Results: ERRORS=0, WARNINGS=0` + `[PASS] Anti-fabrication check (AFP v4): PASS`；`EXIT=0` | **PASS**（本轮完整实跑） |
 
 > ⚠️ **`check_evidence_binding.sh` 的用法**：脚本签名是
 > `<version> <out_dir>`（两个参数，缺一即 `exit 2`）。本轮以临时目录作 `out_dir` 运行，
@@ -492,14 +493,19 @@ v4.1.0 backlog 合计 **24** 条（本轮**未**逐条实测 WP-B/E/H 的代码�
 
 ### 8.2 本轮**未**实跑的门禁（NOT RUN ≠ PASS）
 
-**GA 阶段 `required_gates` 的 27 个门禁脚本 + 4 条 cargo 命令里，本轮只跑了 3 个**
-（见 §8.1）。其余全部 `NOT RUN`。原因分类：
+**口径说明**：`stages.GA.required_gates` 是 **31 项 = 27 个门禁脚本 + 4 条 cargo 命令**。
+本轮在这 27 个脚本里**只跑了 1 个**（`check_anti_fabrication.sh`）；
+另外跑了 2 个**不在 GA 清单里**的仓库门禁（`check_release_artifacts.sh`、
+`check_evidence_binding.sh`——前者正是本文件的产物检查）。
+⇒ **GA required_gates 的 26 个脚本 + 4 条 cargo 命令全部 `NOT RUN`**，
+另有 7 个 `optional_gates` 全部 `NOT RUN`。原因分类：
 
-| 原因 | 涉及 |
-|---|---|
-| 本轮范围之外（批次 32 只交付两份文档） | `check_rc_ga_gate.sh`、`check_arch_invariants.sh`、`check_arch3_no_bypass.sh`、`check_int2_no_orphan.sh`、`check_int3_single_expr.sh`、`check_sem1_savepoint.sh`、`check_backup_restore.sh`、`check_p12_crash_test.sh`、`check_p14_upgrade_test.sh`、`check_p21_audit_log.sh`、`check_p22_time_travel.sh`、`check_p23_hash_chain.sh`、`check_integration_gate.sh`、`check_arch_sem_debt.sh`、`check_cross_version_debt.sh`、`check_int_debt.sh`、`check_full_gate_verification.sh`、`check_coverage_v312.sh`、`check_sql_corpus_gate.sh`、`check_g16_compatibility.sh`、`check_drift_not_pass.sh`、`check_architecture_freeze.sh`、`check_gate_self_verification.sh`、`check_gate_test_integrity.sh` |
-| 前置数据/硬件/外部工具未就绪 | `check_g1_tpch_baseline.sh`（SF=1 数据未就绪，§5.2）、`check_p13_soak_test.sh`、`check_g11_qps.sh`、`check_g12_sysbench.sh`、`check_g13_stability.sh`、`check_g14_real_crash.sh`、`check_g15_perf_report.sh` |
-| cargo 命令（`cargo build --all-features` / `cargo test --all-features` / `cargo fmt --check` / `cargo clippy --all-features -- -D warnings`） | 本轮**未**在整仓范围实跑，故不记 PASS |
+| 类别 | 数量 | 涉及 |
+|---|---|---|
+| GA required_gates — 本轮范围之外（批次 32 只交付两份文档） | 25 | `check_rc_ga_gate.sh`、`check_arch_invariants.sh`、`check_arch3_no_bypass.sh`、`check_int2_no_orphan.sh`、`check_int3_single_expr.sh`、`check_sem1_savepoint.sh`、`check_backup_restore.sh`、`check_p12_crash_test.sh`、`check_p14_upgrade_test.sh`、`check_p21_audit_log.sh`、`check_p22_time_travel.sh`、`check_p23_hash_chain.sh`、`check_integration_gate.sh`、`check_arch_sem_debt.sh`、`check_cross_version_debt.sh`、`check_int_debt.sh`、`check_full_gate_verification.sh`、`check_drift_not_pass.sh`、`check_architecture_freeze.sh`、`check_gate_self_verification.sh`、`check_gate_test_integrity.sh`、`check_coverage_v312.sh`、`check_sql_corpus_gate.sh`、`check_g16_compatibility.sh`、`check_anti_ignore_gate.sh` |
+| GA required_gates — 前置数据未就绪 | 1 | `check_g1_tpch_baseline.sh`（SF=1 数据未就绪，§5.2） |
+| GA required_gates — cargo 命令 | 4 | `cargo build --all-features` / `cargo test --all-features` / `cargo fmt --check` / `cargo clippy --all-features -- -D warnings`（本轮**未**在整仓范围实跑，故不记 PASS） |
+| GA optional_gates — 判据依赖仓库之外的硬件 / 工具 / 报告 | 7 | `check_p13_soak_test.sh`、`check_chaos_soak.sh`、`check_g11_qps.sh`、`check_g12_sysbench.sh`、`check_g13_stability.sh`、`check_g14_real_crash.sh`、`check_g15_perf_report.sh` |
 
 ### 8.3 覆盖率数据（引用而非本轮实测）
 

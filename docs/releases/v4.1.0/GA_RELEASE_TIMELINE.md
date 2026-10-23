@@ -189,7 +189,7 @@
 
 `STAGE.yaml` → `open_issues` 复核后**剩 1 条**：P1-02 / #4540 Q20 oracle（见 §2.2）。
 
-### 2.5 GA 阶段 required_files — 产物位已补齐，但 **3/5 仍 NOT MET**
+### 2.5 GA 阶段 required_files — 产物位已全部齐备，但 **3/5 仍 NOT MET**
 
 | required_file | 期望 | 当前状态 | 判定 |
 |---|---|---|---|
@@ -199,9 +199,10 @@
 | `docs/releases/v4.1.0/GA_RELEASE_TIMELINE.md` | 存在 | ✅ **本文件**（本批次补齐） | ✅ 产物位已补 |
 | `docs/releases/v4.1.0/CHANGELOG.md` | `must contain the GA entry` | 无 GA 条目 | ❌ **NOT MET** |
 
-GA `doc_artifacts` 另需：`EVIDENCE_STATUS.md`（同批次并行产出，本文件落盘时已存在）、
-`POST_GA_PLAN.md` —— 后者在本文件落盘时**不存在**
-（`check_release_artifacts.sh` 实测：`GA: 10 present, 1 missing` — 仅 `POST_GA_PLAN.md`）。
+GA `doc_artifacts` 另需 `EVIDENCE_STATUS.md`、`POST_GA_PLAN.md` —— 二者**均已存在**
+（同批次并行产出）。本批次全部产物落盘后，
+`check_release_artifacts.sh` 实测：**`BETA: 7 present, 0 missing` /
+`RC: 9 present, 0 missing` / `GA: 11 present, 0 missing`**。
 
 > ⚠️ **产物存在 ≠ 判据满足**。上表只回答「文件在不在」。`STAGE.yaml` 的
 > `current_stage` 仍是 `ALPHA`，`CHANGELOG.md` 仍无 GA 条目 —— 这两项是
@@ -224,19 +225,25 @@ GA `doc_artifacts` 另需：`EVIDENCE_STATUS.md`（同批次并行产出，本�
 
 | 门禁 | 实测输出摘录 | 结论 |
 |---|---|---|
-| `scripts/gate/check_release_artifacts.sh --version v4.1.0` | **本文件落盘前**：`stage: ALPHA`；ALPHA 段 7/7 `OK`；`BETA: 5 present, 2 missing`（MISS `FEATURE_CHECKLIST.md` ×2）；`RC: 5 present, 4 missing`；`GA: 5 present, 6 missing`（MISS `GA_RELEASE_TIMELINE.md` ×2、`GA_GATE_REPORT.md` ×2、`EVIDENCE_STATUS.md`、`POST_GA_PLAN.md`）；`RESULT: PASS`；`EXIT=0`。<br>**本文件落盘后复跑**：`BETA: 7 present, 0 missing`；`RC: 8 present, 1 missing`（仅 `PERFORMANCE_TARGETS.md`）；`GA: 10 present, 1 missing`（仅 `POST_GA_PLAN.md`）；`RESULT: PASS`；`EXIT=0` | **PASS**（ALPHA 段阻塞检查）。⚠️ 该门禁在 ALPHA 阶段**只做披露**，不判定 GA 段 |
+| `scripts/gate/check_release_artifacts.sh --version v4.1.0` | **本文件落盘前**：`stage: ALPHA`；ALPHA 段 7/7 `OK`；`BETA: 5 present, 2 missing`（MISS `FEATURE_CHECKLIST.md` ×2）；`RC: 5 present, 4 missing`；`GA: 5 present, 6 missing`（MISS `GA_RELEASE_TIMELINE.md` ×2、`GA_GATE_REPORT.md` ×2、`EVIDENCE_STATUS.md`、`POST_GA_PLAN.md`）；`RESULT: PASS`；`EXIT=0`。<br>**本批次全部产物落盘后复跑**：`BETA: 7 present, 0 missing`；`RC: 9 present, 0 missing`；`GA: 11 present, 0 missing`；`RESULT: PASS`；`EXIT=0` | **PASS**（ALPHA 段阻塞检查）。⚠️ 该门禁在 ALPHA 阶段**只做披露**，不判定 GA 段 |
 | `scripts/gate/check_evidence_binding.sh v4.1.0 <out_dir>` | `PASS=137, WARN=123, FAIL=0, UNVERIFIED=0`；`✅ Evidence binding check PASSED`；`EXIT=0` | **PASS**。⚠️ 该门禁枚举发布目录下的文档集合，**PASS 计数随文档集合变化**（本轮两次实测：补齐前 `PASS=127`、补齐后 `PASS=137`，WARN 恒为 123、FAIL 与 UNVERIFIED 恒为 0）。本行是**补齐后**的实测值 |
-| `scripts/gate/check_anti_fabrication.sh` | `ERRORS=0 WARNINGS=0`；末行 `✅ Anti-fabrication check (AFP v4): PASS` | **PASS** |
+| `scripts/gate/check_anti_fabrication.sh` | **本轮本机实跑（2026-10-23，完整跑完）**：CHECK 1 `[PASS] sqlrustgo-mysql-server: cargo check PASS`；CHECK 1.5 `[PASS] target/sqlancer-report.json valid (iterations=1000)`；CHECK 2 `[PASS] Test binaries compile PASS`；CHECK 4 `[PASS] HEAD author email: openheart@gaoyuanyiyao.com (allowed multi-AI identity)`；CHECK 5 `[PASS] Scanned 428 markdown files in docs/releases + docs/governance`；**末两行** `Results: ERRORS=0, WARNINGS=0` + `[PASS] Anti-fabrication check (AFP v4): PASS`；`EXIT=0` | **PASS**（本轮完整实跑） |
 
-**其余 28 项：全部 `NOT RUN`**。原因分类：
+**口径说明**：`stages.GA.required_gates` 是 **31 项 = 27 个门禁脚本 + 4 条 cargo 命令**。
+本轮在这 27 个脚本里**只跑了 1 个**（`check_anti_fabrication.sh`）；
+另外跑了 2 个**不在 GA 清单里**的仓库门禁（`check_release_artifacts.sh`、
+`check_evidence_binding.sh`——前者正是本文件的产物检查）。
+⇒ **GA required_gates 的 26 个脚本 + 4 条 cargo 命令全部 `NOT RUN`**，
+另有 7 个 `optional_gates` 全部 `NOT RUN`。原因分类：
 
-| 原因 | 涉及 |
-|---|---|
-| 本轮范围之外（批次 32 只交付两份文档） | `check_rc_ga_gate.sh ga`、`check_arch_invariants.sh`、`check_arch3_no_bypass.sh`、`check_int2_no_orphan.sh`、`check_int3_single_expr.sh`、`check_sem1_savepoint.sh`、`check_backup_restore.sh`、`check_p12_crash_test.sh`、`check_p14_upgrade_test.sh`、`check_p21_audit_log.sh`、`check_p22_time_travel.sh`、`check_p23_hash_chain.sh`、`check_g16_compatibility.sh`、`check_integration_gate.sh`、`check_arch_sem_debt.sh`、`check_cross_version_debt.sh`、`check_int_debt.sh`、`check_full_gate_verification.sh`、`check_coverage_v312.sh`、`check_sql_corpus_gate.sh`、`check_drift_not_pass.sh`、`check_architecture_freeze.sh`、`check_gate_self_verification.sh`、`check_gate_test_integrity.sh` |
-| 前置数据 / 硬件 / 外部工具未就绪 | `check_g1_tpch_baseline.sh`（SF=1 数据未就绪）、`check_p13_soak_test.sh`、`check_g11_qps.sh`、`check_g12_sysbench.sh`、`check_g13_stability.sh`、`check_g14_real_crash.sh`、`check_g15_perf_report.sh` |
-| cargo 命令（`cargo build --all-features` / `cargo test --all-features` / `cargo fmt --check` / `cargo clippy --all-features -- -D warnings`） | 本轮**未**在整仓范围实跑，故不记 PASS |
+| 类别 | 数量 | 涉及 |
+|---|---|---|
+| GA required_gates — 本轮范围之外（批次 32 只交付两份文档） | 25 | `check_rc_ga_gate.sh ga`、`check_arch_invariants.sh`、`check_arch3_no_bypass.sh`、`check_int2_no_orphan.sh`、`check_int3_single_expr.sh`、`check_sem1_savepoint.sh`、`check_backup_restore.sh`、`check_p12_crash_test.sh`、`check_p14_upgrade_test.sh`、`check_p21_audit_log.sh`、`check_p22_time_travel.sh`、`check_p23_hash_chain.sh`、`check_integration_gate.sh`、`check_arch_sem_debt.sh`、`check_cross_version_debt.sh`、`check_int_debt.sh`、`check_full_gate_verification.sh`、`check_drift_not_pass.sh`、`check_architecture_freeze.sh`、`check_gate_self_verification.sh`、`check_gate_test_integrity.sh`、`check_coverage_v312.sh`、`check_sql_corpus_gate.sh`、`check_g16_compatibility.sh`、`check_anti_ignore_gate.sh` |
+| GA required_gates — 前置数据未就绪 | 1 | `check_g1_tpch_baseline.sh`（SF=1 数据未就绪，§2.2） |
+| GA required_gates — cargo 命令 | 4 | `cargo build --all-features` / `cargo test --all-features` / `cargo fmt --check` / `cargo clippy --all-features -- -D warnings`（本轮**未**在整仓范围实跑，故不记 PASS） |
+| GA optional_gates — 判据依赖仓库之外的硬件 / 工具 / 报告 | 7 | `check_p13_soak_test.sh`、`check_chaos_soak.sh`、`check_g11_qps.sh`、`check_g12_sysbench.sh`、`check_g13_stability.sh`、`check_g14_real_crash.sh`、`check_g15_perf_report.sh` |
 
-**非阻断但「必须实跑并披露」的门禁**（`stages.GA.optional_gates`，6 个）—— 本轮同样
+**非阻断但「必须实跑并披露」的门禁**（`stages.GA.optional_gates`，**7 个**）—— 本轮同样
 全部 `NOT RUN`：
 
 | 门禁 | G | requirement（`STAGE_CONFIG.yaml` 原文） | 本轮 |
@@ -261,10 +268,10 @@ GA `doc_artifacts` 另需：`EVIDENCE_STATUS.md`（同批次并行产出，本�
 | 3 | Q20 oracle（#4540） | **OPEN** | 不可（缺产物） |
 | 4 | 覆盖率 ≥ 85 % | **MET**（8-crate 平均 87.80 %）；逐 crate 口径下 executor/storage 不满足 | 可（口径裁决） |
 | 5 | P0 未销账 | **2 条**（P0-03 状态 / P0-04 远端漂移） | P0-03 可裁决；P0-04 需执行 |
-| 6 | GA required_files | **产物位已补齐**（`GA_RELEASE_TIMELINE.md` 本文件、`GA_GATE_REPORT.md` 同批次并行产出）；但 **`STAGE.yaml` 的 `current_stage` 仍是 `ALPHA`**、`RELEASE_NOTES.md` 仍是 ALPHA 口径、`CHANGELOG.md` 无 GA 条目 ⇒ **3/5 仍 NOT MET** | 需推进阶段 + 写 GA 条目，非裁决 |
-| 7 | GA doc_artifacts | `EVIDENCE_STATUS.md` 已存在（同批次并行产出）；**`POST_GA_PLAN.md` 仍缺** | 需产出，非裁决 |
+| 6 | GA required_files | **产物位已全部齐备**（`check_release_artifacts.sh` 实测 `GA: 11 present, 0 missing`）；但 **`STAGE.yaml` 的 `current_stage` 仍是 `ALPHA`**、`RELEASE_NOTES.md` 仍是 ALPHA 口径、`CHANGELOG.md` 无 GA 条目 ⇒ **3/5 仍 NOT MET** | 需推进阶段 + 写 GA 条目，非裁决 |
+| 7 | GA doc_artifacts | **已齐**（`EVIDENCE_STATUS.md`、`POST_GA_PLAN.md` 均存在，同批次并行产出） | — |
 | 8 | 承载分支 | **NOT MET**（无 `release/v4.1.0`） | 需执行，非裁决 |
-| 9 | GA required_gates（31 项） | **仅 3 项实跑，28 项 NOT RUN** | 需执行，非裁决 |
+| 9 | GA required_gates（31 项 = 27 脚本 + 4 cargo） | **仅 1 项实跑**（`check_anti_fabrication.sh`），**26 脚本 + 4 cargo 全部 NOT RUN**；另有 7 个 optional_gates 全部 NOT RUN | 需执行，非裁决 |
 | 10 | 人工架构师签字 | **未取得**（`transitions.RC_to_GA.requires_human_approval: true`） | **必须由人执行** |
 
 ---
