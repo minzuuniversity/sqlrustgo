@@ -103,6 +103,10 @@ stages:
       - "scripts/gate/check_coverage_v312.sh"
       - "scripts/gate/check_sql_corpus_gate.sh"
       - "scripts/gate/check_anti_ignore_gate.sh"
+      # #5505 —— G1（TPC-H 22/22 基线，回归）的 `stage_min` 是 ALPHA：
+      # 判据完全由仓库 + cargo 决定（提交在库里的基线 hash + 3 个 cargo
+      # 测试）⇒ **阻断**，从 ALPHA 起累计到 GA。
+      - "scripts/gate/check_g1_tpch_baseline.sh"
       - "cargo build --all-features"
       - "cargo test --all-features --lib"
       - "cargo fmt --check"
@@ -142,6 +146,13 @@ stages:
       - "scripts/gate/check_anti_fabrication.sh"
       - "scripts/gate/check_arch_invariants.sh"
       - "scripts/gate/check_arch3_no_bypass.sh"
+      # #5505 —— G 别名接线（BETA 段）。G2/G3/G5/G6 的 `stage_min` 是 BETA，
+      # 判据完全由仓库 + cargo 决定 ⇒ **阻断**（FAIL 即 BETA 不通过）。
+      - "scripts/gate/check_int2_no_orphan.sh"    # G2 INT-2 ParallelExecutor
+      - "scripts/gate/check_int3_single_expr.sh"  # G3 INT-3 Single Expression
+      - "scripts/gate/check_sem1_savepoint.sh"    # G5 SEM-1 Savepoint MVCC
+      - "scripts/gate/check_backup_restore.sh"    # G6 Backup/Restore 100+ 场景
+      - "scripts/gate/check_g1_tpch_baseline.sh"  # G1 TPC-H 22/22（自 ALPHA 累计）
       - "scripts/gate/check_arch_sem_debt.sh"
       - "scripts/gate/check_cross_version_debt.sh"
       - "scripts/gate/check_int_debt.sh"
@@ -187,6 +198,18 @@ stages:
       - "scripts/gate/check_rc_ga_gate.sh"
       - "scripts/gate/check_arch_invariants.sh"
       - "scripts/gate/check_arch3_no_bypass.sh"
+      # #5505 —— G 别名接线（RC 段）。BETA 起的 G2/G3/G5/G6 累计到 RC；
+      # G8/G9/G10 的 `stage_min` 是 RC ⇒ 阻断（判据只依赖仓库 + cargo）。
+      - "scripts/gate/check_int2_no_orphan.sh"      # G2 INT-2 ParallelExecutor
+      - "scripts/gate/check_int3_single_expr.sh"    # G3 INT-3 Single Expression
+      - "scripts/gate/check_sem1_savepoint.sh"      # G5 SEM-1 Savepoint MVCC
+      - "scripts/gate/check_backup_restore.sh"      # G6 Backup/Restore 100+ 场景
+      - "scripts/gate/check_p12_crash_test.sh"      # G8 Crash Matrix 100+ 场景
+      - "scripts/gate/check_p14_upgrade_test.sh"    # G9 Upgrade Test 50+ 路径
+      - "scripts/gate/check_p21_audit_log.sh"       # G10 Audit Log
+      - "scripts/gate/check_p22_time_travel.sh"     # G10 Time Travel
+      - "scripts/gate/check_p23_hash_chain.sh"      # G10 Immutable Audit Chain
+      - "scripts/gate/check_g1_tpch_baseline.sh"    # G1 TPC-H 22/22（自 ALPHA 累计）
       - "scripts/gate/check_integration_gate.sh"
       - "scripts/gate/check_anti_fabrication.sh"
       - "scripts/gate/check_arch_sem_debt.sh"
@@ -203,6 +226,14 @@ stages:
     optional_gates:
       - "scripts/gate/check_architecture_freeze.sh"
       - "scripts/gate/check_gate_self_verification.sh"
+      # #5505 —— 非阻断 G 门禁（判据依赖仓库之外的硬件 / 工具 / 报告）。
+      # 语义：**必须实跑并披露** PASS / FAIL / NOT-RUN；NOT-RUN 不得记为 PASS
+      # （P14 DRIFT ≠ PASS）。check_stage.sh 只列出 optional_gates（driver
+      # 不执行它们），所以执行责任在晋级评审 —— SSOT 是这条责任唯一的声明处。
+      - "scripts/gate/check_p13_soak_test.sh"      # G7  24h Soak（长时）
+      - "scripts/gate/check_g11_qps.sh"            # G11 QPS/TPS（基准机）
+      - "scripts/gate/check_g12_sysbench.sh"       # G12 Sysbench OLTP（sysbench）
+      - "scripts/gate/check_g14_real_crash.sh"     # G14 Real Crash（进程级）
     merge_policy:
       reviewers: 2
       approval: codeowner + governance + human-architect
@@ -247,6 +278,19 @@ stages:
       - "scripts/gate/check_rc_ga_gate.sh ga"  # full mode
       - "scripts/gate/check_arch_invariants.sh"
       - "scripts/gate/check_arch3_no_bypass.sh"
+      # #5505 —— G 别名接线（GA 段）。BETA/RC 起的 G2/G3/G5/G6/G8/G9/G10
+      # 累计到 GA；G16 的 `stage_min` 是 GA ⇒ 阻断（判据只依赖仓库 + cargo）。
+      - "scripts/gate/check_int2_no_orphan.sh"      # G2 INT-2 ParallelExecutor
+      - "scripts/gate/check_int3_single_expr.sh"    # G3 INT-3 Single Expression
+      - "scripts/gate/check_sem1_savepoint.sh"      # G5 SEM-1 Savepoint MVCC
+      - "scripts/gate/check_backup_restore.sh"      # G6 Backup/Restore 100+ 场景
+      - "scripts/gate/check_p12_crash_test.sh"      # G8 Crash Matrix 100+ 场景
+      - "scripts/gate/check_p14_upgrade_test.sh"    # G9 Upgrade Test 50+ 路径
+      - "scripts/gate/check_p21_audit_log.sh"       # G10 Audit Log
+      - "scripts/gate/check_p22_time_travel.sh"     # G10 Time Travel
+      - "scripts/gate/check_p23_hash_chain.sh"      # G10 Immutable Audit Chain
+      - "scripts/gate/check_g1_tpch_baseline.sh"    # G1 TPC-H 22/22（自 ALPHA 累计）
+      - "scripts/gate/check_g16_compatibility.sh"   # G16 Compatibility
       - "scripts/gate/check_integration_gate.sh"
       - "scripts/gate/check_anti_fabrication.sh"
       - "scripts/gate/check_arch_sem_debt.sh"
@@ -272,6 +316,15 @@ stages:
       # `check_p13_soak_test.sh` is the G7 gate (#5438).
       - "scripts/gate/check_p13_soak_test.sh"
       - "scripts/gate/check_chaos_soak.sh"
+      # #5505 —— 非阻断 G 门禁（判据依赖仓库之外的硬件 / 工具 / 报告）。
+      # 语义：**必须实跑并披露** PASS / FAIL / NOT-RUN；NOT-RUN 不得记为 PASS
+      # （P14 DRIFT ≠ PASS）。check_stage.sh 只列出 optional_gates（driver
+      # 不执行它们），所以执行责任在晋级评审 —— SSOT 是这条责任唯一的声明处。
+      - "scripts/gate/check_g11_qps.sh"              # G11 QPS/TPS（基准机）
+      - "scripts/gate/check_g12_sysbench.sh"         # G12 Sysbench OLTP（sysbench）
+      - "scripts/gate/check_g13_stability.sh"        # G13 24h+ 稳定性（Z6G4）
+      - "scripts/gate/check_g14_real_crash.sh"       # G14 Real Crash（进程级）
+      - "scripts/gate/check_g15_perf_report.sh"      # G15 Performance Report（汇总）
     merge_policy:
       reviewers: 3
       approval: codeowner + governance + human-architect + release-manager
@@ -419,6 +472,37 @@ common_required_files:
 # semantic-debt gate). Each corrected mapping now points at a script that
 # declares its own G number in its header, so the mapping is checkable
 # rather than merely plausible.
+#
+# #5505 —— 每个 G 关注点都必须有阶段真的跑它
+# ----------------------------------------------------------
+# #5438 修好了「映射对不对」，但没有修「有没有人跑」：实测 16 个 G 别名里
+# **只有 G4 与 G7** 出现在某个阶段的门禁清单里，其余 14 个**没有任何阶段
+# 会执行**（`scripts/gate/check_stage_config_consistency.sh` 的 D1 披露列出
+# 了全部 14 条）。于是「GA 全绿」并不包含 TPC-H 基线、savepoint、upgrade、
+# audit log、time travel、QPS/TPS、sysbench、perf report、compatibility。
+#
+# 本文件现在把「谁在哪个阶段跑哪个 G」写成**机器可校验**的规则：
+#
+#   * `stage_min` —— 该 G 从哪个阶段起必须被跑（"must pass from X onward"）；
+#   * 脚本出现在 **`required_gates`**（阻断）还是 **`optional_gates`**
+#     （非阻断）—— 这就是该 G 的阻断语义，**唯一声明处**；
+#   * `requirement` —— 非阻断 G 的实跑前提（硬件 / 工具 / 报告），以及
+#     NOT-RUN 的披露义务。
+#
+# 阻断 vs 非阻断的判据（一条规则，可复核）：**判据完全由仓库 + cargo 决定
+# ⇒ 阻断；判据依赖仓库之外的硬件 / 工具 / 报告 ⇒ 非阻断**。
+# 非阻断 G 的语义是「**必须实跑并披露 PASS / FAIL / NOT-RUN**」——
+# NOT-RUN 不得记为 PASS（P14 DRIFT ≠ PASS）；check_stage.sh 只列出
+# optional_gates（driver 不执行它们），所以执行责任在晋级评审。
+#
+# 接线由 `scripts/gate/check_stage_config_consistency.sh` 的 C7/C8 强制：
+# C7 = 每个 G 的脚本必须出现在 `stage_min` 起的**每一个**阶段的门禁清单里；
+# C8 = 非阻断 G 必须写明 `requirement`。
+#
+# #5505 顺带废止了 v3.9.0 时期的 G 编排器 `check_g_all.sh`：它是孤儿（CI /
+# workflow / 任何门禁都不调它），而且自带**第二份 G→脚本映射**（还多一个
+# SSOT 没有的 `check_p23_hash_chain.sh`）。现在全仓只有本文件一份 G→脚本
+# 映射，`check_p23_hash_chain.sh` 已并入 G10 的 additional_scripts。
 gate_definitions:
   G1:  # TPC-H 22/22 baseline (regression)
     name: "TPC-H 22/22 baseline (regression)"
@@ -475,6 +559,7 @@ gate_definitions:
     script: "scripts/gate/check_p13_soak_test.sh"
     type: long-running
     stage_min: RC
+    requirement: "长时 soak（真实 24h 需要专用主机 / 真实时长）。非阻断：必须实跑并披露 PASS / FAIL / NOT-RUN；NOT-RUN 不得记为 PASS。"
     note: "Per V390_TEST_PLAN_ROUND2_REVIEW: real 24h only at RC/GA, compressed-time for early stages"
   G8:  # Crash Matrix 100+ scenarios
     name: "Crash Matrix 100+ scenarios (kill -9 / OOM / disk full)"
@@ -492,15 +577,25 @@ gate_definitions:
     script: "scripts/gate/check_p14_upgrade_test.sh"
     type: automated
     stage_min: RC
-  G10: # Audit Log + Time Travel
-    name: "Audit Log + Time Travel (40+ tests)"
+  G10: # Audit Log + Time Travel + Hash Chain
+    # #5505: the SSOT named only two of the three gates the (orphan)
+    # `check_g_all.sh` orchestrator ran for G10; the third one —
+    # `check_p23_hash_chain.sh` (P2-3 #3179 Immutable Audit Chain) —
+    # declares itself as a G10 gate too ("P2-3 (#3179) Immutable Audit
+    # Chain G10 gate"). It is folded in here so that the SSOT is the
+    # one complete G10 mapping. The name gains "Hash Chain" because
+    # rule C4 requires a G's name to be recognisable from the path of
+    # every script it names.
+    name: "Audit Log + Time Travel + Hash Chain (40+ tests)"
     # #5438: was `check_anti_fabrication.sh` — the anti-fabrication check.
-    # G10 covers TWO concerns and therefore TWO gates; both declare
+    # G10 covers THREE concerns and therefore THREE gates; all declare
     # themselves ("P2-1 (#3177) Audit Log G10 gate" / "P2-2 (#3178) Time
-    # Travel Query G10 gate").
+    # Travel Query G10 gate" / "P2-3 (#3179) Immutable Audit Chain G10
+    # gate").
     script: "scripts/gate/check_p21_audit_log.sh"
     additional_scripts:
       - "scripts/gate/check_p22_time_travel.sh"
+      - "scripts/gate/check_p23_hash_chain.sh"
     type: unit+e2e
     stage_min: RC
   G11: # QPS/TPS Benchmark
@@ -508,27 +603,32 @@ gate_definitions:
     script: "scripts/gate/check_g11_qps.sh"
     type: perf
     stage_min: RC
+    requirement: "专用基准主机（QPS/TPS 数字只有在基准机上才有意义）+ PERFORMANCE_BASELINE.md。非阻断：必须实跑并披露 PASS / FAIL / NOT-RUN。"
   G12: # Sysbench OLTP
     name: "Sysbench OLTP"
     script: "scripts/gate/check_g12_sysbench.sh"
     type: industry-benchmark
     stage_min: RC
+    requirement: "sysbench 二进制（脚本在缺失时 FAIL）。非阻断：必须实跑并披露 PASS / FAIL / NOT-RUN；缺工具时记 NOT-RUN 而不是 PASS。"
   G13: # 24h+ Stability (real)
     name: "24h+ Stability (real, hardware-blocked)"
     script: "scripts/gate/check_g13_stability.sh"
     type: long-running-real
     stage_min: GA
+    requirement: "Z6G4 主机 + STABILITY_REPORT.md + Beta 72h 报告（缺失时脚本 FAIL）。非阻断：必须实跑并披露 PASS / FAIL / NOT-RUN。"
     note: "Per #3265/#3266: 72h/168h real SOAK blocked on hardware. GA gate only requires 24h minimum."
   G14: # Real Crash Test
     name: "Real Crash Test (process-level kill -9)"
     script: "scripts/gate/check_g14_real_crash.sh"
     type: process-level
     stage_min: RC
+    requirement: "Z6G4 主机 + sysbench + CRASH_TEST_REPORT.md（缺失时脚本 FAIL）。非阻断：必须实跑并披露 PASS / FAIL / NOT-RUN。"
   G15: # Performance Report
     name: "Performance Report (GA acceptance)"
     script: "scripts/gate/check_g15_perf_report.sh"
     type: report
     stage_min: GA
+    requirement: "PERFORMANCE_REPORT.md + 5 份子报告 + PERFORMANCE_BASELINE.md（缺失时脚本 FAIL）。非阻断：必须实跑并披露 PASS / FAIL / NOT-RUN。"
   G16: # Compatibility
     name: "Compatibility (v3.8 -> v3.9 upgrade path)"
     script: "scripts/gate/check_g16_compatibility.sh"
@@ -536,22 +636,23 @@ gate_definitions:
     stage_min: GA
 
 # The authoritative GA criterion is `stages.GA.required_gates` above —
-# **20 items** (16 gate scripts + 4 cargo commands) as of #5437.
+# **31 items** (27 gate scripts + 4 cargo commands) as of #5505
+# (20 items / 16 scripts + 4 cargo as of #5437).
 #
 # The G-numbers in `gate_definitions` below are **aliases** for
 # traceability and ADR cross-references. They are NOT a second, competing
 # list of GA gates, and "GA requires G1-G16" is **not** a valid restatement
 # of the criterion: G1~G16 name sixteen *concerns*, while the GA stage
-# requires sixteen *scripts* plus four cargo commands — the two sets are
-# related, but they are not the same set.
+# requires twenty-seven *scripts* plus four cargo commands — the two sets
+# are related, but they are not the same set.
 #
-# Cross-reference:
-#   - ALPHA requires: G4 (VtuGuard)
-#   - BETA requires: G2, G3, G4, G5, G6
-#   - RC requires: G4-G16 (all except G13 if hardware-blocked)
-#   - GA requires: the `required_gates` list of the GA stage block above
-#     (the scripts for G1~G16 plus the architecture/debt/coverage/corpus
-#     gates and the four cargo commands)
+# Cross-reference (#5505 —— 每个 G 关注点从 `stage_min` 起累计到 GA):
+#   - ALPHA requires: G1, G4
+#   - BETA requires:  G1, G2, G3, G4, G5, G6
+#   - RC requires:    G1, G2, G3, G4, G5, G6, G8, G9, G10
+#   - GA requires:    G1, G2, G3, G4, G5, G6, G8, G9, G10, G16
+#   - non-blocking (optional_gates, 必须实跑并披露 NOT-RUN):
+#     G7, G11, G12, G13, G14, G15
 #
 # (The actual required_gates in each stage block above uses script paths,
 # not G-numbers, because the framework reads the YAML, not the G-labels.)
