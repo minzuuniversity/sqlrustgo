@@ -228,6 +228,119 @@ gate_text_helpers_selftest() {
     return "$fails"
 }
 
+# --- counting real `#[ignore]` attributes (the SSOT for #5492) --------------
+#
+# The rule: a literal `#[ignore` counts only when it is a **real attribute** —
+# not inside a line comment, and followed by a `fn` item.
+#
+# This rule lives here **once** because two gates need it and they used to
+# disagree. `check_anti_ignore_gate.sh` counted real attributes (and passed);
+# `check_test_count_monotonic.sh` counted every literal occurrence (and
+# failed). Two numbers for the same thing, two different verdicts, and a
+# developer had to guess which gate to believe — and a change that merely
+# *mentioned* `#[ignore` in a doc comment could turn the second one red
+# (#5492).
+#
+# `count_real_ignore_attributes [root]` prints the count for the tree under
+# `root` (default: the current directory). The scope — `tests/**/*.rs` and
+# `crates/**/*.rs` — is the registry's scope
+# (`tests/baseline/ignore_registry.json` → `scope.included`).
+count_real_ignore_attributes() {
+    local root="${1:-.}"
+    (
+        cd "$root" 2>/dev/null || exit 1
+        python3 <<'PYEOF'
+import re, pathlib
+
+ATTR = re.compile(r'#\[ignore(\s*=\s*"((?:[^"\\]|\\[\s\S])*)")?\]')
+BETWEEN = re.compile(r'(?:\s|//[^\n]*|/\*.*?\*/|\#[^\n]*)*?fn\s+([A-Za-z0-9_]+)')
+
+total = 0
+for p in sorted(list(pathlib.Path("tests").rglob("*.rs")) +
+                list(pathlib.Path("crates").rglob("*.rs"))):
+    src = p.read_text(errors="replace")
+    for m in ATTR.finditer(src):
+        line_start = src.rfind("\n", 0, m.start()) + 1
+        if src[line_start:m.start()].strip().startswith("//"):
+            continue                      # prose in a line comment
+        if not BETWEEN.match(src[m.end():m.end() + 400]):
+            continue                      # prose in a string literal
+        total += 1
+print(total)
+PYEOF
+    )
+}
+
+# Run the counting rule's own fixtures.
+#
+# The property under test is **discrimination**: a doc comment that merely
+# mentions `#[ignore` must not be counted, and a real attribute must be.
+# A counting rule that cannot tell the two apart cannot be a baseline — the
+# number it produces would move whenever someone wrote a sentence.
+count_real_ignore_attributes_selftest() {
+    local tmp
+    local got
+    local fails=0
+
+    tmp="$(make_temp_dir)" || return 1
+    trap 'case "${IGNORE_SELFTEST_DIR:-}" in "${TMPDIR:-/tmp}"/*) rm -rf "$IGNORE_SELFTEST_DIR" ;; esac' EXIT
+    IGNORE_SELFTEST_DIR="$tmp"
+
+    mkdir -p "$tmp/tests" "$tmp/crates" || return 1
+
+    # 1. a real attribute on a test fn  -> counted
+    cat > "$tmp/tests/real_attribute.rs" <<'EOF'
+#[test]
+#[ignore = "documented gap"]
+fn real_ignored_test() {}
+EOF
+
+    # 2. the same word in a doc comment -> NOT counted
+    cat > "$tmp/tests/prose_comment.rs" <<'EOF'
+// The nightly-only demo is still `#[ignore]` (nightly-only).
+fn not_a_test() {}
+EOF
+
+    # 3. the same word inside a string -> NOT counted
+    cat > "$tmp/tests/prose_string.rs" <<'EOF'
+const NOTE: &str = "call #[ignore] when flaky";
+fn not_a_test() {}
+EOF
+
+    # 4. a real attribute with a reason, no `=`, followed by fn -> counted
+    cat > "$tmp/crates/plain_attribute.rs" <<'EOF'
+#[ignore]
+fn plain_ignored_test() {}
+EOF
+
+    got="$(count_real_ignore_attributes "$tmp" | tail -1)"
+    if [ "$got" != "2" ]; then
+        echo "SELFTEST FAIL: expected 2 real #[ignore] attributes, got '$got'"
+        fails=$((fails + 1))
+    fi
+
+    # The rule must also agree with the registry on the live tree — that is
+    # what makes the two gates one rule instead of two.
+    local live
+    local registered
+    live="$(count_real_ignore_attributes "." | tail -1)"
+    registered="$(python3 -c '
+import json
+print(json.load(open("tests/baseline/ignore_registry.json"))["total_allowed"])
+' 2>/dev/null || echo "")"
+    if [ -n "$registered" ] && [ "$live" != "$registered" ]; then
+        echo "SELFTEST FAIL: live tree has $live real #[ignore] attributes but the registry registers $registered"
+        fails=$((fails + 1))
+    fi
+
+    if [ "$fails" -eq 0 ]; then
+        echo "SELFTEST: PASS (prose not counted, attributes counted, live tree matches the registry)"
+    else
+        echo "SELFTEST: $fails failure(s)"
+    fi
+    return "$fails"
+}
+
 # --- SHA-256 of a file, portable across Linux/macOS -------------------------
 # `shasum` is a Perl script and is NOT guaranteed to exist on a slim CI
 # image; `sha256sum` comes from GNU coreutils. The CI runner is only

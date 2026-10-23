@@ -21,9 +21,30 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=scripts/gate/common.sh
+source "$SCRIPT_DIR/common.sh"
 cd "$PROJECT_ROOT"
 
 BASELINE="$PROJECT_ROOT/tests/baseline/test_count.json"
+
+# The counting method for `ignored_tests`.
+#
+# #5492: this used to be "every literal `#[ignore` occurrence in crates/ and
+# tests/", while the registry (`tests/baseline/ignore_registry.json`) documents
+# — and `check_anti_ignore_gate.sh` implements — "only real attributes".
+# The two gates therefore answered the same question differently, and a doc
+# comment that merely *mentioned* `#[ignore` could turn this one red.
+#
+# The method is recorded **in the baseline**, so that changing the method is
+# a re-baseline rather than a bogus "48 tests were un-ignored" claim.
+IGNORE_COUNTING_METHOD="real-attributes-v1"
+
+if [ "${1:-}" = "--selftest" ]; then
+    # The counting rule's own fixtures: prose must not count, real attributes
+    # must, and the live tree must agree with the registry.
+    count_real_ignore_attributes_selftest
+    exit $?
+fi
 
 # The version recorded in the baseline must be the **current** release
 # version, not a literal left over from whenever this script was written
@@ -64,9 +85,13 @@ echo "  Cargo.toml [[test]] entries: $cargo_tests"
 active_tests=$(grep -rE "^#\[test\]|^    #\[test\]" --include="*.rs" crates/ tests/ 2>/dev/null | wc -l | tr -d ' ' || echo 0)
 echo "  Active #[test] functions: $active_tests"
 
-# Ignored tests: count of #[ignore]
-ignored_tests=$(grep -rE "#\[ignore" --include="*.rs" crates/ tests/ 2>/dev/null | wc -l | tr -d ' ' || echo 0)
-echo "  #[ignore] tests: $ignored_tests"
+# Ignored tests: count of REAL #[ignore] attributes — the same rule the
+# registry records and `check_anti_ignore_gate.sh` implements (#5492).
+# The implementation is shared (scripts/gate/common.sh) so the two gates
+# cannot drift apart again.
+ignored_tests=$(count_real_ignore_attributes "$PROJECT_ROOT" | tail -1)
+[ -n "$ignored_tests" ] || ignored_tests=0
+echo "  #[ignore] attributes (real, not prose): $ignored_tests"
 
 # ---------------------------------------------------------------------------
 # Step 2: Read baseline (if exists)
@@ -86,6 +111,7 @@ if [ ! -f "$BASELINE" ]; then
   "cargo_tests": $cargo_tests,
   "active_tests": $active_tests,
   "ignored_tests": $ignored_tests,
+  "ignored_counting_method": "$IGNORE_COUNTING_METHOD",
   "note": "Auto-generated baseline. Update via ADR process if intentional reduction needed."
 }
 EOF
@@ -101,11 +127,13 @@ baseline_cargo=$(grep -oE '"cargo_tests": [0-9]+' "$BASELINE" | grep -oE '[0-9]+
 baseline_active=$(grep -oE '"active_tests": [0-9]+' "$BASELINE" | grep -oE '[0-9]+' | head -1 || echo 0)
 baseline_ignored=$(grep -oE '"ignored_tests": [0-9]+' "$BASELINE" | grep -oE '[0-9]+' | head -1 || echo 0)
 baseline_version=$(grep -oE '"version": "[^"]*"' "$BASELINE" | cut -d'"' -f4 || echo "unknown")
+baseline_ignored_method=$(grep -oE '"ignored_counting_method": "[^"]*"' "$BASELINE" | cut -d'"' -f4 || echo "literal-occurrences-v0")
+[ -n "$baseline_ignored_method" ] || baseline_ignored_method="literal-occurrences-v0"
 
 echo "  Baseline ($baseline_version):"
 echo "    cargo_tests: $baseline_cargo"
 echo "    active_tests: $baseline_active"
-echo "    ignored_tests: $baseline_ignored"
+echo "    ignored_tests: $baseline_ignored (method: $baseline_ignored_method)"
 
 # ---------------------------------------------------------------------------
 # Step 3: Compare and report
@@ -143,14 +171,28 @@ else
 fi
 
 # Check ignored tests (should NEVER increase without ADR)
-if [ "$ignored_tests" -gt "$baseline_ignored" ]; then
+#
+# #5492: the comparison is only meaningful **within one counting method**.
+# When the baseline was recorded with a different method the two numbers are
+# not comparable, and the honest verdict is "re-baseline", not "tests were
+# un-ignored" — the old method counted every literal `#[ignore` occurrence,
+# the new one counts real attributes, and the difference between them is
+# prose, not tests.
+METHOD_CHANGED=false
+if [ "$baseline_ignored_method" != "$IGNORE_COUNTING_METHOD" ]; then
+    METHOD_CHANGED=true
+    echo "  ⚠️  METHOD CHANGE: the baseline was recorded with '$baseline_ignored_method',"
+    echo "      this run counts with '$IGNORE_COUNTING_METHOD'."
+    echo "      The two numbers are not comparable — the baseline is re-recorded below,"
+    echo "      and no claim is made about tests having been added or removed."
+elif [ "$ignored_tests" -gt "$baseline_ignored" ]; then
     delta=$((ignored_tests - baseline_ignored))
     echo "  ❌ FAIL: #[ignore] count INCREASED by $delta"
     echo "          Was: $baseline_ignored, Now: $ignored_tests"
     echo "          ACTION REQUIRED: P12 violation - new ignored tests must be in ADR"
     FAIL=$((FAIL+1))
 elif [ "$ignored_tests" -lt "$baseline_ignored" ]; then
-    delta=$((ignored_tests - baseline_ignored))
+    delta=$((baseline_ignored - ignored_tests))
     echo "  ✅ PASS: #[ignore] count decreased by $delta (good — tests un-ignored)"
 else
     echo "  ⚠️  INFO: #[ignore] count unchanged ($ignored_tests)"
@@ -167,7 +209,7 @@ echo "  Baseline counts: cargo=$baseline_cargo, active=$baseline_active, ignored
 # Update baseline if counts increased (allowed evolution)
 if [ "$cargo_tests" -ge "$baseline_cargo" ] && \
    [ "$active_tests" -ge "$baseline_active" ] && \
-   [ "$ignored_tests" -le "$baseline_ignored" ]; then
+   { [ "$ignored_tests" -le "$baseline_ignored" ] || [ "$METHOD_CHANGED" = true ]; }; then
     BASELINE_VERSION="$(current_version)"
     cat > "$BASELINE" <<EOF
 {
@@ -176,6 +218,7 @@ if [ "$cargo_tests" -ge "$baseline_cargo" ] && \
   "cargo_tests": $cargo_tests,
   "active_tests": $active_tests,
   "ignored_tests": $ignored_tests,
+  "ignored_counting_method": "$IGNORE_COUNTING_METHOD",
   "note": "Updated by check_test_count_monotonic.sh"
 }
 EOF
