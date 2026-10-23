@@ -41,6 +41,7 @@ pub struct SoakReport {
     pub duration_secs: u64,
     pub queries_executed: u64,
     pub errors: u64,
+    pub reconnects: u64,
     pub p50_latency_ms: f64,
     pub p90_latency_ms: f64,
     pub p99_latency_ms: f64,
@@ -100,6 +101,7 @@ pub fn run_soak(config: &SoakConfig) -> anyhow::Result<SoakReport> {
 
     let mut latencies: Vec<f64> = Vec::with_capacity(100_000);
     let mut errors: u64 = 0;
+    let mut reconnects: u64 = 0;
     let start = Instant::now();
     let end = start + Duration::from_secs(config.duration_secs);
 
@@ -130,6 +132,19 @@ pub fn run_soak(config: &SoakConfig) -> anyhow::Result<SoakReport> {
                 if errors <= 10 {
                     eprintln!("SOAK error: {e}");
                 }
+                // Reconnect: a reset connection must not kill the run.
+                // `if let` rather than `match` with an empty `Err` arm: the
+                // latter is `clippy::single_match`, and the CI runner's
+                // clippy (1.91.1) counts it while the local 1.95.0 does not —
+                // so the `match` form was green locally and red in CI.
+                if let Ok(c) =
+                    Client::connect(&config.host, config.port, &config.user, &config.password)
+                {
+                    client = c;
+                    reconnects += 1;
+                    eprintln!("  SOAK: reconnected (total {reconnects})");
+                }
+                // On failure the server is still down; keep counting errors.
             }
         }
 
@@ -148,7 +163,7 @@ pub fn run_soak(config: &SoakConfig) -> anyhow::Result<SoakReport> {
             let done = query_idx as f64;
             let qps = done / elapsed;
             eprintln!(
-                "  SOAK: {done} queries, {errors} errors, {qps:.1} qps, elapsed {:.0}s",
+                "  SOAK: {done} queries, {errors} errors, {qps:.1} qps, elapsed {:.0}s, reconnects {reconnects}",
                 elapsed
             );
             last_report = Instant::now();
@@ -179,6 +194,7 @@ pub fn run_soak(config: &SoakConfig) -> anyhow::Result<SoakReport> {
         duration_secs: config.duration_secs,
         queries_executed: total_queries,
         errors,
+        reconnects,
         p50_latency_ms: p50,
         p90_latency_ms: p90,
         p99_latency_ms: p99,
@@ -198,6 +214,7 @@ pub fn print_report(report: &SoakReport) {
     println!("  Duration:              {}s", report.duration_secs);
     println!("  Queries executed:      {}", report.queries_executed);
     println!("  Errors:                {}", report.errors);
+    println!("  Reconnects:            {}", report.reconnects);
     println!("  Actual QPS:            {:.1}", report.actual_qps);
     println!("  Latency:");
     println!("    P50:                 {:.2}ms", report.p50_latency_ms);

@@ -89,6 +89,7 @@ fn test_soak_report_fields() {
         duration_secs: 300,
         queries_executed: 15000,
         errors: 5,
+        reconnects: 2,
         p50_latency_ms: 1.2,
         p90_latency_ms: 3.4,
         p99_latency_ms: 8.9,
@@ -113,6 +114,7 @@ fn test_soak_report_zero_errors() {
         duration_secs: 60,
         queries_executed: 6000,
         errors: 0,
+        reconnects: 0,
         p50_latency_ms: 0.8,
         p90_latency_ms: 1.5,
         p99_latency_ms: 3.0,
@@ -127,6 +129,7 @@ fn test_soak_report_zero_errors() {
 #[test]
 fn test_soak_report_debug() {
     let report = SoakReport {
+        reconnects: 0,
         duration_secs: 60,
         queries_executed: 1000,
         errors: 2,
@@ -145,6 +148,7 @@ fn test_soak_report_debug() {
 #[test]
 fn test_soak_report_clone() {
     let report = SoakReport {
+        reconnects: 0,
         duration_secs: 120,
         queries_executed: 6000,
         errors: 1,
@@ -165,6 +169,7 @@ fn test_soak_report_clone() {
 #[test]
 fn test_print_report_zero_errors() {
     let report = SoakReport {
+        reconnects: 0,
         duration_secs: 60,
         queries_executed: 6000,
         errors: 0,
@@ -181,6 +186,7 @@ fn test_print_report_zero_errors() {
 #[test]
 fn test_print_report_with_errors() {
     let report = SoakReport {
+        reconnects: 0,
         duration_secs: 300,
         queries_executed: 15000,
         errors: 42,
@@ -197,6 +203,7 @@ fn test_print_report_with_errors() {
 #[test]
 fn test_print_report_high_qps() {
     let report = SoakReport {
+        reconnects: 0,
         duration_secs: 10,
         queries_executed: 100000,
         errors: 0,
