@@ -84,13 +84,28 @@ done
 # copy is byte-identical to this text.
 #
 # Inputs (all optional, all with defaults):
-#   CI_REPO_URL       the Gitea clone URL
+#   CI_REPO_URL       the Gitea clone URL (full override)
+#   GITHUB_SERVER_URL the Gitea instance the run belongs to.  The clone URL
+#                      is derived from it, so the workflow works on whichever
+#                      instance actually runs it -- it is NOT pinned to an
+#                      IP address.  (Pinned to 192.168.0.252 until
+#                      2026-10-23; the Gitea control plane moved to
+#                      192.168.0.250 and the pinned URL silently pointed the
+#                      CI at the *other* instance.)
 #   CI_DEPTH          "1" = shallow (default); "0" = full history
 #   CI_CHECKOUT_DIR   where to check out ("." = the workspace root)
 #   GITHUB_SHA / GITEA_SHA   the commit the run was created for
 read -r -d '' CANONICAL_BODY <<'CANONICAL_EOF' || true
 set -euo pipefail
-REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+REPO_URL="${CI_REPO_URL:-}"
+if [ -z "$REPO_URL" ]; then
+  SERVER_URL="${GITHUB_SERVER_URL:-}"
+  if [ -z "$SERVER_URL" ]; then
+    echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+    exit 1
+  fi
+  REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+fi
 DEPTH="${CI_DEPTH:-1}"
 SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
 DIR="${CI_CHECKOUT_DIR:-.}"
