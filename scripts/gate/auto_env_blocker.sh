@@ -97,13 +97,13 @@ for dir in "${RELEASE_DIRS[@]}"; do
         header=$(head -c 500 "$md_file")
 
         # Check if has env:blocked marker
-        if echo "$header" | grep -qF "env:blocked:no-ci"; then
+        if grep -qF "env:blocked:no-ci" <<< "$header"; then
             total_skipped=$((total_skipped + 1))
             continue
         fi
 
         # Check if has gate_policy_eval_id (Gate Report provenance)
-        if echo "$header" | grep -qE "$PROVENANCE_PATTERN"; then
+        if grep -qE "$PROVENANCE_PATTERN" <<< "$header"; then
             total_skipped=$((total_skipped + 1))
             continue
         fi

@@ -116,7 +116,7 @@ YAMLEOF
     # synthetic tree instead of the repository.
     local out rc_clean rc_missing
     out="$(check_stage_artifacts "$tmp/cfg.yaml" v4.1.0 ALPHA "$tmp/release" 2>&1)"; rc_clean=$?
-    if [[ $rc_clean -eq 0 ]] && printf '%s' "$out" | grep -q "OK.*STAGE.yaml"; then
+    if [[ $rc_clean -eq 0 ]] && grep -q "OK.*STAGE.yaml" <<< "$out"; then
         echo "  [OK]   complete artifact set -> PASS"
     else
         echo "  [FAIL] complete artifact set -> FAIL (rc=$rc_clean)"
@@ -127,7 +127,7 @@ YAMLEOF
     # Remove one artifact and the gate must notice.
     rm -f "$tmp/release/v4.1.0/CHANGELOG.md"
     out="$(check_stage_artifacts "$tmp/cfg.yaml" v4.1.0 ALPHA "$tmp/release" 2>&1)"; rc_missing=$?
-    if [[ $rc_missing -ne 0 ]] && printf '%s' "$out" | grep -q "MISS.*CHANGELOG.md"; then
+    if [[ $rc_missing -ne 0 ]] && grep -q "MISS.*CHANGELOG.md" <<< "$out"; then
         echo "  [OK]   missing artifact -> FAIL (and named)"
     else
         echo "  [FAIL] missing artifact -> not detected (rc=$rc_missing)"
@@ -249,10 +249,10 @@ if [[ "$ALL_STAGES" != true && $current_idx -ge 0 ]]; then
         echo "--- Later stages (disclosure only — not enforced at $STAGE) ---"
         for s in "${later[@]}"; do
             out="$(check_stage_artifacts "$CONFIG" "$VERSION" "$s")"
-            n_miss=$(printf '%s\n' "$out" | grep -c '^MISS	' || true)
-            n_ok=$(printf '%s\n' "$out" | grep -c '^OK	' || true)
+            n_miss=$(grep -c '^MISS	' <<< "$out" || true)
+            n_ok=$(grep -c '^OK	' <<< "$out" || true)
             echo "  $s: $n_ok present, $n_miss missing"
-            printf '%s\n' "$out" | grep '^MISS	' | sed 's/^/    /' || true
+            grep '^MISS	' <<< "$out" | sed 's/^/    /' || true
         done
     fi
 fi

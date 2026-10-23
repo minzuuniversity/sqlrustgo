@@ -272,7 +272,7 @@ run_selftest() {
     # case 3: an explicitly requested base ref is NEVER fallen back on
     out="$(bash "$SCRIPT_DIR/verify_pr_dag.sh" --base refs/heads/definitely_nonexistent_selftest_zzz 2>&1)"
     rc=$?
-    if [ "$rc" -eq 2 ] && printf '%s\n' "$out" | grep -q "base ref cannot be resolved"; then
+    if [ "$rc" -eq 2 ] && grep -q "base ref cannot be resolved" <<< "$out"; then
         echo "[PASS] selftest: an unresolvable explicit --base stays DRIFT (exit 2) — no fallback"
         pass=$((pass + 1))
     else
@@ -282,7 +282,7 @@ run_selftest() {
 
     # case 4: the gate must not print integer-expression noise on stderr
     out="$(bash "$SCRIPT_DIR/verify_pr_dag.sh" 2>&1 >/dev/null)"
-    if printf '%s\n' "$out" | grep -q "integer expression expected"; then
+    if grep -q "integer expression expected" <<< "$out"; then
         echo "[FAIL] selftest: the gate still emits 'integer expression expected' on stderr"
         fail=$((fail + 1))
     else
@@ -292,7 +292,7 @@ run_selftest() {
 
     # case 5: the resolved ref must be visible in the gate's own output
     out="$(bash "$SCRIPT_DIR/verify_pr_dag.sh" 2>/dev/null)"
-    if printf '%s\n' "$out" | grep -q "base ref resolved:"; then
+    if grep -q "base ref resolved:" <<< "$out"; then
         echo "[PASS] selftest: the gate prints the base ref it actually used"
         pass=$((pass + 1))
     else
@@ -631,7 +631,7 @@ while IFS='|' read -r pr deps dep_state; do
         subj_label="${subj:0:72}"
         [ "$subj_label" = "" ] && subj_label="(no merge commit with this id; the evidence is a squash/direct implementation commit)"
 
-        if printf '%s' "$status" | grep -q "已合并"; then
+        if grep -q "已合并" <<< "$status"; then
             log_pass "$pr — declared 已合并, $n_commits implementation commit line(s) in git (Gitea #$gitea_label, $subj_label)"
         else
             # Declared not-merged (or partially) but git says otherwise.
@@ -640,7 +640,7 @@ while IFS='|' read -r pr deps dep_state; do
             log_warn "$pr — declared '$status' but $n_commits implementation commit line(s) exist in git (Gitea #$gitea_label, $subj_label). Status row is stale."
         fi
     else
-        if printf '%s' "$status" | grep -q "已合并"; then
+        if grep -q "已合并" <<< "$status"; then
             # FALSE PASS — the dangerous direction.
             FALSE_PASS=$((FALSE_PASS + 1))
             log_error "$pr — declared 已合并 but NO merge commit exists in $BASE_REF. This is a false pass."

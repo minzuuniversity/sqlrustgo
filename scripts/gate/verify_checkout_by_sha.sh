@@ -171,7 +171,7 @@ extract_canonical_body() {
         'index($0, start) { f = 1; next }
          f && /^CANONICAL_EOF$/ { exit }
          f { print }' "$CANONICAL_SCRIPT")"
-  if [ -z "$out" ] || ! printf '%s' "$out" | grep -q 'git fetch'; then
+  if [ -z "$out" ] || ! grep -q 'git fetch' <<< "$out"; then
     echo "FATAL: could not extract the canonical checkout body from $CANONICAL_SCRIPT" >&2
     return 1
   fi

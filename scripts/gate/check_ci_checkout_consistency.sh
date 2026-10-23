@@ -327,7 +327,7 @@ check_exemptions() {
     case " ${GATED_WORKFLOWS[*]} " in
       *" $wf "*) continue ;;
     esac
-    if ! printf '%s\n' "${EXEMPT_WORKFLOWS[@]}" | grep -q "^${wf}|"; then
+    if ! grep -q "^${wf}|" <<< "$(printf '%s\n' "${EXEMPT_WORKFLOWS[@]}")"; then
       fail "$wf is neither gated nor exempt - add it to GATED_WORKFLOWS or to EXEMPT_WORKFLOWS with a reason"
     fi
   done

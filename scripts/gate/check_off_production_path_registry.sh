@@ -161,7 +161,7 @@ print(','.join(sorted(names)))
     else
         while read -r BIN_NAME; do
             [ -z "$BIN_NAME" ] && continue
-            if echo ",$ENUM_INFO," | grep -q ",$BIN_NAME,"; then
+            if grep -q ",$BIN_NAME," <<< ",$ENUM_INFO,"; then
                 add_fail "R4a $BIN_NAME IS in the B2 enumeration — the off-production-path \
 exclusion would never trigger. Either remove it from the enumeration \
 (EXTRA_TEST_PACKAGES) or re-evaluate: if it now runs the real engine, move it out \

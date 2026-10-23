@@ -85,6 +85,149 @@ make_temp_dir() {
     printf '%s' "$d"
 }
 
+# --- text predicates that a pipe cannot break --------------------------------
+#
+# A gate that asks "does this text contain X" must not build a **pipeline** to
+# ask it. `printf '%s' "$text" | grep -q X` answers the question twice — once
+# with grep's exit status, once with the *pipeline's* exit status — and under
+# `set -o pipefail` those two answers can disagree.
+#
+# `grep -q` exits the moment it has a match, which closes the read end of the
+# pipe. A writer that has not finished writing takes SIGPIPE and dies with 141,
+# and `pipefail` then reports the pipeline as **failed** even though the answer
+# was "found". A gate that turns "found" into "missing" is worse than no gate
+# at all: it invents a failure nobody can reproduce.
+#
+# Measured on #5401 (`scripts/gate/check_storage_db_scope_coverage.sh`):
+# 16 methods x 2 wrappers x 60 iterations = 1920 samples produced **32**
+# pipeline exits of 141 — and **all 32** were methods that were present
+# (cross-checked against a pipe-free reference). 100% false failures, which
+# made the whole gate fail in roughly 42% of its runs.
+#
+# These two helpers ask the question without a pipe. Use them instead of
+# `printf ... | grep -q` anywhere a `pipefail` shell pipes text into `grep -q`.
+#
+# `gate_text_contains_literal` is the literal (non-regex, non-glob) test.
+gate_text_contains_literal() {
+    local text="$1"
+    local needle="$2"
+    case "$text" in
+        *"$needle"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# `gate_text_matches_regex` is the extended-regular-expression test. The
+# here-string hands grep a temporary file, so grep reads it to the end and no
+# writer is left behind to be killed by SIGPIPE.
+#
+# It matches the old `printf '%s\n' "$text" | grep -qE -- "$re"` exactly: a
+# here-string appends the same trailing newline `printf '%s\n'` did.
+gate_text_matches_regex() {
+    local text="$1"
+    local re="$2"
+    grep -qE -- "$re" <<<"$text"
+}
+
+# Run the text predicates' own fixtures.
+#
+# The hard assertions are about the **new** helpers: they must give the same
+# answer on every one of many iterations, including on a payload far larger
+# than any pipe buffer (2 MiB here; a Linux pipe buffer is 64 KiB and a macOS
+# one is 16 KiB). That is the property the pipe-based form did not have.
+#
+# The old pipe-based form is exercised too, but only as a **negative
+# control**: it is expected to misbehave, and the count of misbehaviours is
+# reported rather than asserted — a regression test that fails when the bug
+# happens not to reproduce is not a regression test, it is a coin toss.
+gate_text_helpers_selftest() {
+    local fails=0
+    local big
+    local i
+    local rc
+
+    # 2 MiB payload: 4096 lines x 512 bytes.
+    big="$(awk 'BEGIN{for(i=0;i<4096;i++){for(j=0;j<512;j++)printf "x";printf "\n"}}')"
+    if [ "${#big}" -lt 1048576 ]; then
+        echo "SELFTEST FAIL: could not build a >1MiB payload (got ${#big} bytes)"
+        return 1
+    fi
+
+    # 1. The literal test must find a needle at the very start of a huge
+    #    payload — the exact position that made the pipe form lose the race.
+    i=0
+    while [ "$i" -lt 200 ]; do
+        if ! gate_text_contains_literal "$big" "xxx"; then
+            echo "SELFTEST FAIL: literal test lost a present needle on iteration $i"
+            fails=$((fails + 1))
+            break
+        fi
+        i=$((i + 1))
+    done
+
+    # 2. The literal test must not find an absent needle.
+    i=0
+    while [ "$i" -lt 200 ]; do
+        if gate_text_contains_literal "$big" "definitely-not-present-needle"; then
+            echo "SELFTEST FAIL: literal test invented a needle on iteration $i"
+            fails=$((fails + 1))
+            break
+        fi
+        i=$((i + 1))
+    done
+
+    # 3. The regex test must find a present pattern, every time.
+    i=0
+    while [ "$i" -lt 200 ]; do
+        if ! gate_text_matches_regex "$big" "^x+$"; then
+            echo "SELFTEST FAIL: regex test lost a present pattern on iteration $i"
+            fails=$((fails + 1))
+            break
+        fi
+        i=$((i + 1))
+    done
+
+    # 4. The regex test must not find an absent pattern.
+    i=0
+    while [ "$i" -lt 200 ]; do
+        if gate_text_matches_regex "$big" "definitely-not-present-needle"; then
+            echo "SELFTEST FAIL: regex test invented a pattern on iteration $i"
+            fails=$((fails + 1))
+            break
+        fi
+        i=$((i + 1))
+    done
+
+    # Negative control — the pipe-based form this replaced. Reported, not
+    # asserted: it is allowed to pass cleanly on a fast machine.
+    #
+    # `pipefail` is ON for the measurement, because that is the whole point:
+    # the pipeline's status is what the old code branched on, and 141 (SIGPIPE)
+    # there means "found" was reported as "missing".
+    local false_fail=0
+    local pipefail_was_on=false
+    case "$(set -o)" in
+        *pipefail*on*) pipefail_was_on=true ;;
+        *) set -o pipefail ;;
+    esac
+    i=0
+    while [ "$i" -lt 200 ]; do
+        # `2>/dev/null` silences bash's "printf: write error: Broken pipe"
+        # notice — which is the very failure being counted, and 200 lines of
+        # it would drown the selftest's own verdict.
+        printf '%s\n' "$big" 2>/dev/null | grep -q "xxx"
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            false_fail=$((false_fail + 1))
+        fi
+        i=$((i + 1))
+    done
+    [ "$pipefail_was_on" = true ] || set +o pipefail
+    echo "SELFTEST negative control: pipe-based form mis-answered $false_fail/200 times (0 = the bug did not reproduce here)"
+    echo "SELFTEST: $fails failure(s)"
+    return "$fails"
+}
+
 # --- SHA-256 of a file, portable across Linux/macOS -------------------------
 # `shasum` is a Perl script and is NOT guaranteed to exist on a slim CI
 # image; `sha256sum` comes from GNU coreutils. The CI runner is only
