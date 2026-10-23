@@ -76,7 +76,7 @@ jobs:
           REPO="openclaw/sqlrustgo"
           REF="${GITHUB_REF_NAME:-develop/v3.12.0}"
           git clone --depth=1 --branch "$REF" \
-            "http://192.168.0.252:3000/$REPO" repo
+            "${GITHUB_SERVER_URL}/$REPO" repo
           cd repo
           echo "Checked out $(git rev-parse HEAD) on $REF"
           echo "REPO=$PWD" >> $GITHUB_ENV
