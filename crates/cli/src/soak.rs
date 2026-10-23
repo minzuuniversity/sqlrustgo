@@ -133,14 +133,18 @@ pub fn run_soak(config: &SoakConfig) -> anyhow::Result<SoakReport> {
                     eprintln!("SOAK error: {e}");
                 }
                 // Reconnect: a reset connection must not kill the run.
-                match Client::connect(&config.host, config.port, &config.user, &config.password) {
-                    Ok(c) => {
-                        client = c;
-                        reconnects += 1;
-                        eprintln!("  SOAK: reconnected (total {reconnects})");
-                    }
-                    Err(_) => {} // server still down; keep counting errors
+                // `if let` rather than `match` with an empty `Err` arm: the
+                // latter is `clippy::single_match`, and the CI runner's
+                // clippy (1.91.1) counts it while the local 1.95.0 does not —
+                // so the `match` form was green locally and red in CI.
+                if let Ok(c) =
+                    Client::connect(&config.host, config.port, &config.user, &config.password)
+                {
+                    client = c;
+                    reconnects += 1;
+                    eprintln!("  SOAK: reconnected (total {reconnects})");
                 }
+                // On failure the server is still down; keep counting errors.
             }
         }
 
