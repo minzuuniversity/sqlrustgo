@@ -48,12 +48,14 @@ fn close(a: f32, b: f32) -> bool {
 /// A few vector pairs with a known relationship, plus some arbitrary ones.
 fn sample_pairs() -> Vec<(Vec<f32>, Vec<f32>)> {
     vec![
-        (vec![1.0, 0.0, 0.0], vec![1.0, 0.0, 0.0]),   // identical
-        (vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]),   // orthogonal
-        (vec![1.0, 0.0, 0.0], vec![-1.0, 0.0, 0.0]),  // opposite
+        (vec![1.0, 0.0, 0.0], vec![1.0, 0.0, 0.0]),  // identical
+        (vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]),  // orthogonal
+        (vec![1.0, 0.0, 0.0], vec![-1.0, 0.0, 0.0]), // opposite
         (vec![1.0, 2.0, 3.0], vec![3.0, 2.0, 1.0]),
-        (vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-         vec![0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]),
+        (
+            vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+            vec![0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1],
+        ),
         (vec![0.5, -0.5, 0.25, -0.25], vec![0.25, 0.25, -0.5, 0.5]),
     ]
 }
@@ -123,7 +125,11 @@ fn the_distance_is_the_complement_of_the_similarity() {
 fn the_norm_is_the_euclidean_length_not_the_distance_to_itself() {
     let v = [3.0_f32, 4.0];
     // The length of a 3-4-5 triangle is 5.
-    assert!(close(l2_norm(&v), 5.0), "l2_norm must be 5, got {}", l2_norm(&v));
+    assert!(
+        close(l2_norm(&v), 5.0),
+        "l2_norm must be 5, got {}",
+        l2_norm(&v)
+    );
     assert!(
         l2_norm(&v) != 0.0,
         "the norm of a non-zero vector must not be 0 — that was the defect"
@@ -219,7 +225,8 @@ fn hnsw_index_ranks_the_most_similar_first() {
     let results = index.search(&[1.0, 0.0, 0.0], 3).unwrap();
 
     assert_eq!(
-        results[0].id, 1,
+        results[0].id,
+        1,
         "the identical vector must come first, got {:?}",
         results.iter().map(|e| e.id).collect::<Vec<_>>()
     );

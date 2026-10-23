@@ -278,8 +278,8 @@ sem:
 
   - id: SEM-4
     title: "Coverage 测量差异 (跨机台测量口径不一致：同一 crate 在 Z6G4 与 Z440 上的读数差异)"
-    state: IN_PROGRESS
-    progress: 87.64%
+    state: CLOSED
+    progress: 87.80%
     progress_metric: |
       v3.12.0 L1_8 平均覆盖率 84.44% >= 80% 阈值 (实测 2026-08-15, macmini M4).
       各 crate: parser 75.16%, planner 86.75%, executor 82.80%, transaction 85.41%,
@@ -291,10 +291,15 @@ sem:
       integration test 失败, 见 #5103), 因此 8-crate 均值当前无法给出.
       parser 86.75% (+11.59pp vs 2026-08-15), planner 88.91%, transaction 86.00%,
       storage 81.34%, catalog 87.33%, optimizer 87.85%, types 95.28%.
+      ---
+      2026-10-23 复测 (macmini M4, 口径修正后 —— 根因见 note):
+      8/8 crate 全部可测,  L1_8 平均 87.80% >= 80.0% 阈值,  exit 0.
+      parser 86.46%, planner 88.91%, executor 82.74%, transaction 93.29%,
+      storage 80.61%, catalog 87.33%, optimizer 87.85%, types 95.28%.
     owner: openclaw
     target_release: v3.13.0
-    closed_at: "2026-08-15 (RE-OPENED 2026-10-07 — 见 note)"
-    closing_pr: []
+    closed_at: "2026-10-23"
+    closing_pr: [5126, 5537]
     note: >-
       RE-OPENED 2026-10-07 (was CLOSED 2026-08-15). The 2026-08-15 closure
       rested on three claims that do not hold up:
@@ -316,8 +321,37 @@ sem:
       reproduced here either.
       The 2026-08-15 per-crate figures are LEFT UNCHANGED: they were a real
       measurement on 2026-08-15 and are not falsified, only no longer current.
-      Re-closure requires the executor suite green (#5103) plus a full
-      8-crate run of the corrected gate.
+      ---
+      RE-CLOSED 2026-10-23. 根因已从字面占位符 'XYZ' 换成实测事实，两项关闭
+      前提均已满足。
+      (1) 根因 = 测量口径本身不是测量。check_coverage_v312.sh 原先以
+      cargo llvm-cov 的**默认并行 test 线程**跑覆盖率；llvm-cov 下代码慢
+      2-10 倍，默认并行时测试结果取决于机器负载，于是"同一 crate 的读数"
+      随机器/负载漂移 —— 这正是跨机台读数不一致的来源。脚本内已有的实测
+      证据：sqlrustgo-planner 在同一 checkout 上以 --test-threads=1 测得
+      88.91% 且 PASS，改用默认线程数则 FAIL（"A coverage number that depends
+      on machine load is not a measurement"）。2026-10-22 commit 2fef945260
+      (#5537) 把 --test-threads=1 钉死（亦符合 AGENTS.md §10 对并发测试的
+      要求）⇒ 测量转为确定性。
+      (2) 两项关闭前提:
+          - executor 套件绿 (#5103): PR #5126 修复"过程体内的无 FROM SELECT
+            被当成 0 行"后实测 777 passed / 0 failed / 0 ignored
+            (2026-10-23, macmini M4)。
+          - 修正后门禁的完整 8-crate 实跑 (2026-10-23, macmini M4):
+            parser 86.46 / planner 88.91 / executor 82.74 / transaction 93.29 /
+            storage 80.61 / catalog 87.33 / optimizer 87.85 / types 95.28,
+            L1_8 平均 87.80% >= 80.0%, exit 0.
+      (3) 确定性验证: 同一台机器、同一份代码连续两遍测 sqlrustgo-transaction
+      得 93.29% / 93.29%（完全一致，排除集同为 15 个环境相关测试）⇒ 读数
+      不再随负载漂移。STAGE.yaml open_issues P0-05 引用的 "parser 实测
+      60.58%" 同样不复现 —— 2026-10-23 实测 parser 86.46%。
+      (4) 跨机台对照 (z440 2026-10-07 vs macmini M4 2026-10-23, 7 个重叠
+      crate): planner 88.91/88.91、catalog 87.33/87.33、optimizer 87.85/87.85、
+      types 95.28/95.28 完全相同；parser 86.75/86.46 (Δ0.29pp)、
+      storage 81.34/80.61 (Δ0.73pp)；transaction 86.00/93.29 (Δ7.29pp) 由两次
+      测量之间的真实代码变更解释 —— crates/transaction 在 2026-10-07 之后有
+      6 个 commit（新增 3 个 counterexample 测试文件 + tx_id 改进程全局唯一
+      分配），不是测量口径问题。
 
 # =============================================================================
 # F-XX — Feature Gap (36 items, v3.0.0 baseline)

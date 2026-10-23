@@ -17,8 +17,9 @@
 //! 3. **Storage is state machine**: no batch abstraction
 //! 4. **ExecutionEngine never sees WAL**: SQL runtime != recovery runtime
 
-use crate::engine::{SqlResult, StorageEngine, Value};
+use crate::engine::{Record, SqlResult, StorageEngine, Value};
 use crate::wal::{WalEntry, WalEntryType, WalManager};
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 
 /// Recovery statistics
@@ -636,6 +637,12 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
         // already-filtered `dml_entries`) to `entry_in_autocommit_span`
         // so the helper can see the Begin/Commit/Rollback delimiters
         // surrounding each DML entry.
+        //
+        // P0-08: one row index for the whole replay. The dedup check used
+        // to scan the table once per replayed row, which made the replay
+        // quadratic; with the index each table is scanned once. See
+        // `RecoveryRowIndex`.
+        let mut index = RecoveryRowIndex::default();
         for entry in &dml_entries {
             let is_autocommit = entry_in_autocommit_span(entry, &entries);
             // v3.12.0 Issue #4682: log+continue on per-entry errors
@@ -643,7 +650,7 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
             // tolerance, a single stale entry (e.g. tx_id from a
             // crashed import) would crash recovery and leave the
             // server with a partial view of the data.
-            if let Err(e) = self.apply_entry(storage, entry) {
+            if let Err(e) = apply_wal_entry_with_index(storage, entry, &mut index) {
                 log::warn!(
                     "RecoveryEngine: skipping entry (tx_id={}, type={:?}, table_id={}): {}",
                     entry.tx_id,
@@ -672,6 +679,94 @@ impl<S: StorageEngine> RecoveryEngine<S> for RecoveryEngineImpl {
         // and a decoder that disagreed about the format — one of them
         // had grown `P:`/`J:` support the other never got.
         apply_wal_entry(storage, entry).map(|_| ())
+    }
+}
+
+/// P0-08: the rows a table holds, indexed so the replay's dedup check is
+/// O(1) instead of a full table scan.
+///
+/// # What the defect was
+///
+/// `apply_wal_entry` answers "is this row already present?" with
+/// `storage.scan_in_db(db, table)` and then `existing.iter().any(|r| r == &record)`.
+/// That is a **full table scan per replayed row** — and it clones the whole
+/// table to do it, so replaying N rows costs O(N²) row comparisons *and*
+/// O(N²) row copies.
+///
+/// Measured on macmini M4 (2026-10-23, `crates/storage/tests/measure_recovery_scale_p0_08.rs`):
+///
+/// | replayed rows | dedup check per row | write per row |
+/// |---|---|---|
+/// | 500 | 63.9 µs | 96.4 µs |
+/// | 2 000 | 247.9 µs | 85.8 µs |
+/// | 8 000 | 896.4 µs | 86.4 µs |
+///
+/// The dedup cost grows with the table; the write cost does not. The write
+/// path takes the delta-append branch (`<table>.delta` grows, the base
+/// snapshot stays at its schema size), so the whole quadratic term was the
+/// dedup scan. At the defect report's 58 288 entries against a 68 288-row
+/// table, the scan accounts for the difference between a restart measured in
+/// seconds and one measured in **24 min 22 s**.
+///
+/// # How this answers the same question
+///
+/// A table is scanned **once** — the first time an `Insert` touches it — and
+/// every row the replay inserts is added to the index. The set of rows the
+/// index holds is therefore exactly the set of rows the table holds, which
+/// is what the old scan compared against.
+///
+/// An `Update` or a `Delete` changes which rows a table holds, and the WAL
+/// entry does not say which one: it carries the key and the new record, not
+/// the old row's contents. So the affected table's index is dropped, and the
+/// next `Insert` rebuilds it from the table — one scan, the same scan the
+/// old code did, just not N of them.
+///
+/// # Equality
+///
+/// The index is keyed by the row itself, so it uses `Value`'s `Eq`/`Hash` —
+/// the same comparison the old `r == &record` used. `Value`'s `Hash` is
+/// required to agree with its `Eq`, which it now does for the one case that
+/// used to disagree (`0.0` vs `-0.0`); see `crates/types/src/value.rs`.
+#[derive(Default)]
+pub(crate) struct RecoveryRowIndex {
+    tables: HashMap<(String, String), HashSet<Record>>,
+}
+
+impl RecoveryRowIndex {
+    /// Does the table already hold this row?
+    ///
+    /// The first call for a table scans it; later calls are hash lookups.
+    fn contains<S: StorageEngine + ?Sized>(
+        &mut self,
+        storage: &S,
+        db: &str,
+        table: &str,
+        record: &Record,
+    ) -> bool {
+        let key = (db.to_string(), table.to_string());
+        let set = self.tables.entry(key).or_insert_with(|| {
+            storage
+                .scan_in_db(db, table)
+                .map(|rows| rows.into_iter().collect())
+                .unwrap_or_default()
+        });
+        set.contains(record)
+    }
+
+    /// Record a row the replay has just inserted, so the next entry's dedup
+    /// check sees it — exactly as the next full scan would have.
+    fn record(&mut self, db: &str, table: &str, record: Record) {
+        let key = (db.to_string(), table.to_string());
+        if let Some(set) = self.tables.get_mut(&key) {
+            set.insert(record);
+        }
+    }
+
+    /// The table's contents changed underneath the index; drop it so the
+    /// next `Insert` rebuilds it from the table.
+    fn invalidate(&mut self, db: &str, table: &str) {
+        let key = (db.to_string(), table.to_string());
+        self.tables.remove(&key);
     }
 }
 
@@ -705,6 +800,23 @@ pub(crate) enum ApplyOutcome {
 pub(crate) fn apply_wal_entry(
     storage: &mut dyn StorageEngine,
     entry: &WalEntry,
+) -> SqlResult<ApplyOutcome> {
+    // P0-08: a single entry gets its own index — there is nothing to
+    // amortise, and the index's first lookup scans the table exactly the
+    // way the old code did.
+    let mut index = RecoveryRowIndex::default();
+    apply_wal_entry_with_index(storage, entry, &mut index)
+}
+
+/// [`apply_wal_entry`] with the replay's row index threaded through.
+///
+/// The index is what turns the per-entry dedup scan into a per-table scan
+/// plus a hash lookup; see [`RecoveryRowIndex`] for the measurement that
+/// motivated it.
+pub(crate) fn apply_wal_entry_with_index(
+    storage: &mut dyn StorageEngine,
+    entry: &WalEntry,
+    index: &mut RecoveryRowIndex,
 ) -> SqlResult<ApplyOutcome> {
     // #5055: resolve via the recorded table name; only fall back to the
     // legacy id hash, and error rather than guess on ambiguity.
@@ -779,17 +891,23 @@ pub(crate) fn apply_wal_entry(
             // restore work at all — replay runs on top of a restored
             // base backup that already holds every row the base had, so
             // re-applying the log would duplicate all of them.
-            if let Ok(existing) = storage.scan_in_db(db_name, &table_name) {
-                if existing.iter().any(|r| r == &record) {
-                    return Ok(ApplyOutcome::Skipped);
-                }
+            //
+            // P0-08: the check used to be a full table scan per entry,
+            // which made the whole replay quadratic. The index answers
+            // the same question in O(1); see `RecoveryRowIndex`.
+            if index.contains(&*storage, db_name, &table_name, &record) {
+                return Ok(ApplyOutcome::Skipped);
             }
             // Bypass the insert buffer so a later entry in this same
             // pass can see the row. `FileStorage::update` and `delete`
             // read `tables` only, so a row left in the buffer would be
             // invisible to a subsequent Update or Delete — the restore
             // would silently apply the first write and drop the rest.
-            recovery_force_insert_in_db(storage, db_name, &table_name, record)?;
+            recovery_force_insert_in_db(storage, db_name, &table_name, record.clone())?;
+            // The row is in the table now, so the index must know it —
+            // otherwise the next entry's dedup check would not see the
+            // row the scan would have seen.
+            index.record(db_name, &table_name, record);
             Ok(ApplyOutcome::Applied)
         }
         WalEntryType::Update => {
@@ -797,6 +915,12 @@ pub(crate) fn apply_wal_entry(
                 if let Some(ref data) = entry.data {
                     let new_record = bytes_to_record(data)?;
                     replace_by_key_in_db(storage, db_name, &table_name, key, new_record)?;
+                    // P0-08: the update changed which rows the table
+                    // holds, and the index cannot tell which one — the
+                    // entry carries the key and the new record, not the
+                    // old row. Drop it; the next Insert rebuilds it
+                    // from the table.
+                    index.invalidate(db_name, &table_name);
                     Ok(ApplyOutcome::Applied)
                 } else {
                     log::warn!(
@@ -819,6 +943,7 @@ pub(crate) fn apply_wal_entry(
             if let Some(ref key) = entry.key {
                 let filter_values = key_to_filter_values(key)?;
                 storage.delete_in_db(db_name, &table_name, &filter_values)?;
+                index.invalidate(db_name, &table_name);
                 Ok(ApplyOutcome::Applied)
             } else {
                 log::warn!(
@@ -826,6 +951,7 @@ pub(crate) fn apply_wal_entry(
                     table_name
                 );
                 storage.delete_in_db(db_name, &table_name, &[])?;
+                index.invalidate(db_name, &table_name);
                 Ok(ApplyOutcome::Applied)
             }
         }

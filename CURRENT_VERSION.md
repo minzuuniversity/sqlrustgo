@@ -1,17 +1,20 @@
 # 当前版本状态
 
-> **provenance:** generated_at=2026-09-30, branch=develop/v4.1.0,
-> commit=`bdf465b25c` (post v4.0.0 docs backport + alpha2 prep),
+> **基线**：`develop/v4.1.0` @ `3a3350f660`
+> **provenance:** generated_at=2026-10-23, branch=develop/v4.1.0,
+> commit=`3a3350f660` (批次 27 修订：统一 v4.0.0 的 GA 判定措辞),
 > source_repo=openclaw/sqlrustgo, policy=Anti-Fabrication-Policy-v1.0
 
 ## 最近已发布
 
-**v4.0.0 GA** (CONDITIONAL PASS, 2026-09-19 发布；tag `v4.0.0-final` @ `54571eeca0`，最终 sync HEAD `07178c9d66`；PR #3787/#4902 promote 至 main)
+**v4.0.0**（代码已于 2026-09-19 发布；tag `v4.0.0-final` @ `54571eeca0`，最终 sync HEAD `07178c9d66`；PR #3787/#4902 promote 至 main，5 远端 main 均含该 commit）
+> ⚠️ **GA 阶段判定已于 2026-09-30 作废** —— `docs/releases/v4.0.0/STAGE.yaml` 的 `ga_promotion_status.verdict = "REVOKED 2026-09-30"`、`current_stage: "DRAFT"`：**v4.0.0 从未合法达到 GA，不构成 GA 发布**。原「GA CONDITIONAL PASS」措辞不得再被引用为 GA 证据。详见 `docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md`。
 
 - 完整发布说明：[docs/releases/v4.0.0/RELEASE_NOTES.md](docs/releases/v4.0.0/RELEASE_NOTES.md)
 - 完整变更日志：[docs/releases/v4.0.0/CHANGELOG.md](docs/releases/v4.0.0/CHANGELOG.md)
 - 升级指南：[docs/releases/v4.0.0/UPGRADE_GUIDE.md](docs/releases/v4.0.0/UPGRADE_GUIDE.md)
 - GA 门禁报告：[docs/releases/v4.0.0/GA_GATE_REPORT.md](docs/releases/v4.0.0/GA_GATE_REPORT.md) — G1/G2/G4/G5 ✅ PASS；G3 coverage 78.28% 平均 CONDITIONAL PASS（< 80%）；168h SOAK defer 至 V400-09 follow-up
+  - ⚠️ 该报告 §0 的「GA CONDITIONAL PASS」判定已作废：78.28% 低于 `COVERAGE_MIN_RC`=80%，且 `current_stage` 始终为 DRAFT。报告其余章节仅作历史记录，不得作为 GA 证据引用。
 
 **v4.1.0-alpha1** (2026-09-29; 8/8 alpha quality gates PASS; tag `v4.1.0-alpha1` @ HEAD `c1a73a5320`, 后续 6 commits 推到 `0edda51d42`)
 
@@ -52,7 +55,7 @@
 
 - **阶段**: **ALPHA**（2026-09-29 从 DRAFT 转入；[STAGE.yaml `current_stage: "ALPHA"`](docs/releases/v4.1.0/STAGE.yaml)）
 - **当前状态**: alpha composite PASS（entry 19/19 + quality 8/8），3 inherited alpha-gate FAILs 已修。下一步：alpha→beta 转段（需 WP-C..G 18 issue 代码实现 + V400-09 168h SOAK 重启 + Coverage >= 50%）。
-- **里程碑 v4.0.0**: 🟡 self-claimed GA（`docs/releases/v4.0.0/GA_GATE_REPORT.md` says GA CONDITIONAL PASS；`docs/releases/v4.0.0/STAGE.yaml` SSOT 仍是 DRAFT — 治理漂移未修复）
+- **里程碑 v4.0.0**: ✅ 治理漂移已消解（2026-10-23 统一措辞）—— 代码已发布到 5 远端 main，但阶段判定以 `docs/releases/v4.0.0/STAGE.yaml` SSOT 为准：verdict=REVOKED（2026-09-30）、`current_stage: "DRAFT"`。原漂移的根因是 §0 写「GA CONDITIONAL PASS」而 SSOT 写 DRAFT，两处现已改为同一口径
 - **WP-H #4639**: defer-to-v4.1 — own in v4.1.0 scope
 
 ## v3.12.0 GA 阶段信息（已发布）
@@ -78,15 +81,17 @@
 > alpha composite PASS（entry 19/19 + quality 8/8）。
 > 任何 v4.1.1 后续工作必须保留在 v4.1.0 范围内直到 GA。
 
-> 🟡 **v4.0.0 self-claimed GA 治理漂移未修复**：
-> `docs/releases/v4.0.0/GA_GATE_REPORT.md` says GA CONDITIONAL PASS（2026-09-20），
-> `docs/releases/v4.0.0/STAGE.yaml` SSOT 仍是 DRAFT。需用户决策：回滚 self-claim，或补 STAGE_CONFIG gate flow。
-> v4.1.0 继承此漂移。
+> ✅ **v4.0.0 GA 判定漂移已于 2026-10-23 消解**：
+> `docs/releases/v4.0.0/RELEASE_NOTES.md` 与本文件的「GA CONDITIONAL PASS」措辞
+> 已改为与 `docs/releases/v4.0.0/STAGE.yaml` SSOT（`ga_promotion_status.verdict =
+> REVOKED 2026-09-30`、`current_stage: "DRAFT"`）一致：代码确实已发布到 5 远端
+> main，但 v4.0.0 不构成 GA 发布。
+> v4.1.0 继承的是 v4.0.0 的**代码基线**，不是它的 GA 判定。
 
 ## 版本概述
 
 - **v4.1.0** = v4.0.0 post-GA maintenance continuation。继承 v4.0.0 scope + bugfix carry-forward（zombie-fix core, workers.push, DML/storage regressions）+ 5-remote sync 工具 + WP-C..G 迁移。
-- **v4.0.0** = self-claimed GA (CONTAINS claim-caveat items per CLAIM_DOWNGRADE_MANIFEST.md). 5-remote 5 端发布：gitcode / gitea250 / gitea252 / gitee / github。
+- **v4.0.0** = 代码已发布到 5 远端（gitcode / gitea250 / gitea252 / gitee / github），但 **GA 判定已于 2026-09-30 作废**（REVOKED；SSOT `current_stage: DRAFT`）⇒ 不构成 GA 发布。claim-caveat items 见 CLAIM_DOWNGRADE_MANIFEST.md。
 - **v3.12.0** = GMP internal-audit retrieval database + 内部向量检索 + SQL-backed graph projection + auditable evidence bundle.
 - **v3.11.0** = 债务清零 + 功能孤岛集成 + 性能突破。从 v3.10.0 GA 继承 23 项债务，全部完成。
 
@@ -152,7 +157,8 @@ Per `docs/releases/v4.1.0/STAGE.yaml#alpha_to_beta`:
 | v3.12.0 RC | 2026-08-26 | V312-59-C，9 PASS / 0 FAIL / 2 NO-OP-covered。Tag `v3.12.0-rc1` @ `f795efa60` |
 | v3.12.0 GA | 2026-09-08 | V312-59-D 周期完成（8/7/13/13 gates PASS），tag `v3.12.0-ga` @ `355b5a3837` |
 | v4.0.0 | 2026-09-08 | develop/v4.0.0 在 v3.12.0 GA 后切出 |
-| v4.0.0 GA CONDITIONAL PASS | 2026-09-20 | self-claim per `GA_GATE_REPORT.md`；STAGE.yaml SSOT 未更新（治理漂移） |
+| v4.0.0 GA 判定作废 | 2026-09-30 | `docs/releases/v4.0.0/STAGE.yaml` `ga_promotion_status.verdict=REVOKED`；实际状态 DRAFT，从未合法达到 GA（代码已发布到 5 远端 main） |
+| v4.0.0 措辞统一 | 2026-10-23 | `docs/releases/v4.0.0/RELEASE_NOTES.md` 与 `CURRENT_VERSION.md` 与 SSOT 对齐，消解 `docs/releases/v4.1.0/STAGE.yaml` open_issues 首条 |
 | v4.1.0 | 2026-09-19 | develop/v4.1.0 切出（v4.0.0 GA gate 同期） |
 | v4.1.0 DRAFT | 2026-09-23 | STAGE.yaml + PHASE_0 docs 脚手架 |
 | **v4.1.0 ALPHA** | **2026-09-29** | **commit `c1a73a5320`; alpha composite PASS (entry 19/19 + quality 8/8); tag `v4.1.0-alpha1` @ `c1a73a5320`** |

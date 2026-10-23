@@ -25,7 +25,7 @@
 //!   removed the test forever would pass a one-sided check.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 fn repo_root() -> PathBuf {

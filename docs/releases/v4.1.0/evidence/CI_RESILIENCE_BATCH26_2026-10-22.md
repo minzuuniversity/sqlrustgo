@@ -501,8 +501,8 @@ rc=0
 
 `check_docs_pointer_paths.sh --scope docs/releases/v4.1.0` 原报 8 条新失效指针：
 
-* 真正该修的：`ALTER_COLUMN_DEFAULT_BATCH13_2026-10-22.md` 指向的
-  `crates/storage/src/bin_format.rs` 文件已不存在 ⇒ 改写为 BINT 落盘格式
+* 真正该修的：`ALTER_COLUMN_DEFAULT_BATCH13_2026-10-22.md` 原先指向的
+  crates/storage/src/bin_format.rs 文件已不存在 ⇒ 改写为 BINT 落盘格式
   `crates/storage/src/bin_segment.rs`（并如实说明该文件唯一一处
   `default_value` 是内存侧 `ColumnDefinition` 字段，恒 `None`）；
 * 登记 7 条确属债的进 `tests/baseline/doc_pointer_paths_releases_v4.1.0.json`

@@ -146,6 +146,13 @@ env:
 jobs:
   lint-build:
     runs-on: [hp-z6g4]
+    # #5451 — the shared cargo registry cache. The volume is the durable
+    # store; `scripts/ci/cache_cargo_registry.sh` copies the registry in and
+    # out of it (serialized with flock, because three jobs share this
+    # volume).
+    container:
+      volumes:
+        - sqlrustgo-cargo-cache:/opt/cargo-cache
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
@@ -184,6 +191,14 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # Without this every job re-downloads ~164 crates from
+        # `static.crates.io` — ~75 s of wall clock, and the only reason a
+        # job could die with "failed to get `chrono` as a dependency"
+        # before a single test ran (run 8185). The runner image ships a
+        # populated registry, but a job container's `CARGO_HOME` points at
+        # an empty directory, so cargo never sees it.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Clippy
         # #5465: this used to be
         #     cargo clippy --all-features -- -D warnings
@@ -271,9 +286,18 @@ jobs:
         run: cargo fmt --check --all
       - name: Build
         run: cargo build --all-features
+      - name: Save cargo registry cache (issue #5451)
+        # Runs even when an earlier step failed (`if: always()`): a build
+        # that got half way through the dependency graph still fetched the
+        # crates it needed, and those are worth keeping.
+        if: always()
+        run: bash scripts/ci/cache_cargo_registry.sh save
 
   test:
     runs-on: [hp-z6g4]
+    container:
+      volumes:
+        - sqlrustgo-cargo-cache:/opt/cargo-cache
     # ── #5533 — `needs: [lint-build]` made this job **never run**. ──────────
     #
     # On this Gitea (28.1.0) a job that declares a non-empty `needs:` stays
@@ -335,6 +359,10 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # See the `lint-build` job for why this exists: without it every job
+        # re-downloads ~164 crates from `static.crates.io`.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Build
         # `cargo build` inside a workspace that has a **root package** builds
         # ONLY that root package — the member packages' binaries are never
@@ -586,8 +614,17 @@ jobs:
   # The job runs **after** `lint-build` (a clippy failure is a P0 stop, and
   # the runner has a single worker — running the crates' tests on top of a
   # known-red clippy would only burn the queue).
+      - name: Save cargo registry cache (issue #5451)
+        # Runs even when an earlier step failed (`if: always()`): a build
+        # that got half way through the dependency graph still fetched the
+        # crates it needed, and those are worth keeping.
+        if: always()
+        run: bash scripts/ci/cache_cargo_registry.sh save
   test-crates:
     runs-on: [hp-z6g4]
+    container:
+      volumes:
+        - sqlrustgo-cargo-cache:/opt/cargo-cache
     # #5533 — same defect as the root `test` job: a non-empty `needs:` never
     # leaves status Waiting on this Gitea, so this job would have been dead
     # on arrival.  See the long explanation on the root `test` job.
@@ -631,6 +668,10 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # See the `lint-build` job for why this exists: without it every job
+        # re-downloads ~164 crates from `static.crates.io`.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Build member binaries
         # Same reason as the root job's Build step: several member test
         # targets spawn a real server binary and abort when it is missing
@@ -770,8 +811,17 @@ jobs:
   # The script restores the mutated engine file byte-for-byte after every
   # mutation and verifies the SHA-256 of the restored file; the workspace
   # stays clean, and nothing is committed.
+      - name: Save cargo registry cache (issue #5451)
+        # Runs even when an earlier step failed (`if: always()`): a build
+        # that got half way through the dependency graph still fetched the
+        # crates it needed, and those are worth keeping.
+        if: always()
+        run: bash scripts/ci/cache_cargo_registry.sh save
   mutation:
     runs-on: [hp-z6g4]
+    container:
+      volumes:
+        - sqlrustgo-cargo-cache:/opt/cargo-cache
     # #5455: `needs: [test]` masked this job too — the `test` job has never
     # succeeded, so the mutation analysis never ran once. It is a
     # post-test criterion, so it must not be gated behind the test job.
@@ -815,11 +865,20 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # See the `lint-build` job for why this exists: without it every job
+        # re-downloads ~164 crates from `static.crates.io`.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Mutation test — the new TPC-H assertions really kill defects (issue #5379)
         if: always() && github.event_name == 'pull_request'
         run: |
           bash scripts/gate/mutate_tpch_oracle_tests.sh
-
+      - name: Save cargo registry cache (issue #5451)
+        # Runs even when an earlier step failed (`if: always()`): a build
+        # that got half way through the dependency graph still fetched the
+        # crates it needed, and those are worth keeping.
+        if: always()
+        run: bash scripts/ci/cache_cargo_registry.sh save
   ga3-security-scan:
     # Issue #4532 — GA-3 SC-1 cargo audit: pre-install cargo-audit + pre-fetch
     # advisory DB. Without pre-install, `cargo audit` would take 4m46s to
@@ -942,7 +1001,6 @@ jobs:
           cp docs/releases/v3.12.0/evidence/v312-59/cargo_audit_v312.txt artifacts/ga3/v3.12.0/ 2>/dev/null || true
           cp ga3_security_scan.log artifacts/ga3/v3.12.0/ 2>/dev/null || true
           ls -la artifacts/ga3/v3.12.0/
-
   test-soak-detach:
     # Issue #4595 — Regression guard for run_soak_loop.sh self-detach block
     # (P-1 fix from PR #4591 commit 66dac1aab2). Without this test, future
@@ -1028,6 +1086,9 @@ jobs:
 
   postcheck:
     runs-on: [hp-z6g4]
+    container:
+      volumes:
+        - sqlrustgo-cargo-cache:/opt/cargo-cache
     # #5455: `needs: [test]` completely masked this job. The `test` job has
     # never succeeded (0 success / 8 fail / 16 cancel / 1 skip over 50 CI
     # cycles), so postcheck's 18 steps — the last set of criteria before a
@@ -1074,6 +1135,10 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+      - name: Restore cargo registry cache (issue #5451)
+        # See the `lint-build` job for why this exists: without it every job
+        # re-downloads ~164 crates from `static.crates.io`.
+        run: bash scripts/ci/cache_cargo_registry.sh restore
       - name: Version detection
         id: version
         run: |
@@ -1116,6 +1181,18 @@ jobs:
       - name: Gate L1 — Coverage (real gate — #5444)
         run: |
           set -euo pipefail
+          # The coverage percentage is read out of `cargo llvm-cov`'s text
+          # report, whose TOTAL row carries one percentage per group
+          # (Regions / Functions / Lines / Branches). The extraction used to
+          # take the LAST percentage in that row and call it line coverage —
+          # right only while the Branches group happens to be empty, and
+          # silently reporting *branch* coverage the moment it is not.
+          #
+          # The rule now addresses the Lines group by name in the report's
+          # header structure. Its fixtures prove it can still tell the two
+          # apart, and they cost no cargo time — so they run before the
+          # expensive measurement, not after it.
+          python3 scripts/gate/coverage_total_percent.py --selftest
           # #5444: this step used to call `scripts/gate/check_coverage.sh`,
           # a 288-byte **deprecated stub** whose whole body is
           # "deprecated" + `exit 2`. The real gate is
@@ -1481,3 +1558,9 @@ jobs:
             echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate / V312-19 release gates)"
             exit 1
           fi
+      - name: Save cargo registry cache (issue #5451)
+        # Runs even when an earlier step failed (`if: always()`): a build
+        # that got half way through the dependency graph still fetched the
+        # crates it needed, and those are worth keeping.
+        if: always()
+        run: bash scripts/ci/cache_cargo_registry.sh save

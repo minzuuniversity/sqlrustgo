@@ -9,6 +9,32 @@
 #   disposition ∈ {closed, superseded, carried, deferred, retired}
 #   carried items MUST carry v312_owner_issue + v312_expiry
 #
+# TWO AXES — read them separately (clarified 2026-10-23, P0-06):
+#   disposition    the historical verdict of the v3.6–v3.10 review. It is
+#                  FROZEN and is what the counters below tally.
+#   current_state  the state of the SUBJECT MATTER as of authoring
+#                  (2026-08-09) — e.g. "the capability is closed now".
+#
+#   The two are NOT two copies of one fact, so `current_state: CLOSED` next to
+#   `disposition: superseded` is a **normal** combination, not a contradiction:
+#   the historical entry was superseded by a newer one, and that newer one is
+#   now closed. In this file that pairing occurs 14 times for `superseded`
+#   alone (B-SHOW, B-TXN-ROUTING, INT-2, V390-SPRINT8-Q8/Q21, ISSUE-3399,
+#   GA-COVERAGE-80, P1-3-SOAK-TEST, P2-1-MULTI-THREAD, TPCH-SF1-BASELINE,
+#   G1-TPCH-BASELINE, UNIGNORE-14-LONG-STABILITY, admin, vector).
+#
+#   Six entries carry `current_state: CLOSED` with `disposition: deferred`.
+#   Their `notes` describe a v3.12.0-era placeholder ("deferred to V312-XX"),
+#   but the subject matter has since been closed by other work — verified
+#   2026-10-23: DEALLOCATE is supported end to end
+#   (crates/parser/src/token.rs:487, lexer.rs:505, parser.rs:3109),
+#   the test-inventory gate exists (scripts/gate/check_test_inventory.sh),
+#   and the TPC-H CLI harness exists (scripts/gen_tpch, load_tpch_data.sh).
+#   => `current_state: CLOSED` is factually correct for them.
+#
+#   The `open_questions` section (Q1..Q6) deliberately carries NEITHER field:
+#   it is not a disposition item and is not part of the 89-item tally.
+#
 # Each entry sources its evidence from one or more of:
 #   - docs/governance/debt/debt-registry.yaml (SSOT, 654 lines, v3.11.0 snapshot)
 #   - docs/releases/v3.{6,7,8,9,10}/ release docs (LEGACY_ISSUE_ANALYSIS,

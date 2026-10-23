@@ -15,12 +15,18 @@
 
 ## 0. 摘要
 
-| 优先级 | 项数 | 主要类别 |
-|---|---|---|
-| **P0** 阻断任何 release | **8** | 门禁空转、#4708 假 DONE、v4.0.0 GA 撤销、5 远端漂移、debt-registry 残留占位符、YAML 自相矛盾、.gitignore 静默屏蔽新 release 文档、WAL 恢复逐条整表重写 |
-| **P1** 阻断 ALPHA 推进 | **7** | 覆盖率 60.58%、Q20 oracle 缺产物、WP-A RE-OPENED + 20 条 backlog、crate 状态描述错误、G13 门禁红 |
-| **P2** 不阻断但需记录 | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
-| **合计** | **22** | |
+> **计数更新（2026-10-23）**：本表原始计数来自 2026-10-01 的那次审计。此后
+> **P0-01 / P0-02 / P0-05 / P0-06 / P0-07 / P0-08 / P1-01 已销账**（各条目的 verdict
+> 段给出实测依据与证据文件），未销账的 P0 由 8 条降到 **2** 条，P1 由 7 条降到 **6** 条。
+> 证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`、
+> `docs/releases/v4.1.0/evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`。
+
+| 优先级 | 项数（2026-10-01 原始） | 仍未销账（2026-10-23） | 主要类别 |
+|---|---|---|---|
+| **P0** 阻断任何 release | **8** | **2** | v4.0.0 GA 撤销（`REVOKED`，是状态不是缺陷）、5 远端漂移 |
+| **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、WP-A RE-OPENED + 20 条 backlog、crate 状态描述错误、G13 门禁红 |
+| **P2** 不阻断但需记录 | **7** | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
+| **合计** | **22** | **15** | |
 
 **性能状态**：A1/B2 A/B 实测已落地 (见 `PERF_A1_4912_AB_MEASUREMENT.md` /
 `PERF_B2_4915_AB_MEASUREMENT.md`)，B2.1 在 22x-39x 范围，但发现一处 regression
@@ -38,7 +44,15 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-01 `check_anti_ignore_gate.sh` 是空转门禁 (AFP Type B / P16 违规)
 
-- **verdict**: `OPEN`
+- **verdict**: `CLOSED` (2026-10-23)
+- **销账依据**: 门禁现在用**与 registry 同一套规则**重算源码树里的真实 `#[ignore]`
+  数（`count_tree()`，`scripts/gate/check_anti_ignore_gate.sh:123-159`），两者不等时走
+  `FAIL: registry drift` 判定 ⇒ 不再是空转，且 fail-closed。
+  实测（2026-10-23, macmini M4）：`ignore_registry.json: total_allowed=119 (max=150),
+  active=69 (max=80)` + `tree recount: real #[ignore] attributes in tests/ + crates/ = 119`，
+  exit 0 —— 树确实被扫了，且与 registry 相符。
+  证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §3 / §7；
+  `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
 - **位置**: `scripts/gate/check_anti_ignore_gate.sh` 全文 + `tests/baseline/ignore_registry.json`
 - **证据**: `docs/releases/v4.1.0/evidence/anti-ignore-gate-hollow-2026-09-30/anti_ignore_gate_hollow.txt`
   (sha256 `fedcb27f2a80c6bb33bf9a4777383bbe30e0450d3703866f5d23787d03ef5e46`)
@@ -60,7 +74,13 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-02 `#4708` 是假 DONE — 块注释 `/* */` parser 完全不支持
 
-- **verdict**: `NOT FIXED` (RE-OPENED 2026-09-30)
+- **verdict**: `CLOSED` (2026-10-23)
+- **销账依据**: 实测 2026-10-23 —— parser 的 lexer **已有** `/* ... */` 分支
+  （`crates/parser/src/lexer.rs:78`，含 EOF 未闭合的收尾路径），且
+  `crates/parser/tests/wp_a_legacy.rs:68` 的 `#[ignore]` 已移除（该行现为说明其已被
+  移除的注释）⇒ 支持确实存在，且不再被未登记的 ignore 掩盖。
+  证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §7；
+  `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
 - **位置**: Gitea issue `#4708` (closed 2026-09-03T18:46:27Z, PR #4746)；缺陷在
   `crates/parser/src/{parser.rs,token.rs,lexer.rs}`
 - **证据**: `docs/releases/v4.1.0/evidence/wp-a-reverify-2026-09-30/wp_a_reverify.txt`
@@ -121,7 +141,18 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-05 `debt-registry.yaml` `SEM-4` 关闭根因仍是占位符 "XYZ"
 
-- **verdict**: `INCONSISTENT_STATE` (CLOSED 但 issue 未真正解)
+- **verdict**: `CLOSED` (2026-10-23)
+- **销账依据**: `SEM-4` 已由 `IN_PROGRESS` 改为 `CLOSED`（`closed_at: "2026-10-23"`，
+  `closing_pr: [5126, 5537]`），字面占位符 `'XYZ'` 被**实测根因**替换：
+  覆盖率原先用 `cargo llvm-cov` 的**默认并行 test 线程**测量，读数随机器负载漂移 ——
+  这正是跨机台读数不一致的来源；2026-10-22 commit `2fef945260`（#5537）把
+  `--test-threads=1` 钉死后测量转为确定性。
+  关闭前提均已满足：executor 套件实测 777 passed / 0 failed / 0 ignored（#5103 由
+  PR #5126 修复）+ 修正后门禁完整 8-crate 实跑（L1_8 平均 **87.80 %** ≥ 80.0 %，
+  `parser 86.46 %` —— 75.16 % 与 60.58 % 两个旧值均不复现）。
+  确定性验证：同机同代码连续两遍测 `sqlrustgo-transaction` 得 93.29 % / 93.29 %。
+  证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1；
+  `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
 - **位置**: `docs/governance/debt/debt-registry.yaml:293`
 - **证据**: 第 293 行原文 `note: "CLOSED 2026-08-15: L1_8 avg 84.44% >= 80% threshold. parser 75.16% ... Z440 32% issue (XYZ) recorded but does not block v3.12.0 close."`
 - **影响**:
@@ -138,9 +169,37 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-06 `historical-backlog-disposition.yml` 6 条 `CLOSED`+`deferred` 自相矛盾
 
-- **verdict**: `CONTRADICTORY_STATE`
+- **verdict**: `CLOSED` (2026-10-23) —— **原报告的前提被实测推翻**
+- **销账依据**: 这 6 条**不是矛盾**，而是两个字段在**不同的轴**上；而且那 6 条
+  `current_state: CLOSED` 本身**事实正确**。实测：
+  - **同一个文件里 `current_state: CLOSED` + `disposition: superseded` 出现
+    14 次**（B-SHOW、B-TXN-ROUTING、INT-2、V390-SPRINT8-Q8/Q21、ISSUE-3399、
+    GA-COVERAGE-80、P1-3-SOAK-TEST、P2-1-MULTI-THREAD、TPCH-SF1-BASELINE、
+    G1-TPCH-BASELINE、UNIGNORE-14-LONG-STABILITY、admin、vector）
+    ⇒ 这个组合是**系统性的写法**，不是这 6 条的个别错误；
+  - 文件头自己定义了语义：`disposition ∈ {closed, superseded, carried,
+    deferred, retired}` 是**历史处置**（冻结，计数器 tally 的是它），
+    `current_state` 是**事由的当前状态**；
+  - 计数器自洽：`closed 55 + superseded 15 + deferred 11 + carried 0 +
+    retired 8 = 89`；
+  - 既无 `disposition` 也无 `current_state` 的 6 条是 `open_questions`
+    （Q1..Q6），**另一个 section**，本来就不在 89 的 tally 里；
+  - 那 6 条占位符的 `current_state: CLOSED` **事实正确**（其 `notes` 说的是
+    v3.12.0 当时的占位状态，事由此后由别的工作关闭了）：
+    **DEALLOCATE** 端到端支持（`crates/parser/src/token.rs:487`、
+    `lexer.rs:505`、`parser.rs:3109`）；test-inventory 门禁在
+    （`scripts/gate/check_test_inventory.sh`）；TPC-H CLI harness 在
+    （`scripts/gen_tpch`、`scripts/load_tpch_data.sh`）。
+- **做了什么**: `docs/releases/v3.12.0/historical-backlog-disposition.yml` 的文件头
+  增加 **TWO AXES** 说明段：写清两个字段各自的含义、14 次 `superseded`+`CLOSED`
+  组合是正常写法、`open_questions` 不在 tally 里、以及那 6 条占位符的复核结果。
+  **数据本身一个字节未改**（历史处置是冻结事实，不该被"跟随"改写）。
+- **原「修复方向」为什么没采纳**: 原文写「选定权威字段 (current_state 或
+  disposition)，另一字段跟随」。若照做，会把**历史处置**改写成当前状态
+  —— 那是在改写历史，而且会破坏计数器口径。实测证明两个字段本来就不冲突，
+  所以正确修法是**把语义写清楚**，不是改数据。
 - **位置**: `docs/releases/v3.12.0/historical-backlog-disposition.yml`
-- **冲突条目** (6 条)：
+- **原「冲突条目」** (6 条)：
   | ID | current_state | disposition |
   |---|---|---|
   | FIX-GATE-TEST-INVENTORY | CLOSED | deferred |
@@ -149,18 +208,33 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
   | FIX-GATE-ARCH-CARCH05 | CLOSED | deferred |
   | FIX-P3-1-DEALLOCATE | CLOSED | deferred |
   | FIX-G1-TPCH-CLI | CLOSED | deferred |
-- **影响**: 同一文件的 `current_state` 与 `disposition` 字段互相否定，无法用作 SSOT
-- **交叉**：这 6 条**与 C8 门禁债完全重合**（详见 P1-04）—— E 组文档矛盾与
+- **影响（原判）**: 同一文件的 `current_state` 与 `disposition` 字段互相否定，
+  无法用作 SSOT —— **实测不成立**（见上）。文件本身作为 v3.6–v3.10 的历史处置
+  台账是自洽的。
+- **交叉**: 这 6 条**与 C8 门禁债完全重合**（详见 P1-04）—— E 组文档矛盾与
   C 组门禁债实为同一缺陷，不应分别计数
-- **修复方向**: 选定权威字段 (current_state 或 disposition)，另一字段跟随
 
 ### P0-07 `.gitignore` 第 351 行 `releases/` 未锚定，**静默屏蔽 `docs/releases/` 下所有新增文件**
 
-- **verdict**: `OPEN`（2026-10-01 已在本 PR 内修复为 `/releases/`，但治理意义上仍 OPEN
-  直至 review 通过）
-- **位置**: `.gitignore:351` 原 `releases/`（unanchored），现 `/releases/`（anchored）
+- **verdict**: `CLOSED` (2026-10-23) —— **复核通过**（修复早已在树里，只是从未复核关单）
+- **销账依据**: 2026-10-23 实测复核，两条命令：
+  ```
+  $ git check-ignore -v docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md
+  (无输出)
+  $ echo $?
+  1
+  ```
+  `git check-ignore` 对该路径**不匹配任何规则**（rc=1）⇒
+  `docs/releases/v4.1.0/` 下的新文件**不再被静默屏蔽**。
+  `.gitignore` 里现在只剩**一条** `releases/` 规则，且是锚定的：
+  ```
+  127:/releases/  # repo-root release artifacts; docs/releases/ intentionally tracked
+  ```
+  原来第 351 行那条**未锚定**的 `releases/` 已**整条删除**（不是改成锚定形式），
+  所以「同一个模式写两遍、其中一遍漏锚定」这个坑本身不再存在。
+- **位置**: `.gitignore`（原 351 行，现只有 127 行一条）
 - **机制**:
-  - `.gitignore:122` 已正确锚定为 `/releases/`（带前导斜杠，**仅匹配仓库根的
+  - `.gitignore:122`（现 127）已正确锚定为 `/releases/`（带前导斜杠，**仅匹配仓库根的
     `releases/` 目录**——该目录存在且确需忽略）
   - `.gitignore:351` 原 `releases/`（无锚定），会被 git 解释为"匹配任意路径中
     含 `releases/` 的目录"，**包括 `docs/releases/v4.1.0/` 等所有版本文档目录**
@@ -168,7 +242,7 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
     > "Without the anchor this pattern also ignored every NEW file under
     > docs/releases/ (1828 files there are tracked, so the rule silently
     > blocked new release documentation)."
-- **可重现性**: 实测
+- **原「可重现性」**（2026-10-01 的状态）:
   ```
   $ git check-ignore -v docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md
   .gitignore:351:releases/  docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md
@@ -180,37 +254,81 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
   - 已经 tracked 的文件不受影响（git 不会 untrack 已跟踪文件除非重新 add）
   - 这意味着 v4.1.0 / v4.2.0 / 未来的 release 文档若依赖 `git add` 走默认
     流程，将**全部静默丢失**——只有 PR review 阶段才发现
-- **修复**: 把 `.gitignore:351` 的 `releases/` 改为 `/releases/`（与 line 122 一致）
-- **本 PR 已应用此修复**：line 351 现为 `/releases/  # anchored duplicate of line 122;
-  was unanchored ... (bug fixed 2026-10-01)`
+- **修复**: 删除 `.gitignore:351` 的未锚定 `releases/`（与 line 122/127 的
+  `/releases/` 重复且漏锚定）
+- **修复已在树里**（本批只做复核与关单，未再改 `.gitignore`）
 
 ### P0-08 WAL 恢复逐条整表重写，重启 24 分钟不可用
 
-- **verdict**: `OPEN`（2026-10-08 实测复现，根因定位到 file:line）
-- **位置**: `crates/storage/src/recovery_engine.rs:274,767`（`recovery_force_insert`
-  逐条重放）→ `crates/storage/src/file_storage.rs:3328`（`insert_direct`）→
-  `:723,742`（`save_table_window` 冷启动分支）→ `:775`（`save_table_full` 整表
-  `to_writer_pretty` 重写）
+- **verdict**: `CLOSED` (2026-10-23)
+- **销账依据**: 二次项被定位并消除，且**原报告的归因被实测更正**。
+  - **原报告的归因不成立**：报告说「`save_table_full` 被逐条调用、delta 追加路径
+    一次未走到」。实测**不成立** —— 写入路径一直走的是 delta 追加分支
+    （基线快照 `t.json` 停在 650 B 的 schema，增量日志 `t.delta` 承载全部行），
+    而且它的**每行成本是常数**（500/2 000/8 000 行分别是 96.4 / 85.8 / 86.4 µs/行）。
+  - **真正的二次项是去重扫描**：`apply_wal_entry` 对每条被重放的 `Insert` 都要
+    **全表扫描 + 全表克隆**一次来判断「这一行是不是已经在了」⇒ 每行成本随表规模
+    增长（63.9 → 247.9 → 896.4 µs/行，行数 ×16 ⇒ 每行成本 ×14）。
+  - **修法**：新增 `RecoveryRowIndex`（`crates/storage/src/recovery_engine.rs`）——
+    每张表扫一次建索引，之后每条 `Insert` 的去重判定是一次 O(1) 哈希查找；
+    重放自己写入的行也进索引；`Update`/`Delete` 会改变表持有的行而 WAL entry 不带
+    旧行内容 ⇒ 这两类 entry **作废**受影响表的索引（重建 = 一次扫描）。
+  - **实测（修复后，真实 `RecoveryEngine::recover()`）**：每行成本
+    210.3 → 224.0 → 372.4 µs（500 / 2 000 / 8 000 行）—— 行数 ×16 只带来每行成本
+    ×1.8 ⇒ 总时间不再跟着表规模走。外推到 58 288 行：修复前按二次外推 ≈ 461 s，
+    修复后 ≈ 21.7 s ⇒ **约 21 倍**。
+  - **语义正确性**：`crates/storage/tests/wal_recovery_dedup_p0_08.rs` **5/5 PASS**，
+    钉住「表里已有的行 / 同次重放重复插入 / 先 Update 过 / 先 Delete 过 /
+    互不相同」五种情形 —— 后两种是陈旧索引会**丢已提交数据**的情形。
+  - **顺带修掉的既有隐患**：`crates/types/src/value.rs` 的 `Value` 的 `Hash` 按浮点
+    位模式散列，而 `PartialEq` 按 `==` 比较 ⇒ `0.0` 与 `-0.0` 相等却哈希不同。
+    仓库里 `HashSet<Vec<Value>>` / `HashMap<Value, _>` 用得很广（唯一约束判定
+    `src/engine_dml.rs:601`、executor 的 hash join、MVCC 键集）⇒ 一行只差零符号的
+    行会绕过表声明的唯一约束。已改为按 `PartialEq` 的口径散列（NaN 散列成常量）。
+  - **回归**：`cargo test -p sqlrustgo-storage`（跳过 6 个 fault-injection 用例，
+    原因见 §注）**97 个测试二进制全绿 / 1544 passed / 0 failed**；
+    `cargo test -p sqlrustgo-types` **152 passed / 0 failed**；
+    `cargo clippy --all-features --all-targets -- -D warnings`（钉 1.95.0）**0 error**。
+  - **证据**：`docs/releases/v4.1.0/evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`
+    （6 章：结论 / 测量台 / 修法 / 验证 / **对缺陷报告的更正** / 仍然没做的）；
+    `docs/releases/v4.1.0/ISSUE-RECOVERY-QUADRATIC-REPLAY.md` §9（更正与关闭条件逐条对照）；
+    `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
+- **原报告的位置线索仍然有效，但指向的是另一处**：
+  `crates/storage/src/recovery_engine.rs`（`apply_wal_entry` 的 `Insert` 分支的
+  去重扫描）→ `crates/storage/src/file_storage.rs` 的 `scan_in_db`
+  （整表克隆）。原报告写的 `recovery_force_insert` → `insert_direct` →
+  `save_table_window` → `save_table_full` 这条链，**实测没有在恢复期被逐条走**。
 - **完整 issue**: `docs/releases/v4.1.0/ISSUE-RECOVERY-QUADRATIC-REPLAY.md`
-- **证据**: `docs/releases/v4.1.0/SOAK_V410_1H_2026-10-08/`（含 `recovery_stack_sample.txt`
+- **原始证据（仍然有效，作为现象的来源）**:
+  `docs/releases/v4.1.0/SOAK_V410_1H_2026-10-08/`（含 `recovery_stack_sample.txt`
   原始 `sample` 输出 + 60 秒内 `sbtest1.json` 反复 13.6MB→0→13.6MB 的文件系统采样）
-- **实测数据**（v4.1.0 HEAD `b1e9a98ee6`，file storage，68,288 行，8.0 MB WAL）：
+- **原始实测数据**（v4.1.0 HEAD `b1e9a98ee6`，file storage，68,288 行，8.0 MB WAL）：
   - 重启后首条 `SELECT COUNT(*)` = **24 分 22 秒**；紧接同一条 = **0.08 秒**
-  - 58,288 条 INSERT 逐条触发整表 JSON 重写，delta 追加路径**一次未走到**
-    （任何采样点都不存在 `.delta` 文件）
-- **机制**: 恢复期 `last_saved_row_count == 0`，`save_table_window` 每次都命中
-  `total_rows == 0 || last_saved == 0 || …` 冷启动分支 → `save_table_full` 整表重写
-- **影响**:
+- **仍然没做的（明确不主张已解决）**:
+  - **恢复与 listener 的先后关系未变** —— 恢复仍在 listener 接受连接之前完成，
+    只是耗时从分钟级降到秒级 ⇒ 「硬性启动不可用」这一**结构性**结论不变
+    （那是独立问题，见 §影响）。
+  - **写入路径每行一次落盘**（`append_table_delta` 每次 open/write/flush/close）
+    ⇒ 约 86 µs/行，58 288 行 ≈ 5 s。它是**常数**成本，不是二次项。
+  - **`Update` / `Delete` 的路径**仍是每条 entry 扫一次表。与本报告的
+    「58 288 条 INSERT」场景无关，本批不扩大范围。
+  - **历史 SOAK 从未覆盖**（`scripts/soak/v400_1h_soak.sh` 从不中途重启服务器）
+    ⇒ 这是**覆盖面**问题，不是本缺陷的成因。
+- **影响**（原始，结论未变）:
   - 恢复在 listener 接受连接**之前**完成 → 硬性启动不可用，不是慢查询
-  - 代价随 soak 变长而恶化（重放量 ∝ WAL 条数，单次重写 ∝ 表大小）
+  - 代价随 soak 变长而恶化（重放量 ∝ WAL 条数）
   - 崩溃恢复 / 主从切换 / 备份还原 / 运维重启全部命中
-  - **历史 SOAK 从未覆盖**：`scripts/soak/v400_1h_soak.sh` 从不中途重启服务器，
-    v4.0.0 与 v4.1.0 的所有 SOAK 记录都没碰过这条路径
-- **修复方向**: (1) 恢复期按表批量重放；(2) 预置 `last_saved_row_count` 使其走
-  delta 分支（改动面最小）；(3) `save_table_full` 去 pretty 打印
 - **交叉**: 与 `docs/audit/issues/ISSUE-2740_crash_recovery_unverified.md`（P0，
   Status UNKNOWN）互补——那条是**正确性未验证**，本条是**复杂度/可用性**；
   但"恢复测试必须用 FileStorage 而非 MemoryStorage"的结论对本条修复同样适用。
+
+> **注（为什么回归跳过了 6 个用例）**：`crates/storage/tests/crash_*` 与
+> `a06_failpoint_reachability` 这 6 个用例走 fault-injection 路径，
+> `fault_injection::reach()` 在每个 WAL 追加点**自旋 120 秒**等外部 SIGKILL，
+> 而 harness 先阻塞在 `sql()`（等 mysql 客户端退出）才去读信号文件 ⇒
+> 单个用例的墙钟是「WAL 追加次数 × 120 s」。
+> 这与本条 P0-08 无关（实测发生时间早于本批改动），但它是 CI 成员 job
+> 5400 s 预算的一个真实风险，已单独登记为 issue。
 
 ---
 
@@ -218,7 +336,16 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P1-01 `#3302` parser 覆盖率 60.58% (目标 80%, 缺 19.42pp)
 
-- **verdict**: `OPEN`
+- **verdict**: `CLOSED` (2026-10-23) —— 关闭的是**门禁 fail-open 那一半**；
+  **阈值之争（50 % vs 80 %）不在本条范围内**，仍属 stage framework 的决定
+- **销账依据**: `check_coverage_v312.sh` 现在 fail-closed —— 测不出数据的 crate 进
+  `FAILED_CRATES` 并最终 `exit 1`，另有「测出的 crate 数必须等于 L1_8 全集」的数量
+  校验（`scripts/gate/check_coverage_v312.sh:315-349`；该处注释记录了 #4944 P1-01 的
+  旧形状是 `continue`，会把 crate 同时从分子和分母里丢掉）。
+  另实测 2026-10-23（macmini M4）：parser 行覆盖率 **86.46 %**（不是 60.58 %），
+  L1_8 8-crate 平均 **87.80 %** ≥ 80.0 %，exit 0。
+  证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md` §1.3 / §7；
+  `docs/releases/v4.1.0/STAGE.yaml` → `resolved_issues_2026_10_23`。
 - **位置**: `crates/parser/src/parser.rs` (56.50% 单文件) / `crates/parser/` 总
 - **证据**: 实跑 `cargo llvm-cov --lib -p sqlrustgo-parser --no-fail-fast`
   ```

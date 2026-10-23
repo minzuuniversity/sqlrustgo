@@ -44,21 +44,43 @@ impl Hash for Value {
             Value::Null => 0.hash(state),
             Value::Boolean(b) => b.hash(state),
             Value::Integer(i) => i.hash(state),
-            Value::Float(f) => {
-                if f.is_nan() {
-                    0.hash(state);
-                } else {
-                    f.to_bits().hash(state);
-                }
-            }
+            Value::Float(f) => hash_f64(f, state),
             Value::Text(s) => s.hash(state),
             Value::Blob(b) => b.hash(state),
             Value::Point(x, y) => {
-                x.to_bits().hash(state);
-                y.to_bits().hash(state);
+                hash_f64(x, state);
+                hash_f64(y, state);
             }
             Value::Json(v) => v.hash(state),
         }
+    }
+}
+
+/// Hash a float the way [`PartialEq`] compares it.
+///
+/// `PartialEq` compares floats with `==`, so `0.0` and `-0.0` are the same
+/// value — but their bit patterns differ, and hashing the bits would drop
+/// them into two different buckets of every `HashSet<Value>` /
+/// `HashMap<Value, _>` the repository owns (the unique-constraint claim set
+/// in `engine_dml.rs`, the hash joins in the executor, the MVCC key sets).
+/// A row that differs from another only in the sign of a zero would then
+/// slip past a constraint the table declared.
+///
+/// The contract `Hash` owes `PartialEq` is one-way — equal values must hash
+/// alike — so this only has to make the equal case agree.
+///
+/// NaN hashes as one constant: `PartialEq` says `NaN != NaN`, so no two NaNs
+/// are equal and the hash may not promise otherwise. A consequence is that
+/// `HashSet::contains` cannot find a NaN that was inserted — which is the
+/// same answer `PartialEq` gives, so the two stay consistent.
+fn hash_f64<H: Hasher>(f: &f64, state: &mut H) {
+    if f.is_nan() {
+        0u64.hash(state);
+    } else if *f == 0.0 {
+        // Both zeros are the same value; give them the same bits.
+        0.0f64.to_bits().hash(state);
+    } else {
+        f.to_bits().hash(state);
     }
 }
 

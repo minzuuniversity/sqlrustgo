@@ -1,7 +1,10 @@
 # SQLRustGo v4.0.0 发布说明
 
-> **状态**: GA — General Availability (CONDITIONAL PASS)
-> **发布日期**: 2026-09-19
+> **状态**: ⚠️ **GA 阶段判定已于 2026-09-30 作废（REVOKED）** —— 代码确已发布，
+> 但 `docs/releases/v4.0.0/STAGE.yaml` 的 `ga_promotion_status.verdict = "REVOKED 2026-09-30"`、
+> `current_stage: "DRAFT"`：**v4.0.0 从未合法达到 GA，不构成 GA 发布**。
+> 唯一口径以该 SSOT 为准；本文件其余内容为历史记录，不得作为 GA 证据引用。
+> **代码发布日期**: 2026-09-19
 > **起点**: v3.12.0 GA HEAD `9febebb255`
 > **分支**: `develop/v4.0.0` + `release/v4.0.0` + `main`
 > **Tag**:

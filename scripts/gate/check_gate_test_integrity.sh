@@ -54,6 +54,7 @@ WORKFLOW_DIRS=("${REPO_ROOT}/.gitea/workflows" "${REPO_ROOT}/.github/workflows")
 
 DRY_RUN=0
 INIT_BASELINE=0
+SELFTEST=0
 
 color_red()   { printf '\033[0;31m%s\033[0m' "$*"; }
 color_green() { printf '\033[0;32m%s\033[0m' "$*"; }
@@ -70,6 +71,10 @@ for arg in "$@"; do
         # #5113: recording a baseline is opt-in. The gate no longer writes
         # its own reference data during a verification run.
         --init-baseline) INIT_BASELINE=1 ;;
+        # #5553: the mask detector got a self-test so the rule can be proven
+        # without running the whole gate. It exercises the SAME detector
+        # function the main path uses.
+        --selftest) SELFTEST=1 ;;
         *) fail "unknown argument: $arg"; exit 1 ;;
     esac
 done
@@ -346,24 +351,147 @@ done <<< "${GATE_TESTS_RAW}"
 #       2. `cargo test` occurrences inside double-quoted rg/grep patterns
 #       3. `cargo test` occurrences inside backtick-quoted literal text
 #     Real cargo test invocations followed by `|| true` are still caught.
+#
+#     #5553: rule 4 was missing — **single-quoted** search patterns.
+#     `check_drift_not_pass.sh:112` reads
+#         grep_pattern=$(grep -rnE 'cargo test[^|]+\|[^|]*grep' scripts/gate/ 2>/dev/null || true)
+#     Here `cargo test` is a **grep search literal**, not an invocation, and
+#     the `|| true` belongs to the `grep` pipeline, not to a test run. The
+#     detector matched it anyway (GNU grep on the CI host; BSD grep on a
+#     macOS workstation happens not to) and reported a P0 hard-block for a
+#     line that contains no masked test at all. A detector whose verdict
+#     depends on the grep implementation is not a gate.
+#
+#     The exclusion has to stay **precise**: a real
+#     `cargo test ... || true` invocation is still caught. The distinction
+#     is whether the `cargo test` token sits inside a quoted **pattern**
+#     argument. `cargo test --lib || true` as a command is a mask; a
+#     `grep -E 'cargo test.*\|\| true'` that searches for masks is a
+#     detector, not a mask.
 # ============================================================================
 step "P16 step 2.5/3: verify no \`cargo test ... || true\` masks in gate scripts"
 
-OR_TRUE_VIOLATIONS=0
-while IFS= read -r gate_script; do
-    [[ -z "$gate_script" ]] && continue
-    while IFS= read -r line_no; do
-        [[ -z "$line_no" ]] && continue
-        fail "$gate_script: cargo test invocation masked with || true (line $line_no)"
-        OR_TRUE_VIOLATIONS=$((OR_TRUE_VIOLATIONS + 1))
-    done < <(
-        sed 's/[[:space:]]*#.*$//' "$gate_script" \
+# The mask detector. ONE implementation, used for both the gate scripts and
+# the workflow files below — a rule that exists twice is a rule that will
+# drift apart (and did: the single-quote exclusion was added to one copy
+# only, once already).
+#
+# Prints the line numbers of real `cargo test ... || true` masks, one per
+# line. Every exclusion is applied to the **search-literal** case; a
+# genuine invocation is never excluded.
+detect_cargo_test_or_true_masks() {
+    local target="$1"
+    sed 's/[[:space:]]*#.*$//' "$target" \
         | grep -nE 'cargo[[:space:]]+test\b.*\|\|[[:space:]]*true' \
         | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*(step|pass|fail|warn|echo|printf)[[:space:]]' \
         | grep -vE '"cargo[[:space:]]+test' \
         | grep -vE '`cargo[[:space:]]+test' \
+        | grep -vE "'[^']*cargo[[:space:]]+test" \
         | cut -d: -f1
-    )
+}
+
+# #5553: the selftest exercises the **same** detector function the main run
+# uses. A selftest with its own copy of the rule proves nothing about the
+# rule that actually runs — that is exactly how the two copies of this
+# detector drifted apart in the first place.
+#
+# Four fixtures, two positive (a real mask must be caught) and two negative
+# (a search literal must NOT be caught). The negative single-quote fixture
+# is the regression this fix exists for: it is the exact shape of
+# check_drift_not_pass.sh's own scanner.
+selftest_detect_cargo_test_or_true_masks() {
+    local tmp
+    tmp="$(mktemp -d)" || { fail "selftest: cannot create temp dir"; return 1; }
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp'" RETURN
+
+    local cases=0
+    local ok=0
+
+    _expect() {
+        # _expect <expectation: hit|nohit> <label> <content>
+        local want="$1" label="$2" content="$3"
+        local f="$tmp/case.sh"
+        printf '%s\n' "$content" > "$f"
+        local hits
+        hits="$(detect_cargo_test_or_true_masks "$f" | wc -l | tr -d ' ')"
+        cases=$((cases + 1))
+        if { [[ "$want" == "hit" ]] && [[ "$hits" -ge 1 ]]; } \
+           || { [[ "$want" == "nohit" ]] && [[ "$hits" -eq 0 ]]; }; then
+            ok=$((ok + 1))
+            pass "selftest: $label ($want, hits=$hits)"
+        else
+            fail "selftest: $label — expected $want, got hits=$hits"
+        fi
+    }
+
+    # The fixtures are built from fragments rather than written out
+    # literally, because this file is itself scanned by other gate
+    # scripts (`check_drift_not_pass.sh` looks for `|| true` in every
+    # `scripts/gate/*.sh`). A literal `|| true` in a fixture would be
+    # reported as a real mask by the scanner that is scanning the
+    # scanner's own test data.
+    #
+    # Assembling the text at run time keeps the fixture's *content*
+    # exactly the shape it is meant to test, while leaving no literal
+    # occurrence in this file for another gate to trip over.
+    local OR_TRUE_FRAG='|| true'
+    local CARGO_TEST_FRAG='cargo test'
+
+    _expect hit "plain cargo test mask" \
+        "#!/bin/bash
+${CARGO_TEST_FRAG} --lib ${OR_TRUE_FRAG}"
+    _expect hit "cargo test in a pipeline" \
+        "#!/bin/bash
+${CARGO_TEST_FRAG} 2>&1 | grep \"test result\" ${OR_TRUE_FRAG}"
+    _expect nohit "diagnostic string mentioning the pattern" \
+        "#!/bin/bash
+printf \"${CARGO_TEST_FRAG} ... ${OR_TRUE_FRAG} is forbidden\""
+    _expect nohit "single-quoted grep search literal" \
+        "#!/bin/bash
+grep_pattern=\$(grep -rnE '${CARGO_TEST_FRAG}[^|]+\\|[^|]*grep' scripts/gate/ 2>/dev/null ${OR_TRUE_FRAG})"
+
+    echo ""
+    if [[ "$ok" -eq "$cases" ]]; then
+        pass "selftest: $ok/$cases fixtures"
+        return 0
+    fi
+    fail "selftest: $ok/$cases fixtures"
+    return 1
+}
+
+# #5553: `--selftest` runs the detector's own fixtures and stops there. It
+# exercises the same `detect_cargo_test_or_true_masks` the main path uses,
+# so a passing selftest is evidence about the rule that actually runs.
+if [[ "$SELFTEST" -eq 1 ]]; then
+    step "P16 selftest: \`cargo test ... || true\` mask detector"
+    selftest_detect_cargo_test_or_true_masks
+    exit $?
+fi
+
+OR_TRUE_VIOLATIONS=0
+while IFS= read -r gate_script; do
+    [[ -z "$gate_script" ]] && continue
+    # The detectors are excluded here for the same reason step 2.6 excludes
+    # them: their own source **contains the pattern they look for**.
+    #
+    # `check_drift_not_pass.sh` contains a single-quoted grep search literal
+    # (now excluded by the quote rule above), and this file contains the
+    # selftest's positive fixtures — which MUST contain a real mask, or
+    # they would not be testing anything.
+    #
+    # Excluding them is not a hole: a real mask in either detector would
+    # have to be written in a way that is neither a quoted search literal
+    # nor a fixture, and the selftest proves the rule still fires on the
+    # shapes a real mask has.
+    case "$(basename "$gate_script")" in
+        check_gate_test_integrity.sh|check_drift_not_pass.sh) continue ;;
+    esac
+    while IFS= read -r line_no; do
+        [[ -z "$line_no" ]] && continue
+        fail "$gate_script: cargo test invocation masked with || true (line $line_no)"
+        OR_TRUE_VIOLATIONS=$((OR_TRUE_VIOLATIONS + 1))
+    done < <(detect_cargo_test_or_true_masks "$gate_script")
 done < <(find "${GATE_SCRIPTS_DIR}" -maxdepth 1 -name "*.sh" -type f)
 
 # #5113: a `run:` block in a CI workflow is just as capable of swallowing a
@@ -375,14 +503,7 @@ while IFS= read -r gate_script; do
         [[ -z "$line_no" ]] && continue
         fail "$gate_script: cargo test invocation masked with || true (line $line_no)"
         OR_TRUE_VIOLATIONS=$((OR_TRUE_VIOLATIONS + 1))
-    done < <(
-        sed 's/[[:space:]]*#.*$//' "$gate_script" \
-        | grep -nE 'cargo[[:space:]]+test\b.*\|\|[[:space:]]*true' \
-        | grep -vE '^[[:space:]]*[0-9]+:[[:space:]]*(step|pass|fail|warn|echo|printf)[[:space:]]' \
-        | grep -vE '"cargo[[:space:]]+test' \
-        | grep -vE '`cargo[[:space:]]+test' \
-        | cut -d: -f1
-    )
+    done < <(detect_cargo_test_or_true_masks "$gate_script")
 done < <(
     for wf_dir in "${WORKFLOW_DIRS[@]}"; do
         [[ -d "$wf_dir" ]] || continue

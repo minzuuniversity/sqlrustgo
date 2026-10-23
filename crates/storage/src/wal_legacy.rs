@@ -1586,7 +1586,16 @@ mod tests {
     //
     // The correctness half (the WAL really holds 100 records and recovers
     // them) is covered by the neighbouring non-measurement tests.
+    //
+    // #5547 follow-up: the `#[ignore]` must be **added next to** the
+    // `#[test]`, not replace it. With `#[test]` gone this function was no
+    // longer a test at all — it was a plain function nobody calls, which
+    // rustc reports as `dead_code` (and the lint-budget gate caught it:
+    // `dead_code: 27 — baseline allows 26`). The wall-clock assertion it
+    // carries was therefore never executed by *any* run, not even by the
+    // manual `-- --ignored` invocation the reason string advertises.
     #[ignore = "wall-clock measurement harness — run manually (`cargo test --lib -- --ignored`), results go in the evidence doc"]
+    #[test]
     fn test_wal_perf_100_update() {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
