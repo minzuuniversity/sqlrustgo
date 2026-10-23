@@ -109,6 +109,22 @@ jobs:
             exit 1
           fi
 
+      - name: Verify the analysed tree is this run's commit
+        # #5534: the job analysed whatever tree happened to be checked out.
+        # The checkout step asserts the SHA, but the assertion that matters
+        # is the one made **at the point of analysis**: the tree this job
+        # reads must be the commit this run was created for.  A missing or
+        # unusable run SHA is a hard error here — the run must never be
+        # labelled with a guessed commit.
+        run: |
+          cd repo
+          # The verifier has to prove itself before it is trusted: the
+          # selftest runs the **same** checkout body this job just ran
+          # against a local fixture, so a checkout rule that cannot fail
+          # cannot pass this step either.
+          bash scripts/gate/verify_checkout_by_sha.sh --selftest
+          bash scripts/gate/verify_checkout_by_sha.sh --dir .
+
       - name: Build graph-cli
         run: |
           cd repo
@@ -136,9 +152,16 @@ jobs:
           # Resolve one identity up front. GITEA_SHA and GITEA_RUN_ID are absent
           # under act_runner, so a bare ${GITEA_SHA:0:8} silently yields "" and
           # every node id degenerates to a bare prefix ("commit_", "gate_test_").
+          # #5534: this used to fall back to `git rev-parse HEAD` when the
+          # run carried no SHA.  That fallback is what made the gate
+          # describe the wrong commit: the graph was labelled with whatever
+          # tree happened to be checked out instead of the commit this run
+          # was created for.  A run whose identity is unknown must fail
+          # loudly, not be described by a guess.
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           if [ -z "$SHA" ] || [ "${SHA//0/}" = "" ]; then
-            SHA="$(git rev-parse HEAD)"
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA identifies this run - refusing to label the evidence graph with a guessed commit" >&2
+            exit 1
           fi
           SHA="${SHA:0:40}"
           SHA_SHORT="${SHA:0:8}"
@@ -296,6 +319,17 @@ jobs:
             echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
             exit 1
           fi
+
+      - name: Verify the analysed tree is this run's commit
+        # #5534: the job analysed whatever tree happened to be checked out.
+        # The checkout step asserts the SHA, but the assertion that matters
+        # is the one made **at the point of analysis**: the tree this job
+        # reads must be the commit this run was created for.  A missing or
+        # unusable run SHA is a hard error here — the run must never be
+        # labelled with a guessed commit.
+        run: |
+          cd repo
+          bash scripts/gate/verify_checkout_by_sha.sh --dir .
 
       - name: Run the current version's Alpha gate
         run: |
