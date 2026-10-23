@@ -389,8 +389,8 @@ run_d2_beta() {
     D2_TOTAL=$((D2_TOTAL+1))
     echo -n "  [B2] WAL Contract (22 tests) ... "
     WAL_OUTPUT=$(cargo test --test wal_tx_contract_test 2>&1 || echo "0")
-    PASSED=$(echo "$WAL_OUTPUT" | grep -oE '[0-9]+ passed' | head -1 | grep -oE '[0-9]+' || echo "0")
-    FAILED=$(echo "$WAL_OUTPUT" | grep -oE '[0-9]+ failed' | head -1 | grep -oE '[0-9]+' || echo "0")
+    PASSED=$(grep -oE '[0-9]+ passed' <<< "$WAL_OUTPUT" | head -1 | grep -oE '[0-9]+' || echo "0")
+    FAILED=$(grep -oE '[0-9]+ failed' <<< "$WAL_OUTPUT" | head -1 | grep -oE '[0-9]+' || echo "0")
     echo "  → $PASSED passed, $FAILED failed"
     if [ "$PASSED" -ge 21 ] && [ "$FAILED" -eq 0 ]; then
         log_pass "B2 WAL Contract: $PASSED/22 PASS"
@@ -427,7 +427,7 @@ run_d2_beta() {
     echo -n "  [B5] Integration Gate ... "
     IG_OUTPUT=$(bash scripts/gate/check_integration_gate.sh 2>&1)
     IG_EXIT=$?
-    IG_SUMMARY=$(echo "$IG_OUTPUT" | grep "Result:" | tail -1)
+    IG_SUMMARY=$(grep "Result:" <<< "$IG_OUTPUT" | tail -1)
     echo "  → $IG_SUMMARY"
     # #5426: the previous form was
     #     IG_OUTPUT=$(bash ... 2>&1 || true)
@@ -435,7 +435,7 @@ run_d2_beta() {
     # `|| true` forced the exit status to 0, so IG_EXIT was always 0 and
     # a failing integration gate was downgraded to a warning — D2 could
     # report "5/6" with zero blockers and the gate would still be green.
-    if [ "$IG_EXIT" -eq 0 ] && echo "$IG_SUMMARY" | grep -q "PASS"; then
+    if [ "$IG_EXIT" -eq 0 ] && grep -q "PASS" <<< "$IG_SUMMARY"; then
         log_pass "B5 Integration Gate"
         D2_PASS=$((D2_PASS+1))
     else
@@ -514,15 +514,15 @@ run_d3_sgl() {
     SGL_OUTPUT=$(python3 scripts/gate/semantic_gate_check.py 2>&1)
     SGL_EXIT=$?
 
-    echo "$SGL_OUTPUT" | grep -E "^\[|^==|Summary|SGL-|Exit|DRIFT|FAIL|PASS" | head -40 | \
+    grep -E "^\[|^==|Summary|SGL-|Exit|DRIFT|FAIL|PASS" <<< "$SGL_OUTPUT" | head -40 | \
         while IFS= read -r line; do
             echo -e "    $line"
         done
 
     # Parse SGL results
-    SGL_PASS=$(echo "$SGL_OUTPUT" | grep -oE "^  PASS\s*:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
-    SGL_FAIL=$(echo "$SGL_OUTPUT" | grep -oE "^  FAIL\s*:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
-    SGL_DRIFT=$(echo "$SGL_OUTPUT" | grep -oE "^  DRIFT\s*:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
+    SGL_PASS=$(grep -oE "^  PASS\s*:\s*[0-9]+" <<< "$SGL_OUTPUT" | grep -oE "[0-9]+" | head -1 || echo "0")
+    SGL_FAIL=$(grep -oE "^  FAIL\s*:\s*[0-9]+" <<< "$SGL_OUTPUT" | grep -oE "[0-9]+" | head -1 || echo "0")
+    SGL_DRIFT=$(grep -oE "^  DRIFT\s*:\s*[0-9]+" <<< "$SGL_OUTPUT" | grep -oE "[0-9]+" | head -1 || echo "0")
 
     D3_TOTAL=5
     D3_PASS=$((SGL_PASS))
@@ -546,13 +546,13 @@ run_d4_wal() {
         WAL_INV_OUTPUT=$(bash scripts/test/wal_invariant.sh 2>&1)
         WAL_INV_EXIT=$?
 
-        echo "$WAL_INV_OUTPUT" | grep -E "INV-|Passed|Failed|Summary|Result|Validated" | \
+        grep -E "INV-|Passed|Failed|Summary|Result|Validated" <<< "$WAL_INV_OUTPUT" | \
             while IFS= read -r line; do
                 echo -e "    $line"
             done
 
-        WAL_PASSED=$(echo "$WAL_INV_OUTPUT" | grep -oE "Passed:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
-        WAL_FAILED=$(echo "$WAL_INV_OUTPUT" | grep -oE "Failed:\s*[0-9]+" | grep -oE "[0-9]+" | head -1 || echo "0")
+        WAL_PASSED=$(grep -oE "Passed:\s*[0-9]+" <<< "$WAL_INV_OUTPUT" | grep -oE "[0-9]+" | head -1 || echo "0")
+        WAL_FAILED=$(grep -oE "Failed:\s*[0-9]+" <<< "$WAL_INV_OUTPUT" | grep -oE "[0-9]+" | head -1 || echo "0")
 
         D4_TOTAL=5
         D4_PASS=$((WAL_PASSED))
@@ -570,8 +570,8 @@ run_d4_wal() {
         # Fallback: run exp_g_wal_contracts_verified
         WAL_EXP_OUTPUT=$(cargo test --test exp_g_wal_contracts_verified 2>&1)
         WAL_EXP_EXIT=$?
-        WAL_EXP_PASSED=$(echo "$WAL_EXP_OUTPUT" | grep -oE '[0-9]+ passed' | head -1 | grep -oE '[0-9]+' || echo "0")
-        WAL_EXP_FAILED=$(echo "$WAL_EXP_OUTPUT" | grep -oE '[0-9]+ failed' | head -1 | grep -oE '[0-9]+' || echo "0")
+        WAL_EXP_PASSED=$(grep -oE '[0-9]+ passed' <<< "$WAL_EXP_OUTPUT" | head -1 | grep -oE '[0-9]+' || echo "0")
+        WAL_EXP_FAILED=$(grep -oE '[0-9]+ failed' <<< "$WAL_EXP_OUTPUT" | head -1 | grep -oE '[0-9]+' || echo "0")
 
         D4_TOTAL=5
         D4_PASS=$((WAL_EXP_PASSED))
@@ -1016,7 +1016,7 @@ run_d5_deepseek() {
     # Test output is more reliable than AI analysis
     # Count failures from cargo test output
     TEST_OUTPUT=$(cargo test --lib -p sqlrustgo --quiet 2>&1 | tail -5)
-    FAILED_COUNT=$(echo "$TEST_OUTPUT" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' | head -1 || echo "0")
+    FAILED_COUNT=$(grep -oE '[0-9]+ failed' <<< "$TEST_OUTPUT" | grep -oE '[0-9]+' | head -1 || echo "0")
     echo "Recent test failures: $FAILED_COUNT"
     if [ -n "$FAILED_COUNT" ] && [ "$FAILED_COUNT" -eq 0 ] 2>/dev/null; then
         log_pass "D5-10: Engineering facts (0 test failures)"
@@ -1116,7 +1116,7 @@ run_d7_reliability() {
     echo -n "  [G6] Backup/Restore/Verify/PITR ... "
     if [ -f scripts/gate/check_backup_restore.sh ]; then
         G6_OUTPUT=$(bash scripts/gate/check_backup_restore.sh 2>&1 || true)
-        if echo "$G6_OUTPUT" | grep -q "PASS"; then
+        if grep -q "PASS" <<< "$G6_OUTPUT"; then
             log_pass "G6 Backup/Restore"
             D7_PASS=$((D7_PASS+1))
         else
@@ -1134,7 +1134,7 @@ run_d7_reliability() {
     if [ -f scripts/gate/check_g13_stability.sh ]; then
         # G7 script runs cargo test (slow); wrap in 60s timeout to avoid blocking GA gate
         G7_OUTPUT=$(timeout 60 bash scripts/gate/check_g13_stability.sh 2>&1 || true)
-        if echo "$G7_OUTPUT" | grep -qE "G13 Gate: PASS|PASS|pass"; then
+        if grep -qE "G13 Gate: PASS|PASS|pass" <<< "$G7_OUTPUT"; then
             log_pass "G7 Soak"
             D7_PASS=$((D7_PASS+1))
         else
@@ -1152,7 +1152,7 @@ run_d7_reliability() {
     if [ -f scripts/gate/check_g14_real_crash.sh ]; then
         # G8 script may run actual crash tests; wrap in 60s timeout
         G8_OUTPUT=$(timeout 60 bash scripts/gate/check_g14_real_crash.sh 2>&1 || true)
-        if echo "$G8_OUTPUT" | grep -qE "G14 Gate: PASS|PASS|pass"; then
+        if grep -qE "G14 Gate: PASS|PASS|pass" <<< "$G8_OUTPUT"; then
             log_pass "G8 Crash"
             D7_PASS=$((D7_PASS+1))
         else
@@ -1168,7 +1168,7 @@ run_d7_reliability() {
     D7_TOTAL=$((D7_TOTAL+1))
     echo -n "  [G9] Upgrade Test (v3.8→v3.9) ... "
     UPGRADE_TEST=$(timeout 90 cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test 2>&1 | tail -3)
-    if echo "$UPGRADE_TEST" | grep -qE "0 failed|test result: ok"; then
+    if grep -qE "0 failed|test result: ok" <<< "$UPGRADE_TEST"; then
         log_pass "G9 Upgrade"
         D7_PASS=$((D7_PASS+1))
     else
@@ -1180,7 +1180,7 @@ run_d7_reliability() {
     D7_TOTAL=$((D7_TOTAL+1))
     echo -n "  [G10] Audit Log + Time Travel ... "
     AUDIT_TEST=$(timeout 60 cargo test --test audit_log_test --test time_travel_test 2>&1 | tail -3)
-    if echo "$AUDIT_TEST" | grep -qE "0 failed|test result: ok"; then
+    if grep -qE "0 failed|test result: ok" <<< "$AUDIT_TEST"; then
         log_pass "G10 Audit/Time-Travel"
         D7_PASS=$((D7_PASS+1))
     else

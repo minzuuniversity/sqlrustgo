@@ -121,7 +121,11 @@ stage_g_words_line() {
 stage_script_declares_g() {
     local script="$1" g="$2"
     [[ -f "$script" ]] || return 1
-    head -20 "$script" | grep -qE "(^|[^A-Za-z0-9])${g}([^A-Za-z0-9]|$)"
+    # The head output is captured first and `grep -qE` then reads it from a
+    # here-string: the old form piped it into `grep -q`, whose early exit
+    # could kill `head` with SIGPIPE and — under `set -o pipefail` — turn a
+    # declared gate into an undeclared one.
+    grep -qE "(^|[^A-Za-z0-9])${g}([^A-Za-z0-9]|$)" <<< "$(head -20 "$script")"
 }
 
 # The G alias table with the two fields C7/C8 need and
@@ -269,7 +273,11 @@ consistency_check() {
         # C6 — expectations must point at required files.
         while IFS=$'\x1f' read -r key expect; do
             [[ -z "${key:-}" ]] && continue
-            if ! stage_artifact_entries "$cfg" "$stage" | cut -d $'\x1f' -f2 | grep -qxF "$key"; then
+            # The entry list is captured first and `grep -qxF` then reads it from a
+            # here-string. The old form piped it into `grep -q`, whose early
+            # exit could kill `cut` with SIGPIPE and — under
+            # `set -o pipefail` — turn a present entry into an absent one.
+            if ! grep -qxF "$key" <<< "$(stage_artifact_entries "$cfg" "$stage" | cut -d $'\x1f' -f2)"; then
                 printf 'FAIL\tC6\tstage=%s expectation for "%s" has no matching required_files entry\n' \
                     "$stage" "$key"
                 fails=$((fails + 1))

@@ -1,4 +1,5 @@
 # SQLRustGo v4.1.0 — Defects & Issues Catalog (DRAFT)
+<!-- env:blocked:no-ci -->
 
 > **基线**：`develop/v4.1.0` @ `862c034776687dcecea1a19664b059a282faa0a3`
 > **Date**: 2026-10-01
@@ -15,28 +16,30 @@
 
 ## 0. 摘要
 
-> **计数更新（2026-10-23）**：本表原始计数来自 2026-10-01 的那次审计。此后
-> **P0-01 / P0-02 / P0-05 / P0-06 / P0-07 / P0-08 / P1-01 已销账**（各条目的 verdict
-> 段给出实测依据与证据文件），未销账的 P0 由 8 条降到 **2** 条，P1 由 7 条降到 **6** 条。
+> **计数更新（2026-10-24）**：本表原始计数来自 2026-10-01 的那次审计。此后
+> **P0-01 / P0-02 / P0-04 / P0-05 / P0-06 / P0-07 / P0-08 / P1-01 已销账**（各条目的 verdict
+> 段给出实测依据与证据文件），未销账的 P0 由 8 条降到 **1** 条，P1 由 7 条降到 **6** 条。
 > 证据：`docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND_GATE_INTEGRITY_2026-10-23.md`、
-> `docs/releases/v4.1.0/evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`。
+> `docs/releases/v4.1.0/evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`、
+> `docs/releases/v4.1.0/REMOTE_SYNC_CONVERGENCE_2026-10-23.md`。
 
-| 优先级 | 项数（2026-10-01 原始） | 仍未销账（2026-10-23） | 主要类别 |
+| 优先级 | 项数（2026-10-01 原始） | 仍未销账（2026-10-24） | 主要类别 |
 |---|---|---|---|
-| **P0** 阻断任何 release | **8** | **2** | v4.0.0 GA 撤销（`REVOKED`，是状态不是缺陷）、5 远端漂移 |
+| **P0** 阻断任何 release | **8** | **1** | v4.0.0 GA 撤销（`REVOKED`，是状态不是缺陷） |
 | **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、WP-A RE-OPENED + 20 条 backlog、crate 状态描述错误、G13 门禁红 |
 | **P2** 不阻断但需记录 | **7** | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
-| **合计** | **22** | **15** | |
+| **合计** | **22** | **14** | |
 
 **性能状态**：A1/B2 A/B 实测已落地 (见 `PERF_A1_4912_AB_MEASUREMENT.md` /
 `PERF_B2_4915_AB_MEASUREMENT.md`)，B2.1 在 22x-39x 范围，但发现一处 regression
 已修。无显著性能缺口被本次审计发现。
 
-**5 远端同步状态**（2026-10-01 实测）：`develop/v4.1.0` 在 5 远端不一致——
-gitea250 / gitee 比 gitcode + gitea252 领先 15 个 commit，github 滞后 34 个
-commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
-默认开启但**只对 main 严**，对 develop 漂移仅报告不阻断 (exit 0)。
-详见 P0-04。
+**5 远端同步状态**（2026-10-24 当次实测）：`develop/v4.1.0` 在 5 远端**已一致**
+（drift 全部为 0，gate `RESULT: all branches within threshold (2)`）；`main` 五远端
+同为 `ac3fa16afb4a`。
+drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
+默认开启但**只对 main 严**，对 develop 漂移仅报告不阻断 (exit 0) —— 这是遗留的
+运营债（P0-04「修复方向」第 2 条），不是当前的实际漂移。详见 P0-04。
 
 ---
 
@@ -119,9 +122,19 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
 
 ### P0-04 5 远端 `develop/v4.1.0` 漂移 (运营级 P0)
 
-- **verdict**: `OPEN` (drift gate 报告但不阻断)
+- **verdict**: `CLOSED` (2026-10-24)
+- **销账依据**: 5 个远端的 `develop/v4.1.0` 已收敛到同一个 commit，
+  drift gate 当次实测全部为 0。
+  - 收敛动作：PR **#5563**（merge commit `243d9d308a01888b13d29b40d31be5e76a760c3b`）
+    把 `sync/converge-remotes-20261023` 合入 `develop/v4.1.0`；随后
+    `bash scripts/sync/5remotes_sync.sh develop/v4.1.0` 把 5 个远端快进到同一 tip。
+  - 当次实测（2026-10-24，`scripts/sync/5remotes_drift_check.sh`，只读）：
+    `develop/v4.1.0` 的 **10 个远端对 drift 全部为 0**；`main` 五远端同为
+    `ac3fa16afb4a`；末尾 `RESULT: all branches within threshold (2)`。
+  - 收敛过程里的每一次取舍（9 个冲突的逐项裁决、取回路径）写在
+    `docs/releases/v4.1.0/REMOTE_SYNC_CONVERGENCE_2026-10-23.md`。
 - **位置**: 5 远端 `refs/heads/develop/v4.1.0` 当前 HEAD 不一致
-- **证据**: 实测 2026-10-01：
+- **原始证据**（已过时，保留作对照）: 实测 2026-10-01：
   ```
   gitea252   3d503b5ab092  (本地 + gitcode 一致；含 PR #4920 + #4922 merge)
   gitea250   7ce8f18fc896  (领先 15 commit)
@@ -138,6 +151,9 @@ commit。drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-ma
   3. 长: 接 CI 周期跑 drift gate，drift 检出自动告警
 - **本次不执行同步**：需用户批准（同步 = 对 3 个远端 force-push，会触发 audit 与
   分支保护开关）
+- **遗留**: 上面「修复方向」的第 2、3 条（drift gate 对 develop 也 fail-closed、
+  CI 周期跑 drift）**尚未实现**。销账的是「远端已漂移」这个**事实**，
+  不是「漂移不会被再次引入」这个**保证**。后两条作为运营债留在 P2 跟踪。
 
 ### P0-05 `debt-registry.yaml` `SEM-4` 关闭根因仍是占位符 "XYZ"
 

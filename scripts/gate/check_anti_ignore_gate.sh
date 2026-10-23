@@ -60,6 +60,12 @@
 #   in the counts instead of being invisible; remediation is an openspec change.
 set -e
 
+# The shared helpers — including the one counting rule this gate and
+# `check_test_count_monotonic.sh` must agree on (#5492) — live in one place.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/gate/common.sh
+source "$SCRIPT_DIR/common.sh"
+
 REGISTRY="tests/baseline/ignore_registry.json"
 
 # Fallback thresholds, used only when the registry carries no `limits` block.
@@ -131,23 +137,13 @@ fi
 # scope, 31 are prose in comments and 98 are attributes.
 # ---------------------------------------------------------------------------
 count_tree() {
-    python3 <<'PYEOF'
-import re, pathlib
-ATTR = re.compile(r'#\[ignore(\s*=\s*"((?:[^"\\]|\\[\s\S])*)")?\]')
-BETWEEN = re.compile(r'(?:\s|//[^\n]*|/\*.*?\*/|\#[^\n]*)*?fn\s+([A-Za-z0-9_]+)')
-total = 0
-for p in sorted(list(pathlib.Path("tests").rglob("*.rs")) +
-                list(pathlib.Path("crates").rglob("*.rs"))):
-    src = p.read_text(errors="replace")
-    for m in ATTR.finditer(src):
-        line_start = src.rfind("\n", 0, m.start()) + 1
-        if src[line_start:m.start()].strip().startswith("//"):
-            continue                      # prose in a line comment
-        if not BETWEEN.match(src[m.end():m.end() + 400]):
-            continue                      # prose in a string literal
-        total += 1
-print(total)
-PYEOF
+    # #5492: the counting rule now lives **once**, in
+    # scripts/gate/common.sh (`count_real_ignore_attributes`).
+    # `check_test_count_monotonic.sh` used to count every literal `#[ignore`
+    # occurrence while this gate counted real attributes — two numbers for
+    # the same thing, two different verdicts, and a doc comment that merely
+    # mentioned `#[ignore` could turn the other one red.
+    count_real_ignore_attributes "."
 }
 
 TREE_TOTAL=$(count_tree | tail -1)

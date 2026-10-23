@@ -170,37 +170,37 @@ check_pass_fail_evidence() {
   while IFS=: read -r line_num content; do
     # 跳过注释行和代码块
     skip_pattern="^#"
-    if echo "$content" | grep -qE "$skip_pattern"; then
+    if grep -qE "$skip_pattern" <<< "$content"; then
       continue
     fi
     # 代码块检测用单独命令
-    if echo "$content" | grep -q "^\`\`\`"; then
+    if grep -q "^\`\`\`" <<< "$content"; then
       continue
     fi
 
     # 如果文档有整体 provenance，表格行（| ... | PASS |）豁免
     if [ "$has_doc_provenance" = true ]; then
-      if echo "$content" | grep -qE "^\|.*\|"; then
+      if grep -qE "^\|.*\|" <<< "$content"; then
         continue  # 表格行，整体 provenance 覆盖
       fi
     fi
     # 排除教程/分析类文档中的历史引用（降级为警告）
-    if echo "$content" | grep -qE "v3\.[0-9]\.[0-9]|历史版本|legacy|过去|已过时"; then
+    if grep -qE "v3\.[0-9]\.[0-9]|历史版本|legacy|过去|已过时" <<< "$content"; then
       add_warn "警告：第 $line_num 行历史版本引用可能需更新: $(echo "$content" | cut -c1-50)"
       continue
     fi
     # 排除政策规则定义类声明（声明约束条件，非测试结果）
-    if echo "$content" | grep -qE "禁止声明|禁止.*声明"; then
+    if grep -qE "禁止声明|禁止.*声明" <<< "$content"; then
       continue  # 政策规则，不是测试结果
     fi
     has_ci_ref=false
     has_gate_ref=false
-    if echo "$content" | grep -qE "(run_|#|ci_run|CI_RUN|log_hash|log-hash)"; then
+    if grep -qE "(run_|#|ci_run|CI_RUN|log_hash|log-hash)" <<< "$content"; then
       has_ci_ref=true
     fi
 
     # 检查是否有 gate engine 输出引用（如 policy_eval_id, gate_output）
-    if echo "$content" | grep -qE "(policy_eval|gate_output|gate_policy|GATE_)"; then
+    if grep -qE "(policy_eval|gate_output|gate_policy|GATE_)" <<< "$content"; then
       has_gate_ref=true
     fi
 
@@ -221,15 +221,15 @@ check_pass_fail_evidence() {
 
     # 判断声明类型并验证
     # 排除未来要求模式
-    if echo "$content" | grep -qE "MUST PASS|预计|TODO|TBD|应该|should"; then
+    if grep -qE "MUST PASS|预计|TODO|TBD|应该|should" <<< "$content"; then
       : # 未来要求，不是违规
     # 排除"通过标准"（定义标准，不是声称结果）
-    elif echo "$content" | grep -qE "通过标准|验收标准|验收准则|Threshold|标准[:：]"; then
+    elif grep -qE "通过标准|验收标准|验收准则|Threshold|标准[:：]" <<< "$content"; then
       : # 定义标准，不是声称结果
     # 排除教程/分析类文档中的历史引用（降级为警告）
-    elif echo "$content" | grep -qE "v3\.[0-9]\.[0-9]|历史版本|legacy|过去|已过时"; then
+    elif grep -qE "v3\.[0-9]\.[0-9]|历史版本|legacy|过去|已过时" <<< "$content"; then
       add_warn "警告：第 $line_num 行历史版本引用可能需更新: $(echo "$content" | cut -c1-50)"
-    elif echo "$content" | grep -qE "PASS|通过|成功|completed|done|PASS"; then
+    elif grep -qE "PASS|通过|成功|completed|done|PASS" <<< "$content"; then
       # 已完成声明需要证据
       if [ "$has_ci_ref" = false ] && [ "$has_gate_ref" = false ] && [ "$has_commit_ref" = false ]; then
         add_fail "Type A/B 违规：第 $line_num 行声明无 CI/gate/commit 证据: $(echo "$content" | cut -c1-60)"
@@ -239,7 +239,7 @@ check_pass_fail_evidence() {
       fi
     fi
 
-    if echo "$content" | grep -qE "FAIL|失败|failed"; then
+    if grep -qE "FAIL|失败|failed" <<< "$content"; then
       if [ "$has_ci_ref" = false ] && [ "$has_gate_ref" = false ]; then
         add_warn "警告：第 $line_num 行 FAIL 声明可能无证据"
       fi
@@ -367,7 +367,7 @@ check_fabricated_evidence() {
   # 注意：这里只能检查格式是否正确，无法访问外部 CI 系统
   while read -r ref; do
     # 简单格式检查（实际应该查询 CI 系统）
-    if ! echo "$ref" | grep -qE "^run_[0-9]{8}_[0-9]{3}$|^#[0-9]+$"; then
+    if ! grep -qE "^run_[0-9]{8}_[0-9]{3}$|^#[0-9]+$" <<< "$ref"; then
       add_warn "可疑 CI 引用格式：$ref 在 $doc"
     fi
   done <<< "$ci_refs"
@@ -403,7 +403,7 @@ check_gate_output_evidence() {
   #
   # 现在：只有当文档**确实在声明**一道门禁通过（正向断言），才要求
   # gate engine 输出；否定句与计划文档不再触发。
-  if echo "$doc" | grep -qE "GATE|GATE_CHECK|RELEASE_GATE"; then
+  if grep -qE "GATE|GATE_CHECK|RELEASE_GATE" <<< "$doc"; then
     # 只在文档**正向声明**某道门禁通过时才要求 gate engine 输出。
     #
     # 声明的形态：句子里出现「PASS」/「通过」，且该句**不是**否定句。
@@ -415,7 +415,7 @@ check_gate_output_evidence() {
           continue
           ;;
       esac
-      if echo "$claim_line" | grep -qE "GA.*PASS|Gate.*PASS|门禁.*通过|门禁.*PASS|通过标准.*PASS"; then
+      if grep -qE "GA.*PASS|Gate.*PASS|门禁.*通过|门禁.*PASS|通过标准.*PASS" <<< "$claim_line"; then
         gate_pass_claim=true
         break
       fi
@@ -442,7 +442,7 @@ check_plan_status_fabrication() {
 
   # VERSION_PLAN / DEVELOPMENT_PLAN / TEST_PLAN 不应出现 GA Final 状态（已完成）
   # 排除 "Planned" / "Future" / "TODO" 前缀
-  if echo "$doc" | grep -qE "VERSION_PLAN|DEVELOPMENT_PLAN|TEST_PLAN"; then
+  if grep -qE "VERSION_PLAN|DEVELOPMENT_PLAN|TEST_PLAN" <<< "$doc"; then
     if grep -qE "GA APPROVED|GA.*✅|GA.*COMPLETE|GA.*DONE" "$path" 2>/dev/null; then
       local ga_final_line
       ga_final_line=$(grep -nE "GA APPROVED|GA.*✅|GA.*COMPLETE|GA.*DONE" "$path" 2>/dev/null | head -1 | cut -d: -f1)

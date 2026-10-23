@@ -172,9 +172,16 @@ print(d.get('current_stage', 'DRAFT').upper())
         echo "GA"
     elif [[ "$branch" =~ ^develop/ ]]; then
         # Check if any RC tag exists
-        if git tag -l "${ver}-rc*" 2>/dev/null | head -1 | grep -q .; then
+        #
+        # `git tag -l ... | head -1 | grep -q .` asked the question through a
+        # pipe whose last stage is `grep -q`: `head -1` closes the pipe after
+        # one line, `git tag` is killed by SIGPIPE, and under
+        # `set -o pipefail` the pipeline can report "no match" for a tag that
+        # is right there. The tag list is now captured first and the question
+        # is asked of the captured text.
+        if [ -n "$(git tag -l "${ver}-rc*" 2>/dev/null | head -1)" ]; then
             echo "RC"
-        elif git tag -l "${ver}-beta*" 2>/dev/null | head -1 | grep -q .; then
+        elif [ -n "$(git tag -l "${ver}-beta*" 2>/dev/null | head -1)" ]; then
             echo "BETA"
         else
             echo "ALPHA"

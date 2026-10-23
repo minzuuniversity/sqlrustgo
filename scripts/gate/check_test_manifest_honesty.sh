@@ -381,7 +381,7 @@ while IFS= read -r file; do
     rel="${file#"${REPO_ROOT}/"}"
     # The exemption marker must appear near the top of the file, so that a
     # stray marker deep inside a real test cannot silently exempt it.
-    if head -20 "${file}" | grep -qF "${C6_EXEMPT_MARKER}"; then
+    if grep -qF "${C6_EXEMPT_MARKER}" <<< "$(head -20 "${file}")"; then
         C6_EXEMPT_LIST="${C6_EXEMPT_LIST}${rel}"$'
 '
         continue

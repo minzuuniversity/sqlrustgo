@@ -59,33 +59,33 @@ add_fail() { echo "  [FAIL] $1"; FAIL_ITEMS+=("$1"); FAIL_COUNT=$((FAIL_COUNT + 
 
 # R1 默认路径是 file-backed：FileStorage 被包进 MvccStorage。
 r1_default_is_file_backed() {
-    printf '%s\n' "$1" | grep -q "MvccStorage::new(file_storage)"
+    grep -q "MvccStorage::new(file_storage)" <<< "$1"
 }
 
 # R2 默认路径带 WAL 持久化：WAL manager + 走 WAL 接线的 FileStorage +
 # 外层 WAL 包装层（WalStorage / ParallelWalStorage）。三者缺一即判定退化。
 r2_default_has_wal() {
     local arm="$1"
-    printf '%s\n' "$arm" | grep -q "FileBackedWalManager::new" &&
-        printf '%s\n' "$arm" | grep -q "FileStorage::new_with_external_wal" &&
-        printf '%s\n' "$arm" | grep -qE "WalStorage<|ParallelWalStorage<|new_with_shared_wal_handle|new_with_shared_handle"
+    grep -q "FileBackedWalManager::new" <<< "$arm" &&
+        grep -q "FileStorage::new_with_external_wal" <<< "$arm" &&
+        grep -qE "WalStorage<|ParallelWalStorage<|new_with_shared_wal_handle|new_with_shared_handle" <<< "$arm"
 }
 
 # R3 binary 分支 file-backed。
 r3_binary_is_file_backed() {
-    printf '%s\n' "$1" | grep -q "BinaryTableStorage::new_with_data"
+    grep -q "BinaryTableStorage::new_with_data" <<< "$1"
 }
 
 # R4 parallel 分支 file-backed：走 WAL 接线的 FileStorage + 外层 ParallelWalStorage。
 r4_parallel_is_file_backed() {
     local arm="$1"
-    printf '%s\n' "$arm" | grep -q "FileStorage::new_with_external_wal" &&
-        printf '%s\n' "$arm" | grep -q "ParallelWalStorage"
+    grep -q "FileStorage::new_with_external_wal" <<< "$arm" &&
+        grep -q "ParallelWalStorage" <<< "$arm"
 }
 
 # R5 负向：生产路径里不得出现 MemoryStorage。返回 0 = 出现了（违规）。
 r5_has_memory_storage() {
-    printf '%s\n' "$1" | grep -q "MemoryStorage"
+    grep -q "MemoryStorage" <<< "$1"
 }
 
 # =============================================================================

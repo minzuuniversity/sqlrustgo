@@ -85,6 +85,262 @@ make_temp_dir() {
     printf '%s' "$d"
 }
 
+# --- text predicates that a pipe cannot break --------------------------------
+#
+# A gate that asks "does this text contain X" must not build a **pipeline** to
+# ask it. `printf '%s' "$text" | grep -q X` answers the question twice — once
+# with grep's exit status, once with the *pipeline's* exit status — and under
+# `set -o pipefail` those two answers can disagree.
+#
+# `grep -q` exits the moment it has a match, which closes the read end of the
+# pipe. A writer that has not finished writing takes SIGPIPE and dies with 141,
+# and `pipefail` then reports the pipeline as **failed** even though the answer
+# was "found". A gate that turns "found" into "missing" is worse than no gate
+# at all: it invents a failure nobody can reproduce.
+#
+# Measured on #5401 (`scripts/gate/check_storage_db_scope_coverage.sh`):
+# 16 methods x 2 wrappers x 60 iterations = 1920 samples produced **32**
+# pipeline exits of 141 — and **all 32** were methods that were present
+# (cross-checked against a pipe-free reference). 100% false failures, which
+# made the whole gate fail in roughly 42% of its runs.
+#
+# These two helpers ask the question without a pipe. Use them instead of
+# `printf ... | grep -q` anywhere a `pipefail` shell pipes text into `grep -q`.
+#
+# `gate_text_contains_literal` is the literal (non-regex, non-glob) test.
+gate_text_contains_literal() {
+    local text="$1"
+    local needle="$2"
+    case "$text" in
+        *"$needle"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# `gate_text_matches_regex` is the extended-regular-expression test. The
+# here-string hands grep a temporary file, so grep reads it to the end and no
+# writer is left behind to be killed by SIGPIPE.
+#
+# It matches the old `printf '%s\n' "$text" | grep -qE -- "$re"` exactly: a
+# here-string appends the same trailing newline `printf '%s\n'` did.
+gate_text_matches_regex() {
+    local text="$1"
+    local re="$2"
+    grep -qE -- "$re" <<<"$text"
+}
+
+# Run the text predicates' own fixtures.
+#
+# The hard assertions are about the **new** helpers: they must give the same
+# answer on every one of many iterations, including on a payload far larger
+# than any pipe buffer (2 MiB here; a Linux pipe buffer is 64 KiB and a macOS
+# one is 16 KiB). That is the property the pipe-based form did not have.
+#
+# The old pipe-based form is exercised too, but only as a **negative
+# control**: it is expected to misbehave, and the count of misbehaviours is
+# reported rather than asserted — a regression test that fails when the bug
+# happens not to reproduce is not a regression test, it is a coin toss.
+gate_text_helpers_selftest() {
+    local fails=0
+    local big
+    local i
+    local rc
+
+    # 2 MiB payload: 4096 lines x 512 bytes.
+    big="$(awk 'BEGIN{for(i=0;i<4096;i++){for(j=0;j<512;j++)printf "x";printf "\n"}}')"
+    if [ "${#big}" -lt 1048576 ]; then
+        echo "SELFTEST FAIL: could not build a >1MiB payload (got ${#big} bytes)"
+        return 1
+    fi
+
+    # 1. The literal test must find a needle at the very start of a huge
+    #    payload — the exact position that made the pipe form lose the race.
+    i=0
+    while [ "$i" -lt 200 ]; do
+        if ! gate_text_contains_literal "$big" "xxx"; then
+            echo "SELFTEST FAIL: literal test lost a present needle on iteration $i"
+            fails=$((fails + 1))
+            break
+        fi
+        i=$((i + 1))
+    done
+
+    # 2. The literal test must not find an absent needle.
+    i=0
+    while [ "$i" -lt 200 ]; do
+        if gate_text_contains_literal "$big" "definitely-not-present-needle"; then
+            echo "SELFTEST FAIL: literal test invented a needle on iteration $i"
+            fails=$((fails + 1))
+            break
+        fi
+        i=$((i + 1))
+    done
+
+    # 3. The regex test must find a present pattern, every time.
+    i=0
+    while [ "$i" -lt 200 ]; do
+        if ! gate_text_matches_regex "$big" "^x+$"; then
+            echo "SELFTEST FAIL: regex test lost a present pattern on iteration $i"
+            fails=$((fails + 1))
+            break
+        fi
+        i=$((i + 1))
+    done
+
+    # 4. The regex test must not find an absent pattern.
+    i=0
+    while [ "$i" -lt 200 ]; do
+        if gate_text_matches_regex "$big" "definitely-not-present-needle"; then
+            echo "SELFTEST FAIL: regex test invented a pattern on iteration $i"
+            fails=$((fails + 1))
+            break
+        fi
+        i=$((i + 1))
+    done
+
+    # Negative control — the pipe-based form this replaced. Reported, not
+    # asserted: it is allowed to pass cleanly on a fast machine.
+    #
+    # `pipefail` is ON for the measurement, because that is the whole point:
+    # the pipeline's status is what the old code branched on, and 141 (SIGPIPE)
+    # there means "found" was reported as "missing".
+    local false_fail=0
+    local pipefail_was_on=false
+    case "$(set -o)" in
+        *pipefail*on*) pipefail_was_on=true ;;
+        *) set -o pipefail ;;
+    esac
+    i=0
+    while [ "$i" -lt 200 ]; do
+        # `2>/dev/null` silences bash's "printf: write error: Broken pipe"
+        # notice — which is the very failure being counted, and 200 lines of
+        # it would drown the selftest's own verdict.
+        printf '%s\n' "$big" 2>/dev/null | grep -q "xxx"
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            false_fail=$((false_fail + 1))
+        fi
+        i=$((i + 1))
+    done
+    [ "$pipefail_was_on" = true ] || set +o pipefail
+    echo "SELFTEST negative control: pipe-based form mis-answered $false_fail/200 times (0 = the bug did not reproduce here)"
+    echo "SELFTEST: $fails failure(s)"
+    return "$fails"
+}
+
+# --- counting real `#[ignore]` attributes (the SSOT for #5492) --------------
+#
+# The rule: a literal `#[ignore` counts only when it is a **real attribute** —
+# not inside a line comment, and followed by a `fn` item.
+#
+# This rule lives here **once** because two gates need it and they used to
+# disagree. `check_anti_ignore_gate.sh` counted real attributes (and passed);
+# `check_test_count_monotonic.sh` counted every literal occurrence (and
+# failed). Two numbers for the same thing, two different verdicts, and a
+# developer had to guess which gate to believe — and a change that merely
+# *mentioned* `#[ignore` in a doc comment could turn the second one red
+# (#5492).
+#
+# `count_real_ignore_attributes [root]` prints the count for the tree under
+# `root` (default: the current directory). The scope — `tests/**/*.rs` and
+# `crates/**/*.rs` — is the registry's scope
+# (`tests/baseline/ignore_registry.json` → `scope.included`).
+count_real_ignore_attributes() {
+    local root="${1:-.}"
+    (
+        cd "$root" 2>/dev/null || exit 1
+        python3 <<'PYEOF'
+import re, pathlib
+
+ATTR = re.compile(r'#\[ignore(\s*=\s*"((?:[^"\\]|\\[\s\S])*)")?\]')
+BETWEEN = re.compile(r'(?:\s|//[^\n]*|/\*.*?\*/|\#[^\n]*)*?fn\s+([A-Za-z0-9_]+)')
+
+total = 0
+for p in sorted(list(pathlib.Path("tests").rglob("*.rs")) +
+                list(pathlib.Path("crates").rglob("*.rs"))):
+    src = p.read_text(errors="replace")
+    for m in ATTR.finditer(src):
+        line_start = src.rfind("\n", 0, m.start()) + 1
+        if src[line_start:m.start()].strip().startswith("//"):
+            continue                      # prose in a line comment
+        if not BETWEEN.match(src[m.end():m.end() + 400]):
+            continue                      # prose in a string literal
+        total += 1
+print(total)
+PYEOF
+    )
+}
+
+# Run the counting rule's own fixtures.
+#
+# The property under test is **discrimination**: a doc comment that merely
+# mentions `#[ignore` must not be counted, and a real attribute must be.
+# A counting rule that cannot tell the two apart cannot be a baseline — the
+# number it produces would move whenever someone wrote a sentence.
+count_real_ignore_attributes_selftest() {
+    local tmp
+    local got
+    local fails=0
+
+    tmp="$(make_temp_dir)" || return 1
+    trap 'case "${IGNORE_SELFTEST_DIR:-}" in "${TMPDIR:-/tmp}"/*) rm -rf "$IGNORE_SELFTEST_DIR" ;; esac' EXIT
+    IGNORE_SELFTEST_DIR="$tmp"
+
+    mkdir -p "$tmp/tests" "$tmp/crates" || return 1
+
+    # 1. a real attribute on a test fn  -> counted
+    cat > "$tmp/tests/real_attribute.rs" <<'EOF'
+#[test]
+#[ignore = "documented gap"]
+fn real_ignored_test() {}
+EOF
+
+    # 2. the same word in a doc comment -> NOT counted
+    cat > "$tmp/tests/prose_comment.rs" <<'EOF'
+// The nightly-only demo is still `#[ignore]` (nightly-only).
+fn not_a_test() {}
+EOF
+
+    # 3. the same word inside a string -> NOT counted
+    cat > "$tmp/tests/prose_string.rs" <<'EOF'
+const NOTE: &str = "call #[ignore] when flaky";
+fn not_a_test() {}
+EOF
+
+    # 4. a real attribute with a reason, no `=`, followed by fn -> counted
+    cat > "$tmp/crates/plain_attribute.rs" <<'EOF'
+#[ignore]
+fn plain_ignored_test() {}
+EOF
+
+    got="$(count_real_ignore_attributes "$tmp" | tail -1)"
+    if [ "$got" != "2" ]; then
+        echo "SELFTEST FAIL: expected 2 real #[ignore] attributes, got '$got'"
+        fails=$((fails + 1))
+    fi
+
+    # The rule must also agree with the registry on the live tree — that is
+    # what makes the two gates one rule instead of two.
+    local live
+    local registered
+    live="$(count_real_ignore_attributes "." | tail -1)"
+    registered="$(python3 -c '
+import json
+print(json.load(open("tests/baseline/ignore_registry.json"))["total_allowed"])
+' 2>/dev/null || echo "")"
+    if [ -n "$registered" ] && [ "$live" != "$registered" ]; then
+        echo "SELFTEST FAIL: live tree has $live real #[ignore] attributes but the registry registers $registered"
+        fails=$((fails + 1))
+    fi
+
+    if [ "$fails" -eq 0 ]; then
+        echo "SELFTEST: PASS (prose not counted, attributes counted, live tree matches the registry)"
+    else
+        echo "SELFTEST: $fails failure(s)"
+    fi
+    return "$fails"
+}
+
 # --- SHA-256 of a file, portable across Linux/macOS -------------------------
 # `shasum` is a Perl script and is NOT guaranteed to exist on a slim CI
 # image; `sha256sum` comes from GNU coreutils. The CI runner is only
