@@ -28,6 +28,7 @@
 //! lived. Driving `FileStorage` directly would pass even on the broken
 //! code, and a test that cannot fail on the broken code proves nothing.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo, Value};
 use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::wal::FileBackedWalManager;
@@ -47,7 +48,7 @@ fn table_info(name: &str) -> TableInfo {
 }
 
 fn fresh_store(tag: &str) -> (Store, PathBuf) {
-    let dir = std::env::temp_dir().join(format!(
+    let dir = unique_test_path(&format!(
         "rollback_isolation_5480_{tag}_{}",
         std::process::id()
     ));
@@ -81,7 +82,7 @@ fn ids(store: &Store) -> Vec<i64> {
 /// removed by a different mechanism, so a test that goes through the
 /// wrapper cannot tell the two implementations apart.
 fn fresh_file_storage(tag: &str) -> (FileStorage, PathBuf) {
-    let dir = std::env::temp_dir().join(format!(
+    let dir = unique_test_path(&format!(
         "rollback_isolation_5480_fs_{tag}_{}",
         std::process::id()
     ));

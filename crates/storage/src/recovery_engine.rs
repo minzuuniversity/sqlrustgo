@@ -965,6 +965,7 @@ pub(crate) fn apply_wal_entry_with_index(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
     use crate::engine::MemoryStorage;
 
@@ -1312,7 +1313,7 @@ mod tests {
             table_name_to_id(b),
             "this test needs a known collision for the 31-radix fold"
         );
-        let dir = std::env::temp_dir().join("re_collision_5055");
+        let dir = unique_test_path("re_collision_5055");
         let _ = std::fs::remove_dir_all(&dir);
         let mut storage = FileStorage::new(dir.clone()).unwrap();
         for table in [a, b] {

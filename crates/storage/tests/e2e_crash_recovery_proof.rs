@@ -6,6 +6,7 @@
 //! Evidence-based: If this test PASSES, Crash Recovery is proven.
 //! If this test FAILS, Crash Recovery is broken.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use std::fs;
 use std::path::PathBuf;
 
@@ -14,7 +15,7 @@ use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::{Record, StorageEngine, Value};
 
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sqlrustgo_crash_{}", name));
+    let dir = unique_test_path(&format!("sqlrustgo_crash_{}", name));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir

@@ -26,6 +26,7 @@
 //! Cases 3 and 4 are the ones a stale index would get wrong, and getting
 //! them wrong loses committed data.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use std::path::{Path, PathBuf};
 
 use sqlrustgo_storage::engine::{ColumnDefinition, TableData, TableInfo};
@@ -36,7 +37,7 @@ use sqlrustgo_storage::wal_record_codec::record_to_bytes;
 use sqlrustgo_storage::{Record, StorageEngine, Value};
 
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sqlrustgo_p008_sem_{}", name));
+    let dir = unique_test_path(&format!("sqlrustgo_p008_sem_{}", name));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir

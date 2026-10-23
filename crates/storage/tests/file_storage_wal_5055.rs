@@ -13,6 +13,7 @@
 //! a no-op, and none of them can be satisfied by "the log file exists"
 //! alone — they assert on entry *content*.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, StorageEngine, TableInfo,
 };
@@ -22,7 +23,7 @@ use sqlrustgo_storage::wal_legacy::WalReader;
 use sqlrustgo_types::Value;
 
 fn temp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("fs_wal_5055_{tag}"));
+    let dir = unique_test_path(&format!("fs_wal_5055_{tag}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir

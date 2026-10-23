@@ -32,6 +32,7 @@
 //! covered separately: `default` must work and any other database must be an
 //! error. Refusing is the contract — silently relocating the table is not.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo, Value};
 
 fn table(name: &str) -> TableInfo {
@@ -55,7 +56,7 @@ fn table(name: &str) -> TableInfo {
 }
 
 fn temp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
+    let dir = unique_test_path(&format!(
         "srg_ns_{}_{}_{:?}",
         tag,
         std::process::id(),

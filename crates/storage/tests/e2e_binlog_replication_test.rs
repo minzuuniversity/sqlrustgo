@@ -18,25 +18,18 @@ use sqlrustgo_storage::replication::{
     BinlogEvent, BinlogEventType, MasterNode, ReplicationConfig, SlaveNode,
 };
 use sqlrustgo_storage::replication_lag::ReplicationLagMonitor;
+use sqlrustgo_storage::test_support::unique_test_path;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// #5571: 唯一的临时路径来自
+/// [`sqlrustgo_storage::test_support::unique_test_path`] —— 本 crate 里
+/// **只有那一份**实现，测试之间不共享目录。
 fn tmp_path(name: &str) -> PathBuf {
-    let mut p = std::env::temp_dir();
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    p.push(format!(
-        "sqlrustgo_e2e_{}_{}_{}.binlog",
-        name,
-        std::process::id(),
-        nanos
-    ));
-    p
+    unique_test_path(&format!("sqlrustgo_e2e_{name}.binlog"))
 }
 
 fn now_ms() -> u64 {

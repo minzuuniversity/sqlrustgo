@@ -440,6 +440,7 @@ pub struct RecoveryRecord {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
 
     #[test]
@@ -500,9 +501,9 @@ mod tests {
     #[test]
     fn test_pitr_recovery_current_lsn() {
         let recovery = PITRRecovery::new(
-            std::env::temp_dir().join("storage"),
-            std::env::temp_dir().join("wal"),
-            std::env::temp_dir().join("backup"),
+            unique_test_path("storage"),
+            unique_test_path("wal"),
+            unique_test_path("backup"),
         );
 
         recovery.set_current_lsn(5000);

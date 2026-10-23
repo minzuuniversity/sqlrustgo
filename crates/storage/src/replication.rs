@@ -602,6 +602,7 @@ impl SlaveNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::unique_test_path;
     use std::fs;
 
     #[test]
@@ -691,8 +692,7 @@ mod tests {
 
     #[test]
     fn test_binlog_writer_and_reader() {
-        let temp_dir = std::env::temp_dir();
-        let binlog_path = temp_dir.join("test_binlog_replication.binlog");
+        let binlog_path = unique_test_path("test_binlog_replication.binlog");
 
         let _ = fs::remove_file(&binlog_path);
 

@@ -26,6 +26,7 @@
 //! `get_table_info_in` / `scan_in_db` / `scan_with_index_in_db` for the
 //! read side.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo, Value};
 use std::path::{Path, PathBuf};
 
@@ -54,7 +55,7 @@ fn tbl(name: &str) -> TableInfo {
 }
 
 fn fresh_data_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("5025_restart_{tag}_{}", std::process::id()));
+    let dir = unique_test_path(&format!("5025_restart_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let data = dir.join("data");
     std::fs::create_dir_all(&data).unwrap();

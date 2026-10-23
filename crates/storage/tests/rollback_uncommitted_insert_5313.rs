@@ -14,6 +14,7 @@
 //! #5313 修复前（基线）：inner 真删，回滚后 SELECT 为空 → PASS。
 //! #5313 修复后（当前）：inner 跳过，回滚后 SELECT 残留行 → FAIL。
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::{
     BoxStorageEngine, ColumnDefinition, FileStorage, MemoryWalManager, MvccStorage,
     ParallelWalStorage, StorageEngine, TableInfo,
@@ -22,7 +23,7 @@ use sqlrustgo_types::Value;
 use std::path::PathBuf;
 
 fn dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("rb_{tag}_{}", std::process::id()));
+    let d = unique_test_path(&format!("rb_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     d
 }

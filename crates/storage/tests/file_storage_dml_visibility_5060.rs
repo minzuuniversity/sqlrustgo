@@ -23,6 +23,7 @@
 //! scoped `db\x01table` keys — and scoped them a second time, addressing
 //! `default\x01default\x01tx_t`, which matches no buffer.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, StorageEngine, TableInfo,
 };
@@ -48,7 +49,7 @@ fn users_table() -> TableInfo {
 }
 
 fn dir(tag: &str) -> std::path::PathBuf {
-    let d = std::env::temp_dir().join(format!("fs_dml_5060_{tag}"));
+    let d = unique_test_path(&format!("fs_dml_5060_{tag}"));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d

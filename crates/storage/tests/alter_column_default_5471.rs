@@ -40,6 +40,7 @@
 //! * persist through the delta path instead of a full snapshot → the
 //!   restart case fails.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_parser::IndexColumnSpec;
 use sqlrustgo_storage::engine::{ColumnDefinition, IndexInfo, StorageEngine, TableInfo, Value};
 use sqlrustgo_storage::file_storage::FileStorage;
@@ -59,7 +60,7 @@ fn table_info(name: &str) -> TableInfo {
 }
 
 fn scratch(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
+    let dir = unique_test_path(&format!(
         "alter_column_default_5471_{tag}_{}",
         std::process::id()
     ));

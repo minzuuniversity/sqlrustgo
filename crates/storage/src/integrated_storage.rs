@@ -186,6 +186,7 @@ impl IntegratedTableStorage {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
     use crate::engine::ColumnDefinition;
 
@@ -211,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_f25_f26_integration_create_and_save() {
-        let dir = std::env::temp_dir().join("sqlrustgo_test_int_v311");
+        let dir = unique_test_path("sqlrustgo_test_int_v311");
         let _ = std::fs::remove_dir_all(&dir);
 
         let storage = IntegratedTableStorage::new(dir.clone()).unwrap();
@@ -228,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_f26_crash_recovery() {
-        let dir = std::env::temp_dir().join("sqlrustgo_test_dwb_crash_v311");
+        let dir = unique_test_path("sqlrustgo_test_dwb_crash_v311");
         let _ = std::fs::remove_dir_all(&dir);
 
         let storage = IntegratedTableStorage::new(dir.clone()).unwrap();
@@ -321,7 +322,7 @@ mod tests {
 
     #[test]
     fn test_f26_multiple_write_cycles() {
-        let dir = std::env::temp_dir().join("sqlrustgo_test_dwb_cycles_v311");
+        let dir = unique_test_path("sqlrustgo_test_dwb_cycles_v311");
         let _ = std::fs::remove_dir_all(&dir);
 
         let storage = IntegratedTableStorage::new(dir.clone()).unwrap();
@@ -337,7 +338,7 @@ mod tests {
 
     #[test]
     fn test_f25_load_merges_deferred() {
-        let dir = std::env::temp_dir().join("sqlrustgo_test_load_merge_v311");
+        let dir = unique_test_path("sqlrustgo_test_load_merge_v311");
         let _ = std::fs::remove_dir_all(&dir);
 
         let storage = IntegratedTableStorage::new(dir.clone()).unwrap();

@@ -11,6 +11,7 @@
 //!
 //! Run: cargo test -p sqlrustgo-storage --test repro_5317_shared_handle -- --nocapture
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::wal::{SharedWalHandle, WalEntryType, WalManager};
@@ -45,7 +46,7 @@ fn table(n: &str) -> TableInfo {
 /// old two-handle design produced is exactly the bug.
 #[test]
 fn shared_handle_produces_single_commit_entry() {
-    let d: PathBuf = std::env::temp_dir().join(format!("r5317_shared_{}", std::process::id()));
+    let d: PathBuf = unique_test_path(&format!("r5317_shared_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
 
@@ -127,7 +128,7 @@ fn shared_handle_produces_single_commit_entry() {
 /// Insert, no orphan extra entries from a racing second writer".
 #[test]
 fn shared_handle_with_mvcc_wrapper_serialises_entries() {
-    let d: PathBuf = std::env::temp_dir().join(format!("r5317_mvcc_{}", std::process::id()));
+    let d: PathBuf = unique_test_path(&format!("r5317_mvcc_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
 

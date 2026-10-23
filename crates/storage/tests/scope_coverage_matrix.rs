@@ -28,6 +28,7 @@
 //! `NOT_EXERCISED` with the reason, so an omission is a deliberate,
 //! reviewable statement rather than an oversight.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::{FileStorage, MvccStorage, Record, StorageEngine, Value, WalStorage};
 use std::path::PathBuf;
@@ -35,7 +36,7 @@ use std::path::PathBuf;
 const NON_DEFAULT_DB: &str = "aud";
 
 fn dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("scope5192_{tag}_{}", std::process::id()));
+    let d = unique_test_path(&format!("scope5192_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).expect("mkdir");
     d

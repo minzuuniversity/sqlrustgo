@@ -9,6 +9,7 @@
 //! leaving the data unchanged, or that silently doubles the row count, is the
 //! failure mode this pins.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::{
     BoxStorageEngine, FileStorage, MemoryWalManager, MvccStorage, ParallelWalStorage, StorageEngine,
 };
@@ -16,7 +17,7 @@ use sqlrustgo_types::Value;
 use std::path::PathBuf;
 
 fn dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("lifecycle_{tag}_{}", std::process::id()));
+    let d = unique_test_path(&format!("lifecycle_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     d
 }

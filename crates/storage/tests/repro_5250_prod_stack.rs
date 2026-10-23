@@ -15,6 +15,7 @@
 //!
 //! Run: cargo test -p sqlrustgo-storage --test repro_5250_prod_stack -- --nocapture
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::wal::{WalEntryType, WalManager};
@@ -43,7 +44,7 @@ fn table(n: &str) -> TableInfo {
 
 #[test]
 fn production_stack_autocommit_writes_what_to_wal() {
-    let d: PathBuf = std::env::temp_dir().join(format!("r5250_prodstack_{}", std::process::id()));
+    let d: PathBuf = unique_test_path(&format!("r5250_prodstack_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
 
