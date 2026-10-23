@@ -1335,7 +1335,7 @@ cd .worktrees/soak-3265
 RESULT_FILE=$(ls -t test_results/wired_soak_1h_*/STABILITY_REPORT.md | head -1)
 SUMMARY=$(grep -E "^\| (Crashes|RSS growth|FD growth|Final RSS|Final WAL|sysbench errors|TPC-H rounds)" "$RESULT_FILE")
 
-curl -s -u "openclaw:details8848" -H "Content-Type: application/json" \
+curl -s -u "${GITEA_USER}:${GITEA_TOKEN}" -H "Content-Type: application/json" \
   -X POST http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/3265/comments \
   -d "$(cat <<EOF
 {

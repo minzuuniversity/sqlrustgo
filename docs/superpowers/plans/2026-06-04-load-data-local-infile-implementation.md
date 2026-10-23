@@ -1262,7 +1262,7 @@ cat > /tmp/pr_body_load_infile.json <<EOF
 }
 EOF
 curl -s -X POST "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls" \
-  -H "Authorization: token cc19b2ad677e18c96b9d049f6dc2b46e02176883" \
+  -H "Authorization: token ${GITEA_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @/tmp/pr_body_load_infile.json | python3 -m json.tool | head -10
 ```
@@ -1274,7 +1274,7 @@ Expected: PR URL like `http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/2XXX`
 ```bash
 PR_NUMBER=$(curl ... | jq -r '.number')
 curl -s -X POST "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls/${PR_NUMBER}/merge" \
-  -H "Authorization: token cc19b2ad677e18c96b9d049f6dc2b46e02176883" \
+  -H "Authorization: token ${GITEA_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"force_merge": true, "do": "merge"}'
 ```

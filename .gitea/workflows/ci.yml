@@ -12,6 +12,17 @@ on:
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v3.8.0-*
+      # #5570: 本 workflow 的触发器原本**不含 `main` 本身** ⇒ main 分支上
+      # 的 CI **从来没有真正跑过**：Gitea 只留下一条 0 job 的空壳 run 记录
+      # 并把它记成 failure（实测 run 9616 / 9644：created_at == completed_at，
+      # total_workflow_jobs == 0）。
+      #
+      # 而 `STAGE_CONFIG.yaml` 的 `stages.GA.branch_pattern` =
+      # ["main", "release/v*", "hotfix/v*"] ⇒ main 是框架认可的 GA 承载
+      # 分支之一。没有 CI 就没有「CI 全绿」的证据。
+      - main
+      - "release/v*"
+      - "hotfix/v*"
   pull_request:
     branches:
       - develop/v3.7.0
@@ -23,6 +34,17 @@ on:
       - beta/v2.8.0
       - ci/gitea-compat
       - ci/v3.8.0-*
+      # #5570: 本 workflow 的触发器原本**不含 `main` 本身** ⇒ main 分支上
+      # 的 CI **从来没有真正跑过**：Gitea 只留下一条 0 job 的空壳 run 记录
+      # 并把它记成 failure（实测 run 9616 / 9644：created_at == completed_at，
+      # total_workflow_jobs == 0）。
+      #
+      # 而 `STAGE_CONFIG.yaml` 的 `stages.GA.branch_pattern` =
+      # ["main", "release/v*", "hotfix/v*"] ⇒ main 是框架认可的 GA 承载
+      # 分支之一。没有 CI 就没有「CI 全绿」的证据。
+      - main
+      - "release/v*"
+      - "hotfix/v*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -40,6 +62,17 @@ jobs:
           fetch-depth: 1
       - name: Clippy
         run: cargo clippy --all-features -- -D warnings
+      - name: Hardcoded credential gate (issues #5381 / #5520)
+        # The repository is mirrored to a **public** GitHub repository, so any
+        # credential-shaped string in a tracked file is world-readable. Five
+        # such strings were found (all of them already revoked); they lived in
+        # markdown as often as in scripts, which is why the scan covers docs
+        # too and not just the executable code.
+        #
+        # The gate is static, costs nothing, and can be pointed at any tree
+        # with --repo-root — that is how the leftovers on a *branch* were
+        # found, since they are invisible to a scan of the checked-out one.
+        run: bash scripts/gate/check_no_hardcoded_secrets.sh
       - name: Format check
         run: cargo fmt --check --all
       - name: Build

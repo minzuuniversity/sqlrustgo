@@ -550,7 +550,7 @@ git push origin feature/tpch-e2e-migration 2>&1 | tail -5
 # 用 Gitea API 创建 PR (per AGENTS.md 强制, 不用 gh CLI)
 curl -X POST "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls" \
   -H "Content-Type: application/json" \
-  -u "openclaw:details8848" \
+  -u "${GITEA_USER}:${GITEA_TOKEN}" \
   -d '{
     "head": "feature/tpch-e2e-migration",
     "base": "develop/v3.9.0",

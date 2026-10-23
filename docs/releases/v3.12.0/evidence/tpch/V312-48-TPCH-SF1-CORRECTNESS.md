@@ -608,7 +608,7 @@ These observations will surface in v3.13 master scope (`docs/superpowers/plans/2
 ```bash
 # V1. 5 sub-issues auto-closed after verification PR merges
 for id in 4273 4275 4276 4277 4279; do
-    state=$(curl -s -u openclaw:details8848 \
+    state=$(curl -s -u ${GITEA_USER}:${GITEA_TOKEN} \
       "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/$id" \
       | jq -r '.state')
     echo "#$id: $state"
@@ -617,10 +617,10 @@ done
 
 # V2. 2 sub-issues remain open with PR #4332 assessment comment
 for id in 4274 4278; do
-    state=$(curl -s -u openclaw:details8848 \
+    state=$(curl -s -u ${GITEA_USER}:${GITEA_TOKEN} \
       "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/$id" \
       | jq -r '.state')
-    comments=$(curl -s -u openclaw:details8848 \
+    comments=$(curl -s -u ${GITEA_USER}:${GITEA_TOKEN} \
       "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/$id/comments" \
       | jq -r 'length')
     echo "#$id: state=$state, comments=$comments"

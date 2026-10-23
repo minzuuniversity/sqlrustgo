@@ -873,7 +873,7 @@ git push origin feature/q8-q9-join-reorder
 
 ```bash
 curl -s -X POST "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls" \
-  -u "openclaw:details8848" \
+  -u "${GITEA_USER}:${GITEA_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "head": "feature/q8-q9-join-reorder",
@@ -894,7 +894,7 @@ gh-equivalent: poll Gitea API for PR status
 
 ```bash
 curl -s -X POST "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls/{pr_number}/merge" \
-  -u "openclaw:details8848" \
+  -u "${GITEA_USER}:${GITEA_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"MergeMethod": "squash"}'
 ```

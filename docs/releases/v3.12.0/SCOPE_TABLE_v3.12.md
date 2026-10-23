@@ -148,7 +148,7 @@ For current v3.12 Beta smoke readiness, reviewers should require:
 | W2: smoke manifest | `python3 -c 'import json; d=json.load(open("docs/releases/v3.12.0/evidence/sqllogictest/sqlite-corpus-manifest.json")); print(d["corpus_stats"])'` | `total_files=25`, `pass_files=25`, `fail_files=0` |
 | W3: open exclusions | `grep -c 'status: closed' docs/releases/v3.12.0/evidence/sqllogictest/exclusions.yml` | `16` closed historical items; no open v3.12-blocking item |
 | W4: scope table | `grep -E '^## (In-Scope|Out-of-Scope|Unsupported)' docs/releases/v3.12.0/SCOPE_TABLE_v3.12.md` | 3 sections |
-| W4: comments posted | `curl -s -u openclaw:details8848 'http://localhost:3000/api/v1/repos/openclaw/sqlrustgo/issues/3911/comments?limit=5'` | Round-9 comment with SCOPE_TABLE link |
+| W4: comments posted | `curl -s -u ${GITEA_USER}:${GITEA_TOKEN} 'http://localhost:3000/api/v1/repos/openclaw/sqlrustgo/issues/3911/comments?limit=5'` | Round-9 comment with SCOPE_TABLE link |
 
 ---
 

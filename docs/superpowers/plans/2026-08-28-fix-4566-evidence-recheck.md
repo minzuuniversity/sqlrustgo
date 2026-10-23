@@ -859,7 +859,7 @@ PR #4566 (commit `1c11addc6b`) shipped the actual root-cause analysis (server-th
 EOF
 )
 
-curl -s -u openclaw:details8848 \
+curl -s -u ${GITEA_USER}:${GITEA_TOKEN} \
   -H "Content-Type: application/json" \
   -X POST \
   -d "$(python3 -c "
@@ -881,7 +881,7 @@ Expected: PR created with title + body + labels. Note: label IDs need verificati
 **Step 12.3 — Verify PR**
 
 ```bash
-PR_URL=$(curl -s -u openclaw:details8848 "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls?state=all&head=openclaw:fix/v312-59-d/4566-evidence-recheck" | python3 -c "import sys, json; r=json.load(sys.stdin); print(r[0]['html_url'] if r else 'NOT FOUND')")
+PR_URL=$(curl -s -u ${GITEA_USER}:${GITEA_TOKEN} "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls?state=all&head=openclaw:fix/v312-59-d/4566-evidence-recheck" | python3 -c "import sys, json; r=json.load(sys.stdin); print(r[0]['html_url'] if r else 'NOT FOUND')")
 echo "PR URL: $PR_URL"
 ```
 
