@@ -32,12 +32,37 @@ jobs:
             git checkout HEAD
           fi
 
+      - name: Check the evidence-graph toolchain availability
+        id: toolchain
+        run: |
+          cd repo
+          # #5566: this branch has no `graph-cli` crate in its workspace — it
+          # only exists under `archive/v3.11/archived-crates/graph-cli/` — so
+          # `cargo build -p graph-cli` failed with
+          #   error: package ID specification `graph-cli` did not match any packages
+          # That is a **structural** fact about this branch, not about the
+          # tree under test, yet it turned this job red on every run.
+          #
+          # The honest outcome is NOT RUN (neither PASS nor FAIL): the
+          # evidence-graph toolchain is simply not part of this branch. The
+          # check below **measures** that instead of assuming it, and the
+          # steps that need the binary are gated on the measurement.
+          if cargo metadata --no-deps --format-version 1 2>/dev/null \
+               | grep -q '"name":"graph-cli"'; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "evidence-graph toolchain: available"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "STATUS: NOT RUN (not PASS, not FAIL) - the 'graph-cli' crate is not a workspace member of this branch."
+          fi
       - name: Build graph-cli
+        if: steps.toolchain.outputs.available == 'true'
         run: |
           cd repo
           cargo build -p graph-cli --release
 
       - name: Initialize Evidence Graph
+        if: steps.toolchain.outputs.available == 'true'
         run: |
           cd repo
           DB="/tmp/evidence-$(date +%s).db"
@@ -45,12 +70,14 @@ jobs:
           ./target/release/ingest status --db "$DB" || true
 
       - name: Ingest Commit Event
+        if: steps.toolchain.outputs.available == 'true'
         run: |
           cd repo
           SHA="${GITEA_SHA:0:40}"
           ./target/release/ingest commit "$SHA" "ci-system" "CI ingestion" --db "$DB_PATH"
 
       - name: Ingest CI Event
+        if: steps.toolchain.outputs.available == 'true'
         run: |
           cd repo
           SHA_SHORT="${GITEA_SHA:0:8}"
@@ -59,12 +86,14 @@ jobs:
           ./target/release/ingest ci "$RUN_ID" "$SHA_FULL" PASS --db "$DB_PATH"
 
       - name: Ingest Artifact
+        if: steps.toolchain.outputs.available == 'true'
         run: |
           cd repo
           RUN_ID="run_${GITEA_RUN_ID:-$(date +%s)}"
           ./target/release/ingest artifact "$RUN_ID" "$RUN_ID" "binary" "sha256-placeholder" --db "$DB_PATH" || true
 
       - name: Link Evidence Chain
+        if: steps.toolchain.outputs.available == 'true'
         run: |
           cd repo
           SHA="${GITEA_SHA:0:8}"
@@ -76,12 +105,14 @@ jobs:
           fi
 
       - name: Ingest Test Result
+        if: steps.toolchain.outputs.available == 'true'
         run: |
           cd repo
           ./target/release/ingest task "gate_test_${GITEA_SHA:0:8}" "gate integration test" --db "$DB_PATH" || true
 
       - name: Graph Gate Evaluate
         id: gate
+        if: steps.toolchain.outputs.available == 'true'
         run: |
           cd repo
           RESULT=$(./target/release/gate evaluate "gate_test_${GITEA_SHA:0:8}" --db "$DB_PATH" 2>&1)
@@ -91,13 +122,23 @@ jobs:
           echo "$RESULT"
 
       - name: Publish Evidence Graph Report
-        if: always()
+        if: always() && steps.toolchain.outputs.available == 'true'
         run: |
           cd repo
           ./target/release/ingest status --db "$DB_PATH" 2>/dev/null || echo "Graph stats unavailable"
 
       - name: Gate Decision
+        if: always()
         run: |
+          # #5566: when the evidence-graph toolchain is not part of this
+          # branch, the job is NOT RUN — neither PASS nor FAIL. Reporting it
+          # as FAIL would claim the tree failed a gate that never ran;
+          # reporting it as PASS would claim a gate that never ran passed.
+          if [ "${{ steps.toolchain.outputs.available }}" != "true" ]; then
+            echo "⚠️ Evidence Graph Gate: NOT RUN — the evidence-graph toolchain is not part of this branch."
+            echo "STATUS: NOT RUN (not PASS, not FAIL)"
+            exit 0
+          fi
           if [ "$GATE_PASS" = "1" ]; then
             echo "✅ Evidence Graph Gate: PASS"
             exit 0
@@ -123,8 +164,41 @@ jobs:
             git checkout HEAD
           fi
 
-      - name: Run Legacy Gate
+      - name: Run the current version's Alpha gate
         run: |
           cd repo
-          chmod +x scripts/gate/check_alpha.sh
-          bash scripts/gate/check_alpha.sh 2>&1 || true
+          # #5566: this step used to run `scripts/gate/check_alpha.sh`, which
+          # does not exist on this branch — the v2.9.0-era script lives under
+          # `scripts/gate/legacy/` and is hardcoded to v2.9.0's paths (#5447
+          # stopped running it on develop). Because the runner executes steps
+          # under `-e -o pipefail`, the failing `chmod` killed the step
+          # **before** the `|| true` could ever apply: every run of this job
+          # on this branch reported a failure that had nothing to do with the
+          # gate.
+          #
+          # The gate is now resolved **by version** through the same two
+          # scripts develop uses (#5446), so the naming rule has exactly one
+          # implementation on every branch.
+          #
+          # If no gate script serves this branch's release line, that is a
+          # configuration gap — recorded as NOT-RUN with a reason code, not
+          # as a red job and not as a green result.
+          VER="$(bash scripts/gate/resolve_release_version.sh)"
+          echo "release version: ${VER}"
+          set +e
+          GATE="$(bash scripts/gate/resolve_alpha_gate.sh "$VER")"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 3 ]; then
+            echo "NOT-RUN: reason=ALPHA_GATE_NOT_FOUND (no check_alpha_v*.sh serves version ${VER})"
+            exit 0
+          fi
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::alpha gate resolution failed (rc=${RC})"
+            exit "$RC"
+          fi
+          echo "alpha gate: ${GATE}"
+          chmod +x "$GATE"
+          # #5447: the exit code is no longer discarded. A gate that cannot
+          # fail is not a gate.
+          bash "$GATE"
