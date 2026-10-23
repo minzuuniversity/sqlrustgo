@@ -197,10 +197,49 @@ STUB_EOF
 chmod +x "${STUB_BIN}/ssh"
 
 # ── stub curl ───────────────────────────────────────────────────────────────
-# Gitea API: 读当前 ref。返回旧 SHA，让脚本走"需要更新"的路径。
+# Gitea API: 读当前 ref。
+#
+# 这个替身**忠实模拟真实 API 的三种回答**（#5520 §4.A.1）：
+#   200 + SHA → 分支存在
+#   404       → 分支**不存在**（不是「问不到」！）
+#   （网络错误由调用方制造）
+#
+# 它还必须支持 `-o <file> -w '%{http_code}'` 这套调用方式 ——
+# 被测脚本正是靠 HTTP 状态码把「不存在」和「问不到」分开的。
+# 状态从**假仓库的真实状态**读出来（FAKE_REPO），不是写死的常量：
+# 写死的常量会让「分支不存在」这条路径永远测不到。
 cat > "${STUB_BIN}/curl" <<'STUB_EOF'
 #!/usr/bin/env bash
-echo '[{"object":{"sha":"'"${CURL_SHA:-0000000000000000000000000000000000000000}"'"}}]'
+url=""
+outfile=""
+prev=""
+for a in "$@"; do
+    case "$prev" in
+        -o) outfile="$a"; prev=""; continue ;;
+        -w|-K) prev=""; continue ;;
+    esac
+    case "$a" in
+        -o) prev="-o"; continue ;;
+        -w) prev="-w"; continue ;;
+        -K) prev="-K"; continue ;;
+        http://*|https://*) url="$a" ;;
+    esac
+done
+branch="${url##*/refs/heads/}"
+sha=""
+if [ -n "${FAKE_REPO:-}" ] && [ -n "$branch" ]; then
+    # --verify --quiet: 分支不存在时**什么都不打印**。
+    sha=$(git --git-dir="${FAKE_REPO}" rev-parse --verify --quiet "refs/heads/$branch" 2>/dev/null)
+fi
+if [ -n "$sha" ]; then
+    code=200
+    body="[{\"object\":{\"sha\":\"$sha\"}}]"
+else
+    code=404
+    body="[]"
+fi
+[ -n "$outfile" ] && printf '%s' "$body" > "$outfile"
+printf '%s\n' "$code"
 STUB_EOF
 chmod +x "${STUB_BIN}/curl"
 
