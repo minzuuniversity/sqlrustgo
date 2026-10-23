@@ -183,7 +183,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -351,7 +359,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -705,7 +721,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -912,7 +936,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -983,7 +1015,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -1115,7 +1155,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -1243,7 +1291,15 @@ jobs:
           CI_DEPTH: "0"
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
