@@ -49,6 +49,7 @@
 //! What `SIGKILL` proves is process-crash recovery; power-loss durability
 //! needs the `fsync` boundary verified separately.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::fault_injection::{FaultPoint, Signal};
 
 use std::io::Write;
@@ -141,7 +142,7 @@ pub struct Scratch {
 
 impl Scratch {
     pub fn new(tag: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("b1_{tag}_{}", std::process::id()));
+        let path = unique_test_path(&format!("b1_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).expect("create scratch dir");
         Self { path, keep: false }

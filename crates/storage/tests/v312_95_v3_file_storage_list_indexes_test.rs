@@ -9,6 +9,7 @@
 //! `CREATE INDEX`. The in-process `MemoryStorage` worked because
 //! it has its own `list_all_indexes` override.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_parser::IndexColumnSpec;
 use sqlrustgo_storage::engine::{ColumnDefinition, IndexInfo, StorageEngine, TableInfo};
 use sqlrustgo_storage::FileStorage;
@@ -34,7 +35,7 @@ fn fresh_dir() -> std::path::PathBuf {
         .name()
         .unwrap_or("anon")
         .replace(['/', '\\', ':'], "_");
-    let dir = std::env::temp_dir().join(format!(
+    let dir = unique_test_path(&format!(
         "v312_95_v3_list_idx_{pid}_{seq}_{name}",
         pid = std::process::id(),
         seq = seq,

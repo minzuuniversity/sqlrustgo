@@ -23,6 +23,7 @@
 //!
 //! 重复键被正确识别、语句成功返回，**唯独赋值那段没接上**。
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::ColumnDefinition;
 use sqlrustgo_storage::{MvccStorage, StorageEngine, TableInfo, Value};
 
@@ -87,7 +88,7 @@ fn in_tx(
 }
 
 fn tmp(tag: &str) -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!("odku4995_{tag}"));
+    let p = unique_test_path(&format!("odku4995_{tag}"));
     let _ = std::fs::remove_dir_all(&p);
     p
 }

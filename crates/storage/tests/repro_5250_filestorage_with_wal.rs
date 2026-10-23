@@ -9,6 +9,7 @@
 //! We do an autocommit INSERT through the engine layer (commit_implicit_dml_tx
 //! path) and then read the WAL the same way the server does.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::wal::{WalEntryType, WalManager};
@@ -34,7 +35,7 @@ fn table(n: &str) -> TableInfo {
 
 #[test]
 fn fs_new_with_wal_autocommit_via_storage_api_writes_what() {
-    let d: PathBuf = std::env::temp_dir().join(format!("r5250_fswal_{}", std::process::id()));
+    let d: PathBuf = unique_test_path(&format!("r5250_fswal_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
 

@@ -522,9 +522,9 @@ impl DataRestorer {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
     use crate::MemoryStorage;
-    use std::env::temp_dir;
 
     #[test]
     fn test_backup_format_from_str() {
@@ -574,7 +574,7 @@ mod tests {
             )
             .unwrap();
 
-        let path = temp_dir().join("test_backup.csv");
+        let path = unique_test_path("test_backup.csv");
         let count =
             BackupExporter::export_table(&storage, "users", &path, BackupFormat::Csv).unwrap();
         assert_eq!(count, 2);
@@ -624,7 +624,7 @@ mod tests {
             )
             .unwrap();
 
-        let path = temp_dir().join("test_backup.sql");
+        let path = unique_test_path("test_backup.sql");
         let count =
             BackupExporter::export_table(&storage, "users", &path, BackupFormat::Sql).unwrap();
         assert_eq!(count, 1);
@@ -670,7 +670,7 @@ mod tests {
         let mut storage = MemoryStorage::new();
         let csv_content = "id,name\n1,Alice\n2,Bob";
 
-        let path = temp_dir().join("test_restore.csv");
+        let path = unique_test_path("test_restore.csv");
         std::fs::write(&path, csv_content).unwrap();
 
         let count =
@@ -683,7 +683,7 @@ mod tests {
     #[test]
     fn test_parse_csv_value() {
         let mut storage = MemoryStorage::new();
-        let path = temp_dir().join("nonexistent.csv");
+        let path = unique_test_path("nonexistent.csv");
         let result = DataRestorer::restore_from_backup(&mut storage, &path, BackupFormat::Csv);
         assert!(result.is_err());
     }
@@ -710,7 +710,7 @@ mod tests {
             .insert("users", vec![vec![Value::Integer(1)]])
             .unwrap();
 
-        let path = temp_dir().join("test_backup.json");
+        let path = unique_test_path("test_backup.json");
         let count =
             BackupExporter::export_table(&storage, "users", &path, BackupFormat::Json).unwrap();
         assert_eq!(count, 1);
@@ -768,7 +768,7 @@ mod tests {
     fn test_restore_sql() {
         let mut storage = MemoryStorage::new();
         let sql = "INSERT INTO users (id, name) VALUES (1, 'Alice');";
-        let path = temp_dir().join("test_restore.sql");
+        let path = unique_test_path("test_restore.sql");
         std::fs::write(&path, sql).unwrap();
 
         let _result = DataRestorer::restore_from_backup(&mut storage, &path, BackupFormat::Sql);
@@ -780,7 +780,7 @@ mod tests {
     fn test_restore_json_invalid() {
         let mut storage = MemoryStorage::new();
         let json = "{invalid json}";
-        let path = temp_dir().join("test_invalid.json");
+        let path = unique_test_path("test_invalid.json");
         std::fs::write(&path, json).unwrap();
 
         let result = DataRestorer::restore_from_backup(&mut storage, &path, BackupFormat::Json);
@@ -808,7 +808,7 @@ mod tests {
         };
         storage.create_table(&info).unwrap();
 
-        let path = temp_dir().join("test_empty.csv");
+        let path = unique_test_path("test_empty.csv");
         let count =
             BackupExporter::export_table(&storage, "empty", &path, BackupFormat::Csv).unwrap();
         assert_eq!(count, 0);
@@ -838,7 +838,7 @@ mod tests {
             .insert("test", vec![vec![Value::Text("hello,world".to_string())]])
             .unwrap();
 
-        let path = temp_dir().join("test_quotes.csv");
+        let path = unique_test_path("test_quotes.csv");
         let count =
             BackupExporter::export_table(&storage, "test", &path, BackupFormat::Csv).unwrap();
         assert_eq!(count, 1);
@@ -871,7 +871,7 @@ mod tests {
             .insert("test", vec![vec![Value::Text("It's a test".to_string())]])
             .unwrap();
 
-        let path = temp_dir().join("test_escape.sql");
+        let path = unique_test_path("test_escape.sql");
         let count =
             BackupExporter::export_table(&storage, "test", &path, BackupFormat::Sql).unwrap();
         assert_eq!(count, 1);

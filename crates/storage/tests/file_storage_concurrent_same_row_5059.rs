@@ -24,6 +24,7 @@
 //! the other one's row behind — no duplication, no loss, on disk as well
 //! as in cache.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value};
 use std::sync::{Arc, RwLock};
 
@@ -68,7 +69,7 @@ fn row(id: i64, v: i64) -> Record {
 }
 
 fn fresh(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
+    let dir = unique_test_path(&format!(
         "5059_same_row_{tag}_{}_{:?}",
         std::process::id(),
         std::thread::current().id()

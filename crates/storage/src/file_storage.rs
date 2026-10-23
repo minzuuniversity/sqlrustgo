@@ -2568,13 +2568,14 @@ struct StoredTableDataRef<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
     use crate::engine::ColumnDefinition;
     use std::fs::remove_dir_all;
 
     #[test]
     fn test_file_storage() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_file_storage");
+        let temp_dir = unique_test_path("sqlrustgo_test_file_storage");
         let _ = remove_dir_all(&temp_dir);
 
         {
@@ -2636,7 +2637,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_contains_and_drop() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_contains");
+        let temp_dir = unique_test_path("sqlrustgo_test_contains");
         let _ = remove_dir_all(&temp_dir);
 
         let table_data = TableData {
@@ -2683,7 +2684,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_persist() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_persist");
+        let temp_dir = unique_test_path("sqlrustgo_test_persist");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -2729,7 +2730,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_get_mut() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_get_mut");
+        let temp_dir = unique_test_path("sqlrustgo_test_get_mut");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -2773,7 +2774,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_index() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_index");
+        let temp_dir = unique_test_path("sqlrustgo_test_index");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -2846,7 +2847,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_index_search() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_idx_search");
+        let temp_dir = unique_test_path("sqlrustgo_test_idx_search");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -2901,7 +2902,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_get_index() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_get_index");
+        let temp_dir = unique_test_path("sqlrustgo_test_get_index");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -2945,7 +2946,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_index_no_matching_rows() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_no_match");
+        let temp_dir = unique_test_path("sqlrustgo_test_no_match");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -2988,7 +2989,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_empty_tables() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_empty");
+        let temp_dir = unique_test_path("sqlrustgo_test_empty");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3007,7 +3008,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_persist_nonexistent() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_persist_none");
+        let temp_dir = unique_test_path("sqlrustgo_test_persist_none");
         let _ = remove_dir_all(&temp_dir);
 
         let storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3021,7 +3022,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_range_index_no_results() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_range_empty");
+        let temp_dir = unique_test_path("sqlrustgo_test_range_empty");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3064,7 +3065,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_insert_with_index_no_index() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_no_idx");
+        let temp_dir = unique_test_path("sqlrustgo_test_no_idx");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3103,7 +3104,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_has_index_no_table() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_has_idx_no");
+        let temp_dir = unique_test_path("sqlrustgo_test_has_idx_no");
         let _ = remove_dir_all(&temp_dir);
 
         let storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3117,7 +3118,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_drop_index_no_table() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_drop_no");
+        let temp_dir = unique_test_path("sqlrustgo_test_drop_no");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3131,7 +3132,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_range_index_no_table() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_range_no");
+        let temp_dir = unique_test_path("sqlrustgo_test_range_no");
         let _ = remove_dir_all(&temp_dir);
 
         let storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3145,7 +3146,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_add_column() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_add_col");
+        let temp_dir = unique_test_path("sqlrustgo_test_add_col");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3202,7 +3203,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_rename_table() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_rename");
+        let temp_dir = unique_test_path("sqlrustgo_test_rename");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3245,7 +3246,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_rename_nonexistent() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_rename_none");
+        let temp_dir = unique_test_path("sqlrustgo_test_rename_none");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3259,7 +3260,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_trigger_operations() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_triggers");
+        let temp_dir = unique_test_path("sqlrustgo_test_triggers");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3295,7 +3296,7 @@ mod tests {
 
     #[test]
     fn test_file_storage_view_operations() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_views");
+        let temp_dir = unique_test_path("sqlrustgo_test_views");
         let _ = remove_dir_all(&temp_dir);
 
         let storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -3308,7 +3309,7 @@ mod tests {
 
     #[test]
     fn test_insert_buffering() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_buffer");
+        let temp_dir = unique_test_path("sqlrustgo_test_buffer");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new_with_buffer_config(temp_dir.clone(), 10, true).unwrap();
@@ -3359,7 +3360,7 @@ mod tests {
 
     #[test]
     fn test_insert_buffer_threshold() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_threshold");
+        let temp_dir = unique_test_path("sqlrustgo_test_threshold");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new_with_buffer_config(temp_dir.clone(), 3, true).unwrap();
@@ -3408,7 +3409,7 @@ mod tests {
 
     #[test]
     fn test_flush_all_buffers() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_test_flush");
+        let temp_dir = unique_test_path("sqlrustgo_test_flush");
         let _ = remove_dir_all(&temp_dir);
 
         let mut storage = FileStorage::new_with_buffer_config(temp_dir.clone(), 100, true).unwrap();
@@ -3462,14 +3463,14 @@ mod tests {
     }
 
     fn make_storage(dir: &str) -> FileStorage {
-        let temp_dir = std::env::temp_dir().join(dir);
+        let temp_dir = unique_test_path(dir);
         let _ = remove_dir_all(&temp_dir);
         FileStorage::new_with_buffer_config(temp_dir, 100, false).unwrap()
     }
 
     #[test]
     fn test_new_with_buffer_config() {
-        let temp_dir = std::env::temp_dir().join("file_storage_buf_cfg");
+        let temp_dir = unique_test_path("file_storage_buf_cfg");
         let _ = remove_dir_all(&temp_dir);
         let storage = FileStorage::new_with_buffer_config(temp_dir.clone(), 50, false).unwrap();
         assert!(storage.buffer_threshold == 50);
@@ -3479,10 +3480,13 @@ mod tests {
 
     #[test]
     fn test_new_with_wal() {
-        let temp_dir = std::env::temp_dir().join("file_storage_wal");
+        let temp_dir = unique_test_path("file_storage_wal");
         let _ = remove_dir_all(&temp_dir);
         let storage = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
-        assert!(storage.data_dir.ends_with("file_storage_wal"));
+        // #5571: 临时目录现在是**唯一**的（`sqlrustgo_file_storage_wal_<pid>_<token>_<seq>`），
+        // 所以不能再断言「以 file_storage_wal 结尾」—— 要断言的是本测试真正想说的
+        // 那件事：`data_dir` **就是**调用方传进来的那个目录。
+        assert_eq!(storage.data_dir, temp_dir);
         let _ = remove_dir_all(&temp_dir);
     }
 
@@ -4197,7 +4201,7 @@ mod tests {
 
     #[test]
     fn test_buffered_insert_flush() {
-        let dir = std::env::temp_dir().join("fs_buf_flush");
+        let dir = unique_test_path("fs_buf_flush");
         let _ = remove_dir_all(&dir);
         let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 2, true).unwrap();
         let info = TableInfo {
@@ -4223,7 +4227,7 @@ mod tests {
 
     #[test]
     fn test_buffered_insert_in_tx() {
-        let dir = std::env::temp_dir().join("fs_buf_tx");
+        let dir = unique_test_path("fs_buf_tx");
         let _ = remove_dir_all(&dir);
         let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 10, true).unwrap();
         let info = TableInfo {
@@ -4249,7 +4253,7 @@ mod tests {
 
     #[test]
     fn test_trigger_roundtrip_disk() {
-        let temp_dir = std::env::temp_dir().join("fs_trigger_roundtrip");
+        let temp_dir = unique_test_path("fs_trigger_roundtrip");
         let _ = remove_dir_all(&temp_dir);
         let mut storage = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
         let trigger = TriggerInfo {
@@ -4272,7 +4276,7 @@ mod tests {
 
     #[test]
     fn test_save_trigger_load_trigger_duplicate() {
-        let temp_dir = std::env::temp_dir().join("fs_trigger_dup");
+        let temp_dir = unique_test_path("fs_trigger_dup");
         let _ = remove_dir_all(&temp_dir);
         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
         let trigger = TriggerInfo {
@@ -4293,7 +4297,7 @@ mod tests {
 
     #[test]
     fn test_drop_trigger_disk_removal() {
-        let temp_dir = std::env::temp_dir().join("fs_drop_trig_disk");
+        let temp_dir = unique_test_path("fs_drop_trig_disk");
         let _ = remove_dir_all(&temp_dir);
         let mut storage = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
         let trigger = TriggerInfo {
@@ -4339,7 +4343,7 @@ mod tests {
 
     #[test]
     fn test_flush_all_buffers_with_buffered_table() {
-        let dir = std::env::temp_dir().join("fs_flush_buf_table");
+        let dir = unique_test_path("fs_flush_buf_table");
         let _ = remove_dir_all(&dir);
         let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 1000, true).unwrap();
         let info = TableInfo {
@@ -4363,7 +4367,7 @@ mod tests {
 
     #[test]
     fn test_load_table_invalid_json() {
-        let temp_dir = std::env::temp_dir().join("fs_invalid_json");
+        let temp_dir = unique_test_path("fs_invalid_json");
         let _ = remove_dir_all(&temp_dir);
         std::fs::create_dir_all(&temp_dir).unwrap();
         std::fs::write(temp_dir.join("bad.json"), "not valid json{{{").unwrap();
@@ -4375,7 +4379,7 @@ mod tests {
 
     #[test]
     fn test_insert_buffered_threshold_flushing() {
-        let dir = std::env::temp_dir().join("fs_thr_flush");
+        let dir = unique_test_path("fs_thr_flush");
         let _ = remove_dir_all(&dir);
         let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 2, true).unwrap();
         let info = TableInfo {
@@ -4496,7 +4500,7 @@ mod tests {
 
     #[test]
     fn test_partition_rows_with_buffer() {
-        let dir = std::env::temp_dir().join("fs_pr_buf");
+        let dir = unique_test_path("fs_pr_buf");
         let _ = remove_dir_all(&dir);
         let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 1000, true).unwrap();
         let info = TableInfo {
@@ -4527,12 +4531,12 @@ mod tests {
     #[test]
     fn test_partition_rows_uneven_remainder() {
         let mut storage = FileStorage::new_with_buffer_config(
-            std::env::temp_dir().join("fs_pr_uneven"),
+            unique_test_path("fs_pr_uneven"),
             100,
             true,
         )
         .unwrap();
-        let dir = std::env::temp_dir().join("fs_pr_uneven");
+        let dir = unique_test_path("fs_pr_uneven");
         let _ = remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 100, true).unwrap();
@@ -4565,7 +4569,7 @@ mod tests {
 
     #[test]
     fn test_partition_rows_two_partitions_above_threshold() {
-        let dir = std::env::temp_dir().join("fs_pr_2p");
+        let dir = unique_test_path("fs_pr_2p");
         let _ = remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 100, true).unwrap();
@@ -4604,7 +4608,7 @@ mod tests {
 
     #[test]
     fn test_flush_buffer_with_buffered_rows() {
-        let dir = std::env::temp_dir().join("fs_flush_buf");
+        let dir = unique_test_path("fs_flush_buf");
         let _ = remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 5, true).unwrap();
@@ -4631,7 +4635,7 @@ mod tests {
 
     #[test]
     fn test_storage_save_reload_roundtrip() {
-        let dir = std::env::temp_dir().join("fs_save_reload");
+        let dir = unique_test_path("fs_save_reload");
         let _ = remove_dir_all(&dir);
         let mut storage = FileStorage::new_with_buffer_config(dir.clone(), 100, false).unwrap();
         let info = TableInfo {
@@ -7328,10 +7332,11 @@ impl StorageEngine for FileStorage {
 #[cfg(test)]
 mod parallel_scan_tests {
     use super::*;
+    use crate::test_support::unique_test_path;
 
     #[test]
     fn test_parallel_scan_file_storage() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_parallel_scan_test");
+        let temp_dir = unique_test_path("sqlrustgo_parallel_scan_test");
         let _ = std::fs::remove_dir_all(&temp_dir);
 
         // Create storage and insert test data
@@ -7390,7 +7395,7 @@ mod parallel_scan_tests {
 
     #[test]
     fn test_parallel_scan_empty_table() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_parallel_scan_empty");
+        let temp_dir = unique_test_path("sqlrustgo_parallel_scan_empty");
         let _ = std::fs::remove_dir_all(&temp_dir);
 
         let storage = FileStorage::new(temp_dir.clone()).unwrap();
@@ -7406,7 +7411,7 @@ mod parallel_scan_tests {
 
     #[test]
     fn test_parallel_scan_single_partition() {
-        let temp_dir = std::env::temp_dir().join("sqlrustgo_parallel_scan_single");
+        let temp_dir = unique_test_path("sqlrustgo_parallel_scan_single");
         let _ = std::fs::remove_dir_all(&temp_dir);
 
         {
@@ -7669,6 +7674,7 @@ impl FileStorage {
 mod db_isolation_tests {
     use super::*;
     use crate::engine::ColumnDefinition;
+    use crate::test_support::unique_test_path;
     use std::fs::remove_dir_all;
 
     /// The on-disk engine is the production path. `MemoryStorage` covers
@@ -7677,7 +7683,7 @@ mod db_isolation_tests {
     /// instead of being overwritten in the shared root.
     #[test]
     fn tables_and_files_are_scoped_per_database() {
-        let dir = std::env::temp_dir().join("fs_db_iso_5025");
+        let dir = unique_test_path("fs_db_iso_5025");
         let _ = remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
@@ -7717,7 +7723,7 @@ mod db_isolation_tests {
     /// the layout change.
     #[test]
     fn pre_5025_root_layout_is_still_readable() {
-        let dir = std::env::temp_dir().join("fs_db_legacy_5025");
+        let dir = unique_test_path("fs_db_legacy_5025");
         let _ = remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 

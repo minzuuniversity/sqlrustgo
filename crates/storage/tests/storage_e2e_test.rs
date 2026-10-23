@@ -3,6 +3,7 @@
 //! Tests the complete storage pipeline: write → persist → reload → read.
 //! Simulates real usage patterns including restart scenarios.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use sqlrustgo_storage::page::Page;
 use sqlrustgo_storage::{TableData, TableInfo};
 
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sqlrustgo_e2e_{}", name));
+    let dir = unique_test_path(&format!("sqlrustgo_e2e_{}", name));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir

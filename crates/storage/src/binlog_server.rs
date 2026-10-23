@@ -543,12 +543,12 @@ impl Clone for BinlogServer {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
 
     #[test]
     fn test_server_creation() {
-        let temp_dir = std::env::temp_dir();
-        let binlog_path = temp_dir.join("test_binlog_server");
+        let binlog_path = unique_test_path("test_binlog_server");
 
         let server = BinlogServer::new("127.0.0.1", 0, 1, binlog_path);
         assert!(server.is_ok());
@@ -559,7 +559,7 @@ mod tests {
     /// every HeartbeatAck, so nothing could be waited on.
     #[test]
     fn test_acked_lsn_starts_at_zero() {
-        let dir = std::env::temp_dir().join(format!("b22_ack0_{}", std::process::id()));
+        let dir = unique_test_path(&format!("b22_ack0_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let srv = BinlogServer::new("127.0.0.1", 0, 1, dir.clone()).expect("server");
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn test_min_acked_lsn_tracks_the_slowest_replica() {
         use std::sync::Arc;
-        let dir = std::env::temp_dir().join(format!("b22_ack1_{}", std::process::id()));
+        let dir = unique_test_path(&format!("b22_ack1_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let srv = BinlogServer::new("127.0.0.1", 0, 1, dir.clone()).expect("server");
@@ -599,7 +599,7 @@ mod tests {
     /// un-do progress and stall a semi-sync wait forever.
     #[test]
     fn test_acked_lsn_never_moves_backwards() {
-        let dir = std::env::temp_dir().join(format!("b22_ack2_{}", std::process::id()));
+        let dir = unique_test_path(&format!("b22_ack2_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let srv = BinlogServer::new("127.0.0.1", 0, 1, dir.clone()).expect("server");
@@ -628,7 +628,7 @@ mod tests {
     /// tell those apart.
     #[test]
     fn test_min_acked_lsn_distinguishes_empty_from_caught_up() {
-        let dir = std::env::temp_dir().join(format!("b22_ack3_{}", std::process::id()));
+        let dir = unique_test_path(&format!("b22_ack3_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let srv = BinlogServer::new("127.0.0.1", 0, 1, dir.clone()).expect("server");

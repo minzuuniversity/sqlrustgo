@@ -1367,11 +1367,12 @@ impl StorageEngine for BoxStorageEngine {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
 
     #[test]
     fn test_binary_save_load() {
-        let tmp = std::env::temp_dir().join("bin_test");
+        let tmp = unique_test_path("bin_test");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
 
         let cols = vec![ColumnDefinition {
@@ -1412,7 +1413,7 @@ mod tests {
 
     #[test]
     fn test_binary_storage_new() {
-        let tmp = std::env::temp_dir().join("bin_test_new");
+        let tmp = unique_test_path("bin_test_new");
         let result = BinaryTableStorage::new(tmp.clone());
         assert!(result.is_ok());
         std::fs::remove_dir_all(tmp).ok();
@@ -1420,7 +1421,7 @@ mod tests {
 
     #[test]
     fn test_binary_storage_exists() {
-        let tmp = std::env::temp_dir().join("bin_test_exists");
+        let tmp = unique_test_path("bin_test_exists");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         assert!(!storage.exists("nonexistent"));
         std::fs::remove_dir_all(tmp).ok();
@@ -1428,7 +1429,7 @@ mod tests {
 
     #[test]
     fn test_binary_storage_multiple_tables() {
-        let tmp = std::env::temp_dir().join("bin_test_multi");
+        let tmp = unique_test_path("bin_test_multi");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
 
         for i in 1..=3 {
@@ -1467,7 +1468,7 @@ mod tests {
     #[allow(clippy::approx_constant)]
     #[test]
     fn test_binary_storage_load_float() {
-        let tmp = std::env::temp_dir().join("bin_test_float");
+        let tmp = unique_test_path("bin_test_float");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
 
         let cols = vec![ColumnDefinition {
@@ -1500,7 +1501,7 @@ mod tests {
 
     #[test]
     fn test_binary_storage_load_text() {
-        let tmp = std::env::temp_dir().join("bin_test_text");
+        let tmp = unique_test_path("bin_test_text");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
 
         let cols = vec![ColumnDefinition {
@@ -1533,7 +1534,7 @@ mod tests {
 
     #[test]
     fn test_binary_storage_multiple_rows() {
-        let tmp = std::env::temp_dir().join("bin_test_rows");
+        let tmp = unique_test_path("bin_test_rows");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
 
         let cols = vec![ColumnDefinition {
@@ -1604,7 +1605,7 @@ mod tests {
 
     #[test]
     fn test_bin_scan() {
-        let tmp = std::env::temp_dir().join("bin_test_scan");
+        let tmp = unique_test_path("bin_test_scan");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let cols = make_cols(&["a", "b"], &["INTEGER", "TEXT"]);
         let info = make_info("t", cols);
@@ -1625,7 +1626,7 @@ mod tests {
 
     #[test]
     fn test_bin_scan_nonexistent() {
-        let tmp = std::env::temp_dir().join("bin_test_scan_empty");
+        let tmp = unique_test_path("bin_test_scan_empty");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         assert!(storage.scan("nonexistent").unwrap().is_empty());
         std::fs::remove_dir_all(tmp).ok();
@@ -1633,7 +1634,7 @@ mod tests {
 
     #[test]
     fn test_bin_insert() {
-        let tmp = std::env::temp_dir().join("bin_test_insert");
+        let tmp = unique_test_path("bin_test_insert");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let cols = make_cols(&["x"], &["INTEGER"]);
         let info = make_info("t", cols);
@@ -1646,7 +1647,7 @@ mod tests {
 
     #[test]
     fn test_bin_force_insert() {
-        let tmp = std::env::temp_dir().join("bin_test_fi");
+        let tmp = unique_test_path("bin_test_fi");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage.force_insert("t", vec![Value::Integer(99)]).unwrap();
         let rows = storage.scan("t").unwrap();
@@ -1656,7 +1657,7 @@ mod tests {
 
     #[test]
     fn test_bin_delete() {
-        let tmp = std::env::temp_dir().join("bin_test_delete");
+        let tmp = unique_test_path("bin_test_delete");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let cols = make_cols(&["x"], &["INTEGER"]);
         let info = make_info("t", cols);
@@ -1680,7 +1681,7 @@ mod tests {
 
     #[test]
     fn test_bin_delete_all() {
-        let tmp = std::env::temp_dir().join("bin_test_del_all");
+        let tmp = unique_test_path("bin_test_del_all");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let cols = make_cols(&["x"], &["INTEGER"]);
         let info = make_info("t", cols);
@@ -1695,7 +1696,7 @@ mod tests {
 
     #[test]
     fn test_bin_update() {
-        let tmp = std::env::temp_dir().join("bin_test_update");
+        let tmp = unique_test_path("bin_test_update");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let cols = make_cols(&["x", "y"], &["INTEGER", "TEXT"]);
         let info = make_info("t", cols);
@@ -1720,7 +1721,7 @@ mod tests {
 
     #[test]
     fn test_bin_create_drop_table() {
-        let tmp = std::env::temp_dir().join("bin_test_cd");
+        let tmp = unique_test_path("bin_test_cd");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let cols = make_cols(&["a", "b"], &["INTEGER", "TEXT"]);
         let info = make_info("new_table", cols);
@@ -1735,7 +1736,7 @@ mod tests {
 
     #[test]
     fn test_bin_list_tables() {
-        let tmp = std::env::temp_dir().join("bin_test_lt");
+        let tmp = unique_test_path("bin_test_lt");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage
             .create_table(&make_info("t1", make_cols(&["x"], &["INTEGER"])))
@@ -1751,7 +1752,7 @@ mod tests {
 
     #[test]
     fn test_bin_add_column() {
-        let tmp = std::env::temp_dir().join("bin_test_ac");
+        let tmp = unique_test_path("bin_test_ac");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage
             .create_table(&make_info("t", make_cols(&["a"], &["INTEGER"])))
@@ -1778,7 +1779,7 @@ mod tests {
 
     #[test]
     fn test_bin_rename_table() {
-        let tmp = std::env::temp_dir().join("bin_test_rt");
+        let tmp = unique_test_path("bin_test_rt");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage
             .create_table(&make_info("old", make_cols(&["x"], &["INTEGER"])))
@@ -1791,7 +1792,7 @@ mod tests {
 
     #[test]
     fn test_bin_get_table_info_not_found() {
-        let tmp = std::env::temp_dir().join("bin_test_gti");
+        let tmp = unique_test_path("bin_test_gti");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         assert!(storage.get_table_info("nonexistent").is_err());
         std::fs::remove_dir_all(tmp).ok();
@@ -1799,7 +1800,7 @@ mod tests {
 
     #[test]
     fn test_bin_persist_table() {
-        let tmp = std::env::temp_dir().join("bin_test_pt");
+        let tmp = unique_test_path("bin_test_pt");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let cols = make_cols(&["x"], &["INTEGER"]);
         let rows = vec![vec![Value::Integer(5)]];
@@ -1815,7 +1816,7 @@ mod tests {
 
     #[test]
     fn test_bin_flush() {
-        let tmp = std::env::temp_dir().join("bin_test_flush");
+        let tmp = unique_test_path("bin_test_flush");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage
             .create_table(&make_info("t", make_cols(&["x"], &["INTEGER"])))
@@ -1826,7 +1827,7 @@ mod tests {
 
     #[test]
     fn test_bin_null_value() {
-        let tmp = std::env::temp_dir().join("bin_test_null");
+        let tmp = unique_test_path("bin_test_null");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let cols = make_cols(&["x", "y"], &["INTEGER", "TEXT"]);
         let rows = vec![vec![Value::Null, Value::Null]];
@@ -1843,13 +1844,13 @@ mod tests {
 
     #[test]
     fn test_bin_box_storage_engine_new() {
-        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_inner")).unwrap();
+        let inner = BinaryTableStorage::new(unique_test_path("box_inner")).unwrap();
         let _boxed = BoxStorageEngine::new(inner);
     }
 
     #[test]
     fn test_bin_box_storage_engine_delegate() {
-        let tmp = std::env::temp_dir().join("box_delegate");
+        let tmp = unique_test_path("box_delegate");
         let inner = BinaryTableStorage::new(tmp.clone()).unwrap();
         let mut boxed = BoxStorageEngine::new(inner);
         boxed
@@ -1862,7 +1863,7 @@ mod tests {
 
     #[test]
     fn test_bin_box_storage_engine_delete_if() {
-        let tmp = std::env::temp_dir().join("box_del_if");
+        let tmp = unique_test_path("box_del_if");
         let inner = BinaryTableStorage::new(tmp.clone()).unwrap();
         let mut boxed = BoxStorageEngine::new(inner);
         boxed
@@ -1879,7 +1880,7 @@ mod tests {
 
     #[test]
     fn test_bin_box_storage_engine_update_if() {
-        let tmp = std::env::temp_dir().join("box_upd_if");
+        let tmp = unique_test_path("box_upd_if");
         let inner = BinaryTableStorage::new(tmp.clone()).unwrap();
         let mut boxed = BoxStorageEngine::new(inner);
         boxed
@@ -1901,35 +1902,35 @@ mod tests {
 
     #[test]
     fn test_bin_box_storage_engine_list_indexes() {
-        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_li")).unwrap();
+        let inner = BinaryTableStorage::new(unique_test_path("box_li")).unwrap();
         let boxed = BoxStorageEngine::new(inner);
         assert!(boxed.list_indexes("t").is_empty());
     }
 
     #[test]
     fn test_bin_box_storage_engine_list_triggers() {
-        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_lt")).unwrap();
+        let inner = BinaryTableStorage::new(unique_test_path("box_lt")).unwrap();
         let boxed = BoxStorageEngine::new(inner);
         assert!(boxed.list_triggers("t").is_empty());
     }
 
     #[test]
     fn test_bin_box_storage_engine_has_view() {
-        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_hv")).unwrap();
+        let inner = BinaryTableStorage::new(unique_test_path("box_hv")).unwrap();
         let boxed = BoxStorageEngine::new(inner);
         assert!(!boxed.has_view(crate::engine::DEFAULT_DATABASE, "v"));
     }
 
     #[test]
     fn test_bin_box_storage_engine_is_wal_enabled() {
-        let inner = BinaryTableStorage::new(std::env::temp_dir().join("box_wal")).unwrap();
+        let inner = BinaryTableStorage::new(unique_test_path("box_wal")).unwrap();
         let boxed = BoxStorageEngine::new(inner);
         assert!(!boxed.is_wal_enabled());
     }
 
     #[test]
     fn test_bin_delete_nonexistent() {
-        let tmp = std::env::temp_dir().join("bin_test_del_ne");
+        let tmp = unique_test_path("bin_test_del_ne");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         assert_eq!(
             storage.delete("nonexistent", &[Value::Integer(1)]).unwrap(),
@@ -1940,7 +1941,7 @@ mod tests {
 
     #[test]
     fn test_bin_update_nonexistent() {
-        let tmp = std::env::temp_dir().join("bin_test_upd_ne");
+        let tmp = unique_test_path("bin_test_upd_ne");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let count = storage
             .update(
@@ -1955,7 +1956,7 @@ mod tests {
 
     #[test]
     fn test_bin_update_if_nonexistent() {
-        let tmp = std::env::temp_dir().join("bin_test_upd_if_ne");
+        let tmp = unique_test_path("bin_test_upd_if_ne");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let filter: RowFilter = Box::new(|_: &Record| true);
         let mutation = RowMutation::new(vec![(0, Value::Integer(99))], 0);
@@ -1968,7 +1969,7 @@ mod tests {
 
     #[test]
     fn test_bin_delete_if_nonexistent() {
-        let tmp = std::env::temp_dir().join("bin_test_del_if_ne");
+        let tmp = unique_test_path("bin_test_del_if_ne");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let filter: RowFilter = Box::new(|_: &Record| true);
         let deleted = storage.delete_if("nonexistent", &filter).unwrap();
@@ -1978,7 +1979,7 @@ mod tests {
 
     #[test]
     fn test_bin_create_index_noop() {
-        let tmp = std::env::temp_dir().join("bin_test_ci");
+        let tmp = unique_test_path("bin_test_ci");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage
             .create_index(crate::engine::IndexInfo {
@@ -1994,7 +1995,7 @@ mod tests {
 
     #[test]
     fn test_bin_drop_index_noop() {
-        let tmp = std::env::temp_dir().join("bin_test_di");
+        let tmp = unique_test_path("bin_test_di");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage.drop_index("t", "c").unwrap();
         std::fs::remove_dir_all(tmp).ok();
@@ -2002,7 +2003,7 @@ mod tests {
 
     #[test]
     fn test_bin_create_trigger_noop() {
-        let tmp = std::env::temp_dir().join("bin_test_ct");
+        let tmp = unique_test_path("bin_test_ct");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let trigger = TriggerInfo {
             name: "trig".to_string(),
@@ -2019,7 +2020,7 @@ mod tests {
 
     #[test]
     fn test_bin_drop_trigger_noop() {
-        let tmp = std::env::temp_dir().join("bin_test_dt");
+        let tmp = unique_test_path("bin_test_dt");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage.drop_trigger("trig").unwrap();
         std::fs::remove_dir_all(tmp).ok();
@@ -2027,7 +2028,7 @@ mod tests {
 
     #[test]
     fn test_bin_get_trigger_none() {
-        let tmp = std::env::temp_dir().join("bin_test_gt");
+        let tmp = unique_test_path("bin_test_gt");
         let storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         assert!(storage.get_trigger("trig").is_none());
         std::fs::remove_dir_all(tmp).ok();
@@ -2035,7 +2036,7 @@ mod tests {
 
     #[test]
     fn test_bin_create_database_noop() {
-        let tmp = std::env::temp_dir().join("bin_test_cdb");
+        let tmp = unique_test_path("bin_test_cdb");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage.create_database("db").unwrap();
         std::fs::remove_dir_all(tmp).ok();
@@ -2043,7 +2044,7 @@ mod tests {
 
     #[test]
     fn test_bin_drop_database_noop() {
-        let tmp = std::env::temp_dir().join("bin_test_ddb");
+        let tmp = unique_test_path("bin_test_ddb");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         storage.drop_database("db").unwrap();
         std::fs::remove_dir_all(tmp).ok();

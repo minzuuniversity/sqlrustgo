@@ -204,15 +204,12 @@ impl TableEngine for FileTable {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
-    use std::env;
+    /// #5571: 唯一的临时路径来自 [`crate::test_support::unique_test_path`] ——
+    /// 本 crate 里**只有那一份**实现，测试之间不共享目录。
     fn temp_dir() -> PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let p = env::temp_dir().join(format!("file_table_test_{}_{}", std::process::id(), n));
-        let _ = std::fs::remove_dir_all(&p);
-        p
+        unique_test_path("file_table_test")
     }
 
     fn sample_info(name: &str) -> TableInfo {

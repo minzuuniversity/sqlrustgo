@@ -36,6 +36,7 @@
 //! "silent empty result" shape #5191 was filed for, reached through a
 //! different door.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::{
     ColumnDefinition, FileStorage, MvccStorage, Record, StorageEngine, TableInfo, Value, WalStorage,
@@ -64,7 +65,7 @@ fn row(id: i64) -> Record {
 }
 
 fn dir(t: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("wrap5192_{t}_{}", std::process::id()));
+    let d = unique_test_path(&format!("wrap5192_{t}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d

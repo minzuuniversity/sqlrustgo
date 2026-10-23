@@ -1664,6 +1664,7 @@ mod tests {
 
 #[cfg(test)]
 mod db_isolation_tests {
+    use crate::test_support::unique_test_path;
     use super::*;
     use crate::engine::StorageEngine;
     use crate::file_storage::FileStorage;
@@ -1679,7 +1680,7 @@ mod db_isolation_tests {
 
     #[test]
     fn mvcc_version_store_is_scoped_per_database() {
-        let dir = std::env::temp_dir().join("mvcc_db_iso_5025");
+        let dir = unique_test_path("mvcc_db_iso_5025");
         let _ = remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
