@@ -50,7 +50,7 @@ jobs:
           INPUTS_FILE="/tmp/soak_inputs.sh"
           source "$INPUTS_FILE"
           git clone --depth=1 --branch "${BRANCH:-develop/v3.9.0}" \
-            "http://192.168.0.252:3000/openclaw/sqlrustgo" repo
+            "${GITHUB_SERVER_URL}/openclaw/sqlrustgo" repo
           cd repo
           echo "Checked out $(git rev-parse HEAD) on ${BRANCH:-develop/v3.9.0}"
           echo "REPO=$PWD" >> $GITHUB_ENV
