@@ -264,6 +264,7 @@ fn main() {
                             "duration_secs": report.duration_secs,
                             "queries_executed": report.queries_executed,
                             "errors": report.errors,
+                            "reconnects": report.reconnects,
                             "p50_latency_ms": report.p50_latency_ms,
                             "p90_latency_ms": report.p90_latency_ms,
                             "p99_latency_ms": report.p99_latency_ms,
