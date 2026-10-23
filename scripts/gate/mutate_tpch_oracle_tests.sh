@@ -76,10 +76,28 @@ ENGINE_FILE="src/engine_select.rs"
 
 # The target that can actually detect a given mutation. A mutation paired
 # with a target that cannot express it would "survive" for the wrong reason.
-# Wall-clock bound for a single baseline/mutation run. The diagnostic
-# targets normally finish in well under a minute; 15 minutes is a generous
-# ceiling that still keeps a hung run from eating the whole CI container.
+# Wall-clock bound for a single baseline/mutation **test execution**. The
+# diagnostic targets normally finish in well under a minute; 15 minutes is a
+# generous ceiling that still keeps a hung run from eating the whole CI
+# container.
 RUN_TIMEOUT_S="${RUN_TIMEOUT_S:-900}"
+
+# Wall-clock bound for the **compile** phase — a separate budget, because the
+# two phases have completely different costs.
+#
+# The CI job container has **no cargo cache**: a fresh container per job and
+# an ephemeral `$CARGO_HOME`, so every `cargo test` starts by compiling the
+# workspace's dependency tree from scratch. Measured on this repository:
+# `cargo test --test diag_q11` needs **5m57s** to compile, after which the
+# test itself runs in **0.19s**.
+#
+# The old single 900s budget had to cover *both* phases, and on the CI runner
+# — where several jobs compete for the same CPU — the compile alone exceeded
+# it: mutation job 18184 died with `rc=143` after exactly 900s, i.e. the
+# timeout fired while cargo was still compiling. The compile is therefore
+# done **once**, up front, with its own budget; the run budget then only has
+# to cover the test execution.
+COMPILE_TIMEOUT_S="${COMPILE_TIMEOUT_S:-3600}"
 
 # `timeout` is not part of a bare macOS install (coreutils' `gtimeout` is),
 # but the CI runner is Linux and the repository already relies on `timeout`
@@ -103,57 +121,14 @@ ENGINE_SHA_BEFORE=""
 
 log() { printf '%s\n' "$*"; }
 
-# --- temporary files ---------------------------------------------------------
+# --- temporary files and digests ---------------------------------------------
 #
-# `mktemp` is called **without a template** on purpose.
-#
-# The CI runner image's `mktemp` does not accept a template that carries a
-# suffix after the `X`s: `mktemp -t name.XXXXXX.py` fails there with
-#
-#   mktemp: : Invalid argument
-#
-# and — because this script does not run under `set -e` — that failure was
-# swallowed: the command substitution yielded an EMPTY path, and the script
-# went on to write its three Python snippets to "" ("No such file or
-# directory") and then report mutation results that had never been produced.
-# Measured on CI run 8081 (mutation job 16475).
-#
-# A bare `mktemp` is what the rest of this repository uses (20+ call sites in
-# scripts/gate/*.sh) and it is known to work in that image.
-#
-# The helper **fails loudly** instead of returning an empty path, so a
-# harness that cannot create its scratch files stops the gate rather than
-# reporting a verdict it did not actually measure.
-#
-# The error goes to stderr, because the callers capture stdout.
-make_temp_file() {
-    local f
-    f="$(mktemp 2>/dev/null)" || f=""
-    if [ -z "$f" ] || [ ! -f "$f" ]; then
-        echo "ERROR: cannot create a temporary file (mktemp failed) — refusing to continue with an empty path" >&2
-        return 1
-    fi
-    printf '%s' "$f"
-}
-
-# --- SHA-256 of a file, portable across Linux/macOS -------------------------
-# `shasum` is a Perl script and is NOT guaranteed to exist on a slim CI
-# image; `sha256sum` comes from GNU coreutils. The CI runner is only
-# *proven* to have coreutils (`sha256sum` is used by
-# scripts/gate/check_evidence_binding.sh, which runs in the
-# evidence-graph-gate job). So try `shasum` first, fall back to
-# `sha256sum`, and — if neither exists — fail loudly instead of silently
-# treating an empty hash as "the file is unchanged".
-# (scripts/gate/prepare_tpch_fixture.sh uses the same fallback chain.)
-sha256_of() {
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
-    elif command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" 2>/dev/null | awk '{print $1}'
-    else
-        echo ""
-    fi
-}
+# Both helpers now live in `scripts/gate/common.sh` — one implementation of
+# each rule, so a gate that re-invents them cannot drift into a second set
+# of portability assumptions (the bare-`mktemp` trap on the CI runner image
+# is documented there).
+# shellcheck source=scripts/gate/common.sh
+source "$REPO_ROOT/scripts/gate/common.sh"
 
 # --- ensure a fixture exists -------------------------------------------------
 if [ ! -f "$FIXTURE_DIR/lineitem.tbl" ]; then
@@ -188,6 +163,82 @@ assert_engine_pristine() {
     fi
 }
 
+# --- print the tail of a run's output ---------------------------------------
+#
+# A failed run must be **diagnosable from the CI log alone**. The narrow grep
+# that used to be the only output (`^test .* FAILED|panicked at|error\[|^error`)
+# matched nothing when cargo died before it produced a test result — which is
+# exactly the case that mattered: mutation job 18223 reported
+# `the BASELINE run of 'diag_q11' failed (rc=101)` with **no** diagnostic line
+# at all, so the cause had to be recovered by hand from the raw job log.
+#
+# The tail is printed **in addition to** the grep, never instead of it: the
+# grep stays the first thing a reader sees, and the tail carries everything
+# the grep cannot know about — cargo's download errors, compiler errors,
+# linker errors, and the OOM killer's output.
+report_run_output() {
+    local out="$1"
+    local lines="${2:-40}"
+    if [ ! -f "$out" ]; then
+        log "   (no output file was produced)"
+        return 0
+    fi
+    log "   --- last ${lines} lines of the run output ---"
+    tail -n "$lines" "$out" | sed 's/^/   | /'
+    log "   --- end of the run output ---"
+}
+
+# --- compile the mutation targets, once -------------------------------------
+#
+# The compile phase and the test-execution phase have completely different
+# costs (see COMPILE_TIMEOUT_S), so they get separate budgets. Compiling up
+# front also means the three mutation runs reuse the build products: after a
+# mutation only the mutated engine crate is recompiled, instead of rebuilding
+# the whole dependency tree four times.
+compile_targets() {
+    local out rc
+    local targets=""
+    local cargo_args=""
+    local t
+    for t in "$MUT1_TARGET" "$MUT2_TARGET" "$MUT3_TARGET"; do
+        case " $targets " in
+            *" $t "*) continue ;;
+        esac
+        targets="$targets $t"
+    done
+    for t in $targets; do
+        cargo_args="$cargo_args --test $t"
+    done
+
+    out="$(make_temp_file)" || {
+        log "${RED}ERROR${NC}: cannot create the compile output file"
+        return 1
+    }
+    log ""
+    log "== compiling the mutation targets (budget ${COMPILE_TIMEOUT_S}s) — the CI container has no cargo cache, so this is the expensive part"
+    # `cargo_args` is intentionally unquoted: it must word-split into
+    # `--test <name>` pairs. Target names contain no spaces.
+    # shellcheck disable=SC2086
+    timeout "$COMPILE_TIMEOUT_S" cargo test --no-run $cargo_args >"$out" 2>&1
+    rc=$?
+
+    if [ $rc -eq 124 ] || [ $rc -eq 143 ]; then
+        log "${RED}ERROR${NC}: compiling the mutation targets TIMED OUT after ${COMPILE_TIMEOUT_S}s"
+        report_run_output "$out" 40
+        rm -f "$out"
+        return 1
+    fi
+    if [ $rc -ne 0 ]; then
+        log "${RED}ERROR${NC}: the mutation targets could not be compiled (rc=$rc)"
+        report_run_output "$out" 40
+        rm -f "$out"
+        return 1
+    fi
+    log "   compiled OK"
+    rm -f "$out"
+    return 0
+}
+
 # --- baseline run -----------------------------------------------------------
 # The mutations are only meaningful if the *unmutated* test passes. Without
 # this baseline a pre-existing failure (a broken fixture, a stale expected
@@ -210,14 +261,19 @@ run_baseline() {
     TPCH_DATA_DIR="$FIXTURE_DIR" timeout "$RUN_TIMEOUT_S" \
         cargo test --test "$target" -- --nocapture >"$out" 2>&1
     rc=$?
-    if [ $rc -eq 124 ]; then
+    # 124 is GNU timeout's "timed out"; 143 is what the shell reports when
+    # the timeout signal reaches the job itself. Both mean the run did not
+    # finish, and neither is evidence about the test.
+    if [ $rc -eq 124 ] || [ $rc -eq 143 ]; then
         log "${RED}ERROR${NC}: the BASELINE run of '$target' TIMED OUT after ${RUN_TIMEOUT_S}s"
+        report_run_output "$out" 40
         rm -f "$out"
         return 1
     fi
     if [ $rc -ne 0 ]; then
         log "${RED}ERROR${NC}: the BASELINE run of '$target' failed (rc=$rc) — the mutation results would be meaningless"
         grep -E "^test .* FAILED|panicked at|error\[|^error" "$out" | head -10
+        report_run_output "$out" 60
         rm -f "$out"
         return 1
     fi
@@ -267,11 +323,12 @@ run_mutation() {
         cargo test --test "$target" -- --nocapture >"$out" 2>&1
     rc=$?
 
-    if [ $rc -eq 124 ]; then
+    if [ $rc -eq 124 ] || [ $rc -eq 143 ]; then
         # A timeout is NOT a caught mutation: the test did not fail, the
         # process was killed. Reporting it as CAUGHT would make the gate
         # green for the wrong reason.
         log "${RED}ERROR${NC}: ${id}: the mutated run TIMED OUT after ${RUN_TIMEOUT_S}s — this is a harness error, not a caught mutation"
+        report_run_output "$out" 40
         ERRORS=$((ERRORS + 1))
         rm -f "$out"
         restore_engine
@@ -282,6 +339,7 @@ run_mutation() {
     if [ $rc -ne 0 ]; then
         log "${GREEN}CAUGHT${NC} (${id}): the test failed as it should"
         grep -E "^test .* FAILED|panicked at|differs from the independent SQLite oracle" "$out" | head -5
+        report_run_output "$out" 25
         CAUGHT=$((CAUGHT + 1))
     else
         log "${RED}SURVIVED${NC} (${id}): the test still passed — the assertion does not detect this defect"
@@ -423,6 +481,14 @@ fi
 # One baseline per distinct target. Every target used below must pass while
 # unmutated, otherwise a pre-existing failure would make each mutation look
 # "CAUGHT" and the gate would report green while proving nothing.
+#
+# The compile happens once, before any baseline: the CI container has no cargo
+# cache, so paying for the dependency tree four times (once per baseline and
+# once per mutation) is what made the old single 900s budget unreachable.
+if ! compile_targets; then
+    exit 2
+fi
+
 BASELINES_DONE=""
 for t in "$MUT1_TARGET" "$MUT2_TARGET" "$MUT3_TARGET"; do
     case " $BASELINES_DONE " in

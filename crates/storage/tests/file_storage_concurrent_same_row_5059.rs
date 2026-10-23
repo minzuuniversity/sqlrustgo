@@ -111,7 +111,7 @@ fn a_rolled_back_transaction_does_not_take_the_other_ones_row() {
     }
 
     {
-        let mut g = storage.write().unwrap();
+        let g = storage.write().unwrap();
         g.flush_all_buffers().unwrap();
         let rows = g.scan("counter").unwrap();
         assert_eq!(
@@ -169,18 +169,18 @@ fn concurrent_transactions_writing_one_row_leave_exactly_the_committed_one() {
     }
 
     {
-        let mut g = storage.write().unwrap();
+        let g = storage.write().unwrap();
         g.flush_all_buffers().unwrap();
         let rows = g.scan("counter").unwrap();
         // At the storage layer there is no PK enforcement, so more than one
         // row may exist — but every row must be a row some transaction
         // actually wrote, and none may be a phantom from a rollback.
         assert!(
-            rows.iter().all(|r| r.get(0) == Some(&Value::Integer(7))),
+            rows.iter().all(|r| r.first() == Some(&Value::Integer(7))),
             "every surviving row must be the contended row, got {rows:?}"
         );
         assert!(
-            rows.len() >= 1,
+            !rows.is_empty(),
             "at least the committed writer's row must survive, got {rows:?}"
         );
         assert!(

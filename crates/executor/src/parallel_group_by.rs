@@ -568,6 +568,9 @@ mod tests {
         );
     }
 
+    // `3.14` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_evaluate_simple_expr_literal() {
         let table = empty_table_info();

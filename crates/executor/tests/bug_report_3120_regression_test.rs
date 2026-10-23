@@ -71,6 +71,10 @@ fn test_bug2a_nested_function_call_no_parse_error() {
     }
 }
 
+// `3.14` is the **SQL literal under test** — the result of
+// `round(3.14159, 2)` — not a mathematical constant.
+// `clippy::approx_constant` is deny-by-default and flags it (see #5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_bug2b_builtin_functions_not_null() {
     // BUG-2b: `now`/`curdate`/`curtime`/`datediff`/`round`/`rand`/

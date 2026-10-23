@@ -1,5 +1,6 @@
 # PR-5379 TEST_PLAN — 覆盖目标与阶段
 
+> **基线**：`develop/v4.1.0` @ `de50610a66495559b3524e08f74aa3d5b79e24a3`
 > 关联: `PR-5379_SPEC.md` · 证据: `docs/releases/v4.1.0/evidence/TPCH_FIXTURE_5379_2026-10-20.md`
 
 ---

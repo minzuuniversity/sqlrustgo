@@ -25,7 +25,6 @@ use sqlrustgo_storage::{
 };
 use sqlrustgo_types::Value;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 fn dir(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("boxed_tx_{tag}_{}", std::process::id()));

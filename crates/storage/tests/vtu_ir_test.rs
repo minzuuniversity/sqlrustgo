@@ -497,6 +497,9 @@ fn test_predicate_ir_binary_null_handling() {
     assert!(!pred.evaluate(&row_null, &table_info));
 }
 
+// `3.14` is a plain decimal fixture, not an approximation of π;
+// `clippy::approx_constant` is deny-by-default (see #5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_predicate_ir_binary_float_comparison() {
     let table_info = make_table_info(vec![("price", "FLOAT")]);
@@ -631,6 +634,9 @@ fn test_predicate_ir_cmp_values_integer() {
     assert!(pred.evaluate(&[], &table_info));
 }
 
+// `3.14` is a plain decimal fixture, not an approximation of π;
+// `clippy::approx_constant` is deny-by-default (see #5508).
+#[allow(clippy::approx_constant)]
 #[test]
 fn test_predicate_ir_cmp_values_float() {
     let table_info = make_table_info(vec![]);

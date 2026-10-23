@@ -2,7 +2,7 @@
   "version": 1,
   "scope": "docs/releases/v4.1.0",
   "updated_at": "2026-10-21T09:31:25Z",
-  "note": "Known-broken documentation pointers in the release line. The gate fails on any pointer that is NOT listed here. Each entry is a reviewable debt item, not a suppression: the category says why the pointer is broken (the path was moved by the crates/ -> src/ flattening, the artifact was planned but never committed, or the target lives on another branch only).",
+  "note": "Known-broken documentation pointers in the release line. The gate fails on any pointer that is NOT listed here. Each entry is a reviewable debt item, not a suppression: the category says why the pointer is broken (the path was moved by the crates/ -> src/ flattening, the artifact was planned but never committed, or the target lives on another branch only). 每条 entry 带一个 category（分类）与 reason（为什么它仍然是债）；「该修的」应当直接改文档指向真实文件，只有确实修不了的才登记进来。",
   "entries": [
     {
       "file": "ALIGNMENT_AUDIT_2026-09-30.md",
@@ -111,11 +111,6 @@
     },
     {
       "file": "evidence/TPCH_FIXTURE_5379_2026-10-20.md",
-      "target": "scripts/gate/verify_pr_dag.sh",
-      "category": "planned_artifact_never_committed"
-    },
-    {
-      "file": "evidence/TPCH_FIXTURE_5379_2026-10-20.md",
       "target": "src/local_bin.rs",
       "category": "path_moved_after_restructure"
     },
@@ -138,6 +133,48 @@
       "file": "evidence/gmp_consumer_gate_20261005.md",
       "target": "docs/eval/408_RETRIEVAL_ZERO_ROOTCAUSE.md",
       "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "A04_MYSQL_DIFF_MATRIX_REPORT.md",
+      "target": "docs/releases/v4.1.0/evidence/a04-5226/matrix.json",
+      "category": "generated_artifact_never_committed",
+      "reason": "matrix.json 由 tests/integration/compat/a04_mysql_diff_matrix_test.rs 在跑测试时写进仓库树；它是一次性产物，不入库"
+    },
+    {
+      "file": "PR-5457_ACCEPTANCE.md",
+      "target": "scripts/gate/totally_nonexistent_zzz.sh",
+      "category": "deliberate_negative_test_fixture_name",
+      "reason": "这是验收文档里**故意写的假脚本名**，用来演示 check_gate_script_refs.sh 能抓出「判据引用了不存在的脚本」"
+    },
+    {
+      "file": "evidence/GATE_BLIND_SPOTS_BATCH23_2026-10-22.md",
+      "target": "tests/admin_coverage_tests.rs",
+      "category": "package_relative_path_by_design",
+      "reason": "文档在讲 cargo 打印的**包相对**路径与 cargo metadata 给的**工作区相对**路径对不上；引号里是 cargo 的原样输出"
+    },
+    {
+      "file": "evidence/GATE_BLIND_SPOTS_BATCH23_2026-10-22.md",
+      "target": "tests/coverage_v3_12.rs",
+      "category": "package_relative_path_by_design",
+      "reason": "同上（6 个包共用的包相对路径名）"
+    },
+    {
+      "file": "evidence/GATE_BLIND_SPOTS_BATCH23_2026-10-22.md",
+      "target": "tests/v400_unified_backup.rs",
+      "category": "package_relative_path_by_design",
+      "reason": "同上（2 个包共用的包相对路径名）"
+    },
+    {
+      "file": "evidence/GATE_BLIND_SPOTS_BATCH23_2026-10-22.md",
+      "target": "tests/unit_tests.rs",
+      "category": "package_relative_path_by_design",
+      "reason": "同上（2 个包共用的包相对路径名）"
+    },
+    {
+      "file": "evidence/TEST_DISCRIMINATING_POWER_BATCH8_2026-10-21.md",
+      "target": "docs/audit/status/2026-06-07-tpch-cell-diff-v390.json",
+      "category": "path_removed_after_report_moved_to_build_dir",
+      "reason": "该 JSON 报告原先落在仓库树里，现已改为写到构建目录（TPCH_CELL_DIFF_OUT），仓库里不再有这份文件"
     }
   ]
 }

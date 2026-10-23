@@ -51,6 +51,11 @@ stages:
     order: 1
     description: "设计与架构阶段 (design + architecture + prototype)"
     branch_pattern: ["develop/v*", "feature/*", "feat/*"]
+    # #5436 —— 分支承载规则**不被强制**：开发阶段本来就在开发分支上
+    # 进行（`fix/*` / `feature/*` 都不在 `branch_pattern` 里），强制它
+    # 只会让每个 PR 都红。承载规则对晋级阶段才有意义。
+    carrier_enforced: false
+
     required_files:
       - "docs/releases/v{VER}/VERSION_PLAN.md"
       - "docs/releases/v{VER}/ARCHITECTURE.md"
@@ -76,6 +81,11 @@ stages:
     order: 2
     description: "功能开发阶段 (active feature development, API may change)"
     branch_pattern: ["develop/v*"]
+    # #5436 —— 分支承载规则**不被强制**：开发阶段本来就在开发分支上
+    # 进行（`fix/*` / `feature/*` 都不在 `branch_pattern` 里），强制它
+    # 只会让每个 PR 都红。承载规则对晋级阶段才有意义。
+    carrier_enforced: false
+
     required_files:
       - "docs/releases/v{VER}/CHANGELOG.md"
       - "docs/releases/v{VER}/RELEASE_NOTES.md"
@@ -116,6 +126,11 @@ stages:
     order: 3
     description: "功能冻结 + 完整性验证 (feature freeze, integration focus)"
     branch_pattern: ["develop/v*", "beta/v*"]
+    # #5436 —— 分支承载规则**不被强制**：开发阶段本来就在开发分支上
+    # 进行（`fix/*` / `feature/*` 都不在 `branch_pattern` 里），强制它
+    # 只会让每个 PR 都红。承载规则对晋级阶段才有意义。
+    carrier_enforced: false
+
     required_files:
       - "docs/releases/v{VER}/STAGE.yaml"
       - "docs/releases/v{VER}/TEST_PLAN.md"
@@ -158,6 +173,11 @@ stages:
     order: 4
     description: "候选发布版本 (release candidate, critical-bug-fix only)"
     branch_pattern: ["develop/v*", "release/v*", "rc/v*"]
+    # #5436 —— 分支承载规则**被强制**：当前分支必须匹配本阶段的
+    # `branch_pattern`。RC/GA 是晋级阶段，承载分支决定了这次晋级
+    # 算不算数；规则由 `scripts/gate/check_stage.sh` 执行。
+    carrier_enforced: true
+
     required_files:
       - "docs/releases/v{VER}/STAGE.yaml"
       - "docs/releases/v{VER}/RELEASE_NOTES.md"
@@ -203,6 +223,11 @@ stages:
     order: 5
     description: "正式发布版本 (general availability, hotfix only)"
     branch_pattern: ["main", "release/v*", "hotfix/v*"]
+    # #5436 —— 分支承载规则**被强制**：当前分支必须匹配本阶段的
+    # `branch_pattern`。RC/GA 是晋级阶段，承载分支决定了这次晋级
+    # 算不算数；规则由 `scripts/gate/check_stage.sh` 执行。
+    carrier_enforced: true
+
     required_files:
       # #5439: the state expectations used to be glued onto the path
       # ("STAGE.yaml (state=GA)"), which made the entry **unresolvable**:
@@ -267,6 +292,14 @@ stages:
       - "GA gate report signed by human architect"
       - "GA tag cut: v{VER}"
       - "Merge to main + release branch created"
+      # #5436 —— 承载分支必须合法。GA 的 `branch_pattern` 是
+      # ["main", "release/v*", "hotfix/v*"]，**不含** `develop/*`；
+      # 而 v4.1.0 的整条开发线都在 `develop/v4.1.0` 上。
+      # 这条由 `scripts/gate/check_stage.sh` 强制
+      # （`carrier_enforced: true`）：在 develop/v4.1.0 上把
+      # `current_stage` 推到 GA，门禁会直接红 —— 「在开发线上宣布 GA」
+      # 这件事从此不是一个判断问题，而是一个可执行的门禁。
+      - "GA judged on a branch matching GA.branch_pattern (main / release/v* / hotfix/v*)"
 
 # =============================================================================
 # Stage transition rules (version-agnostic)

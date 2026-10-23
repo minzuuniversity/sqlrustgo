@@ -1,4 +1,4 @@
-//! MySQL wire-protocol client for `sqlrustgo-cli`.
+//! MySQL wire-protocol client for `sqlrustgo-soak`.
 //!
 //! Implements the mysql_native_password auth handshake and COM_QUERY
 //! message exchange over raw TCP. Adapted from `tests/common/mod.rs`

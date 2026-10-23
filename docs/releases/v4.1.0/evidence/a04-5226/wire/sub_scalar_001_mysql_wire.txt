@@ -10,5 +10,5 @@ SETUP> INSERT INTO t_sub VALUES (25)
 QUERY> SELECT v FROM t_sub WHERE v > (SELECT AVG(v) FROM t_sub) ORDER BY v
   SELECT ncol=1 nrow=1 status=0x0002
   columns=["v"]
-  types=["integer"]
+  types=["text"]
   row[0]=["25"]

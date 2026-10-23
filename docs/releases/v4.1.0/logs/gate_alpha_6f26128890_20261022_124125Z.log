@@ -1,0 +1,22 @@
+==================================================================
+  Stage Gate Check: ALPHA
+  Version: v4.1.0
+  Branch: opencode/fix-alpha-gate-blockers
+  Commit: 6f26128890
+  Description: 功能开发阶段 (active feature development, API may change)
+  Mode:    EXECUTE
+==================================================================
+
+--- Required files & doc artifacts ---
+  [OK]  docs/releases/v4.1.0/CHANGELOG.md
+  [OK]  docs/releases/v4.1.0/RELEASE_NOTES.md
+  [OK]  docs/releases/v4.1.0/STAGE.yaml
+  [OK]  docs/releases/v4.1.0/CHANGELOG.md
+  [OK]  docs/releases/v4.1.0/RELEASE_NOTES.md
+  [OK]  docs/releases/v4.1.0/STAGE.yaml
+  [OK]  docs/releases/v4.1.0/FEATURE_MATRIX.md
+
+--- Required gates (9) ---
+  [PASS] check_alpha_v4.1.0.sh
+  [PASS] check_arch_invariants.sh
+  [PASS] check_arch3_no_bypass.sh

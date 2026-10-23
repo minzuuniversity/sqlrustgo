@@ -64,8 +64,22 @@ fn test_wire_admin_status() {
     let mut admin = WireAdmin::connect("127.0.0.1", port, "tester", "tester", "")
         .expect("WireAdmin connect failed");
     let status = admin.status().expect("status query failed");
-    assert!(status.uptime_seconds >= 0);
-    assert!(status.active_connections >= 0);
+    // `uptime_seconds` is a `u64` and `active_connections` a `u32`, so both
+    // `>= 0` checks were vacuous — that is what
+    // `clippy::absurd_extreme_comparisons` reports (#5508). The server was
+    // started a moment ago, so its uptime has to be small, and a status
+    // report that carries no version is not a status report.
+    assert!(
+        status.uptime_seconds < 60,
+        "a freshly started server must report a small uptime, got {}",
+        status.uptime_seconds
+    );
+    assert!(
+        status.active_connections < 1000,
+        "implausible active connection count: {}",
+        status.active_connections
+    );
+    assert!(!status.server_version.is_empty());
 }
 
 /// Verify [`WireAdmin::logical_backup`] produces a valid tar+gzip archive.

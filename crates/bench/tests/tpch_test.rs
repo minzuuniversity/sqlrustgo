@@ -37,11 +37,19 @@ fn setup_engine() -> MemoryExecutionEngine {
         .expect("create orders table");
 
     // Create customer table (150 rows for SF0.1)
+    // #5515: `c_phone` / `c_acctbal` were missing here, so the Q22 query
+    // below selected columns this schema never created — the engine
+    // rejected it, and the test asserted "Q22 should execute successfully"
+    // against a premise that was false. The full TPC-H schema (the one the
+    // benchmark example uses, crates/bench/examples/serial_vs_parallel_bench.rs)
+    // does have those columns; this one was a truncated copy of it.
     engine
         .execute(
             "CREATE TABLE customer (
                 c_custkey INTEGER,
                 c_name TEXT,
+                c_phone TEXT,
+                c_acctbal REAL,
                 c_nationkey INTEGER
             )",
         )
@@ -59,11 +67,14 @@ fn setup_engine() -> MemoryExecutionEngine {
         .expect("create part table");
 
     // Create supplier table
+    // #5515: `s_address` was missing here — same false premise as the
+    // customer table above (Q20 selects it).
     engine
         .execute(
             "CREATE TABLE supplier (
                 s_suppkey INTEGER,
                 s_name TEXT,
+                s_address TEXT,
                 s_nationkey INTEGER
             )",
         )

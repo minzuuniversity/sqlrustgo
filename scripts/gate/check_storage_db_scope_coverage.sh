@@ -38,9 +38,16 @@ ENGINE="crates/storage/src/engine.rs"
 # nothing to forward to and implements these directly.
 WRAPPERS="wal_storage mvcc_storage"
 
-# Trait body = everything before the first `impl ... for`, where the
-# database-scoped methods with their defaults live.
-trait_body="$(awk '/^impl<.*> StorageEngine for |^impl StorageEngine for /{exit} {print}' "$ENGINE")"
+# Trait body = the text of the trait itself: from `pub trait StorageEngine`
+# to the line that closes it (a `}` in column 0).
+#
+# #5401: the previous shape stopped at the first `impl ... StorageEngine for`,
+# which is ~2000 lines further down — so `MemoryStorage`'s **inherent** impl
+# was counted as part of the trait. The gate then demanded that the wrappers
+# override `scan_via_bufferpool_in_db`, a method that is **not in the trait
+# at all** (it is an inherent method of MemoryStorage) ⇒ the gate was red for
+# ever, and no change to the wrappers could ever turn it green.
+trait_body="$(awk '/^pub trait StorageEngine/{f=1} f{print} f && /^}$/{exit}' "$ENGINE")"
 
 # Only methods that actually take a `db` parameter — `find_column_index_in`
 # matches the name pattern but resolves column names, not databases.
@@ -83,4 +90,7 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
-echo "PASS: $(printf '%s\n' "$WRAPPERS" | wc -l | tr -d ' ') wrappers override all $(printf '%s\n' "$required" | wc -l | tr -d ' ') database-scoped methods"
+# #5401: the wrapper count was `printf '%s\n' "$WRAPPERS" | wc -l` — that counts
+# the LINES of a single space-separated string, so it always said "1 wrappers"
+# even though two wrappers are checked.
+echo "PASS: $(echo $WRAPPERS | wc -w | tr -d ' ') wrappers override all $(printf '%s\n' "$required" | wc -l | tr -d ' ') database-scoped methods"

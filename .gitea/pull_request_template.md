@@ -17,12 +17,16 @@ PULL_REQUEST_TEMPLATE.md — SQLRustGo PR 模板
 ## 一、5-类文档清单（强制）
 
 > 每项必须在 PR 描述或链接文档中提供。无 = 自动 FAIL。
+>
+> 路径中的 `<VERSION>` 取当前发布线（见 `docs/releases/v4.1.0/STAGE.yaml`）。
+> 下方每项末尾的 `<!-- section:... -->` 是机器可读锚点 ——
+> `scripts/gate/check_pr_template_sections.sh` 按它们判定 5 类文档是否齐备。
 
-- [ ] **SPEC** — `docs/releases/v3.8.0/PR-XXX_SPEC.md` (设计/范围/接口)
-- [ ] **TEST_PLAN** — `docs/releases/v3.8.0/PR-XXX_TEST_PLAN.md` (覆盖目标/阶段)
-- [ ] **TEST_DESIGN** — `docs/releases/v3.8.0/PR-XXX_TEST_DESIGN.md` (具体测试方法)
-- [ ] **REVIEW** — `docs/releases/v3.8.0/PR-XXX_TEST_REVIEW.md` (独立审核记录)
-- [ ] **ACCEPTANCE** — `docs/releases/v3.8.0/PR-XXX_ACCEPTANCE.md` (门禁执行证据)
+- [ ] **SPEC** — `docs/releases/<VERSION>/PR-XXX_SPEC.md` (设计/范围/接口) <!-- section:SPEC -->
+- [ ] **TEST_PLAN** — `docs/releases/<VERSION>/PR-XXX_TEST_PLAN.md` (覆盖目标/阶段) <!-- section:TEST_PLAN -->
+- [ ] **TEST_DESIGN** — `docs/releases/<VERSION>/PR-XXX_TEST_DESIGN.md` (具体测试方法) <!-- section:TEST_DESIGN -->
+- [ ] **REVIEW** — `docs/releases/<VERSION>/PR-XXX_TEST_REVIEW.md` (独立审核记录) <!-- section:REVIEW -->
+- [ ] **ACCEPTANCE** — `docs/releases/<VERSION>/PR-XXX_ACCEPTANCE.md` (门禁执行证据) <!-- section:ACCEPTANCE -->
 
 > 模板: 参考 `docs/governance/TEST_REVIEW_TEMPLATE.md`
 

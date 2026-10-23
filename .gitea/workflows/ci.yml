@@ -32,6 +32,73 @@ on:
       - ci/v3.8.0-*
       - "ci/v4.*"
 
+concurrency:
+  # #5550 — **one CI run at a time for this workflow**, and **CI only counts
+  # the newest run**.
+  #
+  # Why this has to be a repository-wide group and not a per-ref one:
+  #
+  # The CI container has **no cargo cache** (#5451 — still open), so every
+  # job rebuilds the whole workspace from scratch: a `cargo build` of this
+  # tree takes ~7m30s of *CPU-bound* compilation. The runner pool has three
+  # `hp-z6g4` runners, so the server was compiling three workspaces
+  # concurrently, each cargo defaulting to **all 80 cores** of the host —
+  # 240 rustc processes on 80 cores.
+  #
+  # Measured on the host on 2026-10-22: four runs were pushed at once
+  # (runs 8914–8921, four branches). The load average reached **147.8** and
+  # the host **kernel-panicked** at 22:57:32 CST (kdump-tools wrote a
+  # vmcore to /var/crash/202610222257). Every CI container died with the
+  # host, so all nine jobs of those runs were reported as failed with no
+  # test result at all — an infrastructure red, not a code red.
+  #
+  # ---- Gitea 28.1.0 的 concurrency 语义（与 GitHub 不同，两次实测） ----
+  #
+  # (1) **新 run 加入 group 时，会把同 group 里「尚未开始」的 run 取消掉**。
+  #     实测：同一 PR 的两个 run 在同一秒创建、共用一个 group
+  #     （8997=ci.yml / 8998=gate.yml）：
+  #
+  #         8997 | status=cancelled | started=0 | stopped=创建同秒
+  #         8998 | status=blocked
+  #
+  #     ⇒ 两个 workflow **不能**共用一个 group，否则同一 PR 上必然有一个被
+  #     取消，PR 上出现 cancelled 的 required check ⇒ 永远合不进去。
+  #     所以本仓库按 **workflow 文件** 分组：`ci.yml` 一个组、`gate.yml`
+  #     另一个组。跨分支的串行化（真正保护宿主机的那一条）仍然成立 ——
+  #     每个 workflow 的 group 依然是**固定串**。
+  #
+  # (2) **卡死的 run 会永久占着并发组**。实测：一个 run 的 task 卡死在一台
+  #     **远端** runner 上（`sqlrustgo-ci-01`，act_runner v0.5.0，日志停止
+  #     增长、runner 心跳却正常），run 永远停在 Running，同组的后续 run
+  #     全部卡在 Blocked；`POST …/cancel` 返回 409（库里已经是 cancelled，
+  #     进程内状态却还是 running）。
+  #
+  #     ⇒ `cancel-in-progress: true`：**下一次推送**直接取消这个卡死的 run
+  #     ⇒ 槽位立刻释放，不需要人工去动 Gitea 的库。
+  #
+  # 代价（明确接受）：往一个正在跑的分支上再推一次，前一次的 run 会被取消，
+  # PR 上那个 check 显示 cancelled —— 但**最新**那次 run 会给出新的 check，
+  # 而我们要的证据本来就必须绑定在**最终**那次 run 上。
+  #
+  # 并发上限本来是由 runner 池决定的（3 台 `hp-z6g4`），配合
+  # `CARGO_BUILD_JOBS=16` ⇒ 最多 3 × 16 = 48 个 rustc 抢 80 核。
+  #
+  # ---- group 名的 `-v2` 后缀（实测绕过，不是设计） ----------------------
+  #
+  # Gitea 28.1.0 的 concurrency 实现还有一个更隐蔽的坑：
+  # **一个卡在 Blocked 的 run 会连累它的后继** —— 后继加入同组时先取消
+  # 前一个，自己却因为「组里还有没结束的 run」而被判为 Blocked。
+  # 观测到的序列（`action_run` 表）：
+  #
+  #     8999 running(卡在远端 runner) → 9001 blocked → 9003 blocked
+  #     → 9007 blocked → … 每一次新 run 都取消前一个、自己又被判 Blocked
+  #
+  # ⇒ **换一个全新的 group 名**才能解开（组里没有任何历史 run ⇒ 不会被判
+  # Blocked）。这是对 Gitea 实现的绕过，语义不变：**同一个 workflow 的 run
+  # 仍然一次只跑一个**。
+  group: sqlrustgo-ci-pipeline-v2
+  cancel-in-progress: true
+
 # NOTE: do NOT override CARGO_HOME / RUSTUP_HOME here.
 # `${{ runner.temp }}` is evaluated to the literal string `/tmp` by act_runner
 # (the expression log shows `%!t(string=/tmp/.rustup)`), so these overrides
@@ -44,6 +111,36 @@ on:
 # gate.yml does and why its jobs build fine.
 env:
   CARGO_TERM_COLOR: always
+  # #5451 / #5533 —— crates.io 是 CI 的**第三个**外部依赖（另两个是
+  # github.com 与 index.crates.io 背后的同一片网络）。
+  #
+  # 实测（CI run 8348，根包 `test` job 的 Build 步骤）：
+  #
+  #   error: failed to get `chrono` as a dependency of package
+  #          `evidence-graph v0.1.0`
+  #   Caused by: failed to download from
+  #              `https://index.crates.io/ch/ro/chrono`
+  #   Caused by: [28] Timeout was reached (Operation too slow.
+  #              Less than 10 bytes/sec transferred the last 30 seconds)
+  #
+  # 锁文件里的 crate 必须取到，下载本身不是可选项；但**网络抖动**不该
+  # 让整个 job 死掉。cargo 自带重试，只是默认次数太少、低速阈值太高。
+  # 这里只调**重试与超时**，不动 CARGO_HOME / RUSTUP_HOME（见上面的 NOTE）。
+  CARGO_NET_RETRY: "10"
+  CARGO_HTTP_TIMEOUT: "120"
+  CARGO_HTTP_LOW_SPEED_LIMIT: "1"
+  # #5550 — bound the **per-container** compile parallelism.
+  #
+  # cargo defaults to one rustc per core. The host has 80 cores and the
+  # runner pool runs three `hp-z6g4` jobs at a time, so the default meant
+  # up to 240 concurrent rustc processes on 80 cores — the state the host
+  # was in when it kernel-panicked (see the `concurrency` block above).
+  #
+  # 16 keeps the three concurrent jobs inside the host's real capacity
+  # (3 × 16 = 48 ≤ 80) while still using it: the workspace is far too
+  # large to compile serially, and a build that takes 7m30s on 80 cores
+  # takes ~10m on 16 — an acceptable price for a machine that stays up.
+  CARGO_BUILD_JOBS: "16"
 
 # Combined lint + build: share one clone, build once
 jobs:
@@ -51,9 +148,42 @@ jobs:
     runs-on: [hp-z6g4]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
       - name: Clippy
         # #5465: this used to be
         #     cargo clippy --all-features -- -D warnings
@@ -80,6 +210,24 @@ jobs:
         # number, and that a re-baseline is an explicit, reviewable act
         # (`--update`) rather than a side effect of a CI run.
         run: bash scripts/gate/check_test_target_lint_budget.sh
+      - name: Workspace lint budget (issue #5508)
+        # The Clippy step above covers the **root package** only. In a
+        # workspace whose root is also a package, cargo's default members
+        # are that one package — so the 44 `crates/*` members (301 test
+        # targets among them) were never linted by any gate. That blindness
+        # had a concrete cost: `crates/server/benches/scheduler_bench.rs`
+        # used `criterion` without declaring it, `crates/storage/benches/
+        # storage_benchmark.rs` had an un-inferrable closure, and a dozen
+        # vacuous assertions (`x >= 0` on a `usize`) sat in the tree — none
+        # of them visible to a gate that does not build those targets.
+        #
+        # Turning the whole workspace into `-D warnings` is not an option:
+        # it would stop the pipeline over a debt nobody can act on in one
+        # change. The **same rule** the root scope uses is therefore applied
+        # to the workspace scope — it must compile (a target that does not
+        # compile is a target nobody runs), and no lint name may exceed its
+        # recorded baseline. One implementation, two scopes.
+        run: bash scripts/gate/check_test_target_lint_budget.sh --scope workspace
       - name: Workflow expression gate (issue #5517)
         # #5517: a workflow whose expression template the platform cannot
         # parse is **ignored entirely** — no job is ever created, so the run
@@ -96,6 +244,18 @@ jobs:
         # carries angle brackets, and refuses anything richer than a plain
         # dotted path inside a comment.
         run: bash scripts/gate/check_workflow_expressions.sh
+      - name: Process-global env mutation gate (issue #5423)
+        # The root lib test binary runs its ~160 unit tests concurrently in
+        # ONE process. A test that mutates the process environment table is
+        # visible to every sibling test running at the same moment, which
+        # turned one default-value assertion into a ~1-in-3 random CI red.
+        #
+        # The rule is scoped to the root package on purpose: `crates/*` are
+        # separate test binaries and carry their own locking discipline.
+        #
+        # (This comment names the mechanism, never a code pattern the
+        # platform might scan — see the workflow expression gate above.)
+        run: bash scripts/gate/check_no_process_env_mutation.sh
       - name: Hardcoded credential gate (issues #5381 / #5520)
         # The repository is mirrored to a **public** GitHub repository, so any
         # credential-shaped string in a tracked file is world-readable. Five
@@ -114,12 +274,67 @@ jobs:
 
   test:
     runs-on: [hp-z6g4]
-    needs: [lint-build]
+    # ── #5533 — `needs: [lint-build]` made this job **never run**. ──────────
+    #
+    # On this Gitea (28.1.0) a job that declares a non-empty `needs:` stays
+    # in status **Waiting** and is never handed to a runner.  Measured on the
+    # server's own job table (`action_run_job`, `needs` non-empty):
+    #
+    #   needs=["lint-build"]  →  success:   0   failure:  29
+    #                            cancelled: 643  skipped:  779  waiting: 1
+    #
+    # ⇒ the job that actually runs the test suite had **never once** reached
+    # a green conclusion.  Every "CI is green" claim in this repository was
+    # therefore made **without the test suite ever running**: the run was
+    # green because the job was *skipped*, not because the tests passed.
+    #
+    # The two jobs that carry the `needs:` (this one and `test-crates`) are
+    # the two that matter most, and they are exactly the two that were
+    # dead.  The dependency is therefore expressed the way this repository
+    # already expresses it elsewhere (`mutation`, `postcheck`): an empty
+    # `needs` plus `if: always()`.  The cost is that the test suite now
+    # starts in parallel with `lint-build` instead of after it; the benefit
+    # is that the test suite runs **at all**.
+    needs: []
+    if: always()
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
       - name: Build
         # `cargo build` inside a workspace that has a **root package** builds
         # ONLY that root package — the member packages' binaries are never
@@ -272,7 +487,7 @@ jobs:
           # run. This is the gate that makes a silently truncated test run
           # impossible: on CI run 7613, 382 of 446 declared targets never
           # executed and nothing reported it.
-          bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --log test_report.log
+          bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --scope root --log test_report.log
       - name: Test manifest honesty (issue #5449)
         if: always()
         run: |
@@ -287,6 +502,22 @@ jobs:
           # file must have its own declaration, and the declared count must
           # equal the number of test targets cargo actually builds.
           bash scripts/gate/check_test_manifest_honesty.sh
+      - name: Gate — CLI binary names (issue #5405)
+        if: always()
+        run: |
+          # #5405: `tests/e2e/sqlrustgo_cli_soak_e2e_test.rs` looked for
+          # `target/debug/sqlrustgo-cli` — a name no bin has. `sqlrustgo-cli`
+          # is the **package** name of `crates/sqlrustgo-cli`; that package's
+          # `[[bin]] name` is `sqlrustgo`.
+          #
+          # The typo was the symptom. The disease was that "what is this binary
+          # called" had two answers (the package name and the bin name) and the
+          # test tree was free to pick either. This gate makes the manifest the
+          # only source of a bin name and cross-checks everything else against
+          # it: duplicate [[bin]] names, CARGO_BIN_EXE references borrowed from
+          # another package, `target/<profile>/<name>` literals that name
+          # nothing, and resolver candidate lists that drifted.
+          bash scripts/gate/check_cli_binary_names.sh
       - name: Gate — TPC-H known-difference registry (issue #5379)
         if: always()
         run: |
@@ -338,6 +569,188 @@ jobs:
         # filled in" — that hash has been filled in since 545814c3d1, and the
         # real blocker is the missing SF=1 fixture, not the hash.
 
+  # The **member packages** get their OWN job (issue #5515).
+  #
+  # Why a separate job:
+  #   * `cargo test` at the workspace root selects the **root package only**
+  #     (the workspace root is itself a package), so the **301** test targets
+  #     under `crates/*` never ran in CI — and nothing reported it;
+  #   * the root package's own run already needs **86-147 min** on the runner
+  #     (measured over CI runs 8113 / 8117 / 8031 / 8342 / 8264 / 8185) and
+  #     the runner's container limit is **3 h** ⇒ the two cannot share one
+  #     job: the root run alone can consume 147 of the 180 minutes;
+  #   * a separate job also means a separate log, and the execution-accounting
+  #     gate then checks each job against **the slice it is responsible for**
+  #     (`--scope root` / `--scope crates`). One comparison rule, two scopes.
+  #
+  # The job runs **after** `lint-build` (a clippy failure is a P0 stop, and
+  # the runner has a single worker — running the crates' tests on top of a
+  # known-red clippy would only burn the queue).
+  test-crates:
+    runs-on: [hp-z6g4]
+    # #5533 — same defect as the root `test` job: a non-empty `needs:` never
+    # leaves status Waiting on this Gitea, so this job would have been dead
+    # on arrival.  See the long explanation on the root `test` job.
+    needs: []
+    if: always()
+    steps:
+      - name: Checkout
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
+      - name: Build member binaries
+        # Same reason as the root job's Build step: several member test
+        # targets spawn a real server binary and abort when it is missing
+        # ("canonical binary not found at ...").
+        #
+        # `sqlrustgo-mysql-server/fault-injection` is **required**, not
+        # optional: the crash tests in `crates/storage/tests/` arm a fault
+        # point and wait for the server to announce it. The hooks live behind
+        # `#[cfg(any(test, feature = "fault-injection"))]`, so a binary built
+        # without the feature **silently never reaches the boundary** and the
+        # test fails with "server never reached fault point after_commit_fsync
+        # within 60s".
+        #
+        # These tests never ran in CI before (#5515) — the whole `crates/*`
+        # suite was invisible to CI — which is exactly why this wiring bug
+        # survived: the test's own message says "Build it with `cargo build -p
+        # sqlrustgo-mysql-server --all-features`", and CI never did that.
+        run: |
+          cargo build -p sqlrustgo-mysql-server -p sqlrustgo-cli \
+            --features sqlrustgo-mysql-server/fault-injection
+      - name: Prepare TPC-H fixture (issue #5379)
+        # The member packages have TPC-H-dependent targets too, and the
+        # fixture is generated at run time (the repository forbids committing
+        # *.tbl). Same generator, same seed => same bytes as the root job.
+        run: |
+          bash scripts/gate/prepare_tpch_fixture.sh --out "${RUNNER_TEMP:-/tmp}/tpch-fixture" --sf 0.01 --seed 42
+          echo "TPCH_DATA_DIR=${RUNNER_TEMP:-/tmp}/tpch-fixture" >> "$GITHUB_ENV"
+          echo "TPCH_NOT_RUN_FILE=${RUNNER_TEMP:-/tmp}/tpch_not_run.log" >> "$GITHUB_ENV"
+      - name: Run member-package tests (issue #5515)
+        run: |
+          set -o pipefail
+          # `--exclude sqlrustgo` drops the root package: it has its own job
+          # above. Every other workspace member runs here.
+          #
+          # `--all-features` is deliberately **not** used at workspace scope:
+          # it would activate `sqlrustgo-mysql-server/jemalloc-prof`, whose
+          # build runs jemalloc's `configure` + `make` — and the CI image
+          # (Alpine/musl) does not ship `make`. The root job's `--all-features`
+          # never applied to the member packages either (cargo selects the
+          # root package only there), so this is **not** a coverage loss:
+          # what runs here is each member package's own test suite, with its
+          # default features — exactly what `cargo test -p <crate>` does.
+          #
+          # 5400 s (1.5 h) instead of the root job's 9000 s: the member
+          # targets are individually much smaller than the root package's
+          # fixture-heavy ones, and this job has the 3 h container limit to
+          # itself.
+          timeout -k 30 5400 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1
+          status=$?
+          echo "cargo test exited with status ${status}"
+          # Keep the tail of the run in the job log: on a timeout it names
+          # the target that was stuck.
+          tail -n 200 test_report.log || true
+          exit ${status}
+      - name: Test summary
+        if: always()
+        run: |
+          # `grep -c` prints 0 AND exits 1 when there is no match, so
+          # `grep -c ... || echo 0` appends a second 0 and yields the two-line
+          # value "0\n0" — which then breaks the integer test below. Taking
+          # the first line keeps this a single number.
+          #
+          # Two granularities are reported on purpose (ADR-008 §Policy 1:
+          # a PASS claim must state how many tests actually ran):
+          #   * per test binary  — "test result: ok" lines
+          #   * per test function — "test <name> ... ok" lines
+          # The old summary only counted binaries, which is how 382 unexecuted
+          # targets could hide behind a near-green line.
+          BIN_OK=$(grep -c 'test result: ok' test_report.log 2>/dev/null | head -1)
+          BIN_FAIL=$(grep -c 'test result: FAILED' test_report.log 2>/dev/null | head -1)
+          BIN_OK=${BIN_OK:-0}
+          BIN_FAIL=${BIN_FAIL:-0}
+          TEST_OK=$(grep -cE '^test .* \.\.\. ok$' test_report.log 2>/dev/null | head -1)
+          TEST_FAIL=$(grep -cE '^test .* \.\.\. FAILED$' test_report.log 2>/dev/null | head -1)
+          TEST_IGNORED=$(grep -cE '^test .* \.\.\. ignored$' test_report.log 2>/dev/null | head -1)
+          TEST_OK=${TEST_OK:-0}
+          TEST_FAIL=${TEST_FAIL:-0}
+          TEST_IGNORED=${TEST_IGNORED:-0}
+          # Tests that could not run (no fixture, or a fixture whose scale
+          # profile does not match the one their expectations were calibrated
+          # against) report themselves through the TPCH-NOT-RUN marker, which
+          # is collected in TPCH_NOT_RUN_FILE. They are disclosed and are
+          # NOT counted as passed (AGENTS.md §8 #5).
+          NOT_RUN=0
+          NOT_RUN_RECORDS=0
+          if [ -n "${TPCH_NOT_RUN_FILE:-}" ] && [ -f "${TPCH_NOT_RUN_FILE}" ]; then
+            # NOT-RUN 计数：**逐条切分 + 去重**后计数，两个数都打印。
+            #   - `grep -o 'TPCH-NOT-RUN:.*'` 逐条输出 ⇒ 即使某条记录丢了换行
+            #     （多个测试二进制并发写同一文件时可能发生），也能被逐条数出来；
+            #     行数口径（`grep -c`）会把这样的粘连记录少算一条。
+            #   - `sort -u` 折叠**逐字相同**的重复记录：`regression_test` 这个
+            #     meta 套件用子进程重跑目标，同一批 NOT-RUN 记录会被写两遍。
+            # 实测 run 8185：原始 114 条记录里有 83 条是单元测试的合成记录，
+            # 去重后只剩 20 条真实条目 ⇒ 旧口径的 `not_run=113` 虚高 3.6 倍，
+            # 并让下面的 `PASSED=$((TEST_OK - NOT_RUN))` 少报 82 个 passed。
+            NOT_RUN_RECORDS=$(grep -o 'TPCH-NOT-RUN:.*' "${TPCH_NOT_RUN_FILE}" 2>/dev/null | wc -l | tr -d '[:space:]')
+            NOT_RUN=$(grep -o 'TPCH-NOT-RUN:.*' "${TPCH_NOT_RUN_FILE}" 2>/dev/null | sort -u | wc -l | tr -d '[:space:]')
+            NOT_RUN=${NOT_RUN:-0}
+            NOT_RUN_RECORDS=${NOT_RUN_RECORDS:-0}
+            echo "--- not-run tests (disclosed; NOT counted as passed) ---"
+            cat "${TPCH_NOT_RUN_FILE}"
+          fi
+          PASSED=$((TEST_OK - NOT_RUN))
+          if [ "$PASSED" -lt 0 ]; then PASSED=0; fi
+          echo "Tests: passed=$PASSED failed=$TEST_FAIL not_run=$NOT_RUN not_run_records=$NOT_RUN_RECORDS ignored=$TEST_IGNORED"
+          echo "Test binaries: ok=$BIN_OK failed=$BIN_FAIL"
+          if [ "$TEST_FAIL" -gt 0 ]; then exit 1; fi
+          if [ "$((BIN_OK + BIN_FAIL))" -eq 0 ]; then
+            echo "No 'test result' lines in test_report.log — the test run did not complete."
+            echo "Treating as failure rather than as a clean run."
+            exit 1
+          fi
+      - name: Test target execution accounting (issue #5379 / #5515)
+        if: always()
+        run: |
+          # This job is responsible for the **member packages'** targets.
+          # `--scope crates` is the only difference from the root job's
+          # invocation — the comparison rule is one implementation.
+          bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --scope crates --log test_report.log
+
   # The mutation gate gets its OWN job (issue #5379).
   #
   # It injects three defects into the ENGINE implementation (never into the
@@ -366,9 +779,42 @@ jobs:
     if: always()
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
       - name: Mutation test — the new TPC-H assertions really kill defects (issue #5379)
         if: always() && github.event_name == 'pull_request'
         run: |
@@ -395,9 +841,42 @@ jobs:
     if: contains(github.ref, 'develop/v4.') || contains(github.ref, 'release/v4.') || contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
       - name: Install cargo-audit (skip if cached on PATH)
         # 4m46s to compile from source on first run; cached in $CARGO_HOME
         # which lives in runner.temp so it gets re-installed each CI run,
@@ -495,9 +974,42 @@ jobs:
     runs-on: [hp-z6g4]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
       - name: Verify scripts/soak/run_soak_loop.sh exists
         run: |
           if [[ ! -f scripts/soak/run_soak_loop.sh ]]; then
@@ -524,42 +1036,65 @@ jobs:
     needs: []
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        env:
+          CI_DEPTH: "0"
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
       - name: Version detection
         id: version
         run: |
           set -euo pipefail
-          # Detect version from branch, release metadata or the VERSION file.
+          # Detect the release line this checkout belongs to.
           #
-          # #5444: the previous implementation only ever chose between
+          # #5446: the previous implementation only ever chose between
           # `origin/develop/v3.8.0` and `origin/develop/v3.7.0`, and the
           # checkout uses `fetch-depth: 1` — so neither remote branch exists
           # and the detection was **v3.7.0 on every branch**, v4.1.0
           # included. Every version-sensitive gate in this job then ran
-          # against the v3.7.0 contract.
-          VERSION=""
-          BRANCH="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")}"
-          case "$BRANCH" in
-            */v[0-9]*) VERSION="${BRANCH##*/}" ;;
-          esac
-          if [ -z "$VERSION" ]; then
-            # Fall back to the current release line's own stage manifest.
-            for d in docs/releases/v4.1.0 docs/releases/v3.12.0 docs/releases/v3.11.0; do
-              if [ -f "$d/STAGE.yaml" ]; then
-                VERSION="$(grep -m1 -E '^version:' "$d/STAGE.yaml" \
-                  | sed -E 's/^version:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/')"
-                break
-              fi
-            done
-          fi
-          if [ -z "$VERSION" ] && [ -f VERSION ]; then
-            VERSION="$(grep -m1 -E '^v[0-9]' VERSION | tr -d '[:space:]')"
-          fi
-          VERSION="${VERSION:-v3.7.0}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "detected version: $VERSION (branch=${BRANCH:-unknown})"
+          # against the v3.7.0 contract. The old default (`v3.7.0`) is gone:
+          # a wrong-but-plausible version is worse than a visible failure,
+          # because it makes a gate check a release line nobody asked about.
+          #
+          # The rule now lives in **one** script, shared with gate.yml, so
+          # the two workflows cannot drift apart again.
+          chmod +x scripts/gate/resolve_release_version.sh
+          VER="$(bash scripts/gate/resolve_release_version.sh)"
+          echo "detected version: ${VER}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
       - name: Gate L1 — Code Quality
         run: |
           # #5443: without `pipefail` the step's exit code came from `tee`
@@ -603,7 +1138,20 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x scripts/gate/auto_env_blocker.sh
-          bash scripts/gate/auto_env_blocker.sh v3.8.0 2>&1 | tee auto_env_block.log
+          # #5446: the version was hardcoded to `v3.8.0`, so on every other
+          # branch this step tagged a 2024 release line's documents while
+          # claiming to tag the current one.
+          #
+          # #5403: this script is a **pre-commit helper that rewrites
+          # files**. Running the write mode inside CI rewrote the runner's
+          # working tree (92 .md files under docs/releases/v4.1.0) — the
+          # rewrite was never committed and the modified files then fed the
+          # later steps. It also aborted half-way on a heading-less document:
+          # `grep -n "^# " <file> | head -1` returns 1 under `pipefail` when
+          # the file has no H1, so `set -e` killed the script before it
+          # reached its own "no H1" branch. `--check` is read-only and does
+          # not have that defect.
+          bash scripts/gate/auto_env_blocker.sh --check "${{ steps.version.outputs.version }}" 2>&1 | tee auto_env_block.log
       - name: Evidence Binding Check
         run: |
           set -euo pipefail
@@ -712,6 +1260,26 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/gate/check_stage.sh --version v4.1.0 --dry-run
+      # Issue #5542: `scripts/gate/verify_pr_dag.sh` is the executable criterion
+      # behind BE5 / B-F5 (docs/governance/GATE_CONDITIONS.md:103/129), but its
+      # default base ref (`origin/develop/v4.1.0`) could not be resolved in
+      # EITHER environment: this repository has no `origin` remote, and the CI
+      # checkout fetches a single SHA, which creates no remote-tracking branch.
+      # The gate therefore answered DRIFT (exit 2) everywhere — the criterion
+      # was never executable, and the five regression cases in
+      # tests/integration/gate/gate_criterion_existence_test.rs failed on every
+      # CI run. The base ref is now a release LINE resolved through a
+      # deterministic chain; its `--selftest` proves the chain still tells a
+      # resolvable checkout from an unresolvable one, and that an explicitly
+      # requested base is never silently replaced.
+      #
+      # The gate itself is NOT run here: on the runner's shallow checkout it
+      # correctly refuses to judge (DRIFT), and BE5 / B-F5 are release-time
+      # criteria — the same arrangement as `check_stage.sh --dry-run` above.
+      - name: PR-DAG gate base-ref resolution (#5542)
+        run: |
+          set -euo pipefail
+          bash scripts/gate/verify_pr_dag.sh --selftest
       # Issue #5439: v4.1.0 was missing 4 of the 5 GA `required_files` and
       # 4 of the 6 GA `doc_artifacts`, and **nothing noticed** — the
       # evidence-binding gate only walks the `.md` files that exist, and
@@ -772,13 +1340,41 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x scripts/gate/check_document_completeness.sh
-          mkdir -p artifacts/gate/v3.8.0/document_completeness
-          bash scripts/gate/check_document_completeness.sh v3.8.0 artifacts/gate/v3.8.0/document_completeness/ 2>&1 | tee document_completeness.log
+          # #5446: this step hardcoded `v3.8.0` — the script reads
+          # `docs/releases/$VERSION/`, so on the v4.1.0 branch it was checking
+          # a 2024 release line's documents while claiming to check the
+          # current one. The version comes from the detection step now.
+          mkdir -p "artifacts/gate/${{ steps.version.outputs.version }}/document_completeness"
+          bash scripts/gate/check_document_completeness.sh "${{ steps.version.outputs.version }}" "artifacts/gate/${{ steps.version.outputs.version }}/document_completeness/" 2>&1 | tee document_completeness.log
       - name: Alpha Gate (SPEC-021)
         run: |
           set -euo pipefail
-          mkdir -p artifacts/gate/v3.8.0
-          bash scripts/gate/check_alpha_v380.sh 2>&1 | tee alpha_gate.log
+          # #5446: this step ran `check_alpha_v380.sh` — the **v3.8.0** alpha
+          # gate — no matter which branch the workflow ran on. The gate
+          # scripts are named per version and the spelling is not uniform
+          # (`check_alpha_v410.sh` vs `check_alpha_v3.12.0.sh`).
+          #
+          # The naming rule now lives in one script, shared with gate.yml,
+          # so the two workflows cannot drift apart again.
+          VER="${{ steps.version.outputs.version }}"
+          set +e
+          GATE="$(bash scripts/gate/resolve_alpha_gate.sh "$VER")"
+          RC=$?
+          set -e
+          if [ "$RC" -eq 3 ]; then
+            # No gate script exists for this release line. That is a
+            # configuration gap, not a pass: it is recorded as NOT-RUN with
+            # a reason code rather than as a green result.
+            echo "NOT-RUN: reason=ALPHA_GATE_NOT_FOUND (no check_alpha_v*.sh serves version ${VER})"
+            exit 0
+          fi
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::alpha gate resolution failed (rc=${RC})"
+            exit "$RC"
+          fi
+          echo "alpha gate: ${GATE}"
+          mkdir -p "artifacts/gate/${VER}"
+          bash "$GATE" 2>&1 | tee alpha_gate.log
       - name: RC/GA Gate — Unified 6-Dim (Issue #2882)
         run: |
           # #5443: without `pipefail` the step's exit code came from `tee`
@@ -806,8 +1402,11 @@ jobs:
       - name: Test Plan Audit (Issue #2881 → mandatory via #2882)
         run: |
           set -euo pipefail
-          mkdir -p artifacts/audit/v3.8.0
-          bash scripts/gate/audit_testing.sh v3.8.0 ga artifacts/audit/v3.8.0 2>&1 | tee audit_testing.log
+          # #5446: the version was hardcoded to `v3.8.0`; the script reads
+          # `docs/releases/$VERSION/`, so on any other branch it audited the
+          # wrong release line.
+          mkdir -p "artifacts/audit/${{ steps.version.outputs.version }}"
+          bash scripts/gate/audit_testing.sh "${{ steps.version.outputs.version }}" ga "artifacts/audit/${{ steps.version.outputs.version }}" 2>&1 | tee audit_testing.log
       - name: "D9 Full Gate Verification (8 dim: D1-D8 + cross-version + test plan + PR template)"
         run: |
           set -euo pipefail

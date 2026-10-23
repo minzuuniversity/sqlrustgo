@@ -1520,6 +1520,27 @@ mod tests {
     // PB-03: WAL Performance Benchmarks
 
     #[test]
+    // #5545: this is a **measurement**, not a correctness test — it asserts a
+    // WALL-CLOCK bound (1000 × 1KB INSERT < 2s), and a wall-clock bound
+    // cannot be asserted on a machine that is doing anything else.
+    // Measured on this host: **80ms** on an idle box, **2.39s** with three
+    // concurrent cargo builds running (load average 6.7–17.8 on 10 cores) —
+    // a 30× spread, with the threshold at 2.0s.
+    //
+    // Consequence: this test lives in `sqlrustgo_storage`'s lib-test binary,
+    // which the Anti-Fabrication gate runs as part of its **mandatory** set
+    // (`config/test-runner-manifest.toml` → `storage-lib`), and the AFP gate
+    // is a step of CI's `postcheck` job. So a loaded machine made the AFP
+    // gate — and therefore the CI run — red for a reason that has nothing to
+    // do with the code under test.
+    //
+    // It is `#[ignore]`d on purpose, following the same convention as
+    // `crates/storage/tests/measure_commit_clone_4948.rs` and
+    // `crates/storage/tests/b22_flush_wall.rs`: a measurement is run
+    // manually, and its numbers go into the evidence document.
+    // The correctness half (the WAL really holds 1000 records and recovers
+    // them) is covered by the neighbouring non-measurement tests.
+    #[ignore = "wall-clock measurement harness — run manually (`cargo test --lib -- --ignored`), results go in the evidence doc"]
     fn test_wal_perf_1000_insert() {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
@@ -1553,7 +1574,19 @@ mod tests {
         );
     }
 
-    #[test]
+    // Same reason as `test_wal_perf_1000_insert` above: this is a
+    // **wall-clock measurement**, not a correctness test. It lives in the
+    // storage crate's lib-test binary, which the coverage gate
+    // (`scripts/gate/check_coverage_v312.sh`) runs under `cargo llvm-cov`
+    // — instrumentation makes the same work several times slower, and a
+    // loaded machine makes it slower still. Measured on this host: the
+    // assertion fired under load while the same run was green on an idle
+    // machine, so the coverage gate turned red for a reason that has
+    // nothing to do with the code under test.
+    //
+    // The correctness half (the WAL really holds 100 records and recovers
+    // them) is covered by the neighbouring non-measurement tests.
+    #[ignore = "wall-clock measurement harness — run manually (`cargo test --lib -- --ignored`), results go in the evidence doc"]
     fn test_wal_perf_100_update() {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
@@ -1587,6 +1620,13 @@ mod tests {
         );
     }
 
+    // Wall-clock measurement, same reason as the two tests above: the
+    // recovery speed of a 1 MB WAL is a **performance** fact that depends on
+    // the machine and on the build profile (the coverage gate builds with
+    // instrumentation), not a correctness property. The correctness half —
+    // that recovery returns all 1000 entries — stays in the assertion below
+    // and is checked by the non-measurement recovery tests.
+    #[ignore = "wall-clock measurement harness — run manually (`cargo test --lib -- --ignored`), results go in the evidence doc"]
     #[test]
     fn test_wal_perf_recovery_1mb() {
         let dir = tempfile::tempdir().unwrap();

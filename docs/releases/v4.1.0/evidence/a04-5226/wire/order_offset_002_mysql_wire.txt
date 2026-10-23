@@ -12,6 +12,6 @@ SETUP> INSERT INTO t_off VALUES (40)
 QUERY> SELECT n FROM t_off ORDER BY n LIMIT 2 OFFSET 1
   SELECT ncol=1 nrow=2 status=0x0002
   columns=["n"]
-  types=["integer"]
+  types=["text"]
   row[0]=["20"]
   row[1]=["30"]

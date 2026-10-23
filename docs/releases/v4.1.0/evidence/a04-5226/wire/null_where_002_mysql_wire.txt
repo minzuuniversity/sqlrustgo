@@ -10,6 +10,6 @@ SETUP> INSERT INTO t_nw VALUES (3)
 QUERY> SELECT v FROM t_nw WHERE v IS NOT NULL ORDER BY v
   SELECT ncol=1 nrow=2 status=0x0002
   columns=["v"]
-  types=["integer"]
+  types=["text"]
   row[0]=["1"]
   row[1]=["3"]

@@ -495,6 +495,9 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    // `3.14159` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn write_bin_float_column_uses_float_code() {
         let dir =

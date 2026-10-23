@@ -169,7 +169,9 @@ fn cov_estimate_memory_size_blob() {
 #[test]
 fn cov_estimate_memory_size_null() {
     let v = Value::Null;
-    assert!(v.estimate_memory_size() >= 0);
+    // `Value::Null` carries no payload, so its estimated size is exactly 0.
+    // The old `>= 0` could never fail for a `usize` (#5508).
+    assert_eq!(v.estimate_memory_size(), 0);
 }
 
 // --------------------------------------------------------------------------

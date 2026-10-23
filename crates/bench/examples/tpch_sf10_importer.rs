@@ -508,7 +508,7 @@ fn import_orders(conn: &Connection, scale: usize) {
         Vec::with_capacity(batch_size);
 
     for i in 1..=count {
-        let base_date = 87600; // 1992-01-01
+        let _base_date = 87600; // 1992-01-01
         let days_offset = rng.gen_range(0..2500);
         let orderdate = format!(
             "{:04}-{:02}-{:02}",
@@ -597,7 +597,7 @@ fn import_lineitem(conn: &Connection, scale: usize) {
         let orderkey = rng.gen_range(1..=(SF10_ORDERS * scale / 10) as i32);
         let linenumber = rng.gen_range(1..8);
 
-        let base_date = 87600;
+        let _base_date = 87600;
         let ship_offset = rng.gen_range(0..500);
         let shipdate = format!(
             "{:04}-{:02}-{:02}",

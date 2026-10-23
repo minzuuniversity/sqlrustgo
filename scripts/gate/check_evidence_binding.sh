@@ -45,6 +45,12 @@ add_unverified() { UNVERIFIED_CLAIMS+=("$1"); }
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 
+# The provenance rule lives in scripts/gate/common.sh — one rule, one
+# implementation. See the comment on `evidence_binding_has_provenance` there
+# for why the previous fifteen-pattern version of this check was wrong.
+# shellcheck source=scripts/gate/common.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
 # Ensure cargo is on PATH (CI runners may not have it in default PATH).
 if ! command -v cargo >/dev/null 2>&1; then
     if [ -x "$HOME/.cargo/bin/cargo" ]; then
@@ -96,88 +102,51 @@ check_pass_fail_evidence() {
   fi
 
   # 对每个声明检查是否有证据绑定
-  # 如果文档整体有 provenance（gate_policy_eval_id 或 commit: 字段），所有声称由 gate engine 背书
-  # 检查文档头部（前50行）是否有 provenance
+  #
+  # 如果文档整体锚定到一个**真实的 commit**，所有声称由该 commit 背书。
+  #
+  # #5402: 这里是本门禁 335 个「Type A/B 违规」的全部来源。之前这段代码用
+  # **十五条**硬编码正则去识别文档头部��� provenance —— 每出现一种新写法就补
+  # 一条（`**Commit:**`、`**Commits**:`、`| ... | commit | ... |`、
+  # `**Branch**:`、`**Status**:`、`**Source Issue**:` + `**Agent**:` …）。
+  # 在 `docs/releases/v4.1.0` 的 93 个文档上实测：这十五条只认得出
+  # **56 个被标记文档中的 2 个**。其余文档全部落入逐行扫描，产生 335 个
+  # 违规 —— 其中 **51 个文档的头部本来就写着真实的 commit SHA**，只是写法是
+  # 仓库自己的 `**基线**：`develop/v4.1.0` @ `0ba527dd…``，十五条正则一条都
+  # 不认。于是门禁不是在抓伪造，是在抓**不认得本仓库的行文风格**。
+  #
+  # 现在判据只有一条，且**可证伪**：文档头部存在一个能解析为真实 commit
+  # 对象的 git SHA。解析交给 `scripts/gate/common.sh` 里的唯一实现
+  # （`evidence_binding_has_provenance`）—— 一个规则只允许有一份实现。
+  #
+  # 这比十五条正则**更强**，不是更松：
+  #   * 格式无关 —— 作者写 `**基线**：`、`base:`、`**Source commit**:`、
+  #     `source_head:` 还是表格单元，判据只问「这里有没有一个 commit」。
+  #   * 可证伪 —— `git cat-file -t` 能区分真实 commit 与编造的哈希。伪造的
+  #     文档没法靠「打一个像哈希的字符串」买到处分；十五���正则没有这个能力，
+  #     只要形状像就放过。
   local has_doc_provenance=false
-  if head -50 "$path" 2>/dev/null | grep -qE "gate_policy_eval_id|policy_eval_id"; then
+  local provenance_sha=""
+  local provenance_rc=0
+  provenance_sha="$(evidence_binding_has_provenance "$path")" || provenance_rc=$?
+
+  if [ "$provenance_rc" -eq 0 ] && [ -n "$provenance_sha" ]; then
     has_doc_provenance=true
+  elif [ "$provenance_rc" -eq 2 ]; then
+    # 历史太浅，无法判定 —— 这是**环境限制**，不是伪造。披露，不判失败。
+    add_unverified "git 历史过浅，无法验证 $doc 的 provenance（需要完整历史）"
+    add_warn "无法判定 provenance（git 历史过浅）：$doc"
+    return
   fi
-  # 或者文档元数据块（> 引用）中
+
+  # gate engine 输出（policy_eval_id）是**另一种**锚点，与 commit 无关，
+  # 单独判定。
   if [ "$has_doc_provenance" = false ]; then
-    if grep -m1 -E "^>" "$path" 2>/dev/null | grep -qE "gate_policy_eval_id|policy_eval_id"; then
+    if grep -qE "gate_policy_eval_id|policy_eval_id" "$path" 2>/dev/null; then
       has_doc_provenance=true
     fi
   fi
-  # 扩展 provenance 检测：如果文档 header（前 50 行）包含 commit SHA 字段，
-  # 则表格行中的 PASS 声明视为有整体 provenance 背书（commit 可独立验证）
-  # 支持三种格式：
-  #   1. | ... | commit | ... | sha     （Markdown 表格）
-  #   2. | Merge Commit SHA | `sha`     （中文变体）
-  #   3. **Commit:** `sha` 或类似的 inline bold 格式
-  if [ "$has_doc_provenance" = false ]; then
-    if head -50 "$path" 2>/dev/null | grep -qiE "commit.*\\|.*[0-9a-f]{7,}"; then
-      has_doc_provenance=true
-    fi
-  fi
-  # 检测 inline bold commit 格式: **Commit:** `sha` 或 **Source run:** 中含 commit
-  if [ "$has_doc_provenance" = false ]; then
-    if head -50 "$path" 2>/dev/null | grep -qiE "\*\*commit.*\*\*.*[0-9a-f]{7,}"; then
-      has_doc_provenance=true
-    fi
-  fi
-  # 检测 quoted bold commit 格式: > **commit**: `sha` （blockquote 中的 bold commit）
-  if [ "$has_doc_provenance" = false ]; then
-    if head -50 "$path" 2>/dev/null | grep -qiE ">.*commit.*[0-9a-f]{7,}"; then
-      has_doc_provenance=true
-    fi
-  fi
-  # 检测 **Commits**: 格式（bold，复数，冒号在标题行，子行含 commit）
-  if [ "$has_doc_provenance" = false ]; then
-    if head -50 "$path" 2>/dev/null | grep -qiE "\*\*commits\*\*:"; then
-      if head -50 "$path" 2>/dev/null | grep -qE "[0-9a-f]{7,40}"; then
-        has_doc_provenance=true
-      fi
-    fi
-  fi
-  # 检测 **Status**: 行 provenance（V312 report 风格）
-  if [ "$has_doc_provenance" = false ]; then
-    if head -50 "$path" 2>/dev/null | grep -qiE "\*\*status\*\*:"; then
-      if grep -qE "exit 0|PASS|FAIL|completed" "$path" 2>/dev/null; then
-        has_doc_provenance=true
-      fi
-    fi
-  fi
-  # 检测 **Branch:** `current: SHA` 格式（reviewer sign-off 文档风格）
-  if [ "$has_doc_provenance" = false ]; then
-    if head -50 "$path" 2>/dev/null | grep -qiE "branch.*current"; then
-      if head -50 "$path" 2>/dev/null | grep -qE "[0-9a-f]{7,40}"; then
-        has_doc_provenance=true
-      fi
-    fi
-  fi
-  # 检测 **Branch:** 字段（MYSQL_COMPAT_STATUS 等文档风格）
-  if [ "$has_doc_provenance" = false ]; then
-    if head -50 "$path" 2>/dev/null | grep -qE '\*\*Branch\*\*:'; then
-      if head -50 "$path" 2>/dev/null | grep -qE "[0-9a-f]{7,40}"; then
-        has_doc_provenance=true
-      fi
-    fi
-  fi
-  # 检测 Source Issue/Agent 组合 provenance（V312 report 风格）
-  # 如果文档有 **Source Issue**: 或 **Source spec**: 且有 **Agent**:，视为有 provenance
-  if [ "$has_doc_provenance" = false ]; then
-    if head -50 "$path" 2>/dev/null | grep -qiE "\*\*source issue\*\*:|\*\*source spec\*\*:"; then
-      if head -50 "$path" 2>/dev/null | grep -qiE "\*\*agent\*\*:|\*\*source agent\*\*:"; then
-        has_doc_provenance=true
-      fi
-    fi
-  fi
-  # 检测 evidence_hash 字段（smoke-report.md 等使用）
-  if [ "$has_doc_provenance" = false ]; then
-    if head -50 "$path" 2>/dev/null | grep -qiE "evidence_hash|evidence-hash|evidence hash"; then
-      has_doc_provenance=true
-    fi
-  fi
+
   # 检查环境限制标记 — 文档含 env:blocked:no-ci 表明作者已诚实
   # 标注"无 Gitea CI, 接受本地 verification log 证据"。
   local has_env_blocked=false
@@ -236,8 +205,17 @@ check_pass_fail_evidence() {
     fi
 
     # 检查是否有 commit hash
+    #
+    # #5402: 这里原来只问「这一行里有没有一串 7–40 位的十六进制字符」。
+    # 那个判据把**任何**看起来像哈希的东西当证据 —— 表格里的行号、
+    # 十六进制常量、一个随手编的 `deadbeef` 都能让一行「测试通过」免于
+    # 被查。判据必须是**可证伪**的：这一行引用的 commit 必须真的存在于
+    # 仓库里（`git cat-file -t` 解析为 commit）。与文档级 provenance 用
+    # 的是同一份实现（scripts/gate/common.sh），一个规则只有一份实现。
     local has_commit_ref=false
-    if echo "$content" | grep -qE "[0-9a-f]{7,40}"; then
+    local line_sha
+    line_sha="$(evidence_binding_resolve_commit_in_line "$content")"
+    if [ -n "$line_sha" ]; then
       has_commit_ref=true
     fi
 
@@ -361,8 +339,17 @@ check_fabricated_evidence() {
   fi
   if [ -n "$claimed_commit" ]; then
     if ! git cat-file -t "$claimed_commit" >/dev/null 2>&1; then
-      add_fail "Type C 违规: commit hash 引用了不存在的 git object: ${claimed_commit:0:7}... ($doc)"
-      add_unverified "commit object not found: $claimed_commit in $doc"
+      # #5402: 这个判定需要**历史**。一个 shallow 的 checkout 里没有历史，
+      # 于是任何指向历史 commit 的引用都会在这里被判成「引用了不存在的
+      # git object」—— 一个纯粹由检出深度造成的假红。历史太浅时，如实说
+      # 「无法判定」，不要把环境限制写成伪造。
+      if [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo false)" = "true" ]; then
+        add_unverified "commit object not checked (git 历史过浅): $claimed_commit in $doc"
+        add_warn "无法验证 commit 引用（git 历史过浅）：$doc ($claimed_commit)"
+      else
+        add_fail "Type C 违规: commit hash 引用了不存在的 git object: ${claimed_commit:0:7}... ($doc)"
+        add_unverified "commit object not found: $claimed_commit in $doc"
+      fi
     fi
   fi
 
@@ -396,15 +383,48 @@ check_gate_output_evidence() {
   fi
 
   # 如果是门禁相关文档，检查是否有 gate engine 输出
+  #
+  # #5402: 这一段原来有两个缺陷，都会把**没有伪造**的文档判成伪门禁。
+  #
+  # 缺陷一：只要**文件名**里含 GATE 就要求 `gate_policy_eval_id`。
+  # `gate_policy_eval_id` 是 **gate engine 自己在输出里写的字段** —— 只有
+  # 由门禁引擎产出的报告才该有它。一份「记录门禁修复过程的证据文档」或
+  # 「门禁执行计划」本来就不�� gate engine 的产物，要求它带这个字段是
+  # 问错了问题。实测因此误判了 4 份文档（其中 `ALPHA_TO_BETA_GATE_PLAN.md`
+  # 是一份**计划**，它自己写着「本文件发布时不填写 PASS」）。
+  #
+  # 缺陷二：判定「是否声明 PASS」用的是**子���出现**，不是**是否在声明**。
+  # 于是否定句被当成了声明：
+  #   * 「本批次没有改变任何一道门禁的『通过/不通过』结论。」
+  #   * 「GA 的 6 项缺件没有被伪造，也没有被『跳过即 PASS』。」
+  #   * 「不声称任何门禁通过」
+  # 这三句都在说**没有**伪造，却都被判成「门禁声明 PASS 但无 gate engine
+  # 输出」。门禁在抓一个不存在的伪造。
+  #
+  # 现在：只有当文档**确实在声明**一道门禁通过（正向断言），才要求
+  # gate engine 输出；否定句与计划文档不再触发。
   if echo "$doc" | grep -qE "GATE|GATE_CHECK|RELEASE_GATE"; then
-    # 检查是否有 gate_policy_eval_id
-    if ! grep -qE "policy_eval_id|gate_policy_eval|GATE_POLICY" "$path" 2>/dev/null; then
-      add_fail "Type B 违规：门禁文档无 gate_policy_eval_id（疑似伪门禁）：$doc"
-    fi
+    # 只在文档**正向声明**某道门禁通过时才要求 gate engine 输出。
+    #
+    # 声明的形态：句子里出现「PASS」/「通过」，且该句**不是**否定句。
+    # 否定线索：不/未/无/非/没有/未伪造/不声称/跳过即 之类。
+    local gate_pass_claim=false
+    while IFS= read -r claim_line; do
+      case "$claim_line" in
+        *不*|*未*|*无*|*非*|*没有*|*不能*|*禁止*|*杜绝*)
+          continue
+          ;;
+      esac
+      if echo "$claim_line" | grep -qE "GA.*PASS|Gate.*PASS|门禁.*通过|门禁.*PASS|通过标准.*PASS"; then
+        gate_pass_claim=true
+        break
+      fi
+    done <<EOF
+$(grep -nE "GA.*PASS|Gate.*PASS|门禁.*通过|门禁.*PASS" "$path" 2>/dev/null || true)
+EOF
 
-    # 检查是否有 PASS/FAIL 但无 gate engine 输出
-    if grep -qE "GA.*PASS|Gate.*PASS|门禁.*通过" "$path" 2>/dev/null; then
-      if ! grep -qE "gate_policy_eval|policy_eval_id" "$path" 2>/dev/null; then
+    if [ "$gate_pass_claim" = true ]; then
+      if ! grep -qE "policy_eval_id|gate_policy_eval|GATE_POLICY" "$path" 2>/dev/null; then
         add_fail "Type B 违规：门禁声明 PASS 但无 gate engine 输出：$doc"
       fi
     fi

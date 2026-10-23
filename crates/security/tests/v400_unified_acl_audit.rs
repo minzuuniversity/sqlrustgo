@@ -254,8 +254,10 @@ impl AuditLog {
     }
 
     pub fn verify_chain(&self) -> bool {
-        // Simplified: verify entries exist and are ordered
-        !self.entries.is_empty() || true
+        // Simplified: verify entries exist and are ordered.
+        // The `|| true` made this vacuous — it could never fail, which is
+        // what `clippy::overly_complex_bool_expr` reports (#5508).
+        !self.entries.is_empty()
     }
 }
 

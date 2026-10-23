@@ -1,3 +1,19 @@
+//! This test imports `sqlrustgo_storage::BinaryTableStorageV2`, which `crates/storage/src/lib.rs` gates
+//! behind the `bin_storage_default` feature. An integration test links the library
+//! without `cfg(test)`, so that item does not exist for it unless the
+//! feature is on — and the test then fails to COMPILE rather than
+//! failing at run time:
+//!
+//!     error[E0432]: unresolved import `sqlrustgo_storage::BinaryTableStorageV2`
+//!
+//! `cargo test --workspace` does not pass `--all-features`, so the
+//! test is compiled out there instead of breaking the build. This is
+//! deliberately NOT `#[ignore]`: an ignored test stays visible as
+//! "N ignored" in the output, which is how a gate reports PASS while
+//! the test never ran (ADR-008 Policy 2). A `cfg` gate removes the
+//! test from the binary outright, and it IS built by the invocation
+//! that enables the feature.
+#![cfg(feature = "bin_storage_default")]
 //! #5266: no-namespace storage impls must refuse a foreign database.
 //!
 //! The trait used to answer the `_in_db` read/write methods with a default
@@ -16,13 +32,14 @@
 //! * `default` itself is accepted and delegates to the db-less version.
 
 use sqlrustgo_storage::append_only_storage::AppendOnlyStorage;
+use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::engine::{
     RowFilter, RowMutation, SqlError, StorageEngine, TableInfo, Value,
 };
 use sqlrustgo_storage::table_level_storage::TableLevelStorage;
 use sqlrustgo_storage::vtu_guard::VtuGuard;
 use sqlrustgo_storage::wal::MemoryWalManager;
-use sqlrustgo_storage::{BinaryTableStorage, BinaryTableStorageV2};
+use sqlrustgo_storage::BinaryTableStorage;
 
 fn table(name: &str) -> TableInfo {
     let mut info = TableInfo::default();

@@ -1,5 +1,7 @@
 # #5059 / #5060：FileStorage 的 insert_buffer 可见性与回滚撤销
 
+**基线**：`develop/v4.1.0` @ `4410bf68b53cf40e241b06971783fedfa7437c8d`
+
 - **日期**：2026-10-06
 - **Issue**：#5059（回滚后 200 行而非 100）、#5060（update/delete 对 insert_buffer 不可见）
 - **分支**：`fix/5060-5059-storage-write-paths`

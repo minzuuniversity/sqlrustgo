@@ -318,6 +318,31 @@ pub struct ColumnStatistics {
 /// Type alias for MemoryStorage-backed execution engine
 pub type MemoryExecutionEngine = ExecutionEngine<MemoryStorage>;
 
+/// Environment variable that selects the intra-query parallelism.
+///
+/// v3.10.0 Issue #3703 (`--executor-parallelism`).
+pub const PARALLELISM_ENV: &str = "SQLRUSTGO_EXECUTOR_PARALLELISM";
+
+/// Resolve the intra-query parallelism from a raw configuration value.
+///
+/// **Pure on purpose**: it never reads process-global state, so it can be
+/// unit-tested without `std::env::set_var`. The latter mutates the *whole
+/// process* environment table, and Rust's test harness runs the tests of a
+/// binary concurrently — so a test that mutates it races with every other
+/// test in the same binary that happens to construct an engine. That race is
+/// exactly what made `test_v410_atomic_parallel_degree_getter_clamps_to_one`
+/// fail at roughly 1-in-3 CI runs (#5423).
+///
+/// Rules (one implementation — the env path and the test path share it):
+/// - unset / empty / unparsable ⇒ `1` (sequential, zero regression);
+/// - `0` ⇒ `1` (never less than one);
+/// - otherwise the parsed value.
+pub(crate) fn resolve_parallel_degree(raw: Option<&str>) -> usize {
+    raw.and_then(|s| s.parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(1)
+}
+
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Base initializer shared by all constructors.
     /// Keeping the field list in one place prevents drift between `new` /
@@ -373,7 +398,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
     fn base_with(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
         // v3.10.0 Issue #3703: --executor-parallelism env var (default 1 = sequential)
-        #[rustfmt::skip] let parallel_degree = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok().and_then(|s| s.parse::<usize>().ok()).filter(|n| *n >= 1).unwrap_or(1);
+        let raw = std::env::var(PARALLELISM_ENV).ok();
+        Self::base_with_raw(storage, cbo_enabled, raw.as_deref())
+    }
+
+    /// Ctor seam that takes the **raw** configuration value instead of
+    /// reading it from the process environment.
+    ///
+    /// Tests must prefer this (or [`ExecutionEngine::with_parallel_degree`])
+    /// over mutating the process environment — see
+    /// [`resolve_parallel_degree`] for why (#5423).
+    pub(crate) fn base_with_raw(
+        storage: Arc<parking_lot::RwLock<S>>,
+        cbo_enabled: bool,
+        raw: Option<&str>,
+    ) -> Self {
+        Self::base_with_parallelism(storage, cbo_enabled, resolve_parallel_degree(raw))
+    }
+
+    /// Ctor seam that takes an already-resolved parallelism.
+    fn base_with_parallelism(
+        storage: Arc<parking_lot::RwLock<S>>,
+        cbo_enabled: bool,
+        parallel_degree: usize,
+    ) -> Self {
         // #4913 / v4.1.0-perf: do not let a parallelism request degrade
         // silently. The intra-query parallel implementations live behind
         // `sqlrustgo-executor/parallel-executor`, which was never enabled
@@ -570,6 +618,23 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// Create a new execution engine with CBO configuration
     pub fn with_cbo(storage: Arc<parking_lot::RwLock<S>>, cbo_enabled: bool) -> Self {
         Self::base_with(storage, cbo_enabled)
+    }
+
+    /// Create a new execution engine with an explicit intra-query parallelism.
+    ///
+    /// Unlike [`ExecutionEngine::new`], this constructor **does not** read
+    /// `SQLRUSTGO_EXECUTOR_PARALLELISM` from the process environment.
+    ///
+    /// Tests must use this instead of `std::env::set_var`: the environment
+    /// table is process-global, so mutating it races with every other test
+    /// in the same binary that constructs an engine — which is what made
+    /// `test_v410_atomic_parallel_degree_getter_clamps_to_one` fail at
+    /// roughly 1-in-3 CI runs (#5423).
+    pub fn with_parallel_degree(
+        storage: Arc<parking_lot::RwLock<S>>,
+        parallel_degree: usize,
+    ) -> Self {
+        Self::base_with_parallelism(storage, true, parallel_degree.max(1))
     }
 
     /// Create a new execution engine with a catalog

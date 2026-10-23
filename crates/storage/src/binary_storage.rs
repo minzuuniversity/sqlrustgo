@@ -1462,6 +1462,9 @@ mod tests {
         std::fs::remove_dir_all(tmp).ok();
     }
 
+    // `3.14159` is a plain decimal fixture, not an approximation of π;
+    // `clippy::approx_constant` is deny-by-default (see #5508).
+    #[allow(clippy::approx_constant)]
     #[test]
     fn test_binary_storage_load_float() {
         let tmp = std::env::temp_dir().join("bin_test_float");
