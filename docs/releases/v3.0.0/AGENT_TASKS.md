@@ -76,7 +76,7 @@ cargo test -p sqlrustgo-optimizer
 sed -i '' 's/^version = "2.5.0"/version = "3.0.0"/' Cargo.toml
 # 关闭 Issue
 curl -X PATCH http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/376 \
-  -H "Authorization: token 04bcda86dd601364a53eec33dc37aa6efa98a5b7" \
+  -H "Authorization: token ${GITEA_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"state":"closed","body":"..."}'
 ```
@@ -190,7 +190,7 @@ git checkout develop/v3.0.0
 
 Gitea API Token 供参考:
 ```
-04bcda86dd601364a53eec33dc37aa6efa98a5b7
+${GITEA_TOKEN}
 Gitea URL: http://192.168.0.252:3000/openclaw/sqlrustgo
 ```
 

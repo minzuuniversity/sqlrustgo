@@ -12,7 +12,7 @@
 
 - Branch from `develop/v3.12.0` (canonical 252) — do NOT branch from `main` or `develop`
 - Use Gitea REST API via curl on `http://192.168.0.252:3000/openclaw/sqlrustgo` for PR creation (gh CLI defaults to github.com and 401s)
-- Token: `04bcda86dd601364a53eec33dc37aa6efa98a5b7` (gitea)
+- Token: `${GITEA_TOKEN}` (gitea)
 - Provenance header on every commit: `generated_by=openclaw-minimax, generated_at=2026-08-15, branch=develop/v3.12.0, policy=Anti-Fabrication-Policy-v1.0`
 - Push target: `develop/v3.12.0` is protected — create `fix/v312-48-q21-chain-order` branch and open PR
 - Cross-engine SHA256 closure (`#4272`) is OUT OF SCOPE — only Q21 chain-builder bug is in scope
@@ -546,7 +546,7 @@ If push fails with "Not allowed to push to protected branch", the branch name is
 - [ ] **Step 2: Create PR on 252 via gitea REST API**
 
 ```bash
-TOKEN=04bcda86dd601364a53eec33dc37aa6efa98a5b7
+TOKEN=${GITEA_TOKEN}
 curl -s -X POST "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls" \
   -H "Authorization: token $TOKEN" \
   -H "Content-Type: application/json" \

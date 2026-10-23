@@ -24,7 +24,7 @@
    - Anti-Fabrication-Policy-v1.0:任何 gate 失败必须诚实披露
 
 2. **Gitea 远程规范**(per memory gitea-pr-creation-cli.md):
-   - 用 `curl -u openclaw:details8848` 调用 Gitea REST API
+   - 用 `curl -u ${GITEA_USER}:${GITEA_TOKEN}` 调用 Gitea REST API
    - 不用 `gh`(默认 github.com,会 401)
    - canonical remote = `http://192.168.0.250:3000`(memory 标注)
    - 备份 mirror = `http://192.168.0.252:3000`(origin)
@@ -918,7 +918,7 @@ SPRINT-S0 → SPRINT-S1+S2 → SPRINT-S3 → SPRINT-S4 → SPRINT-S5 → SPRINT-
 EOF
 )
 
-curl -u openclaw:details8848 \
+curl -u ${GITEA_USER}:${GITEA_TOKEN} \
   -X POST "http://192.168.0.250:3000/api/v1/repos/openclaw/sqlrustgo/pulls" \
   -H "Content-Type: application/json" \
   -d "{

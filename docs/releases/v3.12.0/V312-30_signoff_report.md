@@ -72,11 +72,11 @@ $ bash scripts/gate/check_beta_gate.sh 2>&1 | tee /tmp/v312_30_step_5_beta_gate.
 # Expected: B10_SQLANCER_PASS (because V312-29 promoted B10_SQLANCER to check_fail with B10_SQLANCER_REPORT nested check)
 
 # 6. reviewer APPROVED on PR #3950
-$ curl -s -u openclaw:details8848 "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls/3950/reviews" | jq '[.[] | select(.state == "APPROVED")] | length'
+$ curl -s -u ${GITEA_USER}:${GITEA_TOKEN} "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls/3950/reviews" | jq '[.[] | select(.state == "APPROVED")] | length'
 # Expected: ≥ 2
 
 # PR state (after merge):
-$ curl -s -u openclaw:details8848 "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls/3950" | jq '{state, merged_at}'
+$ curl -s -u ${GITEA_USER}:${GITEA_TOKEN} "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/pulls/3950" | jq '{state, merged_at}'
 # Expected: {"state": "MERGED", "merged_at": "<non-null>"}
 ```
 

@@ -57,7 +57,7 @@ curl -o /dev/null -w "%{http_code}\n" http://192.168.0.252:3000/
 ### Remove branch protection
 `develop/v3.9.0` on 252 had force-push protection enabled:
 ```bash
-curl -X DELETE -u openclaw:details8848 \
+curl -X DELETE -u ${GITEA_USER}:${GITEA_TOKEN} \
   http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/branch_protections/develop%2Fv3.9.0
 ```
 
