@@ -13,6 +13,13 @@ on:
       - develop/v4.1.0
       - "develop/v4.*"
       - beta/v2.8.0
+      # #5570: GA 的承载分支（`STAGE_CONFIG.yaml` 的
+      # `stages.GA.branch_pattern` = ["main", "release/v*", "hotfix/v*"]）
+      # 原本**不在**本 workflow 的触发器里 ⇒ 一旦把 `release/v4.1.0` 切成
+      # GA 承载分支，那条分支上**一条 CI 都不会跑**：GA 判据里的「CI 全绿」
+      # 将没有任何证据可依（只有一条 0 job 的空壳 run 记录）。
+      - "release/v*"
+      - "hotfix/v*"
       - ci/gitea-compat
       - ci/v3.8.0-*
       - "ci/v4.*"
@@ -28,6 +35,13 @@ on:
       - develop/v4.1.0
       - "develop/v4.*"
       - beta/v2.8.0
+      # #5570: GA 的承载分支（`STAGE_CONFIG.yaml` 的
+      # `stages.GA.branch_pattern` = ["main", "release/v*", "hotfix/v*"]）
+      # 原本**不在**本 workflow 的触发器里 ⇒ 一旦把 `release/v4.1.0` 切成
+      # GA 承载分支，那条分支上**一条 CI 都不会跑**：GA 判据里的「CI 全绿」
+      # 将没有任何证据可依（只有一条 0 job 的空壳 run 记录）。
+      - "release/v*"
+      - "hotfix/v*"
       - ci/gitea-compat
       - ci/v3.8.0-*
       - "ci/v4.*"
@@ -399,10 +413,18 @@ jobs:
         # and CI cannot build dbgen (nothing is vendored, and the hermes
         # runner has no GitHub egress). The generator is deterministic
         # (seed 42), so the same bytes are produced on every run.
-        run: |
-          bash scripts/gate/prepare_tpch_fixture.sh --out "${RUNNER_TEMP:-/tmp}/tpch-fixture" --sf 0.01 --seed 42
-          echo "TPCH_DATA_DIR=${RUNNER_TEMP:-/tmp}/tpch-fixture" >> "$GITHUB_ENV"
-          echo "TPCH_NOT_RUN_FILE=${RUNNER_TEMP:-/tmp}/tpch_not_run.log" >> "$GITHUB_ENV"
+        #
+        # #5567: the generator call itself moved into
+        # `scripts/ci/prepare_tpch_fixture_ci.sh` — one implementation, used
+        # by this job and by `test-crates` below. It also fixes what this
+        # step used to get wrong: the runner runs every step under
+        # `-e -o pipefail`, so a generator failure turned the whole job red
+        # **before** the job's own NOT-RUN channel could record the targets
+        # that could not run. An environment block (no python3, read-only
+        # /tmp, full disk) is now disclosed as NOT RUN; a generator that
+        # fails while the environment is fine is a code regression and still
+        # turns the step red.
+        run: bash scripts/ci/prepare_tpch_fixture_ci.sh
       - name: Run tests
         run: |
           set -o pipefail
@@ -696,10 +718,11 @@ jobs:
         # The member packages have TPC-H-dependent targets too, and the
         # fixture is generated at run time (the repository forbids committing
         # *.tbl). Same generator, same seed => same bytes as the root job.
-        run: |
-          bash scripts/gate/prepare_tpch_fixture.sh --out "${RUNNER_TEMP:-/tmp}/tpch-fixture" --sf 0.01 --seed 42
-          echo "TPCH_DATA_DIR=${RUNNER_TEMP:-/tmp}/tpch-fixture" >> "$GITHUB_ENV"
-          echo "TPCH_NOT_RUN_FILE=${RUNNER_TEMP:-/tmp}/tpch_not_run.log" >> "$GITHUB_ENV"
+        #
+        # #5567: same script as the root job above — one implementation, and
+        # the same NOT-RUN fallback instead of turning an environment block
+        # into a red job.
+        run: bash scripts/ci/prepare_tpch_fixture_ci.sh
       - name: Run member-package tests (issue #5515)
         run: |
           set -o pipefail
