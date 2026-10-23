@@ -44,6 +44,14 @@ on:
 # gate.yml does and why its jobs build fine.
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "16"
+
+# Issue #5550 — 4 CI runs concurrent → kernel panic, 9 jobs all dead.
+# Serialize per-branch: only one CI run at a time per branch.
+# cancel-in-progress: false — we queue, not cancel (builds are expensive).
+concurrency:
+  group: ci-${{ gitea.ref }}
+  cancel-in-progress: false
 
 # Combined lint + build: share one clone, build once
 jobs:
