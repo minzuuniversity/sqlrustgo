@@ -45,16 +45,28 @@
 #     path with an annotation glued on. `(state=GA)` is a *state
 #     expectation* and belongs in `required_file_expectations`.
 #
-# C6  Every key of `required_file_expectations` must be a member of the
-#     same stage's `required_files` — an expectation about a file nobody
-#     demands is a dead expectation.
+# C6  Every key of `required_file_expectations` must be a member of
+#     the same stage's `required_files` — an expectation about a file
+#     nobody demands is a dead expectation.
 #
-# DISCLOSURE (never a FAIL)
-# -------------------------
-# D1  G aliases whose script is **not named by any stage's gate list**.
-#     Per #5437 the G numbers are aliases, not the criterion, so this is
-#     not a violation of the SSOT — but a reviewer must be able to see
-#     which concerns no stage currently runs.
+# C7  Every G alias must be **run by a stage**: the alias's script (and
+#     every `additional_scripts` entry) must appear in the gate list
+#     (`required_gates` / `optional_gates`) of the stage named by the
+#     alias's `stage_min` **and of every stage after it up to GA** —
+#     "must pass from X onward".
+#
+#     Before #5505 this was a D1 *disclosure* ("no stage gate list runs
+#     this script"): 14 of the 16 aliases were executed by **nothing**,
+#     so "GA is green" never covered TPC-H baseline, savepoint, upgrade,
+#     audit log, time travel, QPS/TPS, sysbench, perf report or
+#     compatibility. A disclosure nobody acts on is not a check ⇒ D1 is
+#     now a FAIL rule.
+#
+# C8  A G alias placed in a stage's `optional_gates` (i.e. a
+#     **non-blocking** alias) must declare a `requirement`: what has to
+#     be present for it to run at all (hardware / tool / report) and how
+#     a NOT-RUN is disclosed. The blocking semantics of an alias live in
+#     the SSOT — never in a private column of an orchestrator script.
 #
 # Usage:
 #   bash scripts/gate/check_stage_config_consistency.sh
@@ -110,6 +122,69 @@ stage_script_declares_g() {
     local script="$1" g="$2"
     [[ -f "$script" ]] || return 1
     head -20 "$script" | grep -qE "(^|[^A-Za-z0-9])${g}([^A-Za-z0-9]|$)"
+}
+
+# The G alias table with the two fields C7/C8 need and
+# scripts/gate/stage_config_common.sh does not expose:
+#   <G>\x1f<primary script>\x1f<stage_min>\x1f<requirement>\x1f<additional scripts>
+#
+# Path *resolution* still comes from stage_config_common.sh — this reader
+# only reads two fields, so it cannot disagree with the shared rules
+# about what a path means.
+stage_config_g_alias_fields() {
+    local cfg="${1:-$STAGE_CONFIG_PATH_DEFAULT}"
+    python3 - "$cfg" <<'PYEOF'
+import sys
+try:
+    import yaml
+    with open(sys.argv[1]) as fh:
+        d = yaml.safe_load(fh) or {}
+except Exception:
+    raise SystemExit(0)
+for g, info in (d.get('gate_definitions') or {}).items():
+    info = info or {}
+    print('\x1f'.join([
+        str(g),
+        str(info.get('script') or ''),
+        str(info.get('stage_min') or ''),
+        str(info.get('requirement') or ''),
+        ' '.join(info.get('additional_scripts') or []),
+    ]))
+PYEOF
+}
+
+# The lifecycle order of the stages: "<stage>\x1f<order>" per line.
+stage_config_stage_orders() {
+    local cfg="${1:-$STAGE_CONFIG_PATH_DEFAULT}"
+    python3 - "$cfg" <<'PYEOF'
+import sys
+try:
+    import yaml
+    with open(sys.argv[1]) as fh:
+        d = yaml.safe_load(fh) or {}
+except Exception:
+    raise SystemExit(0)
+for s, info in (d.get('stages', {}) or {}).items():
+    info = info or {}
+    print('%s\x1f%s' % (s, info.get('order', '')))
+PYEOF
+}
+
+# The order of one stage (empty when the stage is unknown).
+stage_config_stage_order() {
+    local cfg="$1" stage="$2"
+    python3 - "$cfg" "$stage" <<'PYEOF'
+import sys
+try:
+    import yaml
+    with open(sys.argv[1]) as fh:
+        d = yaml.safe_load(fh) or {}
+except Exception:
+    raise SystemExit(0)
+info = (d.get('stages', {}) or {}).get(sys.argv[2]) or {}
+order = info.get('order')
+print('' if order is None else str(order))
+PYEOF
 }
 
 # --- the check --------------------------------------------------------------
@@ -202,31 +277,83 @@ consistency_check() {
         done < <(stage_config_expectations "$cfg" "$stage")
     done < <(stage_stage_names "$cfg")
 
-    # ---- D1: disclosure — G aliases no stage runs --------------------------
-    local gate_paths=""
+    # ---- C7/C8: every G alias must be run by a stage ----------------------
+    #
+    # Index every stage's gate entries once: "<stage>\t<kind>\t<path>".
+    local gate_index
+    gate_index="$(mktemp "${TMPDIR:-/tmp}/stage_gate_index.XXXXXX")"
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue
         while IFS=$'\x1f' read -r kind entry; do
             [[ -z "${kind:-}" || -z "${entry:-}" ]] && continue
             [[ "$entry" == cargo* ]] && continue
-            gate_paths+="${entry%% *}"$'\n'
+            printf '%s\t%s\t%s\n' "$stage" "$kind" "${entry%% *}" >>"$gate_index"
         done < <(stage_gate_entries "$cfg" "$stage")
     done < <(stage_stage_names "$cfg")
 
-    while IFS=$'\x1f' read -r gname gscript galt gadd name; do
+    # The stage order, so "from stage_min onward" is computable.
+    local stage_orders=()
+    while IFS=$'\x1f' read -r sname sorder; do
+        [[ -z "${sname:-}" ]] && continue
+        stage_orders+=("${sname}"$'\x1f'"${sorder:-}")
+    done < <(stage_config_stage_orders "$cfg")
+
+    while IFS=$'\x1f' read -r gname gscript gstage_min grequirement gextra; do
         [[ -z "${gname:-}" ]] && continue
-        local found=0
-        local p
-        while IFS= read -r p; do
-            [[ -z "$p" ]] && continue
-            if [[ "$p" == "$gscript" || "$p" == "$galt" ]]; then
-                found=1
-                break
+
+        # ---- C7: the alias must say which stage runs it -------------------
+        if [[ -z "${gstage_min:-}" ]]; then
+            printf 'FAIL\tC7\t%s declares no "stage_min" — an alias no stage is required to run is an orphan\n' "$gname"
+            fails=$((fails + 1))
+            continue
+        fi
+        local min_order
+        min_order="$(stage_config_stage_order "$cfg" "$gstage_min")"
+        if [[ -z "$min_order" ]]; then
+            printf 'FAIL\tC7\t%s names an unknown stage_min "%s"\n' "$gname" "$gstage_min"
+            fails=$((fails + 1))
+            continue
+        fi
+
+        # The scripts this alias covers: the primary one plus its
+        # additional ones (a concern may be covered by more than one
+        # gate — G10 covers audit log, time travel AND hash chain).
+        local alias_scripts=()
+        [[ -n "${gscript:-}" ]] && alias_scripts+=("$gscript")
+        local extra_one
+        for extra_one in ${gextra:-}; do
+            alias_scripts+=("$extra_one")
+        done
+
+        local sc st st_order
+        for sc in "${alias_scripts[@]}"; do
+            for st in "${stage_orders[@]}"; do
+                st_order="${st##*$'\x1f'}"
+                st="${st%%$'\x1f'*}"
+                [[ "$st" == "DRAFT" ]] && continue
+                [[ -z "$st_order" ]] && continue
+                (( st_order < min_order )) && continue
+                if ! awk -F'\t' -v s="$st" -v p="$sc" \
+                        '$1==s && $3==p {found=1} END{exit !found}' "$gate_index"; then
+                    printf 'FAIL\tC7\t%s script "%s" is not run by stage %s (stage_min=%s — must pass from there onward)\n' \
+                        "$gname" "$sc" "$st" "$gstage_min"
+                    fails=$((fails + 1))
+                fi
+            done
+        done
+
+        # ---- C8: a non-blocking alias must declare its requirement -------
+        if [[ -n "${gscript:-}" ]] && \
+           awk -F'\t' -v p="$gscript" '$3==p && $2=="optional" {found=1} END{exit !found}' "$gate_index"; then
+            if [[ -z "${grequirement:-}" ]]; then
+                printf 'FAIL\tC8\t%s is non-blocking (listed in optional_gates) but declares no "requirement" — the prerequisite and the NOT-RUN disclosure must be in the SSOT\n' \
+                    "$gname"
+                fails=$((fails + 1))
             fi
-        done <<<"$gate_paths"
-        [[ $found -eq 0 ]] && \
-            printf 'DISCLOSURE\tD1\t%s names "%s" — no stage gate list runs this script\n' "$gname" "$gscript"
-    done < <(stage_config_gates "$cfg")
+        fi
+    done < <(stage_config_g_alias_fields "$cfg")
+
+    rm -f "$gate_index"
 
     return $((fails > 0 ? 1 : 0))
 }
@@ -245,9 +372,10 @@ run_selftest() {
 
     cat >"$tmp/clean.yaml" <<'YAMLEOF'
 framework:
-  stages: [DRAFT, GA]
+  stages: [DRAFT, ALPHA, RC, GA]
 stages:
   DRAFT:
+    order: 1
     required_gates:
       - "scripts/gate/check_arch_invariants.sh"
       - "cargo build --all-features"
@@ -257,8 +385,20 @@ stages:
       - "VERSION_PLAN.md"
     required_file_expectations:
       "docs/releases/v{VER}/VERSION_PLAN.md": "must exist"
-  GA:
+  ALPHA:
+    order: 2
     required_gates:
+      - "scripts/gate/check_g1_tpch_baseline.sh"
+  RC:
+    order: 4
+    required_gates:
+      - "scripts/gate/check_g1_tpch_baseline.sh"
+    optional_gates:
+      - "scripts/gate/check_p13_soak_test.sh"
+  GA:
+    order: 5
+    required_gates:
+      - "scripts/gate/check_g1_tpch_baseline.sh"
       - "scripts/gate/check_p13_soak_test.sh"
     optional_gates:
       - "scripts/gate/check_chaos_soak.sh"
@@ -267,10 +407,17 @@ stages:
     doc_artifacts:
       - "STAGE.yaml"
 gate_definitions:
+  G1:
+    name: "TPC-H 22/22 baseline (regression)"
+    script: "scripts/gate/check_g1_tpch_baseline.sh"
+    type: regression
+    stage_min: ALPHA
   G7:
     name: "24h Soak (compressed-time)"
     script: "scripts/gate/check_p13_soak_test.sh"
     type: long-running
+    stage_min: RC
+    requirement: "长时 soak 主机 / 真实时长；NOT-RUN 必须披露，不得记为 PASS"
 YAMLEOF
 
     # C1: a gate entry that names a script nobody has.
@@ -292,6 +439,13 @@ YAMLEOF
     # C6: an expectation about a file nobody demands.
     sed 's#      - "docs/releases/v{VER}/VERSION_PLAN.md"#      - "docs/releases/v{VER}/OTHER.md"#' \
         "$tmp/clean.yaml" >"$tmp/c6.yaml"
+    # C7: a G alias that no stage runs — the #5505 defect (D1 was a
+    #     disclosure here; it is a FAIL rule now).
+    sed 's#^      - "scripts/gate/check_p13_soak_test.sh"$#      - "scripts/gate/check_chaos_soak.sh"#' \
+        "$tmp/clean.yaml" >"$tmp/c7.yaml"
+    # C8: a non-blocking alias that does not say what it needs to run.
+    sed '/^    requirement: /d' \
+        "$tmp/clean.yaml" >"$tmp/c8.yaml"
 
     # The clean sample must PASS.
     if consistency_check "$tmp/clean.yaml" "$VERSION" >"$tmp/clean.out" 2>&1; then
@@ -302,7 +456,7 @@ YAMLEOF
         rc=1
     fi
 
-    for case in c1 c2 c3 c4 c5 c6; do
+    for case in c1 c2 c3 c4 c5 c6 c7 c8; do
         if consistency_check "$tmp/$case.yaml" "$VERSION" >"$tmp/$case.out" 2>&1; then
             echo "  [FAIL] $case sample -> PASS (the gate cannot detect this violation)"
             rc=1
@@ -313,7 +467,7 @@ YAMLEOF
 
     # The failing samples must name the right rule.
     local expect_rule
-    for case in c1 c2 c3 c4 c5 c6; do
+    for case in c1 c2 c3 c4 c5 c6 c7 c8; do
         case "$case" in
             c1) expect_rule="C1" ;;
             c2) expect_rule="C2" ;;
@@ -321,6 +475,8 @@ YAMLEOF
             c4) expect_rule="C4" ;;
             c5) expect_rule="C5" ;;
             c6) expect_rule="C6" ;;
+            c7) expect_rule="C7" ;;
+            c8) expect_rule="C8" ;;
         esac
         if grep -q "^FAIL	${expect_rule}	" "$tmp/$case.out"; then
             echo "  [OK]   $case sample -> reported as $expect_rule"

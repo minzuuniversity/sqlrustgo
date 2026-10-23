@@ -180,11 +180,11 @@ Beta Gate 不仅检查基础设施（Build/Test/Clippy/Fmt），还必须追踪�
 ## GA Gate
 
 > **权威判据**：`docs/governance/STAGE_CONFIG.yaml` → `stages.GA.required_gates`
-> —— **20 项**（16 个门禁脚本 + 4 条 cargo 命令），由
+> —— **31 项**（27 个门禁脚本 + 4 条 cargo 命令），由
 > `scripts/gate/check_stage.sh --stage GA` 逐项执行。
 > 下面两张表是这一清单的**可读摘要**，用于说明「GA 要证明什么」；
 > 它们**不是**另一份门禁清单，条目数与 SSOT 不必相同。
-> (#5437)
+> (#5437；#5505 把 16 个 G 关注点接进阶段门禁清单后由 20 项变为 31 项)
 
 ### 入口条件
 
@@ -192,7 +192,7 @@ Beta Gate 不仅检查基础设施（Build/Test/Clippy/Fmt），还必须追踪�
 |----|-------|------|
 | GE1 | RC Gate PASS | 检查 RC_GATE_REPORT.md |
 | GE2 | SSOT 判据的 GA 必需产物全部存在 | `bash scripts/gate/check_release_artifacts.sh --version v{VERSION} --stage GA` |
-| GE3 | 阶段配置自洽（G 编号名实相符、路径存在、产物条目为纯路径） | `bash scripts/gate/check_stage_config_consistency.sh` |
+| GE3 | 阶段配置自洽（G 编号名实相符、路径存在、产物条目为纯路径、**每个 G 关注点都被某个阶段门禁清单执行**） | `bash scripts/gate/check_stage_config_consistency.sh` |
 | GE4 | GA 阶段门禁清单可被驱动完整解析 | `bash scripts/gate/check_stage.sh --version v{VERSION} --stage GA --dry-run` |
 | GE5 | 所有 RC 前置 Issue 已关闭 | Gitea API 查询 |
 
