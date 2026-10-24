@@ -151,9 +151,14 @@ fn test_backup_manager_list_backups_after_create() {
     let mgr = BackupManager::new(tmp.path().join("b"));
 
     let table = BackupTable::new("t1", vec![BackupColumn::new("id", "INTEGER")]);
-    mgr.create_backup("db1", &[table.clone()]).unwrap();
+    // `std::slice::from_ref` instead of `&[table.clone()]`: the same table is
+    // backed up twice, so it has to stay owned and reusable -- cloning it into
+    // an array literal was both unnecessary and a clippy violation.
+    mgr.create_backup("db1", std::slice::from_ref(&table))
+        .unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
-    mgr.create_backup("db2", &[table]).unwrap();
+    mgr.create_backup("db2", std::slice::from_ref(&table))
+        .unwrap();
 
     let backups = mgr.list_backups();
     assert_eq!(backups.len(), 2);
@@ -166,11 +171,17 @@ fn test_backup_manager_multiple_backups_with_delay() {
 
     let table = BackupTable::new("t1", vec![BackupColumn::new("id", "INTEGER")]);
 
-    let m1 = mgr.create_backup("mydb", &[table.clone()]).unwrap();
+    let m1 = mgr
+        .create_backup("mydb", std::slice::from_ref(&table))
+        .unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let m2 = mgr.create_backup("mydb", &[table.clone()]).unwrap();
+    let m2 = mgr
+        .create_backup("mydb", std::slice::from_ref(&table))
+        .unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let m3 = mgr.create_backup("mydb", &[table]).unwrap();
+    let m3 = mgr
+        .create_backup("mydb", std::slice::from_ref(&table))
+        .unwrap();
 
     assert_ne!(m1.id, m2.id);
     assert_ne!(m2.id, m3.id);
