@@ -210,6 +210,58 @@ PYEOF
 
 STAGE_CONFIG_PATH_DEFAULT="docs/governance/STAGE_CONFIG.yaml"
 
+# The coverage threshold of a stage, read from the SSOT.
+#
+#   usage: stage_coverage_min <stage> [config_path]
+#
+# Echoes the threshold (a bare number) and returns 0. Returns 1 and echoes
+# **nothing** when the stage is unknown, when the SSOT has no value for it
+# (`COVERAGE_MIN_DRAFT` is `null` — the draft stage enforces nothing), or
+# when the SSOT cannot be parsed at all.
+#
+# #5581: "how much coverage does this stage need" was written down **five**
+# times, with **four** different numbers for the same stage:
+#
+# | where | value | SSOT says |
+# |---|---|---|
+# | `docs/governance/STAGE_CONFIG.yaml` → thresholds | ALPHA 50 / BETA 75 / RC 80 / GA 85 | — (this IS the SSOT) |
+# | `scripts/gate/check_rc_ga_gate.sh` | 75 | — |
+# | `scripts/gate/check_coverage_v312.sh` | 80.0 | GA is 85 |
+# | `scripts/gate/check_alpha_quality_v4.10.sh` | 50 | ALPHA is 50 (but hardcoded) |
+# | `scripts/gate/check_10_principles_v310.sh` R5 | 47 / 42 per crate | v3.10.0-era per-crate goals, a *different* quantity |
+#
+# The measured value (87.78%) is above all of them, so nothing is red
+# today — but the moment the threshold moves (87.78 → 84) the gates
+# disagree, and both sides have "a source". Hence ONE reader.
+#
+# Fail-closed: a missing threshold must never be read as 0 (that would let
+# anything pass) and never as "no threshold" (same). It returns non-zero
+# and the caller must decide — it must not carry on with a default.
+stage_coverage_min() {
+    local stage="$1"
+    local cfg="${2:-$STAGE_CONFIG_PATH_DEFAULT}"
+    python3 - "$cfg" "$stage" <<'PYEOF'
+import sys
+try:
+    import yaml
+    with open(sys.argv[1]) as fh:
+        d = yaml.safe_load(fh) or {}
+except Exception:
+    raise SystemExit(1)
+thresholds = d.get('thresholds') or {}
+key = 'COVERAGE_MIN_%s' % str(sys.argv[2]).strip().upper()
+value = thresholds.get(key)
+if value is None:
+    raise SystemExit(1)
+try:
+    # Normalised to a bare number so the caller can hand it straight to
+    # `bc` without parsing YAML-shaped text.
+    print('%g' % float(value))
+except Exception:
+    raise SystemExit(1)
+PYEOF
+}
+
 # The stage names in lifecycle order.
 stage_stage_names() {
     local cfg="${1:-$STAGE_CONFIG_PATH_DEFAULT}"

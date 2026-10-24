@@ -111,8 +111,11 @@
 **8–30 天的固定动作**
 
 * 每周一次发布后稳定性复盘，把 §5 的清单逐项更新状态（MET / NOT MET / NOT RUN）。
-* 每周一次 `check_drift_not_pass.sh` + `check_evidence_binding.sh` + `check_coverage_v312.sh` 三连跑，
+* 每周一次 `check_drift_not_pass.sh` + `check_evidence_binding.sh` + `SQLRUSTGO_COVERAGE_STAGE=rc check_coverage_v312.sh` 三连跑，
   输出归档。**任何一项 NOT RUN 都要写明原因，不得记为 PASS。**
+  覆盖率这一项按 **RC 档（`COVERAGE_MIN_RC` = 80%）** 判——与 §5 M11 的
+  「L1_8 均值 < 80%（`COVERAGE_MIN_RC`）」一致；阶段必须显式声明，
+  不依赖脚本的默认值（#5581）。
 * 不做 v4.2.0 的功能开发（见 §8 的移交条件）。
 
 ---

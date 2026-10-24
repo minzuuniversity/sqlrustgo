@@ -302,6 +302,11 @@ stages:
       - "scripts/gate/check_gate_self_verification.sh"
       - "scripts/gate/check_gate_test_integrity.sh"
       - "scripts/gate/check_coverage_v312.sh"
+      # #5581 — "one coverage measurement, one rule". Without it a second
+      # implementation of the coverage measurement grows back silently —
+      # that is exactly how the RC/GA gate ended up measuring the same
+      # eight crates with a different command and a reduced sample (#5579).
+      - "scripts/gate/check_coverage_single_implementation.sh"
       - "scripts/gate/check_sql_corpus_gate.sh"
       - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"

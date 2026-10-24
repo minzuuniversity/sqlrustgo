@@ -46,6 +46,9 @@ if ! command -v cargo >/dev/null 2>&1; then
 # the average, so its number was computed over a silently reduced sample.
 # shellcheck source=scripts/gate/common.sh
 source "$SCRIPT_DIR/common.sh"
+# The threshold reader — one rule, one implementation (#5581).
+# shellcheck source=scripts/gate/stage_config_common.sh
+source "$SCRIPT_DIR/stage_config_common.sh"
 
 # =============================================================================
 # CLI PARSING / DIMENSION PLAN / VERDICT — side-effect-free helpers
@@ -160,6 +163,38 @@ gate_dimensions_for_mode() {
     esac
 }
 
+# coverage_min_for_mode <mode> — the SSOT stage whose coverage threshold
+# applies to this mode, and the threshold itself.
+#
+#   usage: threshold=$(coverage_min_for_mode <mode>)
+#
+# Prints "<stage> <threshold>" and returns 0; returns 1 and prints nothing
+# when the SSOT has no threshold for that stage.
+#
+# #5581: the mode → stage mapping is written ONCE, here:
+#
+#   alpha → ALPHA   beta → BETA   rc → RC   ga → GA   all → GA
+#
+# `all` maps to GA because `gate_dimensions_for_mode` runs **the same
+# dimension set** for `all` and `ga` ("ga and all are the same set, by
+# design") — so the two modes must not be judged by different coverage
+# bars either.
+coverage_min_for_mode() {
+    local mode="${1:-all}"
+    local stage
+    case "$mode" in
+        alpha) stage="ALPHA" ;;
+        beta)  stage="BETA" ;;
+        rc)    stage="RC" ;;
+        ga)    stage="GA" ;;
+        all)   stage="GA" ;;
+        *)     stage="GA" ;;
+    esac
+    local threshold
+    threshold="$(stage_coverage_min "$stage")" || return 1
+    printf '%s %s' "$stage" "$threshold"
+}
+
 # gate_verdict_for <mode> <executed_csv> <d1_blk> <d2_blk> <d8_blk>
 #                <d9_blk> <d6_fail> <d7_blk> <d3_fails> <d3_drifts>
 #
@@ -215,8 +250,18 @@ CARCH05_LIMIT=1500                # execution_engine.rs line limit (SSOT - all o
                                 # AD-001 target. PR #3664 (2026-07-01) 完成拆分,文件降到 1471 行。
                                 # 历史: 2026-06-30 临时 1800; PR-3660 (2026-06-29) 临时 3000; 原 AD-001 1500 不变。
 
-# Coverage threshold
-COVERAGE_MIN=75                   # Alpha: 75%, Beta/RC: 80%
+# Coverage threshold — **not** a constant.
+#
+# #5581: this used to be `COVERAGE_MIN=75` with the comment
+# "Alpha: 75%, Beta/RC: 80%" — which matched **neither** the SSOT
+# (docs/governance/STAGE_CONFIG.yaml → thresholds: ALPHA 50 / BETA 75 /
+# RC 80 / GA 85) nor its own comment. The value now comes from the SSOT
+# through `stage_coverage_min`, per the mode this gate runs in, so the same
+# criterion cannot be judged by two different numbers.
+#
+# Empty means "the SSOT has no threshold for this mode" ⇒ A5 fails closed.
+COVERAGE_MIN=""
+COVERAGE_MIN_STAGE=""
 
 # =============================================================================
 # OUTPUT STYLING
@@ -360,7 +405,13 @@ run_d1_alpha() {
             D1_BLOCKERS=$((D1_BLOCKERS+1))
         else
             trap 'rm -f "$COV_REPORT_FILE"' RETURN
-            if coverage_average "$COVERAGE_MIN" > "$COV_REPORT_FILE" 2>&1; then
+            if [ -z "$COVERAGE_MIN" ]; then
+                # #5581: no threshold in the SSOT for this mode ⇒ FAIL.
+                # A gate that cannot say what it requires must not report
+                # a coverage verdict.
+                log_fail "A5 Coverage: no coverage threshold for mode '${GATE_TYPE}' in the SSOT"
+                D1_BLOCKERS=$((D1_BLOCKERS+1))
+            elif coverage_average "$COVERAGE_MIN" > "$COV_REPORT_FILE" 2>&1; then
                 log_pass "A5 Coverage: ${COVERAGE_AVERAGE}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
                 D1_PASS=$((D1_PASS+1))
             else
@@ -1391,6 +1442,21 @@ ${NC}"
     echo "Branch: $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'detached')"
     echo "Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
     echo "Gate:   $GATE"
+    echo ""
+
+    # #5581: the coverage threshold comes from the SSOT, per mode.
+    # `coverage_min_for_mode` is the ONE mapping; a missing threshold leaves
+    # COVERAGE_MIN empty and A5 fails closed below (never "no threshold ⇒
+    # pass", and never a hardcoded fallback).
+    if min_spec="$(coverage_min_for_mode "$GATE")"; then
+        COVERAGE_MIN_STAGE="${min_spec%% *}"
+        COVERAGE_MIN="${min_spec##* }"
+        echo "Coverage threshold: stage=$COVERAGE_MIN_STAGE min=$COVERAGE_MIN%"
+    else
+        COVERAGE_MIN_STAGE=""
+        COVERAGE_MIN=""
+        echo "Coverage threshold: NOT FOUND in the SSOT for mode '$GATE'" >&2
+    fi
     echo ""
 
     # Run all dimensions.

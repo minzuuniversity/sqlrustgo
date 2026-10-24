@@ -101,12 +101,12 @@ GA 的入口条件来自 `STAGE_CONFIG.yaml` → `stages.GA.required_files` 与
 | **8-crate 平均** | **87.80 %** | ✅ | ✅ |
 | mysql-server | 87.89 % | ✅ | ✅ |
 
-门槛来源：`STAGE_CONFIG.yaml` → `constants`（`COVERAGE_MIN_ALPHA: 50` /
+门槛来源：`STAGE_CONFIG.yaml` → `thresholds`（`COVERAGE_MIN_ALPHA: 50` /
 `COVERAGE_MIN_BETA: 75` / `COVERAGE_MIN_RC: 80` / `COVERAGE_MIN_GA: 85`）。
 
 ⚠️ **口径提醒（两处）**：
 ① `STAGE.yaml` → `rc_to_ga.exit_criteria` 写「Coverage >= 80%」，而
-`constants.COVERAGE_MIN_GA` 是 **85**。`STAGE.yaml` 自己的
+`thresholds.COVERAGE_MIN_GA` 是 **85**。`STAGE.yaml` 自己的
 `coverage_target_for_ga` 已写明「85%（STAGE_CONFIG COVERAGE_MIN_GA）；80% 是
 COVERAGE_MIN_RC」⇒ **GA 按 85 判**。
 ② 仓库里还有第三个数 **60.58 %**（`DEFECTS_AND_ISSUES.md` P1-01），那是**一条
