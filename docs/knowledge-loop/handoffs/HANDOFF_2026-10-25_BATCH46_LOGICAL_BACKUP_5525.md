@@ -7,8 +7,8 @@
 | 仓库 | `/Volumes/workspace/dev/sqlrustgo` |
 | 主工作区 HEAD（**属他人，不可动**） | `9fbb63bfbc` |
 | 本 Agent 工作树 | `/Volumes/workspace/dev/sqlrustgo-worktrees/wt-v410-b40` |
-| 成果分支 | `fix/logical-backup-restore-5525`（独立命名，基于 `develop/v4.1.0`） |
-| 成果提交 | 见 §「分支与提交」 |
+| 成果分支 | `fix/logical-backup-restore-5525`（独立命名，基于 `develop/v4.1.0` = `5d4817a06b`） |
+| 成果提交 | 3 个 commit（见 §8）：`135b944e96` 代码 / `2c848c7d0b` 测试+文档 / 第 3 个为本文档的数字订正 |
 | Gitea | `http://192.168.0.252:3000/openclaw/sqlrustgo` |
 | 关联 issue | #5525（本次关闭对象）、#5516、#5377、#5531 |
 | 关联 PR | #5578（批次 37–45，**本批未改动**）、#5575（批次 36）、#5585（他人） |
@@ -74,13 +74,17 @@ restore 消费的就是它）/ `<id>.meta.json`（元数据）。
 | 命令 | 结果 |
 |---|---|
 | `cargo test -p sqlrustgo-tools` | **505 passed / 0 failed** |
-| `cargo test -p sqlrustgo-storage --features fault-injection` | **993 passed / 1 failed** —— 唯一失败是**既有红** `index_update_crash_does_not_serve_dangling_rows`，信息逐字未变：`ERROR 1146 (42000) at line 1: Table not found: t`（根因 #5377，本批只引用不修） |
+| `cargo test -p sqlrustgo-storage --features fault-injection --no-fail-fast` | **1562 passed / 1 failed** —— 唯一失败是**既有红** `index_update_crash_does_not_serve_dangling_rows`，信息逐字未变：`ERROR 1146 (42000) at line 1: Table not found: t`（根因 #5377，本批只引用不修）。两个崩溃测试二进制：`crash_commit_fsync_b1` **2 passed**、`crash_wal_index_b1` 的 `wal_append_*` **ok** |
 | `cargo test -p sqlrustgo-mysql-server` | **675 passed / 0 failed** |
 | `cargo test -p sqlrustgo-cli` | **87 passed / 0 failed** |
 | A/B：`crates/storage/tests/drop_table_discards_buffered_rows_5525.rs` | BASE（撤掉修复）**2 red** / FIXED **3 green** |
 
 **没有跑** `cargo test --workspace`（全量 ~30 min，且会覆写
 `docs/releases/v4.1.0/evidence/a04-5226/wire/*.txt`）。
+
+> **统计口径**：`cargo test` 默认在第一个失败的测试目标后**停止**，后面的二进制
+> 根本没跑 ⇒ 汇总数字会被低估。**必须加 `--no-fail-fast`** 才能拿到真实总数
+> （storage：加之前统计到 993，加之后 1562）。
 
 ---
 
@@ -124,22 +128,41 @@ restore 消费的就是它）/ `<id>.meta.json`（元数据）。
 ⇒ 建议：合并顺序 **#5578（9 批 / 13+ issue）> 本批 > #5575**；
 推之前先看 `actions/runs` 里有没有别人的 run 在跑。
 
-### 5.2 合并风险
+### 5.2 合并风险（已用三方合并预演实测）
 
-本批分支基于 `develop/v4.1.0`，**与 PR #5578 的文件级交集**：
+本批分支基于 `develop/v4.1.0`（`5d4817a06b`），**与 PR #5578 的文件级交集
+只有一个文件**：
+
+```
+git diff --name-only gitea252/develop/v4.1.0...b52a76d8d5 | sort > A
+git diff --name-only b52a76d8d5 95b136a0a5              | sort > B
+comm -12 A B
+  → crates/storage/src/file_storage.rs
+```
 
 | 本批改的文件 | 在 PR #5578 的 65 个文件里吗 |
 |---|---|
+| `crates/storage/src/file_storage.rs` | **是**（#5578 在批次 42 改了同文件的 `save_index_in` 原子写） |
 | `crates/tools/src/backup_restore.rs` / `lib.rs` / `Cargo.toml` | 否 |
 | `crates/tools/tests/*`（6 个） | 否 |
-| `crates/storage/src/file_storage.rs` / `crates/storage/tests/*` | **否**（#5578 只碰 `crates/storage/src/fault_injection.rs` 与 3 个崩溃测试） |
-| `crates/mysql-server/src/main.rs` | **是**（#5578 改过 `main.rs`）⇒ 合并时需 rebase |
+| `crates/storage/tests/*`（新增 1 个） | 否 |
+| `crates/mysql-server/src/main.rs` | **否**（#5578 没碰这个文件） |
 | `crates/sqlrustgo-cli/src/lib.rs` | 否 |
 | `scripts/backup.sh` | 否 |
-| `docs/releases/v4.1.0/evidence/BATCH46_*.md` | 否 |
+| `docs/releases/v4.1.0/evidence/BATCH46_*.md`、`docs/knowledge-loop/handoffs/*` | 否 |
 
-⇒ 唯一的真实冲突点是 `crates/mysql-server/src/main.rs`（两边都改了
-backup/restore 子命令附近）。**合并顺序建议：先合 #5578，本批 rebase 后再合。**
+**三方合并预演（不改工作树）**：
+
+```bash
+git merge-tree --write-tree --name-only HEAD b52a76d8d5
+  → 3fd267785b9f0bd601037d6ce244e86b4fb96fdc   (rc=0，无冲突)
+```
+
+合并树已核对，同时含两边关键内容：批次 42 的 `fault_injection.rs`
+`occurrence`（10 处）、批次 43 的 `tests/common/evidence_output.rs`（102 行）、
+本批的 `drop_table_in` 缓冲行修复（1 处）与 `collect_all_tables`（8 处）。
+
+⇒ **合并顺序建议：先合 #5578，本批 rebase 后再合**（或反之，两边都已验证可合）。
 
 ### 5.3 环境陷阱（最容易踩）
 

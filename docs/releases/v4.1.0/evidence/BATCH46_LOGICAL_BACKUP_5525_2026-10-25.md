@@ -206,9 +206,13 @@ CREATE TABLE `audit_log` (
 | 套件 | 结果 |
 |---|---|
 | `cargo test -p sqlrustgo-tools` | **505 passed / 0 failed**（含新增 `logical_backup_roundtrip_5525.rs` 11 个） |
-| `cargo test -p sqlrustgo-storage --features fault-injection` | **993 passed / 1 failed** —— 唯一失败是**既有红** `index_update_crash_does_not_serve_dangling_rows`，失败信息**逐字未变**：`ERROR 1146 (42000) at line 1: Table not found: t`（根因是 #5377 的 `CREATE INDEX` 库解析缺陷，与本批无关） |
-| `cargo test -p sqlrustgo-mysql-server` | **388 passed / 0 failed**（`cov_v410_cli_subprocess` 的备份/恢复用例已按新契约重写并加入负对照） |
+| `cargo test -p sqlrustgo-storage --features fault-injection --no-fail-fast` | **1562 passed / 1 failed** —— 唯一失败是**既有红** `index_update_crash_does_not_serve_dangling_rows`，失败信息**逐字未变**：`ERROR 1146 (42000) at line 1: Table not found: t`（根因是 #5377 的 `CREATE INDEX` 库解析缺陷，与本批无关）。两个崩溃测试二进制里，`crash_commit_fsync_b1` **2 passed**、`crash_wal_index_b1` 的 `wal_append_*` **ok** |
+| `cargo test -p sqlrustgo-mysql-server` | **675 passed / 0 failed**（`cov_v410_cli_subprocess` 的备份/恢复用例已按新契约重写并加入负对照） |
 | `cargo test -p sqlrustgo-cli` | **87 passed / 0 failed** |
+
+> `--no-fail-fast` 是必要的：`cargo test` 默认在第一个失败的测试目标后**停止**，
+> 之后的二进制根本没跑，汇总数字会被低估（不带该开关时 storage 只统计到
+> 993 passed）。
 
 ### 5.1 A/B —— 存储层修复的判别力
 
