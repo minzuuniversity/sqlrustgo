@@ -31,13 +31,13 @@
 //!   foreign database.
 //! * `default` itself is accepted and delegates to the db-less version.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::append_only_storage::AppendOnlyStorage;
 use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::engine::{
     RowFilter, RowMutation, SqlError, StorageEngine, TableInfo, Value,
 };
 use sqlrustgo_storage::table_level_storage::TableLevelStorage;
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::vtu_guard::VtuGuard;
 use sqlrustgo_storage::wal::MemoryWalManager;
 use sqlrustgo_storage::BinaryTableStorage;
@@ -56,8 +56,7 @@ fn foreign_db_err(e: SqlError) -> bool {
 /// AppendOnlyStorage: every `_in_db` SqlResult method must refuse a foreign db.
 #[test]
 fn append_only_refuses_foreign_db() {
-    let mut s =
-        AppendOnlyStorage::new(unique_test_path("sqrg_5266_ao")).expect("temp dir");
+    let mut s = AppendOnlyStorage::new(unique_test_path("sqrg_5266_ao")).expect("temp dir");
     s.create_table(&table("t")).unwrap();
     let rec = vec![vec![Value::Integer(1)]];
     let filter: &dyn Fn(&sqlrustgo_storage::Record) -> bool = &|_| true;
@@ -220,8 +219,7 @@ fn table_level_refuses_foreign_db() {
 #[test]
 fn vtu_guard_forwards_foreign_db_to_inner() {
     // VtuGuard wraps a no-namespace storage; the inner refusal must surface.
-    let inner =
-        AppendOnlyStorage::new(unique_test_path("sqrg_5266_vg")).expect("temp dir");
+    let inner = AppendOnlyStorage::new(unique_test_path("sqrg_5266_vg")).expect("temp dir");
     let mut s = VtuGuard::new(inner, "test");
     let rec = vec![vec![Value::Integer(1)]];
     let e = s.insert_in_db("d1", "t", rec).unwrap_err();

@@ -522,8 +522,8 @@ impl DataRestorer {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::unique_test_path;
     use super::*;
+    use crate::test_support::unique_test_path;
     use crate::MemoryStorage;
 
     #[test]

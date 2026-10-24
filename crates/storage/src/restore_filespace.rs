@@ -235,9 +235,9 @@ impl<'a, S: StorageEngine> FilespaceCleanup<'a, S> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::unique_test_path;
     use super::*;
     use crate::engine::{ColumnDefinition, MemoryStorage, Record, StorageEngine, TableInfo};
+    use crate::test_support::unique_test_path;
     use sqlrustgo_types::Value;
     use std::fs;
 
