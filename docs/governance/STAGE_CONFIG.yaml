@@ -315,6 +315,11 @@ stages:
       # `cargo test --workspace` replaces 21 archived comparison outputs with
       # `ENGINE_UNAVAILABLE: ...` placeholders.
       - "scripts/gate/check_tests_dont_write_archived_evidence.sh"
+      # #5453 — the commit-message specification existed in three mutually
+      # inconsistent copies and had no machine enforcement at all. This gate
+      # is that execution point: it checks the *shape* of the first line and
+      # verifies that the type table still exists in exactly one place.
+      - "scripts/gate/check_commit_message.sh"
       - "scripts/gate/check_sql_corpus_gate.sh"
       - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"

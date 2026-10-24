@@ -490,6 +490,25 @@ jobs:
         if: always()
         run: |
           bash scripts/gate/check_tests_dont_write_archived_evidence.sh
+      - name: Gate — commit message shape (#5453)
+        # #5453: the commit-message specification existed in THREE mutually
+        # inconsistent copies and had **no machine enforcement at all** (no
+        # commit-msg hook, no CI check). Measured: `Refs` compliance ~4%,
+        # `Agent:` 0 times in the last 200 commits.
+        #
+        # This gate is the one execution point. Its hard criterion is the
+        # **shape** (`<type>(<scope>): <subject>` with a known type); the
+        # `Refs` line is **reported**, not enforced, because the existing
+        # history predates the rule and failing it would block every future
+        # change without making the history any better.
+        #
+        # `--last 1` because this job's checkout is a SHALLOW clone
+        # (`CI_DEPTH`, default 1) - a deeper range is not available here.
+        # The gate is nevertheless meaningful: it is checked on every run, so
+        # a commit that violates the shape is caught at the moment it is made.
+        if: always()
+        run: |
+          bash scripts/gate/check_commit_message.sh --last 1
       - name: Test summary
         if: always()
         run: |
