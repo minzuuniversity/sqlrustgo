@@ -32,8 +32,8 @@
 //! covered separately: `default` must work and any other database must be an
 //! error. Refusing is the contract — silently relocating the table is not.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo, Value};
+use sqlrustgo_storage::test_support::unique_test_path;
 
 fn table(name: &str) -> TableInfo {
     TableInfo {

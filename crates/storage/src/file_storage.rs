@@ -2568,9 +2568,9 @@ struct StoredTableDataRef<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::unique_test_path;
     use super::*;
     use crate::engine::ColumnDefinition;
+    use crate::test_support::unique_test_path;
     use std::fs::remove_dir_all;
 
     #[test]
@@ -4530,12 +4530,9 @@ mod tests {
 
     #[test]
     fn test_partition_rows_uneven_remainder() {
-        let mut storage = FileStorage::new_with_buffer_config(
-            unique_test_path("fs_pr_uneven"),
-            100,
-            true,
-        )
-        .unwrap();
+        let mut storage =
+            FileStorage::new_with_buffer_config(unique_test_path("fs_pr_uneven"), 100, true)
+                .unwrap();
         let dir = unique_test_path("fs_pr_uneven");
         let _ = remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();

@@ -49,8 +49,8 @@
 //! What `SIGKILL` proves is process-crash recovery; power-loss durability
 //! needs the `fsync` boundary verified separately.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::fault_injection::{FaultPoint, Signal};
+use sqlrustgo_storage::test_support::unique_test_path;
 
 use std::io::Write;
 use std::net::TcpStream;

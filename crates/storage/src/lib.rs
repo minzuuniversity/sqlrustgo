@@ -27,14 +27,6 @@ pub mod file_storage;
 /// `cfg(test)` because integration tests link the library without it.
 #[cfg(any(test, feature = "fault-injection"))]
 pub mod fault_injection;
-/// #5571 — 测试临时路径的唯一化（`unique_test_path`）。
-///
-/// 与 `fault_injection` 同一手法：走 feature 开关而不是只靠 `cfg(test)`，
-/// 因为集成测试链接库时**没有** `cfg(test)`，而集成测试同样需要唯一的
-/// 临时路径。`Cargo.toml` 里的 self dev-dependency 打开 `test-support`，
-/// 于是单元测试与集成测试用的是**同一份**实现。
-#[cfg(any(test, feature = "test-support"))]
-pub mod test_support;
 pub mod file_table;
 pub mod io_delay;
 pub mod mvcc;
@@ -45,6 +37,14 @@ pub mod record_page_codec;
 pub mod table_engine;
 pub mod table_level_storage;
 pub mod table_registry;
+/// #5571 — 测试临时路径的唯一化（`unique_test_path`）。
+///
+/// 与 `fault_injection` 同一手法：走 feature 开关而不是只靠 `cfg(test)`，
+/// 因为集成测试链接库时**没有** `cfg(test)`，而集成测试同样需要唯一的
+/// 临时路径。`Cargo.toml` 里的 self dev-dependency 打开 `test-support`，
+/// 于是单元测试与集成测试用的是**同一份**实现。
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 
 // Re-export for integration tests that import via sqlrustgo_storage::
 pub use io_delay::{IoDelayConfig, IoFaultInjector};

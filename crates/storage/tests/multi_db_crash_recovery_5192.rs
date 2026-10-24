@@ -37,8 +37,8 @@
 //! reproduces the *post-crash* state deterministically, which is what the
 //! recovery path actually has to cope with.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::{
     ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value, WalStorage,
