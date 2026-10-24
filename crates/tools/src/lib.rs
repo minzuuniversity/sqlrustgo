@@ -25,7 +25,9 @@ pub mod traits;
 pub mod upgrade;
 
 pub use backup_restore::{
-    BackupManager, BackupMetadata, BackupStatus, BackupType, ExportOptions, RestoreResult,
+    collect_all_tables, collect_table, render_sql, BackupColumn, BackupContent, BackupForeignKey,
+    BackupManager, BackupMetadata, BackupStatus, BackupTable, BackupType, BackupUniqueConstraint,
+    ExportOptions, RestoreResult,
 };
 pub use mysqldump::{
     ColumnDef, DumpImporter, ForeignKeyRef, ImportMode, ImportStats, SqlStatement,

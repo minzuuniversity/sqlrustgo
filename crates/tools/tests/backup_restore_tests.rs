@@ -1,8 +1,24 @@
 //! Tests for [`BackupManager`](sqlrustgo_tools::backup_restore::BackupManager).
 
-use sqlrustgo_tools::backup_restore::BackupManager;
-use std::collections::HashMap;
+use sqlrustgo_storage::Value;
+use sqlrustgo_tools::backup_restore::{BackupColumn, BackupManager, BackupTable};
 use tempfile::TempDir;
+
+/// A one-column table with one row — the smallest typed backup.
+fn users_table() -> BackupTable {
+    let mut table = BackupTable::new(
+        "users",
+        vec![
+            BackupColumn::new("id", "INTEGER").primary_key(),
+            BackupColumn::new("name", "TEXT"),
+        ],
+    );
+    table.rows = vec![
+        vec![Value::Integer(1), Value::Text("alice".to_string())],
+        vec![Value::Integer(2), Value::Text("bob".to_string())],
+    ];
+    table
+}
 
 /// Verify [`BackupManager::new`] creates the backup directory.
 #[test]
@@ -19,14 +35,7 @@ fn test_create_backup_produces_files() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().to_path_buf());
 
-    let mut row1 = HashMap::new();
-    row1.insert("id".to_string(), "1".to_string());
-    let mut row2 = HashMap::new();
-    row2.insert("id".to_string(), "2".to_string());
-    let mut tables = HashMap::new();
-    tables.insert("users".to_string(), vec![row1, row2]);
-
-    let result = mgr.create_backup("testdb", tables);
+    let result = mgr.create_backup("testdb", &[users_table()]);
     assert!(result.is_ok(), "create_backup failed: {:?}", result);
 
     let metadata = result.unwrap();
@@ -41,6 +50,14 @@ fn test_create_backup_produces_files() {
     // .meta.json file should exist
     let meta_file = tmp.path().join(format!("{}.meta.json", metadata.id));
     assert!(meta_file.exists(), "metadata .json file should exist");
+
+    // #5525: the machine-readable payload must exist too — it is what
+    // `restore` consumes.
+    let payload_file = tmp.path().join(format!("{}.data.json", metadata.id));
+    assert!(
+        payload_file.exists(),
+        "backup payload .json file should exist"
+    );
 }
 
 /// Verify [`BackupManager::list_backups`] returns an empty vec initially.
@@ -57,11 +74,8 @@ fn test_list_backups_after_create() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().to_path_buf());
 
-    let mut row = HashMap::new();
-    row.insert("id".to_string(), "1".to_string());
-    let mut tables = HashMap::new();
-    tables.insert("t".to_string(), vec![row]);
-    mgr.create_backup("mydb", tables).ok();
+    let table = BackupTable::new("t", vec![BackupColumn::new("id", "INTEGER")]);
+    mgr.create_backup("mydb", &[table]).ok();
 
     let backups = mgr.list_backups();
     assert_eq!(backups.len(), 1);
@@ -74,11 +88,8 @@ fn test_get_backup() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().to_path_buf());
 
-    let mut row = HashMap::new();
-    row.insert("id".to_string(), "1".to_string());
-    let mut tables = HashMap::new();
-    tables.insert("t".to_string(), vec![row]);
-    let created = mgr.create_backup("mydb", tables).unwrap();
+    let table = BackupTable::new("t", vec![BackupColumn::new("id", "INTEGER")]);
+    let created = mgr.create_backup("mydb", &[table]).unwrap();
 
     let retrieved = mgr.get_backup(&created.id);
     assert!(retrieved.is_some());
@@ -91,21 +102,21 @@ fn test_delete_backup() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().to_path_buf());
 
-    let mut row = HashMap::new();
-    row.insert("id".to_string(), "1".to_string());
-    let mut tables = HashMap::new();
-    tables.insert("t".to_string(), vec![row]);
-    let created = mgr.create_backup("mydb", tables).unwrap();
+    let table = BackupTable::new("t", vec![BackupColumn::new("id", "INTEGER")]);
+    let created = mgr.create_backup("mydb", &[table]).unwrap();
 
     let sql_file = tmp.path().join(format!("{}.sql", created.id));
     let meta_file = tmp.path().join(format!("{}.meta.json", created.id));
+    let payload_file = tmp.path().join(format!("{}.data.json", created.id));
     assert!(sql_file.exists());
     assert!(meta_file.exists());
+    assert!(payload_file.exists());
 
     let result = mgr.delete_backup(&created.id);
     assert!(result.is_ok());
 
     assert!(!sql_file.exists(), ".sql file should be deleted");
+    assert!(!payload_file.exists(), "payload file should be deleted");
 }
 
 /// Verify [`BackupManager::restore`] returns error for non-existent backup.
@@ -126,36 +137,25 @@ fn test_restore_nonexistent() {
         err
     );
 }
-/// Verify [`BackupManager::restore`] can parse INSERT INTO statements.
+/// Verify [`BackupManager::restore`] reads back the payload of a backup.
+///
+/// #5525: the old `restore` counted `INSERT INTO` lines and returned an
+/// empty row list per table. It now returns the payload, with the rows.
 #[test]
 fn test_restore_parses_insert() {
-    use sqlrustgo_tools::backup_restore::md5_simple;
-
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().to_path_buf());
 
-    // Pre-create a backup file manually so restore can parse it
-    let backup_id = "backup_restore_parse_test";
-    let sql_content = "-- SQLRustGo Backup\n-- Database: testdb\n\n-- Table: users\n-- Rows: 2\n\nCREATE TABLE IF NOT EXISTS users (id, name);\nINSERT INTO users (id, name) VALUES (1, 'alice');\nINSERT INTO users (id, name) VALUES (2, 'bob');\n";
-    let backup_file = tmp.path().join(format!("{}.sql", backup_id));
-    std::fs::write(&backup_file, sql_content).unwrap();
+    let meta = mgr.create_backup("testdb", &[users_table()]).unwrap();
 
-    // Create metadata
-    let mut metadata = sqlrustgo_tools::backup_restore::BackupMetadata::new(
-        backup_id.to_string(),
-        sqlrustgo_tools::backup_restore::BackupType::Full,
-        "testdb".to_string(),
+    let content = mgr.restore(&meta.id).expect("restore failed");
+    assert_eq!(content.tables.len(), 1);
+    assert_eq!(content.tables[0].name, "users");
+    assert_eq!(content.tables[0].rows.len(), 2);
+    assert_eq!(
+        content.tables[0].rows[0][1],
+        Value::Text("alice".to_string())
     );
-    metadata.complete(
-        sql_content.len() as u64,
-        format!("{:x}", md5_simple(sql_content)),
-    );
-    let meta_content = sqlrustgo_tools::backup_restore::serde_json_simple(&metadata);
-    let meta_file = tmp.path().join(format!("{}.meta.json", backup_id));
-    std::fs::write(&meta_file, &meta_content).ok();
-
-    let result = mgr.restore(backup_id);
-    assert!(result.is_ok(), "restore failed: {:?}", result);
 }
 
 /// Verify [`BackupManager::delete_backup`] returns error for non-existent backup.
@@ -174,39 +174,43 @@ fn test_delete_backup_nonexistent() {
     );
 }
 
-/// Verify [`BackupManager::restore`] returns error if .sql file is missing.
+/// Verify [`BackupManager::restore`] returns error if the payload is missing.
 #[test]
 fn test_restore_missing_sql_file() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().to_path_buf());
 
-    // Create only the .meta.json without the .sql file
+    // Create only the .meta.json without the payload file
     let backup_id = "backup_missing_sql";
     let meta_content = r#"{"id":"backup_missing_sql","type":"Full","started":"1234567890","completed":"1234567891","size":100,"database":"testdb","tables":[],"status":"completed","checksum":"abc"}"#;
     let meta_file = tmp.path().join(format!("{}.meta.json", backup_id));
     std::fs::write(&meta_file, meta_content).ok();
 
     let result = mgr.restore(backup_id);
-    assert!(result.is_err(), "restore should fail without .sql file");
+    assert!(
+        result.is_err(),
+        "restore should fail without the payload file"
+    );
 }
 
-/// Verify [`BackupManager::create_backup`] with empty tables map.
+/// Verify [`BackupManager::create_backup`] with no tables at all.
+///
+/// #5525: this used to succeed and write a backup with zero tables. An
+/// empty backup is now an error — the caller has to ask for a backup of
+/// something.
 #[test]
 fn test_create_backup_empty_tables() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().to_path_buf());
 
-    let tables: std::collections::HashMap<String, Vec<std::collections::HashMap<String, String>>> =
-        std::collections::HashMap::new();
-
-    let result = mgr.create_backup("emptydb", tables);
+    let result = mgr.create_backup("emptydb", &[]);
     assert!(
-        result.is_ok(),
-        "create_backup with empty tables failed: {:?}",
+        result.is_err(),
+        "create_backup with no tables must fail: {:?}",
         result
     );
-    let metadata = result.unwrap();
-    assert!(metadata.tables.is_empty(), "should have no tables");
+    let err = result.unwrap_err();
+    assert!(err.contains("no tables"), "unexpected error: {}", err);
 }
 
 /// Verify [`BackupManager::backup_dir`] returns the configured directory.

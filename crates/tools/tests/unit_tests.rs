@@ -66,18 +66,23 @@ fn test_export_options_default() {
     assert!(!opts.schema_only);
     assert!(opts.add_drop);
     assert!(opts.single_transaction);
-    assert!(opts.lock_tables);
+    // #5525: LOCK TABLES is not implemented, so the default must not ask
+    // for it — a default that the backup path rejects would make every
+    // backup fail.
+    assert!(!opts.lock_tables);
 }
 
 #[test]
 fn test_restore_result_fields() {
     let result = RestoreResult {
         backup_id: "bak-001".to_string(),
+        tables_restored: 3,
         rows_restored: 5000,
         duration_ms: 1234,
     };
     assert_eq!(result.backup_id, "bak-001");
     assert_eq!(result.rows_restored, 5000);
+    assert_eq!(result.tables_restored, 3);
 }
 
 #[test]

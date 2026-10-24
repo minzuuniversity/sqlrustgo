@@ -1982,10 +1982,31 @@ impl FileStorage {
     }
 
     /// #5057: [`drop_table`](Self::drop_table) in a stated database.
+    ///
+    /// #5525: dropping a table must drop **both** of the places its rows
+    /// live. `insert_buffer` is a second copy of table state (see
+    /// `WriteState::insert_buffer`), and this used to remove only the
+    /// `tables` entry — so the buffered rows of the dropped table survived
+    /// and came back the moment the table was recreated under the same
+    /// name:
+    ///
+    /// ```text
+    /// CREATE TABLE t (id INT); INSERT INTO t VALUES (1);  -- buffered
+    /// DROP TABLE t;                                        -- buffer kept
+    /// CREATE TABLE t (id INT);                            -- same key
+    /// SELECT * FROM t;                                    -- 1 row, from the
+    ///                                                      -- dropped table
+    /// ```
+    ///
+    /// The logical restore hit this directly: restoring with
+    /// `--drop-first` landed twice as many rows as the backup held,
+    /// because the first restore's buffered rows were still in the buffer
+    /// when the table was dropped and recreated.
     pub fn drop_table_in(&self, db: &str, name: &str) -> std::io::Result<()> {
         Self::with_write_lock(self, |s| {
             let key = self.tbl_in(db, name);
             s.tables.remove(&key);
+            s.insert_buffer.remove(&key);
             let path = self.table_path_in(db, name);
             if path.exists() {
                 std::fs::remove_file(path)?;
