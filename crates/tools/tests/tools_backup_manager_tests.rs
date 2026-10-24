@@ -1,10 +1,16 @@
 // Tools crate BackupManager coverage tests
 
-use sqlrustgo_tools::backup_restore::BackupManager;
-use std::collections::HashMap;
+use sqlrustgo_tools::backup_restore::{BackupColumn, BackupManager, BackupTable};
 use tempfile::TempDir;
 
 // ============ BackupManager tests ============
+
+/// A one-column table with one row.
+fn table_with_one_row(name: &str) -> BackupTable {
+    let mut table = BackupTable::new(name, vec![BackupColumn::new("id", "INTEGER")]);
+    table.rows = vec![vec![sqlrustgo_storage::Value::Integer(1)]];
+    table
+}
 
 #[test]
 fn test_backup_manager_new_creates_dir() {
@@ -53,15 +59,19 @@ fn test_backup_manager_create_and_get_backup() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("b"));
 
-    let mut tables = HashMap::new();
-    let mut users = Vec::new();
-    let mut user_row = HashMap::new();
-    user_row.insert("id".to_string(), "1".to_string());
-    user_row.insert("name".to_string(), "alice".to_string());
-    users.push(user_row);
-    tables.insert("users".to_string(), users);
+    let mut table = BackupTable::new(
+        "users",
+        vec![
+            BackupColumn::new("id", "INTEGER").primary_key(),
+            BackupColumn::new("name", "TEXT"),
+        ],
+    );
+    table.rows = vec![vec![
+        sqlrustgo_storage::Value::Integer(1),
+        sqlrustgo_storage::Value::Text("alice".to_string()),
+    ]];
 
-    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let meta = mgr.create_backup("testdb", &[table]).unwrap();
     assert_eq!(meta.database, "testdb");
 
     let retrieved = mgr.get_backup(&meta.id);
@@ -76,16 +86,14 @@ fn test_backup_manager_create_backup_checksum() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("b"));
 
-    let mut tables = HashMap::new();
-    let mut rows = Vec::new();
-    let mut row = HashMap::new();
-    row.insert("col1".to_string(), "val1".to_string());
-    rows.push(row);
-    tables.insert("t1".to_string(), rows);
+    let mut table = BackupTable::new("t1", vec![BackupColumn::new("col1", "TEXT")]);
+    table.rows = vec![vec![sqlrustgo_storage::Value::Text("val1".to_string())]];
 
-    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let meta = mgr.create_backup("testdb", &[table]).unwrap();
     assert!(meta.checksum.is_some());
     assert!(!meta.checksum.as_ref().unwrap().is_empty());
+    // #5525: the checksum must be a real hash, not the old 32-bit helper.
+    assert!(meta.payload_checksum.is_some());
 }
 
 #[test]
@@ -104,16 +112,13 @@ fn test_backup_manager_restore_existing() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("b"));
 
-    let mut tables = HashMap::new();
-    let mut rows = Vec::new();
-    let mut row = HashMap::new();
-    row.insert("a".to_string(), "1".to_string());
-    rows.push(row);
-    tables.insert("t1".to_string(), rows);
-
-    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let meta = mgr
+        .create_backup("testdb", &[table_with_one_row("t1")])
+        .unwrap();
     let data = mgr.restore(&meta.id);
     assert!(data.is_ok());
+    // #5525: the payload must carry the rows, not an empty list.
+    assert_eq!(data.unwrap().tables[0].rows.len(), 1);
 }
 
 #[test]
@@ -121,11 +126,8 @@ fn test_backup_manager_delete_backup() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("b"));
 
-    let mut tables = HashMap::new();
-    let rows: Vec<HashMap<String, String>> = Vec::new();
-    tables.insert("t1".to_string(), rows);
-
-    let meta = mgr.create_backup("db", tables).unwrap();
+    let table = BackupTable::new("t1", vec![BackupColumn::new("id", "INTEGER")]);
+    let meta = mgr.create_backup("db", &[table]).unwrap();
     let id = meta.id.clone();
 
     assert!(mgr.get_backup(&id).is_some());
@@ -148,10 +150,10 @@ fn test_backup_manager_list_backups_after_create() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("b"));
 
-    let empty_tables: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
-    mgr.create_backup("db1", empty_tables.clone()).unwrap();
+    let table = BackupTable::new("t1", vec![BackupColumn::new("id", "INTEGER")]);
+    mgr.create_backup("db1", &[table.clone()]).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
-    mgr.create_backup("db2", empty_tables.clone()).unwrap();
+    mgr.create_backup("db2", &[table]).unwrap();
 
     let backups = mgr.list_backups();
     assert_eq!(backups.len(), 2);
@@ -162,13 +164,13 @@ fn test_backup_manager_multiple_backups_with_delay() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("b"));
 
-    let empty: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
+    let table = BackupTable::new("t1", vec![BackupColumn::new("id", "INTEGER")]);
 
-    let m1 = mgr.create_backup("mydb", empty.clone()).unwrap();
+    let m1 = mgr.create_backup("mydb", &[table.clone()]).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let m2 = mgr.create_backup("mydb", empty.clone()).unwrap();
+    let m2 = mgr.create_backup("mydb", &[table.clone()]).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let m3 = mgr.create_backup("mydb", empty).unwrap();
+    let m3 = mgr.create_backup("mydb", &[table]).unwrap();
 
     assert_ne!(m1.id, m2.id);
     assert_ne!(m2.id, m3.id);
@@ -178,28 +180,30 @@ fn test_backup_manager_multiple_backups_with_delay() {
 }
 // ============ BackupManager content verification (temp dir) ============
 
-/// Verify that restore() parses table names from the SQL backup content.
+/// Verify that restore() returns the tables of the backup, with their rows.
 #[test]
 fn test_backup_manager_restore_parses_table_names() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("b"));
 
-    let mut tables = HashMap::new();
-    let mut rows = Vec::new();
-    let mut row = HashMap::new();
-    row.insert("id".to_string(), "1".to_string());
-    row.insert("name".to_string(), "alice".to_string());
-    rows.push(row);
-    tables.insert("users".to_string(), rows);
+    let mut table = BackupTable::new(
+        "users",
+        vec![
+            BackupColumn::new("id", "INTEGER").primary_key(),
+            BackupColumn::new("name", "TEXT"),
+        ],
+    );
+    table.rows = vec![vec![
+        sqlrustgo_storage::Value::Integer(1),
+        sqlrustgo_storage::Value::Text("alice".to_string()),
+    ]];
 
-    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let meta = mgr.create_backup("testdb", &[table]).unwrap();
     let restored = mgr.restore(&meta.id).unwrap();
 
-    // restore() parses INSERT INTO table names (simplified parser)
-    // The table 'users' should be in the restored data
     assert!(
-        restored.contains_key("users"),
-        "restored data should contain 'users' table"
+        restored.tables.iter().any(|t| t.name == "users"),
+        "restored payload should contain the 'users' table"
     );
 }
 
@@ -209,10 +213,9 @@ fn test_backup_manager_delete_then_restore_fails() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("b"));
 
-    let mut tables = HashMap::new();
-    tables.insert("t1".to_string(), Vec::new());
+    let table = BackupTable::new("t1", vec![BackupColumn::new("id", "INTEGER")]);
 
-    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let meta = mgr.create_backup("testdb", &[table]).unwrap();
     let backup_id = meta.id.clone();
 
     mgr.delete_backup(&backup_id).unwrap();
@@ -234,10 +237,9 @@ fn test_backup_manager_checksum_non_empty() {
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("b"));
 
-    let mut tables = HashMap::new();
-    tables.insert("t1".to_string(), Vec::new());
+    let table = BackupTable::new("t1", vec![BackupColumn::new("id", "INTEGER")]);
 
-    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let meta = mgr.create_backup("testdb", &[table]).unwrap();
     assert!(meta.checksum.is_some(), "checksum should be set");
     let checksum = meta.checksum.unwrap();
     assert!(!checksum.is_empty(), "checksum should be non-empty");

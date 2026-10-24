@@ -15,6 +15,11 @@ env_logger.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 hex.workspace = true
+# #5525: the logical backup payload is checksummed with SHA-256. The old
+# `md5_simple` helper is a 32-bit non-cryptographic rolling hash — it
+# cannot detect corruption, so it must not be the integrity check for a
+# backup that a restore is going to trust.
+sha2.workspace = true
 parking_lot.workspace = true
 structopt = "0.3"
 regex = "1.0"

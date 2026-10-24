@@ -7,12 +7,15 @@
 #   -d, --database <name>    Database name (default: default)
 #   -o, --output <dir>       Backup output directory (default: ./backups)
 #   -t, --type <type>       Backup type: full (the only implemented one)
+#   -D, --data-dir <dir>     Storage data directory to back up
+#                            (default: $SQLRUSTGO_DATA_DIR or /tmp/sqlrustgo-data)
 #   -c, --compress           NOT IMPLEMENTED — the script refuses it
-#   -s, --schema-only        NOT IMPLEMENTED — the script refuses it
+#   -s, --schema-only        Back up the schema only (no rows)
 #
 # Examples:
 #   ./scripts/backup.sh                                    # Full backup
 #   ./scripts/backup.sh -d mydb -o /backups               # Backup specific DB
+#   ./scripts/backup.sh -D /var/lib/sqlrustgo -o /backups  # Backup a real store
 #
 # #5516 — what was wrong
 # -----------------------
@@ -38,6 +41,14 @@
 #     table map it is handed is empty), so it produced an empty file and
 #     reported success. The script now **verifies the artifact**: a backup
 #     that contains no table is reported as a failure, not as a success.
+#
+# #5525 — what was still wrong afterwards
+# ---------------------------------------
+# The enumeration was fixed inside the implementation, which means the
+# backup now reads the tables from a **storage** — so it needs to know
+# *where* that storage is. The script therefore passes `--data-dir`, and
+# `--schema-only` is forwarded instead of being refused (it is implemented
+# now: the dump carries the schema and no rows).
 # =============================================================================
 
 set -euo pipefail
@@ -50,6 +61,11 @@ cd "$REPO_ROOT"
 DATABASE="default"
 OUTPUT_DIR="./backups"
 BACKUP_TYPE="full"
+# #5525: the backup reads the tables from a storage, so it has to be told
+# where that storage lives. The default matches the server's own default
+# data directory; `SQLRUSTGO_DATA_DIR` overrides it.
+DATA_DIR="${SQLRUSTGO_DATA_DIR:-/tmp/sqlrustgo-data}"
+SCHEMA_ONLY=0
 
 usage() {
     awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "$0"
@@ -70,22 +86,24 @@ while [[ $# -gt 0 ]]; do
             BACKUP_TYPE="$2"
             shift 2
             ;;
+        -D|--data-dir)
+            DATA_DIR="$2"
+            shift 2
+            ;;
         -c|--compress)
-            # The backup implementation accepts a `compress` field but
-            # never uses it (`#[allow(dead_code)]`). Passing it would look
-            # like it worked while changing nothing — so the script refuses
-            # it out loud instead.
+            # The backup implementation still has a `compress` field it
+            # never acts on. Passing it would look like it worked while
+            # changing nothing — so the script refuses it out loud instead.
             echo "ERROR: --compress is not implemented by the backup implementation." >&2
             echo "       It would be accepted and silently ignored, so this script" >&2
             echo "       refuses it rather than pretending the backup was compressed." >&2
             exit 2
             ;;
         -s|--schema-only)
-            # Same as --compress: the field exists but is not implemented.
-            echo "ERROR: --schema-only is not implemented by the backup implementation." >&2
-            echo "       It would be accepted and silently ignored, so this script" >&2
-            echo "       refuses it rather than pretending the backup was schema-only." >&2
-            exit 2
+            # #5525: unlike --compress, this one IS implemented now — the
+            # dump carries the schema and no rows — so it is forwarded.
+            SCHEMA_ONLY=1
+            shift
             ;;
         -h|--help)
             usage
@@ -135,6 +153,7 @@ echo "Binary:      $CLI_BIN"
 echo "Server Bin:  $SERVER_BIN"
 echo "Database:    $DATABASE"
 echo "Output Dir:  $OUTPUT_DIR"
+echo "Data Dir:    $DATA_DIR"
 echo "Backup Type: $BACKUP_TYPE"
 echo "Timestamp:   $(date '+%Y-%m-%d %H:%M:%S')"
 echo "=========================================="
@@ -145,15 +164,19 @@ mkdir -p "$OUTPUT_DIR"
 # Run backup
 echo ""
 echo "Starting backup..."
-"$CLI_BIN" backup "$OUTPUT_DIR" --database "$DATABASE" --backup-type "$BACKUP_TYPE"
+BACKUP_ARGS=(backup "$OUTPUT_DIR" --database "$DATABASE" --backup-type "$BACKUP_TYPE" --data-dir "$DATA_DIR")
+if [ "$SCHEMA_ONLY" -eq 1 ]; then
+    BACKUP_ARGS+=(--schema-only)
+fi
+"$CLI_BIN" "${BACKUP_ARGS[@]}"
 
 # Verify the artifact.
 #
-# The backup implementation prints "Backup completed successfully!" even
-# when it wrote an empty file (it is handed an empty table map). A report
-# that cannot be checked is not a report, so the artifact is inspected
-# here: the backup file has to exist and it has to contain at least one
-# table.
+# #5525: the backup implementation now enumerates the tables for real, so
+# an empty artifact means the enumeration found nothing — which the
+# implementation itself already refuses. The check stays because a report
+# that cannot be checked is not a report: the artifact is inspected here,
+# and it has to contain at least one table.
 BACKUP_FILE="$(ls -t "$OUTPUT_DIR"/*.sql 2>/dev/null | head -1 || true)"
 if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
     echo ""
@@ -165,9 +188,9 @@ TABLES="$(grep -c '^CREATE TABLE' "$BACKUP_FILE" || true)"
 if [ "${TABLES:-0}" -eq 0 ]; then
     echo "" >&2
     echo "ERROR: the backup artifact $BACKUP_FILE contains no table." >&2
-    echo "       The backup implementation enumerates zero tables today, so the" >&2
-    echo "       run 'succeeded' without backing anything up. This is reported as" >&2
-    echo "       a failure rather than as a successful backup." >&2
+    echo "       The storage at $DATA_DIR has no table in database" >&2
+    echo "       '$DATABASE', so there was nothing to back up. This is" >&2
+    echo "       reported as a failure rather than as a successful backup." >&2
     exit 1
 fi
 

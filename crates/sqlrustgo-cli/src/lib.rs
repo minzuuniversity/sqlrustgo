@@ -78,6 +78,13 @@ enum SubCmd {
         /// Backup type: full, incremental, differential.
         #[arg(long, default_value = "full")]
         backup_type: String,
+        /// Data directory of the storage to back up.
+        ///
+        /// #5525: a logical backup reads the tables from a storage. The
+        /// old path had no data source at all and produced a dump with
+        /// zero tables while reporting success.
+        #[arg(long)]
+        data_dir: String,
     },
     Restore {
         backup_id: String,
@@ -85,6 +92,14 @@ enum SubCmd {
         /// Directory the backup is read from.
         #[arg(long, default_value = ".")]
         backup_dir: String,
+        /// Data directory of the storage to restore into.
+        ///
+        /// #5525: without a target storage there is nowhere to restore to.
+        #[arg(long)]
+        data_dir: String,
+        /// Drop existing tables before restore.
+        #[arg(long)]
+        drop_first: bool,
     },
     /// Connect to a running server and execute a query (NEW).
     Cli {
@@ -211,6 +226,7 @@ pub fn run() -> i32 {
             output_dir,
             database,
             backup_type,
+            data_dir,
         }) => {
             let bin = mysql_server_bin();
             let mut cmd = Proc::new(&bin);
@@ -219,7 +235,9 @@ pub fn run() -> i32 {
                 .arg("--database")
                 .arg(&database)
                 .arg("--backup-type")
-                .arg(&backup_type);
+                .arg(&backup_type)
+                .arg("--data-dir")
+                .arg(&data_dir);
             exec_status(&bin, cmd)
         }
         // #5516: same defect on the restore side: the server's `restore`
@@ -229,6 +247,8 @@ pub fn run() -> i32 {
             backup_id,
             database,
             backup_dir,
+            data_dir,
+            drop_first,
         }) => {
             let bin = mysql_server_bin();
             let mut cmd = Proc::new(&bin);
@@ -237,7 +257,12 @@ pub fn run() -> i32 {
                 .arg("--database")
                 .arg(&database)
                 .arg("--backup-dir")
-                .arg(&backup_dir);
+                .arg(&backup_dir)
+                .arg("--data-dir")
+                .arg(&data_dir);
+            if drop_first {
+                cmd.arg("--drop-first");
+            }
             exec_status(&bin, cmd)
         }
         Some(SubCmd::Cli {
