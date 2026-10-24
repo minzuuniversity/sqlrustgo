@@ -7,13 +7,13 @@
 
 | 路径 | 状态 | 备注 |
 |---|---|---|
-| `README.md` | **Verified (2026-10-01)** | 12 节; v4.0.0 GA 撤销 + v4.1.0 DRAFT 状态最权威入口 |
+| `README.md` | **Verified (2026-10-25)** | 12 节; v4.0.0 GA 撤销 + v4.1.0 ALPHA 状态最权威入口 |
 | `AGENTS.md` | **Verified** (26KB; 355 行) | 当前 Agent 入口 — 本次审计产出新候选 |
 | `CLAUDE.md` (根) | **Verified** (76 行) | Claude Code 项目指令; 本次审计产出新候选 |
 | `.claude/CLAUDE.md` | **GitNexus 注入, 动态** | 含 gitnexus symbols/relationships 数字 |
 | `CONTRIBUTING.md` | Stale | 引用 #2588 (历史) |
 | `VERSION` | Verified (v3.11.0 last GA, dev 在 STAGE.yaml) | 有意保留 |
-| `CHANGELOG.md` | Verified | v4.0.0 GA + 撤销 + v4.1.0 DRAFT |
+| `CHANGELOG.md` | Verified | v4.0.0 GA + 撤销 + v4.1.0 ALPHA |
 
 ## 类别 B — 架构与设计
 
@@ -146,7 +146,7 @@ ADR-014-multi-ai-coordination.md               — 5 evidence fields 协议
 |---|---|---|
 | 1 | 主分支引用 | AGENTS.md: `develop/v3.9.0` ❌; 实际 `develop/v4.1.0` |
 | 2 | Rust edition | CLAUDE.md (根): "Rust 2024 + Tokio"; Cargo.toml: `edition = "2021"` ❌ |
-| 3 | 版本基线 | Cargo.toml workspace.package.version: "3.12.0-fix-zombie"; 当前 dev: v4.1.0 DRAFT |
+| 3 | 版本基线 | Cargo.toml workspace.package.version: "3.12.0-fix-zombie"; 当前 dev: v4.1.0 ALPHA |
 | 4 | Bin name | Cargo.toml grep `name = "sqlrustgo"` 等; 实际 root crate 无 `src/bin/`, REPL 在 `crates/sqlrustgo-cli/` |
 | 5 | ARCHITECTURE.md 时效 | "Version 1.2 / 2026-03-05" — 落后 8+ 月 |
 | 6 | ADR 重复 | ADR-006/007/008/010/011 都有多个变体 |
