@@ -27,7 +27,7 @@
 | **边界** | 阻塞式客户端 ⇒ 脚本等不到回应 ⇒ harness 只能在脚本**结束之后**才杀 server，SIGKILL 落在脚本之后 | 客户端进后台 ⇒ harness 立刻反应 ⇒ SIGKILL 落在被测的提交边界**上** |
 | **孤儿** | 没有 `Drop` ⇒ server 子进程自旋到死，拖住整个测试二进制 | `impl Drop for Server` 回收孤儿 server |
 | **断言** | `sum==10` —— 一个"崩溃在脚本之后"的假象 | `sum==6` —— **更强**：显式事务那一行（未提交）必须不存在 |
-| **耗时**（同机同条件对照，见 §6.1） | `crash_commit_fsync_b1` **240.84 s** / `crash_wal_index_b1` **≥ 960 s** | **0.50 s** / **5.30 s** |
+| **耗时**（同机同条件对照，见 §6.1） | `crash_commit_fsync_b1` **240.84 s** / `crash_wal_index_b1` **≥ 1800 s（超时被杀）** | **0.50 s** / **5.30 s** |
 
 > **同时闭环 #5376.** 读完 #5376 才发现：**它就是本批修的这条**，
 > 而且它的「建议 1 / 建议 2」与本批的修法逐字吻合
@@ -95,7 +95,7 @@ while Instant::now() < deadline { sleep(20ms); }
 测试二进制的 stdout/stderr 管道被子进程持有 ⇒ cargo 必须等它退出 ⇒
 **整个测试二进制**被拖住 120 秒，哪怕断言早就失败完了。
 
-这条解释了为什么 `crash_wal_index_b1` 在 BASE 上是 **≥ 960 s** 而不是"秒级失败"。
+这条解释了为什么 `crash_wal_index_b1` 在 BASE 上是 **≥ 1800 s（超时被杀）** 而不是"秒级失败"。
 
 **修法.** `impl Drop for Server`：进程还活着就 `kill()` + `wait()`。
 
@@ -144,7 +144,7 @@ while Instant::now() < deadline { sleep(20ms); }
   seed sql: script failed: CREATE DATABASE d1; USE d1; CREATE TABLE t(...); CREATE INDEX idx_v ON t(v);
   ERROR 1146 (42000) at line 1: Table not found: t
   ```
-- 变的只有**耗时**：≥ 960 s → 5.30 s。
+- 变的只有**耗时**：≥ 1800 s → 5.30 s。
 
 即：本批把这个红从「**挂死**」变成「**快速失败**」，根因**一个字节都没动**。
 按"既有红不背锅也不掩盖"的规矩，它**不能**在本批被"修绿" ——
@@ -217,19 +217,28 @@ cargo test -p sqlrustgo-storage --test <binary> -- --test-threads=1
 | 测试二进制 | BASE（`572f2b0ad2`） | FIXED（`25f23dc55a`） | 加速 |
 |---|---|---|---|
 | `crash_commit_fsync_b1` | 2 passed，**240.84 s** | 2 passed，**0.50 s** | **482×** |
-| `crash_wal_index_b1` | 1 passed / 1 failed，**≥ 960 s** | 1 passed / 1 failed，**5.30 s** | **≥ 180×** |
+| `crash_wal_index_b1` | 1 passed / 1 failed，**≥ 1800 s（超时被杀）** | 1 passed / 1 failed，**5.30 s** | **≥ 340×** |
 
 **`crash_wal_index_b1` 的 BASE 数字是保守下界，理由如下.**
-测量在 **1115 s** 时仍在运行（未结束），按下界记录。两个用例的**分段时间**
-都已直接观测到，与"每次到达都 hold 120 s"的机制**精确吻合**：
+测量在 **1800 s 时被超时终止**（测试进程仍在运行、未结束）⇒ 它**至少**跑了
+1800 秒。两个用例的**分段时间**都已直接观测到，与"每次到达都 hold 120 s"
+的机制**吻合**：
 
 | BASE 分段 | 观测 | 与机制的关系 |
 |---|---|---|
 | `crash_commit_fsync_b1` 整体 | **240.84 s** | = **2 × 120 s**（两个用例各到达一次） |
 | `crash_wal_index_b1` 的 wal_append 用例 | server 进程 **12:41 → 12:49**（480 s） | = **4 × 120 s**（故障点在该脚本里被到达 **4** 次） |
 
-⇒ 下界 **960 s** = 4 × 120（wal_append）+ 4 × 120（index_update），
-与 FIXED 侧的 **5.30 s** 相比 ⇒ **≥ 180×**。
+⇒ 仅 wal_append 一段就是 **4 × 120 = 480 s**；index_update 一段的 seed
+（`CREATE TABLE` 建主键索引 + `INSERT` 更新索引）到达次数更多，
+两段合计**超过 1800 s**（被超时终止，未能测到终点）。
+
+与 FIXED 侧的 **5.30 s** 相比 ⇒ **≥ 340×**。
+
+> **这个下界本身是一条独立的发现.** 旧代码下，**仅** `crash_wal_index_b1`
+> 这一个测试二进制就跑了 **≥ 1800 s 仍未结束**。CI 的 `test` job 预算
+> **9000 s**，`test-crates` 预算 **5400 s** —— 一个二进制就吃掉
+> `test-crates` 预算的三分之一。这不是"CI 慢"，是**测试本身在自旋**。
 
 这 4 次到达也正是 FIXED 侧选 `with_occurrence(4)` 的依据 ——
 occurrence 的数字**来自实测到达次数**，不是猜的。

@@ -472,6 +472,24 @@ jobs:
           # the target that was stuck.
           tail -n 200 test_report.log || true
           exit ${status}
+      - name: Gate — tests must not overwrite archived evidence (#5577 / #5389)
+        # #5577: a plain `cargo test --workspace` used to overwrite the 21
+        # archived comparison outputs under
+        # `docs/releases/v4.1.0/evidence/a04-5226/wire/` with
+        # `ENGINE_UNAVAILABLE: container a04-pg-ref not running` placeholders.
+        # #5389 is the same shape, wider (81 files).
+        #
+        # The static layer (L1) cannot see an **indirect** write - A04 wrote
+        # through a helper (`evidence_root()`), so the literal never appeared
+        # at the call site. The load-bearing layer (L2) therefore checks the
+        # **worktree** right after the suite ran, in this same job.
+        #
+        # `if: always()` so it also runs when the suite itself failed or was
+        # killed by the timeout - those are exactly the runs most likely to
+        # have left half-written evidence behind.
+        if: always()
+        run: |
+          bash scripts/gate/check_tests_dont_write_archived_evidence.sh
       - name: Test summary
         if: always()
         run: |
@@ -749,6 +767,15 @@ jobs:
           # the target that was stuck.
           tail -n 200 test_report.log || true
           exit ${status}
+      - name: Gate — tests must not overwrite archived evidence (#5577 / #5389)
+        # Same gate as the root-package `test` job, and for the same reason:
+        # #5577's L2 layer is the only one that can see an **indirect** write
+        # into `docs/`, because A04 wrote through a helper rather than through
+        # a literal. The member crates have their own tests, so this job needs
+        # its own check of its own worktree.
+        if: always()
+        run: |
+          bash scripts/gate/check_tests_dont_write_archived_evidence.sh
       - name: Test summary
         if: always()
         run: |
