@@ -111,11 +111,57 @@ fn placeholders_exit_2() {
     }
 }
 
+/// #5525: the logical backup/restore round trip through the CLI.
+///
+/// The old test passed because the backup reported success while backing up
+/// **zero** tables and the restore reported a table count while restoring
+/// **nothing**. The commands now need to know *where* the storage is
+/// (`--data-dir`), the backup enumerates the tables for real, and the
+/// restore writes the rows back — so this test asserts the **rows landed**
+/// in the target, not just that the exit code was 0.
 #[test]
 fn backup_and_restore_roundtrip_exit_zero() {
+    use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo, Value};
+
     let dir = tmpdir("bak");
+    let src_data = dir.join("src_data");
+    let dst_data = dir.join("dst_data");
     let output = dir.join("backup_out").to_string_lossy().into_owned();
-    let b = run(&["backup", &output], None);
+
+    // Seed the source database: one table, two rows.
+    {
+        let mut storage = FileStorage::new(src_data.clone()).unwrap();
+        let info = TableInfo {
+            name: "seeded".to_string(),
+            columns: vec![ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        storage.create_table_in_db("default", &info).unwrap();
+        storage
+            .insert_in_db(
+                "default",
+                "seeded",
+                vec![vec![Value::Integer(1)], vec![Value::Integer(2)]],
+            )
+            .unwrap();
+        storage.flush().unwrap();
+    }
+
+    let b = run(
+        &[
+            "backup",
+            &output,
+            "--data-dir",
+            src_data.to_str().unwrap(),
+        ],
+        None,
+    );
     assert!(
         b.status.code() == Some(0),
         "backup must exit 0, got {:?}: {}",
@@ -134,14 +180,65 @@ fn backup_and_restore_roundtrip_exit_zero() {
         .next()
         .expect("backup wrote a .sql file");
 
-    let out_dir = std::path::Path::new(&output).to_path_buf();
-    let r = run_in(Some(&out_dir), &["restore", &backup_id], None);
+    // The dump must actually contain the table and its rows.
+    let dump = std::fs::read_to_string(std::path::Path::new(&output).join(format!("{backup_id}.sql")))
+        .expect("read the dump");
+    assert!(
+        dump.contains("CREATE TABLE `seeded`"),
+        "the dump has no table: {dump}"
+    );
+    assert!(
+        dump.contains("INSERT INTO `seeded`"),
+        "the dump has no rows: {dump}"
+    );
+
+    let r = run(
+        &[
+            "restore",
+            &backup_id,
+            "--backup-dir",
+            &output,
+            "--data-dir",
+            dst_data.to_str().unwrap(),
+        ],
+        None,
+    );
     assert!(
         r.status.code() == Some(0),
         "restore must exit 0, got {:?}: {}",
         r.status.code(),
         out(&r)
     );
+
+    // The rows must be **in the target**, not merely reported as restored.
+    let target = FileStorage::new(dst_data.clone()).unwrap();
+    let rows = target.scan_in_db("default", "seeded").unwrap();
+    assert_eq!(
+        rows.len(),
+        2,
+        "the restore did not land the rows: {}",
+        out(&r)
+    );
+
+    // #5525 negative control: a database with no tables must NOT be
+    // reported as a successful backup.
+    let empty_out = dir.join("empty_out").to_string_lossy().into_owned();
+    let e = run(
+        &[
+            "backup",
+            &empty_out,
+            "--data-dir",
+            dir.join("empty_data").to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(
+        e.status.code() != Some(0),
+        "a backup of an empty database must fail, got {:?}: {}",
+        e.status.code(),
+        out(&e)
+    );
+
     let _ = std::fs::remove_dir_all(&dir);
 }
 
