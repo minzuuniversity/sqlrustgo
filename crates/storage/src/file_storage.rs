@@ -4,8 +4,9 @@
 use crate::bplus_tree::BPlusTree;
 use crate::buffer_pool::{BufferPool, BufferPoolStats};
 use crate::engine::{
-    ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
-    SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
+    find_column_index_in, ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter,
+    RowMutation, SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo,
+    UniqueConstraint, ViewInfo,
 };
 use crate::page::Page;
 use crate::record_page_codec::{self as record_codec};
@@ -7139,11 +7140,7 @@ impl StorageEngine for FileStorage {
             .tables
             .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col_idx = table_data
-            .info
-            .columns
-            .iter()
-            .position(|c| c.name == column)
+        let col_idx = find_column_index_in(column, &table_data.info.columns)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         table_data.info.columns.remove(col_idx);
         for record in table_data.rows.iter_mut() {
@@ -7176,11 +7173,17 @@ impl StorageEngine for FileStorage {
     /// strict subset of `table_data.rows` (it is appended *from* it), so
     /// writing the snapshot and removing the delta loses nothing.
     ///
-    /// The column match is **case-exact**, like this backend's other
-    /// column-level DDL (`drop_column` / `modify_column`). Making it
-    /// case-insensitive here alone would split `FileStorage` into two
-    /// conventions; the whole-backend question is tracked separately in
-    /// **#5509**.
+    /// The column match is **case-insensitive**, resolved through the
+    /// storage crate's single column-name resolver
+    /// (`crate::engine::find_column_index_in`) — the same one the SQL
+    /// layer uses. It used to be **case-exact** here and in
+    /// `drop_column` / `modify_column` / `rename_column`, while
+    /// `MemoryStorage` matched case-insensitively: the *same* DDL
+    /// therefore succeeded on the memory backend and failed on the
+    /// on-disk one, e.g. `ALTER TABLE t ALTER COLUMN B SET DEFAULT 1`
+    /// against a table created as `CREATE TABLE t (b INT)`. **#5509**
+    /// unified all eight column-level DDL match sites (four per
+    /// backend) onto the one resolver.
     fn set_column_default(
         &mut self,
         table: &str,
@@ -7200,11 +7203,7 @@ impl StorageEngine for FileStorage {
                 .tables
                 .get_mut(&key)
                 .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-            let col_idx = table_data
-                .info
-                .columns
-                .iter()
-                .position(|c| c.name == column)
+            let col_idx = find_column_index_in(column, &table_data.info.columns)
                 .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
             table_data.info.columns[col_idx].default_value = default_value;
             table_data.clone()
@@ -7244,12 +7243,8 @@ impl StorageEngine for FileStorage {
                     table,
                 ))
                 .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-            let col_idx = table_data
-                .info
-                .columns
-                .iter()
-                .position(|c| c.name == old_name)
-                .ok_or_else(|| {
+            let col_idx =
+                find_column_index_in(old_name, &table_data.info.columns).ok_or_else(|| {
                     SqlError::ExecutionError(format!("Column not found: {}", old_name))
                 })?;
             // Reject duplicate destination name (MySQL 8.0 + SQLite parity).
@@ -7280,7 +7275,7 @@ impl StorageEngine for FileStorage {
         &mut self,
         table: &str,
         column: &str,
-        new_def: ColumnDefinition,
+        mut new_def: ColumnDefinition,
     ) -> SqlResult<()> {
         // #5025: resolve the key first — `self.tbl()` borrows `self`,
         // which conflicts with the `get_mut()` below.
@@ -7291,12 +7286,16 @@ impl StorageEngine for FileStorage {
             .tables
             .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col_idx = table_data
-            .info
-            .columns
-            .iter()
-            .position(|c| c.name == column)
+        let col_idx = find_column_index_in(column, &table_data.info.columns)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
+        // #5509: `MemoryStorage::modify_column` lower-cases the stored
+        // column name; this backend kept it as written. Two backends
+        // therefore produced *different schemas* for the same DDL
+        // (`SHOW COLUMNS` on `ALTER TABLE t MODIFY COLUMN B BIGINT`
+        // showed `B` here and `b` there). Normalise here too, so the
+        // stored schema is a function of the DDL history alone and not
+        // of the backend that executed it.
+        new_def.name = new_def.name.to_lowercase();
         table_data.info.columns[col_idx] = new_def;
         Ok(())
     }

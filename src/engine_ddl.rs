@@ -18,7 +18,9 @@ use sqlrustgo_parser::parser::{
     ShowStatement,
 };
 use sqlrustgo_parser::Expression;
-use sqlrustgo_storage::{ColumnDefinition, StorageEngine, TableInfo, Value as StorageValue};
+use sqlrustgo_storage::{
+    find_column_index_in, ColumnDefinition, StorageEngine, TableInfo, Value as StorageValue,
+};
 
 impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     pub(crate) fn execute_grant(&mut self, grant: &GrantStatement) -> SqlResult<ExecutorResult> {
@@ -1368,13 +1370,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     // the case_insensitive_alter.test fixture (V313-11 simplified)
                     // can succeed without forcing an explicit CAST.
                     let info = storage.get_table_info(&alter.table_name)?;
-                    let existing = info
-                        .columns
-                        .iter()
-                        .find(|c| c.name.to_lowercase() == name.to_lowercase())
-                        .ok_or_else(|| {
+                    // #5509: this used to be a hand-rolled
+                    // `c.name.to_lowercase() == name.to_lowercase()` —
+                    // the ninth copy of the column-matching rule in the
+                    // workspace. It now uses the storage crate's single
+                    // resolver, so the SQL layer and both storage
+                    // backends agree on what a column name matches.
+                    let existing_idx =
+                        find_column_index_in(name, &info.columns).ok_or_else(|| {
                             SqlError::ExecutionError(format!("Column not found: {}", name))
                         })?;
+                    let existing = &info.columns[existing_idx];
                     let new_def = ColumnDefinition {
                         name: existing.name.clone(),
                         data_type: data_type.to_string(),
