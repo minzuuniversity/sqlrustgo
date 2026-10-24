@@ -1589,14 +1589,37 @@ impl FileStorage {
         index: &BPlusTree,
     ) -> std::io::Result<()> {
         let path = self.index_path_for_write_in(db, table_name, column_name);
-        let file = File::create(&path)?;
-        let mut writer = BufWriter::new(file);
-
-        let json = serde_json::to_string_pretty(index)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-
-        writer.write_all(json.as_bytes())?;
-        writer.flush()?;
+        // #5584: write the index **atomically**.
+        //
+        // The old code created the target file and wrote the JSON into it,
+        // so a crash during the write left a **truncated** index file
+        // behind. On the next start `load_index_in` could not parse it
+        // (`serde_json` → `InvalidData`), and the consequence was not
+        // "this index is missing" but "**this table cannot be read at
+        // all**" — the whole scan and the index lookup both failed.
+        //
+        // Measured (macOS arm64, crash exactly on the index-update
+        // boundary): both the full scan and the index query returned
+        // `query failed` after the restart.
+        //
+        // Writing to a temporary file and renaming it into place makes the
+        // update atomic: after a crash the file is either the previous
+        // complete version or absent — never a half-written one.
+        //
+        // Scope note: the index file's own durability is unchanged (it
+        // was never fsync'd, and this change does not add one). What
+        // changes is that a crash can no longer leave a **partial** file
+        // that the loader then treats as a hard error.
+        let tmp = path.with_extension("json.tmp");
+        {
+            let file = File::create(&tmp)?;
+            let mut writer = BufWriter::new(file);
+            let json = serde_json::to_string_pretty(index)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            writer.write_all(json.as_bytes())?;
+            writer.flush()?;
+        }
+        std::fs::rename(&tmp, &path)?;
 
         #[cfg(feature = "fault-injection")]
         crate::fault_injection::reach(crate::fault_injection::FaultPoint::AfterIndexUpdate);

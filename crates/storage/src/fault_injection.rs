@@ -28,6 +28,7 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
 /// Where the server was told to stop.
@@ -72,6 +73,20 @@ impl FaultPoint {
             FaultPoint::AfterCommitFsync => "after_commit_fsync",
             FaultPoint::AfterWALAppend => "after_wal_append",
             FaultPoint::AfterIndexUpdate => "after_index_update",
+        }
+    }
+
+    /// Index of this point in the per-point counters.
+    ///
+    /// #5556: the counters are **per point**, not global: a process may
+    /// exercise several points (the `a06_failpoint_reachability` test
+    /// does exactly that), and a global "already fired" flag would make
+    /// the second point silently never announce itself.
+    fn index(self) -> usize {
+        match self {
+            FaultPoint::AfterCommitFsync => 0,
+            FaultPoint::AfterWALAppend => 1,
+            FaultPoint::AfterIndexUpdate => 2,
         }
     }
 
@@ -128,10 +143,18 @@ pub fn from_env() -> Option<FaultConfig> {
     let dir = std::env::var("SQLRUSTGO_FAULT_SIGNAL_DIR").ok()?;
     let run_id = std::env::var("SQLRUSTGO_FAULT_RUN_ID").ok()?;
     let point = FaultPoint::parse(&point)?;
+    // #5556: which occurrence of the point is the boundary under test.
+    // Default 1 = the first time the point is reached.
+    let occurrence = std::env::var("SQLRUSTGO_FAULT_OCCURRENCE")
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(1);
     Some(FaultConfig {
         point,
         signal_dir: PathBuf::from(dir),
         run_id,
+        occurrence,
     })
 }
 
@@ -140,6 +163,8 @@ pub struct FaultConfig {
     pub point: FaultPoint,
     pub signal_dir: PathBuf,
     pub run_id: String,
+    /// Which occurrence of the point holds the process (#5556).
+    pub occurrence: u32,
 }
 
 impl FaultConfig {
@@ -176,16 +201,65 @@ pub fn reach(point: FaultPoint) {
     if cfg.point != point {
         return;
     }
+
+    // #5556: the point holds the process **once**, at the configured
+    // occurrence.
+    //
+    // Before this, every occurrence held: the server wrote the signal and
+    // then spun for up to 120 s, and a script with N WAL-writing
+    // statements paid N × 120 s. Measured on this tree (macOS arm64):
+    // `cargo test -p sqlrustgo-storage --test crash_commit_fsync_b1` took
+    // 240.93 s for two cases — and on CI the member job has a 5400 s
+    // budget for the whole workspace, which three such targets could
+    // eat on their own.
+    //
+    // The occurrence counter is what makes "hold once" safe: the crash
+    // test needs the crash to land on **the boundary under test** (the
+    // explicit COMMIT, not the autocommit seed), and "hold at the first
+    // occurrence" would move the crash to the wrong place.
+    let idx = point.index();
+    let seen = OCCURRENCES[idx].fetch_add(1, Ordering::SeqCst) + 1;
+    if seen < cfg.occurrence {
+        return;
+    }
+    // Already held once for this point: pass through. The boundary is a
+    // single point in the process's life, not a mode the process stays in.
+    if FIRED[idx].swap(true, Ordering::SeqCst) {
+        return;
+    }
+
     write_signal(&cfg);
 
     // Spin rather than block forever on a condition nobody will satisfy:
     // the harness kills us. The timeout is a backstop so a harness that
     // dies first cannot leave the server running indefinitely.
-    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    //
+    // #5556: the duration is configurable (`SQLRUSTGO_FAULT_HOLD_SECS`,
+    // default 120 s). A harness that reacts to the signal immediately
+    // cuts the hold short with its SIGKILL, so the duration only matters
+    // for the cases where the crash is meant to land **after** the
+    // script — and there a 120 s hold is 120 s of wall clock for nothing.
+    let hold = std::env::var("SQLRUSTGO_FAULT_HOLD_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(120);
+    let deadline = std::time::Instant::now() + Duration::from_secs(hold);
     while std::time::Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(20));
     }
 }
+
+/// How many times each point has been reached in this process (#5556).
+#[cfg(feature = "fault-injection")]
+static OCCURRENCES: [AtomicU32; 3] = [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)];
+
+/// Whether each point has already held the process (#5556).
+#[cfg(feature = "fault-injection")]
+static FIRED: [AtomicBool; 3] = [
+    AtomicBool::new(false),
+    AtomicBool::new(false),
+    AtomicBool::new(false),
+];
 
 /// #5420: gated with its only caller — in a build without the feature this
 /// function would be dead code, and the crate already carries a warning
