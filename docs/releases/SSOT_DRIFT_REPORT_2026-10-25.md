@@ -289,22 +289,91 @@ Rust 测试框架在**同一进程内的多个线程并发**跑用例，`std::en
 
 ---
 
+## 6.6 【新发现】13 个未提交改动 = 该分支的 rustfmt 归一化，可直接修好 Q1_FMT
+
+§5 保全的那 13 个未提交文件，此前被当作"重复派发的遗留、待人工裁决"。本轮做了量化实验，结论比预期明确得多。
+
+### 实验：在隔离克隆上套用这 13 个文件后复测
+
+| 指标 | 干净克隆 @ `9fbb63bfbc` | 套用 13 个脏文件后 |
+|---|---|---|
+| `cargo fmt --check` 违规文件数 | **37** | **0** |
+| `cargo test --all-features --lib` | 164 passed（run#3）/ flaky（run#1,#2） | **164 passed; 0 failed** |
+
+### 判定
+
+1. **这 13 个改动是纯格式化归一**——套用后 `rustfmt` 违规从 37 降到 **0**，且 lib 测试**全绿**（164 passed），说明其语义内容中性。
+2. **Q1_FMT 门禁当前红的原因是缺这 13 个改动**：干净克隆上 `cargo fmt --check` 失败（rc=1，37 个文件），而 `scripts/gate/check_alpha_quality_v4.10.sh:67` 把 `cargo fmt --check` 列为 Q1 的必检项。
+3. **因此「丢弃脏工作」不是中性的**：会保留 37 处 rustfmt 违规、让 Q1 继续红；**「提交脏工作」可直接让 Q1 转绿**。
+
+> ⚠️ 本报告**仍不代替人工裁决**是否提交——但裁决所需的输入现在齐了：这批改动的**性质已确定**（格式化归一）、**效果已量化**（37→0 违规、测试全绿）、**来源已追溯**（P3 重复派发的第二次执行产出）。
+> 唯一仍需人工判断的是：**这些格式化应由哪个 PR 承载**（独立格式化 PR vs 与 P3 产出合并），以及**格式化的基线 commit 选择**。
+
+### 受影响文件（13）
+
+```
+AGENTS.md
+crates/mysql-server/src/lib.rs
+crates/mysql-server/src/result_set.rs
+crates/mysql-server/tests/result_set_schema_5271.rs
+crates/storage/src/engine.rs
+crates/storage/src/file_storage.rs
+crates/storage/tests/mvcc_row_identity_lifecycle_5277.rs
+src/engine_ddl.rs
+tests/integration/dml/a05_secondary_index_stale.rs
+tests/integration/sql/bufferpool_pages_visited_memory_test.rs
+tests/integration/sql/bufferpool_pages_visited_test.rs
+tests/integration/transaction/ab04_8thread_1000tx_reconcile_test.rs
+tests/integration/transaction/stored_proc_catalog_test.rs
+```
+
+---
+
 ## 7. 本轮实际运行的检查
 
 | 检查 | 命令 | 退出码 | 结果 |
 |---|---|---|---|
 | 阶段一致性基线 | `git ls-remote origin refs/heads/fix/4597-...` | 0 | 与 252 逐位一致 |
-| 文档一致性门禁 | `bash scripts/gate/check_docs_consistency.sh` | **0** | **All checks passed**（仅覆盖 v3.x，见 §4） |
-| 全量构建 | `cargo build --all-features` | **0** | Finished dev profile in 6m25s |
-| Q6 测试套件 | `cargo test --all-features --lib` | **101 / 0 / 0** | run#1 FAILED(1)、run#2 FAILED(1)、run#3 ok(164) → **flaky**，见 §6.5 |
+| 文档一致性门禁（E2） | `bash scripts/gate/check_docs_consistency.sh` | **0** | **All checks passed**（仅覆盖 v3.x，见 §4） |
+| 全量构建（Q1_BUILD） | `cargo build --all-features` | **0** | Finished dev profile in 6m25s |
+| 测试套件（Q6_TEST_LIB） | `cargo test --all-features --lib` | **101 / 0 / 0** | run#1 FAILED(1)、run#2 FAILED(1)、run#3 ok(164) → **flaky**，见 §6.5 |
 | 失败用例隔离复跑 ×3 | `cargo test --all-features --lib test_v410_atomic_...` | **0** | ok ×3 |
+| Anti-Fabrication（Q2） | `bash scripts/gate/check_anti_fabrication.sh` | **1** | 见 §7.1 |
+| Anti-Ignore（Q3） | `bash scripts/gate/check_anti_ignore_gate.sh` | **0** | ignore_registry: total_allowed=116(max 150) / active=69(max 80)；tree recount = 116 |
+| 架构不变量（Q4） | `bash scripts/gate/check_arch_invariants.sh` | **0** | PASSED 5 / FAILED 0 → ALL PASS |
+| ARCH-3 无旁路（Q4） | `bash scripts/gate/check_arch3_no_bypass.sh` | **0** | G4 Gate: PASS |
+| SQL 语料门禁（Q5） | `bash scripts/gate/check_sql_corpus_gate.sh` | **0** | corpus pass rate 98.2%（阈值 80.0%） |
+| 格式检查（Q1_FMT） | `cargo fmt --check` | **1** | **37 个文件违规**（套用 §6.6 的 13 个改动后 → **0**） |
 | 脏工作树保全 | `git diff --binary` / `git status` / `cp` | 0 | 502 行补丁 + 1 文件副本 |
 | tag 解析 | `git rev-list -n1 <tag>` × 5 | 0 | 见 §2 |
 
+### 7.1 Q2 Anti-Fabrication 门禁失败详情
+
+```
+[PASS] sqlrustgo-mysql-server: cargo check PASS
+[PASS] V312-24: target/sqlancer-report.json valid (iterations=1000)
+[INFO] running test-runner against config/test-runner-manifest.toml...
+test-runner: mode=manifest wrote 5 entries — total=5 passed=1 failed=1 timed_out=0 crashed=3 duration_ms=27426
+scripts/gate/check_anti_fabrication.sh: line 408: results: command not found
+[ERROR] V312-24: test-runner report INVALID: 3 test(s) crashed:
+        target/release/tx_isolation_and_escape_hatch_test --test-threads=1
+        target/release/sqlrustgo_storage --test-threads=1
+        target/release/scan_with_filter_contract_test --test-threads=1
+[ERROR] V312-24 artifacts check: 3 failure(s)
+```
+
+两个独立问题：
+
+| # | 问题 | 性质 |
+|---|---|---|
+| Q2-a | **3 个测试崩溃**（`tx_isolation_and_escape_hatch_test`、`sqlrustgo_storage`、`scan_with_filter_contract_test`） | 被测代码或构建产物层面的问题；`test-runner` 报告 `passed=1 failed=1 crashed=3`（5 个里只有 1 个通过） |
+| Q2-b | **门禁脚本自身 shell bug**：`check_anti_fabrication.sh:408: results: command not found` | 脚本把某个变量当命令执行；该行附近的错误处理因此不可靠 |
+
+> 该次运行在 900s 预算内**未跑完**（在 CHECK 2 `cargo test --workspace --no-run` 阶段被超时终止），因此 CHECK 2 及之后的项为 **NOT RUN**。
+
 ### 明确 **NOT RUN**
 
-- `check_anti_ignore_gate.sh` / `check_arch_invariants.sh` / `check_arch3_no_bypass.sh` / `check_sql_corpus_gate.sh`（Q3/Q4/Q5）
-- `cargo fmt --check`（Q1_FMT）
+- Q2 的 CHECK 2 及之后各项（超时终止）
 - v4.1.0 alpha→beta 全部出口条件（§6）
 - 任何 integration / 端到端测试（本轮只跑 `--lib`）
 
@@ -327,6 +396,8 @@ Rust 测试框架在**同一进程内的多个线程并发**跑用例，`std::en
 | R7 | 13 个脏文件（§5）的去留单独裁决，不与 drift 修复混在一起 | 决策 | **是** |
 | R8 | 控制面把"COMPLETED"与"产出已落地"解耦（跨项目，见 `KOS-S0-2` P3） | 跨项目 | **是** |
 | **R9** | 给 `SQLRUSTGO_EXECUTOR_PARALLELISM` 的测试期改写加串行化保护（参照 `crates/mysql-server/src/lib.rs:347` 的 `utilities_tests::ENV_LOCK`），使 Q6 门禁可复现 | 测试隔离修复 | 否（但属测试代码改动，需评审） |
+| **R10** | 单独开一个**格式化 PR**，提交 §6.6 的 13 个文件，使 Q1_FMT 从 37 违规 → 0（与 P3 产出的归并方式由人工决定） | 门禁修复 | **是**（涉及提交策略与基线 commit 选择） |
+| **R11** | 修 `scripts/gate/check_anti_fabrication.sh:408` 的 `results: command not found`，并把 V312-24 的 3 个崩溃测试单独开 Issue 跟踪 | 门禁修复 | 否 |
 
 ---
 

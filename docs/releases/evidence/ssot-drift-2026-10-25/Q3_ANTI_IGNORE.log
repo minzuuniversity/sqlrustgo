@@ -1,0 +1,2 @@
+ignore_registry.json: total_allowed=116 (max=150), active=69 (max=80)
+tree recount: real #[ignore] attributes in tests/ + crates/ = 116

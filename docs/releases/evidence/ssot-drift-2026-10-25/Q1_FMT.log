@@ -1,0 +1,444 @@
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/mysql-server/src/lib.rs:5944:
+                             let (cols, ctypes) = if !r.columns.is_empty() {
+                                 // Engine-declared schema is authoritative.
+                                 let n = r.columns.iter().map(|c| c.name.clone()).collect();
+[31m-                                let t = r.columns.iter().map(|c| {
+(B[m[31m-                                    c.data_type.clone()
+(B[m[31m-                                        .unwrap_or_else(|| crate::result_set::UNRESOLVED_TYPE.to_string())
+(B[m[31m-                                }).collect();
+(B[m[32m+                                let t = r
+(B[m[32m+                                    .columns
+(B[m[32m+                                    .iter()
+(B[m[32m+                                    .map(|c| {
+(B[m[32m+                                        c.data_type.clone().unwrap_or_else(|| {
+(B[m[32m+                                            crate::result_set::UNRESOLVED_TYPE.to_string()
+(B[m[32m+                                        })
+(B[m[32m+                                    })
+(B[m[32m+                                    .collect();
+(B[m                                 (n, t)
+                             } else if prepared.column_names.is_empty() {
+                                 let n = r.rows.first().map(|row| row.len()).unwrap_or(0);
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/mysql-server/src/lib.rs:6295:
+                         // Type list: prefer engine-declared types (R2); fall
+                         // back to UNRESOLVED when engine gave us only names.
+                         let t: Vec<String> = if r.columns.iter().any(|c| c.data_type.is_some()) {
+[31m-                            r.columns.iter().map(|c| {
+(B[m[31m-                                c.data_type.clone()
+(B[m[31m-                                    .unwrap_or_else(|| crate::result_set::UNRESOLVED_TYPE.to_string())
+(B[m[31m-                            }).collect()
+(B[m[32m+                            r.columns
+(B[m[32m+                                .iter()
+(B[m[32m+                                .map(|c| {
+(B[m[32m+                                    c.data_type.clone().unwrap_or_else(|| {
+(B[m[32m+                                        crate::result_set::UNRESOLVED_TYPE.to_string()
+(B[m[32m+                                    })
+(B[m[32m+                                })
+(B[m[32m+                                .collect()
+(B[m                         } else {
+                             c.iter().map(|_| "VARCHAR(255)".to_string()).collect()
+                         };
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/mysql-server/src/result_set.rs:66:
+         column_types: result
+             .columns
+             .iter()
+[31m-            .map(|c| c.data_type.clone().unwrap_or_else(|| UNRESOLVED_TYPE.to_string()))
+(B[m[32m+            .map(|c| {
+(B[m[32m+                c.data_type
+(B[m[32m+                    .clone()
+(B[m[32m+                    .unwrap_or_else(|| UNRESOLVED_TYPE.to_string())
+(B[m[32m+            })
+(B[m             .collect(),
+         rows: result.rows.clone(),
+     })
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/mysql-server/tests/result_set_schema_5271.rs:59:
+ #[test]
+ fn projection_order_is_preserved() {
+     let r = ExecutorResult::with_columns(cols(&["v", "id"]), vec![], 0);
+[31m-    assert_eq!(prepare_result_set(&r).unwrap().column_names, vec!["v", "id"]);
+(B[m[32m+    assert_eq!(
+(B[m[32m+        prepare_result_set(&r).unwrap().column_names,
+(B[m[32m+        vec!["v", "id"]
+(B[m[32m+    );
+(B[m }
+ 
+ /// An aggregate keeps its column: `COUNT(*)` over an empty table returns a
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/engine.rs:1:
+ //! Storage Engine trait - abstraction for storage backends
+ //! Supports multiple storage implementations (File, Memory, etc.)
+ 
+[32m+use crate::buffer_pool::{BufferPool, BufferPoolStats};
+(B[m use serde::{Deserialize, Serialize};
+ pub use sqlrustgo_types::{SqlError, SqlResult, Value};
+ use std::any::Any;
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/engine.rs:7:
+ use std::collections::{HashMap, HashSet};
+ use std::sync::Arc;
+[31m-use crate::buffer_pool::{BufferPool, BufferPoolStats};
+(B[m 
+ /// Referential action for foreign key constraints
+ #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/engine.rs:2701:
+     /// that's by design: BufferPool is the cache, `tables` is the source of
+     /// truth for transactions (`Arc<Vec<Record>>` MVCC snapshots, etc.).
+     fn insert_via_bufferpool(&mut self, table: &str, records: Vec<Record>) -> SqlResult<()> {
+[31m-        use std::sync::atomic::Ordering;
+(B[m         use crate::page::Page;
+[32m+        use std::sync::atomic::Ordering;
+(B[m 
+         let pool = self
+             .buffer_pool
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/engine.rs:2748:
+         table: &str,
+         records: Vec<Record>,
+     ) -> SqlResult<()> {
+[31m-        use std::sync::atomic::Ordering;
+(B[m         use crate::page::Page;
+[32m+        use std::sync::atomic::Ordering;
+(B[m 
+         let pool = self
+             .buffer_pool
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/engine.rs:5871:
+ fn memory_storage_new_with_bufferpool_exposes_real_buffer_pool_stats() {
+     use std::sync::Arc;
+     let pool = Arc::new(crate::buffer_pool::BufferPool::new(8));
+[31m-    let storage = MemoryStorage::new_with_bufferpool(pool.clone())
+(B[m[31m-        .expect("new_with_bufferpool");
+(B[m[32m+    let storage = MemoryStorage::new_with_bufferpool(pool.clone()).expect("new_with_bufferpool");
+(B[m 
+     let stats = storage
+         .buffer_pool_stats()
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/engine.rs:5910:
+     use std::sync::Arc;
+ 
+     let pool = Arc::new(BufferPool::new(8));
+[31m-    let mut storage = MemoryStorage::new_with_bufferpool(pool.clone())
+(B[m[31m-        .expect("new_with_bufferpool");
+(B[m[32m+    let mut storage =
+(B[m[32m+        MemoryStorage::new_with_bufferpool(pool.clone()).expect("new_with_bufferpool");
+(B[m 
+     let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
+     storage.insert("t", vec![record]).expect("insert");
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/engine.rs:5940:
+     use std::sync::Arc;
+ 
+     let pool = Arc::new(BufferPool::new(256));
+[31m-    let mut storage = MemoryStorage::new_with_bufferpool(pool.clone())
+(B[m[31m-        .expect("new_with_bufferpool");
+(B[m[32m+    let mut storage =
+(B[m[32m+        MemoryStorage::new_with_bufferpool(pool.clone()).expect("new_with_bufferpool");
+(B[m     let records: Vec<Record> = (0..100)
+         .map(|i| vec![Value::Integer(i), Value::Text(format!("row{i}").into())])
+         .collect();
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/engine.rs:5972:
+         let s = storage.clone();
+         handles.push(thread::spawn(move || {
+             let mut g = s.lock();
+[31m-            let records: Vec<Record> = (0..25)
+(B[m[31m-                .map(|i| vec![Value::Integer(t * 100 + i)])
+(B[m[31m-                .collect();
+(B[m[32m+            let records: Vec<Record> = (0..25).map(|i| vec![Value::Integer(t * 100 + i)]).collect();
+(B[m             g.insert("t", records).expect("insert");
+         }));
+     }
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/engine.rs:6091:
+         .expect("scan")
+         .into_iter()
+         .filter(|r| {
+[31m-            r.first().map(|v| matches!(v, Value::Integer(n) if *n >= 3)).unwrap_or(false)
+(B[m[32m+            r.first()
+(B[m[32m+                .map(|v| matches!(v, Value::Integer(n) if *n >= 3))
+(B[m[32m+                .unwrap_or(false)
+(B[m         })
+         .collect();
+     assert_eq!(
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/file_storage.rs:3:
+ 
+ use crate::bplus_tree::BPlusTree;
+ use crate::buffer_pool::{BufferPool, BufferPoolStats};
+[31m-use crate::page::Page;
+(B[m[31m-use crate::record_page_codec::{self as record_codec};
+(B[m use crate::engine::{
+     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
+     SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/file_storage.rs:11:
+ };
+[32m+use crate::page::Page;
+(B[m[32m+use crate::record_page_codec::{self as record_codec};
+(B[m use crate::wal::{WalEntry, WalEntryType};
+ use sqlrustgo_types::{SqlError, SqlResult, Value};
+ use std::any::Any;
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/file_storage.rs:1168:
+     /// PR-A / #5305: construct a `FileStorage` whose `insert`/`scan` route
+     /// through the supplied `BufferPool`. Lets `BufferPoolStats` become an
+     /// honest EXPLAIN signal. Existing public methods are preserved.
+[31m-    pub fn new_with_bufferpool(
+(B[m[31m-        data_dir: PathBuf,
+(B[m[31m-        pool: Arc<BufferPool>,
+(B[m[31m-    ) -> std::io::Result<Self> {
+(B[m[32m+    pub fn new_with_bufferpool(data_dir: PathBuf, pool: Arc<BufferPool>) -> std::io::Result<Self> {
+(B[m         let mut storage = Self::new(data_dir)?;
+         storage.buffer_pool = Some(pool);
+         // PR-A.5: counter / map are already empty from `Self::new`. Nothing
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/file_storage.rs:7552:
+         let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
+         storage.insert("t", vec![record]).expect("insert");
+ 
+[31m-        let stats = storage.buffer_pool_stats().expect("FileStorage must have stats");
+(B[m[32m+        let stats = storage
+(B[m[32m+            .buffer_pool_stats()
+(B[m[32m+            .expect("FileStorage must have stats");
+(B[m         assert!(
+             stats.pages_visited() >= 1,
+             "1 INSERT must bump pages_visited; got {}",
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/file_storage.rs:7580:
+             .collect();
+         storage.insert("t", records).expect("insert 100");
+ 
+[31m-        let stats = storage.buffer_pool_stats().expect("FileStorage must have stats");
+(B[m[32m+        let stats = storage
+(B[m[32m+            .buffer_pool_stats()
+(B[m[32m+            .expect("FileStorage must have stats");
+(B[m         assert!(
+             stats.pages_visited() >= 100,
+             "100 inserts must touch >= 100 pages; got {}",
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/src/file_storage.rs:7653:
+             let s = storage.clone();
+             handles.push(thread::spawn(move || {
+                 let mut guard = s.lock().expect("poisoned");
+[31m-                let records: Vec<Record> = (0..25)
+(B[m[31m-                    .map(|i| vec![Value::Integer(t * 100 + i)])
+(B[m[31m-                    .collect();
+(B[m[32m+                let records: Vec<Record> =
+(B[m[32m+                    (0..25).map(|i| vec![Value::Integer(t * 100 + i)]).collect();
+(B[m                 guard.insert("t", records).expect("insert");
+             }));
+         }
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/tests/mvcc_row_identity_lifecycle_5277.rs:10:
+ //! failure mode this pins.
+ 
+ use sqlrustgo_storage::{
+[31m-    BoxStorageEngine, FileStorage, MemoryWalManager, MvccStorage, ParallelWalStorage,
+(B[m[31m-    StorageEngine,
+(B[m[32m+    BoxStorageEngine, FileStorage, MemoryWalManager, MvccStorage, ParallelWalStorage, StorageEngine,
+(B[m };
+ use sqlrustgo_types::Value;
+ use std::path::PathBuf;
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/tests/mvcc_row_identity_lifecycle_5277.rs:50:
+ fn seeded(tag: &str) -> BoxStorageEngine {
+     let mut s = stack(tag);
+     s.create_database("default").expect("create db");
+[31m-    s.create_table_in_db("default", &columns()).expect("create table");
+(B[m[32m+    s.create_table_in_db("default", &columns())
+(B[m[32m+        .expect("create table");
+(B[m     s.insert_in_db(
+         "default",
+         "t",
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/tests/mvcc_row_identity_lifecycle_5277.rs:93:
+         got.len()
+     );
+     assert!(
+[31m-        got.iter().any(|r| **r == [Value::Integer(1), Value::Integer(99)]),
+(B[m[32m+        got.iter()
+(B[m[32m+            .any(|r| **r == [Value::Integer(1), Value::Integer(99)]),
+(B[m         "the updated value is missing from {got:?}"
+     );
+     assert_eq!(
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/tests/mvcc_row_identity_lifecycle_5277.rs:157:
+     // and it lives on the MVCC layer rather than the trait.
+     let file = FileStorage::new(dir("rebuild")).expect("FileStorage");
+     let mvcc = MvccStorage::new(file);
+[31m-    let mut s = BoxStorageEngine::new(ParallelWalStorage::new(
+(B[m[31m-        mvcc,
+(B[m[31m-        MemoryWalManager::new(),
+(B[m[31m-    ));
+(B[m[32m+    let mut s = BoxStorageEngine::new(ParallelWalStorage::new(mvcc, MemoryWalManager::new()));
+(B[m     s.create_database("default").expect("create db");
+[31m-    s.create_table_in_db("default", &columns()).expect("create table");
+(B[m[32m+    s.create_table_in_db("default", &columns())
+(B[m[32m+        .expect("create table");
+(B[m     s.insert_in_db(
+         "default",
+         "t",
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/tests/mvcc_row_identity_lifecycle_5277.rs:176:
+     assert_eq!(rows(&s).len(), 3);
+ 
+     // Identities handed out after a reload must not collide with reloaded rows.
+[31m-    s.insert_in_db("default", "t", vec![vec![Value::Integer(1), Value::Integer(50)]])
+(B[m[31m-        .expect("insert after reload");
+(B[m[32m+    s.insert_in_db(
+(B[m[32m+        "default",
+(B[m[32m+        "t",
+(B[m[32m+        vec![vec![Value::Integer(1), Value::Integer(50)]],
+(B[m[32m+    )
+(B[m[32m+    .expect("insert after reload");
+(B[m     assert_eq!(
+         rows(&s).len(),
+         4,
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/tests/mvcc_row_identity_lifecycle_5277.rs:208:
+         ],
+         ..Default::default()
+     };
+[31m-    s.create_table_in_db("default", &info).expect("create table");
+(B[m[32m+    s.create_table_in_db("default", &info)
+(B[m[32m+        .expect("create table");
+(B[m     // Same `a`, different primary key `b`.
+     s.insert_in_db(
+         "default",
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage/tests/mvcc_row_identity_lifecycle_5277.rs:232:
+     let got = rows(&s);
+     assert_eq!(got.len(), 2, "an update must not add a row: {got:?}");
+     assert!(
+[31m-        got.iter().any(|r| **r == [Value::Integer(1), Value::Integer(201)]),
+(B[m[32m+        got.iter()
+(B[m[32m+            .any(|r| **r == [Value::Integer(1), Value::Integer(201)]),
+(B[m         "the update keyed on the wrong column: {got:?}"
+     );
+ }
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/src/engine_ddl.rs:834:
+             catalog
+                 .stored_procedures()
+                 .iter()
+[31m-                .map(|p| {
+(B[m[31m-                    (
+(B[m[31m-                        p.name.clone(),
+(B[m[31m-                        p.params.len() as i64,
+(B[m[31m-                        p.body.len() as i64,
+(B[m[31m-                    )
+(B[m[31m-                })
+(B[m[32m+                .map(|p| (p.name.clone(), p.params.len() as i64, p.body.len() as i64))
+(B[m                 .collect()
+         };
+ 
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/dml/a05_secondary_index_stale.rs:41:
+ fn a05_secondary_index_stale_after_flush() {
+     let dir = tmpdir("stale");
+     let mut e = engine_with(&dir);
+[31m-    e.execute("CREATE TABLE t(id INT PRIMARY KEY, k INT)").expect("create");
+(B[m[32m+    e.execute("CREATE TABLE t(id INT PRIMARY KEY, k INT)")
+(B[m[32m+        .expect("create");
+(B[m     // 1000 rows; k = i % 7, so k=5 occurs for i=5,12,...,999 (143 rows).
+     for cs in (1..=1_000).step_by(500) {
+         let vals: Vec<String> = (cs..cs + 500).map(|i| format!("({i},{})", i % 7)).collect();
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/dml/a05_secondary_index_stale.rs:48:
+[31m-        e.execute(&format!("INSERT INTO t VALUES {}", vals.join(","))).expect("insert");
+(B[m[32m+        e.execute(&format!("INSERT INTO t VALUES {}", vals.join(",")))
+(B[m[32m+            .expect("insert");
+(B[m     }
+     e.flush().ok();
+[31m-    e.execute("CREATE INDEX idx_k ON t(k)").expect("create index");
+(B[m[32m+    e.execute("CREATE INDEX idx_k ON t(k)")
+(B[m[32m+        .expect("create index");
+(B[m 
+     // A new row with k=5, flushed AFTER the secondary index exists.
+     e.execute("INSERT INTO t VALUES (1001, 5)").expect("insert");
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/dml/a05_secondary_index_stale.rs:63:
+     // Control: a separate table WITHOUT the index (full scan).
+     let dir2 = tmpdir("control");
+     let mut e2 = engine_with(&dir2);
+[31m-    e2.execute("CREATE TABLE t(id INT PRIMARY KEY, k INT)").expect("create");
+(B[m[32m+    e2.execute("CREATE TABLE t(id INT PRIMARY KEY, k INT)")
+(B[m[32m+        .expect("create");
+(B[m     for cs in (1..=1_000).step_by(500) {
+         let vals: Vec<String> = (cs..cs + 500).map(|i| format!("({i},{})", i % 7)).collect();
+[31m-        e2.execute(&format!("INSERT INTO t VALUES {}", vals.join(","))).expect("insert");
+(B[m[32m+        e2.execute(&format!("INSERT INTO t VALUES {}", vals.join(",")))
+(B[m[32m+            .expect("insert");
+(B[m     }
+     e2.flush().ok();
+[31m-    e2.execute("INSERT INTO t VALUES (1001, 5)").expect("insert");
+(B[m[32m+    e2.execute("INSERT INTO t VALUES (1001, 5)")
+(B[m[32m+        .expect("insert");
+(B[m     e2.flush().ok();
+     let full_count = count(&mut e2, "SELECT id FROM t WHERE k = 5");
+     eprintln!("  full-scan count (control, no index) = {}", full_count);
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/sql/bufferpool_pages_visited_memory_test.rs:32:
+     let pool = Arc::new(BufferPool::new(64));
+     let mut engine = ExecutionEngine::<MemoryStorage>::with_memory_and_bufferpool(pool);
+ 
+[31m-    engine.execute("CREATE TABLE t (id INTEGER);").expect("create");
+(B[m     engine
+[32m+        .execute("CREATE TABLE t (id INTEGER);")
+(B[m[32m+        .expect("create");
+(B[m[32m+    engine
+(B[m         .execute("INSERT INTO t VALUES (1), (2);")
+         .expect("insert 2 rows");
+ 
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/sql/bufferpool_pages_visited_memory_test.rs:58:
+     // Back-compat: legacy `with_memory()` continues to use synthetic_zero
+     // stats; `pages_visited` stays 0; suffix is omitted.
+     let mut engine = ExecutionEngine::<MemoryStorage>::with_memory();
+[31m-    engine.execute("CREATE TABLE t (id INTEGER);").expect("create");
+(B[m[32m+    engine
+(B[m[32m+        .execute("CREATE TABLE t (id INTEGER);")
+(B[m[32m+        .expect("create");
+(B[m     engine.execute("INSERT INTO t VALUES (1);").expect("insert");
+     let result = engine
+         .execute("EXPLAIN SELECT id FROM t;")
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/sql/bufferpool_pages_visited_test.rs:39:
+     let tmp = tempfile::tempdir().expect("tempdir");
+     let pool = Arc::new(BufferPool::new(64));
+     let storage = Arc::new(parking_lot::RwLock::new(
+[31m-        sqlrustgo_storage::FileStorage::new_with_bufferpool(
+(B[m[31m-            tmp.path().to_path_buf(),
+(B[m[31m-            pool,
+(B[m[31m-        )
+(B[m[31m-        .expect("FileStorage::new_with_bufferpool"),
+(B[m[32m+        sqlrustgo_storage::FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool)
+(B[m[32m+            .expect("FileStorage::new_with_bufferpool"),
+(B[m     ));
+     let mut engine = ExecutionEngine::new(storage);
+ 
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/sql/bufferpool_pages_visited_test.rs:50:
+     engine
+         .execute("CREATE TABLE t (id INTEGER);")
+         .expect("create");
+[31m-    engine
+(B[m[31m-        .execute("INSERT INTO t VALUES (1);")
+(B[m[31m-        .expect("insert");
+(B[m[32m+    engine.execute("INSERT INTO t VALUES (1);").expect("insert");
+(B[m 
+     let result = engine
+         .execute("EXPLAIN SELECT id FROM t WHERE id = 1;")
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/sql/bufferpool_pages_visited_test.rs:62:
+     for (i, row) in result.rows.iter().enumerate() {
+         let line = first_cell_text(row, i);
+         let n = last_pages_visited_token(line).unwrap_or_else(|| {
+[31m-            panic!(
+(B[m[31m-                "row {i} must end with ' | pages_visited=<u64>'; got: {line}"
+(B[m[31m-            )
+(B[m[32m+            panic!("row {i} must end with ' | pages_visited=<u64>'; got: {line}")
+(B[m         });
+         assert!(
+             n >= 1,
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/sql/bufferpool_pages_visited_test.rs:95:
+         );
+     }
+ }
+[32m+
+(B[mDiff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/transaction/ab04_8thread_1000tx_reconcile_test.rs:76:
+                 let tx = (tid * ITERS_PER_THREAD + n) as u64 + 1;
+                 s.write().begin_transaction_for(tx).expect("begin");
+                 s.write().delete("t", &[Value::Integer(id)]).expect("del");
+[31m-                let _ = s.write().insert(
+(B[m[31m-                    "t",
+(B[m[31m-                    vec![vec![Value::Integer(id), Value::Integer(id)]],
+(B[m[31m-                );
+(B[m[32m+                let _ = s
+(B[m[32m+                    .write()
+(B[m[32m+                    .insert("t", vec![vec![Value::Integer(id), Value::Integer(id)]]);
+(B[m                 s.write().commit_transaction_for(tx).expect("commit");
+             }
+         }));
+Diff in /Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/tests/integration/transaction/stored_proc_catalog_test.rs:61:
+     let mut engine = ExecutionEngine::new(storage);
+ 
+     let result = engine.execute("CREATE PROCEDURE test_proc() BEGIN END");
+[31m-    assert!(result.is_ok(), "CREATE PROCEDURE should succeed with default catalog; got: {:?}", result);
+(B[m[32m+    assert!(
+(B[m[32m+        result.is_ok(),
+(B[m[32m+        "CREATE PROCEDURE should succeed with default catalog; got: {:?}",
+(B[m[32m+        result
+(B[m[32m+    );
+(B[m     let show = engine
+         .execute("SHOW PROCEDURE STATUS")
+         .expect("SHOW PROCEDURE STATUS should succeed");
