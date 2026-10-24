@@ -405,12 +405,18 @@ GitHub Release
 
 ### 11.2 规范要求
 
-**强制使用 Conventional Commits 规范**：
+**强制使用 Conventional Commits 规范** —— 格式、type 取值表、允许的可选 trailer
+**全部以 [`CONTRIBUTING.md` §5](./CONTRIBUTING.md#五提交规范) 为准**，
+本节**不重复列出**（#5453：同一份 type 表曾在三处并存且互不一致）。
+
 - `feat: add vector engine` → MINOR
 - `fix: null pointer bug` → PATCH
 - `refactor: planner cleanup` → 无版本变化
 - `feat!: redesign storage layer` → MAJOR
 - `BREAKING CHANGE: change API` → MAJOR
+
+机器裁决：`scripts/gate/check_commit_message.sh`
+（形态与 type 表唯一性的判据只有那一份实现）。
 
 ### 11.3 推荐工具
 

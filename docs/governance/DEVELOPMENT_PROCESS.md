@@ -190,24 +190,28 @@
 
 ### 7.1 提交信息格式
 
-```
-<类型>: <描述>
-Agent: <Agent名称>
-Scope: <影响范围>
-Refs: #<issue编号>
-```
+> **#5453 —— 以 `CONTRIBUTING.md` §5 为准，本节不再定义第二份格式。**
+> 提交信息的主干格式、type 取值表、可选 trailer 全部在
+> [`CONTRIBUTING.md` §5](./CONTRIBUTING.md#五提交规范)。本节只保留
+> **流程上**的要求：提交前先读那一份，并跑它的机器裁决。
+>
+> ```bash
+> bash scripts/gate/check_commit_message.sh --last 50
+> ```
+>
+> 旧的「`<类型>: <描述>` + 强制 `Agent:` / `Scope:` / `Refs:` 三行」形态
+> **降级为可选扩展**：那三行现在写在 `CONTRIBUTING.md` §5.4，
+> `Agent:` 与 `Scope:` 是推荐的记录项，**只有 `Refs #<issue>` 参与机器裁决**。
+> 原因见 #5453 的实测：那三行在最近 30 个 commit 里
+> （`Agent:` 0 次、`Refs:` 4 次）**事实上从未被执行过**，
+> 规范却写成强制 —— 那是一个没有执行点的断言。
 
 ### 7.2 类型说明
 
-| 类型 | 说明 |
-|------|------|
-| feat | 新功能 |
-| fix | Bug 修复 |
-| docs | 文档 |
-| style | 格式化 |
-| test | 测试 |
-| refactor | 重构 |
-| chore | 维护 |
+**类型取值表只有一份**：[`CONTRIBUTING.md` §5.2](./CONTRIBUTING.md#52-type-类型)。
+
+本节**不重复列出** —— 一份会漂移的表，恰恰是 #5453 立案的原因
+（同一个病在 #5425（阈值三处）、#5437（门禁数四个答案）上各犯过一次）。
 
 ### 7.3 示例
 
