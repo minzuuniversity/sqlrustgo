@@ -301,6 +301,9 @@ stages:
       - "scripts/gate/check_architecture_freeze.sh"
       - "scripts/gate/check_gate_self_verification.sh"
       - "scripts/gate/check_gate_test_integrity.sh"
+      # #5461 / #5450 —— 门禁**执行点矩阵**：清单里的每一项都必须真的会被执行
+      # （存在 + 可达）。这一项把「清单是装饰性的」这件事变成可证伪的判据。
+      - "scripts/gate/check_gate_executability.sh"
       - "scripts/gate/check_coverage_v312.sh"
       - "scripts/gate/check_sql_corpus_gate.sh"
       - "scripts/gate/check_anti_ignore_gate.sh"

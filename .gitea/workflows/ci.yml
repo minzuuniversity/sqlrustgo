@@ -1107,6 +1107,67 @@ jobs:
         # Does NOT require binary / root / network.
         run: bash scripts/soak/test_run_soak_loop_tier3.sh
 
+  # #5461 / #5450 —— 阶段门禁清单的**执行点**。
+  #
+  # `docs/governance/STAGE_CONFIG.yaml` 的 `stages.<STAGE>.required_gates` 是
+  # **声明式**清单。CI 里唯一调用阶段驱动的地方是
+  #
+  #     bash scripts/gate/check_stage.sh --version v4.1.0 --dry-run
+  #
+  # —— `--dry-run` 只逐条打印 `[DRY] <cmd>` 后 continue，**一个门禁都没执行**
+  # （`scripts/gate/check_stage.sh` 的 DRY_RUN 分支）。实测（改动前）：
+  # GA 的 31 项里 **12 项**在任何 CI workflow 里都没有执行点。
+  #
+  # 本 job 在**承载分支**上**真的**执行对应阶段的清单，并且**显式钉住
+  # `--stage`** ⇒ 「清单 ↔ 执行者」一一对应。
+  # `scripts/gate/check_gate_executability.sh` 持续核对这件事：
+  # 往清单里加门禁而不接执行点 ⇒ 门禁变红（fail-closed）。
+  stage-gates:
+    runs-on: [hp-z6g4]
+    # #5455: `needs: [test]` 曾把这个 job 完全遮蔽（test 从未成功过）。
+    # 阶段门禁必须能在一个「已知会红」的分支上跑，否则它不存在。
+    needs: []
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/heads/rc/') || startsWith(github.ref, 'refs/heads/beta/') || startsWith(github.ref, 'refs/heads/hotfix/')
+    steps:
+      - name: Checkout
+        env:
+          CI_DEPTH: "0"
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
+      - name: Restore cargo registry cache (issue #5451)
+        run: bash scripts/ci/cache_cargo_registry.sh restore
+      - name: Stage gates — BETA list executes for real (beta/v* carrier)
+        if: startsWith(github.ref, 'refs/heads/beta/')
+        run: bash scripts/gate/check_stage.sh --version v4.1.0 --stage BETA
+      - name: Stage gates — RC list executes for real (rc/v* carrier)
+        if: startsWith(github.ref, 'refs/heads/rc/')
+        run: bash scripts/gate/check_stage.sh --version v4.1.0 --stage RC
+      - name: Stage gates — GA list executes for real (main / release/v* / hotfix/v* carrier)
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/heads/hotfix/')
+        run: bash scripts/gate/check_stage.sh --version v4.1.0 --stage GA
+
   postcheck:
     runs-on: [hp-z6g4]
     container:
@@ -1356,6 +1417,13 @@ jobs:
       # run. `--dry-run` is used on purpose — the *full* stage gate is
       # executed at promotion time, not on every push, because a gate list
       # that must run on every commit is a gate list that is always red.
+      # #5461 / #5450 —— 门禁执行点矩阵：清单里的每一项都必须真的会被执行。
+      # 这条检查本身只有 ~1s，却能在「有人往 STAGE_CONFIG 里加了一个没人跑的门禁」
+      # 的**当天**把问题挡住，而不是等到发布前才发现。
+      - name: Gate executability check (#5461 / #5450)
+        run: |
+          set -euo pipefail
+          bash scripts/gate/check_gate_executability.sh 2>&1 | tee gate_executability.log
       - name: Stage driver resolves the SSOT (#5440)
         run: |
           set -euo pipefail
