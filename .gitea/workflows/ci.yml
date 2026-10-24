@@ -1228,12 +1228,20 @@ jobs:
           # does not have it, that is an **environment blocker**, not a
           # code failure: it is recorded as NOT-RUN with a controlled
           # reason code rather than silently passing.
+          #
+          # #5581: the stage is stated **explicitly** — this step is the GA
+          # coverage criterion (both comments above and in the RC/GA step
+          # below say so), so it judges the GA bar read from the SSOT
+          # (docs/governance/STAGE_CONFIG.yaml → thresholds →
+          # COVERAGE_MIN_GA = 85) instead of the 80.0 the script used to
+          # hardcode. The SSOT is now the only place a coverage threshold
+          # comes from; the script has no constant of its own.
           if ! cargo llvm-cov --version >/dev/null 2>&1; then
             echo "NOT-RUN: reason=COVERAGE_TOOL_MISSING (cargo-llvm-cov is not installed on this runner)" \
               | tee coverage_report.log
             exit 0
           fi
-          bash scripts/gate/check_coverage_v312.sh 2>&1 | tee coverage_report.log
+          SQLRUSTGO_COVERAGE_STAGE=ga bash scripts/gate/check_coverage_v312.sh 2>&1 | tee coverage_report.log
       - name: Auto env:blocked (SPEC-021)
         run: |
           set -euo pipefail

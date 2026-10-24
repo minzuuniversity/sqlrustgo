@@ -20,6 +20,9 @@ cd "$PROJECT_ROOT"
 # gate and the RC/GA gate.
 # shellcheck source=scripts/gate/common.sh
 source "$PROJECT_ROOT/scripts/gate/common.sh"
+# The threshold reader — one rule, one implementation (#5581).
+# shellcheck source=scripts/gate/stage_config_common.sh
+source "$PROJECT_ROOT/scripts/gate/stage_config_common.sh"
 
 # Ensure helper scripts are executable
 chmod +x "$PROJECT_ROOT/scripts/gate"/check_*.sh 2>/dev/null || true
@@ -114,9 +117,28 @@ if command -v cargo-llvm-cov &>/dev/null; then
             # number — and it must not be reported as a zero, either.
             echo "[WARN] coverage measurement produced no line-coverage figure, see $COVERAGE_OUT/cov.log"
         else
-            echo "[L2] Coverage: ${TOTAL}% (threshold: 50%)"
-            if [ "${TOTAL%%.*}" -lt 50 ] 2>/dev/null; then
-                echo "[WARN] coverage below 50%, see $COVERAGE_OUT/cov.log"
+            # #5581: the threshold is read from the SSOT, not written down
+            # here. L2 is the **L1 (alpha-tier) code-quality** step, so it
+            # judges the ALPHA bar — `COVERAGE_MIN_ALPHA` in
+            # docs/governance/STAGE_CONFIG.yaml → thresholds. The value is
+            # unchanged (50); what changes is that there is now ONE place
+            # it comes from.
+            #
+            # Note what L2 is and is not: it is a **reporting** step — it
+            # prints a WARN and never fails the gate. The measurement it
+            # runs is the whole-workspace line coverage, deliberately a
+            # different quantity from the canonical L1_8 8-crate average
+            # that `scripts/gate/check_coverage_v312.sh` measures and
+            # **decides** on. The verdict lives with the shared
+            # implementation; this step only shows the number.
+            L2_COVERAGE_MIN="$(stage_coverage_min ALPHA || true)"
+            if [ -z "$L2_COVERAGE_MIN" ]; then
+                echo "[WARN] no coverage threshold for ALPHA in the SSOT, see $COVERAGE_OUT/cov.log"
+            else
+                echo "[L2] Coverage: ${TOTAL}% (threshold: ${L2_COVERAGE_MIN}%)"
+                if [ "${TOTAL%%.*}" -lt "$L2_COVERAGE_MIN" ] 2>/dev/null; then
+                    echo "[WARN] coverage below ${L2_COVERAGE_MIN}%, see $COVERAGE_OUT/cov.log"
+                fi
             fi
         fi
     else

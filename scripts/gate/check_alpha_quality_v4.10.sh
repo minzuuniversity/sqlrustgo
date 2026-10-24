@@ -60,7 +60,17 @@ ANTI_FAB_CMD="bash scripts/gate/check_anti_fabrication.sh"
 ANTI_IGNORE_CMD="bash scripts/gate/check_anti_ignore_gate.sh"
 ARCH_INVARIANTS_CMD="bash scripts/gate/check_arch_invariants.sh"
 ARCH3_CMD="bash scripts/gate/check_arch3_no_bypass.sh"
-COVERAGE_CMD="bash scripts/gate/check_coverage_v312.sh"
+# #5581: the "one coverage implementation" rule. This is the gate that stops
+# a **second** coverage measurement from growing back — the defect #5579 had
+# to fix by hand, and which #5581 found still had three more copies of the
+# rule in the tree. It is cheap (no cargo) and it runs on every PR through
+# `check_alpha_v410.sh` => the CI's `legacy-gate` job.
+COVERAGE_SINGLE_IMPL_CMD="bash scripts/gate/check_coverage_single_implementation.sh"
+# #5581: the stage is stated **explicitly**, so that if Q7 is ever
+# re-enabled it judges the ALPHA threshold read from the SSOT
+# (docs/governance/STAGE_CONFIG.yaml → thresholds → COVERAGE_MIN_ALPHA)
+# rather than a number written down in this file.
+COVERAGE_CMD="SQLRUSTGO_COVERAGE_STAGE=alpha bash scripts/gate/check_coverage_v312.sh"
 SQL_CORPUS_CMD="bash scripts/gate/check_sql_corpus_gate.sh"
 BUILD_CMD="cargo build --all-features"
 TEST_CMD="cargo test --all-features --lib"
@@ -85,6 +95,10 @@ check "Q4_ARCH_INVARIANTS" "$ARCH_INVARIANTS_CMD"
 check "Q4_ARCH3_NO_BYPASS" "$ARCH3_CMD"
 
 echo ""
+echo "--- Q4b: One Coverage Implementation (#5581) ---"
+check "Q4B_COVERAGE_SINGLE_IMPL" "$COVERAGE_SINGLE_IMPL_CMD"
+
+echo ""
 echo "--- Q5: SQL Corpus Gate ---"
 check "Q5_SQL_CORPUS" "$SQL_CORPUS_CMD"
 
@@ -96,8 +110,13 @@ check "Q6_TEST_LIB" "$TEST_CMD"
 # (see scripts/gate/check_alpha_quality_v3.12.0.sh). Coverage measurement
 # has known instability for cross-version L1_8 framework (cargo llvm-cov
 # can miss extracting per-crate percentages, returning 58% / 85% alternately).
-# v4.1.0 alpha-quality follows v3.12.0 alpha-quality scope. Coverage >= 50%
-# is a STAGE.yaml alpha_to_beta exit criterion (tracked separately).
+# v4.1.0 alpha-quality follows v3.12.0 alpha-quality scope.
+#
+# #5581: the ALPHA coverage bar is **not restated here**. It is the SSOT's
+# COVERAGE_MIN_ALPHA (docs/governance/STAGE_CONFIG.yaml → thresholds), and
+# it is also a STAGE.yaml alpha_to_beta exit criterion (tracked separately).
+# A second copy of the number in a comment is how the four gates ended up
+# disagreeing in the first place.
 echo ""
 echo "--- (Q7 Coverage deferred to alpha_to_beta per STAGE.yaml) ---"
 echo "=== v4.1.0 Alpha Quality Summary ==="

@@ -1,0 +1,21 @@
+# Coverage-measurement role allowlist (see check_coverage_single_implementation.sh).
+#
+# Format: <repo-relative path> TAB <role> TAB <reason>
+#   role    ∈ the-implementation | reporting | report-generator | historical | legacy
+#   reason  non-empty — an entry without a reason is a hidden problem
+#
+# Extension note: this file is tab-separated, but it is deliberately named .txt
+# and not .tsv. docs/governance/FILE_GOVERNANCE.md §1 forbids `*.tsv` with
+# "Allowed exception: none", and §6 requires release-owner approval for an
+# exception — which this change does not have. `.gitignore` also matches
+# `*.tsv`, so a .tsv file would never enter the commit and the meta-gate
+# would exit 2 (ENV_ERROR) on a CI checkout. .txt is not a forbidden
+# extension; do not "fix" this name back to .tsv.
+#
+scripts/gate/common.sh	the-implementation	THE shared coverage implementation: per-crate measurement (feature derivation + environment-dependent exclusions + --test-threads=1), the Lines-column extraction and the fail-closed verdict. Everything else must go through it.
+gate/gate.sh	reporting	L2 reports the whole-workspace line coverage and prints a WARN — it never decides, and it is a different quantity from the canonical L1_8 8-crate average that decides. Its threshold now also comes from the SSOT (#5581).
+scripts/gate/check_v312_coverage_baseline.sh	report-generator	Produces the baseline coverage TABLE for the release documents. It is a generator, not a verdict: its output is reviewed, not passed/failed.
+scripts/gate/legacy/check_10_principles.sh	legacy	Superseded historical implementation kept for reference. Not referenced by the v4.1.0 CI path.
+scripts/gate/legacy/check_r1_r10_content.sh	legacy	Superseded historical implementation kept for reference. Not referenced by the v4.1.0 CI path.
+.github/workflows/coverage.yml	historical	v2.6.0-era GitHub-mirror workflow (triggers develop/v2.6.0 / main). It runs `cargo llvm-cov --all-features --json` and uploads the JSON as an artifact — it extracts no percentage and judges nothing, so it is a report generator, not a criterion. Superseded by the v4.1.0 gate; not on the Gitea CI path.
+.github/workflows/coverage-parallel.yml	historical	v2.7.0-era GitHub-mirror workflow (triggers develop/v2.7.0 / main). It DOES judge: it extracts its own `line_ratio` out of coverage.json and fails the build below **70%** — a fifth threshold number, on a different quantity (whole-workspace ratio, not the L1_8 8-crate average). Recorded in BATCH41 evidence §2.4 and registered as its own issue; kept as-is here so the finding stays visible instead of being silently normalised. Not on the v4.1.0 CI path.

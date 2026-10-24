@@ -2,6 +2,12 @@
 # v3.8.0 Alpha Gate — Alpha 阶段门禁脚本 v2.0
 # Governance-Driven: G-01 Evidence Required, G-04 Claim Provenance
 #
+# #5581: this is a **past release's own criterion**. Its coverage
+# measurement is listed in scripts/gate/coverage_measurement_allowlist.txt
+# with the role `historical`; it is off the v4.1.0 CI path
+# (`resolve_alpha_gate.sh` selects `check_alpha_v410.sh` for v4.1.0). Do not
+# copy its measurement — the shared one lives in scripts/gate/common.sh.
+#
 # 检查内容:
 #   A1-A5: Standard Checks (Build/Test/Clippy/Format/Coverage)
 #   A6: Governance (Replay/Claim/Decision/ADR/Freshness)
@@ -12,6 +18,11 @@
 # NOTE: Does NOT use set -e — each check runs independently to produce full report
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# #5581: the shared coverage implementation (measurement + extraction +
+# fail-closed verdict). This gate used to carry its own.
+# shellcheck source=scripts/gate/common.sh
+source "$SCRIPT_DIR/common.sh"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ARTIFACTS_DIR="$PROJECT_ROOT/artifacts/gate/v3.8.0"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -122,49 +133,42 @@ check "A3_CLIPPY" "Clippy (core)" \
 check "A4_FORMAT" "Format (core)" \
     "cargo fmt -p sqlrustgo-parser -p sqlrustgo-planner -p sqlrustgo-executor -p sqlrustgo-storage -p sqlrustgo-transaction -p sqlrustgo-catalog -- --check 2>&1 | tee /dev/stderr; test \${PIPESTATUS[0]} -eq 0"
 
-# A5: Coverage (L1 8 crates, llvm-cov comprehensive method)
-# Method: --tests primary, --lib fallback (same as RC gate)
+# A5: Coverage (L1 8 crates)
+#
+# #5581: the measurement is now the SHARED one — `coverage_measure_set` +
+# `coverage_verdict` from scripts/gate/common.sh. This gate used to carry
+# its own implementation, and that implementation had **three** defects at
+# once:
+#   * it fell back to `--lib` and, failing that, recorded a literal
+#     "TOTAL 0 0 0 0 0%" — a measurement that did not happen, reported as a
+#     number, which then **pulled the average down** (the issue's item E);
+#   * it extracted the **first** percentage of the TOTAL row, i.e. the
+#     *regions* column, not line coverage (the same column bug
+#     `gate/gate.sh` had);
+#   * it had no feature derivation, no environment-dependent exclusions and
+#     no `--test-threads=1`, so its numbers moved with the machine load.
+#
+# The bar stays this release's own (73): it is a v3.8.0 criterion, not a
+# stage threshold of the current SSOT (see the note in the header).
 echo -n "[A5] Coverage (L1 8 crates) ... "
 TOTAL=$((TOTAL+1))
-COV_OUTPUT=$(mktemp)
-COV_SUM=0; COV_COUNT=0
-for crate in sqlrustgo-types sqlrustgo-parser sqlrustgo-planner \
-             sqlrustgo-optimizer sqlrustgo-executor sqlrustgo-storage \
-             sqlrustgo-transaction sqlrustgo-catalog; do
-    # Primary: --tests
-    result=$(cargo llvm-cov test -p "$crate" --all-features --tests 2>/dev/null | grep "^TOTAL" | head -1)
-    if [ -z "$result" ]; then
-        # Fallback: --lib
-        result=$(cargo llvm-cov test -p "$crate" --all-features --lib 2>/dev/null | grep "^TOTAL" | head -1)
-    fi
-    if [ -z "$result" ]; then
-        result="TOTAL 0 0 0 0 0%"
-    fi
-    # Extract FIRST percentage (line coverage column) — e.g. "87.62%"
-    pct=$(echo "$result" | grep -oE "[0-9]+\.[0-9]+%" | head -1 | tr -d '%' | cut -d'.' -f1)
-    if [ -n "$pct" ] && [ "$pct" -ge 0 ] 2>/dev/null; then
-        COV_SUM=$((COV_SUM + pct)); COV_COUNT=$((COV_COUNT + 1))
-        echo "  $crate: ${pct}%" >> "$COV_OUTPUT"
-    fi
-done
-if [ "$COV_COUNT" -gt 0 ]; then
-    AVG=$((COV_SUM / COV_COUNT))
-    echo "${AVG}% (avg of $COV_COUNT crates)" | tee -a "$COV_OUTPUT"
-    echo "  Details:" >> "$COV_OUTPUT"
-    cat "$COV_OUTPUT"
-    cat "$COV_OUTPUT" > "$ARTIFACTS_DIR/A5_COV.log"
-    if [ "$AVG" -ge 73 ]; then
-        PASS=$((PASS+1))
-        echo "PASS"
-    else
-        echo "FAIL (below 73%)"
-        BLOCKERS=$((BLOCKERS+1))
-    fi
+COV_OUTPUT="$(make_temp_file || echo "")"
+COVERAGE_CRATES="sqlrustgo-types sqlrustgo-parser sqlrustgo-planner sqlrustgo-optimizer sqlrustgo-executor sqlrustgo-storage sqlrustgo-transaction sqlrustgo-catalog"
+coverage_measure_set $COVERAGE_CRATES > "$COV_OUTPUT" 2>&1
+coverage_verdict 73 >> "$COV_OUTPUT" 2>&1
+COV_RC=$?
+if [ "$COV_RC" -eq 0 ]; then
+    PASS=$((PASS+1))
+    echo "PASS (avg ${COVERAGE_AVERAGE}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
 else
-    echo "FAIL (measurement failed)" | tee "$ARTIFACTS_DIR/A5_COV.log"
+    echo "FAIL (avg ${COVERAGE_AVERAGE:-not measured}%, measured ${COVERAGE_MEASURED_COUNT:-0}/${COVERAGE_TOTAL_COUNT:-0} crates)"
     BLOCKERS=$((BLOCKERS+1))
 fi
-rm -f "$COV_OUTPUT"
+if [ -n "$COV_OUTPUT" ]; then
+    cat "$COV_OUTPUT"
+    cat "$COV_OUTPUT" > "$ARTIFACTS_DIR/A5_COV.log"
+    rm -f "$COV_OUTPUT"
+fi
 
 # ============================================================
 # A6: Governance 门禁
