@@ -235,6 +235,7 @@ impl<'a, S: StorageEngine> FilespaceCleanup<'a, S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
     use crate::engine::{ColumnDefinition, MemoryStorage, Record, StorageEngine, TableInfo};
     use sqlrustgo_types::Value;
@@ -306,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_cleanup_with_temp_files() {
-        let tmpdir = std::env::temp_dir().join("sqlrustgo_test_cleanup");
+        let tmpdir = unique_test_path("sqlrustgo_test_cleanup");
         let _ = fs::create_dir_all(&tmpdir);
 
         // Create a temp file
@@ -326,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_cleanup_orphaned_table_files() {
-        let tmpdir = std::env::temp_dir().join("sqlrustgo_test_orphan");
+        let tmpdir = unique_test_path("sqlrustgo_test_orphan");
         let _ = fs::create_dir_all(&tmpdir);
 
         // Orphaned file — not in storage metadata
@@ -348,7 +349,7 @@ mod tests {
     fn test_cleanup_resync_integration() {
         // Integration: run cleanup then resync
         let storage = make_test_storage();
-        let tmpdir = std::env::temp_dir().join("sqlrustgo_test_integration");
+        let tmpdir = unique_test_path("sqlrustgo_test_integration");
         let _ = fs::create_dir_all(&tmpdir);
         fs::write(tmpdir.join("temp.tmp"), b"stale").unwrap();
 

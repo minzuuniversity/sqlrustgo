@@ -20,6 +20,7 @@
 //! because the defect is in the delegation, not in any single layer. Testing
 //! `MvccStorage` directly would pass both before and after the fix.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::{
     BoxStorageEngine, FileStorage, MemoryWalManager, MvccStorage, ParallelWalStorage, StorageEngine,
 };
@@ -27,7 +28,7 @@ use sqlrustgo_types::Value;
 use std::path::PathBuf;
 
 fn dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("boxed_tx_{tag}_{}", std::process::id()));
+    let d = unique_test_path(&format!("boxed_tx_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     d
 }

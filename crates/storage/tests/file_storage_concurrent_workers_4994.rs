@@ -40,6 +40,7 @@
 //! give each worker its own `tx_id`, which is what "8 independent
 //! connections" means at this layer.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::{ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value};
 use std::sync::{Arc, RwLock};
 
@@ -92,7 +93,7 @@ fn row(id: i64, v: i64) -> Record {
 }
 
 fn fresh(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
+    let dir = unique_test_path(&format!(
         "4994_workers_{tag}_{}_{:?}",
         std::process::id(),
         std::thread::current().id()

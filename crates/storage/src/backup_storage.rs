@@ -390,11 +390,12 @@ impl BackupTransfer {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::unique_test_path;
     use super::*;
 
     #[test]
     fn test_local_storage_save_load() {
-        let temp = std::env::temp_dir().join("backup_storage_test");
+        let temp = unique_test_path("backup_storage_test");
         let storage = LocalBackupStorage::new(temp.clone());
 
         storage.save("test/key1.dat", b"hello world").unwrap();
@@ -411,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_local_storage_list() {
-        let temp = std::env::temp_dir().join("backup_list_test");
+        let temp = unique_test_path("backup_list_test");
         let storage = LocalBackupStorage::new(temp.clone());
 
         storage
@@ -429,7 +430,7 @@ mod tests {
 
     #[test]
     fn test_backup_storage_manager_local_only() {
-        let temp = std::env::temp_dir().join("backup_manager_test");
+        let temp = unique_test_path("backup_manager_test");
         let manager = BackupStorageManager::new(temp.clone());
 
         manager.save("test/key.dat", b"test data").unwrap();

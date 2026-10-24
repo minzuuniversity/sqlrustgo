@@ -25,6 +25,7 @@
 //! So these call `scan_with_index_in` directly and assert on what the
 //! index actually returns.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_parser::IndexColumnSpec;
 use sqlrustgo_storage::{
     ColumnDefinition, FileStorage, IndexInfo, Record, StorageEngine, TableInfo, Value,
@@ -34,7 +35,7 @@ use std::path::PathBuf;
 const DB: &str = "default";
 
 fn tmpdir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("idx5209_{tag}_{}", std::process::id()));
+    let d = unique_test_path(&format!("idx5209_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).expect("mkdir");
     d

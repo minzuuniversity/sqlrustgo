@@ -37,6 +37,7 @@
 //! reproduces the *post-crash* state deterministically, which is what the
 //! recovery path actually has to cope with.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::recovery_engine::{RecoveryEngine, StatefulRecoveryEngine};
 use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::{
@@ -66,7 +67,7 @@ fn row(id: i64) -> Record {
 }
 
 fn dir(t: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("crash5192_{t}_{}", std::process::id()));
+    let d = unique_test_path(&format!("crash5192_{t}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).expect("mkdir");
     d

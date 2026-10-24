@@ -31,6 +31,7 @@
 //!   foreign database.
 //! * `default` itself is accepted and delegates to the db-less version.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::append_only_storage::AppendOnlyStorage;
 use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
 use sqlrustgo_storage::engine::{
@@ -56,7 +57,7 @@ fn foreign_db_err(e: SqlError) -> bool {
 #[test]
 fn append_only_refuses_foreign_db() {
     let mut s =
-        AppendOnlyStorage::new(std::env::temp_dir().join("sqrg_5266_ao")).expect("temp dir");
+        AppendOnlyStorage::new(unique_test_path("sqrg_5266_ao")).expect("temp dir");
     s.create_table(&table("t")).unwrap();
     let rec = vec![vec![Value::Integer(1)]];
     let filter: &dyn Fn(&sqlrustgo_storage::Record) -> bool = &|_| true;
@@ -99,7 +100,7 @@ fn append_only_refuses_foreign_db() {
 /// BinaryTableStorage: every `_in_db` SqlResult method must refuse a foreign db.
 #[test]
 fn binary_table_refuses_foreign_db() {
-    let mut s = BinaryTableStorage::new(std::env::temp_dir().join("sqrg_5266_bt")).unwrap();
+    let mut s = BinaryTableStorage::new(unique_test_path("sqrg_5266_bt")).unwrap();
     s.create_table(&table("t")).unwrap();
     let rec = vec![vec![Value::Integer(1)]];
     let filter: &dyn Fn(&sqlrustgo_storage::Record) -> bool = &|_| true;
@@ -138,7 +139,7 @@ fn binary_table_refuses_foreign_db() {
 /// BinaryTableStorageV2: every `_in_db` SqlResult method must refuse a foreign db.
 #[test]
 fn binary_table_v2_refuses_foreign_db() {
-    let mut s = BinaryTableStorageV2::new(std::env::temp_dir().join("sqrg_5266_bv")).unwrap();
+    let mut s = BinaryTableStorageV2::new(unique_test_path("sqrg_5266_bv")).unwrap();
     StorageEngine::create_table(&mut s, &table("t")).unwrap();
     let rec = vec![vec![Value::Integer(1)]];
     let filter: &dyn Fn(&sqlrustgo_storage::Record) -> bool = &|_| true;
@@ -220,7 +221,7 @@ fn table_level_refuses_foreign_db() {
 fn vtu_guard_forwards_foreign_db_to_inner() {
     // VtuGuard wraps a no-namespace storage; the inner refusal must surface.
     let inner =
-        AppendOnlyStorage::new(std::env::temp_dir().join("sqrg_5266_vg")).expect("temp dir");
+        AppendOnlyStorage::new(unique_test_path("sqrg_5266_vg")).expect("temp dir");
     let mut s = VtuGuard::new(inner, "test");
     let rec = vec![vec![Value::Integer(1)]];
     let e = s.insert_in_db("d1", "t", rec).unwrap_err();

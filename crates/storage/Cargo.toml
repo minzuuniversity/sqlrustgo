@@ -40,7 +40,15 @@ criterion = "0.8"
 # are being built** (Cargo unifies the features of the package with those of
 # its dev-dependency); a production `cargo build` keeps the feature off, so
 # the hooks stay out of the shipped binary.
-sqlrustgo-storage = { path = ".", features = ["fault-injection"] }
+# #5571: the `test_support` module (unique temp paths for tests) is gated
+# behind `cfg(any(test, feature = "test-support"))` — an **integration test is
+# its own crate**, so `cfg(test)` does not apply to it, and the integration
+# tests need the *same* unique-temp-path implementation as the unit tests.
+# The self dev-dependency below turns the feature on **only while the test
+# targets are being built** (Cargo unifies the features of the package with
+# those of its dev-dependencies); a production `cargo build` keeps the
+# feature off, so the helper is out of the shipped binary.
+sqlrustgo-storage = { path = ".", features = ["fault-injection", "test-support"] }
 
 [features]
 default = []
@@ -48,6 +56,12 @@ default = []
 # library WITHOUT cfg(test), so a cfg(test) hook would silently vanish and
 # the crash tests would hang waiting for a signal. OFF in production.
 fault-injection = []
+# #5571: enables the `test_support` module (unique temp paths for tests).
+# Integration tests compile the library WITHOUT cfg(test), so a cfg(test)-only
+# helper would silently vanish and the integration tests would keep using
+# fixed global temp paths — which collide with the parallel `cargo test` job
+# on the same runner. OFF in production.
+test-support = []
 bin_storage_default = []
 v313_3_profile = []   # V313.3 profiling experiments; test-only hooks; OFF by default
 

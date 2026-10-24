@@ -434,11 +434,11 @@ impl ParquetCompatWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env::temp_dir;
+    use crate::test_support::unique_test_path;
 
     #[test]
     fn test_parquet_compat_write_read_roundtrip() {
-        let dir = temp_dir();
+        let dir = unique_test_path("parquet_test");
         let path = dir.join("test_roundtrip.parquet");
 
         let info = TableInfo {
@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn test_parquet_compat_with_compression() {
-        let dir = temp_dir();
+        let dir = unique_test_path("parquet_test");
         let path = dir.join("test_compressed.parquet");
 
         let info = TableInfo {
@@ -533,7 +533,7 @@ mod tests {
 
     #[test]
     fn test_parquet_compat_zstd_compression() {
-        let dir = temp_dir();
+        let dir = unique_test_path("parquet_test");
         let path = dir.join("test_zstd.parquet");
 
         let info = TableInfo {
@@ -570,7 +570,7 @@ mod tests {
 
     #[test]
     fn test_parquet_compat_statistics() {
-        let dir = temp_dir();
+        let dir = unique_test_path("parquet_test");
         let path = dir.join("test_stats.parquet");
 
         let info = TableInfo {
@@ -611,7 +611,7 @@ mod tests {
 
     #[test]
     fn test_parquet_compat_columnar_roundtrip() {
-        let dir = temp_dir();
+        let dir = unique_test_path("parquet_test");
         let path = dir.join("test_columnar.parquet");
 
         let info = TableInfo {
@@ -671,7 +671,7 @@ mod tests {
 
     #[test]
     fn test_parquet_compat_invalid_format() {
-        let dir = temp_dir();
+        let dir = unique_test_path("parquet_test");
         let path = dir.join("invalid.parquet");
 
         std::fs::write(&path, b"not a parquet file").unwrap();
