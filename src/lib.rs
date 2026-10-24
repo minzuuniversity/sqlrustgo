@@ -33,6 +33,8 @@ pub mod sequence_state;
 pub mod system_tables;
 
 #[cfg(test)]
+mod engine_group_by_binder_tests;
+#[cfg(test)]
 mod execution_engine_tests;
 
 pub use sqlrustgo_executor::parallel_executor::{
