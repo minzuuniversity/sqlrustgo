@@ -284,6 +284,22 @@ GA_REQUIRES=(
     "GA-8:GMP compliance matrix signed + GA_GATE_REPORT.md:docs/releases/v3.12.0/GA_GATE_REPORT.md"
 )
 
+# #5491: the GA-2 SOAK ARTIFACT — the document that has to prove a SOAK ran.
+#
+# GA-2 used to be judged by "tests/soak/v312_mixed_soak.rs exists", which
+# proved nothing about a SOAK ever having run. The canonical 168h report is
+# named here (evidence/v312-59/GA_OPENSPEC.md names the same path), and it
+# is judged by scripts/gate/check_ga2_soak_artifact.sh — ONE implementation,
+# shared with scripts/gate/check_ga_only_v312.sh.
+GA2_SOAK_ARTIFACT="docs/releases/v3.12.0/evidence/v312-59/GA2_168H_SOAK_REPORT.md"
+
+# What IS in the tree, so the verdict names it instead of leaving the reader
+# to guess. A 60s/5min mixed-workload demo report is a real record — it is
+# simply not the 168h GA-2 artifact.
+GA2_DEMO_ARTIFACT="docs/releases/v3.12.0/evidence/v312-59/GA2_MIXED_SOAK_DEMO_REPORT.md"
+
+GA2_MAX_AGE_DAYS=30
+
 run_ga_gate() {
     log_step "GA" "v3.12.0 GA promotion_to_GA_requires (8/8)"
     local ga_log="$EVIDENCE_DIR/ga_ga_gate_$(date +%Y%m%d_%H%M%S).log"
@@ -303,7 +319,33 @@ run_ga_gate() {
         local status="FAIL"
         local detail=""
 
-        if [ -f "$REPO_ROOT/$path" ]; then
+        # #5491: GA-2 is judged by validating the SOAK **artifact**, not by
+        # asking whether the harness source file exists. The generic branch
+        # below answered "the .rs file is in the tree" and recorded
+        # "rust scaffold present" — which is not evidence that a SOAK ran.
+        # The validator is the ONE implementation of that rule; check_ga_only_v312.sh
+        # calls the same script.
+        if [ "$label" = "GA-2" ]; then
+            local ga2_out ga2_status ga2_detail
+            ga2_out=$(bash "$SCRIPT_DIR/check_ga2_soak_artifact.sh" \
+                          --artifact "$REPO_ROOT/$GA2_SOAK_ARTIFACT" \
+                          --max-age-days "$GA2_MAX_AGE_DAYS" 2>/dev/null)
+            ga2_status="${ga2_out%%|*}"
+            ga2_detail="${ga2_out#*|}"
+            if [ -z "$ga2_out" ]; then
+                status="FAIL"
+                detail="SOAK artifact: validator produced no verdict"
+            elif [ "$ga2_status" = "PASS" ]; then
+                status="PASS"
+                detail="SOAK artifact validated: ${ga2_detail}"
+            else
+                status="FAIL"
+                detail="SOAK artifact not validated: ${ga2_detail}"
+                if [ -f "$REPO_ROOT/$GA2_DEMO_ARTIFACT" ]; then
+                    detail="${detail} (a mixed-workload demo report exists at ${GA2_DEMO_ARTIFACT}, but a 60s/5min run is not the 168h GA-2 artifact)"
+                fi
+            fi
+        elif [ -f "$REPO_ROOT/$path" ]; then
             # Differentiate script vs doc
             case "$path" in
                 *.sh)
@@ -316,7 +358,7 @@ run_ga_gate() {
                     fi
                     ;;
                 *.rs)
-                    status="PASS"  # scaffold (GA-2)
+                    status="PASS"
                     detail="rust scaffold present"
                     ;;
                 *.md)
