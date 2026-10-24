@@ -23,11 +23,11 @@
 //! scoped `db\x01table` keys — and scoped them a second time, addressing
 //! `default\x01default\x01tx_t`, which matches no buffer.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, StorageEngine, TableInfo,
 };
 use sqlrustgo_storage::file_storage::FileStorage;
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_types::Value;
 
 fn users_table() -> TableInfo {

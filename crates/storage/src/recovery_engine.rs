@@ -965,9 +965,9 @@ pub(crate) fn apply_wal_entry_with_index(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::unique_test_path;
     use super::*;
     use crate::engine::MemoryStorage;
+    use crate::test_support::unique_test_path;
 
     #[test]
     fn test_table_name_to_id_consistency() {

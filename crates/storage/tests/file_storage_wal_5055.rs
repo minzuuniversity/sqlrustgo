@@ -13,11 +13,11 @@
 //! a no-op, and none of them can be satisfied by "the log file exists"
 //! alone — they assert on entry *content*.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{
     ColumnDefinition, Record, RowFilter, RowMutation, StorageEngine, TableInfo,
 };
 use sqlrustgo_storage::file_storage::FileStorage;
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::wal::{WalEntry, WalEntryType};
 use sqlrustgo_storage::wal_legacy::WalReader;
 use sqlrustgo_types::Value;
