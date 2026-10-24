@@ -81,6 +81,10 @@ use std::time::{Duration, Instant};
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
 
+// #5577：输出目录规则收敛到共享 helper（唯一实现）。
+#[path = "../common/evidence_output.rs"]
+mod evidence_output;
+
 const DEMO_DURATION_SECS: u64 = 60 * 60; // 1h demo (GA gate)
 const SMOKE_DURATION_SECS: u64 = 60; // 60s smoke (CI)
 const WORKLOAD_FRACTION: [u32; 5] = [30, 25, 15, 10, 20];
@@ -394,7 +398,7 @@ fn v312_ga_mixed_workload_demo() {
 
     print_summary(&metric_arcs);
 
-    // 写 summary 到 evidence 目录。
+    // 写 summary 到 **构建产物目录**。
     //
     // #5491: the output path is overridable so that a runner can keep the
     // artifact OUT of the repository tree. Writing a generated file into
@@ -403,10 +407,22 @@ fn v312_ga_mixed_workload_demo() {
     // and the file that lands there says nothing about the run that
     // produced it — it is simply whatever the last run left behind.
     //
-    // The default is unchanged, so an existing caller keeps working.
-    let summary_path = std::env::var("SQLRUSTGO_SOAK_SUMMARY_PATH").unwrap_or_else(|_| {
-        "docs/releases/v3.12.0/evidence/v312-59/soak/v312_mixed_soak_summary.txt".to_string()
-    });
+    // #5577: the **default** used to be
+    // `docs/releases/v3.12.0/evidence/v312-59/soak/…` — i.e. the
+    // overridable knob existed but the default still pointed **into the
+    // repository**, so the intent ("keep the artifact OUT of the tree")
+    // was not what the code did. The default is now the build-output
+    // directory; writing into the repository requires the explicit
+    // `SQLRUSTGO_SOAK_SUMMARY_PATH`.
+    //
+    // The rule itself lives in `tests/common/evidence_output.rs`
+    // (**one implementation**, #5577).
+    let summary_path = evidence_output::evidence_file(
+        "SQLRUSTGO_SOAK_SUMMARY_PATH",
+        "soak/v312_mixed_soak_summary.txt",
+    )
+    .to_string_lossy()
+    .to_string();
     fs::create_dir_all(
         std::path::Path::new(summary_path.as_str())
             .parent()

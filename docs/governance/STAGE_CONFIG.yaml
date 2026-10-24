@@ -307,6 +307,14 @@ stages:
       # that is exactly how the RC/GA gate ended up measuring the same
       # eight crates with a different command and a reduced sample (#5579).
       - "scripts/gate/check_coverage_single_implementation.sh"
+      # #5577 / #5389 — a test must never overwrite committed evidence.
+      # The static layer (L1) only sees a write whose argument is a `docs/`
+      # literal; the behavioural layer (L2) checks the worktree right after
+      # the suite ran, which is the only layer that catches an indirect write
+      # (A04 wrote through a helper). Without this gate, one ordinary
+      # `cargo test --workspace` replaces 21 archived comparison outputs with
+      # `ENGINE_UNAVAILABLE: ...` placeholders.
+      - "scripts/gate/check_tests_dont_write_archived_evidence.sh"
       - "scripts/gate/check_sql_corpus_gate.sh"
       - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"
