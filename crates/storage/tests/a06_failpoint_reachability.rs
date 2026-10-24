@@ -22,10 +22,10 @@
 //! lets the production call site reach it, and reads the signal file the
 //! background thread writes — proving the hook is reachable, not decorative.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
 use sqlrustgo_storage::fault_injection::{FaultPoint, Signal};
 use sqlrustgo_storage::file_storage::FileStorage;
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::wal_legacy::{WalEntry, WalEntryType, WalWriter};
 use sqlrustgo_storage::{StorageEngine, Value as SqlValue};
 use std::sync::{mpsc, Mutex, OnceLock};

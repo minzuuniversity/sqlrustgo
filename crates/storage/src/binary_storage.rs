@@ -1367,8 +1367,8 @@ impl StorageEngine for BoxStorageEngine {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::unique_test_path;
     use super::*;
+    use crate::test_support::unique_test_path;
 
     #[test]
     fn test_binary_save_load() {

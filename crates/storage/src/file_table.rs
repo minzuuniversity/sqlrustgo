@@ -204,8 +204,8 @@ impl TableEngine for FileTable {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::unique_test_path;
     use super::*;
+    use crate::test_support::unique_test_path;
     /// #5571: 唯一的临时路径来自 [`crate::test_support::unique_test_path`] ——
     /// 本 crate 里**只有那一份**实现，测试之间不共享目录。
     fn temp_dir() -> PathBuf {
