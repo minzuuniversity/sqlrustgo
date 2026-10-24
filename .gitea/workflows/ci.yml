@@ -1480,7 +1480,23 @@ jobs:
           # #5443: without `pipefail` the step's exit code came from `tee`
           # (always 0) — a hard D3 failure could not turn this step red.
           set -euo pipefail
-          bash scripts/gate/check_rc_ga_gate.sh ga 2>&1 | tee rc_ga_gate.log
+          #
+          # #5580: `--skip-a5` skips the A5 coverage sub-check inside D1.
+          #
+          # The coverage criterion is NOT lost by skipping it here: this job
+          # already measures it, in the dedicated step above, with
+          # `scripts/gate/check_coverage_v312.sh` — which is GA's own
+          # `required_gates` entry (docs/governance/STAGE_CONFIG.yaml). And
+          # since #5579 there is only ONE coverage implementation, so the
+          # dedicated step and A5 read exactly the same number; measuring it
+          # a second time inside this step would cost the dominant share of
+          # the gate's wall-clock (8 crates x `cargo llvm-cov`) and add
+          # nothing.
+          #
+          # The dimension plan itself is unchanged: `ga` executes D1..D9 —
+          # the same set `all` does — and the plan and the execution now
+          # read one list, so they cannot drift apart again.
+          bash scripts/gate/check_rc_ga_gate.sh ga --skip-a5 2>&1 | tee rc_ga_gate.log
       - name: V312-19 Release Gates (Issue #3906) — SQL corpus + R2 + signoff freshness
         if: contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
         run: |

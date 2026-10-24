@@ -38,6 +38,15 @@ if ! command -v cargo >/dev/null 2>&1; then
      fi
  fi
 
+# #5579: the coverage measurement lives in scripts/gate/common.sh — ONE
+# implementation, shared with scripts/gate/check_coverage_v312.sh. This file
+# used to carry a SECOND implementation (`get_coverage_avg`) that measured the
+# same eight crates with a different command, read a different column out of
+# the report, and — the defect — dropped any crate it could not measure from
+# the average, so its number was computed over a silently reduced sample.
+# shellcheck source=scripts/gate/common.sh
+source "$SCRIPT_DIR/common.sh"
+
 # =============================================================================
 # CLI PARSING / DIMENSION PLAN / VERDICT — side-effect-free helpers
 # =============================================================================
@@ -103,13 +112,51 @@ gate_parse_args() {
 # gate_expected_dims <mode> — the dimensions that MUST execute for <mode>.
 # A dimension that is expected but did not execute is a gate failure, not
 # a pass (#5418).
+#
+# #5580: this function and main()'s dispatch used to be TWO separate
+# implementations of the same rule — the plan said `ga` needs D1..D9 while
+# main() only executed D3..D9 — and the drift was invisible until the
+# verdict noticed it: every `ga` / `rc` / `beta` run ended in
+#
+#     ✗ [FAIL] GATE: FAIL — missing dimension(s):D1 D2
+#
+# i.e. **the gate could never pass in those modes**, and `ga` is the mode
+# GA's `required_gates` names (`scripts/gate/check_rc_ga_gate.sh ga`).
+#
+# The rule now lives in gate_dimensions_for_mode, and BOTH the plan and the
+# execution read it. The dimension list is therefore written once and the
+# two cannot drift apart again.
 gate_expected_dims() {
+    gate_dimensions_for_mode "${1:-all}"
+}
+
+# gate_dimensions_for_mode <mode> — the dimensions that execute for <mode>,
+# in execution order. ONE definition.
+#
+# The content is the gate's own documented contract (see usage() above):
+#
+#   all    — D1 D2 D3 D4 D5 D6 D7 D8 D9
+#   alpha  — D1 (+ D3/D4)
+#   beta   — D1 + D2 (+ D3/D4)
+#   rc     — D1 + D2 + D3 + D4 + D5 + D9
+#   ga     — all of the above
+#
+# `ga` and `all` are the same set, by design: GA re-validates the earlier
+# transitions' dimensions on top of the GA-era ones. The GA stage's
+# `required_gates` (docs/governance/STAGE_CONFIG.yaml) additionally lists
+# `cargo build --all-features`, `cargo test --all-features`,
+# `cargo fmt --check`, `cargo clippy` and `check_coverage_v312.sh` as
+# separate gates — those are the same criteria at the stage level, and
+# running them inside D1/D2 as well is the gate's own redundancy, not a
+# second standard.
+gate_dimensions_for_mode() {
     case "${1:-all}" in
-        alpha)  echo "D1 D3 D4" ;;
-        beta)   echo "D1 D2 D3 D4" ;;
-        rc)     echo "D1 D2 D3 D4 D5 D9" ;;
-        ga|all) echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
-        *)      echo "" ;;
+        alpha) echo "D1 D3 D4" ;;
+        beta)  echo "D1 D2 D3 D4" ;;
+        rc)    echo "D1 D2 D3 D4 D5 D9" ;;
+        ga)    echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
+        all)   echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
+        *)     echo "" ;;
     esac
 }
 
@@ -292,13 +339,37 @@ run_d1_alpha() {
         D1_PASS=$((D1_PASS+1))
     else
         echo -n "  [A5] Coverage (L1 8 crates) ... "
-        COV_AVG=$(get_coverage_avg)
-        if [ "$COV_AVG" -ge "$COVERAGE_MIN" ]; then
-            log_pass "A5 Coverage: ${COV_AVG}% (min: ${COVERAGE_MIN}%)"
-            D1_PASS=$((D1_PASS+1))
-        else
-            log_fail "A5 Coverage: ${COV_AVG}% (min: ${COVERAGE_MIN}%)"
+        # #5579: the measurement used to be this script's own
+        # `get_coverage_avg` — a SECOND implementation of the rule that
+        # scripts/gate/check_coverage_v312.sh owns. It measured the same
+        # eight crates with a different command (`--all-features --tests`),
+        # took a different column out of the report (`awk '{print $4}'` — the
+        # *regions* percentage, not the lines one), and — the defect that
+        # mattered — had no fail-closed behaviour: a crate that produced no
+        # coverage table was simply left out of the average, and the average
+        # was reported over the reduced sample.
+        #
+        # One implementation now: scripts/gate/common.sh. The verdict fails
+        # closed — a crate that cannot be measured makes A5 FAIL and names the
+        # crate, instead of quietly shrinking the sample. The report carries
+        # the sample size ("measured 8/8 crates") so a reduced sample is
+        # visible in the report itself.
+        COV_REPORT_FILE="$(make_temp_file)" || COV_REPORT_FILE=""
+        if [ -z "$COV_REPORT_FILE" ]; then
+            log_fail "A5 Coverage: could not create the report file"
             D1_BLOCKERS=$((D1_BLOCKERS+1))
+        else
+            trap 'rm -f "$COV_REPORT_FILE"' RETURN
+            if coverage_average "$COVERAGE_MIN" > "$COV_REPORT_FILE" 2>&1; then
+                log_pass "A5 Coverage: ${COVERAGE_AVERAGE}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
+                D1_PASS=$((D1_PASS+1))
+            else
+                log_fail "A5 Coverage: ${COVERAGE_AVERAGE:-not measured}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
+                D1_BLOCKERS=$((D1_BLOCKERS+1))
+            fi
+            sed 's/^/      /' "$COV_REPORT_FILE"
+            rm -f "$COV_REPORT_FILE"
+            trap - RETURN
         fi
     fi
 
@@ -1031,26 +1102,24 @@ run_d5_deepseek() {
 # =============================================================================
 # HELPER: Coverage Average
 # =============================================================================
-
-get_coverage_avg() {
-    local total=0; local count=0
-    for crate in sqlrustgo-types sqlrustgo-parser sqlrustgo-planner \
-                 sqlrustgo-optimizer sqlrustgo-executor sqlrustgo-storage \
-                 sqlrustgo-transaction sqlrustgo-catalog; do
-        result=$(cargo llvm-cov test -p "$crate" --all-features --tests 2>/dev/null | grep "^TOTAL" | head -1)
-        if [ -n "$result" ]; then
-            pct=$(echo "$result" | awk '{print $4}' | tr -d '%' | cut -d'.' -f1)
-            if [ -n "$pct" ] && [ "$pct" -ge 0 ] 2>/dev/null; then
-                total=$((total + pct)); count=$((count + 1))
-            fi
-        fi
-    done
-    if [ "$count" -gt 0 ]; then
-        echo $((total / count))
-    else
-        echo 0
-    fi
-}
+#
+# #5579: `get_coverage_avg` used to live here. It was a SECOND implementation
+# of the coverage-measurement rule that scripts/gate/check_coverage_v312.sh
+# owns, and it was wrong in three ways at once:
+#
+#   * it measured with a different command (`--all-features --tests`), so a
+#     crate whose integration tests need a feature-gated module did not even
+#     compile;
+#   * it read a different column out of the report (`awk '{print $4}'` — the
+#     *regions* percentage, not the lines one);
+#   * and it had no fail-closed behaviour: a crate that produced no coverage
+#     table was left out of the average, so the number it returned was an
+#     average over a silently reduced sample.
+#
+# It is deleted, not patched: the measurement now lives in
+# scripts/gate/common.sh (coverage_average / coverage_measure_set /
+# coverage_verdict) and every caller uses it. A second copy of this rule is
+# exactly the defect #5579 is about.
 
 # =============================================================================
 # HELPER: C-ARCH Unified Check
@@ -1324,63 +1393,38 @@ ${NC}"
     echo "Gate:   $GATE"
     echo ""
 
-    # Run all dimensions
+    # Run all dimensions.
     # #5418: record which dimensions actually executed. The summary used
     # to print "✓ GATE: PASS — All dimensions validated" unconditionally,
     # so a run that executed *zero* of the gated dimensions (which is
     # exactly what an unrecognised $1 produced) still claimed that all of
     # them had been validated.
+    #
+    # #5580: the dimensions are dispatched from ONE list — the same list
+    # `gate_expected_dims` reports — so the plan and the execution cannot
+    # disagree. The previous shape had the two written separately, and the
+    # `ga` / `rc` / `beta` modes consequently never executed D1 (and, for
+    # ga/rc, D2) even though the plan demanded them: every run of those
+    # modes ended in "missing dimension(s):D1 D2" => FAIL, which made
+    # `check_rc_ga_gate.sh ga` — the gate GA's `required_gates` names —
+    # structurally unable to pass.
     EXECUTED_DIMS=()
-    if [[ "$GATE" == "all" ]] || [[ "$GATE" == "alpha" ]]; then
-        run_d1_alpha
-        EXECUTED_DIMS+=("D1")
-    fi
-
-    if [[ "$GATE" == "all" ]] || [[ "$GATE" == "beta" ]]; then
-        run_d2_beta
-        EXECUTED_DIMS+=("D2")
-    fi
-
-    run_d3_sgl
-    EXECUTED_DIMS+=("D3")
-    run_d4_wal
-    EXECUTED_DIMS+=("D4")
-
-    if [[ "$GATE" == "all" ]] || [[ "$GATE" == "rc" ]] || [[ "$GATE" == "ga" ]]; then
-        run_d5_deepseek
-        check_carch_unified
-        EXECUTED_DIMS+=("D5")
-    fi
-
-    if [[ "$GATE" == "all" ]] || [[ "$GATE" == "ga" ]]; then
-        # D6: Integration Test Coverage Gate (Issue #2874)
-        # 跑 49+ integration tests, FAIL 即 blocker
-        run_d6_integration_tests
-        EXECUTED_DIMS+=("D6")
-
-        # D7: Reliability Gate (G6-G10) — Hermes 2026-06-12 审计新增
-        # 真实生产环境关键门禁: 备份/Soak/Crash/Upgrade/Audit
-        run_d7_reliability
-        EXECUTED_DIMS+=("D7")
-
-        # D8: V312-19 Release Gates (Issue #3906)
-        # SQL corpus all-targets report + R2 invariant report + reviewer
-        # sign-off file must be present and fresh (within 7 days of HEAD)
-        # before allowing RC → GA promotion.
-        # Strict close condition #7: v3.12.0 RC/GA cannot pass without
-        # the three V312-19 artifacts.
-        run_d8_v312_19_release_gates
-        EXECUTED_DIMS+=("D8")
-    fi
-
-    if [[ "$GATE" == "all" ]] || [[ "$GATE" == "rc" ]] || [[ "$GATE" == "ga" ]]; then
-        # D9: v3.12.0 Coverage Framework Gate
-        # Fast config check is always on for RC/GA. Full per-crate measurement
-        # is enabled by V312_COVERAGE_FULL=1 and uses the same canonical script
-        # that writes the evidence artifact.
-        run_d9_v312_coverage_framework
-        EXECUTED_DIMS+=("D9")
-    fi
+    local dim
+    for dim in $(gate_dimensions_for_mode "$GATE"); do
+        case "$dim" in
+            D1) run_d1_alpha ;;
+            D2) run_d2_beta ;;
+            D3) run_d3_sgl ;;
+            D4) run_d4_wal ;;
+            D5) run_d5_deepseek; check_carch_unified ;;
+            D6) run_d6_integration_tests ;;
+            D7) run_d7_reliability ;;
+            D8) run_d8_v312_19_release_gates ;;
+            D9) run_d9_v312_coverage_framework ;;
+            *)  echo "WARN: unknown dimension '$dim' in the plan for mode '$GATE'" >&2 ;;
+        esac
+        EXECUTED_DIMS+=("$dim")
+    done
 
     # =======================================================================
     # SUMMARY
@@ -1433,7 +1477,17 @@ ${NC}"
     echo "    • WAL contract: 22 passed (wal_tx_contract_test)"
     echo "    • WAL invariants: 5 passed (INV-1~INV-3)"
     echo "    • SGL: $D3_PASS/5 PASS | $D3_DRIFTS DRIFT | $D3_FAILS FAIL"
-    echo "    • Coverage: $(get_coverage_avg)% avg (min: ${COVERAGE_MIN}%)"
+    # #5579: this line used to call `get_coverage_avg` — a full 8-crate
+    # `cargo llvm-cov` measurement run **a second time**, purely to print a
+    # number, with a result that never reached the verdict. It is now the
+    # number A5 actually measured, and when A5 did not run (a gate mode that
+    # does not execute D1) the line says so instead of quietly measuring
+    # something nobody judged.
+    if [ -n "${COVERAGE_AVERAGE:-}" ]; then
+        echo "    • Coverage: ${COVERAGE_AVERAGE}% avg (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
+    else
+        echo "    • Coverage: not measured in this gate mode (A5 lives in D1; the release-line coverage criterion is scripts/gate/check_coverage_v312.sh)"
+    fi
     echo "    • v3.12 coverage framework: D9=$D9_PASS/$D9_TOTAL; full run via V312_COVERAGE_FULL=1"
     echo "    • execution_engine.rs: $(wc -l < src/execution_engine.rs 2>/dev/null || echo '?') lines (limit: $CARCH05_LIMIT)"
     echo ""
