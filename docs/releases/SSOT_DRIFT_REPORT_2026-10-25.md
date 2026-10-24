@@ -217,28 +217,98 @@ scripts/gate/check_alpha_quality_v4.10.sh:54-56
 
 ---
 
+## 6.5 【新发现】Alpha 门禁 Q6 本身是 flaky —— 「quality 8/8 PASS」不可复现
+
+`CURRENT_VERSION.md:22` 声称 v4.1.0 alpha 门禁「composite PASS: entry 19/19 + **quality 8/8**」。
+本轮实跑该门禁的 Q6 项（`scripts/gate/check_alpha_quality_v4.10.sh:66` → `TEST_CMD="cargo test --all-features --lib"`），**结果不稳定**：
+
+| 运行 | 命令 | 结果 |
+|---|---|---|
+| #1 全量 | `cargo test --all-features --lib` | **FAILED** — `163 passed; 1 failed` |
+| #2 全量 | 同上 | **FAILED** — `163 passed; 1 failed` |
+| #3 全量 | 同上 | **ok** — `164 passed; 0 failed` |
+| 隔离 ×3 | `cargo test --all-features --lib test_v410_atomic_parallel_degree_getter_clamps_to_one` | **ok ×3** |
+
+失败输出：
+
+```
+---- execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one stdout ----
+thread '...' panicked at src/execution_engine_tests.rs:1361:5:
+assertion `left == right` failed
+  left: 4
+ right: 1
+```
+
+### 根因：同文件内的**进程级全局环境变量竞争**
+
+生产默认值确实是 1：
+
+```
+src/execution_engine.rs:300-301
+  // v3.10.0 Issue #3703: --executor-parallelism env var (default 1 = sequential)
+  let parallel_degree = std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM")...
+      .filter(|n| *n >= 1).unwrap_or(1);
+```
+
+但**同一个测试文件里的另一个用例会改写这个进程级全局变量**：
+
+```
+src/execution_engine_tests.rs:555-561
+  #[test]
+  fn test_parallel_n1_eq_n4_cell_match() {
+      let setup = |par: usize| {
+          if par > 1 {
+              std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", par.to_string());   // ← par = 4
+          } else {
+              std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
+          }
+          ... ExecutionEngine::new(storage) ...
+```
+
+Rust 测试框架在**同一进程内的多个线程并发**跑用例，`std::env::set_var` 修改的是进程级全局状态且无锁保护。
+于是 `test_parallel_n1_eq_n4_cell_match` 把变量设为 `4` 的窗口内，
+`test_v410_atomic_parallel_degree_getter_clamps_to_one` 构造 `ExecutionEngine` 时读到 `4` → 断言 `left: 4`。
+
+### 判定
+
+| 结论 | 依据 |
+|---|---|
+| **不是生产代码缺陷** | 生产默认值为 1（`execution_engine.rs:301`）；隔离运行 3/3 通过 |
+| **是测试隔离缺陷** | 竞争双方在同一个文件 `src/execution_engine_tests.rs`（L555-561 写、L1358-1367 读） |
+| **Q6 门禁因此不可复现** | 全量 3 次跑出 2 次 FAILED / 1 次 PASS |
+| **「quality 8/8 PASS」的声明无法被本轮复现** | 该声明对应一次具体历史执行，不是可复现的性质 |
+
+> 讽刺之处：竞争方用例自己的注释（L550-554）写明 *"for in-process tests below the threshold, both N=1 and N=4 hit the sequential path, so cell match is trivially preserved"* ——**它本就不需要改 env 就能通过自己的断言，却仍然改写了全局状态。**
+
+### 建议（新增，见 §8 R9）
+
+对 `SQLRUSTGO_EXECUTOR_PARALLELISM` 的测试期改写加串行化保护：
+`crates/mysql-server/src/lib.rs:347` 已有 `utilities_tests::ENV_LOCK` 的用法可参照——
+根 crate 的 `src/execution_engine_tests.rs` 应引入同等 mutex，
+并把 `test_v410_atomic_parallel_degree_getter_clamps_to_one` 纳入同一把锁。
+
+---
+
 ## 7. 本轮实际运行的检查
 
 | 检查 | 命令 | 退出码 | 结果 |
 |---|---|---|---|
 | 阶段一致性基线 | `git ls-remote origin refs/heads/fix/4597-...` | 0 | 与 252 逐位一致 |
 | 文档一致性门禁 | `bash scripts/gate/check_docs_consistency.sh` | **0** | **All checks passed**（仅覆盖 v3.x，见 §4） |
-| Anti-Fabrication 门禁 | `bash scripts/gate/check_anti_fabrication.sh` | 见附录 | 需 `cargo build -p sqlrustgo-mysql-server` |
+| 全量构建 | `cargo build --all-features` | **0** | Finished dev profile in 6m25s |
+| Q6 测试套件 | `cargo test --all-features --lib` | **101 / 0 / 0** | run#1 FAILED(1)、run#2 FAILED(1)、run#3 ok(164) → **flaky**，见 §6.5 |
+| 失败用例隔离复跑 ×3 | `cargo test --all-features --lib test_v410_atomic_...` | **0** | ok ×3 |
 | 脏工作树保全 | `git diff --binary` / `git status` / `cp` | 0 | 502 行补丁 + 1 文件副本 |
 | tag 解析 | `git rev-list -n1 <tag>` × 5 | 0 | 见 §2 |
-| `cargo build --all-features` | 见附录 | 见附录 | 重编译，见附录 |
-| `cargo test --all-features --lib` | 见附录 | 见附录 | 见附录 |
 
 ### 明确 **NOT RUN**
 
-- `cargo build --all-features`（Q1_BUILD）
-- `cargo test --all-features --lib`（Q6_TEST_LIB）
 - `check_anti_ignore_gate.sh` / `check_arch_invariants.sh` / `check_arch3_no_bypass.sh` / `check_sql_corpus_gate.sh`（Q3/Q4/Q5）
 - `cargo fmt --check`（Q1_FMT）
 - v4.1.0 alpha→beta 全部出口条件（§6）
-- 任何 Rust 单元/集成测试
+- 任何 integration / 端到端测试（本轮只跑 `--lib`）
 
-> 上述项的最终状态见本报告附录（随 PR 一并提交）。**未运行的检查不标记 PASS。**
+> **未运行的检查不标记 PASS。**
 
 ---
 
@@ -256,6 +326,7 @@ scripts/gate/check_alpha_quality_v4.10.sh:54-56
 | R6 | tag `ga/v4.0.0` 与作废声明的冲突**保持现状并显式记录**——tag 不可变，不得删除或重打 | 决策 | **是** |
 | R7 | 13 个脏文件（§5）的去留单独裁决，不与 drift 修复混在一起 | 决策 | **是** |
 | R8 | 控制面把"COMPLETED"与"产出已落地"解耦（跨项目，见 `KOS-S0-2` P3） | 跨项目 | **是** |
+| **R9** | 给 `SQLRUSTGO_EXECUTOR_PARALLELISM` 的测试期改写加串行化保护（参照 `crates/mysql-server/src/lib.rs:347` 的 `utilities_tests::ENV_LOCK`），使 Q6 门禁可复现 | 测试隔离修复 | 否（但属测试代码改动，需评审） |
 
 ---
 
