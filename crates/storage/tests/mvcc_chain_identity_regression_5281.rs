@@ -20,6 +20,7 @@
 //! Expected on the current code: every test fails. These are the assertions
 //! that must hold once #5281 R2 lands.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::{
     BoxStorageEngine, ColumnDefinition, FileStorage, MemoryWalManager, MvccStorage,
     ParallelWalStorage, StorageEngine, TableInfo,
@@ -29,7 +30,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 fn dir(tag: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("r2_{tag}_{}", std::process::id()));
+    let d = unique_test_path(&format!("r2_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     d
 }

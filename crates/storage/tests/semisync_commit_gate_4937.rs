@@ -20,6 +20,7 @@
 //!     the master must block for the full timeout and then record the
 //!     async degradation, rather than reporting success immediately.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::binlog_client::BinlogClient;
 use sqlrustgo_storage::binlog_protocol::BinlogEventData;
 use sqlrustgo_storage::binlog_server::BinlogServer;
@@ -29,7 +30,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 fn tmp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
+    let dir = unique_test_path(&format!(
         "e2e4937_{}_{}_{}",
         tag,
         std::process::id(),

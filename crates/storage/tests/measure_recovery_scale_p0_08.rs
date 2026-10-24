@@ -34,6 +34,7 @@
 //! The numbers it prints are recorded in
 //! `docs/releases/v4.1.0/evidence/WAL_RECOVERY_SCALE_P0_08_2026-10-23.md`.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -45,7 +46,7 @@ use sqlrustgo_storage::wal_record_codec::record_to_bytes;
 use sqlrustgo_storage::{Record, StorageEngine, Value};
 
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("sqlrustgo_p008_{}", name));
+    let dir = unique_test_path(&format!("sqlrustgo_p008_{}", name));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir

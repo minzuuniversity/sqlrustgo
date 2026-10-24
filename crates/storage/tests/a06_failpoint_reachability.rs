@@ -22,6 +22,7 @@
 //! lets the production call site reach it, and reads the signal file the
 //! background thread writes — proving the hook is reachable, not decorative.
 
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
 use sqlrustgo_storage::fault_injection::{FaultPoint, Signal};
 use sqlrustgo_storage::file_storage::FileStorage;
@@ -52,7 +53,7 @@ where
     F: FnOnce() + Send + 'static,
 {
     let _guard = env_lock().lock().expect("env lock poisoned");
-    let dir = std::env::temp_dir().join(format!("a06_reach_{run_id}"));
+    let dir = unique_test_path(&format!("a06_reach_{run_id}"));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("mkdir signal dir");
 
@@ -113,7 +114,7 @@ fn table_info() -> TableInfo {
 fn after_wal_append_is_reachable() {
     let run_id = format!("a06_wal_{}", std::process::id());
     let contents = arm_and_capture(FaultPoint::AfterWALAppend, &run_id, || {
-        let path = std::env::temp_dir().join(format!("a06_wal_{}.log", std::process::id()));
+        let path = unique_test_path(&format!("a06_wal_{}.log", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let mut w = WalWriter::new(&path).expect("open WAL writer");
         let entry = WalEntry {
@@ -139,7 +140,7 @@ fn after_wal_append_is_reachable() {
 fn after_index_update_is_reachable() {
     let run_id = format!("a06_idx_{}", std::process::id());
     let contents = arm_and_capture(FaultPoint::AfterIndexUpdate, &run_id, || {
-        let dir = std::env::temp_dir().join(format!("a06_idx_{}", std::process::id()));
+        let dir = unique_test_path(&format!("a06_idx_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let mut s = FileStorage::new(dir).expect("open storage");
         s.create_table(&table_info()).expect("create table");
