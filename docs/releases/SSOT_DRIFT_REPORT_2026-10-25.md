@@ -6,6 +6,8 @@
 > **基线**：`fix/4597-chaos-t8d-awk-portability` @ `9fbb63bfbc0bc5221bdd762e281e937b27be86af`
 > （该 commit 与 252 Gitea `refs/heads/fix/4597-chaos-t8d-awk-portability` **逐位一致**）
 > **生成时间**：2026-10-25T03:52:00+08:00
+> **修订 1**：2026-10-25T05:0x+08:00 —— 修正 Q1_FMT 的**单位表述**（「37 个文件」→「37 处 hunk / 11 个文件」），
+> 补入第二次复现日志与「套用 13 个脏文件后 rc=0」的证据日志。**结论方向未变**，未新增任何结论。
 > **方法**：全部只读核验（`git` / `cat` / `grep` / 门禁脚本实跑）。**未改写任何现有发布文档、未改 tag、未改 STAGE.yaml、未改 Git 历史。**
 
 ---
@@ -297,13 +299,20 @@ Rust 测试框架在**同一进程内的多个线程并发**跑用例，`std::en
 
 | 指标 | 干净克隆 @ `9fbb63bfbc` | 套用 13 个脏文件后 |
 |---|---|---|
-| `cargo fmt --check` 违规文件数 | **37** | **0** |
+| `cargo fmt --check` 违规 **hunk** 数（`Diff in` 行数） | **37** | **0** |
+| `cargo fmt --check` 违规**文件**数（唯一 .rs 文件） | **11** | **0** |
 | `cargo test --all-features --lib` | 164 passed（run#3）/ flaky（run#1,#2） | **164 passed; 0 failed** |
+
+> **单位更正（2026-10-25T05:0x）**：本报告初版把「37」写作「37 个文件违规」，**单位标错**——
+> `cargo fmt --check` 是**按 diff hunk** 输出（每处 `Diff in <file>:<line>:` 一行），
+> 实际唯一违规文件为 **11 个**（两次独立运行清单完全一致，见证据 `Q1_FMT.log` 与 `Q1_FMT-round2-2026-10-25.log`）。
+> 结论方向不变（Q1_FMT 红；套用这 13 个改动后 hunk 与文件数双双归零，rc=0）。
+> 11 个违规文件清单见 §6.6。
 
 ### 判定
 
-1. **这 13 个改动是纯格式化归一**——套用后 `rustfmt` 违规从 37 降到 **0**，且 lib 测试**全绿**（164 passed），说明其语义内容中性。
-2. **Q1_FMT 门禁当前红的原因是缺这 13 个改动**：干净克隆上 `cargo fmt --check` 失败（rc=1，37 个文件），而 `scripts/gate/check_alpha_quality_v4.10.sh:67` 把 `cargo fmt --check` 列为 Q1 的必检项。
+1. **这 13 个改动是纯格式化归一**——套用后 `rustfmt` 违规 hunk 从 37 降到 **0**（涉及文件 11 → 0），且 lib 测试**全绿**（164 passed），说明其语义内容中性。
+2. **Q1_FMT 门禁当前红的原因是缺这 13 个改动**：干净克隆上 `cargo fmt --check` 失败（rc=1，37 hunk / 11 文件），而 `scripts/gate/check_alpha_quality_v4.10.sh:67` 把 `cargo fmt --check` 列为 Q1 的必检项。
 3. **因此「丢弃脏工作」不是中性的**：会保留 37 处 rustfmt 违规、让 Q1 继续红；**「提交脏工作」可直接让 Q1 转绿**。
 
 > ⚠️ 本报告**仍不代替人工裁决**是否提交——但裁决所需的输入现在齐了：这批改动的**性质已确定**（格式化归一）、**效果已量化**（37→0 违规、测试全绿）、**来源已追溯**（P3 重复派发的第二次执行产出）。
@@ -327,6 +336,28 @@ tests/integration/transaction/ab04_8thread_1000tx_reconcile_test.rs
 tests/integration/transaction/stored_proc_catalog_test.rs
 ```
 
+### Q1_FMT 实际违规的 11 个 .rs 文件（37 处 hunk）
+
+```text
+crates/mysql-server/src/lib.rs
+crates/mysql-server/src/result_set.rs
+crates/mysql-server/tests/result_set_schema_5271.rs
+crates/storage/src/engine.rs
+crates/storage/src/file_storage.rs
+crates/storage/tests/mvcc_row_identity_lifecycle_5277.rs
+src/engine_ddl.rs
+tests/integration/dml/a05_secondary_index_stale.rs
+tests/integration/sql/bufferpool_pages_visited_memory_test.rs
+tests/integration/sql/bufferpool_pages_visited_test.rs
+tests/integration/transaction/stored_proc_catalog_test.rs
+```
+
+> 这 11 个文件是上述 13 个受污染文件的**子集**（另两个 `AGENTS.md` 与
+> `tests/integration/transaction/ab04_8thread_1000tx_reconcile_test.rs` 不产生 rustfmt diff），
+> 与 §6.6 的"纯格式化归一"判定一致。
+> 证据：`Q1_FMT.log`（首次）、`Q1_FMT-round2-2026-10-25.log`（第二次复现，hunk 数与文件清单完全一致）、
+> `Q1_FMT-with-13-dirty-files.log`（套用 13 个改动后 rc=0、输出为空）。
+
 ---
 
 ## 7. 本轮实际运行的检查
@@ -343,7 +374,7 @@ tests/integration/transaction/stored_proc_catalog_test.rs
 | 架构不变量（Q4） | `bash scripts/gate/check_arch_invariants.sh` | **0** | PASSED 5 / FAILED 0 → ALL PASS |
 | ARCH-3 无旁路（Q4） | `bash scripts/gate/check_arch3_no_bypass.sh` | **0** | G4 Gate: PASS |
 | SQL 语料门禁（Q5） | `bash scripts/gate/check_sql_corpus_gate.sh` | **0** | corpus pass rate 98.2%（阈值 80.0%） |
-| 格式检查（Q1_FMT） | `cargo fmt --check` | **1** | **37 个文件违规**（套用 §6.6 的 13 个改动后 → **0**） |
+| 格式检查（Q1_FMT） | `cargo fmt --check` | **1** | **37 处 diff hunk（分布在 11 个 .rs 文件）**（套用 §6.6 的 13 个改动后 → **hunk 0 / 文件 0，rc=0**） |
 | 脏工作树保全 | `git diff --binary` / `git status` / `cp` | 0 | 502 行补丁 + 1 文件副本 |
 | tag 解析 | `git rev-list -n1 <tag>` × 5 | 0 | 见 §2 |
 
