@@ -23,8 +23,8 @@
 //!
 //! 重复键被正确识别、语句成功返回，**唯独赋值那段没接上**。
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::ColumnDefinition;
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::{MvccStorage, StorageEngine, TableInfo, Value};
 
 fn col(name: &str, pk: bool) -> ColumnDefinition {

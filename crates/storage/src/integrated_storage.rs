@@ -186,9 +186,9 @@ impl IntegratedTableStorage {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support::unique_test_path;
     use super::*;
     use crate::engine::ColumnDefinition;
+    use crate::test_support::unique_test_path;
 
     fn make_test_data(name: &str, n_rows: usize) -> TableData {
         TableData {

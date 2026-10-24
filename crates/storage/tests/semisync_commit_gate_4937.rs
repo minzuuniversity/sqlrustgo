@@ -20,11 +20,11 @@
 //!     the master must block for the full timeout and then record the
 //!     async degradation, rather than reporting success immediately.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::binlog_client::BinlogClient;
 use sqlrustgo_storage::binlog_protocol::BinlogEventData;
 use sqlrustgo_storage::binlog_server::BinlogServer;
 use sqlrustgo_storage::replication::{BinlogEvent, BinlogEventType};
+use sqlrustgo_storage::test_support::unique_test_path;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

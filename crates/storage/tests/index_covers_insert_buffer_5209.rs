@@ -25,8 +25,8 @@
 //! So these call `scan_with_index_in` directly and assert on what the
 //! index actually returns.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_parser::IndexColumnSpec;
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::{
     ColumnDefinition, FileStorage, IndexInfo, Record, StorageEngine, TableInfo, Value,
 };

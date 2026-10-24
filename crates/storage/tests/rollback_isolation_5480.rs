@@ -28,9 +28,9 @@
 //! lived. Driving `FileStorage` directly would pass even on the broken
 //! code, and a test that cannot fail on the broken code proves nothing.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::engine::{ColumnDefinition, StorageEngine, TableInfo, Value};
 use sqlrustgo_storage::file_storage::FileStorage;
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::wal::FileBackedWalManager;
 use sqlrustgo_storage::WalStorage;
 use std::path::PathBuf;

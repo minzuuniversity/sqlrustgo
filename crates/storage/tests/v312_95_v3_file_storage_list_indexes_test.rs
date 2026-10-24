@@ -9,9 +9,9 @@
 //! `CREATE INDEX`. The in-process `MemoryStorage` worked because
 //! it has its own `list_all_indexes` override.
 
-use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_parser::IndexColumnSpec;
 use sqlrustgo_storage::engine::{ColumnDefinition, IndexInfo, StorageEngine, TableInfo};
+use sqlrustgo_storage::test_support::unique_test_path;
 use sqlrustgo_storage::FileStorage;
 
 // V312-95 v3: FileStorage has an inherent 3-arg `create_index(table, column, idx)`
