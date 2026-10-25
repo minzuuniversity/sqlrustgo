@@ -1,6 +1,6 @@
 # Documentation Index
 
-> **基线**: HEAD `583050bc63`
+> **基线**: harness 审计基线 `583050bc63`; 当前 HEAD 以 `git rev-parse HEAD` 为准
 > **总数**: docs/ 下 123 governance .md + 大量 architecture/release/design/evidence 文档 + 根级 ~10 个 .md
 
 ## 类别 A — 项目总览
@@ -8,12 +8,12 @@
 | 路径 | 状态 | 备注 |
 |---|---|---|
 | `README.md` | **Verified (2026-10-25)** | 12 节; v4.0.0 GA 撤销 + v4.1.0 ALPHA 状态最权威入口 |
-| `AGENTS.md` | **Verified** (26KB; 355 行) | 当前 Agent 入口 — 本次审计产出新候选 |
+| `AGENTS.md` | **Verified** (9.0KB; 181 行) | 当前 Agent 入口 — 本次审计产出新候选 |
 | `CLAUDE.md` (根) | **Verified** (76 行) | Claude Code 项目指令; 本次审计产出新候选 |
 | `.claude/CLAUDE.md` | **GitNexus 注入, 动态** | 含 gitnexus symbols/relationships 数字 |
 | `CONTRIBUTING.md` | Stale | 引用 #2588 (历史) |
 | `VERSION` | Verified (v3.11.0 last GA, dev 在 STAGE.yaml) | 有意保留 |
-| `CHANGELOG.md` | Verified | v4.0.0 GA + 撤销 + v4.1.0 ALPHA |
+| `CHANGELOG.md` | Verified | v4.0.0 GA + 撤销；该文档不含 v4.1.0 阶段声明 |
 
 ## 类别 B — 架构与设计
 
