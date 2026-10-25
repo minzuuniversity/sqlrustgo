@@ -138,7 +138,7 @@ CANONICAL_EOF
 # `ci.yml` and `gate.yml` are the two workflows that decide whether a
 # change may be merged or released.  They must check out **the commit the
 # run was created for**, and they must not reach out to GitHub to do it.
-GATED_WORKFLOWS=(ci.yml gate.yml)
+GATED_WORKFLOWS=(ci.yml gate.yml ci-trusted-baseline.yml)
 
 # Workflows that are allowed to use a different checkout, each with the
 # reason.  A reason is mandatory (rule C4): the soak workflows deliberately
