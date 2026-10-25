@@ -7,6 +7,46 @@ use sqlrustgo_storage::{MemoryStorage, StorageEngine};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+// ---------------------------------------------------------------------------
+// #R9: the process global `SQLRUSTGO_EXECUTOR_PARALLELISM`
+// ---------------------------------------------------------------------------
+// `ExecutionEngine::new` reads `SQLRUSTGO_EXECUTOR_PARALLELISM` (see
+// src/execution_engine.rs), so a test that rewrites it changes what every
+// other test of this binary sees, and cargo runs the tests of a binary in
+// parallel threads. The mysql server crate solves the same problem with
+// `utilities_tests::ENV_LOCK` (crates/mysql-server/src/lib.rs); that lock is
+// `pub(crate)` and cannot be reached from here, so this module carries its
+// own.
+//
+// The lock is taken by the tests that rewrite the variable and by the test
+// that reads the default out of it. The remaining tests of this binary do not
+// observe the value of the variable, so they are left alone: serializing all
+// of them would cost the whole unit test suite its parallelism for no gain.
+static PARALLELISM_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn parallelism_env_lock() -> std::sync::MutexGuard<'static, ()> {
+    PARALLELISM_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+/// Restores the previous value of the variable when it is dropped, including
+/// when the test panics. The previous value is the value of the variable, not
+/// the parallel degree an engine reported: restoring the degree would set a
+/// variable that was unset before the test ran.
+struct ParallelismEnvRestore {
+    previous: Option<String>,
+}
+
+impl Drop for ParallelismEnvRestore {
+    fn drop(&mut self) {
+        match self.previous.take() {
+            Some(v) => std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", v),
+            None => std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM"),
+        }
+    }
+}
+
 #[test]
 fn test_analyze_table_stats() {
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
@@ -554,6 +594,10 @@ fn test_parallel_scan_partitions_evenly() {
 /// benchmarks with 6M+ rows live in the 22-query test suite.
 #[test]
 fn test_parallel_n1_eq_n4_cell_match() {
+    let _lock = parallelism_env_lock();
+    let _restore = ParallelismEnvRestore {
+        previous: std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok(),
+    };
     let setup = |par: usize| {
         if par > 1 {
             std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", par.to_string());
@@ -583,12 +627,18 @@ fn test_parallel_n1_eq_n4_cell_match() {
         "row count N=1 vs N=4 must match"
     );
     assert_eq!(r1.rows, r4.rows, "cell-level diff must be 0");
-    std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
+    // The restore guard puts the previous value back; the manual cleanup that
+    // used to run here only removed the variable, which lost a value that was
+    // set before the test ran.
 }
 
 /// Task 3.9 regression: default build (no env var) preserves sequential behavior.
 #[test]
 fn test_parallel_default_n1_no_env_var() {
+    let _lock = parallelism_env_lock();
+    let _restore = ParallelismEnvRestore {
+        previous: std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok(),
+    };
     std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let engine = ExecutionEngine::new(storage);
@@ -609,6 +659,10 @@ fn test_parallel_default_n1_no_env_var() {
 /// N=1 and N=4 and asserts byte-identical results.
 #[test]
 fn test_parallel_100k_cell_match_n1_vs_n4() {
+    let _lock = parallelism_env_lock();
+    let _restore = ParallelismEnvRestore {
+        previous: std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok(),
+    };
     const N: usize = 100_000;
 
     let setup_and_query = |par: usize| -> Vec<Vec<Value>> {
@@ -654,9 +708,9 @@ fn test_parallel_100k_cell_match_n1_vs_n4() {
         "cell-level match N=1 vs N=4 required (parallel path must be byte-identical)"
     );
 
-    // Cleanup env var so subsequent tests in the same process see the
-    // default.
-    std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
+    // The restore guard puts the previous value back; the manual cleanup that
+    // used to run here only removed the variable, which lost a value that was
+    // set before the test ran.
 }
 
 // ============ V311-09 F-36 column-level privilege e2e (GRANT path) ============
@@ -1356,6 +1410,7 @@ fn test_v410_atomic_cbo_enabled_getter_returns_initial_value() {
 
 #[test]
 fn test_v410_atomic_parallel_degree_getter_clamps_to_one() {
+    let _lock = parallelism_env_lock();
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     assert_eq!(engine.parallel_degree(), 1);
