@@ -1,0 +1,302 @@
+name: CI Trusted Baseline
+run-name: trusted-baseline mode=${{ inputs.mode }} scope=${{ inputs.scope }} ${{ inputs.pinned_sha }}
+
+# The Owner directive of 2026-10-25 (hub issue 5, comment 198163) asks for a
+# CI that produces a **minimum trustworthy baseline** before any feature work
+# is merged again:
+#
+#   D2  "新建 ci-trusted-baseline.yml：固定提交、fmt/clippy/check/test 全量、
+#        JUnit + discovered/executed/ignored 计数与最低期望数、独立 coverage
+#        （cargo-llvm-cov，不信自报）、Evidence Manifest（commit SHA + run ID
+#        + artifact SHA256）。负向注入：故意坏测试必须使流水线 FAIL；glob 无
+#        匹配必须 INCONCLUSIVE（不许 vacuous PASS）。出口判据：同一提交连续
+#        3 次绿 + 1 次负向注入正确 FAIL + 独立 Judge 可复算。"
+#
+# WHY THIS WORKFLOW IS **MANUALLY DISPATCHED** AND NOT AUTOMATIC
+# ------------------------------------------------------------
+# 1. The repository concurrency group `sqlrustgo-ci-pipeline-v2` carries
+#    `cancel-in-progress: true`.  Every automatic run therefore cancels the
+#    sibling runs of every other agent.  A baseline pipeline that fires on
+#    every push would cancel other agents' work, which the coordination
+#    rules forbid explicitly.  This workflow uses its **own** concurrency
+#    group with `cancel-in-progress: false`, so it never cancels anything
+#    and is never cancelled by the pipeline group.
+# 2. "固定提交" (a pinned commit) is only meaningful if the pipeline judges
+#    one commit on purpose.  A push-triggered pipeline judges whatever the
+#    push brought, which is exactly the moving target the directive asks to
+#    get rid of.
+# 3. A dispatch on a ref that points at the pinned commit makes the pin
+#    checkable: the step "Pin assertion" compares the checkout with the
+#    requested SHA and turns a mismatch into a hard error instead of a
+#    silent "some other tree was checked out".
+#
+# The consequence is deliberate and must not be read as a defect: **this
+# workflow produces no verdict on its own**.  A verdict exists only when a
+# human dispatches it against a named commit.  Absence of a verdict is not
+# a verdict — a run that times out or is cancelled has produced no PASS.
+on:
+  workflow_dispatch:
+    inputs:
+      pinned_sha:
+        description: "Commit to judge (40 hex). The run hard-fails unless the checkout is exactly this commit."
+        required: true
+        type: string
+      mode:
+        description: "baseline = judge the commit; negative = inject a defect and require the verdict to be FAIL"
+        required: true
+        default: baseline
+        type: string
+      scope:
+        description: "Which test targets to judge: all | root | crates"
+        required: true
+        default: all
+        type: string
+      min_executed:
+        description: "Minimum number of test binaries that must have been executed (0 = no minimum)"
+        required: false
+        default: "0"
+        type: string
+      min_coverage_percent:
+        description: "Minimum independently measured line coverage, in percent"
+        required: false
+        default: "0"
+        type: string
+
+concurrency:
+  # Its own group: this pipeline must never cancel another agent's run, and
+  # two baseline runs of the same commit must both be allowed to finish
+  # (the exit criterion is "three consecutive greens of the same commit").
+  group: sqlrustgo-ci-trusted-baseline
+  cancel-in-progress: false
+
+jobs:
+  trusted-baseline:
+    runs-on: [hp-z6g4]
+    # The runner's container limit is 3 h.  A run that hits it produces no
+    # verdict at all, which is the correct outcome — but it also means the
+    # full scope may need two dispatches (scope=root and scope=crates),
+    # exactly as the existing pipeline splits its test phase.
+    timeout-minutes: 180
+    container:
+      volumes:
+        - sqlrustgo-cargo-cache:/opt/cargo-cache
+    steps:
+      - name: Checkout
+        # The canonical checkout body, byte-identical to the one in
+        # scripts/gate/check_ci_checkout_consistency.sh.  Rule C2 of that
+        # gate asserts it; this workflow is listed in GATED_WORKFLOWS so
+        # that the assertion covers it too.
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
+      - name: Pin assertion (this run judges exactly one commit)
+        env:
+          PINNED_SHA: ${{ inputs.pinned_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PINNED_SHA}" ]; then
+            echo "FATAL: pinned_sha is empty - a baseline without a pinned commit is not a baseline" >&2
+            exit 1
+          fi
+          if ! printf '%s' "${PINNED_SHA}" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "FATAL: pinned_sha '${PINNED_SHA}' is not a 40-hex commit id" >&2
+            exit 1
+          fi
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "${ACTUAL}" != "${PINNED_SHA}" ]; then
+            echo "FATAL: PINNED_SHA_MISMATCH checked out ${ACTUAL} but the run was asked to judge ${PINNED_SHA}" >&2
+            echo "       dispatch this workflow on a ref that points at the pinned commit" >&2
+            exit 1
+          fi
+          echo "PINNED: ${ACTUAL}"
+      - name: Restore cargo registry cache (issue #5451)
+        run: bash scripts/ci/cache_cargo_registry.sh restore
+      - name: Format check
+        # cargo fmt --check is the Q1_FMT criterion. It is run here as a
+        # first-class step so that a formatting violation is a FAIL of this
+        # pipeline, not a silent difference between two local runs.
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        # --all-targets, because the lint budget of this repository is
+        # defined over the test targets as well; a clippy run that only
+        # looks at the library cannot see them.
+        run: cargo clippy --all-features --all-targets -- -D warnings
+      - name: Check
+        run: cargo check --all-features --all-targets
+      - name: Negative injection (mode=negative only)
+        # The exit criterion of D2 is "one negative injection that correctly
+        # FAILs". This step injects a test that cannot pass. It writes a
+        # file that is NOT part of the commit, which is why the Evidence
+        # Manifest records the mode: a negative run can never be mistaken
+        # for a baseline.
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          if [ "${MODE}" != "negative" ]; then
+            echo "mode=${MODE}: no injection"
+            exit 0
+          fi
+          cat > tests/trusted_baseline_negative_probe.rs <<'PROBE'
+          // Deliberate negative injection for the CI trusted baseline.
+          // This file is NOT part of any commit: it exists only inside the
+          // workspace of a run that was dispatched in mode=negative.
+          #[test]
+          fn trusted_baseline_negative_probe() {
+              panic!("deliberate negative injection: this test must make the pipeline FAIL");
+          }
+          PROBE
+          echo "NEGATIVE INJECTION: wrote tests/trusted_baseline_negative_probe.rs"
+      - name: Test (full, no fail fast)
+        # --no-fail-fast is mandatory: cargo stops at the first failing test
+        # target by default, and then the remaining declared targets never
+        # run while the summary still looks green.
+        run: |
+          set -o pipefail
+          SCOPE="${{ inputs.scope }}"
+          case "${SCOPE}" in
+            all)    CARGO_SCOPE_ARGS="--workspace" ;;
+            root)   CARGO_SCOPE_ARGS="--package sqlrustgo" ;;
+            crates) CARGO_SCOPE_ARGS="--workspace --exclude sqlrustgo" ;;
+            *) echo "FATAL: unknown scope '${SCOPE}'" >&2; exit 1 ;;
+          esac
+          cargo test ${CARGO_SCOPE_ARGS} --all-features --no-fail-fast 2>&1 | tee cargo_test.log
+          echo "cargo test finished with ${PIPESTATUS[0]}"
+      - name: Test target execution gate
+        # The existing implementation decides whether every declared test
+        # target actually ran. It is reused as-is: one rule, one
+        # implementation.
+        #
+        # Its exit code is the tri-state source:
+        #   0 = every declared target was executed   (PASS)
+        #   1 = a declared target never ran          (FAIL)
+        #   2 = the measurement itself is impossible (INCONCLUSIVE)
+        env:
+          SCOPE: ${{ inputs.scope }}
+        run: |
+          set -euo pipefail
+          bash scripts/gate/check_test_target_execution.sh \
+            --cargo-toml Cargo.toml \
+            --log cargo_test.log \
+            --scope "${SCOPE}" \
+            --json execution_gate.json || echo "execution gate rc=$? (0=PASS 1=FAIL 2=INCONCLUSIVE)"
+      - name: Counts (discovered / executed / ignored)
+        run: |
+          set -euo pipefail
+          python3 scripts/gate/trusted_baseline_verdict.py counts \
+            --cargo-log cargo_test.log \
+            --gate-json execution_gate.json \
+            --out counts.json
+      - name: JUnit
+        # The JUnit XML is derived from the same log the counts come from,
+        # so the two can never disagree. It contains no timestamp, which is
+        # what makes the SHA256 in the Evidence Manifest meaningful.
+        run: |
+          set -euo pipefail
+          python3 scripts/gate/trusted_baseline_verdict.py junit \
+            --cargo-log cargo_test.log \
+            --out junit.xml
+      - name: Independent coverage
+        # The coverage number is measured by cargo-llvm-cov, never taken
+        # from a document. The extraction rule is the repository's own
+        # scripts/gate/coverage_total_percent.py, so there is one rule and
+        # one implementation.
+        #
+        # When the tool is missing the step does NOT exit 0: the existing
+        # pipeline answers a missing cargo-llvm-cov with "NOT-RUN" and
+        # `exit 0`, which is a vacuous pass wearing a NOT-RUN label. Here
+        # the tool's absence is recorded as status=missing, and the
+        # verdict then comes out INCONCLUSIVE.
+        run: |
+          set -uo pipefail
+          if ! cargo llvm-cov --version >/dev/null 2>&1; then
+            cat > coverage.json <<'JSON'
+          {
+            "status": "missing",
+            "tool": "cargo-llvm-cov",
+            "reason": "COVERAGE_TOOL_MISSING",
+            "line_percent": 0.0
+          }
+          JSON
+            echo "COVERAGE: status=missing reason=COVERAGE_TOOL_MISSING"
+            exit 0
+          fi
+          cargo llvm-cov --workspace --all-features --no-fail-fast --summary-only 2>&1 | tee llvmcov.log
+          PERCENT="$(python3 scripts/gate/coverage_total_percent.py < llvmcov.log || true)"
+          if [ -z "${PERCENT}" ]; then
+            cat > coverage.json <<'JSON'
+          {
+            "status": "missing",
+            "tool": "cargo-llvm-cov",
+            "reason": "COVERAGE_REPORT_UNPARSEABLE",
+            "line_percent": 0.0
+          }
+          JSON
+            echo "COVERAGE: status=missing reason=COVERAGE_REPORT_UNPARSEABLE"
+            exit 0
+          fi
+          python3 - "${PERCENT}" > coverage.json <<'JSON'
+          import json, sys
+          print(json.dumps({
+              "status": "measured",
+              "tool": "cargo-llvm-cov",
+              "line_percent": float(sys.argv[1].rstrip("%")),
+          }, indent=2, sort_keys=True))
+          JSON
+          echo "COVERAGE: status=measured line_percent=${PERCENT}"
+      - name: Evidence Manifest and verdict
+        # The verdict is produced by the deterministic rule table in
+        # scripts/gate/trusted_baseline_verdict.py — no model call, no
+        # network, no wall-clock dependence. The exit code carries the
+        # tri-state: 0 PASS, 1 FAIL, 2 INCONCLUSIVE.
+        env:
+          COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          MODE: ${{ inputs.mode }}
+          MIN_EXECUTED: ${{ inputs.min_executed }}
+          MIN_COVERAGE: ${{ inputs.min_coverage_percent }}
+        run: |
+          set -uo pipefail
+          python3 scripts/gate/trusted_baseline_verdict.py verdict \
+            --counts counts.json \
+            --coverage coverage.json \
+            --commit "${COMMIT}" \
+            --run-id "${RUN_ID}" \
+            --mode "${MODE}" \
+            --min-executed "${MIN_EXECUTED}" \
+            --min-coverage-percent "${MIN_COVERAGE}" \
+            --manifest evidence_manifest.json \
+            --artifact cargo_test.log \
+            --artifact junit.xml \
+            --artifact counts.json \
+            --artifact coverage.json \
+            --artifact execution_gate.json \
+            --out verdict.json
+          RC=$?
+          echo "VERDICT rc=${RC} (0=PASS 1=FAIL 2=INCONCLUSIVE)"
+          if [ "${MODE}" = "negative" ] && [ "${RC}" -eq 0 ]; then
+            echo "FATAL: the negative injection did not make the pipeline fail - the pipeline cannot be trusted" >&2
+            exit 1
+          fi
+          exit "${RC}"
