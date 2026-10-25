@@ -1,6 +1,6 @@
 # Implementation Truth — SQLRustGo 实现真实性
 
-> **基线**: HEAD `583050bc63` (fix/4597)
+> **基线**: harness 审计基线 `583050bc63` (fix/4597); 当前 HEAD 以 `git rev-parse HEAD` 为准
 > **关键**: SQLRustGo 是数据库内核项目, 实现真实性 = 正确性 + 持久性 + 事务一致性
 
 ## 实现状态 5 级 (强制使用)
@@ -63,7 +63,7 @@ pub use sqlrustgo_storage::Page;
 ### 实际版本
 
 - workspace.package.version: `3.12.0-fix-zombie` (Cargo.toml, 有意保留)
-- 当前 dev: v4.1.0 DRAFT (`docs/releases/v4.1.0/STAGE.yaml`)
+- 当前 dev: v4.1.0 **ALPHA** (`docs/releases/v4.1.0/STAGE.yaml` `current_stage`; 2026-10-06 由 DRAFT 重新进入)
 - v4.0.0 GA 已撤销 (`docs/releases/v4.0.0/GA_RELEASE_TIMELINE.md`)
 - VERSION 文件: `v3.11.0` (last GA tag)
 

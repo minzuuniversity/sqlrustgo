@@ -1,8 +1,8 @@
 # AGENTS.md — SQLRustGo Agent 入口
 
 > **适用范围**: SQLRustGo 仓库根目录; 所有 AI 编程 Agent (Claude Code / Codex / OpenCode / OMP / Pi / Hermes 等)
-> **基线 Commit**: `583050bc63` (HEAD) / `develop/v4.1.0` (`b513f56db1`)
-> **当前开发线**: v4.1.0 DRAFT (NOT YET ALPHA); v4.0.0 GA 已撤销
+> **基线 Commit**: harness 审计基线 `583050bc63` / `develop/v4.1.0` (`b513f56db1`); 当前 HEAD 以 `git rev-parse HEAD` 为准
+> **当前开发线**: v4.1.0 **ALPHA** (2026-10-06 由 DRAFT 重新进入, per `docs/releases/v4.1.0/STAGE.yaml` `current_stage`); v4.0.0 GA 已撤销
 > **沟通语言**: 中文 (除非用户明确要求其他语言)
 
 ---
