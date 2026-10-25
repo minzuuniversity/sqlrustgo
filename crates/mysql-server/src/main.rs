@@ -308,8 +308,23 @@ enum Command {
         #[arg(long, default_value = "default")]
         database: String,
         /// Backup type: full, incremental, differential.
+        ///
+        /// #5525: only `full` is implemented. Any other value is now
+        /// rejected with an explicit error instead of being accepted and
+        /// then ignored.
         #[arg(long, default_value = "full")]
         backup_type: String,
+        /// Data directory of the storage to back up.
+        ///
+        /// #5525: a logical backup has to read the tables from somewhere.
+        /// The subcommand used to pass an **empty** table list to the
+        /// backup, so it produced a dump with zero tables and still
+        /// reported `Backup completed successfully!`.
+        #[arg(long)]
+        data_dir: String,
+        /// Include schema only (no data).
+        #[arg(long)]
+        schema_only: bool,
     },
     /// Restore database from a backup file.
     Restore {
@@ -324,6 +339,18 @@ enum Command {
         /// of the underlying `RestoreCommand` was unreachable.
         #[arg(long, default_value = ".")]
         backup_dir: String,
+        /// Data directory of the storage to restore into.
+        ///
+        /// #5525: without a target storage there is nowhere to restore
+        /// to, so the restore used to report a table count while writing
+        /// nothing at all.
+        #[arg(long)]
+        data_dir: String,
+        /// Drop existing tables before restore.
+        ///
+        /// #5525: this used to be accepted and then ignored.
+        #[arg(long)]
+        drop_first: bool,
     },
 }
 
@@ -545,7 +572,9 @@ fn main() -> ExitCode {
             output,
             database,
             backup_type,
-        } => match run_backup(&output, &database, &backup_type) {
+            data_dir,
+            schema_only,
+        } => match run_backup(&output, &database, &backup_type, &data_dir, schema_only) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("backup error: {e}");
@@ -556,7 +585,9 @@ fn main() -> ExitCode {
             input,
             database,
             backup_dir,
-        } => match run_restore(&input, &database, &backup_dir) {
+            data_dir,
+            drop_first,
+        } => match run_restore(&input, &database, &backup_dir, &data_dir, drop_first) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("restore error: {e}");
@@ -959,23 +990,37 @@ fn handle_dot_command(
     }
 }
 
-fn run_backup(output: &str, database: &str, backup_type: &str) -> Result<(), String> {
+fn run_backup(
+    output: &str,
+    database: &str,
+    backup_type: &str,
+    data_dir: &str,
+    schema_only: bool,
+) -> Result<(), String> {
     let cmd = BackupCommand {
         database: database.to_string(),
         output_dir: output.to_string(),
         backup_type: backup_type.to_string(),
-        schema_only: false,
+        data_dir: data_dir.to_string(),
+        schema_only,
         compress: false,
     };
     tools_backup(cmd).map_err(|e| e.to_string())
 }
 
-fn run_restore(input: &str, database: &str, backup_dir: &str) -> Result<(), String> {
+fn run_restore(
+    input: &str,
+    database: &str,
+    backup_dir: &str,
+    data_dir: &str,
+    drop_first: bool,
+) -> Result<(), String> {
     let cmd = RestoreCommand {
         database: database.to_string(),
         backup_id: input.to_string(),
         backup_dir: backup_dir.to_string(),
-        drop_first: false,
+        data_dir: data_dir.to_string(),
+        drop_first,
     };
     tools_restore(cmd).map_err(|e| e.to_string())
 }
