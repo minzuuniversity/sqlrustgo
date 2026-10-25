@@ -10,8 +10,7 @@
 //! failure mode this pins.
 
 use sqlrustgo_storage::{
-    BoxStorageEngine, FileStorage, MemoryWalManager, MvccStorage, ParallelWalStorage,
-    StorageEngine,
+    BoxStorageEngine, FileStorage, MemoryWalManager, MvccStorage, ParallelWalStorage, StorageEngine,
 };
 use sqlrustgo_types::Value;
 use std::path::PathBuf;
@@ -50,7 +49,8 @@ fn stack(tag: &str) -> BoxStorageEngine {
 fn seeded(tag: &str) -> BoxStorageEngine {
     let mut s = stack(tag);
     s.create_database("default").expect("create db");
-    s.create_table_in_db("default", &columns()).expect("create table");
+    s.create_table_in_db("default", &columns())
+        .expect("create table");
     s.insert_in_db(
         "default",
         "t",
@@ -93,7 +93,8 @@ fn update_changes_one_row_without_growing_the_table() {
         got.len()
     );
     assert!(
-        got.iter().any(|r| **r == [Value::Integer(1), Value::Integer(99)]),
+        got.iter()
+            .any(|r| **r == [Value::Integer(1), Value::Integer(99)]),
         "the updated value is missing from {got:?}"
     );
     assert_eq!(
@@ -157,12 +158,10 @@ fn rebuild_keeps_repeated_rows_and_accepts_more() {
     // and it lives on the MVCC layer rather than the trait.
     let file = FileStorage::new(dir("rebuild")).expect("FileStorage");
     let mvcc = MvccStorage::new(file);
-    let mut s = BoxStorageEngine::new(ParallelWalStorage::new(
-        mvcc,
-        MemoryWalManager::new(),
-    ));
+    let mut s = BoxStorageEngine::new(ParallelWalStorage::new(mvcc, MemoryWalManager::new()));
     s.create_database("default").expect("create db");
-    s.create_table_in_db("default", &columns()).expect("create table");
+    s.create_table_in_db("default", &columns())
+        .expect("create table");
     s.insert_in_db(
         "default",
         "t",
@@ -176,8 +175,12 @@ fn rebuild_keeps_repeated_rows_and_accepts_more() {
     assert_eq!(rows(&s).len(), 3);
 
     // Identities handed out after a reload must not collide with reloaded rows.
-    s.insert_in_db("default", "t", vec![vec![Value::Integer(1), Value::Integer(50)]])
-        .expect("insert after reload");
+    s.insert_in_db(
+        "default",
+        "t",
+        vec![vec![Value::Integer(1), Value::Integer(50)]],
+    )
+    .expect("insert after reload");
     assert_eq!(
         rows(&s).len(),
         4,
@@ -208,7 +211,8 @@ fn primary_key_need_not_be_the_first_column() {
         ],
         ..Default::default()
     };
-    s.create_table_in_db("default", &info).expect("create table");
+    s.create_table_in_db("default", &info)
+        .expect("create table");
     // Same `a`, different primary key `b`.
     s.insert_in_db(
         "default",
@@ -232,7 +236,8 @@ fn primary_key_need_not_be_the_first_column() {
     let got = rows(&s);
     assert_eq!(got.len(), 2, "an update must not add a row: {got:?}");
     assert!(
-        got.iter().any(|r| **r == [Value::Integer(1), Value::Integer(201)]),
+        got.iter()
+            .any(|r| **r == [Value::Integer(1), Value::Integer(201)]),
         "the update keyed on the wrong column: {got:?}"
     );
 }

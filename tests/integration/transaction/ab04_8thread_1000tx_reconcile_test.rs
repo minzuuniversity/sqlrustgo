@@ -76,10 +76,9 @@ fn eight_threads_thousand_tx_each_reconciles() {
                 let tx = (tid * ITERS_PER_THREAD + n) as u64 + 1;
                 s.write().begin_transaction_for(tx).expect("begin");
                 s.write().delete("t", &[Value::Integer(id)]).expect("del");
-                let _ = s.write().insert(
-                    "t",
-                    vec![vec![Value::Integer(id), Value::Integer(id)]],
-                );
+                let _ = s
+                    .write()
+                    .insert("t", vec![vec![Value::Integer(id), Value::Integer(id)]]);
                 s.write().commit_transaction_for(tx).expect("commit");
             }
         }));

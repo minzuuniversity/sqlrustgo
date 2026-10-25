@@ -3,12 +3,12 @@
 
 use crate::bplus_tree::BPlusTree;
 use crate::buffer_pool::{BufferPool, BufferPoolStats};
-use crate::page::Page;
-use crate::record_page_codec::{self as record_codec};
 use crate::engine::{
     ColumnDefinition, ForeignKeyConstraint, IndexInfo, Record, RowFilter, RowMutation,
     SharedSliceIter, StorageEngine, TableData, TableInfo, TriggerInfo, UniqueConstraint, ViewInfo,
 };
+use crate::page::Page;
+use crate::record_page_codec::{self as record_codec};
 use crate::wal::{WalEntry, WalEntryType};
 use sqlrustgo_types::{SqlError, SqlResult, Value};
 use std::any::Any;
@@ -1168,10 +1168,7 @@ impl FileStorage {
     /// PR-A / #5305: construct a `FileStorage` whose `insert`/`scan` route
     /// through the supplied `BufferPool`. Lets `BufferPoolStats` become an
     /// honest EXPLAIN signal. Existing public methods are preserved.
-    pub fn new_with_bufferpool(
-        data_dir: PathBuf,
-        pool: Arc<BufferPool>,
-    ) -> std::io::Result<Self> {
+    pub fn new_with_bufferpool(data_dir: PathBuf, pool: Arc<BufferPool>) -> std::io::Result<Self> {
         let mut storage = Self::new(data_dir)?;
         storage.buffer_pool = Some(pool);
         // PR-A.5: counter / map are already empty from `Self::new`. Nothing
@@ -7552,7 +7549,9 @@ mod bufferpool_routing_tests {
         let record: Record = vec![Value::Integer(1), Value::Text("a".into())];
         storage.insert("t", vec![record]).expect("insert");
 
-        let stats = storage.buffer_pool_stats().expect("FileStorage must have stats");
+        let stats = storage
+            .buffer_pool_stats()
+            .expect("FileStorage must have stats");
         assert!(
             stats.pages_visited() >= 1,
             "1 INSERT must bump pages_visited; got {}",
@@ -7580,7 +7579,9 @@ mod bufferpool_routing_tests {
             .collect();
         storage.insert("t", records).expect("insert 100");
 
-        let stats = storage.buffer_pool_stats().expect("FileStorage must have stats");
+        let stats = storage
+            .buffer_pool_stats()
+            .expect("FileStorage must have stats");
         assert!(
             stats.pages_visited() >= 100,
             "100 inserts must touch >= 100 pages; got {}",
@@ -7653,9 +7654,8 @@ mod bufferpool_routing_tests {
             let s = storage.clone();
             handles.push(thread::spawn(move || {
                 let mut guard = s.lock().expect("poisoned");
-                let records: Vec<Record> = (0..25)
-                    .map(|i| vec![Value::Integer(t * 100 + i)])
-                    .collect();
+                let records: Vec<Record> =
+                    (0..25).map(|i| vec![Value::Integer(t * 100 + i)]).collect();
                 guard.insert("t", records).expect("insert");
             }));
         }

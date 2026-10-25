@@ -66,7 +66,11 @@ pub fn prepare_result_set(result: &ExecutorResult) -> Result<PreparedResultSet, 
         column_types: result
             .columns
             .iter()
-            .map(|c| c.data_type.clone().unwrap_or_else(|| UNRESOLVED_TYPE.to_string()))
+            .map(|c| {
+                c.data_type
+                    .clone()
+                    .unwrap_or_else(|| UNRESOLVED_TYPE.to_string())
+            })
             .collect(),
         rows: result.rows.clone(),
     })

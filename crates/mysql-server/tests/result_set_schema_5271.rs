@@ -59,7 +59,10 @@ fn populated_star_projection_uses_declared_names_and_types() {
 #[test]
 fn projection_order_is_preserved() {
     let r = ExecutorResult::with_columns(cols(&["v", "id"]), vec![], 0);
-    assert_eq!(prepare_result_set(&r).unwrap().column_names, vec!["v", "id"]);
+    assert_eq!(
+        prepare_result_set(&r).unwrap().column_names,
+        vec!["v", "id"]
+    );
 }
 
 /// An aggregate keeps its column: `COUNT(*)` over an empty table returns a
