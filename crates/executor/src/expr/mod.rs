@@ -5225,11 +5225,7 @@ mod tests {
     #[test]
     fn test_unified_expr_column_lookup_is_case_insensitive() {
         let columns: Vec<String> = vec!["id".to_string(), "Tag".to_string(), "amount".to_string()];
-        let row: Vec<Value> = vec![
-            Value::Integer(1),
-            Value::Integer(42),
-            Value::Integer(7),
-        ];
+        let row: Vec<Value> = vec![Value::Integer(1), Value::Integer(42), Value::Integer(7)];
         let mut e = UnifiedExpr::Column("Tag".to_string());
         // Before the fix, this returned Null (the bug).
         assert_eq!(

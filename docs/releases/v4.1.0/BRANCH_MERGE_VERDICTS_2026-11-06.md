@@ -30,6 +30,25 @@
 | `mcode-macmini/sqlrustgo-alpha-handoff` | 2026-10-15 | 18 | 2664 | 已并入（PR #5609，治理三件套 + SSOT 漂移证据） |
 | `test/5281-rowid-lifecycle` | 2026-10-11 | 2 | 79 | 已并入（PR #5609，E5-5281 ADR；ADR-5281 本体 develop 已是更新版） |
 
+## 2.5 精判（2026-11-06 第二轮：逐条打开分支看内容）
+
+上一版的判定停在文件级（「冲突 N 处、带进 M 文件、hunk 缺 K 行」）。这一轮把
+**10 条需要裁定的分支逐个打开**，按「它要带进的东西，现在在 develop 上是什么状态」
+重判；其中 4 条已在本轮（PR #5619）并入有效增量，其余给出不并的**具体理由**：
+
+| 分支 | 精判 | 依据（现场核对到的东西） |
+|---|---|---|
+| `feature/session-context-5057` | 不并入（需专门批次） | 它把 `SessionContext` 铺进 storage trait 的每个方法（821 行）= 另一套 trait 设计；develop 的 #5057 已由 `insert_db_isolation_5057` + `58e3bfaef0` 以另一形态覆盖 |
+| `fix/4597-chaos-t8d-awk-portability` | **部分并入**（本轮） | 它的实质内容是 E5_R9/R11 证据文档（217 行）+ anti-fabrication 三态自检脚本（285 行）⇒ 本轮已取；`crates/mysql-server/src/lib.rs` 的改动实测**纯 rustfmt 重排**（无语义变化）⇒ 不并；两个测试文件的「环境变量加锁」被 develop 的「并行度按引擎注入 / 按阈值触发」取代 ⇒ 不并 |
+| `mcode-macmini/e5-r9-r11-verify` | **部分并入**（本轮） | 同上（同一批内容）；`check_anti_fabrication.sh` 的反引号那行 develop 已由 `1ad69b7351`（#5545/#5546）修掉 ⇒ 不并；新增的 `selftest_anti_fabrication.sh`（0=PASS / 10=UNFIXED / 20=INCONCLUSIVE / 30=INTERNAL_ERROR，`--negative` 注入缺陷证明自检会失败）⇒ 本轮已取，现场 rc=0 且 `--negative` 检出缺陷 |
+| `feat/4942-gate-manifest` | **部分并入**（本轮） | 它真正缺的只有 `crates/executor/src/expr/mod.rs` 的 **F-08 大小写不敏感列查找**（`WHERE tag = 'x'` 撞 `Tag INTEGER` 列名 ⇒ 整行变 NULL，与规范 `find_column_index_in` 不一致）⇒ 本轮已取（含单测，2 passed）；manifest/gate 改动**不并**：develop 已用「把带哈希的测试二进制复制成无哈希路径」的另一方案解决同一问题（#5078 契约），并入会与之冲突 |
+| `fix/5320-5327-view-public-rollback` | 不并入（develop 已有，且已重构） | 它的内容是 #5326 的 EXPLAIN IndexScan 与 PK 自动登记；**develop 已有同一功能**（`crates/storage/src/engine.rs:2153` 的 PK 登记 + `src/execution_engine_explain.rs` 的 JOIN 内表选择），只是被后续重构搬了文件 ⇒ 并入等于回退重构 |
+| `mcode-macmini/rustfmt-4597` | 不并入（与 4597 同源） | 同 `fix/4597-chaos-t8d-awk-portability`：实质内容已随本轮取走，其余是 rustfmt 重排 |
+| `fix/omp-engine-phase3-arc-mutex-tx` | 不并入（develop 已有该形态） | develop 当前代码已是 `Arc<Mutex<TransactionManager>>` + `TxSession` 形态 ⇒ hunk 差异是它自己的更早副本 |
+| `ci/3847-d6b-no-reexec` | 不并入（CI 执行面当前不可用 + 含实验步骤） | 内容是 CI 工作流的 D6 smoke gate 等；CI 侧现在**每个 run 都是 0 job** ⇒ 无法用 CI 绿验证；其中含 `EXP-DISABLED` / `if: "false"` 段落，按纪律排除 |
+| `fix/omp-ignore-registry-5098` | 需专门批次 | 改 `check_anti_fabrication.sh` / `check_coverage_v312.sh` 两个**门禁脚本** + debt-registry ⇒ 门禁判据变更需要改前漏什么 / 改后多报什么 + 反向变异证据，不能在文档/证据批里顺手带过 |
+| `fix/5262-b2-binaries` | 需专门批次 | 解析器 + `engine_ddl` / `engine_setops` / `system_tables` 的语义改动（55 行，12 处冲突）⇒ 需在当前执行器形态上逐条重做并补回归 |
+
 ## 3. 需要人工裁定（4.1.0 开发线，有冲突）—— 逐条核对结果
 
 | 分支 | merge-base | 冲突文件数 | 合并带进文件 | hunk 级缺失行 | 判定 | 依据 |
