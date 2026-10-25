@@ -15,7 +15,53 @@ use sqlrustgo::{ExecutionEngine, MemoryStorage};
 use sqlrustgo_types::Value;
 use std::sync::Arc;
 
+// ---------------------------------------------------------------------------
+// #R9: the process global `SQLRUSTGO_EXECUTOR_PARALLELISM`
+// ---------------------------------------------------------------------------
+// `ExecutionEngine::new` reads `SQLRUSTGO_EXECUTOR_PARALLELISM`, so a test
+// that rewrites it changes what every other test of this binary sees, and
+// cargo runs the tests of a binary in parallel threads. The mysql server
+// crate solves the same problem with `utilities_tests::ENV_LOCK` (see
+// crates/mysql-server/src/lib.rs), but that lock is `pub(crate)` and cannot
+// be reached from an integration test binary, so this file carries its own.
+//
+// The guard restores the previous value when it is dropped, including when
+// the test panics. The previous value is the value of the variable, not the
+// parallel degree the engine reported: restoring the degree would set a
+// variable that was unset before the test ran, and the next test of this
+// binary would read a parallelism it never asked for.
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Holds the lock for the duration of a scope.
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Restores the previous value of the variable when it is dropped, including
+/// when the test panics. The previous value is the value of the variable, not
+/// the parallel degree the engine reported: restoring the degree would set a
+/// variable that was unset before the test ran, and the next test of this
+/// binary would read a parallelism it never asked for.
+struct EnvRestore {
+    previous: Option<String>,
+}
+
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        match self.previous.take() {
+            Some(v) => std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", v),
+            None => std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM"),
+        }
+    }
+}
+
 fn make_engine(parallel: usize) -> ExecutionEngine<MemoryStorage> {
+    // The constructor is the only reader of the process global
+    // `SQLRUSTGO_EXECUTOR_PARALLELISM`, so holding the lock around it is
+    // enough to keep this binary free of a torn read. The window is the
+    // constructor call alone, so the expensive part of a test stays parallel
+    // with the other tests of this binary.
+    let _guard = env_lock();
     let mut engine = ExecutionEngine::new(Arc::new(parking_lot::RwLock::new(MemoryStorage::new())));
     engine.set_parallel_degree(parallel);
     engine
@@ -91,8 +137,12 @@ fn test_for_update_disables_parallel_path() {
 
 #[test]
 fn test_cli_flag_propagation_via_env() {
-    let engine = ExecutionEngine::new(Arc::new(parking_lot::RwLock::new(MemoryStorage::new())));
-    let initial = engine.parallel_degree();
+    // The lock is held for the whole window: the variable is process global
+    // and cargo runs the tests of a binary in parallel threads.
+    let _lock = env_lock();
+    let _restore = EnvRestore {
+        previous: std::env::var("SQLRUSTGO_EXECUTOR_PARALLELISM").ok(),
+    };
     std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", "8");
     let engine2 = ExecutionEngine::new(Arc::new(parking_lot::RwLock::new(MemoryStorage::new())));
     assert_eq!(
@@ -100,9 +150,10 @@ fn test_cli_flag_propagation_via_env() {
         8,
         "ctor after env-set should read 8"
     );
-    std::env::remove_var("SQLRUSTGO_EXECUTOR_PARALLELISM");
-    // restore initial state
-    std::env::set_var("SQLRUSTGO_EXECUTOR_PARALLELISM", initial.to_string());
+    // The restore guard puts the previous value back on drop. The manual
+    // restore that used to run here restored the parallel degree the engine
+    // reported rather than the value of the variable, which left a variable
+    // behind that was unset before the test ran.
 }
 
 #[test]
