@@ -4,7 +4,7 @@
 > **代号**: Vector Engine
 > **更新日期**: 2026-03-05
 >
-> ⚠️ **历史快照 (Stale as of 2026-10-15)** — 本文件头标仍记录 v1.2 / 2026-03-05, 当前代码已演进到 v4.1.0 DRAFT (45 个 workspace crate, HashMap+JSON FileStorage 生产路径, BufferPool/Page/BPlusTree 仅 test-only)。本文件保留作为历史设计参考。
+> ⚠️ **历史快照 (Stale as of 2026-10-15)** — 本文件头标仍记录 v1.2 / 2026-03-05, 当前代码已演进到 v4.1.0 ALPHA (45 个 workspace crate, HashMap+JSON FileStorage 生产路径, BufferPool/Page/BPlusTree 仅 test-only)。本文件保留作为历史设计参考。
 >
 > **当前权威架构入口**:
 > - 仓库结构与模块边界: [`docs/agent-harness/REPOSITORY_MAP.md`](../agent-harness/REPOSITORY_MAP.md)

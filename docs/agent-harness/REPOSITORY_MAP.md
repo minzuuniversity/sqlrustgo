@@ -8,7 +8,7 @@
 ```
 sqlrustgo/                     (root)
 ├── AGENTS.md                  (26KB; 当前 Agent 入口 — 由本次审计替换为新候选)
-├── README.md                  (12 节; 含 v4.0.0 GA 撤销 + v4.1.0 DRAFT 状态)
+├── README.md                  (12 节; 含 v4.0.0 GA 撤销 + v4.1.0 ALPHA 状态)
 ├── CLAUDE.md                  (76 行; Claude Code 项目指令 — 本次审计产出新候选)
 ├── ARCHITECTURE_RULES.md / .yaml  (架构规则)
 ├── BRANCH_GOVERNANCE.md, CODEOWNERS, CONTRIBUTING.md, ...
