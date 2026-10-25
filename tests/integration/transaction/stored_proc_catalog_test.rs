@@ -61,7 +61,11 @@ fn test_create_procedure_requires_catalog() {
     let mut engine = ExecutionEngine::new(storage);
 
     let result = engine.execute("CREATE PROCEDURE test_proc() BEGIN END");
-    assert!(result.is_ok(), "CREATE PROCEDURE should succeed with default catalog; got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "CREATE PROCEDURE should succeed with default catalog; got: {:?}",
+        result
+    );
     let show = engine
         .execute("SHOW PROCEDURE STATUS")
         .expect("SHOW PROCEDURE STATUS should succeed");

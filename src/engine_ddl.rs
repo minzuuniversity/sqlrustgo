@@ -834,13 +834,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             catalog
                 .stored_procedures()
                 .iter()
-                .map(|p| {
-                    (
-                        p.name.clone(),
-                        p.params.len() as i64,
-                        p.body.len() as i64,
-                    )
-                })
+                .map(|p| (p.name.clone(), p.params.len() as i64, p.body.len() as i64))
                 .collect()
         };
 
