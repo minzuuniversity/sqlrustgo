@@ -116,7 +116,9 @@ fn test_export_options_default() {
     assert!(!opts.schema_only);
     assert!(opts.add_drop);
     assert!(opts.single_transaction);
-    assert!(opts.lock_tables);
+    // #5525: LOCK TABLES is not implemented, so the default must not ask
+    // for it — a default the backup path rejects would break every backup.
+    assert!(!opts.lock_tables);
 }
 
 #[test]
@@ -203,14 +205,16 @@ fn test_backup_metadata_checksum_none_until_complete() {
 
 #[test]
 fn test_backup_manager_get_backup_existing() {
-    use sqlrustgo_tools::backup_restore::BackupManager;
-    use std::collections::HashMap;
+    use sqlrustgo_tools::backup_restore::{BackupColumn, BackupManager, BackupTable};
     use tempfile::TempDir;
 
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("backups"));
-    let tables: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
-    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let tables = [BackupTable::new(
+        "t1",
+        vec![BackupColumn::new("id", "INTEGER")],
+    )];
+    let meta = mgr.create_backup("testdb", &tables).unwrap();
     let backup_id = meta.id.clone();
 
     let found = mgr.get_backup(&backup_id);
@@ -233,14 +237,16 @@ fn test_backup_manager_get_backup_nonexistent() {
 
 #[test]
 fn test_backup_manager_delete_backup() {
-    use sqlrustgo_tools::backup_restore::BackupManager;
-    use std::collections::HashMap;
+    use sqlrustgo_tools::backup_restore::{BackupColumn, BackupManager, BackupTable};
     use tempfile::TempDir;
 
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("backups"));
-    let tables: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
-    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let tables = [BackupTable::new(
+        "t1",
+        vec![BackupColumn::new("id", "INTEGER")],
+    )];
+    let meta = mgr.create_backup("testdb", &tables).unwrap();
     let backup_id = meta.id.clone();
 
     // Verify it exists
@@ -267,20 +273,25 @@ fn test_backup_manager_delete_backup_nonexistent() {
 
 #[test]
 fn test_backup_manager_restore_existing() {
-    use sqlrustgo_tools::backup_restore::BackupManager;
-    use std::collections::HashMap;
+    use sqlrustgo_tools::backup_restore::{BackupColumn, BackupManager, BackupTable};
     use tempfile::TempDir;
 
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("backups"));
-    let tables: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
-    let meta = mgr.create_backup("testdb", tables).unwrap();
+    let tables = [BackupTable::new(
+        "t1",
+        vec![BackupColumn::new("id", "INTEGER")],
+    )];
+    let meta = mgr.create_backup("testdb", &tables).unwrap();
     let backup_id = meta.id.clone();
 
     let result = mgr.restore(&backup_id);
     assert!(result.is_ok());
     let data = result.unwrap();
-    assert!(data.is_empty()); // no INSERT statements parsed
+    // #5525: the payload holds the table — the old implementation returned
+    // an empty map because it only counted INSERT lines.
+    assert_eq!(data.tables.len(), 1);
+    assert_eq!(data.tables[0].name, "t1");
 }
 
 #[test]
@@ -302,14 +313,16 @@ fn test_backup_manager_restore_nonexistent() {
 
 #[test]
 fn test_backup_manager_list_backups_single() {
-    use sqlrustgo_tools::backup_restore::BackupManager;
-    use std::collections::HashMap;
+    use sqlrustgo_tools::backup_restore::{BackupColumn, BackupManager, BackupTable};
     use tempfile::TempDir;
 
     let tmp = TempDir::new().unwrap();
     let mgr = BackupManager::new(tmp.path().join("backups"));
-    let tables: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
-    mgr.create_backup("testdb", tables).unwrap();
+    let tables = [BackupTable::new(
+        "t1",
+        vec![BackupColumn::new("id", "INTEGER")],
+    )];
+    mgr.create_backup("testdb", &tables).unwrap();
 
     let list = mgr.list_backups();
     assert_eq!(list.len(), 1);
@@ -366,11 +379,13 @@ fn test_restore_result_fields() {
     use sqlrustgo_tools::backup_restore::RestoreResult;
     let result = RestoreResult {
         backup_id: "backup_123".to_string(),
+        tables_restored: 2,
         rows_restored: 500,
         duration_ms: 1500,
     };
     assert_eq!(result.backup_id, "backup_123");
     assert_eq!(result.rows_restored, 500);
+    assert_eq!(result.tables_restored, 2);
     assert_eq!(result.duration_ms, 1500);
 }
 

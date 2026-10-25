@@ -433,7 +433,7 @@ fn test_config_manager_listener_dispatch() {
 // ============================================================================
 #[test]
 fn test_backup_manager_create_backup_full_flow() {
-    use sqlrustgo_tools::backup_restore::{BackupManager, BackupType};
+    use sqlrustgo_tools::backup_restore::{BackupColumn, BackupManager, BackupTable, BackupType};
     let dir = std::env::temp_dir().join(format!(
         "sqlrustgo-tools-backup-create-{}",
         std::process::id()
@@ -442,13 +442,21 @@ fn test_backup_manager_create_backup_full_flow() {
     std::fs::create_dir_all(&dir).unwrap();
     let mgr = BackupManager::new(dir.clone());
 
-    let mut table = std::collections::HashMap::new();
-    table.insert("id".to_string(), "1".to_string());
-    table.insert("name".to_string(), "alice".to_string());
-    let mut tables = std::collections::HashMap::new();
-    tables.insert("users".to_string(), vec![table]);
+    let mut users = BackupTable::new(
+        "users",
+        vec![
+            BackupColumn::new("id", "INTEGER").primary_key(),
+            BackupColumn::new("name", "TEXT"),
+        ],
+    );
+    users.rows = vec![vec![
+        sqlrustgo_storage::Value::Integer(1),
+        sqlrustgo_storage::Value::Text("alice".to_string()),
+    ]];
 
-    let meta = mgr.create_backup("testdb", tables).expect("create_backup");
+    let meta = mgr
+        .create_backup("testdb", &[users])
+        .expect("create_backup");
     matches!(meta.backup_type, BackupType::Full);
     assert!(meta.tables.contains(&"users".to_string()));
     assert!(meta.size_bytes > 0);
@@ -460,7 +468,7 @@ fn test_backup_manager_create_backup_full_flow() {
     assert!(sql_path.exists(), "backup sql file must exist");
     let content = std::fs::read_to_string(&sql_path).unwrap();
     assert!(content.contains("CREATE TABLE"));
-    assert!(content.contains("INSERT INTO users"));
+    assert!(content.contains("INSERT INTO `users`"));
     assert!(content.contains("alice"));
 
     let _ = std::fs::remove_dir_all(&dir);
