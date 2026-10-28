@@ -61,7 +61,7 @@ jobs:
           set -euo pipefail
           git lfs install --skip-repo 2>/dev/null || true
           git clone --branch "${{ github.ref }}" --depth 1 \
-            "http://192.168.0.252:3000/${{ github.repository }}.git" /workspace/repo
+            "${GITHUB_SERVER_URL}/${{ github.repository }}.git" /workspace/repo
           git -C /workspace/repo lfs install 2>/dev/null || true
           git -C /workspace/repo lfs pull 2>/dev/null || true
           echo "workspace=/workspace" >> "$GITHUB_ENV"
