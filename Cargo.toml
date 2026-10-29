@@ -1743,7 +1743,7 @@ path = "tests/integration/tpch/tpch_sf1_6m_load_iter_test.rs"
 [[test]]
 name = "v313_3_profile_experiments"
 path = "tests/integration/tpch/v313_3_profile_experiments.rs"
-required-features = ["sqlrustgo-storage/v313_3_profile"]
+required-features = ["v313_3_profile"]
 [[test]]
 name = "tpch_test"
 path = "tests/integration/tpch_test.rs"

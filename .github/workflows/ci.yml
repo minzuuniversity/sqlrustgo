@@ -12,14 +12,34 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A push event carries no target branch, so the anti-cheat base is
+      # the commit the push replaced (github.event.before) rather than a
+      # hardcoded `origin/main`, which was wrong for every branch except
+      # main itself. The full history (fetch-depth: 0) is required so the
+      # replaced commit is present in the clone.
+      - name: Resolve base commit
+        id: base
+        run: |
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || printf '%s' "$BASE" | grep -qE '^0+$'; then
+            echo "base=HEAD" >> "$GITHUB_OUTPUT"
+            echo "No previous commit for this push — comparing against HEAD (no-op)."
+            exit 0
+          fi
+          if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "$BASE" || true
+          fi
+          echo "base=${BASE}" >> "$GITHUB_OUTPUT"
 
       # -----------------------------
       # 1. 防测试篡改
       # -----------------------------
       - name: Detect test file changes
         run: |
-          git fetch origin main
-          CHANGED=$(git diff --name-only origin/main...HEAD | grep "^tests/" || true)
+          CHANGED=$(git diff --name-only "${{ steps.base.outputs.base }}..HEAD" | grep "^tests/" || true)
           if [ ! -z "$CHANGED" ]; then
             echo "❌ Tests modified:"
             echo "$CHANGED"
@@ -31,8 +51,9 @@ jobs:
       # -----------------------------
       - name: Detect NEW #[ignore] additions
         run: |
-          git fetch origin main
-          NEW_IGNORES=$(git diff origin/main...HEAD -- "*.rs" | grep "^+.*#\[ignore\]" || true)
+          # See the note in ci-pr.yml: the bare `\[ignore\]` pattern missed
+          # the `#[ignore = "reason"]` form used by most of this repository.
+          NEW_IGNORES=$(git diff "${{ steps.base.outputs.base }}..HEAD" -- "*.rs" | grep -E '^\+.*#\[ignore([[:space:]]*\]|[[:space:]]*=|\()' || true)
           if [ ! -z "$NEW_IGNORES" ]; then
             echo "❌ NEW #[ignore] detected in PR:"
             echo "$NEW_IGNORES"
@@ -103,7 +124,7 @@ jobs:
       # -----------------------------
       - name: Prevent proof tampering
         run: |
-          if git diff --name-only origin/main...HEAD | grep "verification_report.json"; then
+          if git diff --name-only "${{ steps.base.outputs.base }}..HEAD" | grep "verification_report.json"; then
             echo "❌ Proof file modified in PR"
             exit 1
           fi

@@ -10,6 +10,7 @@ on:
       - develop/v3.11.0
       - develop/v3.12.0
       - develop/v4.0.0
+      - develop/v4.1.0
       - main
     paths-ignore:
       - 'docs/**'
@@ -146,7 +147,7 @@ jobs:
           cache-targets: false
 
       - name: Run integration tests
-        run: cargo test --workspace --test '*'
+        run: cargo test --workspace --features v313_3_profile --test '*'
 
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
@@ -238,15 +239,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+
+      # The Anti-Cheat gate has to compare the PR against the branch it
+      # actually targets. Two defects made that impossible:
+      #   * the base was hardcoded to `origin/main`, so a PR aimed at
+      #     develop/v4.x was diffed against an unrelated trunk;
+      #   * the checkout was shallow (fetch-depth: 1), so the three-dot
+      #     diff had no merge base and failed with
+      #     "fatal: origin/main...HEAD: no merge base".
+      # fetch-depth: 0 gives the full history, and the base ref comes
+      # from the event payload instead of a constant.
+      - name: Resolve base ref
+        id: base
+        run: |
+          BASE_REF="${{ github.base_ref }}"
+          if [ -z "$BASE_REF" ]; then
+            BASE_REF="main"
+          fi
+          git fetch --no-tags --force origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          echo "base_ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
+          echo "Anti-Cheat base ref: ${BASE_REF}"
 
       # -----------------------------
       # 1. 防测试篡改
       # -----------------------------
       - name: Detect test file changes
         run: |
-          git fetch origin main
-          CHANGED=$(git diff --name-only origin/main...HEAD | grep "^tests/" || true)
+          CHANGED=$(git diff --name-only "origin/${{ steps.base.outputs.base_ref }}...HEAD" | grep "^tests/" || true)
           if [ ! -z "$CHANGED" ]; then
             echo "❌ Tests modified:"
             echo "$CHANGED"
@@ -258,8 +278,12 @@ jobs:
       # -----------------------------
       - name: Detect NEW #[ignore] additions
         run: |
-          git fetch origin main
-          NEW_IGNORES=$(git diff origin/main...HEAD -- "*.rs" | grep "^+.*#\[ignore\]" || true)
+          # The old pattern was `\+.*#\[ignore\]`, which only matches the
+          # bare `#[ignore]` form. This repository mostly uses the
+          # attributed form `#[ignore = "reason"]` (83 occurrences vs 101
+          # bare ones), so the gate silently missed the majority of the
+          # additions it was written to catch.
+          NEW_IGNORES=$(git diff "origin/${{ steps.base.outputs.base_ref }}...HEAD" -- "*.rs" | grep -E '^\+.*#\[ignore([[:space:]]*\]|[[:space:]]*=|\()' || true)
           if [ ! -z "$NEW_IGNORES" ]; then
             echo "❌ NEW #[ignore] detected in PR:"
             echo "$NEW_IGNORES"
@@ -302,7 +326,7 @@ jobs:
 
       - name: Prevent proof tampering
         run: |
-          if git diff --name-only origin/main...HEAD | grep "verification_report.json"; then
+          if git diff --name-only "origin/${{ steps.base.outputs.base_ref }}...HEAD" | grep "verification_report.json"; then
             echo "❌ Proof file modified in PR"
             exit 1
           fi
