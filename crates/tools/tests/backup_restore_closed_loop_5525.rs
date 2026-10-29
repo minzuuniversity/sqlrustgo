@@ -136,7 +136,7 @@ fn closed_loop_backup_restore_verifies_the_data() {
     );
     let payload_bytes = fs::read(&payload_path).expect("read the payload");
     assert!(
-        payload_bytes.len() > 0,
+        !payload_bytes.is_empty(),
         "an empty payload is the signature of the #5516 false success"
     );
     let payload_checksum = meta
@@ -192,7 +192,7 @@ fn closed_loop_backup_restore_verifies_the_data() {
         // compare them as sets of rows so the assertion is about the data
         // and not about the order the engine happens to return.
         let mut expected: Vec<Vec<Value>> = table.rows.clone();
-        let mut actual: Vec<Vec<Value>> = landed.iter().cloned().collect();
+        let mut actual: Vec<Vec<Value>> = landed.to_vec();
         expected.sort();
         actual.sort();
         assert_eq!(
