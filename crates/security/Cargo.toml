@@ -18,7 +18,7 @@ parking_lot = "0.12"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 sqlrustgo-storage = { workspace = true }
 
-aes-gcm = { version = "0.10", optional = true }
+aes-gcm = { version = "0.11", optional = true }
 rand = { version = "0.8", optional = true }
 zeroize = { version = "1.6", optional = true }
 
