@@ -205,10 +205,7 @@ fn closed_loop_backup_restore_verifies_the_data() {
     // The evidence line an independent reviewer can quote.
     println!(
         "EVIDENCE closed_loop backup_id={} tables={} rows={} payload_sha256={}",
-        meta.id,
-        result.tables_restored,
-        result.rows_restored,
-        payload_checksum
+        meta.id, result.tables_restored, result.rows_restored, payload_checksum
     );
 }
 
@@ -329,5 +326,9 @@ fn restore_refuses_to_overwrite_an_existing_table() {
         .expect("restore with drop_first must succeed");
     assert_eq!(result.rows_restored as usize, 5);
     let landed = storage.scan_in_db(DB, "users").expect("read back");
-    assert_eq!(landed.len(), 3, "the dropped-and-restored table must hold its rows");
+    assert_eq!(
+        landed.len(),
+        3,
+        "the dropped-and-restored table must hold its rows"
+    );
 }
