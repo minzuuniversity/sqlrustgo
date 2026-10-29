@@ -154,12 +154,7 @@ fn backup_and_restore_roundtrip_exit_zero() {
     }
 
     let b = run(
-        &[
-            "backup",
-            &output,
-            "--data-dir",
-            src_data.to_str().unwrap(),
-        ],
+        &["backup", &output, "--data-dir", src_data.to_str().unwrap()],
         None,
     );
     assert!(
@@ -181,8 +176,9 @@ fn backup_and_restore_roundtrip_exit_zero() {
         .expect("backup wrote a .sql file");
 
     // The dump must actually contain the table and its rows.
-    let dump = std::fs::read_to_string(std::path::Path::new(&output).join(format!("{backup_id}.sql")))
-        .expect("read the dump");
+    let dump =
+        std::fs::read_to_string(std::path::Path::new(&output).join(format!("{backup_id}.sql")))
+            .expect("read the dump");
     assert!(
         dump.contains("CREATE TABLE `seeded`"),
         "the dump has no table: {dump}"
