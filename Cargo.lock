@@ -2363,7 +2363,7 @@ dependencies = [
  "sqlrustgo",
  "sqlrustgo-catalog",
  "sqlrustgo-storage",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -3489,7 +3489,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "sqlrustgo",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4197,7 +4197,7 @@ dependencies = [
  "sqlrustgo-parser",
  "sqlrustgo-storage",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4513,7 +4513,7 @@ dependencies = [
  "sqlrustgo-tools",
  "sqlrustgo-types",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
  "tikv-jemalloc-ctl",
  "tikv-jemalloc-sys",
  "tikv-jemallocator",
@@ -4607,7 +4607,7 @@ dependencies = [
  "serde_json",
  "sqlrustgo-storage",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
  "uuid",
  "zeroize",
 ]
@@ -4649,7 +4649,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "sqlrustgo-parser",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
  "tokio",
  "tokio-util",
  "tracing",
@@ -4679,7 +4679,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
  "tracing",
 ]
 
@@ -5031,7 +5031,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
  "toml",
 ]
 
@@ -5055,7 +5055,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -5068,7 +5068,7 @@ dependencies = [
  "serde",
  "serde_json",
  "test-registry",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
  "tokio",
 ]
 
@@ -5568,7 +5568,7 @@ dependencies = [
  "rand 0.8.8",
  "sqlrustgo",
  "sqlrustgo-storage",
- "thiserror 1.0.69",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
