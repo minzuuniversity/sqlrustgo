@@ -50,7 +50,7 @@ jobs:
 
       - name: Upload compliance report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sql92-compliance-report
           path: test/sql92/sql92-compliance-report.md

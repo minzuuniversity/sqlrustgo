@@ -59,7 +59,7 @@ jobs:
 
       - name: Upload alpha artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: alpha-gate-artifacts
           path: artifacts/gate/v3.8.0/
@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload RC/GA artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rc-ga-gate-artifacts
           path: artifacts/gate/v3.8.0/
