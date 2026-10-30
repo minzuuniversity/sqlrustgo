@@ -1785,11 +1785,31 @@ jobs:
           # below now emit too (#5443: the visual ❌/✗ variants drifted apart
           # and the CI greps matched a different code point than the scripts
           # printed, so the counters were structurally 0).
+          #
+          # #3837: the loose patterns `FAIL\|failed\|error` also matched the
+          # **statistics lines** the gate scripts print on success:
+          # `check_evidence_binding.sh` ends with
+          #   `PASS=150, WARN=128, FAIL=0, UNVERIFIED=0`
+          # so the `FAIL=0` inside that summary line was counted as one
+          # failure — a *green* Evidence Binding Check turned the whole
+          # postcheck job red ("evidence=1" while every other counter was 0).
+          # The same class of bug applies to `Results: ERRORS=0, WARNINGS=0`
+          # (AFP) and to any `FAIL=0`-style line the other scripts emit.
+          #
+          # Each pattern below now matches only the marker the corresponding
+          # script prints **when it actually fails**:
+          #   coverage        -> `FAIL: <reason>`      (check_coverage_v312.sh)
+          #   evidence binding-> `Evidence binding check FAILED`
+          #   AFP             -> `[FAIL] Anti-fabrication check`
+          #   docs consistency-> `[ERROR]` (its log_error)
+          # The counters stay a redundant backstop; the authoritative signal
+          # is each gate's own exit status, because every gate already runs
+          # in its own `set -euo pipefail` step.
           GATE_FAIL=$(count_matches '\[FAIL\]' gate_report.log)
-          COVERAGE_FAIL=$(count_matches 'FAIL\|failed' coverage_report.log)
-          EVIDENCE_FAIL=$(count_matches 'FAIL\|failed\|error' evidence_binding.log)
-          AFP_FAIL=$(count_matches 'FAIL\|failed\|error' anti_fabrication.log)
-          DOCS_FAIL=$(count_matches 'FAIL\|failed\|error' docs_consistency.log)
+          COVERAGE_FAIL=$(count_matches 'FAIL:' coverage_report.log)
+          EVIDENCE_FAIL=$(count_matches 'Evidence binding check FAILED' evidence_binding.log)
+          AFP_FAIL=$(count_matches '\[FAIL\] Anti-fabrication check' anti_fabrication.log)
+          DOCS_FAIL=$(count_matches '\[ERROR\]' docs_consistency.log)
           ALPHA_FAIL=$(count_matches '\[FAIL\]' alpha_gate.log)
           RC_GA_FAIL=$(count_matches '\[FAIL\]\|blocker' rc_ga_gate.log)
           AUDIT_FAIL=$(count_matches 'RESULT: FAIL' audit_testing.log)

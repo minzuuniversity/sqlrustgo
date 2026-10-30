@@ -193,7 +193,7 @@ G1 G2 G3 G5 G6 G8 G9 G10 G11 G12 G13 G14 G15 G16
 即：**GA 阶段要求的 20 项里，压根没有 TPC-H 基线、savepoint、upgrade、
 audit log、time travel、QPS、sysbench、perf report、compatibility 这些门禁。**
 
-同时，`scripts/gate/check_g_all.sh`（唯一跑全套 G 门禁的编排器）**本身是孤儿**
+同时，全套 G 门禁的编排器 check_g_all.sh（路径原为 scripts/gate/check_g_all.sh，已于 2026-10-23 废止并删除）**本身是孤儿**
 —— 全仓无人引用它 —— 而且它内含**第二份 G→脚本映射**（G2→`check_int2_no_orphan.sh`、
 G3→`check_int3_single_expr.sh`），与 SSOT 的映射**并存**。
 
