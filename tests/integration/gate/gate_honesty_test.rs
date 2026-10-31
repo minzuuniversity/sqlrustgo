@@ -682,7 +682,11 @@ echo "ALPHA=[$(plan_dims alpha)]"
 "#;
     let (code, stdout, stderr) = run_bash_snippet(script, "5456_all_plan");
     let out = stdout.trim().to_string();
-    assert!(out.contains("ALL=[D1 D2 D3 D4 D5 D6 D7 D8 D9]"), "got:\n{}", out);
+    assert!(
+        out.contains("ALL=[D1 D2 D3 D4 D5 D6 D7 D8 D9]"),
+        "got:\n{}",
+        out
+    );
     assert!(out.contains("GA=[D3 D4 D5 D6 D7 D8 D9]"), "got:\n{}", out);
     assert!(out.contains("RC=[D3 D4 D5 D9]"), "got:\n{}", out);
     assert!(out.contains("BETA=[D2 D3 D4]"), "got:\n{}", out);
@@ -968,8 +972,7 @@ fn test_5456_every_summary_dimension_line_is_guarded_by_dim_ran() {
             guarded,
             "the summary line for `{}` must be guarded by `if dim_ran {}` — \
              a dimension that was never executed must not be printed as 0/0",
-            label,
-            dim
+            label, dim
         );
     }
 }
