@@ -288,6 +288,49 @@ gate_verdict_for() {
 }
 
 # =============================================================================
+# A5 COVERAGE DECISION — side-effect-free helper
+# =============================================================================
+# #3844: `get_coverage_avg()` used to return `0` when it could not read a
+# single TOTAL row. On a runner without `cargo-llvm-cov` that `0` was
+# compared against COVERAGE_MIN (75) and recorded as a **blocker** — i.e.
+# "coverage is 0%, the code is broken". The truth is: coverage was never
+# measured. The very same repository already knows this distinction:
+# `.gitea/workflows/ci.yml` guards the coverage step with
+# `if ! cargo llvm-cov --version` → "NOT-RUN: reason=COVERAGE_TOOL_MISSING".
+# This function brings the gate script to the same standard.
+#
+# Sets:
+#   A5_STATUS  = PASS | FAIL | NOT-RUN
+#   A5_REASON  = "" | COVERAGE_TOOL_MISSING | COVERAGE_NO_MEASUREMENTS
+#
+# Usage: a5_coverage_decision <tool_available:0|1> <measured_crates:int> [pct:int]
+a5_coverage_decision() {
+    local tool_available="${1:-0}"
+    local measured="${2:-0}"
+    local pct="${3:-}"
+
+    A5_STATUS=""
+    A5_REASON=""
+
+    if [ "$tool_available" != "1" ]; then
+        A5_STATUS="NOT-RUN"
+        A5_REASON="COVERAGE_TOOL_MISSING"
+        return 0
+    fi
+    if [ "$measured" -le 0 ] 2>/dev/null || [ -z "$pct" ]; then
+        A5_STATUS="NOT-RUN"
+        A5_REASON="COVERAGE_NO_MEASUREMENTS"
+        return 0
+    fi
+    if [ "$pct" -ge "$COVERAGE_MIN" ] 2>/dev/null; then
+        A5_STATUS="PASS"
+    else
+        A5_STATUS="FAIL"
+    fi
+    return 0
+}
+
+# =============================================================================
 # CONFIGURATION — Unified Rule Registry
 # =============================================================================
 
@@ -345,6 +388,14 @@ log_warn() {
     echo -e "    ${YELLOW}⚠ WARN${NC} $1"
 }
 
+# #3844: a check that could NOT be executed is neither a pass nor a fail.
+# It gets its own verdict so that it can never be silently folded into
+# "PASS" — and so that it can never be silently folded into "FAIL" either
+# (an environment blocker is not a code defect).
+log_notrun() {
+    echo -e "    ${BLUE}⊘ NOT-RUN${NC} $1"
+}
+
 log_info() {
     echo -e "    ${BLUE}ℹ${NC} $1"
 }
@@ -357,11 +408,19 @@ log_drift() {
 # COUNTERS
 # =============================================================================
 
-D1_PASS=0; D1_TOTAL=0; D1_BLOCKERS=0
+D1_PASS=0; D1_TOTAL=0; D1_BLOCKERS=0; D1_NOTRUN=0
 D2_PASS=0; D2_TOTAL=0; D2_BLOCKERS=0
 D3_PASS=0; D3_TOTAL=0; D3_FAILS=0; D3_DRIFTS=0
 D4_PASS=0; D4_TOTAL=0; D4_FAILS=0
 D5_PASS=0; D5_TOTAL=0
+
+# Coverage result cache — the summary used to call get_coverage_avg() a
+# SECOND time, which re-ran the 8-crate `cargo llvm-cov test` sweep (the
+# single most expensive step of the gate) just to print one line.
+COVERAGE_PCT=""
+COVERAGE_CRATES_MEASURED=0
+COVERAGE_STATUS=""
+COVERAGE_REASON=""
 
 # =============================================================================
 # D1: ALPHA GATE (A1-A5 + A6-1~5)
@@ -425,50 +484,85 @@ run_d1_alpha() {
     # A5: Coverage (V313-#3942: --skip-a5 short-circuits the
     # 8-crate cargo llvm-cov run, which is the dominant cost in
     # the 60-second R2 evidence-refresh budget).
-    D1_TOTAL=$((D1_TOTAL+1))
     if [ "${SKIP_A5:-0}" -eq 1 ]; then
         echo -n "  [A5] Coverage (--skip-a5) ... "
         log_pass "A5 Coverage skipped (R2 budget)"
+        D1_TOTAL=$((D1_TOTAL+1))
         D1_PASS=$((D1_PASS+1))
     else
         echo -n "  [A5] Coverage (L1 8 crates) ... "
-        # #5579: the measurement used to be this script's own
-        # `get_coverage_avg` — a SECOND implementation of the rule that
-        # scripts/gate/check_coverage_v312.sh owns. It measured the same
-        # eight crates with a different command (`--all-features --tests`),
-        # took a different column out of the report (`awk '{print $4}'` — the
-        # *regions* percentage, not the lines one), and — the defect that
-        # mattered — had no fail-closed behaviour: a crate that produced no
-        # coverage table was simply left out of the average, and the average
-        # was reported over the reduced sample.
+        # A5 有三种结局 —— PASS / FAIL / NOT-RUN（#3844）：跑不了 cargo-llvm-cov
+        # 是环境阻塞，不是代码缺陷，既不能报成 "coverage 0%"，也不能算通过。
         #
-        # One implementation now: scripts/gate/common.sh. The verdict fails
-        # closed — a crate that cannot be measured makes A5 FAIL and names the
-        # crate, instead of quietly shrinking the sample. The report carries
-        # the sample size ("measured 8/8 crates") so a reduced sample is
-        # visible in the report itself.
+        # 测量只有一份实现：scripts/gate/common.sh 的 coverage_average（#5579）。
+        # 本文件曾自带的 get_coverage_avg 是第二份实现（命令不同、取错列、
+        # 测不到的 crate 被静默从样本里剔除），已删除 —— 不要再带回来。
+        local cov_tool=0
+        local cov_pct=""
+        local cov_handled=""
+        local COV_REPORT_FILE
+        COVERAGE_CRATES_MEASURED=0
         COV_REPORT_FILE="$(make_temp_file)" || COV_REPORT_FILE=""
-        if [ -z "$COV_REPORT_FILE" ]; then
-            log_fail "A5 Coverage: could not create the report file"
+        if [ -z "${COVERAGE_MIN:-}" ]; then
+            # #5581: SSOT 里没有本模式的门槛 ⇒ 判红并说明原因，
+            # 不能没有标准就给出覆盖率结论。
+            log_fail "A5 Coverage: no coverage threshold for mode '${GATE_TYPE}' in the SSOT"
+            COVERAGE_STATUS="FAIL"; COVERAGE_REASON="NO_THRESHOLD_IN_SSOT"
+            D1_TOTAL=$((D1_TOTAL+1))
             D1_BLOCKERS=$((D1_BLOCKERS+1))
+            cov_handled=1
+        elif [ -z "$COV_REPORT_FILE" ]; then
+            log_fail "A5 Coverage: could not create the report file"
+            COVERAGE_STATUS="FAIL"; COVERAGE_REASON="REPORT_FILE_UNAVAILABLE"
+            D1_TOTAL=$((D1_TOTAL+1))
+            D1_BLOCKERS=$((D1_BLOCKERS+1))
+            cov_handled=1
         else
-            trap 'rm -f "$COV_REPORT_FILE"' RETURN
-            if [ -z "$COVERAGE_MIN" ]; then
-                # #5581: no threshold in the SSOT for this mode ⇒ FAIL.
-                # A gate that cannot say what it requires must not report
-                # a coverage verdict.
-                log_fail "A5 Coverage: no coverage threshold for mode '${GATE_TYPE}' in the SSOT"
-                D1_BLOCKERS=$((D1_BLOCKERS+1))
-            elif coverage_average "$COVERAGE_MIN" > "$COV_REPORT_FILE" 2>&1; then
-                log_pass "A5 Coverage: ${COVERAGE_AVERAGE}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
-                D1_PASS=$((D1_PASS+1))
-            else
-                log_fail "A5 Coverage: ${COVERAGE_AVERAGE:-not measured}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
-                D1_BLOCKERS=$((D1_BLOCKERS+1))
+            if coverage_tool_available; then
+                cov_tool=1
+                coverage_average "$COVERAGE_MIN" > "$COV_REPORT_FILE" 2>&1
+                COVERAGE_CRATES_MEASURED="${COVERAGE_MEASURED_COUNT:-0}"
+                cov_pct="${COVERAGE_AVERAGE:-}"
             fi
             sed 's/^/      /' "$COV_REPORT_FILE"
             rm -f "$COV_REPORT_FILE"
-            trap - RETURN
+            if [ "$cov_tool" = "1" ] && [ -n "${COVERAGE_FAILED_CRATES:-}" ]; then
+                # #5579: 测不到的 crate 必须点名判红 —— 拿缩小后的样本
+                # 得到的平均值不是本仓库可接受的判据。
+                log_fail "A5 Coverage: 无法测量这些 crate: ${COVERAGE_FAILED_CRATES}"
+                COVERAGE_STATUS="FAIL"; COVERAGE_REASON="CRATES_NOT_MEASURABLE"
+                D1_TOTAL=$((D1_TOTAL+1))
+                D1_BLOCKERS=$((D1_BLOCKERS+1))
+                cov_handled=1
+            fi
+        fi
+        COVERAGE_PCT="$cov_pct"
+        if [ -z "$cov_handled" ]; then
+            a5_coverage_decision "$cov_tool" "${COVERAGE_CRATES_MEASURED:-0}" "$cov_pct"
+            COVERAGE_STATUS="$A5_STATUS"
+            COVERAGE_REASON="$A5_REASON"
+            case "$A5_STATUS" in
+                PASS)
+                    log_pass "A5 Coverage: ${cov_pct}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
+                    D1_TOTAL=$((D1_TOTAL+1))
+                    D1_PASS=$((D1_PASS+1))
+                    ;;
+                FAIL)
+                    log_fail "A5 Coverage: ${cov_pct}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
+                    D1_TOTAL=$((D1_TOTAL+1))
+                    D1_BLOCKERS=$((D1_BLOCKERS+1))
+                    ;;
+                NOT-RUN)
+                    if [ "$A5_REASON" = "COVERAGE_TOOL_MISSING" ]; then
+                        log_notrun "A5 Coverage: NOT-RUN: reason=COVERAGE_TOOL_MISSING (cargo-llvm-cov is not installed on this runner)"
+                    else
+                        log_notrun "A5 Coverage: NOT-RUN: reason=COVERAGE_NO_MEASUREMENTS (no crate produced a TOTAL row)"
+                    fi
+                    # NOT-RUN 既不算通过也不算阻塞 —— 但必须计数，
+                    # 否则它会从 summary 里消失。
+                    D1_NOTRUN=$((D1_NOTRUN+1))
+                    ;;
+            esac
         fi
     fi
 
@@ -534,7 +628,7 @@ run_d1_alpha() {
     D1_TOTAL=$((D1_TOTAL + gov_total))
     D1_PASS=$((D1_PASS + gov_pass))
 
-    echo -e "\n  D1 Result: $D1_PASS/$D1_TOTAL"
+    echo -e "\n  D1 Result: $D1_PASS/$D1_TOTAL (not-run: $D1_NOTRUN, blockers: $D1_BLOCKERS)"
 }
 
 # =============================================================================
@@ -1233,6 +1327,14 @@ run_d5_deepseek() {
 # coverage_verdict) and every caller uses it. A second copy of this rule is
 # exactly the defect #5579 is about.
 
+# coverage_tool_available — is the `cargo-llvm-cov` subcommand usable?
+# #3844: without it the coverage sweep produces no measurement at all;
+# the caller must record NOT-RUN instead of a fabricated 0%.
+coverage_tool_available() {
+    command -v cargo >/dev/null 2>&1 || return 1
+    cargo llvm-cov --version >/dev/null 2>&1
+}
+
 # =============================================================================
 # HELPER: C-ARCH Unified Check
 # =============================================================================
@@ -1600,7 +1702,10 @@ ${NC}"
         esac
     }
     if dim_ran D1; then
-        echo "  D1-Alpha:  $D1_PASS/$D1_TOTAL (blockers: $D1_BLOCKERS)"
+        # #3844: the not-run count is part of the summary line. A NOT-RUN
+        # check that is not visible in the summary is indistinguishable
+        # from a check that was never planned.
+        echo "  D1-Alpha:  $D1_PASS/$D1_TOTAL (not-run: $D1_NOTRUN, blockers: $D1_BLOCKERS)"
     else
         echo "  D1-Alpha:  NOT RUN (not in '$GATE' plan — covered by the 'all' plan)"
     fi
@@ -1656,7 +1761,13 @@ ${NC}"
     echo "  Dimensions expected: $(gate_expected_dims "$GATE")"
 
     if [[ "$VERDICT" == "PASS" ]]; then
-        echo -e "  ${GREEN}✓ GATE: PASS${NC} — ${#EXECUTED_DIMS[@]} dimension(s) validated: ${executed_csv}"
+        # #3844: a PASS that swallowed a NOT-RUN check would be dishonest
+        # too — the not-run count is spelled out in the verdict line.
+        local notrun_note=""
+        if [ "${D1_NOTRUN:-0}" -gt 0 ]; then
+            notrun_note=" (${D1_NOTRUN} check(s) NOT-RUN — see summary)"
+        fi
+        echo -e "  ${GREEN}✓ GATE: PASS${NC} — ${#EXECUTED_DIMS[@]} dimension(s) validated: ${executed_csv}${notrun_note}"
     elif [[ "$VERDICT" == "DRIFT" ]]; then
         echo -e "  ${YELLOW}⚡ GATE: DRIFT${NC} — Drift detected, tracked, not blocking"
     else
@@ -1674,17 +1785,24 @@ ${NC}"
     echo "    • WAL contract: 22 passed (wal_tx_contract_test)"
     echo "    • WAL invariants: 5 passed (INV-1~INV-3)"
     echo "    • SGL: $D3_PASS/5 PASS | $D3_DRIFTS DRIFT | $D3_FAILS FAIL"
-    # #5579: this line used to call `get_coverage_avg` — a full 8-crate
-    # `cargo llvm-cov` measurement run **a second time**, purely to print a
-    # number, with a result that never reached the verdict. It is now the
-    # number A5 actually measured, and when A5 did not run (a gate mode that
-    # does not execute D1) the line says so instead of quietly measuring
-    # something nobody judged.
-    if [ -n "${COVERAGE_AVERAGE:-}" ]; then
-        echo "    • Coverage: ${COVERAGE_AVERAGE}% avg (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
-    else
-        echo "    • Coverage: not measured in this gate mode (A5 lives in D1; the release-line coverage criterion is scripts/gate/check_coverage_v312.sh)"
-    fi
+    # #3844 + #5579: 这行只打印 A5 真正测出来的数字，并带上样本量；
+    # A5 没跑（模式不含 D1）或工具缺失时直说 NOT-RUN —— 既不为了渲染一行
+    # 去重跑 8-crate llvm-cov，也绝不打印凭空的 "0% avg"。
+    case "${COVERAGE_STATUS:-}" in
+        PASS|FAIL)
+            if [ -n "${COVERAGE_PCT:-}" ]; then
+                echo "    • Coverage: ${COVERAGE_STATUS}: ${COVERAGE_PCT}% avg (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
+            else
+                echo "    • Coverage: ${COVERAGE_STATUS} (reason: ${COVERAGE_REASON:-UNKNOWN})"
+            fi
+            ;;
+        NOT-RUN)
+            echo "    • Coverage: NOT-RUN (reason: ${COVERAGE_REASON:-UNKNOWN})"
+            ;;
+        *)
+            echo "    • Coverage: NOT-RUN (D1 not executed in '$GATE' plan; the release-line coverage criterion is scripts/gate/check_coverage_v312.sh)"
+            ;;
+    esac
     echo "    • v3.12 coverage framework: D9=$D9_PASS/$D9_TOTAL; full run via V312_COVERAGE_FULL=1"
     echo "    • execution_engine.rs: $(wc -l < src/execution_engine.rs 2>/dev/null || echo '?') lines (limit: $CARCH05_LIMIT)"
     echo ""
