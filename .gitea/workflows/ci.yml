@@ -490,7 +490,7 @@ jobs:
           # errexit does not apply, so the exit code is still captured AND
           # the tail is printed (issue #3842).
           status=0
-          timeout -k 30 9000 cargo test --all-features --no-fail-fast > test_report.log 2>&1 || status=$?
+          timeout -k 30 16800 cargo test --all-features --no-fail-fast > test_report.log 2>&1 || status=$?
           echo "cargo test exited with status ${status}"
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
@@ -840,12 +840,19 @@ jobs:
           # targets never executed, so the suite needs ~143 min and the
           # 5400 s (1.5 h) limit was structurally unreachable -- independent
           # of runner concurrency or disk. The runner's own job timeout is
-          # raised to 4 h so it is never the binding constraint.
+          # raised to 5 h (18000 s) so it is never the binding constraint, and
+          # the inner limit below (17400 s) stays strictly below that so
+          # the inner timeout fires first and the job log keeps the
+          # partial result instead of being cut off by the container.
+          # Measured basis (CI run 6387, 2026-10-31): the crates suite
+          # ran 195/307 targets in 5400 s, i.e. ~11100 s extrapolated
+          # for the full set, plus up to ~1800 s of checkout / cargo
+          # cache restore / fixture generation under load ~96.
           # Same `set -e` reachability fix as the root `test` job above:
           # `status=$?` alone is unreachable, so the tail that names the
           # stuck/failing target never reaches the job log (issue #3842).
           status=0
-          timeout -k 30 10200 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1 || status=$?
+          timeout -k 30 17400 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1 || status=$?
           echo "cargo test exited with status ${status}"
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
