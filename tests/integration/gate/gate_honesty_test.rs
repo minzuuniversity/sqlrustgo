@@ -364,12 +364,13 @@ gate_parse_args --bogus 2>/dev/null; echo "PARSE_RC=$? TYPE=$GATE_TYPE"
         out
     );
     assert!(
-        out.contains("GA=[D1 D2 D3 D4 D5 D6 D7 D8 D9]"),
-        "got:\n{}",
+        out.contains("GA=[D3 D4 D5 D6 D7 D8 D9]"),
+        "the ga plan runs the release-stage dimensions, NOT D1/D2 (those are \
+         the alpha/beta stage gates, covered by the 'all' plan); got:\n{}",
         out
     );
-    assert!(out.contains("RC=[D1 D2 D3 D4 D5 D9]"), "got:\n{}", out);
-    assert!(out.contains("BETA=[D1 D2 D3 D4]"), "got:\n{}", out);
+    assert!(out.contains("RC=[D3 D4 D5 D9]"), "got:\n{}", out);
+    assert!(out.contains("BETA=[D2 D3 D4]"), "got:\n{}", out);
     assert!(out.contains("ALPHA=[D1 D3 D4]"), "got:\n{}", out);
     assert!(out.contains("BOGUS=[]"), "got:\n{}", out);
     assert!(
@@ -437,6 +438,290 @@ echo "LIST_SIZE=${#D6_INTEGRATION_TESTS[@]}"
         out
     );
     assert_eq!(code, 0, "the snippet itself must succeed:\n{}", stderr);
+}
+
+/// Create a directory containing a `cargo` stub that emulates the REAL
+/// cargo test output, including the ANSI colour codes.
+///
+/// The CI workflow sets `CARGO_TERM_COLOR: always` globally, so cargo
+/// emits
+///     ESC[1m ESC[92m     Running ESC[0m <path> (target/debug/deps/...)
+/// The colour codes sit BETWEEN the "Running" label and the path.
+fn ansi_cargo_dir(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("sqlrustgo_gate_ansi_stub_{}", tag));
+    std::fs::create_dir_all(&dir).expect("create ansi stub dir");
+    let cargo = dir.join("cargo");
+    std::fs::write(
+        &cargo,
+        r#"#!/usr/bin/env bash
+# stub cargo: emulate the real `cargo test` output, honouring CARGO_TERM_COLOR
+targets=()
+prev=""
+for a in "$@"; do
+  if [[ "$prev" == "--test" ]]; then targets+=("$a"); fi
+  prev="$a"
+done
+for t in ${targets[@]+"${targets[@]}"}; do
+  path="tests/probe/${t}.rs"
+  if [[ "${CARGO_TERM_COLOR:-}" == "always" ]]; then
+    printf '\033[1m\033[92m     Running\033[0m %s (target/debug/deps/%s-abcdef)\n' "$path" "$t"
+  else
+    printf '     Running %s (target/debug/deps/%s-abcdef)\n' "$path" "$t"
+  fi
+  printf 'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n'
+done
+exit 0
+"#,
+    )
+    .expect("write ansi stub cargo");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perm = std::fs::metadata(&cargo)
+            .expect("stat ansi stub cargo")
+            .permissions();
+        perm.set_mode(0o755);
+        std::fs::set_permissions(&cargo, perm).expect("chmod ansi stub cargo");
+    }
+    dir
+}
+
+/// D6 must be able to attribute a verdict to a target whose cargo output
+/// carries ANSI colour codes.
+///
+/// This is the exact defect observed in CI run 6335: the D6 awk matched
+/// `/Running /` against the RAW log, but with `CARGO_TERM_COLOR: always`
+/// the bytes between "Running" and the path are `ESC[0m`, so the pattern
+/// never matched. `cur` stayed empty, every `test result:` line was
+/// dropped by the `if (cur == "") next` guard, and all 47 D6 targets were
+/// reported as "no verdict" — even though cargo exited 0 and every test
+/// passed.
+#[test]
+fn test_5456_d6_parses_verdicts_from_ansi_coloured_cargo_output() {
+    let stub = ansi_cargo_dir("d6_ansi");
+    let path = format!(
+        "{}:{}",
+        stub.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let script = r#"
+set -uo pipefail
+source scripts/gate/check_rc_ga_gate.sh
+# One fake target so the dimension is small and deterministic.
+build_d6_target_map() {
+  D6_TARGET_NAME_TO_STEM="d6_ansi_probe=d6_ansi_probe"
+  D6_TARGET_NAME_TO_PATH="d6_ansi_probe=tests/probe/d6_ansi_probe.rs"
+}
+D6_INTEGRATION_TESTS=("d6_ansi_probe")
+D6_TOTAL=0; D6_PASS=0; D6_FAIL=0
+D6_FAILED_TESTS=(); D6_UNRESOLVED=(); D6_TARGETS=()
+run_d6_integration_tests >/dev/null 2>&1
+echo "D6_PASS=$D6_PASS D6_FAIL=$D6_FAIL"
+"#;
+    let out = Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .current_dir(repo_root())
+        .env("PATH", path)
+        // This is what the CI workflow sets for the whole job.
+        .env("CARGO_TERM_COLOR", "always")
+        .output()
+        .expect("failed to spawn bash");
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    let result = stdout.trim().to_string();
+
+    assert_eq!(
+        field_u64(&result, "D6_PASS"),
+        Some(1),
+        "the ANSI-coloured 'Running' line must yield a verdict; got:\n{}\n{}",
+        result,
+        stderr
+    );
+    assert_eq!(
+        field_u64(&result, "D6_FAIL"),
+        Some(0),
+        "no dimension failure expected; got:\n{}\n{}",
+        result,
+        stderr
+    );
+}
+
+/// The D6 log parser must strip ANSI colour codes before matching.
+///
+/// This is a source-level guard: the strip has to happen BEFORE the
+/// `/Running/` match, otherwise the regex sees `RunningESC[0m <path>` and
+/// the "Running" token no longer ends the label.
+#[test]
+fn test_5456_d6_strips_ansi_before_parsing() {
+    let text = std::fs::read_to_string(gate_script("check_rc_ga_gate.sh"))
+        .expect("read check_rc_ga_gate.sh");
+    let code = strip_comments(&text);
+
+    let strip_pos = code.find("sed \"s/${ESC}").expect(
+        "the D6 parser must strip ANSI sequences (sed on ${ESC}) before matching 'Running'",
+    );
+    let awk_pos = code
+        .find("Running[[:space:]]")
+        .expect("the D6 awk must match the 'Running' label");
+    assert!(
+        strip_pos < awk_pos,
+        "the ANSI strip must come BEFORE the 'Running' match (strip at {}, match at {})",
+        strip_pos,
+        awk_pos
+    );
+}
+
+/// The D6 dimension must attribute a verdict to the RIGHT target when the
+/// cargo output is ANSI-coloured: the path that follows the colour codes
+/// is the source path, and it must resolve back to the Cargo target name.
+#[test]
+fn test_5456_d6_ansi_verdict_is_attributed_to_the_right_target() {
+    let stub = ansi_cargo_dir("d6_ansi_attr");
+    let path = format!(
+        "{}:{}",
+        stub.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let script = r#"
+set -uo pipefail
+source scripts/gate/check_rc_ga_gate.sh
+build_d6_target_map() {
+  D6_TARGET_NAME_TO_STEM="d6_ansi_probe=d6_ansi_probe"
+  D6_TARGET_NAME_TO_PATH="d6_ansi_probe=tests/probe/d6_ansi_probe.rs"
+}
+D6_INTEGRATION_TESTS=("d6_ansi_probe")
+D6_TOTAL=0; D6_PASS=0; D6_FAIL=0
+D6_FAILED_TESTS=(); D6_UNRESOLVED=(); D6_TARGETS=()
+run_d6_integration_tests 2>&1
+"#;
+    let out = Command::new("bash")
+        .arg("-c")
+        .arg(script)
+        .current_dir(repo_root())
+        .env("PATH", path)
+        .env("CARGO_TERM_COLOR", "always")
+        .output()
+        .expect("failed to spawn bash");
+    // The gate prints its own ANSI colours ("\u{1b}[0;32mPASS\u{1b}[0m D6: ..."),
+    // so the log line has to be stripped before the plain-text match.
+    let stdout = strip_ansi(&String::from_utf8_lossy(&out.stdout).to_string());
+    assert!(
+        stdout.contains("PASS D6: d6_ansi_probe"),
+        "the verdict must be attributed to the Cargo target name; got:\n{}",
+        stdout
+    );
+}
+
+/// The declared contract (`gate_expected_dims`) and the executor's plan
+/// (`plan_dims`) must agree for EVERY mode.
+///
+/// This is the defect observed in CI run 6335 (postcheck step 24): the
+/// executor ran D3..D9 for the `ga` mode while `gate_expected_dims("ga")
+/// demanded D1..D9, so every `ga` run failed with
+/// "missing dimension(s): D1 D2" even though the gate itself was fine.
+///
+/// The two functions are deliberately kept separate (spec vs. impl) so
+/// that this test is NOT vacuous: merging them would make the comparison
+/// trivially true.
+#[test]
+fn test_5456_expected_dims_and_plan_dims_agree_for_every_mode() {
+    let script = r#"
+set -uo pipefail
+source scripts/gate/check_rc_ga_gate.sh
+for mode in alpha beta rc ga all bogus; do
+  echo "MODE=$mode EXPECTED=[$(gate_expected_dims "$mode")] PLAN=[$(plan_dims "$mode")]"
+done
+"#;
+    let (code, stdout, stderr) = run_bash_snippet(script, "5456_consistency");
+    let out = stdout.trim().to_string();
+    assert_eq!(code, 0, "the snippet itself must succeed:\n{}", stderr);
+
+    let mut seen = 0;
+    for line in out.lines() {
+        if !line.starts_with("MODE=") {
+            continue;
+        }
+        seen += 1;
+        let expected = extract_between(&line, "EXPECTED=[", "]");
+        let plan = extract_between(&line, "PLAN=[", "]");
+        assert_eq!(
+            expected, plan,
+            "the declared contract and the executor plan must agree; got:\n{}",
+            line
+        );
+    }
+    assert_eq!(seen, 6, "every mode must be compared; got:\n{}", out);
+}
+
+/// Helper: return the substring between `start` and the following `]`.
+fn extract_between(s: &str, start: &str, end: &str) -> String {
+    let after = match s.find(start) {
+        Some(i) => &s[i + start.len()..],
+        None => return String::new(),
+    };
+    match after.find(end) {
+        Some(j) => after[..j].to_string(),
+        None => after.to_string(),
+    }
+}
+
+/// The `all` plan must cover D1 and D2 — they are the alpha/beta stage
+/// gates, and CI's postcheck job runs the `all` mode, so `all` is where
+/// D1/D2 are actually validated.
+#[test]
+fn test_5456_all_plan_covers_d1_and_d2() {
+    let script = r#"
+set -uo pipefail
+source scripts/gate/check_rc_ga_gate.sh
+echo "ALL=[$(plan_dims all)]"
+echo "GA=[$(plan_dims ga)]"
+echo "RC=[$(plan_dims rc)]"
+echo "BETA=[$(plan_dims beta)]"
+echo "ALPHA=[$(plan_dims alpha)]"
+"#;
+    let (code, stdout, stderr) = run_bash_snippet(script, "5456_all_plan");
+    let out = stdout.trim().to_string();
+    assert!(out.contains("ALL=[D1 D2 D3 D4 D5 D6 D7 D8 D9]"), "got:\n{}", out);
+    assert!(out.contains("GA=[D3 D4 D5 D6 D7 D8 D9]"), "got:\n{}", out);
+    assert!(out.contains("RC=[D3 D4 D5 D9]"), "got:\n{}", out);
+    assert!(out.contains("BETA=[D2 D3 D4]"), "got:\n{}", out);
+    assert!(out.contains("ALPHA=[D1 D3 D4]"), "got:\n{}", out);
+    assert_eq!(code, 0, "the snippet itself must succeed:\n{}", stderr);
+}
+
+/// `--list-dims` must print the PLAN (what would run), never the expected
+/// set — otherwise the CLI-level consistency check would compare the
+/// expected set with itself and prove nothing.
+#[test]
+fn test_5456_list_dims_prints_the_plan_not_the_expected_set() {
+    let script = gate_script("check_rc_ga_gate.sh");
+    let out = Command::new("bash")
+        .arg(&script)
+        .arg("ga")
+        .arg("--list-dims")
+        .current_dir(repo_root())
+        .output()
+        .expect("failed to spawn bash");
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    let plan = stdout.trim().to_string();
+    assert_eq!(plan, "D3 D4 D5 D6 D7 D8 D9", "got:\n{}\n{}", stdout, stderr);
+
+    // Sanity: the expected set for `ga` differs from the plan, otherwise
+    // this test would be vacuous.
+    let snippet = r#"
+set -uo pipefail
+source scripts/gate/check_rc_ga_gate.sh
+echo "[$(gate_expected_dims ga)]"
+"#;
+    let (_, so, _) = run_bash_snippet(snippet, "5456_list_dims_sanity");
+    assert_ne!(
+        so.trim(),
+        plan,
+        "the expected set and the plan must differ for 'ga', otherwise the \
+         --list-dims check proves nothing"
+    );
 }
 
 /// The D6 loop must iterate the whole array.
@@ -647,4 +932,69 @@ fn test_5426_b5_and_d4_capture_the_real_exit_code() {
         code.contains("check_integration_gate.sh 2>&1)"),
         "B5 must invoke the integration gate without masking its exit code"
     );
+}
+
+// =============================================================================
+// #5456 — 摘要里的「未执行」必须写成 NOT RUN，而不是 0/0
+// =============================================================================
+
+/// 摘要里每一条维度行都必须先判断该维度是否在本模式的计划内。
+///
+/// 修前：不属于本模式的维度照样打印 `0/0`，读起来像「检查了 0 项、
+/// 0 个 blocker」—— 也就是「干净通过」。实际含义是「从未执行」。
+#[test]
+fn test_5456_every_summary_dimension_line_is_guarded_by_dim_ran() {
+    let text = std::fs::read_to_string(gate_script("check_rc_ga_gate.sh"))
+        .expect("read check_rc_ga_gate.sh");
+    let code = strip_comments(&text);
+
+    // 摘要里出现的维度标签（键名）。
+    let labels = [
+        "D1-Alpha",
+        "D2-Beta",
+        "D5-DeepSeek",
+        "D6-Integration",
+        "D7-Reliability",
+        "D8-V312-19",
+        "D9-Coverage",
+    ];
+
+    for label in labels {
+        let dim = label.split('-').next().expect("label has a dimension");
+        let guarded = code
+            .lines()
+            .any(|l| l.trim_start().starts_with("if dim_ran") && l.contains(dim));
+        assert!(
+            guarded,
+            "the summary line for `{}` must be guarded by `if dim_ran {}` — \
+             a dimension that was never executed must not be printed as 0/0",
+            label,
+            dim
+        );
+    }
+}
+
+/// `NOT RUN` 分支必须明确写出「不在本模式计划内」，并指出它由哪个计划覆盖。
+#[test]
+fn test_5456_not_run_lines_name_the_plan_that_excludes_them() {
+    let text = std::fs::read_to_string(gate_script("check_rc_ga_gate.sh"))
+        .expect("read check_rc_ga_gate.sh");
+    let code = strip_comments(&text);
+    let not_run_lines = code
+        .lines()
+        .filter(|l| l.contains("NOT RUN"))
+        .collect::<Vec<_>>();
+    assert!(
+        not_run_lines.len() >= 7,
+        "every guarded dimension needs a NOT RUN branch; found {}:\n{}",
+        not_run_lines.len(),
+        not_run_lines.join("\n")
+    );
+    for line in not_run_lines {
+        assert!(
+            line.contains("not in '$GATE' plan"),
+            "a NOT RUN line must name the plan that excluded the dimension; got: {}",
+            line.trim()
+        );
+    }
 }

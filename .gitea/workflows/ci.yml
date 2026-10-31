@@ -525,6 +525,19 @@ jobs:
           # against) report themselves through the TPCH-NOT-RUN marker, which
           # is collected in TPCH_NOT_RUN_FILE. They are disclosed and are
           # NOT counted as passed (AGENTS.md §8 #5).
+          #
+          # `TPCH_NOT_RUN_FILE` is exported by the earlier
+          # `scripts/ci/prepare_tpch_fixture_ci.sh` step through `$GITHUB_ENV`
+          # (the script writes it with `printf 'TPCH_NOT_RUN_FILE=%s\n' ...`),
+          # so at runtime it IS in this step's environment. Bind it here with
+          # an explicit default so that
+          #   (a) the step stays correct under `set -u` when the fixture step
+          #       was skipped or failed to export, and
+          #   (b) the variable has a definition *inside this step* that the
+          #       CI-wiring honesty test can verify statically — the test can
+          #       only see `NAME=` writes in step bodies, not `NAME=` writes
+          #       inside a script invoked by a step.
+          TPCH_NOT_RUN_FILE="${TPCH_NOT_RUN_FILE:-}"
           NOT_RUN=0
           NOT_RUN_RECORDS=0
           if [ -n "${TPCH_NOT_RUN_FILE:-}" ] && [ -f "${TPCH_NOT_RUN_FILE}" ]; then
@@ -813,6 +826,19 @@ jobs:
           # against) report themselves through the TPCH-NOT-RUN marker, which
           # is collected in TPCH_NOT_RUN_FILE. They are disclosed and are
           # NOT counted as passed (AGENTS.md §8 #5).
+          #
+          # `TPCH_NOT_RUN_FILE` is exported by the earlier
+          # `scripts/ci/prepare_tpch_fixture_ci.sh` step through `$GITHUB_ENV`
+          # (the script writes it with `printf 'TPCH_NOT_RUN_FILE=%s\n' ...`),
+          # so at runtime it IS in this step's environment. Bind it here with
+          # an explicit default so that
+          #   (a) the step stays correct under `set -u` when the fixture step
+          #       was skipped or failed to export, and
+          #   (b) the variable has a definition *inside this step* that the
+          #       CI-wiring honesty test can verify statically — the test can
+          #       only see `NAME=` writes in step bodies, not `NAME=` writes
+          #       inside a script invoked by a step.
+          TPCH_NOT_RUN_FILE="${TPCH_NOT_RUN_FILE:-}"
           NOT_RUN=0
           NOT_RUN_RECORDS=0
           if [ -n "${TPCH_NOT_RUN_FILE:-}" ] && [ -f "${TPCH_NOT_RUN_FILE}" ]; then
@@ -955,10 +981,12 @@ jobs:
     # and `cargo audit --json` to populate the advisory DB before running
     # check_security_scan_v312.sh.
     #
-    # The advisory DB lives at $CARGO_HOME/advisory-db. On the self-hosted
-    # hp-z6g4 runner, $CARGO_HOME = ${{ runner.temp }}/.cargo is ephemeral
-    # (one-shot per job), so we re-fetch inside this job. cargo-audit itself
-    # is installed with --locked (deterministic version pin).
+    # The advisory DB lives at $CARGO_HOME/advisory-db. The hp-z6g4 runner
+    # image does NOT export CARGO_HOME (CI run 6335 proved it: `CARGO_HOME:
+    # unbound variable`), so `cargo` uses its own default `$HOME/.cargo`,
+    # which is also ephemeral (one-shot per job) — hence the re-fetch
+    # inside this job. cargo-audit itself is installed with --locked
+    # (deterministic version pin).
     runs-on: [hp-z6g4]
     # #5424: the condition only matched `develop/v3.12.0` / `ci/v3.12.0-`,
     # so on the v4.x line the job was **skipped** and the GA Security
@@ -1037,6 +1065,16 @@ jobs:
         # step's `cargo audit` runs deterministic and offline-tolerant.
         run: |
           set -euo pipefail
+          # `CARGO_HOME` is **not** exported by the runner image: the
+          # workflow-level NOTE explains why it must not be overridden
+          # globally (doing so pointed rustup at an empty toolchain store).
+          # `cargo` itself falls back to `$HOME/.cargo`, so bind the same
+          # fallback here — referencing `$CARGO_HOME` directly under `set -u`
+          # aborted this step with `CARGO_HOME: unbound variable`.
+          # An already-set CARGO_HOME is preserved (`:-` only fills in a
+          # fallback), so this never overrides the runner's own value.
+          CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+          export CARGO_HOME
           mkdir -p "$CARGO_HOME"
           # --no-fetch on a non-existent DB fails; deliberately omit it
           # so the first run clones the advisory DB.
@@ -1605,6 +1643,15 @@ jobs:
           mkdir -p "artifacts/audit/${{ steps.version.outputs.version }}"
           bash scripts/gate/audit_testing.sh "${{ steps.version.outputs.version }}" ga "artifacts/audit/${{ steps.version.outputs.version }}" 2>&1 | tee audit_testing.log
       - name: "D9 Full Gate Verification (8 dim: D1-D8 + cross-version + test plan + PR template)"
+        # #5456: this step MUST run even when an earlier step failed.
+        #
+        # This is the only place where the `all` mode of
+        # check_rc_ga_gate.sh runs, and `all` is the only plan that covers
+        # D1 (Alpha) and D2 (Beta). Without `if: always()` the first
+        # failing step short-circuits the job, this step never runs, and
+        # D1/D2 are never validated at all — while the job log contains
+        # no indication that they were skipped.
+        if: always()
         run: |
           set -euo pipefail
           bash scripts/gate/check_full_gate_verification.sh 2>&1 | tee full_gate_verification.log
@@ -1694,8 +1741,40 @@ jobs:
             V312_19_FAIL=$(count_matches 'V312-19 release gates FAILED\|blockers: [^0]' v312_19_release_gates.log)
           fi
           echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL d9=$D9_FAIL v312_19=$V312_19_FAIL"
-          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$AFP_FAIL" -gt 0 ] || [ "$DOCS_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ] || [ "$V312_19_FAIL" -gt 0 ]; then
-            echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate / V312-19 release gates)"
+          # #5456: D1 (Alpha) and D2 (Beta) are ONLY covered by the `all`
+          # plan of check_rc_ga_gate.sh, and `all` only runs inside
+          # check_full_gate_verification.sh (the D9 step above). The
+          # counters above are pattern matches on failure markers, so a
+          # step that never ran — or that ran without executing D1/D2 —
+          # contributed ZERO to them and was indistinguishable from a
+          # clean pass.
+          #
+          # Read the dimension report that the gate printed and require
+          # D1 and D2 to be in the EXECUTED set. Missing ⇒ NOT-RUN ⇒ the
+          # job fails, because a gate that did not validate D1/D2 must
+          # not be reported as validated.
+          D1D2_FAIL=0
+          EXEC_DIMS=""
+          if [ -f full_gate_verification.log ]; then
+              EXEC_DIMS=$(grep -E 'Dimensions executed:' full_gate_verification.log | tail -1 | sed -E 's/.*Dimensions executed:[[:space:]]*//' || true)
+          fi
+          if [ -z "$EXEC_DIMS" ]; then
+              echo "::error::no 'Dimensions executed:' report found in full_gate_verification.log — D1/D2 coverage is UNKNOWN (NOT-RUN)"
+              D1D2_FAIL=1
+          else
+              for d in D1 D2; do
+                  case " $EXEC_DIMS " in
+                      *" $d "*) ;;
+                      *)
+                          echo "::error::$d was NOT executed by the full gate (executed: $EXEC_DIMS) — dimension NOT-RUN"
+                          D1D2_FAIL=1
+                          ;;
+                  esac
+              done
+          fi
+          echo "D1/D2 coverage: executed_dims=[${EXEC_DIMS:-<none>}] failures=$D1D2_FAIL"
+          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$AFP_FAIL" -gt 0 ] || [ "$DOCS_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ] || [ "$V312_19_FAIL" -gt 0 ] || [ "$D1D2_FAIL" -gt 0 ]; then
+            echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate / V312-19 release gates / D1-D2 dimension coverage)"
             exit 1
           fi
       - name: Save cargo registry cache (issue #5451)

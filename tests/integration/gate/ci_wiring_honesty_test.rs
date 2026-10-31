@@ -151,12 +151,27 @@ const SUMMARY_LOGS: &[&str] = &[
     "full_gate_verification.log",
 ];
 
+/// D9 全门禁日志里必须有的维度报告行。
+///
+/// #5456: `check_rc_ga_gate.sh` 在 `all` 模式下打印这一行，
+/// `check_full_gate_verification.sh` 把它原样透传进
+/// `full_gate_verification.log`，Gate summary 再从那里判定 D1/D2
+/// 是否真的被执行过。
+const D9_DIMENSION_REPORT: &str = "  Dimensions executed: D1 D2 D3 D4 D5 D6 D7 D8 D9";
+
 /// 建一个只含空日志的目录，供 Gate summary 步骤消费。
 fn summary_dir(tag: &str) -> TempDir {
     let dir = TempDir::new().expect("tempdir");
     for f in SUMMARY_LOGS {
         std::fs::write(dir.path().join(f), "").expect("write empty log");
     }
+    // `full_gate_verification.log` 不能是空的：Gate summary 现在从里面读
+    // 维度报告，缺失即视为 D1/D2 NOT-RUN ⇒ 步骤必须红。
+    std::fs::write(
+        dir.path().join("full_gate_verification.log"),
+        format!("--- [D1-D5 RC/GA] ---\n{}\n  GATE: PASS\n", D9_DIMENSION_REPORT),
+    )
+    .expect("write d9 log");
     let _ = tag;
     dir
 }
@@ -1293,5 +1308,188 @@ pub fn reach(point: u8) { let _ = point; }
         "the checker must flag a duplicate that is live with the feature off; \
          it reported {} live definition(s)",
         alive
+    );
+}
+
+// =============================================================================
+// #5456 — D1/D2 维度覆盖兜底（CI 侧）
+// =============================================================================
+
+/// 找到 postcheck job 里名字以 `prefix` 开头的 step 的 `if` 条件。
+///
+/// 返回 `None` 表示该 step 没有 `if` 字段（等价于「总是运行」）。
+fn step_if(yaml: &Value, job_name: &str, prefix: &str) -> Option<String> {
+    let job = job(yaml, job_name);
+    let steps = job
+        .get("steps")
+        .and_then(|v| v.as_sequence())
+        .unwrap_or_else(|| panic!("job `{}` has no steps", job_name));
+    for st in steps {
+        let name = st
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("<unnamed>");
+        if name.starts_with(prefix) {
+            return st
+                .get("if")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+        }
+    }
+    panic!("no step starting with `{}` in job `{}`", prefix, job_name);
+}
+
+/// 「D9 Full Gate Verification」步骤必须带 `if: always()`。
+///
+/// 这是 `all` 计划（D1–D9，含 D1 Alpha 与 D2 Beta）**唯一**的运行处。
+/// 修前该步骤没有 `if`：任何前置步骤失败都会短路整个 job，于是这一步
+/// 根本不运行 —— D1/D2 一次都没被验证过，而日志里没有任何迹象表明这一点。
+#[test]
+fn test_5456_d9_full_gate_step_always_runs() {
+    let yaml = load_yaml(".gitea/workflows/ci.yml");
+    let cond = step_if(&yaml, "postcheck", "D9 Full Gate Verification");
+    let cond = cond.unwrap_or_else(|| {
+        panic!("the D9 Full Gate Verification step has no `if:` condition — \
+                it will be skipped whenever an earlier step fails, so D1/D2 \
+                are never validated")
+    });
+    assert!(
+        cond.contains("always()"),
+        "the D9 Full Gate Verification step must be guarded by `if: always()`, got: {:?}",
+        cond
+    );
+}
+
+/// D9 步骤体必须真的调用了全门禁编排脚本。
+///
+/// `if: always()` 只保证「会跑」，还要保证「跑的是能覆盖 D1/D2 的那个」。
+#[test]
+fn test_5456_d9_full_gate_step_runs_the_full_gate_verification_script() {
+    let yaml = load_yaml(".gitea/workflows/ci.yml");
+    let body = step_body(&yaml, "postcheck", "D9 Full Gate Verification");
+    assert!(
+        body.contains("check_full_gate_verification.sh"),
+        "the D9 step must invoke check_full_gate_verification.sh (the only \
+         caller of the `all` plan); body was:\n{}",
+        body
+    );
+}
+
+/// Gate summary 必须从 `full_gate_verification.log` 里读维度报告。
+///
+/// 这是「D1/D2 真的被执行过」的唯一机器可读证据来源。
+#[test]
+fn test_5456_gate_summary_reads_the_executed_dimension_report() {
+    let yaml = load_yaml(".gitea/workflows/ci.yml");
+    let body = strip_comments(&step_body(&yaml, "postcheck", "Gate summary"));
+    assert!(
+        body.contains("full_gate_verification.log"),
+        "the Gate summary must read full_gate_verification.log; body was:\n{}",
+        body
+    );
+    // 必须存在**一行**同时含标记与日志文件名 —— 只检查全文出现标记是不够的：
+    // 报错文案里也含 `Dimensions executed:`，标记拼错时全文检查依然通过。
+    // 抽出 Gate summary 实际使用的 grep 模式，检查它找的是不是那个标记。
+    // 全文包含标记是不够的：报错文案与 sed 表达式里都有这个字符串，
+    // 标记写错时全文检查依然会通过。
+    let grep_marks_dimension_report = body.lines().any(|l| {
+        let Some(rest) = l.split("grep -E ").nth(1) else {
+            return false;
+        };
+        let Some(q1) = rest.find('\'') else {
+            return false;
+        };
+        let Some(q2) = rest[q1 + 1..].find('\'') else {
+            return false;
+        };
+        let pattern = &rest[q1 + 1..q1 + 1 + q2];
+        pattern.contains("Dimensions executed:") && l.contains("full_gate_verification.log")
+    });
+    assert!(
+        grep_marks_dimension_report,
+        "the Gate summary must grep `Dimensions executed:` OUT OF full_gate_verification.log; \
+         body was:\n{}",
+        body
+    );
+}
+
+/// 行为级：维度报告里缺少 D1 或 D2 时，Gate summary 必须红。
+///
+/// 这是本次修复的核心判据 —— 修前「D1/D2 从未执行」与「D1/D2 干净通过」
+/// 在日志里长得一模一样（都是零计数）。
+#[test]
+fn test_5456_gate_summary_blocks_when_d1_or_d2_was_not_executed() {
+    let yaml = load_yaml(".gitea/workflows/ci.yml");
+    let body = step_body(&yaml, "postcheck", "Gate summary");
+
+    // D2 缺失（正是 CI run 6335 的实际形态：D3..D9 被执行，D1/D2 没有）
+    let dir = summary_dir("d2_missing");
+    std::fs::write(
+        dir.path().join("full_gate_verification.log"),
+        "  Dimensions executed: D3 D4 D5 D6 D7 D8 D9\n",
+    )
+    .expect("write d9 log");
+
+    let (code, out, err) = run_shell(dir.path(), &body);
+    assert_eq!(
+        code, 1,
+        "a dimension report without D1/D2 must make the Gate summary exit 1; \
+         it returned {} — D1/D2 NOT-RUN is being reported as validated.\n\
+         stdout:\n{}\nstderr:\n{}",
+        code, out, err
+    );
+    assert!(
+        out.contains("D2 was NOT executed") || out.contains("D1 was NOT executed"),
+        "the failure must name the missing dimension; stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+}
+
+/// 行为级：完全没有维度报告时，Gate summary 必须红（覆盖是 UNKNOWN，
+/// 不能当成干净通过）。
+#[test]
+fn test_5456_gate_summary_blocks_when_the_dimension_report_is_missing() {
+    let yaml = load_yaml(".gitea/workflows/ci.yml");
+    let body = step_body(&yaml, "postcheck", "Gate summary");
+
+    let dir = summary_dir("no_report");
+    std::fs::write(dir.path().join("full_gate_verification.log"), "").expect("write d9 log");
+
+    let (code, out, err) = run_shell(dir.path(), &body);
+    assert_eq!(
+        code, 1,
+        "a missing dimension report means D1/D2 coverage is UNKNOWN and must \
+         block; the step returned {}\nstdout:\n{}\nstderr:\n{}",
+        code, out, err
+    );
+    assert!(
+        out.contains("D1/D2 coverage is UNKNOWN"),
+        "the failure must say coverage is UNKNOWN; stdout:\n{}\nstderr:\n{}",
+        out,
+        err
+    );
+}
+
+/// 行为级：D1/D2 都被执行时，Gate summary 不得因覆盖判据而红。
+///
+/// 防止兜底逻辑变成「永远红」——那只是把同一个缺陷换成另一种形式。
+#[test]
+fn test_5456_gate_summary_stays_green_when_d1_and_d2_were_executed() {
+    let yaml = load_yaml(".gitea/workflows/ci.yml");
+    let body = step_body(&yaml, "postcheck", "Gate summary");
+
+    let dir = summary_dir("d1_d2_ok");
+    let (code, out, err) = run_shell(dir.path(), &body);
+    assert_eq!(
+        code, 0,
+        "with D1 and D2 present in the dimension report the Gate summary must \
+         exit 0; it returned {}\nstdout:\n{}\nstderr:\n{}",
+        code, out, err
+    );
+    assert!(
+        out.contains("D1/D2 coverage: executed_dims="),
+        "the summary must print the coverage line; stdout:\n{}",
+        out
     );
 }
