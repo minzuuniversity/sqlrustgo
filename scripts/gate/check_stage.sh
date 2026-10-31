@@ -89,6 +89,10 @@ if [[ ! -f "$STAGE_CONFIG" ]]; then
     echo "ERROR: STAGE_CONFIG not found: $STAGE_CONFIG" >&2
     exit 2
 fi
+# Guard: the yaml readers must never degrade into empty rule sets
+# (issue #3838). Fail loudly before any gate runs.
+stage_require_yaml "stage driver"
+stage_validate_yaml "$STAGE_CONFIG"
 if ! command -v cargo >/dev/null 2>&1; then
     if [ -x "$HOME/.cargo/bin/cargo" ]; then
         export PATH="$HOME/.cargo/bin:$PATH"
