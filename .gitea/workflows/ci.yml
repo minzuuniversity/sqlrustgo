@@ -481,8 +481,16 @@ jobs:
           # cargo runs (each rebuilding the engine crate). It now has its
           # own job so that its cost does not eat into this budget, and so
           # that the two do not compete for the runner's CPU and memory.
-          timeout -k 30 9000 cargo test --all-features --no-fail-fast > test_report.log 2>&1
-          status=$?
+          # `status=$?` on its own line is UNREACHABLE under `set -e`:
+          # the step runs as `bash --noprofile --norc -e -o pipefail`, so a
+          # non-zero `cargo test` aborts the step on that very line and the
+          # `tail` below never runs — the job log then shows only the
+          # summary counter (`failed=3`) and no failing test name at all.
+          # `|| status=$?` puts the assignment in a condition context, where
+          # errexit does not apply, so the exit code is still captured AND
+          # the tail is printed (issue #3842).
+          status=0
+          timeout -k 30 9000 cargo test --all-features --no-fail-fast > test_report.log 2>&1 || status=$?
           echo "cargo test exited with status ${status}"
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
@@ -766,8 +774,11 @@ jobs:
           # targets are individually much smaller than the root package's
           # fixture-heavy ones, and this job has the 3 h container limit to
           # itself.
-          timeout -k 30 5400 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1
-          status=$?
+          # Same `set -e` reachability fix as the root `test` job above:
+          # `status=$?` alone is unreachable, so the tail that names the
+          # stuck/failing target never reaches the job log (issue #3842).
+          status=0
+          timeout -k 30 5400 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1 || status=$?
           echo "cargo test exited with status ${status}"
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
