@@ -605,7 +605,7 @@ run_d6_integration_tests 2>&1
         .expect("failed to spawn bash");
     // The gate prints its own ANSI colours ("\u{1b}[0;32mPASS\u{1b}[0m D6: ..."),
     // so the log line has to be stripped before the plain-text match.
-    let stdout = strip_ansi(&String::from_utf8_lossy(&out.stdout).to_string());
+    let stdout = strip_ansi(String::from_utf8_lossy(&out.stdout).as_ref());
     assert!(
         stdout.contains("PASS D6: d6_ansi_probe"),
         "the verdict must be attributed to the Cargo target name; got:\n{}",
@@ -643,8 +643,8 @@ done
             continue;
         }
         seen += 1;
-        let expected = extract_between(&line, "EXPECTED=[", "]");
-        let plan = extract_between(&line, "PLAN=[", "]");
+        let expected = extract_between(line, "EXPECTED=[", "]");
+        let plan = extract_between(line, "PLAN=[", "]");
         assert_eq!(
             expected, plan,
             "the declared contract and the executor plan must agree; got:\n{}",
