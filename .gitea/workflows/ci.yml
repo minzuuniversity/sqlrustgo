@@ -495,6 +495,18 @@ jobs:
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
           tail -n 200 test_report.log || true
+          # `tail -n 200` is NOT enough to diagnose a red run: the report
+          # holds one section per test binary (475 of them in CI run 6335),
+          # so the failing binary's name and its assertion message are
+          # almost always *outside* the tail. CI run 6335 shipped a red
+          # `test` job whose log named `ci_wiring_honesty_test` and
+          # `g13_oltp1_concurrent_select_test` only in cargo's final
+          # summary - the failing assertion itself never reached the log.
+          # Print the failure sections explicitly so that a red job log
+          # always states WHICH test failed and WHY.
+          echo "--- failing test targets (from test_report.log) ---"
+          grep -E '^error: [0-9]+ targets? failed:' -A 10 test_report.log || true
+          grep -E '^failures:$' -A 20 test_report.log || true
           exit ${status}
       - name: Gate — tests must not overwrite archived evidence (#5577 / #5389)
         # #5577: a plain `cargo test --workspace` used to overwrite the 21
@@ -833,6 +845,18 @@ jobs:
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
           tail -n 200 test_report.log || true
+          # `tail -n 200` is NOT enough to diagnose a red run: the report
+          # holds one section per test binary (475 of them in CI run 6335),
+          # so the failing binary's name and its assertion message are
+          # almost always *outside* the tail. CI run 6335 shipped a red
+          # `test` job whose log named `ci_wiring_honesty_test` and
+          # `g13_oltp1_concurrent_select_test` only in cargo's final
+          # summary - the failing assertion itself never reached the log.
+          # Print the failure sections explicitly so that a red job log
+          # always states WHICH test failed and WHY.
+          echo "--- failing test targets (from test_report.log) ---"
+          grep -E '^error: [0-9]+ targets? failed:' -A 10 test_report.log || true
+          grep -E '^failures:$' -A 20 test_report.log || true
           exit ${status}
       - name: Gate — tests must not overwrite archived evidence (#5577 / #5389)
         # Same gate as the root-package `test` job, and for the same reason:
