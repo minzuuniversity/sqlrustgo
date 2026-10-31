@@ -795,15 +795,20 @@ jobs:
           # what runs here is each member package's own test suite, with its
           # default features — exactly what `cargo test -p <crate>` does.
           #
-          # 5400 s (1.5 h) instead of the root job's 9000 s: the member
+          # 10800 s (3 h) instead of the root job's 9000 s. The member
           # targets are individually much smaller than the root package's
-          # fixture-heavy ones, and this job has the 3 h container limit to
-          # itself.
+          # fixture-heavy ones, BUT the aggregate suite is not: on the
+          # `develop` baseline (CI run 6335, job 13450) this job was killed
+          # by the 5400 s limit at 98 min with 112 of 307 declared test
+          # targets never executed, so the suite needs ~143 min and the
+          # 5400 s (1.5 h) limit was structurally unreachable -- independent
+          # of runner concurrency or disk. The runner's own job timeout is
+          # raised to 4 h so it is never the binding constraint.
           # Same `set -e` reachability fix as the root `test` job above:
           # `status=$?` alone is unreachable, so the tail that names the
           # stuck/failing target never reaches the job log (issue #3842).
           status=0
-          timeout -k 30 5400 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1 || status=$?
+          timeout -k 30 10200 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1 || status=$?
           echo "cargo test exited with status ${status}"
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
