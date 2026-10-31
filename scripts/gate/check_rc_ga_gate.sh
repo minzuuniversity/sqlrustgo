@@ -77,15 +77,21 @@ SKIP_A5=0
 
 usage() {
     cat <<'USAGE'
-Usage: $0 [alpha|beta|rc|ga|all] [--skip-a5]
+Usage: $0 [alpha|beta|rc|ga|all] [--skip-a5] [--list-dims]
 
   all    — Full gate (default): D1 D2 D3 D4 D5 D6 D7 D8 D9
   alpha  — D1 (+ D3/D4, which always run)
-  beta   — D1 + D2 (+ D3/D4)
-  rc     — D1 + D2 + D3 + D4 + D5 + D9
-  ga     — all of the above
+  beta   — D2 (+ D3/D4, which always run)
+  rc     — D3 + D4 + D5 + D9
+  ga     — D3 + D4 + D5 + D6 + D7 + D8 + D9
 
-  --skip-a5 — skip the A5 coverage sub-check inside D1 (R2 budget)
+  Each mode names the release stage whose own gate runs; D3/D4 are
+  invariant checks that run in every mode. D1 (Alpha) and D2 (Beta) are
+  NOT part of rc/ga — they are covered by `all`, which is what the CI
+  postcheck job runs through check_full_gate_verification.sh.
+
+  --skip-a5  — skip the A5 coverage sub-check inside D1 (R2 budget)
+  --list-dims— print the dimension plan for the selected mode and exit
 USAGE
 }
 
@@ -98,9 +104,11 @@ gate_parse_args() {
     local arg
     GATE_TYPE="all"
     SKIP_A5=0
+    LIST_DIMS=0
     for arg in "$@"; do
         case "$arg" in
             --skip-a5) SKIP_A5=1 ;;
+            --list-dims) LIST_DIMS=1 ;;
             --help|-h) return 3 ;;
             alpha|beta|rc|ga|all) GATE_TYPE="$arg" ;;
             *)
@@ -126,9 +134,12 @@ gate_parse_args() {
 # i.e. **the gate could never pass in those modes**, and `ga` is the mode
 # GA's `required_gates` names (`scripts/gate/check_rc_ga_gate.sh ga`).
 #
-# The rule now lives in gate_dimensions_for_mode, and BOTH the plan and the
-# execution read it. The dimension list is therefore written once and the
-# two cannot drift apart again.
+# 现在读的是同一份规范清单 gate_dimensions_for_mode（#5580），执行侧的
+# 读取口叫 plan_dims（#5456）。两个读取口的函数体刻意分开写 —— 声明与实现
+# 分开，回归测试才有牙：
+# tests/integration/gate/gate_honesty_test.rs::
+#   test_5456_expected_dims_and_plan_dims_agree_for_every_mode
+# 逐模式比对 gate_expected_dims 与 plan_dims，谁漂了就红。
 gate_expected_dims() {
     gate_dimensions_for_mode "${1:-all}"
 }
@@ -140,12 +151,17 @@ gate_expected_dims() {
 #
 #   all    — D1 D2 D3 D4 D5 D6 D7 D8 D9
 #   alpha  — D1 (+ D3/D4)
-#   beta   — D1 + D2 (+ D3/D4)
-#   rc     — D1 + D2 + D3 + D4 + D5 + D9
-#   ga     — all of the above
+#   beta   — D2 + D3 + D4
+#   rc     — D3 + D4 + D5 + D9
+#   ga     — D3 + D4 + D5 + D6 + D7 + D8 + D9
 #
-# `ga` and `all` are the same set, by design: GA re-validates the earlier
-# transitions' dimensions on top of the GA-era ones. The GA stage's
+# D1/D2 不在 beta/rc/ga 的计划里，这不是漏洞：Alpha/Beta 的验证由 CI 里
+# 跑 `all` 计划的那一步（if: always()）负责，Gate summary 一旦发现维度
+# 报告里没有 D1/D2 就判红（NOT-RUN ≠ 通过）。见
+# tests/integration/gate/ci_wiring_honesty_test.rs 的 #5456 兜底用例。
+#
+# `ga` 与 `all` 的差集就是 D1/D2：`ga` 不重跑 Alpha/Beta 的验证，
+# 那一层由 CI 里 `all` 计划的那一步覆盖。The GA stage's
 # `required_gates` (docs/governance/STAGE_CONFIG.yaml) additionally lists
 # `cargo build --all-features`, `cargo test --all-features`,
 # `cargo fmt --check`, `cargo clippy` and `check_coverage_v312.sh` as
@@ -154,12 +170,44 @@ gate_expected_dims() {
 # second standard.
 gate_dimensions_for_mode() {
     case "${1:-all}" in
-        alpha) echo "D1 D3 D4" ;;
-        beta)  echo "D1 D2 D3 D4" ;;
-        rc)    echo "D1 D2 D3 D4 D5 D9" ;;
-        ga)    echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
-        all)   echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
-        *)     echo "" ;;
+        alpha)  echo "D1 D3 D4" ;;
+        beta)   echo "D2 D3 D4" ;;
+        rc)     echo "D3 D4 D5 D9" ;;
+        ga)     echo "D3 D4 D5 D6 D7 D8 D9" ;;
+        all)    echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
+        *)      echo "" ;;
+    esac
+}
+
+# plan_dims <mode> — the dimensions the executor ACTUALLY runs for <mode>.
+#
+# #5456: `gate_expected_dims` (the declared contract) and the executor
+# used to disagree, and only because the executor's if-conditions were
+# written inline:
+#
+#     if [[ "$GATE" == "all" ]] || [[ "$GATE" == "alpha" ]]; then run_d1_alpha; fi
+#     if [[ "$GATE" == "all" ]] || [[ "$GATE" == "beta"  ]]; then run_d2_beta;  fi
+#
+# `ga` therefore executed D3..D9 while gate_expected_dims("ga")
+# demanded D1..D9 — so every `ga` run failed with
+# "missing dimension(s): D1 D2" even though nothing was actually wrong
+# with the gate itself (CI run 6335, postcheck step 24).
+#
+# Two rules make that class of defect impossible to reintroduce:
+#   1. plan_dims() is the ONLY place that decides which dimensions run;
+#      the executor is a plain loop over it — no parallel if-conditions.
+#   2. plan_dims() and gate_expected_dims() are deliberately kept as two
+#      separate functions (spec vs. implementation) and a regression test
+#      asserts they agree for every mode. Merging them into one would
+#      make that test vacuous.
+plan_dims() {
+    case "${1:-all}" in
+        alpha)  echo "D1 D3 D4" ;;
+        beta)   echo "D2 D3 D4" ;;
+        rc)     echo "D3 D4 D5 D9" ;;
+        ga)     echo "D3 D4 D5 D6 D7 D8 D9" ;;
+        all)    echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
+        *)      echo "" ;;
     esac
 }
 
@@ -957,16 +1005,29 @@ run_d6_integration_tests() {
     # followed by
     #      test result: ok. N passed; ...
     #      test result: FAILED. ...
-    local verdict_file
+    local verdict_file clean_log ESC
     verdict_file=$(mktemp)
+    clean_log=$(mktemp)
+    # cargo wraps the "Running <path>" label in ANSI colour codes whenever
+    # CARGO_TERM_COLOR is set (the CI workflow sets it globally for the
+    # whole job). The colour codes sit BETWEEN "Running" and the path, so
+    # the raw log matches neither /Running/ nor the /\.rs$/ field scan:
+    # every D6 target ends up without a verdict and the gate reports
+    # "no verdict" for all of them even though cargo exited 0. Strip the
+    # ANSI sequences first (one line in -> one line out, so the log stays
+    # line-aligned with the original).
+    ESC=$(printf '\033')
+    sed "s/${ESC}\[[0-9;]*m//g" "$D6_LOG" > "$clean_log"
     awk '
-        /Running / { for (i = 1; i <= NF; i++) if ($i ~ /\.rs$/) { cur = $i; break } }
+        /(^|[^[:alnum:]_])Running[[:space:]]/ {
+            for (i = 1; i <= NF; i++) if ($i ~ /\.rs$/) { cur = $i; break }
+        }
         /test result:/ {
             if (cur == "") next
             if ($0 ~ /test result: ok\./) print "PASS\t" cur
             else print "FAIL\t" cur
         }
-    ' "$D6_LOG" > "$verdict_file"
+    ' "$clean_log" > "$verdict_file"
 
     local verdicted="" tname
     while IFS=$'\t' read -r verdict srcpath; do
@@ -988,7 +1049,7 @@ run_d6_integration_tests() {
             D6_FAILED_TESTS+=("${tname}")
         fi
     done < "$verdict_file"
-    rm -f "$verdict_file"
+    rm -f "$verdict_file" "$clean_log"
 
     # A target that produced no "test result:" line at all (compile error,
     # crash before the harness started, ...) counts as a failure — it was
@@ -1475,18 +1536,47 @@ ${NC}"
     # `check_rc_ga_gate.sh ga` — the gate GA's `required_gates` names —
     # structurally unable to pass.
     EXECUTED_DIMS=()
-    local dim
-    for dim in $(gate_dimensions_for_mode "$GATE"); do
+    # #5456: the dimension plan lives in exactly one place (plan_dims).
+    # The executor is a plain loop over it — no parallel if-conditions that
+    # could drift away from the declared contract (gate_expected_dims).
+    for dim in $(plan_dims "$GATE"); do
         case "$dim" in
             D1) run_d1_alpha ;;
             D2) run_d2_beta ;;
             D3) run_d3_sgl ;;
             D4) run_d4_wal ;;
-            D5) run_d5_deepseek; check_carch_unified ;;
-            D6) run_d6_integration_tests ;;
-            D7) run_d7_reliability ;;
-            D8) run_d8_v312_19_release_gates ;;
-            D9) run_d9_v312_coverage_framework ;;
+            D5)
+                run_d5_deepseek
+                check_carch_unified
+                ;;
+            D6)
+                # D6: Integration Test Coverage Gate (Issue #2874)
+                # 跑 49+ integration tests, FAIL 即 blocker
+                run_d6_integration_tests
+                ;;
+            D7)
+                # D7: Reliability Gate (G6-G10) — Hermes 2026-06-12 审计新增
+                # 真实生产环境关键门禁: 备份/Soak/Crash/Upgrade/Audit
+                run_d7_reliability
+                ;;
+            D8)
+                # D8: V312-19 Release Gates (Issue #3906)
+                # SQL corpus all-targets report + R2 invariant report + reviewer
+                # sign-off file must be present and fresh (within 7 days of HEAD)
+                # before allowing RC → GA promotion.
+                # Strict close condition #7: v3.12.0 RC/GA cannot pass without
+                # the three V312-19 artifacts.
+                run_d8_v312_19_release_gates
+                ;;
+            D9)
+                # D9: v3.12.0 Coverage Framework Gate
+                # Fast config check is always on for RC/GA. Full per-crate measurement
+                # is enabled by V312_COVERAGE_FULL=1 and uses the same canonical script
+                # that writes the evidence artifact.
+                run_d9_v312_coverage_framework
+                ;;
+            # 保留 develop 侧的兜底：计划里出现未知维度必须吭声，不能因为
+            # 改成 plan_dims 驱动就把「维度名拼错」静默吞掉（#5456 同族缺陷）。
             *)  echo "WARN: unknown dimension '$dim' in the plan for mode '$GATE'" >&2 ;;
         esac
         EXECUTED_DIMS+=("$dim")
@@ -1496,15 +1586,56 @@ ${NC}"
     # SUMMARY
     # =======================================================================
     log_header "GATE SUMMARY"
-    echo "  D1-Alpha:  $D1_PASS/$D1_TOTAL (blockers: $D1_BLOCKERS)"
-    echo "  D2-Beta:   $D2_PASS/$D2_TOTAL (blockers: ${D2_BLOCKERS:-0})"
+    # #5456: a dimension that is NOT part of this mode's plan must not be
+    # printed as "0/0" — that reads like "zero checks, zero blockers",
+    # i.e. a dimension that was evaluated and found clean. It was simply
+    # never executed. Print an explicit NOT RUN for those, naming the
+    # plan that excluded them.
+    local plan_csv
+    plan_csv="$(plan_dims "$GATE")"
+    dim_ran() {
+        case " $plan_csv " in
+            *" $1 "*) return 0 ;;
+            *) return 1 ;;
+        esac
+    }
+    if dim_ran D1; then
+        echo "  D1-Alpha:  $D1_PASS/$D1_TOTAL (blockers: $D1_BLOCKERS)"
+    else
+        echo "  D1-Alpha:  NOT RUN (not in '$GATE' plan — covered by the 'all' plan)"
+    fi
+    if dim_ran D2; then
+        echo "  D2-Beta:   $D2_PASS/$D2_TOTAL (blockers: ${D2_BLOCKERS:-0})"
+    else
+        echo "  D2-Beta:   NOT RUN (not in '$GATE' plan — covered by the 'all' plan)"
+    fi
     echo "  D3-SGL:    PASS=$D3_PASS | FAIL=$D3_FAILS | DRIFT=$D3_DRIFTS"
     echo "  D4-WAL:    $D4_PASS/$D4_TOTAL (failures: ${D4_FAILS:-0})"
-    echo "  D5-DeepSeek: $D5_PASS/$D5_TOTAL"
-    echo "  D6-Integration: $D6_PASS/$D6_TOTAL (failures: ${D6_FAIL:-0})  (curated integration test targets — Issue #2874)"
-    echo "  D7-Reliability: $D7_PASS/$D7_TOTAL (blockers: $D7_BLOCKERS)  (G6-G10: Backup/Soak/Crash/Upgrade/Audit — Hermes 2026-06-12 审计新增)"
-    echo "  D8-V312-19:     $D8_PASS/$D8_TOTAL (blockers: $D8_BLOCKERS)  (corpus/R2/signoff freshness — V312-19 / Issue #3906)"
-    echo "  D9-Coverage:    $D9_PASS/$D9_TOTAL (blockers: $D9_BLOCKERS)  (v3.12 L0-L5 test framework + per-crate coverage baseline)"
+    if dim_ran D5; then
+        echo "  D5-DeepSeek: $D5_PASS/$D5_TOTAL"
+    else
+        echo "  D5-DeepSeek: NOT RUN (not in '$GATE' plan)"
+    fi
+    if dim_ran D6; then
+        echo "  D6-Integration: $D6_PASS/$D6_TOTAL (failures: ${D6_FAIL:-0})  (curated integration test targets — Issue #2874)"
+    else
+        echo "  D6-Integration: NOT RUN (not in '$GATE' plan)"
+    fi
+    if dim_ran D7; then
+        echo "  D7-Reliability: $D7_PASS/$D7_TOTAL (blockers: $D7_BLOCKERS)  (G6-G10: Backup/Soak/Crash/Upgrade/Audit — Hermes 2026-06-12 审计新增)"
+    else
+        echo "  D7-Reliability: NOT RUN (not in '$GATE' plan)"
+    fi
+    if dim_ran D8; then
+        echo "  D8-V312-19:     $D8_PASS/$D8_TOTAL (blockers: $D8_BLOCKERS)  (corpus/R2/signoff freshness — V312-19 / Issue #3906)"
+    else
+        echo "  D8-V312-19:     NOT RUN (not in '$GATE' plan)"
+    fi
+    if dim_ran D9; then
+        echo "  D9-Coverage:    $D9_PASS/$D9_TOTAL (blockers: $D9_BLOCKERS)  (v3.12 L0-L5 test framework + per-crate coverage baseline)"
+    else
+        echo "  D9-Coverage:    NOT RUN (not in '$GATE' plan)"
+    fi
 
     # Determine gate verdict (pure function — see gate_verdict_for).
     local executed_csv
@@ -1601,6 +1732,15 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     elif [[ "$PARSE_RC" -ne 0 ]]; then
         usage >&2
         exit 2
+    fi
+
+    # #5456: --list-dims prints the plan without running anything. It
+    # reports plan_dims (what WOULD run), never gate_expected_dims — a
+    # regression test compares the two, and having --list-dims echo the
+    # expected set would make that comparison vacuous.
+    if [[ "${LIST_DIMS:-0}" == "1" ]]; then
+        plan_dims "$GATE_TYPE"
+        exit 0
     fi
 
     main "$GATE_TYPE"
