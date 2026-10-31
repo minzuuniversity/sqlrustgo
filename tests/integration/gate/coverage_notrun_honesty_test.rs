@@ -267,6 +267,50 @@ fn test_3844_summary_never_prints_a_zero_coverage_average() {
 // audit_testing.sh — the ripgrep-dependent check
 // =============================================================================
 
+/// Build a PATH that cannot resolve `rg`.
+///
+/// A plain `PATH="/usr/bin:/bin:/usr/sbin:/sbin"` is NOT enough: the CI
+/// runner image installs ripgrep at `/usr/bin/rg` (apk), so that PATH still
+/// finds it, the "ripgrep is missing" branch of `audit_testing.sh` is never
+/// exercised, and this test fails for the wrong reason. Instead, symlink
+/// every executable of the current PATH into a scratch directory — except
+/// `rg` itself — and use that directory as the PATH.
+fn path_without_rg() -> String {
+    let dir = std::env::temp_dir().join("sqlrustgo_audit_3844_bin");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create scratch bin dir");
+
+    let original = std::env::var("PATH").unwrap_or_default();
+    for source_dir in original.split(':') {
+        if source_dir.is_empty() {
+            continue;
+        }
+        let entries = match std::fs::read_dir(source_dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name == "rg" {
+                continue;
+            }
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(_) => continue,
+            };
+            if file_type.is_dir() {
+                continue;
+            }
+            let link = dir.join(&name);
+            if link.exists() {
+                continue;
+            }
+            let _ = std::os::unix::fs::symlink(entry.path(), &link);
+        }
+    }
+    dir.display().to_string()
+}
+
 fn run_audit(with_rg: bool) -> String {
     let out_dir = std::env::temp_dir().join(format!(
         "sqlrustgo_audit_3844_{}",
@@ -274,11 +318,11 @@ fn run_audit(with_rg: bool) -> String {
     ));
     std::fs::create_dir_all(&out_dir).expect("create out dir");
 
-    // A PATH without ripgrep: only the standard system directories.
+    // A PATH from which ripgrep cannot be resolved at all.
     let path = if with_rg {
         std::env::var("PATH").unwrap_or_default()
     } else {
-        "/usr/bin:/bin:/usr/sbin:/sbin".to_string()
+        path_without_rg()
     };
 
     let out = Command::new("bash")
