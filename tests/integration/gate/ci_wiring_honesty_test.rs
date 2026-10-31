@@ -169,7 +169,10 @@ fn summary_dir(tag: &str) -> TempDir {
     // 维度报告，缺失即视为 D1/D2 NOT-RUN ⇒ 步骤必须红。
     std::fs::write(
         dir.path().join("full_gate_verification.log"),
-        format!("--- [D1-D5 RC/GA] ---\n{}\n  GATE: PASS\n", D9_DIMENSION_REPORT),
+        format!(
+            "--- [D1-D5 RC/GA] ---\n{}\n  GATE: PASS\n",
+            D9_DIMENSION_REPORT
+        ),
     )
     .expect("write d9 log");
     let _ = tag;
@@ -1330,10 +1333,7 @@ fn step_if(yaml: &Value, job_name: &str, prefix: &str) -> Option<String> {
             .and_then(|v| v.as_str())
             .unwrap_or("<unnamed>");
         if name.starts_with(prefix) {
-            return st
-                .get("if")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+            return st.get("if").and_then(|v| v.as_str()).map(|s| s.to_string());
         }
     }
     panic!("no step starting with `{}` in job `{}`", prefix, job_name);
@@ -1349,9 +1349,11 @@ fn test_5456_d9_full_gate_step_always_runs() {
     let yaml = load_yaml(".gitea/workflows/ci.yml");
     let cond = step_if(&yaml, "postcheck", "D9 Full Gate Verification");
     let cond = cond.unwrap_or_else(|| {
-        panic!("the D9 Full Gate Verification step has no `if:` condition — \
+        panic!(
+            "the D9 Full Gate Verification step has no `if:` condition — \
                 it will be skipped whenever an earlier step fails, so D1/D2 \
-                are never validated")
+                are never validated"
+        )
     });
     assert!(
         cond.contains("always()"),
@@ -1509,7 +1511,10 @@ fn test_5456_gate_summary_stays_green_when_d1_and_d2_were_executed() {
 #[test]
 fn test_6335_test_job_prints_the_failing_tests_not_only_the_tail() {
     let yaml = load_yaml(".gitea/workflows/ci.yml");
-    for (job_name, step_prefix) in [("test", "Run tests"), ("test-crates", "Run member-package tests")] {
+    for (job_name, step_prefix) in [
+        ("test", "Run tests"),
+        ("test-crates", "Run member-package tests"),
+    ] {
         let body = step_body(&yaml, job_name, step_prefix);
         let stripped = strip_comments(&body);
         assert!(
