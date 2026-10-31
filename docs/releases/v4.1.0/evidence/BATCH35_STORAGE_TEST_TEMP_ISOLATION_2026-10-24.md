@@ -136,24 +136,24 @@ sqlrustgo-storage = { path = ".", features = ["fault-injection", "test-support"]
 
 | 文件 | 处数 | 备注 |
 |---|---|---|
-| `src/file_storage.rs` | 45 | 另有 3 个 `#[cfg(test)] mod` 需要各自 `use` |
-| `src/binary_storage.rs` | 41 | 固定名 `bin_test*` / `box_*` |
-| `src/append_only_storage.rs` | 13 | **原有自己的 pid+counter 实现** ⇒ 改为转调唯一实现 |
-| `src/file_table.rs` | 12 | **原有自己的 pid+counter 实现** ⇒ 改为转调唯一实现 |
-| `src/backup.rs` | 10 | 固定名 `test_backup.csv` 等（**文件**路径） |
-| `src/columnar/parquet.rs` | 6 | 见 §2.4 的额外发现 |
-| `src/binlog_server.rs` | 5 | 固定名 ⇒ 唯一名 |
-| `src/integrated_storage.rs` | 4 | 固定名 `sqlrustgo_test_*_v311` |
-| `src/restore_filespace.rs` / `pitr_recovery.rs` / `backup_storage.rs` | 3 / 3 / 3 | 固定名 |
-| `src/replication.rs` / `recovery_engine.rs` / `mvcc_storage.rs` | 1 / 1 / 1 | 固定名 |
+| `crates/storage/src/file_storage.rs` | 45 | 另有 3 个 `#[cfg(test)] mod` 需要各自 `use` |
+| `crates/storage/src/binary_storage.rs` | 41 | 固定名 `bin_test*` / `box_*` |
+| `crates/storage/src/append_only_storage.rs` | 13 | **原有自己的 pid+counter 实现** ⇒ 改为转调唯一实现 |
+| `crates/storage/src/file_table.rs` | 12 | **原有自己的 pid+counter 实现** ⇒ 改为转调唯一实现 |
+| `crates/storage/src/backup.rs` | 10 | 固定名 `test_backup.csv` 等（**文件**路径） |
+| `crates/storage/src/columnar/parquet.rs` | 6 | 见 §2.4 的额外发现 |
+| `crates/storage/src/binlog_server.rs` | 5 | 固定名 ⇒ 唯一名 |
+| `crates/storage/src/integrated_storage.rs` | 4 | 固定名 `sqlrustgo_test_*_v311` |
+| `crates/storage/src/restore_filespace.rs` / `pitr_recovery.rs` / `backup_storage.rs` | 3 / 3 / 3 | 固定名 |
+| `crates/storage/src/replication.rs` / `recovery_engine.rs` / `mvcc_storage.rs` | 1 / 1 / 1 | 固定名 |
 | `tests/**.rs` | 33 个文件 | 集成测试（固定名 / 各自的 pid+nanos 实现） |
 
 ### 2.4 顺手修掉的两个更糟的情况（**原有缺陷，与 #5571 同族**）
 
-1. `src/columnar/parquet.rs` 的 6 个测试直接把
+1. `crates/storage/src/columnar/parquet.rs` 的 6 个测试直接把
    `std::env::temp_dir()`（**就是 `/tmp` 本身**）当作 FileStorage 的数据目录
    ⇒ 测试把表文件直接写在 **`/tmp` 根目录**上。现在是一个唯一子目录。
-2. `src/replication.rs` / `src/binlog_server.rs` 也用 `/tmp` 作 binlog 文件的
+2. `crates/storage/src/replication.rs` / `crates/storage/src/binlog_server.rs` 也用 `/tmp` 作 binlog 文件的
    基准目录 ⇒ 同样是全机共享。现在是唯一文件路径。
 
 ---
