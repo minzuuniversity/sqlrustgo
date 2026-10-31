@@ -1325,6 +1325,36 @@ jobs:
         # See the `lint-build` job for why this exists: without it every job
         # re-downloads ~164 crates from `static.crates.io`.
         run: bash scripts/ci/cache_cargo_registry.sh restore
+      - name: Install PyYAML for the stage-config gates (#3838)
+        # #3838 — the CI container image `sqlrustgo-runner:v1` ships **no
+        # PyYAML** (`python3 -c "import yaml"` → ModuleNotFoundError).
+        # `scripts/gate/stage_config_common.sh` reads the SSOT
+        # `docs/governance/STAGE_CONFIG.yaml` through
+        #     python3 - "$cfg" <<'PYEOF' 2>/dev/null || true
+        # so a missing yaml module was swallowed and the reader returned an
+        # EMPTY rule set. Every stage-config gate then "found nothing" and
+        # its selftest failed with
+        #     [FAIL] c1 sample -> PASS (the gate cannot detect this violation)
+        # (8/8 samples) — the gate was silently a no-op.
+        #
+        # Fix order (issue #3838): **A first** (install the dependency),
+        # verify the selftest turns green, and only afterwards make the
+        # readers fail loudly (step B). Doing B first would turn every
+        # stage-config gate red and block the whole pipeline.
+        run: |
+          set -euo pipefail
+          if python3 -c "import yaml" 2>/dev/null; then
+            echo "PyYAML already present: $(python3 -c 'import yaml; print(yaml.__version__)')"
+          elif python3 -m pip install --break-system-packages --quiet pyyaml; then
+            echo "installed PyYAML via pip"
+          elif (apt-get update -qq && apt-get install -y -qq python3-yaml); then
+            echo "installed PyYAML via apt"
+          else
+            echo "FATAL: cannot install PyYAML — the stage-config gates would silently pass without it" >&2
+            exit 1
+          fi
+          # Evidence line: the selftest below must see a real yaml module.
+          python3 -c "import yaml; print('pyyaml', yaml.__version__)"
       - name: Version detection
         id: version
         run: |
