@@ -1493,3 +1493,40 @@ fn test_5456_gate_summary_stays_green_when_d1_and_d2_were_executed() {
         out
     );
 }
+
+// =============================================================================
+// 红灯可诊断性 —— 失败的 test job 必须在 job log 里点名失败用例
+// =============================================================================
+
+/// **通用判据**：`cargo test` 的输出被重定向进 `test_report.log`，
+/// 而 job log 只保留 `tail -n 200`。CI run 6335 的报告有 475 个 test
+/// binary 的段落，失败用例的名字与断言消息几乎必然落在 tail 之外 ——
+/// 于是红色的 `test` job 只在 cargo 的最终汇总里出现一句
+/// "2 targets failed"，没有任何一条断言详情。
+///
+/// 判据：跑 test 的步骤必须把**失败段落**单独打印出来
+/// （`failures:` 段与 cargo 的 "N targets failed" 汇总），而不只是 tail。
+#[test]
+fn test_6335_test_job_prints_the_failing_tests_not_only_the_tail() {
+    let yaml = load_yaml(".gitea/workflows/ci.yml");
+    for (job_name, step_prefix) in [("test", "Run tests"), ("test-crates", "Run member-package tests")] {
+        let body = step_body(&yaml, job_name, step_prefix);
+        let stripped = strip_comments(&body);
+        assert!(
+            stripped.contains("failures:"),
+            "job `{}`: the Run tests step must print the `failures:` section of \
+             test_report.log; without it a red job log cannot name the failing \
+             assertion (CI run 6335). Step body:\n{}",
+            job_name,
+            body
+        );
+        assert!(
+            stripped.contains("targets? failed:"),
+            "job `{}`: the Run tests step must print cargo's \
+             \"N targets failed\" summary; without it the log does not even say \
+             which test binary failed (CI run 6335). Step body:\n{}",
+            job_name,
+            body
+        );
+    }
+}
