@@ -784,6 +784,10 @@ name = "ci_wiring_honesty_test"
 path = "tests/integration/gate/ci_wiring_honesty_test.rs"
 
 [[test]]
+name = "coverage_notrun_honesty_test"
+path = "tests/integration/gate/coverage_notrun_honesty_test.rs"
+
+[[test]]
 name = "gate_dimension_honesty_test"
 path = "tests/integration/gate/gate_dimension_honesty_test.rs"
 
