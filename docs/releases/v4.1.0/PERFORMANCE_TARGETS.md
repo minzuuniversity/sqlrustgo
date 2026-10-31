@@ -273,7 +273,7 @@ transaction 的 7.29pp 由两次测量之间的**真实代码变更**解释（`c
 | 2 | 168h SOAK 的架构师裁决 | **NOT MET** | `decision: "OPEN"` —— SSOT 明确不代为决定 |
 | 3 | TPC-H SF=1 22/22 | **NOT RUN** | v4.1.0 从未执行（`EVALUATION_REPORT.md` §7.1 记为 not recorded） |
 | 4 | TPC-H Q20 oracle 产物（#4540） | **NOT MET** | `sqlrustgo/q20.tsv` 缺失，`CROSS_ENGINE_HASH_CHECK.json` 记 `present:false` |
-| 5 | G13 24h+ 稳定性 | **NOT MET** | 门禁当前 exit 1（`tests/soak_test_harness.rs` not found），且无 24h+ 报告 |
+| 5 | G13 24h+ 稳定性 | **NOT MET** | 门禁当前 exit 1（G13 门禁报错原文为 “tests/soak_test_harness.rs not found”，该脚本实际位于 `tests/integration/stress/soak_test_harness.rs`），且无 24h+ 报告 |
 | 6 | G11 QPS/TPS | **NOT RUN** | 缺 `PERFORMANCE_BASELINE.md` 与专用基准主机 |
 | 7 | G12 Sysbench OLTP | **NOT RUN** | 未按 G12 门禁执行 |
 | 8 | G14 进程级崩溃测试 | **NOT RUN** | 缺 `CRASH_TEST_REPORT.md` 与 Z6G4 主机 |
