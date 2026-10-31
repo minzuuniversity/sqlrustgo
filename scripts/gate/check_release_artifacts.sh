@@ -192,16 +192,21 @@ if [[ -z "$VERSION" ]]; then
     fi
 fi
 
+CONFIG="${STAGE_CONFIG_PATH_DEFAULT}"
+
+# Guard: the yaml readers must never degrade into empty rule sets
+# (issue #3838). Fail loudly before any gate runs.
+stage_require_yaml "release artifact gate"
+stage_validate_yaml "$CONFIG"
+
 if [[ -z "$STAGE" ]]; then
-    STAGE="$(stage_current_stage "$VERSION")"
-    if [[ -z "$STAGE" || "$STAGE" == "unknown" ]]; then
+    if ! STAGE="$(stage_current_stage "$VERSION")" || [[ -z "$STAGE" || "$STAGE" == "unknown" ]]; then
         echo "ERROR: cannot determine the current stage of $VERSION" >&2
         echo "       (docs/releases/${VERSION}/STAGE.yaml has no current_stage)" >&2
         exit 2
     fi
 fi
 
-CONFIG="${STAGE_CONFIG_PATH_DEFAULT}"
 if [[ ! -f "$CONFIG" ]]; then
     echo "ERROR: stage config not found: $CONFIG" >&2
     exit 2

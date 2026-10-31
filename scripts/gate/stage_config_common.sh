@@ -70,6 +70,83 @@ STAGE_STOPWORDS="test tests testing gate gates script scripts check the a an of 
 
 # --- helpers ----------------------------------------------------------------
 
+# --- environment guards -----------------------------------------------------
+#
+# WHY THIS EXISTS
+# ---------------
+# Every yaml reader in this file used to swallow its own failures:
+#
+#     python3 ... 2>/dev/null || true
+#     ...
+#     except Exception:
+#         raise SystemExit(0)
+#
+# When PyYAML was missing from the CI runner image (issue #3838) that
+# turned each reader into an **empty rule set** — and an empty rule set
+# makes the stage-config gates silently *pass* (or silently *detect
+# nothing* in the selftest). A gate that cannot tell a clean document
+# from a broken one is not a gate, so a broken environment must be loud.
+#
+# ⇒ Missing PyYAML or an unparsable yaml is now a FATAL error (exit 2),
+#   never an empty rule set.
+#
+# Refs: #3838.
+
+# stage_require_yaml [context]
+# Aborts the whole script with exit code 2 when PyYAML cannot be imported.
+stage_require_yaml() {
+    local ctx="${1:-stage config}"
+    if python3 -c 'import yaml' >/dev/null 2>&1; then
+        return 0
+    fi
+    {
+        echo "FATAL: PyYAML is not available (${ctx})."
+        echo "  install it with: python3 -m pip install --break-system-packages PyYAML"
+        echo "  or:              apt-get install -y python3-yaml"
+    } >&2
+    exit 2
+}
+
+# stage_yaml_fatal <file> <error>
+# Reports an unreadable / unparsable yaml document and exits with 2.
+stage_yaml_fatal() {
+    {
+        echo "FATAL: cannot read YAML document '$1': ${2:-unknown error}"
+    } >&2
+    exit 2
+}
+
+# stage_validate_yaml <file>
+# Parses <file> once, in the *caller's* shell, and exits with 2 when the
+# document cannot be read or parsed.
+#
+# WHY A SEPARATE VALIDATION PASS
+# ------------------------------
+# The readers are usually called inside a process substitution
+# (`done < <(stage_gate_entries ...)`), where a non-zero exit is
+# invisible to the parent shell: the loop just sees no lines and the gate
+# reports PASS. A broken config must therefore be rejected *before* the
+# checks run, not inside a reader.
+stage_validate_yaml() {
+    local f="$1"
+    if [[ ! -f "$f" ]]; then
+        stage_yaml_fatal "$f" "file not found"
+    fi
+    if ! python3 - "$f" <<'PYEOF'
+import sys
+try:
+    import yaml
+    with open(sys.argv[1]) as fh:
+        yaml.safe_load(fh)
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
+PYEOF
+    then
+        exit 2
+    fi
+}
+
 # The repository root, derived from this file's location.
 stage_repo_root() {
     cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
@@ -184,19 +261,29 @@ stage_current_stage() {
     local ver="$1"
     local f="docs/releases/v${ver#v}/STAGE.yaml"
     [[ -f "$f" ]] || { echo "unknown"; return 0; }
-    python3 - "$f" <<'PYEOF' 2>/dev/null || echo "unknown"
+    stage_require_yaml "current stage of v${ver#v}"
+    local out
+    if ! out="$(python3 - "$f" <<'PYEOF'
 import sys
 try:
     import yaml
-except Exception:
-    print("unknown"); raise SystemExit(0)
+except Exception as exc:
+    sys.stderr.write("FATAL: PyYAML is not available: %s\n" % exc)
+    raise SystemExit(2)
 try:
     with open(sys.argv[1]) as fh:
         d = yaml.safe_load(fh) or {}
     print(str(d.get("current_stage", "unknown")).upper())
-except Exception:
-    print("unknown")
+except SystemExit:
+    raise
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
 PYEOF
+    )"; then
+        return 2
+    fi
+    printf '%s\n' "$out"
 }
 
 # --- SSOT readers -----------------------------------------------------------
@@ -213,14 +300,16 @@ STAGE_CONFIG_PATH_DEFAULT="docs/governance/STAGE_CONFIG.yaml"
 # The stage names in lifecycle order.
 stage_stage_names() {
     local cfg="${1:-$STAGE_CONFIG_PATH_DEFAULT}"
-    python3 - "$cfg" <<'PYEOF' 2>/dev/null || true
+    stage_require_yaml "stage config"
+    python3 - "$cfg" <<'PYEOF'
 import sys
 try:
     import yaml
     with open(sys.argv[1]) as fh:
         d = yaml.safe_load(fh) or {}
-except Exception:
-    raise SystemExit(0)
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
 for s in (d.get('framework', {}) or {}).get('stages', []) or []:
     print(s)
 PYEOF
@@ -231,14 +320,16 @@ PYEOF
 # decides what to do with them.
 stage_gate_entries() {
     local cfg="${1:-$STAGE_CONFIG_PATH_DEFAULT}" stage="$2"
-    python3 - "$cfg" "$stage" <<'PYEOF' 2>/dev/null || true
+    stage_require_yaml "stage config"
+    python3 - "$cfg" "$stage" <<'PYEOF'
 import sys
 try:
     import yaml
     with open(sys.argv[1]) as fh:
         d = yaml.safe_load(fh) or {}
-except Exception:
-    raise SystemExit(0)
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
 info = (d.get('stages', {}) or {}).get(sys.argv[2]) or {}
 for kind, key in (('required', 'required_gates'), ('optional', 'optional_gates')):
     for e in (info.get(key) or []):
@@ -250,14 +341,16 @@ PYEOF
 # required_file | doc_artifact.
 stage_artifact_entries() {
     local cfg="${1:-$STAGE_CONFIG_PATH_DEFAULT}" stage="$2"
-    python3 - "$cfg" "$stage" <<'PYEOF' 2>/dev/null || true
+    stage_require_yaml "stage config"
+    python3 - "$cfg" "$stage" <<'PYEOF'
 import sys
 try:
     import yaml
     with open(sys.argv[1]) as fh:
         d = yaml.safe_load(fh) or {}
-except Exception:
-    raise SystemExit(0)
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
 info = (d.get('stages', {}) or {}).get(sys.argv[2]) or {}
 for kind, key in (('required_file', 'required_files'), ('doc_artifact', 'doc_artifacts')):
     for e in (info.get(key) or []):
@@ -269,14 +362,16 @@ PYEOF
 #   <G number>\t<primary script>\t<alternative>\t<additional scripts>\t<name>
 stage_config_gates() {
     local cfg="${1:-$STAGE_CONFIG_PATH_DEFAULT}"
-    python3 - "$cfg" <<'PYEOF' 2>/dev/null || true
+    stage_require_yaml "stage config"
+    python3 - "$cfg" <<'PYEOF'
 import sys
 try:
     import yaml
     with open(sys.argv[1]) as fh:
         d = yaml.safe_load(fh) or {}
-except Exception:
-    raise SystemExit(0)
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
 for g, info in (d.get('gate_definitions') or {}).items():
     info = info or {}
     alt = info.get('alternative') or ''
@@ -288,14 +383,16 @@ PYEOF
 # The state expectations of a stage: "<required_files key>\t<expectation>"
 stage_config_expectations() {
     local cfg="${1:-$STAGE_CONFIG_PATH_DEFAULT}" stage="$2"
-    python3 - "$cfg" "$stage" <<'PYEOF' 2>/dev/null || true
+    stage_require_yaml "stage config"
+    python3 - "$cfg" "$stage" <<'PYEOF'
 import sys
 try:
     import yaml
     with open(sys.argv[1]) as fh:
         d = yaml.safe_load(fh) or {}
-except Exception:
-    raise SystemExit(0)
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
 info = (d.get('stages', {}) or {}).get(sys.argv[2]) or {}
 for k, v in (info.get('required_file_expectations') or {}).items():
     print('%s\x1f%s' % (k, v))
