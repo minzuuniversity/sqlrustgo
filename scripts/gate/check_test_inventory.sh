@@ -1,27 +1,65 @@
 #!/usr/bin/env bash
 # =============================================================================
-# check_test_inventory.sh — v3.8.0 D6-Test-Integration Gate
+# check_test_inventory.sh — v3.8.0 D6-Test-Integration Gate (STATIC-ONLY)
 # =============================================================================
 # Implements 5-Principle P4 enforcement:
 #   "测试必须经过审核和验证，必须集成到门禁测试"
 #
-# This gate runs ALL test files in tests/ directory via cargo test --test,
-# counts P/F per test, and reports integration coverage.
+# D6B_MODE: STATIC_ONLY_NO_CARGO
 #
-# Goals:
-#   - 100% of tests/*.rs files invoked at gate level
-#   - Each test's P/F count recorded
-#   - Aggregate stats: total / passed / failed / ignored
+# ------------------------------------------------------------------
+# WHY THIS GATE NO LONGER EXECUTES THE TEST SUITE   (issue #3847)
+# ------------------------------------------------------------------
+# This gate used to re-execute the *entire* test suite in the `postcheck`
+# job: for every file under `tests/` it ran
+#
+#     timeout 180 cargo test --test "$name" -- --test-threads=1
+#
+# Measured on CI run 6408 (job 13864, `postcheck`):
+#
+#   * the D6b step alone took 1h44m48s,
+#   * compiling every test target grew the act_runner per-job volume to
+#     ~130GB, which pushed the 250 host's root partition to 97% (35G left)
+#     and had to be reclaimed by hand,
+#   * Gitea's job log endpoint truncated the job log at 104887 bytes, so
+#     everything after the D6b start was unreadable.
+#
+# The re-execution bought nothing that the `test` job does not already
+# prove, at a cost that broke the runner:
+#
+#   * "was every declared target actually executed?" is already a hard
+#     gate inside the `test` job -- `check_test_target_execution.sh`
+#     (run 6335 failed there with "112 of 307 declared test targets never
+#     ran"), and
+#   * "is every test file declared, and does the declaration count match
+#     what cargo actually builds?" is already a hard gate inside the same
+#     job -- `check_test_manifest_honesty.sh` (C1..C6).
+#
+# A failing test target fails the `test` job, so a second execution in
+# `postcheck` cannot discover anything new. The only thing it removed was
+# a redundant second opinion, at the price of the runner.
+#
+# Therefore D6b is now a **static consistency check**:
+#
+#   * every `tests/**/*.rs` file must have a `[[test]]` declaration,
+#   * the declared target count must equal the number of test targets
+#     cargo itself reports (`cargo metadata --no-deps`, read-only),
+#   * there must be no orphan test file and no duplicate target name.
+#
+# The authoritative pass/fail counts of the suite are produced by the
+# `test` job (its log and `check_test_target_execution.sh`); D6b does not
+# re-derive them.
 #
 # Exit codes:
-#   0  = ALL tests pass (or 0 failures)
-#   1  = ANY test failed (blocker)
-#   2  = DRIFT (some ignored, no failures)
+#   0 = PASS (inventory is consistent)
+#   1 = FAIL (a declaration is missing, duplicated, or disagrees with cargo)
+#   2 = DEGRADED (cargo metadata unavailable; the manifest cross-check
+#       could not be performed -- NOT a silent PASS)
 #
 # Bash compatibility: works on bash 3.2.57 (macOS default) AND bash 4+.
 # The original implementation used `declare -A` which is bash 4+ only.
-# We use a temp file (one line per `path<TAB>name`) and grep-based lookup
-# which works in all bash versions.
+# We use temp files and grep-based lookup, which works in all bash
+# versions.
 
 set -uo pipefail
 
@@ -36,153 +74,150 @@ if ! command -v cargo >/dev/null 2>&1; then
     fi
 fi
 
-echo "=== D6: Test Inventory Gate (5-Principle P4) ==="
+echo "=== D6: Test Inventory Gate (static-only, issue #3847) ==="
 echo
 
-# Find all test files
-TEST_FILES=$(find tests -name "*.rs" -type f ! -path "*/common/*" ! -name "mod.rs" 2>/dev/null | sort)
+WORK_DIR=$(mktemp -d -t d6_inventory.XXXXXX)
+PATH_TO_NAME_FILE="$WORK_DIR/path_to_name"
+METADATA_JSON="$WORK_DIR/metadata.json"
+HONESTY_LOG="$WORK_DIR/manifest_honesty.log"
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+# Find all test files. `tests/disabled/` holds test files that are
+# deliberately not built; they are excluded by the repository's own
+# rule (tests/disabled/IGNORE_REASON.md).
+TEST_FILES=$(find tests -name "*.rs" -type f ! -path "*/common/*" ! -path "*/disabled/*" ! -name "mod.rs" 2>/dev/null | sort)
 TOTAL_FILES=$(echo "$TEST_FILES" | wc -l | tr -d ' ')
 echo "Test files discovered: $TOTAL_FILES"
 
 # Build a temp file `path<TAB>name` per line for [[test]] entries.
 # bash 3.2.57 does NOT support `declare -A`; we use grep over a temp file.
-# This is O(n) per lookup but the test set is ~240 files, well under
-# any perf concern.
-PATH_TO_NAME_FILE=$(mktemp -t path_to_name.XXXXXX)
-trap 'rm -f "$PATH_TO_NAME_FILE"' EXIT
-
 awk '
     /^\[\[test\]\]/{ in_t = 1; name = ""; path = ""; next }
     in_t && /^name = /{ gsub(/name = "|"/, "", $0); name = $0 }
     in_t && /^path = /{ gsub(/path = "|"/, "", $0); path = $0; print path "\t" name; in_t = 0 }
 ' Cargo.toml > "$PATH_TO_NAME_FILE"
 
+DECLARED_TARGETS=$(wc -l < "$PATH_TO_NAME_FILE" | tr -d ' ')
+
 # Bash 3.2 / 4 portable lookup function: PATH_TO_NAME <path>
-# Echoes the cargo test name for a given path (empty if no explicit entry).
+# Echoes the cargo target name for a given path (empty if no explicit entry).
 PATH_TO_NAME() {
     local key="$1"
-    # Strip leading "tests/" because we lookup by that key in the temp file.
-    # Actually the temp file keys include "tests/..." since Cargo paths are
+    # The temp file keys include "tests/..." since Cargo paths are
     # relative to the workspace root and [[test]] paths look like
     # "tests/foo.rs". So we lookup the full path.
     grep -F -e "$(printf '%s\t' "$key")" "$PATH_TO_NAME_FILE" 2>/dev/null \
         | head -1 | cut -f2-
 }
 
-# Convert each test file to its exact Cargo test name
-TEST_NAMES=()
-TEST_PATHS=()
+# Count the test files that have no `[[test]]` entry of their own.
+# A file that is legitimately reachable from a declared target (a shared
+# module) is not an orphan -- the manifest honesty gate (C3) decides that.
+UNDECLARED_COUNT=0
 for f in $TEST_FILES; do
-    rel="${f#tests/}"
-    # Lookup with full tests/ prefix
-    explicit_name=$(PATH_TO_NAME "$f")
-    if [[ -n "$explicit_name" ]]; then
-        TEST_NAMES+=("$explicit_name")
-        TEST_PATHS+=("$f")
-    else
-        # No explicit [[test]] entry — use path-to-name heuristic
-        rel_no_ext="${rel%.rs}"
-        rel_no_ext="${rel_no_ext//\//_}"
-        TEST_NAMES+=("$rel_no_ext")
-        TEST_PATHS+=("$f")
+    if [ -z "$(PATH_TO_NAME "$f")" ]; then
+        UNDECLARED_COUNT=$((UNDECLARED_COUNT + 1))
     fi
 done
 
-# Run each test
-PASSED_FILES=0
-FAILED_FILES=0
-NOT_RUN_FILES=0
-TOTAL_PASSED=0
-TOTAL_FAILED=0
-TOTAL_IGNORED=0
-FAILED_TESTS=()
-NOT_RUN_TESTS=()
-LONG_RUNNING_TESTS=()
-START=$(date +%s)
+echo "Declared [[test]] targets in Cargo.toml: $DECLARED_TARGETS"
+echo
 
-for i in "${!TEST_NAMES[@]}"; do
-    name="${TEST_NAMES[$i]}"
-    printf "[%2d/%2d] %-50s " "$((i+1))" "$TOTAL_FILES" "$name"
-
-    # Run the test, capture output
-    OUTPUT=$(timeout 180 cargo test --test "$name" -- --test-threads=1 2>&1 || echo "0")
-
-    # Parse results
-    RESULT_LINE=$(echo "$OUTPUT" | grep "^test result:" | tail -1)
-    if [ -z "$RESULT_LINE" ]; then
-        # Check if test is known to be long-running
-        if [[ "$name" == *tpch* ]] || [[ "$name" == *long_run* ]]; then
-            echo "TIMEOUT (long-running, expected)"
-            PASSED_FILES=$((PASSED_FILES+1))
-            LONG_RUNNING_TESTS+=("$name")
-        else
-            # No test result usually means the [[test]] entry is missing or
-            # the build skipped compilation. D6b cannot prove the test passed
-            # so we record it as NOT_RUN (not FAILED) and continue.
-            echo "NOT_RUN (no test result — missing [[test]] entry or build skip)"
-            NOT_RUN_FILES=$((NOT_RUN_FILES+1))
-            NOT_RUN_TESTS+=("$name")
-        fi
+# ---------------------------------------------------------------------------
+# Cross-check against cargo itself. `cargo metadata --no-deps` is a
+# read-only query: it resolves the manifest and prints the target list
+# without building or running anything.
+# ---------------------------------------------------------------------------
+CARGO_TARGETS=""
+if command -v cargo >/dev/null 2>&1; then
+    if cargo metadata --no-deps --format-version 1 --manifest-path Cargo.toml \
+            > "$METADATA_JSON" 2>/dev/null; then
+        CARGO_TARGETS=$(python3 - "$METADATA_JSON" "$REPO_ROOT/Cargo.toml" <<'PY' 2>/dev/null || true
+import json, os, sys
+try:
+    with open(sys.argv[1]) as fh:
+        meta = json.load(fh)
+except Exception:
+    sys.exit(0)
+# Only the root package matters here: the workspace members under crates/
+# declare their own test targets and are not part of the root manifest's
+# [[test]] inventory.
+root = os.path.realpath(sys.argv[2])
+count = 0
+for pkg in meta.get("packages", []):
+    if os.path.realpath(pkg.get("manifest_path", "")) != root:
         continue
+    for target in pkg.get("targets", []):
+        if "test" in target.get("kind", []):
+            count += 1
+print(count)
+PY
+)
     fi
-
-    PASSED=$(echo "$RESULT_LINE" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' || echo "0")
-    FAILED=$(echo "$RESULT_LINE" | grep -oE '[0-9]+ failed' | grep -oE '[0-9]+' || echo "0")
-    IGNORED=$(echo "$RESULT_LINE" | grep -oE '[0-9]+ ignored' | grep -oE '[0-9]+' || echo "0")
-
-    TOTAL_PASSED=$((TOTAL_PASSED + PASSED))
-    TOTAL_FAILED=$((TOTAL_FAILED + FAILED))
-    TOTAL_IGNORED=$((TOTAL_IGNORED + IGNORED))
-
-    if [ "$FAILED" -gt 0 ]; then
-        echo "FAIL ($PASSED passed, $FAILED failed, $IGNORED ignored)"
-        FAILED_FILES=$((FAILED_FILES+1))
-        FAILED_TESTS+=("$name")
-    else
-        echo "OK ($PASSED passed, $IGNORED ignored)"
-        PASSED_FILES=$((PASSED_FILES+1))
-    fi
-done
-
-ELAPSED=$(( $(date +%s) - START ))
-
-echo
-echo "=== D6 Test Inventory Summary ==="
-echo "Test files:        $TOTAL_FILES total"
-echo "Files PASSED:      $PASSED_FILES"
-echo "Files FAILED:      $FAILED_FILES"
-echo "Files NOT_RUN:     $NOT_RUN_FILES  (missing [[test]] entry or build skip)"
-echo "Individual tests:  $TOTAL_PASSED passed, $TOTAL_FAILED failed, $TOTAL_IGNORED ignored"
-echo "Elapsed:           ${ELAPSED}s"
-echo
-
-if [ $FAILED_FILES -gt 0 ]; then
-    echo "=== Failed Tests ==="
-    for t in "${FAILED_TESTS[@]}"; do
-        echo "  - $t"
-    done
-    echo
-    echo "❌ D6 Test Inventory: FAILED ($FAILED_FILES files, $TOTAL_FAILED tests)"
-    exit 1
 fi
 
-if [ $NOT_RUN_FILES -gt 0 ]; then
-    echo "=== Tests Not Run (not FAILED) ==="
-    for t in "${NOT_RUN_TESTS[@]}"; do
-        echo "  - $t"
-    done
-    echo
-fi
-
-INTEGRATION_RATIO=$(awk "BEGIN {printf \"%.1f\", ($TOTAL_FILES / $TOTAL_FILES) * 100}")
-if [ $FAILED_FILES -eq 0 ]; then
-    echo "✅ D6 Test Inventory: PASS ($INTEGRATION_RATIO% of test files invoked, 0 failures)"
-    if [ $NOT_RUN_FILES -gt 0 ]; then
-        echo "   (with $NOT_RUN_FILES NOT_RUN — see list above; not counted as failure)"
-    fi
+if [ -n "$CARGO_TARGETS" ]; then
+    echo "cargo metadata reports test targets: $CARGO_TARGETS"
 else
-    echo "❌ D6 Test Inventory: FAILED"
-    exit 1
+    echo "cargo metadata unavailable -- the declared-versus-actual cross-check is DEGRADED"
+fi
+echo
+
+# ---------------------------------------------------------------------------
+# The authoritative static consistency verdict comes from the manifest
+# honesty gate, which already implements C1..C6 (declared target exists on
+# disk, no duplicate names, no orphan test file, every top-level file has
+# its own declaration, declared count == cargo's test target count).
+# Re-using it keeps one single source of truth for those rules instead of
+# a second, drifting copy inside this script.
+# ---------------------------------------------------------------------------
+HONESTY_RC=0
+bash "$SCRIPT_DIR/check_test_manifest_honesty.sh" > "$HONESTY_LOG" 2>&1 || HONESTY_RC=$?
+cat "$HONESTY_LOG"
+
+# Pick up the numbers the honesty gate already computed, so the evidence
+# file and this script's summary agree with the gate that produced them.
+HONESTY_CARGO_TARGETS=$(grep -oE 'reports [0-9]+ test targets' "$HONESTY_LOG" | grep -oE '[0-9]+' | head -1)
+HONESTY_DECLARED=$(grep -oE 'manifest declares [0-9]+' "$HONESTY_LOG" | grep -oE '[0-9]+' | head -1)
+if [ -n "$HONESTY_CARGO_TARGETS" ]; then
+    CARGO_TARGETS="$HONESTY_CARGO_TARGETS"
+fi
+if [ -n "$HONESTY_DECLARED" ]; then
+    DECLARED_TARGETS="$HONESTY_DECLARED"
+fi
+
+# The declared-vs-cargo cross-check counts as performed when either this
+# script's own `cargo metadata` call or the honesty gate's C5 step
+# produced a number. "Could not measure" is never reported as "measured
+# and fine".
+CROSSCHECK_OK=0
+if [ -n "$CARGO_TARGETS" ]; then
+    CROSSCHECK_OK=1
+fi
+
+echo
+echo "=== D6 Test Inventory Summary (static-only) ==="
+echo "Test files:              $TOTAL_FILES"
+echo "Declared test targets:   $DECLARED_TARGETS"
+echo "test targets reported by cargo: ${CARGO_TARGETS:-unknown}"
+echo "Files without own [[test]] entry (shared modules): $UNDECLARED_COUNT"
+echo "Manifest honesty gate:   exit $HONESTY_RC"
+echo "Note: per-target pass/fail counts are produced by the 'test' job"
+echo "      (check_test_target_execution.sh + its job log), not here."
+echo
+
+RESULT="PASS"
+EXIT_CODE=0
+if [ "$HONESTY_RC" -ne 0 ]; then
+    RESULT="FAIL"
+    EXIT_CODE=1
+elif [ "$CROSSCHECK_OK" -ne 1 ]; then
+    # The manifest itself is consistent, but cargo could not be queried,
+    # so the "declared == cargo" half of the cross-check did not happen.
+    # Report DEGRADED rather than pretending the check was complete.
+    RESULT="DEGRADED"
+    EXIT_CODE=2
 fi
 
 # Generate evidence
@@ -193,17 +228,27 @@ cat > "$EVIDENCE_FILE" <<EOF
     "gate": "D6",
     "name": "Test Inventory",
     "principle": "P4",
+    "mode": "STATIC_ONLY_NO_CARGO",
     "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
     "total_files": $TOTAL_FILES,
-    "files_passed": $PASSED_FILES,
-    "files_failed": $FAILED_FILES,
-    "total_passed": $TOTAL_PASSED,
-    "total_failed": $TOTAL_FAILED,
-    "total_ignored": $TOTAL_IGNORED,
-    "elapsed_seconds": $ELAPSED,
-    "integration_ratio": "$INTEGRATION_RATIO%",
-    "result": "PASS"
+    "declared_targets": $DECLARED_TARGETS,
+    "cargo_test_targets": ${CARGO_TARGETS:-0},
+    "files_without_own_declaration": $UNDECLARED_COUNT,
+    "files_without_own_declaration_note": "shared modules reachable from a declared target; manifest honesty gate C3 verifies reachability",
+    "manifest_honesty_gate_exit": $HONESTY_RC,
+    "result": "$RESULT",
+    "note": "Per-target pass/fail counts are produced by the 'test' job (check_test_target_execution.sh); D6b verifies declaration consistency only and never runs a test binary."
 }
 EOF
 echo "Evidence written to $EVIDENCE_FILE"
+
+if [ "$EXIT_CODE" -eq 1 ]; then
+    echo "❌ D6 Test Inventory: FAILED (inventory is inconsistent)"
+    exit 1
+fi
+if [ "$EXIT_CODE" -eq 2 ]; then
+    echo "⚠️ D6 Test Inventory: DEGRADED (cargo metadata unavailable; no test binary was executed)"
+    exit 2
+fi
+echo "✅ D6 Test Inventory: PASS ($TOTAL_FILES test files, $DECLARED_TARGETS declared targets, 0 inconsistencies)"
 exit 0

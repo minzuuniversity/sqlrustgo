@@ -1608,6 +1608,21 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/gate/check_full_gate_verification.sh 2>&1 | tee full_gate_verification.log
+      - name: D6 Smoke Gate (issue #3847) — minimal REAL execution, independent of the test job
+        # #3847 made the D6b inventory gate static-only, because re-running the
+        # whole suite in postcheck cost 1h44m and ~130GB of runner disk. The
+        # remaining accounting gates (check_test_target_execution.sh,
+        # check_test_manifest_honesty.sh) prove that every declared target WAS
+        # executed, but not that the execution PASSED.
+        #
+        # This step is the compensation: a deliberately small set of smoke
+        # targets that exercise the core storage read/write paths, executed
+        # here so that it does not depend on the `test` job's bookkeeping.
+        # `if: always()` so it still runs when an earlier step failed.
+        if: always()
+        run: |
+          set -euo pipefail
+          timeout -k 30 3600 bash scripts/gate/check_d6_smoke.sh 2>&1 | tee d6_smoke.log
       - name: 6 Meta-Gate Hard Block (P11-P16, FIX 2026-06-26 Hermes) — blocks PR merge
         if: always()
         run: |
