@@ -159,8 +159,8 @@ env:
 # Combined lint + build: share one clone, build once
 jobs:
   lint-build:
-    if: "false"
     runs-on: [hp-z6g4]
+    if: "false"
     # #5451 — the shared cargo registry cache. The volume is the durable
     # store; `scripts/ci/cache_cargo_registry.sh` copies the registry in and
     # out of it (serialized with flock, because three jobs share this
@@ -668,8 +668,8 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   test-crates:
-    if: "false"
     runs-on: [hp-z6g4]
+    if: "false"
     container:
       volumes:
         - sqlrustgo-cargo-cache:/opt/cargo-cache
@@ -677,7 +677,6 @@ jobs:
     # leaves status Waiting on this Gitea, so this job would have been dead
     # on arrival.  See the long explanation on the root `test` job.
     needs: []
-    if: always()
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
@@ -878,8 +877,8 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   mutation:
-    if: "false"
     runs-on: [hp-z6g4]
+    if: "false"
     container:
       volumes:
         - sqlrustgo-cargo-cache:/opt/cargo-cache
@@ -887,7 +886,6 @@ jobs:
     # succeeded, so the mutation analysis never ran once. It is a
     # post-test criterion, so it must not be gated behind the test job.
     needs: []
-    if: always()
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
@@ -949,8 +947,8 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   ga3-security-scan:
-    if: "false"
     # Issue #4532 — GA-3 SC-1 cargo audit: pre-install cargo-audit + pre-fetch
+    if: "false"
     # advisory DB. Without pre-install, `cargo audit` would take 4m46s to
     # compile cargo-audit from source on every CI run, and the advisory DB
     # fetch would fail in the hermes-runner env (no network access for
@@ -967,7 +965,6 @@ jobs:
     # #5424: the condition only matched `develop/v3.12.0` / `ci/v3.12.0-`,
     # so on the v4.x line the job was **skipped** and the GA Security
     # criterion had never been executed by CI on this branch.
-    if: contains(github.ref, 'develop/v4.') || contains(github.ref, 'release/v4.') || contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
@@ -1080,8 +1077,8 @@ jobs:
           cp ga3_security_scan.log artifacts/ga3/v3.12.0/ 2>/dev/null || true
           ls -la artifacts/ga3/v3.12.0/
   test-soak-detach:
-    if: "false"
     # Issue #4595 — Regression guard for run_soak_loop.sh self-detach block
+    if: "false"
     # (P-1 fix from PR #4591 commit 66dac1aab2). Without this test, future
     # refactors of run_soak_loop.sh could silently regress the
     # setsid+nohup+disown protection, re-introducing the parent-shell reap
@@ -1172,8 +1169,8 @@ jobs:
         run: bash scripts/soak/test_run_soak_loop_tier3.sh
 
   postcheck:
-    if: "false"
     runs-on: [hp-z6g4]
+    if: "false"
     container:
       volumes:
         - sqlrustgo-cargo-cache:/opt/cargo-cache
