@@ -52,9 +52,8 @@ fn cargo_subcommands(content: &str) -> Vec<String> {
     let chars: Vec<char> = content.chars().collect();
     let mut i = 0usize;
     while i < chars.len() {
-        let is_cargo = i + 4 < chars.len()
-            && chars[i] == 'c'
-            && chars[i + 1..i + 5] == ['a', 'r', 'g', 'o'];
+        let is_cargo =
+            i + 4 < chars.len() && chars[i] == 'c' && chars[i + 1..i + 5] == ['a', 'r', 'g', 'o'];
         if is_cargo {
             let before_ok = i == 0 || !is_word_char(chars[i - 1]);
             let after = chars[i + 5];
@@ -187,7 +186,10 @@ fn test_d6_reports_degraded_when_cargo_unavailable() {
         content.contains("DEGRADED"),
         "must report DEGRADED when the cargo cross-check cannot be performed"
     );
-    assert!(content.contains("exit 2"), "must use exit code 2 for DEGRADED");
+    assert!(
+        content.contains("exit 2"),
+        "must use exit code 2 for DEGRADED"
+    );
 }
 
 #[test]
@@ -210,7 +212,9 @@ fn test_d6_smoke_gate_is_minimal_real_execution() {
         .join("scripts/gate/check_d6_smoke.sh");
     let content = std::fs::read_to_string(&script).expect("check_d6_smoke.sh not found");
     assert_eq!(
-        content.matches("D6_SMOKE_MODE: MINIMAL_REAL_EXECUTION").count(),
+        content
+            .matches("D6_SMOKE_MODE: MINIMAL_REAL_EXECUTION")
+            .count(),
         1,
         "the smoke gate must carry its guard marker exactly once"
     );
@@ -239,6 +243,59 @@ fn test_d6_smoke_gate_is_minimal_real_execution() {
         "the smoke set must stay between 3 and 6 targets, found {}",
         count
     );
+
+    // B1 smoke set (DeepSeek ruling DSQ31): the hard set must be exactly the
+    // four core-path targets. The conditional target (tpch_wire_smoke) lives
+    // in its own list because it needs an external binary.
+    for expected in [
+        "aggregate_smoke_test",
+        "wal_integration_test",
+        "batch_insert_test",
+        "wire_protocol_smoke",
+    ] {
+        assert!(
+            listed.contains(expected),
+            "the hard smoke set must contain {}",
+            expected
+        );
+    }
+    // A red target must not gate the branch until it is fixed (#3848), and a
+    // fixture-less target that reports "ok" would be a false green.
+    assert!(
+        !listed.contains("v312_13_load_data_sf1_test"),
+        "v312_13_load_data_sf1_test is red on the target branch (#3848) and must not be a smoke target"
+    );
+    assert!(
+        !listed.contains("tpch_gate_test"),
+        "tpch_gate_test reports ok when fixtures are missing (false green) and must not be a smoke target"
+    );
+
+    // The conditional target semantics: a separate list, an env-var-driven
+    // binary lookup, DEGRADED instead of a silent PASS, and exit code 2.
+    assert!(
+        content.contains("CONDITIONAL_SMOKE_TARGETS=("),
+        "must declare a conditional smoke target list"
+    );
+    assert!(
+        content.contains("tpch_wire_smoke"),
+        "the conditional smoke target must be tpch_wire_smoke"
+    );
+    assert!(
+        content.contains("SQLRUSTGO_MYSQL_SERVER_BIN"),
+        "the conditional target must be resolved via the binary env var"
+    );
+    assert!(
+        content.contains("binary_not_found"),
+        "a missing binary must be recorded with a DEGRADED reason, never as PASS"
+    );
+    assert!(
+        content.contains("EXIT_CODE=2"),
+        "a DEGRADED run must exit with code 2, distinct from PASS (0) and FAIL (1)"
+    );
+    assert!(
+        content.contains("DEGRADED"),
+        "the gate must distinguish DEGRADED from PASS"
+    );
 }
 
 #[test]
@@ -254,5 +311,19 @@ fn test_d6_smoke_gate_is_wired_into_postcheck() {
     assert!(
         content.contains("D6 Smoke Gate"),
         "the smoke gate must be a visible, named CI step"
+    );
+    // The CI step must absorb exit code 2 (DEGRADED) explicitly and keep
+    // exit code 1 (FAIL) blocking.
+    assert!(
+        content.contains("D6 Smoke Gate: DEGRADED"),
+        "the CI step must print an explicit DEGRADED line"
+    );
+    assert!(
+        content.contains("D6 Smoke Gate: FAIL"),
+        "the CI step must print an explicit FAIL line"
+    );
+    assert!(
+        content.contains("PIPESTATUS[0]"),
+        "the CI step must read the gate's own exit code, not tee's"
     );
 }

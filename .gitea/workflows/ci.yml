@@ -1619,10 +1619,29 @@ jobs:
         # targets that exercise the core storage read/write paths, executed
         # here so that it does not depend on the `test` job's bookkeeping.
         # `if: always()` so it still runs when an earlier step failed.
+        #
+        # Exit code contract: 0 = PASS, 1 = FAIL, 2 = DEGRADED. A DEGRADED
+        # run means a conditional smoke target's binary was unavailable; it
+        # must be reported explicitly and must NOT be reported as PASS, but it
+        # is also not a product defect, so the step absorbs exit 2 while
+        # keeping exit 1 (a real smoke failure) blocking.
         if: always()
         run: |
-          set -euo pipefail
+          set -uo pipefail
           timeout -k 30 3600 bash scripts/gate/check_d6_smoke.sh 2>&1 | tee d6_smoke.log
+          rc=${PIPESTATUS[0]}
+          case "$rc" in
+            0)
+              echo "D6 Smoke Gate: PASS"
+              ;;
+            2)
+              echo "D6 Smoke Gate: DEGRADED (conditional smoke target did not run; not a PASS)"
+              ;;
+            *)
+              echo "D6 Smoke Gate: FAIL (exit $rc)"
+              exit "$rc"
+              ;;
+          esac
       - name: 6 Meta-Gate Hard Block (P11-P16, FIX 2026-06-26 Hermes) — blocks PR merge
         if: always()
         run: |
