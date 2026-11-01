@@ -582,7 +582,6 @@ jobs:
           fi
       - name: EXP-DISABLED Test target execution accounting (issue #5379)
         if: "false"
-        if: always()
         run: |
           # Every [[test]] target declared in Cargo.toml must actually have
           # run. This is the gate that makes a silently truncated test run
@@ -591,7 +590,6 @@ jobs:
           bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --scope root --log test_report.log
       - name: EXP-DISABLED Test manifest honesty (issue #5449)
         if: "false"
-        if: always()
         run: |
           # #5449: the gate above compares the *declared* targets against the
           # *executed* ones. It cannot see a file that is neither declared nor
@@ -606,7 +604,6 @@ jobs:
           bash scripts/gate/check_test_manifest_honesty.sh
       - name: EXP-DISABLED Gate — CLI binary names (issue #5405)
         if: "false"
-        if: always()
         run: |
           # #5405: `tests/e2e/sqlrustgo_cli_soak_e2e_test.rs` looked for
           # `target/debug/sqlrustgo-cli` — a name no bin has. `sqlrustgo-cli`
@@ -623,7 +620,6 @@ jobs:
           bash scripts/gate/check_cli_binary_names.sh
       - name: EXP-DISABLED Gate — TPC-H known-difference registry (issue #5379)
         if: "false"
-        if: always()
         run: |
           # A difference between the engine and the independent SQLite
           # oracle is only acceptable when it is *registered*: an issue to
@@ -635,7 +631,6 @@ jobs:
           bash scripts/gate/check_tpch_known_differences.sh
       - name: EXP-DISABLED Gate G1 — TPC-H 22/22 baseline (issue #3186)
         if: "false"
-        if: always() && (github.event_name == 'pull_request' || contains(github.ref, 'develop/v3.9.0'))
         run: |
           # This gate needs a real dbgen SF=1 fixture. CI cannot produce one:
           # dbgen is not vendored, the hermes runner has no GitHub egress to
