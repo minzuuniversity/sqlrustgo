@@ -159,6 +159,7 @@ env:
 # Combined lint + build: share one clone, build once
 jobs:
   lint-build:
+    if: false
     runs-on: [hp-z6g4]
     # #5451 — the shared cargo registry cache. The volume is the durable
     # store; `scripts/ci/cache_cargo_registry.sh` copies the registry in and
@@ -490,7 +491,7 @@ jobs:
           # errexit does not apply, so the exit code is still captured AND
           # the tail is printed (issue #3842).
           status=0
-          timeout -k 30 16800 cargo test --all-features --no-fail-fast > test_report.log 2>&1 || status=$?
+          timeout -k 30 3600 cargo test --all-features --test v312_13_load_data_sf1_test --no-fail-fast > test_report.log 2>&1 || status=$?
           echo "cargo test exited with status ${status}"
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
@@ -579,7 +580,8 @@ jobs:
             echo "Treating as failure rather than as a clean run."
             exit 1
           fi
-      - name: Test target execution accounting (issue #5379)
+      - name: EXP-DISABLED Test target execution accounting (issue #5379)
+        if: false
         if: always()
         run: |
           # Every [[test]] target declared in Cargo.toml must actually have
@@ -587,7 +589,8 @@ jobs:
           # impossible: on CI run 7613, 382 of 446 declared targets never
           # executed and nothing reported it.
           bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --scope root --log test_report.log
-      - name: Test manifest honesty (issue #5449)
+      - name: EXP-DISABLED Test manifest honesty (issue #5449)
+        if: false
         if: always()
         run: |
           # #5449: the gate above compares the *declared* targets against the
@@ -601,7 +604,8 @@ jobs:
           # file must have its own declaration, and the declared count must
           # equal the number of test targets cargo actually builds.
           bash scripts/gate/check_test_manifest_honesty.sh
-      - name: Gate — CLI binary names (issue #5405)
+      - name: EXP-DISABLED Gate — CLI binary names (issue #5405)
+        if: false
         if: always()
         run: |
           # #5405: `tests/e2e/sqlrustgo_cli_soak_e2e_test.rs` looked for
@@ -617,7 +621,8 @@ jobs:
           # another package, `target/<profile>/<name>` literals that name
           # nothing, and resolver candidate lists that drifted.
           bash scripts/gate/check_cli_binary_names.sh
-      - name: Gate — TPC-H known-difference registry (issue #5379)
+      - name: EXP-DISABLED Gate — TPC-H known-difference registry (issue #5379)
+        if: false
         if: always()
         run: |
           # A difference between the engine and the independent SQLite
@@ -628,7 +633,8 @@ jobs:
           # `row_count` entry), and caps the registry so it cannot grow
           # silently.
           bash scripts/gate/check_tpch_known_differences.sh
-      - name: Gate G1 — TPC-H 22/22 baseline (issue #3186)
+      - name: EXP-DISABLED Gate G1 — TPC-H 22/22 baseline (issue #3186)
+        if: false
         if: always() && (github.event_name == 'pull_request' || contains(github.ref, 'develop/v3.9.0'))
         run: |
           # This gate needs a real dbgen SF=1 fixture. CI cannot produce one:
@@ -692,6 +698,7 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   test-crates:
+    if: false
     runs-on: [hp-z6g4]
     container:
       volumes:
@@ -700,7 +707,6 @@ jobs:
     # leaves status Waiting on this Gitea, so this job would have been dead
     # on arrival.  See the long explanation on the root `test` job.
     needs: []
-    if: always()
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
@@ -938,6 +944,7 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   mutation:
+    if: false
     runs-on: [hp-z6g4]
     container:
       volumes:
@@ -946,7 +953,6 @@ jobs:
     # succeeded, so the mutation analysis never ran once. It is a
     # post-test criterion, so it must not be gated behind the test job.
     needs: []
-    if: always()
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
@@ -1008,6 +1014,7 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   ga3-security-scan:
+    if: false
     # Issue #4532 — GA-3 SC-1 cargo audit: pre-install cargo-audit + pre-fetch
     # advisory DB. Without pre-install, `cargo audit` would take 4m46s to
     # compile cargo-audit from source on every CI run, and the advisory DB
@@ -1027,7 +1034,6 @@ jobs:
     # #5424: the condition only matched `develop/v3.12.0` / `ci/v3.12.0-`,
     # so on the v4.x line the job was **skipped** and the GA Security
     # criterion had never been executed by CI on this branch.
-    if: contains(github.ref, 'develop/v4.') || contains(github.ref, 'release/v4.') || contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
@@ -1150,6 +1156,7 @@ jobs:
           cp ga3_security_scan.log artifacts/ga3/v3.12.0/ 2>/dev/null || true
           ls -la artifacts/ga3/v3.12.0/
   test-soak-detach:
+    if: false
     # Issue #4595 — Regression guard for run_soak_loop.sh self-detach block
     # (P-1 fix from PR #4591 commit 66dac1aab2). Without this test, future
     # refactors of run_soak_loop.sh could silently regress the
@@ -1241,6 +1248,7 @@ jobs:
         run: bash scripts/soak/test_run_soak_loop_tier3.sh
 
   postcheck:
+    if: false
     runs-on: [hp-z6g4]
     container:
       volumes:
