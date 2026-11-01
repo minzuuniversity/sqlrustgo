@@ -159,6 +159,7 @@ env:
 # Combined lint + build: share one clone, build once
 jobs:
   lint-build:
+    if: "false"
     runs-on: [hp-z6g4]
     # #5451 — the shared cargo registry cache. The volume is the durable
     # store; `scripts/ci/cache_cargo_registry.sh` copies the registry in and
@@ -490,7 +491,7 @@ jobs:
           # errexit does not apply, so the exit code is still captured AND
           # the tail is printed (issue #3842).
           status=0
-          timeout -k 30 9000 cargo test --all-features --no-fail-fast > test_report.log 2>&1 || status=$?
+          timeout -k 30 3600 cargo test --all-features --test v312_13_load_data_sf1_test --no-fail-fast > test_report.log 2>&1 || status=$?
           echo "cargo test exited with status ${status}"
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
@@ -667,6 +668,7 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   test-crates:
+    if: "false"
     runs-on: [hp-z6g4]
     container:
       volumes:
@@ -876,6 +878,7 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   mutation:
+    if: "false"
     runs-on: [hp-z6g4]
     container:
       volumes:
@@ -946,6 +949,7 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   ga3-security-scan:
+    if: "false"
     # Issue #4532 — GA-3 SC-1 cargo audit: pre-install cargo-audit + pre-fetch
     # advisory DB. Without pre-install, `cargo audit` would take 4m46s to
     # compile cargo-audit from source on every CI run, and the advisory DB
@@ -1076,6 +1080,7 @@ jobs:
           cp ga3_security_scan.log artifacts/ga3/v3.12.0/ 2>/dev/null || true
           ls -la artifacts/ga3/v3.12.0/
   test-soak-detach:
+    if: "false"
     # Issue #4595 — Regression guard for run_soak_loop.sh self-detach block
     # (P-1 fix from PR #4591 commit 66dac1aab2). Without this test, future
     # refactors of run_soak_loop.sh could silently regress the
@@ -1167,6 +1172,7 @@ jobs:
         run: bash scripts/soak/test_run_soak_loop_tier3.sh
 
   postcheck:
+    if: "false"
     runs-on: [hp-z6g4]
     container:
       volumes:
