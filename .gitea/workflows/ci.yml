@@ -159,7 +159,7 @@ env:
 # Combined lint + build: share one clone, build once
 jobs:
   lint-build:
-    if: false
+    if: "false"
     runs-on: [hp-z6g4]
     # #5451 — the shared cargo registry cache. The volume is the durable
     # store; `scripts/ci/cache_cargo_registry.sh` copies the registry in and
@@ -581,7 +581,7 @@ jobs:
             exit 1
           fi
       - name: EXP-DISABLED Test target execution accounting (issue #5379)
-        if: false
+        if: "false"
         if: always()
         run: |
           # Every [[test]] target declared in Cargo.toml must actually have
@@ -590,7 +590,7 @@ jobs:
           # executed and nothing reported it.
           bash scripts/gate/check_test_target_execution.sh --cargo-toml Cargo.toml --scope root --log test_report.log
       - name: EXP-DISABLED Test manifest honesty (issue #5449)
-        if: false
+        if: "false"
         if: always()
         run: |
           # #5449: the gate above compares the *declared* targets against the
@@ -605,7 +605,7 @@ jobs:
           # equal the number of test targets cargo actually builds.
           bash scripts/gate/check_test_manifest_honesty.sh
       - name: EXP-DISABLED Gate — CLI binary names (issue #5405)
-        if: false
+        if: "false"
         if: always()
         run: |
           # #5405: `tests/e2e/sqlrustgo_cli_soak_e2e_test.rs` looked for
@@ -622,7 +622,7 @@ jobs:
           # nothing, and resolver candidate lists that drifted.
           bash scripts/gate/check_cli_binary_names.sh
       - name: EXP-DISABLED Gate — TPC-H known-difference registry (issue #5379)
-        if: false
+        if: "false"
         if: always()
         run: |
           # A difference between the engine and the independent SQLite
@@ -634,7 +634,7 @@ jobs:
           # silently.
           bash scripts/gate/check_tpch_known_differences.sh
       - name: EXP-DISABLED Gate G1 — TPC-H 22/22 baseline (issue #3186)
-        if: false
+        if: "false"
         if: always() && (github.event_name == 'pull_request' || contains(github.ref, 'develop/v3.9.0'))
         run: |
           # This gate needs a real dbgen SF=1 fixture. CI cannot produce one:
@@ -698,7 +698,7 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   test-crates:
-    if: false
+    if: "false"
     runs-on: [hp-z6g4]
     container:
       volumes:
@@ -944,7 +944,7 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   mutation:
-    if: false
+    if: "false"
     runs-on: [hp-z6g4]
     container:
       volumes:
@@ -1014,7 +1014,7 @@ jobs:
         if: always()
         run: bash scripts/ci/cache_cargo_registry.sh save
   ga3-security-scan:
-    if: false
+    if: "false"
     # Issue #4532 — GA-3 SC-1 cargo audit: pre-install cargo-audit + pre-fetch
     # advisory DB. Without pre-install, `cargo audit` would take 4m46s to
     # compile cargo-audit from source on every CI run, and the advisory DB
@@ -1156,7 +1156,7 @@ jobs:
           cp ga3_security_scan.log artifacts/ga3/v3.12.0/ 2>/dev/null || true
           ls -la artifacts/ga3/v3.12.0/
   test-soak-detach:
-    if: false
+    if: "false"
     # Issue #4595 — Regression guard for run_soak_loop.sh self-detach block
     # (P-1 fix from PR #4591 commit 66dac1aab2). Without this test, future
     # refactors of run_soak_loop.sh could silently regress the
@@ -1248,7 +1248,7 @@ jobs:
         run: bash scripts/soak/test_run_soak_loop_tier3.sh
 
   postcheck:
-    if: false
+    if: "false"
     runs-on: [hp-z6g4]
     container:
       volumes:
