@@ -472,6 +472,43 @@ jobs:
           # the target that was stuck.
           tail -n 200 test_report.log || true
           exit ${status}
+      - name: Gate — tests must not overwrite archived evidence (#5577 / #5389)
+        # #5577: a plain `cargo test --workspace` used to overwrite the 21
+        # archived comparison outputs under
+        # `docs/releases/v4.1.0/evidence/a04-5226/wire/` with
+        # `ENGINE_UNAVAILABLE: container a04-pg-ref not running` placeholders.
+        # #5389 is the same shape, wider (81 files).
+        #
+        # The static layer (L1) cannot see an **indirect** write - A04 wrote
+        # through a helper (`evidence_root()`), so the literal never appeared
+        # at the call site. The load-bearing layer (L2) therefore checks the
+        # **worktree** right after the suite ran, in this same job.
+        #
+        # `if: always()` so it also runs when the suite itself failed or was
+        # killed by the timeout - those are exactly the runs most likely to
+        # have left half-written evidence behind.
+        if: always()
+        run: |
+          bash scripts/gate/check_tests_dont_write_archived_evidence.sh
+      - name: Gate — commit message shape (#5453)
+        # #5453: the commit-message specification existed in THREE mutually
+        # inconsistent copies and had **no machine enforcement at all** (no
+        # commit-msg hook, no CI check). Measured: `Refs` compliance ~4%,
+        # `Agent:` 0 times in the last 200 commits.
+        #
+        # This gate is the one execution point. Its hard criterion is the
+        # **shape** (`<type>(<scope>): <subject>` with a known type); the
+        # `Refs` line is **reported**, not enforced, because the existing
+        # history predates the rule and failing it would block every future
+        # change without making the history any better.
+        #
+        # `--last 1` because this job's checkout is a SHALLOW clone
+        # (`CI_DEPTH`, default 1) - a deeper range is not available here.
+        # The gate is nevertheless meaningful: it is checked on every run, so
+        # a commit that violates the shape is caught at the moment it is made.
+        if: always()
+        run: |
+          bash scripts/gate/check_commit_message.sh --last 1
       - name: Test summary
         if: always()
         run: |
@@ -749,6 +786,15 @@ jobs:
           # the target that was stuck.
           tail -n 200 test_report.log || true
           exit ${status}
+      - name: Gate — tests must not overwrite archived evidence (#5577 / #5389)
+        # Same gate as the root-package `test` job, and for the same reason:
+        # #5577's L2 layer is the only one that can see an **indirect** write
+        # into `docs/`, because A04 wrote through a helper rather than through
+        # a literal. The member crates have their own tests, so this job needs
+        # its own check of its own worktree.
+        if: always()
+        run: |
+          bash scripts/gate/check_tests_dont_write_archived_evidence.sh
       - name: Test summary
         if: always()
         run: |
@@ -1289,12 +1335,20 @@ jobs:
           # does not have it, that is an **environment blocker**, not a
           # code failure: it is recorded as NOT-RUN with a controlled
           # reason code rather than silently passing.
+          #
+          # #5581: the stage is stated **explicitly** — this step is the GA
+          # coverage criterion (both comments above and in the RC/GA step
+          # below say so), so it judges the GA bar read from the SSOT
+          # (docs/governance/STAGE_CONFIG.yaml → thresholds →
+          # COVERAGE_MIN_GA = 85) instead of the 80.0 the script used to
+          # hardcode. The SSOT is now the only place a coverage threshold
+          # comes from; the script has no constant of its own.
           if ! cargo llvm-cov --version >/dev/null 2>&1; then
             echo "NOT-RUN: reason=COVERAGE_TOOL_MISSING (cargo-llvm-cov is not installed on this runner)" \
               | tee coverage_report.log
             exit 0
           fi
-          bash scripts/gate/check_coverage_v312.sh 2>&1 | tee coverage_report.log
+          SQLRUSTGO_COVERAGE_STAGE=ga bash scripts/gate/check_coverage_v312.sh 2>&1 | tee coverage_report.log
       - name: Auto env:blocked (SPEC-021)
         run: |
           set -euo pipefail
@@ -1548,7 +1602,23 @@ jobs:
           # #5443: without `pipefail` the step's exit code came from `tee`
           # (always 0) — a hard D3 failure could not turn this step red.
           set -euo pipefail
-          bash scripts/gate/check_rc_ga_gate.sh ga 2>&1 | tee rc_ga_gate.log
+          #
+          # #5580: `--skip-a5` skips the A5 coverage sub-check inside D1.
+          #
+          # The coverage criterion is NOT lost by skipping it here: this job
+          # already measures it, in the dedicated step above, with
+          # `scripts/gate/check_coverage_v312.sh` — which is GA's own
+          # `required_gates` entry (docs/governance/STAGE_CONFIG.yaml). And
+          # since #5579 there is only ONE coverage implementation, so the
+          # dedicated step and A5 read exactly the same number; measuring it
+          # a second time inside this step would cost the dominant share of
+          # the gate's wall-clock (8 crates x `cargo llvm-cov`) and add
+          # nothing.
+          #
+          # The dimension plan itself is unchanged: `ga` executes D1..D9 —
+          # the same set `all` does — and the plan and the execution now
+          # read one list, so they cannot drift apart again.
+          bash scripts/gate/check_rc_ga_gate.sh ga --skip-a5 2>&1 | tee rc_ga_gate.log
       - name: V312-19 Release Gates (Issue #3906) — SQL corpus + R2 + signoff freshness
         if: contains(github.ref, 'develop/v3.12.0') || contains(github.ref, 'ci/v3.12.0-')
         run: |

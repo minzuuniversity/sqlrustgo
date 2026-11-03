@@ -23,10 +23,24 @@
 //! - PostgreSQL 17.10 Docker: ✅ `a04-pg-ref` @ `127.0.0.1:15432`
 //! - MySQL/MariaDB 服务端: ❌ 本机无 mariadbd/mysqld；Docker registry 不可达
 //!
-//! ## 证据落盘
-//! 运行后在 `docs/releases/v4.1.0/evidence/a04-5226/` 生成：
+//! ## 证据落盘（#5577：默认**不**写仓库）
+//!
+//! 运行后在 **`target/a04-5226/`**（构建产物目录，不入仓）生成：
 //! - `matrix.json` — 全部 case 的 verdict 矩阵
 //! - `wire/<case_id>_<engine>.txt` — 原始 wire/client 输出
+//!
+//! 要写进仓库的归档目录，**必须显式声明**：
+//!
+//! ```bash
+//! SQLRUSTGO_A04_EVIDENCE_DIR=docs/releases/v4.1.0/evidence/a04-5226 \
+//!   cargo test --all-features --test a04_mysql_diff_matrix -- --nocapture
+//! ```
+//!
+//! 修之前这里硬编码归档目录，而参照引擎不可用时**不跳过**、
+//! 只把每个用例写成 `ENGINE_UNAVAILABLE: ...` ⇒
+//! **在一台没有 pg 参考容器的机器上跑一次全仓测试，
+//! 就把 21 个已归档的对照输出抹成占位符**。
+//! 引擎不可用时现在**不写文件**：归档证据是**产物**，不是**日志**。
 //!
 //! ## Independent Judge 重放
 //! ```bash
@@ -45,6 +59,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 // #5406 / #5477：二进制定位收敛到共享 helper。
 #[path = "../../common/bin_resolver.rs"]
 mod bin_resolver;
+
+// #5577：输出目录规则收敛到共享 helper（唯一实现）。
+#[path = "../../common/evidence_output.rs"]
+mod evidence_output;
 
 // ============================================================================
 // Corpus 定义
@@ -365,8 +383,31 @@ impl EngineResult {
 // 证据目录
 // ============================================================================
 
+/// #5577: 测试**不得**写入仓库里已归档的证据。
+///
+/// 修之前这里硬编码 `docs/releases/v4.1.0/evidence/a04-5226`，而当
+/// PostgreSQL 参考容器不可用时测试**没有跳过**，而是把每个用例的输出
+/// 文件写成 `ENGINE_UNAVAILABLE: container a04-pg-ref not running`
+/// ⇒ **在一台没有 pg 参考容器的机器上跑一次 `cargo test --workspace`，
+/// 就把 21 个已归档的对照输出抹成占位符**。
+///
+/// 修法（把前提从假设换成测量）：**输出目录必须被显式声明**。
+///
+/// - **默认**：`target/a04-5226/` —— 构建产物目录，不入仓、不污染工作树。
+///   普通的一次 `cargo test --workspace` 只会写到这里。
+/// - **显式**：`SQLRUSTGO_A04_EVIDENCE_DIR=<dir>`
+///   —— 只有**明确指定**才写进那个目录。重新生成 #5226 的验收材料时用它：
+///   ```bash
+///   SQLRUSTGO_A04_EVIDENCE_DIR=docs/releases/v4.1.0/evidence/a04-5226 \
+///     cargo test --all-features --test a04_mysql_diff_matrix -- --nocapture
+///   ```
+///
+/// 「默认写仓内」曾经是**假设**（"测试就该把证据写进证据目录"）；
+/// 现在它是**必须显式声明的动作**。
+///
+/// 规则本体在 `tests/common/evidence_output.rs`（**唯一实现**，#5577）。
 fn evidence_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("docs/releases/v4.1.0/evidence/a04-5226")
+    evidence_output::evidence_dir("SQLRUSTGO_A04_EVIDENCE_DIR", "a04-5226")
 }
 
 fn corpus_hash() -> String {
@@ -1381,7 +1422,17 @@ fn a04_mysql_diff_matrix() {
         let sgo = run_sqlrustgo_cli(case.setup, case.query);
 
         // 落盘 wire 日志
+        //
+        // #5577: 引擎**不可用**时不写文件。
+        //
+        // 写占位符（`ENGINE_UNAVAILABLE: ...`）看起来无害 —— "至少留下了
+        // 这次运行的痕迹" —— 但它会把**已归档的对照输出替换掉**。
+        // 归档证据是**产物**，不是**日志**：一次跑不起来的测试没有资格
+        // 覆盖上一次成功运行留下的材料。
         for e in [&wire, &cli, &lite, &pg, &sgo] {
+            if !e.available {
+                continue;
+            }
             save_wire_log(case.id, &e.engine, &e.raw_log);
         }
 

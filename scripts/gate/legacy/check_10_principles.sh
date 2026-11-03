@@ -2,6 +2,13 @@
 # STATUS: DEPRECATED — see scripts/gate/README.md
 # Reason: not invoked by any active gate (audit 2026-06-04)
 # Action:  do not add new callers; restore via git history if needed
+#
+# #5581: the coverage measurement in this file is a **historical
+# implementation**. It is listed in
+# scripts/gate/coverage_measurement_allowlist.txt with the role `legacy`,
+# so that the "one coverage measurement, one rule" gate can tell it apart
+# from a live second implementation. Do not copy it — the shared one lives in
+# scripts/gate/common.sh.
 
 #
 # check_10_principles.sh — 10原则 R1-R10 全量追踪

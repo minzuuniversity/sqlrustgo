@@ -49,6 +49,7 @@ mod coord;
 
 use coord::*;
 use sqlrustgo_storage::fault_injection::FaultPoint;
+use std::time::Duration;
 
 /// Crash at the WAL **append** boundary: the trailing entry was written
 /// to the kernel page cache but not `fsync`ed, so `SIGKILL` may lose it.
@@ -64,7 +65,26 @@ fn wal_append_crash_recovers_gracefully_without_resurrecting_rows() {
     let my = mysql_bin();
     let scratch = Scratch::new("wal_append");
     let port = free_port();
-    let arm = Arm::new(FaultPoint::AfterWALAppend, &scratch, "wal_append");
+    let arm = Arm::new(FaultPoint::AfterWALAppend, &scratch, "wal_append")
+        // #5556: the scenario appends to the WAL **four** times, measured
+        // on this tree (macOS arm64; occurrences 1..5 tried, and the
+        // recovered row count recorded for each):
+        //
+        //   1 = CREATE DATABASE, 2 = CREATE TABLE,
+        //   3 = the seed INSERT's commit entry,
+        //   4 = **the explicit COMMIT's entry** ← the boundary under test
+        //
+        // Occurrence 4 is the one that reproduces the documented
+        // scenario: the crash lands on the COMMIT's WAL entry, the seed's
+        // three rows are already durable (recovered `count=3, sum=6`),
+        // and the torn trailing entry is not resurrected. Occurrence 2
+        // and 3 both recovered `count=0` — i.e. the crash landed before
+        // the seed's commit, which is a different scenario.
+        //
+        // Before this, the server held at *every* append: the script paid
+        // 120 s per append, and the SIGKILL landed after the whole script
+        // instead of at the boundary.
+        .with_occurrence(5);
 
     let mut server = Server::start(&bin, &scratch.path, port, Some(arm.clone()))
         .unwrap_or_else(|e| panic!("start server: {e}"));
@@ -74,14 +94,16 @@ fn wal_append_crash_recovers_gracefully_without_resurrecting_rows() {
     // bytes sit in the kernel page cache, not on stable storage, so the
     // committed row may or may not be there after the crash — both are
     // legal. What is illegal is recovery panicking or inventing rows.
-    sql(
+    //
+    // #5556: the client runs in the background — the server holds at the
+    // boundary, so this script is never answered.
+    let client = sql_background(
         &my,
         port,
         "CREATE DATABASE d1; USE d1; CREATE TABLE t(id INT PRIMARY KEY, v INT); \
          INSERT INTO t VALUES (1,10),(2,20),(3,30); \
          BEGIN; INSERT INTO t VALUES (4,40); COMMIT;",
-    )
-    .unwrap_or_else(|e| panic!("seed sql: {e}"));
+    );
 
     let sig = match await_signal(&arm, child_pid) {
         Ok(s) => s,
@@ -101,6 +123,7 @@ fn wal_append_crash_recovers_gracefully_without_resurrecting_rows() {
     };
 
     server.kill();
+    let _ = client.recv_timeout(Duration::from_secs(5));
 
     let server = server.restart().unwrap_or_else(|e| panic!("restart: {e}"));
     await_queryable(&my, server.port(), BOOT_TIMEOUT)
@@ -163,7 +186,28 @@ fn index_update_crash_does_not_serve_dangling_rows() {
     let my = mysql_bin();
     let scratch = Scratch::new("index_update");
     let port = free_port();
-    let arm = Arm::new(FaultPoint::AfterIndexUpdate, &scratch, "index_update");
+    let arm = Arm::new(FaultPoint::AfterIndexUpdate, &scratch, "index_update")
+        // #5556: this case keeps the crash **after** the script (the
+        // client blocks) and shortens the server's hold to 5 s.
+        //
+        // Why not crash *at* the index-update boundary? Measured: a crash
+        // there loses the **database** — the recovery answers
+        // `ERROR 1105 Unknown database: d1`, because DDL is not in the
+        // WAL and the database is not durable that early (see #5584).
+        // The boundary this test is really about ("the on-disk secondary
+        // index points at a page whose data was never flushed") needs
+        // the table to exist after the restart, and that only happens
+        // once the script has run.
+        //
+        // And why 5 s and not the 120 s default? Because the client
+        // blocks until the script is over: with a 120 s hold the mysql
+        // client's own 30 s read timeout fires first, it **reconnects**,
+        // and the reconnected session has no `USE d1` — so the script
+        // died with `ERROR 1146 Table not found: t`. That was a
+        // pre-existing red, measured on the unmodified tree:
+        // "test index_update_crash_does_not_serve_dangling_rows ... FAILED
+        // ... finished in 120.28s".
+        .with_hold_secs(5);
 
     let mut server = Server::start(&bin, &scratch.path, port, Some(arm.clone()))
         .unwrap_or_else(|e| panic!("start server: {e}"));
@@ -171,6 +215,13 @@ fn index_update_crash_does_not_serve_dangling_rows() {
 
     // CREATE INDEX writes the secondary index; the crash lands on the
     // index-update boundary while the backing page may not be flushed.
+    //
+    // #5556: the client runs in the background — the server holds at the
+    // boundary, so this script is never answered.
+    //
+    // The client blocks here on purpose: the crash must land **after**
+    // the script, so that the database and the table exist when the
+    // server comes back (see the arm's comment).
     sql(
         &my,
         port,

@@ -19,10 +19,30 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+// #5577：输出目录规则收敛到共享 helper（唯一实现）。
+#[path = "../../common/evidence_output.rs"]
+mod evidence_output;
+
 const CORPUS_DIR: &str = "tests/compat/teaching_sql_v3_12";
 const MANIFEST_PATH: &str = "tests/compat/teaching_sql_v3_12/manifest.yml";
+/// Golden 对照输出 —— **只读**。它是已归档的期望值，不是本次运行的产物。
 const GOLDEN_DIR: &str = "docs/releases/v3.12.0/evidence/teaching_corpus/golden";
-const DIFF_DIR: &str = "docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs";
+/// #5577: oracle 差异报告的**输出**目录 —— 默认写进构建产物目录。
+///
+/// 旧默认值是仓库里的 `docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs`
+/// ⇒ 跑一次测试就把已归档的差异报告覆写掉（#5577 / #5389）。
+/// 现在默认写进 `target/`；写进仓库必须**显式声明**：
+/// `SQLRUSTGO_TEACHING_DIFF_DIR=docs/releases/v3.12.0/evidence/teaching_corpus/oracle_diffs`。
+///
+/// 规则本体在 `tests/common/evidence_output.rs`（**唯一实现**，#5577）。
+fn diff_dir() -> String {
+    evidence_output::evidence_dir(
+        "SQLRUSTGO_TEACHING_DIFF_DIR",
+        "teaching_corpus/oracle_diffs",
+    )
+    .to_string_lossy()
+    .to_string()
+}
 
 #[derive(Debug, Default)]
 struct Entry {
@@ -494,8 +514,9 @@ fn split_statements(s: &str) -> Vec<String> {
 // -------- diff report --------
 
 fn write_diff_report(entry: &Entry, diff: &OracleDiff) {
-    if !Path::new(DIFF_DIR).exists() {
-        let _ = fs::create_dir_all(DIFF_DIR);
+    let diff_dir = diff_dir();
+    if !Path::new(&diff_dir).exists() {
+        let _ = fs::create_dir_all(&diff_dir);
     }
     let name = entry.path.replace('/', "_").replace(".sql", ".diff");
     let body = format!(
@@ -504,7 +525,7 @@ fn write_diff_report(entry: &Entry, diff: &OracleDiff) {
         chrono_like_now(),
         unified_diff_text(&diff.expected, &diff.actual)
     );
-    let _ = fs::write(format!("{DIFF_DIR}/{name}"), body);
+    let _ = fs::write(format!("{diff_dir}/{name}"), body);
 }
 
 /// Tiny RFC3339-ish stamp without pulling in the `chrono` crate.

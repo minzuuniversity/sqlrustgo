@@ -193,6 +193,11 @@ impl Server {
             c.env("SQLRUSTGO_FAULT_SIGNAL_DIR", &a.signal_dir);
             c.env("SQLRUSTGO_FAULT_RUN_ID", &a.run_id);
             c.env("SQLRUSTGO_WAL_SYNC", &a.sync_mode);
+            // #5556: which occurrence of the point is the boundary under
+            // test. The server holds **once**, at that occurrence.
+            c.env("SQLRUSTGO_FAULT_OCCURRENCE", a.occurrence.to_string());
+            // #5556: how long the server holds at the boundary.
+            c.env("SQLRUSTGO_FAULT_HOLD_SECS", a.hold_secs.to_string());
         }
 
         let child = c.spawn().map_err(|e| format!("spawn server: {e}"))?;
@@ -243,6 +248,24 @@ impl Server {
     }
 }
 
+/// #5556: the server must not outlive the test.
+///
+/// Before this, a test that panicked (or returned early) left the server
+/// running: the harness had no `Drop`, so nothing killed the child. The
+/// issue recorded **10+ orphaned `sqlrustgo-mysql-server serve` processes**
+/// on the developer's machine, each holding a port and memory.
+///
+/// This covers the case where the harness itself survives. The case where
+/// the harness is SIGKILLed (a CI timeout) still leaks a server — that
+/// needs `PR_SET_PDEATHSIG`, which would add a `libc` dependency to this
+/// crate; see the issue for the residual.
+impl Drop for Server {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 /// Everything needed to arm one fault point in a child.
 #[derive(Debug, Clone)]
 pub struct Arm {
@@ -250,6 +273,10 @@ pub struct Arm {
     pub signal_dir: PathBuf,
     pub run_id: String,
     pub sync_mode: String,
+    /// Which occurrence of the point holds the server (#5556).
+    pub occurrence: u32,
+    /// How long the server holds at the boundary, in seconds (#5556).
+    pub hold_secs: u64,
 }
 
 impl Arm {
@@ -259,7 +286,44 @@ impl Arm {
             signal_dir: scratch.path.join("signals"),
             run_id: run_id(tag),
             sync_mode: "every".to_string(),
+            occurrence: 1,
+            hold_secs: 120,
         }
+    }
+
+    /// #5556: how long the server holds at the boundary.
+    ///
+    /// The default (120 s) is the backstop for a harness that never kills
+    /// the server. A harness that reacts to the signal immediately does
+    /// not care: its SIGKILL ends the hold. A harness that means the crash
+    /// to land **after** the script does care — it is waiting out the
+    /// hold — and for it a short hold is the difference between 120 s and
+    /// seconds of wall clock.
+    ///
+    /// #5556: the allowance is the same per-helper allowance [`sql`] has —
+    /// this module is `#[path]`-included into several test binaries and each
+    /// of them compiles it separately, so a helper that only one binary uses
+    /// is dead code in all the others.
+    #[allow(dead_code)]
+    pub fn with_hold_secs(mut self, n: u64) -> Self {
+        self.hold_secs = n;
+        self
+    }
+
+    /// #5556: the boundary under test is not always the **first** time the
+    /// point is reached.
+    ///
+    /// The server holds the process at the chosen occurrence and at no
+    /// other: before this, it held at *every* occurrence, so a script with
+    /// N WAL-writing statements paid N × 120 s and the crash landed after
+    /// the whole script instead of at the boundary.
+    ///
+    /// Example — a script that commits twice (an autocommit seed and then
+    /// an explicit `COMMIT`): the interesting boundary is the second
+    /// commit, so the arm says `with_occurrence(2)`.
+    pub fn with_occurrence(mut self, n: u32) -> Self {
+        self.occurrence = n.max(1);
+        self
     }
 
     pub fn with_sync_mode(mut self, m: &str) -> Self {
@@ -306,6 +370,17 @@ pub fn await_signal(arm: &Arm, child_pid: u32) -> Result<Signal, String> {
     ))
 }
 
+/// Drive `script` through the mysql CLI and **wait** for it.
+///
+/// #5556: this module is shared by several test binaries and each of them
+/// `#[path]`-includes it, so every binary is its own compilation unit and
+/// sees only the helpers *it* uses. `sql` is the blocking client — the one
+/// that is still right when the answer **must** arrive — and only
+/// `crash_wal_index_b1` needs it (its crash must land *after* the script).
+/// The other binaries include this file and never call it, so the dead-code
+/// lint would fire on their builds; the allowance is per-helper for that
+/// reason, not to hide an unused API.
+#[allow(dead_code)]
 pub fn sql(mysql: &Path, port: u16, script: &str) -> Result<(), String> {
     let out = Command::new(mysql)
         .arg("--host=127.0.0.1")
@@ -325,6 +400,67 @@ pub fn sql(mysql: &Path, port: u16, script: &str) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Drive `script` through the mysql CLI **in the background**.
+///
+/// #5556: the crash tests used to call [`sql`], which blocks until the
+/// whole script has been answered. But the server **holds at the fault
+/// point** — it writes the signal and then spins — so the script could
+/// not finish before the harness killed the server. Two consequences:
+///
+/// 1. every WAL-writing statement paid the server's 120 s spin, so one
+///    test case cost minutes (measured: 240.93 s for the two cases of
+///    `crash_commit_fsync_b1`);
+/// 2. the harness only noticed the boundary **after** the script was
+///    over, so the SIGKILL landed *after* the whole script instead of
+///    *at* the boundary the test is about.
+///
+/// With the client in the background the harness can react to the signal
+/// immediately: the server is SIGKILLed while the statement is still in
+/// flight. The client's failure is the **expected** outcome (its
+/// connection dies with the server), so the result is not an error.
+///
+/// The returned receiver completes when the client is done; the client is
+/// killed if it outlives [`CLIENT_LIFETIME`], so it cannot linger past
+/// the test.
+pub fn sql_background(mysql: &Path, port: u16, script: &str) -> std::sync::mpsc::Receiver<()> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mysql = mysql.to_path_buf();
+    let script = script.to_string();
+    std::thread::spawn(move || {
+        let mut cmd = Command::new(&mysql);
+        cmd.arg("--host=127.0.0.1")
+            .arg(format!("--port={port}"))
+            .arg("--user=root")
+            .arg("--batch")
+            .arg("--execute")
+            .arg(&script)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if let Ok(mut child) = cmd.spawn() {
+            let deadline = Instant::now() + CLIENT_LIFETIME;
+            loop {
+                match child.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) => {
+                        if Instant::now() >= deadline {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+        let _ = tx.send(());
+    });
+    rx
+}
+
+/// How long the backgrounded mysql client may live (#5556).
+pub const CLIENT_LIFETIME: Duration = Duration::from_secs(30);
 
 pub fn scalar(mysql: &Path, port: u16, q: &str) -> Result<String, String> {
     let out = Command::new(mysql)

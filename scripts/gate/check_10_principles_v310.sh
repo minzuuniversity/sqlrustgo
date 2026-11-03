@@ -172,24 +172,41 @@ else
     # be reported as a number, and a failed measurement must fail the rule
     # instead of being masked. Hence no `|| true`, no `|| echo "0%"`, and the
     # shared extraction that reports nothing rather than a wrong number.
-    set +e
-    cov_out=$(cargo llvm-cov --tests -p "$crate" 2>&1)
-    cov_rc=$?
-    set -e
-    if [ "$cov_rc" -ne 0 ]; then
-      echo "  [FAIL] $crate: cargo llvm-cov failed (exit $cov_rc)"
-      cov_fail=$((cov_fail + 1))
-      continue
-    fi
-    pct=$(printf '%s\n' "$cov_out" | coverage_extract_total_percent)
+    # #5581: the MEASUREMENT is now the shared one —
+    # `coverage_measure_crate` from scripts/gate/common.sh. This rule used
+    # to have its own invocation (`cargo llvm-cov --tests -p <crate>`)
+    # with no feature derivation, no environment-dependent exclusions and
+    # no `--test-threads=1`: it measured a *different thing* than the
+    # criterion meant, and its numbers moved with the machine load (the
+    # shared measurement is the one AGENTS.md §10 requires).
+    #
+    # The THRESHOLD stays this release's own per-crate goal — see the note
+    # below.
+    measure_log="$(make_temp_file || true)"
+    pct="$(coverage_measure_crate "$crate" 2>"$measure_log" || true)"
     if [ -z "$pct" ]; then
-      echo "  [FAIL] $crate: no coverage data in the llvm-cov report"
+      echo "  [FAIL] $crate: could not measure coverage"
+      [ -n "$measure_log" ] && sed 's/^/        /' "$measure_log" | tail -3
+      rm -f "$measure_log"
       cov_fail=$((cov_fail + 1))
       continue
     fi
+    rm -f "$measure_log"
     pct_int=${pct%%.*}
 
     # v3.10.0 coverage target: 47% for parser/planner, 42% others (from V310_10_COVERAGE_PLAN.md)
+    #
+    # #5581: these numbers are **NOT** a stage threshold and are deliberately
+    # not read from docs/governance/STAGE_CONFIG.yaml. They are the
+    # **per-crate** goals the v3.10.0 release set for itself — a different
+    # quantity from "the stage's average line coverage" (COVERAGE_MIN_*).
+    # This gate is a past release's own criterion and is off the v4.1.0 CI
+    # path (`check_beta_v3.10.0.sh` delegates to it, and the beta gate is
+    # not on the v4.1.0 path).
+    #
+    # What this gate IS on the v4.1.0 path: the **extraction** is the shared
+    # one (`coverage_extract_total_percent` from scripts/gate/common.sh), and
+    # the measurement failures are fail-closed (no `|| echo "0%"`).
     case "$crate" in
       sqlrustgo-parser|sqlrustgo-planner) threshold=47 ;;
       *) threshold=42 ;;

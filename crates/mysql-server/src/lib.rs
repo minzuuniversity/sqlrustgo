@@ -80,6 +80,14 @@ fn parse_wal_sync_mode(s: &str) -> sqlrustgo_storage::WalSyncMode {
     }
 }
 
+/// The idle timeout used when `SQLRUSTGO_IDLE_TIMEOUT_SECS` is unset (or
+/// unparsable).
+///
+/// #5514: the value is now the SSOT for **both** idle mechanisms — the
+/// reaper's threshold *and* the per-connection socket read timeout — so
+/// the two can never disagree about when a connection dies.
+const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 30;
+
 /// v3.12.0 Issue #4682: per-connection idle (read) timeout. The
 /// previous 600 s default was the root cause of CLOSE_WAIT zombies
 /// accumulating: when a client closed its socket abruptly, the
@@ -87,12 +95,57 @@ fn parse_wal_sync_mode(s: &str) -> sqlrustgo_storage::WalSyncMode {
 /// before noticing. 30 s is a sane default — long enough for
 /// legitimate long-running queries, short enough that dead
 /// connections are reaped within one watchdog cycle.
-fn read_idle_timeout_secs() -> u64 {
-    std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .filter(|n| *n >= 1)
-        .unwrap_or(30)
+///
+/// #5514: the value is now `Option<u64>`, where **`None` means the
+/// idle timeout and the idle reaper are disabled**:
+///
+/// | `SQLRUSTGO_IDLE_TIMEOUT_SECS` | result | meaning |
+/// |---|---|---|
+/// | unset | `Some(30)` | the default |
+/// | `0` | `None` | **disabled** — no connection is ever reaped and no idle read timeout is armed |
+/// | `N` (N ≥ 1) | `Some(N)` | the threshold |
+/// | unparsable | `Some(30)` | the default |
+///
+/// Before #5514 the value was parsed as `u64` and then filtered with
+/// `|n| *n >= 1`, so `0` fell through to the default `30`: there was
+/// **no way to turn the reaper off at all**. An operator whose clients
+/// compute long tasks between statements (long transactions, calls to
+/// external systems, bulk computation) could not exempt them — and the
+/// symptom was misattributed, because the client sees a transport error
+/// (`read packet header: failed to fill whole buffer`), not a
+/// server-side rejection (#5464 and #5415 were both mis-attributed this
+/// way).
+///
+/// The `0` semantics follow MySQL's `wait_timeout`: 0 disables the
+/// timeout.
+fn read_idle_timeout_secs() -> Option<u64> {
+    match std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS") {
+        Ok(raw) => match raw.trim().parse::<u64>() {
+            Ok(0) => None,
+            Ok(n) => Some(n),
+            Err(_) => Some(DEFAULT_IDLE_TIMEOUT_SECS),
+        },
+        Err(_) => Some(DEFAULT_IDLE_TIMEOUT_SECS),
+    }
+}
+
+/// #5514: the reaper's decision, as a **pure** function.
+///
+/// * `Some(threshold)` ⇒ the connection has been idle longer than
+///   `threshold` seconds and **must be reaped**; the threshold is
+///   returned so the log line and the decision cannot drift apart.
+/// * `None` ⇒ the connection must be **kept**. A `None` timeout (the
+///   reaper is disabled) yields `None` for *any* idle time, so nothing
+///   is ever reaped.
+///
+/// Keeping the decision here — instead of inline in the reaper loop — is
+/// what makes the "disabled" case testable without a socket, a server or
+/// a sleep.
+fn idle_reap_decision(idle_secs: u64, timeout_secs: Option<u64>) -> Option<u64> {
+    match timeout_secs {
+        Some(threshold) if idle_secs > threshold => Some(threshold),
+        _ => None,
+    }
 }
 
 /// v3.12.0 Issue #4682: scan interval for the idle-connection
@@ -292,20 +345,33 @@ pub fn spawn_idle_connection_reaper() {
     let _ = std::thread::Builder::new()
         .name("sqlrustgo-idle-reaper".to_string())
         .spawn(move || {
-            tracing::info!(
-                "idle_connection_reaper started: interval={}s idle_timeout={}s",
-                interval,
-                idle_timeout
-            );
+            match idle_timeout {
+                Some(secs) => tracing::info!(
+                    "idle_connection_reaper started: interval={}s idle_timeout={}s",
+                    interval,
+                    secs
+                ),
+                // #5514: the reaper is disabled. The thread still runs —
+                // it is the supervisor that enforces "reap nothing" — so
+                // the operator can re-enable the reaper by setting the
+                // variable back to a positive value, without a restart.
+                None => tracing::info!(
+                    "idle_connection_reaper started: interval={}s idle_timeout=disabled",
+                    interval
+                ),
+            }
             loop {
                 std::thread::sleep(Duration::from_secs(interval));
+                // #5514: re-read every cycle so the threshold can be
+                // tuned live — and so that switching to `0` stops the
+                // reaping immediately.
                 let now_idle_timeout = read_idle_timeout_secs();
                 let mut registry = CONNECTION_REGISTRY.write();
                 let mut reaped = 0usize;
 
                 registry.retain(|&conn_id, (tracker, weak)| {
                     let idle = tracker.idle_secs();
-                    if idle > now_idle_timeout {
+                    if let Some(threshold) = idle_reap_decision(idle, now_idle_timeout) {
                         if let Some(strong) = weak.upgrade() {
                             // v3.12.0 Issue #4682: shutdown(Both) is
                             // the only reliable way to wake a stuck
@@ -320,7 +386,7 @@ pub fn spawn_idle_connection_reaper() {
                                 "idle-reaper: closing conn_id={} (idle {}s > {}s)",
                                 conn_id,
                                 idle,
-                                now_idle_timeout
+                                threshold
                             );
                         }
                         false
@@ -434,40 +500,104 @@ mod helpers_tests {
         }
     }
 
-    // ---------- v3.12.0 Issue #4682: idle-reaper helpers ----------
+    // ---------- v3.12.0 Issue #4682 / #5514: idle-reaper helpers ----------
+
+    /// Take the process-wide env lock and restore the idle-timeout variable
+    /// when the guard is dropped.
+    ///
+    /// #5514: these tests mutate a **process-global** env var, and cargo
+    /// runs the tests of one binary in parallel threads. Without the lock
+    /// two of them could read each other's value — a flake that looks
+    /// exactly like a broken feature.
+    struct IdleTimeoutEnvGuard {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        previous: Option<String>,
+    }
+
+    impl IdleTimeoutEnvGuard {
+        fn set(value: Option<&str>) -> Self {
+            let guard = super::utilities_tests::ENV_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            let previous = std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS").ok();
+            match value {
+                Some(v) => std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", v),
+                None => std::env::remove_var("SQLRUSTGO_IDLE_TIMEOUT_SECS"),
+            }
+            Self {
+                _guard: guard,
+                previous,
+            }
+        }
+    }
+
+    impl Drop for IdleTimeoutEnvGuard {
+        fn drop(&mut self) {
+            match self.previous.take() {
+                Some(v) => std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", v),
+                None => std::env::remove_var("SQLRUSTGO_IDLE_TIMEOUT_SECS"),
+            }
+        }
+    }
 
     #[test]
     fn read_idle_timeout_defaults_to_30_seconds() {
-        let prev = std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS").ok();
-        std::env::remove_var("SQLRUSTGO_IDLE_TIMEOUT_SECS");
-        assert_eq!(read_idle_timeout_secs(), 30);
-        if let Some(v) = prev {
-            std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", v);
-        }
+        let _env = IdleTimeoutEnvGuard::set(None);
+        assert_eq!(read_idle_timeout_secs(), Some(30));
     }
 
     #[test]
     fn read_idle_timeout_honors_env() {
-        let prev = std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS").ok();
-        std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", "120");
-        assert_eq!(read_idle_timeout_secs(), 120);
-        if let Some(v) = prev {
-            std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", v);
-        } else {
-            std::env::remove_var("SQLRUSTGO_IDLE_TIMEOUT_SECS");
-        }
+        let _env = IdleTimeoutEnvGuard::set(Some("120"));
+        assert_eq!(read_idle_timeout_secs(), Some(120));
     }
 
+    /// #5514: `0` must mean **disabled**, not "fall back to the default".
+    ///
+    /// This is the regression pin for the defect the issue reports: the
+    /// old filter (`.filter(|n| *n >= 1)`) turned `0` into `30`, so
+    /// there was no way to switch the reaper off.
     #[test]
-    fn read_idle_timeout_clamps_zero() {
-        let prev = std::env::var("SQLRUSTGO_IDLE_TIMEOUT_SECS").ok();
-        std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", "0");
-        assert_eq!(read_idle_timeout_secs(), 30);
-        if let Some(v) = prev {
-            std::env::set_var("SQLRUSTGO_IDLE_TIMEOUT_SECS", v);
-        } else {
-            std::env::remove_var("SQLRUSTGO_IDLE_TIMEOUT_SECS");
-        }
+    fn read_idle_timeout_zero_disables_the_reaper() {
+        let _env = IdleTimeoutEnvGuard::set(Some("0"));
+        assert_eq!(
+            read_idle_timeout_secs(),
+            None,
+            "SQLRUSTGO_IDLE_TIMEOUT_SECS=0 must disable the idle timeout, \
+             not fall back to the default"
+        );
+    }
+
+    /// An unparsable value must fall back to the default rather than
+    /// silently disabling the reaper — a typo in the deployment config
+    /// must not take the protection away.
+    #[test]
+    fn read_idle_timeout_falls_back_to_the_default_when_unparsable() {
+        let _env = IdleTimeoutEnvGuard::set(Some("not-a-number"));
+        assert_eq!(read_idle_timeout_secs(), Some(30));
+    }
+
+    /// The pure decision function: a disabled reaper reaps nothing, ever.
+    #[test]
+    fn a_disabled_reaper_never_reaps() {
+        assert_eq!(
+            idle_reap_decision(0, None),
+            None,
+            "a disabled reaper must not reap a fresh connection"
+        );
+        assert_eq!(
+            idle_reap_decision(1_000_000, None),
+            None,
+            "a disabled reaper must not reap a connection however long it has been idle"
+        );
+    }
+
+    /// ...and an enabled one reaps exactly past the threshold.
+    #[test]
+    fn an_enabled_reaper_reaps_past_the_threshold() {
+        assert_eq!(idle_reap_decision(29, Some(30)), None);
+        assert_eq!(idle_reap_decision(30, Some(30)), None);
+        assert_eq!(idle_reap_decision(31, Some(30)), Some(30));
     }
 
     #[test]
@@ -6431,11 +6561,23 @@ fn handle_connection(
             deregister_connection(cid);
         }
     });
-    stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(
-            read_idle_timeout_secs(),
-        )))
-        .ok();
+    // #5514: `SQLRUSTGO_IDLE_TIMEOUT_SECS=0` disables the idle timeout
+    // **and** the idle reaper. Arming a zero-second read timeout would
+    // make every read time out instantly, so the timeout is not armed at
+    // all — the read then blocks until the peer says something, which is
+    // exactly what "disabled" means. This is also the only way a
+    // *client that is thinking for a long time* survives: it needs
+    // neither the reaper nor the read timeout to stay out of its way.
+    match read_idle_timeout_secs() {
+        Some(secs) => {
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(secs)))
+                .ok();
+        }
+        None => {
+            stream.set_read_timeout(None).ok();
+        }
+    }
     let cid = register_connection(Arc::new(stream.try_clone().unwrap()));
     *_conn_id_cell.lock().unwrap() = cid;
     CURRENT_CONN_ID.with(|c| c.set(cid));

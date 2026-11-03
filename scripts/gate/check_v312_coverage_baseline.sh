@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# #5581: this script is a **report generator**, not a verdict.
+#
+# It produces the coverage baseline TABLE that the release documents quote.
+# Its output is reviewed by a human; it does not decide whether the
+# repository passes. That distinction is why it is allowed to keep its own
+# command form: it measures a different thing (a per-crate baseline table
+# with `--ignore-run-fail`, so that a crate whose tests fail still produces
+# a row) than the gate criterion does.
+#
+# It is listed in scripts/gate/coverage_measurement_allowlist.txt with the
+# role `report-generator`. The criterion that **decides** lives in
+# scripts/gate/common.sh.
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
 

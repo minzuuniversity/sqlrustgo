@@ -44,7 +44,11 @@ fi
 # CHECK_CMD is the bash command line whose exit 0 = PASS.
 # Use "REQUIRED:<path>" for file-existence checks, or a bash one-liner.
 declare -a FIELDS=(
-    "COVERAGE_MIN_PER_CRATE|int|bash scripts/gate/check_coverage_v312.sh"
+    # COVERAGE_MIN_PER_CRATE is 80 in docs/releases/v3.12.0/STAGE.yaml.
+    # The SSOT stage whose bar is 80 is RC, so this call judges RC — the
+    # criterion is **unchanged**; only its source moved from a constant
+    # inside check_coverage_v312.sh to the SSOT (#5581).
+    "COVERAGE_MIN_PER_CRATE|int|SQLRUSTGO_COVERAGE_STAGE=rc bash scripts/gate/check_coverage_v312.sh"
     "GMP_CORPUS_UNCLASSIFIED_FAILURE_MAX|int|REQUIRED:docs/releases/v3.12.0/evidence/GMP_CORPUS_REPORT.md"
     "GMP_AUDIT_TAMPER_TEST_REQUIRED|bool|test -f docs/releases/v3.12.0/v312-08-compliance-audit-report.md"
     "GMP_RETRIEVAL_CITATION_REQUIRED|bool|test -f docs/releases/v3.12.0/v312-05-hybrid-retrieval-report.md"

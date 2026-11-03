@@ -129,6 +129,12 @@ SQLRustGo 是一个开源的 Rust SQL 数据库执行引擎，我们欢迎所有
 
 ### 5.2 Type 类型
 
+> **#5453 —— 这是提交信息 type 的**唯一来源**。**
+> 仓库里另有 `DEVELOPMENT_PROCESS.md` §7 与 `ENGINEERING_AUTOMATION.md` §11
+> 讨论提交信息形态；它们**只允许指向本节**，不得各自再列一份 type 表。
+> 机器裁决：`scripts/gate/check_commit_message.sh`
+> （形态与 type 表唯一性的判据只有那一份实现）。
+
 | Type | 说明 | 示例 |
 |------|------|------|
 | `feat` | 新功能 | feat: add cascades optimizer |
@@ -138,6 +144,14 @@ SQLRustGo 是一个开源的 Rust SQL 数据库执行引擎，我们欢迎所有
 | `test` | 测试 | test: add integration tests |
 | `chore` | 维护 | chore: update dependencies |
 | `perf` | 性能 | perf: improve join algorithm |
+| `ci` | CI / 工作流 | ci: keep the gate wired to the job that runs it |
+| `style` | 纯格式（不改语义） | style: rustfmt the storage crate |
+| `merge` | 批次合并提交 | merge(gate): fold batch 39 into batch 40 |
+
+> `ci` / `style` / `merge` 是本表在 #5453 批次中**按实测**补进去的：
+> `ci` 在最近 200 个 commit 里出现 4 次却不在旧表里，`style` 在
+> `DEVELOPMENT_PROCESS.md` §7.2 里出现却不在本表里，`merge` 是人工批次
+> 合并提交普遍在用的 type —— 两份旧表各自都不完整。合并成一份，并按实测取值。
 
 ### 5.3 提交示例
 
@@ -148,8 +162,30 @@ feat(planner): add hash join operator
 - Add hash join to physical plan
 - Add unit tests for hash join
 
-Closes #123
+Refs #123
 ```
+
+### 5.4 可选扩展 trailer
+
+下列 trailer 是**推荐**的扩展，**不是**格式的一部分：
+
+```
+Agent: <agent-id>
+Scope: <影响范围>
+Refs: #<issue编号>
+```
+
+* `Refs #<issue>` —— **强烈建议**：它是把「提交 ↔ issue ↔ PR ↔ 证据」串起来的
+  唯一链条。**本仓库的 Agent 一律使用 `Refs #NNNN`（不是 `Closes #NNNN`）**：
+  关单需要合并后在 `develop` 树复跑并贴证据，不能由提交本身代替。
+* `Agent:` / `Scope:` —— 记录谁做的、影响哪一块。
+
+> #5453 实测：最近 30 个 commit 里 `Refs` 只出现 4 次、`Agent:` **0 次**。
+> 这就是"规范写了但没有执行点"的样子。
+> 现在的执行点是 `scripts/gate/check_commit_message.sh`：
+> 它对**形态**做硬判据（并检查 type 表是否仍只有一份），
+> 对 `Refs` 报遵从率 —— 存量历史一次性判红会**堵死所有后续工作**，
+> 而且**不会**让历史变好。
 
 ---
 

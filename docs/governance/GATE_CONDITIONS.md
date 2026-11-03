@@ -285,14 +285,39 @@ bash scripts/gate/check_stage.sh --version v{VERSION} --stage GA
 
 ### G17 — Coverage Gate
 
-| Stage | Threshold | Script |
+| Stage | Threshold（唯一来源） | Script |
 |-------|-----------|--------|
-| ALPHA | L1_8 avg >= 75% | scripts/gate/check_coverage_v312.sh |
-| BETA | L1_8 avg >= 80% | scripts/gate/check_coverage_v312.sh |
-| RC | L1_8 avg >= 80% | scripts/gate/check_coverage_v312.sh |
-| GA | L1_8 avg >= 80% | scripts/gate/check_coverage_v312.sh |
+| ALPHA | `STAGE_CONFIG.yaml` → `thresholds.COVERAGE_MIN_ALPHA` | scripts/gate/check_coverage_v312.sh |
+| BETA | `STAGE_CONFIG.yaml` → `thresholds.COVERAGE_MIN_BETA` | scripts/gate/check_coverage_v312.sh |
+| RC | `STAGE_CONFIG.yaml` → `thresholds.COVERAGE_MIN_RC` | scripts/gate/check_coverage_v312.sh |
+| GA | `STAGE_CONFIG.yaml` → `thresholds.COVERAGE_MIN_GA` | scripts/gate/check_coverage_v312.sh |
 
 L1_8 = {sqlrustgo-parser, sqlrustgo-planner, sqlrustgo-executor, sqlrustgo-transaction, sqlrustgo-storage, sqlrustgo-catalog, sqlrustgo-optimizer, sqlrustgo-types}.
+
+**阈值不再在本表里写第二份数字（#5581，2026-10-24）**
+
+这张表曾经自带一组数字（ALPHA 75% / BETA 80% / RC 80% / GA 80%），而 SSOT
+`docs/governance/STAGE_CONFIG.yaml` → `thresholds` 给的是 **50 / 75 / 80 / 85**。
+两份数字对**同一个量**（L1_8 8 crate 的平均行覆盖率）给出**不同结论**，而两边
+都"有依据"——这正是 #5581 登记的「5 份实现、4 套取值」的文档形态。
+
+现在这张表**只指向 SSOT**，不再持有数字：
+
+* **ALPHA = 50** —— 与 `check_alpha_quality_v4.10.sh` 一直实际执行的 50 一致
+  （此前本表写 75，而脚本从未按 75 判过：声明 ≠ 执行）。
+* **BETA = 75** —— 但 **ALPHA→BETA 晋级审核仍按 80% 执行**：
+  `docs/releases/v4.1.0/ALPHA_TO_BETA_GATE_PLAN.md` §2 AB-06 已写明
+  「覆盖率采用 G17 的 Beta 80% 阈值……**在治理文件统一前，执行较严格值**」，
+  该临时裁决继续有效，本表不改变它。
+* **RC = 80** —— 与 `POST_GA_PLAN.md` M11 的回归下限一致。
+* **GA = 85** —— 属主的既有裁决：`docs/releases/v4.1.0/GA_GATE_REPORT.md` §G3
+  「GA 按 85 判」，以及 `STAGE.yaml` → `coverage_target_for_ga: 85%`。
+
+脚本侧同步：门禁不再各自硬编码，统一由
+`scripts/gate/stage_config_common.sh` → `stage_coverage_min()` 读取；
+调用方用 `SQLRUSTGO_COVERAGE_STAGE=<stage>` 显式声明自己判哪个阶段，
+**未设时取 GA（SSOT 里最严的一档）**——这样"忘了传参"只会判得更严，
+绝不会悄悄放宽。
 
 ### G18 — SQL Corpus Gate
 

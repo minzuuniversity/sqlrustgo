@@ -4,7 +4,9 @@
 use crate::execution_engine::ExecutionEngine;
 use std::collections::HashSet;
 
-use sqlrustgo_parser::{AggregateCall, AggregateFunction, Expression, SelectStatement};
+use sqlrustgo_parser::{
+    AggregateCall, AggregateFunction, Expression, SelectColumn, SelectStatement,
+};
 use sqlrustgo_storage::{ColumnDefinition, SqlResult, StorageEngine, TableInfo, Value};
 use sqlrustgo_types::SqlError;
 
@@ -85,6 +87,106 @@ pub fn validate_select_columns_referenced(
         check_expr_references(&ord.expression, &order_exists)?;
     }
     Ok(())
+}
+
+/// V4.1.0 — Issue #5462 / #5463 — GROUP BY key resolution.
+///
+/// A GROUP BY key may name (SQL-1999 §10.4, MySQL 8.0 §12.20.3):
+///
+/// 1. a **column of the FROM relation** — the key is that column;
+/// 2. a **SELECT-list output alias** — the key is the alias's defining
+///    expression (`GROUP BY o_year` where the list has
+///    `EXTRACT(YEAR FROM o_orderdate) AS o_year` groups by the expression);
+/// 3. **neither** — a binder error, exactly like the SELECT list
+///    (`Binder error: column '...' not found in schema`).
+///
+/// An identifier that matches none of the above must NOT be executed as if it
+/// were a literal constant. Before this resolver existed:
+///
+/// * **#5462** — `GROUP BY <alias>` was executed as the constant alias text,
+///   so every row produced the same group key and the whole input collapsed
+///   into ONE group. A silent wrong answer: no error, wrong row count, wrong
+///   aggregates.
+/// * **#5463** — `GROUP BY <unknown column>` was not rejected by the binder
+///   at all (only the SELECT list had that check, see
+///   [`validate_select_columns_referenced`]), so the invalid statement
+///   reached the executor, where the row-width assertion panicked and took
+///   the whole server down — every connection on it died with
+///   "read packet header: failed to fill whole buffer".
+///
+/// This function is the **single implementation** of that rule. The
+/// executor's GROUP BY stage calls it before a single row is grouped, so a
+/// bad key can never reach the grouping loop.
+pub fn resolve_group_by_keys(
+    group_by: &[Expression],
+    select_columns: &[SelectColumn],
+    table_info: &TableInfo,
+) -> SqlResult<Vec<Expression>> {
+    group_by
+        .iter()
+        .map(|expr| resolve_group_by_expression(expr, select_columns, table_info))
+        .collect()
+}
+
+/// Resolve one GROUP BY / GROUPING SETS expression.
+///
+/// See [`resolve_group_by_keys`] for the rule. A GROUPING SETS member is
+/// resolved with the very same rule so that `GROUPING SETS ((a), (b))` and
+/// the GROUP BY list stay comparable — the executor matches the two
+/// structurally.
+pub fn resolve_group_by_expression(
+    expr: &Expression,
+    select_columns: &[SelectColumn],
+    table_info: &TableInfo,
+) -> SqlResult<Expression> {
+    let Expression::Identifier(name) = expr else {
+        // Only a bare identifier names something. Expressions (e.g.
+        // `EXTRACT(YEAR FROM d)`), literals and ordinals (`GROUP BY 1`) are
+        // executed as written.
+        return Ok(expr.clone());
+    };
+    // MySQL session variables (`@name`) live in the engine's session map and
+    // are substituted before binding (see `substitute_session_vars_in_select`
+    // in `execution_engine.rs`). A name that survived that pass is a column
+    // reference.
+    if name.starts_with('@') {
+        return Ok(expr.clone());
+    }
+    // 1. A column of the FROM relation.
+    if find_column_index(name, table_info).is_some() {
+        return Ok(expr.clone());
+    }
+    // 2. A SELECT-list output alias.
+    if let Some(definition) = select_list_definition(name, select_columns) {
+        return Ok(definition);
+    }
+    // 3. Neither — the key names nothing. This is the #5463 defect: the
+    // statement is semantically invalid and must be rejected here, in the
+    // binder, with the same message the SELECT list uses.
+    Err(SqlError::ExecutionError(format!(
+        "Binder error: column '{}' not found in schema",
+        name
+    )))
+}
+
+/// The expression a SELECT-list output name denotes.
+///
+/// An output name is the explicit alias (`AS x`) when the item has one,
+/// otherwise the item's own name. `col.expression` is the defining
+/// expression; when the parser did not record one (a bare column reference)
+/// the name itself is the definition.
+fn select_list_definition(name: &str, select_columns: &[SelectColumn]) -> Option<Expression> {
+    for col in select_columns {
+        let output_name = col.alias.as_ref().unwrap_or(&col.name);
+        if !output_name.eq_ignore_ascii_case(name) {
+            continue;
+        }
+        return Some(match &col.expression {
+            Some(expr) => expr.clone(),
+            None => Expression::Identifier(col.name.clone()),
+        });
+    }
+    None
 }
 
 fn check_expr_references<F: Fn(&str) -> bool>(expr: &Expression, exists: &F) -> SqlResult<()> {

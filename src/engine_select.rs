@@ -1943,7 +1943,39 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // tail, so the row is just [group_cols..., fd_snapshot...] and the
         // re-project stage picks the group columns.
         if !select.aggregates.is_empty() || !select.group_by.is_empty() {
-            let group_exprs = &select.group_by;
+            // Issue #5462 / #5463 — resolve the GROUP BY keys BEFORE any row
+            // is grouped.
+            //
+            // A key that names a SELECT-list alias must be grouped by the
+            // alias's defining expression (#5462: it used to be executed as
+            // the constant alias text, collapsing every row into one group).
+            // A key that names neither a column nor an alias must be
+            // rejected here, in the binder (#5463: it used to reach the
+            // executor, where the row-width assertion panicked and killed
+            // the whole server).
+            let resolved_group_by = crate::engine_utils::resolve_group_by_keys(
+                &select.group_by,
+                &select.columns,
+                &table_info,
+            )?;
+            // GROUPING SETS members follow the very same rule, so that a set
+            // member and the GROUP BY key it names stay comparable.
+            let resolved_grouping_sets: Vec<Vec<Expression>> = select
+                .grouping_sets
+                .iter()
+                .map(|set| {
+                    set.iter()
+                        .map(|e| {
+                            crate::engine_utils::resolve_group_by_expression(
+                                e,
+                                &select.columns,
+                                &table_info,
+                            )
+                        })
+                        .collect::<SqlResult<Vec<Expression>>>()
+                })
+                .collect::<SqlResult<Vec<Vec<Expression>>>>()?;
+            let group_exprs = &resolved_group_by;
             if group_exprs.is_empty() {
                 let mut agg_values =
                     self.compute_aggregates(&select.aggregates, &rows, &table_info)?;
@@ -2361,16 +2393,16 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // Empty sets (`()`) are handled separately as single grand-
                 // total rows whose aggregates recompute over the entire
                 // input rather than per-group.
-                if !select.grouping_sets.is_empty() {
+                if !resolved_grouping_sets.is_empty() {
                     let n_group_cols = group_exprs.len();
                     let n_agg = select.aggregates.len();
                     let mut fanned: Vec<Vec<Value>> =
-                        Vec::with_capacity(agg_result_rows.len() * select.grouping_sets.len());
+                        Vec::with_capacity(agg_result_rows.len() * resolved_grouping_sets.len());
                     let mut empty_set_emitted = false;
                     for row in agg_result_rows.iter() {
                         let group_part = &row[..n_group_cols];
                         let agg_part = &row[n_group_cols..n_group_cols + n_agg];
-                        for set in &select.grouping_sets {
+                        for set in &resolved_grouping_sets {
                             if set.is_empty() {
                                 if empty_set_emitted {
                                     continue;

@@ -3924,10 +3924,7 @@ impl StorageEngine for MemoryStorage {
             .table_infos
             .get_mut(&table_key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col_idx = info
-            .columns
-            .iter()
-            .position(|c| c.name.to_lowercase() == column.to_lowercase())
+        let col_idx = find_column_index_in(column, &info.columns)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         info.columns.remove(col_idx);
         if let Some(records) = self.tables.get_mut(&table_key.clone()) {
@@ -3972,8 +3969,8 @@ impl StorageEngine for MemoryStorage {
             .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
         // #5472: the column match was **case-exact** (`c.name == column`),
-        // while all three sibling methods in this same impl match
-        // case-**insensitively**:
+        // while all three sibling methods in this same impl matched
+        // case-**insensitively**. As of #5472 the impl looked like this:
         //
         // | method | matching |
         // |---|---|
@@ -3989,13 +3986,17 @@ impl StorageEngine for MemoryStorage {
         // says `B` — and SET/DROP DEFAULT was the only column-level DDL
         // that could no longer find it.
         //
-        // Fix: match case-insensitively, like the siblings.
-        let col = info
-            .columns
-            .iter_mut()
-            .find(|c| c.name.to_lowercase() == column.to_lowercase())
+        // #5509: the case-insensitive comparison used to be hand-rolled
+        // here *and* in the three sibling methods below — eight copies of
+        // the same rule across the two backends, with `FileStorage` still
+        // case-**exact** (so the same DDL succeeded on memory and failed
+        // on disk). All of them now go through the crate's single
+        // column-name resolver, `find_column_index_in`, which is also
+        // what the SQL layer uses. It prefers an exact match and falls
+        // back to a case-insensitive one.
+        let col_idx = find_column_index_in(column, &info.columns)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
-        col.default_value = default_value;
+        info.columns[col_idx].default_value = default_value;
         Ok(())
     }
 
@@ -4012,10 +4013,7 @@ impl StorageEngine for MemoryStorage {
             .table_infos
             .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col_idx = info
-            .columns
-            .iter()
-            .position(|c| c.name.to_lowercase() == column.to_lowercase())
+        let col_idx = find_column_index_in(column, &info.columns)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", column)))?;
         new_def.name = new_def.name.to_lowercase();
         info.columns[col_idx] = new_def;
@@ -4030,12 +4028,9 @@ impl StorageEngine for MemoryStorage {
             .table_infos
             .get_mut(&key)
             .ok_or_else(|| SqlError::ExecutionError(format!("Table not found: {}", table)))?;
-        let col = info
-            .columns
-            .iter_mut()
-            .find(|c| c.name.to_lowercase() == old_name.to_lowercase())
+        let col_idx = find_column_index_in(old_name, &info.columns)
             .ok_or_else(|| SqlError::ExecutionError(format!("Column not found: {}", old_name)))?;
-        col.name = new_name.to_lowercase();
+        info.columns[col_idx].name = new_name.to_lowercase();
         Ok(())
     }
     fn parallel_scan(
