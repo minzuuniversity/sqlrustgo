@@ -30,10 +30,13 @@
 #[path = "../../common/mod.rs"]
 mod common;
 
+// #5577：输出目录规则收敛到共享 helper（唯一实现）。
+#[path = "../../common/evidence_output.rs"]
+mod evidence_output;
+
 use common::tpch_wire_harness::{run_query_timed, start_sf01_named, WireOutcome};
 use common::tpch_wire_scope;
 use std::fs;
-use std::path::PathBuf;
 
 /// Cargo target name — used in the NOT-RUN marker.
 const TARGET: &str = "tpch_sf01_oracle_dump";
@@ -65,7 +68,15 @@ const QUERIES: &[(&str, &str, u64)] = &[
 
 #[test]
 fn dump_sqlrustgo_sf01_oracle_tsvs() {
-    let out_dir = PathBuf::from("docs/releases/v3.12.0/evidence/tpch/cross_engine_sf01/sqlrustgo");
+    // #5577: 默认写进**构建产物目录**，不写仓库的归档目录。
+    // 写进 `docs/releases/v3.12.0/evidence/tpch/cross_engine_sf01/sqlrustgo/`
+    // 意味着「跑一次测试就把已归档的对照输出覆写掉」（#5577 / #5389）。
+    // 要重新生成归档材料，必须**显式声明**输出目录：
+    //   SQLRUSTGO_TPCH_SF01_ORACLE_DIR=docs/releases/v3.12.0/evidence/tpch/cross_engine_sf01/sqlrustgo
+    let out_dir = evidence_output::evidence_dir(
+        "SQLRUSTGO_TPCH_SF01_ORACLE_DIR",
+        "tpch/cross_engine_sf01/sqlrustgo",
+    );
     fs::create_dir_all(&out_dir).expect("create out dir");
 
     let Some(mut client) = start_sf01_named(TARGET) else {

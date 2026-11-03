@@ -21,6 +21,10 @@
 #[path = "../../common/mod.rs"]
 mod common;
 
+// #5577：输出目录规则收敛到共享 helper（唯一实现）。
+#[path = "../../common/evidence_output.rs"]
+mod evidence_output;
+
 use common::tpch_wire_harness;
 use common::MySqlTestClient;
 use sqlrustgo_mysql_server::testing::{start_ephemeral, EphemeralConfig};
@@ -61,9 +65,22 @@ fn bint_dir() -> String {
 /// it without re-running LOAD DATA.
 const DEFAULT_SQLRUSTGO_DATA_DIR: &str = "/tmp/tpch-sf1";
 
-const DEFAULT_REPORT_PATH: &str = "docs/releases/v3.11.0/perf/SF1_BASELINE_REPORT.md";
+/// #5577: 报告的**默认**输出位置。
+///
+/// 旧默认值是仓库里的 `docs/releases/v3.11.0/perf/SF1_BASELINE_REPORT.md`
+/// ⇒ 跑一次测试就把已归档的报告覆写掉（#5577 / #5389）。
+/// 现在默认写进构建产物目录；写进仓库必须**显式声明**：
+///
+/// ```bash
+/// TPCH_REPORT_PATH=docs/releases/v3.11.0/perf/SF1_BASELINE_REPORT.md \
+///   cargo test --test tpch_sf1_22_vs_3engines -- --ignored
+/// ```
+const DEFAULT_REPORT_PATH: &str = "tpch/SF1_BASELINE_REPORT.md";
 fn report_path() -> String {
-    std::env::var("TPCH_REPORT_PATH").unwrap_or_else(|_| DEFAULT_REPORT_PATH.to_string())
+    // #5577: 环境变量优先（显式声明），否则用构建产物目录下的默认名。
+    evidence_output::evidence_file("TPCH_REPORT_PATH", DEFAULT_REPORT_PATH)
+        .to_string_lossy()
+        .to_string()
 }
 
 /// Per-query wall-clock time is recorded by the test itself

@@ -48,6 +48,24 @@ GA7_EXTRA="scripts/gate/check_docs_consistency_v312.sh"
 GA2_EXTRA_1="tests/soak/mixed_workload.py"
 GA2_EXTRA_2="tests/soak/mixed_workload_config.yaml"
 
+# The GA-2 SOAK ARTIFACT — the document that has to prove a SOAK ran.
+#
+# #5491: GA-2 used to be judged by "tests/soak/v312_mixed_soak.rs exists",
+# which proved nothing about a SOAK ever having run. The canonical 168h
+# report is named here (evidence/v312-59/GA_OPENSPEC.md names the same
+# path), and it is judged by scripts/gate/check_ga2_soak_artifact.sh — one
+# implementation, shared with scripts/gate/check_ga_v3.12.0.sh.
+GA2_SOAK_ARTIFACT="docs/releases/v3.12.0/evidence/v312-59/GA2_168H_SOAK_REPORT.md"
+
+# What IS in the tree, so the report can say so next to the verdict. The
+# demo report is a real record of a real 60s smoke + 5min sustained run —
+# it is simply not the 168h GA-2 artifact, and the difference must be
+# visible in the report rather than in a reader's head.
+GA2_DEMO_ARTIFACT="docs/releases/v3.12.0/evidence/v312-59/GA2_MIXED_SOAK_DEMO_REPORT.md"
+
+# How old a GA-2 artifact may be and still count for this release line.
+GA2_MAX_AGE_DAYS=30
+
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -67,8 +85,43 @@ main() {
         local status="FAIL"
         local detail=""
         local full="$REPO_ROOT/$path"
+        # The path shown in the report row. GA-2 shows the artifact it
+        # actually judged, not the scaffold it used to point at.
+        local row_path="$path"
 
-        if [ -f "$full" ]; then
+        # #5491: GA-2 is judged by validating the SOAK **artifact**.
+        #
+        # The generic branch below answers "does this path exist?" — and for
+        # GA-2 the path was the harness source file, so a PASS proved only
+        # that a scaffold was in the tree. The v3.12.0 GA_ONLY_REPORT.md
+        # records exactly that: "| GA-2 | PASS | tests/soak/v312_mixed_soak.rs
+        # | rust scaffold present |", while the only 168h SOAK document in the
+        # tree is an unfilled, explicitly-deprecated template.
+        #
+        # The artifact validator is the ONE implementation of "a GA-2 SOAK
+        # really ran"; check_ga_v3.12.0.sh calls the same script.
+        if [ "$label" = "GA-2" ]; then
+            local ga2_out ga2_status ga2_detail
+            row_path="$GA2_SOAK_ARTIFACT"
+            ga2_out=$(bash "$SCRIPT_DIR/check_ga2_soak_artifact.sh" \
+                          --artifact "$REPO_ROOT/$GA2_SOAK_ARTIFACT" \
+                          --max-age-days "$GA2_MAX_AGE_DAYS" 2>/dev/null)
+            ga2_status="${ga2_out%%|*}"
+            ga2_detail="${ga2_out#*|}"
+            if [ -z "$ga2_out" ]; then
+                status="FAIL"
+                detail="SOAK artifact: validator produced no verdict"
+            elif [ "$ga2_status" = "PASS" ]; then
+                status="PASS"
+                detail="SOAK artifact validated: ${ga2_detail}"
+            else
+                status="FAIL"
+                detail="SOAK artifact not validated: ${ga2_detail}"
+                if [ -f "$REPO_ROOT/$GA2_DEMO_ARTIFACT" ]; then
+                    detail="${detail} (a mixed-workload demo report exists at ${GA2_DEMO_ARTIFACT}, but a 60s/5min run is not the 168h GA-2 artifact)"
+                fi
+            fi
+        elif [ -f "$full" ]; then
             case "$path" in
                 *.sh)
                     if bash -n "$full" 2>/dev/null; then
@@ -111,7 +164,7 @@ main() {
             fail=$((fail + 1))
         fi
 
-        rows+="| $label | $status | $path | $detail |\n"
+        rows+="| $label | $status | $row_path | $detail |\n"
     done <<< "$(printf '%s\n' "${GA_REQUIRES[@]}")"
 
     # GA-7 extra: docs consistency script
@@ -158,9 +211,17 @@ main() {
         echo "## Verdict"
         echo ""
         if [ "$fail" -eq 0 ]; then
-            echo "**PASS** — all 8 GA promotion_to_GA_requires items have their gate script/asset present and syntax-valid."
+            echo "**PASS** — all 8 GA promotion_to_GA_requires items have been VERIFIED:"
+            echo "each item's gate script is present and syntax-valid, **and GA-2's SOAK"
+            echo "artifact validates** (a completed run, five workload classes, failure"
+            echo "rates within threshold, inside the freshness window)."
         else
-            echo "**FAIL** — $fail GA item(s) missing."
+            echo "**FAIL** — $fail GA item(s) not satisfied."
+            echo ""
+            echo "An item is satisfied only when it was **verified**, not merely"
+            echo "present: GA-2 requires a SOAK artifact that records a completed run"
+            echo "(scripts/gate/check_ga2_soak_artifact.sh), and the other items require"
+            echo "their gate script to be present and syntax-valid."
         fi
     } > "$OUT_FILE"
 

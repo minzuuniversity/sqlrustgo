@@ -32,7 +32,8 @@
 mod coord;
 
 use coord::*;
-use sqlrustgo_storage::fault_injection::{FaultPoint, Signal};
+use sqlrustgo_storage::fault_injection::FaultPoint;
+use std::time::Duration;
 
 /// A committed transaction must survive `SIGKILL` taken at the
 /// durability boundary.
@@ -42,20 +43,39 @@ fn committed_transaction_survives_sigkill_at_commit_fsync() {
     let my = mysql_bin();
     let scratch = Scratch::new("commit_fsync");
     let port = free_port();
-    let arm = Arm::new(FaultPoint::AfterCommitFsync, &scratch, "commit_fsync");
+    let arm = Arm::new(FaultPoint::AfterCommitFsync, &scratch, "commit_fsync")
+        // #5556: occurrence 1 — the **first** commit that reaches the
+        // point.
+        //
+        // Measured on this tree (macOS arm64): the scenario's two
+        // statements that commit (the autocommit seed and the explicit
+        // `COMMIT`) do **not** both reach `after_commit_fsync` — only the
+        // autocommit one does. The explicit transaction's commit goes
+        // through `FileStorage::commit_transaction_for`, which appends
+        // the Commit entry and never reaches this point. See #5584.
+        //
+        // So occurrence 1 = the seed's commit, which is the boundary this
+        // server can actually be crashed at.
+        //
+        // Before this, the server held at *every* commit: the script paid
+        // 120 s per commit and the SIGKILL landed after the whole script
+        // instead of at the boundary.
+        .with_occurrence(1);
 
     let mut server = Server::start(&bin, &scratch.path, port, Some(arm.clone()))
         .unwrap_or_else(|e| panic!("start server: {e}"));
     let child_pid = server.pid();
 
-    sql(
+    // The client runs in the background: the server holds at the boundary,
+    // so this statement is never answered — the crash is supposed to
+    // happen while it is in flight.
+    let client = sql_background(
         &my,
         port,
         "CREATE DATABASE d1; USE d1; CREATE TABLE t(id INT PRIMARY KEY, v INT); \
          INSERT INTO t VALUES (1,10),(2,20),(3,30); \
          BEGIN; INSERT INTO t VALUES (4,40); COMMIT;",
-    )
-    .unwrap_or_else(|e| panic!("seed sql: {e}"));
+    );
 
     // The boundary: WAL Commit entry fsync'd, client not yet answered.
     let sig = match await_signal(&arm, child_pid) {
@@ -76,6 +96,7 @@ fn committed_transaction_survives_sigkill_at_commit_fsync() {
     };
 
     server.kill();
+    let _ = client.recv_timeout(Duration::from_secs(5));
 
     let server = server.restart().unwrap_or_else(|e| panic!("restart: {e}"));
     await_queryable(&my, server.port(), BOOT_TIMEOUT)
@@ -93,9 +114,9 @@ fn committed_transaction_survives_sigkill_at_commit_fsync() {
         run_id: arm.run_id.clone(),
         child_pid,
         reached,
-        expected_sum: 10,
+        expected_sum: 6,
         actual_sum: actual.clone(),
-        outcome: if sum == 10 {
+        outcome: if sum == 6 {
             "PASS".into()
         } else {
             "FAIL".into()
@@ -108,10 +129,28 @@ fn committed_transaction_survives_sigkill_at_commit_fsync() {
         sig.point,
         arm.point.as_str()
     );
+    // #5556: the crash now lands **at** the boundary (the seed's commit
+    // fsync), not after the whole script — so the explicit transaction
+    // that follows never commits, and its row must be **absent**.
+    //
+    // The expected sum is therefore 1+2+3 = 6, not 10:
+    //
+    //   * rows 1,2,3 — the autocommit seed, whose COMMIT reached the
+    //     boundary — **must survive** the SIGKILL (that is the claim);
+    //   * row 4 — the explicit transaction, which never committed —
+    //     **must not** appear (a crash must not resurrect an
+    //     uncommitted transaction).
+    //
+    // The old expectation was 10, and it was an artifact: the crash used
+    // to land after the whole script (the harness could not react to the
+    // boundary until the script was over), so both commits had already
+    // happened. The test therefore never crashed at the boundary it
+    // claimed — it only looked like it.
     assert_eq!(
-        sum, 10,
-        "a transaction that reached COMMIT's fsync must survive SIGKILL; \
-         got SUM(id)={actual}"
+        sum, 6,
+        "the rows whose COMMIT reached the boundary must survive SIGKILL \
+         (1+2+3=6), and the transaction that never committed must not \
+         appear; got SUM(id)={actual}"
     );
 }
 
@@ -146,24 +185,29 @@ fn crash_without_new_commit_preserves_exactly_the_seeded_rows() {
         .unwrap_or_else(|e| panic!("start: {e}"));
     let child_pid = server.pid();
 
-    sql(
+    // The client runs in the background: the server holds at the seed's
+    // commit, so the statement is never answered.
+    //
+    // #5556: before this the client blocked until the script was over,
+    // which meant the hold had to expire (120 s) before the harness even
+    // looked at the signal — and the crash landed after the script.
+    let client = sql_background(
         &my,
         port,
         "CREATE DATABASE d1; USE d1; CREATE TABLE t(id INT PRIMARY KEY, v INT); \
          INSERT INTO t VALUES (1,10),(2,20);",
-    )
-    .expect("seed");
+    );
 
     // The seed's autocommit commit is the only commit this scenario
     // issues, so the fault point must have been reached there — and the
     // signal must be this run's and this server's.
-    let raw = std::fs::read_to_string(arm.signal_file()).unwrap_or_else(|e| {
-        panic!(
+    let sig = match await_signal(&arm, child_pid) {
+        Ok(s) => s,
+        Err(e) => panic!(
             "control: the fault point must be reached at the seed's commit \
              (an autocommit INSERT commits): {e}"
-        )
-    });
-    let sig = Signal::parse(&raw).expect("control: the signal file must parse");
+        ),
+    };
     assert_eq!(
         sig.run_id, arm.run_id,
         "control: the signal is from a different run"
@@ -177,13 +221,15 @@ fn crash_without_new_commit_preserves_exactly_the_seeded_rows() {
         FaultPoint::AfterCommitFsync.as_str(),
         "control: the signal names the wrong fault point"
     );
-    assert_eq!(
-        scalar(&my, server.port(), "SELECT IFNULL(SUM(id),0) FROM d1.t").unwrap(),
-        "3",
-        "control: ids 1+2"
-    );
 
     server.kill();
+    let _ = client.recv_timeout(Duration::from_secs(5));
+
+    // #5556: the "the seeded rows are visible" check used to run **before**
+    // the kill. It cannot run there any more: the server holds at the
+    // commit boundary, so the transaction has not returned yet and the
+    // rows are not visible. The same claim is checked after the restart
+    // below, where it is meaningful (the commit was durable).
     let server = server.restart().expect("restart");
     await_queryable(&my, server.port(), BOOT_TIMEOUT).expect("queryable");
 

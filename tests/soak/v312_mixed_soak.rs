@@ -23,7 +23,19 @@
 // ⇒ 那个 60 秒的 "smoke" 跑的是 5 个线程的定时器，断言的是**模拟出来的**
 // 失败率；GA-2 的 "SOAK PASS" 判的是**脚手架文件在不在**
 // （`scripts/gate/check_ga_only_v312.sh:35` 只检查路径存在）。
-// `scripts/gate/run_ga_soak.sh` 与 `extract_soak_report.py` **根本不存在**。
+// 当时 `scripts/soak/run_ga_soak.sh` 与 `scripts/soak/extract_soak_report.py`
+// **根本不存在**。
+//
+// #5491：harness 变真之后，**判据还是没变** —— GA-2 仍然只检查脚手架在不在，
+// 1h demo 仍然没有调用者，它写出的 summary 仍然没有消费者。于是：
+//
+//   * `scripts/soak/run_ga_soak.sh` —— **现在有了**：跑 harness、产出产物、
+//     并把产物交给校验器；
+//   * `scripts/gate/check_ga2_soak_artifact.sh` —— **现在有了**：GA-2 判据的
+//     唯一实现（产物存在 / 不是模板 / 记录的是**跑完**的运行 / 覆盖五类负载 /
+//     失败率在阈值内 / 足够新鲜）；
+//   * `scripts/gate/check_ga_only_v312.sh` 与 `check_ga_v3.12.0.sh` 的 GA-2
+//     条目改为**调用那个校验器**，不再问「脚手架文件在不在」。
 //
 // ⇒ 一个从不执行任何 SQL 的 harness，配上一个只检查文件存在的门禁，
 // 制造的是**假覆盖**。本文件因此被改成**真的跑引擎**：
@@ -38,7 +50,22 @@
 //   - 1h demo run (GA promotion) — full 168h SOAK runs in background
 //   - No expiry 2027-06-30 / v3.13 deferral
 //   - Runs as `cargo test --test v312_mixed_soak -- --ignored` for nightly
-//   - Emits metrics summary compatible with extract_soak_report.py
+//   - Emits a per-workload-class summary (attempted / succeeded / failed /
+//     avg / p99 latency) as a plain-text report.
+//
+// #5491: the header of this file used to claim the summary was
+// "compatible with extract_soak_report.py". That was **false** and it was
+// the reason the summary had no consumer: `scripts/soak/extract_soak_report.py`
+// parses a **procfs metrics.csv** (RSS + file-descriptor counts) plus a
+// mysqlslap log and emits a 14-field JSON SoakReport — this harness emits
+// none of those. The two formats have nothing in common, so the reference is
+// removed and the actual format is stated instead.
+//
+// The consumer of THIS summary is `scripts/gate/check_ga2_soak_artifact.sh`,
+// which validates a GA-2 SOAK artifact: a completed run, all five workload
+// classes, failure rates within threshold, and a fresh timestamp.
+// `scripts/soak/run_ga_soak.sh` runs the harness and hands the summary to
+// that validator.
 //
 // Integration points:
 //   - Uses existing sqlrustgo-server harness (from tests/integration/stress/soak_test.rs)
@@ -53,6 +80,10 @@ use std::time::{Duration, Instant};
 
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage};
+
+// #5577：输出目录规则收敛到共享 helper（唯一实现）。
+#[path = "../common/evidence_output.rs"]
+mod evidence_output;
 
 const DEMO_DURATION_SECS: u64 = 60 * 60; // 1h demo (GA gate)
 const SMOKE_DURATION_SECS: u64 = 60; // 60s smoke (CI)
@@ -354,7 +385,7 @@ fn print_summary(metric_arcs: &[Arc<Mutex<ClassMetrics>>]) {
 }
 
 #[test]
-#[ignore = "runs 1h demo; nightly-only via scripts/gate/run_ga_soak.sh"]
+#[ignore = "runs 1h demo; nightly-only via scripts/soak/run_ga_soak.sh"]
 fn v312_ga_mixed_workload_demo() {
     eprintln!("╔══════════════════════════════════════════════════════════════════╗");
     eprintln!("║ v3.12.0 GA Mixed-Workload SOAK Demo (Issue #4387 / GA-2)         ║");
@@ -367,10 +398,150 @@ fn v312_ga_mixed_workload_demo() {
 
     print_summary(&metric_arcs);
 
-    // 写 summary 到 evidence 目录。
-    let summary_path = "docs/releases/v3.12.0/evidence/v312-59/soak/v312_mixed_soak_summary.txt";
-    fs::create_dir_all(std::path::Path::new(summary_path).parent().unwrap()).ok();
+    // 写 summary 到 **构建产物目录**。
+    //
+    // #5491: the output path is overridable so that a runner can keep the
+    // artifact OUT of the repository tree. Writing a generated file into
+    // `docs/` from a test is the same shape as #5577 (a test overwrites
+    // committed evidence): the working tree becomes dirty after every run,
+    // and the file that lands there says nothing about the run that
+    // produced it — it is simply whatever the last run left behind.
+    //
+    // #5577: the **default** used to be
+    // `docs/releases/v3.12.0/evidence/v312-59/soak/…` — i.e. the
+    // overridable knob existed but the default still pointed **into the
+    // repository**, so the intent ("keep the artifact OUT of the tree")
+    // was not what the code did. The default is now the build-output
+    // directory; writing into the repository requires the explicit
+    // `SQLRUSTGO_SOAK_SUMMARY_PATH`.
+    //
+    // The rule itself lives in `tests/common/evidence_output.rs`
+    // (**one implementation**, #5577).
+    let summary_path = evidence_output::evidence_file(
+        "SQLRUSTGO_SOAK_SUMMARY_PATH",
+        "soak/v312_mixed_soak_summary.txt",
+    )
+    .to_string_lossy()
+    .to_string();
+    fs::create_dir_all(
+        std::path::Path::new(summary_path.as_str())
+            .parent()
+            .unwrap(),
+    )
+    .ok();
 
+    let totals = SoakTotals::from_counters(total_attempted, total_succeeded, total_failed);
+    write_summary(
+        &summary_path,
+        &metric_arcs,
+        totals,
+        totals.verdict(),
+        DEMO_DURATION_SECS,
+    );
+
+    // GA gate: 每个 class 都必须真的跑到 SQL，失败率必须低于 1%。
+    assert!(total_attempted > 0, "no operations attempted");
+    assert!(
+        totals.failure_rate < 0.01,
+        "GA failure rate {:.3}% exceeds 1% threshold ({} fails / {} total)",
+        totals.failure_rate * 100.0,
+        totals.failed,
+        totals.attempted
+    );
+    let _ = total_succeeded;
+}
+
+/// The current UTC time as ISO-8601, e.g. `2026-10-24T12:00:00Z`.
+///
+/// #5491: the summary used to carry `generated_at: epoch=1758600000`, which
+/// is not a timestamp a reader — or a validator — can place in time. The
+/// GA-2 artifact validator (`scripts/gate/check_ga2_soak_artifact.sh`)
+/// judges freshness by the artifact's own ISO-8601 timestamp, so the
+/// artifact has to carry one.
+///
+/// The conversion is the standard civil-from-days algorithm (Howard
+/// Hinnant's); it needs no calendar crate.
+fn iso_utc_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    let (h, mi, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 }.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, h, mi, s)
+}
+
+/// The run's totals, in one place.
+///
+/// #5491: the artifact has to carry the totals, the failure rate and the
+/// verdict — and the artifact writer has to take them as one value rather
+/// than as four loose numbers, so that the numbers in the file cannot drift
+/// apart from each other.
+#[derive(Clone, Copy)]
+struct SoakTotals {
+    attempted: u64,
+    succeeded: u64,
+    failed: u64,
+    failure_rate: f64,
+}
+
+impl SoakTotals {
+    /// Build the totals and the verdict from the raw counters.
+    ///
+    /// The verdict is computed BEFORE the artifact is written, so the
+    /// artifact records what actually happened — a failed run leaves behind
+    /// a file that says so, instead of one that looks fine because it was
+    /// written before the assertion fired.
+    fn from_counters(attempted: u64, succeeded: u64, failed: u64) -> Self {
+        let failure_rate = if attempted > 0 {
+            failed as f64 / attempted as f64
+        } else {
+            1.0
+        };
+        SoakTotals {
+            attempted,
+            succeeded,
+            failed,
+            failure_rate,
+        }
+    }
+
+    fn verdict(&self) -> &'static str {
+        if self.attempted > 0 && self.failure_rate < 0.01 {
+            "PASS"
+        } else {
+            "FAIL"
+        }
+    }
+}
+
+/// Write the GA-2 SOAK artifact.
+///
+/// #5491: the artifact carries everything the GA-2 validator judges — an
+/// ISO-8601 timestamp, all five workload classes, the failure rate and the
+/// run's verdict — so that "did a SOAK really run, and did it stay healthy"
+/// can be answered from the artifact instead of from a file's existence.
+fn write_summary(
+    summary_path: &str,
+    metric_arcs: &[Arc<Mutex<ClassMetrics>>],
+    totals: SoakTotals,
+    verdict: &str,
+    duration_secs: u64,
+) {
     let classes = [
         WorkloadClass::W1Oltp,
         WorkloadClass::W2ReadHeavy,
@@ -378,15 +549,26 @@ fn v312_ga_mixed_workload_demo() {
         WorkloadClass::W4DdlLight,
         WorkloadClass::W5LongReport,
     ];
+    if let Some(parent) = std::path::Path::new(summary_path).parent() {
+        fs::create_dir_all(parent).ok();
+    }
     let mut summary = String::new();
     summary.push_str(&format!(
         "v3.12.0 GA Mixed-Workload SOAK Summary\n\
          ===========================================\n\
-         duration: {} secs (1h demo)\n\
+         duration: {} secs\n\
          generated_at: {}\n\
-         workload_classes: 5 (W1-OLTP W2-ReadHeavy W3-Aggregate W4-DDL W5-Report)\n\n",
-        DEMO_DURATION_SECS,
-        chrono_like_now(),
+         workload_classes: 5 (W1-OLTP W2-ReadHeavy W3-Aggregate W4-DDL W5-Report)\n\
+         result: {}\n\
+         total: attempted={} succeeded={} failed={}\n\
+         failure_rate: {:.4} (threshold 0.0100)\n\n",
+        duration_secs,
+        iso_utc_now(),
+        verdict,
+        totals.attempted,
+        totals.succeeded,
+        totals.failed,
+        totals.failure_rate,
     ));
     for (i, m) in metric_arcs.iter().enumerate() {
         let m = m.lock().unwrap();
@@ -401,27 +583,6 @@ fn v312_ga_mixed_workload_demo() {
         ));
     }
     fs::write(summary_path, &summary).expect("write summary");
-
-    // GA gate: 每个 class 都必须真的跑到 SQL，失败率必须低于 1%。
-    assert!(total_attempted > 0, "no operations attempted");
-    let failure_rate = total_failed as f64 / total_attempted as f64;
-    assert!(
-        failure_rate < 0.01,
-        "GA failure rate {:.3}% exceeds 1% threshold ({} fails / {} total)",
-        failure_rate * 100.0,
-        total_failed,
-        total_attempted
-    );
-    let _ = total_succeeded;
-}
-
-fn chrono_like_now() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    format!("epoch={}", secs)
 }
 
 /// 轻量 "smoke" 版本：60 秒。CI 里不带 --ignored 跑。
@@ -449,9 +610,33 @@ fn v312_ga_mixed_workload_smoke_60s() {
         "smoke 期间有 {} 条真实 SQL 失败（out of {}）",
         total_failed, total_attempted
     );
+
+    // #5491: the smoke writes an artifact **only when a caller asked for
+    // one** (SQLRUSTGO_SOAK_SUMMARY_PATH is set). A bare `cargo test --test
+    // v312_mixed_soak` must not drop a generated file into `docs/` — that
+    // is the shape of #5577, where a test overwrites committed evidence and
+    // leaves the working tree dirty after every run.
+    if let Ok(summary_path) = std::env::var("SQLRUSTGO_SOAK_SUMMARY_PATH") {
+        let totals = SoakTotals::from_counters(total_attempted, total_succeeded, total_failed);
+        write_summary(
+            &summary_path,
+            &metric_arcs,
+            totals,
+            totals.verdict(),
+            SMOKE_DURATION_SECS,
+        );
+    }
 }
 
-/// 校验 GA-2 脚手架的产物存在（gate 前置检查）。
+/// The GA-2 harness's **preconditions** are present.
+///
+/// #5491: this test is a precondition check, NOT the GA-2 criterion. It
+/// answers "are the driver and its config in the tree?" — it says nothing
+/// about whether a SOAK ran, and it must not be read as GA-2 evidence.
+///
+/// The GA-2 criterion is `scripts/gate/check_ga2_soak_artifact.sh`, which
+/// judges the SOAK **artifact**: a completed run, all five workload classes,
+/// failure rates within threshold, and a fresh timestamp.
 #[test]
 fn v312_ga_mixed_workload_scaffold_present() {
     let must_exist = [
@@ -462,7 +647,7 @@ fn v312_ga_mixed_workload_scaffold_present() {
     for path in must_exist {
         assert!(
             std::path::Path::new(path).exists(),
-            "GA-2 scaffold missing: {}",
+            "GA-2 harness precondition missing: {}",
             path
         );
     }

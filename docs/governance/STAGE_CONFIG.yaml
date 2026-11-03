@@ -305,6 +305,24 @@ stages:
       # （存在 + 可达）。这一项把「清单是装饰性的」这件事变成可证伪的判据。
       - "scripts/gate/check_gate_executability.sh"
       - "scripts/gate/check_coverage_v312.sh"
+      # #5581 — "one coverage measurement, one rule". Without it a second
+      # implementation of the coverage measurement grows back silently —
+      # that is exactly how the RC/GA gate ended up measuring the same
+      # eight crates with a different command and a reduced sample (#5579).
+      - "scripts/gate/check_coverage_single_implementation.sh"
+      # #5577 / #5389 — a test must never overwrite committed evidence.
+      # The static layer (L1) only sees a write whose argument is a `docs/`
+      # literal; the behavioural layer (L2) checks the worktree right after
+      # the suite ran, which is the only layer that catches an indirect write
+      # (A04 wrote through a helper). Without this gate, one ordinary
+      # `cargo test --workspace` replaces 21 archived comparison outputs with
+      # `ENGINE_UNAVAILABLE: ...` placeholders.
+      - "scripts/gate/check_tests_dont_write_archived_evidence.sh"
+      # #5453 — the commit-message specification existed in three mutually
+      # inconsistent copies and had no machine enforcement at all. This gate
+      # is that execution point: it checks the *shape* of the first line and
+      # verifies that the type table still exists in exactly one place.
+      - "scripts/gate/check_commit_message.sh"
       - "scripts/gate/check_sql_corpus_gate.sh"
       - "scripts/gate/check_anti_ignore_gate.sh"
       - "cargo build --all-features"

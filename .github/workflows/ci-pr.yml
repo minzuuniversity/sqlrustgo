@@ -152,7 +152,7 @@ jobs:
         run: cargo install cargo-llvm-cov --locked
 
       - name: Gate G17 — Coverage
-        run: bash scripts/gate/check_coverage_v312.sh
+        run: SQLRUSTGO_COVERAGE_STAGE=ga bash scripts/gate/check_coverage_v312.sh
 
   # ----------------------------------------
   # Coverage gate
@@ -173,7 +173,12 @@ jobs:
         run: cargo install cargo-llvm-cov --locked
 
       - name: Gate G17 — Coverage
-        run: bash scripts/gate/check_coverage_v312.sh
+        # #5581: the threshold is the SSOT's per-stage bar, and the stage is
+        # stated explicitly. `ga` = COVERAGE_MIN_GA (85) — the same criterion
+        # the Gitea CI judges (.gitea/workflows/ci.yml → "Gate L1 — Coverage"
+        # → SQLRUSTGO_COVERAGE_STAGE=ga), so the two CIs no longer apply
+        # different numbers to the same quantity.
+        run: SQLRUSTGO_COVERAGE_STAGE=ga bash scripts/gate/check_coverage_v312.sh
 
   # ----------------------------------------
   # SOAK detach regression (#4595, Tier-1)

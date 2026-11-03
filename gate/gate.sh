@@ -13,6 +13,17 @@ REPORT_DIR="${REPORT_DIR:-.}"
 
 cd "$PROJECT_ROOT"
 
+# #5579: the coverage report's TOTAL row carries one percentage per group
+# (Regions / Functions / Lines / Branches), and the extraction of the line
+# figure is a RULE — it lives in scripts/gate/common.sh, together with the
+# per-crate measurement, and it is shared with the release-line coverage
+# gate and the RC/GA gate.
+# shellcheck source=scripts/gate/common.sh
+source "$PROJECT_ROOT/scripts/gate/common.sh"
+# The threshold reader — one rule, one implementation (#5581).
+# shellcheck source=scripts/gate/stage_config_common.sh
+source "$PROJECT_ROOT/scripts/gate/stage_config_common.sh"
+
 # Ensure helper scripts are executable
 chmod +x "$PROJECT_ROOT/scripts/gate"/check_*.sh 2>/dev/null || true
 chmod +x "$PROJECT_ROOT/scripts/gate"/audit_*.sh 2>/dev/null || true
@@ -85,10 +96,50 @@ mkdir -p "$COVERAGE_OUT"
 if command -v cargo-llvm-cov &>/dev/null; then
     echo "[L2] Running cargo llvm-cov..."
     if cargo llvm-cov --all-features --quiet --output-dir "$COVERAGE_OUT" > "$COVERAGE_OUT/cov.log" 2>&1; then
-        TOTAL=$(grep "TOTAL" "$COVERAGE_OUT/cov.txt" 2>/dev/null | awk '{print $2}' | tr -d '%' || echo "0")
-        echo "[L2] Coverage: ${TOTAL}% (threshold: 50%)"
-        if [ "${TOTAL:-0}" -lt 50 ]; then
-            echo "[WARN] coverage below 50%, see $COVERAGE_OUT/cov.log"
+        # #5579: the extraction used to be
+        #
+        #     TOTAL=$(grep "TOTAL" "$COVERAGE_OUT/cov.txt" | awk '{print $2}' | tr -d '%')
+        #
+        # which takes the **second cell of the TOTAL row** — and that cell is
+        # the number of covered REGIONS (1278 in the canonical report), not a
+        # percentage at all. The gate therefore printed "Coverage: 1278%" and
+        # compared it against a 50% threshold, so it passed unconditionally:
+        # a hollow check.
+        #
+        # The rule is now the shared one — coverage_extract_total_percent
+        # addresses the Lines group by name in the report's header structure.
+        TOTAL=""
+        if [ -f "$COVERAGE_OUT/cov.txt" ]; then
+            TOTAL="$(coverage_extract_total_percent < "$COVERAGE_OUT/cov.txt" || true)"
+        fi
+        if [ -z "$TOTAL" ]; then
+            # A measurement that did not happen must not be reported as a
+            # number — and it must not be reported as a zero, either.
+            echo "[WARN] coverage measurement produced no line-coverage figure, see $COVERAGE_OUT/cov.log"
+        else
+            # #5581: the threshold is read from the SSOT, not written down
+            # here. L2 is the **L1 (alpha-tier) code-quality** step, so it
+            # judges the ALPHA bar — `COVERAGE_MIN_ALPHA` in
+            # docs/governance/STAGE_CONFIG.yaml → thresholds. The value is
+            # unchanged (50); what changes is that there is now ONE place
+            # it comes from.
+            #
+            # Note what L2 is and is not: it is a **reporting** step — it
+            # prints a WARN and never fails the gate. The measurement it
+            # runs is the whole-workspace line coverage, deliberately a
+            # different quantity from the canonical L1_8 8-crate average
+            # that `scripts/gate/check_coverage_v312.sh` measures and
+            # **decides** on. The verdict lives with the shared
+            # implementation; this step only shows the number.
+            L2_COVERAGE_MIN="$(stage_coverage_min ALPHA || true)"
+            if [ -z "$L2_COVERAGE_MIN" ]; then
+                echo "[WARN] no coverage threshold for ALPHA in the SSOT, see $COVERAGE_OUT/cov.log"
+            else
+                echo "[L2] Coverage: ${TOTAL}% (threshold: ${L2_COVERAGE_MIN}%)"
+                if [ "${TOTAL%%.*}" -lt "$L2_COVERAGE_MIN" ] 2>/dev/null; then
+                    echo "[WARN] coverage below ${L2_COVERAGE_MIN}%, see $COVERAGE_OUT/cov.log"
+                fi
+            fi
         fi
     else
         echo "[WARN] coverage measurement failed, skipping"
