@@ -1,0 +1,74 @@
+schema_version: 1
+run_id: 20261105-govcheck-001
+source_agent: mcode-macmini
+frozen_commit: a0d698a00a2a6a6f064b2508eec95333a2a191e8
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+notes: 看板与判据夹具在提交 a0d698a00a2a6a6f064b2508eec95333a2a191e8 上的复跑，用于把"看板 26 行 / 台账一致 / open issue 106"这三个声明变成可重放证据。
+  本 run 不含 ci_gate.sh，也不构成任何门禁 PASS 声明。worktree_clean=false 仅因本 run 自身的日志目录尚未提交。 未用 scaffold：A01 冻结指针（audit/v4.1.0/commit.txt
+  = bf48818c）未移动，移动属人工决定（看板 Q12）。
+commands:
+- id: kanban-fixture
+  name: kanban_render 夹具（含删行反向变异）
+  cmd: python3 scripts/gate/test_kanban_render.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-check
+  name: 看板 MD 与 JSONL 台账一致性
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: ladder-fixture
+  name: 咨询专家梯夹具（R1-R4 + 反向变异）
+  cmd: python3 scripts/gate/test_expert_ladder.py
+  cwd: .
+  timeout_sec: 600
+- id: gov-issue-census
+  name: open issue 普查（type=issues，Gitea API 只读）
+  cmd: python3 scripts/gate/gov_probe.py issues
+  cwd: .
+  timeout_sec: 300
+results:
+- id: kanban-fixture
+  started_at: '2026-11-04T18:30:45Z'
+  finished_at: '2026-11-04T18:30:45Z'
+  exit_code: 0
+  stdout_sha256: 45ca388459cb8cd25c36afb1aa3f0172e1ce9484fb8401fd22357371978f52ff
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-kanban-fixture.stdout
+  stderr_path: logs/001-kanban-fixture.stderr
+- id: kanban-check
+  started_at: '2026-11-04T18:30:45Z'
+  finished_at: '2026-11-04T18:30:45Z'
+  exit_code: 0
+  stdout_sha256: 8ec6935bed155ef3504426269f729c69dd1f4a574a17743f03e7929d7e18c019
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-kanban-check.stdout
+  stderr_path: logs/002-kanban-check.stderr
+- id: ladder-fixture
+  started_at: '2026-11-04T18:30:45Z'
+  finished_at: '2026-11-04T18:30:56Z'
+  exit_code: 0
+  stdout_sha256: fc18a94ebc7971d7b6659e0c4cd2ce5d1cdb8c37bc66d31db79ce7f9cfafe775
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ladder-fixture.stdout
+  stderr_path: logs/003-ladder-fixture.stderr
+- id: gov-issue-census
+  started_at: '2026-11-04T18:30:56Z'
+  finished_at: '2026-11-04T18:30:57Z'
+  exit_code: 0
+  stdout_sha256: 8827774c16512b587c906f9ff827b09b6d1323d5a53a144870e83d6a2c85c355
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-gov-issue-census.stdout
+  stderr_path: logs/004-gov-issue-census.stderr
+evidence_hash: sha256:7d5c06911e3d7619ba62cfb4f1bea4b61270cd885ca5574ce263a3e0d5d08efe
+completed_at: '2026-11-04T18:30:57Z'
