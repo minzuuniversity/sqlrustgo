@@ -1,0 +1,87 @@
+schema_version: 1
+run_id: 20261105-cifact-001
+source_agent: mcode-macmini
+frozen_commit: d117cfe8099f1faaabd5180ec742e3bbde5b54c2
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+notes: 把整改计划 §9 与看板 §6 引用的三组数字（CI 终态与时长分位、open issue 的 priority/cost/cap 分布、看板 30 行台账一致性）变成可重放证据。 本 run
+  不含 ci_gate.sh，不构成任何门禁 PASS 声明。 worktree_clean=false 仅因本 run 自身的 logs 目录尚未提交。 勘误：看板原写 "CI 3911 runs /
+  70 success"，本 run 的 002-gov-ci.stdout 是替换后的真实口径。
+commands:
+- id: gov-probe-fixture
+  name: gov_probe 判据夹具（含 2 条反向变异的正向面）
+  cmd: python3 scripts/gate/test_gov_probe.py
+  cwd: .
+  timeout_sec: 120
+- id: gov-ci
+  name: Actions 真实终态与时长分位（只读 API）
+  cmd: python3 scripts/gate/gov_probe.py ci
+  cwd: .
+  timeout_sec: 900
+- id: gov-issue-census
+  name: open issue 普查（修正 priority/cost/cap 口径 + 分布汇总）
+  cmd: python3 scripts/gate/gov_probe.py issues
+  cwd: .
+  timeout_sec: 300
+- id: kanban-fixture
+  name: 看板渲染夹具（删行必须红）
+  cmd: python3 scripts/gate/test_kanban_render.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-check
+  name: 看板 MD 与 JSONL 台账一致性
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+results:
+- id: gov-probe-fixture
+  started_at: '2026-11-04T20:01:13Z'
+  finished_at: '2026-11-04T20:01:13Z'
+  exit_code: 0
+  stdout_sha256: f14db515077205911a0ac9e682d0c3892d3a7d4b50c112fcd49695afe88deaee
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-gov-probe-fixture.stdout
+  stderr_path: logs/001-gov-probe-fixture.stderr
+- id: gov-ci
+  started_at: '2026-11-04T20:01:13Z'
+  finished_at: '2026-11-04T20:01:25Z'
+  exit_code: 0
+  stdout_sha256: 91b7162c0a8aa44628852c33d51932f9dc8824052631b4a3e2aaab8d47340061
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-gov-ci.stdout
+  stderr_path: logs/002-gov-ci.stderr
+- id: gov-issue-census
+  started_at: '2026-11-04T20:01:25Z'
+  finished_at: '2026-11-04T20:01:26Z'
+  exit_code: 0
+  stdout_sha256: fc5f8777960ce355ef79ccbfb69c12982ca11dc0ebb02e32e571e4296f86aba7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-gov-issue-census.stdout
+  stderr_path: logs/003-gov-issue-census.stderr
+- id: kanban-fixture
+  started_at: '2026-11-04T20:01:26Z'
+  finished_at: '2026-11-04T20:01:27Z'
+  exit_code: 0
+  stdout_sha256: 45ca388459cb8cd25c36afb1aa3f0172e1ce9484fb8401fd22357371978f52ff
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-kanban-fixture.stdout
+  stderr_path: logs/004-kanban-fixture.stderr
+- id: kanban-check
+  started_at: '2026-11-04T20:01:27Z'
+  finished_at: '2026-11-04T20:01:27Z'
+  exit_code: 0
+  stdout_sha256: b87b2db798dd3aa7b3b8b5f1ca9b4b220f4666a0875627443d0722834c6c63d7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-kanban-check.stdout
+  stderr_path: logs/005-kanban-check.stderr
+evidence_hash: sha256:e390e6af86bce07bf2285ebb7a29a752ae8b5e688d19b2134c9f2013ff575946
+completed_at: '2026-11-04T20:01:27Z'
