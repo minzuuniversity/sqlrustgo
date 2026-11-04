@@ -1,0 +1,7 @@
+{"kind": "audit_verify", "run_id": "iaia410-5112-evidence-20261015", "exit_code": 2, "reason": "missing log: audit/v4.1.0/iaia410-5112-evidence-20261015/commands/001.stdout.log"}
+{"kind": "audit_verify", "run_id": "iaia410-a01-20261011T062229Z-609a8e81", "exit_code": 0, "reason": "ok"}
+{"kind": "audit_verify", "run_id": "iaia410-a02-20261011T070228Z-609a8e81", "exit_code": 0, "reason": "ok"}
+{"kind": "audit_verify", "run_id": "iaia410-a03-20261011T070845Z-omp", "exit_code": 2, "reason": "audit_run: manifest_sha256 mismatch: manifest=None recomputed=sha256:5b76d0cc92903a6f49802cfd0f1a08c6cc52b6d2687a481a1c76266cdcec50e5"}
+{"kind": "audit_verify", "run_id": "iaia410-a04-20261011T180837Z-609a8e81", "exit_code": 0, "reason": "ok"}
+{"kind": "audit_verify", "run_id": "iaia410-a05-20261012T004948Z-bf48818c", "exit_code": 2, "reason": "missing meta: audit/v4.1.0/iaia410-a05-20261012T004948Z-bf48818c/commands/1.meta.yaml"}
+{"kind": "audit_verify", "run_id": "20261009-a01-001", "exit_code": 0, "reason": "ok"}
