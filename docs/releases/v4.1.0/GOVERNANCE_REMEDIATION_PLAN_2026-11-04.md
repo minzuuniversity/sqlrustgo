@@ -315,6 +315,98 @@ stages:
 
 ---
 
+## 9. 剩余工作量与时间估算（2026-11-05 刷新）
+
+> 口径先说清楚，否则"多少周"没有意义。
+> **一个有效人日** = 完成一次**可复核闭环**：复现 → 修复 → 夹具（含反向变异）→ PR →
+> 合并 → 看板/台账更新 → 证据归档。缺任何一环不计入完成，只计入"进行中"。
+> SOAK 这类墙钟不能折算人力，单列。
+
+### 9.1 实测吞吐（每条都可重放，不是拍的）
+
+| 测量项 | 实测值 | 复现 |
+|---|---|---|
+| CI 真实终态（2026-08-08 → 11-04） | 1358 runs：**success 39（2.87%）**、failure 1109、cancelled 209 | `python3 scripts/gate/gov_probe.py ci` → run `20261105-cifact-001/logs/002-gov-ci.stdout` |
+| CI 单次反馈时长 | median **853s（14 分钟）**、p90 **2606s（43 分钟）**、max 10790s | 同上（`dur_median_s` / `dur_p90_s`） |
+| Actions jobs 分母 | 3495（此前文档出现过"3911"，两个口径都对不上 ⇒ 已作废） | 同上（`kind: ci_jobs`） |
+| 提交吞吐（作者日） | 10-04..10-10：**579 提交/7 天**（日均 83，峰值 106）；10-21..10-25：235（日均 47）；**10-25 → 11-04 仅 2** | `git log --date=short --pretty=%ad develop/v4.1.0 \| sort \| uniq -c` |
+| 专家分诊单条 | 37 条实测：body 截断 2600 ⇒ **中位 39s / 均值 51s**；短正文 6 条 4.2s/条 | `scripts/gate/expert_triage.py`（产物尚未入库，见 IL-1） |
+| 席位标定 | chatgpt-web **4/4** @68.4s；flash-next-252 **3/4** @101.1s；deepseek `ok=false` | run `20261104-seats-002` |
+
+三条推论：**(a)** 编码不是瓶颈——历史上有过日均 83 提交的吞吐；**(b)** 那个吞吐正是"报告好看、实测就坏"的来源
+（同期 CI 成功率只有 2.87%）；**(c)** 整改期的真实限速是**验证墙钟**（一次 PR 的流水线 14–43 分钟）+ 单人单席位。
+
+### 9.2 105 条待整改 issue 的分层（普查实测，不含看板 #5592 自身）
+
+| 维度 | 分布 |
+|---|---|
+| 优先级 | P0 **47** / P1 **43** / P2 **2** / 无标签 **13** |
+| 成本标签 | t0 **20** / t1 **52** / t2 **19** / 无标签 **14** |
+| 能力面 | build 39、test 24、governance 15、review 7、analysis 3、docs 2、refactor 2、architecture 1、benchmark 1、无标签 12 |
+
+按成本标签加权（t0=0.25、t1=0.7、t2=1.5、无标签=0.8 人日）：
+
+| 分组 | 条数 | 加权人日 | 说明 |
+|---|---|---|---|
+| 工程面（build/test/refactor/architecture/benchmark/无标签） | 78 | **71.0** | 必须真跑编译与测试，受 §9.1 的验证墙钟限速 |
+| 治理面（governance/review/analysis/docs） | 27 | **10.1** | 与 §5 的 P0/P1 设施项高度重叠，按"设施顺带清账"计入，不重复计费 |
+| 合计 | 105 | **81.1** | 其中 P0 47 条 = 工程面 24.7 + 治理面 5.3 |
+
+### 9.3 合计与区间
+
+| 块 | 有效人日 | 备注 |
+|---|---|---|
+| 判定系统（P0-1/-2/-4/-5/-6/-7 + KR-2） | **11–16** | P0-1 要把 168 道 `check_*` 逐个登记，P0-4 处置 36 道死门禁，是硬工 |
+| 声明与测量绑定（P1-1..P1-5） | **21–32** | P1-3 夹具扩面单块 9–15（清单内 34 道 + SOAK/PERF/COMPAT/TPCH 命名族） |
+| 文档事实面与卫生（P2-1/-2/-3） | **4.5–6.5** | 含 §DR-1 的基线刷新 |
+| 闭环与自演进（P3） | **5–8** | 债务台账、self-find、lessons 锚、IAIA 闭环 |
+| 105 条 issue 清账 | **71.0**（工程面）+ 治理面随设施顺带 | 见 §9.2 |
+| **合计** | **113–134** | |
+
+换算成日历时间（单人连续投入）：
+
+| 情形 | 吞吐假设 | 预计 |
+|---|---|---|
+| 乐观 | 多席位并发 + 批量 PR，日均 ≥1.8 有效人日 | **8 周** |
+| **基准** | 单人，日均 1.0–1.3（CI 流水线与开发重叠、无 owner 等待） | **13–19 周** |
+| 保守 | 判定系统返工一轮，或 SOAK 首次失败后回归 | **≥19 周** |
+
+**GA 的硬门槛还包含**：`ING-1` 168 小时 SOAK = **7 个自然日墙钟**（可与开发并行，但 GA 前必须完整跑通一次，
+且当前 `STAGE.yaml` 的 `known_gaps.V400_09_soak` 从未闭过）；三次阶段跃迁（ALPHA→BETA→RC→GA）各需 owner 批准。
+
+> **勘误（对自己先执行 §2.4）**：本节前身口头给过"乐观 6 周 / 保守 11–13 周"。
+> 那组数按**条数**外推，未按成本标签加权，也漏了 P1-3/P1-5 的夹具与声明绑定硬工。
+> 以 §9.2 的加权分布为准，上表替换该口径。
+
+### 9.4 会推翻上表的三件事（已登记，不是假设）
+
+1. **ING-1**：168h SOAK 从未跑通。第一次真跑若红（大概率——`check_p13_soak_test.sh` 吞 3 处退出码），
+   修复轮次不可预估，保守值直接生效。
+2. **P0-3**：`develop/v4.1.0` 与 `main` 的 `enable_status_check=false`、`required_approvals=0`（§1.3）。
+   在 owner 打开之前，"门禁会拦住"这句话本身不成立，任何估算都不含"被拦后返工"的成本。
+3. **EX-5**：DeepSeek 席位需 owner 登录。两血统裁定（`adjudication_capable`）现在靠 gpt+qwen 成立；
+   若 qwen 血统的 EX-6 掉分被降权，分诊退回单系 `advisory-only`，§5 的 IL-1/P1-1 判据要重做。
+
+### 9.5 "整治好了"的机器判据（避免又变成一份好看的报告）
+
+| 判据 | 现在 | GA 时必须 |
+|---|---|---|
+| open issue | 106 | 0（含带理由的关闭/降级，逐条有说明） |
+| 阶段标准落到机器（`stage_map`） | **0 / 21** | 21 / 21（`manual_only` 需 owner 签字） |
+| 清单内门禁有负向夹具 | 23 / 168 | 清单内 34 道 100%，其余显式 `UNFALSIFIABLE(reason)` |
+| 吞退出码的门禁 | 56 | 0（清单内）；清单外要么登记要么退役 |
+| 孤儿 / 死门禁 | 83 / 36 | 0 / 0（进清单或带理由归档） |
+| 幽灵执行点（`.github/workflows`） | 13 | 0 或标注"仅存档、不执行"且无声明引用 |
+| 文档 PASS 类声明 | 1123 处命中 | 100% 绑定 `source_run` 或被降级为叙述 |
+| CI 真实成功率 | 2.87%（39/1358） | ≥95%（连续 20 次 push 无红） |
+| SOAK 168h | 从未跑通 | 一次完整 run，verify 退出码 0 |
+
+**结论**：能整治好，但顺序不能反。**先修判定系统（P0/P1），再清 105 条 issue**——
+否则以本项目历史 83 提交/日的吞吐，再给三个月仍然会产出一份"报告好看、实测就坏"的版本。
+基准 13–19 周的前提是 owner 先把 P0-3 与 EX-5 解掉；这两项我无权也无能自行完成。
+
+---
+
 ## 附录 A —— 全仓无人引用的 `37` 道门禁（实测，2026-11-04）
 
 ```
@@ -391,11 +483,14 @@ git -C /Users/liying/dev/sqlrustgo rev-list --left-right --count develop/v4.1.0.
 cd /Users/liying/dev/sqlrustgo/.worktrees/410 && python3 scripts/gate/gate_executability.py
 
 # 孤儿 / 死门禁 / 幽灵执行点（§1.1、附录 A、B）
-python3 /tmp/srg-probe/orphan.py         # 见本文末「探针」；逻辑：build_matrix() → ALL_REQUIRED_SCRIPT_PATHS
-python3 /tmp/srg-probe/gen_plan.py       # 注入本文全部数字（metrics.json）
+python3 scripts/gate/gov_probe.py metrics        # 孤儿/死门禁/幽灵执行点/清单计数（JSONL，stdout 即产物）
+python3 scripts/gate/gov_probe.py honesty        # 每道 check_* 的可证伪性（反例夹具、吞退出码）
+python3 scripts/gate/gov_probe.py auditmanifest  # 已提交 audit run 的证据校验退出码
+python3 scripts/gate/gov_probe.py issues         # open issue 普查（type=issues）
 
-# 可证伪性静态体检（§1.1 夹具与吞错计数）
-python3 /tmp/srg-probe/honesty.py
+# 归档与重放（看板引用的每个数字都指向一个 run）
+python3 audit/v4.1.0/audit_run.py run    --run-id 20261104-govprobe-001
+python3 audit/v4.1.0/audit_run.py verify --run-id 20261104-govprobe-001
 
 # 阶段标准映射（§1.1 criteria_gates=0）
 python3 - <<'PY'
@@ -413,4 +508,8 @@ header = Authorization: token $T
 EOF
 ```
 
-> 探针脚本在本文写作时位于 `/tmp/srg-probe/`（临时，未入库）。P0-2 落地时应把它们正式化到 `gate/` 与 `gate/tests/`，届时本附录的命令随之更新。
+> **更新（2026-11-05）**：上述探针已正式化为 `scripts/gate/gov_probe.py`（PR #5593），
+> 本文引用的基线数字已归档为可校验 run `audit/v4.1.0/runs/20261104-govprobe-001`。
+> 原先写在 `/tmp/srg-probe/` 的临时版本不再是任何声明的出处。
+> 实测口径提醒：`gov_probe.py metrics` 必须先调用 `build_matrix()` 再读
+> `gate_executability.ALL_REQUIRED_SCRIPT_PATHS`，漏调会让孤儿数从 83 虚高到 95（见看板 Q10 / P0-7）。

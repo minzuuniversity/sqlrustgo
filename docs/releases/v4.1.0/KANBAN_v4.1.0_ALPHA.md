@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：未开始 16 / 待复核 1 / 完成 6 / 阻塞 3 / 合计 26
+- 台账计数：未开始 18 / 进行中 1 / 待复核 1 / 完成 7 / 阻塞 3 / 合计 30
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 |
 |---|---|---|---|---|---|
@@ -15,7 +15,7 @@
 | EX-1 | 咨询专家梯：席位注册表 + fail-closed 聚合(R1/R2/R3) + 证据契约 | 待复核 | 夹具对 R1/R2/R3 各做反向变异后结论必须翻转；证据含 MANIFEST+sha256 | scripts/gate/test_expert_ladder.py（夹具 2026-11-04 22:3x 实测 exit 0）; audit/v4.1.0/runs/20261104-seats-001/logs/001-seats-health.stdout | - |
 | EX-2 | R4 席位标定：席位须答对 ground-truth 探针才可参与裁定 | 完成 | 答错席位即使连通也不计入血统数；不标定时口径必须写明 reachability only | scripts/gate/test_expert_ladder.py（exit 0）; audit/v4.1.0/runs/20261104-seats-001（flash-next-252 标定 4/4=1.00 calibrated；health 退出码 2=不可裁定） | - |
 | EX-3 | 恢复≥2 个可裁定血统（deepseek 登录 / chatgpt 稳定性） | 完成 | health 的 lineages_credited ≥2 且 adjudication_capable=true | audit/v4.1.0/runs/20261104-seats-002（health 退出码 0：credited lineage=[gpt,qwen]，adjudication_capable=true；chatgpt-web 标定 4/4、lat 68.4s；flash-next-252 标定 3/4、lat 101.1s）; 对照 run 20261104-seats-001（同一命令当时 credited=[qwen]，capable=false） | - |
-| IL-1 | 106 个 open issue 台账化并分诊（域/破坏的声称/可自动化/修复形状） | 未开始 | KANBAN 之外生成 ISSUE_LEDGER.md+.jsonl，每 issue 一行；重复项标 dup_of | audit/v4.1.0/runs/20261104-govprobe-001/logs/004-gov-issue-census.stdout（open 106）; 席位已可双系（run 20261104-seats-002） | - |
+| IL-1 | 106 个 open issue 台账化并分诊（域/破坏的声称/可自动化/修复形状） | 进行中 | KANBAN 之外生成 ISSUE_LEDGER.md+.jsonl，每 issue 一行；重复项标 dup_of | 分诊进行中：/tmp/srg-issues/triage-main.jsonl 37 行有效（3 行 triage_error），未入库 ⇒ 归档为 docs/releases/v4.1.0/ISSUE_TRIAGE_*.jsonl 之前不构成证据 | - |
 | P0-1 | gate/registry.py + gate_catalog.jsonl + check_registry.py：168 个 check_* 逐个登记 | 未开始 | 反向变异：从 registry 删一条登记 ⇒ 元门禁必须红；孤儿数 83→0 | 基线数字见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
 | P0-2 | run_gates.py + gate_report.py + results.jsonl + 三态 | 未开始 | 缺一项/重复一项/退出码丢失 三个夹具都必须判 INCOMPLETE | - | - |
 | P0-3 | 打开合并拦截（分支保护状态检查+审批）+ merge_blocking.py | 阻塞 | 把 enable_status_check 关掉 ⇒ 该门禁必须红；API 不通 ⇒ 输出必须 INCOMPLETE 而非 PASS | 实测：enable_status_check=false、required_approvals=0（develop/v4.0.0 为 1） | owner（分支保护属不可协商项，需人工授权） |
@@ -36,6 +36,10 @@
 | KR-2 | 把 kanban_render check 接到既有门禁/CI 执行点（挂靠既有门禁，不新增分母） | 未开始 | 从 JSONL 删一行 ⇒ 被接到的既有门禁判红；未接线时看板漂移无人发现（本次已实测发生过） | 待生成：接线后的 Gitea Actions run 链接 | P0-2（需要三态 runner 才能把结论如实上报） |
 | EX-5 | 恢复 deepseek 席位（桥 HTTP 500，上游 40003 invalid token，需人工登录） | 阻塞 | health 里 deepseek-chat ok=true 且 lineages_credited 含 deepseek（第三系佐证） | audit/v4.1.0/runs/20261104-seats-002/logs/001-seats-health.stdout（deepseek ok=false lat 0.58s） | owner（登录只能人工完成，Agent 不得代做凭据动作） |
 | EX-6 | 查 flash-next-252 标定掉到 3/4 的那道题（席位可信度边界，影响它能否参与裁定） | 未开始 | 复现失败项并给出原因；若低于 calibration_min 则 health 必须不再计入该血统 | 对照：run 20261104-seats-001 标定 4/4 vs run 20261104-seats-002 标定 3/4（同一席位同一命令） | - |
+| CI-1 | 刷新 CI 吞吐口径：看板旧行「3911 runs / 70 success」指不回任何可重放测量（实测 runs=1358、jobs=3495） | 完成 | gov_probe.py 新增 ci 子命令（只读、stdout JSONL）；test_gov_probe.py 钉死 conclusion 口径；看板 §6 改为实测值并指向归档 run | scripts/gate/gov_probe.py cmd_ci + summarize_runs；夹具 scripts/gate/test_gov_probe.py（未变异 exit 0；变异 A「成功判定改回 status」exit 1、变异 B「优先级过滤改回裸 P0」exit 1）；归档 run 20261105-cifact-001（本 PR 下一提交归档） | - |
+| DR-1 | 整改计划 §1 基线需按 2026-11-05 探针重测刷新：dead 37→36、docs410 68→70、claims 1098→1123（本 PR 自身新增文档 + check_no_log_tbl_json.sh 由 dead 归入 phantom） | 未开始 | §1 每张表加「测量时间 + frozen_commit + 归档 run」列；与重测差异写进 §9；重跑 gov_probe metrics 后文档数字全部可指回 run | 对照：docs/.../GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md §1.1/§1.2  vs  audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
+| LB-1 | 标签口径补齐：106 条 open 里 14 条无优先级、15 条无成本、12 条无 cap ⇒ 分层估算对约 12–15% 的 issue 不可核对 | 未开始 | 重跑 gov_probe issues 的 issue_summary：priority/cost/cap 的 (none) 全部归 0，或逐条显式记 NOT_APPLICABLE 理由 | audit run 20261105-cifact-001 的 census 行（priority/cost/cap 分布） | - |
+| EX-7 | 查 37 条已分诊记录里 3 条 triage_error 的成因（席位抖动 / 输出不可解析 / 超时） | 未开始 | 给出 3 条的原始输出指纹 + 复现命令；若属席位抖动 ⇒ 必须计入 expert ladder 的 health 失败，而不是在分诊侧静默跳过 | 对照 run 20261104-seats-002 的 health 退出码 0 与 ladder 标定 3/4 | - |
 <!-- LEDGER:END -->
 
 状态词汇只有五种（`未开始/进行中/待复核/完成/阻塞`）。"完成"= 做完**且**证据已归档；
@@ -69,8 +73,9 @@
 
 1. **P0-1 起步**：提交 `gate/registry.py` + `gate_catalog.jsonl` 骨架，把 168 道 `check_*`
    逐个登记（进清单 / 退役带理由 / 归档带理由），配反向变异夹具（从 registry 删一条必须红）。
-2. **IL-1 先跑单系分诊**：不等第二血统，用 10 issue/批的方式对 105 条做分诊，
-   台账里显式标注 `advisory-only（单 lineage）`，不写成裁定。
+2. **IL-1 批量分诊收尾**（进行中，37/106 已分诊）：给 `expert_triage.py` 加 `--batch 10`，
+   跑完剩余 69 条；台账按 `advisory-only` / `cross-checked` 两级标注，未交叉核对的一律不写成裁定。
+   分诊产物必须先入库（`ISSUE_TRIAGE_2026-11-05.jsonl`）才算证据。
 3. **请 owner 做两件事**：(a) 在已打开的 Chrome 窗口完成 DeepSeek 登录（上游已明确 `40003`）；
    (b) 授权打开 `develop/v4.1.0` 的状态检查与审批（分支保护属不可协商项，Agent 不得自行改）。
 4. **P0-6 修证据断链**：`check_audit_manifest.sh` 在**当前已提交树**上就是红的（3 个 run verify 退出码 2）。先补齐/重跑这 3 个 run 或带理由退役，否则任何"证据可重放"的声明都不成立。
@@ -101,6 +106,6 @@
 | 数字/结论 | 归档 run |
 |---|---|
 | 168 / 23 / 83 / 37 / 21 / 1123 / 13 / 45 / 106 等全部基线数字 | `audit/v4.1.0/runs/20261104-govprobe-001`（`manifest.yaml` + `logs/001-gov-metrics.stdout`、`002-gov-honesty.stdout`、`003-gov-audit-manifest.stdout`、`004-gov-issue-census.stdout`） |
-| 席位能力：credited lineage = 1，`adjudication_capable=false` | `audit/v4.1.0/runs/20261104-seats-001`（`manifest.yaml` + `logs/001-seats-health.stdout`） |
+| 席位能力（当前）：credited lineage = 2（gpt + qwen），`adjudication_capable=true`；chatgpt-web 标定 4/4、flash-next-252 标定 3/4；deepseek 仍 ok=false | `audit/v4.1.0/runs/20261104-seats-002`（取代 seats-001 的单席位结论） |
 | R1–R4 规则夹具与反向变异 | `scripts/gate/test_expert_ladder.py`（2026-11-04 实测 exit 0） |
-| CI 3911 runs / 70 success | Gitea Actions API 只读分页实测（2026-11-04），脚本与结果见整改计划 §1.3 |
+| CI 真实终态：1358 runs / 39 success（2.87%）、failure 1109、cancelled 209；时长 median 853s / p90 2606s；jobs 分母 3495 | `audit/v4.1.0/runs/20261105-cifact-001`（`logs/002-gov-ci.stdout`）。**勘误**：本行原写「3911 runs / 70 success」，无法指回任何可重放测量（实测 neither runs=1358 也 jobs=3495），已按探针重测替换 |
