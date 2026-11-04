@@ -126,11 +126,11 @@ def cmd_metrics(_argv: list[str]) -> int:
                 len(v.get("manual_only_criteria") or {}))
             for s, v in stages.items()}
 
-    # 注意：ge.ALL_REQUIRED_SCRIPT_PATHS 是 build_matrix() 里懒填充的全局，
-    # 不调用 build_matrix() 它就是空集，会让"孤儿门禁"虚高。这里先构建，
-    # 并把 listed_n 打进输出，使这个陷阱一旦被漏掉就能从数字上看出来。
+    # P0-7：矩阵全局现在未构建即抛 MatrixNotBuilt（不再是空集），
+    # 所以漏掉 build_matrix() 会让本命令**直接失败**，而不是把孤儿数虚高。
+    # listed_n 仍然打进输出，作为交叉核对的第二只眼睛。
     ge.build_matrix()
-    listed = set(ge.ALL_REQUIRED_SCRIPT_PATHS)
+    listed = ge.required_script_paths()
     roots, steps = ge.ci_roots()
     reach = set(roots) | set(ge.reachable_from_roots(roots, steps, {}, None))
     allg = sorted("scripts/gate/" + os.path.basename(f) for f in check_scripts())

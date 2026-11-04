@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：未开始 18 / 待复核 3 / 完成 11 / 阻塞 5 / 合计 37
+- 台账计数：未开始 17 / 待复核 4 / 完成 11 / 阻塞 5 / 合计 37
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 |
 |---|---|---|---|---|---|
@@ -31,7 +31,7 @@
 | ING-1 | 继承缺口 V400-09：168h SOAK 无 FINAL_REPORT | 阻塞 | 存在带 run id 的 FINAL_REPORT；否则不得销账 | docs/releases/v4.1.0/STAGE.yaml known_gaps.V400_09_soak | owner（长时程运行需要机器排期） |
 | P0-6 | 修复 3 个已提交 audit run 的证据断链（缺日志/缺 meta/manifest_sha256=None），使 check_audit_manifest.sh 在干净检出上可绿 | 未开始 | 7 个已登记 run 的 auditmanifest 全部 exit_code=0；缺日志的要么补齐重跑 verify，要么带理由退役 | audit/v4.1.0/runs/20261104-govprobe-001/logs/003-gov-audit-manifest.stdout（iaia410-5112 / iaia410-a03 / iaia410-a05 exit_code=2） | - |
 | EX-4 | 把治理度量做成可重放命令 gov_probe.py（metrics/honesty/auditmanifest/issues） | 完成 | 同一 HEAD 上重复运行，关键计数与归档快照逐项相等；漂移必须可解释 | scripts/gate/gov_probe.py; audit/v4.1.0/runs/20261104-govprobe-001（4 条命令 exit 0，verify OK；168/83/37/4/21/0 与快照相等） | - |
-| P0-7 | 消除 fail-open 懒初始化全局：gate_executability.ALL_REQUIRED_SCRIPT_PATHS 未 build 即为空集，调用方无感 | 未开始 | 未调用 build_matrix() 时读取该全局必须抛错/返回哨兵；夹具证明漏调会被抓到 | 实测对照：漏调 ⇒ orphan 95 / dead 44；调用后 ⇒ orphan 83 / dead 37（与快照一致） | - |
+| P0-7 | 消除 fail-open 懒初始化全局：gate_executability.ALL_REQUIRED_SCRIPT_PATHS 未 build 即为空集，调用方无感 | 待复核 | 未调用 build_matrix() 时读取矩阵必须抛 MatrixNotBuilt（不得给空集）；夹具必须证明「漏调 / 回退哨兵 / 中和守卫」都会被抓到 | 实现 scripts/gate/gate_executability.py：哨兵改 None + required_script_paths()/required_scripts_by_stage() + _require_built()；调用方 gate_registry.py / gov_probe.py 改走访问器。自测 6 臂(E/E2/A/B/C/D) + 新夹具 scripts/gate/test_gate_executability.py 六条反向变异全部被抓(drop 漏调 build / far 远近失配 / rename 改回直读全局 / guard 守卫中和 / order build 晚于读 / sentinel 哨兵回退空集)。实测口径未漂移：check_n=168 orphan=83 dead=62 listed_n=34；check_gate_executability.sh 92/92 有执行点。run 20261105-p07-failclosed-001。改门禁脚本 ⇒ AGENTS 3.2 需 owner 复核 | - |
 | KR-1 | 看板台账改为 JSONL 单一来源：kanban_render.py（render/check/counts）+ 夹具 | 完成 | check 在干净板上 exit 0 且 render 幂等；夹具含反向变异（删一行 JSONL ⇒ check 必须红，恢复 ⇒ 必须绿） | scripts/gate/test_kanban_render.py（2026-11-04 实测 exit 0，9 项全 PASS）; audit/v4.1.0/runs/20261104-kanban-001 | - |
 | KR-2 | 把 kanban_render check 接到既有门禁/CI 执行点（挂靠既有门禁，不新增分母） | 未开始 | 从 JSONL 删一行 ⇒ 被接到的既有门禁判红；未接线时看板漂移无人发现（本次已实测发生过） | 待生成：接线后的 Gitea Actions run 链接 | P0-2（需要三态 runner 才能把结论如实上报） |
 | EX-5 | 恢复 deepseek 席位（桥 HTTP 500，上游 40003 invalid token，需人工登录） | 阻塞 | health 里 deepseek-chat ok=true 且 lineages_credited 含 deepseek（第三系佐证） | audit/v4.1.0/runs/20261104-seats-002/logs/001-seats-health.stdout（deepseek ok=false lat 0.58s） | owner（登录只能人工完成，Agent 不得代做凭据动作） |
