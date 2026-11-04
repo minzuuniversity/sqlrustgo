@@ -1,0 +1,1 @@
+PROBE OK: 未构建即被拒 rc=1 :: gate_executability.MatrixNotBuilt: gate_executability: required_script_paths() 读取矩阵前必须先调用 build_matrix()

@@ -1,0 +1,7 @@
+SELFTEST E: OK（未构建时读矩阵抛 MatrixNotBuilt，不返回空集）
+SELFTEST E2: OK（reachable_from_roots 未构建时同样报错）
+SELFTEST A: OK（没人执行的门禁被判 NO-EXECUTOR 并点名）
+SELFTEST B: OK（补上执行点 ⇒ 绿）
+SELFTEST C: OK（--dry-run 不被当成执行点）
+SELFTEST D: OK（run 块里的 bash 注释不被当成调用）
+SELFTEST: PASS

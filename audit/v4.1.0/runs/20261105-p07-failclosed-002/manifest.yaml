@@ -1,0 +1,134 @@
+schema_version: 1
+run_id: 20261105-p07-failclosed-002
+source_agent: mcode-macmini
+frozen_commit: 8bf144efcd5b0c8ccf157a3564702eaa05fdd06e
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: gate-exec-selftest
+  name: 执行点矩阵自测 6 臂(E/E2/A/B/C/D：未构建即报错、dry-run 与 bash 注释不算执行点)
+  cmd: python3 scripts/gate/gate_executability.py --selftest
+  cwd: .
+  timeout_sec: 120
+- id: gate-exec-fixture
+  name: P0-7 反向夹具 N1..N6（含 6 条守卫/哨兵/调用方变异，必须全部被抓）
+  cmd: python3 scripts/gate/test_gate_executability.py
+  cwd: .
+  timeout_sec: 300
+- id: consumer-guard-probe
+  name: 进程外探针：不 build_matrix() 读矩阵必须被 MatrixNotBuilt 拒绝
+  cmd: python3 audit/v4.1.0/probe_unbuilt_matrix_read.py
+  cwd: .
+  timeout_sec: 60
+- id: check-gate-executability
+  name: 既有门禁 check_gate_executability.sh 现场重跑（92 项清单全部有执行点）
+  cmd: bash scripts/gate/check_gate_executability.sh
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-check
+  name: 登记表一致性（P0-7 改调用路径后 by_class 必须仍是 34/51/21/62）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixture
+  name: 登记表夹具 9 条反向变异仍全部被抓
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: gov-metrics
+  name: 度量口径交叉核对：check_n=168 / orphan=83 / dead=62 / listed_n=34 未漂移
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 300
+- id: kanban-check
+  name: 看板 ledger 与渲染一致（37 行）
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 60
+notes:
+- 覆盖 P0-7：gate_executability 的懒初始化全局改 fail-closed（哨兵 None + 访问器 + MatrixNotBuilt），两个调用方改走访问器。
+- 反向变异 6 臂（drop 漏调 build / far 远近失配 / rename 改回直读全局 / guard 守卫中和 / order build 晚于读 / sentinel 哨兵回退空集）由夹具自动重放，全部被抓
+  rc=1。
+- 自测 E/E2 臂单独跑时漏掉了 sentinel 回退这一条 ⇒ 夹具必须独立于被检实现，故新增 test_gate_executability.py。
+- 口径未漂移：check_n=168 orphan=83 dead=62 listed_n=34；gate_registry by_class 34/51/21/62；check_gate_executability.sh
+  92 项全部有执行点。
+- 前身 run 001 的 consumer-guard-probe 记 FAIL(1)：出在我写的 bash 单行判据（runner 转义），不是被测系统；已改成 audit/v4.1.0/probe_unbuilt_matrix_read.py。001
+  与其后的 scaffold 误嵌套版本移到仓外 /tmp/srg-forensic/，未提交。
+- 本 run 不含 ci_gate.sh，不构成门禁 PASS 声明；记录的只是各命令自身的 exit code。
+- worktree_clean=false 仅因本 run 的 logs 尚未提交（frozen_commit 处工作树干净）。
+results:
+- id: gate-exec-selftest
+  started_at: '2026-11-04T23:03:23Z'
+  finished_at: '2026-11-04T23:03:23Z'
+  exit_code: 0
+  stdout_sha256: f858df03aad7839d168c63f76a6f4788bc496db46dd2753a2997fa5010b36197
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-gate-exec-selftest.stdout
+  stderr_path: logs/001-gate-exec-selftest.stderr
+- id: gate-exec-fixture
+  started_at: '2026-11-04T23:03:23Z'
+  finished_at: '2026-11-04T23:03:24Z'
+  exit_code: 0
+  stdout_sha256: 005cf624fe88f251abdfbf3c73960e53e0db0297661a5f4dca9b9726013ab3ce
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-gate-exec-fixture.stdout
+  stderr_path: logs/002-gate-exec-fixture.stderr
+- id: consumer-guard-probe
+  started_at: '2026-11-04T23:03:24Z'
+  finished_at: '2026-11-04T23:03:24Z'
+  exit_code: 0
+  stdout_sha256: a6f581740540e81de9f5c4fc6e6b7e92e0c12efcb084cc963737fd4a4f69bd75
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-consumer-guard-probe.stdout
+  stderr_path: logs/003-consumer-guard-probe.stderr
+- id: check-gate-executability
+  started_at: '2026-11-04T23:03:24Z'
+  finished_at: '2026-11-04T23:03:24Z'
+  exit_code: 0
+  stdout_sha256: 7c8ea58fd8dde1d857a6479673a069b44e9be54b46e1189c23a3f4b294f51b60
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-check-gate-executability.stdout
+  stderr_path: logs/004-check-gate-executability.stderr
+- id: gate-registry-check
+  started_at: '2026-11-04T23:03:24Z'
+  finished_at: '2026-11-04T23:03:24Z'
+  exit_code: 0
+  stdout_sha256: 58a3758bf5b48a71ae426b79dc88ab47a1edc054a36428d86bee7e3095e23af9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-gate-registry-check.stdout
+  stderr_path: logs/005-gate-registry-check.stderr
+- id: gate-registry-fixture
+  started_at: '2026-11-04T23:03:24Z'
+  finished_at: '2026-11-04T23:03:27Z'
+  exit_code: 0
+  stdout_sha256: 6960874f470ec2b5d0299c7a259e0c71d8312e509352b7802fcf765c431abfc4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-gate-registry-fixture.stdout
+  stderr_path: logs/006-gate-registry-fixture.stderr
+- id: gov-metrics
+  started_at: '2026-11-04T23:03:27Z'
+  finished_at: '2026-11-04T23:03:27Z'
+  exit_code: 0
+  stdout_sha256: e1bc8c51d13e24d7e5f1d4e625526603ae6f67035085a679b5585b10e8c349ab
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gov-metrics.stdout
+  stderr_path: logs/007-gov-metrics.stderr
+- id: kanban-check
+  started_at: '2026-11-04T23:03:27Z'
+  finished_at: '2026-11-04T23:03:27Z'
+  exit_code: 0
+  stdout_sha256: dc84504cff162995527fe5029b2cc51438feddc4108f5801313c3371b747965e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-kanban-check.stdout
+  stderr_path: logs/008-kanban-check.stderr
+evidence_hash: sha256:6cf7439f3be2d4acbf53bd207fd8b184c4ca7944382c9d2523282769711767b3
+completed_at: '2026-11-04T23:03:27Z'
