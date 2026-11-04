@@ -88,3 +88,20 @@ python3 audit/v4.1.0/audit_integrity_report.py          # 上面的表
 bash scripts/gate/check_audit_manifest.sh               # 现场状态（当前 rc=1，7 条红）
 python3 scripts/gate/test_audit_manifest_integrity.py   # 6 条反向变异
 ```
+
+## 已知自指（看板 IL-6）
+
+`check_audit_manifest.sh` 按目录扫描 `audit/v4.1.0/runs/`，**不区分"已归档的记录"与"正在写入的记录"**。
+后果：一条 run 正在执行时，它自己的运行目录已经在 `runs/` 里，但 `manifest.yaml` 的
+exit_code 与日志哈希还没写（`run` 只在全部命令跑完后落盘），于是门禁在 run 进行中把该目录
+也判红，红数从 7 变 8；同一条命令在 run 结束后重跑又回到 7。
+
+实测复现（同一条命令，run 内 rc=1 / run 后 rc=0）：
+
+```bash
+bash scripts/gate/check_audit_manifest.sh 2>&1 | grep -c '^FAIL:'   # run 内 8, run 后 7
+```
+
+本轮没有改门禁去规避它（改法需要反向变异证据，见看板 IL-6 的验收），而是把 run 20261105-auditintegrity-002
+的计数探针改成只数 `iaia410-` 前缀的历史记录，使自指不污染断言。
+第一版 run（20261105-auditintegrity-001）因此 FAIL(1)，取证留在 /tmp/srg-forensic/，未提交进仓。

@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：未开始 16 / 待复核 5 / 完成 11 / 阻塞 6 / 合计 38
+- 台账计数：未开始 17 / 待复核 5 / 完成 11 / 阻塞 6 / 合计 39
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 |
 |---|---|---|---|---|---|
@@ -48,6 +48,7 @@
 | GS-1 | 同一判据三份实现：check_principles.sh(合并入口)无执行点，被它头部标 DEPRECATED 的 check_10_principles_v310.sh 反而在 CI 可达，check_5_principles_v310.sh 已死 ⇒ 实际跑的是被宣告废弃的那份 | 阻塞 | owner 在 #5595 裁定保留哪一份；裁定后：被弃者从 CI/清单摘掉(独立 PR，owner 做)，保留者必须有执行点；gate_registry C7 必须仍 rc=0 | GATE_CATALOG.jsonl 三行 + check_principles.sh 头部原文『both DEPRECATED as standalone but still informative』；已写入 #5595 §C | owner 裁定 #5595（门禁清单变更，AGENTS 红线） |
 | KR-3 | 把 gate_registry.py check 与 test_gate_registry.py 接到既有 CI 执行点（挂靠既有门禁/既有 job，不新增门禁分母） | 未开始 | 既有 job 日志里出现 gate_registry 的 OK 行；登记表漂了 ⇒ CI 红；不得为此新增 check_* | - | KR-2 同类：需要既有 job 的改动窗口（P0-2 的三态 runner 一并挂） |
 | IL-5 | 7 条已提交审计记录不可复核（5 hollow 无命令行 / 1 partial 无 commands 且 manifest_sha256 缺失 / 1 无 manifest 目录）=> 无复现路径，只能 owner 三选一：退役 / 重跑重取证 / 保留并标注不可信 | 阻塞 | owner 在 ISSUE 5596 给出逐条处置决定（退役/重跑/标注）；决定落地后 check_audit_manifest.sh 的红数与决定一致，且不得靠改门禁清单或阈值消红 | ISSUE 5596（priority/p0 + cap/governance + cost/t1）；docs/releases/v4.1.0/AUDIT_RECORD_INTEGRITY_2026-11-05.md；audit/v4.1.0/audit_integrity_report.py 退出码恒 0（非门禁，只做度量） | - |
+| IL-6 | 证据门禁自指：check_audit_manifest.sh 扫描 runs/ 时把「正在执行的 run 目录」也计入判定 => run 进行中红数 7->8（该目录 logs 尚未写完），归档完再扫又回到 7 | 未开始 | 给出可复现的判别实验（同一条命令在 run 内 rc=1 / run 后 rc=0）与处置方案：门禁按 frozen_commit 树扫描 或 显式排除 --exclude-run <当前 run id>；两种方案都必须带反向变异，且不得放宽对历史记录的判据 | run 20261105-auditintegrity-001（未提交，取证在 /tmp/srg-forensic/）第 4 条命令 grep -c ^FAIL: == 7 在 run 内 FAIL(1)，run 结束后同一条命令实测通过；本 run 20261105-auditintegrity-002 的 audit-gate-red-count 改按 iaia410- 前缀计数以避开自指 | - |
 <!-- LEDGER:END -->
 
 状态词汇只有五种（`未开始/进行中/待复核/完成/阻塞`）。"完成"= 做完**且**证据已归档；
