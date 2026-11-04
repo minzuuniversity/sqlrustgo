@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：未开始 18 / 待复核 2 / 完成 10 / 阻塞 4 / 合计 34
+- 台账计数：未开始 19 / 待复核 1 / 完成 11 / 阻塞 4 / 合计 35
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 |
 |---|---|---|---|---|---|
@@ -15,7 +15,7 @@
 | EX-1 | 咨询专家梯：席位注册表 + fail-closed 聚合(R1/R2/R3) + 证据契约 | 待复核 | 夹具对 R1/R2/R3 各做反向变异后结论必须翻转；证据含 MANIFEST+sha256 | scripts/gate/test_expert_ladder.py（夹具 2026-11-04 22:3x 实测 exit 0）; audit/v4.1.0/runs/20261104-seats-001/logs/001-seats-health.stdout | - |
 | EX-2 | R4 席位标定：席位须答对 ground-truth 探针才可参与裁定 | 完成 | 答错席位即使连通也不计入血统数；不标定时口径必须写明 reachability only | scripts/gate/test_expert_ladder.py（exit 0）; audit/v4.1.0/runs/20261104-seats-001（flash-next-252 标定 4/4=1.00 calibrated；health 退出码 2=不可裁定） | - |
 | EX-3 | 恢复≥2 个可裁定血统（deepseek 登录 / chatgpt 稳定性） | 完成 | health 的 lineages_credited ≥2 且 adjudication_capable=true | audit/v4.1.0/runs/20261104-seats-002（health 退出码 0：credited lineage=[gpt,qwen]，adjudication_capable=true；chatgpt-web 标定 4/4、lat 68.4s；flash-next-252 标定 3/4、lat 101.1s）; 对照 run 20261104-seats-001（同一命令当时 credited=[qwen]，capable=false） | - |
-| IL-1 | 106 个 open issue 台账化并分诊（域/破坏的声称/可自动化/修复形状） | 待复核 | 每条 open issue 都有分诊行（域/破坏的声称/可自动化/修复形状/blast/dup）；台账含 AFP 5 字段与输入指纹；缺行必须 rc!=0 | docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05.{md,jsonl}（106 行 / 0 缺分诊 / 12 cross-checked / 94 advisory-only）; ISSUE_TRIAGE_2026-11-05.jsonl(106) + ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl(12); run 20261105-triage-001 | - |
+| IL-1 | 106 个 open issue 台账化并分诊（域/破坏的声称/可自动化/修复形状） | 完成 | 每条 open issue 都有分诊行（域/破坏的声称/可自动化/修复形状/blast/dup）；台账含 AFP 5 字段与输入指纹；缺行必须 rc!=0 | docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05.{md,jsonl}（106 行 / 0 缺分诊 / 12 cross-checked / 94 advisory-only）; ISSUE_TRIAGE_2026-11-05.jsonl(106, sha256:80afd329) + ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl(12, sha256:97192440); run 20261105-triage-001（frozen e409de89bf，8 命令 exit 0，evidence_hash sha256:a2538ba853…）里的 008-ledger-verify；校验器 audit/v4.1.0/verify_ledger.py L1-L4 rc=0，反向变异 G(门限2->1)/H(指纹篡改)/I(谎报 cross-checked) 均 rc=1；快照边界见 IL-4 | - |
 | P0-1 | gate/registry.py + gate_catalog.jsonl + check_registry.py：168 个 check_* 逐个登记 | 未开始 | 反向变异：从 registry 删一条登记 ⇒ 元门禁必须红；孤儿数 83→0 | 基线数字见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
 | P0-2 | run_gates.py + gate_report.py + results.jsonl + 三态 | 未开始 | 缺一项/重复一项/退出码丢失 三个夹具都必须判 INCOMPLETE | - | - |
 | P0-3 | 打开合并拦截（分支保护状态检查+审批）+ merge_blocking.py | 阻塞 | 把 enable_status_check 关掉 ⇒ 该门禁必须红；API 不通 ⇒ 输出必须 INCOMPLETE 而非 PASS | 实测：enable_status_check=false、required_approvals=0（develop/v4.0.0 为 1） | owner（分支保护属不可协商项，需人工授权） |
@@ -44,6 +44,7 @@
 | IL-3 | 疑似重复对 #5466 -> #5389 需人工确认是否合并（分诊只提示 dup，不裁定） | 未开始 | 人工裁定后：合并或标注 non-dup；台账重生成后 dup 数为 0 或写明保留理由 | - | 人工裁定（AGENTS: Issue 关闭须走 ISSUE_CLOSING_VERIFICATION + PR 关联） |
 | EX-8 | 席位吞吐从单条改为批量：72 条 8 批跑完（每 10 条 22–101s），单条模式 39s/条 ⇒ 约省 5–8 倍席位轮次 | 完成 | expert_triage.py --batch N 输出仍是每 issue 一行，且漏答/范围外编号可被机器核对（夹具 C/D 反向变异红） | docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-05.jsonl（每行含 triaged_by/latency/prompt_sha256/output_sha256）; scripts/gate/test_expert_triage.py | - |
 | MX-1 | 生产门禁引用图 gate_executability.gate_calls() 扫描未去注释的正文 ⇒ 注释里的『参见 xxx.sh』会把死门禁判活。探针已修，生产侧未修（改门禁判据需 owner 授权） | 阻塞 | gate_calls() 去掉注释与文档字符串后，死门禁数与 gov_probe metrics 一致（当前 62）；反向变异：恢复直扫 ⇒ 夹具必须红 | 已立项 Gitea openclaw/sqlrustgo#5594；探针侧已修 scripts/gate/gov_probe.py strip_prose/gate_refs_in + test_gov_probe.py P1/P2（反向变异 /tmp/srg-mut-e、/tmp/srg-mut-f 均 rc=1）；生产侧 scripts/gate/gate_executability.py:gate_calls 未改（等 owner 授权） | owner 授权修改清单内门禁的判据来源（AGENTS §8-7）；与 P0-1 gate_registry.jsonl 合并最省 |
+| IL-4 | 台账快照边界：2026-11-04T20:59Z 的输入快照是 106 条，2026-11-05 run 重放得到 107 条（多出的 1 条是快照之后新建的 #5594=MX-1）⇒ 台账需用 107 条快照重生成并给 #5594 补分诊行 | 未开始 | 重生成后 rows==triaged==当期 open issue 数（verify_ledger L1），且 #5594 出现在台账；文档里的 open issue 计数与当期快照一致 | - | - |
 <!-- LEDGER:END -->
 
 状态词汇只有五种（`未开始/进行中/待复核/完成/阻塞`）。"完成"= 做完**且**证据已归档；
