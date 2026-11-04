@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gov_probe import issue_row, summarize_runs  # noqa: E402
+from gov_probe import gate_refs_in, issue_row, summarize_runs  # noqa: E402
 
 FAILS: list[str] = []
 
@@ -86,12 +86,33 @@ def main() -> int:
     check(s4["runs"] == 0 and s4["success_rate_pct"] is None,
           f"空输入语义错: {s4}")
 
+    # 引用识别：散文里提到门禁名 ≠ 有代码调用它（实测过：本仓探针自己就因此
+    # 把死门禁从 37 虚降到 36）。P1/P2 是可证伪的一对。
+    from gate_executability import GATE_PATH_RE
+    py_doc = (
+        "#!/usr/bin/env python3\n"
+        '"""usage: 参见 scripts/gate/check_prose_only_mention.sh '
+        '与 scripts/gate/check_py_docstring_mention.sh"""\n'
+        "print('hello')\n"
+    )
+    got = gate_refs_in("scripts/gate/tool.py", py_doc, GATE_PATH_RE)
+    check(got == set(), f"P1: 文档字符串里的门禁名不得算引用，实际 {sorted(got)}")
+
+    sh_real = (
+        "#!/bin/bash\n"
+        "# 上一版调用过 scripts/gate/check_sh_comment_mention.sh（已移除）\n"
+        "bash scripts/gate/check_sh_real_call.sh\n"
+    )
+    got2 = gate_refs_in("scripts/gate/wrapper.sh", sh_real, GATE_PATH_RE)
+    check(got2 == {"scripts/gate/check_sh_real_call.sh"},
+          f"P2: 真调用必须计入、注释不得计入，实际 {sorted(got2)}")
+
     if FAILS:
         for f in FAILS:
             print("FAIL:", f)
         print(f"gov_probe fixtures: {len(FAILS)} FAIL")
         return 1
-    print("gov_probe fixtures: OK (issue_row 标签口径 + summarize_runs conclusion/分位口径 + 2 条反向变异)")
+    print("gov_probe fixtures: OK (issue_row 标签口径 + summarize_runs conclusion/分位口径 + gate_refs_in 引用口径 + 2 条反向变异)")
     return 0
 
 

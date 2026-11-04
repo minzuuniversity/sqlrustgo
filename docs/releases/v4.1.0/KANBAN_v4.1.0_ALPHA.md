@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：未开始 18 / 进行中 1 / 待复核 1 / 完成 7 / 阻塞 3 / 合计 30
+- 台账计数：未开始 18 / 待复核 2 / 完成 10 / 阻塞 4 / 合计 34
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 |
 |---|---|---|---|---|---|
@@ -15,17 +15,17 @@
 | EX-1 | 咨询专家梯：席位注册表 + fail-closed 聚合(R1/R2/R3) + 证据契约 | 待复核 | 夹具对 R1/R2/R3 各做反向变异后结论必须翻转；证据含 MANIFEST+sha256 | scripts/gate/test_expert_ladder.py（夹具 2026-11-04 22:3x 实测 exit 0）; audit/v4.1.0/runs/20261104-seats-001/logs/001-seats-health.stdout | - |
 | EX-2 | R4 席位标定：席位须答对 ground-truth 探针才可参与裁定 | 完成 | 答错席位即使连通也不计入血统数；不标定时口径必须写明 reachability only | scripts/gate/test_expert_ladder.py（exit 0）; audit/v4.1.0/runs/20261104-seats-001（flash-next-252 标定 4/4=1.00 calibrated；health 退出码 2=不可裁定） | - |
 | EX-3 | 恢复≥2 个可裁定血统（deepseek 登录 / chatgpt 稳定性） | 完成 | health 的 lineages_credited ≥2 且 adjudication_capable=true | audit/v4.1.0/runs/20261104-seats-002（health 退出码 0：credited lineage=[gpt,qwen]，adjudication_capable=true；chatgpt-web 标定 4/4、lat 68.4s；flash-next-252 标定 3/4、lat 101.1s）; 对照 run 20261104-seats-001（同一命令当时 credited=[qwen]，capable=false） | - |
-| IL-1 | 106 个 open issue 台账化并分诊（域/破坏的声称/可自动化/修复形状） | 进行中 | KANBAN 之外生成 ISSUE_LEDGER.md+.jsonl，每 issue 一行；重复项标 dup_of | 分诊进行中：/tmp/srg-issues/triage-main.jsonl 37 行有效（3 行 triage_error），未入库 ⇒ 归档为 docs/releases/v4.1.0/ISSUE_TRIAGE_*.jsonl 之前不构成证据 | - |
+| IL-1 | 106 个 open issue 台账化并分诊（域/破坏的声称/可自动化/修复形状） | 待复核 | 每条 open issue 都有分诊行（域/破坏的声称/可自动化/修复形状/blast/dup）；台账含 AFP 5 字段与输入指纹；缺行必须 rc!=0 | docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05.{md,jsonl}（106 行 / 0 缺分诊 / 12 cross-checked / 94 advisory-only）; ISSUE_TRIAGE_2026-11-05.jsonl(106) + ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl(12); run 20261105-triage-001 | - |
 | P0-1 | gate/registry.py + gate_catalog.jsonl + check_registry.py：168 个 check_* 逐个登记 | 未开始 | 反向变异：从 registry 删一条登记 ⇒ 元门禁必须红；孤儿数 83→0 | 基线数字见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
 | P0-2 | run_gates.py + gate_report.py + results.jsonl + 三态 | 未开始 | 缺一项/重复一项/退出码丢失 三个夹具都必须判 INCOMPLETE | - | - |
 | P0-3 | 打开合并拦截（分支保护状态检查+审批）+ merge_blocking.py | 阻塞 | 把 enable_status_check 关掉 ⇒ 该门禁必须红；API 不通 ⇒ 输出必须 INCOMPLETE 而非 PASS | 实测：enable_status_check=false、required_approvals=0（develop/v4.0.0 为 1） | owner（分支保护属不可协商项，需人工授权） |
-| P0-4 | 回收 37 个无人引用的死门禁（逐个给 reason 或退役） | 未开始 | gate_catalog.jsonl 中 dead_list 每条有 reason；计数 37→0；不与 P0-1 同 PR | 清单见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout dead_list | P0-1 |
+| P0-4 | 回收 62 个无人引用的死门禁（逐个给 reason 或退役）—— 修引用口径后从 37/36 涨到 62，见附录 A | 未开始 | gate_catalog.jsonl 中 dead_list 每条有 reason；计数 37→0；不与 P0-1 同 PR | 清单见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout dead_list | P0-1 |
 | P0-5 | 幽灵执行点处置：13 个 GitHub workflow 永不运行 + 三份 168h-soak 配置归一 | 未开始 | 可执行性扫描根集合在 registry 显式声明；保留的 .github 必须标『仅存档不执行』 | gh_wf=13 gt_wf=8，见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | P0-1 |
 | P1-1 | ssot_coverage.py：21 条 exit_criteria 全部映射到门禁或 manual_only | 未开始 | 故意漏一条映射 ⇒ 必须红 | stage_map=0 见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | P0-1 |
 | P1-2 | capability_claims.py：真 CLI+真 MySQL+真落库+崩溃重启读回+备份恢复逐值比对 | 未开始 | 把生产存储换成 MemoryStorage ⇒ 必须红；只 Mock 的测试不得支撑『已验证』声明 | - | - |
 | P1-3 | 负向夹具扩面：GA/RC/BETA 清单 34 道 + 名字含 SOAK/PERF/COMPAT/TPCH 全部 | 未开始 | fixtures.jsonl 对清单内门禁 100% 覆盖；未覆盖必须显式 UNFALSIFIABLE(reason) | 168 道里仅 23 道有反例，见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout H.neg | P0-1 |
 | P1-4 | 每道门禁写 effect + honesty.py 核对声明与夹具一致 | 未开始 | 声称能抓 X 但没有 X 的夹具 ⇒ 红 | honesty.json 见 audit/v4.1.0/runs/20261104-govprobe-001 | P1-3 |
-| P1-5 | evidence_inventory.py：1098 处 PASS 声明分级绑定 run | 未开始 | 未绑定的新声明 ⇒ 红 | claims_hits=1123 claims_ref=0（22:05 快照 1098） 见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
+| P1-5 | evidence_inventory.py：§1.4 刷新后的处数 PASS 声明分级绑定 run | 未开始 | 未绑定的新声明 ⇒ 红 | claims_hits=1123 claims_ref=0（22:05 快照 1098） 见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
 | P2-1 | 文档事实面：doc_stamp/doc_freshness/doc_path_claim_check/gen_doc_index 移植接入 | 未开始 | 悬空路径 0；生成物『写盘口径』==『核对口径』（墙钟时间不得进比对域） | - | - |
 | P2-2 | 目录策略机器化（顶层 45 个 .md、bench/benches/benchmarks 等归位） | 未开始 | DIRECTORY_POLICY.md 已有规则，缺执行点；新增违规 ⇒ 红 | topmd=45 见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
 | ING-1 | 继承缺口 V400-09：168h SOAK 无 FINAL_REPORT | 阻塞 | 存在带 run id 的 FINAL_REPORT；否则不得销账 | docs/releases/v4.1.0/STAGE.yaml known_gaps.V400_09_soak | owner（长时程运行需要机器排期） |
@@ -37,9 +37,13 @@
 | EX-5 | 恢复 deepseek 席位（桥 HTTP 500，上游 40003 invalid token，需人工登录） | 阻塞 | health 里 deepseek-chat ok=true 且 lineages_credited 含 deepseek（第三系佐证） | audit/v4.1.0/runs/20261104-seats-002/logs/001-seats-health.stdout（deepseek ok=false lat 0.58s） | owner（登录只能人工完成，Agent 不得代做凭据动作） |
 | EX-6 | 查 flash-next-252 标定掉到 3/4 的那道题（席位可信度边界，影响它能否参与裁定） | 未开始 | 复现失败项并给出原因；若低于 calibration_min 则 health 必须不再计入该血统 | 对照：run 20261104-seats-001 标定 4/4 vs run 20261104-seats-002 标定 3/4（同一席位同一命令） | - |
 | CI-1 | 刷新 CI 吞吐口径：看板旧行「3911 runs / 70 success」指不回任何可重放测量（实测 runs=1358、jobs=3495） | 完成 | gov_probe.py 新增 ci 子命令（只读、stdout JSONL）；test_gov_probe.py 钉死 conclusion 口径；看板 §6 改为实测值并指向归档 run | scripts/gate/gov_probe.py cmd_ci + summarize_runs；夹具 scripts/gate/test_gov_probe.py（未变异 exit 0；变异 A「成功判定改回 status」exit 1、变异 B「优先级过滤改回裸 P0」exit 1）；归档 run 20261105-cifact-001（本 PR 下一提交归档） | - |
-| DR-1 | 整改计划 §1 基线需按 2026-11-05 探针重测刷新：dead 37→36、docs410 68→70、claims 1098→1123（本 PR 自身新增文档 + check_no_log_tbl_json.sh 由 dead 归入 phantom） | 未开始 | §1 每张表加「测量时间 + frozen_commit + 归档 run」列；与重测差异写进 §9；重跑 gov_probe metrics 后文档数字全部可指回 run | 对照：docs/.../GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md §1.1/§1.2  vs  audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
+| DR-1 | 整改计划基线刷新：死门禁 37/36 均为低估（探针把注释里的门禁名当调用），修探针后实测 62；docs410 与 claims 命中同步刷新 | 完成 | §1 每张表加「测量时间 + frozen_commit + 归档 run」列；与重测差异写进 §9；重跑 gov_probe metrics 后文档数字全部可指回 run | GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md §1.4 + 附录 A（62 条全名）；修 scripts/gate/gov_probe.py 的 strip_prose()/gate_refs_in()；夹具 scripts/gate/test_gov_probe.py P1(文档字符串不计引用)/P2(真调用必须计)，反向变异 /tmp/srg-mut-e(strip 直通) 与 /tmp/srg-mut-f(只去 docstring) 均 rc=1 | - |
 | LB-1 | 标签口径补齐：106 条 open 里 14 条无优先级、15 条无成本、12 条无 cap ⇒ 分层估算对约 12–15% 的 issue 不可核对 | 未开始 | 重跑 gov_probe issues 的 issue_summary：priority/cost/cap 的 (none) 全部归 0，或逐条显式记 NOT_APPLICABLE 理由 | audit run 20261105-cifact-001 的 census 行（priority/cost/cap 分布） | - |
-| EX-7 | 查 37 条已分诊记录里 3 条 triage_error 的成因（席位抖动 / 输出不可解析 / 超时） | 未开始 | 给出 3 条的原始输出指纹 + 复现命令；若属席位抖动 ⇒ 必须计入 expert ladder 的 health 失败，而不是在分诊侧静默跳过 | 对照 run 20261104-seats-002 的 health 退出码 0 与 ladder 标定 3/4 | - |
+| EX-7 | 查 37 条已分诊记录里 3 条 triage_error 的成因（席位抖动 / 输出不可解析 / 超时） | 完成 | 给出 3 条的原始输出指纹 + 复现命令；若属席位抖动 ⇒ 必须计入 expert ladder 的 health 失败，而不是在分诊侧静默跳过 | 3 条 triage_error(#5573/#5577/#5579) 在批量模式重跑后全部 ok（0 abstain）。根因：单条模式 max_tokens=300 + body 截断 2600 下输出不可解析。修 scripts/gate/expert_triage.py 的 parse_batch_output（缺报进 missing、范围外进 extra 且丢弃、围栏可恢复、不可解析不编造）；夹具 scripts/gate/test_expert_triage.py 反向变异 C(extra 不报)/D(missing 置空) 均 rc=1，未变异 rc=0 | - |
+| IL-2 | 台账 cross-checked 覆盖率只有 12/106(11%)：47 条 P0 需做双血统复核才能升等（当前只有 qwen 血统跑批量，gpt 只复核 12 条） | 未开始 | ledger 输出 graded_crosschecked >= 47 且这 47 行 triage_families 含 >=2 family；credited_lineages<2 时仍一律 advisory-only | - | EX-5 或 EX-3 需恢复第二个可批量血统 |
+| IL-3 | 疑似重复对 #5466 -> #5389 需人工确认是否合并（分诊只提示 dup，不裁定） | 未开始 | 人工裁定后：合并或标注 non-dup；台账重生成后 dup 数为 0 或写明保留理由 | - | 人工裁定（AGENTS: Issue 关闭须走 ISSUE_CLOSING_VERIFICATION + PR 关联） |
+| EX-8 | 席位吞吐从单条改为批量：72 条 8 批跑完（每 10 条 22–101s），单条模式 39s/条 ⇒ 约省 5–8 倍席位轮次 | 完成 | expert_triage.py --batch N 输出仍是每 issue 一行，且漏答/范围外编号可被机器核对（夹具 C/D 反向变异红） | docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-05.jsonl（每行含 triaged_by/latency/prompt_sha256/output_sha256）; scripts/gate/test_expert_triage.py | - |
+| MX-1 | 生产门禁引用图 gate_executability.gate_calls() 扫描未去注释的正文 ⇒ 注释里的『参见 xxx.sh』会把死门禁判活。探针已修，生产侧未修（改门禁判据需 owner 授权） | 阻塞 | gate_calls() 去掉注释与文档字符串后，死门禁数与 gov_probe metrics 一致（当前 62）；反向变异：恢复直扫 ⇒ 夹具必须红 | 已立项 Gitea openclaw/sqlrustgo#5594；探针侧已修 scripts/gate/gov_probe.py strip_prose/gate_refs_in + test_gov_probe.py P1/P2（反向变异 /tmp/srg-mut-e、/tmp/srg-mut-f 均 rc=1）；生产侧 scripts/gate/gate_executability.py:gate_calls 未改（等 owner 授权） | owner 授权修改清单内门禁的判据来源（AGENTS §8-7）；与 P0-1 gate_registry.jsonl 合并最省 |
 <!-- LEDGER:END -->
 
 状态词汇只有五种（`未开始/进行中/待复核/完成/阻塞`）。"完成"= 做完**且**证据已归档；
