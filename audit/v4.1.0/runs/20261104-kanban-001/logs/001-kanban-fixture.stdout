@@ -1,0 +1,10 @@
+PASS baseline_green_and_idempotent
+PASS rev_drop_row_must_red
+PASS rev_status_text_must_red
+PASS status_vocabulary_closed
+PASS evidence_less_done_downgraded
+PASS missing_machine_copy
+PASS missing_marker_refuses_to_guess
+PASS duplicate_id
+PASS bad_json_fails_closed
+total=9 PASS=9 FAIL=0 INCOMPLETE=0
