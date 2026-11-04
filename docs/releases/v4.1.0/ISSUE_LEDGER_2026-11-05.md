@@ -12,15 +12,15 @@
 |---|---|
 | source_agent | mcode-macmini |
 | source_run | 20261105-triage-001 |
-| timestamp | 2026-11-04T20:39:05Z |
-| evidence_hash | sha256:0935d1ff21948ba11a05985aa31c873c4df3f1c60a52407c4c370f2443dab464 |
+| timestamp | 2026-11-04T20:59:01Z |
+| evidence_hash | sha256:dbae2af2baa6a53d03d888c9b6a1d7a60daf29494803d6808e76ef10b7f2c254 |
 | conflict_resolution | 单席位行一律 advisory-only；同一 issue 被 >=2 family 分诊才升 cross-checked（本次 12 行升级） |
 
 输入指纹（可用 `shasum -a 256` 复现 evidence_hash）：
 
+- `ISSUE_TRIAGE_2026-11-05.jsonl` = `sha256:80afd329fb8b0c89ec600413d688f5410dcd3d94c186a671af6396b8c4a04503`
+- `ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl` = `sha256:9719244075474f3c50f1e8afa2f2674708434867bed4c59f139b6543ad6c6852`
 - `all.json` = `sha256:b0d9d8acc8574af490b896a1a8efe0324c98b53ef56f531f505a5d83bb45a5ad`
-- `triage-crosscheck.jsonl` = `sha256:9719244075474f3c50f1e8afa2f2674708434867bed4c59f139b6543ad6c6852`
-- `triage-main.jsonl` = `sha256:80afd329fb8b0c89ec600413d688f5410dcd3d94c186a671af6396b8c4a04503`
 
 复现输入快照（重新拉取得到新指纹，因 issue 状态会变）：
 
