@@ -1,0 +1,113 @@
+schema_version: 1
+run_id: 20261105-gatecatalog-001
+source_agent: mcode-macmini
+frozen_commit: dfe14ccccfde2677f655889585d7fe97403a561c
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: gate-registry-check
+  name: 门禁登记表与现场执行点一致性(C1 双向覆盖/C2 重算/C4 reason/C6 反编造/C7 不自相矛盾)
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixture
+  name: 登记表夹具：9 条反向变异必须全部被抓
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: gov-metrics
+  name: 度量口径交叉核对(check_n=168 / orphan=83 / dead=62 与登记表 by_class 同源)
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 300
+- id: gov-probe-fixture
+  name: gov_probe 判据夹具(含去散文的 P1/P2)
+  cmd: python3 scripts/gate/test_gov_probe.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-fixture
+  name: 看板夹具(删行必须红)
+  cmd: python3 scripts/gate/test_kanban_render.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-check
+  name: 看板 MD 与 JSONL 一致性(37 行)
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 180
+- id: ledger-verify
+  name: issue 台账 run 级校验(L1-L4)
+  cmd: python3 audit/v4.1.0/verify_ledger.py
+  cwd: .
+  timeout_sec: 180
+notes: P0-1/P0-4 判定部分的证据：GATE_CATALOG.jsonl(168 行)与现场执行点一致性由 gate_registry 核对，9 条反向变异全部被抓(含 M1 删一行登记、M8
+  伪造 evidence、M9 处置与执行点矛盾)。 本 run 不含 ci_gate.sh，不构成任何门禁 PASS 声明。 environment.worktree_clean=false 仅因本
+  run 自身的 commit.txt/logs 尚未提交。 gate_registry 不叫 check_*、不进 STAGE_CONFIG 阶段清单 ⇒ 门禁分母仍 168(AGENTS 红线未破)。
+results:
+- id: gate-registry-check
+  started_at: '2026-11-04T22:16:46Z'
+  finished_at: '2026-11-04T22:16:46Z'
+  exit_code: 0
+  stdout_sha256: 58a3758bf5b48a71ae426b79dc88ab47a1edc054a36428d86bee7e3095e23af9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-gate-registry-check.stdout
+  stderr_path: logs/001-gate-registry-check.stderr
+- id: gate-registry-fixture
+  started_at: '2026-11-04T22:16:46Z'
+  finished_at: '2026-11-04T22:16:49Z'
+  exit_code: 0
+  stdout_sha256: 6960874f470ec2b5d0299c7a259e0c71d8312e509352b7802fcf765c431abfc4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-gate-registry-fixture.stdout
+  stderr_path: logs/002-gate-registry-fixture.stderr
+- id: gov-metrics
+  started_at: '2026-11-04T22:16:49Z'
+  finished_at: '2026-11-04T22:16:49Z'
+  exit_code: 0
+  stdout_sha256: 49e0769cedd6588d34c55ac40f3c09d3122ff1bdec917cdf7b6d5852386a12b1
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-gov-metrics.stdout
+  stderr_path: logs/003-gov-metrics.stderr
+- id: gov-probe-fixture
+  started_at: '2026-11-04T22:16:49Z'
+  finished_at: '2026-11-04T22:16:49Z'
+  exit_code: 0
+  stdout_sha256: 545e83f8bfbfcf5c3affac05515f47dd0139078ddb1229aad3f1f6e429153724
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-gov-probe-fixture.stdout
+  stderr_path: logs/004-gov-probe-fixture.stderr
+- id: kanban-fixture
+  started_at: '2026-11-04T22:16:49Z'
+  finished_at: '2026-11-04T22:16:49Z'
+  exit_code: 0
+  stdout_sha256: 45ca388459cb8cd25c36afb1aa3f0172e1ce9484fb8401fd22357371978f52ff
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-kanban-fixture.stdout
+  stderr_path: logs/005-kanban-fixture.stderr
+- id: kanban-check
+  started_at: '2026-11-04T22:16:49Z'
+  finished_at: '2026-11-04T22:16:49Z'
+  exit_code: 0
+  stdout_sha256: dc84504cff162995527fe5029b2cc51438feddc4108f5801313c3371b747965e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-kanban-check.stdout
+  stderr_path: logs/006-kanban-check.stderr
+- id: ledger-verify
+  started_at: '2026-11-04T22:16:49Z'
+  finished_at: '2026-11-04T22:16:49Z'
+  exit_code: 0
+  stdout_sha256: 22b394b30a44c4040e3a6259072311172bdc6c5c49ba7ddf5236d488c7e4996f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-ledger-verify.stdout
+  stderr_path: logs/007-ledger-verify.stderr
+evidence_hash: sha256:8725d28a9a5f55333b514b48899cb725f73be1194cf0581080fff08c2f4f1e2f
+completed_at: '2026-11-04T22:16:49Z'
