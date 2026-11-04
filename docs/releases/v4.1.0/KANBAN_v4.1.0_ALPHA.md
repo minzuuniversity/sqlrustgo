@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：未开始 17 / 待复核 4 / 完成 11 / 阻塞 5 / 合计 37
+- 台账计数：未开始 16 / 待复核 5 / 完成 11 / 阻塞 6 / 合计 38
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 |
 |---|---|---|---|---|---|
@@ -29,7 +29,7 @@
 | P2-1 | 文档事实面：doc_stamp/doc_freshness/doc_path_claim_check/gen_doc_index 移植接入 | 未开始 | 悬空路径 0；生成物『写盘口径』==『核对口径』（墙钟时间不得进比对域） | - | - |
 | P2-2 | 目录策略机器化（顶层 45 个 .md、bench/benches/benchmarks 等归位） | 未开始 | DIRECTORY_POLICY.md 已有规则，缺执行点；新增违规 ⇒ 红 | topmd=45 见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
 | ING-1 | 继承缺口 V400-09：168h SOAK 无 FINAL_REPORT | 阻塞 | 存在带 run id 的 FINAL_REPORT；否则不得销账 | docs/releases/v4.1.0/STAGE.yaml known_gaps.V400_09_soak | owner（长时程运行需要机器排期） |
-| P0-6 | 修复 3 个已提交 audit run 的证据断链（缺日志/缺 meta/manifest_sha256=None），使 check_audit_manifest.sh 在干净检出上可绿 | 未开始 | 7 个已登记 run 的 auditmanifest 全部 exit_code=0；缺日志的要么补齐重跑 verify，要么带理由退役 | audit/v4.1.0/runs/20261104-govprobe-001/logs/003-gov-audit-manifest.stdout（iaia410-5112 / iaia410-a03 / iaia410-a05 exit_code=2） | - |
+| P0-6 | 修复已提交 audit run 的证据断链，使 check_audit_manifest.sh 在干净检出上可绿（实测后范围扩大：不可复核记录共 7 条，非原估的 3 条） | 待复核 | 已登记 run 的 auditmanifest 全部 exit_code=0；缺命令行的要么补齐重跑 verify，要么带理由退役。注意：7 条里 5 条 hollow 无命令行 => 无复现路径，修复分支不存在，只能由 owner 裁定退役（见 IL-5 / ISSUE 5596） | 新审计器 audit/v4.1.0/audit_integrity_report.py 实测 17 条审计记录：sound 10 / hollow 5 / partial 1 / no-manifest 1。hollow=manifest 逐条 exit_code:0 但没记录命令行（iaia410-5112 声称6命令/0日志/SHA256SUMS 字面 placeholder；a01 声称7/日志0/21文件; a02 8/0/16; a04 5/0/15; a05 9/0/27/0meta）。partial=a03（commands 为空 + manifest_sha256 None + 5 孤儿 meta）；no-manifest=a06-r1（只有 findings/）。原证据 20261104-govprobe-001/logs/003 显示当时只报 3 条红 => 门禁此前漏报 4 条。本轮收紧既有门禁：audit_run.py 新增 _require_cmd_recorded()（v1/v2 两路径，commands 为空直接红）；check_audit_manifest.sh 按命名约定要求运行目录必须有 manifest.yaml（a06 此前被静默跳过）。结果：门禁由 3 红变 7 红，10 条 sound 仍 verify OK。新夹具 scripts/gate/test_audit_manifest_integrity.py 六臂 CTRL/M1..M6 全部符合期望（反向变异全部被抓）。结论：原 acceptance 的「可绿」分支未达成，须 owner 先退役不可复核记录 => 本行标 待复核 + blocked_by IL-5，不主张完成。 | IL-5 |
 | EX-4 | 把治理度量做成可重放命令 gov_probe.py（metrics/honesty/auditmanifest/issues） | 完成 | 同一 HEAD 上重复运行，关键计数与归档快照逐项相等；漂移必须可解释 | scripts/gate/gov_probe.py; audit/v4.1.0/runs/20261104-govprobe-001（4 条命令 exit 0，verify OK；168/83/37/4/21/0 与快照相等） | - |
 | P0-7 | 消除 fail-open 懒初始化全局：gate_executability.ALL_REQUIRED_SCRIPT_PATHS 未 build 即为空集，调用方无感 | 待复核 | 未调用 build_matrix() 时读取矩阵必须抛 MatrixNotBuilt（不得给空集）；夹具必须证明「漏调 / 回退哨兵 / 中和守卫」都会被抓到 | 实现 scripts/gate/gate_executability.py：哨兵改 None + required_script_paths()/required_scripts_by_stage() + _require_built()；调用方 gate_registry.py / gov_probe.py 改走访问器。自测 6 臂(E/E2/A/B/C/D) + 新夹具 scripts/gate/test_gate_executability.py 六条反向变异全部被抓(drop 漏调 build / far 远近失配 / rename 改回直读全局 / guard 守卫中和 / order build 晚于读 / sentinel 哨兵回退空集)。实测口径未漂移：check_n=168 orphan=83 dead=62 listed_n=34；check_gate_executability.sh 92/92 有执行点。run 20261105-p07-failclosed-002（8 命令 exit 0，evidence_hash sha256:6cf7439f3b…）。改门禁脚本 ⇒ AGENTS 3.2 需 owner 复核 | - |
 | KR-1 | 看板台账改为 JSONL 单一来源：kanban_render.py（render/check/counts）+ 夹具 | 完成 | check 在干净板上 exit 0 且 render 幂等；夹具含反向变异（删一行 JSONL ⇒ check 必须红，恢复 ⇒ 必须绿） | scripts/gate/test_kanban_render.py（2026-11-04 实测 exit 0，9 项全 PASS）; audit/v4.1.0/runs/20261104-kanban-001 | - |
@@ -47,6 +47,7 @@
 | IL-4 | 台账快照边界：2026-11-04T20:59Z 的输入快照是 106 条，2026-11-05 run 重放得到 107 条（多出的 1 条是快照之后新建的 #5594=MX-1）⇒ 台账需用 107 条快照重生成并给 #5594 补分诊行 | 未开始 | 重生成后 rows==triaged==当期 open issue 数（verify_ledger L1），且 #5594 出现在台账；文档里的 open issue 计数与当期快照一致 | - | - |
 | GS-1 | 同一判据三份实现：check_principles.sh(合并入口)无执行点，被它头部标 DEPRECATED 的 check_10_principles_v310.sh 反而在 CI 可达，check_5_principles_v310.sh 已死 ⇒ 实际跑的是被宣告废弃的那份 | 阻塞 | owner 在 #5595 裁定保留哪一份；裁定后：被弃者从 CI/清单摘掉(独立 PR，owner 做)，保留者必须有执行点；gate_registry C7 必须仍 rc=0 | GATE_CATALOG.jsonl 三行 + check_principles.sh 头部原文『both DEPRECATED as standalone but still informative』；已写入 #5595 §C | owner 裁定 #5595（门禁清单变更，AGENTS 红线） |
 | KR-3 | 把 gate_registry.py check 与 test_gate_registry.py 接到既有 CI 执行点（挂靠既有门禁/既有 job，不新增门禁分母） | 未开始 | 既有 job 日志里出现 gate_registry 的 OK 行；登记表漂了 ⇒ CI 红；不得为此新增 check_* | - | KR-2 同类：需要既有 job 的改动窗口（P0-2 的三态 runner 一并挂） |
+| IL-5 | 7 条已提交审计记录不可复核（5 hollow 无命令行 / 1 partial 无 commands 且 manifest_sha256 缺失 / 1 无 manifest 目录）=> 无复现路径，只能 owner 三选一：退役 / 重跑重取证 / 保留并标注不可信 | 阻塞 | owner 在 ISSUE 5596 给出逐条处置决定（退役/重跑/标注）；决定落地后 check_audit_manifest.sh 的红数与决定一致，且不得靠改门禁清单或阈值消红 | ISSUE 5596（priority/p0 + cap/governance + cost/t1）；docs/releases/v4.1.0/AUDIT_RECORD_INTEGRITY_2026-11-05.md；audit/v4.1.0/audit_integrity_report.py 退出码恒 0（非门禁，只做度量） | - |
 <!-- LEDGER:END -->
 
 状态词汇只有五种（`未开始/进行中/待复核/完成/阻塞`）。"完成"= 做完**且**证据已归档；

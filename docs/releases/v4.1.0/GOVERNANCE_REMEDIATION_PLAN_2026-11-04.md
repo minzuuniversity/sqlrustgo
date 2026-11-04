@@ -102,8 +102,8 @@ SSOT：`docs/releases/v4.1.0/GATE_CATALOG.jsonl`（168 行，与 `gov_probe metr
 |---|---|---|
 | stage_required | 34 | 挂在某阶段 `required_gates` 上 |
 | ci_reachable | 51 | CI 从 root step 可达，但不在阶段清单 |
-| orphan_referenced | 21 | 只有正文引用，无执行点 |
-| dead | 62 | 无执行点且无引用（去散文口径） |
+| orphan_referenced | 22 | 只有正文引用，无执行点 |
+| dead | 61 | 无执行点且无引用（去散文口径） |
 
 83 道「此刻不会运行」的门禁（dead + orphan_referenced）**逐条**给了处置，且处置必须带**逐字证据**
 （C6：不交代 ⇒ rc=1；证据在该门禁文件里检索不到 ⇒ rc=1，这条专治"编个理由"）：
@@ -122,6 +122,34 @@ SSOT：`docs/releases/v4.1.0/GATE_CATALOG.jsonl`（168 行，与 `gov_probe metr
 
 退役/删除属门禁清单变更（AGENTS 红线），已作为 owner 决策件立项：
 http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5595
+
+### 1.6 审计记录完整性 + 判定器承重（2026-11-05，P0-7 与 P0-6 的实测部分）
+
+新度量件 `audit/v4.1.0/audit_integrity_report.py`（非门禁）把 17 条审计记录的"声称 vs 在场证据"摊平，
+结论表在 `docs/releases/v4.1.0/AUDIT_RECORD_INTEGRITY_2026-11-05.md`：**sound 10 / hollow 5 / partial 1 / 无清单 1**。
+
+hollow 的共性不是"日志丢了"，而是 **manifest 逐条写着 exit 0 却没记下命令行** ——
+散列对得上只能证明"某堆字节存在"，证明不了"某个动作发生过"。这类记录无法修复（没有复现路径）。
+
+据此收紧两道**既有**门禁（AGENTS 3.2：改脚本、附反向变异；分母仍 168）：
+
+* `audit_run.py verify`：每条被声称的命令必须留下命令行（`cmd`/`command` 任一），`commands: []` 直接红；
+* `check_audit_manifest.sh`：命名成运行目录却没有 `manifest.yaml` 的 ⇒ 点名（原先被静默跳过）。
+
+改前漏报 4 条，改后门禁从 3 红变 **7 红**（10 条 sound 仍 OK）。夹具
+`scripts/gate/test_audit_manifest_integrity.py` 六臂 CTRL/M1..M6 全部符合期望。
+
+**同时记下度量自指**：本文档与新增的完整性文档本身引用了 `check_audit_manifest.sh`，
+使该类从 `dead` 迁到 `orphan_referenced`（62→61，21→22），`docs410` 71→72。
+登记表当场抓到（C2 报 `class='dead' 现场重算 'orphan_referenced'`），重生成后归零。
+⇒ 任何"口径没漂"的断言都必须**重跑**而不是引用上一轮的数。
+
+P0-7（判定器承重）：`gate_executability.py` 的懒初始化全局此前默认是**空集**，
+漏调 `build_matrix()` 的调用方毫无感觉 ⇒ "清单里每道门禁都有执行点"会在空清单上**真空通过**。
+现改哨兵 `None` + 访问器 + `MatrixNotBuilt`；夹具 `scripts/gate/test_gate_executability.py`
+六臂（drop/far/rename/guard/order/sentinel）全部被抓。
+教训：`gate_executability --selftest` 的 E 臂单独跑时**漏掉了 sentinel 回退**这一类，
+夹具必须独立于被检实现存在。
 
 ## 2. 七条机制性根因
 
@@ -482,7 +510,7 @@ stages:
 
 ---
 
-## 附录 A —— 全仓无人引用的 `62` 道门禁（2026-11-05 修引用口径后重测）
+## 附录 A —— 全仓无人引用的 `61` 道门禁（2026-11-05 修引用口径后重测）
 
 > 2026-11-05 更新：这 62 条连同 21 条 orphan_referenced 已全部进入 `GATE_CATALOG.jsonl`，
 > 每条带处置与逐字证据（见 §1.5）；本附录保留作口径变化的历史记录。

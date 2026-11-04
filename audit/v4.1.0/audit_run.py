@@ -206,11 +206,37 @@ def cmd_run(args: argparse.Namespace) -> None:
         die("one or more commands failed; manifest written for forensic use", code=1)
 
 
+def _require_cmd_recorded(m: dict, run_id: str) -> None:
+    """每条**被声称执行过**的命令都必须留下命令行。
+
+    为什么这是判据而不是风格：`audit/v4.1.0/` 里 6 条 iaia410 历史记录
+    （2026-10-11~10-15）里，manifest 逐条写着 `exit_code: 0`，
+    **但没有一条记下它跑的是什么**。日志哈希对得上，可对得上的是
+    "某个字节的散列"，不是"某个动作发生过"。这类记录在结构上不可复核 ——
+    把"报告说测过"换成"机器能核对测过"，这一条是最低门槛。
+    """
+    cmds = m.get("commands") or []
+    if not cmds:
+        die(f"{run_id}: commands 为空 ⇒ 这是一条空记录，任何结论都不该引用它")
+    missing = []
+    for c in cmds:
+        if not isinstance(c, dict):
+            die(f"{run_id}: commands 里出现非字典条目 ({type(c).__name__})")
+        if not (c.get("cmd") or c.get("command")):
+            missing.append(str(c.get("id")))
+    if missing:
+        die(
+            f"{run_id}: {len(missing)}/{len(cmds)} 条命令没有记录命令行 "
+            f"(ids: {','.join(missing[:8])}) ⇒ exit_code 声明不可复核"
+        )
+
+
 def cmd_verify(args: argparse.Namespace) -> None:
     m = load_manifest(args.run_id)
     if m.get("schema_version") == SCHEMA_VERSION_V2:
         _verify_v2(args, m)
         return
+    _require_cmd_recorded(m, args.run_id)
     if "results" not in m or "evidence_hash" not in m:
         die("manifest has no results/evidence_hash; run it first")
     for r in m["results"]:
@@ -347,6 +373,7 @@ def _run_v2(args: argparse.Namespace, m: dict) -> None:
 
 def _verify_v2(args: argparse.Namespace, m: dict) -> None:
     run_dir = run_dir_for(args.run_id)
+    _require_cmd_recorded(m, args.run_id)
     for c in m.get("commands", []):
         cid = str(c["id"])
         for key in ("stdout", "stderr"):
