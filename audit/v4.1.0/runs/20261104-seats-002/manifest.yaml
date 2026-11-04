@@ -1,0 +1,35 @@
+schema_version: 1
+run_id: 20261104-seats-002
+source_agent: mcode-macmini
+frozen_commit: 1bf00e0e27191f52d072d316da153d52d7bd6e9d
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+notes: 复查 5 个咨询专家席位能力（omp 修好 ChatGPT 桥 headless UA 被 Cloudflare 拦的问题之后）。与 20261104-seats-001 的唯一差别是桥的修复状态，因此本
+  run 是 EX-3 的复核证据。health 退出码语义：0=可裁定（credited lineage>=2），2=不可裁定； 本 run 记录真实退出码。未用 scaffold（A01 冻结指针
+  audit/v4.1.0/commit.txt 未被移动，理由同 20261104-govprobe-001）。本 run 显式声明 frozen_commit 为看板 PR
+commands:
+- id: seats-health
+  name: 席位连通性 + ground-truth 标定 + 血统计数（全 5 席位）
+  cmd: python3 scripts/gate/expert_ladder.py health --no-evidence-dir
+  cwd: .
+  timeout_sec: 1500
+results:
+- id: seats-health
+  started_at: '2026-11-04T15:55:27Z'
+  finished_at: '2026-11-04T16:07:23Z'
+  exit_code: 0
+  stdout_sha256: 34c540fc4ee30efff821f111250b86d3379efa21b0056f37a950808653cc29db
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-seats-health.stdout
+  stderr_path: logs/001-seats-health.stderr
+evidence_hash: sha256:2685c40262760740150e09e6354bd699b61ff4b7e566821edbb031ccc5eb0422
+completed_at: '2026-11-04T16:07:23Z'
