@@ -12,6 +12,7 @@
 
 import argparse
 import collections
+import hashlib
 import json
 import os
 import sys
@@ -72,6 +73,8 @@ def main():
                     help="分诊 jsonl（expert_triage.py 产物），可多份；同一 issue 需 >=2 个不同 family 才算 cross-checked")
     ap.add_argument("--credited-lineages", default="",
                     help='comma separated, e.g. "gpt,qwen"；来自 expert_ladder health 实测')
+    ap.add_argument("--source-run", default="", help="本次生成的 run id（AFP 5 字段之一）")
+    ap.add_argument("--source-agent", default="", help="生成者身份（AFP 5 字段之一）")
     ap.add_argument("--out-jsonl", required=True)
     ap.add_argument("--out-md", required=True)
     args = ap.parse_args()
@@ -129,11 +132,23 @@ def main():
             "credited_lineages": lineages,
         })
 
+    inputs = [args.issues] + list(args.triage)
+    input_hashes = {}
+    for pth in inputs:
+        blob = open(pth, "rb").read()
+        input_hashes[os.path.basename(pth)] = "sha256:" + hashlib.sha256(blob).hexdigest()
+    evidence_hash = "sha256:" + hashlib.sha256(
+        "".join(input_hashes[k] for k in sorted(input_hashes)).encode("utf-8")
+    ).hexdigest()
+
     with open(args.out_jsonl, "w", encoding="utf-8") as fh:
         for r in sorted(rows, key=lambda r: (r["number"])):
+            r["ledger_run"] = args.source_run or "(unstamped)"
             fh.write(json.dumps(r, ensure_ascii=False) + "\n")
 
     # Markdown view
+    import datetime as _dt
+    now_iso = _dt.datetime.now(_dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     grade_ct = collections.Counter(r["evidence_grade"] for r in rows)
     fams = sorted({f for r in rows for f in r["triage_families"]})
     pr = collections.Counter(r["priority"] or "priority/(none)" for r in rows)
@@ -152,6 +167,28 @@ def main():
                  "只有同一 issue 被 >=2 个 family 分诊才升级 cross-checked")
     lines.append("- 分诊只回答：域 / 破坏了哪条声称 / 可否自动化 / 修复形状 / 疑似重复。"
                  "**不回答\"是否已修好\"**，销账仍走 PR 关联与关闭验证")
+    lines.append("")
+    lines.append("## 0. 证据字段（AFP 5 字段，ADR-014）\n")
+    lines.append("| 字段 | 值 |")
+    lines.append("|---|---|")
+    lines.append("| source_agent | %s |" % (args.source_agent or "(unstamped)"))
+    lines.append("| source_run | %s |" % (args.source_run or "(unstamped)"))
+    lines.append("| timestamp | %s |" % now_iso)
+    lines.append("| evidence_hash | %s |" % evidence_hash)
+    lines.append("| conflict_resolution | 单席位行一律 advisory-only；"
+                 "同一 issue 被 >=2 family 分诊才升 cross-checked（本次 %d 行升级） |" % graded)
+    lines.append("")
+    lines.append("输入指纹（可用 `shasum -a 256` 复现 evidence_hash）：")
+    lines.append("")
+    for k in sorted(input_hashes):
+        lines.append("- `%s` = `%s`" % (k, input_hashes[k]))
+    lines.append("")
+    lines.append("复现输入快照（重新拉取得到新指纹，因 issue 状态会变）：")
+    lines.append("")
+    lines.append("- issues：`python3 scripts/gate/gov_probe.py issues --dump <path>"
+                 "`（open issues 逐页 limit=50，dump 行自报 sha256）")
+    lines.append("- 分诊：`python3 scripts/gate/expert_triage.py --input <issues dump> "
+                 "--seat <seat> --out <jsonl> --batch N`（席位与延迟逐行记录在 jsonl）")
     if missing:
         lines.append("- ⚠️ 缺分诊行：%d 条：%s" % (len(missing),
                      ",".join("#%d" % n for n in missing[:20])))

@@ -19,7 +19,7 @@ sqlrustgo 不缺规则，缺的是**能把规则变成红色的机器**。
 | 缺口 | 实测值 |
 |---|---|
 | 阶段 `exit_criteria` 有机器映射的 | `21` 条标准里 **0** 条（`criteria_gates` 与 `manual_only_criteria` 均为 0） |
-| 不在任何清单、且 CI 不可达的门禁 | **83** 个（其中全仓无人引用 **37** 个） |
+| 不在任何清单、且 CI 不可达的门禁 | **83** 个（其中全仓无人引用 **62** 个） |
 | 有 `INCOMPLETE` 语义的门禁脚本 | **0** 个（`SKIP` 语义 25 个） |
 | `results.jsonl` 式聚合器（缺项/重复即判不通过） | **0** 个 |
 | 校验 `claims/` 声明规范的脚本 | **0** 个（`claims/` 有 `CLAIM_PROVENANCE_SPEC.md` + `INDEX.yaml`，11 个文件） |
@@ -48,7 +48,7 @@ sqlrustgo 不缺规则，缺的是**能把规则变成红色的机器**。
 | `stages.<S>.required_gates` | DRAFT 2 / ALPHA 10 / BETA 19 / RC 26 / GA `35` | 合计 92 项（含 cargo 命令），去重后脚本 `34` 个 |
 | `.gitea/workflows` 直接引用的门禁脚本 | `41` | 传递可达（门禁调门禁）= `100` |
 | 孤儿门禁（不在清单 & CI 不可达） | **`83`** | 附录 B |
-| 其中全仓无任何引用（死门禁） | **`37`** | 附录 A |
+| 其中全仓无任何引用（死门禁） | **`62`** | 附录 A（2026-11-05 修探针引用口径后刷新，见 §1.4） |
 | 只在 `.github/workflows` 出现的门禁 | **`4`** | 附录 B-2 |
 | 含负向夹具（selftest / 反例 / 反向变异）的门禁 | **`23` / `168`** | 即 `145` 道无法证明「能变红」 |
 | 含 `\|\| true` / `\|\| :` 吞错 | `56` 个（其中 ≥3 处 `24` 个） | — |
@@ -60,8 +60,8 @@ sqlrustgo 不缺规则，缺的是**能把规则变成红色的机器**。
 
 | 度量 | 值 |
 |---|---|
-| `docs/releases/v4.1.0/*.md` | `68` 份 |
-| 其中 `PASS` / `全绿` / `✅` 命中 | **`1098`** 处 |
+| `docs/releases/v4.1.0/*.md` | `71` 份 |
+| 其中 `PASS` / `全绿` / `✅` 命中 | **`1132`** 处 |
 | `docs/releases/v4.1.0/evidence/` 文件 | `206` |
 | `audit/v4.1.0/` 的 run 目录 / `manifest.yaml` / finding yaml | `8` / `7` / 8 |
 | `docs/governance/lessons/` | `5` 篇 |
@@ -76,9 +76,24 @@ sqlrustgo 不缺规则，缺的是**能把规则变成红色的机器**。
 | `main` | true | **false** | **null** | **0** |
 | `develop/v4.0.0`（对照） | true | false | null | 1 |
 
+### 1.4 2026-11-05 刷新（修探针引用口径后）
+
+| 度量 | 本文旧值 | 归档探针 `20261104-govprobe-001` | 本树重跑（run `20261105-triage-001`） |
+|---|---|---|---|
+| 全仓无人引用的门禁 | 37 | 36 | **62** |
+| `docs/releases/v4.1.0/*.md` | 68 | 70 | **71** |
+| `PASS`/`全绿`/`✅` 命中 | 1098 | 1123 | **1132** |
+
+三件事要分开说：
+
+1. 旧值（37 / 68 / 1098）**指不回任何已归档 run**，按 §2.4 属于"文档声称"，已按归档 run 更正。
+2. 文档数与声明命中会随新增文档移动，所以每次刷新都必须钉一个 run；本行的数由
+   `20261105-triage-001` 的 `gov-metrics` 步骤固定。
+3. 死门禁从 36 涨到 62 **不是新增债务**，是探针把散文提及当成调用（见 R7）。
+
 ---
 
-## 2. 六条机制性根因
+## 2. 七条机制性根因
 
 ### R1 分母失控：四份「门禁清单」互不核对
 
@@ -122,9 +137,23 @@ sqlrustgo 的 G7 至今同形：`gate_definitions.G7` 的名字写着 `24h Soak 
 
 4 道门禁（附录 B-2）**只**在 `.github/workflows` 里出现，而项目 AGENTS §8-11 明令禁止推 GitHub 与使用 `gh` CLI ⇒ 这 `13` 个 workflow 是死配置。`.gitea/workflows/ci-test.md` 是 markdown 冒充 workflow，`soak_168h.yml` / `soak_probe.yml` / `z6g4-168h-soak.yml` 三个同义 soak 配置并存。任何引用它们的「CI 已覆盖」都是空承诺。
 
-### R6 声明与证据不绑定：`1098` 处 PASS 声明，0 个总闸
+### R6 声明与证据不绑定：`1132` 处 PASS 声明，0 个总闸
 
-`68` 份 v4.1.0 文档里有 `1098` 处 `PASS`/`全绿`/`✅`。`claims/` 下有 `G-04_CLAIM_PROVENANCE_SPEC.md` 与 `INDEX.yaml`（11 个文件），但**没有任何脚本引用 `claims/`**；`results.jsonl` 式聚合契约 `0` 个。仓库已经有正确的零件（`check_evidence_binding.sh`、`audit/v4.1.0/*/manifest.yaml`、trusted-baseline 的 EvidenceManifest），缺的是「每条声明必须指向一个 run」的总闸。
+`71` 份 v4.1.0 文档里有 `1132` 处 `PASS`/`全绿`/`✅`。`claims/` 下有 `G-04_CLAIM_PROVENANCE_SPEC.md` 与 `INDEX.yaml`（11 个文件），但**没有任何脚本引用 `claims/`**；`results.jsonl` 式聚合契约 `0` 个。仓库已经有正确的零件（`check_evidence_binding.sh`、`audit/v4.1.0/*/manifest.yaml`、trusted-baseline 的 EvidenceManifest），缺的是「每条声明必须指向一个 run」的总闸。
+
+### R7 度量工具自身不可证伪：引用识别把散文当调用
+
+`scripts/gate/gate_executability.py` 的 `gate_calls()`（生产门禁用来算"门禁调门禁"可达性的函数）
+扫描的是**未去注释的脚本正文**。于是「门禁 A 的注释里写了一句参见 B」= 「A 调用了 B」，
+B 就从死门禁名单上被抹掉。本探针自己踩过：`gov_probe.py` 的 usage 文本里出现
+`scripts/gate/check_audit_manifest.sh`，那道门禁就被判活了。
+
+实测影响：死门禁 36 → 62（26 道只是被注释提过）。已修探针侧
+（`gov_probe.strip_prose()` + `test_gov_probe.py` 的 P1/P2 夹具；反向变异 E=strip_prose 直通、
+F=只去 docstring 均 rc=1）。生产侧**未修**：`gate_executability.py` 是清单内门禁的判据来源，
+改它等于改门禁判据，按 AGENTS §8-7 需 owner 授权 ⇒ 已登记 Gitea ISSUE 与看板 `MX-1`，
+并与 P0-1 的 `gate_registry.jsonl` 合并解决：注册表成立后，调用关系是**显式声明**的，
+散文扫描不再是判据来源，这个洞就没有承载体。
 
 ### 必须同时记住的正向件（整改要接在这里）
 
@@ -254,7 +283,7 @@ stages:
 | P0-1 | `gate/registry.py` + `gate_catalog.jsonl` + `check_registry.py`；把 `168` 个 `check_*` 逐个登记（进清单 / 退役带理由 / 归档带理由） | 元门禁红=清单与目录不吻合；**反向变异：从 registry 删一条登记 ⇒ 必须红**；孤儿数 `83` → 0 |
 | P0-2 | `run_gates.py` + `gate_report.py` + `results.jsonl` + 三态 | 三个夹具必须判 INCOMPLETE：缺一项、重复一项、退出码丢失；全 PASS 才绿 |
 | P0-3 | Gitea 保护打开（owner 授权）+ `merge_blocking.py` | 把 `enable_status_check` 关掉 ⇒ 该门禁必须红；API 不通 ⇒ 输出必须是 SKIP 而非 PASS |
-| P0-4 | 死门禁回收 `37` 个（附录 A） | `gate_catalog.jsonl` 里逐个有 reason；`37` → 0；**不与 P0-1 混在同一 PR** |
+| P0-4 | 死门禁回收 `62` 个（附录 A） | `gate_catalog.jsonl` 里逐个有 reason；`62` → 0；**不与 P0-1 混在同一 PR** |
 | P0-5 | 幽灵执行点处置：`13` 个 GitHub workflow + `ci-test.md` + 三个 168h-soak 配置归一 | executability 的扫描根集合在 registry 里显式声明；`.github` 若保留必须标注「不执行、仅存档」 |
 
 ### P1 —— 声明与测量绑定（直击「报告好看」，≈2–3 周，5 个 PR）
@@ -265,7 +294,7 @@ stages:
 | P1-2 | `capability_claims.py` = **使用面冒烟**：真 CLI + 真 MySQL 客户端 + 真持久化落库 + 崩溃后重启读回 + 备份→恢复→逐值比对（复用 #5525 三条假成功反例）；并把 `check_correctness_tests_production_storage.sh` 的「按分支判定装配链」扩到**所有**声称验证存储语义的测试（AGENTS §1-5：`BufferPool/Page/BPlusTree` 是 Test-only，生产实现在 `crates/storage/src/file_storage.rs`） | 把生产存储默认换成 `MemoryStorage` ⇒ 必须红（该门禁注释已自证此判据可用）；只 Mock 的测试不得支撑任何「已验证」声明（AGENTS §8-8） |
 | P1-3 | 负向夹具扩面：先覆盖 GA/RC/BETA 清单内的 `34` 道 + 名字含 SOAK/PERF/COMPAT/TPCH 的全部 | `fixtures.jsonl` 对清单内门禁 100% 覆盖；未覆盖者必须显式 `UNFALSIFIABLE(reason)` 并进台账，不允许沉默 |
 | P1-4 | 每道门禁写 `effect`（能抓什么/抓不到什么），`honesty.py` 核对声明与夹具一致 | 声明与夹具矛盾（声称能抓 X 但没有 X 的夹具）⇒ 红；对接 Rust 端 4 个 honesty 测试 |
-| P1-5 | `evidence_inventory.py` + 文档声明分级：`1098` 处声明按「必须绑定 run」/「允许叙述」两级；新增/修改声明必须带 `source_agent + source_run + evidence_hash`（AGENTS §9 已有要求，给机器） | 未绑定的新声明 ⇒ 红；`claims/` 与 `INDEX.yaml` 从 0 核查器变成有核查器 |
+| P1-5 | `evidence_inventory.py` + 文档声明分级：`1132` 处声明按「必须绑定 run」/「允许叙述」两级；新增/修改声明必须带 `source_agent + source_run + evidence_hash`（AGENTS §9 已有要求，给机器） | 未绑定的新声明 ⇒ 红；`claims/` 与 `INDEX.yaml` 从 0 核查器变成有核查器 |
 
 ### P2 —— 文档事实面与仓库卫生（≈1–2 周）
 
@@ -299,7 +328,7 @@ stages:
 
 1. **打开 `develop/v4.1.0` / `main` 的状态检查与审批**（`enable_status_check`、`status_check_contexts`、`required_approvals ≥ 1`）。后果：从未真正执行过的清单项会立刻变红 ⇒ 建议只对 ALPHA（10 项）先开。
 2. **`.github/workflows` 的 `13` 个文件**：删除、归档还是保留标注？（项目禁推 GitHub，但文件仍在制造「CI 已覆盖」的错觉。）
-3. **`37` 个全仓无人引用的门禁**：归档到 `scripts/gate/_archive/` 还是删除？两者都可，但必须留 reason。
+3. **`62` 个全仓无人引用的门禁**：归档到 `scripts/gate/_archive/` 还是删除？两者都可，但必须留 reason。
 4. **是否授权把四份清单收敛为两份**（registry + 阶段清单）。这是本方案的枢纽，也是唯一会动到「分母」的动作。
 5. **凭据**：Gitea API 一律经 credential helper，不落盘、不打印、不进日志。本次分支保护探测为只读，未写入任何配置。
 
@@ -356,20 +385,20 @@ stages:
 
 | 块 | 有效人日 | 备注 |
 |---|---|---|
-| 判定系统（P0-1/-2/-4/-5/-6/-7 + KR-2） | **11–16** | P0-1 要把 168 道 `check_*` 逐个登记，P0-4 处置 36 道死门禁，是硬工 |
+| 判定系统（P0-1/-2/-4/-5/-6/-7 + KR-2 + MX-1） | **13–19** | P0-1 要把 168 道 `check_*` 逐个登记；P0-4 要处置 62 道死门禁（修引用口径后从 36 涨到该值，+2~3 人日） |
 | 声明与测量绑定（P1-1..P1-5） | **21–32** | P1-3 夹具扩面单块 9–15（清单内 34 道 + SOAK/PERF/COMPAT/TPCH 命名族） |
 | 文档事实面与卫生（P2-1/-2/-3） | **4.5–6.5** | 含 §DR-1 的基线刷新 |
 | 闭环与自演进（P3） | **5–8** | 债务台账、self-find、lessons 锚、IAIA 闭环 |
 | 105 条 issue 清账 | **71.0**（工程面）+ 治理面随设施顺带 | 见 §9.2 |
-| **合计** | **113–134** | |
+| **合计** | **115–137** | |
 
 换算成日历时间（单人连续投入）：
 
 | 情形 | 吞吐假设 | 预计 |
 |---|---|---|
-| 乐观 | 多席位并发 + 批量 PR，日均 ≥1.8 有效人日 | **8 周** |
-| **基准** | 单人，日均 1.0–1.3（CI 流水线与开发重叠、无 owner 等待） | **13–19 周** |
-| 保守 | 判定系统返工一轮，或 SOAK 首次失败后回归 | **≥19 周** |
+| 乐观 | 多席位并发 + 批量 PR，日均 ≥1.8 有效人日 | **9 周** |
+| **基准** | 单人，日均 1.0–1.3（CI 流水线与开发重叠、无 owner 等待） | **13–20 周** |
+| 保守 | 判定系统返工一轮，或 SOAK 首次失败后回归 | **≥20 周** |
 
 **GA 的硬门槛还包含**：`ING-1` 168 小时 SOAK = **7 个自然日墙钟**（可与开发并行，但 GA 前必须完整跑通一次，
 且当前 `STAGE.yaml` 的 `known_gaps.V400_09_soak` 从未闭过）；三次阶段跃迁（ALPHA→BETA→RC→GA）各需 owner 批准。
@@ -387,6 +416,22 @@ stages:
 3. **EX-5**：DeepSeek 席位需 owner 登录。两血统裁定（`adjudication_capable`）现在靠 gpt+qwen 成立；
    若 qwen 血统的 EX-6 掉分被降权，分诊退回单系 `advisory-only`，§5 的 IL-1/P1-1 判据要重做。
 
+### 9.6 分诊切分：106 / 106 已分诊（grade：cross-checked 12 / advisory-only 94）
+
+| 可自动化 | 条数 | 对推进的含义 |
+|---|---|---|
+| auto | 37 | 现有门禁与测试就能闭环 |
+| auto-needs-infra | 32 | 要先有 §5 的设施，否则只能人肉跑一遍 |
+| needs-human-decision | 29 | 下一步不在代码里，在 owner 的决定里 |
+| manual-host | 7 | 需要宿主机权限（act_runner 注册、凭据轮换等） |
+| infra-config | 1 | 配置项 |
+
+69 / 106 = 65% 落在自动化通道，37 / 106 = 35% 必须先由人或基础设施动。
+这解释了「47 个 P0」为什么不等于「47 个工程任务」：其中一批的下一步是配置与决策。
+两个独立口径落在同一量级（`cap/build`+`cap/test` = 62 条 vs `auto`+`auto-needs-infra` = 69 条），
+是分布没跑偏的信号，但**估算仍以 §9.2 的成本标签加权为准** —— 分诊是分诊建议级
+（94 行 advisory-only），不是裁定。
+
 ### 9.5 "整治好了"的机器判据（避免又变成一份好看的报告）
 
 | 判据 | 现在 | GA 时必须 |
@@ -395,7 +440,7 @@ stages:
 | 阶段标准落到机器（`stage_map`） | **0 / 21** | 21 / 21（`manual_only` 需 owner 签字） |
 | 清单内门禁有负向夹具 | 23 / 168 | 清单内 34 道 100%，其余显式 `UNFALSIFIABLE(reason)` |
 | 吞退出码的门禁 | 56 | 0（清单内）；清单外要么登记要么退役 |
-| 孤儿 / 死门禁 | 83 / 36 | 0 / 0（进清单或带理由归档） |
+| 孤儿 / 死门禁 | 83 / 62 | 0 / 0（进清单或带理由归档） |
 | 幽灵执行点（`.github/workflows`） | 13 | 0 或标注"仅存档、不执行"且无声明引用 |
 | 文档 PASS 类声明 | 1123 处命中 | 100% 绑定 `source_run` 或被降级为叙述 |
 | CI 真实成功率 | 2.87%（39/1358） | ≥95%（连续 20 次 push 无红） |
@@ -403,11 +448,11 @@ stages:
 
 **结论**：能整治好，但顺序不能反。**先修判定系统（P0/P1），再清 105 条 issue**——
 否则以本项目历史 83 提交/日的吞吐，再给三个月仍然会产出一份"报告好看、实测就坏"的版本。
-基准 13–19 周的前提是 owner 先把 P0-3 与 EX-5 解掉；这两项我无权也无能自行完成。
+基准 13–20 周的前提是 owner 先把 P0-3 与 EX-5 解掉；这两项我无权也无能自行完成。
 
 ---
 
-## 附录 A —— 全仓无人引用的 `37` 道门禁（实测，2026-11-04）
+## 附录 A —— 全仓无人引用的 `62` 道门禁（2026-11-05 修引用口径后重测）
 
 ```
 check_4019_sysbench_baseline.sh
@@ -415,41 +460,73 @@ check_4020_bulk_load_sf10.sh
 check_4021_prometheus_metrics.sh
 check_4022_slow_query_log.sh
 check_5_principles_v310.sh
+check_a04_evidence_reproducible.sh
 check_alpha_v3.10.0.sh
 check_arch2_no_bypass.sh
 check_attack_surface.sh
 check_audit_manifest.sh
+check_backup_restore_closed_loop.sh
+check_beta_e2e.sh
+check_beta_v3.10.0.sh
+check_bustubx_b_track_v312.sh
+check_bustubx_edu_cli_smoke_v312.sh
+check_cli_binary_names.py
 check_coverage.sh
+check_execution_semantics.sh
 check_g11_qps.sh
 check_g12_sysbench.sh
 check_g15_perf_report.sh
 check_g16_ddl_syntax.sh
 check_g1_tpch_22_22.sh
+check_g6_set_ops_syntax.sh
 check_g_correctness_v390.sh
+check_ga_only_v312.sh
+check_gate_script_refs.sh
+check_gmp_consumer.sh
 check_historical_backlog_disposition.sh
+check_main_freshness.sh
 check_mainline.sh
 check_no_log_tbl_json.sh
+check_oracle_present.sh
 check_orphan_sources.sh
 check_p32_statistics.sh
 check_p33_cost_optimizer.sh
 check_p34_parallel_executor.sh
 check_p35_simd.sh
 check_plan_integrity_v310.sh
+check_pr_dag.sh
 check_prepared_stmt.sh
+check_principles.sh
 check_proof.sh
 check_rc_gate_v3.10.0.sh
 check_rc_v3.11.0.sh
 check_release_binary.sh
 check_sql_compat.sh
 check_ssot_duplicate.py
+check_stage_template.sh
 check_storage_index_wal.sh
 check_teaching_corpus_v312.sh
+check_test_count_monotonic.sh
 check_test_inventory.sh
 check_tpch_sf10.sh
+check_v312_01_blocker_closed.sh
+check_v312_dml_integrity.sh
+check_v312_join_subquery_semantics.sh
+check_v312_no_silent_success.sh
+check_v312_parser_real_scripts.sh
+check_v312_promotion_to_rc.sh
+check_v312_type_function_semantics.sh
 check_validation_chain.sh
 ```
 
-处置三选一：进阶段清单（若判据仍有意义）/ 归档（历史版本线，如 `*_v3.10.0`、`*_v312`）/ 删除（判据已被更严的门禁覆盖，需写明由谁覆盖）。
+口径：`dead` = 不在 `STAGE_CONFIG.yaml` 任何阶段清单、不在 CI（含门禁调门禁的传递可达）、
+且**没有任何脚本在可执行位置**引用它。2026-11-04 曾列 `37` 条，2026-11-05 首次重测得 `36` 条，
+两者都偏低：探针原先在扫描引用时**没有去掉注释与文档字符串**，脚本注释里一句「参见
+`scripts/gate/xxx.sh`」就让那道门禁"活着"。修 `gov_probe.strip_prose()` 后实测 `62` 条
+（新增 `26` 条），逐条 grep 复核过：这些门禁只出现在文档正文与脚本注释里。
+复现：`python3 scripts/gate/gov_probe.py metrics`（`dead_list` 字段），归档见 run `20261105-triage-001`。
+
+处置三选一:进阶段清单（若判据仍有意义）/ 归档（历史版本线，如 `*_v3.10.0`、`*_v312`）/ 删除（判据已被更严的门禁覆盖，需写明由谁覆盖）。
 
 ## 附录 B —— 清单外门禁的分类
 

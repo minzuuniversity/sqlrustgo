@@ -27,10 +27,12 @@ from __future__ import annotations
 import collections
 import datetime
 import glob
+import hashlib
 import json
 import os
 import re
 import subprocess
+import pathlib
 import sys
 import urllib.error
 import urllib.request
@@ -54,6 +56,28 @@ SWALLOW_TOKENS = ("|| true", "|| :", "||  true")
 def _src_without_comments(path: str) -> str:
     body = Path(path).read_text(encoding="utf-8", errors="replace")
     return "\n".join(l for l in body.splitlines() if not l.strip().startswith("#"))
+
+
+_TRIPLE_RE = re.compile(r'"{3}.*?"{3}|\'{3}.*?\'{3}', re.S)
+
+
+def strip_prose(path: str, body: str) -> str:
+    """去掉行注释与 Python 文档字符串。
+
+    存在的理由（实测过，不是推测）：本文件自己的 usage 文本里写了
+    `scripts/gate/check_audit_manifest.sh`，探针就把它当成"有代码调用它"，
+    死门禁从 37 虚降到 36。**散文里提到一个门禁名，不等于任何代码调用了它。**
+    判据可证伪：scripts/gate/test_gov_probe.py 里
+      P1 文档字符串里的门禁名 ⇒ 不得计入引用
+      P2 真调用（非注释行） ⇒ 必须计入引用
+    """
+    if str(path).endswith(".py"):
+        body = _TRIPLE_RE.sub("", body)
+    return "\n".join(l for l in body.splitlines() if not l.strip().startswith("#"))
+
+
+def gate_refs_in(path: str, body: str, gate_re) -> set:
+    return {"scripts/gate/" + n for n in gate_re.findall(strip_prose(str(path), body))}
 
 
 def can_fail_paths(src: str) -> bool:
@@ -116,7 +140,7 @@ def cmd_metrics(_argv: list[str]) -> int:
     for pat in ("scripts/**/*.sh", "scripts/**/*.py", "gate/*.sh"):
         for p in glob.glob(pat, recursive=True):
             body = Path(p).read_text(encoding="utf-8", errors="replace")
-            refs |= {"scripts/gate/" + n for n in ge.GATE_PATH_RE.findall(body)}
+            refs |= gate_refs_in(p, body, ge.GATE_PATH_RE)
     gh_refs = set()
     for p in glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml"):
         gh_refs |= {"scripts/gate/" + n
@@ -206,9 +230,17 @@ def issue_row(it: dict) -> dict:
     }
 
 
-def cmd_issues(_argv: list[str]) -> int:
+def cmd_issues(argv: list[str]) -> int:
+    dump = None
+    if "--dump" in argv:
+        i = argv.index("--dump")
+        if i + 1 >= len(argv):
+            print("usage: gov_probe.py issues [--dump <path>]", file=sys.stderr)
+            return 2
+        dump = argv[i + 1]
     tok = _git_token()
     page, total = 1, 0
+    raw: list[dict] = []
     pri: collections.Counter = collections.Counter()
     cost: collections.Counter = collections.Counter()
     cap: collections.Counter = collections.Counter()
@@ -229,6 +261,7 @@ def cmd_issues(_argv: list[str]) -> int:
             break
         for it in batch:
             total += 1
+            raw.append(it)
             row = issue_row(it)
             pri[row["priority"][0]] += 1
             cost[row["cost"][0]] += 1
@@ -241,6 +274,12 @@ def cmd_issues(_argv: list[str]) -> int:
                "priority": dict(sorted(pri.items())),
                "cost": dict(sorted(cost.items())),
                "cap": dict(sorted(cap.items()))})
+    if dump:
+        blob = json.dumps(raw, ensure_ascii=False).encode("utf-8")
+        pathlib.Path(dump).parent.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(dump).write_bytes(blob)
+        yield_row({"kind": "issues_dump", "path": dump, "count": len(raw),
+                   "sha256": "sha256:" + hashlib.sha256(blob).hexdigest()})
     return 0
 
 
