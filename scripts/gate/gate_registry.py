@@ -55,8 +55,8 @@ def live_rows() -> list[dict]:
     import gov_probe as gp
 
     ge.build_matrix()
-    by_stage = {s: set(v) for s, v in (ge.ALL_REQUIRED_SCRIPTS_BY_STAGE or {}).items()}
-    listed = set(ge.ALL_REQUIRED_SCRIPT_PATHS)
+    by_stage = ge.required_scripts_by_stage()
+    listed = ge.required_script_paths()
     roots, steps = ge.ci_roots()
     reach = set(roots) | set(ge.reachable_from_roots(roots, steps, {}, None))
 
