@@ -1,0 +1,126 @@
+schema_version: 1
+run_id: 20261105-triage-001
+source_agent: mcode-macmini
+frozen_commit: e409de89bff9ac98f7158a7307dca26bd37f9a7a
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: gov-metrics
+  name: 仓库治理度量（check_n/orphan/dead/docs410/claims_hits 等，去散文后的口径）
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 300
+- id: gov-issue-census
+  name: open issue 普查（priority/cost/cap 口径 + 分布汇总）
+  cmd: python3 scripts/gate/gov_probe.py issues
+  cwd: .
+  timeout_sec: 300
+- id: gov-issue-snapshot
+  name: 重放台账输入快照拉取（证明 issues 输入可重放；重新拉取指纹随状态变化）
+  cmd: python3 scripts/gate/gov_probe.py issues --dump /tmp/srg-issues/replay/all.json
+  cwd: .
+  timeout_sec: 300
+- id: gov-probe-fixture
+  name: gov_probe 判据夹具（含 P1/P2：注释与文档字符串里的门禁名不得计入引用）
+  cmd: python3 scripts/gate/test_gov_probe.py
+  cwd: .
+  timeout_sec: 300
+- id: expert-triage-fixture
+  name: 专家分诊批量契约夹具（缺报=missing / 范围外=extra / 不可解析不编造）
+  cmd: python3 scripts/gate/test_expert_triage.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-fixture
+  name: 看板渲染与校验夹具（删行必须红）
+  cmd: python3 scripts/gate/test_kanban_render.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-check
+  name: 看板 MD 与 JSONL 台账一致性 + 计数
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 180
+- id: ledger-verify
+  name: issue 台账 run 级校验（L1 行数/L2 现场重算证据等级/L3 指纹/L4 缺行显式化）
+  cmd: python3 audit/v4.1.0/verify_ledger.py
+  cwd: .
+  timeout_sec: 180
+notes: 把 IL-1（106 个 open issue 台账化并分诊）的产物变成可重放证据： 台账 run 级校验 verify_ledger 的 L1-L4 判据、批量分诊契约夹具、 去散文后的度量口径（dead=62
+  / docs410=71 / claims_hits=1132）。 本 run 不含 ci_gate.sh，不构成任何门禁 PASS 声明。 environment.worktree_clean=false
+  仅因本 run 自身的 commit.txt/logs 尚未提交。 gov-issue-snapshot 的 dump 指纹可与台账记录的 all.json 指纹不同， 因为 issue 状态会随时间变化；台账记录的是分诊当时的指纹。
+results:
+- id: gov-metrics
+  started_at: '2026-11-04T21:24:21Z'
+  finished_at: '2026-11-04T21:24:22Z'
+  exit_code: 0
+  stdout_sha256: b3defbf53cde2dd164e66f1b63c01122b4e18c3ee220ce0df2bb2cc3c2193ad7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-gov-metrics.stdout
+  stderr_path: logs/001-gov-metrics.stderr
+- id: gov-issue-census
+  started_at: '2026-11-04T21:24:22Z'
+  finished_at: '2026-11-04T21:24:22Z'
+  exit_code: 0
+  stdout_sha256: 6e36230a14c0e4fc967313bdf33b79937b93e15cb9cbd94cd887dccd47993076
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-gov-issue-census.stdout
+  stderr_path: logs/002-gov-issue-census.stderr
+- id: gov-issue-snapshot
+  started_at: '2026-11-04T21:24:22Z'
+  finished_at: '2026-11-04T21:24:23Z'
+  exit_code: 0
+  stdout_sha256: a18090289cda3afbf3ec62c125309e236543def9f90c48e1ff0e3b4706ff7dcb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-gov-issue-snapshot.stdout
+  stderr_path: logs/003-gov-issue-snapshot.stderr
+- id: gov-probe-fixture
+  started_at: '2026-11-04T21:24:23Z'
+  finished_at: '2026-11-04T21:24:24Z'
+  exit_code: 0
+  stdout_sha256: 545e83f8bfbfcf5c3affac05515f47dd0139078ddb1229aad3f1f6e429153724
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-gov-probe-fixture.stdout
+  stderr_path: logs/004-gov-probe-fixture.stderr
+- id: expert-triage-fixture
+  started_at: '2026-11-04T21:24:24Z'
+  finished_at: '2026-11-04T21:24:24Z'
+  exit_code: 0
+  stdout_sha256: 4068c0c3a44cb366476977219705ceaad157c4307da8e6ab5d35c3ec1cefa87d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-expert-triage-fixture.stdout
+  stderr_path: logs/005-expert-triage-fixture.stderr
+- id: kanban-fixture
+  started_at: '2026-11-04T21:24:24Z'
+  finished_at: '2026-11-04T21:24:24Z'
+  exit_code: 0
+  stdout_sha256: 45ca388459cb8cd25c36afb1aa3f0172e1ce9484fb8401fd22357371978f52ff
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-kanban-fixture.stdout
+  stderr_path: logs/006-kanban-fixture.stderr
+- id: kanban-check
+  started_at: '2026-11-04T21:24:24Z'
+  finished_at: '2026-11-04T21:24:24Z'
+  exit_code: 0
+  stdout_sha256: 70260c63dfc553a7bce1ad0d081c403a32216f76c3769bf20f58e0789e294931
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-kanban-check.stdout
+  stderr_path: logs/007-kanban-check.stderr
+- id: ledger-verify
+  started_at: '2026-11-04T21:24:24Z'
+  finished_at: '2026-11-04T21:24:24Z'
+  exit_code: 0
+  stdout_sha256: 22b394b30a44c4040e3a6259072311172bdc6c5c49ba7ddf5236d488c7e4996f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-ledger-verify.stdout
+  stderr_path: logs/008-ledger-verify.stderr
+evidence_hash: sha256:a2538ba8539d9d1a76acc8768c219efa520fe1d2bc2446168d001a5a2c572fc6
+completed_at: '2026-11-04T21:24:24Z'
