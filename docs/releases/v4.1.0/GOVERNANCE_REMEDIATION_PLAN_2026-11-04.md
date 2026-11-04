@@ -93,6 +93,36 @@ sqlrustgo 不缺规则，缺的是**能把规则变成红色的机器**。
 
 ---
 
+### 1.5 门禁登记表落地（2026-11-05，P0-1 + P0-4 的判定部分）
+
+SSOT：`docs/releases/v4.1.0/GATE_CATALOG.jsonl`（168 行，与 `gov_probe metrics` 的 `check_n` 同口径）。
+核对器 `scripts/gate/gate_registry.py`（**不叫 `check_*`、不进阶段清单** ⇒ 门禁分母仍 168，AGENTS 红线未破）。
+
+| class | 条数 | 含义 |
+|---|---|---|
+| stage_required | 34 | 挂在某阶段 `required_gates` 上 |
+| ci_reachable | 51 | CI 从 root step 可达，但不在阶段清单 |
+| orphan_referenced | 21 | 只有正文引用，无执行点 |
+| dead | 62 | 无执行点且无引用（去散文口径） |
+
+83 道「此刻不会运行」的门禁（dead + orphan_referenced）**逐条**给了处置，且处置必须带**逐字证据**
+（C6：不交代 ⇒ rc=1；证据在该门禁文件里检索不到 ⇒ rc=1，这条专治"编个理由"）：
+
+| 处置 | 条数 |
+|---|---|
+| archive-candidate（绑 v3.8–v3.12 版本线，须 owner 批准删除） | 33 |
+| needs-execution-point（判据自足，缺的是执行点） | 25 |
+| needs-external-host（需真 MySQL/sysbench/Oracle/TPC-H/gmp/SOAK 工件） | 12 |
+| keep-rewire（名字绑旧版本号，但判据仍是 v4.1.0 的 open P0 所需 ⇒ 不许归档） | 12 |
+| superseded（文件头自标 DEPRECATED） | 1 |
+
+**顺带查出的重复测量实例（R1/R3 的现行样本）**：`check_principles.sh` 头部把 5/10-principles 标为
+"DEPRECATED as standalone"，但它自己**没有执行点**，而被宣告废弃的 `check_10_principles_v310.sh` 在 CI 里可达，
+`check_5_principles_v310.sh` 已死 ⇒ **实际跑的是被宣告废弃的那份**。已并入 owner 决策件 #5595，看板 GS-1。
+
+退役/删除属门禁清单变更（AGENTS 红线），已作为 owner 决策件立项：
+http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5595
+
 ## 2. 七条机制性根因
 
 ### R1 分母失控：四份「门禁清单」互不核对
@@ -385,12 +415,12 @@ stages:
 
 | 块 | 有效人日 | 备注 |
 |---|---|---|
-| 判定系统（P0-1/-2/-4/-5/-6/-7 + KR-2 + MX-1） | **13–19** | P0-1 要把 168 道 `check_*` 逐个登记；P0-4 要处置 62 道死门禁（修引用口径后从 36 涨到该值，+2~3 人日） |
+| 判定系统（P0-2/-4 退役动作/-5/-6/-7 + KR-2/KR-3 + MX-1） | **9–14**（2026-11-05 重估） | P0-1 的 168 道逐个登记与 P0-4 的 83 条判定已交付（见 §1.5），从该块扣除；剩下的 P0-4 退役动作要 owner 走独立 PR（#5595），不计入我的剩余人日。此重估为单系估算，未过第二血统 |
 | 声明与测量绑定（P1-1..P1-5） | **21–32** | P1-3 夹具扩面单块 9–15（清单内 34 道 + SOAK/PERF/COMPAT/TPCH 命名族） |
 | 文档事实面与卫生（P2-1/-2/-3） | **4.5–6.5** | 含 §DR-1 的基线刷新 |
 | 闭环与自演进（P3） | **5–8** | 债务台账、self-find、lessons 锚、IAIA 闭环 |
 | 105 条 issue 清账 | **71.0**（工程面）+ 治理面随设施顺带 | 见 §9.2 |
-| **合计** | **115–137** | |
+| **合计** | **111–132**（2026-11-05 重估，原 115–137） | 判定系统 −4~5 人日来自 §1.5 已交付部分 |
 
 换算成日历时间（单人连续投入）：
 
@@ -453,6 +483,9 @@ stages:
 ---
 
 ## 附录 A —— 全仓无人引用的 `62` 道门禁（2026-11-05 修引用口径后重测）
+
+> 2026-11-05 更新：这 62 条连同 21 条 orphan_referenced 已全部进入 `GATE_CATALOG.jsonl`，
+> 每条带处置与逐字证据（见 §1.5）；本附录保留作口径变化的历史记录。
 
 ```
 check_4019_sysbench_baseline.sh
