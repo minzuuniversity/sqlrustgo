@@ -9,6 +9,7 @@
   metrics   一行：仓级治理度量（门禁数、可证伪数、孤儿数、声明数……）
   honesty   每道 check_* 一行：能否失败 / 是否吞错 / 是否有负向夹具
   issues    每个 open issue 一行：优先级、标签、里程碑、认领状态
+  ci        Actions 汇总一行：终态分布、真实成功率、时长分位（反馈周期与吞吐上界）
 
 issues 子命令需要 Gitea 凭据，凭据经 `git credential fill` 获取，
 不得出现在参数、输出或日志里（AGENTS 凭据纪律）。
@@ -17,9 +18,14 @@ issues 子命令需要 Gitea 凭据，凭据经 `git credential fill` 获取，
   python3 scripts/gate/gov_probe.py metrics
   python3 scripts/gate/gov_probe.py honesty
   python3 scripts/gate/gov_probe.py issues
+  python3 scripts/gate/gov_probe.py ci
+
+判据夹具（离线，含反向变异）：python3 scripts/gate/test_gov_probe.py
 """
 from __future__ import annotations
 
+import collections
+import datetime
 import glob
 import json
 import os
@@ -178,9 +184,34 @@ def _git_token() -> str:
     raise SystemExit("gov_probe: no Gitea credential from `git credential fill`")
 
 
+def issue_row(it: dict) -> dict:
+    """单条 issue → 台账行（纯函数，可离线断言）。
+
+    判据修正（2026-11-05 实测）：本仓优先级标签的真实形态是 `priority/p0`，
+    不是裸 `P0`。旧写法 `[l for l in labels if l in ("P0","P1","P2")]`
+    恒返回空列表 ⇒ 普查把 47 条 P0 全记成"无优先级"。
+    test_gov_probe.py 用真实标签形态钉住这条口径。
+    """
+    labels = sorted(l["name"] if isinstance(l, dict) else str(l)
+                    for l in (it.get("labels") or []))
+    return {
+        "kind": "issue", "number": it["number"], "title": it["title"],
+        "priority": [l for l in labels if l.startswith("priority/")] or ["(none)"],
+        "cost": [l for l in labels if l.startswith("cost/")] or ["(none)"],
+        "cap": [l for l in labels if l.startswith("cap/")],
+        "labels": labels, "milestone": bool(it.get("milestone")),
+        "assignees": [a["login"] for a in (it.get("assignees") or [])],
+        "pull_request": bool(it.get("pull_request")),
+        "comments": it.get("comments", 0),
+    }
+
+
 def cmd_issues(_argv: list[str]) -> int:
     tok = _git_token()
     page, total = 1, 0
+    pri: collections.Counter = collections.Counter()
+    cost: collections.Counter = collections.Counter()
+    cap: collections.Counter = collections.Counter()
     while True:
         url = (f"{GITEA}/api/v1/repos/{REPO_SLUG}/issues"
                f"?state=open&type=issues&page={page}&limit=50")
@@ -198,19 +229,99 @@ def cmd_issues(_argv: list[str]) -> int:
             break
         for it in batch:
             total += 1
-            labels = sorted(l["name"] for l in (it.get("labels") or []))
-            yield_row({
-                "kind": "issue", "number": it["number"], "title": it["title"],
-                "priority": [l for l in labels if l in ("P0", "P1", "P2")],
-                "labels": labels, "milestone": bool(it.get("milestone")),
-                "assignees": [a["login"] for a in (it.get("assignees") or [])],
-                "pull_request": bool(it.get("pull_request")),
-                "comments": it.get("comments", 0),
-            })
+            row = issue_row(it)
+            pri[row["priority"][0]] += 1
+            cost[row["cost"][0]] += 1
+            cap[row["cap"][0] if row["cap"] else "(none)"] += 1
+            yield_row(row)
         if len(batch) < 50:
             break
         page += 1
-    yield_row({"kind": "issue_summary", "open_total": total, "pages": page})
+    yield_row({"kind": "issue_summary", "open_total": total, "pages": page,
+               "priority": dict(sorted(pri.items())),
+               "cost": dict(sorted(cost.items())),
+               "cap": dict(sorted(cap.items()))})
+    return 0
+
+
+def _iso(s: str) -> datetime.datetime:
+    return datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def summarize_runs(runs: list[dict]) -> dict:
+    """Actions run 列表 → 一行度量（纯函数，可离线断言）。
+
+    口径（2026-11-05 实测）：Gitea 终态的 `status` 是 `completed`，
+    真实结果在 `conclusion`。用 `status=="success"` 计数 ⇒ 成功恒 0。
+    时长取 `started_at`→`completed_at`，>3h 视为挂死样本剔除（避免污染分位）。
+    """
+    concl: dict[str, int] = {}
+    durs: list[float] = []
+    for w in runs:
+        key = w.get("conclusion") or w.get("status") or "unknown"
+        concl[key] = concl.get(key, 0) + 1
+        a, b = w.get("started_at"), w.get("completed_at")
+        if a and b:
+            d = (_iso(b) - _iso(a)).total_seconds()
+            if 0 < d < 10800:
+                durs.append(d)
+    durs.sort()
+    n = len(runs)
+    succ = concl.get("success", 0)
+    return {
+        "kind": "ci_summary", "runs": n, "conclusions": dict(sorted(concl.items())),
+        "success_rate_pct": round(100.0 * succ / n, 2) if n else None,
+        "dur_n": len(durs),
+        "dur_median_s": round(durs[len(durs) // 2]) if durs else None,
+        "dur_p90_s": round(durs[int(len(durs) * 0.9)]) if durs else None,
+        "dur_max_s": round(durs[-1]) if durs else None,
+    }
+
+
+def cmd_ci(argv: list[str]) -> int:
+    """只读拉取 Actions 历史并汇总；不写任何文件（证据由 audit run 的 stdout 固化）。"""
+    max_pages = 200
+    for i, a in enumerate(argv):
+        if a == "--max-pages" and i + 1 < len(argv):
+            max_pages = int(argv[i + 1])
+    tok = _git_token()
+    runs: list[dict] = []
+    total_count = None
+    for page in range(1, max_pages + 1):
+        url = (f"{GITEA}/api/v1/repos/{REPO_SLUG}/actions/runs"
+               f"?page={page}&limit=50")
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"token {tok}", "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=40) as resp:
+                blob = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            yield_row({"kind": "ci_error", "http": e.code, "page": page})
+            return 2
+        batch = blob.get("workflow_runs") or []
+        total_count = blob.get("total_count")
+        if not batch:
+            break
+        runs.extend(batch)
+        if total_count and len(runs) >= total_count:
+            break
+    yield_row(summarize_runs(runs))
+    yield_row({"kind": "ci_window", "api_total": total_count,
+               "paged": len(runs),
+               "truncated": bool(total_count and len(runs) < total_count),
+               "first_created_at": min((w.get("created_at") or "" for w in runs), default=None),
+               "last_created_at": max((w.get("created_at") or "" for w in runs), default=None)})
+    # jobs 分母单独给一行：文档里出现过 "3911" 这类数字，必须能指回真实口径
+    try:
+        req = urllib.request.Request(
+            f"{GITEA}/api/v1/repos/{REPO_SLUG}/actions/jobs?page=1&limit=1",
+            headers={"Authorization": f"token {tok}", "Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=40) as resp:
+            jobs_total = json.loads(resp.read().decode()).get("total_count")
+    except urllib.error.HTTPError as e:
+        jobs_total = None
+        yield_row({"kind": "ci_jobs_error", "http": e.code})
+    yield_row({"kind": "ci_jobs", "jobs_total": jobs_total})
     return 0
 
 
@@ -256,7 +367,8 @@ def cmd_auditmanifest(argv: list[str]) -> int:
 
 
 SUBS = {"metrics": cmd_metrics, "honesty": cmd_honesty,
-        "issues": cmd_issues, "auditmanifest": cmd_auditmanifest}
+        "issues": cmd_issues, "auditmanifest": cmd_auditmanifest,
+        "ci": cmd_ci}
 
 
 def main(argv: list[str] | None = None) -> int:
