@@ -1,0 +1,4 @@
+scripts/gate/check_commit_message.sh                       clean_rc=0 neutered_selftest_rc=1 fixture_rc=0 -> OK
+scripts/gate/check_coverage_single_implementation.sh       clean_rc=0 neutered_selftest_rc=1 fixture_rc=0 -> OK
+scripts/gate/check_gate_test_integrity.sh                  clean_rc=0 neutered_selftest_rc=1 fixture_rc=0 -> OK
+gate selftests: ok=3 bad=0
