@@ -3,8 +3,8 @@
 - 日期：2026-11-05　执行身份：mcode-macmini
 - 台账：`docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl`（56 行）
 - 探针：`audit/v4.1.0/probe_neg_fixtures.py`（不是门禁，见 §8）
-- 夹具：`audit/v4.1.0/neg/fx01..fx10*.sh`
-- 证据 run：`audit/v4.1.0/runs/20261105-negfix-001/`
+- 夹具：`audit/v4.1.0/neg/fx01..fx13*.sh`（fx01–fx10 打门禁判定，fx11–fx13 打自带 selftest）
+- 证据 run：`audit/v4.1.0/runs/20261105-negfix-002/`（`.../20261105-negfix-001/` 是判据缺陷的取证记录，保留）
 - 关联看板项：P1-3（待复核）、NF-1（阻塞）；关联 ISSUE：#5598、#5595
 
 ## 1 为什么要这份东西
@@ -31,7 +31,7 @@ kind 四态（语义互斥，不可含糊）：
 | kind | 含义 | 计数 |
 |---|---|---|
 | `mutation-verified` | 本轮在 scratch 工作树里注入真实缺陷、跑真实门禁，判定确实翻红 | 8 |
-| `selftest-verified` | 门禁自带 `--selftest`，跑通且夹具走的是线上同一份判定代码 | 3 |
+| `selftest-verified` | 门禁自带 `--selftest`（走线上同一份判定代码），**并且**有一个能把它的检测器致残、让这份 selftest 翻红的夹具 | 3 |
 | `unfalsifiable` | 做过证伪尝试，证明这道门禁**结构上不可能**翻红（不是「没测」，是「测了，它有洞」） | 1 |
 | `pending-fixture` | 已知该注入什么缺陷（`target` 字段写死），缺的是运行条件 | 44 |
 
@@ -58,11 +58,33 @@ run 目录不存在时 `check` 直接返回非零 —— 这是 fail-closed 设�
 | fx08 | `check_alpha_entry_v4.10.sh` | 删 `docs/releases/v4.1.0/STAGE.yaml` | red | 1（E1 判红） |
 | fx09 | `check_architecture_freeze.sh` | 把 `crates/` 里的 DriftGate 引用全部改名 | red | **0（未翻红，见 §4a）** |
 | fx10 | `check_int_debt.sh` | 把债务行的状态改成不可识别 / 删除该行 | red | **0（未翻红，见 §4b）** |
+| fx11 | `check_commit_message.sh` | 把它的 shape 判定改成永远通过（`if False:`），致残的正是 `--selftest` 用的那份代码 | selftest-red | selftest rc=1（`SHAPE_BAD=0` 被它自己抓住） |
+| fx12 | `check_coverage_single_implementation.sh` | 把共享检测函数 `scan_hits` 换成空实现 | selftest-red | selftest rc=1（两个必须检出的夹具报 not detected） |
+| fx13 | `check_gate_test_integrity.sh` | 让 `detect_cargo_test_or_true_masks` 直接 `return 0` | selftest-red | selftest rc=1（2/4 fixtures，正例全丢） |
 
 fx09 / fx10 的头部标注是 `expect: red`，实测退出码 0，因此它们在 runner 里
 按「表征夹具」（characterization）记账：它们证明的是**门禁当前不翻红**这个事实，
 而不是门禁有判定能力。runner 汇总 `neg-fixtures: pass=10 fail=0 error=0 total=10`
 指的是「10 个夹具脚本按各自声明的期望跑对了」，不能读成「10 道门禁都有效」。
+
+### 3.1 `selftest-verified` 的判据，以及第一版判据是怎么错的
+
+`selftest-verified` 不等于「这个门禁自带 --selftest」。它现在要求两件事同时成立：
+
+1. 干净树里 `bash <gate> --selftest` 退出码 0；
+2. 该行 `selftest_neg_fixture` 把这份 selftest 所用的**检测器本身**致残后，
+   同一份 `--selftest` 必须翻红。探针自己解析夹具打印的 `NEUTERED_SELFCHECK_RC=`
+   取值，**不信夹具的退出码**——一个什么都不破坏的夹具也会退出 0。
+
+第一版不是这么判的：它数门禁输出里含 `selftest|fixture` 的行数（`arms >= 3`）。
+run `20261105-negfix-001` 的第 4 号命令据此把 `check_commit_message.sh`
+（3 个负例臂，实际只有 1 行提到 selftest）和
+`check_coverage_single_implementation.sh`（臂名里不含关键词）判成 NOT-OK。
+那次失败是**判据本身**的缺陷，不是这两道门禁的缺陷——按输出形状猜「有没有负向断言」
+正是一种会永远绿的检查。fx11–fx13 换成行为判据后三道门禁全部通过第 2 条。
+
+这个判据自己的反向变异是 `mutation-selftest` 的 BA1 臂：造一个「只打印
+`NEUTERED_SELFCHECK_RC=0`、什么都不破坏」的假夹具，`selftests` 必须判 NOT-OK。
 
 ## 4 两条真发现（NF-1，#5598）
 
@@ -102,7 +124,10 @@ python3 audit/v4.1.0/probe_neg_fixtures.py mutation-selftest
 `mutation-selftest` 是「探针自己的反向变异」：在台账副本上注入 8 类缺陷
 （删行 / 重复行 / 空 reason / 夹具不存在 / 无 selftest 却声明 selftest /
 伪造 evidence run / pending 缺 close_run / unfalsifiable 改成 mutation），
-断言 `check` 每类都会变红，实测 ok=8 bad=0。
+断言判定必须变红。臂现在是 11 条：M1–M10 打在台账语义上，
+BA1 打在 `selftests` 的行为判据上（见 §3.1）。
+取证 run `20261105-negfix-001`（命令 004 失败）保留不删，当期取值以
+`20261105-negfix-002` 的日志为准。
 
 ## 6 度量口径里两个坑（写任何报告前先看）
 
