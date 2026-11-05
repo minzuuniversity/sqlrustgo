@@ -77,6 +77,14 @@ stages:
       - "All draft issues closed or promoted to ALPHA"
       - "First alpha tag cut: v{VER}-alpha1"
 
+    # C9 (#5595 / 看板 P1-1) —— 每条 exit_criteria 必须写明「谁来判定」。
+    # 三条都只能人工判定，理由写在这里，而不是伪造一个映射。
+    criteria_gates: {}
+    manual_only_criteria:
+      "Architecture design doc approved": "批准本身是人的动作（阶段跃迁需人批准）。DRAFT 清单里没有任何门禁能判定「已批准」；check_architecture_freeze.sh 只在 RC/GA 清单里，而且它核对的是架构冻结状态，不是批准记录。"
+      "All draft issues closed or promoted to ALPHA": "168 道门禁里没有任何一道把「issue 是否关闭」当判据。候选 check_historical_backlog_disposition.sh 既不在 DRAFT 清单里，也没有活执行点（gov_probe 的 dead 列表），把它写成覆盖等于拿一个不执行的检查充当覆盖。新增这道门禁属门禁清单变更，只能 owner 决定。"
+      "First alpha tag cut: v{VER}-alpha1": "切 tag 是发布动作，由人执行（docs/governance/VERSION_PROMOTION_SOP.md）。check_stage.sh 只用 tag **推断**当前阶段，缺 tag 时不会红，因此它不是这条判据的执行者。"
+
   ALPHA:
     order: 2
     description: "功能开发阶段 (active feature development, API may change)"
@@ -125,6 +133,16 @@ stages:
       - "Coverage >= {COVERAGE_MIN_ALPHA}%"
       - "No P0 bugs open"
       - "First beta tag cut: v{VER}-beta1"
+
+    # C9 (#5595 / 看板 P1-1) —— 覆盖率这条**有**真执行点：check_coverage_v312.sh
+    # 的阈值直接读本文件的 thresholds.COVERAGE_MIN_ALPHA（不是自己写死的数字）。
+    criteria_gates:
+      "Coverage >= {COVERAGE_MIN_ALPHA}%":
+        - "scripts/gate/check_coverage_v312.sh"
+    manual_only_criteria:
+      "All alpha-targeted issues closed (tracked in STAGE.yaml)": "没有门禁把 open issue 计数当判据；台账 docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.md 是人工核对的输入，不是门禁。当期 open P0 数量见看板 ISSUE #5592。"
+      "No P0 bugs open": "同上：仓里没有任何 open-P0 门禁。issue_ledger.py / gov_probe.py 只统计不阻断。挂靠哪道门禁属门禁清单变更，只能 owner。"
+      "First beta tag cut: v{VER}-beta1": "切 tag 由人执行；check_stage.sh 只从 tag 推断阶段，不要求 tag 存在。"
 
   BETA:
     order: 3
@@ -179,6 +197,20 @@ stages:
       - "All B1-B5 hard checks PASS"
       - "All B-F1~B-F7 functional checks PASS"
       - "First RC tag cut: v{VER}-rc1"
+
+    # C9 (#5595 / 看板 P1-1) —— 三条有执行点，两条没有（见 manual 的理由）。
+    criteria_gates:
+      "All feature items CLOSED or DEFERRED (in debt-registry.yaml)":
+        - "scripts/gate/check_arch_sem_debt.sh"
+        - "scripts/gate/check_cross_version_debt.sh"
+        - "scripts/gate/check_int_debt.sh"
+      "Coverage >= {COVERAGE_MIN_BETA}%":
+        - "scripts/gate/check_coverage_v312.sh"
+      "All B1-B5 hard checks PASS":
+        - "scripts/gate/check_beta_gate.sh"
+    manual_only_criteria:
+      "All B-F1~B-F7 functional checks PASS": "判据文本来自 docs/governance/GATE_CONDITIONS.md，B-F1~B-F3 的检查方法写的是 v3.8.0 的 PR 号（查 origin/develop/v3.8.0 的 git log），对 v4.1.0 不可执行；仓里没有任何脚本使用 B-F 标签。check_beta_gate.sh 的 B1..B10 是另一套判据，不能充当覆盖。把 B-F 重述成 v4.1.0 可执行的形式属 SSOT 判据变更，只能 owner。"
+      "First RC tag cut: v{VER}-rc1": "切 tag 由人执行；check_stage.sh 只从 tag 推断阶段，不要求 tag 存在。"
 
   RC:
     order: 4
@@ -249,6 +281,18 @@ stages:
       - "All 5 dimensions (D1-D5) PASS"
       - "Tag v{VER}-rcN cut, no P0 bugs since"
       - "GA promotion approved by human architect"
+
+    # C9 (#5595 / 看板 P1-1)
+    criteria_gates:
+      "All 5 dimensions (D1-D5) PASS":
+        # check_full_gate_verification.sh 调 check_rc_ga_gate.sh 得到 D1-D5，
+        # 并把各维度汇总成一条结论（#5437 之后它不再恒返回 0）。
+        - "scripts/gate/check_full_gate_verification.sh"
+        - "scripts/gate/check_rc_ga_gate.sh"
+    manual_only_criteria:
+      "All RC{N} release-blocking bugs closed": "没有门禁覆盖 blocker 是否关闭：候选 check_v312_01_blocker_closed.sh 不在任何阶段的门禁清单里，也没有活执行点（gov_probe 的 dead 列表）。"
+      "Tag v{VER}-rcN cut, no P0 bugs since": "两半都没有执行点：没有门禁要求 rcN tag 存在，也没有门禁统计 open P0。"
+      "GA promotion approved by human architect": "人的批准（transitions.RC_to_GA.requires_human_approval: true）。批准记录写进本文件的变更记录，不能由 Agent 生成。"
 
   GA:
     order: 5
@@ -378,6 +422,24 @@ stages:
 # =============================================================================
 # Stage transition rules (version-agnostic)
 # =============================================================================
+
+    # C9 (#5595 / 看板 P1-1) —— 最后一条由 check_stage.sh 的 carrier_enforced 强制，
+    # 它在 .gitea/workflows/ci.yml 里有活执行点（C9 的第二条通路）。
+    criteria_gates:
+      "All 5 dimensions + stability gates PASS":
+        - "scripts/gate/check_full_gate_verification.sh"
+        - "scripts/gate/check_drift_not_pass.sh"
+        # 稳定性的三道（soak / 24h+ / chaos）都是 optional_gates：非阻断，
+        # 但必须实跑并披露 PASS / FAIL / NOT-RUN（C8 的 requirement 语义）。
+        - "scripts/gate/check_p13_soak_test.sh"
+        - "scripts/gate/check_g13_stability.sh"
+        - "scripts/gate/check_chaos_soak.sh"
+      "GA judged on a branch matching GA.branch_pattern (main / release/v* / hotfix/v*)":
+        - "scripts/gate/check_stage.sh"
+    manual_only_criteria:
+      "GA gate report signed by human architect": "签署是人的动作（GA_GATE_REPORT.md 的签名行）；Agent 只能准备材料，不能生成签署。"
+      "GA tag cut: v{VER}": "切 tag 由人执行；check_stage.sh 只从 tag 推断阶段，不要求 tag 存在。"
+      "Merge to main + release branch created": "合 main 依赖分支保护与人工批准（看板 P0-3 未闭环，ISSUE #5593 尚未合并），Agent 不得直推 main；候选 check_main_freshness.sh 没有活执行点。"
 transitions:
   DRAFT_to_ALPHA:
     trigger: "first alpha tag cut: v{VER}-alpha1"

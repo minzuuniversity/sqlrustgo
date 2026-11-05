@@ -1,0 +1,173 @@
+schema_version: 1
+run_id: 20261105-negfix-002
+source_agent: mcode-macmini
+frozen_commit: aa7bf17d39d0b22857e253320433193eff73de89
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: negfix-ledger-check
+  name: 台账结构/语义/证据落盘对账（缺 run 时 fail-closed）
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py check
+  cwd: .
+  timeout_sec: 300
+- id: negfix-scratch-add
+  name: 建 detached scratch 工作树（夹具只在此树内注入）
+  cmd: git worktree add --detach /private/tmp/negfix-20261105-negfix-002 "$(git rev-parse
+    HEAD)"
+  cwd: .
+  timeout_sec: 300
+- id: neg-fixtures
+  name: 门禁判定类夹具注入缺陷跑真实门禁（selftest-red 类显式 DEFERRED）
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py fixtures --tree /private/tmp/negfix-20261105-negfix-002
+  cwd: .
+  timeout_sec: 1200
+- id: neg-selftests
+  name: 行为判据：干净 selftest 必须 0，致残检测器后必须翻红
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py selftests --tree /private/tmp/negfix-20261105-negfix-002
+  cwd: .
+  timeout_sec: 1200
+- id: negfix-mutation-11arms
+  name: 探针反向变异 11 臂（先要求台账基线零发现）
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py mutation-selftest
+  cwd: .
+  timeout_sec: 600
+- id: negfix-scratch-remove
+  name: 清理 scratch 工作树
+  cmd: git worktree remove --force /private/tmp/negfix-20261105-negfix-002
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-check
+  name: 门禁清单回归（分母必须仍是 168）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixtures
+  name: 门禁清单回归夹具
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-44-rows
+  name: 看板 SSOT 渲染一致性（44 行）
+  cmd: bash -c 'python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+    | grep -q "44 rows"'
+  cwd: .
+  timeout_sec: 120
+- id: gov-probe-metrics
+  name: 自指度量当期取值（neg_fixture_n 关键字口径见 NEG_FIXTURE_PROGRAM §6）
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 900
+results:
+- id: negfix-ledger-check
+  started_at: '2026-11-05T06:07:05Z'
+  finished_at: '2026-11-05T06:07:05Z'
+  exit_code: 0
+  stdout_sha256: dfb6bf4b59c54ba2d51a4fe19e84745715d02a96e81a2be740cc62445e704fb9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-negfix-ledger-check.stdout
+  stderr_path: logs/001-negfix-ledger-check.stderr
+- id: negfix-scratch-add
+  started_at: '2026-11-05T06:07:05Z'
+  finished_at: '2026-11-05T06:07:06Z'
+  exit_code: 0
+  stdout_sha256: b912c205bf6d10d020ed4ab96388a5cb62449492851f8603591d0e713d07d447
+  stderr_sha256: 317eb2524f09e7e76f37686d93785262c02511f385296aac37c5d140f2dd5e09
+  stdout_path: logs/002-negfix-scratch-add.stdout
+  stderr_path: logs/002-negfix-scratch-add.stderr
+- id: neg-fixtures
+  started_at: '2026-11-05T06:07:06Z'
+  finished_at: '2026-11-05T06:07:41Z'
+  exit_code: 0
+  stdout_sha256: fd2ffed19890fa8cabe3e29d639731fe09411368fad3511adb02fa309b1a2de9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-neg-fixtures.stdout
+  stderr_path: logs/003-neg-fixtures.stderr
+- id: neg-selftests
+  started_at: '2026-11-05T06:07:41Z'
+  finished_at: '2026-11-05T06:07:49Z'
+  exit_code: 0
+  stdout_sha256: 502f09641435ee5b07655bb878aba66a660a0db2829d3f2420ef994c482a1893
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-neg-selftests.stdout
+  stderr_path: logs/004-neg-selftests.stderr
+- id: negfix-mutation-11arms
+  started_at: '2026-11-05T06:07:49Z'
+  finished_at: '2026-11-05T06:07:59Z'
+  exit_code: 0
+  stdout_sha256: dd177ff4ce8103629322e80242cc9809ffd84c6ddb001d1d8dec17f567bae11c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-negfix-mutation-11arms.stdout
+  stderr_path: logs/005-negfix-mutation-11arms.stderr
+- id: negfix-scratch-remove
+  started_at: '2026-11-05T06:07:59Z'
+  finished_at: '2026-11-05T06:08:00Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-negfix-scratch-remove.stdout
+  stderr_path: logs/006-negfix-scratch-remove.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T06:08:00Z'
+  finished_at: '2026-11-05T06:08:00Z'
+  exit_code: 0
+  stdout_sha256: 4a47d60c3dfb73ccf7761477e76c19265dfc8e06557bf9b37116cf20c8221614
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-registry-check.stdout
+  stderr_path: logs/007-gate-registry-check.stderr
+- id: gate-registry-fixtures
+  started_at: '2026-11-05T06:08:00Z'
+  finished_at: '2026-11-05T06:08:02Z'
+  exit_code: 0
+  stdout_sha256: 31f533bffbc9244f2992013bd0f03f82dc22974ccbf228528161dbcd06ec3902
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-registry-fixtures.stdout
+  stderr_path: logs/008-gate-registry-fixtures.stderr
+- id: kanban-44-rows
+  started_at: '2026-11-05T06:08:02Z'
+  finished_at: '2026-11-05T06:08:02Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-kanban-44-rows.stdout
+  stderr_path: logs/009-kanban-44-rows.stderr
+- id: gov-probe-metrics
+  started_at: '2026-11-05T06:08:02Z'
+  finished_at: '2026-11-05T06:08:03Z'
+  exit_code: 0
+  stdout_sha256: af17c382e09b79c00029e18e4e381e45834cb0adaa6456f0679b2be207203d40
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gov-probe-metrics.stdout
+  stderr_path: logs/010-gov-probe-metrics.stderr
+evidence_hash: sha256:7cfc903986e552ae15315043a2c81325fdec56617f28633f97db26cd03ef9000
+completed_at: '2026-11-05T06:08:03Z'
+notes:
+- 本 run 不含 ci_gate.sh，不构成门禁 PASS 声明。
+- P1-3 的三件东西：台账 docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl（56 行 = 55 道 scope +
+  1 道 scope 外加测）、13 个夹具 audit/v4.1.0/neg/fx01..fx13、探针 audit/v4.1.0/probe_neg_fixtures.py（check
+  / fixtures / selftests / mutation-selftest）。当期 falsifiable_now=11/55（mutation 8
+  + selftest 3），另有 1 道被证明不可证伪、44 道 pending-fixture。
+- 'fixtures 实测：pass=10 fail=0 error=0 deferred-selftest-red=3。fx01–fx08 把 7 道阶段门禁
+  + 1 道 entry 门禁跑红；fx09/fx10 实测门禁 rc=0（各自打印 FAIL/FAILED_ITEMS 却不影响退出码），即两条 fail-open
+  洞，登记为看板 NF-1 / ISSUE #5598，修不修判定语义属 owner（AGENTS 2.1/3.2 + #5595）。'
+- selftests 用的是行为判据：clean_rc=0 且**把同一份检测器致残后 selftest 必须翻红**（neutered_selftest_rc=1），探针自己解析
+  NEUTERED_SELFCHECK_RC= 取值，不信夹具退出码。三道门禁（check_commit_message / check_coverage_single_implementation
+  / check_gate_test_integrity）全部 OK ⇒ 它们的自带自测是 load-bearing 的。
+- mutation-selftest：先要求台账基线 findings=0（基线不干净时臂的战果不可归因，探针直接失败），随后 11 臂 ok=11 bad=0：M1–M10
+  打在台账语义上，BA1 打在 selftests 行为判据上（只打印 rc=0、什么都不破坏的假夹具必须让判据 NOT-OK）。
+- 门禁分母未动：gate_registry 报 check_n=168 / catalog_rows=168 / fails=0；本轮没有新增门禁、没有改阈值或跳过开关，新工具命名
+  probe_* 且住在 audit/v4.1.0/ 下，不进 scripts/gate、不进 STAGE_CONFIG 阶段清单。
+- 自指度量当期取值：docs410 从 75 变 76（本 run 新增了 NEG_FIXTURE_PROGRAM 报告），claims_hits 仍是 1146（报告刻意不写那三个宣称标记词，见报告
+  §6）；neg_fixture_n=23 仍是「门禁脚本源码里出现关键字」的口径，不是夹具覆盖率；audit_runs=10、audit_manifests=23、audit_manifests_runs=17
+  随归档本身漂移，不能作为进度。
+- 取证 run audit/v4.1.0/runs/20261105-negfix-001 原样保留：它失败在命令 004，原因是第一版 selftests 判据按输出形状猜「有没有负向断言」，误判两道门禁；那是判据的缺陷，不是门禁的缺陷。
+- 看板 P1-3 记「待复核」不记完成：44 条 pending-fixture 未做（21 runtime / 12 cargo / 7 external /
+  3 composite / 1 static），且 CI 侧受 IL-9（runner-03 缺镜像）限制，本 run 的本地证据不等于 CI 证据。

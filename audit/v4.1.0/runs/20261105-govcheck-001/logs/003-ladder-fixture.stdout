@@ -1,0 +1,50 @@
+[1] parse_verdict
+  OK   plain json
+  OK   fenced json
+  OK   prose-wrapped json
+  OK   garbage => None (abstain)
+  OK   wrong enum => None
+[2] R1 family independence
+  OK   two same-lineage seats must NOT constitute independent corroboration
+  OK   rev_R1: relaxing family count changes the outcome
+  OK   two distinct families agree REAL => REAL
+  OK   two qwen serving stacks must NOT count as two independent experts
+[3] R2 abstention
+  OK   a seat voting INCOMPLETE blocks the aggregate
+  OK   rev_R2: removing the abstaining seat restores a conclusion
+  OK   transport fault => abstention => INCOMPLETE (never REAL/FALSE_POSITIVE)
+  OK   unparseable verdict => INCOMPLETE
+  OK   empty content w/ finish_reason=length is an abstention
+  OK   empty content w/ finish_reason=stop is also an abstention
+[4] R3 false-positive requires a passing reverse-mutation fixture
+  OK   unanimous FALSE_POSITIVE without fixture must NOT greenlight the gate
+  OK   a FAILING fixture does not count as machine evidence
+  OK   rev_R3: passing fixture flips the outcome
+  OK   seats disagree => INCOMPLETE
+[5] single-session serialization
+  OK   same endpoint is serialized (max concurrency == 1)
+  OK   rev_LOCK: distinct endpoints run in parallel (not a global mutex)
+[6] evidence contract
+  OK   MANIFEST carries source_agent
+  OK   MANIFEST carries source_run
+  OK   MANIFEST carries timestamp_started
+  OK   MANIFEST carries conflict_resolution
+  OK   artifacts hashed
+  OK   tampering an artifact is detectable via MANIFEST hash
+[7] no PASS vocabulary
+  OK   a seat claiming PASS is rejected (PASS is not a legal verdict)
+  OK   aggregate refuses to conclude on vocabulary 'PASS'
+  OK   aggregate refuses to conclude on vocabulary 'pass'
+  OK   aggregate refuses to conclude on vocabulary 'DONE'
+[8] R4 seat calibration
+  OK   a correct seat calibrates 4/4
+  OK   rev_R4: a confidently wrong seat scores 0/4
+  OK   two calibrated distinct lineages => capable
+  OK   same seats un-calibrated => NOT capable
+  OK   a seat that failed calibration stays disqualified in transport-only mode
+  OK   rev_R4: dropping calibration flips capability (calibration is load-bearing)
+  OK   weaker mode is labelled, not silently reported as trust
+  OK   a triage-only seat is never credited for R1 lineages
+  OK   reachable lineages are still listed separately (transport truth)
+
+ALL EXPERT-LADDER CHECKS PASS (fixture run, no real seat contacted)

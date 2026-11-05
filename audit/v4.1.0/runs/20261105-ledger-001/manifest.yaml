@@ -1,0 +1,161 @@
+schema_version: 1
+run_id: 20261105-ledger-001
+source_agent: mcode-macmini
+frozen_commit: 2f415c18ee31ef61c52b062478c527980bb1f1fc
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: ledger-verify-current
+  name: 当期(B 代)台账自洽：rows=110==当期 open==有分诊行，等级由 family+ladder 规则重算，L3a/L3b 指纹与总哈希可对上
+  cmd: python3 audit/v4.1.0/verify_ledger.py --label B
+  cwd: .
+  timeout_sec: 300
+- id: ledger-verify-legacy-A
+  name: 历史(A 代，106 条快照)台账仍各自自洽 rc=0；并存不覆盖，避免用旧快照冒充当期
+  cmd: python3 audit/v4.1.0/verify_ledger.py --label A --ledger-md docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05.md
+    --ledger-jsonl docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05.jsonl --triage docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-05.jsonl
+    --triage docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl
+  cwd: .
+  timeout_sec: 300
+- id: ledger-mutation-6arms
+  name: verify_ledger 反向变异六臂：CTRL 绿；family 门限放宽/指纹篡改/等级虚报/evidence_hash 篡改/删指纹行 均红
+  cmd: bash audit/v4.1.0/verify_ledger_mutation.sh
+  cwd: .
+  timeout_sec: 600
+- id: ledger-fresh-snapshot-count
+  name: 台账新鲜度：现场重拉 open 与已提交台账条数一致（110==110，差集为空）⇒ 台账过期会变成机器红
+  cmd: python3 audit/v4.1.0/probe_ledger_freshness.py snapshot-count
+  cwd: .
+  timeout_sec: 600
+- id: ledger-replay-rows
+  name: 台账可重放：现场快照+仓内四份分诊件重放 issue_ledger，逐 15 字段与已提交台账 0 差异 ⇒ 分诊结论不可事后改写
+  cmd: python3 audit/v4.1.0/probe_ledger_freshness.py replay-rows
+  cwd: .
+  timeout_sec: 900
+- id: ledger-freshness-selftest
+  name: 新鲜度探针自带反向变异：CTRL 两模式绿；删一行/改 domain 必须红（rc=1 真漂移，rc=2 用法错误不算红）
+  cmd: python3 audit/v4.1.0/probe_ledger_freshness.py mutation-selftest
+  cwd: .
+  timeout_sec: 900
+- id: gate-registry-check
+  name: 登记表一致性：分母仍 168、class 仍 34/51/22/61、fails=0（本轮新加的都是 audit/ 探针，未进门禁分母）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixtures
+  name: 登记表反向夹具（9 条变异必须全部被抓）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-42-rows
+  name: 看板 SSOT 校验：42 行、md 与 jsonl 一致
+  cmd: bash -c 'python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+    | grep -q "42 rows"'
+  cwd: .
+  timeout_sec: 120
+- id: gov-probe-metrics
+  name: 口径度量重放（自指漂移检查）：check_n=168 / claims_hits 现值 / ci_roots / ci_reach（本轮新增台账与探针文件，claims_hits 会漂，需以本
+    run 现值为准）
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 600
+notes: 'IL-4（issue 台账对齐当期快照）取证 + 校验器加固。口径声明：本 run 不含 ci_gate.sh，不构成任何门禁 PASS 声明；run 内出现的 verify/selftest
+  rc=0 只是这些 run 级校验器各自的判据成立，不等于阶段清单通过。
+
+  台账并存口径：A 代（106 条，2026-11-04T20:59Z 快照）是历史审计记录，B 代（110 条，本次快照）才是当期口径；两套都各自自洽，但只有 B 代的行数等于当期 open。台账里
+  94 行 advisory-only、16 行 cross-checked，cross-checked 仅表示同一 issue 被两个血统分别分诊过，不表示该 issue 已修好。
+
+  自指提醒：check_audit_manifest 类判据在 run 进行中会把正在生成的清单自己也数进去（IL-6 未解），本 run 未跑该门禁，故不含该偏差；gov-probe-metrics
+  的 claims_hits 是文件集合的自指函数，本轮新增 4 份台账件与 2 个探针，数值上移属预期，不得引用旧值。'
+results:
+- id: ledger-verify-current
+  started_at: '2026-11-05T02:38:19Z'
+  finished_at: '2026-11-05T02:38:19Z'
+  exit_code: 0
+  stdout_sha256: 04969f1b97ed30682d555fe12a21d19c160dcc5832aef5a21a21b7ca13c2094b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-ledger-verify-current.stdout
+  stderr_path: logs/001-ledger-verify-current.stderr
+- id: ledger-verify-legacy-A
+  started_at: '2026-11-05T02:38:19Z'
+  finished_at: '2026-11-05T02:38:19Z'
+  exit_code: 0
+  stdout_sha256: 9020b92a918af19b7d2464b37fc5d71173c83d62d42dba2e4920214a505b133f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-ledger-verify-legacy-A.stdout
+  stderr_path: logs/002-ledger-verify-legacy-A.stderr
+- id: ledger-mutation-6arms
+  started_at: '2026-11-05T02:38:19Z'
+  finished_at: '2026-11-05T02:38:20Z'
+  exit_code: 0
+  stdout_sha256: 71139e72c20521fdd6f39ebae2e9cc021c5bc65ab36c605356d997422f2ff2e1
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ledger-mutation-6arms.stdout
+  stderr_path: logs/003-ledger-mutation-6arms.stderr
+- id: ledger-fresh-snapshot-count
+  started_at: '2026-11-05T02:38:20Z'
+  finished_at: '2026-11-05T02:38:21Z'
+  exit_code: 0
+  stdout_sha256: 3c9c04cfc78d48a1ee3d82aff51736e22bcac1bd8e9117331a778fcf8ef9f1ed
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-ledger-fresh-snapshot-count.stdout
+  stderr_path: logs/004-ledger-fresh-snapshot-count.stderr
+- id: ledger-replay-rows
+  started_at: '2026-11-05T02:38:21Z'
+  finished_at: '2026-11-05T02:38:22Z'
+  exit_code: 0
+  stdout_sha256: 53e3794771913d8ea55898079587a2d70e8fa40b3c6cff41933d5f1664b68a08
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-ledger-replay-rows.stdout
+  stderr_path: logs/005-ledger-replay-rows.stderr
+- id: ledger-freshness-selftest
+  started_at: '2026-11-05T02:38:22Z'
+  finished_at: '2026-11-05T02:38:27Z'
+  exit_code: 0
+  stdout_sha256: c80d0fd64b6430ac6bf09b9e45eb84f0c16dee46b3d9c57749df43f2c5921826
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-ledger-freshness-selftest.stdout
+  stderr_path: logs/006-ledger-freshness-selftest.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T02:38:27Z'
+  finished_at: '2026-11-05T02:38:28Z'
+  exit_code: 0
+  stdout_sha256: 4a47d60c3dfb73ccf7761477e76c19265dfc8e06557bf9b37116cf20c8221614
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-registry-check.stdout
+  stderr_path: logs/007-gate-registry-check.stderr
+- id: gate-registry-fixtures
+  started_at: '2026-11-05T02:38:28Z'
+  finished_at: '2026-11-05T02:38:31Z'
+  exit_code: 0
+  stdout_sha256: 31f533bffbc9244f2992013bd0f03f82dc22974ccbf228528161dbcd06ec3902
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-registry-fixtures.stdout
+  stderr_path: logs/008-gate-registry-fixtures.stderr
+- id: kanban-42-rows
+  started_at: '2026-11-05T02:38:31Z'
+  finished_at: '2026-11-05T02:38:31Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-kanban-42-rows.stdout
+  stderr_path: logs/009-kanban-42-rows.stderr
+- id: gov-probe-metrics
+  started_at: '2026-11-05T02:38:31Z'
+  finished_at: '2026-11-05T02:38:31Z'
+  exit_code: 0
+  stdout_sha256: 4ec48d6894fadc58393e6db2e06a41e55a6f5b70d47ae09269ec1687f051bf91
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gov-probe-metrics.stdout
+  stderr_path: logs/010-gov-probe-metrics.stderr
+evidence_hash: sha256:502826f24ff34a058da4862a95a67ca2beca56ece49bdfe1f26b18365a20d2dd
+completed_at: '2026-11-05T02:38:31Z'

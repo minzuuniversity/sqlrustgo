@@ -1,0 +1,8 @@
+[OK ] execute produced 3 results :: n=3 (execute rc=1)
+[OK ] execute self exit code follows verdict (FAIL => 1, not 0) :: execute rc=1
+[OK ] command-channel gate actually ran :: state=PASS
+[OK ] the currently-red gate reported as FAIL (not smoothed away) :: state=FAIL
+[OK ] verdict FAIL :: verdict=FAIL
+[OK ] report rc == 1 :: rc=1
+[OK ] counts pass 2 / fail 1 / incomplete 0 :: counts={"PASS": 2, "FAIL": 1, "INCOMPLETE": 0}
+probe_tristate_e2e[mini]: 断言全部成立

@@ -1,0 +1,21 @@
+----- fx14 arm A (uninferable version) rc=1 -----
+==================================================================
+  Stage Gate Check: ALPHA
+  Version: unknown
+  Branch: detached
+  Commit: 9f82eeb777
+  Description: 功能开发阶段 (active feature development, API may change)
+----- end arm A -----
+fx14 arm A: driver evaluated a stage (printed '  Stage Gate Check: ALPHA') with no inferable release line -> FIXTURE-FAIL (it guessed: rc=1)
+----- fx14 arm B rc=1 (first 6 lines) -----
+==================================================================
+  Stage Gate Check: ALPHA
+  Version: v3.9.0
+  Branch: detached
+  Commit: 9f82eeb777
+  Description: 功能开发阶段 (active feature development, API may change)
+----- end arm B -----
+fx14 arm B: resolved '  Version: v3.9.0' -> FIXTURE-FAIL (archived release line)
+fx14 arm B: no evidence written outside docs/releases/v4.1.0/ -> FIXTURE-PASS
+----- fx14 arm C (--version v9.9.9, execute mode) rc=124 -----
+FX14-REVERSE-PAIR-OK: fixture says NOT-OK on the pre-fix driver

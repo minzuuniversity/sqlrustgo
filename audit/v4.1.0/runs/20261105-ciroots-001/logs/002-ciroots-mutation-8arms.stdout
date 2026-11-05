@@ -1,0 +1,10 @@
+ARM CTRL want_rc0=True want_rule=- rc=0 fails=0 ok=1 
+ARM M1-undeclared-workflow want_rc0=False want_rule=R3 rc=1 fails=1 ok=1 R3 磁盘上有但没声明（幽灵执行点未登记）: ['.github/workflows/ghost-new.yml']
+ARM M2-phantom-declaration want_rc0=False want_rule=R2 rc=1 fails=2 ok=1 R2 声明里的文件不存在: .github/workflows/coverage.yml
+ARM M3-banner-stripped want_rc0=False want_rule=R4 rc=1 fails=1 ok=1 R4 archive-only 却没写存档横幅: .github/workflows/coverage.yml
+ARM M4-impostor-md want_rc0=False want_rule=R5 rc=1 fails=1 ok=1 R5 执行目录里有冒充 workflow 的文件: ['.gitea/workflows/ci-test.md']
+ARM M5-reclass-live-as-archive want_rc0=False want_rule=R8 rc=1 fails=2 ok=1 R8 执行目录里的行被改判成 archive-only: .gitea/workflows/gate.yml
+ARM M6-dropped-declaration-row want_rc0=False want_rule=R3 rc=1 fails=2 ok=1 R3 磁盘上有但没声明（幽灵执行点未登记）: ['.gitea/workflows/gate.yml']
+ARM M7-soak-canonical-moved want_rc0=False want_rule=R6 rc=1 fails=1 ok=1 R6 声明头 soak_canonical=.gitea/workflows/z6g4-168h-soak.yml 与行级 canonical=.gitea/workflows/soak_168h.yml 不一致
+probe_ci_roots mutation-selftest: ok=8 bad=0
+probe_ci_roots mutation-selftest: OK (CTRL 绿；M1..M7 均红)

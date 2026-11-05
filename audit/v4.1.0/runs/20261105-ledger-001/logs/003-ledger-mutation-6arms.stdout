@@ -1,0 +1,8 @@
+ARM CTRL want=green got=green rc=0 ok=1
+ARM A-MUT want=red got=red rc=1 ok=1
+ARM B1-MUT want=red got=red rc=1 ok=1
+ARM B2-MUT want=red got=red rc=1 ok=1
+ARM B3-MUT want=red got=red rc=1 ok=1
+ARM B4-MUT want=red got=red rc=1 ok=1
+verify_ledger_mutation: ok=6 bad=0
+verify_ledger_mutation: OK (CTRL green; A/B1/B2/B3/B4 red)

@@ -42,6 +42,10 @@ workflow 文件去数；本模块把它变成**可测量、可 fail-closed** 的
     python3 scripts/gate/gate_executability.py --selftest # 变异自测（A/B/C 三臂）
 
 退出码：0 = 全部有执行点；1 = 有缺失/不可达的门禁。
+
+**调用方契约（P0-7）**：矩阵全局未构建时是 `None`，读取必须经
+`required_script_paths()` / `required_scripts_by_stage()`，未 build 即抛
+`MatrixNotBuilt`。`--selftest` 的 E 臂就是这条契约的反向夹具。
 """
 
 from __future__ import annotations
@@ -192,6 +196,7 @@ def reachable_from_roots(
     # （--dry-run 只逐条打印 `[DRY] <cmd>` 后 continue ⇒ 一个门禁都没跑）。
     # 显式钉 stage 是为了「清单与执行者一一对应」：否则 develop 上的一次调用
     # 就会把 GA 的清单也算成有执行者。
+    # 注意：调用方传进来的 driver_stages 会被这里**覆盖重算**（保留形参只为签名兼容）。
     driver_stages: dict[str, list[str]] = {}
     for meta in steps:
         run = meta["run"]
@@ -220,14 +225,43 @@ def reachable_from_roots(
     if stage and stage in driver_stages:
         # 阶段驱动会执行「它自己那个 stage 的 required_gates 清单」——
         # 清单里的门禁因此也是可达的。只并入**该 stage** 的清单项。
+        _require_built("reachable_from_roots()")
         for rel in ALL_REQUIRED_SCRIPTS_BY_STAGE.get(stage, set()):
             if rel not in seen:
                 seen.add(rel)
     return seen
 
 
-ALL_REQUIRED_SCRIPT_PATHS: set[str] = set()
-ALL_REQUIRED_SCRIPTS_BY_STAGE: dict[str, set[str]] = {}
+ALL_REQUIRED_SCRIPT_PATHS: set[str] | None = None
+ALL_REQUIRED_SCRIPTS_BY_STAGE: dict[str, set[str]] | None = None
+
+
+class MatrixNotBuilt(RuntimeError):
+    """未调用 build_matrix() 就读矩阵 ⇒ 报错，而不是给一个空集。
+
+    P0-7：这两个全局是 `build_matrix()` 里懒填充的。若哨兵是**空集**，
+    漏掉 build 的调用方会「读到空清单」而毫无感觉 —— 于是
+    「清单里每道门禁都有执行点」这类判据会在**空集上真空通过**
+    （0 违例 = 通过），或者把孤儿数虚高成一个看起来像结论的数字。
+    两种都不可接受：前者让门禁永远绿着，后者让度量说谎。
+    """
+
+
+def _require_built(where: str) -> None:
+    if ALL_REQUIRED_SCRIPT_PATHS is None or ALL_REQUIRED_SCRIPTS_BY_STAGE is None:
+        raise MatrixNotBuilt(
+            f"gate_executability: {where} 读取矩阵前必须先调用 build_matrix()"
+        )
+
+
+def required_script_paths() -> set[str]:
+    _require_built("required_script_paths()")
+    return set(ALL_REQUIRED_SCRIPT_PATHS)
+
+
+def required_scripts_by_stage() -> dict[str, set[str]]:
+    _require_built("required_scripts_by_stage()")
+    return {s: set(v) for s, v in ALL_REQUIRED_SCRIPTS_BY_STAGE.items()}
 
 
 def build_matrix() -> dict:
@@ -401,12 +435,46 @@ def selftest() -> int:
                 "        run: bash scripts/gate/check_alpha_gate.sh\n"
             )
 
-        global REPO, STAGE_CONFIG, WORKFLOW_DIR, ALL_REQUIRED_SCRIPT_PATHS
+        global REPO, STAGE_CONFIG, WORKFLOW_DIR
+        global ALL_REQUIRED_SCRIPT_PATHS, ALL_REQUIRED_SCRIPTS_BY_STAGE
         old = (REPO, STAGE_CONFIG, WORKFLOW_DIR)
         REPO = tmp
         STAGE_CONFIG = os.path.join(tmp, "docs/governance/STAGE_CONFIG.yaml")
         WORKFLOW_DIR = os.path.join(tmp, ".gitea/workflows")
-        ALL_REQUIRED_SCRIPT_PATHS = set()
+        ALL_REQUIRED_SCRIPT_PATHS = None
+        ALL_REQUIRED_SCRIPTS_BY_STAGE = None
+
+        # E —— 未 build_matrix() 就读矩阵 ⇒ 必须报错（不能返回空集）
+        try:
+            required_script_paths()
+        except MatrixNotBuilt:
+            print("SELFTEST E: OK（未构建时读矩阵抛 MatrixNotBuilt，不返回空集）")
+        else:
+            print("SELFTEST FAIL: E 臂期望 MatrixNotBuilt，实际返回了空集（fail-open）")
+            return 1
+        try:
+            required_scripts_by_stage()
+        except MatrixNotBuilt:
+            pass
+        else:
+            print("SELFTEST FAIL: E 臂 required_scripts_by_stage() 未报错（fail-open）")
+            return 1
+        # E2 —— 内部路径同样：阶段驱动展开清单前也必须先构建。
+        # 注意本函数会**从 steps 自己重算** driver_stages（调用方传的参数被忽略），
+        # 所以这里喂一条 `check_stage.sh --stage GA`（不带 --dry-run）的 step。
+        try:
+            reachable_from_roots(
+                {},
+                [{"run": "bash scripts/gate/check_stage.sh --stage GA",
+                  "workflow": "wf", "job": "job", "name": "step"}],
+                {},
+                "GA",
+            )
+        except MatrixNotBuilt:
+            print("SELFTEST E2: OK（reachable_from_roots 未构建时同样报错）")
+        else:
+            print("SELFTEST FAIL: E2 臂期望 MatrixNotBuilt，实际静默展开空清单")
+            return 1
 
         # A —— 基线：check_orphan_gate.sh 没有任何执行点 ⇒ 红，且**点名它**
         m = build_matrix()

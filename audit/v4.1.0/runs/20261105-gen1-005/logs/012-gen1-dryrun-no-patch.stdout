@@ -1,0 +1,7 @@
+# v4.1.0 ALPHA 工作看板（SSOT 视图，勿手改正文）
+
+- 看板数据源：`docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl`（45 行）｜本正文由 `kanban_render.py` 同源渲染
+- 分支 `mcode-macmini/governance-kanban-expert-ladder`｜HEAD `f9ce4a65c9`｜STAGE.yaml `stage: ALPHA`｜PR #5593 → `develop/v4.1.0`
+- 状态计数：阻塞 8 / 待复核 15 / 未开始 11 / 完成 11
+- 度量口径（自指，以最近 run 现值为准）：METRICS-SEE-LOG-016
+DRYRUN-OK

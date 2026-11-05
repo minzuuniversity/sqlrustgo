@@ -20,6 +20,22 @@ if [[ ${#manifests[@]} -eq 0 ]]; then
 fi
 
 fail=0
+
+# 反向夹具暴露过的**漏报**：本门禁原先只 glob `*/manifest.yaml`，
+# 于是"有目录、没清单"的运行（iaia410-a06-r1-20261011T073325Z-01df92a5
+# 只有 findings/）被**静默跳过** —— 一条完全无清单的运行从未报过红。
+# 现在按运行命名约定（iaia410-* 与 YYYYMMDD-*）要求：这样的目录必须有 manifest.yaml。
+for base in "${AUDIT_DIR}" "${RUNS_DIR}"; do
+    for sub in "${base}"/*/; do
+        name="$(basename "${sub}")"
+        [[ "${name}" == "runs" || "${name}" == "__pycache__" ]] && continue
+        if [[ "${name}" =~ ^(iaia410-|[0-9]{8}-) ]] && [[ ! -f "${sub}manifest.yaml" ]]; then
+            echo "FAIL: run dir without manifest: ${name}" >&2
+            fail=1
+        fi
+    done
+done
+
 for mf in "${manifests[@]}"; do
     run_id="$(basename "$(dirname "${mf}")")"
     if python3 "${TOOL}" verify --run-id "${run_id}"; then
