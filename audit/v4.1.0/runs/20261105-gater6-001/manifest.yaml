@@ -1,0 +1,345 @@
+schema_version: 1
+run_id: 20261105-gater6-001
+source_agent: omp-macmini
+frozen_commit: a00689bdd4282903c5b2cf2b300b963823540be5
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: prod-storage-gate
+  name: 生产存储门禁 R1–R6（含新增 R6：存储语义声称清单必须被覆盖）
+  cwd: .
+  timeout_sec: 900
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_correctness_tests_production_storage.sh >"$f" 2>&1
+
+    rc=$?
+
+    grep -E "\[PASS\]|\[FAIL\]|=== Result" "$f"
+
+    echo "exit_code=$rc"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "R6 声明了存储语义的" "$f" || s=1
+
+    grep -q "FAIL=0" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: prod-storage-selftest
+  name: 生产存储门禁自带 selftest（6 臂，含 R6 的陈旧清单臂）
+  cwd: .
+  timeout_sec: 900
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_correctness_tests_production_storage.sh --selftest >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "passed: 6" "$f" || s=1
+
+    grep -q "清单里有一条树上没有的声明" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: ex6-failure-accounting
+  name: EX-6 标定账把「超时」与「答错」分开记（四臂，含反向变异）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/ex6_failure_accounting.py >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q ''"checks": 4'' "$f" || s=1
+
+    grep -q ''"not_ok": 0'' "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: honesty-check
+  name: P1-4 门禁 effect 声明与夹具账一致
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/honesty.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: storage-semantics-check
+  name: IL-11 存储语义声称清单一致
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/storage_semantics_claims.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: claims-inventory-check
+  name: P1-5 声明绑定判据：基线之上未绑定的新声明必须为 0
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/evidence_inventory.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: doc-facts-check
+  name: P2-1 文档事实面：索引逐字节一致 + 两个既有门禁成立
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/doc_facts.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gate-registry-check
+  name: 门禁登记表不得漂移
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/gate_registry.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: kanban-rows
+  name: 看板 SSOT 与渲染必须一致（54 行）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "54 rows" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gov-metrics
+  name: 治理度量快照（check_n 必须仍为 168）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    "$PY" scripts/gate/gov_probe.py metrics
+
+    '
+results:
+- id: prod-storage-gate
+  started_at: '2026-11-05T19:13:16Z'
+  finished_at: '2026-11-05T19:13:16Z'
+  exit_code: 0
+  stdout_sha256: 3b84f4aa6e52c5814547abe99576577f8ace5fb36ef21952d582af3e0799dbda
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-prod-storage-gate.stdout
+  stderr_path: logs/001-prod-storage-gate.stderr
+- id: prod-storage-selftest
+  started_at: '2026-11-05T19:13:16Z'
+  finished_at: '2026-11-05T19:13:17Z'
+  exit_code: 0
+  stdout_sha256: ad677eb9ad41374556c0cefe00e776f5763b96e686db10a028c569571634a966
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-prod-storage-selftest.stdout
+  stderr_path: logs/002-prod-storage-selftest.stderr
+- id: ex6-failure-accounting
+  started_at: '2026-11-05T19:13:17Z'
+  finished_at: '2026-11-05T19:13:17Z'
+  exit_code: 0
+  stdout_sha256: 2d694c824ddafa7a126e50ee9289de921f81e4c60b7afd0806a1ce01b92c8480
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ex6-failure-accounting.stdout
+  stderr_path: logs/003-ex6-failure-accounting.stderr
+- id: honesty-check
+  started_at: '2026-11-05T19:13:17Z'
+  finished_at: '2026-11-05T19:13:17Z'
+  exit_code: 0
+  stdout_sha256: 138d8f3efe9a5f23955998726093f785cd8bd1486aef6b600ec6860abb3d14af
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-honesty-check.stdout
+  stderr_path: logs/004-honesty-check.stderr
+- id: storage-semantics-check
+  started_at: '2026-11-05T19:13:17Z'
+  finished_at: '2026-11-05T19:13:17Z'
+  exit_code: 0
+  stdout_sha256: b8274f265a612325f3c36fba22a595f891492868357e9203f783426ab5b665d5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-storage-semantics-check.stdout
+  stderr_path: logs/005-storage-semantics-check.stderr
+- id: claims-inventory-check
+  started_at: '2026-11-05T19:13:17Z'
+  finished_at: '2026-11-05T19:13:17Z'
+  exit_code: 0
+  stdout_sha256: eff2a7c2d45072067a11dc0aa8af231521b17f1c06629fb35c9afa96e4039c61
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-claims-inventory-check.stdout
+  stderr_path: logs/006-claims-inventory-check.stderr
+- id: doc-facts-check
+  started_at: '2026-11-05T19:13:17Z'
+  finished_at: '2026-11-05T19:13:17Z'
+  exit_code: 0
+  stdout_sha256: a69f64c69edc636ba0d815016a02f1b1ddc45a80d00d74bdeedf482938f807d0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-doc-facts-check.stdout
+  stderr_path: logs/007-doc-facts-check.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T19:13:17Z'
+  finished_at: '2026-11-05T19:13:18Z'
+  exit_code: 0
+  stdout_sha256: 1304125a1fdbeab3535a6d78b44af22278f9f2896cc7b7a80afafddd6ed5fad3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-registry-check.stdout
+  stderr_path: logs/008-gate-registry-check.stderr
+- id: kanban-rows
+  started_at: '2026-11-05T19:13:18Z'
+  finished_at: '2026-11-05T19:13:18Z'
+  exit_code: 0
+  stdout_sha256: f8dcfddf1d85f36effab50354a0bd55e04f3f519180919e5173afe1d211d2122
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-kanban-rows.stdout
+  stderr_path: logs/009-kanban-rows.stderr
+- id: gov-metrics
+  started_at: '2026-11-05T19:13:18Z'
+  finished_at: '2026-11-05T19:13:18Z'
+  exit_code: 0
+  stdout_sha256: 0d87306c774bd846aac46f8bb869b6c3531f9cc5184002c81dc1f8243efb0754
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gov-metrics.stdout
+  stderr_path: logs/010-gov-metrics.stderr
+evidence_hash: sha256:9b61f7167942c5cd129ab8f44db39c5fc69e582ef531438d62c50363d3a6d192
+completed_at: '2026-11-05T19:13:18Z'
+notes:
+  purpose: IL-11 后半句（生产存储门禁新增 R6，覆盖测试侧）与 EX-6 改动 1（标定账分开记「超时」与「答错」）的归档证据
+  commands: 10 条，全部 exit 0
+  key_results:
+    prod_storage_gate: R1–R6 全成立（PASS=6 FAIL=0）；R6 = 清单里每个声明了存储语义的测试都必须被生产存储链覆盖
+    prod_storage_selftest: 6 臂全过，含新臂「造一份『清单里有、树上没有』的陈旧清单 ⇒ R6 变红」
+    ex6_failure_accounting: 四臂全过：超时 ⇒ unavailable=4/wrong_answer=0；答错 ⇒ wrong_answer=4/unavailable=0；部分对
+      ⇒ score=1/wrong_answer=3；把源码改回旧写法 ⇒ 同一超时场景与真实现不同（检出）
+    honesty_check: 'P1-4：168/168 门禁都有 effect 声明，honesty: OK'
+    storage_semantics_check: IL-11：28 份测试声明了存储语义，清单与标记一致
+    claims_inventory_check: P1-5：claims_hits=1144 claims_ref=93，基线之上新增未绑定声明 0 条
+    doc_facts_check: P2-1：索引逐字节一致；接进来的两个既有门禁都成立
+    gate_registry_check: 门禁登记表不得漂移
+    kanban_rows: 看板 54 行，SSOT 与渲染一致
+    gov_metrics: 治理度量快照；check_n 仍为 168（分母未动）
+  measurement_notes: 本 run 的命令都把**期望**编码进断言（期望红就断言红），因此命令自身 exit 0 —— run 记录的是「断言是否成立」，不是「工具返回什么」。
+  self_reference_note: 本 run 目录自身在执行期间未提交 ⇒ 按 IL-6 的新口径（门禁按已提交树枚举）它不在判定范围内；提交后它会被纳入，历史判据未放宽。
+  known_limitation: 本 run 不含 ci_gate.sh，不构成门禁通过声明。CI 侧第二血统复核被 IL-9（runner-03 缺镜像）挡住。
