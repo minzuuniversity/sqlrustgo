@@ -21,10 +21,20 @@ STATUS_WORDS = ("advisory-only", "cross-checked")
 
 
 def load_json(path):
+    """读 issues 快照。**接受 JSON 数组，也接受 JSONL**。
+
+    为什么要 JSONL：仓内禁 `*.json`（交接提示词 §4），而台账要记输入指纹
+    —— 输入必须是**仓内的**文件，否则「重生成后指纹一致」这件事无法复现
+    （旧台账的 issues 输入是个临时文件，指纹对不上任何仓内产物）。
+    """
     if not os.path.isfile(path):
         raise SystemExit(2)
     with open(path, encoding="utf-8") as fh:
-        return json.load(fh)
+        raw = fh.read()
+    stripped = raw.lstrip()
+    if stripped.startswith("["):
+        return json.loads(raw)
+    return [json.loads(ln) for ln in raw.splitlines() if ln.strip()]
 
 
 def load_jsonl(paths):

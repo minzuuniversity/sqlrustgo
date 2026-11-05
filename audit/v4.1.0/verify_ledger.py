@@ -45,7 +45,11 @@ DEFAULT_LEDGER_JSONL = DOCS / "ISSUE_LEDGER_2026-11-05B.jsonl"
 DEFAULT_TRIAGE = [DOCS / "ISSUE_TRIAGE_2026-11-05.jsonl",
                   DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl",
                   DOCS / "ISSUE_TRIAGE_2026-11-05B.jsonl",
-                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05B.jsonl"]
+                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05B.jsonl",
+                  # IL-2：gpt 血统对 35 条 P0 的批量复核（第二个 family）
+                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl",
+                  # IL-2：live 标签下新变成 P0 的 8 条（同为 gpt 血统批量复核）
+                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl"]
 
 FAILS: list[str] = []
 
@@ -129,9 +133,13 @@ def main(argv: list[str] | None = None) -> int:
     m = re.search(r"evidence_hash \| `?(sha256:[0-9a-f]{64})`?", md)
     if not m:
         fail("L3a MD 缺 evidence_hash 行")
-    snapshots = [k for k in recorded if not k.endswith(".jsonl")]
+    # 「issues 快照」按**它不是分诊文件**来认，不按扩展名认。
+    # 仓内禁 `*.json`，所以快照是 `.jsonl`；判据要的是「输入被记了指纹」，
+    # 不是「扩展名长什么样」。
+    triage_names = {p.name for p in triage_files}
+    snapshots = [k for k in recorded if k not in triage_names]
     if not snapshots:
-        fail("L3a MD 缺 issues 快照指纹（应有一条非 .jsonl 的 .json 指纹）")
+        fail("L3a MD 缺 issues 快照指纹（应有一条不属于分诊文件的输入指纹）")
 
     # L3b：总哈希必须能由 MD 自记的输入指纹重算出来（与 issue_ledger.py 同式）
     if m and recorded:
