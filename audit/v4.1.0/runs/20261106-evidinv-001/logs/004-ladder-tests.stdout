@@ -1,0 +1,4 @@
+  OK   a triage-only seat is never credited for R1 lineages
+  OK   reachable lineages are still listed separately (transport truth)
+
+ALL EXPERT-LADDER CHECKS PASS (fixture run, no real seat contacted)
