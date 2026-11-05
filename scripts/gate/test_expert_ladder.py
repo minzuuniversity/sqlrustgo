@@ -245,6 +245,25 @@ def main() -> int:
         hub.set("fake-qwen", content="", finish_reason="stop", ct=5)
         check("empty content w/ finish_reason=stop is also an abstention",
               L.ask(seats["fake-qwen"], "q")["ok"] is False)
+        # EX-7: a bridge can answer HTTP 200 / finish_reason=stop while the page body
+        # is still a UI error placeholder ("无法加载此回复"). That is an abstention.
+        hub.set("fake-qwen", content="无法加载此回复", finish_reason="stop", ct=9)
+        rec = L.ask(seats["fake-qwen"], "q")
+        check("ui-placeholder body w/ finish_reason=stop is an abstention",
+              rec["ok"] is False and (rec.get("error") or "").startswith("placeholder-content"),
+              json.dumps({"ok": rec["ok"], "error": rec.get("error")}))
+        # near-miss placeholder variants are caught too
+        hub.set("fake-qwen", content="Oops! Something went wrong.", finish_reason="stop")
+        check("english placeholder variant is an abstention",
+              L.ask(seats["fake-qwen"], "q")["ok"] is False)
+        # reverse mutation of EX-7: a LONG answer that merely *mentions* the phrase
+        # must stay ok=true, proving the detector is not permanently red.
+        long_answer = V("REAL") + " 说明：此前一次调用曾返回「无法加载此回复」，本轮已重试成功，" \
+                      "以下是基于证据的结论，并给出复现命令与反例夹具路径以备核对。"
+        hub.set("fake-qwen", content=long_answer, finish_reason="stop")
+        rec = L.ask(seats["fake-qwen"], "q")
+        check("CONTROL: long answer quoting the placeholder stays ok",
+              rec["ok"] is True, json.dumps({"ok": rec["ok"], "error": rec.get("error")}))
 
         # --- 4. R3 false-positive needs machine evidence ---------------------
         print("[4] R3 false-positive requires a passing reverse-mutation fixture")
