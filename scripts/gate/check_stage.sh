@@ -126,16 +126,28 @@ detect_version() {
         echo "v${BASH_REMATCH[1]}"
         return
     fi
-    # Fallback: try to read STAGE.yaml from any version
-    local stage_file
-    stage_file=$(find docs/releases -name "STAGE.yaml" -type f 2>/dev/null | head -1)
-    if [[ -n "$stage_file" ]]; then
-        # Extract version from path
-        if [[ "$stage_file" =~ docs/releases/v([^/]+)/STAGE\.yaml ]]; then
-            echo "v${BASH_REMATCH[1]}"
-            return
-        fi
+    # SC-1 (#kanban, 2026-11-05): the fallback used to be
+    #     find docs/releases -name STAGE.yaml | head -1
+    # which is find-order dependent. With 44 release directories in this tree
+    # it resolved an **archived line** (measured on 9f82eeb777: v3.9.0) and
+    # then wrote gate_rc_<commit>_<ts>.log into docs/releases/v3.9.0/logs/ --
+    # a gate decision record for a release line this checkout does not belong
+    # to. A silently wrong version is worse than no version.
+    #
+    # This repo already has one canonical resolver, scripts/gate/
+    # resolve_release_version.sh (ref/branch -> must name an existing
+    # docs/releases/<ver> directory -> newest line holding a STAGE.yaml ->
+    # VERSION file -> else exit 1). Delegating removes the duplicate
+    # implementation instead of adding a third, and its last step already
+    # fails closed.
+    local resolved
+    resolved="$(bash "${SCRIPT_DIR}/resolve_release_version.sh" 2>/dev/null || true)"
+    if [[ -n "$resolved" ]]; then
+        echo "$resolved"
+        return
     fi
+    # Nothing inferable: report it, and let the caller exit INCOMPLETE rather
+    # than evaluate some unrelated release line.
     echo "unknown"
 }
 
@@ -209,7 +221,22 @@ EOF
 fi
 
 # ---- Main logic ----
-VERSION=$(detect_version)
+VERSION=$(detect_version || true)
+if [[ -z "$VERSION" || "$VERSION" == "unknown" ]]; then
+    printf 'INCOMPLETE: cannot determine the release line for this checkout.\n' >&2
+    printf '  Refusing to guess. The old fallback picked the first STAGE.yaml\n' >&2
+    printf '  that find happened to return, which evaluated an archived release\n' >&2
+    printf '  line and logged a gate decision into that release directory.\n' >&2
+    printf '  Pass --version v<X.Y.Z>, or run on a develop|beta|rc|release|hotfix/v* branch.\n' >&2
+    exit 2
+fi
+if [[ ! "$VERSION" =~ ^v[0-9][^/.]*([.][^/.]+)*$ ]]; then
+    # The run log lives under docs/releases/<version>/logs. A version string
+    # containing a slash or a second dot-dot would move evidence out of the
+    # release line it belongs to (or out of the repository entirely).
+    printf 'INCOMPLETE: version %s cannot be bound to a docs/releases/<version> log directory\n' "$VERSION" >&2
+    exit 2
+fi
 STAGE=$(detect_stage "$VERSION")
 
 # Read stage config
@@ -278,7 +305,15 @@ CARRIER_ENFORCED="$(echo "$STAGE_INFO" | python3 -c "import json,sys; print('tru
 # that directory — so the required evidence chain could not be committed by
 # construction. The log name follows docs/governance/GATE_CONDITIONS.md:
 # `logs/gate_<stage>_<commit>_<timestamp>.log`.
+# SC-1: the log directory is bound to the resolved version, and the binding is
+# machine-checked. Everything above guarantees VERSION names an existing
+# docs/releases/<ver> directory, so evidence can no longer land in another
+# release line's logs/.
 LOG_DIR="docs/releases/${VERSION}/logs"
+if [[ ! -d "docs/releases/${VERSION}" ]]; then
+    printf 'INCOMPLETE: docs/releases/%s does not exist; log target is unbound\n' "$VERSION" >&2
+    exit 2
+fi
 RUN_LOG=""
 if [[ "$DRY_RUN" != true ]]; then
     mkdir -p "$LOG_DIR/gates"
