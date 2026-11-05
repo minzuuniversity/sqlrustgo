@@ -1,3 +1,7 @@
+# ARCHIVE-ONLY — 仅存档、不执行
+# Gitea Actions 只读 .gitea/workflows/，本文件在这套 CI 上永不运行。
+# 保留理由：v3.x 之前 GitHub 镜像的历史配置。把本文件当作「CI 已覆盖」的证据无效。
+# 机器核对：docs/releases/v4.1.0/CI_EXECUTION_ROOTS.jsonl + audit/v4.1.0/probe_ci_roots.py
 name: R-Gate v3.8.0 — 5-Dimension Integrated Gate
 
 # v3.8.0 modernized gate system to 5 dimensions (D1-D5).
