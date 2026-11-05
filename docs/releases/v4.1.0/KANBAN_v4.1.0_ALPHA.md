@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：待复核 21 / 完成 31 / 阻塞 10 / 合计 62
+- 台账计数：待复核 21 / 完成 32 / 阻塞 10 / 合计 63
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 | 来源 |
 |---|---|---|---|---|---|---|
@@ -72,6 +72,7 @@
 | ENG-6 | #5409 INSERT 的列名列表不被校验：未知列名静默写入 NULL 行 | 完成 | `INSERT INTO t (c0) VALUES (1)`（t 无 c0 列）必须报 1054/42S22，且**不得留下任何行**；合法列名列表照常工作 | 修复 4b9e25048c（execute_insert/execute_insert_clustered 分叉前统一校验，用已有的 SqlError::ColumnNotFound）；回归 tests/integration/dml/insert_column_validation_5409.rs → 7 passed；反向变异（去掉校验）⇒ 3 条转红 | - | ISSUE #5409 |
 | ENG-7 | #5527 LOAD DATA 不检查重复键：有主键的表重复导入静默追加 | 完成 | 有键表重复导入必须报 1062（消息含 `Duplicate entry` 与键名）且行数不翻倍；无键表仍追加；键互异不误报 | 修复 156c4d6771（check_duplicate_keys + MySqlError::Coded 变体 + 失败后排空客户端剩余内容包）；回归 crates/mysql-server/tests/load_data_duplicate_key_5527.rs → 4 passed；反向变异 ⇒ 2 条转红 | - | ISSUE #5527 |
 | ENG-8 | #5381 仓库内明文 Gitea 凭据（脚本/文档）—— 仓库侧收敛 + 轮换指引 | 阻塞 | 脚本无明文凭据、env 优先、取不到即失败（rc≠0）；文档无凭据字面量；门禁 check_no_hardcoded_secrets.sh 阻止再次进入；**旧 token 在服务端失效** | 仓库侧已核对通过（凭据 SSOT = scripts/sync/gitea_credential_common.sh 的 C1–C4；实测无凭据时 resolve rc=1 且不打印；门禁已接进 CI：.gitea/workflows/ci.yml:298；轮换指引已写入 scripts/sync/README.md 的 Credential rotation 一节，提交 7882612d31） | owner —— 轮换必须在 Gitea 服务端删除旧 token（实测该 token 现在仍有效：GET /api/v1/user → HTTP=200）；仓库侧无法代做 | ISSUE #5381 |
+| ENG-9 | #5394 LEFT OUTER JOIN 的 ON 条件过滤会丢弃左表行（TPC-H Q13 少算 71 个客户） | 完成 | ON 条件把右表行全滤掉时，左表行**必须**出现（补 NULL），COUNT 下计 0；ON 全过时行为不变；无过滤时不重复补行 | 修复 ca9a72d455（matched 带出处，ON 过滤后由存活行反推匹配集合）；回归 tests/integration/sql/left_join_on_filter_5394.rs → 5 passed，反向变异 ⇒ 2 条转红；**TPC-H 层面** Q13: MATCH (rows=23)（fixture 与 CI 同一份）；#5394 的已知差异登记已作废 | - | ISSUE #5394 |
 <!-- LEDGER:END -->
 
 状态词汇只有五种（`未开始/进行中/待复核/完成/阻塞`）。"完成"= 做完**且**证据已归档；
