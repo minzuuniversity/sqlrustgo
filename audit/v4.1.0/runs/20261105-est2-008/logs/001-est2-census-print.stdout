@@ -1,0 +1,1 @@
+{"kind": "issue_summary", "open_total": 112, "pages": 3, "priority": {"priority/p0": 57, "priority/p1": 53, "priority/p2": 2}, "cost": {"cost/t0": 24, "cost/t1": 65, "cost/t2": 23}, "cap": {"cap/analysis": 3, "cap/architecture": 1, "cap/benchmark": 1, "cap/build": 44, "cap/docs": 2, "cap/governance": 25, "cap/refactor": 2, "cap/review": 7, "cap/test": 27}}

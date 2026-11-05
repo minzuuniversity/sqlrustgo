@@ -1,0 +1,18 @@
+{
+ "seat": "flash-next-252",
+ "family": "qwen-strata",
+ "lineage": "qwen",
+ "endpoint": "http://192.168.0.252:8001/v1/chat/completions",
+ "model": "qwen3.8-flash-next-iq3_s",
+ "requested_at": "2026-11-05T15:33:07Z",
+ "prompt_sha256": "sha256:f77c82400a00d23b8333ed9dc0390d1acbeb09be88a7ae142ab6771548948489",
+ "max_tokens": 600,
+ "ok": true,
+ "content": "反向夹具补全与门禁重构被严重低估，因需独立设计变异测试而非简单配置。CI 串行席位扩容被忽略，高并发下验证墙钟将线性阻塞合并吞吐。\n估: 140-180 人日 / 6-8 周",
+ "reasoning_chars": 0,
+ "finish_reason": "stop",
+ "completion_tokens": 63,
+ "prompt_tokens": 374,
+ "latency_s": 10.92,
+ "output_sha256": "sha256:f3b33d1434802de1a42c6c70e34ef8d68937a0d16630172b81559aae8d714721"
+}
