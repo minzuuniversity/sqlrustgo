@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：未开始 9 / 待复核 16 / 完成 13 / 阻塞 8 / 合计 46
+- 台账计数：未开始 8 / 待复核 17 / 完成 13 / 阻塞 8 / 合计 46
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 |
 |---|---|---|---|---|---|
@@ -25,7 +25,7 @@
 | P1-2 | capability_claims.py：真 CLI+真 MySQL+真落库+崩溃重启读回+备份恢复逐值比对 | 未开始 | 把生产存储换成 MemoryStorage ⇒ 必须红；只 Mock 的测试不得支撑『已验证』声明 | - | - |
 | P1-3 | 负向夹具扩面：台账 NEG_FIXTURES_v4.1.0.jsonl 对 55 道 scope 门禁（阶段清单 34 道 + 名字含 SOAK/PERF/COMPAT/TPCH/STABILITY/CRASH/UPGRADE/CHAOS/QPS/SYSBENCH 的全部）逐行记账，夹具脚本在 audit/v4.1.0/neg/fx*.sh | 待复核 | scope 每道门禁恰好一行；mutation-verified 必须给出在 scratch 工作树里把真实门禁跑红的夹具+run；selftest-verified 必须实跑 --selftest；不可证伪必须写 reason 且附表征夹具证据；其余必须 pending-fixture 带 target+关闭计划。falsifiable_now 只报实测值，不许凑数 | 台账 57 行(scope 55 + 2 条 scope 外加测)，kind: mutation-verified 9 / selftest-verified 3 / unfalsifiable 1 / pending-fixture 44 => falsifiable_now 12/55。夹具 14 条(fx01-fx14)。生成器已进仓 audit/v4.1.0/gen_neg_ledger.py（台账可从干净检出复现）。fx14 新增：证明阶段驱动 fail-closed，且同一夹具打修复前提交三臂全部判 NOT-OK。反向变异 11 臂(M1-M10 台账语义 + BA1 判据臂)见归档 run。两条 fail-open 表征夹具 fx09/fx10 见 NF-1/#5598 | P0-1 |
 | P1-4 | 每道门禁写 effect + honesty.py 核对声明与夹具一致 | 未开始 | 声称能抓 X 但没有 X 的夹具 ⇒ 红 | honesty.json 见 audit/v4.1.0/runs/20261104-govprobe-001 | P1-3 |
-| P1-5 | evidence_inventory.py：§1.4 刷新后的处数 PASS 声明分级绑定 run | 未开始 | 未绑定的新声明 ⇒ 红 | claims_hits=1123 claims_ref=0（22:05 快照 1098） 见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
+| P1-5 | evidence_inventory.py：§1.4 刷新后的处数 PASS 声明分级绑定 run | 待复核 | 未绑定的新声明 ⇒ 红 | 工具 audit/v4.1.0/evidence_inventory.py（探针/夹具，不是门禁，不进 STAGE_CONFIG，分母 168 不动）。口径与 gov_probe 的 claim_re 逐字一致（两边 claims_hits 都是 1144），run id 命名与 check_audit_manifest.sh 的 RUN_RE 一致。按 markdown 小节分级：同小节内有 run id / audit run 目录 / evidence 文档 ⇒ bound，否则 unbound。实测 claims_ref 0 -> 93（1144 处声明中 bound 93 / unbound 1051，绑定率 8.13%）；最刺眼的是 GA_GATE_REPORT.md 71/71 与 RELEASE_GATE_CHECKLIST.md 53/53 全未绑定。台账 docs/releases/v4.1.0/CLAIMS_BINDINGS.jsonl（21 小节 93 处）与 CLAIMS_INVENTORY.jsonl（59 行基线）。判据只卡增量：新文档带未绑定声明 ⇒ 红；已有文档未绑定数上升 ⇒ 红；下降或不变 ⇒ 永远不红。反向变异四臂：M1 新文档无出处 ⇒ rc=1（未绑定 1051->1052）；M2 新文档同小节引用 run 20261105-lb1-006 ⇒ rc=0 且 live_bound 93->94；M3 已有文档追加无出处声明 ⇒ rc=1（41->42）；M4 撤销 ⇒ rc=0。M2 首次跑是红的，抓出 run id 后缀位数写错的 bug（bound 少算 21 处），已修。报告 docs/releases/v4.1.0/P15_CLAIM_RUN_BINDING_2026-11-05.md。未闭环、因此只到待复核：1051 处历史存量未绑定声明需 Owner 定清算方式（逐份补 run 还是统一加「文档声称」标注后剔出口径）；bound 是弱绑定（同小节提到 run），强绑定需要 run 的 finding 与文档结论一一对应；CI 侧第二血统复核被 IL-9 挡住 | - |
 | P2-1 | 文档事实面：doc_stamp/doc_freshness/doc_path_claim_check/gen_doc_index 移植接入 | 未开始 | 悬空路径 0；生成物『写盘口径』==『核对口径』（墙钟时间不得进比对域） | - | - |
 | P2-2 | 目录策略机器化（顶层 45 个 .md、bench/benches/benchmarks 等归位） | 未开始 | DIRECTORY_POLICY.md 已有规则，缺执行点；新增违规 ⇒ 红 | topmd=45 见 audit/v4.1.0/runs/20261104-govprobe-001/logs/001-gov-metrics.stdout | - |
 | ING-1 | 继承缺口 V400-09：168h SOAK 无 FINAL_REPORT | 阻塞 | 存在带 run id 的 FINAL_REPORT；否则不得销账 | docs/releases/v4.1.0/STAGE.yaml known_gaps.V400_09_soak | owner（长时程运行需要机器排期） |
