@@ -33,6 +33,50 @@ AUDIT_DIR="${REPO_ROOT}/audit/v4.1.0"
 RUNS_DIR="${AUDIT_DIR}/runs"
 TOOL="${AUDIT_DIR}/audit_run.py"
 
+# ---------------------------------------------------------------------------
+# 解释器选择：门禁的每一次 verify 都靠 audit_run.py，而 audit_run.py 需要
+# PyYAML（读 manifest.yaml）。本机 `python3` 可能指向**没有 PyYAML** 的解释器
+# （实测：homebrew python 3.15 无 yaml，/usr/bin/python3 3.9.6 有）。
+#
+# 改前的问题（改前漏什么）：
+#   解释器缺 yaml ⇒ 每一次 verify 都抛 ModuleNotFoundError ⇒ 门禁把这些
+#   **崩溃**当成「证据不可复核」，于是 21 个本来干净的已提交 run 全部变红。
+#   更糟的是红数随 shell 的 PATH 变：同一份代码、同一���提交，
+#   一个 shell 给 7 条红，另一个给 28 条 —— 判据不可复现，
+#   而且那 21 条红是**归因错误**（不是证据有问题，是环境有问题），
+#   读者无法把「7 条已知红」与「28 条红」对上账。
+#   这与 IL-3 / IL-10 是同一族：把「环境不具备」当成「能力不足」。
+#
+# 改后多报什么：**不多报任何一条证据红**。
+#   解释器可用时行为逐字不变（仍是那 7 条历史红）。
+#   解释器不可用时**明确报一条「无法判定」**并 exit 1（仍然 fail closed），
+#   而不是伪造 N 条「证据不可复核」。
+# ---------------------------------------------------------------------------
+PY=""
+if [[ -n "${SQLRUSTGO_GATE_PYTHON:-}" ]]; then
+    # 显式指定优先：调用方指名了解释器，就**不要**静默换掉它。
+    # 指名了却用不了 ⇒ 明确报「无法判定」，不伪装成证据红。
+    PY="${SQLRUSTGO_GATE_PYTHON}"
+    if ! "${PY}" -c 'import yaml' >/dev/null 2>&1; then
+        echo "FAIL: SQLRUSTGO_GATE_PYTHON=${PY} cannot import yaml —" \
+             "cannot judge committed audit runs; refusing to pass" >&2
+        exit 1
+    fi
+else
+    for cand in python3 /usr/bin/python3 python3.14 python3.13 python3.12 python3.11 python3.10; do
+        if command -v "${cand}" >/dev/null 2>&1 && "${cand}" -c 'import yaml' >/dev/null 2>&1; then
+            PY="${cand}"
+            break
+        fi
+    done
+    if [[ -z "${PY}" ]]; then
+        echo "FAIL: no usable Python interpreter (audit_run.py needs PyYAML) —" \
+             "cannot judge committed audit runs; refusing to pass" >&2
+        echo "      set SQLRUSTGO_GATE_PYTHON=<python-with-pyyaml> to fix" >&2
+        exit 1
+    fi
+fi
+
 exclude_runs=""
 selftest=0
 while [[ $# -gt 0 ]]; do
@@ -150,7 +194,7 @@ for mf in "${manifests[@]}"; do
         echo "SKIP: audit run ${run_id} (excluded)"
         continue
     fi
-    if python3 "${TOOL}" verify --run-id "${run_id}"; then
+    if "${PY}" "${TOOL}" verify --run-id "${run_id}"; then
         :
     else
         echo "FAIL: audit run ${run_id} failed evidence verify" >&2
@@ -181,7 +225,7 @@ commands:
 YAML
     echo "=== selftest: 未提交的在飞 run 不得被判红 ==="
     selftest_red=0
-    if python3 "${TOOL}" verify --run-id "${probe_id}" >/dev/null 2>&1; then
+    if "${PY}" "${TOOL}" verify --run-id "${probe_id}" >/dev/null 2>&1; then
         echo "SELFTEST-BROKEN: 未提交的在飞 run 竟然能 verify 通过" >&2
         selftest_red=1
     else
