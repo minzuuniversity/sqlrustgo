@@ -55,14 +55,20 @@ mv "$STASH-version" "$T/VERSION"
 echo "----- fx14 arm A (uninferable version) rc=$A_RC -----"
 sed -n '1,6p' "$A_LOG"
 echo "----- end arm A -----"
-if [ "$A_RC" -eq 0 ]; then
-    echo "fx14 arm A: driver exited 0 with NO inferable release line -> FIXTURE-FAIL (it guessed)"
+# Measured against the pre-fix driver, "rc != 0" was NOT discriminating: the
+# old code carried Version: unknown into the stage lookup and died there with
+# rc=1, so a loose assertion would have called that a pass. The assertion is
+# therefore about the *contract*: refuse before evaluating any stage.
+A_HEAD="$(grep -m1 -E '^  Stage Gate Check: ' "$A_LOG" || true)"
+A_INCOMPLETE="$(grep -c 'INCOMPLETE' "$A_LOG" || true)"
+if [ -n "$A_HEAD" ]; then
+    echo "fx14 arm A: driver evaluated a stage (printed '${A_HEAD}') with no inferable release line -> FIXTURE-FAIL (it guessed: rc=$A_RC)"
     fail=1
-elif [ "$A_RC" -eq 124 ] || [ "$A_RC" -eq 4 ]; then
-    echo "fx14 arm A: timeout/INCONCLUSIVE rc=$A_RC -> not evidence either way"
+elif [ "$A_RC" -ne 2 ] || [ "$A_INCOMPLETE" -eq 0 ]; then
+    echo "fx14 arm A: driver rc=$A_RC / INCOMPLETE lines=$A_INCOMPLETE (want rc=2 and a refusal line) -> FIXTURE-FAIL"
     fail=1
 else
-    echo "fx14 arm A: driver rc=$A_RC (want 2 = INCOMPLETE) -> FIXTURE-PASS (fails closed)"
+    echo "fx14 arm A: driver refused before evaluating any stage (rc=2, INCOMPLETE) -> FIXTURE-PASS"
 fi
 rm -f "$A_LOG"
 
