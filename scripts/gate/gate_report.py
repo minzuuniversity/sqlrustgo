@@ -8,6 +8,9 @@
   C3 重复：同一 gate 在 results 出现两次 => INCOMPLETE(duplicate-result)。
   C4 退出码丢失/自相矛盾：state 与 exit_code 不一致，或 state 不在三态内 => INCOMPLETE(state-unverifiable)。
   C5 未登记名：results/plan 里的门禁不在登记表里 => INCOMPLETE(unregistered-gate)。
+  C7 过期 plan：plan 指纹与当前权威集合指纹不符 => INCOMPLETE(stale-plan)。
+     指纹由 run_gates.py 的 expected_sha256() 写在 <plan>.meta.json，汇总时自动读取；
+     没有这一步，"按旧清单生成的 plan" 也能被判成覆盖齐全，等于给新树发旧绿。
   C6 优先级：只要有任何 INCOMPLETE，总结论就是 INCOMPLETE；否则有 FAIL 即 FAIL；全 PASS 才 PASS。
      理由：一次没跑全的执行**没有资格**给出结论；把"没核对"降级成"只挂了 X 条"，
      会让下一次只修那 X 条然后宣布绿 —— 这正是本仓反复出事的形状。
