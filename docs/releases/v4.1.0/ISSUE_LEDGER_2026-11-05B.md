@@ -12,14 +12,14 @@
 |---|---|
 | source_agent | omp-macmini |
 | source_run | 20261105-il2-001 |
-| timestamp | 2026-11-05T19:09:13Z |
-| evidence_hash | sha256:a2a65e8b2b2ae841275e5381ebe8cb09541dc0368b2516694025a9ffe8a2f912 |
+| timestamp | 2026-11-05T19:56:09Z |
+| evidence_hash | sha256:751fb3b1c95400527b140a47c5c7cba738cdb9bc6831879eda21a1827c89ca88 |
 | conflict_resolution | 单席位行一律 advisory-only；同一 issue 被 >=2 family 分诊才升 cross-checked（本次 59 行升级） |
 
 输入指纹（可用 `shasum -a 256` 复现 evidence_hash）：
 
 - `ISSUE_SNAPSHOT_2026-11-05.jsonl` = `sha256:8c5032f24de3442d42e044cdd69dccbebb7e5216033fd84bb4da24eb9fedc303`
-- `ISSUE_TRIAGE_2026-11-05.jsonl` = `sha256:80afd329fb8b0c89ec600413d688f5410dcd3d94c186a671af6396b8c4a04503`
+- `ISSUE_TRIAGE_2026-11-05.jsonl` = `sha256:bcffc2fc87d9afc8436f288c6bb77cd65c529be3842211d9948c1a4fb388bbae`
 - `ISSUE_TRIAGE_2026-11-05B.jsonl` = `sha256:b7bede1d9c1f2e55b9a6f221c37c9aa7581028a420b181fe41e7be8da44589eb`
 - `ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl` = `sha256:9719244075474f3c50f1e8afa2f2674708434867bed4c59f139b6543ad6c6852`
 - `ISSUE_TRIAGE_CROSSCHECK_2026-11-05B.jsonl` = `sha256:f6b40af40f542e430f009c3f90560096849952997de15621078eb5b45b8948ae`
@@ -38,7 +38,7 @@
 | 优先级 | priority/p0 57 / priority/p1 51 / priority/p2 2 |
 | 功能域 | test-validity 24 / ci-infra 19 / gate 15 / sql-semantics 9 / storage-wal-crash 8 / release-stage 7 / docs-claims 7 / tooling 5 / perf-tpch 5 / coverage 3 / vector-index 3 / conn-lifecycle 2 / security 2 / backup-restore 1 |
 | 可自动化 | auto 37 / needs-human-decision 32 / auto-needs-infra 32 / manual-host 8 / infra-config 1 |
-| 疑似重复 | 1 条 |
+| 疑似重复 | 0 条 |
 
 ## 2. 台账
 
@@ -71,7 +71,7 @@
 | [#5415](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5415) | p0 | perf-tpch | [wire 路径] oracle_g15_tpch_sf01 的 Q22 在 server 崩溃后 36µs 内报 Broken pipe  | TPCH Q22查询在Wire协议下稳定执行 | manual-host | cross-module | large | - |
 | [#5461](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5461) | p0 | gate | [GA 流程] 证据 §7.25.7 把 3 项 GA 门禁标注为「本机未验证（**CI 承接**）」，实测 **CI 也从不调用它们**  | GA门禁清单中特定检查项在CI中的实际执行覆盖 | auto | localized | medium | - |
 | [#5463](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5463) | p0 | sql-semantics | [引擎] GROUP BY 引用未知标识符时不报错，执行器行宽不匹配 panic ⇒ 整个 server 挂掉 | SQL语义校验完整性及服务器稳定性契约 | auto | localized | large | - |
-| [#5466](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5466) | p0 | test-validity | [GA 证据] A04 差分矩阵已入库证据**内部自相矛盾**且**无法从 clean checkout 复现** —— 同一 case 的 | GA 证据链完整性与可复现性契约失效 | human-decision | infra-config | medium | #5389 |
+| [#5466](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5466) | p0 | test-validity | [GA 证据] A04 差分矩阵已入库证据**内部自相矛盾**且**无法从 clean checkout 复现** —— 同一 case 的 | GA 证据链完整性与可复现性契约失效 | human-decision | infra-config | medium | - |
 | [#5491](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5491) | p0 | gate | [门禁] GA-2 的 SOAK 判据只检查「脚手架文件在不在」；`run_ga_soak.sh` 与 `extract_soak_repo | GA-2 声称通过 SOAK 测试，实际仅检查文件存在且无执行脚本 | auto-infra | cross-module | medium | - |
 | [#5509](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5509) | p0 | storage-wal-crash | [引擎] FileStorage 的 DDL 列名匹配整体大小写敏感 —— DROP/MODIFY/SET DEFAULT 都只认「存储时的 | 文件后端与内存后端DDL行为一致性及MySQL兼容语义 | human-decision | cross-module | medium | - |
 | [#5514](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5514) | p0 | conn-lifecycle | [引擎] 30 秒空闲连接回收器把「客户端在算长任务」当成「连接已死」⇒ 合法场景被断连；应改为心跳/更长超时 | 空闲连接回收机制误杀长思考客户端，且无禁用开关 | human-decision | cross-module | medium | - |
