@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/integration/sql/left_join_on_filter_5394.rs (target/debug/deps/left_join_on_filter_5394-61bdf88c0ad4a50f)

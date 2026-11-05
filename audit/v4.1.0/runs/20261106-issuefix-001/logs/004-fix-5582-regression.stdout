@@ -1,0 +1,6 @@
+
+running 1 test
+test helpers_tests::registry_keeps_a_live_shutdown_capable_handle_in_production_form ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 283 filtered out; finished in 0.21s
+
