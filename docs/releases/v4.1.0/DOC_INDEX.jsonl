@@ -30,7 +30,7 @@
 {"bytes": 6301, "file": "IL11_STORAGE_SEMANTICS_CLAIMS_2026-11-05.md", "lines": 118, "sha256": "b91b253fd59178dfadcb36b1aa2d6803693302c61444b8c99b4264fbc07b4335", "stamp_ok": false, "stamped": false}
 {"bytes": 5411, "file": "IL2_CROSS_LINEAGE_P0_2026-11-05.md", "lines": 113, "sha256": "9590a17df4c5dec18d9e71c6ffb94905f60a13841d5c7472445ecd761de6572e", "stamp_ok": false, "stamped": false}
 {"bytes": 9247, "file": "IL3_DUPLICATE_ISSUE_TRIAGE_2026-11-05.md", "lines": 174, "sha256": "ce41b766774d677f16778bb9e202302dfd0b9c5c6dac1752af54806dc56806e3", "stamp_ok": false, "stamped": false}
-{"bytes": 6337, "file": "IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md", "lines": 125, "sha256": "efd6c41549988c9e7258d7884d6aca31048c5d6fab39d45cd0380ae5b071b7f1", "stamp_ok": false, "stamped": false}
+{"bytes": 7570, "file": "IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md", "lines": 145, "sha256": "357d9690c6813ab4c159d76d134243516f488f3799e945ebba1d31c8d06d38f7", "stamp_ok": false, "stamped": false}
 {"bytes": 19129, "file": "INSTALL.md", "lines": 426, "sha256": "132c3fa2b3f07941f5b3b0c6ec3b0647013172c6aa205950c3077b3d6bf175a0", "stamp_ok": false, "stamped": false}
 {"bytes": 17261, "file": "ISSUE-RECOVERY-QUADRATIC-REPLAY.md", "lines": 343, "sha256": "beecebeaf497806fb2ace80107bbe123f472648cd47968843f3c6c39393c96f3", "stamp_ok": false, "stamped": false}
 {"bytes": 21567, "file": "ISSUES_PLAN.md", "lines": 374, "sha256": "6f1cf2cd77bef75c9b82d7ec7f810c1e23e86faed8ab961ddc06d7c8d088452f", "stamp_ok": false, "stamped": false}
