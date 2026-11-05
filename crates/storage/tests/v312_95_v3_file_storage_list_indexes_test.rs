@@ -1,3 +1,4 @@
+// storage-semantics: v312-95-v3-file-storage-list-indexes-test
 //! V312-95 v3 / P3-HINT-001 follow-up regression test:
 //! `FileStorage::list_all_indexes()` must return every index that
 //! was created via `CREATE INDEX`, so the executor's
