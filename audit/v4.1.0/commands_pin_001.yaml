@@ -1,4 +1,3 @@
-commands:
 - id: pin-selftest
   name: handoff_pin 反向变异自检（两臂须各自判别）
   cmd: /usr/bin/python3 audit/v4.1.0/handoff_pin.py --selftest

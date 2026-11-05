@@ -1,0 +1,1 @@
+{"kind": "handoff_pin_verb_probe", "comment_id": 205418, "PUT": 405, "PATCH": 200, "DELETE": 204, "expected": {"PUT": 405, "PATCH": 200, "DELETE": 204}}
