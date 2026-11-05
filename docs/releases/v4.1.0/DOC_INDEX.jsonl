@@ -15,7 +15,7 @@
 {"bytes": 5672, "file": "DEV_PLAN.md", "lines": 121, "sha256": "c90eaab7dc00d02641dd6f6fb037c722d3e8b593381c7af6a07712ba2b368261", "stamp_ok": false, "stamped": false}
 {"bytes": 37248, "file": "EVALUATION_REPORT.md", "lines": 469, "sha256": "23fdf91d7da1dcaeecd914dfcd49086d434c53d43e35a669e1232a651c817643", "stamp_ok": false, "stamped": false}
 {"bytes": 12043, "file": "EVIDENCE_STATUS.md", "lines": 177, "sha256": "5ef1b619781ead08bdd89c2baccf46233fa6687cea81fa7f8b57efe934097290", "stamp_ok": false, "stamped": false}
-{"bytes": 8131, "file": "EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md", "lines": 164, "sha256": "782c3f9b9a4c23a0fda5042d62457150dab711b8f5a4fee5c7b4d2af539494aa", "stamp_ok": false, "stamped": false}
+{"bytes": 8125, "file": "EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md", "lines": 164, "sha256": "b0b39198fe08572231e6d3ddf286e89b1ff3a102aad5f3da5de727e349a4a072", "stamp_ok": false, "stamped": false}
 {"bytes": 62918, "file": "FEATURE_CHECKLIST.md", "lines": 570, "sha256": "e9cd5857ca009dd4a6434d67c7f3daca805bdcb621ffdd7cc00b2847a0c7a6d9", "stamp_ok": false, "stamped": false}
 {"bytes": 35027, "file": "FEATURE_MATRIX.md", "lines": 309, "sha256": "e8e65becac26589ac638290d5581bc93d5810c079de378d133d17fe1450911dd", "stamp_ok": false, "stamped": false}
 {"bytes": 9024, "file": "FILE_STORAGE_WAL_INTEGRATION_AUDIT.md", "lines": 182, "sha256": "5df422e5a208c700723fbab1358b3f1a4771e55f54d5bc0e934c24015c5110e5", "stamp_ok": false, "stamped": false}
@@ -34,7 +34,7 @@
 {"bytes": 21567, "file": "ISSUES_PLAN.md", "lines": 374, "sha256": "6f1cf2cd77bef75c9b82d7ec7f810c1e23e86faed8ab961ddc06d7c8d088452f", "stamp_ok": false, "stamped": false}
 {"bytes": 32976, "file": "ISSUE_LEDGER_2026-11-05.md", "lines": 148, "sha256": "5331de15daa3ba456b0b238a761b5819201efa281766451fd700aafd8f1a6940", "stamp_ok": false, "stamped": false}
 {"bytes": 34494, "file": "ISSUE_LEDGER_2026-11-05B.md", "lines": 154, "sha256": "7a5e18b6669dc035b7e4e72dfab7eb68f0acca102d200767d94bfa5b9a6ae818", "stamp_ok": false, "stamped": false}
-{"bytes": 81596, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 135, "sha256": "8e5e8574465d6f9920fcd11c02741a59e16d6032e7e4663854631d34944e57e9", "stamp_ok": false, "stamped": false}
+{"bytes": 83815, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 135, "sha256": "f147ce32ef05c4321fe7b33a84055bfc3234edf16f765e28d1522460909657d6", "stamp_ok": false, "stamped": false}
 {"bytes": 7898, "file": "LB1_ISSUE_LABEL_TAXONOMY_2026-11-05.md", "lines": 130, "sha256": "48beaabd302723271e23a753c63c7a47bdac49bf8d84ce3c7b534764e8c70f65", "stamp_ok": false, "stamped": false}
 {"bytes": 4052, "file": "LEGACY_ISSUES.md", "lines": 77, "sha256": "1dcf9d29e123e15b1ca1b8af3fcedcb5d43f9476cf5873b550e8f266f8d56ee6", "stamp_ok": false, "stamped": false}
 {"bytes": 27878, "file": "LEGACY_LEDGER_v3.6_to_v4.1.md", "lines": 484, "sha256": "edf34ff0a22540cbda719db2622513169e0fc155d041390251228197dc723e5f", "stamp_ok": false, "stamped": false}
@@ -43,6 +43,7 @@
 {"bytes": 12452, "file": "NEG_FIXTURE_PROGRAM_2026-11-05.md", "lines": 183, "sha256": "2acc7632fa0a09d19876e44b9c0d1111c7f4c2a3566efad81136c559477cddb9", "stamp_ok": false, "stamped": false}
 {"bytes": 14971, "file": "OWNER_REPORT_V4.1.0_2026-11-05.md", "lines": 222, "sha256": "89cabc4b9dc4bbeb07f3c85e8a4a28db74ee5175950322b7b4fa3008bbad843d", "stamp_ok": false, "stamped": false}
 {"bytes": 10140, "file": "P12_CAPABILITY_CLAIMS_2026-11-05.md", "lines": 202, "sha256": "aef1e414c9de8eff9b09f54fbd7a773357b8d3bb023898eb476ee99cd78b7567", "stamp_ok": false, "stamped": false}
+{"bytes": 7079, "file": "P14_GATE_EFFECT_HONESTY_2026-11-05.md", "lines": 127, "sha256": "4d6d68a97d84589e7231abd6050c26e59ec8cc415c3abb0604a9e388a05c89e0", "stamp_ok": false, "stamped": false}
 {"bytes": 7471, "file": "P15_CLAIM_RUN_BINDING_2026-11-05.md", "lines": 148, "sha256": "0db7892a07af85d5ab9c8230c211ce4d3a38d73b93fe8d08807f95328afaa4fc", "stamp_ok": false, "stamped": false}
 {"bytes": 6631, "file": "P21_DOC_FACTS_2026-11-05.md", "lines": 128, "sha256": "106799e3e7c62fac5799da9b0da95574027cc07955dfa97c0267b8fc5b06535d", "stamp_ok": true, "stamped": true}
 {"bytes": 6355, "file": "P22_DIRECTORY_POLICY_2026-11-05.md", "lines": 131, "sha256": "0e09cda2c01920c36a221a5e92ad2d9b60fbd8e7a11e798fb8f48d9d6aeed2dc", "stamp_ok": false, "stamped": false}
