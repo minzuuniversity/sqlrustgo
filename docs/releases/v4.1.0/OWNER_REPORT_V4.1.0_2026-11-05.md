@@ -49,7 +49,7 @@
 | `claims_hits` | 1144 | **1144** | 未动（本轮所有新报告自身声明记号均为 0） |
 | `claims_ref` | **0** | **93** | **0 → 93**（声明开始绑到 run 上了） |
 | 文档声明未绑定 | 1144 | **1051** | −93 |
-| `docs410` | 79 | **86** | 本轮新增 7 份报告 |
+| `docs410` | 79 | **87** | 本轮新增 8 份报告 |
 | `neg_fixture_n` | 23 | **24** | IL-6 门禁自带 `--selftest` |
 
 ## 2. 剩余任务量与人日（**双血统**）
@@ -118,7 +118,8 @@
   本轮只保证不再新增，存量清算需 Owner 定范围。
 - **P1-2 的后半句未做**：把生产存储门禁扩到「所有声称验证存储语义的测试」——
   缺那份声明的权威清单，依赖 P1-4 的 effect 声明（已立 IL-11）。
-- **P2-1（文档事实面）本轮未做**。
+- **P2-1（文档事实面）本轮已做**：新增悬空路径 5 → **0**，文档索引/戳/新鲜度三个能力落地，
+  但存量 35 条坏指针未逐条修、戳未对全部 87 份批量铺（见 `P21_DOC_FACTS_2026-11-05.md`）。
 
 ### 3.3 两条 issue 的结论（本轮查清，可直接裁定）
 
@@ -203,10 +204,10 @@
 
 | 类别 | 文件 |
 |---|---|
-| 工具（探针，不进门禁清单，分母 168 不动） | `audit/v4.1.0/evidence_inventory.py`、`capability_claims.py`、`directory_policy.py`、`il6_selfref_probe.py`、`lb1_arm_count_check.py` |
+| 工具（探针，不进门禁清单，分母 168 不动） | `audit/v4.1.0/evidence_inventory.py`、`capability_claims.py`、`directory_policy.py`、`doc_facts.py`、`il6_selfref_probe.py`、`lb1_arm_count_check.py` |
 | 门禁改动（🟡，附改前漏什么/改后多报什么 + 反向变异） | `scripts/gate/check_audit_manifest.sh` |
-| 台账 | `docs/releases/v4.1.0/CLAIMS_INVENTORY.jsonl`、`CLAIMS_BINDINGS.jsonl`、`CAPABILITY_LEDGER.jsonl`、`DIRECTORY_POLICY_BASELINE.jsonl` |
-| 报告 | `IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md`、`P15_CLAIM_RUN_BINDING_2026-11-05.md`、`IL3_DUPLICATE_ISSUE_TRIAGE_2026-11-05.md`、`EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md`、`P12_CAPABILITY_CLAIMS_2026-11-05.md`、`P22_DIRECTORY_POLICY_2026-11-05.md` |
+| 台账 | `docs/releases/v4.1.0/CLAIMS_INVENTORY.jsonl`、`CLAIMS_BINDINGS.jsonl`、`CAPABILITY_LEDGER.jsonl`、`DIRECTORY_POLICY_BASELINE.jsonl`、`DOC_INDEX.jsonl` |
+| 报告 | `IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md`、`P15_CLAIM_RUN_BINDING_2026-11-05.md`、`IL3_DUPLICATE_ISSUE_TRIAGE_2026-11-05.md`、`EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md`、`P12_CAPABILITY_CLAIMS_2026-11-05.md`、`P22_DIRECTORY_POLICY_2026-11-05.md`、`P21_DOC_FACTS_2026-11-05.md` |
 | 归档 run | `audit/v4.1.0/runs/20261105-capability-001`（16/16 全部 exit 0，`evidence_hash sha256:ce5d717a…`） |
 | 阶段看板 | ISSUE #5592（54 行，`evidence_hash` 与度量口径已内嵌） |
 | 分支 | `omp-macmini/lb1-arm-count-fix` @ `3eb8f250c7`（已推 gitea252） |
@@ -217,5 +218,5 @@
   本报告里任何「通过」都只针对**具体某道判据在具体某次归档 run 里的实测结果**。
 - **没关闭、没合并、没改标签**任何一条线上 issue。
 - **没做代码级合并**两条开发线（见 §5.3）。
-- **没做 P2-1**（文档事实面）与 P1-2 的后半句（IL-11）。
+- **没做 P1-2 的后半句**（IL-11：生产存储门禁扩面，被 P1-4 挡）。
 - **没把 PR #5593 合并**（阶段跃迁属 Owner 权限）。
