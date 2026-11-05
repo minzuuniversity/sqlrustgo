@@ -181,7 +181,23 @@ def cmd_execute(args: argparse.Namespace) -> int:
         n_inc += state == STATE_INCOMPLETE
         print(f"[{state}] {gate}" + (f" ({rec.get('reason')})" if rec.get("reason") else ""))
     print(f"run_gates: executed n={len(plan)} pass={n_pass} fail={n_fail} incomplete={n_inc} -> {results_path}")
-    return 0
+    # execute 自身的退出码必须跟随结论（C6 同一优先级）。
+    # 改前：execute 恒 0 => CI 里只挂 execute 会把"真挂了几项"读成"这一步通过"。
+    # 改后：FAIL => 1，任何 INCOMPLETE => 2，只有全集恰好一次且全 PASS 才 0。
+    own = self_verdict(len(plan), n_pass, n_fail, n_inc)
+    print(f"run_gates: execute self-verdict = {own}")
+    return EXIT_BY_VERDICT[own]
+
+
+def self_verdict(planned: int, n_pass: int, n_fail: int, n_inc: int) -> str:
+    """runner 自指结论：与 gate_report 的 C6 同优先级，防止"记账器自己发绿"。"""
+    if n_inc > 0 or planned == 0:
+        return STATE_INCOMPLETE
+    if n_fail > 0:
+        return STATE_FAIL
+    if n_pass == planned:
+        return STATE_PASS
+    return STATE_INCOMPLETE
 
 
 def main() -> int:
