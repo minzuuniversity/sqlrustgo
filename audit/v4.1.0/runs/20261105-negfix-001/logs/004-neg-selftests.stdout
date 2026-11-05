@@ -1,0 +1,10 @@
+scripts/gate/check_commit_message.sh                       rc=0 selftest_lines=1 neg_assert_lines=1 -> NOT-OK
+=== selftest: the checker must reject a bad commit message ===
+  BAD_SHAPE 655bcc8422af bogus(nope): unknown type
+  BAD_SHAPE 8c2bbded7d65 good subject no type
+  NO_REFS 414b165b1263 feat: good type but no Refs
+PASS: the checker separates shape / Refs / merge-exempt / good
+scripts/gate/check_coverage_single_implementation.sh       rc=0 selftest_lines=0 neg_assert_lines=0 -> NOT-OK
+PASS: the scan finds a direct invocation, finds a listed one, does not flag a caller of the shared helper, and does not flag a tool installation
+scripts/gate/check_gate_test_integrity.sh                  rc=0 selftest_lines=6 neg_assert_lines=0 -> OK
+gate selftests: ok=1 bad=2
