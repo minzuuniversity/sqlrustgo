@@ -62,6 +62,24 @@ PROD_SURFACES = ("FileStorage", "MvccStorage", "WalStorage",
 # 但「只」构造它、却声称验证生产存储语义 ⇒ 是错。
 MEM_SURFACES = ("MemoryStorage", "InMemoryStorage")
 
+# 声明的第二个来源：**文件名本身**。
+#
+# 文件名是作者自己的声明 —— `file_storage_wal_5055.rs` 说它验证的是
+# FileStorage 上的 WAL 语义；`e2e_crash_recovery_proof.rs` 说它验证的是崩溃恢复。
+# 既然声明已经在文件里，就不必再抄一遍到别处，也不必让作者重复声明自己
+# 已经写在文件名上的东西。
+#
+# 只收**明确指涉存储语义**的 token；名字没说的（如 `rollback_undo_test.rs`
+# `admin_coverage_tests.rs`）一律**不**算声明 —— 它们只是碰了存储。
+NAME_TOKENS = ("storage", "mvcc", "wal", "bufferpool", "bplus", "b_plus",
+               "checkpoint", "durability", "persist", "recovery", "recover",
+               "crash", "fsync", "transaction", "txn")
+
+
+def name_declares_storage(stem: str) -> bool:
+    s = stem.lower()
+    return any(tok in s for tok in NAME_TOKENS)
+
 
 def test_files() -> list[Path]:
     roots = [REPO / "tests"] + sorted((REPO / "crates").glob("*/tests"))
@@ -94,9 +112,22 @@ def scan() -> dict[str, dict]:
         text = f.read_text(encoding="utf-8", errors="replace")
         m = MARKER_RE.search(text)
         prod, mem = surfaces_in(text)
+        by = None
+        slug = None
+        if m:
+            slug = m.group(1)
+            by = "marker"
+        # **不**按文件名推导声明 —— 见 NAME_TOKENS 上方的说明：
+        # 试过，两个反例证明它不成立：
+        #   tests/unit/bplus_tree_test.rs —— 名字像存储语义，但它测的是
+        #     AGENTS §1-5 明说 Test-only 的 BPlusTree，不是生产存储实现；
+        #   tests/memory_storage_in_db_5057.rs —— 名字里有 storage，但它
+        #     **故意**测的是内存存储。
+        # 名字不是可靠���声明信号；声明必须由作者显式给出。
         out[str(f.relative_to(REPO))] = {
             "file": str(f.relative_to(REPO)),
-            "declared": m.group(1) if m else None,
+            "declared": slug,
+            "declared_by": by,
             "prod_surfaces": prod,
             "mem_surfaces": mem,
         }
@@ -114,6 +145,7 @@ def cmd_emit(argv: list[str]) -> int:
         lines.append(json.dumps({
             "file": k,
             "slug": v["declared"],
+            "declared_by": v.get("declared_by") or "marker",
             "prod_surfaces": v["prod_surfaces"],
             "mem_surfaces": v["mem_surfaces"],
             "marker": f"// storage-semantics: {v['declared']}",
