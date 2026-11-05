@@ -40,8 +40,13 @@ def registered_names(catalog_path: Path) -> set[str]:
 
 
 def aggregate(plan_rows: list[dict], result_rows: list[dict], expected: list[str],
-              catalog: set[str] | None) -> dict:
+              catalog: set[str] | None, plan_sha: str | None = None) -> dict:
     reasons: list[str] = []
+    from run_gates import expected_sha256
+    live_sha = expected_sha256(expected)
+    if plan_sha and plan_sha != live_sha:
+        reasons.append(f"stale-plan: plan fingerprint {plan_sha[:18]} != authoritative {live_sha[:18]}"
+                       " (plan 是在别的树上生成的，不得拿来给这棵树记账)")
     counts = {STATE_PASS: 0, STATE_FAIL: 0, STATE_INCOMPLETE: 0}
 
     # C5 / C1: 权威集合与 plan 的差集
@@ -95,7 +100,7 @@ def aggregate(plan_rows: list[dict], result_rows: list[dict], expected: list[str
 
     # C6: 优先级
     coverage_broken = any(r.startswith(("coverage-short", "missing-result", "duplicate-result",
-                                        "unregistered-gate")) for r in reasons)
+                                        "unregistered-gate", "stale-plan")) for r in reasons)
     full_pass = (bool(expected) and not reasons and counts[STATE_PASS] == len(expected)
                  and len(result_rows) == len(expected))
     if coverage_broken or counts[STATE_INCOMPLETE] > 0:
@@ -120,6 +125,7 @@ def main() -> int:
     ap.add_argument("--version")
     ap.add_argument("--authoritative-file", help="夹具/离线用：自己给出权威期望集合的 jsonl（每行 {gate}）")
     ap.add_argument("--catalog", help="登记表 jsonl（用于 C5 未登记名核对）")
+    ap.add_argument("--plan-sha", help="plan 生成时记录的权威集合指纹（用于发现 plan 与新树错位）")
     ap.add_argument("--out", help="把汇总写成 jsonl")
     a = ap.parse_args()
 
@@ -133,7 +139,13 @@ def main() -> int:
         expected = [g["gate"] for g in authoritative_gates(a.stage, a.version, repo)]
 
     catalog = registered_names(Path(a.catalog)) if a.catalog else None
-    summary = aggregate(load_jsonl(Path(a.plan)), load_jsonl(Path(a.results)), expected, catalog)
+    plan_sha = None
+    meta = Path(str(a.plan) + ".meta.json")
+    if a.plan_sha:
+        plan_sha = a.plan_sha
+    elif meta.is_file():
+        plan_sha = json.loads(meta.read_text(encoding="utf-8")).get("expected_sha256")
+    summary = aggregate(load_jsonl(Path(a.plan)), load_jsonl(Path(a.results)), expected, catalog, plan_sha)
     line = json.dumps(summary, ensure_ascii=False)
     print(line)
     if a.out:
