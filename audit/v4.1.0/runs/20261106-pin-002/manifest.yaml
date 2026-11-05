@@ -1,0 +1,211 @@
+schema_version: 1
+run_id: 20261106-pin-002
+source_agent: mcode-macmini
+frozen_commit: 0549c76557084ed1f08ca8ee488caccb0de260b2
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: pin-selftest
+  name: 反向变异自检（现在三条臂，M3 专治哈希基）
+  cmd: /usr/bin/python3 audit/v4.1.0/handoff_pin.py --selftest
+  cwd: .
+  timeout_sec: 120
+- id: pin-hash-base
+  name: 线上 pin marker 的哈希基 == 核对器基（且必须不等于旧原始字节基）
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport hashlib, json, pathlib, re, subprocess, sys, urllib.request\n\
+    NL = chr(10)\ndef token():\n    p = subprocess.run([\"git\", \"credential\", \"fill\"],\n        \
+    \               input=b\"url=http://192.168.0.252:3000\" + NL.encode() + NL.encode(),\n          \
+    \             capture_output=True)\n    for line in p.stdout.decode().splitlines():\n        if line.startswith(\"\
+    password=\"): return line.split(\"=\", 1)[1]\n    raise SystemExit(\"no credential\")\nsrc = pathlib.Path(\"\
+    docs/knowledge-loop/handoffs/HANDOFF_2026-11-05_4.1.0_OMP_ONBOARDING.md\")\nraw = src.read_bytes()\n\
+    disk_sha = hashlib.sha256(raw.decode(\"utf-8\").strip().encode(\"utf-8\")).hexdigest()  # 核对器基（strip\
+    \ 后正文）\nraw_sha = hashlib.sha256(raw).hexdigest()                                            # 旧基（原始字节）\n\
+    req = urllib.request.Request(\"http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5592/comments?page=1&limit=50\"\
+    ,\n                             headers={\"Authorization\": \"token \" + token()})\nrows = json.loads(urllib.request.urlopen(req,\
+    \ timeout=40).read().decode())\npins = [r for r in rows if \"HANDOFF-PIN:src=\" in (r.get(\"body\"\
+    ) or \"\")]\nmarker = (pins[0][\"body\"].splitlines()[0] if pins else \"\")\nm = re.search(r\"src_sha256=([0-9a-f]{12})\"\
+    , marker)\ngot = m.group(1) if m else \"\"\nout = {\"kind\": \"pin_hash_base\", \"pin_count\": len(pins),\
+    \ \"marker\": marker,\n       \"pin_marker_sha12\": got, \"checker_base_sha12\": disk_sha[:12], \"\
+    legacy_raw_base_sha12\": raw_sha[:12],\n       \"same_base\": got == disk_sha[:12], \"matches_legacy_base\"\
+    : got == raw_sha[:12]}\nprint(json.dumps(out, ensure_ascii=False))\nif len(pins) != 1 or not got:\n\
+    \    print(\"NOT-OK: 看板 pin 不是一条或 marker 无哈希\", file=sys.stderr); sys.exit(3)\nif got != disk_sha[:12]:\n\
+    \    print(\"NOT-OK: pin marker 的哈希基/文档内容 与仓内 strip 基不一致\", file=sys.stderr); sys.exit(3)\nif got\
+    \ == raw_sha[:12]:\n    print(\"NOT-OK: 仍与旧（原始字节）基同值 ⇒ 该判据无法判别\", file=sys.stderr); sys.exit(3)\n\
+    PYIN"
+  cwd: .
+  timeout_sec: 120
+- id: entry-presence
+  name: '看板 #5592 上恰好一条 HANDOFF-PIN（入口在位）'
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport json, subprocess, sys, urllib.request\nNL = chr(10)\ndef token():\n\
+    \    p = subprocess.run([\"git\", \"credential\", \"fill\"],\n                       input=b\"url=http://192.168.0.252:3000\"\
+    \ + NL.encode() + NL.encode(),\n                       capture_output=True)\n    for line in p.stdout.decode().splitlines():\n\
+    \        if line.startswith(\"password=\"): return line.split(\"=\", 1)[1]\n    raise SystemExit(\"\
+    no credential\")\nreq = urllib.request.Request(\"http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5592/comments?page=1&limit=50\"\
+    ,\n                             headers={\"Authorization\": \"token \" + token()})\nrows = json.loads(urllib.request.urlopen(req,\
+    \ timeout=40).read().decode())\npins = [r for r in rows if \"HANDOFF-PIN:src=\" in (r.get(\"body\"\
+    ) or \"\")]\nprint(json.dumps({\"kind\": \"entry_presence\", \"issue\": 5592, \"comments_total\":\
+    \ len(rows),\n                  \"pin_count\": len(pins), \"pin_ids\": [r[\"id\"] for r in pins],\n\
+    \                  \"pin_markers\": [(r.get(\"body\") or \"\").splitlines()[0] for r in pins]}, ensure_ascii=False))\n\
+    if len(pins) != 1:\n    print(\"NOT-OK: 看板上的 pin 评论不是恰好一条\", file=sys.stderr); sys.exit(3)\nPYIN"
+  cwd: .
+  timeout_sec: 120
+- id: board-body-owner
+  name: 看板正文是谁刷的＋两种「有没有附录」探法对比（朴素子串会误报）
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport json, subprocess, urllib.request\nNL = chr(10)\ndef token():\n\
+    \    p = subprocess.run([\"git\", \"credential\", \"fill\"],\n                       input=b\"url=http://192.168.0.252:3000\"\
+    \ + NL.encode() + NL.encode(),\n                       capture_output=True)\n    for line in p.stdout.decode().splitlines():\n\
+    \        if line.startswith(\"password=\"): return line.split(\"=\", 1)[1]\n    raise SystemExit(\"\
+    no credential\")\nreq = urllib.request.Request(\"http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5592\"\
+    ,\n                             headers={\"Authorization\": \"token \" + token()})\nit = json.loads(urllib.request.urlopen(req,\
+    \ timeout=40).read().decode())\nbody = it.get(\"body\") or \"\"\nmarks = {b: (b in body) for b in\
+    \ (\"mcode-macmini/governance-kanban-expert-ladder\",\n                                  \"omp-macmini/lb1-arm-count-fix\"\
+    , \"develop/v4.1.0\")}\n# 附录判据只归 board_appendix_check.py；这里把两种探法都摊开，说明「朴素子串」会误报\nnaive = \"附录 A\"\
+    \ in body\nheader = \"## 附录 A：交接正文全文\" in body\nprint(json.dumps({\"kind\": \"board_body_owner\",\
+    \ \"issue\": 5592, \"updated_at\": it.get(\"updated_at\"),\n                  \"body_len\": len(body),\
+    \ \"naive_substring_appendix_A\": naive, \"exact_header_appendix_A\": header,\n                  \"\
+    branch_markers_in_body\": marks}, ensure_ascii=False))\nPYIN"
+  cwd: .
+  timeout_sec: 120
+- id: gen-divergence
+  name: 生成器分叉仍在：三条线的行数与 appendix 命中数
+  cmd: "for b in HEAD gitea252/develop/v4.1.0 gitea252/omp-macmini/lb1-arm-count-fix; do\n  f=$(mktemp);\
+    \ git show \"${b}:audit/v4.1.0/gen_kanban_issue.py\" > \"$f\" 2>/dev/null\n  printf '%s lines=%s appendix_hits=%s\\\
+    n' \"$b\" \"$(wc -l < \"$f\")\" \"$(grep -ci appendix \"$f\" || true)\"\ndone"
+  cwd: .
+  timeout_sec: 120
+- id: board-appendix-check
+  name: 三处一致性核对（现值 findings=1：看板缺附录 A，真漂移）
+  cmd: /usr/bin/python3 audit/v4.1.0/board_appendix_check.py
+  cwd: .
+  timeout_sec: 120
+- id: kanban-check
+  name: 看板 render/check（未改看板）
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: kanban-counts
+  name: 看板行数字段（应与 r7/r8 口径一致）
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: gov-metrics
+  name: 分母与度量（check_n 必须仍是 168）
+  cmd: /usr/bin/python3 scripts/gate/gov_probe.py metrics | tail -1 | /usr/bin/python3 -c "import sys,json;d=json.load(sys.stdin);print(d['check_n'],d['claims_hits'],d['docs410'],d['audit_manifests_runs'])"
+  cwd: .
+  timeout_sec: 120
+- id: ledger-verify
+  name: 台账 verify（findings=0、debt 只降不升）
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify
+  cwd: .
+  timeout_sec: 120
+results:
+- id: pin-selftest
+  started_at: '2026-11-05T21:32:10Z'
+  finished_at: '2026-11-05T21:32:10Z'
+  exit_code: 0
+  stdout_sha256: 65b19fa8c156e61cf883c2bd29f4a1641c2adf16c14a321b258ef6293b59f65d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-pin-selftest.stdout
+  stderr_path: logs/001-pin-selftest.stderr
+- id: pin-hash-base
+  started_at: '2026-11-05T21:32:10Z'
+  finished_at: '2026-11-05T21:32:10Z'
+  exit_code: 0
+  stdout_sha256: 441028cf2daa4d00388319af6c3fd72ce51c6ec1ab986bd9f909d7adcb95de99
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-pin-hash-base.stdout
+  stderr_path: logs/002-pin-hash-base.stderr
+- id: entry-presence
+  started_at: '2026-11-05T21:32:10Z'
+  finished_at: '2026-11-05T21:32:10Z'
+  exit_code: 0
+  stdout_sha256: 15513fc75766ab59417633a12f1458ab621fc7e9c2669cee6b1a86db991c8af5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-entry-presence.stdout
+  stderr_path: logs/003-entry-presence.stderr
+- id: board-body-owner
+  started_at: '2026-11-05T21:32:10Z'
+  finished_at: '2026-11-05T21:32:11Z'
+  exit_code: 0
+  stdout_sha256: aa42b6f2570320e37ec5b5506fbb0942dd8cb7d2d19c71f425538455ac9ecea4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-board-body-owner.stdout
+  stderr_path: logs/004-board-body-owner.stderr
+- id: gen-divergence
+  started_at: '2026-11-05T21:32:11Z'
+  finished_at: '2026-11-05T21:32:11Z'
+  exit_code: 0
+  stdout_sha256: 8cdefc237978afc75ec4095340e8340382cb0fa6b3cf9944faa69552c617a3c1
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-gen-divergence.stdout
+  stderr_path: logs/005-gen-divergence.stderr
+- id: board-appendix-check
+  started_at: '2026-11-05T21:32:11Z'
+  finished_at: '2026-11-05T21:32:11Z'
+  exit_code: 1
+  stdout_sha256: 62d24790415fcf4ddd26ff0234e4c643dc07588773bf9c2a2de0b8872a23f78b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-board-appendix-check.stdout
+  stderr_path: logs/006-board-appendix-check.stderr
+- id: kanban-check
+  started_at: '2026-11-05T21:32:11Z'
+  finished_at: '2026-11-05T21:32:11Z'
+  exit_code: 0
+  stdout_sha256: 27ef171d77a1e2fb84db1a776a87e38e201c73d459eebd8ff15a700a07f62973
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-kanban-check.stdout
+  stderr_path: logs/007-kanban-check.stderr
+- id: kanban-counts
+  started_at: '2026-11-05T21:32:11Z'
+  finished_at: '2026-11-05T21:32:11Z'
+  exit_code: 0
+  stdout_sha256: 686b0d155a34160a3e2517381e50fb2e4a81f8100da9c74aa00f908e71b405cd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-kanban-counts.stdout
+  stderr_path: logs/008-kanban-counts.stderr
+- id: gov-metrics
+  started_at: '2026-11-05T21:32:11Z'
+  finished_at: '2026-11-05T21:32:11Z'
+  exit_code: 0
+  stdout_sha256: 4e1df8fc25a53f21d481f459151fa293d7646145c3237650e6da327f09f15003
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-gov-metrics.stdout
+  stderr_path: logs/009-gov-metrics.stderr
+- id: ledger-verify
+  started_at: '2026-11-05T21:32:11Z'
+  finished_at: '2026-11-05T21:32:11Z'
+  exit_code: 0
+  stdout_sha256: ef48c5d80f053dc71759991bc4fe4a7d03365886bc01e53e126e58d56c547957
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-ledger-verify.stdout
+  stderr_path: logs/010-ledger-verify.stderr
+evidence_hash: sha256:c2551bb361bc561abb09e89dcbb2a68b81a8d3dda928db36814ff0407f80a6b7
+completed_at: '2026-11-05T21:32:11Z'
+notes:
+- 本 run 不含 ci_gate / 168 项全量门禁实跑，不构成任何「门禁通过」声明（Owner 专属动作）。
+- 用途：把「哈希基统一」这个修正在**线上对象**上验一遍，不只在本地自检里。log 002 pin_hash_base 实测：看板 pin marker 的 src_sha256=4433323ad2a1，与
+  board_appendix_check 现读的 strip 基 4433323ad2a1 相等（same_base=true），而旧「原始字节」基会是 73b17ac73398（matches_legacy_base=false）⇒
+  这条判据能判别，不是同义反复。
+- log 001 pin-selftest：arms=3 discriminating=3（M1 缺 §0.5 标题、M2 残缺 §0.5、M3 哈希基）；M3 是新加的臂。
+- 'FAIL(1)=board-appendix-check findings=1「看板 #5592 没有附录 A 段」——真漂移未闭，等 HO-2 由 Owner 裁「哪条线的生成器落 develop」。log
+  005 gen-divergence 复算：本线 283 行/appendix 命中 20，develop/v4.1.0 与 omp 线各 236 行/命中 0 ⇒ 对方线结构上带不出附录，我不回刷对抢。'
+- 新证据（写进交接 §10 第 25 条）：log 004 用两种探法对比同一份看板正文——朴素子串「附录 A」命中（naive=true），但核对器要求的精确标题「## 附录 A：交接正文全文」缺席（exact=false）。⇒
+  谁要是拿「正文里有没有附录 A 字样」当判据，会把真漂移读成绿。看板正文现场态：updated_at=2026-11-05T20:40:22Z、29296 字符、三个分支名同时出现（口径是混的）。
+- 过程偏差①：首版 pin-hash-base 夹具漏了 `import json` ⇒ NameError、rc=1，命令**什么都没测到**就红了。这是夹具错，不是判据错；补 import 后同 run
+  id 重跑，前一版 run 目录删除（那次的 evidence_hash=c2551bb361bc… 只存在于会话输出，未入仓）。⇒ 同一条教训（先自证夹具可信）在 §10 已记过，我又犯了一次。
+- 过程偏差②：board-body-owner 首版用朴素子串判「有没有附录」，与核对器判据不同基（见上一条）。已改成两种探法并列，且**判据只归 board_appendix_check.py**，本命令只摊现场。
+- 发布链实测：#5599 正文由 handoff_publish.py --post 5599 刷新（rc=0，31081 字符）；#5592 的 pin 以 mode=update 落在同一条 comment
+  205369（PATCH 幂等，log 003 pin_count=1）⇒ 入口不会越刷越多。
+- 度量未漂移：log 009 check_n=168、claims_hits=1144、docs410=81；log 007/008 看板仍 53 行（未开始 7 / 待复核 19 / 完成 17 /
+  阻塞 10）；log 010 台账 findings=0、debt=1143、claims_ref=1。
+- audit_manifests_runs 由 25→27：run 20261106-pin-001 归档 + 本 run scaffold 进仓所致。这是**证据计数**，不是门禁分母（分母仍是 168，未增删）。
+- 本轮没有任何功能整改、没有新增看板行：HO-2 未裁之前不再往第三条线上加行。
