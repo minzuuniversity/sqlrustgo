@@ -128,6 +128,12 @@ def validate(rows: list[dict], scope: list[str], catalog_gates: set[str]) -> lis
                 src = open(os.path.join(REPO, impl), encoding="utf-8", errors="replace").read()
             if not SELFTEST_RE.search(src):
                 bad.append("NO-SELFTEST-IN-IMPL: %s (selftest_impl=%s)" % (g, impl))
+            sab = r.get("selftest_neg_fixture", "")
+            if not sab or not os.path.isfile(os.path.join(REPO, sab)):
+                bad.append("NO-SELFTEST-SABOTAGE-FIXTURE: %s (a selftest nobody can break is not "
+                           "evidence; cite the fixture that cripples the detector)" % g)
+            elif expect_of(sab) != "selftest-red":
+                bad.append("SELFTEST-SABOTAGE-EXPECT-MISMATCH: %s -> %r" % (g, expect_of(sab)))
             if not evidence_ok(r.get("evidence_run", "")):
                 bad.append("NO-EVIDENCE-RUN: %s claims selftest-verified without a run" % g)
         elif kind == "unfalsifiable":
@@ -220,19 +226,29 @@ def cmd_fixtures(argv: list[str]) -> int:
 
 
 def cmd_selftests(argv: list[str]) -> int:
-    """Run the embedded --selftest of every gate whose ledger row says selftest-verified.
+    """Behavioural verdict for every gate whose ledger row says selftest-verified.
 
-    The tree argument is a scratch worktree: some selftests touch files, so they
-    are never run against the branch checkout.
+    Two conditions, both required. Neither is a guess about output shape:
+
+      (1) the gate's own `--selftest` exits 0 on a clean tree;
+      (2) the row's detector-crippling fixture makes **that same** `--selftest`
+          go red. The probe parses the `NEUTERED_SELFCHECK_RC=` attestation
+          itself; it does not trust the fixture's exit code, because a fixture
+          that cripples nothing would otherwise exit 0 and be believed.
+
+    A "selftest exists" claim that survives (2) means the selftest is
+    load-bearing. One that survives only (1) proves nothing (AGENTS 2.5).
     """
-    tree = None
+    tree = ledger = None
     for i, a in enumerate(argv):
         if a == "--tree" and i + 1 < len(argv):
             tree = argv[i + 1]
+        if a == "--ledger" and i + 1 < len(argv):
+            ledger = argv[i + 1]
     if not tree:
-        print("usage: probe_neg_fixtures.py selftests --tree <scratch-worktree>")
+        print("usage: probe_neg_fixtures.py selftests --tree <worktree> [--ledger <jsonl>]")
         return 2
-    rows = [r for r in load_jsonl(LEDGER) if r.get("kind") == "selftest-verified"]
+    rows = [r for r in load_jsonl(ledger or LEDGER) if r.get("kind") == "selftest-verified"]
     if not rows:
         print("no selftest-verified rows in the ledger")
         return 1
@@ -241,17 +257,20 @@ def cmd_selftests(argv: list[str]) -> int:
         gate = r["gate"]
         proc = subprocess.run(["bash", os.path.join(tree, gate), "--selftest"],
                               capture_output=True, text=True, cwd=tree)
-        out = proc.stdout + proc.stderr
-        arms = len([ln for ln in out.splitlines()
-                    if re.search(r"selftest|fixture|self-test", ln, re.I)])
-        neg = len([ln for ln in out.splitlines() if re.search(r"reject|not detected|expected", ln, re.I)])
-        good = proc.returncode == 0 and arms >= 3
+        clean_rc = proc.returncode
+        sab = r.get("selftest_neg_fixture", "")
+        sab_path = sab if os.path.isabs(sab) else os.path.join(tree, sab)
+        if not os.path.isfile(sab_path):
+            good, detail = False, "clean_rc=%d neutered_selftest_rc=None fixture_rc=None (fixture missing)" % clean_rc
+        else:
+            sp = subprocess.run(["bash", sab_path, tree], capture_output=True, text=True)
+            m = re.search(r"^NEUTERED_SELFCHECK_RC=(\d+)$", sp.stdout + sp.stderr, re.M)
+            nrc = int(m.group(1)) if m else None
+            good = clean_rc == 0 and sp.returncode == 0 and nrc not in (None, 0)
+            detail = "clean_rc=%d neutered_selftest_rc=%s fixture_rc=%d" % (clean_rc, nrc, sp.returncode)
         ok += 1 if good else 0
         bad += 0 if good else 1
-        print("%-58s rc=%d selftest_lines=%d neg_assert_lines=%d -> %s"
-              % (gate, proc.returncode, arms, neg, "OK" if good else "NOT-OK"))
-        if not good:
-            print(out.rstrip()[:1200])
+        print("%-58s %s -> %s" % (gate, detail, "OK" if good else "NOT-OK"))
     print("gate selftests: ok=%d bad=%d" % (ok, bad))
     return 0 if bad == 0 else 1
 
@@ -325,6 +344,22 @@ def _unfalsifiable_as_mutation(rows):
     raise SystemExit("mutation setup failed: no unfalsifiable row")
 
 
+def _selftest_without_sabotage(rows):
+    for r in rows:
+        if r.get("kind") == "selftest-verified":
+            r.pop("selftest_neg_fixture", None)
+            return
+    raise SystemExit("mutation setup failed: no selftest-verified row")
+
+
+def _fake_sabotage_fixture(rows):
+    for r in rows:
+        if r.get("kind") == "selftest-verified":
+            r["selftest_neg_fixture"] = "audit/v4.1.0/neg/sab_does_not_exist.sh"
+            return
+    raise SystemExit("mutation setup failed: no selftest-verified row")
+
+
 CATALOG_GATES = {r["gate"] for r in load_jsonl(CATALOG)}
 
 ARMS = [
@@ -336,6 +371,8 @@ ARMS = [
     ("M6-fake-evidence-run", _fake_evidence),
     ("M7-pending-without-close-plan", _pending_without_close),
     ("M8-unfalsifiable-relabeled-mutation", _unfalsifiable_as_mutation),
+    ("M9-selftest-claim-without-breakable-fixture", _selftest_without_sabotage),
+    ("M10-sabotage-fixture-file-does-not-exist", _fake_sabotage_fixture),
 ]
 
 
@@ -353,7 +390,40 @@ def cmd_mutation_selftest(_argv: list[str]) -> int:
         bad += 0 if good else 1
         print("ARM %-38s findings=%d want>=1 -> %s" % (name, len(findings), "OK" if good else "NOT-OK"))
     print("neg-fixture ledger mutation-selftest: ok=%d bad=%d" % (ok, bad))
-    return 0 if bad == 0 and ok == len(ARMS) else 1
+
+    # BA1 is a behavioural arm: it attacks the *selftests* verdict, not the
+    # ledger schema. An inert fixture (prints rc=0, cripples nothing) must
+    # make the verdict NOT-OK, otherwise the verdict is believing the fixture.
+    inert = _inert_sabotage_fixture()
+    try:
+        path = _tmp_ledger(lambda rows: [
+            r.__setitem__("selftest_neg_fixture", inert)
+            for r in rows if r.get("kind") == "selftest-verified"])
+        rc = cmd_selftests(["--tree", REPO, "--ledger", path])
+    finally:
+        os.unlink(path)
+        os.unlink(inert)
+    good = rc != 0
+    ok += 1 if good else 0
+    bad += 0 if good else 1
+    print("ARM %-38s selftests_rc=%d want!=0 -> %s" % ("BA1-inert-sabotage-fixture", rc,
+                                                       "OK" if good else "NOT-OK"))
+    total = len(ARMS) + 1
+    print("mutation-selftest total: ok=%d bad=%d arms=%d" % (ok, bad, total))
+    return 0 if bad == 0 and ok == total else 1
+
+
+def _inert_sabotage_fixture() -> str:
+    """A fixture that claims to cripple a detector but touches nothing."""
+    body = ("#!/usr/bin/env bash\n"
+            "# expect: selftest-red\n"
+            'echo "NEUTERED_SELFCHECK_RC=0"\n'
+            "exit 0\n")
+    fd, path = tempfile.mkstemp(prefix="inert_sab_", suffix=".sh")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(body)
+    os.chmod(path, 0o755)
+    return path
 
 
 def main(argv: list[str]) -> int:
