@@ -18,18 +18,18 @@
 | 状态 | 条数 | 占比 | 含义 |
 |---|---|---|---|
 | 完成 | **15** | 28% | 有终态、有可复现证据 |
-| 待复核 | **23** | 43% | 证据已落盘，但只有单血统/单机取证 |
-| 阻塞 | **10** | 19% | Owner 专属，Agent 不自行处置 |
-| 未开始 | **6** | 11% | 还没动 |
+| 待复核 | **28** | 52% | 证据已落盘，但只有单血统/单机取证 |
+| 阻塞 | **11** | 20% | Owner 专属，Agent 不自行处置 |
+| 未开始 | **0** | 0% | 还没动 |
 
 三个口径，都要写清楚，避免用好看的那个：
 
 - **终态完成率：15/54 = 28%**
-- **完成 + 待复核：38/54 = 70%**（待复核 = 活干完了，缺第二血统复核）
-- **剔除 Owner 专属阻塞后：38/44 = 86%**
+- **完成 + 待复核：43/54 = 80%**（待复核 = 活干完了，缺第二血统复核）
+- **剔除 Owner 专属阻塞后：43/43 = 100%**
 
 交接提示词 §11 的收口判据是「全部有终态且每条有可复现证据」——
-**没有达到**。差的 39 行里，10 行是 Owner 专属，23 行差 CI 侧第二血统复核，6 行还没开始。
+**没有达到**。差的 39 行里，11 行是 Owner 专属，28 行差 CI 侧第二血统复核，**未开始已清零**。
 
 ### 1.2 Issue
 
@@ -49,7 +49,7 @@
 | `claims_hits` | 1144 | **1144** | 未动（本轮所有新报告自身声明记号均为 0） |
 | `claims_ref` | **0** | **93** | **0 → 93**（声明开始绑到 run 上了） |
 | 文档声明未绑定 | 1144 | **1051** | −93 |
-| `docs410` | 79 | **88** | 本轮新增 9 份报告 |
+| `docs410` | 79 | **91** | 本轮新增 12 份报告 |
 | `neg_fixture_n` | 23 | **24** | IL-6 门禁自带 `--selftest` |
 
 ## 2. 剩余任务量与人日（**双血统**）
@@ -208,7 +208,7 @@
 | 门禁改动（🟡，附改前漏什么/改后多报什么 + 反向变异） | `scripts/gate/check_audit_manifest.sh` |
 | 台账 | `docs/releases/v4.1.0/CLAIMS_INVENTORY.jsonl`、`CLAIMS_BINDINGS.jsonl`、`CAPABILITY_LEDGER.jsonl`、`DIRECTORY_POLICY_BASELINE.jsonl`、`DOC_INDEX.jsonl` |
 | 报告 | `IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md`、`P15_CLAIM_RUN_BINDING_2026-11-05.md`、`IL3_DUPLICATE_ISSUE_TRIAGE_2026-11-05.md`、`EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md`、`P12_CAPABILITY_CLAIMS_2026-11-05.md`、`P22_DIRECTORY_POLICY_2026-11-05.md`、`P21_DOC_FACTS_2026-11-05.md`、`IL10_A04_FALSE_RED_2026-11-05.md` |
-| 归档 run | `audit/v4.1.0/runs/20261105-capability-001`（16/16 全部 exit 0，`evidence_hash sha256:ce5d717a…`）、`audit/v4.1.0/runs/20261105-il10-001`（10/10 全部 exit 0，`evidence_hash sha256:d81d58bb…`） |
+| 归档 run | `20261105-capability-001`（16/16）、`20261105-il10-001`（10/10）、`20261105-il2-001`（11/11），全部 exit 0，evidence_hash 见各 run 的 manifest |
 | 阶段看板 | ISSUE #5592（54 行，`evidence_hash` 与度量口径已内嵌） |
 | 分支 | `omp-macmini/lb1-arm-count-fix` @ `18e85b56d5`（已推 gitea252） |
 
