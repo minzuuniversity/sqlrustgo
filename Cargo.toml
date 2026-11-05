@@ -1156,6 +1156,10 @@ path = "tests/integration/dml/dml_integration_test.rs"
 [[test]]
 name = "dml_pk_fast_path_5177"
 path = "tests/integration/dml/dml_pk_fast_path_5177.rs"
+
+[[test]]
+name = "insert_column_validation_5409"
+path = "tests/integration/dml/insert_column_validation_5409.rs"
 [[test]]
 name = "equality_index_routing_5209"
 path = "tests/integration/dml/equality_index_routing_5209.rs"
