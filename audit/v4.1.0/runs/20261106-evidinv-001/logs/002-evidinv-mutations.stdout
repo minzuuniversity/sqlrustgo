@@ -1,0 +1,25 @@
+DISC m1-unbound-new-claim: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 'unbound-new-claim:' 命中=True 挡的是=台账之后新增的 PASS 声称没有 run: 标记 ⇒ 必须红（撤掉该行 ⇒ 绿）
+     首见: NOT-OK: debt-grew:docs/CLAIMS.md 台账 0 → 现场 1（未绑定债务只准减不准增）
+DISC m2-fake-run-marker: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 '分级 run_missing' 命中=True 挡的是=引用不存在的 run（格式像、无归档）⇒ 必须红
+     首见: NOT-OK: unsafe-binding:docs/CLAIMS.md:5 分级 run_missing：门禁 run:20991231-nope-001 结果 PASS。
+DISC m3-stale-run-frozen-not-ancestor: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 '分级 stale_binding' 命中=True 挡的是=run 的 frozen_commit 不是 HEAD 祖先 ⇒ 只能算 stale_binding，不得当绑定
+     首见: NOT-OK: unsafe-binding:docs/CLAIMS.md:3 分级 stale_binding：本 run 的读数见 run:20261106-fixture-001：门禁结果 PASS。
+DISC m4-run-has-nonzero-exit: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 '分级 nonzero_run' 命中=True 挡的是=被引用的 run 有非零退出码 ⇒ 声称不得借用它当「通过」
+     首见: NOT-OK: unsafe-binding:docs/CLAIMS.md:3 分级 nonzero_run：本 run 的读数见 run:20261106-fixture-001：门禁结果 PASS。
+DISC m5-ledger-totals-tampered: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 'ledger-totals-not-in-log' 命中=True 挡的是=手改台账总数（归档 log 里找不到同一行）⇒ 必须红
+     首见: NOT-OK: ledger-totals-not-in-log: 台账总数与归档 log 不符 strong_bound 台账 0 / log 1
+DISC m6-ledger-provenance-run-missing: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 'ledger-provenance-run-missing' 命中=True 挡的是=台账指名的生成 run 没有归档 ⇒ 必须红
+     首见: NOT-OK: ledger-provenance-run-missing: 台账声称由 20991231-ghost-001 生成，但该归档 run 不存在
+DISC m7-wash-raise-file-baseline: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 'ledger-file-rows-not-in-log' 命中=True 挡的是=只抬台账里的逐文件债务：台账行与归档 log 不再逐字相同 ⇒ 必须红
+     首见: NOT-OK: ledger-file-rows-not-in-log: 1 份文档的台账行与归档 log 不符（第一个 docs/CLAIMS.md）
+DISC m8-missing-ledger-must-not-be-green: 有问题 rc=2(应非零) 撤条件 rc=0(应零) 期望判据 'INCOMPLETE' 命中=True 挡的是=台账读不到 ⇒ 必须 INCOMPLETE(2)，不许当通过(0)
+     首见: INCOMPLETE: 台账不在（LEDGER.jsonl）—— 没能核对，不算通过
+DISC m9-debt-expiry-lapsed: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 'stale_debt:' 命中=True 挡的是=债务到期日已过仍未清零 ⇒ stale_debt 必须红（到期日放回 2099 ⇒ 绿）
+     首见: NOT-OK: stale_debt:docs/CLAIMS.md 债务到期日 2020-01-01 已过（2026-11-06）仍未清零
+DISC m10-m7-variant-claim-plus-raised-baseline: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 ['ledger-file-rows-not-in-log', 'unbound-new-claim:'] 命中=True 挡的是=同一次改动里既加未绑定声称又抬逐文件基线 ⇒ 两条判据都必须红
+     首见: NOT-OK: ledger-file-rows-not-in-log: 1 份文档的台账行与归档 log 不符（第一个 docs/CLAIMS.md）
+DISC m11-invalid-manifest-frozen-not-hex: 有问题 rc=1(应非零) 撤条件 rc=0(应零) 期望判据 'invalid_manifest:' 命中=True 挡的是=frozen_commit 写成 40 个 0（YAML 当数字）⇒ 结构不对，必须红且不得冒充 nonzero_run
+     首见: NOT-OK: unsafe-binding:docs/CLAIMS.md:3 分级 invalid_manifest：本 run 的读数见 run:20261106-fixture-001：门禁结果 PASS。
+DISC m12-unread-manifest-incomplete: 有问题 rc=2(应非零) 撤条件 rc=0(应零) 期望判据 'INCOMPLETE-coverage' 命中=True 挡的是=归档 manifest 语法坏（读不动）⇒ 只能 INCOMPLETE(2)，不得换算成某个分级
+     首见: INCOMPLETE-coverage: 1 个归档 manifest 读不动 ⇒ 绑定有效性没能核对
+arms=12 discriminating=12 not_discriminating=0 drift=0
