@@ -28,14 +28,15 @@
 {"bytes": 21004, "file": "IAIA_410_SSOT.md", "lines": 528, "sha256": "7dd2276f559849cdc0a1941dca517674d4d8a0c4beb0620070651dc209902fed", "stamp_ok": false, "stamped": false}
 {"bytes": 7340, "file": "IL10_A04_FALSE_RED_2026-11-05.md", "lines": 141, "sha256": "f7ef140251d572d15aa30b9bb6562c20cd23de248d97e1c9b10d07e916d9b177", "stamp_ok": false, "stamped": false}
 {"bytes": 6301, "file": "IL11_STORAGE_SEMANTICS_CLAIMS_2026-11-05.md", "lines": 118, "sha256": "b91b253fd59178dfadcb36b1aa2d6803693302c61444b8c99b4264fbc07b4335", "stamp_ok": false, "stamped": false}
+{"bytes": 5411, "file": "IL2_CROSS_LINEAGE_P0_2026-11-05.md", "lines": 113, "sha256": "9590a17df4c5dec18d9e71c6ffb94905f60a13841d5c7472445ecd761de6572e", "stamp_ok": false, "stamped": false}
 {"bytes": 9247, "file": "IL3_DUPLICATE_ISSUE_TRIAGE_2026-11-05.md", "lines": 174, "sha256": "ce41b766774d677f16778bb9e202302dfd0b9c5c6dac1752af54806dc56806e3", "stamp_ok": false, "stamped": false}
 {"bytes": 6315, "file": "IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md", "lines": 125, "sha256": "7b1ce68fe42a170618bb43e04a566cdd685978d8c32506514671c7389c4c983f", "stamp_ok": false, "stamped": false}
 {"bytes": 19129, "file": "INSTALL.md", "lines": 426, "sha256": "132c3fa2b3f07941f5b3b0c6ec3b0647013172c6aa205950c3077b3d6bf175a0", "stamp_ok": false, "stamped": false}
 {"bytes": 17261, "file": "ISSUE-RECOVERY-QUADRATIC-REPLAY.md", "lines": 343, "sha256": "beecebeaf497806fb2ace80107bbe123f472648cd47968843f3c6c39393c96f3", "stamp_ok": false, "stamped": false}
 {"bytes": 21567, "file": "ISSUES_PLAN.md", "lines": 374, "sha256": "6f1cf2cd77bef75c9b82d7ec7f810c1e23e86faed8ab961ddc06d7c8d088452f", "stamp_ok": false, "stamped": false}
 {"bytes": 32976, "file": "ISSUE_LEDGER_2026-11-05.md", "lines": 148, "sha256": "5331de15daa3ba456b0b238a761b5819201efa281766451fd700aafd8f1a6940", "stamp_ok": false, "stamped": false}
-{"bytes": 34494, "file": "ISSUE_LEDGER_2026-11-05B.md", "lines": 154, "sha256": "7a5e18b6669dc035b7e4e72dfab7eb68f0acca102d200767d94bfa5b9a6ae818", "stamp_ok": false, "stamped": false}
-{"bytes": 85447, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 135, "sha256": "373d197ce4d523bfd8cd43f276dbe82db882ee4df5eafbc3ebeded5ab24d6bf6", "stamp_ok": false, "stamped": false}
+{"bytes": 34735, "file": "ISSUE_LEDGER_2026-11-05B.md", "lines": 156, "sha256": "fa9603316c3e0f3ab2532061c6dc41021805256537b27e7250aa89de7adfd827", "stamp_ok": false, "stamped": false}
+{"bytes": 87548, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 135, "sha256": "09ea191b97a1435c24f74d85ed5cc0dd086580184d4d25304b20fcaa7db00729", "stamp_ok": false, "stamped": false}
 {"bytes": 7898, "file": "LB1_ISSUE_LABEL_TAXONOMY_2026-11-05.md", "lines": 130, "sha256": "48beaabd302723271e23a753c63c7a47bdac49bf8d84ce3c7b534764e8c70f65", "stamp_ok": false, "stamped": false}
 {"bytes": 4052, "file": "LEGACY_ISSUES.md", "lines": 77, "sha256": "1dcf9d29e123e15b1ca1b8af3fcedcb5d43f9476cf5873b550e8f266f8d56ee6", "stamp_ok": false, "stamped": false}
 {"bytes": 27878, "file": "LEGACY_LEDGER_v3.6_to_v4.1.md", "lines": 484, "sha256": "edf34ff0a22540cbda719db2622513169e0fc155d041390251228197dc723e5f", "stamp_ok": false, "stamped": false}
