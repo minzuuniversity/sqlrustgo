@@ -648,7 +648,11 @@ def main(argv: list[str] | None = None) -> int:
     h = sub.add_parser("health", help="probe every seat and write the capability matrix")
     h.add_argument("--seat", action="append",
                    help="restrict to this seat id (repeatable)")
-    h.add_argument("--max-tokens", type=int, default=256)
+    # 改前默认 256：思考型席位会把预算全花在 reasoning 上，content 为空 +
+    #     finish_reason=length => 席位被 health 误判为不可用（实测 gmp35b-250）。
+    # 改后 1500：同一席位在同一条命令下 finish_reason=stop、parseable_contract=true。
+    # 反向变异：把 --max-tokens 压回 256，该席位必须重新变红（见 run 归档里的两条 health 记录）。
+    h.add_argument("--max-tokens", type=int, default=1500)
     h.add_argument("--lock-wait", type=int, default=90)
     h.add_argument("--required-lineages", type=int, default=2)
     h.add_argument("--no-calibrate", dest="calibrate", action="store_false",
