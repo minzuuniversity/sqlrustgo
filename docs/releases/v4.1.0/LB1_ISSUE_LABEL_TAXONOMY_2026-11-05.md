@@ -40,7 +40,7 @@ cap:      {analysis:3, architecture:1, benchmark:1, build:44, docs:2,
 
 ## 4. 反向变异：证明核对器不是摆设
 
-`python3 audit/v4.1.0/issue_labels_mutations.py` 六臂，实测 `arms=6 discriminating=6 not_discriminating=0 drift=0`：
+`python3 audit/v4.1.0/issue_labels_mutations.py` 七臂，实测 `arms=7 discriminating=7 not_discriminating=0 drift=0`：
 
 | 臂 | 施加的变异 | 期望 | 实测 |
 |---|---|---|---|
@@ -49,6 +49,7 @@ cap:      {analysis:3, architecture:1, benchmark:1, build:44, docs:2,
 | dim-priority | 单缺 priority 的合成夹具：只查 priority / 摘掉 priority | 只查该维必须红；摘掉该维必须绿 | rc=1 / rc=0 |
 | dim-cost | 同上，cost 维 | rc=1 / rc=0 | rc=1 / rc=0 |
 | dim-cap | 同上，cap 维 | rc=1 / rc=0 | rc=1 / rc=0 |
+| m6 | 台账少登记一条（`rows[0]["assign"]` 去掉 `cost/t0`） | `verify` 的 `added_labels` 必须与台账算出的 `expected_ops` 不一致而判红 | rc=1（`added=43 expected=42`）；真台账对照 rc=0 |
 
 外加两条基线：整改前夹具必须判红（判红条件仍在），整改后夹具必须判绿
 （不是永远红的摆设）。两条基线任一失效，跑法直接返回 1。
@@ -56,7 +57,24 @@ cap:      {analysis:3, architecture:1, benchmark:1, build:44, docs:2,
 ## 5. 「只加不删」的机器核对
 
 `apply` 只调用 `POST /issues/{n}/labels`（该端点只追加）。逐条 diff 前后标签：
-111 个 open issue，`lost_labels_total=0`，`added_labels_total=43`，与 `plan` 的 43 条 ops 逐一对应。
+111 个 open issue，`lost_labels=0`，`added_labels=43`，与 `plan` 的 43 条 ops 逐一对应。
+
+口径已经固化成子命令，不再靠人眼比对：
+
+```
+python3 audit/v4.1.0/issue_labels.py verify \
+    audit/v4.1.0/neg/snapshots/labelgap-open-before-20261105.jsonl
+```
+
+它把「整改前快照」与 live 逐条 diff，返回 0 需要同时满足两件事：
+没有任何标签被删除（`lost_labels==0`），且新增数正好等于台账对这份快照算出的 ops 数
+（`added_labels == expected_ops_from_ledger`）。前者挡「顺手删标签」，后者挡「有写入没落地」
+与「有人加了台账外的标签」。实测输出：
+
+```
+{"kind": "label_apply_verify", "issues_checked": 111,
+ "lost_labels": 0, "added_labels": 43, "expected_ops_from_ledger": 43}
+```
 
 ## 6. 过程偏差（如实记录）
 
