@@ -290,6 +290,8 @@ def run_calibration(seat: Seat, **kw) -> dict[str, Any]:
     """
     got = 0
     detail = []
+    n_unavailable = 0
+    n_wrong = 0
     for item in CALIBRATION_ITEMS:
         rec = ask(seat, item["prompt"], max_tokens=64, **kw)
         text = rec.get("content") or ""
@@ -297,13 +299,33 @@ def run_calibration(seat: Seat, **kw) -> dict[str, Any]:
             ok = bool(item["expect"](text))
         except Exception:
             ok = False
+        # EX-6：把「**没能答上来**」与「**答错了**」分开记账。
+        #
+        # 改前两者被压成同一个形状：{"ok": false, "answer": ""}。
+        # 台账读者因此分不出「这席位不可信」和「这席位当时正忙」——
+        # 20261104-seats-002 的 3/4 就是**超时**被记成了「答错」，
+        # 而它其实是被一次负载尖峰打中的（那次同批的另一个本地席位直接 120s 超时）。
+        #
+        # 超时不是能力问题：把它记成答错，会让一次负载尖峰冤枉一个能答对的席位。
         if not rec.get("ok"):
             ok = False
-        detail.append({"id": item["id"], "ok": ok, "answer": text[:80].replace(chr(10), " ")})
+            failure = "unavailable"      # 没答上来（超时 / 传输故障 / 产出不可用）
+            n_unavailable += 1
+        elif not ok:
+            failure = "wrong-answer"     # 答上来了，但内容不对
+            n_wrong += 1
+        else:
+            failure = None
+        detail.append({"id": item["id"], "ok": ok,
+                       "answer": text[:80].replace(chr(10), " "),
+                       "failure": failure,
+                       "error": rec.get("error")})
         got += 1 if ok else 0
     total = len(CALIBRATION_ITEMS)
     ratio = round(got / total, 3) if total else 0.0
-    return {"score": got, "total": total, "ratio": ratio, "items": detail}
+    return {"score": got, "total": total, "ratio": ratio,
+            "unavailable": n_unavailable, "wrong_answer": n_wrong,
+            "items": detail}
 
 
 def parse_verdict(text: str) -> dict[str, Any] | None:
