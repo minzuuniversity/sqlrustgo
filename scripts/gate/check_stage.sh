@@ -140,9 +140,13 @@ detect_version() {
     # VERSION file -> else exit 1). Delegating removes the duplicate
     # implementation instead of adding a third, and its last step already
     # fails closed.
-    local resolved
-    resolved="$(bash "${SCRIPT_DIR}/resolve_release_version.sh" 2>/dev/null || true)"
-    if [[ -n "$resolved" ]]; then
+    # No `|| true` here: the drift/registry gate counts error-swallowing
+    # tokens per gate (C2 recomputes swallow_hits), and a swallowed resolver
+    # failure is exactly the failure mode SC-1 is about. Capture the status
+    # instead, and let the caller turn it into an INCOMPLETE.
+    local resolved rc_resolver=0
+    resolved="$(bash "${SCRIPT_DIR}/resolve_release_version.sh" 2>/dev/null)" || rc_resolver=$?
+    if [[ "$rc_resolver" -eq 0 && -n "$resolved" ]]; then
         echo "$resolved"
         return
     fi
@@ -221,7 +225,7 @@ EOF
 fi
 
 # ---- Main logic ----
-VERSION=$(detect_version || true)
+VERSION=$(detect_version)
 if [[ -z "$VERSION" || "$VERSION" == "unknown" ]]; then
     printf 'INCOMPLETE: cannot determine the release line for this checkout.\n' >&2
     printf '  Refusing to guess. The old fallback picked the first STAGE.yaml\n' >&2

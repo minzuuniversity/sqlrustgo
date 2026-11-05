@@ -1,0 +1,18 @@
+baseline: ledger findings=0 (arms are attributable)
+ARM M1-drop-a-gate-row                     findings=7 want>=1 -> OK
+ARM M2-duplicate-row                       findings=2 want>=1 -> OK
+ARM M3-unfalsifiable-empty-reason          findings=1 want>=1 -> OK
+ARM M4-fixture-file-does-not-exist         findings=1 want>=1 -> OK
+ARM M5-selftest-claim-without-selftest     findings=1 want>=1 -> OK
+ARM M6-fake-evidence-run                   findings=1 want>=1 -> OK
+ARM M7-pending-without-close-plan          findings=1 want>=1 -> OK
+ARM M8-unfalsifiable-relabeled-mutation    findings=1 want>=1 -> OK
+ARM M9-selftest-claim-without-breakable-fixture findings=1 want>=1 -> OK
+ARM M10-sabotage-fixture-file-does-not-exist findings=1 want>=1 -> OK
+neg-fixture ledger mutation-selftest: ok=10 bad=0
+scripts/gate/check_commit_message.sh                       clean_rc=0 neutered_selftest_rc=0 fixture_rc=0 -> NOT-OK
+scripts/gate/check_coverage_single_implementation.sh       clean_rc=0 neutered_selftest_rc=0 fixture_rc=0 -> NOT-OK
+scripts/gate/check_gate_test_integrity.sh                  clean_rc=0 neutered_selftest_rc=0 fixture_rc=0 -> NOT-OK
+gate selftests: ok=0 bad=3
+ARM BA1-inert-sabotage-fixture             selftests_rc=1 want!=0 -> OK
+mutation-selftest total: ok=11 bad=0 arms=11

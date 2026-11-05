@@ -1,0 +1,166 @@
+
+===== fx01-executability-missing-script.sh (script rc=0) =====
+----- fx01-executability-missing-script : gate output (first 15 lines) -----
+=== Gate Executability Check (#5461 / #5450) ===
+=== 门禁执行点矩阵（STAGE_CONFIG.required_gates × CI 可达性）===
+
+--- ALPHA: 10 项, OK 10, 有问题 0
+  [OK  ] OK           scripts/gate/check_alpha_v410.sh
+  [OK  ] OK           scripts/gate/check_arch_invariants.sh
+  [OK  ] OK           scripts/gate/check_arch3_no_bypass.sh
+  [OK  ] OK           scripts/gate/check_coverage_v312.sh
+  [OK  ] OK           scripts/gate/check_sql_corpus_gate.sh
+  [OK  ] OK           scripts/gate/check_anti_ignore_gate.sh
+  [OK  ] OK           scripts/gate/check_g1_tpch_baseline.sh
+  [OK  ] OK           cargo build --all-features
+  [OK  ] OK           cargo test --all-features --lib
+  [OK  ] OK           cargo fmt --check
+
+----- end -----
+fx01-executability-missing-script: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gate detects the fault)
+
+===== fx02-anti-ignore-registry-drift.sh (script rc=0) =====
+----- fx02-anti-ignore-registry-drift : gate output (first 15 lines) -----
+ignore_registry.json: total_allowed=123 (max=150), active=69 (max=80)
+tree recount: real #[ignore] attributes in tests/ + crates/ = 124
+FAIL: registry drift — tree has 124 real #[ignore] attributes
+      but tests/baseline/ignore_registry.json registers 123.
+      Add or remove the registry entries to match the tree, then re-run.
+----- end -----
+fx02-anti-ignore-registry-drift: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gate detects the fault)
+
+===== fx03-drift-not-pass-new-antipattern.sh (script rc=0) =====
+----- fx03-drift-not-pass-new-antipattern : gate output (first 15 lines) -----
+=== P14 DRIFT != PASS - Anti-pattern Detector ===
+Date: 2026-11-05T06:52:08Z
+
+[1/5] Scanning for DRIFT-accepting patterns...
+  Found 1 potential DRIFT-handling sites
+
+[2/5] Scanning for '|| true' patterns that swallow errors...
+  Found 8 sites using '|| true' or swallow patterns
+    ⚠️  /private/tmp/negfix-20261105-negfix-003/scripts/gate/check_gmp_consumer.sh:194
+    ⚠️  /private/tmp/negfix-20261105-negfix-003/scripts/gate/check_4021_prometheus_metrics.sh:122
+    ⚠️  /private/tmp/negfix-20261105-negfix-003/scripts/gate/legacy/verify_beta_entry.sh:63
+    ⚠️  /private/tmp/negfix-20261105-negfix-003/scripts/gate/legacy/check_10_principles.sh:96
+    ⚠️  /private/tmp/negfix-20261105-negfix-003/scripts/gate/legacy/check_10_principles.sh:186
+    ⚠️  /private/tmp/negfix-20261105-negfix-003/scripts/gate/legacy/check_r1_r10_content.sh:91
+    ⚠️  /private/tmp/negfix-20261105-negfix-003/scripts/gate/legacy/check_r1_r10_content.sh:184
+----- end -----
+fx03-drift-not-pass-new-antipattern: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gate detects the fault)
+
+===== fx04-tests-write-archived-evidence.sh (script rc=0) =====
+----- fx04-tests-write-archived-evidence : gate output (first 15 lines) -----
+=== L1 - static: write calls targeting a docs/ path directly ===
+  tests/zz_neg_fixture_evidence_5578.rs:4: write call std::fs::write() targets a docs/ path directly
+FAIL: L1: 1 write call(s) target a docs/ path directly
+----- end -----
+fx04-tests-write-archived-evidence: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gate detects the fault)
+
+===== fx05-cross-version-debt-doc-missing.sh (script rc=0) =====
+----- fx05-cross-version-debt-doc-missing : gate output (first 15 lines) -----
+=== Running Cross-Version Debt Gate Check (EXTENDED) ===
+/private/tmp/negfix-20261105-negfix-003
+❌ FAIL: Required docs missing:
+    - /private/tmp/negfix-20261105-negfix-003/docs/releases/v3.8.0/CROSS-VERSION-DEBT.md (or archived/ or specs/gate/SPEC-008-cross-version-debt.md)
+    - /private/tmp/negfix-20261105-negfix-003/docs/releases/v3.8.0/INT5_PLUS_DEBT_INVENTORY.md (or debt/)
+----- end -----
+fx05-cross-version-debt-doc-missing: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gate detects the fault)
+
+===== fx06-int-debt-doc-missing.sh (script rc=0) =====
+----- fx06-int-debt-doc-missing : gate output (first 15 lines) -----
+=== D7: Cross-Version INT Debt Gate (5-Principle P5) ===
+
+❌ /private/tmp/negfix-20261105-negfix-003/docs/releases/v3.8.0/debt/CROSS-VERSION-DEBT.md not found
+----- end -----
+fx06-int-debt-doc-missing: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gate detects the fault)
+
+===== fx07-docs-links-broken.sh (script rc=0) =====
+----- fx07-docs-links-broken : gate output (first 15 lines) -----
+=== Running Markdown Link Check ===
+Broken markdown links detected:
+README.md -> docs/zz-does-not-exist-5578.md
+----- end -----
+fx07-docs-links-broken: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gate detects the fault)
+
+===== fx08-alpha-entry-doc-missing.sh (script rc=0) =====
+----- fx08-alpha-entry-doc-missing : gate output (first 15 lines) -----
+=== v4.1.0 Alpha Entry Check ===
+Branch: HEAD @ 84cbc161ec
+Boundary: entry readiness only; not a feature-completion or quality PASS.
+
+--- E1: Required Draft/Alpha Documents ---
+  [E1_STAGE] FAIL
+  [E1_VERSION_PLAN] PASS
+  [E1_DEV_PLAN] PASS
+  [E1_ROADMAP] PASS
+  [E1_TEST_PLAN] PASS
+  [E1_ISSUES_PLAN] PASS
+  [E1_LEGACY_ISSUES] PASS
+  [E1_README] PASS
+  [E1_CHANGELOG] PASS
+  [E1_RELEASE_NOTES] PASS
+----- end -----
+fx08-alpha-entry-doc-missing: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gate detects the fault)
+
+===== fx09-architecture-freeze-characterization.sh (script rc=0) =====
+----- fx09-architecture-freeze-characterization : gate output (first 15 lines) -----
+=== Architecture Freeze Check (A7) ===
+Timestamp: 2026-11-05T06:52:40Z
+
+--- A7-1: 双路径残留检查 ---
+[A7-1] storage DML bypass in server/network ... INFO (5 calls found in server/network crates — verify they go through ExecutionEngine)
+
+--- A7-2: 架构关键路径可达性 ---
+[A7-2] DriftGate references in src/ ... FAIL (0 references - path not established)
+[A7-2] TransactionContext references in src/ ... PASS (      47 references)
+
+--- A7-3: ExecutionEngine 行数 ---
+[A7-3] ExecutionEngine:     1236 lines
+PASS (< 1500 lines as per AD-001)
+
+--- A7-4: DriftGate 阻断测试 ---
+----- end -----
+fx09-architecture-freeze-characterization: gate rc=0 under a fault that its own output marks as a finding -> UNFALSIFIABLE (as documented)
+
+===== fx10-int-debt-row-unclassifiable-characterization.sh (script rc=0) =====
+----- fx10 : gate finding lines + summary -----
+1:=== D7: Cross-Version INT Debt Gate (5-Principle P5) ===
+4:  [INT-2] status= (unknown status: )
+8:=== D7 INT Debt Summary ===
+14:✅ D7 INT Debt: PASS (0 ACTIVE, 0 DEFERRED, all CLOSED)
+----- end -----
+fx10-int-debt-row-unclassifiable-characterization: gate rc=0 while reporting the item as failed -> UNFALSIFIABLE (fail-open hole, as documented)
+
+===== fx11-commit-message-detector-crippled.sh -> DEFERRED (run by the selftests subcommand) =====
+
+===== fx12-coverage-single-impl-detector-crippled.sh -> DEFERRED (run by the selftests subcommand) =====
+
+===== fx13-gate-test-integrity-detector-crippled.sh -> DEFERRED (run by the selftests subcommand) =====
+
+===== fx14-stage-version-uninferable.sh (script rc=0) =====
+----- fx14 arm A (uninferable version) rc=2 -----
+INCOMPLETE: cannot determine the release line for this checkout.
+  Refusing to guess. The old fallback picked the first STAGE.yaml
+  that find happened to return, which evaluated an archived release
+  line and logged a gate decision into that release directory.
+  Pass --version v<X.Y.Z>, or run on a develop|beta|rc|release|hotfix/v* branch.
+----- end arm A -----
+fx14 arm A: driver refused before evaluating any stage (rc=2, INCOMPLETE) -> FIXTURE-PASS
+----- fx14 arm B rc=0 (first 6 lines) -----
+==================================================================
+  Stage Gate Check: ALPHA
+  Version: v4.1.0
+  Branch: detached
+  Commit: 84cbc161ec
+  Description: 功能开发阶段 (active feature development, API may change)
+----- end arm B -----
+fx14 arm B: resolved v4.1.0 -> FIXTURE-PASS (correct release line)
+fx14 arm B: no evidence written outside docs/releases/v4.1.0/ -> FIXTURE-PASS
+----- fx14 arm C (--version v9.9.9, execute mode) rc=2 -----
+INCOMPLETE: docs/releases/v9.9.9 does not exist; log target is unbound
+----- end arm C -----
+fx14 arm C: no docs/releases/v9.9.9 created, rc=2 (want 2) -> FIXTURE-PASS
+fx14-stage-version-uninferable: FIXTURE-PASS (both arms)
+
+neg-fixtures: pass=11 fail=0 error=0 deferred-selftest-red=3 total=14
