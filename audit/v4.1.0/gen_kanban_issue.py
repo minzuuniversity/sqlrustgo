@@ -79,7 +79,9 @@ def appendix_section(appendix_path):
         raise SystemExit("APPENDIX-TOO-SHORT: " + str(ap) + " 只有 " + str(len(txt)) + " 字符")
     digest = hashlib.sha256(txt.encode("utf-8")).hexdigest()
     out = ["## 附录 A：交接正文全文（接手必读，SSOT 在仓内）", ""]
-    out.append(f"- 源文件：`{appendix_path}`｜注入 {len(txt.encode('utf-8'))} 字节｜sha256 `{digest}`")
+    # 两个字节数分开标：磁盘文件大小 vs 实际注入的正文（strip 后），混用就是一次口径漂移。
+    out.append(f"- 源文件：`{appendix_path}`｜文件 {len(ap.read_bytes())} 字节｜注入正文 {len(txt.encode('utf-8'))} 字节（strip 后）"
+               f"｜正文 sha256 `{digest}`")
     out.append("- 本节由 `gen_kanban_issue.py --appendix` 原样注入，不进看板 SSOT；改交接改源文件，别改这里。")
     out.append("")
     out.append(txt)
