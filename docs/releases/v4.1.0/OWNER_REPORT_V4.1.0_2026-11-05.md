@@ -102,6 +102,8 @@
 | 文档声称与实际行为无绑定 | `evidence_inventory.py`：声明按小节分级，基线之上新增未绑定声明 ⇒ 红 | claims_ref 0→93；反向变异 4 臂 |
 | 能力声称从未真跑 | `capability_claims.py`：五个能力用真实产物真跑（真 CLI/真 MySQL 客户端/真落库/SIGKILL 重启读回/物理备份往返逐值） | 5/5 VERIFIED；反向变异 10 条对照全按期望发生 |
 | 目录策略无执行点 | `directory_policy.py`：6 条规则，新增违规 ⇒ 红，存量 149 条逐条记账 | 反向变异：新建违规目录 ⇒ rc=1 报 3 条 |
+| 测试侧「声称验证存储语义」没人拦 | `check_correctness_tests_production_storage.sh` 新增 **R6**：清单里每个声明了存储语义的测试都必须被生产存储链覆盖；声明长在测试文件自己身上（`// storage-semantics: <slug>`） | 门禁 PASS=6；`--selftest` 6 臂含新臂「陈旧清单 ⇒ R6 变红」 |
+| 标定账分不出「超时」与「答错」 | `expert_ladder.run_calibration`：item 增加 `failure ∈ {None, unavailable, wrong-answer}`，汇总增加两个计数 | probe 四臂全过，含反向变异「把源码改回旧写法 ⇒ 同一超时场景与真实现不同」 |
 | 证据门禁把「正在执行的 run」算进判定 | `check_audit_manifest.sh` 改按已提交树枚举 + `--exclude-run` + `--selftest` | IL-6 四臂全成立；历史红 7/7 一条没放宽 |
 | 门禁把「解释器缺 PyYAML」当成「证据不可复核」 | 门禁显式选解释器；不可用时只报 1 行「无法判定」，不再伪造 21 条证据红 | 四臂全成立；历史红仍是那 7 条 |
 | 看板生成器读别的 worktree | `gen_kanban_issue.py` 的硬编码绝对路径改为按脚本位置解析 | 改前读出 53 行/e27c03fa1f，改后读出本线 54 行/3eb8f250c7 |
@@ -204,12 +206,13 @@
 
 | 类别 | 文件 |
 |---|---|
-| 工具（探针，不进门禁清单，分母 168 不动） | `audit/v4.1.0/evidence_inventory.py`、`capability_claims.py`、`directory_policy.py`、`doc_facts.py`、`il6_selfref_probe.py`、`lb1_arm_count_check.py` |
+| 工具（探针，不进门禁清单，分母 168 不动） | `audit/v4.1.0/evidence_inventory.py`、`capability_claims.py`、`directory_policy.py`、`doc_facts.py`、`honesty.py`、`storage_semantics_claims.py`、`ex6_failure_accounting.py`、`il6_selfref_probe.py`、`lb1_arm_count_check.py` |
 | 门禁改动（🟡，附改前漏什么/改后多报什么 + 反向变异） | `scripts/gate/check_audit_manifest.sh` |
 | 台账 | `docs/releases/v4.1.0/CLAIMS_INVENTORY.jsonl`、`CLAIMS_BINDINGS.jsonl`、`CAPABILITY_LEDGER.jsonl`、`DIRECTORY_POLICY_BASELINE.jsonl`、`DOC_INDEX.jsonl` |
 | 报告 | `IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md`、`P15_CLAIM_RUN_BINDING_2026-11-05.md`、`IL3_DUPLICATE_ISSUE_TRIAGE_2026-11-05.md`、`EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md`、`P12_CAPABILITY_CLAIMS_2026-11-05.md`、`P22_DIRECTORY_POLICY_2026-11-05.md`、`P21_DOC_FACTS_2026-11-05.md`、`IL10_A04_FALSE_RED_2026-11-05.md` |
-| 归档 run | `20261105-capability-001`（16/16）、`20261105-il10-001`（10/10）、`20261105-il2-001`（11/11），全部 exit 0，evidence_hash 见各 run 的 manifest |
+| 归档 run | `20261105-capability-001`（16/16）、`20261105-il10-001`（10/10）、`20261105-il2-001`（11/11）、`20261105-gater6-001`（10/10），全部 exit 0，evidence_hash 见各 run 的 manifest |
 | 阶段看板 | ISSUE #5592（54 行，`evidence_hash` 与度量口径已内嵌） |
+| 门禁改动（🟡 附改前漏什么/改后多报什么 + 反向变异） | `check_audit_manifest.sh`（解释器护栏）、`check_a04_evidence_reproducible.sh`（先清空产出目录）、`check_correctness_tests_production_storage.sh`（新增 R6） |
 | 分支 | `omp-macmini/lb1-arm-count-fix` @ `18e85b56d5`（已推 gitea252） |
 
 ## 8. 本报告没做也不假装做了的事
