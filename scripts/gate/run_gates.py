@@ -40,6 +40,13 @@ STATE_INCOMPLETE = "INCOMPLETE"
 EXIT_BY_VERDICT = {STATE_PASS: 0, STATE_FAIL: 1, STATE_INCOMPLETE: 2}
 
 
+def expected_sha256(names: list[str]) -> str:
+    """权威期望集合的指纹。plan 与 execute/report 之间换树时能被发现。"""
+    import hashlib
+    blob = "\n".join(sorted(names)).encode("utf-8")
+    return "sha256:" + hashlib.sha256(blob).hexdigest()
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -113,10 +120,12 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "git_head": head,
         "planned_at": utc_now(),
         "expected_n": len(gates),
+        "expected_sha256": expected_sha256([g["gate"] for g in gates]),
         "plan": str(out),
     }
     Path(str(out) + ".meta.json").write_text(json.dumps(stamp, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"run_gates: planned {len(gates)} gates for {args.stage}/{args.version} -> {out}")
+    print(f"run_gates: planned {len(gates)} gates for {args.stage}/{args.version} "
+          f"sha256={stamp['expected_sha256'][:18]}... -> {out}")
     return 0
 
 

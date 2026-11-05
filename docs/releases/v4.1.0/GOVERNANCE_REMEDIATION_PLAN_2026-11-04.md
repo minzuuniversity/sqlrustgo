@@ -651,3 +651,39 @@ EOF
 > 原先写在 `/tmp/srg-probe/` 的临时版本不再是任何声明的出处。
 > 实测口径提醒：`gov_probe.py metrics` 必须先调用 `build_matrix()` 再读
 > `gate_executability.ALL_REQUIRED_SCRIPT_PATHS`，漏调会让孤儿数从 83 虚高到 95（见看板 Q10 / P0-7）。
+
+
+---
+
+## 专家咨询记录（2026-11-05，P0-2 三态 runner）
+
+工具：`scripts/gate/expert_ladder.py ask`，问题文件 `/tmp/srg-api/q-p02.txt`
+（prompt 指纹 `sha256:87faeb8933…`，全文未落仓）。两系独立作答：
+
+| 席位 | 底座 | 结果 | 耗时 | 标定 |
+|---|---|---|---|---|
+| `flash-next-252` | qwen（252:8001） | ok | 20.13s | 4/4 |
+| `chatgpt-web` | gpt（127.0.0.1:9656 桥） | ok | 36.89s | 桥侧登录态 |
+
+三问与两系一致结论：
+
+1. **优先级**：汇总结论必须 `INCOMPLETE > FAIL > 达标`。理由是把 INCOMPLETE 排在最前，
+   可以防止「注入一条真失败」去掩盖「其余项根本不可核验」这种更危险的读法。
+2. **崩溃安全**：建议预写 PENDING 行 + 临时文件→fsync→rename 原子覆写，
+   使 runner 中途死掉时未跑项显式留痕。
+3. **期望集合来源**：必须来自固定权威清单（STAGE_CONFIG 该阶段 required_gates）并落指纹，
+   禁止运行时自选；反向变异（删项 / 改名 / 换清单）必须转 INCOMPLETE 而不是「少跑了几项也算通过」。
+
+已采纳与实现差异（诚实记录）：
+
+- Q3 的哈希点已采纳：`run_gates.py` 新增 `expected_sha256()` 写入 `plan.jsonl.meta.json`，
+  `gate_report.py` 新增 C7 `stale-plan`（plan 指纹与当前权威集合不符即判 INCOMPLETE），
+  夹具新增 M11 臂覆盖。
+- Q2 我用的是 **plan/results 对账**（plan 先落盘，报告以 plan 为期望集，未跑项按缺项处理）而非预写 PENDING。
+  两者给出同样的可核验结论，但对「runner 写 plan 与写 results 之间被 kill」这种窗口的保护等价，
+  对「plan 本身写一半」不成立 —— 该窗口由 `expected_sha256` + C7 兜住，不谎称完全等价。
+
+席位回退（看板 IL-8）：本轮 `health` 实测 5 席位只有 **1 条 credited lineage**，
+`adjudication_capable=false`。其中 max_tokens 过小与探测窗口过短是我的参数问题（可自修），
+deepseek 桥令牌过期属 owner 动作（EX-5）。在只有 1 条血统时，本文与看板里的「两系一致」
+只是**同一结论被两处引用**，不构成独立裁定，引用时按单系口径标注。

@@ -25,11 +25,13 @@ def wj(path: Path, rows) -> None:
     path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
 
 
-def report(tmp: Path, *, plan, results, auth, catalog=None) -> tuple[int, dict]:
+def report(tmp: Path, *, plan, results, auth, catalog=None, plan_sha=None) -> tuple[int, dict]:
     cmd = [sys.executable, str(REPORT), "--plan", str(plan), "--results", str(results),
            "--authoritative-file", str(auth)]
     if catalog:
         cmd += ["--catalog", str(catalog)]
+    if plan_sha:
+        cmd += ["--plan-sha", plan_sha]
     p = subprocess.run(cmd, capture_output=True, text=True)
     line = [l for l in p.stdout.splitlines() if l.startswith("{")]
     return p.returncode, json.loads(line[-1]) if line else {"verdict": "NO-OUTPUT", "reasons": [p.stderr[:300]]}
@@ -91,6 +93,16 @@ def arms(tmp: Path) -> list[tuple[str, str, str]]:
                "OK 用假门禁名刷覆盖被抓" if (jf.get("verdict") == INC and rcf == 2)
                else f"MISMATCH verdict={jf.get('verdict')} rc={rcf} reasons={jf.get('reasons')}")
 
+    # M11：plan 指纹与当前权威集合不符（换了阶段清单/换了树还拿旧 plan 记账）
+    rp11 = tmp / "res_m11.jsonl"
+    wj(rp11, [{"gate": g, "state": PASS, "exit_code": 0} for g in ("g1.sh", "g2.sh", "g3.sh")])
+    rc11, j11 = report(tmp, plan=full_plan, results=rp11, auth=auth, catalog=catalog,
+                       plan_sha="sha256:" + "0" * 64)
+    out.append(("M11-stale-plan", INC,
+                "OK plan 指纹与权威集合不符 => INCOMPLETE（防拿旧清单给新树发绿）"
+                if (j11.get("verdict") == INC and rc11 == 2)
+                else f"MISMATCH verdict={j11.get('verdict')} rc={rc11} reasons={j11.get('reasons')[:2]}"))
+
     one("M6-state-skip", full_plan, "res_skip.jsonl",
         [{"gate": "g1.sh", "state": PASS, "exit_code": 0},
          {"gate": "g2.sh", "state": "SKIP", "exit_code": 0},
@@ -150,7 +162,7 @@ def main() -> int:
     if bad:
         print(f"test_gate_run_tristate: {bad} 臂不符合期望")
         return 1
-    print("test_gate_run_tristate: OK (CTRL + M1..M10 全部符合期望)")
+    print("test_gate_run_tristate: OK (CTRL + M1..M11 全部符合期望)")
     return 0
 
 
