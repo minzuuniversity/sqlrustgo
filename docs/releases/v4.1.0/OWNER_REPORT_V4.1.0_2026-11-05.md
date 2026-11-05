@@ -208,9 +208,9 @@
 | 门禁改动（🟡，附改前漏什么/改后多报什么 + 反向变异） | `scripts/gate/check_audit_manifest.sh` |
 | 台账 | `docs/releases/v4.1.0/CLAIMS_INVENTORY.jsonl`、`CLAIMS_BINDINGS.jsonl`、`CAPABILITY_LEDGER.jsonl`、`DIRECTORY_POLICY_BASELINE.jsonl`、`DOC_INDEX.jsonl` |
 | 报告 | `IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md`、`P15_CLAIM_RUN_BINDING_2026-11-05.md`、`IL3_DUPLICATE_ISSUE_TRIAGE_2026-11-05.md`、`EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md`、`P12_CAPABILITY_CLAIMS_2026-11-05.md`、`P22_DIRECTORY_POLICY_2026-11-05.md`、`P21_DOC_FACTS_2026-11-05.md`、`IL10_A04_FALSE_RED_2026-11-05.md` |
-| 归档 run | `audit/v4.1.0/runs/20261105-capability-001`（16/16 全部 exit 0，`evidence_hash sha256:ce5d717a…`） |
+| 归档 run | `audit/v4.1.0/runs/20261105-capability-001`（16/16 全部 exit 0，`evidence_hash sha256:ce5d717a…`）、`audit/v4.1.0/runs/20261105-il10-001`（10/10 全部 exit 0，`evidence_hash sha256:d81d58bb…`） |
 | 阶段看板 | ISSUE #5592（54 行，`evidence_hash` 与度量口径已内嵌） |
-| 分支 | `omp-macmini/lb1-arm-count-fix` @ `3eb8f250c7`（已推 gitea252） |
+| 分支 | `omp-macmini/lb1-arm-count-fix` @ `18e85b56d5`（已推 gitea252） |
 
 ## 8. 本报告没做也不假装做了的事
 
