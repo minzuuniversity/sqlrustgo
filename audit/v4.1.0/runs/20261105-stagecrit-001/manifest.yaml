@@ -1,0 +1,162 @@
+schema_version: 1
+run_id: 20261105-stagecrit-001
+source_agent: mcode-macmini
+frozen_commit: 6b65118a80dd87fe69941bfcc3cbbe268271b741
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: stagecfg-gate-real
+  name: 既有门禁 check_stage_config_consistency 对真实 SSOT 跑 C9（0 FAIL）
+  cmd: bash scripts/gate/check_stage_config_consistency.sh
+  cwd: .
+  timeout_sec: 300
+- id: stagecfg-gate-selftest-14arms
+  name: 该门禁自带 selftest 由 8 臂扩到 14 臂（新增 6 条 C9 反向变异）
+  cmd: bash scripts/gate/check_stage_config_consistency.sh --selftest
+  cwd: .
+  timeout_sec: 600
+- id: stagecfg-probe-check
+  name: 真实配置判据处置计数（21 = 7 gates + 14 manual）
+  cmd: python3 audit/v4.1.0/probe_stage_criteria_disposal.py check
+  cwd: .
+  timeout_sec: 300
+- id: stagecfg-probe-mutation-6arms
+  name: 在真实配置副本上重造缺陷，六臂必须红
+  cmd: python3 audit/v4.1.0/probe_stage_criteria_disposal.py mutation-selftest
+  cwd: .
+  timeout_sec: 600
+- id: stagecfg-count-assert
+  name: 度量断言 stage_crit=21 / stage_map=7 / stage_manual=14（此前 map=0）
+  cmd: python3 -c "import json,subprocess,sys;o=json.loads(subprocess.run(['python3','scripts/gate/gov_probe.py','metrics'],capture_output=True,text=True).stdout);sys.exit(0
+    if (o['stage_crit'],o['stage_map'],o['stage_manual'])==(21,7,14) else 1)"
+  cwd: .
+  timeout_sec: 900
+- id: gate-registry-check
+  name: 门禁清单只读核对（分母仍 168）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixtures
+  name: 门禁登记夹具回归
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-43-rows
+  name: 看板 SSOT 与渲染一致（43 行，含新增 SC-1）
+  cmd: bash -c 'python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+    | grep -q "43 rows"'
+  cwd: .
+  timeout_sec: 120
+- id: ciroots-check-regression
+  name: P0-5 执行点台账回归
+  cmd: python3 audit/v4.1.0/probe_ci_roots.py check
+  cwd: .
+  timeout_sec: 300
+- id: gov-probe-metrics
+  name: 治理度量重放（本轮新增探针与 SSOT 文本会抬高自指计数）
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 900
+notes:
+- 本 run 不含 ci_gate.sh，不构成门禁 PASS 声明。
+- P1-1（阶段判据必须指明执行者）证据 run：C9 是**既有**门禁 check_stage_config_consistency.sh 上新增的规则，门禁清单/阈值/跳过开关未动，分母仍 168（gate-registry-check
+  在同一 run 里回归）。
+- 可证伪性有两处：门禁自带 selftest 现 14 臂（合成样本，c9a..c9f 必须红且命中 C9）；本 run 的 probe mutation 在真实 STAGE_CONFIG.yaml 的副本上重造缺陷（六臂
+  rc=1，C9 命中数 21/1/1/2/1/1）。
+- SSOT 现在 stage_crit=21 / stage_map=7 / stage_manual=14。7 条绑定既有门禁，14 条记为仅人工判定；其中 6 条是缺口（open-issue、open-P0、tag
+  前置、B-F 判据文本仍指向 v3.8.0、blocker 关闭、合 main），补门禁属门禁清单变更，只能 owner 决定。
+- '看板 P1-1 记 待复核 而非完成：C9 目前只有本地执行证据，CI 侧被 IL-9（runner-03 缺镜像，PR #5593 的 Actions job 未进入执行）挡住。'
+- 本轮另登记 SC-1：不带 --version 的 check_stage.sh 会评到已归档发布线并把日志写进该发布目录；误触发的日志已删除、未提交（该路径被 .gitignore 反向规则放行，属真实污染风险）。
+- 自指提醒：本 run 新增探针与 SSOT 文本会改变 audit_manifests / docs410 一类自指度量，取值以本 run 的 gov-probe-metrics 日志为准。
+results:
+- id: stagecfg-gate-real
+  started_at: '2026-11-05T04:21:01Z'
+  finished_at: '2026-11-05T04:21:04Z'
+  exit_code: 0
+  stdout_sha256: 97a7d533af25fa79961250c90665abc4c28a6148dd17c35c0c911feb3767a3b9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-stagecfg-gate-real.stdout
+  stderr_path: logs/001-stagecfg-gate-real.stderr
+- id: stagecfg-gate-selftest-14arms
+  started_at: '2026-11-05T04:21:04Z'
+  finished_at: '2026-11-05T04:21:15Z'
+  exit_code: 0
+  stdout_sha256: a659bc3c7322ee1c0135ea2b73ce0e362ceca206a7abbb5a046e32dc4244a9a3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-stagecfg-gate-selftest-14arms.stdout
+  stderr_path: logs/002-stagecfg-gate-selftest-14arms.stderr
+- id: stagecfg-probe-check
+  started_at: '2026-11-05T04:21:15Z'
+  finished_at: '2026-11-05T04:21:18Z'
+  exit_code: 0
+  stdout_sha256: 8a0e8faaa6449f2b8b835b0210fc61b4843d7501823b5d326a4d953f29eeb685
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-stagecfg-probe-check.stdout
+  stderr_path: logs/003-stagecfg-probe-check.stderr
+- id: stagecfg-probe-mutation-6arms
+  started_at: '2026-11-05T04:21:18Z'
+  finished_at: '2026-11-05T04:21:33Z'
+  exit_code: 0
+  stdout_sha256: 54bb0dd8b0a535ddf73223b0a9964c08d8a288634c8b95f02893b762bac3d9b6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-stagecfg-probe-mutation-6arms.stdout
+  stderr_path: logs/004-stagecfg-probe-mutation-6arms.stderr
+- id: stagecfg-count-assert
+  started_at: '2026-11-05T04:21:33Z'
+  finished_at: '2026-11-05T04:21:34Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-stagecfg-count-assert.stdout
+  stderr_path: logs/005-stagecfg-count-assert.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T04:21:34Z'
+  finished_at: '2026-11-05T04:21:34Z'
+  exit_code: 0
+  stdout_sha256: 4a47d60c3dfb73ccf7761477e76c19265dfc8e06557bf9b37116cf20c8221614
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-gate-registry-check.stdout
+  stderr_path: logs/006-gate-registry-check.stderr
+- id: gate-registry-fixtures
+  started_at: '2026-11-05T04:21:34Z'
+  finished_at: '2026-11-05T04:21:37Z'
+  exit_code: 0
+  stdout_sha256: 31f533bffbc9244f2992013bd0f03f82dc22974ccbf228528161dbcd06ec3902
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-registry-fixtures.stdout
+  stderr_path: logs/007-gate-registry-fixtures.stderr
+- id: kanban-43-rows
+  started_at: '2026-11-05T04:21:37Z'
+  finished_at: '2026-11-05T04:21:37Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-kanban-43-rows.stdout
+  stderr_path: logs/008-kanban-43-rows.stderr
+- id: ciroots-check-regression
+  started_at: '2026-11-05T04:21:37Z'
+  finished_at: '2026-11-05T04:21:37Z'
+  exit_code: 0
+  stdout_sha256: 5bd89a7bf59c92a6cbfe8837ea19915ec186e340931dd2faac2d9b3de4aca52f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-ciroots-check-regression.stdout
+  stderr_path: logs/009-ciroots-check-regression.stderr
+- id: gov-probe-metrics
+  started_at: '2026-11-05T04:21:37Z'
+  finished_at: '2026-11-05T04:21:37Z'
+  exit_code: 0
+  stdout_sha256: a9ec21b16ab78549ef81f317824e9f8adcf04d043b8e4779355fd9d2a3e9b0bc
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gov-probe-metrics.stdout
+  stderr_path: logs/010-gov-probe-metrics.stderr
+evidence_hash: sha256:dd67dafb8691504e8083f7c761171ad8a51d5bd03b937705dd015a7fadbfef72
+completed_at: '2026-11-05T04:21:37Z'
