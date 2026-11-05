@@ -46,6 +46,7 @@ seats:
     measured_latency_s: 0.22
     measured_tps: null
     calibration_min: 0.5
+    measured_state: "ok=false / HTTP 500（EX-5：人工登录未落盘）"
     measured_note: >
       曾经的首选裁定席位（1.36s / 17.6 tps）。2026-11-04 21:30 起不可用：
       上游直连 create_pow_challenge 返回 {"code":40003,"msg":"Authorization Failed
@@ -69,6 +70,7 @@ seats:
     measured_source_run: "20261106-evidinv-001/logs/003-seats-health.stdout"
     measured_latency_s: 2.25
     measured_tps: 12.89
+    measured_state: "ok=true / 2.25s / 12.89tps / 标定 4/4（unanswered=[] wrong=[]）"
     measured_note: >
       strata 服务，n_ctx=262144，无 api_key。带 reasoning_effort=none 时
       8 token 出答（12.1s，含排队）；不带时思考耗时长。作为第二家族席位。
@@ -95,6 +97,7 @@ seats:
       同一端点 /v1/models 立即应答，但 chat/completions 16 token 请求 240s 未返回
       （curl -m 240 空返回）=> 服务在但推理侧挂死/被占。属 owner/hermes 复核项，
       不是我能通过调参修好的（看板 IL-8）。
+    measured_state: "ok=false / HTTP 503（8002 由挂死变为不可用 ⇒ 看板 EX-10 阻塞）"
     measured_note: >
       思考型模型：不传 reasoning_effort=none 时 content 为空、全部落在
       reasoning_content 且 finish_reason=length（200 token 全用在思考上）。
@@ -117,6 +120,7 @@ seats:
     measured_source_run: "20261106-evidinv-001/logs/003-seats-health.stdout"
     measured_latency_s: 240.0
     measured_tps: null
+    measured_state: "ok=false / timeout 240s（上一轮同席位 51.54s 正常 ⇒ 退化 ⇒ 看板 EX-10）"
     measured_note: >
       2026-11-05 复测：--max-tokens 1500 下 finish_reason=stop、483 completion token、
       37.7s、parseable_contract=true。上一轮把它判为不可用是**我的参数问题**
@@ -141,6 +145,7 @@ seats:
     measured_source_run: "20261106-evidinv-001/logs/003-seats-health.stdout"
     measured_latency_s: 25.61
     measured_tps: null
+    measured_state: "ok=true / 25.61s / 标定 4/4；上游不回传 token 数 ⇒ TPS 不得估算"
     measured_note: >
       2026-11-04 21:41 实测：返回 content="PONG"、finish_reason=stop、
       web_session.latency_ms=40051。此前"失效"的根因（omp 判别实验，同一出口 IP、
