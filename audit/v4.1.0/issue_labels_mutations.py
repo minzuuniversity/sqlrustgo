@@ -8,6 +8,8 @@
 #   m1  把 has() 改成永远 True（= 缺标签全部豁免）  -> 整改前夹具必须变绿；未变异必须红
 #   m2..m4 维度隔离：单维缺口夹具上，只查该维必须红；把该维摘掉必须绿
 #   m5  去掉台账理由校验 -> 空理由台账必须被放过；未变异必须判 LEDGER-BAD
+#   m6  台账少登记一条（under-count）-> verify 的 added 与 expected 必须不一致而判红；
+#       用真台账做对照必须绿
 # 退出码：0 = 全部判别成立；1 = 至少一个臂不判别（核对器是摆设）；3 = 锚点漂了（证据过期）。
 import json
 import pathlib
@@ -101,16 +103,28 @@ def main() -> int:
             print(f"{'OK  ' if ok else 'BAD '} dim-{dim}: only-{dim} rc={rc_hit} only-{others} rc={rc_miss}")
             if not ok:
                 bad_arms.append(f"dim-{dim}")
+
+        # m6: 台账 under-count —— verify 必须因为 added != expected 判红
+        short_ledger = tmp / "short-ledger.jsonl"
+        rows = [json.loads(l) for l in ledger_text.splitlines() if l.strip()]
+        dropped = rows[0]["assign"].popitem()
+        short_ledger.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                                 encoding="utf-8")
+        rc_ctl, s_ctl = run(TOOL, ["verify", str(BEFORE)])
+        rc_m6, s_m6 = run(TOOL, ["verify", str(BEFORE), "--ledger", str(short_ledger)])
+        ok6 = rc_ctl == 0 and rc_m6 != 0
+        print(f"{'OK  ' if ok6 else 'BAD '} m6-ledger-undercount: control rc={rc_ctl} mutated rc={rc_m6} dropped={dropped[0]}={dropped[1]} sighting={s_m6[:100]}")
+        if not ok6:
+            bad_arms.append("m6-ledger-undercount")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print(f"arms=6 discriminating={6 - len(bad_arms) - len(drift)} not_discriminating={len(bad_arms)} drift={len(drift)}")
+    print(f"arms=7 discriminating={7 - len(bad_arms) - len(drift)} not_discriminating={len(bad_arms)} drift={len(drift)}")
     for b in bad_arms:
         print("NOT-DISCRIMINATING", b)
     if drift:
         return 3
     return 1 if bad_arms else 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

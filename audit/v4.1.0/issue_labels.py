@@ -194,6 +194,53 @@ def cmd_apply(argv):
     return 1 if failed else 0
 
 
+def cmd_verify(argv):
+    """只加不删的机器核对：把「整改前快照」与 live 逐条 diff。
+
+      python3 audit/v4.1.0/issue_labels.py verify <before-snapshot.jsonl>
+
+    rc=0 需要同时满足：没有任何标签被删除，且新增数 == 台账对这份快照算出的 ops 数。
+    新增数少于 ops 说明有写入没落地；多于 ops 说明有人往同一批 issue 上加了台账外的标签。
+    """
+    if not argv:
+        print("usage: issue_labels.py verify <before-snapshot.jsonl> [--ledger f]")
+        return 2
+    lp = pathlib.Path(argv[argv.index("--ledger") + 1]) if "--ledger" in argv else None
+    pos = [a for a in argv if not a.startswith("--") and a != str(lp) if lp is None or a != str(lp)]
+    before_issues = read_issues(pos[0] if pos else argv[0])
+    before = {i["number"]: i["labels"] for i in before_issues}
+    rows, bad = read_ledger(lp)
+    if bad:
+        for b in bad:
+            print("LEDGER-BAD", b)
+        return 2
+    expected = 0
+    for r in rows:
+        labels = before.get(r["number"], [])
+        expected += sum(1 for d, v in (r.get("assign") or {}).items() if not has(labels, d))
+    lost, added = [], 0
+    for it in read_issues("live"):
+        old_labels = before.get(it["number"])
+        if old_labels is None:
+            continue
+        for x in old_labels:
+            if x not in it["labels"]:
+                lost.append(f"#{it['number']} {x}")
+        added += sum(1 for x in it["labels"] if x not in old_labels)
+    print(json.dumps({"kind": "label_apply_verify", "snapshot": argv[0],
+                      "issues_checked": len(before), "lost_labels": len(lost),
+                      "added_labels": added, "expected_ops_from_ledger": expected},
+                     ensure_ascii=False))
+    for l in lost[:20]:
+        print("LOST", l)
+    if lost:
+        return 1
+    if added != expected:
+        print(f"ADDED-MISMATCH added={added} expected={expected}")
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
     argv = sys.argv[1:]
     sub = argv[0] if argv else "check"
@@ -204,5 +251,7 @@ if __name__ == "__main__":
         raise SystemExit(cmd_plan(rest))
     if sub == "apply":
         raise SystemExit(cmd_apply(rest))
-    print("usage: issue_labels.py {check [--input live|<fixture>] [--only dims] [--ledger f] | plan | apply}")
+    if sub == "verify":
+        raise SystemExit(cmd_verify(rest))
+    print("usage: issue_labels.py {check [--input live|<fixture>] [--only dims] [--ledger f] | plan | apply | verify <snapshot.jsonl> [--ledger f]}")
     raise SystemExit(2)
