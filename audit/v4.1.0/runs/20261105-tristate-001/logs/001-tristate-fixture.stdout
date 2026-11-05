@@ -1,0 +1,13 @@
+[OK ] CTRL: 期望=PASS :: OK 全集恰好一次且全 PASS => PASS
+[OK ] M1-missing-result: 期望=INCOMPLETE :: OK planned 3 只报 2 => 缺项判 INCOMPLETE
+[OK ] M2-duplicate-result: 期望=INCOMPLETE :: OK 同一门禁报两次 => INCOMPLETE（防重复计数刷满覆盖）
+[OK ] M3-exit-code-lost: 期望=INCOMPLETE :: OK 声称 PASS 但没有 exit_code => INCOMPLETE（正是 iaia410 那批记录缺的字段）
+[OK ] M4-shrink-expectation: 期望=INCOMPLETE :: OK 缩小期望集合被权威集合反查抓住
+[OK ] M5-unregistered-gate: 期望=INCOMPLETE :: OK 用假门禁名刷覆盖被抓
+[OK ] M11-stale-plan: 期望=INCOMPLETE :: OK plan 指纹与权威集合不符 => INCOMPLETE（防拿旧清单给新树发绿）
+[OK ] M6-state-skip: 期望=INCOMPLETE :: OK 把 SKIP 写成 state=SKIP 且 exit 0 => 不接受第四态 => INCOMPLETE
+[OK ] M7-exit2: 期望=INCOMPLETE :: OK runner 映射：exit 2 既不是 PASS 也不是 FAIL => {'g1.sh': 'INCOMPLETE'}
+[OK ] M8-script-missing: 期望=mixed :: OK runner 映射：plan 点名一个仓里不存在的门禁 => 该项 INCOMPLETE，其余照常判定 => {'present.sh': 'PASS', 'absent.sh': 'INCOMPLETE'}
+[OK ] M9-real-fail: 期望=FAIL :: OK runner 映射：exit 1 => FAIL（不会被当成 INCOMPLETE 抹平） => {'g1.sh': 'FAIL'}
+[OK ] M10-precedence: 期望=INCOMPLETE :: OK FAIL+INCOMPLETE => 总结论 INCOMPLETE，且 FAIL 明细仍被计数
+test_gate_run_tristate: OK (CTRL + M1..M11 全部符合期望)

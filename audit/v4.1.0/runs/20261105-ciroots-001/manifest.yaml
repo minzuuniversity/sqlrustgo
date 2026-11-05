@@ -1,0 +1,160 @@
+schema_version: 1
+run_id: 20261105-ciroots-001
+source_agent: mcode-macmini
+frozen_commit: 6e6ab1be0627135616ef39bbbf9f390217da5793
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: ciroots-check
+  name: CI 执行点台账核对（声明 21 == 磁盘 21，13 archive-only / 8 live）
+  cmd: python3 audit/v4.1.0/probe_ci_roots.py check
+  cwd: .
+  timeout_sec: 120
+- id: ciroots-mutation-8arms
+  name: CI 执行点探针反向变异（CTRL 绿 + M1..M7 各命中指定判据）
+  cmd: python3 audit/v4.1.0/probe_ci_roots.py mutation-selftest
+  cwd: .
+  timeout_sec: 300
+- id: ciroots-count-assert
+  name: archive-only=13 与 live=8 的计数断言（防判据漂成任意值）
+  cmd: python3 -c "import json,subprocess,sys;o=json.loads(subprocess.run(['python3','audit/v4.1.0/probe_ci_roots.py','check'],capture_output=True,text=True).stdout);sys.exit(0
+    if (o['archive_only'],o['live'],o['declared'],o['on_disk'],o['fails'])==(13,8,21,21,0) else 1)"
+  cwd: .
+  timeout_sec: 120
+- id: phantom-set-recheck
+  name: phantom 四脚本仍在仓但无活执行点（复算幽灵门禁集合）
+  cmd: bash -c 'for s in check_alpha_v380.sh check_cross_version_debt.sh check_no_log_tbl_json.sh check_sql_corpus_gate.sh;
+    do test -f scripts/gate/$s || exit 1; done; exit 0'
+  cwd: .
+  timeout_sec: 60
+- id: ledger-verify-current
+  name: 台账校验回归（B 代 110 条，L1-L4）
+  cmd: python3 audit/v4.1.0/verify_ledger.py --label B
+  cwd: .
+  timeout_sec: 300
+- id: ledger-fresh-snapshot-count
+  name: 台账新鲜度回归（当期 open 数 == 台账行数）
+  cmd: python3 audit/v4.1.0/probe_ledger_freshness.py snapshot-count
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-check
+  name: 门禁清单只读核对（分母 168，不改清单）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixtures
+  name: 门禁清单夹具回归（负向夹具仍覆盖）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-42-rows
+  name: 看板 SSOT 与渲染一致性（42 行）
+  cmd: bash -c 'python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+    && python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md'
+  cwd: .
+  timeout_sec: 120
+- id: gov-probe-metrics
+  name: 治理度量重放（本轮改动后各计数需在新 run 里取值）
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 900
+notes:
+- 本 run 不含 ci_gate.sh，不构成门禁 PASS 声明。
+- P0-5（幽灵执行点）证据 run：archive-only/live 归一后的执行点台账、判据与反向变异在此可复现。
+- gate-registry-check / gate-registry-fixtures 属只读核对，分母仍为 168（class 34/51/22/61），本 run 未改门禁清单或阈值。
+- phantom-set-recheck 只断言四个脚本仍存在于 scripts/gate/；「无活执行点」的判定来自 probe_ci_roots R3（磁盘有但未声明/未挂活根），四道门禁的执行点归属仍待
+  owner 决定（AGENTS 2.1）。
+- '看板 P0-5 本 run 后记为 待复核，不是完成：CI 侧复核被 IL-9 挡住（PR #5593 的 Actions job 全部没进入执行）。'
+- 自指提醒：本次新增文档会抬高 docs410 / claims_hits 等自指度量，gov-probe-metrics 的取值以本 run log 为准，勿沿用上一 run 数字。
+results:
+- id: ciroots-check
+  started_at: '2026-11-05T03:19:36Z'
+  finished_at: '2026-11-05T03:19:36Z'
+  exit_code: 0
+  stdout_sha256: 5bd89a7bf59c92a6cbfe8837ea19915ec186e340931dd2faac2d9b3de4aca52f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-ciroots-check.stdout
+  stderr_path: logs/001-ciroots-check.stderr
+- id: ciroots-mutation-8arms
+  started_at: '2026-11-05T03:19:36Z'
+  finished_at: '2026-11-05T03:19:36Z'
+  exit_code: 0
+  stdout_sha256: a4dd879a320516d391dad131d2960d91bec06104ac10aa82c85c4a0884d8a5fd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-ciroots-mutation-8arms.stdout
+  stderr_path: logs/002-ciroots-mutation-8arms.stderr
+- id: ciroots-count-assert
+  started_at: '2026-11-05T03:19:36Z'
+  finished_at: '2026-11-05T03:19:37Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ciroots-count-assert.stdout
+  stderr_path: logs/003-ciroots-count-assert.stderr
+- id: phantom-set-recheck
+  started_at: '2026-11-05T03:19:37Z'
+  finished_at: '2026-11-05T03:19:37Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-phantom-set-recheck.stdout
+  stderr_path: logs/004-phantom-set-recheck.stderr
+- id: ledger-verify-current
+  started_at: '2026-11-05T03:19:37Z'
+  finished_at: '2026-11-05T03:19:37Z'
+  exit_code: 0
+  stdout_sha256: 04969f1b97ed30682d555fe12a21d19c160dcc5832aef5a21a21b7ca13c2094b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-ledger-verify-current.stdout
+  stderr_path: logs/005-ledger-verify-current.stderr
+- id: ledger-fresh-snapshot-count
+  started_at: '2026-11-05T03:19:37Z'
+  finished_at: '2026-11-05T03:19:38Z'
+  exit_code: 0
+  stdout_sha256: 0def9e36ffe1c45cd14563c3e0be23cfb2466a7626927ff5328630150bf515c4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-ledger-fresh-snapshot-count.stdout
+  stderr_path: logs/006-ledger-fresh-snapshot-count.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T03:19:38Z'
+  finished_at: '2026-11-05T03:19:38Z'
+  exit_code: 0
+  stdout_sha256: 4a47d60c3dfb73ccf7761477e76c19265dfc8e06557bf9b37116cf20c8221614
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-registry-check.stdout
+  stderr_path: logs/007-gate-registry-check.stderr
+- id: gate-registry-fixtures
+  started_at: '2026-11-05T03:19:38Z'
+  finished_at: '2026-11-05T03:19:40Z'
+  exit_code: 0
+  stdout_sha256: 31f533bffbc9244f2992013bd0f03f82dc22974ccbf228528161dbcd06ec3902
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-registry-fixtures.stdout
+  stderr_path: logs/008-gate-registry-fixtures.stderr
+- id: kanban-42-rows
+  started_at: '2026-11-05T03:19:40Z'
+  finished_at: '2026-11-05T03:19:40Z'
+  exit_code: 0
+  stdout_sha256: 99df9e3f267ec551b34663c00a4dc34c02ea4672f320e90b8a374e0e55e932cb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-kanban-42-rows.stdout
+  stderr_path: logs/009-kanban-42-rows.stderr
+- id: gov-probe-metrics
+  started_at: '2026-11-05T03:19:40Z'
+  finished_at: '2026-11-05T03:19:40Z'
+  exit_code: 0
+  stdout_sha256: 39d5ec53c99c23234947241f17f8e8fe6915683d83d971732ff79bb05b88a1a8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gov-probe-metrics.stdout
+  stderr_path: logs/010-gov-probe-metrics.stderr
+evidence_hash: sha256:8a8d00ca403da22d41e46a734ddccebab4a31722230ac5e0c672ea3851afd365
+completed_at: '2026-11-05T03:19:40Z'

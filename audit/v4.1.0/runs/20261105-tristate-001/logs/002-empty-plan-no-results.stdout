@@ -1,0 +1,6 @@
+[OK ] ALPHA plan rows == 10 :: rows=10
+[OK ] kind split script 7 / command 3 :: script=7 command=3
+[OK ] report rc == 2 (INCOMPLETE) :: rc=2
+[OK ] verdict INCOMPLETE (not a silent default) :: verdict=INCOMPLETE
+[OK ] missing-result count == 10 (每项都点名) :: n=10
+probe_tristate_e2e[empty]: 断言全部成立

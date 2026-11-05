@@ -1,0 +1,148 @@
+schema_version: 1
+run_id: 20261105-auditintegrity-002
+source_agent: mcode-macmini
+frozen_commit: a31edce2c379339e915304c525fd924069d7b80e
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: audit-integrity-report
+  name: 审计记录完整性实测：17 个历史运行目录分类（sound 10 / hollow 5 / partial 1 / no-manifest 1）
+  cmd: python3 audit/v4.1.0/audit_integrity_report.py
+  cwd: .
+  timeout_sec: 300
+- id: audit-manifest-fixture
+  name: 反向夹具 CTRL/M1..M6：自造合法记录必须绿、六类破坏必须红
+  cmd: python3 scripts/gate/test_audit_manifest_integrity.py
+  cwd: .
+  timeout_sec: 300
+- id: audit-gate-currently-red
+  name: 断言 check_audit_manifest.sh 退出码确为 1（该门禁已知红，本探针只证判据未坏，不构成门禁通过声明）
+  cmd: bash -c 'bash scripts/gate/check_audit_manifest.sh >/dev/null 2>&1; test $? -eq 1'
+  cwd: .
+  timeout_sec: 300
+- id: audit-gate-red-count-legacy
+  name: 历史记录红数精确核对：iaia410- 前缀必须恰为 7（5 hollow + 1 partial + 1 无清单）
+  cmd: 'bash -c ''bash scripts/gate/check_audit_manifest.sh 2>&1 | grep -c "^FAIL: .*iaia410-" | grep
+    -qx 7'''
+  cwd: .
+  timeout_sec: 300
+- id: audit-gate-selfref-observed
+  name: 看板 IL-6 现场取证：门禁把本 run 目录也计入 => 总红数 8 且含本 run id（自指复现，非门禁通过声明）
+  cmd: bash -c 'out=$(bash scripts/gate/check_audit_manifest.sh 2>&1); n=$(printf "%s\n" "$out" | grep
+    -c "^FAIL:"); m=$(printf "%s\n" "$out" | grep -c "^FAIL:.*20261105-auditintegrity-002"); test "$n"
+    -eq 8 -a "$m" -eq 1'
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-check
+  name: 登记表一致性：分母仍 168、class 仍 34/51/22/61、fails=0
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixture
+  name: 登记表反向夹具 9 条变异必须全部被抓
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: gov-probe-metrics
+  name: 口径度量重放：check_n=168 orphan=83 dead=61 claims_hits=1132 docs410=72 topmd=45（自指漂移检查）
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 300
+- id: kanban-check
+  name: 看板 SSOT 校验：39 行、md 与 jsonl 一致
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+notes: 'P0-6 / IL-5 / IL-6 取证（第一版 20261105-auditintegrity-001 因自指 FAIL(1)，取证留 /tmp/srg-forensic/，未提交）。
+
+  口径声明：本 run 不含 ci_gate.sh，不构成任何门禁 PASS 声明。check_audit_manifest.sh 在冻结树上确实红，audit-gate-currently-red 与
+  audit-gate-red-count-legacy 只断言「该门禁当前确实红、且历史不可复核记录恰为 7 条」，是判据未坏的对照片段，不表示门禁通过。
+
+  audit-gate-selfref-observed 现场复现看板 IL-6：门禁扫描 runs/ 时把正在执行的 run 目录也计入，run 进行中总红 8（含本 run id）、历史记录红 7；run
+  结束后重扫回到 7。
+
+  worktree_clean=false 仅因本 run 的 logs 与 freeze 指针尚未提交，frozen_commit 本身即被检代码。'
+results:
+- id: audit-integrity-report
+  started_at: '2026-11-04T23:49:43Z'
+  finished_at: '2026-11-04T23:49:43Z'
+  exit_code: 0
+  stdout_sha256: 6fd45c1f5e67736f7cfdde8af269cb0a3f81ec4ed444e8838dac7f576fc87917
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-audit-integrity-report.stdout
+  stderr_path: logs/001-audit-integrity-report.stderr
+- id: audit-manifest-fixture
+  started_at: '2026-11-04T23:49:43Z'
+  finished_at: '2026-11-04T23:49:44Z'
+  exit_code: 0
+  stdout_sha256: 25a157171243bb3a86e980a29ea285e00de287a3868fafbf2f6597a2b19fb9d9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-audit-manifest-fixture.stdout
+  stderr_path: logs/002-audit-manifest-fixture.stderr
+- id: audit-gate-currently-red
+  started_at: '2026-11-04T23:49:44Z'
+  finished_at: '2026-11-04T23:49:45Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-audit-gate-currently-red.stdout
+  stderr_path: logs/003-audit-gate-currently-red.stderr
+- id: audit-gate-red-count-legacy
+  started_at: '2026-11-04T23:49:45Z'
+  finished_at: '2026-11-04T23:49:46Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-audit-gate-red-count-legacy.stdout
+  stderr_path: logs/004-audit-gate-red-count-legacy.stderr
+- id: audit-gate-selfref-observed
+  started_at: '2026-11-04T23:49:46Z'
+  finished_at: '2026-11-04T23:49:47Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-audit-gate-selfref-observed.stdout
+  stderr_path: logs/005-audit-gate-selfref-observed.stderr
+- id: gate-registry-check
+  started_at: '2026-11-04T23:49:47Z'
+  finished_at: '2026-11-04T23:49:47Z'
+  exit_code: 0
+  stdout_sha256: 4a47d60c3dfb73ccf7761477e76c19265dfc8e06557bf9b37116cf20c8221614
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-gate-registry-check.stdout
+  stderr_path: logs/006-gate-registry-check.stderr
+- id: gate-registry-fixture
+  started_at: '2026-11-04T23:49:47Z'
+  finished_at: '2026-11-04T23:49:50Z'
+  exit_code: 0
+  stdout_sha256: 31f533bffbc9244f2992013bd0f03f82dc22974ccbf228528161dbcd06ec3902
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-registry-fixture.stdout
+  stderr_path: logs/007-gate-registry-fixture.stderr
+- id: gov-probe-metrics
+  started_at: '2026-11-04T23:49:50Z'
+  finished_at: '2026-11-04T23:49:50Z'
+  exit_code: 0
+  stdout_sha256: 53bb51ccedc64b3da4969444cd477f70cb4c0d1a2ae43729ac60141a2880452d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gov-probe-metrics.stdout
+  stderr_path: logs/008-gov-probe-metrics.stderr
+- id: kanban-check
+  started_at: '2026-11-04T23:49:50Z'
+  finished_at: '2026-11-04T23:49:50Z'
+  exit_code: 0
+  stdout_sha256: d782dbfb7274a4a1251e72e6aa6fe41ae066f18252b1fa9f6037748591f4bdbc
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-kanban-check.stdout
+  stderr_path: logs/009-kanban-check.stderr
+evidence_hash: sha256:914acaaac43c5a3c3387937f3d98c562e284aff37b21c9c946af0d1521b9dcc3
+completed_at: '2026-11-04T23:49:50Z'

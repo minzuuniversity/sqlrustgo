@@ -1,0 +1,4 @@
+[OK ] subset without the red gate: report verdict PASS :: verdict=PASS
+[OK ] report rc == 0 :: rc=0
+[OK ] execute self exit code back to 0 (mutation control) :: execute rc=0
+probe_tristate_e2e[mini-green]: 断言全部成立

@@ -152,7 +152,7 @@ tests/
 
 ## CI workflows (`.gitea/workflows/`)
 
-- `ci-test.md`
+- ~~`ci-test.md`~~（2026-11-05 迁出到 `docs/ci/legacy/ci-test-2026-05-01.md`：它不是 workflow，Gitea 只读 `*.yml`）
 - `ci.yml`
 - `gate.yml`
 - `reconciliation.yml`

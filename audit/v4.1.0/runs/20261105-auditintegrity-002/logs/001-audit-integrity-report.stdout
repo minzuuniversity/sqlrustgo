@@ -1,0 +1,21 @@
+run_id                                   schema                   decl  cmd  logs  meta sealed  verdict   defects
+iaia410-5112-evidence-20261015           iaia410-manifest/v1         6    0     0     0 True   hollow   no-cmd-recorded,no-logs,no-meta,sha256sums-placeholder
+iaia410-a01-20261011T062229Z-609a8e81    iaia410-manifest/v1         7    0    21     7 True   hollow   no-cmd-recorded
+iaia410-a02-20261011T070228Z-609a8e81    iaia410-manifest/v1         8    0    16     8 True   hollow   no-cmd-recorded
+iaia410-a03-20261011T070845Z-omp         iaia410-manifest/v1         0    0     0     5 False  partial  empty-commands,unsealed
+iaia410-a04-20261011T180837Z-609a8e81    iaia410-manifest/v1         5    0    15     5 True   hollow   no-cmd-recorded
+iaia410-a05-20261012T004948Z-bf48818c    iaia410-manifest/v1         9    0    27     0 True   hollow   no-cmd-recorded,no-meta
+iaia410-a06-r1-20261011T073325Z-01df92a5 None                        0    0     0     0 None   no-manifest 
+20261009-a01-001                         1                           4    4     4     0 True   sound    
+20261104-govprobe-001                    1                           4    4     4     0 True   sound    
+20261104-kanban-001                      1                           3    3     3     0 True   sound    
+20261104-seats-001                       1                           1    1     1     0 True   sound    
+20261104-seats-002                       1                           1    1     1     0 True   sound    
+20261105-auditintegrity-002              1                           9    9     0     0 False  hollow   no-logs,unsealed
+20261105-cifact-001                      1                           5    5     5     0 True   sound    
+20261105-gatecatalog-001                 1                           7    7     7     0 True   sound    
+20261105-govcheck-001                    1                           4    4     4     0 True   sound    
+20261105-p07-failclosed-002              1                           8    8     8     0 True   sound    
+20261105-triage-001                      1                           8    8     8     0 True   sound    
+
+合计: {"hollow": 6, "partial": 1, "no-manifest": 1, "sound": 10} | records = 18

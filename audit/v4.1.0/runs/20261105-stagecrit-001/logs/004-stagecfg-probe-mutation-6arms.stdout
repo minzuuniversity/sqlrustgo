@@ -1,0 +1,7 @@
+ARM M1-strip-all-mappings              rc=1 c9=21 want_rc1 want_min=21 -> OK
+ARM M2-strip-one-mapping               rc=1 c9=1 want_rc1 want_min=1 -> OK
+ARM M3-empty-manual-reason             rc=1 c9=1 want_rc1 want_min=1 -> OK
+ARM M4-dead-mapping-key                rc=1 c9=2 want_rc1 want_min=2 -> OK
+ARM M5-double-disposal                 rc=1 c9=1 want_rc1 want_min=1 -> OK
+ARM M6-gate-without-execution-point    rc=1 c9=1 want_rc1 want_min=1 -> OK
+stage-criteria mutation-selftest: ok=6 bad=0

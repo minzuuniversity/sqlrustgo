@@ -1,0 +1,196 @@
+schema_version: 1
+run_id: 20261105-tristate-001
+source_agent: mcode-macmini
+frozen_commit: 1095a68ab6759495e09f5d08ee2c84a97cd30cab
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: tristate-fixture
+  name: 三态 runner 反向夹具：CTRL + M1..M11（12 臂）全部符合期望
+  cmd: python3 scripts/gate/test_gate_run_tristate.py
+  cwd: .
+  timeout_sec: 300
+- id: empty-plan-no-results
+  name: 真实 ALPHA 清单 plan=10（script 7 + command 3）+ 空 results => 判 INCOMPLETE rc=2、10 条 missing-result
+    逐项点名
+  cmd: python3 audit/v4.1.0/probe_tristate_e2e.py empty
+  cwd: .
+  timeout_sec: 300
+- id: mini-three-real-gates
+  name: 3 项真实门禁子集端到端（含一条当前确实红的门禁）=> execute 自身 rc=1、report FAIL rc=1、counts PASS2/FAIL1。注意：3 项子集不是 ALPHA/GA
+    全量，不构成门禁通过声明
+  cmd: python3 audit/v4.1.0/probe_tristate_e2e.py mini
+  cwd: .
+  timeout_sec: 900
+- id: mini-green-mutation-control
+  name: 反向变异对照：把那条真红门禁摘掉 => execute rc 回到 0、report rc=0（证明新退出码不是永远非零）。同样是子集，不构成门禁通过声明
+  cmd: python3 audit/v4.1.0/probe_tristate_e2e.py mini-green
+  cwd: .
+  timeout_sec: 900
+- id: stale-plan-mismatch
+  name: stale-plan：用 ALPHA 的 plan 去对 GA 权威集合 => 必须报 stale-plan => INCOMPLETE rc=2（防拿旧清单给新树记账）
+  cmd: python3 audit/v4.1.0/probe_tristate_e2e.py stale
+  cwd: .
+  timeout_sec: 300
+- id: stage-list-row-counts
+  name: ALPHA 与 GA 的权威清单行数断言：ALPHA plan 必须 10 行、GA plan 必须 35 行（命令通道也算清单的一部分）
+  cmd: bash -c 'd=$(mktemp -d); python3 scripts/gate/run_gates.py plan --stage ALPHA --version v4.1.0
+    --plan "$d/a.jsonl" --run-id probe-a >/dev/null; python3 scripts/gate/run_gates.py plan --stage GA
+    --version v4.1.0 --plan "$d/g.jsonl" --run-id probe-g >/dev/null; test "$(wc -l < "$d/a.jsonl")" -eq
+    10 -a "$(wc -l < "$d/g.jsonl")" -eq 35'
+  cwd: .
+  timeout_sec: 300
+- id: execute-refuses-missing-plan
+  name: gate_report 对未生成的 plan 必须拒绝记账：plan 文件不存在时 rc!=0 且不产出结论
+  cmd: 'bash -c ''d=$(mktemp -d); : > "$d/res.jsonl"; python3 scripts/gate/run_gates.py execute --plan
+    "$d/nope.jsonl" --results "$d/res.jsonl" >"$d/out.txt" 2>&1; rc=$?; test $rc -ne 0 -a ! -s "$d/res.jsonl"'''
+  cwd: .
+  timeout_sec: 120
+- id: gate-registry-check
+  name: 登记表一致性：分母仍 168、class 仍 34/51/22/61、fails=0
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixtures
+  name: 登记表反向夹具（9 条变异必须全部被抓）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-41-rows
+  name: 看板 SSOT 校验：41 行、md 与 jsonl 一致
+  cmd: bash -c 'python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+    | grep -q "41 rows"'
+  cwd: .
+  timeout_sec: 120
+- id: gov-probe-metrics
+  name: 口径度量重放（自指漂移检查）：check_n=168 / claims_hits 现值 / ci_roots / ci_reach
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 600
+- id: expert-ladder-health
+  name: 咨询梯席位可达性（IL-8 基线）：只记录可达性，capability_basis=reachability only；退出码非 0 也在预期内（席位不全可达），不主张可信裁定能力
+  cmd: 'bash -c ''python3 scripts/gate/expert_ladder.py health --no-calibrate --no-evidence-dir; rc=$?;
+    echo "HEALTH_RC=$rc (0/1/2 均在预期内: 梯子不可达或部分可达都不算门禁结论)"; test $rc -le 2'''
+  cwd: .
+  timeout_sec: 600
+notes: 'P0-2（三态门禁 runner）取证 + IL-8（咨询梯席位）基线。口径声明：本 run 不含 ci_gate.sh，不构成任何门禁 PASS 声明；mini 与 mini-green
+  跑的是 3 项真实门禁子集（不是 ALPHA/GA 阶段清单全量），其结论只证明判据本身能分辨真假，不代表阶段清单通过。
+
+  加固点：(1) run_gates execute 原先恒返回 0，会让 CI 只挂 execute 时把真挂几项读成这一步通过；现在 execute 自身退出码与 gate_report 的 C6
+  同优先级。反向变异对照在 mini 与 mini-green：同一条 execute 在子集含一条当前真红门禁时 rc=1，摘掉那条后 rc 回到 0。(2) expected_sha256 + gate_report
+  判据 C7 stale-plan，由 stale-plan-mismatch 用 ALPHA 的 plan 对 GA 权威集合复现。(3) execute-refuses-missing-plan：plan
+  文件不存在时 execute 必须非零退出且不产出任何结果行（防止空账本被当成跑过）。
+
+  IL-8 实测：health 5 席位 / 2 可达 / credited 血统 2 条（gpt+qwen）/ adjudication_capable=true，但 capability_basis=reachability
+  only（只有 flash-next-252 做过标定 4/4，chatgpt-web 未标定），所以两系一致只等于两条可达血统，不等于两条可信裁定。gmp35b-250 之前的不可用是我方参数问题（health
+  默认 max_tokens 256 被 thinking 吃光），已把默认改 1500；对照是早前 256 的记录（finish_reason=length、parseable=false）与本次 stop/parseable
+  记录。local-qwen35-9b 是服务侧问题（席位写 9B、8002 实为 27B GGUF；/v1/models 秒答但 chat 16 token 请求 240s 空返回）；deepseek-chat
+  桥 HTTP 500 属 owner 登录项 EX-5 —— 这两条都不由我修。'
+results:
+- id: tristate-fixture
+  started_at: '2026-11-05T01:37:18Z'
+  finished_at: '2026-11-05T01:37:19Z'
+  exit_code: 0
+  stdout_sha256: fca0d449999c0c2769a61481c6e658bd93299d3378c3fc598a07e2db2ed2614f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-tristate-fixture.stdout
+  stderr_path: logs/001-tristate-fixture.stderr
+- id: empty-plan-no-results
+  started_at: '2026-11-05T01:37:19Z'
+  finished_at: '2026-11-05T01:37:19Z'
+  exit_code: 0
+  stdout_sha256: aeded3530d105d0173166b4e2b948bc6f3649ce056670dad5fe7a46078bd77ab
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-empty-plan-no-results.stdout
+  stderr_path: logs/002-empty-plan-no-results.stderr
+- id: mini-three-real-gates
+  started_at: '2026-11-05T01:37:19Z'
+  finished_at: '2026-11-05T01:37:21Z'
+  exit_code: 0
+  stdout_sha256: 96bf38469e1c3c1abc66f3784828f6bf638574277e27cf4b449ddcd8c0414a5f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-mini-three-real-gates.stdout
+  stderr_path: logs/003-mini-three-real-gates.stderr
+- id: mini-green-mutation-control
+  started_at: '2026-11-05T01:37:21Z'
+  finished_at: '2026-11-05T01:37:22Z'
+  exit_code: 0
+  stdout_sha256: ae3b7d52ac1aeaf23a043c3705476ef1ac7b261cde28f377aa54c1d2ea916e82
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-mini-green-mutation-control.stdout
+  stderr_path: logs/004-mini-green-mutation-control.stderr
+- id: stale-plan-mismatch
+  started_at: '2026-11-05T01:37:22Z'
+  finished_at: '2026-11-05T01:37:22Z'
+  exit_code: 0
+  stdout_sha256: efe39b5a3ec707e31bc39b95095fe335a2189405720fc6bb1d6e98ebc91f52a0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-stale-plan-mismatch.stdout
+  stderr_path: logs/005-stale-plan-mismatch.stderr
+- id: stage-list-row-counts
+  started_at: '2026-11-05T01:37:22Z'
+  finished_at: '2026-11-05T01:37:22Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-stage-list-row-counts.stdout
+  stderr_path: logs/006-stage-list-row-counts.stderr
+- id: execute-refuses-missing-plan
+  started_at: '2026-11-05T01:37:22Z'
+  finished_at: '2026-11-05T01:37:22Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-execute-refuses-missing-plan.stdout
+  stderr_path: logs/007-execute-refuses-missing-plan.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T01:37:22Z'
+  finished_at: '2026-11-05T01:37:23Z'
+  exit_code: 0
+  stdout_sha256: 4a47d60c3dfb73ccf7761477e76c19265dfc8e06557bf9b37116cf20c8221614
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-registry-check.stdout
+  stderr_path: logs/008-gate-registry-check.stderr
+- id: gate-registry-fixtures
+  started_at: '2026-11-05T01:37:23Z'
+  finished_at: '2026-11-05T01:37:26Z'
+  exit_code: 0
+  stdout_sha256: 31f533bffbc9244f2992013bd0f03f82dc22974ccbf228528161dbcd06ec3902
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-gate-registry-fixtures.stdout
+  stderr_path: logs/009-gate-registry-fixtures.stderr
+- id: kanban-41-rows
+  started_at: '2026-11-05T01:37:26Z'
+  finished_at: '2026-11-05T01:37:26Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-kanban-41-rows.stdout
+  stderr_path: logs/010-kanban-41-rows.stderr
+- id: gov-probe-metrics
+  started_at: '2026-11-05T01:37:26Z'
+  finished_at: '2026-11-05T01:37:26Z'
+  exit_code: 0
+  stdout_sha256: 3936a57b7fab9e08d7ceb4a650c8cbd7f5dc074d79baa4f448dbfa98141eb3ff
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-gov-probe-metrics.stdout
+  stderr_path: logs/011-gov-probe-metrics.stderr
+- id: expert-ladder-health
+  started_at: '2026-11-05T01:37:26Z'
+  finished_at: '2026-11-05T01:41:09Z'
+  exit_code: 0
+  stdout_sha256: 4538addd1109c754bd3cb4e5f2c6435f084cb3b55e395d608319a9a69473490e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-expert-ladder-health.stdout
+  stderr_path: logs/012-expert-ladder-health.stderr
+evidence_hash: sha256:2e6862b0961a1bf14443f534f46e524482862dcfbe8b4a62ab2fc46490cb34e5
+completed_at: '2026-11-05T01:41:09Z'

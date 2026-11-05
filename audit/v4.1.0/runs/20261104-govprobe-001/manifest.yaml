@@ -1,0 +1,74 @@
+schema_version: 1
+run_id: 20261104-govprobe-001
+source_agent: mcode-macmini
+frozen_commit: b5039acb1cb6e30e8aa365b1e5bca85307d21f09
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+notes: 未用 audit_run.py scaffold：scaffold 把 frozen_commit 钉在 audit/v4.1.0/commit.txt (A01 的 bf48818c, 2026-10-09)，而本
+  run 度量的是 develop/v4.1.0 当前树。冻结指针是 IAIA-410 的 SSOT，未经人工批准不改动；因此这里按 schema_version 1 显式声明 frozen_commit，并仍由
+  audit_run.py run/verify 生成与核对证据。
+commands:
+- id: gov-metrics
+  name: 仓级治理度量（可重放）
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 300
+- id: gov-honesty
+  name: 每道 check_* 的可证伪性
+  cmd: python3 scripts/gate/gov_probe.py honesty
+  cwd: .
+  timeout_sec: 300
+- id: gov-audit-manifest
+  name: 已提交 audit run 的证据校验退出码
+  cmd: python3 scripts/gate/gov_probe.py auditmanifest --skip 20261104-govprobe-001
+  cwd: .
+  timeout_sec: 600
+- id: gov-issue-census
+  name: open issue 普查（Gitea API，只读）
+  cmd: python3 scripts/gate/gov_probe.py issues
+  cwd: .
+  timeout_sec: 300
+results:
+- id: gov-metrics
+  started_at: '2026-11-04T14:46:38Z'
+  finished_at: '2026-11-04T14:46:39Z'
+  exit_code: 0
+  stdout_sha256: 28a42660420e479d82d20a2120368ad6a754b3b16034467e48ac55f8f3be5543
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-gov-metrics.stdout
+  stderr_path: logs/001-gov-metrics.stderr
+- id: gov-honesty
+  started_at: '2026-11-04T14:46:39Z'
+  finished_at: '2026-11-04T14:46:39Z'
+  exit_code: 0
+  stdout_sha256: 177783374fdb59358b79bed3f445ded93a613dc48b8a5dc9a27c2ab499102ea8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-gov-honesty.stdout
+  stderr_path: logs/002-gov-honesty.stderr
+- id: gov-audit-manifest
+  started_at: '2026-11-04T14:46:39Z'
+  finished_at: '2026-11-04T14:46:40Z'
+  exit_code: 0
+  stdout_sha256: a3a5d51446db3cdf09cbd758d46467b9d95fec460c8552423bd2a9308d2b3387
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-gov-audit-manifest.stdout
+  stderr_path: logs/003-gov-audit-manifest.stderr
+- id: gov-issue-census
+  started_at: '2026-11-04T14:46:40Z'
+  finished_at: '2026-11-04T14:46:40Z'
+  exit_code: 0
+  stdout_sha256: 8827774c16512b587c906f9ff827b09b6d1323d5a53a144870e83d6a2c85c355
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-gov-issue-census.stdout
+  stderr_path: logs/004-gov-issue-census.stderr
+evidence_hash: sha256:db75328444e3e67f5c7d81bbf647d0c6be579ed3fdfbd28e17cbb96f64482cb4
+completed_at: '2026-11-04T14:46:40Z'

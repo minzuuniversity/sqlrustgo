@@ -1,0 +1,31 @@
+=== stage config consistency gate — selftest ===
+  [OK]   clean sample -> PASS
+  [OK]   c1 sample -> FAIL (detected)
+  [OK]   c2 sample -> FAIL (detected)
+  [OK]   c3 sample -> FAIL (detected)
+  [OK]   c4 sample -> FAIL (detected)
+  [OK]   c5 sample -> FAIL (detected)
+  [OK]   c6 sample -> FAIL (detected)
+  [OK]   c7 sample -> FAIL (detected)
+  [OK]   c8 sample -> FAIL (detected)
+  [OK]   c9a sample -> FAIL (detected)
+  [OK]   c9b sample -> FAIL (detected)
+  [OK]   c9c sample -> FAIL (detected)
+  [OK]   c9d sample -> FAIL (detected)
+  [OK]   c9e sample -> FAIL (detected)
+  [OK]   c9f sample -> FAIL (detected)
+  [OK]   c1 sample -> reported as C1
+  [OK]   c2 sample -> reported as C2
+  [OK]   c3 sample -> reported as C3
+  [OK]   c4 sample -> reported as C4
+  [OK]   c5 sample -> reported as C5
+  [OK]   c6 sample -> reported as C6
+  [OK]   c7 sample -> reported as C7
+  [OK]   c8 sample -> reported as C8
+  [OK]   c9a sample -> reported as C9
+  [OK]   c9b sample -> reported as C9
+  [OK]   c9c sample -> reported as C9
+  [OK]   c9d sample -> reported as C9
+  [OK]   c9e sample -> reported as C9
+  [OK]   c9f sample -> reported as C9
+SELFTEST PASS

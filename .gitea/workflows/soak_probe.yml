@@ -1,3 +1,5 @@
+# ROLE: runner 存活探针（10 分钟内返回），不是 SOAK 配置，不能当作 168h SOAK 的证据。
+# 机器核对：docs/releases/v4.1.0/CI_EXECUTION_ROOTS.jsonl + audit/v4.1.0/probe_ci_roots.py
 name: SOAK Probe — Runner Liveness Test
 run-name: probe-${{ gitea.sha }}
 

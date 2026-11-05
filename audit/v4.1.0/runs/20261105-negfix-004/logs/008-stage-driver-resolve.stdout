@@ -1,0 +1,9 @@
+==================================================================
+  Stage Gate Check: ALPHA
+  Version: v4.1.0
+  Branch: mcode-macmini/governance-kanban-expert-ladder
+  Commit: 6fe3451e89
+  Description: 功能开发阶段 (active feature development, API may change)
+  Mode:    DRY-RUN (nothing executed)
+==================================================================
+STAGE-DRIVER-RESOLVES-V410
