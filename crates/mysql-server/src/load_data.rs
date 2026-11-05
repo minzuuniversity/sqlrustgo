@@ -15,6 +15,8 @@ use sqlrustgo_storage::wal_storage::WalStorage;
 use sqlrustgo_storage::{FileBackedWalManager, FileStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 
+use crate::MySqlError;
+
 pub fn parse_tbl_line(line: &str, expected_columns: usize) -> Result<Vec<SqlValue>, String> {
     let trimmed = line.trim_end_matches('\n').trim_end_matches('\r');
     // TPC-H .tbl: trailing `|` means last field is empty (counted)
@@ -80,10 +82,14 @@ pub fn bulk_insert<S: StorageEngine + 'static>(
     engine: &mut ExecutionEngine<S>,
     table: &str,
     rows: Vec<Vec<SqlValue>>,
-) -> Result<u64, String> {
+) -> Result<u64, MySqlError> {
     if rows.is_empty() {
         return Ok(0);
     }
+
+    // #5527: 有键表必须查重复键 —— 此前这条路径直接写存储层，
+    // 绕过了普通 INSERT 的重复键检查，重复导入**静默追加**。
+    check_duplicate_keys(engine, table, &rows)?;
 
     // Convert Vec<Vec<SqlValue>> into the storage's Record type. They are
     // the same shape (Record == Vec<Value>), so the conversion is a
@@ -91,8 +97,68 @@ pub fn bulk_insert<S: StorageEngine + 'static>(
     let records: Vec<sqlrustgo_storage::Record> = rows;
     let n = engine
         .bulk_insert_records(table, records)
-        .map_err(|e| format!("bulk_insert_records failed: {}", e))?;
+        .map_err(|e| MySqlError::Other(format!("bulk_insert_records failed: {}", e)))?;
     Ok(n)
+}
+
+/// #5527: `LOAD DATA` 的重复键检查。
+///
+/// 此前 `bulk_insert` 直接调 `storage.bulk_insert_records`，**完全绕开**了普通
+/// `INSERT` 的重复键检查 ⇒ 重复导入同一批行会**静默追加**：
+///
+/// * 运维用 `LOAD DATA` 做幂等重导 ⇒ 得到一份行数翻倍的数据，
+///   而且 `affected_rows` 只会报成功；
+/// * 与 MySQL 不一致 —— MySQL 在**有主键**的表上会报
+///   `ERROR 1062 (23000): Duplicate entry '1' for key 'PRIMARY'`。
+///
+/// 语义对齐 MySQL：
+///
+/// * 表**声明了**主键/唯一约束 ⇒ 重复键报错（1062 / 23000）；
+/// * 表**没有**键 ⇒ 追加（与 MySQL 一致，MySQL 在无键表上也是追加）。
+///
+/// 检查范围：既有行 ∪ 本批已接受的行 —— 同一批里两行撞键同样是重复。
+pub fn check_duplicate_keys<S: StorageEngine + 'static>(
+    engine: &ExecutionEngine<S>,
+    table: &str,
+    records: &[sqlrustgo_storage::Record],
+) -> Result<(), MySqlError> {
+    use sqlrustgo::engine_helpers::{find_conflicting_key, key_entry_repr};
+
+    let storage_arc = engine.storage_ref();
+    let storage = storage_arc.read();
+    let table_info = storage
+        .get_table_info(table)
+        .map_err(|e| MySqlError::Other(format!("table {}: {}", table, e)))?;
+
+    // 无键表 ⇒ 追加语义（与 MySQL 一致），不做检查。
+    let has_key = table_info.columns.iter().any(|c| c.primary_key)
+        || !table_info.unique_constraints.is_empty();
+    if !has_key {
+        return Ok(());
+    }
+
+    let existing = storage
+        .scan(table)
+        .map_err(|e| MySqlError::Other(format!("scan {}: {}", table, e)))?;
+
+    // 既有行 + 本批已接受的行，都要参与比对。
+    let mut accepted: Vec<&sqlrustgo_storage::Record> =
+        Vec::with_capacity(existing.len() + records.len());
+    accepted.extend(existing.iter());
+    for record in records {
+        for other in &accepted {
+            if let Some(key) = find_conflicting_key(other, record, &table_info) {
+                let repr = key_entry_repr(&table_info, record, &key);
+                return Err(MySqlError::Coded {
+                    code: 1062,
+                    sqlstate: "23000".to_string(),
+                    message: format!("Duplicate entry '{}' for key '{}'", repr, key),
+                });
+            }
+        }
+        accepted.push(record);
+    }
+    Ok(())
 }
 
 /// T4.1: Try to override the WAL sync mode of `storage` to `mode`.

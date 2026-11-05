@@ -1277,6 +1277,32 @@ pub enum MySqlError {
     /// need to propagate human-readable context without having to
     /// commit to one of the typed variants above.
     Other(String),
+    /// An error that carries an explicit MySQL error code + SQLSTATE.
+    ///
+    /// #5527: the LOAD DATA handler used to report **every** failure as
+    /// `1146 / 42S02` (table not found), so a duplicate-key rejection
+    /// would have reached the client as "table not found" — wrong code,
+    /// wrong meaning, and un-actionable for the operator.
+    Coded {
+        code: u16,
+        sqlstate: String,
+        message: String,
+    },
+}
+
+impl MySqlError {
+    /// The MySQL error code + SQLSTATE this error should be reported with.
+    ///
+    /// Only `Coded` carries its own; every other variant falls back to the
+    /// LOAD DATA path's historical default. That default is itself
+    /// questionable (1146 is "table not found", which is wrong for an I/O
+    /// failure), but changing it is a separate decision from #5527.
+    pub fn mysql_code_and_state(&self) -> (u16, String) {
+        match self {
+            MySqlError::Coded { code, sqlstate, .. } => (*code, sqlstate.clone()),
+            _ => (1146, "42S02".to_string()),
+        }
+    }
 }
 
 impl std::fmt::Display for MySqlError {
@@ -1286,6 +1312,7 @@ impl std::fmt::Display for MySqlError {
             MySqlError::Protocol(s) => write!(f, "Protocol: {}", s),
             MySqlError::Sql(s) => write!(f, "SQL: {}", s),
             MySqlError::Other(s) => write!(f, "{}", s),
+            MySqlError::Coded { message, .. } => write!(f, "{}", message),
         }
     }
 }
@@ -4939,6 +4966,11 @@ fn handle_load_local_infile<S: Read + Write>(
     // was dropped. `skipped` is returned to the caller and surfaced to
     // the client as a warning.
     let mut skipped: u64 = 0;
+    // #5527: 装载失败（重复键）时**不能**立刻返回 —— 客户端还在把文件内容
+    // 发过来。必须先把剩下的包**读完并丢弃**，否则它们会被当成新命令：
+    // 客户端的终止包（空 payload）会让 command loop 在 `&pkt.payload[1..]`
+    // 上 panic（slice index out of range），整条连接崩掉。
+    let mut load_error: Option<MySqlError> = None;
 
     // ---- EAGAIN bug fix (RC2 Week 1 Day 6) ----
     //
@@ -4976,6 +5008,11 @@ fn handle_load_local_infile<S: Read + Write>(
         *seq = pkt.sequence.wrapping_add(1);
         if pkt.payload.is_empty() {
             break;
+        }
+        if load_error.is_some() {
+            // #5527: 装载已被拒绝 —— 把客户端剩余的内容包读完并丢弃，
+            // 直到它的终止包（空 payload）到达。
+            continue;
         }
         buf.extend_from_slice(&pkt.payload);
 
@@ -5035,9 +5072,12 @@ fn handle_load_local_infile<S: Read + Write>(
         if buf.is_empty() && pending_rows.len() > last_flush_kept_rows {
             let pending = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
-            let n = bulk_insert(engine, table, pending)
-                .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
-            total_rows += n;
+            match bulk_insert(engine, table, pending) {
+                Ok(n) => total_rows += n,
+                Err(e) => {
+                    load_error = Some(e);
+                }
+            }
         } else if buf.len() > bulk_buf_size * 4 {
             // Sanity guard: if buf keeps growing without ever
             // draining (e.g. a malformed file with no newlines),
@@ -5052,9 +5092,12 @@ fn handle_load_local_infile<S: Read + Write>(
             );
             let pending = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
-            let n = bulk_insert(engine, table, pending)
-                .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
-            total_rows += n;
+            match bulk_insert(engine, table, pending) {
+                Ok(n) => total_rows += n,
+                Err(e) => {
+                    load_error = Some(e);
+                }
+            }
         } else if periodic_threshold > 0 && pending_rows.len() >= periodic_threshold {
             // Periodic flush: every `rows_per_flush` rows, flush
             // even if buf is non-empty. The remaining bytes in buf
@@ -5062,9 +5105,12 @@ fn handle_load_local_infile<S: Read + Write>(
             // packet.
             let pending: Vec<Vec<sqlrustgo_types::Value>> = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
-            let n = bulk_insert(engine, table, pending)
-                .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
-            total_rows += n;
+            match bulk_insert(engine, table, pending) {
+                Ok(n) => total_rows += n,
+                Err(e) => {
+                    load_error = Some(e);
+                }
+            }
         } else {
             // Defer flush until next packet; remember that these
             // rows are still pending.
@@ -5073,10 +5119,18 @@ fn handle_load_local_infile<S: Read + Write>(
     }
 
     // Final flush of any rows that didn't hit a boundary.
-    if !pending_rows.is_empty() {
-        let n = bulk_insert(engine, table, pending_rows)
-            .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
-        total_rows += n;
+    if load_error.is_none() && !pending_rows.is_empty() {
+        match bulk_insert(engine, table, pending_rows) {
+            Ok(n) => total_rows += n,
+            Err(e) => {
+                load_error = Some(e);
+            }
+        }
+    }
+
+    // #5527: 客户端的内容已经排空，现在可以安全地把错误报回去。
+    if let Some(e) = load_error {
+        return Err(e);
     }
 
     // Materialize the .json file for this table so that subsequent
@@ -5711,8 +5765,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     ) {
                         Ok(o) => o,
                         Err(e) => {
-                            make_err_packet(seq, 1146u16, "42S02", &e.to_string())
-                                .write_to(stream)?;
+                            let (code, state) = e.mysql_code_and_state();
+                            make_err_packet(seq, code, &state, &e.to_string()).write_to(stream)?;
                             *server_last_sent_seq = seq;
                             // One command produces exactly ONE response
                             // packet. This path used to fall through to
