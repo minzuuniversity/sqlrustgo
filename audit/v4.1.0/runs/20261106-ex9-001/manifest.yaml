@@ -1,0 +1,323 @@
+schema_version: 1
+run_id: 20261106-ex9-001
+source_agent: mcode-macmini
+frozen_commit: a2ab388dd48983b2beaa5700c9d31fca5026e400
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: ex9-census-print
+  name: 留证：live issue 普查摘要（open_total 与 cost 标签分布）
+  cmd: python3 scripts/gate/gov_probe.py issues | tail -1 > /tmp/ex9-census.json && cat /tmp/ex9-census.json
+  cwd: .
+  timeout_sec: 300
+- id: ex9-census-baseline
+  name: census 断言：open_total=112 且 cost 标签 t0=24/t1=65/t2=23（估算的分母来源）
+  cmd: 'grep -q ''"open_total": 112'' /tmp/ex9-census.json && grep -q ''"cost/t0": 24'' /tmp/ex9-census.json
+    && grep -q ''"cost/t1": 65'' /tmp/ex9-census.json && grep -q ''"cost/t2": 23'' /tmp/ex9-census.json
+    && echo CENSUS-BASELINE-OK'
+  cwd: .
+  timeout_sec: 300
+- id: ex9-seat-chatgpt
+  name: 席位读数（lineage gpt / chatgpt-web）：EX-9 后该席位若返回占位文案必须直接退非零
+  cmd: python3 scripts/gate/expert_ladder.py ask --seat chatgpt-web --question - --max-tokens 350 --timeout
+    240 < audit/v4.1.0/est_prompt_2026-11-05.txt
+  cwd: .
+  timeout_sec: 280
+- id: ex9-seat-flash
+  name: 席位读数（lineage qwen / flash-next-252 @252:8001）：同一 prompt
+  cmd: python3 scripts/gate/expert_ladder.py ask --seat flash-next-252 --question - --max-tokens 600 --timeout
+    240 < audit/v4.1.0/est_prompt_2026-11-05.txt
+  cwd: .
+  timeout_sec: 280
+- id: ex9-seat-deepseek-abstain
+  name: 弃权现场必须仍在：deepseek-chat（EX-5 需人工登录）必须 fail-closed，不得被算作背书（R2）
+  cmd: 'python3 scripts/gate/expert_ladder.py ask --seat deepseek-chat --question - --timeout 60 < audit/v4.1.0/est_prompt_2026-11-05.txt
+    > /tmp/ex9-ds.json; rc=$?; if [ $rc -ne 0 ] && grep -q ''"ok": false'' /tmp/ex9-ds.json; then echo
+    ABSTAIN-RECORDED deepseek-chat-exit=$rc; else echo MISMATCH-expect-abstain-rc=$rc; head -c 300 /tmp/ex9-ds.json;
+    exit 1; fi'
+  cwd: .
+  timeout_sec: 200
+- id: ex9-recompute-bind
+  name: 文档↔事实绑定：估算文档每个派生数必须等于现算值，且本次席位读数不得整段偏离声称并集
+  cmd: python3 audit/v4.1.0/est_recompute.py --plan docs/releases/v4.1.0/GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md
+    --doc docs/releases/v4.1.0/ESTIMATE_DOUBLE_LINEAGE_2026-11-05.md --require-run-id 20261105-est2-008
+    --fresh-read audit/v4.1.0/runs/20261106-ex9-001/logs/003-ex9-seat-chatgpt.stdout --fresh-read audit/v4.1.0/runs/20261106-ex9-001/logs/004-ex9-seat-flash.stdout
+    < /tmp/ex9-census.json
+  cwd: .
+  timeout_sec: 300
+- id: ex9-recompute-mutations
+  name: 反向变异：12 臂必须全部承重，2 条正臂（未变异基线 / 并集内读数）必须保持不红
+  cmd: python3 audit/v4.1.0/est_recompute_mutations.py | tail -1 | grep -qx 'arms=12 flipped_red=12 stayed_green=0
+    drift=0 positive_fail=0'
+  cwd: .
+  timeout_sec: 300
+- id: ex9-placeholder-probe
+  name: EX-9 判据：占位文案必须判弃权、长答案引用该词必须保持 ok（cases=6 failures=0）
+  cmd: python3 audit/v4.1.0/placeholder_abstention_probe.py | tail -1 | grep -qx 'cases=6 failures=0 ladder=expert_ladder.py'
+  cwd: .
+  timeout_sec: 120
+- id: ex9-placeholder-mutations
+  name: EX-9 反向变异：三臂必须全翻红且未变异基线保持不红
+  cmd: python3 audit/v4.1.0/placeholder_abstention_mutations.py | tail -1 | grep -qx 'arms=3 flipped_red=3
+    stayed_green=0 drift=0 baseline_green=1'
+  cwd: .
+  timeout_sec: 180
+- id: ex9-ladder-tests
+  name: 席位梯夹具必须未红（含 EX-9 三条断言与 CONTROL 长答案对照）
+  cmd: python3 scripts/gate/test_expert_ladder.py | tail -1
+  cwd: .
+  timeout_sec: 300
+- id: ex9-denominator-168
+  name: 门禁分母不变式：check_n 仍为 168（本轮只加判定工具，未新增门禁）
+  cmd: 'python3 scripts/gate/gov_probe.py metrics | tail -1 | grep -q ''"check_n": 168'' && echo DENOM-168-OK'
+  cwd: .
+  timeout_sec: 300
+- id: ex9-metrics-record
+  name: 度量现值留证（本 run 自指：audit_manifests 会把在飞 run 自己算进去，见 notes）
+  cmd: python3 scripts/gate/gov_probe.py metrics | tail -1 | head -c 400; echo
+  cwd: .
+  timeout_sec: 300
+- id: ex9-kanban-consistency
+  name: 看板 SSOT 与渲染一致 + 状态计数断言（51：9/18/15/9）
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md | tail
+    -1 && grep -q '未开始 9 / 待复核 18 / 完成 15 / 阻塞 9 / 合计 51' docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: ex9-new-tools-compile
+  name: 本轮新增两工具 + EST-2 两工具必须能编译（语法级）
+  cmd: python3 -m py_compile audit/v4.1.0/placeholder_abstention_probe.py audit/v4.1.0/placeholder_abstention_mutations.py
+    audit/v4.1.0/est_recompute.py audit/v4.1.0/est_recompute_mutations.py && echo COMPILE-OK
+  cwd: .
+  timeout_sec: 300
+- id: ex9-est-doc-claims-clean
+  name: 估算文档必须不含被禁声明串（与 gov_probe 同一正则：PASS/全绿/绿色对勾）
+  cmd: python3 -c 'import re,sys,io; t=io.open("docs/releases/v4.1.0/ESTIMATE_DOUBLE_LINEAGE_2026-11-05.md",encoding="utf-8").read();
+    n=len(re.findall(r"PASS|全绿|\u2705", t)); print("hits", n); sys.exit(0 if n==0 else 1)'
+  cwd: .
+  timeout_sec: 300
+- id: ex9-plan-pointer
+  name: 计划文档 §9.3 勘误指针必须仍在，且指名证据 run 与订正后日历口径
+  cmd: grep -q 'ESTIMATE_DOUBLE_LINEAGE_2026-11-05.md' docs/releases/v4.1.0/GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md
+    && grep -q '20261105-est2-008' docs/releases/v4.1.0/GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md && grep
+    -q '20–48 周' docs/releases/v4.1.0/GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md && echo POINTER-OK
+  cwd: .
+  timeout_sec: 300
+- id: ex9-prompt-fingerprint
+  name: 席位 prompt 指纹不变（换 prompt 即换读数口径）
+  cmd: shasum -a 256 audit/v4.1.0/est_prompt_2026-11-05.txt | grep -q '^f77c82400a00d23b8333ed9dc0390d1acbeb09be88a7ae142ab6771548948489'
+    && echo PROMPT-HASH-OK
+  cwd: .
+  timeout_sec: 300
+- id: ex9-claims-baseline
+  name: 声明命中基线：claims_hits=1144 / claims_files=11 / docs410=81（本轮新增 0 处未绑定声明）
+  cmd: 'python3 scripts/gate/gov_probe.py metrics | tail -1 | grep -q ''"claims_hits": 1144'' && python3
+    scripts/gate/gov_probe.py metrics | tail -1 | grep -q ''"claims_files": 11'' && python3 scripts/gate/gov_probe.py
+    metrics | tail -1 | grep -q ''"docs410": 81'' && echo CLAIMS-BASELINE-OK'
+  cwd: .
+  timeout_sec: 300
+- id: ex9-board-appendix
+  name: '看板 ISSUE #5592 附录 A 与交接正文逐字相等（findings=0）'
+  cmd: python3 audit/v4.1.0/board_appendix_check.py | tail -1
+  cwd: .
+  timeout_sec: 300
+- id: ex9-issue-labels
+  name: issue 标签台账核对（live）：findings=0 且 unledgered=0
+  cmd: python3 audit/v4.1.0/issue_labels.py check --input live --ledger docs/releases/v4.1.0/ISSUE_LABEL_LEDGER_v4.1.0.jsonl
+    | tail -1
+  cwd: .
+  timeout_sec: 300
+results:
+- id: ex9-census-print
+  started_at: '2026-11-05T16:09:46Z'
+  finished_at: '2026-11-05T16:09:47Z'
+  exit_code: 0
+  stdout_sha256: 1ef1187bc764c6cf7865f619db603d0253f00759ddeb6f8e85ec18e0883974a5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-ex9-census-print.stdout
+  stderr_path: logs/001-ex9-census-print.stderr
+- id: ex9-census-baseline
+  started_at: '2026-11-05T16:09:47Z'
+  finished_at: '2026-11-05T16:09:47Z'
+  exit_code: 0
+  stdout_sha256: 572dff624d2d98311d431bf16a1b2057b86f63b6b960c6710b6bdfce32681cb6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-ex9-census-baseline.stdout
+  stderr_path: logs/002-ex9-census-baseline.stderr
+- id: ex9-seat-chatgpt
+  started_at: '2026-11-05T16:09:47Z'
+  finished_at: '2026-11-05T16:10:35Z'
+  exit_code: 0
+  stdout_sha256: 5f0c8f3d2363dd8544ebca91ef60516c7ad869830f1d464cffa45cd31ecf0c69
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ex9-seat-chatgpt.stdout
+  stderr_path: logs/003-ex9-seat-chatgpt.stderr
+- id: ex9-seat-flash
+  started_at: '2026-11-05T16:10:35Z'
+  finished_at: '2026-11-05T16:10:43Z'
+  exit_code: 0
+  stdout_sha256: 905f6dd5af8cb1a8e75c52e8731e16a2b64c6f8ed3bc7f757ea6d5a8280db188
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-ex9-seat-flash.stdout
+  stderr_path: logs/004-ex9-seat-flash.stderr
+- id: ex9-seat-deepseek-abstain
+  started_at: '2026-11-05T16:10:43Z'
+  finished_at: '2026-11-05T16:10:43Z'
+  exit_code: 0
+  stdout_sha256: 88c9ea31569fb02853bbd29acb5ac45ff346b1971d57ac6ee42b1f3d64e50f59
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-ex9-seat-deepseek-abstain.stdout
+  stderr_path: logs/005-ex9-seat-deepseek-abstain.stderr
+- id: ex9-recompute-bind
+  started_at: '2026-11-05T16:10:43Z'
+  finished_at: '2026-11-05T16:10:43Z'
+  exit_code: 0
+  stdout_sha256: 22a6a748f0beb4542ced1275945c4cda763cae820f2e7411a4588e17c6d8f934
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-ex9-recompute-bind.stdout
+  stderr_path: logs/006-ex9-recompute-bind.stderr
+- id: ex9-recompute-mutations
+  started_at: '2026-11-05T16:10:43Z'
+  finished_at: '2026-11-05T16:10:44Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-ex9-recompute-mutations.stdout
+  stderr_path: logs/007-ex9-recompute-mutations.stderr
+- id: ex9-placeholder-probe
+  started_at: '2026-11-05T16:10:44Z'
+  finished_at: '2026-11-05T16:10:44Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-ex9-placeholder-probe.stdout
+  stderr_path: logs/008-ex9-placeholder-probe.stderr
+- id: ex9-placeholder-mutations
+  started_at: '2026-11-05T16:10:44Z'
+  finished_at: '2026-11-05T16:10:45Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-ex9-placeholder-mutations.stdout
+  stderr_path: logs/009-ex9-placeholder-mutations.stderr
+- id: ex9-ladder-tests
+  started_at: '2026-11-05T16:10:45Z'
+  finished_at: '2026-11-05T16:10:55Z'
+  exit_code: 0
+  stdout_sha256: b4032ad5c52a23928ba4370ace40b2c33701a6302ad18d06f403b2c8861b8b9e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-ex9-ladder-tests.stdout
+  stderr_path: logs/010-ex9-ladder-tests.stderr
+- id: ex9-denominator-168
+  started_at: '2026-11-05T16:10:55Z'
+  finished_at: '2026-11-05T16:10:56Z'
+  exit_code: 0
+  stdout_sha256: a64890bd511f6bb0ba1298dcc8a81a5e537c5cba8979f17dc2b49c6a9e781676
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-ex9-denominator-168.stdout
+  stderr_path: logs/011-ex9-denominator-168.stderr
+- id: ex9-metrics-record
+  started_at: '2026-11-05T16:10:56Z'
+  finished_at: '2026-11-05T16:10:56Z'
+  exit_code: 0
+  stdout_sha256: ceed3eafb561768635581be108b70199cfd726890083e6abe671e6291134a60a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-ex9-metrics-record.stdout
+  stderr_path: logs/012-ex9-metrics-record.stderr
+- id: ex9-kanban-consistency
+  started_at: '2026-11-05T16:10:56Z'
+  finished_at: '2026-11-05T16:10:56Z'
+  exit_code: 0
+  stdout_sha256: f3e4e8c5ca97353249823b8c3707fcd0f9c6470ee77b8b7012cce60db91a5b03
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-ex9-kanban-consistency.stdout
+  stderr_path: logs/013-ex9-kanban-consistency.stderr
+- id: ex9-new-tools-compile
+  started_at: '2026-11-05T16:10:56Z'
+  finished_at: '2026-11-05T16:10:56Z'
+  exit_code: 0
+  stdout_sha256: 98174738a81d5d0038bd8853552b69ecd9bb60d527811f234a956c5f834c88fc
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-ex9-new-tools-compile.stdout
+  stderr_path: logs/014-ex9-new-tools-compile.stderr
+- id: ex9-est-doc-claims-clean
+  started_at: '2026-11-05T16:10:56Z'
+  finished_at: '2026-11-05T16:10:56Z'
+  exit_code: 0
+  stdout_sha256: 2426eb1528fe6961a54fd5dae0e570f6a8dcc90516f2961bd3b022c0818bc312
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-ex9-est-doc-claims-clean.stdout
+  stderr_path: logs/015-ex9-est-doc-claims-clean.stderr
+- id: ex9-plan-pointer
+  started_at: '2026-11-05T16:10:56Z'
+  finished_at: '2026-11-05T16:10:56Z'
+  exit_code: 0
+  stdout_sha256: 9507fff4bcfae2d6c5eb2181ccceb00856fc503c24bbf0107c1629ebcf4e2a69
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-ex9-plan-pointer.stdout
+  stderr_path: logs/016-ex9-plan-pointer.stderr
+- id: ex9-prompt-fingerprint
+  started_at: '2026-11-05T16:10:56Z'
+  finished_at: '2026-11-05T16:10:56Z'
+  exit_code: 0
+  stdout_sha256: cdefbac5bf046d10b372105eb3c56c137930bc3c6c9d0da38c54296037c16607
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/017-ex9-prompt-fingerprint.stdout
+  stderr_path: logs/017-ex9-prompt-fingerprint.stderr
+- id: ex9-claims-baseline
+  started_at: '2026-11-05T16:10:56Z'
+  finished_at: '2026-11-05T16:10:57Z'
+  exit_code: 0
+  stdout_sha256: 597271594b0aea2522071c16a2a91035804bdcabc21abac819dfc343ce8e6121
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/018-ex9-claims-baseline.stdout
+  stderr_path: logs/018-ex9-claims-baseline.stderr
+- id: ex9-board-appendix
+  started_at: '2026-11-05T16:10:57Z'
+  finished_at: '2026-11-05T16:10:57Z'
+  exit_code: 0
+  stdout_sha256: 1185f3e79beb60e96c4082c4de3373cf6fb48169b1c4bd25240c1b2b0b5d79de
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/019-ex9-board-appendix.stdout
+  stderr_path: logs/019-ex9-board-appendix.stderr
+- id: ex9-issue-labels
+  started_at: '2026-11-05T16:10:57Z'
+  finished_at: '2026-11-05T16:10:58Z'
+  exit_code: 0
+  stdout_sha256: eb77bcd55a3557fc6a0f2caaf6b29e8d334972990411122a3710dd4b1881a108
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/020-ex9-issue-labels.stdout
+  stderr_path: logs/020-ex9-issue-labels.stderr
+notes:
+- |
+  本 run 共 20 条命令，全部 exit 0 —— 包括 run 20261105-est2-008 里红的那条 est 绑定判据（本轮转绿，原因见第 3 条）。本 run 不含 ci_gate.sh、不含 168 道门禁全量实跑、不含 cargo test ⇒ 不构成任何「门禁通过」声明。
+- |
+  冻结口径：frozen_commit=a2ab388dd4（EX-9 修复提交：expert_ladder.http_chat 接 placeholder_content + 看板 EX-9 行）。自指披露：在飞 run 会被 check_audit_manifest.sh 与 gov_probe 的 audit_manifests 计数算进自己 ⇒ 本 run 入库后 audit_manifests 29→30、audit_manifests_runs 23→24，引用前必须复算。
+- |
+  EX-9 的成因与修复效果对照：run 008 log 003 实测 chatgpt-web ok=true、finish_reason=stop、latency 58.77s，但 content 只有「无法加载此回复」9 个字（ChatGPT 网页桥的页面占位文案）。本 run log 003 同一席位、同一 prompt、同一命令：ok=true、finish=stop、latency 48.57s、正文含「估: 150-260 人日 / 20-36 周」。修复后若桥再返回占位文案，ask 会退 2（ok=false）⇒ 该命令当场红，不会再静默把页面错误当成一次有效血统计数。
+- |
+  EX-9 判据与反向变异（log 008 / log 009）：placeholder_abstention_probe 断言 cases=6 failures=0（4 个占位 case 必须判弃权 + 2 个对照 case 必须保持 ok）；placeholder_abstention_mutations 断言 arms=3 flipped_red=3 stayed_green=0 drift=0 baseline_green=1。注意口径：这两条命令用 `| tail -1 | grep -qx` 断言 ⇒ 归档 stdout 为空（与 run 008 的 log 007 同一情形），结论只落在退出码里；要看正文请直接不带管道跑这两个脚本。
+- |
+  反向变异顺带测出的事实（不是先验设计）：64 字上限与「标记词邻近性」两道护栏互为兜底，单独撤任一道，探针都仍然不红。第一版把 m3 写成「只撤 PLACEHOLDER_MAX_CHARS」的假臂，被这套变异当场拒掉（stayed_green=1），因此改成一次撤掉整个短回复纪律。若不跑变异，这条假臂会带着「已验证」的标签入库。
+- |
+  本 run 的席位读数（log 003 / 004，均为 ok=true、finish=stop）：gpt 系 chatgpt-web ⇒ 150–260 人日 / 20–36 周（lat 48.57s，output_sha e5a765bc…d65304）；qwen 系 flash-next-252 ⇒ 140–210 人日 / 8–12 周（lat 7.27s，output_sha e4dca6a8…be234a）。两条都落在文档声称并集 111–300 内 ⇒ est_recompute 不判文档过期；但它们与文档 §3 已登记的读数（gpt 160–300 / qwen 180–240）不同 ⇒ 读数不可复算这一条继续成立，两次读数不得取平均、不得当作互相印证。
+- |
+  席位可用性未变好：qwen 席位再次给出不自洽周数（140–210 人日不可能 8–12 周），EX-6 的标定 3/4 继续对它降权；deepseek-chat 仍弃权（log 005 ABSTAIN-RECORDED exit=2，EX-5 需人工登录）。⇒ 本 run 有效读数只有 gpt + qwen 两系，且其中 qwen 处于降权状态，EST-1 维持「待复核」，不因绑定判据转绿而销账。
+- |
+  绑定判据现算（log 006）：census 未漂（open_total=112、t0=24/t1=65/t2=23）、三档加权 86.0/173.8/263.0、非 issue 四块合计 39.5–60.5、三系并集 111–300，findings=[]。口径说明：--require-run-id 仍绑 20261105-est2-008（文档与计划正文指名的证据 run 本轮未改），--fresh-read 指向本 run 自己的 log 003/004，两者不同 run 属有意为之。
+- |
+  看板现值（log 013）：51 行，未开始 9 / 待复核 18 / 完成 15 / 阻塞 9；门禁分母不变式 check_n=168（log 011）；claims_hits=1144 / claims_files=11 / docs410=81（log 018，本轮新增 0 处未绑定声明）；估算文档自身不含被禁声明串（log 015 hits 0）。
+- |
+  行号漂移需人工知悉：run 008 的 notes 第 3 条把这次修复写成「看板行 EX-7」，但 EX-7 早已被「3 条 triage_error 成因」占用、EX-8 是席位批量吞吐。本 run 对应的看板行实际登记为 EX-9。run 008 的正文按原样保留不改（已归档证据不回写），以本条为准。
+- |
+  环境：Darwin arm64 / Mac-mini-7.local / rustc 1.97.0；worktree_clean=false 属冻结后写入（commit.txt + 在飞 run 目录）；Cargo.lock 指纹 d491da0141dc…（与 run 20261105-ho2-007、20261105-est2-008 同一把锁）。席位 prompt 未换（log 017：sha256 f77c8240…48948489）。log 019 看板 ISSUE 附录 A 与 #5599 正文均与仓内交接源逐字一致；log 020 标签台账 findings=0 / unledgered=0 / open_total=112。
+evidence_hash: sha256:a9e4116e054bfeec8486789257ab8314e7c42338959c02a531eb0419b31a51b6
+completed_at: '2026-11-05T16:10:58Z'
