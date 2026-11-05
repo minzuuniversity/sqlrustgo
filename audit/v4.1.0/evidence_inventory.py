@@ -21,6 +21,10 @@ claims_hits）此前**没有任何一处**指回归档证据（claims_ref=0）�
   nonzero_run       同上但 run 里有非零退出码（声称不得借用它当「通过」）
   run_missing       同一行引用了不存在的 run id（假绑定，判红级）
   stale_binding     同一行有显式标记，但 run 的 frozen_commit 不是 HEAD 的祖先（证据只「曾经为真」）
+  invalid_manifest  引用到的 run 归档存在，但 manifest 结构不对（缺 run_id/frozen_commit/results、
+                    frozen_commit 不是十六进制串）—— 这是**确凿的**缺陷，判红
+  unread_manifest   归档 manifest 存在但**读不动**（不是结构错，是读不了：如解释器缺 yaml、YAML 语法坏）
+                    ⇒ 这一档**既不算绑定也不算债务**，只能把整体判成 INCOMPLETE(2)
   ambiguous         同块（连续非空行）内出现 run id，但本行没有显式标记
   unbound           连线索都没有
 绑定有效性（挂在 strong/nonzero 上，不改变分级名）：
@@ -34,6 +38,10 @@ claims_hits）此前**没有任何一处**指回归档证据（claims_ref=0）�
          --provenance-log <run 内 log 相对路径> [--debt-expiry 2026-12-31]
   python3 audit/v4.1.0/evidence_inventory.py verify [--ledger <path>] [--diff-base <ref>]
 退出码：0 无问题 / 1 有 finding / 2 INCOMPLETE（没能核对，不算通过）。
+  解释器读不动任何归档 manifest（典型：homebrew python3 没有 yaml）⇒ **一律 2**，
+  且直接指出该用 /usr/bin/python3。上一版在这里出过事：`import yaml` 失败被咽掉，
+  所有 run 都判成 invalid ⇒ 分级名变成 nonzero_run，十臂反向变异全红，
+  看起来像「判据不成立」，实际是解释器缺包。读不动必须显式暴露，不许换算成判定。
 反向变异：python3 audit/v4.1.0/evidence_inventory_mutations.py
 """
 from __future__ import annotations
@@ -53,9 +61,21 @@ DEFAULT_DOCS = "docs/releases/v4.1.0"
 DEFAULT_RUNS = "audit/v4.1.0/runs"
 DEFAULT_LEDGER = "docs/releases/v4.1.0/CLAIM_BINDINGS_LEDGER.jsonl"
 RUNID_RE = re.compile(r"20\d{6}-[a-z0-9]+-\d{3}")
+HEXSHA_RE = re.compile(r"[0-9a-f]{7,40}")
+# yaml 只在这里探一次：读不动归档就必须显式 INCOMPLETE，不能把「读不了」翻译成某种分级。
+try:
+    import yaml  # noqa: F401
+    YAML_OK, YAML_WHY = True, ""
+except Exception as _e:  # noqa: BLE001
+    YAML_OK, YAML_WHY = False, type(_e).__name__
 STRONG_RE = re.compile(r"run[:：]\s*(20\d{6}-[a-z0-9]+-\d{3})")
 TOKEN_RE = re.compile(r"(check_[A-Za-z0-9_.\-]+|[A-Za-z0-9_]+\.py)")
-KEYS = ("strong_bound", "nonzero_run", "run_missing", "stale_binding", "ambiguous", "unbound")
+KEYS = ("strong_bound", "nonzero_run", "run_missing", "stale_binding",
+        "invalid_manifest", "unread_manifest", "ambiguous", "unbound")
+# 债务口径只有一处定义：台账、report、单调比较、到期判定共用，避免四份写法各自漂。
+DEBT_KEYS = ("run_missing", "stale_binding", "invalid_manifest", "ambiguous", "unbound")
+# 确凿的假绑定/借证：当场判红（unread_manifest 不在这里，它只能判 INCOMPLETE）
+UNSAFE_GRADES = ("run_missing", "stale_binding", "nonzero_run", "invalid_manifest")
 
 
 def claim_re():
@@ -82,20 +102,34 @@ class Runs:
         if rid in self._cache:
             return self._cache[rid]
         man = self.dir / rid / "manifest.yaml"
-        rec = {"exists": man.is_file(), "valid": False, "clean": False, "frozen": "", "cmds": []}
+        rec = {"exists": man.is_file(), "valid": False, "unread": "", "why": "",
+               "clean": False, "frozen": "", "cmds": []}
         if rec["exists"]:
+            if not YAML_OK:
+                rec["unread"] = "import yaml: " + YAML_WHY
+                self._cache[rid] = rec
+                return rec
             try:
-                import yaml
                 d = yaml.safe_load(man.read_text(encoding="utf-8")) or {}
-                res = d.get("results") or []
-                if d.get("run_id") == rid and d.get("frozen_commit") and isinstance(res, list) and res:
-                    rec["valid"] = True
-                    rec["clean"] = all(int(r.get("exit_code", 1)) == 0 for r in res)
-                    rec["frozen"] = str(d["frozen_commit"])
-                    rec["cmds"] = [(str(c.get("id", "")) + " " + str(c.get("name", "")) + " " + str(c.get("cmd", "")))
-                                   for c in (d.get("commands") or [])]
-            except Exception as e:  # noqa: BLE001 — 读不动就是无效，不猜
-                rec["why"] = type(e).__name__
+            except Exception as e:  # noqa: BLE001 — 读不动就是读不动，不猜、也不换算成判定
+                rec["unread"] = type(e).__name__
+                self._cache[rid] = rec
+                return rec
+            res = d.get("results") or []
+            frozen = d.get("frozen_commit")
+            if d.get("run_id") != rid:
+                rec["why"] = "run_id 与目录名不一致"
+            elif not isinstance(frozen, str) or not HEXSHA_RE.fullmatch(frozen):
+                # YAML 1.1 会把 0000...0 这类串当数字解析（前导零被吞），必须显式挡住
+                rec["why"] = "frozen_commit 不是十六进制串（实际值 %r）" % (frozen,)
+            elif not isinstance(res, list) or not res:
+                rec["why"] = "results 缺失或为空"
+            else:
+                rec["valid"] = True
+                rec["clean"] = all(int(r.get("exit_code", 1)) == 0 for r in res)
+                rec["frozen"] = frozen
+                rec["cmds"] = [(str(c.get("id", "")) + " " + str(c.get("name", "")) + " " + str(c.get("cmd", "")))
+                               for c in (d.get("commands") or [])]
         self._cache[rid] = rec
         return rec
 
@@ -129,9 +163,12 @@ def grade(docs_dir: pathlib.Path, runs: Runs, repo: pathlib.Path):
                     rec = runs.load(rid)
                     if not rec["exists"]:
                         g = "run_missing"
+                    elif rec["unread"]:
+                        flags.append("unread_manifest:" + rid + ":" + rec["unread"])
+                        g = "unread_manifest"
                     elif not rec["valid"]:
-                        flags.append("invalid_manifest:" + rid)
-                        g = "nonzero_run"
+                        flags.append("invalid_manifest:" + rid + ":" + rec["why"])
+                        g = "invalid_manifest"
                     elif rec["clean"]:
                         # 有效性的最后一道：证据必须覆盖当前树，否则它只是「曾经为真」，不能算绑定
                         g = "strong_bound" if runs.ancestor(rec["frozen"]) else "stale_binding"
@@ -148,11 +185,10 @@ def grade(docs_dir: pathlib.Path, runs: Runs, repo: pathlib.Path):
                 else:
                     g = "unbound"
                 grades.append(g)
-            if any(g in ("run_missing", "stale_binding", "nonzero_run") for g in grades):
+            if any(g in UNSAFE_GRADES for g in grades):
                 unsafe.append((rel, idx + 1, "/".join(sorted(set(grades))), line.strip()[:100]))
             rows.append((idx + 1, grades, flags))
-        cnt = {"strong_bound": 0, "nonzero_run": 0, "run_missing": 0,
-               "stale_binding": 0, "ambiguous": 0, "unbound": 0}
+        cnt = {k: 0 for k in KEYS}
         for _, grades, flags in rows:
             for g in grades:
                 cnt[g] += 1
@@ -174,15 +210,13 @@ def _block(lines, idx):
 
 
 def summary(per_file):
-    tot = {"strong_bound": 0, "nonzero_run": 0, "run_missing": 0,
-           "stale_binding": 0, "ambiguous": 0, "unbound": 0}
+    tot = {k: 0 for k in KEYS}
     for cnt in per_file.values():
         for k, v in cnt.items():
             tot[k] += v
     tot["files"] = len(per_file)
-    tot["total"] = sum(tot[k] for k in ("strong_bound", "nonzero_run", "run_missing",
-                                        "stale_binding", "ambiguous", "unbound"))
-    tot["debt"] = tot["run_missing"] + tot["stale_binding"] + tot["ambiguous"] + tot["unbound"]
+    tot["total"] = sum(tot[k] for k in KEYS)
+    tot["debt"] = sum(tot[k] for k in DEBT_KEYS)
     tot["claims_ref"] = tot["strong_bound"]
     return tot
 
@@ -191,7 +225,7 @@ def file_row(f, cnt):
     """台账与 report 共用的行形状（台账的每一行必须能在归档 log 里逐字找到）。"""
     row = {"kind": "file", "file": f}
     row.update(cnt)
-    row["debt"] = cnt["run_missing"] + cnt["stale_binding"] + cnt["ambiguous"] + cnt["unbound"]
+    row["debt"] = sum(cnt.get(k, 0) for k in DEBT_KEYS)
     return row
 
 
@@ -284,7 +318,7 @@ def cmd_verify(args):
     # 单调：现场债务不得高于台账债务（逐文件 + 总量）
     for f, row in sorted(base.items()):
         now = per_file.get(f, {})
-        nd = sum(now.get(k, 0) for k in ("run_missing", "stale_binding", "ambiguous", "unbound"))
+        nd = sum(now.get(k, 0) for k in DEBT_KEYS)
         if nd > int(row.get("debt", 0)):
             findings.append("debt-grew:%s 台账 %d → 现场 %d（未绑定债务只准减不准增）" % (f, int(row.get("debt", 0)), nd))
     if tot["debt"] > sum(int(r.get("debt", 0)) for r in base.values()):
@@ -306,15 +340,22 @@ def cmd_verify(args):
     expiry = str(head.get("debt_expiry_date") or "")
     if expiry and today > expiry:
         for f, row in sorted(per_file.items()):
-            if (row.get("run_missing", 0) + row.get("stale_binding", 0)
-                    + row.get("ambiguous", 0) + row.get("unbound", 0)):
+            if any(row.get(k, 0) for k in DEBT_KEYS):
                 findings.append("stale_debt:%s 债务到期日 %s 已过（%s）仍未清零" % (f, expiry, today))
 
+    unread = sorted({fl for fs in notes.values() for fl in fs if fl.startswith("unread_manifest:")})
     out = {"kind": "evidence_inventory", **tot, "mode": "verify", "ledger": args.ledger,
            "diff_base": diff_base, "today": today, "binding_validity": notes}
     print(json.dumps(out, ensure_ascii=False))
     for f in findings:
         print("NOT-OK:", f)
+    if unread:
+        # 覆盖不全：这些 run 读不动，绑定有效性**没核对**，既不算红也不算绿（AGENTS 2.3）
+        print("INCOMPLETE-coverage: %d 个归档 manifest 读不动 ⇒ 绑定有效性没能核对" % len(unread))
+        for u in unread[:12]:
+            print("  ", u)
+        print("findings=%d unread=%d" % (len(findings), len(unread)))
+        return 2
     if findings:
         print("findings=%d" % len(findings))
         return 1
@@ -360,6 +401,11 @@ def diff_claims(repo, docs, base):
 
 
 def main():
+    if not YAML_OK:
+        # 读不动归档时「跑完给个数」是最坏的失败方式：数字看着齐全，分级其实全是猜的。
+        print("INCOMPLETE: 当前解释器读不动归档 manifest（import yaml ⇒ %s）—— 没能核对，不算通过；"
+              "改用 /usr/bin/python3 重跑" % YAML_WHY)
+        return 2
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["report", "emit-ledger", "verify"])
     ap.add_argument("--repo-root", default=str(REPO))
