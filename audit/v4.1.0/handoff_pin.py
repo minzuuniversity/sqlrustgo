@@ -19,6 +19,7 @@ Verb note (measured on Gitea 28.2.0 at 192.168.0.252:3000, 2026-11-06): editing 
 `PATCH /repos/{o}/{r}/issues/comments/{id}`; PUT on the same route returns 405. A PUT-based
 "update" therefore silently never happens — it is reported as POST-FAIL, not as success.
     python3 audit/v4.1.0/handoff_pin.py --selftest       # reverse mutation self-test
+    python3 audit/v4.1.0/handoff_pin.py --probe-verb     # 现读 Gitea 评论写动词（只碰自建探针，安全）
 
 Honesty rules baked in:
   * if §0.5 cannot be located, or is suspiciously short, exit 2 (INCOMPLETE) —
@@ -67,7 +68,8 @@ def api(method: str, path: str, payload=None):
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(BASE + path, data=data, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=40) as resp:
-        return json.loads(resp.read().decode())
+        raw = resp.read().decode()
+        return json.loads(raw) if raw.strip() else {}   # DELETE 返回 204 空体
 
 
 def extract_section(text: str) -> str:
@@ -135,6 +137,52 @@ def find_pins(issue_no: str):
         page += 1
 
 
+def api_status(method: str, path: str, payload=None) -> int:
+    """Return the *real* HTTP status (204 and 200 are different facts)."""
+    data = json.dumps(payload).encode() if payload is not None else None
+    headers = {"Authorization": "token " + token(), "Accept": "application/json"}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(BASE + path, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=40) as resp:
+            resp.read()
+            return resp.status
+    except urllib.error.HTTPError as e:
+        return e.code
+
+
+def probe_verb() -> int:
+    """Re-measure which write verbs this Gitea supports for issue comments.
+
+    Safe by construction: the probe only touches a throwaway comment it creates
+    itself (marker HANDOFF-PIN-PROBE), never the published pin — probing a real
+    object is what clobbered the pin once (handoff §10 第 23 条).
+    Exit 0 only while PUT=405 / PATCH=200 / DELETE=204 hold; if the server
+    changes, this goes red instead of letting the tool's assumption rot.
+    """
+    try:
+        created = api("POST", f"{REPO_API}/issues/5592/comments",
+                      {"body": f"<!-- {MARK}-PROBE --> verb probe, safe to delete"})
+        cid = created["id"]
+        put = api_status("PUT", f"{REPO_API}/issues/comments/{cid}", {"body": "put-probe"})
+        patch = api_status("PATCH", f"{REPO_API}/issues/comments/{cid}", {"body": "patch-probe"})
+        dele = api_status("DELETE", f"{REPO_API}/issues/comments/{cid}")
+    except urllib.error.HTTPError as e:
+        print("PROBE-INCOMPLETE: http=%s" % e.code, file=sys.stderr)
+        return 2
+    except (urllib.error.URLError, TimeoutError) as e:
+        print("INCOMPLETE: 探不出去 %r" % (e,), file=sys.stderr)
+        return 2
+    print(json.dumps({"kind": "handoff_pin_verb_probe", "comment_id": cid,
+                      "PUT": put, "PATCH": patch, "DELETE": dele,
+                      "expected": {"PUT": 405, "PATCH": 200, "DELETE": 204}}, ensure_ascii=False))
+    if (put, patch, dele) == (405, 200, 204):
+        return 0
+    print("NOT-OK: 这台 Gitea 的写动词与工具假设不一致（见交接 §8），先判工具是否要改", file=sys.stderr)
+    return 1
+
+
 def main(argv) -> int:
     post, selftest = None, False
     for i, a in enumerate(argv):
@@ -145,6 +193,8 @@ def main(argv) -> int:
             post = argv[i + 1]
         elif a == "--selftest":
             selftest = True
+        elif a == "--probe-verb":
+            return probe_verb()
     if selftest:
         good = build_comment()
         assert MARK in good and "接手 sqlrustgo" in good, "A1: 正常源文件必须产出可用评论"
