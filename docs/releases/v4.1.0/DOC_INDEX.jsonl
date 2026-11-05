@@ -43,7 +43,7 @@
 {"bytes": 18438, "file": "MAIN_DIVERGENCE_RESOLUTION_2026-09-30.md", "lines": 434, "sha256": "3f90cc2f823e725589320ada5e43de0d9786bebf5102d8560ec79f7804af2f1c", "stamp_ok": false, "stamped": false}
 {"bytes": 37736, "file": "MIGRATION_GUIDE.md", "lines": 741, "sha256": "29e054edc71792fd6adfb63e2e7205b49519d7cea1f9e389eab9d7f4c5bd154f", "stamp_ok": false, "stamped": false}
 {"bytes": 12452, "file": "NEG_FIXTURE_PROGRAM_2026-11-05.md", "lines": 183, "sha256": "2acc7632fa0a09d19876e44b9c0d1111c7f4c2a3566efad81136c559477cddb9", "stamp_ok": false, "stamped": false}
-{"bytes": 17700, "file": "OWNER_REPORT_V4.1.0_2026-11-05.md", "lines": 249, "sha256": "ed90aa0a7046f58771ed45a3dcaa688cd8e46974d9dabed91cc23bef1bd4a48b", "stamp_ok": false, "stamped": false}
+{"bytes": 17923, "file": "OWNER_REPORT_V4.1.0_2026-11-05.md", "lines": 251, "sha256": "582a49e83d7b7e12f94b9c578a4e92804624350d80d56805d870d8a85278717e", "stamp_ok": false, "stamped": false}
 {"bytes": 10140, "file": "P12_CAPABILITY_CLAIMS_2026-11-05.md", "lines": 202, "sha256": "aef1e414c9de8eff9b09f54fbd7a773357b8d3bb023898eb476ee99cd78b7567", "stamp_ok": false, "stamped": false}
 {"bytes": 7079, "file": "P14_GATE_EFFECT_HONESTY_2026-11-05.md", "lines": 127, "sha256": "4d6d68a97d84589e7231abd6050c26e59ec8cc415c3abb0604a9e388a05c89e0", "stamp_ok": false, "stamped": false}
 {"bytes": 7471, "file": "P15_CLAIM_RUN_BINDING_2026-11-05.md", "lines": 148, "sha256": "0db7892a07af85d5ab9c8230c211ce4d3a38d73b93fe8d08807f95328afaa4fc", "stamp_ok": false, "stamped": false}
