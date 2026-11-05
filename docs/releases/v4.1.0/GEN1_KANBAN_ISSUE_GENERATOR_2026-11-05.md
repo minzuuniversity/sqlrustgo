@@ -23,7 +23,7 @@
 
 生成器自带 `--selftest`（四臂 A1 网络、A2 模板残留、A3 stage 字段、A4 行数口径）。
 变异跑法在仓内：`audit/v4.1.0/gen_kanban_issue_mutations.py`，它只往临时目录里的**副本**施加变异，
-仓内文件不动。四臂各自的期望与实测（归档 run 的 014 号日志）：
+仓内文件不动。四臂各自的期望与实测（归档 run 20261105-gen1-005 的 011 号日志，逐字抄录）：
 
 ```
 RED  m1-always-post: rc=1 expect=A1/network: 默认模式必须不 PATCH first_sighting=PATCH 失败: {'__http_error__': 'selftest-network-blocked'}

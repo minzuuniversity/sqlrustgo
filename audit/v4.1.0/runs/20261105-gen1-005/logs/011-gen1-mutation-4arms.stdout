@@ -1,0 +1,5 @@
+RED  m1-always-post: rc=1 expect=A1/network: 默认模式必须不 PATCH first_sighting=PATCH 失败: {'__http_error__': 'selftest-network-blocked'}
+RED  m2-template-leak: rc=1 expect=A2: 正文不得残留模板片段 first_sighting=NOT-OK: A2 正文残留模板片段: ' + str(
+RED  m3-stage-key-wrong: rc=1 expect=A3/stage-guard: 头部 stage 字段不得为空 first_sighting=STAGE.yaml 里没读到 current_stage —— 看板头部的阶段字段不能留空
+RED  m4-rowcount-drift: rc=1 expect=A4: 行数口径必须等于 SSOT first_sighting=NOT-OK: A4 正文行数口径 != SSOT 45 行
+arms=4 flipped_red=4 stayed_green=0 drift=0
