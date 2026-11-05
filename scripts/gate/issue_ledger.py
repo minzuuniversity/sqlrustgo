@@ -168,8 +168,18 @@ def main():
     lines = []
     lines.append("# v4.1.0 open issue 台账（IL-1 产物）\n")
     lines.append("- 生成：`scripts/gate/issue_ledger.py`（本文件是生成物，手改会被下次生成覆盖）")
-    lines.append("- 输入：Gitea `type=issues` open=%d；分诊行=%d（`expert_triage.py`）"
-                 % (len(issues), len(triage)))
+    # 分诊文件里的**记录数**与**覆盖的 issue 数**不是一回事：
+    # 已关闭的 issue 也可能留在分诊文件里。写成「分诊行=N」会被读成
+    # 「分诊文件有 N 行」，与事实不符（实测：文件 112 条记录，覆盖当期 open 110 条）。
+    triage_records = sum(len(v) for v in triage.values())
+    issue_nums = {int(i["number"]) for i in issues}
+    live_covered = len(set(triage) & issue_nums)
+    lines.append("- 输入：Gitea `type=issues` open=%d（当期 open）；"
+                 "分诊文件共 %d 条记录（同一 issue 可有多条，一族一条），"
+                 "覆盖 %d 个 issue —— 其中 %d 个对应当期 open（进台账），"
+                 "另 %d 个已关闭（不在台账范围内）"
+                 % (len(issues), triage_records, len(triage),
+                    live_covered, len(triage) - live_covered))
     lines.append("- 证据等级（行级）：%s；ladder credited lineage=%s；实际分诊席位血统=%s"
                  % (" / ".join("%s %d" % kv for kv in grade_ct.most_common()),
                     ",".join(lineages) or "(none)", ",".join(fams)))
