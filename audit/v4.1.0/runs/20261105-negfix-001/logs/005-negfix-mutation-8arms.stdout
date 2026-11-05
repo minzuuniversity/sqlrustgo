@@ -1,0 +1,9 @@
+ARM M1-drop-a-gate-row                     findings=7 want>=1 -> OK
+ARM M2-duplicate-row                       findings=2 want>=1 -> OK
+ARM M3-unfalsifiable-empty-reason          findings=1 want>=1 -> OK
+ARM M4-fixture-file-does-not-exist         findings=1 want>=1 -> OK
+ARM M5-selftest-claim-without-selftest     findings=1 want>=1 -> OK
+ARM M6-fake-evidence-run                   findings=1 want>=1 -> OK
+ARM M7-pending-without-close-plan          findings=1 want>=1 -> OK
+ARM M8-unfalsifiable-relabeled-mutation    findings=1 want>=1 -> OK
+neg-fixture ledger mutation-selftest: ok=8 bad=0
