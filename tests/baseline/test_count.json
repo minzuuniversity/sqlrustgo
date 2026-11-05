@@ -1,8 +1,8 @@
 {
   "version": "v4.1.0",
-  "timestamp": "2026-11-05T20:34:18Z",
-  "cargo_tests": 481,
-  "active_tests": 14295,
+  "timestamp": "2026-11-05T20:45:26Z",
+  "cargo_tests": 482,
+  "active_tests": 14300,
   "ignored_tests": 123,
   "ignored_counting_method": "real-attributes-v1",
   "note": "Updated by check_test_count_monotonic.sh"
