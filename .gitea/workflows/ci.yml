@@ -1478,6 +1478,34 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/gate/check_gate_executability.sh 2>&1 | tee gate_executability.log
+      # KR-2 / KR-3 (2026-11-05, plan P0-2): the stage ledger
+      # (`docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl`) and the gate registry
+      # (`docs/releases/v4.1.0/GATE_CATALOG.jsonl`) are SSOTs that had **no
+      # execution point** — drift was only ever caught when a human happened to
+      # look (and it did go unnoticed once: a deleted ledger row stayed invisible).
+      # Both are now checked by this existing job. This adds no `check_*` script
+      # and does not touch the 168-gate denominator; the detectability is proven
+      # by the two fixture suites that run right next to the checks.
+      - name: Kanban ledger consistency (KR-2)
+        run: |
+          set -euo pipefail
+          python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+          python3 scripts/gate/test_kanban_render.py
+      - name: Gate registry consistency (KR-3)
+        run: |
+          set -euo pipefail
+          python3 scripts/gate/gate_registry.py check
+          python3 scripts/gate/test_gate_registry.py
+      # P0-2: the three-state gate runner must never be able to turn a missing /
+      # duplicated / exit-code-less record into a green line. The fixture suite is
+      # the reverse mutation for that claim (CTRL proves the judges are not
+      # permanently red); the runner itself is not wired to execute gates yet —
+      # executing the full stage list in CI is tracked separately (kanban IL-7),
+      # because on a known-red branch that job turns red on purpose.
+      - name: Three-state gate runner self-test (P0-2)
+        run: |
+          set -euo pipefail
+          python3 scripts/gate/test_gate_run_tristate.py
       - name: Stage driver resolves the SSOT (#5440)
         run: |
           set -euo pipefail
