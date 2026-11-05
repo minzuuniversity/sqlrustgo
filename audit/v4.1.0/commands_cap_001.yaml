@@ -1,0 +1,83 @@
+- id: cap-selftest
+  name: capability_smoke 反向变异自检（11 臂，含 M3 restore 假成功 / M6 NULL 歧义 / M7 IS NULL 谓词 / D2 判别臂没红）
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py --selftest
+  cwd: .
+  timeout_sec: 300
+- id: cap-client-presence
+  name: 被测对象在位：真 mysql 客户端（实测是 MariaDB shim，不是 Oracle mysql）+ 真 server 二进制哈希
+  cmd: 'set -e
+
+    /opt/homebrew/bin/mysql --version
+
+    /opt/homebrew/bin/mysql --version | sha256sum
+
+    git rev-parse HEAD
+
+    target/debug/sqlrustgo-mysql-server --version 2>/dev/null || true
+
+    shasum -a 256 target/debug/sqlrustgo-mysql-server'
+  cwd: .
+  timeout_sec: 120
+- id: cap-live-prod
+  name: 生产链 + binary 判别臂真跑（预期 rc=1：生产链 findings=1 = WIRE-1）
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py run --out test_results/capability_smoke/run-archive
+  cwd: .
+  timeout_sec: 600
+- id: cap-live-summary
+  name: 把上一命令的 json 摊成可核对结论（三段逐值全等 / wal / restore 落盘 / NULL 歧义 / 判别力）
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport json, sys\np = \"test_results/capability_smoke/run-archive/capability_smoke.json\"\
+    \nd = json.load(open(p))\nprod = d[\"prod\"][\"obs\"]; arm = d[\"arm_nonproduction\"][\"obs\"]\ndef\
+    \ eq(a, b):\n    return a == b\nout = {\n  \"kind\": \"cap_live_summary\",\n  \"bin\": d[\"bin\"],\n\
+    \  \"expected_rows\": d[\"expected_rows\"],\n  \"prod_storage\": [prod[\"storage\"], prod[\"wal_sync\"\
+    ]],\n  \"prod_ddl_errors\": len(prod[\"ddl_errors\"]),\n  \"prod_insert_errors\": len(prod[\"insert_errors\"\
+    ]),\n  \"wal_nonempty\": prod[\"wal_nonempty\"],\n  \"table_files_nonempty\": prod[\"table_files_nonempty\"\
+    ],\n  \"stage_eq_insert_vs_crash\": eq(prod[\"select_before\"], prod[\"crash_readback\"]),\n  \"stage_eq_crash_vs_restore\"\
+    : eq(prod[\"crash_readback\"], prod.get(\"restore_readback\")),\n  \"restore_readback_rows\": len(prod.get(\"\
+    restore_readback\") or []),\n  \"backup_rc\": prod[\"backup_rc\"], \"backup_rows\": prod[\"backup_rows\"\
+    ],\n  \"restore_rc\": prod[\"restore_rc\"],\n  \"restore_files_nonempty\": bool(prod.get(\"restored_files\"\
+    )) and all(n > 0 for _, n in prod.get(\"restored_files\") or []),\n  \"null_wire_ambiguous\": prod[\"\
+    null_wire_ambiguous\"],\n  \"null_wire_detail\": prod[\"null_wire_detail\"],\n  \"null_predicate_ok\"\
+    : prod[\"null_predicate_ok\"],\n  \"null_predicate_detail\": prod[\"null_predicate_detail\"],\n  \"\
+    prod_findings\": d[\"prod\"][\"judge\"][\"findings\"],\n  \"prod_verdict\": d[\"prod\"][\"judge\"\
+    ][\"verdict\"],\n  \"arm_findings_n\": len(d[\"arm_nonproduction\"][\"judge\"][\"findings\"]),\n \
+    \ \"arm_verdict\": d[\"arm_nonproduction\"][\"judge\"][\"verdict\"],\n  \"restore_wrote_nothing\"\
+    : prod[\"restore_wrote_nothing\"],\n  \"discriminator\": d[\"discriminator\"],\n  \"overall\": d[\"\
+    overall\"],\n}\nprint(json.dumps(out, ensure_ascii=False, indent=1))\nbad = []\nif not out[\"stage_eq_insert_vs_crash\"\
+    ]: bad.append(\"crash_readback 与插入值不等\")\nif not out[\"stage_eq_crash_vs_restore\"]: bad.append(\"\
+    restore 读回与崩溃前不等\")\nif not prod[\"wal_nonempty\"]: bad.append(\"wal 为空\")\nif not out[\"restore_files_nonempty\"\
+    ]: bad.append(\"restore 没落盘\")\nif prod[\"restore_wrote_nothing\"]: bad.append(\"restore_wrote_nothing=true\"\
+    )\nif not d[\"discriminator\"][\"discriminating\"]: bad.append(\"判别臂没红\")\nif bad:\n    print(\"NOT-OK:\
+    \ \" + \"; \".join(bad), file=sys.stderr); sys.exit(3)\nif not out[\"null_wire_ambiguous\"]:\n   \
+    \ print(\"NOTE: NULL 歧义这次没复现——WIRE-1 需要复现，别当已修\", file=sys.stderr); sys.exit(4)\nPYIN"
+  cwd: .
+  timeout_sec: 120
+- id: cap-static
+  name: 静态普查：哪些测试声称验证存储语义、其中多少只在 mock 上跑
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py static
+  cwd: .
+  timeout_sec: 300
+- id: kanban-check
+  name: 看板 render/check（本 run 未改看板）
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: kanban-counts
+  name: 看板行数字段（55 行：8 未开始 / 20 待复核 / 17 完成 / 10 阻塞）
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: gov-metrics
+  name: 分母与度量（check_n 必须仍是 168）
+  cmd: /usr/bin/python3 scripts/gate/gov_probe.py metrics | tail -1 | /usr/bin/python3 -c "import sys,json;d=json.load(sys.stdin);print(d['check_n'],d['claims_hits'],d['docs410'],d['audit_manifests_runs'])"
+  cwd: .
+  timeout_sec: 120
+- id: ledger-verify
+  name: 台账 verify（findings=0、debt 只降不升）
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify
+  cwd: .
+  timeout_sec: 120
+- id: board-appendix-check
+  name: 三处一致性核对（现值 findings=1：看板缺附录 A，HO-2 待 Owner 裁）
+  cmd: /usr/bin/python3 audit/v4.1.0/board_appendix_check.py
+  cwd: .
+  timeout_sec: 120
