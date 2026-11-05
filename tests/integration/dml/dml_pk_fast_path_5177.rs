@@ -1,3 +1,4 @@
+// storage-semantics: dml-pk-fast-path-5177
 //! #5177: UPDATE/DELETE with a bare primary-key equality must not resolve
 //! its WHERE by scanning every row.
 //!
