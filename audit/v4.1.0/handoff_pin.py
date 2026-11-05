@@ -18,6 +18,10 @@ Comments are not touched by a body re-render, so the entry point goes here.
 Verb note (measured on Gitea 28.2.0 at 192.168.0.252:3000, 2026-11-06): editing a comment is
 `PATCH /repos/{o}/{r}/issues/comments/{id}`; PUT on the same route returns 405. A PUT-based
 "update" therefore silently never happens — it is reported as POST-FAIL, not as success.
+
+Hash-base note: the `src_sha256` in the pin marker is the sha256 of the **stripped** source text,
+the same base `board_appendix_check.py` uses. It used to be the hash of the raw file bytes, which
+made two same-named fields measure different things (handoff section 10, item 24).
     python3 audit/v4.1.0/handoff_pin.py --selftest       # reverse mutation self-test
     python3 audit/v4.1.0/handoff_pin.py --probe-verb     # 现读 Gitea 评论写动词（只碰自建探针，安全）
 
@@ -90,8 +94,13 @@ def build_comment() -> str:
     if not SRC.is_file():
         raise SystemExit("SRC-MISSING: " + str(SRC))
     raw = SRC.read_bytes()
-    sec = extract_section(raw.decode("utf-8"))
-    src_sha = hashlib.sha256(raw).hexdigest()
+    text = raw.decode("utf-8")
+    sec = extract_section(text)
+    # 哈希基与 board_appendix_check.py 对齐：按 **strip 后正文** 哈希。
+    # 之前按原始字节哈希，两个工具字段同名不同基（pin 28814da4… vs 核对器 07c5ac06…），
+    # 接手者拿它们互相比对必然误判 ⇒ 见交接 §10 第 24 条。
+    body_bytes = text.strip().encode("utf-8")
+    src_sha = hashlib.sha256(body_bytes).hexdigest()
     branch, head = sh("git", "rev-parse", "--abbrev-ref", "HEAD"), sh("git", "rev-parse", "HEAD")
     if not branch or not head or branch == "HEAD":
         raise SystemExit("COORD-INCOMPLETE: 读不到分支/HEAD（branch=%r head=%r）" % (branch, head[:10]))
@@ -112,7 +121,7 @@ def build_comment() -> str:
         sec,
         "",
         "### 发布元数据（机器生成，勿手改）",
-        f"- 源文件（SSOT）：`docs/knowledge-loop/handoffs/{SRC.name}`｜{len(raw)} 字节｜sha256 `{src_sha}`",
+        f"- 源文件（SSOT）：`docs/knowledge-loop/handoffs/{SRC.name}`" f"｜文件 {len(raw)} 字节" f"｜正文 sha256（strip 后，与 `board_appendix_check.py` 同一哈希基）`{src_sha}`",
         f"- 分支 `{branch}` HEAD `{head[:10]}`（已推 gitea252）",
         "- 远端分支 tip 现读（不写死）：",
     ]
@@ -230,7 +239,24 @@ def main(argv) -> int:
                     f"MUTATION-FAIL M2: 判据不符: {exc}"
         finally:
             SRC.write_bytes(saved)
-        print(json.dumps({"kind": "handoff_pin_selftest", "arms": 2, "discriminating": 2,
+        # 反向变异 M3：marker 的哈希基必须是 **strip 后正文**（与 board_appendix_check 同基），
+        # 且必须能与「原始字节」基区分开——否则这条判据永远绿着（第 2.5 条反向变异要求）。
+        pad = SRC.read_bytes() + b"\n\n   \n"
+        base_strip = hashlib.sha256(pad.decode("utf-8").strip().encode("utf-8")).hexdigest()
+        base_raw = hashlib.sha256(pad).hexdigest()
+        try:
+            SRC.write_bytes(pad)
+            marker_line = build_comment().splitlines()[0]
+        finally:
+            SRC.write_bytes(saved)
+        if base_strip == base_raw:
+            print("MUTATION-FAIL M3: 填充后两种哈希基相同 ⇒ 该臂无法判别", file=sys.stderr)
+            return 1
+        if base_strip[:12] not in marker_line or base_raw[:12] in marker_line:
+            print("MUTATION-FAIL M3: marker 哈希基不是 strip 后正文: %s" % marker_line, file=sys.stderr)
+            return 1
+        print(json.dumps({"kind": "handoff_pin_selftest", "arms": 3, "discriminating": 3,
+                          "hash_base": "strip-then-utf8", "m3_marker": marker_line,
                           "chars_good": len(good)}, ensure_ascii=False))
         return 0
 
