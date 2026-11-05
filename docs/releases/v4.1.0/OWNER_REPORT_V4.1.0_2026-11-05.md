@@ -285,6 +285,28 @@ IL-4 真正的反向变异是 `verify_ledger_mutation.sh` 的**六臂**，已归
 | **1051 / 149 / 96 三类存量清算范围** | 定为**逐条固化成可复核台账、冻结存量、只卡增量**，不做追溯性改写（改历史文档会让证据描述从未存在过的状态）：<br>· **1051 处未绑定声明** → `docs/releases/v4.1.0/CLAIMS_UNBOUND_LEDGER.jsonl`（59 个文件逐文件记账 + 理由）<br>· **149 条目录策略违规** → `docs/releases/v4.1.0/DIRECTORY_POLICY_BASELINE.jsonl`（逐条含 category + source，本轮已有）<br>· **96 份未声明的存储语义测试** → `docs/releases/v4.1.0/STORAGE_SEMANTICS_CANDIDATES.jsonl`（逐条标注「候选不是声称」+ 理由）<br>⇒ 三类存量从「一个数」变成**可逐条复核的清单**，且增量检查保持为 0。 |
 | **剩余人日按 45–60** | 已按此改写本报告与看板度量口径（见 §2）。取舍随之明确：CI 侧返工与逻辑备份重做**不在**这 45–60 里。 |
 
+## 4.11 第三轮裁定：八条全 REAL，六条因此收口（2026-11-05）
+
+补齐上一轮点名的**两处证据缺口**后再问一轮：
+
+- **IL-4**：绿灯输出引错了（引成门禁注册表的 168 个 gate，而 IL-4 要验的是台账快照与
+  当期 open issue 的一致性）⇒ 换成 `verify_ledger.py` 的真实输出
+  （rows=110 == triaged=110 == open 110，现场重算而非信台账自报）。
+- **EX-1**：缺 R1/R2/R3 的夹具反向变异 ⇒ 补上 `scripts/gate/test_expert_ladder.py`
+  的机器核对输出（含 rev_R1/rev_R2/rev_R3/rev_R4、MANIFEST 证据契约、词表拒绝），
+  **已归档为 run `20261105-ex1-evidence-001` 的 `expert-ladder-machine-check` 命令**
+  （13/13 全部 exit 0，`evidence_hash sha256:1ca009e7…`）。
+
+**结果：qwen 血统八条全判 REAL**（含上一轮被判 FALSE_POSITIVE 的 IL-4 与
+INCOMPLETE 的 EX-1）。⇒ 这 8 条声称现在**同时有归档绿灯 + 归档红灯实验 +
+独立血统的 REAL 裁定**。
+
+⇒ 其中 **6 条（P1-4 / P1-5 / P2-1 / P2-2 / IL-6 / IL-11）收口为「完成」**。
+**IL-4 与 EX-1 仍留在待复核**：上一轮另一血统分别判它们 FALSE_POSITIVE / INCOMPLETE，
+缺口虽已补齐并重问（qwen 血统本轮判 REAL），但**另一血统本轮返回空**（席位可用性），
+它的再确认还没拿到 —— 不在只有一条血统背书时宣称收口。
+这是**可自动化的下一步**：等该席位恢复后再问一轮。
+
 ## 5. 执行过程偏差清单
 
 ### 5.1 本轮新增（按发生顺序）
