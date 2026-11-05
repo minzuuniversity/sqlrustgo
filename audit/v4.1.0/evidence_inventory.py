@@ -231,6 +231,7 @@ def file_row(f, cnt):
 
 def emit_ledger(out_path, per_file, args, repo):
     rc, head, _ = sh(["git", "rev-parse", "--short", "HEAD"], repo)
+    head = (head or "").strip()  # 台账头是给人核对的，不能带尾随换行
     man = repo / DEFAULT_RUNS / args.provenance_run / "manifest.yaml"
     frozen = ""
     if man.is_file():
