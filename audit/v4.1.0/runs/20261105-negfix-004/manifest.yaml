@@ -1,0 +1,215 @@
+schema_version: 1
+run_id: 20261105-negfix-004
+source_agent: mcode-macmini
+frozen_commit: 6fe3451e892b07b9e1327908a547be2d5a8798c2
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: negfix-ledger-regen
+  name: 台账可从干净检出复现（生成器已进仓，再生产物必须与在仓版本逐字节一致）
+  cmd: bash -c 'python3 audit/v4.1.0/gen_neg_ledger.py 20261105-negfix-003 >/dev/null
+    && git diff --quiet -- docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl && echo
+    LEDGER-REGEN-IDENTICAL || { echo LEDGER-REGEN-DIFFERS; git status --short -- docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl;
+    exit 1; }'
+  cwd: .
+  timeout_sec: 300
+- id: negfix-ledger-check
+  name: 台账结构/语义/证据落盘对账（缺 run 时 fail-closed）
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py check
+  cwd: .
+  timeout_sec: 300
+- id: negfix-scratch-add
+  name: 建 detached scratch 工作树（夹具只在此树内注入）
+  cmd: git worktree add --detach /private/tmp/negfix-20261105-negfix-003 "$(git rev-parse
+    HEAD)"
+  cwd: .
+  timeout_sec: 300
+- id: neg-fixtures
+  name: 门禁判定类夹具注入缺陷跑真实门禁（14 条，selftest-red 类显式 DEFERRED）
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py fixtures --tree /private/tmp/negfix-20261105-negfix-003
+  cwd: .
+  timeout_sec: 1800
+- id: neg-selftests
+  name: 行为判据：干净 selftest 必须 0，致残检测器后必须翻红
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py selftests --tree /private/tmp/negfix-20261105-negfix-003
+  cwd: .
+  timeout_sec: 1200
+- id: fx14-reverse-pair
+  name: SC-1 反向变异对：同一夹具打修复前 9f82eeb777 必须判 FIXTURE-FAIL(rc=3)
+  cmd: 'bash -c ''git worktree add --detach /private/tmp/negfix-410-pre 9f82eeb777
+    >/dev/null && { bash audit/v4.1.0/neg/fx14-stage-version-uninferable.sh /private/tmp/negfix-410-pre
+    > /tmp/fx14-pre.log 2>&1; rc=$?; git worktree remove --force /private/tmp/negfix-410-pre;
+    sed -n "1,20p" /tmp/fx14-pre.log; if [ "$rc" -eq 3 ]; then echo FX14-REVERSE-PAIR-OK:
+    fixture says NOT-OK on the pre-fix driver; exit 0; else echo FX14-REVERSE-PAIR-BAD:
+    rc=$rc want 3; exit 1; fi; }'''
+  cwd: .
+  timeout_sec: 400
+- id: negfix-mutation-11arms
+  name: 探针反向变异 11 臂（先要求台账基线零发现）
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py mutation-selftest
+  cwd: .
+  timeout_sec: 600
+- id: stage-driver-resolve
+  name: SC-1 正向回归：非发布线分支上驱动必须解析 v4.1.0（改前实测 v3.9.0）
+  cmd: 'bash -c ''out=$(bash scripts/gate/check_stage.sh --stage ALPHA --dry-run 2>&1);
+    echo "$out" | sed -n "1,8p"; echo "$out" | grep -q "^  Version: v4\.1\.0$" &&
+    echo STAGE-DRIVER-RESOLVES-V410 || { echo STAGE-DRIVER-WRONG-VERSION; exit 1;
+    }'''
+  cwd: .
+  timeout_sec: 300
+- id: negfix-scratch-remove
+  name: 清理 scratch 工作树
+  cmd: git worktree remove --force /private/tmp/negfix-20261105-negfix-003
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-check
+  name: 门禁清单回归（分母必须仍是 168）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixtures
+  name: 门禁清单回归夹具
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: kanban-44-rows
+  name: 看板 SSOT 渲染一致性（44 行）
+  cmd: bash -c 'python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+    | grep -q "44 rows"'
+  cwd: .
+  timeout_sec: 120
+- id: gov-probe-metrics
+  name: 自指度量当期取值（neg_fixture_n 关键字口径见 NEG_FIXTURE_PROGRAM §6）
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 900
+results:
+- id: negfix-ledger-regen
+  started_at: '2026-11-05T06:56:50Z'
+  finished_at: '2026-11-05T06:56:50Z'
+  exit_code: 0
+  stdout_sha256: 2bb314d8b9f9f44b7bc6c67bb1acf0763aa720273bb0b61b2a64323506265c0f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-negfix-ledger-regen.stdout
+  stderr_path: logs/001-negfix-ledger-regen.stderr
+- id: negfix-ledger-check
+  started_at: '2026-11-05T06:56:50Z'
+  finished_at: '2026-11-05T06:56:50Z'
+  exit_code: 0
+  stdout_sha256: 55be8098f6cf1bf63508bbb8eb2e58c388bc5ca7bcaf6d0c659dddd9f651f427
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-negfix-ledger-check.stdout
+  stderr_path: logs/002-negfix-ledger-check.stderr
+- id: negfix-scratch-add
+  started_at: '2026-11-05T06:56:50Z'
+  finished_at: '2026-11-05T06:56:50Z'
+  exit_code: 0
+  stdout_sha256: f726baeea34417ecfd19bf9279d563c6f4445178e29bd78e5977778c0f7970dd
+  stderr_sha256: 60aaedb65a8456e6b9e96fc282efc8e48c86f7aa34ae150ebd818d815bc57ad4
+  stdout_path: logs/003-negfix-scratch-add.stdout
+  stderr_path: logs/003-negfix-scratch-add.stderr
+- id: neg-fixtures
+  started_at: '2026-11-05T06:56:50Z'
+  finished_at: '2026-11-05T06:57:23Z'
+  exit_code: 0
+  stdout_sha256: edc4afe2487e98a2615ccb632670509015ddb4909d096844126175b0f69038db
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-neg-fixtures.stdout
+  stderr_path: logs/004-neg-fixtures.stderr
+- id: neg-selftests
+  started_at: '2026-11-05T06:57:23Z'
+  finished_at: '2026-11-05T06:57:30Z'
+  exit_code: 0
+  stdout_sha256: 502f09641435ee5b07655bb878aba66a660a0db2829d3f2420ef994c482a1893
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-neg-selftests.stdout
+  stderr_path: logs/005-neg-selftests.stderr
+- id: fx14-reverse-pair
+  started_at: '2026-11-05T06:57:30Z'
+  finished_at: '2026-11-05T06:58:34Z'
+  exit_code: 0
+  stdout_sha256: 43220c9add38a8e43d4854254fe921580e806a5d146c77a83158227671d5012e
+  stderr_sha256: a563e3b19d406ce46c90d65f400cc1d04bb4b773c77eb8ed7f6703faa18f0e39
+  stdout_path: logs/006-fx14-reverse-pair.stdout
+  stderr_path: logs/006-fx14-reverse-pair.stderr
+- id: negfix-mutation-11arms
+  started_at: '2026-11-05T06:58:34Z'
+  finished_at: '2026-11-05T06:58:44Z'
+  exit_code: 0
+  stdout_sha256: dd177ff4ce8103629322e80242cc9809ffd84c6ddb001d1d8dec17f567bae11c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-negfix-mutation-11arms.stdout
+  stderr_path: logs/007-negfix-mutation-11arms.stderr
+- id: stage-driver-resolve
+  started_at: '2026-11-05T06:58:44Z'
+  finished_at: '2026-11-05T06:58:44Z'
+  exit_code: 0
+  stdout_sha256: 578e736f1bb1dda62b27508e17a1404aad699473e215841c93785525af7cc0c5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-stage-driver-resolve.stdout
+  stderr_path: logs/008-stage-driver-resolve.stderr
+- id: negfix-scratch-remove
+  started_at: '2026-11-05T06:58:44Z'
+  finished_at: '2026-11-05T06:58:45Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-negfix-scratch-remove.stdout
+  stderr_path: logs/009-negfix-scratch-remove.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T06:58:45Z'
+  finished_at: '2026-11-05T06:58:45Z'
+  exit_code: 0
+  stdout_sha256: 4a47d60c3dfb73ccf7761477e76c19265dfc8e06557bf9b37116cf20c8221614
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gate-registry-check.stdout
+  stderr_path: logs/010-gate-registry-check.stderr
+- id: gate-registry-fixtures
+  started_at: '2026-11-05T06:58:45Z'
+  finished_at: '2026-11-05T06:58:48Z'
+  exit_code: 0
+  stdout_sha256: 31f533bffbc9244f2992013bd0f03f82dc22974ccbf228528161dbcd06ec3902
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-gate-registry-fixtures.stdout
+  stderr_path: logs/011-gate-registry-fixtures.stderr
+- id: kanban-44-rows
+  started_at: '2026-11-05T06:58:48Z'
+  finished_at: '2026-11-05T06:58:48Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-kanban-44-rows.stdout
+  stderr_path: logs/012-kanban-44-rows.stderr
+- id: gov-probe-metrics
+  started_at: '2026-11-05T06:58:48Z'
+  finished_at: '2026-11-05T06:58:48Z'
+  exit_code: 0
+  stdout_sha256: d084da1ee31cde716c94a8794897ece416ca4fa5d1651e39276dc7c37b70e39d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-gov-probe-metrics.stdout
+  stderr_path: logs/013-gov-probe-metrics.stderr
+evidence_hash: sha256:90bc688fed9a27875f7d37d084bc8e5fa69affc50206af1b2b76bba2a477c549
+completed_at: '2026-11-05T06:58:48Z'
+notes:
+- 本 run 不含 ci_gate.sh，不构成门禁 PASS 声明。
+- 13 条命令全部 exit 0。相对 003 的差别只有一处代码：消掉 check_stage.sh 里两处吞退出码写法（见 fix 提交 6fe3451e89），C2
+  因此由红转绿。
+- '001 negfix-ledger-regen: 台账由仓内生成器 audit/v4.1.0/gen_neg_ledger.py 复现，产物与在仓版本逐字节一致。'
+- 002 台账对账 scope=55 rows=57 falsifiable_now=12/55（mutation-verified 9 + selftest-verified
+  3）。
+- '004 neg-fixtures: pass=11 fail=0 error=0 deferred-selftest-red=3 total=14（含 fx14
+  三臂）。'
+- '006 fx14-reverse-pair: 同一夹具打修复前 9f82eeb777 判 FIXTURE-FAIL(rc=3)，证明夹具 load-bearing；三臂逐条见日志。'
+- '008 stage-driver-resolve: 非发布线分支上驱动解析出 v4.1.0；改前同一提交解析成已归档 v3.9.0。'
+- '010/011 gate_registry: check_n=168 分母未变，fails=0；test_gate_registry 9 条变异全被抓。'
+- 013 gov_probe metrics 里 claims_hits 由 1146 变 1144：SC-1 看板行的旧文本里含有被扫描的声明字样，改写看板正文使计数下降，属口径自指变化，不是新增/删除了任何验证声明。
+- '本 run 的 frozen_commit 6fe3451e89 已推送 gitea252；未合并 PR #5593，未直推 main。'
