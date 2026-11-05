@@ -200,9 +200,18 @@ def cmd_fixtures(argv: list[str]) -> int:
     if not scripts:
         print("no fixture scripts under audit/v4.1.0/neg/")
         return 1
-    ok = failed = errored = 0
+    ok = failed = errored = deferred = 0
     for s in scripts:
         name = os.path.basename(s)
+        # A `selftest-red` fixture cripples a gate's own detector; its verdict
+        # is the NEUTERED_SELFCHECK_RC attestation, which only `selftests`
+        # parses. Re-running it here would cripple the same scratch tree again
+        # without adding evidence, so `fixtures` defers it explicitly instead
+        # of silently ignoring it.
+        if expect_of(os.path.relpath(s, REPO)) == "selftest-red":
+            deferred += 1
+            print("\n===== %s -> DEFERRED (run by the selftests subcommand) =====" % name)
+            continue
         proc = subprocess.run(["bash", s, tree], capture_output=True, text=True)
         out = proc.stdout + proc.stderr
         print("\n===== %s (script rc=%d) =====" % (name, proc.returncode))
@@ -221,7 +230,8 @@ def cmd_fixtures(argv: list[str]) -> int:
             ok += 1
         else:
             failed += 1
-    print("\nneg-fixtures: pass=%d fail=%d error=%d total=%d" % (ok, failed, errored, len(scripts)))
+    print("\nneg-fixtures: pass=%d fail=%d error=%d deferred-selftest-red=%d total=%d"
+          % (ok, failed, errored, deferred, len(scripts)))
     return 0 if failed == 0 and errored == 0 else 1
 
 
@@ -378,6 +388,19 @@ ARMS = [
 
 def cmd_mutation_selftest(_argv: list[str]) -> int:
     scope = scope_gates()
+
+    # Baseline first: if the committed ledger already has findings, an arm that
+    # "finds something" proves nothing. Requiring a clean baseline is what makes
+    # every finding below attributable to the injected mutation.
+    base = validate(load_jsonl(LEDGER), scope, CATALOG_GATES)
+    if base:
+        print("BASELINE-NOT-CLEAN: the committed ledger has %d findings; "
+              "mutation arms would be unverifiable" % len(base))
+        for b in base[:5]:
+            print("  " + b)
+        return 1
+    print("baseline: ledger findings=0 (arms are attributable)")
+
     ok = bad = 0
     for name, mut in ARMS:
         path = _tmp_ledger(mut)
