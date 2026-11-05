@@ -5500,11 +5500,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     right_hash.entry(key).or_default().push((ri, right_row));
                 }
 
-                let mut matched: Vec<Vec<Value>> = Vec::new();
-                let mut left_matched: std::collections::HashSet<usize> =
-                    std::collections::HashSet::new();
-                let mut right_matched: std::collections::HashSet<usize> =
-                    std::collections::HashSet::new();
+                // #5394: `matched` 带上出处 (left_idx, right_idx)。
+                // 之所以要带：ON 条件里**除了**连接键还有别的谓词时（如
+                // TPC-H Q13 的 `AND o_comment NOT LIKE '%special%requests%'`），
+                // 「键相同」不等于「满足 ON」—— 被 ON 过滤掉的那一对**不能**
+                // 再算作匹配，否则左表行既没有自己的行、也不会被补 NULL，
+                // 于是**整行消失**（标准 SQL 要求左表行必须出现，
+                // 匹配不上就补 NULL）。
+                let mut matched: Vec<(usize, usize, Vec<Value>)> = Vec::new();
 
                 // Match left rows to right
                 for (li, left_row) in left_rows.iter().enumerate() {
@@ -5516,14 +5519,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                     };
                     if let Some(right_match_rows) = right_hash.get(&key) {
-                        left_matched.insert(li);
                         for (ri, right_row) in right_match_rows {
-                            // TPC-H Q9 fix: O(1) index tracking instead of
-                            // O(right_rows.len()) `right_rows.iter().position(...)`
-                            right_matched.insert(*ri);
                             let mut combined = left_row.clone();
                             combined.extend((*right_row).clone());
-                            matched.push(combined);
+                            matched.push((li, *ri, combined));
                         }
                     }
                 }
@@ -5537,7 +5536,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 match &join_clause.on_clause {
                     Expression::Literal(s) if s == "true" => {}
                     _ => {
-                        matched.retain(|row| {
+                        matched.retain(|(_, _, row)| {
                             crate::engine_utils::eval_predicate(
                                 &join_clause.on_clause,
                                 row,
@@ -5547,13 +5546,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
 
+                // #5394: 「匹配上了」必须由**存活下来的**行决定。
+                // 此前这两个集合在哈希键匹配时就写入了，于是 ON 过滤之后
+                // 它们仍然声称「这个左表行匹配上了」—— 左表行于是既没有自己的
+                // 结果行、也不会被补 NULL，直接消失。
+                // 现在从存活行反推：某左表行只要还有**任意一个**满足 ON 的配对，
+                // 它就算匹配上了（不必每个配对都满足）。
+                let mut left_matched: std::collections::HashSet<usize> =
+                    std::collections::HashSet::new();
+                let mut right_matched: std::collections::HashSet<usize> =
+                    std::collections::HashSet::new();
+                for (li, ri, _) in &matched {
+                    left_matched.insert(*li);
+                    right_matched.insert(*ri);
+                }
+
                 // For LEFT/RIGHT/FULL, add unmatched rows
                 if matches!(join_type, JoinType::Left | JoinType::Full) {
                     for (li, left_row) in left_rows.iter().enumerate() {
                         if !left_matched.contains(&li) {
                             let mut combined = left_row.clone();
                             combined.extend(vec![Value::Null; right_col_count]);
-                            matched.push(combined);
+                            // 补 NULL 的左表行没有对应的右表行 —— 用
+                            // `usize::MAX` 作为「无出处」的哨兵。
+                            matched.push((li, usize::MAX, combined));
                         }
                     }
                 }
@@ -5563,12 +5579,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         if !right_matched.contains(&ri) {
                             let mut combined = vec![Value::Null; left_col_count];
                             combined.extend(right_row.clone());
-                            matched.push(combined);
+                            matched.push((usize::MAX, ri, combined));
                         }
                     }
                 }
 
-                matched
+                matched.into_iter().map(|(_, _, row)| row).collect()
             }
             JoinType::Cross => {
                 let mut results = Vec::new();

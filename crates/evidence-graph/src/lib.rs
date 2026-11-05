@@ -764,12 +764,21 @@ mod tests {
         // because tempfile::TempDir drops immediately when the TempDir value
         // goes out of scope at function return, deleting the directory BEFORE
         // GraphStore::open() can use it (causing ReadOnly errors).
-        // Also add a unique suffix per test to avoid parallel test conflicts.
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("evidence_graph_test_{}.db", unique));
+        //
+        // The suffix must be **actually** unique. It used to be
+        // `SystemTime::now().as_nanos()`, but this machine's clock resolution
+        // is only a few dozen nanoseconds, so two tests running in parallel
+        // **can** read the same value — and then they share one SQLite file,
+        // so each test sees the other's nodes. Measured: 1 failure in 25 runs
+        // of the whole lib suite (`test_orphan_detection` saw 3 orphans
+        // instead of 1). Process id + an atomic counter cannot collide.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "evidence_graph_test_{}_{}.db",
+            std::process::id(),
+            seq
+        ));
         let _ = std::fs::remove_file(&path);
         GraphStore::open(&path).unwrap()
     }
