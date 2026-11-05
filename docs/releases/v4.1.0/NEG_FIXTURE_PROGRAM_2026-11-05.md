@@ -1,7 +1,7 @@
 # 反向变异夹具计划（看板 P1-3）
 
 - 日期：2026-11-05　执行身份：mcode-macmini
-- 台账：`docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl`（56 行）
+- 台账：`docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl`（57 行）
 - 探针：`audit/v4.1.0/probe_neg_fixtures.py`（不是门禁，见 §8）
 - 夹具：`audit/v4.1.0/neg/fx01..fx13*.sh`（fx01–fx10 打门禁判定，fx11–fx13 打自带 selftest）
 - 证据 run：`audit/v4.1.0/runs/20261105-negfix-002/`（`.../20261105-negfix-001/` 是判据缺陷的取证记录，保留）
@@ -23,25 +23,35 @@ AGENTS 2.5 要求「每条红灯必须做反向变异」，判据是：把问题
 
 scope（需要夹具的门禁集合）= `GATE_CATALOG.jsonl` 中 `class=stage_required`
 ∪ 名字匹配 `SOAK|PERF|COMPAT|TPCH|STABILITY|CRASH|UPGRADE|CHAOS|QPS|SYSBENCH` 的
-＝ **55 道**。台账 **56 行 = 55 道 scope + 1 行 scope 外加测**
-（`check_alpha_entry_v4.10.sh`，`class=ci_reachable`，见 §3 的 fx08）。
+＝ **55 道**。台账 **57 行 = 55 道 scope + 2 行 scope 外加测**
+（`check_alpha_entry_v4.10.sh` 与 `check_stage.sh`，都 `class=ci_reachable`，见 §3 的 fx08 / fx14）。
 
 kind 四态（语义互斥，不可含糊）：
 
 | kind | 含义 | 计数 |
 |---|---|---|
-| `mutation-verified` | 本轮在 scratch 工作树里注入真实缺陷、跑真实门禁，判定确实翻红 | 8 |
+| `mutation-verified` | 本轮在 scratch 工作树里注入真实缺陷、跑真实门禁，判定确实翻红 | 9 |
 | `selftest-verified` | 门禁自带 `--selftest`（走线上同一份判定代码），**并且**有一个能把它的检测器致残、让这份 selftest 翻红的夹具 | 3 |
 | `unfalsifiable` | 做过证伪尝试，证明这道门禁**结构上不可能**翻红（不是「没测」，是「测了，它有洞」） | 1 |
 | `pending-fixture` | 已知该注入什么缺陷（`target` 字段写死），缺的是运行条件 | 44 |
 
-覆盖结论要按这个口径说：**当下能当场证伪的是 11/55**（8 夹具 + 3 selftest），
-另外 1 道被证明不可证伪，44 道待夹具。`check` 输出的 `falsifiable_now=11/55` 就是这个数。
+覆盖结论要按这个口径说：**当下能当场证伪的是 12/55**（9 夹具 + 3 selftest），
+另外 1 道被证明不可证伪，44 道待夹具。`check` 输出的 `falsifiable_now=12/55` 就是这个数。
 
 每行必须带 `evidence_run`，探针校验它是否真实存在于 `audit/v4.1.0/runs/`。
+
+台账本身由仓内生成器复现（此前生成器不在仓里，属可复现性缺口）：
+
+```bash
+python3 audit/v4.1.0/gen_neg_ledger.py <evidence-run-id>
+```
+
+生成器带两条硬断言：每道 scope 门禁恰好一行、总行数必须等于 `scope+2`
+（两条 scope 外加测）。归档 run 的 001 号命令把生成器再跑一遍并要求产物与
+在仓版本逐字节一致（`LEDGER-REGEN-IDENTICAL`），漂了就整个 run 失败。
 run 目录不存在时 `check` 直接返回非零 —— 这是 fail-closed 设计，不是探针故障。
 
-## 3 本轮实测：10 个夹具脚本
+## 3 本轮实测：14 个夹具脚本（11 个走真实门禁，3 个走 selftest）
 
 夹具只在 detached 的 scratch 工作树里注入缺陷，脚本头部写期望，
 末尾自带 restore（`git checkout -- .` + `git clean -qfd`），不碰主工作树。
@@ -64,8 +74,9 @@ run 目录不存在时 `check` 直接返回非零 —— 这是 fail-closed 设�
 
 fx09 / fx10 的头部标注是 `expect: red`，实测退出码 0，因此它们在 runner 里
 按「表征夹具」（characterization）记账：它们证明的是**门禁当前不翻红**这个事实，
-而不是门禁有判定能力。runner 汇总 `neg-fixtures: pass=10 fail=0 error=0 total=10`
-指的是「10 个夹具脚本按各自声明的期望跑对了」，不能读成「10 道门禁都有效」。
+而不是门禁有判定能力。runner 汇总（run 20261105-negfix-004）
+`neg-fixtures: pass=11 fail=0 error=0 deferred-selftest-red=3 total=14`
+指的是「14 个夹具脚本按各自声明的期望跑对了」，不能读成「14 道门禁都有效」。
 
 ### 3.1 `selftest-verified` 的判据，以及第一版判据是怎么错的
 
@@ -137,7 +148,7 @@ BA1 打在 `selftests` 的行为判据上（见 §3.1）。
 - **`neg_fixture_n` 不是夹具覆盖率。** `scripts/gate/gov_probe.py` 的 `neg_fixture_n`
   是对门禁脚本源码做关键字匹配得到的 23，命中的可能只是脚本里引用了
   `ADR-004-negative-evidence.md` 这类文件名（`GATE_CATALOG` 里 `check_rc_ga_gate.sh`
-  的 `neg_fixture=true` 就是这么来的）。真正能对账的分子来自本台账：11/55。
+  的 `neg_fixture=true` 就是这么来的）。真正能对账的分子来自本台账：12/55。
 - **`docs410` / `claims_hits` 自指。** 这两个度量扫的就是 `docs/releases/v4.1.0/*.md`
   里的自我宣称标记。往这个目录加文档会直接改变计数，加的内容里若含宣称词还会二次放大。
   本文件因此不写那几个词；任何「跑过 / 达标」的表述都必须回到 run 日志行号。
