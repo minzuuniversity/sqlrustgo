@@ -1,0 +1,11 @@
+rc=1 reds=8
+FAIL: run dir without manifest: iaia410-a06-r1-20261011T073325Z-01df92a5
+FAIL: audit run 20261105-ho2-007 failed evidence verify
+FAIL: audit run iaia410-5112-evidence-20261015 failed evidence verify
+FAIL: audit run iaia410-a01-20261011T062229Z-609a8e81 failed evidence verify
+FAIL: audit run iaia410-a02-20261011T070228Z-609a8e81 failed evidence verify
+FAIL: audit run iaia410-a03-20261011T070845Z-omp failed evidence verify
+FAIL: audit run iaia410-a04-20261011T180837Z-609a8e81 failed evidence verify
+FAIL: audit run iaia410-a05-20261012T004948Z-bf48818c failed evidence verify
+selfref_hits=1
+AUDIT-GATE-RED-AS-EXPECTED
