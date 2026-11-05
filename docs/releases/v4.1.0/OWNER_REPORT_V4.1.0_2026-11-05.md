@@ -49,7 +49,7 @@
 | `claims_hits` | 1144 | **1144** | 未动（本轮所有新报告自身声明记号均为 0） |
 | `claims_ref` | **0** | **93** | **0 → 93**（声明开始绑到 run 上了） |
 | 文档声明未绑定 | 1144 | **1051** | −93 |
-| `docs410` | 79 | **87** | 本轮新增 8 份报告 |
+| `docs410` | 79 | **88** | 本轮新增 9 份报告 |
 | `neg_fixture_n` | 23 | **24** | IL-6 门禁自带 `--selftest` |
 
 ## 2. 剩余任务量与人日（**双血统**）
@@ -135,7 +135,7 @@
 
 | id | 内容 | 为什么新立 |
 |---|---|---|
-| **IL-10** | A04 证据门禁假红：引擎「跑得动但干不了活」被判成可比结果 ⇒ 误报「归档证据已与引擎漂移」 | 查 #5466 时挖出的根因。`bin_resolver` 的 PATH 回退取到 2026-02-21 的陈旧全局 `sqlrustgo`，它只打印 REPL 横幅；生成器把横幅当证据去比对 ⇒ 报 20 处 MISMATCH ⇒ 归因错误 ⇒ 催生 #5466 这条 P0。**链底那一环今天仍然活着**。 |
+| **IL-10** | A04 证据门禁假红：引擎「跑得动但干不了活」被判成可比结果 ⇒ 误报「归档证据已与引擎漂移」 | **本轮已修**：生成器在解析 CSV 前先判「进没进 sqlite 批处理模式」，是 ⇒ 判 NOT RUN 并指名 `SQLRUSTGO_BIN`；门禁比对前先清空产出目录，堵住残留文件冒充本次产出。反向变异（强制 2026-02-21 的陈旧全局二进制）实测：转 NOT RUN 披露 40 条，**MISMATCH 0、「drifted」0**；正常态仍 80/80 逐字节一致。详见 `IL10_A04_FALSE_RED_2026-11-05.md`。 |
 | **IL-11** | 把生产存储门禁扩到所有声称验证存储语义的测试 | 整改方案 §P1-2 的后半句，本轮未做；被 P1-4 挡。 |
 
 ## 5. 执行过程偏差清单
@@ -207,7 +207,7 @@
 | 工具（探针，不进门禁清单，分母 168 不动） | `audit/v4.1.0/evidence_inventory.py`、`capability_claims.py`、`directory_policy.py`、`doc_facts.py`、`il6_selfref_probe.py`、`lb1_arm_count_check.py` |
 | 门禁改动（🟡，附改前漏什么/改后多报什么 + 反向变异） | `scripts/gate/check_audit_manifest.sh` |
 | 台账 | `docs/releases/v4.1.0/CLAIMS_INVENTORY.jsonl`、`CLAIMS_BINDINGS.jsonl`、`CAPABILITY_LEDGER.jsonl`、`DIRECTORY_POLICY_BASELINE.jsonl`、`DOC_INDEX.jsonl` |
-| 报告 | `IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md`、`P15_CLAIM_RUN_BINDING_2026-11-05.md`、`IL3_DUPLICATE_ISSUE_TRIAGE_2026-11-05.md`、`EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md`、`P12_CAPABILITY_CLAIMS_2026-11-05.md`、`P22_DIRECTORY_POLICY_2026-11-05.md`、`P21_DOC_FACTS_2026-11-05.md` |
+| 报告 | `IL6_AUDIT_GATE_SELFREFERENCE_2026-11-05.md`、`P15_CLAIM_RUN_BINDING_2026-11-05.md`、`IL3_DUPLICATE_ISSUE_TRIAGE_2026-11-05.md`、`EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md`、`P12_CAPABILITY_CLAIMS_2026-11-05.md`、`P22_DIRECTORY_POLICY_2026-11-05.md`、`P21_DOC_FACTS_2026-11-05.md`、`IL10_A04_FALSE_RED_2026-11-05.md` |
 | 归档 run | `audit/v4.1.0/runs/20261105-capability-001`（16/16 全部 exit 0，`evidence_hash sha256:ce5d717a…`） |
 | 阶段看板 | ISSUE #5592（54 行，`evidence_hash` 与度量口径已内嵌） |
 | 分支 | `omp-macmini/lb1-arm-count-fix` @ `3eb8f250c7`（已推 gitea252） |

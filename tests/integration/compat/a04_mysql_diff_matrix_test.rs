@@ -526,9 +526,73 @@ fn run_sqlrustgo_cli(setup: &[&str], query: &str) -> EngineResult {
             let stdout = String::from_utf8_lossy(&o.stdout).to_string();
             let stderr = String::from_utf8_lossy(&o.stderr).to_string();
             let ok = o.status.success();
+            // IL-10: 二进制可能**存在，但不干这个活**。
+            //
+            // `tests/common/bin_resolver.rs` 的定位顺序最后一步是 PATH 回退 ——
+            // 本机 PATH 上的全局 `sqlrustgo`（2026-02-21 的旧安装）**不支持**
+            // `sqlite --batch --mode csv --headers true --cmd`，它照旧打印 REPL 横幅
+            // 然后**以 0 退出**。
+            //
+            // 那种输出**不是证据**。把它当成可比结果去跟归档证据比，
+            // 会报出「归档证据已与引擎漂移」的**假红** ——
+            // 这条假红直接催生了 #5466（priority/p0），白烧了几周的 P0 债。
+            //
+            // 判据：stdout 里出现 REPL 的形状 ⇒ 这个二进制根本没进 sqlite 批处理模式
+            // ⇒ 判**不可用**（NOT RUN），并指名该设哪个环境变量。
+            if looks_like_repl_transcript(&stdout) {
+                return EngineResult::unavailable(
+                    "sqlrustgo_cli",
+                    &format!(
+                        "binary at {} does not support the `sqlite --batch --mode csv \
+                         --headers true --cmd` interface (it fell through to the REPL); \
+                         point {} at a current build \
+                         (cargo build -p sqlrustgo-cli --bin sqlrustgo)",
+                        bin,
+                        bin_resolver::ENGINE_BIN_ENV
+                    ),
+                );
+            }
             parse_cli_csv("sqlrustgo_cli", &stdout, &stderr, ok)
         }
         Err(e) => EngineResult::unavailable("sqlrustgo_cli", &format!("spawn failed: {}", e)),
+    }
+}
+
+/// stdout 里出现这些形状 ⇒ 二进制落到了 REPL，而不是 sqlite 批处理模式。
+///
+/// 只有 `sqlite --batch` 模式才会输出 CSV；REPL 模式会打印横幅和提示符。
+/// 一个「存在但版本太老」的二进制正是这样表现的。
+fn looks_like_repl_transcript(stdout: &str) -> bool {
+    const MARKERS: [&str; 4] = [
+        "SQLRustGo Database System initialized",
+        "sqlrustgo>",
+        "Type 'exit' or 'quit' to exit.",
+        "Goodbye!",
+    ];
+    MARKERS.iter().any(|m| stdout.contains(m))
+}
+
+/// IL-10 的判据本身也要能自证：对**真的** CSV 输出不得误判，
+/// 对**真的** REPL 输出必须判出来。
+#[cfg(test)]
+mod repl_transcript_detection {
+    use super::looks_like_repl_transcript;
+
+    #[test]
+    fn csv_output_is_not_a_repl_transcript() {
+        let csv = "=== STDOUT ===\n\ng,__agg_1,__agg_2\nx,2,3\n\n=== STDERR ===\n";
+        assert!(!looks_like_repl_transcript(csv));
+    }
+
+    #[test]
+    fn repl_transcript_is_detected() {
+        // 2026-02-21 的陈旧全局 sqlrustgo 在 sqlite 批处理模式下的真实输出形状
+        let repl = "SQLRustGo v1.0.0\n\n\
+                    Type 'exit' or 'quit' to exit.\n\n\
+                    SQLRustGo Database System initialized\n\
+                    sqlrustgo> \n\
+                    Goodbye!\n";
+        assert!(looks_like_repl_transcript(repl));
     }
 }
 
