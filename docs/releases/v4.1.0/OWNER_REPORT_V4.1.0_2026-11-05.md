@@ -102,7 +102,7 @@
 | 文档声称与实际行为无绑定 | `evidence_inventory.py`：声明按小节分级，基线之上新增未绑定声明 ⇒ 红 | claims_ref 0→93；反向变异 4 臂 |
 | 能力声称从未真跑 | `capability_claims.py`：五个能力用真实产物真跑（真 CLI/真 MySQL 客户端/真落库/SIGKILL 重启读回/物理备份往返逐值） | 5/5 VERIFIED；反向变异 10 条对照全按期望发生 |
 | 目录策略无执行点 | `directory_policy.py`：6 条规则，新增违规 ⇒ 红，存量 149 条逐条记账 | 反向变异：新建违规目录 ⇒ rc=1 报 3 条 |
-| 测试侧「声称验证存储语义」没人拦 | `check_correctness_tests_production_storage.sh` 新增 **R6**：清单里每个声明了存储语义的测试都必须被生产存储链覆盖；声明长在测试文件自己身上（`// storage-semantics: <slug>`） | 门禁 PASS=6；`--selftest` 6 臂含新臂「陈旧清单 ⇒ R6 变红」 |
+| 测试侧「声称验证存储语义」没人拦 | `check_correctness_tests_production_storage.sh` 新增 **R6**：清单里每个声明了存储语义的测试都必须被生产存储链覆盖；声明长在测试文件自己身上（`// storage-semantics: <slug>`） | 门禁 6 项判据全成立；`--selftest` 6 臂含新臂「陈旧清单 ⇒ R6 变红」 |
 | 标定账分不出「超时」与「答错」 | `expert_ladder.run_calibration`：item 增加 `failure ∈ {None, unavailable, wrong-answer}`，汇总增加两个计数 | probe 四臂全过，含反向变异「把源码改回旧写法 ⇒ 同一超时场景与真实现不同」 |
 | 证据门禁把「正在执行的 run」算进判定 | `check_audit_manifest.sh` 改按已提交树枚举 + `--exclude-run` + `--selftest` | IL-6 四臂全成立；历史红 7/7 一条没放宽 |
 | 门禁把「解释器缺 PyYAML」当成「证据不可复核」 | 门禁显式选解释器；不可用时只报 1 行「无法判定」，不再伪造 21 条证据红 | 四臂全成立；历史红仍是那 7 条 |
