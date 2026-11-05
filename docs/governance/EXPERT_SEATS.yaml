@@ -85,10 +85,16 @@ seats:
     single_session: true
     reasoning_effort: "none"
     enabled: true
-    measured_at: "2026-11-04T15:45Z"
-    measured_source_run: "mcode-macmini-probe-20261104T1545"
-    measured_latency_s: 10.1
-    measured_tps: 0.8
+    measured_at: "2026-11-05T01:20Z"
+    measured_source_run: "20261105-tristate-001 (health 记录) / 直连 curl 复测"
+    measured_latency_s: null      # 未出答：240s 超时
+    measured_tps: null
+    measured_drift: >
+      配置漂移：本席位写的是 qwen35-9b-mac，但 8002 现在 /v1/models 报的是
+      Swift-1.5-Qwen3.8-27B-GSQ-RCO-IQ3_XXS-mtp.gguf（27B，不是 9B）。
+      同一端点 /v1/models 立即应答，但 chat/completions 16 token 请求 240s 未返回
+      （curl -m 240 空返回）=> 服务在但推理侧挂死/被占。属 owner/hermes 复核项，
+      不是我能通过调参修好的（看板 IL-8）。
     measured_note: >
       思考型模型：不传 reasoning_effort=none 时 content 为空、全部落在
       reasoning_content 且 finish_reason=length（200 token 全用在思考上）。
@@ -107,15 +113,16 @@ seats:
     single_session: true
     reasoning_effort: "none"
     enabled: true
-    measured_at: "2026-11-04T15:50Z"
-    measured_source_run: "mcode-macmini-probe-20261104T1550"
-    measured_latency_s: 165.69
-    measured_tps: 1.1
+    measured_at: "2026-11-05T01:23Z"
+    measured_source_run: "20261105-tristate-001 (health 记录) / 现场单席位 health"
+    measured_latency_s: 37.7
+    measured_tps: 12.81
     measured_note: >
-      可用但慢：短题 165.69s（179 completion token）。reasoning_effort=none
-      实测**未被遵守**（仍产出 reasoning_content 并 finish=length）。与 250 上的
-      omp 抢同一单会话服务，出现 120s 超时；故调用必须带文件锁 + 长超时，
-      且不得用于批量循环。
+      2026-11-05 复测：--max-tokens 1500 下 finish_reason=stop、483 completion token、
+      37.7s、parseable_contract=true。上一轮把它判为不可用是**我的参数问题**
+      （health 默认 max_tokens=256，thinking 把预算吃光 => content 空 + finish=length）。
+      仍有的约束：roles 不含 adjudicate（只能分诊/长文，不能进裁定计数）；
+      与 250 上的 omp 抢同一单会话服务，调用必须带文件锁，不得批量循环。
 
   - id: chatgpt-web
     family: gpt

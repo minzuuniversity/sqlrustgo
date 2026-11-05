@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：未开始 16 / 待复核 8 / 完成 11 / 阻塞 6 / 合计 41
+- 台账计数：未开始 15 / 待复核 9 / 完成 11 / 阻塞 6 / 合计 41
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 |
 |---|---|---|---|---|---|
@@ -50,7 +50,7 @@
 | IL-5 | 7 条已提交审计记录不可复核（5 hollow 无命令行 / 1 partial 无 commands 且 manifest_sha256 缺失 / 1 无 manifest 目录）=> 无复现路径，只能 owner 三选一：退役 / 重跑重取证 / 保留并标注不可信 | 阻塞 | owner 在 ISSUE 5596 给出逐条处置决定（退役/重跑/标注）；决定落地后 check_audit_manifest.sh 的红数与决定一致，且不得靠改门禁清单或阈值消红 | ISSUE 5596（priority/p0 + cap/governance + cost/t1）；docs/releases/v4.1.0/AUDIT_RECORD_INTEGRITY_2026-11-05.md；audit/v4.1.0/audit_integrity_report.py 退出码恒 0（非门禁，只做度量） | - |
 | IL-6 | 证据门禁自指：check_audit_manifest.sh 扫描 runs/ 时把「正在执行的 run 目录」也计入判定 => run 进行中红数 7->8（该目录 logs 尚未写完），归档完再扫又回到 7 | 未开始 | 给出可复现的判别实验（同一条命令在 run 内 rc=1 / run 后 rc=0）与处置方案：门禁按 frozen_commit 树扫描 或 显式排除 --exclude-run <当前 run id>；两种方案都必须带反向变异，且不得放宽对历史记录的判据 | run 20261105-auditintegrity-002 的 audit-gate-selfref-observed 命令现场复现：run 进行中总红 8 且含本 run id、历史 iaia410- 红 7；run 结束后重扫回到 7。第一版 run 20261105-auditintegrity-001 因此 FAIL(1)，取证在 /tmp/srg-forensic/，未提交进仓。判别命令见 AUDIT_RECORD_INTEGRITY_2026-11-05.md 的「已知自指」一节 | - |
 | IL-7 | 三态 runner 还没在 CI 里真执行阶段清单（P0-2 只挂了夹具 self-test）。真挂上去 ALPHA 的 10 项会当场报 FAIL/INCOMPLETE（该分支已知红），需要决定挂在哪个 job/哪些 ref 上，否则 CI 会长期挂着一个『没人打算修的红』 | 未开始 | 给出挂载点与 ref 条件（候选：stage-gates job 的 carrier 分支条件），并让 run_gates plan+execute+gate_report 出现在某个 Actions run 日志里；汇总结论必须是三态之一且不得出现 SKIP 态 | 挂载点现状：postcheck 无 if 条件（每次 push/PR 都跑）；stage-gates 只在 main/release/rc/beta/hotfix 跑 | - |
-| IL-8 | 咨询梯只剩 1 条可信血统：expert_ladder health 实测 5 席位仅 flash-next-252 可用，adjudication_capable=false。四条成因：deepseek-chat 桥 HTTP 500（令牌过期，需 owner 登录，见 EX-5）；local-qwen35-9b(127.0.0.1:8002) 120s 超时；gmp35b-250(250:8011) finish_reason=length（max_tokens 给小了，属我的参数问题）；chatgpt-web 的 health 探测 240s 超时但随后 ask 36.9s 成功（探测窗口太短，属瞬时） | 未开始 | 把「可我自己修」（超时/max_tokens/探测窗口）与「必须 owner」（deepseek 登录 EX-5）分界写清；调参后至少 2 条独立血统 credited，adjudication_capable 才允许被引用；health 证据不得落在仓内（当前在 /tmp/srg-forensic/health-20261105T000029Z） | expert_ladder health --no-calibrate 现场输出（5 席位 / 1 credited / adjudication_capable=false）；本轮 ask 实测 flash-next-252 ok 20.13s 且标定 4/4、chatgpt-web ok 36.89s；计划文档「专家咨询记录」一节 | EX-5 |
+| IL-8 | 咨询梯可信血统只有 2/5 席位可达（且只有 2 条血统能进裁定计数，口径=可达性不是可信度）。四条成因已实测定位：deepseek-chat 桥 HTTP 500（令牌过期，owner 登录项 EX-5）；local-qwen35-9b 配置漂移（席位写 9B，8002 实为 27B GGUF，/v1/models 秒答但 chat 240s 不出答）；gmp35b-250 原判不可用其实是 health 默认 max_tokens=256 被 thinking 吃光；chatgpt-web 的 health 超时是瞬时（随后 37s 成功） | 待复核 | 成因按『我可自修』与『必须 owner』分界并各自留可复现证据：max-tokens/超时是我的参数（已改默认 256->1500 并复测）；8002 服务挂死与 9B/27B 席位漂移、deepseek 登录属 owner/hermes。引用梯必须写 capability_basis=reachability only，只有 flash-next-252 一条做过标定（4/4），chatgpt-web 未标定，因此两系一致只算两条可达血统，不算两条可信裁定 | 同一天两次 health 对照：早先 1 条 credited（chatgpt 探测超时那一次）与本轮 2 条 credited、adjudication_capable=true、capability_basis=reachability only（5 席位 / 2 ok / 2 血统 gpt+qwen）。参数反向变异：gmp35b-250 在 --max-tokens 256 下 finish_reason=length、parseable_contract=false；同一条命令改 1500 后 finish_reason=stop、parseable_contract=true（37.7s、12.81 tps、483 token）。8002 直连复测：/v1/models 立即应答，16 token 的 chat 请求 240s 空返回（curl -m 240）。配置已按实测更新 docs/governance/EXPERT_SEATS.yaml（含 measured_drift 段）。health 证据不落仓：用 --no-evidence-dir 由 audit run 的 logs 承担唯一证据面；早先落仓风险的那次已移到 /tmp/srg-forensic/health-20261105T000029Z | EX-5 |
 <!-- LEDGER:END -->
 
 状态词汇只有五种（`未开始/进行中/待复核/完成/阻塞`）。"完成"= 做完**且**证据已归档；
