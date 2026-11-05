@@ -1,0 +1,4 @@
+[OK ] stale-plan reason present :: reasons0=stale-plan: plan fingerprint sha256:d528a9873f0 != authoritative sha256:6466a0ec156 (plan 是在别的树上生成的，不得拿来给这棵树记账)
+[OK ] verdict INCOMPLETE :: verdict=INCOMPLETE
+[OK ] report rc == 2 :: rc=2
+probe_tristate_e2e[stale]: 断言全部成立
