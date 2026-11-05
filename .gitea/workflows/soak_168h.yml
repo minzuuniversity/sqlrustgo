@@ -1,3 +1,6 @@
+# CANONICAL 168h SOAK 入口（v4.1.0）。其余 soak 相关文件只有这一个能作为 SOAK 执行点。
+# 现状：168h 从未真跑过（看板 ING-1，owner 排期），本文件存在不等于 SOAK 有证据。
+# 机器核对：docs/releases/v4.1.0/CI_EXECUTION_ROOTS.jsonl + audit/v4.1.0/probe_ci_roots.py
 name: SOAK 168h — GA-P0/S4
 run-name: soak-${{ inputs.branch }}-${{ gitea.sha }}
 
@@ -7,7 +10,7 @@ on:
       branch:
         description: 'Branch to test'
         required: false
-        default: 'develop/v3.9.0'
+        default: 'develop/v4.1.0'
       hours:
         description: 'Soak duration per segment in minutes (max 150)'
         required: false

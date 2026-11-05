@@ -16,7 +16,7 @@ preserved while local-dev ergonomics improve.
 | Workflow (`.gitea/workflows/*.yml`) | Calls aggregator? | Passes `--fast-path`? |
 |------------------------------------|-------------------|------------------------|
 | `ci.yml`                           | No                | n/a                    |
-| `ci-test.md`                       | No                | n/a                    |
+| ~~`ci-test.md`~~                 | n/a               | 不是 workflow（已迁出到 `docs/ci/legacy/`） |
 | `gate.yml`                         | No                | n/a                    |
 | `reconciliation.yml`               | No                | n/a                    |
 | `soak_168h.yml`                    | No                | n/a                    |

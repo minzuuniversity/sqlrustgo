@@ -1,3 +1,6 @@
+# SUPERSEDED — 已被 .gitea/workflows/soak_168h.yml 取代（v4.1.0 线唯一的 168h SOAK 入口）。
+# 本文件保留只为 v3.12 期 #4499 的历史可追溯；不得作为 v4.1.0 的 SOAK 执行点。
+# 机器核对：docs/releases/v4.1.0/CI_EXECUTION_ROOTS.jsonl（soak_canonical）+ audit/v4.1.0/probe_ci_roots.py
 # .gitea/workflows/z6g4-168h-soak.yml
 #
 # DRAFT — Issue #4499 (GA-2 168h mixed SOAK)
