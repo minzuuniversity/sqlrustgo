@@ -68,6 +68,32 @@
 #     a NOT-RUN is disclosed. The blocking semantics of an alias live in
 #     the SSOT — never in a private column of an orchestrator script.
 #
+# C9  Every entry of a stage's `exit_criteria` must say **who decides it**,
+#     in that same stage block, exactly once:
+#       * `criteria_gates: { "<criterion>": ["<gate path>", ...] }` — the
+#         criterion is covered by gates. Each named gate must either be a
+#         member of that stage's own `required_gates`/`optional_gates`, or
+#         be named by a live Gitea Actions workflow (i.e. it has a real
+#         execution point). A criterion may **not** claim coverage from a
+#         gate that nothing runs.
+#       * `manual_only_criteria: { "<criterion>": "<reason>" }` — no
+#         executable gate covers it, and the reason must say why (naming
+#         any candidate script and why it does not count).
+#     FAIL conditions: a criterion disposed of in neither map; a criterion
+#     disposed of twice; a map key that is not a member of `exit_criteria`
+#     (a dead mapping); a criterion mapped to an empty gate list; a mapped
+#     gate with no execution point for that stage; a `manual_only` entry
+#     with an empty reason; an unparsable config (which would otherwise
+#     make C9 pass vacuously).
+#
+#     Why this rule exists (看板 P1-1 / #5595): the SSOT listed 21 exit
+#     criteria across the five stages and named **zero** executors for them
+#     (`stage_crit=21 stage_map=0`). "the stage is ready to leave" was a
+#     sentence, not a check. C9 turns it into one — and the honest answer
+#     for the criteria with no gate is `manual_only`, never a fabricated
+#     mapping. Adding the missing gates would change the gate list, which
+#     is an owner-only action.
+#
 # Usage:
 #   bash scripts/gate/check_stage_config_consistency.sh
 #   bash scripts/gate/check_stage_config_consistency.sh --version v4.1.0
@@ -188,6 +214,101 @@ except Exception:
 info = (d.get('stages', {}) or {}).get(sys.argv[2]) or {}
 order = info.get('order')
 print('' if order is None else str(order))
+PYEOF
+}
+
+# C9 findings for one config: "<rule>\t<detail>" per finding.
+#
+# The exit-criteria mapping is judged here (rather than through the shared
+# stage_config_common.sh readers) because it needs all three maps of a
+# stage at once: exit_criteria, criteria_gates and manual_only_criteria.
+stage_config_c9_findings() {
+    local cfg="${1:-$STAGE_CONFIG_PATH_DEFAULT}"
+    python3 - "$cfg" "$REPO_ROOT" <<'PYEOF'
+import os
+import sys
+
+try:
+    import yaml
+except Exception as exc:  # pragma: no cover - environment problem
+    print('C9\tpyyaml is unavailable (%s) — C9 cannot judge the exit criteria' % exc)
+    raise SystemExit(0)
+
+path, repo_root = sys.argv[1], sys.argv[2]
+try:
+    with open(path, encoding='utf-8') as fh:
+        doc = yaml.safe_load(fh) or {}
+except Exception as exc:
+    print('C9\tthe stage config could not be parsed (%s) — exit criteria cannot be judged' % exc)
+    raise SystemExit(0)
+
+# Scripts that a live Gitea Actions workflow names: those have an execution
+# point even when a stage block does not list them (check_stage.sh is the
+# framework driver itself, and it is what enforces the carrier rule).
+live = set()
+wf_dir = os.path.join(repo_root, '.gitea', 'workflows')
+if os.path.isdir(wf_dir):
+    for fn in sorted(os.listdir(wf_dir)):
+        if not fn.endswith(('.yml', '.yaml')):
+            continue
+        try:
+            with open(os.path.join(wf_dir, fn), encoding='utf-8', errors='replace') as fh:
+                text = fh.read()
+        except Exception:
+            continue
+        for line in text.splitlines():
+            for tok in line.replace('"', ' ').replace("'", ' ').split():
+                if tok.endswith(('.sh', '.py')):
+                    live.add(os.path.basename(tok))
+
+
+def gate_key(value):
+    # Comparable form of a gate entry: basename of its first token, so
+    # "scripts/gate/check_rc_ga_gate.sh ga" still matches the plain path.
+    return os.path.basename(str(value).split()[0])
+
+
+stages = doc.get('stages') or {}
+for stage, info in stages.items():
+    info = info or {}
+    crits = [str(c) for c in (info.get('exit_criteria') or [])]
+    gates_map = info.get('criteria_gates') or {}
+    manual_map = info.get('manual_only_criteria') or {}
+    stage_gates = {gate_key(g) for g in (info.get('required_gates') or [])}
+    stage_gates |= {gate_key(g) for g in (info.get('optional_gates') or [])}
+
+    if not isinstance(gates_map, dict) or not isinstance(manual_map, dict):
+        print('C9\tstage=%s criteria_gates / manual_only_criteria must be mappings' % stage)
+        continue
+
+    for crit in crits:
+        in_gates = crit in gates_map
+        in_manual = crit in manual_map
+        if in_gates and in_manual:
+            print('C9\tstage=%s criterion %r is disposed of twice (both criteria_gates and manual_only_criteria)' % (stage, crit))
+        elif not in_gates and not in_manual:
+            print('C9\tstage=%s criterion %r names no executor — put it in criteria_gates (with the gate that decides it) or in manual_only_criteria (with the reason)' % (stage, crit))
+
+    for crit in crits:
+        if crit not in gates_map:
+            continue
+        mapped = gates_map[crit]
+        names = mapped if isinstance(mapped, list) else ([mapped] if mapped else [])
+        if not names:
+            print('C9\tstage=%s criterion %r is mapped to zero gates — an empty mapping claims coverage without an executor' % (stage, crit))
+            continue
+        for gate in names:
+            if gate_key(gate) not in stage_gates and gate_key(gate) not in live:
+                print('C9\tstage=%s criterion %r claims coverage from "%s", which that stage does not run and no live workflow names' % (stage, crit, gate))
+
+    for crit in gates_map:
+        if str(crit) not in crits:
+            print('C9\tstage=%s criteria_gates key %r is not a member of exit_criteria — a dead mapping' % (stage, crit))
+    for crit, reason in manual_map.items():
+        if str(crit) not in crits:
+            print('C9\tstage=%s manual_only_criteria key %r is not a member of exit_criteria — a dead mapping' % (stage, crit))
+        if not str(reason or '').strip():
+            print('C9\tstage=%s manual_only_criteria for %r has no reason — saying "human" without saying why is not a disclosure' % (stage, crit))
 PYEOF
 }
 
@@ -363,6 +484,13 @@ consistency_check() {
 
     rm -f "$gate_index"
 
+    # ---- C9: every exit criterion must name its executor ------------------
+    while IFS=$'\t' read -r rule detail; do
+        [[ -z "${rule:-}" ]] && continue
+        printf 'FAIL\tC9\t%s\n' "$detail"
+        fails=$((fails + 1))
+    done < <(stage_config_c9_findings "$cfg")
+
     return $((fails > 0 ? 1 : 0))
 }
 
@@ -393,16 +521,32 @@ stages:
       - "VERSION_PLAN.md"
     required_file_expectations:
       "docs/releases/v{VER}/VERSION_PLAN.md": "must exist"
+    exit_criteria:
+      - "Design doc approved"
+    criteria_gates: {}
+    manual_only_criteria:
+      "Design doc approved": "approval is a human action; no gate in this stage can decide it"
   ALPHA:
     order: 2
     required_gates:
       - "scripts/gate/check_g1_tpch_baseline.sh"
+    exit_criteria:
+      - "Coverage >= 50%"
+    criteria_gates:
+      "Coverage >= 50%": ["scripts/gate/check_coverage_v312.sh"]
   RC:
     order: 4
     required_gates:
       - "scripts/gate/check_g1_tpch_baseline.sh"
     optional_gates:
       - "scripts/gate/check_p13_soak_test.sh"
+    exit_criteria:
+      - "All 5 dimensions PASS"
+      - "Tag rcN cut"
+    criteria_gates:
+      "All 5 dimensions PASS": ["scripts/gate/check_stage.sh"]
+    manual_only_criteria:
+      "Tag rcN cut": "tag cutting is a human release action"
   GA:
     order: 5
     required_gates:
@@ -455,6 +599,28 @@ YAMLEOF
     sed '/^    requirement: /d' \
         "$tmp/clean.yaml" >"$tmp/c8.yaml"
 
+    # C9a: an exit criterion whose mapping is simply gone.
+    sed -e '/^      "Coverage >= 50%": \[/d' \
+        -e '/^    criteria_gates:$/d' \
+        "$tmp/clean.yaml" >"$tmp/c9a.yaml"
+    # C9b: a criterion disposed of twice — the DRAFT manual-only criterion is
+    #       also handed a gate.
+    sed 's#^    criteria_gates: {}#    criteria_gates:\n      "Design doc approved": ["scripts/gate/check_stage.sh"]#' \
+        "$tmp/clean.yaml" >"$tmp/c9b.yaml"
+    # C9c: the mapping key no longer matches the criterion (a dead mapping).
+    sed 's#^      "Coverage >= 50%": \[#      "Coverage >= 55%": [#' \
+        "$tmp/clean.yaml" >"$tmp/c9c.yaml"
+    # C9d: the mapping names a gate that this stage does not run and that no
+    #       live workflow mentions — coverage claimed from a non-executor.
+    sed 's#"All 5 dimensions PASS": \["scripts/gate/check_stage.sh"\]#"All 5 dimensions PASS": ["scripts/gate/check_beta_gate.sh"]#' \
+        "$tmp/clean.yaml" >"$tmp/c9d.yaml"
+    # C9e: manual_only without a reason.
+    sed 's#"Tag rcN cut": "tag cutting is a human release action"#"Tag rcN cut": ""#' \
+        "$tmp/clean.yaml" >"$tmp/c9e.yaml"
+    # C9f: mapped to an empty gate list (claims coverage, names no executor).
+    sed 's#"Coverage >= 50%": \["scripts/gate/check_coverage_v312.sh"\]#"Coverage >= 50%": []#' \
+        "$tmp/clean.yaml" >"$tmp/c9f.yaml"
+
     # The clean sample must PASS.
     if consistency_check "$tmp/clean.yaml" "$VERSION" >"$tmp/clean.out" 2>&1; then
         echo "  [OK]   clean sample -> PASS"
@@ -464,7 +630,7 @@ YAMLEOF
         rc=1
     fi
 
-    for case in c1 c2 c3 c4 c5 c6 c7 c8; do
+    for case in c1 c2 c3 c4 c5 c6 c7 c8 c9a c9b c9c c9d c9e c9f; do
         if consistency_check "$tmp/$case.yaml" "$VERSION" >"$tmp/$case.out" 2>&1; then
             echo "  [FAIL] $case sample -> PASS (the gate cannot detect this violation)"
             rc=1
@@ -475,7 +641,7 @@ YAMLEOF
 
     # The failing samples must name the right rule.
     local expect_rule
-    for case in c1 c2 c3 c4 c5 c6 c7 c8; do
+    for case in c1 c2 c3 c4 c5 c6 c7 c8 c9a c9b c9c c9d c9e c9f; do
         case "$case" in
             c1) expect_rule="C1" ;;
             c2) expect_rule="C2" ;;
@@ -485,6 +651,7 @@ YAMLEOF
             c6) expect_rule="C6" ;;
             c7) expect_rule="C7" ;;
             c8) expect_rule="C8" ;;
+            c9a|c9b|c9c|c9d|c9e|c9f) expect_rule="C9" ;;
         esac
         if grep -q "^FAIL	${expect_rule}	" "$tmp/$case.out"; then
             echo "  [OK]   $case sample -> reported as $expect_rule"
