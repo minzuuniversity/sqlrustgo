@@ -153,6 +153,36 @@ def seat_lock(seat: Seat, max_wait_s: int = 90):
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
+PLACEHOLDER_MARKERS = (
+    "无法加载此回复",
+    "无法回答该问题",
+    "出了点问题",
+    "服务暂时不可用",
+    "couldn't load this response",
+    "failed to load this response",
+    "oops! something went wrong",
+)
+PLACEHOLDER_MAX_CHARS = 64
+
+
+def placeholder_content(content):
+    """Return a reason string when content is a UI error placeholder, else None.
+
+    A bridge can answer HTTP 200 with finish_reason=stop while the page body is
+    still an error placeholder. Length guard: a genuine answer may *discuss* one
+    of these phrases, so only short replies count as placeholders.
+    """
+    text = (content or "").strip()
+    if not text or len(text) > PLACEHOLDER_MAX_CHARS:
+        return None
+    low = text.lower()
+    for marker in PLACEHOLDER_MARKERS:
+        m = marker.lower()
+        if low == m or low.startswith(m) or (m in low and len(low) <= len(m) + 24):
+            return f"placeholder-content: {marker}"
+    return None
+
+
 def http_chat(
     seat: Seat,
     prompt: str,
@@ -212,8 +242,9 @@ def http_chat(
     # Thinking models (qwen35-9b / 35b-a3b) can exhaust the budget inside reasoning_content
     # and leave content empty. Treat that as an abstention, never as an empty answer.
     truncated_empty = bool(content == "" and choice.get("finish_reason") == "length")
+    placeholder = placeholder_content(content)
     rec.update(
-        ok=bool(content) and not truncated_empty,
+        ok=bool(content) and not truncated_empty and placeholder is None,
         content=content,
         reasoning_chars=len(reasoning),
         finish_reason=choice.get("finish_reason"),
@@ -226,6 +257,8 @@ def http_chat(
         rec["error"] = "empty content with finish_reason=length (thinking budget exhausted)"
     if not content and not truncated_empty:
         rec["error"] = "empty content"
+    if placeholder:
+        rec["error"] = placeholder
     return rec
 
 
