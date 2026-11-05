@@ -1,0 +1,2 @@
+OK: KANBAN_v4.1.0_ALPHA.md ledger matches KANBAN_v4.1.0_ALPHA.jsonl (42 rows)
+{"rows": 42, "by_status": {"未开始": 13, "待复核": 11, "完成": 11, "阻塞": 7}}
