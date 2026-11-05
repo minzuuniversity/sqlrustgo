@@ -1,0 +1,2 @@
+{"kind": "doc_facts_check", "docs": 91, "stamped": 1, "stamp_ok": 1, "index_bytes": 16744, "gates": [{"gate": "docs_pointer_paths", "status": "PASS", "exit_code": 0}, {"gate": "docs_links", "status": "PASS", "exit_code": 0}], "fails": 0}
+doc_facts: OK

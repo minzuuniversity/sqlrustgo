@@ -1,0 +1,33 @@
+[flash-next-252/qwen-strata] ok=False latency=120.01s verdict=-
+[chatgpt-web/gpt] ok=True latency=64.81s verdict=INCOMPLETE
+{
+ "decided_seats": [
+  "chatgpt-web"
+ ],
+ "verdicts": {
+  "chatgpt-web": "INCOMPLETE"
+ },
+ "abstained": [
+  {
+   "seat": "flash-next-252",
+   "why": "TimeoutError: timed out"
+  }
+ ],
+ "families": [
+  "gpt"
+ ],
+ "lineages": [
+  "gpt"
+ ],
+ "required_lineages": 2,
+ "machine_evidence_present": true,
+ "machine_evidence_passed": true,
+ "soft_gate_note": "[SOFT GATE] 模型意见仅供参考，不作为门禁依据（AFP §5.1/5.3）",
+ "aggregate": "INCOMPLETE",
+ "rule": "R2: a seat abstained inside the verdict set",
+ "question_id": "pending-claims-sweep",
+ "artifacts": [],
+ "prompt_sha256": "sha256:a8243603cf38ef913b0a00457c6450ac76565617706ae88e72be2cd680ac94d5",
+ "adjudicated_at": "2026-11-05T19:37:44Z"
+}
+exit_code=2

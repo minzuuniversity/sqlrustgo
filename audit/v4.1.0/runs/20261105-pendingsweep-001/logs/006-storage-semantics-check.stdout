@@ -1,0 +1,2 @@
+{"kind": "storage_semantics_check", "ledger": "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/docs/releases/v4.1.0/STORAGE_SEMANTICS_TESTS.jsonl", "test_files": 802, "declared": 28, "ledger_rows": 28, "fails": 0}
+storage_semantics: OK
