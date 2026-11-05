@@ -356,6 +356,32 @@ def main() -> int:
         cal_bad = L.run_calibration(L.load_seats(good)["cal-good"], lock_wait_s=5)
         check("rev_R4: a confidently wrong seat scores 0/4",
               cal_bad["ratio"] == 0.0, json.dumps(cal_bad["items"], ensure_ascii=False)[:240])
+        # --- 8b. EX-6: empty answer != wrong answer (transport vs competence) ---
+        hub.prompt_map = [("17*23", "391"),
+                          ('{"verdict":"INCOMPLETE"', V("INCOMPLETE")),
+                          ("exited with code 2", '{"verdict":"NOT_TRUSTWORTHY"}'),
+                          ("len([x for x in range(10)", "")]
+        cal_empty = L.run_calibration(L.load_seats(good)["cal-good"], lock_wait_s=5)
+        check("an empty answer is booked as unanswered, not wrong",
+              cal_empty["unanswered"] == ["code-truth-len"] and cal_empty["wrong"] == []
+              and cal_empty["answered"] == 3,
+              json.dumps({k: cal_empty[k] for k in ("answered", "unanswered", "wrong")}))
+        check("credit math stays fail-closed (3/4, not 3/3)",
+              cal_empty["ratio"] == 0.75 and cal_empty["score"] == 3)
+        check("competence is reported separately from connectivity",
+              cal_empty["competence_ratio"] == 1.0,
+              "competence_ratio=%s" % cal_empty["competence_ratio"])
+        hub.prompt_map = [("17*23", "391"),
+                          ('{"verdict":"INCOMPLETE"', V("INCOMPLETE")),
+                          ("exited with code 2", '{"verdict":"NOT_TRUSTWORTHY"}'),
+                          ("len([x for x in range(10)", "5")]
+        cal_fixed = L.run_calibration(L.load_seats(good)["cal-good"], lock_wait_s=5)
+        check("rev_EX6: filling that one item in clears unanswered (the flag discriminates)",
+              cal_fixed["unanswered"] == [] and cal_fixed["ratio"] == 1.0,
+              json.dumps({k: cal_fixed[k] for k in ("answered", "unanswered", "ratio")}))
+        check("retry happens before an item is called unanswered",
+              all(d["retried"] for d in cal_empty["items"] if not d["answered"]),
+              json.dumps([d["retried"] for d in cal_empty["items"]]))
 
         rows_ok = [
             {"seat": "ds", "lineage": "deepseek", "roles": ["adjudicate"],
