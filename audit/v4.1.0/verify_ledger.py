@@ -11,7 +11,8 @@
 判据（任一不成立 ⇒ exit 1，绝不"看情况"）：
   L1 台账行数 == 分诊 jsonl 覆盖的 issue 数，且每行都有 domain / automatable
   L2 每行 evidence_grade ∈ {advisory-only, cross-checked}；
-     cross-checked 的行必须真的被 >=2 个 family 分诊过（对照 triage jsonl 现场重算）
+     cross-checked 的行必须真的被 >=2 个 family 分诊过（对照 triage jsonl 现场重算）；
+     且 ladder credited lineage 少于 2 个时，任何行都不许是 cross-checked（与 issue_ledger 同规则）
   L3a MD 里记录的输入指纹 == 仓内文件的实测 sha256；且必须显式记录 issues 快照指纹
   L3b MD 的 evidence_hash == 由 MD 自记输入指纹按名排序拼接后重算（生成端同式）
   L4 不完整性显式化：MD 若写了"缺分诊行"，行数必须与之一致
@@ -95,13 +96,23 @@ def main(argv: list[str] | None = None) -> int:
     if no_field:
         fail(f"L1 {len(no_field)} 行缺 domain/automatable: {no_field[:5]}")
 
-    # L2 现场重算，不采信台账自报
+    md = ledger_md.read_text(encoding="utf-8")
+
+    # L2 现场重算，不采信台账自报。等级规则与生成端 issue_ledger.py 对齐：
+    # grade = cross-checked 仅当 (credited lineage >= 2) 且 (该 issue 被 >=2 family 分诊)
+    ml = re.search(r"ladder credited lineage=([^；;\n]+)", md)
+    if not ml:
+        fail("L2 MD 缺 ladder credited lineage 字段（等级规则无法核对）")
+    lineages = {x.strip() for x in (ml.group(1).split(",") if ml else []) if x.strip()}
+    ladder_ready = len(lineages) >= 2
+
     grade_ct = collections.Counter()
     for r in rows:
         fams = {((t.get("triaged_by") or {}).get("family") or "")
                 for t in triage.get(r["number"], [])}
         fams.discard("")
-        want = "cross-checked" if len(fams) >= args.family_min else "advisory-only"
+        want = ("cross-checked"
+                if (ladder_ready and len(fams) >= args.family_min) else "advisory-only")
         grade_ct[r.get("evidence_grade")] += 1
         if r.get("evidence_grade") != want:
             fail(f"L2 #{r['number']} 自报 {r.get('evidence_grade')}，"
@@ -110,7 +121,6 @@ def main(argv: list[str] | None = None) -> int:
             fail(f"L2 #{r['number']} 证据等级非法: {r.get('evidence_grade')}")
 
     # L3 MD 指纹 vs 实测
-    md = ledger_md.read_text(encoding="utf-8")
     recorded = dict(re.findall(r"- `([A-Za-z0-9_.-]+\.jsonl?)` = `(sha256:[0-9a-f]{64})`", md))
     for p in triage_files:
         got = sha256(p)
@@ -139,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps({
         "kind": "ledger_verify",
         "batch": args.label,
+        "credited_lineages": sorted(lineages),
+        "ladder_ready": ladder_ready,
         "ledger_md": str(ledger_md.relative_to(ROOT)) if ledger_md.is_relative_to(ROOT) else str(ledger_md),
         "rows": len(rows),
         "triaged_issues": len(triage),
