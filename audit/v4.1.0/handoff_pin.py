@@ -14,6 +14,10 @@ Comments are not touched by a body re-render, so the entry point goes here.
 
     python3 audit/v4.1.0/handoff_pin.py                  # print comment body only
     python3 audit/v4.1.0/handoff_pin.py --post 5592      # create or update the pin
+
+Verb note (measured on Gitea 28.2.0 at 192.168.0.252:3000, 2026-11-06): editing a comment is
+`PATCH /repos/{o}/{r}/issues/comments/{id}`; PUT on the same route returns 405. A PUT-based
+"update" therefore silently never happens — it is reported as POST-FAIL, not as success.
     python3 audit/v4.1.0/handoff_pin.py --selftest       # reverse mutation self-test
 
 Honesty rules baked in:
@@ -190,7 +194,7 @@ def main(argv) -> int:
             got = api("POST", f"{REPO_API}/issues/{post}/comments", {"body": body})
             mode = "create"
         elif len(pins) == 1:
-            got = api("PUT", f"{REPO_API}/issues/comments/{pins[0]['id']}", {"body": body})
+            got = api("PATCH", f"{REPO_API}/issues/comments/{pins[0]['id']}", {"body": body})
             mode = "update"
         else:
             print(f"INCOMPLETE: 已存在 {len(pins)} 条 pin 评论（id={[p['id'] for p in pins]}），不猜哪条是当前的",
