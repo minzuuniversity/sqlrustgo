@@ -1,3 +1,4 @@
+// storage-semantics: wal-storage-direct-v3-12
 //! V312-12 coverage improvement tests for `sqlrustgo_storage::WalStorage`
 //! direct public API (Issue #4419 followup — B8 COVERAGE_MIN_PER_CRATE).
 //!

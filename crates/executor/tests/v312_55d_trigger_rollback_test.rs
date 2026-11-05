@@ -1,3 +1,4 @@
+// storage-semantics: v312-55d-trigger-rollback-test
 //! V312-55D (Round-26 follow-up) regression tests — AFTER-trigger side-effects
 //! must roll back atomically with the parent statement.
 //!

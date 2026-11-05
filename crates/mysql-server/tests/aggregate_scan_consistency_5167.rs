@@ -1,3 +1,4 @@
+// storage-semantics: aggregate-scan-consistency-5167
 //! #5167 acceptance: `COUNT(*)` / range scans / aggregates must agree
 //! with point lookups.
 //!

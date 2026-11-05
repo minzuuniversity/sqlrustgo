@@ -1,3 +1,4 @@
+// storage-semantics: storage-db-namespace-contract
 //! This test imports `sqlrustgo_storage::binary_storage_v2`, which `crates/storage/src/lib.rs` gates
 //! behind the `bin_storage_default` feature. An integration test links the library
 //! without `cfg(test)`, so that item does not exist for it unless the
