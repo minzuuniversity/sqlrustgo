@@ -802,12 +802,22 @@ impl StorageEngine for BinaryTableStorage {
     }
 
     fn create_trigger(&mut self, _info: crate::engine::TriggerInfo) -> SqlResult<()> {
-        // BinaryTableStorage doesn't support triggers
-        Ok(())
+        // #5601：binary 模式没有 WAL ⇒ 触发器无法登记也无法执行。
+        // 旧实现返回 Ok(())，于是 CREATE TRIGGER 报成功、INSERT 时触发器静默不跑
+        // （只有服务端日志里有一行自认），DROP TRIGGER 再说「not found」——
+        // 客户端可观测到的自相矛盾。现在明确报错。
+        Err(SqlError::ExecutionError(
+            "BinaryTableStorage does not support triggers (no WAL): CREATE TRIGGER is not supported in binary storage mode"
+                .to_string(),
+        ))
     }
 
     fn drop_trigger(&mut self, _name: &str) -> SqlResult<()> {
-        Ok(())
+        // #5601：既然登记已经明确报错，删除也必须同样明确，不能静默返回成功。
+        Err(SqlError::ExecutionError(
+            "BinaryTableStorage does not support triggers (no WAL): DROP TRIGGER is not supported in binary storage mode"
+                .to_string(),
+        ))
     }
 
     fn get_trigger(&self, _name: &str) -> Option<crate::engine::TriggerInfo> {
@@ -827,13 +837,21 @@ impl StorageEngine for BinaryTableStorage {
     }
 
     fn create_database(&mut self, _db_name: &str) -> SqlResult<()> {
-        // BinaryTableStorage is directory-based; no-op since data_dir already exists
-        Ok(())
+        // #5601：binary 模式没有库命名空间（数据目录就是全部，没有 per-db 子目录）。
+        // 旧实现返回 Ok(())，于是 CREATE DATABASE 报成功、SHOW DATABASES 里却没有
+        // 这个库 —— 报成功但没生效（假成功）。现在明确报错。
+        Err(SqlError::ExecutionError(
+            "BinaryTableStorage has no database namespace: CREATE DATABASE is not supported in binary storage mode"
+                .to_string(),
+        ))
     }
 
     fn drop_database(&mut self, _db_name: &str) -> SqlResult<()> {
-        // BinaryTableStorage is directory-based; no-op
-        Ok(())
+        // #5601：与 create_database 对称 —— 删不存在的库不能报成功。
+        Err(SqlError::ExecutionError(
+            "BinaryTableStorage has no database namespace: DROP DATABASE is not supported in binary storage mode"
+                .to_string(),
+        ))
     }
 
     fn flush(&mut self) -> SqlResult<()> {
