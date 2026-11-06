@@ -1,0 +1,120 @@
+{
+ "kind": "binmode_probe",
+ "storage": "binary",
+ "server_bin": "/Volumes/workspace/dev/sqlrustgo/.worktrees/410-dev/target/debug/sqlrustgo-mysql-server",
+ "server_sha256": "cc1488d21921386e766dac5d708a9a4827eacd962c8a3bc2b31057aca1e30867",
+ "server_size": 52777624,
+ "server_mtime_utc": "2026-11-06T08:21:52Z",
+ "server_bin_is_this_line": true,
+ "port": 54458,
+ "steps": [
+  {
+   "label": "show_databases_before",
+   "sql": "SHOW DATABASES;",
+   "rc": 0,
+   "stdout": "default",
+   "stderr": ""
+  },
+  {
+   "label": "create_database",
+   "sql": "CREATE DATABASE IF NOT EXISTS probeb;",
+   "rc": 1,
+   "stdout": "",
+   "stderr": "--------------\nCREATE DATABASE IF NOT EXISTS probeb\n--------------\n\nERROR 1105 (42000) at line 1: Execution error: CREATE DATABASE: Execution error: BinaryTableStorage has no database namespace: CREATE DATABASE is not supported in binary storage mode"
+  },
+  {
+   "label": "show_databases_after",
+   "sql": "SHOW DATABASES;",
+   "rc": 0,
+   "stdout": "default",
+   "stderr": ""
+  },
+  {
+   "label": "create_table_in_new_db",
+   "sql": "CREATE TABLE probeb.t (id INT PRIMARY KEY, v VARCHAR(16));",
+   "rc": 1,
+   "stdout": "",
+   "stderr": "--------------\nCREATE TABLE probeb.t (id INT PRIMARY KEY, v VARCHAR(16))\n--------------\n\nERROR 1105 (42000) at line 1: Execution error: BinaryTableStorage has no database namespace; cannot create table in 'probeb'"
+  },
+  {
+   "label": "create_table_default_db",
+   "sql": "CREATE TABLE pb_t2 (id INT PRIMARY KEY, v VARCHAR(16));",
+   "rc": 0,
+   "stdout": "",
+   "stderr": ""
+  },
+  {
+   "label": "insert_default_db",
+   "sql": "INSERT INTO pb_t2 VALUES (1,'orig'),(2,'orig');",
+   "rc": 0,
+   "stdout": "",
+   "stderr": ""
+  },
+  {
+   "label": "create_trigger",
+   "sql": "CREATE TRIGGER pb_trig BEFORE INSERT ON pb_t2 FOR EACH ROW SET NEW.v = 'fired';",
+   "rc": 1,
+   "stdout": "",
+   "stderr": "--------------\nCREATE TRIGGER pb_trig BEFORE INSERT ON pb_t2 FOR EACH ROW SET NEW.v = 'fired'\n--------------\n\nERROR 1105 (42000) at line 1: Execution error: BinaryTableStorage does not support triggers (no WAL): CREATE TRIGGER is not supported in binary storage mode"
+  },
+  {
+   "label": "insert_after_trigger",
+   "sql": "INSERT INTO pb_t2 VALUES (3,'orig');",
+   "rc": 0,
+   "stdout": "",
+   "stderr": ""
+  },
+  {
+   "label": "select_after_trigger",
+   "sql": "SELECT id,v FROM pb_t2 ORDER BY id;",
+   "rc": 0,
+   "stdout": "1\torig\n2\torig\n3\torig",
+   "stderr": ""
+  },
+  {
+   "label": "drop_trigger",
+   "sql": "DROP TRIGGER pb_trig;",
+   "rc": 1,
+   "stdout": "",
+   "stderr": "--------------\nDROP TRIGGER pb_trig\n--------------\n\nERROR 1105 (42000) at line 1: Execution error: Trigger 'pb_trig' not found"
+  },
+  {
+   "label": "insert_after_drop",
+   "sql": "INSERT INTO pb_t2 VALUES (4,'orig');",
+   "rc": 0,
+   "stdout": "",
+   "stderr": ""
+  },
+  {
+   "label": "select_final",
+   "sql": "SELECT id,v FROM pb_t2 ORDER BY id;",
+   "rc": 0,
+   "stdout": "1\torig\n2\torig\n3\torig\n4\torig",
+   "stderr": ""
+  }
+ ],
+ "create_database_rc": 1,
+ "show_databases_before": [
+  "default"
+ ],
+ "show_databases_after": [
+  "default"
+ ],
+ "create_database_effective": false,
+ "trigger_self_admission_log_lines": [
+  "2026-11-06T08:56:11.081393Z ERROR sqlrustgo_executor::trigger: TriggerExecutor::new: storage has no WAL enabled — triggers will be silently skipped (binary mode)",
+  "2026-11-06T08:56:11.187251Z ERROR sqlrustgo_executor::trigger: TriggerExecutor::new: storage has no WAL enabled — triggers will be silently skipped (binary mode)",
+  "2026-11-06T08:56:11.352075Z ERROR sqlrustgo_executor::trigger: TriggerExecutor::new: storage has no WAL enabled — triggers will be silently skipped (binary mode)"
+ ],
+ "final_rows": {
+  "1": "orig",
+  "2": "orig",
+  "3": "orig",
+  "4": "orig"
+ },
+ "trigger_actually_fired_rows": [],
+ "create_trigger_rc": 1,
+ "drop_trigger_rc": 1,
+ "false_success_count": 0,
+ "false_success": []
+}
