@@ -1,0 +1,12 @@
+base: rc=0 {"kind": "gate_registry_check", "catalog": "/Volumes/workspace/dev/wt/batch1/docs/releases/v4.1.0/GATE_CATALOG.jsonl", "check_n": 168, "catalog_rows": 168, "by_class": {"stage_required": 34, "ci_reachable": 51, "orphan_referenced": 22, "dead": 61}, "by_disposition": {"archive-candidate": 33, "keep-rewire": 12, "needs-execution-point": 25, "needs-external-host": 12, "superseded": 1}, "fails": 0}
+M1 删除登记: scripts/gate/check_10_principles_v310.sh
+M2 谎报 class 为 stage_required
+M3 抹 reason
+M4 谎报 can_fail: scripts/gate/check_architecture_freeze.sh
+M5 抹 stages: scripts/gate/check_alpha_v410.sh
+M6 多一行无文件登记
+M7 抹 disposition: scripts/gate/check_4019_sysbench_baseline.sh
+M8 伪造 evidence: scripts/gate/check_4019_sysbench_baseline.sh
+M9 已挂执行点却标归档: scripts/gate/check_alpha_v410.sh
+dead_rows=61 catalog_rows=168
+test_gate_registry: OK (9 mutations all caught)
