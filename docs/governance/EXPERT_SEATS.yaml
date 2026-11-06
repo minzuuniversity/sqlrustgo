@@ -18,7 +18,7 @@
 #   同一 lineage 的不同规格（qwen 9B / 35B-A3B / flash-next）更不算独立席位。
 
 schema_version: expert-seats/v1
-updated: "2026-11-04"
+updated: "2026-11-06"
 updated_by: mcode-macmini
 
 policy:
@@ -41,11 +41,12 @@ seats:
     single_session: true
     reasoning_effort: null
     enabled: true
-    measured_at: "2026-11-04T15:40Z"
-    measured_source_run: "mcode-macmini-probe-20261104T1540"
-    measured_latency_s: 1.36
-    measured_tps: 17.6
+    measured_at: "2026-11-05T17:44Z"
+    measured_source_run: "20261106-evidinv-001/logs/003-seats-health.stdout"
+    measured_latency_s: 0.22
+    measured_tps: null
     calibration_min: 0.5
+    measured_state: "ok=false / HTTP 500（EX-5：人工登录未落盘）"
     measured_note: >
       曾经的首选裁定席位（1.36s / 17.6 tps）。2026-11-04 21:30 起不可用：
       上游直连 create_pow_challenge 返回 {"code":40003,"msg":"Authorization Failed
@@ -67,10 +68,11 @@ seats:
     single_session: true
     reasoning_effort: "none"
     enabled: true
-    measured_at: "2026-11-04T15:40Z"
-    measured_source_run: "mcode-macmini-probe-20261104T1540"
-    measured_latency_s: 17.18
-    measured_tps: 7.8
+    measured_at: "2026-11-05T17:44Z"
+    measured_source_run: "20261106-evidinv-001/logs/003-seats-health.stdout"
+    measured_latency_s: 2.25
+    measured_tps: 12.89
+    measured_state: "ok=true / 2.25s / 12.89tps / 标定 4/4（unanswered=[] wrong=[]）"
     measured_note: >
       strata 服务，n_ctx=262144，无 api_key。带 reasoning_effort=none 时
       8 token 出答（12.1s，含排队）；不带时思考耗时长。作为第二家族席位。
@@ -87,9 +89,9 @@ seats:
     single_session: true
     reasoning_effort: "none"
     enabled: true
-    measured_at: "2026-11-05T01:20Z"
-    measured_source_run: "20261105-tristate-001 (health 记录) / 直连 curl 复测"
-    measured_latency_s: null      # 未出答：240s 超时
+    measured_at: "2026-11-05T17:44Z"
+    measured_source_run: "20261106-evidinv-001/logs/003-seats-health.stdout"
+    measured_latency_s: 1.01
     measured_tps: null
     measured_drift: >
       配置漂移：本席位写的是 qwen35-9b-mac，但 8002 现在 /v1/models 报的是
@@ -97,6 +99,7 @@ seats:
       同一端点 /v1/models 立即应答，但 chat/completions 16 token 请求 240s 未返回
       （curl -m 240 空返回）=> 服务在但推理侧挂死/被占。属 owner/hermes 复核项，
       不是我能通过调参修好的（看板 IL-8）。
+    measured_state: "ok=false / HTTP 503（8002 由挂死变为不可用 ⇒ 看板 EX-10 阻塞）"
     measured_note: >
       思考型模型：不传 reasoning_effort=none 时 content 为空、全部落在
       reasoning_content 且 finish_reason=length（200 token 全用在思考上）。
@@ -115,10 +118,11 @@ seats:
     single_session: true
     reasoning_effort: "none"
     enabled: true
-    measured_at: "2026-11-05T01:23Z"
-    measured_source_run: "20261105-tristate-001 (health 记录) / 现场单席位 health"
-    measured_latency_s: 37.7
-    measured_tps: 12.81
+    measured_at: "2026-11-05T17:44Z"
+    measured_source_run: "20261106-evidinv-001/logs/003-seats-health.stdout"
+    measured_latency_s: 240.0
+    measured_tps: null
+    measured_state: "ok=false / timeout 240s（上一轮同席位 51.54s 正常 ⇒ 退化 ⇒ 看板 EX-10）"
     measured_note: >
       2026-11-05 复测：--max-tokens 1500 下 finish_reason=stop、483 completion token、
       37.7s、parseable_contract=true。上一轮把它判为不可用是**我的参数问题**
@@ -141,10 +145,11 @@ seats:
     reasoning_effort: null
     calibration_min: 0.5
     enabled: true
-    measured_at: "2026-11-04T21:41+08:00"
-    measured_source_run: "mcode-macmini-seat-check-20261104T2141"
-    measured_latency_s: 40.05
-    measured_tps: null            # 上游 usage 不回传 token 数，TPS 无法实测，不得估算
+    measured_at: "2026-11-05T17:44Z"
+    measured_source_run: "20261106-evidinv-001/logs/003-seats-health.stdout"
+    measured_latency_s: 25.61
+    measured_tps: null
+    measured_state: "ok=true / 25.61s / 标定 4/4；上游不回传 token 数 ⇒ TPS 不得估算"
     measured_note: >
       2026-11-04 21:41 实测：返回 content="PONG"、finish_reason=stop、
       web_session.latency_ms=40051。此前"失效"的根因（omp 判别实验，同一出口 IP、
@@ -159,3 +164,20 @@ fallback_notes:
   - "2026-11-04：owner 明确指示『不要部署大模型，只检查能否使用』。因此曾把 gemma-4-E4B 拷到 250 并试起 8012（模型加载成功、health=200），随即按要求撤销：进程已停、4.98GB GGUF 已删除、250 恢复原状。本文件不得登记需要新部署模型的席位。"
   - "252 的 hermes 正在升级大模型服务（TPS、多会话、本地 deepseek v4）。升级后重跑 health 并更新本文件的 measured_* 快照。"
   - "禁止把席位凭据写入本文件；本地端点均无鉴权（strata api_key=false），桥接端点的上游凭据由 node 服务自持。"
+
+# 标定账目语义（EX-6 根因固化，2026-11-06；判据来源 scripts/gate/expert_ladder.py）
+#   标定每题只有三种结果：answered+对(score) / answered+错(wrong) / unanswered(空返回或传输失败)。
+#   空返回先重试一次，仍空记 unanswered，不得混进 wrong——否则「传输坏了」会被算成「模型变笨」，
+#   这正是 20261104-seats-001(4/4) 与 20261104-seats-002(3/4) 差一个百分点的真相。
+#   ratio = score/total 保持 fail-closed（空返回照样压低可信度，不放宽）；
+#   competence_ratio = score/answered 只供人区分「能力」与「通道」，不参与席位 credited 判定。
+#   health 行新增 calibration_unanswered；席位 credited 仍要求 ratio>=calibration_min 且 role-eligible。
+#   最近一次留证：run 20261106-evidinv-001（seats_ok=2/5；两个 credited 席位均 calib 4/4，
+#   capability_basis=calibrated+role-eligible，不再是 reachability）。
+calibration_semantics:
+  schema: calibration/v2
+  states: [score, wrong, unanswered]
+  retry_on_empty: 1
+  trusted_ratio_field: ratio          # score/total, fail-closed
+  diagnostic_ratio_field: competence_ratio   # score/answered, 仅供人分界
+  evidence_run: "20261106-evidinv-001"

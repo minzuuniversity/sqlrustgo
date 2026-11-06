@@ -1,0 +1,18 @@
+{
+ "seat": "chatgpt-web",
+ "family": "gpt",
+ "lineage": "gpt",
+ "endpoint": "http://127.0.0.1:9656/v1/chat/completions",
+ "model": "web-session-chat",
+ "requested_at": "2026-11-05T15:32:08Z",
+ "prompt_sha256": "sha256:f77c82400a00d23b8333ed9dc0390d1acbeb09be88a7ae142ab6771548948489",
+ "max_tokens": 350,
+ "ok": true,
+ "content": "无法加载此回复",
+ "reasoning_chars": 0,
+ "finish_reason": "stop",
+ "completion_tokens": null,
+ "prompt_tokens": null,
+ "latency_s": 58.77,
+ "output_sha256": "sha256:132d13bfdf5fe7cfe30603583a132d5cd10d34e21330bd2fd914289064532efb"
+}

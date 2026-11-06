@@ -1,0 +1,1 @@
+{"kind": "label_apply_verify", "snapshot": "audit/v4.1.0/neg/snapshots/labelgap-open-before-20261105.jsonl", "issues_checked": 111, "lost_labels": 0, "added_labels": 43, "expected_ops_from_ledger": 43}
