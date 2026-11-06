@@ -1,0 +1,76 @@
+# run 20261106-cap-smoke-002 —— P1-2 使用面真跑（第二轮：参考服务端兜底期望值 + BIN-1 取证）
+# 与 commands_cap_001.yaml 的差别：
+#   1) selftest 从 11 臂 → 19 臂（新增 W1..W9 包级字节/参考对照/包帧切分夹具，M5/M7 保留）
+#   2) live 摘要不再断言 `null_wire_ambiguous`（run-001 的 WIRE-1 是我探针错，已撤销）；
+#      改成「被测与参考服务端结果集包级字节必须逐字节相等」，参考不可用 ⇒ 只判 INCOMPLETE
+#   3) 新增 binmode-probe / binmode-lock 两步：#5601 的缺陷面钉进证据
+- id: cap-selftest
+  name: capability_smoke 反向变异自检（19 臂：H0 + M1-M5/M7 + W1-W9 + D1-D3）
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py --selftest
+  cwd: .
+  timeout_sec: 300
+- id: cap-client-presence
+  name: 被测对象在位：真 mysql 客户端（实测是 MariaDB shim，不是 Oracle mysql）+ 参考 mariadbd + 被测 server 二进制哈希
+  cmd: |-
+    set -e
+    /opt/homebrew/bin/mysql --version
+    /opt/homebrew/bin/mysql --version | sha256sum
+    /opt/homebrew/bin/mariadbd --version
+    git rev-parse HEAD
+    target/debug/sqlrustgo-mysql-server --version 2>/dev/null || true
+    shasum -a 256 target/debug/sqlrustgo-mysql-server
+  cwd: .
+  timeout_sec: 120
+- id: cap-live-prod
+  name: 生产链 + binary 判别臂真跑（现场起 mariadbd 做参考；预期 rc=0：生产链 findings=0）
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py run --out test_results/capability_smoke/run-archive-002
+  cwd: .
+  timeout_sec: 900
+- id: cap-live-summary
+  name: 把上一命令的 json 摊成可核对结论（三段逐值全等 / wal / restore 落盘 / 与参考字节对照 / 判别力）
+  cmd: /usr/bin/python3 audit/v4.1.0/cap_live_summary.py --json test_results/capability_smoke/run-archive-002/capability_smoke.json
+  cwd: .
+  timeout_sec: 120
+- id: binmode-probe
+  name: binary 模式假成功探针（#5601 复现）。退出码 0 只表示观测完成，不代表功能可用
+  cmd: |-
+    set -euo pipefail
+    mkdir -p test_results/binmode
+    /usr/bin/python3 audit/v4.1.0/binmode_probe.py --out test_results/binmode 2>&1 | tee test_results/binmode/probe.json
+  cwd: .
+  timeout_sec: 600
+- id: binmode-lock
+  name: 把 #5601 当前缺陷面钉进证据（CREATE DATABASE / CREATE TRIGGER 报成功但未生效，自认日志行在位）。引擎修好后这条会变红 ⇒ 必须同步更新 #5601
+  cmd: /usr/bin/python3 audit/v4.1.0/binmode_lock.py --json test_results/binmode/probe.json
+  cwd: .
+  timeout_sec: 120
+- id: cap-static
+  name: 静态普查：哪些测试声称验证存储语义、其中多少只在 mock 上跑
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py static
+  cwd: .
+  timeout_sec: 300
+- id: kanban-check
+  name: 看板 render/check（本 run 改了看板 3 行：P1-2 证据、WIRE-1 撤销原判据、BIN-1 挂 #5601）
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: kanban-counts
+  name: 看板行数字段（55 行：7 未开始 / 20 待复核 / 18 完成 / 10 阻塞）
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: gov-metrics
+  name: 分母与度量（check_n 必须仍是 168；本 run 不跑 ci_gate，见 manifest notes）
+  cmd: /usr/bin/python3 scripts/gate/gov_probe.py metrics | tail -1 | /usr/bin/python3 -c "import sys,json;d=json.load(sys.stdin);print(d['check_n'],d['claims_hits'],d['docs410'],d['audit_manifests_runs'])"
+  cwd: .
+  timeout_sec: 120
+- id: ledger-verify
+  name: 台账 verify（findings=0、debt 只降不升，现值 1143）
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify
+  cwd: .
+  timeout_sec: 120
+- id: board-appendix-check
+  name: 三处一致性核对（现值 findings=1：看板 #5592 缺附录 A，HO-2 属 Owner 裁决 ⇒ 预期红，不自行回刷）
+  cmd: /usr/bin/python3 audit/v4.1.0/board_appendix_check.py
+  cwd: .
+  timeout_sec: 120
