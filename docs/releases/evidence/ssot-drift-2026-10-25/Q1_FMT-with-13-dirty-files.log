@@ -1,0 +1,15 @@
+# Q1_FMT with-13-dirty-files —— 套用保全的 13 个未提交改动后重跑 cargo fmt --check
+# 执行时间   : 2026-10-25T05:0x+08:00（第二次复现，Round-1 同一结论的补证）
+# 基线 commit: 9fbb63bfbc0bc5221bdd762e281e937b27be86af (fix/4597-chaos-t8d-awk-portability)
+# 方法       : 独立 git worktree（detached @ 9fbb63bfbc），套用 preservation/worktree-unstaged.patch
+#              后运行 cargo fmt --check；未触碰共享工作树 /Users/liying/workspace/dev/sqlrustgo
+# 命令       : git apply preservation/worktree-unstaged.patch && cargo fmt --check
+# 退出码     : 0
+# "Diff in" 行数 (hunk 数) : 0
+# 唯一违规文件数           : 0
+# 原始输出   : （空 —— rustfmt 在零违规时不输出任何 diff；本文件的 0 字节即为"无违规"的证据）
+#
+# 对照：同一基线未套用补丁时，cargo fmt --check 退出码 1，"Diff in" 行数 37，唯一违规文件 11 个
+#       （见 Q1_FMT.log 与 Q1_FMT-round2-2026-10-25.log）
+#
+# ---- 以下为 cargo fmt --check 的原始 stdout/stderr（空）----
