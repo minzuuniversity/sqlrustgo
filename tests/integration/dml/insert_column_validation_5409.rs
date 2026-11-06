@@ -15,6 +15,7 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, MemoryStorage, Value};
+use sqlrustgo_storage::{FileBackedWalManager, FileStorage, MvccStorage, WalStorage};
 use std::sync::Arc;
 
 fn fresh() -> ExecutionEngine<MemoryStorage> {
@@ -22,7 +23,10 @@ fn fresh() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(storage)
 }
 
-fn count_rows(e: &mut ExecutionEngine<MemoryStorage>, table: &str) -> usize {
+fn count_rows<S>(e: &mut ExecutionEngine<S>, table: &str) -> usize
+where
+    S: sqlrustgo_storage::StorageEngine + Send + Sync + 'static,
+{
     let r = e
         .execute(&format!("SELECT COUNT(*) FROM {}", table))
         .unwrap();
@@ -159,4 +163,86 @@ fn insert_without_a_column_list_is_unaffected() {
 
     e.execute("INSERT INTO t VALUES (1, 'x')").unwrap();
     assert_eq!(count_rows(&mut e, "t"), 1);
+}
+
+// ── 生产链臂（补 #5409 声明的实质）─────────────────────────────────────────
+//
+// 上面所有臂都只构造 `MemoryStorage`。本文件顶部的
+// `// storage-semantics: dml-insert-column-validation-5409`
+// 声明的是**存储语义**，而 `audit/v4.1.0/storage_semantics_claims.py` 的 C2
+// 判据正是「声明了存储语义、却只构造内存存储 ⇒ 红」。在补这一节之前，这个声明
+// 是**空的**：校验发生在引擎层，内存臂根本没有经过落盘路径，也就没有证明
+// 「校验发生在任何 WAL 追加之前」。
+//
+// 生产 server 的默认存储选择器（`storage = None`）落到的就是
+// `WalStorage<MvccStorage<FileStorage>>`，所以这一臂用的就是这个组合。
+
+fn prod_dir(tag: &str) -> std::path::PathBuf {
+    static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("insert_5409_{tag}_{}_{}", std::process::id(), n));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn fresh_prod(
+    dir: &std::path::Path,
+) -> ExecutionEngine<WalStorage<MvccStorage<FileStorage>, FileBackedWalManager>> {
+    let inner = MvccStorage::new(FileStorage::new(dir.to_path_buf()).expect("FileStorage"));
+    inner.rebuild_from_inner().expect("rebuild MVCC chain");
+    let wal = FileBackedWalManager::new(dir.join("sqlrustgo.wal")).expect("FileBackedWalManager");
+    let storage = WalStorage::new(inner, wal).expect("WalStorage<MvccStorage<FileStorage>>");
+    ExecutionEngine::new(Arc::new(RwLock::new(storage)))
+}
+
+/// 未知列名在**生产存储链**上同样必须报错，并且**不得留下任何行**——
+/// 关键是后者：如果校验排在 WAL 追加之后，报错的同时已经往日志里写了一行，
+/// 恢复出来就是一行全 NULL，正是本 issue 的假绿形态。
+#[test]
+fn unknown_column_is_rejected_on_the_production_storage_chain() {
+    let dir = prod_dir("unknown");
+    let mut e = fresh_prod(&dir);
+    e.execute("CREATE TABLE t (a INTEGER, b TEXT)").unwrap();
+
+    let err = e
+        .execute("INSERT INTO t (c0, c1) VALUES (1, 2)")
+        .expect_err("unknown column must be rejected on the production chain");
+    assert_eq!(
+        err.mysql_error_code(),
+        1054,
+        "expected ER_BAD_FIELD_ERROR on WalStorage<MvccStorage<FileStorage>>, got {:?}",
+        err
+    );
+    assert_eq!(
+        count_rows(&mut e, "t"),
+        0,
+        "被拒的 INSERT 不得在生产链上留下任何行（含 WAL 里的幽灵行）"
+    );
+    drop(e);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 反向保护：合法列名列表在生产链上必须照常写入并可读回。
+/// 只有「拒绝」这一半的测试，无法区分「校验太严」把合法 INSERT 也吞了。
+#[test]
+fn valid_column_list_still_inserts_on_the_production_storage_chain() {
+    let dir = prod_dir("valid");
+    let mut e = fresh_prod(&dir);
+    e.execute("CREATE TABLE t (a INTEGER, b TEXT)").unwrap();
+
+    e.execute("INSERT INTO t (b, a) VALUES ('x', 1)").unwrap();
+    e.execute("INSERT INTO t (a) VALUES (2)").unwrap();
+    assert_eq!(count_rows(&mut e, "t"), 2);
+    drop(e);
+
+    // 重启一遍：证明写进去的是**盘上**的行，不是只在内存里的状态。
+    let mut reopened = fresh_prod(&dir);
+    assert_eq!(
+        count_rows(&mut reopened, "t"),
+        2,
+        "合法 INSERT 必须在重启后仍在 —— 否则这一臂只是在测内存缓存"
+    );
+    drop(reopened);
+    let _ = std::fs::remove_dir_all(&dir);
 }

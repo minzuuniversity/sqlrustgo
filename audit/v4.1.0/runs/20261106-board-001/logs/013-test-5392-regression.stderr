@@ -1,0 +1,1 @@
+error: test failed, to rerun pass `-p sqlrustgo-mysql-server --test file_storage_leading_column_collapse_5392`
