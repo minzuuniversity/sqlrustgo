@@ -1,0 +1,136 @@
+schema_version: 1
+run_id: 20261106-ga5594-006
+source_agent: omp-macmini
+frozen_commit: 63b0f1ee2fb95b5e6529abfa1d49df4dd5746eb8
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: gate-test-count-monotonic
+  name: P12/P13：ignore 计数与 active 计数的基线比较（ADR-015 已把基线更新到 135/14345）
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 900
+- id: gate-anti-ignore
+  name: ignore 台账与现场树一致（12 条新登记 + active_max 80→92）
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: gate-doc-facts-check
+  name: 文档索引与重生成结果一致（新增 ADR-015 后必须重索引）
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 900
+- id: probe-claims-selftest
+  name: claims 判据自检（17 臂）
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1800
+- id: gate-kanban-consistency
+  name: 看板 jsonl 与 md 一致（新增 SEC-1 / LINT-1）
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 900
+- id: gate-honesty-check
+  name: 门禁注册表诚实性
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 900
+- id: gate-registry-denominator
+  name: 门禁分母（必须仍是 168）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+- id: gate-main-freshness
+  name: main 新鲜度（C-MAIN-02：GA 前 main 封存 ⇒ 结构性红，如实记录）
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600
+results:
+- id: gate-test-count-monotonic
+  started_at: '2026-11-06T19:28:06Z'
+  finished_at: '2026-11-06T19:28:06Z'
+  exit_code: 0
+  stdout_sha256: fecfe844dfda62f3c45cc8968a919281a2505682ba00a3355758eacbc31959eb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-gate-test-count-monotonic.stdout
+  stderr_path: logs/001-gate-test-count-monotonic.stderr
+- id: gate-anti-ignore
+  started_at: '2026-11-06T19:28:06Z'
+  finished_at: '2026-11-06T19:28:06Z'
+  exit_code: 0
+  stdout_sha256: 9ce41ded00cdfd661e93fa559c67fbeefd3478c9db69ea335e61f9b7d6ae7bb2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-gate-anti-ignore.stdout
+  stderr_path: logs/002-gate-anti-ignore.stderr
+- id: gate-doc-facts-check
+  started_at: '2026-11-06T19:28:06Z'
+  finished_at: '2026-11-06T19:28:07Z'
+  exit_code: 0
+  stdout_sha256: f81bdc05ec6d9a735a2af07dcf03088d776fc52fd3fd38500d535863a142602a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-gate-doc-facts-check.stdout
+  stderr_path: logs/003-gate-doc-facts-check.stderr
+- id: probe-claims-selftest
+  started_at: '2026-11-06T19:28:07Z'
+  finished_at: '2026-11-06T19:28:09Z'
+  exit_code: 0
+  stdout_sha256: e791c99b4a73fb66ca8a91f8ad1b1a483e4d29a38ea7cd0a7768de8d62a98e0e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-probe-claims-selftest.stdout
+  stderr_path: logs/004-probe-claims-selftest.stderr
+- id: gate-kanban-consistency
+  started_at: '2026-11-06T19:28:09Z'
+  finished_at: '2026-11-06T19:28:09Z'
+  exit_code: 0
+  stdout_sha256: d7cdfb9f24d8a0a5a3f165932df6181f4265d1837bfcb14eb4f9d36f09f188b4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-gate-kanban-consistency.stdout
+  stderr_path: logs/005-gate-kanban-consistency.stderr
+- id: gate-honesty-check
+  started_at: '2026-11-06T19:28:09Z'
+  finished_at: '2026-11-06T19:28:09Z'
+  exit_code: 0
+  stdout_sha256: 336cfc75f3731089c0627263a7dc1b4606f4b130cbde704c3aad01a22cf54fae
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-gate-honesty-check.stdout
+  stderr_path: logs/006-gate-honesty-check.stderr
+- id: gate-registry-denominator
+  started_at: '2026-11-06T19:28:09Z'
+  finished_at: '2026-11-06T19:28:09Z'
+  exit_code: 0
+  stdout_sha256: 3f51301dcac18ab75ea2bb843468e9bc7c4b60666fc695bd12a1cffde6c889bb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-registry-denominator.stdout
+  stderr_path: logs/007-gate-registry-denominator.stderr
+- id: gate-main-freshness
+  started_at: '2026-11-06T19:28:09Z'
+  finished_at: '2026-11-06T19:28:18Z'
+  exit_code: 1
+  stdout_sha256: 6d314af93e4aab8698f57e24ce34261ad6a7967b4331d522d22f8a55d444b79c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-main-freshness.stdout
+  stderr_path: logs/008-gate-main-freshness.stderr
+evidence_hash: sha256:8ee4faaecef012b87beee42b2bffa0842f231b3344bc53430fb9ecda9e9856ce
+completed_at: '2026-11-06T19:28:18Z'
+notes:
+- 本 run 只复跑受影响的判据：run -005 之后改的是 (a) ADR-015 入仓 + INDEX、(b) tests/baseline/test_count.json
+  按 ADR 更新、(c) GATE_CONDITIONS.md 的 G19 阈值对齐、(d) 看板 84 行与裁定文档补记 ⇒ 代码未变，整批证据在 20261106-ga5594-005。
+- 7 绿 1 红。唯一红是 gate-main-freshness（结构性 C-MAIN-02：GA 前 main 封存、由 release/* 单向驱动），非本批回归。
+- gate-test-count-monotonic 由红转绿：现场计数 active=14345 / ignored=135 与按 ADR-015 更新的基线一致
+  ⇒ -005 那条红是按仓规的 ADR 流程消解的，不是靠改判据或放宽计数口径。
+- gate-anti-ignore 现场：total_allowed=135/150、active=81/92；G19 文档写的阈值（active<=92、total_allowed<=150）与门禁实际生效值一致（这条一致性由
+  gate_dimension_honesty_test 的 test_5425 钉住）。
+- gate-doc-facts-check / probe-claims-selftest / gate-honesty-check / gate-registry-denominator(168)
+  / gate-kanban-consistency(84 行) 全绿。
+- 冻结点 63b0f1ee2fb95b5e6529abfa1d49df4dd5746eb8（= 推送后的 omp-macmini/ga5594-fix tip）；run
+  在独立干净 worktree 里跑，主检出当时被另一条线的未提交改动污染（EXPERT_SEATS.yaml），未参与本 run。
