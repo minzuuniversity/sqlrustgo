@@ -332,15 +332,16 @@ results:
   stderr_path: logs/023-gate-main-freshness.stderr
 evidence_hash: sha256:cfda89c8973fa1cd5f90bfef39cd15c1c8bf5f665d1a85c38d10979bfcc0340a
 completed_at: '2026-11-06T08:04:20Z'
-
 notes:
-- "本 run 是 BIN-1 批的验收证据：23 条命令，22 绿 / 1 红。"
-- "唯一一条红：gate-main-freshness（exit=1）—— 结构性红，C-MAIN-02（GA 前 main 封存，main 由 release/* 单向驱动），不是本批回归。"
-- "#5601 三层证据全绿：① 存储层回归 5 passed（crates/storage/tests/binary_storage_ddl_honesty_5601.rs）；"
-  "② wire 层回归 2 passed（crates/mysql-server/tests/binary_storage_ddl_honesty_5601.rs，真 client + 真 binary 后端）；"
-  "③ 取证探针 binmode-probe：false_success_count=0、create_database_rc=1、create_trigger_rc=1（修复前是 3 / 0 / 0），"
-  "锁值工具 binmode-lock rc=0（锁值已翻到『缺陷已修』，缺陷回归即报红）。"
-- "判别力未丢：cap-live-prod 生产链 findings=0，非生产判别臂 arm=11 > prod=0（discriminating=true）。"
-- "回归面：crates/storage 单元测试 913 passed / 0 failed（修复前有 4 条旧 noop 用例钉住假成功行为，已在 7b83450f11 改成断言新契约），"
-  "crates/mysql-server 单元测试全绿；honesty gates=168 fails=0、gate_registry check_n=168、看板 76 行一致、doc_facts fails=0、目录策略 5/5、rustfmt 欠账为空。"
-- "前一次 run 20261106-bin1-001 原样保留（2 条红逐条记账），不改写。"
+- 本 run 是 BIN-1 批的验收证据：23 条命令，22 绿 / 1 红。
+- 唯一一条红：gate-main-freshness（exit=1）—— 结构性红，C-MAIN-02（GA 前 main 封存，main 由 release/*
+  单向驱动），不是本批回归。
+- '#5601 三层证据全绿：① 存储层回归 5 passed（crates/storage/tests/binary_storage_ddl_honesty_5601.rs）；②
+  wire 层回归 2 passed（crates/mysql-server/tests/binary_storage_ddl_honesty_5601.rs，真
+  client + 真 binary 后端）；③ 取证探针 binmode-probe：false_success_count=0、create_database_rc=1、create_trigger_rc=1（修复前是
+  3 / 0 / 0），锁值工具 binmode-lock rc=0（锁值已翻到「缺陷已修」，缺陷回归即报红）。'
+- 判别力未丢：cap-live-prod 生产链 findings=0，非生产判别臂 arm=11 > prod=0（discriminating=true）。
+- 回归面：crates/storage 单元测试 913 passed / 0 failed（修复前有 4 条旧 noop 用例钉住假成功行为，已在 7b83450f11
+  改成断言新契约），crates/mysql-server 单元测试全绿；honesty gates=168 fails=0、gate_registry check_n=168、看板
+  76 行一致、doc_facts fails=0、目录策略 5/5、rustfmt 欠账为空。
+- 前一次 run 20261106-bin1-001 原样保留（2 条红逐条记账），不改写。
