@@ -1,0 +1,530 @@
+=== cargo test --all-features --lib ===
+branch=mcode-macmini/sqlrustgo-alpha-handoff @ be7c09b2df
+start=2026-10-24T19:55:55Z
+
+   Compiling cfg-if v1.0.4
+   Compiling log v0.4.34
+   Compiling memchr v2.8.3
+   Compiling libc v0.2.189
+   Compiling smallvec v1.16.1
+   Compiling itoa v1.0.18
+   Compiling scopeguard v1.2.0
+   Compiling serde_core v1.0.229
+   Compiling parking_lot_core v0.9.12
+   Compiling serde v1.0.229
+   Compiling typenum v1.20.1
+   Compiling lock_api v0.4.14
+   Compiling pin-project-lite v0.2.17
+   Compiling core-foundation-sys v0.8.7
+   Compiling once_cell v1.21.4
+   Compiling bytes v1.12.1
+   Compiling zmij v1.0.23
+   Compiling generic-array v0.14.7
+   Compiling serde_json v1.0.151
+   Compiling bitflags v2.13.2
+   Compiling num-traits v0.2.19
+   Compiling zstd-sys v2.1.0+zstd.1.5.7
+   Compiling futures-core v0.3.34
+   Compiling crc32fast v1.5.2
+   Compiling thiserror v2.0.20
+   Compiling adler2 v2.0.1
+   Compiling regex-syntax v0.8.11
+   Compiling simd-adler32 v0.3.10
+   Compiling miniz_oxide v0.9.1
+   Compiling aho-corasick v1.1.5
+   Compiling zerofrom v0.1.8
+   Compiling iana-time-zone v0.1.65
+   Compiling futures-sink v0.3.34
+   Compiling zerocopy v0.8.57
+   Compiling subtle v2.6.1
+   Compiling rand_core v0.10.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.3
+   Compiling anyhow v1.0.104
+   Compiling getrandom v0.4.3
+   Compiling getrandom v0.2.17
+   Compiling errno v0.3.14
+   Compiling rand_core v0.6.4
+   Compiling signal-hook-registry v1.4.8
+   Compiling mio v1.2.3
+   Compiling socket2 v0.6.5
+   Compiling parking_lot v0.12.5
+   Compiling flate2 v1.1.10
+   Compiling tracing-core v0.1.36
+   Compiling zerocopy-derive v0.8.57
+   Compiling twox-hash v2.1.4
+   Compiling lz4_flex v0.11.6
+   Compiling crypto-common v0.1.7
+   Compiling tokio v1.53.1
+   Compiling tracing v0.1.44
+   Compiling zerovec v0.11.8
+   Compiling hex v0.4.3
+   Compiling cpufeatures v0.2.17
+   Compiling fnv v1.0.7
+   Compiling slab v0.4.12
+   Compiling rustix v1.1.4
+   Compiling zeroize v1.9.0
+   Compiling block-buffer v0.10.4
+   Compiling hashbrown v0.17.1
+   Compiling fastrand v2.5.0
+   Compiling futures-task v0.3.34
+   Compiling writeable v0.6.4
+   Compiling futures-io v0.3.34
+   Compiling litemap v0.8.3
+   Compiling equivalent v1.0.2
+   Compiling percent-encoding v2.3.2
+   Compiling futures-util v0.3.34
+   Compiling digest v0.10.7
+   Compiling tinystr v0.8.4
+   Compiling icu_locale_core v2.3.0
+   Compiling potential_utf v0.1.6
+   Compiling regex-automata v0.4.18
+   Compiling indexmap v2.14.2
+   Compiling tempfile v3.27.0
+   Compiling crc32c v0.6.8
+   Compiling zerotrie v0.2.5
+   Compiling chrono v0.4.45
+   Compiling utf8_iter v1.0.4
+   Compiling adler v1.0.2
+   Compiling icu_normalizer_data v2.3.0
+   Compiling icu_provider v2.3.1
+   Compiling miniz_oxide v0.7.4
+   Compiling icu_collections v2.3.0
+   Compiling icu_properties_data v2.3.0
+   Compiling sqlrustgo-types v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/types)
+   Compiling crossbeam-utils v0.8.23
+   Compiling rustls-pki-types v1.15.1
+   Compiling http v1.5.0
+   Compiling httparse v1.10.1
+   Compiling base64 v0.22.1
+   Compiling crossbeam-epoch v0.9.21
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling security-framework-sys v2.17.0
+   Compiling core-foundation v0.10.1
+   Compiling utf8parse v0.2.2
+   Compiling native-tls v0.2.18
+   Compiling anstyle-parse v1.0.0
+   Compiling crossbeam-deque v0.8.8
+   Compiling http-body v1.1.0
+   Compiling security-framework v3.7.0
+   Compiling system-configuration-sys v0.6.0
+   Compiling form_urlencoded v1.2.2
+   Compiling anstyle v1.0.14
+   Compiling tower-service v0.3.3
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling atomic-waker v1.1.2
+   Compiling anstyle-query v1.1.5
+   Compiling try-lock v0.2.5
+   Compiling colorchoice v1.0.5
+   Compiling either v1.18.0
+   Compiling anstream v1.0.0
+   Compiling thiserror v1.0.69
+   Compiling want v0.3.1
+   Compiling rayon-core v1.13.0
+   Compiling encoding_rs v0.8.41
+   Compiling sha2 v0.10.9
+   Compiling core-foundation v0.9.4
+   Compiling hybrid-array v0.4.15
+   Compiling futures-channel v0.3.34
+   Compiling num-conv v0.2.2
+   Compiling foldhash v0.2.0
+   Compiling simdutf8 v0.1.5
+   Compiling ryu v1.0.23
+   Compiling time-core v0.1.9
+   Compiling regex v1.13.1
+   Compiling idna_adapter v1.2.2
+   Compiling time-macros v0.2.32
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling system-configuration v0.7.0
+   Compiling aws-lc-sys v0.45.0
+   Compiling hmac v0.12.1
+   Compiling inout v0.1.4
+   Compiling tokio-util v0.7.19
+   Compiling sync_wrapper v1.0.2
+   Compiling ppv-lite86 v0.2.21
+   Compiling ipnet v2.12.2
+   Compiling rand_chacha v0.3.1
+   Compiling mime v0.3.17
+   Compiling rand v0.8.8
+   Compiling tower-layer v0.3.3
+   Compiling deranged v0.5.8
+   Compiling alloc-no-stdlib v2.0.4
+   Compiling powerfmt v0.2.0
+   Compiling h2 v0.4.19
+   Compiling objc2 v0.6.4
+   Compiling alloc-stdlib v0.2.4
+   Compiling tower v0.5.3
+   Compiling rayon v1.12.0
+   Compiling cipher v0.4.4
+   Compiling tokio-native-tls v0.3.1
+   Compiling pbkdf2 v0.12.2
+   Compiling block-buffer v0.12.1
+   Compiling crypto-common v0.2.2
+   Compiling serde_urlencoded v0.7.1
+   Compiling http-body-util v0.1.5
+   Compiling http v0.2.12
+   Compiling universal-hash v0.5.1
+   Compiling jiff-core v0.1.1
+   Compiling const-oid v0.10.2
+   Compiling getrandom v0.3.4
+   Compiling time v0.3.55
+   Compiling opaque-debug v0.3.1
+   Compiling local-waker v0.1.4
+   Compiling regex-lite v0.1.9
+   Compiling objc2-encode v4.1.0
+   Compiling jiff v0.2.37
+   Compiling digest v0.11.3
+   Compiling polyval v0.6.2
+   Compiling bytestring v1.5.1
+   Compiling tower-http v0.6.11
+   Compiling brotli-decompressor v5.0.3
+   Compiling env_filter v2.0.0
+   Compiling bincode v1.3.3
+   Compiling sha1 v0.10.7
+   Compiling cpufeatures v0.3.1
+   Compiling chacha20 v0.10.2
+   Compiling actix-service v2.0.3
+   Compiling strsim v0.11.1
+   Compiling clap_lex v1.1.1
+   Compiling untrusted v0.9.0
+   Compiling clap_builder v4.6.7
+   Compiling brotli v8.0.4
+   Compiling block2 v0.6.2
+   Compiling cookie v0.16.2
+   Compiling rand v0.10.2
+   Compiling sha1 v0.11.0
+   Compiling actix-router v0.5.4
+   Compiling derive_more v2.1.1
+   Compiling ghash v0.5.1
+   Compiling nix v0.31.3
+   Compiling libsqlite3-sys v0.37.0
+   Compiling h2 v0.3.27
+   Compiling local-channel v0.1.5
+   Compiling actix-utils v3.0.2
+   Compiling aes v0.8.4
+   Compiling zstd-safe v7.3.0
+   Compiling ctr v0.9.2
+   Compiling actix-codec v0.5.4
+   Compiling actix-rt v2.15.0
+   Compiling hashbrown v0.16.1
+   Compiling zstd v0.13.3
+   Compiling sqlrustgo-common v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/common)
+   Compiling sqlrustgo-parser v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/parser)
+   Compiling hyper v1.11.1
+   Compiling sqlrustgo-catalog v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/catalog)
+   Compiling env_logger v0.11.11
+   Compiling aead v0.5.2
+   Compiling lazy_static v1.5.0
+   Compiling language-tags v0.3.2
+   Compiling unicode-width v0.1.14
+   Compiling base64 v0.13.1
+   Compiling httpdate v1.0.3
+   Compiling pem v1.1.1
+   Compiling textwrap v0.11.0
+   Compiling clap v4.6.7
+   Compiling hyper-util v0.1.20
+   Compiling aes-gcm v0.10.3
+   Compiling hashlink v0.11.1
+   Compiling actix-server v2.9.5
+   Compiling actix-web-codegen v4.3.0
+   Compiling rand_core v0.9.5
+   Compiling dispatch2 v0.3.1
+   Compiling sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/spill)
+   Compiling sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/gis)
+   Compiling uuid v1.26.1
+   Compiling sqlrustgo-storage v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/storage)
+   Compiling hyper-tls v0.6.0
+   Compiling reqwest v0.12.28
+   Compiling atty v0.2.14
+   Compiling ansi_term v0.12.1
+   Compiling fallible-iterator v0.3.0
+   Compiling bitflags v1.3.2
+   Compiling vec_map v0.8.2
+   Compiling md5 v0.8.1
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling impl-more v0.3.8
+   Compiling strsim v0.8.0
+   Compiling ring v0.17.14
+   Compiling ctrlc v3.5.2
+   Compiling clap v2.34.0
+   Compiling sqlrustgo-mysql-client v3.9.0 (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/mysql-client)
+   Compiling half v2.7.1
+   Compiling webpki-roots v1.0.9
+   Compiling option-ext v0.2.0
+   Compiling linked-hash-map v0.5.6
+   Compiling plotters-backend v0.3.7
+   Compiling ciborium-io v0.2.2
+   Compiling ciborium-ll v0.2.2
+   Compiling plotters-svg v0.3.7
+   Compiling actix-http v3.13.6
+   Compiling lru-cache v0.1.2
+   Compiling dirs-sys v0.5.0
+   Compiling webpki-roots v0.26.11
+   Compiling sqlrustgo-cache v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/cache)
+   Compiling information-schema v0.1.0 (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/information-schema)
+   Compiling rusqlite v0.39.0
+   Compiling sharded-slab v0.1.7
+   Compiling yasna v0.5.2
+   Compiling matchers v0.2.0
+   Compiling itertools v0.10.5
+   Compiling pem v3.0.6
+   Compiling rustls-pemfile v2.2.0
+   Compiling tracing-log v0.2.0
+   Compiling wait-timeout v0.2.1
+   Compiling thread_local v1.1.10
+   Compiling same-file v1.0.6
+   Compiling quick-error v1.2.3
+   Compiling nu-ansi-term v0.50.3
+   Compiling bit-vec v0.8.0
+   Compiling cast v0.3.0
+   Compiling structopt v0.3.26
+   Compiling bit-set v0.8.0
+   Compiling rusty-fork v0.3.1
+   Compiling tracing-subscriber v0.3.23
+   Compiling walkdir v2.5.0
+   Compiling dirs v6.0.0
+   Compiling ciborium v0.2.2
+   Compiling plotters v0.3.7
+   Compiling criterion-plot v0.5.0
+   Compiling rand_xorshift v0.4.0
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.5
+   Compiling sqlrustgo-telemetry v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/telemetry)
+   Compiling sqlrustgo-vector v2.1.0 (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/vector)
+   Compiling rcgen v0.13.2
+   Compiling query-stats v0.1.0 (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/query-stats)
+   Compiling crossbeam-channel v0.5.17
+   Compiling actix-web v4.15.0
+   Compiling tinytemplate v1.2.1
+   Compiling is-terminal v0.4.17
+   Compiling oorandom v11.1.5
+   Compiling byteorder v1.5.0
+   Compiling anes v0.1.6
+   Compiling unarray v0.1.4
+   Compiling bytemuck v1.25.2
+   Compiling unsafe-libyaml v0.2.11
+   Compiling criterion v0.5.1
+   Compiling proptest v1.11.0
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling sqlrustgo-optimizer v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/optimizer)
+   Compiling sqlrustgo-transaction v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/transaction)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/security)
+   Compiling sqlrustgo-graph v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/graph)
+   Compiling sqlrustgo-planner v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/planner)
+   Compiling sqlrustgo-admin v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/admin)
+   Compiling sqlrustgo-executor v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/executor)
+   Compiling sqlrustgo-gmp v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/gmp)
+   Compiling aws-lc-rs v1.18.1
+   Compiling rustls v0.23.45
+   Compiling sqlrustgo-server v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/server)
+   Compiling rustls-webpki v0.103.15
+   Compiling sqlrustgo v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619)
+   Compiling sqlrustgo-tools v3.12.0-fix-zombie (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/tools)
+   Compiling sqlrustgo-mysql-server v0.1.0 (/Volumes/workspace/dev/_evidence/agent-join/sqlrustgo-handoff-034619/crates/mysql-server)
+warning: unused import: `ParallelWalStorage`
+  --> crates/mysql-server/src/lib.rs:15:5
+   |
+15 |     ParallelWalStorage, StorageEngine, WalStorage,
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `wal_manager`
+    --> crates/mysql-server/src/lib.rs:7135:17
+     |
+7135 |             let wal_manager = FileBackedWalManager::new(wal_path)
+     |                 ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_wal_manager`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-mysql-server` (lib) generated 2 warnings (run `cargo fix --lib -p sqlrustgo-mysql-server` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 38s
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo-6ea7434e64b83a8f)
+
+running 164 tests
+test engine_collation::tests::collect_column_collations_empty_when_no_table ... ok
+test engine_collation::tests::expand_column_names_non_select_returns_empty ... ok
+test engine_collation::tests::collect_column_collations_empty_when_table_missing ... ok
+test engine_collation::tests::collect_column_collations_non_select_returns_empty ... ok
+test engine_collation::tests::expand_column_names_plain_columns_passthrough ... ok
+test engine_collation::tests::collect_column_collations_alias_name_match ... ok
+test engine_collation::tests::collect_column_collations_star_uses_physical_order ... ok
+test engine_collation::tests::collect_column_collations_per_column ... ok
+test engine_collation::tests::expand_column_names_walks_left_of_setop ... ok
+test engine_collation::tests::expand_column_names_star_table_missing_falls_back_to_subquery ... ok
+test engine_collation::tests::expand_column_names_star_expands_to_physical ... ok
+test engine_collation::tests::leftmost_column_names_non_select_returns_empty ... ok
+test engine_collation::tests::leftmost_column_names_plain_select_with_aliases ... ok
+test engine_collation::tests::leftmost_select_walks_nested_setops ... ok
+test engine_collation::tests::leftmost_column_names_walks_union_intersect_except ... ok
+test engine_collation::tests::multiset_entries_empty_input_empty_map ... ok
+test engine_collation::tests::normalize_row_truncates_collations ... ok
+test engine_collation::tests::normalize_row_applies_per_column_collation ... ok
+test engine_collation::tests::normalize_row_empty_collations_returns_copy ... ok
+test engine_collation::tests::normalize_value_binary_passthrough ... ok
+test engine_collation::tests::normalize_value_no_collation_passthrough ... ok
+test engine_collation::tests::normalize_value_nocase_non_text_passthrough ... ok
+test engine_collation::tests::multiset_entries_binary_distinct ... ok
+test engine_collation::tests::multiset_entries_counts_with_nocase_folding ... ok
+test engine_collation::tests::normalize_value_nocase_uppercases_ascii ... ok
+test engine_collation::tests::order_by_expr_identifier_match ... ok
+test engine_collation::tests::order_by_expr_identifier_miss_returns_null ... ok
+test engine_collation::tests::order_by_expr_literal_out_of_range_returns_null ... ok
+test engine_collation::tests::order_by_expr_literal_position_one_based ... ok
+test engine_collation::tests::order_by_expr_literal_zero_saturates_to_first ... ok
+test engine_collation::tests::order_by_expr_non_integer_literal_returns_null ... ok
+test engine_collation::tests::order_by_expr_other_expression_returns_null ... ok
+test engine_cte::tests::derive_cte_columns_explicit ... ok
+test engine_cte::tests::decompose_recursive_body_non_union_rejected ... ok
+test engine_cte::tests::decompose_recursive_body_union_distinct_ok ... ok
+test engine_cte::tests::decompose_recursive_body_union_all_ok ... ok
+test engine_cte::tests::rewrite_step_join_clause ... ok
+test engine_cte::tests::derive_cte_columns_fallback_col_i ... ok
+test engine_cte::tests::rewrite_step_preserves_unrelated_tables ... ok
+test engine_cte::tests::rewrite_step_subquery_in_where ... ok
+test engine_cte::tests::rewrite_step_top_level_from ... ok
+test engine_cte::tests::with_select_empty_cte_result ... ok
+test engine_cte::tests::with_dml_insert_from_cte ... ok
+test engine_cte::tests::with_select_recursive_now_supported ... ok
+test engine_cte::tests::with_select_multiple_ctes ... ok
+test engine_cte::tests::with_dml_update_via_cte ... ok
+test engine_cte::tests::with_select_referenced_multiple_times ... ok
+test engine_cte::tests::with_select_cleanup_after_query ... ok
+test engine_cte::tests::with_select_alias_column_name_resolution ... ok
+test engine_cte::tests::with_dml_delete_via_cte ... ok
+test engine_select::chain_builder_tests::build_chain_from_start_q21_completes ... ok
+test engine_cte::tests::with_select_basic ... ok
+test engine_select::chain_builder_tests::build_chain_from_start_q21_orders_start_completes ... ok
+test engine_select_pk::range_tests::test_between_id_eq_falls_back_to_eq ... ok
+test engine_select_pk::range_tests::test_id_between ... ok
+test engine_select_pk::range_tests::test_id_between_no_where ... ok
+test engine_select_pk::range_tests::test_other_column ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_id_default ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_no_pk_falls_back_to_id ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_picks_first_when_multi_pk_flagged ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_returns_named_pk ... ok
+test engine_select_pk::tests::test_compound_identifier_rejected ... ok
+test engine_select_pk::tests::test_no_where ... ok
+test engine_select_pk::tests::test_non_equality ... ok
+test engine_select_pk::tests::test_other_column ... ok
+test engine_select_pk::tests::test_reverse_literal_left ... ok
+test engine_select_pk::tests::test_simple_id_eq_int ... ok
+test engine_setops::tests::apply_trailing_descending ... ok
+test engine_setops::tests::apply_trailing_offset_via_union ... ok
+test engine_setops::tests::apply_trailing_star_expansion_sort ... ok
+test engine_setops::tests::apply_trailing_nulls_first_then_last ... ok
+test engine_setops::tests::except_with_trailing_order_limit_offset ... ok
+test engine_setops::tests::touch_setop_stmt_construction ... ok
+test engine_setops::tests::intersect_nocase_folding ... ok
+test engine_setops::tests::except_distinct ... ok
+test engine_setops::tests::union_all_concatenates ... ok
+test engine_setops::tests::union_distinct_nocase_folding ... ok
+test engine_setops::tests::intersect_distinct ... ok
+test engine_setops::tests::union_of_union_nested ... ok
+test engine_setops::tests::intersect_with_trailing_order_by ... ok
+test engine_setops::tests::union_trailing_limit_truncates ... ok
+test engine_setops::tests::union_trailing_offset_beyond_yields_empty ... ok
+test engine_setops::tests::union_distinct_dedup ... ok
+test engine_setops::tests::union_with_trailing_order_by_and_limit ... ok
+test engine_setops::tests::union_trailing_offset_partial_drain ... ok
+test execution_engine_tests::handshake_selected_database_does_not_leak_other_databases ... ok
+test execution_engine_tests::session_db_is_seeded_from_storage_not_the_constant ... ok
+test execution_engine_tests::database_reports_the_selected_database ... ok
+test execution_engine_tests::handshake_selected_database_can_query_its_own_tables ... ok
+test execution_engine_tests::schema_and_current_database_are_synonyms ... ok
+test execution_engine_tests::database_is_resolved_in_where_too ... ok
+test execution_engine_tests::test_ahi_fires_on_select_from_table ... ok
+test execution_engine_tests::test_cbo_disable ... ok
+test execution_engine_tests::test_engine_adaptive_hash_index_default_present ... ok
+test execution_engine_tests::test_engine_adaptive_hash_index_invalidate ... ok
+test execution_engine_tests::test_ahi_lookup_succeeds_after_promotion ... ok
+test execution_engine_tests::test_engine_adaptive_hash_index_record_and_lookup ... ok
+test execution_engine_tests::test_engine_grant_column_requires_catalog ... ok
+test execution_engine_tests::test_analyze_table_stats ... ok
+test execution_engine_tests::test_engine_grant_select_column_stores_in_catalog ... ok
+test execution_engine_tests::test_ahi_promotes_after_threshold_selects ... ok
+test execution_engine_tests::test_engine_grant_select_multiple_columns ... ok
+test execution_engine_tests::test_engine_set_adaptive_hash_index_replaces_instance ... ok
+test execution_engine_tests::test_ahi_does_not_promote_for_different_tables ... ok
+test execution_engine_tests::test_estimate_row_count ... ok
+test execution_engine_tests::test_execution_stats_default ... ok
+test execution_engine_tests::test_executor_kill_v312_35 ... ok
+test execution_engine_tests::test_executor_kill_via_sql_v312_35 ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_single_chunk_falls_through_v312_26 ... ok
+test execution_engine_tests::test_estimate_join_cost ... ok
+test execution_engine_tests::test_executor_quantile_cont_array_v312_46 ... ok
+test execution_engine_tests::test_executor_quantile_array_out_of_range_v312_46 ... ok
+test execution_engine_tests::test_estimate_selectivity ... ok
+test execution_engine_tests::test_executor_show_processlist_via_sql_v312_35 ... ok
+test execution_engine_tests::test_executor_quantile_disc_array_single_frac_v312_46 ... ok
+test execution_engine_tests::test_executor_show_processlist_v312_35 ... ok
+test execution_engine_tests::test_executor_show_full_processlist_via_sql_v312_35 ... ok
+test execution_engine_tests::test_executor_quantile_disc_array_v312_46 ... ok
+test execution_engine_tests::test_memory_engine_with_cbo ... ok
+test execution_engine_tests::test_parallel_default_n1_no_env_var ... ok
+test execution_engine_tests::test_parallel_scan_partitions_evenly ... ok
+test execution_engine_tests::test_select_arithmetic_no_from_returns_one_row ... ok
+test execution_engine_tests::test_select_count_star_no_from_returns_one_one_row ... ok
+test execution_engine_tests::test_select_literal_no_from_returns_one_row ... ok
+test execution_engine_tests::test_select_string_literal_no_from_returns_one_row ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_uneven_remainder_v312_26 ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_zero_chunk_size_disables_chunking_v312_26 ... ok
+test execution_engine_tests::test_table_statistics ... ok
+test execution_engine_tests::test_tx_lifecycle_delete_without_tx_autocommits ... ok
+test execution_engine_tests::test_tx_lifecycle_double_commit_is_noop ... ok
+test execution_engine_tests::test_tx_lifecycle_insert_after_commit_autocommits ... ok
+test execution_engine_tests::test_tx_lifecycle_insert_without_tx_autocommits ... ok
+test execution_engine_tests::test_tx_lifecycle_insert_after_rollback_autocommits ... ok
+test execution_engine_tests::test_tx_lifecycle_update_without_tx_autocommits ... ok
+test execution_engine_tests::test_v410_atomic_cbo_enabled_getter_returns_initial_value ... ok
+test execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one ... FAILED
+test execution_engine_tests::test_v410_atomic_cbo_enabled_and_parallel_degree_getter_consistency ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_multi_chunk_v312_26 ... ok
+test execution_engine_tests::test_v410_execute_read_only_explain_show_describe_pragma_work ... ok
+test execution_engine_tests::test_v410_execute_read_only_rejects_mutating_statements ... ok
+test execution_engine_tests::test_optimize_join_order_after_analyze ... ok
+test execution_engine_tests::test_v410_execute_select_is_usable_via_ref_engine ... ok
+test execution_engine_tests::test_v410_execute_read_only_select_routes_via_ref_engine ... ok
+test execution_engine_tests::test_v411_group_by_distinguishes_integer_and_text_key ... ok
+test execution_engine_tests::test_v411_group_by_key_values_keep_their_types ... ok
+test execution_engine_tests::test_v411_group_by_text_value_looking_numeric_stays_text ... ok
+test execution_engine_tests::test_wal_contract_delete_without_wal_panics - should panic ... ok
+test execution_engine_tests::test_wal_contract_update_without_wal_panics - should panic ... ok
+test execution_engine_tests::test_wal_contract_insert_without_wal_panics - should panic ... ok
+test sequence_state::tests::currval_before_nextval_errors ... ok
+test sequence_state::tests::drop_sequence_removes_entry ... ok
+test sequence_state::tests::hydrate_replaces_state ... ok
+test sequence_state::tests::next_value_basic_increment ... ok
+test sequence_state::tests::next_value_overflow_cycle_wraps ... ok
+test sequence_state::tests::next_value_overflow_no_cycle_errors ... ok
+test sequence_state::tests::next_value_unknown_errors ... ok
+test execution_engine_tests::test_v410_phase3_concurrent_inserts ... ok
+test execution_engine_tests::test_parallel_n1_eq_n4_cell_match ... ok
+test execution_engine_tests::test_optimize_join_order ... ok
+test execution_engine_tests::test_estimate_index_benefit ... ok
+test execution_engine_tests::test_v410_concurrent_selects_via_ref_engine ... ok
+test execution_engine_tests::test_v410_concurrent_tps ... ok
+test execution_engine_tests::test_parallel_100k_cell_match_n1_vs_n4 ... ok
+test execution_engine_tests::test_should_use_index ... ok
+
+failures:
+
+---- execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one stdout ----
+
+thread 'execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one' (133838048) panicked at src/execution_engine_tests.rs:1361:5:
+assertion `left == right` failed
+  left: 4
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one
+
+test result: FAILED. 163 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.30s
+
+error: test failed, to rerun pass `--lib`
+TEST_RC=101
+end=2026-10-24T19:57:50Z
