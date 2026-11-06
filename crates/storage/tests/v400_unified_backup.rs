@@ -197,6 +197,6 @@ fn backup_coordinator_api_surface() {
     //   - RestoreReport struct (counts + verification status)
     //
     // Implementation deferred to v4.0.1. This test documents the API.
-    let api_methods = vec!["new", "backup_database", "restore_database"];
+    let api_methods = ["new", "backup_database", "restore_database"];
     assert_eq!(api_methods.len(), 3);
 }

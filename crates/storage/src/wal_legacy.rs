@@ -1541,6 +1541,7 @@ mod tests {
     // The correctness half (the WAL really holds 1000 records and recovers
     // them) is covered by the neighbouring non-measurement tests.
     #[ignore = "wall-clock measurement harness — run manually (`cargo test --lib -- --ignored`), results go in the evidence doc"]
+    #[test]
     fn test_wal_perf_1000_insert() {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");

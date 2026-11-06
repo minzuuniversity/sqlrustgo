@@ -556,8 +556,7 @@ fn recursion_self_trigger_depth_limit() {
     let counter = executor.recursion_depth_counter();
     counter.store(MAX_RECURSION_DEPTH, std::sync::atomic::Ordering::SeqCst);
 
-    let last: Result<Vec<Value>, SqlError> = executor
-        .execute_before_insert("t", &new_row);
+    let last: Result<Vec<Value>, SqlError> = executor.execute_before_insert("t", &new_row);
 
     // Assert: the depth limit fired with the expected structured error.
     let err = last.expect_err("depth limit must trigger at MAX_RECURSION_DEPTH");

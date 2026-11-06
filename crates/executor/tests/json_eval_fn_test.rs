@@ -102,6 +102,7 @@ fn test_json_type_returns_object() {
     );
 }
 
+#[test]
 fn test_json_type_returns_array() {
     let mut engine = create_engine();
     let r = engine.execute("SELECT JSON_TYPE('[1,2,3]')").unwrap();

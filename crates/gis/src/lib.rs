@@ -213,6 +213,42 @@ fn segments_intersect(a1: &Point, a2: &Point, b1: &Point, b2: &Point) -> bool {
     ccw(a1, b1, b2) != ccw(a2, b1, b2) && ccw(a1, a2, b1) != ccw(a1, a2, b2)
 }
 
+/// Calculate the Haversine distance between two points in meters
+pub fn haversine_distance(p1: &Point, p2: &Point) -> f64 {
+    const EARTH_RADIUS_METERS: f64 = 6371000.0;
+
+    let lat1 = p1.y.to_radians();
+    let lat2 = p2.y.to_radians();
+    let delta_lat = (p2.y - p1.y).to_radians();
+    let delta_lon = (p2.x - p1.x).to_radians();
+
+    let a =
+        (delta_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (delta_lon / 2.0).sin().powi(2);
+    let c = 2.0 * a.sqrt().asin();
+
+    EARTH_RADIUS_METERS * c
+}
+
+/// Calculate Euclidean distance between two points
+pub fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
+    ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt()
+}
+
+/// ST_Distance_Point - wrapper for SQL interface
+pub fn st_distance_point(p1: &Point, p2: &Point) -> Value {
+    Value::Float(euclidean_distance(p1, p2))
+}
+
+/// ST_Intersects_Point - wrapper for SQL interface  
+pub fn st_intersects_point(p1: &Point, p2: &Point) -> Value {
+    Value::Boolean(points_intersect(p1, p2))
+}
+
+/// Point-point intersection with tolerance
+fn points_intersect(p1: &Point, p2: &Point) -> bool {
+    euclidean_distance(p1, p2) < 1e-10
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,40 +407,4 @@ mod tests {
         let outside = Point::new(5.0, 11.0);
         assert!(!st_within(&outside, &poly));
     }
-}
-
-/// Calculate the Haversine distance between two points in meters
-pub fn haversine_distance(p1: &Point, p2: &Point) -> f64 {
-    const EARTH_RADIUS_METERS: f64 = 6371000.0;
-
-    let lat1 = p1.y.to_radians();
-    let lat2 = p2.y.to_radians();
-    let delta_lat = (p2.y - p1.y).to_radians();
-    let delta_lon = (p2.x - p1.x).to_radians();
-
-    let a =
-        (delta_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (delta_lon / 2.0).sin().powi(2);
-    let c = 2.0 * a.sqrt().asin();
-
-    EARTH_RADIUS_METERS * c
-}
-
-/// Calculate Euclidean distance between two points
-pub fn euclidean_distance(p1: &Point, p2: &Point) -> f64 {
-    ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt()
-}
-
-/// ST_Distance_Point - wrapper for SQL interface
-pub fn st_distance_point(p1: &Point, p2: &Point) -> Value {
-    Value::Float(euclidean_distance(p1, p2))
-}
-
-/// ST_Intersects_Point - wrapper for SQL interface  
-pub fn st_intersects_point(p1: &Point, p2: &Point) -> Value {
-    Value::Boolean(points_intersect(p1, p2))
-}
-
-/// Point-point intersection with tolerance
-fn points_intersect(p1: &Point, p2: &Point) -> bool {
-    euclidean_distance(p1, p2) < 1e-10
 }

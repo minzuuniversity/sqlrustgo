@@ -172,7 +172,7 @@ fn test_mysql_error_other_display() {
 
 #[test]
 fn test_mysql_error_from_io() {
-    let io_err = std::io::Error::new(std::io::ErrorKind::Other, "test io");
+    let io_err = std::io::Error::other("test io");
     let err: MySqlError = io_err.into();
     let display = format!("{}", err);
     assert!(display.contains("test io"));
@@ -201,7 +201,7 @@ fn test_mysql_error_debug() {
 #[test]
 fn test_mysql_error_all_variants_display() {
     // Io variant
-    let io_err = MySqlError::Io(std::io::Error::new(std::io::ErrorKind::Other, "disk full"));
+    let io_err = MySqlError::Io(std::io::Error::other("disk full"));
     assert!(format!("{}", io_err).contains("disk full"));
     // Protocol variant
     let proto_err = MySqlError::Protocol("bad packet".to_string());
@@ -219,10 +219,7 @@ fn test_mysql_error_all_variants_display() {
 #[test]
 fn test_mysql_error_source() {
     // Io variant: std::io::Error doesn't expose a source chain in its Error impl
-    let io_err = MySqlError::Io(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        "inner error",
-    ));
+    let io_err = MySqlError::Io(std::io::Error::other("inner error"));
     // Io variant's source() returns None (io::Error is flat, no inner cause)
     assert!(std::error::Error::source(&io_err).is_none());
     // Protocol variant has no source

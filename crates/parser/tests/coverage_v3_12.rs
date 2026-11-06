@@ -3,9 +3,9 @@
 //!
 //! Target: improve `crates/parser/src/parser.rs` coverage from ~44% to
 //! >=70% lines. Each test exercises an uncovered statement/expression
-//! branch in the existing parse_* helpers. Tests are intentionally
-//! minimal (single SQL statement, parse it, then let it drop) to maximise
-//! branch hits per line of test code.
+//! > branch in the existing parse_* helpers. Tests are intentionally
+//! > minimal (single SQL statement, parse it, then let it drop) to maximise
+//! > branch hits per line of test code.
 //!
 //! **Convention**: prefix each test name with `cov_` for easy grep.
 

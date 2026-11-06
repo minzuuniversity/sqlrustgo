@@ -103,7 +103,7 @@ fn memory_storage_scan_with_filter_returns_only_matching_rows() {
     assert_eq!(matched.len(), 10);
     for row in &matched {
         if let SqlValue::Integer(i) = row[0] {
-            assert!(i >= 90 && i < 100, "out of range id={}", i);
+            assert!((90..100).contains(&i), "out of range id={}", i);
         } else {
             panic!("expected Integer");
         }

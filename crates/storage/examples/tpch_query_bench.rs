@@ -80,10 +80,7 @@ fn main() {
     println!("\n==============================================");
     println!("  Benchmark Summary");
     println!("==============================================");
-    println!(
-        "{:<6} {:>10} {:>12} {}",
-        "Query", "Rows", "Time (ms)", "Status"
-    );
+    println!("{:<6} {:>10} {:>12} Status", "Query", "Rows", "Time (ms)");
     println!("----------------------------------------");
 
     for (name, rows, elapsed, ok) in &results {

@@ -4,7 +4,7 @@ use sqlrustgo_storage::engine::Record;
 use sqlrustgo_types::Value;
 
 fn make_record(values: &[Value]) -> Record {
-    values.iter().cloned().collect()
+    values.to_vec()
 }
 
 fn col(name: &str) -> Expr {

@@ -27,8 +27,8 @@
 //! ## Acceptance Criteria
 //!
 //! - [x] 5+ test cases (this file has 7+)
-//! [ ] cross_version_debt.sh shows T-15 CLOSED
-//! [ ] PR merged to develop/v3.8.0
+//! - [ ] cross_version_debt.sh shows T-15 CLOSED
+//! - [ ] PR merged to develop/v3.8.0
 
 use sqlrustgo_transaction::deadlock::DeadlockDetector;
 use sqlrustgo_transaction::mvcc::TxId;
@@ -167,7 +167,7 @@ fn test_concurrent_random_wait_for_graphs() {
     // Simulate 20 transactions with random wait edges, verify detector correctness
     for trial in 0..50 {
         let mut detector = DeadlockDetector::new();
-        let mut txs: Vec<TxId> = (1..=20).map(tx).collect();
+        let txs: Vec<TxId> = (1..=20).map(tx).collect();
         let mut rng_state: u64 = 1234 + trial;
 
         // Add 5-15 random edges

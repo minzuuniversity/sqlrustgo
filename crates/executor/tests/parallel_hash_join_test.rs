@@ -61,7 +61,7 @@ fn test_correctness_n1_vs_n4_larger() {
         })
         .collect();
     let probe: Vec<Vec<Value>> = (0..50)
-        .map(|i| vec![Value::Integer((i % 7) as i64), Value::Integer(i * 10)])
+        .map(|i| vec![Value::Integer((i % 7)), Value::Integer(i * 10)])
         .collect();
 
     let p = ParallelHashJoin::new(4);
@@ -124,7 +124,7 @@ fn test_partition_basic_api() {
 fn test_multi_dimensional_correctness() {
     // Join with multiple columns (compound key)
     // key is composite of [k, v] - we use index 0 only for simplicity
-    let p = ParallelHashJoin::new(4);
+    let _p = ParallelHashJoin::new(4);
 
     let build = vec![
         vec![Value::Integer(1), Value::Text("x".to_string())],

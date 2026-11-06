@@ -161,11 +161,11 @@ fn test_ssi_sync_write_skew_detection() {
 
     let tx1 = TxId::new(1);
     detector.record_read(tx1, b"X".to_vec());
-    let _ = detector.record_write(tx1, b"Y".to_vec());
+    detector.record_write(tx1, b"Y".to_vec());
 
     let tx2 = TxId::new(2);
     detector.record_read(tx2, b"Y".to_vec());
-    let _ = detector.record_write(tx2, b"X".to_vec());
+    detector.record_write(tx2, b"X".to_vec());
 
     let result1 = detector.validate_commit(tx1);
     let result2 = detector.validate_commit(tx2);

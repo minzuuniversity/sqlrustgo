@@ -287,17 +287,17 @@ mod tests {
     // to_predicate: UNKNOWN becomes false for WHERE filtering
     #[test]
     fn test_to_predicate_true() {
-        assert_eq!(TriBool::True.to_predicate(), true);
+        assert!(TriBool::True.to_predicate());
     }
 
     #[test]
     fn test_to_predicate_false() {
-        assert_eq!(TriBool::False.to_predicate(), false);
+        assert!(!TriBool::False.to_predicate());
     }
 
     #[test]
     fn test_to_predicate_unknown() {
-        assert_eq!(TriBool::Unknown.to_predicate(), false); // UNKNOWN → FALSE in WHERE
+        assert!(!TriBool::Unknown.to_predicate()); // UNKNOWN → FALSE in WHERE
     }
 
     // Option conversion

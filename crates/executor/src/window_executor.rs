@@ -635,7 +635,7 @@ mod tests {
     // 1. Multi-partition key evaluation (forces distinct partition key branching)
     #[test]
     fn test_window_multi_partition_key_evaluation() {
-        let rows = vec![
+        let rows = [
             vec![Value::Text("A".to_string()), Value::Integer(10)],
             vec![Value::Text("A".to_string()), Value::Integer(20)],
             vec![Value::Text("B".to_string()), Value::Integer(30)],
@@ -668,7 +668,7 @@ mod tests {
     // 2. NULL partition key (forces NULL as HashMap key branch)
     #[test]
     fn test_window_null_partition_key() {
-        let rows = vec![
+        let rows = [
             vec![Value::Null, Value::Integer(1)],
             vec![Value::Null, Value::Integer(2)],
             vec![Value::Integer(1), Value::Integer(3)],
@@ -1471,7 +1471,7 @@ mod tests {
 
     #[test]
     fn test_values_less_than_different_lengths() {
-        let partition = create_test_partition();
+        let _partition = create_test_partition();
         let input_schema = Schema::empty();
         let executor = WindowVolcanoExecutor::new(
             Box::new(MockExecutor::new()),

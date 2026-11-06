@@ -869,7 +869,7 @@ fn users_table() -> TableInfo {
 
 /// A data directory holding an empty `users` table, plus the TempDir
 /// that keeps it alive.
-fn target_dir(tag: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+fn target_dir(_tag: &str) -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::TempDir::new().unwrap();
     let p = dir.path().to_path_buf();
     let mut s = FileStorage::new(p.clone()).unwrap();
@@ -994,7 +994,7 @@ fn test_pitr_replay_missing_wal_is_an_error() {
 
 // ============ MysqlAdmin dispatch tests ============
 
-use sqlrustgo_admin::mysqladmin::{Connection, MysqlAdmin, SystemVariable};
+use sqlrustgo_admin::mysqladmin::MysqlAdmin;
 
 /// MysqlAdmin::new creates a default instance with system variables.
 #[test]

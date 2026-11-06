@@ -287,8 +287,8 @@ mod tests {
             .join(
                 &left,
                 &right,
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
                 |a, b| a == b,
             )
             .unwrap();
@@ -308,8 +308,8 @@ mod tests {
             .join(
                 &left,
                 &right,
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
                 |a, b| a == b,
             )
             .unwrap();
@@ -326,8 +326,8 @@ mod tests {
             .join(
                 &left,
                 &right,
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
                 |a, b| a == b,
             )
             .unwrap();
@@ -345,8 +345,8 @@ mod tests {
             .join(
                 &left,
                 &right,
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
                 |a, b| a == b,
             )
             .unwrap();
@@ -364,8 +364,8 @@ mod tests {
             .join(
                 &left,
                 &right,
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
                 |a, b| a == b,
             )
             .unwrap();
@@ -382,8 +382,8 @@ mod tests {
         ghj.join(
             &left,
             &right,
-            |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-            |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+            |x| (*x, (*x).to_le_bytes().to_vec()),
+            |x| (*x, (*x).to_le_bytes().to_vec()),
             |a, b| a == b,
         )
         .unwrap();
@@ -402,8 +402,8 @@ mod tests {
             .join(
                 &left,
                 &right,
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
                 |a, b| a == b,
             )
             .unwrap();
@@ -425,8 +425,8 @@ mod tests {
             .join(
                 &empty,
                 &right,
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
-                |x| (x.clone(), (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
+                |x| (*x, (*x).to_le_bytes().to_vec()),
                 |a, b| a == b,
             )
             .unwrap();

@@ -10,7 +10,7 @@ use sqlrustgo_types::Value;
 
 // Helper: create a simple Record
 fn make_record(values: Vec<i64>) -> Record {
-    values.into_iter().map(|v| Value::Integer(v)).collect()
+    values.into_iter().map(Value::Integer).collect()
 }
 
 // ============ TriggerContext Tests ============
@@ -341,7 +341,7 @@ fn test_expression_to_bool_true() {
     // Literal "1" is non-empty string = truthy
     let expr = Expression::Literal("1".to_string());
     let result = expression_to_bool(&expr, &eval_ctx, Some(&col_names));
-    assert_eq!(result, true);
+    assert!(result);
 }
 
 #[test]
@@ -353,7 +353,7 @@ fn test_expression_to_bool_false() {
     // Literal "0" parses as text "0", which is truthy in this impl
     let expr = Expression::Literal("0".to_string());
     let result = expression_to_bool(&expr, &eval_ctx, Some(&col_names));
-    assert_eq!(result, true); // Non-Null is truthy
+    assert!(result); // Non-Null is truthy
 }
 
 #[test]
@@ -364,7 +364,7 @@ fn test_expression_to_bool_null() {
     let col_names = vec!["id".to_string()];
     let expr = Expression::Literal("NULL".to_string());
     let result = expression_to_bool(&expr, &eval_ctx, Some(&col_names));
-    assert_eq!(result, false); // Null is falsy
+    assert!(!result); // Null is falsy
 }
 
 #[test]
@@ -376,5 +376,5 @@ fn test_expression_to_bool_negative() {
     // Non-empty non-zero string is truthy
     let expr = Expression::Literal("-5".to_string());
     let result = expression_to_bool(&expr, &eval_ctx, Some(&col_names));
-    assert_eq!(result, true);
+    assert!(result);
 }

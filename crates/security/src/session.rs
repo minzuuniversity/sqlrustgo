@@ -484,7 +484,7 @@ mod tests {
     fn test_get_processlist_rows() {
         let manager = SessionManager::new();
         let id1 = manager.create_session("alice".to_string(), "127.0.0.1".to_string());
-        let id2 = manager.create_session("bob".to_string(), "127.0.0.2".to_string());
+        let _id2 = manager.create_session("bob".to_string(), "127.0.0.2".to_string());
 
         manager.close_session(id1);
 

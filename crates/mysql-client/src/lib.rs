@@ -1809,7 +1809,7 @@ mod tests {
                 assert_eq!(columns.len(), 1);
                 assert_eq!(rows.len(), 1);
             }
-            other => panic!("expected Select"),
+            _other => panic!("expected Select"),
         }
     }
 
@@ -2110,7 +2110,7 @@ mod tests {
     #[test]
     fn test_parse_handshake_protocol_version_mismatch() {
         // Protocol version != 0x0a returns Protocol error
-        let mut payload = make_handshake_payload(0xff, "8.0.30", 0, 0, "");
+        let payload = make_handshake_payload(0xff, "8.0.30", 0, 0, "");
         let result = parse_handshake(&payload);
         // Parser returns Err with message about expected protocol 10
         assert!(result.is_err());
@@ -2493,7 +2493,7 @@ mod tests {
 
     #[test]
     fn test_mysql_client_error_io_display() {
-        let io_err = io::Error::new(io::ErrorKind::Other, "custom io error");
+        let io_err = io::Error::other("custom io error");
         let err = MySqlClientError::Io(io_err);
         let display = format!("{}", err);
         assert!(display.contains("IO error"));

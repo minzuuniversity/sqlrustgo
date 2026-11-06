@@ -119,7 +119,7 @@ fn cov_v2_insert_streaming_iter() {
     let records: Vec<Record> = (0..20i64)
         .map(|i| vec![sqlrustgo_storage::Value::Integer(i)])
         .collect();
-    s.insert_streaming_iter("t", records.into_iter()).unwrap();
+    s.insert_streaming_iter("t", records).unwrap();
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn cov_v2_insert_streaming_iter_empty() {
     let (_t, mut s) = make_dir();
     s.create_table("t", vec![bigint_col("a")]).unwrap();
     let empty: Vec<Record> = vec![];
-    s.insert_streaming_iter("t", empty.into_iter()).unwrap();
+    s.insert_streaming_iter("t", empty).unwrap();
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn cov_v2_insert_streaming_missing_table() {
 fn cov_v2_insert_streaming_iter_missing_table() {
     let (_t, mut s) = make_dir();
     let records: Vec<Record> = vec![vec![sqlrustgo_storage::Value::Integer(1)]];
-    let r = s.insert_streaming_iter("nonexistent", records.into_iter());
+    let r = s.insert_streaming_iter("nonexistent", records);
     assert!(r.is_err());
 }
 

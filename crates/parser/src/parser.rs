@@ -18165,6 +18165,7 @@ mod set_op_tests {
         }
     }
 
+    #[test]
     fn test_create_fulltext_index_missing_columns_errors() {
         let result = parse("CREATE FULLTEXT INDEX ft_idx ON t");
         assert!(result.is_err(), "expected parser error, got {:?}", result);

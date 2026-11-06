@@ -8,7 +8,7 @@
 
 use sqlrustgo_storage::binary_storage::BinaryTableStorage;
 use sqlrustgo_storage::engine::{ColumnDefinition, TableData, TableInfo};
-use sqlrustgo_storage::{Record, StorageEngine, Value as SqlValue};
+use sqlrustgo_storage::{StorageEngine, Value as SqlValue};
 use tempfile::TempDir;
 
 fn make_info() -> TableInfo {
@@ -69,7 +69,7 @@ fn cov_binary_storage_new_with_data() {
 
 #[test]
 fn cov_binary_storage_exists_false() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     assert!(!s.exists("t"));
 }
 
@@ -85,7 +85,7 @@ fn cov_binary_storage_exists_true_after_save() {
 
 #[test]
 fn cov_binary_storage_exists_multiple() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     s.save("a", &make_data()).unwrap();
     s.save("b", &make_data()).unwrap();
     s.save("c", &make_data()).unwrap();
@@ -100,7 +100,7 @@ fn cov_binary_storage_exists_multiple() {
 
 #[test]
 fn cov_binary_storage_save_load_empty() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     s.save("t", &make_data()).unwrap();
     let loaded = s.load("t").unwrap();
     assert_eq!(loaded.info.name, "t");
@@ -109,7 +109,7 @@ fn cov_binary_storage_save_load_empty() {
 
 #[test]
 fn cov_binary_storage_save_load_with_rows() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     let mut data = make_data();
     data.rows.push(vec![SqlValue::Integer(1)]);
     data.rows.push(vec![SqlValue::Integer(2)]);
@@ -143,10 +143,7 @@ fn cov_binary_storage_save_load_text() {
         original_sql: String::new(),
         clustered: false,
     };
-    let mut data = TableData {
-        info: info,
-        rows: vec![],
-    };
+    let mut data = TableData { info, rows: vec![] };
     data.rows.push(vec![SqlValue::Text("hello".to_string())]);
     s.save("t", &data).unwrap();
     let loaded = s.load("t").unwrap();
@@ -156,7 +153,7 @@ fn cov_binary_storage_save_load_text() {
 
 #[test]
 fn cov_binary_storage_save_load_float() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     let info = TableInfo {
         name: "t".to_string(),
         columns: vec![ColumnDefinition {
@@ -178,10 +175,7 @@ fn cov_binary_storage_save_load_float() {
         original_sql: String::new(),
         clustered: false,
     };
-    let mut data = TableData {
-        info: info,
-        rows: vec![],
-    };
+    let mut data = TableData { info, rows: vec![] };
     data.rows.push(vec![SqlValue::Float(1.5)]);
     s.save("t", &data).unwrap();
     let _ = s.load("t").unwrap();
@@ -189,7 +183,7 @@ fn cov_binary_storage_save_load_float() {
 
 #[test]
 fn cov_binary_storage_save_load_bool() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     let info = TableInfo {
         name: "t".to_string(),
         columns: vec![ColumnDefinition {
@@ -211,10 +205,7 @@ fn cov_binary_storage_save_load_bool() {
         original_sql: String::new(),
         clustered: false,
     };
-    let mut data = TableData {
-        info: info,
-        rows: vec![],
-    };
+    let mut data = TableData { info, rows: vec![] };
     data.rows.push(vec![SqlValue::Boolean(true)]);
     s.save("t", &data).unwrap();
     let _ = s.load("t").unwrap();
@@ -222,7 +213,7 @@ fn cov_binary_storage_save_load_bool() {
 
 #[test]
 fn cov_binary_storage_save_load_null() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     let info = TableInfo {
         name: "t".to_string(),
         columns: vec![ColumnDefinition {
@@ -244,10 +235,7 @@ fn cov_binary_storage_save_load_null() {
         original_sql: String::new(),
         clustered: false,
     };
-    let mut data = TableData {
-        info: info,
-        rows: vec![],
-    };
+    let mut data = TableData { info, rows: vec![] };
     data.rows.push(vec![SqlValue::Null]);
     s.save("t", &data).unwrap();
     let _ = s.load("t").unwrap();
@@ -255,7 +243,7 @@ fn cov_binary_storage_save_load_null() {
 
 #[test]
 fn cov_binary_storage_save_load_multi_column() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     let info = TableInfo {
         name: "t".to_string(),
         columns: vec![
@@ -289,10 +277,7 @@ fn cov_binary_storage_save_load_multi_column() {
         original_sql: String::new(),
         clustered: false,
     };
-    let mut data = TableData {
-        info: info,
-        rows: vec![],
-    };
+    let mut data = TableData { info, rows: vec![] };
     data.rows.push(vec![
         SqlValue::Integer(1),
         SqlValue::Text("foo".to_string()),
@@ -303,14 +288,14 @@ fn cov_binary_storage_save_load_multi_column() {
 
 #[test]
 fn cov_binary_storage_save_overwrite() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     s.save("t", &make_data()).unwrap();
     s.save("t", &make_data()).unwrap();
 }
 
 #[test]
 fn cov_binary_storage_save_load_roundtrip_many() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     let mut data = make_data();
     for i in 0..100i64 {
         data.rows.push(vec![SqlValue::Integer(i)]);
@@ -326,7 +311,7 @@ fn cov_binary_storage_save_load_roundtrip_many() {
 
 #[test]
 fn cov_binary_storage_persist_table_missing() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     s.persist_table("nonexistent").unwrap(); // no-op for missing
 }
 
@@ -414,7 +399,7 @@ fn cov_binary_storage_engine_delete() {
 
 #[test]
 fn cov_binary_storage_engine_scan_empty() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     let rows = s.scan("t").unwrap();
     assert!(rows.is_empty());
 }
@@ -428,7 +413,7 @@ fn cov_binary_storage_engine_scan_after_create() {
 
 #[test]
 fn cov_binary_storage_engine_in_tx_false() {
-    let (_t, mut s) = make_dir();
+    let (_t, s) = make_dir();
     assert!(!s.in_transaction());
 }
 

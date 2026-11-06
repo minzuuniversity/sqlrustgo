@@ -41,7 +41,9 @@ fn oltp_point_select() {
 
     for i in 1..=iterations {
         let id = (i % 10000) + 1;
-        if let Ok(_) = engine.execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id)) { success_count += 1 }
+        if let Ok(_) = engine.execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id)) {
+            success_count += 1
+        }
     }
 
     assert_eq!(
@@ -64,7 +66,9 @@ fn oltp_range_select() {
         if let Ok(_) = engine.execute(&format!(
             "SELECT c FROM sbtest1 WHERE id BETWEEN {} AND {}",
             start, end
-        )) { success_count += 1 }
+        )) {
+            success_count += 1
+        }
     }
 
     assert_eq!(
@@ -88,7 +92,9 @@ fn oltp_insert() {
         if let Ok(_) = engine.execute(&format!(
             "INSERT INTO sbtest1 VALUES ({}, {}, 'pad.{}', 'pad{}')",
             id, k, id, id
-        )) { success_count += 1 }
+        )) {
+            success_count += 1
+        }
     }
 
     assert_eq!(success_count, iterations, "All inserts should succeed");
@@ -115,7 +121,9 @@ fn oltp_delete() {
 
     for i in 0..iterations {
         let id = 20001 + i;
-        if let Ok(_) = engine.execute(&format!("DELETE FROM sbtest1 WHERE id = {}", id)) { success_count += 1 }
+        if let Ok(_) = engine.execute(&format!("DELETE FROM sbtest1 WHERE id = {}", id)) {
+            success_count += 1
+        }
     }
 
     assert_eq!(success_count, iterations, "All deletes should succeed");
@@ -179,7 +187,9 @@ fn oltp_bulk_insert() {
             "INSERT INTO bulk_test VALUES ({}, {})",
             i,
             i % 100
-        )) { success_count += 1 }
+        )) {
+            success_count += 1
+        }
     }
 
     assert_eq!(success_count, iterations, "All bulk inserts should succeed");
@@ -604,9 +614,9 @@ fn oltp_insert_select_round_trip_100() {
             && engine
                 .execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", 10000 + i))
                 .is_ok()
-            {
-                ok += 1;
-            }
+        {
+            ok += 1;
+        }
     }
     assert_eq!(ok, 100);
 }

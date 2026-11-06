@@ -22,7 +22,7 @@ fn cov_catalog_with_default_database() {
 
 #[test]
 fn cov_catalog_database_names_and_count() {
-    let mut c = Catalog::new("db1");
+    let c = Catalog::new("db1");
     let names = c.database_names();
     assert!(names.contains(&"public"));
     assert!(c.database_count() >= 1);

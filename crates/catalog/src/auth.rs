@@ -2381,7 +2381,7 @@ mod tests {
             .unwrap();
 
         // All columns in the table.
-        let all_columns = vec!["id", "secret_col", "public_col", "internal_col"];
+        let all_columns = ["id", "secret_col", "public_col", "internal_col"];
 
         // Filter to authorized columns.
         let authorized = auth.get_authorized_columns(&identity, "profiles", Privilege::Read);

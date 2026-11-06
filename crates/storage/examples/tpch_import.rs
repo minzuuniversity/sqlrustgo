@@ -67,7 +67,7 @@ fn main() {
     for (i, table) in tables.iter().enumerate() {
         let rows = storage
             .scan(table)
-            .expect(&format!("Failed to scan {}", table));
+            .unwrap_or_else(|_| panic!("Failed to scan {}", table));
         let expected = expected_rows[i];
         let status = if rows.len() >= expected { "✅" } else { "❌" };
         println!(
@@ -88,7 +88,7 @@ fn main() {
     if all_passed {
         println!("  ✅ ALL TESTS PASSED!");
         println!("  Total import time: {:.2}s", total_time.as_secs_f64());
-        println!("  {:.0} rows/s", 866602 as f64 / total_time.as_secs_f64());
+        println!("  {:.0} rows/s", 866602_f64 / total_time.as_secs_f64());
     } else {
         println!("  ❌ SOME TESTS FAILED!");
         std::process::exit(1);
@@ -343,7 +343,7 @@ fn import_file(
     println!("Importing {}...", table);
     let start = Instant::now();
 
-    let file = File::open(path).expect(&format!("Failed to open {:?}", path));
+    let file = File::open(path).unwrap_or_else(|_| panic!("Failed to open {:?}", path));
     let reader = BufReader::new(file);
 
     let mut batch = Vec::new();
@@ -357,7 +357,7 @@ fn import_file(
 
         if batch.len() >= batch_size {
             storage
-                .insert(table, batch.drain(..).collect::<Vec<_>>())
+                .insert(table, std::mem::take(&mut batch))
                 .expect("Failed to insert");
             if total_rows % 100000 == 0 {
                 println!("  {}: {} rows...", table, total_rows);
