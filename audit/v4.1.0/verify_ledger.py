@@ -50,7 +50,11 @@ DEFAULT_TRIAGE = [DOCS / "ISSUE_TRIAGE_2026-11-05.jsonl",
                   # IL-2：gpt 血统对 35 条 P0 的批量复核（第二个 family）
                   DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl",
                   # IL-2：live 标签下新变成 P0 的 8 条（同为 gpt 血统批量复核）
-                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl"]
+                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl",
+                  # 2026-11-06：当期 open 里此前没分诊的 6 条（gpt 血统全过、
+                  # qwen 血统 3 条过 3 条弃权）—— 与生成端/新鲜度探针同一组。
+                  DOCS / "ISSUE_TRIAGE_2026-11-06D.jsonl",
+                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-06D.jsonl"]
 
 FAILS: list[str] = []
 
