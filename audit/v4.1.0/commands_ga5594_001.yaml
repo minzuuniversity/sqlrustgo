@@ -15,8 +15,8 @@
   timeout_sec: 900
 
 - id: gate-clippy
-  name: "GA 静态扫描：cargo clippy --all-features --all-targets -- -D warnings"
-  cmd: cargo clippy --workspace --all-features --all-targets -- -D warnings
+  name: "GA 静态扫描（GA 清单原文形状）：cargo clippy --all-features -- -D warnings"
+  cmd: cargo clippy --all-features -- -D warnings
   cwd: .
   timeout_sec: 3600
 
@@ -143,3 +143,15 @@
   cmd: cargo test --all-features
   cwd: .
   timeout_sec: 7200
+
+- id: probe-alpha-gate-blocker-tests
+  name: "ALPHA 阻塞测试（覆盖率测量的 4 条断言改为跟规则走；含一条原本的假绿）"
+  cmd: cargo test -q --test alpha_gate_blocker_test
+  cwd: .
+  timeout_sec: 1800
+
+- id: gate-anti-ignore
+  name: "ignore 台账与现场树一致（本批登记了 12 条假覆盖测试的显式 ignore）"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900

@@ -72,7 +72,6 @@ fn test_json_value_extracts_string() {
 }
 
 #[test]
-#[test]
 fn test_json_function_constructor() {
     let mut engine = create_engine();
     let r = engine
