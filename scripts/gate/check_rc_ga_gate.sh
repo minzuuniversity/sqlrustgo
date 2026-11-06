@@ -303,11 +303,20 @@ gate_verdict_for() {
 #   A5_STATUS  = PASS | FAIL | NOT-RUN
 #   A5_REASON  = "" | COVERAGE_TOOL_MISSING | COVERAGE_NO_MEASUREMENTS
 #
-# Usage: a5_coverage_decision <tool_available:0|1> <measured_crates:int> [pct:int]
+# Usage: a5_coverage_decision <tool_available:0|1> <measured_crates:int> [pct:int] [threshold:int]
+#   A5_REASON 还可能是 NO_THRESHOLD_IN_SSOT（三个来源都给不出门槛时）。
+#
+# 门槛是判定输入，不是环境残留：第 4 个参数优先，其次 COVERAGE_MIN
+# （main() 从 SSOT 读到的值），都没有就现读 SSOT。三条路都给不出门槛
+# ⇒ 判红并说明原因，绝不"没有标准也算过"（#5581）。
 a5_coverage_decision() {
     local tool_available="${1:-0}"
     local measured="${2:-0}"
     local pct="${3:-}"
+    local threshold="${4:-${COVERAGE_MIN:-}}"
+    if [ -z "$threshold" ]; then
+        threshold="$(coverage_min_for_mode "${GATE_TYPE:-all}" 2>/dev/null | awk '{print $2}')"
+    fi
 
     A5_STATUS=""
     A5_REASON=""
@@ -322,7 +331,12 @@ a5_coverage_decision() {
         A5_REASON="COVERAGE_NO_MEASUREMENTS"
         return 0
     fi
-    if [ "$pct" -ge "$COVERAGE_MIN" ] 2>/dev/null; then
+    if [ -z "$threshold" ]; then
+        A5_STATUS="FAIL"
+        A5_REASON="NO_THRESHOLD_IN_SSOT"
+        return 0
+    fi
+    if [ "$pct" -ge "$threshold" ] 2>/dev/null; then
         A5_STATUS="PASS"
     else
         A5_STATUS="FAIL"
@@ -538,7 +552,7 @@ run_d1_alpha() {
         fi
         COVERAGE_PCT="$cov_pct"
         if [ -z "$cov_handled" ]; then
-            a5_coverage_decision "$cov_tool" "${COVERAGE_CRATES_MEASURED:-0}" "$cov_pct"
+            a5_coverage_decision "$cov_tool" "${COVERAGE_CRATES_MEASURED:-0}" "$cov_pct" "$COVERAGE_MIN"
             COVERAGE_STATUS="$A5_STATUS"
             COVERAGE_REASON="$A5_REASON"
             case "$A5_STATUS" in
