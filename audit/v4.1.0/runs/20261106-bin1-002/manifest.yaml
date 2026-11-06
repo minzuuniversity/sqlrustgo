@@ -1,0 +1,346 @@
+schema_version: 1
+run_id: 20261106-bin1-002
+source_agent: omp-macmini
+frozen_commit: c26e26c2a425e92fbb14358c6e15c270e415a8bd
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: prereq-binaries
+  name: 前置：被测二进制与备份工具必须存在（probe/capability 都按 target/debug 找）
+  cmd: 'set -e
+
+    test -x target/debug/sqlrustgo-mysql-server
+
+    test -x target/debug/physical-backup
+
+    shasum -a 256 target/debug/sqlrustgo-mysql-server
+
+    '
+  cwd: .
+  timeout_sec: 300
+- id: test-bin1-storage
+  name: '#5601 存储层回归：binary 的四条 DDL 必须报错（5 条）'
+  cmd: cargo test -q -p sqlrustgo-storage --all-features --test binary_storage_ddl_honesty_5601
+  cwd: .
+  timeout_sec: 1800
+- id: test-bin1-wire
+  name: '#5601 wire 层回归：真 client + 真 binary 后端，CREATE DATABASE / CREATE TRIGGER 必须返回 ERROR（2 条）'
+  cmd: cargo test -q -p sqlrustgo-mysql-server --all-features --test binary_storage_ddl_honesty_5601
+  cwd: .
+  timeout_sec: 1800
+- id: binmode-probe
+  name: 取证探针：binary 模式的假成功必须归零（false_success_count 必须 0）
+  cmd: 'set -euo pipefail
+
+    mkdir -p test_results/binmode
+
+    python3.14 audit/v4.1.0/binmode_probe.py --out test_results/binmode --server-bin target/debug/sqlrustgo-mysql-server
+    2>&1 | tee test_results/binmode/probe.json
+
+    '
+  cwd: .
+  timeout_sec: 1200
+- id: binmode-lock
+  name: 锁值核对：#5601 的判定面必须与「已修」一致（缺陷回归即报红）
+  cmd: python3.14 audit/v4.1.0/binmode_lock.py --json test_results/binmode/probe.json
+  cwd: .
+  timeout_sec: 300
+- id: cap-live-prod
+  name: 判别力：真 CLI + 真 mysql 客户端 + 真落库 + 崩溃读回 + 备份恢复；生产链 findings=0 且非生产判别臂必须变红
+  cmd: python3.14 audit/v4.1.0/capability_smoke.py run --out test_results/capability_smoke/run-bin1-001
+  cwd: .
+  timeout_sec: 1800
+- id: cap-live-summary
+  name: 把上一命令的 json 摊成可核对结论
+  cmd: python3.14 audit/v4.1.0/cap_live_summary.py --json test_results/capability_smoke/run-bin1-001/capability_smoke.json
+  cwd: .
+  timeout_sec: 300
+- id: test-storage-lib
+  name: crates/storage 单元测试（确认这次存储层改动没有回退别的行为）
+  cmd: cargo test -q -p sqlrustgo-storage --all-features --lib
+  cwd: .
+  timeout_sec: 2400
+- id: test-mysql-server-lib
+  name: crates/mysql-server 单元测试
+  cmd: cargo test -q -p sqlrustgo-mysql-server --all-features --lib
+  cwd: .
+  timeout_sec: 2400
+- id: gate-honesty-check
+  name: honesty 判据（分母 168、夹具 57、fails 必须 0）
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-doc-facts-check
+  name: 文档事实与索引一致（看板 BIN-1 行改过，索引已重生）
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-registry-denominator
+  name: 门禁注册表：分母必须仍是 168
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: probe-gate-registry
+  name: 门禁注册表自检（9 个变异必须全被抓住）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-kanban-consistency
+  name: 看板 JSONL 与渲染出的 MD 必须逐行一致（76 行）
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: gate-kanban-counts
+  name: 看板计数（BIN-1 完成 ⇒ 未开始 8 / 待复核 25 / 完成 28 / 阻塞 15）
+  cmd: python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: probe-claims-selftest
+  name: 五类声称的反向变异自检（17 臂必须全 VERIFIED）
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1200
+- id: gate-directory-policy-check
+  name: 目录策略判定口径必须 rc=0
+  cmd: python3.14 audit/v4.1.0/directory_policy.py check
+  cwd: .
+  timeout_sec: 600
+- id: probe-directory-policy-mutations
+  name: 目录策略反向变异（5 臂自带夹具）
+  cmd: python3.14 audit/v4.1.0/dir_policy_mutations_omp.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-storage-semantics
+  name: '存储语义声明台账必须与 #5409 生产链臂一致'
+  cmd: python3.14 audit/v4.1.0/storage_semantics_claims.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-fmt-check
+  name: rustfmt：workspace 的 fmt 欠账必须为空
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+- id: gate-test-count-monotonic
+  name: 测试计数单调门禁（本批新增 7 条测试，基线由门禁自抬）
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 1800
+- id: gate-tpch-known-differences
+  name: TPC-H 已知差异登记表必须为空且合法
+  cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  timeout_sec: 300
+- id: gate-main-freshness
+  name: C-MAIN-02 main 新鲜度（GA 前 main 封存 ⇒ 结构红，不是本批回归）
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600
+results:
+- id: prereq-binaries
+  started_at: '2026-11-06T08:03:22Z'
+  finished_at: '2026-11-06T08:03:23Z'
+  exit_code: 0
+  stdout_sha256: 5af2a53de178dce9fea6fa5027cc7b1f75fe777f767c1169f898374bd7c43b9f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-prereq-binaries.stdout
+  stderr_path: logs/001-prereq-binaries.stderr
+- id: test-bin1-storage
+  started_at: '2026-11-06T08:03:23Z'
+  finished_at: '2026-11-06T08:03:27Z'
+  exit_code: 0
+  stdout_sha256: 822a28651276acb9a2313e85117177615e727de0782deac858623855992cf4c0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-test-bin1-storage.stdout
+  stderr_path: logs/002-test-bin1-storage.stderr
+- id: test-bin1-wire
+  started_at: '2026-11-06T08:03:27Z'
+  finished_at: '2026-11-06T08:03:35Z'
+  exit_code: 0
+  stdout_sha256: 8348f1b6c709eb0eb3b873016ebce1a3b109d1c416782de1486d80438c8bec28
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-test-bin1-wire.stdout
+  stderr_path: logs/003-test-bin1-wire.stderr
+- id: binmode-probe
+  started_at: '2026-11-06T08:03:35Z'
+  finished_at: '2026-11-06T08:03:39Z'
+  exit_code: 0
+  stdout_sha256: cb91e0faa825059080946f3c1ba8cdd7f06c57579159cb42a1ae810c6c8d0407
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-binmode-probe.stdout
+  stderr_path: logs/004-binmode-probe.stderr
+- id: binmode-lock
+  started_at: '2026-11-06T08:03:39Z'
+  finished_at: '2026-11-06T08:03:39Z'
+  exit_code: 0
+  stdout_sha256: e6eca273a11f13adfec02973f0918275642ac5911681782ad2684705f0aae8a7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-binmode-lock.stdout
+  stderr_path: logs/005-binmode-lock.stderr
+- id: cap-live-prod
+  started_at: '2026-11-06T08:03:39Z'
+  finished_at: '2026-11-06T08:03:47Z'
+  exit_code: 0
+  stdout_sha256: ebaef3d615220e8d4f28fb768c65b864d28e34175d32f1f9ddec578710334958
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-cap-live-prod.stdout
+  stderr_path: logs/006-cap-live-prod.stderr
+- id: cap-live-summary
+  started_at: '2026-11-06T08:03:47Z'
+  finished_at: '2026-11-06T08:03:47Z'
+  exit_code: 0
+  stdout_sha256: 4db20cd289bcb23e29c221fbfd4fcda4d5163360ed2b645a458375abedaa4581
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-cap-live-summary.stdout
+  stderr_path: logs/007-cap-live-summary.stderr
+- id: test-storage-lib
+  started_at: '2026-11-06T08:03:47Z'
+  finished_at: '2026-11-06T08:03:54Z'
+  exit_code: 0
+  stdout_sha256: a53983385cd22c09c7d47d62cf8a7a8f3efb3f383315e9052ec601f2cfd6ba5b
+  stderr_sha256: 06ff2e9d69ae03435b37e51536ea672e0911aa97f41e5a2b5640f539e086b816
+  stdout_path: logs/008-test-storage-lib.stdout
+  stderr_path: logs/008-test-storage-lib.stderr
+- id: test-mysql-server-lib
+  started_at: '2026-11-06T08:03:54Z'
+  finished_at: '2026-11-06T08:03:58Z'
+  exit_code: 0
+  stdout_sha256: 1c72ddb501276107508d2718da1ce67e5bf2061843d37ff4a58fa36c7621115d
+  stderr_sha256: e0f9477e6632f008d66e02b9e0439b6e87023c090790998fffc00b479aa80350
+  stdout_path: logs/009-test-mysql-server-lib.stdout
+  stderr_path: logs/009-test-mysql-server-lib.stderr
+- id: gate-honesty-check
+  started_at: '2026-11-06T08:03:58Z'
+  finished_at: '2026-11-06T08:03:58Z'
+  exit_code: 0
+  stdout_sha256: 8c9f09f4553e117d27cd53a0921349d1250401fd5a5033171fcf602c3fb9818f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gate-honesty-check.stdout
+  stderr_path: logs/010-gate-honesty-check.stderr
+- id: gate-doc-facts-check
+  started_at: '2026-11-06T08:03:58Z'
+  finished_at: '2026-11-06T08:03:58Z'
+  exit_code: 0
+  stdout_sha256: 7701c4af4ac29d7bf8190cb3cf164147aa6035480e361c5c22bd5da97086a923
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-gate-doc-facts-check.stdout
+  stderr_path: logs/011-gate-doc-facts-check.stderr
+- id: gate-registry-denominator
+  started_at: '2026-11-06T08:03:58Z'
+  finished_at: '2026-11-06T08:03:59Z'
+  exit_code: 0
+  stdout_sha256: e0156a59edfe037b56b02241eba239d9810774c154869e7b784e54ddb7e83b9f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-gate-registry-denominator.stdout
+  stderr_path: logs/012-gate-registry-denominator.stderr
+- id: probe-gate-registry
+  started_at: '2026-11-06T08:03:59Z'
+  finished_at: '2026-11-06T08:04:02Z'
+  exit_code: 0
+  stdout_sha256: cc8286da584398eb2891f4241960fb95454c783ddc36e3c793483bcb162e28d4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-probe-gate-registry.stdout
+  stderr_path: logs/013-probe-gate-registry.stderr
+- id: gate-kanban-consistency
+  started_at: '2026-11-06T08:04:02Z'
+  finished_at: '2026-11-06T08:04:02Z'
+  exit_code: 0
+  stdout_sha256: 1f6ace997de7730e9c9a7417df00d1d8c1dc268a546ceafe43bbb8ae75a26f25
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-gate-kanban-consistency.stdout
+  stderr_path: logs/014-gate-kanban-consistency.stderr
+- id: gate-kanban-counts
+  started_at: '2026-11-06T08:04:02Z'
+  finished_at: '2026-11-06T08:04:02Z'
+  exit_code: 0
+  stdout_sha256: a7e70b2aedb32c53e2198dfe90d8c704848f3792a9bf69c0493975d636b5e308
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-gate-kanban-counts.stdout
+  stderr_path: logs/015-gate-kanban-counts.stderr
+- id: probe-claims-selftest
+  started_at: '2026-11-06T08:04:02Z'
+  finished_at: '2026-11-06T08:04:04Z'
+  exit_code: 0
+  stdout_sha256: e791c99b4a73fb66ca8a91f8ad1b1a483e4d29a38ea7cd0a7768de8d62a98e0e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-probe-claims-selftest.stdout
+  stderr_path: logs/016-probe-claims-selftest.stderr
+- id: gate-directory-policy-check
+  started_at: '2026-11-06T08:04:04Z'
+  finished_at: '2026-11-06T08:04:04Z'
+  exit_code: 0
+  stdout_sha256: eb36bc556ef6802a61338d84e90e427afc631b2568f3f092427dbe2b272aa249
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/017-gate-directory-policy-check.stdout
+  stderr_path: logs/017-gate-directory-policy-check.stderr
+- id: probe-directory-policy-mutations
+  started_at: '2026-11-06T08:04:04Z'
+  finished_at: '2026-11-06T08:04:07Z'
+  exit_code: 0
+  stdout_sha256: 58d76b5355d141d98632c1f9b5adf4c1fc7d5cfdf0991eb68ad54ca67c3af5e3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/018-probe-directory-policy-mutations.stdout
+  stderr_path: logs/018-probe-directory-policy-mutations.stderr
+- id: gate-storage-semantics
+  started_at: '2026-11-06T08:04:07Z'
+  finished_at: '2026-11-06T08:04:07Z'
+  exit_code: 0
+  stdout_sha256: a759394f4af8ff67ac70177b4872e94f88031753f607e0b0cf977c0d29f8bd32
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/019-gate-storage-semantics.stdout
+  stderr_path: logs/019-gate-storage-semantics.stderr
+- id: gate-fmt-check
+  started_at: '2026-11-06T08:04:07Z'
+  finished_at: '2026-11-06T08:04:11Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/020-gate-fmt-check.stdout
+  stderr_path: logs/020-gate-fmt-check.stderr
+- id: gate-test-count-monotonic
+  started_at: '2026-11-06T08:04:11Z'
+  finished_at: '2026-11-06T08:04:11Z'
+  exit_code: 0
+  stdout_sha256: 923d544e473801d5d94bc496c7cb93b2ce970f6f02f1ec89138baaff9b2db4e4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/021-gate-test-count-monotonic.stdout
+  stderr_path: logs/021-gate-test-count-monotonic.stderr
+- id: gate-tpch-known-differences
+  started_at: '2026-11-06T08:04:11Z'
+  finished_at: '2026-11-06T08:04:11Z'
+  exit_code: 0
+  stdout_sha256: 3674c0f91d9ed0ca5d2ee18517074281344b1e3d345bc80336898d3338d7ea5d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/022-gate-tpch-known-differences.stdout
+  stderr_path: logs/022-gate-tpch-known-differences.stderr
+- id: gate-main-freshness
+  started_at: '2026-11-06T08:04:11Z'
+  finished_at: '2026-11-06T08:04:20Z'
+  exit_code: 1
+  stdout_sha256: 0f78eee5eb5bb4743cf9a4bfa07db1608cd3c1ba40d3a73dd545b9aa6fc9a387
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/023-gate-main-freshness.stdout
+  stderr_path: logs/023-gate-main-freshness.stderr
+evidence_hash: sha256:cfda89c8973fa1cd5f90bfef39cd15c1c8bf5f665d1a85c38d10979bfcc0340a
+completed_at: '2026-11-06T08:04:20Z'
+
+notes:
+- "本 run 是 BIN-1 批的验收证据：23 条命令，22 绿 / 1 红。"
+- "唯一一条红：gate-main-freshness（exit=1）—— 结构性红，C-MAIN-02（GA 前 main 封存，main 由 release/* 单向驱动），不是本批回归。"
+- "#5601 三层证据全绿：① 存储层回归 5 passed（crates/storage/tests/binary_storage_ddl_honesty_5601.rs）；"
+  "② wire 层回归 2 passed（crates/mysql-server/tests/binary_storage_ddl_honesty_5601.rs，真 client + 真 binary 后端）；"
+  "③ 取证探针 binmode-probe：false_success_count=0、create_database_rc=1、create_trigger_rc=1（修复前是 3 / 0 / 0），"
+  "锁值工具 binmode-lock rc=0（锁值已翻到『缺陷已修』，缺陷回归即报红）。"
+- "判别力未丢：cap-live-prod 生产链 findings=0，非生产判别臂 arm=11 > prod=0（discriminating=true）。"
+- "回归面：crates/storage 单元测试 913 passed / 0 failed（修复前有 4 条旧 noop 用例钉住假成功行为，已在 7b83450f11 改成断言新契约），"
+  "crates/mysql-server 单元测试全绿；honesty gates=168 fails=0、gate_registry check_n=168、看板 76 行一致、doc_facts fails=0、目录策略 5/5、rustfmt 欠账为空。"
+- "前一次 run 20261106-bin1-001 原样保留（2 条红逐条记账），不改写。"
