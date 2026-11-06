@@ -1,0 +1,12 @@
+{
+ "id": "BIN-1",
+ "title": "[4.1.0][BIN-1] --storage binary 假成功：CREATE DATABASE 返回 OK 却零效果、CREATE TRIGGER 返回 OK 却从未登记（客户端可观测）",
+ "body_file": "BIN-1.md",
+ "labels": [
+  "mysql-server",
+  "P1-reliability",
+  "priority/p1",
+  "cost/t1",
+  "cap/refactor"
+ ]
+}
