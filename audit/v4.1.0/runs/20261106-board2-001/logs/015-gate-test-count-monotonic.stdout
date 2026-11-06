@@ -1,0 +1,25 @@
+=== P13 Test Count Monotonicity ===
+Date: 2026-11-06T08:08:34Z
+
+[1/3] Counting current tests...
+  Cargo.toml [[test]] entries: 483
+  Active #[test] functions: 14338
+  #[ignore] attributes (real, not prose): 123
+
+[2/3] Reading baseline...
+  Baseline (v4.1.0):
+    cargo_tests: 482
+    active_tests: 14307
+    ignored_tests: 123 (method: real-attributes-v1)
+
+[3/3] Comparing...
+  ✅ PASS: Cargo.toml [[test]] entries increased by 1
+  ✅ PASS: Active tests increased by 31
+  ⚠️  INFO: #[ignore] count unchanged (123)
+
+=== P13 Summary ===
+  Current counts: cargo=483, active=14338, ignored=123
+  Baseline counts: cargo=482, active=14307, ignored=123
+  Baseline updated to current counts
+
+✅ PASS — P13 satisfied. Test count is monotonically non-decreasing.

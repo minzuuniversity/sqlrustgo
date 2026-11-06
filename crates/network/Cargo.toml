@@ -18,3 +18,5 @@ prost = "0.13"
 [build-dependencies]
 tonic-build = "0.12"
 http-body-util = "0.1"
+# GitHub 托管 runner 镜像不预装 protoc；缺失时 build.rs 回退到 vendored 二进制。
+protoc-bin-vendored = "3"
