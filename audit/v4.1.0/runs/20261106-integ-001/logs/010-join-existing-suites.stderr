@@ -1,0 +1,15 @@
+   Compiling sqlrustgo v4.1.0 (/private/tmp/wt-integ)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.06s
+     Running tests/integration/sql/multi_join_test.rs (target/debug/deps/multi_join_test-c7961248da5d3317)
+   Compiling sqlrustgo v4.1.0 (/private/tmp/wt-integ)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.07s
+     Running tests/integration/sql/anti_join_main_path_test.rs (target/debug/deps/anti_join_main_path_test-d4e5b7d20f783f94)
+   Compiling sqlrustgo v4.1.0 (/private/tmp/wt-integ)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.05s
+     Running tests/integration/sql/v312_73_join_using_clause_test.rs (target/debug/deps/v312_73_join_using_clause_test-a192dd6650eb1719)
+   Compiling sqlrustgo v4.1.0 (/private/tmp/wt-integ)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.10s
+     Running tests/integration/sql/v312_95_non_equi_join_test.rs (target/debug/deps/v312_95_non_equi_join_test-a5d70eeeab3f131f)
+   Compiling sqlrustgo v4.1.0 (/private/tmp/wt-integ)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.16s
+     Running tests/operators/join.rs (target/debug/deps/operators_join-0c9f4e9fe12a6783)

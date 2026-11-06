@@ -1,0 +1,12 @@
+
+running 7 tests
+test tests::short_hash_never_panics ... ok
+test tests::test_node_crud ... ok
+test tests::test_orphan_detection ... ok
+test tests::test_evidence_ingestor ... ok
+test tests::test_edge_and_path ... ok
+test tests::ingest_git_commit_accepts_short_hash ... ok
+test tests::test_task_completion_path ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

@@ -1,0 +1,285 @@
+schema_version: 1
+run_id: 20261106-integ-001
+source_agent: omp-macmini
+frozen_commit: f26bfca4cabc4417045fa1a27047358f27c78d04
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: fix-5409-regression
+  name: '#5409 INSERT 列名列表校验 —— 未知列名报 1054 且不留行'
+  cmd: cargo test --test insert_column_validation_5409
+  cwd: .
+  timeout_sec: 900
+- id: fix-5527-regression
+  name: '#5527 LOAD DATA 重复键 —— 有键表报 1062，无键表仍追加'
+  cmd: cargo test -p sqlrustgo-mysql-server --test load_data_duplicate_key_5527
+  cwd: .
+  timeout_sec: 900
+- id: fix-5394-regression
+  name: '#5394 LEFT JOIN 的 ON 过滤不得丢弃左表行'
+  cmd: cargo test --test left_join_on_filter_5394
+  cwd: .
+  timeout_sec: 900
+- id: fix-5582-regression
+  name: '#5582 空闲回收器必须能真的 shutdown（生产形态）'
+  cmd: cargo test -p sqlrustgo-mysql-server --lib registry_keeps_a_live
+  cwd: .
+  timeout_sec: 900
+- id: fix-5514-regression
+  name: '#5514 空闲回收器三条既有用例（心跳/回收/0 禁用）'
+  cmd: cargo test -p sqlrustgo-mysql-server --test idle_reaper_heartbeat_5514
+  cwd: .
+  timeout_sec: 900
+- id: fix-5462-5463-regression
+  name: '#5462/#5463 GROUP BY 的名字解析 —— 别名不再是常量、未知标识符不再 panic'
+  cmd: cargo test -p sqlrustgo-mysql-server --test group_by_binder_5462_5463_test
+  cwd: .
+  timeout_sec: 900
+- id: fix-5509-regression
+  name: '#5509 FileStorage 的 DDL 列名大小写不敏感'
+  cmd: cargo test -p sqlrustgo-storage --test file_storage_ddl_column_case_5509
+  cwd: .
+  timeout_sec: 900
+- id: fix-5361-regression
+  name: '#5361 合法的 LEFT JOIN（ON 含表达式）必须被接受，且左表行补 NULL'
+  cmd: cargo test --test join_expression_on_5361
+  cwd: .
+  timeout_sec: 900
+- id: local-infile-existing
+  name: 既有 LOCAL INFILE 用例未回归（#5527 的排空逻辑改了这条路径）
+  cmd: cargo test -p sqlrustgo-mysql-server --test client_local_infile_test
+  cwd: .
+  timeout_sec: 900
+- id: join-existing-suites
+  name: 既有 join 用例未回归（#5394/#5361 改的是同一条 join 路径）
+  cmd: 'cargo test --test multi_join_test && cargo test --test anti_join_main_path_test && cargo test
+    --test v312_73_join_using_clause_test && cargo test --test v312_95_non_equi_join_test && cargo test
+    --test operators_join
+
+    '
+  cwd: .
+  timeout_sec: 1800
+- id: evidence-graph-no-flake
+  name: evidence-graph 的测试库路径必须真正唯一（时钟分辨率不够会撞名）
+  cmd: cargo test -p evidence-graph --lib
+  cwd: .
+  timeout_sec: 900
+- id: tpch-q8-q13-match
+  name: 'TPC-H 层面：#5394 的 Q13 与 #5462 的 Q8 差异必须消失（fixture 与 CI 同一份）'
+  cmd: 'rm -rf /tmp/tpch-fixture-20261106 && python3 scripts/gate/generate_tpch_sf.py --sf 0.01 --seed
+    42 --output /tmp/tpch-fixture-20261106 >/dev/null && TPCH_DATA_DIR=/tmp/tpch-fixture-20261106 cargo
+    test --test tpch_sf01_22_vs_3engines -- --nocapture 2>&1 | tee /tmp/tpch-20261106.out | grep -E "Q8:
+    |Q13: |KNOWN-DIFF" && ! grep -q "KNOWN-DIFF" /tmp/tpch-20261106.out
+
+    '
+  cwd: .
+  timeout_sec: 1800
+- id: known-diff-registry-gate
+  name: 已知差异登记表门禁（两条登记已作废 ⇒ 登记表必须为空且合法）
+  cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  timeout_sec: 300
+- id: secret-scan-gate
+  name: 明文凭据门禁（#5381 的预防措施必须仍然有效）
+  cmd: bash scripts/gate/check_no_hardcoded_secrets.sh
+  cwd: .
+  timeout_sec: 300
+- id: test-count-monotonic-gate
+  name: 测试计数单调门禁（本批新增用例后基线自动上抬）
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 900
+- id: kanban-ledger-check
+  name: 看板 JSONL 与 MD 必须一致
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-check
+  name: 门禁注册表（分母必须仍是 168）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: ex6-failure-accounting-probe
+  name: EX-6 分开记账探针（含反向变异臂，取 mcode 版实现后仍必须有判别力）
+  cmd: python3 audit/v4.1.0/ex6_failure_accounting.py
+  cwd: .
+  timeout_sec: 600
+- id: renamed-ledger-tool-still-runnable
+  name: 改名保留的台账清点器必须还能跑（合并没把可用实现改成死代码）
+  cmd: python3 audit/v4.1.0/evidence_inventory_ledger_omp.py report --docs-dir docs/releases/v4.1.0 --runs-dir
+    audit/v4.1.0/runs
+  cwd: .
+  timeout_sec: 600
+results:
+- id: fix-5409-regression
+  started_at: '2026-11-06T01:30:26Z'
+  finished_at: '2026-11-06T01:30:33Z'
+  exit_code: 0
+  stdout_sha256: be595e79f725542b4d47231702f4b1eebfc6fd58d8f854ebcd1be087d0865272
+  stderr_sha256: 98545fc211970dc1ef6d9155490feb43e5bec4f2aff38433f3c77d773731f2cd
+  stdout_path: logs/001-fix-5409-regression.stdout
+  stderr_path: logs/001-fix-5409-regression.stderr
+- id: fix-5527-regression
+  started_at: '2026-11-06T01:30:33Z'
+  finished_at: '2026-11-06T01:30:38Z'
+  exit_code: 0
+  stdout_sha256: 8da46b8fbd53c38665dd6edce5f7863c71e9e0991b6e5628f572888bdcc4956f
+  stderr_sha256: 430fdbb1a539ab82aad0359a9d66d453eaf264fef6a1d8c57a1d5fb58ed241e6
+  stdout_path: logs/002-fix-5527-regression.stdout
+  stderr_path: logs/002-fix-5527-regression.stderr
+- id: fix-5394-regression
+  started_at: '2026-11-06T01:30:38Z'
+  finished_at: '2026-11-06T01:30:42Z'
+  exit_code: 0
+  stdout_sha256: 02b7ad3f3f3a0690680e7b79210370f17f5ca43dc97d549ec22a383543a479a7
+  stderr_sha256: 084a7d68355cc5f1cc9792471fbffe6720d0990c9e371df6f785725f0e75bae3
+  stdout_path: logs/003-fix-5394-regression.stdout
+  stderr_path: logs/003-fix-5394-regression.stderr
+- id: fix-5582-regression
+  started_at: '2026-11-06T01:30:42Z'
+  finished_at: '2026-11-06T01:30:42Z'
+  exit_code: 0
+  stdout_sha256: 3ebb0ba80b1c2a21857f11aafa66820dc7485a494c1236e45e0e205ba99318bb
+  stderr_sha256: ec3b7faa4e0babb4b5d79f9650894d1d2eaf2017871d6478d2372c44336ca30c
+  stdout_path: logs/004-fix-5582-regression.stdout
+  stderr_path: logs/004-fix-5582-regression.stderr
+- id: fix-5514-regression
+  started_at: '2026-11-06T01:30:42Z'
+  finished_at: '2026-11-06T01:31:27Z'
+  exit_code: 0
+  stdout_sha256: d83f87f91cf181ed89ee3f3a29098cdb09ae91aaded61f8ffb7d76040e9a78c3
+  stderr_sha256: b97ce5d7da6074befa410b034469538c6898a31c26e1ba2d0e3fb9695c903543
+  stdout_path: logs/005-fix-5514-regression.stdout
+  stderr_path: logs/005-fix-5514-regression.stderr
+- id: fix-5462-5463-regression
+  started_at: '2026-11-06T01:31:27Z'
+  finished_at: '2026-11-06T01:31:31Z'
+  exit_code: 0
+  stdout_sha256: e7078640375388e491cb69444ad895f55294e65ccfd0b51a9218c7b5ea6183e0
+  stderr_sha256: e9fd5f6226d0ca30675132a45e620564d3d729c114b27c605045e49358a5123f
+  stdout_path: logs/006-fix-5462-5463-regression.stdout
+  stderr_path: logs/006-fix-5462-5463-regression.stderr
+- id: fix-5509-regression
+  started_at: '2026-11-06T01:31:31Z'
+  finished_at: '2026-11-06T01:31:33Z'
+  exit_code: 0
+  stdout_sha256: 2ddcc75a321b9dcf8b409adb270cc4aaab2b36faa7dbf4d7371811e5efbc5782
+  stderr_sha256: 62858843d0573ece11f2497dc5397d6ed17a11d233617a99be6a7e297844c390
+  stdout_path: logs/007-fix-5509-regression.stdout
+  stderr_path: logs/007-fix-5509-regression.stderr
+- id: fix-5361-regression
+  started_at: '2026-11-06T01:31:33Z'
+  finished_at: '2026-11-06T01:31:34Z'
+  exit_code: 0
+  stdout_sha256: d5819b9f54e0fa19f33ecf1afb898390ff124e68d9f172f27b7f33492a84895d
+  stderr_sha256: 05da30b0352107616dae4675e58769196dd71e3d34d2d2220781f820ca7ed0b7
+  stdout_path: logs/008-fix-5361-regression.stdout
+  stderr_path: logs/008-fix-5361-regression.stderr
+- id: local-infile-existing
+  started_at: '2026-11-06T01:31:34Z'
+  finished_at: '2026-11-06T01:31:35Z'
+  exit_code: 0
+  stdout_sha256: 97c1ed108a35059040a471167054a4440273742ab6db7c65c8b8a031b7cd5d6f
+  stderr_sha256: 54a6353bf1adabbc820c9c7d3b1f501d32eeafff8fb19ef3a99f214543c7fb92
+  stdout_path: logs/009-local-infile-existing.stdout
+  stderr_path: logs/009-local-infile-existing.stderr
+- id: join-existing-suites
+  started_at: '2026-11-06T01:31:35Z'
+  finished_at: '2026-11-06T01:31:49Z'
+  exit_code: 0
+  stdout_sha256: cb8b964bdd3b476e677ef5f2792ecbbead5035276b8fb5a01bf423f3df7b4ea2
+  stderr_sha256: 74fe4fa9eb8e67b705720226964b2c8679be0db695632db292cc565798b84a13
+  stdout_path: logs/010-join-existing-suites.stdout
+  stderr_path: logs/010-join-existing-suites.stderr
+- id: evidence-graph-no-flake
+  started_at: '2026-11-06T01:31:49Z'
+  finished_at: '2026-11-06T01:31:53Z'
+  exit_code: 0
+  stdout_sha256: b90a5b5fee57c1becfe6caaa968da4f6e3af0447c53930e2d8e54978281ea3aa
+  stderr_sha256: 59276178b9bebedf3e0ac937d7a6b76a1e13ea1fa125c80eccebc2989dce116c
+  stdout_path: logs/011-evidence-graph-no-flake.stdout
+  stderr_path: logs/011-evidence-graph-no-flake.stderr
+- id: tpch-q8-q13-match
+  started_at: '2026-11-06T01:31:53Z'
+  finished_at: '2026-11-06T01:33:04Z'
+  exit_code: 0
+  stdout_sha256: 278dc5a467d8b595331346ac2005f7c989417f975179bddb4268869ec488f67a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-tpch-q8-q13-match.stdout
+  stderr_path: logs/012-tpch-q8-q13-match.stderr
+- id: known-diff-registry-gate
+  started_at: '2026-11-06T01:33:04Z'
+  finished_at: '2026-11-06T01:33:04Z'
+  exit_code: 0
+  stdout_sha256: ad3e38214ef0d69de89a904b5e96e5ffdaf0e6024bd6742bcf69ae83a84a2ee2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-known-diff-registry-gate.stdout
+  stderr_path: logs/013-known-diff-registry-gate.stderr
+- id: secret-scan-gate
+  started_at: '2026-11-06T01:33:04Z'
+  finished_at: '2026-11-06T01:33:06Z'
+  exit_code: 0
+  stdout_sha256: b28b2fb37e73c605da16d55dd90e73ddd7dcbcb4e0fda9855980fb41bf9c9bcd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-secret-scan-gate.stdout
+  stderr_path: logs/014-secret-scan-gate.stderr
+- id: test-count-monotonic-gate
+  started_at: '2026-11-06T01:33:06Z'
+  finished_at: '2026-11-06T01:33:07Z'
+  exit_code: 0
+  stdout_sha256: 1ddcc7b8f4ee18219bb7bda884e14ab9916b57a86fb4d8f347e17b4d5dc85c61
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-test-count-monotonic-gate.stdout
+  stderr_path: logs/015-test-count-monotonic-gate.stderr
+- id: kanban-ledger-check
+  started_at: '2026-11-06T01:33:07Z'
+  finished_at: '2026-11-06T01:33:07Z'
+  exit_code: 0
+  stdout_sha256: aea2ada608fff43f767eabe4ee79df385fedcee52a55d2d2f0ce178dbe29983f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-kanban-ledger-check.stdout
+  stderr_path: logs/016-kanban-ledger-check.stderr
+- id: gate-registry-check
+  started_at: '2026-11-06T01:33:07Z'
+  finished_at: '2026-11-06T01:33:09Z'
+  exit_code: 0
+  stdout_sha256: d40e9bf784946f6918589e16e98903a0b811e5a6a95095dd9cdb3fbccf0e0f3a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/017-gate-registry-check.stdout
+  stderr_path: logs/017-gate-registry-check.stderr
+- id: ex6-failure-accounting-probe
+  started_at: '2026-11-06T01:33:09Z'
+  finished_at: '2026-11-06T01:33:09Z'
+  exit_code: 0
+  stdout_sha256: 87f854eaf4be35448d5bc403bcf85cbf918d63897d27fd94decfeb832b084e0f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/018-ex6-failure-accounting-probe.stdout
+  stderr_path: logs/018-ex6-failure-accounting-probe.stderr
+- id: renamed-ledger-tool-still-runnable
+  started_at: '2026-11-06T01:33:09Z'
+  finished_at: '2026-11-06T01:33:09Z'
+  exit_code: 0
+  stdout_sha256: 0e066e9378ec7ea4004d5f4c5400b2c31e2ef82487f4876be4ab19bc96b7ecda
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/019-renamed-ledger-tool-still-runnable.stdout
+  stderr_path: logs/019-renamed-ledger-tool-still-runnable.stderr
+evidence_hash: sha256:c2341c6e77c3a00d3ffc76d023b1e67ed2eb1b9aea6da59cf1aae44ad2ffc622
+completed_at: '2026-11-06T01:33:09Z'
+notes:
+- '19/19 命令 exit 0（逐条退出码见 results 段）。本 run 不含 ci_gate.sh，不构成门禁通过声明；CI 仍处 #5597/IL-9 停机状态，本 run 是本地替代。'
+- 被测对象是**跨线合并后的树**：frozen f26bfca4ca = develop/v4.1.0 + omp-macmini/lb1-arm-count-fix(68 未等价) + mcode-macmini/governance-kanban-expert-ladder(46 未等价)。两条线分叉于 c1a5b0ba9d；develop 在合并基线之后的净文件效果为 0。
+- 11 处冲突的裁决与依据见 audit/v4.1.0/adjudications/merge-20261106-two-lines.md：expert_ladder.py 取超集版、evidence_inventory.py 取有归档配套的那版（本线那版改名保留为 evidence_inventory_ledger_omp.py）、撞名 run 20261105-lb1-006 两份都留（mcode 那份搬入 20261105-lb1-006-mcode/，只改 manifest 的 run_id 一行）。
+- 本次新增两条命令专门盯合并风险：ex6-failure-accounting-probe（换实现后判据仍有判别力，E 臂把「空返回」改判成答上来了 ⇒ unanswered 变空、wrong 变 4）；renamed-ledger-tool-still-runnable（改名保留的台账清点器仍能跑，合并没把它变成死代码）。
+- '**未覆盖项（不得当作通过）**：crash_commit_fsync_b1 不在本命令集内。该套件当前实测 0 passed / 2 failed（actual=<never reached>），即 #5376/#5556 的崩溃安全结论今天没有任何测试在执行；看板 ENG-12 已记为阻塞，待属主裁决归属。'
+- 看板合并到 69 行，render/check 一致；10 行状态分歧按「更保守一侧」下调，合并不构成复核，上调需另附复核证据。
+- 分母未变：gate-registry-check exit 0（check_n=168）；新增探针均在 audit/v4.1.0/ 下，不取 check_* 命名、不入 STAGE_CONFIG。
+- 已知副作用复现：test-count-monotonic-gate 会就地改写 tests/baseline/test_count.json，run 后工作区被改脏；本 run 只提交 commit.txt 与 runs/20261106-integ-001/，基线文件随后还原。
