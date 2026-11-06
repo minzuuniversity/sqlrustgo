@@ -1,0 +1,1 @@
+{"kind": "wire_hex_judge", "prod_hex": {"1": "0131fb", "2": "0132044e554c4c"}, "ref_hex": {"1": "0131fb", "2": "0132044e554c4c"}, "ref_available": true, "prod_client_raw": "1\tNULL\n2\tNULL", "ref_client_raw": "1\tNULL\n2\tNULL", "prod_ambiguous": true, "hex_equal": true}
