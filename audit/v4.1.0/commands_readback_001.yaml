@@ -16,15 +16,19 @@
   cwd: .
   timeout_sec: 600
 - id: binmode-judge
-  name: BIN-1 判据：false_success_count 必须为 0（ heredoc 不得缩进：第二版踩了 IndentationError）
-  cmd: "/usr/bin/python3 - <<'PYIN'\nimport glob, json, sys\ncands = sorted(glob.glob(\"test_results/binmode_r13/**/*.json\"\
-    , recursive=True))\nif not cands:\n    print(\"NOT-OK: 没有 binmode 输出（INCOMPLETE）\"); sys.exit(2)\n\
-    path = cands[-1]\ndoc = json.load(open(path))\nn = doc.get(\"false_success_count\")\nprint(json.dumps({\"\
-    kind\": \"binmode_judge\", \"file\": path, \"false_success_count\": n,\n                  \"server_bin\"\
-    : doc.get(\"server_bin\"),\n                  \"sha256_12\": (doc.get(\"server_bin_sha256\") or \"\
-    \")[:12],\n                  \"is_this_line\": doc.get(\"server_bin_is_this_line\")}, ensure_ascii=False))\n\
-    if n is None:\n    print(\"NOT-OK: 没读到 false_success_count（INCOMPLETE）\"); sys.exit(2)\nif n != 0:\n\
-    \    print(\"NOT-OK: 仍有假成功 %d 条\" % n); sys.exit(3)\nPYIN"
+  name: BIN-1 判据：读 002 的 stdout JSON，false_success_count 必须为 0 且二进制归因本线
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport json, sys\n# binmode_probe 把 JSON 打在 stdout（不写 .json 文件），所以判据读**本\
+    \ run 自己的 002 日志**。\np = \"audit/v4.1.0/runs/20261106-readback-001/logs/002-binmode-retest.stdout\"\
+    \ntry:\n    doc = json.load(open(p, encoding=\"utf-8\"))\nexcept Exception as e:\n    print(\"NOT-OK:\
+    \ 读不到 002 的 binmode JSON（INCOMPLETE）:\", e); sys.exit(2)\nn = doc.get(\"false_success_count\")\nout\
+    \ = {\"kind\": \"binmode_judge\", \"source_log\": p, \"false_success_count\": n,\n       \"server_bin\"\
+    : doc.get(\"server_bin\"), \"server_sha256_12\": (doc.get(\"server_sha256\") or \"\")[:12],\n    \
+    \   \"server_size\": doc.get(\"server_size\"), \"is_this_line\": doc.get(\"server_bin_is_this_line\"\
+    ),\n       \"create_database_rc\": doc.get(\"create_database_rc\"), \"create_trigger_rc\": doc.get(\"\
+    create_trigger_rc\")}\nprint(json.dumps(out, ensure_ascii=False))\nif n is None:\n    print(\"NOT-OK:\
+    \ 没读到 false_success_count（INCOMPLETE）\"); sys.exit(2)\nif not doc.get(\"server_bin_is_this_line\"\
+    ):\n    print(\"NOT-OK: 被测二进制不是本线产物 ⇒ 归因不成立（INCOMPLETE）\"); sys.exit(2)\nif n != 0:\n    print(\"\
+    NOT-OK: 仍有假成功 %d 条\" % n); sys.exit(3)\nPYIN"
   cwd: .
   timeout_sec: 120
 - id: cap-smoke
