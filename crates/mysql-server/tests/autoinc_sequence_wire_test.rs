@@ -1,3 +1,4 @@
+// storage-semantics: autoinc-sequence-wire-test
 //! #4945 / #4946 — regression gate for acknowledged-but-lost autocommit INSERTs.
 //!
 //! Both issues were one defect with two read paths. `crates/mysql-server/src/lib.rs`

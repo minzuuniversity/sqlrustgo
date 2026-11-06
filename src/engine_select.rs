@@ -5364,14 +5364,82 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // post-filter on the cartesian product. The hash-join
                 // arm filters below; this arm is reached when the
                 // ON clause has no resolvable equi keys.
-                if !matches!(&join_clause.on_clause, Expression::Literal(s) if s == "true") {
-                    cross.retain(|row| {
-                        crate::engine_utils::eval_predicate(
-                            &join_clause.on_clause,
-                            row,
-                            &combined_schema,
-                        )
-                    });
+                //
+                // #5361: 外连接语义也必须在这里成立 —— 左表行若**一个**右表行都
+                // 没匹配上，必须以 NULL 补齐，而不是消失。此前这条路径没有补 NULL，
+                // 所以 `LEFT JOIN … ON <表达式>` 即使不被拒绝，结果也是错的。
+                let outer = matches!(
+                    join_clause.join_type,
+                    ParserJoinType::Left
+                        | ParserJoinType::Right
+                        | ParserJoinType::Full
+                        | ParserJoinType::NaturalLeft
+                        | ParserJoinType::NaturalRight
+                        | ParserJoinType::NaturalFull
+                );
+                let left_n = left_rows.len();
+                let right_n = right_rows.len();
+                let mut left_matched = vec![false; left_n];
+                let mut right_matched = vec![false; right_n];
+                let on_is_true =
+                    matches!(&join_clause.on_clause, Expression::Literal(s) if s == "true");
+                if on_is_true {
+                    for m in left_matched.iter_mut() {
+                        *m = true;
+                    }
+                    for m in right_matched.iter_mut() {
+                        *m = true;
+                    }
+                } else {
+                    // 重新走一遍笛卡尔积，这次带着**出处**，好知道哪些行真的配上了
+                    let mut kept: Vec<Vec<Value>> = Vec::with_capacity(cross.len());
+                    for (li, left_row) in left_rows.iter().enumerate() {
+                        for (ri, right_row) in right_rows.iter().enumerate() {
+                            let mut combined = left_row.clone();
+                            combined.extend(right_row.clone());
+                            if crate::engine_utils::eval_predicate(
+                                &join_clause.on_clause,
+                                &combined,
+                                &combined_schema,
+                            ) {
+                                left_matched[li] = true;
+                                right_matched[ri] = true;
+                                kept.push(combined);
+                            }
+                        }
+                    }
+                    cross = kept;
+                }
+                // 外连接补 NULL
+                if outer {
+                    let left_col_count = left_table_info.columns.len();
+                    let right_col_count = right_table_info.columns.len();
+                    if matches!(
+                        join_clause.join_type,
+                        ParserJoinType::Left | ParserJoinType::Full | ParserJoinType::NaturalLeft
+                            | ParserJoinType::NaturalFull
+                    ) {
+                        for (li, left_row) in left_rows.iter().enumerate() {
+                            if !left_matched[li] {
+                                let mut combined = left_row.clone();
+                                combined.extend(vec![Value::Null; right_col_count]);
+                                cross.push(combined);
+                            }
+                        }
+                    }
+                    if matches!(
+                        join_clause.join_type,
+                        ParserJoinType::Right | ParserJoinType::Full | ParserJoinType::NaturalRight
+                            | ParserJoinType::NaturalFull
+                    ) {
+                        for (ri, right_row) in right_rows.iter().enumerate() {
+                            if !right_matched[ri] {
+                                let mut combined = vec![Value::Null; left_col_count];
+                                combined.extend(right_row.clone());
+                                cross.push(combined);
+                            }
+                        }
+                    }
                 }
                 return Ok((cross, combined_schema));
             }
@@ -5500,11 +5568,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     right_hash.entry(key).or_default().push((ri, right_row));
                 }
 
-                let mut matched: Vec<Vec<Value>> = Vec::new();
-                let mut left_matched: std::collections::HashSet<usize> =
-                    std::collections::HashSet::new();
-                let mut right_matched: std::collections::HashSet<usize> =
-                    std::collections::HashSet::new();
+                // #5394: `matched` 带上出处 (left_idx, right_idx)。
+                // 之所以要带：ON 条件里**除了**连接键还有别的谓词时（如
+                // TPC-H Q13 的 `AND o_comment NOT LIKE '%special%requests%'`），
+                // 「键相同」不等于「满足 ON」—— 被 ON 过滤掉的那一对**不能**
+                // 再算作匹配，否则左表行既没有自己的行、也不会被补 NULL，
+                // 于是**整行消失**（标准 SQL 要求左表行必须出现，
+                // 匹配不上就补 NULL）。
+                let mut matched: Vec<(usize, usize, Vec<Value>)> = Vec::new();
 
                 // Match left rows to right
                 for (li, left_row) in left_rows.iter().enumerate() {
@@ -5516,14 +5587,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         }
                     };
                     if let Some(right_match_rows) = right_hash.get(&key) {
-                        left_matched.insert(li);
                         for (ri, right_row) in right_match_rows {
-                            // TPC-H Q9 fix: O(1) index tracking instead of
-                            // O(right_rows.len()) `right_rows.iter().position(...)`
-                            right_matched.insert(*ri);
                             let mut combined = left_row.clone();
                             combined.extend((*right_row).clone());
-                            matched.push(combined);
+                            matched.push((li, *ri, combined));
                         }
                     }
                 }
@@ -5537,7 +5604,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 match &join_clause.on_clause {
                     Expression::Literal(s) if s == "true" => {}
                     _ => {
-                        matched.retain(|row| {
+                        matched.retain(|(_, _, row)| {
                             crate::engine_utils::eval_predicate(
                                 &join_clause.on_clause,
                                 row,
@@ -5547,13 +5614,30 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                 }
 
+                // #5394: 「匹配上了」必须由**存活下来的**行决定。
+                // 此前这两个集合在哈希键匹配时就写入了，于是 ON 过滤之后
+                // 它们仍然声称「这个左表行匹配上了」—— 左表行于是既没有自己的
+                // 结果行、也不会被补 NULL，直接消失。
+                // 现在从存活行反推：某左表行只要还有**任意一个**满足 ON 的配对，
+                // 它就算匹配上了（不必每个配对都满足）。
+                let mut left_matched: std::collections::HashSet<usize> =
+                    std::collections::HashSet::new();
+                let mut right_matched: std::collections::HashSet<usize> =
+                    std::collections::HashSet::new();
+                for (li, ri, _) in &matched {
+                    left_matched.insert(*li);
+                    right_matched.insert(*ri);
+                }
+
                 // For LEFT/RIGHT/FULL, add unmatched rows
                 if matches!(join_type, JoinType::Left | JoinType::Full) {
                     for (li, left_row) in left_rows.iter().enumerate() {
                         if !left_matched.contains(&li) {
                             let mut combined = left_row.clone();
                             combined.extend(vec![Value::Null; right_col_count]);
-                            matched.push(combined);
+                            // 补 NULL 的左表行没有对应的右表行 —— 用
+                            // `usize::MAX` 作为「无出处」的哨兵。
+                            matched.push((li, usize::MAX, combined));
                         }
                     }
                 }
@@ -5563,12 +5647,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         if !right_matched.contains(&ri) {
                             let mut combined = vec![Value::Null; left_col_count];
                             combined.extend(right_row.clone());
-                            matched.push(combined);
+                            matched.push((usize::MAX, ri, combined));
                         }
                     }
                 }
 
-                matched
+                matched.into_iter().map(|(_, _, row)| row).collect()
             }
             JoinType::Cross => {
                 let mut results = Vec::new();
@@ -5806,11 +5890,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 match (lk, rk) {
                     (JoinKey::Left(li), JoinKey::Right(ri)) => Ok(JoinKey::Pair(li, ri)),
                     (JoinKey::Right(ri), JoinKey::Left(li)) => Ok(JoinKey::Pair(li, ri)),
+                    // #5361: `ON l.id = r.id + 1` —— 一侧是**表达式**而不是裸列。
+                    // 表达式没法当哈希键，但这条 ON 谓词**完全合法** ⇒ 退化成
+                    // 笛卡尔积 + ON 后置过滤（与 non-equi 的处理方式一致），
+                    // 而不是把整条查询拒掉。
+                    (JoinKey::All, _) | (_, JoinKey::All) => Ok(JoinKey::All),
                     _ => Err(SqlError::ExecutionError(
                         "Join condition must reference one column from each side".to_string(),
                     )),
                 }
             }
+            // #5361: 函数调用（`ON date(a.d) = b.d`）同样无法当哈希键，
+            // 但谓词是合法的 ⇒ 交给 ON 后置过滤去求值。
+            Expression::FunctionCall(_, _) => Ok(JoinKey::All),
             _ => Err(SqlError::ExecutionError(
                 "Unsupported join condition expression".to_string(),
             )),

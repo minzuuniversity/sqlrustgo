@@ -1,0 +1,10 @@
+
+running 5 tests
+test left_join_against_an_empty_right_table_pads_every_left_row ... ok
+test left_join_without_any_filter_does_not_duplicate_rows ... ok
+test left_join_with_a_passing_on_clause_is_unchanged ... ok
+test left_join_keeps_rows_whose_matches_are_all_filtered_by_the_on_clause ... ok
+test left_join_count_aggregates_the_filtered_customer_as_zero ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

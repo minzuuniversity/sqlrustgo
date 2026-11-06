@@ -1,3 +1,4 @@
+// storage-semantics: issue-5009-mvcc-list-databases-test
 //! #5009 / #5015 regression: `MvccStorage::list_databases` must forward
 //! to the inner engine, and the wire path must be able to see it.
 //!

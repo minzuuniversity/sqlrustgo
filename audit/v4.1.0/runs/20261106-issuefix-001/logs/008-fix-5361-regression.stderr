@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running tests/integration/sql/join_expression_on_5361.rs (target/debug/deps/join_expression_on_5361-25d2f8f9ff5cd7a9)

@@ -1,0 +1,355 @@
+schema_version: 1
+run_id: 20261105-ho2-007
+source_agent: mcode-macmini
+frozen_commit: afbe16e8e7be6f08e20408b474260ae44ec8e3b5
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: ho2-kanban-consistency
+  name: 看板 SSOT 与渲染一致 + 状态计数断言（48：9/17/13/9）
+  cmd: bash -c 'python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+    | tail -1 && grep -q "未开始 9 / 待复核 17 / 完成 13 / 阻塞 9 / 合计 48" docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md'
+  cwd: .
+  timeout_sec: 300
+- id: ho2-metrics-print
+  name: 度量现值留证（gov_probe metrics 摘要）
+  cmd: bash -c 'python3 scripts/gate/gov_probe.py metrics | tail -1 | head -c 320; echo'
+  cwd: .
+  timeout_sec: 300
+- id: ho2-metrics-baseline
+  name: 度量基线断言：分母 168 / claims_hits 1144 / docs410 80（新增 HO2 规则文档后 79 变 80）
+  cmd: 'python3 scripts/gate/gov_probe.py metrics | tail -1 > /tmp/ho2-metrics.json && grep -q ''"check_n":
+    168'' /tmp/ho2-metrics.json && grep -q ''"claims_hits": 1144'' /tmp/ho2-metrics.json && grep -q ''"docs410":
+    80'' /tmp/ho2-metrics.json && echo METRICS-BASELINE-OK'
+  cwd: .
+  timeout_sec: 300
+- id: ho2-generator-selftest
+  name: 看板生成器自检（六臂 A1-A6）
+  cmd: bash -c 'python3 audit/v4.1.0/gen_kanban_issue.py --selftest | tail -1 | grep -qx "selftest arms=6
+    failures=0"'
+  cwd: .
+  timeout_sec: 300
+- id: ho2-generator-mutations
+  name: 看板生成器反向变异（五臂，撤掉判据必变绿）
+  cmd: bash -c 'python3 audit/v4.1.0/gen_kanban_issue_mutations.py | tail -1 | grep -qx "arms=5 flipped_red=5
+    stayed_green=0 drift=0"'
+  cwd: .
+  timeout_sec: 600
+- id: ho2-appendix-guard-missing-file
+  name: 生成器 --appendix 缺文件必须 fail-closed（非零退出）
+  cmd: bash -c 'python3 audit/v4.1.0/gen_kanban_issue.py --appendix does-not-exist.md > /tmp/ho2-guard.txt
+    2>&1; rc=$?; echo rc=$rc; cat /tmp/ho2-guard.txt | head -2; test $rc -ne 0'
+  cwd: .
+  timeout_sec: 300
+- id: ho2-appendix-check-live-green
+  name: 发布完整性判据（线上
+  cmd: bash -c 'python3 audit/v4.1.0/board_appendix_check.py'
+  cwd: .
+  timeout_sec: 300
+- id: ho2-appendix-mutations-6arms
+  name: 发布完整性反向变异六臂（含末尾改动臂 + 交接 ISSUE 过期臂）
+  cmd: bash -c 'python3 audit/v4.1.0/board_appendix_check_mutations.py | tail -1 | grep -qx "arms=6 discriminating=6
+    not_discriminating=0 drift=0"'
+  cwd: .
+  timeout_sec: 900
+- id: ho2-board-issue-live-ho3
+  name: 线上看板
+  cmd: python3 -c 'import sys;sys.path.insert(0,"audit/v4.1.0");import board_appendix_check as b;body=b.get_body(b.BASE,"5592");print("board_len=%d
+    HO-3=%s rows48=%s" % (len(body),"HO-3" in body,"48 行" in body));sys.exit(0 if ("HO-3" in body and
+    "48 行" in body) else 1)'
+  cwd: .
+  timeout_sec: 300
+- id: ho2-old-fixture-worktree-add
+  name: 建 39fa9887ff 的 scratch 检出（复现旧夹具用的判据）
+  cmd: git worktree add --detach /private/tmp/ho2-old 39fa9887ff
+  cwd: .
+  timeout_sec: 300
+- id: ho2-old-fixture-regression-4of5
+  name: 在 39fa9887ff 上重跑旧 harness ⇒ 只有 4/5，m3 显示 NOT-DISC（夹具写死 17905，真实 18818）
+  cmd: cd /private/tmp/ho2-old && python3 audit/v4.1.0/board_appendix_check_mutations.py > /tmp/ho2-old-mut.log
+    2>&1; rc=$?; tail -4 /tmp/ho2-old-mut.log; if [ $rc -eq 1 ] && grep -q "NOT-DISC m3-byte-metric-drift"
+    /tmp/ho2-old-mut.log && grep -qx "arms=5 discriminating=4 not_discriminating=1 drift=0" /tmp/ho2-old-mut.log;
+    then echo OLD-FIXTURE-REGRESSION-CONFIRMED; else echo REGRESSION-NOT-REPRODUCED; exit 1; fi
+  cwd: .
+  timeout_sec: 900
+- id: ho2-old-fixture-worktree-remove
+  name: 回收 39fa9887ff 的 scratch 检出
+  cmd: git worktree remove --force /private/tmp/ho2-old
+  cwd: .
+  timeout_sec: 300
+- id: ho2-new-docs-claims-clean
+  name: 本轮新增文档不得出现 PASS / 全绿 / ✅（docs/releases/v4.1.0 是 claims 扫描区）
+  cmd: grep -Ec "PASS|全绿|✅" docs/releases/v4.1.0/HO2_APPENDIX_RULES_2026-11-05.md docs/knowledge-loop/handoffs/HANDOFF_2026-11-05_4.1.0_OMP_ONBOARDING.md
+    | grep -v ":0$" | wc -l | grep -qx 0 && echo CLAIMS-CLEAN
+  cwd: .
+  timeout_sec: 300
+- id: ho2-label-census-live
+  name: 标签三维 live 复查（open_total=112，per_dim 全 0，findings=0）
+  cmd: 'python3 audit/v4.1.0/issue_labels.py check --input live --ledger docs/releases/v4.1.0/ISSUE_LABEL_LEDGER_v4.1.0.jsonl
+    > /tmp/ho2-labels.json; rc=$?; tail -1 /tmp/ho2-labels.json; if [ $rc -eq 0 ] && grep -q ''"findings":
+    0'' /tmp/ho2-labels.json && grep -q ''"unledgered": 0'' /tmp/ho2-labels.json; then echo LABEL-CENSUS-OK;
+    else echo LABEL-CENSUS-NOT-AS-CLAIMED; exit 1; fi'
+  cwd: .
+  timeout_sec: 600
+- id: ho2-gate-registry-check
+  name: 门禁注册表核对（分母 168 未变）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: ho2-audit-gate-selfref-this-line
+  name: 证据门禁在本线实跑（FAIL 走 stderr；在飞 run 会被自指多算 1 条 = IL-6 治的问题）
+  cmd: bash scripts/gate/check_audit_manifest.sh > /tmp/ho2-gate.out 2>/tmp/ho2-gate.err; rc=$?; reds=$(grep
+    -c "^FAIL" /tmp/ho2-gate.err); echo "rc=$rc reds=$reds"; grep "^FAIL" /tmp/ho2-gate.err | head -8;
+    grep -c "20261105-ho2-007" /tmp/ho2-gate.err | sed "s/^/selfref_hits=/"; if [ $rc -ne 0 ] && [ $reds
+    -ge 7 ]; then echo AUDIT-GATE-RED-AS-EXPECTED; else echo AUDIT-GATE-NOT-AS-EXPECTED; exit 1; fi
+  cwd: .
+  timeout_sec: 900
+- id: ho2-divergence-evidence
+  name: 两条线分叉证据（merge-base c1a5b0ba9d；同名 run 两份 manifest 的两个 evidence_hash 都在）
+  cmd: git merge-base 8db1a61ceb 7079b83238 | grep -q "^c1a5b0ba9d" && echo MERGE-BASE-OK && git show
+    8db1a61ceb:audit/v4.1.0/runs/20261105-lb1-006/manifest.yaml | grep -m1 evidence_hash && git show 7079b83238:audit/v4.1.0/runs/20261105-lb1-006/manifest.yaml
+    | grep -m1 evidence_hash && git show 8db1a61ceb:audit/v4.1.0/runs/20261105-lb1-006/manifest.yaml |
+    grep -q 74a3d0c5 && git show 7079b83238:audit/v4.1.0/runs/20261105-lb1-006/manifest.yaml | grep -q
+    9ec3c10d && echo DIVERGENCE-EVIDENCE-OK
+  cwd: .
+  timeout_sec: 300
+- id: ho2-il6-worktree-add
+  name: 建 omp 线 tip（7079b83238）的 scratch 检出
+  cmd: git worktree add --detach /private/tmp/ho2-il6v 7079b83238
+  cwd: .
+  timeout_sec: 300
+- id: ho2-il6-probe-in-omp-tree
+  name: 在 omp 树里独立跑它的 IL-6 自指探针（checks=4 ok=4）
+  cmd: cd /private/tmp/ho2-il6v && python3 audit/v4.1.0/il6_selfref_probe.py | tail -1 | grep -qx "checks=4
+    ok=4 not_ok=0 drift=0" && echo IL6-PROBE-OK
+  cwd: .
+  timeout_sec: 600
+- id: ho2-il6-gate-in-omp-tree
+  name: 同一证据门禁在 omp 树里 FAIL 恰为 7 条（与本线的自指红数形成判别对比）
+  cmd: cd /private/tmp/ho2-il6v && bash scripts/gate/check_audit_manifest.sh > /tmp/ho2-il6.out 2>/tmp/ho2-il6.err;
+    rc=$?; reds=$(grep -c "^FAIL" /tmp/ho2-il6.err); echo "rc=$rc reds=$reds"; if [ $rc -ne 0 ] && [ $reds
+    -eq 7 ]; then echo IL6-GATE-7-FAILS-AS-CLAIMED; else echo IL6-GATE-MISMATCH; exit 1; fi
+  cwd: .
+  timeout_sec: 900
+- id: ho2-il6-worktree-remove
+  name: 回收 omp 线 scratch 检出
+  cmd: git worktree remove --force /private/tmp/ho2-il6v
+  cwd: .
+  timeout_sec: 300
+- id: ho2-worktree-clean-after
+  name: 收尾：不得残留 /private/tmp 下的 scratch 检出
+  cmd: git worktree list; if git worktree list | grep -q "/private/tmp"; then echo LEFTOVER-WORKTREES;
+    exit 1; else echo WORKTREE-CLEAN-OK; fi
+  cwd: .
+  timeout_sec: 300
+results:
+- id: ho2-kanban-consistency
+  started_at: '2026-11-05T13:24:11Z'
+  finished_at: '2026-11-05T13:24:11Z'
+  exit_code: 0
+  stdout_sha256: 4cf8403962fe9d7c2af16e24d9fcc7f1588321730fbff786242ec2a36be60788
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-ho2-kanban-consistency.stdout
+  stderr_path: logs/001-ho2-kanban-consistency.stderr
+- id: ho2-metrics-print
+  started_at: '2026-11-05T13:24:11Z'
+  finished_at: '2026-11-05T13:24:11Z'
+  exit_code: 0
+  stdout_sha256: 92354708a3cf1eff5adf22e68f7f8ce678fb4274d4e12ffdb0fc344c16f436e7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-ho2-metrics-print.stdout
+  stderr_path: logs/002-ho2-metrics-print.stderr
+- id: ho2-metrics-baseline
+  started_at: '2026-11-05T13:24:11Z'
+  finished_at: '2026-11-05T13:24:11Z'
+  exit_code: 0
+  stdout_sha256: 849f09295a71f663cfa587771ae59e2538dafda05b1fb044c625bf29b47d235c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ho2-metrics-baseline.stdout
+  stderr_path: logs/003-ho2-metrics-baseline.stderr
+- id: ho2-generator-selftest
+  started_at: '2026-11-05T13:24:11Z'
+  finished_at: '2026-11-05T13:24:12Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-ho2-generator-selftest.stdout
+  stderr_path: logs/004-ho2-generator-selftest.stderr
+- id: ho2-generator-mutations
+  started_at: '2026-11-05T13:24:12Z'
+  finished_at: '2026-11-05T13:24:14Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-ho2-generator-mutations.stdout
+  stderr_path: logs/005-ho2-generator-mutations.stderr
+- id: ho2-appendix-guard-missing-file
+  started_at: '2026-11-05T13:24:14Z'
+  finished_at: '2026-11-05T13:24:14Z'
+  exit_code: 0
+  stdout_sha256: fcbc120c9054ec648328fcbfd1159ce4052fa7be71a739de7a0587a183d84544
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-ho2-appendix-guard-missing-file.stdout
+  stderr_path: logs/006-ho2-appendix-guard-missing-file.stderr
+- id: ho2-appendix-check-live-green
+  started_at: '2026-11-05T13:24:14Z'
+  finished_at: '2026-11-05T13:24:14Z'
+  exit_code: 0
+  stdout_sha256: 5a34de0513f61cdd09049e0f159bb019eef47c5d5b0edb2154467ef4d359af9c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-ho2-appendix-check-live-green.stdout
+  stderr_path: logs/007-ho2-appendix-check-live-green.stderr
+- id: ho2-appendix-mutations-6arms
+  started_at: '2026-11-05T13:24:14Z'
+  finished_at: '2026-11-05T13:24:18Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-ho2-appendix-mutations-6arms.stdout
+  stderr_path: logs/008-ho2-appendix-mutations-6arms.stderr
+- id: ho2-board-issue-live-ho3
+  started_at: '2026-11-05T13:24:18Z'
+  finished_at: '2026-11-05T13:24:18Z'
+  exit_code: 0
+  stdout_sha256: 215a1ff6382894130d72702db6e5b43fb199016cc4436726f60f4bb3d88065b0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-ho2-board-issue-live-ho3.stdout
+  stderr_path: logs/009-ho2-board-issue-live-ho3.stderr
+- id: ho2-old-fixture-worktree-add
+  started_at: '2026-11-05T13:24:18Z'
+  finished_at: '2026-11-05T13:24:19Z'
+  exit_code: 0
+  stdout_sha256: 9e402447c5d74615b70ba2f2df5c36a628fded261b8a56894f3962ae014e30db
+  stderr_sha256: fb7d09855eedf44c81240e63938037ba4b53a00a28462c094c46e5a899e67767
+  stdout_path: logs/010-ho2-old-fixture-worktree-add.stdout
+  stderr_path: logs/010-ho2-old-fixture-worktree-add.stderr
+- id: ho2-old-fixture-regression-4of5
+  started_at: '2026-11-05T13:24:19Z'
+  finished_at: '2026-11-05T13:24:22Z'
+  exit_code: 0
+  stdout_sha256: ecf59f2638c63488d0ec2aee034815500fcf98ed128691f3d99301aec54f98cb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-ho2-old-fixture-regression-4of5.stdout
+  stderr_path: logs/011-ho2-old-fixture-regression-4of5.stderr
+- id: ho2-old-fixture-worktree-remove
+  started_at: '2026-11-05T13:24:22Z'
+  finished_at: '2026-11-05T13:24:23Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-ho2-old-fixture-worktree-remove.stdout
+  stderr_path: logs/012-ho2-old-fixture-worktree-remove.stderr
+- id: ho2-new-docs-claims-clean
+  started_at: '2026-11-05T13:24:23Z'
+  finished_at: '2026-11-05T13:24:23Z'
+  exit_code: 1
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-ho2-new-docs-claims-clean.stdout
+  stderr_path: logs/013-ho2-new-docs-claims-clean.stderr
+- id: ho2-label-census-live
+  started_at: '2026-11-05T13:24:23Z'
+  finished_at: '2026-11-05T13:24:24Z'
+  exit_code: 0
+  stdout_sha256: 8c935389bb464a5385c95c45be0243ae2530c488c6a3e9b571c6176d447a44dd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-ho2-label-census-live.stdout
+  stderr_path: logs/014-ho2-label-census-live.stderr
+- id: ho2-gate-registry-check
+  started_at: '2026-11-05T13:24:24Z'
+  finished_at: '2026-11-05T13:24:24Z'
+  exit_code: 0
+  stdout_sha256: 4a47d60c3dfb73ccf7761477e76c19265dfc8e06557bf9b37116cf20c8221614
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-ho2-gate-registry-check.stdout
+  stderr_path: logs/015-ho2-gate-registry-check.stderr
+- id: ho2-audit-gate-selfref-this-line
+  started_at: '2026-11-05T13:24:24Z'
+  finished_at: '2026-11-05T13:24:26Z'
+  exit_code: 0
+  stdout_sha256: 2a55c2e6429ee01d93ecc23795c1371d47097f257086703e10521c98e5da366c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-ho2-audit-gate-selfref-this-line.stdout
+  stderr_path: logs/016-ho2-audit-gate-selfref-this-line.stderr
+- id: ho2-divergence-evidence
+  started_at: '2026-11-05T13:24:26Z'
+  finished_at: '2026-11-05T13:24:26Z'
+  exit_code: 0
+  stdout_sha256: 26373796ffcee1d1e30d7f01bc8594a1b13dd97884dbdcd1089cc75a1f517704
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/017-ho2-divergence-evidence.stdout
+  stderr_path: logs/017-ho2-divergence-evidence.stderr
+- id: ho2-il6-worktree-add
+  started_at: '2026-11-05T13:24:26Z'
+  finished_at: '2026-11-05T13:24:26Z'
+  exit_code: 0
+  stdout_sha256: 9ab2e57cd0bfe69ea42faa387150744223bf0747af5b5724c66edb6267da91da
+  stderr_sha256: 21073fd9b33c9094aab9c19e64155edb081b079627ae42c0a490718c23111edd
+  stdout_path: logs/018-ho2-il6-worktree-add.stdout
+  stderr_path: logs/018-ho2-il6-worktree-add.stderr
+- id: ho2-il6-probe-in-omp-tree
+  started_at: '2026-11-05T13:24:26Z'
+  finished_at: '2026-11-05T13:24:34Z'
+  exit_code: 0
+  stdout_sha256: 790f73fc33dabc4a52b483ce6460fbc2fe499719a7ef25c6b7c6b731e585eb71
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/019-ho2-il6-probe-in-omp-tree.stdout
+  stderr_path: logs/019-ho2-il6-probe-in-omp-tree.stderr
+- id: ho2-il6-gate-in-omp-tree
+  started_at: '2026-11-05T13:24:34Z'
+  finished_at: '2026-11-05T13:24:35Z'
+  exit_code: 0
+  stdout_sha256: 320d2d95f937d24b06d45ade3a69e663e1ae7571eb0dc1d4017d5343760ddd9b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/020-ho2-il6-gate-in-omp-tree.stdout
+  stderr_path: logs/020-ho2-il6-gate-in-omp-tree.stderr
+- id: ho2-il6-worktree-remove
+  started_at: '2026-11-05T13:24:35Z'
+  finished_at: '2026-11-05T13:24:35Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/021-ho2-il6-worktree-remove.stdout
+  stderr_path: logs/021-ho2-il6-worktree-remove.stderr
+- id: ho2-worktree-clean-after
+  started_at: '2026-11-05T13:24:35Z'
+  finished_at: '2026-11-05T13:24:35Z'
+  exit_code: 0
+  stdout_sha256: b785d7304e1cc7b9ad3c979b768bfcc816f14ca741f948500bc4364830e79ef5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/022-ho2-worktree-clean-after.stdout
+  stderr_path: logs/022-ho2-worktree-clean-after.stderr
+notes:
+- |
+  本 run 共 22 条命令，21 条 exit 0、1 条 exit 1（ho2-new-docs-claims-clean，见第 7 条）。本 run 不含 ci_gate.sh、不含 168 道门禁全量实跑、不含 cargo test，不构成任何门禁通过声明。
+- |
+  HO-3 反向变异（log 008）arms=6 discriminating=6 not_discriminating=0 drift=0，六臂全部翻红；harness 另有三条护栏（判据锚点自动定位否则 exit 3、注入未改任何字节即 MUTATION-NOOP 即 exit 3、单个夹具触发多条判据即 exit 3）。变异只作用于临时目录副本，仓内文件未改。
+- |
+  旧夹具回归（log 011，把 39fa9887ff 挂到 /private/tmp/ho2-old 后重跑）arms=5 discriminating=4 not_discriminating=1，m3-byte-metric-drift 判为 NOT-DISC。⇒ 上一轮写进 39fa9887ff 提交信息的「arms=5 discriminating=5」在该提交上不可复现，真值是 4/5。根因是夹具按 17905 字节写死 replace，而 39fa9887ff 上交接文件实测 18818 字节，replace 未命中，缺陷从未注入。
+- |
+  附录核对（log 007）findings=0，口径为逐字相等，src_bytes 20643、strip 后 injected_bytes 20642、appendix_body_len 13357、src_sha256 0f3f0b61c7bd96fc11e236c087db47a51b2ad6db05d5b3b04f2ef96f6c77bdba。log 009 从线上 ISSUE 取回 #5592 正文 36023 字节，含 HO-3 行且含「48 行」。
+- |
+  分母未动（log 015）gate_registry check_n=168 catalog_rows=168 fails=0；本 run 未新增、删除或放宽任何门禁，新工具只放在 audit/v4.1.0/ 且不命名 check_*。
+- |
+  IL-6 自指现场证据（log 016）scripts/gate/check_audit_manifest.sh 在本线 rc=1 reds=8，其中 1 条是本 run 自己（selfref_hits=1）；同一门禁在 omp 线 7079b83238 的临时 worktree 内红 7 条（log 020，probe 只在 omp 线存在，见 log 018-019，worktree 已在 log 021 移除、log 022 确认干净）。这些红是「run 在飞时被扫到」的结果，不是证据被篡改。
+- |
+  披露第 10 条（判据范围写错，未污染仓内事实）ho2-new-docs-claims-clean 的 grep 把 docs/knowledge-loop/handoffs/ 纳入扫描，而 gov_probe.claims_hits 的真实扫描范围是 docs/releases/v4.1.0/*.md（scripts/gate/gov_probe.py:159）。按正确范围实测 HO2_APPENDIX_RULES_2026-11-05.md 命中 0；交接文档命中 2 行，均为规则文本自身引用被禁字面量（该文件第 4 行已声明不作功能声称来源）。results 段保留 exit 1，未改写、未重跑洗绿。
+- |
+  断言型命令的取证弱点（log 004/005/008）stdout 为空属预期，判定只看退出码（这些臂的末行由 tail -1 管道进 grep -qx）。因此 log 本身不含 arms 数值，复现需要重跑对应脚本；这属于证据形态偏弱，已计入待复核而不是完成。
+- |
+  HO-2 分叉证据（log 017）merge-base(8db1a61ceb, 7079b83238)=c1a5b0ba9d，两线互不包含；同名 run 20261105-lb1-006 的 manifest 在两线 evidence_hash 分别为 sha256:74a3d0c5368ff856640055daedad32cc193888570df69c76bb29a5d656bb3e78（mcode 线）与 sha256:9ec3c10d5253be81030b1d008e3084d348e152d00dadd8ffa72814bb7b198fed（omp 线）。冲突保留给人裁决，未自行合并、未 force push。
+- |
+  本 run 全部证据来自本机单血统，CI 侧第二血统仍被 IL-9（runner-03 缺 sqlrustgo-runner:v1）挡住，因此 HO-3 在看板记 待复核 而不是完成。
+- |
+  本 run 目录入库后 gov_probe 会多扫到 1 份 manifest（audit_manifests 与 audit_manifests_runs 各加 1，具体数值以入库后复算为准，不在本 notes 里预先声称）。看板仍是 48 行，未新增任务行。
+evidence_hash: sha256:a471e09a45baf60af2c91f7c2bf90857589d0780d11c3a492a2c217393b2a224
+completed_at: '2026-11-05T13:24:35Z'

@@ -51,6 +51,9 @@ CAN_FAIL_RE = re.compile(
 SYS_EXIT_RE = re.compile(r"sys\.exit\(\s*[1-9]")
 RETURN_ONE_RE = re.compile(r"return\s+1\b")
 SWALLOW_TOKENS = ("|| true", "|| :", "||  true")
+# 文档「声称」判据的唯一实现（P1-5 分级器 audit/v4.1.0/evidence_inventory.py 从这里引用）。
+# 历史上同一判据在多处各写一份（见 #5595 GS-1），改一处就会漏另一处，所以钉在这里。
+CLAIM_RE = re.compile(r"PASS|全绿|✅")
 
 
 def _src_without_comments(path: str) -> str:
@@ -157,7 +160,7 @@ def cmd_metrics(_argv: list[str]) -> int:
                      bool(NEG_FIXTURE_RE.search(src))))
 
     docs410 = glob.glob("docs/releases/v4.1.0/*.md")
-    claim_re = re.compile(r"PASS|全绿|✅")
+    claim_re = CLAIM_RE  # 判据 SSOT：分级器 evidence_inventory.py 共用同一条，不另写第二份（GS-1 #5595）
 
     yield_row({
         "kind": "metrics",

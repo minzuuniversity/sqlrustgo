@@ -1,0 +1,3 @@
+   Compiling sqlrustgo v4.1.0 (/private/tmp/wt-integ)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.47s
+     Running tests/integration/dml/insert_column_validation_5409.rs (target/debug/deps/insert_column_validation_5409-a11b6a9f3591a2da)

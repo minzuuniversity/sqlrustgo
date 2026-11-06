@@ -1,0 +1,4 @@
+PASS: 80/80 comparable archived evidence file(s) match this run byte-for-byte.
+STATUS: NOT RUN for 20 archived file(s) - the engine that produces them is
+RESULT: PASS (with NOT RUN disclosure) - the verified subset is reproducible.
+exit_code=0

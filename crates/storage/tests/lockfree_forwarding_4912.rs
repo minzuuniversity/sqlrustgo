@@ -1,3 +1,4 @@
+// storage-semantics: lockfree-forwarding-4912
 //! #4912 / v4.1.0-perf — lock-free transaction path forwarding regression.
 //!
 //! `WalStorage` implements `begin_transaction_lockfree` /

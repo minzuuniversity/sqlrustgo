@@ -1,0 +1,18 @@
+{
+ "seat": "flash-next-252",
+ "family": "qwen-strata",
+ "lineage": "qwen",
+ "endpoint": "http://192.168.0.252:8001/v1/chat/completions",
+ "model": "qwen3.8-flash-next-iq3_s",
+ "requested_at": "2026-11-05T16:10:35Z",
+ "prompt_sha256": "sha256:f77c82400a00d23b8333ed9dc0390d1acbeb09be88a7ae142ab6771548948489",
+ "max_tokens": 600,
+ "ok": true,
+ "content": "反向夹具补全与门禁重构被低估，因需独立设计变异逻辑而非仅改配置。阻塞项解除依赖外部权限审批，非纯编码工作。\n估: 140-210 人日 / 8-12 周",
+ "reasoning_chars": 0,
+ "finish_reason": "stop",
+ "completion_tokens": 57,
+ "prompt_tokens": 374,
+ "latency_s": 7.27,
+ "output_sha256": "sha256:e4dca6a845faf01defab8b1430d33b44c97e583c01468a755faa890582be234a"
+}

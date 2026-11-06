@@ -1,0 +1,416 @@
+schema_version: 1
+run_id: 20261105-pendingsweep-002
+source_agent: omp-macmini
+frozen_commit: 971bc1272c9fbbb842289c639be504cb57f9b01d
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: adjudicate-pending-claims
+  name: 双血统裁定：8 条「已实现但只到待复核」的声称（主证据 = 归档 run 原始输出）
+  cwd: .
+  timeout_sec: 1800
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/expert_ladder.py adjudicate --id pending-claims-sweep --question audit/v4.1.0/adjudications/pending-claims-sweep.md
+    --seat flash-next-252 --seat chatgpt-web --required-lineages 2 --machine-evidence audit/v4.1.0/adjudications/machine-evidence.jsonl
+    --no-evidence-dir --max-tokens 1200 >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    echo "exit_code=$rc"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || s=1
+
+    grep -q ''"aggregate"'' "$f" || s=1
+
+    grep -q ''verdicts'' "$f" || s=1
+
+    grep -q ''pending-claims-sweep'' "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: ex6-failure-accounting
+  name: EX-6 标定账把「超时」与「答错」分开记（四臂，含反向变异）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/ex6_failure_accounting.py >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: prod-storage-gate
+  name: 生产存储门禁 R1–R6 全成立
+  cwd: .
+  timeout_sec: 900
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_correctness_tests_production_storage.sh >"$f" 2>&1
+
+    rc=$?
+
+    grep -E "=== Result" "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "FAIL=0" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: audit-manifest-baseline
+  name: A01 证据门禁仍是那 7 条历史红（未放宽）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_audit_manifest.sh >"$f" 2>&1
+
+    rc=$?
+
+    n=$(grep -c "^FAIL:" "$f")
+
+    echo "exit_code=$rc fail_count=$n"
+
+    s=0
+
+    [ "$rc" -eq 1 ] || s=1
+
+    [ "$n" -eq 7 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: honesty-check
+  name: P1-4 门禁 effect 声明与夹具账一致
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/honesty.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: storage-semantics-check
+  name: IL-11 存储语义声称清单一致
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/storage_semantics_claims.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: claims-inventory-check
+  name: P1-5 声明绑定判据：基线之上未绑定的新声明必须为 0
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/evidence_inventory.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: doc-facts-check
+  name: P2-1 文档事实面：索引逐字节一致 + 两个既有门禁成立
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/doc_facts.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: dir-policy-check
+  name: P2-2 目录策略：新增违规为 0
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/directory_policy.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gate-registry-check
+  name: 门禁登记表不得漂移
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/gate_registry.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: kanban-rows
+  name: 看板 SSOT 与渲染必须一致（54 行）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "54 rows" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gov-metrics
+  name: 治理度量快照（check_n 必须仍为 168）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    "$PY" scripts/gate/gov_probe.py metrics
+
+    '
+results:
+- id: adjudicate-pending-claims
+  started_at: '2026-11-05T19:39:14Z'
+  finished_at: '2026-11-05T19:40:39Z'
+  exit_code: 0
+  stdout_sha256: 8b3f3aa4de5471a2c1dc1a29668b1c3f1da5a68b7f7b1f2f3773db446ee246ce
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-adjudicate-pending-claims.stdout
+  stderr_path: logs/001-adjudicate-pending-claims.stderr
+- id: ex6-failure-accounting
+  started_at: '2026-11-05T19:40:39Z'
+  finished_at: '2026-11-05T19:40:40Z'
+  exit_code: 0
+  stdout_sha256: 2d694c824ddafa7a126e50ee9289de921f81e4c60b7afd0806a1ce01b92c8480
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-ex6-failure-accounting.stdout
+  stderr_path: logs/002-ex6-failure-accounting.stderr
+- id: prod-storage-gate
+  started_at: '2026-11-05T19:40:40Z'
+  finished_at: '2026-11-05T19:40:40Z'
+  exit_code: 0
+  stdout_sha256: a9b08fe06e9e3016533aef7f6a2e426dd22f54591f1805aca6fd3ca5791f6a14
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-prod-storage-gate.stdout
+  stderr_path: logs/003-prod-storage-gate.stderr
+- id: audit-manifest-baseline
+  started_at: '2026-11-05T19:40:40Z'
+  finished_at: '2026-11-05T19:40:42Z'
+  exit_code: 0
+  stdout_sha256: f99c8e87417690682e37104b3234987197d744f53acf11a01229ac04c7f71d5e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-audit-manifest-baseline.stdout
+  stderr_path: logs/004-audit-manifest-baseline.stderr
+- id: honesty-check
+  started_at: '2026-11-05T19:40:42Z'
+  finished_at: '2026-11-05T19:40:42Z'
+  exit_code: 0
+  stdout_sha256: 138d8f3efe9a5f23955998726093f785cd8bd1486aef6b600ec6860abb3d14af
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-honesty-check.stdout
+  stderr_path: logs/005-honesty-check.stderr
+- id: storage-semantics-check
+  started_at: '2026-11-05T19:40:42Z'
+  finished_at: '2026-11-05T19:40:42Z'
+  exit_code: 0
+  stdout_sha256: b8274f265a612325f3c36fba22a595f891492868357e9203f783426ab5b665d5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-storage-semantics-check.stdout
+  stderr_path: logs/006-storage-semantics-check.stderr
+- id: claims-inventory-check
+  started_at: '2026-11-05T19:40:42Z'
+  finished_at: '2026-11-05T19:40:42Z'
+  exit_code: 0
+  stdout_sha256: 6983aa0c06f10d6e7e284a2c93b05b881a5d5507918730fc0505b81dbdc502fd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-claims-inventory-check.stdout
+  stderr_path: logs/007-claims-inventory-check.stderr
+- id: doc-facts-check
+  started_at: '2026-11-05T19:40:42Z'
+  finished_at: '2026-11-05T19:40:43Z'
+  exit_code: 0
+  stdout_sha256: f8fee439e83981f0d5bdc255c9167b7ec46e3fcac6928c29cd83f73ce92a1ee7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-doc-facts-check.stdout
+  stderr_path: logs/008-doc-facts-check.stderr
+- id: dir-policy-check
+  started_at: '2026-11-05T19:40:43Z'
+  finished_at: '2026-11-05T19:40:43Z'
+  exit_code: 0
+  stdout_sha256: c8c99242327d7cb65b29d3fd8f657f448bb5d819709b890aff6c423f52aa1595
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-dir-policy-check.stdout
+  stderr_path: logs/009-dir-policy-check.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T19:40:43Z'
+  finished_at: '2026-11-05T19:40:43Z'
+  exit_code: 0
+  stdout_sha256: 1304125a1fdbeab3535a6d78b44af22278f9f2896cc7b7a80afafddd6ed5fad3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gate-registry-check.stdout
+  stderr_path: logs/010-gate-registry-check.stderr
+- id: kanban-rows
+  started_at: '2026-11-05T19:40:43Z'
+  finished_at: '2026-11-05T19:40:43Z'
+  exit_code: 0
+  stdout_sha256: f8dcfddf1d85f36effab50354a0bd55e04f3f519180919e5173afe1d211d2122
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-kanban-rows.stdout
+  stderr_path: logs/011-kanban-rows.stderr
+- id: gov-metrics
+  started_at: '2026-11-05T19:40:43Z'
+  finished_at: '2026-11-05T19:40:43Z'
+  exit_code: 0
+  stdout_sha256: bee6aace56c304f88f73f58ce752e7b69710a6702b1cd9858e76972a000b0195
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-gov-metrics.stdout
+  stderr_path: logs/012-gov-metrics.stderr
+evidence_hash: sha256:a9f6de229deb97d4de0dfff8a40fe5852c58f0331c6b4bdb696bbafa77ba8ee0
+completed_at: '2026-11-05T19:40:43Z'
+notes:
+  purpose: 8 条「已实现但只到待复核」的声称的批量双血统裁定（主证据 = 归档 run 原始输出）+ 判据回归确认
+  commands: 12 条，全部 exit 0
+  key_results:
+    adjudicate_pending_claims: 批量裁定 8 条声称（P1-4/P1-5/P2-1/P2-2/IL-4/IL-6/IL-11/EX-1），主证据是归档 run 的原始输出而非结论摘要。**两条血统都在场**（families=gpt+qwen-strata，lineages=gpt+qwen），**两条都判
+      INCOMPLETE** ⇒ 聚合 INCOMPLETE（规则 R2）。⇒ 这 8 条的第二血统复核**仍未成立**，但性质是「材料不足以让独立血统确认声称」，不是「没跑成」—— 前一次（pendingsweep-001）确实只跑成一条血统（qwen
+      席位 120.01s 超时弃权），根因是调用方 timeout_s 照着探针式短问题定的；按 EX-6 口径把 flash-next-252 120->300、chatgpt-web 240->480
+      后重跑，两条血统都在场。
+    ex6_failure_accounting: EX-6 标定账四臂全过（含反向变异）
+    prod_storage_gate: 生产存储门禁 R1–R6 全成立、FAIL=0
+    audit_manifest_baseline: A01 证据门禁仍是那 7 条历史红（未放宽）
+    honesty_check: P1-4 门禁 effect 声明与夹具账一致
+    storage_semantics_check: IL-11 存储语义声称清单一致（28 条）
+    claims_inventory_check: P1-5：claims_hits=1144 claims_ref=93，新增未绑定声明 0 条
+    doc_facts_check: P2-1：文档索引逐字节一致；接进来的两个既有门禁都成立
+    dir_policy_check: P2-2：新增违规 0 条（存量 149 条按基线记账）
+    gate_registry_check: 门禁登记表不得漂移
+    kanban_rows: 看板 54 行，SSOT 与渲染一致
+    gov_metrics: 治理度量快照；check_n 仍为 168（分母未动）
+  measurement_notes: 裁定命令的 exit_code 是 2（aggregate 非 REAL/FALSE_POSITIVE 时按设计返回 2）——命令封装把**期望**编码进断言（期望
+    INCOMPLETE 就断言 INCOMPLETE 且要求产出可解析的 aggregate 与 verdicts、且 question_id 自检为 pending-claims-sweep），因此命令自身
+    exit 0：run 记录的是「断言是否成立」，不是「裁定结论是什么」。
+  self_reference_note: 本 run 目录自身在执行期间未提交 ⇒ 按 IL-6 的新口径（门禁按已提交树枚举）它不在判定范围内；提交后它会被纳入，历史判据未放宽。
+  known_limitation: 本 run 不含 ci_gate.sh，不构成门禁通过声明。CI 侧第二血统复核被 IL-9（runner-03 缺镜像）挡住。裁定是**软门禁**（AFP §5.1/5.3：模型意见仅供参考，不作为门禁依据）。本次
+    8 条声称的聚合 INCOMPLETE 说明**主证据还不够** —— 要补的是证据，不是再问一遍。

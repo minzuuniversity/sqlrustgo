@@ -1,3 +1,4 @@
+// storage-semantics: file-storage-ddl-column-case-5509
 //! #5509 — the column-level DDL must match a column name
 //! **case-insensitively**, on **every** backend.
 //!

@@ -1,0 +1,271 @@
+schema_version: 1
+run_id: 20261106-issuefix-002
+source_agent: omp-macmini
+frozen_commit: 06d25672c93acd1437d36f3930341ea01ffadbd2
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: fix-5409-regression
+  name: '#5409 INSERT 列名列表校验 —— 未知列名报 1054 且不留行'
+  cmd: cargo test --test insert_column_validation_5409
+  cwd: .
+  timeout_sec: 900
+- id: fix-5527-regression
+  name: '#5527 LOAD DATA 重复键 —— 有键表报 1062，无键表仍追加'
+  cmd: cargo test -p sqlrustgo-mysql-server --test load_data_duplicate_key_5527
+  cwd: .
+  timeout_sec: 900
+- id: fix-5394-regression
+  name: '#5394 LEFT JOIN 的 ON 过滤不得丢弃左表行'
+  cmd: cargo test --test left_join_on_filter_5394
+  cwd: .
+  timeout_sec: 900
+- id: fix-5582-regression
+  name: '#5582 空闲回收器必须能真的 shutdown（生产形态）'
+  cmd: cargo test -p sqlrustgo-mysql-server --lib registry_keeps_a_live
+  cwd: .
+  timeout_sec: 900
+- id: fix-5514-regression
+  name: '#5514 空闲回收器三条既有用例（心跳/回收/0 禁用）'
+  cmd: cargo test -p sqlrustgo-mysql-server --test idle_reaper_heartbeat_5514
+  cwd: .
+  timeout_sec: 900
+- id: fix-5462-5463-regression
+  name: '#5462/#5463 GROUP BY 的名字解析 —— 别名不再是常量、未知标识符不再 panic'
+  cmd: cargo test -p sqlrustgo-mysql-server --test group_by_binder_5462_5463_test
+  cwd: .
+  timeout_sec: 900
+- id: fix-5509-regression
+  name: '#5509 FileStorage 的 DDL 列名大小写不敏感'
+  cmd: cargo test -p sqlrustgo-storage --test file_storage_ddl_column_case_5509
+  cwd: .
+  timeout_sec: 900
+- id: fix-5361-regression
+  name: '#5361 合法的 LEFT JOIN（ON 含表达式）必须被接受，且左表行补 NULL'
+  cmd: cargo test --test join_expression_on_5361
+  cwd: .
+  timeout_sec: 900
+- id: local-infile-existing
+  name: 既有 LOCAL INFILE 用例未回归（#5527 的排空逻辑改了这条路径）
+  cmd: cargo test -p sqlrustgo-mysql-server --test client_local_infile_test
+  cwd: .
+  timeout_sec: 900
+- id: join-existing-suites
+  name: 既有 join 用例未回归（#5394/#5361 改的是同一条 join 路径）
+  cmd: 'cargo test --test multi_join_test && cargo test --test anti_join_main_path_test && cargo test
+    --test v312_73_join_using_clause_test && cargo test --test v312_95_non_equi_join_test && cargo test
+    --test operators_join
+
+    '
+  cwd: .
+  timeout_sec: 1800
+- id: evidence-graph-no-flake
+  name: evidence-graph 的测试库路径必须真正唯一（时钟分辨率不够会撞名）
+  cmd: cargo test -p evidence-graph --lib
+  cwd: .
+  timeout_sec: 900
+- id: tpch-q8-q13-match
+  name: 'TPC-H 层面：#5394 的 Q13 与 #5462 的 Q8 差异必须消失（fixture 与 CI 同一份）'
+  cmd: 'rm -rf /tmp/tpch-fixture-20261106 && python3 scripts/gate/generate_tpch_sf.py --sf 0.01 --seed
+    42 --output /tmp/tpch-fixture-20261106 >/dev/null && TPCH_DATA_DIR=/tmp/tpch-fixture-20261106 cargo
+    test --test tpch_sf01_22_vs_3engines -- --nocapture 2>&1 | tee /tmp/tpch-20261106.out | grep -E "Q8:
+    |Q13: |KNOWN-DIFF" && ! grep -q "KNOWN-DIFF" /tmp/tpch-20261106.out
+
+    '
+  cwd: .
+  timeout_sec: 1800
+- id: known-diff-registry-gate
+  name: 已知差异登记表门禁（两条登记已作废 ⇒ 登记表必须为空且合法）
+  cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  timeout_sec: 300
+- id: secret-scan-gate
+  name: 明文凭据门禁（#5381 的预防措施必须仍然有效）
+  cmd: bash scripts/gate/check_no_hardcoded_secrets.sh
+  cwd: .
+  timeout_sec: 300
+- id: test-count-monotonic-gate
+  name: 测试计数单调门禁（本批新增用例后基线自动上抬）
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 900
+- id: kanban-ledger-check
+  name: 看板 JSONL 与 MD 必须一致
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-check
+  name: 门禁注册表（分母必须仍是 168）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+results:
+- id: fix-5409-regression
+  started_at: '2026-11-05T21:30:58Z'
+  finished_at: '2026-11-05T21:31:01Z'
+  exit_code: 0
+  stdout_sha256: 7aaf2a39895a3295ba70ff11f9fd467a35dc673c561bb98595b355bd2a3202e1
+  stderr_sha256: 80a9ffd0a3c2bda66b20bc5391b1ae4227a37e76615bc685393a291101a534d5
+  stdout_path: logs/001-fix-5409-regression.stdout
+  stderr_path: logs/001-fix-5409-regression.stderr
+- id: fix-5527-regression
+  started_at: '2026-11-05T21:31:01Z'
+  finished_at: '2026-11-05T21:31:02Z'
+  exit_code: 0
+  stdout_sha256: e8e04688f03cb1c885cfa074a27d4b95b7c712c0109573027db77df544298abb
+  stderr_sha256: 6e50cc4411b2a275ce4ec00bf1b86e27508c0d3ffcdce7701c27991f202debbe
+  stdout_path: logs/002-fix-5527-regression.stdout
+  stderr_path: logs/002-fix-5527-regression.stderr
+- id: fix-5394-regression
+  started_at: '2026-11-05T21:31:02Z'
+  finished_at: '2026-11-05T21:31:02Z'
+  exit_code: 0
+  stdout_sha256: 9972d51e77bef085f3427ae75ff6401f6e185269494a170123cb6c84f98fe817
+  stderr_sha256: b60b78ac9f38f74b9a8445449fab10728a493c4e7070fce7f01b58aa787ae673
+  stdout_path: logs/003-fix-5394-regression.stdout
+  stderr_path: logs/003-fix-5394-regression.stderr
+- id: fix-5582-regression
+  started_at: '2026-11-05T21:31:02Z'
+  finished_at: '2026-11-05T21:31:03Z'
+  exit_code: 0
+  stdout_sha256: 3ebb0ba80b1c2a21857f11aafa66820dc7485a494c1236e45e0e205ba99318bb
+  stderr_sha256: fc7103b7b47423cf4a66c5bceea80d8b75a25acd587120fae5680efa22629d25
+  stdout_path: logs/004-fix-5582-regression.stdout
+  stderr_path: logs/004-fix-5582-regression.stderr
+- id: fix-5514-regression
+  started_at: '2026-11-05T21:31:03Z'
+  finished_at: '2026-11-05T21:31:45Z'
+  exit_code: 0
+  stdout_sha256: ec240b4115aeec3a197f30c863eaff82ada8716f578b2a0fa45032cb60709ae7
+  stderr_sha256: 23ebed86c7a85bfb34fe5c3eac67b14eba4ac4edeef8571f81eb43f64f5399b8
+  stdout_path: logs/005-fix-5514-regression.stdout
+  stderr_path: logs/005-fix-5514-regression.stderr
+- id: fix-5462-5463-regression
+  started_at: '2026-11-05T21:31:45Z'
+  finished_at: '2026-11-05T21:31:45Z'
+  exit_code: 0
+  stdout_sha256: 9b1467448a40a07d252cae5af8e8cf96f927051fa226255ef8795e3cf9188f06
+  stderr_sha256: 13cc4ed037649ee7740a619cf6438fe07a25f66d3e8659c1b0f59dfc765495bb
+  stdout_path: logs/006-fix-5462-5463-regression.stdout
+  stderr_path: logs/006-fix-5462-5463-regression.stderr
+- id: fix-5509-regression
+  started_at: '2026-11-05T21:31:45Z'
+  finished_at: '2026-11-05T21:31:45Z'
+  exit_code: 0
+  stdout_sha256: abeecad011d2699441a20275ee1419fbe359cbcd7623aa963ea224d77edf7cbf
+  stderr_sha256: e5946182cc9fe3815fbfaae51234eab0b78db57c765e4cd604695a2ea57bf584
+  stdout_path: logs/007-fix-5509-regression.stdout
+  stderr_path: logs/007-fix-5509-regression.stderr
+- id: fix-5361-regression
+  started_at: '2026-11-05T21:31:45Z'
+  finished_at: '2026-11-05T21:31:46Z'
+  exit_code: 0
+  stdout_sha256: b837945880fdad7e221893021faec4adddad7a58dafc048f4b3306a1630b13ef
+  stderr_sha256: 9e73095b6bfd00fc82c827ecbb8f879d78d691ba8a6820e398ef15e22efc9ea8
+  stdout_path: logs/008-fix-5361-regression.stdout
+  stderr_path: logs/008-fix-5361-regression.stderr
+- id: local-infile-existing
+  started_at: '2026-11-05T21:31:46Z'
+  finished_at: '2026-11-05T21:31:48Z'
+  exit_code: 0
+  stdout_sha256: 7b0943069034d5b35989ef83d1f8d0b6961f47846931fd8da30ccb8b8e68083e
+  stderr_sha256: 48970a94476562199c2325570ba4f8bd95065b5e3d030cf23b6249f39ff554c6
+  stdout_path: logs/009-local-infile-existing.stdout
+  stderr_path: logs/009-local-infile-existing.stderr
+- id: join-existing-suites
+  started_at: '2026-11-05T21:31:48Z'
+  finished_at: '2026-11-05T21:31:56Z'
+  exit_code: 0
+  stdout_sha256: e7fa46e0aad2cd981edac6b4a77dd69e83c7e1a470f28efe523dd13988805a68
+  stderr_sha256: a0a0d79b1372405d52b2437a8200f2a0d09d06dd16805799f1b9e5d920b589a6
+  stdout_path: logs/010-join-existing-suites.stdout
+  stderr_path: logs/010-join-existing-suites.stderr
+- id: evidence-graph-no-flake
+  started_at: '2026-11-05T21:31:56Z'
+  finished_at: '2026-11-05T21:31:57Z'
+  exit_code: 0
+  stdout_sha256: a46d90bafa0951fb62e9bd32e3db4d4396ba66182e7cc64d0478fe92f020834c
+  stderr_sha256: 49da49036611dafcf6ca465ef71625225bd463f4cc5dd2e71045f330402be86c
+  stdout_path: logs/011-evidence-graph-no-flake.stdout
+  stderr_path: logs/011-evidence-graph-no-flake.stderr
+- id: tpch-q8-q13-match
+  started_at: '2026-11-05T21:31:57Z'
+  finished_at: '2026-11-05T21:33:07Z'
+  exit_code: 0
+  stdout_sha256: 278dc5a467d8b595331346ac2005f7c989417f975179bddb4268869ec488f67a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-tpch-q8-q13-match.stdout
+  stderr_path: logs/012-tpch-q8-q13-match.stderr
+- id: known-diff-registry-gate
+  started_at: '2026-11-05T21:33:07Z'
+  finished_at: '2026-11-05T21:33:07Z'
+  exit_code: 0
+  stdout_sha256: 0dda41432c12af118225bcb408ba94574e8210c3243329f375fea5e6fb299408
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-known-diff-registry-gate.stdout
+  stderr_path: logs/013-known-diff-registry-gate.stderr
+- id: secret-scan-gate
+  started_at: '2026-11-05T21:33:07Z'
+  finished_at: '2026-11-05T21:33:09Z'
+  exit_code: 0
+  stdout_sha256: 5943d8625718675a18ee931a38c13fa5c900836b44faf3bb3b73a49ab61bc760
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-secret-scan-gate.stdout
+  stderr_path: logs/014-secret-scan-gate.stderr
+- id: test-count-monotonic-gate
+  started_at: '2026-11-05T21:33:09Z'
+  finished_at: '2026-11-05T21:33:10Z'
+  exit_code: 0
+  stdout_sha256: 9159c49563a4ffb568d8561460b157f9a08827370b477444986f3c64b94d0cc8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-test-count-monotonic-gate.stdout
+  stderr_path: logs/015-test-count-monotonic-gate.stderr
+- id: kanban-ledger-check
+  started_at: '2026-11-05T21:33:10Z'
+  finished_at: '2026-11-05T21:33:10Z'
+  exit_code: 0
+  stdout_sha256: 92d14afa9074ccc739a15a37f1c925730bf65d0a76c7af9434268760e166c107
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-kanban-ledger-check.stdout
+  stderr_path: logs/016-kanban-ledger-check.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T21:33:10Z'
+  finished_at: '2026-11-05T21:33:12Z'
+  exit_code: 0
+  stdout_sha256: 0f1433f3a8358c3e7beea77bb63f6700d6fe5ea13830ea38f1c28ba36ccb723c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/017-gate-registry-check.stdout
+  stderr_path: logs/017-gate-registry-check.stderr
+evidence_hash: sha256:bcea755b8db4a79917dd6dd76f5cd6a1ebe38e19bad69429066cfb8b9c8f6207
+completed_at: '2026-11-05T21:33:12Z'
+notes:
+- 17/17 命令 exit 0（逐条退出码见 results 段）。本 run 不含 ci_gate.sh，不构成门禁通过声明。
+- '本 run 是 20261106-issuefix-001 的**重跑**：同一命令集，被测代码未变（frozen_commit 之间只多了归档与测试计数基线两个 chore 提交）。001 里 gate-registry-check
+  判红的根因是**环境漂移**（Homebrew 把 python3 由 3.14 升到 3.15.2，PyYAML 只在 3.14 的 site-packages），主机装回 pyyaml 6.0.3
+  后本 run 该条 exit 0（test_gate_registry: OK，9 mutations all caught，dead_rows=61 catalog_rows=168）。'
+- '覆盖 10 个 open issue 的回归：#5409 #5527 #5394 #5582 #5514 #5462 #5463 #5509 #5361（另含 #5462 补证）。逐条见 001-008、012
+  的日志。'
+- 'TPC-H：SF=0.01 fixture（seed 42，生成 36s）下 19 条标准查询**全部 MATCH** SQLite oracle。#5394（Q13）与 #5462（Q8）的跨引擎差异已消失。'
+- 'NOT-RUN 不等于通过：Q9/Q18/Q19 按 #5393 登记为 wire-scope 排除（engine_resource_limit / engine_parse_error）；mariadb、postgresql
+  因 profile_mismatch（库里 60000 行 vs fixture 59852 行）记 NOT-RUN。'
+- tests/baseline/tpch_known_differences.json 由 2 条清空为 0 条，check_tpch_known_differences.sh 报 0 violations。空表表示「当前无已知跨引擎差异」，不是「未检查」——
+  上面的 MATCH 计数就是检查本身。
+- '既有 join 用例未回归：multi_join 7 / anti_join 4 / join_using 5 / non_equi 8 / operators_join 21（#5394 与 #5361
+  改的是同一条 join 路径，#5361 还重写了笛卡尔分支的外连接补 NULL 逻辑）。'
+- 已知副作用：test-count-monotonic-gate 这条会**就地改写** tests/baseline/test_count.json，因此 run 结束后工作区会被它改脏。本 run
+  之前该基线已提交（06d25672c9），所以运行期间文件与基线一致，未产生漂移。
+- 分母未变：check_n=168，GATE_CATALOG 168 行，gate_registry 现场重算与登记一致（fails=0）。新增工具（il6_selfref_probe.py、lb1_arm_count_check.py）不取
+  check_* 命名，不入分母。
+- 环境契约缺口未在本批处置：scripts/gate/ 下 17 个脚本 import yaml，但该依赖未在仓库声明（无 requirements.txt，Homebrew 亦无 python-yaml
+  formula）。本 run 只修主机，未改这 17 个门禁脚本 —— 改既有门禁需「改前漏什么/改后多报什么 + 反向变异」证据，不属本批范围。
+- 归档顺序遵循 §5：commit+push → fetch → freeze → scaffold → run（前台执行）→ notes → verify → 只提交 commit.txt 与 runs/<id>
+  → push。

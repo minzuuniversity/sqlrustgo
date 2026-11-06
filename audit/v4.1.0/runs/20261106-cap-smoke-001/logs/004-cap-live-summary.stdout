@@ -1,0 +1,45 @@
+{
+ "kind": "cap_live_summary",
+ "bin": {
+  "server": "target/debug/sqlrustgo-mysql-server",
+  "sha256": "b0900a5a37d9a5a3cd3608a3b8f92a85a5f87c5bfe3b3bc9a17fc5dd2fa6e646",
+  "mysql_client": "/opt/homebrew/bin/mysql"
+ },
+ "expected_rows": 5,
+ "prod_storage": [
+  "file",
+  "every"
+ ],
+ "prod_ddl_errors": 0,
+ "prod_insert_errors": 0,
+ "wal_nonempty": true,
+ "table_files_nonempty": true,
+ "stage_eq_insert_vs_crash": true,
+ "stage_eq_crash_vs_restore": true,
+ "restore_readback_rows": 5,
+ "backup_rc": 0,
+ "backup_rows": 5,
+ "restore_rc": 0,
+ "restore_files_nonempty": true,
+ "null_wire_ambiguous": true,
+ "null_wire_detail": "null_row='NULL' literal_row='NULL'",
+ "null_predicate_ok": true,
+ "null_predicate_detail": "is_null='1' eq_literal_NULL='1'",
+ "prod_findings": [
+  "null_ambiguous_on_wire: SQL NULL 与字面量 'NULL' 在结果集里渲染成同一个 token，客户端无法区分（mysql --batch 下真 NULL 应为 \\N）：null_row='NULL' literal_row='NULL'"
+ ],
+ "prod_verdict": "FAIL",
+ "arm_findings_n": 11,
+ "arm_verdict": "FAIL",
+ "restore_wrote_nothing": false,
+ "discriminator": {
+  "discriminating": true,
+  "why": "换成非生产存储后判据变红（arm=11 > prod=1）",
+  "prod": 1,
+  "arm": 11
+ },
+ "overall": {
+  "verdict": "FAIL",
+  "findings": 12
+ }
+}

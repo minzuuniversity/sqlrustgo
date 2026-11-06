@@ -11,7 +11,7 @@ Two honesty rules baked in (learned 2026-11-05):
 """
 
 # 从看板 SSOT(jsonl) 生成 ISSUE #5592 正文。可重复运行，每次取当期 HEAD/run/度量。
-import json, subprocess, sys, pathlib, urllib.request, urllib.error
+import json, subprocess, sys, pathlib, hashlib, urllib.request, urllib.error
 
 BASE = "http://192.168.0.252:3000/api/v1"
 
@@ -46,7 +46,7 @@ def req(method, path, payload=None, page=0, pagesize=50):
     except Exception:
         return b
 
-REPO = pathlib.Path("/Volumes/workspace/dev/sqlrustgo/.worktrees/410")
+REPO = pathlib.Path(__file__).resolve().parents[2]
 KAN = REPO / "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl"
 RUNS = REPO / "audit/v4.1.0/runs"
 ORDER = ["阻塞", "待复核", "未开始", "完成"]
@@ -61,7 +61,35 @@ def esc(s, n):
     return s[:n] + ("…" if len(s) > n else "")
 
 
-def main(issue_no="5592", metrics_line="（见最近归档 run 的 manifest results 段）", post_to=False):
+def appendix_section(appendix_path):
+    """Inject the handoff text verbatim into the board body.
+
+    fail-closed: a given path must exist and be long enough, otherwise the
+    generator exits non-zero. A board published *without* the handoff appendix
+    is a silent loss of the onboarding contract, which is exactly the kind of
+    thing this repo treats as a red line.
+    """
+    ap = pathlib.Path(appendix_path)
+    if not ap.is_absolute():
+        ap = REPO / ap
+    if not ap.is_file():
+        raise SystemExit("APPENDIX-MISSING: " + str(ap))
+    txt = ap.read_text(encoding="utf-8").strip()
+    if len(txt) < 200:
+        raise SystemExit("APPENDIX-TOO-SHORT: " + str(ap) + " 只有 " + str(len(txt)) + " 字符")
+    digest = hashlib.sha256(txt.encode("utf-8")).hexdigest()
+    out = ["## 附录 A：交接正文全文（接手必读，SSOT 在仓内）", ""]
+    # 两个字节数分开标：磁盘文件大小 vs 实际注入的正文（strip 后），混用就是一次口径漂移。
+    out.append(f"- 源文件：`{appendix_path}`｜文件 {len(ap.read_bytes())} 字节｜注入正文 {len(txt.encode('utf-8'))} 字节（strip 后）"
+               f"｜正文 sha256 `{digest}`")
+    out.append("- 本节由 `gen_kanban_issue.py --appendix` 原样注入，不进看板 SSOT；改交接改源文件，别改这里。")
+    out.append("")
+    out.append(txt)
+    return out
+
+
+def main(issue_no="5592", metrics_line="（见最近归档 run 的 manifest results 段）", post_to=False,
+     appendix_path=None):
     rows = [json.loads(l) for l in KAN.read_text(encoding="utf-8").splitlines() if l.strip()]
     counts = {}
     for r in rows:
@@ -162,6 +190,8 @@ def main(issue_no="5592", metrics_line="（见最近归档 run 的 manifest resu
     L.append("- 每个阶段（draft/alpha/beta/rc/ga）各有一份看板 ISSUE；阶段任务全部收口后，前一张 ISSUE 在逐条写明结论后关闭。")
     L.append("- `阻塞` 与 `待复核` 未清零之前，任何跃迁结论都必须写成「没能核对」，不许写成通过。")
     L.append("- 门禁分母固定 168，新判据一律挂靠既有门禁；新工具只放 `audit/v4.1.0/`。")
+    if appendix_path:
+        L += appendix_section(appendix_path)
     body = "\n".join(L) + "\n"
     if not post_to:
         return body
@@ -213,9 +243,24 @@ def selftest() -> int:
     if f"（{n} 行）" not in body:
         bad.append(f"A4 正文行数口径 != SSOT {n} 行")
 
+    # A5: 指定了附录文件，正文必须带上附录原文。
+    # A6: 附录文件缺失必须 fail-closed（非零退出），不许静默出「没有附录的看板」。
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        ap = pathlib.Path(td) / "appendix.md"
+        ap.write_text("# SENTINEL-APPENDIX\n" + ("x" * 400), encoding="utf-8")
+        body_ap = main(metrics_line="SELFTEST", appendix_path=str(ap))
+        if "SENTINEL-APPENDIX" not in body_ap:
+            bad.append("A5 指定了附录，正文却没注入附录原文")
+        try:
+            main(metrics_line="SELFTEST", appendix_path=str(pathlib.Path(td) / "nope.md"))
+            bad.append("A6 附录缺失时静默生成看板（应非零退出）")
+        except SystemExit:
+            pass
+
     for b in bad:
         print("NOT-OK:", b)
-    print("selftest arms=4 failures=%d" % len(bad))
+    print("selftest arms=6 failures=%d" % len(bad))
     return 1 if bad else 0
 
 
@@ -223,14 +268,16 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     if args and args[0] == "--selftest":
         raise SystemExit(selftest())
-    metrics, post = "（见最近归档 run 的 manifest results 段）", None
+    metrics, post, appendix = "（见最近归档 run 的 manifest results 段）", None, None
     i = 0
     while i < len(args):
         if args[i] == "--post":
             post = args[i + 1]; i += 2
+        elif args[i] == "--appendix":
+            appendix = args[i + 1]; i += 2
         else:
             metrics = args[i]; i += 1
     if post is None:
-        sys.stdout.write(main(metrics_line=metrics))
+        sys.stdout.write(main(metrics_line=metrics, appendix_path=appendix))
     else:
-        main(issue_no=post, metrics_line=metrics, post_to=True)
+        main(issue_no=post, metrics_line=metrics, post_to=True, appendix_path=appendix)

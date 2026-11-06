@@ -193,7 +193,7 @@ sqlrustgo 的 G7 至今同形：`gate_definitions.G7` 的名字写着 `24h Soak 
 
 ### R5 幽灵执行点：`13` 个 GitHub workflow 永不运行
 
-4 道门禁（附录 B-2）**只**在 `.github/workflows` 里出现，而项目 AGENTS §8-11 明令禁止推 GitHub 与使用 `gh` CLI ⇒ 这 `13` 个 workflow 是死配置。`.gitea/workflows/ci-test.md` 是 markdown 冒充 workflow，`soak_168h.yml` / `soak_probe.yml` / `z6g4-168h-soak.yml` 三个同义 soak 配置并存。任何引用它们的「CI 已覆盖」都是空承诺。
+4 道门禁（附录 B-2）**只**在 `.github/workflows` 里出现，而项目 AGENTS §8-11 明令禁止推 GitHub 与使用 `gh` CLI ⇒ 这 `13` 个 workflow 是死配置。.gitea/workflows/ci-test.md 是 markdown 冒充 workflow，`soak_168h.yml` / `soak_probe.yml` / `z6g4-168h-soak.yml` 三个同义 soak 配置并存。任何引用它们的「CI 已覆盖」都是空承诺。
 
 ### R6 声明与证据不绑定：`1132` 处 PASS 声明，0 个总闸
 
@@ -237,7 +237,7 @@ F=只去 docstring 均 rc=1）。生产侧**未修**：`gate_executability.py` �
 | 标准↔门禁 闭合（R1–R6 + `manual_only_criteria` 显式登记） | stage_consistency 部分 | `check_ssot_coverage.py`（六条规则，牙齿是 R5） | `criteria_gates`=0 | **移植**（对 `STAGE_CONFIG.yaml` 扩字段） |
 | 合并拦截校验 | BRANCH-SYNC 文档 | `check_merge_blocking.py`（401 ⇒ 明确 SKIP） | 无，且实测保护未开 | **移植 + 先打开保护** |
 | 能力声明核查（防「报告好看」） | `anti_fraud_audit.py` / `afp_adjudicate.py` / `rules/anti_fabrication.yaml` | `check_capability_claims.py`、`check_dist_freshness.py`、`check_orphan_tests.py`、`audit_mainpath.py`（含自白） | `check_evidence_binding.sh` 局部 | **移植 + 改造**（见 P1-2，用「使用面冒烟」而非静态 grep） |
-| 证据台账 / 清单 | `evidence/.../self-findings.jsonl`（`self_find.py list/add/close`）、债务台账 `docs/governance/debt/INDEX.md` | `gen_evidence_inventory.py` + `EVIDENCE_INVENTORY.json` | `audit/*/manifest.yaml`、EvidenceManifest | **移植台账机制**，承载层用 IAIA-410 SSOT |
+| 证据台账 / 清单 | `evidence/.../self-findings.jsonl`（`self_find.py list/add/close`）、债务台账 docs/governance/debt/INDEX.md | `gen_evidence_inventory.py` + `EVIDENCE_INVENTORY.json` | `audit/*/manifest.yaml`、EvidenceManifest | **移植台账机制**，承载层用 IAIA-410 SSOT |
 | 反向变异 / 变异测试 | AGENTS §2.5 纪律 | `cargo-mutants.toml`、`_coverage_reverse_mutation.sh`、`develop/probe-*-mutation` 分支 | 个别门禁自带夹具 | **移植为纪律 + 一个质量维度**（不进阶段清单数量） |
 | 三态 PASS/FAIL/INCOMPLETE | AGENTS §2.3（硬规则） | gate_report 三态 | 仅 SKIP，`INCOMPLETE` 0 处 | **移植**（ADR-008 已有语义，补机器） |
 | 文档盖章 / 新鲜度 / 悬空路径 | `doc_stamp.py`、`doc_freshness.py`、`doc_path_claim_check.py`（实测悬空 22→0）、`gen_doc_index.py` | `check_docs_links.py`、`check_release_docs.py` | `check_docs_links*.sh` | **移植**（注意「写盘口径==核对口径」，见 P2） |
@@ -450,6 +450,14 @@ stages:
 | 105 条 issue 清账 | **71.0**（工程面）+ 治理面随设施顺带 | 见 §9.2 |
 | **合计** | **111–132**（2026-11-05 重估，原 115–137） | 判定系统 −4~5 人日来自 §1.5 已交付部分 |
 
+> **勘误与更新（2026-11-05 晚，双血统）**：本表用的是各成本档的**下沿**权重（t0=0.25/t1=0.7/t2=1.5），
+> 而台账定义的档位是 t1=0.5–2、t2=2–5 ⇒ 取下沿本身是系统性乐观。按档位中值权重重算，仅 112 条 issue
+> 的清账就是 173.8 人日（下沿口径 86.0）；两个独立席位（gpt 系 160–300 人日 / 20–40 周；qwen 系 180–240 人日）
+> 都落在中值口径一侧。**排期基线改按 130–240 人日、承诺口径 ≥190 人日**，
+> 日历当时写 24–40 周，后被 `est_recompute.py` 重算订正为 **20–48 周**（承诺口径 **29–38 周**），见看板 `EST-2`。
+> 明细与口径声明见 `ESTIMATE_DOUBLE_LINEAGE_2026-11-05.md`（配套 run `20261105-est2-008`）。
+> 该偏差登记为看板行 `EST-1` 与交接文档 §10 披露第 11 条。
+
 换算成日历时间（单人连续投入）：
 
 | 情形 | 吞吐假设 | 预计 |
@@ -583,7 +591,7 @@ check_validation_chain.sh
 口径：`dead` = 不在 `STAGE_CONFIG.yaml` 任何阶段清单、不在 CI（含门禁调门禁的传递可达）、
 且**没有任何脚本在可执行位置**引用它。2026-11-04 曾列 `37` 条，2026-11-05 首次重测得 `36` 条，
 两者都偏低：探针原先在扫描引用时**没有去掉注释与文档字符串**，脚本注释里一句「参见
-`scripts/gate/xxx.sh`」就让那道门禁"活着"。修 `gov_probe.strip_prose()` 后实测 `62` 条
+scripts/gate/xxx.sh」就让那道门禁"活着"。修 `gov_probe.strip_prose()` 后实测 `62` 条
 （新增 `26` 条），逐条 grep 复核过：这些门禁只出现在文档正文与脚本注释里。
 复现：`python3 scripts/gate/gov_probe.py metrics`（`dead_list` 字段），归档见 run `20261105-triage-001`。
 
