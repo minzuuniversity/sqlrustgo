@@ -1,0 +1,3 @@
+   Compiling sqlrustgo-mysql-server v0.1.0 (/private/tmp/wt-integ/crates/mysql-server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.44s
+     Running tests/group_by_binder_5462_5463_test.rs (target/debug/deps/group_by_binder_5462_5463_test-2cdc6b223d7c2bef)

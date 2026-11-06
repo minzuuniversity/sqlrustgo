@@ -1,0 +1,13 @@
+{"kind": "claims_inventory_report", "files": 59, "claims": 1144, "bound": 93, "unbound": 1051, "bound_pct": 8.13}
+  186 未绑定 /   205  docs/releases/v4.1.0/FEATURE_CHECKLIST.md
+   71 未绑定 /    71  docs/releases/v4.1.0/GA_GATE_REPORT.md
+   58 未绑定 /    59  docs/releases/v4.1.0/PR-5379_ACCEPTANCE.md
+   55 未绑定 /    55  docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md
+   53 未绑定 /    53  docs/releases/v4.1.0/PR-5379_TEST_REVIEW.md
+   53 未绑定 /    53  docs/releases/v4.1.0/RELEASE_GATE_CHECKLIST.md
+   50 未绑定 /    68  docs/releases/v4.1.0/PR-5457_ACCEPTANCE.md
+   46 未绑定 /    46  docs/releases/v4.1.0/PERFORMANCE_TARGETS.md
+   41 未绑定 /    41  docs/releases/v4.1.0/EVIDENCE_STATUS.md
+   41 未绑定 /    41  docs/releases/v4.1.0/PR-5457_TEST_REVIEW.md
+   38 未绑定 /    38  docs/releases/v4.1.0/PR-5537_ACCEPTANCE.md
+   32 未绑定 /    41  docs/releases/v4.1.0/GA_RELEASE_TIMELINE.md
