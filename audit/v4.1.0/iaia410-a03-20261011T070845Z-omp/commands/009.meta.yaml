@@ -1,0 +1,60 @@
+schema_version: iaia410-manifest/v1
+run_id: iaia410-a03-20261011T070845Z-omp
+work_package: A03
+command_id: 009
+description: >
+  独立核验 N5 根因报告（PR #5294 / a1af63ea12）的 RC1-RC4 论断
+target_commit: db66b37057（develop/v4.1.0 HEAD，含 #5290）
+tool: 只读源码核对
+exit_code: 0
+verified:
+  - id: RC1
+    claim: "MvccStorage::update:791 用 row.first() 而非 row_identity 取链 Key"
+    confirmed_at: crates/storage/src/mvcc_storage.rs:791
+    evidence: "`let Some(pk) = row.first().cloned() else { continue; };`"
+    independent_check: PASS
+  - id: RC2
+    claim: delete_collect_pks_at:5103 返回 row.first()，被 MVCC 当作链 Key
+    confirmed_at:
+      - crates/storage/src/file_storage.rs:5103
+      - crates/storage/src/mvcc_storage.rs:1212
+    evidence: >
+      file_storage.rs:5103 `.filter_map(|row| row.first().cloned()) // PK = column 0`
+      mvcc_storage.rs:1212 `for pk in &removed_pks { mvcc.delete(pk, ts, tx_id); }`
+    independent_check: PASS
+  - id: RC3
+    claim: scan_in_tx_db 的 inner-merge 非对称，放大症状
+    confirmed_at: crates/storage/src/mvcc_storage.rs:497 与 :542
+    evidence: "`if !self.snapshot_bound(reader_tx) && inner_rows.len() > out.len() {`"
+    independent_check: PASS
+  - id: RC4
+    claim: row_identity 仅被 INSERT/rebuild/force_insert 消费，UPDATE/DELETE 不消费
+    confirmed_at: crates/storage/src/mvcc_storage.rs:385, 680, 834
+    evidence: >
+      row_identity 调用点仅三处（rebuild_from_inner / insert_in_db / force_insert）；
+      MvccStorage::update:791 与 delete_in_db:1212 均不在其中。
+    independent_check: PASS
+my_own_blind_spot:
+  summary: >
+    我此前 8 轮逐层验证时，把「removed_pks 被正确传递到 mvcc.delete」
+    当作了已验证的前提，从未质疑 removed_pks 本身返回的是不是真实链 Key。
+  exact_location: crates/storage/src/mvcc_storage.rs:1194 的返回值语义
+  why_missed: >
+    我验证了调用链每一环「看起来正确」，
+    但缺少跨层的关联证据（N5 要求的 trace_id/txn_id/row_id 对齐）。
+  lesson: >
+    逐层验证正确 ≠ 端到端成立。
+    必须在链上选取同一条逻辑行，比对其在各层的标识是否一致。
+consistency_with_my_earlier_data:
+  - 我的单行实验 [1 10] -> UPDATE -> [1 10 1 99]（1 行变 2 行）
+    N5 C1 推导 4 行含 (1,40) 重复
+    verdict: 机制一致（均为「原链保留 + 新聚合链」），数据规模因种子不同而异
+  - 我的「首列相同 2 行 -> 4 行」
+    N5 C1 推导同为 4 行
+    verdict: 一致
+report_limitations_noted:
+  - 报告自身指出 row_identity 需 table 元数据，而 trait update() 签名无该参数
+    （与 ADR D3 一致），故方案 A 需新增方法或经由 scan 路径取回
+  - 报告不裁决方案 A/B 选型，交付架构裁决
+  - RT-1..RT-5 仅为规格说明，未实现为测试
+main_branch_advanced: db66b37057（含 #5290 A06 R1：CLUSTERED 表绕过 WAL，P0 veto）

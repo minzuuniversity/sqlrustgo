@@ -1,0 +1,57 @@
+============================================
+SQLRustGo Documentation Consistency Check
+============================================
+
+[INFO] CHECK 1: VERSION_HISTORY.md current version...
+[PASS] VERSION_HISTORY.md latest GA: v3.12.0 (matches tag)
+[INFO] CHECK 2: CHANGELOG.md version history table...
+[PASS] docs/releases/v3.0.0/CHANGELOG.md: includes v3.0.0
+[PASS] docs/releases/v3.10.0/CHANGELOG.md: includes v3.10.0
+[PASS] docs/releases/v3.11.0/CHANGELOG.md: includes v3.11.0
+[PASS] docs/releases/v3.12.0/CHANGELOG.md: includes v3.12.0
+[PASS] docs/releases/v3.2.0/CHANGELOG.md: includes v3.2.0
+[PASS] docs/releases/v3.3.0/CHANGELOG.md: includes v3.3.0
+[PASS] docs/releases/v3.4.0/CHANGELOG.md: includes v3.4.0
+[PASS] docs/releases/v3.5.0/CHANGELOG.md: includes v3.5.0
+[PASS] docs/releases/v3.6.0/CHANGELOG.md: includes v3.6.0
+[PASS] docs/releases/v3.7.0/CHANGELOG.md: includes v3.7.0
+[PASS] docs/releases/v3.8.0/CHANGELOG.md: includes v3.8.0
+[PASS] docs/releases/v3.9.0/CHANGELOG.md: includes v3.9.0
+[INFO] CHECK 3: CHANGELOG.md no duplicate commits...
+[PASS] docs/releases/v3.0.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.10.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.11.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.12.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.2.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.3.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.4.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.5.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.6.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.7.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.8.0/CHANGELOG.md: no duplicates
+[PASS] docs/releases/v3.9.0/CHANGELOG.md: no duplicates
+[INFO] CHECK 4: README.md existence for v3.5.0, v3.6.0...
+[PASS] docs/releases/v3.5.0/README.md: EXISTS
+[PASS] docs/releases/v3.6.0/README.md: EXISTS
+[INFO] CHECK 5: docs/README.md version listing...
+[PASS] docs/README.md: first current version is v3.9.0
+[INFO] CHECK 6: v3.8.0 mandatory documents (11 items)...
+[PASS] docs/releases/v3.8.0/README.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/CHANGELOG.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/RELEASE_NOTES.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/MIGRATION_GUIDE.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/DEPLOYMENT_GUIDE.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/DEVELOPMENT_GUIDE.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/TEST_MANUAL.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/FEATURE_MATRIX.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/SECURITY_POLICY.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/COMPATIBILITY_MATRIX.md: exists and non-empty
+[PASS] docs/releases/v3.8.0/SUPPORT_MATRIX.md: exists and non-empty
+[PASS] v3.8.0 mandatory docs: all 11 present
+[INFO] CHECK 7: v3.8.0 FEATURE_MATRIX.md feature count >= 50...
+[PASS] FEATURE_MATRIX.md: 185 features (>= 50)
+[INFO] CHECK 8: v3.8.0 SECURITY_POLICY.md has known limitations section...
+[PASS] SECURITY_POLICY.md: has known limitations section
+
+============================================
+[PASS] All checks passed

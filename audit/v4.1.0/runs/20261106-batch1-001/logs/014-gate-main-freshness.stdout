@@ -1,0 +1,16 @@
+=== C-MAIN Freshness / Anti-Divergence Check ===
+HEAD: 56156704e8
+
+fetching remotes (--no-fetch to skip)...
+
+[C-MAIN-01] Checking 'main' is identical across all 5 remotes...
+[PASS] C-MAIN-01: all remotes at be044dfa7725
+
+[C-MAIN-02/03] Checking 'main' against the newest release/* branch...
+[FAIL] C-MAIN-02/03: local 'main' ref cannot be resolved (fail-closed)
+
+=== Summary ===
+PASSED: 1
+FAILED: 1
+
+Result: FAIL
