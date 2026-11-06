@@ -1,0 +1,21 @@
+warning: method `keep` is never used
+   --> crates/storage/tests/fault_coordination.rs:151:12
+    |
+143 | impl Scratch {
+    | ------------ method in this implementation
+...
+151 |     pub fn keep(mut self) -> Self {
+    |            ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `with_sync_mode` is never used
+   --> crates/storage/tests/fault_coordination.rs:329:12
+    |
+282 | impl Arm {
+    | -------- method in this implementation
+...
+329 |     pub fn with_sync_mode(mut self, m: &str) -> Self {
+    |            ^^^^^^^^^^^^^^
+
+error: test failed, to rerun pass `-p sqlrustgo-storage --test crash_wal_index_b1`

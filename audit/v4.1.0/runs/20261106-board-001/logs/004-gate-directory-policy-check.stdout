@@ -1,0 +1,3 @@
+{"kind": "directory_policy_check", "baseline": "/Volumes/workspace/dev/wt/board/docs/releases/v4.1.0/DIRECTORY_POLICY_BASELINE.jsonl", "baseline_violations": 149, "live_violations": 149, "git_ignored_suppressed": 53, "new_violations": 0}
+NOTE: 因 .gitignore 而不判红的本地残留 dir-has-readme:2 dir-name-charset:48 index-registers-dir:3
+directory_policy: OK

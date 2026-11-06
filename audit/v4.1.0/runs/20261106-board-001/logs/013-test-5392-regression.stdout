@@ -1,0 +1,19 @@
+
+running 5 tests
+.... 4/5
+a_keyed_table_with_repeated_leading_column_keeps_every_loaded_row --- FAILED
+
+failures:
+
+---- a_keyed_table_with_repeated_leading_column_keeps_every_loaded_row stdout ----
+
+thread 'a_keyed_table_with_repeated_leading_column_keeps_every_loaded_row' (23115708) panicked at crates/mysql-server/tests/file_storage_leading_column_collapse_5392.rs:98:30:
+LOAD DATA: Io(Custom { kind: UnexpectedEof, error: "unexpected EOF during read_exact" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    a_keyed_table_with_repeated_leading_column_keeps_every_loaded_row
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 57.19s
+
