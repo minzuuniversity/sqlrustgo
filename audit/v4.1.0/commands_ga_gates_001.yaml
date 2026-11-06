@@ -1,0 +1,215 @@
+# 20261106-ga-gates-001 —— GA 阶段门禁清单（docs/governance/STAGE_CONFIG.yaml: stages.GA.required_gates）的逐条实跑
+#
+# 口径：**逐条按配置原文实跑**，不裁剪、不改顺序；每条独立记录 rc 与日志。
+# 超时按 `timeout` rc=124 记红（不算通过）。已知结构红：
+#   - scripts/gate/check_main_freshness.sh 不在 GA 清单里，但 §14 要求它过 ⇒ 它在 GA 前结构性红（C-MAIN-02）。
+
+- id: ga-gate-check-rc-ga-gate-ga-ga
+  name: "GA 清单门禁（原文）：scripts/gate/check_rc_ga_gate.sh ga"
+  cmd: scripts/gate/check_rc_ga_gate.sh ga
+  cwd: .
+  timeout_sec: 5400
+
+- id: ga-gate-check-arch-invariants
+  name: "GA 清单门禁（原文）：scripts/gate/check_arch_invariants.sh"
+  cmd: bash scripts/gate/check_arch_invariants.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-arch3-no-bypass
+  name: "GA 清单门禁（原文）：scripts/gate/check_arch3_no_bypass.sh"
+  cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-int2-no-orphan
+  name: "GA 清单门禁（原文）：scripts/gate/check_int2_no_orphan.sh"
+  cmd: bash scripts/gate/check_int2_no_orphan.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-int3-single-expr
+  name: "GA 清单门禁（原文）：scripts/gate/check_int3_single_expr.sh"
+  cmd: bash scripts/gate/check_int3_single_expr.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-sem1-savepoint
+  name: "GA 清单门禁（原文）：scripts/gate/check_sem1_savepoint.sh"
+  cmd: bash scripts/gate/check_sem1_savepoint.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-backup-restore
+  name: "GA 清单门禁（原文）：scripts/gate/check_backup_restore.sh"
+  cmd: bash scripts/gate/check_backup_restore.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-p12-crash-test
+  name: "GA 清单门禁（原文）：scripts/gate/check_p12_crash_test.sh"
+  cmd: bash scripts/gate/check_p12_crash_test.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-p14-upgrade-test
+  name: "GA 清单门禁（原文）：scripts/gate/check_p14_upgrade_test.sh"
+  cmd: bash scripts/gate/check_p14_upgrade_test.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-p21-audit-log
+  name: "GA 清单门禁（原文）：scripts/gate/check_p21_audit_log.sh"
+  cmd: bash scripts/gate/check_p21_audit_log.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-p22-time-travel
+  name: "GA 清单门禁（原文）：scripts/gate/check_p22_time_travel.sh"
+  cmd: bash scripts/gate/check_p22_time_travel.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-p23-hash-chain
+  name: "GA 清单门禁（原文）：scripts/gate/check_p23_hash_chain.sh"
+  cmd: bash scripts/gate/check_p23_hash_chain.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-g1-tpch-baseline
+  name: "GA 清单门禁（原文）：scripts/gate/check_g1_tpch_baseline.sh"
+  cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-g16-compatibility
+  name: "GA 清单门禁（原文）：scripts/gate/check_g16_compatibility.sh"
+  cmd: bash scripts/gate/check_g16_compatibility.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-integration-gate
+  name: "GA 清单门禁（原文）：scripts/gate/check_integration_gate.sh"
+  cmd: bash scripts/gate/check_integration_gate.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-anti-fabrication
+  name: "GA 清单门禁（原文）：scripts/gate/check_anti_fabrication.sh"
+  cmd: bash scripts/gate/check_anti_fabrication.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-arch-sem-debt
+  name: "GA 清单门禁（原文）：scripts/gate/check_arch_sem_debt.sh"
+  cmd: bash scripts/gate/check_arch_sem_debt.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-cross-version-debt
+  name: "GA 清单门禁（原文）：scripts/gate/check_cross_version_debt.sh"
+  cmd: bash scripts/gate/check_cross_version_debt.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-int-debt
+  name: "GA 清单门禁（原文）：scripts/gate/check_int_debt.sh"
+  cmd: bash scripts/gate/check_int_debt.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-full-gate-verification
+  name: "GA 清单门禁（原文）：scripts/gate/check_full_gate_verification.sh"
+  cmd: bash scripts/gate/check_full_gate_verification.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-drift-not-pass
+  name: "GA 清单门禁（原文）：scripts/gate/check_drift_not_pass.sh"
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-architecture-freeze
+  name: "GA 清单门禁（原文）：scripts/gate/check_architecture_freeze.sh"
+  cmd: bash scripts/gate/check_architecture_freeze.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-gate-self-verification
+  name: "GA 清单门禁（原文）：scripts/gate/check_gate_self_verification.sh"
+  cmd: bash scripts/gate/check_gate_self_verification.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-gate-test-integrity
+  name: "GA 清单门禁（原文）：scripts/gate/check_gate_test_integrity.sh"
+  cmd: bash scripts/gate/check_gate_test_integrity.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-gate-executability
+  name: "GA 清单门禁（原文）：scripts/gate/check_gate_executability.sh"
+  cmd: bash scripts/gate/check_gate_executability.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-coverage-v312
+  name: "GA 清单门禁（原文）：scripts/gate/check_coverage_v312.sh"
+  cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-coverage-single-implementation
+  name: "GA 清单门禁（原文）：scripts/gate/check_coverage_single_implementation.sh"
+  cmd: bash scripts/gate/check_coverage_single_implementation.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-tests-dont-write-archived-evidence
+  name: "GA 清单门禁（原文）：scripts/gate/check_tests_dont_write_archived_evidence.sh"
+  cmd: bash scripts/gate/check_tests_dont_write_archived_evidence.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-commit-message
+  name: "GA 清单门禁（原文）：scripts/gate/check_commit_message.sh"
+  cmd: bash scripts/gate/check_commit_message.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-sql-corpus-gate
+  name: "GA 清单门禁（原文）：scripts/gate/check_sql_corpus_gate.sh"
+  cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-gate-check-anti-ignore-gate
+  name: "GA 清单门禁（原文）：scripts/gate/check_anti_ignore_gate.sh"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 1200
+
+- id: ga-cargo-build-all-features
+  name: "GA 清单 cargo 命令（原文）：cargo build --all-features"
+  cmd: cargo build --all-features
+  cwd: .
+  timeout_sec: 3600
+
+- id: ga-cargo-test-all-features
+  name: "GA 清单 cargo 命令（原文）：cargo test --all-features"
+  cmd: cargo test --all-features
+  cwd: .
+  timeout_sec: 7200
+
+- id: ga-cargo-fmt-check
+  name: "GA 清单 cargo 命令（原文）：cargo fmt --check"
+  cmd: cargo fmt --check
+  cwd: .
+  timeout_sec: 900
+
+- id: ga-cargo-clippy-all-features-warnings
+  name: "GA 清单 cargo 命令（原文）：cargo clippy --all-features -- -D warnings"
+  cmd: cargo clippy --all-features -- -D warnings
+  cwd: .
+  timeout_sec: 3600

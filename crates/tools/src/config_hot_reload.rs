@@ -421,7 +421,7 @@ mod tests {
         let config = AppConfig::default();
         assert_eq!(config.version, "2.1.0");
         assert_eq!(config.database.port, 5432);
-        assert_eq!(config.cache.enabled, true);
+        assert!(config.cache.enabled);
     }
 
     #[test]

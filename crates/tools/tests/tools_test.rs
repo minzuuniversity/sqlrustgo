@@ -242,11 +242,8 @@ fn test_config_listener_callback() {
     static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
     let listener = create_config_listener(|change: ConfigChange| {
         // Verify we received a ConfigChange value.
-        match change {
-            ConfigChange::Full(_) => {
-                CALL_COUNT.fetch_add(1, Ordering::SeqCst);
-            }
-            _ => {}
+        if let ConfigChange::Full(_) = change {
+            CALL_COUNT.fetch_add(1, Ordering::SeqCst);
         }
     });
     listener.on_config_change(ConfigChange::Full(Default::default()));
@@ -410,7 +407,7 @@ fn test_config_manager_listener_dispatch() {
     // closure-returning `create_config_listener` helper in this version.
     // The dispatch path is exercised indirectly through update_*_config tests.
     use sqlrustgo_tools::config_hot_reload::{
-        CacheConfig, ConfigChange, ConfigManager, DatabaseConfig, LogConfig,
+        CacheConfig, ConfigManager, DatabaseConfig, LogConfig,
     };
     let dir = std::env::temp_dir().join(format!(
         "sqlrustgo-tools-cfgmgr-listener-{}",

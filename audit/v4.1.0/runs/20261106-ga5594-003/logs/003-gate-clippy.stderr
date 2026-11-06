@@ -1,0 +1,225 @@
+    Checking sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/executor)
+    Checking sqlrustgo-gmp v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/gmp)
+    Checking sqlrustgo-network v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/network)
+    Checking sqlrustgo-vector v2.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/vector)
+    Checking sqlrustgo-wal-verification v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/wal-verification)
+    Checking sqlrustgo-tools v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/tools)
+error: unused import: `ConfigChange`
+   --> crates/tools/tests/tools_test.rs:413:22
+    |
+413 |         CacheConfig, ConfigChange, ConfigManager, DatabaseConfig, LogConfig,
+    |                      ^^^^^^^^^^^^
+    |
+    = note: `-D unused-imports` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_imports)]`
+
+error: variable does not need to be mutable
+   --> crates/tools/tests/traits_tests.rs:137:9
+    |
+137 |     let mut io = MockIo::happy();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `-D unused-mut` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_mut)]`
+
+error: variable does not need to be mutable
+   --> crates/tools/tests/traits_tests.rs:148:9
+    |
+148 |     let mut io = MockIo::happy();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+
+error: variable does not need to be mutable
+   --> crates/tools/tests/traits_tests.rs:159:9
+    |
+159 |     let mut io = MockIo::happy();
+    |         ----^^
+    |         |
+    |         help: remove this `mut`
+
+error: this can be `std::io::Error::other(_)`
+   --> crates/tools/tests/traits_tests.rs:138:33
+    |
+138 |     *io.write_err.lock() = Some(io::Error::new(io::ErrorKind::Other, "mock write error"));
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#io_other_error
+    = note: `-D clippy::io-other-error` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::io_other_error)]`
+help: use `std::io::Error::other`
+    |
+138 -     *io.write_err.lock() = Some(io::Error::new(io::ErrorKind::Other, "mock write error"));
+138 +     *io.write_err.lock() = Some(io::Error::other("mock write error"));
+    |
+
+error: this can be `std::io::Error::other(_)`
+   --> crates/tools/tests/traits_tests.rs:149:42
+    |
+149 |     *io.remove_dir_all_err.lock() = Some(io::Error::new(io::ErrorKind::Other, "mock dir error"));
+    |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#io_other_error
+help: use `std::io::Error::other`
+    |
+149 -     *io.remove_dir_all_err.lock() = Some(io::Error::new(io::ErrorKind::Other, "mock dir error"));
+149 +     *io.remove_dir_all_err.lock() = Some(io::Error::other("mock dir error"));
+    |
+
+error: this can be `std::io::Error::other(_)`
+   --> crates/tools/tests/traits_tests.rs:160:39
+    |
+160 |     *io.remove_file_err.lock() = Some(io::Error::new(io::ErrorKind::Other, "mock file error"));
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#io_other_error
+help: use `std::io::Error::other`
+    |
+160 -     *io.remove_file_err.lock() = Some(io::Error::new(io::ErrorKind::Other, "mock file error"));
+160 +     *io.remove_file_err.lock() = Some(io::Error::other("mock file error"));
+    |
+
+error: could not compile `sqlrustgo-tools` (test "traits_tests") due to 6 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/tools/tests/tools_test.rs:186:5
+    |
+186 | /     custom.database = DatabaseConfig {
+187 | |         host: "db.example.com".into(),
+188 | |         port: 3306,
+189 | |         max_connections: 50,
+190 | |         timeout_seconds: 60,
+191 | |     };
+    | |______^
+    |
+note: consider initializing the variable with `sqlrustgo_tools::config_hot_reload::AppConfig { database: DatabaseConfig {
+              host: "db.example.com".into(),
+              port: 3306,
+              max_connections: 50,
+              timeout_seconds: 60,
+          }, log: LogConfig {
+              level: "debug".into(),
+              rotation_size_mb: 200,
+              retention_days: 14,
+              format: "text".into(),
+          }, cache: CacheConfig {
+              enabled: false,
+              max_size_mb: 1024,
+              ttl_seconds: 7200,
+          }, ..Default::default() }` and removing relevant reassignments
+   --> crates/tools/tests/tools_test.rs:185:5
+    |
+185 |     let mut custom = AppConfig::default();
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#field_reassign_with_default
+    = note: `-D clippy::field-reassign-with-default` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::field_reassign_with_default)]`
+
+error: you seem to be trying to use `match` for destructuring a single pattern. Consider using `if let`
+   --> crates/tools/tests/tools_test.rs:245:9
+    |
+245 | /         match change {
+246 | |             ConfigChange::Full(_) => {
+247 | |                 CALL_COUNT.fetch_add(1, Ordering::SeqCst);
+...   |
+250 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#single_match
+    = note: `-D clippy::single-match` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::single_match)]`
+help: try
+    |
+245 ~         if let ConfigChange::Full(_) = change {
+246 +             CALL_COUNT.fetch_add(1, Ordering::SeqCst);
+247 +         }
+    |
+
+error: could not compile `sqlrustgo-tools` (test "tools_test") due to 3 previous errors
+error: unused imports: `DocStatus` and `create_gmp_tables`
+   --> crates/gmp/src/graph.rs:342:27
+    |
+342 |     use crate::document::{create_gmp_tables, DocStatus};
+    |                           ^^^^^^^^^^^^^^^^^  ^^^^^^^^^
+    |
+    = note: `-D unused-imports` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_imports)]`
+
+error: unused import: `crate::relation::insert_relation`
+   --> crates/gmp/src/graph.rs:343:9
+    |
+343 |     use crate::relation::insert_relation;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: unused imports: `NewDocument`, `create_gmp_tables`, and `insert_document`
+   --> crates/gmp/src/retrieval.rs:298:27
+    |
+298 |     use crate::document::{create_gmp_tables, insert_document, DocStatus, NewDocument};
+    |                           ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^             ^^^^^^^^^^^
+
+error: unused variable: `section`
+   --> crates/gmp/src/chunk.rs:357:20
+    |
+357 |         for (text, section) in &chunks {
+    |                    ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_section`
+    |
+    = note: `-D unused-variables` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/gmp/src/backup.rs:411:9
+    |
+411 |         m1.total_documents = 10;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `backup::BackupManifest { total_documents: 10, ..Default::default() }` and removing relevant reassignments
+   --> crates/gmp/src/backup.rs:410:9
+    |
+410 |         let mut m1 = BackupManifest::default();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#field_reassign_with_default
+    = note: `-D clippy::field-reassign-with-default` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::field_reassign_with_default)]`
+
+error: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/gmp/src/backup.rs:413:9
+    |
+413 |         m2.total_documents = 5;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `backup::BackupManifest { total_documents: 5, ..Default::default() }` and removing relevant reassignments
+   --> crates/gmp/src/backup.rs:412:9
+    |
+412 |         let mut m2 = BackupManifest::default();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#field_reassign_with_default
+
+error: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/gmp/src/retrieval.rs:372:9
+    |
+372 |         filter.effective_date_from = Some(20250000);
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `retrieval::RetrievalFilter { effective_date_from: Some(20250000), effective_date_to: Some(20300000), ..Default::default() }` and removing relevant reassignments
+   --> crates/gmp/src/retrieval.rs:371:9
+    |
+371 |         let mut filter = RetrievalFilter::default();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#field_reassign_with_default
+
+error: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/gmp/src/soak.rs:250:9
+    |
+250 |         stats.operations_attempted = 100;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `soak::SoakStats { operations_attempted: 100, operations_succeeded: 95, operations_failed: 5, ..Default::default() }` and removing relevant reassignments
+   --> crates/gmp/src/soak.rs:249:9
+    |
+249 |         let mut stats = SoakStats::default();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#field_reassign_with_default
+
+error: could not compile `sqlrustgo-gmp` (lib test) due to 8 previous errors

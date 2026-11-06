@@ -243,7 +243,7 @@ fn issue_5048_a_delta_that_reexports_the_base_is_rejected() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let data = tmp.path().join("data");
     let full = tmp.path().join("full");
-    let incr = tmp.path().join("incr");
+    let _incr = tmp.path().join("incr");
 
     let mut s = open(&data);
     s.create_table(&tbl("acct")).expect("create acct");

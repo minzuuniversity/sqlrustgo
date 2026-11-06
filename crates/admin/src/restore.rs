@@ -129,7 +129,7 @@ mod tests {
             Ok(_) => panic!("expected error"),
         };
         assert!(
-            format!("{}", err).len() > 0,
+            !format!("{}", err).is_empty(),
             "error message should not be empty"
         );
     }

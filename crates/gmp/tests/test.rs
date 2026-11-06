@@ -2,8 +2,7 @@
 
 use sqlrustgo_gmp::{
     cosine_similarity, create_embeddings_table, create_gmp_tables, generate_embedding,
-    hybrid_search, query_by_status, query_by_type, vector_search, DocStatus, Document,
-    DocumentEmbedding, GmpExecutor,
+    query_by_status, query_by_type, DocStatus, DocumentEmbedding, GmpExecutor,
 };
 use sqlrustgo_storage::MemoryStorage;
 use std::sync::{Arc, RwLock};
@@ -30,7 +29,7 @@ fn test_full_document_lifecycle() {
         )
         .unwrap();
 
-    let python_doc_id = executor
+    let _python_doc_id = executor
         .import_document(
             "Python for Data Science",
             "COURSE",
@@ -39,7 +38,7 @@ fn test_full_document_lifecycle() {
         )
         .unwrap();
 
-    let db_doc_id = executor
+    let _db_doc_id = executor
         .import_document(
             "Database Design Handbook",
             "HANDBOOK",
@@ -419,7 +418,7 @@ fn test_chunk_text_extraction_edge_cases() {
 #[test]
 fn test_chunk_from_row_to_row_roundtrip() {
     use sqlrustgo_gmp::chunk::Chunk;
-    use sqlrustgo_types::Value;
+
     let original = Chunk {
         id: 7,
         doc_id: 42,
@@ -482,7 +481,7 @@ fn test_chunk_compute_hash_deterministic() {
 fn test_chunk_insert_get_delete_roundtrip() {
     use sqlrustgo_gmp::chunk::{delete_chunks_for_version, get_chunks_for_version, insert_chunk};
     use sqlrustgo_gmp::create_gmp_tables;
-    let mut storage = MemoryStorage::new();
+    let _storage = MemoryStorage::new();
     create_gmp_tables(&mut *Arc::new(RwLock::new(MemoryStorage::new())).write().unwrap()).unwrap();
     // Use a fresh storage for the actual test
     let mut storage = MemoryStorage::new();
@@ -623,7 +622,7 @@ mod ingestion_tests {
 
         let mut storage = fresh_storage();
         let mut report = IngestionReport::new();
-        ingest_corpus(&mut storage, &dir.as_path(), &mut report);
+        ingest_corpus(&mut storage, dir.as_path(), &mut report);
 
         assert_eq!(
             report.documents_ingested, 3,
@@ -648,12 +647,12 @@ mod ingestion_tests {
         fs::write(dir.join("x.md"), "duplicate content body").unwrap();
         let mut storage = fresh_storage();
         let mut report = IngestionReport::new();
-        ingest_corpus(&mut storage, &dir.as_path(), &mut report);
+        ingest_corpus(&mut storage, dir.as_path(), &mut report);
         assert_eq!(report.documents_ingested, 1);
         assert_eq!(report.documents_skipped, 0);
 
         // Re-ingest same corpus.
-        ingest_corpus(&mut storage, &dir.as_path(), &mut report);
+        ingest_corpus(&mut storage, dir.as_path(), &mut report);
         assert_eq!(report.documents_ingested, 1, "no new docs ingested");
         assert_eq!(report.documents_skipped, 1, "duplicate must be skipped");
 

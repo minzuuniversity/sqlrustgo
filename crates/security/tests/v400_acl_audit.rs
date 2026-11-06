@@ -152,7 +152,7 @@ fn alcoa_available() {
 #[test]
 fn chain_entry_hash_components() {
     // hash = sha256(prev_hash || payload)
-    let components = vec!["prev_hash", "payload"];
+    let components = ["prev_hash", "payload"];
     assert_eq!(components.len(), 2);
 }
 

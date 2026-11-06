@@ -536,7 +536,7 @@ mod regression_tests {
         assert!(!results3.is_empty());
 
         // All searches should return consistent first result
-        let first_ids: Vec<_> = vec![&results1, &results2, &results3]
+        let first_ids: Vec<_> = [&results1, &results2, &results3]
             .iter()
             .map(|r| r[0].doc_id)
             .collect();

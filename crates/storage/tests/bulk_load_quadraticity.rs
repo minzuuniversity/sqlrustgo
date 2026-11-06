@@ -90,7 +90,7 @@ fn row(id: i64) -> Vec<Value> {
         Value::Integer(id),
         Value::Text(format!("Supplier#{id:010}")),
         Value::Text("X-".repeat(40)),
-        Value::Integer((id % 25) as i64),
+        Value::Integer(((id % 25))),
         Value::Text(format!("{:0>15}", id)),
         Value::Float((id as f64) * 0.01),
         Value::Text("comment ".repeat(20)),

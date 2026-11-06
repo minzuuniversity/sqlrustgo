@@ -527,7 +527,7 @@ mod tests {
         let record = ExecutionRecord::new("workflow_123".to_string());
         assert_eq!(record.workflow_id, "workflow_123");
         assert_eq!(record.status, ExecutionStatus::Pending);
-        assert!(record.id.len() > 0);
+        assert!(!record.id.is_empty());
     }
 
     #[test]

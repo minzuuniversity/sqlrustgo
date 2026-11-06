@@ -5,7 +5,7 @@ use sqlrustgo_admin::{
     manifest::{sha256_bytes, sha256_file, walk_files, FileEntry, Manifest},
     pitr::{parse_target_time, PitrReport},
     restore::RestoreResult,
-    verify::{verify_extracted, VerifyError, VerifyErrorKind, VerifyResult},
+    verify::{VerifyError, VerifyErrorKind, VerifyResult},
     wire_client::{LogicalBackupResult, StatusReport, WireError},
 };
 use std::fs;
