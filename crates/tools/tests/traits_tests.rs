@@ -134,8 +134,8 @@ fn test_mock_io_create_dir_error() {
 /// Verify [`MockIo`] with injected write error via direct field.
 #[test]
 fn test_mock_io_write_error() {
-    let mut io = MockIo::happy();
-    *io.write_err.lock() = Some(io::Error::new(io::ErrorKind::Other, "mock write error"));
+    let io = MockIo::happy();
+    *io.write_err.lock() = Some(io::Error::other("mock write error"));
     let result = io.write(std::path::Path::new("/any/path"), b"data");
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -145,8 +145,8 @@ fn test_mock_io_write_error() {
 /// Verify [`MockIo`] with injected remove_dir_all error via direct field.
 #[test]
 fn test_mock_io_remove_dir_error() {
-    let mut io = MockIo::happy();
-    *io.remove_dir_all_err.lock() = Some(io::Error::new(io::ErrorKind::Other, "mock dir error"));
+    let io = MockIo::happy();
+    *io.remove_dir_all_err.lock() = Some(io::Error::other("mock dir error"));
     let result = io.remove_dir_all(std::path::Path::new("/any/path"));
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -156,8 +156,8 @@ fn test_mock_io_remove_dir_error() {
 /// Verify [`MockIo`] with injected remove_file error via direct field.
 #[test]
 fn test_mock_io_remove_file_error() {
-    let mut io = MockIo::happy();
-    *io.remove_file_err.lock() = Some(io::Error::new(io::ErrorKind::Other, "mock file error"));
+    let io = MockIo::happy();
+    *io.remove_file_err.lock() = Some(io::Error::other("mock file error"));
     let result = io.remove_file(std::path::Path::new("/any/path"));
     assert!(result.is_err());
     let err = result.unwrap_err();

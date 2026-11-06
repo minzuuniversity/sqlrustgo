@@ -713,9 +713,14 @@ impl SqliteMode {
             Ok(_) => {
                 if is_begin {
                     self.tx_depth = self.tx_depth.saturating_add(1);
-                } else if is_commit && self.tx_depth > 0 {
-                    self.tx_depth -= 1;
-                } else if is_rollback && self.tx_depth > 0 {
+                } else if (is_commit || is_rollback) && self.tx_depth > 0 {
+                    // 刻意合并（原 `if_same_then_else` 异味，clippy 1.97 判红）：
+                    // `tx_depth` 只是 CLI 侧的**嵌套层数计数器**，供错误路径
+                    // （见下方 `Err(_)` 分支：语句失败 ⇒ 强制 ROLLBACK 并清零）判断
+                    // 是否需要兜底，COMMIT 与 ROLLBACK 在这里都是「少一层」。
+                    // 注：真正的 SQLite 语义差异（ROLLBACK 是否应一次性出栈到 0，
+                    // 因为 SQLite 没有嵌套事务）当前**没有实现也没有测试**钉住 ⇒
+                    // 已作为产品口径问题登记（看板 SQLM-1），不在本批顺手改行为。
                     self.tx_depth -= 1;
                 }
             }

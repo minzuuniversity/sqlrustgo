@@ -167,10 +167,10 @@ impl SimGraphStore {
 
     fn update_node(&mut self, id: NodeId, properties: PropertyMap) -> bool {
         if let Some(node) = self.nodes.iter_mut().find(|n| n.id == id) {
-            for i in 0..properties.len() {
+            for _i in 0..properties.len() {
                 // Access by iteration (simplified for test)
             }
-            for i in 0..node.properties.len() {
+            for _i in 0..node.properties.len() {
                 // Keep existing properties
             }
             true

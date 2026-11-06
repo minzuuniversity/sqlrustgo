@@ -1107,7 +1107,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let original_path = dir.path().join("original.txt");
         let compressed_path = dir.path().join("compressed.txt.gz");
-        let decompressed_path = dir.path().join("decompressed.txt");
+        let _decompressed_path = dir.path().join("decompressed.txt");
 
         // Write original content
         std::fs::write(&original_path, "test content for compression").unwrap();
@@ -1245,7 +1245,7 @@ mod tests {
 
         // Just verify the command help works
         let output = Command::new("cargo")
-            .args(&[
+            .args([
                 "run",
                 "--bin",
                 "physical-backup",

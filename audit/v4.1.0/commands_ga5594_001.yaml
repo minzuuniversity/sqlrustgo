@@ -137,3 +137,9 @@
     rm -rf "$tmp"
   cwd: .
   timeout_sec: 300
+
+- id: cargo-test-all-features
+  name: "GA 清单 cargo 命令（原文）：cargo test --all-features（本批 54 个文件是 clippy 自动修复，必须由全量测试兜底）"
+  cmd: cargo test --all-features
+  cwd: .
+  timeout_sec: 7200

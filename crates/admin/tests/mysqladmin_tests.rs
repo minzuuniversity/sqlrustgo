@@ -447,7 +447,7 @@ fn test_mysql_admin_inc_query_and_slow() {
 #[test]
 fn test_mysql_admin_processlist() {
     let admin = MysqlAdmin::new();
-    let result = admin.processlist();
+    let _result = admin.processlist();
     let _result = admin.processlist(); // Returns whatever
 }
 
@@ -456,7 +456,7 @@ fn test_mysql_admin_processlist_with_connections() {
     let admin = MysqlAdmin::new();
     admin.add_connection("user1", "localhost", "db1");
     admin.add_connection("user2", "127.0.0.1", "db2");
-    let result = admin.processlist();
+    let _result = admin.processlist();
     // Should contain connection info
     assert!(true); // processlist returns whatever it returns
 }

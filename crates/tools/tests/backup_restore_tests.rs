@@ -238,7 +238,7 @@ fn test_md5_simple() {
 /// Verify serde_json_simple produces valid JSON for all status variants.
 #[test]
 fn test_serde_json_simple_all_statuses() {
-    use sqlrustgo_tools::backup_restore::{BackupMetadata, BackupStatus, BackupType};
+    use sqlrustgo_tools::backup_restore::{BackupMetadata, BackupType};
 
     // InProgress
     let m1 = BackupMetadata::new("b1".into(), BackupType::Full, "db".into());

@@ -1,7 +1,6 @@
 // Tools crate backup_restore coverage tests
 
 use sqlrustgo_tools::backup_restore::{BackupMetadata, BackupStatus, BackupType, ExportOptions};
-use std::collections::HashMap;
 
 // ============ BackupType tests ============
 
@@ -391,9 +390,7 @@ fn test_restore_result_fields() {
 
 #[test]
 fn test_serde_json_simple_completed() {
-    use sqlrustgo_tools::backup_restore::{
-        serde_json_simple, BackupMetadata, BackupStatus, BackupType,
-    };
+    use sqlrustgo_tools::backup_restore::{serde_json_simple, BackupMetadata, BackupType};
     let meta = BackupMetadata::new("bk_001".to_string(), BackupType::Full, "testdb".to_string());
     let json = serde_json_simple(&meta);
     assert!(json.contains("bk_001"));
@@ -402,9 +399,7 @@ fn test_serde_json_simple_completed() {
 
 #[test]
 fn test_serde_json_simple_in_progress() {
-    use sqlrustgo_tools::backup_restore::{
-        serde_json_simple, BackupMetadata, BackupStatus, BackupType,
-    };
+    use sqlrustgo_tools::backup_restore::{serde_json_simple, BackupMetadata, BackupType};
     let meta = BackupMetadata::new(
         "bk_002".to_string(),
         BackupType::Incremental,

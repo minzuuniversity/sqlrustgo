@@ -354,7 +354,7 @@ mod tests {
         let chunks = chunk_text(text, &config);
         assert!(!chunks.is_empty());
         // All chunks should have non-empty content
-        for (text, section) in &chunks {
+        for (text, _section) in &chunks {
             assert!(!text.is_empty());
         }
     }

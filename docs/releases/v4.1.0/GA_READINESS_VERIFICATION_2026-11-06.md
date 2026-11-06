@@ -92,8 +92,19 @@ HO-2 附录 A / 10 条分支批次优先级 / 5598 两处 fail-open / 5596 审�
 | 5 | **#5584 的 claim 释放或移交**（另一条线长期未动） | 多 Agent 归属规则（先认领者拥有） | 崩溃边界缺陷有人修 |
 | 6 | **GA 的不可变动作**：tag `v4.1.0`、生成发布目录、把 release 分支合入 `main`、发布公告 | 清单 §5/§6 的冻结与宣布动作 | GA 真正落地 |
 
-## 7. Agent 侧（不需要属主动作）可继续推进的
+第 1 项的**现场原文**（2026-11-06 直接打这个端点，`http=500`）：
 
+```json
+{"error":{"message":"DeepSeek PoW response has no data.biz_data.challenge. Auth may be
+expired, captcha may be required, or DeepSeek changed Web API. Run npm run doctor,
+then npm run auth.","type":"server_error"}}
+```
+
+⇒ 修法在该 bridge 工程里：`npm run doctor` 诊断后 `npm run auth` 重新授权。
+这是**凭据动作**，Agent 不得代做（看板 EX-5）。另注：chatgpt-web 席位现在也**无裁决返回**
+（单份试跑 2 分钟零输出，报 `seat chatgpt-web busy`），所以「两专家」目前一个都不可用。
+
+## 7. Agent 侧（不需要属主动作）可继续推进的
 1. 8 份待裁定问题一旦 deepseek 恢复即跑双血统裁定，并把裁定写回看板/ISSUE。
 2. 10 条「需要专门批次」的分支（session-context-5057 / 5262-b2 / omp-ignore-registry-5098 /
    ci-* / 4597-chaos / e5-r9-r11 / rustfmt-4597 / 5320-5327 / omp-engine-phase3 /

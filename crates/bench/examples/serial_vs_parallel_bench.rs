@@ -496,7 +496,7 @@ fn run_oltp_benchmark(sf: f64, degrees: &[usize]) -> OltpResults {
                 engine
                     .execute("SELECT COUNT(*) FROM lineitem")
                     .ok()
-                    .and_then(|r| r.rows.first()?.get(0)?.as_integer())
+                    .and_then(|r| r.rows.first()?.first()?.as_integer())
                     .map(|n| n as usize)
                     .unwrap_or(0)
             };

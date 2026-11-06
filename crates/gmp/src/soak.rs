@@ -246,10 +246,12 @@ mod tests {
 
     #[test]
     fn test_soak_stats_success_rate() {
-        let mut stats = SoakStats::default();
-        stats.operations_attempted = 100;
-        stats.operations_succeeded = 95;
-        stats.operations_failed = 5;
+        let stats = SoakStats {
+            operations_attempted: 100,
+            operations_succeeded: 95,
+            operations_failed: 5,
+            ..Default::default()
+        };
         assert!((stats.success_rate() - 0.95).abs() < 0.001);
     }
 

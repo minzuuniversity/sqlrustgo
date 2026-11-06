@@ -407,10 +407,8 @@ mod tests {
 
     #[test]
     fn test_backup_manifest_verify_mismatch() {
-        let mut m1 = BackupManifest::default();
-        m1.total_documents = 10;
-        let mut m2 = BackupManifest::default();
-        m2.total_documents = 5;
+        let m1 = BackupManifest { total_documents: 10, ..Default::default() };
+        let m2 = BackupManifest { total_documents: 5, ..Default::default() };
         let mismatches = m1.verify(&m2);
         assert!(!mismatches.is_empty());
         assert!(mismatches[0].contains("Document count mismatch"));

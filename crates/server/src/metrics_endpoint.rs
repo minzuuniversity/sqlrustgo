@@ -204,7 +204,7 @@ mod tests {
         registry.register_help("queries".to_string(), "Help for queries".to_string());
 
         // Without registering metrics, help text won't appear in output
-        let output = registry.to_prometheus_format();
+        let _output = registry.to_prometheus_format();
         // Just verify the registry can be created and used without panic
         assert!(true);
     }

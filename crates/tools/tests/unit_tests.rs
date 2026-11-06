@@ -2,14 +2,11 @@
 
 use sqlrustgo_tools::{
     backup_restore::{
-        chrono_lite_now, md5_simple, serde_json_simple, BackupManager, BackupMetadata,
-        BackupStatus, BackupType, ExportOptions, RestoreResult,
+        chrono_lite_now, md5_simple, serde_json_simple, BackupMetadata, BackupStatus, BackupType,
+        ExportOptions, RestoreResult,
     },
-    mysqldump::{ColumnDef, DumpImporter, ForeignKeyRef, ImportMode, ImportStats, SqlStatement},
-    upgrade::{
-        create_upgrade_plan, list_history, show_status, UpgradeCommand, UpgradeManifest,
-        UpgradePlan, UpgradeStatus, VersionInfo,
-    },
+    mysqldump::{ColumnDef, ForeignKeyRef, ImportMode, ImportStats, SqlStatement},
+    upgrade::{create_upgrade_plan, UpgradeManifest, UpgradePlan, UpgradeStatus, VersionInfo},
 };
 
 // ============================================================================

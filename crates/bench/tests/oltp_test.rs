@@ -41,10 +41,7 @@ fn oltp_point_select() {
 
     for i in 1..=iterations {
         let id = (i % 10000) + 1;
-        match engine.execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id)) {
-            Ok(_) => success_count += 1,
-            Err(_) => {}
-        }
+        if let Ok(_) = engine.execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", id)) { success_count += 1 }
     }
 
     assert_eq!(
@@ -64,13 +61,10 @@ fn oltp_range_select() {
     for i in 1..=iterations {
         let start = (i % 9000) + 1;
         let end = start + 100;
-        match engine.execute(&format!(
+        if let Ok(_) = engine.execute(&format!(
             "SELECT c FROM sbtest1 WHERE id BETWEEN {} AND {}",
             start, end
-        )) {
-            Ok(_) => success_count += 1,
-            Err(_) => {}
-        }
+        )) { success_count += 1 }
     }
 
     assert_eq!(
@@ -91,13 +85,10 @@ fn oltp_insert() {
     for i in 0..iterations {
         let id = start_id + i;
         let k = i % 1000;
-        match engine.execute(&format!(
+        if let Ok(_) = engine.execute(&format!(
             "INSERT INTO sbtest1 VALUES ({}, {}, 'pad.{}', 'pad{}')",
             id, k, id, id
-        )) {
-            Ok(_) => success_count += 1,
-            Err(_) => {}
-        }
+        )) { success_count += 1 }
     }
 
     assert_eq!(success_count, iterations, "All inserts should succeed");
@@ -124,10 +115,7 @@ fn oltp_delete() {
 
     for i in 0..iterations {
         let id = 20001 + i;
-        match engine.execute(&format!("DELETE FROM sbtest1 WHERE id = {}", id)) {
-            Ok(_) => success_count += 1,
-            Err(_) => {}
-        }
+        if let Ok(_) = engine.execute(&format!("DELETE FROM sbtest1 WHERE id = {}", id)) { success_count += 1 }
     }
 
     assert_eq!(success_count, iterations, "All deletes should succeed");
@@ -187,14 +175,11 @@ fn oltp_bulk_insert() {
     let mut success_count = 0;
 
     for i in 1..=iterations {
-        match engine.execute(&format!(
+        if let Ok(_) = engine.execute(&format!(
             "INSERT INTO bulk_test VALUES ({}, {})",
             i,
             i % 100
-        )) {
-            Ok(_) => success_count += 1,
-            Err(_) => {}
-        }
+        )) { success_count += 1 }
     }
 
     assert_eq!(success_count, iterations, "All bulk inserts should succeed");
@@ -616,14 +601,12 @@ fn oltp_insert_select_round_trip_100() {
                 i
             ))
             .is_ok()
-        {
-            if engine
+            && engine
                 .execute(&format!("SELECT c FROM sbtest1 WHERE id = {}", 10000 + i))
                 .is_ok()
             {
                 ok += 1;
             }
-        }
     }
     assert_eq!(ok, 100);
 }
