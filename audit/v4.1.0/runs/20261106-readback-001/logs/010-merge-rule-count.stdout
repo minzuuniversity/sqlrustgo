@@ -1,0 +1,8 @@
+本线(63a395cf9d) 合并 marker 计数:
+63a395cf9d:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:4
+develop tip 合并 marker 计数:
+  0  => 另一线写的证据文本被按侧丢弃
+develop tip「另一侧」补记计数:
+gitea252/develop/v4.1.0:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:13
+我线是否已全部进 develop:
+  是（PR #5606 已是空 PR）
