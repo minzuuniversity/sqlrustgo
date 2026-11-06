@@ -1,0 +1,1 @@
+Usage: scripts/gate/audit_testing.sh <version> <stage> <out_dir>

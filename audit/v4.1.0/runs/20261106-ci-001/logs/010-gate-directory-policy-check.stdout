@@ -1,0 +1,2 @@
+{"kind": "directory_policy_check", "baseline": "/Volumes/workspace/dev/wt/ci/docs/releases/v4.1.0/DIRECTORY_POLICY_BASELINE.jsonl", "baseline_violations": 149, "live_violations": 149, "git_ignored_suppressed": 0, "new_violations": 0}
+directory_policy: OK
