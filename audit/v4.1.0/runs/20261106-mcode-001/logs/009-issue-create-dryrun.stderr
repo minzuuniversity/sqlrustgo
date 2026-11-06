@@ -1,0 +1,1 @@
+FAIL: 查重命中（同 ID 已有 open ISSUE）：[(5601, '[4.1.0][BIN-1] --storage binary 假成功：CREATE DATABASE 返回 OK 却零效果、CREATE TRIGGER 返回 OK 却从未登记（客户端可观测）')]

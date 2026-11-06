@@ -1,0 +1,12 @@
+{
+  "id": "LEDGER-2",
+  "title": "[4.1.0][LEDGER-2] claims 证据台账三套并存（CLAIM_BINDINGS_LEDGER vs CLAIMS_*）：debt 口径可对任意一份讲故事",
+  "body_file": "LEDGER-2.md",
+  "labels": [
+    "governance",
+    "P1-reliability",
+    "cap/governance",
+    "priority/p0",
+    "cost/t1"
+  ]
+}

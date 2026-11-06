@@ -1,0 +1,21 @@
+{
+ "create_database_effective": false,
+ "trigger_actually_fired_rows": [],
+ "drop_trigger_rc": 1,
+ "false_success_count": 3,
+ "create_database_rc": 0,
+ "show_databases_before": [
+  "default"
+ ],
+ "show_databases_after": [
+  "default"
+ ],
+ "create_trigger_rc": 0,
+ "trigger_self_admission_log_lines": [
+  "2026-11-06T07:52:07.249595Z ERROR sqlrustgo_executor::trigger: TriggerExecutor::new: storage has no WAL enabled — triggers will be silently skipped (binary mode)",
+  "2026-11-06T07:52:07.359730Z ERROR sqlrustgo_executor::trigger: TriggerExecutor::new: storage has no WAL enabled — triggers will be silently skipped (binary mode)",
+  "2026-11-06T07:52:07.518132Z ERROR sqlrustgo_executor::trigger: TriggerExecutor::new: storage has no WAL enabled — triggers will be silently skipped (binary mode)"
+ ],
+ "kind": "binmode_lock",
+ "json": "test_results/binmode/probe.json"
+}
