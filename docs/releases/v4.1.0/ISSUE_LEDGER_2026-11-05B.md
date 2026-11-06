@@ -1,8 +1,8 @@
 # v4.1.0 open issue 台账（IL-1 产物）
 
 - 生成：`scripts/gate/issue_ledger.py`（本文件是生成物，手改会被下次生成覆盖）
-- 输入：Gitea `type=issues` open=110（当期 open）；分诊文件共 172 条记录（同一 issue 可有多条，一族一条），覆盖 112 个 issue —— 其中 110 个对应当期 open（进台账），另 2 个已关闭（不在台账范围内）
-- 证据等级（行级）：cross-checked 58 / advisory-only 52；ladder credited lineage=gpt,qwen；实际分诊席位血统=gpt,qwen-strata
+- 输入：Gitea `type=issues` open=104（当期 open）；分诊文件共 127 条记录（同一 issue 可有多条，一族一条），覆盖 110 个 issue —— 其中 98 个对应当期 open（进台账），另 12 个已关闭（不在台账范围内）
+- 证据等级（行级）：advisory-only 94 / cross-checked 10；ladder credited lineage=gpt,qwen；实际分诊席位血统=gpt,qwen-strata
 - 规则：ladder 有两个 credited 血统 ≠ 本条被两个血统分别核对过。只有同一 issue 被 >=2 个 family 分诊才升级 cross-checked
 - 分诊只回答：域 / 破坏了哪条声称 / 可否自动化 / 修复形状 / 疑似重复。**不回答"是否已修好"**，销账仍走 PR 关联与关闭验证
 
@@ -11,34 +11,32 @@
 | 字段 | 值 |
 |---|---|
 | source_agent | omp-macmini |
-| source_run | 20261105-il2-001 |
-| timestamp | 2026-11-05T20:09:55Z |
-| evidence_hash | sha256:de5e91ae6a5a905f287b35f9f2cc212df6842b87d26f2cc71b9082052ccf70c0 |
-| conflict_resolution | 单席位行一律 advisory-only；同一 issue 被 >=2 family 分诊才升 cross-checked（本次 58 行升级） |
+| source_run | 20261106-ledger-001 |
+| timestamp | 2026-11-06T09:20:42Z |
+| evidence_hash | sha256:ffdb212694edac7fb598a3698a5c759738f36d236b4ae044ee127420570e37dc |
+| conflict_resolution | 单席位行一律 advisory-only；同一 issue 被 >=2 family 分诊才升 cross-checked（本次 10 行升级） |
 
 输入指纹（可用 `shasum -a 256` 复现 evidence_hash）：
 
-- `ISSUE_SNAPSHOT_2026-11-05.jsonl` = `sha256:99bb3d19830cff62b8cc2e02f480e9ef214fa351b396078569db08b5017de9c0`
 - `ISSUE_TRIAGE_2026-11-05.jsonl` = `sha256:bcffc2fc87d9afc8436f288c6bb77cd65c529be3842211d9948c1a4fb388bbae`
 - `ISSUE_TRIAGE_2026-11-05B.jsonl` = `sha256:b7bede1d9c1f2e55b9a6f221c37c9aa7581028a420b181fe41e7be8da44589eb`
-- `ISSUE_TRIAGE_2026-11-05C.jsonl` = `sha256:f101f2e49dc890d62bc7a73eaded6d54e13042ab2fe4607fde15d89452e35683`
 - `ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl` = `sha256:9719244075474f3c50f1e8afa2f2674708434867bed4c59f139b6543ad6c6852`
 - `ISSUE_TRIAGE_CROSSCHECK_2026-11-05B.jsonl` = `sha256:f6b40af40f542e430f009c3f90560096849952997de15621078eb5b45b8948ae`
-- `ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl` = `sha256:9532a397090961b88d72cf1537a5aa6f73c87a67781ab5bbe734052dee98a25c`
-- `ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl` = `sha256:fec56b65e51873cae1cbfad2e606d7b759ac9a35e3b72174408193255acb6fe5`
+- `ledger-issues-all.json` = `sha256:fd07b6471186c73fac9315b9a23802a6bd25796e287715bd35a3d5d9b41d3baf`
 
 复现输入快照（重新拉取得到新指纹，因 issue 状态会变）：
 
 - issues：`python3 scripts/gate/gov_probe.py issues --dump <path>`（open issues 逐页 limit=50，dump 行自报 sha256）
 - 分诊：`python3 scripts/gate/expert_triage.py --input <issues dump> --seat <seat> --out <jsonl> --batch N`（席位与延迟逐行记录在 jsonl）
+- ⚠️ 缺分诊行：6 条：#5605,#5604,#5603,#5601,#5599,#5598
 
 ## 1. 分布
 
 | 维度 | 分布 |
 |---|---|
-| 优先级 | priority/p0 56 / priority/p1 52 / priority/p2 2 |
-| 功能域 | test-validity 23 / ci-infra 19 / gate 15 / sql-semantics 9 / release-stage 8 / storage-wal-crash 8 / docs-claims 7 / perf-tpch 5 / tooling 5 / vector-index 3 / coverage 3 / security 2 / conn-lifecycle 2 / backup-restore 1 |
-| 可自动化 | auto 36 / auto-needs-infra 32 / needs-human-decision 32 / manual-host 9 / infra-config 1 |
+| 优先级 | priority/p1 54 / priority/p0 48 / priority/p2 2 |
+| 功能域 | test-validity 22 / ci-infra 19 / gate 15 / release-stage 7 / docs-claims 7 / (未分诊) 6 / storage-wal-crash 6 / tooling 5 / perf-tpch 5 / coverage 3 / sql-semantics 3 / vector-index 3 / security 2 / backup-restore 1 |
+| 可自动化 | auto-needs-infra 31 / auto 30 / needs-human-decision 28 / manual-host 8 / (未分诊) 6 / infra-config 1 |
 | 疑似重复 | 0 条 |
 
 ## 2. 台账
@@ -55,60 +53,53 @@
 | [#5233](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5233) | p0 | release-stage | [IAIA-410/A11] Independent Judge 证据复核与冲突裁决 | 独立复核与冲突裁决未完成，证据可信度存疑 | human-decision | cross-module | large | - |
 | [#5234](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5234) | p0 | release-stage | [IAIA-410/A12] 最终审计报告、治理审批与阶段门禁衔接 | 最终审计报告与治理审批缺失，阻断晋级 | human-decision | cross-module | large | - |
 | [#5520](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5520) | p0 | tooling | [已订正] 5 远端同步工具无法推进 gitea250 且可能静默 exit 0；明文凭据仍在 gitcode 的公开分支上可读 | 5远端同步工具无法推进gitea250且可能静默exit 0 | manual-host | infra-config | medium | - |
+| [#5381](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5381) | p0 | security | 仓库内硬编码可用的 Gitea 明文凭据（token 嵌入 git push URL、curl -u、文档） | 仓库代码不包含敏感凭据的安全契约 | human-decision | cross-module | large | - |
 | [#5525](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5525) | p0 | backup-restore | [备份/恢复] 逻辑备份与恢复都是骨架：backup 枚举 0 张表、restore 只数 INSERT 行数 | 逻辑备份/恢复声称成功但实际未执行任何数据操作 | auto-infra | cross-module | large | - |
 | [#5537](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5537) | p0 | gate | [门禁失效] v4.1.0 ALPHA 阶段 2 个门禁阻塞项：coverage 脚本漏传 feature（storage 覆盖率为 0）+ | v4.1.0 ALPHA门禁通过及覆盖率数据可信度 | auto | localized | medium | - |
 | [#5573](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5573) | p0 | ci-infra | [CI 基础设施红] act_runner 每 6–9 分钟被要求优雅关机 ⇒ 在飞 job 容器被 pause ⇒ 5 分钟宽限到点 jo | CI长任务执行稳定性及Job超时/中断处理机制 | infra-config | infra-config | large | - |
 | [#5577](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5577) | p0 | test-validity | [测试副作用] cargo test --workspace 会覆写已提交的证据文件（a04-5226 的 21 个对照输出被抹成占位符） | 集成测试隔离性及已提交证据文件的不可变性 | auto | localized | medium | - |
 | [#5579](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5579) | p0 | coverage | [门禁] RC/GA 门禁的覆盖率算法与 coverage 门禁不是一份实现 ⇒ storage 被静默跳过 ⇒ GA 的 A5「67%」是 | GA门禁覆盖率阈值判定逻辑及storage模块覆盖统计 | auto | localized | medium | - |
 | [#5580](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5580) | p0 | gate | [门禁] check_rc_ga_gate.sh 的 ga / rc / beta 模式永远判 FAIL（期望 D1/D2 却从不执行）⇒  | GA/RC/Beta 晋级门禁可执行且能通过 | auto | localized | large | - |
-| [#5582](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5582) | p0 | conn-lifecycle | [引擎] 空闲连接回收器从未真正生效 —— register_connection 只留 Weak，唯一强引用是临时值 ⇒ weak.upg | 空闲连接回收器从未真正关闭任何连接，导致TLS连接泄漏及文档误导。 | human-decision | cross-module | medium | - |
 | [#5597](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5597) | p0 | ci-infra | [CI 执行面] runner-03 缺 sqlrustgo-runner:v1 镜像：PR #5593 的 8 个 job 全部没进入执行 | CI执行面无法运行任何Job，导致门禁与测试证据缺失 | manual-host | infra-config | large | - |
+| [#5603](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5603) | p0 | - | [4.1.0][LEDGER-2] claims 证据台账三套并存（CLAIM_BINDINGS_LEDGER vs CLAIMS_*）：d | - | - | - | - | - |
 | [#5363](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5363) | p0 | ci-infra | [CI] act_runner 未注册：50/50 个 workflow run 卡在 queued，零完成（自 2026-10-15T13 | CI 完全停摆，所有 PR 未经 CI 验证 | manual-host | infra-config | large | - |
 | [#5375](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5375) | p0 | ci-infra | test job 编译失败：partition_e2e_test 缺 clustered 字段；另有 storage --lib 29 个既 | CI测试套件的可编译性契约 | auto | localized | medium | - |
 | [#5377](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5377) | p0 | storage-wal-crash | create_index 没有 _in_db 变体：命名库的索引既建不了也查不到 | 命名数据库索引创建与查询的一致性契约 | auto | cross-module | large | - |
-| [#5381](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5381) | p0 | security | 仓库内硬编码可用的 Gitea 明文凭据（token 嵌入 git push URL、curl -u、文档） | 仓库代码不包含敏感凭据的安全契约 | human-decision | cross-module | large | - |
 | [#5403](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5403) | p0 | gate | [门禁失效] postcheck 另有 3 个必失败步骤：调用已废弃的 check_coverage.sh、v3.7.0 证据绑定 74 项 | postcheck门禁步骤应正确执行且不破坏受控文件 | auto-infra | infra-config | large | - |
 | [#5412](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5412) | p0 | perf-tpch | [引擎] 带 PRIMARY KEY 的逐行 INSERT 仍是 O(N^2) —— pk_lookup_cache 被它自己要加速的那次  | 带主键表逐行INSERT应为O(N)而非O(N^2) | auto | cross-module | large | - |
 | [#5415](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5415) | p0 | perf-tpch | [wire 路径] oracle_g15_tpch_sf01 的 Q22 在 server 崩溃后 36µs 内报 Broken pipe  | TPCH Q22查询在Wire协议下稳定执行 | manual-host | cross-module | large | - |
 | [#5461](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5461) | p0 | gate | [GA 流程] 证据 §7.25.7 把 3 项 GA 门禁标注为「本机未验证（**CI 承接**）」，实测 **CI 也从不调用它们**  | GA门禁清单中特定检查项在CI中的实际执行覆盖 | auto | localized | medium | - |
-| [#5463](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5463) | p0 | sql-semantics | [引擎] GROUP BY 引用未知标识符时不报错，执行器行宽不匹配 panic ⇒ 整个 server 挂掉 | SQL语义校验完整性及服务器稳定性契约 | auto | localized | large | - |
 | [#5491](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5491) | p0 | gate | [门禁] GA-2 的 SOAK 判据只检查「脚手架文件在不在」；`run_ga_soak.sh` 与 `extract_soak_repo | GA-2 声称通过 SOAK 测试，实际仅检查文件存在且无执行脚本 | auto-infra | cross-module | medium | - |
-| [#5509](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5509) | p0 | storage-wal-crash | [引擎] FileStorage 的 DDL 列名匹配整体大小写敏感 —— DROP/MODIFY/SET DEFAULT 都只认「存储时的 | 文件后端与内存后端DDL行为一致性及MySQL兼容语义 | human-decision | cross-module | medium | - |
-| [#5514](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5514) | p0 | conn-lifecycle | [引擎] 30 秒空闲连接回收器把「客户端在算长任务」当成「连接已死」⇒ 合法场景被断连；应改为心跳/更长超时 | 空闲连接回收机制误杀长思考客户端，且无禁用开关 | human-decision | cross-module | medium | - |
 | [#5551](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5551) | p0 | ci-infra | [基础设施红] docker 地址池被占满 ⇒ CI job 在「Start image」这一步全灭，一个测试都没跑 | CI 基础设施可用性：确保测试套件能正常启动执行 | auto-infra | infra-config | large | - |
 | [#5557](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5557) | p0 | storage-wal-crash | [运维阻塞] server 在 --wal-sync every 大量写入后卡进不可中断 I/O（进程状态 U）⇒ SIGTERM 不生效、 | SIGTERM/SIGKILL 可预期终止服务，不受 I/O 阻塞影响 | human-decision | cross-module | medium | - |
 | [#5596](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5596) | p0 | gate | [4.1.0][owner] 7 条历史审计记录不可复核（5 hollow 无命令行 / 1 未封板 / 1 无清单）：退役、标注还是重做？ | 历史审计记录不可复核，阻碍GA前置条件达成 | human-decision | localized | medium | - |
+| [#5605](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5605) | p0 | - | [4.1.0][KAN-2] 看板 SSOT 合并后再次双向漂移（两侧各 72/73 行、7 行状态判定相反）：看板写入口径没人定 | - | - | - | - | - |
 | [#5117](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5117) | p0 | release-stage | [v4.1.0][总控] Alpha→Beta 门禁整改与晋级审核 | Alpha至Beta晋级门禁满足 | human-decision | cross-module | large | - |
-| [#5361](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5361) | p0 | sql-semantics | [A04] 拒绝 ON 子句含表达式的合法 LEFT JOIN（sqlite 正常返回） | 拒绝含表达式的合法 LEFT JOIN，偏离 SQL 标准 | auto | cross-module | large | - |
 | [#5362](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5362) | p0 | tooling | [toolchain] develop 上 cargo clippy -D warnings 失败：fault_injection.rs u | cargo clippy --all-features -D warnings 失败 | auto | one-line | medium | - |
 | [#5364](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5364) | p0 | ci-infra | [CI][evidence-graph] ingest_git_commit 对短 commit hash panic —— evidenc | evidence-graph-gate 因 panic 在每个 run 失败 | auto | localized | medium | - |
 | [#5366](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5366) | p0 | ci-infra | [CI] evidence-graph-gate 结构上无法 PASS：SHA 未回退 + 边早于节点 + 缺 VERIFIED_BY 边 | evidence-graph-gate 无法产出 PASS，证据链断裂 | auto-infra | cross-module | medium | - |
 | [#5368](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5368) | p0 | ci-infra | [CI] evidence-graph-gate 解析不了自己的 PASS：grep 模式与 pretty-print JSON 不匹配 | 证据链门禁对PASS状态的解析契约 | auto | one-line | small | - |
 | [#5388](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5388) | p0 | coverage | [CI] fail-fast 掩盖了 382 个从未执行的测试目标：首次全量跑暴露出与 TPC-H 无关的失败，需归因分流 | 测试覆盖率与CI门禁有效性 | auto | infra-config | large | - |
-| [#5392](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5392) | p0 | storage-wal-crash | 引擎缺陷：文件存储后端在首列同值的行上塌缩，LOAD DATA 报告成功但查询只能看到约 1/4 的行 | 文件存储数据完整性与持久化 | auto | cross-module | large | - |
 | [#5393](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5393) | p0 | perf-tpch | [wire 路径] file storage 后端上 TPC-H Q9/Q18 资源耗尽致服务器 OOM 被杀、Q19 解析失败 | 文件存储后端查询执行能力 | auto | cross-module | large | - |
-| [#5394](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5394) | p0 | sql-semantics | [引擎] LEFT OUTER JOIN 的 ON 条件过滤会丢弃左表行（TPC-H Q13 少算 71 个客户） | LEFT OUTER JOIN标准SQL语义 | auto | cross-module | large | - |
 | [#5400](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5400) | p0 | gate | [门禁失效] check_correctness_tests_production_storage.sh 的 R2/R4 断言在 #5317 | 生产存储默认路径检查应准确反映当前代码结构 | auto | localized | medium | - |
 | [#5402](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5402) | p0 | gate | [治理缺口] CI postcheck job 在 600 次历史 run 中从未成功执行过一次 —— 其内含的发布门禁与 6 个硬阻塞 m | postcheck发布门禁应能成功执行以验证合规性 | auto-infra | infra-config | large | - |
-| [#5409](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5409) | p0 | sql-semantics | [引擎] INSERT 的列名列表不被校验：未知列名静默写入 NULL 行，不报 ER_BAD_FIELD_ERROR(1054) | INSERT未知列名应报ER_BAD_FIELD_ERROR而非静默NULL | auto | localized | large | - |
 | [#5427](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5427) | p0 | test-validity | [测试非自包含] tpch_compliance_test 依赖仓库里不存在的 `data/tpch-tiny/`（8 个 .tbl + 预 | TPCH合规测试数据在仓库中可用 | auto-infra | new-fixture | medium | - |
 | [#5428](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5428) | p0 | test-validity | [测试非自包含] quick_query 依赖机器本地的绝对路径 `/tmp/tpch-sf1`（含 WAL 文件）⇒ 任何干净环境必然失败 | 测试环境自包含且不依赖本地状态 | auto-infra | new-fixture | medium | - |
 | [#5436](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5436) | p0 | release-stage | [GA 流程] `STAGE_CONFIG.yaml` 的 GA `branch_pattern` 不含 `develop/*`，而 v4. | GA流程定义覆盖当前开发分支 | human-decision | infra-config | large | - |
 | [#5452](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5452) | p0 | gate | [分支保护] `STAGE_CONFIG.yaml` 的 `GA.merge_policy`（3 个 reviewer + 4 类审批 +  | 分支保护与合并门禁策略已生效 | auto-infra | infra-config | large | - |
 | [#5454](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5454) | p0 | release-stage | [治理流程] 版本自动化的 release-please 链路在仓库里**不存在**，同时规范又把**所有** PR 标题锁死为 `fix( | 版本自动化链路(release-please)存在性及PR标题规范一致性 | human-decision | cross-module | medium | - |
-| [#5462](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5462) | p0 | sql-semantics | [引擎] GROUP BY 引用 SELECT 列表别名时被当成字符串常量（所有行被并成一组） | GROUP BY子句对SELECT列表别名解析的正确性 | auto | cross-module | large | - |
 | [#5507](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5507) | p0 | storage-wal-crash | [存储/性能] 重构 MemoryStorage 的「提交快照」机制：让逐行 INSERT 的提交代价回到 O(1)（#5412 的根因修复 | 逐行 INSERT 提交代价应为 O(1)，实际为 O(N²) | auto-infra | cross-module | large | - |
-| [#5527](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5527) | p0 | sql-semantics | [LOAD DATA] 不检查重复键：有主键的表重复导入静默追加，与 MySQL 的 Duplicate entry 不一致 | LOAD DATA 在有主键/唯一索引时未执行重复键检查，违反 MySQL 兼容性契约 | auto-infra | cross-module | medium | - |
 | [#5528](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5528) | p0 | ci-infra | [CI] runner 换成 Alpine/musl 镜像后缺静态 zlib ⇒ 所有需要链接测试二进制的 job 都红 | CI 门禁与测试流程无法通过，阻塞所有 PR 合并 | auto-infra | infra-config | large | - |
 | [#5584](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5584) | p0 | storage-wal-crash | [测试/恢复] 崩溃测试从来没有在它声称的边界上崩溃：`after_commit_fsync` 只在 autocommit 提交上触发，且在 | 文件存储路径下COMMIT边界未执行fsync，崩溃测试断言失效且索引恢复导致表不可读 | human-decision | cross-module | large | - |
 | [#5531](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5531) | p1 | docs-claims | 多 Agent 并行协作台账（sqlrustgo / v4.1.0）：身份登记 + 文件归属矩阵 + 认领台账 | 多Agent并行协作缺乏可操作的身份与状态协调机制 | human-decision | localized | small | - |
 | [#5225](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5225) | p1 | test-validity | [IAIA-410/A03] 静态生产调用链与假集成审计 | 生产代码路径无死代码或假集成 | manual-host | cross-module | medium | - |
 | [#5229](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5229) | p1 | test-validity | [IAIA-410/A07] 测试系统反向审计与 mutation REVIEW 清零 | 测试套件能有效发现生产缺陷 | auto-infra | new-fixture | medium | - |
-| [#5599](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5599) | p1 | release-stage | 交接：sqlrustgo 4.1.0 持续整改接手提示词（mcode-macmini → omp） | v4.1.0 ALPHA 阶段整改交接流程完整性 | manual-host | infra-config | small | - |
+| [#5592](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5592) | p1 | release-stage | [看板] v4.1.0 · ALPHA 阶段总览（2026-11-04，2026-11-05 刷新） | v4.1.0 ALPHA阶段状态与进度追踪的SSOT一致性 | auto | localized | small | - |
+| [#5599](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5599) | p1 | - | 交接：sqlrustgo 4.1.0 持续整改接手提示词（mcode-macmini → omp） | - | - | - | - | - |
 | [#5231](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5231) | p1 | perf-tpch | [IAIA-410/A09] v3.12、v4.0、v4.1 跨版本正确性与性能回归 | 跨版本性能与正确性无回归 | auto-infra | infra-config | large | - |
 | [#5232](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5232) | p1 | security | [IAIA-410/A10] 认证、协议、会话与隔离边界审计 | 认证、协议与会话隔离边界审计未完成 | auto-infra | cross-module | large | - |
+| [#5376](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5376) | p1 | test-validity | 崩溃测试 harness：SIGKILL 落在边界之后 —— 崩溃测试没有证明它声称证明的事 | 崩溃恢复测试对WAL提交边界的验证有效性 | auto-infra | new-fixture | medium | - |
 | [#5458](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5458) | p1 | docs-claims | [治理流程] `PR_TEMPLATE.md` 在仓库里**不存在**，但 `AGENTS.md` 与本 PR 自己的 OpenSpec 任 | PR模板文件存在性及AGENTS.md中流程约束的可执行性 | manual-host | localized | small | - |
-| [#5592](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5592) | p1 | release-stage | [看板] v4.1.0 · ALPHA 阶段总览（2026-11-04，2026-11-05 刷新） | v4.1.0 ALPHA阶段状态与进度追踪的SSOT一致性 | auto | localized | small | - |
 | [#5384](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5384) | p1 | vector-index | cosine_similarity_simd 用「自己到自己的距离」当范数 ⇒ 相似度恒为 0，cosine 距离恒为 1.0 | 余弦相似度计算的正确性契约 | auto | localized | large | - |
 | [#5397](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5397) | p1 | ci-infra | [CI 基础设施] runner 拉取 actions/checkout 间歇性失败（unexpected EOF），PR 流水线被基础设施 | CI流水线稳定性与可复现性 | auto-infra | infra-config | medium | - |
 | [#5423](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5423) | p1 | test-validity | [测试 flaky] 根包 lib 测试 `test_v410_atomic_parallel_degree_getter_clamps_t | 单元测试在并发环境下稳定通过 | auto | localized | small | - |
@@ -117,10 +108,10 @@
 | [#5556](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5556) | p1 | ci-infra | [测试挂死] fault-injection 的 reach() 每个 WAL 追加自旋 120s ⇒ cargo test -p sqlr | CI 测试套件在预算内完成且无孤儿进程残留 | auto-infra | cross-module | large | - |
 | [#5567](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5567) | p1 | ci-infra | [CI 红 · 既有] test-crates job 在 TPC-H fixture 生成阶段红，且该 step 没有 NOT RUN 兜 | CI 环境阻塞应记为 NOT RUN 而非代码红 | human-decision | infra-config | medium | - |
 | [#5581](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5581) | p1 | gate | [门禁] 覆盖率阈值有 5 份实现（SSOT 50/75/80/85 vs 脚本里的 75/80/47/42/50）、测量有 6 份实现 ⇒ | 覆盖率门禁阈值与测量口径的单一事实来源（SSOT）一致性 | human-decision | cross-module | medium | - |
-| [#5598](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5598) | p1 | test-validity | [v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（architecture_free | v4.1.0 架构冻结与整数债务门禁有效性 | human-decision | new-fixture | medium | - |
+| [#5598](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5598) | p1 | - | [v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（architecture_free | - | - | - | - | - |
+| [#5601](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5601) | p1 | - | [4.1.0][BIN-1] --storage binary 假成功：CREATE DATABASE 返回 OK 却零效果、CREATE  | - | - | - | - | - |
 | [#5114](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5114) | p1 | test-validity | [v4.1.0][P1] Alpha→Beta：BustubX-EDU 与多连接模型回归矩阵 | 多连接模型与并发隔离的正确性保证 | auto-infra | new-fixture | large | - |
 | [#5115](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5115) | p1 | test-validity | [v4.1.0][P1] Alpha→Beta：SOAK 恢复、故障注入与 1h/24h/168h 阶梯 | SOAK稳定性验证的可审计性与状态真实性 | auto-infra | infra-config | large | - |
-| [#5376](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5376) | p1 | test-validity | 崩溃测试 harness：SIGKILL 落在边界之后 —— 崩溃测试没有证明它声称证明的事 | 崩溃恢复测试对WAL提交边界的验证有效性 | auto-infra | new-fixture | medium | - |
 | [#5380](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5380) | p1 | ci-infra | 5remotes_sync.sh 在 ssh-agent 失效时无限挂起：此前「SSH 远端不可达」的结论是错的 | 多远端同步脚本的健壮性契约 | auto-infra | localized | medium | - |
 | [#5383](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5383) | p1 | ci-infra | test_run_soak_loop_tier3.sh 在 macOS 上假失败：wc -l 输出带前导空格，断言用 == 硬比较 | 跨平台测试脚本的稳定性契约 | auto | one-line | small | - |
 | [#5385](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5385) | p1 | vector-index | FlatIndex::search 的 cosine 分支返回距离却按降序排 ⇒ take(k) 保留下来的是 k 个最不相关的向量 | 向量检索Top-K结果的相关性排序契约 | auto | localized | medium | - |
@@ -128,6 +119,7 @@
 | [#5473](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5473) | p1 | gate | [治理] P14 的基线文件 `tests/baseline/drift_baseline.json` 的 `total_findings: | P14元门禁基线数据不可信，导致防退化判据失效 | human-decision | cross-module | medium | - |
 | [#5474](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5474) | p1 | gate | [门禁] P14 的 Check 3「grep on cargo test stdout without PIPESTATUS check」 | 门禁脚本能精确识别未校验退出码的管道命令 | auto | localized | small | - |
 | [#5595](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5595) | p1 | gate | [门禁清单] 83 条不会运行的门禁已逐条交代：34 条归档候选 + principles 三份并存，需 owner 裁定（P0-4） | 大量门禁脚本失效或冗余，需清理以维持治理有效性 | human-decision | localized | medium | - |
+| [#5604](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5604) | p1 | - | [4.1.0][DRIFT-2] 看板三行(未开始)与已落库工具不一致：honesty.py/doc_facts.py/directory_ | - | - | - | - | - |
 | [#5116](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5116) | p1 | perf-tpch | [v4.1.0][P1] Alpha→Beta：性能基线与自动回归门禁 | 性能基线自动回归门禁生效 | auto-infra | infra-config | medium | - |
 | [#5360](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5360) | p1 | sql-semantics | [A04] 未加别名表达式/聚合列名暴露 Rust Debug AST（协议层正常，CLI 层丢失） | CLI 层暴露 Rust Debug AST 而非列名 | auto | localized | small | - |
 | [#5386](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5386) | p1 | vector-index | InvertedIndex::search_with_limit 截断 HashSet 迭代 ⇒ 返回随机子集，同 query 两次调用结果 | 检索结果确定性与Top-K相关性排序契约 | auto | localized | medium | - |
