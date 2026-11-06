@@ -1,0 +1,111 @@
+# 20261106-ledger-002 —— 台账重生 + 口径对齐批的权威归档命令集
+
+# 与 -001 的差别：台账按「已分诊 ∩ 当期 open」重生（98 行），三处工具口径对齐
+# （verify_ledger L1/L4 改为逐行判据；probe_ledger_freshness 参照集改为已分诊∩当期 open
+# 并单列 untriaged_open；分诊文件集统一为六件套），并新增本批的反向变异探针。
+
+- id: ledger-verify
+  name: 台账自洽（verify_ledger：每行有分诊记录 + domain/automatable；等级现场重算）
+  cmd: python3.14 audit/v4.1.0/verify_ledger.py
+  cwd: .
+  timeout_sec: 600
+- id: ledger-fresh-snapshot-count
+  name: 台账新鲜度①：参照集 = 已分诊 ∩ 当期 open；未分诊的当期 open 单列
+  cmd: python3.14 audit/v4.1.0/probe_ledger_freshness.py snapshot-count
+  cwd: .
+  timeout_sec: 600
+- id: ledger-fresh-replay-rows
+  name: 台账新鲜度②：按现场快照重放，行级字段必须逐字段相等
+  cmd: python3.14 audit/v4.1.0/probe_ledger_freshness.py replay-rows
+  cwd: .
+  timeout_sec: 900
+- id: ledger-fresh-mutation-selftest
+  name: 台账新鲜度③的反向变异：删行 / 改 domain 必须各自变红，CTRL 必须绿
+  cmd: python3.14 audit/v4.1.0/probe_ledger_freshness.py mutation-selftest
+  cwd: .
+  timeout_sec: 900
+- id: probe-ledger-scope-mutations
+  name: 本批工具口径改动的反向变异：删行必须被新鲜度探针抓住并点名
+  cmd: python3.14 audit/v4.1.0/probe_ledger_scope_mutations_omp.py
+  cwd: .
+  timeout_sec: 900
+- id: ladder-health
+  name: 咨询梯席位现场 health（IL-2 的真实缺口是『当期集的第二血统分诊量』，先测席位是否可用）
+  cmd: python3 scripts/gate/expert_ladder.py health --no-evidence-dir
+  cwd: .
+  timeout_sec: 1500
+- id: gate-kanban-consistency
+  name: 看板 JSONL 与渲染出的 MD 必须逐行一致
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: gate-kanban-counts
+  name: 看板计数（IL-4 完成 / IL-2 保持未开始 / P1-4 迁待复核之后）
+  cmd: python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: gate-doc-facts-check
+  name: 文档事实与索引一致（台账 md/jsonl 变化，索引已重生）
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+- id: probe-claims-selftest
+  name: 五类声称的反向变异自检（P1-4 的 M1..M4 在其中：17 臂必须全 VERIFIED）
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1200
+- id: gate-honesty-check
+  name: honesty 判据（分母 168、夹具 57、fails 必须 0）
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-registry-denominator
+  name: 门禁注册表：分母必须仍是 168
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: probe-gate-registry
+  name: 门禁注册表自检（9 个变异必须全被抓住）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-directory-policy-check
+  name: 目录策略判定口径必须 rc=0
+  cmd: python3.14 audit/v4.1.0/directory_policy.py check
+  cwd: .
+  timeout_sec: 600
+- id: probe-directory-policy-mutations
+  name: 目录策略反向变异（5 臂自带夹具）
+  cmd: python3.14 audit/v4.1.0/dir_policy_mutations_omp.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-storage-semantics
+  name: '存储语义声明台账必须与 #5409 生产链臂一致'
+  cmd: python3.14 audit/v4.1.0/storage_semantics_claims.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-ci-checkout-consistency
+  name: CI checkout 一致性门禁（必须仍绿）
+  cmd: bash scripts/gate/check_ci_checkout_consistency.sh
+  cwd: .
+  timeout_sec: 900
+- id: gate-fmt-check
+  name: rustfmt：workspace 的 fmt 欠账必须为空
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+- id: gate-test-count-monotonic
+  name: 测试计数单调门禁
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 1800
+- id: gate-tpch-known-differences
+  name: TPC-H 已知差异登记表必须为空且合法
+  cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  timeout_sec: 300
+- id: gate-main-freshness
+  name: C-MAIN-02 main 新鲜度（GA 前 main 封存 ⇒ 结构红，不是本批回归）
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600
