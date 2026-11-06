@@ -77,15 +77,21 @@ SKIP_A5=0
 
 usage() {
     cat <<'USAGE'
-Usage: $0 [alpha|beta|rc|ga|all] [--skip-a5]
+Usage: $0 [alpha|beta|rc|ga|all] [--skip-a5] [--list-dims]
 
   all    — Full gate (default): D1 D2 D3 D4 D5 D6 D7 D8 D9
   alpha  — D1 (+ D3/D4, which always run)
-  beta   — D1 + D2 (+ D3/D4)
-  rc     — D1 + D2 + D3 + D4 + D5 + D9
-  ga     — all of the above
+  beta   — D2 (+ D3/D4, which always run)
+  rc     — D3 + D4 + D5 + D9
+  ga     — D3 + D4 + D5 + D6 + D7 + D8 + D9
 
-  --skip-a5 — skip the A5 coverage sub-check inside D1 (R2 budget)
+  Each mode names the release stage whose own gate runs; D3/D4 are
+  invariant checks that run in every mode. D1 (Alpha) and D2 (Beta) are
+  NOT part of rc/ga — they are covered by `all`, which is what the CI
+  postcheck job runs through check_full_gate_verification.sh.
+
+  --skip-a5  — skip the A5 coverage sub-check inside D1 (R2 budget)
+  --list-dims— print the dimension plan for the selected mode and exit
 USAGE
 }
 
@@ -98,9 +104,11 @@ gate_parse_args() {
     local arg
     GATE_TYPE="all"
     SKIP_A5=0
+    LIST_DIMS=0
     for arg in "$@"; do
         case "$arg" in
             --skip-a5) SKIP_A5=1 ;;
+            --list-dims) LIST_DIMS=1 ;;
             --help|-h) return 3 ;;
             alpha|beta|rc|ga|all) GATE_TYPE="$arg" ;;
             *)
@@ -126,9 +134,12 @@ gate_parse_args() {
 # i.e. **the gate could never pass in those modes**, and `ga` is the mode
 # GA's `required_gates` names (`scripts/gate/check_rc_ga_gate.sh ga`).
 #
-# The rule now lives in gate_dimensions_for_mode, and BOTH the plan and the
-# execution read it. The dimension list is therefore written once and the
-# two cannot drift apart again.
+# 现在读的是同一份规范清单 gate_dimensions_for_mode（#5580），执行侧的
+# 读取口叫 plan_dims（#5456）。两个读取口的函数体刻意分开写 —— 声明与实现
+# 分开，回归测试才有牙：
+# tests/integration/gate/gate_honesty_test.rs::
+#   test_5456_expected_dims_and_plan_dims_agree_for_every_mode
+# 逐模式比对 gate_expected_dims 与 plan_dims，谁漂了就红。
 gate_expected_dims() {
     gate_dimensions_for_mode "${1:-all}"
 }
@@ -140,12 +151,17 @@ gate_expected_dims() {
 #
 #   all    — D1 D2 D3 D4 D5 D6 D7 D8 D9
 #   alpha  — D1 (+ D3/D4)
-#   beta   — D1 + D2 (+ D3/D4)
-#   rc     — D1 + D2 + D3 + D4 + D5 + D9
-#   ga     — all of the above
+#   beta   — D2 + D3 + D4
+#   rc     — D3 + D4 + D5 + D9
+#   ga     — D3 + D4 + D5 + D6 + D7 + D8 + D9
 #
-# `ga` and `all` are the same set, by design: GA re-validates the earlier
-# transitions' dimensions on top of the GA-era ones. The GA stage's
+# D1/D2 不在 beta/rc/ga 的计划里，这不是漏洞：Alpha/Beta 的验证由 CI 里
+# 跑 `all` 计划的那一步（if: always()）负责，Gate summary 一旦发现维度
+# 报告里没有 D1/D2 就判红（NOT-RUN ≠ 通过）。见
+# tests/integration/gate/ci_wiring_honesty_test.rs 的 #5456 兜底用例。
+#
+# `ga` 与 `all` 的差集就是 D1/D2：`ga` 不重跑 Alpha/Beta 的验证，
+# 那一层由 CI 里 `all` 计划的那一步覆盖。The GA stage's
 # `required_gates` (docs/governance/STAGE_CONFIG.yaml) additionally lists
 # `cargo build --all-features`, `cargo test --all-features`,
 # `cargo fmt --check`, `cargo clippy` and `check_coverage_v312.sh` as
@@ -154,12 +170,44 @@ gate_expected_dims() {
 # second standard.
 gate_dimensions_for_mode() {
     case "${1:-all}" in
-        alpha) echo "D1 D3 D4" ;;
-        beta)  echo "D1 D2 D3 D4" ;;
-        rc)    echo "D1 D2 D3 D4 D5 D9" ;;
-        ga)    echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
-        all)   echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
-        *)     echo "" ;;
+        alpha)  echo "D1 D3 D4" ;;
+        beta)   echo "D2 D3 D4" ;;
+        rc)     echo "D3 D4 D5 D9" ;;
+        ga)     echo "D3 D4 D5 D6 D7 D8 D9" ;;
+        all)    echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
+        *)      echo "" ;;
+    esac
+}
+
+# plan_dims <mode> — the dimensions the executor ACTUALLY runs for <mode>.
+#
+# #5456: `gate_expected_dims` (the declared contract) and the executor
+# used to disagree, and only because the executor's if-conditions were
+# written inline:
+#
+#     if [[ "$GATE" == "all" ]] || [[ "$GATE" == "alpha" ]]; then run_d1_alpha; fi
+#     if [[ "$GATE" == "all" ]] || [[ "$GATE" == "beta"  ]]; then run_d2_beta;  fi
+#
+# `ga` therefore executed D3..D9 while gate_expected_dims("ga")
+# demanded D1..D9 — so every `ga` run failed with
+# "missing dimension(s): D1 D2" even though nothing was actually wrong
+# with the gate itself (CI run 6335, postcheck step 24).
+#
+# Two rules make that class of defect impossible to reintroduce:
+#   1. plan_dims() is the ONLY place that decides which dimensions run;
+#      the executor is a plain loop over it — no parallel if-conditions.
+#   2. plan_dims() and gate_expected_dims() are deliberately kept as two
+#      separate functions (spec vs. implementation) and a regression test
+#      asserts they agree for every mode. Merging them into one would
+#      make that test vacuous.
+plan_dims() {
+    case "${1:-all}" in
+        alpha)  echo "D1 D3 D4" ;;
+        beta)   echo "D2 D3 D4" ;;
+        rc)     echo "D3 D4 D5 D9" ;;
+        ga)     echo "D3 D4 D5 D6 D7 D8 D9" ;;
+        all)    echo "D1 D2 D3 D4 D5 D6 D7 D8 D9" ;;
+        *)      echo "" ;;
     esac
 }
 
@@ -240,6 +288,63 @@ gate_verdict_for() {
 }
 
 # =============================================================================
+# A5 COVERAGE DECISION — side-effect-free helper
+# =============================================================================
+# #3844: `get_coverage_avg()` used to return `0` when it could not read a
+# single TOTAL row. On a runner without `cargo-llvm-cov` that `0` was
+# compared against COVERAGE_MIN (75) and recorded as a **blocker** — i.e.
+# "coverage is 0%, the code is broken". The truth is: coverage was never
+# measured. The very same repository already knows this distinction:
+# `.gitea/workflows/ci.yml` guards the coverage step with
+# `if ! cargo llvm-cov --version` → "NOT-RUN: reason=COVERAGE_TOOL_MISSING".
+# This function brings the gate script to the same standard.
+#
+# Sets:
+#   A5_STATUS  = PASS | FAIL | NOT-RUN
+#   A5_REASON  = "" | COVERAGE_TOOL_MISSING | COVERAGE_NO_MEASUREMENTS
+#
+# Usage: a5_coverage_decision <tool_available:0|1> <measured_crates:int> [pct:int] [threshold:int]
+#   A5_REASON 还可能是 NO_THRESHOLD_IN_SSOT（三个来源都给不出门槛时）。
+#
+# 门槛是判定输入，不是环境残留：第 4 个参数优先，其次 COVERAGE_MIN
+# （main() 从 SSOT 读到的值），都没有就现读 SSOT。三条路都给不出门槛
+# ⇒ 判红并说明原因，绝不"没有标准也算过"（#5581）。
+a5_coverage_decision() {
+    local tool_available="${1:-0}"
+    local measured="${2:-0}"
+    local pct="${3:-}"
+    local threshold="${4:-${COVERAGE_MIN:-}}"
+    if [ -z "$threshold" ]; then
+        threshold="$(coverage_min_for_mode "${GATE_TYPE:-all}" 2>/dev/null | awk '{print $2}')"
+    fi
+
+    A5_STATUS=""
+    A5_REASON=""
+
+    if [ "$tool_available" != "1" ]; then
+        A5_STATUS="NOT-RUN"
+        A5_REASON="COVERAGE_TOOL_MISSING"
+        return 0
+    fi
+    if [ "$measured" -le 0 ] 2>/dev/null || [ -z "$pct" ]; then
+        A5_STATUS="NOT-RUN"
+        A5_REASON="COVERAGE_NO_MEASUREMENTS"
+        return 0
+    fi
+    if [ -z "$threshold" ]; then
+        A5_STATUS="FAIL"
+        A5_REASON="NO_THRESHOLD_IN_SSOT"
+        return 0
+    fi
+    if [ "$pct" -ge "$threshold" ] 2>/dev/null; then
+        A5_STATUS="PASS"
+    else
+        A5_STATUS="FAIL"
+    fi
+    return 0
+}
+
+# =============================================================================
 # CONFIGURATION — Unified Rule Registry
 # =============================================================================
 
@@ -297,6 +402,14 @@ log_warn() {
     echo -e "    ${YELLOW}⚠ WARN${NC} $1"
 }
 
+# #3844: a check that could NOT be executed is neither a pass nor a fail.
+# It gets its own verdict so that it can never be silently folded into
+# "PASS" — and so that it can never be silently folded into "FAIL" either
+# (an environment blocker is not a code defect).
+log_notrun() {
+    echo -e "    ${BLUE}⊘ NOT-RUN${NC} $1"
+}
+
 log_info() {
     echo -e "    ${BLUE}ℹ${NC} $1"
 }
@@ -309,11 +422,19 @@ log_drift() {
 # COUNTERS
 # =============================================================================
 
-D1_PASS=0; D1_TOTAL=0; D1_BLOCKERS=0
+D1_PASS=0; D1_TOTAL=0; D1_BLOCKERS=0; D1_NOTRUN=0
 D2_PASS=0; D2_TOTAL=0; D2_BLOCKERS=0
 D3_PASS=0; D3_TOTAL=0; D3_FAILS=0; D3_DRIFTS=0
 D4_PASS=0; D4_TOTAL=0; D4_FAILS=0
 D5_PASS=0; D5_TOTAL=0
+
+# Coverage result cache — the summary used to call get_coverage_avg() a
+# SECOND time, which re-ran the 8-crate `cargo llvm-cov test` sweep (the
+# single most expensive step of the gate) just to print one line.
+COVERAGE_PCT=""
+COVERAGE_CRATES_MEASURED=0
+COVERAGE_STATUS=""
+COVERAGE_REASON=""
 
 # =============================================================================
 # D1: ALPHA GATE (A1-A5 + A6-1~5)
@@ -377,50 +498,85 @@ run_d1_alpha() {
     # A5: Coverage (V313-#3942: --skip-a5 short-circuits the
     # 8-crate cargo llvm-cov run, which is the dominant cost in
     # the 60-second R2 evidence-refresh budget).
-    D1_TOTAL=$((D1_TOTAL+1))
     if [ "${SKIP_A5:-0}" -eq 1 ]; then
         echo -n "  [A5] Coverage (--skip-a5) ... "
         log_pass "A5 Coverage skipped (R2 budget)"
+        D1_TOTAL=$((D1_TOTAL+1))
         D1_PASS=$((D1_PASS+1))
     else
         echo -n "  [A5] Coverage (L1 8 crates) ... "
-        # #5579: the measurement used to be this script's own
-        # `get_coverage_avg` — a SECOND implementation of the rule that
-        # scripts/gate/check_coverage_v312.sh owns. It measured the same
-        # eight crates with a different command (`--all-features --tests`),
-        # took a different column out of the report (`awk '{print $4}'` — the
-        # *regions* percentage, not the lines one), and — the defect that
-        # mattered — had no fail-closed behaviour: a crate that produced no
-        # coverage table was simply left out of the average, and the average
-        # was reported over the reduced sample.
+        # A5 有三种结局 —— PASS / FAIL / NOT-RUN（#3844）：跑不了 cargo-llvm-cov
+        # 是环境阻塞，不是代码缺陷，既不能报成 "coverage 0%"，也不能算通过。
         #
-        # One implementation now: scripts/gate/common.sh. The verdict fails
-        # closed — a crate that cannot be measured makes A5 FAIL and names the
-        # crate, instead of quietly shrinking the sample. The report carries
-        # the sample size ("measured 8/8 crates") so a reduced sample is
-        # visible in the report itself.
+        # 测量只有一份实现：scripts/gate/common.sh 的 coverage_average（#5579）。
+        # 本文件曾自带的 get_coverage_avg 是第二份实现（命令不同、取错列、
+        # 测不到的 crate 被静默从样本里剔除），已删除 —— 不要再带回来。
+        local cov_tool=0
+        local cov_pct=""
+        local cov_handled=""
+        local COV_REPORT_FILE
+        COVERAGE_CRATES_MEASURED=0
         COV_REPORT_FILE="$(make_temp_file)" || COV_REPORT_FILE=""
-        if [ -z "$COV_REPORT_FILE" ]; then
-            log_fail "A5 Coverage: could not create the report file"
+        if [ -z "${COVERAGE_MIN:-}" ]; then
+            # #5581: SSOT 里没有本模式的门槛 ⇒ 判红并说明原因，
+            # 不能没有标准就给出覆盖率结论。
+            log_fail "A5 Coverage: no coverage threshold for mode '${GATE_TYPE}' in the SSOT"
+            COVERAGE_STATUS="FAIL"; COVERAGE_REASON="NO_THRESHOLD_IN_SSOT"
+            D1_TOTAL=$((D1_TOTAL+1))
             D1_BLOCKERS=$((D1_BLOCKERS+1))
+            cov_handled=1
+        elif [ -z "$COV_REPORT_FILE" ]; then
+            log_fail "A5 Coverage: could not create the report file"
+            COVERAGE_STATUS="FAIL"; COVERAGE_REASON="REPORT_FILE_UNAVAILABLE"
+            D1_TOTAL=$((D1_TOTAL+1))
+            D1_BLOCKERS=$((D1_BLOCKERS+1))
+            cov_handled=1
         else
-            trap 'rm -f "$COV_REPORT_FILE"' RETURN
-            if [ -z "$COVERAGE_MIN" ]; then
-                # #5581: no threshold in the SSOT for this mode ⇒ FAIL.
-                # A gate that cannot say what it requires must not report
-                # a coverage verdict.
-                log_fail "A5 Coverage: no coverage threshold for mode '${GATE_TYPE}' in the SSOT"
-                D1_BLOCKERS=$((D1_BLOCKERS+1))
-            elif coverage_average "$COVERAGE_MIN" > "$COV_REPORT_FILE" 2>&1; then
-                log_pass "A5 Coverage: ${COVERAGE_AVERAGE}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
-                D1_PASS=$((D1_PASS+1))
-            else
-                log_fail "A5 Coverage: ${COVERAGE_AVERAGE:-not measured}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
-                D1_BLOCKERS=$((D1_BLOCKERS+1))
+            if coverage_tool_available; then
+                cov_tool=1
+                coverage_average "$COVERAGE_MIN" > "$COV_REPORT_FILE" 2>&1
+                COVERAGE_CRATES_MEASURED="${COVERAGE_MEASURED_COUNT:-0}"
+                cov_pct="${COVERAGE_AVERAGE:-}"
             fi
             sed 's/^/      /' "$COV_REPORT_FILE"
             rm -f "$COV_REPORT_FILE"
-            trap - RETURN
+            if [ "$cov_tool" = "1" ] && [ -n "${COVERAGE_FAILED_CRATES:-}" ]; then
+                # #5579: 测不到的 crate 必须点名判红 —— 拿缩小后的样本
+                # 得到的平均值不是本仓库可接受的判据。
+                log_fail "A5 Coverage: 无法测量这些 crate: ${COVERAGE_FAILED_CRATES}"
+                COVERAGE_STATUS="FAIL"; COVERAGE_REASON="CRATES_NOT_MEASURABLE"
+                D1_TOTAL=$((D1_TOTAL+1))
+                D1_BLOCKERS=$((D1_BLOCKERS+1))
+                cov_handled=1
+            fi
+        fi
+        COVERAGE_PCT="$cov_pct"
+        if [ -z "$cov_handled" ]; then
+            a5_coverage_decision "$cov_tool" "${COVERAGE_CRATES_MEASURED:-0}" "$cov_pct" "$COVERAGE_MIN"
+            COVERAGE_STATUS="$A5_STATUS"
+            COVERAGE_REASON="$A5_REASON"
+            case "$A5_STATUS" in
+                PASS)
+                    log_pass "A5 Coverage: ${cov_pct}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
+                    D1_TOTAL=$((D1_TOTAL+1))
+                    D1_PASS=$((D1_PASS+1))
+                    ;;
+                FAIL)
+                    log_fail "A5 Coverage: ${cov_pct}% (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
+                    D1_TOTAL=$((D1_TOTAL+1))
+                    D1_BLOCKERS=$((D1_BLOCKERS+1))
+                    ;;
+                NOT-RUN)
+                    if [ "$A5_REASON" = "COVERAGE_TOOL_MISSING" ]; then
+                        log_notrun "A5 Coverage: NOT-RUN: reason=COVERAGE_TOOL_MISSING (cargo-llvm-cov is not installed on this runner)"
+                    else
+                        log_notrun "A5 Coverage: NOT-RUN: reason=COVERAGE_NO_MEASUREMENTS (no crate produced a TOTAL row)"
+                    fi
+                    # NOT-RUN 既不算通过也不算阻塞 —— 但必须计数，
+                    # 否则它会从 summary 里消失。
+                    D1_NOTRUN=$((D1_NOTRUN+1))
+                    ;;
+            esac
         fi
     fi
 
@@ -486,7 +642,7 @@ run_d1_alpha() {
     D1_TOTAL=$((D1_TOTAL + gov_total))
     D1_PASS=$((D1_PASS + gov_pass))
 
-    echo -e "\n  D1 Result: $D1_PASS/$D1_TOTAL"
+    echo -e "\n  D1 Result: $D1_PASS/$D1_TOTAL (not-run: $D1_NOTRUN, blockers: $D1_BLOCKERS)"
 }
 
 # =============================================================================
@@ -957,16 +1113,29 @@ run_d6_integration_tests() {
     # followed by
     #      test result: ok. N passed; ...
     #      test result: FAILED. ...
-    local verdict_file
+    local verdict_file clean_log ESC
     verdict_file=$(mktemp)
+    clean_log=$(mktemp)
+    # cargo wraps the "Running <path>" label in ANSI colour codes whenever
+    # CARGO_TERM_COLOR is set (the CI workflow sets it globally for the
+    # whole job). The colour codes sit BETWEEN "Running" and the path, so
+    # the raw log matches neither /Running/ nor the /\.rs$/ field scan:
+    # every D6 target ends up without a verdict and the gate reports
+    # "no verdict" for all of them even though cargo exited 0. Strip the
+    # ANSI sequences first (one line in -> one line out, so the log stays
+    # line-aligned with the original).
+    ESC=$(printf '\033')
+    sed "s/${ESC}\[[0-9;]*m//g" "$D6_LOG" > "$clean_log"
     awk '
-        /Running / { for (i = 1; i <= NF; i++) if ($i ~ /\.rs$/) { cur = $i; break } }
+        /(^|[^[:alnum:]_])Running[[:space:]]/ {
+            for (i = 1; i <= NF; i++) if ($i ~ /\.rs$/) { cur = $i; break }
+        }
         /test result:/ {
             if (cur == "") next
             if ($0 ~ /test result: ok\./) print "PASS\t" cur
             else print "FAIL\t" cur
         }
-    ' "$D6_LOG" > "$verdict_file"
+    ' "$clean_log" > "$verdict_file"
 
     local verdicted="" tname
     while IFS=$'\t' read -r verdict srcpath; do
@@ -988,7 +1157,7 @@ run_d6_integration_tests() {
             D6_FAILED_TESTS+=("${tname}")
         fi
     done < "$verdict_file"
-    rm -f "$verdict_file"
+    rm -f "$verdict_file" "$clean_log"
 
     # A target that produced no "test result:" line at all (compile error,
     # crash before the harness started, ...) counts as a failure — it was
@@ -1171,6 +1340,14 @@ run_d5_deepseek() {
 # scripts/gate/common.sh (coverage_average / coverage_measure_set /
 # coverage_verdict) and every caller uses it. A second copy of this rule is
 # exactly the defect #5579 is about.
+
+# coverage_tool_available — is the `cargo-llvm-cov` subcommand usable?
+# #3844: without it the coverage sweep produces no measurement at all;
+# the caller must record NOT-RUN instead of a fabricated 0%.
+coverage_tool_available() {
+    command -v cargo >/dev/null 2>&1 || return 1
+    cargo llvm-cov --version >/dev/null 2>&1
+}
 
 # =============================================================================
 # HELPER: C-ARCH Unified Check
@@ -1475,18 +1652,47 @@ ${NC}"
     # `check_rc_ga_gate.sh ga` — the gate GA's `required_gates` names —
     # structurally unable to pass.
     EXECUTED_DIMS=()
-    local dim
-    for dim in $(gate_dimensions_for_mode "$GATE"); do
+    # #5456: the dimension plan lives in exactly one place (plan_dims).
+    # The executor is a plain loop over it — no parallel if-conditions that
+    # could drift away from the declared contract (gate_expected_dims).
+    for dim in $(plan_dims "$GATE"); do
         case "$dim" in
             D1) run_d1_alpha ;;
             D2) run_d2_beta ;;
             D3) run_d3_sgl ;;
             D4) run_d4_wal ;;
-            D5) run_d5_deepseek; check_carch_unified ;;
-            D6) run_d6_integration_tests ;;
-            D7) run_d7_reliability ;;
-            D8) run_d8_v312_19_release_gates ;;
-            D9) run_d9_v312_coverage_framework ;;
+            D5)
+                run_d5_deepseek
+                check_carch_unified
+                ;;
+            D6)
+                # D6: Integration Test Coverage Gate (Issue #2874)
+                # 跑 49+ integration tests, FAIL 即 blocker
+                run_d6_integration_tests
+                ;;
+            D7)
+                # D7: Reliability Gate (G6-G10) — Hermes 2026-06-12 审计新增
+                # 真实生产环境关键门禁: 备份/Soak/Crash/Upgrade/Audit
+                run_d7_reliability
+                ;;
+            D8)
+                # D8: V312-19 Release Gates (Issue #3906)
+                # SQL corpus all-targets report + R2 invariant report + reviewer
+                # sign-off file must be present and fresh (within 7 days of HEAD)
+                # before allowing RC → GA promotion.
+                # Strict close condition #7: v3.12.0 RC/GA cannot pass without
+                # the three V312-19 artifacts.
+                run_d8_v312_19_release_gates
+                ;;
+            D9)
+                # D9: v3.12.0 Coverage Framework Gate
+                # Fast config check is always on for RC/GA. Full per-crate measurement
+                # is enabled by V312_COVERAGE_FULL=1 and uses the same canonical script
+                # that writes the evidence artifact.
+                run_d9_v312_coverage_framework
+                ;;
+            # 保留 develop 侧的兜底：计划里出现未知维度必须吭声，不能因为
+            # 改成 plan_dims 驱动就把「维度名拼错」静默吞掉（#5456 同族缺陷）。
             *)  echo "WARN: unknown dimension '$dim' in the plan for mode '$GATE'" >&2 ;;
         esac
         EXECUTED_DIMS+=("$dim")
@@ -1496,15 +1702,59 @@ ${NC}"
     # SUMMARY
     # =======================================================================
     log_header "GATE SUMMARY"
-    echo "  D1-Alpha:  $D1_PASS/$D1_TOTAL (blockers: $D1_BLOCKERS)"
-    echo "  D2-Beta:   $D2_PASS/$D2_TOTAL (blockers: ${D2_BLOCKERS:-0})"
+    # #5456: a dimension that is NOT part of this mode's plan must not be
+    # printed as "0/0" — that reads like "zero checks, zero blockers",
+    # i.e. a dimension that was evaluated and found clean. It was simply
+    # never executed. Print an explicit NOT RUN for those, naming the
+    # plan that excluded them.
+    local plan_csv
+    plan_csv="$(plan_dims "$GATE")"
+    dim_ran() {
+        case " $plan_csv " in
+            *" $1 "*) return 0 ;;
+            *) return 1 ;;
+        esac
+    }
+    if dim_ran D1; then
+        # #3844: the not-run count is part of the summary line. A NOT-RUN
+        # check that is not visible in the summary is indistinguishable
+        # from a check that was never planned.
+        echo "  D1-Alpha:  $D1_PASS/$D1_TOTAL (not-run: $D1_NOTRUN, blockers: $D1_BLOCKERS)"
+    else
+        echo "  D1-Alpha:  NOT RUN (not in '$GATE' plan — covered by the 'all' plan)"
+    fi
+    if dim_ran D2; then
+        echo "  D2-Beta:   $D2_PASS/$D2_TOTAL (blockers: ${D2_BLOCKERS:-0})"
+    else
+        echo "  D2-Beta:   NOT RUN (not in '$GATE' plan — covered by the 'all' plan)"
+    fi
     echo "  D3-SGL:    PASS=$D3_PASS | FAIL=$D3_FAILS | DRIFT=$D3_DRIFTS"
     echo "  D4-WAL:    $D4_PASS/$D4_TOTAL (failures: ${D4_FAILS:-0})"
-    echo "  D5-DeepSeek: $D5_PASS/$D5_TOTAL"
-    echo "  D6-Integration: $D6_PASS/$D6_TOTAL (failures: ${D6_FAIL:-0})  (curated integration test targets — Issue #2874)"
-    echo "  D7-Reliability: $D7_PASS/$D7_TOTAL (blockers: $D7_BLOCKERS)  (G6-G10: Backup/Soak/Crash/Upgrade/Audit — Hermes 2026-06-12 审计新增)"
-    echo "  D8-V312-19:     $D8_PASS/$D8_TOTAL (blockers: $D8_BLOCKERS)  (corpus/R2/signoff freshness — V312-19 / Issue #3906)"
-    echo "  D9-Coverage:    $D9_PASS/$D9_TOTAL (blockers: $D9_BLOCKERS)  (v3.12 L0-L5 test framework + per-crate coverage baseline)"
+    if dim_ran D5; then
+        echo "  D5-DeepSeek: $D5_PASS/$D5_TOTAL"
+    else
+        echo "  D5-DeepSeek: NOT RUN (not in '$GATE' plan)"
+    fi
+    if dim_ran D6; then
+        echo "  D6-Integration: $D6_PASS/$D6_TOTAL (failures: ${D6_FAIL:-0})  (curated integration test targets — Issue #2874)"
+    else
+        echo "  D6-Integration: NOT RUN (not in '$GATE' plan)"
+    fi
+    if dim_ran D7; then
+        echo "  D7-Reliability: $D7_PASS/$D7_TOTAL (blockers: $D7_BLOCKERS)  (G6-G10: Backup/Soak/Crash/Upgrade/Audit — Hermes 2026-06-12 审计新增)"
+    else
+        echo "  D7-Reliability: NOT RUN (not in '$GATE' plan)"
+    fi
+    if dim_ran D8; then
+        echo "  D8-V312-19:     $D8_PASS/$D8_TOTAL (blockers: $D8_BLOCKERS)  (corpus/R2/signoff freshness — V312-19 / Issue #3906)"
+    else
+        echo "  D8-V312-19:     NOT RUN (not in '$GATE' plan)"
+    fi
+    if dim_ran D9; then
+        echo "  D9-Coverage:    $D9_PASS/$D9_TOTAL (blockers: $D9_BLOCKERS)  (v3.12 L0-L5 test framework + per-crate coverage baseline)"
+    else
+        echo "  D9-Coverage:    NOT RUN (not in '$GATE' plan)"
+    fi
 
     # Determine gate verdict (pure function — see gate_verdict_for).
     local executed_csv
@@ -1525,7 +1775,13 @@ ${NC}"
     echo "  Dimensions expected: $(gate_expected_dims "$GATE")"
 
     if [[ "$VERDICT" == "PASS" ]]; then
-        echo -e "  ${GREEN}✓ GATE: PASS${NC} — ${#EXECUTED_DIMS[@]} dimension(s) validated: ${executed_csv}"
+        # #3844: a PASS that swallowed a NOT-RUN check would be dishonest
+        # too — the not-run count is spelled out in the verdict line.
+        local notrun_note=""
+        if [ "${D1_NOTRUN:-0}" -gt 0 ]; then
+            notrun_note=" (${D1_NOTRUN} check(s) NOT-RUN — see summary)"
+        fi
+        echo -e "  ${GREEN}✓ GATE: PASS${NC} — ${#EXECUTED_DIMS[@]} dimension(s) validated: ${executed_csv}${notrun_note}"
     elif [[ "$VERDICT" == "DRIFT" ]]; then
         echo -e "  ${YELLOW}⚡ GATE: DRIFT${NC} — Drift detected, tracked, not blocking"
     else
@@ -1543,17 +1799,24 @@ ${NC}"
     echo "    • WAL contract: 22 passed (wal_tx_contract_test)"
     echo "    • WAL invariants: 5 passed (INV-1~INV-3)"
     echo "    • SGL: $D3_PASS/5 PASS | $D3_DRIFTS DRIFT | $D3_FAILS FAIL"
-    # #5579: this line used to call `get_coverage_avg` — a full 8-crate
-    # `cargo llvm-cov` measurement run **a second time**, purely to print a
-    # number, with a result that never reached the verdict. It is now the
-    # number A5 actually measured, and when A5 did not run (a gate mode that
-    # does not execute D1) the line says so instead of quietly measuring
-    # something nobody judged.
-    if [ -n "${COVERAGE_AVERAGE:-}" ]; then
-        echo "    • Coverage: ${COVERAGE_AVERAGE}% avg (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
-    else
-        echo "    • Coverage: not measured in this gate mode (A5 lives in D1; the release-line coverage criterion is scripts/gate/check_coverage_v312.sh)"
-    fi
+    # #3844 + #5579: 这行只打印 A5 真正测出来的数字，并带上样本量；
+    # A5 没跑（模式不含 D1）或工具缺失时直说 NOT-RUN —— 既不为了渲染一行
+    # 去重跑 8-crate llvm-cov，也绝不打印凭空的 "0% avg"。
+    case "${COVERAGE_STATUS:-}" in
+        PASS|FAIL)
+            if [ -n "${COVERAGE_PCT:-}" ]; then
+                echo "    • Coverage: ${COVERAGE_STATUS}: ${COVERAGE_PCT}% avg (min: ${COVERAGE_MIN}%, measured ${COVERAGE_MEASURED_COUNT}/${COVERAGE_TOTAL_COUNT} crates)"
+            else
+                echo "    • Coverage: ${COVERAGE_STATUS} (reason: ${COVERAGE_REASON:-UNKNOWN})"
+            fi
+            ;;
+        NOT-RUN)
+            echo "    • Coverage: NOT-RUN (reason: ${COVERAGE_REASON:-UNKNOWN})"
+            ;;
+        *)
+            echo "    • Coverage: NOT-RUN (D1 not executed in '$GATE' plan; the release-line coverage criterion is scripts/gate/check_coverage_v312.sh)"
+            ;;
+    esac
     echo "    • v3.12 coverage framework: D9=$D9_PASS/$D9_TOTAL; full run via V312_COVERAGE_FULL=1"
     echo "    • execution_engine.rs: $(wc -l < src/execution_engine.rs 2>/dev/null || echo '?') lines (limit: $CARCH05_LIMIT)"
     echo ""
@@ -1601,6 +1864,15 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     elif [[ "$PARSE_RC" -ne 0 ]]; then
         usage >&2
         exit 2
+    fi
+
+    # #5456: --list-dims prints the plan without running anything. It
+    # reports plan_dims (what WOULD run), never gate_expected_dims — a
+    # regression test compares the two, and having --list-dims echo the
+    # expected set would make that comparison vacuous.
+    if [[ "${LIST_DIMS:-0}" == "1" ]]; then
+        plan_dims "$GATE_TYPE"
+        exit 0
     fi
 
     main "$GATE_TYPE"

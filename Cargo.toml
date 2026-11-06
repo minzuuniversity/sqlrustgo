@@ -792,6 +792,10 @@ name = "ci_wiring_honesty_test"
 path = "tests/integration/gate/ci_wiring_honesty_test.rs"
 
 [[test]]
+name = "coverage_notrun_honesty_test"
+path = "tests/integration/gate/coverage_notrun_honesty_test.rs"
+
+[[test]]
 name = "gate_dimension_honesty_test"
 path = "tests/integration/gate/gate_dimension_honesty_test.rs"
 
@@ -1755,7 +1759,7 @@ path = "tests/integration/tpch/tpch_sf1_6m_load_iter_test.rs"
 [[test]]
 name = "v313_3_profile_experiments"
 path = "tests/integration/tpch/v313_3_profile_experiments.rs"
-required-features = ["sqlrustgo-storage/v313_3_profile"]
+required-features = ["v313_3_profile"]
 [[test]]
 name = "tpch_test"
 path = "tests/integration/tpch_test.rs"

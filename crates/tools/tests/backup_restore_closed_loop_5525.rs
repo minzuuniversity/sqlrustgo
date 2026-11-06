@@ -136,7 +136,7 @@ fn closed_loop_backup_restore_verifies_the_data() {
     );
     let payload_bytes = fs::read(&payload_path).expect("read the payload");
     assert!(
-        payload_bytes.len() > 0,
+        !payload_bytes.is_empty(),
         "an empty payload is the signature of the #5516 false success"
     );
     let payload_checksum = meta
@@ -192,7 +192,7 @@ fn closed_loop_backup_restore_verifies_the_data() {
         // compare them as sets of rows so the assertion is about the data
         // and not about the order the engine happens to return.
         let mut expected: Vec<Vec<Value>> = table.rows.clone();
-        let mut actual: Vec<Vec<Value>> = landed.iter().cloned().collect();
+        let mut actual: Vec<Vec<Value>> = landed.to_vec();
         expected.sort();
         actual.sort();
         assert_eq!(
@@ -205,10 +205,7 @@ fn closed_loop_backup_restore_verifies_the_data() {
     // The evidence line an independent reviewer can quote.
     println!(
         "EVIDENCE closed_loop backup_id={} tables={} rows={} payload_sha256={}",
-        meta.id,
-        result.tables_restored,
-        result.rows_restored,
-        payload_checksum
+        meta.id, result.tables_restored, result.rows_restored, payload_checksum
     );
 }
 
@@ -329,5 +326,9 @@ fn restore_refuses_to_overwrite_an_existing_table() {
         .expect("restore with drop_first must succeed");
     assert_eq!(result.rows_restored as usize, 5);
     let landed = storage.scan_in_db(DB, "users").expect("read back");
-    assert_eq!(landed.len(), 3, "the dropped-and-restored table must hold its rows");
+    assert_eq!(
+        landed.len(),
+        3,
+        "the dropped-and-restored table must hold its rows"
+    );
 }

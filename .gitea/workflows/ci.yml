@@ -183,7 +183,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -351,7 +359,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -465,12 +481,32 @@ jobs:
           # cargo runs (each rebuilding the engine crate). It now has its
           # own job so that its cost does not eat into this budget, and so
           # that the two do not compete for the runner's CPU and memory.
-          timeout -k 30 9000 cargo test --all-features --no-fail-fast > test_report.log 2>&1
-          status=$?
+          # `status=$?` on its own line is UNREACHABLE under `set -e`:
+          # the step runs as `bash --noprofile --norc -e -o pipefail`, so a
+          # non-zero `cargo test` aborts the step on that very line and the
+          # `tail` below never runs — the job log then shows only the
+          # summary counter (`failed=3`) and no failing test name at all.
+          # `|| status=$?` puts the assignment in a condition context, where
+          # errexit does not apply, so the exit code is still captured AND
+          # the tail is printed (issue #3842).
+          status=0
+          timeout -k 30 16800 cargo test --all-features --no-fail-fast > test_report.log 2>&1 || status=$?
           echo "cargo test exited with status ${status}"
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
           tail -n 200 test_report.log || true
+          # `tail -n 200` is NOT enough to diagnose a red run: the report
+          # holds one section per test binary (475 of them in CI run 6335),
+          # so the failing binary's name and its assertion message are
+          # almost always *outside* the tail. CI run 6335 shipped a red
+          # `test` job whose log named `ci_wiring_honesty_test` and
+          # `g13_oltp1_concurrent_select_test` only in cargo's final
+          # summary - the failing assertion itself never reached the log.
+          # Print the failure sections explicitly so that a red job log
+          # always states WHICH test failed and WHY.
+          echo "--- failing test targets (from test_report.log) ---"
+          grep -E '^error: [0-9]+ targets? failed:' -A 10 test_report.log || true
+          grep -E '^failures:$' -A 20 test_report.log || true
           exit ${status}
       - name: Gate — tests must not overwrite archived evidence (#5577 / #5389)
         # #5577: a plain `cargo test --workspace` used to overwrite the 21
@@ -538,6 +574,19 @@ jobs:
           # against) report themselves through the TPCH-NOT-RUN marker, which
           # is collected in TPCH_NOT_RUN_FILE. They are disclosed and are
           # NOT counted as passed (AGENTS.md §8 #5).
+          #
+          # `TPCH_NOT_RUN_FILE` is exported by the earlier
+          # `scripts/ci/prepare_tpch_fixture_ci.sh` step through `$GITHUB_ENV`
+          # (the script writes it with `printf 'TPCH_NOT_RUN_FILE=%s\n' ...`),
+          # so at runtime it IS in this step's environment. Bind it here with
+          # an explicit default so that
+          #   (a) the step stays correct under `set -u` when the fixture step
+          #       was skipped or failed to export, and
+          #   (b) the variable has a definition *inside this step* that the
+          #       CI-wiring honesty test can verify statically — the test can
+          #       only see `NAME=` writes in step bodies, not `NAME=` writes
+          #       inside a script invoked by a step.
+          TPCH_NOT_RUN_FILE="${TPCH_NOT_RUN_FILE:-}"
           NOT_RUN=0
           NOT_RUN_RECORDS=0
           if [ -n "${TPCH_NOT_RUN_FILE:-}" ] && [ -f "${TPCH_NOT_RUN_FILE}" ]; then
@@ -705,7 +754,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -775,16 +832,43 @@ jobs:
           # what runs here is each member package's own test suite, with its
           # default features — exactly what `cargo test -p <crate>` does.
           #
-          # 5400 s (1.5 h) instead of the root job's 9000 s: the member
+          # 10800 s (3 h) instead of the root job's 9000 s. The member
           # targets are individually much smaller than the root package's
-          # fixture-heavy ones, and this job has the 3 h container limit to
-          # itself.
-          timeout -k 30 5400 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1
-          status=$?
+          # fixture-heavy ones, BUT the aggregate suite is not: on the
+          # `develop` baseline (CI run 6335, job 13450) this job was killed
+          # by the 5400 s limit at 98 min with 112 of 307 declared test
+          # targets never executed, so the suite needs ~143 min and the
+          # 5400 s (1.5 h) limit was structurally unreachable -- independent
+          # of runner concurrency or disk. The runner's own job timeout is
+          # raised to 5 h (18000 s) so it is never the binding constraint, and
+          # the inner limit below (17400 s) stays strictly below that so
+          # the inner timeout fires first and the job log keeps the
+          # partial result instead of being cut off by the container.
+          # Measured basis (CI run 6387, 2026-10-31): the crates suite
+          # ran 195/307 targets in 5400 s, i.e. ~11100 s extrapolated
+          # for the full set, plus up to ~1800 s of checkout / cargo
+          # cache restore / fixture generation under load ~96.
+          # Same `set -e` reachability fix as the root `test` job above:
+          # `status=$?` alone is unreachable, so the tail that names the
+          # stuck/failing target never reaches the job log (issue #3842).
+          status=0
+          timeout -k 30 17400 cargo test --workspace --exclude sqlrustgo --no-fail-fast > test_report.log 2>&1 || status=$?
           echo "cargo test exited with status ${status}"
           # Keep the tail of the run in the job log: on a timeout it names
           # the target that was stuck.
           tail -n 200 test_report.log || true
+          # `tail -n 200` is NOT enough to diagnose a red run: the report
+          # holds one section per test binary (475 of them in CI run 6335),
+          # so the failing binary's name and its assertion message are
+          # almost always *outside* the tail. CI run 6335 shipped a red
+          # `test` job whose log named `ci_wiring_honesty_test` and
+          # `g13_oltp1_concurrent_select_test` only in cargo's final
+          # summary - the failing assertion itself never reached the log.
+          # Print the failure sections explicitly so that a red job log
+          # always states WHICH test failed and WHY.
+          echo "--- failing test targets (from test_report.log) ---"
+          grep -E '^error: [0-9]+ targets? failed:' -A 10 test_report.log || true
+          grep -E '^failures:$' -A 20 test_report.log || true
           exit ${status}
       - name: Gate — tests must not overwrite archived evidence (#5577 / #5389)
         # Same gate as the root-package `test` job, and for the same reason:
@@ -824,6 +908,19 @@ jobs:
           # against) report themselves through the TPCH-NOT-RUN marker, which
           # is collected in TPCH_NOT_RUN_FILE. They are disclosed and are
           # NOT counted as passed (AGENTS.md §8 #5).
+          #
+          # `TPCH_NOT_RUN_FILE` is exported by the earlier
+          # `scripts/ci/prepare_tpch_fixture_ci.sh` step through `$GITHUB_ENV`
+          # (the script writes it with `printf 'TPCH_NOT_RUN_FILE=%s\n' ...`),
+          # so at runtime it IS in this step's environment. Bind it here with
+          # an explicit default so that
+          #   (a) the step stays correct under `set -u` when the fixture step
+          #       was skipped or failed to export, and
+          #   (b) the variable has a definition *inside this step* that the
+          #       CI-wiring honesty test can verify statically — the test can
+          #       only see `NAME=` writes in step bodies, not `NAME=` writes
+          #       inside a script invoked by a step.
+          TPCH_NOT_RUN_FILE="${TPCH_NOT_RUN_FILE:-}"
           NOT_RUN=0
           NOT_RUN_RECORDS=0
           if [ -n "${TPCH_NOT_RUN_FILE:-}" ] && [ -f "${TPCH_NOT_RUN_FILE}" ]; then
@@ -912,7 +1009,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -958,10 +1063,12 @@ jobs:
     # and `cargo audit --json` to populate the advisory DB before running
     # check_security_scan_v312.sh.
     #
-    # The advisory DB lives at $CARGO_HOME/advisory-db. On the self-hosted
-    # hp-z6g4 runner, $CARGO_HOME = ${{ runner.temp }}/.cargo is ephemeral
-    # (one-shot per job), so we re-fetch inside this job. cargo-audit itself
-    # is installed with --locked (deterministic version pin).
+    # The advisory DB lives at $CARGO_HOME/advisory-db. The hp-z6g4 runner
+    # image does NOT export CARGO_HOME (CI run 6335 proved it: `CARGO_HOME:
+    # unbound variable`), so `cargo` uses its own default `$HOME/.cargo`,
+    # which is also ephemeral (one-shot per job) — hence the re-fetch
+    # inside this job. cargo-audit itself is installed with --locked
+    # (deterministic version pin).
     runs-on: [hp-z6g4]
     # #5424: the condition only matched `develop/v3.12.0` / `ci/v3.12.0-`,
     # so on the v4.x line the job was **skipped** and the GA Security
@@ -983,7 +1090,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -1032,6 +1147,16 @@ jobs:
         # step's `cargo audit` runs deterministic and offline-tolerant.
         run: |
           set -euo pipefail
+          # `CARGO_HOME` is **not** exported by the runner image: the
+          # workflow-level NOTE explains why it must not be overridden
+          # globally (doing so pointed rustup at an empty toolchain store).
+          # `cargo` itself falls back to `$HOME/.cargo`, so bind the same
+          # fallback here — referencing `$CARGO_HOME` directly under `set -u`
+          # aborted this step with `CARGO_HOME: unbound variable`.
+          # An already-set CARGO_HOME is preserved (`:-` only fills in a
+          # fallback), so this never overrides the runner's own value.
+          CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+          export CARGO_HOME
           mkdir -p "$CARGO_HOME"
           # --no-fetch on a non-existent DB fails; deliberately omit it
           # so the first run clones the advisory DB.
@@ -1115,7 +1240,15 @@ jobs:
         # gated workflow embeds this exact body — one rule, one implementation.
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -1243,7 +1376,15 @@ jobs:
           CI_DEPTH: "0"
         run: |
           set -euo pipefail
-          REPO_URL="${CI_REPO_URL:-http://192.168.0.252:3000/openclaw/sqlrustgo.git}"
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
           DEPTH="${CI_DEPTH:-1}"
           SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
           DIR="${CI_CHECKOUT_DIR:-.}"
@@ -1269,6 +1410,36 @@ jobs:
         # See the `lint-build` job for why this exists: without it every job
         # re-downloads ~164 crates from `static.crates.io`.
         run: bash scripts/ci/cache_cargo_registry.sh restore
+      - name: Install PyYAML for the stage-config gates (#3838)
+        # #3838 — the CI container image `sqlrustgo-runner:v1` ships **no
+        # PyYAML** (`python3 -c "import yaml"` → ModuleNotFoundError).
+        # `scripts/gate/stage_config_common.sh` reads the SSOT
+        # `docs/governance/STAGE_CONFIG.yaml` through
+        #     python3 - "$cfg" <<'PYEOF' 2>/dev/null || true
+        # so a missing yaml module was swallowed and the reader returned an
+        # EMPTY rule set. Every stage-config gate then "found nothing" and
+        # its selftest failed with
+        #     [FAIL] c1 sample -> PASS (the gate cannot detect this violation)
+        # (8/8 samples) — the gate was silently a no-op.
+        #
+        # Fix order (issue #3838): **A first** (install the dependency),
+        # verify the selftest turns green, and only afterwards make the
+        # readers fail loudly (step B). Doing B first would turn every
+        # stage-config gate red and block the whole pipeline.
+        run: |
+          set -euo pipefail
+          if python3 -c "import yaml" 2>/dev/null; then
+            echo "PyYAML already present: $(python3 -c 'import yaml; print(yaml.__version__)')"
+          elif python3 -m pip install --break-system-packages --quiet pyyaml; then
+            echo "installed PyYAML via pip"
+          elif (apt-get update -qq && apt-get install -y -qq python3-yaml); then
+            echo "installed PyYAML via apt"
+          else
+            echo "FATAL: cannot install PyYAML — the stage-config gates would silently pass without it" >&2
+            exit 1
+          fi
+          # Evidence line: the selftest below must see a real yaml module.
+          python3 -c "import yaml; print('pyyaml', yaml.__version__)"
       - name: Version detection
         id: version
         run: |
@@ -1674,6 +1845,15 @@ jobs:
           mkdir -p "artifacts/audit/${{ steps.version.outputs.version }}"
           bash scripts/gate/audit_testing.sh "${{ steps.version.outputs.version }}" ga "artifacts/audit/${{ steps.version.outputs.version }}" 2>&1 | tee audit_testing.log
       - name: "D9 Full Gate Verification (8 dim: D1-D8 + cross-version + test plan + PR template)"
+        # #5456: this step MUST run even when an earlier step failed.
+        #
+        # This is the only place where the `all` mode of
+        # check_rc_ga_gate.sh runs, and `all` is the only plan that covers
+        # D1 (Alpha) and D2 (Beta). Without `if: always()` the first
+        # failing step short-circuits the job, this step never runs, and
+        # D1/D2 are never validated at all — while the job log contains
+        # no indication that they were skipped.
+        if: always()
         run: |
           set -euo pipefail
           bash scripts/gate/check_full_gate_verification.sh 2>&1 | tee full_gate_verification.log
@@ -1729,11 +1909,31 @@ jobs:
           # below now emit too (#5443: the visual ❌/✗ variants drifted apart
           # and the CI greps matched a different code point than the scripts
           # printed, so the counters were structurally 0).
+          #
+          # #3837: the loose patterns `FAIL\|failed\|error` also matched the
+          # **statistics lines** the gate scripts print on success:
+          # `check_evidence_binding.sh` ends with
+          #   `PASS=150, WARN=128, FAIL=0, UNVERIFIED=0`
+          # so the `FAIL=0` inside that summary line was counted as one
+          # failure — a *green* Evidence Binding Check turned the whole
+          # postcheck job red ("evidence=1" while every other counter was 0).
+          # The same class of bug applies to `Results: ERRORS=0, WARNINGS=0`
+          # (AFP) and to any `FAIL=0`-style line the other scripts emit.
+          #
+          # Each pattern below now matches only the marker the corresponding
+          # script prints **when it actually fails**:
+          #   coverage        -> `FAIL: <reason>`      (check_coverage_v312.sh)
+          #   evidence binding-> `Evidence binding check FAILED`
+          #   AFP             -> `[FAIL] Anti-fabrication check`
+          #   docs consistency-> `[ERROR]` (its log_error)
+          # The counters stay a redundant backstop; the authoritative signal
+          # is each gate's own exit status, because every gate already runs
+          # in its own `set -euo pipefail` step.
           GATE_FAIL=$(count_matches '\[FAIL\]' gate_report.log)
-          COVERAGE_FAIL=$(count_matches 'FAIL\|failed' coverage_report.log)
-          EVIDENCE_FAIL=$(count_matches 'FAIL\|failed\|error' evidence_binding.log)
-          AFP_FAIL=$(count_matches 'FAIL\|failed\|error' anti_fabrication.log)
-          DOCS_FAIL=$(count_matches 'FAIL\|failed\|error' docs_consistency.log)
+          COVERAGE_FAIL=$(count_matches 'FAIL:' coverage_report.log)
+          EVIDENCE_FAIL=$(count_matches 'Evidence binding check FAILED' evidence_binding.log)
+          AFP_FAIL=$(count_matches '\[FAIL\] Anti-fabrication check' anti_fabrication.log)
+          DOCS_FAIL=$(count_matches '\[ERROR\]' docs_consistency.log)
           ALPHA_FAIL=$(count_matches '\[FAIL\]' alpha_gate.log)
           RC_GA_FAIL=$(count_matches '\[FAIL\]\|blocker' rc_ga_gate.log)
           AUDIT_FAIL=$(count_matches 'RESULT: FAIL' audit_testing.log)
@@ -1743,8 +1943,40 @@ jobs:
             V312_19_FAIL=$(count_matches 'V312-19 release gates FAILED\|blockers: [^0]' v312_19_release_gates.log)
           fi
           echo "Gate: failed=$GATE_FAIL coverage=$COVERAGE_FAIL evidence=$EVIDENCE_FAIL alpha_gate=$ALPHA_FAIL rc_ga=$RC_GA_FAIL audit=$AUDIT_FAIL d9=$D9_FAIL v312_19=$V312_19_FAIL"
-          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$AFP_FAIL" -gt 0 ] || [ "$DOCS_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ] || [ "$V312_19_FAIL" -gt 0 ]; then
-            echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate / V312-19 release gates)"
+          # #5456: D1 (Alpha) and D2 (Beta) are ONLY covered by the `all`
+          # plan of check_rc_ga_gate.sh, and `all` only runs inside
+          # check_full_gate_verification.sh (the D9 step above). The
+          # counters above are pattern matches on failure markers, so a
+          # step that never ran — or that ran without executing D1/D2 —
+          # contributed ZERO to them and was indistinguishable from a
+          # clean pass.
+          #
+          # Read the dimension report that the gate printed and require
+          # D1 and D2 to be in the EXECUTED set. Missing ⇒ NOT-RUN ⇒ the
+          # job fails, because a gate that did not validate D1/D2 must
+          # not be reported as validated.
+          D1D2_FAIL=0
+          EXEC_DIMS=""
+          if [ -f full_gate_verification.log ]; then
+              EXEC_DIMS=$(grep -E 'Dimensions executed:' full_gate_verification.log | tail -1 | sed -E 's/.*Dimensions executed:[[:space:]]*//' || true)
+          fi
+          if [ -z "$EXEC_DIMS" ]; then
+              echo "::error::no 'Dimensions executed:' report found in full_gate_verification.log — D1/D2 coverage is UNKNOWN (NOT-RUN)"
+              D1D2_FAIL=1
+          else
+              for d in D1 D2; do
+                  case " $EXEC_DIMS " in
+                      *" $d "*) ;;
+                      *)
+                          echo "::error::$d was NOT executed by the full gate (executed: $EXEC_DIMS) — dimension NOT-RUN"
+                          D1D2_FAIL=1
+                          ;;
+                  esac
+              done
+          fi
+          echo "D1/D2 coverage: executed_dims=[${EXEC_DIMS:-<none>}] failures=$D1D2_FAIL"
+          if [ "$GATE_FAIL" -gt 0 ] || [ "$COVERAGE_FAIL" -gt 0 ] || [ "$EVIDENCE_FAIL" -gt 0 ] || [ "$AFP_FAIL" -gt 0 ] || [ "$DOCS_FAIL" -gt 0 ] || [ "$ALPHA_FAIL" -gt 0 ] || [ "$RC_GA_FAIL" -gt 0 ] || [ "$AUDIT_FAIL" -gt 0 ] || [ "$D9_FAIL" -gt 0 ] || [ "$V312_19_FAIL" -gt 0 ] || [ "$D1D2_FAIL" -gt 0 ]; then
+            echo "L1 gate failed (incl. AFP / doc completeness / evidence binding / alpha gate / rc-ga gate / audit_testing / D9 full gate / V312-19 release gates / D1-D2 dimension coverage)"
             exit 1
           fi
       - name: Save cargo registry cache (issue #5451)

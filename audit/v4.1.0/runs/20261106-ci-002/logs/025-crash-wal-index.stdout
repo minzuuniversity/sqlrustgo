@@ -1,0 +1,26 @@
+
+running 2 tests
+. 1/2
+index_update_crash_does_not_serve_dangling_rows --- FAILED
+
+failures:
+
+---- index_update_crash_does_not_serve_dangling_rows stdout ----
+
+thread 'index_update_crash_does_not_serve_dangling_rows' (23781148) panicked at crates/storage/tests/crash_wal_index_b1.rs:231:25:
+seed sql: script failed: CREATE DATABASE d1; USE d1; CREATE TABLE t(id INT PRIMARY KEY, v INT); INSERT INTO t VALUES (1,10),(2,20),(3,30); CREATE INDEX idx_v ON t(v);
+stdout=
+stderr=--------------
+CREATE INDEX idx_v ON t(v)
+--------------
+
+ERROR 1146 (42000) at line 1: Table not found: t
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    index_update_crash_does_not_serve_dangling_rows
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.03s
+

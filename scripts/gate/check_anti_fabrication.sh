@@ -198,7 +198,17 @@ check_head_commit_author() {
     # commit came from that identity, which is a gate defect, not a policy
     # signal: the check exists to catch UNKNOWN authors, not to single out a
     # known one.
-    local allowed=("openheart@gaoyuanyiyao.com" "openclaw@gaoyuanyiyao.com" "hermes-z6g4@gaoyuanyiyao.com" "hermes-macmini@gaoyuanyiyao.com" "claude-macmini@gaoyuanyiyao.com" "claude-z6g4@gaoyuanyiyao.com" "claude-z440@gaoyuanyiyao.com" "omp-z440@gaoyuanyiyao.com" "opencode-z440@gaoyuanyiyao.com" "ci@sqlrustgo.dev" "claude@macmini.dev")
+    # 2026-10-29: "mcode-macmini@gaoyuanyiyao.com" added on the same grounds
+    # as the 2026-10-08 and 2026-10-22 entries — an established committer
+    # identity, not a new one. Gitea user mcode-macmini (id=31) is a
+    # long-standing agent identity in this repository: six commits authored
+    # by it are already merged on develop/v4.1.0 (1ab5908c3e, 9480e374fd,
+    # c136b57cb6, 78a3a121ce, be0df48ae8, e453dc42d1 — the last four landed
+    # through PRs #5587 / #5588 / #5589). The omission blocked any branch
+    # whose HEAD commit came from that identity, which is a gate defect, not
+    # a policy signal: the check exists to catch UNKNOWN authors, not to
+    # single out a known one. Same fix shape as 07ba30a40f (omp-z440).
+    local allowed=("openheart@gaoyuanyiyao.com" "openclaw@gaoyuanyiyao.com" "hermes-z6g4@gaoyuanyiyao.com" "hermes-macmini@gaoyuanyiyao.com" "claude-macmini@gaoyuanyiyao.com" "claude-z6g4@gaoyuanyiyao.com" "claude-z440@gaoyuanyiyao.com" "omp-z440@gaoyuanyiyao.com" "opencode-z440@gaoyuanyiyao.com" "mcode-macmini@gaoyuanyiyao.com" "ci@sqlrustgo.dev" "claude@macmini.dev")
     local found=0
     for e in "${allowed[@]}"; do
         if [[ "$head_email" == "$e" ]]; then
