@@ -12,7 +12,11 @@
 跑完再断言「恢复后必须变绿」。它不新增任何判据，只把已有的反向变异固化成命令。
 
 涉及的五条声称（各自的工具与臂）：
-    P1-5 evidence_inventory.py     M1 新文档带未绑定声明 / M2 新文档带已绑定声明
+    P1-5 evidence_inventory_ledger_omp.py  M1 新文档带未绑定声明 / M2 新文档带已绑定声明
+                                            （两条线合并后，带 `check` 子命令的那份台账工具
+                                            改名为 `evidence_inventory_ledger_omp.py`；
+                                            `evidence_inventory.py` 是另一条线的 argparse 版，
+                                            裸调用出报告、**没有** `check` 子命令）
                                     M3 已有文档新增未绑定声明 / M4 撤销恢复
     P1-4 honesty.py                M1 给 pending-fixture 门禁声称能抓 / M2 声称夹具里没有的性质
                                     M3 删掉 effect 声明 / M4 撤销恢复
@@ -67,7 +71,7 @@ def arm_p1_5() -> list[tuple[str, bool, str]]:
     # M1 新文档带未绑定声明 ⇒ 必须红
     SCRATCH_DOC.write_text("# selftest scratch\n\n本模块测试 PASS。\n", encoding="utf-8")
     try:
-        rc, o = run("evidence_inventory.py", "check")
+        rc, o = run("evidence_inventory_ledger_omp.py", "check")
         out.append(("P1-5/M1 新文档带未绑定声明 ⇒ 红", rc != 0 and "NEW-FILE" in o,
                     f"rc={rc}"))
     finally:
@@ -76,7 +80,7 @@ def arm_p1_5() -> list[tuple[str, bool, str]]:
     SCRATCH_DOC.write_text("# selftest scratch\n\n见 run 20261105-lb1-006，本模块测试 PASS。\n",
                            encoding="utf-8")
     try:
-        rc, o = run("evidence_inventory.py", "check")
+        rc, o = run("evidence_inventory_ledger_omp.py", "check")
         out.append(("P1-5/M2 新文档带已绑定声明 ⇒ 绿", rc == 0, f"rc={rc}"))
     finally:
         SCRATCH_DOC.unlink(missing_ok=True)
@@ -85,12 +89,12 @@ def arm_p1_5() -> list[tuple[str, bool, str]]:
     try:
         STAMP_TEST.write_text(STAMP_TEST.read_text(encoding="utf-8")
                               + "\n## selftest probe\n\n又一项 PASS。\n", encoding="utf-8")
-        rc, o = run("evidence_inventory.py", "check")
+        rc, o = run("evidence_inventory_ledger_omp.py", "check")
         out.append(("P1-5/M3 已有文档新增未绑定声明 ⇒ 红", rc != 0, f"rc={rc}"))
     finally:
         restore(STAMP_TEST, bak)
     # M4 撤销 ⇒ 绿
-    rc, o = run("evidence_inventory.py", "check")
+    rc, o = run("evidence_inventory_ledger_omp.py", "check")
     out.append(("P1-5/M4 撤销后 ⇒ 绿", rc == 0, f"rc={rc}"))
     return out
 
