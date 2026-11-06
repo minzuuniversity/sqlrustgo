@@ -62,11 +62,21 @@ fn merge_missing_inner_rows(
     // live, and the appends below happen after they are dropped.
     let mut have: HashMap<&[Value], usize> = HashMap::new();
     for row in out.iter() {
-        *have.entry(match row.first() { Some(v) => std::slice::from_ref(v), None => &[] }).or_insert(0) += 1;
+        *have
+            .entry(match row.first() {
+                Some(v) => std::slice::from_ref(v),
+                None => &[],
+            })
+            .or_insert(0) += 1;
     }
     let mut want: HashMap<&[Value], usize> = HashMap::new();
     for row in inner_rows.iter() {
-        *want.entry(match row.first() { Some(v) => std::slice::from_ref(v), None => &[] }).or_insert(0) += 1;
+        *want
+            .entry(match row.first() {
+                Some(v) => std::slice::from_ref(v),
+                None => &[],
+            })
+            .or_insert(0) += 1;
     }
 
     let mut take: Vec<bool> = vec![false; inner_rows.len()];
@@ -76,7 +86,10 @@ fn merge_missing_inner_rows(
                 continue;
             }
         }
-        let key = match row.first() { Some(v) => std::slice::from_ref(v), None => &[] };
+        let key = match row.first() {
+            Some(v) => std::slice::from_ref(v),
+            None => &[],
+        };
         match have.get_mut(key) {
             // MVCC already represents this exact row at least as many
             // times as inner does ⇒ it is not missing.

@@ -19,7 +19,7 @@ jobs:
       - name: Checkout (local Gitea)
         run: |
           REPO="openclaw/sqlrustgo"
-          git clone --depth=1 "http://192.168.0.252:3000/$REPO" repo
+          git clone --depth=1 "${GITHUB_SERVER_URL}/$REPO" repo
           cd repo
           echo "Checked out $(git rev-parse HEAD)"
 

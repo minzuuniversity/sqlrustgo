@@ -134,6 +134,10 @@ if [[ ! -f "$CONFIG" ]]; then
     echo "ERROR: stage config not found: $CONFIG" >&2
     exit 2
 fi
+# Guard: the yaml readers must never degrade into empty rule sets
+# (issue #3838). Fail loudly before any check runs.
+stage_require_yaml "stage config consistency gate"
+stage_validate_yaml "$CONFIG"
 
 # --- helpers ----------------------------------------------------------------
 
@@ -169,8 +173,9 @@ try:
     import yaml
     with open(sys.argv[1]) as fh:
         d = yaml.safe_load(fh) or {}
-except Exception:
-    raise SystemExit(0)
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
 for g, info in (d.get('gate_definitions') or {}).items():
     info = info or {}
     print('\x1f'.join([
@@ -192,8 +197,9 @@ try:
     import yaml
     with open(sys.argv[1]) as fh:
         d = yaml.safe_load(fh) or {}
-except Exception:
-    raise SystemExit(0)
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
 for s, info in (d.get('stages', {}) or {}).items():
     info = info or {}
     print('%s\x1f%s' % (s, info.get('order', '')))
@@ -209,8 +215,9 @@ try:
     import yaml
     with open(sys.argv[1]) as fh:
         d = yaml.safe_load(fh) or {}
-except Exception:
-    raise SystemExit(0)
+except Exception as exc:
+    sys.stderr.write("FATAL: cannot parse %s: %s\n" % (sys.argv[1], exc))
+    raise SystemExit(2)
 info = (d.get('stages', {}) or {}).get(sys.argv[2]) or {}
 order = info.get('order')
 print('' if order is None else str(order))

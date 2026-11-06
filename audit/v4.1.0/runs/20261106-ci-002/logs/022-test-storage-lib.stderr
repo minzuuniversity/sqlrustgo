@@ -1,0 +1,411 @@
+warning: unused imports: `RowFilter`, `RowMutation`, `TableInfo`, `TriggerEvent`, `TriggerInfo`, and `TriggerTiming`
+   --> crates/storage/src/append_only_storage.rs:724:27
+    |
+724 |         ColumnDefinition, RowFilter, RowMutation, StorageEngine, TableInfo, TriggerEvent,
+    |                           ^^^^^^^^^  ^^^^^^^^^^^                 ^^^^^^^^^  ^^^^^^^^^^^^
+725 |         TriggerInfo, TriggerTiming,
+    |         ^^^^^^^^^^^  ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `super::*`
+    --> crates/storage/src/binary_storage.rs:1570:9
+     |
+1570 |     use super::*;
+     |         ^^^^^^^^
+
+warning: unused import: `super::*`
+    --> crates/storage/src/bplus_tree/index.rs:2476:9
+     |
+2476 |     use super::*;
+     |         ^^^^^^^^
+
+warning: unused imports: `compare_values`, `find_top_level_op`, `get_column_value`, and `is_zero_or_empty`
+    --> crates/storage/src/engine.rs:4147:9
+     |
+4147 |         compare_values, evaluate_sql_expression, find_top_level_op, get_column_value,
+     |         ^^^^^^^^^^^^^^                           ^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^
+4148 |         is_zero_or_empty,
+     |         ^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::engine::StorageEngine`
+    --> crates/storage/src/recovery_engine.rs:1289:13
+     |
+1289 |         use crate::engine::StorageEngine;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Record`
+   --> crates/storage/src/restore_filespace.rs:239:58
+    |
+239 |     use crate::engine::{ColumnDefinition, MemoryStorage, Record, StorageEngine, TableInfo};
+    |                                                          ^^^^^^
+
+warning: cannot test inner items
+   --> crates/storage/src/vtu_guard.rs:526:9
+    |
+526 |         #[test]
+    |         ^^^^^^^
+    |
+    = note: `#[warn(unnameable_test_items)]` on by default
+
+warning: unused imports: `WALVerificationResult` and `WALVerifier`
+    --> crates/storage/src/wal_legacy.rs:2145:56
+     |
+2145 |         use sqlrustgo_wal_verification::verification::{WALVerificationResult, WALVerifier};
+     |                                                        ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^
+
+warning: unused import: `std::fs::File`
+    --> crates/storage/src/wal_legacy.rs:2146:13
+     |
+2146 |         use std::fs::File;
+     |             ^^^^^^^^^^^^^
+
+warning: unused variable: `dir`
+   --> crates/storage/src/append_only_storage.rs:866:13
+    |
+866 |         let dir = temp_dir();
+    |             ^^^ help: if this is intentional, prefix it with an underscore: `_dir`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/bplus_tree/index.rs:1948:13
+     |
+1948 |         let mut index = CompositeBTreeIndex::new(2);
+     |             ----^^^^^
+     |             |
+     |             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `index`
+    --> crates/storage/src/bplus_tree/index.rs:1948:13
+     |
+1948 |         let mut index = CompositeBTreeIndex::new(2);
+     |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_index`
+
+warning: variable does not need to be mutable
+   --> crates/storage/src/buffer_pool.rs:545:13
+    |
+545 |         let mut buf = vec![0u8; 2048];
+    |             ----^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> crates/storage/src/clustered_table.rs:240:13
+    |
+240 |         let mut ct = ClusteredTable::new(make_info(), 0);
+    |             ----^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `e`
+    --> crates/storage/src/engine.rs:4208:49
+     |
+4208 |         fn _check_create_view<E: StorageEngine>(e: &mut E) {
+     |                                                 ^ help: if this is intentional, prefix it with an underscore: `_e`
+
+warning: unused variable: `e`
+    --> crates/storage/src/engine.rs:4211:46
+     |
+4211 |         fn _check_get_view<E: StorageEngine>(e: &E) {
+     |                                              ^ help: if this is intentional, prefix it with an underscore: `_e`
+
+warning: unused variable: `e`
+    --> crates/storage/src/engine.rs:4214:48
+     |
+4214 |         fn _check_list_views<E: StorageEngine>(e: &E) {
+     |                                                ^ help: if this is intentional, prefix it with an underscore: `_e`
+
+warning: unused variable: `e`
+    --> crates/storage/src/engine.rs:4217:53
+     |
+4217 |         fn _check_set_cancel_flag<E: StorageEngine>(e: &mut E) {
+     |                                                     ^ help: if this is intentional, prefix it with an underscore: `_e`
+
+warning: unused variable: `e`
+    --> crates/storage/src/engine.rs:4220:53
+     |
+4220 |         fn _check_check_cancelled<E: StorageEngine>(e: &E) {
+     |                                                     ^ help: if this is intentional, prefix it with an underscore: `_e`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:2627:17
+     |
+2627 |             let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+     |                 ----^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:2710:13
+     |
+2710 |         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:2735:13
+     |
+2735 |         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:3040:13
+     |
+3040 |         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:3169:13
+     |
+3169 |         let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:3567:13
+     |
+3567 |         let mut storage = make_storage("fs_insert_table");
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:3636:13
+     |
+3636 |         let mut storage = make_storage("fs_drop_db_ne");
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:3643:13
+     |
+3643 |         let mut storage = make_storage("fs_create_db");
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:3674:13
+     |
+3674 |         let mut storage = make_storage("fs_flush_all_ex");
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:4086:13
+     |
+4086 |         let mut storage = make_storage("fs_create_db_s");
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:4095:13
+     |
+4095 |         let mut storage = make_storage("fs_drop_db_ne2");
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:4316:13
+     |
+4316 |         let mut storage2 = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
+     |             ----^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:4578:13
+     |
+4578 |         let mut storage =
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: unused variable: `storage`
+    --> crates/storage/src/file_storage.rs:4578:13
+     |
+4578 |         let mut storage =
+     |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_storage`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:4718:13
+     |
+4718 |         let mut storage = make_storage("fs_eng_empty");
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:4725:13
+     |
+4725 |         let mut storage = make_storage("fs_drop_idx_ne");
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:7384:17
+     |
+7384 |             let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+     |                 ----^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/file_storage.rs:7458:17
+     |
+7458 |             let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+     |                 ----^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: unused variable: `t`
+   --> crates/storage/src/mvcc.rs:595:13
+    |
+595 |         let t = VersionedTable::new();
+    |             ^ help: if this is intentional, prefix it with an underscore: `_t`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/mvcc_storage.rs:1631:13
+     |
+1631 |         let mut s = MvccStorage::new(inner);
+     |             ----^
+     |             |
+     |             help: remove this `mut`
+
+warning: unused variable: `tx`
+   --> crates/storage/src/parallel_wal_storage.rs:777:13
+    |
+777 |         let tx = s.begin_transaction().unwrap();
+    |             ^^ help: if this is intentional, prefix it with an underscore: `_tx`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1467:17
+     |
+1467 |             let mut manager = WalManager::new(wal_path.clone());
+     |                 ----^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1548:13
+     |
+1548 |         let mut manager = WalManager::new(wal_path);
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1603:13
+     |
+1603 |         let mut manager = WalManager::new(wal_path);
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1646:17
+     |
+1646 |             let mut manager = WalManager::new(wal_path.clone());
+     |                 ----^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_legacy.rs:1687:13
+     |
+1687 |         let mut manager = WalManager::new(wal_path);
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> crates/storage/src/wal_storage.rs:2002:13
+     |
+2002 |         let mut storage = WalStorage::new(inner, wal).unwrap();
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: function `test_vtu_guard_tx_state_via_set_current_tx_id` is never used
+   --> crates/storage/src/vtu_guard.rs:527:12
+    |
+527 |         fn test_vtu_guard_tx_state_via_set_current_tx_id() {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused `Result` that must be used
+    --> crates/storage/src/engine.rs:4282:9
+     |
+4282 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+     |
+4282 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/storage/src/engine.rs:4420:9
+     |
+4420 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4420 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:394:13
+    |
+394 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+394 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:424:13
+    |
+424 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+424 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:485:13
+    |
+485 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+485 |             let _ = h.join().unwrap();
+    |             +++++++
+

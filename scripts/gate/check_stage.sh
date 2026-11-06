@@ -89,6 +89,10 @@ if [[ ! -f "$STAGE_CONFIG" ]]; then
     echo "ERROR: STAGE_CONFIG not found: $STAGE_CONFIG" >&2
     exit 2
 fi
+# Guard: the yaml readers must never degrade into empty rule sets
+# (issue #3838). Fail loudly before any gate runs.
+stage_require_yaml "stage driver"
+stage_validate_yaml "$STAGE_CONFIG"
 if ! command -v cargo >/dev/null 2>&1; then
     if [ -x "$HOME/.cargo/bin/cargo" ]; then
         export PATH="$HOME/.cargo/bin:$PATH"
@@ -164,13 +168,28 @@ detect_stage() {
     local ver="$1"
     local stage_file="docs/releases/${ver}/STAGE.yaml"
     if [[ -f "$stage_file" ]]; then
-        # Use python to parse YAML
-        python3 -c "
+        # Use python to parse YAML.
+        #
+        # The old form was `... 2>/dev/null || echo "DRAFT"`: an unparsable
+        # STAGE.yaml silently became "DRAFT", so a broken document looked
+        # like a stage with no gates — the same "silent empty rule set"
+        # defect as the yaml readers in stage_config_common.sh (#3838).
+        # A file that exists but cannot be parsed is now a hard error.
+        local stage_out stage_err
+        stage_err="$(mktemp "${TMPDIR:-/tmp}/stage_parse_err.XXXXXX")"
+        if ! stage_out="$(python3 -c "
 import yaml, sys
 with open('$stage_file') as f:
     d = yaml.safe_load(f)
-print(d.get('current_stage', 'DRAFT').upper())
-" 2>/dev/null || echo "DRAFT"
+print((d or {}).get('current_stage', 'DRAFT').upper())
+" 2>"$stage_err")"; then
+            echo "FATAL: cannot parse $stage_file" >&2
+            sed 's/^/  /' "$stage_err" >&2
+            rm -f "$stage_err"
+            return 2
+        fi
+        rm -f "$stage_err"
+        printf '%s\n' "$stage_out"
         return
     fi
     # No STAGE.yaml — infer from branch

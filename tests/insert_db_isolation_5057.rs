@@ -15,7 +15,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 fn engine() -> (ExecutionEngine<FileStorage>, PathBuf) {
-    let dir = std::env::temp_dir().join(format!("ins_iso_5057_{}", std::process::id()));
+    // The process id alone is not enough: these tests run in parallel by
+    // default and every one of them wipes and recreates the directory, so
+    // they deleted each other's data mid-run (the "Unknown database: d2"
+    // failure). Include a per-call counter, same as the sibling
+    // session_db_isolation_5057 / ctas_db_isolation_5057 suites.
+    static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("ins_iso_5057_{}_{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let e = ExecutionEngine::new(Arc::new(RwLock::new(

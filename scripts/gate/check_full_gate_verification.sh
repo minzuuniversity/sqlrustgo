@@ -92,6 +92,20 @@ run_gate() {
     output=$(bash "$script" "$@" 2>&1)
     code=$?
     echo "$output" | tail -3
+    # #5456: `tail -3` drops the gate's own dimension report, so the
+    # orchestrator log carried NO evidence of WHICH dimensions actually
+    # ran. The CI "Gate summary" step has to decide whether D1/D2 were
+    # really validated, and it can only do that from this line. Print the
+    # executed-dimension report verbatim (plus the verdict) so the
+    # evidence survives into full_gate_verification.log.
+    # `|| printf ''` 而不是 `|| true`：前者同样是「没有匹配时不失败」，
+    # 但 run_gate() 里不允许出现 `|| true` —— 那正是曾经吞掉子进程退出码的
+    # 反模式（#5417）。子进程退出码在上面的 `code=$?` 已被独立捕获。
+    local dim_report
+    dim_report="$(echo "$output" | grep -E 'Dimensions executed:|Dimensions expected:|GATE: (PASS|FAIL|DRIFT)' || printf '')"
+    if [ -n "$dim_report" ]; then
+        echo "$dim_report"
+    fi
 
     if [ "$code" -eq "$expect_code" ]; then
         echo "  ✅ PASS (exit $code)"

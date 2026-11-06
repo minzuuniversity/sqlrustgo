@@ -55,7 +55,11 @@ fn connect(port: u16) -> MySqlResult<MySqlConnection> {
 fn ddl(conn: &mut MySqlConnection, sql: &str) {
     match conn.execute(sql).expect("network") {
         ResultSet::Ok { .. } | ResultSet::Select { .. } => {}
-        ResultSet::Error { error_code, error_message, .. } => {
+        ResultSet::Error {
+            error_code,
+            error_message,
+            ..
+        } => {
             panic!("DDL must succeed, got {}: {}", error_code, error_message)
         }
     }
@@ -70,7 +74,11 @@ fn count(conn: &mut MySqlConnection, table: &str) -> u64 {
             assert_eq!(rows.len(), 1, "COUNT(*) returns exactly one row");
             rows[0][0].parse::<u64>().expect("count is numeric")
         }
-        ResultSet::Error { error_code, error_message, .. } => {
+        ResultSet::Error {
+            error_code,
+            error_message,
+            ..
+        } => {
             panic!("COUNT(*) failed {}: {}", error_code, error_message)
         }
         ResultSet::Ok { .. } => panic!("expected a result set"),
@@ -97,8 +105,15 @@ fn load(conn: &mut MySqlConnection, file: &std::path::Path, table: &str) -> u64 
     );
     match conn.execute(&sql).expect("LOAD DATA") {
         ResultSet::Ok { affected_rows, .. } => affected_rows,
-        ResultSet::Error { error_code, error_message, .. } => {
-            panic!("LOAD DATA into {} failed {}: {}", table, error_code, error_message)
+        ResultSet::Error {
+            error_code,
+            error_message,
+            ..
+        } => {
+            panic!(
+                "LOAD DATA into {} failed {}: {}",
+                table, error_code, error_message
+            )
         }
         ResultSet::Select { .. } => panic!("LOAD DATA must not return a result set"),
     }
@@ -175,8 +190,7 @@ fn filtered_reads_agree_with_full_scans_on_the_same_rows() {
             assert_eq!(rows.len(), 1);
             let seen: u64 = rows[0][0].parse().expect("count is numeric");
             assert_eq!(
-                seen,
-                ROWS as u64,
+                seen, ROWS as u64,
                 "#5392: the filtered read path must not collapse rows either"
             );
         }
@@ -198,7 +212,11 @@ fn byte_identical_duplicate_rows_are_all_visible() {
         &mut conn,
         "CREATE TABLE td(c1 INTEGER NOT NULL, c2 INTEGER NOT NULL, c3 TEXT, c4 INTEGER, c5 INTEGER)",
     );
-    assert_eq!(load(&mut conn, &file, "td"), 3, "three identical rows loaded");
+    assert_eq!(
+        load(&mut conn, &file, "td"),
+        3,
+        "three identical rows loaded"
+    );
     assert_eq!(
         count(&mut conn, "td"),
         3,
@@ -244,7 +262,12 @@ fn a_freshly_inserted_row_does_not_absorb_older_rows_with_the_same_leading_value
             let seen: Vec<String> = rows.iter().map(|r| r[0].clone()).collect();
             assert_eq!(
                 seen,
-                vec!["1".to_string(), "2".to_string(), "3".to_string(), "4".to_string()],
+                vec![
+                    "1".to_string(),
+                    "2".to_string(),
+                    "3".to_string(),
+                    "4".to_string()
+                ],
                 "#5392: the MVCC-side row must not cancel out inner rows that merely \
                  share its first column value -- row identity is the whole row"
             );

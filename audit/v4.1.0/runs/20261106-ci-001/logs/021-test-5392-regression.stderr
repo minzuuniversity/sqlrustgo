@@ -1,0 +1,3 @@
+error: no test target named `file_storage_leading_column_collapse_5392` in default-run packages
+help: available test in `sqlrustgo-mysql-server` package:
+    file_storage_leading_column_collapse_5392
