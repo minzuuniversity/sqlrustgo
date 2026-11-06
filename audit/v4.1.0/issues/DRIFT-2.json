@@ -1,0 +1,12 @@
+{
+  "id": "DRIFT-2",
+  "title": "[4.1.0][DRIFT-2] 看板三行(未开始)与已落库工具不一致：honesty.py/doc_facts.py/directory_policy.py",
+  "body_file": "DRIFT-2.md",
+  "labels": [
+    "governance",
+    "P1-reliability",
+    "cap/governance",
+    "priority/p1",
+    "cost/t1"
+  ]
+}
