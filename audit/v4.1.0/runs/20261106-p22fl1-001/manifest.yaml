@@ -1,0 +1,291 @@
+schema_version: 1
+run_id: 20261106-p22fl1-001
+source_agent: omp-macmini
+frozen_commit: 3ceb271f9c3d516572f64cfa116dff1dc073d701
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: test-idle-reaper-unit
+  name: idle-reaper 口径单测（busy 的连接一律不回收；在等命令的仍按阈值回收）
+  cmd: cargo test -q -p sqlrustgo-mysql-server --all-features --lib idle
+  cwd: .
+  timeout_sec: 1800
+- id: test-5392-regression
+  name: '#5392 wire 回归（单次）：5 条用例'
+  cmd: cargo test -q -p sqlrustgo-mysql-server --all-features --test file_storage_leading_column_collapse_5392
+  cwd: .
+  timeout_sec: 1800
+- id: test-5392-regression-x10
+  name: FL-1 验收：同一条命令连续 10 次必须全 rc=0（机器证据，不是口头声明）
+  cmd: "set -u\nmkdir -p test_results/fl1\nok=0; bad=0\nfor i in $(seq 1 10); do\n  if cargo test -q -p\
+    \ sqlrustgo-mysql-server --all-features --test file_storage_leading_column_collapse_5392 \\\n    \
+    \   >\"test_results/fl1/run_$i.log\" 2>&1; then\n    ok=$((ok+1))\n  else\n    bad=$((bad+1))\n  \
+    \  echo \"run $i RED —— 失败输出保留在 test_results/fl1/run_$i.log\"\n    tail -40 \"test_results/fl1/run_$i.log\"\
+    \n  fi\ndone\necho \"连续 10 次：绿 $ok / 红 $bad\"\n[ \"$bad\" -eq 0 ]\n"
+  cwd: .
+  timeout_sec: 3600
+- id: gate-directory-policy-check
+  name: 目录策略判定口径必须 rc=0（P2-2 归位后 bench-dir-single 应为 0 条新违规）
+  cmd: python3.14 audit/v4.1.0/directory_policy.py check
+  cwd: .
+  timeout_sec: 600
+- id: probe-directory-policy-mutations
+  name: 目录策略反向变异（5 臂自带夹具；含「新增违规 ⇒ 红」）
+  cmd: python3.14 audit/v4.1.0/dir_policy_mutations_omp.py
+  cwd: .
+  timeout_sec: 900
+- id: check-bench-targets-compile
+  name: bench 目标仍能编译（路径改过：benchmarks/ → tools/benchmarks/）
+  cmd: cargo check -q --benches --all-features
+  cwd: .
+  timeout_sec: 2400
+- id: gate-ci-checkout-consistency
+  name: CI checkout 一致性门禁（上一批修好后必须仍绿）
+  cmd: bash scripts/gate/check_ci_checkout_consistency.sh
+  cwd: .
+  timeout_sec: 900
+- id: gate-honesty-check
+  name: honesty 判据（分母 168、夹具 57、fails 必须 0）
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-doc-facts-check
+  name: 文档事实与索引一致（看板两行改动，索引已重生）
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-registry-denominator
+  name: 门禁注册表：分母必须仍是 168
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: probe-gate-registry
+  name: 门禁注册表自检（9 个变异必须全被抓住）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-kanban-consistency
+  name: 看板 JSONL 与渲染出的 MD 必须逐行一致
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: gate-kanban-counts
+  name: 看板计数（P2-2 与 FL-1 完成后：未开始 5 / 待复核 24 / 完成 32 / 阻塞 15）
+  cmd: python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: probe-claims-selftest
+  name: 五类声称的反向变异自检（17 臂必须全 VERIFIED）
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1200
+- id: gate-storage-semantics
+  name: '存储语义声明台账必须与 #5409 生产链臂一致'
+  cmd: python3.14 audit/v4.1.0/storage_semantics_claims.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-fmt-check
+  name: rustfmt：workspace 的 fmt 欠账必须为空
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+- id: gate-test-count-monotonic
+  name: 测试计数单调门禁
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 1800
+- id: gate-tpch-known-differences
+  name: TPC-H 已知差异登记表必须为空且合法
+  cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  timeout_sec: 300
+- id: gate-main-freshness
+  name: C-MAIN-02 main 新鲜度（GA 前 main 封存 ⇒ 结构红，不是本批回归）
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600
+results:
+- id: test-idle-reaper-unit
+  started_at: '2026-11-06T09:00:17Z'
+  finished_at: '2026-11-06T09:00:28Z'
+  exit_code: 0
+  stdout_sha256: 4762a8af601c45d1991eed69575d4b9352d5229c331eb5c2ac9093a35d2afd4d
+  stderr_sha256: 673f4966814b2a71944ad1641a9ed470799fd54794c0d6cf2ef460837103f3f2
+  stdout_path: logs/001-test-idle-reaper-unit.stdout
+  stderr_path: logs/001-test-idle-reaper-unit.stderr
+- id: test-5392-regression
+  started_at: '2026-11-06T09:00:28Z'
+  finished_at: '2026-11-06T09:01:08Z'
+  exit_code: 0
+  stdout_sha256: bb3d1a3cd6dfe193a14f4a63bfb74b5e358d84e9d3d470a4953be0b7aa6331b5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-test-5392-regression.stdout
+  stderr_path: logs/002-test-5392-regression.stderr
+- id: test-5392-regression-x10
+  started_at: '2026-11-06T09:01:08Z'
+  finished_at: '2026-11-06T09:06:22Z'
+  exit_code: 0
+  stdout_sha256: 8cc29a92ae78fba8afe74637f576868c40752470825aaab58abebebae1a48543
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-test-5392-regression-x10.stdout
+  stderr_path: logs/003-test-5392-regression-x10.stderr
+- id: gate-directory-policy-check
+  started_at: '2026-11-06T09:06:23Z'
+  finished_at: '2026-11-06T09:06:23Z'
+  exit_code: 0
+  stdout_sha256: 7e994ccd3f5d6a53c1b2419a78a209419e48c8a72f77f29a7d627c5bf8f76424
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-gate-directory-policy-check.stdout
+  stderr_path: logs/004-gate-directory-policy-check.stderr
+- id: probe-directory-policy-mutations
+  started_at: '2026-11-06T09:06:23Z'
+  finished_at: '2026-11-06T09:06:25Z'
+  exit_code: 0
+  stdout_sha256: 1547c70d40a32825f3b4cb1d59c5b8af078c2e4b774cc7897895711c771e0f31
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-probe-directory-policy-mutations.stdout
+  stderr_path: logs/005-probe-directory-policy-mutations.stderr
+- id: check-bench-targets-compile
+  started_at: '2026-11-06T09:06:25Z'
+  finished_at: '2026-11-06T09:06:30Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-check-bench-targets-compile.stdout
+  stderr_path: logs/006-check-bench-targets-compile.stderr
+- id: gate-ci-checkout-consistency
+  started_at: '2026-11-06T09:06:30Z'
+  finished_at: '2026-11-06T09:06:30Z'
+  exit_code: 0
+  stdout_sha256: ddc2b0466c82a267e358c7cc374ae02db6110f55baf37df48fcc9db2a3c5c35b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-ci-checkout-consistency.stdout
+  stderr_path: logs/007-gate-ci-checkout-consistency.stderr
+- id: gate-honesty-check
+  started_at: '2026-11-06T09:06:30Z'
+  finished_at: '2026-11-06T09:06:30Z'
+  exit_code: 0
+  stdout_sha256: 64958770ed998d6e7e12fea8526ed5ad73428a700103723a6425d60588ac8f27
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-honesty-check.stdout
+  stderr_path: logs/008-gate-honesty-check.stderr
+- id: gate-doc-facts-check
+  started_at: '2026-11-06T09:06:30Z'
+  finished_at: '2026-11-06T09:06:31Z'
+  exit_code: 0
+  stdout_sha256: 69ee9e9b1597ab1f221099488812250be17dc0b7b159dc377b7a3bedeeb1456a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-gate-doc-facts-check.stdout
+  stderr_path: logs/009-gate-doc-facts-check.stderr
+- id: gate-registry-denominator
+  started_at: '2026-11-06T09:06:31Z'
+  finished_at: '2026-11-06T09:06:31Z'
+  exit_code: 0
+  stdout_sha256: 3ad9d3d99e26efed4c014f70d506ad69d00a8af8d24477a7d4e8c92cebf94a3e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gate-registry-denominator.stdout
+  stderr_path: logs/010-gate-registry-denominator.stderr
+- id: probe-gate-registry
+  started_at: '2026-11-06T09:06:31Z'
+  finished_at: '2026-11-06T09:06:33Z'
+  exit_code: 0
+  stdout_sha256: 3d417fa40f75e3d0f20fc2a082e0fff0a9afcdb0e9320795960f6f32c378f367
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-probe-gate-registry.stdout
+  stderr_path: logs/011-probe-gate-registry.stderr
+- id: gate-kanban-consistency
+  started_at: '2026-11-06T09:06:33Z'
+  finished_at: '2026-11-06T09:06:33Z'
+  exit_code: 0
+  stdout_sha256: 1f6ace997de7730e9c9a7417df00d1d8c1dc268a546ceafe43bbb8ae75a26f25
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-gate-kanban-consistency.stdout
+  stderr_path: logs/012-gate-kanban-consistency.stderr
+- id: gate-kanban-counts
+  started_at: '2026-11-06T09:06:33Z'
+  finished_at: '2026-11-06T09:06:33Z'
+  exit_code: 0
+  stdout_sha256: f5fc5efcc924cde223b9ab14df7418924db519e4b23bbe5f0b33d6df7a958c21
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-gate-kanban-counts.stdout
+  stderr_path: logs/013-gate-kanban-counts.stderr
+- id: probe-claims-selftest
+  started_at: '2026-11-06T09:06:33Z'
+  finished_at: '2026-11-06T09:06:36Z'
+  exit_code: 0
+  stdout_sha256: e791c99b4a73fb66ca8a91f8ad1b1a483e4d29a38ea7cd0a7768de8d62a98e0e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-probe-claims-selftest.stdout
+  stderr_path: logs/014-probe-claims-selftest.stderr
+- id: gate-storage-semantics
+  started_at: '2026-11-06T09:06:36Z'
+  finished_at: '2026-11-06T09:06:36Z'
+  exit_code: 0
+  stdout_sha256: 5c8654ef8e8d28e039ea4489dfdee30b15430e01ab7ba3fd21d6fe6e6352eb4b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-gate-storage-semantics.stdout
+  stderr_path: logs/015-gate-storage-semantics.stderr
+- id: gate-fmt-check
+  started_at: '2026-11-06T09:06:36Z'
+  finished_at: '2026-11-06T09:06:39Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-gate-fmt-check.stdout
+  stderr_path: logs/016-gate-fmt-check.stderr
+- id: gate-test-count-monotonic
+  started_at: '2026-11-06T09:06:39Z'
+  finished_at: '2026-11-06T09:06:39Z'
+  exit_code: 0
+  stdout_sha256: 6d0ce9844cd6862029883a94b14022e595f66c331d8a74d5420e076d2ee0b939
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/017-gate-test-count-monotonic.stdout
+  stderr_path: logs/017-gate-test-count-monotonic.stderr
+- id: gate-tpch-known-differences
+  started_at: '2026-11-06T09:06:39Z'
+  finished_at: '2026-11-06T09:06:39Z'
+  exit_code: 0
+  stdout_sha256: 78c266b1218f92b078a6b851acf1392ceab90646c70fadddb55bfc13a10fd2a4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/018-gate-tpch-known-differences.stdout
+  stderr_path: logs/018-gate-tpch-known-differences.stderr
+- id: gate-main-freshness
+  started_at: '2026-11-06T09:06:39Z'
+  finished_at: '2026-11-06T09:06:48Z'
+  exit_code: 1
+  stdout_sha256: 6fbac75bdd498ee8d7321489f3d57f9e92eb6fea2e1a1815f5b615230e853bcf
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/019-gate-main-freshness.stdout
+  stderr_path: logs/019-gate-main-freshness.stderr
+evidence_hash: sha256:3ddb57823a5513b89bb5c58386bb2c85980526ae870f472bd3cf952937796859
+completed_at: '2026-11-06T09:06:48Z'
+notes:
+- 本 run 是「目录策略归位 + idle-reaper 修复」批的验收证据：19 条命令，18 绿 / 1 红。
+- 唯一一条红：gate-main-freshness（exit=1）—— 结构性红，C-MAIN-02（GA 前 main 封存，main 由 release/*
+  单向驱动），不是本批回归。
+- FL-1 验收：test-5392-regression-x10 = 连续 10 次绿（机器证据）；test-idle-reaper-unit 绿（新增两条单测：busy
+  的连接一律不回收、tracker 的 busy 标志位）。
+- '现场对照：同一套 5392 wire 回归，**修前 20 轮 2 红**（服务端日志给出 `idle-reaper: closing conn_id=3 (idle
+  34s > 30s)` ⇒ 回收器在语句执行期间掐断连接），**修后连跑 42 轮全绿**（12 + 30 两批现场窗口）。'
+- P2-2 验收：gate-directory-policy-check rc=0（new_violations=0，bench-dir-single 由 1 →
+  0）；probe-directory-policy-mutations 5/5 VERIFIED（含『新增违规 ⇒ 红』）；check-bench-targets-compile
+  rc=0（路径改过：benchmarks/ → tools/benchmarks/）。
+- 其余绿项：CI checkout 一致性门禁 rc=0、honesty gates=168 fails=0、gate_registry check_n=168（9
+  个变异全被抓住）、doc_facts docs=94 fails=0、看板 76 行一致（未开始 5 / 待复核 24 / 完成 32 / 阻塞 15）、claims_selftest
+  17 臂 VERIFIED、rustfmt 欠账为空。
+- '本批也纠正了一个我自己引错的证据：此前 5 个 PR 正文里写的「CI run 11301/11305/11308/11309/11310 全 Blocked」这些
+  run id **在 Gitea 上并不存在**（GET 返回 404）。实测现状：push 到 develop/v4.1.0 与 PR 都会**建出 run**（如
+  run 10956 = 合并 #5612 的 push，08:29:21Z），runner 1735/1736/1737 均 online，但每个 run 都是
+  `completed/failure` 且 **job 数 = 0** ⇒ workflow 在建 job 之前就失败，**没有任何门禁真正执行过**；同样的
+  0-job 失败在 2026-11-05 08:36 的 run 10884/10885 就已存在 ⇒ 不是本批引入。结论（CI 绿不了、须用本地归档 run
+  代替）不变，但引用的 run id 全部改正，见看板 IL-9 行与 ISSUE #5592 的更正说明。'

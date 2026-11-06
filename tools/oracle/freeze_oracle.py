@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from datetime import datetime, timezone
 
-SNAPSHOT_DIR = Path("/Users/liying/workspace/dev/yinglichina163/sqlrustgo/bench/oracle/tpch_sf01_snapshot_v2")
+SNAPSHOT_DIR = Path("/Users/liying/workspace/dev/yinglichina163/sqlrustgo/tools/oracle/tpch_sf01_snapshot_v2")
 SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
 TABLES = ["region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem"]
