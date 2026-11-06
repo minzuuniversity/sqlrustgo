@@ -1,0 +1,4 @@
+OK   arm-count-vs-verdicts: claimed arms=7 verdict_lines=7
+OK   counter-mutation-caught: arms=6 discriminating=7 not_discriminating=0 drift=0 verdict_lines=7 外部尺子判红=True
+OK   lost-guard-mutation: control rc=1 mutated rc=0 dropped=priority/p1
+checks=3 ok=3 not_ok=0 drift=0

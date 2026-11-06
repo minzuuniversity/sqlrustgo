@@ -1,0 +1,5 @@
+{"capability": "cli-real-query", "detail": "5 行逐值一致", "evidence": {"cmd": "sqlrustgo sqlite --batch --mode csv --headers true --cmd <sql> <db>", "rows": [["1", "alpha"], ["2", "beta"], ["3", "gamma-三"], ["4", "delta"], ["5", "epsilon"]]}, "status": "VERIFIED"}
+{"capability": "mysql-wire-real", "detail": "5 行经 MySQL wire 协议逐值一致", "evidence": {"client": "/opt/homebrew/bin/mysql", "port": 56137}, "status": "VERIFIED"}
+{"capability": "durable-on-disk", "detail": "SIGTERM 后重启读回 5 行逐值一致", "evidence": {"datadir": "durable/data", "kill": "SIGTERM"}, "status": "VERIFIED"}
+{"capability": "crash-restart", "detail": "SIGKILL 后重启读回 5 行逐值一致", "evidence": {"datadir": "crash/data", "kill": "SIGKILL"}, "status": "VERIFIED"}
+{"capability": "backup-restore", "detail": "备份→恢复→读回 5 行，与备份前逐值一致", "evidence": {"backup_dir": "backup/bk", "rows": [["1", "alpha"], ["2", "beta"], ["3", "gamma-三"], ["4", "delta"], ["5", "epsilon"]], "target": "backup/restored"}, "status": "VERIFIED"}

@@ -1,0 +1,8 @@
+  [PASS] R1 生产默认路径 file-backed (MvccStorage::new(file_storage))
+  [PASS] R2 生产默认路径带 WAL 持久化 (FileBackedWalManager + FileStorage::new_with_external_wal + WAL 包装层)
+  [PASS] R3 binary 分支 file-backed (BinaryTableStorage::new_with_data)
+  [PASS] R4 parallel 分支 file-backed (FileStorage::new_with_external_wal + ParallelWalStorage)
+  [PASS] R5 生产存储选择块无 MemoryStorage — 不存在非 file 生产路径
+  [PASS] R6 声明了存储语义的 28 份测试都被生产存储链覆盖（清单与标记一致，且都构造生产存储面）
+=== Result: PASS=6 FAIL=0 ===
+exit_code=0

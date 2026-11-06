@@ -1,3 +1,4 @@
+// storage-semantics: repro-v312-63
 use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, FileStorage, MemoryStorage};
 use std::sync::Arc;

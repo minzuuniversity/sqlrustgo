@@ -94,7 +94,10 @@ def live_rows() -> list[dict]:
 CLASSES = ("stage_required", "ci_reachable", "orphan_referenced", "dead")
 DISPOSITIONS = ("archive-candidate", "keep-rewire", "needs-execution-point",
                 "needs-external-host", "superseded")
-AUTHORED = ("disposition", "note", "evidence")
+AUTHORED = ("disposition", "note", "evidence", "effect")
+# `effect` 是**人工撰写**的「这道门禁能抓什么 / 抓不到什么」声明（P1-4）。
+# 它必须被 emit 保留：重生成登记表时不能把人工声明冲掉。
+# 一致性由 audit/v4.1.0/honesty.py 核对（声明 vs NEG_FIXTURES 夹具账）。
 
 REASONS = {
     "stage_required": "在 STAGE_CONFIG 的阶段 required_gates 清单里",

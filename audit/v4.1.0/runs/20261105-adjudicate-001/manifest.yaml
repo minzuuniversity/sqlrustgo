@@ -1,0 +1,421 @@
+schema_version: 1
+run_id: 20261105-adjudicate-001
+source_agent: omp-macmini
+frozen_commit: 24e7f2f2dbebf30efacad1fe99d4bb06528669e2
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: adjudicate-5466
+  name: 双血统裁定：#5466 的核心论断是否成立（A 漂移/B 超时/C 能否推翻）
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/expert_ladder.py adjudicate --id issue-5466-recheck --question audit/v4.1.0/adjudications/issue-5466-recheck.md
+    --seat flash-next-252 --seat chatgpt-web --required-lineages 2 --machine-evidence audit/v4.1.0/adjudications/machine-evidence.jsonl
+    --no-evidence-dir --max-tokens 600 >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    echo "exit_code=$rc"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || s=1
+
+    grep -q ''"aggregate"'' "$f" || s=1
+
+    grep -q ''verdicts'' "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: adjudicate-gate-changes
+  name: 双血统裁定：本轮三处既有门禁改动是否放宽了历史判据
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/expert_ladder.py adjudicate --id gate-changes-410 --question audit/v4.1.0/adjudications/gate-changes-410.md
+    --seat flash-next-252 --seat chatgpt-web --required-lineages 2 --machine-evidence audit/v4.1.0/adjudications/machine-evidence.jsonl
+    --no-evidence-dir --max-tokens 600 >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    echo "exit_code=$rc"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || s=1
+
+    grep -q ''"aggregate"'' "$f" || s=1
+
+    grep -q ''verdicts'' "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: ex6-failure-accounting
+  name: EX-6 标定账把「超时」与「答错」分开记（四臂，含反向变异）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/ex6_failure_accounting.py >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: prod-storage-gate
+  name: 生产存储门禁 R1–R6 全成立
+  cwd: .
+  timeout_sec: 900
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_correctness_tests_production_storage.sh >"$f" 2>&1
+
+    rc=$?
+
+    grep -E "=== Result" "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "FAIL=0" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: audit-manifest-baseline
+  name: A01 证据门禁仍是那 7 条历史红（未放宽）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_audit_manifest.sh >"$f" 2>&1
+
+    rc=$?
+
+    n=$(grep -c "^FAIL:" "$f")
+
+    echo "exit_code=$rc fail_count=$n"
+
+    s=0
+
+    [ "$rc" -eq 1 ] || s=1
+
+    [ "$n" -eq 7 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: honesty-check
+  name: P1-4 门禁 effect 声明与夹具账一致
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/honesty.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: storage-semantics-check
+  name: IL-11 存储语义声称清单一致
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/storage_semantics_claims.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: claims-inventory-check
+  name: P1-5 声明绑定判据：基线之上未绑定的新声明必须为 0
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/evidence_inventory.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: doc-facts-check
+  name: P2-1 文档事实面：索引逐字节一致 + 两个既有门禁成立
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/doc_facts.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gate-registry-check
+  name: 门禁登记表不得漂移
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/gate_registry.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: kanban-rows
+  name: 看板 SSOT 与渲染必须一致（54 行）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "54 rows" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gov-metrics
+  name: 治理度量快照（check_n 必须仍为 168）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    "$PY" scripts/gate/gov_probe.py metrics
+
+    '
+results:
+- id: adjudicate-5466
+  started_at: '2026-11-05T19:25:12Z'
+  finished_at: '2026-11-05T19:27:26Z'
+  exit_code: 0
+  stdout_sha256: 7f9da64448297090b3110ca077e22c2ecb86f4de7c0aa0d5b125e27ee4817d67
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-adjudicate-5466.stdout
+  stderr_path: logs/001-adjudicate-5466.stderr
+- id: adjudicate-gate-changes
+  started_at: '2026-11-05T19:27:26Z'
+  finished_at: '2026-11-05T19:28:30Z'
+  exit_code: 0
+  stdout_sha256: 2713c097a44e868993fd933d2580186fdbe64c1d7691aeeb79e3c46425702aa7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-adjudicate-gate-changes.stdout
+  stderr_path: logs/002-adjudicate-gate-changes.stderr
+- id: ex6-failure-accounting
+  started_at: '2026-11-05T19:28:30Z'
+  finished_at: '2026-11-05T19:28:31Z'
+  exit_code: 0
+  stdout_sha256: 2d694c824ddafa7a126e50ee9289de921f81e4c60b7afd0806a1ce01b92c8480
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ex6-failure-accounting.stdout
+  stderr_path: logs/003-ex6-failure-accounting.stderr
+- id: prod-storage-gate
+  started_at: '2026-11-05T19:28:31Z'
+  finished_at: '2026-11-05T19:28:31Z'
+  exit_code: 0
+  stdout_sha256: a9b08fe06e9e3016533aef7f6a2e426dd22f54591f1805aca6fd3ca5791f6a14
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-prod-storage-gate.stdout
+  stderr_path: logs/004-prod-storage-gate.stderr
+- id: audit-manifest-baseline
+  started_at: '2026-11-05T19:28:31Z'
+  finished_at: '2026-11-05T19:28:33Z'
+  exit_code: 0
+  stdout_sha256: f99c8e87417690682e37104b3234987197d744f53acf11a01229ac04c7f71d5e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-audit-manifest-baseline.stdout
+  stderr_path: logs/005-audit-manifest-baseline.stderr
+- id: honesty-check
+  started_at: '2026-11-05T19:28:33Z'
+  finished_at: '2026-11-05T19:28:33Z'
+  exit_code: 0
+  stdout_sha256: 138d8f3efe9a5f23955998726093f785cd8bd1486aef6b600ec6860abb3d14af
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-honesty-check.stdout
+  stderr_path: logs/006-honesty-check.stderr
+- id: storage-semantics-check
+  started_at: '2026-11-05T19:28:33Z'
+  finished_at: '2026-11-05T19:28:33Z'
+  exit_code: 0
+  stdout_sha256: b8274f265a612325f3c36fba22a595f891492868357e9203f783426ab5b665d5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-storage-semantics-check.stdout
+  stderr_path: logs/007-storage-semantics-check.stderr
+- id: claims-inventory-check
+  started_at: '2026-11-05T19:28:33Z'
+  finished_at: '2026-11-05T19:28:33Z'
+  exit_code: 0
+  stdout_sha256: 6983aa0c06f10d6e7e284a2c93b05b881a5d5507918730fc0505b81dbdc502fd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-claims-inventory-check.stdout
+  stderr_path: logs/008-claims-inventory-check.stderr
+- id: doc-facts-check
+  started_at: '2026-11-05T19:28:33Z'
+  finished_at: '2026-11-05T19:28:34Z'
+  exit_code: 0
+  stdout_sha256: 842fc96408869ec5b1cc6cb6512eff882fbfdd2798b325678f9efae7c67958a7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-doc-facts-check.stdout
+  stderr_path: logs/009-doc-facts-check.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T19:28:34Z'
+  finished_at: '2026-11-05T19:28:34Z'
+  exit_code: 0
+  stdout_sha256: 1304125a1fdbeab3535a6d78b44af22278f9f2896cc7b7a80afafddd6ed5fad3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gate-registry-check.stdout
+  stderr_path: logs/010-gate-registry-check.stderr
+- id: kanban-rows
+  started_at: '2026-11-05T19:28:34Z'
+  finished_at: '2026-11-05T19:28:34Z'
+  exit_code: 0
+  stdout_sha256: f8dcfddf1d85f36effab50354a0bd55e04f3f519180919e5173afe1d211d2122
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-kanban-rows.stdout
+  stderr_path: logs/011-kanban-rows.stderr
+- id: gov-metrics
+  started_at: '2026-11-05T19:28:34Z'
+  finished_at: '2026-11-05T19:28:34Z'
+  exit_code: 0
+  stdout_sha256: 1e7706c055df5023e17352c4f790fdd7dff5f1ace5d86ac1bcb4e8220ae38015
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-gov-metrics.stdout
+  stderr_path: logs/012-gov-metrics.stderr
+evidence_hash: sha256:39fc5ff54e33a30929c49615ad3ff015e4e824536bbdf0cb8c0f92d0a13bdb5c
+completed_at: '2026-11-05T19:28:34Z'
+notes:
+  purpose: 双血统裁定（两条声称组）+ 本轮判据的回归确认
+  commands: 12 条，全部 exit 0
+  key_results:
+    adjudicate_5466: '双血统裁定 #5466 声称组（A 归档有没有漂移 / B 根因是不是超时 / C 可否据此推翻 #5466）。**聚合 INCOMPLETE**：qwen 血统判
+      A=REAL、B=INCOMPLETE（材料只证实空串，未证实超时）、C 材料不足；gpt 血统一次给出同向判断（"A在80项可比范围内成立；B仅证实空串，未证实超时；C缺少完整证据"），归档这次因席位超时弃权
+      ⇒ 裁定构成会随席位可用性变化。'
+    adjudicate_gate_changes: 双血统裁定本轮三处既有门禁改动是否放宽历史判据。**聚合 INCOMPLETE**：qwen 血统判 INCOMPLETE，gpt 血统 240s
+      超时弃权 ⇒ 只有一条血统。
+    ex6_failure_accounting: EX-6 标定账四臂全过（含反向变异）
+    prod_storage_gate: 生产存储门禁 R1–R6 全成立、FAIL=0
+    audit_manifest_baseline: A01 证据门禁仍是那 7 条历史红（未放宽）
+    honesty_check: P1-4 门禁 effect 声明与夹具账一致
+    storage_semantics_check: IL-11 存储语义声称清单一致
+    claims_inventory_check: P1-5：claims_hits=1144 claims_ref=93，新增未绑定声明 0 条
+    doc_facts_check: P2-1：文档索引逐字节一致；接进来的两个既有门禁都成立
+    gate_registry_check: 门禁登记表不得漂移
+    kanban_rows: 看板 54 行，SSOT 与渲染一致
+    gov_metrics: 治理度量快照；check_n 仍为 168（分母未动）
+  measurement_notes: 裁定命令的 exit_code 可能是 0 或 2（aggregate 非 REAL/FALSE_POSITIVE 时按设计返回 2）——命令封装把**期望**编码进断言（期望
+    INCOMPLETE 就断言 INCOMPLETE 且要求产出可解析的 aggregate 与 verdicts），因此这些命令自身 exit 0：run 记录的是「断言是否成立」，不是「裁定结论是什么」。
+  self_reference_note: 本 run 目录自身在执行期间未提交 ⇒ 按 IL-6 的新口径（门禁按已提交树枚举）它不在判定范围内；提交后它会被纳入，历史判据未放宽。
+  known_limitation: 本 run 不含 ci_gate.sh，不构成门禁通过声明。CI 侧第二血统复核被 IL-9（runner-03 缺镜像）挡住。双血统裁定是**软门禁**（AFP
+    §5.1/5.3：模型意见仅供参考，不作为门禁依据）；它的作用是抓出报告里**过头**的表述，不是给结论背书 —— 本轮它确实抓出了「根因是超时」这句。

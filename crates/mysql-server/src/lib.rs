@@ -289,14 +289,17 @@ pub fn spawn_resource_monitor(interval_s: u64) {
 
 /// v3.12.0 Issue #4682: global registry of live connections keyed
 /// by monotonically-increasing `conn_id`. The value holds a
-/// `ConnectionTracker` plus a `Weak<TcpStream>` so the reaper does
-/// not keep dead connections alive. When `handle_connection` exits
-/// the strong count on the `Arc<TcpStream>` drops to zero, the
-/// `Weak` here fails to upgrade, and the entry is dropped on the
-/// next reap sweep.
-/// Connection registry entry: an idle-tracker plus a `Weak<TcpStream>`
-/// so the reaper does not keep dead connections alive.
-type ConnectionRegistryEntry = (ConnectionTracker, std::sync::Weak<std::net::TcpStream>);
+/// `ConnectionTracker` plus the socket handle the reaper shuts down.
+/// #5582: the handle must be a **strong** reference — previously it
+/// was a `Weak`, and the production call site
+/// (`register_connection(Arc::new(stream.try_clone().unwrap()))`) passes
+/// a **temporary**: the strong count drops to zero as soon as
+/// `register_connection` returns, so the reaper's `weak.upgrade()` was
+/// always `None` and **the idle reaper never actually closed anything**.
+/// The end-to-end tests stayed green because the disconnect came from the
+/// socket read timeout, which fires at the same instant and masked it.
+/// The entry is released by `deregister_connection` when the handler exits.
+type ConnectionRegistryEntry = (ConnectionTracker, std::sync::Arc<std::net::TcpStream>);
 type ConnectionRegistryMap = std::collections::HashMap<u64, ConnectionRegistryEntry>;
 
 static CONNECTION_REGISTRY: std::sync::LazyLock<parking_lot::RwLock<ConnectionRegistryMap>> =
@@ -309,10 +312,13 @@ static CONNECTION_NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::Ato
 /// calling `deregister_connection(conn_id)` on exit.
 pub fn register_connection(stream: std::sync::Arc<std::net::TcpStream>) -> u64 {
     let conn_id = CONNECTION_NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let weak = std::sync::Arc::downgrade(&stream);
+    // #5582: 存**强引用**，不存 Weak。生产调用点传进来的是临时量
+    // （`Arc::new(stream.try_clone().unwrap())`），只留 Weak 的话等
+    // `register_connection` 一返回强引用就归零，reaper 永远拿不到 socket。
+    // 生命周期由 `deregister_connection`（handler 退出时的 scopeguard）收口。
     CONNECTION_REGISTRY
         .write()
-        .insert(conn_id, (ConnectionTracker::new(), weak));
+        .insert(conn_id, (ConnectionTracker::new(), stream));
     conn_id
 }
 
@@ -329,6 +335,19 @@ pub fn touch_connection(conn_id: u64) {
 /// registry never holds stale entries.
 pub fn deregister_connection(conn_id: u64) {
     CONNECTION_REGISTRY.write().remove(&conn_id);
+}
+
+/// #5582: reaper 关闭连接的**唯一**路径。
+///
+/// 抽成独立函数，是为了让回归测试走的是**同一段代码**，而不是在测试里
+/// 复刻一遍 `shutdown` —— 复刻出来的测试证明不了回收器真的能关连接。
+///
+/// v3.12.0 Issue #4682: shutdown(Both) is the only reliable way to wake a
+/// stuck connection thread because rustls ignores SO_RCVTIMEO. shutdown()
+/// makes any blocking recv return 0 immediately, which the command loop
+/// sees as EOF and exits cleanly.
+fn reap_socket(sock: &std::sync::Arc<std::net::TcpStream>) -> std::io::Result<()> {
+    sock.shutdown(std::net::Shutdown::Both)
 }
 
 /// v3.12.0 Issue #4682: idle-connection reaper thread. Spawned
@@ -369,26 +388,22 @@ pub fn spawn_idle_connection_reaper() {
                 let mut registry = CONNECTION_REGISTRY.write();
                 let mut reaped = 0usize;
 
-                registry.retain(|&conn_id, (tracker, weak)| {
+                registry.retain(|&conn_id, (tracker, sock)| {
                     let idle = tracker.idle_secs();
                     if let Some(threshold) = idle_reap_decision(idle, now_idle_timeout) {
-                        if let Some(strong) = weak.upgrade() {
-                            // v3.12.0 Issue #4682: shutdown(Both) is
-                            // the only reliable way to wake a stuck
-                            // connection thread because rustls
-                            // ignores SO_RCVTIMEO. shutdown() makes
-                            // any blocking recv return 0 immediately,
-                            // which the command loop sees as EOF and
-                            // exits cleanly.
-                            let _ = strong.shutdown(std::net::Shutdown::Both);
-                            reaped += 1;
-                            tracing::info!(
-                                "idle-reaper: closing conn_id={} (idle {}s > {}s)",
-                                conn_id,
-                                idle,
-                                threshold
-                            );
-                        }
+                        // #5582: 注册表持有强引用，这里拿到的就是**活的** socket。
+                        // 此前是 `weak.upgrade()`，而生产调用点的强引用是临时量
+                        // ⇒ upgrade 恒为 None ⇒ 回收器从未真正 shutdown 任何连接。
+                        //
+                        // 走 `reap_socket`（与回归测试同一条路径）。
+                        let _ = reap_socket(sock);
+                        reaped += 1;
+                        tracing::info!(
+                            "idle-reaper: closing conn_id={} (idle {}s > {}s)",
+                            conn_id,
+                            idle,
+                            threshold
+                        );
                         false
                     } else {
                         true
@@ -643,6 +658,58 @@ mod helpers_tests {
         assert!(CONNECTION_REGISTRY.read().contains_key(&cid));
         deregister_connection(cid);
         assert!(!CONNECTION_REGISTRY.read().contains_key(&cid));
+    }
+
+    // #5582 回归：注册表必须持有**活的** socket 句柄。
+    // 生产调用形态（`handle_connection`）传进来的是**临时量** ——
+    // `register_connection(Arc::new(stream.try_clone().unwrap()))`，
+    // 一返回调用点的强引用就没了。若注册表只留 `Weak`，此刻 socket 已经死了，
+    // reaper 永远 upgrade 不到、也就永远关不掉任何连接。
+    // 这个测试刻意复现该形态：注册完立刻丢掉调用点那一份，
+    // 再要求注册表里的句柄仍能 shutdown 掉客户端看得到的那条连接。
+    #[test]
+    fn registry_keeps_a_live_shutdown_capable_handle_in_production_form() {
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().unwrap().port();
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        let (server, _) = listener.accept().expect("accept");
+        // **原 socket 必须一直活着**：否则连接是被 drop 掉的，不是被 reaper 关的，
+        // 测试就证明不了任何事。
+        let dup = server.try_clone().expect("dup socket");
+        let _keepalive = server;
+        // 生产形态：Arc 是临时量
+        let cid = register_connection(std::sync::Arc::new(dup));
+        let sock = CONNECTION_REGISTRY
+            .read()
+            .get(&cid)
+            .map(|(_, s)| s.clone())
+            .expect("entry must exist");
+        // 先证明连接此刻还活着（读超时 = 连接还在，只是没数据）
+        client
+            .set_read_timeout(Some(std::time::Duration::from_millis(200)))
+            .expect("set timeout");
+        let mut buf = [0u8; 1];
+        assert!(
+            client.read(&mut buf).is_err(),
+            "connection must still be alive before the reap"
+        );
+        // reaper 用的就是这个句柄 —— 走回收器实际使用的那条路径，不在测试里复刻。
+        reap_socket(&sock).expect("reaper must be able to shutdown the socket");
+        // 客户端必须看到**真的断开**（EOF / 复位）。
+        // 注意：读超时（Err(TimedOut)）不算数 —— 那说明 socket 还开着。
+        client
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .expect("set timeout");
+        match &client.read(&mut buf) {
+            Ok(0) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => {}
+            other => panic!(
+                "client must observe EOF after the reaper shutdown, got {:?}",
+                other
+            ),
+        }
+        deregister_connection(cid);
     }
 
     // ---------- compute_double_sha1 ----------
@@ -1210,6 +1277,32 @@ pub enum MySqlError {
     /// need to propagate human-readable context without having to
     /// commit to one of the typed variants above.
     Other(String),
+    /// An error that carries an explicit MySQL error code + SQLSTATE.
+    ///
+    /// #5527: the LOAD DATA handler used to report **every** failure as
+    /// `1146 / 42S02` (table not found), so a duplicate-key rejection
+    /// would have reached the client as "table not found" — wrong code,
+    /// wrong meaning, and un-actionable for the operator.
+    Coded {
+        code: u16,
+        sqlstate: String,
+        message: String,
+    },
+}
+
+impl MySqlError {
+    /// The MySQL error code + SQLSTATE this error should be reported with.
+    ///
+    /// Only `Coded` carries its own; every other variant falls back to the
+    /// LOAD DATA path's historical default. That default is itself
+    /// questionable (1146 is "table not found", which is wrong for an I/O
+    /// failure), but changing it is a separate decision from #5527.
+    pub fn mysql_code_and_state(&self) -> (u16, String) {
+        match self {
+            MySqlError::Coded { code, sqlstate, .. } => (*code, sqlstate.clone()),
+            _ => (1146, "42S02".to_string()),
+        }
+    }
 }
 
 impl std::fmt::Display for MySqlError {
@@ -1219,6 +1312,7 @@ impl std::fmt::Display for MySqlError {
             MySqlError::Protocol(s) => write!(f, "Protocol: {}", s),
             MySqlError::Sql(s) => write!(f, "SQL: {}", s),
             MySqlError::Other(s) => write!(f, "{}", s),
+            MySqlError::Coded { message, .. } => write!(f, "{}", message),
         }
     }
 }
@@ -4872,6 +4966,11 @@ fn handle_load_local_infile<S: Read + Write>(
     // was dropped. `skipped` is returned to the caller and surfaced to
     // the client as a warning.
     let mut skipped: u64 = 0;
+    // #5527: 装载失败（重复键）时**不能**立刻返回 —— 客户端还在把文件内容
+    // 发过来。必须先把剩下的包**读完并丢弃**，否则它们会被当成新命令：
+    // 客户端的终止包（空 payload）会让 command loop 在 `&pkt.payload[1..]`
+    // 上 panic（slice index out of range），整条连接崩掉。
+    let mut load_error: Option<MySqlError> = None;
 
     // ---- EAGAIN bug fix (RC2 Week 1 Day 6) ----
     //
@@ -4909,6 +5008,11 @@ fn handle_load_local_infile<S: Read + Write>(
         *seq = pkt.sequence.wrapping_add(1);
         if pkt.payload.is_empty() {
             break;
+        }
+        if load_error.is_some() {
+            // #5527: 装载已被拒绝 —— 把客户端剩余的内容包读完并丢弃，
+            // 直到它的终止包（空 payload）到达。
+            continue;
         }
         buf.extend_from_slice(&pkt.payload);
 
@@ -4968,9 +5072,12 @@ fn handle_load_local_infile<S: Read + Write>(
         if buf.is_empty() && pending_rows.len() > last_flush_kept_rows {
             let pending = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
-            let n = bulk_insert(engine, table, pending)
-                .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
-            total_rows += n;
+            match bulk_insert(engine, table, pending) {
+                Ok(n) => total_rows += n,
+                Err(e) => {
+                    load_error = Some(e);
+                }
+            }
         } else if buf.len() > bulk_buf_size * 4 {
             // Sanity guard: if buf keeps growing without ever
             // draining (e.g. a malformed file with no newlines),
@@ -4985,9 +5092,12 @@ fn handle_load_local_infile<S: Read + Write>(
             );
             let pending = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
-            let n = bulk_insert(engine, table, pending)
-                .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
-            total_rows += n;
+            match bulk_insert(engine, table, pending) {
+                Ok(n) => total_rows += n,
+                Err(e) => {
+                    load_error = Some(e);
+                }
+            }
         } else if periodic_threshold > 0 && pending_rows.len() >= periodic_threshold {
             // Periodic flush: every `rows_per_flush` rows, flush
             // even if buf is non-empty. The remaining bytes in buf
@@ -4995,9 +5105,12 @@ fn handle_load_local_infile<S: Read + Write>(
             // packet.
             let pending: Vec<Vec<sqlrustgo_types::Value>> = std::mem::take(&mut pending_rows);
             last_flush_kept_rows = 0;
-            let n = bulk_insert(engine, table, pending)
-                .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
-            total_rows += n;
+            match bulk_insert(engine, table, pending) {
+                Ok(n) => total_rows += n,
+                Err(e) => {
+                    load_error = Some(e);
+                }
+            }
         } else {
             // Defer flush until next packet; remember that these
             // rows are still pending.
@@ -5006,10 +5119,18 @@ fn handle_load_local_infile<S: Read + Write>(
     }
 
     // Final flush of any rows that didn't hit a boundary.
-    if !pending_rows.is_empty() {
-        let n = bulk_insert(engine, table, pending_rows)
-            .map_err(|e| MySqlError::Other(format!("bulk_insert: {}", e)))?;
-        total_rows += n;
+    if load_error.is_none() && !pending_rows.is_empty() {
+        match bulk_insert(engine, table, pending_rows) {
+            Ok(n) => total_rows += n,
+            Err(e) => {
+                load_error = Some(e);
+            }
+        }
+    }
+
+    // #5527: 客户端的内容已经排空，现在可以安全地把错误报回去。
+    if let Some(e) = load_error {
+        return Err(e);
     }
 
     // Materialize the .json file for this table so that subsequent
@@ -5644,8 +5765,8 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     ) {
                         Ok(o) => o,
                         Err(e) => {
-                            make_err_packet(seq, 1146u16, "42S02", &e.to_string())
-                                .write_to(stream)?;
+                            let (code, state) = e.mysql_code_and_state();
+                            make_err_packet(seq, code, &state, &e.to_string()).write_to(stream)?;
                             *server_last_sent_seq = seq;
                             // One command produces exactly ONE response
                             // packet. This path used to fall through to

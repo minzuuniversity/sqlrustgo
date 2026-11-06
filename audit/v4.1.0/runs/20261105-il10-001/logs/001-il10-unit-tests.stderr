@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/integration/compat/a04_mysql_diff_matrix_test.rs (target/debug/deps/a04_mysql_diff_matrix-99c61a7b04b49a70)

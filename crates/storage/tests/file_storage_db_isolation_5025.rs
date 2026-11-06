@@ -1,3 +1,4 @@
+// storage-semantics: file-storage-db-isolation-5025
 //! #5025: `FileStorage` table-space isolation by database.
 //!
 //! `tests/e2e/multi_db_isolation_5025.rs` drives `MemoryExecutionEngine`,

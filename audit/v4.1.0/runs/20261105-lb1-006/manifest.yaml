@@ -1,0 +1,254 @@
+schema_version: 1
+run_id: 20261105-lb1-006
+source_agent: omp-macmini
+frozen_commit: 07ac01f973aa66160353e4e804c86338dda62310
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: lb1-check-before-red
+  name: 整改前夹具必须判红（判红条件仍在，否则核对器是摆设）
+  cmd: 'bash -c ''out=$(python3 audit/v4.1.0/issue_labels.py check --input audit/v4.1.0/neg/snapshots/labelgap-open-before-20261105.jsonl
+    --ledger docs/releases/v4.1.0/ISSUE_LABEL_LEDGER_v4.1.0.jsonl 2>&1); rc=$?; echo "$out" | head -3;
+    if [ "$rc" -eq 0 ]; then echo "BASELINE-NOT-RED: 整改前夹具本该判红"; exit 1; fi; echo "BASELINE-BEFORE-RED-OK
+    rc=$rc"'''
+  cwd: .
+  timeout_sec: 300
+- id: lb1-check-after-green
+  name: 整改后夹具必须判绿（不是永远红的摆设）
+  cmd: 'bash -c ''out=$(python3 audit/v4.1.0/issue_labels.py check --input audit/v4.1.0/neg/snapshots/labelgap-open-after-20261105.jsonl
+    --ledger docs/releases/v4.1.0/ISSUE_LABEL_LEDGER_v4.1.0.jsonl 2>&1); rc=$?; echo "$out" | head -3;
+    if [ "$rc" -ne 0 ]; then echo "BASELINE-AFTER-RED: 整改后夹具必须绿"; exit 1; fi; echo "BASELINE-AFTER-GREEN-OK
+    rc=$rc"'''
+  cwd: .
+  timeout_sec: 300
+- id: lb1-check-live
+  name: live 三维缺口必须全 0（priority/cost/cap 各维均无缺维）
+  cmd: 'bash -c ''out=$(python3 audit/v4.1.0/issue_labels.py check 2>&1); rc=$?; echo "$out" | head -3;
+    if [ "$rc" -ne 0 ]; then echo "LIVE-GAP-NONZERO"; exit 1; fi; echo "$out" | grep -q "\"findings\":
+    0" || { echo "LIVE-FINDINGS-NONZERO"; exit 1; }; echo "LIVE-GAP-ZERO-OK"'''
+  cwd: .
+  timeout_sec: 300
+- id: lb1-mutation-7arms
+  name: 七臂反向变异全判别（arms=7 discriminating=7 not_discriminating=0 drift=0）
+  cmd: bash -c 'out=$(python3 audit/v4.1.0/issue_labels_mutations.py 2>&1); rc=$?; echo "$out"; if [ "$rc"
+    -ne 0 ]; then echo "MUTATION-RC-NONZERO rc=$rc"; exit 1; fi; echo "$out" | grep -q "arms=7 discriminating=7
+    not_discriminating=0 drift=0" || { echo "ARMS-SUMMARY-MISMATCH"; exit 1; }; echo "ARMS-SUMMARY-OK"'
+  cwd: .
+  timeout_sec: 600
+- id: lb1-arm-count-external
+  name: 臂数外部核对：claimed arms= 必须等于实际 verdict 行数；写死臂数必须被抓；lost 守卫变异必须判别
+  cmd: python3 audit/v4.1.0/lb1_arm_count_check.py
+  cwd: .
+  timeout_sec: 900
+- id: lb1-verify-no-loss
+  name: verify 对 live：lost_labels=0 且 added_labels==expected_ops_from_ledger==43
+  cmd: 'bash -c ''out=$(python3 audit/v4.1.0/issue_labels.py verify audit/v4.1.0/neg/snapshots/labelgap-open-before-20261105.jsonl
+    2>&1); rc=$?; echo "$out"; if [ "$rc" -ne 0 ]; then echo "VERIFY-RC-NONZERO rc=$rc"; exit 1; fi; echo
+    "$out" | grep -q "\"lost_labels\": 0" || { echo "LOST-LABELS-NONZERO"; exit 1; }; echo "$out" | grep
+    -q "\"added_labels\": 43" || { echo "ADDED-NOT-43"; exit 1; }; echo "$out" | grep -q "\"expected_ops_from_ledger\":
+    43" || { echo "EXPECTED-NOT-43"; exit 1; }; echo "VERIFY-NO-LOSS-OK"'''
+  cwd: .
+  timeout_sec: 300
+- id: lb1-plan-zero
+  name: live 上 plan 的 ops 必须为 0（稳态判据：标签已全部落库）
+  cmd: 'bash -c ''out=$(python3 audit/v4.1.0/issue_labels.py plan 2>&1); rc=$?; echo "$out" | tail -3;
+    if [ "$rc" -ne 0 ]; then echo "PLAN-RC-NONZERO rc=$rc"; exit 1; fi; echo "$out" | grep -q "^ops: 0$"
+    || { echo "PLAN-OPS-NONZERO"; exit 1; }; echo "PLAN-ZERO-OK"'''
+  cwd: .
+  timeout_sec: 300
+- id: lb1-census-summary
+  name: gov_probe issues 摘要：三维不得出现 (none) 键
+  cmd: bash -c 'out=$(python3 scripts/gate/gov_probe.py issues 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then
+    echo "GOV-ISSUES-RC-NONZERO rc=$rc"; exit 1; fi; echo "$out" | tail -1; if echo "$out" | grep -q "(none)";
+    then echo "NONE-KEY-PRESENT"; exit 1; fi; echo "CENSUS-NO-NONE-KEY-OK"'
+  cwd: .
+  timeout_sec: 600
+- id: lb1-doc-claims-clean
+  name: LB1/GEN1 两份报告不得出现 PASS/全绿/✅ 结论字样
+  cmd: bash -c 'rc=0; for f in docs/releases/v4.1.0/LB1_ISSUE_LABEL_TAXONOMY_2026-11-05.md docs/releases/v4.1.0/GEN1_KANBAN_ISSUE_GENERATOR_2026-11-05.md;
+    do n=$(grep -c "PASS\|全绿\|✅" "$f"); echo "$f claims_hits=$n"; if [ "$n" -ne 0 ]; then rc=1; fi; done;
+    if [ "$rc" -ne 0 ]; then echo "CLAIMS-NOT-CLEAN"; exit 1; fi; echo "DOC-CLAIMS-CLEAN-OK"'
+  cwd: .
+  timeout_sec: 300
+- id: gen1-selftest
+  name: 看板生成器 selftest 四臂
+  cmd: python3 audit/v4.1.0/gen_kanban_issue.py --selftest
+  cwd: .
+  timeout_sec: 300
+- id: gen1-mutation-4arms
+  name: GEN-1 反向变异四臂（stayed_green=0 drift=0）
+  cmd: python3 audit/v4.1.0/gen_kanban_issue_mutations.py
+  cwd: .
+  timeout_sec: 600
+- id: kanban-45-rows
+  name: 看板 SSOT 渲染一致性（46 行，含 HO-1）
+  cmd: bash -c 'python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+    | grep -q "46 rows"'
+  cwd: .
+  timeout_sec: 120
+- id: gate-registry-check
+  name: 门禁清单回归（分母必须仍是 168）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-fixtures
+  name: 门禁清单回归夹具
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: gov-probe-metrics
+  name: 自指度量当期取值
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 900
+results:
+- id: lb1-check-before-red
+  started_at: '2026-11-05T09:40:28Z'
+  finished_at: '2026-11-05T09:40:28Z'
+  exit_code: 0
+  stdout_sha256: 54b2fdc360229035337c889f6632729a304403e0b4b7900675bd8ca7d6b09aa5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-lb1-check-before-red.stdout
+  stderr_path: logs/001-lb1-check-before-red.stderr
+- id: lb1-check-after-green
+  started_at: '2026-11-05T09:40:28Z'
+  finished_at: '2026-11-05T09:40:28Z'
+  exit_code: 0
+  stdout_sha256: 332ecf69e66626b149a4bb46c7809f5ac322b8e7a1f0ce8ed09e0f3237a70fcd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-lb1-check-after-green.stdout
+  stderr_path: logs/002-lb1-check-after-green.stderr
+- id: lb1-check-live
+  started_at: '2026-11-05T09:40:28Z'
+  finished_at: '2026-11-05T09:40:29Z'
+  exit_code: 0
+  stdout_sha256: 0c9d8f4ec606ba7bfe1548dece1ed45b1eb928c588418925644f451a02814d4f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-lb1-check-live.stdout
+  stderr_path: logs/003-lb1-check-live.stderr
+- id: lb1-mutation-7arms
+  started_at: '2026-11-05T09:40:29Z'
+  finished_at: '2026-11-05T09:40:32Z'
+  exit_code: 0
+  stdout_sha256: 3d6f8bbc5d7a9f83d52f77146808e478e7b2fa32d3daa093630f84ac9dc4d6b0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-lb1-mutation-7arms.stdout
+  stderr_path: logs/004-lb1-mutation-7arms.stderr
+- id: lb1-arm-count-external
+  started_at: '2026-11-05T09:40:32Z'
+  finished_at: '2026-11-05T09:40:38Z'
+  exit_code: 0
+  stdout_sha256: eae184002f0a9929df27b640c319eb99bd94b80750af742549643628689a51ee
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-lb1-arm-count-external.stdout
+  stderr_path: logs/005-lb1-arm-count-external.stderr
+- id: lb1-verify-no-loss
+  started_at: '2026-11-05T09:40:38Z'
+  finished_at: '2026-11-05T09:40:40Z'
+  exit_code: 0
+  stdout_sha256: 3a8865bbda0f1cf5d58c75ae6143d3aa8693978bbcb7c83b31895dbb52f429e9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-lb1-verify-no-loss.stdout
+  stderr_path: logs/006-lb1-verify-no-loss.stderr
+- id: lb1-plan-zero
+  started_at: '2026-11-05T09:40:40Z'
+  finished_at: '2026-11-05T09:40:41Z'
+  exit_code: 0
+  stdout_sha256: df3b2170ad7db7995be9b0dcc24629e3c7ee0461ed32bc44f1100033c182adcf
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-lb1-plan-zero.stdout
+  stderr_path: logs/007-lb1-plan-zero.stderr
+- id: lb1-census-summary
+  started_at: '2026-11-05T09:40:41Z'
+  finished_at: '2026-11-05T09:40:42Z'
+  exit_code: 0
+  stdout_sha256: 35e3942b6e989eb76aa9c491515bec2a85543c8ef414d58fe2a722a98a7c79d7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-lb1-census-summary.stdout
+  stderr_path: logs/008-lb1-census-summary.stderr
+- id: lb1-doc-claims-clean
+  started_at: '2026-11-05T09:40:42Z'
+  finished_at: '2026-11-05T09:40:42Z'
+  exit_code: 0
+  stdout_sha256: 3f34664aa81e7bcc6631b61d83b762994acbf08a9dba8f2cdf7989f22135654d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-lb1-doc-claims-clean.stdout
+  stderr_path: logs/009-lb1-doc-claims-clean.stderr
+- id: gen1-selftest
+  started_at: '2026-11-05T09:40:42Z'
+  finished_at: '2026-11-05T09:40:42Z'
+  exit_code: 0
+  stdout_sha256: 4fd05287f0b9e31d2530b4a9d9fd9610dc0688fa63e07efdfbd70e96b63a20a5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gen1-selftest.stdout
+  stderr_path: logs/010-gen1-selftest.stderr
+- id: gen1-mutation-4arms
+  started_at: '2026-11-05T09:40:42Z'
+  finished_at: '2026-11-05T09:40:43Z'
+  exit_code: 0
+  stdout_sha256: d46315f14c6514bb77f93208fd4f0da35513d3ebe590e0241cb574dc3780d36b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-gen1-mutation-4arms.stdout
+  stderr_path: logs/011-gen1-mutation-4arms.stderr
+- id: kanban-45-rows
+  started_at: '2026-11-05T09:40:43Z'
+  finished_at: '2026-11-05T09:40:43Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-kanban-45-rows.stdout
+  stderr_path: logs/012-kanban-45-rows.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T09:40:43Z'
+  finished_at: '2026-11-05T09:40:43Z'
+  exit_code: 0
+  stdout_sha256: 1304125a1fdbeab3535a6d78b44af22278f9f2896cc7b7a80afafddd6ed5fad3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-gate-registry-check.stdout
+  stderr_path: logs/013-gate-registry-check.stderr
+- id: gate-registry-fixtures
+  started_at: '2026-11-05T09:40:43Z'
+  finished_at: '2026-11-05T09:40:46Z'
+  exit_code: 0
+  stdout_sha256: 0f1433f3a8358c3e7beea77bb63f6700d6fe5ea13830ea38f1c28ba36ccb723c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-gate-registry-fixtures.stdout
+  stderr_path: logs/014-gate-registry-fixtures.stderr
+- id: gov-probe-metrics
+  started_at: '2026-11-05T09:40:46Z'
+  finished_at: '2026-11-05T09:40:46Z'
+  exit_code: 0
+  stdout_sha256: ab7871b0c731b680ad4511f6d56872f996f826cfca06cff914ef365ca28f88a0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-gov-probe-metrics.stdout
+  stderr_path: logs/015-gov-probe-metrics.stderr
+evidence_hash: sha256:9ec3c10d5253be81030b1d008e3084d348e152d00dadd8ffa72814bb7b198fed
+completed_at: '2026-11-05T09:40:46Z'
+notes:
+- 15/15 命令 exit 0（逐条退出码见 results 段）。本 run 不含 ci_gate.sh，不构成门禁通过声明。
+- 本 run 的起因：接手时发现 LB-1 交付物存在「臂数编造」缺陷——issue_labels_mutations.py 写死打印 arms=7，而实际只执行 6 条臂（上一版写死 6 而执行 5
+  条）。报告据此声称「七臂」但表格 6 行，看板 evidence 写「六臂」，三者互斥。已改为按实际执行累加，并补外部核对。
+- log 004（lb1-mutation-7arms）：七臂全判别，实测 arms=7 discriminating=7 not_discriminating=0 drift=0。新增的 m7 臂覆盖
+  verify 的「标签被删即判红」守卫——该守卫此前**没有任何**反向变异，删掉它照样一路绿灯；为此 verify 增加 --after <state.jsonl>（默认仍 live），使该守卫可离线夹具化，不必动线上
+  issue 的标签。
+- log 005（lb1-arm-count-external）：臂数的**外部**核对，三条全成立：(1) claimed arms=7 == 实际 verdict 行数 7；(2) 把臂数改回写死（arms=6）后，claimed
+  arms=6 与 verdict 行数 7 不等，外部尺子判红；(3) 摘掉 lost 守卫后 control rc=1 / mutated rc=0。外部核对是必需的：同一个程序证明不了自己的打印没被写死，脚本内部不变式只是第二道防线。
+- log 005 同源反证：写死 arms=6 时输出为 arms=6 discriminating=7（自相矛盾），写死 arms=99 时为 arms=99 discriminating=7；臂数与判别数对不上就是判据的破绽。
+- 度量口径说明：本 run 自身新增 1 个 .py（audit/v4.1.0/lb1_arm_count_check.py，非 .md），故 docs410 不变（79）；claims_hits 不变（1144）——本次未新增或改写
+  v4.1.0 报告里的「处数声明」句式，只改写了 LB1 报告的表格与说明段落，未引入被扫描的 PASS/全绿/✅ 字样（log 008 实测两份报告 claims_hits 均为 0）。
+- '看板行数口径：本次冻结的 commit 上看板为 46 行（含 HO-1），不是交接时的 45 行——另一 agent 在本次会话期间向共享 worktree 提交了 c1a5b0ba9d（新增 HO-1、发布
+  ISSUE #5599）。接手人已把共享 worktree 还原到该提交，并另开独立 worktree + omp-macmini/lb1-arm-count-fix 分支作业，未与对方的分支产生提交冲突。'
+- 'open issue 当期为 112（交接时 111，因新建 ISSUE #5599 而 +1）；lb1-check-live 实测 per_dim 三维全 0、findings=0、unledgered=0，标签口径未被新
+  issue 破坏。'
+- lb1-verify-no-loss 实测 lost_labels=0 / added_labels=43 / expected_ops_from_ledger=43；lb1-plan-zero 实测
+  ops=0（标签已全部落库，稳态）。
+- 本 run 全部证据来自本机单血统；CI 侧第二血统复核被 IL-9（runner-03 缺镜像）挡住，LB-1 因此维持完成态不变、其 CI 执行点仍记为待接入。
