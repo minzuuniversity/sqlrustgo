@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
 """binmode_probe 产物的「锁值」核对（tripwire，不是门禁，也不参与 168 分母）。
 
-作用：把 #5601 现在的缺陷面钉在 run 证据里。
-  - 观测面缺一块（probe.json 不在、自认日志行为空、步骤没记录）⇒ 2（INCOMPLETE，没能核对）
-  - 缺陷面变了（比如 CREATE DATABASE 真的生效了、触发器真的触发了）⇒ 3，
-    意思是「#5601 的判定过时了」，必须回去改 #5601 与本步，而不是让证据悄悄漂掉。
-所以这条命令**故意**在当前代码上返回 0；引擎被修好时它会变红——那是想要的信号。
+作用：把 #5601 的**判定面**钉在 run 证据里。
+  - 观测面缺一块（probe.json 不在、步骤没记录、读回行没有）⇒ 2（INCOMPLETE，没能核对）
+  - 判定面变了 ⇒ 3，意思是「#5601 的结论已经过时」，必须回去改 #5601 与本步，
+    而不是让证据悄悄漂掉。
+
+**2026-11-06：锁值从「缺陷存在」翻到「缺陷已修」**（BIN-1 修复，PR 见本仓库历史）。
+旧锁值锁的是 `false_success_count == 3`（三处「报成功但没生效」）。引擎修好后旧锁值
+只会报「判定过时」，**并没有钉住「缺陷不再出现」** —— 也就是说缺陷一旦回归，没有任何
+东西会拦。现在锁的是修复后的面：
+
+  - `create_database_rc == 1` / `create_trigger_rc == 1` / `drop_trigger_rc == 1`
+    ⇒ DDL 在 binary 模式**明确报错**，不再返回 OK；
+  - `false_success_count == 0` ⇒ 零处「报成功但没生效」；
+  - `create_database_effective == False`（binary 模式本来就没有库命名空间）
+    且 `trigger_actually_fired_rows == []`（触发器被明确拒绝，不存在“该触发却没触发”）。
+
+缺陷回归时（rc 又变 0、false_success_count 又变 3）本步立刻报红 —— 这才是锁值的作用。
 """
 import argparse
 import json
@@ -13,11 +25,14 @@ import pathlib
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
+# #5601 修复后的判定面（2026-11-06）。
 CURRENT_DEFECTS = {
-    "create_database_effective": False,     # rc=0 但 SHOW DATABASES 里没有 probeb
-    "trigger_actually_fired_rows": [],      # 触发器 CREATE 成功但一次都没触发
-    "drop_trigger_rc": 1,                   # DROP 时报 not found ⇒ 当初根本没建成
-    "false_success_count": 3,               # 三处「报成功但没生效」
+    "create_database_rc": 1,             # CREATE DATABASE 明确报错（不再是假成功）
+    "create_trigger_rc": 1,              # CREATE TRIGGER 明确报错（不再是假成功）
+    "drop_trigger_rc": 1,                # DROP TRIGGER 明确报错
+    "false_success_count": 0,            # 零处「报成功但没生效」
+    "create_database_effective": False,  # binary 模式没有库命名空间（与修复前一致）
+    "trigger_actually_fired_rows": [],   # 触发器被明确拒绝，不存在该触发未触发
 }
 
 
