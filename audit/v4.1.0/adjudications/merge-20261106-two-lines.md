@@ -51,6 +51,16 @@
   而是"合并动作本身不构成复核"。上调需要复核证据（归档 run + 现值），已在行内写明。
 - 只在 theirs 出现的 id 原样带入并标注来源：`BIN-1`、`EX-10`、`WIRE-1`。
 
+## 更正（合并提交正文的口径错误）
+
+- `2596972d89`（第一次合并）正文写"本分支 **67** 条提交按 patch 等价性核对过均未被 develop 覆盖"，
+  现值实测为 **68**（`git cherry gitea252/develop/v4.1.0 gitea252/omp-macmini/lb1-arm-count-fix | grep -c '^+'`）。
+  67 是 ENG-11/ENG-12 两行看板提交落盘之前的旧计数，正文没跟着更新。
+  已推送的合并提交不做历史改写（rebase 两个 merge commit 的风险大于这个口径错误的代价），
+  错误以本条记录为准；`f26bfca4ca` 正文里的 68 + 46 是现值。
+- 该合并提交正文还写过"冲突处理：仅 4 处 … 已实测 py_compile"——那是**未发生**的动作
+  （实际是 `Automatic merge went well`，零冲突），已在推送前用 `--amend -F -` 换成实测事实。
+
 ## 本次合并实测（不是推断）
 
 - `python3.14 audit/v4.1.0/ex6_failure_accounting.py` ⇒ 5/5 条成立，含 E 臂反向变异
