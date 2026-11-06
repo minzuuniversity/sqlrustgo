@@ -1,0 +1,44 @@
+{"kind": "ledger_verify", "batch": "B", "credited_lineages": ["gpt", "qwen"], "ladder_ready": true, "ledger_md": "docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.md", "rows": 104, "triaged_issues": 110, "grades": {"advisory-only": 94, "cross-checked": 10}, "triage_files": {"ISSUE_TRIAGE_2026-11-05.jsonl": "sha256:bcffc2fc87d9afc8436f288c6bb77cd65c529be3842211d9948c1a4fb388bbae", "ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl": "sha256:9719244075474f3c50f1e8afa2f2674708434867bed4c59f139b6543ad6c6852", "ISSUE_TRIAGE_2026-11-05B.jsonl": "sha256:b7bede1d9c1f2e55b9a6f221c37c9aa7581028a420b181fe41e7be8da44589eb", "ISSUE_TRIAGE_CROSSCHECK_2026-11-05B.jsonl": "sha256:f6b40af40f542e430f009c3f90560096849952997de15621078eb5b45b8948ae", "ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl": "sha256:9532a397090961b88d72cf1537a5aa6f73c87a67781ab5bbe734052dee98a25c", "ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl": "sha256:fec56b65e51873cae1cbfad2e606d7b759ac9a35e3b72174408193255acb6fe5"}, "snapshot_fingerprints": {"ledger-issues-all.json": "sha256:fd07b6471186c73fac9315b9a23802a6bd25796e287715bd35a3d5d9b41d3baf"}, "md_evidence_hash": "sha256:ffdb212694edac7fb598a3698a5c759738f36d236b4ae044ee127420570e37dc"}
+FAIL: L1 行数 104 != 有分诊行的 issue 数 110
+FAIL: L1 6 行缺 domain/automatable: [5598, 5599, 5601, 5603, 5604]
+FAIL: L2 #5117 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5204 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5223 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5226 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5227 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5228 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5233 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5234 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5235 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5362 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5363 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5364 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5366 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5368 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5375 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5377 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5381 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5388 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5393 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5400 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5402 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5403 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5412 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5415 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5427 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5428 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5436 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5452 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5454 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5461 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5551 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5557 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5569 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5573 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5577 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5579 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5580 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L2 #5584 自报 advisory-only，现场重算应为 cross-checked（families=['gpt', 'qwen-strata']）
+FAIL: L3a ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl MD 记 None 实测 sha256:9532a397090961b88d72cf1537a5aa6f73c87a67781ab5bbe734052dee98a25c
+FAIL: L3a ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl MD 记 None 实测 sha256:fec56b65e51873cae1cbfad2e606d7b759ac9a35e3b72174408193255acb6fe5
+verify_ledger[B]: 42 FAIL
