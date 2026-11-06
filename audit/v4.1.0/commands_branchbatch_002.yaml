@@ -1,0 +1,105 @@
+- id: test-f08-column-lookup
+  name: F-08：UnifiedExpr::Column 的大小写不敏感列查找（新增单测 + 整个 executor 单测集）
+  cmd: cargo test -q -p sqlrustgo-executor --all-features --lib
+  cwd: .
+  timeout_sec: 5400
+- id: test-parallel-main-path
+  name: 并行主路径集成测试（develop 侧的『按阈值触发』形态必须仍绿）
+  cmd: cargo test -q --test parallel_main_path_test
+  cwd: .
+  timeout_sec: 5400
+- id: gate-anti-fabrication
+  name: anti-fabrication 门禁本体（改动它的前提是本批新增的自检脚本在位）
+  cmd: bash scripts/gate/check_anti_fabrication.sh
+  cwd: .
+  timeout_sec: 3600
+- id: probe-anti-fabrication-selftest
+  name: anti-fabrication 三态自检（PASS ⇒ rc=0）
+  cmd: bash scripts/gate/selftest_anti_fabrication.sh
+  cwd: .
+  timeout_sec: 600
+- id: probe-anti-fabrication-selftest-negative
+  name: 同一自检的反向变异：--negative 注入缺陷 ⇒ 必须报『检出注入的缺陷』（rc=0 且输出含 detected）
+  cmd: 'out="$(bash scripts/gate/selftest_anti_fabrication.sh --negative 2>&1)"
+
+    rc=$?
+
+    echo "$out" | tail -3
+
+    [ "$rc" -eq 0 ] || exit 1
+
+    echo "$out" | grep -q "injected defect was detected"
+
+    '
+  cwd: .
+  timeout_sec: 600
+- id: gate-honesty-check
+  name: honesty 判据（分母 168、夹具 57、fails 必须 0）
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-doc-facts-check
+  name: 文档事实与索引一致（裁定表补了 §2.5，索引已重生）
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-registry-denominator
+  name: 门禁注册表：分母必须仍是 168（新增的是 selftest_*.sh，不是 check_*）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: probe-gate-registry
+  name: 门禁注册表自检（9 个变异必须全被抓住）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-kanban-consistency
+  name: 看板 JSONL 与渲染出的 MD 必须逐行一致
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: probe-claims-selftest
+  name: 五类声称的反向变异自检（17 臂必须全 VERIFIED）
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1200
+- id: gate-directory-policy-check
+  name: 目录策略判定口径必须 rc=0
+  cmd: python3.14 audit/v4.1.0/directory_policy.py check
+  cwd: .
+  timeout_sec: 600
+- id: probe-directory-policy-mutations
+  name: 目录策略反向变异（5 臂自带夹具）
+  cmd: python3.14 audit/v4.1.0/dir_policy_mutations_omp.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-storage-semantics
+  name: '存储语义声明台账必须与 #5409 生产链臂一致'
+  cmd: python3.14 audit/v4.1.0/storage_semantics_claims.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-ci-checkout-consistency
+  name: CI checkout 一致性门禁（必须仍绿）
+  cmd: bash scripts/gate/check_ci_checkout_consistency.sh
+  cwd: .
+  timeout_sec: 900
+- id: gate-fmt-check
+  name: rustfmt：workspace 的 fmt 欠账必须为空
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 1200
+- id: gate-test-count-monotonic
+  name: 测试计数单调门禁
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 1800
+- id: gate-tpch-known-differences
+  name: TPC-H 已知差异登记表必须为空且合法
+  cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  timeout_sec: 300
+- id: gate-main-freshness
+  name: C-MAIN-02 main 新鲜度（GA 前 main 封存 ⇒ 结构红，不是本批回归）
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600
