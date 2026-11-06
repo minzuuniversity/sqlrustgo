@@ -1,0 +1,293 @@
+schema_version: 1
+run_id: 20261106-lineage-001
+source_agent: omp-macmini
+frozen_commit: d64a49029935de14753a671d42beea4b1af14a5f
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: ledger-verify
+  name: 台账自洽（verify_ledger：每行有分诊记录 + domain/automatable；等级现场重算）
+  cmd: python3.14 audit/v4.1.0/verify_ledger.py
+  cwd: .
+  timeout_sec: 600
+- id: ledger-fresh-snapshot-count
+  name: 台账新鲜度①：参照集 = 已分诊 ∩ 当期 open；未分诊的当期 open 单列
+  cmd: python3.14 audit/v4.1.0/probe_ledger_freshness.py snapshot-count
+  cwd: .
+  timeout_sec: 600
+- id: ledger-fresh-replay-rows
+  name: 台账新鲜度②：按现场快照重放，行级字段必须逐字段相等
+  cmd: python3.14 audit/v4.1.0/probe_ledger_freshness.py replay-rows
+  cwd: .
+  timeout_sec: 900
+- id: ledger-fresh-mutation-selftest
+  name: 台账新鲜度③的反向变异：删行 / 改 domain 必须各自变红，CTRL 必须绿
+  cmd: python3.14 audit/v4.1.0/probe_ledger_freshness.py mutation-selftest
+  cwd: .
+  timeout_sec: 900
+- id: probe-ledger-scope-mutations
+  name: 本批工具口径改动的反向变异：删行必须被新鲜度探针抓住并点名
+  cmd: python3.14 audit/v4.1.0/probe_ledger_scope_mutations_omp.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-kanban-consistency
+  name: 看板 JSONL 与渲染出的 MD 必须逐行一致
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: gate-kanban-counts
+  name: 看板计数（IL-4 完成 / IL-2 保持未开始 / P1-4 迁待复核之后）
+  cmd: python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: gate-doc-facts-check
+  name: 文档事实与索引一致（台账 md/jsonl 变化，索引已重生）
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+- id: probe-claims-selftest
+  name: 五类声称的反向变异自检（P1-4 的 M1..M4 在其中：17 臂必须全 VERIFIED）
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1200
+- id: gate-honesty-check
+  name: honesty 判据（分母 168、夹具 57、fails 必须 0）
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-registry-denominator
+  name: 门禁注册表：分母必须仍是 168
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: probe-gate-registry
+  name: 门禁注册表自检（9 个变异必须全被抓住）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-directory-policy-check
+  name: 目录策略判定口径必须 rc=0
+  cmd: python3.14 audit/v4.1.0/directory_policy.py check
+  cwd: .
+  timeout_sec: 600
+- id: probe-directory-policy-mutations
+  name: 目录策略反向变异（5 臂自带夹具）
+  cmd: python3.14 audit/v4.1.0/dir_policy_mutations_omp.py
+  cwd: .
+  timeout_sec: 900
+- id: gate-storage-semantics
+  name: '存储语义声明台账必须与 #5409 生产链臂一致'
+  cmd: python3.14 audit/v4.1.0/storage_semantics_claims.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-ci-checkout-consistency
+  name: CI checkout 一致性门禁（必须仍绿）
+  cmd: bash scripts/gate/check_ci_checkout_consistency.sh
+  cwd: .
+  timeout_sec: 900
+- id: gate-fmt-check
+  name: rustfmt：workspace 的 fmt 欠账必须为空
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+- id: gate-test-count-monotonic
+  name: 测试计数单调门禁
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 1800
+- id: gate-tpch-known-differences
+  name: TPC-H 已知差异登记表必须为空且合法
+  cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  timeout_sec: 300
+- id: gate-main-freshness
+  name: C-MAIN-02 main 新鲜度（GA 前 main 封存 ⇒ 结构红，不是本批回归）
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600
+results:
+- id: ledger-verify
+  started_at: '2026-11-06T10:34:55Z'
+  finished_at: '2026-11-06T10:34:55Z'
+  exit_code: 0
+  stdout_sha256: f1894210bd898028577e73614952ae6fd4924d19877dae4b5e6fed156ad97dd0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-ledger-verify.stdout
+  stderr_path: logs/001-ledger-verify.stderr
+- id: ledger-fresh-snapshot-count
+  started_at: '2026-11-06T10:34:55Z'
+  finished_at: '2026-11-06T10:34:57Z'
+  exit_code: 0
+  stdout_sha256: 322761ea6983a99f7e4fc5f7d03629f3d8e1a8f23c940e916a519b85c555edd1
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-ledger-fresh-snapshot-count.stdout
+  stderr_path: logs/002-ledger-fresh-snapshot-count.stderr
+- id: ledger-fresh-replay-rows
+  started_at: '2026-11-06T10:34:57Z'
+  finished_at: '2026-11-06T10:34:59Z'
+  exit_code: 0
+  stdout_sha256: fa9274d7a68db5f7c43f6f26d81ffcd026a5cb5b40830ff3b909fbf622154ccf
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ledger-fresh-replay-rows.stdout
+  stderr_path: logs/003-ledger-fresh-replay-rows.stderr
+- id: ledger-fresh-mutation-selftest
+  started_at: '2026-11-06T10:34:59Z'
+  finished_at: '2026-11-06T10:35:07Z'
+  exit_code: 0
+  stdout_sha256: 044730672eca8d0ac1ac4d6bfdcf627a0bbfc59d14eebce09403defd2ff8d15f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-ledger-fresh-mutation-selftest.stdout
+  stderr_path: logs/004-ledger-fresh-mutation-selftest.stderr
+- id: probe-ledger-scope-mutations
+  started_at: '2026-11-06T10:35:07Z'
+  finished_at: '2026-11-06T10:35:11Z'
+  exit_code: 0
+  stdout_sha256: 1d14aa77e5ebea3b610f2667171c73caaf81875f250003461ca285dc53a4df6a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-probe-ledger-scope-mutations.stdout
+  stderr_path: logs/005-probe-ledger-scope-mutations.stderr
+- id: gate-kanban-consistency
+  started_at: '2026-11-06T10:35:11Z'
+  finished_at: '2026-11-06T10:35:11Z'
+  exit_code: 0
+  stdout_sha256: 83bfa0d4a77517ff89efb3590501c0cf0f70c3bffade7c67240c8d674530bb12
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-gate-kanban-consistency.stdout
+  stderr_path: logs/006-gate-kanban-consistency.stderr
+- id: gate-kanban-counts
+  started_at: '2026-11-06T10:35:11Z'
+  finished_at: '2026-11-06T10:35:12Z'
+  exit_code: 0
+  stdout_sha256: bfe952542fd18e5a8b3fe87f32e7ad238d62bcdd0b2a455b5dcd81519203c281
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-kanban-counts.stdout
+  stderr_path: logs/007-gate-kanban-counts.stderr
+- id: gate-doc-facts-check
+  started_at: '2026-11-06T10:35:12Z'
+  finished_at: '2026-11-06T10:35:12Z'
+  exit_code: 0
+  stdout_sha256: 69ee9e9b1597ab1f221099488812250be17dc0b7b159dc377b7a3bedeeb1456a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-doc-facts-check.stdout
+  stderr_path: logs/008-gate-doc-facts-check.stderr
+- id: probe-claims-selftest
+  started_at: '2026-11-06T10:35:12Z'
+  finished_at: '2026-11-06T10:35:16Z'
+  exit_code: 0
+  stdout_sha256: e791c99b4a73fb66ca8a91f8ad1b1a483e4d29a38ea7cd0a7768de8d62a98e0e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-probe-claims-selftest.stdout
+  stderr_path: logs/009-probe-claims-selftest.stderr
+- id: gate-honesty-check
+  started_at: '2026-11-06T10:35:16Z'
+  finished_at: '2026-11-06T10:35:16Z'
+  exit_code: 0
+  stdout_sha256: e9e39a4cbebd78da9822028d906f686c0591defda153d95af5fda1ca308d2b5a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gate-honesty-check.stdout
+  stderr_path: logs/010-gate-honesty-check.stderr
+- id: gate-registry-denominator
+  started_at: '2026-11-06T10:35:16Z'
+  finished_at: '2026-11-06T10:35:16Z'
+  exit_code: 0
+  stdout_sha256: e576a6a359257ede6317dd5904d21a17f4cebd47e9ccba73077a2814903abeff
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-gate-registry-denominator.stdout
+  stderr_path: logs/011-gate-registry-denominator.stderr
+- id: probe-gate-registry
+  started_at: '2026-11-06T10:35:16Z'
+  finished_at: '2026-11-06T10:35:20Z'
+  exit_code: 0
+  stdout_sha256: 8d120063e12a3e4903278bcd201a81d8e31695df26c0ab6341994ddbcd08f899
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-probe-gate-registry.stdout
+  stderr_path: logs/012-probe-gate-registry.stderr
+- id: gate-directory-policy-check
+  started_at: '2026-11-06T10:35:20Z'
+  finished_at: '2026-11-06T10:35:20Z'
+  exit_code: 0
+  stdout_sha256: 8162822fc482566d77c0f028d5dfd9963cf91a80d551ec78a769a657b582435b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-gate-directory-policy-check.stdout
+  stderr_path: logs/013-gate-directory-policy-check.stderr
+- id: probe-directory-policy-mutations
+  started_at: '2026-11-06T10:35:20Z'
+  finished_at: '2026-11-06T10:35:24Z'
+  exit_code: 0
+  stdout_sha256: 1547c70d40a32825f3b4cb1d59c5b8af078c2e4b774cc7897895711c771e0f31
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-probe-directory-policy-mutations.stdout
+  stderr_path: logs/014-probe-directory-policy-mutations.stderr
+- id: gate-storage-semantics
+  started_at: '2026-11-06T10:35:24Z'
+  finished_at: '2026-11-06T10:35:24Z'
+  exit_code: 0
+  stdout_sha256: 2ca5c1030de09145d44253ece24b27418790c334908c8f1d5e87929d91ec39f7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-gate-storage-semantics.stdout
+  stderr_path: logs/015-gate-storage-semantics.stderr
+- id: gate-ci-checkout-consistency
+  started_at: '2026-11-06T10:35:24Z'
+  finished_at: '2026-11-06T10:35:25Z'
+  exit_code: 0
+  stdout_sha256: ddc2b0466c82a267e358c7cc374ae02db6110f55baf37df48fcc9db2a3c5c35b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-gate-ci-checkout-consistency.stdout
+  stderr_path: logs/016-gate-ci-checkout-consistency.stderr
+- id: gate-fmt-check
+  started_at: '2026-11-06T10:35:25Z'
+  finished_at: '2026-11-06T10:35:31Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/017-gate-fmt-check.stdout
+  stderr_path: logs/017-gate-fmt-check.stderr
+- id: gate-test-count-monotonic
+  started_at: '2026-11-06T10:35:31Z'
+  finished_at: '2026-11-06T10:35:31Z'
+  exit_code: 0
+  stdout_sha256: f829938ecc1591a286b27cb1627a6fa6ca6df48184cc3ddad3a7cbb9b70b55d6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/018-gate-test-count-monotonic.stdout
+  stderr_path: logs/018-gate-test-count-monotonic.stderr
+- id: gate-tpch-known-differences
+  started_at: '2026-11-06T10:35:31Z'
+  finished_at: '2026-11-06T10:35:31Z'
+  exit_code: 0
+  stdout_sha256: d5657b23f811fbe37009259f8d2e78ad3c2b86b1d53f150e64d3633030865e8e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/019-gate-tpch-known-differences.stdout
+  stderr_path: logs/019-gate-tpch-known-differences.stderr
+- id: gate-main-freshness
+  started_at: '2026-11-06T10:35:31Z'
+  finished_at: '2026-11-06T10:35:40Z'
+  exit_code: 1
+  stdout_sha256: 497202a03ebc84f77daebe3492762a846156c977126e6cab46a80c46a5487229
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/020-gate-main-freshness.stdout
+  stderr_path: logs/020-gate-main-freshness.stderr
+evidence_hash: sha256:608382da07cea0150b780b3a43bfda2635ae696681929a1ddbe3bcd5c2b8d589
+completed_at: '2026-11-06T10:35:40Z'
+notes:
+- 本 run 是「合格血统」口径批的验收证据：20 条命令，19 绿 / 1 红。
+- 红 1：gate-main-freshness（exit=1）—— 结构性红，C-MAIN-02（GA 前 main 封存，main 由 release/* 单向驱动），不是本批回归。
+- 关键绿项：verify_ledger ⇒ OK（rows=104、**全部 advisory-only**、ladder_ready=true）；ledger-fresh-snapshot-count
+  ⇒ consistent（expected_rows=104 == ledger_rows=104 == fresh_open=104、untriaged_open=[]）；ledger-fresh-replay-rows
+  ⇒ consistent；ledger-fresh-mutation-selftest ⇒ 4/4；probe-ledger-scope-mutations ⇒
+  2/2；probe-claims-selftest ⇒ 17/17；看板 79 行一致（完成 35 / 待复核 26 / 阻塞 17 / 未开始 1 = IL-2
+  诚实回退）；honesty gates=168 fails=0；gate_registry check_n=168；doc_facts docs=94 fails=0；目录策略
+  rc=0 且 5/5；CI checkout 门禁 rc=0；rustfmt 欠账为空。
+- '**本批的核心是口径更正**：属主裁定「两专家是 deepseek 与 chatGPT，本地大模型不作裁定/复核血统」⇒ 台账等级按「合格血统 = gpt,deepseek」重算
+  ⇒ cross-checked 由上一轮报的 48/51 变为 **0**（104 行全 advisory-only）。前两轮（PR #5617 / #5618）报的
+  cross-checked 数字**不成立**，已在此更正并在 ISSUE #5592 与看板 IL-2 行公开说明。'
+- 唯一阻塞（属主动作）：deepseek 席位 HTTP 500（上游 token 过期，EX-5「登录只能人工完成，Agent 不得代做凭据动作」）⇒ 席位恢复后需一次批量
+  deepseek 血统分诊（104 条）。

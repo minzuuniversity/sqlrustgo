@@ -128,18 +128,27 @@ def main(argv: list[str] | None = None) -> int:
         fail("L2 MD 缺 ladder credited lineage 字段（等级规则无法核对）")
     lineages = {x.strip() for x in (ml.group(1).split(",") if ml else []) if x.strip()}
     ladder_ready = len(lineages) >= 2
+    # 合格血统（**算数的**血统）从 MD 里读 ⇒ 与生成端同一个事实源。
+    # 属主裁定（2026-11-06）：两专家是 deepseek 与 chatGPT；本地大模型（如 qwen-strata /
+    # qwen-llamacpp）的复核**记录在案**（triage_families），但**不 confer 等级** ——
+    # 否则「双血统」是靠一个本地模型凑出来的。
+    mq = re.search(r"合格血统（算数的）：([A-Za-z0-9_,\-]+)", md)
+    if not mq:
+        fail("L2 MD 缺「合格血统」字段（哪些血统的复核算数，无法核对）")
+    qualifying = {x.strip() for x in (mq.group(1).split(",") if mq else []) if x.strip()}
 
     grade_ct = collections.Counter()
     for r in rows:
         fams = {((t.get("triaged_by") or {}).get("family") or "")
                 for t in triage.get(r["number"], [])}
         fams.discard("")
+        qual = fams & qualifying
         want = ("cross-checked"
-                if (ladder_ready and len(fams) >= args.family_min) else "advisory-only")
+                if (ladder_ready and len(qual) >= args.family_min) else "advisory-only")
         grade_ct[r.get("evidence_grade")] += 1
         if r.get("evidence_grade") != want:
             fail(f"L2 #{r['number']} 自报 {r.get('evidence_grade')}，"
-                 f"现场重算应为 {want}（families={sorted(fams)}）")
+                 f"现场重算应为 {want}（families={sorted(fams)}，合格血统={sorted(qual)}）")
         if r.get("evidence_grade") not in ("advisory-only", "cross-checked"):
             fail(f"L2 #{r['number']} 证据等级非法: {r.get('evidence_grade')}")
 
