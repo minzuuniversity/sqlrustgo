@@ -1,0 +1,2 @@
+{"kind": "honesty_check", "catalog": "/Volumes/workspace/dev/wt/bin1/docs/releases/v4.1.0/GATE_CATALOG.jsonl", "gates": 168, "fixtures": 57, "fails": 0}
+honesty: OK

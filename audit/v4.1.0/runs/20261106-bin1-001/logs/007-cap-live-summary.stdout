@@ -1,0 +1,57 @@
+{
+ "kind": "cap_live_summary",
+ "json": "test_results/capability_smoke/run-bin1-001/capability_smoke.json",
+ "git_head": "069e7c370655826e5d841131be8a1d9ca6f92ae4",
+ "bin": {
+  "server": "target/debug/sqlrustgo-mysql-server",
+  "sha256": "1ff1ba41c270ae974ab24ebce7679dc5f53ee127d430428575bb6fac6bd7568b",
+  "mysql_client": "/opt/homebrew/bin/mysql"
+ },
+ "expected_rows": 5,
+ "prod_storage": [
+  "file",
+  "every"
+ ],
+ "prod_ddl_errors": 0,
+ "prod_insert_errors": 0,
+ "wal_nonempty": true,
+ "table_files_nonempty": true,
+ "stage_eq_insert_vs_crash": true,
+ "stage_eq_crash_vs_restore": true,
+ "restore_readback_rows": 5,
+ "backup_rc": 0,
+ "backup_rows": 5,
+ "restore_rc": 0,
+ "restore_files_nonempty": true,
+ "restore_wrote_nothing": false,
+ "wire_probed": true,
+ "wire_rows_hex": {
+  "1": "0131fb",
+  "2": "0132044e554c4c"
+ },
+ "reference_rows_hex": {
+  "1": "0131fb",
+  "2": "0132044e554c4c"
+ },
+ "wire_byte_identical": true,
+ "client_batch_both_null_prod": true,
+ "client_batch_both_null_reference": true,
+ "client_raw_prod": "1\tNULL\n2\tNULL",
+ "client_raw_reference": "1\tNULL\n2\tNULL",
+ "null_predicate_ok": true,
+ "null_predicate_detail": "is_null='1' eq_literal_NULL='1'",
+ "prod_findings": [],
+ "prod_verdict": "PASS",
+ "arm_findings_n": 11,
+ "arm_verdict": "FAIL",
+ "discriminator": {
+  "discriminating": true,
+  "why": "换成非生产存储后判据变红（arm=11 > prod=0）",
+  "prod": 0,
+  "arm": 11
+ },
+ "overall": {
+  "verdict": "PASS",
+  "findings": 0
+ }
+}

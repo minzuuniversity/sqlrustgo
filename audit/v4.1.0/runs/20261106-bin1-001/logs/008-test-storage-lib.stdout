@@ -1,0 +1,53 @@
+
+running 916 tests
+....................................................................................... 87/916
+........... 98/916
+binary_storage::tests::test_bin_create_trigger_noop --- FAILED
+.. 101/916
+binary_storage::tests::test_bin_create_database_noop --- FAILED
+..... 107/916
+binary_storage::tests::test_bin_drop_database_noop --- FAILED
+. 109/916
+binary_storage::tests::test_bin_drop_trigger_noop --- FAILED
+....................................................................................... 197/916
+....................................................................................... 284/916
+....................................................................................... 371/916
+....................................................................................... 458/916
+....................................................................................... 545/916
+....................................................................................... 632/916
+....................................................................................... 719/916
+....................................................................................... 806/916
+....................................iii................................................ 893/916
+.......................
+failures:
+
+---- binary_storage::tests::test_bin_create_trigger_noop stdout ----
+
+thread 'binary_storage::tests::test_bin_create_trigger_noop' (24667654) panicked at crates/storage/src/binary_storage.rs:2035:41:
+called `Result::unwrap()` on an `Err` value: ExecutionError("BinaryTableStorage does not support triggers (no WAL): CREATE TRIGGER is not supported in binary storage mode")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- binary_storage::tests::test_bin_create_database_noop stdout ----
+
+thread 'binary_storage::tests::test_bin_create_database_noop' (24667651) panicked at crates/storage/src/binary_storage.rs:2059:39:
+called `Result::unwrap()` on an `Err` value: ExecutionError("BinaryTableStorage has no database namespace: CREATE DATABASE is not supported in binary storage mode")
+
+---- binary_storage::tests::test_bin_drop_database_noop stdout ----
+
+thread 'binary_storage::tests::test_bin_drop_database_noop' (24667659) panicked at crates/storage/src/binary_storage.rs:2067:37:
+called `Result::unwrap()` on an `Err` value: ExecutionError("BinaryTableStorage has no database namespace: DROP DATABASE is not supported in binary storage mode")
+
+---- binary_storage::tests::test_bin_drop_trigger_noop stdout ----
+
+thread 'binary_storage::tests::test_bin_drop_trigger_noop' (24667661) panicked at crates/storage/src/binary_storage.rs:2043:38:
+called `Result::unwrap()` on an `Err` value: ExecutionError("BinaryTableStorage does not support triggers (no WAL): DROP TRIGGER is not supported in binary storage mode")
+
+
+failures:
+    binary_storage::tests::test_bin_create_database_noop
+    binary_storage::tests::test_bin_create_trigger_noop
+    binary_storage::tests::test_bin_drop_database_noop
+    binary_storage::tests::test_bin_drop_trigger_noop
+
+test result: FAILED. 909 passed; 4 failed; 3 ignored; 0 measured; 0 filtered out; finished in 1.57s
+
