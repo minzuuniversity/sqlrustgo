@@ -105,16 +105,26 @@ def build_comment() -> str:
     if not branch or not head or branch == "HEAD":
         raise SystemExit("COORD-INCOMPLETE: 读不到分支/HEAD（branch=%r head=%r）" % (branch, head[:10]))
     board = sh("git", "ls-remote", "gitea252",
-               "refs/heads/mcode-macmini/governance-kanban-expert-ladder",
-               "refs/heads/omp-macmini/lb1-arm-count-fix")
+               "refs/heads/develop/v4.1.0",
+               "refs/heads/" + branch)
+    gen_txt = SRC.parent.parent.parent.joinpath("audit/v4.1.0/gen_kanban_issue.py")
+    if not gen_txt.exists():
+        gen_txt = REPO / "audit/v4.1.0/gen_kanban_issue.py"
+    if not gen_txt.exists():
+        raise SystemExit("COORD-INCOMPLETE: 读不到 audit/v4.1.0/gen_kanban_issue.py，不能写生成器行数")
+    gen_lines = len(gen_txt.read_text(encoding="utf-8").splitlines())
+    gen_app = sum(1 for ln in gen_txt.read_text(encoding="utf-8").splitlines()
+                  if "appendix" in ln.lower())
     lines = [f"<!-- {MARK}:src={SRC.name} src_sha256={src_sha[:12]} -->"]
     lines += [
         "## 看板入口（HANDOFF-PIN 固定评论；Gitea 无 API 置顶，按标记检索）",
         "",
-        "看板 #5592 的**正文**由 `gen_kanban_issue.py --post 5592` 整段重写，而两条开发线的",
-        "生成器不是同一份：develop/v4.1.0 与 omp-macmini/lb1-arm-count-fix 上那份 236 行、",
-        "**不含附录注入**；本线这份 283 行、含 `--appendix`。所以只要对方刷新正文，附录 A 就没了——",
-        "这是结构性原因，已实测（见交接正文 §2.5）。启动提示词因此放在评论里（评论不受正文重写影响；不是字面「置顶」，Gitea 没有那个 API）。",
+        "看板 #5592 的**正文**由 `gen_kanban_issue.py --post 5592` 整段重写；只要有人不带 `--appendix` 刷正文，",
+        "附录 A 就没了（r11 实测过：当时两条线各有一份生成器，其中一份没有附录注入代码 ⇒ 结构性原因，见交接正文 §2.5）。",
+        f"本会话检出的那份生成器 = **{gen_lines} 行 / appendix 命中 {gen_app}**（现读，不是写死）；",
+        "别的分支那份请按现读核对：`git show <该分支 tip>:audit/v4.1.0/gen_kanban_issue.py | wc -l`"
+        " 与 `grep -ci appendix`。",
+        "因此启动提示词放在**评论**里（评论不受正文重写影响；不是字面「置顶」——Gitea 没有那个 API）。",
         "",
         "**Owner 只要把下面这段贴给接手者，即可交接。** 接手者读完必须去读全文（#5599 正文 = 同一份 SSOT）。",
         "",
