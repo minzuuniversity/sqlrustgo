@@ -373,7 +373,7 @@ fn test_real_wal_large_batch() {
             key: None,
             data: Some(format!("row_{}", i).into_bytes()),
             lsn: 0,
-            timestamp: i as u64,
+            timestamp: i,
         })
         .unwrap();
     }

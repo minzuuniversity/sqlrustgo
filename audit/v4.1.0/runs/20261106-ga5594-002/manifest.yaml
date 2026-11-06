@@ -95,3 +95,145 @@ commands:
   cmd: bash scripts/gate/check_main_freshness.sh
   cwd: .
   timeout_sec: 600
+results:
+- id: probe-gate-executability-selftest
+  started_at: '2026-11-06T10:47:39Z'
+  finished_at: '2026-11-06T10:47:39Z'
+  exit_code: 0
+  stdout_sha256: e66c554b4df19a90b823971ef3c0174f644e7df5a8e2f7c93c602bc76ef32d35
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-probe-gate-executability-selftest.stdout
+  stderr_path: logs/001-probe-gate-executability-selftest.stderr
+- id: gate-gate-executability
+  started_at: '2026-11-06T10:47:39Z'
+  finished_at: '2026-11-06T10:47:39Z'
+  exit_code: 0
+  stdout_sha256: e68ee4a8acadbe61222436142a330596d72c50814292eb63d5ba282223175d4e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-gate-gate-executability.stdout
+  stderr_path: logs/002-gate-gate-executability.stderr
+- id: gate-clippy
+  started_at: '2026-11-06T10:47:39Z'
+  finished_at: '2026-11-06T10:50:30Z'
+  exit_code: 101
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 138a9a1ec490c7159df5787df2eb6d884ac2f515e1ed3bc495c8ca25b8e24182
+  stdout_path: logs/003-gate-clippy.stdout
+  stderr_path: logs/003-gate-clippy.stderr
+- id: gate-fmt-check
+  started_at: '2026-11-06T10:50:30Z'
+  finished_at: '2026-11-06T10:50:39Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-gate-fmt-check.stdout
+  stderr_path: logs/004-gate-fmt-check.stderr
+- id: test-planner-chain
+  started_at: '2026-11-06T10:50:39Z'
+  finished_at: '2026-11-06T10:50:39Z'
+  exit_code: 0
+  stdout_sha256: 99eddc7d7b1fb9cda936010e7edfc7753260742377aeea2aacfe7d5fffee53a1
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-test-planner-chain.stdout
+  stderr_path: logs/005-test-planner-chain.stderr
+- id: test-admin-handshake
+  started_at: '2026-11-06T10:50:39Z'
+  finished_at: '2026-11-06T10:50:40Z'
+  exit_code: 0
+  stdout_sha256: 9b4be5dbb3af22f272d7a585df003a615e8063de18eeb5b95117404d0d8d7780
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-test-admin-handshake.stdout
+  stderr_path: logs/006-test-admin-handshake.stderr
+- id: test-shard-router
+  started_at: '2026-11-06T10:50:40Z'
+  finished_at: '2026-11-06T10:50:40Z'
+  exit_code: 0
+  stdout_sha256: 0d9a424720ba8dcdb80aa72dd7f87ea926ef1c95de05e316e305f19e7e0fe3c5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-test-shard-router.stdout
+  stderr_path: logs/007-test-shard-router.stderr
+- id: gate-honesty-check
+  started_at: '2026-11-06T10:50:40Z'
+  finished_at: '2026-11-06T10:50:40Z'
+  exit_code: 0
+  stdout_sha256: 3e2836240d45ddd884dc2fb302ccfa554fcf17740bf3d7319e43cd631809b7fc
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-honesty-check.stdout
+  stderr_path: logs/008-gate-honesty-check.stderr
+- id: gate-doc-facts-check
+  started_at: '2026-11-06T10:50:40Z'
+  finished_at: '2026-11-06T10:50:41Z'
+  exit_code: 1
+  stdout_sha256: 7f8980c91cc544d2463a98a2589481510db76e2f7db45197555bb5aaab2146cd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-gate-doc-facts-check.stdout
+  stderr_path: logs/009-gate-doc-facts-check.stderr
+- id: gate-registry-denominator
+  started_at: '2026-11-06T10:50:41Z'
+  finished_at: '2026-11-06T10:50:41Z'
+  exit_code: 0
+  stdout_sha256: 5a6e8c5a4621c93822da5a7cd1730674eefe762bd5972be1541bc56d3e09912f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gate-registry-denominator.stdout
+  stderr_path: logs/010-gate-registry-denominator.stderr
+- id: probe-gate-registry
+  started_at: '2026-11-06T10:50:41Z'
+  finished_at: '2026-11-06T10:50:46Z'
+  exit_code: 0
+  stdout_sha256: a0fc6de8e8941ad69723eaa2c0227035327c33163e6ac71ec02c03de1cdca6a3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-probe-gate-registry.stdout
+  stderr_path: logs/011-probe-gate-registry.stderr
+- id: gate-kanban-consistency
+  started_at: '2026-11-06T10:50:46Z'
+  finished_at: '2026-11-06T10:50:47Z'
+  exit_code: 0
+  stdout_sha256: 83bfa0d4a77517ff89efb3590501c0cf0f70c3bffade7c67240c8d674530bb12
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-gate-kanban-consistency.stdout
+  stderr_path: logs/012-gate-kanban-consistency.stderr
+- id: probe-claims-selftest
+  started_at: '2026-11-06T10:50:47Z'
+  finished_at: '2026-11-06T10:50:52Z'
+  exit_code: 1
+  stdout_sha256: 1ba4bd7a3f2678a2e82b42c81740b04edcc0ba6a7c458a988764296171ca6285
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-probe-claims-selftest.stdout
+  stderr_path: logs/013-probe-claims-selftest.stderr
+- id: gate-ci-checkout-consistency
+  started_at: '2026-11-06T10:50:52Z'
+  finished_at: '2026-11-06T10:50:52Z'
+  exit_code: 0
+  stdout_sha256: ddc2b0466c82a267e358c7cc374ae02db6110f55baf37df48fcc9db2a3c5c35b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-gate-ci-checkout-consistency.stdout
+  stderr_path: logs/014-gate-ci-checkout-consistency.stderr
+- id: gate-test-count-monotonic
+  started_at: '2026-11-06T10:50:52Z'
+  finished_at: '2026-11-06T10:50:53Z'
+  exit_code: 0
+  stdout_sha256: 2a14cba930a35f5208081d618fcf3988839506611f9b0b0d78dba29eee95db8f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-gate-test-count-monotonic.stdout
+  stderr_path: logs/015-gate-test-count-monotonic.stderr
+- id: gate-main-freshness
+  started_at: '2026-11-06T10:50:53Z'
+  finished_at: '2026-11-06T10:51:02Z'
+  exit_code: 1
+  stdout_sha256: ea4cfa1f25dcbf404b54e8c8ff25b9937c304572505b82811b610e432c0f2eeb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-gate-main-freshness.stdout
+  stderr_path: logs/016-gate-main-freshness.stderr
+evidence_hash: sha256:df6b98bc700da61cfa2bf77d1f670bc18974c2b74263cec30e37e3c87b5f8fd4
+completed_at: '2026-11-06T10:51:02Z'
+notes:
+- 本 run 是**取证用**的失败尝试，被 20261106-ga5594-003 取代；三条红全部有定位与修法：
+- gate-clippy exit=101 —— `--all-targets` 又扫出 7 处 lint（crates/vector/tests/vector_coverage_tests.rs:6,306
+  未用 import `CompareOp`；crates/wal-verification/tests/wal_real_verification_test.rs:376
+  同型冗余 cast；crates/tools/tests/incremental_backup_e2e_test.rs 四处未用变量 `data`）。已在下一批改掉。
+- gate-doc-facts-check exit=1 —— 新增 docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md
+  后未重新 `doc_facts.py index` ⇒ 「写盘口径 ≠ 核对口径」；同批还有一处坏指针（把根目录 AGENTS.md 写成 docs/governance/AGENTS.md）。已修并重索引。
+- probe-claims-selftest exit=1 —— 17 臂 14 ok：3 条「撤销后 ⇒ 绿」臂（P1-5/M2、P1-5/M4、P2-1/M4）变红，根因不是判据松了，而是同一份新文档带
+  15 处**未绑定声明**（`evidence_inventory_ledger_omp.py check` 对 NEW-FILE 直接判红），把撤销臂一起拖红。已按真实
+  run id 绑定（bin1-002 / lineage-001 / board3-001 / ga5594-003）。
+- gate-main-freshness exit=1 —— 结构性红（C-MAIN-02：GA 前 main 封存），非本批回归。

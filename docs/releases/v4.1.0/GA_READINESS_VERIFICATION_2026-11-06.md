@@ -25,6 +25,12 @@
 | RC | `stages.RC` 门禁全绿；**人批准**；RC 期间禁功能新增、只允许 bugfix/文档 | **从未进入** |
 | GA | `stages.GA` 门禁全绿（34 门禁 + 5 cargo 命令）；`current_stage` 必须 GA；发布文件 5 份齐备；由 `main`/`release/v*` 承载；tag + 发布目录 + 宣布 | 门禁未全绿（§3）；`current_stage` 仍是 ALPHA |
 
+证据出处：ALPHA 阶段门禁的现场实跑见归档 run `20261106-ga5594-003`（含 `gate-executability`、
+`cargo fmt --check`、`cargo clippy --all-targets -D warnings`、`honesty.py check`、
+`gate_registry.py check`、看板一致性、CI checkout 一致性）；GA 门禁清单的逐条实跑见
+`20261106-ga-gates-001`。上表的「规则要求」列取自 `docs/governance/STAGE_CONFIG.yaml` 与
+`AGENTS.md`（仓库根）§2.7，「现场」列取自 `docs/releases/v4.1.0/STAGE.yaml`。
+
 ## 2. GA 要求的发布文件（`required_files`）—— 全部在位
 
 | 文件 | 状态 |
@@ -34,6 +40,9 @@
 | `docs/releases/v4.1.0/GA_GATE_REPORT.md` | ✅ 在位（**内容需按本轮实跑刷新**） |
 | `docs/releases/v4.1.0/GA_RELEASE_TIMELINE.md` | ✅ 在位 |
 | `docs/releases/v4.1.0/CHANGELOG.md` | ✅ 在位 |
+
+证据出处：归档 run `20261106-ga5594-003` 的 `ga-required-files` 命令（逐份 `test -f` 断言，
+任一缺失即 rc=1）。`current_stage` 字段取自 `docs/releases/v4.1.0/STAGE.yaml`。
 
 ## 3. GA 门禁清单实跑
 
@@ -45,7 +54,7 @@
 |---|---|---|
 | 功能冻结（RC 期间禁功能新增） | **不适用/未到 RC** | 当前 ALPHA |
 | 修改限制（只允许 bugfix / 文档修复） | **本轮已破例**：合并了 F-08 列查找（功能修复）与三态自检脚本（工具） | 这是 ALPHA 阶段的合法修改，但**进入 RC 后必须冻结** |
-| 流程合规（所有修改走 PR） | ✅ | 本轮 6 个 PR 全部走 Gitea PR + 归档 run + 自审评论 |
+| 流程合规（所有修改走 PR） | ✅ | 本会话 12 个 PR 全部走 Gitea PR + 归档 run + 自审评论（#5608–#5619；证据 run 例：`20261106-mcode-001`、`20261106-readbackmerge-003`、`20261106-ga5594-003`） |
 | 质量保证（必须通过全部 CI） | ❌ | CI 侧 0 job（§0 第 2 条）⇒ 「全部 CI 通过」**无法取证** |
 
 ## 5. open ISSUE 的整改状态（本轮实测）
@@ -62,6 +71,11 @@
 | #5584（崩溃测试边界） | ⏳ 归属待裁定 | 认领在另一条线且长期无动作；裁定问题 `owner-5584-ownership-and-fix.md` 已写好 |
 | #5597（CI 执行面） | ❌ **属主动作** | runner-03 缺 `sqlrustgo-runner:v1` 镜像 ⇒ job 从未进入执行 |
 | #5595（83 条不会运行的门禁交代） | ⏳ 待裁定 | 34 条归档候选 + principles 三份并存，需属主裁 |
+
+闭合三行的证据出处：#5601 见归档 run `20261106-bin1-002`（binary 臂 DDL 明确报错的两条回归 +
+`binmode_probe.py` 的 `false_success_count` 计数）与 `20261106-lineage-001`；#5604 见
+`20261106-board3-001`（看板行状态与三个工具现值同源）；#5594 见 `20261106-ga5594-003`
+（`gate_executability.py --selftest` 的 A/B/C/D/**D2**/E/E2 臂 + 门禁本体 NO-EXECUTOR 0）。
 
 **已备好、等 deepseek 恢复即裁的 8 份问题**：`audit/v4.1.0/adjudications/owner-*.md`
 （5601 binary 口径 / 5603 claims 台账 / 5605 看板写入口径 / 5584 归属与修法 /
