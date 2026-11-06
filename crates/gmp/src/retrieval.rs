@@ -295,7 +295,7 @@ pub fn retrieval_search(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{create_gmp_tables, insert_document, DocStatus, NewDocument};
+    use crate::document::DocStatus;
 
     #[test]
     fn test_rrf_score() {
@@ -368,9 +368,11 @@ mod tests {
             effective_date: 20250101,
             status: DocStatus::Active,
         };
-        let mut filter = RetrievalFilter::default();
-        filter.effective_date_from = Some(20250000);
-        filter.effective_date_to = Some(20300000);
+        let mut filter = RetrievalFilter {
+            effective_date_from: Some(20250000),
+            effective_date_to: Some(20300000),
+            ..Default::default()
+        };
         assert!(document_matches_filter(&doc, &filter));
         filter.effective_date_from = Some(20300000);
         assert!(!document_matches_filter(&doc, &filter));

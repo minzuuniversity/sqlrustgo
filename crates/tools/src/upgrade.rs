@@ -807,7 +807,7 @@ mod tests {
 
     #[test]
     fn test_upgrade_status_variants() {
-        let statuses = vec![
+        let statuses = [
             UpgradeStatus::Pending,
             UpgradeStatus::InProgress,
             UpgradeStatus::Completed,

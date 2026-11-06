@@ -38,7 +38,7 @@ fn server01_v2_max_connections_passed_through() {
     // Start server with --max-connections=42
     // Verify env var SQLRUSTGO_MAX_CONN is set to 42
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--max-connections")
         .arg("42")
@@ -64,7 +64,7 @@ fn server01_v2_max_connections_passed_through() {
 #[test]
 fn server01_v2_data_dir_passed_through() {
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--data-dir")
         .arg("/tmp/srv02-data-dir-test")
@@ -87,7 +87,7 @@ fn server01_v2_data_dir_passed_through() {
 #[test]
 fn server01_v2_auth_mode_passed_through() {
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--auth-mode")
         .arg("password")
@@ -110,7 +110,7 @@ fn server01_v2_auth_mode_passed_through() {
 #[test]
 fn server01_v2_default_max_connections() {
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--port")
         .arg("0")
@@ -132,7 +132,7 @@ fn server01_v2_default_max_connections() {
 #[test]
 fn server01_v2_default_auth_mode_is_none() {
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--port")
         .arg("0")

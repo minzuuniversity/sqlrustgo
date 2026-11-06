@@ -101,7 +101,6 @@ fn test_foreign_key_ref() {
 
 #[test]
 fn test_import_mode_variants() {
-    use sqlrustgo_tools::mysqldump::ImportMode::*;
     assert!(matches!(ImportMode::Full, ImportMode::Full));
     assert!(matches!(ImportMode::SchemaOnly, ImportMode::SchemaOnly));
     assert!(matches!(ImportMode::DataOnly, ImportMode::DataOnly));

@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn test_noop_planner_default() {
-        let planner = NoOpPlanner::default();
+        let planner = NoOpPlanner;
         let schema = Schema::new(vec![Field::new("id".to_string(), DataType::Integer)]);
         let logical_plan = LogicalPlan::TableScan {
             table_name: "users".to_string(),

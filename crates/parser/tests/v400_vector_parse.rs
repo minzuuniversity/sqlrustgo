@@ -15,7 +15,7 @@ fn parse_create_vector(sql: &str) -> CreateVectorIndexStatement {
 }
 
 fn parse_err(sql: &str) -> String {
-    parse(sql).err().expect("parse should fail")
+    parse(sql).expect_err("parse should fail")
 }
 
 // --- Algorithm variants ----------------------------------------------------

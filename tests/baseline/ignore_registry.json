@@ -3,11 +3,12 @@
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
   "captured_at_commit": "1ce91dd9e8e98473779b7d915b7b82cc87040b85",
   "captured_at_date": "2026-10-23",
-  "total_allowed": 123,
+  "total_allowed": 135,
   "limits": {
     "total_allowed_max": 150,
-    "active_max": 80,
-    "note": "Increased at v4.1.0-alpha2 promotion to accommodate fix PR drift (PRs #5041/#5043/#5045/#5047/#5050 each added GAP #[ignore] for documented unresolved bugs)"
+    "active_max": 92,
+    "note": "Increased at v4.1.0-alpha2 promotion to accommodate fix PR drift (PRs #5041/#5043/#5045/#5047/#5050 each added GAP #[ignore] for documented unresolved bugs)",
+    "active_max_rationale": "2026-11-06：80 → 92。理由：crates/security/tests/v400_acl_audit.rs 里有 **12 条测试是假覆盖**（只断言一句描述文字非空，不触及任何产品行为）—— 它们此前既不占额度、也不提供任何覆盖，属于『未被登记的隐性欠账』。本批把这 12 条显式标为 #[ignore]（带理由）并登记进本台账 ⇒ 额度随真债显性化而 +12，正好等于新增条目数，没有放宽对未登记欠账的约束。关闭计划见看板行 SEC-1：这些契约要么落地真实实现，要么由属主裁定撤掉契约。"
   },
   "scope": {
     "included": [
@@ -1149,6 +1150,114 @@
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "acl_baseline_default_deny",
+      "line_at_capture": 14,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "acl_baseline_fail_closed_on_unknown_table",
+      "line_at_capture": 42,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "vector_acl_extension_documented",
+      "line_at_capture": 53,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "chain_verify_detects_replay",
+      "line_at_capture": 177,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "chain_sequence_monotonic",
+      "line_at_capture": 184,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "bypass_attempt_sql_injection_user",
+      "line_at_capture": 195,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "bypass_attempt_role_based_grant",
+      "line_at_capture": 222,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "sql_vector_graph_audit_consistent",
+      "line_at_capture": 234,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "audit_event_attached_to_txn",
+      "line_at_capture": 242,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "rollback_discards_audit_chain_extension",
+      "line_at_capture": 249,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "acl_check_latency_target",
+      "line_at_capture": 260,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/security/tests/v400_acl_audit.rs",
+      "test": "audit_chain_append_latency_target",
+      "line_at_capture": 268,
+      "reason": "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
     }
   ],
   "resolved_removed_ignores": [

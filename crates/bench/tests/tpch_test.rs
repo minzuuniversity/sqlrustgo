@@ -127,7 +127,7 @@ fn setup_engine() -> MemoryExecutionEngine {
 
     // Insert SF0.1 orders data (1500 rows)
     for i in 0..1500 {
-        let status = match (i % 3) as i32 {
+        let status = match i % 3 {
             0 => "F",
             1 => "O",
             _ => "P",

@@ -550,7 +550,7 @@ mod helpers_tests {
     fn parse_wal_sync_mode_case_insensitive() {
         match parse_wal_sync_mode("OFF") {
             sqlrustgo_storage::WalSyncMode::Off => {}
-            other => panic!("case-insensitive OFF should parse"),
+            _other => panic!("case-insensitive OFF should parse"),
         }
     }
 
@@ -1575,8 +1575,8 @@ mod tests {
         let mut to_xor = [0u8; 20];
         for i in 0..20 {
             let mut h = Sha1::new();
-            h.update(&scramble);
-            h.update(&double_hash);
+            h.update(scramble);
+            h.update(double_hash);
             let s = h.finalize();
             to_xor[i] = s[i];
         }
@@ -1797,7 +1797,7 @@ mod tests {
     fn test_make_handshake_packet_basic() {
         let scramble = [0u8; 20];
         let p = make_handshake_packet(0, &scramble);
-        assert!(p.payload.len() > 0);
+        assert!(!p.payload.is_empty());
         assert_eq!(p.sequence, 0);
     }
 
@@ -1806,21 +1806,21 @@ mod tests {
         let packets = make_ok_packet(1, 0, 0, 0x02, 0, 0, false);
         assert_eq!(packets.len(), 1);
         let p = &packets[0];
-        assert!(p.payload.len() > 0);
+        assert!(!p.payload.is_empty());
         assert_eq!(p.sequence, 1);
     }
 
     #[test]
     fn test_make_err_packet_basic() {
         let p = make_err_packet(1, 1064, "HY000", "syntax error");
-        assert!(p.payload.len() > 0);
+        assert!(!p.payload.is_empty());
         assert_eq!(p.payload[0], 0xff);
     }
 
     #[test]
     fn test_make_eof_packet_basic() {
         let p = make_eof_packet(1, 0x02);
-        assert!(p.payload.len() > 0);
+        assert!(!p.payload.is_empty());
         assert_eq!(p.payload[0], 0xfe);
     }
 
@@ -2078,7 +2078,7 @@ mod tests {
     fn test_statement_dispatch() {
         use parking_lot::RwLock;
         use sqlrustgo::MemoryExecutionEngine;
-        use sqlrustgo_parser::parse;
+
         use sqlrustgo_storage::MemoryStorage;
         use std::sync::Arc;
 
@@ -2142,7 +2142,7 @@ mod tests {
         let err = MySqlError::Protocol("test error".to_string());
         assert_eq!(format!("{}", err), "Protocol: test error");
 
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "io error");
+        let io_err = std::io::Error::other("io error");
         let err = MySqlError::Io(io_err);
         assert_eq!(format!("{}", err), "IO: io error");
 
@@ -7935,7 +7935,7 @@ mod integration_tests {
             if byte == b' ' || byte == b'\t' {
                 continue;
             }
-            nr ^= (((nr & 63) ^ nr2) as u32);
+            nr ^= (nr & 63) ^ nr2;
             nr = nr.wrapping_add(nr >> 3);
             nr2 = nr2.wrapping_add((nr2 << 1) ^ nr);
         }
@@ -8072,7 +8072,7 @@ mod integration_tests {
     fn test_make_handshake_packet() {
         let seed = [0x00; 20];
         let pkt = make_handshake_packet(0, &seed);
-        assert!(pkt.payload.len() > 0);
+        assert!(!pkt.payload.is_empty());
     }
 
     #[test]
@@ -8474,7 +8474,7 @@ mod integration_tests {
             .enumerate()
             .map(|(i, &b)| {
                 let v = if i < 4 { hash_low } else { hash_high };
-                b ^ ((v >> (i % 4) * 8) & 0xFF) as u8
+                b ^ ((v >> ((i % 4) * 8)) & 0xFF) as u8
             })
             .collect();
         !buf.is_empty() && buf.len() >= 8
@@ -8486,7 +8486,7 @@ mod integration_tests {
     fn test_verify_old_password_response_basic() {
         // Test that the function works (even if it always returns false without real verification)
         let seed = [0x00; 8];
-        let response = [0x00; 8];
+        let _response = [0x00; 8];
         // With empty password, this should work
         let result = verify_old_password_response(&seed, "");
         // The algorithm produces consistent results
@@ -8496,7 +8496,7 @@ mod integration_tests {
     #[test]
     fn test_verify_old_password_response_with_seed() {
         let seed = [0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0];
-        let response = [0x00; 8];
+        let _response = [0x00; 8];
         let result1 = verify_old_password_response(&seed, "password");
         let result2 = verify_old_password_response(&seed, "password");
         assert_eq!(result1, result2); // Same inputs should give same result
@@ -8511,7 +8511,7 @@ mod integration_tests {
         let row = vec![Value::Integer(42)];
         write_text_row(&mut buf, &row).unwrap();
         // Integer 42 -> "42" as lenenc string
-        assert!(buf.len() > 0);
+        assert!(!buf.is_empty());
     }
 
     #[test]
@@ -8524,7 +8524,7 @@ mod integration_tests {
             Value::Null,
         ];
         write_text_row(&mut buf, &row).unwrap();
-        assert!(buf.len() > 0);
+        assert!(!buf.is_empty());
     }
 
     #[test]
@@ -8542,7 +8542,7 @@ mod integration_tests {
     fn test_write_column_def_basic() {
         let mut buf = Vec::new();
         let _ = write_column_def(&mut buf, "id", "INT", 0).unwrap();
-        assert!(buf.len() > 0);
+        assert!(!buf.is_empty());
         // Verify it can be read back as a packet
         let mut cursor = std::io::Cursor::new(buf);
         let pkt = Packet::read_from(&mut cursor).unwrap();
@@ -8577,7 +8577,7 @@ mod integration_tests {
         let column_types = vec!["INT".to_string(), "VARCHAR(255)".to_string()];
         let rows: Vec<Vec<Value>> = vec![];
         send_result_set(&mut buf, &columns, &column_types, &rows, 0, 0).unwrap();
-        assert!(buf.len() > 0);
+        assert!(!buf.is_empty());
     }
 
     #[test]
@@ -8588,7 +8588,7 @@ mod integration_tests {
         let column_types = vec!["INT".to_string()];
         let rows = vec![vec![Value::Integer(1)], vec![Value::Integer(2)]];
         send_result_set(&mut buf, &columns, &column_types, &rows, 0, 0).unwrap();
-        assert!(buf.len() > 0);
+        assert!(!buf.is_empty());
     }
 
     #[test]
@@ -8608,7 +8608,7 @@ mod integration_tests {
             ],
         ];
         send_result_set(&mut buf, &columns, &column_types, &rows, 0, 0).unwrap();
-        assert!(buf.len() > 0);
+        assert!(!buf.is_empty());
     }
 
     // `3.14159` is a plain decimal fixture, not an approximation of π;
@@ -8622,7 +8622,7 @@ mod integration_tests {
         let column_types = vec!["DOUBLE".to_string()];
         let rows = vec![vec![Value::Float(3.14159)]];
         send_result_set(&mut buf, &columns, &column_types, &rows, 7, 0).unwrap();
-        assert!(buf.len() > 0);
+        assert!(!buf.is_empty());
     }
 
     // ============ Statement Dispatch Tests (new model) ============
@@ -8632,7 +8632,7 @@ mod integration_tests {
         use parking_lot::RwLock;
         use sqlrustgo::MemoryExecutionEngine;
         use sqlrustgo_storage::MemoryStorage;
-        use sqlrustgo_types::Value;
+
         use std::sync::Arc;
 
         let storage: Arc<RwLock<MemoryStorage>> = Arc::new(RwLock::new(MemoryStorage::new()));
@@ -8673,7 +8673,6 @@ mod integration_tests {
     // ============ MySqlError::std::error::Error trait ============
     #[test]
     fn test_my_sql_error_source() {
-        use std::error::Error;
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
         let err = MySqlError::Io(io_err);
         // Note: MySqlError uses default Error impl which returns None for source
@@ -10267,7 +10266,7 @@ fn g3_disk_graph_store_round_trip_persists_nodes() {
     // reopen, and verify the node is visible to a fresh MATCH.
     let graph_dir = tmp.path().join("graph").join("default.dgs");
     {
-        let mut store =
+        let store =
             sqlrustgo_graph::DiskGraphStore::open(&graph_dir).expect("DiskGraphStore::open");
         let mut props = sqlrustgo_graph::PropertyMap::new();
         props.insert("name", "alice".to_string());

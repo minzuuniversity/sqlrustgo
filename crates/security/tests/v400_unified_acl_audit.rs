@@ -350,7 +350,7 @@ fn acl_policy_check_granted() {
 
 #[test]
 fn acl_policy_check_denied() {
-    let mut acl = UnifiedAcl::new();
+    let acl = UnifiedAcl::new();
     // No entries
 
     let result = acl.check_permission(

@@ -270,7 +270,7 @@ mod tests {
         // Should not log anything
         log.maybe_log("SELECT 1", 500, 10);
 
-        let records = log.read_logs();
+        let _records = log.read_logs();
         // May or may not have records depending on previous test runs
         let recent = log.get_recent();
         assert!(recent.is_empty() || recent.iter().all(|r| r.duration_ms >= 1000));

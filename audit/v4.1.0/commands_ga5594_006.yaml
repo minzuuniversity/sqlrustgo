@@ -1,0 +1,54 @@
+# 20261106-ga5594-006 —— ADR-015 落地后的复跑（只覆盖受影响的判据）
+#
+# 口径：run -005 之后只改了 (a) 新增 ADR-015 文档、(b) ignore 台账与基线、
+#       (c) 看板 SEC-1/LINT-1 行 ⇒ 代码未变 ⇒ 这里只跑受影响的那几条判据，
+#       不重复跑整批（整批证据在 20261106-ga5594-005）。
+# 已知结构红：scripts/gate/check_main_freshness.sh（C-MAIN-02，GA 前 main 封存）。
+
+- id: gate-test-count-monotonic
+  name: "P12/P13：ignore 计数与 active 计数的基线比较（ADR-015 已把基线更新到 135/14345）"
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-anti-ignore
+  name: "ignore 台账与现场树一致（12 条新登记 + active_max 80→92）"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-doc-facts-check
+  name: "文档索引与重生成结果一致（新增 ADR-015 后必须重索引）"
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 900
+
+- id: probe-claims-selftest
+  name: "claims 判据自检（17 臂）"
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1800
+
+- id: gate-kanban-consistency
+  name: "看板 jsonl 与 md 一致（新增 SEC-1 / LINT-1）"
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-honesty-check
+  name: "门禁注册表诚实性"
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-registry-denominator
+  name: "门禁分母（必须仍是 168）"
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-main-freshness
+  name: "main 新鲜度（C-MAIN-02：GA 前 main 封存 ⇒ 结构性红，如实记录）"
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600

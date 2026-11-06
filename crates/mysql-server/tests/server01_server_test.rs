@@ -23,7 +23,7 @@ fn bin_path() -> &'static str {
 #[test]
 fn server01_help_shows_serve_subcommand() {
     let bin = bin_path();
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .arg("--help")
         .output()
         .expect("Failed to invoke binary");
@@ -41,7 +41,7 @@ fn server01_help_shows_serve_subcommand() {
 #[test]
 fn server01_serve_help_shows_new_args() {
     let bin = bin_path();
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .arg("serve")
         .arg("--help")
         .output()
@@ -72,7 +72,7 @@ fn server01_serve_help_shows_new_args() {
 #[test]
 fn server01_help_cleanly_exits() {
     let bin = bin_path();
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .arg("--help")
         .output()
         .expect("Failed to invoke binary");
@@ -83,7 +83,7 @@ fn server01_help_cleanly_exits() {
 #[test]
 fn server01_version_works() {
     let bin = bin_path();
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .arg("--version")
         .output()
         .expect("Failed to invoke binary");
@@ -97,7 +97,7 @@ fn server01_version_works() {
 fn server01_serve_no_args_uses_defaults() {
     // Verify `serve` with no args shows banner
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -137,7 +137,7 @@ fn server01_serve_verbose_shows_mvcc() {
     // always on (no toggle), so neither line is ever printed. Keep only the MVCC:
     // assertion that actually reflects emitted banner content.
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--verbose")
         .stdout(Stdio::piped())
@@ -154,7 +154,7 @@ fn server01_serve_verbose_shows_mvcc() {
 #[test]
 fn server01_serve_with_data_dir_arg() {
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--data-dir")
         .arg("/tmp/sqlrustgo-server01-test")
@@ -177,7 +177,7 @@ fn server01_serve_with_data_dir_arg() {
 #[test]
 fn server01_serve_with_max_connections_arg() {
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--max-connections")
         .arg("42")
@@ -200,7 +200,7 @@ fn server01_serve_with_max_connections_arg() {
 #[test]
 fn server01_serve_with_auth_mode_arg() {
     let bin = bin_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--auth-mode")
         .arg("password")

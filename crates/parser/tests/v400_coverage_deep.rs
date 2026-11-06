@@ -4,7 +4,7 @@
 //! parse_create_sequence, parse_drop_procedure, parse_create_index,
 //! parse_drop_index, parse_set_role, parse_use_database.
 
-use sqlrustgo_parser::{parse, Statement};
+use sqlrustgo_parser::parse;
 
 fn p(sql: &str) {
     let _ = parse(sql);

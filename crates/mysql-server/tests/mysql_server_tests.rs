@@ -309,7 +309,7 @@ fn test_mysql_error_all_variants() {
     use std::io;
 
     let variants: Vec<MySqlError> = vec![
-        MySqlError::Io(io::Error::new(io::ErrorKind::Other, "io err")),
+        MySqlError::Io(io::Error::other("io err")),
         MySqlError::Protocol("protocol err".to_string()),
         MySqlError::Sql("sql err".to_string()),
         MySqlError::Other("other err".to_string()),
@@ -567,7 +567,7 @@ fn test_packet_read_truncated_returns_err() {
 
 #[test]
 fn test_packet_flush_pending_no_data() {
-    let mut packet = Packet {
+    let packet = Packet {
         length: 0,
         sequence: 0,
         payload: vec![],
@@ -722,7 +722,7 @@ fn test_mysql_error_other_with_empty_string() {
     let err = MySqlError::Other(String::new());
     let display = format!("{}", err);
     // Empty Other displays just the empty string.
-    assert!(display.is_empty() || display == "");
+    assert!(display.is_empty() || display.is_empty());
 }
 
 // ============ run_server_v2 / spawn_resource_monitor edge cases ============

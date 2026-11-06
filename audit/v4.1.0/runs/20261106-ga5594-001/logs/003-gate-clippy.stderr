@@ -1,0 +1,31 @@
+    Checking hyper-util v0.1.20
+    Checking actix-web v4.15.0
+    Checking sqlrustgo-admin v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/admin)
+    Checking test-runner v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/test-runner)
+    Checking sqlrustgo-rag v2.3.0 (/Volumes/workspace/dev/sqlrustgo/crates/rag)
+    Checking sqlrustgo-shard-router v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/shard-router)
+    Checking graph-cli v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/graph-cli)
+    Checking xtask v0.1.0 (/Volumes/workspace/dev/sqlrustgo/tools/xtask)
+error: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+ --> crates/rag/benches/rag_benchmark.rs:1:17
+  |
+1 | use criterion::{black_box, criterion_group, criterion_main, Criterion};
+  |                 ^^^^^^^^^
+  |
+  = note: `-D deprecated` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(deprecated)]`
+
+error: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/rag/benches/rag_benchmark.rs:22:38
+   |
+22 |                 let _ = index.search(black_box("testing search"));
+   |                                      ^^^^^^^^^
+
+error: use of deprecated function `criterion::black_box`: use `std::hint::black_box()` instead
+  --> crates/rag/benches/rag_benchmark.rs:42:43
+   |
+42 |                 let _ = pipeline.retrieve(black_box("machine learning AI"), 10);
+   |                                           ^^^^^^^^^
+
+error: could not compile `sqlrustgo-rag` (bench "rag_benchmark") due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...

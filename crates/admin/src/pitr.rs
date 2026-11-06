@@ -54,6 +54,10 @@ pub fn pitr_replay_into(
 /// replay. #5055 kept this as a thin wrapper; the old behaviour (count
 /// only, no writes) is gone, so a caller that relied on it getting a
 /// count is now getting a restore.
+// 该包装器是**库 API** 的向后兼容别名（`crates/admin/src/lib.rs` 以 `pub mod pitr`
+// 导出它）；bin 目标走的是显式 `--data-dir` 变体（`pitr_replay_into`）⇒ 在 bin 编译
+// 目标里这个别名不可达。保留它是为了不破坏外部调用方，不是漏接线。
+#[allow(dead_code)]
 pub fn pitr_replay(wal_path: &Path, target_time: u64) -> Result<PitrReport, BackupError> {
     // A data directory that is a sibling of the WAL is the historical
     // layout. Used only by the wrapper; the CLI passes `--data-dir`

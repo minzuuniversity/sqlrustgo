@@ -234,7 +234,7 @@ mod tests {
     fn verify_intact_chain() {
         let mut chain = AuditChain::new();
         for i in 0..10 {
-            chain.append("alice", "TEST", &format!("event{}", i));
+            chain.append("alice", "TEST", format!("event{}", i));
         }
         match chain.verify() {
             ChainVerification::Ok { length } => assert_eq!(length, 10),
@@ -301,7 +301,7 @@ mod tests {
     fn tail_returns_last_n() {
         let mut chain = AuditChain::new();
         for i in 0..10 {
-            chain.append("alice", "TEST", &format!("{}", i));
+            chain.append("alice", "TEST", format!("{}", i));
         }
         let tail = chain.tail(3);
         assert_eq!(tail.len(), 3);
@@ -344,7 +344,7 @@ mod tests {
     fn alcoa_complete() {
         let mut chain = AuditChain::new();
         for i in 1..=5 {
-            chain.append("alice", "TEST", &format!("{}", i));
+            chain.append("alice", "TEST", format!("{}", i));
         }
         // Verify ALCOA+ Complete: monotonic sequence, no gaps
         for (i, entry) in chain.entries.iter().enumerate() {
@@ -401,7 +401,7 @@ mod tests {
     fn alcoa_accurate_chain_verifies() {
         let mut chain = AuditChain::new();
         for i in 0..100 {
-            chain.append("alice", "TEST", &format!("event{}", i));
+            chain.append("alice", "TEST", format!("event{}", i));
         }
         // Verify ALCOA+ Accurate: chain.verify returns Ok
         match chain.verify() {

@@ -1,0 +1,67 @@
+# 20261106-alpha-gates-001 —— ALPHA 阶段门禁清单（docs/governance/STAGE_CONFIG.yaml:
+# stages.ALPHA.required_gates）的逐条实跑
+#
+# 口径：**逐条按配置原文实跑**，不裁剪、不改顺序；每条独立记录 rc 与日志。
+# 为什么先跑 ALPHA：按 AGENTS.md §2.7，阶段跃迁必须逐级人批准 ⇒ 从当前的 ALPHA
+# 出发，**下一个合法台阶是 ALPHA→BETA**，它的判据就是这 10 条。
+# 已知结构红：scripts/gate/check_main_freshness.sh 不在 ALPHA 清单里（属 §14 的 GA 前结构性红）。
+
+- id: alpha-gate-check-alpha-v410
+  name: "ALPHA 清单门禁（原文）：scripts/gate/check_alpha_v{VER}.sh（VER=4.1.0 ⇒ check_alpha_v410.sh）"
+  cmd: bash scripts/gate/check_alpha_v410.sh
+  cwd: .
+  timeout_sec: 1800
+
+- id: alpha-gate-arch-invariants
+  name: "ALPHA 清单门禁（原文）：scripts/gate/check_arch_invariants.sh"
+  cmd: bash scripts/gate/check_arch_invariants.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: alpha-gate-arch3-no-bypass
+  name: "ALPHA 清单门禁（原文）：scripts/gate/check_arch3_no_bypass.sh"
+  cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: alpha-gate-coverage-v312
+  name: "ALPHA 清单门禁（原文）：scripts/gate/check_coverage_v312.sh（阈值取 SSOT 的 COVERAGE_MIN_ALPHA）"
+  cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  timeout_sec: 5400
+
+- id: alpha-gate-sql-corpus
+  name: "ALPHA 清单门禁（原文）：scripts/gate/check_sql_corpus_gate.sh"
+  cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  timeout_sec: 1800
+
+- id: alpha-gate-anti-ignore
+  name: "ALPHA 清单门禁（原文）：scripts/gate/check_anti_ignore_gate.sh"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: alpha-gate-g1-tpch-baseline
+  name: "ALPHA 清单门禁（原文）：scripts/gate/check_g1_tpch_baseline.sh"
+  cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  timeout_sec: 1800
+
+- id: alpha-cargo-build
+  name: "ALPHA 清单 cargo 命令（原文）：cargo build --all-features"
+  cmd: cargo build --all-features
+  cwd: .
+  timeout_sec: 3600
+
+- id: alpha-cargo-test-lib
+  name: "ALPHA 清单 cargo 命令（原文）：cargo test --all-features --lib"
+  cmd: cargo test --all-features --lib
+  cwd: .
+  timeout_sec: 5400
+
+- id: alpha-cargo-fmt-check
+  name: "ALPHA 清单 cargo 命令（原文）：cargo fmt --check"
+  cmd: cargo fmt --check
+  cwd: .
+  timeout_sec: 900

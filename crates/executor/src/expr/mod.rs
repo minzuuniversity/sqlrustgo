@@ -4203,7 +4203,7 @@ mod tests {
 
     #[test]
     fn test_referenced_columns() {
-        let mut e = UnifiedExpr::BinaryOp {
+        let e = UnifiedExpr::BinaryOp {
             left: Box::new(UnifiedExpr::Column("a".into())),
             op: "+".into(),
             right: Box::new(UnifiedExpr::Column("b".into())),
@@ -5036,7 +5036,7 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_complex() {
-        let mut e = UnifiedExpr::CaseWhen {
+        let e = UnifiedExpr::CaseWhen {
             whens: vec![(
                 UnifiedExpr::BinaryOp {
                     left: Box::new(UnifiedExpr::Column("a".into())),
@@ -5056,7 +5056,7 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_in_list() {
-        let mut e = UnifiedExpr::InList {
+        let e = UnifiedExpr::InList {
             expr: Box::new(UnifiedExpr::Column("x".into())),
             list: vec![
                 UnifiedExpr::Column("a".into()),
@@ -5069,7 +5069,7 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_between() {
-        let mut e = UnifiedExpr::Between {
+        let e = UnifiedExpr::Between {
             expr: Box::new(UnifiedExpr::Column("v".into())),
             low: Box::new(UnifiedExpr::Column("lo".into())),
             high: Box::new(UnifiedExpr::Column("hi".into())),
@@ -5080,7 +5080,7 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_function_call() {
-        let mut e = UnifiedExpr::FunctionCall {
+        let e = UnifiedExpr::FunctionCall {
             name: "CONCAT".into(),
             args: vec![
                 UnifiedExpr::Column("a".into()),
@@ -5107,14 +5107,14 @@ mod tests {
 
     #[test]
     fn test_referenced_columns_is_null() {
-        let mut e = UnifiedExpr::IsNull(Box::new(UnifiedExpr::Column("x".into())));
+        let e = UnifiedExpr::IsNull(Box::new(UnifiedExpr::Column("x".into())));
         let cols = e.referenced_columns();
         assert_eq!(cols, vec!["x".to_string()]);
     }
 
     #[test]
     fn test_referenced_columns_cast() {
-        let mut e = UnifiedExpr::Cast {
+        let e = UnifiedExpr::Cast {
             expr: Box::new(UnifiedExpr::Column("x".into())),
             target_type: "INTEGER".into(),
         };

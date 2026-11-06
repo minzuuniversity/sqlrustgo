@@ -22,7 +22,7 @@ fn g5_disk_graph_store_round_trip_persists_nodes_across_reopen() {
         let store = DiskGraphStore::open(&dir).expect("DiskGraphStore::open");
         let mut props = PropertyMap::new();
         props.insert("name", "alice");
-        let id = store
+        let _id = store
             .create_node(vec![Label("Person".to_string())], props)
             .expect("create_node");
         // DiskGraphStore assigns NodeId(0) to the first node;

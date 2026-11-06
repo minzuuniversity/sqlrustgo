@@ -182,23 +182,25 @@ fn test_config_manager_load_save_roundtrip() {
     assert_eq!(loaded, AppConfig::default());
 
     // Custom config can be saved and reloaded.
-    let mut custom = AppConfig::default();
-    custom.database = DatabaseConfig {
-        host: "db.example.com".into(),
-        port: 3306,
-        max_connections: 50,
-        timeout_seconds: 60,
-    };
-    custom.log = LogConfig {
-        level: "debug".into(),
-        rotation_size_mb: 200,
-        retention_days: 14,
-        format: "text".into(),
-    };
-    custom.cache = CacheConfig {
-        enabled: false,
-        max_size_mb: 1024,
-        ttl_seconds: 7200,
+    let custom = AppConfig {
+        database: DatabaseConfig {
+            host: "db.example.com".into(),
+            port: 3306,
+            max_connections: 50,
+            timeout_seconds: 60,
+        },
+        log: LogConfig {
+            level: "debug".into(),
+            rotation_size_mb: 200,
+            retention_days: 14,
+            format: "text".into(),
+        },
+        cache: CacheConfig {
+            enabled: false,
+            max_size_mb: 1024,
+            ttl_seconds: 7200,
+        },
+        ..Default::default()
     };
     save_config(&path, &custom).expect("save_config");
     let reloaded = load_config(&path).expect("load_config custom");
@@ -242,11 +244,8 @@ fn test_config_listener_callback() {
     static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
     let listener = create_config_listener(|change: ConfigChange| {
         // Verify we received a ConfigChange value.
-        match change {
-            ConfigChange::Full(_) => {
-                CALL_COUNT.fetch_add(1, Ordering::SeqCst);
-            }
-            _ => {}
+        if let ConfigChange::Full(_) = change {
+            CALL_COUNT.fetch_add(1, Ordering::SeqCst);
         }
     });
     listener.on_config_change(ConfigChange::Full(Default::default()));
@@ -410,7 +409,7 @@ fn test_config_manager_listener_dispatch() {
     // closure-returning `create_config_listener` helper in this version.
     // The dispatch path is exercised indirectly through update_*_config tests.
     use sqlrustgo_tools::config_hot_reload::{
-        CacheConfig, ConfigChange, ConfigManager, DatabaseConfig, LogConfig,
+        CacheConfig, ConfigManager, DatabaseConfig, LogConfig,
     };
     let dir = std::env::temp_dir().join(format!(
         "sqlrustgo-tools-cfgmgr-listener-{}",

@@ -3,7 +3,6 @@
 //! Compare JSON vs Binary storage performance.
 
 use sqlrustgo_storage::{FileStorage, StorageEngine};
-use sqlrustgo_types::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -35,7 +34,7 @@ fn main() {
 
     // Test 2: Raw binary scan (simulated)
     println!("\n[Test 2] Raw binary file scan:");
-    let bin_path = data_dir.join("lineitem.bin");
+    let _bin_path = data_dir.join("lineitem.bin");
     let raw_path = PathBuf::from(
         "/Users/liying/workspace/dev/heartopen/SQLRustGo/data/tpch-sf01-generated/lineitem.tbl",
     );

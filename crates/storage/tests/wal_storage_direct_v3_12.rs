@@ -401,7 +401,7 @@ fn cov_wal_storage_insert_many() {
             })
             .unwrap();
     }
-    let records: Vec<Record> = (0..50).map(|i| (vec![SqlValue::Integer(i)])).collect();
+    let records: Vec<Record> = (0..50).map(|i| vec![SqlValue::Integer(i)]).collect();
     w.insert("t", records).unwrap();
     let rows = w.scan("t").unwrap();
     assert_eq!(rows.len(), 50);

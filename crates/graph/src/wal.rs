@@ -401,14 +401,11 @@ mod tests {
             let back: WalRecord = bincode::deserialize(&bytes).unwrap();
             assert_eq!(&back, r);
             // Ensure PropertyValue types survive (Int via age/since).
-            match &back {
-                WalRecord::CreateNode { properties, .. } => {
-                    assert!(matches!(
-                        properties.get("age"),
-                        Some(PropertyValue::Int(30))
-                    ));
-                }
-                _ => {}
+            if let WalRecord::CreateNode { properties, .. } = &back {
+                assert!(matches!(
+                    properties.get("age"),
+                    Some(PropertyValue::Int(30))
+                ));
             }
         }
     }

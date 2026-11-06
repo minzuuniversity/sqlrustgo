@@ -12,7 +12,7 @@ mod tests {
         assert_eq!(alert.severity, ThreatSeverity::High);
         assert_eq!(alert.alert_type, AlertType::SqlInjection);
         assert!(!alert.acknowledged);
-        assert!(alert.id.len() > 0);
+        assert!(!alert.id.is_empty());
     }
 
     #[test]

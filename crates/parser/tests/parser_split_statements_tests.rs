@@ -105,6 +105,7 @@ fn test_split_nested_parens() {
     assert_eq!(frags[0], "SELECT COALESCE('a;', 'b')");
 }
 
+#[test]
 fn test_split_multiple_string_literals() {
     let frags = split_sql_statements("SELECT 'a;b' FROM t WHERE x = 'c;d'; SELECT 1");
     assert_eq!(frags.len(), 2);

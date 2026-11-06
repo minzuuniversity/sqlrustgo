@@ -146,20 +146,20 @@ mod tests {
     #[test]
     fn test_rule_set_new() {
         let mut rule_set = RuleSet::new();
-        assert!(rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any) == false);
+        assert!(!rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any));
     }
 
     #[test]
     fn test_rule_set_default() {
         let mut rule_set = RuleSet::default();
-        assert!(rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any) == false);
+        assert!(!rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any));
     }
 
     #[test]
     fn test_rule_set_add_rule() {
         let mut rule_set = RuleSet::new();
         rule_set.add_rule(|_| true);
-        assert!(rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any) == true);
+        assert!(rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any));
     }
 
     #[test]
@@ -168,7 +168,7 @@ mod tests {
         rule_set.add_rule(|_| false);
         rule_set.add_rule(|_| true);
         rule_set.add_rule(|_| false);
-        assert!(rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any) == true);
+        assert!(rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any));
     }
 
     #[test]
@@ -176,7 +176,7 @@ mod tests {
         let mut rule_set = RuleSet::new();
         rule_set.add_rule(|_| false);
         rule_set.add_rule(|_| false);
-        assert!(rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any) == false);
+        assert!(!rule_set.apply(&mut Box::new(0i32) as &mut dyn std::any::Any));
     }
 
     #[test]

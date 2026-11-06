@@ -76,19 +76,58 @@ def _yaml():
     return yaml
 
 
+def _strip_inline_comment(line: str) -> str:
+    """剥掉一行里的**行尾** bash 注释（引号内的 `#` 不算）。
+
+    bash 里 `#` 只有在**词首**（前面是空白或 `;|&(` 之类）才开始注释，
+    所以 `url=http://x#y`、`grep "#foo"` 里的 `#` 必须留着。
+
+    #5594：原实现只剥**整行**注释 ⇒ `cmd # 参见 check_x.sh` 这种**行尾**注释里的
+    门禁路径被当成真调用 ⇒ 死门禁被判为「有执行点」⇒ 执行点矩阵**假通过**。
+    """
+    out: list[str] = []
+    quote: str | None = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            out.append(ch)
+            if ch == "\\" and i + 1 < len(line):
+                out.append(line[i + 1])
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "#" and (not out or out[-1] in " \t;|&("):
+            break
+        out.append(ch)
+        i += 1
+    return "".join(out).rstrip()
+
+
 def strip_shell_comments(run_text: str) -> str:
-    """剥掉 `run:` 块里的 **bash 注释行**。
+    """剥掉 `run:` 块里的 bash 注释（**整行**与**行尾**都剥）。
 
     YAML 注释在解析 workflow 时就被丢掉了，但 `run: |` 块里的 bash 注释
     （`# ...`）**仍在文本里** —— 例如 ci.yml 的 `test` job 里有一段 bash 注释
     提到 `check_stage.sh`。把「提到」当成「调用」会让执行点矩阵**假通过**
     （这正是本门禁第一次跑出来时踩到的坑）。
+
+    #5594：行尾注释（`cmd # 参见 check_x.sh`）同样会把门禁路径带进扫描结果，
+    所以这里**逐行**剥行尾注释（引号内的 `#` 保留）。
     """
     kept = []
     for line in run_text.split("\n"):
         if line.lstrip().startswith("#"):
             continue
-        kept.append(line)
+        kept.append(_strip_inline_comment(line))
     return "\n".join(kept)
 
 
@@ -532,6 +571,27 @@ def selftest() -> int:
             print(f"SELFTEST FAIL: D 臂期望 bash 注释不算调用，实际 {d_fail}")
             return 1
         print("SELFTEST D: OK（run 块里的 bash 注释不被当成调用）")
+
+        # D2 —— **行尾**注释（`cmd # 参见 xxx.sh`）里的门禁 ⇒ 同样**不算**调用。
+        # #5594：原实现只剥整行注释 ⇒ 行尾注释里的路径被算成真调用 ⇒
+        # 死门禁被判为「有执行点」⇒ 执行点矩阵假通过。
+        with open(os.path.join(wf, "ci.yml"), "w", encoding="utf-8") as fh:
+            fh.write(
+                "name: t\n"
+                "jobs:\n"
+                "  j:\n"
+                "    steps:\n"
+                "      - name: inline\n"
+                "        run: |\n"
+                "          echo nothing-to-run  # 参见 scripts/gate/check_orphan_gate.sh\n"
+                "          echo again  # scripts/gate/check_stage.sh 是发布兜底\n"
+            )
+        m = build_matrix()
+        d2_fail = [r for r in m["bad"] if "check_orphan_gate.sh" in r["entry"]]
+        if len(d2_fail) != 1 or d2_fail[0]["verdict"] != "NO-EXECUTOR":
+            print(f"SELFTEST FAIL: D2 臂期望行尾注释不算调用，实际 {d2_fail}")
+            return 1
+        print("SELFTEST D2: OK（行尾注释里的门禁路径不被当成调用）")
 
         print("SELFTEST: PASS")
         REPO, STAGE_CONFIG, WORKFLOW_DIR = old

@@ -5174,6 +5174,7 @@ mod tests {
     // so the assertion held for the wrong reason and the broken insert-undo
     // went unnoticed. It now builds the table through `create_table` so the
     // keys line up.
+    #[test]
     fn test_rollback_removes_inserted_rows() {
         let mut s = MemoryStorage::new();
         table_with_rows_4948(&mut s, "t", 1);

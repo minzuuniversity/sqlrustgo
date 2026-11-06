@@ -1,0 +1,106 @@
+=== 门禁执行点矩阵（STAGE_CONFIG.required_gates × CI 可达性）===
+
+--- ALPHA: 10 项, OK 10, 有问题 0
+  [OK  ] OK           scripts/gate/check_alpha_v410.sh
+  [OK  ] OK           scripts/gate/check_arch_invariants.sh
+  [OK  ] OK           scripts/gate/check_arch3_no_bypass.sh
+  [OK  ] OK           scripts/gate/check_coverage_v312.sh
+  [OK  ] OK           scripts/gate/check_sql_corpus_gate.sh
+  [OK  ] OK           scripts/gate/check_anti_ignore_gate.sh
+  [OK  ] OK           scripts/gate/check_g1_tpch_baseline.sh
+  [OK  ] OK           cargo build --all-features
+  [OK  ] OK           cargo test --all-features --lib
+  [OK  ] OK           cargo fmt --check
+
+--- BETA: 19 项, OK 19, 有问题 0
+  [OK  ] OK           scripts/gate/check_beta_gate.sh
+  [OK  ] OK           scripts/gate/check_anti_fabrication.sh
+  [OK  ] OK           scripts/gate/check_arch_invariants.sh
+  [OK  ] OK           scripts/gate/check_arch3_no_bypass.sh
+  [OK  ] OK           scripts/gate/check_int2_no_orphan.sh
+  [OK  ] OK           scripts/gate/check_int3_single_expr.sh
+  [OK  ] OK           scripts/gate/check_sem1_savepoint.sh
+  [OK  ] OK           scripts/gate/check_backup_restore.sh
+  [OK  ] OK           scripts/gate/check_g1_tpch_baseline.sh
+  [OK  ] OK           scripts/gate/check_arch_sem_debt.sh
+  [OK  ] OK           scripts/gate/check_cross_version_debt.sh
+  [OK  ] OK           scripts/gate/check_int_debt.sh
+  [OK  ] OK           scripts/gate/check_coverage_v312.sh
+  [OK  ] OK           scripts/gate/check_sql_corpus_gate.sh
+  [OK  ] OK           scripts/gate/check_anti_ignore_gate.sh
+  [OK  ] OK           cargo build --all-features
+  [OK  ] OK           cargo test --all-features
+  [OK  ] OK           cargo fmt --check
+  [OK  ] OK           cargo clippy --all-features -- -D warnings
+
+--- DRAFT: 2 项, OK 2, 有问题 0
+  [OK  ] OK           scripts/gate/check_docs_links.sh
+  [OK  ] OK           cargo build --all-features
+
+--- GA: 35 项, OK 35, 有问题 0
+  [OK  ] OK           scripts/gate/check_rc_ga_gate.sh
+  [OK  ] OK           scripts/gate/check_arch_invariants.sh
+  [OK  ] OK           scripts/gate/check_arch3_no_bypass.sh
+  [OK  ] OK           scripts/gate/check_int2_no_orphan.sh
+  [OK  ] OK           scripts/gate/check_int3_single_expr.sh
+  [OK  ] OK           scripts/gate/check_sem1_savepoint.sh
+  [OK  ] OK           scripts/gate/check_backup_restore.sh
+  [OK  ] OK           scripts/gate/check_p12_crash_test.sh
+  [OK  ] OK           scripts/gate/check_p14_upgrade_test.sh
+  [OK  ] OK           scripts/gate/check_p21_audit_log.sh
+  [OK  ] OK           scripts/gate/check_p22_time_travel.sh
+  [OK  ] OK           scripts/gate/check_p23_hash_chain.sh
+  [OK  ] OK           scripts/gate/check_g1_tpch_baseline.sh
+  [OK  ] OK           scripts/gate/check_g16_compatibility.sh
+  [OK  ] OK           scripts/gate/check_integration_gate.sh
+  [OK  ] OK           scripts/gate/check_anti_fabrication.sh
+  [OK  ] OK           scripts/gate/check_arch_sem_debt.sh
+  [OK  ] OK           scripts/gate/check_cross_version_debt.sh
+  [OK  ] OK           scripts/gate/check_int_debt.sh
+  [OK  ] OK           scripts/gate/check_full_gate_verification.sh
+  [OK  ] OK           scripts/gate/check_drift_not_pass.sh
+  [OK  ] OK           scripts/gate/check_architecture_freeze.sh
+  [OK  ] OK           scripts/gate/check_gate_self_verification.sh
+  [OK  ] OK           scripts/gate/check_gate_test_integrity.sh
+  [OK  ] OK           scripts/gate/check_gate_executability.sh
+  [OK  ] OK           scripts/gate/check_coverage_v312.sh
+  [OK  ] OK           scripts/gate/check_coverage_single_implementation.sh
+  [OK  ] OK           scripts/gate/check_tests_dont_write_archived_evidence.sh
+  [OK  ] OK           scripts/gate/check_commit_message.sh
+  [OK  ] OK           scripts/gate/check_sql_corpus_gate.sh
+  [OK  ] OK           scripts/gate/check_anti_ignore_gate.sh
+  [OK  ] OK           cargo build --all-features
+  [OK  ] OK           cargo test --all-features
+  [OK  ] OK           cargo fmt --check
+  [OK  ] OK           cargo clippy --all-features -- -D warnings
+
+--- RC: 26 项, OK 26, 有问题 0
+  [OK  ] OK           scripts/gate/check_rc_ga_gate.sh
+  [OK  ] OK           scripts/gate/check_arch_invariants.sh
+  [OK  ] OK           scripts/gate/check_arch3_no_bypass.sh
+  [OK  ] OK           scripts/gate/check_int2_no_orphan.sh
+  [OK  ] OK           scripts/gate/check_int3_single_expr.sh
+  [OK  ] OK           scripts/gate/check_sem1_savepoint.sh
+  [OK  ] OK           scripts/gate/check_backup_restore.sh
+  [OK  ] OK           scripts/gate/check_p12_crash_test.sh
+  [OK  ] OK           scripts/gate/check_p14_upgrade_test.sh
+  [OK  ] OK           scripts/gate/check_p21_audit_log.sh
+  [OK  ] OK           scripts/gate/check_p22_time_travel.sh
+  [OK  ] OK           scripts/gate/check_p23_hash_chain.sh
+  [OK  ] OK           scripts/gate/check_g1_tpch_baseline.sh
+  [OK  ] OK           scripts/gate/check_integration_gate.sh
+  [OK  ] OK           scripts/gate/check_anti_fabrication.sh
+  [OK  ] OK           scripts/gate/check_arch_sem_debt.sh
+  [OK  ] OK           scripts/gate/check_cross_version_debt.sh
+  [OK  ] OK           scripts/gate/check_int_debt.sh
+  [OK  ] OK           scripts/gate/check_full_gate_verification.sh
+  [OK  ] OK           scripts/gate/check_coverage_v312.sh
+  [OK  ] OK           scripts/gate/check_sql_corpus_gate.sh
+  [OK  ] OK           scripts/gate/check_anti_ignore_gate.sh
+  [OK  ] OK           cargo build --all-features
+  [OK  ] OK           cargo test --all-features
+  [OK  ] OK           cargo fmt --check
+  [OK  ] OK           cargo clippy --all-features -- -D warnings
+
+=== 汇总 ===
+  总计 92 项 | OK 92 | MISSING 0 | NO-EXECUTOR 0

@@ -26,7 +26,7 @@ fn test_backup_manager_new_existing_dir() {
     let tmp = TempDir::new().unwrap();
     let dir = tmp.path().join("existing");
     std::fs::create_dir_all(&dir).unwrap();
-    let mgr = BackupManager::new(dir.clone());
+    let _mgr = BackupManager::new(dir.clone());
     assert!(dir.exists());
 }
 

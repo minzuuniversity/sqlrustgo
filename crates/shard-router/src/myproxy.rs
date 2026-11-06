@@ -150,7 +150,7 @@ impl Session {
                 // wins"; this matches the bench methodology where each
                 // shard holds a disjoint slice of data.
                 if self.shards.is_empty() {
-                    return Err(io::Error::new(io::ErrorKind::Other, "no shards configured"));
+                    return Err(io::Error::other("no shards configured"));
                 }
                 self.forward_to_shard(0, sql).await?;
                 for idx in 1..self.shards.len() {
@@ -299,12 +299,7 @@ impl Session {
 async fn forward_one(shard: &crate::shard::ShardEndpoint, sql: &str) -> io::Result<Vec<u8>> {
     let mut stream = match TcpStream::connect(&shard.addr).await {
         Ok(s) => s,
-        Err(e) => {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("connect: {e}"),
-            ))
-        }
+        Err(e) => return Err(io::Error::other(format!("connect: {e}"))),
     };
 
     // 1. Read backend handshake.

@@ -90,7 +90,7 @@ fn test_schema_empty() {
 
 #[test]
 fn test_planner_create_physical_plan() {
-    let mut planner = DefaultPlanner::new();
+    let planner = DefaultPlanner::new();
     let schema = Schema::new(vec![
         Field::new("id".to_string(), DataType::Integer),
         Field::new("name".to_string(), DataType::Text),

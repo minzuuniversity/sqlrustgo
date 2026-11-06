@@ -2,10 +2,12 @@
 //!
 //! Performance benchmarks for the scheduler.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main};
 use sqlrustgo_server::scheduler::{
     Agent, AgentStatus, ExecutionRecord, SchedulerState, Task, TaskPriority, Workflow, WorkflowStep,
 };
+// criterion::black_box 已废弃（clippy::deprecated）⇒ 用 std::hint::black_box
+use std::hint::black_box;
 
 /// Create a fresh scheduler state for benchmarking
 fn create_benchmark_state() -> SchedulerState {
@@ -51,7 +53,7 @@ fn create_sample_agent(i: usize) -> Agent {
     Agent {
         id: format!("agent_{}", i),
         name: format!("Agent {}", i),
-        status: if i % 3 == 0 {
+        status: if i.is_multiple_of(3) {
             AgentStatus::Idle
         } else if i % 3 == 1 {
             AgentStatus::Busy
@@ -59,7 +61,7 @@ fn create_sample_agent(i: usize) -> Agent {
             AgentStatus::Offline
         },
         capabilities: vec!["sql".to_string(), "rag".to_string(), "vector".to_string()],
-        current_task_id: if i % 2 == 0 {
+        current_task_id: if i.is_multiple_of(2) {
             Some(format!("task_{}", i))
         } else {
             None
@@ -121,7 +123,7 @@ fn list_tasks_benchmark(c: &mut criterion::Criterion) {
         state.create_task(task);
     }
 
-    c.bench_function("scheduler_list_tasks_1000", |b| {
+    c.bench_function("scheduler_list_tasks_1000", |_b| {
         black_box(state.list_tasks());
     });
 }
@@ -178,7 +180,7 @@ fn list_workflows_benchmark(c: &mut criterion::Criterion) {
         state.create_workflow(workflow);
     }
 
-    c.bench_function("scheduler_list_workflows_100", |b| {
+    c.bench_function("scheduler_list_workflows_100", |_b| {
         black_box(state.list_workflows());
     });
 }
@@ -216,7 +218,7 @@ fn list_agents_benchmark(c: &mut criterion::Criterion) {
         state.register_agent(agent);
     }
 
-    c.bench_function("scheduler_list_agents_100", |b| {
+    c.bench_function("scheduler_list_agents_100", |_b| {
         black_box(state.list_agents());
     });
 }
@@ -254,7 +256,8 @@ fn record_execution_benchmark(c: &mut criterion::Criterion) {
         let state = create_benchmark_state();
         b.iter(|| {
             let record = ExecutionRecord::new(format!("workflow_{}", black_box(0)));
-            black_box(state.record_execution(record));
+            state.record_execution(record);
+            black_box(());
         });
     });
 }
@@ -266,7 +269,7 @@ fn get_execution_history_benchmark(c: &mut criterion::Criterion) {
         state.record_execution(record);
     }
 
-    c.bench_function("scheduler_get_execution_history_1000", |b| {
+    c.bench_function("scheduler_get_execution_history_1000", |_b| {
         black_box(state.get_execution_history(100));
     });
 }

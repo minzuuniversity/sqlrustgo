@@ -187,7 +187,7 @@ mod tests {
     #[test]
     fn test_wal_drift_detected() {
         let gate = DriftGate::new("trace-1".to_string());
-        let mut ctx = TransactionContext::new(1);
+        let ctx = TransactionContext::new(1);
         // ctx.wal_segment_open = false → violation
         let op = WriteOp::Insert {
             table: "t".to_string(),

@@ -339,8 +339,7 @@ pub fn get_graph_stats(storage: &dyn StorageEngine) -> SqlResult<GraphStats> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{create_gmp_tables, DocStatus};
-    use crate::relation::insert_relation;
+
     use sqlrustgo_storage::MemoryStorage;
 
     #[test]

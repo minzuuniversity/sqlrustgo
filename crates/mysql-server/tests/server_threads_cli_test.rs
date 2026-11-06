@@ -12,7 +12,7 @@ fn get_binary_path() -> &'static str {
 #[test]
 fn server_threads_help_shows_flag() {
     let bin = get_binary_path();
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .arg("serve")
         .arg("--help")
         .output()
@@ -31,7 +31,7 @@ fn server_threads_help_shows_flag() {
 #[test]
 fn server_threads_default_is_16() {
     let bin = get_binary_path();
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .arg("serve")
         .arg("--help")
         .output()
@@ -50,7 +50,7 @@ fn server_threads_default_is_16() {
 #[test]
 fn server_threads_rejects_81() {
     let bin = get_binary_path();
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .arg("serve")
         .arg("--server-threads")
         .arg("81")
@@ -70,7 +70,7 @@ fn server_threads_rejects_81() {
 #[test]
 fn server_threads_rejects_non_integer() {
     let bin = get_binary_path();
-    let output = Command::new(&bin)
+    let output = Command::new(bin)
         .arg("serve")
         .arg("--server-threads")
         .arg("abc")
@@ -82,7 +82,7 @@ fn server_threads_rejects_non_integer() {
 #[test]
 fn server_threads_accepts_80() {
     let bin = get_binary_path();
-    let mut child = Command::new(&bin)
+    let mut child = Command::new(bin)
         .arg("serve")
         .arg("--server-threads")
         .arg("80")

@@ -1809,7 +1809,7 @@ mod tests {
                 assert_eq!(columns.len(), 1);
                 assert_eq!(rows.len(), 1);
             }
-            other => panic!("expected Select"),
+            _other => panic!("expected Select"),
         }
     }
 
@@ -1922,9 +1922,8 @@ mod tests {
     ///   character_set (2 bytes), column_length (4 bytes), column_type (1 byte),
     ///   flags (2 bytes), decimals (1 byte), filler (2 bytes)
     fn build_column_def_payload(name: &[u8]) -> Vec<u8> {
-        let mut buf = Vec::new();
         // 6 length-encoded strings (all empty or name for `name`)
-        buf.push(0x00); // catalog = ""
+        let mut buf = vec![0x00u8]; // catalog = ""
         buf.push(0x00); // schema = ""
         buf.push(0x00); // table = ""
         buf.push(0x00); // org_table = ""
@@ -2110,7 +2109,7 @@ mod tests {
     #[test]
     fn test_parse_handshake_protocol_version_mismatch() {
         // Protocol version != 0x0a returns Protocol error
-        let mut payload = make_handshake_payload(0xff, "8.0.30", 0, 0, "");
+        let payload = make_handshake_payload(0xff, "8.0.30", 0, 0, "");
         let result = parse_handshake(&payload);
         // Parser returns Err with message about expected protocol 10
         assert!(result.is_err());
@@ -2394,7 +2393,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_parse_handshake_minimal_valid() {
         // Minimal valid handshake (protocol 10, version, null terminators)
         let payload = vec![
@@ -2493,7 +2491,7 @@ mod tests {
 
     #[test]
     fn test_mysql_client_error_io_display() {
-        let io_err = io::Error::new(io::ErrorKind::Other, "custom io error");
+        let io_err = io::Error::other("custom io error");
         let err = MySqlClientError::Io(io_err);
         let display = format!("{}", err);
         assert!(display.contains("IO error"));
@@ -2905,10 +2903,8 @@ mod tests {
         //   catalog (len-encoded empty) + schema + table + org_table + name + org_name +
         //   fixed-length-of-following (12) + character_set(2) + column_length(4) +
         //   column_type(1) + flags(2) + decimals(1) + filler(2)
-        let mut data = Vec::new();
-        for _ in 0..6 {
-            data.push(0x00); // empty length-encoded string
-        }
+        // 6 个空的长度编码字符串
+        let mut data = vec![0x00u8; 6];
         data.push(0x0c); // length-of-fixed-fields = 12
         data.extend_from_slice(&33u16.to_le_bytes()); // utf8 charset
         data.extend_from_slice(&32u32.to_le_bytes()); // column_length
