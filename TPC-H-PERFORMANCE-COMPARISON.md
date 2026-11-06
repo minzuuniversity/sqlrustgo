@@ -43,7 +43,7 @@
 ## 3. SF=0.001 (501 lineitem 行)
 
 ### 来源
-- `bench/tpch-benchmark/baseline/baseline_sf0.001.json`
+- `tools/tpch-benchmark/baseline/baseline_sf0.001.json`
 - SQLRustGo vs MySQL/MariaDB 12.3.2
 
 ### 结果
@@ -60,7 +60,7 @@
 ## 4. SF=0.01 (6,001 lineitem 行)
 
 ### 来源
-- `bench/tpch-benchmark/baseline/baseline_sf0.01.json`
+- `tools/tpch-benchmark/baseline/baseline_sf0.01.json`
 - MySQL vs PostgreSQL
 
 ### 结果

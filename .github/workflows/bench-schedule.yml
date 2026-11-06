@@ -41,13 +41,13 @@ jobs:
 
       - name: Run the criterion suite
         run: |
-          mkdir -p benchmarks/results
+          mkdir -p tools/benchmarks/results
           for t in parser_bench bench_insert bench_cbo bench_columnar; do
-            cargo bench --bench "$t" 2>&1 | tee "benchmarks/results/${t}.txt"
+            cargo bench --bench "$t" 2>&1 | tee "tools/benchmarks/results/${t}.txt"
           done
 
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results-full
-          path: benchmarks/results/
+          path: tools/benchmarks/results/

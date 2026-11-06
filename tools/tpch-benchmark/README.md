@@ -8,7 +8,7 @@
 ## 1. Layout
 
 ```
-bench/tpch-benchmark/
+tools/tpch-benchmark/
 ├── README.md              # this file
 ├── data/                  # TPC-H .tbl files (3 scales)
 │   ├── sf0.001_data/      # 501 lineitem rows
@@ -34,7 +34,7 @@ python3 scripts/run_tpch_benchmark.py \
     --engines sqlite,mysql \
     --capture \
     --queries-dir /Users/liying/workspace/dev/yinglichina163/sqlrustgo/queries \
-    --data-root /Users/liying/workspace/dev/yinglichina163/sqlrustgo/bench/tpch-benchmark/data
+    --data-root /Users/liying/workspace/dev/yinglichina163/sqlrustgo/tools/tpch-benchmark/data
 
 # Run benchmark + compare to baseline
 python3 scripts/run_tpch_benchmark.py \

@@ -26,13 +26,13 @@ States (P1-1):
 
 Usage:
   # Run all 22 queries vs PG oracle
-  python3 tpch_harness_v2.py run --snapshot bench/oracle/tpch_sf01_snapshot_v2
+  python3 tpch_harness_v2.py run --snapshot tools/oracle/tpch_sf01_snapshot_v2
 
   # Run a single query
-  python3 tpch_harness_v2.py run --query Q6 --snapshot bench/oracle/tpch_sf01_snapshot_v2
+  python3 tpch_harness_v2.py run --query Q6 --snapshot tools/oracle/tpch_sf01_snapshot_v2
 
   # Validate PG matches snapshot fingerprint
-  python3 tpch_harness_v2.py validate --snapshot bench/oracle/tpch_sf01_snapshot_v2
+  python3 tpch_harness_v2.py validate --snapshot tools/oracle/tpch_sf01_snapshot_v2
 """
 import argparse
 import json
