@@ -1,0 +1,14 @@
+warning: unused variable: `report`
+   --> crates/storage/tests/multi_db_crash_recovery_5192.rs:134:9
+    |
+134 |     let report = engine
+    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_report`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `report`
+   --> crates/storage/tests/multi_db_crash_recovery_5192.rs:173:9
+    |
+173 |     let report = engine
+    |         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_report`
+
