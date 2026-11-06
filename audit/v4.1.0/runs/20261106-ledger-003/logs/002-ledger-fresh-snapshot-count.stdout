@@ -1,0 +1,1 @@
+{"kind": "ledger_freshness", "mode": "snapshot-count", "untriaged_open": [], "fresh_open": 104, "ledger_rows": 104, "expected_rows": 104, "snapshot_sha256": "sha256:2c6ce0d6b070360082b8cf6c11102c23d4a146503354ec05cf970dc12e113a55", "closed_since_snapshot": [], "opened_since_snapshot": [], "result": "consistent"}
