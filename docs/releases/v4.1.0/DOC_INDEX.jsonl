@@ -6,6 +6,7 @@
 {"bytes": 6630, "file": "ARCHITECTURE_ROUTE_DECISION_5193.md", "lines": 159, "sha256": "32545a30b19013818a19ed157da046ce7081a25c187f703e1b1d2bf1fca6bfa4", "stamp_ok": false, "stamped": false}
 {"bytes": 6098, "file": "AUDIT_RECORD_INTEGRITY_2026-11-05.md", "lines": 107, "sha256": "59b9f461aed58c6f3969cedb32835fe0135aa9d50505b59cf00af2f28ff70146", "stamp_ok": false, "stamped": false}
 {"bytes": 13560, "file": "BRANCH_MERGE_VERDICTS_2026-11-06.md", "lines": 102, "sha256": "a0cd992ce5809e5518df7f0334d35b6d0b1edc2b8fbd3d49d8ac959091751620", "stamp_ok": false, "stamped": false}
+{"bytes": 9998, "file": "BRANCH_MERGE_VERDICTS_2026-11-07.md", "lines": 115, "sha256": "b92fbe3b8470ee15b7847f0e2dfb71920519063e4d8900cc0ec1002972928ceb", "stamp_ok": false, "stamped": false}
 {"bytes": 15407, "file": "CHANGELOG.md", "lines": 254, "sha256": "3fc92b9f8428cff1588f2039a4dd31c98a2c393834d3fa987978a8693ca25309", "stamp_ok": false, "stamped": false}
 {"bytes": 3628, "file": "CI_EXECUTION_OUTAGE_2026-11-05.md", "lines": 65, "sha256": "cc0325e9ce3f7e9c171d0e04e6095e4696fae63d48295b99112ecd08646302c0", "stamp_ok": false, "stamped": false}
 {"bytes": 6272, "file": "CLAIM_DOWNGRADE_MANIFEST.md", "lines": 134, "sha256": "8f8af9da4928b715a6cf27fac9930f4285ddeaccb04b913b8da5498eff4d87ad", "stamp_ok": false, "stamped": false}

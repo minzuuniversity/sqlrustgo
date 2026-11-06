@@ -1,7 +1,7 @@
 # Architecture Decision Records (ADR) Index
 
 > **Status**: ACTIVE
-> **Last update**: 2026-07-01 (added a/b disambiguation to 4 duplicate ADR pairs; added ADR-014 row)
+> **Last update**: 2026-11-06 (added ADR-015 row)
 > **Maintainer**: Hermes Agent
 
 This is the index for Architecture Decision Records (ADR) under
@@ -49,6 +49,7 @@ follow the file naming convention `ADR-NNN-<topic>.md`.
 | **ADR-008x** | **ADR-008 §Policy 2 Exception: v3.11.0 G4 TPC-H SF=1 Wire Test Deferral** | PROPOSED | First use of ADR-008 exception mechanism; expires 2026-09-01 | [ADR-008-exception-v311-tpch-sf1.md](ADR-008-exception-v311-tpch-sf1.md) |
 | **ADR-008y** | **ADR-008 §Policy 2 Exception: V312-58 Q17 SF=1 Perf Benchmark Deferral** | PROPOSED | Second use of ADR-008 exception; expires 2026-10-31; GA-5 cell-diff gate carries canonical PASS artifact | [ADR-008-exception-v312-58-q17-sf1.md](ADR-008-exception-v312-58-q17-sf1.md) |
 | **ADR-014** | Multi-AI Coordination | ACCEPTED | Z6G4 + macmini + future AI agent protocol (5 evidence fields, conflict resolution) | [ADR-014-multi-ai-coordination.md](ADR-014-multi-ai-coordination.md) |
+| **ADR-015** | 12 条 ACL/审计链契约测试的显式延后（假覆盖 → 登记在案的未实现） | ACCEPTED | omp (macmini) + 属主裁定待补（双专家席位恢复后复核） | [ADR-015-fake-coverage-contracts-deferred.md](ADR-015-fake-coverage-contracts-deferred.md) |
 
 ## Exception ADRs (ADR-008 §Policy 2)
 
