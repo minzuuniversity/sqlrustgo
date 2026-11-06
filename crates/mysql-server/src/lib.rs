@@ -8755,6 +8755,111 @@ pub mod testing {
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
 
+    /// #FL-1：进程内 harness 的**服务端 panic 捕获**。
+    ///
+    /// 服务端线程 panic 时，客户端能看到的只有 `Io(UnexpectedEof)`（连接被掐断），
+    /// 服务端到底为什么挂的完全拿不到 —— 这正是 FL-1 记的那条「服务端侧的失败原因
+    /// 一点都拿不到（进程内 harness）」。这里把 panic 记进进程级缓冲，测试可以在
+    /// 失败时取出来打印，让失败从「不可诊断」变成「可诊断」。
+    ///
+    /// 注意：钩子是**链式**的 —— 捕获之后仍然调用原来的钩子，默认的 panic 输出
+    /// 不会被吞掉。
+    pub static CAPTURED_PANICS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    static PANIC_HOOK: std::sync::Once = std::sync::Once::new();
+
+    /// 安装 panic 捕获钩子（幂等；进程内第一个 `start_ephemeral` 时装上）。
+    pub fn install_panic_capture() {
+        PANIC_HOOK.call_once(|| {
+            let previous = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                let location = info
+                    .location()
+                    .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                    .unwrap_or_else(|| "<unknown location>".to_string());
+                let payload = info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .map(|s| (*s).to_string())
+                    .or_else(|| info.payload().downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "<non-string panic payload>".to_string());
+                if let Ok(mut buf) = CAPTURED_PANICS.lock() {
+                    buf.push(format!("panic at {}: {}", location, payload));
+                }
+                previous(info);
+            }));
+        });
+    }
+
+    /// 取走并清空已捕获的 panic（测试失败时把它们打出来）。
+    pub fn take_captured_panics() -> Vec<String> {
+        let mut buf = CAPTURED_PANICS.lock().expect("panic buffer lock");
+        std::mem::take(&mut *buf)
+    }
+
+    /// #FL-1：进程内 harness 的**服务端日志捕获**。
+    ///
+    /// 之前 harness **不装 tracing subscriber** ⇒ 服务端线程里的
+    /// `tracing::warn!` / `tracing::error!`（例如「LOAD DATA buf exceeds 4×
+    /// bulk_buf_size」「row was skipped」）**根本没有去处**：进程里没有 subscriber，
+    /// 事件就被丢弃了。所以红的那一刻，服务端说了什么完全拿不到。
+    ///
+    /// 这里装一个把事件写进进程级缓冲的 subscriber，测试失败时可取出来打印。
+    pub static CAPTURED_LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    static TRACING_HOOK: std::sync::Once = std::sync::Once::new();
+
+    struct BufferWriter;
+
+    impl std::io::Write for BufferWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let text = String::from_utf8_lossy(buf).to_string();
+            if let Ok(mut lines) = CAPTURED_LOGS.lock() {
+                for line in text.lines() {
+                    let line = line.trim_end().to_string();
+                    if !line.is_empty() {
+                        lines.push(line);
+                    }
+                }
+            }
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct BufferMakeWriter;
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for BufferMakeWriter {
+        type Writer = BufferWriter;
+        fn make_writer(&self) -> Self::Writer {
+            BufferWriter
+        }
+    }
+
+    /// 安装 tracing 捕获（幂等；进程内第一个 `start_ephemeral` 时装上）。
+    ///
+    /// 装不上（已有别的 subscriber）不算失败 —— 那说明有人在别处装了，事件仍有去处。
+    pub fn install_log_capture() {
+        TRACING_HOOK.call_once(|| {
+            let subscriber = tracing_subscriber::fmt()
+                .with_writer(BufferMakeWriter)
+                .with_ansi(false)
+                .with_target(true)
+                .with_max_level(tracing::Level::DEBUG)
+                .finish();
+            let _ = tracing::subscriber::set_global_default(subscriber);
+        });
+    }
+
+    /// 取走并清空已捕获的服务端日志（测试失败时把它们打出来）。
+    pub fn take_captured_logs() -> Vec<String> {
+        let mut buf = CAPTURED_LOGS.lock().expect("log buffer lock");
+        std::mem::take(&mut *buf)
+    }
+
     /// One connection-handling job dispatched to a worker via the
     ///
     /// V312-32: `config` carries the per-server `EphemeralConfig` so the
@@ -9201,6 +9306,10 @@ pub mod testing {
     /// a handle to it. The server runs on a background thread; the
     /// handle's `Drop` joins the thread and cleans up the temp data dir.
     pub fn start_ephemeral(config: EphemeralConfig) -> Result<EphemeralHandle, std::io::Error> {
+        // #FL-1：装上 panic 捕获钩子与服务端日志捕获，让服务端线程挂掉/报错时
+        // 客户端侧能看到原因。
+        install_panic_capture();
+        install_log_capture();
         // V312-32: the config is now passed to the server thread via
         // `Arc::clone` rather than published to a process-global. Each
         // `start_ephemeral` call gets its own `Arc<EphemeralConfig>`,
