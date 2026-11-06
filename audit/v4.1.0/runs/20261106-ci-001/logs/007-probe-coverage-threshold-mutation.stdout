@@ -1,0 +1,3 @@
+CONTROL: VERIFIED（未变异 ⇒ 用例绿，门槛判定确有实现支撑）
+MUTANT: VERIFIED（84% < GA 门槛 85%，但沿用常量 75 ⇒ 判 PASS，用例变红 rc=101）
+VERDICT: 2/2 VERIFIED —— 门槛来源判据有判别力，工作树已核对恢复

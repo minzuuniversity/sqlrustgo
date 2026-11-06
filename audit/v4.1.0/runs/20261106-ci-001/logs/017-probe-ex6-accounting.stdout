@@ -1,0 +1,6 @@
+OK  A-timeout-counted-unanswered: unanswered=['arith-17x23', 'json-contract', 'gate-trust-two-state', 'code-truth-len'] wrong=[] answered=0 score=0 calls=8
+OK  B-wronganswer-counted-wrong: unanswered=[] wrong=['arith-17x23', 'json-contract', 'gate-trust-two-state', 'code-truth-len'] answered=4
+OK  C-mixed-competence-ratio: score=1 wrong=['json-contract', 'gate-trust-two-state', 'code-truth-len'] answered=4 competence_ratio=0.25（期望 0.25）
+OK  D-empty-response-retried: items=[{'arith-17x23': True}, {'json-contract': True}, {'gate-trust-two-state': True}, {'code-truth-len': True}] answered=0
+OK  E-mutation-timeout-as-wrong-detected: 变异后 unanswered=[] wrong=['arith-17x23', 'json-contract', 'gate-trust-two-state', 'code-truth-len'] （真实现下 unanswered 非空 ⇒ 该臂有判别力）
+合计 5/5 条成立
