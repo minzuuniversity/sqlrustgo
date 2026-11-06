@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -52,6 +53,44 @@ DOCS_INDEX = DOCS / "README.md"
 VXY_RE = re.compile(r"^v\d+\.\d+$")
 # 目录名必须：小写字母、数字、连字符、下划线（且不含中文）
 NON_ASCII_RE = re.compile(r"[^\x00-\x7f]")
+
+# ── 只判**入库**的东西 ───────────────────────────────────────────────────────
+#
+# 规则是从文件系统扫出来的，而工作区里存在**被 .gitignore 忽略**的目录
+# （`docs/ai_collaboration/`、`docs/教学计划/`、`docs/releases/v3.12.0/coverage-baseline/`
+# 等，见 .gitignore:354 / :398）。这些不在任何分支的 tree 里，
+# 是别的 agent / 别的 release 在**同一台机器的另一个 worktree** 里留下的本地残留。
+# 不滤掉它们，同一个提交在 A 机器上 rc=0、在 B 机器上 rc=1（实测：本机 54 项假 FAIL），
+# 门禁结论就不可复现 —— 而「换个环境结论不一样」正是这套治理要杀的东西。
+# 反过来，滤掉忽略项也**不会**放过真违规：真违规是要入库的，入库的东西不可能被忽略。
+
+_IGNORED_DIRS: frozenset[str] | None = None
+
+
+def ignored_dirs() -> frozenset[str]:
+    """git 眼里「未跟踪且被忽略」的目录（`--directory` 把整棵忽略子树折叠成一条）。"""
+    global _IGNORED_DIRS
+    if _IGNORED_DIRS is None:
+        p = subprocess.run(
+            ["git", "ls-files", "-z", "--others", "--ignored",
+             "--exclude-standard", "--directory"],
+            cwd=REPO, capture_output=True, text=True,
+        )
+        _IGNORED_DIRS = frozenset(x for x in p.stdout.split("\0") if x)
+    return _IGNORED_DIRS
+
+
+def is_ignored_path(rel: str) -> bool:
+    """`rel` 本身或被某个忽略目录包住 ⇒ True。"""
+    rel = rel.strip().rstrip("/") + "/"
+    return any(rel.startswith(pref) for pref in ignored_dirs())
+
+
+def is_ignored_item(item: str) -> bool:
+    """规则产出的条目：路径型才参与判断，计数型消息（R5）不参与。"""
+    if " " in item or not item or item.startswith("顶层"):
+        return False
+    return is_ignored_path(item)
 
 
 def rule_dir_name_charset() -> list[str]:
@@ -117,7 +156,8 @@ def rule_index_registers_dir() -> list[str]:
 
 def rule_top_level_md_cap() -> list[str]:
     """R5：顶层 .md 数量不得超过基线（看板 P2-2 记的是 45）。"""
-    n = len(list(REPO.glob("*.md")))
+    n = len([p for p in REPO.glob("*.md")
+             if not is_ignored_path(p.name)])
     return [] if n <= 45 else [f"顶层 .md {n} 个 > 45"]
 
 
@@ -137,8 +177,24 @@ RULES = [
 ]
 
 
-def live_violations() -> dict[str, list[str]]:
+def raw_violations() -> dict[str, list[str]]:
+    """不过滤任何路径 —— 只给变异/对账用，不参与判定。"""
     return {rid: fn() for rid, fn, _ in RULES}
+
+
+def live_violations() -> dict[str, list[str]]:
+    """判定口径：只保留**入库可达**的违规（.gitignore 掉的本地残留不算）。"""
+    return {rid: [i for i in fn() if not is_ignored_item(i)] for rid, fn, _ in RULES}
+
+
+def suppressed_violations() -> dict[str, list[str]]:
+    """被忽略而**不判红**的项。判据必须看得见自己放过了什么。"""
+    out = {}
+    for rid, items in raw_violations().items():
+        s = [i for i in items if is_ignored_item(i)]
+        if s:
+            out[rid] = s
+    return out
 
 
 def cmd_emit(argv: list[str]) -> int:
@@ -170,6 +226,7 @@ def cmd_check(argv: list[str]) -> int:
             r = json.loads(line)
             known.add((r["rule"], r["item"]))
     live = live_violations()
+    suppressed = suppressed_violations()
     new = []
     for rid, _, src in RULES:
         for item in live[rid]:
@@ -178,7 +235,12 @@ def cmd_check(argv: list[str]) -> int:
     print(json.dumps({"kind": "directory_policy_check", "baseline": str(path),
                       "baseline_violations": len(known),
                       "live_violations": sum(len(x) for x in live.values()),
+                      "git_ignored_suppressed": sum(len(x) for x in suppressed.values()),
                       "new_violations": len(new)}, ensure_ascii=False))
+    if suppressed:
+        # 放过了什么必须打印：不打印就等于偷偷放宽判据
+        top = [f"{rid}:{len(v)}" for rid, v in sorted(suppressed.items())]
+        print("NOTE: 因 .gitignore 而不判红的本地残留 " + " ".join(top))
     for n in new[:40]:
         print("FAIL:", n)
     if new:

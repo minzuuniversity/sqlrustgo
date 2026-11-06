@@ -1,0 +1,5 @@
+  [OK ] M1 改前口径误报（不过滤 n_raw > 判定口径 n_live），改后 rc=0  (raw=202 live=149 rc=0 抑制=53)
+  [OK ] M2 新建未忽略的违规目录 ⇒ rc=1 且点名该目录  (rc=1 new=1 点名=True)
+  [OK ] M3 撤销后 ⇒ rc=0（判据可撤销，不是永久红）  (rc=0 new=0)
+  [OK ] M4 违规塞进 .gitignore 忽略的子树 ⇒ 不判红但计数增加、且列进 suppressed  (rc=0 raw 202→203 抑制 53→54 记账=True)
+{"kind": "dir_policy_mutations", "arms": 4, "ok": 4, "not_ok": 0, "verdict": "VERIFIED"}
