@@ -59,12 +59,11 @@ crates/
 ├── graph/       v3.12.0-fix-zombie
 ├── graph-cli/   v0.1.0
 ├── evidence-graph/, sql-corpus/ v3.12.0-fix-zombie
-├── bench/       v0.1.0
 ├── sqlancer/, transaction-stress/, sqlrustgo_sqllogictest/  (测试工具)
 ├── test-registry/, test-runner/, test-results/, test-reporter/  v0.1.0
 ├── information-schema/, query-stats/
 ├── wal-verification/, soak-client/
-├── compat-runner, xtask (tools/)
+├── compat-runner, xtask, oracle, tpch-benchmark, benchmarks (tools/)
 └── distributed/ v0.1.0
 ```
 

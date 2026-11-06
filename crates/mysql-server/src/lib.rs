@@ -141,7 +141,13 @@ fn read_idle_timeout_secs() -> Option<u64> {
 /// Keeping the decision here — instead of inline in the reaper loop — is
 /// what makes the "disabled" case testable without a socket, a server or
 /// a sleep.
-fn idle_reap_decision(idle_secs: u64, timeout_secs: Option<u64>) -> Option<u64> {
+fn idle_reap_decision(idle_secs: u64, timeout_secs: Option<u64>, busy: bool) -> Option<u64> {
+    // #FL-1：正在执行命令的连接**不是 idle 连接** —— 回收器只该收「在等下一条
+    // 命令」的连接。长语句（LOAD DATA 20k 行等）执行期间没有读包，按旧口径会被
+    // 当成 idle 连接在语句中途 shutdown，客户端直接看到 EOF。
+    if busy {
+        return None;
+    }
     match timeout_secs {
         Some(threshold) if idle_secs > threshold => Some(threshold),
         _ => None,
@@ -182,18 +188,38 @@ thread_local! {
 #[derive(Debug)]
 pub struct ConnectionTracker {
     last_activity_ms: std::sync::atomic::AtomicU64,
+    /// #FL-1：这条连接**正在执行命令**吗？
+    ///
+    /// 回收器判「idle」的口径必须是「**在等下一条命令**」，而不是
+    /// 「上一次读包距今多久」—— 一条长语句（LOAD DATA 20k 行、大聚合）
+    /// 执行期间没有任何读包，按旧口径它会被当成 idle 连接在语句中途
+    /// 被 shutdown，客户端直接看到 EOF（`Io(UnexpectedEof)`）。
+    /// 这正是 FL-1 那次红的真实原因（服务端日志：
+    /// `idle-reaper: closing conn_id=3 (idle 34s > 30s)`）。
+    busy: std::sync::atomic::AtomicBool,
 }
 
 impl ConnectionTracker {
     pub fn new() -> Self {
         Self {
             last_activity_ms: std::sync::atomic::AtomicU64::new(now_ms()),
+            busy: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
     pub fn touch(&self) {
         self.last_activity_ms
             .store(now_ms(), std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// #FL-1：标记「正在执行命令」。
+    pub fn set_busy(&self, busy: bool) {
+        self.busy.store(busy, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// #FL-1：这条连接此刻是否正在执行命令。
+    pub fn is_busy(&self) -> bool {
+        self.busy.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn idle_secs(&self) -> u64 {
@@ -330,6 +356,17 @@ pub fn touch_connection(conn_id: u64) {
     }
 }
 
+/// #FL-1：标记这条连接「正在执行命令」（busy=true）或「在等下一条命令」
+/// （busy=false）。
+///
+/// 回收器只该收**在等命令**的连接；语句执行期间（长 LOAD DATA、大聚合）
+/// 必须算作非 idle，否则连接会在语句中途被 shutdown，客户端看到 EOF。
+pub fn set_connection_busy(conn_id: u64, busy: bool) {
+    if let Some((tracker, _)) = CONNECTION_REGISTRY.read().get(&conn_id) {
+        tracker.set_busy(busy);
+    }
+}
+
 /// v3.12.0 Issue #4682: remove a connection from the registry.
 /// Called by the `scopeguard` in `handle_connection` so the
 /// registry never holds stale entries.
@@ -390,7 +427,9 @@ pub fn spawn_idle_connection_reaper() {
 
                 registry.retain(|&conn_id, (tracker, sock)| {
                     let idle = tracker.idle_secs();
-                    if let Some(threshold) = idle_reap_decision(idle, now_idle_timeout) {
+                    if let Some(threshold) =
+                        idle_reap_decision(idle, now_idle_timeout, tracker.is_busy())
+                    {
                         // #5582: 注册表持有强引用，这里拿到的就是**活的** socket。
                         // 此前是 `weak.upgrade()`，而生产调用点的强引用是临时量
                         // ⇒ upgrade 恒为 None ⇒ 回收器从未真正 shutdown 任何连接。
@@ -596,12 +635,12 @@ mod helpers_tests {
     #[test]
     fn a_disabled_reaper_never_reaps() {
         assert_eq!(
-            idle_reap_decision(0, None),
+            idle_reap_decision(0, None, false),
             None,
             "a disabled reaper must not reap a fresh connection"
         );
         assert_eq!(
-            idle_reap_decision(1_000_000, None),
+            idle_reap_decision(1_000_000, None, false),
             None,
             "a disabled reaper must not reap a connection however long it has been idle"
         );
@@ -610,9 +649,50 @@ mod helpers_tests {
     /// ...and an enabled one reaps exactly past the threshold.
     #[test]
     fn an_enabled_reaper_reaps_past_the_threshold() {
-        assert_eq!(idle_reap_decision(29, Some(30)), None);
-        assert_eq!(idle_reap_decision(30, Some(30)), None);
-        assert_eq!(idle_reap_decision(31, Some(30)), Some(30));
+        assert_eq!(idle_reap_decision(29, Some(30), false), None);
+        assert_eq!(idle_reap_decision(30, Some(30), false), None);
+        assert_eq!(idle_reap_decision(31, Some(30), false), Some(30));
+    }
+
+    /// #FL-1：正在执行命令的连接**不是 idle 连接** —— 哪怕它「上一次读包距今」
+    /// 已经超过阈值，回收器也必须放过它。
+    ///
+    /// 修前口径只看「上次读包距今多久」，于是长语句（LOAD DATA 20k 行）执行
+    /// 期间连接被当成 idle，在语句中途被 shutdown，客户端只拿到
+    /// `Io(UnexpectedEof)`（FL-1 的真实原因，服务端日志：
+    /// `idle-reaper: closing conn_id=3 (idle 34s > 30s)`）。
+    #[test]
+    fn a_busy_connection_is_never_reaped_however_long_its_last_read_was() {
+        assert_eq!(
+            idle_reap_decision(31, Some(30), true),
+            None,
+            "a connection executing a statement must not be reaped"
+        );
+        assert_eq!(
+            idle_reap_decision(1_000_000, Some(30), true),
+            None,
+            "a long-running statement must not be interrupted by the reaper"
+        );
+        // 反向：同一个 idle 秒数，只要不忙，就必须照常回收。
+        assert_eq!(
+            idle_reap_decision(31, Some(30), false),
+            Some(30),
+            "the busy flag must not disable reaping for idle connections"
+        );
+    }
+
+    /// #FL-1：tracker 的 busy 标记与回收器读的是同一个标志。
+    #[test]
+    fn a_tracker_reports_whether_it_is_busy() {
+        let tracker = ConnectionTracker::new();
+        assert!(!tracker.is_busy(), "a fresh connection waits for a command");
+        tracker.set_busy(true);
+        assert!(
+            tracker.is_busy(),
+            "a connection executing a command is busy"
+        );
+        tracker.set_busy(false);
+        assert!(!tracker.is_busy(), "back to waiting for the next command");
     }
 
     #[test]
@@ -5590,6 +5670,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
     config: &crate::testing::EphemeralConfig,
 ) -> MySqlResult<()> {
     loop {
+        // #FL-1：循环开头 = 本连接正在**等下一条命令** ⇒ 此刻它是 idle 的，
+        // 回收器可以按超时收它。语句执行期间是 busy（见下面读包成功的分支），
+        // 不会被回收器在语句中途掐断。
+        CURRENT_CONN_ID.with(|c| {
+            let cid = c.get();
+            if cid != 0 {
+                set_connection_busy(cid, false);
+            }
+        });
         // v3.12.0 Issue #4682: refresh the idle-reaper timestamp on
         // every successful read. The touch must happen AFTER a
         // successful read, so we read the packet first and only touch
@@ -5604,6 +5693,9 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     let cid = c.get();
                     if cid != 0 {
                         touch_connection(cid);
+                        // #FL-1：从这一刻起本连接在**执行命令**，直到下一轮循环
+                        // 开头重新算作 idle。长语句执行期间不会被回收器收走。
+                        set_connection_busy(cid, true);
                     }
                 });
                 p
@@ -8755,6 +8847,111 @@ pub mod testing {
     use std::sync::{Arc, Mutex};
     use std::thread::JoinHandle;
 
+    /// #FL-1：进程内 harness 的**服务端 panic 捕获**。
+    ///
+    /// 服务端线程 panic 时，客户端能看到的只有 `Io(UnexpectedEof)`（连接被掐断），
+    /// 服务端到底为什么挂的完全拿不到 —— 这正是 FL-1 记的那条「服务端侧的失败原因
+    /// 一点都拿不到（进程内 harness）」。这里把 panic 记进进程级缓冲，测试可以在
+    /// 失败时取出来打印，让失败从「不可诊断」变成「可诊断」。
+    ///
+    /// 注意：钩子是**链式**的 —— 捕获之后仍然调用原来的钩子，默认的 panic 输出
+    /// 不会被吞掉。
+    pub static CAPTURED_PANICS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    static PANIC_HOOK: std::sync::Once = std::sync::Once::new();
+
+    /// 安装 panic 捕获钩子（幂等；进程内第一个 `start_ephemeral` 时装上）。
+    pub fn install_panic_capture() {
+        PANIC_HOOK.call_once(|| {
+            let previous = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                let location = info
+                    .location()
+                    .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                    .unwrap_or_else(|| "<unknown location>".to_string());
+                let payload = info
+                    .payload()
+                    .downcast_ref::<&str>()
+                    .map(|s| (*s).to_string())
+                    .or_else(|| info.payload().downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "<non-string panic payload>".to_string());
+                if let Ok(mut buf) = CAPTURED_PANICS.lock() {
+                    buf.push(format!("panic at {}: {}", location, payload));
+                }
+                previous(info);
+            }));
+        });
+    }
+
+    /// 取走并清空已捕获的 panic（测试失败时把它们打出来）。
+    pub fn take_captured_panics() -> Vec<String> {
+        let mut buf = CAPTURED_PANICS.lock().expect("panic buffer lock");
+        std::mem::take(&mut *buf)
+    }
+
+    /// #FL-1：进程内 harness 的**服务端日志捕获**。
+    ///
+    /// 之前 harness **不装 tracing subscriber** ⇒ 服务端线程里的
+    /// `tracing::warn!` / `tracing::error!`（例如「LOAD DATA buf exceeds 4×
+    /// bulk_buf_size」「row was skipped」）**根本没有去处**：进程里没有 subscriber，
+    /// 事件就被丢弃了。所以红的那一刻，服务端说了什么完全拿不到。
+    ///
+    /// 这里装一个把事件写进进程级缓冲的 subscriber，测试失败时可取出来打印。
+    pub static CAPTURED_LOGS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    static TRACING_HOOK: std::sync::Once = std::sync::Once::new();
+
+    struct BufferWriter;
+
+    impl std::io::Write for BufferWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let text = String::from_utf8_lossy(buf).to_string();
+            if let Ok(mut lines) = CAPTURED_LOGS.lock() {
+                for line in text.lines() {
+                    let line = line.trim_end().to_string();
+                    if !line.is_empty() {
+                        lines.push(line);
+                    }
+                }
+            }
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct BufferMakeWriter;
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for BufferMakeWriter {
+        type Writer = BufferWriter;
+        fn make_writer(&self) -> Self::Writer {
+            BufferWriter
+        }
+    }
+
+    /// 安装 tracing 捕获（幂等；进程内第一个 `start_ephemeral` 时装上）。
+    ///
+    /// 装不上（已有别的 subscriber）不算失败 —— 那说明有人在别处装了，事件仍有去处。
+    pub fn install_log_capture() {
+        TRACING_HOOK.call_once(|| {
+            let subscriber = tracing_subscriber::fmt()
+                .with_writer(BufferMakeWriter)
+                .with_ansi(false)
+                .with_target(true)
+                .with_max_level(tracing::Level::DEBUG)
+                .finish();
+            let _ = tracing::subscriber::set_global_default(subscriber);
+        });
+    }
+
+    /// 取走并清空已捕获的服务端日志（测试失败时把它们打出来）。
+    pub fn take_captured_logs() -> Vec<String> {
+        let mut buf = CAPTURED_LOGS.lock().expect("log buffer lock");
+        std::mem::take(&mut *buf)
+    }
+
     /// One connection-handling job dispatched to a worker via the
     ///
     /// V312-32: `config` carries the per-server `EphemeralConfig` so the
@@ -9201,6 +9398,10 @@ pub mod testing {
     /// a handle to it. The server runs on a background thread; the
     /// handle's `Drop` joins the thread and cleans up the temp data dir.
     pub fn start_ephemeral(config: EphemeralConfig) -> Result<EphemeralHandle, std::io::Error> {
+        // #FL-1：装上 panic 捕获钩子与服务端日志捕获，让服务端线程挂掉/报错时
+        // 客户端侧能看到原因。
+        install_panic_capture();
+        install_log_capture();
         // V312-32: the config is now passed to the server thread via
         // `Arc::clone` rather than published to a process-global. Each
         // `start_ephemeral` call gets its own `Arc<EphemeralConfig>`,

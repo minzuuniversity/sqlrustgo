@@ -83,6 +83,10 @@ def main():
                     help="分诊 jsonl（expert_triage.py 产物），可多份；同一 issue 需 >=2 个不同 family 才算 cross-checked")
     ap.add_argument("--credited-lineages", default="",
                     help='comma separated, e.g. "gpt,qwen"；来自 expert_ladder health 实测')
+    ap.add_argument("--qualifying-lineages", default="gpt,deepseek",
+                    help="**算数的**血统（默认 gpt,deepseek）：属主裁定「两专家是 deepseek 与 "
+                         "chatGPT，本地大模型不作裁定/复核血统」。只有这些血统的独立分诊才让一行 "
+                         "升到 cross-checked；其余血统的复核照样记录在 triage_families 里，但不 confer 等级")
     ap.add_argument("--source-run", default="", help="本次生成的 run id（AFP 5 字段之一）")
     ap.add_argument("--source-agent", default="", help="生成者身份（AFP 5 字段之一）")
     ap.add_argument("--out-jsonl", required=True)
@@ -102,6 +106,7 @@ def main():
 
     lineages = [x.strip() for x in args.credited_lineages.split(",") if x.strip()]
     ladder_ready = len(set(lineages)) >= 2
+    qualifying = {x.strip() for x in args.qualifying_lineages.split(",") if x.strip()}
 
     rows, missing = [], []
     graded = 0
@@ -109,8 +114,12 @@ def main():
         num = int(iss["number"])
         recs = [r for r in triage.get(num, []) if ((r.get("triage") or {}) and r.get("triage_ok") is not False)]
         famset = {family_of(r) for r in recs}
-        # 行级证据等级：单血统分诊只能 advisory-only，即便 ladder 本身有两个 credited 血统
-        grade = "cross-checked" if (ladder_ready and len(famset) >= 2) else "advisory-only"
+        # 行级证据等级：**合格血统**里要有 >=2 个不同 family 才算 cross-checked。
+        # 属主裁定：两专家是 deepseek 与 chatGPT ⇒ 合格血统 = {gpt, deepseek}；
+        # 本地大模型（例如 qwen-strata / qwen-llamacpp）的复核**记录在案**（triage_families），
+        # 但不 confer 等级 —— 否则「双血统」是靠一个本地模型凑出来的。
+        qual_fams = famset & qualifying
+        grade = "cross-checked" if (ladder_ready and len(qual_fams) >= 2) else "advisory-only"
         if grade == "cross-checked":
             graded += 1
         t = recs[0] if recs else None
@@ -139,7 +148,9 @@ def main():
             "triaged_by": (t or {}).get("triaged_by"),
             "evidence_grade": grade,
             "triage_families": sorted(famset),
+            "qualifying_families": sorted(qual_fams),
             "credited_lineages": lineages,
+            "qualifying_lineages": sorted(qualifying),
         })
 
     inputs = [args.issues] + list(args.triage)
@@ -161,6 +172,7 @@ def main():
     now_iso = _dt.datetime.now(_dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     grade_ct = collections.Counter(r["evidence_grade"] for r in rows)
     fams = sorted({f for r in rows for f in r["triage_families"]})
+    qual_fams_all = sorted({f for r in rows for f in r.get("qualifying_families", [])})
     pr = collections.Counter(r["priority"] or "priority/(none)" for r in rows)
     dm = collections.Counter(r["domain"] or "(未分诊)" for r in rows)
     au = collections.Counter(r["automatable"] or "(未分诊)" for r in rows)
@@ -180,6 +192,9 @@ def main():
                  "另 %d 个已关闭（不在台账范围内）"
                  % (len(issues), triage_records, len(triage),
                     live_covered, len(triage) - live_covered))
+    lines.append("- 合格血统（算数的）：%s" % ",".join(sorted(qualifying)))
+    lines.append("  - 口径：属主裁定（2026-11-06）「两专家是 deepseek 与 chatGPT，本地大模型不作裁定/复核血统」")
+    lines.append("  - 本台账实际由合格血统覆盖的 family：%s" % (", ".join(qual_fams_all) or "-"))
     lines.append("- 证据等级（行级）：%s；ladder credited lineage=%s；实际分诊席位血统=%s"
                  % (" / ".join("%s %d" % kv for kv in grade_ct.most_common()),
                     ",".join(lineages) or "(none)", ",".join(fams)))

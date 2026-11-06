@@ -20,7 +20,7 @@
 //!
 //! # Output
 //!
-//! Writes a JSON summary to `benchmarks/results/sf1/wire.json`
+//! Writes a JSON summary to `tools/benchmarks/results/sf1/wire.json`
 //! (per Issue #2948 § 3) with per-query p50/p95/p99 + total
 //! wall-clock + row count for sanity.
 
@@ -225,7 +225,7 @@ fn bench_tpch_wire(c: &mut Criterion) {
     }
     report.insert("queries".into(), serde_json::Value::Array(queries));
 
-    let out_path = PathBuf::from("benchmarks/results/sf1/wire.json");
+    let out_path = PathBuf::from("tools/benchmarks/results/sf1/wire.json");
     if let Some(parent) = out_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }

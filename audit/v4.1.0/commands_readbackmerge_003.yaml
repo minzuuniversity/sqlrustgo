@@ -1,0 +1,137 @@
+# 20261106-readbackmerge-003 —— 对方线复算批 + 合并口径收敛批（omp-macmini/mcode-readback-into-develop）的权威验收证据
+#
+# 与 -001 / -002 的差别只有一处：**`-001` / `-002` 里 `gate-tpch-known-differences`
+# 这条命令我写错了脚本名**（连字符 vs 下划线）⇒ exit 127（命令不存在）。本文件是
+# 改正后的版本，其余命令与 -002 一致。
+#
+# 本批并入对方线的 develop tip 现读复算批（PR #5613 的内容：MERGE-1 / DEBT-2 /
+# ROW-1 三条新发现 + 归档 run 20261106-readback-001 + 他们的独立复测），并在合并时
+# 做了三件处置：
+#   ① 合并口径写成唯一规则（BRANCH_GOVERNANCE.md §7.4）；
+#   ② 两侧标记归一为指名形式（〔mcode-macmini 线补记〕/〔omp-macmini 线补记〕）；
+#   ③ 修 ROW-1 指出的 WIRE-1 行文自相矛盾（acceptance 与「完成=撤销原判据」对齐）。
+# 另附 IL-9 行的证据更正（撤回不存在的 CI run id，改用可复现的实测事实）。
+#
+# 已知红项一条：gate-main-freshness（C-MAIN-02，GA 前 main 封存 ⇒ 结构红）。
+# DEBT-2 记录的「债务不变量在 tip 现场就是红的」（evidence_inventory findings=25）
+# 是**结论本身**，按对方的口径留红、不代为绑定台账（#5603 属主裁决）。
+
+- id: verify-merged-readback-run
+  name: "对方线的归档 run 合并后仍完好（verify ⇒ OK，evidence_hash 不变）"
+  cmd: python3.14 audit/v4.1.0/audit_run.py verify --run-id 20261106-readback-001
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-honesty-check
+  name: "honesty 判据（分母 168、夹具 57、fails 必须 0）"
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-doc-facts-check
+  name: "文档事实与索引一致（看板 + §7.4 治理文档改动，索引已重生）"
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-registry-denominator
+  name: "门禁注册表：分母必须仍是 168"
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+
+- id: probe-gate-registry
+  name: "门禁注册表自检（9 个变异必须全被抓住）"
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-kanban-consistency
+  name: "看板 JSONL 与渲染出的 MD 必须逐行一致（并集后 79 行）"
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+
+- id: gate-kanban-counts
+  name: "看板计数（完成 32 / 待复核 26 / 阻塞 16 / 未开始 5）"
+  cmd: python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+
+- id: probe-board-markers
+  name: "两侧标记都在（机器核对「谁留谁丢」：指名补记两侧计数都必须 > 0）"
+  cmd: |
+    python3 - <<'PYEOF'
+    import json, sys
+    rows=[json.loads(l) for l in open("docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl",encoding="utf-8") if l.strip()]
+    blob="\n".join(json.dumps(r,ensure_ascii=False) for r in rows)
+    theirs=blob.count("〔mcode-macmini 线补记 —— ")
+    ours=blob.count("〔omp-macmini 线补记 —— ")
+    unnamed=blob.count("〔另一侧补记 —— ")
+    print(f"对方线补记={theirs} 本线补记={ours} 不指名残留={unnamed}")
+    ok = theirs > 0 and ours > 0 and unnamed == 0
+    print("VERDICT:", "OK（两侧都在且都指名）" if ok else "BAD（有一侧丢失或仍有不指名标记）")
+    sys.exit(0 if ok else 1)
+    PYEOF
+  cwd: .
+  timeout_sec: 300
+
+- id: ledger-verify
+  name: "issue 台账核验（110 行全分诊、血统 ≥2）"
+  cmd: python3.14 audit/v4.1.0/verify_ledger.py
+  cwd: .
+  timeout_sec: 600
+
+- id: probe-claims-selftest
+  name: "五类声称的反向变异自检（17 臂必须全 VERIFIED）"
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1200
+
+- id: gate-directory-policy-check
+  name: "目录策略判定口径必须 rc=0"
+  cmd: python3.14 audit/v4.1.0/directory_policy.py check
+  cwd: .
+  timeout_sec: 600
+
+- id: probe-directory-policy-mutations
+  name: "目录策略反向变异（5 臂自带夹具）"
+  cmd: python3.14 audit/v4.1.0/dir_policy_mutations_omp.py
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-storage-semantics
+  name: "存储语义声明台账必须与 #5409 生产链臂一致"
+  cmd: python3.14 audit/v4.1.0/storage_semantics_claims.py check
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-ci-checkout-consistency
+  name: "CI checkout 一致性门禁（必须仍绿）"
+  cmd: bash scripts/gate/check_ci_checkout_consistency.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-fmt-check
+  name: "rustfmt：workspace 的 fmt 欠账必须为空"
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-test-count-monotonic
+  name: "测试计数单调门禁"
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 1800
+
+- id: gate-tpch-known-differences
+  name: "TPC-H 已知差异登记表必须为空且合法（脚本名是下划线：check_tpch_known_differences.sh）"
+  cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  timeout_sec: 300
+
+- id: gate-main-freshness
+  name: "C-MAIN-02 main 新鲜度（GA 前 main 封存 ⇒ 结构红，不是本批回归）"
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600

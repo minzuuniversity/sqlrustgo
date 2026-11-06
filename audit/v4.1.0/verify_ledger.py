@@ -9,13 +9,14 @@
 默认校验 B 代；用 --ledger-md/--ledger-jsonl/--triage 可切回 A 代，两套都必须各自自洽。
 
 判据（任一不成立 ⇒ exit 1，绝不"看情况"）：
-  L1 台账行数 == 分诊 jsonl 覆盖的 issue 数，且每行都有 domain / automatable
+  L1 台账的每一行都有分诊记录，且每行都有 domain / automatable
+     （台账范围 vs 当期 open 由 probe_ledger_freshness.py snapshot-count 负责）
   L2 每行 evidence_grade ∈ {advisory-only, cross-checked}；
      cross-checked 的行必须真的被 >=2 个 family 分诊过（对照 triage jsonl 现场重算）；
      且 ladder credited lineage 少于 2 个时，任何行都不许是 cross-checked（与 issue_ledger 同规则）
   L3a MD 里记录的输入指纹 == 仓内文件的实测 sha256；且必须显式记录 issues 快照指纹
   L3b MD 的 evidence_hash == 由 MD 自记输入指纹按名排序拼接后重算（生成端同式）
-  L4 不完整性显式化：MD 若写了"缺分诊行"，行数必须与之一致
+  L4 不完整性显式化：MD 若写了"缺分诊行"，条数必须与台账行缺分诊/domain 的条数一致
 
 反向变异（AGENTS §2.5，由 verify_ledger_mutation.sh 机器复现，四臂）：
   CTRL  原样 B 代 ⇒ 必须绿（否则本校验永远红，等于没判据）
@@ -49,7 +50,11 @@ DEFAULT_TRIAGE = [DOCS / "ISSUE_TRIAGE_2026-11-05.jsonl",
                   # IL-2：gpt 血统对 35 条 P0 的批量复核（第二个 family）
                   DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl",
                   # IL-2：live 标签下新变成 P0 的 8 条（同为 gpt 血统批量复核）
-                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl"]
+                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl",
+                  # 2026-11-06：当期 open 里此前没分诊的 6 条（gpt 血统全过、
+                  # qwen 血统 3 条过 3 条弃权）—— 与生成端/新鲜度探针同一组。
+                  DOCS / "ISSUE_TRIAGE_2026-11-06D.jsonl",
+                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-06D.jsonl"]
 
 FAILS: list[str] = []
 
@@ -68,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ledger-md", default=str(DEFAULT_LEDGER_MD))
     ap.add_argument("--ledger-jsonl", default=str(DEFAULT_LEDGER_JSONL))
     ap.add_argument("--triage", action="append", default=None,
-                    help="分诊 jsonl（可重复；缺省 = B 代四件套）")
+                    help="分诊 jsonl（可重复；缺省 = 与生成端/新鲜度探针同一组六件套）")
     ap.add_argument("--family-min", type=int, default=2,
                     help="cross-checked 所需的最少 family 数（仅变异臂 A 用）")
     args = ap.parse_args(argv)
@@ -93,12 +98,26 @@ def main(argv: list[str] | None = None) -> int:
             if rec.get("triage_ok"):
                 triage[int(rec["number"])].append(rec)
 
-    # L1
-    if len(rows) != len(triage):
-        fail(f"L1 行数 {len(rows)} != 有分诊行的 issue 数 {len(triage)}")
+    # L1：**逐行**判据 —— 台账的每一行都必须有分诊记录（⇒ 才有 domain/automatable）。
+    #
+    # 旧判据是「行数 == 有分诊行的 issue 数」，那把**台账的范围**和**分诊归档的
+    # 范围**当成一回事：当期 open 集与分诊集只要不完全重合（issue 在分诊之后被
+    # 关闭，或当期新开还没分诊），它就报「行数不对」—— 真问题（范围漂移）被伪装成
+    # 「台账行数错」，而且它对「台账主动少收了一条仍然开放的已分诊 issue」也说同一句
+    # 话，**分不清这两种情况**。
+    #
+    # 现在：L1 只管「每行站得住」（有分诊记录 + 有 domain/automatable）；
+    # 「台账范围 vs 当期 open」由 `probe_ledger_freshness.py snapshot-count` 负责
+    # （它直接拉现场 open 集，缺行会点名差集）。两个判据分工明确，缺行仍然会被抓住。
+    no_triage = [r["number"] for r in rows if int(r["number"]) not in triage]
+    if no_triage:
+        fail(f"L1 {len(no_triage)} 行没有分诊记录（台账行必须站得住）: {no_triage[:5]}")
     no_field = [r["number"] for r in rows if not r.get("domain") or not r.get("automatable")]
     if no_field:
         fail(f"L1 {len(no_field)} 行缺 domain/automatable: {no_field[:5]}")
+    print(json.dumps({"l1_rows": len(rows), "l1_triage_scope": len(triage),
+                      "l1_scope_note": "台账范围 vs 当期 open 的差集由 probe_ledger_freshness.py snapshot-count 负责"},
+                     ensure_ascii=False))
 
     md = ledger_md.read_text(encoding="utf-8")
 
@@ -109,18 +128,27 @@ def main(argv: list[str] | None = None) -> int:
         fail("L2 MD 缺 ladder credited lineage 字段（等级规则无法核对）")
     lineages = {x.strip() for x in (ml.group(1).split(",") if ml else []) if x.strip()}
     ladder_ready = len(lineages) >= 2
+    # 合格血统（**算数的**血统）从 MD 里读 ⇒ 与生成端同一个事实源。
+    # 属主裁定（2026-11-06）：两专家是 deepseek 与 chatGPT；本地大模型（如 qwen-strata /
+    # qwen-llamacpp）的复核**记录在案**（triage_families），但**不 confer 等级** ——
+    # 否则「双血统」是靠一个本地模型凑出来的。
+    mq = re.search(r"合格血统（算数的）：([A-Za-z0-9_,\-]+)", md)
+    if not mq:
+        fail("L2 MD 缺「合格血统」字段（哪些血统的复核算数，无法核对）")
+    qualifying = {x.strip() for x in (mq.group(1).split(",") if mq else []) if x.strip()}
 
     grade_ct = collections.Counter()
     for r in rows:
         fams = {((t.get("triaged_by") or {}).get("family") or "")
                 for t in triage.get(r["number"], [])}
         fams.discard("")
+        qual = fams & qualifying
         want = ("cross-checked"
-                if (ladder_ready and len(fams) >= args.family_min) else "advisory-only")
+                if (ladder_ready and len(qual) >= args.family_min) else "advisory-only")
         grade_ct[r.get("evidence_grade")] += 1
         if r.get("evidence_grade") != want:
             fail(f"L2 #{r['number']} 自报 {r.get('evidence_grade')}，"
-                 f"现场重算应为 {want}（families={sorted(fams)}）")
+                 f"现场重算应为 {want}（families={sorted(fams)}，合格血统={sorted(qual)}）")
         if r.get("evidence_grade") not in ("advisory-only", "cross-checked"):
             fail(f"L2 #{r['number']} 证据等级非法: {r.get('evidence_grade')}")
 
@@ -150,8 +178,12 @@ def main(argv: list[str] | None = None) -> int:
                  f"（自记输入 {len(recorded)} 条）")
 
     # L4 显式不完整
+    # L4：「缺分诊行」声明只对**台账行缺分诊/domain**负责（与 L1 同一口径）。
+    # 旧判据把「台账范围 != 分诊归档范围」也算进来 ⇒ 台账按当期集收窄时会被要求
+    # 声明「缺分诊行」，而范围问题由 `probe_ledger_freshness.py snapshot-count`
+    # 负责（它能拉现场 open 集，并点名缺哪几条）。
     m2 = re.search(r"缺分诊行：(\d+) 条", md)
-    if bool(m2) != bool(no_field or (len(rows) != len(triage))):
+    if bool(m2) != bool(no_field):
         fail("L4 MD 的缺行声明与实际不一致")
 
     print(json.dumps({

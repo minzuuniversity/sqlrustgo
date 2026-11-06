@@ -1,0 +1,10 @@
+ARM CTRL mode=snapshot-count rc=0 {"kind": "ledger_freshness", "mode": "snapshot-count", "untriaged_open": [], "fresh_open": 104, "ledger_rows": 104, "expected_rows": 104, "snapshot_sha256": "sha256:fe1ddba3b410788988e36f38db5632bedd1
+  expect rc=0 got rc=0 ok=1
+ARM CTRL mode=replay-rows rc=0 {"kind": "ledger_freshness", "mode": "replay-rows", "committed_rows": 104, "replay_rows": 104, "ledger_rc": 0, "compared_fields": 15, "row_diffs": 0, "sample_diffs": [], "replay_fingerprint": "sha256:
+  expect rc=0 got rc=0 ok=1
+ARM MUT-drop-row mode=snapshot-count rc=1 {"kind": "ledger_freshness", "mode": "snapshot-count", "untriaged_open": [], "fresh_open": 104, "ledger_rows": 103, "expected_rows": 104, "snapshot_sha256": "sha256:fe1ddba3b410788988e36f38db5632bedd1
+  expect rc!=0 got rc=1 ok=1
+ARM MUT-domain-rewrite mode=replay-rows rc=1 {"kind": "ledger_freshness", "mode": "replay-rows", "committed_rows": 104, "replay_rows": 104, "ledger_rc": 0, "compared_fields": 15, "row_diffs": 1, "sample_diffs": [{"number": 5114, "field": "domain
+  expect rc!=0 got rc=1 ok=1
+mutation-selftest: ok=4 bad=0
+mutation-selftest: OK (CTRL 绿；删行 / 改 domain 均红)

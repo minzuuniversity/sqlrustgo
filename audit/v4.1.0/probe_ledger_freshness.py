@@ -35,10 +35,18 @@ DOCS = ROOT / "docs" / "releases" / "v4.1.0"
 GOV = ROOT / "scripts" / "gate" / "gov_probe.py"
 LEDGER = ROOT / "scripts" / "gate" / "issue_ledger.py"
 
+# 与 `verify_ledger.py` / `issue_ledger.py` 用**同一组**分诊件（六件套）：
+# 之前这里只列了四件 ⇒ replay 用四件算等级、核对器用六件算等级 ⇒ 同一批行的
+# 自报等级与现场重算不一致（L2 报十几条「自报 advisory-only，现场应为 cross-checked」）。
+# 三处口径必须一致，否则「等级」这件事没有单一事实源。
 TRIAGE_FILES = [DOCS / "ISSUE_TRIAGE_2026-11-05.jsonl",
                 DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl",
                 DOCS / "ISSUE_TRIAGE_2026-11-05B.jsonl",
-                DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05B.jsonl"]
+                DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05B.jsonl",
+                DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl",
+                DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl",
+                DOCS / "ISSUE_TRIAGE_2026-11-06D.jsonl",
+                DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-06D.jsonl"]
 
 # comments/url 会随时间变（评论数、URL 前缀），比对这些字段只会制造假红。
 COMPARE_FIELDS = ("number", "title", "priority", "cost", "cap", "state_label",
@@ -160,11 +168,36 @@ def main(argv: list[str] | None = None) -> int:
         fresh_nums = {int(i["number"]) for i in fresh}
         led_nums = {int(r["number"]) for r in rows}
 
+        # 参照集：**已分诊且仍开放**的 issue。台账的职责是记录「有分诊结论的 issue」
+        # （每行都必须有分诊记录与 domain/automatable ⇒ 由 verify_ledger 的 L1 把关），
+        # 所以「当期 open」不等于「台账该有的行集」—— 当期 open 里还有没分诊的
+        # （席位不可用 ⇒ 分诊没跑），那些行**不能**进台账（进了就没有 domain/automatable）。
+        #
+        # 旧口径拿「当期 open 全部」当参照集 ⇒ 只要有一条当期 open 没分诊，
+        # 台账就必然「行数不对」⇒ 新鲜度判据与 L1 互相死锁（谁先修都不绿）。
+        # 现在：参照集 = 已分诊 ∩ 当期 open；**当期 open 里没分诊的那些单列出来**
+        # （untriaged_open），它们是「分诊量缺口」，不是「台账漂移」。
+        triaged_nums: set[int] = set()
+        for p in TRIAGE_FILES:
+            if not p.is_file():
+                continue
+            for l in p.read_text(encoding="utf-8").splitlines():
+                if not l.strip():
+                    continue
+                rec = json.loads(l)
+                if rec.get("triage_ok"):
+                    triaged_nums.add(int(rec["number"]))
+        expected_nums = fresh_nums & triaged_nums
+        untriaged_open = sorted(fresh_nums - triaged_nums)
+
         if args.mode == "snapshot-count":
-            drift_missing = sorted(led_nums - fresh_nums)   # 台账有、当期没有（已关）
-            drift_extra = sorted(fresh_nums - led_nums)     # 当期有、台账没有（新开）
+            drift_missing = sorted(expected_nums - led_nums)   # 该在台账里却不在
+            drift_extra = sorted(led_nums - expected_nums)     # 台账里有却不该在（已关）
             out = {"kind": "ledger_freshness", "mode": args.mode,
+               "untriaged_open": untriaged_open,
                    "fresh_open": info.get("count"), "ledger_rows": len(rows),
+                   "expected_rows": len(expected_nums),
+                   "untriaged_open": untriaged_open,
                    "snapshot_sha256": info.get("sha256"),
                    "closed_since_snapshot": drift_missing,
                    "opened_since_snapshot": drift_extra}
@@ -192,6 +225,8 @@ def main(argv: list[str] | None = None) -> int:
                              ensure_ascii=False))
             return 2
         replay = committed_ledger(out_j)
+        # 重放是按「当期 open 全集」生成的 ⇒ 会多出当期 open 里**没分诊**的那些行
+        # （它们不在台账该有的行集里）⇒ 比较时按同一参照集取子集，多出的单列。
         rp = {int(r["number"]): r for r in replay}
         diffs: list[dict] = []
         for r in rows:
@@ -203,7 +238,10 @@ def main(argv: list[str] | None = None) -> int:
                 if r.get(f) != rp[n].get(f):
                     diffs.append({"number": n, "field": f,
                                   "committed": r.get(f), "replay": rp[n].get(f)})
-        extra = sorted(set(rp) - led_nums)
+        # 重放多出的行里，**当期 open 但没分诊**的那些不是台账漂移（它们按定义
+        # 不该在台账里）⇒ 不算 diff，单列报告；其余多出即真漂移。
+        extra_all = sorted(set(rp) - led_nums)
+        extra = [n for n in extra_all if n not in untriaged_open]
         if extra:
             diffs += [{"number": n, "field": "(row)", "why": "重放多出的行"} for n in extra]
 
