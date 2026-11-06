@@ -42,13 +42,13 @@ jobs:
 
       - name: Run criterion benchmarks
         run: |
-          mkdir -p benchmarks/results/sf01
+          mkdir -p tools/benchmarks/results/sf01
           for t in parser_bench bench_insert bench_cbo; do
-            cargo bench --bench "$t" 2>&1 | tee "benchmarks/results/sf01/${t}.txt"
+            cargo bench --bench "$t" 2>&1 | tee "tools/benchmarks/results/sf01/${t}.txt"
           done
 
       # NOTE (2026-10-01): a `python scripts/compare_benchmarks.py
-      # benchmarks/baselines/sf01 benchmarks/results/sf01` step used to run
+      # tools/benchmarks/baselines/sf01 tools/benchmarks/results/sf01` step used to run
       # here. That script loads *.json and exits 1 on a >20% regression, but
       # `cargo bench` (criterion) emits text, so the step could only ever fail
       # on a JSON decode error. There is no criterion-to-JSON converter in the
@@ -58,4 +58,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results-sf01
-          path: benchmarks/results/sf01/
+          path: tools/benchmarks/results/sf01/
