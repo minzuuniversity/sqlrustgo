@@ -1,109 +1,96 @@
-run_id: 20261106-readback-001
-source_agent: mcode-macmini
-note: >-
-  develop tip 现读复算：BIN-1/WIRE-1 两行「完成」的独立复测（自建二进制，可归因）、
-  看板/标签/度量三项现读、债务不变量现场判定、两线合并文本按侧丢异的计数。
-  本 run 只跑探针，不跑 168 门禁（门禁属属主动作）。
-commands:
-  - id: head-pin
-    name: 钉住被测代码基线（HEAD + 本线二进制哈希）
-    cmd: |
-      set -e
-      git rev-parse HEAD
-      shasum -a 256 target/debug/sqlrustgo-mysql-server | awk '{print "server_bin_sha256="$1}'
-      ls -l target/debug/sqlrustgo-mysql-server
-      /usr/bin/python3 - <<'PYIN'
-      import json,subprocess
-      out={"kind":"line_attribution","branch":subprocess.run(["git","rev-parse","--abbrev-ref","HEAD"],capture_output=True,text=True).stdout.strip(),
-           "head":subprocess.run(["git","rev-parse","HEAD"],capture_output=True,text=True).stdout.strip(),
-           "develop_tip":subprocess.run(["git","rev-parse","gitea252/develop/v4.1.0"],capture_output=True,text=True).stdout.strip()}
-      out["head_is_develop_tip"]= out["head"]==out["develop_tip"]
-      print(json.dumps(out,ensure_ascii=False))
-      PYIN
-    cwd: .
-    timeout_sec: 120
-  - id: binmode-retest
-    name: BIN-1 独立复测（binmode_probe，用本线自建二进制）
-    cmd: /usr/bin/python3 audit/v4.1.0/binmode_probe.py --out test_results/binmode_r13
-    cwd: .
-    timeout_sec: 600
-  - id: binmode-judge
-    name: BIN-1 判据：false_success_count 必须为 0（r11 跨线旧二进制实测为 3）
-    cmd: |
-      /usr/bin/python3 - <<'PYIN'
-      import glob,json,sys
-      p=sorted(glob.glob('test_results/binmode_r13/*.json'))
-      if not p: print("NOT-OK: 没有 binmode 输出"); sys.exit(2)
-      d=json.load(open(p[-1]))
-      n=d.get('false_success_count'); 
-      print(json.dumps({"kind":"binmode_judge","file":p[-1],"false_success_count":n,
-                        "server_bin":d.get('server_bin'),"sha256":(d.get('server_bin_sha256') or '')[:12],
-                        "is_this_line":d.get('server_bin_is_this_line')},ensure_ascii=False))
-      if n is None: print("NOT-OK: 没读到 false_success_count（INCOMPLETE）"); sys.exit(2)
-      if n!=0: print("NOT-OK: 仍有假成功 %d 条"%n); sys.exit(3)
-      PYIN
-    cwd: .
-    timeout_sec: 120
-  - id: cap-smoke
-    name: 使用面复测（capability_smoke run：真 CLI+真 server+真落盘+判别臂）
-    cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py run --out test_results/cap_r13
-    cwd: .
-    timeout_sec: 900
-  - id: wire-hex-judge
-    name: WIRE-1 撤销量据复核：被测行包与参考服务端(MariaDB)行包必须逐字节同
-    cmd: |
-      /usr/bin/python3 - <<'PYIN'
-      import glob,json,sys
-      p=sorted(glob.glob('test_results/cap_r13/*.json'))
-      if not p: print("NOT-OK: 没有 capability_smoke 输出"); sys.exit(2)
-      d=json.load(open(p[-1]))
-      prod=d.get('prod',{}).get('obs',{}); ref=d.get('wire_reference_control') or {}
-      a=prod.get('wire_rows_hex') or {}; b=ref.get('rows_hex') or {}
-      print(json.dumps({"kind":"wire_hex_judge","prod_hex":a,"ref_hex":b,
-                        "ref_available":ref.get('available'),
-                        "prod_client_raw":prod.get('null_wire_raw'),
-                        "ref_client_raw":ref.get('client_raw'),
-                        "prod_ambiguous":prod.get('null_wire_ambiguous'),
-                        "hex_equal":bool(a) and a==b},ensure_ascii=False))
-      if not ref.get('available'): print("NOT-OK: 参考服务端不可用 ⇒ 撤销判据①无法核对(INCOMPLETE)"); sys.exit(2)
-      if not (a and a==b): print("NOT-OK: 被测与参考的行包字节不同 ⇒ 撤销判据②不成立"); sys.exit(3)
-      if not ref.get('client_batch_both_null'): print("NOT-OK: 参考端并未同样打印成 NULL ⇒ 撤销判据①不成立"); sys.exit(3)
-      PYIN
-    cwd: .
-    timeout_sec: 120
-  - id: kanban-check
-    name: 看板台账 check + 计数（md 与 jsonl 必须一致）
-    cmd: |
-      /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
-      /usr/bin/python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
-    cwd: .
-    timeout_sec: 180
-  - id: labels-check
-    name: ISSUE 标签现读（open_total/per_dim/unledgered）
-    cmd: /usr/bin/python3 audit/v4.1.0/issue_labels.py check --input live
-    cwd: .
-    timeout_sec: 240
-  - id: gov-metrics
-    name: 治理度量现读（分母 168 与各类漂移计数）
-    cmd: /usr/bin/python3 scripts/gate/gov_probe.py metrics
-    cwd: .
-    timeout_sec: 240
-  - id: debt-invariant
-    name: 债务不变量现场判定（预期为红：debt-grew + unbound-new-claim）
-    cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify
-    cwd: .
-    timeout_sec: 300
-  - id: merge-rule-count
-    name: 两线合并按侧丢异的计数（本线 marker 存活 vs develop 侧 marker 存活）
-    cmd: |
-      set -e
-      echo "本线(63a395cf9d) 合并 marker 计数:"
-      git grep -c '合并保留两侧证据' 63a395cf9d -- docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl || echo "  0（该提交里 4 处）"
-      echo "develop tip 合并 marker 计数:"
-      git grep -c '合并保留两侧证据' gitea252/develop/v4.1.0 -- docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl || echo "  0  => 另一线写的证据文本被按侧丢弃"
-      echo "develop tip「另一侧」补记计数:"
-      git grep -c '另一侧' gitea252/develop/v4.1.0 -- docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl || true
-      echo "我线是否已全部进 develop:"
-      git merge-base --is-ancestor 63a395cf9d gitea252/develop/v4.1.0 && echo "  是（PR #5606 已是空 PR）"
-    cwd: .
-    timeout_sec: 180
+- id: head-pin
+  name: 钉住被测代码基线（HEAD + 本线二进制哈希）
+  cmd: "set -e\ngit rev-parse HEAD\nshasum -a 256 target/debug/sqlrustgo-mysql-server | awk '{print \"\
+    server_bin_sha256=\"$1}'\nls -l target/debug/sqlrustgo-mysql-server\n/usr/bin/python3 - <<'PYIN'\n\
+    import json,subprocess\nout={\"kind\":\"line_attribution\",\"branch\":subprocess.run([\"git\",\"rev-parse\"\
+    ,\"--abbrev-ref\",\"HEAD\"],capture_output=True,text=True).stdout.strip(),\n     \"head\":subprocess.run([\"\
+    git\",\"rev-parse\",\"HEAD\"],capture_output=True,text=True).stdout.strip(),\n     \"develop_tip\"\
+    :subprocess.run([\"git\",\"rev-parse\",\"gitea252/develop/v4.1.0\"],capture_output=True,text=True).stdout.strip()}\n\
+    out[\"head_is_develop_tip\"]= out[\"head\"]==out[\"develop_tip\"]\nprint(json.dumps(out,ensure_ascii=False))\n\
+    PYIN\n"
+  cwd: .
+  timeout_sec: 120
+- id: binmode-retest
+  name: BIN-1 独立复测（binmode_probe，用本线自建二进制）
+  cmd: /usr/bin/python3 audit/v4.1.0/binmode_probe.py --out test_results/binmode_r13
+  cwd: .
+  timeout_sec: 600
+- id: binmode-judge
+  name: BIN-1 判据：false_success_count 必须为 0（r11 跨线旧二进制实测为 3）
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport glob,json,sys\ncands=sorted(glob.glob(\"test_results/binmode_r13/**/*.json\"\
+    , recursive=True))\nif not cands: print(\"NOT-OK: 没有 binmode 输出\"); sys.exit(2)\np=cands[-1]\n   \
+    \   d=json.load(open(p))\n      n=d.get('false_success_count')\n      print(json.dumps({\"kind\":\"\
+    binmode_judge\",\"file\":p,\"false_success_count\":n,\n                        \"server_bin\":d.get('server_bin'),\"\
+    sha256\":(d.get('server_bin_sha256') or '')[:12],\n                        \"is_this_line\":d.get('server_bin_is_this_line')},ensure_ascii=False))\n\
+    \      if n is None: print(\"NOT-OK: 没读到 false_success_count（INCOMPLETE）\"); sys.exit(2)\n      if\
+    \ n!=0: print(\"NOT-OK: 仍有假成功 %d 条\"%n); sys.exit(3)\n      PYIN\n"
+  cwd: .
+  timeout_sec: 120
+- id: cap-smoke
+  name: 使用面复测（capability_smoke run：真 CLI+真 server+真落盘+判别臂）
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py run --out test_results/cap_r13
+  cwd: .
+  timeout_sec: 900
+- id: wire-hex-judge
+  name: WIRE-1 撤销量据复核：被测行包与参考服务端(MariaDB)行包必须逐字节同
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport glob,json,sys\np=sorted(glob.glob('test_results/cap_r13/*.json'))\n\
+    if not p: print(\"NOT-OK: 没有 capability_smoke 输出\"); sys.exit(2)\nd=json.load(open(p[-1]))\nprod=d.get('prod',{}).get('obs',{});\
+    \ ref=d.get('wire_reference_control') or {}\na=prod.get('wire_rows_hex') or {}; b=ref.get('rows_hex')\
+    \ or {}\nprint(json.dumps({\"kind\":\"wire_hex_judge\",\"prod_hex\":a,\"ref_hex\":b,\n           \
+    \       \"ref_available\":ref.get('available'),\n                  \"prod_client_raw\":prod.get('null_wire_raw'),\n\
+    \                  \"ref_client_raw\":ref.get('client_raw'),\n                  \"prod_ambiguous\"\
+    :prod.get('null_wire_ambiguous'),\n                  \"hex_equal\":bool(a) and a==b},ensure_ascii=False))\n\
+    if not ref.get('available'): print(\"NOT-OK: 参考服务端不可用 ⇒ 撤销判据①无法核对(INCOMPLETE)\"); sys.exit(2)\nif\
+    \ not (a and a==b): print(\"NOT-OK: 被测与参考的行包字节不同 ⇒ 撤销判据②不成立\"); sys.exit(3)\nif not ref.get('client_batch_both_null'):\
+    \ print(\"NOT-OK: 参考端并未同样打印成 NULL ⇒ 撤销判据①不成立\"); sys.exit(3)\nPYIN\n"
+  cwd: .
+  timeout_sec: 120
+- id: kanban-check
+  name: 看板台账 check + 计数（md 与 jsonl 必须一致）
+  cmd: '/usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    /usr/bin/python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    '
+  cwd: .
+  timeout_sec: 180
+- id: labels-check
+  name: ISSUE 标签现读（open_total/per_dim/unledgered）
+  cmd: /usr/bin/python3 audit/v4.1.0/issue_labels.py check --input live
+  cwd: .
+  timeout_sec: 240
+- id: gov-metrics
+  name: 治理度量现读（分母 168 与各类漂移计数）
+  cmd: /usr/bin/python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 240
+- id: debt-invariant
+  name: 债务不变量现场判定（预期为红：debt-grew + unbound-new-claim）
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify
+  cwd: .
+  timeout_sec: 300
+- id: merge-rule-count
+  name: 两线合并按侧丢异的计数（本线 marker 存活 vs develop 侧 marker 存活）
+  cmd: 'set -e
+
+    echo "本线(63a395cf9d) 合并 marker 计数:"
+
+    git grep -c ''合并保留两侧证据'' 63a395cf9d -- docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl || echo "  0（该提交里
+    4 处）"
+
+    echo "develop tip 合并 marker 计数:"
+
+    git grep -c ''合并保留两侧证据'' gitea252/develop/v4.1.0 -- docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl
+    || echo "  0  => 另一线写的证据文本被按侧丢弃"
+
+    echo "develop tip「另一侧」补记计数:"
+
+    git grep -c ''另一侧'' gitea252/develop/v4.1.0 -- docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl || true
+
+    echo "我线是否已全部进 develop:"
+
+    git merge-base --is-ancestor 63a395cf9d gitea252/develop/v4.1.0 && echo "  是（PR #5606 已是空 PR）"
+
+    '
+  cwd: .
+  timeout_sec: 180
