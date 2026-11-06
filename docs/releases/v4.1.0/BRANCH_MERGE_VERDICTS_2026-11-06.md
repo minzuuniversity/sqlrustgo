@@ -47,7 +47,7 @@
 | `fix/omp-engine-phase3-arc-mutex-tx` | 不并入（develop 已有该形态） | develop 当前代码已是 `Arc<Mutex<TransactionManager>>` + `TxSession` 形态 ⇒ hunk 差异是它自己的更早副本 |
 | `ci/3847-d6b-no-reexec` | 不并入（CI 执行面当前不可用 + 含实验步骤） | 内容是 CI 工作流的 D6 smoke gate 等；CI 侧现在**每个 run 都是 0 job** ⇒ 无法用 CI 绿验证；其中含 `EXP-DISABLED` / `if: "false"` 段落，按纪律排除 |
 | `fix/omp-ignore-registry-5098` | **不并入（内容已在 develop，且形态更好）** | 逐文件核对（2026-11-06 第二轮）：`check_anti_fabrication.sh` 的 `omp-z440` 白名单补录**已在 develop**（`07ba30a40f`，#5545/#5546）⇒ 已是 no-op；`check_coverage_v312.sh` 的「按 header 取 Lines 组的 Cover 列、不要拿最后一个百分比当行覆盖率」这条修复**已在 develop**，且形态更好：`scripts/gate/common.sh` 的 `coverage_extract_total_percent` + `scripts/gate/coverage_total_percent.py`（一处规则、一处实现、带夹具）—— 分支那份是 **#5579 之前的旧实现**（自己重写一遍测量），并进去等于把 #5579 刚合并掉的**第二份测量实现**再放回来；`tests/baseline/ignore_registry.json` 里 `wp_a_legacy` 那条**已移除**且现场重数一致（`total_allowed=123`、live 123、`check_anti_ignore_gate.sh` 绿）；`docs/governance/debt/debt-registry.yaml` 分支那份是**更旧的状态**（把 SEM-4 从 CLOSED 87.80% 退回 OPEN 87.64%，并删掉 2026-10-23 的复测与关闭证据）⇒ 并进去是**回退合法关闭**。结论：无可取增量，整条分支按「已被 develop 超越」结案 |
-| `fix/5262-b2-binaries` | 需专门批次 | 解析器 + `engine_ddl` / `engine_setops` / `system_tables` 的语义改动（55 行，12 处冲突）⇒ 需在当前执行器形态上逐条重做并补回归 |
+| `fix/5262-b2-binaries` | **不并入（两处实质修复已在 develop；剩下的是测试期望的放宽）** | 逐处核对（2026-11-06 第三轮）：(a)「savepoint 名可用保留字（OUTER/INNER 等）」—— develop 的 `crates/parser/src/parser.rs` **已有**（`parse_savepoint_statement` 的 G5-B #5262 段，注释明写「accept reserved keywords (OUTER, INNER, etc.) as savepoint names」）；(b)「MySQL `SHOW CREATE TABLE` 返回 2 列（Table, Create Table）」—— develop 的 `src/engine_ddl.rs:912` **已有**同一句注释与同一行为；(c) 分支剩下的差异是**测试期望的放宽**（例如 `left_result.rows.sort_by(...)` 把顺序断言改成顺序无关、`DISABLED_TESTS_LIST` 新增条目）⇒ 这类改动**放宽了判据**，没有给出失效依据 ⇒ 按纪律不并入（放宽判据必须逐条说明「原判据为何不成立」，否则等于用测试迁就实现） |
 
 证据出处：本轮实际取入的两条（`fix/4597-chaos-t8d-awk-portability` 的 awk 可移植性修复、
 `mcode-macmini/e5-r9-r11-verify` 的 `selftest_anti_fabrication.sh` 与 F-08 列查找）见归档 run
@@ -60,7 +60,7 @@
 | 分支 | merge-base | 冲突文件数 | 合并带进文件 | hunk 级缺失行 | 判定 | 依据 |
 |---|---|---|---|---|---|---|
 | `feature/session-context-5057` | 2026-10-09 | 33 | 84 | 821 | 不并入（需专门批次） | 它把 `SessionContext` 铺进 storage trait 的每个方法（821 行）= 另一套 trait 设计；develop 的 #5057 已由 `insert_db_isolation_5057` + `58e3bfaef0` 以另一形态覆盖（详见 §2.5 精判，2026-11-06） |
-| `fix/5262-b2-binaries` | 2026-10-12 | 12 | 14 | 55 | 需专门批次 | 解析器 + `engine_ddl` / `engine_setops` / `system_tables` 的语义改动（55 行，12 处冲突）⇒ 需在当前执行器形态上逐条重做并补回归（详见 §2.5 精判，2026-11-06） |
+| `fix/5262-b2-binaries` | 2026-10-12 | 12 | 14 | 55 | 不并入（实质修复已在 develop） | 逐处核对（2026-11-06 第三轮）：savepoint 名可用保留字（develop `parser.rs` 的 G5-B #5262 段已有）、`SHOW CREATE TABLE` 两列（develop `src/engine_ddl.rs:912` 已有）⇒ 两处实质修复都已在 develop；剩下的是**测试期望的放宽**（顺序无关化断言、DISABLED_TESTS_LIST 新增）⇒ 放宽判据须给出失效依据，否则不并入（详见 §2.5 精判，2026-11-06） |
 | `feature/20261023-v410-mandatory-docs` | 2026-10-23 | 7 | 7 | 1364 | 不并入（已被 develop 的更新版本取代） | 7 个同名文档两侧是不同代的同一批文档，develop 侧章节结构已重排、篇幅更长（DEPLOYMENT_GUIDE 798 行 vs 522 行）⇒ 保留 develop 侧（PR #5609 已按此处置）。 |
 | `fix/omp-engine-phase3-arc-mutex-tx` | 2026-10-04 | 6 | 11 | 338 | 不并入（develop 已有该形态） | develop 当前代码已是 `Arc<Mutex<TransactionManager>>` + `TxSession` 形态 ⇒ hunk 差异是它自己的更早副本（详见 §2.5 精判，2026-11-06） |
 | `fix/omp-ignore-registry-5098` | 2026-10-07 | 5 | 5 | 77 | **不并入（内容已在 develop，且形态更好）** | 逐文件核对（2026-11-06 第二轮）：`check_anti_fabrication.sh` 的 `omp-z440` 白名单补录**已在 develop**（`07ba30a40f`，#5545/#5546）⇒ 已是 no-op；`check_coverage_v312.sh` 的「按 he…（详见 §2.5 精判，2026-11-06） |
