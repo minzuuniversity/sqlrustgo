@@ -1,3 +1,4 @@
+// storage-semantics: blk2-walstorage-no-escape-hatch-test
 // BLK-2 regression guard — the `*_transaction_lockfree(&self)` paths must
 // not derive a `&mut S` from a shared reference, and the wrapper chain
 // must actually forward the `&self` setters they rely on.

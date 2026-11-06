@@ -1,0 +1,5 @@
+OK   inflight-not-red: rc=1 in-flight run red=False (total reds=7)
+OK   worktree-scan-mutation: rc=1 in-flight run red=True (total reds=9)
+OK   history-not-relaxed: rc=1 历史红 7/7 (total reds=7)
+OK   exclude-run-option: victim=iaia410-5112-evidence-20261015 reds 7 -> 6 skipped=True
+checks=4 ok=4 not_ok=0 drift=0

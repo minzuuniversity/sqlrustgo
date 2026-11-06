@@ -1,3 +1,4 @@
+// storage-semantics: int4-explicit-tx-test
 //! INT-4: Explicit Transaction Path (BEGIN / COMMIT / ROLLBACK)
 //!
 //! **Issue**: #2973

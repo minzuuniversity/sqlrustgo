@@ -53,6 +53,29 @@ FAIL_ITEMS=()
 add_pass() { echo "  [PASS] $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
 add_fail() { echo "  [FAIL] $1"; FAIL_ITEMS+=("$1"); FAIL_COUNT=$((FAIL_COUNT + 1)); }
 
+# -------------------------------------------------------------------
+# 解释器解析（只认环境变量与已知路径，不走 PATH 回退）
+#
+# 为什么不用 PATH 回退：`audit/v4.1.0/storage_semantics_claims.py` 依赖 PyYAML，
+# 而本机 `python3` 可能指向**没有 PyYAML** 的解释器（homebrew python 3.15 就是），
+# 于是 R6 会因 ModuleNotFoundError 崩掉 —— 崩掉 ≠ 判红，崩掉是「判据不存在」。
+# 找不到能用的解释器 ⇒ 明确判红，并指名该设哪个环境变量。
+# -------------------------------------------------------------------
+PY_BIN=""
+if [ -n "${SQLRUSTGO_GATE_PYTHON:-}" ]; then
+    PY_BIN="${SQLRUSTGO_GATE_PYTHON}"
+else
+    for cand in python3 /usr/bin/python3 python3.14 python3.13 python3.12 python3.11 python3.10; do
+        if command -v "${cand}" >/dev/null 2>&1 && "${cand}" -c 'import yaml' >/dev/null 2>&1; then
+            PY_BIN="${cand}"
+            break
+        fi
+    done
+fi
+
+CLAIMS_PROBE="${REPO_ROOT}/audit/v4.1.0/storage_semantics_claims.py"
+CLAIMS_LEDGER="${REPO_ROOT}/docs/releases/v4.1.0/STORAGE_SEMANTICS_TESTS.jsonl"
+
 # =============================================================================
 # 判据（函数化：主流程与 selftest 共用）
 # =============================================================================
@@ -86,6 +109,23 @@ r4_parallel_is_file_backed() {
 # R5 负向：生产路径里不得出现 MemoryStorage。返回 0 = 出现了（违规）。
 r5_has_memory_storage() {
     grep -q "MemoryStorage" <<< "$1"
+}
+
+# R6 测试侧：声明了「验证存储语义」的每个测试，都必须真的走生产存储链。
+#
+# 扩面的另一半：R1–R5 判的是**服务端**的生产存储装配块；
+# 这一条判的是**测试侧** —— 一个测试若声称验证的是生产存储语义，
+# 却在关键路径上用内存存储跑，它的断言验证的就不是生产配置。
+#
+# 判据的实现交给 audit/v4.1.0/storage_semantics_claims.py：
+# 一个判据只能有一份实现 —— 门禁只负责把它纳入生产存储契约。
+# 返回 0 = 清单里的测试都被覆盖；非 0 = 有测试没被覆盖（或核查器本身不可用）。
+r6_claims_covered() {
+    local ledger="${1:-$CLAIMS_LEDGER}"
+    [ -n "${PY_BIN}" ] || return 1
+    [ -f "$CLAIMS_PROBE" ] || return 1
+    [ -f "$ledger" ] || return 1
+    "${PY_BIN}" "$CLAIMS_PROBE" check "$ledger" >/dev/null 2>&1
 }
 
 # =============================================================================
@@ -162,6 +202,20 @@ run_selftest() {
         echo "[FAIL] selftest: binary 分支换成内存存储，R3 却没有变红"
         fail=$((fail + 1))
     fi
+
+    # R6 的退化：造一份**清单里有、树上没有**的声明（陈旧清单）。
+    # 核查器必须因此判红 —— 否则「清单与实际声明不符」这条判据形同虚设。
+    local bad_ledger
+    bad_ledger="$(mktemp -t prod_storage_claims)"
+    printf '{"file": "tests/does_not_exist_zzz.rs", "slug": "does-not-exist", "prod_surfaces": ["FileStorage"], "mem_surfaces": [], "marker": "// storage-semantics: does-not-exist"}\n' > "$bad_ledger"
+    if ! r6_claims_covered "$bad_ledger"; then
+        echo "[PASS] selftest: 清单里有一条树上没有的声明 ⇒ R6 变红"
+        pass=$((pass + 1))
+    else
+        echo "[FAIL] selftest: 陈旧清单（清单有、树上没有）却没有让 R6 变红"
+        fail=$((fail + 1))
+    fi
+    rm -f "$bad_ledger"
 
     echo
     echo "--- selftest summary ---"
@@ -270,6 +324,19 @@ if r5_has_memory_storage "$DEFAULT_ARM$BINARY_ARM$PARALLEL_ARM"; then
     add_fail "R5 生产存储选择块引入 MemoryStorage — 存在非 file（内存）生产路径，正确性断言可能在非生产配置上通过"
 else
     add_pass "R5 生产存储选择块无 MemoryStorage — 不存在非 file 生产路径"
+fi
+
+# R6 测试侧扩面：声明了存储语义的每个测试都必须被生产存储链覆盖。
+if [ -z "${PY_BIN}" ]; then
+    add_fail "R6 找不到带 PyYAML 的 Python 解释器 — 无法核对存储语义声称清单；请设 SQLRUSTGO_GATE_PYTHON"
+elif [ ! -f "$CLAIMS_PROBE" ]; then
+    add_fail "R6 找不到存储语义声称核查器 $CLAIMS_PROBE — 清单没人核对"
+elif r6_claims_covered; then
+    n=$(grep -c '"file"' "$CLAIMS_LEDGER" 2>/dev/null || echo 0)
+    add_pass "R6 声明了存储语义的 $n 份测试都被生产存储链覆盖（清单与标记一致，且都构造生产存储面）"
+else
+    add_fail "R6 有声明了存储语义的测试没被生产存储链覆盖 ——
+    详见 audit/v4.1.0/storage_semantics_claims.py check 的输出（声称验证存储语义却只走内存存储，或清单与标记不一致）"
 fi
 
 echo

@@ -1,3 +1,4 @@
+// storage-semantics: blk2-shared-tx-path-test
 // BLK-2 — the lock-free transaction path must not launder a `&mut` out of
 // a read guard, and the type-erasure wrapper must actually forward it.
 //

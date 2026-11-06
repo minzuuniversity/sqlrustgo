@@ -1,0 +1,10 @@
+
+running 5 tests
+test group_by_alias_of_an_expression_groups_by_the_expression ... ok
+test group_by_unknown_column_returns_an_error_packet_and_the_server_survives ... ok
+test group_by_alias_of_a_column_groups_by_the_column ... ok
+test group_by_real_column_is_unchanged ... ok
+test group_by_unknown_column_does_not_take_down_other_connections ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+

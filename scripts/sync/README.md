@@ -63,6 +63,47 @@ were **live** and are tracked as a credential leak in [#5381](https://192.168.0.
 There is deliberately no silent fallback to a baked-in credential: the script
 reports which variable to set and skips that host.
 
+#### Credential rotation (the remaining #5381 action)
+
+Removing the literal from the working tree does **not** revoke it: the value
+lives in the git history of every branch, in every clone, and in every CI log
+that captured a `git push` URL. Revocation has to happen **at the server**.
+
+1. **Mint a new token.** In Gitea: *Settings → Applications → Generate Token*,
+   with the scopes the sync path needs (`write:repository`, `write:user`).
+   Save it outside the repo — e.g. `~/.ssh/openclaw-gitea.PAT`, mode `0600`.
+2. **Install it for every consumer.** The scripts read the credential from
+   `GITEA_TOKEN` first, then from the local git credential store
+   (`gitea_credential_resolve` in `gitea_credential_common.sh`):
+
+   ```bash
+   export GITEA_USER=openclaw
+   export GITEA_TOKEN="$(cat ~/.ssh/openclaw-gitea.PAT)"
+   # and, so that non-interactive runs (cron, CI) find it too:
+   printf 'protocol=https\nhost=192.168.0.252:3000\nusername=%s\npassword=%s\n\n' \
+       "$GITEA_USER" "$GITEA_TOKEN" | git credential approve
+   ```
+
+3. **Revoke the old token.** In Gitea: *Settings → Applications* → delete the
+   previous token. Until this step the old value still authenticates, and
+   every clone of this repository still holds it.
+4. **Verify the old value is dead** (expect `HTTP=401`):
+
+   ```bash
+   curl -s -o /dev/null -w "HTTP=%{http_code}\n" \
+     -u "openclaw:$OLD_TOKEN" "http://192.168.0.252:3000/api/v1/user"
+   ```
+
+5. **Purge the history** (optional, destructive — owner decision). The value
+   stays reachable in the git history of the affected branches regardless of
+   step 3; `git filter-repo` / BFG plus a force-push removes it from the
+   history. Do this only with the owner's go-ahead, and coordinate it with
+   anyone holding a clone.
+
+Steps 1–3 are the load-bearing ones: they are what actually revokes the
+credential. Steps 4 and 5 are the evidence that it happened and the cleanup
+of the copies.
+
 #### SSH is independent of the caller's ssh-agent
 
 `SSH_OPTS` in the script is the single source of SSH options, and every

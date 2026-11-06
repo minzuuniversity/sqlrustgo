@@ -1,0 +1,9 @@
+
+running 4 tests
+test reloading_a_keyed_table_is_rejected_with_1062 ... ok
+test duplicate_keys_within_one_file_are_rejected ... ok
+test reloading_a_keyless_table_still_appends ... ok
+test distinct_keys_load_without_complaint ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+

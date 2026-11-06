@@ -1,0 +1,12 @@
+[PASS] selftest: 一份健康的装配满足 R1–R4 且不违反 R5
+[PASS] selftest: 默认路径丢掉 WAL 包装层 ⇒ R2 变红
+[PASS] selftest: 生产路径出现 MemoryStorage ⇒ R5 变红
+[PASS] selftest: parallel 分支不再 file-backed ⇒ R4 变红
+[PASS] selftest: binary 分支换成内存存储 ⇒ R3 变红
+[PASS] selftest: 清单里有一条树上没有的声明 ⇒ R6 变红
+
+--- selftest summary ---
+  passed: 6
+  failed: 0
+
+✅ selftest PASS

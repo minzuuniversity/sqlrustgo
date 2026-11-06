@@ -1,0 +1,1 @@
+{"kind": "capability_claims", "probes": 5, "verified": 5, "failed": 0, "not_verified": 0, "claimed": ["cli-real-query", "mysql-wire-real", "durable-on-disk", "crash-restart", "backup-restore"], "ledger": "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/docs/releases/v4.1.0/CAPABILITY_LEDGER.jsonl", "verdict": "VERIFIED", "fails": []}

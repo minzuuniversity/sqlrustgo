@@ -1,3 +1,4 @@
+// storage-semantics: incremental-backup-e2e-5048
 //! #5048: an end-to-end incremental backup, from a real data directory.
 //!
 //! The chain this pins is the one the feature exists for:
