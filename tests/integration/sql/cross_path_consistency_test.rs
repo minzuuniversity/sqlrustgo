@@ -1,3 +1,4 @@
+// storage-semantics: cross-path-consistency-test
 //! Cross-Path Consistency E2E Tests (SPEC-024: F-10 mysql-server unify)
 //!
 //! Validates that SQL execution results are consistent across 3 paths:

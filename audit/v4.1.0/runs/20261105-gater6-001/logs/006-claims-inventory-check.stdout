@@ -1,0 +1,2 @@
+{"kind": "claims_inventory_check", "ledger": "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/docs/releases/v4.1.0/CLAIMS_INVENTORY.jsonl", "live_files": 59, "ledger_files": 59, "live_claims": 1145, "live_bound": 94, "live_unbound": 1051, "ledger_unbound": 1051, "fails": 0}
+claims_inventory: OK

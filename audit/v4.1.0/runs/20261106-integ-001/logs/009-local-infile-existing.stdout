@@ -1,0 +1,12 @@
+
+running 7 tests
+test missing_local_file_is_rejected_by_the_server_before_the_request ... ok
+test skipped_rows_surface_as_warnings_through_the_client ... ok
+test path_outside_the_whitelist_is_rejected_by_the_server ... ok
+test local_infile_uploads_from_disk_and_rows_land ... ok
+test load_data_local_streams_supplied_bytes_not_the_named_file ... ok
+test connection_is_usable_after_the_upload ... ok
+test multi_chunk_payload_loads_every_row ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+

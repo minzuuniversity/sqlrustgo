@@ -195,19 +195,53 @@ def cmd_apply(argv):
 
 
 def cmd_verify(argv):
-    """只加不删的机器核对：把「整改前快照」与 live 逐条 diff。
+    """只加不删的机器核对：把「整改前快照」与「整改后状态」逐条 diff。
 
       python3 audit/v4.1.0/issue_labels.py verify <before-snapshot.jsonl>
+      python3 audit/v4.1.0/issue_labels.py verify <before-snapshot.jsonl> --after <state.jsonl>
 
     rc=0 需要同时满足：没有任何标签被删除，且新增数 == 台账对这份快照算出的 ops 数。
     新增数少于 ops 说明有写入没落地；多于 ops 说明有人往同一批 issue 上加了台账外的标签。
+
+    --after 默认是 live；给了快照文件则拿它当「整改后状态」，
+    这样「标签被删」这条守卫可以离线反向变异（不必去动线上 issue 的标签）。
     """
     if not argv:
-        print("usage: issue_labels.py verify <before-snapshot.jsonl> [--ledger f]")
+        print("usage: issue_labels.py verify <before-snapshot.jsonl> "
+              "[--ledger f] [--after <state.jsonl|live>]")
         return 2
-    lp = pathlib.Path(argv[argv.index("--ledger") + 1]) if "--ledger" in argv else None
-    pos = [a for a in argv if not a.startswith("--") and a != str(lp) if lp is None or a != str(lp)]
-    before_issues = read_issues(pos[0] if pos else argv[0])
+    lp = None
+    after_src = "live"
+    snapshot = None
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--ledger":
+            i += 1
+            if i >= len(argv):
+                print("BAD-ARG --ledger needs a value")
+                return 2
+            lp = pathlib.Path(argv[i])
+        elif a == "--after":
+            i += 1
+            if i >= len(argv):
+                print("BAD-ARG --after needs a value")
+                return 2
+            after_src = argv[i]
+        elif a.startswith("--"):
+            print("BAD-ARG unknown option", a)
+            return 2
+        elif snapshot is None:
+            snapshot = a
+        else:
+            print("BAD-ARG unexpected positional", a)
+            return 2
+        i += 1
+    if snapshot is None:
+        print("usage: issue_labels.py verify <before-snapshot.jsonl> "
+              "[--ledger f] [--after <state.jsonl|live>]")
+        return 2
+    before_issues = read_issues(snapshot)
     before = {i["number"]: i["labels"] for i in before_issues}
     rows, bad = read_ledger(lp)
     if bad:
@@ -219,7 +253,7 @@ def cmd_verify(argv):
         labels = before.get(r["number"], [])
         expected += sum(1 for d, v in (r.get("assign") or {}).items() if not has(labels, d))
     lost, added = [], 0
-    for it in read_issues("live"):
+    for it in read_issues(after_src):
         old_labels = before.get(it["number"])
         if old_labels is None:
             continue
@@ -227,7 +261,7 @@ def cmd_verify(argv):
             if x not in it["labels"]:
                 lost.append(f"#{it['number']} {x}")
         added += sum(1 for x in it["labels"] if x not in old_labels)
-    print(json.dumps({"kind": "label_apply_verify", "snapshot": argv[0],
+    print(json.dumps({"kind": "label_apply_verify", "snapshot": snapshot, "after": after_src,
                       "issues_checked": len(before), "lost_labels": len(lost),
                       "added_labels": added, "expected_ops_from_ledger": expected},
                      ensure_ascii=False))

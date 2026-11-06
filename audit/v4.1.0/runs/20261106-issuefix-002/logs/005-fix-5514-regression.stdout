@@ -1,0 +1,8 @@
+
+running 3 tests
+test a_heartbeat_keeps_the_connection_alive ... ok
+test zero_disables_the_idle_timeout ... ok
+test a_silent_client_is_reaped ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 42.04s
+

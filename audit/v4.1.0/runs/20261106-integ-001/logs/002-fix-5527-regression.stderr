@@ -1,0 +1,3 @@
+   Compiling sqlrustgo-mysql-server v0.1.0 (/private/tmp/wt-integ/crates/mysql-server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.77s
+     Running tests/load_data_duplicate_key_5527.rs (target/debug/deps/load_data_duplicate_key_5527-094c45dbdd4ec889)

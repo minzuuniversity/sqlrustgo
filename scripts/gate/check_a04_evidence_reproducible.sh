@@ -136,8 +136,15 @@ if [ ! -d "$ARCHIVED" ]; then
 fi
 
 echo "=== run the A04 differential matrix (output goes to target/a04-5226/) ==="
-# #5577 / #5389: A04 no longer writes into the repository by default.
-# The gate therefore reads the fresh output from the build directory.
+# IL-10: 门禁拿 `target/a04-5226/` 跟归档证据比，**必须先把它清空**。
+#
+# 目录里可能留着**上一次**运行的文件：某个引擎这次不可用（比如 PATH 上取到了
+# 2026-02-21 的陈旧全局 sqlrustgo，它只打印 REPL 横幅）⇒ 生成器判它 NOT RUN
+# ⇒ **不写文件**；但上一次运行留下的旧文件还在目录里 ⇒ 门禁照样拿它去比，
+# 把「这次没产出」误判成「产出了且一致」。
+#
+# ⇒ 比对域必须只含**本次**产出。残留文件参与比对，会同时制造假绿与假红。
+rm -rf "$FRESH"
 if ! cargo test --test a04_mysql_diff_matrix > /tmp/a04_repro_run.log 2>&1; then
   echo "FAIL: the A04 differential matrix did not pass; the comparison cannot be made"
   tail -n 30 /tmp/a04_repro_run.log || true

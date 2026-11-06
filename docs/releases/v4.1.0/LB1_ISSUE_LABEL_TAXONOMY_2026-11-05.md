@@ -50,9 +50,36 @@ cap:      {analysis:3, architecture:1, benchmark:1, build:44, docs:2,
 | dim-cost | 同上，cost 维 | rc=1 / rc=0 | rc=1 / rc=0 |
 | dim-cap | 同上，cap 维 | rc=1 / rc=0 | rc=1 / rc=0 |
 | m6 | 台账少登记一条（`rows[0]["assign"]` 去掉 `cost/t0`） | `verify` 的 `added_labels` 必须与台账算出的 `expected_ops` 不一致而判红 | rc=1（`added=43 expected=42`）；真台账对照 rc=0 |
+| m7 | 去掉 `verify` 的「标签被删即判红」守卫（`if lost: return 1` → `pass`） | 有标签被删时必须判红；摘掉守卫后必须放行 | control rc=1；变异后 rc=0（夹具：after 状态比 before 少一个 `priority/p1`） |
 
 外加两条基线：整改前夹具必须判红（判红条件仍在），整改后夹具必须判绿
 （不是永远红的摆设）。两条基线任一失效，跑法直接返回 1。
+
+### 4.1 臂数是数出来的，不是写死的
+
+上一版本文件（commit `3ed6092802`）的实际执行臂是 5 条（m1、m5、dim×3），
+但脚本末尾**写死**打印 `arms=6`；再上一版写死 `arms=7` 而只执行 6 条。
+报告据此声称「七臂」，表格却只有 6 行 —— 数字是编的，不是测的。
+
+现在臂数由实际执行的臂累加得出（`arms_run`），并加了一条自洽不变式：
+`discriminating + not_discriminating + drift` 必须等于 `arms`，否则退出码 1。
+反向变异实测（把计数改回写死）：
+
+| 变异 | 打印 | 结论 |
+|---|---|---|
+| 写死 `arms=7` | `arms=7 discriminating=7 ...` | 与真值巧合相同 |
+| 写死 `arms=6` | `arms=6 discriminating=7 ...` | 自相矛盾 |
+| 写死 `arms=99` | `arms=99 discriminating=7 ...` | 明显造假 |
+
+写死 `arms=6` 那一行就是判据的破绽：臂数与判别数对不上。
+因此不变式放在**外部**核对（归档 run 的 `lb1-mutation-7arms` 命令同时核对
+`arms=` 数值与逐臂 verdict 行数），脚本内部的不变式只是第二道防线 ——
+同一个程序无法证明自己的打印没被写死。
+
+m7 臂补的是一处真实覆盖缺口：此前 `verify` 的「标签被删即判红」守卫
+**没有任何反向变异**，删掉它照样一路绿灯。为此 `verify` 增加了
+`--after <state.jsonl>` 参数（默认仍是 `live`），使「标签被删」这条守卫
+可以离线夹具化，不必去动线上 issue 的标签。
 
 ## 5. 「只加不删」的机器核对
 
@@ -86,6 +113,13 @@ python3 audit/v4.1.0/issue_labels.py verify \
 另一处是我自己的核对脚本用错了 API base（把仓库级路径拼到已含仓库路径的 helper 上），
 111 条全 404，一度显示成「标签全丢」。改用仓内 `issue_labels.py` 的 `req` 后重测，结论才是
 `lost_labels_total=0`。教训：跨工具复用 helper 时，base 语义必须核对，不能假设。
+
+第三条（本次接手时发现）：**臂数是写死的**。`issue_labels_mutations.py` 末尾
+`print(f"arms=7 ...")` 里的 7 是字面量，而实际执行的臂只有 6 条；
+上一版同样写死 6 而只执行 5 条。报告与看板 evidence 据此声称的臂数因此是编的。
+这是本项目 §10 已记过的「生成器硬编码结论」同一类缺陷，这次出现在变异跑法自己身上。
+已改为按实际执行累加，并补一条外部核对（归档 run 同时核对 `arms=` 数值与逐臂 verdict 行数）。
+详见 §4.1。
 
 ## 7. 残余风险
 

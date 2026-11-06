@@ -1,3 +1,4 @@
+// storage-semantics: int1-bypass-evidence-test
 //! INT-1 验证测试 (DML Bypass WAL/TM 真实证据)
 //!
 //! **Purpose**: 提供 DML bypass 的间接证据

@@ -1,0 +1,10 @@
+
+running 5 tests
+test inner_join_with_an_arithmetic_on_clause_returns_only_matching_pairs ... ok
+test non_equi_on_clause_is_unaffected ... ok
+test plain_column_on_clause_is_unaffected ... ok
+test join_with_a_function_call_in_the_on_clause_is_accepted ... ok
+test left_join_with_an_arithmetic_on_clause_is_accepted_and_pads_with_null ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

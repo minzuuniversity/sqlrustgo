@@ -1,0 +1,1 @@
+{"kind": "label_gap_check", "source": "audit/v4.1.0/neg/snapshots/labelgap-open-before-20261105.jsonl", "open_total": 111, "dims": ["priority", "cost", "cap"], "per_dim": {"priority": 14, "cost": 17, "cap": 12}, "unledgeBEFORE-RED-OK

@@ -1,0 +1,71 @@
+
+running 7 tests
+test test_drop_index_removes_index ... ok
+test test_left_join_with_null_match ... ok
+test test_right_join_preserves_right_rows ... ok
+test test_left_join_no_matches_yields_left_rows ... ok
+test test_two_way_inner_join_count ... ok
+test test_three_way_inner_join_count ... ok
+test test_full_outer_join_preserves_both_sides ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 5 tests
+test mixed_exists_and_not_exists_in_q21_shape ... ignored, engine bug: test expectation incorrect (Beta has l_o=200, not l_o=2), needs separate fix; see src/engine_select.rs:2812
+test not_in_equivalent_correctness ... ok
+test not_exists_returns_rows_with_no_inner_match ... ok
+test not_exists_with_residual_predicate ... ok
+test large_scale_not_exists_under_5s ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 7.12s
+
+
+running 5 tests
+test v312_73_left_join_using_preserves_unmatched_left ... ok
+test v312_73_using_projects_single_column ... ok
+test v312_73_inner_join_using_single_col ... ok
+test v312_73_inner_join_using_no_cross_product ... ok
+test v312_73_using_multi_columns ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 8 tests
+test v312_95_join_cross_join_still_works ... ok
+test v312_95_join_non_equi_less_than_filters ... ok
+test v312_95_join_mixed_equi_and_non_equi ... ok
+test v312_95_join_non_equi_with_arithmetic ... ok
+test v312_95_parser_comparison_rhs_handles_div_arithmetic ... ok
+test v312_95_parser_select_expression_with_division ... ok
+test v312_95_join_equi_still_works_regression ... ok
+test v312_95_join_right_join_padding_preserved ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 21 tests
+test join_inner_with_aliased_tables_explicit_join_works ... ok
+test join_inner_duplicate_keys_produce_cartesian ... ok
+test join_inner_with_text_key ... ok
+test join_left_outer_all_unmatched ... ok
+test join_count_star_with_group_by ... ok
+test join_inner_with_null_key_no_match ... ok
+test join_four_tables_chain_comma_list ... ok
+test join_left_outer_preserves_null_key_row ... ok
+test join_four_tables_chain_explicit_join ... ok
+test join_left_outer_unmatched_right_becomes_null ... ok
+test join_self_join_comma_list_excludes_self_match ... ok
+test join_left_outer_with_where_filters_unmatched ... ok
+test join_self_join_with_aliases_explicit_join_works ... ok
+test join_three_tables_distinct_keys_no_ambiguity ... ok
+test join_three_tables_preserves_projection_order ... ok
+test join_two_tables_no_match_returns_empty ... ok
+test join_two_tables_inner_basic ... ok
+test join_with_aggregate_group_by_preserves_order ... ok
+test join_three_tables_with_aggregate ... ok
+test join_with_extra_where_predicate ... ok
+test tpch_q1_like_shape_sum_real_columns ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

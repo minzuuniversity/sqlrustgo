@@ -1,3 +1,4 @@
+// storage-semantics: multi-db-isolation-5025
 //! #5025: table-space isolation by database — end-to-end regression tests.
 //!
 //! The symptom this pins, measured over the real MySQL protocol before the

@@ -1,3 +1,4 @@
+// storage-semantics: bufferpool-pages-visited-test
 //! PR-A / #5305 — EXPLAIN `pages_visited` suffix integration tests.
 //!
 //! Verifies the PR-A contract:

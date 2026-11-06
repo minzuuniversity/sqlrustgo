@@ -1,3 +1,4 @@
+// storage-semantics: v400-cross-model-flow
 //! V400-05 cross-model integration test — verify that when a global
 //! tracker is installed, every SQL/vector/graph/audit write fires the
 //! register_write callback.

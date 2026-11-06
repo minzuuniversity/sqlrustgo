@@ -1,3 +1,4 @@
+// storage-semantics: file-storage-change-log-5048
 //! #5048: `FileStorage` change capture — the prerequisite for a real
 //! incremental backup.
 //!

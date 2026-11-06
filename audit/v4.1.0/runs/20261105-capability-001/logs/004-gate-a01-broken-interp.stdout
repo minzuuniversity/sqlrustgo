@@ -1,0 +1,2 @@
+FAIL: SQLRUSTGO_GATE_PYTHON=/opt/homebrew/bin/python3 cannot import yaml — cannot judge committed audit runs; refusing to pass
+exit_code=1 fabricated_evidence_fails=0
