@@ -1,0 +1,2 @@
+{"kind": "storage_semantics_check", "ledger": "/Volumes/workspace/dev/wt/ci/docs/releases/v4.1.0/STORAGE_SEMANTICS_TESTS.jsonl", "test_files": 808, "declared": 29, "ledger_rows": 29, "fails": 0}
+storage_semantics: OK
