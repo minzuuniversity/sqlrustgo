@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running tests/integration/dml/insert_column_validation_5409.rs (target/debug/deps/insert_column_validation_5409-a11b6a9f3591a2da)

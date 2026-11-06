@@ -1,0 +1,16 @@
+
+running 11 tests
+test the_exact_case_spelling_still_works ... ok
+test drop_column_default_finds_the_column_case_insensitively ... ok
+test modify_column_finds_the_column_case_insensitively ... ok
+test set_column_default_finds_the_column_case_insensitively ... ok
+test a_missing_column_still_errors_on_both_backends ... ok
+test both_backends_agree_on_the_ddl_outcome ... ok
+test the_ddl_history_does_not_change_whether_a_column_is_found ... ok
+test drop_column_finds_the_column_case_insensitively ... ok
+test rename_column_finds_the_column_case_insensitively ... ok
+test the_stored_name_does_not_depend_on_the_backend ... ok
+test the_sql_layer_matches_the_column_case_insensitively_on_disk ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

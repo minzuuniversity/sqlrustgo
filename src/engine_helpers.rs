@@ -27,6 +27,36 @@ pub fn build_insert_records(values: &[Vec<sqlrustgo_parser::Expression>]) -> Vec
         .collect()
 }
 
+/// #5409: 校验 `INSERT … (列名列表)` 里的**每一个**列名都真的存在。
+///
+/// 此前**完全不校验**：未知列名既不报错、也不被拒绝 ——
+/// `materialise_default_tokens` 用 `position()` 把列名映射到表列，映射不上就
+/// **静默丢弃**那个值 ⇒ INSERT 进去的是一行全 NULL。
+///
+/// 这不只是「报错更好看」：任何依赖「列名写错会失败」的装载脚本，都会在当前
+/// 引擎上**静默**写入全 NULL 行，后续 WHERE 匹配不到任何行，而断言照样通过
+/// —— 假绿。
+///
+/// MySQL 的正确行为是 `ER_BAD_FIELD_ERROR`（1054）/ SQLSTATE `42S22`，
+/// 对应本仓库已有的 `SqlError::ColumnNotFound`。
+///
+/// 大小写：与 `materialise_default_tokens` 的匹配规则保持一致（大小写不敏感），
+/// 否则会出现「校验通过但映射不上」的裂缝。
+pub fn validate_insert_columns(
+    insert_columns: &[String],
+    table_columns: &[sqlrustgo_storage::ColumnDefinition],
+) -> SqlResult<()> {
+    for name in insert_columns {
+        let found = table_columns
+            .iter()
+            .any(|c| c.name.eq_ignore_ascii_case(name));
+        if !found {
+            return Err(SqlError::ColumnNotFound(name.clone()));
+        }
+    }
+    Ok(())
+}
+
 /// V313-followup-1 / Issue #4154: substitute `DEFAULT` tokens
 /// (sentinel `Value::Text("DEFAULT")`) with column default_value
 /// (NULL when the column has no default).
@@ -152,16 +182,14 @@ pub fn map_select_result_to_records(
         target_columns
             .iter()
             .map(|name| {
+                // #5409: 大小写不敏感，与 VALUES 路径的映射规则一致 ——
+                // 否则 `INSERT INTO t (A) SELECT ...` 会被这里拒掉，而
+                // `INSERT INTO t (A) VALUES (...)` 却能通过。
                 target_table_info
                     .columns
                     .iter()
-                    .position(|c| c.name == *name)
-                    .ok_or_else(|| {
-                        SqlError::ExecutionError(format!(
-                            "Unknown column '{}' in INSERT column list",
-                            name
-                        ))
-                    })
+                    .position(|c| c.name.eq_ignore_ascii_case(name))
+                    .ok_or_else(|| SqlError::ColumnNotFound(name.clone()))
             })
             .collect::<SqlResult<Vec<_>>>()?
     };

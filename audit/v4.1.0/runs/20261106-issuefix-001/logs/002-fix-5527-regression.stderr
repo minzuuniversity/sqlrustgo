@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/load_data_duplicate_key_5527.rs (target/debug/deps/load_data_duplicate_key_5527-094c45dbdd4ec889)

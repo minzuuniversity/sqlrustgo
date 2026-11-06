@@ -46,7 +46,7 @@ def req(method, path, payload=None, page=0, pagesize=50):
     except Exception:
         return b
 
-REPO = pathlib.Path("/Volumes/workspace/dev/sqlrustgo/.worktrees/410")
+REPO = pathlib.Path(__file__).resolve().parents[2]
 KAN = REPO / "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl"
 RUNS = REPO / "audit/v4.1.0/runs"
 ORDER = ["阻塞", "待复核", "未开始", "完成"]

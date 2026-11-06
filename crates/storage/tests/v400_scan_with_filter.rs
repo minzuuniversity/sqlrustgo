@@ -1,3 +1,4 @@
+// storage-semantics: v400-scan-with-filter
 //! V4.0.0 / SOAK-leak fix: `StorageEngine::scan_with_filter`
 //!
 //! Root cause of V4.0.0 secondary SOAK leak (~1.7 GB/h):

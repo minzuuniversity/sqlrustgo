@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running tests/file_storage_ddl_column_case_5509.rs (target/debug/deps/file_storage_ddl_column_case_5509-1d146856d5f8de90)

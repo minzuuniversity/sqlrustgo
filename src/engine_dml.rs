@@ -23,6 +23,7 @@ use crate::engine_helpers::{
     apply_odku, apply_set_clauses, build_insert_records, find_conflicting_key,
     ir_validate_update_filter, key_entry_repr, map_select_result_to_records,
     materialise_default_tokens, record_matches_unique_key, run_before_update_triggers,
+    validate_insert_columns,
 };
 use crate::engine_utils::{
     build_multi_table_combined_schema, cartesian_product, evaluate_where_clause, find_column_index,
@@ -150,6 +151,11 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             info.clone()
         }
     };
+
+    // #5409: `INSERT … (列名列表)` 里的未知列名必须报错，不能被静默丢成 NULL。
+    // 放在这里（而不是 mapper 内部）是因为 mapper 返回的是 `Vec<Vec<Value>>`，
+    // 没有错误通道。
+    validate_insert_columns(&insert.columns, &table_info.columns)?;
 
     let all_records: Vec<Vec<Value>> =
         if insert.default_values {
@@ -2131,6 +2137,9 @@ fn execute_insert_clustered<S: StorageEngine + 'static>(
     };
 
     // Resolve the records to insert.
+    // #5409: 同主路径 —— 未知列名必须报错，不能被静默丢成 NULL。
+    validate_insert_columns(&insert.columns, &table_info.columns)?;
+
     let all_records: Vec<Vec<Value>> = if let Some(ref select) = insert.select {
         let select_result = engine.execute_select(select)?;
         map_select_result_to_records(select_result, &insert.columns, &table_info)?

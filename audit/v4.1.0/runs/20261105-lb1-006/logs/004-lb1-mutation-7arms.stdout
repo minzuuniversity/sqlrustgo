@@ -1,9 +1,11 @@
-BASELINE before-fixture: rc=1 {"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/.worktrees/410/audit/v4.1.0/neg/snapshots/labelg
-BASELINE after-fixture: rc=0 {"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/.worktrees/410/audit/v4.1.0/neg/snapshots/labelg
-OK   m1-has-always-true: mutated rc=0 want=green sighting={"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/.worktrees/410/audit/v4.1.0/neg/snapsh
-OK   m5-ledger-rationale-check-removed: mutated rc=0 want=green sighting={"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/.worktrees/410/audit/v4.1.0/neg/snapsh
+BASELINE before-fixture: rc=1 {"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/audit/v4.1.0/neg/snapshots/la
+BASELINE after-fixture: rc=0 {"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/audit/v4.1.0/neg/snapshots/la
+OK   m1-has-always-true: mutated rc=0 want=green sighting={"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/audit/v4.1.0/neg/sn
+OK   m5-ledger-rationale-check-removed: mutated rc=0 want=green sighting={"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/audit/v4.1.0/neg/sn
 OK   dim-priority: only-priority rc=1 only-cost,cap rc=0
 OK   dim-cost: only-cost rc=1 only-priority,cap rc=0
 OK   dim-cap: only-cap rc=1 only-priority,cost rc=0
-OK   m6-ledger-undercount: control rc=0 mutated rc=1 dropped=cost=cost/t0 sighting={"kind": "label_apply_verify", "snapshot": "/Volumes/workspace/dev/sqlrustgo/.worktrees/410/audit/v4
+OK   m6-ledger-undercount: control rc=0 mutated rc=1 dropped=cost=cost/t0 sighting={"kind": "label_apply_verify", "snapshot": "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/audi
+OK   m7-lost-label-guard: control rc=1 mutated rc=0 dropped=priority/p1 sighting={"kind": "label_apply_verify", "snapshot": "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/audi
 arms=7 discriminating=7 not_discriminating=0 drift=0
+ARMS-SUMMARY-OK

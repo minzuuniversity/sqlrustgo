@@ -1,0 +1,13 @@
+基线必须 rc=0，实得 1
+Traceback (most recent call last):
+  File "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/scripts/gate/gate_registry.py", line 232, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/scripts/gate/gate_registry.py", line 228, in main
+    return cmd_emit(argv[1:]) if argv[0] == "emit" else cmd_check(argv[1:])
+                                                        ~~~~~~~~~^^^^^^^^^^
+  File "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/scripts/gate/gate_registry.py", line 161, in cmd_check
+    live = {r["gate"]: r for r in live_rows()}
+                                  ~~~~~~~~~^^
+  File "/Volumes/workspace/dev/sqlrustgo/.worktrees/omp-410/scripts/gate/gate_registry.py", line 53, in live_rows
+    import

@@ -1,3 +1,4 @@
+// storage-semantics: p3-view-4814-test
 //! V312-95 v2 / Issue #4814: regression tests for CREATE VIEW / DROP
 //! VIEW / SELECT FROM view end-to-end behaviour.
 //!

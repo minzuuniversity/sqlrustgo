@@ -40,7 +40,7 @@
    `gate_executability.py` 的隐式 glob 里，无人能核对"声明的"与"实际扫的"是否同一批文件。
 2. **存档横幅**：13 个 `.github/workflows/*.yml` 顶部加
    `ARCHIVE-ONLY — 仅存档、不执行`（含"引用它作为 CI 已覆盖的证据无效"）。
-3. **假 workflow 迁出**：`.gitea/workflows/ci-test.md`（1 行 markdown，冒充 workflow，
+3. **假 workflow 迁出**：.gitea/workflows/ci-test.md（1 行 markdown，冒充 workflow，
    任何引擎都不会读它）迁到 `docs/ci/legacy/ci-test-2026-05-01.md`，
    并同步更新 `docs/governance/CI_GATE_CONTRACT.md`、`docs/agent-harness/REPOSITORY_MAP.md` 的引用。
 4. **soak 归一**：`soak_168h.yml` 标为 canonical，`z6g4-168h-soak.yml`（v3.12 期 #4499 遗留）
