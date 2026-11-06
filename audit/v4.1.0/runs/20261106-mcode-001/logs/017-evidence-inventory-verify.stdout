@@ -1,0 +1,27 @@
+{"kind": "evidence_inventory", "strong_bound": 1, "nonzero_run": 0, "run_missing": 0, "stale_binding": 0, "invalid_manifest": 0, "unread_manifest": 0, "ambiguous": 9, "unbound": 1137, "files": 59, "total": 1147, "debt": 1146, "claims_ref": 1, "mode": "verify", "ledger": "docs/releases/v4.1.0/CLAIM_BINDINGS_LEDGER.jsonl", "diff_base": "5741831f08cf713f8ad778e94f57eef9c2e99df5", "today": "2026-11-06", "binding_validity": {}}
+NOT-OK: debt-grew:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md 台账 14 → 现场 16（未绑定债务只准减不准增）
+NOT-OK: total-debt-grew: 台账 1144 → 现场 1146
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/CLAIMS_BINDINGS.jsonl:0 {"claims": 18, "evidence_refs": ["docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/CLAIMS_BINDINGS.jsonl:0 {"claims": 2, "evidence_refs": [], "excerpt": "## 3. 问题汇总（现象 / 实测根因 / 影响 / 谁能解） 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/CLAIMS_BINDINGS.jsonl:0 {"claims": 13, "evidence_refs": [], "excerpt": "### AC-1: BE5 / B-F5 的判据可执行 **标准
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.jsonl:0 {"number": 5366, "title": "[CI] evidence-graph-gate 结构上无法 PASS：SHA 未回退 + 边早于节点 +
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.jsonl:0 {"number": 5368, "title": "[CI] evidence-graph-gate 解析不了自己的 PASS：grep 模式与 pretty
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.jsonl:0 {"number": 5452, "title": "[分支保护] `STAGE_CONFIG.yaml` 的 `GA.merge_policy`（3 个 re
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.jsonl:0 {"number": 5598, "title": "[v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_SNAPSHOT_2026-11-05.jsonl:0 {"comments": 0, "created_at": "2026-10-15T21:39:11Z", "html_url": "http://192.16
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_SNAPSHOT_2026-11-05.jsonl:0 {"comments": 0, "created_at": "2026-10-15T22:42:24Z", "html_url": "http://192.16
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_SNAPSHOT_2026-11-05.jsonl:0 {"comments": 0, "created_at": "2026-10-20T18:05:14Z", "html_url": "http://192.16
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_SNAPSHOT_2026-11-05.jsonl:0 {"comments": 2, "created_at": "2026-11-05T05:12:34Z", "html_url": "http://192.16
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-05C.jsonl:0 {"number": 5598, "title": "[v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl:0 {"number": 5366, "title": "[CI] evidence-graph-gate 结构上无法 PASS：SHA 未回退 + 边早于节点 +
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl:0 {"number": 5368, "title": "[CI] evidence-graph-gate 解析不了自己的 PASS：grep 模式与 pretty
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl:0 {"number": 5452, "title": "[分支保护] `STAGE_CONFIG.yaml` 的 `GA.merge_policy`（3 个 re
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "armed 构建下 `crash_wal_index_b1` 两个测试必须全绿；索引更新边界 SIGKILL 重启后，`SELE
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "check 在干净板上 exit 0 且 render 幂等；夹具含反向变异（删一行 JSONL ⇒ check 必须红，恢复 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "悬空路径 0；生成物『写盘口径』==『核对口径』（墙钟时间不得进比对域）", "blocked_by": "-", "board
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | ENG-13 | #5584 实测确认：`AfterIndexUpdate` 边界崩溃后整表读不出（`crash_wal_index_b1` 在 devel
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | KR-1 | 看板台账改为 JSONL 单一来源：kanban_render.py（render/check/counts）+ 夹具 | 完成 | chec
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | P0-2 | run_gates.py + gate_report.py + results(jsonl) + 三态（PASS/FAIL/INCOMPLET
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | P0-3 | 打开合并拦截（分支保护状态检查+审批）+ merge_blocking.py | 阻塞 | 把 enable_status_check 关掉 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | P2-1 | 文档事实面：doc_stamp/doc_freshness/doc_path_claim_check/gen_doc_index 移植接入 |
+findings=25
