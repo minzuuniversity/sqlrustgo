@@ -1,0 +1,242 @@
+schema_version: 1
+run_id: 20261106-cap-smoke-002
+source_agent: mcode-macmini
+frozen_commit: e2bf7a94e505e7dd1a91b076d40e8bb80f0c52fb
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: cap-selftest
+  name: capability_smoke 反向变异自检（19 臂：H0 + M1-M5/M7 + W1-W9 + D1-D3）
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py --selftest
+  cwd: .
+  timeout_sec: 300
+- id: cap-client-presence
+  name: 被测对象在位：真 mysql 客户端（实测是 MariaDB shim，不是 Oracle mysql）+ 参考 mariadbd + 被测 server 二进制哈希
+  cmd: 'set -e
+
+    /opt/homebrew/bin/mysql --version
+
+    /opt/homebrew/bin/mysql --version | sha256sum
+
+    /opt/homebrew/bin/mariadbd --version
+
+    git rev-parse HEAD
+
+    target/debug/sqlrustgo-mysql-server --version 2>/dev/null || true
+
+    shasum -a 256 target/debug/sqlrustgo-mysql-server'
+  cwd: .
+  timeout_sec: 120
+- id: cap-live-prod
+  name: 生产链 + binary 判别臂真跑（现场起 mariadbd 做参考；预期 rc=0：生产链 findings=0）
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py run --out test_results/capability_smoke/run-archive-002
+  cwd: .
+  timeout_sec: 900
+- id: cap-live-summary
+  name: 把上一命令的 json 摊成可核对结论（三段逐值全等 / wal / restore 落盘 / 与参考字节对照 / 判别力）
+  cmd: /usr/bin/python3 audit/v4.1.0/cap_live_summary.py --json test_results/capability_smoke/run-archive-002/capability_smoke.json
+  cwd: .
+  timeout_sec: 120
+- id: binmode-probe
+  name: binary 模式假成功探针（#5601 复现）。退出码 0 只表示观测完成，不代表功能可用
+  cmd: 'set -euo pipefail
+
+    mkdir -p test_results/binmode
+
+    /usr/bin/python3 audit/v4.1.0/binmode_probe.py --out test_results/binmode 2>&1 | tee test_results/binmode/probe.json'
+  cwd: .
+  timeout_sec: 600
+- id: binmode-lock
+  name: 把
+  cmd: /usr/bin/python3 audit/v4.1.0/binmode_lock.py --json test_results/binmode/probe.json
+  cwd: .
+  timeout_sec: 120
+- id: cap-static
+  name: 静态普查：哪些测试声称验证存储语义、其中多少只在 mock 上跑
+  cmd: /usr/bin/python3 audit/v4.1.0/capability_smoke.py static
+  cwd: .
+  timeout_sec: 300
+- id: kanban-check
+  name: 看板 render/check（本 run 改了看板 3 行：P1-2 证据、WIRE-1 撤销原判据、BIN-1 挂
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: kanban-counts
+  name: 看板行数字段（55 行：7 未开始 / 20 待复核 / 18 完成 / 10 阻塞）
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: gov-metrics
+  name: 分母与度量（check_n 必须仍是 168；本 run 不跑 ci_gate，见 manifest notes）
+  cmd: /usr/bin/python3 scripts/gate/gov_probe.py metrics | tail -1 | /usr/bin/python3 -c "import sys,json;d=json.load(sys.stdin);print(d['check_n'],d['claims_hits'],d['docs410'],d['audit_manifests_runs'])"
+  cwd: .
+  timeout_sec: 120
+- id: ledger-verify
+  name: 台账 verify（findings=0、debt 只降不升，现值 1143）
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify
+  cwd: .
+  timeout_sec: 120
+- id: board-appendix-check
+  name: 三处一致性核对（现值 findings=1：看板
+  cmd: /usr/bin/python3 audit/v4.1.0/board_appendix_check.py
+  cwd: .
+  timeout_sec: 120
+results:
+- id: cap-selftest
+  started_at: '2026-11-06T03:18:16Z'
+  finished_at: '2026-11-06T03:18:16Z'
+  exit_code: 0
+  stdout_sha256: 874a4a6f08e645e379b8f1f9ccf83f8fee0d2919cd7ba36800260f26a355a262
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-cap-selftest.stdout
+  stderr_path: logs/001-cap-selftest.stderr
+- id: cap-client-presence
+  started_at: '2026-11-06T03:18:16Z'
+  finished_at: '2026-11-06T03:18:16Z'
+  exit_code: 0
+  stdout_sha256: 744615c578f72095cf6422da0de1b37584d1b94eeafd41e4eae1749097d303e6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-cap-client-presence.stdout
+  stderr_path: logs/002-cap-client-presence.stderr
+- id: cap-live-prod
+  started_at: '2026-11-06T03:18:16Z'
+  finished_at: '2026-11-06T03:18:25Z'
+  exit_code: 0
+  stdout_sha256: 56c77467f3100fed0b3055a522a28cf6975f0624f33e57429e9c43a4f49ca7f8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-cap-live-prod.stdout
+  stderr_path: logs/003-cap-live-prod.stderr
+- id: cap-live-summary
+  started_at: '2026-11-06T03:18:25Z'
+  finished_at: '2026-11-06T03:18:25Z'
+  exit_code: 0
+  stdout_sha256: 0a685f5471293ac33ae7ad8822e8eacd9efc510cda4a09f44b18b91b4b81a043
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-cap-live-summary.stdout
+  stderr_path: logs/004-cap-live-summary.stderr
+- id: binmode-probe
+  started_at: '2026-11-06T03:18:25Z'
+  finished_at: '2026-11-06T03:18:26Z'
+  exit_code: 0
+  stdout_sha256: b27d9942882d5845445529f4e6b77b98b276592093cd0ea894ad0daa826e144e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-binmode-probe.stdout
+  stderr_path: logs/005-binmode-probe.stderr
+- id: binmode-lock
+  started_at: '2026-11-06T03:18:26Z'
+  finished_at: '2026-11-06T03:18:26Z'
+  exit_code: 0
+  stdout_sha256: 92a818f058e9d1fa7aeb30befeb205c3a66157fc86060055a137b291c7898cf0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-binmode-lock.stdout
+  stderr_path: logs/006-binmode-lock.stderr
+- id: cap-static
+  started_at: '2026-11-06T03:18:26Z'
+  finished_at: '2026-11-06T03:18:26Z'
+  exit_code: 0
+  stdout_sha256: 1ca7cc780ecbf39a35e1dc0a5855e973d9ef968768726c52aa0334b50ce5c8f7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-cap-static.stdout
+  stderr_path: logs/007-cap-static.stderr
+- id: kanban-check
+  started_at: '2026-11-06T03:18:26Z'
+  finished_at: '2026-11-06T03:18:26Z'
+  exit_code: 0
+  stdout_sha256: 8b1340b1218aae985a9938ded9aed46d11da839ffaa173f8c43a4375cf1cac03
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-kanban-check.stdout
+  stderr_path: logs/008-kanban-check.stderr
+- id: kanban-counts
+  started_at: '2026-11-06T03:18:26Z'
+  finished_at: '2026-11-06T03:18:26Z'
+  exit_code: 0
+  stdout_sha256: 531e92822484c651314ab310b1d3255dc3698fd3a91e0318a993519371f35cd7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-kanban-counts.stdout
+  stderr_path: logs/009-kanban-counts.stderr
+- id: gov-metrics
+  started_at: '2026-11-06T03:18:26Z'
+  finished_at: '2026-11-06T03:18:27Z'
+  exit_code: 0
+  stdout_sha256: ac55a71b1100000be917525a587c4529ab3ccc67a6fc49f5b0bdb66c7a499194
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gov-metrics.stdout
+  stderr_path: logs/010-gov-metrics.stderr
+- id: ledger-verify
+  started_at: '2026-11-06T03:18:27Z'
+  finished_at: '2026-11-06T03:18:27Z'
+  exit_code: 0
+  stdout_sha256: ef48c5d80f053dc71759991bc4fe4a7d03365886bc01e53e126e58d56c547957
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-ledger-verify.stdout
+  stderr_path: logs/011-ledger-verify.stderr
+- id: board-appendix-check
+  started_at: '2026-11-06T03:18:27Z'
+  finished_at: '2026-11-06T03:18:27Z'
+  exit_code: 1
+  stdout_sha256: 31df19da4c9be8db3206c0029a74a34421ac9f41666dcdf04093632ed51cc3e6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-board-appendix-check.stdout
+  stderr_path: logs/012-board-appendix-check.stderr
+evidence_hash: sha256:f3bff0da84935b1eb18f69ab464358d89bbe90311f2a8b6d70a6de56592928fb
+completed_at: '2026-11-06T03:18:27Z'
+notes:
+- 本 run 不含 ci_gate / 168 项全量门禁实跑，不构成任何「门禁通过」声明（Owner 专属动作）。这里只有 audit 探针与核对命令。
+- 用途：P1-2（capability 声称 vs 使用面实测量）第二轮闭环 + BIN-1 取证。工具=audit/v4.1.0/{capability_smoke,binmode_probe,binmode_lock,cap_live_summary}.py（探针/核对脚本，不是门禁，分母仍
+  168；见 log 010 check_n=168）。
+- log 001 反向变异自检：arms=19 discriminating=19（rc=0）。比 001 号 run 的 11 臂新增 W1..W9：包级 NULL 字节(0xFB vs 04 4e
+  55 4c 4c)、参考服务端对照(客户端歧义但参考同样 ⇒ 必须绿)、参考分得开而被测分不开 ⇒ 必须红、包没抓到 ⇒ 只能报『没能核对』、探针没跑 ⇒ 不得凭空报缺陷、lenenc 编解码自洽、包帧切分
+  EOF 不齐不得假绿。
+- log 002 被测对象在位（含打折披露）：/opt/homebrew/bin/mysql 真身 = MariaDB 12.3.2 / client 15.2，不是 Oracle MySQL 官方客户端
+  ⇒ 『真 MySQL 客户端』只在协议兼容层成立。参考服务端 /opt/homebrew/bin/mariadbd 12.3.2（Homebrew）。被测 target/debug/sqlrustgo-mysql-server
+  0.1.0 sha256 b0900a5a37d9a5a3cd3608a3b8f92a85a5f87c5bfe3b3bc9a17fc5dd2fa6e646（与 001 号 run 同一份二进制，未重编译）；git
+  HEAD=e2bf7a94e5。
+- log 003 真跑 rc=0：生产链（--storage file --wal-sync every）findings=0，binary 判别臂 findings=11 ⇒ discriminator
+  arm=11 > prod=0，判据仍有判别力。注意：findings=0 只是 capability_smoke 这套判据下的结论，不等于『使用面全部可用』——BIN-1(#5601) 就是同一套
+  binary 臂里长出来的。
+- 'log 004 摘要（本轮新写的 cap_live_summary.py，读 003 的 json，不重新观测）：三段逐值全等 stage_eq_insert_vs_crash=true、stage_eq_crash_vs_restore=true；wal_nonempty=true、table_files_nonempty=true；backup_rc=0
+  backup_rows=5、restore_rc=0、restore_files_nonempty=true、restore_wrote_nothing=false（即不是 #5525 那种报成功不写盘）；prod_ddl_errors=0
+  prod_insert_errors=0。'
+- WIRE-1 撤销（本轮最重要的改判）：run 20261106-cap-smoke-001 报的 null_ambiguous_on_wire（『SQL NULL 与字面量 NULL 在客户端不可区分，期望
+  \N』）经现场起的参考服务端对照后撤销。证据：prod.obs.wire_rows_hex={'1':'0131fb','2':'0132044e554c4c'} 与 wire_reference_control.rows_hex
+  **逐字节全等**；两侧 client_batch_both_null 都为 true（参考侧 client_direct_raw 同为 '1\tNULL\n2\tNULL'）⇒ 渲染歧义属 MariaDB
+  客户端 batch 模式，被测协议层没错，错在我探针的期望值。判据已下沉到结果集包级字节 + 参考兜底，夹具 W2/W3/W4/W5 分别锁住『错编码必红』『参考同样歧义必绿』『参考分得开被测分不开必红』。
+- 'log 005 binmode_probe（#5601 复现，实测与 002 前两次复跑一致）：create_database_rc=0 但 show_databases_after=[''default'']
+  ⇒ create_database_effective=false；默认库建表/INSERT/SELECT 正常；create_trigger_rc=0 但 trigger_actually_fired_rows=[]、final_rows
+  全是 ''orig''、drop_trigger_rc=1 ''not found'' ⇒ 触发器从未登记；false_success_count=3；服务端 info 日志自认行 3 条 ''TriggerExecutor::new:
+  storage has no WAL enabled — triggers will be silently skipped (binary mode)''。退出码 0 只表示观测完成，不代表功能可用。'
+- 'log 006 binmode_lock rc=0：把上面这套缺陷面钉成锁值（create_database_effective=False / fired=[] / drop rc=1 / false_success_count=3）。引擎修好后这条命令**会故意变红**，用来逼着回去更新
+  #5601 与本计划，而不是让证据悄悄漂掉。'
+- log 007 静态普查（与 001 号 run 同口径复跑）：声称验证存储语义的测试文件 164 个里 production_backed=74、mock_only=71、mixed=19 ⇒ 164
+  个里 71 个只在 MemoryStorage 上跑；另点名 7 处文档结论把 mock-only 测试当『已验证』证据。
+- 'log 008/009 看板：check OK（55 行，md 与 jsonl 一致）；counts 未开始 7 / 待复核 20 / 完成 18 / 阻塞 10。本轮改了 3 行：P1-2 证据换
+  002 读数、WIRE-1 改『撤销原判据』（状态 完成，判据撤但不许据此声称协议已另立验证）、BIN-1 挂 #5601。'
+- log 010 gov metrics：168 1144 81 30。check_n 仍是 168（未增删门禁/阈值/跳过开关）；第 4 个数是 audit manifest 数，本 run 目录建好后自增
+  29⇒30，属预期自指，不是漂移。
+- log 011 台账 verify：findings=0、debt=1143（只降不升）；#5601 已登记进 docs/releases/v4.1.0/ISSUE_LABEL_LEDGER_v4.1.0.jsonl（rows=18，issue_labels.py
+  check：open_total=102 findings=0）。
+- 'log 012 board-appendix-check FAIL(1)（**预期红，未回刷**）：看板正文 #5592 缺附录 A，src=交接 HANDOFF_2026-11-05（51438
+  字节，strip 基前 sha256 3a36e83c…）。回刷看板/交接正文属 Owner 裁决项 HO-2，Agent 不自行改正文。'
+- 探针自身错误披露（本轮共修 5 处，都是「我的工具坏」不是「被测坏」，逐条可复现）：
+- '  ① capture_wire() 里客户端排在 accept() 之后 ⇒ 代理自等超时，wire 一维从没真观测过；已改成先起代理再起客户端。'
+- '  ② mariadb-install-db 的相对 --datadir 被按 basedir 解析 ⇒ rc=1；改成 .resolve() 绝对路径。'
+- '  ③ unix socket 路径 >103 字符被 MariaDB 拒（''The socket file path is too long (> 103)''）⇒ socket/pid 移到
+  tempfile.mkdtemp(''srg410ref_'') 短路径。'
+- '  ④ wire_row_packets() 里 NameError: stream（参数名是 server_stream），异常被线程吞掉只报『没能核对』⇒ 已修，并加 W9 夹具（包帧切分、EOF
+  不齐切不出不得假绿）覆盖这一类。'
+- '  ⑤ binmode_probe 第一版把服务端输出丢 DEVNULL 却去读 server_info.log ⇒ 『自认行』这一维其实没观测过（log 文件根本不存在，hits 恒空）；改成 stdout
+  落盘，且日志为空 ⇒ rc=2（INCOMPLETE）而不是静默 0。'
+- 工具接口事实披露（踩过的坑，供下一个 agent 少花钱）：Gitea GET /issues、/labels 的 limit 实际截到 30（labels 全量共 109 个）；POST /issues
+  的 labels 只收 id 数组，塞名字 ⇒ 422；audit/v4.1.0/issues/*.json 被仓库 .gitignore 的 *.json 忽略，需 git add -f（与既有 iaia410
+  case json 同一先例）。
+- 期望值方法学教训（写进交接 §10）：判据只写『我期望的值』而没有参考实现兜底时，探针能把『我记错的约定』坐实成被测缺陷 —— WIRE-1 就是这一型的真事故（run-001 误报 ⇒ 一度据此要开
+  ISSUE）。凡涉及协议编码/渲染的判据，必须现场起参考实现做字节级对照；参考起不来 ⇒ 只能 INCOMPLETE，不许退回单侧断言。
