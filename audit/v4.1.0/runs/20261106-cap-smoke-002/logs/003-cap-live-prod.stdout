@@ -1,0 +1,27 @@
+reference_control: available=True mariadbd=/opt/homebrew/bin/mariadbd client_both_null=True rows={'1': '0131fb', '2': '0132044e554c4c'} error=
+{
+ "kind": "capability_smoke_summary",
+ "out": "test_results/capability_smoke/run-archive-002",
+ "prod_findings": [],
+ "arm_findings": [
+  "ddl_error: CREATE DATABASE 报成功但未生效：SHOW DATABASES=['default']",
+  "ddl_error: CREATE TABLE rc=1 --------------\nCREATE TABLE smoke.t (id INT PRIMARY KEY, name VARCHAR(64), amount BIGINT, note VARCHAR(128))\n--------------\n\nERROR 1105 (42000) at line 1: Execution error: BinaryTableStorage has no da",
+  "insert_error: INSERT id=1 rc=1 --------------\nINSERT INTO smoke.t VALUES (1, '名称-1', 1007, '备注 1 -- 边界')\n--------------\n\nERROR 1105 (42000) at line 1: Execution error: BinaryTableStorage has ",
+  "insert_error: INSERT id=2 rc=1 --------------\nINSERT INTO smoke.t VALUES (2, '名称-2', 2007, '备注 2 /* x */')\n--------------\n\nERROR 1105 (42000) at line 1: Execution error: BinaryTableStorage ha",
+  "insert_error: INSERT id=3 rc=1 --------------\nINSERT INTO smoke.t VALUES (3, '名称-3', -3007, '')\n--------------\n\nERROR 1105 (42000) at line 1: Execution error: BinaryTableStorage has no databa",
+  "insert_error: INSERT id=4 rc=1 --------------\nINSERT INTO smoke.t VALUES (4, '名称-4', 9223372036854775806, 'tab\t内嵌')\n--------------\n\nERROR 1105 (42000) at line 1: Execution error: BinaryTableS"
+ ],
+ "prod_n": 0,
+ "arm_n": 11,
+ "discriminator": {
+  "discriminating": true,
+  "why": "换成非生产存储后判据变红（arm=11 > prod=0）",
+  "prod": 0,
+  "arm": 11
+ },
+ "overall": {
+  "verdict": "PASS",
+  "findings": 0
+ }
+}
+full report: test_results/capability_smoke/run-archive-002/capability_smoke.json

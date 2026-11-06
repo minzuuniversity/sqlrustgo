@@ -1,0 +1,115 @@
+{
+ "kind": "capability_smoke_static",
+ "scanned_test_files_matching_semantic_keys": 164,
+ "production_backed": 74,
+ "mock_only": 71,
+ "mixed": 19,
+ "mock_only_files": [
+  "tests/benchmark/sprint8_hash_chain_bench.rs",
+  "tests/benchmark/parallel_perf_baseline_test.rs",
+  "tests/anomaly/error_handling_test.rs",
+  "tests/anomaly/null_handling_test.rs",
+  "tests/integration/tpch_compliance_test.rs",
+  "tests/integration/planner_multi_way_join_test.rs",
+  "tests/integration/tpch_full_test.rs",
+  "tests/integration/transaction/stored_proc_catalog_test.rs",
+  "tests/integration/dml/dml_integration_test.rs",
+  "tests/integration/oracle/diag_q11_steps.rs",
+  "tests/integration/oracle/q17_small_order_shortage_perf.rs",
+  "tests/integration/oracle/diag_q12.rs",
+  "tests/integration/oracle/q17_sf1_watchdog.rs",
+  "tests/integration/oracle/q20_potential_part_promotion_perf.rs",
+  "tests/integration/oracle/oracle_g5_sem1.rs",
+  "tests/integration/oracle/q22_global_sales_opportunity_perf.rs",
+  "tests/integration/oracle/diag_q7_extract.rs",
+  "tests/integration/oracle/q16_notin_subquery_regression.rs",
+  "tests/integration/oracle/diag_q14_only.rs",
+  "tests/integration/oracle/q17_1m_rss_regression.rs",
+  "tests/integration/tpch/q20_composite_key_test.rs",
+  "tests/integration/tpch/tpch_sf01_perf_baseline_test.rs",
+  "tests/integration/tpch/q4_residual_filter_scale_test.rs",
+  "tests/integration/tpch/q4_nested_and_short_circuit_test.rs",
+  "tests/integration/tpch/q4_probe_time_residual_test.rs",
+  "tests/integration/tpch/q20_binaryop_arm_test.rs",
+  "tests/integration/tpch/q4_hash_semi_join_test.rs",
+  "tests/integration/migration/upgrade_chain_v3_6_to_v3_9_test.rs",
+  "tests/integration/migration/tx_wal_contract_tests.rs",
+  "tests/integration/migration/oracle_g9_upgrade.rs",
+  "tests/integration/stress/oracle_g14_real_crash.rs",
+  "tests/integration/stress/crash_monkey_test.rs",
+  "tests/integration/stress/recovery_scenarios_test.rs",
+  "tests/integration/stress/recovery_fuzzer_test.rs",
+  "tests/integration/sql/repro_v312_95_4809.rs",
+  "tests/integration/sql/int4_explicit_tx_test.rs",
+  "tests/integration/sql/verify_4704.rs",
+  "tests/integration/sql/repro_v312_85_check.rs",
+  "tests/integration/sql/repro_v312_91_4669.rs",
+  "tests/integration/sql/repro_v312_89_4759.rs"
+ ],
+ "mixed_files": [
+  "tests/blk2_shared_tx_path_test.rs",
+  "tests/blk2_walstorage_no_escape_hatch_test.rs",
+  "tests/integration/int3_spec_complete_test.rs",
+  "tests/integration/sql/int1_bypass_evidence_test.rs",
+  "tests/integration/sql/cross_path_consistency_test.rs",
+  "tests/integration/sql/p3_view_4814_test.rs",
+  "crates/tools/tests/incremental_backup_e2e_5048.rs",
+  "crates/storage/tests/storage_db_namespace_contract.rs",
+  "crates/storage/tests/alter_column_default_5471.rs",
+  "crates/storage/tests/file_storage_change_log_5048.rs",
+  "crates/storage/tests/file_storage_db_isolation_5025.rs",
+  "crates/storage/tests/wal_storage_direct_v3_12.rs",
+  "crates/mysql-server/tests/autoinc_sequence_wire_test.rs",
+  "crates/mysql-server/tests/alter_table_test.rs",
+  "crates/mysql-server/tests/truncate_table_test.rs",
+  "crates/mysql-server/tests/issue_5009_mvcc_list_databases_test.rs",
+  "crates/mysql-server/tests/aggregate_scan_consistency_5167.rs",
+  "crates/mysql-server/tests/insert_odku_test.rs",
+  "crates/executor/tests/v312_55d_trigger_rollback_test.rs"
+ ],
+ "claim_lines_naming_mock_only_test": [
+  {
+   "doc": "docs/releases/v4.1.0/GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md",
+   "line": 196,
+   "mock_test": "crates/gmp/tests/test.rs",
+   "text": "4 道门禁（附录 B-2）**只**在 `.github/workflows` 里出现，而项目 AGENTS §8-11 明令禁止推 GitHub 与使用 `gh` CLI ⇒ 这 `13` 个 workflow 是死配置。`.gitea/workflows/ci-test.md` 是 markdown 冒充 work"
+  },
+  {
+   "doc": "docs/releases/v4.1.0/GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md",
+   "line": 352,
+   "mock_test": "crates/gmp/tests/test.rs",
+   "text": "| P1-2 | `capability_claims.py` = **使用面冒烟**：真 CLI + 真 MySQL 客户端 + 真持久化落库 + 崩溃后重启读回 + 备份→恢复→逐值比对（复用 #5525 三条假成功反例）；并把 `check_correctness_tests_production_storage"
+  },
+  {
+   "doc": "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md",
+   "line": 25,
+   "mock_test": "crates/gmp/tests/test.rs",
+   "text": "| P1-2 | capability_claims.py：真 CLI+真 MySQL+真落库+崩溃重启读回+备份恢复逐值比对 | 待复核 | 把生产存储换成非生产 ⇒ 必须红；只 Mock 的测试不得支撑『已验证』声明。实测(run:20261106-cap-smoke-002)：`--storage binary`"
+  },
+  {
+   "doc": "docs/releases/v4.1.0/PR-5379_TEST_REVIEW.md",
+   "line": 130,
+   "mock_test": "tests/common/tpch_fixture.rs",
+   "text": "| 2.2.2 | 可重复执行 | 同一测试连跑 10 次结果一致 | **PARTIAL** | 生成器确定性已验证（`prepare_tpch_fixture.sh` 幂等 + manifest 记录 `generator_sha256`）。**未执行 10 次连跑**——标注\"未验证\" |"
+  },
+  {
+   "doc": "docs/releases/v4.1.0/PR-5379_TEST_REVIEW.md",
+   "line": 318,
+   "mock_test": "tests/common/tpch_fixture.rs",
+   "text": "| `#[path]` 重复引入导致行为分叉 | **PASS** | `sqlite_oracle.rs:57` 用 `use crate::tpch_fixture::Fixture;` —— 解析到**测试二进制 crate 根**的 `tpch_fixture` 模块。已验证 15 个引用 `sqlite_or"
+  },
+  {
+   "doc": "docs/releases/v4.1.0/evidence/BATCH46_CI_LINT_BUDGET_FIX_2026-10-25.md",
+   "line": 108,
+   "mock_test": "crates/gmp/tests/test.rs",
+   "text": "| `cargo test --workspace` 全量 | 会覆写 `docs/releases/v4.1.0/evidence/a04-5226/wire/*.txt` 这批归档证据；本次改动只碰一个测试文件，tools 全套件已覆盖 |"
+  },
+  {
+   "doc": "docs/releases/v4.1.0/evidence/TPCH_FIXTURE_5379_2026-10-20.md",
+   "line": 2367,
+   "mock_test": "crates/gmp/tests/test.rs",
+   "text": "| **Perf Regression** | `check_perf_baseline.sh`、`check_g11_qps.sh`、`check_g12_sysbench.sh`、`check_g16_compatibility.sh`、`check_g15_perf_report.sh` | `check_per"
+  }
+ ],
+ "note": "普查口径：文件名/内容含 crash/recover/restore/backup/persist/durabil/wal/kill -9/restart；production=引用真 server 或 FileStorage/WAL 装配；mock_only=只用 MemoryStorage"
+}

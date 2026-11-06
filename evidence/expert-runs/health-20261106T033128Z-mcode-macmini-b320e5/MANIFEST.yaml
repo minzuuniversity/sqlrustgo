@@ -1,0 +1,37 @@
+schema_version: expert-manifest/v1
+run_id: health-20261106T033128Z-mcode-macmini-b320e5
+source_agent: mcode-macmini
+source_run: mcode-macmini-2026-11-06T03:31:28Z
+timestamp_started: '2026-11-06T03:31:28Z'
+timestamp_finished: '2026-11-06T03:44:11Z'
+conflict_resolution: none
+repository:
+  canonical_remote: http://192.168.0.252:3000/openclaw/sqlrustgo.git
+  commit: e446799c17337c16b5c24544ff916d1afb032f04
+  branch: mcode-macmini/governance-kanban-expert-ladder
+artifacts:
+  calibration.jsonl:
+    sha256: sha256:39d9514bee90c619a193d648dcfb5971a908f1cc2a92ae3c57676517f3914582
+    bytes: 1274
+    lines: 2
+  health.jsonl:
+    sha256: sha256:791c7af94078edb22a252d8004f918cb63632df79fdfb4c72eb24e4c51a65579
+    bytes: 3429
+    lines: 5
+  health_summary.jsonl:
+    sha256: sha256:0c752a38733e133c8c6681b3397acd77307cfb6180c55438e3fa6f1b304f763d
+    bytes: 211
+    lines: 1
+kind: seat-health
+summary:
+  seats_total: 5
+  seats_ok: 3
+  seats_parseable: 3
+  lineages_reachable:
+  - gpt
+  - qwen
+  lineages_credited:
+  - gpt
+  - qwen
+  adjudication_capable: true
+  capability_basis: calibrated+role-eligible

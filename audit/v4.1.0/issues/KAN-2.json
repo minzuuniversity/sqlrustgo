@@ -1,0 +1,12 @@
+{
+  "id": "KAN-2",
+  "title": "[4.1.0][KAN-2] 看板 SSOT 合并后再次双向漂移（两侧各 72/73 行、7 行状态判定相反）：看板写入口径没人定",
+  "labels": [
+    "governance",
+    "P1-reliability",
+    "cap/governance",
+    "priority/p0",
+    "cost/t0"
+  ],
+  "body_file": "KAN-2.md"
+}

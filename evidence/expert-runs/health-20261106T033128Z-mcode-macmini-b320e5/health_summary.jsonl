@@ -1,0 +1,1 @@
+{"seats_total": 5, "seats_ok": 3, "seats_parseable": 3, "lineages_reachable": ["gpt", "qwen"], "lineages_credited": ["gpt", "qwen"], "adjudication_capable": true, "capability_basis": "calibrated+role-eligible"}
