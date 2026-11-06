@@ -124,7 +124,6 @@ artifacts/
 coverage-report/
 coverage-baseline/
 release-artifacts/
-/releases/  # repo-root release artifacts; docs/releases/ intentionally tracked
 
 # Proof harness runtime traces (binary, regenerated on each run)
 docs/formal/*TTrace*.bin
@@ -273,6 +272,8 @@ data/.sqlrustgo/
 *.pid
 docs/releases/**/driver.stdout
 docs/releases/**/server.log
+docs/releases/**/oracle_diffs/
+docs/releases/**/SOAK_WAL_*_5MIN/
 docs/releases/**/driver.log
 
 # Evidence-binding output directory (regenerated each run)
