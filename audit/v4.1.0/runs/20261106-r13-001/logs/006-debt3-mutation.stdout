@@ -1,0 +1,2 @@
+OK: KANBAN_v4.1.0_ALPHA.md ledger matches KANBAN_v4.1.0_ALPHA.jsonl (80 rows)
+mutation_ok before=findings=36 after=findings=33

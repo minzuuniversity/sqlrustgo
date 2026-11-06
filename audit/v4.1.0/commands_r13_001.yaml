@@ -1,0 +1,93 @@
+- id: head-pin
+  name: 基线现读：HEAD / 分支 / develop tip / 祖先关系
+  cmd: 'set -e
+
+    git rev-parse HEAD
+
+    git rev-parse --abbrev-ref HEAD
+
+    git rev-parse gitea252/develop/v4.1.0
+
+    git merge-base --is-ancestor gitea252/develop/v4.1.0 HEAD && echo develop_is_ancestor_of_head=1
+
+    '
+  cwd: .
+  timeout_sec: 120
+- id: board-counts
+  name: 看板 SSOT 现读（render check + counts）
+  cmd: 'set -e
+
+    /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    /usr/bin/python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    '
+  cwd: .
+  timeout_sec: 180
+- id: issue-labels
+  name: Issue 标签/台账 gap 现读（live）
+  cmd: '/usr/bin/python3 audit/v4.1.0/issue_labels.py check --input live
+
+    '
+  cwd: .
+  timeout_sec: 600
+- id: gov-metrics
+  name: 治理度量现读（分母 168 不漂）
+  cmd: '/usr/bin/python3 scripts/gate/gov_probe.py metrics
+
+    '
+  cwd: .
+  timeout_sec: 600
+- id: evidence-verify
+  name: 证据台账自检（预期红：LEDGER-2 未裁，如实记一条红）
+  cmd: '/usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify
+
+    '
+  cwd: .
+  timeout_sec: 900
+- id: debt3-mutation
+  name: DEBT-3 反向变异：移出渲染 md 后台账记账行必须变化，且判据必须判别
+  cmd: 'set -e
+
+    before=$(/usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify 2>/dev/null | tail -1)
+
+    mv docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md /tmp/debt3_md_probe
+
+    after=$(/usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify 2>/dev/null | tail -1)
+
+    git checkout -- docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    if [ "$before" = "$after" ]; then echo "NOT-OK: 变异不判别 => DEBT-3 的机制声称无判别力"; exit 1; fi
+
+    echo "mutation_ok before=$before after=$after"
+
+    '
+  cwd: .
+  timeout_sec: 900
+- id: appendix-check
+  name: 交接三处一致性核对（预期 findings=1：看板缺附录 A = HO-2 属 Owner）
+  cmd: '/usr/bin/python3 audit/v4.1.0/board_appendix_check.py
+
+    '
+  cwd: .
+  timeout_sec: 180
+- id: pin-selftest
+  name: 固定评论发布器的反向变异自测（现读生成器元数据）
+  cmd: '/usr/bin/python3 audit/v4.1.0/handoff_pin.py --selftest
+
+    '
+  cwd: .
+  timeout_sec: 180
+- id: verify-prior-runs
+  name: 复核上一批归档 run（本线 readback-001 + omp ledger-002）
+  cmd: 'set -e
+
+    /usr/bin/python3 audit/v4.1.0/audit_run.py verify --run-id 20261106-readback-001
+
+    /usr/bin/python3 audit/v4.1.0/audit_run.py verify --run-id 20261106-ledger-002
+
+    '
+  cwd: .
+  timeout_sec: 600

@@ -1,0 +1,193 @@
+schema_version: 1
+run_id: 20261106-r13-001
+source_agent: mcode-macmini
+frozen_commit: 9b89a83cb7bd2fad1ab4120284a2475e76c2c5d7
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: head-pin
+  name: 基线现读：HEAD / 分支 / develop tip / 祖先关系
+  cmd: 'set -e
+
+    git rev-parse HEAD
+
+    git rev-parse --abbrev-ref HEAD
+
+    git rev-parse gitea252/develop/v4.1.0
+
+    git merge-base --is-ancestor gitea252/develop/v4.1.0 HEAD && echo develop_is_ancestor_of_head=1
+
+    '
+  cwd: .
+  timeout_sec: 120
+- id: board-counts
+  name: 看板 SSOT 现读（render check + counts）
+  cmd: 'set -e
+
+    /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    /usr/bin/python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    '
+  cwd: .
+  timeout_sec: 180
+- id: issue-labels
+  name: Issue 标签/台账 gap 现读（live）
+  cmd: '/usr/bin/python3 audit/v4.1.0/issue_labels.py check --input live
+
+    '
+  cwd: .
+  timeout_sec: 600
+- id: gov-metrics
+  name: 治理度量现读（分母 168 不漂）
+  cmd: '/usr/bin/python3 scripts/gate/gov_probe.py metrics
+
+    '
+  cwd: .
+  timeout_sec: 600
+- id: evidence-verify
+  name: 证据台账自检（预期红：LEDGER-2 未裁，如实记一条红）
+  cmd: '/usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify
+
+    '
+  cwd: .
+  timeout_sec: 900
+- id: debt3-mutation
+  name: DEBT-3 反向变异：移出渲染 md 后台账记账行必须变化，且判据必须判别
+  cmd: 'set -e
+
+    before=$(/usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify 2>/dev/null | tail -1)
+
+    mv docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md /tmp/debt3_md_probe
+
+    after=$(/usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify 2>/dev/null | tail -1)
+
+    git checkout -- docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+
+    if [ "$before" = "$after" ]; then echo "NOT-OK: 变异不判别 => DEBT-3 的机制声称无判别力"; exit 1; fi
+
+    echo "mutation_ok before=$before after=$after"
+
+    '
+  cwd: .
+  timeout_sec: 900
+- id: appendix-check
+  name: 交接三处一致性核对（预期 findings=1：看板缺附录 A = HO-2 属 Owner）
+  cmd: '/usr/bin/python3 audit/v4.1.0/board_appendix_check.py
+
+    '
+  cwd: .
+  timeout_sec: 180
+- id: pin-selftest
+  name: 固定评论发布器的反向变异自测（现读生成器元数据）
+  cmd: '/usr/bin/python3 audit/v4.1.0/handoff_pin.py --selftest
+
+    '
+  cwd: .
+  timeout_sec: 180
+- id: verify-prior-runs
+  name: 复核上一批归档 run（本线 readback-001 + omp ledger-002）
+  cmd: 'set -e
+
+    /usr/bin/python3 audit/v4.1.0/audit_run.py verify --run-id 20261106-readback-001
+
+    /usr/bin/python3 audit/v4.1.0/audit_run.py verify --run-id 20261106-ledger-002
+
+    '
+  cwd: .
+  timeout_sec: 600
+results:
+- id: head-pin
+  started_at: '2026-11-06T11:03:03Z'
+  finished_at: '2026-11-06T11:03:03Z'
+  exit_code: 0
+  stdout_sha256: 593ca0bf624601a942bfcb357801182ccddb4f8ad14f6f52b828fe754467ce79
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-head-pin.stdout
+  stderr_path: logs/001-head-pin.stderr
+- id: board-counts
+  started_at: '2026-11-06T11:03:03Z'
+  finished_at: '2026-11-06T11:03:03Z'
+  exit_code: 0
+  stdout_sha256: 243556a153c1d402ebb17b2ae31c48350318412bafb466133ab64b9c2f18922f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-board-counts.stdout
+  stderr_path: logs/002-board-counts.stderr
+- id: issue-labels
+  started_at: '2026-11-06T11:03:03Z'
+  finished_at: '2026-11-06T11:03:04Z'
+  exit_code: 0
+  stdout_sha256: e0f86da008c1ef9d238a602d3ea8264bbe5bb63a7a5233e7054b6a86819b838a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-issue-labels.stdout
+  stderr_path: logs/003-issue-labels.stderr
+- id: gov-metrics
+  started_at: '2026-11-06T11:03:04Z'
+  finished_at: '2026-11-06T11:03:05Z'
+  exit_code: 0
+  stdout_sha256: 8a6ae57aebc1b66543034c21ae93396ea597b582ea18d483ba2f058e21af2162
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-gov-metrics.stdout
+  stderr_path: logs/004-gov-metrics.stderr
+- id: evidence-verify
+  started_at: '2026-11-06T11:03:05Z'
+  finished_at: '2026-11-06T11:03:05Z'
+  exit_code: 1
+  stdout_sha256: cc57c3e47b0818f779214acae8c082b42340e6f7c8a8d06193f6ed28e54de00e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-evidence-verify.stdout
+  stderr_path: logs/005-evidence-verify.stderr
+- id: debt3-mutation
+  started_at: '2026-11-06T11:03:05Z'
+  finished_at: '2026-11-06T11:03:05Z'
+  exit_code: 0
+  stdout_sha256: 116cf6a024a7738927e1b2f445fb9f4a657261cf6028e30021bbe5d944d7deef
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-debt3-mutation.stdout
+  stderr_path: logs/006-debt3-mutation.stderr
+- id: appendix-check
+  started_at: '2026-11-06T11:03:05Z'
+  finished_at: '2026-11-06T11:03:06Z'
+  exit_code: 1
+  stdout_sha256: dca03b9c87aa8066f9ea9eb6b70509445186a24f2e03ae3f40e5dd22c1f45538
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-appendix-check.stdout
+  stderr_path: logs/007-appendix-check.stderr
+- id: pin-selftest
+  started_at: '2026-11-06T11:03:06Z'
+  finished_at: '2026-11-06T11:03:06Z'
+  exit_code: 0
+  stdout_sha256: bd94a0cc3a2d57a6840499f39eaabf80cf4e66236faf5ff86e99333d7b3677b5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-pin-selftest.stdout
+  stderr_path: logs/008-pin-selftest.stderr
+- id: verify-prior-runs
+  started_at: '2026-11-06T11:03:06Z'
+  finished_at: '2026-11-06T11:03:06Z'
+  exit_code: 0
+  stdout_sha256: 2207147d9108bacd05fbf935e6835ca290682298db14d2f627f08ec72c9504e5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-verify-prior-runs.stdout
+  stderr_path: logs/009-verify-prior-runs.stderr
+evidence_hash: sha256:f622acf917ecb9be0b74ce7f149ca24748e7e1f847a2a927bdf10a6407e5d62d
+completed_at: '2026-11-06T11:03:06Z'
+notes:
+- 本 run 不含 ci_gate.sh / 168 道门禁的全量实跑，**不构成任何门禁通过声明**（Owner 专属动作）。
+- '两条 FAIL 是已知 Owner 阻塞项的如实红，不是夹具坏：evidence-verify(rc=1, findings=36) = LEDGER-2 #5603 未裁；appendix-check(rc=1,
+  findings=1) = HO-2「#5592 正文回刷」属 Owner。'
+- debt3-mutation 是 DEBT-3 的反向变异：把已提交的渲染 md 移出工作区后 findings 36 -> 33（三条 md 侧记账行消失），且 7 条 md 声称行不变（来自 git
+  diff base..HEAD 的提交历史）=> 判据有判别力；变异后已 git checkout 还原并复跑 check。
+- gov_probe.metrics 的 audit_manifests=69 / audit_manifests_runs=63 含自指（本 run 在飞时被多算 1 条，IL-6 治的就是这个）；其余度量与本
+  run 冻结树一致。
+- 席位（9655/9656/8002/250:8011）本 run **故意不测**：这些是单会话席位，omp 同期在跑 health，并发会互相挤占；席位读数按会话实测记录在交接 §6，不冒充归档强度证据。
