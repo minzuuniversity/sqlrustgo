@@ -1,0 +1,1 @@
+{"kind": "ledger_freshness", "mode": "replay-rows", "committed_rows": 104, "replay_rows": 104, "ledger_rc": 0, "compared_fields": 15, "row_diffs": 0, "sample_diffs": [], "replay_fingerprint": "sha256:dd2da17ea2b229126b8d4829aa31d0c61a18dad8b0310a745b0cc9aa0b8fa363", "result": "consistent"}
