@@ -1,0 +1,2510 @@
+
+running 170 tests
+test engine_collation::tests::expand_column_names_non_select_returns_empty ... ok
+test engine_collation::tests::collect_column_collations_non_select_returns_empty ... ok
+test engine_collation::tests::collect_column_collations_empty_when_no_table ... ok
+test engine_collation::tests::leftmost_column_names_non_select_returns_empty ... ok
+test engine_collation::tests::leftmost_column_names_plain_select_with_aliases ... ok
+test engine_collation::tests::collect_column_collations_empty_when_table_missing ... ok
+test engine_collation::tests::expand_column_names_star_expands_to_physical ... ok
+test engine_collation::tests::expand_column_names_walks_left_of_setop ... ok
+test engine_collation::tests::leftmost_select_walks_nested_setops ... ok
+test engine_collation::tests::expand_column_names_plain_columns_passthrough ... ok
+test engine_collation::tests::leftmost_column_names_walks_union_intersect_except ... ok
+test engine_collation::tests::expand_column_names_star_table_missing_falls_back_to_subquery ... ok
+test engine_collation::tests::collect_column_collations_per_column ... ok
+test engine_collation::tests::collect_column_collations_alias_name_match ... ok
+test engine_collation::tests::multiset_entries_empty_input_empty_map ... ok
+test engine_collation::tests::collect_column_collations_star_uses_physical_order ... ok
+test engine_collation::tests::normalize_row_applies_per_column_collation ... ok
+test engine_collation::tests::normalize_value_binary_passthrough ... ok
+test engine_collation::tests::normalize_row_empty_collations_returns_copy ... ok
+test engine_collation::tests::normalize_row_truncates_collations ... ok
+test engine_collation::tests::normalize_value_no_collation_passthrough ... ok
+test engine_collation::tests::normalize_value_nocase_non_text_passthrough ... ok
+test engine_collation::tests::normalize_value_nocase_uppercases_ascii ... ok
+test engine_collation::tests::order_by_expr_identifier_miss_returns_null ... ok
+test engine_collation::tests::order_by_expr_literal_out_of_range_returns_null ... ok
+test engine_collation::tests::order_by_expr_literal_position_one_based ... ok
+test engine_collation::tests::multiset_entries_binary_distinct ... ok
+test engine_collation::tests::order_by_expr_literal_zero_saturates_to_first ... ok
+test engine_collation::tests::order_by_expr_identifier_match ... ok
+test engine_collation::tests::order_by_expr_non_integer_literal_returns_null ... ok
+test engine_collation::tests::order_by_expr_other_expression_returns_null ... ok
+test engine_collation::tests::multiset_entries_counts_with_nocase_folding ... ok
+test engine_cte::tests::derive_cte_columns_fallback_col_i ... ok
+test engine_cte::tests::derive_cte_columns_explicit ... ok
+test engine_cte::tests::decompose_recursive_body_union_all_ok ... ok
+test engine_cte::tests::rewrite_step_join_clause ... ok
+test engine_cte::tests::decompose_recursive_body_union_distinct_ok ... ok
+test engine_cte::tests::rewrite_step_preserves_unrelated_tables ... ok
+test engine_cte::tests::rewrite_step_top_level_from ... ok
+test engine_cte::tests::decompose_recursive_body_non_union_rejected ... ok
+test engine_cte::tests::rewrite_step_subquery_in_where ... ok
+test engine_cte::tests::with_select_alias_column_name_resolution ... ok
+test engine_cte::tests::with_select_basic ... ok
+test engine_cte::tests::with_select_cleanup_after_query ... ok
+test engine_cte::tests::with_select_multiple_ctes ... ok
+test engine_cte::tests::with_dml_update_via_cte ... ok
+test engine_cte::tests::with_dml_delete_via_cte ... ok
+test engine_cte::tests::with_select_empty_cte_result ... ok
+test engine_cte::tests::with_dml_insert_from_cte ... ok
+test engine_cte::tests::with_select_recursive_now_supported ... ok
+test engine_select::chain_builder_tests::build_chain_from_start_q21_completes ... ok
+test engine_select_pk::range_tests::test_between_id_eq_falls_back_to_eq ... ok
+test engine_select_pk::range_tests::test_id_between_no_where ... ok
+test engine_select_pk::range_tests::test_other_column ... ok
+test engine_select::chain_builder_tests::build_chain_from_start_q21_orders_start_completes ... ok
+test engine_select_pk::range_tests::test_id_between ... ok
+test engine_cte::tests::with_select_referenced_multiple_times ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_id_default ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_no_pk_falls_back_to_id ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_picks_first_when_multi_pk_flagged ... ok
+test engine_select_pk::resolve_pk_column_tests::test_resolve_pk_column_returns_named_pk ... ok
+test engine_select_pk::tests::test_compound_identifier_rejected ... ok
+test engine_select_pk::tests::test_no_where ... ok
+test engine_select_pk::tests::test_non_equality ... ok
+test engine_select_pk::tests::test_other_column ... ok
+test engine_select_pk::tests::test_reverse_literal_left ... ok
+test engine_select_pk::tests::test_simple_id_eq_int ... ok
+test engine_group_by_binder_tests::test_5463_group_by_unknown_identifier_is_a_binder_error ... ok
+test engine_group_by_binder_tests::test_5463_group_by_unknown_identifier_does_not_break_later_statements ... ok
+test engine_group_by_binder_tests::test_5463_group_by_unknown_identifier_in_select_list_is_still_rejected ... ok
+test engine_group_by_binder_tests::test_5462_group_by_alias_of_expression_groups_by_the_expression ... ok
+test engine_group_by_binder_tests::test_5462_group_by_alias_of_plain_column_groups_by_the_column ... ok
+test engine_group_by_binder_tests::test_5462_group_by_real_column_is_unchanged ... ok
+test engine_setops::tests::touch_setop_stmt_construction ... ok
+test engine_setops::tests::apply_trailing_descending ... ok
+test engine_setops::tests::apply_trailing_star_expansion_sort ... ok
+test engine_setops::tests::apply_trailing_offset_via_union ... ok
+test engine_setops::tests::apply_trailing_nulls_first_then_last ... ok
+test engine_setops::tests::intersect_distinct ... ok
+test engine_setops::tests::except_distinct ... ok
+test engine_setops::tests::except_with_trailing_order_limit_offset ... ok
+test engine_setops::tests::intersect_with_trailing_order_by ... ok
+test engine_setops::tests::intersect_nocase_folding ... ok
+test engine_setops::tests::union_trailing_limit_truncates ... ok
+test engine_setops::tests::union_distinct_nocase_folding ... ok
+test engine_setops::tests::union_all_concatenates ... ok
+test engine_setops::tests::union_distinct_dedup ... ok
+test engine_setops::tests::union_of_union_nested ... ok
+test engine_setops::tests::union_trailing_offset_beyond_yields_empty ... ok
+test execution_engine_tests::database_reports_the_selected_database ... ok
+test execution_engine_tests::session_db_is_seeded_from_storage_not_the_constant ... ok
+test engine_setops::tests::union_trailing_offset_partial_drain ... ok
+test execution_engine_tests::database_is_resolved_in_where_too ... ok
+test execution_engine_tests::handshake_selected_database_does_not_leak_other_databases ... ok
+test execution_engine_tests::schema_and_current_database_are_synonyms ... ok
+test execution_engine_tests::test_cbo_disable ... ok
+test execution_engine_tests::test_engine_adaptive_hash_index_default_present ... ok
+test engine_setops::tests::union_with_trailing_order_by_and_limit ... ok
+test execution_engine_tests::test_ahi_fires_on_select_from_table ... ok
+test execution_engine_tests::test_engine_adaptive_hash_index_invalidate ... ok
+test execution_engine_tests::test_engine_adaptive_hash_index_record_and_lookup ... ok
+test execution_engine_tests::test_engine_grant_column_requires_catalog ... ok
+test execution_engine_tests::handshake_selected_database_can_query_its_own_tables ... ok
+test execution_engine_tests::test_engine_set_adaptive_hash_index_replaces_instance ... ok
+test execution_engine_tests::test_engine_grant_select_column_stores_in_catalog ... ok
+test execution_engine_tests::test_engine_grant_select_multiple_columns ... ok
+test execution_engine_tests::test_execution_stats_default ... ok
+test execution_engine_tests::test_analyze_table_stats ... ok
+test execution_engine_tests::test_estimate_row_count ... ok
+test execution_engine_tests::test_ahi_lookup_succeeds_after_promotion ... ok
+test execution_engine_tests::test_executor_kill_v312_35 ... ok
+test execution_engine_tests::test_executor_kill_via_sql_v312_35 ... ok
+test execution_engine_tests::test_executor_quantile_array_out_of_range_v312_46 ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_single_chunk_falls_through_v312_26 ... ok
+test execution_engine_tests::test_ahi_promotes_after_threshold_selects ... ok
+test execution_engine_tests::test_executor_quantile_cont_array_v312_46 ... ok
+test execution_engine_tests::test_executor_quantile_disc_array_single_frac_v312_46 ... ok
+test execution_engine_tests::test_executor_show_full_processlist_via_sql_v312_35 ... ok
+test execution_engine_tests::test_executor_show_processlist_v312_35 ... ok
+test execution_engine_tests::test_memory_engine_with_cbo ... ok
+test execution_engine_tests::test_executor_show_processlist_via_sql_v312_35 ... ok
+test execution_engine_tests::test_ahi_does_not_promote_for_different_tables ... ok
+test execution_engine_tests::test_executor_quantile_disc_array_v312_46 ... ok
+test execution_engine_tests::test_parallel_default_n1_no_env_var ... ok
+test execution_engine_tests::test_estimate_join_cost ... ok
+test execution_engine_tests::test_estimate_selectivity ... ok
+test execution_engine_tests::test_select_arithmetic_no_from_returns_one_row ... ok
+test execution_engine_tests::test_parallel_scan_partitions_evenly ... ok
+test execution_engine_tests::test_select_count_star_no_from_returns_one_one_row ... ok
+test execution_engine_tests::test_select_literal_no_from_returns_one_row ... ok
+test execution_engine_tests::test_select_string_literal_no_from_returns_one_row ... ok
+test execution_engine_tests::test_table_statistics ... ok
+test execution_engine_tests::test_tx_lifecycle_delete_without_tx_autocommits ... ok
+test execution_engine_tests::test_tx_lifecycle_double_commit_is_noop ... ok
+test execution_engine_tests::test_tx_lifecycle_insert_after_commit_autocommits ... ok
+test execution_engine_tests::test_tx_lifecycle_insert_after_rollback_autocommits ... ok
+test execution_engine_tests::test_tx_lifecycle_insert_without_tx_autocommits ... ok
+test execution_engine_tests::test_tx_lifecycle_update_without_tx_autocommits ... ok
+test execution_engine_tests::test_v410_atomic_cbo_enabled_and_parallel_degree_getter_consistency ... ok
+test execution_engine_tests::test_v410_atomic_cbo_enabled_getter_returns_initial_value ... ok
+test execution_engine_tests::test_v410_atomic_parallel_degree_getter_clamps_to_one ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_uneven_remainder_v312_26 ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_zero_chunk_size_disables_chunking_v312_26 ... ok
+test execution_engine_tests::test_v410_execute_read_only_explain_show_describe_pragma_work ... ok
+test execution_engine_tests::test_v410_execute_read_only_rejects_mutating_statements ... ok
+test execution_engine_tests::test_v410_execute_read_only_select_routes_via_ref_engine ... ok
+test execution_engine_tests::test_v410_execute_select_is_usable_via_ref_engine ... ok
+test execution_engine_tests::test_executor_bulk_insert_chunked_multi_chunk_v312_26 ... ok
+test execution_engine_tests::test_v411_group_by_distinguishes_integer_and_text_key ... ok
+test execution_engine_tests::test_v411_group_by_key_values_keep_their_types ... ok
+test execution_engine_tests::test_v411_group_by_text_value_looking_numeric_stays_text ... ok
+test execution_engine_tests::test_wal_contract_delete_without_wal_panics - should panic ... ok
+test execution_engine_tests::test_v410_phase3_concurrent_inserts ... ok
+test execution_engine_tests::test_wal_contract_insert_without_wal_panics - should panic ... ok
+test sequence_state::tests::currval_before_nextval_errors ... ok
+test sequence_state::tests::drop_sequence_removes_entry ... ok
+test sequence_state::tests::hydrate_replaces_state ... ok
+test sequence_state::tests::next_value_basic_increment ... ok
+test execution_engine_tests::test_wal_contract_update_without_wal_panics - should panic ... ok
+test sequence_state::tests::next_value_overflow_cycle_wraps ... ok
+test sequence_state::tests::next_value_overflow_no_cycle_errors ... ok
+test sequence_state::tests::next_value_unknown_errors ... ok
+test execution_engine_tests::test_optimize_join_order_after_analyze ... ok
+test execution_engine_tests::test_parallel_n1_eq_n4_cell_match ... ok
+test execution_engine_tests::test_optimize_join_order ... ok
+test execution_engine_tests::test_estimate_index_benefit ... ok
+test execution_engine_tests::test_v410_concurrent_tps ... ok
+test execution_engine_tests::test_v410_concurrent_selects_via_ref_engine ... ok
+test execution_engine_tests::test_parallel_100k_cell_match_n1_vs_n4 ... ok
+test execution_engine_tests::test_should_use_index ... ok
+
+test result: ok. 170 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.95s
+
+
+running 9 tests
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test test_q16_not_in_subquery ... ok
+test test_q15_subquery_from ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 14 tests
+test bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test repl_transcript_detection::csv_output_is_not_a_repl_transcript ... ok
+test repl_transcript_detection::repl_transcript_is_detected ... ok
+test bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test a04_mysql_diff_matrix ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.51s
+
+
+running 1 test
+test a05_secondary_index_stale_after_flush ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+
+running 1 test
+test eight_threads_thousand_tx_each_reconciles ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.01s
+
+
+running 7 tests
+test test_basic_lookup ... ok
+test test_no_promote_below_threshold ... ok
+test test_invalidate_page ... ok
+test test_hit_rate_tracking ... ok
+test test_multiple_tables_isolation ... ok
+test test_demote_on_table_drop ... ok
+test test_promotion_after_threshold ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test ahi_accessor_returns_valid_instance ... ok
+test single_scan_records_access_via_scan_with_ahi ... ok
+test repeated_scans_eventually_promote_to_ahi ... ok
+test ahi_hit_rate_grows_with_repeated_queries ... ok
+test multiple_tables_have_isolated_ahi_state ... ok
+test ahi_accessor_works_across_query_types ... ok
+test queries_with_join_use_ahi_via_base_table_scan ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 9 tests
+test test_parse_min ... ok
+test test_parse_multiple_aggregates ... ok
+test test_parse_count_column ... ok
+test test_parse_count_distinct ... ok
+test test_parse_avg ... ok
+test test_parse_count_star ... ok
+test test_parse_max ... ok
+test test_parse_aggregate_in_having ... ok
+test test_parse_sum ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test aggregate_group_by ... ok
+test aggregate_having ... ok
+test aggregate_5_basics ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 10 tests
+test tests::test_count_column ... ok
+test tests::test_count_star ... ok
+test tests::test_multiple_aggregates ... ok
+test tests::test_aggregate_single_row ... ok
+test tests::test_sum_aggregate ... ok
+test tests::test_aggregate_negative_values ... ok
+test tests::test_min_aggregate ... ok
+test tests::test_aggregate_empty_table ... ok
+test tests::test_max_aggregate ... ok
+test tests::test_avg_aggregate ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 5 tests
+test test_ahi_hit_rate_converges_after_promotion ... ok
+test test_ahi_promoted_count_monotonic_via_record_access ... ok
+test test_binary_table_storage_buffer_pool_stats_returns_synthetic_zero ... ok
+test test_estimated_pages_for_empty_table_returns_zero ... ok
+test test_ahi_via_engine_memory_storage_no_lookup_wired ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 8 tests
+test coverage_gate_excludes_the_environment_dependent_tests ... ok
+test coverage_gate_runs_the_tests_serially ... ok
+test coverage_gate_derives_features_from_the_crate_sources ... ok
+test the_cargo_target_dir_dependency_is_runtime_resolved ... ok
+test the_feature_gated_tests_compile_without_the_feature ... ok
+test the_feature_gate_is_not_an_ignore ... ok
+test coverage_gate_does_not_derive_features_for_a_plain_crate ... ok
+test coverage_gate_derives_the_features_storage_actually_needs ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+
+running 29 tests
+test test_empty_string ... ok
+test test_bool_true_false ... ok
+test test_hex_value ... ok
+test test_large_float ... ok
+test test_large_integer_positive ... ok
+test test_large_integer_negative ... ok
+test test_bit_value ... ok
+test test_many_values_in_insert ... ok
+test test_max_column_name_length ... ok
+test test_max_table_name_length ... ok
+test test_cast_as_type_parsing ... ok
+test test_null_handling_in_select ... ok
+test test_null_handling_in_where ... ok
+test test_many_columns_in_select ... ok
+test test_nested_from_subquery_with_alias ... ok
+test test_minimal_from_subquery ... ok
+test test_null_handling_in_join ... ok
+test test_q8_national_market_subquery ... ok
+test test_q7_volume_shipping_subquery ... ok
+test test_q9_product_profit_subquery ... ok
+test test_special_characters_chinese ... ok
+test test_special_characters_emoji ... ok
+test test_tab_and_newline_in_string ... ok
+test test_special_characters_sql_injection_attempt ... ok
+test test_whitespace_handling ... ok
+test test_zero_division_parsing ... ok
+test test_q7_full_subquery ... ok
+test test_q9_full_subquery ... ok
+test test_q8_full_subquery ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 10 tests
+test test_repeated_create_drop_stability ... ok
+test test_list_tables_stability ... ok
+test test_table_info_consistency_under_load ... ok
+test test_stress_table_operations ... ok
+test test_sustained_read_load ... ok
+test test_memory_stability_under_load ... ok
+test test_concurrent_read_write_stability ... ok
+test test_sustained_write_load ... ok
+test test_rapid_burst_writes ... ok
+test test_interleaved_read_write_consistency ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+
+running 10 tests
+test test_qps_aggregation ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_complex_where ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_concurrent_mixed ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_concurrent_select ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_delete ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_insert ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_join ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_order_by ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_simple_select ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+test test_qps_update ... ignored, Performance benchmark (long runtime, run with --ignored, dedicated test env)
+
+test result: ok. 0 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test mixed_exists_and_not_exists_in_q21_shape ... ignored, engine bug: test expectation incorrect (Beta has l_o=200, not l_o=2), needs separate fix; see src/engine_select.rs:2812
+test not_exists_returns_rows_with_no_inner_match ... ok
+test not_in_equivalent_correctness ... ok
+test not_exists_with_residual_predicate ... ok
+test large_scale_not_exists_under_5s ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 7.36s
+
+
+running 4 tests
+test arch2_dml_api_is_public ... ok
+test arch2_dml_error_handling ... ok
+test arch2_dml_autocommit_int1 ... ok
+test arch2_dml_api_callable ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 4 tests
+test test_vtu_guard_assert_path_for_dml_noop ... ok
+test test_vtu_guard_assert_path_for_dml_called_in_openclaw_endpoints ... ok
+test test_vtu_guard_assert_path_for_dml_called_in_execution_engine ... ok
+test test_vtu_guard_storage_path_no_bypass_keywords ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 8 tests
+test test_d8_gate_exists ... ok
+test test_d8_tracks_all_7_items ... ok
+test test_d8_gate_3_exit_codes ... ok
+test test_d8_no_p0_missing_in_plan ... ok
+test test_d8_remediation_plan_v390_target ... ok
+test test_d8_remediation_plan_effort ... ok
+test test_d8_remediation_plan_exists ... ok
+test test_d8_gate_runs_correctly ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 5 tests
+test harness_tests::audit_action_as_str ... ok
+test harness_tests::checksum_verified_after_record ... ok
+test harness_tests::run_audit_test_passed ... ok
+test harness_tests::builder_basic_event ... ok
+test harness_tests::store_record_and_query ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 20 tests
+test test_audit_checksum_compute_p2_1 ... ok
+test test_audit_query_by_id_p2_1 ... ok
+test test_audit_record_delete_basic_p2_1 ... ok
+test test_audit_query_by_time_p2_1 ... ok
+test test_audit_query_by_table_p2_1 ... ok
+test test_audit_query_by_user_p2_1 ... ok
+test test_audit_checksum_verify_p2_1 ... ok
+test test_audit_record_insert_basic_p2_1 ... ok
+test test_audit_record_delete_cascade_p2_1 ... ok
+test test_audit_record_delete_with_old_value_p2_1 ... ok
+test test_audit_record_insert_multi_row_p2_1 ... ok
+test test_audit_record_insert_with_values_p2_1 ... ok
+test test_audit_record_update_basic_p2_1 ... ok
+test test_audit_record_update_batch_p2_1 ... ok
+test test_audit_record_update_with_before_after_p2_1 ... ok
+test test_audit_schema_action_enum_p2_1 ... ok
+test test_audit_schema_event_fields_p2_1 ... ok
+test test_audit_schema_table_exists_p2_1 ... ok
+test test_show_audit_log_dispatcher_p2_1 ... ok
+test test_show_audit_log_output_format_p2_1 ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test test_autoinc_multiple_columns ... ok
+test test_autoinc_parsing ... ok
+test test_autoinc_with_explicit_id ... ok
+test test_autoinc_insert ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 51 tests
+test test_backup_empty_data_dir ... ok
+test test_backup_creates_unique_output ... ok
+test test_backup_metadata_version ... ok
+test test_backup_full_basic ... ok
+test test_backup_manifest_sha256_unique ... ok
+test test_backup_idempotent ... ok
+test test_backup_then_modify_then_backup_differs ... ok
+test test_backup_then_delete_source ... ok
+test test_backup_with_binary_content ... ok
+test test_backup_with_readonly_data_returns_error_or_ok ... ok
+test test_parse_target_time_invalid ... ok
+test test_parse_target_time_rfc3339 ... ok
+test test_parse_target_time_unix ... ok
+test test_backup_with_active_tx ... ok
+test test_manifest_scan_returns_correct_files ... ok
+test test_backup_with_zero_byte_file ... ok
+test test_backup_with_wal ... ok
+test test_pitr_at_beginning_of_wal ... ok
+test test_pitr_at_end_of_wal ... ok
+test test_pitr_mixed_commit_rollback ... ok
+test test_pitr_preserves_committed_data ... ok
+test test_backup_very_deep_nested_dir ... ok
+test test_pitr_idempotent ... ok
+test test_pitr_at_exact_entry_timestamp ... ok
+test test_backup_then_restore_equals_original ... ok
+test test_pitr_replays_checkpoints ... ok
+test test_pitr_skips_rolled_back ... ok
+test test_pitr_with_empty_wal ... ok
+test test_pitr_skips_uncommitted_data ... ok
+test test_pitr_very_old_timestamp_zero ... ok
+test test_pitr_with_active_tx_at_target ... ok
+test test_pitr_to_specific_timestamp ... ok
+test test_restore_corrupted_backup_fails ... ok
+test test_restore_interrupted_simulate ... ok
+test test_backup_then_restore_3x_idempotent ... ok
+test test_restore_full ... ok
+test test_restore_overwrites_target ... ok
+test test_restore_preserves_nested_dirs ... ok
+test test_sha256_file_consistent ... ok
+test test_backup_with_lots_of_tables ... ok
+test test_verify_invalid_manifest ... ok
+test test_verify_after_data_modification_fails ... ok
+test test_restore_to_deeply_nested_target ... ok
+test test_restore_to_nonexistent_dir_ok ... ok
+test test_restore_then_verify_recovery ... ok
+test test_verify_corrupted_data ... ok
+test test_round_trip_preserves_data ... ok
+test test_pitr_with_many_committed_tx ... ok
+test test_verify_corrupted_wal ... ok
+test test_verify_ok ... ok
+test test_backup_with_large_wal ... ok
+
+test result: ok. 51 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 9 tests
+test test_batch_insert_empty_values ... ok
+test test_batch_insert_performance_10_rows ... ok
+test test_auto_increment_sequential_after_delete ... ok
+test test_auto_increment_sequential_after_single ... ok
+test test_auto_increment_sequential_batch ... ok
+test test_batch_insert_performance_100_rows ... ok
+test test_batch_insert_mixed_columns ... ok
+test test_concurrent_batch_insert_no_deadlock ... ok
+test test_batch_insert_performance_1000_rows ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 40 tests
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+test bench_bulk_insert_records_wire ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.77s
+
+
+running 6 tests
+test bench_aggregation_count ... ignored, performance benchmark, run with --ignored --release
+test bench_aggregation_sum_avg ... ignored, performance benchmark, run with --ignored --release
+test bench_aggregation_with_filter ... ignored, performance benchmark, run with --ignored --release
+test bench_pkey_batch ... ignored, performance benchmark, run with --ignored --release
+test bench_pkey_lookup ... ignored, performance benchmark, run with --ignored --release
+test bench_pkey_range ... ignored, performance benchmark, run with --ignored --release
+
+test result: ok. 0 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test test_basic_io_100k_rows ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+
+running 1 test
+test inner::test_compaction_preserves_data ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+
+running 1 test
+test test_concurrent_select_during_load ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+
+running 1 test
+test test_migration_atomic_no_partial_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 11 tests
+test test_helpers_read_i64 ... ok
+test test_helpers_read_i64_insufficient_data ... ok
+test test_binary_format_error_debug ... ok
+test test_helpers_read_f64 ... ok
+test test_helpers_write_f64 ... ok
+test test_helpers_read_string ... ok
+test test_helpers_write_i64 ... ok
+test test_helpers_read_u64 ... ok
+test test_helpers_read_u64_insufficient_data ... ok
+test test_helpers_write_string ... ok
+test test_helpers_write_u64 ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test single_threaded_auto_increment_still_starts_at_one ... ok
+test null_in_explicit_column_is_replaced_by_generated_id ... ok
+test explicit_id_advances_the_auto_increment_sequence ... ok
+test concurrent_inserts_get_distinct_auto_increment_ids ... ok
+test concurrent_inserts_leave_no_gaps_in_auto_increment_sequence ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 5 tests
+test box_storage_engine_shared_discard_is_callable ... ok
+test box_storage_engine_forwards_shared_tx_id ... ok
+test box_storage_engine_shared_and_mut_setters_agree ... ok
+test memory_storage_shared_tx_id_survives_concurrent_writers ... ok
+test concurrent_transactions_over_shared_storage_complete ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 4 tests
+test box_storage_engine_forwards_shared_tx_id ... ok
+test wal_storage_has_no_mut_from_ref_escape_hatch ... ok
+test wal_storage_lockfree_paths_use_the_shared_setters ... ok
+test concurrent_transactions_over_shared_wal_storage_complete ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 6 tests
+test test_bplus_tree_new ... ok
+test test_bplus_tree_insert_and_get ... ok
+test test_bplus_tree_keys ... ok
+test test_bplus_tree_len ... ok
+test test_bplus_tree_search_missing ... ok
+test test_bplus_tree_range_query ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test test_buffer_pool_eviction_tracking ... ok
+test test_buffer_pool_hit_rate_repeated_read ... ok
+test test_buffer_pool_hit_rate_sequential_scan ... ok
+test test_buffer_pool_stats_collection ... ok
+test test_buffer_pool_large_working_set ... ok
+test test_buffer_pool_hit_rate_random_access ... ok
+test test_buffer_pool_hit_rate_mixed_workload ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 2 tests
+test test_explain_omits_pages_visited_suffix_for_legacy_with_memory ... ok
+test test_explain_appends_pages_visited_suffix_via_with_memory_and_bufferpool ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test test_explain_omits_pages_visited_suffix_when_zero ... ok
+test test_explain_appends_pages_visited_suffix_after_insert_via_bufferpool ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 40 tests
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test inner::bulk_insert_routes_to_v2_insert_streaming ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 10 tests
+test test_p3_char_001_char_length ... ok
+test test_p3_agg_002_count_sum ... ok
+test test_p3_schema_001_sqlite_master ... ok
+test test_p3_math_001_mod_integer ... ok
+test test_p3_agg_001_sum_empty ... ok
+test test_p3_tx_001_rollback ... ok
+test test_p3_update_001_expression ... ok
+test test_p3_null_001_null_comparison ... ok
+test test_p3_set_001_union_all ... ok
+test test_p3_set_002_union_distinct ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 7 tests
+test test_cargo_toml_no_duplicate_test_names ... ok
+test test_cargo_toml_has_test_section ... ok
+test test_cargo_toml_test_count_52 ... ok
+test test_cargo_toml_p02_section_exists ... ok
+test test_cargo_toml_e2e_subdir_aliases ... ok
+test test_cargo_toml_p02_critical_tests ... ok
+test test_cargo_toml_all_paths_exist ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 12 tests
+test test_cbo_enabled_by_default ... ok
+test test_cbo_can_be_disabled ... ok
+test test_call_statement_returns_error ... ok
+test test_create_procedure_statement_succeeds ... ok
+test test_analyze_collects_table_stats ... ok
+test test_estimate_row_count ... ok
+test test_estimate_join_cost ... ok
+test test_estimate_selectivity ... ok
+test test_optimize_join_order_respects_stats ... ok
+test test_optimize_join_order ... ok
+test test_estimate_index_benefit ... ok
+test test_should_use_index ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.30s
+
+
+running 4 tests
+test test_change_buffer_capacity_threshold ... ok
+test test_change_buffer_main_path_integration ... ok
+test test_change_buffer_flush_integrates ... ok
+test test_change_buffer_multiple_pages ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test test_defer_secondary_index_update ... ok
+test test_change_buffer_capacity_limit ... ok
+test test_eviction_on_flush ... ok
+test test_batch_flush_at_threshold ... ok
+test test_merge_on_page_read ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test test_chaos_io_latency_injectable ... ok
+test test_chaos_memory_pressure_available ... ok
+test test_chaos_controller_script_valid ... ok
+test test_chaos_controller_python_syntax ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+
+running 12 tests
+test test_buffer_pool_pressure ... ok
+test test_graceful_degradation ... ok
+test test_connection_memory_limits ... ok
+test test_memory_allocation_handling ... ok
+test test_replication_timeout_handling ... ok
+test test_crash_recovery_integration ... ok
+test test_partial_commit_recovery ... ok
+test test_wal_integrity_after_crash ... ok
+test test_multiple_failure_scenario ... ok
+test test_wal_disk_full_recovery ... ok
+test test_disk_full_handling ... ok
+test test_network_delay_handling ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s
+
+
+running 40 tests
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test check_sf1_data_present ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 5 tests
+test test_cargo_toolchain_exists ... ok
+test test_claude_config_exists ... ok
+test test_github_workflows_exists ... ok
+test test_claude_config_valid_json ... ok
+test test_ci_workflows_has_build_job ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 31 tests
+test test_5420_the_cfg_exclusivity_checker_itself_detects_a_duplicate ... ok
+test test_5416_legacy_gate_reports_why_a_check_failed ... ok
+test test_5416_legacy_clippy_invocation_puts_cargo_flags_before_the_rustc_separator ... ok
+test test_5444_the_coverage_stub_is_indeed_a_deprecated_stub ... ok
+test test_5420_duplicate_top_level_fns_are_mutually_exclusive_in_every_feature_combination ... ok
+test test_5447_evidence_graph_gate_ingests_no_placeholder_hash ... ok
+test test_5447_legacy_gate_does_not_run_the_whole_test_suite_unbounded ... ok
+test test_5447_evidence_graph_gate_does_not_write_its_own_pass ... ok
+test test_5447_no_gate_invocation_swallows_its_exit_code ... ok
+test test_5444_ci_calls_the_real_coverage_gate_not_the_deprecated_stub ... ok
+test test_5455_postcheck_is_not_masked_behind_the_test_job ... ok
+test test_5444_no_step_references_an_undefined_shell_variable ... ok
+test test_5443_every_step_piping_a_gate_script_enables_pipefail ... ok
+test test_5424_security_scan_job_runs_on_the_current_version_line ... ok
+test test_5443_rc_ga_gate_step_enables_pipefail ... ok
+test test_5456_d9_full_gate_step_always_runs ... ok
+test test_5455_no_post_release_job_is_masked_behind_the_never_green_test_job ... ok
+test test_5456_d9_full_gate_step_runs_the_full_gate_verification_script ... ok
+test test_5456_gate_summary_reads_the_executed_dimension_report ... ok
+test test_5456_gate_summary_step_is_syntactically_valid_bash ... ok
+test test_5444_version_detection_resolves_the_current_version_line ... ok
+test test_6335_test_job_prints_the_failing_tests_not_only_the_tail ... ok
+test test_5456_gate_summary_blocks_on_the_alpha_gate_marker ... ok
+test test_5456_gate_summary_blocks_on_the_marker_the_rc_ga_script_actually_prints ... ok
+test test_5456_gate_summary_blocks_when_d1_or_d2_was_not_executed ... ok
+test test_5456_gate_summary_stays_green_when_d1_and_d2_were_executed ... ok
+test test_5485_every_baseline_driven_gate_has_a_committed_baseline ... ok
+test test_5456_gate_summary_blocks_when_the_dimension_report_is_missing ... ok
+test test_5456_gate_summary_zero_failures_has_no_integer_parse_error ... ok
+test test_5483_every_workflow_step_body_is_valid_bash ... ok
+test test_5416_legacy_gate_surfaces_the_failing_command_output ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.59s
+
+
+running 7 tests
+test engine_innodb_without_clustered_is_heap ... ok
+test engine_innodb_clustered_clause_parses ... ok
+test clustered_table_pk_uniqueness_constraint ... ok
+test clustered_table_supports_insert_and_lookup ... ok
+test clustered_table_supports_delete ... ok
+test clustered_table_supports_update ... ok
+test mixed_heap_and_clustered_tables_coexist ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 7 tests
+test test_insert_basic ... ok
+test test_empty_range_scan ... ok
+test test_range_scan ... ok
+test test_pk_ordering_in_page ... ok
+test test_secondary_index ... ok
+test test_lookup_nonexistent ... ok
+test test_page_split_on_overflow ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test r1_heap_table_rows_survive_reopen_control ... ok
+test r1_clustered_table_writes_survive_reopen ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 5 tests
+test harness_tests::case_all_returns_5 ... ok
+test harness_tests::case_names ... ok
+test harness_tests::scenario_data_dir_500_rows ... ok
+test harness_tests::aggregate_reports_maps_correctly ... ok
+test harness_tests::scenario_rollback_passes ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test peer_rollback_preserves_other_tx_undo_entries ... ok
+test concurrent_delete_insert_txns_lose_no_rows ... ok
+test committed_delete_is_not_undone_by_peer_rollback ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
+
+
+running 5 tests
+test harness_tests::hash_join_cheaper_than_nested_loop_for_large ... ok
+test harness_tests::index_scan_cheaper_for_small_selectivity ... ok
+test harness_tests::choose_best_plan_returns_lowest_cost ... ok
+test harness_tests::seq_scan_cost_positive ... ok
+test harness_tests::sort_cost_grows_with_n ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 20 tests
+test test_cbo_basic_hash_join_p3_3 ... ok
+test test_cbo_basic_index_scan_p3_3 ... ok
+test test_cbo_basic_nested_loop_p3_3 ... ok
+test test_cbo_e2e_tpch_q1_simple_p3_3 ... ok
+test test_cbo_e2e_tpch_q3_three_table_join_p3_3 ... ok
+test test_cbo_e2e_tpch_q5_five_table_p3_3 ... ok
+test test_cbo_basic_sort_p3_3 ... ok
+test test_cbo_basic_seq_scan_p3_3 ... ok
+test test_cbo_filter_multi_condition_p3_3 ... ok
+test test_cbo_filter_range_p3_3 ... ok
+test test_cbo_filter_selectivity_estimate_p3_3 ... ok
+test test_cbo_filter_simple_p3_3 ... ok
+test test_cbo_join_order_dim_dim_p3_3 ... ok
+test test_cbo_join_order_fact_dim_p3_3 ... ok
+test test_cbo_join_order_three_table_p3_3 ... ok
+test test_cbo_join_order_two_table_p3_3 ... ok
+test test_cbo_scan_index_wins_for_high_selectivity_p3_3 ... ok
+test test_cbo_scan_multi_column_index_p3_3 ... ok
+test test_cbo_scan_seq_wins_for_small_table_p3_3 ... ok
+test test_cbo_scan_with_index_smaller_p3_3 ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 9 tests
+test test_3844_a5_passes_when_the_measured_coverage_meets_the_threshold ... ok
+test test_3844_a5_fails_when_the_measured_coverage_is_below_the_threshold ... ok
+test test_3844_a5_is_not_run_when_the_coverage_tool_is_missing ... ok
+test test_3844_a5_is_not_run_when_no_crate_was_measured ... ok
+test test_3844_audit_with_an_empty_comparison_set_is_not_run_not_pass ... ok
+test test_5581_a5_threshold_comes_from_ssot_when_caller_gives_none ... ok
+test test_3844_audit_without_ripgrep_never_reports_a_false_pass ... ok
+test test_3844_summary_never_prints_a_zero_coverage_average ... ok
+test test_3844_gate_run_without_llvm_cov_reports_not_run_and_no_blocker ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s
+
+
+running 5 tests
+test crash_monkey_full_100k_iterations ... ignored, Long-running; enable with --ignored for full 100k iteration sweep
+test crash_monkey_empty_run_invariant ... ok
+test crash_monkey_long_tx_no_crash ... ok
+test crash_monkey_seed_reproducibility ... ok
+test crash_monkey_smoke_100_iterations ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 16 tests
+test test_checkpoint_crash_after_partial_commit_p1_2 ... ok
+test test_checkpoint_crash_during_page_flush_p1_2 ... ok
+test test_checkpoint_crash_before_complete_p1_2 ... ok
+test test_commit_crash_during_wal_fsync_sync_p1_2 ... ok
+test test_crash_during_delete_bretree_rebalance_p1_2 ... ok
+test test_crash_during_delete_persist_wal_p1_2 ... ok
+test test_insert_crash_during_page_write_slow_io_p1_2 ... ok
+test test_p1_2_crash_point_enumeration_p1_2 ... ok
+test test_recovery_crash_during_state_restore_p1_2 ... ok
+test test_recovery_crash_during_wal_replay_p1_2 ... ok
+test test_recovery_idempotent_after_crash_recovery_p1_2 ... ok
+test test_update_crash_before_wal_append_p1_2 ... ok
+test test_update_crash_during_index_update_p1_2 ... ok
+test test_wal_partial_write_corruption_recovery_p1_2 ... ok
+test test_wal_truncated_mid_record_recovery_p1_2 ... ok
+test test_wal_zero_length_record_recovery_p1_2 ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 44 tests
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+test cross_path_select_consistency ... ok
+test cross_path_insert_visibility ... ok
+test cross_path_error_consistency ... ok
+test cross_path_delete_consistency ... ok
+test cross_path_update_consistency ... ok
+
+test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+
+running 3 tests
+test a_table_created_on_one_connection_never_leaks_into_the_other ... ok
+test plain_create_table_lands_in_the_running_connections_database ... ok
+test same_name_in_two_databases_stays_separate ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test ctas_select_star_stores_real_column_names_for_where_binding ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 11 tests
+test test_cte_parse_simple_select ... ok
+test test_cte_parse_multiple_ctes ... ok
+test test_cte_parse_with_dml ... ok
+test test_cte_parse_recursive ... ok
+test test_cte_parse_with_update ... ok
+test test_cte_execute_select_literal ... ok
+test test_cte_execute_dml_delete ... ok
+test test_cte_execute_dml_insert ... ok
+test test_cte_name_reference_works ... ok
+test test_cte_execute_dml_update ... ok
+test test_cte_execute_select_from_real_table ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 9 tests
+test test_cte_column_names ... ok
+test test_cte_empty_result ... ok
+test test_cte_simple ... ok
+test test_cte_cleanup ... ok
+test test_cte_with_dml_insert ... ok
+test test_cte_insert_into_with_cte_select_4757 ... ok
+test test_cte_insert_into_with_multiple_ctes_select_4757 ... ok
+test test_cte_multiple_subqueries ... ok
+test test_cte_referenced_multiple_times ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test tests::test_load_json ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test where_clause_predicate_on_database_matches ... ok
+test select_still_reports_the_connection_database ... ok
+test update_set_database_stores_the_connection_database ... ok
+test insert_values_database_stores_the_connection_database ... ok
+test schema_is_substituted_alongside_database ... ok
+test database_reflects_the_running_connection_not_the_last_use ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test tests::test_null_date ... ok
+test tests::test_null_timestamp ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 26 tests
+test test_create_index_on_nonexistent_table ... ok
+test test_create_table_simple ... ok
+test test_create_table_with_default ... ok
+test test_create_table_varchar_type ... ok
+test test_create_index_basic ... ok
+test test_create_table_with_primary_key ... ok
+test test_create_table_with_not_null ... ok
+test test_create_table_with_unique ... ok
+test test_create_table_with_foreign_key ... ok
+test test_create_unique_index ... ok
+test test_drop_nonexistent_in_memory ... ok
+test test_drop_table_basic ... ok
+test test_drop_table_if_exists ... ok
+test test_ddl_multiple_tables ... ok
+test test_drop_twice_in_memory ... ok
+test test_truncate_empty_table ... ok
+test test_truncate_nonexistent_table ... ok
+test test_alter_table_alter_column_set_data_type_accepted_without_cast ... ok
+test test_truncate_table ... ok
+test test_alter_table_add_column ... ok
+test test_alter_table_rename_column ... ok
+test test_alter_table_rename_to ... ok
+test test_create_index_then_insert_and_query ... ok
+test test_ddl_sequential_create_drop_create ... ok
+test test_ddl_lifecycle_create_insert_select_drop ... ok
+test test_sql92_ddl_dml_full_lifecycle ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 8 tests
+test no_false_positives_on_plain_where ... ok
+test not_exists_detection ... ok
+test simple_exists_detection_via_optimizer_api ... ok
+test count_decorrelatable_helper ... ok
+test nested_subqueries_in_complex_expression ... ok
+test in_subquery_detection ... ok
+test multiple_subqueries_detected ... ok
+test tpc_h_q2_shape_pattern_detection ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test v2_full_lifecycle_exists_to_semi ... ok
+test v2_tpc_h_q4_shape ... ok
+test v2_plain_where_returns_none ... ok
+test v2_in_subquery_to_inner_join ... ok
+test v2_preserves_inner_select_structure ... ok
+test v2_collects_multiple_inner_selects ... ok
+test v2_tpc_h_q21_shape_mixed ... ok
+test v2_aliases_are_unique ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test test_describe_missing_table_errors ... ok
+test test_describe_existing_table ... ok
+test test_describe_alias_desc ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test test_compare_date_strings ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test diag_nation_alias_5x3 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test diag_q11_having_three_way ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test diag_q11_3way ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 16 tests
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test diag_q11_having ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test diag_q11_steps ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test diag_q11_where_only ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test diag_q12_case_when ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test diag_q12_deep ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test q12_sf001_subset_count ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test q12_sf01_subset_count ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test q12_sf1_subset_count ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test diag_q14_full ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test diag_q14_only ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test diag_q14_q16 ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test diag_q17_100k_subset ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test diag_q17_1m_subset ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test diag_q17_sf001_subset ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test diag_q17_100k_path ... ignored
+test diag_q17_1m_path ... ignored
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test diag_q20_bisect ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test diag_q20_mini_path ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test diag_q20_l0_inline ... ignored
+test diag_q20_l4_inline ... ignored
+test diag_q20_l5_inline ... ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test tests::test_q22_zero_rows ... ok
+test tests::test_q22_avg_precision ... ok
+test tests::test_q22_substr_basic ... ok
+test tests::test_q22_simple_data ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test diag_q22_minimal ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test diag_q22_100k_path ... ignored
+test diag_q22_30k_path ... ignored
+test diag_q22_60k_path ... ignored
+test diag_q22_mini_path ... ignored
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test diag_q22_steps ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test diag_q6_filter ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test diag_q6_where_parsed ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 4 tests
+test diag_extract_year_simple_parse_only ... ignored
+test diag_q7_full_count_against_oracle ... ignored
+test sf1_fixture::tests::resolution_never_falls_back_to_a_hardcoded_path ... ok
+test sf1_fixture::tests::sf1_detection_requires_all_eight_tables ... ok
+
+test result: ok. 2 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test diag_q7_mini_count_one ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test diag_q7_mini_columns_count ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test q7_sf001_subset_count ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 40 tests
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test q7_sf1_real_count ... ignored
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+
+test result: ok. 39 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 40 tests
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test diag_q7_subset_columns ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test q8_mini_n2_pushdown ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 16 tests
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test test_shipdate_actual_value ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test test_simple_text_ge ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test test_storage_insert_path ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test test_insert_via_sql_path ... ok
+test test_storage_insert_path ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 36 tests
+test test_p3_char_001_char_length ... ok
+test test_p3_agg_001_sum_empty ... ok
+test test_p3_agg_004_group_by ... ok
+test test_p3_agg_003_avg_min_max ... ok
+test test_p3_delete_001 ... ok
+test test_p3_agg_005_having ... ok
+test test_p3_agg_002_count_sum ... ok
+test test_p3_cte_001_simple ... ok
+test test_p3_index_001_drop_index ... ok
+test test_p3_math_002_abs ... ok
+test test_p3_alter_001_add_column ... ok
+test test_p3_math_003_round ... ok
+test test_p3_limit_002_with_offset ... ok
+test test_p3_null_002_coalesce ... ok
+test test_p3_limit_001 ... ok
+test test_p3_null_003_ifnull ... ok
+test test_p3_null_001_null_comparison ... ok
+test test_p3_join_001_inner_join ... ok
+test test_p3_join_002_left_join ... ok
+test test_p3_math_001_mod_integer ... ok
+test test_p3_schema_001_sqlite_master ... ok
+test test_p3_string_004_trim ... ok
+test test_p3_string_001_upper_lower ... ok
+test test_p3_string_003_replace ... ok
+test test_p3_string_002_substr ... ok
+test test_p3_set_002_union_distinct ... ok
+test test_p3_set_001_union_all ... ok
+test test_p3_sub_002_in ... ok
+test test_p3_tx_002_commit ... ok
+test test_p3_sub_001_exists ... ok
+test test_p3_update_001_expression ... ok
+test test_p3_tx_001_rollback ... ok
+test test_p3_window_001_row_number ... ok
+test test_p3_window_002_rank ... ok
+test test_p3_view_001_create_view ... ok
+test test_p3_window_003_ntile ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 15 tests
+test bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test tests::test_basic_differential ... ok
+test tests::test_missing_binary_yields_an_explicit_error ... ok
+test tests::test_binary_resolution_has_no_machine_specific_default ... ok
+test tests::test_mysql_oracle_available ... ok
+test bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test test_parse_select_not_distinct ... ok
+test test_parse_select_distinct_with_where ... ok
+test test_parse_select_distinct ... ok
+test test_parse_select_distinct_multiple_columns ... ok
+test test_parse_select_distinct_with_group_by ... ok
+test test_parse_select_count_distinct ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 24 tests
+test delete_without_where_removes_all ... ok
+test delete_multiple_tables ... ok
+test delete_with_no_matches_is_noop ... ok
+test insert_select_with_type_coercion ... ok
+test failed_insert_does_not_corrupt_table ... ok
+test insert_multi_row_values ... ok
+test delete_with_compound_where ... ok
+test delete_with_subquery_in_where ... ok
+test delete_with_where ... ok
+test insert_select_copies_rows ... ok
+test insert_single_row_values ... ok
+test transaction_commit_persists_dml ... ok
+test insert_with_explicit_columns ... ok
+test transaction_rollback_undoes_dml ... ok
+test update_all_rows_when_no_where ... ok
+test transaction_delete_then_commit ... ok
+test transaction_update_then_rollback ... ok
+test update_multiple_tables ... ok
+test update_with_no_matches_is_noop ... ok
+test update_single_column_with_where ... ok
+test update_zero_affected_does_not_error ... ok
+test update_multiple_columns ... ok
+test update_with_expression_in_set ... ok
+test update_with_subquery_in_set ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 9 tests
+test update_by_pk_on_non_id_primary_key_works ... ok
+test delete_by_pk_deletes_exactly_one_row ... ok
+test update_by_pk_on_missing_key_changes_nothing ... ok
+test update_by_pk_updates_exactly_one_row ... ok
+test update_with_extra_predicate_still_filters ... ok
+test update_with_non_pk_predicate_touches_all_matching_rows ... ok
+test report_update_select_ratio ... ok
+test update_by_pk_is_not_dominated_by_where_scan ... ok
+test scan_pk_resolution_is_flat_in_table_size ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 52.01s
+
+
+running 4 tests
+test uncommitted_multi_table_delete_stays_invisible ... ignored, #5156 — a committed DELETE reverts when the database holds a second table; multi-table DELETE always meets that trigger. Replaces the earlier (correct-in-effect, wrong-in-attribution) reason.
+test multi_table_statements_still_work_in_a_single_database ... ok
+test multi_table_delete_stays_in_the_statements_database ... ok
+test multi_table_update_stays_in_the_statements_database ... ok
+
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 6 tests
+test test_dwb_size_limit ... ok
+test test_crash_recovery_reconstructs_pages ... ok
+test test_fsync_atomic_flush ... ok
+test test_stage_and_buffered_count ... ok
+test test_write_page_to_final_location ... ok
+test test_sequential_write_pattern ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test test_dwb_capacity_and_eviction ... ok
+test test_dwb_crash_recovery ... ok
+test test_dwb_main_path_write_sequence ... ok
+test test_dwb_multiple_write_cycles ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test e2e_01_startup_connect_select_1 ... ignored, E2E scenario — needs live server, run with --ignored
+test e2e_02_tpch_sf01_22_queries ... ignored, E2E scenario — invoked via check_tpch_sf1.sh, run with --ignored
+test e2e_04_kill9_recovery ... ignored, E2E scenario — kills running server, run with --ignored
+test e2e_07_alter_rename ... ignored, E2E scenario — needs live server, run with --ignored
+test e2e_08_rollback_mvcc ... ignored, E2E scenario — needs live server with MVCC, run with --ignored
+test e2e_09_union_set_ops ... ignored, E2E scenario — needs V310-02 INTERSECT/EXCEPT impl, run with --ignored
+test e2e_beta_manifest_contains_6_scenarios ... ok
+
+test result: ok. 1 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 54 tests
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+test e2e_help_lists_every_subcommand ... ok
+test e2e_bench_subcommand_prints_migration_notice ... ok
+test e2e_exec_subcommand_runs_sql ... ok
+test e2e_show_tables_after_creates ... ok
+test e2e_show_databases_one_or_more ... ok
+test e2e_unknown_subcommand_fails_nonzero ... ok
+test e2e_ddl_multiple_tables ... ok
+test e2e_tx_begin_commit_visible ... ok
+test e2e_ddl_create_insert_select_drop ... ok
+test e2e_dql_aggregate_count_sum ... ok
+test e2e_dql_where_order_by ... ok
+test e2e_dml_insert_update_delete ... ok
+test e2e_dql_limit ... ok
+test e2e_tx_begin_rollback_returns_ok ... ok
+test e2e_legacy_binary_sqlrustgo_deprecated ... ok
+
+test result: ok. 54 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.77s
+
+
+running 8 tests
+test tests::test_grafana_dashboard_json_exists ... ok
+test tests::test_prometheus_alerts_yml_exists ... ok
+test tests::test_grafana_dashboard_has_sqlrustgo_tag ... ok
+test tests::test_grafana_dashboard_has_required_fields ... ok
+test tests::test_grafana_dashboard_json_valid ... ok
+test tests::test_prometheus_alerts_has_groups ... ok
+test tests::test_prometheus_alerts_structure ... ok
+test tests::test_prometheus_alerts_yaml_valid ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test test_different_data_types ... ok
+test test_multiple_tables ... ok
+test test_empty_table_name ... ok
+test test_large_schema ... ok
+test test_simple_seqscan ... ok
+test test_physical_plan_traits ... ok
+test test_seqscan_name ... ok
+test test_seqscan_schema ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 43 tests
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+test test_trigger_after_insert_rollback_v55d ... ok
+test test_trigger_insert_wal_recovery_t001 ... ok
+test test_trigger_update_wal_recovery_t002 ... ok
+test test_trigger_delete_wal_recovery_t003 ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+
+
+running 8 tests
+test ee_02_submodule_files_exist ... ok
+test ee_03_planner_module_is_reexport_only ... ok
+test ee_07_engine_builder_constructs_engine ... ok
+test ee_01_execution_engine_under_2000_lines ... ok
+test ee_05_no_inline_raw_sql_parsing ... ok
+test ee_06_engine_select_separated ... ok
+test ee_04_submodule_responsibilities_documented ... ok
+test ee_08_submodule_total_size_reasonable ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test test_ephemeral_data_dir_isolation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+
+running 1 test
+test test_ephemeral_handshake_responds_with_server_version ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+
+running 1 test
+test acceptance_latency_5209 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.28s
+
+
+running 6 tests
+test eq_conjunct_found_in_and_chain ... ok
+test eq_conjunct_found_in_later_and_branch ... ok
+test literal_on_the_left_is_recognised ... ok
+test non_equality_predicates_are_not_extracted ... ok
+test or_chain_is_never_decomposed ... ok
+test engine_select_actually_calls_the_routing ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 5 tests
+test or_predicate_is_not_routed_to_an_index_seek ... ok
+test unindexed_column_still_returns_correct_rows ... ok
+test range_predicate_is_not_routed_to_an_index_seek ... ok
+test non_unique_index_column_returns_every_matching_row ... ok
+test multi_column_equality_matches_the_full_scan ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+
+
+running 10 tests
+test tests::test_get_table_info_nonexistent ... ok
+test tests::test_drop_nonexistent_table ... ok
+test tests::test_empty_column_name ... ok
+test tests::test_insert_invalid_table ... ok
+test tests::test_invalid_data_type ... ok
+test tests::test_delete_nonexistent_row ... ok
+test tests::test_case_sensitivity_table_names ... ok
+test tests::test_list_nonexistent_tables ... ok
+test tests::test_duplicate_table_name ... ok
+test tests::test_duplicate_key_insert ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 48 tests
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test sqlite_oracle::tests::diff_rows_reports_cell_mismatch ... ok
+test sqlite_oracle::tests::diff_rows_reports_row_count_mismatch ... ok
+test sqlite_oracle::tests::null_sentinel_does_not_collide_with_text ... ok
+test sqlite_oracle::tests::numeric_cells_compare_across_int_and_float_forms ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test sqlite_oracle::tests::extracts_year_is_rewritten ... ok
+test sqlite_oracle::tests::extract_year_with_nested_call_is_rewritten ... ok
+test sqlite_oracle::tests::unsupported_constructs_are_reported_not_rewritten ... ok
+test eval_22_vs_sqlite_sf01_canonical ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+
+test result: ok. 48 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 40 tests
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test eval_22_in_process_vs_sqlite ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 9 tests
+test test_cbo_selectivity_differs_uniform_vs_skewed ... ok
+test test_analyze_populates_histogram_in_cost_model ... ok
+test test_not_exists_subquery_returns_correct_rows ... ok
+test test_exists_subquery_returns_correct_rows ... ok
+test test_in_subquery_returns_correct_rows ... ok
+test test_join_cost_uses_analyzed_stats ... ok
+test test_join_order_uses_histogram_after_analyze ... ok
+test test_5_table_analyze_then_subquery_semi_join ... ok
+test test_5_table_join_with_analyze_succeeds ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 5 tests
+test test_wal_002_uncommitted_no_survive ... ok
+test test_wal_003_multi_tx_ordering ... ok
+test test_wal_005_delete_survives ... ok
+test test_wal_001_insert_commit_survives ... ok
+test test_wal_004_update_survives ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 3 tests
+test test_explain_ahi_promoted_reflects_promoted_entries_after_record_access ... ok
+test test_explain_includes_ahi_promoted_suffix_on_fresh_engine ... ok
+test test_explain_does_not_increment_ahi_promoted_during_explain ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test explain_est_rows_format_stable ... ok
+test explain_emits_est_rows_for_seq_scan ... ok
+test explain_emits_est_rows_for_index_scan ... ok
+test explain_emits_est_rows_for_join ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 20 tests
+test test_find_column_index_known_outputs ... ok
+test test_between_known_outputs ... ok
+test test_compare_values_known_outputs ... ok
+test test_aggregate_known_outputs ... ok
+test test_function_call_known_outputs ... ok
+test test_identifier_known_outputs ... ok
+test test_case_when_known_outputs ... ok
+test test_isnull_delegation ... ok
+test test_identifier_delegation ... ok
+test test_case_when_delegation ... ok
+test test_function_call_delegation ... ok
+test test_isnull_known_outputs ... ok
+test test_aggregate_delegation ... ok
+test test_between_delegation ... ok
+test test_like_known_outputs ... ok
+test test_like_delegation ... ok
+test test_literal_delegation ... ok
+test test_literal_known_outputs ... ok
+test test_notlike_delegation ... ok
+test test_unary_op_delegation ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test test_parse_is_null ... ok
+test test_parse_not_exists ... ok
+test test_parse_binary_and ... ok
+test test_parse_is_not_null ... ok
+test test_parse_binary_or ... ok
+test test_parse_exists ... ok
+test test_parse_comparison_operators ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 12 tests
+test f11_executor_sum ... ok
+test f11_executor_with_where ... ok
+test f11_executor_count_star ... ok
+test f12_executor_count_distinct ... ok
+test f11_executor_avg ... ok
+test f12_executor_distinct ... ok
+test f11_executor_multiple_aggregates ... ok
+test f11_executor_group_by ... ok
+test f11_executor_having ... ok
+test f11_executor_min_max ... ok
+test f12_executor_distinct_with_group_by ... ok
+test f12_executor_distinct_multiple ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 10 tests
+test test_file_storage_contains_table ... ok
+test test_file_storage_has_index ... ok
+test test_file_storage_get_table ... ok
+test test_file_storage_search_index ... ok
+test test_file_storage_get_index ... ok
+test test_file_storage_table_names ... ok
+test test_file_storage_drop_index ... ok
+test test_file_storage_flush_indexes ... ok
+test test_file_storage_new ... ok
+test test_file_storage_range_index ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test test_fk_combined_actions_parsing ... ok
+test test_fk_no_action_parsing ... ok
+test test_fk_set_null_parsing ... ok
+test test_fk_restrict_parsing ... ok
+test test_fk_cascade_parsing ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 19 tests
+test four_way_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test four_way_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test four_way_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test four_way_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test four_way_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test four_way_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test test_four_way_cell_diff_postgres_truth ... ok
+test four_way_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test four_way_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test four_way_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test four_way_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test four_way_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 19 tests
+test four_way_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test four_way_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test four_way_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test four_way_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test four_way_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test test_four_way_tpch_22 ... ok
+test tpch_fixture::tests::missing_state_reports_not_run ... ok
+test tpch_fixture::tests::manifest_roundtrip ... ok
+test tpch_fixture::tests::parse_value_types_fields ... ok
+test four_way_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test four_way_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test four_way_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test four_way_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test four_way_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test four_way_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 11 tests
+test bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 40 tests
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+test g13_oltp1_concurrent_selects_run_in_parallel ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.91s
+
+
+running 4 tests
+test test_build_parallel_executor_returns_working_executor ... ok
+test test_parallel_degree_setter_getter ... ok
+test test_parallel_where_clause_setup_no_error ... ok
+test test_parallel_aggregation_setup_no_error ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 7 tests
+test test_no_gap_lock_in_read_committed ... ok
+test test_gap_range_contains ... ok
+test test_gap_lock_acquire ... ok
+test test_gap_lock_release_on_commit ... ok
+test test_overlapping_gap_locks_conflict ... ok
+test test_non_overlapping_gap_locks_succeed ... ok
+test test_phantom_prevention ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 23 tests
+test gate_script_refs_check_exists ... ok
+test gate_script_refs_check_is_executable ... ok
+test pr_template_sections_check_exists_and_is_executable ... ok
+test gate_script_refs_baseline_exists_and_every_entry_has_a_reason ... ok
+test pr_template_reference_in_agent_guide_points_at_a_real_file ... ok
+test every_gate_script_cited_by_criterion_documents_exists ... ok
+test pr_template_sections_check_rejects_an_empty_body ... ok
+test pr_template_sections_check_rejects_a_body_without_markers ... ok
+test pr_template_sections_check_accepts_the_template ... ok
+test check_pr_dag_alias_exists_and_delegates ... ok
+test verify_pr_dag_rejects_a_plan_without_a_pr_dag_section ... ok
+test verify_pr_dag_reports_drift_for_unresolvable_base ... ok
+test verify_pr_dag_script_exists ... ok
+test verify_pr_dag_script_is_executable ... ok
+test gate_script_refs_check_emits_evidence_fields ... ok
+test gate_script_refs_check_passes_on_real_repository ... ok
+test gate_script_refs_check_detects_a_missing_reference ... ok
+test verify_pr_dag_detects_duplicate_status_rows ... ok
+test verify_pr_dag_detects_a_status_row_outside_the_chain ... ok
+test verify_pr_dag_detects_a_false_pass ... ok
+test verify_pr_dag_detects_an_inverted_dependency ... ok
+test verify_pr_dag_emits_evidence_fields ... ok
+test verify_pr_dag_passes_on_the_real_repository ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.03s
+
+
+running 8 tests
+test test_5421_the_generated_artifact_paths_match_the_checked_ones ... ok
+test test_5425_the_script_header_does_not_contradict_its_own_thresholds ... ok
+test test_5422_the_increment_counts_correctly_from_an_unset_variable ... ok
+test test_5422_every_incremented_counter_is_initialized_in_the_same_script ... ok
+test test_5425_the_governance_doc_states_the_thresholds_the_gate_actually_enforces ... FAILED
+test test_5422_a_zero_counter_produces_no_shell_error ... ok
+test test_5421_d2_b6_fails_when_the_artifacts_cannot_be_produced ... ok
+test test_5421_d2_b6_produces_the_artifacts_it_checks ... ok
+
+failures:
+
+---- test_5425_the_governance_doc_states_the_thresholds_the_gate_actually_enforces stdout ----
+
+thread 'test_5425_the_governance_doc_states_the_thresholds_the_gate_actually_enforces' (28993629) panicked at tests/integration/gate/gate_dimension_honesty_test.rs:429:5:
+assertion `left == right` failed: GATE_CONDITIONS.md G19 says `active <= 80` but the gate enforces `active <= 92` — the same repository gets two different verdicts depending on which document you read
+  left: 80
+ right: 92
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    test_5425_the_governance_doc_states_the_thresholds_the_gate_actually_enforces
+
+test result: FAILED. 7 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.80s
+
