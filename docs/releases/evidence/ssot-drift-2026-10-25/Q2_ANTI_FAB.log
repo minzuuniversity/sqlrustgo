@@ -1,0 +1,65 @@
+============================================
+Anti-Fabrication Policy Check (AFP) v4
+[INFO] CHECK 1: cargo build -p sqlrustgo-mysql-server (canonical binary)...
+[PASS] sqlrustgo-mysql-server: cargo check PASS
+
+[INFO] CHECK 1.5: V312-24 SQLancer + test-runner report artifacts...
+[INFO]   target/release/sqlancer not present; building...
+[INFO]   target/sqlancer-report.json missing; running sqlancer (--duration 5)...
+sqlancer: wrote report — total_queries=1000 successful=1000 failed=0 duration_secs=0.00 timeout=false
+[PASS]   V312-24: target/sqlancer-report.json valid (iterations=1000)
+[INFO]   target/release/test-runner not present; building...
+[INFO]   building test binaries for packages: sqlrustgo-executor sqlrustgo-storage sqlrustgo-tools
+[INFO]   staged test binaries: sqlrustgo_executor sqlrustgo_tools
+[INFO]   running test-runner against config/test-runner-manifest.toml...
+test-runner: mode=manifest wrote 5 entries — total=5 passed=1 failed=1 timed_out=0 crashed=3 duration_ms=27426
+scripts/gate/check_anti_fabrication.sh: line 408: results: command not found
+[ERROR]   V312-24: test-runner report INVALID: 3 test(s) crashed: target/release/tx_isolation_and_escape_hatch_test --test-threads=1, target/release/sqlrustgo_storage --test-threads=1, target/release/scan_with_filter_contract_test --test-threads=1
+[ERROR]   V312-24 artifacts check: 3 failure(s) (see lines above)
+
+[INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
+[ERROR] Test binaries compile FAILED — NEW untracked failures detected:
+[ERROR]   NEW: file_storage_db_isolation_5025
+[ERROR]   NEW: probe_5025_conn_db_race
+[ERROR]   NEW: sqlrustgo-storage
+[ERROR] Known pre-existing failures (0 of 3):
+[ERROR] See RC_BLOCKERS_REPORT.md §Blocker #4 for tracking.
+    |
+212 -     storage.set_current_db("d1").expect("switch to d1");
+212 +     storage.set_current_tx_id("d1").expect("switch to d1");
+    |
+
+error[E0599]: no method named `set_current_db` found for struct `DefaultStorageEngine` in the current scope
+   --> crates/storage/tests/file_storage_db_isolation_5025.rs:217:13
+    |
+217 |     storage.set_current_db("default").expect("back to default");
+    |             ^^^^^^^^^^^^^^
+    |
+help: there is a method `set_current_tx_id` with a similar name
+    |
+217 -     storage.set_current_db("default").expect("back to default");
+217 +     storage.set_current_tx_id("default").expect("back to default");
+    |
+
+error: could not compile `sqlrustgo-storage` (test "file_storage_db_isolation_5025") due to 14 previous errors
+warning: `sqlrustgo-mysql-server` (lib) generated 2 warnings (run `cargo fix --lib -p sqlrustgo-mysql-server` to apply 2 suggestions)
+warning: `sqlrustgo-executor` (test "json_eval_fn_test") generated 2 warnings
+
+[INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
+[INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.8.0/beta/BETA_GATE_REPORT.md: declares 15/15 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.8.0/rc/RC_GA_GATE_REPORT.md: declares 5/5 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.9.0/rc/RC1_GATE_REPORT.md: declares 4/4 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.9.0/rc/RC2_GATE_REPORT.md: declares 4/4 PASS (test binaries: unknown)
+
+[INFO] CHECK 4: HEAD commit author must be a known AI/Human identity...
+[ERROR] HEAD author email: mcode-macmini@gaoyuanyiyao.com (NOT in allowed list)
+
+[INFO] CHECK 5: Code examples in documentation (sanity scan)...
+[PASS] Scanned 427 markdown files in docs/releases + docs/governance
+
+============================================
+Results: ERRORS=9, WARNINGS=0
+============================================
+
+[FAIL] Anti-fabrication check (AFP v4): FAILED with 9 error(s)
