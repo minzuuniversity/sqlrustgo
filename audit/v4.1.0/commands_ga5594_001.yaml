@@ -1,0 +1,99 @@
+# 20261106-ga5594-001 —— #5594 门禁修复 + GA 静态扫描清理的归档证据
+#
+# 已知红项：gate-main-freshness（C-MAIN-02，GA 前 main 封存 ⇒ 结构红）。
+
+- id: probe-gate-executability-selftest
+  name: "执行点门禁的自检（A/B/C/D/**D2**/E/E2 全绿；D2 是本批新增：行尾注释里的门禁不算调用）"
+  cmd: python3 scripts/gate/gate_executability.py --selftest
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-gate-executability
+  name: "执行点门禁本体（92 项、NO-EXECUTOR 必须 0）"
+  cmd: python3 scripts/gate/gate_executability.py
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-clippy
+  name: "GA 静态扫描：cargo clippy --all-features --all-targets -- -D warnings"
+  cmd: cargo clippy --workspace --all-features --all-targets -- -D warnings
+  cwd: .
+  timeout_sec: 3600
+
+- id: gate-fmt-check
+  name: "rustfmt：workspace 的 fmt 欠账必须为空"
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+
+- id: test-planner-chain
+  name: "planner 链式测试（改了那一行 mut）"
+  cmd: cargo test -q -p sqlrustgo-planner --all-features --test planner_chain_tests
+  cwd: .
+  timeout_sec: 1800
+
+- id: test-admin-handshake
+  name: "admin 握手测试（改了那一行 doc comment 空行）"
+  cmd: cargo test -q -p sqlrustgo-soak --all-features --test handshake_tests
+  cwd: .
+  timeout_sec: 1800
+
+- id: test-shard-router
+  name: "shard-router 单测（改了 io::Error::other 两处）"
+  cmd: cargo test -q -p sqlrustgo-shard-router --all-features --lib
+  cwd: .
+  timeout_sec: 1800
+
+- id: gate-honesty-check
+  name: "honesty 判据（分母 168、夹具 57、fails 必须 0）"
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-doc-facts-check
+  name: "文档事实与索引一致"
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-registry-denominator
+  name: "门禁注册表：分母必须仍是 168"
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+
+- id: probe-gate-registry
+  name: "门禁注册表自检（9 个变异必须全被抓住）"
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-kanban-consistency
+  name: "看板 JSONL 与渲染出的 MD 必须逐行一致"
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+
+- id: probe-claims-selftest
+  name: "五类声称的反向变异自检（17 臂必须全 VERIFIED）"
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1200
+
+- id: gate-ci-checkout-consistency
+  name: "CI checkout 一致性门禁（必须仍绿）"
+  cmd: bash scripts/gate/check_ci_checkout_consistency.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-test-count-monotonic
+  name: "测试计数单调门禁"
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 1800
+
+- id: gate-main-freshness
+  name: "C-MAIN-02 main 新鲜度（GA 前 main 封存 ⇒ 结构红，不是本批回归）"
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600
