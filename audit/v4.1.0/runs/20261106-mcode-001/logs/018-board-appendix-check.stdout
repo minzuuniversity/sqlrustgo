@@ -1,0 +1,2 @@
+{"kind": "board_appendix_check", "src": "docs/knowledge-loop/handoffs/HANDOFF_2026-11-05_4.1.0_OMP_ONBOARDING.md", "src_bytes": 83492, "injected_bytes": 83491, "src_sha256": "77e8bc0ecd4d6e75d30fa46d74d8b605ed67bc677b62bb687367d7443e5f3b3e", "board_len": 35441, "handoff_len": 51135, "appendix_body_len": -1, "findings": 1}
+NOT-OK: 看板 #5592 没有附录 A 段

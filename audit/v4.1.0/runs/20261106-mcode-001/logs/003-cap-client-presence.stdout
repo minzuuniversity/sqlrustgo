@@ -1,0 +1,5 @@
+/opt/homebrew/bin/mysql from 12.3.2-MariaDB, client 15.2 for osx10.21 (arm64) using  EditLine wrapper
+ad8a921cc6eea354b685cdb3983a1eafc299908f895f706f38daf6c28e4292ab  -
+/opt/homebrew/bin/mariadbd  Ver 12.3.2-MariaDB for osx10.21 on arm64 (Homebrew)
+1fe896aa477facb6ebfc4f8e65a6c96475341c51
+d0c660557d168357f75c3bb329b5e974659570361b318cc319a868ddf5168f46  target/debug/sqlrustgo-mysql-server
