@@ -35,7 +35,6 @@ fn issue_4938_full_backup_writes_expected_files() {
     // not declare a parent_lsn).
     let tmp = tempfile::tempdir().expect("tempdir");
     let target = tmp.path().join("full");
-    let data = tmp.path().join("data");
 
     create_full_backup_from_demo(&target, "sql").expect("create_full_backup");
 
@@ -66,7 +65,6 @@ fn issue_4938_incremental_backup_references_parent() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let full_dir = tmp.path().join("full");
     let incr_dir = tmp.path().join("incr");
-    let data = tmp.path().join("data");
 
     create_full_backup_from_demo(&full_dir, "sql").expect("full");
     let parent_lsn = read_manifest(&full_dir)["lsn"]
@@ -158,7 +156,6 @@ fn issue_4938_restore_backup_loads_full_without_error() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let full_dir = tmp.path().join("full");
     let target_dir = tmp.path().join("restored");
-    let data = tmp.path().join("data");
 
     create_full_backup_from_demo(&full_dir, "sql").expect("full");
     restore_backup(&full_dir, &target_dir, /* clean */ true).expect("restore");
@@ -176,7 +173,6 @@ fn issue_4938_chain_restore_handles_full_plus_incrementals() {
     use sqlrustgo_tools::backup::restore_incremental_chain_into;
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let data = tmp.path().join("data");
     let full_dir = tmp.path().join("full");
     let incr_a_dir = tmp.path().join("incr_a");
     let incr_b_dir = tmp.path().join("incr_b");

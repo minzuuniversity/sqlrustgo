@@ -97,3 +97,43 @@
   cmd: bash scripts/gate/check_main_freshness.sh
   cwd: .
   timeout_sec: 600
+
+- id: ga-required-files
+  name: "GA 发布文件 5 份齐备（逐份 test -f，任一缺失即红）"
+  cmd: |
+    for f in docs/releases/v4.1.0/STAGE.yaml docs/releases/v4.1.0/RELEASE_NOTES.md \
+             docs/releases/v4.1.0/GA_GATE_REPORT.md docs/releases/v4.1.0/GA_RELEASE_TIMELINE.md \
+             docs/releases/v4.1.0/CHANGELOG.md; do
+      test -f "$f" || { echo "MISSING $f"; exit 1; }
+      echo "OK $f"
+    done
+  cwd: .
+  timeout_sec: 120
+
+- id: gate-anti-fabrication
+  name: "AFP v4 反伪造门禁（HEAD 作者必须是已登记身份；本批补录 omp-macmini）"
+  cmd: bash scripts/gate/check_anti_fabrication.sh
+  cwd: .
+  timeout_sec: 1800
+
+- id: probe-afp-author-allowlist
+  name: "反向变异：未登记身份做 HEAD ⇒ 同一函数必须报错（改后没有放松判据）"
+  cmd: |
+    tmp=$(mktemp -d /Volumes/workspace/dev/afpmut-XXXXXX)
+    { echo 'ERRORS=0'
+      echo 'log_info() { :; }'; echo 'log_error() { echo "[ERROR] $*" >&2; ERRORS=$((ERRORS+1)); }'
+      echo 'log_pass() { :; }'
+      awk '/^check_head_commit_author\(\)/,/^}/' scripts/gate/check_anti_fabrication.sh
+    } > "$tmp/h.sh"
+    git worktree add -q --detach "$tmp/wt" HEAD
+    ( cd "$tmp/wt" \
+      && git -c user.name="Probe" -c user.email="probe-unknown-identity@gaoyuanyiyao.com" \
+           commit -q --allow-empty -m probe \
+      && bash -c "source $tmp/h.sh; check_head_commit_author >/dev/null 2>&1; echo ERRORS=\$ERRORS" ) \
+      | grep -q 'ERRORS=1' || { echo "MUTATION NOT CAUGHT"; exit 1; }
+    echo "MUTATION CAUGHT"
+    git worktree remove --force "$tmp/wt" 2>/dev/null || true
+    git worktree prune 2>/dev/null || true
+    rm -rf "$tmp"
+  cwd: .
+  timeout_sec: 300

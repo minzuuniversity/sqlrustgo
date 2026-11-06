@@ -3,7 +3,7 @@
 //! Exercises public APIs across all vector modules to push line coverage
 //! past the 80% RC/GA threshold.
 
-use sqlrustgo_vector::sql_vector_hybrid::{CompareOp, SqlPredicate, SqlValue};
+use sqlrustgo_vector::sql_vector_hybrid::{SqlPredicate, SqlValue};
 use sqlrustgo_vector::{
     simd_explicit, BatchVectorWriter, BatchWriteConfig, DistanceMetric, FlatIndex, HnswIndex,
     HybridSearchConfig, HybridSearcher, IvfIndex, ParallelKnnConfig, ParallelKnnIndex,
@@ -303,7 +303,7 @@ mod parallel_knn_extra_tests {
 
 mod hybrid_extra_tests {
     use super::*;
-    use sqlrustgo_vector::sql_vector_hybrid::{CompareOp, SqlPredicate, SqlValue};
+    use sqlrustgo_vector::sql_vector_hybrid::{SqlPredicate, SqlValue};
     use std::collections::HashMap;
 
     #[test]
