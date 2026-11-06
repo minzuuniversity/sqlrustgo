@@ -1,3 +1,4 @@
+// storage-semantics: memory-list-views-5433
 //! Regression test: `MemoryStorage::list_views` must see the views that
 //! `create_view` stored.
 //!

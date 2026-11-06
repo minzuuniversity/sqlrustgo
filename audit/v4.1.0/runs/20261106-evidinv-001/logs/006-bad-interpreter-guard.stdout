@@ -1,0 +1,1 @@
+INCOMPLETE: 当前解释器读不动归档 manifest（import yaml ⇒ ModuleNotFoundError）—— 没能核对，不算通过；改用 /usr/bin/python3 重跑

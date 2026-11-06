@@ -1,0 +1,3 @@
+   Compiling sqlrustgo-mysql-server v0.1.0 (/private/tmp/wt-integ/crates/mysql-server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.46s
+     Running tests/client_local_infile_test.rs (target/debug/deps/client_local_infile_test-8f1482c689a372a7)

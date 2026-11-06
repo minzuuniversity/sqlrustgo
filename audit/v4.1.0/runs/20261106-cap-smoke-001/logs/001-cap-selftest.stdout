@@ -1,0 +1,83 @@
+{
+ "kind": "capability_smoke_selftest",
+ "arms": 11,
+ "discriminating": 11,
+ "detail": [
+  [
+   "H0 健康链必须绿",
+   "OK",
+   []
+  ],
+  [
+   "M1 崩溃后少一行 ⇒ 必须红",
+   "OK",
+   [
+    "crash_readback_mismatch: row_count: expected=5 actual=4; row[4] missing: expected ['5', '名称-5', '0', 'quote\\'sq\"dq']"
+   ]
+  ],
+  [
+   "M2 恢复后逐值被改 ⇒ 必须红",
+   "OK",
+   [
+    "restore_readback_mismatch: row[2].col[2]: expected='-3007' actual='3007'; row[4].col[3]: expected='quote\\'sq\"dq' actual=\"quote'sq\""
+   ]
+  ],
+  [
+   "M3 restore 报成功但没落盘（#5525 形状）⇒ 必须红",
+   "OK",
+   [
+    "restore_readback_mismatch: row_count: expected=5 actual=0; row[0] missing: expected ['1', '名称-1', '1007', '备注 1 -- 边界']; row[1] missing: expected ['2', '名称-2', '2007', '备注 2 /* x */']; row[2] missing: expected ['3', '名称-3', '-3007', '']; row[3] missing: expected ['4', '名称-4', '9223372036854775806', 'tab\\t内嵌']; row[4] missing: expected ['5', '名称-5', '0', 'quote\\'sq\"dq']",
+    "table_files_not_persisted: 表数据文件缺失或全为空"
+   ]
+  ],
+  [
+   "M4 WAL 文件为空（假落库）⇒ 必须红",
+   "OK",
+   [
+    "wal_not_persisted: sqlrustgo.wal 缺失或为空"
+   ]
+  ],
+  [
+   "M5 DDL 报成功但未生效（binary 臂实测形状）⇒ 必须红",
+   "OK",
+   [
+    "ddl_error: CREATE DATABASE smoke: OK but no-op"
+   ]
+  ],
+  [
+   "M6 NULL 与 'NULL' 渲染同一个 token ⇒ 必须红",
+   "OK",
+   [
+    "null_ambiguous_on_wire: SQL NULL 与字面量 'NULL' 在结果集里渲染成同一个 token，客户端无法区分（mysql --batch 下真 NULL 应为 \\N）：both='NULL'"
+   ]
+  ],
+  [
+   "M7 服务端 IS NULL 谓词计数不对 ⇒ 必须红",
+   "OK",
+   [
+    "null_predicate_wrong: 服务端 IS NULL / = 'NULL' 谓词计数不对 is_null=0 want 1"
+   ]
+  ],
+  [
+   "D1 判别臂更红 ⇒ 判定有判别力",
+   "OK",
+   [
+    "换成非生产存储后判据变红（arm=1 > prod=0）"
+   ]
+  ],
+  [
+   "D2 判别臂没变红 ⇒ 必须判『失去判别力』",
+   "OK",
+   [
+    "非生产臂没有变红：判据失去判别力"
+   ]
+  ],
+  [
+   "D3 判别力丢了 ⇒ 整体不得判 PASS",
+   "OK",
+   [
+    "{\"verdict\": \"FAIL\", \"findings\": 5}"
+   ]
+  ]
+ ]
+}

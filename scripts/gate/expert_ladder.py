@@ -153,6 +153,36 @@ def seat_lock(seat: Seat, max_wait_s: int = 90):
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
+PLACEHOLDER_MARKERS = (
+    "无法加载此回复",
+    "无法回答该问题",
+    "出了点问题",
+    "服务暂时不可用",
+    "couldn't load this response",
+    "failed to load this response",
+    "oops! something went wrong",
+)
+PLACEHOLDER_MAX_CHARS = 64
+
+
+def placeholder_content(content):
+    """Return a reason string when content is a UI error placeholder, else None.
+
+    A bridge can answer HTTP 200 with finish_reason=stop while the page body is
+    still an error placeholder. Length guard: a genuine answer may *discuss* one
+    of these phrases, so only short replies count as placeholders.
+    """
+    text = (content or "").strip()
+    if not text or len(text) > PLACEHOLDER_MAX_CHARS:
+        return None
+    low = text.lower()
+    for marker in PLACEHOLDER_MARKERS:
+        m = marker.lower()
+        if low == m or low.startswith(m) or (m in low and len(low) <= len(m) + 24):
+            return f"placeholder-content: {marker}"
+    return None
+
+
 def http_chat(
     seat: Seat,
     prompt: str,
@@ -212,8 +242,9 @@ def http_chat(
     # Thinking models (qwen35-9b / 35b-a3b) can exhaust the budget inside reasoning_content
     # and leave content empty. Treat that as an abstention, never as an empty answer.
     truncated_empty = bool(content == "" and choice.get("finish_reason") == "length")
+    placeholder = placeholder_content(content)
     rec.update(
-        ok=bool(content) and not truncated_empty,
+        ok=bool(content) and not truncated_empty and placeholder is None,
         content=content,
         reasoning_chars=len(reasoning),
         finish_reason=choice.get("finish_reason"),
@@ -226,6 +257,8 @@ def http_chat(
         rec["error"] = "empty content with finish_reason=length (thinking budget exhausted)"
     if not content and not truncated_empty:
         rec["error"] = "empty content"
+    if placeholder:
+        rec["error"] = placeholder
     return rec
 
 
@@ -287,23 +320,48 @@ def run_calibration(seat: Seat, **kw) -> dict[str, Any]:
     A seat only counts toward adjudication when it answers ground-truth probes
     correctly. This is what stops a second lineage from being a lie amplifier
     instead of an independent check.
+
+    2026-11-06（看板 EX-6）：空返回（HTTP 报错、超时、content 为空）以前和答错
+    记成同一种 `ok: false`，于是**传输抖动被记成了能力不足**。实测过的例子：run
+    20261104-seats-002 给 flash-next-252 记 3/4，失败项 code-truth-len 的 answer 是
+    空串、那一次延迟 101.14s；而同一个席位在 20261104-seats-001 是 4/4（15.0s）、
+    2026-11-06 又是 4/4（3.04s）——那一项从来没有"答错"过，它测到的是一次空调用。
+    现在：先重试一次（单会话服务的偶发空响应属传输），仍空则计入 `unanswered`，
+    答错才计入 `wrong`。裁定资格仍是 fail-closed（ratio = score/total，空返回照样
+    扣分、照样掉出 credited），变的只是**账目把两类失败分开写**，不再用同一个
+    数字同时冒充"模型不行"和"这次没连上"。
     """
     got = 0
+    answered = 0
     detail = []
     for item in CALIBRATION_ITEMS:
         rec = ask(seat, item["prompt"], max_tokens=64, **kw)
         text = rec.get("content") or ""
-        try:
-            ok = bool(item["expect"](text))
-        except Exception:
-            ok = False
-        if not rec.get("ok"):
-            ok = False
-        detail.append({"id": item["id"], "ok": ok, "answer": text[:80].replace(chr(10), " ")})
+        retried = False
+        if not text.strip():
+            retried = True
+            retry = ask(seat, item["prompt"], max_tokens=64, **kw)
+            if (retry.get("content") or "").strip():
+                rec, text = retry, retry.get("content") or ""
+        item_answered = bool(text.strip()) and bool(rec.get("ok"))
+        ok = False
+        if item_answered:
+            answered += 1
+            try:
+                ok = bool(item["expect"](text))
+            except Exception:
+                ok = False
         got += 1 if ok else 0
+        detail.append({"id": item["id"], "ok": ok, "answered": item_answered,
+                       "retried": retried, "answer": text[:80].replace(chr(10), " ")})
     total = len(CALIBRATION_ITEMS)
     ratio = round(got / total, 3) if total else 0.0
-    return {"score": got, "total": total, "ratio": ratio, "items": detail}
+    unanswered = [d["id"] for d in detail if not d["answered"]]
+    wrong = [d["id"] for d in detail if d["answered"] and not d["ok"]]
+    return {"score": got, "total": total, "answered": answered, "ratio": ratio,
+            "unanswered": unanswered, "wrong": wrong,
+            "competence_ratio": (round(got / answered, 3) if answered else 0.0),
+            "items": detail}
 
 
 def parse_verdict(text: str) -> dict[str, Any] | None:
@@ -575,6 +633,9 @@ def cmd_health(args: argparse.Namespace) -> int:
             cal = run_calibration(seat, timeout_s=seat.timeout_s, lock_wait_s=args.lock_wait)
             row["calibration"] = cal
             row["calibrated"] = cal["ratio"] >= seat.calibration_min
+            if cal.get("unanswered"):
+                # 空返回项点名出来：这是"这次没连上/没出内容"，不是"答错"
+                row["calibration_unanswered"] = cal["unanswered"]
             ev.append("calibration", {"seat": seat.id, **cal,
                                       "min": seat.calibration_min, "pass": row["calibrated"]})
         rows.append(row)

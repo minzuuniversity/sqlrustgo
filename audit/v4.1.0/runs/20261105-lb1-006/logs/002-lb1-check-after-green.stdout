@@ -1,0 +1,2 @@
+{"kind": "label_gap_check", "source": "audit/v4.1.0/neg/snapshots/labelgap-open-after-20261105.jsonl", "open_total": 111, "dims": ["priority", "cost", "cap"], "per_dim": {"priority": 0, "cost": 0, "cap": 0}, "unledgered": 0, "ledger_rows": 17, "findings": 0}
+BASELINE-AFTER-GREEN-OK rc=0

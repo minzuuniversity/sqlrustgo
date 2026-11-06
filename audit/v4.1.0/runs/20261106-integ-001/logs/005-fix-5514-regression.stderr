@@ -1,0 +1,3 @@
+   Compiling sqlrustgo-mysql-server v0.1.0 (/private/tmp/wt-integ/crates/mysql-server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.49s
+     Running tests/idle_reaper_heartbeat_5514.rs (target/debug/deps/idle_reaper_heartbeat_5514-9278a7261702a3e3)

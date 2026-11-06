@@ -1,0 +1,18 @@
+{
+ "seat": "chatgpt-web",
+ "family": "gpt",
+ "lineage": "gpt",
+ "endpoint": "http://127.0.0.1:9656/v1/chat/completions",
+ "model": "web-session-chat",
+ "requested_at": "2026-11-05T16:09:47Z",
+ "prompt_sha256": "sha256:f77c82400a00d23b8333ed9dc0390d1acbeb09be88a7ae142ab6771548948489",
+ "max_tokens": 350,
+ "ok": true,
+ "content": "门禁整改最易低估：执行链重构、三态判定及反向变异验证，不能按脚本修改量估算。\n\nCI 验证最易低估：低成功率、串行席位及 Owner 阻塞造成反复返工；工期按双人有效并行估算。\n\n估: 150-260 人日 / 20-36 周",
+ "reasoning_chars": 0,
+ "finish_reason": "stop",
+ "completion_tokens": null,
+ "prompt_tokens": null,
+ "latency_s": 48.57,
+ "output_sha256": "sha256:e5a765bccc309fd0d39683a3cb4c63914cf7fb2eb37a1d9141b6c6189cd65304"
+}

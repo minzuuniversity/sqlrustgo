@@ -1,0 +1,556 @@
+schema_version: 1
+run_id: 20261105-capability-001
+source_agent: omp-macmini
+frozen_commit: 8e326565e604fbaa100b9abfcb022c830da9c499
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: cap-run
+  name: 能力声明五探针（真 CLI/真 MySQL/真落库/崩溃重启/备份恢复逐值）
+  cwd: .
+  timeout_sec: 900
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/capability_claims.py run >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    "$PY" -c "import json;d=json.load(open(''$f''));assert d[''verified'']==5 and d[''failed'']==0 and
+    d[''not_verified'']==0, d" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: cap-selftest
+  name: 能力探针反向变异（十条对照）
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/capability_claims.py selftest >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    "$PY" -c "import json;d=json.load(open(''$f''));assert d[''checks'']==10 and d[''ok'']==10 and d[''not_ok'']==0,
+    d" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gate-a01-default-interp
+  name: A01 门禁在默认 python3（无 PyYAML）下必须仍判那 7 条历史红
+  cwd: .
+  timeout_sec: 600
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_audit_manifest.sh >"$f" 2>&1
+
+    rc=$?
+
+    grep "^FAIL:" "$f"
+
+    n=$(grep -c "^FAIL:" "$f")
+
+    echo "exit_code=$rc fail_count=$n"
+
+    s=0
+
+    [ "$rc" -eq 1 ] || s=1
+
+    [ "$n" -eq 7 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gate-a01-broken-interp
+  name: A01 门禁指向无 PyYAML 的解释器时必须只报「无法判定」，不得伪造证据红
+  cwd: .
+  timeout_sec: 600
+  cmd: 'f="$(mktemp)"
+
+    SQLRUSTGO_GATE_PYTHON=/opt/homebrew/bin/python3 bash scripts/gate/check_audit_manifest.sh >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    n=$(grep -c "^FAIL: audit run" "$f")
+
+    echo "exit_code=$rc fabricated_evidence_fails=$n"
+
+    s=0
+
+    [ "$rc" -eq 1 ] || s=1
+
+    grep -q "cannot judge" "$f" || s=1
+
+    [ "$n" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gate-a01-good-interp
+  name: A01 门禁在有 PyYAML 的解释器下必须仍是那 7 条历史红
+  cwd: .
+  timeout_sec: 600
+  cmd: 'f="$(mktemp)"
+
+    SQLRUSTGO_GATE_PYTHON=/usr/bin/python3 bash scripts/gate/check_audit_manifest.sh >"$f" 2>&1
+
+    rc=$?
+
+    grep "^FAIL:" "$f"
+
+    n=$(grep -c "^FAIL:" "$f")
+
+    echo "exit_code=$rc fail_count=$n"
+
+    s=0
+
+    [ "$rc" -eq 1 ] || s=1
+
+    [ "$n" -eq 7 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gate-a01-selftest
+  name: A01 门禁自带自测（在飞 run 不得被判红）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_audit_manifest.sh --selftest >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 1 ] || s=1
+
+    grep -q "SELFTEST-OK" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: il6-selfref-probe
+  name: IL-6 证据门禁自指反向变异（四臂）
+  cwd: .
+  timeout_sec: 900
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/il6_selfref_probe.py >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    "$PY" -c "import re;t=open(''$f'').read().strip().splitlines()[-1];g=lambda k:int(re.search(k+r''=(\\d+)'',t).group(1));assert
+    g(''checks'')==4 and g(''ok'')==4 and g(''not_ok'')==0, t" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: lb1-arm-count
+  name: LB-1 臂数外部尺子（三臂）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/lb1_arm_count_check.py >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    "$PY" -c "import re;t=open(''$f'').read().strip().splitlines()[-1];g=lambda k:int(re.search(k+r''=(\\d+)'',t).group(1));assert
+    g(''checks'')==3 and g(''ok'')==3 and g(''not_ok'')==0, t" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: claims-inventory-check
+  name: P1-5 声明绑定判据：基线之上未绑定的新声明必须为 0
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/evidence_inventory.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    "$PY" -c "import json;d=json.loads(open(''$f'').read().strip().splitlines()[0]);assert d[''fails'']==0,
+    d" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: claims-ledger
+  name: P1-5 声明↔run 绑定台账：claims_ref 必须为 93
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/evidence_inventory.py ledger >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    "$PY" -c "import json;d=json.loads(open(''$f'').read().strip().splitlines()[0]);assert d[''claims_ref'']==93
+    and d[''claims_hits'']==1144, d" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gate-registry-check
+  name: 门禁登记表不得漂移
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/gate_registry.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gov-metrics
+  name: 治理度量快照（check_n 必须仍为 168）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    "$PY" scripts/gate/gov_probe.py metrics
+
+    '
+- id: kanban-rows
+  name: 看板 SSOT 与渲染必须一致（48 行）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "48 rows" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: a04-evidence-reproducible
+  name: A04 归档证据可从 clean checkout 复现（IL-3 的硬证据）
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_a04_evidence_reproducible.sh >"$f" 2>&1
+
+    rc=$?
+
+    tail -40 "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: dir-policy-check
+  name: P2-2 目录策略：基线之上新增违规必须为 0
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/directory_policy.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    "$PY" -c "import json;d=json.loads(open(''$f'').read().strip().splitlines()[0]);assert d[''new_violations'']==0,
+    d" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: dir-policy-census
+  name: P2-2 目录策略违规存量盘点（必须 149 条，逐条记账不判红）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/directory_policy.py report >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    "$PY" -c "import json;d=json.loads(open(''$f'').read().strip().splitlines()[0]);assert d[''violations'']==149,
+    d" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+results:
+- id: cap-run
+  started_at: '2026-11-05T18:47:29Z'
+  finished_at: '2026-11-05T18:47:33Z'
+  exit_code: 0
+  stdout_sha256: 53f914d7a4682cf5688b5f0b64082841f235022124ef42a06e957b27ece45413
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-cap-run.stdout
+  stderr_path: logs/001-cap-run.stderr
+- id: cap-selftest
+  started_at: '2026-11-05T18:47:33Z'
+  finished_at: '2026-11-05T18:48:38Z'
+  exit_code: 0
+  stdout_sha256: a2b895b8d792158e174a8c3955ec5cb8d29d80f20b6c664fe859eb38489908e3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-cap-selftest.stdout
+  stderr_path: logs/002-cap-selftest.stderr
+- id: gate-a01-default-interp
+  started_at: '2026-11-05T18:48:38Z'
+  finished_at: '2026-11-05T18:48:40Z'
+  exit_code: 0
+  stdout_sha256: 7b97667a5499adbb152ef8190cadff8fb80082d9c4a7eecf4adcdeac06505f25
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-gate-a01-default-interp.stdout
+  stderr_path: logs/003-gate-a01-default-interp.stderr
+- id: gate-a01-broken-interp
+  started_at: '2026-11-05T18:48:40Z'
+  finished_at: '2026-11-05T18:48:40Z'
+  exit_code: 0
+  stdout_sha256: c992159ca92f73acf2de5707342a29b0b12e420bf6c64c672186e7323c7ce5ad
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-gate-a01-broken-interp.stdout
+  stderr_path: logs/004-gate-a01-broken-interp.stderr
+- id: gate-a01-good-interp
+  started_at: '2026-11-05T18:48:40Z'
+  finished_at: '2026-11-05T18:48:42Z'
+  exit_code: 0
+  stdout_sha256: 7b97667a5499adbb152ef8190cadff8fb80082d9c4a7eecf4adcdeac06505f25
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-gate-a01-good-interp.stdout
+  stderr_path: logs/005-gate-a01-good-interp.stderr
+- id: gate-a01-selftest
+  started_at: '2026-11-05T18:48:42Z'
+  finished_at: '2026-11-05T18:48:44Z'
+  exit_code: 0
+  stdout_sha256: bcb9dc0ddffd04cfe1129c6675a4582c4539d74de3cd08d3b5098ffa1afe4d8a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-gate-a01-selftest.stdout
+  stderr_path: logs/006-gate-a01-selftest.stderr
+- id: il6-selfref-probe
+  started_at: '2026-11-05T18:48:44Z'
+  finished_at: '2026-11-05T18:48:53Z'
+  exit_code: 0
+  stdout_sha256: 9832f5f9531c6299e4a21f688800b9fc26d7e4e8851f9ced893426e8da6a0f6c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-il6-selfref-probe.stdout
+  stderr_path: logs/007-il6-selfref-probe.stderr
+- id: lb1-arm-count
+  started_at: '2026-11-05T18:48:53Z'
+  finished_at: '2026-11-05T18:49:00Z'
+  exit_code: 0
+  stdout_sha256: eae184002f0a9929df27b640c319eb99bd94b80750af742549643628689a51ee
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-lb1-arm-count.stdout
+  stderr_path: logs/008-lb1-arm-count.stderr
+- id: claims-inventory-check
+  started_at: '2026-11-05T18:49:00Z'
+  finished_at: '2026-11-05T18:49:00Z'
+  exit_code: 0
+  stdout_sha256: 6983aa0c06f10d6e7e284a2c93b05b881a5d5507918730fc0505b81dbdc502fd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-claims-inventory-check.stdout
+  stderr_path: logs/009-claims-inventory-check.stderr
+- id: claims-ledger
+  started_at: '2026-11-05T18:49:00Z'
+  finished_at: '2026-11-05T18:49:00Z'
+  exit_code: 0
+  stdout_sha256: 1ccfbeb2358f3d19bccaf8fe204daf9e1e3eac2ed73d17f368a386d8adf903f5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-claims-ledger.stdout
+  stderr_path: logs/010-claims-ledger.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T18:49:00Z'
+  finished_at: '2026-11-05T18:49:00Z'
+  exit_code: 0
+  stdout_sha256: 1304125a1fdbeab3535a6d78b44af22278f9f2896cc7b7a80afafddd6ed5fad3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-gate-registry-check.stdout
+  stderr_path: logs/011-gate-registry-check.stderr
+- id: gov-metrics
+  started_at: '2026-11-05T18:49:00Z'
+  finished_at: '2026-11-05T18:49:00Z'
+  exit_code: 0
+  stdout_sha256: a96ce4f172b3312ae0683ee8021eb14e3d191f96b9104c978cca2d6bd7295cbc
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-gov-metrics.stdout
+  stderr_path: logs/012-gov-metrics.stderr
+- id: kanban-rows
+  started_at: '2026-11-05T18:49:00Z'
+  finished_at: '2026-11-05T18:49:00Z'
+  exit_code: 0
+  stdout_sha256: 4cf8403962fe9d7c2af16e24d9fcc7f1588321730fbff786242ec2a36be60788
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-kanban-rows.stdout
+  stderr_path: logs/013-kanban-rows.stderr
+- id: a04-evidence-reproducible
+  started_at: '2026-11-05T18:49:00Z'
+  finished_at: '2026-11-05T18:49:08Z'
+  exit_code: 0
+  stdout_sha256: c5eeb710f96a0f9e6dd64cfea14751fc161d92783c7a492adcc0043917845942
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-a04-evidence-reproducible.stdout
+  stderr_path: logs/014-a04-evidence-reproducible.stderr
+- id: dir-policy-check
+  started_at: '2026-11-05T18:49:08Z'
+  finished_at: '2026-11-05T18:49:08Z'
+  exit_code: 0
+  stdout_sha256: c8c99242327d7cb65b29d3fd8f657f448bb5d819709b890aff6c423f52aa1595
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-dir-policy-check.stdout
+  stderr_path: logs/015-dir-policy-check.stderr
+- id: dir-policy-census
+  started_at: '2026-11-05T18:49:08Z'
+  finished_at: '2026-11-05T18:49:08Z'
+  exit_code: 0
+  stdout_sha256: fa3e829289a54996e9914850036869fce4bf0de21144ba835c11c05104d5de83
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-dir-policy-census.stdout
+  stderr_path: logs/016-dir-policy-census.stderr
+evidence_hash: sha256:ce5d717a14a831c27d5c6d7e8befae443a892cb330b68ad8f9debc84c355481d
+completed_at: '2026-11-05T18:49:08Z'
+notes:
+  purpose: P1-2 能力声明五探针 / P1-5 声明↔run 绑定 / P2-2 目录策略增量判据 / IL-6 证据门禁自指 / LB-1 臂数外部尺子 / A01 门禁解释器护栏 的归档证据
+  commands: 16 条，全部 exit 0
+  key_results:
+    capability_claims: 5/5 VERIFIED（真 CLI、真 MySQL 客户端走 wire、真落库、SIGKILL 重启读回、physical-backup 备份→恢复→逐值）；反向变异
+      10 条对照全部按期望发生
+    claims_binding: claims_hits=1144，claims_ref=93（bound），unbound=1051；基线之上新增未绑定声明 0 条
+    directory_policy: 6 条规则，存量违规 149 条逐条记账；新增违规 0 条
+    il6_selfref: 4 条对照全成立：工作区枚举变异 ⇒ 在飞 run 重新判红（reds 7→9，含在飞归档 run 与探针自身目录）
+    lb1_arm_count: 3 条对照全成立：臂数外部尺子抓得住硬编码臂数
+    a01_interpreter_guard: 四臂：默认解释器 7 条历史红 / 强制无 PyYAML 解释器 ⇒ 只有 1 行「无法判定」且零伪造证据红 / 强制有 PyYAML ⇒ 仍 7 条
+      / --selftest 仍 SELFTEST-OK
+    a04_evidence_reproducible: 80/80 可比归档证据逐字节一致（IL-3 的硬证据）
+  measurement_notes: 本 run 的 16 条命令里有 3 条门禁类命令**预期非零**：A01 证据门禁在已提交树上仍是 rc=1（7 条历史不可复核记录，属 Owner 裁定项 IL-5/#5596）。命令封装把**期望**编码进断言（期望红就断言红），因此
+    run 内这些命令自身 exit 0 —— run 记录的是「断言是否成立」，不是「门禁是否绿」。
+  self_reference_note: 本 run 目录自身在执行期间未提交 ⇒ 按 IL-6 的新口径（门禁按已提交树枚举）它不在判定范围内；提交后它会被纳入，历史判据未放宽。
+  known_limitation: 本 run 不含 ci_gate.sh，不构成门禁通过声明。CI 侧第二血统复核被 IL-9（runner-03 缺镜像）挡住。

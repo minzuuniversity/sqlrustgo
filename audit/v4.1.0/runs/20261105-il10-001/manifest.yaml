@@ -1,0 +1,337 @@
+schema_version: 1
+run_id: 20261105-il10-001
+source_agent: omp-macmini
+frozen_commit: 59d4692bda674fe9c184990c431206e95d3be659
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: il10-unit-tests
+  name: IL-10 判据自证（真 CSV 不得误判 / 真 REPL 必须判出来）
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'cargo test --test a04_mysql_diff_matrix repl_transcript
+
+    '
+- id: il10-stale-binary
+  name: 强制 2026-02-21 的陈旧全局 sqlrustgo ⇒ 必须转 NOT RUN 披露且不得报「证据漂移」
+  cwd: .
+  timeout_sec: 1800
+  cmd: 'f="$(mktemp)"
+
+    SQLRUSTGO_BIN=/Users/liying/.cargo/bin/sqlrustgo bash scripts/gate/check_a04_evidence_reproducible.sh
+    >"$f" 2>&1
+
+    rc=$?
+
+    grep -E "MISMATCH|STATUS: NOT RUN|RESULT" "$f" || true
+
+    echo "exit_code=$rc"
+
+    echo "mismatch_lines=$(grep -c ''MISMATCH'' "$f")"
+
+    echo "drift_claims=$(grep -c ''drifted'' "$f")"
+
+    echo "not_verified=$(grep -c ''NOT VERIFIED'' "$f")"
+
+    echo "not_verified_sqlrustgo_cli=$(grep ''NOT VERIFIED'' "$f" | grep -c ''sqlrustgo_cli'')"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    [ "$(grep -c ''MISMATCH'' "$f")" = "0" ] || s=1
+
+    [ "$(grep -c ''drifted'' "$f")" = "0" ] || s=1
+
+    [ "$(grep -c ''NOT VERIFIED'' "$f")" = "40" ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: il10-no-phantom-evidence
+  name: 陈旧二进制下生成器必须不产出 sqlrustgo_cli 文件（引擎不可用 ⇒ 无证据）
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'rm -rf target/a04-5226
+
+    SQLRUSTGO_BIN=/Users/liying/.cargo/bin/sqlrustgo cargo test --test a04_mysql_diff_matrix >/dev/null
+    2>&1
+
+    n=$(ls target/a04-5226/wire/ 2>/dev/null | grep -c ''sqlrustgo_cli'')
+
+    echo "sqlrustgo_cli_files=$n"
+
+    echo "other_engines=$(ls target/a04-5226/wire/ 2>/dev/null | grep -vc ''sqlrustgo_cli'')"
+
+    [ "$n" -eq 0 ]
+
+    '
+- id: il10-normal-build
+  name: 正常（当前构建）⇒ 仍 80/80 逐字节一致
+  cwd: .
+  timeout_sec: 1800
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_a04_evidence_reproducible.sh >"$f" 2>&1
+
+    rc=$?
+
+    grep -E "PASS:|RESULT|STATUS: NOT RUN" "$f" || true
+
+    echo "exit_code=$rc"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "80/80 comparable archived evidence file(s) match this run byte-for-byte" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: a01-baseline
+  name: A01 证据门禁仍应是那 7 条历史红（不得放宽）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'f="$(mktemp)"
+
+    bash scripts/gate/check_audit_manifest.sh >"$f" 2>&1
+
+    rc=$?
+
+    grep "^FAIL:" "$f" || true
+
+    n=$(grep -c "^FAIL:" "$f")
+
+    echo "exit_code=$rc fail_count=$n"
+
+    rm -f "$f"
+
+    s=0
+
+    [ "$rc" -eq 1 ] || s=1
+
+    [ "$n" -eq 7 ] || s=1
+
+    exit $s
+
+    '
+- id: claims-inventory-check
+  name: P1-5 声明绑定判据：基线之上未绑定的新声明必须为 0
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/evidence_inventory.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    "$PY" -c "import json;d=json.loads(open(''$f'').read().strip().splitlines()[0]);assert d[''fails'']==0,
+    d" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: doc-facts-check
+  name: P2-1 文档事实面：索引逐字节一致 + 两个既有门禁成立
+  cwd: .
+  timeout_sec: 1200
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" audit/v4.1.0/doc_facts.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gate-registry-check
+  name: 门禁登记表不得漂移
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/gate_registry.py check >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: kanban-rows
+  name: 看板 SSOT 与渲染必须一致（54 行）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    f="$(mktemp)"
+
+    "$PY" scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md >"$f" 2>&1
+
+    rc=$?
+
+    cat "$f"
+
+    s=0
+
+    [ "$rc" -eq 0 ] || s=1
+
+    grep -q "54 rows" "$f" || s=1
+
+    rm -f "$f"
+
+    exit $s
+
+    '
+- id: gov-metrics
+  name: 治理度量快照（check_n 必须仍为 168）
+  cwd: .
+  timeout_sec: 600
+  cmd: 'PY="$(command -v python3.14 || command -v /usr/bin/python3)"
+
+    "$PY" scripts/gate/gov_probe.py metrics
+
+    '
+results:
+- id: il10-unit-tests
+  started_at: '2026-11-05T18:58:18Z'
+  finished_at: '2026-11-05T18:58:19Z'
+  exit_code: 0
+  stdout_sha256: 298da72567cae3d17583d8e063cee8453d05b69a9f84575d07acb570ea656a54
+  stderr_sha256: 11c37fd014525d39236f72dae122122fc3d34055ec3910f0738ee947e3f4b923
+  stdout_path: logs/001-il10-unit-tests.stdout
+  stderr_path: logs/001-il10-unit-tests.stderr
+- id: il10-stale-binary
+  started_at: '2026-11-05T18:58:19Z'
+  finished_at: '2026-11-05T18:58:25Z'
+  exit_code: 0
+  stdout_sha256: fe3f84713e95e1bf7450f21f11753246f01ff86678a38a6b9078fa33f543cafa
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-il10-stale-binary.stdout
+  stderr_path: logs/002-il10-stale-binary.stderr
+- id: il10-no-phantom-evidence
+  started_at: '2026-11-05T18:58:25Z'
+  finished_at: '2026-11-05T18:58:32Z'
+  exit_code: 0
+  stdout_sha256: d7755546414870f34511078b96639cfcac6efdf5a8ceef5d380c4ba228723069
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-il10-no-phantom-evidence.stdout
+  stderr_path: logs/003-il10-no-phantom-evidence.stderr
+- id: il10-normal-build
+  started_at: '2026-11-05T18:58:32Z'
+  finished_at: '2026-11-05T18:58:38Z'
+  exit_code: 0
+  stdout_sha256: d752e9993efab6f7a6828b9e36ae56788ff5f5c86b65d25728c0d61d7c4f656b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-il10-normal-build.stdout
+  stderr_path: logs/004-il10-normal-build.stderr
+- id: a01-baseline
+  started_at: '2026-11-05T18:58:38Z'
+  finished_at: '2026-11-05T18:58:40Z'
+  exit_code: 0
+  stdout_sha256: 7b97667a5499adbb152ef8190cadff8fb80082d9c4a7eecf4adcdeac06505f25
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-a01-baseline.stdout
+  stderr_path: logs/005-a01-baseline.stderr
+- id: claims-inventory-check
+  started_at: '2026-11-05T18:58:40Z'
+  finished_at: '2026-11-05T18:58:40Z'
+  exit_code: 0
+  stdout_sha256: 6983aa0c06f10d6e7e284a2c93b05b881a5d5507918730fc0505b81dbdc502fd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-claims-inventory-check.stdout
+  stderr_path: logs/006-claims-inventory-check.stderr
+- id: doc-facts-check
+  started_at: '2026-11-05T18:58:40Z'
+  finished_at: '2026-11-05T18:58:40Z'
+  exit_code: 0
+  stdout_sha256: 8c04c24f2334a3c34a6fd0509f68c5d5362f536712b2b1aa3bfdb9e610ef5065
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-doc-facts-check.stdout
+  stderr_path: logs/007-doc-facts-check.stderr
+- id: gate-registry-check
+  started_at: '2026-11-05T18:58:40Z'
+  finished_at: '2026-11-05T18:58:41Z'
+  exit_code: 0
+  stdout_sha256: 1304125a1fdbeab3535a6d78b44af22278f9f2896cc7b7a80afafddd6ed5fad3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-gate-registry-check.stdout
+  stderr_path: logs/008-gate-registry-check.stderr
+- id: kanban-rows
+  started_at: '2026-11-05T18:58:41Z'
+  finished_at: '2026-11-05T18:58:41Z'
+  exit_code: 0
+  stdout_sha256: f8dcfddf1d85f36effab50354a0bd55e04f3f519180919e5173afe1d211d2122
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-kanban-rows.stdout
+  stderr_path: logs/009-kanban-rows.stderr
+- id: gov-metrics
+  started_at: '2026-11-05T18:58:41Z'
+  finished_at: '2026-11-05T18:58:41Z'
+  exit_code: 0
+  stdout_sha256: e8b7b323003cd32d9933b1a0e249be1e7107bf04add3ea127f747c7097ba3de4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gov-metrics.stdout
+  stderr_path: logs/010-gov-metrics.stderr
+evidence_hash: sha256:d81d58bbf9e4c9f1c1a6f494c45cff7996d1dce19769d152a87d0bbacc138f0c
+completed_at: '2026-11-05T18:58:41Z'
+notes:
+  purpose: IL-10「引擎不可用被当成可比结果」这条假红制造机的修复证据；顺带固化 A01 门禁历史红基线与 P1-5/P2-1 判据
+  commands: 10 条，全部 exit 0
+  key_results:
+    il10_unit_tests: 判据自证两个单元测试全过：真 CSV 输出不得误判 / 真 REPL 输出必须判出来
+    il10_stale_binary: 强制 SQLRUSTGO_BIN=/Users/liying/.cargo/bin/sqlrustgo（2026-02-21 的全局安装）⇒ 门禁转 NOT
+      RUN 披露 40 条（20 postgres + 20 sqlrustgo_cli），MISMATCH 0 条、「drifted」0 次，rc=0
+    il10_no_phantom_evidence: 清空 target/a04-5226 后用陈旧二进制跑 ⇒ sqlrustgo_cli 产出文件数 0（引擎不可用 ⇒ 不产证据），另三个引擎各
+      20
+    il10_normal_build: 正常（当前构建）⇒ 80/80 可比归档证据逐字节一致，NOT VERIFIED 20（仅 postgres）
+    a01_baseline: A01 证据门禁仍判那 7 条历史不可复核记录（未放宽任何历史判据）
+    claims_binding: claims_hits=1144，claims_ref=93，基线之上新增未绑定声明 0 条
+    doc_facts: 文档索引逐字节一致；接进来的 docs_pointer_paths / docs_links 两个既有门禁都成立
+  measurement_notes: 本 run 的 a01-baseline 命令**预期非零**：A01 证据门禁在已提交树上仍是 rc=1（7 条历史不可复核记录，属 Owner 裁定项 IL-5/#5596）。命令封装把**期望**编码进断言（期望红就断言红），因此该命令自身
+    exit 0 —— run 记录的是「断言是否成立」，不是「门禁是否绿」。
+  self_reference_note: 本 run 目录自身在执行期间未提交 ⇒ 按 IL-6 的新口径（门禁按已提交树枚举）它不在判定范围内；提交后它会被纳入，历史判据未放宽。
+  known_limitation: 本 run 不含 ci_gate.sh，不构成门禁通过声明。CI 侧第二血统复核被 IL-9（runner-03 缺镜像）挡住。

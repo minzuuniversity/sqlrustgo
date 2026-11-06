@@ -1,0 +1,12 @@
+
+running 7 tests
+test the_reported_column_is_the_offending_one ... ok
+test unknown_column_in_insert_column_list_is_rejected_and_inserts_nothing ... ok
+test insert_without_a_column_list_is_unaffected ... ok
+test unknown_column_in_insert_select_is_rejected ... ok
+test column_names_are_matched_case_insensitively ... ok
+test a_valid_column_list_still_inserts ... ok
+test insert_select_column_names_are_matched_case_insensitively ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

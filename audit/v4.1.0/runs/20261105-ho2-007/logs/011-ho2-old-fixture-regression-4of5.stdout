@@ -1,0 +1,5 @@
+     首见: NOT-OK: 哈希漂移：看板附录 sha256 3cd2ee0202bf…430830，仓内源文件 3cd2ee0202bf…430839
+DISC m5-network-must-not-be-green: 在仓核对器 rc=2(应非零) 撤掉判据后 rc=0(应为零) 挡的是=API 不可达时必须 INCOMPLETE(rc2)，不许算成通过(rc0)
+     首见: INCOMPLETE: 读不到 ISSUE 正文（HTTPError）—— 没能核对，不算通过
+arms=5 discriminating=4 not_discriminating=1 drift=0
+OLD-FIXTURE-REGRESSION-CONFIRMED

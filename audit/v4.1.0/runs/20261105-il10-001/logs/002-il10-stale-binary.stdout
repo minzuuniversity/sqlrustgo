@@ -1,0 +1,7 @@
+STATUS: NOT RUN for 40 archived file(s) - the engine that produces them is
+RESULT: PASS (with NOT RUN disclosure) - the verified subset is reproducible.
+exit_code=0
+mismatch_lines=0
+drift_claims=0
+not_verified=40
+not_verified_sqlrustgo_cli=20

@@ -1,3 +1,4 @@
+// storage-semantics: alter-column-default-5471
 //! #5471 — `ALTER TABLE ... ALTER COLUMN ... SET/DROP DEFAULT` must work
 //! on the **on-disk** backends, and the default must survive a restart.
 //!

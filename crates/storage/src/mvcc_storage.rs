@@ -31,6 +31,75 @@ use std::sync::Arc;
 /// `current_snapshot - MVCC_GC_LAG` are eligible for cleanup.
 pub const MVCC_GC_LAG: u64 = 1024;
 
+/// #5392: add the committed inner rows that MVCC holds no visible version
+/// of, **without losing rows that merely share a leading column value**.
+///
+/// Every scan path in this wrapper used to dedupe the merge by
+/// `row.first()` — the value of the **first column of the table**, which
+/// has nothing to do with row identity. A table with several rows sharing a
+/// leading value therefore lost all but one of them from every `SELECT`:
+/// `LOAD DATA` reported 20,000 rows and `COUNT(*)` answered 5,001, while
+/// the `.json` on disk kept all 20,000 (TPC-H `partsupp` 8,000 → 2,000,
+/// `lineitem` 59,903 → 15,190). The collapse keyed on the *table's* first
+/// column, not on the first primary-key column, and happened on keyless
+/// tables too — exactly what `row.first()` predicts.
+///
+/// Identity is the **whole row**, and because a keyless table may hold
+/// byte-identical duplicate rows, the union is a **multiset**: an inner row
+/// is appended only while MVCC has fewer copies of it than inner holds.
+///
+/// `pending` is the set of keys this transaction wrote but has not
+/// committed (#4983). It is key-granular by MVCC's own design — chains are
+/// keyed by key — so it stays a first-value filter; it is *conservative*
+/// (it can hide a committed row sharing a leading value with an uncommitted
+/// write) rather than lossy-by-default like the dedupe was.
+fn merge_missing_inner_rows(
+    out: &mut Vec<Record>,
+    inner_rows: Vec<Record>,
+    pending: Option<&std::collections::HashSet<Value>>,
+) {
+    // Borrowed keys: `out` and `inner_rows` are only read while these maps
+    // live, and the appends below happen after they are dropped.
+    let mut have: HashMap<&[Value], usize> = HashMap::new();
+    for row in out.iter() {
+        *have.entry(match row.first() { Some(v) => std::slice::from_ref(v), None => &[] }).or_insert(0) += 1;
+    }
+    let mut want: HashMap<&[Value], usize> = HashMap::new();
+    for row in inner_rows.iter() {
+        *want.entry(match row.first() { Some(v) => std::slice::from_ref(v), None => &[] }).or_insert(0) += 1;
+    }
+
+    let mut take: Vec<bool> = vec![false; inner_rows.len()];
+    for (idx, row) in inner_rows.iter().enumerate() {
+        if let Some(pending) = pending {
+            if row.first().is_some_and(|first| pending.contains(first)) {
+                continue;
+            }
+        }
+        let key = match row.first() { Some(v) => std::slice::from_ref(v), None => &[] };
+        match have.get_mut(key) {
+            // MVCC already represents this exact row at least as many
+            // times as inner does ⇒ it is not missing.
+            Some(seen) if *seen >= want[key] => {}
+            Some(seen) => {
+                *seen += 1;
+                take[idx] = true;
+            }
+            // Inner holds a row MVCC never heard of.
+            None => {
+                have.insert(key, 1);
+                take[idx] = true;
+            }
+        }
+    }
+
+    for (idx, row) in inner_rows.into_iter().enumerate() {
+        if take[idx] {
+            out.push(row);
+        }
+    }
+}
+
 /// MVCC-wrapped storage engine.
 ///
 /// The inner engine handles on-disk persistence and is the source of
@@ -741,19 +810,10 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let pending: std::collections::HashSet<crate::engine::Value> =
             self.pending_keys_in(db, table, reader_tx);
         let inner_rows = self.inner.scan_in_db(db, table)?;
-        if !self.snapshot_bound(reader_tx) && inner_rows.len() > out.len() {
-            let mut present: std::collections::HashSet<crate::engine::Value> =
-                out.iter().filter_map(|r| r.first().cloned()).collect();
-            for row in inner_rows {
-                if let Some(pk) = row.first() {
-                    if pending.contains(pk) {
-                        continue;
-                    }
-                    if present.insert(pk.clone()) {
-                        out.push(row);
-                    }
-                }
-            }
+        if !self.snapshot_bound(reader_tx) {
+            // #5392: the old `row.first()` dedupe here silently dropped
+            // every row sharing a leading column value.
+            merge_missing_inner_rows(&mut out, inner_rows, Some(&pending));
         }
         Ok(out)
     }
@@ -786,19 +846,9 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         let pending: std::collections::HashSet<crate::engine::Value> =
             self.pending_keys(table, reader_tx);
         let inner_rows = self.inner.scan_with_filter(table, filter)?;
-        if !self.snapshot_bound(reader_tx) && inner_rows.len() > out.len() {
-            let mut present: std::collections::HashSet<crate::engine::Value> =
-                out.iter().filter_map(|r| r.first().cloned()).collect();
-            for row in inner_rows {
-                if let Some(pk) = row.first() {
-                    if pending.contains(pk) {
-                        continue;
-                    }
-                    if present.insert(pk.clone()) {
-                        out.push(row);
-                    }
-                }
-            }
+        if !self.snapshot_bound(reader_tx) {
+            // #5392, same collapse as `scan_in_tx_db`.
+            merge_missing_inner_rows(&mut out, inner_rows, Some(&pending));
         }
         Ok(out)
     }
@@ -847,19 +897,13 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
         // The merge is now unconditional: one inner scan per statement,
         // which is what correctness requires. A read path that
         // intermittently hides committed rows is not an optimisation.
-        // The PK dedup keeps the result duplicate-free.
+        //
+        // #5392: the dedupe was `row.first()` — the table's *leading
+        // column*, not row identity — so every row sharing a leading value
+        // was dropped from the result. `merge_missing_inner_rows` unions as
+        // a multiset over whole rows.
         let inner_rows = self.inner.scan(table)?;
-        if inner_rows.len() > out.len() {
-            let mut present: std::collections::HashSet<crate::engine::Value> =
-                out.iter().filter_map(|r| r.first().cloned()).collect();
-            for row in inner_rows {
-                if let Some(pk) = row.first() {
-                    if present.insert(pk.clone()) {
-                        out.push(row);
-                    }
-                }
-            }
-        }
+        merge_missing_inner_rows(&mut out, inner_rows, None);
         Ok(out)
     }
 
@@ -877,30 +921,14 @@ impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
             .filter_map(|(_, row)| if filter(&row) { Some(row) } else { None })
             .collect();
 
-        // V400-MVCC-PKFAST: also include rows from inner that may have
-        // been evicted from MVCC chains by background GC. Deduplicate
-        // by PK to avoid double-counting rows still present in MVCC.
-        //
-        // Optimization: skip the inner scan entirely when MVCC
-        // covers all rows. We approximate "MVCC covers all rows"
-        // as "MVCC chain count == row_id of the highest inner row",
-        // which is the common case in production workloads where
-        // GC hasn't evicted any single-version chains yet.
-        let mvcc_count = mvcc.key_count() as i64;
-        let inner_row_count = self.inner.scan(table)?.len() as i64;
-        if mvcc_count < inner_row_count {
-            let mvcc_pks: std::collections::HashSet<crate::engine::Value> =
-                out.iter().filter_map(|r| r.first().cloned()).collect();
-            if let Ok(inner_rows) = self.inner.scan_with_filter(table, filter) {
-                for row in inner_rows {
-                    if let Some(pk) = row.first() {
-                        if !mvcc_pks.contains(pk) {
-                            out.push(row);
-                        }
-                    }
-                }
-            }
-        }
+        // V400-MVCC-PKFAST used to gate this on `mvcc.key_count() <
+        // inner.scan().len()`, the same chain-count-vs-row-count premise
+        // #4946 already rejected above, and swallowed an inner scan error
+        // through `if let Ok(..)`. Both removed: the merge is unconditional
+        // and #5392 makes it a whole-row multiset union instead of a
+        // first-column dedupe.
+        let inner_rows = self.inner.scan_with_filter(table, filter)?;
+        merge_missing_inner_rows(&mut out, inner_rows, None);
         Ok(out)
     }
 

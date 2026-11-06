@@ -1,3 +1,4 @@
+// storage-semantics: ddl-e2e-test
 //! DDL 端到端集成测试
 //!
 //! 目标: 验证 DDL 语句 (CREATE TABLE / DROP TABLE / CREATE INDEX / ALTER TABLE / TRUNCATE)

@@ -1,0 +1,43 @@
+{"kind": "directory_policy_report", "rules": 6, "violations": 149, "by_rule": {"dir-name-charset": 63, "no-new-vxy-dir": 9, "dir-has-readme": 38, "index-registers-dir": 38, "top-level-md-cap": 0, "bench-dir-single": 1}}
+--- dir-name-charset（DIRECTORY_POLICY.md §2.2）63 条
+     docs/AI增强软件工程
+     docs/releases/v1.9.0/OO
+     docs/releases/v2.0.0/OO
+     docs/releases/v3.12.0/evidence/arch_invariants
+     docs/releases/v3.12.0/evidence/b2_per_binary
+     docs/releases/v3.12.0/evidence/bustubx_edu_cli
+     docs/releases/v3.12.0/evidence/crash_recovery
+     docs/releases/v3.12.0/evidence/gmp_compliance
+     …还有 55 条
+--- no-new-vxy-dir（DIRECTORY_POLICY.md §2.1）9 条
+     docs/releases/v2.0
+     docs/releases/v2.1
+     docs/releases/v2.2
+     docs/releases/v2.3
+     docs/releases/v3.0
+     docs/releases/v3.12.0/evidence/v4019.1
+     docs/releases/v3.12.0/evidence/v4019.4
+     docs/v1.0
+     …还有 1 条
+--- dir-has-readme（DIRECTORY_POLICY.md §3.1）38 条
+     docs/AI增强软件工程/
+     docs/adr/
+     docs/agent-harness/
+     docs/analysis/
+     docs/architecture/
+     docs/audit/
+     docs/audits/
+     docs/benchmark/
+     …还有 30 条
+--- index-registers-dir（DIRECTORY_POLICY.md §3.2）38 条
+     docs/adr/
+     docs/agent-harness/
+     docs/analysis/
+     docs/architecture/
+     docs/audit/
+     docs/audits/
+     docs/benchmark/
+     docs/benchmarks/
+     …还有 30 条
+--- bench-dir-single（看板 P2-2）1 条
+     并存: bench/benchmarks/benches

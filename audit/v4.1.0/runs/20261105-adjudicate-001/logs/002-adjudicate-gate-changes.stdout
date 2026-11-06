@@ -1,0 +1,32 @@
+[flash-next-252/qwen-strata] ok=True latency=13.68s verdict=INCOMPLETE
+[chatgpt-web/gpt] ok=True latency=46.74s verdict=INCOMPLETE
+{
+ "decided_seats": [
+  "chatgpt-web",
+  "flash-next-252"
+ ],
+ "verdicts": {
+  "flash-next-252": "INCOMPLETE",
+  "chatgpt-web": "INCOMPLETE"
+ },
+ "abstained": [],
+ "families": [
+  "gpt",
+  "qwen-strata"
+ ],
+ "lineages": [
+  "gpt",
+  "qwen"
+ ],
+ "required_lineages": 2,
+ "machine_evidence_present": true,
+ "machine_evidence_passed": true,
+ "soft_gate_note": "[SOFT GATE] 模型意见仅供参考，不作为门禁依据（AFP §5.1/5.3）",
+ "aggregate": "INCOMPLETE",
+ "rule": "R2: a seat abstained inside the verdict set",
+ "question_id": "gate-changes-410",
+ "artifacts": [],
+ "prompt_sha256": "sha256:692d8b772d46b6b7e25f82c39cfba08a66cc9e9936de2a6c6848547c3c78304d",
+ "adjudicated_at": "2026-11-05T19:28:30Z"
+}
+exit_code=2

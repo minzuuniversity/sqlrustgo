@@ -1,3 +1,4 @@
+// storage-semantics: int3-spec-complete-test
 //! GA-P1/INT-3 Spec-Complete Mixed-Scenario Integration Test (Issue #3271).
 //!
 //! This is the **spec-complete** implementation of Issue #3271. The

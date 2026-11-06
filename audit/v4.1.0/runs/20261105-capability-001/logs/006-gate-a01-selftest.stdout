@@ -1,0 +1,36 @@
+FAIL: run dir without manifest: iaia410-a06-r1-20261011T073325Z-01df92a5
+audit_run: iaia410-5112-evidence-20261015: 6/6 条命令没有记录命令行 (ids: 1,2,3,4,5,6) ⇒ exit_code 声明不可复核
+FAIL: audit run iaia410-5112-evidence-20261015 failed evidence verify
+audit_run: iaia410-a01-20261011T062229Z-609a8e81: 7/7 条命令没有记录命令行 (ids: 001,002,003,004,005,006,007) ⇒ exit_code 声明不可复核
+FAIL: audit run iaia410-a01-20261011T062229Z-609a8e81 failed evidence verify
+audit_run: iaia410-a02-20261011T070228Z-609a8e81: 8/8 条命令没有记录命令行 (ids: 001,002,003,004,005,006,007,008) ⇒ exit_code 声明不可复核
+FAIL: audit run iaia410-a02-20261011T070228Z-609a8e81 failed evidence verify
+audit_run: iaia410-a03-20261011T070845Z-omp: commands 为空 ⇒ 这是一条空记录，任何结论都不该引用它
+FAIL: audit run iaia410-a03-20261011T070845Z-omp failed evidence verify
+audit_run: iaia410-a04-20261011T180837Z-609a8e81: 5/5 条命令没有记录命令行 (ids: 001,002,003,004,005) ⇒ exit_code 声明不可复核
+FAIL: audit run iaia410-a04-20261011T180837Z-609a8e81 failed evidence verify
+audit_run: iaia410-a05-20261012T004948Z-bf48818c: 9/9 条命令没有记录命令行 (ids: 1,2,3,4,5,6,7,008) ⇒ exit_code 声明不可复核
+FAIL: audit run iaia410-a05-20261012T004948Z-bf48818c failed evidence verify
+verify OK: 20261009-a01-001 evidence_hash=sha256:d6d9619ea3af829e36ebd9112ae385ad14fc54e04fa0426d10ef43a019c55c93
+verify OK: 20261104-govprobe-001 evidence_hash=sha256:db75328444e3e67f5c7d81bbf647d0c6be579ed3fdfbd28e17cbb96f64482cb4
+verify OK: 20261104-kanban-001 evidence_hash=sha256:f8688bc971171c6b016c5012bd6cc01dc389d74382fad7e1a54279a49da4e3e3
+verify OK: 20261104-seats-001 evidence_hash=sha256:c3e5a441e6c7efc35c42a6448122c9887679e5cff5f1c5be869bc6362494ca0f
+verify OK: 20261104-seats-002 evidence_hash=sha256:2685c40262760740150e09e6354bd699b61ff4b7e566821edbb031ccc5eb0422
+verify OK: 20261105-auditintegrity-002 evidence_hash=sha256:914acaaac43c5a3c3387937f3d98c562e284aff37b21c9c946af0d1521b9dcc3
+verify OK: 20261105-cifact-001 evidence_hash=sha256:e390e6af86bce07bf2285ebb7a29a752ae8b5e688d19b2134c9f2013ff575946
+verify OK: 20261105-ciroots-001 evidence_hash=sha256:8a8d00ca403da22d41e46a734ddccebab4a31722230ac5e0c672ea3851afd365
+verify OK: 20261105-gatecatalog-001 evidence_hash=sha256:8725d28a9a5f55333b514b48899cb725f73be1194cf0581080fff08c2f4f1e2f
+verify OK: 20261105-gen1-005 evidence_hash=sha256:617359e1251b2f8b5fd420fd506bb1faaacc3a9914f80868b7f2dae6bd54d7fb
+verify OK: 20261105-govcheck-001 evidence_hash=sha256:7d5c06911e3d7619ba62cfb4f1bea4b61270cd885ca5574ce263a3e0d5d08efe
+verify OK: 20261105-lb1-006 evidence_hash=sha256:9ec3c10d5253be81030b1d008e3084d348e152d00dadd8ffa72814bb7b198fed
+verify OK: 20261105-ledger-001 evidence_hash=sha256:502826f24ff34a058da4862a95a67ca2beca56ece49bdfe1f26b18365a20d2dd
+verify OK: 20261105-negfix-001 evidence_hash=sha256:6c41884ad44e8ffceab397565ce474cf26f772aa148f99921d662de1011e9624
+verify OK: 20261105-negfix-002 evidence_hash=sha256:7cfc903986e552ae15315043a2c81325fdec56617f28633f97db26cd03ef9000
+verify OK: 20261105-negfix-003 evidence_hash=sha256:2329e08121cd668ffd6270a8fce9bfec532c6316039bc25a7c46d981f0d119a1
+verify OK: 20261105-negfix-004 evidence_hash=sha256:90bc688fed9a27875f7d37d084bc8e5fa69affc50206af1b2b76bba2a477c549
+verify OK: 20261105-p07-failclosed-002 evidence_hash=sha256:6cf7439f3be2d4acbf53bd207fd8b184c4ca7944382c9d2523282769711767b3
+verify OK: 20261105-stagecrit-001 evidence_hash=sha256:dd67dafb8691504e8083f7c761171ad8a51d5bd03b937705dd015a7fadbfef72
+verify OK: 20261105-triage-001 evidence_hash=sha256:a2538ba8539d9d1a76acc8768c219efa520fe1d2bc2446168d001a5a2c572fc6
+verify OK: 20261105-tristate-001 evidence_hash=sha256:2e6862b0961a1bf14443f534f46e524482862dcfbe8b4a62ab2fc46490cb34e5
+=== selftest: 未提交的在飞 run 不得被判红 ===
+SELFTEST-OK: 在飞 run 自身 verify 判红（说明它确实还没写完）
