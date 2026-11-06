@@ -46,14 +46,17 @@ fn left_join_keeps_rows_whose_matches_are_all_filtered_by_the_on_clause() {
     let mut e = fresh();
     e.execute("CREATE TABLE c (id INT, name TEXT)").unwrap();
     e.execute("CREATE TABLE o (cid INT, comment TEXT)").unwrap();
-    e.execute("INSERT INTO c VALUES (1, 'a'), (2, 'b'), (3, 'c')").unwrap();
+    e.execute("INSERT INTO c VALUES (1, 'a'), (2, 'b'), (3, 'c')")
+        .unwrap();
     // 客户 2 的订单**全部**被 ON 条件过滤掉。
     // 注意 LIKE 模式里的 `%` 是通配符，所以两条注释都**必须**真的含
     // "special%requests%" —— 写成 'x%requests%' 并不匹配
     // '%special%requests%'（后者要求中间有 "special"），那一条会存活下来，
     // 于是这个用例根本碰不到缺陷。
-    e.execute("INSERT INTO o VALUES (1, 'ok'), (2, 'special%requests%'), (2, 'a special%requests% b')")
-        .unwrap();
+    e.execute(
+        "INSERT INTO o VALUES (1, 'ok'), (2, 'special%requests%'), (2, 'a special%requests% b')",
+    )
+    .unwrap();
 
     let ids = ints(
         &mut e,
@@ -78,7 +81,8 @@ fn left_join_count_aggregates_the_filtered_customer_as_zero() {
     e.execute("CREATE TABLE c (id INT)").unwrap();
     e.execute("CREATE TABLE o (cid INT, comment TEXT)").unwrap();
     e.execute("INSERT INTO c VALUES (1), (2), (3)").unwrap();
-    e.execute("INSERT INTO o VALUES (1, 'ok'), (2, 'special%requests%')").unwrap();
+    e.execute("INSERT INTO o VALUES (1, 'ok'), (2, 'special%requests%')")
+        .unwrap();
 
     let r = e
         .execute(
@@ -111,7 +115,8 @@ fn left_join_with_a_passing_on_clause_is_unchanged() {
     e.execute("CREATE TABLE c (id INT)").unwrap();
     e.execute("CREATE TABLE o (cid INT, comment TEXT)").unwrap();
     e.execute("INSERT INTO c VALUES (1), (2)").unwrap();
-    e.execute("INSERT INTO o VALUES (1, 'ok'), (2, 'ok')").unwrap();
+    e.execute("INSERT INTO o VALUES (1, 'ok'), (2, 'ok')")
+        .unwrap();
 
     let ids = ints(
         &mut e,

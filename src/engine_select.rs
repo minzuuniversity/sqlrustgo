@@ -5416,7 +5416,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     let right_col_count = right_table_info.columns.len();
                     if matches!(
                         join_clause.join_type,
-                        ParserJoinType::Left | ParserJoinType::Full | ParserJoinType::NaturalLeft
+                        ParserJoinType::Left
+                            | ParserJoinType::Full
+                            | ParserJoinType::NaturalLeft
                             | ParserJoinType::NaturalFull
                     ) {
                         for (li, left_row) in left_rows.iter().enumerate() {
@@ -5429,7 +5431,9 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     }
                     if matches!(
                         join_clause.join_type,
-                        ParserJoinType::Right | ParserJoinType::Full | ParserJoinType::NaturalRight
+                        ParserJoinType::Right
+                            | ParserJoinType::Full
+                            | ParserJoinType::NaturalRight
                             | ParserJoinType::NaturalFull
                     ) {
                         for (ri, right_row) in right_rows.iter().enumerate() {
