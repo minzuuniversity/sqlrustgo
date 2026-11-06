@@ -235,7 +235,7 @@ pub enum BackupError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use tempfile::TempDir;
 
     #[test]

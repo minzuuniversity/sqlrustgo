@@ -327,7 +327,7 @@ fn worker(
     let mut rng = rand::thread_rng();
     let deadline = Instant::now() + duration;
     let start = Instant::now();
-    let mut next_tick = start + Duration::from_secs(1);
+    let _next_tick = start + Duration::from_secs(1);
     let per_op_nanos = if target_qps_per_thread > 0.0 {
         (1_000_000_000.0 / target_qps_per_thread) as u64
     } else {
@@ -363,7 +363,7 @@ fn worker(
                 if Instant::now() >= deadline {
                     break;
                 }
-                let (cat, gen) = pick_oltp_op(&mut rng);
+                let (_cat, gen) = pick_oltp_op(&mut rng);
                 let sql = gen(&mut rng);
                 match conn.execute(&sql) {
                     Ok(_) => {
@@ -586,11 +586,11 @@ fn main() {
     // Spawn workers
     let duration = Duration::from_secs(args.duration_secs);
     let counters = Arc::new(Counters::default());
-    let report_interval = Duration::from_secs(args.report_interval);
+    let _report_interval = Duration::from_secs(args.report_interval);
     let qps_per_thread = args.target_qps / args.threads as f64;
 
-    let start = Instant::now();
-    let handles: Vec<_> = (0..args.threads)
+    let _start = Instant::now();
+    let _handles: Vec<_> = (0..args.threads)
         .map(|wid| {
             let ctr = Arc::clone(&counters);
             let addr = addr;
@@ -666,7 +666,7 @@ fn main() {
                 let ou = upd - last_upd;
                 let od = del - last_del;
                 let os = sel - last_sel;
-                let writes = oi + ou + od;
+                let _writes = oi + ou + od;
                 eprintln!(
                     "[{:>4.0}s] qps={:>6.0}  oltp={}/{}  olap={}/{}  tot_ops={}  writes(+{}/+{}/+{})  select(+{})",
                     start.elapsed().as_secs_f64(),

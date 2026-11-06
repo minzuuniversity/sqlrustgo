@@ -57,7 +57,7 @@ fn truncate_positive_decimals() {
 #[test]
 fn truncate_default_zero_decimals() {
     let mut e = engine();
-    let r = e.execute("SELECT TRUNC(123.456)").unwrap();
+    let _r = e.execute("SELECT TRUNC(123.456)").unwrap();
 }
 
 #[test]

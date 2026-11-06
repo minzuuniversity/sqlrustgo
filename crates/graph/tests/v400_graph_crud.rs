@@ -125,6 +125,9 @@ fn property_map_nested_list() {
 // ============================================================================
 
 #[derive(Debug, Clone)]
+// labels / properties 建模的是记录的真实形状（构造时写入），本文件只断言 id 与边关系
+// ⇒ 字段本身没有被读取；这是刻意保留的形状，不是无用代码。
+#[allow(dead_code)]
 struct NodeRecord {
     id: NodeId,
     labels: Vec<Label>,
@@ -270,6 +273,8 @@ fn graph_store_multiple_nodes() {
 // ============================================================================
 
 #[derive(Debug, Clone)]
+// 同 NodeRecord：label / properties 是记录形状的一部分，本文件不读取它们。
+#[allow(dead_code)]
 struct EdgeRecord {
     id: EdgeId,
     src: NodeId,

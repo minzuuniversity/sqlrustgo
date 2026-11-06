@@ -204,9 +204,15 @@ mod tests {
         registry.register_help("queries".to_string(), "Help for queries".to_string());
 
         // Without registering metrics, help text won't appear in output
-        let _output = registry.to_prometheus_format();
-        // Just verify the registry can be created and used without panic
-        assert!(true);
+        let output = registry.to_prometheus_format();
+        // 原这里是 `assert!(true)`（clippy assertions_on_constants 判红）—— 什么都没断言。
+        // 按本测试自己的名字与注释（「只注册了 help、没注册同名指标 ⇒ help 文本不该出现」），
+        // 改成断言真正的行为：输出里不得含这条 help 文本。
+        assert!(
+            !output.contains("Help for queries"),
+            "help text must not appear when no metric named `queries` is registered: {}",
+            output
+        );
     }
 
     #[test]

@@ -32,21 +32,19 @@ fn main() {
     let mut all_rows: Vec<Vec<Value>> = Vec::new();
     let mut count = 0usize;
 
-    for line in reader.lines() {
-        if let Ok(line) = line {
-            let fields: Vec<&str> = line.split('|').collect();
-            if fields.len() >= 6 {
-                all_rows.push(vec![
-                    Value::Integer(fields[0].trim().parse().unwrap_or(0)),
-                    Value::Integer(fields[1].trim().parse().unwrap_or(0)),
-                    Value::Float(fields[4].trim().parse().unwrap_or(0.0)),
-                    Value::Float(fields[5].trim().parse().unwrap_or(0.0)),
-                    Value::Float(fields[6].trim().parse().unwrap_or(0.0)),
-                ]);
-                count += 1;
-                if count % 500000 == 0 {
-                    println!("  Parsed {} rows", count);
-                }
+    for line in reader.lines().flatten() {
+        let fields: Vec<&str> = line.split('|').collect();
+        if fields.len() >= 6 {
+            all_rows.push(vec![
+                Value::Integer(fields[0].trim().parse().unwrap_or(0)),
+                Value::Integer(fields[1].trim().parse().unwrap_or(0)),
+                Value::Float(fields[4].trim().parse().unwrap_or(0.0)),
+                Value::Float(fields[5].trim().parse().unwrap_or(0.0)),
+                Value::Float(fields[6].trim().parse().unwrap_or(0.0)),
+            ]);
+            count += 1;
+            if count.is_multiple_of(500000) {
+                println!("  Parsed {} rows", count);
             }
         }
     }

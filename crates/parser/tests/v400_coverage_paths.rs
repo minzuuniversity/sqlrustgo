@@ -4,7 +4,7 @@
 //! `parse_with_select`, `parse_create_function`, and `parse_upsert`
 //! per docs/releases/v4.0.0/ALPHA_GATE_REPORT.md §A5 (parser 73.97% borderline).
 
-use sqlrustgo_parser::{parse, parse_statements, Statement};
+use sqlrustgo_parser::{parse, parse_statements};
 
 /// Helper: parse a single statement and discard the result. The point is to
 /// exercise the parser path, not to verify the AST shape.

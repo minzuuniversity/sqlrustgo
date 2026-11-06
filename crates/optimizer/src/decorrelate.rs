@@ -638,27 +638,24 @@ mod tests {
         };
         let where_expr = select.where_clause.as_ref().unwrap();
         let patterns = find_correlated_subqueries(where_expr, &[]);
-        assert!(patterns.len() >= 1, "got {} patterns", patterns.len());
+        assert!(!patterns.is_empty(), "got {} patterns", patterns.len());
     }
 
     #[test]
     fn detects_select_list_scalar_subquery() {
         let sql = "SELECT outer_t.id, (SELECT MAX(c) FROM inner_t)";
-        match parse(sql) {
-            Ok(stmt) => {
-                let select = match stmt {
-                    sqlrustgo_parser::Statement::Select(s) => s,
-                    _ => panic!("expected SELECT"),
-                };
-                let select_exprs: Vec<E> = select
-                    .columns
-                    .into_iter()
-                    .filter_map(|c| c.expression)
-                    .collect();
-                let patterns = find_correlated_subqueries(&E::Literal("1".into()), &select_exprs);
-                assert!(patterns.len() >= 1 || select_exprs.is_empty());
-            }
-            Err(_) => {}
+        if let Ok(stmt) = parse(sql) {
+            let select = match stmt {
+                sqlrustgo_parser::Statement::Select(s) => s,
+                _ => panic!("expected SELECT"),
+            };
+            let select_exprs: Vec<E> = select
+                .columns
+                .into_iter()
+                .filter_map(|c| c.expression)
+                .collect();
+            let patterns = find_correlated_subqueries(&E::Literal("1".into()), &select_exprs);
+            assert!(!patterns.is_empty() || select_exprs.is_empty());
         }
     }
 }

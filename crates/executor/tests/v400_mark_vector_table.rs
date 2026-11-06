@@ -3,7 +3,6 @@
 //! `vec_`-prefixed table names so downstream insert / delete paths
 //! can detect the vector dispatch at runtime.
 
-use sqlrustgo_parser::parse;
 use sqlrustgo_storage::engine::StorageEngine;
 
 #[test]

@@ -176,8 +176,5 @@ fn read_impl_maps_empty_buf_io_and_protocol_errors() {
     let mut r4 = CompressedReader::new(&mut cur4, true);
     let mut buf = [0u8; 4];
     let err = r4.read(&mut buf).expect_err("zlib garbage must fail");
-    assert!(
-        !matches!(err.raw_os_error(), Some(_)),
-        "must be an io-mapped error"
-    );
+    assert!(!err.raw_os_error().is_some(), "must be an io-mapped error");
 }

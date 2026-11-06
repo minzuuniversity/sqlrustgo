@@ -46,7 +46,7 @@ fn main() {
         let start = Instant::now();
         let rows = storage
             .scan(table)
-            .expect(&format!("Failed to scan {}", table));
+            .unwrap_or_else(|_| panic!("Failed to scan {}", table));
         let elapsed = start.elapsed();
 
         let status = if rows.len() >= expected { "✅" } else { "❌" };

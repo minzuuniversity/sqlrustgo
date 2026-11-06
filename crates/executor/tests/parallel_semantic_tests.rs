@@ -291,6 +291,7 @@ fn test_parallel_path_activates_for_large_dataset() {
         "Large dataset should activate 8-way parallelism"
     );
 }
+#[test]
 fn test_parallel_path_skips_for_small_dataset() {
     // Verify that for small datasets, we don't activate parallel path
     let exec = ParallelVolcanoExecutor::new(8);

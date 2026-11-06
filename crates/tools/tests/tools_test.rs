@@ -182,23 +182,25 @@ fn test_config_manager_load_save_roundtrip() {
     assert_eq!(loaded, AppConfig::default());
 
     // Custom config can be saved and reloaded.
-    let mut custom = AppConfig::default();
-    custom.database = DatabaseConfig {
-        host: "db.example.com".into(),
-        port: 3306,
-        max_connections: 50,
-        timeout_seconds: 60,
-    };
-    custom.log = LogConfig {
-        level: "debug".into(),
-        rotation_size_mb: 200,
-        retention_days: 14,
-        format: "text".into(),
-    };
-    custom.cache = CacheConfig {
-        enabled: false,
-        max_size_mb: 1024,
-        ttl_seconds: 7200,
+    let custom = AppConfig {
+        database: DatabaseConfig {
+            host: "db.example.com".into(),
+            port: 3306,
+            max_connections: 50,
+            timeout_seconds: 60,
+        },
+        log: LogConfig {
+            level: "debug".into(),
+            rotation_size_mb: 200,
+            retention_days: 14,
+            format: "text".into(),
+        },
+        cache: CacheConfig {
+            enabled: false,
+            max_size_mb: 1024,
+            ttl_seconds: 7200,
+        },
+        ..Default::default()
     };
     save_config(&path, &custom).expect("save_config");
     let reloaded = load_config(&path).expect("load_config custom");
