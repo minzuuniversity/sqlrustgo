@@ -36,8 +36,8 @@ fn stmt_payload(stmt_id: u32, params: &[(u8, &[u8])], new_params_bound: bool) ->
     p.extend_from_slice(&stmt_id.to_le_bytes());
     p.push(0x00); // flags
     p.extend_from_slice(&1u32.to_le_bytes()); // iteration_count
-    let null_bytes = (params.len() + 7) / 8;
-    p.extend(std::iter::repeat(0u8).take(null_bytes));
+    let null_bytes = params.len().div_ceil(8);
+    p.extend(std::iter::repeat_n(0u8, null_bytes));
     if null_bytes >= 1 {
         let last = p.len() - null_bytes;
         p[last] = null_bitmap;

@@ -113,8 +113,8 @@ mod tests {
     #[test]
     fn test_multiple_partitions() {
         let mut pm = PartitionManager::new().unwrap();
-        let id1 = pm.write_partition(&vec!["a", "b"]).unwrap();
-        let id2 = pm.write_partition(&vec!["c", "d", "e"]).unwrap();
+        let id1 = pm.write_partition(&["a", "b"]).unwrap();
+        let id2 = pm.write_partition(&["c", "d", "e"]).unwrap();
         assert_eq!(id1, 0);
         assert_eq!(id2, 1);
         assert_eq!(pm.num_partitions(), 2);
@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn test_cleanup_clears_partitions() {
         let mut pm = PartitionManager::new().unwrap();
-        pm.write_partition(&vec![1, 2, 3]).unwrap();
+        pm.write_partition(&[1, 2, 3]).unwrap();
         assert_eq!(pm.num_partitions(), 1);
         pm.cleanup();
         assert_eq!(pm.num_partitions(), 0);
@@ -168,7 +168,7 @@ mod tests {
     fn test_with_dir_creates_partition() {
         let tmp = tempfile::tempdir().unwrap();
         let mut pm = PartitionManager::with_dir(tmp.path().to_path_buf()).unwrap();
-        let id = pm.write_partition(&vec![1, 2, 3]).unwrap();
+        let id = pm.write_partition(&[1, 2, 3]).unwrap();
         assert_eq!(id, 0);
         assert_eq!(pm.num_partitions(), 1);
     }
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn test_cleanup_removes_files() {
         let mut pm = PartitionManager::new().unwrap();
-        let id = pm.write_partition(&vec![1, 2, 3]).unwrap();
+        let id = pm.write_partition(&[1, 2, 3]).unwrap();
         let read_back: Vec<i32> = pm.read_partition(id).unwrap();
         assert_eq!(read_back, vec![1, 2, 3]);
         // Verify cleanup also removes files

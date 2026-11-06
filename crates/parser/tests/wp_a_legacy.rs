@@ -10,7 +10,7 @@
 //!
 //! refs: LEGACY_ISSUES.md §3.3
 
-use sqlrustgo_parser::{parse, Parser};
+use sqlrustgo_parser::parse;
 
 /// Issue #4708: Chinese identifier / comment / quoted identifier
 mod test_4708_chinese_identifiers {

@@ -1,0 +1,157 @@
+# 20261106-ga5594-001 —— #5594 门禁修复 + GA 静态扫描清理的归档证据
+#
+# 已知红项：gate-main-freshness（C-MAIN-02，GA 前 main 封存 ⇒ 结构红）。
+
+- id: probe-gate-executability-selftest
+  name: "执行点门禁的自检（A/B/C/D/**D2**/E/E2 全绿；D2 是本批新增：行尾注释里的门禁不算调用）"
+  cmd: python3 scripts/gate/gate_executability.py --selftest
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-gate-executability
+  name: "执行点门禁本体（92 项、NO-EXECUTOR 必须 0）"
+  cmd: python3 scripts/gate/gate_executability.py
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-clippy
+  name: "GA 静态扫描（GA 清单原文形状）：cargo clippy --all-features -- -D warnings"
+  cmd: cargo clippy --all-features -- -D warnings
+  cwd: .
+  timeout_sec: 3600
+
+- id: gate-fmt-check
+  name: "rustfmt：workspace 的 fmt 欠账必须为空"
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+
+- id: test-planner-chain
+  name: "planner 链式测试（改了那一行 mut）"
+  cmd: cargo test -q -p sqlrustgo-planner --all-features --test planner_chain_tests
+  cwd: .
+  timeout_sec: 1800
+
+- id: test-admin-handshake
+  name: "admin 握手测试（改了那一行 doc comment 空行）"
+  cmd: cargo test -q -p sqlrustgo-soak --all-features --test handshake_tests
+  cwd: .
+  timeout_sec: 1800
+
+- id: test-shard-router
+  name: "shard-router 单测（改了 io::Error::other 两处）"
+  cmd: cargo test -q -p sqlrustgo-shard-router --all-features --lib
+  cwd: .
+  timeout_sec: 1800
+
+- id: gate-honesty-check
+  name: "honesty 判据（分母 168、夹具 57、fails 必须 0）"
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-doc-facts-check
+  name: "文档事实与索引一致"
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-registry-denominator
+  name: "门禁注册表：分母必须仍是 168"
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+
+- id: probe-gate-registry
+  name: "门禁注册表自检（9 个变异必须全被抓住）"
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-kanban-consistency
+  name: "看板 JSONL 与渲染出的 MD 必须逐行一致"
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+
+- id: probe-claims-selftest
+  name: "五类声称的反向变异自检（17 臂必须全 VERIFIED）"
+  cmd: python3.14 audit/v4.1.0/claims_selftest.py
+  cwd: .
+  timeout_sec: 1200
+
+- id: gate-ci-checkout-consistency
+  name: "CI checkout 一致性门禁（必须仍绿）"
+  cmd: bash scripts/gate/check_ci_checkout_consistency.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: gate-test-count-monotonic
+  name: "测试计数单调门禁"
+  cmd: bash scripts/gate/check_test_count_monotonic.sh
+  cwd: .
+  timeout_sec: 1800
+
+- id: gate-main-freshness
+  name: "C-MAIN-02 main 新鲜度（GA 前 main 封存 ⇒ 结构红，不是本批回归）"
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 600
+
+- id: ga-required-files
+  name: "GA 发布文件 5 份齐备（逐份 test -f，任一缺失即红）"
+  cmd: |
+    for f in docs/releases/v4.1.0/STAGE.yaml docs/releases/v4.1.0/RELEASE_NOTES.md \
+             docs/releases/v4.1.0/GA_GATE_REPORT.md docs/releases/v4.1.0/GA_RELEASE_TIMELINE.md \
+             docs/releases/v4.1.0/CHANGELOG.md; do
+      test -f "$f" || { echo "MISSING $f"; exit 1; }
+      echo "OK $f"
+    done
+  cwd: .
+  timeout_sec: 120
+
+- id: gate-anti-fabrication
+  name: "AFP v4 反伪造门禁（HEAD 作者必须是已登记身份；本批补录 omp-macmini）"
+  cmd: bash scripts/gate/check_anti_fabrication.sh
+  cwd: .
+  timeout_sec: 1800
+
+- id: probe-afp-author-allowlist
+  name: "反向变异：未登记身份做 HEAD ⇒ 同一函数必须报错（改后没有放松判据）"
+  cmd: |
+    tmp=$(mktemp -d /Volumes/workspace/dev/afpmut-XXXXXX)
+    { echo 'ERRORS=0'
+      echo 'log_info() { :; }'; echo 'log_error() { echo "[ERROR] $*" >&2; ERRORS=$((ERRORS+1)); }'
+      echo 'log_pass() { :; }'
+      awk '/^check_head_commit_author\(\)/,/^}/' scripts/gate/check_anti_fabrication.sh
+    } > "$tmp/h.sh"
+    git worktree add -q --detach "$tmp/wt" HEAD
+    ( cd "$tmp/wt" \
+      && git -c user.name="Probe" -c user.email="probe-unknown-identity@gaoyuanyiyao.com" \
+           commit -q --allow-empty -m probe \
+      && bash -c "source $tmp/h.sh; check_head_commit_author >/dev/null 2>&1; echo ERRORS=\$ERRORS" ) \
+      | grep -q 'ERRORS=1' || { echo "MUTATION NOT CAUGHT"; exit 1; }
+    echo "MUTATION CAUGHT"
+    git worktree remove --force "$tmp/wt" 2>/dev/null || true
+    git worktree prune 2>/dev/null || true
+    rm -rf "$tmp"
+  cwd: .
+  timeout_sec: 300
+
+- id: cargo-test-all-features
+  name: "GA 清单 cargo 命令（原文）：cargo test --all-features（本批 54 个文件是 clippy 自动修复，必须由全量测试兜底）"
+  cmd: cargo test --all-features
+  cwd: .
+  timeout_sec: 7200
+
+- id: probe-alpha-gate-blocker-tests
+  name: "ALPHA 阻塞测试（覆盖率测量的 4 条断言改为跟规则走；含一条原本的假绿）"
+  cmd: cargo test -q --test alpha_gate_blocker_test
+  cwd: .
+  timeout_sec: 1800
+
+- id: gate-anti-ignore
+  name: "ignore 台账与现场树一致（本批登记了 12 条假覆盖测试的显式 ignore）"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900

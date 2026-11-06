@@ -561,8 +561,8 @@ mod tests {
 
     #[test]
     fn test_all_schemas() {
-        let mut catalog = create_test_catalog();
-        let schemas: Vec<_> = catalog.all_schemas();
+        let catalog = create_test_catalog();
+        let _schemas: Vec<_> = catalog.all_schemas();
     }
 
     #[test]
@@ -575,7 +575,7 @@ mod tests {
 
     #[test]
     fn test_has_schema() {
-        let mut catalog = create_test_catalog();
+        let catalog = create_test_catalog();
         assert!(catalog.has_schema("public"));
         assert!(catalog.has_schema("others"));
         assert!(!catalog.has_schema("nonexistent"));

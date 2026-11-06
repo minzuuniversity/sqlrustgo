@@ -84,15 +84,23 @@ mod tests {
     #[test]
     fn test_sql_result_ok() {
         let result: SqlResult<i32> = Ok(42);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 42);
+        // 不写 `assert!(result.is_ok())` + `result.unwrap()`（clippy unnecessary_unwrap：
+        // 断言过 is_ok 之后 unwrap 是多余的）⇒ 直接 match 出值再断言。
+        let value = match result {
+            Ok(v) => v,
+            Err(e) => panic!("expected Ok, got Err({})", e.message),
+        };
+        assert_eq!(value, 42);
     }
 
     #[test]
     fn test_sql_result_err() {
         let result: SqlResult<i32> = Err(SqlError::new("error"));
-        assert!(result.is_err());
-        assert!(result.unwrap_err().message.contains("error"));
+        let err = match result {
+            Err(e) => e,
+            Ok(v) => panic!("expected Err, got Ok({:?})", v),
+        };
+        assert!(err.message.contains("error"));
     }
 
     #[test]
@@ -149,9 +157,10 @@ mod tests {
 
     #[test]
     fn test_pool_config_modified() {
-        let mut config = PoolConfig::default();
-        config.size = 20;
-        config.timeout_ms = 20000;
+        let config = PoolConfig {
+            size: 20,
+            timeout_ms: 20000,
+        };
         assert_eq!(config.size, 20);
         assert_eq!(config.timeout_ms, 20000);
     }

@@ -108,7 +108,8 @@ fn bench_single_insert_buffered(c: &mut Criterion) {
 fn bench_batch_insert_small(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert_batch_small_10");
 
-    for size in [10].iter() {
+    {
+        let size = &10;
         let temp_dir = std::env::temp_dir().join("sqlrustgo_bench_small_batch");
         let _ = remove_dir_all(&temp_dir);
 
@@ -131,7 +132,8 @@ fn bench_batch_insert_small(c: &mut Criterion) {
 fn bench_batch_insert_medium(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert_batch_medium_100");
 
-    for size in [100].iter() {
+    {
+        let size = &100;
         let temp_dir = std::env::temp_dir().join("sqlrustgo_bench_medium_batch");
         let _ = remove_dir_all(&temp_dir);
 
@@ -154,7 +156,8 @@ fn bench_batch_insert_medium(c: &mut Criterion) {
 fn bench_batch_insert_large(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert_batch_large_1000");
 
-    for size in [1000].iter() {
+    {
+        let size = &1000;
         let temp_dir = std::env::temp_dir().join("sqlrustgo_bench_large_batch");
         let _ = remove_dir_all(&temp_dir);
 
@@ -357,7 +360,8 @@ fn bench_b2_insert_into_large_table(c: &mut Criterion) {
             |b, _| {
                 b.iter(|| {
                     let records = generate_records(1);
-                    black_box(storage.insert("test_table", records).unwrap());
+                    storage.insert("test_table", records).unwrap();
+                    black_box(());
                 });
             },
         );
@@ -419,7 +423,8 @@ fn bench_b2_flush_dirty_tables(c: &mut Criterion) {
                     for t in 0..table_count {
                         let _ = storage.insert(&format!("t{}", t), generate_records(1));
                     }
-                    black_box(storage.flush().unwrap());
+                    storage.flush().unwrap();
+                    black_box(());
                 });
             });
 
@@ -440,7 +445,7 @@ fn bench_b2_full_snapshot_and_filtered_scan(c: &mut Criterion) {
 
     for rows in [10_000usize, 50_000] {
         let temp_dir = std::env::temp_dir().join(format!("b2_snap_{}", rows));
-        let mut storage = setup_prefilled(&temp_dir, rows);
+        let storage = setup_prefilled(&temp_dir, rows);
 
         // B2.3: full snapshot write. `save_table_full` is private and is
         // reached through `save_table`, so drive it the way production
@@ -458,7 +463,8 @@ fn bench_b2_full_snapshot_and_filtered_scan(c: &mut Criterion) {
                 let _ = remove_dir_all(&temp_dir);
                 let mut s = setup_test_storage(&temp_dir, 100, false);
                 s.insert("test_table", generate_records(rows)).unwrap();
-                black_box(s.flush().unwrap());
+                s.flush().unwrap();
+                black_box(());
             });
         });
 

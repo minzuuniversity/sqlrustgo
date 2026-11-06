@@ -265,7 +265,7 @@ fn vector_wal_entry_insert_roundtrip() {
         42,
         1,
         vec![1, 2, 3],
-        vec![0.1f32.to_le_bytes(), 0.2f32.to_le_bytes()].concat(),
+        [0.1f32.to_le_bytes(), 0.2f32.to_le_bytes()].concat(),
     );
     let recovered = entry
         .serialization_roundtrip()
@@ -348,8 +348,7 @@ fn replay_vector_wal_entry(entry: &VectorWalEntry) -> Result<(), String> {
 
 #[test]
 fn wal_replay_vector_insert() {
-    let entry =
-        VectorWalEntry::new_vector_insert(1, 1, vec![1], vec![0.1f32.to_le_bytes()].concat());
+    let entry = VectorWalEntry::new_vector_insert(1, 1, vec![1], [0.1f32.to_le_bytes()].concat());
     replay_vector_wal_entry(&entry).expect("replay should succeed");
 }
 
@@ -360,7 +359,7 @@ fn wal_replay_vector_update() {
         entry_type: VectorWalEntryType::VectorUpdate,
         table_id: 1,
         key: Some(vec![1]),
-        vector_data: Some(vec![0.2f32.to_le_bytes()].concat()),
+        vector_data: Some([0.2f32.to_le_bytes()].concat()),
         index_name: None,
         index_type: None,
         index_options: None,
@@ -453,8 +452,8 @@ fn simulate_crash_recovery(entries: Vec<VectorWalEntry>) -> Result<Vec<String>, 
 #[test]
 fn crash_recovery_insert_then_crash() {
     let entries = vec![
-        VectorWalEntry::new_vector_insert(1, 1, vec![1], vec![0.1f32.to_le_bytes()].concat()),
-        VectorWalEntry::new_vector_insert(1, 1, vec![2], vec![0.2f32.to_le_bytes()].concat()),
+        VectorWalEntry::new_vector_insert(1, 1, vec![1], [0.1f32.to_le_bytes()].concat()),
+        VectorWalEntry::new_vector_insert(1, 1, vec![2], [0.2f32.to_le_bytes()].concat()),
     ];
     let results = simulate_crash_recovery(entries).expect("recovery should succeed");
     assert_eq!(results.len(), 2);
@@ -464,7 +463,7 @@ fn crash_recovery_insert_then_crash() {
 fn crash_recovery_create_index_then_insert() {
     let entries = vec![
         VectorWalEntry::new_create_index(1, 1, "idx_emb".to_string(), "HNSW".to_string(), vec![]),
-        VectorWalEntry::new_vector_insert(2, 1, vec![1], vec![0.1f32.to_le_bytes()].concat()),
+        VectorWalEntry::new_vector_insert(2, 1, vec![1], [0.1f32.to_le_bytes()].concat()),
     ];
     let results = simulate_crash_recovery(entries).expect("recovery should succeed");
     assert_eq!(results.len(), 2);
@@ -473,7 +472,7 @@ fn crash_recovery_create_index_then_insert() {
 #[test]
 fn crash_recovery_with_index_rebuild() {
     let entries = vec![
-        VectorWalEntry::new_vector_insert(1, 1, vec![1], vec![0.1f32.to_le_bytes()].concat()),
+        VectorWalEntry::new_vector_insert(1, 1, vec![1], [0.1f32.to_le_bytes()].concat()),
         VectorWalEntry::new_create_index(2, 1, "idx_emb".to_string(), "HNSW".to_string(), vec![]),
         VectorWalEntry {
             tx_id: 0,

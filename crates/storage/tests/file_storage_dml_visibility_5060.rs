@@ -98,7 +98,7 @@ fn update_if_after_autocommit_insert_affects_the_row() {
     let mut s = FileStorage::new(d.clone()).unwrap();
     s.create_table(&users_table()).unwrap();
     s.insert("users", vec![alice()]).unwrap();
-    let filter: RowFilter = Box::new(|r: &Record| r.get(0) == Some(&Value::Integer(1)));
+    let filter: RowFilter = Box::new(|r: &Record| r.first() == Some(&Value::Integer(1)));
     let mutation = RowMutation::new(vec![(1, Value::Text("Alicia".into()))], 0);
     let n = s.update_if("users", &filter, &mutation).unwrap();
     assert_eq!(n, 1);
@@ -128,7 +128,7 @@ fn delete_if_after_autocommit_insert_removes_the_row_from_disk() {
     let mut s = FileStorage::new(d.clone()).unwrap();
     s.create_table(&users_table()).unwrap();
     s.insert("users", vec![alice()]).unwrap();
-    let filter: RowFilter = Box::new(|r: &Record| r.get(0) == Some(&Value::Integer(1)));
+    let filter: RowFilter = Box::new(|r: &Record| r.first() == Some(&Value::Integer(1)));
     let n = s.delete_if("users", &filter).unwrap();
     assert_eq!(n, 1);
     s.flush_all_buffers().unwrap();

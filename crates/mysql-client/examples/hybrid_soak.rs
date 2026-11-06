@@ -229,14 +229,6 @@ fn oltp_select_region(_rng: &mut ThreadRng) -> String {
     "SELECT * FROM region ORDER BY r_regionkey".to_string()
 }
 
-fn oltp_count_orders(_rng: &mut ThreadRng) -> String {
-    "SELECT COUNT(*) FROM orders".to_string()
-}
-
-fn oltp_count_lineitem(_rng: &mut ThreadRng) -> String {
-    "SELECT COUNT(*) FROM lineitem".to_string()
-}
-
 // ---------------------------------------------------------------------------
 // Counters
 // ---------------------------------------------------------------------------
@@ -327,7 +319,7 @@ fn worker(
     let mut rng = rand::thread_rng();
     let deadline = Instant::now() + duration;
     let start = Instant::now();
-    let mut next_tick = start + Duration::from_secs(1);
+    let _next_tick = start + Duration::from_secs(1);
     let per_op_nanos = if target_qps_per_thread > 0.0 {
         (1_000_000_000.0 / target_qps_per_thread) as u64
     } else {
@@ -363,7 +355,7 @@ fn worker(
                 if Instant::now() >= deadline {
                     break;
                 }
-                let (cat, gen) = pick_oltp_op(&mut rng);
+                let (_cat, gen) = pick_oltp_op(&mut rng);
                 let sql = gen(&mut rng);
                 match conn.execute(&sql) {
                     Ok(_) => {
@@ -440,7 +432,6 @@ struct Args {
     oltp_ratio: f64,
     target_qps: f64,
     report_interval: u64,
-    batch_size: usize,
 }
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -528,7 +519,6 @@ fn parse_args() -> Args {
         oltp_ratio,
         target_qps,
         report_interval,
-        batch_size: 10,
     }
 }
 
@@ -586,14 +576,13 @@ fn main() {
     // Spawn workers
     let duration = Duration::from_secs(args.duration_secs);
     let counters = Arc::new(Counters::default());
-    let report_interval = Duration::from_secs(args.report_interval);
+    let _report_interval = Duration::from_secs(args.report_interval);
     let qps_per_thread = args.target_qps / args.threads as f64;
 
-    let start = Instant::now();
-    let handles: Vec<_> = (0..args.threads)
+    let _start = Instant::now();
+    let _handles: Vec<_> = (0..args.threads)
         .map(|wid| {
             let ctr = Arc::clone(&counters);
-            let addr = addr;
             thread::spawn(move || {
                 worker(
                     wid as u32,
@@ -616,7 +605,6 @@ fn main() {
     let handles: Vec<_> = (0..args.threads)
         .map(|wid| {
             let ctr = Arc::clone(&counters);
-            let addr = addr;
             thread::spawn(move || {
                 worker(
                     wid as u32,
@@ -635,10 +623,6 @@ fn main() {
         let ctr = Arc::clone(&counters);
         thread::spawn(move || {
             let mut last_total = 0u64;
-            let mut last_oltp_ok = 0u64;
-            let mut last_olap_ok = 0u64;
-            let mut last_oltp_err = 0u64;
-            let mut last_olap_err = 0u64;
             let mut last_ins = 0u64;
             let mut last_upd = 0u64;
             let mut last_del = 0u64;
@@ -666,7 +650,7 @@ fn main() {
                 let ou = upd - last_upd;
                 let od = del - last_del;
                 let os = sel - last_sel;
-                let writes = oi + ou + od;
+                let _writes = oi + ou + od;
                 eprintln!(
                     "[{:>4.0}s] qps={:>6.0}  oltp={}/{}  olap={}/{}  tot_ops={}  writes(+{}/+{}/+{})  select(+{})",
                     start.elapsed().as_secs_f64(),
@@ -677,10 +661,6 @@ fn main() {
                     oi, ou, od, os,
                 );
                 last_total = total;
-                last_oltp_ok = oltp_ok;
-                last_olap_ok = olap_ok;
-                last_oltp_err = oltp_err;
-                last_olap_err = olap_err;
                 last_ins = ins;
                 last_upd = upd;
                 last_del = del;

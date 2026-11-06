@@ -2732,7 +2732,7 @@ mod tests {
     #[test]
     fn test_evaluate_condition() {
         let catalog = Arc::new(Catalog::new("test"));
-        let executor = StoredProcExecutor::new_for_test(catalog);
+        let _executor = StoredProcExecutor::new_for_test(catalog);
         let mut ctx = ProcedureContext::new();
         ctx.set_var("x", Value::Integer(10));
 

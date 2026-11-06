@@ -232,7 +232,7 @@ fn test_wire_error_debug() {
 
 #[test]
 fn test_wire_error_source() {
-    let err = WireError::Io(std::io::Error::new(std::io::ErrorKind::Other, "inner"));
+    let err = WireError::Io(std::io::Error::other("inner"));
     let _ = std::error::Error::source(&err);
 }
 

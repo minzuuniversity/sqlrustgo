@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn test_to_update_plan_multi_table_error() {
         let mut stmt = update_stmt(vec![table("a"), table("b")], vec![], None);
-        let result = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"]));
+        let result = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"]));
         assert!(result.is_err());
         assert!(format!("{}", result.unwrap_err()).contains("single-table"));
     }
@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn test_to_update_plan_no_where() {
         let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("1"))], None);
-        let plan = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).unwrap();
+        let plan = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).unwrap();
         match plan.predicate {
             PredicateIR::All => {}
             _ => panic!("expected All"),
@@ -219,8 +219,7 @@ mod tests {
                 Box::new(lit("5")),
             )),
         );
-        let plan =
-            AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["id", "x"])).unwrap();
+        let plan = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["id", "x"])).unwrap();
         match plan.predicate {
             PredicateIR::Expr(_) => {}
             _ => panic!("expected Expr"),
@@ -235,20 +234,20 @@ mod tests {
             None,
         );
         let plan =
-            AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["a", "b", "c"])).unwrap();
+            AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["a", "b", "c"])).unwrap();
         assert_eq!(plan.mutation.assignments.len(), 2);
     }
 
     #[test]
     fn test_convert_expr_literal_null() {
         let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("NULL"))], None);
-        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok());
+        assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok());
     }
 
     #[test]
     fn test_convert_expr_literal_true() {
         let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("TRUE"))], None);
-        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok());
+        assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok());
     }
 
     #[test]
@@ -258,7 +257,7 @@ mod tests {
             vec![("x".to_string(), lit("FALSE"))],
             None,
         );
-        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok());
+        assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok());
     }
 
     #[test]
@@ -266,7 +265,7 @@ mod tests {
         for s in &["0", "42", "-7", "999999"] {
             let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit(s))], None);
             assert!(
-                AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok(),
+                AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok(),
                 "failed for {}",
                 s
             );
@@ -278,7 +277,7 @@ mod tests {
         for s in &["0.5", "-3.14"] {
             let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit(s))], None);
             assert!(
-                AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok(),
+                AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok(),
                 "failed for {}",
                 s
             );
@@ -292,7 +291,7 @@ mod tests {
             vec![("x".to_string(), lit("hello"))],
             None,
         );
-        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).is_ok());
+        assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok());
     }
 
     // Operator::Add/Not do not exist; Expression::Function does not exist
@@ -303,21 +302,21 @@ mod tests {
     fn test_convert_expr_is_null() {
         let expr = Expression::IsNull(Box::new(ident("x")));
         let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
-        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x", "y"])).is_ok());
+        assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x", "y"])).is_ok());
     }
 
     #[test]
     fn test_convert_expr_is_not_null() {
         let expr = Expression::IsNotNull(Box::new(ident("x")));
         let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
-        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x", "y"])).is_ok());
+        assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x", "y"])).is_ok());
     }
 
     #[test]
     fn test_convert_expr_unsupported() {
         let expr = Expression::FunctionCall("SUM".to_string(), vec![]);
         let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), expr)], None);
-        let err = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).unwrap_err();
+        let err = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).unwrap_err();
         assert!(format!("{}", err).contains("unsupported"));
     }
 
@@ -328,7 +327,7 @@ mod tests {
             vec![("nonexistent".to_string(), lit("1"))],
             None,
         );
-        let err = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x"])).unwrap_err();
+        let err = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).unwrap_err();
         assert!(format!("{}", err).contains("column not found"));
     }
 
@@ -336,7 +335,7 @@ mod tests {
     fn test_convert_expr_binary_op_complex() {
         let expr = Expression::BinaryOp(Box::new(ident("a")), "+".to_string(), Box::new(lit("1")));
         let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), expr)], None);
-        assert!(AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["a", "x"])).is_ok());
+        assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["a", "x"])).is_ok());
     }
 
     #[test]
@@ -344,7 +343,7 @@ mod tests {
         // Expression::UnaryOp branch — cover lines 63-69 of convert_expr.
         let expr = Expression::UnaryOp("-".to_string(), Box::new(ident("x")));
         let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
-        let plan = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x", "y"]))
+        let plan = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x", "y"]))
             .expect("unary - should parse");
         // The PredicateIR::All path (no WHERE) yields the conversion of -x into ExprIR::Unary.
         match &plan.predicate {
@@ -359,8 +358,7 @@ mod tests {
         let expr = Expression::UnaryOp("NOT".to_string(), Box::new(ident("flag")));
         let mut stmt = update_stmt(vec![table("t")], vec![("enabled".to_string(), expr)], None);
         assert!(
-            AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["flag", "enabled"]))
-                .is_ok()
+            AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["flag", "enabled"])).is_ok()
         );
     }
 
@@ -391,7 +389,7 @@ mod tests {
         // pass depth through, so this just tests depth-tracking fires only
         // if convert_expr_with_depth is invoked. Most paths will succeed
         // because depth isn't threaded. We just verify it doesn't panic.
-        let _ = AstAdapter::to_update_plan(&mut stmt, &make_table_info(vec!["x", "y"]));
+        let _ = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x", "y"]));
     }
 
     #[test]
@@ -403,7 +401,7 @@ mod tests {
             vec![("active".to_string(), lit("TRUE"))],
             None,
         );
-        let plan = AstAdapter::to_update_plan(&mut stmt_true, &make_table_info(vec!["active"]))
+        let plan = AstAdapter::to_update_plan(&stmt_true, &make_table_info(vec!["active"]))
             .expect("TRUE literal parses");
         // Plan was built — parse_literal took the TRUE branch.
         assert!(!plan.mutation.assignments.is_empty());
@@ -413,7 +411,7 @@ mod tests {
             vec![("active".to_string(), lit("FALSE"))],
             None,
         );
-        let plan = AstAdapter::to_update_plan(&mut stmt_false, &make_table_info(vec!["active"]))
+        let plan = AstAdapter::to_update_plan(&stmt_false, &make_table_info(vec!["active"]))
             .expect("FALSE literal parses");
         assert!(!plan.mutation.assignments.is_empty());
     }

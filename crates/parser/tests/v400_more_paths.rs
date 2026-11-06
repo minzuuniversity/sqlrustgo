@@ -1,6 +1,6 @@
 //! V400-more-paths: additional low-effort coverage tests for parser.
 
-use sqlrustgo_parser::{parse, parse_statements, Statement};
+use sqlrustgo_parser::{parse, parse_statements};
 
 fn p(sql: &str) {
     let _ = parse(sql);

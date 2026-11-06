@@ -117,7 +117,7 @@ fn build(tables: usize, rows: usize, cols: usize) -> MemoryStorage {
         let batch: Vec<Vec<Value>> = (0..rows)
             .map(|r| {
                 (0..cols)
-                    .map(|c| Value::Text(format!("{}-{}-{}", name, r, "x".repeat(24))))
+                    .map(|_c| Value::Text(format!("{}-{}-{}", name, r, "x".repeat(24))))
                     .collect()
             })
             .collect();
@@ -158,5 +158,5 @@ fn measure_commit_memory_4948() {
         mb(after - before)
     );
 
-    assert!(s.scan("t0").unwrap().len() > 0, "storage still usable");
+    assert!(!s.scan("t0").unwrap().is_empty(), "storage still usable");
 }

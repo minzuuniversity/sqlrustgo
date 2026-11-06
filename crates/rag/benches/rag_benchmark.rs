@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use sqlrustgo_rag::{Document, InvertedIndex, RAGPipeline};
+use std::hint::black_box; // criterion::black_box 已废弃（clippy::deprecated）
 
 fn bench_inverted_index_search(c: &mut Criterion) {
     let mut index = InvertedIndex::new();

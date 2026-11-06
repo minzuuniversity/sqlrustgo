@@ -1,0 +1,213 @@
+    Checking sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/parser)
+    Checking sqlrustgo-mysql-client v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/mysql-client)
+    Checking sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/spill)
+    Checking test-results v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/test-results)
+    Checking transaction-stress v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/transaction-stress)
+    Checking sqlrustgo-telemetry v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/telemetry)
+    Checking sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/types)
+error: duplicated attribute
+    --> crates/mysql-client/src/lib.rs:2397:5
+     |
+2397 |     #[test]
+     |     ^^^^^^^
+     |
+     = note: `-D duplicate-macro-attributes` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(duplicate_macro_attributes)]`
+
+error: variable `last_oltp_ok` is assigned to, but never used
+   --> crates/mysql-client/examples/hybrid_soak.rs:638:17
+    |
+638 |             let mut last_oltp_ok = 0u64;
+    |                 ^^^^^^^^^^^^^^^^
+    |
+    = note: consider using `_last_oltp_ok` instead
+    = note: `-D unused-variables` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: variable `last_olap_ok` is assigned to, but never used
+   --> crates/mysql-client/examples/hybrid_soak.rs:639:17
+    |
+639 |             let mut last_olap_ok = 0u64;
+    |                 ^^^^^^^^^^^^^^^^
+    |
+    = note: consider using `_last_olap_ok` instead
+
+error: variable `last_oltp_err` is assigned to, but never used
+   --> crates/mysql-client/examples/hybrid_soak.rs:640:17
+    |
+640 |             let mut last_oltp_err = 0u64;
+    |                 ^^^^^^^^^^^^^^^^^
+    |
+    = note: consider using `_last_oltp_err` instead
+
+error: variable `last_olap_err` is assigned to, but never used
+   --> crates/mysql-client/examples/hybrid_soak.rs:641:17
+    |
+641 |             let mut last_olap_err = 0u64;
+    |                 ^^^^^^^^^^^^^^^^^
+    |
+    = note: consider using `_last_olap_err` instead
+
+error: value assigned to `last_oltp_ok` is never read
+   --> crates/mysql-client/examples/hybrid_soak.rs:680:17
+    |
+680 |                 last_oltp_ok = oltp_ok;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `-D unused-assignments` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_assignments)]`
+
+error: value assigned to `last_olap_ok` is never read
+   --> crates/mysql-client/examples/hybrid_soak.rs:681:17
+    |
+681 |                 last_olap_ok = olap_ok;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+error: value assigned to `last_oltp_err` is never read
+   --> crates/mysql-client/examples/hybrid_soak.rs:682:17
+    |
+682 |                 last_oltp_err = oltp_err;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+error: value assigned to `last_olap_err` is never read
+   --> crates/mysql-client/examples/hybrid_soak.rs:683:17
+    |
+683 |                 last_olap_err = olap_err;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+error: function `oltp_count_orders` is never used
+   --> crates/mysql-client/examples/hybrid_soak.rs:232:4
+    |
+232 | fn oltp_count_orders(_rng: &mut ThreadRng) -> String {
+    |    ^^^^^^^^^^^^^^^^^
+    |
+    = note: `-D dead-code` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[expect(dead_code)]` or `#[allow(dead_code)]`
+
+error: function `oltp_count_lineitem` is never used
+   --> crates/mysql-client/examples/hybrid_soak.rs:236:4
+    |
+236 | fn oltp_count_lineitem(_rng: &mut ThreadRng) -> String {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+error: field `batch_size` is never read
+   --> crates/mysql-client/examples/hybrid_soak.rs:443:5
+    |
+435 | struct Args {
+    |        ---- field in this struct
+...
+443 |     batch_size: usize,
+    |     ^^^^^^^^^^
+
+    Checking sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/gis)
+error: redundant redefinition of a binding `addr`
+   --> crates/mysql-client/examples/hybrid_soak.rs:596:13
+    |
+596 |             let addr = addr;
+    |             ^^^^^^^^^^^^^^^^
+    |
+help: `addr` is initially defined here
+   --> crates/mysql-client/examples/hybrid_soak.rs:541:9
+    |
+541 |     let addr: SocketAddr = format!("{}:{}", args.host, args.port)
+    |         ^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#redundant_locals
+    = note: `-D clippy::redundant-locals` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::redundant_locals)]`
+
+error: redundant redefinition of a binding `addr`
+   --> crates/mysql-client/examples/hybrid_soak.rs:619:13
+    |
+619 |             let addr = addr;
+    |             ^^^^^^^^^^^^^^^^
+    |
+help: `addr` is initially defined here
+   --> crates/mysql-client/examples/hybrid_soak.rs:541:9
+    |
+541 |     let addr: SocketAddr = format!("{}:{}", args.host, args.port)
+    |         ^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#redundant_locals
+
+    Checking sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/common)
+error: could not compile `sqlrustgo-mysql-client` (example "hybrid_soak") due to 13 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: calls to `push` immediately after creation
+    --> crates/mysql-client/src/lib.rs:1925:9
+     |
+1925 | /         let mut buf = Vec::new();
+1926 | |         // 6 length-encoded strings (all empty or name for `name`)
+1927 | |         buf.push(0x00); // catalog = ""
+1928 | |         buf.push(0x00); // schema = ""
+1929 | |         buf.push(0x00); // table = ""
+1930 | |         buf.push(0x00); // org_table = ""
+1931 | |         buf.push(name.len() as u8);
+     | |___________________________________^ help: consider using the `vec![]` macro: `let mut buf = vec![..];`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#vec_init_then_push
+     = note: `-D clippy::vec-init-then-push` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::vec_init_then_push)]`
+
+error: it looks like the same item is being pushed into this `Vec`
+    --> crates/mysql-client/src/lib.rs:2910:13
+     |
+2910 |             data.push(0x00); // empty length-encoded string
+     |             ^^^^
+     |
+     = help: consider using `vec![0x00;SIZE]`
+     = help: or `data.extend(std::iter::repeat_n(0x00, SIZE))`
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#same_item_push
+     = note: `-D clippy::same-item-push` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::same_item_push)]`
+
+error: could not compile `sqlrustgo-mysql-client` (lib test) due to 3 previous errors
+error: used `unwrap()` on `Ok` value
+  --> crates/common/src/lib.rs:88:20
+   |
+88 |         assert_eq!(result.unwrap(), 42);
+   |                    ^^^^^^^^^^^^^^^
+   |
+help: remove the `Ok` and `unwrap()`
+  --> crates/common/src/lib.rs:86:38
+   |
+86 |         let result: SqlResult<i32> = Ok(42);
+   |                                      ^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_literal_unwrap
+   = note: `-D clippy::unnecessary-literal-unwrap` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::unnecessary_literal_unwrap)]`
+
+error: used `unwrap_err()` on `Err` value
+  --> crates/common/src/lib.rs:95:17
+   |
+95 |         assert!(result.unwrap_err().message.contains("error"));
+   |                 ^^^^^^^^^^^^^^^^^^^
+   |
+help: remove the `Err` and `unwrap_err()`
+  --> crates/common/src/lib.rs:93:38
+   |
+93 |         let result: SqlResult<i32> = Err(SqlError::new("error"));
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_literal_unwrap
+
+error: field assignment outside of initializer for an instance created with Default::default()
+   --> crates/common/src/lib.rs:153:9
+    |
+153 |         config.size = 20;
+    |         ^^^^^^^^^^^^^^^^^
+    |
+note: consider initializing the variable with `PoolConfig { size: 20, timeout_ms: 20000 }` and removing relevant reassignments
+   --> crates/common/src/lib.rs:152:9
+    |
+152 |         let mut config = PoolConfig::default();
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#field_reassign_with_default
+    = note: `-D clippy::field-reassign-with-default` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::field_reassign_with_default)]`
+
+error: could not compile `sqlrustgo-common` (lib test) due to 3 previous errors

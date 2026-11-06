@@ -10,7 +10,7 @@ fn main() {
     println!("  SQLRustGo Binary vs SQLite Performance");
     println!("==============================================");
     println!("Dataset: SF=1 (~6M rows)");
-    println!("");
+    println!();
 
     // Load SQLRustGo Binary
     println!("Loading SQLRustGo Binary...");
@@ -25,7 +25,7 @@ fn main() {
     );
 
     // Benchmark
-    println!("");
+    println!();
     println!("Query Benchmarks:");
     println!("----------------------------------------");
 
@@ -62,7 +62,7 @@ fn main() {
         }
     }
     let range_time = start.elapsed();
-    println!("");
+    println!();
     println!("Range Query (l_orderkey 1000-2000):");
     println!(
         "  SQLRustGo Full Scan: {:.2}ms",
@@ -71,7 +71,7 @@ fn main() {
     println!("  SQLite (B-tree):     ~90ms");
     println!("  Found {} rows", range_count);
 
-    println!("");
+    println!();
     println!("==============================================");
     println!("  Summary (SF=1, 6M rows)");
     println!("==============================================");

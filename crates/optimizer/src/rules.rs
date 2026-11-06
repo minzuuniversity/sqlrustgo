@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn test_predicate_pushdown_default() {
-        let rule = PredicatePushdown::default();
+        let rule = PredicatePushdown;
         assert_eq!(Rule::<TestPlan>::name(&rule), "PredicatePushdown");
     }
 
@@ -174,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_projection_pruning_default() {
-        let rule = ProjectionPruning::default();
+        let rule = ProjectionPruning;
         assert_eq!(Rule::<TestPlan>::name(&rule), "ProjectionPruning");
     }
 
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn test_constant_folding_default() {
-        let rule = ConstantFolding::default();
+        let rule = ConstantFolding;
         assert_eq!(Rule::<TestPlan>::name(&rule), "ConstantFolding");
     }
 }

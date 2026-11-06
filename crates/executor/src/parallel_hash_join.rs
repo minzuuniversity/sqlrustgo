@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn test_hash_partition_deterministic() {
         // Same key should always go to the same partition
-        let p = ParallelHashJoin::new(4);
+        let _p = ParallelHashJoin::new(4);
         let key1 = JoinKey("hello".to_string());
         let key2 = JoinKey("hello".to_string());
         assert_eq!(

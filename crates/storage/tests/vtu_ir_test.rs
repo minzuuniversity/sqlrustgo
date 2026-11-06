@@ -418,8 +418,8 @@ fn test_predicate_ir_binary_gt() {
     });
 
     assert!(pred.evaluate(&row, &table_info));
-    assert!(!pred.evaluate(&vec![Value::Integer(5)], &table_info));
-    assert!(!pred.evaluate(&vec![Value::Integer(3)], &table_info));
+    assert!(!pred.evaluate(&[Value::Integer(5)], &table_info));
+    assert!(!pred.evaluate(&[Value::Integer(3)], &table_info));
 }
 
 #[test]
@@ -432,9 +432,9 @@ fn test_predicate_ir_binary_gte() {
         right: Box::new(ExprIR::Literal(Value::Integer(5))),
     });
 
-    assert!(pred.evaluate(&vec![Value::Integer(10)], &table_info));
-    assert!(pred.evaluate(&vec![Value::Integer(5)], &table_info));
-    assert!(!pred.evaluate(&vec![Value::Integer(3)], &table_info));
+    assert!(pred.evaluate(&[Value::Integer(10)], &table_info));
+    assert!(pred.evaluate(&[Value::Integer(5)], &table_info));
+    assert!(!pred.evaluate(&[Value::Integer(3)], &table_info));
 }
 
 #[test]
@@ -449,8 +449,8 @@ fn test_predicate_ir_binary_lt() {
     });
 
     assert!(pred.evaluate(&row, &table_info));
-    assert!(!pred.evaluate(&vec![Value::Integer(5)], &table_info));
-    assert!(!pred.evaluate(&vec![Value::Integer(10)], &table_info));
+    assert!(!pred.evaluate(&[Value::Integer(5)], &table_info));
+    assert!(!pred.evaluate(&[Value::Integer(10)], &table_info));
 }
 
 #[test]
@@ -463,9 +463,9 @@ fn test_predicate_ir_binary_lte() {
         right: Box::new(ExprIR::Literal(Value::Integer(5))),
     });
 
-    assert!(pred.evaluate(&vec![Value::Integer(3)], &table_info));
-    assert!(pred.evaluate(&vec![Value::Integer(5)], &table_info));
-    assert!(!pred.evaluate(&vec![Value::Integer(10)], &table_info));
+    assert!(pred.evaluate(&[Value::Integer(3)], &table_info));
+    assert!(pred.evaluate(&[Value::Integer(5)], &table_info));
+    assert!(!pred.evaluate(&[Value::Integer(10)], &table_info));
 }
 
 #[test]
@@ -510,10 +510,10 @@ fn test_predicate_ir_binary_float_comparison() {
         right: Box::new(ExprIR::Literal(Value::Float(3.14))),
     });
 
-    assert!(pred.evaluate(&vec![Value::Float(3.15)], &table_info));
-    assert!(pred.evaluate(&vec![Value::Float(10.0)], &table_info));
-    assert!(!pred.evaluate(&vec![Value::Float(3.14)], &table_info));
-    assert!(!pred.evaluate(&vec![Value::Float(1.0)], &table_info));
+    assert!(pred.evaluate(&[Value::Float(3.15)], &table_info));
+    assert!(pred.evaluate(&[Value::Float(10.0)], &table_info));
+    assert!(!pred.evaluate(&[Value::Float(3.14)], &table_info));
+    assert!(!pred.evaluate(&[Value::Float(1.0)], &table_info));
 }
 
 #[test]
@@ -526,9 +526,9 @@ fn test_predicate_ir_binary_text_comparison() {
         right: Box::new(ExprIR::Literal(Value::Text("apple".to_string()))),
     });
 
-    assert!(pred.evaluate(&vec![Value::Text("banana".to_string())], &table_info));
-    assert!(!pred.evaluate(&vec![Value::Text("apple".to_string())], &table_info));
-    assert!(!pred.evaluate(&vec![Value::Text("aaa".to_string())], &table_info));
+    assert!(pred.evaluate(&[Value::Text("banana".to_string())], &table_info));
+    assert!(!pred.evaluate(&[Value::Text("apple".to_string())], &table_info));
+    assert!(!pred.evaluate(&[Value::Text("aaa".to_string())], &table_info));
 }
 
 #[test]
@@ -561,8 +561,8 @@ fn test_predicate_ir_eval_to_value_is_null() {
     let pred = PredicateIR::Expr(ExprIR::IsNull(Box::new(ExprIR::Column(
         "value".to_string(),
     ))));
-    assert!(pred.evaluate(&vec![Value::Null], &table_info));
-    assert!(!pred.evaluate(&vec![Value::Integer(42)], &table_info));
+    assert!(pred.evaluate(&[Value::Null], &table_info));
+    assert!(!pred.evaluate(&[Value::Integer(42)], &table_info));
 }
 
 #[test]
@@ -572,8 +572,8 @@ fn test_predicate_ir_eval_to_value_is_not_null() {
     let pred = PredicateIR::Expr(ExprIR::IsNotNull(Box::new(ExprIR::Column(
         "value".to_string(),
     ))));
-    assert!(!pred.evaluate(&vec![Value::Null], &table_info));
-    assert!(pred.evaluate(&vec![Value::Integer(42)], &table_info));
+    assert!(!pred.evaluate(&[Value::Null], &table_info));
+    assert!(pred.evaluate(&[Value::Integer(42)], &table_info));
 }
 
 #[test]
@@ -585,8 +585,8 @@ fn test_predicate_ir_eval_to_value_unary_not() {
         op: "NOT".to_string(),
         expr: Box::new(ExprIR::Column("flag".to_string())),
     });
-    assert!(!pred.evaluate(&vec![Value::Boolean(true)], &table_info));
-    assert!(pred.evaluate(&vec![Value::Boolean(false)], &table_info));
+    assert!(!pred.evaluate(&[Value::Boolean(true)], &table_info));
+    assert!(pred.evaluate(&[Value::Boolean(false)], &table_info));
 }
 
 #[test]

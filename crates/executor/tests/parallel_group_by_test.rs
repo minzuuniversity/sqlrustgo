@@ -3,7 +3,7 @@
 //! v3.10.0 Issue #3703 Phase 3 follow-up for #3736.
 
 use sqlrustgo_executor::parallel_group_by::{
-    compute_group_keys, evaluate_simple_expr, ParallelGroupBy, PartialAggregate,
+    compute_group_keys, evaluate_simple_expr, ParallelGroupBy,
 };
 use sqlrustgo_parser::{AggregateCall, AggregateFunction, Expression};
 use sqlrustgo_storage::TableInfo;

@@ -1,8 +1,6 @@
 // Additional mysql-server coverage tests: helper functions and error types
 
-use sqlrustgo_mysql_server::{
-    parse_stmt_execute_params, replace_placeholders, MySqlError, StmtParam,
-};
+use sqlrustgo_mysql_server::{parse_stmt_execute_params, replace_placeholders, MySqlError};
 
 // ============ replace_placeholders tests ============
 
@@ -173,7 +171,7 @@ fn test_mysql_error_other() {
 
 #[test]
 fn test_mysql_error_from_io() {
-    let io_err = std::io::Error::new(std::io::ErrorKind::Other, "test error");
+    let io_err = std::io::Error::other("test error");
     let err: MySqlError = MySqlError::from(io_err);
     let display = format!("{}", err);
     assert!(!display.is_empty());

@@ -2,7 +2,6 @@
 //!
 //! Tests: pitr_replay file-not-found error path, parse_target_time edge cases
 
-use sqlrustgo_admin::backup::BackupError;
 use sqlrustgo_admin::pitr::{parse_target_time, pitr_replay};
 
 #[test]

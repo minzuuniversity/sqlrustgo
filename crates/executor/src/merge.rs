@@ -470,9 +470,7 @@ mod tests {
     #[allow(unused_imports)]
     use super::*;
     use crate::execution::ExecutionResult;
-    use sqlrustgo_storage::{
-        ColumnDefinition, MemoryStorage, Record, RowFilter, RowMutation, TriggerInfo,
-    };
+    use sqlrustgo_storage::{ColumnDefinition, MemoryStorage};
     use sqlrustgo_types::SqlError;
 
     fn make_test_executor() -> MergeExecutor {

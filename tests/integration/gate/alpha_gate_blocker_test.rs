@@ -44,31 +44,55 @@ fn read(rel: &str) -> String {
 fn coverage_gate_derives_features_from_the_crate_sources() {
     // The gate must not carry a hand-maintained feature list: a stale list
     // is a SILENT failure (the coverage number just comes out wrong).
-    let script = read("scripts/gate/check_coverage_v312.sh");
+    //
+    // #5579 moved the measurement itself into `scripts/gate/common.sh`
+    // ("one rule, one implementation") ⇒ the RULE now lives there and this
+    // test follows the RULE, not the file it used to live in. The gate must
+    // still delegate to the shared implementation instead of keeping a copy.
+    let shared = read("scripts/gate/common.sh");
     assert!(
-        script.contains("derive_crate_features"),
-        "the coverage gate must derive the per-crate features from the crate's \\
-         own sources"
+        shared.contains("coverage_derive_crate_features"),
+        "the coverage measurement must derive the per-crate features from the \
+         crate's own sources"
     );
     assert!(
-        !script.contains("CRATE_FEATURES=("),
-        "the hand-maintained CRATE_FEATURES list must be gone — it goes stale \\
+        !shared.contains("CRATE_FEATURES=("),
+        "the hand-maintained CRATE_FEATURES list must be gone — it goes stale \
          silently"
+    );
+    let gate = read("scripts/gate/check_coverage_v312.sh");
+    assert!(
+        !gate.contains("CRATE_FEATURES=("),
+        "the hand-maintained CRATE_FEATURES list must be gone from the gate too"
+    );
+    assert!(
+        !gate.contains("derive_crate_features()"),
+        "the gate must not carry its own derivation — it must use the shared \
+         implementation in scripts/gate/common.sh"
     );
 }
 
 #[test]
 fn coverage_gate_derives_the_features_storage_actually_needs() {
-    // Run the gate's own derivation and check it finds the two features
+    // Run the shared derivation and check it finds the two features
     // sqlrustgo-storage's integration tests import.
+    //
+    // NOTE: the extraction writes to a temp file and sources THAT file —
+    // macOS's bash 3.2 does not define functions from `source <(...)`
+    // (process substitution), so the original `source <(sed ...)` form
+    // silently sourced nothing and the assertion below was checking an
+    // empty string (a false green). The repo's gate scripts must stay
+    // bash 3.2 compatible, so the temp-file form is the correct one.
     let out = Command::new("bash")
         .current_dir(repo_root())
         .args([
             "-c",
             r#"
-            source <(sed -n '/^derive_crate_features()/,/^}/p' scripts/gate/check_coverage_v312.sh)
-            source <(sed -n '/^features_for_crate()/,/^}/p' scripts/gate/check_coverage_v312.sh)
-            features_for_crate sqlrustgo-storage
+            tmp=$(mktemp -d /Volumes/workspace/dev/derive-XXXXXX)
+            sed -n '/^coverage_derive_crate_features()/,/^}/p' scripts/gate/common.sh > "$tmp/d.sh"
+            . "$tmp/d.sh"
+            coverage_derive_crate_features sqlrustgo-storage
+            rm -rf "$tmp"
             "#,
         ])
         .output()
@@ -92,9 +116,11 @@ fn coverage_gate_does_not_derive_features_for_a_plain_crate() {
         .args([
             "-c",
             r#"
-            source <(sed -n '/^derive_crate_features()/,/^}/p' scripts/gate/check_coverage_v312.sh)
-            source <(sed -n '/^features_for_crate()/,/^}/p' scripts/gate/check_coverage_v312.sh)
-            features_for_crate sqlrustgo-types
+            tmp=$(mktemp -d /Volumes/workspace/dev/derive-XXXXXX)
+            sed -n '/^coverage_derive_crate_features()/,/^}/p' scripts/gate/common.sh > "$tmp/d.sh"
+            . "$tmp/d.sh"
+            coverage_derive_crate_features sqlrustgo-types
+            rm -rf "$tmp"
             "#,
         ])
         .output()
@@ -103,7 +129,7 @@ fn coverage_gate_does_not_derive_features_for_a_plain_crate() {
     assert_eq!(
         got.trim(),
         "",
-        "sqlrustgo-types has no feature-gated items, so no feature must be \\
+        "sqlrustgo-types has no feature-gated items, so no feature must be \
          derived for it. Got: {got:?}"
     );
 }
@@ -116,10 +142,13 @@ fn coverage_gate_runs_the_tests_serially() {
     // (sqlrustgo-planner: 88.91% and PASS with --test-threads=1, FAILED
     // with the default thread count). A coverage number that depends on
     // machine load is not a measurement.
-    let script = read("scripts/gate/check_coverage_v312.sh");
+    //
+    // #5579: the measurement lives in scripts/gate/common.sh now ⇒ the
+    // serial-execution rule is asserted there (the gate delegates to it).
+    let shared = read("scripts/gate/common.sh");
     assert!(
-        script.contains("--test-threads=1"),
-        "the coverage gate must run the tests serially"
+        shared.contains("--test-threads=1"),
+        "the coverage measurement must run the tests serially"
     );
 }
 
@@ -128,7 +157,11 @@ fn coverage_gate_excludes_the_environment_dependent_tests() {
     // The crash tests need a pre-built server binary at a machine-specific
     // path and exact fault-point timing. A failure in any of them produces
     // NO coverage table for the whole crate.
-    let script = read("scripts/gate/check_coverage_v312.sh");
+    //
+    // #5579: the exclusion lists live in scripts/gate/common.sh now
+    // (COVERAGE_EXCLUDED_TEST_FILES for the machine-dependent crash tests,
+    // COVERAGE_PERF_BOUND_TEST_FILES for the wall-clock-bound ones).
+    let shared = read("scripts/gate/common.sh");
     for f in [
         "crates/storage/tests/crash_commit_fsync_b1.rs",
         "crates/storage/tests/crash_wal_index_b1.rs",
@@ -136,9 +169,9 @@ fn coverage_gate_excludes_the_environment_dependent_tests() {
         "crates/storage/tests/write_path_scaling_5181.rs",
     ] {
         assert!(
-            script.contains(f),
-            "the coverage gate must exclude the environment-dependent test \\
-             file {f}"
+            shared.contains(f),
+            "the coverage measurement must exclude the environment-dependent \
+             test file {f}"
         );
     }
 }

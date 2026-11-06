@@ -2,7 +2,7 @@
 //! (Issue #4431 followup — B8 COVERAGE_MIN_PER_CRATE).
 
 use sqlrustgo_transaction::gid::{GlobalTransactionId, NodeId};
-use sqlrustgo_transaction::lock::{LockError, LockManager, LockMode};
+use sqlrustgo_transaction::lock::{LockManager, LockMode};
 use sqlrustgo_transaction::manager::TransactionError;
 use sqlrustgo_transaction::manager::{IsolationLevel as MgrIsolationLevel, TransactionManager};
 use sqlrustgo_transaction::savepoint::SavepointManager;
@@ -255,7 +255,7 @@ fn cov_ssi_graph_remove_tx() {
 
 #[test]
 fn cov_ssi_graph_self_edge() {
-    let mut sg = SerializationGraph::new();
+    let sg = SerializationGraph::new();
     let _ = sg.would_create_cycle(TxId::new(1), TxId::new(1));
 }
 

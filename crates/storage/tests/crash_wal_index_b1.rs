@@ -170,7 +170,7 @@ fn wal_append_crash_recovers_gracefully_without_resurrecting_rows() {
          got SUM(id)={actual}"
     );
     assert!(
-        count >= 0 && count <= 4,
+        (0..=4).contains(&count),
         "recovery must not resurrect a torn trailing entry as a phantom \
          row; COUNT(*)={row_count} exceeds the maximum durable rows (4)"
     );

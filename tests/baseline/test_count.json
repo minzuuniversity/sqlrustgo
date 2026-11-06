@@ -1,9 +1,9 @@
 {
   "version": "v4.1.0",
-  "timestamp": "2026-11-06T09:12:16Z",
+  "timestamp": "2026-11-07T00:30:00Z",
   "cargo_tests": 483,
-  "active_tests": 14340,
-  "ignored_tests": 123,
+  "active_tests": 14345,
+  "ignored_tests": 135,
   "ignored_counting_method": "real-attributes-v1",
-  "note": "Updated by check_test_count_monotonic.sh"
+  "note": "Updated by check_test_count_monotonic.sh; 2026-11-06 调整见 docs/governance/adr/ADR-015-fake-coverage-contracts-deferred.md（12 条 ACL/审计链假覆盖测试显式标为 #[ignore] 并登记 ⇒ ignored 123→135）"
 }

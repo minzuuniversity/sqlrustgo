@@ -1,0 +1,72 @@
+    Blocking waiting for file lock on build directory
+    Checking hyper-tls v0.6.0
+    Checking hyper-timeout v0.5.2
+    Checking xtask v0.1.0 (/Volumes/workspace/dev/sqlrustgo/tools/xtask)
+    Checking sqlrustgo-rag v2.3.0 (/Volumes/workspace/dev/sqlrustgo/crates/rag)
+    Checking test-runner v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/test-runner)
+    Checking graph-cli v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/graph-cli)
+    Checking sqlrustgo-soak v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/cli)
+    Checking reqwest v0.12.28
+    Checking evidence-graph v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/evidence-graph)
+    Checking tonic v0.12.3
+    Checking test-registry v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/test-registry)
+    Checking sqlrustgo-shard-router v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/shard-router)
+    Checking sqlrustgo-vector v2.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/vector)
+    Checking sqlrustgo-wal-verification v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/wal-verification)
+error: unused import: `CompareOp`
+ --> crates/vector/tests/vector_coverage_tests.rs:6:43
+  |
+6 | use sqlrustgo_vector::sql_vector_hybrid::{CompareOp, SqlPredicate, SqlValue};
+  |                                           ^^^^^^^^^
+  |
+  = note: `-D unused-imports` implied by `-D warnings`
+  = help: to override `-D warnings` add `#[allow(unused_imports)]`
+
+error: unused import: `CompareOp`
+   --> crates/vector/tests/vector_coverage_tests.rs:306:47
+    |
+306 |     use sqlrustgo_vector::sql_vector_hybrid::{CompareOp, SqlPredicate, SqlValue};
+    |                                               ^^^^^^^^^
+
+error: casting to the same type is unnecessary (`u64` -> `u64`)
+   --> crates/wal-verification/tests/wal_real_verification_test.rs:376:24
+    |
+376 |             timestamp: i as u64,
+    |                        ^^^^^^^^ help: try: `i`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_cast
+    = note: `-D clippy::unnecessary-cast` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_cast)]`
+
+    Checking sqlrustgo-tools v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/tools)
+error: could not compile `sqlrustgo-wal-verification` (test "wal_real_verification_test") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `sqlrustgo-vector` (test "vector_coverage_tests") due to 2 previous errors
+error: unused variable: `data`
+  --> crates/tools/tests/incremental_backup_e2e_test.rs:38:9
+   |
+38 |     let data = tmp.path().join("data");
+   |         ^^^^ help: if this is intentional, prefix it with an underscore: `_data`
+   |
+   = note: `-D unused-variables` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: unused variable: `data`
+  --> crates/tools/tests/incremental_backup_e2e_test.rs:69:9
+   |
+69 |     let data = tmp.path().join("data");
+   |         ^^^^ help: if this is intentional, prefix it with an underscore: `_data`
+
+error: unused variable: `data`
+   --> crates/tools/tests/incremental_backup_e2e_test.rs:161:9
+    |
+161 |     let data = tmp.path().join("data");
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_data`
+
+error: unused variable: `data`
+   --> crates/tools/tests/incremental_backup_e2e_test.rs:179:9
+    |
+179 |     let data = tmp.path().join("data");
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_data`
+
+error: could not compile `sqlrustgo-tools` (test "incremental_backup_e2e_test") due to 4 previous errors

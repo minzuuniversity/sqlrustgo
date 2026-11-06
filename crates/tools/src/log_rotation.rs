@@ -479,7 +479,7 @@ mod tests {
             prefix: "test".to_string(),
         };
 
-        let mut rotator = LogRotator::new(config).unwrap();
+        let rotator = LogRotator::new(config).unwrap();
         assert!(!rotator.should_rotate());
     }
 

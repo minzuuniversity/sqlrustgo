@@ -201,7 +201,7 @@ fn test_wal_multi_entry() {
             key: None,
             data: Some(vec![i as u8]),
             lsn: 0,
-            timestamp: i as u64,
+            timestamp: i,
         })
         .unwrap();
     }
@@ -230,7 +230,7 @@ fn test_wal_recover() {
                 key: None,
                 data: Some(vec![i as u8]),
                 lsn: 0,
-                timestamp: i as u64,
+                timestamp: i,
             })
             .unwrap();
         }

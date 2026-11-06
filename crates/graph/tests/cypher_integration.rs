@@ -182,7 +182,7 @@ fn distinct_clause_deduplicates() {
 #[test]
 fn is_null_returns_true_for_unmatched_optional() {
     let s = InMemoryGraphStore::new();
-    let alice = s
+    let _alice = s
         .create_node(vec!["Person".into()], PropertyMap::new())
         .unwrap();
     let _ = s

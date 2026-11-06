@@ -14,7 +14,6 @@ use sqlrustgo_soak::client::{parse_handshake_version, ServerKind};
 ///   bytes N+5..N+13:  auth-plugin-data-part-1 (8 bytes)
 ///   byte N+13:        filler (0x00)
 ///   ... (capabilities, charset, status, capabilities-upper, auth-plugin-len, reserved, scramble-2)
-
 fn build_handshake(version: &[u8]) -> Vec<u8> {
     let mut p = Vec::new();
     p.push(0x0a); // protocol

@@ -131,7 +131,7 @@ fn committed_rows_in_a_named_database_survive_recovery() {
     // ---- restart: fresh storage over the same directory, then replay ----
     let mut s = stack(&d);
     let mut engine: StatefulRecoveryEngine<Stack> = StatefulRecoveryEngine::new();
-    let report = engine
+    let _report = engine
         .recover(&mut s, &mut replay_wal(&d))
         .expect("recovery");
 
@@ -170,7 +170,7 @@ fn two_databases_with_the_same_table_name_replay_into_the_right_one() {
 
     let mut s = stack(&d);
     let mut engine: StatefulRecoveryEngine<Stack> = StatefulRecoveryEngine::new();
-    let report = engine
+    let _report = engine
         .recover(&mut s, &mut replay_wal(&d))
         .expect("recovery");
 

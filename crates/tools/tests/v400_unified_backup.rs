@@ -579,7 +579,7 @@ fn pitr_select_backups() {
 
 #[test]
 fn pitr_full_recovery() {
-    let pitr = PointInTimeRecovery::new(100);
+    let _pitr = PointInTimeRecovery::new(100);
 
     // Apply all backups to reach target timestamp
     let mut manifest = UnifiedBackupManifest::new("pitr_full", "4.0.0");

@@ -150,7 +150,7 @@ mod tests {
         assert!(detector
             .waits_for
             .get(&TxId::new(2))
-            .map_or(true, |h| !h.contains(&TxId::new(1))));
+            .is_none_or(|h| !h.contains(&TxId::new(1))));
     }
 
     #[test]

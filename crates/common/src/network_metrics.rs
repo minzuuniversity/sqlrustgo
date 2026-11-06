@@ -168,20 +168,20 @@ mod tests {
 
     #[test]
     fn test_network_metrics_creation() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         assert_eq!(metrics.connections_active(), 0);
     }
 
     #[test]
     fn test_network_metrics_connection_open() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         metrics.record_connection_open();
         assert_eq!(metrics.connections_active(), 1);
     }
 
     #[test]
     fn test_network_metrics_connection_lifecycle() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         metrics.record_connection_open();
         metrics.record_connection_close();
         assert_eq!(metrics.connections_active(), 0);
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_bytes_sent_received() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         metrics.record_bytes_sent(1024);
         metrics.record_bytes_received(512);
         assert_eq!(metrics.bytes_sent(), 1024);
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_packets() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         metrics.record_packet_sent();
         metrics.record_packet_sent();
         metrics.record_packet_received();
@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_errors() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         metrics.record_error();
         metrics.record_error();
         assert_eq!(metrics.errors_total(), 2);
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_multiple_connections() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         metrics.record_connection_open();
         metrics.record_connection_open();
         metrics.record_connection_open();
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_get_metric() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         metrics.record_connection_open();
         metrics.record_bytes_sent(512);
         use crate::metrics::MetricValue;
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_get_metric_names() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         let names = metrics.get_metric_names();
         assert!(names.contains(&"connections_active".to_string()));
         assert!(names.contains(&"bytes_sent".to_string()));
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_network_metrics_connection_closed_counter() {
-        let mut metrics = NetworkMetrics::new();
+        let metrics = NetworkMetrics::new();
         metrics.record_connection_open();
         metrics.record_connection_close();
         assert_eq!(metrics.connections_closed(), 1);

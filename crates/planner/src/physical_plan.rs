@@ -515,7 +515,7 @@ mod tests {
         ]);
         let scan = SeqScanExec::new("test_table".to_string(), schema).with_projection(vec![0]);
 
-        assert!(scan.schema().fields.len() >= 1);
+        assert!(!scan.schema().fields.is_empty());
     }
 
     #[test]
