@@ -144,11 +144,15 @@ fn test_3844_a5_is_not_run_when_no_crate_was_measured() {
 }
 
 /// A real measurement above the threshold is still a PASS.
+///
+/// 门槛在这里是**显式传入**的：合并到 develop/v4.1.0 之后
+/// `COVERAGE_MIN` 不再是顶层常量（#5581 把它改成从 STAGE_CONFIG.yaml 读，
+/// source 之后是空串），判定表若依赖环境残留就只是在测「谁先赋值」。
 #[test]
 fn test_3844_a5_passes_when_the_measured_coverage_meets_the_threshold() {
     let (code, stdout, stderr) = run_bash_snippet(
         "source scripts/gate/check_rc_ga_gate.sh; \
-         a5_coverage_decision 1 8 \"80\"; echo \"STATUS=$A5_STATUS\"",
+         a5_coverage_decision 1 8 \"80\" 75; echo \"STATUS=$A5_STATUS\"",
         &repo_root(),
     );
     assert_eq!(code, 0, "stderr: {}", stderr);
@@ -164,7 +168,7 @@ fn test_3844_a5_passes_when_the_measured_coverage_meets_the_threshold() {
 fn test_3844_a5_fails_when_the_measured_coverage_is_below_the_threshold() {
     let (code, stdout, stderr) = run_bash_snippet(
         "source scripts/gate/check_rc_ga_gate.sh; \
-         a5_coverage_decision 1 8 \"40\"; echo \"STATUS=$A5_STATUS\"",
+         a5_coverage_decision 1 8 \"40\" 75; echo \"STATUS=$A5_STATUS\"",
         &repo_root(),
     );
     assert_eq!(code, 0, "stderr: {}", stderr);
@@ -172,6 +176,42 @@ fn test_3844_a5_fails_when_the_measured_coverage_is_below_the_threshold() {
         strip_ansi(&stdout).contains("STATUS=FAIL"),
         "got:\n{}",
         stdout
+    );
+}
+
+/// #5581 × #3844: 调用方不给门槛时，判定必须现读 SSOT，而不是沿用某个
+/// 顶层常量。
+///
+/// 来方分支上 `COVERAGE_MIN=75` 是顶层常量，source 之后永远有值，
+/// 于是「门槛从哪来」这件事在该线上是不可判定的 —— 80 分被判 PASS。
+/// 这一线（develop/v4.1.0）门槛写在 `docs/governance/STAGE_CONFIG.yaml`，
+/// GA 是 85，source 之后 `COVERAGE_MIN` 是空串：80 必须判 FAIL。
+/// 这条用例把两种血缘的差异钉成可判定的行为，也是本次合并的判据。
+#[test]
+fn test_5581_a5_threshold_comes_from_ssot_when_caller_gives_none() {
+    let (code, stdout, stderr) = run_bash_snippet(
+        "source scripts/gate/check_rc_ga_gate.sh; \
+         echo \"MIN=[$(stage_coverage_min GA)]\"; \
+         COVERAGE_MIN=\"\"; a5_coverage_decision 1 8 \"85\"; echo \"AT_MIN=$A5_STATUS\"; \
+         COVERAGE_MIN=\"\"; a5_coverage_decision 1 8 \"84\"; echo \"BELOW_MIN=$A5_STATUS\"",
+        &repo_root(),
+    );
+    assert_eq!(code, 0, "stderr: {}", stderr);
+    let out = strip_ansi(&stdout);
+    assert!(
+        out.contains("MIN=[85]"),
+        "SSOT 的 GA 覆盖率门槛应是 85，否则这条用例失去意义；got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("AT_MIN=PASS"),
+        "正好达到 SSOT 门槛必须 PASS（门槛现读 SSOT，不是空值判红）；got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("BELOW_MIN=FAIL"),
+        "低于 SSOT 门槛 1 个百分点必须 FAIL；若判定沿用了 75 这种顶层常量就会是 PASS；got:\n{}",
+        out
     );
 }
 
