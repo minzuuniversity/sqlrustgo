@@ -1,0 +1,6 @@
+
+=== Summary (sqlite): compared=19 mismatched=0 known=0 not_run=3 failed=0 ===
+TPCH-NOT-RUN: tpch_sf01_22_vs_3engines reason=wire_scope_exclusion detail=Q9 reason=engine_resource_limit issue=#5393, Q18 reason=engine_resource_limit issue=#5393, Q19 reason=engine_parse_error issue=#5393
+.
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 41.84s
+
