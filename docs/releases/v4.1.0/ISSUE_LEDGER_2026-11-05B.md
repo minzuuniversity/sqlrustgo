@@ -2,7 +2,10 @@
 
 - 生成：`scripts/gate/issue_ledger.py`（本文件是生成物，手改会被下次生成覆盖）
 - 输入：Gitea `type=issues` open=104（当期 open）；分诊文件共 182 条记录（同一 issue 可有多条，一族一条），覆盖 116 个 issue —— 其中 104 个对应当期 open（进台账），另 12 个已关闭（不在台账范围内）
-- 证据等级（行级）：advisory-only 53 / cross-checked 51；ladder credited lineage=gpt,qwen；实际分诊席位血统=gpt,qwen-strata
+- 合格血统（算数的）：deepseek,gpt
+  - 口径：属主裁定（2026-11-06）「两专家是 deepseek 与 chatGPT，本地大模型不作裁定/复核血统」
+  - 本台账实际由合格血统覆盖的 family：gpt
+- 证据等级（行级）：advisory-only 104；ladder credited lineage=gpt,qwen；实际分诊席位血统=gpt,qwen-strata
 - 规则：ladder 有两个 credited 血统 ≠ 本条被两个血统分别核对过。只有同一 issue 被 >=2 个 family 分诊才升级 cross-checked
 - 分诊只回答：域 / 破坏了哪条声称 / 可否自动化 / 修复形状 / 疑似重复。**不回答"是否已修好"**，销账仍走 PR 关联与关闭验证
 
@@ -11,10 +14,10 @@
 | 字段 | 值 |
 |---|---|
 | source_agent | omp-macmini |
-| source_run | 20261106-ledger-003 |
-| timestamp | 2026-11-06T10:07:19Z |
+| source_run | 20261106-ledger-004 |
+| timestamp | 2026-11-06T10:33:41Z |
 | evidence_hash | sha256:5b8fe6781ac5ab84592868aecccec27a4dbc44001b21b3ba87dad27024308788 |
-| conflict_resolution | 单席位行一律 advisory-only；同一 issue 被 >=2 family 分诊才升 cross-checked（本次 51 行升级） |
+| conflict_resolution | 单席位行一律 advisory-only；同一 issue 被 >=2 family 分诊才升 cross-checked（本次 0 行升级） |
 
 输入指纹（可用 `shasum -a 256` 复现 evidence_hash）：
 
