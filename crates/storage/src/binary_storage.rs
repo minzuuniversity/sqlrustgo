@@ -2019,8 +2019,10 @@ mod tests {
         std::fs::remove_dir_all(tmp).ok();
     }
 
+    /// #5601：旧版这里断言的是「create_trigger 是 noop（返回 Ok）」——
+    /// 那正是「报成功但没生效」的假成功本身。现在必须**明确报错**。
     #[test]
-    fn test_bin_create_trigger_noop() {
+    fn test_bin_create_trigger_is_rejected() {
         let tmp = unique_test_path("bin_test_ct");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
         let trigger = TriggerInfo {
@@ -2032,15 +2034,30 @@ mod tests {
             update_columns: None,
             original_sql: String::new(),
         };
-        storage.create_trigger(trigger).unwrap();
+        let err = storage.create_trigger(trigger).expect_err(
+            "binary mode has no WAL ⇒ triggers must be rejected, not silently accepted",
+        );
+        assert!(
+            err.to_string().contains("does not support triggers"),
+            "error must explain why, got: {}",
+            err
+        );
         std::fs::remove_dir_all(tmp).ok();
     }
 
+    /// #5601：与 create_trigger 对称，删除也必须明确报错。
     #[test]
-    fn test_bin_drop_trigger_noop() {
+    fn test_bin_drop_trigger_is_rejected() {
         let tmp = unique_test_path("bin_test_dt");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
-        storage.drop_trigger("trig").unwrap();
+        let err = storage.drop_trigger("trig").expect_err(
+            "binary mode has no WAL ⇒ triggers must be rejected, not silently accepted",
+        );
+        assert!(
+            err.to_string().contains("does not support triggers"),
+            "error must explain why, got: {}",
+            err
+        );
         std::fs::remove_dir_all(tmp).ok();
     }
 
@@ -2052,19 +2069,36 @@ mod tests {
         std::fs::remove_dir_all(tmp).ok();
     }
 
+    /// #5601：旧版断言「create_database 是 noop（返回 Ok）」—— 客户端据此以为
+    /// 库建好了，SHOW DATABASES 里却没有它。现在必须**明确报错**。
     #[test]
-    fn test_bin_create_database_noop() {
+    fn test_bin_create_database_is_rejected() {
         let tmp = unique_test_path("bin_test_cdb");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
-        storage.create_database("db").unwrap();
+        let err = storage
+            .create_database("db")
+            .expect_err("binary mode has no database namespace ⇒ CREATE DATABASE must be rejected");
+        assert!(
+            err.to_string().contains("no database namespace"),
+            "error must explain why, got: {}",
+            err
+        );
         std::fs::remove_dir_all(tmp).ok();
     }
 
+    /// #5601：与 create_database 对称。
     #[test]
-    fn test_bin_drop_database_noop() {
+    fn test_bin_drop_database_is_rejected() {
         let tmp = unique_test_path("bin_test_ddb");
         let mut storage = BinaryTableStorage::new(tmp.clone()).unwrap();
-        storage.drop_database("db").unwrap();
+        let err = storage
+            .drop_database("db")
+            .expect_err("binary mode has no database namespace ⇒ DROP DATABASE must be rejected");
+        assert!(
+            err.to_string().contains("no database namespace"),
+            "error must explain why, got: {}",
+            err
+        );
         std::fs::remove_dir_all(tmp).ok();
     }
 }
