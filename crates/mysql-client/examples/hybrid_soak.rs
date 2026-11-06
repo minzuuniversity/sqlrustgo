@@ -229,14 +229,6 @@ fn oltp_select_region(_rng: &mut ThreadRng) -> String {
     "SELECT * FROM region ORDER BY r_regionkey".to_string()
 }
 
-fn oltp_count_orders(_rng: &mut ThreadRng) -> String {
-    "SELECT COUNT(*) FROM orders".to_string()
-}
-
-fn oltp_count_lineitem(_rng: &mut ThreadRng) -> String {
-    "SELECT COUNT(*) FROM lineitem".to_string()
-}
-
 // ---------------------------------------------------------------------------
 // Counters
 // ---------------------------------------------------------------------------
@@ -440,7 +432,6 @@ struct Args {
     oltp_ratio: f64,
     target_qps: f64,
     report_interval: u64,
-    batch_size: usize,
 }
 
 fn env_u64(name: &str, default: u64) -> u64 {
@@ -528,7 +519,6 @@ fn parse_args() -> Args {
         oltp_ratio,
         target_qps,
         report_interval,
-        batch_size: 10,
     }
 }
 
@@ -593,7 +583,6 @@ fn main() {
     let _handles: Vec<_> = (0..args.threads)
         .map(|wid| {
             let ctr = Arc::clone(&counters);
-            let addr = addr;
             thread::spawn(move || {
                 worker(
                     wid as u32,
@@ -616,7 +605,6 @@ fn main() {
     let handles: Vec<_> = (0..args.threads)
         .map(|wid| {
             let ctr = Arc::clone(&counters);
-            let addr = addr;
             thread::spawn(move || {
                 worker(
                     wid as u32,
@@ -635,10 +623,6 @@ fn main() {
         let ctr = Arc::clone(&counters);
         thread::spawn(move || {
             let mut last_total = 0u64;
-            let mut last_oltp_ok = 0u64;
-            let mut last_olap_ok = 0u64;
-            let mut last_oltp_err = 0u64;
-            let mut last_olap_err = 0u64;
             let mut last_ins = 0u64;
             let mut last_upd = 0u64;
             let mut last_del = 0u64;
@@ -677,10 +661,6 @@ fn main() {
                     oi, ou, od, os,
                 );
                 last_total = total;
-                last_oltp_ok = oltp_ok;
-                last_olap_ok = olap_ok;
-                last_oltp_err = oltp_err;
-                last_olap_err = olap_err;
                 last_ins = ins;
                 last_upd = upd;
                 last_del = del;

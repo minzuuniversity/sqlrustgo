@@ -10,6 +10,7 @@
 // ===========================================================================
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn acl_baseline_default_deny() {
     // v3.8.0 contract: any access without explicit grant is rejected
     let default_deny = true;
@@ -37,6 +38,7 @@ fn acl_baseline_fail_closed_on_unknown_user() {
 }
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn acl_baseline_fail_closed_on_unknown_table() {
     let contract = "unknown table => deny (fail closed)";
     assert!(!contract.is_empty());
@@ -47,6 +49,7 @@ fn acl_baseline_fail_closed_on_unknown_table() {
 // ===========================================================================
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn vector_acl_extension_documented() {
     // V400-07: per-vector-column ACL via GRANT SELECT (embedding) ON vectors TO alice
     let sql = "GRANT SELECT (embedding) ON vectors TO alice";
@@ -170,12 +173,14 @@ fn chain_verify_detects_modification() {
 }
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn chain_verify_detects_replay() {
     let contract = "re-append old entry with old hash => verify detects duplicate";
     assert!(!contract.is_empty());
 }
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn chain_sequence_monotonic() {
     let contract = "Sequence numbers: 1, 2, 3, ... N (no gaps)";
     assert!(!contract.is_empty());
@@ -186,6 +191,7 @@ fn chain_sequence_monotonic() {
 // ===========================================================================
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn bypass_attempt_sql_injection_user() {
     let user = "alice' OR '1'='1";
     // Default-deny policy rejects this user (no grant exists)
@@ -212,6 +218,7 @@ fn bypass_attempt_case_sensitivity() {
 }
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn bypass_attempt_role_based_grant() {
     // Future: GRANT TO role 'data_scientist' rather than specific user
     let contract = "role-based access (future)";
@@ -223,6 +230,7 @@ fn bypass_attempt_role_based_grant() {
 // ===========================================================================
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn sql_vector_graph_audit_consistent() {
     // Cross-model txn commit must include audit entry
     let contract = "atomic SQL+vector+graph+audit at commit";
@@ -230,12 +238,14 @@ fn sql_vector_graph_audit_consistent() {
 }
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn audit_event_attached_to_txn() {
     let contract = "audit event linked to tx_id (V400-05 cross-model)";
     assert!(!contract.is_empty());
 }
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn rollback_discards_audit_chain_extension() {
     let contract = "ROLLBACK reverts pending audit appends";
     assert!(!contract.is_empty());
@@ -246,6 +256,7 @@ fn rollback_discards_audit_chain_extension() {
 // ===========================================================================
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn acl_check_latency_target() {
     // ACL check should be O(1) hash lookup
     let contract = "O(1) hash lookup";
@@ -253,6 +264,7 @@ fn acl_check_latency_target() {
 }
 
 #[test]
+#[ignore = "契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖"]
 fn audit_chain_append_latency_target() {
     // Audit append should be O(1) hash + write
     let contract = "O(1) hash + WAL append";
