@@ -141,7 +141,13 @@ fn read_idle_timeout_secs() -> Option<u64> {
 /// Keeping the decision here — instead of inline in the reaper loop — is
 /// what makes the "disabled" case testable without a socket, a server or
 /// a sleep.
-fn idle_reap_decision(idle_secs: u64, timeout_secs: Option<u64>) -> Option<u64> {
+fn idle_reap_decision(idle_secs: u64, timeout_secs: Option<u64>, busy: bool) -> Option<u64> {
+    // #FL-1：正在执行命令的连接**不是 idle 连接** —— 回收器只该收「在等下一条
+    // 命令」的连接。长语句（LOAD DATA 20k 行等）执行期间没有读包，按旧口径会被
+    // 当成 idle 连接在语句中途 shutdown，客户端直接看到 EOF。
+    if busy {
+        return None;
+    }
     match timeout_secs {
         Some(threshold) if idle_secs > threshold => Some(threshold),
         _ => None,
@@ -182,18 +188,38 @@ thread_local! {
 #[derive(Debug)]
 pub struct ConnectionTracker {
     last_activity_ms: std::sync::atomic::AtomicU64,
+    /// #FL-1：这条连接**正在执行命令**吗？
+    ///
+    /// 回收器判「idle」的口径必须是「**在等下一条命令**」，而不是
+    /// 「上一次读包距今多久」—— 一条长语句（LOAD DATA 20k 行、大聚合）
+    /// 执行期间没有任何读包，按旧口径它会被当成 idle 连接在语句中途
+    /// 被 shutdown，客户端直接看到 EOF（`Io(UnexpectedEof)`）。
+    /// 这正是 FL-1 那次红的真实原因（服务端日志：
+    /// `idle-reaper: closing conn_id=3 (idle 34s > 30s)`）。
+    busy: std::sync::atomic::AtomicBool,
 }
 
 impl ConnectionTracker {
     pub fn new() -> Self {
         Self {
             last_activity_ms: std::sync::atomic::AtomicU64::new(now_ms()),
+            busy: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
     pub fn touch(&self) {
         self.last_activity_ms
             .store(now_ms(), std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// #FL-1：标记「正在执行命令」。
+    pub fn set_busy(&self, busy: bool) {
+        self.busy.store(busy, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// #FL-1：这条连接此刻是否正在执行命令。
+    pub fn is_busy(&self) -> bool {
+        self.busy.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn idle_secs(&self) -> u64 {
@@ -330,6 +356,17 @@ pub fn touch_connection(conn_id: u64) {
     }
 }
 
+/// #FL-1：标记这条连接「正在执行命令」（busy=true）或「在等下一条命令」
+/// （busy=false）。
+///
+/// 回收器只该收**在等命令**的连接；语句执行期间（长 LOAD DATA、大聚合）
+/// 必须算作非 idle，否则连接会在语句中途被 shutdown，客户端看到 EOF。
+pub fn set_connection_busy(conn_id: u64, busy: bool) {
+    if let Some((tracker, _)) = CONNECTION_REGISTRY.read().get(&conn_id) {
+        tracker.set_busy(busy);
+    }
+}
+
 /// v3.12.0 Issue #4682: remove a connection from the registry.
 /// Called by the `scopeguard` in `handle_connection` so the
 /// registry never holds stale entries.
@@ -390,7 +427,9 @@ pub fn spawn_idle_connection_reaper() {
 
                 registry.retain(|&conn_id, (tracker, sock)| {
                     let idle = tracker.idle_secs();
-                    if let Some(threshold) = idle_reap_decision(idle, now_idle_timeout) {
+                    if let Some(threshold) =
+                        idle_reap_decision(idle, now_idle_timeout, tracker.is_busy())
+                    {
                         // #5582: 注册表持有强引用，这里拿到的就是**活的** socket。
                         // 此前是 `weak.upgrade()`，而生产调用点的强引用是临时量
                         // ⇒ upgrade 恒为 None ⇒ 回收器从未真正 shutdown 任何连接。
@@ -596,12 +635,12 @@ mod helpers_tests {
     #[test]
     fn a_disabled_reaper_never_reaps() {
         assert_eq!(
-            idle_reap_decision(0, None),
+            idle_reap_decision(0, None, false),
             None,
             "a disabled reaper must not reap a fresh connection"
         );
         assert_eq!(
-            idle_reap_decision(1_000_000, None),
+            idle_reap_decision(1_000_000, None, false),
             None,
             "a disabled reaper must not reap a connection however long it has been idle"
         );
@@ -610,9 +649,50 @@ mod helpers_tests {
     /// ...and an enabled one reaps exactly past the threshold.
     #[test]
     fn an_enabled_reaper_reaps_past_the_threshold() {
-        assert_eq!(idle_reap_decision(29, Some(30)), None);
-        assert_eq!(idle_reap_decision(30, Some(30)), None);
-        assert_eq!(idle_reap_decision(31, Some(30)), Some(30));
+        assert_eq!(idle_reap_decision(29, Some(30), false), None);
+        assert_eq!(idle_reap_decision(30, Some(30), false), None);
+        assert_eq!(idle_reap_decision(31, Some(30), false), Some(30));
+    }
+
+    /// #FL-1：正在执行命令的连接**不是 idle 连接** —— 哪怕它「上一次读包距今」
+    /// 已经超过阈值，回收器也必须放过它。
+    ///
+    /// 修前口径只看「上次读包距今多久」，于是长语句（LOAD DATA 20k 行）执行
+    /// 期间连接被当成 idle，在语句中途被 shutdown，客户端只拿到
+    /// `Io(UnexpectedEof)`（FL-1 的真实原因，服务端日志：
+    /// `idle-reaper: closing conn_id=3 (idle 34s > 30s)`）。
+    #[test]
+    fn a_busy_connection_is_never_reaped_however_long_its_last_read_was() {
+        assert_eq!(
+            idle_reap_decision(31, Some(30), true),
+            None,
+            "a connection executing a statement must not be reaped"
+        );
+        assert_eq!(
+            idle_reap_decision(1_000_000, Some(30), true),
+            None,
+            "a long-running statement must not be interrupted by the reaper"
+        );
+        // 反向：同一个 idle 秒数，只要不忙，就必须照常回收。
+        assert_eq!(
+            idle_reap_decision(31, Some(30), false),
+            Some(30),
+            "the busy flag must not disable reaping for idle connections"
+        );
+    }
+
+    /// #FL-1：tracker 的 busy 标记与回收器读的是同一个标志。
+    #[test]
+    fn a_tracker_reports_whether_it_is_busy() {
+        let tracker = ConnectionTracker::new();
+        assert!(!tracker.is_busy(), "a fresh connection waits for a command");
+        tracker.set_busy(true);
+        assert!(
+            tracker.is_busy(),
+            "a connection executing a command is busy"
+        );
+        tracker.set_busy(false);
+        assert!(!tracker.is_busy(), "back to waiting for the next command");
     }
 
     #[test]
@@ -5590,6 +5670,15 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
     config: &crate::testing::EphemeralConfig,
 ) -> MySqlResult<()> {
     loop {
+        // #FL-1：循环开头 = 本连接正在**等下一条命令** ⇒ 此刻它是 idle 的，
+        // 回收器可以按超时收它。语句执行期间是 busy（见下面读包成功的分支），
+        // 不会被回收器在语句中途掐断。
+        CURRENT_CONN_ID.with(|c| {
+            let cid = c.get();
+            if cid != 0 {
+                set_connection_busy(cid, false);
+            }
+        });
         // v3.12.0 Issue #4682: refresh the idle-reaper timestamp on
         // every successful read. The touch must happen AFTER a
         // successful read, so we read the packet first and only touch
@@ -5604,6 +5693,9 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                     let cid = c.get();
                     if cid != 0 {
                         touch_connection(cid);
+                        // #FL-1：从这一刻起本连接在**执行命令**，直到下一轮循环
+                        // 开头重新算作 idle。长语句执行期间不会被回收器收走。
+                        set_connection_busy(cid, true);
                     }
                 });
                 p
