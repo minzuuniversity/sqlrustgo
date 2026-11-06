@@ -1,0 +1,11 @@
+
+=== Known-differences registry check ===
+  registry:    /Volumes/workspace/dev/wt/fl1/tests/baseline/tpch_known_differences.json
+  max_entries: 2
+
+  total entries:  0
+  limit:          2
+  violations:     0
+  [0;32mPASS[0m: registry is valid (0 entr(y/ies), limit 2)
+
+Known-differences registry PASS.

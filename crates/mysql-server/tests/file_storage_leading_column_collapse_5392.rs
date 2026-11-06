@@ -103,19 +103,53 @@ fn load(conn: &mut MySqlConnection, file: &std::path::Path, table: &str) -> u64 
         file.to_str().unwrap(),
         table
     );
-    match conn.execute(&sql).expect("LOAD DATA") {
-        ResultSet::Ok { affected_rows, .. } => affected_rows,
-        ResultSet::Error {
+    // 先把**之前**积累的 panic 与服务端日志清掉：捕获缓冲是进程级的，同文件里
+    // 其他用例的 panic / 日志不该被算到这次 LOAD DATA 头上。清空之后到失败那一刻
+    // 之间新出现的，才是这次操作的服务端侧原因。
+    let _ = sqlrustgo_mysql_server::testing::take_captured_panics();
+    let _ = sqlrustgo_mysql_server::testing::take_captured_logs();
+    match conn.execute(&sql) {
+        Ok(ResultSet::Ok { affected_rows, .. }) => affected_rows,
+        Ok(ResultSet::Error {
             error_code,
             error_message,
             ..
-        } => {
+        }) => {
             panic!(
                 "LOAD DATA into {} failed {}: {}",
                 table, error_code, error_message
             )
         }
-        ResultSet::Select { .. } => panic!("LOAD DATA must not return a result set"),
+        Ok(ResultSet::Select { .. }) => panic!("LOAD DATA must not return a result set"),
+        // #FL-1：连接被掐断时（服务端线程挂掉），客户端只能看到 `Io(UnexpectedEof)`，
+        // 光有它没法定位。把 harness 捕获到的**服务端 panic**一起打出来，失败才是
+        // 可诊断的。
+        Err(e) => {
+            let panics = sqlrustgo_mysql_server::testing::take_captured_panics();
+            let logs = sqlrustgo_mysql_server::testing::take_captured_logs();
+            let server_side = if panics.is_empty() && logs.is_empty() {
+                "（服务端既没有捕获到 panic，也没有日志 —— 连接被掐断的原因不在进程内 harness 内）"
+                    .to_string()
+            } else {
+                let mut s = String::new();
+                if !panics.is_empty() {
+                    s.push_str("服务端 panic:\n");
+                    s.push_str(&panics.join("\n"));
+                }
+                if !logs.is_empty() {
+                    if !s.is_empty() {
+                        s.push('\n');
+                    }
+                    s.push_str("服务端日志:\n");
+                    s.push_str(&logs.join("\n"));
+                }
+                s
+            };
+            panic!(
+                "LOAD DATA into {} failed on the wire: {:?}\n服务端侧捕获到的信息:\n{}",
+                table, e, server_side
+            )
+        }
     }
 }
 
