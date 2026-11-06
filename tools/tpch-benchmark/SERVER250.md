@@ -44,7 +44,7 @@
 ## Directory Layout on 250
 
 ```
-/home/liying/bench/tpch-benchmark/        # Owner: liying (mode 755, files 600)
+/home/liying/tools/tpch-benchmark/        # Owner: liying (mode 755, files 600)
 ├── data/
 │   ├── sf0.001_data/                       # 8 .tbl files, ~2 MB
 │   ├── sf0.01_data/                        # 8 .tbl files, ~8 MB (60K lineitem)
@@ -75,8 +75,8 @@ cargo build --release -p sqlrustgo-mysql-server
 # On Mac, generate SF=0.01, SF=0.1, SF=1 via /Users/liying/tpch-tools/dbgen/dbgen
 # Then rsync to 250:
 for sf in sf0.01 sf0.1 sf1; do
-  rsync -avz -e ssh bench/tpch-benchmark/data/${sf}_data/ \
-    liying@192.168.0.250:/home/liying/bench/tpch-benchmark/data/${sf}_data/
+  rsync -avz -e ssh tools/tpch-benchmark/data/${sf}_data/ \
+    liying@192.168.0.250:/home/liying/tools/tpch-benchmark/data/${sf}_data/
 done
 ```
 
@@ -92,7 +92,7 @@ sudo mysql -e "DROP DATABASE IF EXISTS tpch_sf1; CREATE DATABASE tpch_sf1"
 for tbl in region nation supplier customer part partsupp orders lineitem; do
   mysql -u liying -e "USE tpch_sf0_01;
     CREATE TABLE ${tbl} (...);
-    LOAD DATA LOCAL INFILE '/home/liying/bench/tpch-benchmark/data/sf0.01_data/${tbl}.tbl'
+    LOAD DATA LOCAL INFILE '/home/liying/tools/tpch-benchmark/data/sf0.01_data/${tbl}.tbl'
     INTO TABLE ${tbl} FIELDS TERMINATED BY '|' LINES TERMINATED BY '|';"
 done
 ```
@@ -102,7 +102,7 @@ done
 ssh ai@ss4
 # Start sqlrustgo on port 3307 with ai-writable data_dir
 mkdir -p /home/ai/sqlrustgo_sf01
-cp /home/liying/bench/tpch-benchmark/data/sf0.01_data/*.tbl /home/ai/sqlrustgo_sf01/
+cp /home/liying/tools/tpch-benchmark/data/sf0.01_data/*.tbl /home/ai/sqlrustgo_sf01/
 /home/liying/sqlrustgo/target/release/sqlrustgo-mysql-server serve \
   --data-dir /home/ai/sqlrustgo_sf01 --port 3307 &
 # DDL + LOAD
@@ -192,7 +192,7 @@ python3 /tmp/tpch250.py 3307 /tmp/250_sf0.001_result.json
 For team members wanting to use the TPC-H benchmark environment:
 
 1. **Connect**: `ssh ss4` (uses ai user with public key)
-2. **Run existing benchmarks**: see `bench/tpch-benchmark/SERVER250.md`
-3. **Add new scale**: generate via dbgen, rsync to /home/liying/bench/tpch-benchmark/data/
+2. **Run existing benchmarks**: see `tools/tpch-benchmark/SERVER250.md`
+3. **Add new scale**: generate via dbgen, rsync to /home/liying/tools/tpch-benchmark/data/
 4. **Modify schema**: edit `scripts/run_tpch_benchmark.py` (need sudo to /home/liying/)
 5. **Compare results**: see `baseline/baseline_sf*.json` for ground truth
