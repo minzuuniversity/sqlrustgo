@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import hashlib
 import re
 import signal
 import shutil
@@ -30,6 +31,19 @@ REPO = HERE.parents[1]
 SERVER_BIN = REPO / "target/debug/sqlrustgo-mysql-server"
 MY = "/opt/homebrew/bin/mysql"
 
+
+def bin_provenance(p: pathlib.Path) -> dict:
+    """把**被测二进制本身**钉成可核对的 provenance（路径 + sha256 + mtime）。
+    跨线复测时这台机器上同时存在多条线的 target/debug，光写路径会被误读成
+    「测的是本线代码」⇒ 必须有哈希，且报告里要写清该二进制来自哪条线。"""
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for blk in iter(lambda: f.read(1 << 20), b""):
+            h.update(blk)
+    st = p.stat()
+    return {"path": str(p), "sha256": h.hexdigest(),
+            "size": st.st_size, "mtime_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(st.st_mtime))}
+
 sys.path.insert(0, str(HERE))
 from capability_smoke import free_port, q  # noqa: E402  复用同一套查询/空闲端口实现，避免两套口径
 
@@ -37,12 +51,17 @@ from capability_smoke import free_port, q  # noqa: E402  复用同一套查询/�
 def main(argv) -> int:
     ap = argparse.ArgumentParser(prog="binmode_probe.py")
     ap.add_argument("--out", default=str(REPO / "test_results/binmode"))
+    ap.add_argument("--server-bin", default=str(SERVER_BIN),
+                    help="被测服务端二进制；跨线复测时指向**另一条线**的 target/debug，"
+                         "provenance 会记下它的 sha256，别把结论记成本线的")
     a = ap.parse_args(argv)
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    if not SERVER_BIN.is_file():
-        print("INCOMPLETE: 缺 %s" % SERVER_BIN, file=sys.stderr)
+    srv = pathlib.Path(a.server_bin)
+    if not srv.is_file():
+        print("INCOMPLETE: 缺 %s" % srv, file=sys.stderr)
         return 2
+    prov = bin_provenance(srv)
     data = out / "data"
     if data.exists():
         shutil.rmtree(data, ignore_errors=True)   # 只删自己刚建的 scratch 子目录
@@ -54,7 +73,7 @@ def main(argv) -> int:
     # 上一版这里把服务端输出丢进 DEVNULL，却仍去读 server_info.log ⇒ 「自认行」这一维
     # 其实**没观测过**（实测：log 文件根本不存在，hits 恒空）。改成落盘再判。
     logf = open(log, "wb")
-    proc = subprocess.Popen([str(SERVER_BIN), "--log-level", "info", "serve",
+    proc = subprocess.Popen([str(srv), "--log-level", "info", "serve",
                              "--host", "127.0.0.1", "--port", str(port),
                              "--data-dir", str(data), "--storage", "binary", "--wal-sync", "every"],
                             stdout=logf, stderr=subprocess.STDOUT)
@@ -135,7 +154,11 @@ def main(argv) -> int:
     summary = {
         "kind": "binmode_probe",
         "storage": "binary",
-        "server_bin": str(SERVER_BIN.relative_to(REPO)),
+        "server_bin": prov["path"],
+        "server_sha256": prov["sha256"],
+        "server_size": prov["size"],
+        "server_mtime_utc": prov["mtime_utc"],
+        "server_bin_is_this_line": str(srv.resolve().parent) == str((REPO / "target/debug").resolve()),
         "port": port,
         "steps": steps,
         "create_database_rc": next(s["rc"] for s in steps if s["label"] == "create_database"),
