@@ -53,7 +53,7 @@
 {"bytes": 6355, "file": "P22_DIRECTORY_POLICY_2026-11-05.md", "lines": 131, "sha256": "0e09cda2c01920c36a221a5e92ad2d9b60fbd8e7a11e798fb8f48d9d6aeed2dc", "stamp_ok": false, "stamped": false}
 {"bytes": 31770, "file": "PERFORMANCE_AUDIT_REPORT_2026-09-30.md", "lines": 775, "sha256": "1ecd3ffee6e82a70c95a049557c0c5dbb8fb1741c332024f482333dc09a8c364", "stamp_ok": false, "stamped": false}
 {"bytes": 40982, "file": "PERFORMANCE_OPTIMIZATION_PLAN.md", "lines": 674, "sha256": "2cbc64c1f6890cf0bac89bd8e2b687bff80531df75fa108c9bf132d94fd171e3", "stamp_ok": false, "stamped": false}
-{"bytes": 41170, "file": "PERFORMANCE_TARGETS.md", "lines": 408, "sha256": "596d6082155d542a3191975645e9295800607695a7f2552fc4337a923d4a39f1", "stamp_ok": false, "stamped": false}
+{"bytes": 41272, "file": "PERFORMANCE_TARGETS.md", "lines": 408, "sha256": "b0ab99fce228c1913a327cf741a8d6570fd9b56beddd95faa836fc9f3ecaf043", "stamp_ok": false, "stamped": false}
 {"bytes": 10134, "file": "PERF_4910_PHASE3_PLAN.md", "lines": 251, "sha256": "1441aad7733bbdc807b3c6e639804646b676c7ae15624a68fd6bae8a9cf2e546", "stamp_ok": false, "stamped": false}
 {"bytes": 8240, "file": "PERF_4956_COMMIT_FLUSH_AB_2026-10-04.md", "lines": 136, "sha256": "3e31f0ae500f3c2603715621d37cb84619d68d5e91be2160f42dd21decfad2a0", "stamp_ok": false, "stamped": false}
 {"bytes": 7584, "file": "PERF_A1_4912_AB_MEASUREMENT.md", "lines": 178, "sha256": "08f40af01101558864723ddfbd23315df229bdbf4af61c197a5bb9aadf3c51a8", "stamp_ok": false, "stamped": false}
