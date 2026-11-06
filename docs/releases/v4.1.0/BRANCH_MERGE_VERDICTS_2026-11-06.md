@@ -49,6 +49,12 @@
 | `fix/omp-ignore-registry-5098` | 需专门批次 | 改 `check_anti_fabrication.sh` / `check_coverage_v312.sh` 两个**门禁脚本** + debt-registry ⇒ 门禁判据变更需要改前漏什么 / 改后多报什么 + 反向变异证据，不能在文档/证据批里顺手带过 |
 | `fix/5262-b2-binaries` | 需专门批次 | 解析器 + `engine_ddl` / `engine_setops` / `system_tables` 的语义改动（55 行，12 处冲突）⇒ 需在当前执行器形态上逐条重做并补回归 |
 
+证据出处：本轮实际取入的两条（`fix/4597-chaos-t8d-awk-portability` 的 awk 可移植性修复、
+`mcode-macmini/e5-r9-r11-verify` 的 `selftest_anti_fabrication.sh` 与 F-08 列查找）见归档 run
+`20261106-branchbatch-001`（4 条红，逐条已写 notes）与其后续 `20261106-branchbatch-002`；
+`selftest_anti_fabrication.sh` 的判定与退出码以脚本自身为准：`PASS`=0、`UNFIXED`=10、
+`INCONCLUSIVE`=20、`INTERNAL_ERROR`=30。
+
 ## 3. 需要人工裁定（4.1.0 开发线，有冲突）—— 逐条核对结果
 
 | 分支 | merge-base | 冲突文件数 | 合并带进文件 | hunk 级缺失行 | 判定 | 依据 |

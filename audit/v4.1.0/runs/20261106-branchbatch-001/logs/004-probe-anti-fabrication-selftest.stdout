@@ -1,0 +1,3 @@
+VERDICT: PASS
+REASON:  the validator payload carries no shell command substitution, the validator judges a valid, an empty and an incomplete report correctly, and it stays silent on stderr
+r11_selftest: PASS
