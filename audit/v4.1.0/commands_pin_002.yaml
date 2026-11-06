@@ -1,0 +1,93 @@
+- id: pin-selftest
+  name: 反向变异自检（现在三条臂，M3 专治哈希基）
+  cmd: /usr/bin/python3 audit/v4.1.0/handoff_pin.py --selftest
+  cwd: .
+  timeout_sec: 120
+- id: pin-hash-base
+  name: 线上 pin marker 的哈希基 == 核对器基（且必须不等于旧原始字节基）
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport hashlib, json, pathlib, re, subprocess, sys, urllib.request\n\
+    NL = chr(10)\ndef token():\n    p = subprocess.run([\"git\", \"credential\", \"fill\"],\n        \
+    \               input=b\"url=http://192.168.0.252:3000\" + NL.encode() + NL.encode(),\n          \
+    \             capture_output=True)\n    for line in p.stdout.decode().splitlines():\n        if line.startswith(\"\
+    password=\"): return line.split(\"=\", 1)[1]\n    raise SystemExit(\"no credential\")\nsrc = pathlib.Path(\"\
+    docs/knowledge-loop/handoffs/HANDOFF_2026-11-05_4.1.0_OMP_ONBOARDING.md\")\nraw = src.read_bytes()\n\
+    disk_sha = hashlib.sha256(raw.decode(\"utf-8\").strip().encode(\"utf-8\")).hexdigest()  # 核对器基（strip\
+    \ 后正文）\nraw_sha = hashlib.sha256(raw).hexdigest()                                            # 旧基（原始字节）\n\
+    req = urllib.request.Request(\"http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5592/comments?page=1&limit=50\"\
+    ,\n                             headers={\"Authorization\": \"token \" + token()})\nrows = json.loads(urllib.request.urlopen(req,\
+    \ timeout=40).read().decode())\npins = [r for r in rows if \"HANDOFF-PIN:src=\" in (r.get(\"body\"\
+    ) or \"\")]\nmarker = (pins[0][\"body\"].splitlines()[0] if pins else \"\")\nm = re.search(r\"src_sha256=([0-9a-f]{12})\"\
+    , marker)\ngot = m.group(1) if m else \"\"\nout = {\"kind\": \"pin_hash_base\", \"pin_count\": len(pins),\
+    \ \"marker\": marker,\n       \"pin_marker_sha12\": got, \"checker_base_sha12\": disk_sha[:12], \"\
+    legacy_raw_base_sha12\": raw_sha[:12],\n       \"same_base\": got == disk_sha[:12], \"matches_legacy_base\"\
+    : got == raw_sha[:12]}\nprint(json.dumps(out, ensure_ascii=False))\nif len(pins) != 1 or not got:\n\
+    \    print(\"NOT-OK: 看板 pin 不是一条或 marker 无哈希\", file=sys.stderr); sys.exit(3)\nif got != disk_sha[:12]:\n\
+    \    print(\"NOT-OK: pin marker 的哈希基/文档内容 与仓内 strip 基不一致\", file=sys.stderr); sys.exit(3)\nif got\
+    \ == raw_sha[:12]:\n    print(\"NOT-OK: 仍与旧（原始字节）基同值 ⇒ 该判据无法判别\", file=sys.stderr); sys.exit(3)\n\
+    PYIN"
+  cwd: .
+  timeout_sec: 120
+- id: entry-presence
+  name: '看板 #5592 上恰好一条 HANDOFF-PIN（入口在位）'
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport json, subprocess, sys, urllib.request\nNL = chr(10)\ndef token():\n\
+    \    p = subprocess.run([\"git\", \"credential\", \"fill\"],\n                       input=b\"url=http://192.168.0.252:3000\"\
+    \ + NL.encode() + NL.encode(),\n                       capture_output=True)\n    for line in p.stdout.decode().splitlines():\n\
+    \        if line.startswith(\"password=\"): return line.split(\"=\", 1)[1]\n    raise SystemExit(\"\
+    no credential\")\nreq = urllib.request.Request(\"http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5592/comments?page=1&limit=50\"\
+    ,\n                             headers={\"Authorization\": \"token \" + token()})\nrows = json.loads(urllib.request.urlopen(req,\
+    \ timeout=40).read().decode())\npins = [r for r in rows if \"HANDOFF-PIN:src=\" in (r.get(\"body\"\
+    ) or \"\")]\nprint(json.dumps({\"kind\": \"entry_presence\", \"issue\": 5592, \"comments_total\":\
+    \ len(rows),\n                  \"pin_count\": len(pins), \"pin_ids\": [r[\"id\"] for r in pins],\n\
+    \                  \"pin_markers\": [(r.get(\"body\") or \"\").splitlines()[0] for r in pins]}, ensure_ascii=False))\n\
+    if len(pins) != 1:\n    print(\"NOT-OK: 看板上的 pin 评论不是恰好一条\", file=sys.stderr); sys.exit(3)\nPYIN"
+  cwd: .
+  timeout_sec: 120
+- id: board-body-owner
+  name: 看板正文是谁刷的＋两种「有没有附录」探法对比（朴素子串会误报）
+  cmd: "/usr/bin/python3 - <<'PYIN'\nimport json, subprocess, urllib.request\nNL = chr(10)\ndef token():\n\
+    \    p = subprocess.run([\"git\", \"credential\", \"fill\"],\n                       input=b\"url=http://192.168.0.252:3000\"\
+    \ + NL.encode() + NL.encode(),\n                       capture_output=True)\n    for line in p.stdout.decode().splitlines():\n\
+    \        if line.startswith(\"password=\"): return line.split(\"=\", 1)[1]\n    raise SystemExit(\"\
+    no credential\")\nreq = urllib.request.Request(\"http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5592\"\
+    ,\n                             headers={\"Authorization\": \"token \" + token()})\nit = json.loads(urllib.request.urlopen(req,\
+    \ timeout=40).read().decode())\nbody = it.get(\"body\") or \"\"\nmarks = {b: (b in body) for b in\
+    \ (\"mcode-macmini/governance-kanban-expert-ladder\",\n                                  \"omp-macmini/lb1-arm-count-fix\"\
+    , \"develop/v4.1.0\")}\n# 附录判据只归 board_appendix_check.py；这里把两种探法都摊开，说明「朴素子串」会误报\nnaive = \"附录 A\"\
+    \ in body\nheader = \"## 附录 A：交接正文全文\" in body\nprint(json.dumps({\"kind\": \"board_body_owner\",\
+    \ \"issue\": 5592, \"updated_at\": it.get(\"updated_at\"),\n                  \"body_len\": len(body),\
+    \ \"naive_substring_appendix_A\": naive, \"exact_header_appendix_A\": header,\n                  \"\
+    branch_markers_in_body\": marks}, ensure_ascii=False))\nPYIN"
+  cwd: .
+  timeout_sec: 120
+- id: gen-divergence
+  name: 生成器分叉仍在：三条线的行数与 appendix 命中数
+  cmd: "for b in HEAD gitea252/develop/v4.1.0 gitea252/omp-macmini/lb1-arm-count-fix; do\n  f=$(mktemp);\
+    \ git show \"${b}:audit/v4.1.0/gen_kanban_issue.py\" > \"$f\" 2>/dev/null\n  printf '%s lines=%s appendix_hits=%s\\\
+    n' \"$b\" \"$(wc -l < \"$f\")\" \"$(grep -ci appendix \"$f\" || true)\"\ndone"
+  cwd: .
+  timeout_sec: 120
+- id: board-appendix-check
+  name: 三处一致性核对（现值 findings=1：看板缺附录 A，真漂移）
+  cmd: /usr/bin/python3 audit/v4.1.0/board_appendix_check.py
+  cwd: .
+  timeout_sec: 120
+- id: kanban-check
+  name: 看板 render/check（未改看板）
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: kanban-counts
+  name: 看板行数字段（应与 r7/r8 口径一致）
+  cmd: /usr/bin/python3 scripts/gate/kanban_render.py counts docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 120
+- id: gov-metrics
+  name: 分母与度量（check_n 必须仍是 168）
+  cmd: /usr/bin/python3 scripts/gate/gov_probe.py metrics | tail -1 | /usr/bin/python3 -c "import sys,json;d=json.load(sys.stdin);print(d['check_n'],d['claims_hits'],d['docs410'],d['audit_manifests_runs'])"
+  cwd: .
+  timeout_sec: 120
+- id: ledger-verify
+  name: 台账 verify（findings=0、debt 只降不升）
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify
+  cwd: .
+  timeout_sec: 120

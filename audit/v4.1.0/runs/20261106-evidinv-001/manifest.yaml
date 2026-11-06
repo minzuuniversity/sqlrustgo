@@ -1,0 +1,115 @@
+schema_version: 1
+run_id: 20261106-evidinv-001
+source_agent: mcode-macmini
+frozen_commit: 5741831f08cf713f8ad778e94f57eef9c2e99df5
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: d491da0141dc4a67d1ac2df754b1b8bf01ad386b899124836fb5d1ea805735fe
+  dataset_hashes: {}
+commands:
+- id: evidinv-report
+  name: 分级器现场读数（真仓 docs/releases/v4.1.0，59 份文档 1144 处声称）——台账基线的唯一来源
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py report
+  cwd: .
+  timeout_sec: 300
+- id: evidinv-mutations
+  name: 分级器反向变异 12 臂全部判别（夹具错 vs 判据错的判别面）
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory_mutations.py | tee /tmp/srg-evidinv-mut.log; grep
+    -qxF 'arms=12 discriminating=12 not_discriminating=0 drift=0' <(tail -1 /tmp/srg-evidinv-mut.log)
+  cwd: .
+  timeout_sec: 900
+- id: seats-health
+  name: 咨询梯 5 席位现场 health（--no-evidence-dir：证据面只由本 run 的 logs 承担）
+  cmd: '/usr/bin/python3 scripts/gate/expert_ladder.py health --no-evidence-dir > /tmp/srg-health.log
+    2>&1 && grep -q ''"seats_total": 5'' /tmp/srg-health.log && cat /tmp/srg-health.log'
+  cwd: .
+  timeout_sec: 900
+- id: ladder-tests
+  name: 咨询梯夹具自检（含 EX-6 新判据：空返回记 unanswered，不得冒充答错）
+  cmd: out=$(/usr/bin/python3 scripts/gate/test_expert_ladder.py); rc=$?; printf '%s\n' "$out" | tail
+    -4; test $rc -eq 0
+  cwd: .
+  timeout_sec: 300
+- id: verify-without-ledger-must-be-incomplete
+  name: 台账不在时 verify 必须 INCOMPLETE(2)，不得当通过
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify --ledger /tmp/srg-absent-ledger.jsonl
+    > /tmp/srg-verify0.log 2>&1; rc=$?; cat /tmp/srg-verify0.log; test $rc -eq 2
+  cwd: .
+  timeout_sec: 300
+- id: bad-interpreter-guard
+  name: 解释器护栏（本机默认 python3 无 yaml ⇒ 分级器必须 rc=2 并指名 /usr/bin/python3；若该解释器其实有 yaml 则记 SKIP 分支）
+  cmd: 'if python3 -c ''import yaml'' 2>/dev/null; then echo "SKIP-branch: 本机 python3 有 yaml，护栏不适用于此环境";
+    else python3 audit/v4.1.0/evidence_inventory.py report > /tmp/srg-badyaml.log 2>&1; rc=$?; cat /tmp/srg-badyaml.log;
+    test $rc -eq 2; fi'
+  cwd: .
+  timeout_sec: 300
+results:
+- id: evidinv-report
+  started_at: '2026-11-05T17:44:05Z'
+  finished_at: '2026-11-05T17:44:05Z'
+  exit_code: 0
+  stdout_sha256: c22498901d38b42e1644775dfd179e6e4bf8644a789bca3ce576d33eeca02446
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-evidinv-report.stdout
+  stderr_path: logs/001-evidinv-report.stderr
+- id: evidinv-mutations
+  started_at: '2026-11-05T17:44:05Z'
+  finished_at: '2026-11-05T17:44:12Z'
+  exit_code: 0
+  stdout_sha256: 6d02bc5b5f4fa1acdf0dca84ea3a1b260a424634d248ab7ef13a21c302c1ee2c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-evidinv-mutations.stdout
+  stderr_path: logs/002-evidinv-mutations.stderr
+- id: seats-health
+  started_at: '2026-11-05T17:44:12Z'
+  finished_at: '2026-11-05T17:51:21Z'
+  exit_code: 0
+  stdout_sha256: 4c6b9d1845fcfbf3166b256ea6418c0bb800c592e2e9232089c1b9222ed01083
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-seats-health.stdout
+  stderr_path: logs/003-seats-health.stderr
+- id: ladder-tests
+  started_at: '2026-11-05T17:51:21Z'
+  finished_at: '2026-11-05T17:51:32Z'
+  exit_code: 0
+  stdout_sha256: 567cbcdaafee6719fc83053feb912566824bec6912469d361af1ab642f98ccc6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-ladder-tests.stdout
+  stderr_path: logs/004-ladder-tests.stderr
+- id: verify-without-ledger-must-be-incomplete
+  started_at: '2026-11-05T17:51:32Z'
+  finished_at: '2026-11-05T17:51:32Z'
+  exit_code: 0
+  stdout_sha256: 43f8b382432a27815b08670d22557e10ece99486ec9e0cb23223980b968bee61
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-verify-without-ledger-must-be-incomplete.stdout
+  stderr_path: logs/005-verify-without-ledger-must-be-incomplete.stderr
+- id: bad-interpreter-guard
+  started_at: '2026-11-05T17:51:32Z'
+  finished_at: '2026-11-05T17:51:32Z'
+  exit_code: 0
+  stdout_sha256: 57a10d42491ea32789d18cb87184b7f8afc9eaceddab452f511eb22a363f556c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-bad-interpreter-guard.stdout
+  stderr_path: logs/006-bad-interpreter-guard.stderr
+evidence_hash: sha256:b212fc389b60f3753e042b4c868d3166fa2b8875359decdb3b669ce2ddec8b3c
+completed_at: '2026-11-05T17:51:32Z'
+notes:
+- 本 run 不含 ci_gate / 168 项全量门禁实跑，不构成任何「门禁通过」声明（Owner 专属动作）。
+- 用途：为 docs/releases/v4.1.0 的 claims 台账（CLAIM_BINDINGS_LEDGER.jsonl）生成唯一基线，并留证 P1-5 分级器 12 臂反向变异全部判别（arms=12
+  discriminating=12 not_discriminating=0 drift=0）。
+- 席位读数（run 内 003-seats-health）：seats_ok=2/5。flash-next-252 ok 2.25s/12.89tps calib 4/4；chatgpt-web ok
+  25.61s calib 4/4；deepseek-chat HTTP 500（EX-5 人工登录未落盘）；local-qwen35-9b HTTP 503（8002 服务不可用，新事实）；gmp35b-250
+  timeout 240s（上次同席位 51.5s 正常 ⇒ 席位退化，新事实）。
+- lineages_credited=[gpt,qwen]、adjudication_capable=true 的依据是 capability_basis=calibrated+role-eligible，即两个
+  credited 席位均通过 4/4 标定，不再是仅可达。
+- EX-6 语义已在此 run 的 004-ladder-tests 与 003 席位行上验证：空返回记 unanswered（非 wrong），标定账目区分传输失败与能力失败。
+- verify-without-ledger 臂断言：台账缺失时 verify 必须 rc=2 并写 INCOMPLETE，不得当通过。
+- bad-interpreter 臂断言：本机默认 python3（homebrew 3.15）无 yaml ⇒ 分级器 rc=2 且指名 /usr/bin/python3，不再产出假读数。

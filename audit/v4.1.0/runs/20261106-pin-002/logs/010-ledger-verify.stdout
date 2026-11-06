@@ -1,0 +1,2 @@
+{"kind": "evidence_inventory", "strong_bound": 1, "nonzero_run": 0, "run_missing": 0, "stale_binding": 0, "invalid_manifest": 0, "unread_manifest": 0, "ambiguous": 7, "unbound": 1136, "files": 59, "total": 1144, "debt": 1143, "claims_ref": 1, "mode": "verify", "ledger": "docs/releases/v4.1.0/CLAIM_BINDINGS_LEDGER.jsonl", "diff_base": "5741831f08cf713f8ad778e94f57eef9c2e99df5", "today": "2026-11-06", "binding_validity": {}}
+findings=0

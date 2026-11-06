@@ -1,156 +1,159 @@
 #!/usr/bin/env python3
-"""EX-6 改动 1 的反向变异：标定账必须把「没答上来」与「答错了」分开记。
+"""EX-6 的反向变异探针：标定账必须把「没答上来」与「答错了」分开记。
 
-问题（看板 EX-6）：
-    `scripts/gate/expert_ladder.py` 的 `run_calibration` 原来把两种失效压成同一个形状
-    `{"ok": false, "answer": ""}`。台账读者因此分不出「这席位不可信」和
-    「这席位当时正忙」—— 20261104-seats-002 的 3/4 就是**超时**被记成了「答错」。
+2026-11-06 合并说明：两条线各自实现了同一个 EX-6 修复。`scripts/gate/expert_ladder.py`
+取 mcode-macmini 那版（超集：空返回先重试一次，再分 unanswered / wrong，并给出
+competence_ratio），本探针因此改成断言那套字段名；场景与判别方式不变。
+原版探针断言的 `failure`/`unavailable`/`wrong_answer` 字段随旧实现一并让位。
 
-改法：item 记录增加 `failure` 字段 ∈ {None, "unavailable", "wrong-answer"}，
-    汇总增加 `unavailable` / `wrong_answer` 两个计数。
+问题（看板 EX-6）：`run_calibration` 原先把「超时/空返回」与「答错」压成同一个
+`{"ok": false, "answer": ""}`。实测受害样本：run 20261104-seats-002 给
+flash-next-252 记 3/4，失败项 answer 为空、那一次延迟 101.14 s，而同席位在
+20261104-seats-001 是 4/4（15.0 s）—— 一次空调用被记成了能力不足。
 
-本探针用**假 answer** 驱动同一份 `run_calibration`：
-    A 超时/不可用 ⇒ 必须 unavailable=4、wrong_answer=0
-    B 答上来但内容不对 ⇒ 必须 wrong_answer=4、unavailable=0
-    C 全对 ⇒ 两个计数都为 0、score=4
-    D **反向变异**：把源码改回「超时也记成 wrong-answer」的旧写法，
-      跑同一个超时场景 ⇒ A 臂必须失败（否则这次改动没判别力）
+臂：
+    A 超时/空返回 ⇒ unanswered=4 项、wrong=[]、answered=0、score=0
+    B 答上来了但内容不对 ⇒ wrong=4 项、unanswered=[]、answered=4
+    C 混合（假答案只命中 1 题）⇒ score=1、wrong=3、competence_ratio=0.25
+    D 空返回后重试拿到答案 ⇒ 必须算 answered（负载尖峰不冤枉席位）
+    E **反向变异**：把「空返回」也算成答错 ⇒ A 臂必须判红
+      改前漏什么：超时被记成答错，台账分不出「模型不行」和「这次没连上」
+      改后多报什么：把 unavailable 一律塞进 wrong ⇒ A 臂的 unanswered 变空、wrong 变 4
 
 退出码：0 = 全部成立；1 = 有不成立项；2 = 用法错
 本探针放在 audit/v4.1.0/：不是门禁，不进 STAGE_CONFIG，分母 168 不动。
 """
 from __future__ import annotations
 
-import json
-import re
+import importlib.util
 import shutil
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 LADDER = REPO / "scripts" / "gate" / "expert_ladder.py"
-sys.path.insert(0, str(REPO / "scripts" / "gate"))
-import expert_ladder as el  # noqa: E402
+
+MUTATE_SRC = '''        item_answered = bool(text.strip()) and bool(rec.get("ok"))'''
+MUTATE_TO = '''        item_answered = True  # 变异：空返回也当答上来了'''
 
 
 class FakeSeat:
-    id = "fake-seat"
-    family = "fake"
-    lineage = "fake"
-    model = "fake-model"
+    name = "fake-seat"
+    model = "fake"
+    provider = "fake"
+    base_url = "http://127.0.0.1:1"
+    api_key_env = "FAKE_KEY"
+    role = "audit"
+    max_tokens = 64
+    timeout_sec = 1
 
 
-def run_with(fake_rec: dict) -> dict:
-    """用假的 ask 跑同一份 run_calibration。"""
+def load_ladder(path: Path):
+    spec = importlib.util.spec_from_file_location("el_probe_mod", path)
+    mod = importlib.util.module_from_spec(spec)
+    # 3.14 的 @dataclass 处理要查 sys.modules 里的模块命名空间，
+    # 不注册就 AttributeError: 'NoneType' object has no attribute '__dict__'。
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def run_with(path: Path, responses: list[dict]) -> tuple[dict, int]:
+    """responses 按调用顺序回放（空返回会触发重试，故可给多条）。"""
+    el = load_ladder(path)
     orig = el.ask
+    state = {"n": 0}
 
     def fake_ask(seat, prompt, **kw):
-        r = dict(fake_rec)
-        r.setdefault("content", "")
+        i = state["n"]
+        state["n"] += 1
+        r = dict(responses[i] if i < len(responses) else responses[-1])
         r.setdefault("ok", True)
-        r.setdefault("prompt_sha256", "sha256:" + "0" * 64)
+        r.setdefault("content", "")
         r.setdefault("output_sha256", "sha256:" + "0" * 64)
         r.setdefault("requested_at", "2026-11-05T00:00:00Z")
         return r
+
     el.ask = fake_ask
     try:
-        return el.run_calibration(FakeSeat())
+        return el.run_calibration(FakeSeat()), state["n"]
     finally:
         el.ask = orig
 
 
+def ids(xs):
+    return sorted(xs) if isinstance(xs, list) else xs
+
+
 def main() -> int:
     checks: list[tuple[str, bool, str]] = []
+    n_items = None
 
-    # A 超时 / 不可用
-    r = run_with({"ok": False, "content": "", "error": "TimeoutError: timed out"})
-    ok_a = (r.get("unavailable") == 4 and r.get("wrong_answer") == 0
-            and r.get("score") == 0
-            and all(i.get("failure") == "unavailable" for i in r.get("items", [])))
-    checks.append(("timeout-counted-as-unavailable", ok_a,
-                   f"unavailable={r.get('unavailable')} wrong_answer={r.get('wrong_answer')} "
-                   f"score={r.get('score')}"))
+    # A 超时 / 空返回（两次都空：重试一次仍空）
+    r, calls = run_with(LADDER, [{"ok": False, "content": "", "error": "TimeoutError: timed out"}])
+    n_items = r.get("total")
+    ok_a = (ids(r.get("unanswered")) == ids([i["id"] for i in r.get("items", [])])
+            and r.get("wrong") == [] and r.get("answered") == 0 and r.get("score") == 0)
+    checks.append(("A-timeout-counted-unanswered", ok_a,
+                   f"unanswered={r.get('unanswered')} wrong={r.get('wrong')} "
+                   f"answered={r.get('answered')} score={r.get('score')} calls={calls}"))
 
-    # B 答上来但内容不对
-    r = run_with({"ok": True, "content": "definitely-not-the-answer"})
-    ok_b = (r.get("unavailable") == 0 and r.get("wrong_answer") == 4
-            and r.get("score") == 0
-            and all(i.get("failure") == "wrong-answer" for i in r.get("items", [])))
-    checks.append(("wrong-answer-counted-as-wrong", ok_b,
-                   f"unavailable={r.get('unavailable')} wrong_answer={r.get('wrong_answer')}"))
+    # B 答上来了但内容不对
+    r, _ = run_with(LADDER, [{"ok": True, "content": "definitely-not-the-answer"}])
+    ok_b = (r.get("unanswered") == [] and len(r.get("wrong") or []) == n_items
+            and r.get("answered") == n_items and r.get("score") == 0)
+    checks.append(("B-wronganswer-counted-wrong", ok_b,
+                   f"unanswered={r.get('unanswered')} wrong={r.get('wrong')} "
+                   f"answered={r.get('answered')}"))
 
-    # C 同一个假答案只满足第 1 题（其余 3 题内容不对）
-    r = run_with({"ok": True, "content": "391"})
-    ok_c = (r.get("unavailable") == 0 and r.get("wrong_answer") == 3
-            and r.get("score") == 1
-            and sum(1 for i in r.get("items", []) if i.get("failure") is None) == 1)
-    checks.append(("all-correct-has-no-failures", ok_c,
-                   f"score={r.get('score')} unavailable={r.get('unavailable')} "
-                   f"wrong_answer={r.get('wrong_answer')}（期望 1 对 3 错、0 不可用）"))
+    # C 假答案只命中其中一题
+    r, _ = run_with(LADDER, [{"ok": True, "content": "391"}])
+    got = r.get("score")
+    ok_c = (got == 1 and len(r.get("wrong") or []) == n_items - 1
+            and r.get("unanswered") == [] and r.get("answered") == n_items
+            and abs((r.get("competence_ratio") or 0) - round(got / n_items, 3)) < 1e-6)
+    checks.append(("C-mixed-competence-ratio", ok_c,
+                   f"score={got} wrong={r.get('wrong')} answered={r.get('answered')} "
+                   f"competence_ratio={r.get('competence_ratio')}（期望 {round(got / n_items, 3)}）"))
 
-    # D 反向变异：把源码改回「超时也记成 wrong-answer」的旧写法
+    # D 空返回后重试拿到正确答案 ⇒ 必须算 answered（负载尖峰不冤枉席位）
+    first_ok = None
+    for probe in ([{"ok": False, "content": "", "error": "EmptyResponse"},
+                   {"ok": True, "content": ""}],):
+        r, calls = run_with(LADDER, probe)
+        first_ok = any(i.get("retried") for i in r.get("items", []))
+    checks.append(("D-empty-response-retried", bool(first_ok),
+                   f"items={[{i['id']: i.get('retried')} for i in r.get('items', [])]} "
+                   f"answered={r.get('answered')}"))
+
+    # E 反向变异：空返回也当答上来了
     src = LADDER.read_text(encoding="utf-8")
-    mutated = src.replace(
-        '''        if not rec.get("ok"):
-            ok = False
-            failure = "unavailable"      # 没答上来（超时 / 传输故障 / 产出不可用）
-            n_unavailable += 1
-        elif not ok:
-            failure = "wrong-answer"     # 答上来了，但内容不对
-            n_wrong += 1
-        else:
-            failure = None''',
-        '''        if not rec.get("ok"):
-            ok = False
-            failure = "wrong-answer"
-            n_wrong += 1
-        else:
-            failure = None if ok else "wrong-answer"''')
-    if mutated == src:
-        checks.append(("mutation-timeout-as-wrong-is-detected", False,
-                       "变异没生效：源码形状与预期不符（EX-6 改动可能被改过）"))
+    if MUTATE_SRC not in src:
+        checks.append(("E-mutation-anchor-found", False,
+                       f"变异锚点没找到：{MUTATE_SRC!r} 不在源码里 ⇒ 判据可能已失效"))
     else:
+        mutated = src.replace(MUTATE_SRC, MUTATE_TO, 1)
         tmp = Path(tempfile.mkdtemp(prefix="ex6mut-"))
         try:
-            mut_ladder = tmp / "expert_ladder.py"
-            mut_ladder.write_text(mutated, encoding="utf-8")
-            # 把被测文件与它的依赖都放到临时目录，import 那里的副本
-            for dep in ("expert_triage.py",):
-                src_dep = REPO / "scripts" / "gate" / dep
-                if src_dep.exists():
-                    shutil.copy(src_dep, tmp / dep)
-            probe = (
-                "import json,sys;sys.path.insert(0,%r);import expert_ladder as el;"
-                "el.ask=lambda seat,prompt,**kw:{'ok':False,'content':'','error':'TimeoutError',"
-                "'prompt_sha256':'sha256:'+'0'*64,'output_sha256':'sha256:'+'0'*64,"
-                "'requested_at':'2026-11-05T00:00:00Z'};"
-                "r=el.run_calibration(type('S',(),{'id':'f','family':'f','lineage':'f','model':'m'})());"
-                "print(json.dumps({'unavailable':r.get('unavailable'),"
-                "'wrong_answer':r.get('wrong_answer')}))"
-            ) % str(tmp)
-            p = subprocess.run([sys.executable, "-c", probe], capture_output=True,
-                               text=True, timeout=120)
-            try:
-                got = json.loads(p.stdout.strip().splitlines()[-1])
-            except Exception:
-                got = {"unavailable": "?", "wrong_answer": "?"}
-            detected = got.get("unavailable") != 4 or got.get("wrong_answer") != 0
-            checks.append(("mutation-timeout-as-wrong-is-detected", detected,
-                           f"变异后 unavailable={got.get('unavailable')} "
-                           f"wrong_answer={got.get('wrong_answer')}（应与真实现不同 ⇒ 判据有判别力）"))
+            mut = tmp / "expert_ladder.py"
+            mut.write_text(mutated, encoding="utf-8")
+            r_mut, _ = run_with(mut, [{"ok": False, "content": "", "error": "TimeoutError: timed out"}])
+            detected = (r_mut.get("unanswered") != r.get("unanswered")
+                        or len(r_mut.get("wrong") or []) > 0)
+            checks.append(("E-mutation-timeout-as-wrong-detected", detected,
+                           f"变异后 unanswered={r_mut.get('unanswered')} wrong={r_mut.get('wrong')} "
+                           f"（真实现下 unanswered 非空 ⇒ 该臂有判别力）"))
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
-    bad = [(n, d) for n, ok, d in checks if not ok]
-    print(json.dumps({"kind": "ex6_failure_accounting",
-                      "checks": len(checks), "ok": len(checks) - len(bad),
-                      "not_ok": len(bad),
-                      "detail": [{"check": n, "detail": d} for n, d in bad],
-                      "verdict": "FAILED" if bad else "VERIFIED"}, ensure_ascii=False))
+    bad = 0
+    for name, ok, detail in checks:
+        print(f"{'OK ' if ok else 'BAD'} {name}: {detail}")
+        bad += 0 if ok else 1
+    print(f"合计 {len(checks) - bad}/{len(checks)} 条成立")
     return 1 if bad else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

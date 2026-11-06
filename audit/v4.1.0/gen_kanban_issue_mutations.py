@@ -37,6 +37,12 @@ ARMS = [
      "\uff08{len(rows)} \u884c\uff09",
      "\uff08{len(rows) + 1} \u884c\uff09",
      "A4: \u884c\u6570\u53e3\u5f84\u5fc5\u987b\u7b49\u4e8e SSOT"),
+    # m5: 把 --appendix 的 fail-closed 守卫改成静默跳过（交接正文会「消失」而看板照发），
+    #     只有当自检真的因此变红，这条守卫才算承重。
+    ("m5-appendix-silent-skip",
+     "        L += appendix_section(appendix_path)\n",
+     "        pass\n",
+     "A5/A6: 附录缺失必须 fail-closed，不许静默出无附录看板"),
 ]
 
 

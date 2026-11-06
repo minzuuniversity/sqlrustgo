@@ -1,0 +1,31 @@
+# 20261106-evidinv-001 的输入（scaffold --commands-yaml 读这份；改判据先改这里再重新 scaffold）
+- id: evidinv-report
+  name: 分级器现场读数（真仓 docs/releases/v4.1.0，59 份文档 1144 处声称）——台账基线的唯一来源
+  cmd: /usr/bin/python3 audit/v4.1.0/evidence_inventory.py report
+  cwd: .
+  timeout_sec: 300
+- id: evidinv-mutations
+  name: 分级器反向变异 12 臂全部判别（夹具错 vs 判据错的判别面）
+  cmd: '/usr/bin/python3 audit/v4.1.0/evidence_inventory_mutations.py | tee /tmp/srg-evidinv-mut.log; grep -qxF ''arms=12 discriminating=12 not_discriminating=0 drift=0'' <(tail -1 /tmp/srg-evidinv-mut.log)'
+  cwd: .
+  timeout_sec: 900
+- id: seats-health
+  name: 咨询梯 5 席位现场 health（--no-evidence-dir：证据面只由本 run 的 logs 承担）
+  cmd: '/usr/bin/python3 scripts/gate/expert_ladder.py health --no-evidence-dir > /tmp/srg-health.log 2>&1 && grep -q ''"seats_total": 5'' /tmp/srg-health.log && cat /tmp/srg-health.log'
+  cwd: .
+  timeout_sec: 900
+- id: ladder-tests
+  name: 咨询梯夹具自检（含 EX-6 新判据：空返回记 unanswered，不得冒充答错）
+  cmd: 'out=$(/usr/bin/python3 scripts/gate/test_expert_ladder.py); rc=$?; printf ''%s\n'' "$out" | tail -4; test $rc -eq 0'
+  cwd: .
+  timeout_sec: 300
+- id: verify-without-ledger-must-be-incomplete
+  name: 台账不在时 verify 必须 INCOMPLETE(2)，不得当通过
+  cmd: '/usr/bin/python3 audit/v4.1.0/evidence_inventory.py verify --ledger /tmp/srg-absent-ledger.jsonl > /tmp/srg-verify0.log 2>&1; rc=$?; cat /tmp/srg-verify0.log; test $rc -eq 2'
+  cwd: .
+  timeout_sec: 300
+- id: bad-interpreter-guard
+  name: 解释器护栏（本机默认 python3 无 yaml ⇒ 分级器必须 rc=2 并指名 /usr/bin/python3；若该解释器其实有 yaml 则记 SKIP 分支）
+  cmd: 'if python3 -c ''import yaml'' 2>/dev/null; then echo "SKIP-branch: 本机 python3 有 yaml，护栏不适用于此环境"; else python3 audit/v4.1.0/evidence_inventory.py report > /tmp/srg-badyaml.log 2>&1; rc=$?; cat /tmp/srg-badyaml.log; test $rc -eq 2; fi'
+  cwd: .
+  timeout_sec: 300
