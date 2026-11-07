@@ -1,0 +1,7 @@
+
+running 2 tests
+test committed_transaction_survives_sigkill_at_commit_fsync ... ok
+test crash_without_new_commit_preserves_exactly_the_seeded_rows ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
