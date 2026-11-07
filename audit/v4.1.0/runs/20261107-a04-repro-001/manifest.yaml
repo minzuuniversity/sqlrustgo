@@ -1,0 +1,64 @@
+schema_version: 1
+run_id: 20261107-a04-repro-001
+source_agent: omp-macmini
+frozen_commit: c60a40f9a2f28c664d9be2e302d34de4d5253783
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: a04-repro-current-engine
+  name: 正臂：当前构建的引擎二进制 ⇒ 归档证据必须逐字节复现（drift 必须是 0）
+  cmd: bash scripts/gate/check_a04_evidence_reproducible.sh
+  cwd: .
+  timeout_sec: 1800
+- id: a04-repro-stale-global-engine
+  name: 反向变异臂：把引擎指向 2026-02-21 的陈旧全局 sqlrustgo ⇒ 必须转 NOT RUN 披露且不得再报证据漂移（IL-10 验收）
+  cmd: SQLRUSTGO_BIN="$HOME/.cargo/bin/sqlrustgo" bash scripts/gate/check_a04_evidence_reproducible.sh
+  cwd: .
+  timeout_sec: 1800
+results:
+- id: a04-repro-current-engine
+  started_at: '2026-11-07T15:55:00Z'
+  finished_at: '2026-11-07T15:55:07Z'
+  exit_code: 0
+  stdout_sha256: 166956faa7ffbb0d1af4330b8f80c1bf4af7db8559d65c4f723ebb106f57ed0d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-a04-repro-current-engine.stdout
+  stderr_path: logs/001-a04-repro-current-engine.stderr
+- id: a04-repro-stale-global-engine
+  started_at: '2026-11-07T15:55:07Z'
+  finished_at: '2026-11-07T15:55:13Z'
+  exit_code: 0
+  stdout_sha256: d1bccf9f62f1d8e6c3a61c5867dadcceeae27e0e540009a5bc6d9d9cfe8e1ae1
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-a04-repro-stale-global-engine.stdout
+  stderr_path: logs/002-a04-repro-stale-global-engine.stderr
+notes: |
+  2 条命令全绿，这是 IL-10 验收要求的**两臂对照**：
+  - `a04-repro-current-engine`（当前构建的引擎二进制）⇒ `RESULT: PASS (with NOT RUN disclosure) - the verified subset is reproducible.`
+    （NOT RUN 部分是本机没有 PostgreSQL 参考容器 ⇒ 那批 postgres 文件被点名披露，不是「验证过」）。
+  - `a04-repro-stale-global-engine`（`SQLRUSTGO_BIN=$HOME/.cargo/bin/sqlrustgo` —— **2026-02-21 的陈旧全局安装**）
+    ⇒ 同样是 `RESULT: PASS (with NOT RUN disclosure)`，其中 **40 条 NOT VERIFIED 里有 20 条是 `*_sqlrustgo_cli.txt`**，
+    即该引擎那一路的 20 份文件被逐个点名披露为「本次未验证」；
+    **该臂输出里 `drifted away` 出现 0 次** ⇒ 满足验收「门禁必须转 NOT RUN 披露、且不得再报『证据漂移』」。
+  实测过程（两臂之前各跑过一次，用于定位）：陈旧二进制以 REPL 横幅形式响应 `sqlite --batch --mode csv --headers true --cmd`
+  ⇒ 门禁的 `looks_like_repl_transcript` 判它不可用 ⇒ 不写文件 ⇒ 该路进入 NOT RUN 披露。
+  **但**第一轮反向臂里门禁仍报漂移，原因是**另一处真实漂移**挡在前面：归档的
+  `join_left_002_{mysql_cli,mysql_wire,sqlrustgo_cli}.txt` 记的是引擎旧行为（`ERROR 1105 (42000) … Join condition must
+  reference one column from each side`），而当前引擎对同一条查询返回**正确行**（`1 one NULL` / `2 two 1`）
+  —— 这来自有意修复 `ee0a47d280 fix(engine): #5361 合法的 LEFT JOIN 被拒绝（ON 子句含表达式）`。
+  ⇒ 因此**先按最小范围重录这 3 份归档证据**（只改这 3 份，其余 97 份未动），门禁才可能给出干净的 NOT RUN 披露。
+  环境注意：本 worktree 里 `target` 是指向共享 CARGO_TARGET_DIR 的**软链**（`/target` 已在 .git/info/exclude 里），
+  否则矩阵产物会落在共享 target 而门禁读的是仓内相对路径 ⇒ 会误判成「本次没产出」。
+  偏差按 §5.4.1 声明：CI 执行面已死（#5597）⇒ 本地归档 run 替代 CI 绿灯；无第二身份评审。
+evidence_hash: sha256:369d85fbea6935393de1a5ac26276eb8157d45b50ce08e2355b6f14b941f68be
+completed_at: '2026-11-07T15:55:13Z'
