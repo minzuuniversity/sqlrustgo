@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running tests/multi_table_update_5117.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/multi_table_update_5117-92395a2bfba80566)
