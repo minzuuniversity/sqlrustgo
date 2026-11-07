@@ -1,0 +1,121 @@
+# 20261107-dirt1-002 —— DIRT-1 修复取证的**更正** run
+#
+# 为什么另起一个 run id 而不是覆盖 -001：`20261107-dirt1-001` 已写出
+# （9 绿 / 2 红），其中 `dirt1-worktree-clean-after-replay` 的红是**我这条判据自指导致**的
+# 假红——它把 `git status` 全量当判据，而归档工具自己会重写 `audit/v4.1.0/commit.txt`
+# 并创建 `runs/<id>/`。-001 保留作法证（见其 manifest notes）。
+#
+# 更正后的口径：脏检查只判 DIRT-1 的病灶域（`scripts/`、`tests/`、`.gitea/`、`docs/`），
+# 并把归档工具的三处合法写入**显式列在名字里**排除，避免看起来像掩盖。
+#
+# 已知结构红：check_main_freshness（C-MAIN-02，GA 前 main 封存）。
+
+- id: dirt1-ci-wiring-target
+  name: "整个 ci_wiring_honesty_test 目标（含 3 条新增 DIRT-1 判据 + 既有 31 条）"
+  cmd: cargo test -q --test ci_wiring_honesty_test
+  cwd: .
+  timeout_sec: 3600
+
+- id: dirt1-worktree-clean-after-replay
+  name: "重放 CI step 之后：DIRT-1 病灶域（scripts/tests/.gitea/docs）不得有任何改动（含模式位）；显式排除归档工具自身写入的 commit.txt / runs/<id> / test_count.json"
+  cmd: |
+    st="$(git status --porcelain --untracked-files=no -- scripts tests .gitea docs)"
+    if [ -n "$st" ]; then
+      printf 'DIRT（病灶域被改动，DIRT-1 仍在）:\n%s\n' "$st"
+      exit 1
+    fi
+    echo "CLEAN: scripts/ tests/ .gitea/ docs/ 四个域在重放后零改动"
+    echo "-- 全量 status（仅对照，不作判据；三处是归档工具自己的写入）:"
+    git status --porcelain --untracked-files=no | sed -n '1,8p'
+  cwd: .
+  timeout_sec: 120
+
+- id: dirt1-worktree-mode-preserved
+  name: "重放后**工作树**里两个曾被 chmod 的脚本仍是可执行位（索引 100755 之外还得看工作树）"
+  cmd: |
+    bad=0
+    for f in scripts/gate/resolve_release_version.sh gate/gate.sh; do
+      if [ -x "$f" ]; then echo "OK  $f 工作树可执行"; else echo "BAD $f 工作树丢失可执行位"; bad=$((bad+1)); fi
+    done
+    [ "$bad" -eq 0 ]
+  cwd: .
+  timeout_sec: 120
+
+- id: dirt1-resolver-index-mode
+  name: "resolve_release_version.sh 的登记模式必须是 100755（与其余 17 个 chmod 目标一致）"
+  cmd: |
+    m="$(git ls-files -s scripts/gate/resolve_release_version.sh | awk '{print $1}')"
+    if [ "$m" = 100755 ]; then echo "OK mode=$m"; else echo "BAD mode=$m"; exit 1; fi
+  cwd: .
+  timeout_sec: 120
+
+- id: dirt1-gate-sh-index-mode
+  name: "gate/gate.sh 的登记模式必须是 100755（探针第一次跑多报出的第二处）"
+  cmd: |
+    m="$(git ls-files -s gate/gate.sh | awk '{print $1}')"
+    if [ "$m" = 100755 ]; then echo "OK mode=$m"; else echo "BAD mode=$m"; exit 1; fi
+  cwd: .
+  timeout_sec: 120
+
+- id: dirt1-no-stray-chmod-on-tracked
+  name: "全仓扫一遍：还有谁对受跟踪的 644 文件 chmod（判据的覆盖面自检）"
+  cmd: |
+    hits=0
+    while IFS= read -r f; do
+      while IFS= read -r t; do
+        # 目录结尾的目标（`chmod +x scripts/gate/$g.sh` 被字符类截断成 `scripts/gate/`）
+        # 不是具体文件，git ls-files 会把整目录列出来 ⇒ 必然误报，跳过。
+        [ -n "$t" ] || continue
+        case "$t" in */) continue ;; esac
+        m="$(git ls-files -s -- "$t" | awk '{print $1}')"
+        if [ -n "$m" ] && [ "$m" != 100755 ]; then
+          printf 'HIT %s chmods %s (index %s)\n' "$f" "$t" "$m"; hits=$((hits+1))
+        fi
+      done < <(grep -rhoE 'chmod \+x [A-Za-z0-9_./-]+' "$f" | awk '{print $3}' | sort -u)
+    done < <(grep -rlE 'chmod \+x ' tests scripts/gate .gitea/workflows 2>/dev/null)
+    echo "可疑 chmod 目标计数: $hits"
+    [ "$hits" -eq 0 ]
+  cwd: .
+  timeout_sec: 300
+
+- id: gate-registry-denominator
+  name: 门禁分母与登记表一致（不得因本批变动）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+
+- id: probe-gate-registry
+  name: 登记表夹具（9 条反向变异必须全部被抓）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+
+- id: gate-kanban-consistency
+  name: 看板 md 与 jsonl 一致
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+
+- id: gate-honesty-check
+  name: honesty.py 判据
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 300
+
+- id: gate-doc-facts-check
+  name: doc_facts 判据（指针与链接）
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-fmt-check
+  name: 新增测试必须 rustfmt 干净
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 600
+
+- id: gate-main-freshness
+  name: main 新鲜度（GA 前结构性红，C-MAIN-02）
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 300

@@ -1,0 +1,2 @@
+{"kind": "gate_registry_check", "catalog": "/Volumes/workspace/dev/wt/dirt1/docs/releases/v4.1.0/GATE_CATALOG.jsonl", "check_n": 168, "catalog_rows": 168, "by_class": {"stage_required": 34, "ci_reachable": 51, "orphan_referenced": 22, "dead": 61}, "by_disposition": {"archive-candidate": 33, "keep-rewire": 12, "needs-execution-point": 25, "needs-external-host": 12, "superseded": 1}, "fails": 0}
+gate_registry: OK
