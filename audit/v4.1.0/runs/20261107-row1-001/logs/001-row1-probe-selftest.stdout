@@ -1,0 +1,5 @@
+[PASS] A-offender: flagged=True as expected
+[PASS] B-rewritten: flagged=False as expected
+[PASS] C-green: flagged=False as expected
+[PASS] D-unverified: flagged=True as expected
+probe_row1_acceptance_sync: OK (4 个反向变异臂全部符合期望)
