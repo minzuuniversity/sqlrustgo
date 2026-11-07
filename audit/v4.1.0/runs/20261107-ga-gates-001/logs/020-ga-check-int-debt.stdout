@@ -1,0 +1,14 @@
+=== D7: Cross-Version INT Debt Gate (5-Principle P5) ===
+
+  [INT-1] status=CLOSED ✅
+  [INT-2] status=CLOSED ✅
+  [INT-3] status=CLOSED ✅
+  [INT-4] status=CLOSED ✅
+
+=== D7 INT Debt Summary ===
+  CLOSED:               4
+  ACTIVE:               0
+  DEFERRED w/ plan:     0
+  DEFERRED w/o plan:    0
+
+✅ D7 INT Debt: PASS (0 ACTIVE, 0 DEFERRED, all CLOSED)

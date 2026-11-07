@@ -1,0 +1,15 @@
+=== Coverage single-implementation gate (#5581) ===
+Repo root: /Volumes/workspace/dev/wt/ga
+Allowlist: scripts/gate/coverage_measurement_allowlist.txt
+
+PASS: scripts/gate/check_v312_coverage_baseline.sh (listed; lines 114,319,395)
+PASS: scripts/gate/legacy/check_10_principles.sh (listed; lines 150,152)
+PASS: scripts/gate/legacy/check_r1_r10_content.sh (listed; lines 142,144)
+PASS: gate/gate.sh (listed; lines 98)
+FAIL: .gitea/workflows/ci-trusted-baseline.yml invokes a coverage measurement directly (lines 245,253,259,271) but is not listed
+      Either call the shared implementation in scripts/gate/common.sh, or list the file
+      in scripts/gate/coverage_measurement_allowlist.txt with a role and a reason.
+PASS: .github/workflows/coverage-parallel.yml (listed; lines 38,73,104,135,167,199,236,237)
+PASS: .github/workflows/coverage.yml (listed; lines 38)
+
+FAIL: 1 problem(s) — a second coverage implementation is either unlisted or broken

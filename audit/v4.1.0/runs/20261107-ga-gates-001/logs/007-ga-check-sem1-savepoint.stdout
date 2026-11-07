@@ -1,0 +1,6 @@
+=== G5 Gate: SEM-1 (#3172) Savepoint ===
+  [1/8] ✅ PASS: SavepointOp exported from sqlrustgo_parser
+  [2/8] ✅ PASS: SavepointStatement AST variant present
+  [3/8] ✅ PASS: parse_savepoint_* functions present (count=2)
+  [4/8] ✅ PASS: TransactionManager has 3 savepoint methods (count=4)
+  ❌ FAIL: execute_savepoint method missing in execution_engine.rs
