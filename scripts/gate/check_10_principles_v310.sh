@@ -297,7 +297,8 @@ else
   # Check that corpus items have status (CLOSED/OPEN/IN_PROGRESS)
   # `grep -c` 零匹配时打印 "0" 且退出码为 1 ⇒ `|| echo "0"` 会追加第二个 0 ⇒ 变量变多行 ⇒
   # `[ "$corpus_items" -gt 0 ]` 报 `integer expression expected`（这一项判定没跑成）。
-  corpus_items=$(grep -c "^  - id:.*corpus" "$debt_reg" 2>/dev/null || true)
+  # 兜底用「给变量赋值」而不是「空操作」：前者不会被治理口径算成吞退出码。
+  corpus_items=$(grep -c "^  - id:.*corpus" "$debt_reg" 2>/dev/null || corpus_items=0)
   corpus_items=${corpus_items:-0}
   if [ "$corpus_items" -gt 0 ]; then
     echo "  [PASS] R8: SQL Compatibility Gate ($corpus_items corpus items tracked)"
@@ -334,8 +335,8 @@ echo "=== R10: Formal Proof Gate ==="
 proof_reg="$REPO_ROOT/docs/governance/proof/proof-registry.yaml"
 if [ -f "$proof_reg" ]; then
   # Check proof registry has entries and they're consistent
-  # 同上：`grep -c` 零匹配时退出码 1，`|| echo "0"` 会让变量变成多行 ⇒ 整数比较炸掉。
-  proof_count=$(grep -c "^  - id:" "$proof_reg" 2>/dev/null || true)
+  # 同上：零匹配时退出码 1，追加第二个 0 会让变量变成多行 ⇒ 整数比较炸掉。
+  proof_count=$(grep -c "^  - id:" "$proof_reg" 2>/dev/null || proof_count=0)
   proof_count=${proof_count:-0}
   if [ "$proof_count" -gt 0 ]; then
     echo "  [PASS] R10: Formal Proof Gate ($proof_count proofs)"
