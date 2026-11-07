@@ -42,10 +42,23 @@ use sqlrustgo_storage::FileStorage;
 use sqlrustgo_types::Value;
 use std::sync::Arc;
 
+/// Process-local counter: the temp dir name must be unique **per call**, not just
+/// per process. `pid + SystemTime::now().as_nanos()` collided between threads
+/// running in parallel (the clock's resolution is coarser than the thread
+/// start-up gap), so one thread's `remove_dir_all` wiped the directory another
+/// thread had just created ⇒ `FileStorage::new` failed with ENOENT.
+///
+/// Evidence (2026-11-07, GA archive run `20261107-ga-gates-001`):
+/// `cargo test --all-features` failed on this file while the failing test name
+/// *changed* between runs; `--test-threads=1` passed 7/7; the default parallel
+/// run failed 2 of 3 times. With the counter below, the parallel run is stable.
+static DIR_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn engine() -> ExecutionEngine<FileStorage> {
     let dir = std::env::temp_dir().join(format!(
-        "mt_update_{}_{}",
+        "mt_update_{}_{}_{}",
         std::process::id(),
+        DIR_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

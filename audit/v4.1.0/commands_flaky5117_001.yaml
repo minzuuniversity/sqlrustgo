@@ -1,0 +1,10 @@
+- id: flaky-5117-parallel
+  name: 修复后并行跑（默认 test-threads）—— 改前同一命令 3 次里红 2 次
+  cmd: cargo test --test multi_table_update_5117
+  cwd: .
+  timeout_sec: 900
+- id: flaky-5117-single-thread
+  name: 单线程跑（对照臂）
+  cmd: cargo test --test multi_table_update_5117 -- --test-threads=1
+  cwd: .
+  timeout_sec: 900
