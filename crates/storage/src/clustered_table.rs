@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_clustered_table_len_and_is_empty() {
-        let mut ct = ClusteredTable::new(make_info(), 0);
+        let ct = ClusteredTable::new(make_info(), 0);
         assert!(ct.is_empty());
         assert_eq!(ct.len(), 0);
     }

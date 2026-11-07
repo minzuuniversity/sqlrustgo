@@ -1464,7 +1464,7 @@ mod tests {
 
         // Write multiple entries
         {
-            let mut manager = WalManager::new(wal_path.clone());
+            let manager = WalManager::new(wal_path.clone());
             for i in 0u64..5 {
                 let entry = WalEntry {
                     tx_id: 1,
@@ -1546,7 +1546,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
 
-        let mut manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path);
         let tx_id = 1;
 
         // Log begin
@@ -1601,7 +1601,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
 
-        let mut manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path);
         let tx_id = 1;
 
         // Log begin
@@ -1644,7 +1644,7 @@ mod tests {
 
         // Create WAL with ~1MB of data (approximately 1000 entries x 1KB)
         {
-            let mut manager = WalManager::new(wal_path.clone());
+            let manager = WalManager::new(wal_path.clone());
             let tx_id = 1;
 
             let _ = manager.log_begin(tx_id).unwrap();
@@ -1685,7 +1685,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let wal_path = dir.path().join("bench.wal");
 
-        let mut manager = WalManager::new(wal_path);
+        let manager = WalManager::new(wal_path);
         let tx_id = 1;
 
         let _ = manager.log_begin(tx_id).unwrap();
@@ -2143,8 +2143,8 @@ mod tests {
 
     #[test]
     fn test_wal_recovery_with_corrupted_length_prefix() {
-        use sqlrustgo_wal_verification::verification::{WALVerificationResult, WALVerifier};
-        use std::fs::File;
+        
+        
         use std::io::Write;
 
         let dir = tempfile::tempdir().unwrap();

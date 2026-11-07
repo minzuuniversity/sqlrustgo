@@ -721,8 +721,7 @@ mod tests {
     use super::*;
     use super::{AppendOnlyStorage, Value};
     use crate::engine::{
-        ColumnDefinition, RowFilter, RowMutation, StorageEngine, TableInfo, TriggerEvent,
-        TriggerInfo, TriggerTiming,
+        ColumnDefinition, StorageEngine,
     };
     use crate::test_support::unique_test_path;
     /// #5571: 唯一的临时路径来自 [`crate::test_support::unique_test_path`] ——
@@ -863,7 +862,7 @@ mod tests {
         let dir = temp_dir();
         let mut s = AppendOnlyStorage::new(dir.clone()).unwrap();
         assert_eq!(s.update("t", &[], &[]).unwrap(), 0);
-        let dir = temp_dir();
+        let _dir = temp_dir();
         assert_eq!(s.update("t", &[], &[]).unwrap(), 0);
         let true_filter: crate::engine::RowFilter = Box::new(|_| true);
         let noop_mutation = crate::engine::RowMutation::new(vec![], 0);
