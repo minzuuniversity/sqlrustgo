@@ -1,0 +1,12 @@
+
+running 7 tests
+test bare_column_name_with_where_updates_every_table ... ok
+test aliases_are_resolved_to_their_tables ... ok
+test qualified_names_update_their_own_tables ... ok
+test bare_column_name_updates_every_table ... ok
+test qualified_name_leaves_the_other_table_alone ... ok
+test single_table_update_still_works ... ok
+test a_where_that_matches_nothing_reports_zero ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
