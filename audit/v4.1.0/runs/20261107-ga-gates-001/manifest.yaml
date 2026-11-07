@@ -1,0 +1,513 @@
+schema_version: 1
+run_id: 20261107-ga-gates-001
+source_agent: omp-macmini
+frozen_commit: 12d7a4505dcbb930958b2b5b88bb22cbc17070c2
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: ga-cargo build --all-features
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo build --all-features
+  cmd: cargo build --all-features
+  cwd: .
+  timeout_sec: 7200
+- id: ga-check-rc-ga-gate
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_rc_ga_gate.sh ga
+  cmd: scripts/gate/check_rc_ga_gate.sh ga
+  cwd: .
+  timeout_sec: 5400
+- id: ga-check-arch-invariants
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_arch_invariants.sh
+  cmd: bash scripts/gate/check_arch_invariants.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-arch3-no-bypass
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_arch3_no_bypass.sh
+  cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-int2-no-orphan
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_int2_no_orphan.sh
+  cmd: bash scripts/gate/check_int2_no_orphan.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-int3-single-expr
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_int3_single_expr.sh
+  cmd: bash scripts/gate/check_int3_single_expr.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-sem1-savepoint
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_sem1_savepoint.sh
+  cmd: bash scripts/gate/check_sem1_savepoint.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-backup-restore
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_backup_restore.sh
+  cmd: bash scripts/gate/check_backup_restore.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-p12-crash-test
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_p12_crash_test.sh
+  cmd: bash scripts/gate/check_p12_crash_test.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-p14-upgrade-test
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_p14_upgrade_test.sh
+  cmd: bash scripts/gate/check_p14_upgrade_test.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-p21-audit-log
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_p21_audit_log.sh
+  cmd: bash scripts/gate/check_p21_audit_log.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-p22-time-travel
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_p22_time_travel.sh
+  cmd: bash scripts/gate/check_p22_time_travel.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-p23-hash-chain
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_p23_hash_chain.sh
+  cmd: bash scripts/gate/check_p23_hash_chain.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-g1-tpch-baseline
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_g1_tpch_baseline.sh
+  cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-g16-compatibility
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_g16_compatibility.sh
+  cmd: bash scripts/gate/check_g16_compatibility.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-integration-gate
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_integration_gate.sh
+  cmd: bash scripts/gate/check_integration_gate.sh
+  cwd: .
+  timeout_sec: 3600
+- id: ga-check-anti-fabrication
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_anti_fabrication.sh
+  cmd: bash scripts/gate/check_anti_fabrication.sh
+  cwd: .
+  timeout_sec: 7200
+- id: ga-check-arch-sem-debt
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_arch_sem_debt.sh
+  cmd: bash scripts/gate/check_arch_sem_debt.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-cross-version-debt
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_cross_version_debt.sh
+  cmd: bash scripts/gate/check_cross_version_debt.sh
+  cwd: .
+  timeout_sec: 3600
+- id: ga-check-int-debt
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_int_debt.sh
+  cmd: bash scripts/gate/check_int_debt.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-full-gate-verification
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_full_gate_verification.sh
+  cmd: bash scripts/gate/check_full_gate_verification.sh
+  cwd: .
+  timeout_sec: 3600
+- id: ga-check-drift-not-pass
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_drift_not_pass.sh
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-architecture-freeze
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_architecture_freeze.sh
+  cmd: bash scripts/gate/check_architecture_freeze.sh
+  cwd: .
+  timeout_sec: 900
+- id: ga-check-gate-self-verification
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_gate_self_verification.sh
+  cmd: bash scripts/gate/check_gate_self_verification.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-gate-test-integrity
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_gate_test_integrity.sh
+  cmd: bash scripts/gate/check_gate_test_integrity.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-gate-executability
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_gate_executability.sh
+  cmd: bash scripts/gate/check_gate_executability.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-coverage-v312
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_coverage_v312.sh
+  cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  timeout_sec: 7200
+- id: ga-check-coverage-single-implementation
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_coverage_single_implementation.sh
+  cmd: bash scripts/gate/check_coverage_single_implementation.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-tests-dont-write-archived-evidence
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_tests_dont_write_archived_evidence.sh
+  cmd: bash scripts/gate/check_tests_dont_write_archived_evidence.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-commit-message
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_commit_message.sh
+  cmd: bash scripts/gate/check_commit_message.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-sql-corpus-gate
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_sql_corpus_gate.sh
+  cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-check-anti-ignore-gate
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_anti_ignore_gate.sh
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 1800
+- id: ga-cargo test --all-features
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo test --all-features
+  cmd: cargo test --all-features
+  cwd: .
+  timeout_sec: 7200
+- id: ga-cargo fmt --check
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo fmt --check
+  cmd: cargo fmt --check
+  cwd: .
+  timeout_sec: 5400
+- id: ga-cargo clippy --all-features -- -D warnings
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo clippy --all-features -- -D warnings
+  cmd: cargo clippy --all-features -- -D warnings
+  cwd: .
+  timeout_sec: 5400
+- id: lint1-clippy-all-targets-keepgoing
+  name: 额外取证臂（非门禁）：LINT-1 重测——全 targets keep-going，归档那份丢失的 279 条日志的替代证据
+  cmd: cargo clippy --workspace --all-features --all-targets --keep-going
+  cwd: .
+  timeout_sec: 7200
+results:
+- id: ga-cargo build --all-features
+  started_at: '2026-11-07T14:07:35Z'
+  finished_at: '2026-11-07T14:08:05Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: ec81d57f30d5d3656f60b6173e8fbe683bf619b7d8884eed33a8fe0421182e02
+  stdout_path: logs/001-ga-cargo build --all-features.stdout
+  stderr_path: logs/001-ga-cargo build --all-features.stderr
+- id: ga-check-rc-ga-gate
+  started_at: '2026-11-07T14:08:05Z'
+  finished_at: '2026-11-07T14:14:29Z'
+  exit_code: 0
+  stdout_sha256: 4b68c9714348529b8fbe14f0384e7487422d04bbfb27cc427487b41c4832d904
+  stderr_sha256: 4d21e175c219c5a0dcf63c88ab1b6e8761271139be7385308247a03dcc67f911
+  stdout_path: logs/002-ga-check-rc-ga-gate.stdout
+  stderr_path: logs/002-ga-check-rc-ga-gate.stderr
+- id: ga-check-arch-invariants
+  started_at: '2026-11-07T14:14:29Z'
+  finished_at: '2026-11-07T14:14:29Z'
+  exit_code: 0
+  stdout_sha256: 7a4ad832e77eaf5cf645b7241af81f4d60436e5a293042970f387f3505890a88
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ga-check-arch-invariants.stdout
+  stderr_path: logs/003-ga-check-arch-invariants.stderr
+- id: ga-check-arch3-no-bypass
+  started_at: '2026-11-07T14:14:29Z'
+  finished_at: '2026-11-07T14:14:30Z'
+  exit_code: 0
+  stdout_sha256: 8fc41d8cb57dcaafd6c73483e2045fed418f2fa20ca4fd2f43fb630b5f277d31
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-ga-check-arch3-no-bypass.stdout
+  stderr_path: logs/004-ga-check-arch3-no-bypass.stderr
+- id: ga-check-int2-no-orphan
+  started_at: '2026-11-07T14:14:30Z'
+  finished_at: '2026-11-07T14:14:40Z'
+  exit_code: 0
+  stdout_sha256: 95e98bece4be2bad32c780cde80348832105434a4d4afb7507782bdfe04792f2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-ga-check-int2-no-orphan.stdout
+  stderr_path: logs/005-ga-check-int2-no-orphan.stderr
+- id: ga-check-int3-single-expr
+  started_at: '2026-11-07T14:14:40Z'
+  finished_at: '2026-11-07T14:14:41Z'
+  exit_code: 0
+  stdout_sha256: 88e257de48260c1839a5679d80f2a1396d80d5c34772aa8064eb19209ef3638d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-ga-check-int3-single-expr.stdout
+  stderr_path: logs/006-ga-check-int3-single-expr.stderr
+- id: ga-check-sem1-savepoint
+  started_at: '2026-11-07T14:14:41Z'
+  finished_at: '2026-11-07T14:14:41Z'
+  exit_code: 1
+  stdout_sha256: 19c365003188df25a8ec7772a661b4898590dda4735028412e76d9aedf487cbd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-ga-check-sem1-savepoint.stdout
+  stderr_path: logs/007-ga-check-sem1-savepoint.stderr
+- id: ga-check-backup-restore
+  started_at: '2026-11-07T14:14:41Z'
+  finished_at: '2026-11-07T14:14:42Z'
+  exit_code: 0
+  stdout_sha256: ca88bfa63d4ba845193b276b313dd8ac8c17358c30cfb96d078070ff56be50eb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-ga-check-backup-restore.stdout
+  stderr_path: logs/008-ga-check-backup-restore.stderr
+- id: ga-check-p12-crash-test
+  started_at: '2026-11-07T14:14:42Z'
+  finished_at: '2026-11-07T14:14:42Z'
+  exit_code: 0
+  stdout_sha256: 5f98c71555e1829c2735a8d89ab4c6ac7bda419f1d35d028ba86b0f2524444e4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-ga-check-p12-crash-test.stdout
+  stderr_path: logs/009-ga-check-p12-crash-test.stderr
+- id: ga-check-p14-upgrade-test
+  started_at: '2026-11-07T14:14:42Z'
+  finished_at: '2026-11-07T14:14:43Z'
+  exit_code: 0
+  stdout_sha256: b94020627634fc2fd248839d736aec5fb8561b55b2b55b637f704b0d244adddb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-ga-check-p14-upgrade-test.stdout
+  stderr_path: logs/010-ga-check-p14-upgrade-test.stderr
+- id: ga-check-p21-audit-log
+  started_at: '2026-11-07T14:14:43Z'
+  finished_at: '2026-11-07T14:14:51Z'
+  exit_code: 0
+  stdout_sha256: 6284cc5be47ce8291063c0c3f43670027df7dfd691ead75fe42315bedc72dea8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-ga-check-p21-audit-log.stdout
+  stderr_path: logs/011-ga-check-p21-audit-log.stderr
+- id: ga-check-p22-time-travel
+  started_at: '2026-11-07T14:14:51Z'
+  finished_at: '2026-11-07T14:14:54Z'
+  exit_code: 0
+  stdout_sha256: 4120e848f8e8d1c5ac5fdc2492d6c93b29452591ba11a65b6de29f3bd665ffe7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-ga-check-p22-time-travel.stdout
+  stderr_path: logs/012-ga-check-p22-time-travel.stderr
+- id: ga-check-p23-hash-chain
+  started_at: '2026-11-07T14:14:54Z'
+  finished_at: '2026-11-07T14:14:56Z'
+  exit_code: 0
+  stdout_sha256: 1175916fb45c84a4c49ea1481c22f9df04f805298a62a6ae820b337e0141de0e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-ga-check-p23-hash-chain.stdout
+  stderr_path: logs/013-ga-check-p23-hash-chain.stderr
+- id: ga-check-g1-tpch-baseline
+  started_at: '2026-11-07T14:14:56Z'
+  finished_at: '2026-11-07T14:15:00Z'
+  exit_code: 1
+  stdout_sha256: 18325213c75fe85fe17f43d9580107382c5c3cfb9368f964a5c5315fa1759811
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-ga-check-g1-tpch-baseline.stdout
+  stderr_path: logs/014-ga-check-g1-tpch-baseline.stderr
+- id: ga-check-g16-compatibility
+  started_at: '2026-11-07T14:15:00Z'
+  finished_at: '2026-11-07T14:15:01Z'
+  exit_code: 0
+  stdout_sha256: 682c940df0fa81d603191c04b634259c1f27c0efcc5ed4f558714fb90bfb8c74
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-ga-check-g16-compatibility.stdout
+  stderr_path: logs/015-ga-check-g16-compatibility.stderr
+- id: ga-check-integration-gate
+  started_at: '2026-11-07T14:15:01Z'
+  finished_at: '2026-11-07T14:15:06Z'
+  exit_code: 0
+  stdout_sha256: d4d989ed1a1656561ce559410688d3436bc3f8e4db0364744866ca4119598aea
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/016-ga-check-integration-gate.stdout
+  stderr_path: logs/016-ga-check-integration-gate.stderr
+- id: ga-check-anti-fabrication
+  started_at: '2026-11-07T14:15:06Z'
+  finished_at: '2026-11-07T14:30:41Z'
+  exit_code: 1
+  stdout_sha256: a352e2a09ce708356f4b0d11433b8e3b0ddd6fa3cefad2f935faf2d6ee6f35f6
+  stderr_sha256: a00254a1534d4201cf80add63610cf2e67a4e226bf8b832094ecbba341d7b684
+  stdout_path: logs/017-ga-check-anti-fabrication.stdout
+  stderr_path: logs/017-ga-check-anti-fabrication.stderr
+- id: ga-check-arch-sem-debt
+  started_at: '2026-11-07T14:30:41Z'
+  finished_at: '2026-11-07T14:30:41Z'
+  exit_code: 0
+  stdout_sha256: 156e37e7e33e8d72eacc84ed522d6a1c7080f4ace7844b8368ea423ce344468e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/018-ga-check-arch-sem-debt.stdout
+  stderr_path: logs/018-ga-check-arch-sem-debt.stderr
+- id: ga-check-cross-version-debt
+  started_at: '2026-11-07T14:30:41Z'
+  finished_at: '2026-11-07T14:30:43Z'
+  exit_code: 0
+  stdout_sha256: b1f53c599d88fe19ed86a5ce8867c40f699683a18a574c4909f0449aab238ac5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/019-ga-check-cross-version-debt.stdout
+  stderr_path: logs/019-ga-check-cross-version-debt.stderr
+- id: ga-check-int-debt
+  started_at: '2026-11-07T14:30:43Z'
+  finished_at: '2026-11-07T14:30:43Z'
+  exit_code: 0
+  stdout_sha256: e4f05b85eaabf0294885718ae12940d84e1e9af4ea644dd4fcd15e069b29bf5c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/020-ga-check-int-debt.stdout
+  stderr_path: logs/020-ga-check-int-debt.stderr
+- id: ga-check-full-gate-verification
+  started_at: '2026-11-07T14:30:43Z'
+  finished_at: '2026-11-07T15:10:14Z'
+  exit_code: 1
+  stdout_sha256: 80650c8cb024681ce53788eea44b9ba5ec7325fdcb278cad9eb27d3f178b06a5
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/021-ga-check-full-gate-verification.stdout
+  stderr_path: logs/021-ga-check-full-gate-verification.stderr
+- id: ga-check-drift-not-pass
+  started_at: '2026-11-07T15:10:14Z'
+  finished_at: '2026-11-07T15:10:16Z'
+  exit_code: 1
+  stdout_sha256: 234bac494ceba178ec3487bcc59e1563f0253a06b65a11be0878d989a04a685b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/022-ga-check-drift-not-pass.stdout
+  stderr_path: logs/022-ga-check-drift-not-pass.stderr
+- id: ga-check-architecture-freeze
+  started_at: '2026-11-07T15:10:16Z'
+  finished_at: '2026-11-07T15:10:16Z'
+  exit_code: 0
+  stdout_sha256: 4362d2db12b92618111bdc1cc0cff79dce811b635223cf3457a7e06c4fd9b691
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/023-ga-check-architecture-freeze.stdout
+  stderr_path: logs/023-ga-check-architecture-freeze.stderr
+- id: ga-check-gate-self-verification
+  started_at: '2026-11-07T15:10:16Z'
+  finished_at: '2026-11-07T15:10:22Z'
+  exit_code: 0
+  stdout_sha256: e9beec87cbcbcc61b963d388fe4e4d2a6728ea7fd7484a766610aa1628994be6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/024-ga-check-gate-self-verification.stdout
+  stderr_path: logs/024-ga-check-gate-self-verification.stderr
+- id: ga-check-gate-test-integrity
+  started_at: '2026-11-07T15:10:22Z'
+  finished_at: '2026-11-07T15:10:27Z'
+  exit_code: 0
+  stdout_sha256: c9d2106873cfa92ea970ff47d60a26568c4ed0797092507ee6589448e90705db
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/025-ga-check-gate-test-integrity.stdout
+  stderr_path: logs/025-ga-check-gate-test-integrity.stderr
+- id: ga-check-gate-executability
+  started_at: '2026-11-07T15:10:27Z'
+  finished_at: '2026-11-07T15:10:27Z'
+  exit_code: 0
+  stdout_sha256: 7c8ea58fd8dde1d857a6479673a069b44e9be54b46e1189c23a3f4b294f51b60
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/026-ga-check-gate-executability.stdout
+  stderr_path: logs/026-ga-check-gate-executability.stderr
+- id: ga-check-coverage-v312
+  started_at: '2026-11-07T15:10:27Z'
+  finished_at: '2026-11-07T15:13:47Z'
+  exit_code: 0
+  stdout_sha256: ee61b28e4123cb0c1e5754454c9dbd6e0c3ca89959db90657a10fe8250fdb2b1
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/027-ga-check-coverage-v312.stdout
+  stderr_path: logs/027-ga-check-coverage-v312.stderr
+- id: ga-check-coverage-single-implementation
+  started_at: '2026-11-07T15:13:47Z'
+  finished_at: '2026-11-07T15:13:47Z'
+  exit_code: 1
+  stdout_sha256: f81393e70f39ef65d288d1ac6f78615ac328dd9442e7e0c137df8da54502c25e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/028-ga-check-coverage-single-implementation.stdout
+  stderr_path: logs/028-ga-check-coverage-single-implementation.stderr
+- id: ga-check-tests-dont-write-archived-evidence
+  started_at: '2026-11-07T15:13:47Z'
+  finished_at: '2026-11-07T15:13:47Z'
+  exit_code: 0
+  stdout_sha256: af07448babf5a97ff82cc384b87f1b6183dfa2d8b96aa00fe504ca292cbadea0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/029-ga-check-tests-dont-write-archived-evidence.stdout
+  stderr_path: logs/029-ga-check-tests-dont-write-archived-evidence.stderr
+- id: ga-check-commit-message
+  started_at: '2026-11-07T15:13:47Z'
+  finished_at: '2026-11-07T15:13:48Z'
+  exit_code: 1
+  stdout_sha256: dd2b7ff91c699e076222d972a7d215adace91ce9b1c3fed3b9519e7b28fe797d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/030-ga-check-commit-message.stdout
+  stderr_path: logs/030-ga-check-commit-message.stderr
+- id: ga-check-sql-corpus-gate
+  started_at: '2026-11-07T15:13:48Z'
+  finished_at: '2026-11-07T15:14:00Z'
+  exit_code: 0
+  stdout_sha256: 245051ea7dea1eb1cf64cf73b5484009e81eacf0c61c5778bc21a53d3948a60d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/031-ga-check-sql-corpus-gate.stdout
+  stderr_path: logs/031-ga-check-sql-corpus-gate.stderr
+- id: ga-check-anti-ignore-gate
+  started_at: '2026-11-07T15:14:00Z'
+  finished_at: '2026-11-07T15:14:01Z'
+  exit_code: 0
+  stdout_sha256: 9ce41ded00cdfd661e93fa559c67fbeefd3478c9db69ea335e61f9b7d6ae7bb2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/032-ga-check-anti-ignore-gate.stdout
+  stderr_path: logs/032-ga-check-anti-ignore-gate.stderr
+- id: ga-cargo test --all-features
+  started_at: '2026-11-07T15:14:01Z'
+  finished_at: '2026-11-07T15:26:50Z'
+  exit_code: 101
+  stdout_sha256: 923cb30148389e3275e93bb650730849f42086a69e3f39b6c405fa0981678037
+  stderr_sha256: be3f03364c22994266d45479e31f00e9a8a43d000c81a1708456fb5c9e71d677
+  stdout_path: logs/033-ga-cargo test --all-features.stdout
+  stderr_path: logs/033-ga-cargo test --all-features.stderr
+- id: ga-cargo fmt --check
+  started_at: '2026-11-07T15:26:50Z'
+  finished_at: '2026-11-07T15:26:53Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/034-ga-cargo fmt --check.stdout
+  stderr_path: logs/034-ga-cargo fmt --check.stderr
+- id: ga-cargo clippy --all-features -- -D warnings
+  started_at: '2026-11-07T15:26:53Z'
+  finished_at: '2026-11-07T15:26:54Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 358434368432a659e6ef83039260ed98d88fb244724920ecb3c8d56d7d54a318
+  stdout_path: logs/035-ga-cargo clippy --all-features -- -D warnings.stdout
+  stderr_path: logs/035-ga-cargo clippy --all-features -- -D warnings.stderr
+- id: lint1-clippy-all-targets-keepgoing
+  started_at: '2026-11-07T15:26:54Z'
+  finished_at: '2026-11-07T15:31:06Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 8c46f8cd09013bd9e646333402a1416d9c1c2f9ffb4d163edb994b2730548ce3
+  stdout_path: logs/036-lint1-clippy-all-targets-keepgoing.stdout
+  stderr_path: logs/036-lint1-clippy-all-targets-keepgoing.stderr
+notes: |
+  36 条命令（GA 清单 35 条原文 + 1 条 `lint1-clippy-all-targets-keepgoing` 取证臂）：
+  **28 绿 / 8 红**（exit_code 全部取自本 manifest results 段）。
+  红 1 `ga-check-sem1-savepoint` rc=1：`❌ FAIL: execute_savepoint method missing in execution_engine.rs` ⇒ 产品缺口。
+  红 2 `ga-check-g1-tpch-baseline` rc=1：`G1 FAIL: at least one sub-check failed` ⇒ 性能基线红（此前从未有有效读数）。
+  红 3 `ga-check-anti-fabrication` rc=1：`[ERROR] V312-24: target/release/sqlancer not built; cannot produce report`
+      ⇒ GA 清单里没有任何一条构建 sqlancer ⇒ **清单缺前置**。
+  红 4 `ga-check-full-gate-verification` rc=1：`Required action: fix gate scripts to exit 1 on DRIFT (not exit 0).`
+  红 5 `ga-check-drift-not-pass` rc=1：报出 4 个唯一 `|| true` 位置，全在 `scripts/gate/legacy/` 下
+      （那不是门禁目录，分母 168 只数 `scripts/gate/check_*.sh` 一层）⇒ 扫描范围 vs 实际门禁集的口径问题。
+  红 6 `ga-check-coverage-single-implementation` rc=1：`a second coverage implementation is either unlisted or broken`。
+  红 7 `ga-check-commit-message` rc=1：5 条 BAD_SHAPE **全是 omp-macmini 线的提交**（类型表没有 `audit`、不允许 `+` 连写）
+      ⇒ 我自己的提交规范错误；另 NO_REFS 38 条。已入库历史不重写，后续改用 `chore(audit):`/`fix(audit):` 并带 issue 号。
+  红 8 `ga-cargo test --all-features` rc=101：**只红 1 个测试** —— `bare_column_name_updates_every_table`
+      （`tests/multi_table_update_5117.rs:62`）panic `ExecutionError("No such file or directory (os error 2)")`，
+      崩在准备阶段（`FileStorage::new(dir).unwrap()`）；该测试不在 ignore_registry、文件内也无 `#[ignore]`。
+  绿臂要点：`cargo build --all-features` 30.17s；`check_coverage_v312` ⇒ `average coverage: 87.75% (threshold: 85%) — measured 8/8 crates`；
+  `cargo clippy --all-features -- -D warnings` 绿；**取证臂** `cargo clippy --workspace --all-features --all-targets --keep-going`
+  ⇒ stderr 115086 字节、`^warning` **280 行**（分类：mut 47 / field-assign 26 / vec! 21 / always-false 21 / PathBuf 11 / complex-type 8），
+  这条**刻意不带 `-D warnings`**（要的是欠账清单本身，带上 `-D` 就只剩退出码）—— 它替掉了那份已丢失的 279 条仓外工件，
+  且是**新增取证臂**（`lint1-` 前缀、非 `check_*`、不进 STAGE_CONFIG ⇒ 门禁分母 168 未动）。
+  另记：`ga-check-rc-ga-gate` 在 stderr 报 `line 1250: [: 00: integer expression expected` 的同时 **rc 仍为 0**
+  ⇒ 自身比较失真却照旧判绿（fail-open 的又一实例），该结论不可当绿证据引用。
+  `environment.worktree_clean=false` 是归档工具自指（freeze 先写 commit.txt），同 DIRT-1 forensics 口径，不改判据。
+  偏差声明（BRANCH_GOVERNANCE §5.4.1）：CI 执行面已死（#5597，runner 全 Blocked）⇒ 本 run 是 CI 绿灯的替代品；
+  本仓无第二身份可评审 ⇒ 评审缺失同样记为偏差。冷缓存说明：本次跑前按属主指示清过 target/debug（132 GB → 保留 release）。
+evidence_hash: sha256:d64dee3ffb3344bbd8e421593ccda701aee570a9f43c59a05aa76c2494302ff3
+completed_at: '2026-11-07T15:31:06Z'

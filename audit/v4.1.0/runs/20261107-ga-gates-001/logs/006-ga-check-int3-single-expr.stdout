@@ -1,0 +1,8 @@
+=== G3 Gate: INT-3 (#3170) Single Expression Engine ===
+  [1/3] ✅ PASS: sqlrustgo-parser has 0 clippy warnings
+  [2/3] ✅ PASS: parse_json_path_expression is reserved (allow(dead_code))
+  [3/3] ✅ PASS: parse_expression chains through parse_or_expression
+
+=== G3 Gate: PASS ===
+INT-3 (#3170) Single Expression Engine: zero parser clippy warnings
+and single-source parse_expression chain verified
