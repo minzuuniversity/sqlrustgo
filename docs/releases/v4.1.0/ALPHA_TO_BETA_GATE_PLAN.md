@@ -108,3 +108,20 @@ review:
 - `docs/governance/ISSUE_CLOSING_VERIFICATION.md`
 - `docs/governance/adr/ADR-008-test-claim-transparency.md`
 - `docs/governance/adr/ADR-014-multi-ai-coordination.md`
+
+## 7. 本轮复跑记录（2026-11-08 起，按 ALPHA → … 逐阶段推进）
+
+Owner 2026-11-08 裁决：8 项批准；**阶段推进必须按本文件的 AB-01..AB-10 逐项取证，不得跳过或直接通过**；
+证据必须是**非 AI 判断的证据**（归档 run id + evidence_hash(sha256) + 门禁 rc + 干净检出复现命令 + 独立 Reviewer 回执）。
+
+| 阶段 | 必取证据（槽位） | 当前状态 |
+|---|---|---|
+| ALPHA | ALPHA 清单 10 条的归档 run（`commands_alpha_gates_001.yaml`）在**不清理/不重建 target**的窗口重跑 ⇒ run 20261107-alpha-gates-002 | 待重跑（首跑 7 绿/3 红，其中 coverage 红为共享 target 重建期的测量假红） |
+| ALPHA→BETA | AB-01..AB-10 每项的证据 + 独立 Reviewer 回执（Hub issue #133） | 等待 Reviewer 指派 |
+| BETA→RC | 同上（RC 清单 + RC 证据包） | 未开始 |
+| RC→GA | 同上（RC 清单 + GA 清单 + 承载分支 release/v4.1.0） | 未开始（`ga_declared` 保持 false） |
+
+**执行纪律（本轮新增）**：归档工作树必须把 `target` 指向共享 `CARGO_TARGET_DIR`（软链）——
+否则崩溃用例找不到 `target/debug/sqlrustgo-mysql-server`、AFP 门禁找不到 `target/release/sqlancer`，
+而覆盖率会对着正在重建的 target 测量 ⇒ 三类假红同源（2026-11-08 已定位）。
+
