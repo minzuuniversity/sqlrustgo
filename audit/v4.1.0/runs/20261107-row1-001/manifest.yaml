@@ -1,0 +1,53 @@
+schema_version: 1
+run_id: 20261107-row1-001
+source_agent: omp-macmini
+frozen_commit: 9ed6800be931a8b66fec512100758794c689dc41
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: row1-probe-selftest
+  name: ROW-1 判据的自检：4 个反向变异臂（引用红臂⇒必须被抓 / acceptance 已改写⇒不得抓 / 引用绿臂⇒不得抓 / 无归档引用⇒报 UNVERIFIED）
+  cmd: python3.14 audit/v4.1.0/probe_row1_acceptance_sync.py --selftest
+  cwd: .
+  timeout_sec: 600
+- id: row1-probe-board
+  name: ROW-1 判据在当前看板上的实跑
+  cmd: python3.14 audit/v4.1.0/probe_row1_acceptance_sync.py
+  cwd: .
+  timeout_sec: 600
+results:
+- id: row1-probe-selftest
+  started_at: '2026-11-07T16:49:23Z'
+  finished_at: '2026-11-07T16:49:23Z'
+  exit_code: 0
+  stdout_sha256: 4c71ec2a56c599acf4c088facc67c8150431c6da3eaba0ca1a9afa18a9001b49
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-row1-probe-selftest.stdout
+  stderr_path: logs/001-row1-probe-selftest.stderr
+- id: row1-probe-board
+  started_at: '2026-11-07T16:49:23Z'
+  finished_at: '2026-11-07T16:49:23Z'
+  exit_code: 0
+  stdout_sha256: bf941f02410888d39b8f6698ca1b3f9e344d3c2e3d2e25d60ec1f0cf44341adb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-row1-probe-board.stdout
+  stderr_path: logs/002-row1-probe-board.stderr
+notes: |
+  2 条命令全绿：`row1-probe-selftest`（4 个反向变异臂全过：引用红臂⇒必须被抓 / acceptance 已改写⇒不得抓 /
+  引用绿臂⇒不得抓 / 无归档引用⇒报 UNVERIFIED）与 `row1-probe-board`
+  （当前看板：`rows=103 ok=103 offenders=[] unverified=[] verdict=OK`）。
+  ⇒ ROW-1 的验收要的「可跑判据 + 反向变异」现在有承载体，不再是「靠人眼扫」；
+  唯一未闭环的是「该探针还没有门禁执行点」（挂既有 job 属 AGENTS 2.1 的不可协商项 ⇒ 属主定）。
+  偏差按 §5.4.1 声明：CI 执行面已死（#5597）⇒ 本地归档 run 替代 CI 绿灯；无第二身份评审。
+evidence_hash: sha256:3f9b15242ae59807255a021e7df2565aa2a723893ed365a09236318eda76d02b
+completed_at: '2026-11-07T16:49:23Z'
