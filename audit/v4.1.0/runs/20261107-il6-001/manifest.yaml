@@ -1,0 +1,61 @@
+schema_version: 1
+run_id: 20261107-il6-001
+source_agent: omp-macmini
+frozen_commit: 98dbfa65a36444a7b2d7aad407c47fd122ef4f19
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: il6-inflight-experiment
+  name: IL-6 判别实验：同一门禁在「基线 / 有进行中的 run 目录 / 移除后」三态下的红数（用红数隔离自指效应，因为基线本身就红）
+  cmd: python3.14 audit/v4.1.0/il6_inflight_experiment.py --json
+  cwd: .
+  timeout_sec: 3600
+- id: il6-selfref-probe
+  name: IL-6 机制侧：仓内自指探针的反向变异臂（扫到进行中目录 ⇒ 变红；exclude-run ⇒ 红数下降）
+  cmd: python3.14 audit/v4.1.0/il6_selfref_probe.py
+  cwd: .
+  timeout_sec: 1800
+results:
+- id: il6-inflight-experiment
+  started_at: '2026-11-07T16:56:41Z'
+  finished_at: '2026-11-07T16:56:55Z'
+  exit_code: 0
+  stdout_sha256: 4911d04f93aa9dccfc3eb6fcb18c3204f1079f6302b38a14a97fb6374a86f5c8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-il6-inflight-experiment.stdout
+  stderr_path: logs/001-il6-inflight-experiment.stderr
+- id: il6-selfref-probe
+  started_at: '2026-11-07T16:56:55Z'
+  finished_at: '2026-11-07T16:57:18Z'
+  exit_code: 0
+  stdout_sha256: ae150b7a62b4e8bff580f2d01795c613afa8f931dec7bc8e52fced824d301809
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-il6-selfref-probe.stdout
+  stderr_path: logs/002-il6-selfref-probe.stderr
+notes: |
+  2 条命令全绿：
+  - `il6-inflight-experiment`：三态读数 `baseline rc=1 fail_lines=8` / `inflight rc=1 fail_lines=8` /
+    `after_removal rc=1 fail_lines=8` ⇒ `self_reference_effect = 0` ⇒ **现行实现并没有把「正在执行的 run 目录」
+    计入判定**，IL-6 描述的自指效应在今天**不复现**。
+    （为什么用红数而不是 rc：本行验收写的「run 内 rc=1 / run 后 rc=0」今天不可达 —— **基线本身就红**
+    （历史 hollow-manifest 那批，8 条 FAIL、其中 5 条「exit_code 声明不可复核」，见看板 P0-6），
+    与自指效应无关 ⇒ 只能用红数隔离。）
+  - `il6-selfref-probe`：仓内自指探针 4/4 绿 —— `inflight-not-red`（rc=1、in-flight run red=False、total reds=8）、
+    `worktree-scan-mutation`（rc=1、**red=True**、total reds=10 ⇒ 机制被证明存在）、
+    `history-not-relaxed`（**历史红 7/7** ⇒ 没有放宽对历史判据）、
+    `exclude-run-option`（victim run reds **8 → 7**、skipped=True ⇒ 验收给的第二个处置方案确实可用）。
+  两个处置方案的现状：①「按 frozen_commit 树扫描」= 门禁判定语义变更 ⇒ 属 AGENTS 3.2/§8-7 需属主批准；
+  ②「显式排除 --exclude-run」已实现且已验证，但现行实现本来就不需要它 ⇒ 属备用开关。
+  偏差按 §5.4.1 声明：CI 执行面已死（#5597）⇒ 本地归档 run 替代 CI 绿灯；无第二身份评审。
+evidence_hash: sha256:972dd63ab411af8deb2bad5fc71b52c99246255fe75664fa3b3aed27d348e226
+completed_at: '2026-11-07T16:57:18Z'
