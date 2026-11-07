@@ -1,0 +1,10 @@
+- id: a04-repro-current-engine
+  name: 正臂：当前构建的引擎二进制 ⇒ 归档证据必须逐字节复现（drift 必须是 0）
+  cmd: bash scripts/gate/check_a04_evidence_reproducible.sh
+  cwd: .
+  timeout_sec: 1800
+- id: a04-repro-stale-global-engine
+  name: 反向变异臂：把引擎指向 2026-02-21 的陈旧全局 sqlrustgo ⇒ 必须转 NOT RUN 披露且不得再报证据漂移（IL-10 验收）
+  cmd: SQLRUSTGO_BIN="$HOME/.cargo/bin/sqlrustgo" bash scripts/gate/check_a04_evidence_reproducible.sh
+  cwd: .
+  timeout_sec: 1800
