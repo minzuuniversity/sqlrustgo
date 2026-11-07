@@ -1,5 +1,4 @@
-- &id001
-  id: ga-cargo build --all-features
+- id: ga-cargo build --all-features
   name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo build --all-features
   cmd: cargo build --all-features
   cwd: .
@@ -159,7 +158,6 @@
   cmd: bash scripts/gate/check_anti_ignore_gate.sh
   cwd: .
   timeout_sec: 1800
-- *id001
 - id: ga-cargo test --all-features
   name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo test --all-features
   cmd: cargo test --all-features
