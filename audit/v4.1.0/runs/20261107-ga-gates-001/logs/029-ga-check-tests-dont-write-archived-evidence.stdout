@@ -1,0 +1,5 @@
+=== L1 - static: write calls targeting a docs/ path directly ===
+PASS: L1 - no write call targets a docs/ path directly
+=== L2 - behavioural: tracked files under docs/ were modified ===
+PASS: L2 - no tracked file under docs/ was modified
+RESULT: PASS
