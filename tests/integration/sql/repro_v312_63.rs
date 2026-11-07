@@ -3,9 +3,23 @@ use parking_lot::RwLock;
 use sqlrustgo::{ExecutionEngine, FileStorage, MemoryStorage};
 use std::sync::Arc;
 
+/// Process-local counter for the temporary data directory.
+///
+/// The 14 tests in this binary all call `fresh_file()`; the directory name used
+/// to be `pid + SystemTime::now().as_nanos()` only, i.e. **no per-call
+/// discriminator**. Under parallel execution two threads can read the same
+/// timestamp, one thread's `remove_dir_all` then deletes the directory the
+/// other one just created, and `FileStorage::new_with_buffer_config` fails with
+/// ENOENT — the same failure mode that was measured in
+/// `tests/multi_table_update_5117.rs` (see the fix there and board row GA-CARGO1).
+/// The counter makes the name unique per call by construction.
+static DATA_DIR_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 fn fresh_file() -> ExecutionEngine<FileStorage> {
+    let n = DATA_DIR_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
-        "v312_63_repro_{}",
+        "v312_63_repro_{}_{}",
+        n,
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
