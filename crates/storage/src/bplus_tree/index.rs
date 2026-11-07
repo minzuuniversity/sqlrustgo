@@ -1945,7 +1945,7 @@ mod tests {
 
     #[test]
     fn test_composite_btree_index_insert() {
-        let mut index = CompositeBTreeIndex::new(2);
+        let _index = CompositeBTreeIndex::new(2);
     }
 
     // Full-text search index tests
@@ -2473,7 +2473,7 @@ mod composite_index_tests {
 
 #[cfg(test)]
 mod covering_index_tests {
-    use super::*;
+    
 
     #[test]
     fn test_covering_index_check() {

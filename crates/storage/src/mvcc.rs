@@ -592,7 +592,7 @@ mod tests {
 
     #[test]
     fn test_find_visible_at_snapshot_before_all() {
-        let t = VersionedTable::new();
+        let _t = VersionedTable::new();
         // No versions yet — find_visible on empty chain.
         assert!(find_visible(&[], 0, 0).is_none());
         assert!(find_visible(&[], u64::MAX, 0).is_none());

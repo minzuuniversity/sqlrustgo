@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn test_to_update_plan_multi_table_error() {
-        let mut stmt = update_stmt(vec![table("a"), table("b")], vec![], None);
+        let stmt = update_stmt(vec![table("a"), table("b")], vec![], None);
         let result = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"]));
         assert!(result.is_err());
         assert!(format!("{}", result.unwrap_err()).contains("single-table"));
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_to_update_plan_no_where() {
-        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("1"))], None);
+        let stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("1"))], None);
         let plan = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).unwrap();
         match plan.predicate {
             PredicateIR::All => {}
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_to_update_plan_with_where() {
-        let mut stmt = update_stmt(
+        let stmt = update_stmt(
             vec![table("t")],
             vec![("x".to_string(), lit("1"))],
             Some(Expression::BinaryOp(
@@ -228,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_to_update_plan_set_clauses() {
-        let mut stmt = update_stmt(
+        let stmt = update_stmt(
             vec![table("t")],
             vec![("a".to_string(), lit("1")), ("b".to_string(), ident("c"))],
             None,
@@ -240,19 +240,19 @@ mod tests {
 
     #[test]
     fn test_convert_expr_literal_null() {
-        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("NULL"))], None);
+        let stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("NULL"))], None);
         assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok());
     }
 
     #[test]
     fn test_convert_expr_literal_true() {
-        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("TRUE"))], None);
+        let stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit("TRUE"))], None);
         assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok());
     }
 
     #[test]
     fn test_convert_expr_literal_false() {
-        let mut stmt = update_stmt(
+        let stmt = update_stmt(
             vec![table("t")],
             vec![("x".to_string(), lit("FALSE"))],
             None,
@@ -263,7 +263,7 @@ mod tests {
     #[test]
     fn test_convert_expr_literal_integer() {
         for s in &["0", "42", "-7", "999999"] {
-            let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit(s))], None);
+            let stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit(s))], None);
             assert!(
                 AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok(),
                 "failed for {}",
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn test_convert_expr_literal_float() {
         for s in &["0.5", "-3.14"] {
-            let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit(s))], None);
+            let stmt = update_stmt(vec![table("t")], vec![("x".to_string(), lit(s))], None);
             assert!(
                 AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).is_ok(),
                 "failed for {}",
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_convert_expr_literal_string() {
-        let mut stmt = update_stmt(
+        let stmt = update_stmt(
             vec![table("t")],
             vec![("x".to_string(), lit("hello"))],
             None,
@@ -301,28 +301,28 @@ mod tests {
     #[test]
     fn test_convert_expr_is_null() {
         let expr = Expression::IsNull(Box::new(ident("x")));
-        let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
+        let stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
         assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x", "y"])).is_ok());
     }
 
     #[test]
     fn test_convert_expr_is_not_null() {
         let expr = Expression::IsNotNull(Box::new(ident("x")));
-        let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
+        let stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
         assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x", "y"])).is_ok());
     }
 
     #[test]
     fn test_convert_expr_unsupported() {
         let expr = Expression::FunctionCall("SUM".to_string(), vec![]);
-        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), expr)], None);
+        let stmt = update_stmt(vec![table("t")], vec![("x".to_string(), expr)], None);
         let err = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x"])).unwrap_err();
         assert!(format!("{}", err).contains("unsupported"));
     }
 
     #[test]
     fn test_convert_assignments_column_not_found() {
-        let mut stmt = update_stmt(
+        let stmt = update_stmt(
             vec![table("t")],
             vec![("nonexistent".to_string(), lit("1"))],
             None,
@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn test_convert_expr_binary_op_complex() {
         let expr = Expression::BinaryOp(Box::new(ident("a")), "+".to_string(), Box::new(lit("1")));
-        let mut stmt = update_stmt(vec![table("t")], vec![("x".to_string(), expr)], None);
+        let stmt = update_stmt(vec![table("t")], vec![("x".to_string(), expr)], None);
         assert!(AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["a", "x"])).is_ok());
     }
 
@@ -342,7 +342,7 @@ mod tests {
     fn test_convert_expr_unary_op_minus() {
         // Expression::UnaryOp branch — cover lines 63-69 of convert_expr.
         let expr = Expression::UnaryOp("-".to_string(), Box::new(ident("x")));
-        let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
+        let stmt = update_stmt(vec![table("t")], vec![("y".to_string(), expr)], None);
         let plan = AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["x", "y"]))
             .expect("unary - should parse");
         // The PredicateIR::All path (no WHERE) yields the conversion of -x into ExprIR::Unary.
@@ -356,7 +356,7 @@ mod tests {
     fn test_convert_expr_unary_op_not() {
         // Logical NOT is also Expression::UnaryOp
         let expr = Expression::UnaryOp("NOT".to_string(), Box::new(ident("flag")));
-        let mut stmt = update_stmt(vec![table("t")], vec![("enabled".to_string(), expr)], None);
+        let stmt = update_stmt(vec![table("t")], vec![("enabled".to_string(), expr)], None);
         assert!(
             AstAdapter::to_update_plan(&stmt, &make_table_info(vec!["flag", "enabled"])).is_ok()
         );
@@ -384,7 +384,7 @@ mod tests {
                 Box::new(Expression::Literal("1".into())),
             );
         }
-        let mut stmt = update_stmt(vec![table("t")], vec![("y".to_string(), nested)], None);
+        let stmt = update_stmt(vec![table("t")], vec![("y".to_string(), nested)], None);
         // 200-level nested binary op — convert_expr recurses but does NOT
         // pass depth through, so this just tests depth-tracking fires only
         // if convert_expr_with_depth is invoked. Most paths will succeed
@@ -396,7 +396,7 @@ mod tests {
     fn test_parse_literal_true_and_false() {
         // Cover parse_literal TRUE/FALSE branches (lines 89-91).
         // These are exercised through to_update_plan assignments.
-        let mut stmt_true = update_stmt(
+        let stmt_true = update_stmt(
             vec![table("t")],
             vec![("active".to_string(), lit("TRUE"))],
             None,
@@ -406,7 +406,7 @@ mod tests {
         // Plan was built — parse_literal took the TRUE branch.
         assert!(!plan.mutation.assignments.is_empty());
 
-        let mut stmt_false = update_stmt(
+        let stmt_false = update_stmt(
             vec![table("t")],
             vec![("active".to_string(), lit("FALSE"))],
             None,

@@ -61,7 +61,7 @@ fn test_correctness_n1_vs_n4_larger() {
         })
         .collect();
     let probe: Vec<Vec<Value>> = (0..50)
-        .map(|i| vec![Value::Integer((i % 7)), Value::Integer(i * 10)])
+        .map(|i| vec![Value::Integer(i % 7), Value::Integer(i * 10)])
         .collect();
 
     let p = ParallelHashJoin::new(4);

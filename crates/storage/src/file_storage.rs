@@ -2624,7 +2624,7 @@ mod tests {
         let _ = remove_dir_all(&temp_dir);
 
         {
-            let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+            let storage = FileStorage::new(temp_dir.clone()).unwrap();
 
             // Insert a table
             let table_data = TableData {
@@ -2707,7 +2707,7 @@ mod tests {
             rows: vec![],
         };
 
-        let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+        let storage = FileStorage::new(temp_dir.clone()).unwrap();
         storage
             .insert_table("test".to_string(), table_data)
             .unwrap();
@@ -2732,7 +2732,7 @@ mod tests {
         let temp_dir = unique_test_path("sqlrustgo_test_persist");
         let _ = remove_dir_all(&temp_dir);
 
-        let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+        let storage = FileStorage::new(temp_dir.clone()).unwrap();
 
         // Create table without saving
         let table_data = TableData {
@@ -3037,7 +3037,7 @@ mod tests {
         let temp_dir = unique_test_path("sqlrustgo_test_empty");
         let _ = remove_dir_all(&temp_dir);
 
-        let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+        let storage = FileStorage::new(temp_dir.clone()).unwrap();
 
         // Test empty storage
         assert_eq!(storage.table_names().len(), 0);
@@ -3166,7 +3166,7 @@ mod tests {
         let temp_dir = unique_test_path("sqlrustgo_test_drop_no");
         let _ = remove_dir_all(&temp_dir);
 
-        let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+        let storage = FileStorage::new(temp_dir.clone()).unwrap();
 
         // Try to drop index from non-existent table - should return Ok (no-op)
         let result = storage.drop_index("nonexistent", "id");
@@ -3564,7 +3564,7 @@ mod tests {
 
     #[test]
     fn test_insert_table() {
-        let mut storage = make_storage("fs_insert_table");
+        let storage = make_storage("fs_insert_table");
         let info = TableInfo {
             name: "t1".into(),
             columns: vec![ColumnDefinition::new("x", "INTEGER")],
@@ -3633,14 +3633,14 @@ mod tests {
 
     #[test]
     fn test_drop_database_nonexistent() {
-        let mut storage = make_storage("fs_drop_db_ne");
+        let storage = make_storage("fs_drop_db_ne");
         let result = storage.drop_database("nonexistent_db");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_create_database() {
-        let mut storage = make_storage("fs_create_db");
+        let storage = make_storage("fs_create_db");
         let result = storage.create_database("my_db");
         assert!(result.is_ok());
         let _ = std::fs::remove_dir_all(storage.data_dir.join("my_db"));
@@ -3671,7 +3671,7 @@ mod tests {
 
     #[test]
     fn test_flush_all_buffers_extra() {
-        let mut storage = make_storage("fs_flush_all_ex");
+        let storage = make_storage("fs_flush_all_ex");
         storage.flush_all_buffers().unwrap();
     }
 
@@ -4083,7 +4083,7 @@ mod tests {
 
     #[test]
     fn test_create_database_storage() {
-        let mut storage = make_storage("fs_create_db_s");
+        let storage = make_storage("fs_create_db_s");
         storage.create_database("db1").unwrap();
         let path = storage.data_dir.join("db1");
         assert!(path.exists());
@@ -4092,7 +4092,7 @@ mod tests {
 
     #[test]
     fn test_drop_database_nonempty() {
-        let mut storage = make_storage("fs_drop_db_ne2");
+        let storage = make_storage("fs_drop_db_ne2");
         storage.create_database("db1").unwrap();
         let path = storage.data_dir.join("db1");
         std::fs::write(path.join("marker.txt"), "x").unwrap();
@@ -4313,7 +4313,7 @@ mod tests {
         storage.create_trigger(trigger).unwrap();
         drop(storage);
 
-        let mut storage2 = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
+        let storage2 = FileStorage::new_with_wal(temp_dir.clone()).unwrap();
         let got = storage2.get_trigger("trig_disk");
         assert!(got.is_some());
         let _ = remove_dir_all(&temp_dir);
@@ -4575,7 +4575,7 @@ mod tests {
 
     #[test]
     fn test_partition_rows_uneven_remainder() {
-        let mut storage =
+        let _storage =
             FileStorage::new_with_buffer_config(unique_test_path("fs_pr_uneven"), 100, true)
                 .unwrap();
         let dir = unique_test_path("fs_pr_uneven");
@@ -4715,14 +4715,14 @@ mod tests {
 
     #[test]
     fn test_storage_engine_table_operations_empty() {
-        let mut storage = make_storage("fs_eng_empty");
+        let storage = make_storage("fs_eng_empty");
         assert!(storage.list_tables().is_empty());
         assert!(!storage.has_table("anytable"));
     }
 
     #[test]
     fn test_storage_engine_drop_index_nonexistent_table() {
-        let mut storage = make_storage("fs_drop_idx_ne");
+        let storage = make_storage("fs_drop_idx_ne");
         storage.drop_index("nonexistent", "col").unwrap();
     }
 }
@@ -7381,7 +7381,7 @@ mod parallel_scan_tests {
 
         // Create storage and insert test data
         {
-            let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+            let storage = FileStorage::new(temp_dir.clone()).unwrap();
 
             let table_data = TableData {
                 info: TableInfo {
@@ -7455,7 +7455,7 @@ mod parallel_scan_tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
 
         {
-            let mut storage = FileStorage::new(temp_dir.clone()).unwrap();
+            let storage = FileStorage::new(temp_dir.clone()).unwrap();
 
             let table_data = TableData {
                 info: TableInfo {
