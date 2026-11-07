@@ -1,0 +1,10 @@
+- id: lint1-batch1-clippy-count
+  name: 第一批后复测：clippy 欠账分类计数（该类应 47→0，其余各类应一字不变，总数 280→233）
+  cmd: cargo clippy --workspace --all-features --all-targets
+  cwd: .
+  timeout_sec: 5400
+- id: lint1-batch1-touched-crates-tests
+  name: 无行为变化证据：被改动 crate 的全部测试（executor + storage，含两个 tests 目录）
+  cmd: cargo test -p sqlrustgo-executor -p sqlrustgo-storage
+  cwd: .
+  timeout_sec: 5400
