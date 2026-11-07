@@ -1245,7 +1245,12 @@ run_d5_deepseek() {
     D5_TOTAL=$((D5_TOTAL+1))
     echo -n "  [D5-5] Root cause proven by experiment ... "
     # Check that WAL fixes have experiment evidence
-    WAL_FIXES=$(git log --oneline origin/develop/v3.8.0 | grep -c "WAL\|wal\|checkpoint\|truncate" || echo "0")
+    # `grep -c` 在**零匹配**时既打印 "0" 又以退出码 1 结束 ⇒ 旧的 `|| echo "0"` 会追加第二个 0，
+    # 变量变成多行 "0\n0" ⇒ `[ "$WAL_FIXES" -gt 0 ]` 直接报 `integer expression expected`，
+    # 这一项的判定根本没跑成（GA 归档 run 20261107-ga-gates-001 的 stderr 原文）。
+    # 修法：只留 `grep -c` 的输出（它本身就打印 0），并给空值兜底。
+    WAL_FIXES=$(git log --oneline origin/develop/v3.8.0 2>/dev/null | grep -c "WAL\|wal\|checkpoint\|truncate" || true)
+    WAL_FIXES=${WAL_FIXES:-0}
     echo "WAL-related commits in v3.8.0: $WAL_FIXES"
     if [ "$WAL_FIXES" -gt 0 ]; then
         log_pass "D5-5: WAL fixes documented"
