@@ -1,0 +1,52 @@
+=== run the A04 differential matrix (output goes to target/a04-5226/) ===
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.50s
+
+=== compare archived evidence against this run ===
+PASS: 60/60 comparable archived evidence file(s) match this run byte-for-byte.
+
+STATUS: NOT RUN for 40 archived file(s) - the engine that produces them is
+        unavailable in this environment (typically the PostgreSQL reference
+        container). Those files were NOT verified by this run:
+  NOT VERIFIED: agg_group_001_postgres.txt
+  NOT VERIFIED: agg_group_001_sqlrustgo_cli.txt
+  NOT VERIFIED: agg_having_002_postgres.txt
+  NOT VERIFIED: agg_having_002_sqlrustgo_cli.txt
+  NOT VERIFIED: arith_div_002_postgres.txt
+  NOT VERIFIED: arith_div_002_sqlrustgo_cli.txt
+  NOT VERIFIED: cast_int_text_001_postgres.txt
+  NOT VERIFIED: cast_int_text_001_sqlrustgo_cli.txt
+  NOT VERIFIED: colname_alias_001_postgres.txt
+  NOT VERIFIED: colname_alias_001_sqlrustgo_cli.txt
+  NOT VERIFIED: colname_expr_002_postgres.txt
+  NOT VERIFIED: colname_expr_002_sqlrustgo_cli.txt
+  NOT VERIFIED: coltype_int_001_postgres.txt
+  NOT VERIFIED: coltype_int_001_sqlrustgo_cli.txt
+  NOT VERIFIED: ddl_notnull_002_postgres.txt
+  NOT VERIFIED: ddl_notnull_002_sqlrustgo_cli.txt
+  NOT VERIFIED: ddl_pk_dup_001_postgres.txt
+  NOT VERIFIED: ddl_pk_dup_001_sqlrustgo_cli.txt
+  NOT VERIFIED: err_col_unknown_003_postgres.txt
+  NOT VERIFIED: err_col_unknown_003_sqlrustgo_cli.txt
+  NOT VERIFIED: err_no_such_table_001_postgres.txt
+  NOT VERIFIED: err_no_such_table_001_sqlrustgo_cli.txt
+  NOT VERIFIED: err_syntax_002_postgres.txt
+  NOT VERIFIED: err_syntax_002_sqlrustgo_cli.txt
+  NOT VERIFIED: join_inner_001_postgres.txt
+  NOT VERIFIED: join_inner_001_sqlrustgo_cli.txt
+  NOT VERIFIED: join_left_002_postgres.txt
+  NOT VERIFIED: join_left_002_sqlrustgo_cli.txt
+  NOT VERIFIED: null_select_001_postgres.txt
+  NOT VERIFIED: null_select_001_sqlrustgo_cli.txt
+  NOT VERIFIED: null_where_002_postgres.txt
+  NOT VERIFIED: null_where_002_sqlrustgo_cli.txt
+  NOT VERIFIED: order_limit_001_postgres.txt
+  NOT VERIFIED: order_limit_001_sqlrustgo_cli.txt
+  NOT VERIFIED: order_offset_002_postgres.txt
+  NOT VERIFIED: order_offset_002_sqlrustgo_cli.txt
+  NOT VERIFIED: sub_exists_002_postgres.txt
+  NOT VERIFIED: sub_exists_002_sqlrustgo_cli.txt
+  NOT VERIFIED: sub_scalar_001_postgres.txt
+  NOT VERIFIED: sub_scalar_001_sqlrustgo_cli.txt
+
+RESULT: PASS (with NOT RUN disclosure) - the verified subset is reproducible.
