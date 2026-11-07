@@ -774,7 +774,7 @@ mod tests {
             s.current_tx_id.load(std::sync::atomic::Ordering::Acquire),
             0
         );
-        let tx = s.begin_transaction().unwrap();
+        let _tx = s.begin_transaction().unwrap();
         // V311-09 experimental: commit_transaction writes to WAL but does
         // NOT reset current_tx_id (deferred — tracked separately). We only
         // assert the begin/commit plumbing succeeds.

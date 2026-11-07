@@ -1286,7 +1286,7 @@ mod tests {
     /// drop.
     #[test]
     fn test_resolve_entry_table_not_found_is_error() {
-        use crate::engine::StorageEngine;
+        
         let storage = MemoryStorage::new();
         let entry = insert_entry(99999, None);
         assert!(resolve_entry_table(&storage, &entry).is_err());

@@ -4143,10 +4143,7 @@ mod _storage_engine_pr2_compile_check {
 
 #[cfg(test)]
 mod tests {
-    use super::legacy_string_evaluator::{
-        compare_values, evaluate_sql_expression, find_top_level_op, get_column_value,
-        is_zero_or_empty,
-    };
+    use super::legacy_string_evaluator::evaluate_sql_expression;
     use super::*;
 
     /// #5025: build a minimal table description for tests that used to
@@ -4205,19 +4202,19 @@ mod tests {
     /// before #4218.2 lands.
     #[test]
     fn test_storage_engine_api_surface_v312_35() {
-        fn _check_create_view<E: StorageEngine>(e: &mut E) {
+        fn _check_create_view<E: StorageEngine>(_e: &mut E) {
             let _f: fn(&mut E, &str, crate::engine::ViewInfo) -> SqlResult<()> = E::create_view;
         }
-        fn _check_get_view<E: StorageEngine>(e: &E) {
+        fn _check_get_view<E: StorageEngine>(_e: &E) {
             let _f: fn(&E, &str, &str) -> Option<crate::engine::ViewInfo> = E::get_view;
         }
-        fn _check_list_views<E: StorageEngine>(e: &E) {
+        fn _check_list_views<E: StorageEngine>(_e: &E) {
             let _f: fn(&E, &str) -> Vec<String> = E::list_views;
         }
-        fn _check_set_cancel_flag<E: StorageEngine>(e: &mut E) {
+        fn _check_set_cancel_flag<E: StorageEngine>(_e: &mut E) {
             let _f: fn(&mut E, u64) -> SqlResult<()> = E::set_cancel_flag;
         }
-        fn _check_check_cancelled<E: StorageEngine>(e: &E) {
+        fn _check_check_cancelled<E: StorageEngine>(_e: &E) {
             let _f: fn(&E, u64) -> bool = E::check_cancelled;
         }
         let mut storage = MemoryStorage::new();

@@ -1,0 +1,62 @@
+schema_version: 1
+run_id: 20261108-lint1-001
+source_agent: omp-macmini
+frozen_commit: bd63b76231fba3b04ce3903431944019e1327b6e
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: lint1-batch1-clippy-count
+  name: 第一批后复测：clippy 欠账分类计数（该类应 47→0，其余各类应一字不变，总数 280→233）
+  cmd: cargo clippy --workspace --all-features --all-targets
+  cwd: .
+  timeout_sec: 5400
+- id: lint1-batch1-touched-crates-tests
+  name: 无行为变化证据：被改动 crate 的全部测试（executor + storage，含两个 tests 目录）
+  cmd: cargo test -p sqlrustgo-executor -p sqlrustgo-storage
+  cwd: .
+  timeout_sec: 5400
+results:
+- id: lint1-batch1-clippy-count
+  started_at: '2026-11-07T17:55:42Z'
+  finished_at: '2026-11-07T17:55:44Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 2f548ebb700523e61096d1d8ec00636a630002a6cc2928bd6d911c8a0f869961
+  stdout_path: logs/001-lint1-batch1-clippy-count.stdout
+  stderr_path: logs/001-lint1-batch1-clippy-count.stderr
+- id: lint1-batch1-touched-crates-tests
+  started_at: '2026-11-07T17:55:44Z'
+  finished_at: '2026-11-07T17:57:37Z'
+  exit_code: 101
+  stdout_sha256: 830c0d690e531c5798bce4f52b30252a0d0a1a81f1d80342540624f79bf7a2a0
+  stderr_sha256: efef7b23ec050ff8dac666350fbe675c264c0a8521942b1f6a12ba4a31f9346b
+  stdout_path: logs/002-lint1-batch1-touched-crates-tests.stdout
+  stderr_path: logs/002-lint1-batch1-touched-crates-tests.stderr
+notes: |
+  2 条命令：**clippy 复测绿**、**测试 1 失败**（该失败是**既有的 IDX-1 产品缺陷**，与本批无关 —— 已在**不含本批**的基线树上复现同样失败）。
+  ① `lint1-batch1-clippy-count`（rc=0）：`cargo clippy --workspace --all-features --all-targets` 复测
+     ⇒ `variable does not need to be mutable` 这一类**已清零**（基线 47）；其余各类计数见 stdout 的分类输出。
+     注：总数由基线 280 降到 209，差 71 而非 47 ⇒ 差额来自基线是在**合并 develop 之前**测的，
+     对照口径必须**同一树状态**才有意义（这一点已在本行 evidence 里写明）。
+  ② `lint1-batch1-touched-crates-tests`（rc=101）：`cargo test -p sqlrustgo-executor -p sqlrustgo-storage`
+     ⇒ 绝大多数通过，**唯一失败** `index_update_crash_does_not_serve_dangling_rows`
+     （`crates/storage/tests/crash_wal_index_b1.rs:231` ⇒ `ERROR 1146 (42000) at line 1: Table not found: t`）。
+     **该失败是既有的 IDX-1 产品缺陷**（`CREATE INDEX` 只认默认库 ⇒ 崩溃套件的种子在建索引那步就断），
+     **与本批无关**：在**不含本批改动**的基线工作树（develop tip）上跑同一条用例 ⇒ **同样失败、同样报错**。
+     ⇒ 本批自身的测试为绿；该红项按 IDX-1 单独跟踪。
+  **一处必要的环境修正**：归档工作树必须把 `target` 指向共享 `CARGO_TARGET_DIR`（软链），否则
+  `crates/storage/tests/fault_coordination.rs` 会按仓根相对路径找不到 `target/debug/sqlrustgo-mysql-server`
+  ⇒ 崩溃用例报「server binary not found」；同理 `check_anti_fabrication.sh` 会报「target/release/sqlancer not built」。
+  ⇒ **这是今天三个假红的共同根因之一**（ALPHA 的 coverage 29.72%、GA 的 AFP sqlancer、崩溃用例找不到 server）。
+  偏差按 §5.4.1 声明：CI 执行面已死（#5597）⇒ 本地归档 run 替代 CI 绿灯；评审为 Owner 本轮授权（见 Hub #70）。
+evidence_hash: sha256:c4be0850682c9ea654a8bafc1f4ab6c4a440a1cb4ef41d76f6e653f83153fec6
+completed_at: '2026-11-07T17:57:37Z'
