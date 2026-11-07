@@ -1535,3 +1535,169 @@ fn test_6335_test_job_prints_the_failing_tests_not_only_the_tail() {
         );
     }
 }
+
+// =============================================================================
+// DIRT-1：工作流 step 不得对「index 里不是 100755」的受跟踪文件做 chmod
+//
+// 现象（看板 DIRT-1）：跑完门禁/CI 相关的东西之后，`git status --porcelain` 会多出
+// ` M scripts/gate/resolve_release_version.sh` —— 只有模式位变了。而
+// `audit_run.py freeze` 以工作树干净为前置 ⇒ 每次取证都被迫多一步复位。
+// 这个坑仓里 2026-10-23 就写进文档了（`docs/releases/v4.1.0/evidence/
+// GA_MANDATORY_DOCS_BATCH27_2026-10-23.md` 结尾教人跑完再
+// `git checkout -- scripts/gate/resolve_release_version.sh`），但根因一直没修。
+//
+// 根因（实测，不是猜）：`.gitea/workflows/ci.yml` 里有 18 处 `chmod +x scripts/gate/…`，
+// 其中 **17 个目标在 index 里已经是 100755**（chmod 是空操作），只有
+// `resolve_release_version.sh` 登记的是 100644 ⇒ 全场只有这一处会把工作树弄脏。
+// 换句话说问题不是「谁在乱 chmod」，而是**这个文件的登记模式跟仓自己的约定不一致**
+// （`scripts/gate` 下 250 个登记项里 208 个是 100755）。
+//
+// 判据：任何工作流 step 里 `chmod +x <受跟踪路径>` 的目标，index 模式必须已经是
+// 100755，否则该 step 每跑一次就脏一次工作树 ⇒ 红。改前漏什么：登记成 644 的文件
+// 被 CI 每次改模式、工作树长期脏、取证多一步；改后多报什么：任何新增 step 只要 chmod
+// 一个非 755 的受跟踪文件就立刻红（含只 chmod 不 bash 的新 step）。
+// =============================================================================
+
+/// 从 step 的 run 体里抽出 `chmod +x <path>` 的目标。
+/// 丢掉整行注释：门禁脚本的注释里常写着「以前这里是 chmod +x …」，
+/// 不丢注释就会把说明当成缺陷本身。带 `$` 的目标（如 `scripts/gate/$g.sh`）
+/// 是循环里的动态路径，静态判据管不到 ⇒ 跳过，由循环体内的实际脚本各自受判。
+fn chmod_targets(body: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in strip_comments(body).lines() {
+        let toks: Vec<&str> = line.split_whitespace().collect();
+        for (i, t) in toks.iter().enumerate() {
+            if *t != "chmod" {
+                continue;
+            }
+            let mut j = i + 1;
+            while j < toks.len() && (toks[j].starts_with('-') || toks[j].starts_with('+')) {
+                j += 1;
+            }
+            if j >= toks.len() {
+                continue;
+            }
+            let path = toks[j].trim_matches(|c| c == '"' || c == '\'' || c == ';');
+            if !path.is_empty() && !path.contains('$') {
+                out.push(path.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// index 里登记的模式（`100644` / `100755` …）；不是受跟踪文件返回 `None`。
+fn index_mode_of(root: &Path, rel: &str) -> Option<String> {
+    let out = Command::new("git")
+        .args(["ls-files", "-s", "--", rel])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if text.is_empty() {
+        return None;
+    }
+    text.split_whitespace().next().map(|s| s.to_string())
+}
+
+/// 算违规清单：`(job, step, 路径, 实际登记模式)`。
+/// `mode_of` 是注入的，好让夹具能构造 100644 / 100755 / 未跟踪 三种目标。
+fn chmod_violations(
+    steps: &[(String, String, String)],
+    mode_of: &dyn Fn(&str) -> Option<String>,
+) -> Vec<(String, String, String, String)> {
+    let mut v = Vec::new();
+    for (job_name, step_name, body) in steps {
+        for path in chmod_targets(body) {
+            match mode_of(&path) {
+                // 未受跟踪（下载物、临时桩）⇒ chmod 不会脏工作树，不判
+                None => {}
+                Some(mode) if mode == "100755" => {}
+                Some(mode) => v.push((job_name.clone(), step_name.clone(), path, mode)),
+            }
+        }
+    }
+    v
+}
+
+#[test]
+fn test_dirt1_no_workflow_step_chmods_a_tracked_non_executable_file() {
+    for wf in [".gitea/workflows/ci.yml", ".gitea/workflows/gate.yml"] {
+        let yaml = load_yaml(wf);
+        let found = chmod_violations(&all_steps(&yaml), &|p| index_mode_of(&repo_root(), p));
+        assert!(
+            found.is_empty(),
+            "{}: 这些 step 对 index 里不是 100755 的受跟踪文件做 chmod ⇒ 每跑一次就把工作树改脏一次\
+             （DIRT-1）。修法是把文件的**登记模式**改成 100755（与同类脚本一致），\
+             而不是把 step 删掉：\n{:#?}\n",
+            wf,
+            found
+        );
+    }
+}
+
+#[test]
+fn test_dirt1_the_class_checker_beeps_on_644_and_stays_silent_otherwise() {
+    let steps = vec![
+        (
+            "j".to_string(),
+            "644 目标 ⇒ 必须报".to_string(),
+            "chmod +x a_644.sh\nbash a_644.sh\n".to_string(),
+        ),
+        (
+            "j".to_string(),
+            "755 目标 ⇒ 空操作，不报".to_string(),
+            "chmod +x a_755.sh\n".to_string(),
+        ),
+        (
+            "j".to_string(),
+            "未跟踪 ⇒ 不报".to_string(),
+            "chmod +x not_tracked.sh\n".to_string(),
+        ),
+        (
+            "j".to_string(),
+            "动态目标 ⇒ 静态判据不管".to_string(),
+            "for g in a b; do chmod +x scripts/gate/$g.sh; done\n".to_string(),
+        ),
+        (
+            "j".to_string(),
+            "注释里的 chmod ⇒ 不算".to_string(),
+            "# chmod +x comment_only.sh\n".to_string(),
+        ),
+    ];
+    let modes = |p: &str| -> Option<String> {
+        match p {
+            "a_644.sh" => Some("100644".to_string()),
+            "a_755.sh" => Some("100755".to_string()),
+            _ => None,
+        }
+    };
+    let found: Vec<String> = chmod_violations(&steps, &modes)
+        .into_iter()
+        .map(|(_, _, path, mode)| format!("{path}:{mode}"))
+        .collect();
+    assert_eq!(
+        found,
+        vec!["a_644.sh:100644".to_string()],
+        "夹具应当只报那一个 100644 目标；其余四种都必须不报"
+    );
+}
+
+#[test]
+fn test_dirt1_the_chmod_denied_resolver_is_registered_executable() {
+    // 现场就是被 CI 反复 chmod 的那个文件：登记回 100644 这条必须红（反向变异）。
+    let rel = "scripts/gate/resolve_release_version.sh";
+    let mode = index_mode_of(&repo_root(), rel);
+    assert_eq!(
+        mode.as_deref(),
+        Some("100755"),
+        "{rel} 在 index 里登记为 {mode:?}：`.gitea/workflows/ci.yml` 每次跑都会 `chmod +x` 它，\
+         于是工作树多一条只有模式位的改动，`audit_run.py freeze`（要求工作树干净）被迫多一步复位。\
+         scripts/gate 下同类脚本 208/250 都登记为 100755，请保持一致：\
+         `git update-index --chmod=+x {rel}` 并提交模式变更。",
+        mode = mode
+    );
+}
