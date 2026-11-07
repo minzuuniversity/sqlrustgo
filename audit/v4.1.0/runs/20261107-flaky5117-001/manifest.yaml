@@ -1,0 +1,55 @@
+schema_version: 1
+run_id: 20261107-flaky5117-001
+source_agent: omp-macmini
+frozen_commit: eb6ab58b562eb62ce934d2171ccd79b8fc58e942
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: flaky-5117-parallel
+  name: 修复后并行跑（默认 test-threads）—— 改前同一命令 3 次里红 2 次
+  cmd: cargo test --test multi_table_update_5117
+  cwd: .
+  timeout_sec: 900
+- id: flaky-5117-single-thread
+  name: 单线程跑（对照臂）
+  cmd: cargo test --test multi_table_update_5117 -- --test-threads=1
+  cwd: .
+  timeout_sec: 900
+results:
+- id: flaky-5117-parallel
+  started_at: '2026-11-07T15:36:51Z'
+  finished_at: '2026-11-07T15:37:09Z'
+  exit_code: 0
+  stdout_sha256: 33670329b1e09240e4e59ee11e27eac0e1dc46c37149d61464b50ef63fe4c7b4
+  stderr_sha256: 346cfab1a64853bd4ad21ef5b3a28c805559e3e1d187c67b2f632df6b8fd0382
+  stdout_path: logs/001-flaky-5117-parallel.stdout
+  stderr_path: logs/001-flaky-5117-parallel.stderr
+- id: flaky-5117-single-thread
+  started_at: '2026-11-07T15:37:09Z'
+  finished_at: '2026-11-07T15:37:09Z'
+  exit_code: 0
+  stdout_sha256: a7d0b0dbe2f8d5491c07b6065bd26f2faa2d3556901eef9da935693e05b9ed96
+  stderr_sha256: a816186df49e7eb1360d6cc0eb337a86effb642fc18b0014bee86f413c2f02b9
+  stdout_path: logs/002-flaky-5117-single-thread.stdout
+  stderr_path: logs/002-flaky-5117-single-thread.stderr
+notes: |
+  2 条命令全绿：`flaky-5117-parallel`（默认 test-threads）与 `flaky-5117-single-thread`（单线程对照）⇒ 各 7 passed。
+  这是 GA-CARGO1 的**改后**证据；**改前**证据在 run `20261107-ga-gates-001` 里（`cargo test --all-features` 里该文件红，
+  且失败测试名在两次运行间漂移）+ 本轮手测（并行 3 次红 2 次、单线程 7/7 通过）。
+  根因：`engine()` 用 `pid + as_nanos()` 命名临时目录 ⇒ 并行线程撞名 ⇒ 一个线程 remove_dir_all 删掉另一个的目录 ⇒
+  `FileStorage::new` 里 `load_all_tables()` 读到 ENOENT。修法：目录名加进程内原子计数器 `DIR_SEQ`（commit `eb6ab58b562e`）。
+  没有 `#[ignore]`、没有放宽判据、没有删测试语义。
+  偏差按 §5.4.1 声明：CI 执行面已死（#5597）⇒ 本地归档 run 替代 CI 绿灯；无第二身份评审。
+  environment.worktree_clean=false 是归档工具自指（freeze 先写 commit.txt），同 DIRT-1 forensics 口径。
+evidence_hash: sha256:c50920f99da9f4cb6ca67322a7ebaa24048f07a1a9587c64ec07a8db1fbd3e89
+completed_at: '2026-11-07T15:37:09Z'
