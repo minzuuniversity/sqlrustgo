@@ -1,0 +1,55 @@
+- id: critfix-fixture-sem1
+  name: GA-SEM1 反向变异夹具（A 真实树绿 / B 摘掉 engine_dml 接线红 / C 摘掉 parser 变体红）
+  cmd: bash scripts/gate/test_sem1_statement_path.sh
+  cwd: .
+  timeout_sec: 600
+- id: critfix-fixture-drift1
+  name: GA-DRIFT1 反向变异夹具（判定级 DRIFT=exit 2 阻断 / 文案如实 / 回退样红）
+  cmd: bash scripts/gate/test_rc_ga_gate_verdict.sh
+  cwd: .
+  timeout_sec: 600
+- id: critfix-fixture-scope-types
+  name: GA-DRIFT2 + audit type 反向变异夹具（legacy 排除生效/有鉴别力/回退红；type 表与门禁一致/回退红）
+  cmd: bash scripts/gate/test_criteria_scope_and_types.sh
+  cwd: .
+  timeout_sec: 600
+- id: critfix-gate-sem1
+  name: GA-SEM1 门禁本体（改判据后实跑；改前 rc=1，8/8 真跑 cargo test 并报实测通过数）
+  cmd: CARGO_TARGET_DIR=/Volumes/workspace/dev/sqlrustgo/target bash scripts/gate/check_sem1_savepoint.sh
+  cwd: .
+  timeout_sec: 1800
+- id: critfix-gate-drift-not-pass
+  name: GA-DRIFT2 门禁本体（改前 rc=1 / 4 条全在 legacy；改后 rc=0 / 0 条）
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  cwd: .
+  timeout_sec: 900
+- id: critfix-gate-registry
+  name: 门禁登记表一致性（superseded 处置 + C6 证据逐字出自门禁文件；check_n 仍 168）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 600
+- id: critfix-gate-commit-message
+  name: 提交信息门禁（audit type 进入规范表与机器判据，L1 单一 type 表仍成立）
+  cmd: bash scripts/gate/check_commit_message.sh
+  cwd: .
+  timeout_sec: 900
+- id: critfix-gate-doc-pointer-paths
+  name: 文档指针路径门禁（看板新文字不得引入断链）
+  cmd: bash scripts/gate/check_docs_pointer_paths.sh
+  cwd: .
+  timeout_sec: 600
+- id: critfix-kanban-check
+  name: 看板渲染与 jsonl 一致（104 行；GA-SEM1/GA-DRIFT1/GA-DRIFT2 结案）
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 600
+- id: critfix-doc-facts
+  name: 文档事实索引一致性
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 900
+- id: critfix-honesty
+  name: 门禁声明诚实性（登记表人工声明 vs 可证伪夹具账）
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 900
