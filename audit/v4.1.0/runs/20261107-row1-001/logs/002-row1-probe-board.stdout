@@ -1,0 +1,9 @@
+{
+  "board": "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl",
+  "kind": "row1_acceptance_sync",
+  "offenders": [],
+  "ok": 103,
+  "rows": 103,
+  "unverified": [],
+  "verdict": "OK"
+}
