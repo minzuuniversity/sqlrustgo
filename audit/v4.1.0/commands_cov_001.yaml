@@ -1,0 +1,5 @@
+- id: gate-coverage-single-implementation
+  name: 修复后：coverage 唯一实现元门禁（此前因 ci-trusted-baseline.yml 未登记而判红）
+  cmd: bash scripts/gate/check_coverage_single_implementation.sh
+  cwd: .
+  timeout_sec: 900
