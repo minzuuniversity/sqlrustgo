@@ -1,0 +1,10 @@
+- id: row1-probe-selftest
+  name: ROW-1 判据的自检：4 个反向变异臂（引用红臂⇒必须被抓 / acceptance 已改写⇒不得抓 / 引用绿臂⇒不得抓 / 无归档引用⇒报 UNVERIFIED）
+  cmd: python3.14 audit/v4.1.0/probe_row1_acceptance_sync.py --selftest
+  cwd: .
+  timeout_sec: 600
+- id: row1-probe-board
+  name: ROW-1 判据在当前看板上的实跑
+  cmd: python3.14 audit/v4.1.0/probe_row1_acceptance_sync.py
+  cwd: .
+  timeout_sec: 600
