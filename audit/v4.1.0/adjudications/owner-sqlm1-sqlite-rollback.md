@@ -117,3 +117,32 @@ __agg_1
 ⇒ 也就是说候选 (b)（逐层递减）在现网路径上**已经不可达**，裁 (a) 的代价是删计数器 +
 把错误文本对齐 SQLite，而不是改语义。裁 (a) 后 (1) 的验收序列就是本文 §A 那条脚本，
 期望输出逐字符对齐 sqlite3（含行号与两条错误文本）。
+
+---
+
+## 本轮补充（2026-11-07 晚，同一棵树 `develop/v4.1.0` @ `3d7c38acd0`）
+
+**独立复测一致**：同一台机器重跑三方，错误文本与上节逐字相同 ——
+- sqlite3 3.54.0：第二个 `BEGIN` ⇒ `Error near line 2: cannot start a transaction within a transaction`；
+  其后的 `COMMIT` ⇒ `Error near line 4: cannot commit - no transaction is active`；
+- MariaDB 12.3.2：第二个 `BEGIN` 无错无警告（`SHOW WARNINGS` 为空），且**隐式提交**了前一个事务
+  ⇒ 随后的 `ROLLBACK` 只回滚新事务，先前写入的行仍在（`before-rollback 1,2` → `after-rollback 1`）；
+- 本仓 CLI（`sqlrustgo sqlite <DB> --cmd "…"`）⇒ `Error: sqlrustgo:error:runtime: Execution error: Transaction already in progress`。
+
+**补上的缺口：现状已被测试钉住**（本文件原话是「当前行为没有任何测试钉住」）：
+`crates/sqlrustgo-cli/src/sqlite_mode.rs` 的
+`sqlite_mode::tests::nested_begin_is_rejected_and_aborts_the_outer_transaction`
+（2026-11-07 实跑 `cargo test -p sqlrustgo-cli --lib sqlite_mode` ⇒ 27 个用例全部通过、0 失败）断言：
+- 外层 `BEGIN` 后 `tx_depth == 1` 且不报错；
+- 嵌套 `BEGIN` ⇒ `error_seen == true`（**引擎拒嵌套**）且 `tx_depth == 0`（错误路径强制回滚并清零）。
+
+⇒ 该测试钉的是**现状**，也正是候选 (b) 的可观测形态；口径若改，它必须同步改断言（**不允许删**）。
+
+**可直接落地的可执行判据**：
+- 选 (a) 整体出栈 ⇒ 断言：嵌套 `BEGIN` 报错后**外层事务仍在**（`tx_depth == 1`、外层已写入的行仍可见、随后 `COMMIT` 成功）；
+- 选 (b) 逐层递减（现状）⇒ 断言：与上面那条测试一致（`error_seen == true` 且 `tx_depth == 0`），
+  并把「与 SQLite 不一致」登记为已知偏差（**不得当作已对齐**）；
+- 选 (2)「直接暴露不支持嵌套 BEGIN、去掉 tx_depth」⇒ 需给出兼容代价（`sqlrustgo-cli` 是否被当作多语句脚本执行器用），
+  并给出去掉计数器后的等价断言。
+
+**仍未决**：口径本身（(a)/(b)/(2)）需要专家席位或属主裁定 —— `deepseek-chat` 席位 HTTP 500（令牌过期）未恢复。
