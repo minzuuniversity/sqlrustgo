@@ -1,0 +1,74 @@
+schema_version: 1
+run_id: 20261107-grepc-001
+source_agent: omp-macmini
+frozen_commit: 0864a685054d74c8e7425de1751bbaa7c49a0849
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: gate-attack-surface
+  name: 修复后：攻击面文档门禁（原 grep -c || echo 0 会让计数变多行）
+  cmd: bash scripts/gate/check_attack_surface.sh
+  cwd: .
+  timeout_sec: 900
+- id: gate-10-principles-v310
+  name: 修复后：10 原则门禁（R8/R10 两处计数）
+  cmd: bash scripts/gate/check_10_principles_v310.sh v3.10.0 /Volumes/workspace/dev/gate-reports
+  cwd: .
+  timeout_sec: 1800
+- id: gate-rc-ga-gate
+  name: 修复后：RC/GA 聚合门禁（D5-5 计数此前抛 integer expression expected 却仍 rc=0）
+  cmd: bash scripts/gate/check_rc_ga_gate.sh ga
+  cwd: .
+  timeout_sec: 3600
+results:
+- id: gate-attack-surface
+  started_at: '2026-11-07T16:08:13Z'
+  finished_at: '2026-11-07T16:08:13Z'
+  exit_code: 0
+  stdout_sha256: 76e2fc19dcdc91d3cfb61bad4a7c933a6bd33981c58bad35919c6e37b0677c0c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-gate-attack-surface.stdout
+  stderr_path: logs/001-gate-attack-surface.stderr
+- id: gate-10-principles-v310
+  started_at: '2026-11-07T16:08:13Z'
+  finished_at: '2026-11-07T16:13:54Z'
+  exit_code: 1
+  stdout_sha256: d8960839e61e37271cddfcce08713304209ca6f9d2172ce91fd52092321f2127
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-gate-10-principles-v310.stdout
+  stderr_path: logs/002-gate-10-principles-v310.stderr
+- id: gate-rc-ga-gate
+  started_at: '2026-11-07T16:13:54Z'
+  finished_at: '2026-11-07T16:25:40Z'
+  exit_code: 0
+  stdout_sha256: 12b4d44702713626a6bffa954a9bad5f0538652aea3a32f490140edbe6f2a946
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-gate-rc-ga-gate.stdout
+  stderr_path: logs/003-gate-rc-ga-gate.stderr
+notes: |
+  3 条命令：**2 绿 / 1 红**。本次是「修复前会崩、修复后能真正求值」的对照归档。
+  绿 1 `gate-attack-surface`（rc=0）：stderr 里 `integer expression` 计数 **0**（修复前该门禁的 AV/CRITICAL 两处计数会炸）。
+  红 `gate-10-principles-v310`（rc=1）：**与本次修复无关的内容性真红** ⇒ stdout 原文：
+  `[FAIL] sqlrustgo-parser: 7.93% (below 47%)`、`[FAIL] sqlrustgo-planner: 22.58% (below 47%)`、
+  `[FAIL] sqlrustgo-executor: 4.25% (below 42%)`、`[FAIL] sqlrustgo-transaction: 13.19% (below 42%)`、
+  `[FAIL] sqlrustgo-catalog: 20.64% (below 42%)`、`[FAIL] R7: Missing required doc: DEVELOPMENT_PLAN.md`、
+  `[FAIL] R7: Missing required doc: INDEX.md` ⇒ `OVERALL: FAIL — 2 principle(s) failed`。
+  该条 stderr 的 `integer expression` 计数也是 **0** ⇒ R8/R10 的计数不再炸（此前 `grep -c … || echo "0"` 会让
+  计数变两行 ⇒ 比较报 `[: 00: integer expression expected`）。已立看板行 GA-PRIN1 单独挂账。
+  绿 3 `gate-rc-ga-gate`（rc=0）：stderr 的 `integer expression` 计数 **0**；且 D5-5 现在**真正求值**了 ——
+  `WAL-related commits in v3.8.0: 0` ⇒ `⚠ WARN D5-5: No WAL fix evidence`。
+  ⇒ 修复前那一行是「比较崩掉、取值不可用」，现在是「计数 0 ⇒ 真实 WARN」：**门的总体判定未翻转**（仍 rc=0），
+  但该检查项第一次真的被算了。
+  evidence_hash=sha256:7e00dd373f2c6c8fdd8ec8ccffa62a07dcd74f8fd87f94877395ea3837a0304f
+  偏差按 §5.4.1 声明：CI 执行面已死（#5597）⇒ 本地归档 run 替代 CI 绿灯；无第二身份评审。
+evidence_hash: sha256:7e00dd373f2c6c8fdd8ec8ccffa62a07dcd74f8fd87f94877395ea3837a0304f
+completed_at: '2026-11-07T16:25:40Z'
