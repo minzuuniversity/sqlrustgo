@@ -1,0 +1,15 @@
+- id: crash-armed-server-build
+  name: armed 构建第一步：把带 fault-injection 的 server 二进制编出来（测试按硬编码路径 <repo>/target/debug/sqlrustgo-mysql-server 找它）
+  cmd: cargo build -p sqlrustgo-mysql-server --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: crash-wal-index-b1
+  name: 崩溃套件（armed）：WAL 追加边界 kill -9 后不复活行
+  cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_wal_index_b1
+  cwd: .
+  timeout_sec: 3600
+- id: crash-commit-fsync-b1
+  name: 崩溃套件（armed）：提交 fsync 边界
+  cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_commit_fsync_b1
+  cwd: .
+  timeout_sec: 3600
