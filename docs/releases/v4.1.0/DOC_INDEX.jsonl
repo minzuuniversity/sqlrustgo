@@ -5,7 +5,7 @@
 {"bytes": 4763, "file": "ARCHITECTURE.md", "lines": 94, "sha256": "533404ace8adfbd21a47bd0873367fc63e0d5d958b63b7510671921151391cb8", "stamp_ok": false, "stamped": false}
 {"bytes": 6630, "file": "ARCHITECTURE_ROUTE_DECISION_5193.md", "lines": 159, "sha256": "32545a30b19013818a19ed157da046ce7081a25c187f703e1b1d2bf1fca6bfa4", "stamp_ok": false, "stamped": false}
 {"bytes": 6098, "file": "AUDIT_RECORD_INTEGRITY_2026-11-05.md", "lines": 107, "sha256": "59b9f461aed58c6f3969cedb32835fe0135aa9d50505b59cf00af2f28ff70146", "stamp_ok": false, "stamped": false}
-{"bytes": 13560, "file": "BRANCH_MERGE_VERDICTS_2026-11-06.md", "lines": 102, "sha256": "a0cd992ce5809e5518df7f0334d35b6d0b1edc2b8fbd3d49d8ac959091751620", "stamp_ok": false, "stamped": false}
+{"bytes": 20093, "file": "BRANCH_MERGE_VERDICTS_2026-11-06.md", "lines": 126, "sha256": "274c3e39911565b7849ff44210838d0e67b5a6e3226ff89dfdad88c87f5e8738", "stamp_ok": false, "stamped": false}
 {"bytes": 9998, "file": "BRANCH_MERGE_VERDICTS_2026-11-07.md", "lines": 115, "sha256": "b92fbe3b8470ee15b7847f0e2dfb71920519063e4d8900cc0ec1002972928ceb", "stamp_ok": false, "stamped": false}
 {"bytes": 15407, "file": "CHANGELOG.md", "lines": 254, "sha256": "3fc92b9f8428cff1588f2039a4dd31c98a2c393834d3fa987978a8693ca25309", "stamp_ok": false, "stamped": false}
 {"bytes": 3628, "file": "CI_EXECUTION_OUTAGE_2026-11-05.md", "lines": 65, "sha256": "cc0325e9ce3f7e9c171d0e04e6095e4696fae63d48295b99112ecd08646302c0", "stamp_ok": false, "stamped": false}
@@ -41,7 +41,7 @@
 {"bytes": 21567, "file": "ISSUES_PLAN.md", "lines": 374, "sha256": "6f1cf2cd77bef75c9b82d7ec7f810c1e23e86faed8ab961ddc06d7c8d088452f", "stamp_ok": false, "stamped": false}
 {"bytes": 32976, "file": "ISSUE_LEDGER_2026-11-05.md", "lines": 148, "sha256": "5331de15daa3ba456b0b238a761b5819201efa281766451fd700aafd8f1a6940", "stamp_ok": false, "stamped": false}
 {"bytes": 33444, "file": "ISSUE_LEDGER_2026-11-05B.md", "lines": 155, "sha256": "cea9b591361b9d7f52df9048a9557845bd1d971e278d62768f555db009e8887a", "stamp_ok": false, "stamped": false}
-{"bytes": 230248, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 165, "sha256": "f6a23b95846b02cdeca353915183f0500e822eeb19314bbd765f0447fd0a1421", "stamp_ok": false, "stamped": false}
+{"bytes": 197021, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 168, "sha256": "d01679509b8754f21d74ba4ef5cf6f30c760b861b9f3383a3f66b235d34d375c", "stamp_ok": false, "stamped": false}
 {"bytes": 7898, "file": "LB1_ISSUE_LABEL_TAXONOMY_2026-11-05.md", "lines": 130, "sha256": "48beaabd302723271e23a753c63c7a47bdac49bf8d84ce3c7b534764e8c70f65", "stamp_ok": false, "stamped": false}
 {"bytes": 4052, "file": "LEGACY_ISSUES.md", "lines": 77, "sha256": "1dcf9d29e123e15b1ca1b8af3fcedcb5d43f9476cf5873b550e8f266f8d56ee6", "stamp_ok": false, "stamped": false}
 {"bytes": 27878, "file": "LEGACY_LEDGER_v3.6_to_v4.1.md", "lines": 484, "sha256": "edf34ff0a22540cbda719db2622513169e0fc155d041390251228197dc723e5f", "stamp_ok": false, "stamped": false}
@@ -57,6 +57,7 @@
 {"bytes": 31770, "file": "PERFORMANCE_AUDIT_REPORT_2026-09-30.md", "lines": 775, "sha256": "1ecd3ffee6e82a70c95a049557c0c5dbb8fb1741c332024f482333dc09a8c364", "stamp_ok": false, "stamped": false}
 {"bytes": 40982, "file": "PERFORMANCE_OPTIMIZATION_PLAN.md", "lines": 674, "sha256": "2cbc64c1f6890cf0bac89bd8e2b687bff80531df75fa108c9bf132d94fd171e3", "stamp_ok": false, "stamped": false}
 {"bytes": 41272, "file": "PERFORMANCE_TARGETS.md", "lines": 408, "sha256": "b0ab99fce228c1913a327cf741a8d6570fd9b56beddd95faa836fc9f3ecaf043", "stamp_ok": false, "stamped": false}
+{"bytes": 5363, "file": "PERF_4910_LOCK_PROFILE_NOTES.md", "lines": 88, "sha256": "6471c8c97c87b7c3aca6380690e1f4c20662df74854f3fa92e39b08cdb7b725a", "stamp_ok": false, "stamped": false}
 {"bytes": 10134, "file": "PERF_4910_PHASE3_PLAN.md", "lines": 251, "sha256": "1441aad7733bbdc807b3c6e639804646b676c7ae15624a68fd6bae8a9cf2e546", "stamp_ok": false, "stamped": false}
 {"bytes": 8240, "file": "PERF_4956_COMMIT_FLUSH_AB_2026-10-04.md", "lines": 136, "sha256": "3e31f0ae500f3c2603715621d37cb84619d68d5e91be2160f42dd21decfad2a0", "stamp_ok": false, "stamped": false}
 {"bytes": 7584, "file": "PERF_A1_4912_AB_MEASUREMENT.md", "lines": 178, "sha256": "08f40af01101558864723ddfbd23315df229bdbf4af61c197a5bb9aadf3c51a8", "stamp_ok": false, "stamped": false}

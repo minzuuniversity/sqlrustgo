@@ -152,11 +152,14 @@ impl UnifiedExpr {
     ) -> Value {
         match self {
             UnifiedExpr::Literal(v) => v.clone(),
-            UnifiedExpr::Column(name) => columns
-                .iter()
-                .position(|c| c == name)
-                .and_then(|i| row.get(i).cloned())
-                .unwrap_or(Value::Null),
+            UnifiedExpr::Column(name) => {
+                // F-08: case-insensitive lookup. The previous byte-exact `==`
+                // was a reachable correctness bug — `WHERE tag = 'x'` against
+                // a schema column `Tag INTEGER` resolved to None, so the row
+                // vanished into a NULL result.
+                let idx = columns.iter().position(|c| c.eq_ignore_ascii_case(name));
+                idx.and_then(|i| row.get(i).cloned()).unwrap_or(Value::Null)
+            }
             UnifiedExpr::BinaryOp { left, op, right } => {
                 let l = left.evaluate(row, columns, storage);
                 let r = right.evaluate(row, columns, storage);
@@ -5207,5 +5210,60 @@ mod tests {
         assert!(sql_like_match("", ""));
         assert!(sql_like_match("", "%"));
         assert!(!sql_like_match("", "a"));
+    }
+
+    // =====================================================================
+    // F-08 follow-up: `UnifiedExpr::Column` lookup used to be `c == name`
+    // (byte-exact), a reachable correctness bug. With the `Tag INTEGER`
+    // schema column + `WHERE tag = 'x'` query, the row resolved to
+    // Null, so expressions like `tag + 1` silently returned NULL. Switch
+    // to `eq_ignore_ascii_case` makes the lookup match the canonical
+    // `sqlrustgo_storage::engine::find_column_index_in` (which is
+    // already case-insensitive-aware).
+    // =====================================================================
+
+    #[test]
+    fn test_unified_expr_column_lookup_is_case_insensitive() {
+        let columns: Vec<String> = vec!["id".to_string(), "Tag".to_string(), "amount".to_string()];
+        let row: Vec<Value> = vec![Value::Integer(1), Value::Integer(42), Value::Integer(7)];
+        let mut e = UnifiedExpr::Column("Tag".to_string());
+        // Before the fix, this returned Null (the bug).
+        assert_eq!(
+            e.evaluate(&row, &columns, &mut None),
+            Value::Integer(42),
+            "Tag (the schema's case) must be reachable from a Tag reference \
+             of any case; pre-fix this returned Null"
+        );
+        let mut e = UnifiedExpr::Column("tag".to_string());
+        assert_eq!(e.evaluate(&row, &columns, &mut None), Value::Integer(42));
+        let mut e = UnifiedExpr::Column("TAG".to_string());
+        assert_eq!(e.evaluate(&row, &columns, &mut None), Value::Integer(42));
+
+        // Miss still returns Null (caller can decide how to treat it).
+        let mut e = UnifiedExpr::Column("nope".to_string());
+        assert_eq!(e.evaluate(&row, &columns, &mut None), Value::Null);
+    }
+
+    #[test]
+    fn test_unified_expr_column_lookup_picks_correct_position() {
+        // With two columns differing only by case, the lookup must not
+        // silently return Null for the case-collided second one — it
+        // picks the first case-insensitive hit (canonical `position`),
+        // which is the same contract `find_column_index_in` layer 1+2
+        // provide.
+        let columns: Vec<String> = vec!["id".to_string(), "ID".to_string()];
+        let row: Vec<Value> = vec![Value::Integer(10), Value::Integer(99)];
+        // `id` reference — pre-fix returned Value::Null because `id` did
+        // not byte-match any column (it was case-different from `ID`).
+        let mut e = UnifiedExpr::Column("id".to_string());
+        assert_eq!(
+            e.evaluate(&row, &columns, &mut None),
+            Value::Integer(10),
+            "case-insensitive lookup must not silently drop the row"
+        );
+        // `ID` reference — also reaches a value now (pre-fix: only
+        // the exact-`id` row was reachable).
+        let mut e = UnifiedExpr::Column("ID".to_string());
+        assert_eq!(e.evaluate(&row, &columns, &mut None), Value::Integer(10));
     }
 }

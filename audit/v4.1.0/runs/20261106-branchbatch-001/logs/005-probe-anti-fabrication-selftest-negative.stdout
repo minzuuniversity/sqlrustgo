@@ -1,0 +1,3 @@
+VERDICT: PASS
+REASON:  the check reports UNFIXED on a gate that carries the defect and PASS on a gate that does not
+r11_selftest: PASS
