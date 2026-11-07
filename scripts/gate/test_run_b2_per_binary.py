@@ -34,6 +34,51 @@ def load_runner():
     return mod
 
 
+def parse_disabled_registry():
+    """Parse the SSOT disabled-binary registry table.
+
+    Returns {"all": <every numbered row's binary name>,
+             "reactivated": <rows explicitly marked REACTIVATED / struck through>}.
+    """
+    import re
+    path = REPO_ROOT / "docs/releases/v3.12.0/b2-disabled-test-binary-registry.md"
+    all_names, reactivated = set(), set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^\|\s*(\d+)\s*\|\s*~?~?`([A-Za-z0-9_]+)`~?~?", line)
+        if not m:
+            continue
+        all_names.add(m.group(2))
+        if "REACTIVATED" in line or "~~" in line:
+            reactivated.add(m.group(2))
+    return {"all": all_names, "reactivated": reactivated}
+
+
+def cargo_test_target_names():
+    """Every test target cargo itself knows about (all workspace packages).
+
+    Independent of the runner's own enumeration (root Cargo.toml regex +
+    one extra package), so it can falsify a phantom entry.
+    """
+    import json
+    import subprocess
+    try:
+        out = subprocess.run(
+            ["cargo", "metadata", "--no-deps", "--format-version=1"],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=180,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    if out.returncode != 0:
+        return set()
+    meta = json.loads(out.stdout)
+    return {
+        t["name"]
+        for p in meta.get("packages", [])
+        for t in p.get("targets", [])
+        if "test" in (t.get("kind") or [])
+    }
+
+
 def check(name: str, ok: bool, detail: str = ""):
     status = "PASS" if ok else "FAIL"
     print(f"  [{status}] {name}{(': ' + detail) if detail else ''}")
@@ -45,15 +90,26 @@ def main():
     failures = 0
     runner = load_runner()
 
-    # 1. DISABLED_BINARIES has 78 entries (33 - 2 reactivated + 45 added 2026-08-24).
-    # PR #4436 / Codex baseline reactivated bulk_insert_v2_routing and
-    # bin_storage_compaction_roundtrip after PR #4417 fixed the
-    # BinaryTableStorageV2 feature gate. Our branch inherits those reactivations
-    # while adding 45 newly-captured failing binaries from the 2026-08-24
-    # per-binary baseline run. Net: 80 - 2 (reactivated) = 78.
-    if not check("DISABLED_BINARIES_COUNT_78",
-        len(runner.DISABLED_BINARIES) == 78,
-        f"got {len(runner.DISABLED_BINARIES)}"):
+    # 1. 禁用集合与登记表（SSOT）**集合一致** —— 不用魔法数。
+    #    判据式：registry 登记行 − 登记表自带 REACTIVATED 标记 − A08 再激活 12 条
+    #    + 未登记例外 2 条 == 工具的 DISABLED_BINARIES。
+    #    （2026-11-07 实测：90 − 3 − 12 + 2 = 77；旧夹具写的 78 是过期魔法数。）
+    registry = parse_disabled_registry()
+    expected = ((registry["all"] - registry["reactivated"])
+                - runner.A08_REACTIVATED_BINARIES
+                | runner.UNDOCUMENTED_DISABLED_BINARIES)
+    actual = set(runner.DISABLED_BINARIES)
+    if not check("DISABLED_MATCHES_REGISTRY_SET",
+        actual == expected,
+        f"missing={sorted(expected - actual)} extra={sorted(actual - expected)} "
+        f"(registry_rows={len(registry['all'])} marked_reactivated={len(registry['reactivated'])} "
+        f"a08={len(runner.A08_REACTIVATED_BINARIES)} "
+        f"undocumented={len(runner.UNDOCUMENTED_DISABLED_BINARIES)})"):
+        failures += 1
+
+    # 1b. A08 已裁的 12 条再激活项不得回到 disabled 集合。
+    back = sorted(runner.A08_REACTIVATED_BINARIES & actual)
+    if not check("A08_REACTIVATED_NOT_DISABLED", not back, f"re-disabled: {back}"):
         failures += 1
 
     # 2. PERF_ONLY_BINARIES has 3 entries
@@ -76,15 +132,17 @@ def main():
     # BinaryTableStorageV2 feature gate, so they are NOT required disabled
     # entries — they have moved out of DISABLED_BINARIES.
     REQUIRED_DISABLED = [
-        "ddl_e2e_test", "diag_q11", "diag_q12", "diag_q14_full",
+        "diag_q11", "diag_q12", "diag_q14_full",
         "eval_22_vs_sf01", "e2e_canonical_subprocess",
         "int2_substance_parallel_test", "parallel_main_path_test",
         "oracle_g1_tpch_sha256", "q13_subquery_repro",
         "q16_notin_subquery_regression", "q21_cell_regression_test",
-        "physical_backup_test", "l3_canonical_binary",
+        "l3_canonical_binary",
         # Newly-captured from 2026-08-24 per-binary B2 run
         "diag_q7_subset_columns", "tpch_wire_smoke",
-        "types_value_test", "window_function_test",
+        "types_value_test",
+        # ddl_e2e_test / physical_backup_test / window_function_test 已由 A08(#5230)
+        # 再激活，不再要求留在 disabled 集合（见 arm 1b 的反向判据）。
     ]
     missing = [b for b in REQUIRED_DISABLED if b not in disabled_set]
     if not check("REQUIRED_DISABLED_ENTRIES",
@@ -118,15 +176,31 @@ def main():
             f"got={got}"):
             failures += 1
 
-    # 6. list_test_binaries returns 354 from Cargo.toml
+    # 6. list_test_binaries()：不再断言魔法个数（旧夹具写 354，早已过期）。
+    #    改为三个有独立权威的结构判据：
+    #    (a) 无重复（同名 [[test]] 被根清单与自动发现各收一次 ⇒ 旧实现会重复并塌成一个）；
+    #    (b) 根 Cargo.toml 里显式声明的每个 [[test]] 都在列表里（不漏）；
+    #    (c) 列表里没有 cargo 自己不认识的 target（不凭空多）。
     binaries = runner.list_test_binaries()
-    if not check("BINARIES_COUNT_354",
-        len(binaries) == 354,
-        f"got {len(binaries)}"):
-        failures += 1
     if not check("BINARIES_NO_DUPLICATES",
         len(set(binaries)) == len(binaries),
         f"duplicates: {len(binaries) - len(set(binaries))}"):
+        failures += 1
+
+    import re as _re
+    root_toml = (REPO_ROOT / "Cargo.toml").read_text(encoding="utf-8")
+    root_declared = set(_re.findall(r'\[\[test\]\]\s*name\s*=\s*"([^"]+)"', root_toml))
+    not_listed = sorted(root_declared - set(binaries))
+    if not check("ROOT_MANIFEST_TESTS_ALL_LISTED",
+        not not_listed,
+        f"not listed: {not_listed}"):
+        failures += 1
+
+    real_targets = cargo_test_target_names()
+    phantom = sorted(set(binaries) - real_targets)
+    if not check("BINARIES_ARE_REAL_CARGO_TARGETS",
+        not phantom,
+        f"phantom: {phantom}"):
         failures += 1
 
     # 7. BinaryResult dataclass round-trips

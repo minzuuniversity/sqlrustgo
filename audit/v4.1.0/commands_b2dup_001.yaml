@@ -1,0 +1,10 @@
+- id: b2dup-fixture
+  name: B2DUP-1 修复后的夹具（19 检查，判据全部换成登记表集合关系 + 去重）
+  cmd: python3 scripts/gate/test_run_b2_per_binary.py
+  cwd: .
+  timeout_sec: 900
+- id: b2dup-gate-registry-check
+  name: 门禁登记表一致性（证明分母 168 未被本次修复改动）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 600

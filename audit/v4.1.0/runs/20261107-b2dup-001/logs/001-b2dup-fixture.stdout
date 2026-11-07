@@ -1,0 +1,25 @@
+=== run_b2_per_binary.py unit tests ===
+  [PASS] DISABLED_MATCHES_REGISTRY_SET: missing=[] extra=[] (registry_rows=90 marked_reactivated=3 a08=12 undocumented=2)
+  [PASS] A08_REACTIVATED_NOT_DISABLED: re-disabled: []
+  [PASS] PERF_ONLY_BINARIES_COUNT_3: got 3
+  [PASS] PERF_SUBSET_OF_DISABLED: perf-not-in-disabled: set()
+  [PASS] REQUIRED_DISABLED_ENTRIES: missing: []
+  [PASS] REGEX_ok.354p.0f.0i.12.34s: sample='test result: ok. 354 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.34s'
+  [PASS] REGEX_ok.354p.0f.0i.12.34s_FIELDS: got={'status': 'ok', 'passed': '354', 'failed': '0', 'ignored': '0', 'elapsed': '12.34'}
+  [PASS] REGEX_FAILED.0p.1f.0i.390.71s: sample='test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 390.71s'
+  [PASS] REGEX_FAILED.0p.1f.0i.390.71s_FIELDS: got={'status': 'FAILED', 'passed': '0', 'failed': '1', 'ignored': '0', 'elapsed': '390.71'}
+  [PASS] REGEX_ok.12p.0f.0i.0.02s: sample='test result: ok. 12 passed; 0 failed; 0 ignored; 1 measured; 0 filtered out; finished in 0.02s'
+  [PASS] REGEX_ok.12p.0f.0i.0.02s_FIELDS: got={'status': 'ok', 'passed': '12', 'failed': '0', 'ignored': '0', 'elapsed': '0.02'}
+  [PASS] REGEX_ok.716p.0f.0i.4.5s: sample='test result: ok. 716 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.5s'
+  [PASS] REGEX_ok.716p.0f.0i.4.5s_FIELDS: got={'status': 'ok', 'passed': '716', 'failed': '0', 'ignored': '0', 'elapsed': '4.5'}
+  [PASS] BINARIES_NO_DUPLICATES: duplicates: 0
+  [PASS] ROOT_MANIFEST_TESTS_ALL_LISTED: not listed: []
+  [PASS] BINARIES_ARE_REAL_CARGO_TARGETS: phantom: []
+  [PASS] BINARY_RESULT_ASDICT: got={'name': 'test_x', 'status': 'PASS', 'elapsed_sec': 12.34, 'passed': 10, 'failed': 0, 'ignored': 1, 'exit_code': 0, 'log_path': 'evidence/x.log', 'group': 'fast'}
+  [PASS] BINARY_RESULT_JSON_SERIALIZABLE
+  [PASS] RUNNER_FILE_READABLE
+  [PASS] SLOW_THRESHOLD_30
+  [PASS] DEFAULT_FAST_TIMEOUT_180
+  [PASS] DEFAULT_SLOW_TIMEOUT_600
+
+  total checks: 19, failures: 0
