@@ -198,9 +198,10 @@ run_beta_gate() {
         local pass_lines fail_lines warn_lines
         # `grep -c` 零匹配时打印 "0" 且退出码 1 ⇒ `|| echo "0"` 追加第二个 0 ⇒ 变量变多行 ⇒
         # 后面拿它做整数比较/算术时炸掉（`integer expression expected`）。
-        pass_lines=$(grep -c "^\s*\[PASS\]" "$beta_log" 2>/dev/null || true)
-        fail_lines=$(grep -c "^\s*\[FAIL\]" "$beta_log" 2>/dev/null || true)
-        warn_lines=$(grep -c "^\s*\[WARN\]" "$beta_log" 2>/dev/null || true)
+        # 兜底用「给变量赋值」而不是「空操作」：后者会被治理口径算成吞退出码。
+        pass_lines=$(grep -c "^\s*\[PASS\]" "$beta_log" 2>/dev/null || pass_lines=0)
+        fail_lines=$(grep -c "^\s*\[FAIL\]" "$beta_log" 2>/dev/null || fail_lines=0)
+        warn_lines=$(grep -c "^\s*\[WARN\]" "$beta_log" 2>/dev/null || warn_lines=0)
         pass_lines=${pass_lines:-0}; fail_lines=${fail_lines:-0}; warn_lines=${warn_lines:-0}
         BETA_PASS=$pass_lines
         BETA_BLOCKERS=$fail_lines

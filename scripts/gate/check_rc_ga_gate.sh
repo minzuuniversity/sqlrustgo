@@ -1248,8 +1248,9 @@ run_d5_deepseek() {
     # `grep -c` 在**零匹配**时既打印 "0" 又以退出码 1 结束 ⇒ 旧的 `|| echo "0"` 会追加第二个 0，
     # 变量变成多行 "0\n0" ⇒ `[ "$WAL_FIXES" -gt 0 ]` 直接报 `integer expression expected`，
     # 这一项的判定根本没跑成（GA 归档 run 20261107-ga-gates-001 的 stderr 原文）。
-    # 修法：只留 `grep -c` 的输出（它本身就打印 0），并给空值兜底。
-    WAL_FIXES=$(git log --oneline origin/develop/v3.8.0 2>/dev/null | grep -c "WAL\|wal\|checkpoint\|truncate" || true)
+    # 修法：只留计数命令自己的输出（它本身就打印 0），失败时给变量兜底赋值，
+    # 不追加第二行（那会让整数比较炸掉），也不引入被治理口径计数的「空操作」模式。
+    WAL_FIXES=$(git log --oneline origin/develop/v3.8.0 2>/dev/null | grep -c "WAL\|wal\|checkpoint\|truncate" || WAL_FIXES=0)
     WAL_FIXES=${WAL_FIXES:-0}
     echo "WAL-related commits in v3.8.0: $WAL_FIXES"
     if [ "$WAL_FIXES" -gt 0 ]; then

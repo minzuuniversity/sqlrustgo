@@ -1,0 +1,15 @@
+- id: gate-attack-surface
+  name: 修复后（第二版）：攻击面文档门禁
+  cmd: bash scripts/gate/check_attack_surface.sh
+  cwd: .
+  timeout_sec: 900
+- id: gate-10-principles-v310
+  name: 修复后（第二版）：10 原则门禁（R8/R10 两处计数）
+  cmd: bash scripts/gate/check_10_principles_v310.sh v3.10.0 /Volumes/workspace/dev/gate-reports
+  cwd: .
+  timeout_sec: 1800
+- id: gate-rc-ga-gate
+  name: 修复后（第二版）：RC/GA 聚合门禁（D5-5 计数）
+  cmd: bash scripts/gate/check_rc_ga_gate.sh ga
+  cwd: .
+  timeout_sec: 3600
