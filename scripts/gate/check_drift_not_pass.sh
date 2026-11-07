@@ -42,8 +42,11 @@ FINDINGS=()
 echo "[1/5] Scanning for DRIFT-accepting patterns..."
 
 # B fix: grep for DRIFT-handling in gate scripts, excluding P14 self (self-reference is by design)
+# 2026-11-08（Owner 批准 GA-DRIFT2 判据修改）：`scripts/gate/legacy/` 装的是**历史实现**
+# （不在 168 分母内、不由任何清单/归档命令集调用），把它当现行门禁扫 ⇒ 判据陈旧 ⇒ 假红。
+# 显式排除，并在下面把排除原因写进判据说明（判据口径必须自解释）。
 drift_pattern=$(grep -rnE '\[\s*"\$?(code|exit_code|status)"?\s*-eq\s*2\s*\]' \
-    scripts/gate/ --exclude='check_drift_not_pass.sh' 2>/dev/null | head -20)
+    scripts/gate/ --exclude='check_drift_not_pass.sh' --exclude-dir='legacy' 2>/dev/null | head -20)
 
 if [ -n "$drift_pattern" ]; then
     echo "  Found $(echo "$drift_pattern" | wc -l | tr -d ' ') potential DRIFT-handling sites"
@@ -72,7 +75,7 @@ echo "[2/5] Scanning for '|| true' patterns that swallow errors..."
 # *documentation* of an anti-pattern — e.g. a comment quoting
 # `cargo test ... || true` — is reported as the anti-pattern itself, and
 # the baseline has to absorb the false positives instead of the real ones.
-swallow_pattern=$(find "$SCRIPT_DIR" -name '*.sh' -type f -print0 2>/dev/null \
+swallow_pattern=$(find "$SCRIPT_DIR" -name '*.sh' -type f ! -path "$SCRIPT_DIR/legacy/*" -print0 2>/dev/null \
 | while IFS= read -r -d '' f; do
     sed 's/[[:space:]]*#.*$//' "$f" \
     | grep -nE 'cargo [a-z]+ [^|]+\|\|\s*true|>\s*/[^[:space:]]+\s*2>&1\s*\|\|\s*true' \
@@ -109,7 +112,7 @@ echo "[3/5] Scanning for grep-on-stdout without result validation..."
 # A gate whose result changes with directory listing order is not a gate.
 # The scan now covers **every** match; the baseline records the real debt
 # (24 sites), and any new one is still a failure.
-grep_pattern=$(grep -rnE 'cargo test[^|]+\|[^|]*grep' scripts/gate/ 2>/dev/null || true)
+grep_pattern=$(grep -rnE 'cargo test[^|]+\|[^|]*grep' scripts/gate/ --exclude-dir='legacy' 2>/dev/null || true)
 
 if [ -n "$grep_pattern" ]; then
     echo "  Found $(echo "$grep_pattern" | wc -l | tr -d ' ') grep-on-stdout sites"
@@ -179,6 +182,7 @@ echo "[5/5] Scanning for '|| true' whose exit status is read afterwards..."
 # The two detectors are excluded: their own source contains the pattern
 # they look for (self-reference is by design, same as Check 1).
 SWALLOW_READ=$(find "$SCRIPT_DIR" -name '*.sh' -type f \
+    ! -path "$SCRIPT_DIR/legacy/*" \
     ! -name 'check_drift_not_pass.sh' \
     ! -name 'check_gate_test_integrity.sh' \
     -print0 2>/dev/null \

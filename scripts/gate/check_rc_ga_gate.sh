@@ -1789,14 +1789,30 @@ ${NC}"
         fi
         echo -e "  ${GREEN}✓ GATE: PASS${NC} — ${#EXECUTED_DIMS[@]} dimension(s) validated: ${executed_csv}${notrun_note}"
     elif [[ "$VERDICT" == "DRIFT" ]]; then
-        echo -e "  ${YELLOW}⚡ GATE: DRIFT${NC} — Drift detected, tracked, not blocking"
+        # 2026-11-08（Owner 批准 GA-DRIFT1）：DRIFT 在 gate_verdict_for 里就是
+        # GATE_EXIT_CODE=2 ⇒ **本来就阻断**；旧文案写「tracked, not blocking」与真实判定相反 ⇒ 误导。
+        # 这里改成如实陈述（阻断），并把漂移所在的 D3 维度计数打出来。
+        echo -e "  ${RED}✗ [FAIL] GATE: DRIFT${NC} — drift detected ⇒ **blocking**（exit ${EXIT_CODE:-2}），drift 不算放行"
+        echo -e "    D3_DRIFTS=${D3_DRIFTS:-0} D3_FAILS=${D3_FAILS:-0} D3_PASS=${D3_PASS:-0}/${D3_TOTAL:-0}"
     else
         local why=""
         [[ -n "$MISSING_DIMS" ]] && why="missing dimension(s):${MISSING_DIMS}"
         if [[ -n "$why" ]]; then
             echo -e "  ${RED}✗ [FAIL] GATE: FAIL${NC} — ${why}"
         else
-            echo -e "  ${RED}✗ [FAIL] GATE: FAIL${NC} — D3_FAILS=${D3_FAILS}, D6_FAIL=${D6_FAIL:-0}, D7_BLOCKERS=${D7_BLOCKERS:-0}, D1/D2/D8/D9 blockers>0"
+            # 2026-11-08（Owner 批准 GA-DRIFT1）：旧行把 D1/D2/D8/D9 的 blocker 数**写死成一句
+            # 「D1/D2/D8/D9 blockers>0」**（不打印真实计数）⇒ 红了也看不出是哪一维 ⇒ 归因成本极高。
+            # 改成逐维打印**实测值**（缺变量一律 0，绝不编造）。
+            echo -e "  ${RED}✗ [FAIL] GATE: FAIL${NC} — 逐维实测："
+            echo -e "    D1_BLOCKERS=${D1_BLOCKERS:-0} D1_NOTRUN=${D1_NOTRUN:-0} D1_PASS=${D1_PASS:-0}/${D1_TOTAL:-0}"
+            echo -e "    D2_BLOCKERS=${D2_BLOCKERS:-0} D2_PASS=${D2_PASS:-0}/${D2_TOTAL:-0}"
+            echo -e "    D3_FAILS=${D3_FAILS:-0} D3_DRIFTS=${D3_DRIFTS:-0} D3_PASS=${D3_PASS:-0}/${D3_TOTAL:-0}"
+            echo -e "    D4_FAILS=${D4_FAILS:-0} D4_PASS=${D4_PASS:-0}/${D4_TOTAL:-0}"
+            echo -e "    D5_PASS=${D5_PASS:-0}/${D5_TOTAL:-0}"
+            echo -e "    D6_FAIL=${D6_FAIL:-0} D6_FAILED_TESTS=${D6_FAILED_TESTS:-0}"
+            echo -e "    D7_BLOCKERS=${D7_BLOCKERS:-0} D7_PASS=${D7_PASS:-0}/${D7_TOTAL:-0}"
+            echo -e "    D8_BLOCKERS=${D8_BLOCKERS:-0} D8_PASS=${D8_PASS:-0}/${D8_TOTAL:-0}"
+            echo -e "    D9_BLOCKERS=${D9_BLOCKERS:-0} D9_PASS=${D9_PASS:-0}/${D9_TOTAL:-0}"
         fi
     fi
 
