@@ -1,0 +1,53 @@
+schema_version: 1
+run_id: 20261107-b2dup-001
+source_agent: omp-macmini
+frozen_commit: be0f1a54c8f75880f371bf2dc6295d27d1a7b39e
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: b2dup-fixture
+  name: B2DUP-1 修复后的夹具（19 检查，判据全部换成登记表集合关系 + 去重）
+  cmd: python3 scripts/gate/test_run_b2_per_binary.py
+  cwd: .
+  timeout_sec: 900
+- id: b2dup-gate-registry-check
+  name: 门禁登记表一致性（证明分母 168 未被本次修复改动）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 600
+results:
+- id: b2dup-fixture
+  started_at: '2026-11-07T15:21:06Z'
+  finished_at: '2026-11-07T15:21:06Z'
+  exit_code: 0
+  stdout_sha256: 163224ebc14bad07b49dc4ff1be806477876afe34fcf25a95157ce0234cc2df3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-b2dup-fixture.stdout
+  stderr_path: logs/001-b2dup-fixture.stderr
+- id: b2dup-gate-registry-check
+  started_at: '2026-11-07T15:21:06Z'
+  finished_at: '2026-11-07T15:21:07Z'
+  exit_code: 0
+  stdout_sha256: 4e888d4b405c188a86fcff676e1db5bb3cb5c7d768ae57688e7a264281f25059
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-b2dup-gate-registry-check.stdout
+  stderr_path: logs/002-b2dup-gate-registry-check.stderr
+notes: |
+  2 条命令全绿：`b2dup-fixture`（`python3 scripts/gate/test_run_b2_per_binary.py` ⇒ 19 检查 0 失败，
+  关键臂细节行 `missing=[] extra=[] (registry_rows=90 marked_reactivated=3 a08=12 undocumented=2)`、
+  `duplicates: 0`、`phantom: []`）、`b2dup-gate-registry-check`（`gate_registry.py check` ⇒ OK，
+  证明本次修复没有改动门禁登记表，分母 168 未动、未新增 check_*）。
+  夹具本身**仍无执行点**（看板 FIXWIRE-1）：本次归档 run 是我手工把它排进 run 的，不是 CI 自动跑 ⇒
+  该行维持待复核。本 run 取代不了 CI（CI 执行面已死 #5597，偏差按 §5.4.1 声明）。
+  environment.worktree_clean=false 是归档工具自指（freeze 先写 commit.txt），同 DIRT-1 forensics 口径，不改判据。
+evidence_hash: sha256:1bb8e282be84911b8444b0d00f45bcf00ba78dff23952a534f9839931b6aebcd
+completed_at: '2026-11-07T15:21:07Z'
