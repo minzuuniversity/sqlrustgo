@@ -1,0 +1,2 @@
+OK  scripts/gate/resolve_release_version.sh 工作树可执行
+OK  gate/gate.sh 工作树可执行
