@@ -1,0 +1,6 @@
+[PASS] A: 单侧 marker（不在历史清单）被抓
+[PASS] B: 显式声明不误抓
+[PASS] C: 两侧都有不误抓
+[PASS] D: 历史遗留行不误抓（GRANDFATHERED 已列名）
+[PASS] E: 一侧 marker 整体消失被抓
+kanban_merge_policy: OK (5 个反向变异臂全部符合期望)
