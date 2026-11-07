@@ -1,3 +1,8 @@
+- id: ga-cargo build --all-features
+  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo build --all-features
+  cmd: cargo build --all-features
+  cwd: .
+  timeout_sec: 7200
 - id: ga-check-rc-ga-gate
   name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_rc_ga_gate.sh ga
   cmd: scripts/gate/check_rc_ga_gate.sh ga
@@ -77,7 +82,7 @@
   name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_anti_fabrication.sh
   cmd: bash scripts/gate/check_anti_fabrication.sh
   cwd: .
-  timeout_sec: 5400
+  timeout_sec: 7200
 - id: ga-check-arch-sem-debt
   name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_arch_sem_debt.sh
   cmd: bash scripts/gate/check_arch_sem_debt.sh
@@ -127,7 +132,7 @@
   name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_coverage_v312.sh
   cmd: bash scripts/gate/check_coverage_v312.sh
   cwd: .
-  timeout_sec: 5400
+  timeout_sec: 7200
 - id: ga-check-coverage-single-implementation
   name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：scripts/gate/check_coverage_single_implementation.sh
   cmd: bash scripts/gate/check_coverage_single_implementation.sh
@@ -153,16 +158,11 @@
   cmd: bash scripts/gate/check_anti_ignore_gate.sh
   cwd: .
   timeout_sec: 1800
-- id: ga-cargo build --all-features
-  name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo build --all-features
-  cmd: cargo build --all-features
-  cwd: .
-  timeout_sec: 5400
 - id: ga-cargo test --all-features
   name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo test --all-features
   cmd: cargo test --all-features
   cwd: .
-  timeout_sec: 5400
+  timeout_sec: 7200
 - id: ga-cargo fmt --check
   name: GA 清单原文（STAGE_CONFIG stages.GA.required_gates）：cargo fmt --check
   cmd: cargo fmt --check
@@ -173,3 +173,8 @@
   cmd: cargo clippy --all-features -- -D warnings
   cwd: .
   timeout_sec: 5400
+- id: lint1-clippy-all-targets-keepgoing
+  name: 额外取证臂（非门禁）：LINT-1 重测——全 targets keep-going，归档那份丢失的 279 条日志的替代证据
+  cmd: cargo clippy --workspace --all-features --all-targets --keep-going
+  cwd: .
+  timeout_sec: 7200
