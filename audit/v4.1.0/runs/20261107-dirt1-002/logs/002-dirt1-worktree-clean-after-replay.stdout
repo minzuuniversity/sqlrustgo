@@ -1,0 +1,3 @@
+CLEAN: scripts/ tests/ .gitea/ docs/ 四个域在重放后零改动
+-- 全量 status（仅对照，不作判据；三处是归档工具自己的写入）:
+ M audit/v4.1.0/commit.txt

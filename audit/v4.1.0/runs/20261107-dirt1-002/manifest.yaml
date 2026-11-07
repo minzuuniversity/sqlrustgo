@@ -1,0 +1,217 @@
+schema_version: 1
+run_id: 20261107-dirt1-002
+source_agent: omp-macmini
+frozen_commit: cac30adfc5d90af5ce7462bfc828fa26644ab62e
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: dirt1-ci-wiring-target
+  name: 整个 ci_wiring_honesty_test 目标（含 3 条新增 DIRT-1 判据 + 既有 31 条）
+  cmd: cargo test -q --test ci_wiring_honesty_test
+  cwd: .
+  timeout_sec: 3600
+- id: dirt1-worktree-clean-after-replay
+  name: 重放 CI step 之后：DIRT-1 病灶域（scripts/tests/.gitea/docs）不得有任何改动（含模式位）；显式排除归档工具自身写入的 commit.txt / runs/<id>
+    / test_count.json
+  cmd: "st=\"$(git status --porcelain --untracked-files=no -- scripts tests .gitea docs)\"\nif [ -n \"\
+    $st\" ]; then\n  printf 'DIRT（病灶域被改动，DIRT-1 仍在）:\\n%s\\n' \"$st\"\n  exit 1\nfi\necho \"CLEAN: scripts/\
+    \ tests/ .gitea/ docs/ 四个域在重放后零改动\"\necho \"-- 全量 status（仅对照，不作判据；三处是归档工具自己的写入）:\"\ngit status --porcelain\
+    \ --untracked-files=no | sed -n '1,8p'\n"
+  cwd: .
+  timeout_sec: 120
+- id: dirt1-worktree-mode-preserved
+  name: 重放后**工作树**里两个曾被 chmod 的脚本仍是可执行位（索引 100755 之外还得看工作树）
+  cmd: "bad=0\nfor f in scripts/gate/resolve_release_version.sh gate/gate.sh; do\n  if [ -x \"$f\" ];\
+    \ then echo \"OK  $f 工作树可执行\"; else echo \"BAD $f 工作树丢失可执行位\"; bad=$((bad+1)); fi\ndone\n[ \"$bad\"\
+    \ -eq 0 ]\n"
+  cwd: .
+  timeout_sec: 120
+- id: dirt1-resolver-index-mode
+  name: resolve_release_version.sh 的登记模式必须是 100755（与其余 17 个 chmod 目标一致）
+  cmd: 'm="$(git ls-files -s scripts/gate/resolve_release_version.sh | awk ''{print $1}'')"
+
+    if [ "$m" = 100755 ]; then echo "OK mode=$m"; else echo "BAD mode=$m"; exit 1; fi
+
+    '
+  cwd: .
+  timeout_sec: 120
+- id: dirt1-gate-sh-index-mode
+  name: gate/gate.sh 的登记模式必须是 100755（探针第一次跑多报出的第二处）
+  cmd: 'm="$(git ls-files -s gate/gate.sh | awk ''{print $1}'')"
+
+    if [ "$m" = 100755 ]; then echo "OK mode=$m"; else echo "BAD mode=$m"; exit 1; fi
+
+    '
+  cwd: .
+  timeout_sec: 120
+- id: dirt1-no-stray-chmod-on-tracked
+  name: 全仓扫一遍：还有谁对受跟踪的 644 文件 chmod（判据的覆盖面自检）
+  cmd: "hits=0\nwhile IFS= read -r f; do\n  while IFS= read -r t; do\n    # 目录结尾的目标（`chmod +x scripts/gate/$g.sh`\
+    \ 被字符类截断成 `scripts/gate/`）\n    # 不是具体文件，git ls-files 会把整目录列出来 ⇒ 必然误报，跳过。\n    [ -n \"$t\" ] || continue\n\
+    \    case \"$t\" in */) continue ;; esac\n    m=\"$(git ls-files -s -- \"$t\" | awk '{print $1}')\"\
+    \n    if [ -n \"$m\" ] && [ \"$m\" != 100755 ]; then\n      printf 'HIT %s chmods %s (index %s)\\\
+    n' \"$f\" \"$t\" \"$m\"; hits=$((hits+1))\n    fi\n  done < <(grep -rhoE 'chmod \\+x [A-Za-z0-9_./-]+'\
+    \ \"$f\" | awk '{print $3}' | sort -u)\ndone < <(grep -rlE 'chmod \\+x ' tests scripts/gate .gitea/workflows\
+    \ 2>/dev/null)\necho \"可疑 chmod 目标计数: $hits\"\n[ \"$hits\" -eq 0 ]\n"
+  cwd: .
+  timeout_sec: 300
+- id: gate-registry-denominator
+  name: 门禁分母与登记表一致（不得因本批变动）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 300
+- id: probe-gate-registry
+  name: 登记表夹具（9 条反向变异必须全部被抓）
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 300
+- id: gate-kanban-consistency
+  name: 看板 md 与 jsonl 一致
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 300
+- id: gate-honesty-check
+  name: honesty.py 判据
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 300
+- id: gate-doc-facts-check
+  name: doc_facts 判据（指针与链接）
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 600
+- id: gate-fmt-check
+  name: 新增测试必须 rustfmt 干净
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 600
+- id: gate-main-freshness
+  name: main 新鲜度（GA 前结构性红，C-MAIN-02）
+  cmd: bash scripts/gate/check_main_freshness.sh
+  cwd: .
+  timeout_sec: 300
+results:
+- id: dirt1-ci-wiring-target
+  started_at: '2026-11-07T09:38:06Z'
+  finished_at: '2026-11-07T09:38:10Z'
+  exit_code: 0
+  stdout_sha256: 1fb9f5a9d384d3d3cb3897396b77293c7cdf9e101c9e45d283d01669198b27b4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-dirt1-ci-wiring-target.stdout
+  stderr_path: logs/001-dirt1-ci-wiring-target.stderr
+- id: dirt1-worktree-clean-after-replay
+  started_at: '2026-11-07T09:38:10Z'
+  finished_at: '2026-11-07T09:38:10Z'
+  exit_code: 0
+  stdout_sha256: 2f3126c7c7631e222260fb33f05fd49cdbeca05bad8eba11e2182b4b2edb5d15
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-dirt1-worktree-clean-after-replay.stdout
+  stderr_path: logs/002-dirt1-worktree-clean-after-replay.stderr
+- id: dirt1-worktree-mode-preserved
+  started_at: '2026-11-07T09:38:10Z'
+  finished_at: '2026-11-07T09:38:10Z'
+  exit_code: 0
+  stdout_sha256: bafe6db6565ee09c241ecb9544b8690c2e5e864c429ce5be1014aca487d0d8d8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-dirt1-worktree-mode-preserved.stdout
+  stderr_path: logs/003-dirt1-worktree-mode-preserved.stderr
+- id: dirt1-resolver-index-mode
+  started_at: '2026-11-07T09:38:10Z'
+  finished_at: '2026-11-07T09:38:10Z'
+  exit_code: 0
+  stdout_sha256: 4620f11a350028583467c8e2ae0ae41e9389c7d031cbcfdd49ffa6fdc1ba3c83
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-dirt1-resolver-index-mode.stdout
+  stderr_path: logs/004-dirt1-resolver-index-mode.stderr
+- id: dirt1-gate-sh-index-mode
+  started_at: '2026-11-07T09:38:10Z'
+  finished_at: '2026-11-07T09:38:10Z'
+  exit_code: 0
+  stdout_sha256: 4620f11a350028583467c8e2ae0ae41e9389c7d031cbcfdd49ffa6fdc1ba3c83
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-dirt1-gate-sh-index-mode.stdout
+  stderr_path: logs/005-dirt1-gate-sh-index-mode.stderr
+- id: dirt1-no-stray-chmod-on-tracked
+  started_at: '2026-11-07T09:38:10Z'
+  finished_at: '2026-11-07T09:38:11Z'
+  exit_code: 0
+  stdout_sha256: 2abc02110c936ef833ba51efd8f86c0ed5fb34dad1d19bffe93e41747431622b
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-dirt1-no-stray-chmod-on-tracked.stdout
+  stderr_path: logs/006-dirt1-no-stray-chmod-on-tracked.stderr
+- id: gate-registry-denominator
+  started_at: '2026-11-07T09:38:11Z'
+  finished_at: '2026-11-07T09:38:11Z'
+  exit_code: 0
+  stdout_sha256: 573a9ac86ce7b3d6af13f249722714e5cf3b348da35138b00c988cb82bef6846
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-registry-denominator.stdout
+  stderr_path: logs/007-gate-registry-denominator.stderr
+- id: probe-gate-registry
+  started_at: '2026-11-07T09:38:11Z'
+  finished_at: '2026-11-07T09:38:13Z'
+  exit_code: 0
+  stdout_sha256: aeaf206519ed3c7df8f9a4777c06ec3adaa76af8efea317bcae8d62a39bd5abc
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-probe-gate-registry.stdout
+  stderr_path: logs/008-probe-gate-registry.stderr
+- id: gate-kanban-consistency
+  started_at: '2026-11-07T09:38:13Z'
+  finished_at: '2026-11-07T09:38:13Z'
+  exit_code: 0
+  stdout_sha256: d7cdfb9f24d8a0a5a3f165932df6181f4265d1837bfcb14eb4f9d36f09f188b4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-gate-kanban-consistency.stdout
+  stderr_path: logs/009-gate-kanban-consistency.stderr
+- id: gate-honesty-check
+  started_at: '2026-11-07T09:38:13Z'
+  finished_at: '2026-11-07T09:38:13Z'
+  exit_code: 0
+  stdout_sha256: 341c51ffd545fedef75bbf256c6e34463536cf4221ac2e93a6903a2ae9c9ed56
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-gate-honesty-check.stdout
+  stderr_path: logs/010-gate-honesty-check.stderr
+- id: gate-doc-facts-check
+  started_at: '2026-11-07T09:38:13Z'
+  finished_at: '2026-11-07T09:38:14Z'
+  exit_code: 0
+  stdout_sha256: f81bdc05ec6d9a735a2af07dcf03088d776fc52fd3fd38500d535863a142602a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-gate-doc-facts-check.stdout
+  stderr_path: logs/011-gate-doc-facts-check.stderr
+- id: gate-fmt-check
+  started_at: '2026-11-07T09:38:14Z'
+  finished_at: '2026-11-07T09:38:17Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-gate-fmt-check.stdout
+  stderr_path: logs/012-gate-fmt-check.stderr
+- id: gate-main-freshness
+  started_at: '2026-11-07T09:38:17Z'
+  finished_at: '2026-11-07T09:38:26Z'
+  exit_code: 1
+  stdout_sha256: fb9d445480c8302fae66666e8dd76ecf93c5ec53a65b2d6273b44f0753385dc0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-gate-main-freshness.stdout
+  stderr_path: logs/013-gate-main-freshness.stderr
+evidence_hash: sha256:be1009932e3a73b7250b4fcea6d81162ef0b7542d0a8f983d373c03ce6cc44ac
+completed_at: '2026-11-07T09:38:26Z'
+notes: |
+  12 绿 / 1 红。唯一红是 `gate-main-freshness`（C-MAIN-02：GA 前 main 封存，`check_main_freshness.sh`
+  在 GA 之前结构上必红，且它不在 ALPHA 的 required_gates 里）⇒ 按口径记红、不改判据、不修。
+  DIRT-1 的验收判据本 run 首次全绿：`dirt1-worktree-clean-after-replay`（病灶域 `scripts/ tests/ .gitea/ docs/`
+  零改动）+ `dirt1-worktree-mode-preserved`（工作树可执行位仍在）+ `dirt1-resolver-index-mode` +
+  `dirt1-gate-sh-index-mode` + `dirt1-no-stray-chmod-on-tracked`（全仓扫描 0 处对受跟踪 644 文件的 chmod）。
+  上一条 run `20261107-dirt1-001` 的 worktree-clean 红是判据自指（把归档工具重写 commit.txt 算成脏），
+  其 notes 已写明，目录保留未改写。
+  门禁分母未动：`gate_registry.py check` 绿（168 条）。
