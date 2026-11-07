@@ -1,0 +1,5 @@
+fatal: ambiguous argument 'origin/develop/v3.8.0': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+scripts/gate/check_rc_ga_gate.sh: line 1250: [: 0
+0: integer expression expected

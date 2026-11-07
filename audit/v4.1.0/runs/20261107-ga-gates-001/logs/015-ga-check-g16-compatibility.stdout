@@ -1,0 +1,11 @@
+=== G16 Gate: Compatibility v3.8.0 → v3.9.0 ===
+  [1/7] ✅ PASS: 4 case scripts present
+  [2/7] ✅ PASS: rollback script present
+  [3/7] ✅ PASS: tests registered in Cargo.toml
+  [4/7] ✅ PASS: 18 tests pass (≥18)
+  [5/7] ✅ PASS: 5 harness tests pass
+  [6/7] ✅ PASS: TPC-H gate (22/22) maintained
+  [7/7] ✅ PASS: COMPATIBILITY_REPORT.md present
+
+=== G16 Gate: PASS ===
+Compatibility: 4 cases + 1 rollback + 18+ unit tests verified

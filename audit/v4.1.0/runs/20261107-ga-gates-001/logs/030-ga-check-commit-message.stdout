@@ -1,0 +1,48 @@
+=== L1 - the type table must exist in exactly one place ===
+PASS: L1 - the type table lives only in docs/governance/CONTRIBUTING.md
+=== L2/L3 - commit message shape and traceability ===
+range: last 50 commits
+  BAD_SHAPE 8c0b78082937 audit(gate): ALPHA 阶段门禁归档 run 20261107-alpha-gates-001 —— 7 绿 / 3 红，全部红已定性
+  BAD_SHAPE e77fc522023e audit(gate): 归档 run 20261107-dirt1-002 —— DIRT-1 判据全绿，唯一红是 main 新鲜度（结构红）
+  BAD_SHAPE cac30adfc5d9 audit(gate): 保留 20261107-dirt1-001 作 forensics —— worktree-clean 臂是判据自指的假红
+  BAD_SHAPE 51e7e8a6df1f audit(v4.1.0): 归档 run 20261106-ga5594-006 —— ADR-015 / 基线 / G19 修复后的受影响判据复跑
+  BAD_SHAPE 7ba61e6ebcef fix(gate)+style: AFP 作者白名单补录 omp-macmini；清掉 --all-targets 的 7 处 lint；GA 核实文档按真实 run id 绑定声
+  NO_REFS 12d7a4505dcb fix(audit): 调序脚本把 cargo build 复制了两份 —— 去重为 36 条（首条 build、末条 lint1 取证臂）
+  NO_REFS 1021c00c27df chore(audit): GA 命令集调序 + 冷缓存超时 + LINT-1 取证臂
+  NO_REFS 7da65291c3d7 fix(kanban): patch3 —— 订正我 patch2 的 IL-6 错判、HO-3 按六臂现场转阻塞、新增 COVM-1；入 GA 归档命令集
+  NO_REFS 18f8d38f2b50 fix(kanban): 第二轮裁定 11 行（P0-6/IL-6/IL-13/P1-1/MERGE-1/ROW-1/EST-1/HO-4 + 新行 AMAN-1/FIXWIRE-
+  NO_REFS 6a814419e870 fix(kanban): 19 条 待复核/阻塞 行按 2026-11-07 现场读数裁定，rebase 后与 DIRT-1 合并两侧证据
+  NO_REFS ba6b81558936 chore(audit): branchbatch-002 的命令集（rebase 到合并后的 develop 复跑；两条 cargo 超时放宽到 5400s，因为要与并行全量套件
+  NO_REFS a1e08456f3d1 fix(kanban): SEC-1 规模按全文件实测更正、LINT-1 引证更正、CARRY-1 逐件处置
+  NO_REFS 9ceda1cdddfd docs(evidence): 承载 #4910 锁画像笔记，并逐条复核（不搬假断言）
+  NO_REFS 3c71925a3f69 docs(verdicts): `fix/5262-b2-binaries` 结案为不并入（两处实质修复已在 develop，剩下的是测试期望的放宽）
+  NO_REFS d3df4b34daa4 docs(verdicts): §3 表对齐 §2.5 精判（同一文档两张表曾互相矛盾）+ `fix/omp-ignore-registry-5098` 结案
+  NO_REFS 160c83075bc5 docs(evidence): 分支判定文档按真实 run id 绑定声明 + 重生成 DOC_INDEX；入仓取证 run 20261106-branchbatch-001
+  NO_REFS 3ef6d9be926e chore(audit): 入仓分支批 1/4 的归档命令集
+  NO_REFS 86c3da26b27e fix(gate): 取 F-08 大小写不敏感列查找 + anti-fabrication 三态自检脚本（分支批 1/4）
+  NO_REFS cc03e54e1bfe docs(evidence): E5 R9/R11 证据文档（含残余缺口与交接时未取得的测试结论）
+  NO_REFS bb6843914877 fix(executor): UnifiedExpr::Column case-insensitive lookup (F-08)
+  NO_REFS 7527b1eab71a chore(doc-index): 看板改写后重建 DOC_INDEX（doc_facts 96 docs / fails 0）
+  NO_REFS 896240914751 docs(kanban): DIRT-1 转「完成」并改写验收判据 —— 附 20261107-dirt1-002 归档证据
+  NO_REFS 5acd6148dea6 test(gate): DIRT-1 取证 run 的自指假红更正 —— 判据只病灶四域，归档工具写入显式排除
+  NO_REFS 450d95045632 fix(gate): `gate/gate.sh` 同样登记为 100755 —— 新判据第一次跑就多报出的第二处
+  NO_REFS a357ceb00be7 fix(scripts): 把 `resolve_release_version.sh` 登记为 100755 —— DIRT-1 的根因修复
+  NO_REFS 222f43d0a3a6 test(ci-wiring): DIRT-1 的判据：工作流不得 chmod 一个登记为非可执行的受跟踪文件
+  NO_REFS 63b0f1ee2fb9 chore(audit): -006 的受影响判据命令集（ADR-015 / 基线 / G19 修复后的复跑口径）
+  NO_REFS b6f110a93e2c chore(docs): 补上 DOC_INDEX 的 kanban 戳（上一条看板证据提交漏了索引）
+  NO_REFS bde37af710a5 docs(adjudication): SQLM-1 的参考实现实测入材料（sqlite3 与 MariaDB 现场跑，逐条输出）
+  NO_REFS 3899539ea246 docs(kanban): 登记 CARRY-1（develop 缺失、只在分支上的 4 个文件）与 DIRT-1（测试套件污染工作树）
+  NO_REFS 9b8864af77a8 docs(governance): ADR-015 走完 P12 流程 + 修掉本批自己造成的 G19 文档漂移（附 run 20261106-ga5594-005 取证）
+  NO_REFS 550c7065be84 fix(test): GA 清单的 `cargo test --all-features` 在 develop 上是红的 —— 4 条 ALPHA 阻塞测试跟错了位置，其中一条还是
+  NO_REFS 6f97de908c52 fix(test): 恢复 8 个丢了 `#[test]` 的测试（它们从来没跑过）+ 清掉 GA 那条 clippy 的全部欠账
+  NO_REFS 03d3ff076d78 fix(lint): 清掉 GA 清单那条 clippy 的全部欠账（`cargo clippy --all-features -- -D warnings` 原为红）
+  NO_REFS 13f375e0c106 fix(bench): criterion::black_box 已废弃 ⇒ 改用 std::hint::black_box（GA 静态扫描项）
+  NO_REFS 6e8ea9e05e95 docs(ga): 4.1.0 GA 就绪核实记录（阶段阶梯 / 门禁清单 / open ISSUE 状态 / 属主必做清单）
+  NO_REFS dbe46a7f2531 docs(audit): 归档 run 20261106-ga5594-001（#5594 门禁修复 + GA 静态扫描清理，16 条 15 绿 1 红）
+  NO_REFS c15863170fca chore(audit): 入仓 #5594 批的归档命令集
+  NO_REFS 071f3f8529d1 fix(gate): #5594 —— 行尾注释里的门禁路径不再被当成调用（执行点矩阵不再假通过）
+  NO_REFS 22be1ddc4c10 docs(audit): 归档 run 20261106-lineage-001（合格血统口径批验收证据，20 条 19 绿 1 红）
+  NO_REFS d64a49029935 chore(audit): 入仓本批归档命令集
+  NO_REFS f6df7dfe83fd chore(audit): 台账重生后重生成文档事实索引（claims_selftest 回到 17/17）
+  NO_REFS aaa2f17433c1 fix(audit): 引入「合格血统」口径 —— 属主裁定：两专家是 deepseek 与 chatGPT
+FAIL: L2: 5 commit(s) do not match '<type>(<scope>): <subject>' with a known type

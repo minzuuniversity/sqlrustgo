@@ -1,0 +1,63 @@
+=== P14 DRIFT != PASS - Anti-pattern Detector ===
+Date: 2026-11-07T15:10:14Z
+
+[1/5] Scanning for DRIFT-accepting patterns...
+  Found 1 potential DRIFT-handling sites
+
+[2/5] Scanning for '|| true' patterns that swallow errors...
+  Found 7 sites using '|| true' or swallow patterns
+    ⚠️  /Volumes/workspace/dev/wt/ga/scripts/gate/check_gmp_consumer.sh:194
+    ⚠️  /Volumes/workspace/dev/wt/ga/scripts/gate/check_4021_prometheus_metrics.sh:122
+    ⚠️  /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/verify_beta_entry.sh:63
+    ⚠️  /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_10_principles.sh:96
+    ⚠️  /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_10_principles.sh:186
+    ⚠️  /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_r1_r10_content.sh:91
+    ⚠️  /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_r1_r10_content.sh:184
+
+[3/5] Scanning for grep-on-stdout without result validation...
+  Found 26 grep-on-stdout sites
+    ❌ scripts/gate/check_p22_time_travel.sh:75
+    ❌ scripts/gate/check_p22_time_travel.sh:102
+    ❌ scripts/gate/check_g12_sysbench.sh:55
+    ❌ scripts/gate/check_g12_sysbench.sh:88
+    ❌ scripts/gate/check_p14_upgrade_test.sh:73
+    ❌ scripts/gate/check_p34_parallel_executor.sh:75
+    ❌ scripts/gate/check_p34_parallel_executor.sh:103
+    ❌ scripts/gate/check_p23_hash_chain.sh:75
+    ❌ scripts/gate/check_p35_simd.sh:75
+    ❌ scripts/gate/check_p35_simd.sh:103
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:46
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:52
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:55
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:58
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:61
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:64
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:67
+    ❌ scripts/gate/check_p13_soak_test.sh:84
+    ❌ scripts/gate/check_p21_audit_log.sh:77
+    ❌ scripts/gate/check_p33_cost_optimizer.sh:75
+    ❌ scripts/gate/check_p33_cost_optimizer.sh:102
+
+[4/5] Specific check: check_full_gate_verification.sh run_gate()
+  ❌ FAIL: /Volumes/workspace/dev/wt/ga/scripts/gate/check_full_gate_verification.sh accepts exit 2 (DRIFT) without proper failure handling
+
+[5/5] Scanning for '|| true' whose exit status is read afterwards...
+  ✅ PASS: no swallowed exit code is read afterwards
+
+  ⚠️  REGRESSION: 4 NEW anti-pattern(s) (not in baseline):
+    - /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_10_principles.sh:96: uses '|| true' to swallow exit codes
+    - /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_10_principles.sh:186: uses '|| true' to swallow exit codes
+    - /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_r1_r10_content.sh:91: uses '|| true' to swallow exit codes
+    - /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_r1_r10_content.sh:184: uses '|| true' to swallow exit codes
+
+=== P14 Summary ===
+  Total anti-patterns: 4
+
+  Specific findings:
+    - /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_10_principles.sh:96: uses '|| true' to swallow exit codes
+    - /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_10_principles.sh:186: uses '|| true' to swallow exit codes
+    - /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_r1_r10_content.sh:91: uses '|| true' to swallow exit codes
+    - /Volumes/workspace/dev/wt/ga/scripts/gate/legacy/check_r1_r10_content.sh:184: uses '|| true' to swallow exit codes
+
+❌ FAIL — P14 violations. DRIFT-accepting patterns found in gate scripts.
+   Required action: fix gate scripts to exit 1 on DRIFT (not exit 0).
