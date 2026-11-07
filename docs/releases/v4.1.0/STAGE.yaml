@@ -199,6 +199,37 @@ legacy_chain_audit_2026_09_30:
 
 
 current_stage: "ALPHA"
+
+# ----------------------------------------------------------------------------
+# 2026-11-08 Owner 裁决：8 项批准 + 4.1.0 回 ALPHA 按流程重走
+# ----------------------------------------------------------------------------
+stage_decision_2026-11-08:
+  decided_by: owner（2026-11-08 会话指令）
+  approved_items:
+    - "判据语义可改：GA-SEM1（SAVEPOINT 判据改查语句路径）、GA-DRIFT1（DRIFT 退 exit 1 + FAIL 打印逐维实测值）、GA-DRIFT2（漂移扫描显式排除 scripts/gate/legacy/）、GA-PRIN1（v3.10 历史门禁退役/标 historical）"
+    - "#5639/#5640 的门禁脚本修改（多行计数）追认"
+    - "IDX-1：CREATE INDEX 同时支持会话库与限定名"
+    - "TPC-H fixture 供给：缺 fixture 时门禁判 NOT RUN（不是 FAIL）"
+    - "61 道「有引用、无执行点」门禁：23 道主题仍在的恢复执行点，38 道标 historical/退役"
+    - "audit 进提交类型白名单"
+    - "LINT-1 逐类清零解冻（第一批 47 处已合 #5657）"
+    - "阶段跃迁与 GA 放行：按 ALPHA_TO_BETA_GATE_PLAN.md 的 AB-01..AB-10 逐项取证后再报，不得跳过"
+  stage_after_decision: "ALPHA"
+  ga_declared: false
+  ga_carrier_branch_note: "合法承载分支仍是 release/v4.1.0（尚不存在）；在 develop 上不得宣称 GA"
+  evidence_discipline:
+    - "阶段推进的证据必须是：归档 run id + evidence_hash(sha256) + 门禁 rc + 干净检出复现命令 + 独立 Reviewer 回执"
+    - "模型意见仅作参考（AFP §5.1/5.3），不作门禁依据；deepseek-website 席位当前不可用、qwen 弃权 ⇒ 无双来源咨询结果"
+    - "执行者不自签：merge_policy 要求 reviewers 2 + codeowner/governance（独立 Reviewer 申请见 Hub issue #133）"
+    - "CI 执行面 #5597 全 Blocked ⇒ 以本地归档 run 替代 CI 绿灯，并逐 PR 声明该偏差"
+  measured_inputs:
+    - "GA 阶段清单实跑：run 20261107-ga-gates-001（36 条命令 28 绿/8 红，evidence_hash=sha256:d64dee3ffb3344bbd8e421593ccda701aee570a9f43c59a05aa76c2494302ff3）"
+    - "ALPHA 阶段清单实跑：run 20261107-alpha-gates-001（10 条 7 绿/3 红）"
+    - "崩溃安全首跑：run 20261107-crash-002（2 绿/1 红）⇒ crash_wal_index_b1 在基线树同样红（ERROR 1146 Table not found: t）⇒ IDX-1 是既有缺陷"
+    - "LINT-1 第一批：run 20261108-lint1-001（clippy 该类 47→0；测试唯一失败为既有 IDX-1 缺陷）"
+    - "13 条归档 run 全部 verify OK"
+  next_flow: "ALPHA →（AB-01..AB-10 逐项取证 + 独立 Reviewer 回执）→ BETA → … 每一步都按 governance，不得跳过"
+
 # ============================================================================
 # 2026-10-21 判据订正横幅 (#5439)
 # ----------------------------------------------------------------------------
@@ -311,7 +342,7 @@ last_rollback_record:
     reason: "Initial draft entry. v4.1.0 enters draft phase on 2026-09-23 after v4.0.0 GA gate (38566af0f8) merged into develop/v4.0.0 + develop/v4.1.0 branch cut from that GA commit. Draft phase per STAGE_CONFIG DRAFT_to_ALPHA trigger criteria. Active work: v4.0.0 bugfix carry-forward (zombie-fix core, workers.push, DML/storage regressions) and 5-remote sync infrastructure. STAGE.yaml created retroactively to satisfy STAGE_CONFIG framework SSOT requirement; PHASE_0 docs scaffolded in parallel."
 
 current_state:
-  head: "2f96229f620a7f65961360ac75eb31944e27dab5"
+  head: "bfc6c2c5f2bd5819c59e40a02983fb0143d45360"
   branch: "develop/v4.1.0"
   # #5436 —— GA 的承载分支。GA 的 `branch_pattern` 是
   # ["main", "release/v*", "hotfix/v*"]，**不含** `develop/*`；
@@ -327,7 +358,7 @@ current_state:
   ga_carrier_branch: "release/v4.1.0"
   ga_declared: false
   ga_carrier_note: "no release/v4.1.0 branch exists yet; GA has NOT been declared and MUST NOT be claimed on develop/v4.1.0"
-  last_modified: "2026-10-06"
+  last_modified: "2026-11-08"
   source: "local git + 5 remotes (gitea250/252, github, gitcode, gitee)"
   note: "develop/v4.1.0 carries v4.0.0 GA gate commit (38566af0f8) plus: (a) cherry-picks of the 4 review-queue commits (6603820f1e / daad2c687d / 82772919e2) and the empty merges (fca71cb525 / a65497e276 / 7e30fbc0cb) that bring 3 doc-only v4.0.0 commits into v4.1.0 graph; (b) the zombie-fix core merge (9c6767a512) carrying v4.0.0 code forward; (c) the closed review queue audit (0bbb044da3)."
 
