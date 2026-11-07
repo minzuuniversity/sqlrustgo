@@ -1,0 +1,4 @@
+[1] OK: DRIFT ⇒ VERDICT=DRIFT / EXIT_CODE=2（阻断）
+[2] OK: 真实门禁文案如实（DRIFT=阻断 + 逐维实测计数）
+[3] OK: 回退成旧文案的变异样判红
+OK: GA-DRIFT1 判据的反向变异成立（真实门禁绿 / 回退样红）
