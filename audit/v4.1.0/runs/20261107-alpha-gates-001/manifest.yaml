@@ -1,0 +1,170 @@
+schema_version: 1
+run_id: 20261107-alpha-gates-001
+source_agent: omp-macmini
+frozen_commit: 8ada395fd7def37d1230d984fe9dcec25c9a8aa3
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: alpha-gate-check-alpha-v410
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_alpha_v{VER}.sh（VER=4.1.0 ⇒ check_alpha_v410.sh）
+  cmd: bash scripts/gate/check_alpha_v410.sh
+  cwd: .
+  timeout_sec: 1800
+- id: alpha-gate-arch-invariants
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_arch_invariants.sh
+  cmd: bash scripts/gate/check_arch_invariants.sh
+  cwd: .
+  timeout_sec: 900
+- id: alpha-gate-arch3-no-bypass
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_arch3_no_bypass.sh
+  cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  cwd: .
+  timeout_sec: 900
+- id: alpha-gate-coverage-v312
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_coverage_v312.sh（阈值取 SSOT 的 COVERAGE_MIN_ALPHA）
+  cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  timeout_sec: 5400
+- id: alpha-gate-sql-corpus
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_sql_corpus_gate.sh
+  cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  timeout_sec: 1800
+- id: alpha-gate-anti-ignore
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_anti_ignore_gate.sh
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: alpha-gate-g1-tpch-baseline
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_g1_tpch_baseline.sh
+  cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  timeout_sec: 1800
+- id: alpha-cargo-build
+  name: ALPHA 清单 cargo 命令（原文）：cargo build --all-features
+  cmd: cargo build --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: alpha-cargo-test-lib
+  name: ALPHA 清单 cargo 命令（原文）：cargo test --all-features --lib
+  cmd: cargo test --all-features --lib
+  cwd: .
+  timeout_sec: 5400
+- id: alpha-cargo-fmt-check
+  name: ALPHA 清单 cargo 命令（原文）：cargo fmt --check
+  cmd: cargo fmt --check
+  cwd: .
+  timeout_sec: 900
+results:
+- id: alpha-gate-check-alpha-v410
+  started_at: '2026-11-07T11:42:07Z'
+  finished_at: '2026-11-07T12:12:07Z'
+  exit_code: 124
+  stdout_sha256: f8b00fa35b1c5824eca467e90031caeecd036941bdf657dcbcd578744e8ccd62
+  stderr_sha256: f9fd77d803751104f79ae08dc9e55fc99264df835ff2942416d634e1d22dd146
+  stdout_path: logs/001-alpha-gate-check-alpha-v410.stdout
+  stderr_path: logs/001-alpha-gate-check-alpha-v410.stderr
+- id: alpha-gate-arch-invariants
+  started_at: '2026-11-07T12:12:07Z'
+  finished_at: '2026-11-07T12:12:07Z'
+  exit_code: 0
+  stdout_sha256: 7a4ad832e77eaf5cf645b7241af81f4d60436e5a293042970f387f3505890a88
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-alpha-gate-arch-invariants.stdout
+  stderr_path: logs/002-alpha-gate-arch-invariants.stderr
+- id: alpha-gate-arch3-no-bypass
+  started_at: '2026-11-07T12:12:07Z'
+  finished_at: '2026-11-07T12:12:07Z'
+  exit_code: 0
+  stdout_sha256: 8fc41d8cb57dcaafd6c73483e2045fed418f2fa20ca4fd2f43fb630b5f277d31
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-alpha-gate-arch3-no-bypass.stdout
+  stderr_path: logs/003-alpha-gate-arch3-no-bypass.stderr
+- id: alpha-gate-coverage-v312
+  started_at: '2026-11-07T12:12:07Z'
+  finished_at: '2026-11-07T12:18:18Z'
+  exit_code: 1
+  stdout_sha256: 8eaaeaf9616ccd1befe59a54fcdcb3691373cb7ead0cdfa989f4509d719bd013
+  stderr_sha256: 3aba952d47e03a96c528e2e0cb6e43717d333674791fdf9c1f1c4d7ed9e2a95f
+  stdout_path: logs/004-alpha-gate-coverage-v312.stdout
+  stderr_path: logs/004-alpha-gate-coverage-v312.stderr
+- id: alpha-gate-sql-corpus
+  started_at: '2026-11-07T12:18:18Z'
+  finished_at: '2026-11-07T12:18:54Z'
+  exit_code: 0
+  stdout_sha256: 245051ea7dea1eb1cf64cf73b5484009e81eacf0c61c5778bc21a53d3948a60d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-alpha-gate-sql-corpus.stdout
+  stderr_path: logs/005-alpha-gate-sql-corpus.stderr
+- id: alpha-gate-anti-ignore
+  started_at: '2026-11-07T12:18:54Z'
+  finished_at: '2026-11-07T12:18:54Z'
+  exit_code: 0
+  stdout_sha256: 9ce41ded00cdfd661e93fa559c67fbeefd3478c9db69ea335e61f9b7d6ae7bb2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-alpha-gate-anti-ignore.stdout
+  stderr_path: logs/006-alpha-gate-anti-ignore.stderr
+- id: alpha-gate-g1-tpch-baseline
+  started_at: '2026-11-07T12:18:54Z'
+  finished_at: '2026-11-07T12:48:54Z'
+  exit_code: 124
+  stdout_sha256: 06730a116d3b0b141da24fbeca914bf5a0131d88928dd258402937e1399f5484
+  stderr_sha256: f9fd77d803751104f79ae08dc9e55fc99264df835ff2942416d634e1d22dd146
+  stdout_path: logs/007-alpha-gate-g1-tpch-baseline.stdout
+  stderr_path: logs/007-alpha-gate-g1-tpch-baseline.stderr
+- id: alpha-cargo-build
+  started_at: '2026-11-07T12:48:54Z'
+  finished_at: '2026-11-07T13:31:48Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 8d00b124399c865fdc4df809e496f252da00f8ea81e794b0440fd3f5dd80daec
+  stdout_path: logs/008-alpha-cargo-build.stdout
+  stderr_path: logs/008-alpha-cargo-build.stderr
+- id: alpha-cargo-test-lib
+  started_at: '2026-11-07T13:31:48Z'
+  finished_at: '2026-11-07T13:40:43Z'
+  exit_code: 0
+  stdout_sha256: efe2cf943f06d6d948584c337a05bd975b0be93f19750c025e8742880641450e
+  stderr_sha256: 76a5077d65fb12c7493215edc18da0cdd99f7a1b83b0e2be93adaa5c03497195
+  stdout_path: logs/009-alpha-cargo-test-lib.stdout
+  stderr_path: logs/009-alpha-cargo-test-lib.stderr
+- id: alpha-cargo-fmt-check
+  started_at: '2026-11-07T13:40:43Z'
+  finished_at: '2026-11-07T13:40:47Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-alpha-cargo-fmt-check.stdout
+  stderr_path: logs/010-alpha-cargo-fmt-check.stderr
+notes: |
+  10 条命令：7 绿 / 3 红（exit_code 全部取自本 manifest results 段，不是叙述）。
+  红 1 `alpha-gate-check-alpha-v410`：**rc=124（1800s 超时）**。stdout 走到 `STATUS: ALPHA ENTRY PASS`
+  + Q1_BUILD/Q1_FMT PASS（各留 log sha）就被杀 ⇒ 「ENTRY PASS」只是**部分证据**，整体按三态记红；
+  余下 Q* 矩阵的 cargo 段没跑完。
+  红 2 `alpha-gate-coverage-v312`：rc=1，`average 29.72% < threshold 85%` —— 该门禁挂进 ALPHA 清单时
+  没带 stage，脚本未设 `SQLRUSTGO_COVERAGE_STAGE` 默认按 GA(85) 判（看板 COVM-1 已挂账，待 owner）；
+  无论按 85 还是按 SSOT 的 ALPHA 50，29.72% 都是红。
+  红 3 `alpha-gate-g1-tpch-baseline`：rc=124，step1/4 `timeout 1800 cargo test --test tpch_gate_test` 超时，
+  基线结论未取得。
+  三条红的同源代码证据：`008 alpha-cargo-build` stderr 原文 `Blocking waiting for file lock on build directory`
+  + `Finished ... in 42m54s` —— 与另一线的 `cargo test --workspace` 争同一 CARGO_TARGET_DIR 的锁，
+  排队时间占大头。需要无争用窗口复跑，不放宽 timeout、不改判据。
+  绿臂读数：arch-invariants `FAILED: 0 / ALL PASS`；arch3-no-bypass `G4 Gate: PASS`（VtuGuard 主路径强制）；
+  sql-corpus 98.2%（阈值 80）；anti-ignore total 135/150、active 81/92、tree recount 135 一致；
+  cargo build rc=0；cargo test --lib `170 passed; 0 failed`（8m14s）；cargo fmt 干净（双空哈希）。
+  environment.worktree_clean=false 是归档工具自指：freeze 本身先写 `audit/v4.1.0/commit.txt` ⇒ 同一病灶已在
+  20261107-dirt1-001 做过 forensics，不修、不改判据。
+  偏差声明（BRANCH_GOVERNANCE §5.4.1）：CI 执行面已死（#5597，runner 全 Blocked）⇒ 本 run 是 CI 绿灯的替代品；
+  本仓无第二身份可评审 ⇒ 评审缺失同样记为偏差，不假装满足。
+evidence_hash: sha256:e7029c914dc7c799874f9b2ef508540ec38a085f28b550f37de9b4ee2db2ba7c
+completed_at: '2026-11-07T13:40:47Z'
