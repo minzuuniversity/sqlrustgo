@@ -1,0 +1,81 @@
+schema_version: 1
+run_id: 20261107-crash-002
+source_agent: omp-macmini
+frozen_commit: 3947a72671d38bafb54f61eee66b07b0f4d0a836
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: crash-armed-server-build
+  name: armed 构建第一步：把带 fault-injection 的 server 二进制编出来（测试按硬编码路径 <repo>/target/debug/sqlrustgo-mysql-server
+    找它）
+  cmd: cargo build -p sqlrustgo-mysql-server --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: crash-wal-index-b1
+  name: 崩溃套件（armed）：WAL 追加边界 kill -9 后不复活行
+  cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_wal_index_b1
+  cwd: .
+  timeout_sec: 3600
+- id: crash-commit-fsync-b1
+  name: 崩溃套件（armed）：提交 fsync 边界
+  cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_commit_fsync_b1
+  cwd: .
+  timeout_sec: 3600
+results:
+- id: crash-armed-server-build
+  started_at: '2026-11-07T16:43:01Z'
+  finished_at: '2026-11-07T16:43:42Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 547acd790ea6e6e21af1beb4b0bb1de12f518b2ad2ad3bc6ff0f86c937284697
+  stdout_path: logs/001-crash-armed-server-build.stdout
+  stderr_path: logs/001-crash-armed-server-build.stderr
+- id: crash-wal-index-b1
+  started_at: '2026-11-07T16:43:42Z'
+  finished_at: '2026-11-07T16:44:12Z'
+  exit_code: 101
+  stdout_sha256: 92b009e154ecd98c8c196ac702c948f5413676b41434ea2764628610037b70aa
+  stderr_sha256: abe88f51ba247a3344b76cd7e19d23bee176ac12b3f48a6dce9c2dd314d6ea37
+  stdout_path: logs/002-crash-wal-index-b1.stdout
+  stderr_path: logs/002-crash-wal-index-b1.stderr
+- id: crash-commit-fsync-b1
+  started_at: '2026-11-07T16:44:12Z'
+  finished_at: '2026-11-07T16:44:18Z'
+  exit_code: 0
+  stdout_sha256: e2d0a856a317640332d60f76bff3bfaec6baa0738a727ac3858f92eba2c2a4e6
+  stderr_sha256: 39ee9ebc339255015860e26dbfca6265694c5c2b89a1f0e8d76e397dea3c8bb1
+  stdout_path: logs/003-crash-commit-fsync-b1.stdout
+  stderr_path: logs/003-crash-commit-fsync-b1.stderr
+notes: |
+  3 条命令：**2 绿 / 1 红**。这是崩溃安全套件的**第一次真实执行**（IL-13：此前 41 个归档 run 里
+  `crash_wal_index` 出现 0 次 ⇒ 崩溃安全的「全部 exit_code 0」从来没有任何来源）。
+  绿 1 `crash-armed-server-build`（rc=0）：`cargo build -p sqlrustgo-mysql-server --all-features`
+      ⇒ armed 构建（fault-injection feature 开着）才编得出带故障注入钩子的 server。
+  绿 3 `crash-commit-fsync-b1`（rc=0）：`cargo test -p sqlrustgo-storage --features fault-injection
+      --test crash_commit_fsync_b1` ⇒ 提交 fsync 边界的崩溃套件**通过**。
+  红 2 `crash-wal-index-b1`（rc=101）：失败在**种子 SQL**，不是崩溃逻辑 ——
+      `crates/storage/tests/crash_wal_index_b1.rs:231` ⇒ `seed sql: script failed: ...`
+      ⇒ `ERROR 1146 (42000) at line 1: Table not found: t`（种子里的 `CREATE INDEX idx_v ON t(v)` 失败）。
+      ⇒ 该测试**压根没跑到崩溃边界**，它声称要验证的「索引更新边界崩溃后不出现悬挂行」至今未被验证。
+  **根因已定位（另立看板行 IDX-1）**：`CREATE INDEX` 只能给**默认库**（`default`）里的表建索引 ——
+      ① 不跟随会话当前库：`USE d1` 后 `CREATE TABLE`/`INSERT`/`SELECT COUNT(*)`/`SHOW TABLES` 都正常（表确实在 d1），
+         但 `CREATE INDEX idx_v ON t(v)` 报 `ERROR 1146: Table not found: t`；
+      ② 不支持限定名：`CREATE INDEX idx_q ON d1.t(v)` 报 `ERROR 1064: Parse error: Expected LParen, got Dot`；
+      ③ 默认库里一切正常（不 `USE` 时 `CREATE TABLE t3` + `CREATE INDEX idx_t3 ON t3(v)` 成功、`COUNT(*)=1`）。
+      ⇒ **最常见的建表序列 `CREATE DATABASE → USE → CREATE TABLE → CREATE INDEX` 在本仓是断的**。
+      复现环境：`sqlrustgo-mysql-server serve --port 13399 --data-dir <tmp>` + `mysql -h 127.0.0.1 -P 13399 -u root`。
+  环境注意：测试按**硬编码**路径 `<repo>/target/debug/sqlrustgo-mysql-server` 找 server ⇒ 归档 worktree 需把 `target`
+  指向共享 CARGO_TARGET_DIR（软链，`/target` 已在 .git/info/exclude 里），否则会重现「binary not found」这一假因
+  （那是第一版 `20261107-crash-001` 两条全红的唯一原因）。
+  偏差按 §5.4.1 声明：CI 执行面已死（#5597）⇒ 本地归档 run 替代 CI 绿灯；无第二身份评审。
+evidence_hash: sha256:b3c457f70f57206aa403c536eee1235ddc6f5508b99ab2e9153d2578f03550c6
+completed_at: '2026-11-07T16:44:18Z'
