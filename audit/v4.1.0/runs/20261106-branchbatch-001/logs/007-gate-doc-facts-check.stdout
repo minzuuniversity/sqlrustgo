@@ -1,0 +1,3 @@
+{"kind": "doc_facts_check", "docs": 94, "stamped": 1, "stamp_ok": 1, "index_bytes": 17319, "gates": [{"gate": "docs_pointer_paths", "status": "PASS", "exit_code": 0}, {"gate": "docs_links", "status": "PASS", "exit_code": 0}], "fails": 1}
+FAIL: 索引与重生成结果不一致（DOC_INDEX.jsonl）：生成物「写盘口径」必须等于「核对口径」
+doc_facts: 1 FAIL
