@@ -61,13 +61,32 @@ SLOW_THRESHOLD_SEC = 30  # binaries taking longer than this go to the slow group
 # Mirror the DISABLED_TESTS_LIST from scripts/gate/check_beta_v3.12.0.sh.
 # Source of truth: docs/releases/v3.12.0/b2-disabled-test-binary-registry.md.
 # === A08 audit 2026-10-09 (Issue #5230) ===
-# 12 binaries reactivated: ddl_e2e_test, savepoint_test, mvcc_transaction_test,
-# operators_join, window_function_test, differential_corpus_test,
-# issue_4491_join_groupby_alias_col_and_scalar_subquery, dml_integration_test,
-# diag_q22_cell_level, tpch_sf01_perf_baseline_test, physical_backup_test,
-# repro_v312_85. Evidence: docs/releases/v4.1.0/A08_DISABLED_BINARIES_REVIEW_2026-10-09.md
+# 12 binaries reactivated: ddl_q22_cell_level, ddl_e2e_test, differential_corpus_test,
+# dml_integration_test, issue_4491_join_groupby_alias_col_and_scalar_subquery,
+# mvcc_transaction_test, operators_join, physical_backup_test, repro_v312_85,
+# savepoint_test, tpch_sf01_perf_baseline_test, window_function_test.
+# Evidence: docs/releases/v4.1.0/A08_DISABLED_BINARIES_REVIEW_2026-10-09.md
 # source_agent: opencode+Mimo2.6Flash, evidence_hash: e50c409ee46825ce66a0989111a8bf22111be7341786d7c57cc76d5f452d42f2
 # === end A08 audit ===
+#
+# 这 12 条**不得**回到 disabled 集合（A08 已裁）。以前只写在注释里，夹具无法机器判；
+# 现在提成常量，`scripts/gate/test_run_b2_per_binary.py` 直接拿它当判据
+# （2026-11-07 实测：registry 90 行 − 12(A08) − 3(登记表自带 REACTIVATED 标记) + 2(未登记例外) = 77）。
+A08_REACTIVATED_BINARIES = frozenset({
+    "ddl_e2e_test", "savepoint_test", "mvcc_transaction_test",
+    "operators_join", "window_function_test", "differential_corpus_test",
+    "issue_4491_join_groupby_alias_col_and_scalar_subquery", "dml_integration_test",
+    "diag_q22_cell_level", "tpch_sf01_perf_baseline_test", "physical_backup_test",
+    "repro_v312_85",
+})
+
+# 这 2 条在工具里被禁用，但 `b2-disabled-test-binary-registry.md` 的登记表里**根本没有**，
+# 因此它们既不能被夹具的「登记表覆盖」判据承认，也不能凭空消失。处置走看板行 B2REG-1
+# （补登记还是退役，属属主决定，因为「禁用哪些 binary」会改变门禁判定 ⇒ AGENTS 3.2/§8-7）。
+# 在属主裁决前保持禁用（保持既有行为，不擅自放行一个跑不过的 binary）。
+UNDOCUMENTED_DISABLED_BINARIES = frozenset({
+    "diag_q6_filter", "diag_q6_where_parsed",
+})
 DISABLED_BINARIES = [
     "diag_q11",
     "diag_q11_3way",
@@ -274,7 +293,19 @@ def list_test_binaries() -> list[str]:
     names = re.findall(r'\[\[test\]\]\s*name\s*=\s*"([^"]+)"', text)
     for pkg in EXTRA_TEST_PACKAGES:
         names.extend(_list_package_test_targets(pkg))
-    return names
+    # 同一个 [[test]] 名可能既被根 Cargo.toml 显式声明、又被 EXTRA_TEST_PACKAGES 的
+    # 自动发现再收一次（实例：`sequence_test`，见根 Cargo.toml:1108-1109 与
+    # crates/mysql-server 的同名 target —— Cargo.toml:1937-1938 早就写下这个同名隐患）。
+    # 旧实现按名字键控报告，两个不同目标会被塌成一个、且同一个 binary 会被跑两遍。
+    # 这里按名字去重，首次出现为准（根清单优先）。
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for n in names:
+        if n in seen:
+            continue
+        seen.add(n)
+        deduped.append(n)
+    return deduped
 
 
 def _list_package_test_targets(package: str) -> list[str]:
