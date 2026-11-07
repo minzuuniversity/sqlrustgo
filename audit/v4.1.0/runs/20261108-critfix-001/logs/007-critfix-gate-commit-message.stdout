@@ -1,0 +1,27 @@
+=== L1 - the type table must exist in exactly one place ===
+PASS: L1 - the type table lives only in docs/governance/CONTRIBUTING.md
+=== L2/L3 - commit message shape and traceability ===
+range: last 50 commits
+  NO_REFS 7bccfc61e729 docs(kanban): 两行补「专家咨询现状」—— 两个来源未取得，裁决仍归属主 (#5592)
+  NO_REFS cd0f32ba96ac docs(kanban): 措辞改回「专家」—— 不用非标准的来源比喻 (#5592)
+  NO_REFS 4e2b4d3666e6 docs(kanban): GA-CMT1 厘清两条规则的严重性 + 认领我自己的执行不一致 (#5592)
+  NO_REFS bd63b76231fb chore(audit): LINT-1 第一批的取证命令集（clippy 复测 + 被改 crate 全量测试）
+  NO_REFS b812833a75d1 docs(kanban): GA-AFP1 订正（没有「缺前置」这回事）+ GA-DRIFT1 定位到两个门禁自身缺陷 (#5592)
+  NO_REFS 1ae407cb00bc docs(kanban): COVM-1 更正 —— 那条红是我并发清理 target 造成的测量假红，撤回我提的伪问题 (#5592)
+  NO_REFS 376f21b57ce4 docs(kanban): GA-PRIN1 更正框定 —— 那条红不是 develop 的阶段红，是我把历史门禁排进了归档命令集 (#5592)
+  NO_REFS b6e4e48e6951 docs(kanban): IDX-1 根因精确到代码点 —— 整个索引子系统只认默认库（8 处硬编码 + 限定名无 schema 字段）(#5592)
+  NO_REFS ba55a9b0e29e docs(kanban): patch27 —— 四行看板事实按 2026-11-08 实测刷新（P0-5 / AMAN-1 / FIXWIRE-1 / GA-DRIFT2）(#5
+  NO_REFS 55fe85fbb10b docs(kanban): GA-SEM1 根因定位为门禁判据陈旧（假红）+ P1-1 复测与引用订正 (#5592)
+  NO_REFS 98dbfa65a364 test(audit): IL-6 判别实验（三态红数隔离自指效应）+ 归档命令集
+  NO_REFS 97d9091c4921 chore(audit): 归档 run 20261107-grepc-002（多行计数修复第二版对照，2 绿 / 1 红）
+  NO_REFS 9ed6800be931 chore(audit): ROW-1 判据探针（acceptance 与 status/evidence 是否同步）+ 自检
+  NO_REFS 11a531d36a8f fix(gate): 多行计数修复的第二版 —— 不用空操作兜底，改用变量兜底赋值（治理口径自纠）
+  NO_REFS a30934c9c7bd merge: 并入 develop（#5637/#5638）后重放 GA-SHELL1 结案 + GA-PRIN1
+  NO_REFS 99efda762e1e docs(kanban): GA-SHELL1 结案（8 处多行计数已修 + 对照归档）+ 新增 GA-PRIN1（内容性真红）(#5592)
+  NO_REFS 5bd83ca4331e audit(gate): 归档 run 20261107-grepc-001 —— 8 处多行计数修复后的对照归档（2 绿 / 1 红）
+PASS: L2 - every checked commit matches the shape (50 checked, 21 merge commit(s) exempt)
+NOTE: L3 - Refs compliance is 12/29
+      (reported, not enforced: the existing history predates this rule, and
+       failing it would block every future change without making the history
+       any better. Use --require-refs to enforce it.)
+RESULT: PASS
