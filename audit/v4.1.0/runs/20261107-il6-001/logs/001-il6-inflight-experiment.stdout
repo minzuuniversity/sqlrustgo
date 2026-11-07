@@ -1,0 +1,19 @@
+{
+  "after_removal": {
+    "fail_lines": 8,
+    "rc": 1
+  },
+  "baseline": {
+    "fail_lines": 8,
+    "rc": 1
+  },
+  "baseline_red_reason": "基线本身即红（历史 hollow-manifest 那批，见看板 P0-6），所以「run 内 rc=1 / run 后 rc=0」这条签名今天不可达 ⇒ 用红数隔离。",
+  "gate": "scripts/gate/check_audit_manifest.sh",
+  "inflight": {
+    "fail_lines": 8,
+    "rc": 1
+  },
+  "kind": "il6_inflight_experiment",
+  "note": "A/B/C 红数相同 ⇒ 进行中的 run 目录**没有**被计入判定（该病灶在现行实现里不复现）",
+  "self_reference_effect": 0
+}
