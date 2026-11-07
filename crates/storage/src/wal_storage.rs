@@ -1999,7 +1999,7 @@ mod tests {
     fn test_wal_inner_wal_walmut() {
         let inner = MemoryStorage::new();
         let wal = MemoryWalManager::new();
-        let mut storage = WalStorage::new(inner, wal).unwrap();
+        let storage = WalStorage::new(inner, wal).unwrap();
         let _ = storage.inner();
         // `let _ = <lock guard>` drops the guard immediately, which is what
         // `clippy::let_underscore_lock` reports (#5508). Bind it by name so

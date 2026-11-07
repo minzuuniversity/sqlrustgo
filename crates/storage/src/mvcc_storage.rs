@@ -1628,7 +1628,7 @@ mod tests {
                 ],
             )
             .unwrap();
-        let mut s = MvccStorage::new(inner);
+        let s = MvccStorage::new(inner);
         s.rebuild_from_inner().unwrap();
         let rows = s.scan("t").unwrap();
         assert_eq!(rows.len(), 3);

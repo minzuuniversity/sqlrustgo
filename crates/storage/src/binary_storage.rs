@@ -1585,7 +1585,7 @@ mod tests {
         std::fs::remove_dir_all(tmp).ok();
     }
 
-    use super::*;
+    
     use sqlrustgo_types::Value;
 
     fn make_cols(names: &[&str], types: &[&str]) -> Vec<ColumnDefinition> {
