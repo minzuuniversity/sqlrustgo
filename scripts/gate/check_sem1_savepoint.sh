@@ -6,10 +6,14 @@
 # 2. SavepointStatement AST variant exists in Statement enum
 # 3. 3 parse_*_savepoint functions exist in parser.rs
 # 4. 3 TransactionManager methods exist: savepoint, rollback_to_savepoint, release_savepoint
-# 5. execute_savepoint method exists in execution_engine.rs
+# 5. SAVEPOINT **statement path** complete (lexer → parser → savepoint_wiring → engine_dml)
 # 6. ActiveTransaction has savepoint_manager field
-# 7. 6 sem1_savepoint_test tests pass
-# 8. 871 L1 unit tests don't regress
+# 7. sem1_savepoint_test **actually runs and passes** (target sem1_savepoint_test)
+# 8. SavepointStatement dispatcher calls execute_savepoint (execution_engine_methods.rs)
+#
+# 2026-11-08（Owner 批准 GA-SEM1 判据修改）：第 5/7/8 项原判据都查**过期路径**，
+# 三条恒红假红；现已改为查真实位置并**真跑**测试。反向变异证据见
+# scripts/gate/test_sem1_statement_path.sh。
 #
 # Exit code: 0 = PASS, 1 = FAIL
 #
@@ -62,12 +66,41 @@ if [ "$TM_COUNT" -lt 3 ]; then
 fi
 echo "  [4/8] ✅ PASS: TransactionManager has 3 savepoint methods (count=$TM_COUNT)"
 
-# 5. execute_savepoint method
-if ! grep -q "fn execute_savepoint" src/execution_engine.rs; then
-    echo "  ❌ FAIL: execute_savepoint method missing in execution_engine.rs"
+# 5. SAVEPOINT **statement path** (not a method name)
+#    2026-11-08（Owner 批准 GA-SEM1 判据修改）：原判据是
+#    `grep -q "fn execute_savepoint" src/execution_engine.rs` —— 那是**实现从未用过**的方法名
+#    （SAVEPOINT 走的是 lexer → parser dispatcher → src/savepoint_wiring.rs → engine_dml 的 undo 接线），
+#    所以该门禁在 develop 上恒红（假红，已由归档 run 20261107-ga-gates-001 实测）。
+#    改判据为「语句路径存在」，并把它做成**可带 root 调用的函数** ⇒ 反向变异有载体
+#    （夹具 scripts/gate/test_sem1_statement_path.sh 会造一个缺接线的假树 ⇒ 必须判红）。
+check_savepoint_statement_path() {
+  local root="${1:-$PROJECT_ROOT}"
+  local missing=0
+  local -a required=(
+    "crates/parser/src/lexer.rs|Token::Savepoint|词法：SAVEPOINT 关键字"
+    "crates/parser/src/parser.rs|Statement::SavepointStatement|语法：SAVEPOINT 语句变体"
+    "src/savepoint_wiring.rs|pub fn record_insert_undo|引擎接线：插入 undo 记录"
+    "src/savepoint_wiring.rs|pub fn record_delete_undo|引擎接线：删除 undo 记录"
+    "src/savepoint_wiring.rs|pub fn record_update_undo|引擎接线：更新 undo 记录"
+    "src/engine_dml.rs|record_insert_undo(|引擎使用点：插入撤销"
+    "src/engine_dml.rs|record_delete_undo(|引擎使用点：删除撤销"
+    "src/engine_dml.rs|record_update_undo(|引擎使用点：更新撤销"
+  )
+  local item file sym desc
+  for item in "${required[@]}"; do
+    file="${item%%|*}"; sym="${item#*|}"; sym="${sym%%|*}"; desc="${item##*|}"
+    if ! grep -q -- "$sym" "$root/$file" 2>/dev/null; then
+      echo "  ❌ FAIL: SAVEPOINT 语句路径缺 ${desc}（${file} 找不到 ${sym}）"
+      missing=$((missing + 1))
+    fi
+  done
+  return "$missing"
+}
+if ! check_savepoint_statement_path "$PROJECT_ROOT"; then
+    echo "  ❌ FAIL: SAVEPOINT statement path incomplete (see missing items above)"
     exit 1
 fi
-echo "  [5/8] ✅ PASS: execute_savepoint method present in execution_engine"
+echo "  [5/8] ✅ PASS: SAVEPOINT statement path complete (lexer → parser → savepoint_wiring → engine_dml)"
 
 # 6. ActiveTransaction savepoint_manager field
 if ! grep -q "savepoint_manager" crates/transaction/src/transaction_manager.rs; then
@@ -76,19 +109,45 @@ if ! grep -q "savepoint_manager" crates/transaction/src/transaction_manager.rs; 
 fi
 echo "  [6/8] ✅ PASS: ActiveTransaction has savepoint_manager field"
 
-# 7. sem1_savepoint_test exists
-if [ ! -f tests/sem1_savepoint_test.rs ]; then
-    echo "  ❌ FAIL: tests/sem1_savepoint_test.rs not found"
+# 7. sem1_savepoint_test **真的存在并真的跑过**
+#    2026-11-08（Owner 批准 GA-SEM1 判据修改）：原判据查的是 `tests/sem1_savepoint_test.rs`
+#    —— 这个**路径早已不存在**（真实位置 tests/integration/transaction/sem1_savepoint_test.rs，
+#    Cargo.toml 里的 target 名 = sem1_savepoint_test）；而且它**只查文件存在**，
+#    却在文件头宣称「6 个 sem1_savepoint_test 通过」⇒ 判据远弱于它声称的口径。
+#    现在改成：查真实路径 + **真的跑一遍**并报告实测通过数（不写死个数）。
+SEM1_TEST="tests/integration/transaction/sem1_savepoint_test.rs"
+if [ ! -f "$SEM1_TEST" ]; then
+    echo "  ❌ FAIL: $SEM1_TEST not found"
     exit 1
 fi
-echo "  [7/8] ✅ PASS: tests/sem1_savepoint_test.rs exists"
+echo "  [7/8] ⏳ running: cargo test --test sem1_savepoint_test"
+SEM1_LOG="$(mktemp "${TMPDIR:-/Volumes/workspace/dev}/sem1test.XXXXXX")"
+cargo test --test sem1_savepoint_test > "$SEM1_LOG" 2>&1
+SEM1_RC=$?
+if [ "$SEM1_RC" -ne 0 ]; then
+    echo "  ❌ FAIL: cargo test --test sem1_savepoint_test rc=$SEM1_RC"
+    tail -20 "$SEM1_LOG"
+    rm -f "$SEM1_LOG"
+    exit 1
+fi
+SEM1_PASSED="$(grep -oE '^test result: ok\. [0-9]+ passed' "$SEM1_LOG" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | head -1)"
+rm -f "$SEM1_LOG"
+echo "  [7/8] ✅ PASS: sem1_savepoint_test 通过（实测 passed=${SEM1_PASSED:-?}）"
 
-# 8. SavepointOp dispatcher (Statement::SavepointStatement arm in execution_engine)
-if ! grep -q "Statement::SavepointStatement" src/execution_engine.rs; then
-    echo "  ❌ FAIL: SavepointStatement not dispatched in execution_engine"
+# 8. SavepointStatement 的**调用点**（dispatcher）
+#    2026-11-08：原判据查 `src/execution_engine.rs` 里的 `Statement::SavepointStatement`
+#    —— 那个文件里没有；真实 dispatcher 在 `src/execution_engine_methods.rs`：
+#    `Statement::SavepointStatement { ref name, op } => self.execute_savepoint(name, op),`
+#    ⇒ 判据改为查**真实调用点**（并要求它真的调用 execute_savepoint，不是只提到类型名）。
+if ! grep -q "Statement::SavepointStatement" src/execution_engine_methods.rs; then
+    echo "  ❌ FAIL: SavepointStatement not dispatched in src/execution_engine_methods.rs"
     exit 1
 fi
-echo "  [8/8] ✅ PASS: SavepointStatement dispatched in execution_engine"
+if ! grep -q "execute_savepoint(name, op)" src/execution_engine_methods.rs; then
+    echo "  ❌ FAIL: SavepointStatement arm does not call execute_savepoint"
+    exit 1
+fi
+echo "  [8/8] ✅ PASS: SavepointStatement dispatched → execute_savepoint (execution_engine_methods.rs)"
 
 echo
 echo "=== G5 Gate: PASS ==="

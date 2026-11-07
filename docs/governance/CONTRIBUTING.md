@@ -147,11 +147,17 @@ SQLRustGo 是一个开源的 Rust SQL 数据库执行引擎，我们欢迎所有
 | `ci` | CI / 工作流 | ci: keep the gate wired to the job that runs it |
 | `style` | 纯格式（不改语义） | style: rustfmt the storage crate |
 | `merge` | 批次合并提交 | merge(gate): fold batch 39 into batch 40 |
+| `audit` | 审计/治理记录类改动（只记录、不改产品语义） | audit(gate): 把 8 项 GA 判据修正落到归档 run |
 
 > `ci` / `style` / `merge` 是本表在 #5453 批次中**按实测**补进去的：
 > `ci` 在最近 200 个 commit 里出现 4 次却不在旧表里，`style` 在
 > `DEVELOPMENT_PROCESS.md` §7.2 里出现却不在本表里，`merge` 是人工批次
 > 合并提交普遍在用的 type —— 两份旧表各自都不完整。合并成一份，并按实测取值。
+>
+> `audit` 是 2026-11-08（Owner 批准 GA-PRIN1 批次）**按实测**补进去的：审计/治理类提交
+> （判据修正的取证记录、治理状态重置记录）此前只能用 `chore`/`docs` 硬套，
+> `chore` 被当成维护杂项、`docs` 被当成文档改动 ⇒ 提交历史里审计记录无法检索。
+> 取值范围仅限**审计/治理记录**；产品语义改动仍须用 `fix`/`feat`/`refactor`。
 
 ### 5.3 提交示例
 

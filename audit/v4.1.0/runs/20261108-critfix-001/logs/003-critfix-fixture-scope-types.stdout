@@ -1,0 +1,6 @@
+[A] OK: legacy/ 的历史实现不被现行判据扫描（排除生效）
+[B] OK: 现行范围内的反模式仍被报出（判据有鉴别力）
+[C] OK: 去掉排除（回退成旧行为）⇒ legacy 反模式重新被报出
+[D] OK: 规范表 == ALLOWED_TYPES（audit chore ci docs feat fix merge perf refactor style test）
+[E] OK: 去掉 audit ⇒ 一致性判据判红
+OK: GA-DRIFT2 legacy 排除 + audit type 白名单的反向变异成立
