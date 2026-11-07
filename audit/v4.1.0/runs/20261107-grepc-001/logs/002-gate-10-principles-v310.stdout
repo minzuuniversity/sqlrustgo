@@ -1,0 +1,49 @@
+=== R1: Build ===
+  [PASS] R1: Build (37s)
+=== R2: Test ===
+  [PASS] R2: Test — 2762 passed (33s)
+=== R3: Clippy ===
+  [PASS] R3: Clippy (8s)
+=== R4: Format ===
+  [PASS] R4: Format (3s)
+=== R5: Coverage ===
+  [FAIL] sqlrustgo-parser: 7.93% (below 47%)
+  [FAIL] sqlrustgo-planner: 22.58% (below 47%)
+  [FAIL] sqlrustgo-executor: 4.25% (below 42%)
+  [PASS] sqlrustgo-storage: 53.18% (target 42%)
+  [FAIL] sqlrustgo-transaction: 13.19% (below 42%)
+  [FAIL] sqlrustgo-catalog: 20.64% (below 42%)
+=== R6: SQL Compatibility ===
+  [PASS] R6: SQL Compatibility
+=== R7: Documentation ===
+  [FAIL] R7: Missing required doc: DEVELOPMENT_PLAN.md
+  [FAIL] R7: Missing required doc: INDEX.md
+  [FAIL] R7: Documentation — 2 doc(s) missing
+=== R8: SQL Compatibility Gate ===
+  [SKIP] R8: No corpus items in debt-registry
+=== R9: Performance Gate ===
+  [PASS] R9: Performance Gate (4 metric files)
+=== R10: Formal Proof Gate ===
+  [SKIP] R10: proof-registry.yaml not found
+
+============================================
+  10 Principles (R1-R10) Summary
+============================================
+  Rule   Name                 PASS   FAIL  
+  ----   ----                 ----   ----  
+  R1     Build                1      0     
+  R2     Test                 1      0     
+  R3     Clippy               1      0     
+  R4     Format               1      0     
+  R5     Coverage             0      1     
+  R6     SQL Compat           1      0     
+  R7     Docs                 0      1     
+  R8     Corpus Gate          1      0     
+  R9     Perf Gate            1      0     
+  R10    Proof                1      0     
+
+  Total: 8/10 passed, 2 failures
+============================================
+JSON Report: /Volumes/workspace/dev/gate-reports/10_PRINCIPLES_V310_REPORT.json
+
+OVERALL: FAIL — 2 principle(s) failed
