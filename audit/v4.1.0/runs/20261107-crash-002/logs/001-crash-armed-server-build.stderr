@@ -1,0 +1,76 @@
+   Compiling scopeguard v1.2.0
+   Compiling crc32fast v1.5.2
+   Compiling tracing-core v0.1.36
+   Compiling regex-automata v0.4.18
+   Compiling sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/types)
+   Compiling aws-lc-sys v0.45.0
+   Compiling atty v0.2.14
+   Compiling clap_builder v4.6.7
+   Compiling tikv-jemalloc-sys v0.7.1+5.3.1-0-g81034ce1f1373e37dc865038e1bc8eeecf559ce8
+   Compiling ring v0.17.14
+   Compiling lock_api v0.4.14
+   Compiling flate2 v1.1.10
+   Compiling encoding_rs v0.8.41
+   Compiling clap v2.34.0
+   Compiling tracing v0.1.44
+   Compiling aws-lc-rs v1.18.1
+   Compiling sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/wt/crash2/crates/gis)
+   Compiling parking_lot v0.12.5
+   Compiling clap v4.6.7
+   Compiling sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/common)
+   Compiling regex v1.13.1
+   Compiling matchers v0.2.0
+   Compiling tokio v1.53.1
+   Compiling sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/parser)
+   Compiling sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/catalog)
+   Compiling sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/wt/crash2/crates/spill)
+   Compiling rustls-webpki v0.103.15
+   Compiling env_filter v2.0.0
+   Compiling actix-router v0.5.4
+   Compiling structopt v0.3.26
+   Compiling tracing-log v0.2.0
+   Compiling sharded-slab v0.1.7
+   Compiling env_logger v0.11.11
+   Compiling rustls v0.23.45
+   Compiling sqlrustgo-mysql-client v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/mysql-client)
+   Compiling yasna v0.5.2
+   Compiling pem v3.0.6
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/storage)
+   Compiling sqlrustgo-cache v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/cache)
+   Compiling tokio-util v0.7.19
+   Compiling tower v0.5.3
+   Compiling tokio-native-tls v0.3.1
+   Compiling actix-rt v2.15.0
+   Compiling information-schema v0.1.0 (/Volumes/workspace/dev/wt/crash2/crates/information-schema)
+   Compiling thread_local v1.1.10
+   Compiling h2 v0.4.19
+   Compiling actix-codec v0.5.4
+   Compiling tower-http v0.6.11
+   Compiling h2 v0.3.27
+   Compiling actix-server v2.9.5
+   Compiling nu-ansi-term v0.50.3
+   Compiling rcgen v0.13.2
+   Compiling tikv-jemalloc-ctl v0.7.0
+   Compiling sqlrustgo-telemetry v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/telemetry)
+   Compiling query-stats v0.1.0 (/Volumes/workspace/dev/wt/crash2/crates/query-stats)
+   Compiling tracing-subscriber v0.3.23
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/optimizer)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/wt/crash2/crates/security)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/transaction)
+   Compiling sqlrustgo-graph v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/graph)
+   Compiling sqlrustgo-tools v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/tools)
+   Compiling hyper v1.11.1
+   Compiling actix-http v3.13.6
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/planner)
+   Compiling tikv-jemallocator v0.7.0
+   Compiling crossbeam-channel v0.5.17
+   Compiling hyper-util v0.1.20
+   Compiling byteorder v1.5.0
+   Compiling hyper-tls v0.6.0
+   Compiling actix-web v4.15.0
+   Compiling reqwest v0.12.28
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/executor)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/wt/crash2/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/wt/crash2)
+   Compiling sqlrustgo-mysql-server v0.1.0 (/Volumes/workspace/dev/wt/crash2/crates/mysql-server)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 40.91s
