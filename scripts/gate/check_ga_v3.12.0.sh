@@ -196,9 +196,12 @@ run_beta_gate() {
     else
         # Count PASS/FAIL/WARN lines to compute partial score
         local pass_lines fail_lines warn_lines
-        pass_lines=$(grep -c "^\s*\[PASS\]" "$beta_log" 2>/dev/null || echo "0")
-        fail_lines=$(grep -c "^\s*\[FAIL\]" "$beta_log" 2>/dev/null || echo "0")
-        warn_lines=$(grep -c "^\s*\[WARN\]" "$beta_log" 2>/dev/null || echo "0")
+        # `grep -c` 零匹配时打印 "0" 且退出码 1 ⇒ `|| echo "0"` 追加第二个 0 ⇒ 变量变多行 ⇒
+        # 后面拿它做整数比较/算术时炸掉（`integer expression expected`）。
+        pass_lines=$(grep -c "^\s*\[PASS\]" "$beta_log" 2>/dev/null || true)
+        fail_lines=$(grep -c "^\s*\[FAIL\]" "$beta_log" 2>/dev/null || true)
+        warn_lines=$(grep -c "^\s*\[WARN\]" "$beta_log" 2>/dev/null || true)
+        pass_lines=${pass_lines:-0}; fail_lines=${fail_lines:-0}; warn_lines=${warn_lines:-0}
         BETA_PASS=$pass_lines
         BETA_BLOCKERS=$fail_lines
         log_warn "BETA gate partial: PASS=$pass_lines FAIL=$fail_lines WARN=$warn_lines (see $beta_log)"
