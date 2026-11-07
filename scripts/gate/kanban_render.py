@@ -194,6 +194,18 @@ def main(argv=None):
     if want_count != have_count:
         problems.append("count line differs\n    jsonl: %r\n    md:    %r"
                         % (want_count, have_count))
+    # MERGE-1：合并冲突口径（唯一口径 + 机器判据，见
+    # docs/releases/v4.1.0/KANBAN_MERGE_POLICY_2026-11-08.md）。
+    # 判据挂在**既有工具**上（不新增 check_*、不进 STAGE_CONFIG ⇒ 门禁分母 168 不动），
+    # 而本工具本身已在 .gitea/workflows/ci.yml 的既有 job 里 ⇒ 顺带获得执行点。
+    # 导入失败 ⇒ fail-closed（判红），不静默放过。
+    try:
+        import kanban_merge_policy  # type: ignore
+    except Exception as exc:  # pragma: no cover - 环境异常路径
+        problems.append("merge-policy check unavailable: %r" % (exc,))
+    else:
+        for p in kanban_merge_policy.check_rows(rows):
+            problems.append("merge policy: " + p)
     if problems:
         print("FAIL: %s drifted from %s (%d problems)"
               % (os.path.basename(args.md), src, len(problems)), file=sys.stderr)
