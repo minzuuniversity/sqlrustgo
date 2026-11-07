@@ -1245,4 +1245,52 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    /// SQLM-1: the nested-transaction behaviour of the SQLite-compat mode was
+    /// **not pinned by any test** (the code said so explicitly). This test pins
+    /// **today's measured** behaviour so that changing it later has to be a
+    /// deliberate, reviewable decision instead of an accident.
+    ///
+    /// Measured 2026-11-07 on this tree (`sqlrustgo sqlite <db> --cmd "…"`,
+    /// transcripts in
+    /// `docs/releases/v4.1.0/SQLM1_SQLITE_NESTED_TX_DEVIATION_2026-11-07.md`):
+    ///
+    /// | implementation | nested `BEGIN` | message | outer transaction after it |
+    /// |---|---|---|---|
+    /// | SQLite 3.54.0 | error | `cannot start a transaction within a transaction` | still open |
+    /// | MariaDB 12.3.2 | no error/warning — **implicitly commits** the old tx and opens a new one | — | already committed |
+    /// | this CLI | error | `Execution error: Transaction already in progress` | **force-rolled back, depth reset to 0** |
+    ///
+    /// ⇒ We agree with SQLite that a nested `BEGIN` is an error, but we differ
+    /// in the aftermath: the CLI's error path aborts the outer transaction,
+    /// whereas SQLite keeps it usable. The口径 decision (which reference to
+    /// follow) is still pending the expert seats / the owner (board row
+    /// SQLM-1), so this test asserts what the code does **today**.
+    #[test]
+    fn nested_begin_is_rejected_and_aborts_the_outer_transaction() {
+        let tmp = std::env::temp_dir().join("v31257_sqlm1_nested_tx");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let mut mode = SqliteMode::open(&tmp, SqliteState::default(), false).unwrap();
+
+        mode.run_batch_stdin_with_input(vec!["CREATE TABLE t(id INTEGER)".to_string()]);
+        mode.run_batch_stdin_with_input(vec!["BEGIN".to_string()]);
+        assert_eq!(mode.tx_depth, 1, "outer BEGIN opens one level");
+        assert!(!mode.error_seen, "outer BEGIN must not error");
+        mode.run_batch_stdin_with_input(vec!["INSERT INTO t VALUES (1)".to_string()]);
+
+        // Nested BEGIN: the engine refuses it ("Transaction already in progress"),
+        // so the CLI's error path force-rolls the outer transaction back and
+        // resets the depth counter to 0.
+        mode.run_batch_stdin_with_input(vec!["BEGIN".to_string()]);
+        assert!(
+            mode.error_seen,
+            "a nested BEGIN must be reported as an error"
+        );
+        assert_eq!(
+            mode.tx_depth, 0,
+            "the error path force-rolls back and resets the depth counter"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
