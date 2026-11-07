@@ -1,0 +1,54 @@
+=== v4.1.0 Alpha Gate Composite ===
+Branch: omp-macmini/alpha-run @ 8ada395fd7
+
+=== v4.1.0 Alpha Entry Check ===
+Branch: omp-macmini/alpha-run @ 8ada395fd7
+Boundary: entry readiness only; not a feature-completion or quality PASS.
+
+--- E1: Required Draft/Alpha Documents ---
+  [E1_STAGE] PASS
+  [E1_VERSION_PLAN] PASS
+  [E1_DEV_PLAN] PASS
+  [E1_ROADMAP] PASS
+  [E1_TEST_PLAN] PASS
+  [E1_ISSUES_PLAN] PASS
+  [E1_LEGACY_ISSUES] PASS
+  [E1_README] PASS
+  [E1_CHANGELOG] PASS
+  [E1_RELEASE_NOTES] PASS
+  [E1_PHASE_1_SCOPE] PASS
+  [E1_REVIEW_QUEUE] PASS
+
+--- E2: Documentation Entry Gates ---
+  [E2_DOC_LINKS] PASS
+  [E2_DOC_CONSISTENCY] PASS
+
+--- E3: Tool Entry Points ---
+  [E3_5REMOTES_SYNC] PASS
+  [E3_5REMOTES_DRIFT] PASS
+  [E3_SQLLOGICTEST_BUILD] PASS
+  [E3_ALPHA_QUALITY] PASS
+  [E3_ALPHA_COMPOSITE] PASS
+
+=== v4.1.0 Alpha Entry Summary ===
+PASS: 19 / 19
+BLOCKERS: 0
+STATUS: ALPHA ENTRY PASS
+
+=== v4.1.0 Alpha Quality Gate ===
+Branch: omp-macmini/alpha-run @ 8ada395fd7
+Boundary: hard quality gates; registered exclusions are visible debt, not PASS evidence.
+
+Note: check_docs_consistency.sh is a version-agnostic cross-version check
+(covers v3.0.0..v3.12.0 only). It is run as part of alpha ENTRY (E2) not
+alpha QUALITY. Pre-existing failures in that gate (VERSION_HISTORY.md
+current version + v3.12.0 CHANGELOG duplicate commit 355b5a3837) are
+not v4.1.0 regressions and are tracked separately per open_issues §3.
+
+
+--- Q1: Build & Format ---
+  [Q1_BUILD] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q1_BUILD_8ada395fd7_20261107_194919.log sha256=5c0fa4cf921dd63bf3ae1868717e737bc5390141c181fbcd8dd7c5795281b132)
+  [Q1_FMT] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q1_FMT_8ada395fd7_20261107_195029.log sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855)
+
+--- Q2: Anti-Fabrication Policy ---
+  [Q2_ANTI_FAB] 
