@@ -1,0 +1,10 @@
+- id: il6-inflight-experiment
+  name: IL-6 判别实验：同一门禁在「基线 / 有进行中的 run 目录 / 移除后」三态下的红数（用红数隔离自指效应，因为基线本身就红）
+  cmd: python3.14 audit/v4.1.0/il6_inflight_experiment.py --json
+  cwd: .
+  timeout_sec: 3600
+- id: il6-selfref-probe
+  name: IL-6 机制侧：仓内自指探针的反向变异臂（扫到进行中目录 ⇒ 变红；exclude-run ⇒ 红数下降）
+  cmd: python3.14 audit/v4.1.0/il6_selfref_probe.py
+  cwd: .
+  timeout_sec: 1800
