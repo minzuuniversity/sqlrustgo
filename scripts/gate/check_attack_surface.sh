@@ -30,7 +30,8 @@ echo "  ✅ Attack surface document exists"
 
 echo "[2/3] Verifying AV coverage..."
 
-AV_COUNT=$(grep -c "^| AV" "$ATTACK_SURFACE_DOC" || echo "0")
+AV_COUNT=$(grep -c "^| AV" "$ATTACK_SURFACE_DOC" 2>/dev/null || true)
+AV_COUNT=${AV_COUNT:-0}
 
 if [ "$AV_COUNT" -lt 10 ]; then
     echo "  ❌ FAIL: Only $AV_COUNT attack vectors documented (need 10)"
@@ -41,7 +42,8 @@ echo "  ✅ All 10 attack vectors (AV1-AV10) documented"
 
 echo "[3/3] Checking critical mitigations..."
 
-CRITICAL_AVS=$(grep -c "CRITICAL" "$ATTACK_SURFACE_DOC" || echo "0")
+CRITICAL_AVS=$(grep -c "CRITICAL" "$ATTACK_SURFACE_DOC" 2>/dev/null || true)
+CRITICAL_AVS=${CRITICAL_AVS:-0}
 
 if [ "$CRITICAL_AVS" -lt 3 ]; then
     echo "  ⚠️  Warning: Only $CRITICAL_AVS CRITICAL attack vectors documented"
