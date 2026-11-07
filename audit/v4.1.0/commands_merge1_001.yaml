@@ -1,0 +1,10 @@
+- id: merge-policy-selftest
+  name: MERGE-1 口径判据的自检：5 个反向变异臂（单侧被抓 / 显式声明不误抓 / 两侧不误抓 / 历史遗留不误抓 / 一侧整体消失被抓）
+  cmd: python3 scripts/gate/kanban_merge_policy.py --selftest
+  cwd: .
+  timeout_sec: 600
+- id: kanban-render-check-with-merge-policy
+  name: 既有工具挂上口径判据后的看板校验（kanban_render.py check）
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 600
