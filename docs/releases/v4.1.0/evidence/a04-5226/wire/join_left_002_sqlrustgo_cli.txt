@@ -2,7 +2,9 @@
 
 
 
+l.id,l.x,r.id
+1,one,NULL
+2,two,1
 
 === STDERR ===
-Error: sqlrustgo:error:runtime: Execution error: Join condition must reference one column from each side
 
