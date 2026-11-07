@@ -2,6 +2,23 @@
 # =============================================================================
 # check_rc_gate_v3.10.0.sh — v3.10.0 RC Stage Gate
 # =============================================================================
+# -----------------------------------------------------------------------------
+# SUPERSEDED — 2026-11-08（Owner 批准 GA-PRIN1「历史门禁标 historical」）
+#
+#   本脚本是 **v3.10.0 版本线**的 RC 阶段门禁。v4.1.0 流程里它**永不运行**：
+#     * 不在 `scripts/gate/STAGE_CONFIG.yaml` 的任何阶段 required_gates 清单里；
+#     * 不被 CI 的任何 root step 引用；
+#     * 不在任何归档命令集（audit/v4.1.0/commands_*.yaml）里。
+#   实测依据：`docs/releases/v4.1.0/GATE_CATALOG.jsonl` 里它的 class = **dead**
+#   （既无执行点、也无正文引用）⇒ 登记处置改为 `disposition: superseded`。
+#
+#   ⇒ 保留本文件只为保留历史证据；**不得**用它判定 4.1.0 的任何阶段。
+#   ⇒ 取代者：`scripts/gate/check_rc_ga_gate.sh`（v4.1.0 的 RC/GA 阶段门禁）。
+#   ⇒ 分母不变：它仍在 `scripts/gate/check_*.sh` 口径内（168），本次**不改分母**
+#     （分母变更属 owner 决定，见 Owner 指令「Gate 判定语义/清单变更需批准」）。
+#
+# EVIDENCE 2026-11-08: v3.10.0 RC Stage Gate — 历史门禁，v4.1.0 流程不执行；取代者 check_rc_ga_gate.sh
+# -----------------------------------------------------------------------------
 # 2026-07-13 claude-macmini (Phase 4 implementation per DeepSeek feedback)
 #
 # Pattern: per-version stage gate following STAGE_CONFIG.yaml RC section.

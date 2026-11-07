@@ -1,0 +1,171 @@
+schema_version: 1
+run_id: 20261108-critfix-001
+source_agent: omp-macmini
+frozen_commit: d2e28798e28736c2fb1d2dfa56522b1fe0e33f24
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/sqlrustgo/target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: critfix-fixture-sem1
+  name: GA-SEM1 反向变异夹具（A 真实树绿 / B 摘掉 engine_dml 接线红 / C 摘掉 parser 变体红）
+  cmd: bash scripts/gate/test_sem1_statement_path.sh
+  cwd: .
+  timeout_sec: 600
+- id: critfix-fixture-drift1
+  name: GA-DRIFT1 反向变异夹具（判定级 DRIFT=exit 2 阻断 / 文案如实 / 回退样红）
+  cmd: bash scripts/gate/test_rc_ga_gate_verdict.sh
+  cwd: .
+  timeout_sec: 600
+- id: critfix-fixture-scope-types
+  name: GA-DRIFT2 + audit type 反向变异夹具（legacy 排除生效/有鉴别力/回退红；type 表与门禁一致/回退红）
+  cmd: bash scripts/gate/test_criteria_scope_and_types.sh
+  cwd: .
+  timeout_sec: 600
+- id: critfix-gate-sem1
+  name: GA-SEM1 门禁本体（改判据后实跑；改前 rc=1，8/8 真跑 cargo test 并报实测通过数）
+  cmd: CARGO_TARGET_DIR=/Volumes/workspace/dev/sqlrustgo/target bash scripts/gate/check_sem1_savepoint.sh
+  cwd: .
+  timeout_sec: 1800
+- id: critfix-gate-drift-not-pass
+  name: GA-DRIFT2 门禁本体（改前 rc=1 / 4 条全在 legacy；改后 rc=0 / 0 条）
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  cwd: .
+  timeout_sec: 900
+- id: critfix-gate-registry
+  name: 门禁登记表一致性（superseded 处置 + C6 证据逐字出自门禁文件；check_n 仍 168）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 600
+- id: critfix-gate-commit-message
+  name: 提交信息门禁（audit type 进入规范表与机器判据，L1 单一 type 表仍成立）
+  cmd: bash scripts/gate/check_commit_message.sh
+  cwd: .
+  timeout_sec: 900
+- id: critfix-gate-doc-pointer-paths
+  name: 文档指针路径门禁（看板新文字不得引入断链）
+  cmd: bash scripts/gate/check_docs_pointer_paths.sh
+  cwd: .
+  timeout_sec: 600
+- id: critfix-kanban-check
+  name: 看板渲染与 jsonl 一致（104 行；GA-SEM1/GA-DRIFT1/GA-DRIFT2 结案）
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: 600
+- id: critfix-doc-facts
+  name: 文档事实索引一致性
+  cmd: python3.14 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  timeout_sec: 900
+- id: critfix-honesty
+  name: 门禁声明诚实性（登记表人工声明 vs 可证伪夹具账）
+  cmd: python3.14 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 900
+results:
+- id: critfix-fixture-sem1
+  started_at: '2026-11-07T18:21:44Z'
+  finished_at: '2026-11-07T18:21:44Z'
+  exit_code: 0
+  stdout_sha256: 68e725b25dd93a722fa36d2d3163be6cfe3535c9faeb1d440465ba685a28d162
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-critfix-fixture-sem1.stdout
+  stderr_path: logs/001-critfix-fixture-sem1.stderr
+- id: critfix-fixture-drift1
+  started_at: '2026-11-07T18:21:44Z'
+  finished_at: '2026-11-07T18:21:44Z'
+  exit_code: 0
+  stdout_sha256: 7d1dc78175729bd8b8940418d06b50b4603302dd11f438c46a8935db90b7b725
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-critfix-fixture-drift1.stdout
+  stderr_path: logs/002-critfix-fixture-drift1.stderr
+- id: critfix-fixture-scope-types
+  started_at: '2026-11-07T18:21:44Z'
+  finished_at: '2026-11-07T18:21:45Z'
+  exit_code: 0
+  stdout_sha256: 1f808aa59440f49a39efef71bb728086812fc4757dae84af8bfc17c88f9e969f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-critfix-fixture-scope-types.stdout
+  stderr_path: logs/003-critfix-fixture-scope-types.stderr
+- id: critfix-gate-sem1
+  started_at: '2026-11-07T18:21:45Z'
+  finished_at: '2026-11-07T18:22:11Z'
+  exit_code: 0
+  stdout_sha256: d265b933f567f0a5951dff0822122f905516562a404bf14036939472aa0d7a86
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-critfix-gate-sem1.stdout
+  stderr_path: logs/004-critfix-gate-sem1.stderr
+- id: critfix-gate-drift-not-pass
+  started_at: '2026-11-07T18:22:11Z'
+  finished_at: '2026-11-07T18:22:13Z'
+  exit_code: 0
+  stdout_sha256: 900c99db46da756171c1b88a4f81cbbf15475e2c28774a6e7bd3332bb6684685
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-critfix-gate-drift-not-pass.stdout
+  stderr_path: logs/005-critfix-gate-drift-not-pass.stderr
+- id: critfix-gate-registry
+  started_at: '2026-11-07T18:22:13Z'
+  finished_at: '2026-11-07T18:22:14Z'
+  exit_code: 0
+  stdout_sha256: 83615ef33310c5179ee8e5a9d7ee38192a5b348dbaa055fd7938d66acf2e4d33
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-critfix-gate-registry.stdout
+  stderr_path: logs/006-critfix-gate-registry.stderr
+- id: critfix-gate-commit-message
+  started_at: '2026-11-07T18:22:14Z'
+  finished_at: '2026-11-07T18:22:14Z'
+  exit_code: 0
+  stdout_sha256: 83416b4e766d696eb8065de27ab307a60a74f7e13abb3183d3dbd3a04b9b5ef9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-critfix-gate-commit-message.stdout
+  stderr_path: logs/007-critfix-gate-commit-message.stderr
+- id: critfix-gate-doc-pointer-paths
+  started_at: '2026-11-07T18:22:14Z'
+  finished_at: '2026-11-07T18:22:14Z'
+  exit_code: 0
+  stdout_sha256: ad00f0cde13d6cffd8c95289a4184689538d4706d8578d1fc50dbc07362be46d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-critfix-gate-doc-pointer-paths.stdout
+  stderr_path: logs/008-critfix-gate-doc-pointer-paths.stderr
+- id: critfix-kanban-check
+  started_at: '2026-11-07T18:22:14Z'
+  finished_at: '2026-11-07T18:22:14Z'
+  exit_code: 0
+  stdout_sha256: 1b3e61583e356938ed0843e238379beaa1fcc4503a08b062e999727e54b1666a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-critfix-kanban-check.stdout
+  stderr_path: logs/009-critfix-kanban-check.stderr
+- id: critfix-doc-facts
+  started_at: '2026-11-07T18:22:14Z'
+  finished_at: '2026-11-07T18:22:14Z'
+  exit_code: 0
+  stdout_sha256: 8e7a62e8588c48308f6f152952bfac47ffb31a3280e2e6f29935e89b72d951d6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-critfix-doc-facts.stdout
+  stderr_path: logs/010-critfix-doc-facts.stderr
+- id: critfix-honesty
+  started_at: '2026-11-07T18:22:14Z'
+  finished_at: '2026-11-07T18:22:14Z'
+  exit_code: 0
+  stdout_sha256: 2bb8835bd59d8f430956ffea69d43d0f55580ecd0d15c62ebe16610c1498acbb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-critfix-honesty.stdout
+  stderr_path: logs/011-critfix-honesty.stderr
+evidence_hash: sha256:f7559d1c20d845a53e47e06ad8c2e2f001e3b2a2cd1af926f97b10ba3999033d
+completed_at: '2026-11-07T18:22:14Z'
+notes:
+  - '本 run 覆盖 Owner 2026-11-08 批准（Hub #70 评论 206666）项的判据侧落地：GA-SEM1 / GA-DRIFT1 / GA-DRIFT2 + audit type + v3.10 历史门禁标 superseded。'
+  - '全部 11 条命令 rc=0（无超时、无 NOT-RUN）：三个反向变异夹具 + 四个门禁本体 + 登记表/看板/文档事实/诚实性四道机器裁决。'
+  - '改前对照（不在本 run 内、在 PR 正文给出，全部实测）：check_sem1_savepoint.sh rc=1（原文「tests/sem1_savepoint_test.rs not found」）；check_drift_not_pass.sh rc=1（4 条发现全在 scripts/gate/legacy/）；GA-DRIFT1 的 DRIFT 分支旧文案「tracked, not blocking」，而 gate_verdict_for 里 DRIFT 本来就 GATE_EXIT_CODE=2 ⇒ 已经阻断。'
+  - '反向变异（本 run 内自带）：夹具三臂 —— 真实树绿、摘掉 engine_dml 的 record_insert_undo 判红、摘掉 parser 的 SavepointStatement 判红；把 DRIFT 文案回退成旧样判红；去掉 legacy 排除则 legacy 反模式重新被报出；去掉 audit 则 type 表与门禁不一致判红。'
+  - '分母未变：新增三个夹具命名为 test_*（不进 scripts/gate/check_*.sh 口径）；gate_registry check 的 check_n=168。'
+  - '环境说明：sem1 门禁那一条会真跑 cargo test（改前它就是恒红）；CARGO_TARGET_DIR 指向共享缓存只是提速，不改变判定。'
+  - '本 run 未包含（非 AI 判断证据要求里仍缺的两项）：独立 Reviewer 回执（Hub #133 在申请中）、TPC-H/G14 fixture 供给；另 61 道 dead 门禁的处置仍待属主批量确认（本批只处置 1 道）。'

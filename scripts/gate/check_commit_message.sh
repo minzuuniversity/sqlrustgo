@@ -74,7 +74,7 @@ fail() { echo "FAIL: $*"; exit 1; }
 # `merge` 同理：人工写的批次合并提交普遍用 `merge(<scope>): ...` 作为 type
 # （git 自动生成的那种标题是 "Merge branch ..."，由下面的豁免规则处理）。
 # ---------------------------------------------------------------------------
-ALLOWED_TYPES="feat fix refactor docs test chore perf ci style merge"
+ALLOWED_TYPES="feat fix refactor docs test chore perf ci style merge audit"
 
 # 规范里**唯一**允许定义 type 表的文件与小节。
 CANONICAL_SPEC="docs/governance/CONTRIBUTING.md"
