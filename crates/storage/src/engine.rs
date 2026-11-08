@@ -4328,7 +4328,7 @@ mod tests {
     fn test_memory_storage_scan_empty() {
         let mut storage = MemoryStorage::new();
         storage.create_table(&test_table("users", &["v"])).unwrap();
-        storage.insert("users", vec![]);
+        storage.insert("users", vec![]).unwrap();
         let result = storage.scan("users").unwrap();
         assert!(result.is_empty());
     }
@@ -4466,7 +4466,7 @@ mod tests {
     fn test_storage_engine_insert_records() {
         let mut storage = MemoryStorage::new();
         storage.create_table(&test_table("users", &["v"])).unwrap();
-        storage.insert("users", vec![]);
+        storage.insert("users", vec![]).unwrap();
 
         storage
             .insert("users", vec![vec![Value::Integer(1)]])
