@@ -1,0 +1,7 @@
+
+running 2 tests
+test pk_index_rebuild_lands_in_the_table_database ... ok
+test pk_index_is_rebuilt_and_searchable ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

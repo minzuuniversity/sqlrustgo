@@ -1,0 +1,6 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/wt/idx1run/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.30s
+     Running tests/alter_column_default_5471.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/alter_column_default_5471-79c16e322efb5984)
+     Running tests/index_covers_insert_buffer_5209.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/index_covers_insert_buffer_5209-ed7b1ae9b4c1a5ba)
+     Running tests/memory_in_db_full_5057.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/memory_in_db_full_5057-12d9f5882dcacb97)
+     Running tests/v312_95_v3_file_storage_list_indexes_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v312_95_v3_file_storage_list_indexes_test-12559c49067e1964)

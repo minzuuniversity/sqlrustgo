@@ -1,0 +1,171 @@
+
+running 1 test
+test a05_secondary_index_stale_after_flush ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 7 tests
+test test_basic_lookup ... ok
+test test_invalidate_page ... ok
+test test_hit_rate_tracking ... ok
+test test_demote_on_table_drop ... ok
+test test_promotion_after_threshold ... ok
+test test_no_promote_below_threshold ... ok
+test test_multiple_tables_isolation ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test test_insert_basic ... ok
+test test_lookup_nonexistent ... ok
+test test_empty_range_scan ... ok
+test test_secondary_index ... ok
+test test_page_split_on_overflow ... ok
+test test_pk_ordering_in_page ... ok
+test test_range_scan ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 26 tests
+test test_create_table_simple ... ok
+test test_create_index_basic ... ok
+test test_create_index_on_nonexistent_table ... ok
+test test_create_table_varchar_type ... ok
+test test_create_table_with_default ... ok
+test test_create_table_with_foreign_key ... ok
+test test_create_table_with_not_null ... ok
+test test_create_table_with_primary_key ... ok
+test test_create_table_with_unique ... ok
+test test_create_unique_index ... ok
+test test_drop_nonexistent_in_memory ... ok
+test test_drop_table_basic ... ok
+test test_ddl_multiple_tables ... ok
+test test_alter_table_alter_column_set_data_type_accepted_without_cast ... ok
+test test_alter_table_add_column ... ok
+test test_ddl_sequential_create_drop_create ... ok
+test test_drop_table_if_exists ... ok
+test test_create_index_then_insert_and_query ... ok
+test test_drop_twice_in_memory ... ok
+test test_alter_table_rename_column ... ok
+test test_alter_table_rename_to ... ok
+test test_truncate_nonexistent_table ... ok
+test test_ddl_lifecycle_create_insert_select_drop ... ok
+test test_truncate_empty_table ... ok
+test test_truncate_table ... ok
+test test_sql92_ddl_dml_full_lifecycle ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 9 tests
+test update_by_pk_on_non_id_primary_key_works ... ok
+test update_by_pk_updates_exactly_one_row ... ok
+test update_with_extra_predicate_still_filters ... ok
+test update_by_pk_on_missing_key_changes_nothing ... ok
+test delete_by_pk_deletes_exactly_one_row ... ok
+test update_with_non_pk_predicate_touches_all_matching_rows ... ok
+test report_update_select_ratio ... ok
+test update_by_pk_is_not_dominated_by_where_scan ... ok
+test scan_pk_resolution_is_flat_in_table_size ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 52.58s
+
+
+running 6 tests
+test non_equality_predicates_are_not_extracted ... ok
+test literal_on_the_left_is_recognised ... ok
+test or_chain_is_never_decomposed ... ok
+test eq_conjunct_found_in_later_and_branch ... ok
+test eq_conjunct_found_in_and_chain ... ok
+test engine_select_actually_calls_the_routing ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 5 tests
+test unindexed_column_still_returns_correct_rows ... ok
+test or_predicate_is_not_routed_to_an_index_seek ... ok
+test range_predicate_is_not_routed_to_an_index_seek ... ok
+test non_unique_index_column_returns_every_matching_row ... ok
+test multi_column_equality_matches_the_full_scan ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
+
+running 7 tests
+test test_drop_reserved_database_rejected ... ok
+test test_create_reserved_database_rejected ... ok
+test test_create_database ... ok
+test test_drop_database ... ok
+test test_create_multiple_databases ... ok
+test test_use_database_switches_context ... ok
+test test_create_database_if_not_exists ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 23 tests
+test issue_5025_show_tables_from_unknown_database_is_rejected ... ok
+test issue_5025_use_unknown_database_is_rejected ... ok
+test issue_5025_show_tables_scoped_to_current_database ... ok
+test issue_5025_show_full_tables_from_lists_target_database ... ok
+test issue_5025_show_table_status_from_lists_target_database ... ok
+test issue_5025_show_tables_from_lists_target_database ... ok
+test issue_5025_show_tables_from_like_filters_target_database ... ok
+test issue_5025_tables_are_invisible_across_databases ... ok
+test issue_5137_comma_list_across_databases ... ok
+test issue_5137_c_same_name_collision_equi_where ... ok
+test issue_5137_c_right_table_pushdown_residual ... ok
+test issue_5137_c_aliased_comma_equi_where ... ok
+test issue_5137_cross_db_derived_join_materializes ... ok
+test issue_5137_handwritten_join_on_three_segment ... ok
+test issue_5137_c_bare_qualifier_comma_equi_where ... ok
+test issue_5137_qualified_unknown_database_is_rejected ... ok
+test issue_5137_c_handwritten_join_post_where ... ok
+test issue_5137_qualified_table_reads_other_database_symmetric ... ok
+test issue_5137_qualified_table_where_filter_works ... ok
+test issue_5137_three_segment_column_reference ... ok
+test issue_5137_select_from_qualified_table_reads_target_database ... ok
+test issue_5137_three_segment_where_and_join_predicate ... ok
+test issue_5137_no_deadlock_derived_materialisation_under_writes ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.83s
+
+
+running 3 tests
+test parse_create_index_with_simple_column_still_works ... ok
+test parse_create_index_with_expression_and_simple_column ... ok
+test parse_create_index_with_expression ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test test_show_index_missing_table_errors ... ok
+test test_show_index_table_without_indices_returns_empty ... ok
+test test_show_index_returns_primary_key_index ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test v312_64_create_fulltext_index_if_not_exists_parses ... ok
+test v312_64_fulltext_index_no_longer_crashes_parser ... ok
+test v312_64_create_fulltext_index_parses_and_executor_rejects ... ok
+test v312_64_fulltext_index_missing_name_rejected_at_parse ... ok
+test v312_64_create_fulltext_index_multi_column_parses ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test v312_71_sqlite_master_empty_catalog ... ok
+test v312_71_sqlite_schema_alias_works ... ok
+test v312_71_sqlite_master_returns_one_row_per_table ... ok
+test v312_71_user_table_query_still_works_regression ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
