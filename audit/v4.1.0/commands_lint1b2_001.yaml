@@ -1,0 +1,50 @@
+- id: lint1b2-clippy-inventory
+  name: "批次 2 后复测 clippy 欠账分类计数（与批次 1 同一命令口径：不带 -D warnings，要的是欠账清单本身）。冻结尖端实测基线 211 条 warning、目标类 field_reassign_with_default 27 处 ⇒ 本批后该类应 0、总数应减 27、其余各类计数一字不变"
+  cmd: cargo clippy --workspace --all-features --all-targets --keep-going
+  cwd: .
+  timeout_sec: 5400
+- id: lint1b2-mutation-fixture
+  name: "计数判据的鉴别力夹具（基线该类 0 ⇒ 注入 T::default() 后逐字段赋值的反模式探针，计数必须回弹 ≥1 且点名注入文件 ⇒ 恢复后必须逐字节一致并回到 0；注入或恢复空转都会让夹具自己红）"
+  cmd: python3 scripts/gate/test_lint1b2_mutation_fixtures.py
+  cwd: .
+  timeout_sec: 3000
+- id: lint1b2-crash-server-build
+  name: "armed 构建第一步：带 fault-injection 的 server 二进制（崩溃套件按 <repo>/target/debug/sqlrustgo-mysql-server 找它；本 run 的 target 是指向共享 target 的符号链接）"
+  cmd: cargo build -p sqlrustgo-mysql-server --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: lint1b2-touched-crates-tests
+  name: "无行为变化证据：被改动 crate 的全部测试（tools / storage / optimizer / cli，含两个 tests 目录）。这条臂同时复跑 storage 的崩溃套件——批次 1 归档 run 里它 rc=101，根因是 IDX-1 缺陷而非 lint 改动（看板 LINT-1 已披露），本批在 #5660 合并后复跑闭合"
+  cmd: cargo test -p sqlrustgo-tools -p sqlrustgo-storage -p sqlrustgo-optimizer -p sqlrustgo-cli
+  cwd: .
+  timeout_sec: 5400
+- id: lint1b2-crash-wal-index-armed
+  name: "崩溃套件（armed）：AfterIndexUpdate 边界 kill -9 后不得返回错行 —— 与上一条 touched-crates-tests 里的同一测试互为对照（一条走 dev-dependency 自动开 feature，一条显式 --features）"
+  cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_wal_index_b1
+  cwd: .
+  timeout_sec: 3600
+- id: lint1b2-check-all-targets
+  name: "全 workspace 全目标编译校核（0 error 才算这批没把哪个测试目标改坏）"
+  cmd: cargo check --workspace --all-targets --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: lint1b2-gate-anti-ignore
+  name: "忽略台账（本批不新增 ignore：total_allowed 应仍 136 ≤ 150、ACTIVE 仍 82 ≤ 92，且与树内真实 #[ignore] 属性数一致）"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: lint1b2-gate-registry
+  name: "门禁登记表一致性（分母仍 168：新增夹具命名为 test_lint1b2_mutation_fixtures.py，不占 check_*）"
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+- id: lint1b2-gate-drift-not-pass
+  name: "DRIFT 门禁本体（上批修正后的判据不得回退）"
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  cwd: .
+  timeout_sec: 900
+- id: lint1b2-gate-docs-pointer-paths
+  name: "文档指针路径门禁（本批看板文字新增了一批反引号路径，不得引入断链）"
+  cmd: bash scripts/gate/check_docs_pointer_paths.sh
+  cwd: .
+  timeout_sec: 900
