@@ -62,6 +62,7 @@ fn idx_info() -> IndexInfo {
     IndexInfo {
         name: "idx_k".to_string(),
         table: "t".to_string(),
+        database: DB.to_string(),
         columns: vec![IndexColumnSpec {
             name: Some("k".to_string()),
             expression: None,

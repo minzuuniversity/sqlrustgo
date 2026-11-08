@@ -147,24 +147,19 @@ fn update_if_in_db_changes_only_the_named_database() {
 /// #5375: this test used to create the index while `d1` was the "stored"
 /// database and then look it up under `d1`'s scoped key.
 ///
-/// That is no longer expressible: `create_index` has no `_in_db` variant
-/// and registers the index under `DEFAULT_DATABASE` (see
-/// `MemoryStorage::create_index` → `self.tbl(...)`), while
-/// `scan_with_index_in_db` looks the index up under the *named*
-/// database's scoped key. So a named database other than `default` can
-/// never find an index — the write half of the index API cannot be
-/// addressed per database at all.
-///
-/// That is a gap in the engine, not in the test, and it is tracked
-/// separately. What this test pins is the behaviour that does exist: the
-/// index is registered under `default`, is found by a `default`-scoped
-/// lookup, and is *not* found by a named database's lookup.
+/// With `current_db` gone (#5057 step 3), the index's database is carried by
+/// the index itself: `IndexInfo.database`. This literal leaves it at
+/// `DEFAULT_DATABASE`, so the index lands under `default`'s scoped key and
+/// only a `default`-scoped lookup finds it — which is what this test pins.
+/// A *named* database's index is addressed by `database: "d1"`; see
+/// `create_index_lands_in_the_named_database` below (IDX-1, 看板行 IDX-1).
 #[test]
 fn scan_with_index_in_db_reads_the_named_database() {
     let mut s = seeded();
     s.create_index(IndexInfo {
         name: "id".into(),
         table: "t".into(),
+        database: "default".into(),
         columns: vec![sqlrustgo_parser::IndexColumnSpec::column("id")],
         is_unique: true,
         original_sql: String::new(),
@@ -181,12 +176,48 @@ fn scan_with_index_in_db_reads_the_named_database() {
     assert!(
         s.scan_with_index_in_db("d1", "t", "id", &Value::Integer(1))
             .is_err(),
-        "the index is registered under `default`, so d1's scoped key cannot \
-         find it — the index write path is not database-scoped"
+        "this index was created with `database` left at `default`, so d1's \
+         scoped key cannot find it"
     );
     assert!(
         s.scan_with_index_in_db("d2", "t", "id", &Value::Integer(1))
             .is_err(),
         "same for d2"
+    );
+}
+
+/// IDX-1（看板行 IDX-1）：索引的**写**侧可按库寻址——建在 d1 的索引由 d1 的
+/// `scan_with_index_in_db` 找到，默认库与其它库都找不到。
+///
+/// 反向变异证据：把 `create_index` 的取键改回改动前的 `self.tbl(&table_lc)`
+/// （恒为 `scoped_key(DEFAULT_DATABASE, …)`）⇒ 第一条断言红（d1 取不到索引），
+/// 后两条断言也红（默认库/d2 意外取到 d1 的索引）。
+#[test]
+fn create_index_lands_in_the_named_database() {
+    let mut s = seeded();
+    s.create_index(IndexInfo {
+        name: "id".into(),
+        table: "t".into(),
+        database: "d1".into(),
+        columns: vec![sqlrustgo_parser::IndexColumnSpec::column("id")],
+        is_unique: true,
+        original_sql: String::new(),
+    })
+    .unwrap();
+
+    let rows = s
+        .scan_with_index_in_db("d1", "t", "id", &Value::Integer(1))
+        .unwrap();
+    assert_eq!(rows, vec![vec![Value::Integer(1), Value::Integer(10)]]);
+
+    assert!(
+        s.scan_with_index_in_db("default", "t", "id", &Value::Integer(3))
+            .is_err(),
+        "d1 的索引不得被默认库看到"
+    );
+    assert!(
+        s.scan_with_index_in_db("d2", "t", "id", &Value::Integer(2))
+            .is_err(),
+        "d1 的索引不得被 d2 看到"
     );
 }

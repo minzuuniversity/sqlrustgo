@@ -243,7 +243,11 @@ pub struct FileStorage {
     /// Without this, the default `list_all_indexes()` returns empty,
     /// so the executor's `INDEXED BY <name>` validator reports
     /// "index does not exist" for every CLI batch-mode index.
-    index_metadata: RwLock<HashMap<String, IndexInfo>>,
+    /// IDX-1：登记键是 **(库, 索引名)**，不是裸索引名。
+    ///
+    /// 裸名下，`d1.idx` 与 `d2.idx` 会互相覆盖：`INDEXED BY idx` 在两个库里
+    /// 都只能看到后登记的那条（甚至被误判成"不存在"），跨库隔离无从谈起。
+    index_metadata: RwLock<HashMap<(String, String), IndexInfo>>,
     /// Threshold to trigger buffer flush
     buffer_threshold: usize,
     /// Enable insert buffering
@@ -1963,6 +1967,21 @@ impl FileStorage {
         self.with_read_lock(|st| f(st.tables.get(&key)))
     }
 
+    /// IDX-1：`with_table` 的**显式库**版本（镜像 `tbl_in`）。
+    ///
+    /// 索引建在哪个库，就得按那个库取表——`with_table` 只能取默认库，
+    /// 于是 `USE d1` 后建索引找不到表（`Table not found: t`），
+    /// 而读侧 `scan_with_index_in(db, …)` 早就是 db 感知的。
+    pub fn with_table_in<R>(
+        &self,
+        db: &str,
+        name: &str,
+        f: impl FnOnce(Option<&TableData>) -> R,
+    ) -> R {
+        let key = self.tbl_in(db, name);
+        self.with_read_lock(|st| f(st.tables.get(&key)))
+    }
+
     /// Get a mutable table by name.
     ///
     /// #4951: still `&mut self`, so `RwLock::get_mut` hands out the
@@ -2442,7 +2461,14 @@ impl FileStorage {
                     .map(|(name, t)| (name.clone(), t.info.columns.clone()))
                     .collect()
             });
-        for (table_name, columns) in tables_snapshot {
+        for (scoped_table, columns) in tables_snapshot {
+            // IDX-1：`tables_snapshot` 的键**已经**是内部 scoped 键（`db\u{1}t`，见 #5025）。
+            // 之前这里又套了一层 `self.tbl(&table_name)` ⇒ 变成 `default\u{1}default\u{1}t`
+            // ⇒ 查不到就 `continue` ⇒ 重启后**所有表**的 PK 索引都不会重建，
+            // PK 快路径静默退化成全扫（`scan_pk` 找不到树）。
+            let Some((db, table)) = crate::engine::split_scoped_key(&scoped_table) else {
+                continue;
+            };
             // Find PK column
             let pk_col = columns.iter().find(|c| c.primary_key);
             let Some(pk_col) = pk_col else { continue };
@@ -2451,7 +2477,7 @@ impl FileStorage {
 
             // Build B+Tree from current rows
             let snapshot = Self::with_write_lock(self, |s| {
-                s.tables.get(&self.tbl(&table_name)).map(|t| t.rows.clone())
+                s.tables.get(&scoped_table).map(|t| t.rows.clone())
             });
             let Some(rows) = snapshot else { continue };
             let mut index = crate::bplus_tree::BPlusTree::new();
@@ -2462,10 +2488,11 @@ impl FileStorage {
                     }
                 }
             }
-            // Persist + register
-            self.save_index(&table_name, &pk_col_name, &index)?;
+            // Persist + register — IDX-1: 落盘按表自己的库，内存键沿用 scoped 键，
+            // 与读侧 `scan_pk_in_db` / `scan_with_index_in` 的取键方式一致。
+            self.save_index_in(db, table, &pk_col_name, &index)?;
             if let Ok(mut indexes) = self.indexes.write() {
-                indexes.insert((self.tbl(&table_name), pk_col_name.clone()), index);
+                indexes.insert((scoped_table, pk_col_name.clone()), index);
             }
         }
         Ok(())
@@ -6749,10 +6776,19 @@ impl StorageEngine for FileStorage {
         self.flush_all_buffers()?;
 
         // Inline the implementation to avoid potential recursion issues
-        // Get table from tables
+        // IDX-1：索引属于哪个库，就用那个库取表、落盘、注册内存键——
+        // 之前这里一律走 `with_table`/`tbl`（= 默认库），而读侧
+        // `scan_with_index_in(db, …)` 早已按库取索引 ⇒ 写侧与读侧两套「当前库」，
+        // `USE d1` 后 `CREATE INDEX ... ON t(v)` 报 `Table not found: t`。
+        // 空 `database` 兜底成默认库，保证直接构造 `IndexInfo` 的老调用点行为不变。
+        let db = if info.database.is_empty() {
+            crate::engine::DEFAULT_DATABASE
+        } else {
+            info.database.as_str()
+        };
         let table = info.table.as_str();
         let table_data = self
-            .with_table(table, |t| t.cloned())
+            .with_table_in(db, table, |t| t.cloned())
             .ok_or_else(|| SqlError::TableNotFound(table.to_string()))?;
 
         // V312-95 v3 / P3-HINT-001 follow-up: register the index in
@@ -6760,8 +6796,9 @@ impl StorageEngine for FileStorage {
         // Without this, INDEXED BY <name> validation (see
         // src/engine_select.rs) reports the index as missing even
         // though the B+ tree below is correctly built.
+        // IDX-1：登记键带上库，跨库同名索引不再互相覆盖。
         if let Ok(mut md) = self.index_metadata.write() {
-            md.insert(info.name.clone(), info.clone());
+            md.insert((db.to_string(), info.name.clone()), info.clone());
         }
 
         // Build a B+ Tree for each column in the index
@@ -6797,20 +6834,33 @@ impl StorageEngine for FileStorage {
                 }
             }
 
-            // Save to disk
-            self.save_index(table, &column_name, &index)
+            // Save to disk — IDX-1: 落盘路径也必须按索引自己的库，
+            // `save_index` 硬编码默认库 ⇒ d1 的索引会被写进 `data/default/…`。
+            self.save_index_in(db, table, &column_name, &index)
                 .map_err(SqlError::from)?;
 
-            // Store in memory
-            indexes.insert((self.tbl(table), column_name), index);
+            // Store in memory — 键的库必须与读侧 `scan_with_index_in` 一致，
+            // 否则索引建好了却永远查不到（静默退回全扫）。
+            indexes.insert((crate::engine::scoped_key(db, table), column_name), index);
         }
 
         Ok(())
     }
 
     fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
+        // IDX-1: 默认库转发；真正的实现按库做。
+        self.drop_index_in_db(crate::engine::DEFAULT_DATABASE, table, index_name)
+    }
+
+    /// IDX-1：按**指定库**删索引（`*_in_db` 家族惯例，见 #5057）。
+    ///
+    /// 改前 `drop_index` 把表名一律按默认库加域 ⇒ 会话在 d1 时
+    /// `DROP INDEX` 找不到 d1 的索引（内存项、登记表、落盘文件三处都漏删），
+    /// 而已按库注册的条目永远删不掉（`indexes` 里留下幽灵项，
+    /// 后续 `INDEXED BY` 会命中错误库的树）。
+    fn drop_index_in_db(&mut self, db: &str, table: &str, index_name: &str) -> SqlResult<()> {
         // #5025: index keys carry the scoped table name.
-        let key = (self.tbl(table), index_name.to_string());
+        let key = (crate::engine::scoped_key(db, table), index_name.to_string());
 
         if let Ok(mut indexes) = self.indexes.write() {
             indexes.remove(&key);
@@ -6818,11 +6868,12 @@ impl StorageEngine for FileStorage {
 
         // V312-95 v3 / P3-HINT-001 follow-up: also remove the
         // metadata-catalog entry that names this index.
+        // IDX-1：登记键是 (库, 名) ⇒ 只删这个库里的同名条目，别的库不受牵连。
         if let Ok(mut md) = self.index_metadata.write() {
-            md.retain(|_, info| !(info.table == table && info.name == index_name));
+            md.retain(|k, info| !(k.0 == db && k.1 == index_name && info.table == table));
         }
 
-        let path = self.index_path(table, index_name);
+        let path = self.index_path_in(db, table, index_name);
         if path.exists() {
             std::fs::remove_file(path).map_err(SqlError::from)?;
         }
