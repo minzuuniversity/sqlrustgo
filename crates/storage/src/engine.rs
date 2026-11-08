@@ -604,6 +604,17 @@ pub struct ViewInfo {
 pub struct IndexInfo {
     pub name: String,
     pub table: String,
+    /// IDX-1（看板行 IDX-1）：这条索引**属于哪个库**。
+    ///
+    /// 改前索引子系统把表名一律按 `DEFAULT_DATABASE` 加域（`fn tbl()`），
+    /// 于是 `USE d1` 之后 `CREATE INDEX ... ON t(v)` 报 `Table not found: t`，
+    /// 而读侧（`scan_with_index_in`）其实已经是 db 感知的 ⇒ 写侧与读侧两套「当前库」。
+    /// 现在索引带着自己的库走：建索引/注册/落盘/`INDEXED BY` 校验都用这个字段。
+    ///
+    /// `#[serde(default)]`：旧的持久化索引登记表没有这个键 ⇒ 一律按默认库读回，
+    /// 不静默改变历史数据的含义。
+    #[serde(default = "default_index_database")]
+    pub database: String,
     /// V313-100 / Issue #4701 sub-1: index column list may mix bare
     /// column names and arbitrary expressions. Old JSON persisted as
     /// `Vec<String>` loads back as one-column-name spec per entry
@@ -613,6 +624,11 @@ pub struct IndexInfo {
     pub is_unique: bool,
     #[serde(default)]
     pub original_sql: String,
+}
+
+/// `IndexInfo.database` 的 serde 兜底：旧登记数据 = 默认库。
+fn default_index_database() -> String {
+    DEFAULT_DATABASE.to_string()
 }
 
 impl ViewInfo {
@@ -1574,6 +1590,18 @@ pub trait StorageEngine: Send + Sync {
     /// Drop an index from a table by index name
     fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()>;
 
+    /// IDX-1（看板行 IDX-1）：按**指定库**删索引。
+    ///
+    /// 默认实现忽略库、转发到 `drop_index`——这只对**不按库分域**的后端成立
+    /// （wal / binary / append-only 的索引本身就不按库存）。
+    /// **按库分域的后端（FileStorage）必须覆写**，否则按库注册的条目删不掉，
+    /// `indexes` 里会留下幽灵项（同 #5057 的教训：默认值偷偷丢掉 db 就是作用域
+    /// 长期失效的原因）。
+    fn drop_index_in_db(&mut self, db: &str, table: &str, index_name: &str) -> SqlResult<()> {
+        let _ = db;
+        self.drop_index(table, index_name)
+    }
+
     /// V312-64d / Issue #4664: enumerate every index across all tables.
     /// Used by `sqlite_master` to render the index rows.
     fn list_all_indexes(&self) -> Vec<IndexInfo> {
@@ -2087,7 +2115,7 @@ pub struct MemoryStorage {
     /// `(table, column)` pairs in `indexes` above remain for the
     /// existing `list_indexes(table)` query path that the EXPLAIN
     /// planner relies on.
-    index_infos: HashMap<String, IndexInfo>,
+    index_infos: HashMap<(String, String), IndexInfo>,
     /// PR-B / #5305: optional real BufferPool when constructed via
     /// `new_with_bufferpool`. `None` when constructed via legacy `new()`
     /// (back-compat — `buffer_pool_stats()` returns the trait default
@@ -3595,17 +3623,41 @@ impl StorageEngine for MemoryStorage {
         // V313-100 / Issue #4701 sub-1: expression-only columns have no
         // bare column name; skip them in the (table, column) catalog so
         // the planner's column lookup does not see them.
+        //
+        // IDX-1（看板行 IDX-1）：登记必须按**索引自己的库**做键。`self.tbl()` 恒等于
+        // `scoped_key(DEFAULT_DATABASE, …)`（见 :2158），于是写侧只能落在默认库，
+        // 而读侧 `scan_with_index_in_db(db, …)` 按指定库取键 ⇒ 命名库永远找不到索引
+        // （`memory_in_db_full_5057` 当初就是把这条错误行为当断言钉住的）。
+        // `database` 为空或就是默认库时，键与改动前逐字节相同 ⇒ 默认库路径不回退。
+        let db = if info.database.is_empty() {
+            DEFAULT_DATABASE
+        } else {
+            info.database.as_str()
+        };
         let table_lc = info.table.to_lowercase();
+        let table_key = scoped_key(db, &table_lc);
         for column in &info.columns {
             if let Some(name) = column.name.as_deref() {
-                self.indexes.insert((self.tbl(&table_lc), name.to_string()));
+                self.indexes.insert((table_key.clone(), name.to_string()));
             }
         }
-        self.index_infos.insert(info.name.to_lowercase(), info);
+        // IDX-1：登记表键带上库，跨库同名索引不再互相覆盖。
+        self.index_infos
+            .insert((db.to_lowercase(), info.name.to_lowercase()), info);
         Ok(())
     }
 
     fn drop_index(&mut self, table: &str, index_name: &str) -> SqlResult<()> {
+        // IDX-1: 无库入口 = 默认库；真正的实现见 `drop_index_in_db`。
+        self.drop_index_in_db(DEFAULT_DATABASE, table, index_name)
+    }
+
+    /// IDX-1：按指定库删索引，取键方式与 `create_index` 一致（#5057 的 `*_in_db` 家族）。
+    ///
+    /// 改动前这里用**未加域**的 `table.to_lowercase()` 去删，而 `create_index` 插入的是
+    /// `self.tbl(...)`（已加域）的键 ⇒ 两边从来对不上，`DROP INDEX` 删不掉 (table, column)
+    /// 目录项（幽灵索引，planner 仍以为有索引）。
+    fn drop_index_in_db(&mut self, db: &str, table: &str, index_name: &str) -> SqlResult<()> {
         // V312-64d / Issue #4664: drop by name (new API) and remove the
         // matching (table, column) pairs the legacy `list_indexes(table)`
         // contract depends on. If the IndexInfo exists we know its columns;
@@ -3613,25 +3665,24 @@ impl StorageEngine for MemoryStorage {
         // entries to keep legacy callers safe. V313-100: only the
         // bare-name entries participate; expression-only columns are
         // not in the (table, column) index map.
-        let key = index_name.to_lowercase();
+        let table_key = scoped_key(db, &table.to_lowercase());
+        let key = (db.to_lowercase(), index_name.to_lowercase());
         if let Some(info) = self.index_infos.remove(&key) {
             for column in &info.columns {
                 if let Some(name) = column.name.as_deref() {
-                    self.indexes
-                        .remove(&(table.to_lowercase(), name.to_string()));
+                    self.indexes.remove(&(table_key.clone(), name.to_string()));
                 }
             }
         } else {
             // Legacy single-column drop: synthesize a column name from
             // the index suffix `_idx_{column}` if present.
             if let Some(rest) = index_name.strip_prefix(&format!("{}_idx_", table.to_lowercase())) {
-                self.indexes
-                    .remove(&(table.to_lowercase(), rest.to_string()));
+                self.indexes.remove(&(table_key.clone(), rest.to_string()));
             } else {
                 let to_remove: Vec<(String, String)> = self
                     .indexes
                     .iter()
-                    .filter(|(t, _)| t == &table.to_lowercase())
+                    .filter(|(t, _)| t == &table_key)
                     .cloned()
                     .collect();
                 for k in to_remove {

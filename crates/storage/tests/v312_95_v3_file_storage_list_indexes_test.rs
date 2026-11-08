@@ -64,6 +64,7 @@ fn make_index(table: &str, index_name: &str, column: &str) -> IndexInfo {
     IndexInfo {
         name: index_name.to_string(),
         table: table.to_string(),
+        database: sqlrustgo_storage::DEFAULT_DATABASE.to_string(),
         columns: vec![IndexColumnSpec {
             name: Some(column.to_string()),
             expression: None,

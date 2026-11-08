@@ -828,6 +828,17 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         &self,
         idx: &CreateIndexStatement,
     ) -> SqlResult<ExecutorResult> {
+        // IDX-1（看板行 IDX-1）：索引必须跟着**会话当前库**走，与 `CREATE TABLE`
+        // 同一口径（`src/engine_create.rs`：`create.schema.as_deref().unwrap_or(session_db)`）。
+        // 改前这里只用 `idx.table` + `get_table_info`（默认库），于是 `USE d1` 之后
+        // `CREATE INDEX idx_v ON t(v)` 报 `Table not found: t`——表在 d1，索引却按 default 建。
+        // 会话库必须在拿 storage 写锁**之前**读（同 #5057 的取库时机约定）。
+        let session_db = self.session_db();
+        let db = idx
+            .schema
+            .as_deref()
+            .unwrap_or(session_db.as_str())
+            .to_lowercase();
         let mut storage = self.storage.write();
         let table_name = &idx.table;
         // V313-100 / Issue #4701 sub-1: a CREATE INDEX column list may
@@ -836,7 +847,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // simple name (i.e. is an expression-only spec).
         if let Some(spec) = idx.columns.first() {
             if let Some(name) = spec.name.as_deref() {
-                let table_info = storage.get_table_info(table_name)?;
+                let table_info = storage.get_table_info_in(&db, table_name)?;
                 let _ = table_info
                     .columns
                     .iter()
@@ -849,6 +860,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         storage.create_index(sqlrustgo_storage::IndexInfo {
             name: idx.name.clone(),
             table: table_name.clone(),
+            database: db,
             columns: idx.columns.clone(),
             is_unique: idx.unique,
             original_sql: crate::ddl_to_sql::format_create_index_sql(idx),
@@ -940,14 +952,18 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // (This is the post-merge resolution of PR #4789; the prior
         // conflict-marker version was reverted to the cleaner HEAD side
         // which uses storage.write() directly without a read/write pair.)
+        let session_db = self.session_db();
         let mut storage = self.storage.write();
+        // IDX-1（看板行 IDX-1）：索引属于**具体某个库** ⇒ 宿主表要在会话库范围内找，
+        // 再按索引自己的库删。改前只按索引名全局找 ⇒ 别的库里的同名条目会先命中，
+        // 于是要么删错库的索引，要么让本库的索引永远删不掉。
         let owner = storage
             .list_all_indexes()
             .into_iter()
-            .find(|info| info.name == idx.name)
-            .map(|info| info.table);
+            .find(|info| info.name == idx.name && info.database.eq_ignore_ascii_case(&session_db))
+            .map(|info| (info.database, info.table));
         match owner {
-            Some(table) => storage.drop_index(&table, &idx.name),
+            Some((db, table)) => storage.drop_index_in_db(&db, &table, &idx.name),
             None if idx.if_exists => Ok(()),
             None => Err(SqlError::ExecutionError(format!(
                 "DROP INDEX failed: index '{}' does not exist",

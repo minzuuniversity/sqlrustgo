@@ -867,6 +867,10 @@ path = "tests/integration/issue_3257_wal_fallback_test.rs"
 [[test]]
 name = "sem1_savepoint_test"
 path = "tests/integration/transaction/sem1_savepoint_test.rs"
+# IDX-1（看板行 IDX-1）— 索引子系统必须跟随会话库 / 支持限定名
+[[test]]
+name = "idx1_session_db_index_test"
+path = "tests/integration/sql/idx1_session_db_index_test.rs"
 # P1-2 (#3174) — Crash Test Framework
 [[test]]
 name = "crash_test_framework"

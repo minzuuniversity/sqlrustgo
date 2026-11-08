@@ -720,9 +720,7 @@ impl StorageEngine for AppendOnlyStorage {
 mod tests {
     use super::*;
     use super::{AppendOnlyStorage, Value};
-    use crate::engine::{
-        ColumnDefinition, StorageEngine,
-    };
+    use crate::engine::{ColumnDefinition, StorageEngine};
     use crate::test_support::unique_test_path;
     /// #5571: 唯一的临时路径来自 [`crate::test_support::unique_test_path`] ——
     /// 本 crate 里**只有那一份**实现，测试之间不共享目录。
@@ -870,6 +868,7 @@ mod tests {
         s.create_index(crate::engine::IndexInfo {
             name: "idx_t_id".to_string(),
             table: "t".to_string(),
+            database: crate::engine::DEFAULT_DATABASE.to_string(),
             columns: vec![sqlrustgo_parser::IndexColumnSpec::column("id")],
             is_unique: false,
             original_sql: String::new(),

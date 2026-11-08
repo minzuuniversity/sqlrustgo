@@ -289,6 +289,11 @@ pub struct ExceptStatement {
 pub struct CreateIndexStatement {
     pub name: String,
     pub table: String,
+    /// IDX-1（看板行 IDX-1）：`CREATE INDEX n ON db.t(c)` 的**限定名**。
+    /// 之前解析器只吃一个标识符 ⇒ `ON d1.t(v)` 报 `Expected LParen, got Dot`。
+    /// `None` = 未写库名 ⇒ 执行期按**会话当前库**解析（与 `CREATE TABLE` 同一口径，
+    /// 见 `src/engine_create.rs` 的 `create.schema.as_deref().unwrap_or(session_db)`）。
+    pub schema: Option<String>,
     pub columns: Vec<IndexColumnSpec>,
     pub unique: bool,
 }
@@ -3695,16 +3700,37 @@ impl Parser {
             None => return Err("Expected index name".to_string()),
         };
         self.expect(Token::On)?;
-        let table_name = match self.next() {
+        let first = match self.next() {
             Some(Token::Identifier(name)) => name,
             Some(t) => return Err(format!("Expected table name, got {:?}", t)),
             None => return Err("Expected table name".to_string()),
+        };
+        // IDX-1：`ON <table>` 或 `ON <db>.<table>`。改前只吃一个标识符，
+        // `ON d1.t(v)` 直接 `Expected LParen, got Dot`。
+        // 游标约定（同 7122/7317/8450 各处）：`current()` 是下一个待消费 token，
+        // `peek()` 是**两格**前瞻 ⇒ 判断「刚消费完的名字后面是不是点」必须用 `current()`。
+        let (schema, table_name) = if matches!(self.current(), Some(Token::Dot)) {
+            self.expect(Token::Dot)?;
+            let t = match self.next() {
+                Some(Token::Identifier(name)) => name,
+                Some(t) => {
+                    return Err(format!(
+                        "Expected table name after database qualifier, got {:?}",
+                        t
+                    ))
+                }
+                None => return Err("Expected table name after database qualifier".to_string()),
+            };
+            (Some(first), t)
+        } else {
+            (None, first)
         };
         self.expect(Token::LParen)?;
         let columns = self.parse_index_column_list()?;
         Ok(Statement::CreateIndex(CreateIndexStatement {
             name: index_name,
             table: table_name,
+            schema,
             columns,
             unique,
         }))

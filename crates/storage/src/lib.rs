@@ -86,6 +86,7 @@ pub use engine::{
     ForeignKeyAction, ForeignKeyConstraint, IndexInfo, MemoryStorage, Record, RowFilter,
     RowMutation, SchemaSnapshot, SequenceInfo, SqlResult, StorageEngine, TableData, TableInfo,
     TriggerEvent, TriggerInfo, TriggerTiming, TxLog, UniqueConstraint, Value, ViewInfo,
+    DEFAULT_DATABASE,
 };
 pub use failover_manager::{FailoverConfig, FailoverState, NodeInfo, NodeType};
 pub use file_storage::FileStorage;

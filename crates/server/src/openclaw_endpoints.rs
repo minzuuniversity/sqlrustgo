@@ -2381,10 +2381,18 @@ fn execute_sql(
 
         // DDL: CREATE INDEX
         sqlrustgo_parser::Statement::CreateIndex(create_idx) => {
-            if !storage.has_table(&create_idx.table) {
+            // IDX-1：表名的解析必须与索引要落到的库一致——`has_table`/`get_table_info`
+            // 不带库时恒为默认库 ⇒ `ON d1.t(v)` 会误报「Table 't' not found」。
+            let idx_db = create_idx
+                .schema
+                .clone()
+                .unwrap_or_else(|| sqlrustgo_storage::DEFAULT_DATABASE.to_string());
+            if !storage.has_table_in(&idx_db, &create_idx.table) {
                 return Err(format!("Table '{}' not found", create_idx.table));
             }
-            let table_info = storage.get_table_info(&create_idx.table).map_err(|e| e.to_string())?;
+            let table_info = storage
+                .get_table_info_in(&idx_db, &create_idx.table)
+                .map_err(|e| e.to_string())?;
             let col_name = create_idx.columns.first()
                 .ok_or_else(|| "Index must have at least one column".to_string())?;
             let _col_idx = table_info.columns.iter()
@@ -2393,13 +2401,23 @@ fn execute_sql(
             storage.create_index(sqlrustgo_storage::IndexInfo {
                 name: create_idx.name.clone(),
                 table: create_idx.table.clone(),
+                // IDX-1（看板行 IDX-1）：索引必须带库。这个端点没有会话库概念
+                // （它对表名的解析一直是默认库作用域），所以限定名优先、否则默认库——
+                // 至少 `ON d1.t(v)` 现在能建到 d1，而不是静默建到 default。
+                database: create_idx
+                    .schema
+                    .clone()
+                    .unwrap_or_else(|| sqlrustgo_storage::DEFAULT_DATABASE.to_string()),
                 columns: create_idx.columns.clone(),
                 is_unique: create_idx.unique,
                 original_sql: format!(
                     "CREATE {}INDEX {} ON {} ({})",
                     if create_idx.unique { "UNIQUE " } else { "" },
                     create_idx.name,
-                    create_idx.table,
+                    match &create_idx.schema {
+                        Some(s) => format!("{}.{}", s, create_idx.table),
+                        None => create_idx.table.clone(),
+                    },
                     create_idx.columns.iter().map(|c| match &c.name {
                         Some(n) => n.clone(),
                         None => format!("{:?}", c.expression),
