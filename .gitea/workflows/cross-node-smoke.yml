@@ -1,0 +1,27 @@
+name: Cross-node CI smoke
+on:
+  push:
+    branches: [codex-macmini/ci-cross-smoke-gitea252]
+jobs:
+  node-proof:
+    runs-on: ci-node-250
+    timeout-minutes: 3
+    steps:
+      - name: Verify executor and limits
+        run: |
+          set -eu
+          test "$CI_EXECUTION_NODE" = "250"
+          test ! -S /var/run/docker.sock
+          if test -f /sys/fs/cgroup/cpu.max; then
+            read quota period < /sys/fs/cgroup/cpu.max
+            test "$quota" -eq "$((4 * period))"
+            test "$(cat /sys/fs/cgroup/memory.max)" -eq 8589934592
+            test "$(cat /sys/fs/cgroup/pids.max)" -eq 256
+          else
+            quota="$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)"
+            period="$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)"
+            test "$quota" -eq "$((4 * period))"
+            test "$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)" -eq 8589934592
+            test "$(cat /sys/fs/cgroup/pids/pids.max)" -eq 256
+          fi
+          printf 'Gitea 252 executed on node %s with Docker job limits verified\n' "$CI_EXECUTION_NODE"
