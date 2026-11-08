@@ -1,0 +1,15 @@
+=== Documentation Pointer-Path Gate ===
+  scope:    docs/releases/v4.1.0
+  baseline: tests/baseline/doc_pointer_paths_releases_v4.1.0.json
+  pointers in scope: 28 broken, 35 registered as known debt
+  [NOTE] 7 baseline entr(y/ies) are now resolved — re-run with --update
+         evidence/GATE_HONESTY_5417_5419_2026-10-21.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         PR-5379_ACCEPTANCE.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         evidence/TPCH_FIXTURE_5379_2026-10-20.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         PERFORMANCE_TARGETS.md -> tests/soak_test_harness.rs
+         evidence/TEST_SELF_CONTAINMENT_5467_5469_2026-10-21.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         evidence/ENGINE_SEMANTICS_5431_5433_2026-10-21.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         evidence/STAGE_SSOT_AND_ARTIFACT_GATES_BATCH10_2026-10-21.md -> scripts/gate/check_g_all.sh
+  [OK] no broken pointer outside the recorded debt
+  [PASS] Documentation Pointer-Path Gate
+  [OK] the baseline was not modified (compare mode)
