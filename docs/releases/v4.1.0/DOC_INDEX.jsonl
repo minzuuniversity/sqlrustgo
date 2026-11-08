@@ -16,7 +16,7 @@
 {"bytes": 35977, "file": "DEFECTS_AND_ISSUES.md", "lines": 564, "sha256": "a3d76fa84125c7357a13356109ba5b1cf8af7c331a23cad6cc9ffca32acc0ebd", "stamp_ok": false, "stamped": false}
 {"bytes": 44154, "file": "DEPLOYMENT_GUIDE.md", "lines": 798, "sha256": "9799ffddfaf15a3770977a77a5638b64146422eb6321242afa233de89e2a5102", "stamp_ok": false, "stamped": false}
 {"bytes": 5672, "file": "DEV_PLAN.md", "lines": 121, "sha256": "c90eaab7dc00d02641dd6f6fb037c722d3e8b593381c7af6a07712ba2b368261", "stamp_ok": false, "stamped": false}
-{"bytes": 5041, "file": "ESTIMATE_DOUBLE_LINEAGE_2026-11-05.md", "lines": 70, "sha256": "688b89020e04012cf91d69a7da4a63f0af70bde0b2998f0e4be9b1c4f1dc3bd7", "stamp_ok": false, "stamped": false}
+{"bytes": 6966, "file": "ESTIMATE_DOUBLE_LINEAGE_2026-11-05.md", "lines": 99, "sha256": "84bf0cf5c787b7327b1a54500cf792a3e203488bdc7d1ff5b1407d8962cb2eac", "stamp_ok": false, "stamped": false}
 {"bytes": 37248, "file": "EVALUATION_REPORT.md", "lines": 469, "sha256": "23fdf91d7da1dcaeecd914dfcd49086d434c53d43e35a669e1232a651c817643", "stamp_ok": false, "stamped": false}
 {"bytes": 12043, "file": "EVIDENCE_STATUS.md", "lines": 177, "sha256": "5ef1b619781ead08bdd89c2baccf46233fa6687cea81fa7f8b57efe934097290", "stamp_ok": false, "stamped": false}
 {"bytes": 10906, "file": "EX6_SEAT_CALIBRATION_DRILLDOWN_2026-11-05.md", "lines": 205, "sha256": "9b1d5f2ab260c0aa18aa8fdf4b32384f7a3549bf25d34a4b5fab99e3c5305299", "stamp_ok": false, "stamped": false}
