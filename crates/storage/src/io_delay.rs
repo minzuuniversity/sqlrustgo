@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn test_config_from_env_all_set() {
-        let cfg = IoDelayConfig::from_lookup(&lookup(&[
+        let cfg = IoDelayConfig::from_lookup(lookup(&[
             ("SQLRUSTGO_IO_DELAY_MS", "200"),
             ("SQLRUSTGO_IO_CORRUPTION_RATE", "0.3"),
             ("SQLRUSTGO_IO_DROPOUT_RATE", "0.1"),
@@ -338,13 +338,13 @@ mod tests {
 
     #[test]
     fn test_config_from_env_missing() {
-        let cfg = IoDelayConfig::from_lookup(&lookup(&[]));
+        let cfg = IoDelayConfig::from_lookup(lookup(&[]));
         assert_eq!(cfg, IoDelayConfig::default());
     }
 
     #[test]
     fn test_config_from_env_clamp() {
-        let cfg = IoDelayConfig::from_lookup(&lookup(&[
+        let cfg = IoDelayConfig::from_lookup(lookup(&[
             ("SQLRUSTGO_IO_CORRUPTION_RATE", "5.0"),
             ("SQLRUSTGO_IO_DROPOUT_RATE", "-1.0"),
         ]));
@@ -365,7 +365,7 @@ mod tests {
     /// must not turn a parse failure into 0.0-by-accident semantics.
     #[test]
     fn test_config_from_env_malformed_falls_back() {
-        let cfg = IoDelayConfig::from_lookup(&lookup(&[
+        let cfg = IoDelayConfig::from_lookup(lookup(&[
             ("SQLRUSTGO_IO_DELAY_MS", "not-a-number"),
             ("SQLRUSTGO_IO_CORRUPTION_RATE", "half"),
         ]));
