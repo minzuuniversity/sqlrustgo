@@ -26,3 +26,96 @@ jobs:
             test "$(cat /sys/fs/cgroup/pids/pids.max)" -eq 256
           fi
           printf 'Gitea 252 executed on node %s with Docker job limits verified\n' "$CI_EXECUTION_NODE"
+
+  test-soak-detach:
+    # Issue #4595 — Regression guard for run_soak_loop.sh self-detach block
+    # (P-1 fix from PR #4591 commit 66dac1aab2). Without this test, future
+    # refactors of run_soak_loop.sh could silently regress the
+    # setsid+nohup+disown protection, re-introducing the parent-shell reap
+    # bug that killed sqlrustgo mid-SOAK (7h28m evidence salvage).
+    #
+    # Issue #4597 — Chaos drills unit test (T8). Verifies chaos_drills.sh
+    # has all 4 drill functions, dispatcher subcommands, EUID root guards
+    # for netem/clock drills, and SOAK_NO_MAIN guard on run_soak_loop.sh
+    # (so chaos_drills can source functions without triggering main).
+    #
+    # Issue #4598 — Tier-3 unit test (T11..T15). Verifies send_alert + curl
+    # payload, parse_thread_ramp validation, run_thread_ramp wiring + per-level
+    # CSV output + ALERT_PREV_SB_QPS reset between levels, and the SOP doc
+    # presence/INDEX update. Behavioral sub-test (T12 sources send_alert
+    # directly with stub log()) — no binary / root / network needed.
+    #
+    # This job runs the STATIC check only (~1s, no binary required). The
+    # behavioral sub-test (SIGKILL parent + verify child survives) lives in
+    # `bash scripts/soak/test_run_soak_loop_detach.sh --behavioral` and is
+    # invoked manually on hp-z6g4 (too slow for PR CI gate). Same applies
+    # to `bash scripts/soak/chaos_drills.sh smoke` (drill-1 SIGKILL+restart)
+    # which requires the release binary (~5min build) and ~60s wall-clock.
+    #
+    # Branches: v3.12.0 line only (SOAK scripts are v3.12.0+). Fast enough
+    # that we run on EVERY branch, not just v3.12.0 — but skip if branch is
+    # develop/v3.11.x or earlier (the file may not even exist there).
+    runs-on: ci-node-250
+    container:
+      image: sqlrustgo-runner:v1
+    steps:
+      - name: Checkout
+        # #5448 / #5532 — the checkout is done against the **Gitea instance**
+        # itself.  The runner used to download `actions/checkout` from GitHub
+        # **once per job**, so a GitHub outage turned the whole pipeline red
+        # for a reason that had nothing to do with this repository (observed:
+        # `unexpected EOF`, `TLS handshake timeout`).
+        #
+        # The commit this run was created for is discovered from the remote
+        # refs and then **verified**: a checkout that is not that commit is a
+        # hard error, never a silent "some other tree was checked out".
+        #
+        # `scripts/gate/check_ci_checkout_consistency.sh` asserts that every
+        # gated workflow embeds this exact body — one rule, one implementation.
+        run: |
+          set -euo pipefail
+          REPO_URL="${CI_REPO_URL:-}"
+          if [ -z "$REPO_URL" ]; then
+            SERVER_URL="${GITHUB_SERVER_URL:-}"
+            if [ -z "$SERVER_URL" ]; then
+              echo "FATAL: neither CI_REPO_URL nor GITHUB_SERVER_URL is set - refusing to guess which Gitea instance to clone from" >&2
+              exit 1
+            fi
+            REPO_URL="${SERVER_URL}/openclaw/sqlrustgo.git"
+          fi
+          DEPTH="${CI_DEPTH:-1}"
+          SHA="${GITHUB_SHA:-${GITEA_SHA:-}}"
+          DIR="${CI_CHECKOUT_DIR:-.}"
+          if [ -z "$SHA" ]; then
+            echo "FATAL: neither GITHUB_SHA nor GITEA_SHA is set - refusing to guess which commit to check out" >&2
+            exit 1
+          fi
+          mkdir -p "$DIR"
+          cd "$DIR"
+          git init -q -b main .
+          git remote add origin "$REPO_URL"
+          if [ "$DEPTH" = "0" ]; then
+            git fetch --no-tags --prune --no-recurse-submodules origin "+$SHA"
+          else
+            git fetch --no-tags --prune --no-recurse-submodules --depth="$DEPTH" origin "+$SHA"
+          fi
+          git checkout -q FETCH_HEAD
+          if [ "$(git rev-parse HEAD)" != "$SHA" ]; then
+            echo "FATAL: checked out $(git rev-parse HEAD) but this run is for $SHA" >&2
+            exit 1
+          fi
+      - name: Verify scripts/soak/run_soak_loop.sh exists
+        run: |
+          if [[ ! -f scripts/soak/run_soak_loop.sh ]]; then
+            echo "SKIP: scripts/soak/run_soak_loop.sh not present on this branch"
+            exit 0
+          fi
+      - name: Run static detach regression check
+        run: bash scripts/soak/test_run_soak_loop_detach.sh
+      - name: Run static chaos drills regression check (#4597)
+        run: bash scripts/soak/test_chaos_drills.sh
+      - name: Run static Tier-3 regression check (#4598)
+        # v312-59-d / #4598 P-11/P-8/P-12: alerting webhook + thread ramp + SOP doc.
+        # Static + light behavioral (T12 sources send_alert with stub log()).
+        # Does NOT require binary / root / network.
+        run: bash scripts/soak/test_run_soak_loop_tier3.sh
