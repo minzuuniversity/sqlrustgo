@@ -68,3 +68,32 @@ D/E 属弃权，按 R2 不得被当作背书。
 - **估算**：三系的人日与周数。它们属 Soft Gate，无门禁决策权威（AFP §5.1）。
 - B/C 的读数**不可复算**（LLM 非确定），因此本文只给区间不给点值，并附席位、参数与 latency；
   复现路径 = 重跑 run 008 对应 log 序号，读数会漂移。
+
+## 6. 判据自身的订正：普查输入必须绑在本文那次普查上（2026-11-08）
+
+§5 把 census 归入「实测」，但复算 harness 当时把 census 取成**活语料**：
+`audit/v4.1.0/est_recompute_mutations.py` 调 `scripts/gate/gov_probe.py` 现数，
+而本文的人日与周区间是从 run `20261105-est2-008` 那次普查（`open_total=112`，
+`cost/t0=24`、`t1=65`、`t2=23`）推出来的。语料是移动的：2026-11-08 在合并尖端 `127a76037a` 复跑，
+活普查已是 `open_total=102`（`cost/t0=25`、`t1=55`、`t2=22`），
+两条正臂 `p0-baseline`、`p1` 当场红（rc=1，`positive_fail=2`），而 12 条反臂照旧全红。
+⇒ **红的是绑定，不是判据**：文档一字未改，判据却在语料漂移下失效。
+
+可复现性更糟：run 008 当年把 census 中间文件写在 `/tmp`，macOS 会清 ⇒ 今天已取不回。
+本节的修法是把普查**快照落进版本库**：`audit/v4.1.0/census/20261105-est2-008.json`
+（逐字取自该 run 的 `audit/v4.1.0/runs/20261105-est2-008/logs/001-est2-census-print.stdout`），
+harness 默认读它。
+
+| 绑定 | rc | 正臂 | 反臂 |
+| --- | --- | --- | --- |
+| 改前（活普查、无快照） | 1 | `positive_fail=2` | 12/12 红 |
+| 改后（默认绑快照） | 0 | `positive_fail=0` | 12/12 红，`drift=0` |
+| 改后加 `--live-census` | 1 | `positive_fail=2` | 12/12 红 |
+
+严格模式没有删：`--live-census` 仍用现数；两种模式都会打印一行 `live-census 对照：…`。
+语料漂移必须看得见，但它是「该重做一次估算」的信号，不是「本文读数错了」的证据 ⇒
+本文的数不改；要更新就重跑普查、另立一节。
+
+复现：
+- `python3 audit/v4.1.0/est_recompute_mutations.py` ⇒ rc=0，`arms=12 flipped_red=12 positive_fail=0`
+- `python3 audit/v4.1.0/est_recompute_mutations.py --live-census` ⇒ rc=1，`positive_fail=2`（语料已漂）
