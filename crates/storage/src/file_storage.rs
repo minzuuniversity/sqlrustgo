@@ -7783,9 +7783,11 @@ mod db_isolation_tests {
         fs.create_database("d2").unwrap();
 
         for (db, id) in [("d1", 1i64), ("d2", 2)] {
-            let mut info = TableInfo::default();
-            info.name = "t".to_string();
-            info.columns = vec![ColumnDefinition::new("id", "INTEGER")];
+            let info = TableInfo {
+                name: "t".to_string(),
+                columns: vec![ColumnDefinition::new("id", "INTEGER")],
+                ..Default::default()
+            };
             fs.create_table_in_db(db, &info).unwrap();
             fs.force_insert_in_db(db, "t", vec![Value::Integer(id)])
                 .unwrap();
@@ -7818,9 +7820,11 @@ mod db_isolation_tests {
         let _ = remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let mut info = TableInfo::default();
-        info.name = "legacy".to_string();
-        info.columns = vec![ColumnDefinition::new("id", "INTEGER")];
+        let info = TableInfo {
+            name: "legacy".to_string(),
+            columns: vec![ColumnDefinition::new("id", "INTEGER")],
+            ..Default::default()
+        };
         {
             let mut fs = FileStorage::new(dir.clone()).unwrap();
             fs.create_table(&info).unwrap();

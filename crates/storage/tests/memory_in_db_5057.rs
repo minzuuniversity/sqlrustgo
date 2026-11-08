@@ -21,10 +21,11 @@ use sqlrustgo_storage::MemoryStorage;
 use sqlrustgo_types::Value;
 
 fn table(name: &str) -> TableInfo {
-    let mut info = TableInfo::default();
-    info.name = name.to_string();
-    info.columns = vec![sqlrustgo_storage::ColumnDefinition::new("id", "INTEGER")];
-    info
+    TableInfo {
+        name: name.to_string(),
+        columns: vec![sqlrustgo_storage::ColumnDefinition::new("id", "INTEGER")],
+        ..Default::default()
+    }
 }
 
 /// Two databases, each holding a table called `t` with distinguishable rows,

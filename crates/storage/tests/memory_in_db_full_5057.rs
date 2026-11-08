@@ -21,13 +21,14 @@ use sqlrustgo_storage::MemoryStorage;
 use sqlrustgo_types::Value;
 
 fn table(name: &str) -> TableInfo {
-    let mut info = TableInfo::default();
-    info.name = name.to_string();
-    info.columns = vec![
-        sqlrustgo_storage::ColumnDefinition::new("id", "INTEGER"),
-        sqlrustgo_storage::ColumnDefinition::new("v", "INTEGER"),
-    ];
-    info
+    TableInfo {
+        name: name.to_string(),
+        columns: vec![
+            sqlrustgo_storage::ColumnDefinition::new("id", "INTEGER"),
+            sqlrustgo_storage::ColumnDefinition::new("v", "INTEGER"),
+        ],
+        ..Default::default()
+    }
 }
 
 fn seeded() -> MemoryStorage {
