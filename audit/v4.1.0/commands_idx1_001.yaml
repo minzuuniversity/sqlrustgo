@@ -1,75 +1,75 @@
 - id: idx1-behavior-arms
-  name: IDX-1 行为判据（改前 RED：Table not found: t / Expected LParen, got Dot / left:0 right:1；改后 4 passed；含「索引文件必须落在 d1 目录、根目录不得出现」的落盘读数）
+  name: "IDX-1 行为判据（改前 RED：Table not found t / Expected LParen got Dot / left 0 right 1；改后 4 passed；含「索引文件必须落在 d1 目录、根目录不得出现」的落盘读数）"
   cmd: cargo test --test idx1_session_db_index_test
   cwd: .
   timeout_sec: 1800
 - id: idx1-mutation-fixture
-  name: IDX-1 判据的反向变异夹具（基线全绿 + M1 会话库→默认库 / M2 save_index_in→save_index / M3 去掉 INDEXED BY 库过滤 / M4 PK 重建取键回到 self.tbl 各自打红对应判据 + 恢复后复跑全绿；内含 sed 空转自检）
+  name: "IDX-1 判据的反向变异夹具（基线全绿 + M1 会话库→默认库 / M2 save_index_in→save_index / M3 去掉 INDEXED BY 库过滤 / M4 PK 重建取键回到 self.tbl 各自打红对应判据 + 恢复后复跑全绿；内含 sed 空转自检）"
   cmd: bash scripts/gate/test_idx1_mutation_fixtures.sh
   cwd: .
   timeout_sec: 3000
 - id: idx1-pk-rebuild
-  name: PK 快路径重建判据（重开数据目录后 search_index 命中；d1 的 PK 索引落在 d1/ 目录；改前改前恒 None/无文件）
+  name: "PK 快路径重建判据（重开数据目录后 search_index 命中；d1 的 PK 索引落在 d1 目录；改前恒为 None 且无索引文件）"
   cmd: cargo test -p sqlrustgo-storage --test pk_rebuild_scoped_5592
   cwd: .
   timeout_sec: 1800
 - id: idx1-memory-in-db-suite
-  name: 命名库索引判据（新增 create_index_lands_in_the_named_database；原把「写侧无法按库寻址」当断言的测试已按新事实改写）
+  name: "命名库索引判据（新增 create_index_lands_in_the_named_database；原把「写侧无法按库寻址」当断言的测试已按新事实改写）"
   cmd: cargo test -p sqlrustgo-storage --test memory_in_db_full_5057 --test index_covers_insert_buffer_5209 --test v312_95_v3_file_storage_list_indexes_test --test alter_column_default_5471
   cwd: .
   timeout_sec: 1800
 - id: idx1-storage-lib
-  name: 存储 crate lib 全量（改前 914 passed 基线，索引登记键/落盘/删除语义改动不得回退）
+  name: "存储 crate lib 全量（914 passed 基线；索引登记键/落盘/删除语义改动不得回退）"
   cmd: cargo test -p sqlrustgo-storage --lib
   cwd: .
   timeout_sec: 1800
 - id: crash-armed-server-build
-  name: armed 构建第一步：把带 fault-injection 的 server 二进制编出来（崩溃套件按 SQLRUSTGO_SERVER_BIN / <repo>/target/debug/sqlrustgo-mysql-server 找它）
+  name: "armed 构建第一步：把带 fault-injection 的 server 二进制编出来（崩溃套件按 <repo>/target/debug/sqlrustgo-mysql-server 找它，本 run 的 target 是指向共享 target 的符号链接）"
   cmd: cargo build -p sqlrustgo-mysql-server --all-features
   cwd: .
   timeout_sec: 3600
 - id: crash-wal-index-b1
-  name: 崩溃套件（armed）：索引更新边界 kill -9 后索引路径与全扫必须一致 —— 该套件此前在种子阶段就断（Table not found: t），声称验证的性质从未被执行（IL-13）
+  name: "崩溃套件（armed）：索引更新边界 kill -9 后索引路径与全扫必须一致 —— 该套件此前在种子阶段就断（Table not found t），声称验证的性质从未被执行（IL-13）"
   cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_wal_index_b1
   cwd: .
   timeout_sec: 3600
 - id: crash-commit-fsync-b1
-  name: 崩溃套件（armed）：提交 fsync 边界
+  name: "崩溃套件（armed）：提交 fsync 边界"
   cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_commit_fsync_b1
   cwd: .
   timeout_sec: 3600
 - id: idx1-index-integration-set
-  name: 索引/DDL 相关 13 个集成目标（show_index、sqlite_master 索引回放、等值索引路由 5209、二级索引陈旧 a05、PK 快路径 5177、多库隔离 5025、多库 e2e、ddl e2e、聚簇索引、自适应哈希索引、表达式索引、全文索引）
+  name: "索引/DDL 相关 13 个集成目标（show_index、sqlite_master 索引回放、等值索引路由 5209、二级索引陈旧 a05、PK 快路径 5177、多库隔离 5025、多库 e2e、ddl e2e、聚簇索引、自适应哈希索引、表达式索引、全文索引）"
   cmd: cargo test --test v312_71_sqlite_master_test --test show_index_test --test equality_index_routing_5209 --test eq_index_routing_decision_5209 --test a05_secondary_index_stale --test dml_pk_fast_path_5177 --test multi_db_isolation_5025 --test multi_db_e2e_test --test ddl_e2e_test --test clustered_index_test --test adaptive_hash_index_test --test repro_v313_100_4701_expression_index --test v312_64_fulltext_index_test --no-fail-fast
   cwd: .
   timeout_sec: 3000
 - id: idx1-alpha-lib-suite
-  name: alpha 质量门禁口径的 lib 全量（cargo test --all-features --lib）
+  name: "alpha 质量门禁口径的 lib 全量（cargo test --all-features --lib）"
   cmd: cargo test --all-features --lib
   cwd: .
   timeout_sec: 1800
 - id: idx1-sem1-gate
-  name: SEM-1 门禁本体（IDX-1 不得让 savepoint 判据回退；该门禁内含真实 cargo test 并报告实测通过数）
+  name: "SEM-1 门禁本体（IDX-1 不得让 savepoint 判据回退；该门禁内含真实 cargo test 并报告实测通过数）"
   cmd: CARGO_TARGET_DIR=/Volumes/workspace/dev/sqlrustgo/target bash scripts/gate/check_sem1_savepoint.sh
   cwd: .
   timeout_sec: 1800
 - id: idx1-gate-anti-ignore
-  name: 忽略台账（新增 idx2_page_backed_index_loses_rows：total_allowed 135→136 ≤ 150、ACTIVE 81→82 ≤ 92，且必须与树内真实 #[ignore] 属性数一致）
+  name: "忽略台账（新增 idx2_page_backed_index_loses_rows：total_allowed 135→136 ≤ 150、ACTIVE 81→82 ≤ 92，且必须与树内真实 #[ignore] 属性数一致）"
   cmd: bash scripts/gate/check_anti_ignore_gate.sh
   cwd: .
   timeout_sec: 900
 - id: idx1-gate-registry
-  name: 门禁登记表一致性（分母仍 168：新增夹具/测试文件不得命名为 check_*）
+  name: "门禁登记表一致性（分母仍 168：新增夹具/测试文件不得命名为 check_*）"
   cmd: python3 scripts/gate/gate_registry.py check
   cwd: .
   timeout_sec: 900
 - id: idx1-gate-drift-not-pass
-  name: DRIFT 门禁本体（上批修正后的判据不得回退）
+  name: "DRIFT 门禁本体（上批修正后的判据不得回退）"
   cmd: bash scripts/gate/check_drift_not_pass.sh
   cwd: .
   timeout_sec: 900
 - id: idx1-gate-docs-pointer-paths
-  name: 文档指针路径门禁（本批看板文字含大量反引号路径，不得引入断链）
+  name: "文档指针路径门禁（本批看板文字含大量反引号路径，不得引入断链）"
   cmd: bash scripts/gate/check_docs_pointer_paths.sh
   cwd: .
   timeout_sec: 900

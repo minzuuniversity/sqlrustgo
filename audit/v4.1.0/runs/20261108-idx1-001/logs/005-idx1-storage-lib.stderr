@@ -1,0 +1,95 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/wt/idx1run/crates/storage)
+warning: duplicated attribute
+    --> crates/storage/src/engine.rs:5225:5
+     |
+5225 |     #[test]
+     |     ^^^^^^^
+     |
+     = note: `#[warn(duplicate_macro_attributes)]` on by default
+
+warning: cannot test inner items
+   --> crates/storage/src/vtu_guard.rs:526:9
+    |
+526 |         #[test]
+    |         ^^^^^^^
+    |
+    = note: `#[warn(unnameable_test_items)]` on by default
+
+warning: duplicated attribute
+    --> crates/storage/src/wal_legacy.rs:1544:5
+     |
+1544 |     #[test]
+     |     ^^^^^^^
+
+warning: function `test_vtu_guard_tx_state_via_set_current_tx_id` is never used
+   --> crates/storage/src/vtu_guard.rs:527:12
+    |
+527 |         fn test_vtu_guard_tx_state_via_set_current_tx_id() {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused `Result` that must be used
+    --> crates/storage/src/engine.rs:4330:9
+     |
+4330 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+     |
+4330 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/storage/src/engine.rs:4468:9
+     |
+4468 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4468 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:394:13
+    |
+394 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+394 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:424:13
+    |
+424 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+424 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:485:13
+    |
+485 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+485 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: `sqlrustgo-storage` (lib test) generated 9 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.83s
+     Running unittests src/lib.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/sqlrustgo_storage-be7f4a078002e1cc)
