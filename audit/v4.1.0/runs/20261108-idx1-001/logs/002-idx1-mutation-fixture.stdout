@@ -1,0 +1,11 @@
+== A) 真实树基线（必须全绿）==
+  IDX-1 行为判据: test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  PK 重建判据: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+== M1) 会话库解析 → 只看默认库 ==
+== M2) 索引落盘按库 → save_index（默认库）==
+== M3) INDEXED BY 去掉库过滤 → 按名字全局认领 ==
+== M4) PK 重建取键回到 self.tbl（在已加域的键上再加一层）==
+== E) 恢复后复跑（确认恢复干净）==
+  IDX-1 行为判据（恢复后）: test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  PK 重建判据（恢复后）: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+OK: IDX-1 判据有鉴别力（基线全绿；四处取库点各自回退都能打红对应判据）

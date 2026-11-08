@@ -1,0 +1,10 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/wt/idx1run/crates/storage)
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/wt/idx1run/crates/optimizer)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/wt/idx1run/crates/security)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/wt/idx1run/crates/transaction)
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/wt/idx1run/crates/planner)
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/wt/idx1run/crates/executor)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/wt/idx1run/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/wt/idx1run)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.08s
+     Running tests/pk_rebuild_scoped_5592.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/pk_rebuild_scoped_5592-58891c8b9e5100d5)

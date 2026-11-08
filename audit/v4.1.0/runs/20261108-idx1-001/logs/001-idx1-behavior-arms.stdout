@@ -1,0 +1,10 @@
+
+running 5 tests
+test idx2_page_backed_index_loses_rows ... ignored, 看板行 IDX-2：页式表的 CREATE INDEX 建树看不到页里的行 ⇒ 按索引列查询静默丢行
+test test_idx1_default_database_does_not_regress ... ok
+test test_idx1_create_index_follows_session_database ... ok
+test test_idx1_qualified_table_name_is_accepted ... ok
+test test_idx1_index_is_scoped_per_database ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
