@@ -464,8 +464,10 @@ mod tests {
             counter: counter_clone,
         });
 
-        let mut new_db = DatabaseConfig::default();
-        new_db.host = "changed_host".to_string();
+        let new_db = DatabaseConfig {
+            host: "changed_host".to_string(),
+            ..Default::default()
+        };
         manager.update_database_config(new_db).expect("update");
 
         assert_eq!(counter.load(Ordering::SeqCst), 1);
@@ -520,8 +522,10 @@ mod tests {
         manager.add_listener(TestListener(c1));
         manager.add_listener(TestListener(c2));
 
-        let mut db = DatabaseConfig::default();
-        db.host = "notify_test".to_string();
+        let db = DatabaseConfig {
+            host: "notify_test".to_string(),
+            ..Default::default()
+        };
         manager.update_database_config(db).expect("update");
 
         assert_eq!(counter.load(Ordering::SeqCst), 2);
@@ -581,8 +585,10 @@ mod tests {
 
         let mut manager = ConfigManager::new(path).expect("manager");
         manager.add_listener(CountingListener(counter_clone));
-        let mut cache = CacheConfig::default();
-        cache.max_size_mb = 2048;
+        let cache = CacheConfig {
+            max_size_mb: 2048,
+            ..Default::default()
+        };
         manager.update_cache_config(cache).expect("update");
         assert_eq!(counter.load(Ordering::SeqCst), 1);
         let _ = std::fs::remove_dir_all(&dir);
@@ -610,8 +616,10 @@ mod tests {
 
         let mut manager = ConfigManager::new(path).expect("manager");
         manager.add_listener(CountingListener(counter_clone));
-        let mut log = LogConfig::default();
-        log.level = "warn".to_string();
+        let log = LogConfig {
+            level: "warn".to_string(),
+            ..Default::default()
+        };
         manager.update_log_config(log).expect("update");
         assert_eq!(counter.load(Ordering::SeqCst), 1);
         let _ = std::fs::remove_dir_all(&dir);
@@ -695,8 +703,10 @@ mod tests {
         manager.add_listener(L1(c1));
         manager.add_listener(L2(c2));
 
-        let mut db = DatabaseConfig::default();
-        db.host = "multi".to_string();
+        let db = DatabaseConfig {
+            host: "multi".to_string(),
+            ..Default::default()
+        };
         manager.update_database_config(db).expect("update");
         assert_eq!(counter1.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(counter2.load(std::sync::atomic::Ordering::SeqCst), 1);
@@ -725,8 +735,10 @@ mod tests {
 
         let mut manager = ConfigManager::new(path).expect("manager");
         manager.add_listener(CountingListener(counter_clone));
-        let mut db = DatabaseConfig::default();
-        db.host = "notify_host".to_string();
+        let db = DatabaseConfig {
+            host: "notify_host".to_string(),
+            ..Default::default()
+        };
         manager.update_database_config(db).expect("update");
         assert_eq!(counter.load(Ordering::SeqCst), 1);
         let _ = std::fs::remove_dir_all(&dir);

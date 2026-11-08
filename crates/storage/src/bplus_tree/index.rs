@@ -1893,17 +1893,21 @@ mod tests {
 
     #[test]
     fn test_index_stats_selectivity() {
-        let mut stats = IndexStats::default();
-        stats.num_entries = 100;
-        stats.cardinality = 50;
+        let stats = IndexStats {
+            num_entries: 100,
+            cardinality: 50,
+            ..Default::default()
+        };
         assert_eq!(stats.selectivity(), 0.5);
     }
 
     #[test]
     fn test_index_stats_selectivity_clamped() {
-        let mut stats = IndexStats::default();
-        stats.num_entries = 100;
-        stats.cardinality = 150; // More unique than entries
+        let stats = IndexStats {
+            num_entries: 100,
+            cardinality: 150, // More unique than entries
+            ..Default::default()
+        };
         assert_eq!(stats.selectivity(), 1.0); // Should clamp to 1.0
     }
 
