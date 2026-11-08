@@ -391,7 +391,11 @@ mod tests {
             handles.push(thread::spawn(move || c.commit_lsn(i as u64)));
         }
         for h in handles {
-            h.join().unwrap();
+            // join() yields JoinHandle<Result<_>>: the outer unwrap is the
+            // thread panic check, the inner one propagates commit errors —
+            // a swallowed Err here would leave the fsync assertions below
+            // asserting on a run where every commit failed.
+            h.join().unwrap().unwrap();
         }
 
         // With coalescing, we expect far fewer than 8 fsyncs. In the
@@ -421,7 +425,7 @@ mod tests {
             handles.push(thread::spawn(move || c.commit_lsn(i as u64)));
         }
         for h in handles {
-            h.join().unwrap();
+            h.join().unwrap().unwrap();
         }
 
         // With max_batch=2 and 4 threads, we expect at least 2 fsyncs
@@ -482,7 +486,7 @@ mod tests {
             handles.push(thread::spawn(move || c.commit_lsn(i as u64)));
         }
         for h in handles {
-            h.join().unwrap();
+            h.join().unwrap().unwrap();
         }
         let syncs = counter.load(Ordering::SeqCst);
         // 32 threads / batch of 32 = 1 fsync in the best case; allow
