@@ -1585,7 +1585,6 @@ mod tests {
         std::fs::remove_dir_all(tmp).ok();
     }
 
-    
     use sqlrustgo_types::Value;
 
     fn make_cols(names: &[&str], types: &[&str]) -> Vec<ColumnDefinition> {
@@ -2003,6 +2002,7 @@ mod tests {
             .create_index(crate::engine::IndexInfo {
                 name: "c".to_string(),
                 table: "t".to_string(),
+                database: crate::engine::DEFAULT_DATABASE.to_string(),
                 columns: vec![sqlrustgo_parser::IndexColumnSpec::column("c")],
                 is_unique: false,
                 original_sql: String::new(),

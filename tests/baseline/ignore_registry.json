@@ -3,7 +3,7 @@
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
   "captured_at_commit": "1ce91dd9e8e98473779b7d915b7b82cc87040b85",
   "captured_at_date": "2026-10-23",
-  "total_allowed": 135,
+  "total_allowed": 136,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 92,
@@ -44,6 +44,15 @@
   "counting_rule": "total_allowed equals the number of entries below. The gate compares it to limits.total_allowed_max and counts entries whose status is \"ACTIVE\" against limits.active_max.",
   "note_on_line_numbers": "line_at_capture refers to the position of the #[ignore] attribute at commit 6ba04fa07 (2026-10-07); the 4 entries added on 2026-10-23 for #P0-08 point at commit 8c6c40a078; later edits may shift it, so it is a locator hint, not an assertion.",
   "ignored_tests": [
+    {
+      "file": "tests/integration/sql/idx1_session_db_index_test.rs",
+      "test": "idx2_page_backed_index_loses_rows",
+      "line_at_capture": 244,
+      "reason": "GAP（看板行 IDX-2）：页式 FileStorage（BufferPool）下 CREATE INDEX 从 tables.rows 取行建树，而行在页里 ⇒ 索引树为空 ⇒ 按索引列查询静默丢行。2026-11-08 实测：表 3 行；建索引前 WHERE v = 20 返回 1 行，建索引后返回 0 行",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "已实测的产品缺陷；修它要重定索引的 row-id 寻址（page/offset），不在看板行 IDX-1 的批准范围内。显式标为 ignored 并登记：既不以假覆盖充数，也不让已知缺陷把整套件染红。见 docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl 的 IDX-2 行"
+    },
     {
       "file": "crates/executor/tests/hash_join_left_null_test.rs",
       "test": "test_filter_not_null_comparison",

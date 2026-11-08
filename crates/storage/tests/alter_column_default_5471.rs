@@ -174,6 +174,7 @@ fn file_storage_persists_the_default_when_the_table_grew_since_the_last_save() {
             IndexInfo {
                 name: "idx_v".to_string(),
                 table: "t".to_string(),
+                database: sqlrustgo_storage::DEFAULT_DATABASE.to_string(),
                 columns: vec![IndexColumnSpec::column("v")],
                 is_unique: false,
                 original_sql: String::new(),

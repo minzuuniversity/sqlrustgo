@@ -242,6 +242,12 @@ pub fn format_create_index_sql(idx: &CreateIndexStatement) -> String {
     }
     out.push_str(&idx.name);
     out.push_str(" ON ");
+    // IDX-1：限定名必须原样回放。这段文本会写进索引登记表 / `sqlite_master`，
+    // 丢掉库名 ⇒ 回放出来的 DDL 指向错误的库（默认库），重建出错的索引。
+    if let Some(schema) = &idx.schema {
+        out.push_str(schema);
+        out.push('.');
+    }
     out.push_str(&idx.table);
     out.push_str(" (");
     out.push_str(
