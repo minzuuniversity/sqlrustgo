@@ -1,0 +1,46 @@
+
+running 11 tests
+test memory_storage_still_accepts_set_column_default ... ok
+test the_production_storage_stack_accepts_set_column_default ... ok
+test file_storage_reports_a_missing_table ... ok
+test file_storage_reports_a_missing_column ... ok
+test file_storage_accepts_set_column_default ... ok
+test mvcc_storage_forwards_set_column_default ... ok
+test box_storage_engine_forwards_set_column_default ... ok
+test wal_storage_forwards_set_column_default ... ok
+test file_storage_persists_drop_default_across_a_reopen ... ok
+test file_storage_persists_the_default_across_a_reopen ... ok
+test file_storage_persists_the_default_when_the_table_grew_since_the_last_save ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 3 tests
+test index_built_after_flush_works ... ok
+test index_built_before_flush_still_finds_buffered_rows ... ok
+test index_covers_every_buffered_row ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test insert_in_db_lands_in_the_named_database ... ok
+test scan_with_index_in_db_reads_the_named_database ... ok
+test delete_collect_pks_in_db_reports_the_right_keys ... ok
+test update_in_db_changes_only_the_named_database ... ok
+test update_if_in_db_changes_only_the_named_database ... ok
+test delete_in_db_spares_the_other_database ... ok
+test force_insert_in_db_lands_in_the_named_database ... ok
+test create_index_lands_in_the_named_database ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test list_all_indexes_empty_initially ... ok
+test list_all_indexes_after_single_create ... ok
+test list_all_indexes_after_drop ... ok
+test list_all_indexes_multiple_indexes_same_table ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
