@@ -2482,8 +2482,8 @@ mod covering_index_tests {
     #[test]
     fn test_covering_index_check() {
         // Test covering index concept
-        let index_columns = vec!["id".to_string(), "name".to_string()];
-        let query_columns = vec!["id".to_string(), "name".to_string()];
+        let index_columns = ["id".to_string(), "name".to_string()];
+        let query_columns = ["id".to_string(), "name".to_string()];
 
         let is_covering = query_columns.iter().all(|col| index_columns.contains(col));
         assert!(is_covering);
@@ -2491,8 +2491,8 @@ mod covering_index_tests {
 
     #[test]
     fn test_non_covering_index_check() {
-        let index_columns = vec!["id".to_string(), "name".to_string()];
-        let query_columns = vec!["id".to_string(), "email".to_string()];
+        let index_columns = ["id".to_string(), "name".to_string()];
+        let query_columns = ["id".to_string(), "email".to_string()];
 
         let is_covering = query_columns.iter().all(|col| index_columns.contains(col));
         assert!(!is_covering);
@@ -2526,7 +2526,7 @@ mod index_selection_tests {
 
     #[test]
     fn test_best_index_selection() {
-        let indexes = vec![("idx1", 0.1), ("idx2", 0.5), ("idx3", 0.9)];
+        let indexes = [("idx1", 0.1), ("idx2", 0.5), ("idx3", 0.9)];
 
         let best = indexes
             .iter()

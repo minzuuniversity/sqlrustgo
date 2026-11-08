@@ -4825,8 +4825,8 @@ mod tests {
             expression: binop(ident("x"), "=", lit("5")),
         };
         let cols = vec!["x".to_string()];
-        assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(5)]).unwrap());
-        assert!(!evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(10)]).unwrap());
+        assert!(evaluate_check_constraint(&constraint, &cols, &[Value::Integer(5)]).unwrap());
+        assert!(!evaluate_check_constraint(&constraint, &cols, &[Value::Integer(10)]).unwrap());
     }
 
     #[test]
@@ -4843,19 +4843,19 @@ mod tests {
         assert!(evaluate_check_constraint(
             &constraint,
             &cols,
-            &vec![Value::Integer(5), Value::Integer(50)]
+            &[Value::Integer(5), Value::Integer(50)]
         )
         .unwrap());
         assert!(!evaluate_check_constraint(
             &constraint,
             &cols,
-            &vec![Value::Integer(-1), Value::Integer(50)]
+            &[Value::Integer(-1), Value::Integer(50)]
         )
         .unwrap());
         assert!(!evaluate_check_constraint(
             &constraint,
             &cols,
-            &vec![Value::Integer(5), Value::Integer(150)]
+            &[Value::Integer(5), Value::Integer(150)]
         )
         .unwrap());
     }
@@ -4874,19 +4874,19 @@ mod tests {
         assert!(evaluate_check_constraint(
             &constraint,
             &cols,
-            &vec![Value::Integer(0), Value::Integer(50)]
+            &[Value::Integer(0), Value::Integer(50)]
         )
         .unwrap());
         assert!(evaluate_check_constraint(
             &constraint,
             &cols,
-            &vec![Value::Integer(5), Value::Integer(0)]
+            &[Value::Integer(5), Value::Integer(0)]
         )
         .unwrap());
         assert!(!evaluate_check_constraint(
             &constraint,
             &cols,
-            &vec![Value::Integer(5), Value::Integer(50)]
+            &[Value::Integer(5), Value::Integer(50)]
         )
         .unwrap());
     }
@@ -4898,8 +4898,8 @@ mod tests {
             expression: unary("NOT", binop(ident("x"), "=", lit("5"))),
         };
         let cols = vec!["x".to_string()];
-        assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(10)]).unwrap());
-        assert!(!evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(5)]).unwrap());
+        assert!(evaluate_check_constraint(&constraint, &cols, &[Value::Integer(10)]).unwrap());
+        assert!(!evaluate_check_constraint(&constraint, &cols, &[Value::Integer(5)]).unwrap());
     }
 
     #[test]
@@ -4909,8 +4909,8 @@ mod tests {
             expression: is_null(ident("x")),
         };
         let cols = vec!["x".to_string()];
-        assert!(evaluate_check_constraint(&constraint, &cols, &vec![Value::Null]).unwrap());
-        assert!(!evaluate_check_constraint(&constraint, &cols, &vec![Value::Integer(0)]).unwrap());
+        assert!(evaluate_check_constraint(&constraint, &cols, &[Value::Null]).unwrap());
+        assert!(!evaluate_check_constraint(&constraint, &cols, &[Value::Integer(0)]).unwrap());
     }
 
     #[test]
