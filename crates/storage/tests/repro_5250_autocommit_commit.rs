@@ -18,7 +18,7 @@ use sqlrustgo_storage::wal::{WalEntryType, WalManager};
 use sqlrustgo_storage::{
     ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value, WalStorage,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn col(n: &str, pk: bool) -> ColumnDefinition {
     ColumnDefinition {
@@ -50,8 +50,8 @@ fn fresh_dir(tag: &str) -> PathBuf {
     d
 }
 
-fn stack(d: &PathBuf) -> Stack {
-    let inner = FileStorage::new(d.clone()).expect("FileStorage");
+fn stack(d: &Path) -> Stack {
+    let inner = FileStorage::new(d.to_path_buf()).expect("FileStorage");
     let wal = FileBackedWalManager::new(d.join("sqlrustgo.wal")).expect("wal");
     WalStorage::new(inner, wal).expect("WalStorage")
 }
