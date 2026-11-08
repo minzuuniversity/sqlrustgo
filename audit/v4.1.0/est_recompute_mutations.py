@@ -3,6 +3,11 @@
 # est_recompute.py 的反向变异（AGENTS 2.5 / 本仓「每条新判据必须反向变异」）。
 #
 #   python3 audit/v4.1.0/est_recompute_mutations.py
+#   python3 audit/v4.1.0/est_recompute_mutations.py --live-census   # 严格模式：绑活普查
+#
+# 默认绑**仓内普查快照** `audit/v4.1.0/census/20261105-est2-008.json`（从该 run 的 logs 取回），
+# 并把「今天再数一遍」的差异作为对照行打出来；`--live-census` 才让活普查进入判据
+# （那时语料漂移会让正臂红 —— 那是「该重做估算」的信号，不是「文档坏了」）。
 #
 # 每条臂只在临时目录的副本里注入一个缺陷，仓库文件一律不动。
 # 臂判据：注入后 est_recompute 必须变红；同时有两条「必须保持绿」的正臂
@@ -54,6 +59,47 @@ def live_census() -> str:
     raise SystemExit("est_recompute_mutations: 拿不到 live census")
 
 
+# 正臂 P0 判的是「文档在它自己那次普查下是否自洽」。绑活普查 ⇒ 语料一动（新开/关 issue）
+# 正臂就红，跟文档对不对无关：2026-11-08 实测活普查已漂到 open_total=102（快照是 112），
+# 两条正臂当场红，而 12 条反臂照旧全红 ⇒ 红的是绑定，不是判据。
+# 归档 run 008 当年把 census 写进 /tmp（macOS 会清），今天已不可复现 ⇒ 快照从该 run 的
+# logs 里取回，落在仓内，随证据一起进版本库。
+SNAPSHOT = HERE / "census" / f"{RUN_ID}.json"
+
+
+def census_input(use_live: bool) -> str:
+    if use_live:
+        print("census vintage = LIVE（严格模式：语料漂移会让正臂红，这是预期，见 §6）")
+        return live_census()
+    if not SNAPSHOT.is_file():
+        raise SystemExit(
+            f"est_recompute_mutations: 缺仓内普查快照 {SNAPSHOT.relative_to(REPO)}"
+            f" —— 应从 run {RUN_ID} 的 logs/001-est2-census-print.stdout 取回，别再退回 /tmp"
+        )
+    text = SNAPSHOT.read_text(encoding="utf-8").strip()
+    print(f"census vintage = 快照 {SNAPSHOT.relative_to(REPO)}"
+          f"（open_total={json.loads(text)['open_total']}）")
+    return text
+
+
+def report_live_drift(snapshot_text: str) -> None:
+    """「今天再数一遍」的差异必须打出来：它不该让正臂红（文档是有日期的估算），
+    但也不能不说 —— 语料漂了就意味着该重做估算，而不是让旧估算继续背书。"""
+    try:
+        live = json.loads(live_census())
+    except SystemExit:
+        print("live-census 对照：取不到活普查 ⇒ 这一行不给结论（不是「未漂」）")
+        return
+    snap = json.loads(snapshot_text)
+    if snap.get("open_total") == live.get("open_total") and snap.get("cost") == live.get("cost"):
+        print("live-census 对照：与快照一致 ⇒ 估算语料未漂")
+    else:
+        print(f"live-census 对照：语料已漂 —— 快照 open_total={snap.get('open_total')} "
+              f"cost={snap.get('cost')} ⇒ 现值 open_total={live.get('open_total')} "
+              f"cost={live.get('cost')}。本文属历史估算；要更新就按 §6 重跑普查并另立一节，"
+              "别改本文的读数冒充现值。")
+
+
 def run_tool(tool: pathlib.Path, plan: pathlib.Path, doc: pathlib.Path,
              census: str, run_id: str = RUN_ID, fresh: str | None = None) -> subprocess.CompletedProcess:
     argv = [sys.executable, str(tool), "--plan", str(plan), "--doc", str(doc),
@@ -75,7 +121,10 @@ def mutate(base: str, name: str, old: str, new: str, work: pathlib.Path, fname: 
 
 
 def main() -> int:
-    census = live_census()
+    use_live = "--live-census" in sys.argv
+    census = census_input(use_live)
+    if not use_live:
+        report_live_drift(census)
     tool_src = TOOL.read_text(encoding="utf-8")
     plan_src = PLAN.read_text(encoding="utf-8")
     doc_src = DOC.read_text(encoding="utf-8")
