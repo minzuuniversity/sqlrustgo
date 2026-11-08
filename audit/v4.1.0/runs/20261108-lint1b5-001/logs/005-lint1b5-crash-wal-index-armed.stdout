@@ -1,0 +1,7 @@
+
+running 2 tests
+test wal_append_crash_recovers_gracefully_without_resurrecting_rows ... ok
+test index_update_crash_does_not_serve_dangling_rows ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.68s
+
