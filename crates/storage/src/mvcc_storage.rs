@@ -1713,10 +1713,11 @@ mod db_isolation_tests {
     use std::fs::remove_dir_all;
 
     fn table(name: &str) -> crate::engine::TableInfo {
-        let mut info = crate::engine::TableInfo::default();
-        info.name = name.to_string();
-        info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
-        info
+        crate::engine::TableInfo {
+            name: name.to_string(),
+            columns: vec![crate::ColumnDefinition::new("id", "INTEGER")],
+            ..Default::default()
+        }
     }
 
     #[test]

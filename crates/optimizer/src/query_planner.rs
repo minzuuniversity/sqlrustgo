@@ -529,18 +529,22 @@ mod tests {
 
     #[test]
     fn test_plan_with_disabled_cache() {
-        let mut config = QueryPlannerConfig::default();
-        config.enable_cache = false;
+        let config = QueryPlannerConfig {
+            enable_cache: false,
+            ..Default::default()
+        };
         let planner = QueryPlanner::new(config, UnifiedCostModel::default_model(128, 10000));
         assert_eq!(planner.cache_size(), 0);
     }
 
     #[test]
     fn test_plan_with_custom_config() {
-        let mut config = QueryPlannerConfig::default();
-        config.max_alternatives = 5;
-        config.enable_visualization = true;
-        config.default_vector_dim = 256;
+        let config = QueryPlannerConfig {
+            max_alternatives: 5,
+            enable_visualization: true,
+            default_vector_dim: 256,
+            ..Default::default()
+        };
         let planner = QueryPlanner::new(config, UnifiedCostModel::default_model(256, 10000));
         assert_eq!(planner.cache_size(), 0);
     }
@@ -799,8 +803,10 @@ mod tests {
 
     #[test]
     fn test_plan_alternatives_with_multiple() {
-        let mut config = QueryPlannerConfig::default();
-        config.max_alternatives = 5;
+        let config = QueryPlannerConfig {
+            max_alternatives: 5,
+            ..Default::default()
+        };
         let planner = QueryPlanner::new(config, UnifiedCostModel::default_model(128, 10000));
         assert_eq!(planner.cache_size(), 0);
     }
@@ -819,10 +825,12 @@ mod tests {
 
     #[test]
     fn test_plan_config_enable_visualization() {
-        let mut config = QueryPlannerConfig::default();
-        config.enable_visualization = true;
-        config.default_vector_dim = 512;
-        config.default_graph_size = 50000;
+        let config = QueryPlannerConfig {
+            enable_visualization: true,
+            default_vector_dim: 512,
+            default_graph_size: 50000,
+            ..Default::default()
+        };
         assert!(config.enable_visualization);
         assert_eq!(config.default_vector_dim, 512);
         assert_eq!(config.default_graph_size, 50000);

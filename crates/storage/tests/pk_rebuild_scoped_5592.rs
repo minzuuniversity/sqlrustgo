@@ -22,10 +22,11 @@ fn col(name: &str, pk: bool) -> ColumnDefinition {
 }
 
 fn pk_table(name: &str) -> TableInfo {
-    let mut info = TableInfo::default();
-    info.name = name.to_string();
-    info.columns = vec![col("id", true), col("v", false)];
-    info
+    TableInfo {
+        name: name.to_string(),
+        columns: vec![col("id", true), col("v", false)],
+        ..Default::default()
+    }
 }
 
 /// 默认库：**重开数据目录后**必须能通过 PK 索引查到行。

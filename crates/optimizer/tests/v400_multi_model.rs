@@ -112,9 +112,11 @@ mod vector_cost_tests {
 
     #[test]
     fn test_custom_vector_cost_factors() {
-        let mut factors = VectorCostFactors::default();
-        factors.cpu_cost_per_vector_cmp = 0.005;
-        factors.io_cost_per_page = 20.0;
+        let factors = VectorCostFactors {
+            cpu_cost_per_vector_cmp: 0.005,
+            io_cost_per_page: 20.0,
+            ..Default::default()
+        };
 
         let model = VectorCostModel::new(factors);
         let cost = model.knn_cost(10, 10000, 128, &VectorIndexType::Hnsw);
@@ -243,9 +245,11 @@ mod graph_cost_tests {
 
     #[test]
     fn test_custom_graph_cost_factors() {
-        let mut factors = GraphCostFactors::default();
-        factors.cpu_cost_per_node = 0.02;
-        factors.cpu_cost_per_edge = 0.002;
+        let factors = GraphCostFactors {
+            cpu_cost_per_node: 0.02,
+            cpu_cost_per_edge: 0.002,
+            ..Default::default()
+        };
 
         let model = GraphCostModel::new(factors);
         let cost = model.traversal_cost(3, 10.0, &GraphIndexType::AdjacencyList);
