@@ -43,7 +43,7 @@ use sqlrustgo_storage::wal::file_backed_wal_manager::FileBackedWalManager;
 use sqlrustgo_storage::{
     ColumnDefinition, FileStorage, Record, StorageEngine, TableInfo, Value, WalStorage,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn col(n: &str, pk: bool) -> ColumnDefinition {
     ColumnDefinition {
@@ -75,15 +75,15 @@ fn dir(t: &str) -> PathBuf {
 
 type Stack = WalStorage<FileStorage, FileBackedWalManager>;
 
-fn stack(d: &PathBuf) -> Stack {
-    let inner = FileStorage::new(d.clone()).expect("FileStorage");
+fn stack(d: &Path) -> Stack {
+    let inner = FileStorage::new(d.to_path_buf()).expect("FileStorage");
     let wal = FileBackedWalManager::new(d.join("sqlrustgo.wal")).expect("wal");
     WalStorage::new(inner, wal).expect("WalStorage")
 }
 
 /// Re-open the WAL the way `run_server_v2` does — a fresh handle over the
 /// same file, not the one the storage is holding.
-fn replay_wal(d: &PathBuf) -> FileBackedWalManager {
+fn replay_wal(d: &Path) -> FileBackedWalManager {
     FileBackedWalManager::new(d.join("sqlrustgo.wal")).expect("replay wal")
 }
 
