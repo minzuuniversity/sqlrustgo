@@ -1,0 +1,312 @@
+   Compiling sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/types)
+   Compiling sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/common)
+   Compiling sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/spill)
+   Compiling sqlrustgo-mysql-client v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/mysql-client)
+   Compiling sqlrustgo-wal-verification v0.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/wal-verification)
+   Compiling sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/gis)
+   Compiling sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/parser)
+   Compiling sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/catalog)
+   Compiling information-schema v0.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/information-schema)
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/storage)
+   Compiling sqlrustgo-cache v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/cache)
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/optimizer)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/transaction)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/security)
+   Compiling sqlrustgo-tools v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/tools)
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/planner)
+warning: field `modified` is never read
+   --> crates/optimizer/src/rules.rs:138:9
+    |
+137 |     struct TestPlan {
+    |            -------- field in this struct
+138 |         modified: bool,
+    |         ^^^^^^^^
+    |
+    = note: `TestPlan` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-optimizer` (lib test) generated 1 warning
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/executor)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run)
+   Compiling sqlrustgo-cli v4.1.0 (/Volumes/workspace/dev/wt/lint1b3run/crates/sqlrustgo-cli)
+warning: duplicated attribute
+    --> crates/storage/src/engine.rs:5226:5
+     |
+5226 |     #[test]
+     |     ^^^^^^^
+     |
+     = note: `#[warn(duplicate_macro_attributes)]` on by default
+
+warning: cannot test inner items
+   --> crates/storage/src/vtu_guard.rs:526:9
+    |
+526 |         #[test]
+    |         ^^^^^^^
+    |
+    = note: `#[warn(unnameable_test_items)]` on by default
+
+warning: duplicated attribute
+    --> crates/storage/src/wal_legacy.rs:1544:5
+     |
+1544 |     #[test]
+     |     ^^^^^^^
+
+warning: function `test_vtu_guard_tx_state_via_set_current_tx_id` is never used
+   --> crates/storage/src/vtu_guard.rs:527:12
+    |
+527 |         fn test_vtu_guard_tx_state_via_set_current_tx_id() {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused `Result` that must be used
+    --> crates/storage/src/engine.rs:4331:9
+     |
+4331 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+     |
+4331 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/storage/src/engine.rs:4469:9
+     |
+4469 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4469 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:394:13
+    |
+394 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+394 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:424:13
+    |
+424 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+424 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:485:13
+    |
+485 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+485 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: `sqlrustgo-storage` (lib test) generated 9 warnings
+warning: using `.clone()` on a double reference, which returns `&str` instead of cloning the inner type
+  --> crates/storage/examples/tpch_query_bench.rs:75:27
+   |
+75 |         results.push((name.clone(), rows, elapsed, result.is_ok()));
+   |                           ^^^^^^^^
+   |
+   = note: `#[warn(suspicious_double_ref_op)]` on by default
+
+warning: `sqlrustgo-storage` (example "tpch_query_bench") generated 1 warning
+warning: method `keep` is never used
+   --> crates/storage/tests/fault_coordination.rs:151:12
+    |
+143 | impl Scratch {
+    | ------------ method in this implementation
+...
+151 |     pub fn keep(mut self) -> Self {
+    |            ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `with_sync_mode` is never used
+   --> crates/storage/tests/fault_coordination.rs:329:12
+    |
+282 | impl Arm {
+    | -------- method in this implementation
+...
+329 |     pub fn with_sync_mode(mut self, m: &str) -> Self {
+    |            ^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-storage` (test "crash_commit_fsync_b1") generated 2 warnings
+warning: `sqlrustgo-storage` (test "crash_wal_index_b1") generated 2 warnings (2 duplicates)
+warning: variable `count` is assigned to, but never used
+  --> crates/storage/examples/compare_sqlite.rs:35:9
+   |
+35 |     let mut count = 0;
+   |         ^^^^^^^^^
+   |
+   = note: consider using `_count` instead
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `count` is never read
+  --> crates/storage/examples/compare_sqlite.rs:39:17
+   |
+39 |                 count += 1;
+   |                 ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-storage` (example "compare_sqlite") generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 43s
+     Running unittests src/lib.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/sqlrustgo_cli-58a82eae2d354bdd)
+     Running unittests src/local_bin.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/sqlrustgo-51200f9e98e0b5cb)
+     Running tests/cli_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/cli_test-99e7d2cff8d78831)
+     Running unittests src/lib.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/sqlrustgo_optimizer-2e948b884b998262)
+     Running tests/coverage_v3_12.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/coverage_v3_12-9285dea77fcb8f1a)
+     Running tests/histogram_e2e.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/histogram_e2e-3eb95a0dc37e6c2d)
+     Running tests/optimizer_chain_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/optimizer_chain_tests-bb8936c06588f047)
+     Running tests/should_parallelize_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/should_parallelize_test-09f0761a35212dae)
+     Running tests/v400_multi_model.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v400_multi_model-ce6dc9fbe3c1b2e6)
+     Running unittests src/lib.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/sqlrustgo_storage-be829b760e6ca2e2)
+     Running tests/a06_failpoint_reachability.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/a06_failpoint_reachability-e0d788db5eb887da)
+     Running tests/alter_column_default_5471.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/alter_column_default_5471-97cdc801ed10a39f)
+     Running tests/alter_column_default_case_5472.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/alter_column_default_case_5472-31d8883f3c8b81a6)
+     Running tests/assembly_forwarding_5199.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/assembly_forwarding_5199-16d80c1dcd712dc9)
+     Running tests/b22_concurrent_flush_ab.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/b22_concurrent_flush_ab-757401d16b79a999)
+     Running tests/b22_flush_reroute_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/b22_flush_reroute_test-d12478fa222c8d5e)
+     Running tests/b22_flush_wall.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/b22_flush_wall-fb4696a262c7c642)
+     Running tests/bin_compactor_direct_v3_12.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/bin_compactor_direct_v3_12-476238e51b84585b)
+     Running tests/binary_storage_ddl_honesty_5601.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/binary_storage_ddl_honesty_5601-7377df8183dfd6b4)
+     Running tests/binary_storage_direct_v3_12.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/binary_storage_direct_v3_12-9b7aa57e1133e165)
+     Running tests/binary_v2_direct_v3_12.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/binary_v2_direct_v3_12-f03d34eda195add2)
+     Running tests/blk2_lockfree_tx_concurrency_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/blk2_lockfree_tx_concurrency_test-83a1eb9dc68b6d86)
+     Running tests/blk3_auto_increment_per_table_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/blk3_auto_increment_per_table_test-d0e44247ece3e9e9)
+     Running tests/blk3_autoinc_counter_contract_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/blk3_autoinc_counter_contract_test-84b30871359d1122)
+     Running tests/boxed_tx_scan_contract_5277.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/boxed_tx_scan_contract_5277-f3c2368b13ee4eb4)
+     Running tests/bulk_load_quadraticity.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/bulk_load_quadraticity-f06959a9a8a8052c)
+     Running tests/crash_commit_fsync_b1.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/crash_commit_fsync_b1-6283e89b45f9de9f)
+     Running tests/crash_wal_index_b1.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/crash_wal_index_b1-18f28a75fd8b8f26)
+     Running tests/drop_table_discards_buffered_rows_5525.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/drop_table_discards_buffered_rows_5525-6c1e671bd011f9f0)
+     Running tests/e2e_binlog_replication_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/e2e_binlog_replication_test-02a73d41d0b3cc43)
+     Running tests/e2e_crash_recovery_proof.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/e2e_crash_recovery_proof-58df836a6a8489c1)
+     Running tests/fault_coordination.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/fault_coordination-45e1a0d80724b960)
+     Running tests/file_scan_in_db_5057.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_scan_in_db_5057-aa71c3623d5278cb)
+     Running tests/file_storage_change_log_5048.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_change_log_5048-1aa488351e24796c)
+     Running tests/file_storage_concurrent_same_row_5059.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_concurrent_same_row_5059-7b4be18126535fc1)
+     Running tests/file_storage_concurrent_workers_4994.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_concurrent_workers_4994-911ce83cd2f1810e)
+     Running tests/file_storage_db_isolation_5025.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_db_isolation_5025-f3c043b6df8414ec)
+     Running tests/file_storage_db_param_5057.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_db_param_5057-fb58c2e4e91a369d)
+     Running tests/file_storage_ddl_column_case_5509.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_ddl_column_case_5509-47b2e0411ef5fb39)
+     Running tests/file_storage_ddl_db_param_5057.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_ddl_db_param_5057-35e413c43666fbd3)
+     Running tests/file_storage_direct_v3_12.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_direct_v3_12-a86c5da39a263510)
+     Running tests/file_storage_dml_db_param_5057.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_dml_db_param_5057-a6fd1f8c9cf4f332)
+     Running tests/file_storage_dml_visibility_5060.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_dml_visibility_5060-2d496ff6838123c0)
+     Running tests/file_storage_flush_scoped_5057.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_flush_scoped_5057-b0fae9cc87c1d13c)
+     Running tests/file_storage_wal_5055.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/file_storage_wal_5055-997be556cfe721fd)
+     Running tests/foreign_key_redesign_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/foreign_key_redesign_tests-da5a331a0eeb300f)
+     Running tests/gc_pending_version_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/gc_pending_version_test-5fea7a412cfff5c9)
+     Running tests/group_commit_integration.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/group_commit_integration-9b1c66d54ab307b5)
+     Running tests/hot_read_path_clone_guard_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/hot_read_path_clone_guard_test-1e438b8f0f8d197e)
+     Running tests/index_and_table_survive_restart_5025.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/index_and_table_survive_restart_5025-dfb513c3ccdaf93e)
+     Running tests/index_covers_insert_buffer_5209.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/index_covers_insert_buffer_5209-5ad4ab66955b003f)
+     Running tests/integration_buffer_pool.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/integration_buffer_pool-0be845850064b77a)
+     Running tests/integration_wal.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/integration_wal-b228a4e9897167f3)
+     Running tests/issue_4848_alter_rename_column_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/issue_4848_alter_rename_column_test-a71e9c3977bc68ff)
+     Running tests/issue_5012_mvcc_gc_concurrency_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/issue_5012_mvcc_gc_concurrency_test-5372ebcd41bf8784)
+     Running tests/lockfree_forwarding_4912.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/lockfree_forwarding_4912-300ab62692032b77)
+     Running tests/measure_commit_clone_4948.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/measure_commit_clone_4948-1815fbea3f6734d6)
+     Running tests/measure_commit_memory_4948.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/measure_commit_memory_4948-59e43aea66fc43e3)
+     Running tests/measure_recovery_scale_p0_08.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/measure_recovery_scale_p0_08-5e1a4cc2aad104df)
+     Running tests/memory_in_db_5057.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/memory_in_db_5057-d4db98271285a1e6)
+     Running tests/memory_in_db_full_5057.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/memory_in_db_full_5057-c1bac7ba5b57d296)
+     Running tests/memory_list_views_5433.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/memory_list_views_5433-c8bfbe10e6250741)
+     Running tests/memory_set_column_default_4154.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/memory_set_column_default_4154-ced8a262bef18c3a)
+     Running tests/multi_db_crash_recovery_5192.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/multi_db_crash_recovery_5192-e09dd18d57b3b467)
+     Running tests/mvcc_chain_identity_regression_5281.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/mvcc_chain_identity_regression_5281-ad16514490d4fbe2)
+     Running tests/mvcc_row_identity_lifecycle_5277.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/mvcc_row_identity_lifecycle_5277-edf61346682fc06d)
+     Running tests/no_namespace_db_refusal_5266.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/no_namespace_db_refusal_5266-9af34fb4a157b029)
+     Running tests/odku_update_visibility_4995.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/odku_update_visibility_4995-ff3f531deb8c6fdf)
+     Running tests/parallel_scan_bench_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/parallel_scan_bench_test-91e08da8b1d67b96)
+     Running tests/parallel_scan_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/parallel_scan_test-be61aa56476c9a76)
+     Running tests/phase_c_1_race.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/phase_c_1_race-cc5bcf8db48f2fb8)
+     Running tests/pk_rebuild_scoped_5592.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/pk_rebuild_scoped_5592-d48f0a5a05847b9a)
+     Running tests/probe_5025_conn_db_race.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/probe_5025_conn_db_race-2b8b6e818dccd458)
+     Running tests/probe_5057_flush_cross_db.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/probe_5057_flush_cross_db-24f3b34d44863744)
+     Running tests/production_chain_forwarding_5199.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/production_chain_forwarding_5199-2c43f40118bc6e79)
+     Running tests/ref_to_mut_escape_hatch_guard_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/ref_to_mut_escape_hatch_guard_test-9d003fc82cc2d995)
+     Running tests/repro_5250_autocommit_commit.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/repro_5250_autocommit_commit-ed7d343110be33da)
+     Running tests/repro_5250_filestorage_with_wal.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/repro_5250_filestorage_with_wal-c8b55cd82a7d94cb)
+     Running tests/repro_5250_prod_stack.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/repro_5250_prod_stack-ad73a4d7cd1e17a7)
+     Running tests/repro_5250_via_engine.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/repro_5250_via_engine-c0969c58eb91685f)
+     Running tests/repro_5317_shared_handle.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/repro_5317_shared_handle-14819594650d5a84)
+     Running tests/rollback_isolation_5480.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/rollback_isolation_5480-a105b34133cb4c4f)
+     Running tests/rollback_no_stack_overflow_5480.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/rollback_no_stack_overflow_5480-62401a654d194d01)
+     Running tests/rollback_uncommitted_insert_5313.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/rollback_uncommitted_insert_5313-c960f01b8e90bb44)
+     Running tests/scan_with_filter_contract_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/scan_with_filter_contract_test-528c51249184974a)
+     Running tests/scope_coverage_matrix.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/scope_coverage_matrix-6b3a1d672865ed44)
+     Running tests/semisync_commit_gate_4937.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/semisync_commit_gate_4937-9d4b7bf1014aa6be)
+     Running tests/storage_db_namespace_contract.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/storage_db_namespace_contract-2df06e5ac6fa793f)
+     Running tests/storage_e2e_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/storage_e2e_test-14803051d501ce05)
+     Running tests/storage_integration_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/storage_integration_test-5a44b8fde3607e62)
+     Running tests/tx_isolation_and_escape_hatch_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/tx_isolation_and_escape_hatch_test-40ea8699d4cf76e9)
+     Running tests/v312_32_exec_engine_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v312_32_exec_engine_tests-a1e095cdcb031624)
+     Running tests/v312_33_page_api_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v312_33_page_api_tests-12f4fe6b739ae4e9)
+     Running tests/v312_95_v3_file_storage_list_indexes_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v312_95_v3_file_storage_list_indexes_test-fde00f50e72f99d8)
+     Running tests/v400_cross_model_flow.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v400_cross_model_flow-5c2a9fb185236425)
+     Running tests/v400_scan_with_filter.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v400_scan_with_filter-6ea4e59788c2e729)
+     Running tests/v400_unified_backup.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v400_unified_backup-ba04a71bbf61af67)
+     Running tests/v400_vector_wal.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v400_vector_wal-f741c8168d1597d5)
+     Running tests/v400_wal_entry_type_extension.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v400_wal_entry_type_extension-69b5169924d36b2c)
+     Running tests/vtu_ir_pipeline_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/vtu_ir_pipeline_test-7f72f020f755c02f)
+     Running tests/vtu_ir_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/vtu_ir_test-6c67405a07db1ceb)
+     Running tests/wal_mod_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/wal_mod_test-93c47dd36acca97f)
+     Running tests/wal_recovery_dedup_p0_08.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/wal_recovery_dedup_p0_08-c7d2c9d220f721d3)
+     Running tests/wal_scan_pk_forwarding_5168.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/wal_scan_pk_forwarding_5168-dcefa2a75f4204d9)
+     Running tests/wal_storage_direct_v3_12.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/wal_storage_direct_v3_12-b05e74b0114cb319)
+     Running tests/wal_table_name_5055.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/wal_table_name_5055-bd382f8532997a81)
+     Running tests/wp_f_legacy.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/wp_f_legacy-52917c2577db4a6d)
+     Running tests/wrapper_scan_db_scope_5192.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/wrapper_scan_db_scope_5192-d7adfc96192ae39e)
+     Running tests/write_path_scaling_5181.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/write_path_scaling_5181-9233fc60f170f795)
+     Running unittests src/lib.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/sqlrustgo_tools-bb63165d8c22b5c7)
+     Running unittests src/bin/bench_client.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/bench_client-1f0f5dcaba9bfd2e)
+     Running unittests src/bin/ha.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/ha-c60b9cfc9abac5bc)
+     Running unittests src/bin/log_rotation.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/log_rotation-1f002af50a62a529)
+     Running unittests src/bin/physical_backup.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/physical_backup-24a59ee3fc4cd044)
+     Running unittests src/bin/repro_4564.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/repro_4564-679e9416d7eeb142)
+     Running unittests src/bin/tbl2bin.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/tbl2bin-347716abd665cd14)
+     Running tests/backup_restore_closed_loop_5525.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/backup_restore_closed_loop_5525-2fdc95ff4605e6f0)
+     Running tests/backup_restore_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/backup_restore_tests-c7c84adb7e22b168)
+     Running tests/full_restore_roundtrip_5056.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/full_restore_roundtrip_5056-a89876402a21878e)
+     Running tests/incremental_backup_datasource_4938.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/incremental_backup_datasource_4938-465d13a4b9b50427)
+     Running tests/incremental_backup_e2e_5048.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/incremental_backup_e2e_5048-5c0822a82ef42dde)
+     Running tests/incremental_backup_e2e_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/incremental_backup_e2e_test-03a9708e15274377)
+     Running tests/logical_backup_roundtrip_5525.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/logical_backup_roundtrip_5525-1ebb79eaadfcee0c)
+     Running tests/mysqldump_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/mysqldump_test-bdc65c117f1f1b79)
+     Running tests/tools_backup_manager_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/tools_backup_manager_tests-db3e17844eab1a85)
+     Running tests/tools_backup_restore_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/tools_backup_restore_tests-4917046a5b7e68fb)
+     Running tests/tools_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/tools_test-4e601eca7aa6e848)
+     Running tests/tools_upgrade_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/tools_upgrade_tests-412887a03d9c69de)
+     Running tests/traits_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/traits_tests-668e6c12e65e0297)
+     Running tests/unit_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/unit_tests-8f09487c3d37192b)
+     Running tests/upgrade_tests.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/upgrade_tests-0835948b15fc75dc)
+     Running tests/v400_multi_model_soak.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v400_multi_model_soak-35dd3486acf7997f)
+     Running tests/v400_unified_backup.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/v400_unified_backup-f52db94f67d9ff1f)
+   Doc-tests sqlrustgo_cli
+   Doc-tests sqlrustgo_optimizer
+   Doc-tests sqlrustgo_storage
+   Doc-tests sqlrustgo_tools
