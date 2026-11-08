@@ -12,7 +12,7 @@ use sqlrustgo_storage::{
 };
 use std::fs::remove_dir_all;
 use std::hint::black_box;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Generate test records for benchmarking
 fn generate_records(count: usize) -> Vec<Vec<sqlrustgo_types::Value>> {
@@ -23,13 +23,16 @@ fn generate_records(count: usize) -> Vec<Vec<sqlrustgo_types::Value>> {
 
 /// Create a test table in temporary storage
 fn setup_test_storage(
-    temp_dir: &PathBuf,
+    temp_dir: &Path,
     buffer_threshold: usize,
     enable_buffer: bool,
 ) -> FileStorage {
-    let mut storage =
-        FileStorage::new_with_buffer_config(temp_dir.clone(), buffer_threshold, enable_buffer)
-            .unwrap();
+    let mut storage = FileStorage::new_with_buffer_config(
+        temp_dir.to_path_buf(),
+        buffer_threshold,
+        enable_buffer,
+    )
+    .unwrap();
 
     let table_info = TableInfo {
         name: "test_table".to_string(),
