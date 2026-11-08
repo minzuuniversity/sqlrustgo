@@ -4202,22 +4202,23 @@ mod tests {
     /// the key convention (scoped by database) in one place instead of
     /// duplicating it in every test.
     fn test_table(name: &str, cols: &[&str]) -> TableInfo {
-        let mut info = TableInfo::default();
-        info.name = name.to_string();
-        info.columns = cols
-            .iter()
-            .map(|c| crate::ColumnDefinition {
-                name: c.to_string(),
-                data_type: "INTEGER".to_string(),
-                nullable: false,
-                primary_key: false,
-                char_max_length: None,
-                collation: None,
-                default_value: None,
-                auto_increment: false,
-            })
-            .collect();
-        info
+        TableInfo {
+            name: name.to_string(),
+            columns: cols
+                .iter()
+                .map(|c| crate::ColumnDefinition {
+                    name: c.to_string(),
+                    data_type: "INTEGER".to_string(),
+                    nullable: false,
+                    primary_key: false,
+                    char_max_length: None,
+                    collation: None,
+                    default_value: None,
+                    auto_increment: false,
+                })
+                .collect(),
+            ..Default::default()
+        }
     }
 
     use sqlrustgo_parser::Expression;
@@ -5685,9 +5686,11 @@ mod tests {
     // is `#[ignore]`d and run manually.
 
     fn table_with_rows_4948(s: &mut MemoryStorage, name: &str, rows: usize) {
-        let mut info: TableInfo = TableInfo::default();
-        info.name = name.to_string();
-        info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
+        let info = TableInfo {
+            name: name.to_string(),
+            columns: vec![crate::ColumnDefinition::new("id", "INTEGER")],
+            ..Default::default()
+        };
         s.create_table(&info).unwrap();
         let batch: Vec<Record> = (0..rows).map(|i| vec![Value::Integer(i as i64)]).collect();
         s.insert(name, batch).unwrap();
@@ -5923,9 +5926,11 @@ fn in_methods_ignore_the_stored_current_db() {
     s.create_database("d2").unwrap();
 
     for (db, id) in [("d1", 1i64), ("d2", 2)] {
-        let mut info: TableInfo = TableInfo::default();
-        info.name = "t".into();
-        info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![crate::ColumnDefinition::new("id", "INTEGER")],
+            ..Default::default()
+        };
         s.create_table_in_db(db, &info).unwrap();
         s.insert_in_db(db, "t", vec![vec![Value::Integer(id)]])
             .unwrap();
@@ -5953,9 +5958,11 @@ fn in_methods_do_not_cross_databases() {
     s.create_database("d1").unwrap();
     s.create_database("d2").unwrap();
 
-    let mut info: TableInfo = TableInfo::default();
-    info.name = "only_in_d1".into();
-    info.columns = vec![crate::ColumnDefinition::new("id", "INTEGER")];
+    let info = TableInfo {
+        name: "only_in_d1".into(),
+        columns: vec![crate::ColumnDefinition::new("id", "INTEGER")],
+        ..Default::default()
+    };
     s.create_table_in_db("d1", &info).unwrap();
 
     assert!(s.has_table_in("d1", "only_in_d1"));

@@ -43,10 +43,11 @@ use sqlrustgo_storage::wal::MemoryWalManager;
 use sqlrustgo_storage::BinaryTableStorage;
 
 fn table(name: &str) -> TableInfo {
-    let mut info = TableInfo::default();
-    info.name = name.to_string();
-    info.columns = vec![sqlrustgo_storage::ColumnDefinition::new("id", "INTEGER")];
-    info
+    TableInfo {
+        name: name.to_string(),
+        columns: vec![sqlrustgo_storage::ColumnDefinition::new("id", "INTEGER")],
+        ..Default::default()
+    }
 }
 
 fn foreign_db_err(e: SqlError) -> bool {
