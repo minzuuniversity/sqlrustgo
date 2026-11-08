@@ -1,0 +1,1177 @@
+    Checking sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/types)
+    Checking sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/common)
+    Checking sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/spill)
+    Checking sqlrustgo-mysql-client v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/mysql-client)
+    Checking query-stats v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/query-stats)
+    Checking sqlrustgo-vector v2.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/vector)
+    Checking sqlrustgo-wal-verification v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/wal-verification)
+    Checking test-registry v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/test-registry)
+    Checking sqlrustgo-soak v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/cli)
+    Checking xtask v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/tools/xtask)
+    Checking sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/gis)
+    Checking evidence-graph v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/evidence-graph)
+    Checking sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/parser)
+    Checking sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/catalog)
+    Checking sqlrustgo-telemetry v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/telemetry)
+   Compiling sqlrustgo-network v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/network)
+    Checking test-results v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/test-results)
+    Checking test-runner v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/test-runner)
+    Checking graph-cli v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/graph-cli)
+    Checking test-reporter v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/test-reporter)
+    Checking information-schema v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/information-schema)
+    Checking sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/storage)
+    Checking sqlrustgo-cache v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/cache)
+    Checking sqlancer v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/sqlancer)
+    Checking sqlrustgo-shard-router v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/shard-router)
+    Checking sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/optimizer)
+    Checking sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/transaction)
+    Checking sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/security)
+    Checking sqlrustgo-tools v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/tools)
+    Checking sqlrustgo-graph v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/graph)
+    Checking sqlrustgo-admin v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/admin)
+    Checking sqlrustgo-rag v2.3.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/rag)
+    Checking sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/planner)
+    Checking sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/executor)
+    Checking sqlrustgo-gmp v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/gmp)
+warning: this expression always evaluates to false
+  --> crates/security/tests/v400_acl_audit.rs:37:14
+   |
+37 |     assert!(!contract.is_empty());
+   |              ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+   = note: `#[warn(clippy::const_is_empty)]` on by default
+
+warning: this expression always evaluates to false
+  --> crates/security/tests/v400_acl_audit.rs:44:14
+   |
+44 |     assert!(!contract.is_empty());
+   |              ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:172:14
+    |
+172 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:179:14
+    |
+179 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:186:14
+    |
+186 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:217:14
+    |
+217 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:225:14
+    |
+225 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:237:14
+    |
+237 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:244:14
+    |
+244 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:251:14
+    |
+251 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:263:14
+    |
+263 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/security/tests/v400_acl_audit.rs:271:14
+    |
+271 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: `sqlrustgo-security` (test "v400_acl_audit") generated 12 warnings
+    Checking sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/server)
+    Checking sqlrustgo v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run)
+    Checking sqlrustgo-mysql-server v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/mysql-server)
+    Checking sqlrustgo-bench v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/bench)
+    Checking sqlrustgo-cli v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/sqlrustgo-cli)
+    Checking sqlrustgo-sql-corpus v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/sql-corpus)
+    Checking compat-runner v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/tools/compat-runner)
+warning: unreachable pattern
+  --> crates/mysql-server/tests/probe_5057_use_sql_path.rs:82:9
+   |
+82 |         other => format!("<{other:?}>"),
+   |         ^^^^^ no value can reach this
+   |
+note: multiple earlier patterns match some of the same values
+  --> crates/mysql-server/tests/probe_5057_use_sql_path.rs:82:9
+   |
+76 |         ResultSet::Select { rows, .. } => match rows.first() {
+   |         ------------------------------ matches some of the same values
+...
+80 |         ResultSet::Ok { .. } => "<ok packet>".to_string(),
+   |         -------------------- matches some of the same values
+81 |         ResultSet::Error { error_message, .. } => format!("<error: {error_message}>"),
+   |         -------------------------------------- matches some of the same values
+82 |         other => format!("<{other:?}>"),
+   |         ^^^^^ collectively making this unreachable
+   = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-mysql-server` (test "probe_5057_use_sql_path") generated 1 warning
+warning: function `new_admin` is never used
+ --> crates/admin/tests/mysqladmin_tests.rs:7:4
+  |
+7 | fn new_admin() -> MysqlAdmin {
+  |    ^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: this assertion is always `true`
+   --> crates/admin/tests/mysqladmin_tests.rs:461:5
+    |
+461 |     assert!(true); // processlist returns whatever it returns
+    |     ^^^^^^^^^^^^^
+    |
+    = help: remove the assertion
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#assertions_on_constants
+    = note: `#[warn(clippy::assertions_on_constants)]` on by default
+
+warning: `sqlrustgo-admin` (test "mysqladmin_tests") generated 2 warnings
+warning: unreachable pattern
+  --> crates/mysql-server/tests/use_database_regression_5057.rs:92:9
+   |
+92 |         other => format!("<{other:?}>"),
+   |         ^^^^^ no value can reach this
+   |
+note: multiple earlier patterns match some of the same values
+  --> crates/mysql-server/tests/use_database_regression_5057.rs:92:9
+   |
+85 |         ResultSet::Select { rows, .. } => rows
+   |         ------------------------------ matches some of the same values
+...
+90 |         ResultSet::Ok { .. } => "<ok packet>".to_string(),
+   |         -------------------- matches some of the same values
+91 |         ResultSet::Error { error_message, .. } => format!("<error: {error_message}>"),
+   |         -------------------------------------- matches some of the same values
+92 |         other => format!("<{other:?}>"),
+   |         ^^^^^ collectively making this unreachable
+   = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-mysql-server` (test "use_database_regression_5057") generated 1 warning
+warning: constant `SF10_PARTSUPP` is never used
+  --> crates/bench/examples/tpch_sf10_importer.rs:19:7
+   |
+19 | const SF10_PARTSUPP: usize = 8_000_000;
+   |       ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/bench/examples/tpch_sf10_importer.rs:263:20
+    |
+263 |       let mut batch: Vec<(
+    |  ____________________^
+264 | |         i32,
+265 | |         String,
+266 | |         String,
+...   |
+272 | |         String,
+273 | |     )> = Vec::with_capacity(batch_size);
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#type_complexity
+    = note: `#[warn(clippy::type_complexity)]` on by default
+
+warning: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/bench/examples/tpch_sf10_importer.rs:302:12
+    |
+302 |       batch: &[(
+    |  ____________^
+303 | |         i32,
+304 | |         String,
+305 | |         String,
+...   |
+311 | |         String,
+312 | |     )],
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#type_complexity
+
+warning: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/bench/examples/tpch_sf10_importer.rs:453:20
+    |
+453 |     let mut batch: Vec<(i32, String, String, i32, String, f64, String, String)> =
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#type_complexity
+
+warning: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/bench/examples/tpch_sf10_importer.rs:482:12
+    |
+482 |     batch: &[(i32, String, String, i32, String, f64, String, String)],
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#type_complexity
+
+warning: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/bench/examples/tpch_sf10_importer.rs:507:20
+    |
+507 |     let mut batch: Vec<(i32, i32, String, f64, String, String, String, i32, String)> =
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#type_complexity
+
+warning: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/bench/examples/tpch_sf10_importer.rs:546:12
+    |
+546 |     batch: &[(i32, i32, String, f64, String, String, String, i32, String)],
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#type_complexity
+
+warning: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/bench/examples/tpch_sf10_importer.rs:577:20
+    |
+577 |       let mut batch: Vec<(
+    |  ____________________^
+578 | |         i32,
+579 | |         i32,
+580 | |         i32,
+...   |
+593 | |         String,
+594 | |     )> = Vec::with_capacity(batch_size);
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#type_complexity
+
+warning: very complex type used. Consider factoring parts into `type` definitions
+   --> crates/bench/examples/tpch_sf10_importer.rs:656:12
+    |
+656 |       batch: &[(
+    |  ____________^
+657 | |         i32,
+658 | |         i32,
+659 | |         i32,
+...   |
+672 | |         String,
+673 | |     )],
+    | |______^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#type_complexity
+
+warning: `sqlrustgo-bench` (example "tpch_sf10_importer") generated 9 warnings
+warning: fields `num_threads` and `progress_interval` are never read
+  --> crates/bench/examples/tpch_fast_importer.rs:71:5
+   |
+69 | struct BatchConfig {
+   |        ----------- fields in this struct
+70 |     batch_size: usize,
+71 |     num_threads: usize,
+   |     ^^^^^^^^^^^
+72 |     progress_interval: usize,
+   |     ^^^^^^^^^^^^^^^^^
+   |
+   = note: `BatchConfig` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `time_secs` and `mb_processed` are never read
+  --> crates/bench/examples/tpch_fast_importer.rs:89:5
+   |
+87 | struct ImportStats {
+   |        ----------- fields in this struct
+88 |     rows_imported: usize,
+89 |     time_secs: f64,
+   |     ^^^^^^^^^
+90 |     rows_per_sec: f64,
+91 |     mb_processed: f64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ImportStats` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: `sqlrustgo-bench` (example "tpch_fast_importer") generated 2 warnings
+warning: function `load_tbl_data` is never used
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:262:4
+    |
+262 | fn load_tbl_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str, sf: f64) {
+    |    ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: clamp-like pattern without using clamp function
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:306:27
+    |
+306 |     let target_lineitem = ((100_000.0 * sf) as usize).min(500_000).max(1_000);
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `((100_000.0 * sf) as usize).clamp(1_000, 500_000)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_clamp
+    = note: `#[warn(clippy::manual_clamp)]` on by default
+
+warning: clamp-like pattern without using clamp function
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:324:17
+    |
+324 |     for i in 0..((1_000.0 * sf) as usize).min(5_000).max(100) {
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `((1_000.0 * sf) as usize).clamp(100, 5_000)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_clamp
+
+warning: clamp-like pattern without using clamp function
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:333:17
+    |
+333 |     for i in 0..((500.0 * sf) as usize).min(2_500).max(50) {
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `((500.0 * sf) as usize).clamp(50, 2_500)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_clamp
+
+warning: clamp-like pattern without using clamp function
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:343:17
+    |
+343 |     for i in 0..((200.0 * sf) as usize).min(1_000).max(20) {
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `((200.0 * sf) as usize).clamp(20, 1_000)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_clamp
+
+warning: clamp-like pattern without using clamp function
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:353:17
+    |
+353 |     for i in 0..((10.0 * sf) as usize).min(50).max(2) {
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: replace with clamp: `((10.0 * sf) as usize).clamp(2, 50)`
+    |
+    = note: clamp will panic if max < min
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_clamp
+
+warning: writing `&mut Vec` instead of `&mut [_]` involves a new object where a slice will do
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:383:17
+    |
+383 | fn median(vals: &mut Vec<u128>) -> u128 {
+    |                 ^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#ptr_arg
+    = note: `#[warn(clippy::ptr_arg)]` on by default
+help: change this to
+    |
+383 - fn median(vals: &mut Vec<u128>) -> u128 {
+383 + fn median(vals: &mut [u128]) -> u128 {
+    |
+
+warning: `sqlrustgo-bench` (example "serial_vs_parallel_bench") generated 7 warnings
+warning: method `sort` is never used
+  --> crates/bench/examples/tpch_compare.rs:47:8
+   |
+34 | impl LatencyStats {
+   | ----------------- method in this implementation
+...
+47 |     fn sort(&mut self) {
+   |        ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-bench` (example "tpch_compare") generated 1 warning
+warning: empty line after doc comment
+   --> crates/storage/src/engine.rs:316:1
+    |
+316 | / /// legacy test fixtures under `mod tests` and is gated to test builds.
+317 | |
+    | |_^
+318 |   #[cfg(test)]
+319 |   mod legacy_string_evaluator {
+    |   --------------------------- the comment documents this module
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#empty_line_after_doc_comments
+    = note: `#[warn(clippy::empty_line_after_doc_comments)]` on by default
+    = help: if the empty line is unintentional, remove it
+
+warning: duplicated attribute
+    --> crates/storage/src/engine.rs:5226:5
+     |
+5226 |     #[test]
+     |     ^^^^^^^
+     |
+     = note: `#[warn(duplicate_macro_attributes)]` on by default
+
+warning: function `make_bigint_info` is never used
+  --> crates/storage/tests/binary_v2_direct_v3_12.rs:47:4
+   |
+47 | fn make_bigint_info(name: &str) -> TableInfo {
+   |    ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: cannot test inner items
+   --> crates/storage/src/vtu_guard.rs:526:9
+    |
+526 |         #[test]
+    |         ^^^^^^^
+    |
+    = note: `#[warn(unnameable_test_items)]` on by default
+
+warning: duplicated attribute
+    --> crates/storage/src/wal_legacy.rs:1544:5
+     |
+1544 |     #[test]
+     |     ^^^^^^^
+
+warning: `sqlrustgo-storage` (test "binary_v2_direct_v3_12") generated 1 warning
+warning: doc list item without indentation
+  --> crates/storage/tests/v312_32_exec_engine_tests.rs:12:5
+   |
+12 | //! PR #4160 partially mitigated the bench+test layer. This file
+   |     ^
+   |
+   = help: if this is supposed to be its own paragraph, add a blank line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#doc_lazy_continuation
+   = note: `#[warn(clippy::doc_lazy_continuation)]` on by default
+help: indent this line
+   |
+12 | //!     PR #4160 partially mitigated the bench+test layer. This file
+   |     ++++
+
+warning: doc list item without indentation
+  --> crates/storage/tests/v312_32_exec_engine_tests.rs:13:5
+   |
+13 | //! pins what IS public so any future regression is caught.
+   |     ^
+   |
+   = help: if this is supposed to be its own paragraph, add a blank line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#doc_lazy_continuation
+help: indent this line
+   |
+13 | //!     pins what IS public so any future regression is caught.
+   |     ++++
+
+warning: `sqlrustgo-storage` (test "v312_32_exec_engine_tests") generated 2 warnings
+warning: function `test_vtu_guard_tx_state_via_set_current_tx_id` is never used
+   --> crates/storage/src/vtu_guard.rs:527:12
+    |
+527 |         fn test_vtu_guard_tx_state_via_set_current_tx_id() {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: casting to the same type is unnecessary (`i32` -> `i32`)
+   --> crates/storage/src/bin_segment.rs:859:22
+    |
+859 |                 Some((i as i32).to_le_bytes().to_vec()),
+    |                      ^^^^^^^^^^ help: try: `{ i }`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_cast
+    = note: `#[warn(clippy::unnecessary_cast)]` on by default
+
+warning: casting to the same type is unnecessary (`i32` -> `i32`)
+   --> crates/storage/src/bin_segment.rs:907:22
+    |
+907 |                 Some((i as i32).to_le_bytes().to_vec()),
+    |                      ^^^^^^^^^^ help: try: `{ i }`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_cast
+
+warning: casting to the same type is unnecessary (`i32` -> `i32`)
+   --> crates/storage/src/bin_segment.rs:931:29
+    |
+931 |             w.append(&[Some((i as i32).to_le_bytes().to_vec())])
+    |                             ^^^^^^^^^^ help: try: `{ i }`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_cast
+
+warning: useless conversion to the same type: `std::string::String`
+    --> crates/storage/src/engine.rs:6055:54
+     |
+6055 |         .map(|i| vec![Value::Integer(i), Value::Text(format!("row{i}").into())])
+     |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^ help: consider removing `.into()`: `format!("row{i}")`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#useless_conversion
+     = note: `#[warn(clippy::useless_conversion)]` on by default
+
+warning: length comparison to one
+    --> crates/storage/src/file_storage.rs:4296:17
+     |
+4296 |         assert!(rows.len() >= 1);
+     |                 ^^^^^^^^^^^^^^^ help: using `!is_empty` is clearer and more explicit: `!rows.is_empty()`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#len_zero
+     = note: `#[warn(clippy::len_zero)]` on by default
+
+warning: useless conversion to the same type: `std::string::String`
+    --> crates/storage/src/file_storage.rs:7893:58
+     |
+7893 |             .map(|i| vec![Value::Integer(i), Value::Text(format!("row{i}").into())])
+     |                                                          ^^^^^^^^^^^^^^^^^^^^^^^^ help: consider removing `.into()`: `format!("row{i}")`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#useless_conversion
+
+warning: the borrowed expression implements the required traits
+   --> crates/storage/src/io_delay.rs:329:46
+    |
+329 |           let cfg = IoDelayConfig::from_lookup(&lookup(&[
+    |  ______________________________________________^
+330 | |             ("SQLRUSTGO_IO_DELAY_MS", "200"),
+331 | |             ("SQLRUSTGO_IO_CORRUPTION_RATE", "0.3"),
+332 | |             ("SQLRUSTGO_IO_DROPOUT_RATE", "0.1"),
+333 | |         ]));
+    | |__________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_borrows_for_generic_args
+    = note: `#[warn(clippy::needless_borrows_for_generic_args)]` on by default
+help: change this to
+    |
+329 ~         let cfg = IoDelayConfig::from_lookup(lookup(&[
+330 +             ("SQLRUSTGO_IO_DELAY_MS", "200"),
+331 +             ("SQLRUSTGO_IO_CORRUPTION_RATE", "0.3"),
+332 +             ("SQLRUSTGO_IO_DROPOUT_RATE", "0.1"),
+333 ~         ]));
+    |
+
+warning: the borrowed expression implements the required traits
+   --> crates/storage/src/io_delay.rs:341:46
+    |
+341 |         let cfg = IoDelayConfig::from_lookup(&lookup(&[]));
+    |                                              ^^^^^^^^^^^^ help: change this to: `lookup(&[])`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_borrows_for_generic_args
+
+warning: the borrowed expression implements the required traits
+   --> crates/storage/src/io_delay.rs:347:46
+    |
+347 |           let cfg = IoDelayConfig::from_lookup(&lookup(&[
+    |  ______________________________________________^
+348 | |             ("SQLRUSTGO_IO_CORRUPTION_RATE", "5.0"),
+349 | |             ("SQLRUSTGO_IO_DROPOUT_RATE", "-1.0"),
+350 | |         ]));
+    | |__________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_borrows_for_generic_args
+help: change this to
+    |
+347 ~         let cfg = IoDelayConfig::from_lookup(lookup(&[
+348 +             ("SQLRUSTGO_IO_CORRUPTION_RATE", "5.0"),
+349 +             ("SQLRUSTGO_IO_DROPOUT_RATE", "-1.0"),
+350 ~         ]));
+    |
+
+warning: the borrowed expression implements the required traits
+   --> crates/storage/src/io_delay.rs:368:46
+    |
+368 |           let cfg = IoDelayConfig::from_lookup(&lookup(&[
+    |  ______________________________________________^
+369 | |             ("SQLRUSTGO_IO_DELAY_MS", "not-a-number"),
+370 | |             ("SQLRUSTGO_IO_CORRUPTION_RATE", "half"),
+371 | |         ]));
+    | |__________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_borrows_for_generic_args
+help: change this to
+    |
+368 ~         let cfg = IoDelayConfig::from_lookup(lookup(&[
+369 +             ("SQLRUSTGO_IO_DELAY_MS", "not-a-number"),
+370 +             ("SQLRUSTGO_IO_CORRUPTION_RATE", "half"),
+371 ~         ]));
+    |
+
+warning: manual `Range::contains` implementation
+   --> crates/storage/src/io_delay.rs:392:21
+    |
+392 |             assert!(v >= 0.0 && v < 1.0, "out of range: {}", v);
+    |                     ^^^^^^^^^^^^^^^^^^^ help: use: `(0.0..1.0).contains(&v)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_range_contains
+    = note: `#[warn(clippy::manual_range_contains)]` on by default
+
+warning: this operation has no effect
+   --> crates/storage/src/mvcc.rs:452:36
+    |
+452 |         let r_mid = t.scan_visible(ts1 + 0, 0); // same as ts1
+    |                                    ^^^^^^^ help: consider reducing it to: `ts1`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#identity_op
+    = note: `#[warn(clippy::identity_op)]` on by default
+
+warning: length comparison to one
+   --> crates/storage/src/read_write_split.rs:496:17
+    |
+496 |         assert!(unique.len() >= 1);
+    |                 ^^^^^^^^^^^^^^^^^ help: using `!is_empty` is clearer and more explicit: `!unique.is_empty()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#len_zero
+
+warning: can be more succinctly written as a byte str
+    --> crates/storage/src/recovery_engine.rs:1190:38
+     |
+1190 |         let result = bytes_to_record(&[b'i']);
+     |                                      ^^^^^^^ help: try: `b"i"`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#byte_char_slices
+     = note: `#[warn(clippy::byte_char_slices)]` on by default
+
+warning: manual `RangeInclusive::contains` implementation
+   --> crates/storage/src/wal/group_commit.rs:402:13
+    |
+402 |             syncs >= 1 && syncs <= 4,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^ help: use: `(1..=4).contains(&syncs)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_range_contains
+
+warning: manual `RangeInclusive::contains` implementation
+   --> crates/storage/src/wal/group_commit.rs:432:13
+    |
+432 |             syncs >= 1 && syncs <= 3,
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^ help: use: `(1..=3).contains(&syncs)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#manual_range_contains
+
+warning: casting to the same type is unnecessary (`u64` -> `u64`)
+    --> crates/storage/src/wal_legacy.rs:1885:22
+     |
+1885 |                 lsn: i as u64,
+     |                      ^^^^^^^^ help: try: `i`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_cast
+
+warning: casting to the same type is unnecessary (`u64` -> `u64`)
+    --> crates/storage/src/wal_legacy.rs:1886:28
+     |
+1886 |                 timestamp: i as u64 + 1000,
+     |                            ^^^^^^^^ help: try: `i`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_cast
+
+warning: this expression creates a reference which is immediately dereferenced by the compiler
+   --> crates/storage/src/wal_record_codec.rs:457:45
+    |
+457 |                     bytes.extend_from_slice(&v.to_string().as_bytes());
+    |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^ help: change this to: `v.to_string().as_bytes()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#needless_borrow
+    = note: `#[warn(clippy::needless_borrow)]` on by default
+
+warning: unused `std::result::Result` that must be used
+    --> crates/storage/src/engine.rs:4331:9
+     |
+4331 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+     |
+4331 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `std::result::Result` that must be used
+    --> crates/storage/src/engine.rs:4469:9
+     |
+4469 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4469 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `std::result::Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:394:13
+    |
+394 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+394 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `std::result::Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:424:13
+    |
+424 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+424 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `std::result::Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:485:13
+    |
+485 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+485 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: `sqlrustgo-storage` (lib test) generated 29 warnings (run `cargo clippy --fix --lib -p sqlrustgo-storage --tests -- ` to apply 19 suggestions)
+    Checking sqlrustgo_sqllogictest v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/sqlrustgo_sqllogictest)
+    Checking transaction-stress v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/transaction-stress)
+warning: method `keep` is never used
+   --> crates/storage/tests/fault_coordination.rs:151:12
+    |
+143 | impl Scratch {
+    | ------------ method in this implementation
+...
+151 |     pub fn keep(mut self) -> Self {
+    |            ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `with_sync_mode` is never used
+   --> crates/storage/tests/fault_coordination.rs:329:12
+    |
+282 | impl Arm {
+    | -------- method in this implementation
+...
+329 |     pub fn with_sync_mode(mut self, m: &str) -> Self {
+    |            ^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-storage` (test "crash_wal_index_b1") generated 2 warnings
+warning: `flatten()` will run forever if the iterator repeatedly produces an `Err`
+  --> crates/storage/examples/sf1_binary_import.rs:35:32
+   |
+35 |     for line in reader.lines().flatten() {
+   |                                ^^^^^^^^^ help: replace with: `map_while(Result::ok)`
+   |
+note: this expression returning a `std::io::Lines` may produce an infinite number of `Err` in case of a read error
+  --> crates/storage/examples/sf1_binary_import.rs:35:17
+   |
+35 |     for line in reader.lines().flatten() {
+   |                 ^^^^^^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#lines_filter_map_ok
+   = note: `#[warn(clippy::lines_filter_map_ok)]` on by default
+
+warning: `sqlrustgo-storage` (example "sf1_binary_import") generated 1 warning
+warning: redundant redefinition of a binding `scan_time`
+  --> crates/storage/examples/bench_btree_query.rs:92:5
+   |
+92 |     let scan_time = scan_time;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: `scan_time` is initially defined here
+  --> crates/storage/examples/bench_btree_query.rs:81:9
+   |
+81 |     let scan_time = scan_start.elapsed();
+   |         ^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#redundant_locals
+   = note: `#[warn(clippy::redundant_locals)]` on by default
+
+warning: `sqlrustgo-storage` (example "bench_btree_query") generated 1 warning
+warning: this assertion is always `true`
+   --> crates/bench/src/db/postgres_benchmark.rs:206:9
+    |
+206 |         assert!(true);
+    |         ^^^^^^^^^^^^^
+    |
+    = help: remove the assertion
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#assertions_on_constants
+    = note: `#[warn(clippy::assertions_on_constants)]` on by default
+
+warning: this assertion is always `true`
+   --> crates/bench/src/db/sqlite_benchmark.rs:161:9
+    |
+161 |         assert!(true);
+    |         ^^^^^^^^^^^^^
+    |
+    = help: remove the assertion
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#assertions_on_constants
+
+warning: `sqlrustgo-bench` (lib test) generated 2 warnings
+warning: doc list item overindented
+  --> crates/executor/tests/bug_report_3120_regression_test.rs:10:5
+   |
+10 | //!           `datediff`/`round`/`rand`/`length`)
+   |     ^^^^^^^^^^ help: try using `  ` (2 spaces)
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#doc_overindented_list_items
+   = note: `#[warn(clippy::doc_overindented_list_items)]` on by default
+
+warning: doc list item overindented
+  --> crates/executor/tests/bug_report_3120_regression_test.rs:12:5
+   |
+12 | //!           returning Null in GROUP BY query
+   |     ^^^^^^^^^^ help: try using `  ` (2 spaces)
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#doc_overindented_list_items
+
+warning: `sqlrustgo-executor` (test "bug_report_3120_regression_test") generated 2 warnings
+warning: using `.clone()` on a double reference, which returns `&str` instead of cloning the inner type
+  --> crates/storage/examples/tpch_query_bench.rs:75:27
+   |
+75 |         results.push((name.clone(), rows, elapsed, result.is_ok()));
+   |                           ^^^^^^^^
+   |
+   = note: `#[warn(suspicious_double_ref_op)]` on by default
+
+warning: `sqlrustgo-storage` (example "tpch_query_bench") generated 1 warning
+warning: variable `count` is assigned to, but never used
+  --> crates/storage/examples/compare_sqlite.rs:35:9
+   |
+35 |     let mut count = 0;
+   |         ^^^^^^^^^
+   |
+   = note: consider using `_count` instead
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `count` is never read
+  --> crates/storage/examples/compare_sqlite.rs:39:17
+   |
+39 |                 count += 1;
+   |                 ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-storage` (example "compare_sqlite") generated 2 warnings
+warning: function `decode_lenenc_int_3byte_via_0xfd` is never used
+    --> crates/mysql-server/src/lib.rs:1114:8
+     |
+1114 |     fn decode_lenenc_int_3byte_via_0xfd() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `g4_graph_match_sql_form_strips_GRAPH_prefix` should have a snake case name
+     --> crates/mysql-server/src/lib.rs:10303:4
+      |
+10303 | fn g4_graph_match_sql_form_strips_GRAPH_prefix() {
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `g4_graph_match_sql_form_strips_graph_prefix`
+      |
+      = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: `sqlrustgo-mysql-server` (lib test) generated 2 warnings
+warning: empty line after outer attribute
+   --> crates/executor/src/parallel_group_by.rs:506:1
+    |
+506 | / #[cfg(test)]
+507 | |
+    | |_^
+508 |   mod tests {
+    |   --------- the attribute applies to this module
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#empty_line_after_outer_attr
+    = note: `#[warn(clippy::empty_line_after_outer_attr)]` on by default
+    = help: if the empty line is unintentional, remove it
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:228:19
+    |
+228 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:234:19
+    |
+234 |         let dml = LocalExecutorDml::default();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:250:19
+    |
+250 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:260:19
+    |
+260 |         let dml = LocalExecutorDml::new_with_storage(
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:270:19
+    |
+270 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:283:19
+    |
+283 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:299:19
+    |
+299 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:307:19
+    |
+307 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-executor` (lib test) generated 9 warnings
+warning: `sqlrustgo-storage` (test "crash_commit_fsync_b1") generated 2 warnings (2 duplicates)
+warning: this expression always evaluates to false
+  --> crates/storage/tests/v400_unified_backup.rs:88:14
+   |
+88 |     assert!(!contract.is_empty());
+   |              ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+   = note: `#[warn(clippy::const_is_empty)]` on by default
+
+warning: this expression always evaluates to false
+  --> crates/storage/tests/v400_unified_backup.rs:96:14
+   |
+96 |     assert!(!contract.is_empty());
+   |              ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/storage/tests/v400_unified_backup.rs:103:14
+    |
+103 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/storage/tests/v400_unified_backup.rs:110:14
+    |
+110 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/storage/tests/v400_unified_backup.rs:121:14
+    |
+121 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/storage/tests/v400_unified_backup.rs:127:14
+    |
+127 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/storage/tests/v400_unified_backup.rs:133:14
+    |
+133 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/storage/tests/v400_unified_backup.rs:139:14
+    |
+139 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: this expression always evaluates to false
+   --> crates/storage/tests/v400_unified_backup.rs:145:14
+    |
+145 |     assert!(!contract.is_empty());
+    |              ^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#const_is_empty
+
+warning: `sqlrustgo-storage` (test "v400_unified_backup") generated 9 warnings
+warning: function `first_value` is never used
+  --> crates/executor/tests/issue_4695_lag_lead_test.rs:18:4
+   |
+18 | fn first_value(result: &sqlrustgo::ExecutorResult) -> &Value {
+   |    ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-executor` (test "issue_4695_lag_lead_test") generated 1 warning
+warning: doc list item overindented
+ --> crates/executor/tests/issue_4491_explore.rs:8:5
+  |
+8 | //!        0 rows (or all-Null rows on vendor v3.11.0).
+  |     ^^^^^^^ help: try using `  ` (2 spaces)
+  |
+  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#doc_overindented_list_items
+  = note: `#[warn(clippy::doc_overindented_list_items)]` on by default
+
+warning: `sqlrustgo-executor` (test "issue_4491_explore") generated 1 warning
+warning: use of deprecated method `sqlrustgo_transaction::savepoint::SavepointManager::rollback_to_noop`: Use rollback_to(name, on_undo) for physical rollback
+   --> crates/transaction/tests/coverage_v3_12.rs:188:8
+    |
+188 |     sp.rollback_to_noop("s1").unwrap();
+    |        ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `sqlrustgo_transaction::savepoint::SavepointManager::rollback_to_noop`: Use rollback_to(name, on_undo) for physical rollback
+   --> crates/transaction/tests/coverage_v3_12.rs:195:16
+    |
+195 |     assert!(sp.rollback_to_noop("nonexistent").is_err());
+    |                ^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-transaction` (test "coverage_v3_12") generated 2 warnings
+warning: unnecessary use of `get(&TxId::new(2)).is_none()`
+   --> crates/transaction/src/deadlock.rs:133:32
+    |
+133 |             detector.waits_for.get(&TxId::new(2)).is_none()
+    |             -------------------^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: replace it with: `!detector.waits_for.contains_key(&TxId::new(2))`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_get_then_check
+    = note: `#[warn(clippy::unnecessary_get_then_check)]` on by default
+
+warning: unnecessary use of `get(&tx_id).is_none()`
+   --> crates/transaction/src/transaction_manager.rs:476:41
+    |
+476 |         assert!(mgr.active_transactions.get(&tx_id).is_none());
+    |                 ------------------------^^^^^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: replace it with: `!mgr.active_transactions.contains_key(&tx_id)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_get_then_check
+
+warning: unnecessary use of `get(&tx_id).is_none()`
+   --> crates/transaction/src/transaction_manager.rs:490:41
+    |
+490 |         assert!(mgr.active_transactions.get(&tx_id).is_none());
+    |                 ------------------------^^^^^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: replace it with: `!mgr.active_transactions.contains_key(&tx_id)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_get_then_check
+
+warning: `sqlrustgo-transaction` (lib test) generated 3 warnings
+warning: unused `std::result::Result` that must be used
+   --> crates/catalog/tests/coverage_v3_12.rs:101:5
+    |
+101 |     c.set_default_schema("main".to_string());
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+101 |     let _ = c.set_default_schema("main".to_string());
+    |     +++++++
+
+warning: `sqlrustgo-catalog` (test "coverage_v3_12") generated 1 warning
+warning: used `unwrap()` on `Ok` value
+   --> crates/catalog/src/error.rs:190:20
+    |
+190 |         assert_eq!(result.unwrap(), 42);
+    |                    ^^^^^^^^^^^^^^^
+    |
+help: remove the `Ok` and `unwrap()`
+   --> crates/catalog/src/error.rs:188:42
+    |
+188 |         let result: CatalogResult<i32> = Ok(42);
+    |                                          ^^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_literal_unwrap
+    = note: `#[warn(clippy::unnecessary_literal_unwrap)]` on by default
+
+warning: `sqlrustgo-catalog` (lib test) generated 1 warning
+warning: field `modified` is never read
+   --> crates/optimizer/src/rules.rs:138:9
+    |
+137 |     struct TestPlan {
+    |            -------- field in this struct
+138 |         modified: bool,
+    |         ^^^^^^^^
+    |
+    = note: `TestPlan` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: used `unwrap()` on `Ok` value
+  --> crates/optimizer/src/plan.rs:59:20
+   |
+59 |         assert_eq!(result.unwrap(), 42);
+   |                    ^^^^^^^^^^^^^^^
+   |
+help: remove the `Ok` and `unwrap()`
+  --> crates/optimizer/src/plan.rs:57:44
+   |
+57 |         let result: OptimizerResult<i32> = Ok(42);
+   |                                            ^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_literal_unwrap
+   = note: `#[warn(clippy::unnecessary_literal_unwrap)]` on by default
+
+warning: used `unwrap_err()` on `Err` value
+  --> crates/optimizer/src/plan.rs:67:17
+   |
+67 |         assert!(result.unwrap_err().to_string().contains("fail"));
+   |                 ^^^^^^^^^^^^^^^^^^^
+   |
+help: remove the `Err` and `unwrap_err()`
+  --> crates/optimizer/src/plan.rs:65:13
+   |
+65 |             Err(OptimizerError::OptimizationFailed("fail".to_string()));
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_literal_unwrap
+
+warning: used `unwrap()` on `Ok` value
+    --> crates/optimizer/src/stats.rs:1151:20
+     |
+1151 |         assert_eq!(ok.unwrap(), 42);
+     |                    ^^^^^^^^^^^
+     |
+help: remove the `Ok` and `unwrap()`
+    --> crates/optimizer/src/stats.rs:1149:36
+     |
+1149 |         let ok: StatsResult<i32> = Ok(42);
+     |                                    ^^^^^^
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.97.0/index.html#unnecessary_literal_unwrap
+
+warning: `sqlrustgo-optimizer` (lib test) generated 4 warnings
+    Checking sqlrustgo-distributed v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/distributed)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10m 08s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

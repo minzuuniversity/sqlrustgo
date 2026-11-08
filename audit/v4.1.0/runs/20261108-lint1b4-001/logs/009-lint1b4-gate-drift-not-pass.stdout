@@ -1,0 +1,47 @@
+=== P14 DRIFT != PASS - Anti-pattern Detector ===
+Date: 2026-11-08T11:16:05Z
+
+[1/5] Scanning for DRIFT-accepting patterns...
+  Found 1 potential DRIFT-handling sites
+
+[2/5] Scanning for '|| true' patterns that swallow errors...
+  Found 2 sites using '|| true' or swallow patterns
+    ⚠️  /Volumes/workspace/dev/wt/lint1b4run/scripts/gate/check_gmp_consumer.sh:194
+    ⚠️  /Volumes/workspace/dev/wt/lint1b4run/scripts/gate/check_4021_prometheus_metrics.sh:122
+
+[3/5] Scanning for grep-on-stdout without result validation...
+  Found 26 grep-on-stdout sites
+    ❌ scripts/gate/check_p22_time_travel.sh:75
+    ❌ scripts/gate/check_p22_time_travel.sh:102
+    ❌ scripts/gate/check_g12_sysbench.sh:55
+    ❌ scripts/gate/check_g12_sysbench.sh:88
+    ❌ scripts/gate/check_p14_upgrade_test.sh:73
+    ❌ scripts/gate/check_p34_parallel_executor.sh:75
+    ❌ scripts/gate/check_p34_parallel_executor.sh:103
+    ❌ scripts/gate/check_p23_hash_chain.sh:75
+    ❌ scripts/gate/check_p35_simd.sh:75
+    ❌ scripts/gate/check_p35_simd.sh:103
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:46
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:52
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:55
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:58
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:61
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:64
+    ❌ scripts/gate/check_g6_set_ops_syntax.sh:67
+    ❌ scripts/gate/check_p13_soak_test.sh:84
+    ❌ scripts/gate/check_p21_audit_log.sh:77
+    ❌ scripts/gate/check_p33_cost_optimizer.sh:75
+    ❌ scripts/gate/check_p33_cost_optimizer.sh:102
+
+[4/5] Specific check: check_full_gate_verification.sh run_gate()
+  ❌ FAIL: /Volumes/workspace/dev/wt/lint1b4run/scripts/gate/check_full_gate_verification.sh accepts exit 2 (DRIFT) without proper failure handling
+
+[5/5] Scanning for '|| true' whose exit status is read afterwards...
+  ✅ PASS: no swallowed exit code is read afterwards
+
+  ✅ No NEW anti-patterns vs baseline
+
+=== P14 Summary ===
+  Total anti-patterns: 0
+
+✅ PASS — P14 satisfied. No gate script treats DRIFT as PASS.
