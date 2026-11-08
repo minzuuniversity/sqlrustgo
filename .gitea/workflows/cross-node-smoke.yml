@@ -8,6 +8,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - name: Verify executor and limits
+        shell: sh
         run: |
           set -eu
           test "$CI_EXECUTION_NODE" = "250"
