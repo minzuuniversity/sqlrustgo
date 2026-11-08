@@ -1454,8 +1454,14 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // doesn't require validation here; we just rely on the
             // default sequential scan path.
             if let Some(idx_name) = &select.from_indexed_by {
+                // IDX-1（看板行 IDX-1）：索引按**库**隔离。索引名在两个库里可以重复，
+                // 所以校验必须在基础表解析所在的库（`base_db`，#5137 的口径）里找：
+                // 之前只按名字全局找 ⇒ d1 建的索引会被 d2 的查询命中（跨库泄漏），
+                // 而 d1 自己的查询也可能因为登记表里被别的库的同名条目覆盖而报"不存在"。
                 let indexes = storage.list_all_indexes();
-                let owner = indexes.iter().find(|i| i.name == *idx_name);
+                let owner = indexes
+                    .iter()
+                    .find(|i| i.name == *idx_name && i.database.eq_ignore_ascii_case(&base_db));
                 match owner {
                     None => {
                         return Err(SqlError::ExecutionError(format!(

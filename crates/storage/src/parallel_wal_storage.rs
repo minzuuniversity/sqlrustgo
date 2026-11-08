@@ -802,6 +802,7 @@ mod tests {
         s.create_index(crate::engine::IndexInfo {
             name: "id".to_string(),
             table: "t".to_string(),
+            database: crate::engine::DEFAULT_DATABASE.to_string(),
             columns: vec![sqlrustgo_parser::IndexColumnSpec::column("id")],
             is_unique: false,
             original_sql: String::new(),
