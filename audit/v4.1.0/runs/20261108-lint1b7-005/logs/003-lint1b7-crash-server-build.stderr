@@ -1,0 +1,12 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/storage)
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/optimizer)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/transaction)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/security)
+   Compiling sqlrustgo-tools v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/tools)
+   Compiling sqlrustgo-graph v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/graph)
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/planner)
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/executor)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run)
+   Compiling sqlrustgo-mysql-server v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b7run/crates/mysql-server)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.19s
