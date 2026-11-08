@@ -7,7 +7,7 @@ use sqlrustgo_storage::{ColumnDefinition, FileStorage, StorageEngine, TableInfo}
 use sqlrustgo_types::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 fn main() {
@@ -379,31 +379,31 @@ fn import_file(
     );
 }
 
-fn import_nation_region(storage: &mut FileStorage, dir: &PathBuf) {
+fn import_nation_region(storage: &mut FileStorage, dir: &Path) {
     import_file(storage, "nation", &dir.join("nation.tbl"), 4, 1000);
     import_file(storage, "region", &dir.join("region.tbl"), 3, 100);
 }
 
-fn import_supplier(storage: &mut FileStorage, dir: &PathBuf) {
+fn import_supplier(storage: &mut FileStorage, dir: &Path) {
     import_file(storage, "supplier", &dir.join("supplier.tbl"), 7, 1000);
 }
 
-fn import_part(storage: &mut FileStorage, dir: &PathBuf) {
+fn import_part(storage: &mut FileStorage, dir: &Path) {
     import_file(storage, "part", &dir.join("part.tbl"), 9, 5000);
 }
 
-fn import_partsupp(storage: &mut FileStorage, dir: &PathBuf) {
+fn import_partsupp(storage: &mut FileStorage, dir: &Path) {
     import_file(storage, "partsupp", &dir.join("partsupp.tbl"), 5, 10000);
 }
 
-fn import_customer(storage: &mut FileStorage, dir: &PathBuf) {
+fn import_customer(storage: &mut FileStorage, dir: &Path) {
     import_file(storage, "customer", &dir.join("customer.tbl"), 8, 5000);
 }
 
-fn import_orders(storage: &mut FileStorage, dir: &PathBuf) {
+fn import_orders(storage: &mut FileStorage, dir: &Path) {
     import_file(storage, "orders", &dir.join("orders.tbl"), 9, 10000);
 }
 
-fn import_lineitem(storage: &mut FileStorage, dir: &PathBuf) {
+fn import_lineitem(storage: &mut FileStorage, dir: &Path) {
     import_file(storage, "lineitem", &dir.join("lineitem.tbl"), 16, 50000);
 }
