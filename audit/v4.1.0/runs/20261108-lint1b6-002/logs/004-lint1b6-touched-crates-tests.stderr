@@ -1,0 +1,84 @@
+   Compiling sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/types)
+   Compiling sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/common)
+   Compiling sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/spill)
+   Compiling sqlrustgo-mysql-client v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/mysql-client)
+   Compiling sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/gis)
+   Compiling sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/parser)
+   Compiling sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/catalog)
+   Compiling information-schema v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/information-schema)
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/storage)
+   Compiling sqlrustgo-cache v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/cache)
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/optimizer)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/transaction)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/security)
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/planner)
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/executor)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run)
+   Compiling sqlrustgo-bench v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/bench)
+warning: fields `num_threads` and `progress_interval` are never read
+  --> crates/bench/examples/tpch_fast_importer.rs:71:5
+   |
+69 | struct BatchConfig {
+   |        ----------- fields in this struct
+70 |     batch_size: usize,
+71 |     num_threads: usize,
+   |     ^^^^^^^^^^^
+72 |     progress_interval: usize,
+   |     ^^^^^^^^^^^^^^^^^
+   |
+   = note: `BatchConfig` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `time_secs` and `mb_processed` are never read
+  --> crates/bench/examples/tpch_fast_importer.rs:89:5
+   |
+87 | struct ImportStats {
+   |        ----------- fields in this struct
+88 |     rows_imported: usize,
+89 |     time_secs: f64,
+   |     ^^^^^^^^^
+90 |     rows_per_sec: f64,
+91 |     mb_processed: f64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ImportStats` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: `sqlrustgo-bench` (example "tpch_fast_importer") generated 2 warnings
+warning: constant `SF10_PARTSUPP` is never used
+  --> crates/bench/examples/tpch_sf10_importer.rs:19:7
+   |
+19 | const SF10_PARTSUPP: usize = 8_000_000;
+   |       ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-bench` (example "tpch_sf10_importer") generated 1 warning
+warning: function `load_tbl_data` is never used
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:262:4
+    |
+262 | fn load_tbl_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str, sf: f64) {
+    |    ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `sort` is never used
+  --> crates/bench/examples/tpch_compare.rs:47:8
+   |
+34 | impl LatencyStats {
+   | ----------------- method in this implementation
+...
+47 |     fn sort(&mut self) {
+   |        ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-bench` (example "serial_vs_parallel_bench") generated 1 warning
+warning: `sqlrustgo-bench` (example "tpch_compare") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 07s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/sqlrustgo_bench-86693f02497c7469)
+     Running tests/oltp_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/oltp_test-14e55b704d34a28b)
+     Running tests/tpch_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/tpch_test-d880d767a4a5e315)
+   Doc-tests sqlrustgo_bench

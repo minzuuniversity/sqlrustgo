@@ -1,0 +1,120 @@
+
+running 45 tests
+test benchmark_suite::tests::test_benchmark_result_default ... ok
+test benchmark_suite::tests::test_oltp_delete_name ... ok
+test benchmark_suite::tests::test_oltp_insert_name ... ok
+test benchmark_suite::tests::test_oltp_mixed_name ... ok
+test benchmark_suite::tests::test_oltp_mixed_target_qps ... ok
+test benchmark_suite::tests::test_oltp_point_select_name ... ok
+test benchmark_suite::tests::test_benchmark_suite_check_targets_pass ... ok
+test benchmark_suite::tests::test_benchmark_suite_add ... ok
+test benchmark_suite::tests::test_benchmark_suite_standard ... ok
+test benchmark_suite::tests::test_benchmark_suite_report_markdown ... ok
+test benchmark_suite::tests::test_benchmark_suite_check_targets_fail ... ok
+test benchmark_suite::tests::test_oltp_point_select_target_qps ... ok
+test benchmark_suite::tests::test_oltp_update_name ... ok
+test benchmark_suite::tests::test_oltp_range_select_name ... ok
+test db::comparison::tests::test_comparison_result_default ... ok
+test config::tests::test_default_config ... ok
+test benchmark_suite::tests::test_benchmark_suite_report_json ... ok
+test db::comparison::tests::test_comparison_with_sqlite_only ... ok
+test db::postgres_benchmark::tests::test_benchmark_result_serialization ... ok
+test db::postgres_benchmark::tests::test_latency_stats_default ... ok
+test db::postgres_benchmark::tests::test_postgres_benchmark_creation ... ok
+test db::sqlite_benchmark::tests::test_sqlite_benchmark_creation ... ok
+test db::sqlite_benchmark::tests::test_latency_stats_default ... ok
+test db::sqlite_benchmark::tests::test_benchmark_result_serialization ... ok
+test memory::tests::test_default_limit_is_10gb ... ok
+test config::tests::test_config_yaml ... ok
+test memory::tests::test_memory_limiter_creation ... ok
+test metrics::latency::tests::test_latency_recorder ... ok
+test metrics::latency::tests::test_latency_recorder_default ... ok
+test metrics::latency::tests::test_latency_recorder_single_sample ... ok
+test metrics::latency::tests::test_latency_recorder_empty ... ok
+test metrics::latency::tests::test_latency_recorder_multiple_values ... ok
+test metrics::latency::tests::test_latency_recorder_varied_latency ... ok
+test metrics::latency::tests::test_latency_stats_default ... ok
+test mysql_config::tests::test_default_config ... ok
+test mysql_config::tests::test_connection_string ... ok
+test workload::tests::test_oltp_point_select ... ok
+test workload::tests::test_oltp_index_scan ... ok
+test metrics::latency::tests::test_latency_recorder_concurrent ... ok
+test workload::tests::test_oltp_read_only ... ok
+test workload::tests::test_oltp_read_write ... ok
+test db::comparison::tests::test_sqlite_benchmark_only ... ok
+test workload::tests::test_workload_sql_generation ... ok
+test memory::tests::test_get_current_usage ... ok
+test benchmark_suite::tests::test_benchmark_run_short ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.00s
+
+
+running 30 tests
+test oltp_bulk_insert ... ok
+test oltp_delete ... ok
+test oltp_aggregation ... ok
+test oltp_avg_k_50 ... ok
+test oltp_aggregation_with_aliases_20 ... ok
+test oltp_count_star_50 ... ok
+test oltp_count_with_filter_50 ... ok
+test oltp_delete_by_id_100 ... ok
+test oltp_concurrent_mixed_4_threads ... ok
+test oltp_concurrent_point_select_4_threads ... ok
+test oltp_batch_update_50 has been running for over 60 seconds
+test oltp_group_by_k_20 ... ok
+test oltp_insert ... ok
+test oltp_distinct_20 ... ok
+test oltp_large_table_setup_10k ... ok
+test oltp_min_max_50 ... ok
+test oltp_insert_select_round_trip_100 ... ok
+test oltp_mixed ... ok
+test oltp_order_by_50 ... ok
+test oltp_indexed_lookup_500 ... ok
+test oltp_range_scan_100 ... ok
+test oltp_range_with_order_50 ... ok
+test oltp_range_select ... ok
+test oltp_sum_k_50 ... ok
+test oltp_point_select_batch_1000 ... ok
+test oltp_point_select ... ok
+test oltp_subquery_count_20 ... ok
+test oltp_update_by_id_200 ... ok
+test oltp_secondary_index_scan_500 ... ok
+test oltp_varchar_like_30 ... ok
+test oltp_batch_update_50 ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 165.18s
+
+
+running 23 tests
+test tpch_basic_subquery ... ok
+test tpch_basic_aggregation ... ok
+test tpch_basic_join ... ok
+test tpch_basic_offset ... ok
+test tpch_basic_between ... ok
+test tpch_q10_returned_item ... ok
+test tpch_basic_group_by ... ok
+test tpch_basic_order_by ... ok
+test tpch_basic_like ... ok
+test tpch_basic_limit ... ok
+test tpch_q2_minimum_cost_supplier ... ok
+test tpch_q13_customer_orders ... ok
+test tpch_q14_promotion_effect ... ok
+test tpch_q20_potential_part_promotion ... ok
+test tpch_q4_order_priority_check ... ok
+test tpch_q18_large_volume_customer ... ok
+test tpch_q22_global_sales ... ok
+test tpch_q21_suppliers_who_kept_orders_waiting ... ok
+test tpch_q1_pricing_summary_report ... ok
+test tpch_q3_shipping_priority ... ok
+test tpch_q5_local_supplier_volume ... ok
+test tpch_q6_discounted_revenue ... ok
+test tpch_sf01_data_validation ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 58.66s
+
+
+running 1 test
+test crates/bench/src/benchmark_suite.rs - benchmark_suite (line 11) ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
