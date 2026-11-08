@@ -1,0 +1,115 @@
+   Compiling parking_lot v0.12.5
+   Compiling chrono v0.4.45
+   Compiling sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/types)
+   Compiling rand v0.8.8
+   Compiling clang-sys v1.9.1
+   Compiling actix-router v0.5.4
+   Compiling rust_decimal v1.43.0
+   Compiling socket2 v0.5.10
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling tracing-subscriber v0.3.23
+   Compiling tokio v1.53.1
+   Compiling sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/gis)
+   Compiling sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/spill)
+   Compiling twox-hash v1.6.3
+   Compiling zipf v7.0.2
+   Compiling clap v4.6.7
+   Compiling sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/common)
+   Compiling bindgen v0.73.2
+   Compiling sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/parser)
+   Compiling sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/catalog)
+   Compiling tokio-util v0.7.19
+   Compiling tokio-native-tls v0.3.1
+   Compiling tower v0.5.3
+   Compiling actix-rt v2.15.0
+   Compiling mysql_common v0.32.4
+   Compiling actix-server v2.9.5
+   Compiling tower-http v0.6.11
+   Compiling h2 v0.4.19
+   Compiling actix-codec v0.5.4
+   Compiling h2 v0.3.27
+   Compiling tokio-postgres v0.7.18
+   Compiling information-schema v0.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/information-schema)
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/storage)
+   Compiling sqlrustgo-cache v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/cache)
+   Compiling actix-http v3.13.6
+   Compiling hyper v1.11.1
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/optimizer)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/security)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/transaction)
+   Compiling hyper-util v0.1.20
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/planner)
+   Compiling actix-web v4.15.0
+   Compiling mysql v25.0.1
+   Compiling hyper-tls v0.6.0
+   Compiling reqwest v0.12.28
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/executor)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/wt/lint1b5run)
+   Compiling sqlrustgo-bench v0.1.0 (/Volumes/workspace/dev/wt/lint1b5run/crates/bench)
+warning: constant `SF10_PARTSUPP` is never used
+  --> crates/bench/examples/tpch_sf10_importer.rs:19:7
+   |
+19 | const SF10_PARTSUPP: usize = 8_000_000;
+   |       ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `num_threads` and `progress_interval` are never read
+  --> crates/bench/examples/tpch_fast_importer.rs:71:5
+   |
+69 | struct BatchConfig {
+   |        ----------- fields in this struct
+70 |     batch_size: usize,
+71 |     num_threads: usize,
+   |     ^^^^^^^^^^^
+72 |     progress_interval: usize,
+   |     ^^^^^^^^^^^^^^^^^
+   |
+   = note: `BatchConfig` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `time_secs` and `mb_processed` are never read
+  --> crates/bench/examples/tpch_fast_importer.rs:89:5
+   |
+87 | struct ImportStats {
+   |        ----------- fields in this struct
+88 |     rows_imported: usize,
+89 |     time_secs: f64,
+   |     ^^^^^^^^^
+90 |     rows_per_sec: f64,
+91 |     mb_processed: f64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ImportStats` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: method `sort` is never used
+  --> crates/bench/examples/tpch_compare.rs:47:8
+   |
+34 | impl LatencyStats {
+   | ----------------- method in this implementation
+...
+47 |     fn sort(&mut self) {
+   |        ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-bench` (example "tpch_sf10_importer") generated 1 warning
+warning: function `load_tbl_data` is never used
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:262:4
+    |
+262 | fn load_tbl_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str, sf: f64) {
+    |    ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-bench` (example "tpch_fast_importer") generated 2 warnings
+warning: `sqlrustgo-bench` (example "tpch_compare") generated 1 warning
+warning: `sqlrustgo-bench` (example "serial_vs_parallel_bench") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 01s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/sqlrustgo_bench-86693f02497c7469)
+     Running tests/oltp_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/oltp_test-14e55b704d34a28b)
+     Running tests/tpch_test.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/tpch_test-d880d767a4a5e315)
+   Doc-tests sqlrustgo_bench
