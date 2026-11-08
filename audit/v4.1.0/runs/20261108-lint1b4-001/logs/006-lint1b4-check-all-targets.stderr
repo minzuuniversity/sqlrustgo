@@ -1,0 +1,420 @@
+    Checking sqlrustgo_sqllogictest v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/sqlrustgo_sqllogictest)
+    Checking sqlancer v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/sqlancer)
+    Checking test-runner v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/test-runner)
+    Checking graph-cli v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/graph-cli)
+    Checking xtask v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/tools/xtask)
+    Checking evidence-graph v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/evidence-graph)
+    Checking sqlrustgo-soak v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/cli)
+warning: constant `SF10_PARTSUPP` is never used
+  --> crates/bench/examples/tpch_sf10_importer.rs:19:7
+   |
+19 | const SF10_PARTSUPP: usize = 8_000_000;
+   |       ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-bench` (example "tpch_sf10_importer") generated 1 warning
+warning: method `sort` is never used
+  --> crates/bench/examples/tpch_compare.rs:47:8
+   |
+34 | impl LatencyStats {
+   | ----------------- method in this implementation
+...
+47 |     fn sort(&mut self) {
+   |        ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-bench` (example "tpch_compare") generated 1 warning
+warning: function `load_tbl_data` is never used
+   --> crates/bench/examples/serial_vs_parallel_bench.rs:262:4
+    |
+262 | fn load_tbl_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str, sf: f64) {
+    |    ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-bench` (example "serial_vs_parallel_bench") generated 1 warning
+warning: fields `num_threads` and `progress_interval` are never read
+  --> crates/bench/examples/tpch_fast_importer.rs:71:5
+   |
+69 | struct BatchConfig {
+   |        ----------- fields in this struct
+70 |     batch_size: usize,
+71 |     num_threads: usize,
+   |     ^^^^^^^^^^^
+72 |     progress_interval: usize,
+   |     ^^^^^^^^^^^^^^^^^
+   |
+   = note: `BatchConfig` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `time_secs` and `mb_processed` are never read
+  --> crates/bench/examples/tpch_fast_importer.rs:89:5
+   |
+87 | struct ImportStats {
+   |        ----------- fields in this struct
+88 |     rows_imported: usize,
+89 |     time_secs: f64,
+   |     ^^^^^^^^^
+90 |     rows_per_sec: f64,
+91 |     mb_processed: f64,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ImportStats` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: `sqlrustgo-bench` (example "tpch_fast_importer") generated 2 warnings
+    Checking sqlrustgo-bench v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/bench)
+    Checking test-registry v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/test-registry)
+    Checking sqlrustgo-shard-router v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/shard-router)
+    Checking sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/storage)
+warning: method `keep` is never used
+   --> crates/storage/tests/fault_coordination.rs:151:12
+    |
+143 | impl Scratch {
+    | ------------ method in this implementation
+...
+151 |     pub fn keep(mut self) -> Self {
+    |            ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `with_sync_mode` is never used
+   --> crates/storage/tests/fault_coordination.rs:329:12
+    |
+282 | impl Arm {
+    | -------- method in this implementation
+...
+329 |     pub fn with_sync_mode(mut self, m: &str) -> Self {
+    |            ^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-storage` (test "crash_wal_index_b1") generated 2 warnings
+warning: function `make_bigint_info` is never used
+  --> crates/storage/tests/binary_v2_direct_v3_12.rs:47:4
+   |
+47 | fn make_bigint_info(name: &str) -> TableInfo {
+   |    ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-storage` (test "binary_v2_direct_v3_12") generated 1 warning
+    Checking sqlrustgo-vector v2.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/vector)
+warning: variable `count` is assigned to, but never used
+  --> crates/storage/examples/compare_sqlite.rs:35:9
+   |
+35 |     let mut count = 0;
+   |         ^^^^^^^^^
+   |
+   = note: consider using `_count` instead
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `count` is never read
+  --> crates/storage/examples/compare_sqlite.rs:39:17
+   |
+39 |                 count += 1;
+   |                 ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-storage` (example "compare_sqlite") generated 2 warnings
+    Checking sqlrustgo-rag v2.3.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/rag)
+warning: duplicated attribute
+    --> crates/storage/src/engine.rs:5226:5
+     |
+5226 |     #[test]
+     |     ^^^^^^^
+     |
+     = note: `#[warn(duplicate_macro_attributes)]` on by default
+
+warning: cannot test inner items
+   --> crates/storage/src/vtu_guard.rs:526:9
+    |
+526 |         #[test]
+    |         ^^^^^^^
+    |
+    = note: `#[warn(unnameable_test_items)]` on by default
+
+warning: duplicated attribute
+    --> crates/storage/src/wal_legacy.rs:1544:5
+     |
+1544 |     #[test]
+     |     ^^^^^^^
+
+warning: function `test_vtu_guard_tx_state_via_set_current_tx_id` is never used
+   --> crates/storage/src/vtu_guard.rs:527:12
+    |
+527 |         fn test_vtu_guard_tx_state_via_set_current_tx_id() {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused `Result` that must be used
+    --> crates/storage/src/engine.rs:4331:9
+     |
+4331 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+     = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+     |
+4331 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `Result` that must be used
+    --> crates/storage/src/engine.rs:4469:9
+     |
+4469 |         storage.insert("users", vec![]);
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+     |
+4469 |         let _ = storage.insert("users", vec![]);
+     |         +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:394:13
+    |
+394 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+394 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:424:13
+    |
+424 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+424 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: unused `Result` that must be used
+   --> crates/storage/src/wal/group_commit.rs:485:13
+    |
+485 |             h.join().unwrap();
+    |             ^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+485 |             let _ = h.join().unwrap();
+    |             +++++++
+
+warning: `sqlrustgo-storage` (lib test) generated 9 warnings
+warning: `sqlrustgo-storage` (test "crash_commit_fsync_b1") generated 2 warnings (2 duplicates)
+    Checking sqlrustgo-wal-verification v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/wal-verification)
+warning: function `new_admin` is never used
+ --> crates/admin/tests/mysqladmin_tests.rs:7:4
+  |
+7 | fn new_admin() -> MysqlAdmin {
+  |    ^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-admin` (test "mysqladmin_tests") generated 1 warning
+warning: unreachable pattern
+  --> crates/mysql-server/tests/use_database_regression_5057.rs:92:9
+   |
+92 |         other => format!("<{other:?}>"),
+   |         ^^^^^ no value can reach this
+   |
+note: multiple earlier patterns match some of the same values
+  --> crates/mysql-server/tests/use_database_regression_5057.rs:92:9
+   |
+85 |         ResultSet::Select { rows, .. } => rows
+   |         ------------------------------ matches some of the same values
+...
+90 |         ResultSet::Ok { .. } => "<ok packet>".to_string(),
+   |         -------------------- matches some of the same values
+91 |         ResultSet::Error { error_message, .. } => format!("<error: {error_message}>"),
+   |         -------------------------------------- matches some of the same values
+92 |         other => format!("<{other:?}>"),
+   |         ^^^^^ collectively making this unreachable
+   = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-mysql-server` (test "use_database_regression_5057") generated 1 warning
+warning: unreachable pattern
+  --> crates/mysql-server/tests/probe_5057_use_sql_path.rs:82:9
+   |
+82 |         other => format!("<{other:?}>"),
+   |         ^^^^^ no value can reach this
+   |
+note: multiple earlier patterns match some of the same values
+  --> crates/mysql-server/tests/probe_5057_use_sql_path.rs:82:9
+   |
+76 |         ResultSet::Select { rows, .. } => match rows.first() {
+   |         ------------------------------ matches some of the same values
+...
+80 |         ResultSet::Ok { .. } => "<ok packet>".to_string(),
+   |         -------------------- matches some of the same values
+81 |         ResultSet::Error { error_message, .. } => format!("<error: {error_message}>"),
+   |         -------------------------------------- matches some of the same values
+82 |         other => format!("<{other:?}>"),
+   |         ^^^^^ collectively making this unreachable
+   = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-mysql-server` (test "probe_5057_use_sql_path") generated 1 warning
+    Checking sqlrustgo-tools v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/tools)
+warning: using `.clone()` on a double reference, which returns `&str` instead of cloning the inner type
+  --> crates/storage/examples/tpch_query_bench.rs:75:27
+   |
+75 |         results.push((name.clone(), rows, elapsed, result.is_ok()));
+   |                           ^^^^^^^^
+   |
+   = note: `#[warn(suspicious_double_ref_op)]` on by default
+
+warning: `sqlrustgo-storage` (example "tpch_query_bench") generated 1 warning
+    Checking sqlrustgo-mysql-server v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/mysql-server)
+    Checking sqlrustgo-graph v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/graph)
+    Checking sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/executor)
+warning: function `decode_lenenc_int_3byte_via_0xfd` is never used
+    --> crates/mysql-server/src/lib.rs:1114:8
+     |
+1114 |     fn decode_lenenc_int_3byte_via_0xfd() {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `g4_graph_match_sql_form_strips_GRAPH_prefix` should have a snake case name
+     --> crates/mysql-server/src/lib.rs:10303:4
+      |
+10303 | fn g4_graph_match_sql_form_strips_GRAPH_prefix() {
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: convert the identifier to snake case: `g4_graph_match_sql_form_strips_graph_prefix`
+      |
+      = note: `#[warn(non_snake_case)]` (part of `#[warn(nonstandard_style)]`) on by default
+
+warning: `sqlrustgo-mysql-server` (lib test) generated 2 warnings
+    Checking transaction-stress v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/transaction-stress)
+    Checking sqlrustgo-sql-corpus v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/sql-corpus)
+    Checking information-schema v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/information-schema)
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:228:19
+    |
+228 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:234:19
+    |
+234 |         let dml = LocalExecutorDml::default();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:250:19
+    |
+250 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:260:19
+    |
+260 |         let dml = LocalExecutorDml::new_with_storage(
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:270:19
+    |
+270 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:283:19
+    |
+283 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:299:19
+    |
+299 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:307:19
+    |
+307 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-executor` (lib test) generated 8 warnings
+warning: function `first_value` is never used
+  --> crates/executor/tests/issue_4695_lag_lead_test.rs:18:4
+   |
+18 | fn first_value(result: &sqlrustgo::ExecutorResult) -> &Value {
+   |    ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-executor` (test "issue_4695_lag_lead_test") generated 1 warning
+    Checking query-stats v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/query-stats)
+    Checking sqlrustgo-cli v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/sqlrustgo-cli)
+    Checking sqlrustgo-mysql-client v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/mysql-client)
+    Checking sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/security)
+    Checking sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/spill)
+    Checking sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/transaction)
+warning: use of deprecated method `sqlrustgo_transaction::savepoint::SavepointManager::rollback_to_noop`: Use rollback_to(name, on_undo) for physical rollback
+   --> crates/transaction/tests/coverage_v3_12.rs:188:8
+    |
+188 |     sp.rollback_to_noop("s1").unwrap();
+    |        ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `sqlrustgo_transaction::savepoint::SavepointManager::rollback_to_noop`: Use rollback_to(name, on_undo) for physical rollback
+   --> crates/transaction/tests/coverage_v3_12.rs:195:16
+    |
+195 |     assert!(sp.rollback_to_noop("nonexistent").is_err());
+    |                ^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-transaction` (test "coverage_v3_12") generated 2 warnings
+    Checking sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/optimizer)
+    Checking sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/planner)
+    Checking sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/catalog)
+    Checking test-results v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/test-results)
+    Checking sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/parser)
+warning: unused `Result` that must be used
+   --> crates/catalog/tests/coverage_v3_12.rs:101:5
+    |
+101 |     c.set_default_schema("main".to_string());
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+101 |     let _ = c.set_default_schema("main".to_string());
+    |     +++++++
+
+warning: `sqlrustgo-catalog` (test "coverage_v3_12") generated 1 warning
+warning: field `modified` is never read
+   --> crates/optimizer/src/rules.rs:138:9
+    |
+137 |     struct TestPlan {
+    |            -------- field in this struct
+138 |         modified: bool,
+    |         ^^^^^^^^
+    |
+    = note: `TestPlan` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-optimizer` (lib test) generated 1 warning
+    Checking sqlrustgo-distributed v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/distributed)
+    Checking sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/common)
+    Checking sqlrustgo-cache v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/cache)
+    Checking sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/types)
+    Checking sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/gis)
+    Checking sqlrustgo-telemetry v4.1.0 (/Volumes/workspace/dev/wt/lint1b4run/crates/telemetry)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3m 38s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
