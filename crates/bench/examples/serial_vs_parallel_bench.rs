@@ -303,7 +303,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     // SF=1.0 → 100K rows, SF=3.0 → 300K rows (capped at 500K to fit reasonable runtime).
     let mut rng = rand::thread_rng();
 
-    let target_lineitem = ((100_000.0 * sf) as usize).min(500_000).max(1_000);
+    let target_lineitem = ((100_000.0 * sf) as usize).clamp(1_000, 500_000);
     for i in 0..target_lineitem {
         let qty = rng.gen_range(1.0..50.0);
         let price = rng.gen_range(100.0..50_000.0);
@@ -321,7 +321,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     }
 
     // orders
-    for i in 0..((1_000.0 * sf) as usize).min(5_000).max(100) {
+    for i in 0..((1_000.0 * sf) as usize).clamp(100, 5_000) {
         let _ = engine.execute(&format!(
             "INSERT INTO orders VALUES ({}, {}, 'O', 1000.0, '1998-01-01', '1-URGENT', 'Clerk#001', 0, '')",
             i as i64 + 1,
@@ -330,7 +330,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     }
 
     // partsupp
-    for i in 0..((500.0 * sf) as usize).min(2_500).max(50) {
+    for i in 0..((500.0 * sf) as usize).clamp(50, 2_500) {
         let _ = engine.execute(&format!(
             "INSERT INTO partsupp VALUES ({}, {}, {}, 10.0, '')",
             (i % 2_000) as i64 + 1,
@@ -340,7 +340,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     }
 
     // part
-    for i in 0..((200.0 * sf) as usize).min(1_000).max(20) {
+    for i in 0..((200.0 * sf) as usize).clamp(20, 1_000) {
         let _ = engine.execute(&format!(
             "INSERT INTO part VALUES ({}, 'part name', 'mfgr', 'Brand#{}', 'ECONOMY ANODIZED STEEL', {}, 'MED JAR', 100.0, '')",
             i as i64 + 1,
@@ -350,7 +350,7 @@ fn generate_synthetic_data(engine: &mut ExecutionEngine<MemoryStorage>, sf: f64)
     }
 
     // customer, supplier, nation, region
-    for i in 0..((10.0 * sf) as usize).min(50).max(2) {
+    for i in 0..((10.0 * sf) as usize).clamp(2, 50) {
         let _ = engine.execute(&format!(
             "INSERT INTO customer VALUES ({}, 'customer{}', 'addr', 1, '13-111-111', 1000.0, 'BUILDING', '')",
             i as i64 + 1, i as i64 + 1
