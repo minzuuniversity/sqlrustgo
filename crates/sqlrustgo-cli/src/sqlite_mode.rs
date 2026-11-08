@@ -1051,8 +1051,10 @@ mod tests {
     fn run_batch_stdin_with_multiline_create_table_succeeds() {
         let tmp = std::env::temp_dir().join("v31261_batch_stdin_multiline_ct");
         let _ = std::fs::remove_dir_all(&tmp);
-        let mut state = SqliteState::default();
-        state.mode = OutputMode::Csv;
+        let state = SqliteState {
+            mode: OutputMode::Csv,
+            ..Default::default()
+        };
         let mut mode = SqliteMode::open(&tmp, state, false).unwrap();
         mode.state.output = OutputTarget::File(tmp.join("out.txt"));
         let input = vec![
@@ -1074,8 +1076,10 @@ mod tests {
     fn run_batch_stdin_with_mixed_comments_and_multiline_succeeds() {
         let tmp = std::env::temp_dir().join("v31261_batch_stdin_mixed");
         let _ = std::fs::remove_dir_all(&tmp);
-        let mut state = SqliteState::default();
-        state.mode = OutputMode::Csv;
+        let state = SqliteState {
+            mode: OutputMode::Csv,
+            ..Default::default()
+        };
         let mut mode = SqliteMode::open(&tmp, state, false).unwrap();
         mode.state.output = OutputTarget::File(tmp.join("out.txt"));
         // Mirrors the BustubX-EDU teaching-seed.sql shape.
