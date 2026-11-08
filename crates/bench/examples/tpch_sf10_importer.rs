@@ -18,6 +18,40 @@ const SF10_PART: usize = 2_000_000;
 const SF10_SUPPLIER: usize = 100_000;
 const SF10_PARTSUPP: usize = 8_000_000;
 
+// LINT-1 批次 5（clippy::type_complexity）：四类批量行形态的别名，列序与下面
+// `INSERT INTO part/customer/orders/lineitem` 的占位符一一对应；纯编译期，无运行时代价。
+type PartRow = (
+    i32,
+    String,
+    String,
+    String,
+    String,
+    i32,
+    String,
+    f64,
+    String,
+);
+type CustomerRow = (i32, String, String, i32, String, f64, String, String);
+type OrderRow = (i32, i32, String, f64, String, String, String, i32, String);
+type LineItemRow = (
+    i32,
+    i32,
+    i32,
+    i32,
+    f64,
+    f64,
+    f64,
+    f64,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+);
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let scale = if args.len() > 2 && args[1] == "--scale" {
@@ -260,17 +294,7 @@ fn import_part(conn: &Connection, scale: usize) {
     let containers = ["SM CASE", "LG CASE", "LG BOX", "SM BOX", "WRAP"];
 
     let batch_size = 10000;
-    let mut batch: Vec<(
-        i32,
-        String,
-        String,
-        String,
-        String,
-        i32,
-        String,
-        f64,
-        String,
-    )> = Vec::with_capacity(batch_size);
+    let mut batch: Vec<PartRow> = Vec::with_capacity(batch_size);
 
     for i in 1..=count {
         batch.push((
@@ -297,20 +321,7 @@ fn import_part(conn: &Connection, scale: usize) {
     println!();
 }
 
-fn insert_part_batch(
-    conn: &Connection,
-    batch: &[(
-        i32,
-        String,
-        String,
-        String,
-        String,
-        i32,
-        String,
-        f64,
-        String,
-    )],
-) {
+fn insert_part_batch(conn: &Connection, batch: &[PartRow]) {
     let mut stmt = conn
         .prepare("INSERT INTO part VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)")
         .unwrap();
@@ -450,8 +461,7 @@ fn import_customer(conn: &Connection, scale: usize) {
     ];
 
     let batch_size = 10000;
-    let mut batch: Vec<(i32, String, String, i32, String, f64, String, String)> =
-        Vec::with_capacity(batch_size);
+    let mut batch: Vec<CustomerRow> = Vec::with_capacity(batch_size);
 
     for i in 1..=count {
         batch.push((
@@ -477,10 +487,7 @@ fn import_customer(conn: &Connection, scale: usize) {
     println!();
 }
 
-fn insert_customer_batch(
-    conn: &Connection,
-    batch: &[(i32, String, String, i32, String, f64, String, String)],
-) {
+fn insert_customer_batch(conn: &Connection, batch: &[CustomerRow]) {
     let mut stmt = conn
         .prepare("INSERT INTO customer VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
         .unwrap();
@@ -504,8 +511,7 @@ fn import_orders(conn: &Connection, scale: usize) {
     let priorities = ["1-URGENT", "2-HIGH", "3-MEDIUM", "4-LOW", "5-NOT SPECIFIED"];
 
     let batch_size = 10000;
-    let mut batch: Vec<(i32, i32, String, f64, String, String, String, i32, String)> =
-        Vec::with_capacity(batch_size);
+    let mut batch: Vec<OrderRow> = Vec::with_capacity(batch_size);
 
     for i in 1..=count {
         let _base_date = 87600; // 1992-01-01
@@ -541,10 +547,7 @@ fn import_orders(conn: &Connection, scale: usize) {
     println!();
 }
 
-fn insert_orders_batch(
-    conn: &Connection,
-    batch: &[(i32, i32, String, f64, String, String, String, i32, String)],
-) {
+fn insert_orders_batch(conn: &Connection, batch: &[OrderRow]) {
     let mut stmt = conn
         .prepare("INSERT INTO orders VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)")
         .unwrap();
@@ -574,24 +577,7 @@ fn import_lineitem(conn: &Connection, scale: usize) {
     let ship_modes = ["AIR", "TRUCK", "RAIL", "SHIP", "REG AIR", "FOB"];
 
     let batch_size = 10000;
-    let mut batch: Vec<(
-        i32,
-        i32,
-        i32,
-        i32,
-        f64,
-        f64,
-        f64,
-        f64,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-    )> = Vec::with_capacity(batch_size);
+    let mut batch: Vec<LineItemRow> = Vec::with_capacity(batch_size);
 
     for i in 1..=count {
         let orderkey = rng.gen_range(1..=(SF10_ORDERS * scale / 10) as i32);
@@ -651,27 +637,7 @@ fn import_lineitem(conn: &Connection, scale: usize) {
     println!();
 }
 
-fn insert_lineitem_batch(
-    conn: &Connection,
-    batch: &[(
-        i32,
-        i32,
-        i32,
-        i32,
-        f64,
-        f64,
-        f64,
-        f64,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-    )],
-) {
+fn insert_lineitem_batch(conn: &Connection, batch: &[LineItemRow]) {
     let mut stmt = conn.prepare(
         "INSERT INTO lineitem VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)"
     ).unwrap();
