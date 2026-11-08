@@ -1,0 +1,40 @@
+   Compiling sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/common)
+   Compiling sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/types)
+   Compiling sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/spill)
+   Compiling sqlrustgo-wal-verification v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/wal-verification)
+   Compiling sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/gis)
+   Compiling sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/parser)
+   Compiling sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/catalog)
+   Compiling information-schema v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/information-schema)
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/storage)
+   Compiling sqlrustgo-cache v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/cache)
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/optimizer)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/security)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/transaction)
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/planner)
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/executor)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b6run)
+warning: method `keep` is never used
+   --> crates/storage/tests/fault_coordination.rs:151:12
+    |
+143 | impl Scratch {
+    | ------------ method in this implementation
+...
+151 |     pub fn keep(mut self) -> Self {
+    |            ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `with_sync_mode` is never used
+   --> crates/storage/tests/fault_coordination.rs:329:12
+    |
+282 | impl Arm {
+    | -------- method in this implementation
+...
+329 |     pub fn with_sync_mode(mut self, m: &str) -> Self {
+    |            ^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-storage` (test "crash_wal_index_b1") generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 28s
+     Running tests/crash_wal_index_b1.rs (/Volumes/workspace/dev/sqlrustgo/target/debug/deps/crash_wal_index_b1-f13a0f7b90fb455a)
