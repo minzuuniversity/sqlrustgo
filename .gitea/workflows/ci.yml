@@ -239,7 +239,14 @@ jobs:
         # The test tree's lint backlog (55 warnings across 25 lint names)
         # was paid down in the same change, so `--all-targets` can be turned
         # on outright instead of being papered over with an allowance.
-        run: cargo clippy --all-features --all-targets -- -D warnings
+        run: |
+          target="$(rustc -vV | sed -n 's/^host: //p')"
+          test -n "$target"
+          if cargo fetch --locked --offline --target "$target"; then
+            echo "Locked dependencies are available locally; running Clippy offline"
+            export CARGO_NET_OFFLINE=true
+          fi
+          cargo clippy --locked --all-features --all-targets -- -D warnings
       - name: Test-target lint budget (issue #5465)
         # Quantifies the lint debt of the test targets and compares it with
         # the recorded baseline. With the backlog at zero this is a no-op
