@@ -4,10 +4,12 @@
 //!
 //! # The wire scope
 //!
-//! Three of the 22 standard statements — **Q9**, **Q18** and **Q19** — cannot be
+//! Two of the 22 standard statements — **Q9** and **Q18** — cannot be
 //! executed on the file-storage wire path: Q9's intermediate result grows past
-//! 1.5 GB within a second, Q18 kills the server process, and Q19 cannot be
-//! parsed by the wire front end (all three: issue #5393). A killed process
+//! 1.5 GB within a second, and Q18 kills the server process (both: issue
+//! #5393; **Q19** — formerly the third, an `IN (…)` inside a parenthesised
+//! OR group the wire front end could not parse — runs there since the
+//! 2026-11-10 parser fix). A killed process
 //! takes the **whole test binary** with it, so the CI job would die with
 //! `signal: 9` instead of reporting a test failure.
 //!
