@@ -1,0 +1,24 @@
+schema_version: expert-manifest/v1
+run_id: adjudicate-20261107T173336Z-omp-macmini-29313e
+source_agent: omp-macmini
+source_run: omp-macmini-2026-11-07T17:33:36Z
+timestamp_started: '2026-11-07T17:33:36Z'
+timestamp_finished: '2026-11-07T17:34:25Z'
+conflict_resolution: none
+repository:
+  canonical_remote: http://192.168.0.252:3000/openclaw/sqlrustgo.git
+  commit: f0a053dafabb810992dec4379a8e3542926d1cea
+  branch: develop/v4.1.0
+artifacts:
+  adjudications.jsonl:
+    sha256: sha256:67a69a1dec2bf8be5d2075dcfe59c013026502ca6b0a4e578a7fca43325c676a
+    bytes: 692
+    lines: 1
+  asks.jsonl:
+    sha256: sha256:952f266ceab9685d611e173f70e3969362bc8ef593f9e5fbd7b3b354c4ad83ae
+    bytes: 1218
+    lines: 2
+kind: adjudication
+question_id: sqlm1-drift1-20261108
+aggregate: INCOMPLETE
+rule: 'R1: only 1 independent lineage(s) [''gpt''] < required 2'
