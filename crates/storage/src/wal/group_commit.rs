@@ -28,14 +28,25 @@
 //!
 //! ## Safety / liveness
 //!
-//! - If the leader panics between enqueue and fsync, the next caller's
-//!   leader path will perform a new fsync, so the WAL remains durable.
+//! - A leader that dies inside its epoch — a panic unwinding through
+//!   phase-3/4 — is caught by a Drop guard installed when leadership is
+//!   claimed (#5686, WALGC-2): the guard closes the epoch with an explicit
+//!   `Err`, wakes every joined waiter, and frees the epoch slot so the next
+//!   caller starts a fresh epoch. The LSNs queued in a dead epoch were
+//!   appended but never fsynced: every caller in that batch learns its
+//!   commit failed and must abort its tx — durability is never falsely
+//!   claimed. A leader killed by SIGKILL (no unwind) is outside this
+//!   guarantee; nothing in-process can notice that.
 //! - A closed epoch's result stays readable by generation until every
 //!   waiter that joined it has picked the result up, so a joined waiter
 //!   always learns its outcome even if the leader closes the epoch first
 //!   (#5679 lost-wakeup fix).
-//! - There is no priority inversion: a caller that times out becomes its
-//!   own leader and force-fsyncs, so no thread is starved forever.
+//! - Waiters have **no timeout and no takeover**: liveness rests entirely
+//!   on the leader always closing the epoch — either by recording its
+//!   fsync result or by dying and letting the guard close it. An earlier
+//!   revision of this text promised that "a caller that times out becomes
+//!   its own leader"; that code path never existed and the promise was
+//!   false (#5686).
 //!
 //! ## When NOT to use
 //!
@@ -126,6 +137,57 @@ pub struct GroupCommitCoordinator<W: WalManager> {
     max_wait_us: u64,
 }
 
+/// WALGC-2 (#5686) guard: installed on the leader path right after the
+/// epoch is registered (see `commit_lsn`). If the leader thread ends
+/// without having closed its epoch — the documented case is a panic
+/// unwinding through the fsync window, but any unwind counts — `Drop`
+/// closes the epoch with an explicit `Err`, parks it in `closed` for the
+/// joined waiters (reusing the #5679 generation/outstanding protocol), and
+/// wakes everyone. This is the Option-C ruling on #5686: no takeover and no
+/// timeout, but a dead leader can never leave waiters stranded, and the
+/// epoch slot is always freed so the next caller starts a fresh epoch.
+///
+/// Durability stance: LSNs queued into a dead epoch were appended but never
+/// confirmed durable; every caller in that batch is told its commit failed,
+/// so durability is never falsely claimed.
+struct LeaderGuard<'a, W: WalManager + 'static> {
+    coord: &'a GroupCommitCoordinator<W>,
+    gen: u64,
+    /// `Cell` rather than a plain bool: `Drop` reading it is invisible to
+    /// the `unused_assignments` lint, and the guard never crosses threads.
+    closed_by_leader: std::cell::Cell<bool>,
+}
+
+impl<W: WalManager + 'static> Drop for LeaderGuard<'_, W> {
+    fn drop(&mut self) {
+        if self.closed_by_leader.get() {
+            return;
+        }
+        let mut state = self.coord.lock_state();
+        if let Some(mut epoch) = state.epoch.take() {
+            if epoch.gen == self.gen && matches!(epoch.result, EpochResult::Pending) {
+                epoch.result = EpochResult::Err(format!(
+                    "WAL group commit leader died before recording the fsync outcome \
+                     (WALGC-2 #5686); LSN batch {:?} is NOT known-durable — abort the tx",
+                    epoch.waiters
+                ));
+                // Park the closed epoch for the waiters, same protocol as
+                // the normal phase-4 close (#5679).
+                epoch.outstanding = epoch.waiters.len().saturating_sub(1);
+                if epoch.outstanding > 0 {
+                    state.closed.insert(epoch.gen, epoch);
+                }
+                state.started_at = None;
+            } else {
+                // Foreign/newer epoch, or the leader already recorded its
+                // result: leave the state exactly as found.
+                state.epoch = Some(epoch);
+            }
+        }
+        self.coord.cv.notify_all();
+    }
+}
+
 impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
     /// Build a coordinator wrapping `wal`.
     pub fn new(wal: W) -> Self {
@@ -191,6 +253,19 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
         self.inner.lock().expect("wal mutex poisoned")
     }
 
+    /// WALGC-2 (#5686): coordinator-internal state locks are poison-tolerant.
+    /// A panic under the state lock can only come from a leader inside its
+    /// epoch, and the `LeaderGuard` repairs epoch bookkeeping during that
+    /// unwinding — so by the time anyone else locks, the data is consistent
+    /// again and the poison flag merely records "a panic happened here".
+    /// Refusing to proceed would turn one leader panic into permanent
+    /// coordinator death (every later caller would panic in `expect`).
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, CoordinatorState> {
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Coordinate a single commit at LSN `lsn`.
     ///
     /// - If this caller is the first to enqueue in an empty epoch, it
@@ -204,7 +279,7 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
         // epoch this caller joined; the waiter path reads its result by gen,
         // whether the epoch is still live or already closed (#5679).
         let (is_leader, my_gen) = {
-            let mut state = self.state.lock().expect("state lock poisoned");
+            let mut state = self.lock_state();
 
             if state.epoch.is_none() {
                 // No epoch in progress: become leader.
@@ -228,7 +303,22 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
         };
 
         if is_leader {
-            self.leader_loop(lsn)
+            // WALGC-2 (#5686): leadership is claimed above, so from here on
+            // this thread owns the epoch. If it dies before phase-4 records
+            // the outcome — the injected failure is `sync()` panicking, but
+            // any panic between here and the close counts — the guard below
+            // reaps the epoch during unwinding: joined waiters get an
+            // explicit `Err` instead of an untimed `cv.wait` forever, and
+            // the epoch slot is freed so the next caller starts a fresh
+            // epoch instead of joining a dead one.
+            let guard = LeaderGuard {
+                coord: self,
+                gen: my_gen,
+                closed_by_leader: std::cell::Cell::new(false),
+            };
+            let out = self.leader_loop(lsn);
+            guard.closed_by_leader.set(true);
+            out
         } else {
             self.wait_for_leader(my_gen)
         }
@@ -239,7 +329,7 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
     fn leader_loop(&self, _my_lsn: u64) -> SqlResult<()> {
         // Compute the time we should give waiters to join.
         let wait_deadline = {
-            let state = self.state.lock().expect("state lock poisoned");
+            let state = self.lock_state();
             state
                 .started_at
                 .expect("started_at is set when epoch is set")
@@ -248,7 +338,7 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
 
         // Phase 2: wait until the epoch fills or time is up.
         loop {
-            let state = self.state.lock().expect("state lock poisoned");
+            let state = self.lock_state();
             let epoch_full = state
                 .epoch
                 .as_ref()
@@ -276,7 +366,19 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
         // Phase 3: perform the actual fsync. We hold NO state lock
         // during the syscall, so other threads can still enqueue into
         // a fresh epoch if they arrive while we sync.
-        let mut wal = self.inner.lock().expect("wal lock poisoned");
+        //
+        // WALGC-2 (#5686): the lock is taken poison-tolerantly. A previous
+        // leader can die inside `sync()` while holding this very lock, and
+        // refusing to proceed would convert one injected panic into
+        // permanent coordinator death — every later leader would panic in
+        // `expect` before fsyncing anything. The dead leader's batch is
+        // already being surfaced as `Err` to all of its callers (the
+        // WALGC-2 guard semantics), so re-acquiring exclusive `&mut`
+        // access here is the survivable reading of the trait contract.
+        let mut wal = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let result = wal.sync();
         drop(wal);
 
@@ -286,7 +388,7 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
             Err(e) => EpochResult::Err(format!("WAL group commit sync error: {}", e)),
         };
         {
-            let mut state = self.state.lock().expect("state lock poisoned");
+            let mut state = self.lock_state();
             if let Some(mut epoch) = state.epoch.take() {
                 epoch.result = result_clone;
                 // Every thread that joined this epoch (all `waiters` except
@@ -321,7 +423,7 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
     /// race where the leader cleared the epoch before the waiter read
     /// (#5679).
     fn wait_for_leader(&self, gen: u64) -> SqlResult<()> {
-        let mut state = self.state.lock().expect("state lock poisoned");
+        let mut state = self.lock_state();
         loop {
             if let Some(epoch) = state.epoch.as_ref() {
                 if epoch.gen == gen {
@@ -427,6 +529,225 @@ mod tests {
         fn current_lsn(&self) -> u64 {
             self.inner.current_lsn()
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // WALGC-2 (#5686): leader-death livelock regression tests.
+    //
+    // The probe that opened #5686 promoted to permanent tests. Before the
+    // Drop-guard fix these tests are RED: a leader that dies in phase-3
+    // leaves `state.epoch` at `Some/Pending` forever — joined waiters block
+    // on an untimed `cv.wait` and every later caller joins the dead epoch
+    // instead of starting a new one. Nothing ever notifies them.
+    //
+    // Every test below bounds its observation with a channel timeout, so a
+    // livelock shows up as a test failure, never as a hung test binary.
+    // ---------------------------------------------------------------------
+
+    use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+    use std::sync::mpsc;
+    use std::time::Duration as StdDuration;
+
+    /// WAL whose `sync()` panics — the injected death of a leader inside
+    /// the fsync window (real triggers: storage-layer asserts, lock-poison
+    /// contagion). `arm_first_panic` mode lets a follow-up commit succeed so
+    /// the recovery path can be asserted too.
+    struct PanickingWal {
+        inner: MemoryWalManager,
+        panic_once: bool,
+        panicked: AtomicBool,
+    }
+
+    impl WalManager for PanickingWal {
+        fn append(&mut self, entry: crate::wal::WalEntry) -> SqlResult<()> {
+            self.inner.append(entry)
+        }
+        fn flush(&mut self) -> SqlResult<()> {
+            self.inner.flush()
+        }
+        fn sync(&mut self) -> SqlResult<()> {
+            if !self.panic_once || !self.panicked.swap(true, AtomicOrdering::SeqCst) {
+                panic!("injected leader panic inside fsync (WALGC-2 regression)");
+            }
+            self.inner.sync()
+        }
+        fn recover(&mut self) -> SqlResult<Vec<crate::wal::WalEntry>> {
+            self.inner.recover()
+        }
+        fn truncate_before(&mut self, lsn: u64) -> SqlResult<()> {
+            self.inner.truncate_before(lsn)
+        }
+        fn current_lsn(&self) -> u64 {
+            self.inner.current_lsn()
+        }
+    }
+
+    /// Run `commit_lsn` on a helper thread and report its outcome without
+    /// ever letting the harness hang: `Ok(v)` = returned value, `Err(())` =
+    /// timed out (the livelock signature).
+    fn probe_commit<F>(f: F, within: StdDuration) -> Option<String>
+    where
+        F: FnOnce() -> String + Send + 'static,
+    {
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            // `catch_unwind` keeps a panicking leader from killing the test
+            // binary; the point of the probe is WHERE the call ends up, not
+            // which flavour of failure it dies with.
+            let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+                .unwrap_or_else(|_| "PANICKED".to_string());
+            let _ = tx.send(out);
+        });
+        match rx.recv_timeout(within) {
+            Ok(s) => Some(s),
+            Err(_) => None,
+        }
+    }
+
+    /// WALGC-2 core: after the leader dies in fsync, the NEXT caller must
+    /// reach a terminal state (return value or panic) in bounded time — it
+    /// must not join a dead epoch and hang forever.
+    #[test]
+    fn walgc2_next_caller_after_leader_death_is_not_hung() {
+        let coord = Arc::new(GroupCommitCoordinator::with_limits(
+            PanickingWal {
+                inner: MemoryWalManager::new(),
+                panic_once: true,
+                panicked: AtomicBool::new(false),
+            },
+            8,
+            10_000,
+        ));
+        let c1 = coord.clone();
+        let leader = thread::spawn(move || c1.commit_lsn(1));
+        let _ = leader.join(); // leader panics in phase-3; epoch left Pending
+
+        let outcome = probe_commit(
+            move || {
+                let c2 = coord.clone();
+                match c2.commit_lsn(2) {
+                    Ok(()) => "Ok".to_string(),
+                    Err(e) => format!("Err({})", e),
+                }
+            },
+            StdDuration::from_secs(3),
+        );
+        assert!(
+            outcome.is_some(),
+            "WALGC-2 livelock: commit_lsn(2) after leader death never returned \
+             within 3s — it joined the dead epoch (#5686)"
+        );
+    }
+
+    /// A waiter that had ALREADY joined the dead epoch must learn its
+    /// outcome (an explicit Err) instead of blocking on the untimed
+    /// `cv.wait` in `wait_for_leader`.
+    #[test]
+    fn walgc2_joined_waiter_gets_err_when_leader_dies() {
+        // Gate controls when the parked leader is allowed to die, so the
+        // waiter is deterministically parked on the condvar when the panic
+        // unwinds through the leader.
+        let (gate_tx, gate_rx) = mpsc::channel::<()>();
+        struct GatedWal {
+            inner: MemoryWalManager,
+            gate: Mutex<Option<mpsc::Receiver<()>>>,
+        }
+        impl WalManager for GatedWal {
+            fn append(&mut self, e: crate::wal::WalEntry) -> SqlResult<()> {
+                self.inner.append(e)
+            }
+            fn flush(&mut self) -> SqlResult<()> {
+                self.inner.flush()
+            }
+            fn sync(&mut self) -> SqlResult<()> {
+                if let Some(rx) = self.gate.lock().unwrap().take() {
+                    let _ = rx.recv_timeout(StdDuration::from_secs(5));
+                }
+                panic!("injected leader death in fsync (WALGC-2 regression)");
+            }
+            fn recover(&mut self) -> SqlResult<Vec<crate::wal::WalEntry>> {
+                self.inner.recover()
+            }
+            fn truncate_before(&mut self, lsn: u64) -> SqlResult<()> {
+                self.inner.truncate_before(lsn)
+            }
+            fn current_lsn(&self) -> u64 {
+                self.inner.current_lsn()
+            }
+        }
+        let coord = Arc::new(GroupCommitCoordinator::with_limits(
+            GatedWal {
+                inner: MemoryWalManager::new(),
+                gate: Mutex::new(Some(gate_rx)),
+            },
+            8,
+            50_000,
+        ));
+
+        let c1 = coord.clone();
+        let leader = thread::spawn(move || c1.commit_lsn(1)); // parks inside sync()
+        thread::sleep(StdDuration::from_millis(120)); // leader is past phase-2
+
+        let (wtx, wrx) = mpsc::channel();
+        let c2 = coord.clone();
+        let waiter = thread::spawn(move || {
+            let out =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match c2.commit_lsn(2) {
+                    Ok(()) => "Ok".to_string(),
+                    Err(e) => format!("Err({})", e),
+                }))
+                .unwrap_or_else(|_| "PANICKED".to_string());
+            let _ = wtx.send(out);
+        });
+
+        let _ = gate_tx.send(()); // release the leader into its panic
+        let _ = leader.join();
+
+        let outcome = wrx
+            .recv_timeout(StdDuration::from_secs(3))
+            .expect("WALGC-2 livelock: joined waiter never woke after leader death (#5686)");
+        let _ = waiter.join();
+        assert!(
+            outcome.starts_with("Err") || outcome == "PANICKED",
+            "waiter must never see Ok from an epoch whose leader died; got {outcome}"
+        );
+    }
+
+    /// After the dead epoch is reaped, the coordinator must accept a new
+    /// epoch: a later commit with a healthy `sync()` returns Ok. Poisoned
+    /// locks from the dead leader must not turn one panic into permanent
+    /// coordinator death.
+    #[test]
+    fn walgc2_coordinator_recovers_with_new_epoch_after_leader_death() {
+        let coord = Arc::new(GroupCommitCoordinator::with_limits(
+            PanickingWal {
+                inner: MemoryWalManager::new(),
+                panic_once: true,
+                panicked: AtomicBool::new(false),
+            },
+            8,
+            10_000,
+        ));
+        let c1 = coord.clone();
+        let leader = thread::spawn(move || c1.commit_lsn(1));
+        let _ = leader.join(); // first sync panics; epoch must be reaped
+
+        let outcome = probe_commit(
+            move || {
+                let c2 = coord.clone();
+                match c2.commit_lsn(2) {
+                    // panic_once: this leader's sync() succeeds.
+                    Ok(()) => "Ok".to_string(),
+                    Err(e) => format!("Err({})", e),
+                }
+            },
+            StdDuration::from_secs(3),
+        );
+        assert_eq!(
+            outcome.as_deref(),
+            Some("Ok"),
+            "after leader death the coordinator must run a fresh epoch to success"
+        );
     }
 
     #[test]
