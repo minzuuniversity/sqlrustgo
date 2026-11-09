@@ -1,0 +1,10 @@
+
+running 53 tests
+................................................test g15_sf01_q01_q06 has been running for over 60 seconds
+test g15_sf01_q07_q10 has been running for over 60 seconds
+test g15_sf01_q11_q14 has been running for over 60 seconds
+test g15_sf01_q15 has been running for over 60 seconds
+test g15_tpch_sf01_wire_matches_baseline has been running for over 60 seconds
+.....
+test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 109.77s
+
