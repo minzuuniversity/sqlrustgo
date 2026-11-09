@@ -1,0 +1,6 @@
+== A) 基线:16 类必须全 0 ==
+   基线非零类 = 无
+== M) 注入三形态代表探针(manual contains / length>=1 / unwrap-on-Ok) ==
+   注入后回弹:{'manual `RangeInclusive::contains` implementation': 1, 'length comparison to one': 1, 'used `unwrap()` on `Ok` value': 2},点名 {'crates/storage/src/io_delay.rs'}
+== E) 恢复后复跑 ==
+OK: 判据有鉴别力(16 类基线 0;注入三形态各回弹 ≥1;恢复回 0 且逐字节一致)
