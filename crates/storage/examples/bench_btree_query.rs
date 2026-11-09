@@ -89,7 +89,6 @@ fn main() {
     println!("\n[3] COUNT(*) for all rows");
     let _scan_start = Instant::now();
     let total_count = table.rows.len();
-    let scan_time = scan_time;
     println!(
         "  Full Scan: {} rows in {:.4}ms",
         total_count,

@@ -129,14 +129,10 @@ mod tests {
         detector.remove_edges_for(TxId::new(1));
 
         assert!(!detector.waits_for.contains_key(&TxId::new(1)));
-        assert!(
-            detector.waits_for.get(&TxId::new(2)).is_none()
-                || !detector
-                    .waits_for
-                    .get(&TxId::new(2))
-                    .unwrap()
-                    .contains(&TxId::new(1))
-        );
+        assert!(!detector
+            .waits_for
+            .get(&TxId::new(2))
+            .is_some_and(|edges| edges.contains(&TxId::new(1))));
     }
 
     #[test]
