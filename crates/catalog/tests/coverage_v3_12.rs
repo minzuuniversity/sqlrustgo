@@ -97,10 +97,13 @@ fn cov_catalog_all_schemas_and_count() {
 #[test]
 fn cov_catalog_set_default_schema() {
     let mut c = Catalog::new("db");
-    // set_default_schema validates against existing schemas: "main" is the
-    // initial default of Catalog::new, so a rejection here is a real defect.
-    c.set_default_schema("main".to_string()).unwrap();
-    let _ = c.default_schema();
+    // `Catalog::new` registers exactly one schema — "public" (it builds
+    // `Database::new("public")`), and `set_default_schema` validates schema
+    // membership. "main" was never a registered schema: the old test dropped
+    // the Result and so silently swallowed the *correct* SchemaNotFound.
+    // Set the genuinely registered default instead — that must succeed.
+    c.set_default_schema("public".to_string()).unwrap();
+    assert_eq!(c.default_schema(), "public");
 }
 
 // --------------------------------------------------------------------------
