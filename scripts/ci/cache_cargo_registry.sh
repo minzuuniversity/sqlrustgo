@@ -52,30 +52,9 @@ if [ -z "$MODE" ]; then
     exit 2
 fi
 
-# The directory cargo actually uses. On the act_runner job containers this is
-# NOT `$CARGO_HOME` (which is /opt/cargo-home and holds only a vendored
-# config.toml) — cargo puts the registry under /root/.cargo.
-#
-# The choice has to be the **same** in `restore` and `save`, or the two
-# halves would work on different directories: `restore` runs before cargo
-# has populated anything, `save` runs after. Picking "the first candidate
-# that already has a registry/" would therefore resolve to a *different*
-# directory in the two modes — and on a workstation that difference is the
-# user's real ~/.cargo, which must never be written to by a CI helper.
-#
-# So the rule is fixed and explicit:
-#   * if the registry already exists under `$CARGO_HOME`, use `$CARGO_HOME`;
-#   * otherwise use the image default `/root/.cargo`, where cargo puts it
-#     when `CARGO_HOME` is not a usable cargo home.
-resolve_cargo_home() {
-    if [ -n "${CARGO_HOME:-}" ] && [ -d "${CARGO_HOME}/registry" ]; then
-        printf '%s' "$CARGO_HOME"
-        return 0
-    fi
-    printf '%s' "${CI_CARGO_HOME:-/root/.cargo}"
-}
-
-CARGO_BASE="$(resolve_cargo_home)"
+# Resolve the same Cargo home before and after Cargo creates registry/.
+# CI_CARGO_HOME is an explicit override for callers that need isolation.
+CARGO_BASE="${CI_CARGO_HOME:-${CARGO_HOME:-/root/.cargo}}"
 
 mkdir -p "$CACHE_VOLUME" 2>/dev/null || true
 
