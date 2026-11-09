@@ -9579,6 +9579,172 @@ impl Parser {
             let right = self.parse_additive_expression_until_close_with_depth(depth)?;
             left = Expression::BinaryOp(Box::new(left), op.to_string(), Box::new(right));
         }
+        // Operator branches mirrored from `parse_comparison_expression`.
+        // This clone used to recognise only the six comparison operators, so
+        // anything else (`IN (..)`, `BETWEEN`, `LIKE`, `IS NULL`, ...) ended
+        // the expression prematurely and the enclosing `parse_expression_in_parens`
+        // loop then failed with `Expected RParen in parens, depth=1,
+        // current=Some(In)` — the TPC-H Q19 wire failure of issue #5393.
+        // Each branch below is self-contained: the parens of an `IN (…)` list
+        // or subquery are opened and closed inside the branch, so the depth
+        // counter stays untouched.
+        if matches!(self.current(), Some(Token::In)) {
+            self.next();
+            self.expect(Token::LParen)?;
+            if matches!(self.current(), Some(Token::Select)) {
+                let subquery = self.parse_select_statement()?;
+                self.expect(Token::RParen)?;
+                return Ok(Expression::In(Box::new(left), Box::new(subquery)));
+            } else {
+                let mut values = Vec::new();
+                loop {
+                    values.push(self.parse_expression()?);
+                    if matches!(self.current(), Some(Token::Comma)) {
+                        self.next();
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(Token::RParen)?;
+                return Ok(Expression::InList(Box::new(left), values));
+            }
+        }
+
+        if matches!(self.current(), Some(Token::Not)) {
+            self.next();
+            if matches!(self.current(), Some(Token::In)) {
+                self.next();
+                self.expect(Token::LParen)?;
+                if matches!(self.current(), Some(Token::Select)) {
+                    let subquery = self.parse_select_statement()?;
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::NotIn(Box::new(left), Box::new(subquery)));
+                } else {
+                    let mut values = Vec::new();
+                    loop {
+                        values.push(self.parse_expression()?);
+                        if matches!(self.current(), Some(Token::Comma)) {
+                            self.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    self.expect(Token::RParen)?;
+                    return Ok(Expression::NotInList(Box::new(left), values));
+                }
+            }
+            if matches!(self.current(), Some(Token::Like))
+                || matches!(self.current(), Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "LIKE")
+            {
+                self.next();
+                let pattern = self.parse_primary_expression()?;
+                let escape = if matches!(self.current(), Some(Token::Escape)) {
+                    self.next();
+                    match self.current() {
+                        Some(Token::StringLiteral(s)) if !s.is_empty() => {
+                            let esc = s.chars().next().unwrap();
+                            self.next();
+                            Some(esc)
+                        }
+                        _ => return Err("Expected string literal after ESCAPE".to_string()),
+                    }
+                } else {
+                    None
+                };
+                return Ok(Expression::NotLike(
+                    Box::new(left),
+                    Box::new(pattern),
+                    escape,
+                ));
+            }
+            if matches!(self.current(), Some(Token::Between)) {
+                self.next();
+                let low = self.parse_additive_expression()?;
+                self.expect(Token::And)?;
+                let high = self.parse_additive_expression()?;
+                return Ok(Expression::NotBetween(
+                    Box::new(left),
+                    Box::new(low),
+                    Box::new(high),
+                ));
+            }
+            if matches!(self.current(), Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "REGEXP")
+            {
+                self.next();
+                let pattern = self.parse_primary_expression()?;
+                return Ok(Expression::NotRegexp(Box::new(left), Box::new(pattern)));
+            }
+            return Err("NOT must be followed by IN, LIKE, BETWEEN, or REGEXP".to_string());
+        }
+
+        // IS NULL / IS NOT NULL
+        if matches!(self.current(), Some(Token::Is)) {
+            self.next();
+            if matches!(self.current(), Some(Token::Not)) {
+                self.next();
+                if matches!(self.current(), Some(Token::Null)) {
+                    self.next();
+                    return Ok(Expression::IsNotNull(Box::new(left)));
+                }
+                return Err("IS NOT must be followed by NULL".to_string());
+            }
+            if matches!(self.current(), Some(Token::Null)) {
+                self.next();
+                return Ok(Expression::IsNull(Box::new(left)));
+            }
+            return Err("IS must be followed by NULL or NOT NULL".to_string());
+        }
+
+        // BETWEEN
+        if matches!(self.current(), Some(Token::Between)) {
+            self.next();
+            let low = self.parse_additive_expression()?;
+            self.expect(Token::And)?;
+            let high = self.parse_additive_expression()?;
+            return Ok(Expression::Between(
+                Box::new(left),
+                Box::new(low),
+                Box::new(high),
+            ));
+        }
+
+        // REGEXP / RLIKE (bare identifiers: the lexer keyword map lacks them)
+        if matches!(
+            self.current(),
+            Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "REGEXP"
+                || ident.to_uppercase() == "RLIKE"
+        ) {
+            self.next();
+            let pattern = self.parse_primary_expression()?;
+            return Ok(Expression::BinaryOp(
+                Box::new(left),
+                "REGEXP".to_string(),
+                Box::new(pattern),
+            ));
+        }
+
+        // LIKE (bare keyword arrives as Token::Identifier("LIKE"))
+        if matches!(self.current(), Some(Token::Like))
+            || matches!(self.current(), Some(Token::Identifier(ref ident)) if ident.to_uppercase() == "LIKE")
+        {
+            self.next();
+            let pattern = self.parse_additive_expression()?;
+            let escape = if matches!(self.current(), Some(Token::Escape)) {
+                self.next();
+                match self.current() {
+                    Some(Token::StringLiteral(s)) if !s.is_empty() => {
+                        let esc = s.chars().next().unwrap();
+                        self.next();
+                        Some(esc)
+                    }
+                    _ => return Err("Expected string literal after ESCAPE".to_string()),
+                }
+            } else {
+                None
+            };
+            return Ok(Expression::Like(Box::new(left), Box::new(pattern), escape));
+        }
+
         Ok(left)
     }
 
