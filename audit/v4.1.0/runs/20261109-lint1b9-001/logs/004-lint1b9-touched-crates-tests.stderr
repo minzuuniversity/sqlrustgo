@@ -1,0 +1,217 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b9/crates/storage)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b9/crates/transaction)
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b9/crates/optimizer)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b9/crates/security)
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b9/crates/planner)
+   Compiling sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b9/crates/catalog)
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b9/crates/executor)
+warning: use of deprecated method `sqlrustgo_transaction::savepoint::SavepointManager::rollback_to_noop`: Use rollback_to(name, on_undo) for physical rollback
+   --> crates/transaction/tests/coverage_v3_12.rs:188:8
+    |
+188 |     sp.rollback_to_noop("s1").unwrap();
+    |        ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `sqlrustgo_transaction::savepoint::SavepointManager::rollback_to_noop`: Use rollback_to(name, on_undo) for physical rollback
+   --> crates/transaction/tests/coverage_v3_12.rs:195:16
+    |
+195 |     assert!(sp.rollback_to_noop("nonexistent").is_err());
+    |                ^^^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-transaction` (test "coverage_v3_12") generated 2 warnings
+warning: field `modified` is never read
+   --> crates/optimizer/src/rules.rs:138:9
+    |
+137 |     struct TestPlan {
+    |            -------- field in this struct
+138 |         modified: bool,
+    |         ^^^^^^^^
+    |
+    = note: `TestPlan` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b9/crates/server)
+warning: `sqlrustgo-optimizer` (lib test) generated 1 warning
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/lint1b9)
+warning: method `keep` is never used
+   --> crates/storage/tests/fault_coordination.rs:151:12
+    |
+143 | impl Scratch {
+    | ------------ method in this implementation
+...
+151 |     pub fn keep(mut self) -> Self {
+    |            ^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `with_sync_mode` is never used
+   --> crates/storage/tests/fault_coordination.rs:329:12
+    |
+282 | impl Arm {
+    | -------- method in this implementation
+...
+329 |     pub fn with_sync_mode(mut self, m: &str) -> Self {
+    |            ^^^^^^^^^^^^^^
+
+warning: `sqlrustgo-storage` (test "crash_wal_index_b1") generated 2 warnings
+warning: `sqlrustgo-storage` (test "crash_commit_fsync_b1") generated 2 warnings (2 duplicates)
+warning: variable `count` is assigned to, but never used
+  --> crates/storage/examples/compare_sqlite.rs:35:9
+   |
+35 |     let mut count = 0;
+   |         ^^^^^^^^^
+   |
+   = note: consider using `_count` instead
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `count` is never read
+  --> crates/storage/examples/compare_sqlite.rs:39:17
+   |
+39 |                 count += 1;
+   |                 ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-storage` (example "compare_sqlite") generated 2 warnings
+warning: cannot test inner items
+   --> crates/storage/src/vtu_guard.rs:526:9
+    |
+526 |         #[test]
+    |         ^^^^^^^
+    |
+    = note: `#[warn(unnameable_test_items)]` on by default
+
+warning: function `test_vtu_guard_tx_state_via_set_current_tx_id` is never used
+   --> crates/storage/src/vtu_guard.rs:527:12
+    |
+527 |         fn test_vtu_guard_tx_state_via_set_current_tx_id() {
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-storage` (lib test) generated 2 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.88s
+     Running unittests src/lib.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/sqlrustgo_catalog-22630de1d00ecd83)
+     Running tests/coverage_v3_12.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/coverage_v3_12-9966b80f5d3a138f)
+     Running unittests src/lib.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/sqlrustgo_optimizer-2e948b884b998262)
+     Running tests/coverage_v3_12.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/coverage_v3_12-9285dea77fcb8f1a)
+     Running tests/histogram_e2e.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/histogram_e2e-3eb95a0dc37e6c2d)
+     Running tests/optimizer_chain_tests.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/optimizer_chain_tests-bb8936c06588f047)
+     Running tests/should_parallelize_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/should_parallelize_test-09f0761a35212dae)
+     Running tests/v400_multi_model.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v400_multi_model-ce6dc9fbe3c1b2e6)
+     Running unittests src/lib.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/sqlrustgo_storage-be7f4a078002e1cc)
+     Running tests/a06_failpoint_reachability.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/a06_failpoint_reachability-239ebf5831cd5b04)
+     Running tests/alter_column_default_5471.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/alter_column_default_5471-79c16e322efb5984)
+     Running tests/alter_column_default_case_5472.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/alter_column_default_case_5472-acd00a5952265e7d)
+     Running tests/assembly_forwarding_5199.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/assembly_forwarding_5199-d95bf59fe9c9c9da)
+     Running tests/b22_concurrent_flush_ab.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/b22_concurrent_flush_ab-794e8fb2bbefb90a)
+     Running tests/b22_flush_reroute_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/b22_flush_reroute_test-25422f48ffdca4a1)
+     Running tests/b22_flush_wall.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/b22_flush_wall-185610b1307e5c9c)
+     Running tests/bin_compactor_direct_v3_12.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/bin_compactor_direct_v3_12-520d16abc7565455)
+     Running tests/binary_storage_ddl_honesty_5601.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/binary_storage_ddl_honesty_5601-4e8154c6f9be69c5)
+     Running tests/binary_storage_direct_v3_12.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/binary_storage_direct_v3_12-d759c03f4379c108)
+     Running tests/binary_v2_direct_v3_12.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/binary_v2_direct_v3_12-a6572e806672aa33)
+     Running tests/blk2_lockfree_tx_concurrency_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/blk2_lockfree_tx_concurrency_test-6ff377544111884b)
+     Running tests/blk3_auto_increment_per_table_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/blk3_auto_increment_per_table_test-6e660875471718f4)
+     Running tests/blk3_autoinc_counter_contract_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/blk3_autoinc_counter_contract_test-a75949f1a5ac31dc)
+     Running tests/boxed_tx_scan_contract_5277.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/boxed_tx_scan_contract_5277-8ff037c650ae5028)
+     Running tests/bulk_load_quadraticity.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/bulk_load_quadraticity-05587c6bc7a55cb7)
+     Running tests/crash_commit_fsync_b1.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/crash_commit_fsync_b1-b47837bebabe206d)
+     Running tests/crash_wal_index_b1.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/crash_wal_index_b1-f13a0f7b90fb455a)
+     Running tests/drop_table_discards_buffered_rows_5525.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/drop_table_discards_buffered_rows_5525-e77b814e32e4a7ea)
+     Running tests/e2e_binlog_replication_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/e2e_binlog_replication_test-5baf387c869a32b1)
+     Running tests/e2e_crash_recovery_proof.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/e2e_crash_recovery_proof-322a02f54e008ab9)
+     Running tests/fault_coordination.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/fault_coordination-3c6e3cb9bda5fefa)
+     Running tests/file_scan_in_db_5057.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_scan_in_db_5057-00b1ff625a85fcc7)
+     Running tests/file_storage_change_log_5048.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_change_log_5048-953842186c109550)
+     Running tests/file_storage_concurrent_same_row_5059.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_concurrent_same_row_5059-e3a74e3fac22f458)
+     Running tests/file_storage_concurrent_workers_4994.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_concurrent_workers_4994-ec8f259d75269340)
+     Running tests/file_storage_db_isolation_5025.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_db_isolation_5025-5431afec5b4a9b15)
+     Running tests/file_storage_db_param_5057.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_db_param_5057-c0f1b69e69ac6d2a)
+     Running tests/file_storage_ddl_column_case_5509.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_ddl_column_case_5509-1d146856d5f8de90)
+     Running tests/file_storage_ddl_db_param_5057.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_ddl_db_param_5057-b6dca5ddb65ce046)
+     Running tests/file_storage_direct_v3_12.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_direct_v3_12-07de1e5ecc11c056)
+     Running tests/file_storage_dml_db_param_5057.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_dml_db_param_5057-8e7f4b91252a12f5)
+     Running tests/file_storage_dml_visibility_5060.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_dml_visibility_5060-412a389719979fb6)
+     Running tests/file_storage_flush_scoped_5057.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_flush_scoped_5057-21f7569b3e46c9a7)
+     Running tests/file_storage_wal_5055.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/file_storage_wal_5055-f46b075d9f0968af)
+     Running tests/foreign_key_redesign_tests.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/foreign_key_redesign_tests-6b87c5b2370496b4)
+     Running tests/gc_pending_version_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/gc_pending_version_test-6f1245deea265542)
+     Running tests/group_commit_integration.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/group_commit_integration-c4d497b7f519af2c)
+     Running tests/hot_read_path_clone_guard_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/hot_read_path_clone_guard_test-4f007941ff9aad49)
+     Running tests/index_and_table_survive_restart_5025.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/index_and_table_survive_restart_5025-8a98499d5109df17)
+     Running tests/index_covers_insert_buffer_5209.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/index_covers_insert_buffer_5209-ed7b1ae9b4c1a5ba)
+     Running tests/integration_buffer_pool.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/integration_buffer_pool-2530964ef4608640)
+     Running tests/integration_wal.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/integration_wal-ca67c81af88618b3)
+     Running tests/issue_4848_alter_rename_column_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/issue_4848_alter_rename_column_test-534232a901af101c)
+     Running tests/issue_5012_mvcc_gc_concurrency_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/issue_5012_mvcc_gc_concurrency_test-60e4934a249617e8)
+     Running tests/lockfree_forwarding_4912.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/lockfree_forwarding_4912-5b680b229b2c72be)
+     Running tests/measure_commit_clone_4948.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/measure_commit_clone_4948-5688f7dae9af0c3c)
+     Running tests/measure_commit_memory_4948.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/measure_commit_memory_4948-a89a8542b97d57d3)
+     Running tests/measure_recovery_scale_p0_08.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/measure_recovery_scale_p0_08-376f176ff9825a5d)
+     Running tests/memory_in_db_5057.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/memory_in_db_5057-bceeafbc8bbada1c)
+     Running tests/memory_in_db_full_5057.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/memory_in_db_full_5057-12d9f5882dcacb97)
+     Running tests/memory_list_views_5433.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/memory_list_views_5433-5cb8c3554175cfd2)
+     Running tests/memory_set_column_default_4154.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/memory_set_column_default_4154-21d7e9f5859000ac)
+     Running tests/multi_db_crash_recovery_5192.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/multi_db_crash_recovery_5192-b61ad93bec661db2)
+     Running tests/mvcc_chain_identity_regression_5281.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/mvcc_chain_identity_regression_5281-7fd48b11af2820bc)
+     Running tests/mvcc_row_identity_lifecycle_5277.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/mvcc_row_identity_lifecycle_5277-6a96c73ffbe9eb17)
+     Running tests/no_namespace_db_refusal_5266.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/no_namespace_db_refusal_5266-dd60b3f959d3d117)
+     Running tests/odku_update_visibility_4995.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/odku_update_visibility_4995-fbc2a2cfe2e75b97)
+     Running tests/parallel_scan_bench_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/parallel_scan_bench_test-6a81fea1df88838f)
+     Running tests/parallel_scan_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/parallel_scan_test-4fccc4978eff2adb)
+     Running tests/phase_c_1_race.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/phase_c_1_race-35e2093f06b366a6)
+     Running tests/pk_rebuild_scoped_5592.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/pk_rebuild_scoped_5592-58891c8b9e5100d5)
+     Running tests/probe_5025_conn_db_race.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/probe_5025_conn_db_race-6e8cf176e67bd011)
+     Running tests/probe_5057_flush_cross_db.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/probe_5057_flush_cross_db-0242d700bc28c44d)
+     Running tests/production_chain_forwarding_5199.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/production_chain_forwarding_5199-495312a234624678)
+     Running tests/ref_to_mut_escape_hatch_guard_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/ref_to_mut_escape_hatch_guard_test-bbfbc7b0c3f93d87)
+     Running tests/repro_5250_autocommit_commit.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/repro_5250_autocommit_commit-01fd3ce9ff8842c6)
+     Running tests/repro_5250_filestorage_with_wal.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/repro_5250_filestorage_with_wal-3ebb24cd562acc37)
+     Running tests/repro_5250_prod_stack.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/repro_5250_prod_stack-97e492244893f99b)
+     Running tests/repro_5250_via_engine.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/repro_5250_via_engine-a3a06e65fcbe0d2d)
+     Running tests/repro_5317_shared_handle.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/repro_5317_shared_handle-0c58342551431bba)
+     Running tests/rollback_isolation_5480.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/rollback_isolation_5480-2d6f41d2eb88d8aa)
+     Running tests/rollback_no_stack_overflow_5480.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/rollback_no_stack_overflow_5480-b59f59a9d846e399)
+     Running tests/rollback_uncommitted_insert_5313.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/rollback_uncommitted_insert_5313-3386771667e30062)
+     Running tests/scan_with_filter_contract_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/scan_with_filter_contract_test-2497cff6f4f5cfc7)
+     Running tests/scope_coverage_matrix.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/scope_coverage_matrix-105032f27f350339)
+     Running tests/semisync_commit_gate_4937.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/semisync_commit_gate_4937-ff82e2d147a646e8)
+     Running tests/storage_db_namespace_contract.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/storage_db_namespace_contract-9cdbea11f7f4a6b1)
+     Running tests/storage_e2e_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/storage_e2e_test-2989c1fd2b041366)
+     Running tests/storage_integration_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/storage_integration_test-e3947984d01350f4)
+     Running tests/tx_isolation_and_escape_hatch_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/tx_isolation_and_escape_hatch_test-98ddbbe774d0b05e)
+     Running tests/v312_32_exec_engine_tests.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v312_32_exec_engine_tests-894f10a716cc07f3)
+     Running tests/v312_33_page_api_tests.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v312_33_page_api_tests-38c884a4ffc63b51)
+     Running tests/v312_95_v3_file_storage_list_indexes_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v312_95_v3_file_storage_list_indexes_test-12559c49067e1964)
+     Running tests/v400_cross_model_flow.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v400_cross_model_flow-5cdccd37322948cd)
+     Running tests/v400_scan_with_filter.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v400_scan_with_filter-a3e48bd461e3f7c8)
+     Running tests/v400_unified_backup.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v400_unified_backup-241bc26f2a500f18)
+     Running tests/v400_vector_wal.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v400_vector_wal-b5844dc0cd3b3e55)
+     Running tests/v400_wal_entry_type_extension.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v400_wal_entry_type_extension-81d6eeebe0334cc8)
+     Running tests/vtu_ir_pipeline_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/vtu_ir_pipeline_test-1d87d29cc437cd1f)
+     Running tests/vtu_ir_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/vtu_ir_test-1033fe14fea0f33b)
+     Running tests/wal_mod_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/wal_mod_test-0a87a4c29264d933)
+     Running tests/wal_recovery_dedup_p0_08.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/wal_recovery_dedup_p0_08-ddd3e932edb3a1a1)
+     Running tests/wal_scan_pk_forwarding_5168.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/wal_scan_pk_forwarding_5168-d932052764550a93)
+     Running tests/wal_storage_direct_v3_12.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/wal_storage_direct_v3_12-e0e0b9dee1d4fe0e)
+     Running tests/wal_table_name_5055.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/wal_table_name_5055-3af43df05fb84400)
+     Running tests/wp_f_legacy.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/wp_f_legacy-f4a2e6b199a26a61)
+     Running tests/wrapper_scan_db_scope_5192.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/wrapper_scan_db_scope_5192-079f9108b5fcb196)
+     Running tests/write_path_scaling_5181.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/write_path_scaling_5181-44c35d4cdd186f5d)
+     Running unittests src/lib.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/sqlrustgo_transaction-98639b25904a58b8)
+     Running tests/audit_mutation_counters.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/audit_mutation_counters-91d7ad05c4f26e6c)
+     Running tests/coverage_v3_12.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/coverage_v3_12-f510f6e5ba4d7f12)
+     Running tests/deadlock_injection_test.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/deadlock_injection_test-fe2c799b7937d874)
+     Running tests/lock_p0_counterexamples.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/lock_p0_counterexamples-f75728d06b11acc1)
+     Running tests/mvcc_p0_counterexamples.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/mvcc_p0_counterexamples-9cc7a65cdf875b41)
+     Running tests/ssi_integration.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/ssi_integration-b7246fbc5c6a5380)
+     Running tests/v400_cross_model.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v400_cross_model-090de642f126ea58)
+     Running tests/v400_cross_model_tx.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/v400_cross_model_tx-06aa55dd4eb5538b)
+     Running tests/wp_e_legacy.rs (/Volumes/workspace/dev/lint1b9target/debug/deps/wp_e_legacy-8745247639e52dc7)
+   Doc-tests sqlrustgo_catalog
+   Doc-tests sqlrustgo_optimizer
+   Doc-tests sqlrustgo_storage
+   Doc-tests sqlrustgo_transaction
