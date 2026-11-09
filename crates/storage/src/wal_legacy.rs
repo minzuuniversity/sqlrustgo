@@ -2142,8 +2142,6 @@ mod tests {
 
     #[test]
     fn test_wal_recovery_with_corrupted_length_prefix() {
-        
-        
         use std::io::Write;
 
         let dir = tempfile::tempdir().unwrap();

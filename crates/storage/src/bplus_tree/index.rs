@@ -2477,7 +2477,6 @@ mod composite_index_tests {
 
 #[cfg(test)]
 mod covering_index_tests {
-    
 
     #[test]
     fn test_covering_index_check() {
