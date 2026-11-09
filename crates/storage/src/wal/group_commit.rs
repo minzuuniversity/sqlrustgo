@@ -30,6 +30,10 @@
 //!
 //! - If the leader panics between enqueue and fsync, the next caller's
 //!   leader path will perform a new fsync, so the WAL remains durable.
+//! - A closed epoch's result stays readable by generation until every
+//!   waiter that joined it has picked the result up, so a joined waiter
+//!   always learns its outcome even if the leader closes the epoch first
+//!   (#5679 lost-wakeup fix).
 //! - There is no priority inversion: a caller that times out becomes its
 //!   own leader and force-fsyncs, so no thread is starved forever.
 //!
@@ -42,6 +46,7 @@
 //!   `max_batch - 1` transactions on a crash. For stricter durability
 //!   use `Every`.
 
+use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -58,18 +63,29 @@ enum EpochResult {
 }
 
 struct Epoch {
+    /// Generation id, assigned by the coordinator when the epoch is created.
+    /// Joiners capture it at join time and use it to find their result even
+    /// after the leader has closed the epoch (#5679 lost-wakeup fix).
+    gen: u64,
     /// LSNs that are waiting to be made durable.
     waiters: Vec<u64>,
-    /// Result of the leader's fsync. `Pending` until the leader
-    /// records the outcome.
+    /// Result of the leader's fsync. `Pending` until the leader records the
+    /// outcome.
     result: EpochResult,
+    /// Joined waiters that have not yet picked up `result`. The leader
+    /// records this at close time: every thread that pushed its LSN into
+    /// `waiters` has an entitlement to exactly one read, and the closed
+    /// slot is only reclaimed once all entitlements are consumed.
+    outstanding: usize,
 }
 
 impl Epoch {
-    fn new(first_lsn: u64) -> Self {
+    fn new(first_lsn: u64, gen: u64) -> Self {
         Self {
+            gen,
             waiters: vec![first_lsn],
             result: EpochResult::Pending,
+            outstanding: 0,
         }
     }
 }
@@ -77,9 +93,15 @@ impl Epoch {
 /// Coordinator state. `Mutex` protects all fields; `Condvar` wakes waiters
 /// when the leader finishes.
 struct CoordinatorState {
-    /// The current epoch. Replaced with a fresh one after the leader
-    /// records the result. `None` means no epoch in progress.
+    /// The current epoch. `None` means no epoch in progress.
     epoch: Option<Epoch>,
+    /// Closed epochs still owed reads by joined waiters, keyed by generation.
+    /// A closed slot stays here until every waiter that joined that epoch has
+    /// picked up the result — the fix for the lost-wakeup race where the
+    /// leader cleared the epoch before the waiter could read (#5679).
+    closed: HashMap<u64, Epoch>,
+    /// Monotonic epoch generation counter.
+    gen: u64,
     /// Wall-clock instant of when the current epoch started (used to
     /// enforce the time bound).
     started_at: Option<Instant>,
@@ -120,6 +142,8 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
             inner: Arc::new(Mutex::new(wal)),
             state: Mutex::new(CoordinatorState {
                 epoch: None,
+                closed: HashMap::new(),
+                gen: 0,
                 started_at: None,
             }),
             cv: Condvar::new(),
@@ -144,6 +168,8 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
             inner,
             state: Mutex::new(CoordinatorState {
                 epoch: None,
+                closed: HashMap::new(),
+                gen: 0,
                 started_at: None,
             }),
             cv: Condvar::new(),
@@ -174,32 +200,37 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
     /// Returns `Ok(())` once the WAL up to (and including) the caller's
     /// LSN is durable. Returns the leader's error if `sync()` failed.
     pub fn commit_lsn(&self, lsn: u64) -> SqlResult<()> {
-        // Phase 1: enqueue and decide leader / waiter.
-        let is_leader = {
+        // Phase 1: enqueue and decide leader / waiter. `my_gen` pins the
+        // epoch this caller joined; the waiter path reads its result by gen,
+        // whether the epoch is still live or already closed (#5679).
+        let (is_leader, my_gen) = {
             let mut state = self.state.lock().expect("state lock poisoned");
 
             if state.epoch.is_none() {
                 // No epoch in progress: become leader.
-                state.epoch = Some(Epoch::new(lsn));
+                state.gen += 1;
+                let gen = state.gen;
+                state.epoch = Some(Epoch::new(lsn, gen));
                 state.started_at = Some(Instant::now());
-                true
+                (true, gen)
             } else {
                 // Add our LSN to the current epoch and become a waiter.
                 let epoch = state.epoch.as_mut().expect("epoch set");
+                let gen = epoch.gen;
                 epoch.waiters.push(lsn);
                 // If the epoch is now full, wake the leader so it can
                 // proceed without waiting for the time bound.
                 if epoch.waiters.len() >= self.max_batch {
                     self.cv.notify_all();
                 }
-                false
+                (false, gen)
             }
         };
 
         if is_leader {
             self.leader_loop(lsn)
         } else {
-            self.wait_for_leader()
+            self.wait_for_leader(my_gen)
         }
     }
 
@@ -256,11 +287,18 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
         };
         {
             let mut state = self.state.lock().expect("state lock poisoned");
-            if let Some(epoch) = state.epoch.as_mut() {
-                epoch.result = result_clone.clone();
+            if let Some(mut epoch) = state.epoch.take() {
+                epoch.result = result_clone;
+                // Every thread that joined this epoch (all `waiters` except
+                // the leader itself) is entitled to exactly one read of the
+                // result. Park the closed epoch where the waiter path can
+                // still find it by gen; it is reclaimed only once every
+                // entitlement is consumed (#5679 lost-wakeup fix).
+                epoch.outstanding = epoch.waiters.len().saturating_sub(1);
+                if epoch.outstanding > 0 {
+                    state.closed.insert(epoch.gen, epoch);
+                }
             }
-            // Clear the epoch: the next caller will start a fresh one.
-            state.epoch = None;
             state.started_at = None;
         }
         self.cv.notify_all();
@@ -272,23 +310,21 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
         }
     }
 
-    /// Waiter-side: wait until the leader records the result.
-    fn wait_for_leader(&self) -> SqlResult<()> {
+    /// Waiter-side: wait until the leader records the result, then pick the
+    /// result up for generation `gen` (captured at join time).
+    ///
+    /// The result is found either in the live epoch (leader has not closed
+    /// yet) or in the `closed` slot (leader closed the epoch while this
+    /// waiter was parked on the Condvar or between steps). The closed slot
+    /// is only reclaimed once every joined waiter has picked up the result,
+    /// so a joined waiter can always find it — this closes the lost-wakeup
+    /// race where the leader cleared the epoch before the waiter read
+    /// (#5679).
+    fn wait_for_leader(&self, gen: u64) -> SqlResult<()> {
         let mut state = self.state.lock().expect("state lock poisoned");
         loop {
-            match &state.epoch {
-                None => {
-                    // Epoch is gone — but the leader has already moved
-                    // on. This is a "lost wakeup" if we just enqueued
-                    // but the leader cleared the epoch before we could
-                    // read its result. Since we never read the result,
-                    // we don't know if the fsync succeeded. As a safety
-                    // measure, return the conservative error.
-                    return Err(crate::engine::SqlError::ExecutionError(
-                        "WAL group commit epoch disappeared before waiter could read result".into(),
-                    ));
-                }
-                Some(epoch) => {
+            if let Some(epoch) = state.epoch.as_ref() {
+                if epoch.gen == gen {
                     match &epoch.result {
                         EpochResult::Pending => {
                             // Still waiting — sleep on the cv. The
@@ -297,6 +333,7 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
                             state = self.cv.wait(state).map_err(|e| {
                                 crate::engine::SqlError::ExecutionError(format!("cv wait: {}", e))
                             })?;
+                            continue;
                         }
                         EpochResult::Ok => return Ok(()),
                         EpochResult::Err(msg) => {
@@ -304,7 +341,37 @@ impl<W: WalManager + 'static> GroupCommitCoordinator<W> {
                         }
                     }
                 }
+                // Live epoch belongs to a newer generation: fall through to
+                // the closed-slot lookup for our own gen.
             }
+            if let Some(epoch) = state.closed.get_mut(&gen) {
+                let recorded = !matches!(epoch.result, EpochResult::Pending);
+                let outcome = match &epoch.result {
+                    EpochResult::Ok => Ok(()),
+                    EpochResult::Err(msg) => {
+                        Err(crate::engine::SqlError::ExecutionError(msg.clone()))
+                    }
+                    EpochResult::Pending => Err(crate::engine::SqlError::ExecutionError(
+                        "WAL group commit closed epoch unexpectedly pending".into(),
+                    )),
+                };
+                if recorded {
+                    epoch.outstanding = epoch.outstanding.saturating_sub(1);
+                }
+                let prune = state.closed.get(&gen).is_some_and(|e| e.outstanding == 0);
+                if prune {
+                    state.closed.remove(&gen);
+                }
+                return outcome;
+            }
+            // Defensive fallback — unreachable under the gen/outstanding
+            // protocol: every joined waiter is counted in `outstanding`, and
+            // a closed slot is reclaimed only after all counted readers have
+            // read. Reaching here means state was corrupted beyond the
+            // protocol's assumptions; keep the legacy conservative behavior.
+            return Err(crate::engine::SqlError::ExecutionError(
+                "WAL group commit epoch disappeared before waiter could read result".into(),
+            ));
         }
     }
 
