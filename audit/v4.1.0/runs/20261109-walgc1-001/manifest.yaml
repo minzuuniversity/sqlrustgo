@@ -1,0 +1,153 @@
+schema_version: 1
+run_id: 20261109-walgc1-001
+source_agent: omp (macmini)
+frozen_commit: 544df3edeb72ae3ec38f81e11bbf7b59b9e2e5f8
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/walgc1target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: walgc1-clippy-inventory
+  name: 批次 8 后复测 clippy 欠账分类计数（与批次 1–8 同一命令口径）。批次 8 归档 run 20261108-lint1b8-002 实测基线 88 条诊断行 ⇒ WALGC-1
+    修复只动并发状态机，预期该类清单一字不变（88→88，任何变化都要逐类对质）
+  cmd: cargo clippy --workspace --all-features --all-targets --keep-going
+  cwd: .
+  timeout_sec: 5400
+- id: walgc1-mutation-fixture
+  name: 批次 8 计数判据夹具重放（group_commit.rs 的 mod tests 探针注入/回弹/恢复 0→1→0；本线改了同文件的非测试区，夹具判据必须仍成立）
+  cmd: python3 scripts/gate/test_lint1b8_mutation_fixtures.py
+  cwd: .
+  timeout_sec: 3000
+- id: walgc1-crash-server-build
+  name: armed 构建第一步：带 fault-injection 的 server 二进制（崩溃套件按 <repo>/target/debug/sqlrustgo-mysql-server 找它；本
+    run 的 target 是指向 walgc1target 的符号链接）
+  cmd: cargo build -p sqlrustgo-mysql-server --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: walgc1-touched-crates-tests
+  name: 回归主判据：group_commit 三条并发测试（concurrent_callers_coalesce/max_batch_forces_sync/large_batch_completes）在
+    20261108-lint1b8-002 里 3/3 确定性红，修复后 storage+catalog 全套必须转绿 ⇒ 跑两个被改 crate 的全部测试
+  cmd: cargo test -p sqlrustgo-storage -p sqlrustgo-catalog
+  cwd: .
+  timeout_sec: 5400
+- id: walgc1-crash-wal-index-armed
+  name: 崩溃套件（armed）：WAL 语义改动必须不破坏崩溃一致性（与 touched-crates-tests 里的同一测试互为对照）
+  cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_wal_index_b1
+  cwd: .
+  timeout_sec: 3600
+- id: walgc1-check-all-targets
+  name: 全 workspace 全目标编译校核（0 error；本线改的是 storage WAL 状态机与构造器签名内部，check --all-targets 覆盖全部使用方）
+  cmd: cargo check --workspace --all-targets --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: walgc1-gate-anti-ignore
+  name: '忽略台账（本线不新增 ignore：total_allowed 应仍 136 ≤ 150、ACTIVE 仍 82 ≤ 92，且与树内真实 #[ignore] 属性数一致）'
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: walgc1-gate-registry
+  name: 门禁登记表一致性（分母仍 168：本线不新增 check_* 门禁）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+- id: walgc1-gate-drift-not-pass
+  name: DRIFT 门禁本体（前几批改后的判据不得回退）
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  cwd: .
+  timeout_sec: 900
+- id: walgc1-gate-docs-pointer-paths
+  name: 文档指针路径门禁（看板 WALGC-1 行与证据文字新增的反引号路径不得引入断链）
+  cmd: bash scripts/gate/check_docs_pointer_paths.sh
+  cwd: .
+  timeout_sec: 900
+results:
+- id: walgc1-clippy-inventory
+  started_at: '2026-11-09T07:21:48Z'
+  finished_at: '2026-11-09T07:22:29Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 260f8c39df5f321cde8d5169c4e86042336ddabb40949b90b2dd6367ff3af0d5
+  stdout_path: logs/001-walgc1-clippy-inventory.stdout
+  stderr_path: logs/001-walgc1-clippy-inventory.stderr
+- id: walgc1-mutation-fixture
+  started_at: '2026-11-09T07:22:29Z'
+  finished_at: '2026-11-09T07:22:44Z'
+  exit_code: 0
+  stdout_sha256: ecbe39eec45e3b9fb6b07f444efe934e8e76521c9bedace0c9b47c7ec5bbfe23
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-walgc1-mutation-fixture.stdout
+  stderr_path: logs/002-walgc1-mutation-fixture.stderr
+- id: walgc1-crash-server-build
+  started_at: '2026-11-09T07:22:44Z'
+  finished_at: '2026-11-09T07:22:49Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 2da22911bcace29d09f319d0b98832a17c9c9c7e4ba4dc322b6750b32d1ea8dc
+  stdout_path: logs/003-walgc1-crash-server-build.stdout
+  stderr_path: logs/003-walgc1-crash-server-build.stderr
+- id: walgc1-touched-crates-tests
+  started_at: '2026-11-09T07:22:49Z'
+  finished_at: '2026-11-09T07:23:54Z'
+  exit_code: 0
+  stdout_sha256: 503a26f1910dab82bf6b7380bd9eb33c2077cdf6bd267b80c8b04fb913acf002
+  stderr_sha256: 0e6e60568d8ce0ede97a1b5384fbbc128a2b4f8a838a8ca0931c20b3a4781a9d
+  stdout_path: logs/004-walgc1-touched-crates-tests.stdout
+  stderr_path: logs/004-walgc1-touched-crates-tests.stderr
+- id: walgc1-crash-wal-index-armed
+  started_at: '2026-11-09T07:23:54Z'
+  finished_at: '2026-11-09T07:23:59Z'
+  exit_code: 0
+  stdout_sha256: f60d6f11bb0896389f0734244f4e0302e10a8852696ea74c157b9eb8e4f4e91e
+  stderr_sha256: a3369d1b3fab9c862699c7a7a9e7ad8887e295ffe6690972a092c1c8098b92e3
+  stdout_path: logs/005-walgc1-crash-wal-index-armed.stdout
+  stderr_path: logs/005-walgc1-crash-wal-index-armed.stderr
+- id: walgc1-check-all-targets
+  started_at: '2026-11-09T07:23:59Z'
+  finished_at: '2026-11-09T07:24:29Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 60df0fef78d84841d1c8cba3a089fbfaad8c2d7b6912e8c12b34dbb674a8c245
+  stdout_path: logs/006-walgc1-check-all-targets.stdout
+  stderr_path: logs/006-walgc1-check-all-targets.stderr
+- id: walgc1-gate-anti-ignore
+  started_at: '2026-11-09T07:24:29Z'
+  finished_at: '2026-11-09T07:24:29Z'
+  exit_code: 0
+  stdout_sha256: fe823fd2b89ecbe830ca5bd204494352ee4a176c427b29f7062165ce56ed32ac
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-walgc1-gate-anti-ignore.stdout
+  stderr_path: logs/007-walgc1-gate-anti-ignore.stderr
+- id: walgc1-gate-registry
+  started_at: '2026-11-09T07:24:29Z'
+  finished_at: '2026-11-09T07:24:29Z'
+  exit_code: 0
+  stdout_sha256: 9e60400f3cf1af42896f01ec2ea807d9579125af204456c829e1da0020c068aa
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-walgc1-gate-registry.stdout
+  stderr_path: logs/008-walgc1-gate-registry.stderr
+- id: walgc1-gate-drift-not-pass
+  started_at: '2026-11-09T07:24:29Z'
+  finished_at: '2026-11-09T07:24:31Z'
+  exit_code: 0
+  stdout_sha256: cb7f9a24fb6eacc9d12dc6f85bd786dd047b613b243b318bdb5f1993bbf86e44
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-walgc1-gate-drift-not-pass.stdout
+  stderr_path: logs/009-walgc1-gate-drift-not-pass.stderr
+- id: walgc1-gate-docs-pointer-paths
+  started_at: '2026-11-09T07:24:31Z'
+  finished_at: '2026-11-09T07:24:31Z'
+  exit_code: 0
+  stdout_sha256: 85d9fb96fc7df12c51467ed942adeb71e832faa9839b5d55946bd0a9c91f750e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-walgc1-gate-docs-pointer-paths.stdout
+  stderr_path: logs/010-walgc1-gate-docs-pointer-paths.stderr
+evidence_hash: sha256:88f84eba525bb91f481f01e3c021a9d2d290da20053e22ffdbaa0fdefc8861e2
+completed_at: '2026-11-09T07:24:31Z'

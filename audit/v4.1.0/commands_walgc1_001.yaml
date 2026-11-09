@@ -1,0 +1,50 @@
+- id: walgc1-clippy-inventory
+  name: "批次 8 后复测 clippy 欠账分类计数（与批次 1–8 同一命令口径）。批次 8 归档 run 20261108-lint1b8-002 实测基线 88 条诊断行 ⇒ WALGC-1 修复只动并发状态机，预期该类清单一字不变（88→88，任何变化都要逐类对质）"
+  cmd: cargo clippy --workspace --all-features --all-targets --keep-going
+  cwd: .
+  timeout_sec: 5400
+- id: walgc1-mutation-fixture
+  name: "批次 8 计数判据夹具重放（group_commit.rs 的 mod tests 探针注入/回弹/恢复 0→1→0；本线改了同文件的非测试区，夹具判据必须仍成立）"
+  cmd: python3 scripts/gate/test_lint1b8_mutation_fixtures.py
+  cwd: .
+  timeout_sec: 3000
+- id: walgc1-crash-server-build
+  name: "armed 构建第一步：带 fault-injection 的 server 二进制（崩溃套件按 <repo>/target/debug/sqlrustgo-mysql-server 找它；本 run 的 target 是指向 walgc1target 的符号链接）"
+  cmd: cargo build -p sqlrustgo-mysql-server --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: walgc1-touched-crates-tests
+  name: "回归主判据：group_commit 三条并发测试（concurrent_callers_coalesce/max_batch_forces_sync/large_batch_completes）在 20261108-lint1b8-002 里 3/3 确定性红，修复后 storage+catalog 全套必须转绿 ⇒ 跑两个被改 crate 的全部测试"
+  cmd: cargo test -p sqlrustgo-storage -p sqlrustgo-catalog
+  cwd: .
+  timeout_sec: 5400
+- id: walgc1-crash-wal-index-armed
+  name: "崩溃套件（armed）：WAL 语义改动必须不破坏崩溃一致性（与 touched-crates-tests 里的同一测试互为对照）"
+  cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_wal_index_b1
+  cwd: .
+  timeout_sec: 3600
+- id: walgc1-check-all-targets
+  name: "全 workspace 全目标编译校核（0 error；本线改的是 storage WAL 状态机与构造器签名内部，check --all-targets 覆盖全部使用方）"
+  cmd: cargo check --workspace --all-targets --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: walgc1-gate-anti-ignore
+  name: "忽略台账（本线不新增 ignore：total_allowed 应仍 136 ≤ 150、ACTIVE 仍 82 ≤ 92，且与树内真实 #[ignore] 属性数一致）"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: walgc1-gate-registry
+  name: "门禁登记表一致性（分母仍 168：本线不新增 check_* 门禁）"
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+- id: walgc1-gate-drift-not-pass
+  name: "DRIFT 门禁本体（前几批改后的判据不得回退）"
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  cwd: .
+  timeout_sec: 900
+- id: walgc1-gate-docs-pointer-paths
+  name: "文档指针路径门禁（看板 WALGC-1 行与证据文字新增的反引号路径不得引入断链）"
+  cmd: bash scripts/gate/check_docs_pointer_paths.sh
+  cwd: .
+  timeout_sec: 900
