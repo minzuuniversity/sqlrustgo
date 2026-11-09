@@ -1,0 +1,65 @@
+# 20261109-alpha-gates-002 —— ALPHA 清单(10 条,原文口径一字不变)在冻结尖端 c06209fd11 的重跑。
+# 与 20261107-alpha-gates-001 的差异只有两处口径披露:
+#   1) target 指向专用 CARGO_TARGET_DIR(ab1target,软链),排除「共享 target 重建期测量假红」同源三类;
+#   2) 两条 124 超时臂(check_alpha_v410 / g1_tpch)timeout 1800→3600 —— 上轮 124 发生在并发 cargo
+#      风暴 + target 重建窗口,加长窗口是给判据公平机会,不是放松判据(命令一字不动)。
+
+- id: alpha-gate-check-alpha-v410
+  name: "ALPHA 清单门禁(原文):scripts/gate/check_alpha_v410.sh;上轮 124 超时,本轮专用 target + 3600s"
+  cmd: bash scripts/gate/check_alpha_v410.sh
+  cwd: .
+  timeout_sec: 3600
+
+- id: alpha-gate-arch-invariants
+  name: "ALPHA 清单门禁(原文):scripts/gate/check_arch_invariants.sh"
+  cmd: bash scripts/gate/check_arch_invariants.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: alpha-gate-arch3-no-bypass
+  name: "ALPHA 清单门禁(原文):scripts/gate/check_arch3_no_bypass.sh"
+  cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: alpha-gate-coverage-v312
+  name: "ALPHA 清单门禁(原文):scripts/gate/check_coverage_v312.sh(阈值取 SSOT COVERAGE_MIN_ALPHA);上轮红为共享 target 重建期假红,本轮专用暖 target 复测"
+  cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  timeout_sec: 5400
+
+- id: alpha-gate-sql-corpus
+  name: "ALPHA 清单门禁(原文):scripts/gate/check_sql_corpus_gate.sh"
+  cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  timeout_sec: 1800
+
+- id: alpha-gate-anti-ignore
+  name: "ALPHA 清单门禁(原文):scripts/gate/check_anti_ignore_gate.sh"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+
+- id: alpha-gate-g1-tpch-baseline
+  name: "ALPHA 清单门禁(原文):scripts/gate/check_g1_tpch_baseline.sh;上轮 124 超时,本轮专用 target + 3600s"
+  cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  timeout_sec: 3600
+
+- id: alpha-cargo-build
+  name: "ALPHA 清单 cargo 命令(原文):cargo build --all-features"
+  cmd: cargo build --all-features
+  cwd: .
+  timeout_sec: 3600
+
+- id: alpha-cargo-test-lib
+  name: "ALPHA 清单 cargo 命令(原文):cargo test --all-features --lib"
+  cmd: cargo test --all-features --lib
+  cwd: .
+  timeout_sec: 5400
+
+- id: alpha-cargo-fmt-check
+  name: "ALPHA 清单 cargo 命令(原文):cargo fmt --check;#5685 清掉三处尾随空白后尖端应为 0 diff"
+  cmd: cargo fmt --check
+  cwd: .
+  timeout_sec: 900

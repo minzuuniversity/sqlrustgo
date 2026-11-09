@@ -230,6 +230,40 @@ stage_decision_2026-11-08:
     - "13 条归档 run 全部 verify OK"
   next_flow: "ALPHA →（AB-01..AB-10 逐项取证 + 独立 Reviewer 回执）→ BETA → … 每一步都按 governance，不得跳过"
 
+# ----------------------------------------------------------------------------
+# 2026-11-09 Owner 裁决:批准升级阶段(附约束)+ WALGC-2 立项
+# ----------------------------------------------------------------------------
+stage_decision_2026-11-09:
+  decided_by: "owner(2026-11-09 会话指令)"
+  decisions:
+    - "WALGC-2(leader-panic livelock,group_commit)立项进线 —— 批准;已建 #5686,看板新增 WALGC-2 行(阻塞列)"
+    - "批准升级阶段(原文:「批准升级阶段」)"
+    - "裁决附带约束(原文):「注意： Alpha 阶段的 ISSUE 必须彻底完成并关闭，才算通过门禁，否则不允许切换阶段，必须 SSOT 证据，不能 AI 直接判断。ISSUE 关闭，必须复核 governance 的证据链规定。」"
+  execution_record: >
+    本条是裁决登记,不是阶段切换。current_stage 保持 ALPHA:Alpha 门禁 issue
+    #5112..#5117 的 Hard Gate 未在同一个冻结提交上全部转绿,且 #5114/#5115/#5116
+    仍 open;按 ALPHA_TO_BETA_GATE_PLAN.md §1(历史 PASS/关闭不能替代本次执行证据)
+    与 #5117 终验规则,阶段切换只在证据配齐并通过独立复核后由独立晋级 PR 执行。
+  hub_133_note: >
+    Hub ai-project-hub #133:Controller 2026-11-08 回执「独立 Reviewer 派单权不在
+    Controller ⇒ 转 Owner 决策」。本裁决即 Owner 对该升级的答复;Reviewer 指派/
+    批准路径由 Owner 指定,执行者不自签。
+  audit_snapshot_2026_11_09:
+    ledger: "docs/releases/v4.1.0/evidence/AB_GAP_LEDGER_2026-11-09.md(三份逐条台账,冻结 tip c06209fd11)"
+    - "#5112/#5113 closed(2026-10-15),但其 Hard Gate 在 tip 不全绿(clippy -D warnings 62 处属主各异;required checks 因 CI #5597 死不可满足)⇒ closed 不替代复证"
+    - "#5114 open:B 轨 manifest 完全缺失(门禁自陈 SKELETON 故意 exit 1)、phantom 探针未触及生产存储、G1 上轮 124 未取得、neg fixture pending"
+    - "#5115 open:heartbeat 机制全仓不存在(known_gaps.V400_09_soak 即案底)、v4.1.0 零个 soak 归档 run、chaos_test disk-full 为假绿空测试"
+    - "#5116 open:criterion→JSON 管道零、benchmarks/baselines 空目录、live CI 无 bench 执行点、比较器缺 baseline 时 skip(与 fail-closed 相反)"
+    - "#5117 open:按终验规则等待子包与冻结提交复核"
+  measured_inputs:
+    - "fmt 槽位转绿:#5685(`9f0a1c0050`→`c06209fd11`)清掉三处尾随空白,`cargo fmt --check --all` 尖端首次 0 diff"
+    - "WALGC-2 先红探针(tip c06209fd11,scratch):PanickingWal.sync() panic 注入 ⇒ 第二个 commit_lsn HUNG(3s 未归),同二进制其余 5 条 group_commit 测试全绿;证据在 #5686 评论"
+    - "ALPHA 清单重跑:run 20261109-alpha-gates-002(frozen `c06209fd11`,专用 target,124 超时臂加长)⇒ 10 臂 **9 绿 / 1 红**;evidence_hash=sha256:eec391d11411d968e6450d9ff45c93457cb8ddf0f633608ba66b2e822a970a0e。红臂 `alpha-gate-g1-tpch-baseline`:step4 哈希对质 NOT-RUN —— 基线覆盖 22/22,当前 wire 范围排除 Q9/Q18/Q19(#5393:资源限制被 SIGKILL ×2、IN-in-OR 组解析错误 ×1);SF=0.001 fixture 已按仓内生成器补齐(`prepare_tpch_fixture.sh --sf 0.001 --seed 42`)单跑仍 NOT-RUN ⇒ 红是真前置(#5393),非 harness/争用;门禁把「不可比」按 fail-closed 记 FAIL,正确"
+    - "ALPHA 清单中 fmt 臂转绿实测(#5685 后):`cargo fmt --check` exit 0"
+  stage_after_decision: "ALPHA"
+  ga_declared: false
+
+
 # ============================================================================
 # 2026-10-21 判据订正横幅 (#5439)
 # ----------------------------------------------------------------------------
