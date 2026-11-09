@@ -1,0 +1,24 @@
+schema_version: expert-manifest/v1
+run_id: adjudicate-20261107T173452Z-omp-macmini-35dcb3
+source_agent: omp-macmini
+source_run: omp-macmini-2026-11-07T17:34:52Z
+timestamp_started: '2026-11-07T17:34:52Z'
+timestamp_finished: '2026-11-07T17:34:59Z'
+conflict_resolution: none
+repository:
+  canonical_remote: http://192.168.0.252:3000/openclaw/sqlrustgo.git
+  commit: f0a053dafabb810992dec4379a8e3542926d1cea
+  branch: develop/v4.1.0
+artifacts:
+  adjudications.jsonl:
+    sha256: sha256:884198fc41633369d3290db5ac98051b7fb11dc77875c69e245adb17fdfa1149
+    bytes: 622
+    lines: 1
+  asks.jsonl:
+    sha256: sha256:970154864bb406bb290421996e7bb10588a7021b999cdd12157c6dbeb212ddb7
+    bytes: 806
+    lines: 1
+kind: adjudication
+question_id: sqlm1-idx1-20261108-qwen
+aggregate: INCOMPLETE
+rule: 'R2: a seat abstained inside the verdict set'
