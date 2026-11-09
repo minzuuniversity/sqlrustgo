@@ -1,0 +1,155 @@
+schema_version: 1
+run_id: 20261109-lint1b9-001
+source_agent: omp (macmini)
+frozen_commit: 9f0a1c00507e70f843d1101284bc070c0a80e9ed
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/lint1b9target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: lint1b9-clippy-inventory
+  name: 批次 9 后复测 clippy 欠账分类计数(与批次 1–8 同一命令口径、同一清单)。基线 20261108-lint1b8-002 实测 88 条诊断行;批次 9 清 16 类 26
+    处 ⇒ 预期 61,变化类首必须恰为那 16 个且全部归 0;另 1 行 future-incompat 报告行(proc-macro-error2)只在冷编译重发,暖 target 下不再出现
+    ⇒ 88−26−1=61,逐类对质
+  cmd: cargo clippy --workspace --all-features --all-targets --keep-going
+  cwd: .
+  timeout_sec: 5400
+- id: lint1b9-mutation-fixture
+  name: 批次 9 计数判据夹具(16 类基线 0 ⇒ io_delay.rs mod tests 注入三形态探针回弹 ⇒ 恢复回 0;片段逐字对质核新鲜度)
+  cmd: python3 scripts/gate/test_lint1b9_mutation_fixtures.py
+  cwd: .
+  timeout_sec: 3000
+- id: lint1b9-crash-server-build
+  name: armed 构建第一步:带 fault-injection 的 server 二进制(崩溃套件按 <repo>/target/debug/sqlrustgo-mysql-server 找它;本
+    run 的 target 是指向 lint1b9target 的符号链接)
+  cmd: cargo build -p sqlrustgo-mysql-server --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: lint1b9-touched-crates-tests
+  name: 回归主判据:被改四 crate(catalog/optimizer/transaction/storage)全套测试全绿——含 4 处 unwrap/unwrap_err 改写点、deadlock/transaction_manager
+    的 is_some_and/contains_key 改写、group_commit 两处 contains 断言改写、bin_segment 三处 cast 删除(4 字节 LE 编码不变)
+  cmd: cargo test -p sqlrustgo-catalog -p sqlrustgo-optimizer -p sqlrustgo-transaction -p sqlrustgo-storage
+  cwd: .
+  timeout_sec: 5400
+- id: lint1b9-crash-wal-index-armed
+  name: 崩溃套件(armed):wal/group_commit 测试断言改写不得动摇崩溃一致性证据(与 walgc1 修复同一文件域)
+  cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_wal_index_b1
+  cwd: .
+  timeout_sec: 3600
+- id: lint1b9-check-all-targets
+  name: 全 workspace 全目标编译校核(0 error;本批还改了 bench/storage 三个 example 与 bench crate 的 median 签名,--all-targets
+    覆盖 example/bench 目标)
+  cmd: cargo check --workspace --all-targets --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: lint1b9-gate-anti-ignore
+  name: '忽略台账(本批不新增 ignore:total_allowed 应仍 136 ≤ 150、ACTIVE 仍 82 ≤ 92,且与树内真实 #[ignore] 属性数一致)'
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: lint1b9-gate-registry
+  name: 门禁登记表一致性(分母仍 168:夹具命名 test_*,不占 check_* 分母)
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+- id: lint1b9-gate-drift-not-pass
+  name: DRIFT 门禁本体(前几批改后的判据不得回退)
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  cwd: .
+  timeout_sec: 900
+- id: lint1b9-gate-docs-pointer-paths
+  name: 文档指针路径门禁(本批证据文字新增的反引号路径不得引入断链)
+  cmd: bash scripts/gate/check_docs_pointer_paths.sh
+  cwd: .
+  timeout_sec: 900
+results:
+- id: lint1b9-clippy-inventory
+  started_at: '2026-11-09T09:09:13Z'
+  finished_at: '2026-11-09T09:09:37Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 54674b9ea8e548f974292fd17488e0c2d8738ce56781fd59c4297b4462e63826
+  stdout_path: logs/001-lint1b9-clippy-inventory.stdout
+  stderr_path: logs/001-lint1b9-clippy-inventory.stderr
+- id: lint1b9-mutation-fixture
+  started_at: '2026-11-09T09:09:37Z'
+  finished_at: '2026-11-09T09:10:24Z'
+  exit_code: 0
+  stdout_sha256: 5ae452b74cef66aaebc02c5180b6cd257680731619919002e646ecf744a363ee
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-lint1b9-mutation-fixture.stdout
+  stderr_path: logs/002-lint1b9-mutation-fixture.stderr
+- id: lint1b9-crash-server-build
+  started_at: '2026-11-09T09:10:24Z'
+  finished_at: '2026-11-09T09:10:30Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: d0e45991a9a395d09de6e4fad0be19e8374e594bd1de761280e8b33cd499345d
+  stdout_path: logs/003-lint1b9-crash-server-build.stdout
+  stderr_path: logs/003-lint1b9-crash-server-build.stderr
+- id: lint1b9-touched-crates-tests
+  started_at: '2026-11-09T09:10:30Z'
+  finished_at: '2026-11-09T09:12:06Z'
+  exit_code: 0
+  stdout_sha256: 17f30305aae6bf3e7e0b0a51a51b284e2863b6bb1d91c7057c9b141487d53e8d
+  stderr_sha256: 6fefd4c8fcff62ebea04ec6cdd75cf0e08f4739e76656a44145aa3feb7df02b4
+  stdout_path: logs/004-lint1b9-touched-crates-tests.stdout
+  stderr_path: logs/004-lint1b9-touched-crates-tests.stderr
+- id: lint1b9-crash-wal-index-armed
+  started_at: '2026-11-09T09:12:06Z'
+  finished_at: '2026-11-09T09:12:12Z'
+  exit_code: 0
+  stdout_sha256: 882fc629951dd7040675dfd50c2e77dc327e2b7daea956c226b67410d37f9e31
+  stderr_sha256: e840d37d23067c731c431f044c6f1957bf5a18bb27eafec109e5e4414bd98e6b
+  stdout_path: logs/005-lint1b9-crash-wal-index-armed.stdout
+  stderr_path: logs/005-lint1b9-crash-wal-index-armed.stderr
+- id: lint1b9-check-all-targets
+  started_at: '2026-11-09T09:12:12Z'
+  finished_at: '2026-11-09T09:12:36Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: c82e6a5768ef5d777b2be71fa3fccfa603a94d0fdb095d7d68e6935efc9adc60
+  stdout_path: logs/006-lint1b9-check-all-targets.stdout
+  stderr_path: logs/006-lint1b9-check-all-targets.stderr
+- id: lint1b9-gate-anti-ignore
+  started_at: '2026-11-09T09:12:36Z'
+  finished_at: '2026-11-09T09:12:37Z'
+  exit_code: 0
+  stdout_sha256: fe823fd2b89ecbe830ca5bd204494352ee4a176c427b29f7062165ce56ed32ac
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-lint1b9-gate-anti-ignore.stdout
+  stderr_path: logs/007-lint1b9-gate-anti-ignore.stderr
+- id: lint1b9-gate-registry
+  started_at: '2026-11-09T09:12:37Z'
+  finished_at: '2026-11-09T09:12:37Z'
+  exit_code: 0
+  stdout_sha256: cca4d2faa92edd201134290aa7b095406ef519eaaf99ff0955b560373e5edbcb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-lint1b9-gate-registry.stdout
+  stderr_path: logs/008-lint1b9-gate-registry.stderr
+- id: lint1b9-gate-drift-not-pass
+  started_at: '2026-11-09T09:12:37Z'
+  finished_at: '2026-11-09T09:12:39Z'
+  exit_code: 0
+  stdout_sha256: 0707b22f105daadef65c3af23605f46a6bbe2bed45fb32c9701d428889acef99
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-lint1b9-gate-drift-not-pass.stdout
+  stderr_path: logs/009-lint1b9-gate-drift-not-pass.stderr
+- id: lint1b9-gate-docs-pointer-paths
+  started_at: '2026-11-09T09:12:39Z'
+  finished_at: '2026-11-09T09:12:39Z'
+  exit_code: 0
+  stdout_sha256: 945d8c15943eb9d12902118d5bc7e35dc24e400c2674954a12addeba14b0a97f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-lint1b9-gate-docs-pointer-paths.stdout
+  stderr_path: logs/010-lint1b9-gate-docs-pointer-paths.stderr
+evidence_hash: sha256:89c9db33562f52c9a8da8434e028d50c1346666f4d9fef76554e6f14b01fbcd3
+completed_at: '2026-11-09T09:12:39Z'

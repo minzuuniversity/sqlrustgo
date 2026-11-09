@@ -1,0 +1,50 @@
+- id: lint1b9-clippy-inventory
+  name: "批次 9 后复测 clippy 欠账分类计数(与批次 1–8 同一命令口径、同一清单)。基线 20261108-lint1b8-002 实测 88 条诊断行;批次 9 清 16 类 26 处 ⇒ 预期 61,变化类首必须恰为那 16 个且全部归 0;另 1 行 future-incompat 报告行(proc-macro-error2)只在冷编译重发,暖 target 下不再出现 ⇒ 88−26−1=61,逐类对质"
+  cmd: cargo clippy --workspace --all-features --all-targets --keep-going
+  cwd: .
+  timeout_sec: 5400
+- id: lint1b9-mutation-fixture
+  name: "批次 9 计数判据夹具(16 类基线 0 ⇒ io_delay.rs mod tests 注入三形态探针回弹 ⇒ 恢复回 0;片段逐字对质核新鲜度)"
+  cmd: python3 scripts/gate/test_lint1b9_mutation_fixtures.py
+  cwd: .
+  timeout_sec: 3000
+- id: lint1b9-crash-server-build
+  name: "armed 构建第一步:带 fault-injection 的 server 二进制(崩溃套件按 <repo>/target/debug/sqlrustgo-mysql-server 找它;本 run 的 target 是指向 lint1b9target 的符号链接)"
+  cmd: cargo build -p sqlrustgo-mysql-server --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: lint1b9-touched-crates-tests
+  name: "回归主判据:被改四 crate(catalog/optimizer/transaction/storage)全套测试全绿——含 4 处 unwrap/unwrap_err 改写点、deadlock/transaction_manager 的 is_some_and/contains_key 改写、group_commit 两处 contains 断言改写、bin_segment 三处 cast 删除(4 字节 LE 编码不变)"
+  cmd: cargo test -p sqlrustgo-catalog -p sqlrustgo-optimizer -p sqlrustgo-transaction -p sqlrustgo-storage
+  cwd: .
+  timeout_sec: 5400
+- id: lint1b9-crash-wal-index-armed
+  name: "崩溃套件(armed):wal/group_commit 测试断言改写不得动摇崩溃一致性证据(与 walgc1 修复同一文件域)"
+  cmd: cargo test -p sqlrustgo-storage --features fault-injection --test crash_wal_index_b1
+  cwd: .
+  timeout_sec: 3600
+- id: lint1b9-check-all-targets
+  name: "全 workspace 全目标编译校核(0 error;本批还改了 bench/storage 三个 example 与 bench crate 的 median 签名,--all-targets 覆盖 example/bench 目标)"
+  cmd: cargo check --workspace --all-targets --all-features
+  cwd: .
+  timeout_sec: 3600
+- id: lint1b9-gate-anti-ignore
+  name: "忽略台账(本批不新增 ignore:total_allowed 应仍 136 ≤ 150、ACTIVE 仍 82 ≤ 92,且与树内真实 #[ignore] 属性数一致)"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: lint1b9-gate-registry
+  name: "门禁登记表一致性(分母仍 168:夹具命名 test_*,不占 check_* 分母)"
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+- id: lint1b9-gate-drift-not-pass
+  name: "DRIFT 门禁本体(前几批改后的判据不得回退)"
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  cwd: .
+  timeout_sec: 900
+- id: lint1b9-gate-docs-pointer-paths
+  name: "文档指针路径门禁(本批证据文字新增的反引号路径不得引入断链)"
+  cmd: bash scripts/gate/check_docs_pointer_paths.sh
+  cwd: .
+  timeout_sec: 900
