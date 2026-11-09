@@ -470,7 +470,7 @@ mod tests {
         // heavily-loaded CI.
         let syncs = counter.load(Ordering::SeqCst);
         assert!(
-            syncs >= 1 && syncs <= 4,
+            (1..=4).contains(&syncs),
             "expected 1-4 fsyncs for 8 concurrent commits, got {}",
             syncs
         );
@@ -500,7 +500,7 @@ mod tests {
         // allows). Allow 1-3 for slack.
         let syncs = counter.load(Ordering::SeqCst);
         assert!(
-            syncs >= 1 && syncs <= 3,
+            (1..=3).contains(&syncs),
             "expected 1-3 fsyncs for 4 commits with max_batch=2, got {}",
             syncs
         );

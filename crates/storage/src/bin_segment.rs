@@ -854,9 +854,9 @@ mod tests {
             make_col("name", "VARCHAR(255)", None),
         ];
         let mut w = SegmentWriter::new(path.clone(), schema.clone()).unwrap();
-        for i in 0..100 {
+        for i in 0..100i32 {
             let values = vec![
-                Some((i as i32).to_le_bytes().to_vec()),
+                Some(i.to_le_bytes().to_vec()),
                 Some(format!("name_{}", i).into_bytes()),
             ];
             let row_id = w.append(&values).unwrap();
@@ -901,10 +901,10 @@ mod tests {
             make_col("name", "VARCHAR(255)", None),
         ];
         let mut w = SegmentWriter::new(path.clone(), schema.clone()).unwrap();
-        let n = 1000;
+        let n: i32 = 1000;
         for i in 0..n {
             let values = vec![
-                Some((i as i32).to_le_bytes().to_vec()),
+                Some(i.to_le_bytes().to_vec()),
                 Some(format!("name_{}", i).into_bytes()),
             ];
             w.append(&values).unwrap();
@@ -927,9 +927,8 @@ mod tests {
         let path = dir.path().join("corrupt.bin");
         let schema = vec![make_col("x", "INT", None)];
         let mut w = SegmentWriter::new(path.clone(), schema.clone()).unwrap();
-        for i in 0..10 {
-            w.append(&[Some((i as i32).to_le_bytes().to_vec())])
-                .unwrap();
+        for i in 0..10i32 {
+            w.append(&[Some(i.to_le_bytes().to_vec())]).unwrap();
         }
         w.seal().unwrap();
         // Tamper with row 5's CRC byte (last 4 bytes of the row at known offset)

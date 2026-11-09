@@ -389,7 +389,7 @@ mod tests {
         let mut rng = LcgRng::new(99);
         for _ in 0..1000 {
             let v = rng.next_f64();
-            assert!(v >= 0.0 && v < 1.0, "out of range: {}", v);
+            assert!((0.0..1.0).contains(&v), "out of range: {}", v);
         }
     }
 

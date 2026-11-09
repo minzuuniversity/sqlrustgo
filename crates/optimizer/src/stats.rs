@@ -1148,7 +1148,7 @@ mod tests {
     fn test_stats_result_is_ok() {
         let ok: StatsResult<i32> = Ok(42);
         assert!(ok.is_ok());
-        assert_eq!(ok.unwrap(), 42);
+        assert!(matches!(&ok, Ok(42)));
     }
 
     #[test]

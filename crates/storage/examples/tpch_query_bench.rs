@@ -72,7 +72,7 @@ fn main() {
             }
         }
 
-        results.push((name.clone(), rows, elapsed, result.is_ok()));
+        results.push((*name, rows, elapsed, result.is_ok()));
     }
 
     let total_elapsed = total_start.elapsed();

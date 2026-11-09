@@ -4293,7 +4293,7 @@ mod tests {
         storage.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
         storage.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
         let rows = storage.scan("t").unwrap();
-        assert!(rows.len() >= 1);
+        assert!(!rows.is_empty());
         let _ = remove_dir_all(&dir);
     }
 
@@ -7890,7 +7890,7 @@ mod bufferpool_routing_tests {
             .expect("new_with_bufferpool");
 
         let records: Vec<Record> = (0..100)
-            .map(|i| vec![Value::Integer(i), Value::Text(format!("row{i}").into())])
+            .map(|i| vec![Value::Integer(i), Value::Text(format!("row{i}"))])
             .collect();
         storage.insert("t", records).expect("insert 100");
 
