@@ -1,0 +1,3 @@
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo/wt/q19)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.10s
+     Running unittests src/lib.rs (/Volumes/workspace/dev/q19fix-target/debug/deps/sqlrustgo-cbb2811b2b87ca6a)

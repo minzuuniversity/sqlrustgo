@@ -1,0 +1,51 @@
+
+running 41 tests
+...................................i.... 40/41
+g1_tpch_sha256_baseline --- FAILED
+
+failures:
+
+---- g1_tpch_sha256_baseline stdout ----
+  loaded region: 5 rows
+  loaded nation: 25 rows
+  loaded supplier: 10 rows
+  loaded customer: 150 rows
+  loaded part: 200 rows
+  loaded partsupp: 800 rows
+  loaded orders: 1500 rows
+  loaded lineitem: 6018 rows
+[FAIL] Q1: actual=a5dc4724bdf56cab50f20fe255a15cc8d89817f51f83824f5e12ab9aeb2b3aed expected=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc
+[FAIL] Q3: actual=0c78e900888cc2870766089528140774f1688ce21115d1bc569dbde755f1a28a expected=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc
+[FAIL] Q4: actual=81cf8e7a9446cbf04a012d775683779e91740d89a7b83b382d1518172adec7cb expected=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc
+[FAIL] Q6: actual=b73f80c04c8c8c3e08df91dd3165168b1096f6b4b76e139018f1bb9add924a22 expected=e34c67129d6336d8d408c87023bb0d38a3155464f5bc9ef1769873e7129c82f9
+[FAIL] Q7: actual=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc expected=a29f56c9236126d88755dbfa0be903da1e7619e829a738a636fe0bfd986c2480
+[FAIL] Q8: actual=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc expected=b5a61d14f17c5b9bc877cc7e237032f70522f55879d52e944c0ef75038721d47
+[SKIPPED] Q9: (engine_resource_limit issue=#5393) — six-way join; the file-storage backend's intermediate result exceeded 1.5 GB within one second of execution and the engine process was killed by the OS (SIGKILL), which also killed the test binary
+[FAIL] Q10: actual=75f142af8a97fb3c48260de486cba10827d8cd13a5400864792ebb46b5247e05 expected=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc
+[FAIL] Q12: actual=1b9b0eafbced0a92cae2581a3ee7d1a270c0e44b18e6d5df1975dcc26a7ef14f expected=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc
+[FAIL] Q13: actual=51dd69b135ed6112180c2941ac4c3ff07cdd69092ec8e6c645a54a8850375c8b expected=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc
+[FAIL] Q14: actual=20febeb10722d8a74ee1ad08851afd62460775782e1baacf9164eb257b09b83a expected=e34c67129d6336d8d408c87023bb0d38a3155464f5bc9ef1769873e7129c82f9
+[FAIL] Q15: actual=ff97b1269cb1465db42a7ce2b721ad5792cef085d0d13d53c3a040a50633bb17 expected=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc
+[FAIL] Q16: actual=79fabcc2c0e6fb632d4839fb32d910431dbdb0703a7f5dfca763dcf613265517 expected=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc
+[FAIL] Q17: actual=e0bfc92a5e886ca5c7d406d5b518918c827b8f9206e5647ab321286af78845a0 expected=e34c67129d6336d8d408c87023bb0d38a3155464f5bc9ef1769873e7129c82f9
+[SKIPPED] Q18: (engine_resource_limit issue=#5393) — IN (SELECT … GROUP BY … HAVING …) over lineitem; the server process was killed while the statement was running (the client saw: Lost connection to server during query)
+[FAIL] Q22: actual=88c000e2b115da03246b9339026b16a8bb09f01266cb1bc22aa696444d02410f expected=af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc
+
+=== G1 TPC-H SHA-256 baseline summary ===
+  PASS:    6
+  FAIL:    14
+  PENDING: 0
+  NOT RUN: 2
+
+thread 'g1_tpch_sha256_baseline' (7582710) panicked at tests/integration/tpch/oracle_g1_tpch_sha256.rs:255:5:
+assertion `left == right` failed: 14 TPC-H query result hashes drifted from baseline
+  left: 14
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    g1_tpch_sha256_baseline
+
+test result: FAILED. 39 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.41s
+
