@@ -1519,7 +1519,6 @@ mod tests {
 
     // PB-03: WAL Performance Benchmarks
 
-    #[test]
     // #5545: this is a **measurement**, not a correctness test — it asserts a
     // WALL-CLOCK bound (1000 × 1KB INSERT < 2s), and a wall-clock bound
     // cannot be asserted on a machine that is doing anything else.
@@ -1882,8 +1881,8 @@ mod tests {
                 table_id: 1,
                 key: Some(vec![i as u8]),
                 data: Some(vec![i as u8 * 2]),
-                lsn: i as u64,
-                timestamp: i as u64 + 1000,
+                lsn: i,
+                timestamp: i + 1000,
                 table_name: None,
                 database_name: None,
             };

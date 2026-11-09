@@ -5216,7 +5216,6 @@ mod tests {
         Arc::make_mut(s.tables.get_mut("t").unwrap()).push(vec![Value::Integer(2)]);
     }
 
-    #[test]
     // #5072: this test used to seed the raw map with the **unscoped** key
     // `"t"` while `insert` writes to `"default\x01t"`. `scan("t")` therefore
     // returned exactly one row whether or not the rollback had done anything,
@@ -6052,7 +6051,7 @@ fn memory_storage_insert_100_records_via_bufferpool_bumps_pages_visited_at_least
     let mut storage =
         MemoryStorage::new_with_bufferpool(pool.clone()).expect("new_with_bufferpool");
     let records: Vec<Record> = (0..100)
-        .map(|i| vec![Value::Integer(i), Value::Text(format!("row{i}").into())])
+        .map(|i| vec![Value::Integer(i), Value::Text(format!("row{i}"))])
         .collect();
     storage.insert("t", records).expect("insert 100");
     let stats = storage.buffer_pool_stats().expect("stats");

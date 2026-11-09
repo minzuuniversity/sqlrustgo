@@ -380,7 +380,7 @@ fn run_query(
 
 // ── Median of a slice ─────────────────────────────────────────────────────────
 
-fn median(vals: &mut Vec<u128>) -> u128 {
+fn median(vals: &mut [u128]) -> u128 {
     vals.sort();
     vals[vals.len() / 2]
 }

@@ -56,7 +56,7 @@ mod tests {
     fn test_optimizer_result_ok() {
         let result: OptimizerResult<i32> = Ok(42);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 42);
+        assert!(matches!(&result, Ok(42)));
     }
 
     #[test]
@@ -64,7 +64,7 @@ mod tests {
         let result: OptimizerResult<i32> =
             Err(OptimizerError::OptimizationFailed("fail".to_string()));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("fail"));
+        assert!(matches!(&result, Err(e) if e.to_string().contains("fail")));
     }
 
     #[test]
