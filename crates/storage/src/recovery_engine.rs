@@ -1187,7 +1187,7 @@ mod tests {
 
     #[test]
     fn test_bytes_to_record_truncated_prefix() {
-        let result = bytes_to_record(&[b'i']);
+        let result = bytes_to_record(b"i");
         assert!(result.is_err());
     }
 

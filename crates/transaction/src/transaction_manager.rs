@@ -473,7 +473,7 @@ mod tests {
         let result = mgr.commit(tx_id);
         assert!(result.is_ok());
 
-        assert!(mgr.active_transactions.get(&tx_id).is_none());
+        assert!(!mgr.active_transactions.contains_key(&tx_id));
     }
 
     #[test]
@@ -487,7 +487,7 @@ mod tests {
         let result = mgr.rollback(tx_id);
         assert!(result.is_ok());
 
-        assert!(mgr.active_transactions.get(&tx_id).is_none());
+        assert!(!mgr.active_transactions.contains_key(&tx_id));
     }
 
     #[test]

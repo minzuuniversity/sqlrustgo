@@ -493,7 +493,7 @@ mod tests {
         }
 
         let unique: Vec<_> = targets.iter().collect();
-        assert!(unique.len() >= 1);
+        assert!(!unique.is_empty());
     }
 
     #[test]
