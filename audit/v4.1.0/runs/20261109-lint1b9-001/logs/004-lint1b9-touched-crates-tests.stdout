@@ -1,0 +1,3081 @@
+
+running 184 tests
+test auth::tests::test_constant_time_eq ... ok
+test auth::tests::test_create_role_with_invalid_parent ... ok
+test auth::tests::test_auth_error_display ... ok
+test auth::tests::test_authenticate ... ok
+test auth::tests::test_all_users_iterator ... ok
+test auth::tests::test_create_role ... ok
+test auth::tests::test_check_privilege_denied ... ok
+test auth::tests::test_authenticate_wildcard ... ok
+test auth::tests::test_all_privileges_iterator ... ok
+test auth::tests::test_all_privilege_implies_all ... ok
+test auth::tests::test_check_privilege_with_wildcard ... ok
+test auth::tests::test_create_user ... ok
+test auth::tests::test_delete_without_privilege ... ok
+test auth::tests::test_drop_role_not_found ... ok
+test auth::tests::test_drop_role ... ok
+test auth::tests::test_drop_user ... ok
+test auth::tests::test_drop_user_not_found ... ok
+test auth::tests::test_duplicate_role_error ... ok
+test auth::tests::test_get_authorized_columns_empty_user ... ok
+test auth::tests::test_duplicate_user_error ... ok
+test auth::tests::test_find_exact_user_and_wildcard_user ... ok
+test auth::tests::test_get_authorized_columns_other_table ... ok
+test auth::tests::test_get_user_privileges ... ok
+test auth::tests::test_get_authorized_columns_wildcard ... ok
+test auth::tests::test_grant_column_privilege ... ok
+test auth::tests::test_get_user_roles_recursive ... ok
+test auth::tests::test_grant_column_privilege_multi_columns ... ok
+test auth::tests::test_grant_option ... ok
+test auth::tests::test_grant_column_privilege_replace ... ok
+test auth::tests::test_grant_privilege ... ok
+test auth::tests::test_grant_role_to_nonexistent_role ... ok
+test auth::tests::test_grant_role_to_user ... ok
+test auth::tests::test_grantee_type ... ok
+test auth::tests::test_has_grant_option ... ok
+test auth::tests::test_hash_password ... ok
+test auth::tests::test_list_grants ... ok
+test auth::tests::test_list_users_and_roles ... ok
+test auth::tests::test_matches_column ... ok
+test auth::tests::test_object_ref_column ... ok
+test auth::tests::test_object_ref_database ... ok
+test auth::tests::test_object_ref_matches ... ok
+test auth::tests::test_object_ref_table ... ok
+test auth::tests::test_privilege_display ... ok
+test auth::tests::test_object_type_from_str ... ok
+test auth::tests::test_privilege_from_str ... ok
+test auth::tests::test_privilege_grant_matches ... ok
+test auth::tests::test_privilege_grant_matches_wildcard_database ... ok
+test auth::tests::test_privilege_grant_matches_all ... ok
+test auth::tests::test_public_role ... ok
+test auth::tests::test_revoke_privilege ... ok
+test auth::tests::test_revoke_privilege_not_found ... ok
+test auth::tests::test_scram_credential_constants ... ok
+test auth::tests::test_select_star_column_filter_projection ... ok
+test auth::tests::test_show_grants ... ok
+test auth::tests::test_user_identity_new_and_normalize ... ok
+test auth::tests::test_user_identity_hash_and_eq ... ok
+test auth::tests::test_verify_password ... ok
+test catalog::tests::test_add_and_get_schema ... ok
+test catalog::tests::test_add_and_get_stored_procedure ... ok
+test catalog::tests::test_all_schemas ... ok
+test catalog::tests::test_catalog_creation ... ok
+test catalog::tests::test_catalog_with_default_database ... ok
+test catalog::tests::test_duplicate_schema ... ok
+test catalog::tests::test_duplicate_stored_procedure ... ok
+test catalog::tests::test_has_database ... ok
+test catalog::tests::test_has_schema ... ok
+test catalog::tests::test_remove_stored_procedure ... ok
+test catalog::tests::test_remove_stored_procedure_not_found ... ok
+test catalog::tests::test_set_default_database ... ok
+test catalog::tests::test_set_default_schema ... ok
+test catalog::tests::test_set_default_database_not_found ... ok
+test column::tests::test_column_creation ... ok
+test catalog::tests::test_set_default_schema_not_found ... ok
+test column::tests::test_column_not_null ... ok
+test column::tests::test_column_primary_key ... ok
+test column::tests::test_validate_empty_name ... ok
+test column::tests::test_validate_nullable_pk ... ok
+test column::tests::test_value_matches_type ... ok
+test data_type::tests::test_data_type_clone ... ok
+test data_type::tests::test_data_type_copy ... ok
+test data_type::tests::test_data_type_debug ... ok
+test data_type::tests::test_data_type_partial_eq_all ... ok
+test data_type::tests::test_data_type_sql_name ... ok
+test data_type::tests::test_data_type_sql_name_all ... ok
+test data_type::tests::test_default ... ok
+test data_type::tests::test_display ... ok
+test data_type::tests::test_is_equatable_all ... ok
+test data_type::tests::test_is_orderable ... ok
+test data_type::tests::test_is_orderable_all ... ok
+test data_type::tests::test_parse_sql_name ... ok
+test data_type::tests::test_parse_sql_name_all ... ok
+test data_type::tests::test_valid_for_primary_key ... ok
+test data_type::tests::test_valid_for_primary_key_all ... ok
+test database::tests::test_add_and_get_schema ... ok
+test database::tests::test_cannot_remove_default_schema ... ok
+test database::tests::test_database_creation ... ok
+test database::tests::test_database_with_default_schema ... ok
+test database::tests::test_duplicate_schema ... ok
+test database::tests::test_remove_schema ... ok
+test database::tests::test_set_default_schema ... ok
+test database::tests::test_set_default_schema_not_found ... ok
+test error::tests::test_catalog_result_err ... ok
+test error::tests::test_catalog_result_ok ... ok
+test error::tests::test_column_not_found ... ok
+test error::tests::test_cyclic_dependency ... ok
+test error::tests::test_duplicate_column ... ok
+test error::tests::test_duplicate_schema ... ok
+test error::tests::test_duplicate_table ... ok
+test error::tests::test_foreign_key_violation ... ok
+test error::tests::test_invariant_violation ... ok
+test error::tests::test_invalid_primary_key ... ok
+test error::tests::test_schema_not_found ... ok
+test error::tests::test_serialization_error ... ok
+test error::tests::test_table_not_found ... ok
+test index::tests::test_index_clone ... ok
+test index::tests::test_index_creation ... ok
+test index::tests::test_index_type_btree ... ok
+test index::tests::test_index_debug ... ok
+test index::tests::test_index_type_enum ... ok
+test index::tests::test_index_type_fulltext ... ok
+test index::tests::test_index_type_hash ... ok
+test index::tests::test_index_with_multiple_columns ... ok
+test index::tests::test_primary_key_index ... ok
+test index::tests::test_unique_index ... ok
+test row_level_security::tests::test_create_and_drop_policy ... ok
+test row_level_security::tests::test_check_write_violation ... ok
+test row_level_security::tests::test_filter_rows_disabled ... ok
+test row_level_security::tests::test_filter_rows_basic ... ok
+test row_level_security::tests::test_filter_rows_text ... ok
+test row_level_security::tests::test_is_null ... ok
+test row_level_security::tests::test_rls_enable_disable ... ok
+test row_level_security::tests::test_multiple_policies ... ok
+test schema::tests::test_duplicate_table ... ok
+test schema::tests::test_get_table ... ok
+test schema::tests::test_get_table_returns_arc ... ok
+test schema::tests::test_multiple_tables ... ok
+test schema::tests::test_has_table ... ok
+test schema::tests::test_remove_nonexistent_table ... ok
+test schema::tests::test_remove_table ... ok
+test schema::tests::test_schema_clone ... ok
+test schema::tests::test_schema_creation ... ok
+test schema::tests::test_schema_new ... ok
+test schema::tests::test_schema_debug ... ok
+test schema::tests::test_schema_validate ... ok
+test schema::tests::test_table_count ... ok
+test schema::tests::test_table_names ... ok
+test stored_proc::tests::test_param_mode ... ok
+test schema::tests::test_tables_returns_arc ... ok
+test stored_proc::tests::test_stored_procedure_creation ... ok
+test stored_proc::tests::procedure_ddl_lifecycle ... ok
+test system_tables::mysql_db::tests::test_bool_to_yn ... ok
+test system_tables::mysql_db::tests::test_extract_db_name ... ok
+test system_tables::mysql_db::tests::test_rows_empty ... ok
+test system_tables::mysql_db::tests::test_schema ... ok
+test system_tables::mysql_db::tests::test_rows_with_privileges ... ok
+test system_tables::mysql_user::tests::test_rows_empty ... ok
+test system_tables::mysql_user::tests::test_schema ... ok
+test system_tables::mysql_user::tests::test_rows_with_users ... ok
+test table::tests::test_add_column ... ok
+test table::tests::test_add_column_duplicate_detection ... ok
+test table::tests::test_add_column_duplicate_error ... ok
+test table::tests::test_add_foreign_key ... ok
+test table::tests::test_add_index ... ok
+test table::tests::test_column_names ... ok
+test table::tests::test_get_column_mut ... ok
+test table::tests::test_get_column ... ok
+test table::tests::test_get_primary_key_columns_none ... ok
+test table::tests::test_get_primary_key_columns ... ok
+test table::tests::test_primary_key_column_not_found ... ok
+test table::tests::test_set_row_count ... ok
+test table::tests::test_table_creation ... ok
+test table::tests::test_table_with_indices ... ok
+test table::tests::test_validate_composite_foreign_key ... ok
+test table::tests::test_validate_composite_primary_key ... ok
+test table::tests::test_validate_duplicate_column ... ok
+test table::tests::test_validate_duplicate_column_in_new ... ok
+test table::tests::test_validate_foreign_key_column_count_mismatch ... ok
+test table::tests::test_validate_pk_nullable ... ok
+test table::tests::test_validate_self_referencing_foreign_key ... ok
+test auth::tests::test_scram_credential_clone_and_debug ... ok
+test auth::tests::test_scram_credential_new ... ok
+test auth::tests::test_scram_credential_different_passwords_different_keys ... ok
+test auth::tests::test_scram_credential_verify_success ... ok
+test auth::tests::test_scram_credential_verify_failure ... ok
+
+test result: ok. 184 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.99s
+
+
+running 29 tests
+test cov_catalog_databases_map ... ok
+test cov_catalog_drop_role ... ok
+test cov_catalog_find_role_by_name ... ok
+test cov_catalog_get_database ... ok
+test cov_catalog_create_role ... ok
+test cov_catalog_all_schemas_and_count ... ok
+test cov_catalog_database_names_and_count ... ok
+test cov_catalog_auth_manager_accessor ... ok
+test cov_catalog_create_role_with_parent ... ok
+test cov_catalog_get_database_mut ... ok
+test cov_catalog_get_policies_empty ... ok
+test cov_catalog_get_schema_missing ... ok
+test cov_catalog_get_stored_procedure_missing ... ok
+test cov_catalog_grant_revoke_role_to_user ... ok
+test cov_catalog_has_schema_missing ... ok
+test cov_catalog_has_stored_procedure_false ... ok
+test cov_catalog_new_default_db ... ok
+test cov_catalog_policy_catalog_accessors ... ok
+test cov_catalog_remove_stored_procedure_missing ... ok
+test cov_catalog_rls_enable_disable ... ok
+test cov_catalog_rls_is_enabled_missing_table_false ... ok
+test cov_catalog_schema_names_empty_or_public ... ok
+test cov_catalog_set_default_database_missing_is_err_or_noop ... ok
+test cov_catalog_set_default_database_ok ... ok
+test cov_catalog_stored_procedure_count_zero ... ok
+test cov_catalog_stored_procedures_list_empty ... ok
+test cov_catalog_stored_procedure_names_empty ... ok
+test cov_catalog_set_default_schema ... ok
+test cov_catalog_with_default_database ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 251 tests
+test cost::tests::test_join_cost_hash_join ... ok
+test cost::tests::test_cost_model_trait ... ok
+test cost::tests::test_agg_cost_zero_groups ... ok
+test cost::tests::test_join_cost_sort_merge ... ok
+test cost::tests::test_index_scan_cost_zero_rows ... ok
+test cost::tests::test_agg_cost ... ok
+test cost::tests::test_cost_model_estimate_cost ... ok
+test cost::tests::test_join_cost_unknown_method ... ok
+test cost::tests::test_join_cost_nested_loop ... ok
+test cost::tests::test_index_scan_cost ... ok
+test cost::tests::test_seq_scan_cost ... ok
+test cost::tests::test_seq_scan_cost_zero_rows ... ok
+test cost::tests::test_simple_cost_model_new ... ok
+test cost::tests::test_simple_cost_model_default ... ok
+test cost::tests::test_sort_cost_external ... ok
+test cost::tests::test_sort_cost_in_memory ... ok
+test decorrelate::tests::detects_where_in_subquery ... ok
+test decorrelate::tests::detects_where_not_exists ... ok
+test decorrelate::tests_v2::v2_rewritten_predicate_contains_literal ... ok
+test decorrelate::tests::detects_where_exists ... ok
+test decorrelate::tests::detects_scalar_subquery_in_where_compare ... ok
+test decorrelate::tests_v2::v2_try_decorrelate_exists_returns_inner_select ... ok
+test decorrelate::tests::detects_nested_in_and_expression ... ok
+test decorrelate::tests::no_subqueries_returns_empty ... ok
+test decorrelate::tests_v2::v2_try_decorrelate_complex_multi_pattern ... ok
+test decorrelate::tests::detects_select_list_scalar_subquery ... ok
+test decorrelate::tests_v2::v2_try_decorrelate_in_returns_inner ... ok
+test decorrelate::tests_v2::v2_try_decorrelate_not_exists_returns_anti ... ok
+test decorrelate::tests_v2::v2_try_decorrelate_no_subqueries_returns_none ... ok
+test graph_cost::tests::test_estimate_plan_cost ... ok
+test graph_cost::tests::test_graph_cost_factors_default ... ok
+test graph_cost::tests::test_graph_index_type_default ... ok
+test graph_cost::tests::test_graph_scan_cheaper_than_sql_traversal ... ok
+test decorrelate::tests_v312_58_q17_q20::no_false_positive_on_correlated_non_aggregate ... ok
+test decorrelate::tests_v312_58_q17_q20::detects_q17_pattern ... ok
+test graph_cost::tests::test_reachability_cost ... ok
+test graph_cost::tests::test_pattern_match_cost ... ok
+test decorrelate::tests_v312_58_q17_q20::detects_q20_pattern ... ok
+test graph_cost::tests::test_traversal_cost ... ok
+test decorrelate::tests_v312_58_q17_q20::no_false_positive_on_unrelated_scalar_subquery ... ok
+test graph_cost::tests::test_shortest_path_cost ... ok
+test index_selector::tests::test_analyze_and_predicate_left_first ... ok
+test index_selector::tests::test_analyze_and_predicate ... ok
+test index_selector::tests::test_analyze_gt_predicate ... ok
+test index_selector::tests::test_analyze_eq_predicate ... ok
+test decorrelate::tests_v312_58_q17_q20::try_decorrelate_captures_scalar_agg_in_where ... ok
+test index_selector::tests::test_analyze_gte_predicate ... ok
+test index_selector::tests::test_analyze_in_predicate_returns_none ... ok
+test index_selector::tests::test_analyze_is_not_null_predicate_returns_none ... ok
+test index_selector::tests::test_analyze_is_null_predicate_returns_none ... ok
+test index_selector::tests::test_analyze_lt_predicate ... ok
+test index_selector::tests::test_analyze_lte_predicate ... ok
+test index_selector::tests::test_analyze_not_predicate_returns_none ... ok
+test index_selector::tests::test_analyze_or_predicate_returns_none ... ok
+test index_selector::tests::test_debug_trait ... ok
+test index_selector::tests::test_estimate_index_benefit ... ok
+test index_selector::tests::test_estimate_index_benefit_high_selectivity ... ok
+test index_selector::tests::test_estimate_index_benefit_zero_rows ... ok
+test index_selector::tests::test_index_selection_indexscan ... ok
+test index_selector::tests::test_index_selection_seqscan ... ok
+test network_cost::tests::test_network_cost_calculate ... ok
+test network_cost::tests::test_network_cost_calculate_transfer_time ... ok
+test network_cost::tests::test_network_cost_debug ... ok
+test network_cost::tests::test_network_cost_zero_bytes ... ok
+test network_cost::tests::test_network_cost_new ... ok
+test network_cost::tests::test_simple_estimator_custom ... ok
+test network_cost::tests::test_simple_estimator_default ... ok
+test network_cost::tests::test_simple_estimator_same_node ... ok
+test path_selector::tests::test_analyze_graph_scan ... ok
+test path_selector::tests::test_path_selection_reasoning ... ok
+test path_selector::tests::test_path_selection_should_use_hybrid ... ok
+test path_selector::tests::test_path_selector_config_default ... ok
+test path_selector::tests::test_analyze_vector_scan ... ok
+test path_selector::tests::test_path_selector_with_defaults ... ok
+test plan::tests::test_optimizer_error_all_variants ... ok
+test plan::tests::test_optimizer_error_debug ... ok
+test plan::tests::test_optimizer_error_invalid_plan ... ok
+test plan::tests::test_optimizer_error_optimization_failed ... ok
+test plan::tests::test_optimizer_error_rule_failed ... ok
+test plan::tests::test_optimizer_result_err ... ok
+test plan::tests::test_optimizer_result_ok ... ok
+test query_planner::tests::test_cache_hit ... ok
+test query_planner::tests::test_clear_cache ... ok
+test query_planner::tests::test_path_selection_debug ... ok
+test query_planner::tests::test_plan_alternative_latency ... ok
+test query_planner::tests::test_plan_alternative_new ... ok
+test query_planner::tests::test_plan_alternatives ... ok
+test query_planner::tests::test_plan_alternatives_sql_cheapest ... ok
+test query_planner::tests::test_plan_config_enable_visualization ... ok
+test query_planner::tests::test_plan_filter ... ok
+test query_planner::tests::test_plan_alternatives_with_multiple ... ok
+test query_planner::tests::test_plan_projection ... ok
+test query_planner::tests::test_plan_graph_scan ... ok
+test query_planner::tests::test_plan_join ... ok
+test query_planner::tests::test_plan_limit ... ok
+test query_planner::tests::test_plan_result_debug ... ok
+test query_planner::tests::test_plan_table_scan ... ok
+test query_planner::tests::test_plan_vector_scan ... ok
+test query_planner::tests::test_query_planner_config_default ... ok
+test query_planner::tests::test_plan_with_custom_config ... ok
+test query_planner::tests::test_plan_with_disabled_cache ... ok
+test query_planner::tests::test_query_planner_with_defaults ... ok
+test query_planner::tests::test_visualize_text ... ok
+test query_planner::tests::test_visualize_text_with_empty_relation ... ok
+test query_planner::tests::test_visualize_text_with_filter ... ok
+test query_planner::tests::test_visualize_text_with_limit ... ok
+test query_planner::tests::test_visualize_text_with_projection ... ok
+test rules::tests::test_constant_folding_default ... ok
+test rules::tests::test_constant_folding_apply ... ok
+test query_planner::tests::test_visualize_text_with_join ... ok
+test query_planner::tests::test_visualize_text_with_graph_scan ... ok
+test rules::tests::test_constant_folding_name ... ok
+test rules::tests::test_predicate_pushdown_apply ... ok
+test rules::tests::test_predicate_pushdown_default ... ok
+test rules::tests::test_predicate_pushdown_name ... ok
+test query_planner::tests::test_visualize_text_with_vector_scan ... ok
+test rules::tests::test_projection_pruning_apply ... ok
+test rules::tests::test_projection_pruning_default ... ok
+test rules::tests::test_projection_pruning_name ... ok
+test stats::tests::test_column_selectivity ... ok
+test stats::tests::test_column_stats ... ok
+test stats::tests::test_column_stats_builder_pattern ... ok
+test stats::tests::test_column_stats_default ... ok
+test stats::tests::test_column_stats_debug ... ok
+test stats::tests::test_column_stats_eq_selectivity ... ok
+test stats::tests::test_column_stats_eq_selectivity_large_distinct ... ok
+test stats::tests::test_column_stats_eq_selectivity_nonzero ... ok
+test stats::tests::test_column_stats_eq_selectivity_small_distinct ... ok
+test stats::tests::test_column_stats_eq_selectivity_zero_distinct ... ok
+test stats::tests::test_column_stats_named_constructor ... ok
+test stats::tests::test_column_stats_range ... ok
+test stats::tests::test_column_stats_range_selectivity ... ok
+test stats::tests::test_column_stats_range_selectivity_edge_cases ... ok
+test stats::tests::test_column_stats_with_average ... ok
+test stats::tests::test_default_stats_collector_debug ... ok
+test stats::tests::test_default_stats_collector_new ... ok
+test stats::tests::test_estimated_rows ... ok
+test stats::tests::test_estimated_rows_with_stats ... ok
+test stats::tests::test_in_memory_provider ... ok
+test stats::tests::test_in_memory_provider_clear_stats ... ok
+test stats::tests::test_in_memory_provider_debug ... ok
+test stats::tests::test_in_memory_provider_estimated_rows ... ok
+test stats::tests::test_in_memory_provider_estimated_rows_not_found ... ok
+test stats::tests::test_in_memory_provider_get_stats ... ok
+test stats::tests::test_in_memory_provider_get_stats_not_found ... ok
+test stats::tests::test_in_memory_provider_has_stats ... ok
+test stats::tests::test_in_memory_provider_remove_stats ... ok
+test stats::tests::test_in_memory_provider_table_stats ... ok
+test stats::tests::test_in_memory_provider_table_stats_via_get ... ok
+test stats::tests::test_in_memory_statistics_provider_debug ... ok
+test stats::tests::test_in_memory_provider_update_not_found ... ok
+test stats::tests::test_provider_column_stats ... ok
+test stats::tests::test_provider_column_stats_not_found ... ok
+test stats::tests::test_provider_has_stats ... ok
+test stats::tests::test_provider_selectivity_default ... ok
+test stats::tests::test_selectivity ... ok
+test stats::tests::test_provider_update_stats ... ok
+test stats::tests::test_stats_error_display ... ok
+test stats::tests::test_stats_error_invalid_stats ... ok
+test stats::tests::test_stats_error_debug ... ok
+test stats::tests::test_stats_error_table_not_found ... ok
+test stats::tests::test_stats_error_update_failed ... ok
+test stats::tests::test_stats_error_update_failed_display ... ok
+test stats::tests::test_stats_result ... ok
+test stats::tests::test_stats_result_is_err ... ok
+test stats::tests::test_stats_result_is_ok ... ok
+test stats::tests::test_table_selectivity ... ok
+test stats::tests::test_table_stats ... ok
+test stats::tests::test_table_stats_builder_pattern ... ok
+test stats::tests::test_table_stats_column_not_found ... ok
+test stats::tests::test_table_stats_debug ... ok
+test stats::tests::test_table_stats_default ... ok
+test stats::tests::test_table_stats_estimate_selectivity_default ... ok
+test stats::tests::test_table_stats_get_column_stats_not_found ... ok
+test stats::tests::test_table_stats_row_count ... ok
+test stats::tests::test_table_stats_size_bytes ... ok
+test stats::tests::test_table_stats_with_column_stats ... ok
+test stats::tests::test_table_stats_with_column_stats_hashmap ... ok
+test stats::tests::test_table_stats_with_multiple_columns ... ok
+test stats::tests::test_table_stats_with_size ... ok
+test tests::test_cost_model_trait ... ok
+test tests::test_noop_optimizer_optimize ... ok
+test tests::test_noop_optimizer_trait_object ... ok
+test tests::test_rule_set_add_rule ... ok
+test tests::test_rule_set_default ... ok
+test tests::test_rule_set_multiple_rules ... ok
+test tests::test_rule_set_new ... ok
+test tests::test_rule_set_no_changes ... ok
+test tests::test_rule_trait ... ok
+test unified_cost::tests::test_cost_model_with_statistics ... ok
+test unified_cost::tests::test_cost_with_updated_stats ... ok
+test unified_cost::tests::test_estimate_empty_relation_cost ... ok
+test unified_cost::tests::test_estimate_hybrid_graph_scan ... ok
+test unified_cost::tests::test_estimate_graph_cost ... ok
+test unified_cost::tests::test_estimate_join_cost ... ok
+test unified_cost::tests::test_estimate_hybrid_vector_scan ... ok
+test unified_cost::tests::test_estimate_sql_graph_join_cost ... ok
+test unified_cost::tests::test_estimate_vector_cost ... ok
+test unified_cost::tests::test_estimate_vector_cost_ann ... ok
+test unified_cost::tests::test_estimate_vector_cost_similarity ... ok
+test unified_cost::tests::test_estimate_vector_cost_range ... ok
+test unified_cost::tests::test_execution_path_involves ... ok
+test unified_cost::tests::test_execution_path_is_hybrid ... ok
+test unified_cost::tests::test_estimate_vector_graph_join_cost ... ok
+test unified_cost::tests::test_select_best_path ... ok
+test unified_cost::tests::test_select_best_path_all_invalid_fallback ... ok
+test unified_cost::tests::test_select_best_path_graph_cheapest ... ok
+test unified_cost::tests::test_select_best_path_hybrid_sql_graph_cheapest ... ok
+test unified_cost::tests::test_select_best_path_some_invalid ... ok
+test unified_cost::tests::test_select_best_path_hybrid_sql_vector_cheapest ... ok
+test unified_cost::tests::test_select_best_path_sql ... ok
+test unified_cost::tests::test_select_best_path_with_all_hybrid_costs ... ok
+test unified_cost::tests::test_sql_vector_join_cost ... ok
+test unified_cost::tests::test_unified_cost_model_accessors ... ok
+test unified_cost::tests::test_unified_cost_model_default ... ok
+test unified_cost::tests::test_select_best_path_with_hybrid_costs ... ok
+test unified_cost::tests::test_update_table_stats ... ok
+test unified_plan::tests::test_empty_relation_cardinality ... ok
+test unified_plan::tests::test_aggregate_cardinality ... ok
+test unified_plan::tests::test_estimate_cardinality ... ok
+test unified_plan::tests::test_filter_cardinality ... ok
+test unified_plan::tests::test_graph_pattern_default ... ok
+test unified_plan::tests::test_graph_scan_pattern_match_cardinality ... ok
+test unified_plan::tests::test_graph_scan_reachability_cardinality ... ok
+test unified_plan::tests::test_graph_scan_shortest_path_cardinality ... ok
+test unified_plan::tests::test_graph_scan_traversal_cardinality ... ok
+test unified_plan::tests::test_hybrid_graph_scan ... ok
+test unified_plan::tests::test_hybrid_vector_scan ... ok
+test unified_plan::tests::test_hybrid_vector_scan_without_limit ... ok
+test unified_plan::tests::test_index_scan_cardinality ... ok
+test unified_plan::tests::test_is_graph_op ... ok
+test unified_plan::tests::test_is_sql_only ... ok
+test unified_plan::tests::test_is_vector_op ... ok
+test unified_plan::tests::test_knn_scan_type ... ok
+test unified_plan::tests::test_join_cardinality ... ok
+test unified_plan::tests::test_limit_larger_than_input ... ok
+test unified_plan::tests::test_limit_smaller_than_input ... ok
+test unified_plan::tests::test_sort_cardinality ... ok
+test unified_plan::tests::test_sql_graph_join ... ok
+test unified_plan::tests::test_sql_vector_join ... ok
+test unified_plan::tests::test_unified_plan_type_name ... ok
+test unified_plan::tests::test_vector_graph_join ... ok
+test unified_plan::tests::test_vector_scan_without_limit ... ok
+test vector_cost::tests::test_estimate_plan_cost ... ok
+test vector_cost::tests::test_ann_cost ... ok
+test vector_cost::tests::test_knn_cost ... ok
+test vector_cost::tests::test_range_cost ... ok
+test vector_cost::tests::test_similarity_cost ... ok
+test vector_cost::tests::test_vector_cost_factors_default ... ok
+test vector_cost::tests::test_vector_index_type_default ... ok
+test vector_cost::tests::test_vector_scan_cheaper_than_sql ... ok
+
+test result: ok. 251 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 9 tests
+test cov_find_scalar_subqueries_zero_on_column ... ok
+test cov_count_zero_on_literal ... ok
+test cov_count_zero_on_column ... ok
+test cov_count_zero_on_simple_comparison ... ok
+test cov_find_not_exists ... ok
+test cov_count_exists_is_one ... ok
+test cov_try_decorrelate_none_on_uncorrelated ... ok
+test cov_find_exists_correlated ... ok
+test cov_find_in_where_and_projection ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test test_histogram_empty_values_returns_none ... ok
+test test_unified_cost_falls_back_to_heuristic ... ok
+test test_histogram_populated_in_table_stats ... ok
+test test_histogram_lt_selectivity_linear_interpolation ... ok
+test test_histogram_buckets_sorted_by_lower_bound ... ok
+test test_histogram_eq_selectivity_with_uniform_data ... ok
+test test_unified_cost_selectivity_uses_histogram ... ok
+test test_analyze_then_selectivity_roundtrip ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 21 tests
+test test_cost_model_agg ... ok
+test test_cost_model_index_scan ... ok
+test test_cost_model_sort ... ok
+test test_cost_model_join_hash ... ok
+test test_cost_model_join_nested_loop ... ok
+test test_cost_model_seq_scan ... ok
+test test_planner_cache_hit ... ok
+test test_planner_aggregate ... ok
+test test_planner_clear_cache ... ok
+test test_planner_aggregate_with_having ... ok
+test test_planner_hybrid_scan ... ok
+test test_planner_left_join ... ok
+test test_planner_limit ... ok
+test test_planner_graph_scan ... ok
+test test_planner_order_by ... ok
+test test_planner_limit_offset ... ok
+test test_planner_table_scan ... ok
+test test_planner_result_not_null ... ok
+test test_planner_two_table_join ... ok
+test test_planner_with_projection ... ok
+test test_planner_vector_scan ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 11 tests
+test test_should_parallelize_for_update_disables ... ok
+test test_should_parallelize_large_table ... ok
+test test_estimate_selectivity_or ... ok
+test test_estimate_selectivity_and ... ok
+test test_is_compute_bound_high_selectivity_large_input ... ok
+test test_is_compute_bound_high_selectivity_small_input ... ok
+test test_estimate_selectivity_eq ... ok
+test test_should_parallelize_small_table ... ok
+test test_estimate_selectivity_lt ... ok
+test test_estimate_selectivity_not ... ok
+test test_should_parallelize_unknown_table ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 71 tests
+test cardinality_tests::test_graph_traversal_cardinality_from_depth ... ok
+test cardinality_tests::test_limit_larger_than_input ... ok
+test cardinality_tests::test_filter_reduces_cardinality ... ok
+test cardinality_tests::test_graph_reachability_cardinality ... ok
+test cardinality_tests::test_table_scan_cardinality ... ok
+test cardinality_tests::test_limit_constrains_cardinality ... ok
+test cardinality_tests::test_graph_pattern_match_cardinality ... ok
+test cardinality_tests::test_vector_scan_cardinality_from_limit ... ok
+test execution_path_tests::test_execution_path_involves_graph ... ok
+test cardinality_tests::test_index_scan_cardinality ... ok
+test execution_path_tests::test_execution_path_involves_vector ... ok
+test execution_path_tests::test_execution_path_is_hybrid ... ok
+test execution_path_tests::test_select_best_path_fallback_when_all_invalid ... ok
+test execution_path_tests::test_select_best_path_graph ... ok
+test execution_path_tests::test_select_best_path_hybrid_sql_graph ... ok
+test execution_path_tests::test_select_best_path_hybrid_sql_vector ... ok
+test execution_path_tests::test_select_best_path_sql ... ok
+test execution_path_tests::test_select_best_path_unified ... ok
+test execution_path_tests::test_select_best_path_vector ... ok
+test explain_tests::test_explain_cross_join ... ok
+test explain_tests::test_explain_graph_scan ... ok
+test explain_tests::test_explain_table_scan ... ok
+test explain_tests::test_explain_hybrid_scan ... ok
+test explain_tests::test_explain_vector_scan ... ok
+test filter_pushdown_tests::test_filter_before_vector_scan_reduces_cost ... ok
+test filter_pushdown_tests::test_nested_filter_increases_cost ... ok
+test graph_cost_tests::test_custom_graph_cost_factors ... ok
+test graph_cost_tests::test_graph_scan_cheaper_than_sql_for_traversals ... ok
+test graph_cost_tests::test_labeled_index_cheaper_than_adjacency_list ... ok
+test filter_pushdown_tests::test_filter_before_graph_scan_reduces_cost ... ok
+test graph_cost_tests::test_reachability_cost_uses_index ... ok
+test graph_cost_tests::test_pattern_match_cost_increases_with_complexity ... ok
+test graph_cost_tests::test_traversal_cost_increases_with_depth ... ok
+test graph_cost_tests::test_shortest_path_cost_with_graph_size ... ok
+test plan_type_tests::test_hybrid_graph_scan_is_graph_op ... ok
+test plan_type_tests::test_graph_scan_is_graph_op ... ok
+test plan_type_tests::test_hybrid_vector_scan_is_vector_op ... ok
+test plan_type_tests::test_plan_type_name ... ok
+test plan_type_tests::test_sql_table_scan_is_sql_only ... ok
+test plan_type_tests::test_sql_vector_join_involves_both ... ok
+test plan_type_tests::test_vector_graph_join_involves_both ... ok
+test plan_type_tests::test_vector_scan_is_vector_op ... ok
+test selectivity_tests::test_and_selectivity ... ok
+test selectivity_tests::test_equality_selectivity ... ok
+test selectivity_tests::test_inequality_selectivity ... ok
+test selectivity_tests::test_not_selectivity ... ok
+test selectivity_tests::test_or_selectivity ... ok
+test selectivity_tests::test_range_selectivity ... ok
+test statistics_tests::test_multiple_tables_with_different_stats ... ok
+test statistics_tests::test_larger_table_has_higher_cost ... ok
+test statistics_tests::test_update_table_stats ... ok
+test unified_cost_tests::test_unified_cost_for_aggregate ... ok
+test unified_cost_tests::test_unified_cost_for_graph_scan ... ok
+test unified_cost_tests::test_unified_cost_for_filter ... ok
+test unified_cost_tests::test_unified_cost_for_hybrid_graph_scan ... ok
+test unified_cost_tests::test_unified_cost_for_hybrid_vector_scan ... ok
+test unified_cost_tests::test_unified_cost_for_limit ... ok
+test unified_cost_tests::test_unified_cost_for_sort ... ok
+test unified_cost_tests::test_unified_cost_for_sql_graph_join ... ok
+test unified_cost_tests::test_unified_cost_for_join ... ok
+test unified_cost_tests::test_unified_cost_for_sql_vector_join ... ok
+test unified_cost_tests::test_unified_cost_for_table_scan ... ok
+test unified_cost_tests::test_unified_cost_for_vector_scan ... ok
+test unified_cost_tests::test_unified_cost_for_vector_graph_join ... ok
+test vector_cost_tests::test_ann_cost_with_ef_parameter ... ok
+test vector_cost_tests::test_custom_vector_cost_factors ... ok
+test vector_cost_tests::test_hnsw_cost_lower_than_brute_force ... ok
+test vector_cost_tests::test_range_cost_with_radius ... ok
+test vector_cost_tests::test_ivf_cost_lower_than_brute_force ... ok
+test vector_cost_tests::test_similarity_cost_with_threshold ... ok
+test vector_cost_tests::test_vector_scan_cheaper_than_sql_for_selective_queries ... ok
+
+test result: ok. 71 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 916 tests
+test adaptive_hash_index::tests::test_new_has_zero_size ... ok
+test adaptive_hash_index::tests::test_record_access_below_threshold_does_not_promote ... ok
+test adaptive_hash_index::tests::test_lookup_miss_returns_none ... ok
+test adaptive_hash_index::tests::test_custom_threshold ... ok
+test adaptive_hash_index::tests::test_record_access_updates_promoted_count ... ok
+test adaptive_hash_index::tests::test_invalidate_table_removes_only_that_table ... ok
+test adaptive_hash_index::tests::test_invalidate_page_removes_entries ... ok
+test adaptive_hash_index::tests::test_record_access_at_threshold_promotes ... ok
+test adaptive_hash_index::tests::test_hit_rate_calculation ... ok
+test adaptive_hash_index::tests::test_into_shared ... ok
+test append_only_storage::tests::insert_missing_table_errors ... ok
+test append_only_storage::tests::flush_clears_dirty ... ok
+test append_only_storage::tests::stub_methods_return_ok_or_empty ... ok
+test append_only_storage::tests::load_table_nonexistent_is_noop ... ok
+test backup::tests::test_backup_format_case_insensitive ... ok
+test backup::tests::test_backup_format_from_str ... ok
+test backup::tests::test_backup_format_invalid ... ok
+test backup::tests::test_csv_escape_blob ... ok
+test backup::tests::test_csv_escape_boolean ... ok
+test append_only_storage::tests::transaction_lifecycle ... ok
+test append_only_storage::tests::new_creates_dir_and_load_all_empty ... ok
+test backup::tests::test_csv_escape ... ok
+test append_only_storage::tests::create_insert_scan_roundtrip ... ok
+test backup::tests::test_export_csv ... ok
+test backup::tests::test_export_sql_with_text_escaping ... ok
+test backup::tests::test_json_value_integer ... ok
+test backup::tests::test_json_value_string ... ok
+test backup::tests::test_export_sql ... ok
+test backup::tests::test_parse_csv_value_integer ... ok
+test append_only_storage::tests::compact_table_drops_tombstones ... ok
+test backup::tests::test_export_csv_with_quotes ... ok
+test append_only_storage::tests::has_list_get_drop_table ... ok
+test backup::tests::test_data_restorer_restore_csv ... ok
+test backup::tests::test_export_json ... ok
+test backup::tests::test_parse_csv_value ... ok
+test append_only_storage::tests::delete_with_tombstones ... ok
+test backup::tests::test_sql_value ... ok
+test backup::tests::test_sql_value_blob ... ok
+test backup::tests::test_sql_value_boolean ... ok
+test backup::tests::test_export_with_empty_table ... ok
+test backup_coordinator::tests::counts_default_zero ... ok
+test backup_coordinator::tests::manifest_json_serializable ... ok
+test backup::tests::test_restore_sql ... ok
+test bin_index::tests::test_root_index_detects_corruption ... ok
+test bin_index::tests::test_root_index_roundtrip ... ok
+test backup::tests::test_restore_json_invalid ... ok
+test backup_coordinator::tests::backup_with_only_sql ... ok
+test bin_migration::tests::test_detect_bin_only ... ok
+test backup_coordinator::tests::backup_creates_manifest ... ok
+test bin_migration::tests::test_detect_missing ... ok
+test bin_migration::tests::test_detect_both_prefers_bin ... ok
+test bin_segment::tests::test_bin_segment_error_display ... ok
+test bin_migration::tests::test_detect_json_only ... ok
+test bin_segment::tests::test_column_width_char ... ok
+test backup_coordinator::tests::checksum_mismatch_detected ... ok
+test bin_segment::tests::test_column_width_fixed_types ... ok
+test bin_segment::tests::test_column_width_variable_types ... ok
+test bin_segment::tests::test_encode_row_int_and_text ... ok
+test bin_segment::tests::test_encode_row_with_nulls ... ok
+test bin_segment::tests::test_from_row_decode_error ... ok
+test bin_segment::tests::test_row_crc_detects_corruption ... ok
+test bin_segment::tests::test_row_crc_deterministic ... ok
+test bin_segment::tests::test_row_header_roundtrip ... ok
+test bin_segment::tests::test_row_header_size_constant ... ok
+test bin_segment::tests::test_segment_footer_roundtrip ... ok
+test bin_segment::tests::test_segment_header_detects_corruption ... ok
+test backup_coordinator::tests::backup_with_data ... ok
+test bin_segment::tests::test_segment_header_roundtrip ... ok
+test bin_segment::tests::test_segment_header_size_constant ... ok
+test backup_coordinator::tests::backup_empty_database ... ok
+test bin_migration::tests::test_migrate_atomic_on_failure ... ok
+test backup_coordinator::tests::restore_into_empty_coordinator ... ok
+test binary_format::tests::test_binary_format_error_display ... ok
+test binary_format::tests::test_helpers_write_read_string ... ok
+test binary_format::tests::test_helpers_write_read_u64 ... ok
+test binary_format::tests::test_value_roundtrip_blob ... ok
+test binary_format::tests::test_value_roundtrip_boolean ... ok
+test binary_format::tests::test_value_roundtrip_float ... ok
+test binary_format::tests::test_value_roundtrip_integer ... ok
+test binary_format::tests::test_value_roundtrip_null ... ok
+test backup_coordinator::tests::backup_into_subdir ... ok
+test binary_format::tests::test_value_roundtrip_point ... ok
+test binary_format::tests::test_value_roundtrip_text ... ok
+test binary_format::tests::test_value_to_bytes_boolean ... ok
+test binary_format::tests::test_value_to_bytes_float ... ok
+test binary_format::tests::test_value_to_bytes_integer ... ok
+test binary_format::tests::test_value_to_bytes_null ... ok
+test bin_segment::tests::test_segment_writer_respects_size_cap ... ok
+test binary_format::tests::test_value_to_bytes_text ... ok
+test backup_coordinator::tests::restore_round_trip ... ok
+test bin_migration::tests::test_migrate_json_to_bin_atomic ... ok
+test binary_storage::tests::test_bin_box_storage_engine_has_view ... ok
+test bin_segment::tests::test_segment_writer_append_and_seal ... ok
+test bin_segment::tests::test_segment_reader_skips_corrupted_rows ... ok
+test binary_storage::tests::test_bin_box_storage_engine_is_wal_enabled ... ok
+test binary_storage::tests::test_bin_box_storage_engine_list_indexes ... ok
+test binary_storage::tests::test_bin_box_storage_engine_list_triggers ... ok
+test binary_storage::tests::test_bin_box_storage_engine_new ... ok
+test binary_storage::tests::test_bin_add_column ... ok
+test binary_storage::tests::test_bin_box_storage_engine_delegate ... ok
+test binary_storage::tests::test_bin_create_index_noop ... ok
+test binary_storage::tests::test_bin_box_storage_engine_delete_if ... ok
+test binary_storage::tests::test_bin_create_database_is_rejected ... ok
+test binary_storage::tests::test_bin_create_trigger_is_rejected ... ok
+test binary_storage::tests::test_bin_box_storage_engine_update_if ... ok
+test binary_storage::tests::test_bin_create_drop_table ... ok
+test binary_storage::tests::test_bin_delete_nonexistent ... ok
+test binary_storage::tests::test_bin_delete_if_nonexistent ... ok
+test binary_storage::tests::test_bin_delete ... ok
+test binary_storage::tests::test_bin_drop_database_is_rejected ... ok
+test binary_storage::tests::test_bin_delete_all ... ok
+test binary_storage::tests::test_bin_drop_trigger_is_rejected ... ok
+test binary_storage::tests::test_bin_drop_index_noop ... ok
+test binary_storage::tests::test_bin_flush ... ok
+test binary_storage::tests::test_bin_get_trigger_none ... ok
+test binary_storage::tests::test_bin_get_table_info_not_found ... ok
+test binary_storage::tests::test_bin_force_insert ... ok
+test binary_storage::tests::test_bin_null_value ... ok
+test binary_storage::tests::test_bin_list_tables ... ok
+test binary_storage::tests::test_bin_insert ... ok
+test binary_storage::tests::test_bin_scan_nonexistent ... ok
+test binary_storage::tests::test_bin_rename_table ... ok
+test binary_storage::tests::test_bin_update_nonexistent ... ok
+test binary_storage::tests::test_bin_persist_table ... ok
+test binary_storage::tests::test_bin_scan ... ok
+test binary_storage::tests::test_bin_update_if_nonexistent ... ok
+test binary_storage::tests::test_binary_storage_exists ... ok
+test binary_storage::tests::test_binary_save_load ... ok
+test binary_storage::tests::test_binary_storage_new ... ok
+test binary_storage::tests::test_binary_storage_load_float ... ok
+test bin_segment::tests::test_segment_writer_reader_roundtrip ... ok
+test binlog_client::tests::test_client_builder ... ok
+test binary_storage::tests::test_bin_update ... ok
+test binlog_protocol::tests::test_binlog_event_data_debug ... ok
+test binlog_protocol::tests::test_binlog_event_data_with_row_data ... ok
+test binlog_protocol::tests::test_binlog_data_serialization ... ok
+test binlog_protocol::tests::test_binlog_protocol_constants ... ok
+test binlog_protocol::tests::test_binlog_pos_request_response ... ok
+test binary_storage::tests::test_binary_storage_load_text ... ok
+test binlog_protocol::tests::test_binlog_protocol_default ... ok
+test binary_storage::tests::test_binary_storage_multiple_rows ... ok
+test binlog_protocol::tests::test_deserialize_invalid_data ... ok
+test binlog_protocol::tests::test_eof_message ... ok
+test binary_storage::tests::test_binary_storage_multiple_tables ... ok
+test binlog_protocol::tests::test_error_message_serialization ... ok
+test binlog_protocol::tests::test_heartbeat_ack_serialization ... ok
+test binlog_protocol::tests::test_handshake_request_serialization ... ok
+test binary_storage_v2::tests::test_v2_insert_streaming_basic ... ok
+test binlog_protocol::tests::test_heartbeat_serialization ... ok
+test binlog_protocol::tests::test_serialize_deserialize_roundtrip ... ok
+test binlog_protocol::tests::test_replication_message_debug ... ok
+test binlog_server::tests::test_server_creation ... ok
+test bplus_tree::index::composite_index_tests::test_composite_btree_insert_and_search ... ok
+test binlog_server::tests::test_acked_lsn_starts_at_zero ... ok
+test binlog_server::tests::test_acked_lsn_never_moves_backwards ... ok
+test binlog_server::tests::test_min_acked_lsn_distinguishes_empty_from_caught_up ... ok
+test bplus_tree::index::composite_index_tests::test_composite_btree_split_then_search_boundary_keys ... ok
+test bplus_tree::index::composite_index_tests::test_composite_btree_range_query_sees_all_splits ... ok
+test binary_storage_v2::tests::test_v2_insert_streaming_iter_accepts_arbitrary_iterator ... ok
+test bplus_tree::index::composite_index_tests::test_composite_key_creation ... ok
+test bplus_tree::index::composite_index_tests::test_composite_key_equality ... ok
+test bplus_tree::index::composite_index_tests::test_composite_key_from_slice ... ok
+test bplus_tree::index::composite_index_tests::test_index_stats_selectivity ... ok
+test bplus_tree::index::covering_index_tests::test_covering_index_check ... ok
+test bplus_tree::index::covering_index_tests::test_index_only_scan_decision ... ok
+test bplus_tree::index::covering_index_tests::test_non_covering_index_check ... ok
+test bplus_tree::index::index_selection_tests::test_best_index_selection ... ok
+test bplus_tree::index::index_selection_tests::test_selectivity_calculation ... ok
+test binlog_server::tests::test_min_acked_lsn_tracks_the_slowest_replica ... ok
+test bplus_tree::index::tests::test_btree_index_collect_stats ... ok
+test bplus_tree::index::tests::test_btree_index_collect_stats_empty ... ok
+test bplus_tree::index::tests::test_btree_index_delete ... ok
+test bplus_tree::index::tests::test_btree_index_delete_multiple ... ok
+test bplus_tree::index::tests::test_btree_index_insert ... ok
+test bplus_tree::index::tests::test_btree_index_height ... ok
+test bplus_tree::index::tests::test_btree_index_is_empty ... ok
+test bplus_tree::index::tests::test_btree_index_keys ... ok
+test bplus_tree::index::tests::test_btree_index_keys_sorted ... ok
+test bplus_tree::index::tests::test_btree_index_insert_multiple ... ok
+test bplus_tree::index::tests::test_btree_index_len ... ok
+test bplus_tree::index::tests::test_btree_index_new ... ok
+test bplus_tree::index::tests::test_btree_index_range_query ... ok
+test bplus_tree::index::tests::test_btree_index_search_after_insert ... ok
+test bplus_tree::index::tests::test_btree_index_search_empty ... ok
+test bplus_tree::index::tests::test_btree_index_usage_stats ... ok
+test bplus_tree::index::tests::test_btree_metadata_default ... ok
+test bplus_tree::index::tests::test_btree_node_insert_key_value ... ok
+test bplus_tree::index::tests::test_btree_node_insert_key_value_split ... ok
+test bplus_tree::index::tests::test_btree_node_remove_key ... ok
+test bplus_tree::index::tests::test_btree_node_remove_key_not_found ... ok
+test bplus_tree::index::tests::test_btree_range_query_empty ... ok
+test bplus_tree::index::tests::test_btree_range_query_partial ... ok
+test bplus_tree::index::tests::test_btree_search_not_found ... ok
+test bplus_tree::index::tests::test_btree_range_query_sees_all_splits ... ok
+test bplus_tree::index::tests::test_composite_btree_index_insert ... ok
+test bplus_tree::index::tests::test_btree_split_then_search_boundary_keys ... ok
+test bplus_tree::index::tests::test_composite_btree_index_num_columns ... ok
+test bplus_tree::index::tests::test_composite_btree_index_insert_unique ... ok
+test bplus_tree::index::tests::test_composite_btree_index_range_query ... ok
+test bplus_tree::index::tests::test_composite_btree_index_search ... ok
+test bplus_tree::index::tests::test_composite_key_creation ... ok
+test bplus_tree::index::tests::test_composite_key_from_slice ... ok
+test bplus_tree::index::tests::test_deserialize_invalid_data ... ok
+test bplus_tree::index::composite_index_tests::test_composite_btree_survives_multiple_node_splits ... ok
+test bplus_tree::index::tests::test_fts_complex_query ... ok
+test bplus_tree::index::tests::test_fts_delete_lazy ... ok
+test bplus_tree::index::tests::test_fts_index_contains ... ok
+test bplus_tree::index::tests::test_btree_survives_multiple_node_splits ... ok
+test bplus_tree::index::tests::test_fts_index_is_empty ... ok
+test bplus_tree::index::tests::test_fts_index_new ... ok
+test binary_storage_v2::tests::test_v2_insert_streaming_iter_basic ... ok
+test bplus_tree::index::tests::test_fts_insert ... ok
+test bplus_tree::index::tests::test_fts_intersect ... ok
+test bplus_tree::index::tests::test_fts_intersect_no_overlap ... ok
+test bplus_tree::index::tests::test_fts_posting_list_sorted ... ok
+test bplus_tree::index::tests::test_fts_search_and ... ok
+test bplus_tree::index::tests::test_fts_search_case_insensitive ... ok
+test bplus_tree::index::tests::test_fts_search_no_match ... ok
+test bplus_tree::index::tests::test_fts_search_single_term ... ok
+test bplus_tree::index::tests::test_fts_term_frequency ... ok
+test bplus_tree::index::tests::test_fts_terms ... ok
+test bplus_tree::index::tests::test_fts_tokenize ... ok
+test bplus_tree::index::tests::test_fts_tokenize_chinese ... ok
+test bplus_tree::index::tests::test_fts_tokenize_punctuation ... ok
+test bplus_tree::index::tests::test_fts_tokenize_short_words ... ok
+test bplus_tree::index::tests::test_index_stats_default ... ok
+test bplus_tree::index::tests::test_index_stats_selectivity ... ok
+test bplus_tree::index::tests::test_index_stats_selectivity_clamped ... ok
+test bplus_tree::index::tests::test_index_stats_selectivity_empty ... ok
+test bplus_tree::index::tests::test_node_can_split ... ok
+test bplus_tree::index::tests::test_node_find_child_index ... ok
+test bplus_tree::index::tests::test_node_find_key_index ... ok
+test bplus_tree::index::tests::test_internal_node_serialization ... ok
+test bplus_tree::index::composite_index_tests::test_composite_btree_internal_node_split ... ok
+test bplus_tree::index::tests::test_node_is_full ... ok
+test bplus_tree::index::tests::test_node_serialization ... ok
+test bplus_tree::index::tests::test_posting_list_contains ... ok
+test bplus_tree::index::tests::test_serialize_deserialize_empty_node ... ok
+test bplus_tree::tests::duplicate_keys_keep_every_row_id ... ok
+test bplus_tree::tests::legacy_scalar_form_still_deserializes ... ok
+test bplus_tree::tests::range_query_returns_all_rows_in_range ... ok
+test bplus_tree::tests::current_list_form_round_trips ... ok
+test bplus_tree::tests::test_bplus_tree_insert_and_search ... ok
+test bplus_tree::tests::test_simple_bplus_tree_is_empty ... ok
+test bplus_tree::tests::test_simple_bplus_tree_keys ... ok
+test bplus_tree::tests::test_bplus_tree_range_query ... ok
+test bplus_tree::tests::test_simple_bplus_tree_search_all ... ok
+test buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert ... ok
+test buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init ... ok
+test buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation ... ok
+test buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load ... ok
+test buffer_pool::tests::test_buffer_pool_basic ... ok
+test buffer_pool::tests::test_buffer_pool_get_page ... ok
+test buffer_pool::tests::test_buffer_pool_hit_rate ... ok
+test buffer_pool::tests::test_buffer_pool_lru_eviction ... ok
+test buffer_pool::tests::test_buffer_pool_prefetch ... ok
+test buffer_pool::tests::test_buffer_pool_stats ... ok
+test buffer_pool::tests::test_buffer_pool_remove ... ok
+test buffer_pool::tests::test_buffer_pool_stats_synthetic_zero_field_order ... ok
+test buffer_pool::tests::test_memory_pool_wrong_size ... ok
+test buffer_pool::tests::test_memory_pool ... ok
+test change_buffer::tests::test_batch_flush_at_threshold ... ok
+test change_buffer::tests::test_change_buffer_capacity_limit ... ok
+test change_buffer::tests::test_defer_secondary_index_update ... ok
+test change_buffer::tests::test_eviction_on_flush ... ok
+test change_buffer::tests::test_merge_on_page_read ... ok
+test checkpoint::tests::test_checkpoint_manager_default ... ok
+test checkpoint::tests::test_checkpoint_metadata_serialization ... ok
+test bplus_tree::index::tests::test_btree_internal_node_split ... ok
+test checkpoint::tests::test_truncation_gate_blocks_before_checkpoint ... ok
+test clustered_table::tests::test_clustered_table_full_scan ... ok
+test clustered_table::tests::test_clustered_table_len_and_is_empty ... ok
+test clustered_table::tests::test_clustered_table_range_scan ... ok
+test clustered_table::tests::test_clustered_table_update_not_found ... ok
+test clustered_table::tests::test_delete ... ok
+test clustered_table::tests::test_insert_and_lookup_pk ... ok
+test clustered_table::tests::test_pk_uniqueness_violation ... ok
+test clustered_table::tests::test_range_scan_returns_sorted ... ok
+test clustered_table::tests::test_update_preserves_order ... ok
+test cross_model_tracker::tests::each_model_kind_distinct ... ok
+test checkpoint::tests::test_checkpoint_record ... ok
+test checkpoint::tests::test_checkpoint_save_load ... ok
+test checkpoint::tests::test_checkpoint_needs ... ok
+test cross_model_tracker::tests::global_tracker_round_trip ... ok
+test cross_model_tracker::tests::register_with_tracker_records ... ok
+test checkpoint::tests::test_truncation_gate_allows_after_checkpoint ... ok
+test double_write_buffer::tests::test_crash_recovery_reconstructs_pages ... ok
+test double_write_buffer::tests::test_dwb_size_limit ... ok
+test double_write_buffer::tests::test_fsync_atomic_flush ... ok
+test checkpoint::tests::test_last_checkpoint_lsn ... ok
+test double_write_buffer::tests::test_sequential_write_pattern ... ok
+test double_write_buffer::tests::test_stage_and_buffered_count ... ok
+test double_write_buffer::tests::test_write_page_to_final_location ... ok
+test engine::in_methods_do_not_cross_databases ... ok
+test checkpoint::tests::test_safe_truncate_lsn ... ok
+test engine::in_methods_ignore_the_stored_current_db ... ok
+test engine::memory_storage_legacy_new_returns_synthetic_zero_stats ... ok
+test engine::memory_storage_insert_via_bufferpool_bumps_pages_visited ... ok
+test checkpoint::tests::test_list_checkpoints_empty ... ok
+test engine::memory_storage_new_with_bufferpool_exposes_real_buffer_pool_stats ... ok
+test engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited ... ok
+test engine::memory_storage_scan_empty_table_returns_empty_with_bufferpool ... ok
+test engine::memory_storage_scan_after_bufferpool_insert_bumps_pages_visited ... ok
+test engine::memory_storage_scan_with_filter_works_with_bufferpool_via_scan ... ok
+test engine::tests::list_tables_in_db_is_scoped_and_unscoped_keys ... ok
+test engine::tests::commit_with_log_shares_row_vectors_instead_of_deep_copying_4948 ... ok
+test engine::tests::rollback_of_update_restores_only_the_changed_row_5072 ... ok
+test engine::tests::rollback_actually_undoes_an_insert_4948 ... ok
+test engine::memory_storage_insert_100_records_via_bufferpool_bumps_pages_visited_at_least_100 ... ok
+test engine::tests::scoping_survives_dots_in_table_names ... ok
+test engine::tests::commit_shares_row_vectors_instead_of_deep_copying_4948 ... ok
+test engine::tests::tables_are_isolated_per_database ... ok
+test engine::tests::test_add_column_to_nonexistent_table_errs ... ok
+test engine::tests::test_add_column_to_existing_table ... ok
+test engine::tests::test_calculate_hash_simple ... ok
+test engine::tests::test_calculate_hash_empty ... ok
+test engine::tests::test_check_constraint_struct ... ok
+test engine::memory_storage_concurrent_inserts_via_bufferpool_do_not_corrupt ... ok
+test engine::tests::test_column_definition_new ... ok
+test engine::tests::test_create_drop_database_memory ... ok
+test engine::tests::test_create_drop_trigger_memory ... ok
+test engine::tests::test_drop_table_clears_infos ... ok
+test engine::tests::test_create_table_with_table_info ... ok
+test engine::tests::test_drop_trigger_not_found_errs ... ok
+test engine::tests::test_evaluate_check_constraint_and ... ok
+test engine::tests::test_evaluate_check_constraint_column_missing ... ok
+test engine::tests::test_evaluate_check_constraint_eq ... ok
+test engine::tests::test_evaluate_check_constraint_is_null ... ok
+test engine::tests::test_evaluate_check_constraint_or ... ok
+test engine::tests::test_evaluate_check_constraint_not ... ok
+test engine::tests::test_evaluate_sql_expression_boolean_and_logical_ops ... ok
+test engine::tests::test_evaluate_sql_expression_integer_comparison ... ok
+test engine::tests::test_find_column_index_against_table_info_wrapper ... ok
+test engine::tests::test_evaluate_sql_expression_null_handling ... ok
+test engine::tests::test_evaluate_sql_expression_text_comparison ... ok
+test engine::tests::test_find_column_index_in_case_colliding_columns_prefers_exact ... ok
+test engine::tests::test_find_column_index_in_layers ... ok
+test engine::tests::test_find_column_index_in_unqualified_trailing_segment_case_insensitive ... ok
+test engine::tests::test_find_column_index_in_multi_join_trailing_segments ... ok
+test engine::tests::test_foreign_key_struct ... ok
+test engine::tests::test_get_table_info_not_found_err ... ok
+test engine::tests::test_get_table_info_returns_clone ... ok
+test engine::tests::test_has_view_default_false ... ok
+test engine::tests::test_insert_dedup_logic ... ok
+test engine::tests::test_list_triggers_filters_by_table ... ok
+test checkpoint::tests::test_checkpoint_cleanup ... ok
+test engine::tests::test_list_tables_returns_names ... ok
+test engine::tests::test_memory_storage_has_table ... ok
+test engine::tests::test_memory_storage_create_and_drop ... ok
+test engine::tests::test_memory_storage_insert_and_scan ... ok
+test engine::tests::test_memory_storage_is_wal_enabled ... ok
+test engine::tests::test_memory_storage_insert_scan_preserves_real_type ... ok
+test engine::tests::test_memory_storage_new ... ok
+test engine::tests::test_nested_transaction_returns_error ... ok
+test engine::tests::test_partition_hash_integer ... ok
+test engine::tests::test_partition_hash_invalid ... ok
+test engine::tests::test_partition_hash_text ... ok
+test engine::tests::test_memory_storage_scan_empty ... ok
+test engine::tests::test_partition_info_new_hash ... ok
+test engine::tests::test_partition_info_new_list ... ok
+test engine::tests::test_partition_list_match ... ok
+test engine::tests::test_partition_range_invalid_value ... ok
+test engine::tests::test_partition_range_index ... ok
+test engine::tests::test_partition_rows_missing_table ... ok
+test engine::tests::test_partition_type_eq ... ok
+test engine::tests::test_rename_table_not_found_errs ... ok
+test engine::tests::test_rename_table_success ... ok
+test engine::tests::test_rollback_removes_inserted_rows ... ok
+test engine::tests::test_rollback_restores_deleted_rows ... ok
+test engine::tests::test_row_mutation_accessors ... ok
+test engine::tests::test_storage_engine_api_surface_defaults_v312_35 ... ok
+test engine::tests::test_storage_engine_api_surface_v312_35 ... ok
+test engine::tests::test_storage_engine_begin_rollback ... ok
+test engine::tests::test_storage_engine_default_impl_trait_methods ... ok
+test engine::tests::test_storage_engine_create_and_drop_table ... ok
+test engine::tests::test_storage_engine_delete_all ... ok
+test engine::tests::test_storage_engine_flush ... ok
+test engine::tests::test_storage_engine_force_insert ... ok
+test engine::tests::test_storage_engine_get_table_info ... ok
+test engine::tests::test_storage_engine_get_trigger_none ... ok
+test engine::tests::test_storage_engine_has_table_check ... ok
+test engine::tests::test_storage_engine_has_view_false ... ok
+test engine::tests::test_storage_engine_list_indexes_empty ... ok
+test engine::tests::test_storage_engine_insert_records ... ok
+test engine::tests::test_storage_engine_list_triggers_empty ... ok
+test engine::tests::test_storage_engine_modify_column_unsupported ... ok
+test engine::tests::test_storage_engine_send_sync ... ok
+test engine::tests::test_storage_engine_set_current_tx_id ... ok
+test engine::tests::test_storage_engine_table_not_found ... ok
+test engine::tests::test_storage_engine_trait_exists ... ok
+test engine::tests::test_storage_engine_table_operations ... ok
+test engine::tests::test_storage_engine_transaction ... ok
+test engine::tests::test_storage_engine_update_values ... ok
+test engine::tests::test_table_data_default ... ok
+test engine::tests::test_storage_update_if_signature ... ok
+test engine::tests::test_trigger_info_struct ... ok
+test engine::tests::test_unique_constraint_struct ... ok
+test engine::tests::test_update_if_nonexistent_table ... ok
+test engine::tests::test_update_if_with_log ... ok
+test engine::tests::test_update_nonexistent_table ... ok
+test engine::tests::test_update_with_log_no_filter ... ok
+test engine::tests::test_update_with_log_with_filter ... ok
+test engine::tests::trailing_segments_eq_contract ... ok
+test failover_manager::tests::test_failover_config_custom ... ok
+test engine::tests::writing_one_table_after_commit_clones_only_that_table_4948 ... ok
+test failover_manager::tests::test_failover_config_default ... ok
+test failover_manager::tests::test_failover_config_max_retry_delay_greater_than_base ... ok
+test failover_manager::tests::test_failover_state_clone ... ok
+test failover_manager::tests::test_failover_state_variants ... ok
+test failover_manager::tests::test_node_info_creation ... ok
+test failover_manager::tests::test_node_info_debug ... ok
+test failover_manager::tests::test_node_info_with_different_priorities ... ok
+test failover_manager::tests::test_node_type_clone ... ok
+test file_storage::bufferpool_routing_tests::file_storage_insert_100_records_bumps_pages_visited_at_least_100 ... ok
+test file_storage::bufferpool_routing_tests::file_storage_concurrent_inserts_via_bufferpool_do_not_corrupt ... ok
+test file_storage::bufferpool_routing_tests::file_storage_insert_via_bufferpool_bumps_pages_visited ... ok
+test file_storage::bufferpool_routing_tests::file_storage_scan_after_bufferpool_eviction_keeps_the_pages_that_survived ... ok
+test file_storage::bufferpool_routing_tests::file_storage_scan_after_insert_bumps_pages_visited ... ok
+test file_storage::bufferpool_routing_tests::file_storage_scan_empty_table_returns_empty_bufferpool ... ok
+test file_storage::db_isolation_tests::pre_5025_root_layout_is_still_readable ... ok
+test file_storage::parallel_scan_tests::test_parallel_scan_empty_table ... ok
+test file_storage::db_isolation_tests::tables_and_files_are_scoped_per_database ... ok
+test file_storage::parallel_scan_tests::test_parallel_scan_file_storage ... ok
+test file_storage::tests::test_add_column_storage ... ok
+test file_storage::parallel_scan_tests::test_parallel_scan_single_partition ... ok
+test file_storage::tests::test_buffered_insert_flush ... ok
+test file_storage::tests::test_buffered_insert_in_tx ... ok
+test file_storage::tests::test_contains_table ... ok
+test failover_manager::tests::test_node_info_update_last_seen ... ok
+test file_storage::tests::test_clear_all_tables ... ok
+test file_storage::tests::test_create_database_storage ... ok
+test file_storage::tests::test_create_index_storage ... ok
+test engine::tests::test_partition_rows_below_threshold_returns_single_chunk ... ok
+test file_storage::tests::test_create_database ... ok
+test file_storage::tests::test_create_table_storage ... ok
+test file_storage::tests::test_create_index_table_not_found ... ok
+test file_storage::tests::test_delete_if ... ok
+test file_storage::tests::test_delete_if_nonexistent ... ok
+test file_storage::tests::test_drop_column_not_found ... ok
+test file_storage::tests::test_drop_column_storage ... ok
+test file_storage::tests::test_drop_column_table_not_found ... ok
+test file_storage::tests::test_drop_database_nonexistent ... ok
+test file_storage::tests::test_drop_database_nonempty ... ok
+test file_storage::tests::test_drop_index_storage ... ok
+test file_storage::tests::test_file_storage ... ok
+test file_storage::tests::test_file_storage_add_column ... ok
+test file_storage::tests::test_drop_trigger_disk_removal ... ok
+test file_storage::tests::test_file_storage_contains_and_drop ... ok
+test file_storage::tests::test_file_storage_drop_index_no_table ... ok
+test file_storage::tests::test_file_storage_empty_tables ... ok
+test file_storage::tests::test_file_storage_get_mut ... ok
+test file_storage::tests::test_file_storage_get_index ... ok
+test file_storage::tests::test_file_storage_has_index_no_table ... ok
+test file_storage::tests::test_file_storage_index ... ok
+test file_storage::tests::test_file_storage_index_no_matching_rows ... ok
+test file_storage::tests::test_file_storage_insert_with_index_no_index ... ok
+test file_storage::tests::test_file_storage_index_search ... ok
+test file_storage::tests::test_file_storage_persist_nonexistent ... ok
+test file_storage::tests::test_file_storage_rename_nonexistent ... ok
+test file_storage::tests::test_file_storage_range_index_no_table ... ok
+test file_storage::tests::test_file_storage_persist ... ok
+test file_storage::tests::test_file_storage_range_index_no_results ... ok
+test file_storage::tests::test_file_storage_view_operations ... ok
+test file_storage::tests::test_file_storage_trigger_operations ... ok
+test file_storage::tests::test_file_storage_rename_table ... ok
+test file_storage::tests::test_file_with_buffer_disabled_flow ... ok
+test file_storage::tests::test_flush_all_buffers_extra ... ok
+test file_storage::tests::test_flush_all_buffers_with_buffered_table ... ok
+test file_storage::tests::test_flush_all_buffers ... ok
+test file_storage::tests::test_flush_buffer_with_buffered_rows ... ok
+test file_storage::tests::test_get_table_info_not_found ... ok
+test file_storage::tests::test_get_table_mut ... ok
+test file_storage::tests::test_get_table_mut_nonexistent ... ok
+test file_storage::tests::test_force_insert ... ok
+test file_storage::tests::test_get_trigger_none ... ok
+test file_storage::tests::test_has_index_no_table ... ok
+test file_storage::tests::test_has_table_storage ... ok
+test file_storage::tests::test_has_view_storage ... ok
+test file_storage::tests::test_in_transaction ... ok
+test file_storage::tests::test_insert_buffering ... ok
+test file_storage::tests::test_insert_buffer_threshold ... ok
+test file_storage::tests::test_insert_direct_table_not_in_map ... ok
+test file_storage::tests::test_insert_buffered_threshold_flushing ... ok
+test file_storage::tests::test_insert_table ... ok
+test file_storage::tests::test_list_indexes_empty ... ok
+test file_storage::tests::test_list_tables_storage ... ok
+test file_storage::tests::test_list_indexes_storage ... ok
+test file_storage::tests::test_load_table_invalid_json ... ok
+test file_storage::tests::test_modify_column_not_found ... ok
+test file_storage::tests::test_list_triggers_by_table ... ok
+test file_storage::tests::test_modify_column_storage ... ok
+test file_storage::tests::test_modify_column_table_not_found ... ok
+test file_storage::tests::test_new_with_buffer_config ... ok
+test file_storage::tests::test_new_with_wal ... ok
+test file_storage::tests::test_partition_rows_missing_table ... ok
+test file_storage::tests::test_partition_rows_below_threshold ... ok
+test engine::tests::test_partition_rows_above_threshold_2_partitions ... ok
+test engine::tests::test_partition_rows_num_partitions_zero ... ok
+test engine::tests::test_partition_rows_above_threshold_splits_evenly ... ok
+test file_storage::tests::test_rename_table_nonexistent ... ok
+test file_storage::tests::test_rename_table_storage ... ok
+test file_storage::tests::test_save_trigger_load_trigger_duplicate ... ok
+test file_storage::tests::test_scan_merges_buffer ... ok
+test file_storage::tests::test_set_current_tx_id ... ok
+test file_storage::tests::test_storage_engine_drop_index_nonexistent_table ... ok
+test file_storage::tests::test_storage_engine_get_table_info_not_found ... ok
+test engine::tests::test_partition_rows_num_partitions_one_large ... ok
+test file_storage::tests::test_storage_engine_table_operations_empty ... ok
+test file_storage::tests::test_table_names ... ok
+test file_storage::tests::test_table_names_empty ... ok
+test file_storage::tests::test_storage_save_reload_roundtrip ... ok
+test file_storage::tests::test_trigger_operations_storage ... ok
+test file_storage::tests::test_trigger_roundtrip_disk ... ok
+test engine::tests::test_partition_rows_uneven_remainder ... ok
+test file_storage::tests::test_update_if_existing ... ok
+test file_storage::tests::test_update_if_nonexistent ... ok
+test file_table::tests::accessors_and_dirty_tracking ... ok
+test file_storage::tests::test_update_nonexistent ... ok
+test file_table::tests::delete_update_are_stubs ... ok
+test file_table::tests::delete_then_flush_then_load_recovers_empty ... ok
+test file_table::tests::flush_skips_when_clean ... ok
+test file_table::tests::deserialize_unknown_type_byte_treats_as_null ... ok
+test file_table::tests::insert_after_flush_resets_dirty_flag ... ok
+test file_table::tests::insert_scan_flush_roundtrip ... ok
+test file_table::tests::serialize_deserialize_roundtrip_all_value_types ... ok
+test file_table::tests::load_without_data_file_is_noop ... ok
+test integrated_storage::tests::test_f25_capacity_threshold ... ok
+test integrated_storage::tests::test_f25_deferred_updates ... ok
+test file_table::tests::load_recovers_records_after_flush ... ok
+test integrated_storage::tests::test_f25_f26_integration_create_and_save ... ok
+test integrated_storage::tests::test_f26_crash_recovery ... ok
+test integrated_storage::tests::test_f25_load_merges_deferred ... ok
+test io_delay::tests::test_config_default ... ok
+test io_delay::tests::test_config_from_env_all_set ... ok
+test io_delay::tests::test_config_from_env_clamp ... ok
+test io_delay::tests::test_config_from_env_malformed_falls_back ... ok
+test io_delay::tests::test_config_from_env_missing ... ok
+test integrated_storage::tests::test_f26_multiple_write_cycles ... ok
+test io_delay::tests::test_corruption_rate_one ... ok
+test io_delay::tests::test_corruption_rate_zero ... ok
+test io_delay::tests::test_dropout_rate_one ... ok
+test io_delay::tests::test_corruption_single_bit_flip ... ok
+test io_delay::tests::test_dropout_rate_zero ... ok
+test io_delay::tests::test_dropout_write ... ok
+test io_delay::tests::test_from_env_creates_injector ... ok
+test io_delay::tests::test_io_delay_not_set ... ok
+test io_delay::tests::test_io_delay_parsing ... ok
+test io_delay::tests::test_io_delay_zero ... ok
+test io_delay::tests::test_lcg_deterministic ... ok
+test io_delay::tests::test_lcg_next_usize ... ok
+test io_delay::tests::test_lcg_range ... ok
+test io_delay::tests::test_no_delay_when_zero ... ok
+test io_delay::tests::test_no_fault_noop ... ok
+test io_delay::tests::test_with_seed_determinism ... ok
+test lock::gap_lock_manager::tests::test_block_count ... ok
+test lock::gap_lock_manager::tests::test_can_insert ... ok
+test lock::gap_lock_manager::tests::test_different_tables ... ok
+test lock::gap_lock_manager::tests::test_gap_lock_basic ... ok
+test lock::gap_lock_manager::tests::test_insert_intention_locks ... ok
+test mvcc::tests::test_empty_table_snapshot ... ok
+test mvcc::tests::test_find_visible_at_snapshot_before_all ... ok
+test mvcc::tests::test_gc_drops_old_versions ... ok
+test mvcc::tests::test_get_visible_pk_lookup ... ok
+test mvcc::tests::test_insert_after_delete_resurrects ... ok
+test mvcc::tests::test_key_count ... ok
+test mvcc::tests::test_put_and_scan_visible ... ok
+test mvcc::tests::test_scan_visible_returns_in_pk_order ... ok
+test mvcc::tests::test_snapshot_counter_monotonic ... ok
+test mvcc::tests::test_tombstone_hides_row ... ok
+test mvcc::tests::test_version_chain_update ... ok
+test mvcc::tests::test_high_contention_snapshot_advances ... ok
+test mvcc_gc::tests::gc_now_works ... ok
+test io_delay::tests::test_apply_write_delay ... ok
+test mvcc_storage::db_isolation_tests::mvcc_version_store_is_scoped_per_database ... ok
+test mvcc_storage::tests::test_delete_hides_rows ... ok
+test mvcc_storage::tests::test_delete_then_gc_keeps_tombstone ... ok
+test mvcc_storage::tests::test_gc_runs_without_error ... ok
+test mvcc_storage::tests::test_get_visible_pk_lookup ... ok
+test mvcc_storage::tests::test_rebuild_from_inner_after_inserts ... ok
+test mvcc_storage::tests::test_scan_pk_range ... ok
+test mvcc_storage::tests::test_scan_returns_inserted_rows ... ok
+test mvcc_storage::tests::test_snapshot_progresses_with_inserts ... ok
+test page::tests::test_bytes_to_value ... ok
+test page::tests::test_bytes_to_value_integer ... ok
+test page::tests::test_page_creation ... ok
+test page::tests::test_page_data_access ... ok
+test page::tests::test_page_free_space ... ok
+test page::tests::test_page_multiple_rows ... ok
+test page::tests::test_page_page_id ... ok
+test page::tests::test_page_to_from_bytes ... ok
+test page::tests::test_page_type ... ok
+test page::tests::test_page_write_read_row ... ok
+test page::tests::test_value_to_bytes ... ok
+test page::tests::test_value_to_bytes_blob ... ok
+test parallel_wal_storage::tests::create_drop_table_passthrough ... ok
+test parallel_wal_storage::tests::new_and_sync_mode_default ... ok
+test parallel_wal_storage::tests::passthrough_methods_and_insert_scan ... ok
+test parallel_wal_storage::tests::set_sync_mode_changes_mode ... ok
+test parallel_wal_storage::tests::transaction_lifecycle_via_wal ... ok
+test pitr::tests::autocommit_rows_are_applied ... ok
+test pitr::tests::begin_before_the_window_still_bounds_its_rows ... ok
+test pitr::tests::checkpoints_are_scanned_but_not_applied ... ok
+test pitr::tests::commit_after_the_target_does_not_apply ... ok
+test pitr::tests::committed_rows_are_applied ... ok
+test pitr::tests::committed_work_with_nothing_applied_is_suspicious ... ok
+test pitr::tests::empty_log_is_a_clean_no_op ... ok
+test pitr::tests::open_transaction_at_target_is_not_applied ... ok
+test pitr::tests::tables_touched_names_the_affected_table ... ok
+test pitr::tests::unknown_table_is_counted_as_failed ... ok
+test pitr::tests::window_is_inclusive_of_the_target ... ok
+test predicate::tests::test_expr_column ... ok
+test predicate::tests::test_expr_parameter ... ok
+test predicate::tests::test_expr_value ... ok
+test predicate::tests::test_index_op_eq ... ok
+test predicate::tests::test_index_op_range ... ok
+test predicate::tests::test_predicate_and ... ok
+test predicate::tests::test_predicate_debug ... ok
+test predicate::tests::test_predicate_eq ... ok
+test predicate::tests::test_predicate_gt ... ok
+test predicate::tests::test_predicate_gte ... ok
+test predicate::tests::test_predicate_in ... ok
+test predicate::tests::test_predicate_is_not_null ... ok
+test predicate::tests::test_predicate_is_null ... ok
+test predicate::tests::test_predicate_lt ... ok
+test predicate::tests::test_predicate_lte ... ok
+test predicate::tests::test_predicate_not ... ok
+test predicate::tests::test_predicate_or ... ok
+test read_write_split::tests::test_add_replica ... ok
+test read_write_split::tests::test_classify_sql_create ... ok
+test read_write_split::tests::test_classify_sql_delete ... ok
+test read_write_split::tests::test_classify_sql_drop ... ok
+test read_write_split::tests::test_classify_sql_insert ... ok
+test read_write_split::tests::test_classify_sql_select ... ok
+test read_write_split::tests::test_classify_sql_transaction ... ok
+test read_write_split::tests::test_classify_sql_update ... ok
+test read_write_split::tests::test_connection_pool_get_master_empty ... ok
+test read_write_split::tests::test_connection_pool_get_replica_empty ... ok
+test read_write_split::tests::test_connection_pool_return_smoke ... ok
+test read_write_split::tests::test_connection_struct ... ok
+test read_write_split::tests::test_consistency_mode_variants ... ok
+test read_write_split::tests::test_get_healthy_replica_count_all ... ok
+test read_write_split::tests::test_get_master_addr ... ok
+test read_write_split::tests::test_get_replica_addrs ... ok
+test read_write_split::tests::test_increment_decrement_connection_count ... ok
+test read_write_split::tests::test_least_connections_selects_min ... ok
+test read_write_split::tests::test_least_connections_tracks_counts ... ok
+test read_write_split::tests::test_load_balance_strategy_variants ... ok
+test read_write_split::tests::test_query_type_classification ... ok
+test read_write_split::tests::test_read_after_write_consistency ... ok
+test read_write_split::tests::test_read_after_write_record_replica ... ok
+test read_write_split::tests::test_read_write_router_add_replica ... ok
+test read_write_split::tests::test_read_write_router_remove_replica ... ok
+test io_delay::tests::test_apply_read_delay ... ok
+test read_write_split::tests::test_read_write_split_config_default ... ok
+test read_write_split::tests::test_remove_replica ... ok
+test read_write_split::tests::test_replica_node_creation ... ok
+test read_write_split::tests::test_replica_node_with_lag ... ok
+test read_write_split::tests::test_replica_with_lag ... ok
+test read_write_split::tests::test_route_result_fields ... ok
+test read_write_split::tests::test_route_sql_select ... ok
+test read_write_split::tests::test_route_sql_write ... ok
+test read_write_split::tests::test_router_multiple_reads_distributed ... ok
+test read_write_split::tests::test_router_read_route ... ok
+test read_write_split::tests::test_router_write_route ... ok
+test read_write_split::tests::test_set_replica_health ... ok
+test read_write_split::tests::test_update_replica_lag ... ok
+test recovery_engine::tests::bytes_to_record_tolerates_unknown_prefix_as_null ... ok
+test recovery_engine::tests::test_bytes_to_filters_matches_record ... ok
+test recovery_engine::tests::test_bytes_to_record_blob_no_null_terminator ... ok
+test recovery_engine::tests::test_bytes_to_record_empty ... ok
+test recovery_engine::tests::test_bytes_to_record_roundtrip ... ok
+test recovery_engine::tests::test_bytes_to_record_text_no_null_terminator ... ok
+test recovery_engine::tests::test_bytes_to_record_truncated_boolean ... ok
+test recovery_engine::tests::test_bytes_to_record_truncated_float ... ok
+test recovery_engine::tests::test_bytes_to_record_truncated_integer ... ok
+test recovery_engine::tests::test_bytes_to_record_truncated_prefix ... ok
+test recovery_engine::tests::test_bytes_to_record_unknown_prefix ... ok
+test recovery_engine::tests::test_bytes_to_updates_empty ... ok
+test recovery_engine::tests::test_bytes_to_updates_single_pair ... ok
+test recovery_engine::tests::test_bytes_to_updates_truncated_index ... ok
+test recovery_engine::tests::test_bytes_to_updates_truncated_length ... ok
+test recovery_engine::tests::test_count_status_all_committed ... ok
+test recovery_engine::tests::test_count_status_empty ... ok
+test recovery_engine::tests::test_count_status_interleaved ... ok
+test recovery_engine::tests::test_count_status_mixed ... ok
+test recovery_engine::tests::test_count_status_three_way_interleave ... ok
+test recovery_engine::tests::test_filter_committed_entries ... ok
+test recovery_engine::tests::test_filter_committed_entries_interleaved ... ok
+test recovery_engine::tests::test_key_to_filter_values_empty ... ok
+test recovery_engine::tests::test_key_to_filter_values_integer_key ... ok
+test recovery_engine::tests::test_key_to_filter_values_invalid_key ... ok
+test recovery_engine::tests::test_key_to_filter_values_text ... ok
+test recovery_engine::tests::test_recovery_engine_impl_trait_bounds ... ok
+test recovery_engine::tests::test_recovery_report_default ... ok
+test recovery_engine::tests::test_recovery_state_default ... ok
+test recovery_engine::tests::test_resolve_entry_table_not_found_is_error ... ok
+test recovery_engine::tests::test_resolve_entry_table_legacy_entry_via_id ... ok
+test recovery_engine::tests::test_resolve_entry_table_prefers_recorded_name ... ok
+test recovery_engine::tests::test_stateful_engine_apply_entry ... ok
+test recovery_engine::tests::test_stateful_engine_blocks_double_recovery ... ok
+test recovery_engine::tests::test_stateful_engine_first_recovery ... ok
+test recovery_engine::tests::test_table_name_to_id_consistency ... ok
+test replication::tests::test_binlog_event_commit ... ok
+test replication::tests::test_binlog_event_ddl ... ok
+test replication::tests::test_binlog_event_heartbeat ... ok
+test replication::tests::test_binlog_event_serialize ... ok
+test replication::tests::test_binlog_event_type_from_u8 ... ok
+test replication::tests::test_binlog_writer_and_reader ... ok
+test replication::tests::test_replication_config_default ... ok
+test replication_lag::tests::test_lag_calculation ... ok
+test replication_lag::tests::test_lag_monitor_creation ... ok
+test replication_lag::tests::test_lag_warning_message ... ok
+test replication_lag::tests::test_no_lag ... ok
+test replication_lag::tests::test_threshold_detection ... ok
+test recovery_engine::tests::test_resolve_entry_table_refuses_on_hash_collision ... ok
+test replication_lag::tests::test_uninitialised_monitor_reads_as_zero_lag ... ok
+test replication_lag::tests::test_warning_rate_limiting ... ok
+test restore_filespace::tests::test_cleanup_no_data_dir ... ok
+test restore_filespace::tests::test_cleanup_resync_integration ... ok
+test restore_filespace::tests::test_cleanup_orphaned_table_files ... ok
+test restore_filespace::tests::test_resync_consistent_storage ... ok
+test restore_filespace::tests::test_resync_empty_storage ... ok
+test restore_filespace::tests::test_cleanup_with_temp_files ... ok
+test semisync::tests::test_semi_sync_master_ack_counter ... ok
+test semisync::tests::test_semi_sync_error_display ... ok
+test semisync::tests::test_semi_sync_master_default ... ok
+test semisync::tests::test_semi_sync_master_new ... ok
+test semisync::tests::test_semi_sync_master_enable_disable ... ok
+test semisync::tests::test_semi_sync_master_record_transactions ... ok
+test semisync::tests::test_semi_sync_master_set_client_count ... ok
+test semisync::tests::test_semi_sync_master_set_mode ... ok
+test semisync::tests::test_semi_sync_master_set_timeout ... ok
+test semisync::tests::test_semi_sync_master_set_wait_count ... ok
+test semisync::tests::test_semi_sync_master_status_clone ... ok
+test semisync::tests::test_semi_sync_master_status ... ok
+test semisync::tests::test_semi_sync_master_wait_for_acks_disabled ... ok
+test semisync::tests::test_semi_sync_master_wait_for_acks_success ... ok
+test semisync::tests::test_semi_sync_master_with_config ... ok
+test semisync::tests::test_semi_sync_mode_clone ... ok
+test semisync::tests::test_semi_sync_mode_debug ... ok
+test semisync::tests::test_semi_sync_mode_default ... ok
+test semisync::tests::test_semi_sync_slave_ack ... ok
+test semisync::tests::test_semi_sync_slave_default ... ok
+test semisync::tests::test_semi_sync_slave_enable_disable ... ok
+test semisync::tests::test_semi_sync_slave_master_uuid ... ok
+test semisync::tests::test_semi_sync_slave_new ... ok
+test semisync::tests::test_semi_sync_slave_status ... ok
+test semisync::tests::test_semi_sync_timeout_error_display ... ok
+test table_level_storage::tests::insert_scan_via_registry ... ok
+test table_level_storage::tests::list_tables_via_registry ... ok
+test table_level_storage::tests::new_writes_and_flush_wal ... ok
+test table_level_storage::tests::stub_methods_are_known_unimplemented ... ok
+test table_level_storage::tests::transaction_lifecycle_passthrough ... ok
+test table_registry::tests::default_and_register_get_list ... ok
+test table_registry::tests::flush_table_calls_engine_flush ... ok
+test table_registry::tests::get_table_info_insert_scan ... ok
+test table_registry::tests::missing_table_errors ... ok
+test vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id ... ok
+test vtu_guard::tests::test_3129_vtu_guard_execute_dml_with_memory_storage_in_tx ... ok
+test vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage ... ok
+test vtu_guard::tests::test_int4_assert_dml_safe_panics_outside_tx - should panic ... ok
+test vtu_guard::tests::test_int4_assert_dml_safe_passes_inside_tx ... ok
+test vtu_guard::tests::test_int4_execute_dml_routes_closure_to_inner ... ok
+test vtu_guard::tests::test_vtu_guard_add_column_rename_passthrough ... ok
+test vtu_guard::tests::test_vtu_guard_assert_path_for_dml_is_idempotent ... ok
+test vtu_guard::tests::test_vtu_guard_create_drop_table_passthrough ... ok
+test vtu_guard::tests::test_vtu_guard_dml_violation_panic_message_contains_table ... ok
+test vtu_guard::tests::test_vtu_guard_get_table_info_allowed ... ok
+test vtu_guard::tests::test_vtu_guard_inner_accessors ... ok
+test vtu_guard::tests::test_vtu_guard_scan_allowed ... ok
+test vtu_guard::tests::test_vtu_guard_trigger_methods_passthrough ... ok
+test vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id ... ok
+test vtu_guard::tests::test_vtu_violation_delete - should panic ... ok
+test vtu_guard::tests::test_vtu_violation_insert - should panic ... ok
+test vtu_guard::tests::test_vtu_violation_update - should panic ... ok
+test vtu_ir::mutation_ir::tests::test_mutation_assignments_accessor ... ok
+test vtu_ir::mutation_ir::tests::test_mutation_empty ... ok
+test vtu_ir::mutation_ir::tests::test_mutation_hash_accessor ... ok
+test vtu_ir::mutation_ir::tests::test_mutation_hash_deterministic ... ok
+test vtu_ir::mutation_ir::tests::test_mutation_hash_differs_on_col ... ok
+test vtu_ir::mutation_ir::tests::test_mutation_new ... ok
+test vtu_ir::mutation_ir::tests::test_mutation_to_row_mutation ... ok
+test vtu_ir::predicate_ir::tests::test_cmp_values ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_all_matches_any_row ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_binary_and ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_binary_eq ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_binary_gt ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_binary_lt ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_binary_neq ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_binary_or ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_expr_column_match_false ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_expr_column_match_true ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_expr_literal_false ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_expr_literal_non_bool ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_expr_literal_true ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_is_not_null_false ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_is_not_null_true ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_is_null_false ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_is_null_true ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_unary_not ... ok
+test vtu_ir::predicate_ir::tests::test_predicate_unknown_op_returns_false ... ok
+test vtu_ir::update_plan::tests::test_plan_trace_combined_hash_deterministic ... ok
+test vtu_ir::update_plan::tests::test_plan_trace_combined_hash_varies ... ok
+test vtu_ir::update_plan::tests::test_plan_trace_new ... ok
+test vtu_ir::update_plan::tests::test_plan_trace_rows_affected_accessor ... ok
+test vtu_ir::update_plan::tests::test_update_plan_mutation_accessor ... ok
+test vtu_ir::update_plan::tests::test_update_plan_new ... ok
+test vtu_ir::update_plan::tests::test_update_plan_predicate_accessor ... ok
+test vtu_ir::update_plan::tests::test_update_plan_trace_accessor ... ok
+test vtu_ir::update_plan::tests::test_update_plan_with_expr_predicate ... ok
+test wal::group_commit::tests::concurrent_callers_coalesce ... ok
+test wal::group_commit::tests::error_propagates_to_leader ... ok
+test wal::group_commit::tests::large_batch_completes ... ok
+test wal::group_commit::tests::max_batch_forces_sync ... ok
+test wal::group_commit::tests::single_caller_always_syncs ... ok
+test wal::memory_wal_manager::tests::test_memory_wal_append ... ok
+test wal::memory_wal_manager::tests::test_memory_wal_flush_sync ... ok
+test wal::memory_wal_manager::tests::test_memory_wal_recover ... ok
+test wal_legacy::tests::test_pitr_recover_table_filter ... ok
+test wal_legacy::tests::test_pitr_recover_to_timestamp ... ok
+test wal_legacy::tests::test_recovery_window_info ... ok
+test wal_legacy::tests::test_wal_5_transactions ... ok
+test wal_legacy::tests::test_wal_archive_cleanup ... ok
+test wal_legacy::tests::test_wal_archive_list_archives ... ok
+test wal_legacy::tests::test_wal_archive_manager_creation ... ok
+test wal_legacy::tests::test_wal_archive_metadata_serialization ... ok
+test wal_legacy::tests::test_wal_entry_empty_key_data ... ok
+test wal_legacy::tests::test_wal_entry_from_bytes_truncated ... ok
+test wal_legacy::tests::test_wal_entry_large_data ... ok
+test wal_legacy::tests::test_wal_entry_only_data ... ok
+test wal_legacy::tests::test_wal_entry_only_key ... ok
+test wal_legacy::tests::test_wal_entry_serialization ... ok
+test wal_legacy::tests::test_wal_entry_truncated_v2 ... ok
+test wal_legacy::tests::test_wal_entry_type ... ok
+test wal_legacy::tests::test_wal_entry_type_coverage ... ok
+test wal_legacy::tests::test_wal_entry_with_empty_data ... ok
+test wal_legacy::tests::test_wal_large_100k ... ok
+test wal_legacy::tests::test_wal_manager ... ok
+test wal_legacy::tests::test_wal_manager_log_checkpoint ... ok
+test wal_legacy::tests::test_wal_manager_log_rollback ... ok
+test wal_legacy::tests::test_wal_mixed_ops ... ok
+test wal_legacy::tests::test_wal_multiple_transactions ... ok
+test wal_legacy::tests::test_wal_perf_1000_insert ... ignored, wall-clock measurement harness — run manually (`cargo test --lib -- --ignored`), results go in the evidence doc
+test wal_legacy::tests::test_wal_perf_100_update ... ignored, wall-clock measurement harness — run manually (`cargo test --lib -- --ignored`), results go in the evidence doc
+test wal_legacy::tests::test_wal_perf_recovery_1mb ... ignored, wall-clock measurement harness — run manually (`cargo test --lib -- --ignored`), results go in the evidence doc
+test semisync::tests::test_semi_sync_master_wait_for_acks_timeout ... ok
+test wal_legacy::tests::test_wal_reader_read_from_lsn ... ok
+test wal_legacy::tests::test_wal_recovery_empty_file ... ok
+test wal_legacy::tests::test_wal_recovery_from_corrupted_entries ... ok
+test wal_legacy::tests::test_wal_recovery_with_corrupted_length_prefix ... ok
+test wal_legacy::tests::test_wal_recovery_with_partially_written_entry ... ok
+test wal_legacy::tests::test_wal_write_read ... ok
+test wal_legacy::tests::test_wal_writer_append_100_entries ... ok
+test wal_legacy::tests::test_wal_writer_current_lsn ... ok
+test wal_record_codec::tests::adjacent_texts_do_not_merge ... ok
+test wal_record_codec::tests::blob_containing_nul_round_trips ... ok
+test wal_record_codec::tests::empty_payload_decodes_to_empty_row ... ok
+test wal_record_codec::tests::empty_record_round_trips ... ok
+test wal_record_codec::tests::json_survives_round_trip ... ok
+test wal_record_codec::tests::key_is_first_column ... ok
+test wal_record_codec::tests::key_of_empty_record_is_empty ... ok
+test wal_record_codec::tests::point_survives_round_trip ... ok
+test wal_record_codec::tests::round_trip_all_variants ... ok
+test wal_record_codec::tests::table_name_to_id_is_stable ... ok
+test wal_record_codec::tests::text_containing_nul_round_trips ... ok
+test wal_record_codec::tests::v1_payload_still_decodes ... ok
+test wal_record_codec::tests::v1_point_and_json_decode ... ok
+test wal_record_codec::tests::v1_text_without_terminator_is_an_error ... ok
+test wal_record_codec::tests::v1_truncated_prefix_is_an_error ... ok
+test wal_record_codec::tests::v1_unknown_tag_becomes_null_and_continues ... ok
+test wal_record_codec::tests::v2_absurd_length_is_rejected_without_allocating ... ok
+test wal_record_codec::tests::v2_truncated_value_is_an_error ... ok
+test wal_record_codec::tests::v2_unknown_type_code_is_an_error ... ok
+test wal_storage::tests::test_active_txs_autocommit_skipped ... ok
+test wal_storage::tests::test_active_txs_lifecycle_begin_commit ... ok
+test wal_storage::tests::test_active_txs_lifecycle_begin_rollback ... ok
+test wal_storage::tests::test_pr830f_lifecycle_commit_advances_checkpoint_and_truncates ... ok
+test wal_storage::tests::test_wal_active_tx_ids_empty ... ok
+test wal_storage::tests::test_wal_basic_crud ... ok
+test wal_storage::tests::test_wal_column_operations ... ok
+test wal_storage::tests::test_wal_create_drop_table ... ok
+test wal_storage::tests::test_wal_database_operations ... ok
+test wal_storage::tests::test_wal_delete ... ok
+test wal_storage::tests::test_wal_delete_if ... ok
+test wal_storage::tests::test_wal_delete_no_where_logs_one_entry_per_row ... ok
+test wal_storage::tests::test_wal_delete_with_filter_avoids_inner_scan ... ok
+test wal_storage::tests::test_wal_flush ... ok
+test wal_storage::tests::test_wal_get_table_info ... ok
+test wal_storage::tests::test_wal_has_table_list_tables ... ok
+test wal_storage::tests::test_wal_index_operations ... ok
+test wal_storage::tests::test_wal_inner_wal_walmut ... ok
+test wal_storage::tests::test_wal_is_wal_enabled ... ok
+test wal_storage::tests::test_wal_list_indexes_has_view ... ok
+test wal_storage::tests::test_wal_recover_method ... ok
+test wal_storage::tests::test_wal_scan_nonexistent ... ok
+test wal_storage::tests::test_wal_set_current_tx_id ... ok
+test wal_storage::tests::test_wal_split ... ok
+test wal_storage::tests::test_wal_storage_basic_insert ... ok
+test wal_storage::tests::test_wal_storage_is_wal_enabled ... ok
+test wal_storage::tests::test_wal_storage_multiple_transactions ... ok
+test wal_storage::tests::test_wal_storage_rollback ... ok
+test wal_storage::tests::test_wal_storage_update_stores_new_image ... ok
+test wal_storage::tests::test_wal_storage_with_file_backed ... ok
+test wal_storage::tests::test_wal_trigger_operations ... ok
+test wal_storage::tests::test_wal_update ... ok
+test wal_storage::tests::test_wal_update_if ... ok
+test wal_storage::tests::test_wal_with_checkpoint_manager_skipped ... ok
+test mvcc_gc::tests::gc_thread_stops_on_drop ... ok
+test wal_legacy::tests::test_wal_perf_throughput ... ok
+test mvcc_gc::tests::gc_thread_runs_and_reclaims ... ok
+test file_storage::tests::test_partition_rows_two_partitions_above_threshold ... ok
+test file_storage::tests::test_partition_rows_uneven_remainder ... ok
+test file_storage::tests::test_partition_rows_num_partitions_zero ... ok
+test file_storage::tests::test_partition_rows_above_threshold ... ok
+test file_storage::tests::test_partition_rows_with_buffer ... ok
+test binary_storage_v2::tests::test_v2_insert_streaming_iter_multiple_segments ... ok
+
+test result: ok. 913 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 1.21s
+
+
+running 2 tests
+test after_wal_append_is_reachable ... ok
+test after_index_update_is_reachable ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.03s
+
+
+running 11 tests
+test memory_storage_still_accepts_set_column_default ... ok
+test file_storage_reports_a_missing_table ... ok
+test file_storage_reports_a_missing_column ... ok
+test mvcc_storage_forwards_set_column_default ... ok
+test file_storage_accepts_set_column_default ... ok
+test box_storage_engine_forwards_set_column_default ... ok
+test the_production_storage_stack_accepts_set_column_default ... ok
+test file_storage_persists_the_default_across_a_reopen ... ok
+test file_storage_persists_drop_default_across_a_reopen ... ok
+test wal_storage_forwards_set_column_default ... ok
+test file_storage_persists_the_default_when_the_table_grew_since_the_last_save ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test the_exact_case_spelling_still_works ... ok
+test set_default_finds_the_column_case_insensitively ... ok
+test a_missing_column_still_errors ... ok
+test drop_default_finds_the_column_case_insensitively ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 9 tests
+test parallel_chain_scan_with_index_in_db_forwards_db ... ok
+test wal_chain_scan_with_index_in_db_forwards_db ... ok
+test wal_chain_scan_in_db_forwards_db ... ok
+test parallel_chain_scan_in_db_forwards_db ... ok
+test wal_chain_pk_index_is_populated ... ok
+test parallel_chain_scan_pk_is_flat_in_table_size ... ok
+test parallel_chain_scan_pk_range_is_flat_in_table_size ... ok
+test wal_chain_scan_pk_is_flat_in_table_size ... ok
+test wal_chain_scan_pk_range_is_flat_in_table_size ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+
+running 1 test
+test b22_reader_latency_under_lock_held_io ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test flush_parallel_persists_one_table ... ok
+test trait_flush_appends_a_delta_rather_than_rewriting ... ok
+test flush_parallel_persists_two_tables ... ok
+test trait_flush_and_inherent_flush_persist_the_same_rows ... ok
+test flush_parallel_persists_three_or_more_tables ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test b22_flush_wall_time ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test cov_bin_compactor_new ... ok
+test cov_bin_compactor_new_max_2 ... ok
+test cov_bin_compactor_new_max_10 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test create_database_must_fail_instead_of_reporting_success ... ok
+test list_databases_still_reports_only_the_default_namespace ... ok
+test drop_trigger_must_fail_instead_of_reporting_success ... ok
+test drop_database_must_fail_instead_of_reporting_success ... ok
+test create_trigger_must_fail_instead_of_reporting_success ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 29 tests
+test cov_binary_storage_engine_flush ... ok
+test cov_binary_storage_engine_in_tx_false ... ok
+test cov_binary_storage_engine_scan_empty ... ok
+test cov_binary_storage_engine_drop_table ... ok
+test cov_binary_storage_engine_create_table ... ok
+test cov_binary_storage_engine_scan_after_create ... ok
+test cov_binary_storage_engine_has_table ... ok
+test cov_binary_storage_engine_insert_and_scan ... ok
+test cov_binary_storage_engine_persist_inserted ... ok
+test cov_binary_storage_engine_delete ... ok
+test cov_binary_storage_exists_false ... ok
+test cov_binary_storage_new ... ok
+test cov_binary_storage_new_with_data ... ok
+test cov_binary_storage_exists_true_after_save ... ok
+test cov_binary_storage_persist_table_missing ... ok
+test cov_binary_storage_engine_update ... ok
+test cov_binary_storage_persist_table_after_insert ... ok
+test cov_binary_storage_persist_table_existing ... ok
+test cov_binary_storage_save_load_empty ... ok
+test cov_binary_storage_save_load_bool ... ok
+test cov_binary_storage_save_load_float ... ok
+test cov_binary_storage_exists_multiple ... ok
+test cov_binary_storage_save_load_roundtrip_many ... ok
+test cov_binary_storage_save_load_text ... ok
+test cov_binary_storage_save_load_multi_column ... ok
+test cov_binary_storage_save_load_null ... ok
+test cov_binary_storage_save_load_with_rows ... ok
+test cov_binary_storage_save_overwrite ... ok
+test cov_binary_storage_engine_insert_many ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test lockfree_paths_do_not_require_exclusive_storage_access ... ok
+test concurrent_transactions_interleaved_with_writers_complete ... ok
+test concurrent_transactions_over_shared_storage_complete ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.63s
+
+
+running 3 tests
+test explicit_id_advances_counter ... ok
+test single_connection_monotonic_ids ... ok
+test concurrent_autocommit_yields_unique_monotonic_ids ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test deleted_ids_are_never_reused ... ok
+test counters_are_independent_per_table ... ok
+test deleting_a_tail_run_does_not_rewind_the_counter ... ok
+test drop_table_resets_the_counter ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test boxed_transactional_scan_keeps_fully_duplicate_rows ... ok
+test boxed_transactional_scan_sees_every_row ... ok
+test boxed_transactional_scan_respects_the_stated_database ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test file_storage_insert_grows_quadratically ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.72s
+
+
+running 2 tests
+test committed_transaction_survives_sigkill_at_commit_fsync ... ok
+test crash_without_new_commit_preserves_exactly_the_seeded_rows ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.98s
+
+
+running 2 tests
+test wal_append_crash_recovers_gracefully_without_resurrecting_rows ... ok
+test index_update_crash_does_not_serve_dangling_rows ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.22s
+
+
+running 3 tests
+test test_drop_table_keeps_the_other_tables_buffer ... ok
+test test_drop_table_discards_the_buffered_rows ... ok
+test test_drop_table_in_db_discards_the_buffered_rows ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test lag_monitor_fires_warning_when_slave_falls_behind ... ok
+test lag_monitor_returns_none_when_slave_is_caught_up ... ok
+test slave_sql_thread_replays_every_event_with_callback ... ok
+test full_chain_master_to_slave_io_to_sql_to_lag_monitor ... ok
+test master_writes_binlog_and_slave_io_thread_reads_it_back ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+
+running 4 tests
+test test_e2e_filestorage_insert_persistence ... ok
+test test_e2e_filestorage_delete_persistence ... ok
+test test_e2e_filestorage_update_persistence ... ok
+test test_e2e_filestorage_multi_write_persistence ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test parallel_scan_in_db_partitions_the_named_database ... ok
+test scan_with_filter_in_db_filters_the_named_database ... ok
+test scan_with_filter_in_db_reads_the_named_database ... ok
+test scan_with_filter_in_db_honours_a_rejecting_filter ... ok
+test the_database_less_variants_resolve_against_the_default_database ... ok
+test the_two_forms_agree_within_one_database ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 8 tests
+test issue_5048_change_log_is_off_by_default ... ok
+test issue_5048_update_captures_the_post_image ... ok
+test issue_5048_insert_is_captured ... ok
+test issue_5048_delete_is_captured ... ok
+test issue_5048_changes_since_slices_by_lsn ... ok
+test issue_5048_a_mark_of_zero_sees_everything ... ok
+test issue_5048_update_if_and_delete_if_are_captured ... ok
+test issue_5048_repeated_deltas_each_slice_correctly ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test concurrent_transactions_writing_one_row_leave_exactly_the_committed_one ... ok
+test a_rolled_back_insert_leaves_nothing_on_disk ... ok
+test a_rolled_back_transaction_does_not_take_the_other_ones_row ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test the_same_sequence_without_concurrency_keeps_every_row ... ok
+test eight_concurrent_workers_do_not_lose_each_others_rows ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test issue_5025_file_storage_unknown_database_is_rejected ... ok
+test issue_5025_file_storage_default_database_does_not_leak_named_database_tables ... ok
+test issue_5025_file_storage_list_tables_is_scoped ... ok
+test issue_5025_file_storage_tables_are_scoped_per_database ... ok
+test issue_5025_list_tables_in_db_returns_target_database_tables ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test issue_5057_force_insert_in_db_routes_to_the_named_database ... ok
+test issue_5057_insert_in_db_routes_to_the_named_database ... ok
+test issue_5057_insert_without_a_database_lands_in_default ... ok
+test issue_5057_named_and_unnamed_inserts_do_not_bleed ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 11 tests
+test the_exact_case_spelling_still_works ... ok
+test a_missing_column_still_errors_on_both_backends ... ok
+test modify_column_finds_the_column_case_insensitively ... ok
+test set_column_default_finds_the_column_case_insensitively ... ok
+test rename_column_finds_the_column_case_insensitively ... ok
+test drop_column_default_finds_the_column_case_insensitively ... ok
+test drop_column_finds_the_column_case_insensitively ... ok
+test both_backends_agree_on_the_ddl_outcome ... ok
+test the_ddl_history_does_not_change_whether_a_column_is_found ... ok
+test the_stored_name_does_not_depend_on_the_backend ... ok
+test the_sql_layer_matches_the_column_case_insensitively_on_disk ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test issue_5057_create_table_without_a_database_lands_in_the_default_database ... ok
+test issue_5057_create_table_in_db_creates_in_the_named_database ... ok
+test issue_5057_drop_table_without_a_database_drops_from_the_default_database ... ok
+test issue_5057_drop_table_in_db_removes_only_the_named_databases_table ... ok
+test issue_5057_precreated_pk_index_is_reachable_by_its_scoped_key ... ok
+test issue_5057_same_table_name_coexists_across_databases ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 47 tests
+test cov_file_storage_discard_all_buffers ... ok
+test cov_file_storage_drop_database ... ok
+test cov_file_storage_clear_all_tables ... ok
+test cov_file_storage_delete_with_filter ... ok
+test cov_file_storage_contains_table ... ok
+test cov_file_storage_delete ... ok
+test cov_file_storage_create_database ... ok
+test cov_file_storage_create_table ... ok
+test cov_file_storage_create_table_multi_columns ... ok
+test cov_file_storage_create_index ... ok
+test cov_file_storage_flush ... ok
+test cov_file_storage_flush_all_buffers ... ok
+test cov_file_storage_flush_parallel ... ok
+test cov_file_storage_drop_table ... ok
+test cov_file_storage_get_table_missing ... ok
+test cov_file_storage_drop_index ... ok
+test cov_file_storage_get_index ... ok
+test cov_file_storage_get_table_mut ... ok
+test cov_file_storage_get_table ... ok
+test cov_file_storage_insert_bool ... ok
+test cov_file_storage_flush_indexes ... ok
+test cov_file_storage_insert_many_via_vec ... ok
+test cov_file_storage_insert_many ... ok
+test cov_file_storage_insert_float ... ok
+test cov_file_storage_has_index ... ok
+test cov_file_storage_insert_null ... ok
+test cov_file_storage_insert_table ... ok
+test cov_file_storage_insert_text ... ok
+test cov_file_storage_insert_one ... ok
+test cov_file_storage_new ... ok
+test cov_file_storage_new_with_buffer_config ... ok
+test cov_file_storage_partition_rows ... ok
+test cov_file_storage_partition_rows_empty ... ok
+test cov_file_storage_partition_rows_single_partition ... ok
+test cov_file_storage_scan_empty ... ok
+test cov_file_storage_persist_table ... ok
+test cov_file_storage_scan_after_create ... ok
+test cov_file_storage_table_names_empty ... ok
+test cov_file_storage_repeat_insert_scan ... ok
+test cov_file_storage_scan_with_null_columns ... ok
+test cov_file_storage_insert_with_index ... ok
+test cov_file_storage_table_names_after_create ... ok
+test cov_file_storage_update ... ok
+test cov_file_storage_update_with_filter ... ok
+test cov_file_storage_search_index ... ok
+test cov_file_storage_range_index ... ok
+test cov_file_storage_insert_with_index_multi ... ok
+
+test result: ok. 47 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 7 tests
+test issue_5057_update_in_db_only_touches_the_named_database ... ok
+test issue_5057_update_if_in_db_only_touches_the_named_database ... ok
+test issue_5057_delete_in_db_only_touches_the_named_database ... ok
+test issue_5057_update_without_a_database_lands_in_the_default_database ... ok
+test issue_5057_delete_without_a_database_lands_in_the_default_database ... ok
+test issue_5057_delete_if_in_db_only_touches_the_named_database ... ok
+test issue_5057_delete_collect_pks_in_db_only_touches_the_named_database ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 13 tests
+test rollback_undoes_an_update_applied_to_an_uncommitted_row ... ok
+test rollback_keeps_rows_it_did_not_insert ... ok
+test committed_and_rolled_back_inserts_are_counted_exactly ... ok
+test rollback_restores_a_committed_row_deleted_in_the_transaction ... ok
+test rollback_removes_the_buffered_insert ... ok
+test rollback_restores_a_committed_but_unflushed_row_deleted_in_the_transaction ... ok
+test delete_after_autocommit_insert_removes_the_row_from_disk ... ok
+test rollback_of_insert_then_delete_restores_the_empty_table ... ok
+test delete_if_after_autocommit_insert_removes_the_row_from_disk ... ok
+test commit_keeps_the_buffered_insert ... ok
+test update_after_autocommit_insert_affects_the_row ... ok
+test update_inside_a_transaction_reaches_the_uncommitted_row ... ok
+test update_if_after_autocommit_insert_affects_the_row ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test issue_5057_unnamed_family_lands_in_the_default_database ... ok
+test issue_5057_flush_persists_rows_of_every_database ... ok
+test issue_5057_second_flush_does_not_duplicate_rows ... ok
+test issue_5057_cross_db_delete_is_persisted ... ok
+test issue_5057_delta_files_are_per_database ... ok
+test issue_5057_cross_db_flush_survives_reopen ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 21 tests
+test plain_new_reports_wal_disabled ... ok
+test new_with_wal_reports_wal_enabled ... ok
+test insert_writes_one_entry_per_row_with_table_name ... ok
+test no_wal_backend_writes_nothing ... ok
+test delete_writes_entry_per_removed_row ... ok
+test delete_if_writes_entries ... ok
+test committed_transaction_logs_begin_and_commit_under_same_tx_id ... ok
+test replay_does_not_duplicate_rows_already_in_the_base ... ok
+test committed_inserts_survive_a_pitr_replay ... ok
+test entries_after_the_target_are_not_applied ... ok
+test reopening_continues_the_lsn_sequence ... ok
+test rolled_back_rows_are_not_restored ... ok
+test update_if_writes_entries ... ok
+test rolled_back_transaction_logs_rollback_under_same_tx_id ... ok
+test row_entry_without_a_table_name_is_refused_not_guessed ... ok
+test recycled_tx_id_does_not_resurrect_a_rolled_back_row ... ok
+test update_writes_entry_with_post_image ... ok
+test uncommitted_rows_are_not_restored ... ok
+test wal_manager_sees_the_entries_written ... ok
+test update_and_delete_in_the_log_are_replayed_in_order ... ok
+test back_to_back_transactions_get_distinct_tx_ids ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 6 tests
+test column_definition_default_collation_is_none ... ok
+test column_definition_has_collation_field ... ok
+test foreign_key_constraint_supports_empty_referenced_columns ... ok
+test foreign_key_constraint_supports_multi_column_references ... ok
+test foreign_key_constraint_has_expected_fields ... ok
+test table_info_round_trip_with_foreign_key ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test gc_still_reclaims_stale_committed_versions ... ok
+test gc_keeps_pending_version_in_single_version_chain ... ok
+test gc_keeps_pending_version_in_multi_version_chain ... ok
+test pending_version_becomes_reclaimable_after_commit ... ok
+test gc_keeps_pending_version_sandwiched_in_chain_middle ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test rejects_zero_max_batch - should panic ... ok
+test rejects_zero_max_wait - should panic ... ok
+test coordinator_with_limits_works ... ok
+test coordinator_public_api_is_reachable ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test guard_scope_does_not_cover_memory_safety ... ok
+test partition_rows_must_not_double_clone ... ok
+test get_table_info_must_not_clone_whole_table ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+
+running 5 tests
+test index_files_are_not_mistaken_for_tables ... ok
+test index_in_a_named_database_survives_restart ... ok
+test table_in_a_named_database_survives_restart ... ok
+test index_in_the_default_database_survives_restart ... ok
+test same_table_name_in_two_databases_stays_separate_across_restart ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test index_built_before_flush_still_finds_buffered_rows ... ok
+test index_built_after_flush_works ... ok
+test index_covers_every_buffered_row ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test test_buffer_pool_capacity_and_length ... ok
+test test_buffer_pool_stats_initial ... ok
+test test_buffer_pool_with_prefetch ... ok
+test test_buffer_pool_get_not_present ... ok
+test test_buffer_pool_basic_operations ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test test_wal_multiple_transactions ... ok
+test test_wal_file_backed_create_and_recover ... ok
+test test_wal_log_single_transaction ... ok
+test test_wal_truncate_before ... ok
+test test_wal_recovery_uncommitted_transaction ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test test_issue_4848_alter_rename_column_missing_source_rejected ... ok
+test test_issue_4848_alter_rename_column_duplicate_destination_rejected ... ok
+test test_issue_4848_alter_rename_column_basic ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test issue_5012_gc_concurrent_1_reader ... ok
+test issue_5012_gc_concurrent_4_readers ... ok
+test issue_5012_gc_concurrent_8_readers ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+
+running 5 tests
+test box_storage_engine_does_not_fake_support_for_plain_engines ... ok
+test wal_storage_begin_transaction_lockfree_is_supported ... ok
+test box_storage_engine_forwards_begin_transaction_lockfree ... ok
+test box_storage_engine_forwards_rollback_transaction_lockfree ... ok
+test box_storage_engine_forwards_commit_transaction_lockfree ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test measure_commit_clone_cost_4948 ... ignored, wall-clock measurement harness — run manually, results go in the evidence doc
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test measure_commit_memory_4948 ... ignored, memory measurement — run manually; prints the commit's RSS delta
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test measure_recovery_dedup_scan_cost_p0_08 ... ignored, wall-clock measurement harness — run manually, results go in the evidence doc
+test measure_recovery_replay_cost_p0_08 ... ignored, wall-clock measurement harness — run manually, results go in the evidence doc
+test measure_recovery_wal_replay_p0_08 ... ignored, wall-clock measurement harness — run manually, results go in the evidence doc
+test measure_recovery_write_cost_p0_08 ... ignored, wall-clock measurement harness — run manually, results go in the evidence doc
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test parallel_scan_in_db_finds_a_table_outside_the_default_database ... ok
+test delete_if_in_db_spares_the_other_database ... ok
+test scan_with_filter_in_db_reads_the_named_database ... ok
+test parallel_scan_in_db_reads_the_named_database ... ok
+test unscoped_parallel_scan_resolves_against_the_default_database ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test delete_collect_pks_in_db_reports_the_right_keys ... ok
+test insert_in_db_lands_in_the_named_database ... ok
+test update_if_in_db_changes_only_the_named_database ... ok
+test update_in_db_changes_only_the_named_database ... ok
+test force_insert_in_db_lands_in_the_named_database ... ok
+test delete_in_db_spares_the_other_database ... ok
+test scan_with_index_in_db_reads_the_named_database ... ok
+test create_index_lands_in_the_named_database ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test memory_storage_drop_view_removes_it_from_the_list ... ok
+test memory_storage_list_views_agrees_with_has_view_and_get_view ... ok
+test memory_storage_list_views_sees_created_views ... ok
+test memory_storage_list_views_is_scoped_to_its_database ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test set_column_default_on_a_missing_table_still_errors ... ok
+test set_column_default_finds_the_table_it_modifies ... ok
+test drop_column_default_finds_the_table_it_modifies ... ok
+test set_column_default_uses_the_same_key_scheme_as_get_table_info ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test committed_rows_in_a_named_database_survive_recovery ... ok
+test unflushed_rows_in_a_named_database_are_recovered_or_refused ... ok
+test committed_rows_in_the_default_database_survive_recovery ... ok
+test two_databases_with_the_same_table_name_replay_into_the_right_one ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 7 tests
+test rt0_suite_exercises_the_production_storage_stack ... ok
+test rt5_delete_touches_only_the_matching_row ... ok
+test rt2_delete_tombstones_the_chain_holding_the_row ... ok
+test rt1_update_replaces_row_without_adding_rows ... ok
+test rt3_rows_sharing_a_column_do_not_collapse ... ok
+test rt6_scan_pk_in_db_finds_row_with_pk_in_second_column ... ok
+test rt4_primary_key_in_second_column_still_addresses_its_chain ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test delete_removes_only_the_matching_row ... ok
+test rebuild_keeps_repeated_rows_and_accepts_more ... ok
+test update_changes_one_row_without_growing_the_table ... ok
+test rollback_restores_the_previous_state ... ok
+test primary_key_need_not_be_the_first_column ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test update_must_be_visible_to_a_following_read ... ok
+test update_inside_a_transaction_is_not_visible_until_commit ... ok
+test second_update_wins_over_the_first ... ok
+test update_only_touches_the_filtered_pk ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test bench_small_dataset_8_partitions ... ok
+test bench_correctness_under_varying_partition_counts ... ok
+test bench_parallel_vs_sequential_correctness ... ok
+test bench_medium_dataset_4_partitions ... ok
+test bench_large_dataset_8_partitions ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+
+running 8 tests
+test test_parallel_scan_uneven_distribution ... ok
+test test_parallel_scan_more_partitions_than_rows ... ok
+test test_parallel_scan_all_values_preserved ... ok
+test test_parallel_scan_zero_partitions ... ok
+test test_parallel_scan_nonexistent_table ... ok
+test test_parallel_scan_empty_table ... ok
+test test_parallel_scan_small_dataset_preserves_all_rows ... ok
+test test_parallel_scan_large_dataset ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test c1_data_integrity_after_concurrent_ops ... ok
+test c1_concurrent_scans_no_torn_reads ... ok
+test c1_concurrent_insert_and_scan ... ok
+test c1_concurrent_begin_commit_rollback ... ok
+test c1_concurrent_flush_and_scan ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 2 tests
+test pk_index_rebuild_lands_in_the_table_database ... ok
+test pk_index_is_rebuilt_and_searchable ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test a_concurrent_connection_cannot_retarget_another_connections_statement ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+
+running 2 tests
+test probe_update_path_dirty_marker ... ok
+test probe_two_databases_same_table_name ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test production_chain_pk_lookup_is_correct ... ok
+test production_chain_scan_pk_range_must_not_scale_with_table_size ... ok
+test production_chain_scan_pk_must_not_scale_with_table_size ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 6 tests
+test guard_does_not_flag_legitimate_raw_mut_use ... ok
+test guard_allows_same_primitive_under_mut_self ... ok
+test guard_catches_a_planted_escape_hatch ... ok
+test guard_ignores_comments_and_docs ... ok
+test block_4951_as_mut_self_stays_removed ... ok
+test no_new_ref_to_mut_escape_hatch_anywhere_in_repo ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
+
+
+running 2 tests
+test autocommit_via_insert_only_does_not_write_commit_entry ... ok
+test autocommit_via_begin_insert_commit_writes_commit_entry ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 1 test
+test fs_new_with_wal_autocommit_via_storage_api_writes_what ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test production_stack_autocommit_writes_what_to_wal ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test full_engine_layer_autocommit_writes_what_to_wal ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 2 tests
+test shared_handle_produces_single_commit_entry ... ok
+test shared_handle_with_mvcc_wrapper_serialises_entries ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 5 tests
+test a_rollback_removes_only_its_own_transaction_rows ... ok
+test the_walstorage_lock_free_rollback_keeps_other_transactions_rows ... ok
+test the_lock_free_rollback_undoes_the_aborted_transaction_rows ... ok
+test a_rolled_back_row_is_not_persisted_to_disk ... ok
+test a_rollback_does_not_discard_another_transaction_committed_rows ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+
+running 3 tests
+test rollback_over_a_directly_wrapped_file_storage_does_not_overflow_the_stack ... ok
+test rollback_removes_the_aborted_transaction_rows_from_the_production_stack ... ok
+test rollback_over_the_production_storage_stack_does_not_overflow_the_stack ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 2 tests
+test executor_undo_rollback_discards_uncommitted_insert ... ok
+test commit_persists_insert ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test filter_on_a_missing_table_returns_empty ... ok
+test filter_also_sees_rows_still_in_the_insert_buffer ... ok
+test filter_that_matches_nothing_returns_empty ... ok
+test permissive_filter_matches_scan_exactly ... ok
+test filter_selects_a_strict_subset ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test file_storage_scopes_every_operation ... ok
+test listing_answers_for_the_stated_database ... ok
+test mvcc_storage_scopes_every_operation ... ok
+test wal_storage_scopes_every_operation ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test semi_sync_is_off_by_default ... ok
+test wait_count_of_zero_is_async_even_when_enabled ... ok
+test commit_waits_for_replica_before_returning ... ok
+test a_replica_that_never_acks_does_not_unblock_the_master ... ok
+test commit_times_out_and_degrades_when_no_replica ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 9 tests
+test test_e2e_buffer_pool_with_file_storage ... ok
+test test_e2e_write_and_reload ... ok
+test test_e2e_table_metadata_after_reload ... ok
+test test_e2e_drop_and_reload ... ok
+test test_e2e_index_drop_across_restart ... ok
+test test_e2e_index_survives_restart ... ok
+test test_e2e_create_write_read_cycle ... ok
+test test_e2e_multiple_tables_persist ... ok
+test test_e2e_many_tables ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 18 tests
+test test_buffer_pool_basic ... ok
+test test_buffer_pool_allocate ... ok
+test test_buffer_pool_prefetch ... ok
+test test_buffer_pool_insert_and_get ... ok
+test test_buffer_pool_lru ... ok
+test test_buffer_pool_clear ... ok
+test test_buffer_pool_remove ... ok
+test test_page_in_pool ... ok
+test test_wal_entry_round_trip ... ok
+test test_wal_multi_entry ... ok
+test test_file_storage_create ... ok
+test test_wal_recover ... ok
+test test_file_storage_persist ... ok
+test test_file_storage_insert_and_drop ... ok
+test test_wal_lsn ... ok
+test test_wal_manager_recover ... ok
+test test_wal_append_and_read ... ok
+test test_file_storage_multiple ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test transaction_sees_its_own_writes ... ok
+test autocommit_insert_is_immediately_visible ... ok
+test scan_in_serves_the_requesting_transaction ... ok
+test rolled_back_rows_disappear_for_all_readers ... ok
+test issue_4974_repeat_reads_in_one_transaction_are_stable ... ok
+test issue_4974_uncommitted_write_is_invisible_to_other_readers ... ok
+test committed_rows_become_visible_to_all_readers ... ok
+test concurrent_transaction_bookkeeping_does_not_corrupt_state ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test test_v312_32_exec_engine_execute_via_execute_method ... ok
+test test_v312_32_exec_engine_storage_accessor_is_pub_crate ... ok
+test test_v312_32_exec_engine_default_via_new_helper ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test test_page_calculate_checksum_method_documented_as_absent ... ok
+test test_page_id_max_value ... ok
+test test_page_id_accessor_exists ... ok
+test test_page_id_round_trip ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test list_all_indexes_empty_initially ... ok
+test list_all_indexes_after_drop ... ok
+test list_all_indexes_after_single_create ... ok
+test list_all_indexes_multiple_indexes_same_table ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test cross_model_each_helper_distinct_kind ... ok
+test cross_model_global_tracker_records_all_three_sql_writes ... ok
+test cross_model_global_tracker_records_sql_write ... ok
+test cross_model_global_tracker_replacement ... ok
+test cross_model_global_tracker_disabled_when_none ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test memory_storage_scan_with_filter_returns_only_matching_rows ... ok
+test file_storage_scan_with_filter_missing_table_returns_empty ... ok
+test file_storage_scan_with_filter_returns_only_matching_rows ... ok
+test file_storage_scan_with_filter_no_match_returns_empty ... ok
+test file_storage_scan_with_filter_empty_predicate_returns_all ... ok
+test file_storage_scan_with_filter_single_match_returns_one_row ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 20 tests
+test audit_round_trip_documented ... ok
+test scenario_1_empty_backup_restore ... ok
+test backup_coordinator_api_surface ... ok
+test graph_round_trip_documented ... ok
+test scenario_2_sql_only_restore ... ok
+test scenario_3_vector_only_restore ... ok
+test scenario_4_graph_only_restore ... ok
+test scenario_5_full_multimodal_restore ... ok
+test backup_manifest_format_documented ... ok
+test sql_round_trip_documented ... ok
+test storage_engine_compiles ... ok
+test empty_storage_engine_lists_zero_tables ... ok
+test storage_engine_current_tx_id_zero_initially ... ok
+test storage_engine_get_table_info_unknown ... ok
+test storage_engine_drop_table ... ok
+test storage_engine_has_view_false_initially ... ok
+test storage_engine_has_table_false_for_empty ... ok
+test storage_engine_in_transaction_false_initially ... ok
+test vector_round_trip_documented ... ok
+test storage_engine_round_trip_baseline ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 19 tests
+test crash_recovery_with_index_rebuild ... ok
+test hnsw_options_parsing ... ok
+test ivf_options_parsing ... ok
+test vector_wal_entry_insert_roundtrip ... ok
+test vector_wal_entry_empty_vector ... ok
+test crash_recovery_insert_then_crash ... ok
+test v5_vector_wal_entry_round_trip_full_pipeline ... ok
+test crash_recovery_create_index_then_insert ... ok
+test vector_wal_entry_create_index_roundtrip ... ok
+test vector_wal_entry_large_dimension ... ok
+test vector_wal_entry_type_serialization ... ok
+test wal_replay_create_hnsw_index ... ok
+test wal_entry_size_estimate ... ok
+test wal_replay_create_ivf_index ... ok
+test wal_replay_drop_index ... ok
+test wal_replay_rebuild_index ... ok
+test wal_replay_vector_delete ... ok
+test wal_replay_vector_insert ... ok
+test wal_replay_vector_update ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test from_u8_legacy_values_still_work ... ok
+test from_u8_round_trips_all_variants ... ok
+test vector_variants_are_added_and_distinct ... ok
+test vector_variants_dont_collide_with_sql_variants ... ok
+test from_u8_out_of_range_returns_none ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 22 tests
+test vtu_p04_predicate_all_matches_anything ... ok
+test vtu_p10_assignment_ir_accessor_returns_column ... ok
+test vtu_p05_predicate_missing_column_returns_false ... ok
+test vtu_p01_predicate_and_evaluates_both_sides ... ok
+test vtu_p06_predicate_type_coercion_int_to_text_observed ... ok
+test vtu_p02_predicate_or_evaluates_to_true ... ok
+test vtu_p08_multi_column_assignment_hash_changes ... ok
+test vtu_p09_plan_trace_rows_affected_recorded ... ok
+test vtu_p03_predicate_nested_3_levels ... ok
+test vtu_p07_endto_end_update_plan_applies_filter_and_assignment ... ok
+test vtu_p11_update_plan_real_world_age_increment ... ok
+test vtu_p12_predicate_hash_invariant_under_equivalent_rewrite ... ok
+test vtu_p14_is_null_predicate_against_null_value ... ok
+test vtu_p16_unary_not_negation_observed ... ok
+test vtu_p17_empty_table_info_column_lookup_returns_false ... ok
+test vtu_p15_is_not_null_predicate_inverse_of_is_null ... ok
+test vtu_p19_assignment_to_nonexistent_column_still_constructs ... ok
+test vtu_p18_row_shorter_than_column_index_returns_false ... ok
+test vtu_p22_debug_format_doesnt_panic ... ok
+test vtu_p20_hash_collision_resistance_50_distinct_predicates ... ok
+test vtu_p13_large_table_1000_assignments_compiles ... ok
+test vtu_p21_concurrent_construction_under_lock ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 49 tests
+test test_mutation_ir_empty ... ok
+test test_mutation_ir_new ... ok
+test test_expr_ir_debug ... ok
+test test_mutation_ir_hash_differs ... ok
+test test_mutation_ir_clone ... ok
+test test_mutation_ir_to_row_mutation ... ok
+test test_plan_trace_rows_affected ... ok
+test test_plan_trace_new ... ok
+test test_mutation_ir_debug ... ok
+test test_mutation_ir_hash_consistency ... ok
+test test_predicate_ir_all ... ok
+test test_predicate_ir_binary_and_false ... ok
+test test_predicate_ir_binary_eq_double_eq ... ok
+test test_predicate_ir_binary_eq_integer ... ok
+test test_predicate_ir_binary_and ... ok
+test test_predicate_ir_binary_eq_text ... ok
+test test_predicate_ir_binary_float_comparison ... ok
+test test_predicate_ir_binary_gt ... ok
+test test_predicate_ir_binary_gte ... ok
+test test_predicate_ir_binary_lt ... ok
+test test_predicate_ir_binary_ne ... ok
+test test_predicate_ir_binary_lte ... ok
+test test_predicate_ir_binary_null_handling ... ok
+test test_predicate_ir_binary_ne_angle ... ok
+test test_predicate_ir_binary_or ... ok
+test test_predicate_ir_binary_or_both_false ... ok
+test test_predicate_ir_cmp_values_float ... ok
+test test_predicate_ir_binary_text_comparison ... ok
+test test_predicate_ir_binary_unknown_op ... ok
+test test_predicate_ir_cmp_values_integer ... ok
+test test_predicate_ir_cmp_values_text ... ok
+test test_predicate_ir_debug ... ok
+test test_predicate_ir_eval_to_value_binary_or ... ok
+test test_predicate_ir_eval_to_value_binary_and ... ok
+test test_predicate_ir_eval_to_value_column ... ok
+test test_predicate_ir_eval_to_value_is_not_null ... ok
+test test_predicate_ir_eval_to_value_is_null ... ok
+test test_predicate_ir_eval_to_value_unary_not ... ok
+test test_predicate_ir_expr_column ... ok
+test test_predicate_ir_expr_column_not_found ... ok
+test test_predicate_ir_expr_literal_boolean ... ok
+test test_predicate_ir_is_not_null ... ok
+test test_predicate_ir_is_null ... ok
+test test_predicate_ir_unary_not ... ok
+test test_predicate_ir_unary_not_case_insensitive ... ok
+test test_predicate_ir_unary_unknown_op ... ok
+test test_update_plan_accessors ... ok
+test test_update_plan_debug ... ok
+test test_update_plan_new ... ok
+
+test result: ok. 49 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 35 tests
+test test_file_backed_wal_manager_size ... ok
+test test_file_backed_wal_manager_append_and_recover ... ok
+test test_file_backed_wal_manager_all_entry_types ... ok
+test test_file_backed_wal_manager_recover_with_reopened_manager ... ok
+test test_make_begin_entry ... ok
+test test_make_commit_entry ... ok
+test test_make_delete_entry ... ok
+test test_file_backed_wal_manager_recover_nonexistent_file ... ok
+test test_make_insert_entry ... ok
+test test_file_backed_wal_manager_new ... ok
+test test_make_rollback_entry ... ok
+test test_make_update_entry ... ok
+test test_file_backed_wal_manager_flush ... ok
+test test_memory_wal_manager_append ... ok
+test test_memory_wal_manager_default ... ok
+test test_memory_wal_manager_append_multiple ... ok
+test test_memory_wal_manager_flush ... ok
+test test_memory_wal_manager_multiple_transactions ... ok
+test test_memory_wal_manager_new ... ok
+test test_file_backed_wal_manager_rollback_recovery ... ok
+test test_memory_wal_manager_recover_clears_entries ... ok
+test test_memory_wal_manager_sync ... ok
+test test_wal_entry_clone ... ok
+test test_wal_entry_debug ... ok
+test test_wal_entry_from_bytes_invalid_entry_type ... ok
+test test_wal_entry_from_bytes_truncated ... ok
+test test_wal_entry_to_bytes_and_from_bytes ... ok
+test test_wal_entry_to_bytes_and_from_bytes_no_key_no_data ... ok
+test test_wal_entry_type_all_variants ... ok
+test test_wal_entry_with_large_data ... ok
+test test_wal_entry_type_debug ... ok
+test test_file_backed_wal_manager_multiple_append_after_truncate ... ok
+test test_file_backed_wal_manager_append_after_none_writer ... ok
+test test_file_backed_wal_manager_truncate ... ok
+test test_file_backed_wal_manager_sync ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 5 tests
+test p0_08_row_inserted_twice_in_one_replay_is_applied_once ... ok
+test p0_08_row_deleted_earlier_in_the_replay_is_applied_again ... ok
+test p0_08_row_updated_earlier_in_the_replay_is_applied_again ... ok
+test p0_08_row_already_in_the_table_is_not_duplicated ... ok
+test p0_08_distinct_rows_are_all_applied ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test file_storage_pk_index_is_populated ... ok
+test pk_lookup_cost_must_not_scale_with_table_size ... ok
+test wal_wrapped_pk_lookup_must_not_scan ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+
+running 32 tests
+test cov_wal_storage_flush ... ok
+test cov_wal_storage_active_tx_ids ... ok
+test cov_wal_storage_force_sync ... ok
+test cov_wal_storage_full_delete ... ok
+test cov_wal_storage_begin_transaction ... ok
+test cov_wal_storage_commit_transaction ... ok
+test cov_wal_storage_current_tx_id ... ok
+test cov_wal_storage_full_insert_scan ... ok
+test cov_wal_storage_full_update ... ok
+test cov_wal_storage_full_flush ... ok
+test cov_wal_storage_in_transaction ... ok
+test cov_wal_storage_new ... ok
+test cov_wal_storage_insert_many ... ok
+test cov_wal_storage_is_tx_active_after_commit ... ok
+test cov_wal_storage_new_with_sync_mode ... ok
+test cov_wal_storage_multiple_begin ... ok
+test cov_wal_storage_new_with_sync_mode_and_checkpoint ... ok
+test cov_wal_storage_inner_accessor ... ok
+test cov_wal_storage_multiple_concurrent_tx ... ok
+test cov_wal_storage_new_with_sync_mode_none ... ok
+test cov_wal_storage_new_with_sync_mode_batch ... ok
+test cov_wal_storage_recover_empty ... ok
+test cov_wal_storage_is_tx_active_after_rollback ... ok
+test cov_wal_storage_recover_with_entries ... ok
+test cov_wal_storage_split ... ok
+test cov_wal_storage_scan_empty ... ok
+test cov_wal_storage_set_sync_mode ... ok
+test cov_wal_storage_wal_accessor ... ok
+test cov_wal_storage_sync_mode_default ... ok
+test cov_wal_storage_rollback_transaction ... ok
+test cov_wal_storage_wal_mut_accessor ... ok
+test cov_wal_storage_tx_rollback_invalidates ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 4 tests
+test issue_5055_a_stray_tail_is_not_mistaken_for_a_table_name ... ok
+test issue_5055_entries_without_a_table_name_still_parse ... ok
+test issue_5055_non_ascii_and_embedded_magic_names_survive ... ok
+test issue_5055_table_name_survives_a_round_trip ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test issue_4848_rename_column::rename_column_rejects_missing_source ... ok
+test issue_4848_rename_column::rename_column_rejects_duplicate_destination ... ok
+test issue_4848_rename_column::rename_column_if_exists_handling ... ok
+test issue_4848_rename_column::rename_column_in_table_with_many_columns ... ok
+test issue_4848_rename_column::rename_column_preserves_data_for_all_rows ... ok
+test issue_4848_rename_column::rename_column_then_insert_with_new_name_works ... ok
+test issue_4848_rename_column::rename_column_via_old_name_fails_after_rename ... ok
+test issue_4848_rename_column::rename_column_basic_then_select_via_new_name ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 6 tests
+test file_storage_itself_scopes_reads_correctly ... ok
+test wal_storage_creates_the_table_in_the_stated_database ... ok
+test mvcc_storage_reads_back_from_the_database_it_wrote_to ... ok
+test wal_storage_reads_back_from_the_database_it_wrote_to ... ok
+test wal_storage_flush_does_not_drop_rows_of_a_named_database ... ok
+test wrapper_keeps_two_databases_separate ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test rollback_after_multi_row_delete_restores_order ... ok
+test empty_filter_deletes_everything ... ok
+test delete_with_no_match_is_a_noop ... ok
+test delete_preserves_surviving_row_order ... ok
+test report_single_row_delete_cost ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+
+running 105 tests
+test deadlock::tests::test_deadlock_detector_new ... ok
+test deadlock::tests::test_default ... ok
+test deadlock::tests::test_add_multiple_edges ... ok
+test deadlock::tests::test_add_edge ... ok
+test deadlock::tests::test_no_cycle ... ok
+test deadlock::tests::test_detect_cycle_no_waiters ... ok
+test deadlock::tests::test_no_cycle_linear_chain ... ok
+test deadlock::tests::test_detect_cycle_from_different_start ... ok
+test deadlock::tests::test_detect_cycle ... ok
+test deadlock::tests::test_complex_wait_for_graph ... ok
+test deadlock::tests::test_partial_cycle ... ok
+test deadlock::tests::test_remove_edges_for ... ok
+test deadlock::tests::test_self_loop ... ok
+test deadlock::tests::test_remove_edges_for_removes_from_holders ... ok
+test deadlock::tests::test_two_node_cycle ... ok
+test deadlock::tests::test_visited_contains_current ... ok
+test deadlock::tests::test_with_timeout ... ok
+test dtc::tests::test_change_operation ... ok
+test dtc::tests::test_transaction_context_add_participant ... ok
+test dtc::tests::test_transaction_context_new ... ok
+test dtc::tests::test_transaction_state_transitions ... ok
+test dtc::tests::test_vote_serialization ... ok
+test gid::tests::test_gid_display ... ok
+test gid::tests::test_gid_generation ... ok
+test gid::tests::test_gid_equality ... ok
+test lock::tests::test_exclusive_lock ... ok
+test lock::tests::test_lock_release ... ok
+test lock::tests::test_lock_release_grants_to_waiter ... ok
+test lock::tests::test_lock_upgrade ... ok
+test lock::tests::test_multiple_shared_locks ... ok
+test lock::tests::test_shared_lock ... ok
+test lock::tests::test_release_all_locks ... ok
+test lock::tests::test_lock_manager_with_deadlock_detector ... ok
+test lock::tests::test_shared_lock_conflict ... ok
+test manager::tests::test_begin_read_only ... ok
+test manager::tests::test_begin_transaction ... ok
+test manager::tests::test_commit_transaction ... ok
+test manager::tests::test_isolation_level ... ok
+test manager::tests::test_multiple_transactions ... ok
+test lock_manager::tests::test_lock_acquire_release ... ok
+test manager::tests::test_read_committed_isolation ... ok
+test lock_manager::tests::test_lock_conflict ... ok
+test lock_manager::tests::test_get_holder ... ok
+test lock_manager::tests::test_is_locked ... ok
+test lock_manager::tests::test_lock_same_gid_succeeds ... ok
+test lock_manager::tests::test_row_lock ... ok
+test manager::tests::test_read_committed_no_dirty_read ... ok
+test manager::tests::test_rollback_transaction ... ok
+test manager::tests::test_snapshot_refresh_on_each_query ... ok
+test manager::tests::test_transaction_context ... ok
+test manager::tests::test_transaction_error_in_progress ... ok
+test manager::tests::test_transaction_error_no_transaction ... ok
+test mvcc::tests::test_row_version_commit ... ok
+test mvcc::tests::test_row_version_is_visible_committed_after_snapshot ... ok
+test mvcc::tests::test_row_version_is_visible_committed_before_snapshot ... ok
+test mvcc::tests::test_row_version_is_visible_deleted_after_snapshot ... ok
+test mvcc::tests::test_row_version_is_visible_deleted_before_snapshot ... ok
+test mvcc::tests::test_row_version_is_visible_other_uncommitted ... ok
+test mvcc::tests::test_row_version_is_visible_own_uncommitted ... ok
+test mvcc::tests::test_snapshot_visibility ... ok
+test mvcc::tests::test_transaction_abort ... ok
+test mvcc::tests::test_transaction_lifecycle ... ok
+test mvcc_storage::tests::test_mvcc_storage_delete ... ok
+test mvcc_storage::tests::test_mvcc_storage_read_write ... ok
+test mvcc_storage::tests::test_mvcc_storage_rollback ... ok
+test savepoint::tests::test_add_undo ... ok
+test savepoint::tests::test_add_undo_update ... ok
+test mvcc_storage::tests::test_mvcc_storage_snapshot_isolation ... ok
+test savepoint::tests::test_nested_savepoints ... ok
+test savepoint::tests::test_release_nonexistent_savepoint ... ok
+test savepoint::tests::test_get_savepoint_count ... ok
+test savepoint::tests::test_release_savepoint ... ok
+test savepoint::tests::test_rollback_preserves_earlier_savepoints ... ok
+test savepoint::tests::test_savepoint_create ... ok
+test savepoint::tests::test_savepoint_error_display ... ok
+test savepoint::tests::test_savepoint_new ... ok
+test savepoint::tests::test_savepoint_not_found ... ok
+test savepoint::tests::test_savepoint_override ... ok
+test savepoint::tests::test_undo_record_insert ... ok
+test ssi::tests::test_serialization_graph_cycle_detection ... ok
+test ssi::tests::test_serialization_graph_remove_tx ... ok
+test ssi::tests::test_ssi_detector_no_conflict ... ok
+test ssi::tests::test_ssi_detector_record_read ... ok
+test ssi::tests::test_ssi_detector_sync_no_conflict ... ok
+test ssi::tests::test_ssi_detector_sync_release ... ok
+test ssi::tests::test_ssi_detector_sync_rw_conflict ... ok
+test transaction_manager::tests::test_begin_transaction ... ok
+test ssi::tests::test_ssi_error_display ... ok
+test ssi::tests::test_ssi_detector_record_write ... ok
+test transaction_manager::tests::test_get_snapshot ... ok
+test transaction_manager::tests::test_commit_transaction ... ok
+test transaction_manager::tests::test_isolation_level_default ... ok
+test transaction_manager::tests::test_get_snapshot_none ... ok
+test transaction_manager::tests::test_record_read_write ... ok
+test transaction_manager::tests::test_rollback_transaction ... ok
+test version_chain::tests::test_version_chain_append_and_find_visible ... ok
+test version_chain::tests::test_version_chain_delete_visibility ... ok
+test transaction_manager::tests::test_multiple_transactions ... ok
+test version_chain::tests::test_version_chain_gc_collect_deleted ... ok
+test version_chain::tests::test_version_chain_gc_preserve_recent ... ok
+test version_chain::tests::test_version_chain_not_found ... ok
+test version_chain::tests::test_version_chain_gc_preserve_active_tx ... ok
+test version_chain::tests::test_version_chain_rollback ... ok
+test version_chain::tests::test_version_chain_stats ... ok
+test version_chain::tests::test_version_chain_uncommitted_visible_to_self ... ok
+
+test result: ok. 105 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test node_id_display_uses_inner_value ... ignored, see Counter #4 doc — NodeId::Display has no production caller; recorded as F1 evidence only; remove this `#[ignore]` once a production caller exists.
+test gid_parse_must_reject_wrong_arity_string ... ok
+test gid_parse_must_accept_well_formed_three_part_string ... ok
+test can_grant_exclusive_must_not_bypass_held_shared_case_a ... ok
+test can_grant_shared_must_not_bypass_waiting_exclusive ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 38 tests
+test cov_gid_new_with_node_id ... ok
+test cov_gid_two_nodes_differ ... ok
+test cov_lock_deadlock_detect_no_cycle ... ok
+test cov_gid_parse_invalid ... ok
+test cov_lock_acquire_exclusive_granted ... ok
+test cov_gid_parse_empty ... ok
+test cov_lock_has_exclusive ... ok
+test cov_lock_acquire_shared_granted ... ok
+test cov_lock_counts ... ok
+test cov_lock_exclusive_then_shared ... ok
+test cov_lock_is_locked_by_tx ... ok
+test cov_lock_release_all ... ok
+test cov_lock_release_not_held_is_err ... ok
+test cov_lock_release_specific ... ok
+test cov_lock_shared_shared_both_granted ... ok
+test cov_lock_upgrade_shared_to_exclusive ... ok
+test cov_savepoint_add_undo ... ok
+test cov_savepoint_create_and_count ... ok
+test cov_savepoint_duplicate_name_is_err ... ok
+test cov_savepoint_new_empty ... ok
+test cov_savepoint_release_existing ... ok
+test cov_savepoint_release_missing_is_err ... ok
+test cov_savepoint_rollback_noop_existing ... ok
+test cov_savepoint_rollback_noop_missing_is_err ... ok
+test cov_savepoint_rollback_to_with_undo_closure ... ok
+test cov_ssi_graph_add_dependency ... ok
+test cov_ssi_graph_remove_tx ... ok
+test cov_ssi_graph_new_no_cycle ... ok
+test cov_ssi_graph_self_edge ... ok
+test cov_tm_begin_commit_cycle ... ok
+test cov_tm_begin_read_only ... ok
+test cov_tm_begin_rollback_cycle ... ok
+test cov_tm_begin_serializable ... ok
+test cov_tm_commit_outside_tx_err ... ok
+test cov_tm_rollback_outside_tx_err ... ok
+test cov_tm_new_not_in_tx ... ok
+test cov_tm_global_timestamp ... ok
+test cov_tm_set_isolation_outside_tx ... ok
+
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test test_timeout_configuration ... ok
+test test_detect_direct_cycle_two_transactions ... ok
+test test_detect_self_loop ... ok
+test test_remove_edges_after_commit ... ok
+test test_no_deadlock_independent_transactions ... ok
+test test_detect_indirect_cycle_three_transactions ... ok
+test test_detect_multiple_independent_cycles ... ok
+test test_concurrent_random_wait_for_graphs ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test add_waiter_second_request_from_same_tx_preserves_invariants ... ok
+test detect_deadlock_must_report_cycle_participants ... ok
+test detect_deadlock_must_return_none_without_cycle ... ok
+test remove_waiter_must_clear_promoted_tx ... ok
+test remove_waiter_must_remove_only_target_tx ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 48 tests
+test abort_releases_ssi_state_for_reuse ... ok
+test global_timestamp_advances_with_begin ... ok
+test begin_transaction_advances_global_clock ... ok
+test commit_timestamps_must_increase ... ok
+test commit_must_advance_global_clock ... ok
+test abort_must_remove_tx_from_active ... ok
+test get_chain_missing_key_returns_none ... ok
+test add_undo_record_must_persist_for_later_rollback ... ok
+test get_chain_must_return_appended_version ... ok
+test end_to_end_committed_data_visible_to_later_tx_only ... ok
+test manager_global_timestamp_advances_across_begins ... ok
+test mvcc_commit_returns_increasing_timestamps ... ok
+test mvcc_read_must_return_committed_value ... ok
+test mvcc_rollback_must_discard_uncommitted_write ... ok
+test mvcc_rollback_twice_must_error ... ok
+test mvcc_write_must_be_visible_after_commit ... ok
+test mvcc_write_must_persist_for_same_transaction ... ok
+test read_committed_is_visible_uses_read_committed_branch ... ok
+test query_context_for_read_committed_must_refresh ... ok
+test read_committed_visibility_boundary ... ok
+test refresh_for_read_committed_updates_snapshot ... ok
+test refresh_snapshot_must_act_on_read_committed ... ok
+test release_savepoint_must_remove_savepoint ... ok
+test rollback_to_savepoint_with_undo_must_invoke_closure ... ok
+test rollback_versions_preserves_committed_versions ... ok
+test rollback_with_undo_must_invoke_closure_and_remove_tx ... ok
+test rollback_versions_must_drop_only_uncommitted_of_target_tx ... ok
+test rollback_with_undo_replays_in_reverse_order ... ok
+test row_version_at_snapshot_ts_visible_under_strict_gt ... ok
+test row_version_own_tx_visible_even_if_uncommitted ... ok
+test row_version_before_snapshot_ts_visible ... ok
+test serialization_graph_remove_tx_must_prune_dependencies ... ok
+test row_version_uncommitted_invisible ... ok
+test siread_lock_add_key_must_append ... ok
+test snapshot_visibility_active_tx_invisible ... ok
+test snapshot_visibility_is_not_always_true ... ok
+test snapshot_visibility_own_tx_always_visible ... ok
+test snapshot_visibility_own_tx_identity_not_inverted ... ok
+test snapshot_visibility_strict_inequality_boundary ... ok
+test ssi_empty_read_set_must_not_conflict ... ok
+test ssi_disjoint_sets_must_commit ... ok
+test ssi_release_clears_state ... ok
+test ssi_rw_wr_cycle_must_be_rejected ... ok
+test storage_rollback_versions_must_discard_uncommitted ... ok
+test transaction_context_is_visible_dispatches_on_isolation ... ok
+test transaction_manager_isolation_level_defaults_read_committed ... ok
+test transaction_status_predicates_must_distinguish_states ... ok
+test with_mvcc_must_use_provided_engine ... ok
+
+test result: ok. 48 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 14 tests
+test test_ssi_sync_concurrent_read_no_conflict ... ok
+test test_ssi_sync_write_no_conflict ... ok
+test test_ssi_sync_rw_conflict_detection ... ok
+test test_ssi_sync_write_skew_detection ... ok
+test test_ssi_multiple_readers_no_conflict ... ok
+test test_ssi_read_after_write_in_same_tx ... ok
+test test_ssi_concurrent_read_no_conflict ... ok
+test test_ssi_direct_write_conflict ... ok
+test test_ssi_abort_prevents_conflict ... ok
+test test_ssi_rw_conflict_detection ... ok
+test test_ssi_overlapping_reads_different_writes ... ok
+test test_ssi_validation_order_matters ... ok
+test test_ssi_write_skew_detection ... ok
+test test_ssi_write_no_conflict ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 30 tests
+test count_for_unknown_tx_is_zero ... ok
+test commit_after_rollback_is_noop_or_err ... ok
+test audit_only_write_registered ... ok
+test cross_model_write_equality ... ok
+test all_four_models_rollback_discards ... ok
+test cross_model_write_clone ... ok
+test all_four_models_cross_model_commit ... ok
+test commit_barrier_no_dangling_writes ... ok
+test graph_only_write_registered ... ok
+test large_cross_model_description ... ok
+test model_kind_debug ... ok
+test model_kind_equality ... ok
+test mixed_writes_many ... ok
+test many_writes_in_one_tx ... ok
+test multiple_sql_writes ... ok
+test parallel_transactions_tracking_isolated ... ok
+test multiple_vector_writes ... ok
+test register_for_unknown_tx_does_nothing ... ok
+test rollback_after_commit_is_noop_or_err ... ok
+test rollback_barrier_no_dangling_writes ... ok
+test rollback_then_begin_is_clean ... ok
+test rollback_tx1_leaves_tx2_intact ... ok
+test sequential_commits_tracking_clears ... ok
+test sequential_transactions_isolated ... ok
+test sql_only_write_registered ... ok
+test sql_plus_vector_cross_model_commit ... ok
+test sql_plus_vector_rollback_discards ... ok
+test vector_only_write_registered ... ok
+test writes_for_unknown_tx_is_empty ... ok
+test write_description_preserved ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 29 tests
+test atomicity_all_models_succeed ... ok
+test consistency_foreign_key_graph_constraint ... ok
+test atomicity_rollback_clears_all ... ok
+test consistency_vector_index_depends_on_table ... ok
+test cross_model_tx_double_begin ... ok
+test cross_model_tx_lifecycle ... ok
+test cross_model_tx_all_models ... ok
+test cross_model_tx_model_order ... ok
+test cross_model_tx_no_entries ... ok
+test cross_model_tx_rollback ... ok
+test cross_model_tx_sql_and_vector ... ok
+test cross_model_tx_sql_vector_graph ... ok
+test durability_recovery_replay ... ok
+test durability_wal_entries_persisted ... ok
+test edge_case_empty_transaction ... ok
+test edge_case_many_entries ... ok
+test edge_case_same_resource_multiple_times ... ok
+test edge_case_single_entry ... ok
+test entry_validation_control_commands ... ok
+test entry_validation_with_resource ... ok
+test entry_validation_without_resource ... ok
+test isolation_concurrent_tx_different_models ... ok
+test entry_model_type_detection ... ok
+test isolation_concurrent_tx_same_resource ... ok
+test perf_many_small_transactions ... ok
+test scenario_document_ingestion ... ok
+test scenario_user_registration ... ok
+test scenario_relationship_creation ... ok
+test perf_single_large_transaction ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 15 tests
+test test_4626_select_for_update_rollback::test_for_update_in_subquery ... ok
+test test_4626_select_for_update_rollback::test_for_update_multiple_tables ... ok
+test test_4626_select_for_update_rollback::test_for_update_lock_released_after_rollback ... ok
+test test_4626_select_for_update_rollback::test_nowait_with_rollback ... ok
+test test_4626_select_for_update_rollback::test_select_for_update_then_rollback ... ok
+test test_4626_select_for_update_rollback::test_select_for_update_with_insert_then_rollback ... ok
+test test_4626_select_for_update_rollback::test_select_for_update_with_update_then_rollback ... ok
+test test_4626_select_for_update_rollback::test_skip_locked_with_rollback ... ok
+test test_4847_transaction_semantics::test_batch_comment_line_preserved ... ok
+test test_4847_transaction_semantics::test_explicit_transaction_commit ... ok
+test test_4847_transaction_semantics::test_explicit_transaction_rollback ... ok
+test test_4847_transaction_semantics::test_nested_transaction ... ok
+test test_4847_transaction_semantics::test_savepoint_within_transaction ... ok
+test test_4847_transaction_semantics::test_wire_abort_commits_partial ... ok
+test test_4847_transaction_semantics::test_rollback_not_affect_dml_outside_tx ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 8 tests
+test crates/storage/src/file_storage.rs - file_storage::FileStorage::set_current_tx_id_shared (line 6102) ... ignored
+test crates/storage/src/io_delay.rs - io_delay::IoFaultInjector (line 162) ... ignored
+test crates/storage/src/lib.rs - test_support (line 52) ... ignored
+test crates/storage/src/mvcc_gc.rs - mvcc_gc (line 36) ... ignored
+test crates/storage/src/restore_filespace.rs - restore_filespace (line 12) ... ignored
+test crates/storage/src/semisync.rs - semisync (line 17) ... ignored
+test crates/storage/src/test_support.rs - test_support::unique_test_path (line 82) ... ignored
+test crates/storage/src/wal_storage.rs - wal_storage::WalStorage<S,T>::new_with_sync_mode (line 147) ... ok
+
+test result: ok. 1 passed; 0 failed; 7 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
