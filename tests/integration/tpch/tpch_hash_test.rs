@@ -7,18 +7,20 @@
 //!
 //! # The wire scope
 //!
-//! Three of the 22 standard statements — **Q9**, **Q18** and **Q19** — cannot be
+//! Two of the 22 standard statements — **Q9** and **Q18** — cannot be
 //! executed on the file-storage wire path: Q9's intermediate result grows past
-//! 1.5 GB within a second, Q18 kills the server process, and Q19 cannot be
-//! parsed by the wire front end (all three: issue #5393). A killed process
+//! 1.5 GB within a second, and Q18 kills the server process (both: issue
+//! #5393; **Q19** — formerly the third, an `IN (…)` inside a parenthesised
+//! OR group the wire front end could not parse — runs there since the
+//! 2026-11-10 parser fix). A killed process
 //! takes the **whole test binary** with it, so the CI job would die with
 //! `signal: 9` instead of reporting a test failure.
 //!
 //! The shared **wire scope** (`tests/common/tpch_wire_scope.rs`) refuses to
 //! execute those statements: `run_query_timed` takes the query id and returns
-//! `WireOutcome::Skipped` for them. The hash therefore covers the 19
-//! in-scope statements, the 3 skips are disclosed through the `TPCH-NOT-RUN`
-//! marker, and the test asserts that exactly those 3 were skipped — neither
+//! `WireOutcome::Skipped` for them. The hash therefore covers the 20
+//! in-scope statements, the 2 skips are disclosed through the `TPCH-NOT-RUN`
+//! marker, and the test asserts that exactly those 2 were skipped — neither
 //! more (a silently dropped statement) nor fewer (a statement that could
 //! have run).
 //!

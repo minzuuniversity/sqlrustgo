@@ -42,11 +42,11 @@
 //!
 //! | statement | outcome on the wire path |
 //! |---|---|
-//! | 18 of the 19 in scope | identical to the in-process SQLite oracle, cell by cell |
+//! | 19 of the 20 in scope | identical to the in-process SQLite oracle, cell by cell |
 //! | Q13 | same row count, different cells — registered as a known difference (issue #5394) |
 //! | Q9 | engine process killed by the OS (issue #5393) |
 //! | Q18 | server process killed while the statement ran (issue #5393) |
-//! | Q19 | the wire front end cannot parse it (issue #5393) |
+//! | Q19 | parsed again since the 2026-11-10 wire-parser fix (issue #5393): matches the SQLite oracle cell by cell at SF=0.01, and its SF=0.001 aggregate matches an independent oracle re-computation; the stored `tpch_sha256.json` entry for it had captured a NULL (no-row) result in 2026-06 and was corrected with evidence |
 
 /// Reason code: the file-storage backend cannot execute the statement
 /// without exhausting the machine.
@@ -76,12 +76,12 @@ pub const TPC_H_QUERY_IDS: [&str; 22] = [
 ///
 /// Each of them was executed against the file-storage backend with the
 /// hermetic SF=0.01 fixture and compared **cell by cell** with the
-/// independent in-process SQLite oracle. 18 of the 19 match; Q13 differs in
+/// independent in-process SQLite oracle. 19 of the 20 match; Q13 differs in
 /// a way that is registered as a known difference (issue #5394), so it is
 /// still compared — only the *difference* is tolerated, not the statement.
 pub const WIRE_SCOPE: &[&str] = &[
     "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15",
-    "Q16", "Q17", "Q20", "Q21", "Q22",
+    "Q16", "Q17", "Q19", "Q20", "Q21", "Q22",
 ];
 
 /// A standard query that the file-storage wire path must not execute.
@@ -119,13 +119,6 @@ pub const WIRE_EXCLUSIONS: &[WireExclusion] = &[
         detail: "IN (SELECT … GROUP BY … HAVING …) over lineitem; the server process was killed \
                  while the statement was running (the client saw: Lost connection to server \
                  during query)",
-    },
-    WireExclusion {
-        qid: "Q19",
-        reason: REASON_ENGINE_PARSE_ERROR,
-        issue: "#5393",
-        detail: "the wire front end cannot parse an IN (…) list inside a parenthesised OR \
-                 group: Parse error: Expected RParen in parens, depth=1, current=Some(In)",
     },
 ];
 
@@ -239,7 +232,10 @@ mod tests {
 
     #[test]
     fn unregistered_wire_skips_are_reported() {
-        assert!(unregistered_wire_skips(&["Q9", "Q18", "Q19"]).is_empty());
+        assert!(unregistered_wire_skips(&["Q9", "Q18"]).is_empty());
+        // Q19's parse failure was fixed (issue #5393, 2026-11-10) — it is no
+        // longer in scope-excluded, so a run that skips it is a bug.
+        assert_eq!(unregistered_wire_skips(&["Q19"]), vec!["Q19"]);
         assert_eq!(unregistered_wire_skips(&["Q9", "Q42"]), vec!["Q42"]);
     }
 
