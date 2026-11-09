@@ -1,0 +1,66 @@
+# 20261110-q19-fix-001 —— Q19 wire 解析修复(#5393)取证清单。
+# 口径披露:
+#   1) 全部 cargo 臂跑在专用 CARGO_TARGET_DIR(q19fix-target),排除共享 target 重建期假红;
+#   2) TPCH fixture 用仓内生成器现生成:SF=0.001 与 SF=0.01(--seed 42,hermetic);
+#   3) `oracle_g1_tpch_sha256` 臂预期红 —— 14 条既有假基线条目(#5688,空结果假捕获),
+#      Q19 自身比对已按独立 oracle 复算转绿;该臂红是既有缺陷的 fail-closed 披露,不销账。
+
+- id: q19-parser-suite
+  name: "parser crate 全测试面(28 目标,含 q19_paren_in_repro 复现回归:修复前逐字复现 wire 报错,修复后绿)"
+  cmd: cargo test -q -p sqlrustgo-parser
+  cwd: .
+  timeout_sec: 1800
+
+- id: q19-hash-sf001
+  name: "TPC-H 哈希门禁测试(SF=0.001 fixture;Q19 已在 wire 范围,NOT-RUN 披露 Q9/Q18 两条)"
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test tpch_hash_test
+  cwd: .
+  timeout_sec: 1800
+
+- id: q19-gate-sf001
+  name: "TPC-H 22/22 wire 门禁(SF=0.001;Q19 首跑)"
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test tpch_gate_test
+  cwd: .
+  timeout_sec: 1800
+
+- id: q19-full22-sf001
+  name: "TPC-H 22 条 wire 执行(SF=0.001)"
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test tpch_full_22_test
+  cwd: .
+  timeout_sec: 1800
+
+- id: q19-timeout-sf001
+  name: "逐查询超时治理(SF=0.001)"
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test tpch_per_query_timeout_test
+  cwd: .
+  timeout_sec: 1800
+
+- id: q19-oracle-sha-sf001
+  name: "G1 SHA-256 基线比对(SF=0.001):Q19 条目转绿;其余 14 漂移=#5688 既有假基线,预期红,fail-closed 留档"
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test oracle_g1_tpch_sha256
+  cwd: .
+  timeout_sec: 1800
+
+- id: q19-oracle-sqlite-sf01
+  name: "SF=0.01 22 条 vs SQLite oracle 逐格对照(48 测试;Q19 在范围内逐格一致)"
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf01 cargo test -q --test tpch_sf01_22_vs_sqlite
+  cwd: .
+  timeout_sec: 1800
+
+- id: q19-oracle-g15-sf01
+  name: "G15 22 条 oracle 对照 SF=0.01(53 测试)"
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf01 cargo test -q --test oracle_g15_tpch_sf01
+  cwd: .
+  timeout_sec: 3600
+
+- id: q19-lib
+  name: "引擎 lib 测试面(解析器改动波及全引擎)"
+  cmd: cargo test --lib
+  cwd: .
+  timeout_sec: 5400
+
+- id: q19-fmt
+  name: "cargo fmt --check --all(尖端 0 diff 口径保持)"
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 300

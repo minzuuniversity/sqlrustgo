@@ -1,0 +1,150 @@
+schema_version: 1
+run_id: 20261110-q19-fix-001
+source_agent: omp (macmini)
+frozen_commit: 91024f980a72ec6dedd7952e8b1c985e2a716436
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/q19fix-target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: q19-parser-suite
+  name: parser crate 全测试面(28 目标,含 q19_paren_in_repro 复现回归:修复前逐字复现 wire 报错,修复后绿)
+  cmd: cargo test -q -p sqlrustgo-parser
+  cwd: .
+  timeout_sec: 1800
+- id: q19-hash-sf001
+  name: TPC-H 哈希门禁测试(SF=0.001 fixture;Q19 已在 wire 范围,NOT-RUN 披露 Q9/Q18 两条)
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test tpch_hash_test
+  cwd: .
+  timeout_sec: 1800
+- id: q19-gate-sf001
+  name: TPC-H 22/22 wire 门禁(SF=0.001;Q19 首跑)
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test tpch_gate_test
+  cwd: .
+  timeout_sec: 1800
+- id: q19-full22-sf001
+  name: TPC-H 22 条 wire 执行(SF=0.001)
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test tpch_full_22_test
+  cwd: .
+  timeout_sec: 1800
+- id: q19-timeout-sf001
+  name: 逐查询超时治理(SF=0.001)
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test tpch_per_query_timeout_test
+  cwd: .
+  timeout_sec: 1800
+- id: q19-oracle-sha-sf001
+  name: G1 SHA-256 基线比对(SF=0.001):Q19 条目转绿;其余 14 漂移=#5688 既有假基线,预期红,fail-closed 留档
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q --test oracle_g1_tpch_sha256
+  cwd: .
+  timeout_sec: 1800
+- id: q19-oracle-sqlite-sf01
+  name: SF=0.01 22 条 vs SQLite oracle 逐格对照(48 测试;Q19 在范围内逐格一致)
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf01 cargo test -q --test tpch_sf01_22_vs_sqlite
+  cwd: .
+  timeout_sec: 1800
+- id: q19-oracle-g15-sf01
+  name: G15 22 条 oracle 对照 SF=0.01(53 测试)
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf01 cargo test -q --test oracle_g15_tpch_sf01
+  cwd: .
+  timeout_sec: 3600
+- id: q19-lib
+  name: 引擎 lib 测试面(解析器改动波及全引擎)
+  cmd: cargo test --lib
+  cwd: .
+  timeout_sec: 5400
+- id: q19-fmt
+  name: cargo fmt --check --all(尖端 0 diff 口径保持)
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 300
+results:
+- id: q19-parser-suite
+  started_at: '2026-11-09T21:45:19Z'
+  finished_at: '2026-11-09T21:45:36Z'
+  exit_code: 0
+  stdout_sha256: edafca43ec0f1fd84347dcad2c758bd5b138c2fd9a3a198c08cfa3be5a1e98f3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-q19-parser-suite.stdout
+  stderr_path: logs/001-q19-parser-suite.stderr
+- id: q19-hash-sf001
+  started_at: '2026-11-09T21:45:36Z'
+  finished_at: '2026-11-09T21:45:50Z'
+  exit_code: 0
+  stdout_sha256: 506e1b85a9a185f473fefd9f488c81aa7822bc7d49db6f33d1066a2392ba0d3a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-q19-hash-sf001.stdout
+  stderr_path: logs/002-q19-hash-sf001.stderr
+- id: q19-gate-sf001
+  started_at: '2026-11-09T21:45:50Z'
+  finished_at: '2026-11-09T21:45:52Z'
+  exit_code: 0
+  stdout_sha256: 38d9b9c2ea8758af9c2762a043c6ef888b3830b4314daae1810af8bd268ebb13
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-q19-gate-sf001.stdout
+  stderr_path: logs/003-q19-gate-sf001.stderr
+- id: q19-full22-sf001
+  started_at: '2026-11-09T21:45:52Z'
+  finished_at: '2026-11-09T21:45:55Z'
+  exit_code: 0
+  stdout_sha256: da2a55686506509b2b8ec174fb0c5a35e2a29a27ef1c7fde285e40e1b6a606c6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-q19-full22-sf001.stdout
+  stderr_path: logs/004-q19-full22-sf001.stderr
+- id: q19-timeout-sf001
+  started_at: '2026-11-09T21:45:55Z'
+  finished_at: '2026-11-09T21:45:57Z'
+  exit_code: 0
+  stdout_sha256: 8526abf6e5d896b4c48d94636b8b6f10678a52b832fd379275747aecd1284008
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-q19-timeout-sf001.stdout
+  stderr_path: logs/005-q19-timeout-sf001.stderr
+- id: q19-oracle-sha-sf001
+  started_at: '2026-11-09T21:45:57Z'
+  finished_at: '2026-11-09T21:46:00Z'
+  exit_code: 101
+  stdout_sha256: b7ca5bc60d4310bdd0fc4cf81e213e7ff5d7c9aed8c96656499a1a9754fb9603
+  stderr_sha256: 6b1d0cda2740d4e281b098c157231236343bd6bcea0bfaf325847abf6b6f374f
+  stdout_path: logs/006-q19-oracle-sha-sf001.stdout
+  stderr_path: logs/006-q19-oracle-sha-sf001.stderr
+- id: q19-oracle-sqlite-sf01
+  started_at: '2026-11-09T21:46:00Z'
+  finished_at: '2026-11-09T21:46:37Z'
+  exit_code: 0
+  stdout_sha256: 7c5e9ea74611c1de195a443270d0ab881fe4da8eb3f383ead14f97ba049bc3b9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-q19-oracle-sqlite-sf01.stdout
+  stderr_path: logs/007-q19-oracle-sqlite-sf01.stderr
+- id: q19-oracle-g15-sf01
+  started_at: '2026-11-09T21:46:37Z'
+  finished_at: '2026-11-09T21:48:29Z'
+  exit_code: 0
+  stdout_sha256: e26f514c3c9c2383356f6aa5cc8421c28e1f7078fec7fbc4b1c363515967526d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-q19-oracle-g15-sf01.stdout
+  stderr_path: logs/008-q19-oracle-g15-sf01.stderr
+- id: q19-lib
+  started_at: '2026-11-09T21:48:29Z'
+  finished_at: '2026-11-09T21:48:38Z'
+  exit_code: 0
+  stdout_sha256: 39ab456664a5650ce90287eb52e9c2de9ba8563ecbdc3834ee28560a48f47e91
+  stderr_sha256: 8a01d107ae4a66aa94b7855663fa59b88b1d78aeea173b9b33d3e73747012380
+  stdout_path: logs/009-q19-lib.stdout
+  stderr_path: logs/009-q19-lib.stderr
+- id: q19-fmt
+  started_at: '2026-11-09T21:48:38Z'
+  finished_at: '2026-11-09T21:48:41Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-q19-fmt.stdout
+  stderr_path: logs/010-q19-fmt.stderr
+evidence_hash: sha256:0fcc3731fe314b8c5ecfe2d8017dd623f91f3a3d81027b59e95245defbf56fea
+completed_at: '2026-11-09T21:48:41Z'
