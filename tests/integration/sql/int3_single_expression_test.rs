@@ -28,7 +28,18 @@ fn test_int3_parse_expression_chains_through_or() {
     let start = parser
         .find("fn parse_expression(&mut self)")
         .expect("parse_expression function not found");
-    let body: String = parser.chars().skip(start).take(1200).collect();
+    // NB: `find` returns a BYTE index; the old `chars().skip(start)` mixed a
+    // byte offset into a char iterator, which shifted the window by the
+    // multibyte-byte surplus in front of the anchor (336 non-ASCII chars in
+    // parser.rs made this guard permanently red). Take a 1200-CHAR window
+    // measured from the byte anchor instead.
+    let end = start
+        + parser[start..]
+            .chars()
+            .take(1200)
+            .map(char::len_utf8)
+            .sum::<usize>();
+    let body: &str = &parser[start..end];
     assert!(
         body.contains("parse_or_expression()"),
         "parse_expression must call parse_or_expression (INT-3 #3170)"
