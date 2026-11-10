@@ -1,0 +1,91 @@
+schema_version: 1
+run_id: 20261111-ledger-005
+source_agent: omp (macmini)
+frozen_commit: 4e7edaff8b5d02973db3fa4ebd0c89f0d5c3e87a
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/walgc2-target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: ledger-001-gov-dump
+  cmd: python3 scripts/gate/gov_probe.py issues --dump audit/v4.1.0/runs/20261111-ledger-005/fresh-issues.json
+- id: ledger-002-gen-c
+  cmd: python3 scripts/gate/issue_ledger.py --issues audit/v4.1.0/runs/20261111-ledger-005/fresh-issues.json
+    --triage docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-05.jsonl docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl
+    docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-05B.jsonl docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05B.jsonl
+    docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl
+    docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-06D.jsonl docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-06D.jsonl
+    docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-11E.jsonl --credited-lineages "gpt,qwen" --source-agent
+    "omp (macmini)" --source-run 20261111-ledger-005 --out-jsonl docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.jsonl
+    --out-md docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md
+- id: ledger-003-probe-snapshot-count
+  cmd: python3 audit/v4.1.0/probe_ledger_freshness.py snapshot-count --ledger-jsonl docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.jsonl
+    --ledger-md docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md
+- id: ledger-004-probe-replay-rows
+  cmd: python3 audit/v4.1.0/probe_ledger_freshness.py replay-rows --ledger-jsonl docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.jsonl
+    --ledger-md docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md
+- id: ledger-005-probe-mutation-selftest
+  cmd: python3 audit/v4.1.0/probe_ledger_freshness.py mutation-selftest --ledger-jsonl docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.jsonl
+    --ledger-md docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md
+- id: ledger-006-verify-ledger-c
+  cmd: python3 audit/v4.1.0/verify_ledger.py --label C --ledger-md docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md
+    --ledger-jsonl docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.jsonl
+results:
+- id: ledger-001-gov-dump
+  started_at: '2026-11-10T18:57:56Z'
+  finished_at: '2026-11-10T18:57:57Z'
+  exit_code: 0
+  stdout_sha256: 8fd3b4e4d104b56d07f5a2cc4d2820090a5b0aef643ac8992689d01a3217e8d2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-ledger-001-gov-dump.stdout
+  stderr_path: logs/001-ledger-001-gov-dump.stderr
+- id: ledger-002-gen-c
+  started_at: '2026-11-10T18:57:57Z'
+  finished_at: '2026-11-10T18:57:57Z'
+  exit_code: 0
+  stdout_sha256: 539fca22f5f0d8bcfea37b1a52b332c1d9ebe5266572fca3bdb46e91cfc91c3c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-ledger-002-gen-c.stdout
+  stderr_path: logs/002-ledger-002-gen-c.stderr
+- id: ledger-003-probe-snapshot-count
+  started_at: '2026-11-10T18:57:57Z'
+  finished_at: '2026-11-10T18:57:58Z'
+  exit_code: 0
+  stdout_sha256: 53c22a550bce54b611e478fb3d923a641cd87945949ddd46691d4a5fa17aadbd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ledger-003-probe-snapshot-count.stdout
+  stderr_path: logs/003-ledger-003-probe-snapshot-count.stderr
+- id: ledger-004-probe-replay-rows
+  started_at: '2026-11-10T18:57:58Z'
+  finished_at: '2026-11-10T18:57:59Z'
+  exit_code: 0
+  stdout_sha256: 227da888584acf11a54ebf5bf8e2abb01c49eb43127cedebbf713ecb1627a961
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-ledger-004-probe-replay-rows.stdout
+  stderr_path: logs/004-ledger-004-probe-replay-rows.stderr
+- id: ledger-005-probe-mutation-selftest
+  started_at: '2026-11-10T18:57:59Z'
+  finished_at: '2026-11-10T18:58:03Z'
+  exit_code: 0
+  stdout_sha256: 07cabaea24dd2b0257aec52ee84bfbd7b9e994c890cc7d620cf47a76ba5eee8e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-ledger-005-probe-mutation-selftest.stdout
+  stderr_path: logs/005-ledger-005-probe-mutation-selftest.stderr
+- id: ledger-006-verify-ledger-c
+  started_at: '2026-11-10T18:58:03Z'
+  finished_at: '2026-11-10T18:58:03Z'
+  exit_code: 0
+  stdout_sha256: 52c51ee99e22c09e553cafc99ff04e3659702b0dec9fce7b35e538604e64f006
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-ledger-006-verify-ledger-c.stdout
+  stderr_path: logs/006-ledger-006-verify-ledger-c.stderr
+evidence_hash: sha256:fbf08d7f01034acd205bc71f5ad8dc1a6279c2cb2579b9937a7a109c2c7179e6
+completed_at: '2026-11-10T18:58:03Z'
