@@ -1,0 +1,182 @@
+schema_version: 1
+run_id: 20261111-sweep-attr-001
+source_agent: omp (macmini)
+frozen_commit: 4b218ab9f517063675f5860c06b0db4e331efa69
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/walgc2-target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: int3-guard-green
+  name: INT3-1 修复后守卫绿（4 passed；字节锚点 + 1200 字符窗）
+  cmd: CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target cargo test -q -p sqlrustgo --test int3_single_expression_test
+  cwd: .
+  timeout_sec: 900
+- id: harness-q11-signature
+  name: HARQ11-1 签名：harness Q11 panic 原文（fixture 在场，非本线引入）
+  cmd: 'sig=$(CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target TPCH_DATA_DIR=/tmp/tpch-sf001 cargo
+    test -q -p sqlrustgo --test harness_validation_test 2>&1 | grep -c "harness_validation_test.rs:418:5"
+    || true)
+
+    echo "signature count: $sig"
+
+    test "$sig" -ge 1
+
+    '
+  cwd: .
+  timeout_sec: 900
+- id: q17-null-signature
+  name: Q17-1 签名：Q17 NULL 渲染分歧在隔离复跑中确定复现（engine 空串 vs oracle NULL）
+  cmd: 'out=$(CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target TPCH_DATA_DIR=/tmp/tpch-sf001 cargo
+    test -q -p sqlrustgo --test tpch_sf01_22_vs_sqlite 2>&1 || true)
+
+    sig=$(echo "$out" | grep -c "Q17: MISMATCH row 0 col 0" || true)
+
+    panic=$(echo "$out" | grep -c "tpch_sf01_22_vs_sqlite.rs:378:9" || true)
+
+    echo "mismatch count: $sig, panic count: $panic"
+
+    test "$sig" -ge 1 && test "$panic" -ge 1
+
+    '
+  cwd: .
+  timeout_sec: 900
+- id: fakebase-v380-signature
+  name: FAKEBASE-1 签名：tpch_hash_test 两臂同断言（:232 v380 哈希比对，非计时断言）
+  cmd: 'out=$(CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target TPCH_DATA_DIR=/tmp/tpch-sf001 cargo
+    test -q -p sqlrustgo --test tpch_hash_test 2>&1 || true)
+
+    sig=$(echo "$out" | grep -c "G1 FAIL: TPC-H hash mismatch" || true)
+
+    wrong=$(echo "$out" | grep -c "under_5_minutes.*elapsed" || true)
+
+    echo "hash-mismatch signature count: $sig; wall-clock-assert hits: $wrong (must be 0)"
+
+    test "$sig" -ge 2 && test "$wrong" -eq 0
+
+    '
+  cwd: .
+  timeout_sec: 900
+- id: tls-proc-signature
+  name: TLSPROC-1 签名：darwin 无 /proc，tls_read_spin_5099 panic 原文
+  cmd: 'sig=$(CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target cargo test -q -p sqlrustgo-mysql-server
+    --test tls_read_spin_5099 2>&1 | grep -c "read /proc/" || true)
+
+    echo "proc-missing signature count: $sig"
+
+    test "$sig" -ge 1
+
+    '
+  cwd: .
+  timeout_sec: 900
+- id: diag-family-registration
+  name: diag_q11 族与 sf01/value 测试确在 beta DISABLED_TESTS 白名单（DIAGQ11-1 行断言的机器核对）
+  cmd: 'd=$(sed -n ''/DISABLED_TESTS_LIST=/,/^"/p'' scripts/gate/check_beta_v3.12.0.sh)
+
+    # NB: grep -c counts LINES; the list is a single line, so count occurrences.
+
+    n_diag=$(echo "$d" | grep -o "diag_q11" | wc -l | tr -d '' '')
+
+    n_sf=$(echo "$d" | grep -o "tpch_sf01_22_vs_sqlite" | wc -l | tr -d '' '')
+
+    n_val=$(echo "$d" | grep -o "tpch_value_test_v2" | wc -l | tr -d '' '')
+
+    echo "diag_q11 occurrences: $n_diag, sf01: $n_sf, value_test_v2: $n_val"
+
+    test "$n_diag" -ge 5 && test "$n_sf" -ge 2 && test "$n_val" -ge 1
+
+    '
+  cwd: .
+  timeout_sec: 60
+- id: label-ledger-findings-zero
+  name: 标签台账 live findings=0（#5711/#5712/#5717 已入台账 29 行）
+  cmd: 'out=$(python3.14 audit/v4.1.0/issue_labels.py check --input live 2>&1 | tail -1)
+
+    echo "$out"
+
+    echo "$out" | grep -q ''"findings": 0''
+
+    '
+  cwd: .
+  timeout_sec: 300
+- id: raw-tpch-hash-red
+  name: FAKEBASE-1 原始红如实记录：tpch_hash_test 裸跑（预期 exit≠0，fail-closed 披露臂）
+  cmd: CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test
+    -q -p sqlrustgo --test tpch_hash_test
+  cwd: .
+  timeout_sec: 900
+results:
+- id: int3-guard-green
+  started_at: '2026-11-10T22:46:45Z'
+  finished_at: '2026-11-10T22:46:45Z'
+  exit_code: 0
+  stdout_sha256: 07f03d79a6354db1f9ee01d187631b80b38ff7853618dee4cf2f6b5cbdd19a64
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-int3-guard-green.stdout
+  stderr_path: logs/001-int3-guard-green.stderr
+- id: harness-q11-signature
+  started_at: '2026-11-10T22:46:45Z'
+  finished_at: '2026-11-10T22:46:45Z'
+  exit_code: 0
+  stdout_sha256: 9498a0d6340b39f810f45dcb2b6d3b3ba056f3737332e1288303c14f1b60a7f9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-harness-q11-signature.stdout
+  stderr_path: logs/002-harness-q11-signature.stderr
+- id: q17-null-signature
+  started_at: '2026-11-10T22:46:45Z'
+  finished_at: '2026-11-10T22:46:57Z'
+  exit_code: 0
+  stdout_sha256: 4d37183badd32122f1c05ac3492a322b490ebfc1c386c6b4dd6b3488234d9f98
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-q17-null-signature.stdout
+  stderr_path: logs/003-q17-null-signature.stderr
+- id: fakebase-v380-signature
+  started_at: '2026-11-10T22:46:57Z'
+  finished_at: '2026-11-10T22:46:59Z'
+  exit_code: 0
+  stdout_sha256: 632a334da1ae1eddfd1149daed5f38c198eca0861624cea12406bf4b2d4516e8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-fakebase-v380-signature.stdout
+  stderr_path: logs/004-fakebase-v380-signature.stderr
+- id: tls-proc-signature
+  started_at: '2026-11-10T22:46:59Z'
+  finished_at: '2026-11-10T22:46:59Z'
+  exit_code: 0
+  stdout_sha256: ba1d2f44712410becdcb7e5da68cf88b9a0434044dc403bef42629875a7cab03
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-tls-proc-signature.stdout
+  stderr_path: logs/005-tls-proc-signature.stderr
+- id: diag-family-registration
+  started_at: '2026-11-10T22:46:59Z'
+  finished_at: '2026-11-10T22:46:59Z'
+  exit_code: 0
+  stdout_sha256: 36ba20818f3f60e3241d916d26728bb7838d338accc12b67fcd664d0ef7b94ed
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-diag-family-registration.stdout
+  stderr_path: logs/006-diag-family-registration.stderr
+- id: label-ledger-findings-zero
+  started_at: '2026-11-10T22:46:59Z'
+  finished_at: '2026-11-10T22:47:00Z'
+  exit_code: 0
+  stdout_sha256: e7ce6588f97dea9ae0a469c2b51ac22e0fc0b1376a25ac07464806c569ddf418
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-label-ledger-findings-zero.stdout
+  stderr_path: logs/007-label-ledger-findings-zero.stderr
+- id: raw-tpch-hash-red
+  started_at: '2026-11-10T22:47:00Z'
+  finished_at: '2026-11-10T22:47:02Z'
+  exit_code: 101
+  stdout_sha256: 2b78cc5ef1046eb82d9312a7da75f893e569d8f8198bb2796fbc00cada022e29
+  stderr_sha256: 42b01c45d81a409cab033262054bf2e1c5e0a34b6251cfa8fdca7d8c6154b76d
+  stdout_path: logs/008-raw-tpch-hash-red.stdout
+  stderr_path: logs/008-raw-tpch-hash-red.stderr
+evidence_hash: sha256:6c9bf7bc2dda451c76718e3421b6d5a52874008b360d91106d3c1d3dc13c0cb1
+completed_at: '2026-11-10T22:47:02Z'
