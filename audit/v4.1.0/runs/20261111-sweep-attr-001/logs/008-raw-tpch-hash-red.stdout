@@ -1,0 +1,50 @@
+
+running 50 tests
+................................................ 48/50
+tpch_hash_test_runs_in_under_5_minutes --- FAILED
+tpch_hash_matches_v380_baseline --- FAILED
+
+failures:
+
+---- tpch_hash_test_runs_in_under_5_minutes stdout ----
+  loaded region: 5 rows
+  loaded nation: 25 rows
+  loaded supplier: 10 rows
+  loaded customer: 150 rows
+  loaded part: 200 rows
+  loaded partsupp: 800 rows
+  loaded orders: 1500 rows
+  loaded lineitem: 6018 rows
+
+thread 'tpch_hash_test_runs_in_under_5_minutes' (13181796) panicked at tests/integration/tpch/tpch_hash_test.rs:232:13:
+assertion `left == right` failed: G1 FAIL: TPC-H hash mismatch
+  expected: b8854271b6636811c95e254791793973482036d09b1a96b4c5aefda6e8b715c1
+  actual:   7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3
+  left: "7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3"
+ right: "b8854271b6636811c95e254791793973482036d09b1a96b4c5aefda6e8b715c1"
+
+---- tpch_hash_matches_v380_baseline stdout ----
+  loaded region: 5 rows
+  loaded nation: 25 rows
+  loaded supplier: 10 rows
+  loaded customer: 150 rows
+  loaded part: 200 rows
+  loaded partsupp: 800 rows
+  loaded orders: 1500 rows
+  loaded lineitem: 6018 rows
+
+thread 'tpch_hash_matches_v380_baseline' (13181795) panicked at tests/integration/tpch/tpch_hash_test.rs:232:13:
+assertion `left == right` failed: G1 FAIL: TPC-H hash mismatch
+  expected: b8854271b6636811c95e254791793973482036d09b1a96b4c5aefda6e8b715c1
+  actual:   7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3
+  left: "7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3"
+ right: "b8854271b6636811c95e254791793973482036d09b1a96b4c5aefda6e8b715c1"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tpch_hash_matches_v380_baseline
+    tpch_hash_test_runs_in_under_5_minutes
+
+test result: FAILED. 48 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.40s
+
