@@ -41,8 +41,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DOCS = ROOT / "docs" / "releases" / "v4.1.0"
 
-DEFAULT_LEDGER_MD = DOCS / "ISSUE_LEDGER_2026-11-11C.md"
-DEFAULT_LEDGER_JSONL = DOCS / "ISSUE_LEDGER_2026-11-11C.jsonl"
+DEFAULT_LEDGER_MD = DOCS / "ISSUE_LEDGER_2026-11-11D.md"
+DEFAULT_LEDGER_JSONL = DOCS / "ISSUE_LEDGER_2026-11-11D.jsonl"
 DEFAULT_TRIAGE = [DOCS / "ISSUE_TRIAGE_2026-11-05.jsonl",
                   DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05.jsonl",
                   DOCS / "ISSUE_TRIAGE_2026-11-05B.jsonl",
