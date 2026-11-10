@@ -141,8 +141,8 @@ def selftest(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("mode", choices=["snapshot-count", "replay-rows", "mutation-selftest"])
-    ap.add_argument("--ledger-jsonl", default=str(DOCS / "ISSUE_LEDGER_2026-11-11C.jsonl"))
-    ap.add_argument("--ledger-md", default=str(DOCS / "ISSUE_LEDGER_2026-11-11C.md"))
+    ap.add_argument("--ledger-jsonl", default=str(DOCS / "ISSUE_LEDGER_2026-11-11D.jsonl"))
+    ap.add_argument("--ledger-md", default=str(DOCS / "ISSUE_LEDGER_2026-11-11D.md"))
     args = ap.parse_args(argv)
 
     if args.mode == "mutation-selftest":
