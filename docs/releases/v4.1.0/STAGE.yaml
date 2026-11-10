@@ -263,6 +263,24 @@ stage_decision_2026-11-09:
   stage_after_decision: "ALPHA"
   ga_declared: false
 
+# Owner 2026-11-10 裁决(会话指令经执行者代录;Gitea/Hub 侧无属主署名评论在案)
+stage_decision_2026-11-10:
+  decided_on: "2026-11-10"
+  conveyed_by: "Owner 会话指令,omp-macmini 代录;最终凭据需属主在 issue/Hub 署名确认(见 deviation_note)"
+  rulings:
+    - id: "WALGC-2"
+      ruling: "按 #5686 修复设计「方案 C」实施(leader 线程 Drop 守卫,A/B/C 三案之 C,与 issue 正文定义一致)"
+      landing: "已实施并合并:PR #5691 → `9ce6f1cb3e`。先红探针转正 3 条永久回归(`walgc2_*`,修复前 3 红/修复后 3 绿);归档 run `20261110-walgc2-001`(冻结 `9ce6f1cb3e`,10 臂全绿);模块头两条假 liveness 声明同批更正;毒锁容错判据在代码注释。单血统 ⇒ 看板 WALGC-2 行转「待复核」,关单仍需 Reviewer 回执 + 属主署名。"
+    - id: "SEC-1"
+      ruling: "「三拆」"
+      landing: "看板 SEC-1 拆出 SEC-1A(ACL 基线契约簇)/ SEC-1B(vector-graph 扩展簇)/ SEC-1C(ALCOA+ 审计链簇)三子行——簇划分依据 `crates/security/tests/v400_acl_audit.rs` 自身三段结构,映射为执行者判读。**[需属主确认]**:每簇处置(实现真实契约 vs 作废契约+披露)仍逐簇待裁,批量推进仿 LINT-1 先例;若「三拆」另有所指,以属主更正在案为准。"
+    - id: "G1-①"
+      ruling: "批准"
+      landing: "**[INFERENCE]** repo/Hub/issues 全量检索无 G1 的 ①/②/③ 编号锚点;采用的操作性解读 = 「G1 走 #5393 引擎修复路线,门禁判据口径不变、不放松」——与已执行路径一致(Q19 已修,G1 step4 仍红待 Q9/Q18)。若 ① 另有所指,需属主书面更正后按新口径重跑。"
+  deviation_note: "三条裁决均无属主在 Gitea/Hub 的署名记录在案 ⇒ 本块为代录快照;引用这些裁决的门禁动作,最终凭据应是属主署名确认。"
+  stage_after_decision: "ALPHA"
+  ga_declared: false
+
 
 # ============================================================================
 # 2026-10-21 判据订正横幅 (#5439)
