@@ -33,6 +33,16 @@ use std::time::Instant;
 
 type DerivedResult = (Vec<Vec<Value>>, TableInfo);
 
+/// The column name without its table/alias qualifier (`o.o_orderdate` →
+/// `o_orderdate`); bare names pass through unchanged.
+fn bare_col_name(name: &str) -> &str {
+    name.rsplit('.').next().unwrap_or(name)
+}
+
+/// Spanning-tree candidate: ((bare, alias) pairs in visit order,
+/// per-step anchor aliases).
+type TreeShape = (Vec<(String, String)>, Vec<String>);
+
 /// #4913 / v4.1.0-perf: the GROUP BY debug trace used to call
 /// `std::env::var("Q7_TRACE")` on **every** grouped query, which is an
 /// environment-block lookup on a hot path. The flag is now resolved once
@@ -2495,7 +2505,34 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                                     .count();
                                                 group_schema_len + agg_pos_in_select
                                             } else {
-                                                idx
+                                                // The grouped row is laid out as
+                                                // `group_exprs` (GROUP BY order)
+                                                // followed by the aggregate tail —
+                                                // NOT the SELECT list order. When an
+                                                // aggregate sits in the *middle* of
+                                                // the select list (e.g. the wire
+                                                // Q18 variant `l_orderkey,
+                                                // SUM(l_quantity), o_orderdate,
+                                                // o_shippriority`), the select
+                                                // position silently indexes the
+                                                // wrong column and the sort runs on
+                                                // garbage keys (issue #5393: wire
+                                                // Q18 ORDER BY produced unsorted
+                                                // output because `o_orderdate`
+                                                // resolved to `o_shippriority`).
+                                                // Resolve the bare name against the
+                                                // group schema instead; fall back to
+                                                // the select position only when no
+                                                // group key matches.
+                                                group_exprs
+                                                    .iter()
+                                                    .position(|g| {
+                                                        matches!(g, Expression::Identifier(gname)
+                                                            if bare_col_name(gname).eq_ignore_ascii_case(
+                                                                bare_col_name(col_name)
+                                                            ))
+                                                    })
+                                                    .unwrap_or(idx)
                                             };
                                             if actual_idx < row.len() {
                                                 return row[actual_idx].clone();
@@ -4209,7 +4246,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // the WHERE can't supply a complete chain (caller falls back
         // to the per-clause cartesian path).
         if !select.extra_tables.is_empty() || !select.join_clause.is_empty() {
-            if let Some((new_rows, new_info)) = self.try_comma_join_hash_chain(
+            if let Some((new_rows, new_info, tree_used)) = self.try_comma_join_hash_chain(
                 select,
                 &base_table,
                 &base_prefix,
@@ -4227,11 +4264,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // re-evaluates them per row. Only mark consumed when
                 // the WHERE is entirely covered by the chain (pure
                 // equality + single-table predicates).
-                let where_fully_consumed = select
-                    .where_clause
-                    .as_ref()
-                    .map(|wc| {
-                        !where_expr_has_correlated_subquery(wc)
+                let where_fully_consumed = !tree_used
+                    && select
+                        .where_clause
+                        .as_ref()
+                        .map(|wc| {
+                            !where_expr_has_correlated_subquery(wc)
                             // V312-48-Q8 (Issue #4274): the hash chain only
                             // consumes `=` equi-join predicates. When the
                             // WHERE also contains range / LIKE / BETWEEN /
@@ -4243,8 +4281,8 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                             // dropped. Conservative: any non-equi residual
                             // means "do not mark WHERE as fully consumed".
                             && !where_expr_has_unhandled_residual(wc)
-                    })
-                    .unwrap_or(true);
+                        })
+                        .unwrap_or(true);
                 if where_fully_consumed {
                     COMMA_JOIN_WHERE_CONSUMED.with(|f| *f.borrow_mut() = true);
                 }
@@ -4344,6 +4382,63 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         Some(chain)
     }
 
+    /// #5393: greedy **spanning-tree** join order for equality graphs that
+    /// admit no Hamiltonian path. TPC-H Q9 is the canonical shape:
+    /// `lineitem` is a degree-4 hub (part, partsupp, orders, supplier) with
+    /// a supplier–nation tail, so no path visits every table exactly once and
+    /// [`build_chain_from_start`] returns `None` — while the old caller fell
+    /// back to the per-clause path where unattached comma tables get `ON
+    /// true` → `JoinKey::All` → an uncapped `Vec::with_capacity(left ×
+    /// right)` cartesian that OOM-killed the process even at SF=0.001.
+    ///
+    /// The returned order grows by repeatedly appending any unjoined table
+    /// that has a WHERE-equality edge into the already-joined set; each
+    /// entry (index ≥ 1) carries the specific anchor alias whose edge
+    /// licenses the step. The step executor resolves keys per alias via the
+    /// `alias_to_offset`/`alias_to_columns` maps, so only anchor selection
+    /// changes — the left-deep `multi_way_hash_chain` machinery is reused
+    /// unchanged. Determinism: candidates are scanned in `join_tables`
+    /// order and anchors in join order. Returns `None` when the equality
+    /// graph cannot span all tables from any start (caller keeps its
+    /// per-clause fallback, which still hash-joins ON-attached clauses).
+    pub(crate) fn build_tree_order_from_start(
+        start_idx: usize,
+        join_tables: &[(String, String)],
+        pair_key: &std::collections::HashMap<(String, String), (String, String)>,
+    ) -> Option<TreeShape> {
+        let start = join_tables[start_idx].clone();
+        let mut order: Vec<(String, String)> = vec![start.clone()];
+        // `anchors[i]` is the alias in `order[..i]` that `order[i]` joins
+        // through; index 0 is the seed and stays empty.
+        let mut anchors: Vec<String> = vec![String::new()];
+        let mut remaining: Vec<(String, String)> = join_tables
+            .iter()
+            .filter(|t| **t != start)
+            .cloned()
+            .collect();
+        loop {
+            let next = remaining.iter().find_map(|cand| {
+                order
+                    .iter()
+                    .find(|(_, a)| {
+                        let key = if a < &cand.1 {
+                            (a.clone(), cand.1.clone())
+                        } else {
+                            (cand.1.clone(), a.clone())
+                        };
+                        pair_key.contains_key(&key)
+                    })
+                    .map(|(_, a)| (cand.clone(), a.clone()))
+            })?;
+            order.push(next.0.clone());
+            anchors.push(next.1);
+            remaining.retain(|t| t != &next.0);
+            if remaining.is_empty() {
+                return Some((order, anchors));
+            }
+        }
+    }
+
     /// Sprint 8 (PR 1): comma-join with WHERE-extracted hash chain.
     ///
     /// TPC-H Q3, Q8, Q21 use `FROM t1, t2, t3` (comma-join) with the
@@ -4383,7 +4478,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         base_info: &TableInfo,
         pushdown_filters: &std::collections::HashMap<String, Vec<Expression>>,
         current_db: &str,
-    ) -> Option<(Vec<Vec<Value>>, TableInfo)> {
+    ) -> Option<(Vec<Vec<Value>>, TableInfo, bool)> {
         use std::collections::HashMap;
         let where_expr = select.where_clause.as_ref()?;
         // V312-58 Sprint 4 (Issue #4374) Q17-1M fix: REMOVED the
@@ -4521,6 +4616,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
 
         // Collect bare-equal columns from each `=` conjunct.
         let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
+        // #5393: ALL equalities per alias pair (composite join keys, e.g.
+        // partsupp's `ps_partkey = l_partkey AND ps_suppkey = l_suppkey`),
+        // while `pair_key` keeps only the primary hash-build key.
+        let mut pair_edges: HashMap<(String, String), Vec<(String, String)>> = HashMap::new();
         for conjunct in Self::flatten_and_local(where_expr) {
             let Expression::BinaryOp(left, op, right) = conjunct else {
                 continue;
@@ -4562,6 +4661,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             } else {
                 (rc.clone(), lc.clone())
             };
+            pair_edges
+                .entry(pair.clone())
+                .or_default()
+                .push((entry.0.clone(), entry.1.clone()));
             pair_key.entry(pair).or_insert(entry);
         }
 
@@ -4615,17 +4718,56 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             }
         }
 
-        let chain_order: Vec<(String, String)> = match best_chain {
-            Some(c) if c.len() == join_tables.len() => c,
-            _ => {
-                tracing::debug!(
+        // (#5393) Q9's equality graph is star-shaped (lineitem hub), so a
+        // spanning Hamiltonian path provably does not exist. Before this
+        // change `None` here fell through to the per-clause path, where the
+        // parser attaches the unconnected comma tables with `ON true` →
+        // `JoinKey::All` → `Vec::with_capacity(left × right)`: an uncapped
+        // cartesian product that SIGKILLs the process at every SF. When the
+        // chain builder cannot span the graph, grow a spanning TREE order
+        // instead (each step joins through one already-joined alias); the
+        // step executor below resolves keys per alias via alias_to_offset,
+        // so only the anchor for each step changes.
+        // Per hash step: (right-table rows, (existing, right) key column
+        // pairs — all equalities of the alias pair, hash-enforced).
+        type JoinStep = (Vec<Vec<Value>>, Vec<(usize, usize)>);
+        let (chain_order, step_anchors, tree_used): (Vec<(String, String)>, Vec<String>, bool) =
+            match best_chain {
+                Some(c) if c.len() == join_tables.len() => {
+                    let mut anchors: Vec<String> = vec![String::new()];
+                    for i in 1..c.len() {
+                        anchors.push(c[i - 1].1.clone());
+                    }
+                    (c, anchors, false)
+                }
+                _ => {
+                    tracing::debug!(
                     join_tables_len = join_tables.len(),
                     best_len = best_len,
-                    "multi-start chain builder could not build complete chain"
+                    "multi-start chain builder could not build complete chain; trying spanning-tree order"
                 );
-                return None;
-            }
-        };
+                    let mut best_tree: Option<TreeShape> = None;
+                    for start_idx in 0..join_tables.len() {
+                        if let Some(tree) =
+                            Self::build_tree_order_from_start(start_idx, &join_tables, &pair_key)
+                        {
+                            if best_tree.as_ref().is_none_or(|t| t.0.len() < tree.0.len()) {
+                                best_tree = Some(tree);
+                            }
+                            if best_tree
+                                .as_ref()
+                                .is_some_and(|t| t.0.len() == join_tables.len())
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    match best_tree {
+                        Some(t) if t.0.len() == join_tables.len() => (t.0, t.1, true),
+                        _ => return None,
+                    }
+                }
+            };
         // Re-validate that we have a chain that covers every table
         // (defensive: the build_chain_from_start guarantees this when
         // it returns Some, but be explicit so the assertion is
@@ -4647,7 +4789,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // later joined tables live at offsets > 0.
         let mut steps_acc: Vec<(Vec<Vec<Value>>, Vec<sqlrustgo_storage::ColumnDefinition>)> =
             Vec::new();
-        let mut step_inputs: Vec<(Vec<Vec<Value>>, usize, usize)> = Vec::new();
+        let mut step_inputs: Vec<JoinStep> = Vec::new();
         let mut acc_rows: Vec<Vec<Value>>;
         let mut acc_columns: Vec<sqlrustgo_storage::ColumnDefinition>;
         let mut alias_to_columns: HashMap<String, Vec<String>> = HashMap::new();
@@ -4739,7 +4881,10 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         let chain_start_rows = acc_rows.clone();
 
         for i in 1..chain_order.len() {
-            let prev_alias = &chain_order[i - 1].1;
+            // #5393: the anchor is whichever already-joined alias carries the
+            // equality edge into this step (the chain path keeps the previous
+            // table as anchor; the tree path may anchor anywhere).
+            let prev_alias = &step_anchors[i];
             let cur = &chain_order[i];
             let cur_alias = &cur.1;
             // Find the pair_key entry that matches these two aliases
@@ -4778,6 +4923,48 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 .columns
                 .iter()
                 .position(|c| c.name.eq_ignore_ascii_case(&right_col))?;
+            // #5393: the hash step enforces ALL equalities of this alias
+            // pair as one composite key. Joining partsupp on a single
+            // column (~80 matching rows each at SF=0.01) materialised a
+            // 4.8 M-row intermediate before any pruning could run — Q9
+            // peaked over 3 GB and the OS killed the process. With the
+            // full key hashed the step lands on exact multiplicity.
+            let mut key_pairs: Vec<(usize, usize)> = vec![(prev_idx, cur_idx)];
+            {
+                let pk_key = if prev_alias.as_str() < cur_alias.as_str() {
+                    (prev_alias.to_string(), cur_alias.to_string())
+                } else {
+                    (cur_alias.to_string(), prev_alias.to_string())
+                };
+                if let Some(edges) = pair_edges.get(&pk_key) {
+                    for (e1, e2) in edges {
+                        let (acc_col, edge_right_col) = if pk_key.0 == *prev_alias {
+                            (e1.clone(), e2.clone())
+                        } else {
+                            (e2.clone(), e1.clone())
+                        };
+                        if acc_col == left_col && edge_right_col == right_col {
+                            continue; // already the primary pair
+                        }
+                        let acc_local = match prev_cols
+                            .iter()
+                            .position(|c| c.eq_ignore_ascii_case(&acc_col))
+                        {
+                            Some(p) => p,
+                            None => continue,
+                        };
+                        let right_local = match cur_info
+                            .columns
+                            .iter()
+                            .position(|c| c.name.eq_ignore_ascii_case(&edge_right_col))
+                        {
+                            Some(p) => p,
+                            None => continue,
+                        };
+                        key_pairs.push((prev_offset + acc_local, right_local));
+                    }
+                }
+            }
             // #4974: reader-scoped, matching the chain-start scan above.
             let raw_cur_rows = self
                 .scan_for_reader_in_db(&*storage, &current_db, cur_bare)
@@ -4830,7 +5017,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             // join key globally.
             alias_to_offset.insert(cur_alias.clone(), acc_columns.len());
             steps_acc.push((acc_rows.clone(), acc_columns.clone()));
-            step_inputs.push((cur_rows, cur_idx, prev_idx));
+            step_inputs.push((cur_rows, key_pairs));
             let mut new_columns = acc_columns.clone();
             for col in &cur_info.columns {
                 new_columns.push(sqlrustgo_storage::ColumnDefinition {
@@ -4854,10 +5041,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
         // chain[0]'s rows rather than `base_rows` when multi-start
         // began at a non-base leaf).
         let mut accumulated = chain_start_rows;
-        for ((cur_rows, cur_idx, prev_idx), (_, _)) in step_inputs.iter().zip(steps_acc.iter()) {
+        for ((cur_rows, key_pairs), _) in step_inputs.iter().zip(steps_acc.iter()) {
+            let existing: Vec<usize> = key_pairs.iter().map(|p| p.0).collect();
+            let right: Vec<usize> = key_pairs.iter().map(|p| p.1).collect();
             accumulated = multi_way_hash_chain(
                 std::mem::take(&mut accumulated),
-                &[(cur_rows.clone(), *cur_idx, *prev_idx)],
+                &[(cur_rows.clone(), &right[..], &existing[..])],
             );
             if accumulated.is_empty() {
                 return None;
@@ -4900,7 +5089,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                     });
             }
         }
-        Some((accumulated, joined_info))
+        Some((accumulated, joined_info, tree_used))
     }
 
     /// Pre-filter the right-side table of a cartesian (JoinKey::All) JOIN
@@ -10029,6 +10218,191 @@ mod chain_builder_tests {
             4,
             "chain from orders start must cover all 4 tables, got len={}",
             chain.len()
+        );
+    }
+
+    /// #5393: Q9's join graph is the canonical star — `lineitem` has degree
+    /// 4 (part, partsupp, orders, supplier) plus a supplier–nation tail, so
+    /// no Hamiltonian path exists and `build_chain_from_start` must fail for
+    /// EVERY start. This is the shape that used to fall back to the cartesian
+    /// `JoinKey::All` arm and OOM-kill the server at every scale factor.
+    #[test]
+    fn build_chain_from_start_q9_star_has_no_complete_chain() {
+        let join_tables: Vec<(String, String)> = [
+            "part", "supplier", "lineitem", "partsupp", "orders", "nation",
+        ]
+        .iter()
+        .map(|t| (t.to_string(), t.to_string()))
+        .collect();
+        let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
+        for (a1, a2, c1, c2) in [
+            ("lineitem", "part", "l_partkey", "p_partkey"),
+            ("lineitem", "partsupp", "l_suppkey", "ps_suppkey"),
+            ("lineitem", "orders", "l_orderkey", "o_orderkey"),
+            ("lineitem", "supplier", "l_suppkey", "s_suppkey"),
+            ("nation", "supplier", "n_nationkey", "s_nationkey"),
+        ] {
+            pair_key.insert(
+                (a1.to_string(), a2.to_string()),
+                (c1.to_string(), c2.to_string()),
+            );
+        }
+        for start_idx in 0..join_tables.len() {
+            if let Some(chain) = ExecutionEngine::<crate::MemoryStorage>::build_chain_from_start(
+                start_idx,
+                &join_tables,
+                &pair_key,
+            ) {
+                assert_ne!(
+                    chain.len(),
+                    join_tables.len(),
+                    "Q9 star must admit no complete chain, but start_idx={start_idx} yielded {chain:?}"
+                );
+            }
+        }
+    }
+
+    /// #5393: the spanning-tree order covers the Q9 star from any start, and
+    /// every step (index ≥ 1) is licensed by an anchor alias already in the
+    /// order — the anchor invariant the step executor depends on.
+    #[test]
+    fn build_tree_order_from_start_q9_star_completes() {
+        let join_tables: Vec<(String, String)> = [
+            "part", "supplier", "lineitem", "partsupp", "orders", "nation",
+        ]
+        .iter()
+        .map(|t| (t.to_string(), t.to_string()))
+        .collect();
+        let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
+        for (a1, a2, c1, c2) in [
+            ("lineitem", "part", "l_partkey", "p_partkey"),
+            ("lineitem", "partsupp", "l_suppkey", "ps_suppkey"),
+            ("lineitem", "orders", "l_orderkey", "o_orderkey"),
+            ("lineitem", "supplier", "l_suppkey", "s_suppkey"),
+            ("nation", "supplier", "n_nationkey", "s_nationkey"),
+        ] {
+            pair_key.insert(
+                (a1.to_string(), a2.to_string()),
+                (c1.to_string(), c2.to_string()),
+            );
+        }
+        for start_idx in 0..join_tables.len() {
+            let (order, anchors) =
+                ExecutionEngine::<crate::MemoryStorage>::build_tree_order_from_start(
+                    start_idx,
+                    &join_tables,
+                    &pair_key,
+                )
+                .unwrap_or_else(|| {
+                    panic!("tree order from start_idx={start_idx} must span the star")
+                });
+            assert_eq!(order.len(), join_tables.len());
+            assert_eq!(anchors.len(), order.len());
+            for i in 1..order.len() {
+                let anchor = &anchors[i];
+                assert!(
+                    order[..i].iter().any(|(_, a)| a == anchor),
+                    "anchor {anchor} of step {i} must already be joined"
+                );
+                let key = if anchor < &order[i].1 {
+                    (anchor.clone(), order[i].1.clone())
+                } else {
+                    (order[i].1.clone(), anchor.clone())
+                };
+                assert!(
+                    pair_key.contains_key(&key),
+                    "step {} ({}) must join via a real edge to anchor {anchor}",
+                    i,
+                    order[i].1
+                );
+            }
+        }
+    }
+
+    /// #5393 defensive: a disconnected equality graph has no spanning tree
+    /// and must return `None` (the caller then keeps its per-clause fallback).
+    #[test]
+    fn build_tree_order_from_start_disconnected_returns_none() {
+        let join_tables: Vec<(String, String)> = ["a", "b", "c"]
+            .iter()
+            .map(|t| (t.to_string(), t.to_string()))
+            .collect();
+        let mut pair_key: HashMap<(String, String), (String, String)> = HashMap::new();
+        pair_key.insert(
+            ("a".to_string(), "b".to_string()),
+            ("ak".to_string(), "bk".to_string()),
+        );
+        for start_idx in 0..join_tables.len() {
+            assert!(
+                ExecutionEngine::<crate::MemoryStorage>::build_tree_order_from_start(
+                    start_idx,
+                    &join_tables,
+                    &pair_key,
+                )
+                .is_none(),
+                "disconnected graph from start_idx={start_idx} must yield None"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod order_by_group_schema_tests {
+    //! Issue #5393: ORDER BY after GROUP BY must resolve non-aggregate sort
+    //! keys against the **group schema** (GROUP BY order, then aggregate
+    //! tail), not the SELECT-list order. The wire Q18 variant
+    //! `SELECT l_orderkey, SUM(l_quantity), o_orderdate, o_shippriority
+    //!  ... GROUP BY l_orderkey, o_orderdate, o_shippriority
+    //!  ORDER BY o_orderdate, o_shippriority`
+    //! puts the aggregate in the *middle* of the projection, so the select
+    //! position of `o_orderdate` (2) no longer equals its group position (1).
+    //! Before the fix the sort silently keyed on the wrong columns (dates
+    //! came back unsorted, and LIMIT then returned a scan-order prefix — a
+    //! silently wrong top-N).
+
+    use crate::{ExecutionEngine, MemoryStorage};
+    use sqlrustgo_types::Value;
+    use std::sync::Arc;
+
+    #[test]
+    fn order_by_after_group_by_resolves_group_schema_when_aggregate_is_interleaved() {
+        let storage = Arc::new(parking_lot::RwLock::new(MemoryStorage::new()));
+        let mut engine = ExecutionEngine::new(storage.clone());
+        engine
+            .execute(
+                "CREATE TABLE ord (o_orderkey INTEGER, o_orderdate VARCHAR(10), \
+                 o_shippriority INTEGER, l_quantity INTEGER)",
+            )
+            .expect("DDL");
+        for row in [
+            "(3651,'1993-04-07',0,323)",
+            "(11876,'1992-01-02',1,339)",
+            "(8626,'1997-08-14',1,328)",
+            "(6951,'1998-12-28',1,331)",
+        ] {
+            engine
+                .execute(&format!("INSERT INTO ord VALUES {row}"))
+                .expect("insert");
+        }
+        let r = engine
+            .execute(
+                "SELECT o_orderkey, SUM(l_quantity), o_orderdate, o_shippriority \
+                 FROM ord GROUP BY o_orderkey, o_orderdate, o_shippriority \
+                 ORDER BY o_orderdate, o_shippriority",
+            )
+            .expect("query");
+        let dates: Vec<String> = r
+            .rows
+            .iter()
+            .map(|row| match &row[2] {
+                Value::Text(s) => s.clone(),
+                v => panic!("date column expected, got {v:?}"),
+            })
+            .collect();
+        assert_eq!(
+            dates,
+            vec!["1992-01-02", "1993-04-07", "1997-08-14", "1998-12-28"],
+            "ORDER BY o_orderdate must sort by the DATE column, not a shifted index"
         );
     }
 }
