@@ -4,21 +4,18 @@
 //!
 //! # The wire scope
 //!
-//! Two of the 22 standard statements — **Q9** and **Q18** — cannot be
-//! executed on the file-storage wire path: Q9's intermediate result grows past
-//! 1.5 GB within a second, and Q18 kills the server process (both: issue
-//! #5393; **Q19** — formerly the third, an `IN (…)` inside a parenthesised
-//! OR group the wire front end could not parse — runs there since the
-//! 2026-11-10 parser fix). A killed process
-//! takes the **whole test binary** with it, so the CI job would die with
-//! `signal: 9` instead of reporting a test failure.
+//! As of 2026-11-10 all 22 standard statements are in **wire scope**
+//! (`tests/common/tpch_wire_scope.rs`): the three formerly excluded ones —
+//! Q19 (wire-parser fix), Q9 (spanning-tree join fix) and Q18
+//! (re-verified green on the wire backend) — were re-registered under issue
+//! #5393. The scope machinery stays in force against silent coverage loss:
+//! `run_query_timed` still returns `WireOutcome::Skipped` only for
+//! registered exclusions (currently none), and skipping a registered-in
+//! statement is reported as an unregistered skip.
 //!
-//! The shared **wire scope** (`tests/common/tpch_wire_scope.rs`) refuses to
-//! execute those statements: `run_query_timed` takes the query id and returns
-//! `WireOutcome::Skipped` for them. Q1 and Q6 are inside the scope, so both
-//! are executed and timed; a skip would be disclosed through the
-//! `TPCH-NOT-RUN` marker and the test function would report *not run* —
-//! never a pass.
+//! Q1 and Q6 are inside the scope, so both are executed and timed; a skip
+//! would be disclosed through the `TPCH-NOT-RUN` marker and the test
+//! function would report *not run* — never a pass.
 
 #[path = "../../common/mod.rs"]
 mod common;

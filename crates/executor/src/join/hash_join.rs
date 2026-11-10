@@ -43,36 +43,55 @@ pub fn hash_join_inner_outer(
     right_rows: &[Vec<Value>],
     right_key_idx: usize,
 ) -> Vec<Vec<Value>> {
+    hash_join_keys(left_rows, &[left_key_idx], right_rows, &[right_key_idx])
+}
+
+/// Composite-key inner equi-join. `left_keys[i]` pairs with
+/// `right_keys[i]` (equal lengths); a row pair matches only when **all**
+/// key column pairs are equal. A `Null` in any key column drops the row
+/// (three-valued logic), same rule as the single-key form.
+///
+/// This is what a multi-column join condition (`ps_partkey = l_partkey
+/// AND ps_suppkey = l_suppkey` for the same alias pair, issue #5393)
+/// needs: joining on one column of a composite key fans each probe row
+/// out by the other column's multiplicity (~80× on partsupp at SF=0.01),
+/// which the caller could previously only re-prune **after** the joined
+/// rows were materialised — an unbounded intermediate.
+pub fn hash_join_keys(
+    left_rows: &[Vec<Value>],
+    left_keys: &[usize],
+    right_rows: &[Vec<Value>],
+    right_keys: &[usize],
+) -> Vec<Vec<Value>> {
+    assert_eq!(left_keys.len(), right_keys.len(), "key pairs must match");
     if left_rows.is_empty() || right_rows.is_empty() {
         return Vec::new();
     }
-    let (build_rows, build_key, probe_rows, probe_key, left_on_left) =
+    let (build_rows, build_keys, probe_rows, probe_keys, left_on_left) =
         if left_rows.len() <= right_rows.len() {
-            (left_rows, left_key_idx, right_rows, right_key_idx, true)
+            (left_rows, left_keys, right_rows, right_keys, true)
         } else {
-            (right_rows, right_key_idx, left_rows, left_key_idx, false)
+            (right_rows, right_keys, left_rows, left_keys, false)
         };
 
     let mut table: HashMap<u64, Vec<&Vec<Value>>> = HashMap::with_capacity(build_rows.len());
     for row in build_rows {
-        let key = &row[build_key];
-        if matches!(key, Value::Null) {
-            continue;
-        }
-        let h = hash_value(key);
+        let h = match composite_hash(row, build_keys) {
+            Some(h) => h,
+            None => continue, // any Null key part drops the row
+        };
         table.entry(h).or_default().push(row);
     }
 
     let mut out = Vec::with_capacity(probe_rows.len());
     for probe in probe_rows {
-        let key = &probe[probe_key];
-        if matches!(key, Value::Null) {
-            continue;
-        }
-        let h = hash_value(key);
+        let h = match composite_hash(probe, probe_keys) {
+            Some(h) => h,
+            None => continue,
+        };
         if let Some(build_matches) = table.get(&h) {
             for build_row in build_matches {
-                if &build_row[build_key] == key {
+                if keys_equal(build_row, build_keys, probe, probe_keys) {
                     if left_on_left {
                         let mut joined = Vec::with_capacity(build_row.len() + probe.len());
                         joined.extend(build_row.iter().cloned());
@@ -91,25 +110,39 @@ pub fn hash_join_inner_outer(
     out
 }
 
-/// Hash value to a u64 via the value's own `Hash` impl.
-/// Equivalent to `Value::hash` via a `Hasher`, but stable enough
-/// across hashers (we only use it for HashMap bucket selection,
-/// and equality is checked separately).
-fn hash_value(v: &Value) -> u64 {
+/// Hash over the given key columns of one row; `None` when any part is
+/// `Null` (the row can never match under inner-equi semantics).
+fn composite_hash(row: &[Value], keys: &[usize]) -> Option<u64> {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    v.hash(&mut hasher);
-    std::hash::Hasher::finish(&hasher)
+    for &k in keys {
+        let v = &row[k];
+        if matches!(v, Value::Null) {
+            return None;
+        }
+        v.hash(&mut hasher);
+    }
+    Some(std::hash::Hasher::finish(&hasher))
 }
+
+fn keys_equal(a: &[Value], a_keys: &[usize], b: &[Value], b_keys: &[usize]) -> bool {
+    a_keys.iter().zip(b_keys).all(|(ak, bk)| a[*ak] == b[*bk])
+}
+
+/// One left-deep chain join step: right-side rows plus the paired key
+/// column indices `(right_key_cols, existing_key_cols)`.
+pub type ChainStep<'a> = (Vec<Vec<Value>>, &'a [usize], &'a [usize]);
 
 /// Left-deep hash chain for a 3+ table join.
 ///
 /// Given `seeds` (the left-most table's rows) and a sequence of
-/// `(right_rows, right_key_idx, existing_key_idx)` join steps, this
+/// `(right_rows, right_key_cols, existing_key_cols)` join steps, this
 /// builds a chain where each step hashes the new right side and
-/// probes with the accumulated left side on the column at
-/// `existing_key_idx` in the accumulated rows.
+/// probes with the accumulated left side. A step matches when **all**
+/// of its paired key columns are equal (composite keys, issue #5393);
+/// single-column steps pass one-element slices and behave exactly as
+/// before.
 ///
-/// `existing_key_idx` for step N refers to the column index in the
+/// `existing_key_cols` for step N refers to column indices in the
 /// **accumulated rows up to step N-1** (not the seed rows).
 ///
 /// The right side is hashed regardless of which side is smaller
@@ -118,16 +151,13 @@ fn hash_value(v: &Value) -> u64 {
 ///
 /// Use [`hash_join_inner_outer`] directly when you have exactly two
 /// inputs; this helper is only useful for 3+ table chains.
-pub fn multi_way_hash_chain(
-    seeds: Vec<Vec<Value>>,
-    steps: &[(Vec<Vec<Value>>, usize, usize)],
-) -> Vec<Vec<Value>> {
+pub fn multi_way_hash_chain(seeds: Vec<Vec<Value>>, steps: &[ChainStep<'_>]) -> Vec<Vec<Value>> {
     let mut acc = seeds;
-    for (right_rows, right_key_idx, existing_key_idx) in steps {
+    for (right_rows, right_keys, existing_keys) in steps {
         if acc.is_empty() || right_rows.is_empty() {
             return Vec::new();
         }
-        acc = hash_join_inner_outer(&acc, *existing_key_idx, right_rows, *right_key_idx);
+        acc = hash_join_keys(&acc, existing_keys, right_rows, right_keys);
     }
     acc
 }
@@ -254,7 +284,7 @@ mod tests {
 
         let step2_chain = multi_way_hash_chain(
             customer.clone(),
-            &[(orders.clone(), 1, 0), (lineitem.clone(), 0, 2)],
+            &[(orders.clone(), &[1], &[0]), (lineitem.clone(), &[0], &[2])],
         );
         assert_eq!(step2_chain.len(), step2_manual.len());
         let lineitem_side: Vec<&str> = step2_chain
@@ -276,7 +306,41 @@ mod tests {
     fn test_multi_way_chain_empty_right_terminates() {
         let customer: Vec<Vec<Value>> = vec![vec![v_i(1), v_s("A")]];
         let lineitem: Vec<Vec<Value>> = vec![];
-        let result = multi_way_hash_chain(customer, &[(lineitem, 0, 0)]);
+        let result = multi_way_hash_chain(customer, &[(lineitem, &[0], &[0])]);
         assert!(result.is_empty());
+    }
+
+    /// Issue #5393: partsupp-style composite keys. Every `lineitem` row
+    /// shares its partkey with 4 `partsupp` rows, so a single-key step on
+    /// partkey fans each left row out 4×; the composite (partkey, suppkey)
+    /// step must match exactly the one row whose suppkey also agrees —
+    /// the fan-out is what made wire Q9 allocate gigabytes before the
+    /// caller could prune.
+    #[test]
+    fn test_composite_key_step_beats_single_key_fanout() {
+        // lineitem rows: (l_partkey, l_suppkey) = (7, 1), (7, 2)
+        let left: Vec<Vec<Value>> = vec![vec![v_i(7), v_i(1)], vec![v_i(7), v_i(2)]];
+        // partsupp rows: (ps_partkey, ps_suppkey) — 4 rows per partkey.
+        let right: Vec<Vec<Value>> = vec![
+            vec![v_i(7), v_i(1)],
+            vec![v_i(7), v_i(2)],
+            vec![v_i(7), v_i(3)],
+            vec![v_i(7), v_i(4)],
+        ];
+        // Single key on partkey: 2×4 = 8 joined rows (the blow-up).
+        let single = multi_way_hash_chain(left.clone(), &[(right.clone(), &[0], &[0])]);
+        assert_eq!(single.len(), 8);
+        // Composite: exactly the two agreeing (partkey, suppkey) pairs.
+        let composite = multi_way_hash_chain(left, &[(right, &[0, 1], &[0, 1])]);
+        assert_eq!(composite.len(), 2);
+        let mut pairs: Vec<(i64, i64)> = composite
+            .iter()
+            .map(|r| match (&r[0], &r[1]) {
+                (Value::Integer(a), Value::Integer(b)) => (*a, *b),
+                _ => panic!("integer keys expected"),
+            })
+            .collect();
+        pairs.sort();
+        assert_eq!(pairs, vec![(7, 1), (7, 2)]);
     }
 }
