@@ -1,0 +1,152 @@
+schema_version: 1
+run_id: 20261110-walgc2-001
+source_agent: omp (macmini)
+frozen_commit: 9ce6f1cb3e44e2fa872d23db4b214d82fc4897aa
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/walgc2-target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: walgc2-group-commit-module
+  name: group_commit 模块全部测试(8:WALGC-1 既有 5 + WALGC-2 新增 3;先红探针转正)
+  cmd: cargo test -q -p sqlrustgo-storage wal::group_commit
+  cwd: .
+  timeout_sec: 1800
+- id: walgc2-storage-crate
+  name: storage crate 全测试面(919,含协调器与 WAL 全链;SIGKILL 崩溃矩阵经 SQLRUSTGO_SERVER_BIN 指向冻结提交上 fault-injection
+    构建)
+  cmd: SQLRUSTGO_SERVER_BIN=/Volumes/workspace/dev/walgc2-target/debug/sqlrustgo-mysql-server cargo test
+    -q -p sqlrustgo-storage
+  cwd: .
+  timeout_sec: 3600
+- id: walgc2-lib
+  name: 引擎 lib 测试面(协调器调用方波及)
+  cmd: cargo test --lib
+  cwd: .
+  timeout_sec: 5400
+- id: walgc2-clippy-storage
+  name: clippy 存储 crate(判据:-D warnings 面 0 warning,无新增 allow)
+  cmd: cargo clippy -q -p sqlrustgo-storage -- -D warnings
+  cwd: .
+  timeout_sec: 1800
+- id: walgc2-anti-ignore
+  name: anti-ignore 门禁(136/82 口径:ignore 与 allow 计数不放松,WALGC-2 未新增任何豁免)
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: walgc2-fmt
+  name: cargo fmt --check --all(尖端 0 diff 口径保持)
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 300
+- id: walgc2-wal-integration
+  name: WAL 集成族(wal_integration_test + wal_tx_contract_test;冻结提交上复证)
+  cmd: cargo test -q --test wal_integration_test --test wal_tx_contract_test
+  cwd: .
+  timeout_sec: 3600
+- id: walgc2-parser-smoke
+  name: parser crate 冒烟(上一取证链基线保持:28 目标全绿)
+  cmd: cargo test -q -p sqlrustgo-parser
+  cwd: .
+  timeout_sec: 1800
+- id: walgc2-arch-invariants
+  name: 架构不变量门禁(协调器修改不得破坏 arch 判据)
+  cmd: bash scripts/gate/check_arch_invariants.sh
+  cwd: .
+  timeout_sec: 900
+- id: walgc2-commit-msg-gate
+  name: 提交信息门禁(本链代码提交 L1/L2/L3)
+  cmd: bash scripts/gate/check_commit_message.sh --range HEAD~2..HEAD --require-refs
+  cwd: .
+  timeout_sec: 300
+results:
+- id: walgc2-group-commit-module
+  started_at: '2026-11-10T00:27:49Z'
+  finished_at: '2026-11-10T00:27:51Z'
+  exit_code: 0
+  stdout_sha256: 4d8f67fdd336efcdf5c848894a8a9ee298ba68ef0a54d08aded4acdfddc58c44
+  stderr_sha256: 3db88afe2c8ede0aaa3e0cef4df9692503378e11ade58a10daece9413640d8d9
+  stdout_path: logs/001-walgc2-group-commit-module.stdout
+  stderr_path: logs/001-walgc2-group-commit-module.stderr
+- id: walgc2-storage-crate
+  started_at: '2026-11-10T00:27:51Z'
+  finished_at: '2026-11-10T00:28:07Z'
+  exit_code: 0
+  stdout_sha256: ddf3b28b426199505a279510ac308e84e364fbb6da553ded67f8977ee03879d8
+  stderr_sha256: 8e44ef16f58068ed783a9b9d15e017010c1532fd9676c1912128e5c361009adc
+  stdout_path: logs/002-walgc2-storage-crate.stdout
+  stderr_path: logs/002-walgc2-storage-crate.stderr
+- id: walgc2-lib
+  started_at: '2026-11-10T00:28:07Z'
+  finished_at: '2026-11-10T00:28:12Z'
+  exit_code: 0
+  stdout_sha256: fa38c9192d4b2da7a60f67e97c2b211ac1754d0dab77e28a342f8773c4bf60ec
+  stderr_sha256: 5f177a296b3c2e4964853c9918f6d0eb63ab13c716f45f93e8b2f86fccc013aa
+  stdout_path: logs/003-walgc2-lib.stdout
+  stderr_path: logs/003-walgc2-lib.stderr
+- id: walgc2-clippy-storage
+  started_at: '2026-11-10T00:28:12Z'
+  finished_at: '2026-11-10T00:28:12Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-walgc2-clippy-storage.stdout
+  stderr_path: logs/004-walgc2-clippy-storage.stderr
+- id: walgc2-anti-ignore
+  started_at: '2026-11-10T00:28:12Z'
+  finished_at: '2026-11-10T00:28:12Z'
+  exit_code: 0
+  stdout_sha256: fe823fd2b89ecbe830ca5bd204494352ee4a176c427b29f7062165ce56ed32ac
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-walgc2-anti-ignore.stdout
+  stderr_path: logs/005-walgc2-anti-ignore.stderr
+- id: walgc2-fmt
+  started_at: '2026-11-10T00:28:12Z'
+  finished_at: '2026-11-10T00:28:14Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-walgc2-fmt.stdout
+  stderr_path: logs/006-walgc2-fmt.stderr
+- id: walgc2-wal-integration
+  started_at: '2026-11-10T00:28:14Z'
+  finished_at: '2026-11-10T00:28:15Z'
+  exit_code: 0
+  stdout_sha256: d3f7fb7b527c24f48fab0733f3fe550e0491f351baccb6175b236ff7a2e85cff
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-walgc2-wal-integration.stdout
+  stderr_path: logs/007-walgc2-wal-integration.stderr
+- id: walgc2-parser-smoke
+  started_at: '2026-11-10T00:28:15Z'
+  finished_at: '2026-11-10T00:28:16Z'
+  exit_code: 0
+  stdout_sha256: 49df36c5d2681d46b1f49f1b31a517ce483e822e1f9f2a0cf29fb5ab4d0bd03e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-walgc2-parser-smoke.stdout
+  stderr_path: logs/008-walgc2-parser-smoke.stderr
+- id: walgc2-arch-invariants
+  started_at: '2026-11-10T00:28:16Z'
+  finished_at: '2026-11-10T00:28:16Z'
+  exit_code: 0
+  stdout_sha256: 7a4ad832e77eaf5cf645b7241af81f4d60436e5a293042970f387f3505890a88
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-walgc2-arch-invariants.stdout
+  stderr_path: logs/009-walgc2-arch-invariants.stderr
+- id: walgc2-commit-msg-gate
+  started_at: '2026-11-10T00:28:16Z'
+  finished_at: '2026-11-10T00:28:16Z'
+  exit_code: 0
+  stdout_sha256: c3a6661e614af8d0d456c034672e4626f15afdff08374b430a7fbc84c3d606b8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-walgc2-commit-msg-gate.stdout
+  stderr_path: logs/010-walgc2-commit-msg-gate.stderr
+evidence_hash: sha256:a49ce9d7cf9d7173839eb5b43598178c4a9d65e5d043cc785335971f58e5190d
+completed_at: '2026-11-10T00:28:16Z'
