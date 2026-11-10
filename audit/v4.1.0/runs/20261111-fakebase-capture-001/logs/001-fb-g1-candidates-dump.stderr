@@ -1,0 +1,283 @@
+  loaded region: 5 rows
+  loaded nation: 25 rows
+  loaded supplier: 10 rows
+  loaded customer: 150 rows
+  loaded part: 200 rows
+  loaded partsupp: 800 rows
+  loaded orders: 1500 rows
+  loaded lineitem: 6018 rows
+{
+  "executed": 22,
+  "issue": "#5688",
+  "note": "engine_capture_sha256 is the gate-consumable candidate; it is only adoptable where oracle_set_equal=true (independent recomputation over the same .tbl fixture). Nothing in this document has been written into tests/oracle/baselines/.",
+  "oracle_confirmed": 22,
+  "queries": [
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "a5dc4724bdf56cab50f20fe255a15cc8d89817f51f83824f5e12ab9aeb2b3aed",
+      "oracle_capture_sha256": "a5dc4724bdf56cab50f20fe255a15cc8d89817f51f83824f5e12ab9aeb2b3aed",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 6,
+      "oracle_set_equal": true,
+      "query_id": "Q1",
+      "row_count": 6,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q2",
+      "row_count": 0,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "0c78e900888cc2870766089528140774f1688ce21115d1bc569dbde755f1a28a",
+      "oracle_capture_sha256": "171db3cb8dd400a236bc611f50c71ecd687587ae8af6f167b47a6627b6ecc0d2",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 10,
+      "oracle_set_equal": true,
+      "query_id": "Q3",
+      "row_count": 10,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "81cf8e7a9446cbf04a012d775683779e91740d89a7b83b382d1518172adec7cb",
+      "oracle_capture_sha256": "81cf8e7a9446cbf04a012d775683779e91740d89a7b83b382d1518172adec7cb",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 5,
+      "oracle_set_equal": true,
+      "query_id": "Q4",
+      "row_count": 5,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q5",
+      "row_count": 0,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "b73f80c04c8c8c3e08df91dd3165168b1096f6b4b76e139018f1bb9add924a22",
+      "oracle_capture_sha256": "2e10232e037c64b562e07c97cd619c422ad6ca8a8d57dbd064d7f0e8680bf5b9",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 1,
+      "oracle_set_equal": true,
+      "query_id": "Q6",
+      "row_count": 1,
+      "stored_row_count": 1,
+      "stored_sha256": "e34c67129d6336d8d408c87023bb0d38a3155464f5bc9ef1769873e7129c82f9"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q7",
+      "row_count": 0,
+      "stored_row_count": 4,
+      "stored_sha256": "a29f56c9236126d88755dbfa0be903da1e7619e829a738a636fe0bfd986c2480"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q8",
+      "row_count": 0,
+      "stored_row_count": 2,
+      "stored_sha256": "b5a61d14f17c5b9bc877cc7e237032f70522f55879d52e944c0ef75038721d47"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "11e6815ac4d846c759734d61c9a3b483585e366ad2e1c2b7a79359f2033e5b63",
+      "oracle_capture_sha256": "d07e8c8bb26831d7a89cde4cf1d0782e4cdf29dda9154a162cdad1b3cbea637e",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 66,
+      "oracle_set_equal": true,
+      "query_id": "Q9",
+      "row_count": 66,
+      "stored_row_count": 3,
+      "stored_sha256": "dafb71159e22c85782b5bd23abb789c93d99c4afa93b6e4ee6a1bede9dc65e5b"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "75f142af8a97fb3c48260de486cba10827d8cd13a5400864792ebb46b5247e05",
+      "oracle_capture_sha256": "75270fd9abc3089d23914755904977fd3ee9a0bccebe3d158572a752873206b7",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 20,
+      "oracle_set_equal": true,
+      "query_id": "Q10",
+      "row_count": 20,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q11",
+      "row_count": 0,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "1b9b0eafbced0a92cae2581a3ee7d1a270c0e44b18e6d5df1975dcc26a7ef14f",
+      "oracle_capture_sha256": "1b9b0eafbced0a92cae2581a3ee7d1a270c0e44b18e6d5df1975dcc26a7ef14f",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 2,
+      "oracle_set_equal": true,
+      "query_id": "Q12",
+      "row_count": 2,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "51dd69b135ed6112180c2941ac4c3ff07cdd69092ec8e6c645a54a8850375c8b",
+      "oracle_capture_sha256": "51dd69b135ed6112180c2941ac4c3ff07cdd69092ec8e6c645a54a8850375c8b",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 100,
+      "oracle_set_equal": true,
+      "query_id": "Q13",
+      "row_count": 100,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "20febeb10722d8a74ee1ad08851afd62460775782e1baacf9164eb257b09b83a",
+      "oracle_capture_sha256": "c3741132293e6c7ca8b2daebbf31f1f08a59125da68629d5db6e820226dcb83a",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 1,
+      "oracle_set_equal": true,
+      "query_id": "Q14",
+      "row_count": 1,
+      "stored_row_count": 1,
+      "stored_sha256": "e34c67129d6336d8d408c87023bb0d38a3155464f5bc9ef1769873e7129c82f9"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "ff97b1269cb1465db42a7ce2b721ad5792cef085d0d13d53c3a040a50633bb17",
+      "oracle_capture_sha256": "ff97b1269cb1465db42a7ce2b721ad5792cef085d0d13d53c3a040a50633bb17",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 1,
+      "oracle_set_equal": true,
+      "query_id": "Q15",
+      "row_count": 1,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "79fabcc2c0e6fb632d4839fb32d910431dbdb0703a7f5dfca763dcf613265517",
+      "oracle_capture_sha256": "79fabcc2c0e6fb632d4839fb32d910431dbdb0703a7f5dfca763dcf613265517",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 100,
+      "oracle_set_equal": true,
+      "query_id": "Q16",
+      "row_count": 100,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "e0bfc92a5e886ca5c7d406d5b518918c827b8f9206e5647ab321286af78845a0",
+      "oracle_capture_sha256": "e0bfc92a5e886ca5c7d406d5b518918c827b8f9206e5647ab321286af78845a0",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 1,
+      "oracle_set_equal": true,
+      "query_id": "Q17",
+      "row_count": 1,
+      "stored_row_count": 1,
+      "stored_sha256": "e34c67129d6336d8d408c87023bb0d38a3155464f5bc9ef1769873e7129c82f9"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "28d082c27a761e235434accc1a5862d03605b3307d1d29e46a71ac672ad58d09",
+      "oracle_capture_sha256": "28d082c27a761e235434accc1a5862d03605b3307d1d29e46a71ac672ad58d09",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 59,
+      "oracle_set_equal": true,
+      "query_id": "Q18",
+      "row_count": 59,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "56a9f06b81c5167037a18dd3d2645a416a45f20e1439d454c5053148646f1196",
+      "oracle_capture_sha256": "56a9f06b81c5167037a18dd3d2645a416a45f20e1439d454c5053148646f1196",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 1,
+      "oracle_set_equal": true,
+      "query_id": "Q19",
+      "row_count": 1,
+      "stored_row_count": 1,
+      "stored_sha256": "56a9f06b81c5167037a18dd3d2645a416a45f20e1439d454c5053148646f1196"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q20",
+      "row_count": 0,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_capture_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q21",
+      "row_count": 0,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    },
+    {
+      "capture_stable": true,
+      "engine_capture_sha256": "88c000e2b115da03246b9339026b16a8bb09f01266cb1bc22aa696444d02410f",
+      "oracle_capture_sha256": "88c000e2b115da03246b9339026b16a8bb09f01266cb1bc22aa696444d02410f",
+      "oracle_null_cells": 0,
+      "oracle_row_count": 6,
+      "oracle_set_equal": true,
+      "query_id": "Q22",
+      "row_count": 6,
+      "stored_row_count": 0,
+      "stored_sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc"
+    }
+  ],
+  "scale_factor": "0.001",
+  "schema": "g1-rebuild-candidates/v1"
+}
+[OK] rebuild candidates written to audit/v4.1.0/runs/20261111-fakebase-capture-001/g1-candidates.json (22 statements, 22 oracle-confirmed)
