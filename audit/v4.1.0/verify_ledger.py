@@ -54,7 +54,11 @@ DEFAULT_TRIAGE = [DOCS / "ISSUE_TRIAGE_2026-11-05.jsonl",
                   # 2026-11-06：当期 open 里此前没分诊的 6 条（gpt 血统全过、
                   # qwen 血统 3 条过 3 条弃权）—— 与生成端/新鲜度探针同一组。
                   DOCS / "ISSUE_TRIAGE_2026-11-06D.jsonl",
-                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-06D.jsonl"]
+                  DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-06D.jsonl",
+                  # 2026-11-11：新鲜度探针 DRIFT 点名的 4 条未分诊 issue
+                  # （flash-next-252 席位，qwen-strata family：记录在案但
+                  # 不 confer 等级——属主裁定合格血统只有 gpt/deepseek）
+                  DOCS / "ISSUE_TRIAGE_2026-11-11E.jsonl"]
 
 FAILS: list[str] = []
 

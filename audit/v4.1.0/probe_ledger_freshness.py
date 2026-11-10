@@ -46,7 +46,8 @@ TRIAGE_FILES = [DOCS / "ISSUE_TRIAGE_2026-11-05.jsonl",
                 DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl",
                 DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-05D.jsonl",
                 DOCS / "ISSUE_TRIAGE_2026-11-06D.jsonl",
-                DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-06D.jsonl"]
+                DOCS / "ISSUE_TRIAGE_CROSSCHECK_2026-11-06D.jsonl",
+                DOCS / "ISSUE_TRIAGE_2026-11-11E.jsonl"]
 
 # comments/url 会随时间变（评论数、URL 前缀），比对这些字段只会制造假红。
 COMPARE_FIELDS = ("number", "title", "priority", "cost", "cap", "state_label",
