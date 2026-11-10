@@ -5,8 +5,9 @@
 //!
 //! The wire path runs the MySQL protocol against the engine's *file* storage
 //! backend. That backend materialises the intermediate result of a multi-way
-//! join, and for three of the 22 standard queries the intermediate grows
-//! until the operating system kills the engine process.
+//! join, and until 2026-11-10 three of the 22 standard queries grew the
+//! intermediate until the operating system killed the engine process
+//! (Q9/Q18: issue #5393; Q19: the wire front end could not parse it).
 //!
 //! A killed process is not a test failure — it takes the **whole test binary**
 //! with it. The CI job then dies with `signal: 9` and every later target in
@@ -17,21 +18,18 @@
 //! # The rule
 //!
 //! A standard query is executed on the wire path **only** if it is listed in
-//! [`WIRE_SCOPE`]. Everything else is listed in [`WIRE_EXCLUSIONS`] together
-//! with a controlled reason code and the issue that tracks the defect.
+//! [`WIRE_SCOPE`]. A query that cannot run is listed in [`WIRE_EXCLUSIONS`]
+//! together with a controlled reason code and the issue that tracks the
+//! defect. **As of 2026-11-10 all 22 are in scope and the exclusion list is
+//! empty** — the list, the reason codes and the enforcement machinery below
+//! stay in place for the next defect that earns one.
 //!
 //! The scope is enforced at **compile time**: the harness's query runner
 //! takes the query id, so a call site that wants to execute a statement
 //! outside the scope has to name it — and naming it produces a *skip*, not
-//! an execution.
-//!
-//! # What the excluded statements lose
-//!
-//! Nothing, in the end: the three excluded statements are executed by the
-//! **in-process** path (`tests/integration/sql/eval_22_vs_sf01.rs`), which
-//! runs all 22 standard queries against the same independent oracle on the
-//! same fixture. They are simply not executed on the file-storage backend,
-//! where they are known to be unrunnable.
+//! an execution. Conversely a run that *skips* a statement that is not
+//! registered as an exclusion is reported as an unregistered skip — silent
+//! coverage loss is rejected.
 //!
 //! # Evidence
 //!
@@ -44,9 +42,15 @@
 //! |---|---|
 //! | 19 of the 20 in scope | identical to the in-process SQLite oracle, cell by cell |
 //! | Q13 | same row count, different cells — registered as a known difference (issue #5394) |
-//! | Q9 | engine process killed by the OS (issue #5393) |
-//! | Q18 | server process killed while the statement ran (issue #5393) |
+//! | Q9 | engine process killed by the OS (issue #5393) — **re-run green 2026-11-10** after the spanning-tree join fix (SF=0.001 0.72 s / SF=0.01 9.06 s, 175 rows, process alive) |
+//! | Q18 | server process killed while the statement ran (issue #5393) — **re-run green 2026-11-10** on `697e5adf19` (≈0.9 s, 100 rows, 445 MiB max RSS); the kill does not reproduce, no fix is claimed for it |
 //! | Q19 | parsed again since the 2026-11-10 wire-parser fix (issue #5393): matches the SQLite oracle cell by cell at SF=0.01, and its SF=0.001 aggregate matches an independent oracle re-computation; the stored `tpch_sha256.json` entry for it had captured a NULL (no-row) result in 2026-06 and was corrected with evidence |
+//!
+//! Note the sha baseline itself is a separate open defect: 15 of the 22
+//! `tpch_sha256.json` entries share one placeholder hash (issue #5688), so
+//! hash equality against them is a *different* red that re-scoping does not
+//! touch — the wire path now genuinely runs the statements; the stored
+//! baseline for them remains fake until #5688 is rebuilt.
 
 /// Reason code: the file-storage backend cannot execute the statement
 /// without exhausting the machine.
@@ -79,9 +83,21 @@ pub const TPC_H_QUERY_IDS: [&str; 22] = [
 /// independent in-process SQLite oracle. 19 of the 20 match; Q13 differs in
 /// a way that is registered as a known difference (issue #5394), so it is
 /// still compared — only the *difference* is tolerated, not the statement.
+///
+/// Q9 + Q18 joined the scope on 2026-11-10 (issue #5393):
+/// - Q9: the comma-join planner now falls back to a **spanning-tree** hash
+///   order when the equality graph admits no Hamiltonian path (lineitem is a
+///   degree-4 hub in Q9 — the old chain builder dead-ended and the caller
+///   materialised an uncapped cartesian product: SIGKILL at every scale).
+///   Re-measured with the fix: SF=0.001 0.72 s / 66 rows, SF=0.01 9.06 s /
+///   175 rows, process alive.
+/// - Q18: re-executed on develop (`697e5adf19`) and found green twice
+///   (≈0.9 s / 100 rows / 445 MiB max RSS on the wire backend) — the 2026-10-20
+///   kill reading does not reproduce; no bisection was performed for which
+///   earlier change fixed it, and none is claimed here.
 pub const WIRE_SCOPE: &[&str] = &[
-    "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15",
-    "Q16", "Q17", "Q19", "Q20", "Q21", "Q22",
+    "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14", "Q15",
+    "Q16", "Q17", "Q18", "Q19", "Q20", "Q21", "Q22",
 ];
 
 /// A standard query that the file-storage wire path must not execute.
@@ -103,24 +119,12 @@ pub struct WireExclusion {
 /// Every entry names the defect that makes the statement unrunnable and the
 /// issue that tracks it. A test that skips a statement which is **not** in
 /// this list is a bug in the test, and the scope check rejects it.
-pub const WIRE_EXCLUSIONS: &[WireExclusion] = &[
-    WireExclusion {
-        qid: "Q9",
-        reason: REASON_ENGINE_RESOURCE_LIMIT,
-        issue: "#5393",
-        detail: "six-way join; the file-storage backend's intermediate result exceeded 1.5 GB \
-                 within one second of execution and the engine process was killed by the OS \
-                 (SIGKILL), which also killed the test binary",
-    },
-    WireExclusion {
-        qid: "Q18",
-        reason: REASON_ENGINE_RESOURCE_LIMIT,
-        issue: "#5393",
-        detail: "IN (SELECT … GROUP BY … HAVING …) over lineitem; the server process was killed \
-                 while the statement was running (the client saw: Lost connection to server \
-                 during query)",
-    },
-];
+///
+/// Empty since 2026-11-10: Q9/Q18 were the last entries and both re-ran
+/// green on the wire backend (issue #5393, see the module-level evidence
+/// table). The mechanism is deliberately kept: the next unrunnable statement
+/// must be registered with a reason code and an issue, not silently dropped.
+pub const WIRE_EXCLUSIONS: &[WireExclusion] = &[];
 
 /// Whether `qid` may be executed on the file-storage wire path.
 pub fn in_wire_scope(qid: &str) -> bool {
@@ -232,11 +236,14 @@ mod tests {
 
     #[test]
     fn unregistered_wire_skips_are_reported() {
-        assert!(unregistered_wire_skips(&["Q9", "Q18"]).is_empty());
+        // Q9/Q18 left the exclusion list on 2026-11-10 (issue #5393): both
+        // re-ran green on the wire path, so a run that skips either of them
+        // now reports an unregistered skip — silent coverage loss.
+        assert_eq!(unregistered_wire_skips(&["Q9", "Q18"]), vec!["Q9", "Q18"]);
         // Q19's parse failure was fixed (issue #5393, 2026-11-10) — it is no
         // longer in scope-excluded, so a run that skips it is a bug.
         assert_eq!(unregistered_wire_skips(&["Q19"]), vec!["Q19"]);
-        assert_eq!(unregistered_wire_skips(&["Q9", "Q42"]), vec!["Q42"]);
+        assert_eq!(unregistered_wire_skips(&["Q42"]), vec!["Q42"]);
     }
 
     #[test]

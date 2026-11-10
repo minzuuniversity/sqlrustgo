@@ -9,23 +9,19 @@
 //!
 //! 已知偏差: Q9 cell-level bug (#3312) 只影响 cell 值, 仍能用 SHA-256 检测 row-level 漂移.
 //!
-//! # The wire scope
+//! The wire scope
 //!
-//! Two of the 22 standard statements — **Q9** and **Q18** — cannot be
-//! executed on the file-storage wire path: Q9's intermediate result grows past
-//! 1.5 GB within a second, and Q18 kills the server process (both: issue
-//! #5393; **Q19** — formerly the third, an `IN (…)` inside a parenthesised
-//! OR group the wire front end could not parse — runs there since the
-//! 2026-11-10 parser fix). A killed process
-//! takes the **whole test binary** with it, so the CI job would die with
-//! `signal: 9` instead of reporting a test failure.
+//! As of 2026-11-10 **all 22 standard statements are in wire scope**
+//! (`tests/common/tpch_wire_scope.rs`): Q19 was re-registered after the
+//! wire-parser fix, and Q9/Q18 after the spanning-tree join fix + the
+//! re-verification measurements (issue #5393). This file therefore executes
+//! all 22 and asserts zero scope skips; a skip of a registered-in statement
+//! fails as an unregistered skip.
 //!
-//! The shared **wire scope** (`tests/common/tpch_wire_scope.rs`) refuses to
-//! execute those statements: `run_query_timed` takes the query id and returns
-//! `WireOutcome::Skipped` for them. This file therefore executes the 20
-//! in-scope statements, discloses the 2 skips through the `TPCH-NOT-RUN`
-//! marker, and asserts that exactly those 2 were skipped — neither more (a
-//! silently dropped statement) nor fewer (a statement that could have run).
+//! Hash equality against the stored `tpch_sha256.json` baseline is a
+//! separate, still-open defect: 15 of the 22 stored entries share one
+//! placeholder hash (issue #5688), so drift detection is only meaningful for
+//! the entries that were captured honestly.
 
 #[path = "../../common/mod.rs"]
 mod common;
