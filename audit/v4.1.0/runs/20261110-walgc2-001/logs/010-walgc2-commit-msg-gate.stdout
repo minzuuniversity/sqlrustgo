@@ -1,0 +1,7 @@
+=== L1 - the type table must exist in exactly one place ===
+PASS: L1 - the type table lives only in docs/governance/CONTRIBUTING.md
+=== L2/L3 - commit message shape and traceability ===
+range: HEAD~2..HEAD
+PASS: L2 - every checked commit matches the shape (4 checked, 2 merge commit(s) exempt)
+PASS: L3 - every checked commit carries 'Refs: #<issue>'
+RESULT: PASS
