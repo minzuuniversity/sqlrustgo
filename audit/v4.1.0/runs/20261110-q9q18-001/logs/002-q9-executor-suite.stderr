@@ -1,0 +1,58 @@
+warning: function `first_value` is never used
+  --> crates/executor/tests/issue_4695_lag_lead_test.rs:18:4
+   |
+18 | fn first_value(result: &sqlrustgo::ExecutorResult) -> &Value {
+   |    ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:228:19
+    |
+228 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:234:19
+    |
+234 |         let dml = LocalExecutorDml::default();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:250:19
+    |
+250 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:260:19
+    |
+260 |         let dml = LocalExecutorDml::new_with_storage(
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:270:19
+    |
+270 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:283:19
+    |
+283 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:299:19
+    |
+299 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated struct `local_executor_dml::LocalExecutorDml`: Use ExecutionEngine::execute(sql) instead. Will be removed in 3.10.0.
+   --> crates/executor/src/local_executor_dml.rs:307:19
+    |
+307 |         let dml = LocalExecutorDml::new();
+    |                   ^^^^^^^^^^^^^^^^
+
