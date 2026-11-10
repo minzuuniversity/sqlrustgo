@@ -1,0 +1,80 @@
+# 20261111-sweep-attr-001 —— 全仓总遍历 43 红行归因的归档证据（tip 4b218ab9f5）
+#
+# 目的：把 sweep 归因从「聊天断言」升级为「冻结 run 可复算」：
+# 每个已知红族在冻结 tip 上复跑并抓 panic/断言原文签名（exit 0 = 签名在），
+# 已修复项（INT3-1）直接断言绿；标签台账断言 findings=0。
+# 已知红臂一条：raw-tpch-hash-red（FAKEBASE-1 v380 哈希比对红，fail-closed 如实记录，非工序失败）。
+
+- id: int3-guard-green
+  name: "INT3-1 修复后守卫绿（4 passed；字节锚点 + 1200 字符窗）"
+  cmd: CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target cargo test -q -p sqlrustgo --test int3_single_expression_test
+  cwd: .
+  timeout_sec: 900
+
+- id: harness-q11-signature
+  name: "HARQ11-1 签名：harness Q11 panic 原文（fixture 在场，非本线引入）"
+  cmd: |
+    sig=$(CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q -p sqlrustgo --test harness_validation_test 2>&1 | grep -c "harness_validation_test.rs:418:5" || true)
+    echo "signature count: $sig"
+    test "$sig" -ge 1
+  cwd: .
+  timeout_sec: 900
+
+- id: q17-null-signature
+  name: "Q17-1 签名：Q17 NULL 渲染分歧在隔离复跑中确定复现（engine 空串 vs oracle NULL）"
+  cmd: |
+    out=$(CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q -p sqlrustgo --test tpch_sf01_22_vs_sqlite 2>&1 || true)
+    sig=$(echo "$out" | grep -c "Q17: MISMATCH row 0 col 0" || true)
+    panic=$(echo "$out" | grep -c "tpch_sf01_22_vs_sqlite.rs:378:9" || true)
+    echo "mismatch count: $sig, panic count: $panic"
+    test "$sig" -ge 1 && test "$panic" -ge 1
+  cwd: .
+  timeout_sec: 900
+
+- id: fakebase-v380-signature
+  name: "FAKEBASE-1 签名：tpch_hash_test 两臂同断言（:232 v380 哈希比对，非计时断言）"
+  cmd: |
+    out=$(CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q -p sqlrustgo --test tpch_hash_test 2>&1 || true)
+    sig=$(echo "$out" | grep -c "G1 FAIL: TPC-H hash mismatch" || true)
+    wrong=$(echo "$out" | grep -c "under_5_minutes.*elapsed" || true)
+    echo "hash-mismatch signature count: $sig; wall-clock-assert hits: $wrong (must be 0)"
+    test "$sig" -ge 2 && test "$wrong" -eq 0
+  cwd: .
+  timeout_sec: 900
+
+- id: tls-proc-signature
+  name: "TLSPROC-1 签名：darwin 无 /proc，tls_read_spin_5099 panic 原文"
+  cmd: |
+    sig=$(CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target cargo test -q -p sqlrustgo-mysql-server --test tls_read_spin_5099 2>&1 | grep -c "read /proc/" || true)
+    echo "proc-missing signature count: $sig"
+    test "$sig" -ge 1
+  cwd: .
+  timeout_sec: 900
+
+- id: diag-family-registration
+  name: "diag_q11 族与 sf01/value 测试确在 beta DISABLED_TESTS 白名单（DIAGQ11-1 行断言的机器核对）"
+  cmd: |
+    d=$(sed -n '/DISABLED_TESTS_LIST=/,/^"/p' scripts/gate/check_beta_v3.12.0.sh)
+    # NB: grep -c counts LINES; the list is a single line, so count occurrences.
+    n_diag=$(echo "$d" | grep -o "diag_q11" | wc -l | tr -d ' ')
+    n_sf=$(echo "$d" | grep -o "tpch_sf01_22_vs_sqlite" | wc -l | tr -d ' ')
+    n_val=$(echo "$d" | grep -o "tpch_value_test_v2" | wc -l | tr -d ' ')
+    echo "diag_q11 occurrences: $n_diag, sf01: $n_sf, value_test_v2: $n_val"
+    test "$n_diag" -ge 5 && test "$n_sf" -ge 2 && test "$n_val" -ge 1
+  cwd: .
+  timeout_sec: 60
+
+- id: label-ledger-findings-zero
+  name: "标签台账 live findings=0（#5711/#5712/#5717 已入台账 29 行）"
+  cmd: |
+    out=$(python3.14 audit/v4.1.0/issue_labels.py check --input live 2>&1 | tail -1)
+    echo "$out"
+    echo "$out" | grep -q '"findings": 0'
+  cwd: .
+  timeout_sec: 300
+
+- id: raw-tpch-hash-red
+  name: "FAKEBASE-1 原始红如实记录：tpch_hash_test 裸跑（预期 exit≠0，fail-closed 披露臂）"
+  cmd: CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target TPCH_DATA_DIR=/tmp/tpch-sf001 cargo test -q -p sqlrustgo --test tpch_hash_test
+  cwd: .
+  timeout_sec: 900
