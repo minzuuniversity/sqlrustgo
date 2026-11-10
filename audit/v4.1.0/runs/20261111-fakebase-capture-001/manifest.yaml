@@ -1,0 +1,49 @@
+schema_version: 1
+run_id: 20261111-fakebase-capture-001
+source_agent: omp (macmini)
+frozen_commit: 1ca7f077ee39381fbd7205b45cb84de2ac2e6026
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/walgc2-target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: fb-g1-candidates-dump
+  name: '#5688 决策素材:22 条 per-query 候选(SF001 wire 引擎 capture×2 稳定 + SQLite 独立复算 set-eq + 存量假值对照),候选 JSON
+    入 run 目录'
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 G1_REBUILD_CANDIDATES_OUT=audit/v4.1.0/runs/20261111-fakebase-capture-001/g1-candidates.json
+    cargo test -q --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture
+  cwd: .
+  timeout_sec: 3600
+- id: fb-v380-candidate-dump
+  name: '#5688 决策素材:v380 聚合候选(当前树 22/22 重算 + 逐条 oracle 自证,Q17 NULL-as-empty 表示层披露);基线文件不动'
+  cmd: TPCH_DATA_DIR=/tmp/tpch-sf001 V380_CANDIDATE_OUT=audit/v4.1.0/runs/20261111-fakebase-capture-001/v380-candidate.json
+    cargo test -q --test tpch_hash_test v380_candidate_dump -- --exact --nocapture
+  cwd: .
+  timeout_sec: 3600
+results:
+- id: fb-g1-candidates-dump
+  started_at: '2026-11-10T18:09:59Z'
+  finished_at: '2026-11-10T18:10:05Z'
+  exit_code: 0
+  stdout_sha256: bc9d5a7ea2c9b5368d83ced0ee59ad4322140d9114c1e6d342589f6dc048d145
+  stderr_sha256: 9851d058253d663cc83e46fdc9a56f6b154d829b7880b3a2a0b0579dbdb764ce
+  stdout_path: logs/001-fb-g1-candidates-dump.stdout
+  stderr_path: logs/001-fb-g1-candidates-dump.stderr
+- id: fb-v380-candidate-dump
+  started_at: '2026-11-10T18:10:05Z'
+  finished_at: '2026-11-10T18:10:08Z'
+  exit_code: 0
+  stdout_sha256: 18eed2fc64a0add2cccb24ae12e557dbfd859bf0b03da561c4c9577f82768e02
+  stderr_sha256: 3ac6c510ed1a962128c1c1a70317338bec829fecf4db3da2c3e0692efe576b9b
+  stdout_path: logs/002-fb-v380-candidate-dump.stdout
+  stderr_path: logs/002-fb-v380-candidate-dump.stderr
+evidence_hash: sha256:806428ab8d8cd03d670459684a9394bb7a3511d87b5ee18515ababd5f09f5d78
+completed_at: '2026-11-10T18:10:08Z'
