@@ -1,0 +1,221 @@
+  loaded region: 5 rows
+  loaded nation: 25 rows
+  loaded supplier: 10 rows
+  loaded customer: 150 rows
+  loaded part: 200 rows
+  loaded partsupp: 800 rows
+  loaded orders: 1500 rows
+  loaded lineitem: 6018 rows
+{
+  "aggregate_sha256": "7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3",
+  "executed": 22,
+  "issue": "#5688",
+  "note": "aggregate recomputed over all 22 statements of THIS test on the current tree; adoptable only where oracle_set_equal=true per statement. The stored file was not modified (#5688 owns the dataset decision).",
+  "oracle_confirmed": 21,
+  "scale_factor": "0.001",
+  "schema": "v380-aggregate-candidate/v1",
+  "statements": [
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 6,
+      "oracle_set_equal": true,
+      "query_id": "Q1",
+      "row_count": 6
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q2",
+      "row_count": 0
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 102,
+      "oracle_set_equal": true,
+      "query_id": "Q3",
+      "row_count": 102
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 5,
+      "oracle_set_equal": true,
+      "query_id": "Q4",
+      "row_count": 5
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q5",
+      "row_count": 0
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 1,
+      "oracle_set_equal": true,
+      "query_id": "Q6",
+      "row_count": 1
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q7",
+      "row_count": 0
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q8",
+      "row_count": 0
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 66,
+      "oracle_set_equal": true,
+      "query_id": "Q9",
+      "row_count": 66
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 30,
+      "oracle_set_equal": true,
+      "query_id": "Q10",
+      "row_count": 30
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q11",
+      "row_count": 0
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 2,
+      "oracle_set_equal": true,
+      "query_id": "Q12",
+      "row_count": 2
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 19,
+      "oracle_set_equal": true,
+      "query_id": "Q13",
+      "row_count": 19
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 1,
+      "oracle_set_equal": true,
+      "query_id": "Q14",
+      "row_count": 1
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 10,
+      "oracle_set_equal": true,
+      "query_id": "Q15",
+      "row_count": 10
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 30,
+      "oracle_set_equal": true,
+      "query_id": "Q16",
+      "row_count": 30
+    },
+    {
+      "diff": "row 0 col 0: engine=\"\" oracle=\"\\0NULL\"",
+      "null_representation_only": true,
+      "oracle_null_cells": 1,
+      "oracle_row_count": 1,
+      "oracle_set_equal": false,
+      "query_id": "Q17",
+      "row_count": 1
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 59,
+      "oracle_set_equal": true,
+      "query_id": "Q18",
+      "row_count": 59
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 1,
+      "oracle_set_equal": true,
+      "query_id": "Q19",
+      "row_count": 1
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q20",
+      "row_count": 0
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 0,
+      "oracle_set_equal": true,
+      "query_id": "Q21",
+      "row_count": 0
+    },
+    {
+      "diff": "",
+      "null_representation_only": false,
+      "oracle_null_cells": 0,
+      "oracle_row_count": 24,
+      "oracle_set_equal": true,
+      "query_id": "Q22",
+      "row_count": 24
+    }
+  ],
+  "stored_captured_from": "545814c3d1 (develop/v3.9.0, 2026-06-28)",
+  "stored_sha256": "b8854271b6636811c95e254791793973482036d09b1a96b4c5aefda6e8b715c1",
+  "unresolved": []
+}
+[OK] v380 candidate written to audit/v4.1.0/runs/20261111-fakebase-capture-001/v380-candidate.json (aggregate 7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3)
