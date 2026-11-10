@@ -250,6 +250,7 @@ stage_decision_2026-11-09:
     批准路径由 Owner 指定,执行者不自签。
   audit_snapshot_2026_11_09:
     ledger: "docs/releases/v4.1.0/evidence/AB_GAP_LEDGER_2026-11-09.md(三份逐条台账,冻结 tip c06209fd11)"
+    findings:
     - "#5112/#5113 closed(2026-10-15),但其 Hard Gate 在 tip 不全绿(clippy -D warnings 62 处属主各异;required checks 因 CI #5597 死不可满足)⇒ closed 不替代复证"
     - "#5114 open:B 轨 manifest 完全缺失(门禁自陈 SKELETON 故意 exit 1)、phantom 探针未触及生产存储、G1 上轮 124 未取得、neg fixture pending"
     - "#5115 open:heartbeat 机制全仓不存在(known_gaps.V400_09_soak 即案底)、v4.1.0 零个 soak 归档 run、chaos_test disk-full 为假绿空测试"
