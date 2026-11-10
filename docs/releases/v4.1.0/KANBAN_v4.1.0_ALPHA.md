@@ -6,7 +6,7 @@
 - 建立：2026-11-04，`mcode-macmini`
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
-- 台账计数：进行中 2 / 待复核 17 / 完成 64 / 阻塞 33 / 合计 116
+- 台账计数：进行中 2 / 待复核 17 / 完成 64 / 阻塞 34 / 合计 117
 
 | ID | 任务 | 状态 | 验收判据（可证伪） | 证据 | 阻塞方 | 来源 |
 |---|---|---|---|---|---|---|
@@ -126,6 +126,7 @@
 | VT-1 | verify 对撞车改名 run 永久报假红：evidence_hash_of 的 canonical 含 run_id，20261106 撞车处置（仅改 manifest run_id 一行）必然破聚合哈希；三处置方向已在 #5698 立案待裁 | 阻塞 | verify 按 #5698 选定处置对 20261105-lb1-006-mcode 复绿（不再报假红），且对其余 100 条封存 run 零重算、哈希语义不变 | 现场已闭环（2026-11-11，tip 7647a585c6）：全量清扫 101 条 run，100 条 verify OK；该条逐文件对账 NONE mismatch，results/artifacts/frozen_commit 与搬迁前原文全等，聚合哈希 74a3d0c5… 用搬迁前 run_id 精确复现 ⇒ 零证据损坏；根因 audit_run.py:58-77 canonical 含 run_id；披露 ai-project-hub#133#issuecomment-208789；立案 #5698 | 属主/工具属主对 #5698 三处置定夺（立案人不得自裁工具语义） | （omp-macmini 线补记 —— 2026-11-11 归档全量 verify 清扫暴露） |
 | IL-4C | IL-4 跟进(台账 C→D 代):新鲜度探针 DRIFT(4 条未分诊+2 条已关)⇒ C 代 106 行;本线 apply 标签又使 replay 漂移 12 行 ⇒ D 代 107 行(含 #5702) | 待复核 | 合并后 tip 上对 C 代跑 snapshot-count/replay-rows/mutation-selftest/verify_ledger 四查全绿 | C 代:run 20261111-ledger-005(frozen 4e7edaff8b,sha256:fbf08d7f…,14 件)6 臂全 ok。D 代:run 20261111-ledger-006(frozen 11818e020f,sha256:0e1fd383fdbade15fc4aac6c3e56ce98a5df4521d5c096325b11ec7c89aba98b,14 件)snapshot-count 107==107 untriaged=∅ / replay-rows 0 diff / mutation-selftest / verify_ledger[D] 全 [ok]。E 件分诊 5 条实出 flash-next-252(PR #5700;#5702 行追加随本 PR) | - | （omp-macmini 线 —— 2026-11-11 新鲜度探针 DRIFT 现场闭环） |
 | DET-1 | 两把反向变异守门尺失效:claims_selftest 3/17 臂红(撤销臂不回绿)、lb1_arm_count_check m6/m7 不判别(control 基线红);其上绿读数一律不得引用,直至复绿(#5702) | 阻塞 | claims_selftest verdict OK 且 lb1_arm_count_check discriminating=7/7、lost-guard-mutation 绿(合并 tip 复验) | 2026-11-11 tip b18dc2da3a 只读实测:claims_selftest arms=17 not_ok=3(撤销臂不回绿);lb1 arms=7 not_discriminating=2(m6/m7 control rc=1 且变异不翻转)+lost-guard-mutation 红;立案 #5702;其间顺带闭环本线 label 债:live label_gap_check 12 findings→0(issue_labels.py 台账 21→26 行+apply 12 标签) | 属主/工具属主对 #5702 修-标注-退役三选一裁夺(同 #5596 语义) | （omp-macmini 线 —— 2026-11-11 审计探针面全扫暴露） |
+| DIAGQ11-1 | 全仓总遍历红:`diag_q11_having_three_way` 反空断言(3-way join n_name='GERMANY' 命中 0 行)——v3.12 B2 登记遗留红(#4377 Q11 谓词传导家族);现消息形态源于 fixture 自包含化提交 `de50610a66`(2026-10-20)后 fixture 无德国供应商链;不在任何门禁测试集内 | 阻塞 | `cargo test -p sqlrustgo --test diag_q11` 全绿(德国供应商链补齐 + #4377 谓词传导验收),或 v3.12 B2 登记册显式写明 v4.1.0 线豁免理由 | 2026-11-11 隔离复现:tip 8b5a38346e 红(15 passed/1 failed,0.02s,断言=反空守护 groups>0);在 #5694 合并前 develop `697e5adf19` worktree 同样红 ⇒ 非本线引入;登记:docs/releases/v3.12.0/b2-disabled-test-binary-registry.md 第 2-4 行(#4377);beta 门禁 DISABLED_TESTS 白名单含 diag_q11 | #4377 域修复或显式豁免属 Owner/测试域主裁决;全仓遍历不在 ALPHA 门禁口径内 | 2026-11-11 omp 线全仓总遍历(cargo test --workspace --all-features) |
 <!-- LEDGER:END -->
 
 状态词汇只有五种（`未开始/进行中/待复核/完成/阻塞`）。"完成"= 做完**且**证据已归档；
