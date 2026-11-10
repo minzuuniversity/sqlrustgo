@@ -39,6 +39,13 @@ use common::tpch_wire_harness::{
 };
 use common::tpch_wire_scope;
 
+// #5688: the v380 aggregate candidate dump verifies each statement against
+// the independent in-process SQLite oracle. The module expects
+// `crate::tpch_fixture` at the test-crate root, so the binding lives here.
+#[path = "../../common/sqlite_oracle.rs"]
+mod sqlite_oracle;
+use common::tpch_cli_harness::tpch_fixture;
+
 /// Cargo target name — used in the NOT-RUN marker.
 const TARGET: &str = "tpch_hash_test";
 
@@ -281,4 +288,158 @@ fn tpch_hash_test_runs_in_under_5_minutes() {
     // Disclose the statements this function did not execute. One marker
     // per test function keeps the CI arithmetic exact.
     tpch_wire_scope::report_wire_exclusions(TARGET, &run.skipped);
+}
+
+/// #5688 decision material: a live candidate for the v380 aggregate hash in
+/// `tests/tpch_hashes_v380.json`. The stored value (captured 2026-06-28 on
+/// the v3.9.0 line) was never comparable until the exclusions cleared, and
+/// the first real comparison is red — the same fake-capture era as the
+/// per-query baselines. This dump recomputes the aggregate over **all 22**
+/// statements on the current tree and self-certifies each statement
+/// against the independent SQLite oracle before the aggregate is offered
+/// for adoption.
+///
+/// The stored file is **not** modified: the BUMP WORKFLOW requires an Owner
+/// decision on which dataset the aggregate should represent at all
+/// (#5688); this only puts the recomputed values on the table.
+///
+/// Run:
+/// ```text
+/// TPCH_DATA_DIR=/tmp/tpch-sf001 V380_CANDIDATE_OUT=/tmp/v380-candidate.json \
+///   cargo test --test tpch_hash_test v380_candidate_dump -- --exact --nocapture
+/// ```
+#[test]
+fn v380_candidate_dump() {
+    let Some(out_path) = std::env::var("V380_CANDIDATE_OUT").ok() else {
+        // Normal suite: no rebuild requested, nothing to do.
+        return;
+    };
+
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require(TARGET) else {
+        return;
+    };
+    let oracle = sqlite_oracle::SqliteOracle::open(fixture, &sqlite_oracle::TPC_H_ALL_TABLES)
+        .expect("the independent SQLite oracle must build from the same fixture");
+
+    let Some(mut client) = start_sf001_named(TARGET) else {
+        return;
+    };
+
+    let queries = tpch_queries();
+    let run = compute_tpch_hash(&mut client, &queries);
+    assert_scope_accounting(&run, queries.len());
+
+    // Per-statement independence: the aggregate only means something if
+    // each statement's wire result is the same result an independent
+    // engine computes from the same fixture bytes.
+    let mut per_statement: Vec<serde_json::Value> = Vec::new();
+    let mut confirmed = 0usize;
+    let mut unresolved: Vec<&'static str> = Vec::new();
+    for (qid, sql) in &queries {
+        let outcome = run_query_timed(&mut client, qid, sql, 300);
+        let wire_rows: Vec<Vec<String>> = match outcome {
+            WireOutcome::Ran(Ok(rows), _) => rows,
+            WireOutcome::Ran(Err(e), _) => {
+                panic!("{qid}: in scope but failed during the dump: {e}")
+            }
+            WireOutcome::Skipped(skip) => {
+                panic!(
+                    "{qid}: registered in wire scope but skipped: {}",
+                    skip.detail
+                )
+            }
+        };
+        let adapted = sqlite_oracle::adapt_sql(sql);
+        assert!(
+            adapted.unsupported.is_empty(),
+            "{qid}: constructs the SQLite oracle cannot run: {:?}",
+            adapted.unsupported
+        );
+        let oracle_rows = oracle
+            .query(&adapted.sql)
+            .unwrap_or_else(|e| panic!("{qid}: SQLite oracle failed: {e}"));
+        let null_cells = oracle_rows
+            .iter()
+            .flatten()
+            .filter(|c| c.as_str() == sqlite_oracle::NULL_CELL)
+            .count();
+        let mut w = wire_rows.clone();
+        let mut o = oracle_rows;
+        w.sort();
+        o.sort();
+        let diff = sqlite_oracle::diff_rows(&w, &o);
+        let set_equal = diff.is_none();
+        // The wire protocol renders a SQL NULL as the empty string, so an
+        // engine `""` against an oracle NULL cell is a representation
+        // artifact, not a disagreement — but only if that is the *only*
+        // difference. Recorded as a separate verdict, never folded into
+        // `set_equal`.
+        let null_repr_equal = if set_equal {
+            true
+        } else {
+            let mut o2: Vec<Vec<String>> = o
+                .iter()
+                .map(|r| {
+                    r.iter()
+                        .map(|c| {
+                            if c.as_str() == sqlite_oracle::NULL_CELL {
+                                String::new()
+                            } else {
+                                c.clone()
+                            }
+                        })
+                        .collect()
+                })
+                .collect();
+            o2.sort();
+            sqlite_oracle::diff_rows(&w, &o2).is_none()
+        };
+        if set_equal {
+            confirmed += 1;
+        }
+        if !null_repr_equal {
+            unresolved.push(*qid);
+        }
+        per_statement.push(serde_json::json!({
+            "query_id": qid,
+            "row_count": wire_rows.len(),
+            "oracle_row_count": o.len(),
+            "oracle_set_equal": set_equal,
+            "null_representation_only": null_repr_equal && !set_equal,
+            "oracle_null_cells": null_cells,
+            "diff": diff.unwrap_or_default(),
+        }));
+    }
+
+    let doc = serde_json::json!({
+        "schema": "v380-aggregate-candidate/v1",
+        "issue": "#5688",
+        "scale_factor": fixture_scale_factor()
+            .map(|sf| sf.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        "aggregate_sha256": run.hash,
+        "stored_sha256": expected_hash(),
+        "stored_captured_from": "545814c3d1 (develop/v3.9.0, 2026-06-28)",
+        "executed": run.executed,
+        "oracle_confirmed": confirmed,
+        "unresolved": unresolved.clone(),
+        "note": "aggregate recomputed over all 22 statements of THIS test on the current \
+                 tree; adoptable only where oracle_set_equal=true per statement. The stored \
+                 file was not modified (#5688 owns the dataset decision).",
+        "statements": per_statement,
+    });
+    let text = serde_json::to_string_pretty(&doc).expect("serialize v380 candidate");
+    std::fs::write(&out_path, &text).unwrap_or_else(|e| panic!("write {out_path}: {e}"));
+    eprintln!("{text}");
+    eprintln!(
+        "[OK] v380 candidate written to {out_path} (aggregate {})",
+        run.hash
+    );
+
+    assert!(
+        unresolved.is_empty(),
+        "{TARGET}: statements {unresolved:?} disagree with the independent oracle beyond the \
+         wire's NULL-as-empty rendering — the aggregate candidate cannot be offered"
+    );
 }

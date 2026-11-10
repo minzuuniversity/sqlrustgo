@@ -36,6 +36,14 @@ use common::tpch_wire_scope;
 use common::MySqlTestClient;
 use std::time::Instant;
 
+// #5688: the rebuild-candidate dump compares the wire results against the
+// independent in-process SQLite oracle (`tests/common/sqlite_oracle.rs`).
+// The module expects `crate::tpch_fixture` at the test-crate root (as
+// `oracle_g15_tpch_sf01` already binds it), so both bindings live here.
+#[path = "../../common/sqlite_oracle.rs"]
+mod sqlite_oracle;
+use common::tpch_cli_harness::tpch_fixture;
+
 const TPC_H_QUERIES: &[(&str, &str)] = &[
     ("Q1", "SELECT l_returnflag, l_linestatus, COUNT(*) FROM lineitem WHERE l_shipdate <= '1998-09-02' GROUP BY l_returnflag, l_linestatus ORDER BY l_returnflag, l_linestatus"),
     ("Q2", "SELECT s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment FROM supplier, nation, region, part, partsupp WHERE p_partkey = ps_partkey AND s_suppkey = ps_suppkey AND p_size = 15 AND p_type LIKE '%BRASS' AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = 'EUROPE' AND ps_supplycost = (SELECT MIN(ps_supplycost) FROM partsupp, supplier, nation, region WHERE p_partkey = ps_partkey AND s_suppkey = ps_suppkey AND s_nationkey = n_nationkey AND n_regionkey = r_regionkey AND r_name = 'EUROPE') ORDER BY s_acctbal DESC, n_name, s_name, p_partkey LIMIT 100"),
@@ -384,4 +392,165 @@ fn generate_baseline() {
     // Disclose the statements this function did not execute. One marker
     // per test function keeps the CI arithmetic exact.
     tpch_wire_scope::report_wire_exclusions(TARGET, &skipped_scope);
+}
+
+/// #5688 decision material: per-query **candidate** values for rebuilding
+/// `tests/oracle/baselines/tpch_sha256.json`, measured live and confirmed
+/// statement-by-statement by the independent SQLite oracle.
+///
+/// The stored entries are fakes (#5688: empty-result / NULL-cell captures
+/// from the 2026-06 load-failure era), so a rebuild can only come from a
+/// real measurement — but a pure `--generate-baseline` capture would be
+/// engine self-attestation, the exact shape #5688 exists to eliminate.
+/// Per query this dump therefore records:
+///
+/// * the engine's own capture hash (the only value the gate can consume —
+///   it hashes wire output), computed **twice** to prove capture stability,
+/// * the SQLite oracle's row set from the same `.tbl` fixture, with a
+///   numeric-aware set-equality verdict,
+/// * the stored (fake) entry, for side-by-side inspection.
+///
+/// Nothing here writes `tests/oracle/baselines/`: adopting candidates is
+/// the Owner's rebuild decision (FAKEBASE-1). The test only asserts that
+/// the dump completed and round-trips for every in-scope statement.
+///
+/// Run:
+/// ```text
+/// TPCH_DATA_DIR=/tmp/tpch-sf001 G1_REBUILD_CANDIDATES_OUT=/tmp/g1-candidates.json \
+///   cargo test --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture
+/// ```
+#[test]
+fn rebuild_candidates_dump() {
+    let Some(out_path) = std::env::var("G1_REBUILD_CANDIDATES_OUT").ok() else {
+        // Normal suite: no rebuild requested, nothing to do.
+        return;
+    };
+
+    let state = tpch_fixture::FixtureState::resolve();
+    let Some(fixture) = state.require(TARGET) else {
+        return;
+    };
+    let oracle = sqlite_oracle::SqliteOracle::open(fixture, &sqlite_oracle::TPC_H_ALL_TABLES)
+        .expect("the independent SQLite oracle must build from the same fixture");
+
+    let Some(mut client) = start_sf001_named(TARGET) else {
+        return;
+    };
+
+    let stored =
+        Sha256Baseline::load_or_warn(std::path::Path::new(TPC_H_SHA256_BASELINE_FILE)).ok();
+
+    let mut entries: Vec<serde_json::Value> = Vec::new();
+    let mut executed = 0usize;
+    let mut oracle_confirmed = 0usize;
+
+    for (qid, sql) in TPC_H_QUERIES {
+        if !tpch_wire_scope::in_wire_scope(qid) {
+            continue;
+        }
+        executed += 1;
+
+        // Engine side, twice: the baseline capture is row-order sensitive,
+        // so an unstable wire row order would make any rebuilt entry flaky —
+        // that must be disclosed, not buried.
+        let first = run_query_to_rowset(&mut client, qid, sql);
+        let second = run_query_to_rowset(&mut client, qid, sql);
+        let (StatementOutcome::Ran(rs), StatementOutcome::Ran(rs2)) = (first, second) else {
+            panic!("{qid}: registered in wire scope but the statement was not executed");
+        };
+        let engine_capture = sha256_capture(&rs);
+        let capture_stable = engine_capture == sha256_capture(&rs2);
+
+        // Independent side: same fixture bytes, different engine.
+        let adapted = sqlite_oracle::adapt_sql(sql);
+        assert!(
+            adapted.unsupported.is_empty(),
+            "{qid}: constructs the SQLite oracle cannot run: {:?}",
+            adapted.unsupported
+        );
+        let oracle_rows = oracle
+            .query(&adapted.sql)
+            .unwrap_or_else(|e| panic!("{qid}: SQLite oracle failed: {e}"));
+        let null_cells = oracle_rows
+            .iter()
+            .flatten()
+            .filter(|c| c.as_str() == sqlite_oracle::NULL_CELL)
+            .count();
+
+        let oracle_capture = sha256_capture(&RowSet {
+            query: qid.to_string(),
+            row_count: oracle_rows.len(),
+            rows: oracle_rows
+                .iter()
+                .map(|r| Row(r.iter().map(|c| Value(c.clone())).collect()))
+                .collect(),
+            wall_time_ms: 0,
+        });
+
+        let mut engine_str: Vec<Vec<String>> = rs
+            .rows
+            .iter()
+            .map(|r| r.0.iter().map(|v| v.0.clone()).collect())
+            .collect();
+        let mut oracle_str = oracle_rows.clone();
+        engine_str.sort();
+        oracle_str.sort();
+        let set_equal = sqlite_oracle::diff_rows(&engine_str, &oracle_str).is_none();
+        if set_equal {
+            oracle_confirmed += 1;
+        }
+
+        let stored_entry = stored
+            .as_ref()
+            .and_then(|b| b.queries.iter().find(|e| e.query_id == *qid));
+        entries.push(serde_json::json!({
+            "query_id": qid,
+            "row_count": rs.row_count,
+            "engine_capture_sha256": engine_capture,
+            "capture_stable": capture_stable,
+            "oracle_row_count": oracle_rows.len(),
+            "oracle_capture_sha256": oracle_capture,
+            "oracle_set_equal": set_equal,
+            "oracle_null_cells": null_cells,
+            "stored_sha256": stored_entry.map(|e| e.sha256.clone()).unwrap_or_default(),
+            "stored_row_count": stored_entry
+                .map(|e| e.row_count)
+                .unwrap_or(usize::MAX),
+        }));
+    }
+
+    let doc = serde_json::json!({
+        "schema": "g1-rebuild-candidates/v1",
+        "issue": "#5688",
+        "scale_factor": fixture_scale_factor()
+            .map(|sf| sf.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        "executed": executed,
+        "oracle_confirmed": oracle_confirmed,
+        "note": "engine_capture_sha256 is the gate-consumable candidate; it is only \
+                 adoptable where oracle_set_equal=true (independent recomputation over the \
+                 same .tbl fixture). Nothing in this document has been written into \
+                 tests/oracle/baselines/.",
+        "queries": entries,
+    });
+    let text = serde_json::to_string_pretty(&doc).expect("serialize candidates");
+    std::fs::write(&out_path, &text).unwrap_or_else(|e| panic!("write {out_path}: {e}"));
+    eprintln!("{text}");
+    eprintln!(
+        "[OK] rebuild candidates written to {out_path} ({executed} statements, {oracle_confirmed} oracle-confirmed)"
+    );
+
+    assert_eq!(
+        executed,
+        TPC_H_QUERIES.len(),
+        "{TARGET}: every standard statement is in wire scope as of #5393"
+    );
+    let roundtrip: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&out_path).expect("read back candidates"))
+            .expect("candidates JSON must round-trip");
+    assert_eq!(
+        roundtrip["queries"].as_array().map(Vec::len),
+        Some(executed),
+        "{TARGET}: one candidate per executed statement"
+    );
 }
