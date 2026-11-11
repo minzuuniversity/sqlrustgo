@@ -1,0 +1,131 @@
+schema_version: 1
+run_id: 20261111-seed42-gendump-parity-001
+source_agent: omp (macmini)
+frozen_commit: 8535e7991238b8bbffc79c64a299fdcdc6778801
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- cmd: "bash -c 'set -euo pipefail\nREPO=/Volumes/workspace/dev/sqlrustgo\nrm -rf /tmp/srg-par\nmkdir\
+    \ -p /tmp/srg-par\ngit archive HEAD | tar -x -C /tmp/srg-par\ncd /tmp/srg-par\nTPCH_DATA_DIR=/tmp/tpch-sf001\
+    \ CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test -q --test oracle_g1_tpch_sha256\
+    \ -- --ignored --exact generate_baseline --nocapture 2>&1 | tail -2\ncp tests/oracle/baselines/tpch_sha256.json\
+    \ \"$REPO/audit/v4.1.0/runs/20261111-seed42-gendump-parity-001/gen-runA.json\"\necho \"GEN_A written\"\
+    '\n"
+  cwd: .
+  id: parity-gen-runA
+  name: 生成器第 1 进程（seed-42 夹具，scratch 副本）
+  timeout_sec: 1800
+- cmd: "bash -c 'set -euo pipefail\nREPO=/Volumes/workspace/dev/sqlrustgo\ncd /tmp/srg-par\nTPCH_DATA_DIR=/tmp/tpch-sf001\
+    \ CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test -q --test oracle_g1_tpch_sha256\
+    \ -- --ignored --exact generate_baseline --nocapture 2>&1 | tail -2\ncp tests/oracle/baselines/tpch_sha256.json\
+    \ \"$REPO/audit/v4.1.0/runs/20261111-seed42-gendump-parity-001/gen-runB.json\"\necho \"GEN_B written\"\
+    '\n"
+  cwd: .
+  id: parity-gen-runB
+  name: 生成器第 2 进程（同夹具新进程）
+  timeout_sec: 1800
+- cmd: "bash -c 'set -euo pipefail\nREPO=/Volumes/workspace/dev/sqlrustgo\ncd /tmp/srg-par\nTPCH_DATA_DIR=/tmp/tpch-sf001\
+    \ CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target G1_REBUILD_CANDIDATES_OUT=\"$REPO/audit/v4.1.0/runs/20261111-seed42-gendump-parity-001/dump-runA.json\"\
+    \ \\\n  cargo test -q --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture\
+    \ 2>&1 | tail -2\necho \"DUMP_A written\"'\n"
+  cwd: .
+  id: parity-dump-runA
+  name: dump 第 1 进程（seed-42 夹具）
+  timeout_sec: 1800
+- cmd: "bash -c 'set -euo pipefail\nREPO=/Volumes/workspace/dev/sqlrustgo\ncd /tmp/srg-par\nTPCH_DATA_DIR=/tmp/tpch-sf001\
+    \ CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target G1_REBUILD_CANDIDATES_OUT=\"$REPO/audit/v4.1.0/runs/20261111-seed42-gendump-parity-001/dump-runB.json\"\
+    \ \\\n  cargo test -q --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture\
+    \ 2>&1 | tail -2\necho \"DUMP_B written\"'\n"
+  cwd: .
+  id: parity-dump-runB
+  name: dump 第 2 进程（同夹具新进程）
+  timeout_sec: 1800
+- cmd: 'bash -c ''set -euo pipefail
+
+    cd /Volumes/workspace/dev/sqlrustgo
+
+    python3 - <<"PY"
+
+    import json
+
+    R="audit/v4.1.0/runs/"
+
+    genA={x["query_id"]:x["sha256"] for x in json.load(open(R+"20261111-seed42-gendump-parity-001/gen-runA.json"))["queries"]}
+
+    genB={x["query_id"]:x["sha256"] for x in json.load(open(R+"20261111-seed42-gendump-parity-001/gen-runB.json"))["queries"]}
+
+    dA={x["query_id"]:x["engine_capture_sha256"] for x in json.load(open(R+"20261111-seed42-gendump-parity-001/dump-runA.json"))["queries"]}
+
+    dB={x["query_id"]:x["engine_capture_sha256"] for x in json.load(open(R+"20261111-seed42-gendump-parity-001/dump-runB.json"))["queries"]}
+
+    prev={x["query_id"]:x["engine_capture_sha256"] for x in json.load(open(R+"20261111-seed42-fixture-001/dump-run1.json"))["queries"]}
+
+    q=sorted(genA,key=lambda s:int(s[1:]))
+
+    bad=[k for k in q if not (genA[k]==genB[k]==dA[k]==dB[k]==prev[k])]
+
+    print("PARITY entries=%d five-way-equal=%d violators=%s" % (len(q), len(q)-len(bad), bad or "NONE"))
+
+    print("Q9 full = %s" % genA["Q9"])
+
+    PY
+
+    echo "PARITY compared"''
+
+    '
+  cwd: .
+  id: parity-five-way-compare
+  name: 五路对读（gen×2 / dump×2 / 昨日归档 dump-run1）逐 query 相等性
+  timeout_sec: 300
+results:
+- id: parity-gen-runA
+  started_at: '2026-11-11T10:12:15Z'
+  finished_at: '2026-11-11T10:13:36Z'
+  exit_code: 0
+  stdout_sha256: 4d80a290ed89760ecf2004fccd9ffd2cb9e212659d02fadf07cca594fa913366
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-parity-gen-runA.stdout
+  stderr_path: logs/001-parity-gen-runA.stderr
+- id: parity-gen-runB
+  started_at: '2026-11-11T10:13:36Z'
+  finished_at: '2026-11-11T10:14:56Z'
+  exit_code: 0
+  stdout_sha256: 834da53b41beacff6b8d6e1114de3b94e9c453a7bc0e710c2a0cd1cf010ce684
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-parity-gen-runB.stdout
+  stderr_path: logs/002-parity-gen-runB.stderr
+- id: parity-dump-runA
+  started_at: '2026-11-11T10:14:56Z'
+  finished_at: '2026-11-11T10:16:55Z'
+  exit_code: 0
+  stdout_sha256: 1580528bbc6325f5187ac0982271ccb665e0b64e5d1a1dde97c9cd2c9d5d9fe0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-parity-dump-runA.stdout
+  stderr_path: logs/003-parity-dump-runA.stderr
+- id: parity-dump-runB
+  started_at: '2026-11-11T10:16:55Z'
+  finished_at: '2026-11-11T10:18:53Z'
+  exit_code: 0
+  stdout_sha256: e7b0c41b780d7f436f623842b7f77faa43ad9c1d7b452f8a1929c90e076ba9cb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-parity-dump-runB.stdout
+  stderr_path: logs/004-parity-dump-runB.stderr
+- id: parity-five-way-compare
+  started_at: '2026-11-11T10:18:53Z'
+  finished_at: '2026-11-11T10:18:53Z'
+  exit_code: 0
+  stdout_sha256: dbdba87792b355053f891745339ff368f8d9ef3894b98b6dd5f5b18ba443b6da
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-parity-five-way-compare.stdout
+  stderr_path: logs/005-parity-five-way-compare.stderr
+evidence_hash: sha256:ea762226213186b739a9bd9f7ae25729f61b03def394df0b38d14d83fcba40b9
+completed_at: '2026-11-11T10:18:53Z'

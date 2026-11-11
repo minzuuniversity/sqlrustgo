@@ -1,0 +1,70 @@
+- cmd: |
+    bash -c 'set -euo pipefail
+    REPO=/Volumes/workspace/dev/sqlrustgo
+    rm -rf /tmp/srg-par
+    mkdir -p /tmp/srg-par
+    git archive HEAD | tar -x -C /tmp/srg-par
+    cd /tmp/srg-par
+    TPCH_DATA_DIR=/tmp/tpch-sf001 CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \
+      cargo test -q --test oracle_g1_tpch_sha256 -- --ignored --exact generate_baseline --nocapture 2>&1 | tail -2
+    cp tests/oracle/baselines/tpch_sha256.json "$REPO/audit/v4.1.0/runs/20261111-seed42-gendump-parity-001/gen-runA.json"
+    echo "GEN_A written"'
+  cwd: .
+  id: parity-gen-runA
+  name: 生成器第 1 进程（seed-42 夹具，scratch 副本）
+  timeout_sec: 1800
+- cmd: |
+    bash -c 'set -euo pipefail
+    REPO=/Volumes/workspace/dev/sqlrustgo
+    cd /tmp/srg-par
+    TPCH_DATA_DIR=/tmp/tpch-sf001 CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \
+      cargo test -q --test oracle_g1_tpch_sha256 -- --ignored --exact generate_baseline --nocapture 2>&1 | tail -2
+    cp tests/oracle/baselines/tpch_sha256.json "$REPO/audit/v4.1.0/runs/20261111-seed42-gendump-parity-001/gen-runB.json"
+    echo "GEN_B written"'
+  cwd: .
+  id: parity-gen-runB
+  name: 生成器第 2 进程（同夹具新进程）
+  timeout_sec: 1800
+- cmd: |
+    bash -c 'set -euo pipefail
+    REPO=/Volumes/workspace/dev/sqlrustgo
+    cd /tmp/srg-par
+    TPCH_DATA_DIR=/tmp/tpch-sf001 CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target G1_REBUILD_CANDIDATES_OUT="$REPO/audit/v4.1.0/runs/20261111-seed42-gendump-parity-001/dump-runA.json" \
+      cargo test -q --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture 2>&1 | tail -2
+    echo "DUMP_A written"'
+  cwd: .
+  id: parity-dump-runA
+  name: dump 第 1 进程（seed-42 夹具）
+  timeout_sec: 1800
+- cmd: |
+    bash -c 'set -euo pipefail
+    REPO=/Volumes/workspace/dev/sqlrustgo
+    cd /tmp/srg-par
+    TPCH_DATA_DIR=/tmp/tpch-sf001 CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target G1_REBUILD_CANDIDATES_OUT="$REPO/audit/v4.1.0/runs/20261111-seed42-gendump-parity-001/dump-runB.json" \
+      cargo test -q --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture 2>&1 | tail -2
+    echo "DUMP_B written"'
+  cwd: .
+  id: parity-dump-runB
+  name: dump 第 2 进程（同夹具新进程）
+  timeout_sec: 1800
+- cmd: |
+    bash -c 'set -euo pipefail
+    cd /Volumes/workspace/dev/sqlrustgo
+    python3 - <<"PY"
+    import json
+    R="audit/v4.1.0/runs/"
+    genA={x["query_id"]:x["sha256"] for x in json.load(open(R+"20261111-seed42-gendump-parity-001/gen-runA.json"))["queries"]}
+    genB={x["query_id"]:x["sha256"] for x in json.load(open(R+"20261111-seed42-gendump-parity-001/gen-runB.json"))["queries"]}
+    dA={x["query_id"]:x["engine_capture_sha256"] for x in json.load(open(R+"20261111-seed42-gendump-parity-001/dump-runA.json"))["queries"]}
+    dB={x["query_id"]:x["engine_capture_sha256"] for x in json.load(open(R+"20261111-seed42-gendump-parity-001/dump-runB.json"))["queries"]}
+    prev={x["query_id"]:x["engine_capture_sha256"] for x in json.load(open(R+"20261111-seed42-fixture-001/dump-run1.json"))["queries"]}
+    q=sorted(genA,key=lambda s:int(s[1:]))
+    bad=[k for k in q if not (genA[k]==genB[k]==dA[k]==dB[k]==prev[k])]
+    print("PARITY entries=%d five-way-equal=%d violators=%s" % (len(q), len(q)-len(bad), bad or "NONE"))
+    print("Q9 full = %s" % genA["Q9"])
+    PY
+    echo "PARITY compared"'
+  cwd: .
+  id: parity-five-way-compare
+  name: 五路对读（gen×2 / dump×2 / 昨日归档 dump-run1）逐 query 相等性
+  timeout_sec: 300
