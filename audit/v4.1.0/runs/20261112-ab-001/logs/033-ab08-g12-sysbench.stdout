@@ -1,0 +1,11 @@
+=== G12 Gate: Sysbench OLTP ===
+  [1/7] ✅ PASS: 5 sysbench scripts present
+  [2/7] ✅ PASS: oltp_test has 30 tests (≥30)
+  [3/7] ✅ PASS: oltp_test 30 tests pass
+  [4/7] ✅ PASS: sysbench installed (sysbench 1.0.20)
+  [5/7] ✅ PASS: sysbench scripts executable
+  [6/7] ✅ PASS: TPC-H gate (22/22) maintained
+  [7/7] ✅ PASS: SYSBENCH_REPORT.md present
+
+=== G12 Gate: PASS ===
+Sysbench OLTP: 5 scripts + 30+ unit tests verified

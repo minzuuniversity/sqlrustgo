@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.18s
+     Running tests/integration/transaction/savepoint_test.rs (/Volumes/workspace/dev/walgc2-target/debug/deps/integration_savepoint_test-1ca0ed039a00790a)

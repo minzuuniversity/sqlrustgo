@@ -1,0 +1,21 @@
+=== G7 Gate: P1-3 (#3175) Soak Test ===
+  [1/9] ✅ PASS: tests/integration/stress/soak_test_harness.rs present
+  [2/9] ✅ PASS: tests/integration/stress/soak_test.rs present + registered
+  [3/9] ✅ PASS: 3-level smoke equivalence (24h→60s, 72h→180s, 168h→420s)
+  [4/9] ✅ PASS: soak_test compiles
+  [5/9] ✅ PASS: soak_test 10 passed (≥10)
+  [6/9] ✅ PASS: alert-threshold mechanism verified
+  [7/9] ✅ PASS: memory baseline invariant (no-query == baseline)
+  [8/9] ✅ PASS: scripts/soak/tpch_soak_driver.py valid Python
+  [9/9] ✅ PASS: scripts/soak/extract_soak_report.py valid Python
+  [10/11] ✅ PASS: scripts/soak/tpch_mixed_soak_driver.py valid Python
+  [11/11] ✅ PASS: scripts/soak/crud_templates.py importable
+
+=== G7 Gate: PASS ===
+P1-3 (#3175) Soak Test: Layer 1 (harness) + Layer 2/3 (mysqlslap scripts) verified
+
+Next steps for full soak:
+  1. bash scripts/soak/prepare_sf01_data.sh       # Generate SF=0.1 fixture
+  2. mysql ... < scripts/soak/tpch_schema.sql     # Create tables
+  3. python3 scripts/soak/tpch_soak_driver.py --level=30m  # Run Layer 2 soak
+  4. python3 scripts/soak/tpch_soak_driver.py --level=30m --auto-generate  # Layer 3

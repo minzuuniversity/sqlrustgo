@@ -1,0 +1,17 @@
+=== Documentation Pointer-Path Gate ===
+  scope:    docs/releases/v4.1.0
+  baseline: tests/baseline/doc_pointer_paths_releases_v4.1.0.json
+  pointers in scope: 26 broken, 35 registered as known debt
+  [NOTE] 9 baseline entr(y/ies) are now resolved — re-run with --update
+         evidence/TEST_SELF_CONTAINMENT_5467_5469_2026-10-21.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         PERFORMANCE_TARGETS.md -> tests/soak_test_harness.rs
+         evidence/TPCH_FIXTURE_5379_2026-10-20.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         A04_MYSQL_DIFF_MATRIX_REPORT.md -> docs/releases/v4.1.0/evidence/a04-5226/matrix.json
+         PR-5379_ACCEPTANCE.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         evidence/ENGINE_SEMANTICS_5431_5433_2026-10-21.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         evidence/GATE_HONESTY_5417_5419_2026-10-21.md -> docs/governance/AGENT_PROMPT_TEMPLATE.md
+         evidence/TEST_DISCRIMINATING_POWER_BATCH8_2026-10-21.md -> docs/audit/status/2026-06-07-tpch-cell-diff-v390.json
+         evidence/STAGE_SSOT_AND_ARTIFACT_GATES_BATCH10_2026-10-21.md -> scripts/gate/check_g_all.sh
+  [OK] no broken pointer outside the recorded debt
+  [PASS] Documentation Pointer-Path Gate
+  [OK] the baseline was not modified (compare mode)

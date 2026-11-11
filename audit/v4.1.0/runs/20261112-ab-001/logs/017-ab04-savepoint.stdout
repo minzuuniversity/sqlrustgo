@@ -1,0 +1,14 @@
+
+running 9 tests
+test test_new_manager_is_empty ... ok
+test test_duplicate_savepoint_updates_index ... ok
+test test_release_nonexistent_savepoint_is_noop ... ok
+test test_release_savepoint_removes_it ... ok
+test test_lifo_rollback ... ok
+test test_rollback_to_existing_savepoint_pops_undo ... ok
+test test_create_savepoint ... ok
+test test_rollback_to_nonexistent_savepoint_errors ... ok
+test test_rollback_truncates_savepoints_after_target ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,48 @@
+    Checking scopeguard v1.2.0
+    Checking tracing-core v0.1.36
+    Checking crc32fast v1.5.2
+    Checking regex-automata v0.4.18
+    Checking sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/types)
+    Checking anstream v1.0.0
+    Checking sqlrustgo-mysql-client v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/mysql-client)
+    Checking lock_api v0.4.14
+    Checking encoding_rs v0.8.41
+    Checking flate2 v1.1.10
+    Checking sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/gis)
+    Checking tracing v0.1.44
+    Checking regex v1.13.1
+    Checking parking_lot v0.12.5
+    Checking sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/common)
+    Checking env_filter v2.0.0
+    Checking actix-router v0.5.4
+    Checking tokio v1.53.1
+    Checking sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/spill)
+    Checking sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/parser)
+    Checking sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/catalog)
+    Checking env_logger v0.11.11
+    Checking information-schema v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/information-schema)
+    Checking sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/storage)
+    Checking sqlrustgo-cache v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/cache)
+    Checking tokio-util v0.7.19
+    Checking tower v0.5.3
+    Checking tokio-native-tls v0.3.1
+    Checking actix-rt v2.15.0
+    Checking actix-server v2.9.5
+    Checking tower-http v0.6.11
+    Checking h2 v0.4.19
+    Checking actix-codec v0.5.4
+    Checking h2 v0.3.27
+    Checking sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/optimizer)
+    Checking sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/security)
+    Checking sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/transaction)
+    Checking actix-http v3.13.6
+    Checking hyper v1.11.1
+    Checking sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/planner)
+    Checking hyper-util v0.1.20
+    Checking actix-web v4.15.0
+    Checking hyper-tls v0.6.0
+    Checking reqwest v0.12.28
+    Checking sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/executor)
+    Checking sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/sqlrustgo/crates/server)
+    Checking sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 31.86s

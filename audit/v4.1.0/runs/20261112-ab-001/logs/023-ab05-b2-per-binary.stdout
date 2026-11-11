@@ -1,0 +1,926 @@
+=== v3.12.0 B2 per-binary runner ===
+binaries discovered : 529
+fast timeout (s)    : 180
+slow timeout (s)    : 600
+slow threshold (s)  : 30
+disabled registry   : 77
+perf-only registry  : 3
+
+  → running verify_4692_4671
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running verify_4704
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running buffer_pool_benchmark_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running binary_format_test
+    [✓] PASS          elapsed=   0.0s passed= 11 failed= 0 ignored=  0 group=fast
+  → running wal_integration_test
+    [✓] PASS          elapsed=   0.0s passed= 16 failed= 0 ignored=  0 group=fast
+  → running unit_parser_token_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running parser_e2e_test
+    [✓] PASS          elapsed=   0.0s passed=249 failed= 0 ignored=  0 group=fast
+  → running v312_62_issue_batch_test
+    [✓] PASS          elapsed=   0.0s passed= 32 failed= 0 ignored=  3 group=fast
+  → running v312_63_parser_issues_test
+    [✓] PASS          elapsed=   0.0s passed= 12 failed= 0 ignored=  0 group=fast
+  → running v312_64_fulltext_index_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running v312_65_insert_default_values_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running v312_66_quantified_any_all_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running v312_67_scalar_subquery_in_select_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running v312_68_substring_zero_test
+    [✓] PASS          elapsed=   0.0s passed= 11 failed= 0 ignored=  0 group=fast
+  → running v312_69_insert_returning_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running v312_72_alter_table_add_column_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running v312_75_mixed_fixes_test
+    [✓] PASS          elapsed=   0.0s passed= 12 failed= 0 ignored=  0 group=fast
+  → running v312_73_join_using_clause_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running left_join_on_filter_5394
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running join_expression_on_5361
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running v312_74_on_conflict_on_constraint_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running v312_90_where_regexp_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running v312_95_non_equi_join_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running v312_75_update_of_trigger_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running repro_v312_63
+    [✓] PASS          elapsed=   0.0s passed= 14 failed= 0 ignored=  0 group=fast
+  → running repro_v312_64a
+    [✓] PASS          elapsed=   0.0s passed= 22 failed= 0 ignored=  0 group=fast
+  → running repro_v312_64b
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running group_by_projection_width_5432
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running repro_v312_64c
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running repro_v312_64f
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running repro_v312_89_4759
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running repro_v312_91_4669
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running repro_v312_95_4695
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running cte_materialization_test
+    [✓] PASS          elapsed=   0.0s passed=  9 failed= 0 ignored=  0 group=fast
+  → running repro_v312_64d
+    [✓] PASS          elapsed=   0.0s passed= 14 failed= 0 ignored=  0 group=fast
+  → running repro_v312_85
+    [✓] PASS          elapsed=   0.0s passed= 11 failed= 0 ignored=  0 group=fast
+  → running repro_v312_85_check
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running repro_v312_85_lead
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running repro_v312_85_regexp
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running repro_v312_93_cte_values_anchor
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running repro_v313_96_4717_insert_cte_subquery
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running repro_v312_4717_v2
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running repro_v312_95_4809
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running repro_v313_97_4679_grouping_sets
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running repro_v313_98_4701_multi_select
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running repro_v313_99_4692_writable_cte
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running repro_v313_100_4701_expression_index
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running repro_v313_101_4671_create_function
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running p3_view_4814_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running repro_v312_4816_ntile
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running json_tvf_test
+    [✓] PASS          elapsed=   0.0s passed= 14 failed= 0 ignored=  0 group=fast
+  → running repro_window_frame
+    [✓] PASS          elapsed=   0.0s passed= 15 failed= 0 ignored=  0 group=fast
+  → running cbo_integration_test
+    [✓] PASS          elapsed=   9.2s passed= 12 failed= 0 ignored=  0 group=fast
+  → running executor_optimizer_e2e
+    [✓] PASS          elapsed=   0.1s passed=  9 failed= 0 ignored=  0 group=fast
+  → running page_io_benchmark_test
+    [✓] PASS          elapsed=   9.1s passed=  8 failed= 0 ignored=  0 group=fast
+  → running data_loader
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running e2e_query_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running e2e_monitoring_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running stored_procedure_parser_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running scheduler_integration_test
+    [✓] PASS          elapsed=   0.0s passed= 22 failed= 0 ignored=  0 group=fast
+  → running adaptive_hash_index_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running ahi_explain_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running aggregate_functions_test
+    [✓] PASS          elapsed=   0.0s passed=  9 failed= 0 ignored=  0 group=fast
+  → running having_filter_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running anomaly_boundary_test
+    [✓] PASS          elapsed=   0.0s passed= 29 failed= 0 ignored=  0 group=fast
+  → running change_buffer_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running clustered_index_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running stress_concurrency_stress_test
+    [✓] PASS          elapsed=   0.0s passed=  9 failed= 0 ignored=  0 group=fast
+  → running distinct_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running double_write_buffer_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running e2e_trigger_wal_recovery
+    [✓] PASS          elapsed=   0.4s passed= 43 failed= 0 ignored=  0 group=fast
+  → running ee_module_boundary_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running embedded_harness_isolation
+    [✓] PASS          elapsed=   0.3s passed=  1 failed= 0 ignored=  0 group=fast
+  → running embedded_harness_smoke
+    [✓] PASS          elapsed=   0.2s passed=  1 failed= 0 ignored=  0 group=fast
+  → running exp_g_wal_contracts_verified
+    [✓] PASS          elapsed=   0.1s passed=  5 failed= 0 ignored=  0 group=fast
+  → running explain_ahi_promoted_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running bufferpool_pages_visited_test
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running bufferpool_pages_visited_memory_test
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running expression_operators_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running gap_locking_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running in_value_list_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running limit_clause_test
+    [✓] PASS          elapsed=   0.4s passed= 42 failed= 0 ignored=  0 group=fast
+  → running long_run_stability_72h_test
+    [✓] PASS          elapsed=   0.1s passed= 39 failed= 0 ignored=  0 group=fast
+  → running anomaly_long_run_stability_test
+    [✓] PASS          elapsed=   0.2s passed= 10 failed= 0 ignored=  0 group=fast
+  → running memory_fault_injection_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running mvcc_transaction_test
+    [✓] PASS          elapsed=   0.3s passed= 50 failed= 0 ignored=  0 group=fast
+  → running mysqladmin_test
+    [✓] PASS          elapsed=   0.0s passed= 11 failed= 0 ignored=  0 group=fast
+  → running network_fault_injection_test
+    [✓] PASS          elapsed=   0.1s passed=  7 failed= 0 ignored=  0 group=fast
+  → running parallel_executor_test
+    [✓] PASS          elapsed=   0.0s passed= 20 failed= 0 ignored=  0 group=fast
+  → running password_rotation_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running password_rotation_integration_test
+    [✓] PASS          elapsed=   0.0s passed= 17 failed= 0 ignored=  0 group=fast
+  → running performance_schema_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running anomaly_qps_benchmark_test
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored= 10 group=fast
+  → running r_gate_yaml_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running row_level_security_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running integration_savepoint_test
+    [✓] PASS          elapsed=   0.0s passed=  9 failed= 0 ignored=  0 group=fast
+  → running server_thread_model_guard_test
+    [✓] PASS          elapsed=   0.9s passed=  4 failed= 0 ignored=  0 group=fast
+  → running concurrent_rollback_isolation_test
+    [✓] PASS          elapsed=   1.2s passed=  3 failed= 0 ignored=  0 group=fast
+  → running wire_interleaved_tx_test
+    [✓] PASS          elapsed=   4.2s passed= 43 failed= 0 ignored=  0 group=fast
+  → running ab04_8thread_1000tx_reconcile_test
+    [✓] PASS          elapsed=   2.9s passed=  1 failed= 0 ignored=  0 group=fast
+  → running show_table_status_test
+    [✓] PASS          elapsed=   0.1s passed= 46 failed= 0 ignored=  0 group=fast
+  → running table_compression_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running test_inventory_gate_test
+    [✓] PASS          elapsed=   0.0s passed=  9 failed= 0 ignored=  0 group=fast
+  → running cargo_toml_test_paths_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running int_debt_gate_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running arch_sem_debt_gate_test
+    [✓] PASS          elapsed=   0.1s passed=  8 failed= 0 ignored=  0 group=fast
+  → running planner_multi_way_join_test
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running test_plan_integrated_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running wire_protocol_smoke
+    [✓] PASS          elapsed=   0.3s passed= 40 failed= 0 ignored=  0 group=fast
+  → running cross_path_consistency_test
+    [✓] PASS          elapsed=   0.2s passed= 44 failed= 0 ignored=  0 group=fast
+  → running pr_template_and_full_gate_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running gate_honesty_test
+    [✓] PASS          elapsed=   2.0s passed= 23 failed= 0 ignored=  0 group=fast
+  → running ci_wiring_honesty_test
+    [✓] PASS          elapsed=   1.4s passed= 34 failed= 0 ignored=  0 group=fast
+  → running coverage_notrun_honesty_test
+    [✓] PASS          elapsed=   9.6s passed=  9 failed= 0 ignored=  0 group=fast
+  → running gate_dimension_honesty_test
+    [✓] PASS          elapsed=   1.2s passed=  8 failed= 0 ignored=  0 group=fast
+  → running alpha_gate_blocker_test
+    [✓] PASS          elapsed=   0.1s passed=  8 failed= 0 ignored=  0 group=fast
+  → running gate_criterion_existence_test
+    [✓] PASS          elapsed=   2.5s passed= 23 failed= 0 ignored=  0 group=fast
+  → running tpch_22_queries_syntax_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running harness_validation_test
+    [✓] PASS          elapsed=   4.8s passed= 11 failed= 0 ignored=  0 group=fast
+  → running ci_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running arch3_vtu_main_path_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running int3_single_expression_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running int3_mixed_scenario_test
+    [✓] PASS          elapsed=   3.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running int3_spec_complete_test
+    [✓] PASS          elapsed=   3.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running int2_mysql_server_persistence_test
+    [✓] PASS          elapsed=  11.8s passed= 44 failed= 0 ignored=  0 group=fast
+  → running mysql_server_e2e_test
+    [✓] PASS          elapsed=   0.8s passed= 90 failed= 0 ignored=  0 group=fast
+  → running int2_cross_version_upgrade_test
+    [✓] PASS          elapsed=   0.8s passed= 43 failed= 0 ignored=  0 group=fast
+  → running issue_3257_wal_fallback_test
+    [✓] PASS          elapsed=   2.7s passed= 42 failed= 0 ignored=  0 group=fast
+  → running idx1_session_db_index_test
+    [✓] PASS          elapsed=   0.1s passed=  4 failed= 0 ignored=  1 group=fast
+  → running crash_test_framework
+    [✓] PASS          elapsed=   0.0s passed= 16 failed= 0 ignored=  0 group=fast
+  → running process_kill_crash_test
+    [✓] PASS          elapsed=   0.1s passed=  8 failed= 0 ignored=  0 group=fast
+  → running crash_test_harness
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  0 group=fast
+  → running soak_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running soak_test_harness
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running chaos_soak_test
+    [✓] PASS          elapsed=   0.1s passed=  4 failed= 0 ignored=  0 group=fast
+  → running upgrade_test
+    [✓] PASS          elapsed=   0.0s passed= 50 failed= 0 ignored=  0 group=fast
+  → running upgrade_v310_v311_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running upgrade_test_harness
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running audit_log_test
+    [✓] PASS          elapsed=   0.0s passed= 20 failed= 0 ignored=  0 group=fast
+  → running audit_log_harness
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running time_travel_test
+    [✓] PASS          elapsed=   0.0s passed= 20 failed= 0 ignored=  0 group=fast
+  → running time_travel_harness
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running hash_chain_test
+    [✓] PASS          elapsed=   0.0s passed= 20 failed= 0 ignored=  0 group=fast
+  → running hash_chain_harness
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running statistics_test
+    [✓] PASS          elapsed=   0.0s passed= 20 failed= 0 ignored=  0 group=fast
+  → running statistics_harness
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running cost_optimizer_test
+    [✓] PASS          elapsed=   0.0s passed= 20 failed= 0 ignored=  0 group=fast
+  → running cost_optimizer_harness
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running parallel_executor_harness
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running simd_test
+    [✓] PASS          elapsed=   0.0s passed= 23 failed= 0 ignored=  0 group=fast
+  → running simd_harness
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running v380_to_v390_full_upgrade_test
+    [✓] PASS          elapsed=   0.0s passed= 18 failed= 0 ignored=  0 group=fast
+  → running compatibility_harness
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running incremental_backup_datasource_4938
+    [✓] PASS          elapsed=   0.1s passed=  4 failed= 0 ignored=  0 group=fast
+  → running int4_explicit_tx_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running operators_aggregate
+    [✓] PASS          elapsed=   0.0s passed=  9 failed= 0 ignored=  0 group=fast
+  → running operators_join
+    [✓] PASS          elapsed=   0.0s passed= 21 failed= 0 ignored=  0 group=fast
+  → running operators_exists
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running operators_aggregate_sum_real
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running operators_multi_join_3_table
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running operators_aggregate_case_when
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running operators_aggregate_like_filter
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running operators_date_string_compare
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running operators_exists_correlated
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  2 group=fast
+  → running operators_order_by_desc
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running operators_char_padding
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running operators_in_subquery
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  2 group=fast
+  → running repro_3285_real_preservation
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running aggregate_type_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running datetime_type_test
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running error_handling_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running mvcc_concurrency_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running null_handling_test
+    [✓] PASS          elapsed=   0.0s passed= 53 failed= 0 ignored=  0 group=fast
+  → running query_cache_benchmark
+    [✓] PASS          elapsed=   0.1s passed=  5 failed= 0 ignored=  0 group=fast
+  → running set_operations_test
+    [✓] PASS          elapsed=   0.0s passed= 12 failed= 0 ignored=  0 group=fast
+  → running transaction_isolation_test
+    [✓] PASS          elapsed=   0.0s passed= 22 failed= 0 ignored=  0 group=fast
+  → running transaction_timeout_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running bench_v380_point_agg
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  6 group=fast
+  → running sprint8_hash_chain_bench
+    [✓] PASS          elapsed=   0.4s passed=  2 failed= 0 ignored=  0 group=fast
+  → running mod
+    [✓] PASS          elapsed=   0.1s passed= 39 failed= 0 ignored=  0 group=fast
+  → running oracle_framework
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running tpch_cli_harness
+    [✓] PASS          elapsed=   0.0s passed= 20 failed= 0 ignored=  0 group=fast
+  → running cte_e2e_test
+    [✓] PASS          elapsed=   0.0s passed= 11 failed= 0 ignored=  0 group=fast
+  → running gis_basic_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running ddl_e2e_test
+    [✓] PASS          elapsed=   0.0s passed= 26 failed= 0 ignored=  0 group=fast
+  → running e2e_beta_test
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  6 group=fast
+  → running merge_e2e_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running multi_db_e2e_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running multi_db_isolation_5025
+    [✓] PASS          elapsed=   0.8s passed= 23 failed= 0 ignored=  0 group=fast
+  → running partition_e2e_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running server_thread_pool_e2e_test
+    [✓] PASS          elapsed=   0.1s passed= 43 failed= 0 ignored=  0 group=fast
+  → running sqlrustgo_cli_soak_e2e_test
+    [✓] PASS          elapsed=   1.1s passed= 45 failed= 0 ignored=  2 group=fast
+  → running view_procedure_trigger_e2e_test
+    [✓] PASS          elapsed=   0.0s passed= 13 failed= 0 ignored=  0 group=fast
+  → running autoinc_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running batch_insert_test
+    [✓] PASS          elapsed=   0.0s passed=  9 failed= 0 ignored=  0 group=fast
+  → running arch2_dml_api_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running bench_bulk_insert_records
+    [✓] PASS          elapsed=  68.8s passed= 40 failed= 0 ignored=  0 group=slow
+  → running zzz_repro_bulk
+    [✓] PASS          elapsed=   0.1s passed= 41 failed= 0 ignored=  0 group=fast
+  → running diag_storage_insert_path
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running diag_storage_vs_sql_insert
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running dml_integration_test
+    [✓] PASS          elapsed=   0.0s passed= 24 failed= 0 ignored=  0 group=fast
+  → running dml_pk_fast_path_5177
+    [✓] PASS          elapsed=  63.0s passed=  9 failed= 0 ignored=  0 group=slow
+  → running insert_column_validation_5409
+    [✓] PASS          elapsed=   0.1s passed=  9 failed= 0 ignored=  0 group=fast
+  → running equality_index_routing_5209
+    [✓] PASS          elapsed=   0.2s passed=  5 failed= 0 ignored=  0 group=fast
+  → running eq_index_routing_decision_5209
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running eq_index_acceptance_latency_5209
+    [✓] PASS          elapsed=  11.4s passed=  1 failed= 0 ignored=  0 group=fast
+  → running a05_secondary_index_stale
+    [✓] PASS          elapsed=   0.1s passed=  1 failed= 0 ignored=  0 group=fast
+  → running perf_eng_batched_insert_test
+    [✓] PASS          elapsed=   0.1s passed= 39 failed= 0 ignored=  2 group=fast
+  → running test_insert_replace
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running wired_insert_payload_regression_test
+    [✓] PASS          elapsed=  20.6s passed= 44 failed= 0 ignored=  0 group=fast
+  → running fk_actions_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running logging_test
+    [✓] PASS          elapsed=   0.1s passed=  5 failed= 0 ignored=  0 group=fast
+  → running oracle_g9_upgrade
+    [✓] PASS          elapsed=   0.1s passed= 42 failed= 0 ignored=  0 group=fast
+  → running upgrade_chain_v3_6_to_v3_9_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running mysql_tpch_test
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  4 group=fast
+  → running vtu_ir_modules_test
+    [✓] PASS          elapsed=   0.0s passed= 19 failed= 0 ignored=  0 group=fast
+  → running optimizer_stats_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running diag_compare
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running bulk_insert_v2_routing
+    [✓] PASS          elapsed=   0.1s passed= 40 failed= 0 ignored=  0 group=fast
+  → running bin_storage_basic_io
+    [✓] PASS          elapsed=   0.4s passed=  1 failed= 0 ignored=  0 group=fast
+  → running bin_storage_concurrent_select
+    [✓] PASS          elapsed=   0.1s passed=  1 failed= 0 ignored=  0 group=fast
+  → running bin_storage_migration_atomic
+    [✓] PASS          elapsed=   0.1s passed=  1 failed= 0 ignored=  0 group=fast
+  → running bin_storage_compaction_roundtrip
+    [✓] PASS          elapsed=   0.4s passed=  1 failed= 0 ignored=  0 group=fast
+  → running q8_8way_date_range_regression
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  1 group=fast
+  → running q2_5way_comma_limit_regression
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  1 group=fast
+  → running q11_stock_filter_regression
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running q17_1m_rss_regression
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running issue_4374_regression
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running issue_4443_materialization_regression
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running issue_4444_nested_exists_regression
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running issue_4444_hash_semi_join_call_site
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running issue_4444_decorrelation_wiring
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running issue_4491_join_groupby_alias_col_and_scalar_subquery
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running q17_small_order_shortage_perf
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running q17_sf1_diag
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running q17_sf1_watchdog
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running sf1_bulk_load_bench
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running q20_potential_part_promotion_perf
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running q22_global_sales_opportunity_perf
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running lexer_asc_keyword_regression
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running diag_q22_minimal
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running diag_q22_steps
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running diag_q22_substr
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  0 group=fast
+  → running diag_q22_cell_level
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running diag_q22_sprint3_path
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  4 group=fast
+  → running diag_q7_extract
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  2 group=fast
+  → running diag_q7_mini
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running diag_q7_mini_columns
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running diag_q7_sf1_real_count
+    [✓] PASS          elapsed=   0.1s passed= 39 failed= 0 ignored=  1 group=fast
+  → running diag_q7_sf001_subset
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_q8_mini_subset
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_nation_alias
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running diag_q12_sf001_subset
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_q12_sf01_subset
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_q12_sf1_subset
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_q17_sf001_subset
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_q17_100k_subset
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_q17_1m_subset
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_q17_sprint3_path
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  2 group=fast
+  → running diag_q20_sprint3_path
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_q20_mini_bisect
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running diag_q20_sprint4_inline
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  3 group=fast
+  → running diag_simple_text_ge
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running oracle_g11_qps
+    [✓] PASS          elapsed=   0.0s passed= 40 failed= 0 ignored=  0 group=fast
+  → running oracle_g12_sysbench
+    [✓] PASS          elapsed=   0.1s passed= 40 failed= 0 ignored=  0 group=fast
+  → running oracle_g2_int2
+    [✓] PASS          elapsed=   0.1s passed= 42 failed= 0 ignored=  0 group=fast
+  → running oracle_g3_int3
+    [✓] PASS          elapsed=   0.1s passed= 46 failed= 0 ignored=  0 group=fast
+  → running oracle_p22_time_travel
+    [✓] PASS          elapsed=   0.1s passed= 44 failed= 0 ignored=  0 group=fast
+  → running oracle_p23_hash_chain
+    [✓] PASS          elapsed=   0.1s passed= 46 failed= 0 ignored=  0 group=fast
+  → running page_test
+    [✓] PASS          elapsed=   0.0s passed= 16 failed= 0 ignored=  0 group=fast
+  → running savepoint_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running _q15_q16_check
+    [✓] PASS          elapsed=   0.8s passed=  9 failed= 0 ignored=  0 group=fast
+  → running aggregate_smoke_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running backup_restore_test
+    [✓] PASS          elapsed=   0.7s passed= 51 failed= 0 ignored=  0 group=fast
+  → running check_data
+    [✓] PASS          elapsed=   0.1s passed= 40 failed= 0 ignored=  0 group=fast
+  → running describe_table_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running show_columns_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running show_index_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running show_create_table_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running explain_est_rows_5305
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running parser_block_comment_4708
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running show_warnings_errors_status_variables_test
+    [✓] PASS          elapsed=   0.1s passed= 45 failed= 0 ignored=  0 group=fast
+  → running information_schema_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running teaching_corpus_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running expr_single_engine_test
+    [✓] PASS          elapsed=   0.0s passed= 20 failed= 0 ignored=  0 group=fast
+  → running f11_f12_executor_test
+    [✓] PASS          elapsed=   0.0s passed= 12 failed= 0 ignored=  0 group=fast
+  → running four_way_cell_diff_test
+    [✓] PASS          elapsed=  74.5s passed= 19 failed= 0 ignored=  0 group=slow
+  → running four_way_compare_test
+    [✓] PASS          elapsed= 392.5s passed= 19 failed= 0 ignored=  0 group=slow
+  → running four_way_harness
+    [✓] PASS          elapsed=   0.0s passed= 11 failed= 0 ignored=  0 group=fast
+  → running g2_substance_parallel_executor_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running int1_bypass_evidence_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running int1_fix_verification_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running int3_substance_delegation_test
+    [✓] PASS          elapsed=   0.0s passed= 17 failed= 0 ignored=  0 group=fast
+  → running l3_05_select_expr_regression_test
+    [✓] PASS          elapsed=   0.4s passed=  6 failed= 0 ignored=  0 group=fast
+  → running load_local_infile_eagain_regression_test
+    [✓] PASS          elapsed=   0.1s passed= 40 failed= 0 ignored=  0 group=fast
+  → running multi_join_test
+    [✓] PASS          elapsed=   0.5s passed=  7 failed= 0 ignored=  0 group=fast
+  → running multi_statement_test
+    [✓] PASS          elapsed=   0.1s passed= 39 failed= 0 ignored=  1 group=fast
+  → running null_semantics_test
+    [✓] PASS          elapsed=   0.0s passed= 12 failed= 0 ignored=  0 group=fast
+  → running parallel_executor_integration_test
+    [✓] PASS          elapsed=   0.5s passed=  7 failed= 0 ignored=  0 group=fast
+  → running physical_backup_test
+    [✓] PASS          elapsed= 136.8s passed= 12 failed= 0 ignored=  0 group=slow
+  → running sql_injection_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running prepared_stmt_test
+    [✓] PASS          elapsed=   0.0s passed= 26 failed= 0 ignored=  0 group=fast
+  → running q21_exists_hash_path_test
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running q4_hash_semi_join_test
+    [✓] PASS          elapsed=  13.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running q20_binaryop_arm_test
+    [✓] PASS          elapsed=   0.2s passed=  2 failed= 0 ignored=  0 group=fast
+  → running q4_residual_filter_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running q4_sf1_real_perf_test
+    [✓] PASS          elapsed=   0.0s passed= 39 failed= 0 ignored=  1 group=fast
+  → running q4_residual_filter_scale_test
+    [✓] PASS          elapsed=  18.8s passed=  1 failed= 0 ignored=  0 group=fast
+  → running q20_composite_key_test
+    [✓] PASS          elapsed=   0.1s passed=  1 failed= 0 ignored=  0 group=fast
+  → running q4_probe_time_residual_test
+    [✓] PASS          elapsed=  16.9s passed=  3 failed= 0 ignored=  0 group=fast
+  → running q4_nested_and_short_circuit_test
+    [✓] PASS          elapsed=  15.9s passed=  2 failed= 0 ignored=  0 group=fast
+  → running cluster_index_main_path_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running adaptive_hash_main_path_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running anti_join_main_path_test
+    [✓] PASS          elapsed=   7.0s passed=  4 failed= 0 ignored=  1 group=fast
+  → running decorrelation_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running decorrelation_v2_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running instrumentation_hooks_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running rollup_cube_test
+    [✓] PASS          elapsed=   0.0s passed= 16 failed= 0 ignored=  0 group=fast
+  → running sem1_semantics_test
+    [✓] PASS          elapsed=   0.0s passed= 12 failed= 0 ignored=  0 group=fast
+  → running small_executor_modules_test
+    [✓] PASS          elapsed=   0.0s passed= 31 failed= 0 ignored=  0 group=fast
+  → running stmt_execute_repro
+    [✓] PASS          elapsed=   0.4s passed= 40 failed= 0 ignored=  0 group=fast
+  → running token_level_qualified_test
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running sql_cli_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running storage_integration_test
+    [✓] PASS          elapsed=   0.0s passed= 12 failed= 0 ignored=  0 group=fast
+  → running crash_monkey_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  1 group=fast
+  → running oracle_g14_real_crash
+    [✓] PASS          elapsed=   0.1s passed= 47 failed= 0 ignored=  0 group=fast
+  → running oracle_g15_tpch_sf01
+    [✓] PASS          elapsed= 150.9s passed= 53 failed= 0 ignored=  0 group=slow
+  → running tpch_json_vs_bint_compare
+    [✓] PASS          elapsed=   1.4s passed=  9 failed= 0 ignored=  0 group=fast
+  → running tpch_q6_q19_oracle_test
+    [✓] PASS          elapsed=   1.0s passed= 18 failed= 0 ignored=  0 group=fast
+  → running q5_q21_reorder_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running tpch_sf01_perf_baseline_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running tpch_sf1_22_vs_3engines_test
+    [✓] PASS          elapsed=   0.1s passed= 39 failed= 0 ignored=  1 group=fast
+  → running tpch_wire_smoke_sf
+    [✓] PASS          elapsed=   0.1s passed= 39 failed= 0 ignored=  2 group=fast
+  → running tpch_benchmark
+    [✓] PASS          elapsed=   1.8s passed= 12 failed= 0 ignored=  0 group=fast
+  → running tpch_sf03_test
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  1 group=fast
+  → running tpch_sf1_test
+    [✓] PASS          elapsed=   0.0s passed=  0 failed= 0 ignored=  2 group=fast
+  → running tpch_sf1_6m_load_test
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  1 group=fast
+  → running tpch_sf1_6m_load_iter_test
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  1 group=fast
+  → running v313_3_profile_experiments
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  3 group=fast
+  → running tpch_test
+    [✓] PASS          elapsed=   0.0s passed= 11 failed= 0 ignored=  0 group=fast
+  → running tpch_text_index_test
+    [✓] PASS          elapsed=   0.2s passed=  1 failed= 0 ignored=  0 group=fast
+  → running window_function_test
+    [✓] PASS          elapsed=   0.0s passed= 36 failed= 0 ignored=  0 group=fast
+  → running mysql_client_multi_stmt_test
+    [✓] PASS          elapsed=   0.3s passed=  2 failed= 0 ignored=  0 group=fast
+  → running mysql_client_prepared_test
+    [✓] PASS          elapsed=   0.2s passed=  3 failed= 0 ignored=  0 group=fast
+  → running mysql_functions_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running mysql_wire_protocol_test
+    [✓] PASS          elapsed=   0.7s passed= 63 failed= 0 ignored=  0 group=fast
+  → running v312_13_typed_wrappers_test
+    [✓] PASS          elapsed=   0.2s passed= 45 failed= 0 ignored=  0 group=fast
+  → running v312_13_load_data_sf1_test
+    [✓] PASS          elapsed=   0.4s passed= 42 failed= 0 ignored=  0 group=fast
+  → running oracle_g16_compat
+    [✓] PASS          elapsed=   0.1s passed= 43 failed= 0 ignored=  0 group=fast
+  → running wire_deprecate_eof_test
+    [✓] PASS          elapsed=   0.1s passed= 41 failed= 0 ignored=  0 group=fast
+  → running chaos_test
+    [✓] PASS          elapsed=   0.9s passed= 12 failed= 0 ignored=  0 group=fast
+  → running bplus_tree_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running file_storage_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running mysqldump_test
+    [✓] PASS          elapsed=   0.1s passed= 45 failed= 0 ignored=  0 group=fast
+  → running parser_token_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running prometheus_test
+    [✓] PASS          elapsed=   0.0s passed= 16 failed= 0 ignored=  0 group=fast
+  → running query_cache_config_test
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running server_health_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running slow_query_log_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running v312_75_correlated_scalar_subquery_test
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running v312_76_sqlite_system_tables_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running v312_77_explicit_tx_semantics_test
+    [✓] PASS          elapsed=   0.0s passed=  7 failed= 0 ignored=  0 group=fast
+  → running v312_87_case_when_subquery_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running issue_4674_char_length_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running issue_4703_on_duplicate_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running issue_4626_select_for_update_rollback_test
+    [✓] PASS          elapsed=   0.0s passed=  3 failed= 0 ignored=  0 group=fast
+  → running issue_4708_chinese_identifiers_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running indexed_by_hint_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running torn_write_recovery
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running row_crc_skip
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running differential_corpus_test
+    [✓] PASS          elapsed=   0.0s passed= 36 failed= 0 ignored=  0 group=fast
+  → running a04_mysql_diff_matrix
+    [✓] PASS          elapsed=   8.2s passed= 14 failed= 0 ignored=  0 group=fast
+  → running semantic_kernel_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running operators_pragma_table_info
+    [✓] PASS          elapsed=   0.0s passed= 13 failed= 0 ignored=  0 group=fast
+  → running operators_three_valued_logic
+    [✓] PASS          elapsed=   0.0s passed= 23 failed= 0 ignored=  0 group=fast
+  → running pk_cache_regression_test
+    [✓] PASS          elapsed=   0.0s passed= 14 failed= 0 ignored=  0 group=fast
+  → running insert_db_isolation_5057
+    [✓] PASS          elapsed=   0.1s passed=  3 failed= 0 ignored=  0 group=fast
+  → running memory_storage_in_db_5057
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running ctas_db_isolation_5057
+    [✓] PASS          elapsed=   0.1s passed=  3 failed= 0 ignored=  0 group=fast
+  → running database_fn_dml_5141
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running view_db_isolation_5140
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running blk1_auto_increment_concurrency_test
+    [✓] PASS          elapsed=   0.0s passed=  5 failed= 0 ignored=  0 group=fast
+  → running blk2_shared_tx_path_test
+    [✓] PASS          elapsed=   0.1s passed=  5 failed= 0 ignored=  0 group=fast
+  → running blk2_walstorage_no_escape_hatch_test
+    [✓] PASS          elapsed=   0.3s passed=  4 failed= 0 ignored=  0 group=fast
+  → running change_buffer_main_path_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running clustered_wal_bypass_r1_5228
+    [✓] PASS          elapsed=   0.1s passed=  2 failed= 0 ignored=  0 group=fast
+  → running ctas_select_star_schema_5268
+    [✓] PASS          elapsed=   0.0s passed=  1 failed= 0 ignored=  0 group=fast
+  → running dml_read_db_5106
+    [✓] PASS          elapsed=   0.1s passed=  3 failed= 0 ignored=  1 group=fast
+  → running double_write_main_path_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running multi_table_update_5117
+    [✓] PASS          elapsed=   0.1s passed=  7 failed= 0 ignored=  0 group=fast
+  → running mvcc_reader_tx_5105
+    [✓] PASS          elapsed=   0.1s passed=  5 failed= 0 ignored=  0 group=fast
+  → running mvcc_same_db_second_table_delete_5106
+    [✓] PASS          elapsed=   0.1s passed=  3 failed= 0 ignored=  0 group=fast
+  → running read_path_db_5113
+    [✓] PASS          elapsed=   0.1s passed=  3 failed= 0 ignored=  2 group=fast
+  → running result_column_types_5271
+    [✓] PASS          elapsed=   0.1s passed=  6 failed= 0 ignored=  0 group=fast
+  → running result_schema_5271
+    [✓] PASS          elapsed=   0.1s passed= 11 failed= 0 ignored=  0 group=fast
+  → running session_db_isolation_5057
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running toplevel_sequence_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running bustubx_differential_test
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running differential_framework
+    [✓] PASS          elapsed=   0.0s passed= 15 failed= 0 ignored=  0 group=fast
+  → running semantic_kernel
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running v312_90_sign_function_test
+    [✓] PASS          elapsed=   0.0s passed=  4 failed= 0 ignored=  0 group=fast
+  → running storage_engine_api_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running v312_mixed_soak
+    [✓] PASS          elapsed=  60.6s passed=  2 failed= 0 ignored=  1 group=slow
+  → running test_target_manifest_honesty_test
+    [✓] PASS          elapsed=   4.5s passed= 11 failed= 0 ignored=  0 group=fast
+  → running aggregate_scan_consistency_5167
+    [✓] PASS          elapsed=   7.7s passed=  5 failed= 0 ignored=  0 group=fast
+  → running alter_table_test
+    [✓] PASS          elapsed=   0.4s passed= 11 failed= 0 ignored=  0 group=fast
+  → running autoinc_sequence_wire_test
+    [✓] PASS          elapsed=  46.9s passed=  5 failed= 0 ignored=  0 group=slow
+  → running binary_storage_ddl_honesty_5601
+    [✓] PASS          elapsed=   0.1s passed=  2 failed= 0 ignored=  0 group=fast
+  → running cli01_repl_test
+    [✓] PASS          elapsed=   0.4s passed= 10 failed= 0 ignored=  0 group=fast
+  → running cli02_persistence_test
+    [✓] PASS          elapsed=   0.4s passed=  7 failed= 0 ignored=  0 group=fast
+  → running cli03_persistence_test
+    [✓] PASS          elapsed=   0.4s passed=  7 failed= 0 ignored=  0 group=fast
+  → running client_local_infile_test
+    [✓] PASS          elapsed=   4.6s passed=  7 failed= 0 ignored=  0 group=fast
+  → running concurrent_insert_test
+    [✓] PASS          elapsed=   0.4s passed=  6 failed= 0 ignored=  0 group=fast
+  → running cov_v410_cli_subprocess
+    [✓] PASS          elapsed=   0.5s passed= 10 failed= 0 ignored=  0 group=fast
+  → running cov_v410_compressed_io
+    [✓] PASS          elapsed=   0.0s passed= 10 failed= 0 ignored=  0 group=fast
+  → running cov_v410_run_server_v2_test
+    [✓] PASS          elapsed=   0.1s passed=  1 failed= 0 ignored=  0 group=fast
+  → running cov_v410_server_paths
+    [✓] PASS          elapsed=   1.4s passed=  8 failed= 0 ignored=  0 group=fast
+  → running dml_semantics_5285
+    [✓] PASS          elapsed=   0.9s passed=  3 failed= 0 ignored=  0 group=fast
+  → running dup_entry_error_code_test
+    [✓] PASS          elapsed=   0.1s passed=  3 failed= 0 ignored=  0 group=fast
+  → running file_storage_leading_column_collapse_5392
+    [✓] PASS          elapsed=  62.0s passed=  5 failed= 0 ignored=  0 group=slow
+  → running group_by_binder_5462_5463_test
+    [✓] PASS          elapsed=   0.2s passed=  5 failed= 0 ignored=  0 group=fast
+  → running idle_reaper_heartbeat_5514
+    [✓] PASS          elapsed=  41.9s passed=  3 failed= 0 ignored=  0 group=slow
+  → running insert_odku_test
+    [✓] PASS          elapsed=   0.7s passed= 14 failed= 0 ignored=  0 group=fast
+  → running issue_4516_wire_test
+    [✓] PASS          elapsed=   0.0s passed= 22 failed= 0 ignored=  0 group=fast
+  → running issue_5009_mvcc_list_databases_test
+    [✓] PASS          elapsed=   0.1s passed=  3 failed= 0 ignored=  0 group=fast
+  → running issue_5009_show_databases_server_test
+    [✓] PASS          elapsed=   1.5s passed=  2 failed= 0 ignored=  0 group=fast
+  → running load_data_duplicate_key_5527
+    [✓] PASS          elapsed=   0.1s passed=  4 failed= 0 ignored=  0 group=fast
+  → running mysql_server_helper_tests
+    [✓] PASS          elapsed=   0.0s passed= 31 failed= 0 ignored=  0 group=fast
+  → running mysql_server_tests
+    [✓] PASS          elapsed=   0.0s passed= 71 failed= 0 ignored=  0 group=fast
+  → running mysql_server_unit_tests
+    [✓] PASS          elapsed=   0.0s passed= 27 failed= 0 ignored=  0 group=fast
+  → running mysqladmin_e2e_test
+    [✓] PASS          elapsed=   0.9s passed=  8 failed= 0 ignored=  0 group=fast
+  → running prepared_stmt_params_test
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running probe_5057_use_sql_path
+    [✓] PASS          elapsed=   0.2s passed=  3 failed= 0 ignored=  0 group=fast
+  → running qualified_names_parser
+    [✓] PASS          elapsed=   0.6s passed=  2 failed= 0 ignored=  0 group=fast
+  → running replace_exec_test
+    [✓] PASS          elapsed=   0.6s passed=  5 failed= 0 ignored=  0 group=fast
+  → running result_set_schema_5271
+    [✓] PASS          elapsed=   0.0s passed=  8 failed= 0 ignored=  0 group=fast
+  → running rollback_undo_test
+    [✓] PASS          elapsed=   0.2s passed=  6 failed= 0 ignored=  0 group=fast
+  → running server01_v2_test
+    [✓] PASS          elapsed=   2.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running server_test
+    [✓] PASS          elapsed=   0.0s passed= 13 failed= 0 ignored=  0 group=fast
+  → running server_threads_cli_test
+    [✓] PASS          elapsed=   0.7s passed=  5 failed= 0 ignored=  0 group=fast
+  → running slow_query_log
+    [✓] PASS          elapsed=   0.1s passed=  5 failed= 0 ignored=  0 group=fast
+  → running text_row_empty_first_value_5179
+    [✓] PASS          elapsed=   0.1s passed=  5 failed= 0 ignored=  0 group=fast
+  → running tls_read_spin_5099
+    [✗] FAIL          elapsed=   1.4s passed=  0 failed= 1 ignored=  0 group=fast
+  → running truncate_table_test
+    [✓] PASS          elapsed=   0.7s passed=  7 failed= 0 ignored=  0 group=fast
+  → running use_database_regression_5057
+    [✓] PASS          elapsed=   0.2s passed=  7 failed= 0 ignored=  0 group=fast
+  → running v3900_closeout_tests
+    [✓] PASS          elapsed=   0.2s passed=  5 failed= 0 ignored=  0 group=fast
+  → running v400_match_dispatch
+    [✓] PASS          elapsed=   0.0s passed= 30 failed= 0 ignored=  0 group=fast
+  → running v400_pool_rejection_test
+    [✓] PASS          elapsed=   0.0s passed=  2 failed= 0 ignored=  0 group=fast
+  → running v400_stmt_prepare_2027_regression_test
+    [✓] PASS          elapsed=   0.3s passed=  4 failed= 0 ignored=  0 group=fast
+  → running verify_4957_rollback_buffer_test
+    [✓] PASS          elapsed=   0.4s passed=  2 failed= 0 ignored=  0 group=fast
+  → running wal_recovery_failclosed_5192
+    [✓] PASS          elapsed=   0.0s passed=  6 failed= 0 ignored=  0 group=fast
+  → running wire_multi_stmt_status_flags_test
+    [✓] PASS          elapsed=   0.1s passed=  3 failed= 0 ignored=  0 group=fast
+  → running wire_smoke_mysql_cli
+    [✓] PASS          elapsed=   0.2s passed= 12 failed= 0 ignored=  0 group=fast
+
+=== Summary ===
+  PASS             : 452
+  FAIL             : 1
+  TIMEOUT          : 0
+  SKIP_DISABLED    : 76
+  SKIP_PERF        : 0
+  SKIP_OFF_PROD    : 0  (#5193 option C — not on the production execution path)
+  INFRA_FAIL       : 0
+  fast group (<30s): 443
+  slow group (≥30s): 10
+  summary JSON     : /tmp/b2-ab-001.json

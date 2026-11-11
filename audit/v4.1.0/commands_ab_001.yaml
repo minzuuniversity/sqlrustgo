@@ -1,0 +1,202 @@
+# AB campaign 001 — ALPHA_TO_BETA_GATE_PLAN.md AB-01..AB-10 逐项取证（Owner g6 放行 2026-11-12）
+# 冻结提交 = audit/v4.1.0/commit.txt（freeze 写入 HEAD）
+# AB-01 SSOT/证据一致性
+- cmd: python3 audit/v4.1.0/evidence_inventory.py verify
+  cwd: .
+  id: ab01-evidence-verify
+  name: "AB-01 #5117 证据清单 verify（findings 口径）"
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_stage_config_consistency.sh
+  cwd: .
+  id: ab01-stage-config-consistency
+  name: "AB-01 STAGE 配置一致性"
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_stage.sh
+  cwd: .
+  id: ab01-stage-check
+  name: "AB-01 阶段 SSOT 校验"
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_docs_pointer_paths.sh
+  cwd: .
+  id: ab01-docs-pointer
+  name: "AB-01 文档指针路径"
+  timeout_sec: 900
+- cmd: python3 audit/v4.1.0/honesty.py check
+  cwd: .
+  id: ab01-honesty
+  name: "AB-01 honesty 检查"
+  timeout_sec: 1800
+- cmd: python3 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  id: ab01-docfacts
+  name: "AB-01 doc_facts 检查"
+  timeout_sec: 1800
+# AB-02 基础质量
+- cmd: cargo fmt --check --all
+  cwd: .
+  id: ab02-fmt
+  name: "AB-02 #5113 cargo fmt --check --all"
+  timeout_sec: 900
+- cmd: cargo clippy --all-features -- -D warnings
+  cwd: .
+  id: ab02-clippy
+  name: "AB-02 #5113 clippy -D warnings"
+  timeout_sec: 3600
+- cmd: cargo build --all-features
+  cwd: .
+  id: ab02-build
+  name: "AB-02 #5113 build --all-features"
+  timeout_sec: 3600
+- cmd: cargo test --all-features
+  cwd: .
+  id: ab02-test-all
+  name: "AB-02 #5113 test --all-features（全量）"
+  timeout_sec: 7200
+# AB-03 门禁可信度
+- cmd: bash scripts/gate/check_workflow_expressions.sh
+  cwd: .
+  id: ab03-workflow-expressions
+  name: "AB-03 #5113 workflow 可解析/fail-closed"
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_gate_executability.sh
+  cwd: .
+  id: ab03-gate-executability
+  name: "AB-03 #5113 门禁可执行性（61 道 registry vs 源码）"
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_gate_test_integrity.sh
+  cwd: .
+  id: ab03-gate-test-integrity
+  name: "AB-03 #5113 门禁测试完整性"
+  timeout_sec: 900
+- cmd: bash scripts/gate/probe_hard_gate_mutation.sh
+  cwd: .
+  id: ab03-mutation-probe
+  name: "AB-03 #5113 hard-gate 变异探针"
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  id: ab03-anti-ignore
+  name: "AB-03 #5113 anti-ignore"
+  timeout_sec: 900
+# AB-04 事务/会话正确性
+- cmd: cargo test --all-features --test mvcc_transaction_test
+  cwd: .
+  id: ab04-mvcc
+  name: "AB-04 #5112 MVCC 事务"
+  timeout_sec: 1800
+- cmd: cargo test --all-features --test integration_savepoint_test
+  cwd: .
+  id: ab04-savepoint
+  name: "AB-04 #5112 savepoint"
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_sem1_savepoint.sh
+  cwd: .
+  id: ab04-sem1
+  name: "AB-04 #5112 SEM1 savepoint 语句路径"
+  timeout_sec: 1800
+- cmd: cargo test --all-features --test concurrent_rollback_isolation_test
+  cwd: .
+  id: ab04-rollback-isolation
+  name: "AB-04 #5112 并发 rollback 隔离（0/300 口径）"
+  timeout_sec: 1800
+- cmd: cargo test --all-features --test wire_interleaved_tx_test
+  cwd: .
+  id: ab04-wire-interleaved
+  name: "AB-04 #5112 wire 交错事务"
+  timeout_sec: 1800
+- cmd: cargo test --all-features --test ab04_8thread_1000tx_reconcile_test
+  cwd: .
+  id: ab04-8000tx-reconcile
+  name: "AB-04 #5112 8 线程×1000=8000 事务无丢失对账"
+  timeout_sec: 3600
+# AB-05 外部工作负载
+- cmd: bash scripts/gate/check_bustubx_b_track_v312.sh
+  cwd: .
+  id: ab05-bustubx-btrack
+  name: "AB-05 #5114 BustubX B 轨必测"
+  timeout_sec: 1800
+- cmd: python3 scripts/gate/run_b2_per_binary.py --json /tmp/b2-ab-001.json
+  cwd: .
+  id: ab05-b2-per-binary
+  name: "AB-05 #5114 B2 逐二进制（摘要写 /tmp，不写仓内）"
+  timeout_sec: 3600
+- cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  id: ab05-sql-corpus
+  name: "AB-05 #5114 SQL corpus >=80%"
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  id: ab05-oracle-known-diffs
+  name: "AB-05 #5114 oracle 已知差异对质"
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  id: ab05-g1-tpch
+  name: "AB-05 #5114 G1 TPC-H 基线（stored 基线红家族在案，g1 门未裁）"
+  timeout_sec: 1800
+# AB-06 覆盖率
+- cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  id: ab06-coverage
+  name: "AB-06 #5113/#5114 L1_8 覆盖率（阈值取 SSOT 较严格值）"
+  timeout_sec: 5400
+# AB-07 稳定性/恢复
+- cmd: bash scripts/gate/check_p13_soak_test.sh
+  cwd: .
+  id: ab07-p13-soak-gate
+  name: "AB-07 #5115 P13 soak 门禁（11 条件）"
+  timeout_sec: 3600
+- cmd: bash scripts/gate/check_g14_real_crash.sh
+  cwd: .
+  id: ab07-g14-real-crash
+  name: "AB-07 #5115 G14 真实崩溃恢复"
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_v312_14_crash_recovery.sh
+  cwd: .
+  id: ab07-v312-14-crash-recovery
+  name: "AB-07 #5115 v3.12-14 crash recovery"
+  timeout_sec: 1800
+- cmd: bash scripts/soak/v400_1h_soak.sh
+  cwd: .
+  id: ab07-soak-1h
+  name: "AB-07 #5115 1h SOAK 实跑（heartbeat 连续性取证）"
+  timeout_sec: 7200
+# AB-08 性能基线
+- cmd: bash scripts/gate/check_g11_qps.sh
+  cwd: .
+  id: ab08-g11-qps
+  name: "AB-08 #5116 G11 QPS"
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_g12_sysbench.sh
+  cwd: .
+  id: ab08-g12-sysbench
+  name: "AB-08 #5116 G12 sysbench A/B"
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_g15_perf_report.sh
+  cwd: .
+  id: ab08-g15-perf-report
+  name: "AB-08 #5116 G15 性能报告（criterion→JSON 管道）"
+  timeout_sec: 1800
+# AB-09 安全/依赖
+- cmd: bash scripts/gate/check_security_scan_v312.sh
+  cwd: .
+  id: ab09-security-scan
+  name: "AB-09 #5113/#5115 安全扫描"
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_no_hardcoded_secrets.sh
+  cwd: .
+  id: ab09-no-secrets
+  name: "AB-09 #5113 无硬编码凭据"
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_attack_surface.sh
+  cwd: .
+  id: ab09-attack-surface
+  name: "AB-09 #5113 攻击面"
+  timeout_sec: 1800
+# AB-10 发布治理
+- cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  id: ab10-kanban-render
+  name: "AB-10 #5117 看板渲染一致性（阻断项台账的机器面）"
+  timeout_sec: 900
