@@ -1,0 +1,61 @@
+- cmd: |
+    bash -c 'set -euo pipefail
+    cd /Volumes/workspace/dev/sqlrustgo
+    python3 scripts/gate/generate_tpch_sf.py --sf 0.01 --output /tmp/tpch-sf001 --seed 42 2>&1 | tail -6
+    wc -l /tmp/tpch-sf001/lineitem.tbl /tmp/tpch-sf001/part.tbl /tmp/tpch-sf001/customer.tbl'
+  cwd: .
+  id: seed42-regen-fixture
+  name: 按文档配方再生 seed-42 夹具（确定性，脚本 009bb985ee 后零变化）
+  timeout_sec: 600
+- cmd: |
+    bash -c 'set -euo pipefail
+    REPO=/Volumes/workspace/dev/sqlrustgo
+    rm -rf /tmp/srg-sf42
+    mkdir -p /tmp/srg-sf42
+    git archive HEAD | tar -x -C /tmp/srg-sf42
+    cd /tmp/srg-sf42
+    TPCH_DATA_DIR=/tmp/tpch-sf001 CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target G1_REBUILD_CANDIDATES_OUT="$REPO/audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run1.json" \
+      cargo test -q --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture 2>&1 | tail -3
+    echo "SF42_DUMP_RUN1 written"'
+  cwd: .
+  id: seed42-dump-run1
+  name: seed-42 数据集候选 dump 第 1 次（scratch 副本，env-out 不触受保护路径）
+  timeout_sec: 1800
+- cmd: |
+    bash -c 'set -euo pipefail
+    REPO=/Volumes/workspace/dev/sqlrustgo
+    cd /tmp/srg-sf42
+    TPCH_DATA_DIR=/tmp/tpch-sf001 CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target G1_REBUILD_CANDIDATES_OUT="$REPO/audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run2.json" \
+      cargo test -q --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture 2>&1 | tail -3
+    cd "$REPO"
+    python3 - <<"PY"
+    import json
+    a={x["query_id"]:x for x in json.load(open("audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run1.json"))["queries"]}
+    b={x["query_id"]:x for x in json.load(open("audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run2.json"))["queries"]}
+    unst=[q for q in a if a[q]["engine_capture_sha256"]!=b[q]["engine_capture_sha256"]]
+    print("RUN1_vs_RUN2 entries=%d unstable=%s" % (len(a), unst or "NONE"))
+    PY
+    echo "SF42_DUMP_RUN2 written"'
+  cwd: .
+  id: seed42-dump-run2-stability
+  name: dump 第 2 次 + 逐条稳定性对账（同夹具同进程族）
+  timeout_sec: 1800
+- cmd: |
+    bash -c 'set -euo pipefail
+    cd /Volumes/workspace/dev/sqlrustgo
+    python3 - <<"PY"
+    import json
+    new={x["query_id"]:x for x in json.load(open("audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run1.json"))["queries"]}
+    old={x["query_id"]:x for x in json.load(open("audit/v4.1.0/runs/20261111-fakebase-capture-001/g1-candidates.json"))["queries"]}
+    same=[q for q in new if q in old and new[q]["engine_capture_sha256"]==old[q]["engine_capture_sha256"]]
+    rc=[q for q in new if q in old and new[q]["row_count"]!=old[q]["row_count"]]
+    print("query | old_hash16 | new_hash16 | old_rows | new_rows")
+    for q in sorted(new, key=lambda s:int(s[1:])):
+        print("%s | %s | %s | %d | %d" % (q, old[q]["engine_capture_sha256"][:16], new[q]["engine_capture_sha256"][:16], old[q]["row_count"], new[q]["row_count"]))
+    print("SUMMARY entries=%d same=%d diff=%d rowcount_changed=%s" % (len(new), len(same), len(new)-len(same), sorted(rc)))
+    print("Q9 new full = %s" % new["Q9"]["engine_capture_sha256"])
+    PY'
+  cwd: .
+  id: seed42-vs-old-capture
+  name: seed-42 数据集 vs 已逝旧夹具逐条对账（不可溯实锤的归档版）
+  timeout_sec: 300
