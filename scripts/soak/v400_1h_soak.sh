@@ -231,6 +231,19 @@ DRIVER_Q=${DRIVER_Q:-0}
 DRIVER_E=$(grep -c '^E,' "$DRIVER_LOG" 2>/dev/null | tr -d '[:space:]' || echo "0")
 DRIVER_E=${DRIVER_E:-0}
 
+# #5495-class fail-closed: the summary step used to die with a raw
+# FileNotFoundError when the driver never produced output (e.g. missing
+# pymysql) — or, worse in other variants, summarise an idle server as a
+# successful soak. An unloaded soak is a FAILURE, stated honestly.
+if [ ! -f "$DRIVER_LOG" ]; then
+  echo "FAIL-CLOSED: $DRIVER_LOG missing — driver never produced output; this soak loaded nothing." >&2
+  exit 1
+fi
+if [ "$DRIVER_Q" -eq 0 ] && [ "$DRIVER_E" -eq 0 ]; then
+  echo "FAIL-CLOSED: driver.log has zero Q rows and zero E rows — no workload observed on the server." >&2
+  exit 1
+fi
+
 # Compute QPS, latency stats from driver log
 python3 - "$DRIVER_LOG" "$SUMMARY" <<'PYEOF'
 import sys, json, statistics
