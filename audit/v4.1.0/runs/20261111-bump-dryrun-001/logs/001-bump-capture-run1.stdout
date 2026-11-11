@@ -1,0 +1,33 @@
+  loaded customer: 150 rows
+  loaded part: 200 rows
+  loaded partsupp: 800 rows
+  loaded orders: 1500 rows
+  loaded lineitem: 6018 rows
+[GEN] Q1: row_count=6 hash=a5dc4724bdf56cab... wall=28ms
+[GEN] Q2: row_count=0 hash=af5570f5a1810b7a... wall=10ms
+[GEN] Q3: row_count=10 hash=0c78e900888cc287... wall=34ms
+[GEN] Q4: row_count=5 hash=81cf8e7a9446cbf0... wall=50ms
+[GEN] Q5: row_count=0 hash=af5570f5a1810b7a... wall=35ms
+[GEN] Q6: row_count=1 hash=b73f80c04c8c8c3e... wall=20ms
+[GEN] Q7: row_count=0 hash=af5570f5a1810b7a... wall=144ms
+[GEN] Q8: row_count=0 hash=af5570f5a1810b7a... wall=40ms
+[GEN] Q9: row_count=66 hash=56d4623ecd602fbb... wall=188ms
+[GEN] Q10: row_count=20 hash=75f142af8a97fb3c... wall=36ms
+[GEN] Q11: row_count=0 hash=af5570f5a1810b7a... wall=7ms
+[GEN] Q12: row_count=2 hash=1b9b0eafbced0a92... wall=36ms
+[GEN] Q13: row_count=100 hash=51dd69b135ed6112... wall=14ms
+[GEN] Q14: row_count=1 hash=20febeb10722d8a7... wall=15ms
+[GEN] Q15: row_count=1 hash=ff97b1269cb1465d... wall=148ms
+[GEN] Q16: row_count=100 hash=79fabcc2c0e6fb63... wall=15ms
+[GEN] Q17: row_count=1 hash=e0bfc92a5e886ca5... wall=32ms
+[GEN] Q18: row_count=59 hash=28d082c27a761e23... wall=74ms
+[GEN] Q19: row_count=1 hash=56a9f06b81c51670... wall=15ms
+[GEN] Q20: row_count=0 hash=af5570f5a1810b7a... wall=61ms
+[GEN] Q21: row_count=0 hash=af5570f5a1810b7a... wall=61ms
+[GEN] Q22: row_count=6 hash=88c000e2b115da03... wall=7ms
+
+[OK] baseline written to tests/oracle/baselines/tpch_sha256.json
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 49 filtered out; finished in 1.71s
+
+CANDIDATE_RUN1 written
