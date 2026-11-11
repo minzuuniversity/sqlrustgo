@@ -1,0 +1,81 @@
+schema_version: 1
+run_id: 20261111-bump-dryrun-001
+source_agent: omp (macmini)
+frozen_commit: 8a5705454b08b816b270e58af590d4e88455df6f
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- cmd: "bash -c 'set -euo pipefail\nREPO=/Volumes/workspace/dev/sqlrustgo\nrm -rf /tmp/srg-bump-audit\n\
+    mkdir -p /tmp/srg-bump-audit\ngit archive HEAD | tar -x -C /tmp/srg-bump-audit\ncd /tmp/srg-bump-audit\n\
+    TPCH_DATA_DIR=/tmp/tpch-sf001 CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test\
+    \ -q --test oracle_g1_tpch_sha256 -- --ignored --exact generate_baseline --nocapture 2>&1 | tail -32\n\
+    cp tests/oracle/baselines/tpch_sha256.json \"$REPO/audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run1.json\"\
+    \necho \"CANDIDATE_RUN1 written\"'\n"
+  cwd: .
+  id: bump-capture-run1
+  name: 官方生成器干跑第 1 次（scratch 副本，不写仓内基线文件）
+  timeout_sec: 1800
+- cmd: "bash -c 'set -euo pipefail\nREPO=/Volumes/workspace/dev/sqlrustgo\ncd /tmp/srg-bump-audit\nTPCH_DATA_DIR=/tmp/tpch-sf001\
+    \ CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test -q --test oracle_g1_tpch_sha256\
+    \ -- --ignored --exact generate_baseline --nocapture 2>&1 | tail -4\ncp tests/oracle/baselines/tpch_sha256.json\
+    \ \"$REPO/audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run2.json\"\ncd \"$REPO\"\npython3\
+    \ - <<\"PY\"\nimport json\na={x[\"query_id\"]:x for x in json.load(open(\"audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run1.json\"\
+    ))[\"queries\"]}\nb={x[\"query_id\"]:x for x in json.load(open(\"audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run2.json\"\
+    ))[\"queries\"]}\nunstable=[q for q in a if a[q][\"sha256\"]!=b[q][\"sha256\"]]\nprint(\"RUN1_vs_RUN2\
+    \ entries=%d unstable=%s\" % (len(a), unstable or \"NONE\"))\nfor q in sorted(a, key=lambda s:int(s[1:])):\n\
+    \    if a[q][\"sha256\"]!=b[q][\"sha256\"]:\n        print(\"UNSTABLE\", q, a[q][\"sha256\"][:16],\
+    \ b[q][\"sha256\"][:16])\nPY\necho \"CANDIDATE_RUN2 written\"'\n"
+  cwd: .
+  id: bump-capture-run2-stability
+  name: 官方生成器干跑第 2 次 + 与第 1 次逐条比对（稳定性）
+  timeout_sec: 1800
+- cmd: "bash -c 'set -euo pipefail\ncd /Volumes/workspace/dev/sqlrustgo\npython3 - <<\"PY\"\nimport json\n\
+    gen={x[\"query_id\"]:x for x in json.load(open(\"audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run1.json\"\
+    ))[\"queries\"]}\ncand={x[\"query_id\"]:x for x in json.load(open(\"audit/v4.1.0/runs/20261111-fakebase-capture-001/g1-candidates.json\"\
+    ))[\"queries\"]}\nprint(\"query | gen_rows | cand_rows | oracle_set_equal | verdict\")\ndiff=[]\n\
+    for q in sorted(gen, key=lambda s:int(s[1:])):\n    c=cand[q]\n    v=\"MATCH\" if gen[q][\"sha256\"\
+    ]==c[\"engine_capture_sha256\"] else \"DIFF\"\n    if v==\"DIFF\": diff.append(q)\n    print(\"%s\
+    \ | %d | %d | %s | %s\" % (q, gen[q][\"row_count\"], c[\"row_count\"], c[\"oracle_set_equal\"], v))\n\
+    print(\"SUMMARY entries=%d match=%d diff=%d diff_queries=%s\" % (len(gen), len(gen)-len(diff), len(diff),\
+    \ diff or \"NONE\"))\nprint(\"oracle_set_equal_true=%d/%d\" % (sum(1 for c in cand.values() if c[\"\
+    oracle_set_equal\"]), len(cand)))\nPY'\n"
+  cwd: .
+  id: bump-compare-oracle-certified-candidates
+  name: 现捕获 vs oracle 认证候选件逐条比对（#5688 裁决材料）
+  timeout_sec: 300
+results:
+- id: bump-capture-run1
+  started_at: '2026-11-11T05:53:27Z'
+  finished_at: '2026-11-11T05:53:30Z'
+  exit_code: 0
+  stdout_sha256: 59f6f8d79f73718fec5ae882a05776be374818b81480e4343ddccb7dba317124
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-bump-capture-run1.stdout
+  stderr_path: logs/001-bump-capture-run1.stderr
+- id: bump-capture-run2-stability
+  started_at: '2026-11-11T05:53:30Z'
+  finished_at: '2026-11-11T05:53:32Z'
+  exit_code: 0
+  stdout_sha256: 5e63512b99af127c991128559ca6665b710a8d8e0087e9df28d20421471841bb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-bump-capture-run2-stability.stdout
+  stderr_path: logs/002-bump-capture-run2-stability.stderr
+- id: bump-compare-oracle-certified-candidates
+  started_at: '2026-11-11T05:53:32Z'
+  finished_at: '2026-11-11T05:53:32Z'
+  exit_code: 0
+  stdout_sha256: 96aeef176337247983fae6fecabd3eee6a12739a5d2f9af55390b65070d339b7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-bump-compare-oracle-certified-candidates.stdout
+  stderr_path: logs/003-bump-compare-oracle-certified-candidates.stderr
+evidence_hash: sha256:7a400fd67c24437954afdeaf42bdeea2f5703015952e240524dbc087435f96de
+completed_at: '2026-11-11T05:53:32Z'
