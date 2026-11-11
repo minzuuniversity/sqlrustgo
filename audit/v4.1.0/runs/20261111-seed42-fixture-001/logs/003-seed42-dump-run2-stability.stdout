@@ -1,0 +1,5 @@
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 49 filtered out; finished in 116.70s
+
+RUN1_vs_RUN2 entries=22 unstable=NONE
+SF42_DUMP_RUN2 written
