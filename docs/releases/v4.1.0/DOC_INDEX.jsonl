@@ -45,7 +45,7 @@
 {"bytes": 34239, "file": "ISSUE_LEDGER_2026-11-11C.md", "lines": 158, "sha256": "73e959ab2e69afaad39f17197e04f6afe9bd88b74bc2671f0b112e0fa37a54fb", "stamp_ok": false, "stamped": false}
 {"bytes": 34575, "file": "ISSUE_LEDGER_2026-11-11D.md", "lines": 159, "sha256": "b7d9010f266c5c59c206e6dc3aa73fdfc76fe369bd8c412c7059c670fdf47122", "stamp_ok": false, "stamped": false}
 {"bytes": 3319, "file": "KANBAN_MERGE_POLICY_2026-11-08.md", "lines": 68, "sha256": "6803c6e73df03d8d30fe0ff9bc48e3e1f7ed908459462020bc9a7a4aebd0c8ab", "stamp_ok": false, "stamped": false}
-{"bytes": 315882, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 202, "sha256": "c1dd11c9169d1a6f35da6789c4bb381d7d8672dd1d1984b3dbce929ad1ef00f5", "stamp_ok": false, "stamped": false}
+{"bytes": 316025, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 202, "sha256": "559a9d7aea9d7f0a58f669eb941e84128ef61990f7950a4ed25922c4039a25dc", "stamp_ok": false, "stamped": false}
 {"bytes": 7898, "file": "LB1_ISSUE_LABEL_TAXONOMY_2026-11-05.md", "lines": 130, "sha256": "48beaabd302723271e23a753c63c7a47bdac49bf8d84ce3c7b534764e8c70f65", "stamp_ok": false, "stamped": false}
 {"bytes": 4052, "file": "LEGACY_ISSUES.md", "lines": 77, "sha256": "1dcf9d29e123e15b1ca1b8af3fcedcb5d43f9476cf5873b550e8f266f8d56ee6", "stamp_ok": false, "stamped": false}
 {"bytes": 27878, "file": "LEGACY_LEDGER_v3.6_to_v4.1.md", "lines": 484, "sha256": "edf34ff0a22540cbda719db2622513169e0fc155d041390251228197dc723e5f", "stamp_ok": false, "stamped": false}
