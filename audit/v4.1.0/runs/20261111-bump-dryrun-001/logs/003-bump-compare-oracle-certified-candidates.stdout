@@ -1,0 +1,25 @@
+query | gen_rows | cand_rows | oracle_set_equal | verdict
+Q1 | 6 | 6 | True | MATCH
+Q2 | 0 | 0 | True | MATCH
+Q3 | 10 | 10 | True | MATCH
+Q4 | 5 | 5 | True | MATCH
+Q5 | 0 | 0 | True | MATCH
+Q6 | 1 | 1 | True | MATCH
+Q7 | 0 | 0 | True | MATCH
+Q8 | 0 | 0 | True | MATCH
+Q9 | 66 | 66 | True | DIFF
+Q10 | 20 | 20 | True | MATCH
+Q11 | 0 | 0 | True | MATCH
+Q12 | 2 | 2 | True | MATCH
+Q13 | 100 | 100 | True | MATCH
+Q14 | 1 | 1 | True | MATCH
+Q15 | 1 | 1 | True | MATCH
+Q16 | 100 | 100 | True | MATCH
+Q17 | 1 | 1 | True | MATCH
+Q18 | 59 | 59 | True | MATCH
+Q19 | 1 | 1 | True | MATCH
+Q20 | 0 | 0 | True | MATCH
+Q21 | 0 | 0 | True | MATCH
+Q22 | 6 | 6 | True | MATCH
+SUMMARY entries=22 match=21 diff=1 diff_queries=['Q9']
+oracle_set_equal_true=22/22
