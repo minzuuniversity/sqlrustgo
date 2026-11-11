@@ -1,0 +1,59 @@
+- cmd: |
+    bash -c 'set -euo pipefail
+    REPO=/Volumes/workspace/dev/sqlrustgo
+    rm -rf /tmp/srg-bump-audit
+    mkdir -p /tmp/srg-bump-audit
+    git archive HEAD | tar -x -C /tmp/srg-bump-audit
+    cd /tmp/srg-bump-audit
+    TPCH_DATA_DIR=/tmp/tpch-sf001 CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \
+      cargo test -q --test oracle_g1_tpch_sha256 -- --ignored --exact generate_baseline --nocapture 2>&1 | tail -32
+    cp tests/oracle/baselines/tpch_sha256.json "$REPO/audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run1.json"
+    echo "CANDIDATE_RUN1 written"'
+  cwd: .
+  id: bump-capture-run1
+  name: 官方生成器干跑第 1 次（scratch 副本，不写仓内基线文件）
+  timeout_sec: 1800
+- cmd: |
+    bash -c 'set -euo pipefail
+    REPO=/Volumes/workspace/dev/sqlrustgo
+    cd /tmp/srg-bump-audit
+    TPCH_DATA_DIR=/tmp/tpch-sf001 CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \
+      cargo test -q --test oracle_g1_tpch_sha256 -- --ignored --exact generate_baseline --nocapture 2>&1 | tail -4
+    cp tests/oracle/baselines/tpch_sha256.json "$REPO/audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run2.json"
+    cd "$REPO"
+    python3 - <<"PY"
+    import json
+    a={x["query_id"]:x for x in json.load(open("audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run1.json"))["queries"]}
+    b={x["query_id"]:x for x in json.load(open("audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run2.json"))["queries"]}
+    unstable=[q for q in a if a[q]["sha256"]!=b[q]["sha256"]]
+    print("RUN1_vs_RUN2 entries=%d unstable=%s" % (len(a), unstable or "NONE"))
+    for q in sorted(a, key=lambda s:int(s[1:])):
+        if a[q]["sha256"]!=b[q]["sha256"]:
+            print("UNSTABLE", q, a[q]["sha256"][:16], b[q]["sha256"][:16])
+    PY
+    echo "CANDIDATE_RUN2 written"'
+  cwd: .
+  id: bump-capture-run2-stability
+  name: 官方生成器干跑第 2 次 + 与第 1 次逐条比对（稳定性）
+  timeout_sec: 1800
+- cmd: |
+    bash -c 'set -euo pipefail
+    cd /Volumes/workspace/dev/sqlrustgo
+    python3 - <<"PY"
+    import json
+    gen={x["query_id"]:x for x in json.load(open("audit/v4.1.0/runs/20261111-bump-dryrun-001/candidate-run1.json"))["queries"]}
+    cand={x["query_id"]:x for x in json.load(open("audit/v4.1.0/runs/20261111-fakebase-capture-001/g1-candidates.json"))["queries"]}
+    print("query | gen_rows | cand_rows | oracle_set_equal | verdict")
+    diff=[]
+    for q in sorted(gen, key=lambda s:int(s[1:])):
+        c=cand[q]
+        v="MATCH" if gen[q]["sha256"]==c["engine_capture_sha256"] else "DIFF"
+        if v=="DIFF": diff.append(q)
+        print("%s | %d | %d | %s | %s" % (q, gen[q]["row_count"], c["row_count"], c["oracle_set_equal"], v))
+    print("SUMMARY entries=%d match=%d diff=%d diff_queries=%s" % (len(gen), len(gen)-len(diff), len(diff), diff or "NONE"))
+    print("oracle_set_equal_true=%d/%d" % (sum(1 for c in cand.values() if c["oracle_set_equal"]), len(cand)))
+    PY'
+  cwd: .
+  id: bump-compare-oracle-certified-candidates
+  name: 现捕获 vs oracle 认证候选件逐条比对（#5688 裁决材料）
+  timeout_sec: 300
