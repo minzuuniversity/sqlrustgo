@@ -1,0 +1,50 @@
+- cmd: bash scripts/gate/check_alpha_v410.sh
+  cwd: .
+  id: alpha-gate-check-alpha-v410
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_alpha_v{VER}.sh（VER=4.1.0 ⇒ check_alpha_v410.sh）
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_arch_invariants.sh
+  cwd: .
+  id: alpha-gate-arch-invariants
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_arch_invariants.sh
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  cwd: .
+  id: alpha-gate-arch3-no-bypass
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_arch3_no_bypass.sh
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  id: alpha-gate-coverage-v312
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_coverage_v312.sh（阈值取 SSOT 的 COVERAGE_MIN_ALPHA）
+  timeout_sec: 5400
+- cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  id: alpha-gate-sql-corpus
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_sql_corpus_gate.sh
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  id: alpha-gate-anti-ignore
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_anti_ignore_gate.sh
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  id: alpha-gate-g1-tpch-baseline
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_g1_tpch_baseline.sh
+  timeout_sec: 1800
+- cmd: cargo build --all-features
+  cwd: .
+  id: alpha-cargo-build
+  name: ALPHA 清单 cargo 命令（原文）：cargo build --all-features
+  timeout_sec: 3600
+- cmd: cargo test --all-features --lib
+  cwd: .
+  id: alpha-cargo-test-lib
+  name: ALPHA 清单 cargo 命令（原文）：cargo test --all-features --lib
+  timeout_sec: 5400
+- cmd: cargo fmt --check
+  cwd: .
+  id: alpha-cargo-fmt-check
+  name: ALPHA 清单 cargo 命令（原文）：cargo fmt --check
+  timeout_sec: 900
