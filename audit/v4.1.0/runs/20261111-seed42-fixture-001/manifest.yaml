@@ -1,0 +1,101 @@
+schema_version: 1
+run_id: 20261111-seed42-fixture-001
+source_agent: omp (macmini)
+frozen_commit: de7288412bb0e243ee06266dccae592a1265e211
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- cmd: 'bash -c ''set -euo pipefail
+
+    cd /Volumes/workspace/dev/sqlrustgo
+
+    python3 scripts/gate/generate_tpch_sf.py --sf 0.01 --output /tmp/tpch-sf001 --seed 42 2>&1 | tail
+    -6
+
+    wc -l /tmp/tpch-sf001/lineitem.tbl /tmp/tpch-sf001/part.tbl /tmp/tpch-sf001/customer.tbl''
+
+    '
+  cwd: .
+  id: seed42-regen-fixture
+  name: 按文档配方再生 seed-42 夹具（确定性，脚本 009bb985ee 后零变化）
+  timeout_sec: 600
+- cmd: "bash -c 'set -euo pipefail\nREPO=/Volumes/workspace/dev/sqlrustgo\nrm -rf /tmp/srg-sf42\nmkdir\
+    \ -p /tmp/srg-sf42\ngit archive HEAD | tar -x -C /tmp/srg-sf42\ncd /tmp/srg-sf42\nTPCH_DATA_DIR=/tmp/tpch-sf001\
+    \ CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target G1_REBUILD_CANDIDATES_OUT=\"$REPO/audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run1.json\"\
+    \ \\\n  cargo test -q --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture\
+    \ 2>&1 | tail -3\necho \"SF42_DUMP_RUN1 written\"'\n"
+  cwd: .
+  id: seed42-dump-run1
+  name: seed-42 数据集候选 dump 第 1 次（scratch 副本，env-out 不触受保护路径）
+  timeout_sec: 1800
+- cmd: "bash -c 'set -euo pipefail\nREPO=/Volumes/workspace/dev/sqlrustgo\ncd /tmp/srg-sf42\nTPCH_DATA_DIR=/tmp/tpch-sf001\
+    \ CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target G1_REBUILD_CANDIDATES_OUT=\"$REPO/audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run2.json\"\
+    \ \\\n  cargo test -q --test oracle_g1_tpch_sha256 rebuild_candidates_dump -- --exact --nocapture\
+    \ 2>&1 | tail -3\ncd \"$REPO\"\npython3 - <<\"PY\"\nimport json\na={x[\"query_id\"]:x for x in json.load(open(\"\
+    audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run1.json\"))[\"queries\"]}\nb={x[\"query_id\"\
+    ]:x for x in json.load(open(\"audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run2.json\"))[\"\
+    queries\"]}\nunst=[q for q in a if a[q][\"engine_capture_sha256\"]!=b[q][\"engine_capture_sha256\"\
+    ]]\nprint(\"RUN1_vs_RUN2 entries=%d unstable=%s\" % (len(a), unst or \"NONE\"))\nPY\necho \"SF42_DUMP_RUN2\
+    \ written\"'\n"
+  cwd: .
+  id: seed42-dump-run2-stability
+  name: dump 第 2 次 + 逐条稳定性对账（同夹具同进程族）
+  timeout_sec: 1800
+- cmd: "bash -c 'set -euo pipefail\ncd /Volumes/workspace/dev/sqlrustgo\npython3 - <<\"PY\"\nimport json\n\
+    new={x[\"query_id\"]:x for x in json.load(open(\"audit/v4.1.0/runs/20261111-seed42-fixture-001/dump-run1.json\"\
+    ))[\"queries\"]}\nold={x[\"query_id\"]:x for x in json.load(open(\"audit/v4.1.0/runs/20261111-fakebase-capture-001/g1-candidates.json\"\
+    ))[\"queries\"]}\nsame=[q for q in new if q in old and new[q][\"engine_capture_sha256\"]==old[q][\"\
+    engine_capture_sha256\"]]\nrc=[q for q in new if q in old and new[q][\"row_count\"]!=old[q][\"row_count\"\
+    ]]\nprint(\"query | old_hash16 | new_hash16 | old_rows | new_rows\")\nfor q in sorted(new, key=lambda\
+    \ s:int(s[1:])):\n    print(\"%s | %s | %s | %d | %d\" % (q, old[q][\"engine_capture_sha256\"][:16],\
+    \ new[q][\"engine_capture_sha256\"][:16], old[q][\"row_count\"], new[q][\"row_count\"]))\nprint(\"\
+    SUMMARY entries=%d same=%d diff=%d rowcount_changed=%s\" % (len(new), len(same), len(new)-len(same),\
+    \ sorted(rc)))\nprint(\"Q9 new full = %s\" % new[\"Q9\"][\"engine_capture_sha256\"])\nPY'\n"
+  cwd: .
+  id: seed42-vs-old-capture
+  name: seed-42 数据集 vs 已逝旧夹具逐条对账（不可溯实锤的归档版）
+  timeout_sec: 300
+results:
+- id: seed42-regen-fixture
+  started_at: '2026-11-11T09:25:17Z'
+  finished_at: '2026-11-11T09:25:52Z'
+  exit_code: 0
+  stdout_sha256: 41f2a18d8d94a7176475883c8dc40e4f9ddd74cdabd862d33bd363a99f873b73
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-seed42-regen-fixture.stdout
+  stderr_path: logs/001-seed42-regen-fixture.stderr
+- id: seed42-dump-run1
+  started_at: '2026-11-11T09:25:52Z'
+  finished_at: '2026-11-11T09:27:51Z'
+  exit_code: 0
+  stdout_sha256: 7ad484e20c18fa6889e22a17e6147b1670a9c78ed0ae0bd07a53d79e82d0dce3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-seed42-dump-run1.stdout
+  stderr_path: logs/002-seed42-dump-run1.stderr
+- id: seed42-dump-run2-stability
+  started_at: '2026-11-11T09:27:51Z'
+  finished_at: '2026-11-11T09:29:49Z'
+  exit_code: 0
+  stdout_sha256: 85c0755c5ab10be2a6c80bc0673c7de23d6058596da9b5e4244537019a2d95c3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-seed42-dump-run2-stability.stdout
+  stderr_path: logs/003-seed42-dump-run2-stability.stderr
+- id: seed42-vs-old-capture
+  started_at: '2026-11-11T09:29:49Z'
+  finished_at: '2026-11-11T09:29:49Z'
+  exit_code: 0
+  stdout_sha256: e1d5a273384bba71d2b69c05bda9af416f3fe41226d6facb0c2ec6b7f801ccd8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-seed42-vs-old-capture.stdout
+  stderr_path: logs/004-seed42-vs-old-capture.stderr
+evidence_hash: sha256:ef0818fd13c5ad12bef6ad0772e64b1617af5697685df43588fb299fe52504db
+completed_at: '2026-11-11T09:29:49Z'

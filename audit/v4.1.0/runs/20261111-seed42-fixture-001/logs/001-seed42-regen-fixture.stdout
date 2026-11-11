@@ -1,0 +1,10 @@
+=== inner funnel probes ===
+  OK   Q17 line items reaching the aggregate: 67 (need >= 1)
+  OK   Q18 orders whose SUM(l_quantity) exceeds 300: 601 (need >= 1)
+  OK   Q19 line items reaching the aggregate: 29 (need >= 1)
+  OK   Q22 customers with an above-average balance and no order: 75 (need >= 20)
+Done.
+   59852 /tmp/tpch-sf001/lineitem.tbl
+    2000 /tmp/tpch-sf001/part.tbl
+    1500 /tmp/tpch-sf001/customer.tbl
+   63352 total
