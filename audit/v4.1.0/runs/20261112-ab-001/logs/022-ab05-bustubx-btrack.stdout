@@ -1,0 +1,17 @@
+=== RC-B1 BustubX-EDU B-track oracle corpus (SKELETON) ===
+Timestamp: 2026-11-11T19:14:55Z
+Repo:      /Volumes/workspace/dev/sqlrustgo
+Branch:    develop/v4.1.0
+HEAD:      aec1a3673c
+
+  MISSING: /Volumes/workspace/dev/sqlrustgo/tests/compat/bustubx_edu_b_track/manifest.yml
+  MISSING: /Volumes/workspace/dev/sqlrustgo/tests/compat/bustubx_edu_b_track/seed.sql
+  MISSING: /Volumes/workspace/dev/sqlrustgo/tests/compat/bustubx_edu_b_track/exercises/week01_setup.sql
+  MISSING: /Volumes/workspace/dev/sqlrustgo/tests/compat/bustubx_edu_b_track/oracle/week01_setup.expected
+
+RESULT: STUB — 4 required fixture(s) missing.
+ACTION REQUIRED (Phase 2):
+  - Author B-track seed.sql from bustubx_edu week01-week06 curriculum
+  - Generate SQLite oracle via 'sqlite3 < seed.sql' for each exercise
+  - Populate oracle/week{N}-{name}.expected from SQLite output
+  - Re-run this gate; manifest pass-rate must reach 6/6 week coverage

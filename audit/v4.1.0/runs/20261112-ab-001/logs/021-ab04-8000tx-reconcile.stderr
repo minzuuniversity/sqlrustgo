@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/integration/transaction/ab04_8thread_1000tx_reconcile_test.rs (/Volumes/workspace/dev/walgc2-target/debug/deps/ab04_8thread_1000tx_reconcile_test-655c49cf4063275b)

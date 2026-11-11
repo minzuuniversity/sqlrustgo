@@ -1,0 +1,39 @@
+=== #5113 criterion 9: Hard Gate mutation probe (static half) ===
+
+Workflow: .github/workflows/ci-pr.yml
+
+  ✓ fmt: no continue-on-error
+  ✓ clippy: no continue-on-error
+  ✓ docs: no continue-on-error
+  ✓ build: no continue-on-error
+  ✓ test-unit: no continue-on-error
+  ✓ test-integration: no continue-on-error
+  ✓ security: no continue-on-error
+  ✓ verify: no continue-on-error
+  ✗ verify/Generate verification report: `|| <always-succeeds>`  [python3 scripts/verification_engine.py || true]
+
+  checks passed: 8
+  checks failed: 1
+
+  Failing checks:
+    - verify/Generate verification report: `|| <always-succeeds>` discards the failure
+
+FAIL — 1 check(s) found a gate that can silently pass.
+
+--- dynamic: injecting a failure into each gate ---
+
+  ✓ fmt: \`cargo\` fails → exit 1 (gate turns red)
+  ✓ clippy: \`cargo\` fails → exit 1 (gate turns red)
+  ✓ docs: \`cargo\` fails → exit 1 (gate turns red)
+  ✓ build: \`cargo\` fails → exit 1 (gate turns red)
+  ✓ test-unit: \`cargo\` fails → exit 1 (gate turns red)
+  – test-integration: shells out to a repo script — out of reach for stub probing,
+      static checks above still apply
+  ✓ security: \`cargo\` fails → exit 1 (gate turns red)
+  – verify: shells out to a repo script — out of reach for stub probing,
+      static checks above still apply
+
+  dynamic probes passed: 6
+  dynamic probes failed: 0
+
+PASS — every Hard Gate turns red when a failure is injected.
