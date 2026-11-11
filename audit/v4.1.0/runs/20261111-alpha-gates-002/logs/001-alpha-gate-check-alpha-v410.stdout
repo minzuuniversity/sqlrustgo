@@ -1,0 +1,112 @@
+=== v4.1.0 Alpha Gate Composite ===
+Branch: develop/v4.1.0 @ 0297b4cc85
+
+=== v4.1.0 Alpha Entry Check ===
+Branch: develop/v4.1.0 @ 0297b4cc85
+Boundary: entry readiness only; not a feature-completion or quality PASS.
+
+--- E1: Required Draft/Alpha Documents ---
+  [E1_STAGE] PASS
+  [E1_VERSION_PLAN] PASS
+  [E1_DEV_PLAN] PASS
+  [E1_ROADMAP] PASS
+  [E1_TEST_PLAN] PASS
+  [E1_ISSUES_PLAN] PASS
+  [E1_LEGACY_ISSUES] PASS
+  [E1_README] PASS
+  [E1_CHANGELOG] PASS
+  [E1_RELEASE_NOTES] PASS
+  [E1_PHASE_1_SCOPE] PASS
+  [E1_REVIEW_QUEUE] PASS
+
+--- E2: Documentation Entry Gates ---
+  [E2_DOC_LINKS] PASS
+  [E2_DOC_CONSISTENCY] PASS
+
+--- E3: Tool Entry Points ---
+  [E3_5REMOTES_SYNC] PASS
+  [E3_5REMOTES_DRIFT] PASS
+  [E3_SQLLOGICTEST_BUILD] PASS
+  [E3_ALPHA_QUALITY] PASS
+  [E3_ALPHA_COMPOSITE] PASS
+
+=== v4.1.0 Alpha Entry Summary ===
+PASS: 19 / 19
+BLOCKERS: 0
+STATUS: ALPHA ENTRY PASS
+
+=== v4.1.0 Alpha Quality Gate ===
+Branch: develop/v4.1.0 @ 0297b4cc85
+Boundary: hard quality gates; registered exclusions are visible debt, not PASS evidence.
+
+Note: check_docs_consistency.sh is a version-agnostic cross-version check
+(covers v3.0.0..v3.12.0 only). It is run as part of alpha ENTRY (E2) not
+alpha QUALITY. Pre-existing failures in that gate (VERSION_HISTORY.md
+current version + v3.12.0 CHANGELOG duplicate commit 355b5a3837) are
+not v4.1.0 regressions and are tracked separately per open_issues §3.
+
+
+--- Q1: Build & Format ---
+  [Q1_BUILD] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q1_BUILD_0297b4cc85_20261111_094853.log sha256=52f40978f8069f993e5e428a89aa5d0ea637840b0fd9c78108c9346af3bd4570)
+  [Q1_FMT] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q1_FMT_0297b4cc85_20261111_094900.log sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855)
+
+--- Q2: Anti-Fabrication Policy ---
+  [Q2_ANTI_FAB] FAIL (log=docs/releases/v4.1.0/logs/alpha_quality_Q2_ANTI_FAB_0297b4cc85_20261111_094903.log sha256=feae9f1db891802c7f461920503b9f60f80c128b684125fa7ae4ed0079895120)
+    [PASS] sqlrustgo-mysql-server: cargo check PASS
+    
+    [INFO] CHECK 1.5: V312-24 SQLancer + test-runner report artifacts...
+    [INFO]   target/release/sqlancer not present; building...
+    [ERROR]   V312-24: target/release/sqlancer not built; cannot produce report
+    [INFO]   target/release/test-runner not present; building...
+    [INFO]   building test binaries for packages: sqlrustgo-executor sqlrustgo-storage sqlrustgo-tools
+    [ERROR]   V312-24 artifacts check: 1 failure(s) (see lines above)
+    
+    [INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
+    [PASS] Test binaries compile PASS
+    
+    [INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
+    [INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries: unknown)
+    [INFO] docs/releases/v3.8.0/beta/BETA_GATE_REPORT.md: declares 15/15 PASS (test binaries: unknown)
+    [INFO] docs/releases/v3.8.0/rc/RC_GA_GATE_REPORT.md: declares 5/5 PASS (test binaries: unknown)
+    [INFO] docs/releases/v3.9.0/rc/RC1_GATE_REPORT.md: declares 4/4 PASS (test binaries: unknown)
+    [INFO] docs/releases/v3.9.0/rc/RC2_GATE_REPORT.md: declares 4/4 PASS (test binaries: unknown)
+    
+    [INFO] CHECK 4: HEAD commit author must be a known AI/Human identity...
+    [PASS] HEAD author email: openclaw@gaoyuanyiyao.com (allowed multi-AI identity)
+    
+    [INFO] CHECK 5: Code examples in documentation (sanity scan)...
+    [PASS] Scanned 434 markdown files in docs/releases + docs/governance
+    
+    ============================================
+    Results: ERRORS=2, WARNINGS=0
+    ============================================
+    
+    [FAIL] Anti-fabrication check (AFP v4): FAILED with 2 error(s)
+
+--- Q3: Anti-Ignore Gate ---
+  [Q3_ANTI_IGNORE] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q3_ANTI_IGNORE_0297b4cc85_20261111_100435.log sha256=fe823fd2b89ecbe830ca5bd204494352ee4a176c427b29f7062165ce56ed32ac)
+
+--- Q4: Architecture Invariants ---
+  [Q4_ARCH_INVARIANTS] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q4_ARCH_INVARIANTS_0297b4cc85_20261111_100436.log sha256=7a4ad832e77eaf5cf645b7241af81f4d60436e5a293042970f387f3505890a88)
+  [Q4_ARCH3_NO_BYPASS] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q4_ARCH3_NO_BYPASS_0297b4cc85_20261111_100436.log sha256=8fc41d8cb57dcaafd6c73483e2045fed418f2fa20ca4fd2f43fb630b5f277d31)
+
+--- Q4b: One Coverage Implementation (#5581) ---
+  [Q4B_COVERAGE_SINGLE_IMPL] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q4B_COVERAGE_SINGLE_IMPL_0297b4cc85_20261111_100436.log sha256=37435de864491b27eff67c52141f2d430832c5b5cc2f3424128a99be507e2d83)
+
+--- Q5: SQL Corpus Gate ---
+  [Q5_SQL_CORPUS] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q5_SQL_CORPUS_0297b4cc85_20261111_100436.log sha256=245051ea7dea1eb1cf64cf73b5484009e81eacf0c61c5778bc21a53d3948a60d)
+
+--- Q6: Test Suite Compile ---
+  [Q6_TEST_LIB] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q6_TEST_LIB_0297b4cc85_20261111_100506.log sha256=63c32b3c5634e1eb55d6039bfa88eb6c7ba14a08026d33c726d7a0e10d5f46b9)
+
+--- (Q7 Coverage deferred to alpha_to_beta per STAGE.yaml) ---
+=== v4.1.0 Alpha Quality Summary ===
+PASS: 8 / 9
+SKIPPED: 0
+BLOCKERS: 1
+STATUS: ALPHA QUALITY BLOCKED
+
+=== v4.1.0 Alpha Gate Composite Summary ===
+ENTRY_STATUS: 0
+QUALITY_STATUS: 1
+STATUS: ALPHA ENTRY PASS / ALPHA QUALITY BLOCKED
