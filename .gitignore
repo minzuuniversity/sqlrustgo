@@ -360,6 +360,9 @@ docs/tutorials/教学计划/
 # Test/eval runtime outputs (CI artifacts)
 tools/benchmarks/baselines/
 tools/benchmarks/results/
+
+# ab08 criterion pipeline runtime outputs (evidence lives in audit run dirs)
+benchmarks/results/
 tools/oracle/reports/
 tools/oracle/tpch_sf01_snapshot_v2/
 tools/tpch-benchmark/baseline/
