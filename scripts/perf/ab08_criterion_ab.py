@@ -51,8 +51,22 @@ DROP_THRESHOLD = 0.10   # mean point drop -> FAIL
 TAIL_THRESHOLD = 0.20   # median point increase -> FAIL
 
 
-def sh(argv):
-    return subprocess.run(argv, cwd=ROOT, capture_output=True, text=True)
+def sh(argv, timeout=None):
+    """Run a command, optionally with a wall-clock budget.
+
+    A bench that never finishes must not hang the whole run: the budget
+    turns "hangs forever" into an honest NOT-RUN for that bench. The
+    sentinel exit code 124 mirrors `timeout(1)`.
+    """
+    try:
+        return subprocess.run(argv, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        class _TimedOut:
+            returncode = 124
+            stdout = ""
+            stderr = f"TIMEOUT after {timeout}s: {' '.join(argv)}"
+
+        return _TimedOut()
 
 
 def cargo():
@@ -111,6 +125,20 @@ def load_is_noisy(env):
     return False, "host idle"
 
 
+def worst_load(*samples):
+    """The worse of the load samples (the measurement window is what counts)."""
+    loads = [s for s in samples if isinstance(s, dict)]
+    if not loads:
+        return {}
+    load1s = [s.get("load1") for s in loads if s.get("load1") is not None]
+    others = [s.get("other_build_processes") for s in loads
+              if s.get("other_build_processes") is not None]
+    return {
+        "load1": max(load1s) if load1s else None,
+        "other_build_processes": max(others) if others else None,
+    }
+
+
 def env_fingerprint():
     rustc = cargo().replace("cargo", "rustc") if not cargo().endswith("cargo") else "rustc"
     rc = sh([rustc, "-vV"])
@@ -165,29 +193,43 @@ def collect(tag, min_mtime=None):
     return metrics
 
 
-def run_benches(benches, tag, samples, smoke=True):
+def run_benches(benches, tag, samples, smoke=True, bench_timeout=900):
     import time as _time
     metrics = {}
     groups = {}
+    not_run = {}
     for bench in benches:
         if smoke:
-            pre = sh([cargo(), "bench", "--bench", bench, "--", "--test"])
+            pre = sh([cargo(), "bench", "--bench", bench, "--", "--test"], timeout=bench_timeout)
             if pre.returncode != 0:
-                print(f"PRE-GATE NOT RUN: {bench} --test failed\n{pre.stderr[-800:]}")
-                sys.exit(2)
+                # A bench that cannot even run its correctness check is
+                # NOT-RUN — it is not a measurement failure, and it must not
+                # be reported as one.
+                reason = (
+                    f"pre-gate (criterion --test) failed or timed out "
+                    f"(exit {pre.returncode})"
+                )
+                print(f"NOT-RUN: {bench} — {reason}\n{pre.stderr[-800:]}")
+                not_run[bench] = reason
+                continue
         t0 = _time.time() - 2.0
         run = sh([cargo(), "bench", "--bench", bench, "--",
-                  "--save-baseline", tag, "--sample-size", str(samples)])
+                  "--save-baseline", tag, "--sample-size", str(samples)],
+                 timeout=bench_timeout)
         if run.returncode != 0:
-            print(f"MEASURE FAIL: {bench} exit {run.returncode}\n{run.stderr[-800:]}")
-            sys.exit(2)
+            reason = f"measurement failed or timed out (exit {run.returncode})"
+            print(f"NOT-RUN: {bench} — {reason}\n{run.stderr[-800:]}")
+            not_run[bench] = reason
+            continue
         fresh = collect(tag, min_mtime=t0)
         if not fresh:
-            print(f"COLLECT FAIL: no fresh criterion JSON for bench {bench}")
-            sys.exit(2)
+            reason = "no fresh criterion JSON after the measurement"
+            print(f"NOT-RUN: {bench} — {reason}")
+            not_run[bench] = reason
+            continue
         groups[bench] = sorted(fresh)
         metrics.update(fresh)
-    return metrics, groups
+    return metrics, groups, not_run
 
 
 def write_json(path, payload):
@@ -203,16 +245,29 @@ def cmd_run(args):
     if args.samples < 5:
         print("REFUSED: gate plan AB-08 requires >=5 samples")
         sys.exit(1)
-    metrics, groups = run_benches(benches, args.tag, args.samples, smoke=not args.no_smoke)
+    env_before = env_fingerprint()
+    metrics, groups, not_run = run_benches(
+        benches, args.tag, args.samples, smoke=not args.no_smoke,
+        bench_timeout=args.bench_timeout)
+    if not metrics:
+        print(f"FAIL-CLOSED: no bench produced a measurement (all NOT-RUN: {sorted(not_run)})")
+        sys.exit(1)
+    env_after = env_fingerprint()
+    env = dict(env_after)
+    # The load that matters is the one during the measurement window, not
+    # only the one at the end of it.
+    env["load"] = worst_load(env_before.get("load"), env_after.get("load"))
+    env["load_samples"] = [env_before.get("load"), env_after.get("load")]
     payload = {
         "schema": RUN_SCHEMA,
         "generated_utc": now_iso(),
         "tag": args.tag,
         "samples_requested": args.samples,
-        "env": env_fingerprint(),
+        "env": env,
         "deviations": ["criterion-0.5-no-p99: median point committed as tail proxy"],
         "bench_groups": groups,
         "benches": metrics,
+        "not_run": not_run,
     }
     write_json(os.path.join(RESULTS_DIR, f"ab08-run-{args.tag}.json"), payload)
 
@@ -227,6 +282,15 @@ def cmd_promote(args):
         print("REFUSED: baseline exists (use --force)")
         sys.exit(1)
     deviations = list(run.get("deviations", []))
+    not_run = run.get("not_run") or {}
+    if not_run and not args.allow_not_run:
+        print(f"REFUSED: {len(not_run)} bench(es) were NOT-RUN in the source run "
+              f"({sorted(not_run)}) — a baseline must cover the requested benches "
+              f"(or pass --allow-not-run to record the gap)")
+        sys.exit(1)
+    if not_run:
+        deviations.append("not-run-benches: " + ", ".join(
+            f"{bench} ({reason})" for bench, reason in sorted(not_run.items())))
     noisy, why = load_is_noisy(run.get("env"))
     if noisy:
         if not args.allow_load_noise:
@@ -310,12 +374,16 @@ def main():
     g.add_argument("--core", action="store_true")
     r.add_argument("--samples", type=int, default=30)
     r.add_argument("--no-smoke", action="store_true")
+    r.add_argument("--bench-timeout", type=int, default=900,
+                   help="wall-clock budget per bench (seconds); a bench that "
+                        "exhausts it is recorded as NOT-RUN, not as a failure")
     r.set_defaults(func=cmd_run)
     p = sub.add_parser("promote")
     p.add_argument("--run", required=True)
     p.add_argument("--baseline", required=True)
     p.add_argument("--force", action="store_true")
     p.add_argument("--allow-load-noise", action="store_true")
+    p.add_argument("--allow-not-run", action="store_true")
     p.set_defaults(func=cmd_promote)
     c = sub.add_parser("compare")
     c.add_argument("--run", required=True)
