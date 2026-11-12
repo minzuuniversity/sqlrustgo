@@ -167,3 +167,37 @@ bash audit/v4.1.0/env_pollution_check.sh <run_id> pre|post
    run 以 rc=1 结束 —— 失败基线同样是有效事实，证据必须完整。
 5. manifest 与 logs 一经 run 完成即只读；改一个字节 → `verify` FAIL。
 6. 本契约不宣布任何阶段 PASS；STAGE.yaml 仍是发布阶段 SSOT。
+
+## AB campaign 第二轮（`commands_ab_002.yaml`）
+
+清单：`audit/v4.1.0/commands_ab_002.yaml`（49 臂；第一轮 `commands_ab_001.yaml` 为 38 臂）。
+第二轮的每一条新增臂都对应第一轮的**一个实测红**，清单头部逐条写明。
+
+### 前置条件（未合并则相关臂必红，**属预期**）
+
+Worker 不自合并（g3 receipts 域），故第二轮开跑前需 Owner 合入：
+`#5753`（心跳 emitter/checker + 监督 wrapper）、`#5754`（AB-08 管道）、`#5755`（soak 路径可移植 +
+未加载 fail-closed）、`#5757`（compat 语料）、`#5760`（#5507 提交增量发布）、`#5761`（#5498 按合取
+计数）、`#5762`（#5503 NOT-RUN 本地通道）、`#5763`（#5712 跨平台 CPU 计量）、`#5764`（#5711 按测试
+名披露）。
+
+### 已知会红的臂（除非对应 PR 已合入）
+
+| 臂 | 缺什么 |
+|---|---|
+| `ab07-soak-1h` | `scripts/soak/run_soak_with_heartbeat.sh`（#5753）+ `v400_1h_soak.sh` 的 fail-closed（#5755） |
+| `ab08-criterion-smoke` | `scripts/perf/ab08_criterion_ab.py`（#5754） |
+| `ab05-compat-*` | `tests/compat/bustubx_edu_b_track/` 下的三个脚本（#5757） |
+| `ab11-*` | #5760/#5761/#5762/#5763/#5764 引入的判别式测试 |
+
+### 跑法要点（第一轮的教训）
+
+- **freeze 显式指定**：`audit_run.py freeze --base gitea252/develop/v4.1.0`；stash 窗口**无条件 pop**；
+  跑完 `commit.txt` 恢复；run 目录的 `*.json` 被 gitignore ⇒ 入库需 `git add -f`。
+- **AB-07 的驱动依赖**：负载驱动需要 `pymysql`（`ab07-driver-dep` 臂是独立前置）——
+  第一轮首跑因此空转了一小时（q=0/e=0/panics=0 看着像通过），第二轮把它前置成会红的臂。
+- **AB-09 的证据写入**：安全扫描臂的输出已重定向到 `/tmp`（`EVIDENCE_DIR`/`OUT_FILE`）——
+  第一轮实测该臂会**覆写仓内已提交的证据文件**（#5577 缺陷类）。
+- **AB-08 正式基线不放在 campaign 臂里**：基线 promote 要求**宿主空闲窗口**（负载守卫），
+  须在空闲宿主单独执行 `scripts/perf/ab08_criterion_ab.py promote`。
+
