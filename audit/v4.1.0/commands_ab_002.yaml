@@ -229,6 +229,11 @@
   id: ab08-criterion-smoke
   name: "AB-08 #5116 criterion 管道冒烟（真实测量 → run JSON；正式基线 promote 另在空闲宿主执行）"
   timeout_sec: 3600
+- cmd: python3 scripts/perf/test_ab08_criterion_ab.py
+  cwd: .
+  id: ab08-pipeline-selftest
+  name: "AB-08 #5116 criterion 管道守卫自测（11 臂：守卫不触发就等于没有守卫）"
+  timeout_sec: 900
 # AB-09 安全/依赖
 - cmd: env EVIDENCE_DIR=/tmp/srg-ab002-evidence OUT_FILE=/tmp/srg-ab002-evidence/GA3_SECURITY_SCAN_REPORT.md bash scripts/gate/check_security_scan_v312.sh
   cwd: .
