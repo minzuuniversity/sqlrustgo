@@ -2044,3 +2044,8 @@ path = "tests/soak/v312_mixed_soak.rs"
 [[test]]
 name = "test_target_manifest_honesty_test"
 path = "tests/integration/gate/test_target_manifest_honesty_test.rs"
+
+# #5503 —— NOT-RUN 披露的本地可见性自证。
+[[test]]
+name = "not_run_log_visibility_5503"
+path = "tests/integration/sql/not_run_log_visibility_5503.rs"
