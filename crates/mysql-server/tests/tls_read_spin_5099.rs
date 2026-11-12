@@ -27,9 +27,24 @@ use std::time::{Duration, Instant};
 
 /// Open N authenticated TLS connections, then clean-FIN each one.
 const REPRO_SCRIPT: &str = r#"
-import os, socket, ssl, sys, time
-sys.path.insert(0, os.path.expanduser("~/.local/lib/python3.12/site-packages"))
-import pymysql
+import os, socket, ssl, sys, time, glob
+
+# #5712: find pymysql without hardcoding one interpreter's site-packages.
+# PYTHONPATH (inherited from the environment) still wins, so a venv works.
+for pattern in (
+    os.path.expanduser("~/.local/lib/python3.*/site-packages"),
+    os.path.expanduser("~/Library/Python/3.*/lib/python/site-packages"),
+):
+    for path in sorted(glob.glob(pattern)):
+        if path not in sys.path:
+            sys.path.insert(0, path)
+
+try:
+    import pymysql
+except ImportError:
+    print("FATAL: pymysql not installed — pip install pymysql (or point "
+          "PYTHONPATH at a site-packages that has it)", file=sys.stderr)
+    sys.exit(2)
 
 PORT = int(sys.argv[1])
 N = int(sys.argv[2])
@@ -58,19 +73,53 @@ for c in held:
 time.sleep(HOLD)
 "#;
 
-/// Accumulated CPU seconds for a process, from `/proc/<pid>/stat`.
+/// Accumulated CPU seconds for a process.
 ///
 /// Spinning threads burn CPU while doing nothing, so asserting *accumulated
 /// CPU* is the honest check. Sampling `ps` wall-clock would be flaky on a
 /// loaded CI box; accumulated CPU time is not.
+///
+/// #5712: this used to read `/proc/<pid>/stat`, which only exists on Linux
+/// — on macOS the test died in the measurement helper and reported a
+/// platform red that had nothing to do with the behaviour under test.
+/// Linux reads `/proc`; macOS asks `ps -o time=` (which reports *used* CPU,
+/// not wall clock).
 fn cpu_seconds(pid: u32) -> f64 {
-    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))
-        .unwrap_or_else(|e| panic!("read /proc/{pid}/stat: {e}"));
-    // utime/stime are fields 14/15, after the possibly space-containing comm.
-    let after_comm = stat.rsplit_once(')').expect("comm field").1;
-    let f: Vec<&str> = after_comm.split_whitespace().collect();
-    let ticks: f64 = f[11].parse().unwrap_or(0.0) + f[12].parse().unwrap_or(0.0);
-    ticks / 100.0 // _SC_CLK_TCK is 100 on Linux
+    if cfg!(target_os = "linux") {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"))
+            .unwrap_or_else(|e| panic!("read /proc/{pid}/stat: {e}"));
+        // utime/stime are fields 14/15, after the possibly space-containing comm.
+        let after_comm = stat.rsplit_once(')').expect("comm field").1;
+        let f: Vec<&str> = after_comm.split_whitespace().collect();
+        let ticks: f64 = f[11].parse().unwrap_or(0.0) + f[12].parse().unwrap_or(0.0);
+        ticks / 100.0 // _SC_CLK_TCK is 100 on Linux
+    } else if cfg!(target_os = "macos") {
+        let out = std::process::Command::new("ps")
+            .args(["-o", "time=", "-p", &pid.to_string()])
+            .output()
+            .unwrap_or_else(|e| panic!("run ps for pid {pid}: {e}"));
+        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        parse_ps_time(&text).unwrap_or_else(|| {
+            panic!("cannot read the accumulated CPU time of pid {pid} from `ps`: {text:?}")
+        })
+    } else {
+        panic!(
+            "cpu_seconds is implemented for Linux (/proc/<pid>/stat) and macOS \
+             (`ps -o time=`); this platform needs its own implementation"
+        )
+    }
+}
+
+/// Parse the `[[HH:]MM:]SS.ss` shape `ps -o time=` prints.
+fn parse_ps_time(text: &str) -> Option<f64> {
+    if text.is_empty() {
+        return None;
+    }
+    let mut total = 0.0;
+    for part in text.split(':') {
+        total = total * 60.0 + part.parse::<f64>().ok()?;
+    }
+    Some(total)
 }
 
 fn wait_ready(port: u16, timeout: Duration) {
