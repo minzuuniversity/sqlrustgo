@@ -11,7 +11,8 @@
 
 set -uo pipefail
 
-RESULTS_DIR="${RESULTS_DIR:-/Users/liying/dev/sqlrustgo/results}"
+SOAK_REPO_ROOT="${SOAK_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+RESULTS_DIR="${RESULTS_DIR:-$SOAK_REPO_ROOT/results}"
 
 # Find latest soak results directory
 LATEST=$(ls -td "$RESULTS_DIR"/soak-v400-1h-* 2>/dev/null | head -1)
