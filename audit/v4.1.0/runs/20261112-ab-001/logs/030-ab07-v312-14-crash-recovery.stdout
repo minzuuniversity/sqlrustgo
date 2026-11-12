@@ -1,0 +1,57 @@
+=== V312-14 Crash Recovery Gate — executable ===
+Branch: develop/v4.1.0 @ aec1a3673c
+Scope:  12 suites; threshold = 0 failures across all suites
+
+---
+RUN: crash_test_framework
+  test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  [PASS] crash_test_framework
+---
+RUN: process_kill_crash_test
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+  [PASS] process_kill_crash_test
+---
+RUN: backup_restore_test
+  test result: ok. 51 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.50s
+  [PASS] backup_restore_test
+---
+RUN: recovery_fuzzer_test
+  test result: ok. 14 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.04s
+  [PASS] recovery_fuzzer_test
+---
+RUN: physical_backup_test
+  test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 63.66s
+  [PASS] physical_backup_test
+---
+RUN: memory_fault_injection_test
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  [PASS] memory_fault_injection_test
+---
+RUN: network_fault_injection_test
+  test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+  [PASS] network_fault_injection_test
+---
+RUN: row_crc_skip
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  [PASS] row_crc_skip
+---
+RUN: torn_write_recovery
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  [PASS] torn_write_recovery
+---
+RUN: crash_monkey_test
+  test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  [PASS] crash_monkey_test
+---
+RUN: oracle_g14_real_crash
+  test result: ok. 47 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+  [PASS] oracle_g14_real_crash
+---
+RUN: sql_injection_test
+  test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+  [PASS] sql_injection_test
+
+=== Summary ===
+PASS: 12 / 12
+FAIL: 0 / 12
+STATUS: V312-14 CRASH RECOVERY GATE PASS

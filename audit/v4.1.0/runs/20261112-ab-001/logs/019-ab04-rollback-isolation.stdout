@@ -1,0 +1,8 @@
+
+running 3 tests
+test concurrent_delete_insert_txns_lose_no_rows ... ok
+test peer_rollback_preserves_other_tx_undo_entries ... ok
+test committed_delete_is_not_undone_by_peer_rollback ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.18s
+

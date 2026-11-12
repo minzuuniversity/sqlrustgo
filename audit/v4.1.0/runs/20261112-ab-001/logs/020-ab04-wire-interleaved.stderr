@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/integration/transaction/wire_interleaved_tx_test.rs (/Volumes/workspace/dev/walgc2-target/debug/deps/wire_interleaved_tx_test-a1ab79b356baa036)

@@ -1,0 +1,10 @@
+=== G15 Gate: Performance Report (汇总 + GE3 入口) ===
+  [1/5] ✅ PASS: PERFORMANCE_REPORT.md present
+  [2/5] ✅ PASS: 5 sub-reports present (QPS/SYSBENCH/STABILITY/CRASH/COMPATIBILITY)
+  [3/5] ✅ PASS: PERFORMANCE_BASELINE.md present
+  ⚠️ WARN: STABILITY_REPORT.md missing v3.8.0/v3.9.0 column (real data deferred to W12)
+  [4/5] ✅ PASS: All sub-reports have v3.8.0/v3.9.0 structure (TBD OK)
+  [5/5] ✅ PASS: All 6 perf gates + baseline PASS
+
+=== G15 Gate: PASS ===
+Performance Report: 1 master + 5 sub-reports + baseline + 6 gates

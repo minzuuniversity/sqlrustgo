@@ -1,0 +1,48 @@
+
+running 43 tests
+test common::oracle_framework::tests::perf_within_tolerance_pass ... ok
+test common::oracle_framework::tests::perf_within_tolerance_fail ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_count_mismatch ... ok
+test common::tpch_cli_harness::bin_resolver::tests::canonical_cli_bin_name_is_not_its_package_name ... ok
+test common::oracle_framework::tests::row_set_assert_set_eq_order_independent ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_accepts_paths_that_are_not_machine_specific ... ok
+test common::tpch_cli_harness::bin_resolver::tests::engine_cli_and_canonical_cli_are_the_same_binary ... ok
+test common::tpch_cli_harness::bin_resolver::tests::home_directory_detection_matches_the_gate_criterion ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_binary_message_names_the_env_var_to_set ... ok
+test common::tpch_cli_harness::bin_resolver::tests::missing_external_tool_message_names_the_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_machine_specific_install_paths ... ok
+test common::oracle_framework::tests::sha256_capture_detects_drift ... ok
+test common::oracle_framework::tests::sha256_capture_deterministic ... ok
+test common::tpch_cli_harness::bin_resolver::tests::c7_detects_literal_client_credentials_but_not_variables ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::missing_state_reports_not_run ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_tbl_splits_and_trims ... ok
+test common::tpch_cli_harness::tests::test_pick_free_port ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_rejects_missing_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::parse_value_types_fields ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::statement_case_id_is_target_independent ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::target_qualified_case_id_is_distinct_from_the_shared_one ... ok
+test common::tpch_wire_harness::tests::empty_first_3_rows_skips_cell_check ... ok
+test common::tpch_cli_harness::tpch_fixture::tests::manifest_roundtrip ... ok
+test common::tpch_wire_harness::tests::float_tolerance_accepts_close_values ... ok
+test common::tpch_wire_harness::tests::float_tolerance_rejects_far_values ... ok
+test common::tpch_wire_harness::tests::all_cells_match_returns_ok ... ok
+test common::tpch_wire_harness::tests::column_count_mismatch_returns_err ... ok
+test common::tpch_wire_harness::tests::missing_engines_sqlite_returns_err ... ok
+test common::tpch_wire_harness::tests::single_cell_mismatch_returns_err_with_position ... ok
+test common::tpch_wire_harness::tests::row_count_mismatch_returns_err_with_count_message ... ok
+test common::tpch_wire_scope::tests::every_wire_exclusion_carries_a_reason_and_an_issue ... ok
+test common::tpch_wire_scope::tests::standard_queries_are_recognised ... ok
+test common::tpch_wire_scope::tests::unregistered_wire_skips_are_reported ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+test rolled_back_insert_is_invisible_to_peer_over_wire ... ok
+test rollback_before_peer_commit_over_wire ... ok
+test committed_delete_survives_peer_rollback_over_wire ... ok
+test two_concurrent_rollbacks_over_wire ... ok
+
+test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.76s
+
