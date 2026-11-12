@@ -67,12 +67,12 @@
 |---|---|---|---|---|---|
 | AB-01 | 4 绿 / 2 红 | `ab01-evidence-verify`（evidence_inventory：debt 1216、unbound 1182、ambiguous 34、findings 131）；`ab01-stage-check`（聚合 `check_alpha_v4.1.0.sh` + `check_g1_tpch_baseline.sh` 两个已知红的 meta-red） | 看板两行改 `run:<id>` 强绑定形式；实测本线 6 行看板使 debt **1216→1219**、ambiguous **34→37** ⇒ 追加看板会**加重** AB-01 债，已把绑定形式与合并顺序写进 §5.1 | 台账口径（`CLAIM_BINDINGS_LEDGER.jsonl`）+ g1 假基线 | **Owner**（台账/基线裁决域） |
 | AB-02 | 3 绿 / 1 红 | `ab02-test-all` 唯一失败 `g1_tpch_sha256_baseline`（`oracle_g1_tpch_sha256.rs:259`） | #5760（提交 O(1)，mutation 199/200→0 次深拷贝；墙钟 4000 行 250.164ms→4.024ms）、#5767（INSERT 列数语义 ⇒ 语料 88%→92%）、#5761/#5762/#5763/#5764（判别力与可见性） | g1 基线（#5688 假基线 15/22 空结果） | **Owner** |
-| AB-03 | 4 绿 / 1 红 | `ab03-gate-test-integrity`（P16 ignore 计数 2→3 漂移） | #5754 管道守卫自测（11 臂）、#5753 心跳 fail-closed 自测 | P16 计数属门禁注册表数据 | **Owner** |
+| AB-03 | 4 绿 / 1 红 | `ab03-gate-test-integrity`（P16 ignore 计数 2→3 漂移） | #5754 管道守卫自测（13 臂）、#5753 心跳 fail-closed 自测 | P16 计数属门禁注册表数据 | **Owner** |
 | AB-04 | 6 绿 / 0 红 | — | #5760 顺带修 `apply_committed_log` 的裸表名键（广播删除/更新此前静默丢失） | — | — |
 | AB-05 | 2 绿 / 3 红 | `ab05-bustubx-btrack`（B 轨 gate 因 Phase 2 未实现硬编码 exit 1）；`ab05-b2-per-binary`（529 二进制仅 `tls_read_spin_5099` 红）；`ab05-g1-tpch` | #5757 B 轨 compat 语料（oracle 本机 sqlite3 3.54.0 再生，6/6 周已证）；#5763 修掉 `tls_read_spin_5099` 的 darwin 平台红（pristine tip 同命令 FAILED，本分支 1/1 绿） | B 轨 gate 的 Phase 2 执行实现 | **Owner**（gate 脚本域） |
 | AB-06 | 1 绿 / 0 红 | — | —（本轮 coverage 绿；ALPHA 重跑按 §7 纪律用共享 target 防假红） | — | — |
 | AB-07 | 3 绿 / 1 红 | `ab07-soak-1h`（脚本硬编码作者机路径） | **v4.1.0 首个有效 1h SOAK**：13260 queries/16 线程/60min、panics=0、RSS 126–153MB、心跳 241 beats 无缺口且闭合、summary.json 落盘（归档 PR #5766，run `20261112-soak-ab003`）；机制 #5753（心跳 emitter/checker + 监督 wrapper）、#5755（路径可移植 + 未加载 fail-closed） | **24h runner 可执行**（依赖 CI 执行面） | **CI/infra** |
-| AB-08 | 3 绿 / 0 红 | — | 管道 5 处硬化（负载守卫 / 逐 bench 超时 + 诚实 NOT-RUN / 进程组 kill 修管道死锁 / 探针自排除 / 指标键按 bench 命名空间）+ 11 臂守卫自测；首次六核全集测量 5/6 目标、96 唯一组（bench_cbo 诚实 NOT-RUN），归档 PR #5766 | **正式基线 promote**：需**完全静默窗口**（实测并行开发时 load1=15.68 ⇒ 守卫拒绝；负载下的基线会掩盖回归） | 本线（窗口）+ **CI/infra**（容器天然独占） |
+| AB-08 | 3 绿 / 0 红 | — | 管道 5 处硬化（负载守卫 / 逐 bench 超时 + 诚实 NOT-RUN / 进程组 kill 修管道死锁 / 探针自排除 / 指标键按 bench 命名空间）+ 13 臂守卫自测；首次六核全集测量 5/6 目标、96 唯一组（bench_cbo 诚实 NOT-RUN），归档 PR #5766 | **正式基线 promote**：需**完全静默窗口**（实测并行开发时 load1=15.68 ⇒ 守卫拒绝；负载下的基线会掩盖回归） | 本线（窗口）+ **CI/infra**（容器天然独占） |
 | AB-09 | 2 绿 / 1 红 | `ab09-no-secrets`（v312-59 证据 JSON `local-git:` 哈希误报） | #5381 仓库侧复核 rc=0 全 PASS（5 脚本 env-only + 缺参 fail-closed）；证据文件覆写副作用已披露并还原（#5577 同类），第二轮清单把该臂输出重定向到 /tmp | 误报项在已封存证据 JSON 内 + 检测器豁免属裁决域 | **Owner** |
 | AB-10 | 1 绿 / 0 红 | — | 看板 SSOT 129 行 + 50 臂第二轮清单 + 跑法要点（PR #5765）；本线 15 个提交-only PR 已备 | **合并 PR**（g3 receipts 域，Worker 不自合并）+ 独立 Reviewer 回执（Hub #133） | **Owner** |
 
