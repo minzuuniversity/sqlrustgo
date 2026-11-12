@@ -96,7 +96,7 @@
 | #4640 短 INSERT 静默补 NULL | #5767 | 新增 6 判别用例；**语料 22 文件/3 红/88.0% → 23 文件/2 红/92.0%** |
 | #5679/#5686 WAL group commit | 已在 tip 修复 | 8/8 ×5 确定性绿；建议 Owner 关闭 |
 | #5548/#5549 契约未验证 / 机器依赖 flaky | 已在 tip 修复 | e2e 54/54（契约 2 真被执行）；负载机 3 × 40/0 绿；建议 Owner 关闭 |
-| #5528 musl 缺静态 zlib | 仓库侧已在 tip（`d914c4caaf`） | 特征统一已核；链接层验证需 CI 镜像；建议 Owner 关闭（残余=镜像/工具链固定） |
+| #5567 CI fixture 步骤无 NOT RUN 兜底 | 已在 tip（`scripts/ci/prepare_tpch_fixture_ci.sh`，两 job 共用一份实现） | 三模式实测：正常（8 表/86482 行、无 NOT-RUN 记录、rc=0）/ 环境阻塞（PATH 无 python3 ⇒ NOT RUN 记录 + rc=0）/ 生成器坏（前提齐 ⇒ **rc=1** 并明说「code regression, not an environment block」）| | #5528 musl 缺静态 zlib | 仓库侧已在 tip（`d914c4caaf`） | 特征统一已核；链接层验证需 CI 镜像；建议 Owner 关闭（残余=镜像/工具链固定） |
 | #5381 明文凭据 | 仓库侧已闭环 | 检测器 rc=0 全 PASS；残余=凭据轮换（Owner/infra） |
 
 ### 3.2 Owner 裁决域（只报不裁）
