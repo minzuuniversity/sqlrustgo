@@ -1,0 +1,12 @@
+SOAK_TID=20261112_055140 driver_shell_pid=67407 results=/tmp/srg-ab003-soak-20261112_055140
+SOAK_RC=0
+heartbeat records=243 beats=241 events=['start']..['exit']
+AB-07 heartbeat: PASS (max_gap<= 90s, closed=True)
+HB_RC=0
+metrics_rows=240
+  [3580s/3600s] RSS=153.1MB FD=41 CPU=7.6%(/core ncpu=10) q=11874 e=360 panics=00 remain=0m
+  [3596s/3600s] RSS=133.4MB FD=41 CPU=5.8%(/core ncpu=10) q=11874 e=360 panics=00 remain=0m
+  [3611s/3600s] RSS=126.4MB FD=9 CPU=5.2%(/core ncpu=10) q=13260 e=461 panics=00 remain=0m
+[5/5] Stopping driver + server...
+summary → /tmp/srg-ab003-soak-20261112_055140/summary.json
+PASS — 13260 queries via 16 threads in 60min, 461 errors, 0 high-CPU episodes.

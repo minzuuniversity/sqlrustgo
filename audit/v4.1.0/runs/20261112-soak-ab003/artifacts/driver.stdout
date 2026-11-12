@@ -1,0 +1,1 @@
+v400 soak driver: 16 threads, 3600s, host=127.0.0.1:3412, table=sbtest1, read_pct=80, insert_pct=10, max_id=10000
