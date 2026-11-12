@@ -245,6 +245,45 @@ def main():
             out.stdout.strip() + out.stderr.strip(),
         )
 
+        # --- group names that collide across bench targets ---------------------
+        # The 2026-11-12 core run measured a group called
+        # `parser_batch_100_select` in **both** `bench_insert` and
+        # `parser_bench`. Keying the metrics by the bare group name dropped
+        # one of the two measurements and let a comparison attribute one
+        # bench's numbers to another. The key must carry the bench.
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("ab08_pipeline", PIPELINE)
+        pipeline = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pipeline)
+        key_insert = pipeline.metric_key("bench_insert", "parser_batch_100_select")
+        key_parser = pipeline.metric_key("parser_bench", "parser_batch_100_select")
+        failures += not check(
+            "colliding group names in different benches ⇒ distinct keys",
+            key_insert != key_parser,
+            f"{key_insert} == {key_parser}",
+        )
+
+        write(run_path, run_payload({
+            key_insert: bench(80.0, 80.0),
+            key_parser: bench(100.0, 100.0),
+        }))
+        write(base_path, baseline_payload({
+            key_insert: bench(100.0, 100.0),
+            key_parser: bench(100.0, 100.0),
+        }))
+        out = run_pipeline(
+            ["compare", "--run", run_path, "--baseline", base_path, "--min-samples", "10"],
+            results_dir,
+        )
+        failures += not check(
+            "collision: only the regressed bench is reported",
+            out.returncode == 1
+            and out.stdout.count("REGRESSION") == 1
+            and key_insert in out.stdout,
+            out.stdout.strip(),
+        )
+
     if failures:
         print(f"ab08 selftest: {failures} arm(s) failed")
         return 1
