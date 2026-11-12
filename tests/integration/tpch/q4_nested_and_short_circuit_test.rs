@@ -16,7 +16,6 @@ use parking_lot::RwLock;
 use sqlrustgo::{
     dump_v312_58_sprint5_diag, reset_v312_58_sprint5_diag, ExecutionEngine, MemoryStorage, Value,
 };
-use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -25,25 +24,17 @@ fn fresh_engine() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(storage)
 }
 
-/// Sentinel counters. Each conjunct's eval increments its counter.
 /// The short-circuit property is: when conjunct N is false, conjunct
 /// N+1 must NOT be evaluated for the same row.
 ///
-/// # These counters are not wired up yet
-///
-/// The engine does not currently expose a per-conjunct evaluation counter,
-/// so the sentinels are never incremented and `reset_sentinels` is never
-/// called. The tests below therefore assert the *functional* result and
-/// that the hash-semi-join path was taken — **not** the short-circuit
-/// behaviour itself. Tracked as a discriminating-power gap: see the
-/// evidence document for iteration 5 batch 8.
-#[allow(dead_code)]
-static CONJUNCT_1_EVALS: AtomicU64 = AtomicU64::new(0);
-#[allow(dead_code)]
-static CONJUNCT_2_EVALS: AtomicU64 = AtomicU64::new(0);
-#[allow(dead_code)]
-static CONJUNCT_3_EVALS: AtomicU64 = AtomicU64::new(0);
-
+/// #5498: this file used to declare three sentinel counters
+/// (`CONJUNCT_1_EVALS` …) plus `reset_sentinels`, none of which was ever
+/// wired to anything — the engine exposed no per-conjunct counter, so the
+/// test asserted the *result* and the *path*, never the short-circuit
+/// itself. The engine now counts every conjunct it evaluates during the
+/// build-time residual filter and exposes the counts in the Sprint-5
+/// diagnostic snapshot (`residual_conjunct_evals_<i>`), so the property is
+/// observed instead of assumed.
 fn counter_value(snap: &str, key: &str) -> u64 {
     let needle = format!("{key}=");
     for line in snap.lines() {
@@ -56,13 +47,6 @@ fn counter_value(snap: &str, key: &str) -> u64 {
         }
     }
     0
-}
-
-#[allow(dead_code)]
-fn reset_sentinels() {
-    CONJUNCT_1_EVALS.store(0, AtomicOrdering::SeqCst);
-    CONJUNCT_2_EVALS.store(0, AtomicOrdering::SeqCst);
-    CONJUNCT_3_EVALS.store(0, AtomicOrdering::SeqCst);
 }
 
 /// Acceptance #1 — Functional + short-circuit semantics: with three
@@ -136,6 +120,36 @@ fn q4_nested_and_static_residual_short_circuits_in_order() {
         probe_hits > 0,
         "Probe call site must be reached; got probe_hits={probe_hits}. \
          Snapshot:\n{snap}"
+    );
+
+    // Short-circuit semantics (#5498): the build-time residual filter
+    // evaluates the conjuncts in order and stops at the first false one.
+    //
+    // Fixture: two inner rows.
+    //   * order 1's lineitem passes R1 (`l_commitdate < l_receiptdate`), so
+    //     R2 and R3 are evaluated for it;
+    //   * order 2's lineitem fails R1, so R2 and R3 must NOT be evaluated
+    //     for it.
+    // ⇒ R1 evaluated twice, R2 and R3 exactly once each. Had the engine
+    //   evaluated every conjunct for every row, R2 and R3 would be 2 — so
+    //   these assertions fail on an engine that evaluates everything.
+    let r1_evals = counter_value(&snap, "residual_conjunct_evals_0");
+    let r2_evals = counter_value(&snap, "residual_conjunct_evals_1");
+    let r3_evals = counter_value(&snap, "residual_conjunct_evals_2");
+    assert_eq!(
+        r1_evals, 2,
+        "R1 must be evaluated for both inner rows; got {r1_evals}. \
+         Snapshot:\n{snap}"
+    );
+    assert_eq!(
+        r2_evals, 1,
+        "R2 must be evaluated only for the row that passed R1; got {r2_evals}. \
+         Snapshot:\n{snap}"
+    );
+    assert_eq!(
+        r3_evals, 1,
+        "R3 must be evaluated only for the row that passed R1 and R2; \
+         got {r3_evals}. Snapshot:\n{snap}"
     );
 }
 
