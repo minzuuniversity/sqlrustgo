@@ -367,6 +367,11 @@ test result: ok. 10 passed ... finished in 0.00s       ← 10 个测试 0.00s
 - ~~S-3 的口径修复~~ → **已修**：`check_stage.sh` 覆盖率臂显式声明阶段（见 §2 S-3）。
 - ~~静态候选证实~~ → **已做**：`check_g_correctness_v390.sh` 清白（数执行量，判红方向正确）；`check_p13_soak_test.sh` 轻档发现（模拟查询环，见 §8）。
 - **未做**：`check_p13_soak_test.sh` 输出补一句"模拟 harness smoke，非真实 soak"（轻档，另开 PR 或并入下次门禁改动）。
-- **未实测**：g1 / subcheck 在**夹具存在**时的 PASS 路径（本机无 TPC-H 数据；`classify()` 单测覆盖该分支，不做超出证据的声明）。
+- **未实测**：g1 / subcheck 在**夹具存在**时的 PASS 路径 —— 已验证不可在本机闭合：
+  仓内确定性生成器（`scripts/gate/prepare_tpch_fixture.sh --sf 0.001 --seed 42`）能产出 8 个 `.tbl`，
+  但基线哈希绑定**官方 dbgen 数据集**（`tests/tpch_hashes_v380.json` 注明 captured from `545814c3d1`，#5688 管辖）；
+  种子数据集 scale 相同、内容不同 ⇒ 走到 `compare_or_disclose` 的 scale-match 分支会是**真 mismatch**（测试断言红），
+  不是 PASS。官方 `dbgen` 二进制本机不存在（`~/tpch-dbgen-master` 无、`~/sqlrustgo-tpch` 无）。
+  ⇒ PASS 路径维持 UNMEASURED，需 owner/infra 提供 dbgen 捕获的 SF=0.001 数据集。
 - 未改动任何门禁阈值、`.gitignore`、分支保护。
 - 未关闭/修改任何 issue；未触碰 `ALPHA-GATES-003` 所在分支。
