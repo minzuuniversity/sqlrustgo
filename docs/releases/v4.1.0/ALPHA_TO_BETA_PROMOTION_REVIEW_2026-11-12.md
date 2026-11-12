@@ -11,8 +11,19 @@
 
 ## 0. 结论
 
-1. **ALPHA 阶段本线可闭合项已闭合并留证**：ALPHA 门禁清单（10 条）正在按 §7 纪律重跑
-   （run `20261112-alpha-gates-003`，共享 target 软链，避免 coverage 假红）。
+1. **ALPHA 阶段本线可闭合项已闭合并留证**：ALPHA 门禁清单（10 条）已按 §7 纪律重跑完毕
+   （run `20261112-alpha-gates-003`，冻结 `aec1a3673c`，verify OK，
+   evidence_hash `sha256:3cf2c844d2090b3f921fabebd89375daaced5ad4b98c019ad8f46ae5503f2c4a`，
+   wall 1129s，归档 PR #5770）⇒ **8 绿 / 2 红**：
+   `alpha-gate-check-alpha-v410`（ALPHA 清单门禁本体）**绿**、`arch-invariants`/`arch3-no-bypass`/
+   `sql-corpus`/`anti-ignore`/`cargo build`/`cargo test --lib`/`cargo fmt` 全绿；
+   两条红都在裁决域：**coverage**（门禁以 `stage=ga threshold=85%` 跑，与 ALPHA SSOT 阈值口径不一致；
+   实测 L1_8 平均 **29.73%**，parser 9.51% / planner 1.21% 等数值不可信 ⇒ 指向覆盖率测量口径，
+   与 #5537/#5579 同族，逐 crate 实测值已贴到那两条 issue）与 **g1**（`tpch_hash_compare --check`
+   「cannot find hash in test output」⇒ 与 #5688/#5735 同源）。
+   顺带修掉一处**清单缺陷**：第三份清单 `commands_alpha_gates_003.yaml` 与仓内既有的 001/002 只差一处 ——
+   聚合门禁臂预算 **1800 → 10800s**（该门禁内部跑 llvm-cov 覆盖率、实测 >30min，1800s 会把它杀掉
+   ⇒ **门禁逐项结果全丢**，「预算不足」被记成「门禁不过」）。
 2. **ALPHA→Beta 仍不可由 Worker 单方推进**：剩余硬阻塞项全部落在
    **Owner 裁决域**（Reviewer 指派、g1 口径、RC-B1 Phase 2、台账口径）与 **CI/infra 域**
    （runner 镜像、docker 地址池、runner 服务依赖）。计划 §6 要求「P0/P1 blockers = 0 OPEN

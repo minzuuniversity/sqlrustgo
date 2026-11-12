@@ -2,7 +2,7 @@
 {"bytes": 7491, "file": "A08_DISABLED_BINARIES_REVIEW_2026-10-09.md", "lines": 128, "sha256": "b0b8a3f41300e39434e150ed2d466e4f3b572dafc0e6e8a5285dbd5fc1c68059", "stamp_ok": false, "stamped": false}
 {"bytes": 32384, "file": "ALIGNMENT_AUDIT_2026-09-30.md", "lines": 648, "sha256": "38702041a8990b7d0614011364538daae7d43a52e5c38a55f55ebac798d544cb", "stamp_ok": false, "stamped": false}
 {"bytes": 6609, "file": "ALPHA_TO_BETA_GATE_PLAN.md", "lines": 127, "sha256": "4f4f5d7bd0d59800961328850ef247b903728172e7233dbee26186c4249d3e11", "stamp_ok": false, "stamped": false}
-{"bytes": 29409, "file": "ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md", "lines": 320, "sha256": "59856fb7581d2e328e920a4a6bad468ce288e4ba5783c5e3d5862e3d66cb571a", "stamp_ok": false, "stamped": false}
+{"bytes": 30524, "file": "ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md", "lines": 331, "sha256": "c0ca5402e7f1324c553ac4d6274c02a3bb2501d3cb47a70bc46a553149835597", "stamp_ok": false, "stamped": false}
 {"bytes": 4763, "file": "ARCHITECTURE.md", "lines": 94, "sha256": "533404ace8adfbd21a47bd0873367fc63e0d5d958b63b7510671921151391cb8", "stamp_ok": false, "stamped": false}
 {"bytes": 6630, "file": "ARCHITECTURE_ROUTE_DECISION_5193.md", "lines": 159, "sha256": "32545a30b19013818a19ed157da046ce7081a25c187f703e1b1d2bf1fca6bfa4", "stamp_ok": false, "stamped": false}
 {"bytes": 6098, "file": "AUDIT_RECORD_INTEGRITY_2026-11-05.md", "lines": 107, "sha256": "59b9f461aed58c6f3969cedb32835fe0135aa9d50505b59cf00af2f28ff70146", "stamp_ok": false, "stamped": false}
