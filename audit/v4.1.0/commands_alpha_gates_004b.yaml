@@ -1,0 +1,6 @@
+# 补充 run：仅 alpha 聚合门禁一臂（004 的 001 臂 FAIL(127) 归因 = 操作者 yaml 文件名错误）
+- cmd: bash scripts/gate/check_alpha_v410.sh
+  cwd: .
+  id: alpha-gate-check-alpha-v410
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_alpha_v410.sh（预算 10800s，沿用 003 教训；run 004 的同臂因操作者把文件名写成 check_alpha_v4.1.0.sh 而 FAIL(127)，本 run 用正确文件名补测）
+  timeout_sec: 10800
