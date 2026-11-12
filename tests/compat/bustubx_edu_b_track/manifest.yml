@@ -1,0 +1,34 @@
+# BustubX-EDU B-track oracle corpus manifest (AB-05 / #5114)
+# Gate: scripts/gate/check_bustubx_b_track_v312.sh (RC-B1)
+# Oracle recipe: scripts/compat/gen_btrack_expected.sh
+#   sqlite3 :memory: < seed.sql + exercises/<name>.sql  ->  oracle/<name>.expected
+# Exercises are reused from the V312-57 sqlite-style EDU corpus
+# (tests/compat/bustubx_edu_sqlite_cli), selected to be dot-command-free SQL.
+
+version: 1
+coverage: 6/6
+seed: seed.sql
+cases:
+  - week: week01
+    exercise: exercises/week01_setup.sql
+    expected: oracle/week01_setup.expected
+  - week: week02
+    exercise: exercises/week02_crud.sql
+    expected: oracle/week02_crud.expected
+  - week: week03
+    exercise: exercises/week03_persistence.sql
+    expected: oracle/week03_persistence.expected
+  - week: week04
+    exercise: exercises/week04_error_path.sql
+    expected: oracle/week04_error_path.expected
+    note: deliberate failing statement mid-script; oracle pins STDERR+EXIT:1 plus surviving rows
+  - week: week05
+    exercise: exercises/week05_exec_aggregate.sql
+    expected: oracle/week05_exec_aggregate.expected
+  - week: week06
+    exercise: exercises/week06_join_three_tables.sql
+    expected: oracle/week06_join_three_tables.expected
+exclusions:
+  - scope: dot-command CLI cases (.tables/.schema/stdin harness) in bustubx_edu_sqlite_cli
+    reason: not expressible as plain SQL for a SQL-vs-SQLite diff gate; covered by V312-57 CLI gate instead
+    issue: "#5114"
