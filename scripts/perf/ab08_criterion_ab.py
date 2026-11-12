@@ -36,7 +36,8 @@ ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 CRITERION_DIR = os.environ.get("AB08_CRITERION_DIR") or os.path.join(
     os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target")), "criterion"
 )
-RESULTS_DIR = os.path.join(ROOT, "benchmarks", "results")
+RESULTS_DIR = os.environ.get("AB08_RESULTS_DIR") or os.path.join(
+    ROOT, "benchmarks", "results")
 BASELINE_SCHEMA = "ab08-baseline-v1"
 RUN_SCHEMA = "ab08-run-v1"
 CORE_BENCHES = [
