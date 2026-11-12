@@ -67,6 +67,50 @@ def shutil_which(x):
     return shutil.which(x)
 
 
+def host_load():
+    """How busy the host was while the numbers were taken.
+
+    A baseline measured while other tenants compile or benchmark is not a
+    baseline: the AB-08 gate plan asks for the promote to happen "outside
+    load". The probe records the 1-minute load average and the number of
+    other build/benchmark processes on the machine.
+    """
+    try:
+        load1 = os.getloadavg()[0]
+    except (OSError, AttributeError):
+        load1 = None
+    others = 0
+    try:
+        out = subprocess.run(
+            ["ps", "-A", "-o", "comm="], capture_output=True, text=True, timeout=15
+        ).stdout
+        for line in out.splitlines():
+            name = line.strip()
+            if name in ("cargo", "rustc") or name.startswith(("bench_", "btb_", "sqlrustgo")):
+                others += 1
+    except (OSError, subprocess.SubprocessError):
+        others = -1
+    return {"load1": load1, "other_build_processes": others}
+
+
+def load_is_noisy(env):
+    """(noisy, why) for the recorded environment of a run."""
+    env = env or {}
+    load = env.get("load") or {}
+    load1 = load.get("load1")
+    others = load.get("other_build_processes")
+    ncpu = env.get("ncpu") or os.cpu_count() or 1
+    if others is None or others < 0:
+        return True, "load probe unavailable (cannot prove the host was idle)"
+    if others > 0:
+        return True, f"{others} other build/bench process(es) on the host"
+    if load1 is None:
+        return True, "load average unavailable (cannot prove the host was idle)"
+    if load1 > ncpu / 2:
+        return True, f"load1={load1:.2f} > ncpu/2 ({ncpu})"
+    return False, "host idle"
+
+
 def env_fingerprint():
     rustc = cargo().replace("cargo", "rustc") if not cargo().endswith("cargo") else "rustc"
     rc = sh([rustc, "-vV"])
@@ -79,6 +123,7 @@ def env_fingerprint():
         "release": platform.release(),
         "machine": platform.machine(),
         "ncpu": os.cpu_count(),
+        "load": host_load(),
         "criterion_dir": CRITERION_DIR,
     }
 
@@ -181,12 +226,20 @@ def cmd_promote(args):
     if os.path.exists(args.baseline) and not args.force:
         print("REFUSED: baseline exists (use --force)")
         sys.exit(1)
+    deviations = list(run.get("deviations", []))
+    noisy, why = load_is_noisy(run.get("env"))
+    if noisy:
+        if not args.allow_load_noise:
+            print(f"REFUSED: the run was taken under load ({why}); a baseline must be "
+                  f"promoted outside load (or pass --allow-load-noise to record the override)")
+            sys.exit(1)
+        deviations.append(f"load-noise-override: {why}")
     payload = {
         "schema": BASELINE_SCHEMA,
         "generated_utc": now_iso(),
         "source_run": os.path.basename(args.run),
         "env": run["env"],
-        "deviations": run.get("deviations", []),
+        "deviations": deviations,
         "benches": run["benches"],
     }
     write_json(args.baseline, payload)
@@ -224,6 +277,11 @@ def cmd_compare(args):
     if run.get("samples_requested", 0) < args.min_samples:
         print(f"FAIL-CLOSED: samples {run.get('samples_requested')} < {args.min_samples}")
         sys.exit(1)
+    noisy, why = load_is_noisy(run.get("env"))
+    if noisy and not args.allow_load_noise:
+        print(f"LOAD_NOISE: the run was taken under load ({why}) — the comparison would "
+              f"not be meaningful (or pass --allow-load-noise to record the override)")
+        sys.exit(1)
     failures, extra = compare(run, baseline, args.min_samples, args.allow_env_drift)
     report = {
         "schema": "ab08-compare-v1",
@@ -257,12 +315,14 @@ def main():
     p.add_argument("--run", required=True)
     p.add_argument("--baseline", required=True)
     p.add_argument("--force", action="store_true")
+    p.add_argument("--allow-load-noise", action="store_true")
     p.set_defaults(func=cmd_promote)
     c = sub.add_parser("compare")
     c.add_argument("--run", required=True)
     c.add_argument("--baseline", required=True)
     c.add_argument("--min-samples", type=int, default=10)
     c.add_argument("--allow-env-drift", action="store_true")
+    c.add_argument("--allow-load-noise", action="store_true")
     c.set_defaults(func=cmd_compare)
     args = ap.parse_args()
     args.func(args)
