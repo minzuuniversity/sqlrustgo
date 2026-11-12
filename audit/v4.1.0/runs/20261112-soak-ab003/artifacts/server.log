@@ -1,0 +1,17 @@
+[jemalloc-prof] startup: MALLOC_CONF=[(unset)] config.prof=true opt.prof=false
+[jemalloc-prof] SIGUSR2 -> heap dump to /tmp/jeprof.<pid>.<ts>.heap
+SQLRustGo v3.8.0-beta (Strong Beta, 8.0/10)
+MySQL wire-protocol server
+  Listen:     127.0.0.1:3412
+  Data dir:   /tmp/sqlrustgo-v400-soak-ab003
+  Max conn:   100
+  Auth mode:  none
+  Storage:    file
+  Exec par:   1 (Issue #3703, --executor-parallelism)
+Ready to accept connections.
+2026-11-11T22:19:01.094405Z ERROR sqlrustgo_mysql_server: Handshake read: IO: failed to fill whole buffer
+2026-11-11T22:20:05.616987Z ERROR sqlrustgo_mysql_server: Handshake read: IO: failed to fill whole buffer
+2026-11-11T22:20:05.619188Z ERROR sqlrustgo_mysql_server: Handshake read: IO: failed to fill whole buffer
+2026-11-11T22:21:39.737364Z ERROR sqlrustgo_mysql_server: Handshake read: IO: failed to fill whole buffer
+2026-11-11T22:22:29.507850Z ERROR sqlrustgo_mysql_server: Handshake read: IO: failed to fill whole buffer
+2026-11-11T22:33:24.588258Z ERROR sqlrustgo_mysql_server: Handshake read: IO: failed to fill whole buffer
