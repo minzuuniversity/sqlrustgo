@@ -155,6 +155,8 @@
 | 3 | **AB-08 超时只 kill 直接子进程** ⇒ `cargo bench` 的孙进程仍持有 stdout 管道 ⇒ `communicate()` 永久阻塞 ⇒ **超时永不生效**（正是该预算要防的挂死） | bench 挂死无法转成 NOT-RUN | 独立进程组 + `killpg`（commit `1d209857b9`），实测 4s 预算 ⇒ 4.0s 返回 rc=124 | 同上 |
 | 4 | **INSERT 短式（VALUES 列表长度 < 表列数）被静默补 NULL** ⇒ 打错的 INSERT 丢列仍成功；而给多值却报错 ⇒ 两方向不一致 | 静默数据损坏；与 SQLite/MySQL 相悖；仓内 SQLite 官方语料 `insert__test_insert_invalid.test` 期望报错 | PR #5767（两处：VALUES 短式与 `INSERT…SELECT` 短式；显式列清单形式不变） | 语料 **22/3 88.0% → 23/2 92.0%**；sql-corpus 91/0；6 判别用例绿 |
 | 5 | 看板追加行会**加重 AB-01 债**（debt 1216→1219、ambiguous 34→37）：`evidence_inventory` 的强绑定只认 `run:<id>` 形式 | ALPHA 的 AB-01 会因我的改动更红 | 两行改 `run:<id>` 强绑定形式；把「先合证据 run、再合看板行」的**合并顺序**写进 §5.1 并升级给 Owner | `STRONG_RE` 规则 + 实测前后 debt |
+| 7 | **我本次合入使 AB-01 债 +15**：tip `aec1a3673c` 测得 debt 1216 / unbound 1182 / ambiguous 34；Owner 合入 11 个 PR 后的新 tip `2792759137` 为 **debt 1231 / unbound 1193 / ambiguous 38**（台账基线 1144）。逐文件归因：本复核文档 **+12**（11 unbound + 1 ambiguous）、看板 MD +若干。机制：`evidence_inventory` 的强绑定**逐行**判定（`run[:：]<run-id>` 形式），且看板行会被**渲染成 MD 的多行** ⇒ 一个行级标记只能覆盖其中一行 | ①不隐瞒：债的增加已如实计量并写进本复核；②降本路径：把新增 claim 行的证据改写成点名 `run:<id>` 的形式（待第二轮 campaign run 全绿后，它的 run 才是「clean」run，绑定才成立）；③**口径归属**：债的计量与台账口径属 #5603（Owner 裁决域），本线不自行放宽 |
+| 8 | 我一度怀疑「新增未绑定 claim」判据是 fail-open（`diff_claims` 引用了未定义的 `claim_re_re`）⇒ **自查后不成立**：该名字是 `main()` 里赋值的全局，脱离 `main()` 直接调用才会触发；实际 verify 路径**正常产出** `unbound-new-claim` findings ⇒ **不上报该伪缺陷**，此处留痕以免下一轮再踩 | 已排除 | `evidence_inventory.py:272-274`（全局赋值）+ verify 输出的实际 findings |
 | 6 | AB-01 的 `findings=131` 的真实构成此前被我归到「g1 家族」——实测其主因是 **unbound 1182 + ambiguous 34 + debt 1216**（claim 绑定/债务口径），与 g1 基线是**两件事** | 归因不准会把 Owner 引向错误的裁定对象 | 本复核 §2/§3.1 已按实测改写归因 | `evidence_inventory.py verify` 的 JSON 输出 |
 
 ---
