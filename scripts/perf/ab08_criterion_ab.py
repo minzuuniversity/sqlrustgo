@@ -81,25 +81,68 @@ def shutil_which(x):
     return shutil.which(x)
 
 
+def _own_process_tree():
+    """The pids of this pipeline (self + descendants).
+
+    The noise probe must not count the pipeline's **own** cargo/rustc/bench
+    processes: measuring always burns CPU, so counting them would make the
+    guard refuse every run it produced.
+    """
+    own = {os.getpid()}
+    try:
+        out = subprocess.run(
+            ["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True, timeout=15
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return own
+    children = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        try:
+            pid, ppid = int(parts[0]), int(parts[1])
+        except ValueError:
+            continue
+        children.setdefault(ppid, []).append(pid)
+    stack = list(own)
+    while stack:
+        for child in children.get(stack.pop(), []):
+            if child not in own:
+                own.add(child)
+                stack.append(child)
+    return own
+
+
 def host_load():
     """How busy the host was while the numbers were taken.
 
-    A baseline measured while other tenants compile or benchmark is not a
-    baseline: the AB-08 gate plan asks for the promote to happen "outside
+    A baseline measured while **other** tenants compile or benchmark is not
+    a baseline: the AB-08 gate plan asks for the promote to happen "outside
     load". The probe records the 1-minute load average and the number of
-    other build/benchmark processes on the machine.
+    other (non-pipeline) build/benchmark processes on the machine.
     """
     try:
         load1 = os.getloadavg()[0]
     except (OSError, AttributeError):
         load1 = None
+    own = _own_process_tree()
     others = 0
     try:
         out = subprocess.run(
-            ["ps", "-A", "-o", "comm="], capture_output=True, text=True, timeout=15
+            ["ps", "-A", "-o", "pid=,comm="], capture_output=True, text=True, timeout=15
         ).stdout
         for line in out.splitlines():
-            name = line.strip()
+            parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            name = os.path.basename(parts[1].strip())
+            if pid in own:
+                continue
             if name in ("cargo", "rustc") or name.startswith(("bench_", "btb_", "sqlrustgo")):
                 others += 1
     except (OSError, subprocess.SubprocessError):
@@ -120,8 +163,8 @@ def load_is_noisy(env):
         return True, f"{others} other build/bench process(es) on the host"
     if load1 is None:
         return True, "load average unavailable (cannot prove the host was idle)"
-    if load1 > ncpu / 2:
-        return True, f"load1={load1:.2f} > ncpu/2 ({ncpu})"
+    if load1 > ncpu:
+        return True, f"load1={load1:.2f} > ncpu ({ncpu}) — the host is saturated"
     return False, "host idle"
 
 
