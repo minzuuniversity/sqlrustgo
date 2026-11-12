@@ -10,14 +10,21 @@
 
 ## 0. 结论摘要
 
-1. **A（ALPHA 10 道门禁全量重跑）已完成**：本地 00:35:29 起跑、01:01:46 结束（wall ≈26 分钟），**9 绿 / 1 红**。
-   唯一红臂 `check_g1_tpch_baseline.sh` 已逐子检查归因为 **夹具缺失 + 门禁把 NOT-RUN 报成 mismatch**，
-   并顺带查出它的另外 3 个子检查是**空转绿**（§6）。状态取 `待复核`（缺 `audit_run` manifest）。
+1. **A（ALPHA 10 道门禁全量重跑）已完成并归档**：本地 00:35:29 起跑、01:01:46 结束（wall ≈26 分钟），**9 绿 / 1 红**。
+   归档 run `20261113-alpha-gates-004`（11 臂 = 清单 10 条 + 1 条 stage=alpha 对照臂，`verify OK`，
+   `evidence_hash=sha256:94e1d412…`）+ 补测 run `20261113-alpha-gates-004b`（聚合门禁臂，
+   `verify OK`，`sha256:a9b7f714…`）。004 的 001 臂 FAIL(127) 是**操作者把文件名写错**
+   （`check_alpha_v4.1.0.sh` ≠ `check_alpha_v410.sh`），记录不篡改、由 004b 补测。
+   红臂 g1 的缺陷已由 PR #5773 修复并合并（三态：缺夹具 ⇒ INCOMPLETE）。
 2. **自查发现 4 项既往执行问题**，其中 2 项影响"结论可信度"，2 项影响"证据可追溯性"：
    - **S-1** 昨日「8 绿 / 2 红」的看板行与它引用的 run 目录**都不在 develop**（分居两条未合并分支，且证据提交发生在其自身 PR 合并之后）。
-   - **S-2** 覆盖率门禁存在**同一 HEAD 两种相反读数**（87.70% vs 29.73%）；本轮第三次读数与 87.70% 逐位相同 ⇒ 29.73% 是离群值，原因指向共享 target 的测量面。
-   - **S-3** `check_stage.sh` 在 ALPHA 阶段调用覆盖率臂时**没有声明 stage**，实际按 GA 的 85% 判，与脚本自身注释「每个调用点都显式声明 stage」不符。
+   - **S-2** 覆盖率门禁出现**同一 HEAD 两种相反读数**（87.70% vs 29.73%）——归档后三读数 3:1（本 run 的 GA 臂 + ALPHA 对照臂 + 11-12 树内日志同为 87.70%），29.73% 确认为共享 target 的测量面离群值。
+   - **S-3** `check_stage.sh` 在 ALPHA 阶段调用覆盖率臂时**没有声明 stage**，实际按 GA 的 85% 判——本 run 的对照臂已把"ALPHA 50% 阈值下同样 87.70% PASS"变成归档数据。
    - **S-4** 树内存在**无 manifest 的门禁日志**（被 gitignore，不进版本控制），它们长得像证据但不能被引用。
+3. **空转绿是家族不是孤例**（§8）：`check_g1_tpch_baseline.sh`（已修，#5773）、`check_p35_simd.sh`（动态实锤）、
+   `g12_sysbench / g16_compatibility / p22_time_travel / p32_statistics / p33_cost_optimizer / p34_parallel_executor`
+   （逐字节同一模板）。其中 p22 是 RC+GA required、g16 是 GA required —— 这两道阶段门禁在无夹具宿主上
+   从未真正验过 TPC-H 却报 PASS。
 3. 本会话自身也产生了 2 份未入库的运行日志（`gate_alpha_*.log`），已在 §4 显式记账，不当作证据。
 
 ---
@@ -32,9 +39,9 @@
 | 结束（本地） | 2026-11-13 01:01:46（wall ≈ **26 分钟**） |
 | 运行日志 | `docs/releases/v4.1.0/logs/gate_alpha_2792759137_20261112_163529Z.log`（42 行，**未入库**） |
 | 门禁清单 | 10 条（`--dry-run` 实测：7 个 `check_*` 脚本 + 3 个 cargo 命令） |
-| 结果 | **9 绿 / 1 红**（`EXIT=1`） |
-| 红臂 | `check_g1_tpch_baseline.sh` —— 归因见 §7，**不是 TPC-H 结果漂移** |
-| 结论强度 | **待复核**：有逐臂 rc + 逐臂日志，但**没有 `audit_run` manifest / evidence_hash** ⇒ 按本行验收判据②，这些读数只能算"会话实测"，不能算归档证据 |
+| 结果 | **9 绿 / 1 红**（`EXIT=1`）；后续已归档：run `20261113-alpha-gates-004`（11 臂，`verify OK`）+ `20261113-alpha-gates-004b`（聚合门禁臂补测，`verify OK`） |
+| 红臂 | `check_g1_tpch_baseline.sh` —— 归因见 §6，**不是 TPC-H 结果漂移**；缺陷已由 PR #5773 修复合并 |
+| 结论强度 | **已升级为归档证据**：`audit_run.py verify` 双 run OK，`evidence_hash` 见 §0；唯一披露：004 的 001 臂 FAIL(127) 是操作者文件名笔误，由 004b 补测 |
 
 审计口径提醒：`check_stage.sh` 的 `LOG_DIR` 硬编码为 `docs/releases/${VERSION}/logs`，**没有环境变量可重定向**，
 所以每跑一次都会在仓库树里留下日志文件。本轮已产生的未入库物见 §4。
@@ -103,10 +110,12 @@ FAIL: average 29.73% < threshold 85%
 - **待定位（下一步实验，不在本次声明范围）**：同一 HEAD 上跑两次同一条门禁——
   ① 默认 target；② 共享 target（软链）——比对逐 crate 数字。若 ② 复现塌陷，则根因在测量面，应修门禁而不是修代码。
 
-**第三次读数（本会话可复核，仍无 manifest）**：`2792759137ef` 上 `check_coverage_v312.sh` 实测
+**第三次读数（已随归档升级）**：`2792759137ef` 上 `check_coverage_v312.sh` 实测
 `average coverage: 87.70% (threshold: 85%) — measured 8/8 crates`，逐 crate 与 11-12 02:33 那份**逐位相同**
-（parser 86.00 / planner 88.71 / executor 82.80 / transaction 93.29 / storage 80.80 / catalog 87.33 / optimizer 87.64 / types 95.04）。
-⇒ 三份读数里 **2 份一致、1 份是离群值**，离群值恰是那次把 target 指向共享目录的 run。
+（parser 86.00 / planner 88.71 / executor 82.80 / transaction 93.29 / storage 80.80 / catalog 87.33 / optimizer 87.64 / types 95.04）；
+且归档 run `20261113-alpha-gates-004` 的对照臂（`SQLRUSTGO_COVERAGE_STAGE=alpha`，阈值 50%）给出**同一个 87.70%**。
+⇒ 归档读数 2 份 + 树内日志 1 份 = 3:1，离群值正是把 target 指向共享目录的那次。
+判据②（run id + evidence_hash）对归档的 2 份已满足；树内那份仍不可引用。
 
 ### S-3　ALPHA 阶段按 GA 阈值判覆盖率（影响：判据口径）
 
@@ -127,6 +136,10 @@ COVERAGE_MIN_ALPHA: 50 / COVERAGE_MIN_BETA: 75 / COVERAGE_MIN_RC: 80 / (GA 85)
 （对本次两个读数而言结论不变：29.73% < 50 也红，87.70% > 85 也绿；错的是**判据标签**，不是这次的判定方向。）
 
 **处置**：属门禁脚本域（`scripts/gate/`），本报告只登记，不擅自改判据阈值（改阈值属不可协商项）。
+**归档补充（2026-11-13 晚）**：对照臂 `SQLRUSTGO_COVERAGE_STAGE=alpha` 已把 ALPHA 阈值下的读数
+变成归档数据——同一 run 内 GA(85%) 与 ALPHA(50%) 两个口径都是 **87.70% PASS**
+（`004`/`005` 两个 stdout，`evidence_hash=sha256:94e1d412…`）。⇒ ALPHA 覆盖率判据满足；
+遗留的只是"调用方该声明 stage"这一口径缺陷本身。
 
 ### S-4　树内的门禁日志长得像证据但不可引用（影响：可追溯性）
 
@@ -152,8 +165,10 @@ $ git check-ignore -v docs/releases/v4.1.0/logs/gate_alpha_2792759137_20261112_1
 
 ## 3. 对看板的影响
 
-- 新增行 **`ALPHA-GATES-004`**（本轮重跑 + 本自查），状态 **待复核**：9 绿/1 红已逐臂实测并归因，
-  但缺 `audit_run` manifest ⇒ 不写"完成"。
+- **`ALPHA-GATES-004` 已升级为完成**：run `20261113-alpha-gates-004`（11 臂）+ `004b`（聚合门禁臂补测）
+  双 `verify OK`，evidence_hash 见 §0；001 臂的操作者笔误如实披露在行内。
+- **新增行 `VACUOUS-GREEN-1`**（空转绿家族）：p35 动态实锤 + 6 道逐字节同模板 + 9 道静态候选；
+  修复方案已备（共用实现 + 七调用方），另开 PR。
 - **不做**的事：不修改 `ALPHA-GATES-003` 所在分支的行文本；不把 `20261112-alpha-gates-003` 的结论搬进 develop 冒充本线结论；
   不给覆盖率写任何"通过/不通过"的总判定。
 
@@ -164,7 +179,7 @@ $ git check-ignore -v docs/releases/v4.1.0/logs/gate_alpha_2792759137_20261112_1
 | 文件 | 来源 | 是否入库 | 处置 |
 |---|---|---|---|
 | `docs/releases/v4.1.0/logs/gate_alpha_2792759137_20261112_161634Z.log` | 本会话第一次尝试（120s 超时被 SIGTERM，仅 26 行、无任何臂结果）；归属依据 = mtime `2026-11-13 00:16:34` 与本会话首次超时时刻吻合 | 否 | **已删除**（空跑残留，留着会被误读成"跑过"） |
-| `docs/releases/v4.1.0/logs/gate_alpha_2792759137_20261112_163529Z.log` | 本会话 A 的运行日志（增长中） | 否 | A 结束后按结果决定是否归档，不自动入库 |
+| `docs/releases/v4.1.0/logs/gate_alpha_2792759137_20261112_163529Z.log` | 本会话 A 的运行日志 | **是**（PR #5772 已入库；`logs/gate_*.log` 在文件治理允许清单内） | 已作为 A 的运行日志引用 |
 
 说明：这两份文件的文件名带 UTC 时间戳，与本地时间差 8 小时，读日志时不要按本地时间反推。
 
@@ -242,17 +257,76 @@ cargo test --test tpch_hash_test -- --nocapture 2>&1 | grep -a "TPCH-NOT-RUN"
 - 结论强度：以上全部是可复现的**会话实测**；因为逐臂日志在 `logs/gates/`（gitignore + 每次覆盖），
   按本行验收判据②，**不升级为归档证据**，状态取 `待复核`。
 
-**修法建议（不在本次执行范围，需 owner/门禁域裁定）**：
-① `check_g1_tpch_baseline.sh` 显式解析并校验 `TPCH_DATA_DIR`，缺失时判 **INCOMPLETE（三态）** 而不是让子检查报 PASS；
-② `tpch_hash_compare.py` 区分 `NOT-RUN`（rc=2，文案写 "NOT-RUN: reason=..."）与真正的 hash mismatch（rc=1）；
-③ 门禁不得把 rc=2 译成 "hash mismatch"。
+**修法（已执行）**：PR #5773 已按上述三条修复合并进 develop（`71114a717e`，commit `88f1471624`）：
+夹具 preflight + 三态 + 比较器四态分类；TDD RED→GREEN + 2 臂反向变异。
+本 run 的 008 臂留的是**修复前**的原始现场（manifest 不可改，这正是审计轨迹的价值）。
 
 ---
 
-## 7. 明确未做的事
+## 8. 空转绿家族扫查（2026-11-13，建议③的执行记录）
 
-- 未对覆盖率做任何"通过/不通过"总判定（S-2 的测量面未定案，且读数缺 manifest）。
-- 未运行 S-2 提出的对照实验（共享 target vs 默认 target）—— 单侧即 >30 分钟，需单独排期。
-- 未修 g1 的两条根因（改门禁脚本属门禁域，本报告只登记 + 给修法建议）。
-- 未改动任何门禁脚本、阈值、`.gitignore`、分支保护。
+**方法**：静态扫 `scripts/gate/*.sh` 里引用夹具门控测试套件（tpch / soak / diag / oracle）的门禁，
+对每个候选查两点——①是否设置 `TPCH_DATA_DIR`；②是否对 `NOT-RUN` / 实际执行量有任何感知。
+静态命中的候选用**动态探针**逐个证实，只把动过手的写成结论。
+
+### V-1　`check_p35_simd.sh`（动态实锤）
+
+```
+$ ls -d ~/sqlrustgo-tpch/data /tmp/tpch-fixture 2>/dev/null   # 两者都不存在
+$ cargo test --test tpch_gate_test -- --nocapture 2>&1 | grep -aE "TPCH-NOT-RUN|test result"
+TPCH-NOT-RUN: tpch_gate_test reason=fixture_missing detail=no TPC-H fixture found (set TPCH_DATA_DIR to a directory with the 8 .tbl files)
+test result: ok. 40 passed; 0 failed; ... finished in 0.03s
+$ bash scripts/gate/check_p35_simd.sh
+  [7/7] ✅ PASS: TPC-H gate (22/22) maintained
+=== G10 Gate (P3-5): PASS ===
+rc=0
+```
+
+根因：`check_p35_simd.sh:103` 用 `grep -E "test result.*ok"` 判定——测试缺夹具时自报 NOT-RUN
+后仍以 `test result: ok` 返回（一条查询没跑），grep 只看 "ok" ⇒ 子检查判 PASS，文案声称 "TPC-H gate (22/22) maintained"。
+
+### V-2　同模板共 6 道（逐字节同一片段，`grep -B1 -A3` 实测）
+
+`check_g12_sysbench.sh:88`、`check_g16_compatibility.sh:116`、`check_p22_time_travel.sh:102`、
+`check_p32_statistics.sh:109`、`check_p33_cost_optimizer.sh:102`、`check_p34_parallel_executor.sh:103`
+—— 六处均为
+`TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1)`
++ `[N/N] ✅ PASS: TPC-H gate (22/22) maintained`。
+
+### V-3　阶段影响（STAGE_CONFIG 实测）
+
+`check_p22_time_travel.sh` 是 **RC 与 GA 的 required 门禁**；`check_g16_compatibility.sh` 是 **GA required**；
+`check_g12_sysbench.sh` / `check_g11_qps.sh` 是 optional。⇒ **RC/GA 的 required 门禁在无夹具宿主上
+从未真正验过 TPC-H，却计入"已绿"**。p32/p33/p34/p35 不在 STAGE_CONFIG 清单（dev/质量门禁）。
+
+### V-4　对照组（mild）：g11 / g13 / g14
+
+`check_g11_qps.sh:75` / `check_g13_stability.sh:87` / `check_g14_real_crash.sh:74` 也跑 `tpch_gate_test`，
+但只把它当 **WARN 级 drift check**（exit≠0 才置 TPCH_PASSED=""），不把它写成 PASS 声明 —— 危害级别低一档，
+但同样不感知 NOT-RUN（fixture_missing 时 rc=0 ⇒ 无 WARN），一并列入待办。
+
+### 修复方案（一份实现 + 七个调用方，TDD 夹具已备）
+
+- 新增 `scripts/gate/tpch_gate_subcheck.sh`：三态 0=PASS / 2=INCOMPLETE / 1=FAIL；
+  缺夹具或测试自报 NOT-RUN ⇒ INCOMPLETE，**不执行任何 cargo 调用**（preflight 先行，秒级返回）；
+- 7 道门禁的子检查改为调用它，PASS / INCOMPLETE / FAIL 分开呈现；
+- 夹具 `scripts/gate/test_tpch_gate_subcheck_honesty.py`：A 侧钉共用实现三态，B 侧以 p35 端到端钉调用方。
+
+### 静态候选（未逐个动态证实，不得当结论）
+
+以下门禁同样引用夹具门控套件、不设置 `TPCH_DATA_DIR`（`grep -c TPCH_DATA_DIR` 全部为 0），
+是否真校验执行量需逐个读：`check_g_correctness_v390.sh`（`tpch_sf01_inprocess_test --nocapture`，
+65/66 行对 operators 套件也是 grep 口径）、`check_p13_soak_test.sh`（`soak_test`，98 行单测过滤）。
+
+---
+
+## 9. 明确未做的事（随执行进度更新）
+
+- ~~未对覆盖率做任何"通过/不通过"总判定~~ → **已做**：ALPHA 阈值（50%）下 87.70% PASS（归档对照臂）。
+- ~~未运行 S-2 提出的对照实验~~ → **已做**：同一次测量里 GA(85%) 与 ALPHA(50%) 双读数（run 004 的 004/005 臂）。
+- ~~未修 g1 的两条根因~~ → **已修**：PR #5773 已合并。
+- **未修**：空转绿家族其余 7 道（§8；共用实现 + 夹具已备好，另开 PR）。
+- **未做**：S-3 的口径修复（让 `check_stage.sh` 等调用方显式声明 `SQLRUSTGO_COVERAGE_STAGE`）——数据已归档，改调用方属门禁域，另开 PR。
+- **未实测**：g1 / subcheck 在**夹具存在**时的 PASS 路径（本机无 TPC-H 数据；`classify()` 单测覆盖该分支，不做超出证据的声明）。
+- 未改动任何门禁阈值、`.gitignore`、分支保护。
 - 未关闭/修改任何 issue；未触碰 `ALPHA-GATES-003` 所在分支。
