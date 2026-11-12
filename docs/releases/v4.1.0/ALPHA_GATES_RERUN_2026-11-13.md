@@ -135,11 +135,13 @@ COVERAGE_MIN_ALPHA: 50 / COVERAGE_MIN_BETA: 75 / COVERAGE_MIN_RC: 80 / (GA 85)
 而 ALPHA SSOT 是 **50%**。这是门禁口径错配：一条 ALPHA 门禁用着比 ALPHA 更严的刻度，且判定文案会让人误读成"ALPHA 覆盖率不达标"。
 （对本次两个读数而言结论不变：29.73% < 50 也红，87.70% > 85 也绿；错的是**判据标签**，不是这次的判定方向。）
 
-**处置**：属门禁脚本域（`scripts/gate/`），本报告只登记，不擅自改判据阈值（改阈值属不可协商项）。
-**归档补充（2026-11-13 晚）**：对照臂 `SQLRUSTGO_COVERAGE_STAGE=alpha` 已把 ALPHA 阈值下的读数
-变成归档数据——同一 run 内 GA(85%) 与 ALPHA(50%) 两个口径都是 **87.70% PASS**
-（`004`/`005` 两个 stdout，`evidence_hash=sha256:94e1d412…`）。⇒ ALPHA 覆盖率判据满足；
-遗留的只是"调用方该声明 stage"这一口径缺陷本身。
+### S-3 的修复（2026-11-13，随本 PR）
+
+`scripts/gate/check_stage.sh` 现在对覆盖率臂显式声明被判定阶段
+（`SQLRUSTGO_COVERAGE_STAGE=<stage>`，dry-run 可见、exec 时导出；TDD 夹具
+`scripts/gate/test_coverage_stage_declaration.py`：RED 2 失败 → GREEN 4/4 → 反向变异翻红还原复绿）。
+缺省仍是 `ga`（#5581 的 fail-closed 设计不动）；改的只是"知道自己阶段的调用方必须声明"。
+归档对照臂（run 004 的 005 号臂）证明 ALPHA(50%) 下同为 87.70% PASS ⇒ 本修复只改标签，不改判定方向。
 
 ### S-4　树内的门禁日志长得像证据但不可引用（影响：可追溯性）
 
@@ -321,11 +323,38 @@ rc=0
   `g12_sysbench / g16_compatibility / p22_time_travel / p32_statistics / p33_cost_optimizer / p34_parallel_executor`
   实测 **rc=2 且输出含 INCOMPLETE**（原先全部 rc=0 + 声称 maintained）。
 
-### 静态候选（未逐个动态证实，不得当结论）
+### 静态候选的动态证实结果（2026-11-13，两个都动了手）
 
-以下门禁同样引用夹具门控套件、不设置 `TPCH_DATA_DIR`（`grep -c TPCH_DATA_DIR` 全部为 0），
-是否真校验执行量需逐个读：`check_g_correctness_v390.sh`（`tpch_sf01_inprocess_test --nocapture`，
-65/66 行对 operators 套件也是 grep 口径）、`check_p13_soak_test.sh`（`soak_test`，98 行单测过滤）。
+**① `check_g_correctness_v390.sh` ⇒ 清白（fail-closed，判红方向正确）**：
+
+```
+$ TPCH_DATA_DIR=/nonexistent-tpch-fixture-for-test bash scripts/gate/check_g_correctness_v390.sh
+test result: ok. 40 passed ... finished in 0.05s      ← tpch 套件同样是 NOT-RUN 空转
+[2/3] Results: 0 PASS, 0 ERR (out of 0)
+  FAIL: 0 < 6
+=== Gate-C: FAIL ===   (rc=1)
+```
+它**数的是真实执行量**（0 PASS out of 0 ⇒ FAIL），没有让 `test result: ok` 骗过 ——
+缺夹具时它判红，红的原因是对的（"0 < 6"）。不是空转绿。
+
+**② `check_p13_soak_test.sh` ⇒ 新发现（轻一档：幻影证据，不是空转绿）**：
+
+```
+$ TPCH_DATA_DIR=/nonexistent-tpch-fixture-for-test bash scripts/gate/check_p13_soak_test.sh
+  [5/9] ✅ PASS: soak_test 10 passed (≥10)
+=== G7 Gate: PASS ===   (rc=0)
+$ cargo test --test soak_test -- --nocapture
+test result: ok. 10 passed ... finished in 0.00s       ← 10 个测试 0.00s
+```
+其测试底座 `soak_test_harness.rs:89 run_soak_smoke` 是**模拟查询环**（源码注释原文
+`// Simulated query loop`，时延 `0.5 + (i % 3) * 0.5` 是造出来的，内存增长是每 100 次加 1KB 的常量）。
+⇒ `[5/9] soak_test 10 passed` 验的是**harness 计分算术**，不是任何一次真实 soak；
+而 `=== G7 Gate: PASS ===` 这个字样容易被读成"soak 有证据"。真正的 168h SOAK 属 `ING-1`（从未闭合）。
+该发现记在看板行 `VACUOUS-GREEN-1`（轻档：测试名带 "smoke"、代码有披露，但门禁输出未声明"模拟"）。
+
+### 静态候选（剩余未证实的）
+
+无 —— 原队列里的两个已全部动态证实（一清一轻档发现）。
 
 ---
 
@@ -335,8 +364,9 @@ rc=0
 - ~~未运行 S-2 提出的对照实验~~ → **已做**：同一次测量里 GA(85%) 与 ALPHA(50%) 双读数（run 004 的 004/005 臂）。
 - ~~未修 g1 的两条根因~~ → **已修**：PR #5773 已合并。
 - ~~未修空转绿家族其余 7 道~~ → **已修**：共用实现 + 七调用方 + TDD 夹具，见 §8（本 PR）。
-- **未做**：S-3 的口径修复（让 `check_stage.sh` 等调用方显式声明 `SQLRUSTGO_COVERAGE_STAGE`）——数据已归档，改调用方属门禁域，另开 PR。
+- ~~S-3 的口径修复~~ → **已修**：`check_stage.sh` 覆盖率臂显式声明阶段（见 §2 S-3）。
+- ~~静态候选证实~~ → **已做**：`check_g_correctness_v390.sh` 清白（数执行量，判红方向正确）；`check_p13_soak_test.sh` 轻档发现（模拟查询环，见 §8）。
+- **未做**：`check_p13_soak_test.sh` 输出补一句"模拟 harness smoke，非真实 soak"（轻档，另开 PR 或并入下次门禁改动）。
 - **未实测**：g1 / subcheck 在**夹具存在**时的 PASS 路径（本机无 TPC-H 数据；`classify()` 单测覆盖该分支，不做超出证据的声明）。
-- **未逐个动态证实**：§8 的静态候选 `check_g_correctness_v390.sh` / `check_p13_soak_test.sh`（不当结论，留待办）。
 - 未改动任何门禁阈值、`.gitignore`、分支保护。
 - 未关闭/修改任何 issue；未触碰 `ALPHA-GATES-003` 所在分支。
