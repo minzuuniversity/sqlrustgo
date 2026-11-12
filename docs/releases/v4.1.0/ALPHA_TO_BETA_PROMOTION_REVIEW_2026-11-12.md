@@ -71,10 +71,10 @@
 | AB-04 | 6 绿 / 0 红 | — | #5760 顺带修 `apply_committed_log` 的裸表名键（广播删除/更新此前静默丢失） | — | — |
 | AB-05 | 2 绿 / 3 红 | `ab05-bustubx-btrack`（B 轨 gate 因 Phase 2 未实现硬编码 exit 1）；`ab05-b2-per-binary`（529 二进制仅 `tls_read_spin_5099` 红）；`ab05-g1-tpch` | #5757 B 轨 compat 语料（oracle 本机 sqlite3 3.54.0 再生，6/6 周已证）；#5763 修掉 `tls_read_spin_5099` 的 darwin 平台红（pristine tip 同命令 FAILED，本分支 1/1 绿） | B 轨 gate 的 Phase 2 执行实现 | **Owner**（gate 脚本域） |
 | AB-06 | 1 绿 / 0 红 | — | —（本轮 coverage 绿；ALPHA 重跑按 §7 纪律用共享 target 防假红） | — | — |
-| AB-07 | 3 绿 / 1 红 | `ab07-soak-1h`（脚本硬编码作者机路径） | **v4.1.0 首个有效 1h SOAK**：13260 queries/16 线程/60min、panics=0、RSS 126–153MB、心跳 241 beats 无缺口且闭合、summary.json 落盘（归档 PR #5766，run `20261112-soak-ab003`）；机制 #5753（心跳 emitter/checker + 监督 wrapper）、#5755（路径可移植 + 未加载 fail-closed） | **24h runner 可执行**（依赖 CI 执行面） | **CI/infra** |
+| AB-07 | 3 绿 / 1 红 | `ab07-soak-1h`（脚本硬编码作者机路径） | **v4.1.0 首个有效 1h SOAK**：13260 queries/16 线程/60min、panics=0、RSS 126–153MB、心跳 241 beats 无缺口且闭合、summary.json 落盘（归档 PR #5766，run `20261112-soak-ab003`）；机制 #5753（心跳 emitter/checker + 监督 wrapper）、#5755（路径可移植 + 未加载 fail-closed） | **24h runner 可执行**：仓内路径已证可执行（PR #5769：短段镜像 ⇒ 1 000 行播种、worker **0 errors**、指标列全为数值；并修掉 runner 的五处缺陷——**不建工作负载表**导致 1122/1122 全错却照报 qps、qps 取到 chatter 行、日志二进制未用 `grep -a`、qps 正则与实际格式不符、`ps -o nlwp=` 在 macOS 写出字段名列表）；CI runner 本身仍不可用 | **CI/infra** |
 | AB-08 | 3 绿 / 0 红 | — | 管道 5 处硬化（负载守卫 / 逐 bench 超时 + 诚实 NOT-RUN / 进程组 kill 修管道死锁 / 探针自排除 / 指标键按 bench 命名空间）+ 13 臂守卫自测；首次六核全集测量 5/6 目标、96 唯一组（bench_cbo 诚实 NOT-RUN），归档 PR #5766 | **正式基线 promote**：需**完全静默窗口**（实测并行开发时 load1=15.68 ⇒ 守卫拒绝；负载下的基线会掩盖回归） | 本线（窗口）+ **CI/infra**（容器天然独占） |
 | AB-09 | 2 绿 / 1 红 | `ab09-no-secrets`（v312-59 证据 JSON `local-git:` 哈希误报） | #5381 仓库侧复核 rc=0 全 PASS（5 脚本 env-only + 缺参 fail-closed）；证据文件覆写副作用已披露并还原（#5577 同类），第二轮清单把该臂输出重定向到 /tmp | 误报项在已封存证据 JSON 内 + 检测器豁免属裁决域 | **Owner** |
-| AB-10 | 1 绿 / 0 红 | — | 看板 SSOT 129 行 + 50 臂第二轮清单 + 跑法要点（PR #5765）；本线 15 个提交-only PR 已备 | **合并 PR**（g3 receipts 域，Worker 不自合并）+ 独立 Reviewer 回执（Hub #133） | **Owner** |
+| AB-10 | 1 绿 / 0 红 | — | 看板 SSOT 129 行 + 50 臂第二轮清单 + 跑法要点（PR #5765）；本线 16 个提交-only PR 已备 | **合并 PR**（g3 receipts 域，Worker 不自合并）+ 独立 Reviewer 回执（Hub #133） | **Owner** |
 
 **汇总**：9 红中，**3 红可由本线已备好的 PR 消除**（`ab05-b2-per-binary` ← #5763；
 `ab07-soak-1h` ← #5753+#5755；`ab02-test-all` 的唯一失败属 g1 基线 ⇒ 需 #5688 裁决），
@@ -214,7 +214,7 @@ hub 更新。计划 §3 要求「修复后必须新建 `source_run` 并重跑受
 - AB-08 首次六核全集：`audit/v4.1.0/runs/20261112-ab08-core3/`（PR #5766）。
 - ALPHA 门禁清单重跑：`20261112-alpha-gates-003`（本线执行中）。
 - 第二轮 campaign 清单：`audit/v4.1.0/commands_ab_002.yaml`（50 臂，PR #5765）。
-- 本线 15 个提交-only PR：#5753–#5767。
+- 本线 16 个提交-only PR：#5753–#5767、#5769（168h runner 路径）。
 - 复核评论：sqlrustgo#5117（campaign 总账）、#5507、#5498、#5503、#5711、#5712、#5548、#5549、
   #5679、#5686、#5528、#4640、#5381；Hub 看板条目（#239/#243/#251/#253/#254）。
 
