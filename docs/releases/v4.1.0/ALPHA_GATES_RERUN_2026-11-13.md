@@ -305,12 +305,21 @@ rc=0
 但只把它当 **WARN 级 drift check**（exit≠0 才置 TPCH_PASSED=""），不把它写成 PASS 声明 —— 危害级别低一档，
 但同样不感知 NOT-RUN（fixture_missing 时 rc=0 ⇒ 无 WARN），一并列入待办。
 
-### 修复方案（一份实现 + 七个调用方，TDD 夹具已备）
+### 修复方案（已执行，2026-11-13）
 
 - 新增 `scripts/gate/tpch_gate_subcheck.sh`：三态 0=PASS / 2=INCOMPLETE / 1=FAIL；
-  缺夹具或测试自报 NOT-RUN ⇒ INCOMPLETE，**不执行任何 cargo 调用**（preflight 先行，秒级返回）；
-- 7 道门禁的子检查改为调用它，PASS / INCOMPLETE / FAIL 分开呈现；
-- 夹具 `scripts/gate/test_tpch_gate_subcheck_honesty.py`：A 侧钉共用实现三态，B 侧以 p35 端到端钉调用方。
+  缺夹具或测试自报 NOT-RUN ⇒ INCOMPLETE，且 **preflight 先行、不执行任何 cargo 调用**（秒级返回）；
+- 7 道门禁的子检查改为调用它（同一次修改里还消灭了旧 else 分支的
+  `[N/N] ✅ PASS (warned): TPC-H gate check skipped`——失败分支自己也在报 PASS），
+  每道门禁末尾的 `exit 0` 改为按 `TPCH_RC` 三态收口（PASS / INCOMPLETE+exit 2 / FAIL+exit 1）；
+- TDD：`scripts/gate/test_tpch_gate_subcheck_honesty.py`（A 侧钉共用实现三态 + UNDISCLOSED 不得报 PASS；
+  B 侧以 p35 端到端钉调用方）。**RED**（先只有夹具）：6 条断言失败（127 / 旧门禁 rc=0 且声称 maintained）；
+  **GREEN**（实现 + 七调用方）：10/10 通过；
+- **反向变异**：把共用实现的夹具检查与 NOT-RUN 感知同时禁用（模拟旧的 grep-only 行为）
+  ⇒ 夹具 exit=1，4 条断言翻红；还原后 10/10 复绿；
+- **端到端 7/7**（`TPCH_DATA_DIR=/nonexistent` 实跑）：p35 已含在夹具 B 侧；其余 6 道
+  `g12_sysbench / g16_compatibility / p22_time_travel / p32_statistics / p33_cost_optimizer / p34_parallel_executor`
+  实测 **rc=2 且输出含 INCOMPLETE**（原先全部 rc=0 + 声称 maintained）。
 
 ### 静态候选（未逐个动态证实，不得当结论）
 
@@ -325,8 +334,9 @@ rc=0
 - ~~未对覆盖率做任何"通过/不通过"总判定~~ → **已做**：ALPHA 阈值（50%）下 87.70% PASS（归档对照臂）。
 - ~~未运行 S-2 提出的对照实验~~ → **已做**：同一次测量里 GA(85%) 与 ALPHA(50%) 双读数（run 004 的 004/005 臂）。
 - ~~未修 g1 的两条根因~~ → **已修**：PR #5773 已合并。
-- **未修**：空转绿家族其余 7 道（§8；共用实现 + 夹具已备好，另开 PR）。
+- ~~未修空转绿家族其余 7 道~~ → **已修**：共用实现 + 七调用方 + TDD 夹具，见 §8（本 PR）。
 - **未做**：S-3 的口径修复（让 `check_stage.sh` 等调用方显式声明 `SQLRUSTGO_COVERAGE_STAGE`）——数据已归档，改调用方属门禁域，另开 PR。
 - **未实测**：g1 / subcheck 在**夹具存在**时的 PASS 路径（本机无 TPC-H 数据；`classify()` 单测覆盖该分支，不做超出证据的声明）。
+- **未逐个动态证实**：§8 的静态候选 `check_g_correctness_v390.sh` / `check_p13_soak_test.sh`（不当结论，留待办）。
 - 未改动任何门禁阈值、`.gitignore`、分支保护。
 - 未关闭/修改任何 issue；未触碰 `ALPHA-GATES-003` 所在分支。
