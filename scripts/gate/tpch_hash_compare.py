@@ -35,6 +35,32 @@ HASH_LEN = 64
 
 HASH_RE = re.compile(rb"G1 PASS: TPC-H 22/22 baseline hash matches \(([a-f0-9]+)\)")
 
+# 诚实三态（2026-11-13）：NOT-RUN 与「hash 不匹配」是两件事。
+# 测试在缺夹具时会打印 TPCH-NOT-RUN: <target> reason=<code> detail=<...> 后返回，
+# 进程仍然 ok —— 过去这里被 `die("cannot find hash ...", code=2)` 吃掉，
+# 门禁再把非零译成 "hash mismatch"，于是一次 NOT-RUN 被说成一次漂移。
+NOT_RUN_RE = re.compile(rb"TPCH-NOT-RUN:\s+(\S+)\s+reason=(\S+)")
+MISMATCH_RE = re.compile(rb"G1 FAIL: TPC-H hash mismatch")
+
+
+def classify(output: bytes) -> tuple[str, str]:
+    """把测试输出分成四态：OK / NOT_RUN / MISMATCH / UNDISCLOSED。
+
+    OK          → ("OK", <64 位哈希>)
+    NOT_RUN     → ("NOT_RUN", <reason 码>)，如 fixture_missing / profile_mismatch
+    MISMATCH    → ("MISMATCH", "")
+    UNDISCLOSED → ("UNDISCLOSED", "")：既没给哈希也没说明为什么不能比
+    """
+    m = NOT_RUN_RE.search(output)
+    if m:
+        return "NOT_RUN", m.group(2).decode()
+    m = HASH_RE.search(output)
+    if m:
+        return "OK", m.group(1).decode()
+    if MISMATCH_RE.search(output):
+        return "MISMATCH", ""
+    return "UNDISCLOSED", ""
+
 
 def die(msg: str, code: int = 1) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)
@@ -65,10 +91,17 @@ def run_tpch_hash_test() -> bytes:
 
 
 def parse_hash(output: bytes) -> str:
-    m = HASH_RE.search(output)
-    if m:
-        return m.group(1).decode()
-    die("cannot find hash in test output", code=2)
+    verdict, payload = classify(output)
+    if verdict == "OK":
+        return payload
+    if verdict == "NOT_RUN":
+        die(f"NOT-RUN: reason={payload} — the hash comparison cannot be made "
+            f"(set TPCH_DATA_DIR to a directory with the 8 .tbl files)", code=2)
+    if verdict == "MISMATCH":
+        die("the Rust test reported a hash mismatch", code=1)
+    die("cannot find hash in test output; neither was a NOT-RUN reason disclosed",
+        code=2)
+    raise AssertionError("unreachable")  # die() exits
 
 
 def cmd_capture() -> int:
