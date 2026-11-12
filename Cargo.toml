@@ -2044,3 +2044,8 @@ path = "tests/soak/v312_mixed_soak.rs"
 [[test]]
 name = "test_target_manifest_honesty_test"
 path = "tests/integration/gate/test_target_manifest_honesty_test.rs"
+
+# #4640 —— INSERT 的 VALUES 列表长度必须与表列数一致（SQLite/MySQL 语义）。
+[[test]]
+name = "insert_column_count_parity_4640"
+path = "tests/integration/sql/insert_column_count_parity_4640.rs"
