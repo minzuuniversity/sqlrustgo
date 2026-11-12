@@ -26,6 +26,7 @@ import glob
 import json
 import os
 import platform
+import signal
 import socket
 import subprocess
 import sys
@@ -58,14 +59,39 @@ def sh(argv, timeout=None):
     A bench that never finishes must not hang the whole run: the budget
     turns "hangs forever" into an honest NOT-RUN for that bench. The
     sentinel exit code 124 mirrors `timeout(1)`.
+
+    The command runs in its **own process group** and the group is killed on
+    timeout: `cargo bench` spawns the bench binary as a grandchild, and that
+    grandchild keeps the inherited stdout/stderr pipes open. Killing only the
+    direct child would leave the pipes open, and the final `communicate()`
+    would block forever — the timeout would never surface, which is the very
+    hang the budget exists to prevent.
     """
+    if timeout is None:
+        proc = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True)
+        return proc
+    proc = subprocess.Popen(
+        argv,
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
     try:
-        return subprocess.run(argv, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+        out, err = proc.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(argv, proc.returncode, out, err)
     except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+        out, err = proc.communicate()
+
         class _TimedOut:
             returncode = 124
-            stdout = ""
-            stderr = f"TIMEOUT after {timeout}s: {' '.join(argv)}"
+            stdout = out
+            stderr = (err or "") + f"\nTIMEOUT after {timeout}s: {' '.join(argv)}\n"
 
         return _TimedOut()
 
