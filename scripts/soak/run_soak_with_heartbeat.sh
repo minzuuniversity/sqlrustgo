@@ -19,15 +19,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HB_OUT="${HB_OUT:?HB_OUT required (heartbeat JSONL path)}"
 HB_INTERVAL="${HB_INTERVAL:-15}"
 HB_MAX_GAP="${HB_MAX_GAP:-90}"
+# The soak's own output is kept in a file and fed to the heartbeat, so the
+# heartbeat's `log_lines` counter tracks the run instead of staying at zero.
+HB_LOG="${HB_LOG:-${HB_OUT%.jsonl}.log}"
 
 if [ "$#" -lt 1 ]; then
   echo "usage: HB_OUT=<file> $0 <soak command...>" >&2
   exit 2
 fi
 
-"$@" &
+"$@" > >(tee "$HB_LOG") 2>&1 &
 SOAK_PID=$!
-python3 "$SCRIPT_DIR/soak_heartbeat.py" --pid "$SOAK_PID" --out "$HB_OUT" --interval "$HB_INTERVAL" &
+python3 "$SCRIPT_DIR/soak_heartbeat.py" --pid "$SOAK_PID" --out "$HB_OUT" --interval "$HB_INTERVAL" --log "$HB_LOG" &
 HB_PID=$!
 wait "$SOAK_PID"; SOAK_RC=$?
 wait "$HB_PID" 2>/dev/null || true
@@ -35,7 +38,7 @@ wait "$HB_PID" 2>/dev/null || true
 python3 "$SCRIPT_DIR/check_soak_heartbeat.py" --file "$HB_OUT" --max-gap "$HB_MAX_GAP"
 HB_RC=$?
 
-echo "soak_rc=$SOAK_RC hb_rc=$HB_RC hb=$HB_OUT"
+echo "soak_rc=$SOAK_RC hb_rc=$HB_RC hb=$HB_OUT log=$HB_LOG"
 if [ "$SOAK_RC" -eq 0 ] && [ "$HB_RC" -eq 0 ]; then
   echo "AB-07 supervised soak: PASS"
   exit 0
