@@ -30,8 +30,9 @@ DURATION_MIN="${1:-60}"
 DURATION=$((DURATION_MIN * 60))
 PORT="${2:-3411}"
 DATA_DIR="${DATA_DIR:-/tmp/sqlrustgo-v400-soak}"
-RESULTS_DIR="${RESULTS_DIR:-/Users/liying/dev/sqlrustgo/results/soak-v400-1h-$(date +%Y%m%d_%H%M%S)}"
-SQLRUSTGO_BIN="${SQLRUSTGO_BIN:-/Users/liying/dev/sqlrustgo/target/release/sqlrustgo-mysql-server}"
+SOAK_REPO_ROOT="${SOAK_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+RESULTS_DIR="${RESULTS_DIR:-$SOAK_REPO_ROOT/results/soak-v400-1h-$(date +%Y%m%d_%H%M%S)}"
+SQLRUSTGO_BIN="${SQLRUSTGO_BIN:-${CARGO_TARGET_DIR:-$SOAK_REPO_ROOT/target}/release/sqlrustgo-mysql-server}"
 THREADS="${THREADS:-16}"
 SERVER_THREADS="${SERVER_THREADS:-16}"
 SAMPLE_INTERVAL="${SAMPLE_INTERVAL:-15}"
@@ -229,6 +230,19 @@ DRIVER_Q=$(grep -c '^Q,' "$DRIVER_LOG" 2>/dev/null | tr -d '[:space:]' || echo "
 DRIVER_Q=${DRIVER_Q:-0}
 DRIVER_E=$(grep -c '^E,' "$DRIVER_LOG" 2>/dev/null | tr -d '[:space:]' || echo "0")
 DRIVER_E=${DRIVER_E:-0}
+
+# #5495-class fail-closed: the summary step used to die with a raw
+# FileNotFoundError when the driver never produced output (e.g. missing
+# pymysql) — or, worse in other variants, summarise an idle server as a
+# successful soak. An unloaded soak is a FAILURE, stated honestly.
+if [ ! -f "$DRIVER_LOG" ]; then
+  echo "FAIL-CLOSED: $DRIVER_LOG missing — driver never produced output; this soak loaded nothing." >&2
+  exit 1
+fi
+if [ "$DRIVER_Q" -eq 0 ] && [ "$DRIVER_E" -eq 0 ]; then
+  echo "FAIL-CLOSED: driver.log has zero Q rows and zero E rows — no workload observed on the server." >&2
+  exit 1
+fi
 
 # Compute QPS, latency stats from driver log
 python3 - "$DRIVER_LOG" "$SUMMARY" <<'PYEOF'
