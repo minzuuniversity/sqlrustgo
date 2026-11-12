@@ -1,7 +1,7 @@
 {"bytes": 6693, "file": "A04_MYSQL_DIFF_MATRIX_REPORT.md", "lines": 129, "sha256": "2b72569de9e3bef2091d962d3bd72687d2d30e16c6669763e8bb9708039bfd3e", "stamp_ok": false, "stamped": false}
 {"bytes": 7491, "file": "A08_DISABLED_BINARIES_REVIEW_2026-10-09.md", "lines": 128, "sha256": "b0b8a3f41300e39434e150ed2d466e4f3b572dafc0e6e8a5285dbd5fc1c68059", "stamp_ok": false, "stamped": false}
 {"bytes": 32384, "file": "ALIGNMENT_AUDIT_2026-09-30.md", "lines": 648, "sha256": "38702041a8990b7d0614011364538daae7d43a52e5c38a55f55ebac798d544cb", "stamp_ok": false, "stamped": false}
-{"bytes": 24365, "file": "ALPHA_GATES_RERUN_2026-11-13.md", "lines": 372, "sha256": "952504c92eb3f6c03b8791b144f7fff54fd1d0556ad63808c8711d1fdac776ba", "stamp_ok": false, "stamped": false}
+{"bytes": 24923, "file": "ALPHA_GATES_RERUN_2026-11-13.md", "lines": 377, "sha256": "a1c9a4f1a139922c53b4e47d3e8bb427d2cec397cd0650ba187f472af018d1f1", "stamp_ok": false, "stamped": false}
 {"bytes": 6609, "file": "ALPHA_TO_BETA_GATE_PLAN.md", "lines": 127, "sha256": "4f4f5d7bd0d59800961328850ef247b903728172e7233dbee26186c4249d3e11", "stamp_ok": false, "stamped": false}
 {"bytes": 28634, "file": "ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md", "lines": 320, "sha256": "7432621d7eb40b7b7e260c08be920c2212be54922a40e6bfa0b4b09d6302dad8", "stamp_ok": false, "stamped": false}
 {"bytes": 4763, "file": "ARCHITECTURE.md", "lines": 94, "sha256": "533404ace8adfbd21a47bd0873367fc63e0d5d958b63b7510671921151391cb8", "stamp_ok": false, "stamped": false}
