@@ -82,19 +82,14 @@ pub fn fixture_scale_factor() -> Option<f64> {
 pub fn report_not_run(target: &str, reason: &str, detail: &str) {
     let line = format!("{NOT_RUN_MARKER}: {target} reason={reason} detail={detail}");
     println!("{line}");
-    if let Ok(path) = std::env::var("TPCH_NOT_RUN_FILE") {
-        if !path.trim().is_empty() {
-            use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path.trim())
-            {
-                let _ = writeln!(f, "{line}");
-            }
-        }
-    }
+    // #5503: shared file channel with a default local path (and a single
+    // write syscall per record, unlike the `writeln!` this used).
+    not_run_log::record(&line);
 }
+
+// #5503: shared NOT-RUN file channel.
+#[path = "not_run_log.rs"]
+mod not_run_log;
 
 /// The name of the synthetic leading column that the wire harness adds to
 /// the two TPC-H tables whose first column is **not** unique.
