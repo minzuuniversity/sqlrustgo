@@ -217,3 +217,104 @@ hub 更新。计划 §3 要求「修复后必须新建 `source_run` 并重跑受
 - 本线 15 个提交-only PR：#5753–#5767。
 - 复核评论：sqlrustgo#5117（campaign 总账）、#5507、#5498、#5503、#5711、#5712、#5548、#5549、
   #5679、#5686、#5528、#4640、#5381；Hub 看板条目（#239/#243/#251/#253/#254）。
+
+---
+
+## 9. Issue 关闭合同（计划 §5）逐条包（合并后回填即用）
+
+§5 要求每个子 Issue 的最终评论含五项：**①合并 PR URL + merge commit；②修复前可复现证据与修复后
+证据；③完整命令、退出码、测试计数与日志路径；④`source_agent`/`source_run`/timestamp/evidence hash；
+⑤逐项勾选验收条目，未满足项保持 OPEN**。下列各条中 **①的 merge commit 待 Owner 合入后回填**，
+其余已具备；**未满足项一律保持 OPEN**（本线不代关）。
+
+### 9.1 #5507 存储提交 O(N²)（PR #5760）
+
+1. 合并 PR：`http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/5760`；merge commit：**待合入回填**。
+2. 修复前：mutation（两个提交入口改回 `committed_tables = tables.clone()`）⇒ 逐行 200 次提交实测
+   **199 次整表深拷贝**（`cfg(test)` 计数器）；修复后：**0 次**；wall-clock 4000 行
+   **250.164ms → 4.024ms**（每行 0.0625 → 0.0010 ms）。
+3. 命令与计数：`cargo test -p sqlrustgo-storage`（lib **917 passed** + 集成全绿；唯 2 个 crash 用例
+   需 fault-injection 服务端二进制，构建后 2/2 绿；pristine tip 同命令同样红 ⇒ 与本改动无关）、
+   `cargo test -p sqlrustgo --lib`（**174 passed**）、
+   `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata`
+   （与 tip 逐文件一致 22/3、88.0%，零回归；#5767 合入后为 23/2、92.0%）。
+   日志路径：PR #5760 评论 211148（wall-clock 对照）与本文件 §2。
+4. `source_agent=omp-macmini`；`source_run=20261112-alpha-gates-003`（阶段 run，§5④的 source_run 以
+   合并后新跑为准）；timestamp 见归档 manifest；evidence hash 见归档 run 的 `evidence_hash`。
+5. 验收勾选：提交代价 = 事务触及行数 ✔；写路径零深拷贝 ✔；已提交视图与活表一致 ✔；
+   删除/更新与广播路径的键作用域错配修正 ✔。
+
+### 9.2 #5498 Q4 残差短路判别力（PR #5761）
+
+1. PR `.../pulls/5761`；merge commit：**待合入回填**。
+2. 修复前：哨兵计数器从未接线 ⇒ 断言只覆盖「结果正确」；修复后：mutation（求值全部合取、语义不变）
+   实测**精确失败于短路断言**（`R2 must be evaluated only for the row that passed R1; got 2`），
+   而功能断言与路径断言仍通过 ⇒ 断言确实在测短路。
+3. 命令：`cargo test --all-features --test q4_nested_and_short_circuit_test -- --test-threads=1`
+   ⇒ **2 passed**；计数：R1=2 / R2=1 / R3=1（引擎侧 `DIAG_RESIDUAL_CONJUNCT_EVALS[8]`）。
+4. 同 §9.1④；`source_run` 以合并后新跑为准。
+5. 验收勾选：断言对准「短路真的发生」✔；变异必须失败 ✔；计数可复核 ✔。
+
+### 9.3 #5503 NOT-RUN 本地可见性（PR #5762）
+
+1. PR `.../pulls/5762`；merge commit：**待合入回填**。
+2. 修复前：未设 `TPCH_NOT_RUN_FILE` 时 stdout 被 cargo 吞掉 ⇒ 本地零线索；修复后：默认落盘
+   `<target>/tpch_not_run.log`（轮次按 cargo 进程 pid，无 `ps` 时只追加不清空）。
+3. 命令：`cargo test -p sqlrustgo --test not_run_log_visibility_5503 -- --test-threads=1` ⇒ **4 passed**；
+   文档：`tests/README.md`「NOT-RUN 披露通道（#5503）」。
+4. 同 §9.1④。
+5. 验收勾选：默认路径有本轮记录 ✔；文档写明默认路径与用途 ✔；自证（NOT-RUN 时有记录、真跑时无对应记录）✔。
+
+### 9.4 #5711 跳过的测试仍被计为通过（PR #5764）
+
+1. PR `.../pulls/5764`；merge commit：**待合入回填**。
+2. 修复前：4 个跳过测试共用一个 target 名 ⇒ CI 去重计数只扣 1；修复后：按测试名披露 ⇒ **4 条互不相同**。
+3. 命令：`TPCH_NOT_RUN_FILE=/tmp/nr5711.log cargo test -p sqlrustgo --test harness_validation_test -- --test-threads=1`
+   ⇒ 11 passed / 0 failed（全部走 NOT-RUN 早退）；记录计数：`grep -o 'TPCH-NOT-RUN:.*' | sort -u | wc -l`
+   ⇒ **4**（修复前 1）。
+4. 同 §9.1④。
+5. 验收勾选：每个跳过测试一条记录 ✔；去重计数与跳过数一致 ✔。
+
+### 9.5 #5712 TLS 自旋平台红（PR #5763）
+
+1. PR `.../pulls/5763`；merge commit：**待合入回填**。
+2. 修复前：pristine tip 在 macOS 上 **FAILED**（0 passed / 1 failed，1.37s，死在 `/proc/<pid>/stat` 读取）；
+   修复后：**1 passed**（10.61s）。
+3. 命令：`cargo test -p sqlrustgo-mysql-server --test tls_read_spin_5099 -- --test-threads=1`。
+4. 同 §9.1④。
+5. 验收勾选：跨平台 CPU 计量 ✔；pymysql 发现不硬编码解释器路径 ✔；环境缺失给出可操作错误 ✔。
+
+### 9.6 #4640 短 INSERT 静默补 NULL（PR #5767）
+
+1. PR `.../pulls/5767`；merge commit：**待合入回填**。
+2. 修复前：`INSERT INTO a VALUES (1)`（表 2 列）**被接受**，行变 `[1, NULL]`；修复后：报错
+   `Binder Error: table a has 2 columns but 1 values were supplied` 且**不留行**。
+3. 命令：`cargo test -p sqlrustgo --test insert_column_count_parity_4640 -- --test-threads=1` ⇒ **6 passed**；
+   `cargo run -p sqlrustgo_sqllogictest -- --test-dir crates/sqlrustgo_sqllogictest/testdata`
+   ⇒ **23 文件 / 2 红 / 92.0%**（修复前 22/3、88.0%）；`cargo test -p sqlrustgo-sql-corpus --release`
+   ⇒ **91 passed / 0 failed**；`cargo test -p sqlrustgo --lib` ⇒ 174 passed。
+4. 同 §9.1④。
+5. 验收勾选：短式被拒且不留行 ✔；长式被拒 ✔；等长接受 ✔；显式列子集仍合法 ✔；
+   `INSERT…SELECT` 短式被拒 ✔；与 SQLite 语料一致 ✔。
+
+### 9.7 #5679 / #5686 / #5548 / #5549 / #5528（已在 tip 修复，建议 Owner 关闭）
+
+- #5679：`cargo test -p sqlrustgo-storage --lib wal::group_commit` ⇒ **8 passed**，连续 **5 次**全绿；
+  修法 = 结果槽与 epoch 生命周期解耦（按 generation 读结果，closed epoch 的结果保留至 waiter 取走）。
+- #5686：同一命令 ⇒ 含 3 条 `walgc2_*` 回归（leader 死亡 ⇒ Drop 守卫关闭 epoch 并唤醒 waiter）；
+  模块头的假 liveness 承诺已撤回。
+- #5548：`cargo test -p sqlrustgo --test e2e_canonical_subprocess -- --test-threads=1` ⇒ **54 passed**，
+  契约 2（不能委托时必须诚实失败）本次**真的被执行**（wrapper 复制到空目录 ⇒ 五候选全落空）。
+- #5549：同命令连续 **3 次** **40 passed / 0 failed**（负载机 load1 7.6–9.4）；窗口由实测迭代派生，
+  判据（`contended >= alone * 0.7`）未放宽。
+- #5528：仓库侧兜底已在 tip（commit `d914c4caaf`，根包直接依赖 `libz-sys` + `static` feature）；
+  `cargo tree -e features -i libz-sys` 证实特征统一；链接层验证需 CI 镜像（本机无 musl target/链接器）。
+- 以上五条的关闭包只差 **①的 merge commit** 与 **④的 source_run**（历史 run 的 evidence hash 见
+  `20261112-ab-001` 归档 manifest）。
+
+### 9.8 #5577（claimed：openclaw-mcode）
+
+本线提供了**实测复现细节**（campaign 20261112-ab-001 的 ab09-security-scan 臂覆写
+`docs/releases/v3.12.0/evidence/v312-59/` 四件，已还原且未入证据链）与**规避手段**
+（`EVIDENCE_DIR`/`OUT_FILE` 重定向到 /tmp，已进第二轮清单）⇒ 见 comment 211121；
+该 issue 的代码处置属 claimed 线，本线未改。
