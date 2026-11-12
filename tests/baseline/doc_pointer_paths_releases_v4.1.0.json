@@ -1,7 +1,7 @@
 {
   "version": 1,
   "scope": "docs/releases/v4.1.0",
-  "updated_at": "2026-10-24T12:45:00Z",
+  "updated_at": "2026-11-12T11:16:36Z",
   "note": "Known-broken documentation pointers in the release line. The gate fails on any pointer that is NOT listed here. Each entry is a reviewable debt item, not a suppression: the category says why the pointer is broken (the path was moved by the crates/ -> src/ flattening, the artifact was planned but never committed, or the target lives on another branch only). 每条 entry 带一个 category（分类）与 reason（为什么它仍然是债）；「该修的」应当直接改文档指向真实文件，只有确实修不了的才登记进来。",
   "entries": [
     {
@@ -187,6 +187,12 @@
       "file": "evidence/gmp_consumer_gate_20261005.md",
       "target": "docs/eval/408_RETRIEVAL_ZERO_ROOTCAUSE.md",
       "category": "planned_artifact_never_committed"
+    },
+    {
+      "file": "ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md",
+      "target": "scripts/perf/test_ab08_criterion_ab.py",
+      "category": "planned_artifact_never_committed",
+      "reason": "该脚本随 PR #5754（AB-08 管道 + 守卫自测）提交，尚未合入 develop；合入后本条即可删除，指针届时指向真实文件"
     }
   ]
 }
