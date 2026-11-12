@@ -144,6 +144,43 @@ AUTH="someuser:s3cret8848"'
     fi
     rm -f "${TMP}/docs/plan.md"
 
+    # 7. 证据哈希命名空间不是凭据（假阳性修复，2026-11-13）：
+    #    证据 JSON 里的 "evidence_hash": "local-git:<40hex>" 形状上像
+    #    「名字:口令」对，但它不是凭据 —— 扫描 2 必须放行（整门禁 exit 0），
+    #    否则本元门禁在干净树上恒红（CI ci.yml:313 永红）。
+    #    注意：不能用共享的 ${TMP}（前序 probe 的 probe.sh 残留真凭据体），
+    #    用独立干净子树。
+    CLEAN7="${TMP}/clean7"
+    rm -rf "${CLEAN7}"; mkdir -p "${CLEAN7}/docs"
+    printf '%s\n' '    "evidence_hash": "local-git:e17d8ec45d421b66cccf00c9631f619461422997",' \
+        > "${CLEAN7}/docs/report.json"
+    out=$(cd "${CLEAN7}" && bash "${SCRIPT_DIR}/check_no_hardcoded_secrets.sh" \
+          --repo-root "${CLEAN7}" 2>&1)
+    status=$?
+    if [ "${status}" -eq 0 ]; then
+        printf '  PASS: 证据哈希命名空间（local-git:<hex>）不被误报\n'
+    else
+        printf '  FAIL: 证据哈希命名空间被误报为凭据（假阳性）\n'
+        SELF_FAILURES=$((SELF_FAILURES + 1))
+    fi
+    rm -rf "${CLEAN7}"
+
+    # 8. 命名空间哈希 + 真凭据同现一行 ⇒ 仍必须红（排除逻辑不得吞真凭据）
+    CLEAN8="${TMP}/clean8"
+    rm -rf "${CLEAN8}"; mkdir -p "${CLEAN8}/docs"
+    printf '%s\n' 'x="someuser:s3cret8848" # ref sha256:e17d8ec45d421b66cccf00c9631f619461422997' \
+        > "${CLEAN8}/docs/mixed.txt"
+    out=$(cd "${CLEAN8}" && bash "${SCRIPT_DIR}/check_no_hardcoded_secrets.sh" \
+          --repo-root "${CLEAN8}" 2>&1)
+    status=$?
+    if [ "${status}" -ne 0 ]; then
+        printf '  PASS: 命名空间哈希同行的真凭据仍被抓住\n'
+    else
+        printf '  FAIL: 排除逻辑吞掉了同行的真凭据\n'
+        SELF_FAILURES=$((SELF_FAILURES + 1))
+    fi
+    rm -rf "${CLEAN8}"
+
     # 7. 环境变量引用 ⇒ PASS（不得误伤正确的写法）
     probe "环境变量引用" "PASS" '#!/bin/bash
 curl -s -u "${GITEA_USER}:${GITEA_TOKEN}" "http://example.invalid/api"'
@@ -194,6 +231,27 @@ fi
 # 换成别的口令就漏了 —— 那样的门禁挡不住下一条泄漏。
 hits=$(scan '(["'"'"']|-u[[:space:]])[A-Za-z][A-Za-z_-]{2,}:[A-Za-z0-9]{3,}[A-Za-z][A-Za-z0-9]*[0-9][A-Za-z0-9]*["'"'"']?' \
     || true)
+# 证据哈希命名空间排除（假阳性修复，2026-11-13）：
+#   证据 JSON/文档里的 "local-git:<40hex>" / "sha256:<64hex>" 等是
+#   「哈希命名空间:摘要值」，形状上撞了「名字:口令」对，但不是凭据。
+#   放行规则**收得很窄**：仅当命中行在剥掉（命名空间:纯16进制≥16位）之后
+#   **不再剩任何**「名字:口令」形状时才放行；同现一行真凭据的行仍算命中
+#   （selftest probe 7/8 双向钉死）。
+if [ -n "${hits}" ]; then
+    stripped=$(printf '%s\n' "${hits}" \
+        | sed -E 's/(local-git|sha256|sha512|sha1|md5|blake2|sha3):[0-9a-fA-F]{16,}//g')
+    remaining=$(printf '%s\n' "${stripped}" \
+        | grep -E '(["'"'"']|-u[[:space:]])[A-Za-z][A-Za-z_-]{2,}:[A-Za-z0-9]{3,}[A-Za-z][A-Za-z0-9]*[0-9][A-Za-z0-9]*["'"'"']?' \
+        || true)
+    if [ -z "${remaining}" ]; then
+        echo "PASS: 没有字面量的「名字:口令」对（证据哈希命名空间已逐条披露）"
+        printf '%s\n' "${hits}" | grep -E '(local-git|sha256|sha512|sha1|md5|blake2|sha3):[0-9a-fA-F]{16,}' \
+            | sed 's/^/  excluded-as-hash-namespace: /'
+        hits=""
+    else
+        hits="${remaining}"
+    fi
+fi
 if [ -n "${hits}" ]; then
     echo ""
     echo "FAIL — 发现字面量的「名字:口令」对:"
