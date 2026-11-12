@@ -263,6 +263,20 @@ def collect(tag, min_mtime=None):
     return metrics
 
 
+def metric_key(bench, group):
+    """The key a measurement is stored under.
+
+    Group names are **not** unique across bench targets: the 2026-11-12
+    core run measured a group called `parser_batch_100_select` in **both**
+    `bench_insert` and `parser_bench`. Keying the metrics by the bare
+    group name therefore dropped one of the two measurements (96 unique
+    keys for 97 (bench, group) pairs) — and a baseline/run comparison could
+    then attribute one bench's numbers to another. The key carries the
+    bench, so both survive and are compared against their own bench.
+    """
+    return f"{bench}/{group}"
+
+
 def run_benches(benches, tag, samples, smoke=True, bench_timeout=900):
     import time as _time
     metrics = {}
@@ -298,7 +312,8 @@ def run_benches(benches, tag, samples, smoke=True, bench_timeout=900):
             not_run[bench] = reason
             continue
         groups[bench] = sorted(fresh)
-        metrics.update(fresh)
+        for group, values in fresh.items():
+            metrics[metric_key(bench, group)] = values
     return metrics, groups, not_run
 
 
