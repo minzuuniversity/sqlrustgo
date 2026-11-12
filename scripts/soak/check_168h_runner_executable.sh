@@ -276,12 +276,14 @@ done
 SAMPLES=$(grep -c "" "$METRICS")
 [ "$SAMPLES" -ge 2 ] || fail "metrics.csv has no samples ($SAMPLES lines)"
 
-# Every reading must be numeric. A metric column that carries a log line
-# (or a `ps` field list) is a broken instrument, not a measurement — this is
-# exactly how the runner's qps/threads columns were garbage before the fix.
+# Every reading must be numeric — or the documented "no report yet"
+# placeholder `--:--` (a sample taken before the worker's first report
+# line). A metric column that carries a log line (or a `ps` field list) is a
+# broken instrument, not a measurement — this is exactly how the runner's
+# qps/threads columns were garbage before the fix.
 awk -F',' 'NR==1{next} {
   for (i = 3; i <= 8; i++) if ($i !~ /^[0-9]+$/) { printf "metrics row %d field %d is not numeric: %s\n", NR, i, $i > "/dev/stderr"; exit 1 }
-  for (i = 9; i <= 11; i++) if ($i !~ /^[0-9]+:[0-9.]+$/) { printf "metrics row %d field %d is not numeric: %s\n", NR, i, $i > "/dev/stderr"; exit 1 }
+  for (i = 9; i <= 11; i++) if ($i != "--:--" && $i !~ /^[0-9]+:[0-9.]+$/) { printf "metrics row %d field %d is not numeric: %s\n", NR, i, $i > "/dev/stderr"; exit 1 }
 }' "$METRICS" || fail "metrics.csv contains a non-numeric reading (see above)"
 
 log "--- path executable ---"
