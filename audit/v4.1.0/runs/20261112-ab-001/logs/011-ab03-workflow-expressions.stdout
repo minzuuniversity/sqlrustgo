@@ -1,0 +1,5 @@
+
+=== Scanning /Volumes/workspace/dev/sqlrustgo/.gitea/workflows ===
+  workflow files scanned: 8
+  [0;32mPASS[0m: no unparsable expression template in the workflows
+  workflow expression gate: PASS

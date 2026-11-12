@@ -1,0 +1,514 @@
+schema_version: 1
+run_id: 20261112-ab-001
+source_agent: omp-macmini
+frozen_commit: aec1a3673cb83d8800b27e8a7aa11f690f346817
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    CARGO_TARGET_DIR: /Volumes/workspace/dev/walgc2-target
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- cmd: python3 audit/v4.1.0/evidence_inventory.py verify
+  cwd: .
+  id: ab01-evidence-verify
+  name: 'AB-01 #5117 证据清单 verify（findings 口径）'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_stage_config_consistency.sh
+  cwd: .
+  id: ab01-stage-config-consistency
+  name: AB-01 STAGE 配置一致性
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_stage.sh
+  cwd: .
+  id: ab01-stage-check
+  name: AB-01 阶段 SSOT 校验
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_docs_pointer_paths.sh
+  cwd: .
+  id: ab01-docs-pointer
+  name: AB-01 文档指针路径
+  timeout_sec: 900
+- cmd: python3 audit/v4.1.0/honesty.py check
+  cwd: .
+  id: ab01-honesty
+  name: AB-01 honesty 检查
+  timeout_sec: 1800
+- cmd: python3 audit/v4.1.0/doc_facts.py check
+  cwd: .
+  id: ab01-docfacts
+  name: AB-01 doc_facts 检查
+  timeout_sec: 1800
+- cmd: cargo fmt --check --all
+  cwd: .
+  id: ab02-fmt
+  name: 'AB-02 #5113 cargo fmt --check --all'
+  timeout_sec: 900
+- cmd: cargo clippy --all-features -- -D warnings
+  cwd: .
+  id: ab02-clippy
+  name: 'AB-02 #5113 clippy -D warnings'
+  timeout_sec: 3600
+- cmd: cargo build --all-features
+  cwd: .
+  id: ab02-build
+  name: 'AB-02 #5113 build --all-features'
+  timeout_sec: 3600
+- cmd: cargo test --all-features
+  cwd: .
+  id: ab02-test-all
+  name: 'AB-02 #5113 test --all-features（全量）'
+  timeout_sec: 7200
+- cmd: bash scripts/gate/check_workflow_expressions.sh
+  cwd: .
+  id: ab03-workflow-expressions
+  name: 'AB-03 #5113 workflow 可解析/fail-closed'
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_gate_executability.sh
+  cwd: .
+  id: ab03-gate-executability
+  name: 'AB-03 #5113 门禁可执行性（61 道 registry vs 源码）'
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_gate_test_integrity.sh
+  cwd: .
+  id: ab03-gate-test-integrity
+  name: 'AB-03 #5113 门禁测试完整性'
+  timeout_sec: 900
+- cmd: bash scripts/gate/probe_hard_gate_mutation.sh
+  cwd: .
+  id: ab03-mutation-probe
+  name: 'AB-03 #5113 hard-gate 变异探针'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  id: ab03-anti-ignore
+  name: 'AB-03 #5113 anti-ignore'
+  timeout_sec: 900
+- cmd: cargo test --all-features --test mvcc_transaction_test
+  cwd: .
+  id: ab04-mvcc
+  name: 'AB-04 #5112 MVCC 事务'
+  timeout_sec: 1800
+- cmd: cargo test --all-features --test integration_savepoint_test
+  cwd: .
+  id: ab04-savepoint
+  name: 'AB-04 #5112 savepoint'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_sem1_savepoint.sh
+  cwd: .
+  id: ab04-sem1
+  name: 'AB-04 #5112 SEM1 savepoint 语句路径'
+  timeout_sec: 1800
+- cmd: cargo test --all-features --test concurrent_rollback_isolation_test
+  cwd: .
+  id: ab04-rollback-isolation
+  name: 'AB-04 #5112 并发 rollback 隔离（0/300 口径）'
+  timeout_sec: 1800
+- cmd: cargo test --all-features --test wire_interleaved_tx_test
+  cwd: .
+  id: ab04-wire-interleaved
+  name: 'AB-04 #5112 wire 交错事务'
+  timeout_sec: 1800
+- cmd: cargo test --all-features --test ab04_8thread_1000tx_reconcile_test
+  cwd: .
+  id: ab04-8000tx-reconcile
+  name: 'AB-04 #5112 8 线程×1000=8000 事务无丢失对账'
+  timeout_sec: 3600
+- cmd: bash scripts/gate/check_bustubx_b_track_v312.sh
+  cwd: .
+  id: ab05-bustubx-btrack
+  name: 'AB-05 #5114 BustubX B 轨必测'
+  timeout_sec: 1800
+- cmd: python3 scripts/gate/run_b2_per_binary.py --json /tmp/b2-ab-001.json
+  cwd: .
+  id: ab05-b2-per-binary
+  name: 'AB-05 #5114 B2 逐二进制（摘要写 /tmp，不写仓内）'
+  timeout_sec: 3600
+- cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  id: ab05-sql-corpus
+  name: 'AB-05 #5114 SQL corpus >=80%'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_tpch_known_differences.sh
+  cwd: .
+  id: ab05-oracle-known-diffs
+  name: 'AB-05 #5114 oracle 已知差异对质'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  id: ab05-g1-tpch
+  name: 'AB-05 #5114 G1 TPC-H 基线（stored 基线红家族在案，g1 门未裁）'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  id: ab06-coverage
+  name: 'AB-06 #5113/#5114 L1_8 覆盖率（阈值取 SSOT 较严格值）'
+  timeout_sec: 5400
+- cmd: bash scripts/gate/check_p13_soak_test.sh
+  cwd: .
+  id: ab07-p13-soak-gate
+  name: 'AB-07 #5115 P13 soak 门禁（11 条件）'
+  timeout_sec: 3600
+- cmd: bash scripts/gate/check_g14_real_crash.sh
+  cwd: .
+  id: ab07-g14-real-crash
+  name: 'AB-07 #5115 G14 真实崩溃恢复'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_v312_14_crash_recovery.sh
+  cwd: .
+  id: ab07-v312-14-crash-recovery
+  name: 'AB-07 #5115 v3.12-14 crash recovery'
+  timeout_sec: 1800
+- cmd: bash scripts/soak/v400_1h_soak.sh
+  cwd: .
+  id: ab07-soak-1h
+  name: 'AB-07 #5115 1h SOAK 实跑（heartbeat 连续性取证）'
+  timeout_sec: 7200
+- cmd: bash scripts/gate/check_g11_qps.sh
+  cwd: .
+  id: ab08-g11-qps
+  name: 'AB-08 #5116 G11 QPS'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_g12_sysbench.sh
+  cwd: .
+  id: ab08-g12-sysbench
+  name: 'AB-08 #5116 G12 sysbench A/B'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_g15_perf_report.sh
+  cwd: .
+  id: ab08-g15-perf-report
+  name: 'AB-08 #5116 G15 性能报告（criterion→JSON 管道）'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_security_scan_v312.sh
+  cwd: .
+  id: ab09-security-scan
+  name: 'AB-09 #5113/#5115 安全扫描'
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_no_hardcoded_secrets.sh
+  cwd: .
+  id: ab09-no-secrets
+  name: 'AB-09 #5113 无硬编码凭据'
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_attack_surface.sh
+  cwd: .
+  id: ab09-attack-surface
+  name: 'AB-09 #5113 攻击面'
+  timeout_sec: 1800
+- cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  id: ab10-kanban-render
+  name: 'AB-10 #5117 看板渲染一致性（阻断项台账的机器面）'
+  timeout_sec: 900
+results:
+- id: ab01-evidence-verify
+  started_at: '2026-11-11T18:22:18Z'
+  finished_at: '2026-11-11T18:22:18Z'
+  exit_code: 1
+  stdout_sha256: 8b03ac7d368e54b8a7729e79f63d4fc24715dde578853d7f2f90d34d88bb0e95
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-ab01-evidence-verify.stdout
+  stderr_path: logs/001-ab01-evidence-verify.stderr
+- id: ab01-stage-config-consistency
+  started_at: '2026-11-11T18:22:18Z'
+  finished_at: '2026-11-11T18:22:22Z'
+  exit_code: 0
+  stdout_sha256: 97a7d533af25fa79961250c90665abc4c28a6148dd17c35c0c911feb3767a3b9
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-ab01-stage-config-consistency.stdout
+  stderr_path: logs/002-ab01-stage-config-consistency.stderr
+- id: ab01-stage-check
+  started_at: '2026-11-11T18:22:22Z'
+  finished_at: '2026-11-11T18:37:03Z'
+  exit_code: 1
+  stdout_sha256: 602d003ac5e8b47879908b46497db7f90da99a3f4722edf1e31cb126731d4308
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-ab01-stage-check.stdout
+  stderr_path: logs/003-ab01-stage-check.stderr
+- id: ab01-docs-pointer
+  started_at: '2026-11-11T18:37:03Z'
+  finished_at: '2026-11-11T18:37:03Z'
+  exit_code: 0
+  stdout_sha256: d190d7538e18bad4cbaebccb31609cf527494d1a8eb67a33d7a66f1fee52ed59
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-ab01-docs-pointer.stdout
+  stderr_path: logs/004-ab01-docs-pointer.stderr
+- id: ab01-honesty
+  started_at: '2026-11-11T18:37:03Z'
+  finished_at: '2026-11-11T18:37:03Z'
+  exit_code: 0
+  stdout_sha256: 3e2836240d45ddd884dc2fb302ccfa554fcf17740bf3d7319e43cd631809b7fc
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-ab01-honesty.stdout
+  stderr_path: logs/005-ab01-honesty.stderr
+- id: ab01-docfacts
+  started_at: '2026-11-11T18:37:03Z'
+  finished_at: '2026-11-11T18:37:04Z'
+  exit_code: 0
+  stdout_sha256: 99a75de1acdb04d7650a94461251166da1e6663ab1c8f29e0b063a9a16a9a14d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-ab01-docfacts.stdout
+  stderr_path: logs/006-ab01-docfacts.stderr
+- id: ab02-fmt
+  started_at: '2026-11-11T18:37:04Z'
+  finished_at: '2026-11-11T18:37:06Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-ab02-fmt.stdout
+  stderr_path: logs/007-ab02-fmt.stderr
+- id: ab02-clippy
+  started_at: '2026-11-11T18:37:06Z'
+  finished_at: '2026-11-11T18:37:38Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 69132d2f19f683a5053db92327a9214649246112b606df3808b76c65232d8ca2
+  stdout_path: logs/008-ab02-clippy.stdout
+  stderr_path: logs/008-ab02-clippy.stderr
+- id: ab02-build
+  started_at: '2026-11-11T18:37:38Z'
+  finished_at: '2026-11-11T18:37:39Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: a7642a0867425c6137f6fda230ee0c5445d5148745ccd7b4f5b0b4f2b4540d91
+  stdout_path: logs/009-ab02-build.stdout
+  stderr_path: logs/009-ab02-build.stderr
+- id: ab02-test-all
+  started_at: '2026-11-11T18:37:39Z'
+  finished_at: '2026-11-11T19:14:06Z'
+  exit_code: 101
+  stdout_sha256: 1d8a30f5ffbd81013663c2aa5e870ae7ba2b2019d4cb36353ceb081111962b9a
+  stderr_sha256: 79fe94ae335915b30e8dd4da129ed0bbe0518becdb710429bd44fea1e412f49d
+  stdout_path: logs/010-ab02-test-all.stdout
+  stderr_path: logs/010-ab02-test-all.stderr
+- id: ab03-workflow-expressions
+  started_at: '2026-11-11T19:14:06Z'
+  finished_at: '2026-11-11T19:14:06Z'
+  exit_code: 0
+  stdout_sha256: 74eaae5c23734f06797a0ce4cb9d611b902503faf8168826bfbafd827b281552
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-ab03-workflow-expressions.stdout
+  stderr_path: logs/011-ab03-workflow-expressions.stderr
+- id: ab03-gate-executability
+  started_at: '2026-11-11T19:14:06Z'
+  finished_at: '2026-11-11T19:14:07Z'
+  exit_code: 0
+  stdout_sha256: 7c8ea58fd8dde1d857a6479673a069b44e9be54b46e1189c23a3f4b294f51b60
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-ab03-gate-executability.stdout
+  stderr_path: logs/012-ab03-gate-executability.stderr
+- id: ab03-gate-test-integrity
+  started_at: '2026-11-11T19:14:07Z'
+  finished_at: '2026-11-11T19:14:27Z'
+  exit_code: 1
+  stdout_sha256: 501b31d3639229e0a21b5c0e18c811c298a1dcdc62a4ea6e9e44d1857039c7d2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-ab03-gate-test-integrity.stdout
+  stderr_path: logs/013-ab03-gate-test-integrity.stderr
+- id: ab03-mutation-probe
+  started_at: '2026-11-11T19:14:27Z'
+  finished_at: '2026-11-11T19:14:33Z'
+  exit_code: 0
+  stdout_sha256: cf3f2055aac9f26abbc5dba0690a32895f268b1c64d0096faf96e72c3dd80094
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-ab03-mutation-probe.stdout
+  stderr_path: logs/014-ab03-mutation-probe.stderr
+- id: ab03-anti-ignore
+  started_at: '2026-11-11T19:14:33Z'
+  finished_at: '2026-11-11T19:14:34Z'
+  exit_code: 0
+  stdout_sha256: fe823fd2b89ecbe830ca5bd204494352ee4a176c427b29f7062165ce56ed32ac
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-ab03-anti-ignore.stdout
+  stderr_path: logs/015-ab03-anti-ignore.stderr
+- id: ab04-mvcc
+  started_at: '2026-11-11T19:14:34Z'
+  finished_at: '2026-11-11T19:14:35Z'
+  exit_code: 0
+  stdout_sha256: 339bf1750efe8dec46b9d1bc5e9fc6138bcfa87358f9f78aa287ee9df6fbc298
+  stderr_sha256: 24be8934a62ed5f2d4661a61b28e52ba740b1c77defc2439aea563a1eeda64e5
+  stdout_path: logs/016-ab04-mvcc.stdout
+  stderr_path: logs/016-ab04-mvcc.stderr
+- id: ab04-savepoint
+  started_at: '2026-11-11T19:14:35Z'
+  finished_at: '2026-11-11T19:14:36Z'
+  exit_code: 0
+  stdout_sha256: cd7950a6d876b00fa2378c7868df33c7e625088b4b123ad075f3cad65ce8fc9c
+  stderr_sha256: 06971a1f299a473546c17b9be0e5d18087acbba86d551c943a481353e2d18e30
+  stdout_path: logs/017-ab04-savepoint.stdout
+  stderr_path: logs/017-ab04-savepoint.stderr
+- id: ab04-sem1
+  started_at: '2026-11-11T19:14:36Z'
+  finished_at: '2026-11-11T19:14:43Z'
+  exit_code: 0
+  stdout_sha256: d265b933f567f0a5951dff0822122f905516562a404bf14036939472aa0d7a86
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/018-ab04-sem1.stdout
+  stderr_path: logs/018-ab04-sem1.stderr
+- id: ab04-rollback-isolation
+  started_at: '2026-11-11T19:14:43Z'
+  finished_at: '2026-11-11T19:14:44Z'
+  exit_code: 0
+  stdout_sha256: 53cc30b92798c5b56fe87b1ed7b64187dd0696d486b8cfe03841c9de09b981e8
+  stderr_sha256: 8ea3eda957c305c038d6d191a360fcbf1844c106cb4e261b48963c0a4e6627af
+  stdout_path: logs/019-ab04-rollback-isolation.stdout
+  stderr_path: logs/019-ab04-rollback-isolation.stderr
+- id: ab04-wire-interleaved
+  started_at: '2026-11-11T19:14:44Z'
+  finished_at: '2026-11-11T19:14:52Z'
+  exit_code: 0
+  stdout_sha256: def7defd748ec40a1a9d367e0f8fa58ff40c67f442f1901b2d884ffef15a4d89
+  stderr_sha256: 07cf0c645d330df04d3e12533080269556e524530750acaec4621a16b8111ebf
+  stdout_path: logs/020-ab04-wire-interleaved.stdout
+  stderr_path: logs/020-ab04-wire-interleaved.stderr
+- id: ab04-8000tx-reconcile
+  started_at: '2026-11-11T19:14:52Z'
+  finished_at: '2026-11-11T19:14:55Z'
+  exit_code: 0
+  stdout_sha256: 30270b75c3d7ed982d337be5b72edeff4da465f29920097805302a66c1d020bb
+  stderr_sha256: 9043b80e4a3a694aeb4e2370c38362909cf406497dfa7c7cc2f8eaf0543ea740
+  stdout_path: logs/021-ab04-8000tx-reconcile.stdout
+  stderr_path: logs/021-ab04-8000tx-reconcile.stderr
+- id: ab05-bustubx-btrack
+  started_at: '2026-11-11T19:14:55Z'
+  finished_at: '2026-11-11T19:14:55Z'
+  exit_code: 1
+  stdout_sha256: 14ce644fba9a4053e7d1be812f9ccc6e6f1b3ecdeef6de05f40457e8f701fbbd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/022-ab05-bustubx-btrack.stdout
+  stderr_path: logs/022-ab05-bustubx-btrack.stderr
+- id: ab05-b2-per-binary
+  started_at: '2026-11-11T19:14:55Z'
+  finished_at: '2026-11-11T20:00:44Z'
+  exit_code: 1
+  stdout_sha256: f990405e530e1b4b32d1ff0e5918e291c7401e231224dce2ebe6eadf517f357f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/023-ab05-b2-per-binary.stdout
+  stderr_path: logs/023-ab05-b2-per-binary.stderr
+- id: ab05-sql-corpus
+  started_at: '2026-11-11T20:00:44Z'
+  finished_at: '2026-11-11T20:00:45Z'
+  exit_code: 0
+  stdout_sha256: 245051ea7dea1eb1cf64cf73b5484009e81eacf0c61c5778bc21a53d3948a60d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/024-ab05-sql-corpus.stdout
+  stderr_path: logs/024-ab05-sql-corpus.stderr
+- id: ab05-oracle-known-diffs
+  started_at: '2026-11-11T20:00:45Z'
+  finished_at: '2026-11-11T20:00:45Z'
+  exit_code: 0
+  stdout_sha256: 099fc9c9220b5c6c27c2388d786d959199f4ed6cb7368fd77bae10b21439e0aa
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/025-ab05-oracle-known-diffs.stdout
+  stderr_path: logs/025-ab05-oracle-known-diffs.stderr
+- id: ab05-g1-tpch
+  started_at: '2026-11-11T20:00:45Z'
+  finished_at: '2026-11-11T20:04:10Z'
+  exit_code: 1
+  stdout_sha256: 74aee216db5dcbac3b79ab5dd036bdbd3df3c640969929d397c1968199a8be12
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/026-ab05-g1-tpch.stdout
+  stderr_path: logs/026-ab05-g1-tpch.stderr
+- id: ab06-coverage
+  started_at: '2026-11-11T20:04:10Z'
+  finished_at: '2026-11-11T20:09:48Z'
+  exit_code: 0
+  stdout_sha256: 971741dfa2de2c2409e4aba3a07f931ddf5adad1d9ce9f7d328c088f8255603e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/027-ab06-coverage.stdout
+  stderr_path: logs/027-ab06-coverage.stderr
+- id: ab07-p13-soak-gate
+  started_at: '2026-11-11T20:09:48Z'
+  finished_at: '2026-11-11T20:10:56Z'
+  exit_code: 0
+  stdout_sha256: 36fc69bfb95460f52d2a35a73c724aaaf70729f70e9ba7300480c76ff7a7b07e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/028-ab07-p13-soak-gate.stdout
+  stderr_path: logs/028-ab07-p13-soak-gate.stderr
+- id: ab07-g14-real-crash
+  started_at: '2026-11-11T20:10:56Z'
+  finished_at: '2026-11-11T20:11:50Z'
+  exit_code: 0
+  stdout_sha256: f43322ecedee13bbcbb778ed2d62bb474f471fee3f87aab4a0a26acc638e46ca
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/029-ab07-g14-real-crash.stdout
+  stderr_path: logs/029-ab07-g14-real-crash.stderr
+- id: ab07-v312-14-crash-recovery
+  started_at: '2026-11-11T20:11:50Z'
+  finished_at: '2026-11-11T20:14:33Z'
+  exit_code: 0
+  stdout_sha256: 7652c3f0651faba2b2fc3f8ac6546561cb7bdd8cf94368c5e518fcc5aa664be1
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/030-ab07-v312-14-crash-recovery.stdout
+  stderr_path: logs/030-ab07-v312-14-crash-recovery.stderr
+- id: ab07-soak-1h
+  started_at: '2026-11-11T20:14:33Z'
+  finished_at: '2026-11-11T20:14:33Z'
+  exit_code: 1
+  stdout_sha256: f2d28640e925d29de05b0fcccfaa365e8add90b94270fb4e8a83cbbe73721e17
+  stderr_sha256: b8c2b79cff72d66e869e5a6618119fc6b5afc4c85f5c8755a9c557203c6b7947
+  stdout_path: logs/031-ab07-soak-1h.stdout
+  stderr_path: logs/031-ab07-soak-1h.stderr
+- id: ab08-g11-qps
+  started_at: '2026-11-11T20:14:33Z'
+  finished_at: '2026-11-11T20:17:41Z'
+  exit_code: 0
+  stdout_sha256: 13e7bbc5a759842aa486388bcb091fc6b6e0de7df0f2543d8ff0e509d777036e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/032-ab08-g11-qps.stdout
+  stderr_path: logs/032-ab08-g11-qps.stderr
+- id: ab08-g12-sysbench
+  started_at: '2026-11-11T20:17:41Z'
+  finished_at: '2026-11-11T20:21:55Z'
+  exit_code: 0
+  stdout_sha256: b4ff961a1554966157f3fa708a6089fe1c5a0100098fd29dc51c56da713c0af4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/033-ab08-g12-sysbench.stdout
+  stderr_path: logs/033-ab08-g12-sysbench.stderr
+- id: ab08-g15-perf-report
+  started_at: '2026-11-11T20:21:55Z'
+  finished_at: '2026-11-11T20:29:51Z'
+  exit_code: 0
+  stdout_sha256: fd300863b03a892c1463ea82ee24187df8883e21c9ede947e2d2c7771007c676
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/034-ab08-g15-perf-report.stdout
+  stderr_path: logs/034-ab08-g15-perf-report.stderr
+- id: ab09-security-scan
+  started_at: '2026-11-11T20:29:51Z'
+  finished_at: '2026-11-11T20:30:02Z'
+  exit_code: 0
+  stdout_sha256: d8d0c7c83cc6d5d704de5214174c31c7ea5b3a7aedac3adc2762d6fd88b068b8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/035-ab09-security-scan.stdout
+  stderr_path: logs/035-ab09-security-scan.stderr
+- id: ab09-no-secrets
+  started_at: '2026-11-11T20:30:02Z'
+  finished_at: '2026-11-11T20:30:39Z'
+  exit_code: 1
+  stdout_sha256: ad177069e51d7cea7f24dcb368e25f39ffb780ec99b3c806e0dc1799db02c6dd
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/036-ab09-no-secrets.stdout
+  stderr_path: logs/036-ab09-no-secrets.stderr
+- id: ab09-attack-surface
+  started_at: '2026-11-11T20:30:39Z'
+  finished_at: '2026-11-11T20:30:39Z'
+  exit_code: 0
+  stdout_sha256: 6be503059ed3d82ce345ce6a2a52c89031e335afb248687ce6a3c0bdde1846e2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/037-ab09-attack-surface.stdout
+  stderr_path: logs/037-ab09-attack-surface.stderr
+- id: ab10-kanban-render
+  started_at: '2026-11-11T20:30:39Z'
+  finished_at: '2026-11-11T20:30:39Z'
+  exit_code: 0
+  stdout_sha256: 025aaf57ce321fbd0f616977be45036f0f1a34e4d1e6ab605f186d9d641f8a64
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/038-ab10-kanban-render.stdout
+  stderr_path: logs/038-ab10-kanban-render.stderr
+evidence_hash: sha256:8a9a94ca9c82777bdd0f35ec22c8703a228070a5743b8d074a28fab89751c195
+completed_at: '2026-11-11T20:30:39Z'
