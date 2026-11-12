@@ -1,0 +1,271 @@
+================================================
+v4.0.0 server-read-perf SOAK (60 min)
+================================================
+  PORT=3412  THREADS=16  SERVER_THREADS=16
+  DATA_DIR=/tmp/sqlrustgo-v400-soak-ab003
+  RESULTS_DIR=/tmp/srg-ab003-soak-20261112_055140
+  ROWS=10000  READ_PCT=80%  INSERT_PCT=10%
+  WAL_SYNC=every
+  BIN=/Volumes/workspace/dev/walgc2-target/debug/sqlrustgo-mysql-server
+================================================
+[1/5] Starting sqlrustgo-mysql-server (file storage)...
+  server PID=67416
+  listening on 3412 after 1s
+[2/5] Preparing sbtest1 (10000 rows)...
+=== v400_prepare_soak: port=3412 rows=10000 ===
+[1/3] Creating sbtest1 table...
+[2/3] Loading 10000 rows into sbtest1...
+  Loaded 10000 rows in 3s
+[3/3] Verifying...
+  Row count: 10000
+  Sample PK lookups:
+1	1	9
+100	0	9
+5000	0	9
+9999	99	8
+PASS
+[3/5] Starting pymysql driver (16 threads, 3600s)...
+  driver PID=67452
+[4/5] Monitoring (interval=15s) — Ctrl-C to abort.
+  [15s/3600s] RSS=139.4MB FD=41 CPU=29.2%(/core ncpu=10) q=00 e=00 panics=00 remain=59m 
+  [30s/3600s] RSS=121.4MB FD=41 CPU=31.8%(/core ncpu=10) q=00 e=00 panics=00 remain=59m 
+  [45s/3600s] RSS=133.8MB FD=41 CPU=6.9%(/core ncpu=10) q=00 e=00 panics=00 remain=59m 
+  [60s/3600s] RSS=144.4MB FD=41 CPU=6.8%(/core ncpu=10) q=00 e=00 panics=00 remain=59m 
+  [75s/3600s] RSS=139.1MB FD=41 CPU=24.9%(/core ncpu=10) q=00 e=00 panics=00 remain=58m 
+  [90s/3600s] RSS=134.3MB FD=41 CPU=8.3%(/core ncpu=10) q=00 e=00 panics=00 remain=58m 
+  [105s/3600s] RSS=120.5MB FD=41 CPU=11.1%(/core ncpu=10) q=00 e=00 panics=00 remain=58m 
+  [120s/3600s] RSS=116.4MB FD=41 CPU=11.8%(/core ncpu=10) q=00 e=00 panics=00 remain=58m 
+  [135s/3600s] RSS=109.9MB FD=41 CPU=3.6%(/core ncpu=10) q=00 e=00 panics=00 remain=57m 
+  [151s/3600s] RSS=112.5MB FD=41 CPU=12.9%(/core ncpu=10) q=00 e=00 panics=00 remain=57m 
+  [166s/3600s] RSS=112.8MB FD=41 CPU=12.2%(/core ncpu=10) q=00 e=00 panics=00 remain=57m 
+  [181s/3600s] RSS=109.3MB FD=41 CPU=13.4%(/core ncpu=10) q=00 e=00 panics=00 remain=56m 
+  [196s/3600s] RSS=108.5MB FD=41 CPU=14.8%(/core ncpu=10) q=00 e=00 panics=00 remain=56m 
+  [211s/3600s] RSS=116.1MB FD=41 CPU=11.2%(/core ncpu=10) q=00 e=00 panics=00 remain=56m 
+  [226s/3600s] RSS=114.6MB FD=41 CPU=7.1%(/core ncpu=10) q=00 e=00 panics=00 remain=56m 
+  [241s/3600s] RSS=117.4MB FD=41 CPU=7.8%(/core ncpu=10) q=00 e=00 panics=00 remain=55m 
+  [256s/3600s] RSS=110.7MB FD=45 CPU=9.3%(/core ncpu=10) q=00 e=00 panics=00 remain=55m 
+  [272s/3600s] RSS=106.8MB FD=41 CPU=6.5%(/core ncpu=10) q=00 e=00 panics=00 remain=55m 
+  [287s/3600s] RSS=109.3MB FD=42 CPU=18.0%(/core ncpu=10) q=00 e=00 panics=00 remain=55m 
+  [302s/3600s] RSS=107.3MB FD=41 CPU=31.3%(/core ncpu=10) q=00 e=00 panics=00 remain=54m 
+  [317s/3600s] RSS=106.5MB FD=42 CPU=6.2%(/core ncpu=10) q=00 e=00 panics=00 remain=54m 
+  [332s/3600s] RSS=116.7MB FD=41 CPU=5.9%(/core ncpu=10) q=00 e=00 panics=00 remain=54m 
+  [347s/3600s] RSS=114.7MB FD=41 CPU=4.4%(/core ncpu=10) q=00 e=00 panics=00 remain=54m 
+  [362s/3600s] RSS=102.6MB FD=41 CPU=5.9%(/core ncpu=10) q=00 e=00 panics=00 remain=53m 
+  [377s/3600s] RSS=120.6MB FD=41 CPU=5.8%(/core ncpu=10) q=00 e=00 panics=00 remain=53m 
+  [392s/3600s] RSS=98.4MB FD=41 CPU=5.7%(/core ncpu=10) q=00 e=00 panics=00 remain=53m 
+  [408s/3600s] RSS=111.3MB FD=41 CPU=6.3%(/core ncpu=10) q=00 e=00 panics=00 remain=53m 
+  [423s/3600s] RSS=109.0MB FD=41 CPU=6.5%(/core ncpu=10) q=00 e=00 panics=00 remain=52m 
+  [438s/3600s] RSS=100.9MB FD=42 CPU=4.4%(/core ncpu=10) q=00 e=00 panics=00 remain=52m 
+  [453s/3600s] RSS=107.3MB FD=41 CPU=6.0%(/core ncpu=10) q=00 e=00 panics=00 remain=52m 
+  [468s/3600s] RSS=103.5MB FD=41 CPU=6.5%(/core ncpu=10) q=00 e=00 panics=00 remain=52m 
+  [483s/3600s] RSS=101.6MB FD=41 CPU=5.7%(/core ncpu=10) q=00 e=00 panics=00 remain=51m 
+  [498s/3600s] RSS=93.1MB FD=41 CPU=4.9%(/core ncpu=10) q=00 e=00 panics=00 remain=51m 
+  [513s/3600s] RSS=107.9MB FD=41 CPU=5.5%(/core ncpu=10) q=00 e=00 panics=00 remain=51m 
+  [528s/3600s] RSS=115.6MB FD=41 CPU=41.4%(/core ncpu=10) q=00 e=00 panics=00 remain=51m 
+  [543s/3600s] RSS=121.5MB FD=42 CPU=5.8%(/core ncpu=10) q=00 e=00 panics=00 remain=50m 
+  [559s/3600s] RSS=112.8MB FD=41 CPU=5.5%(/core ncpu=10) q=00 e=00 panics=00 remain=50m 
+  [574s/3600s] RSS=109.8MB FD=42 CPU=4.8%(/core ncpu=10) q=00 e=00 panics=00 remain=50m 
+  [589s/3600s] RSS=117.8MB FD=41 CPU=6.8%(/core ncpu=10) q=00 e=00 panics=00 remain=50m 
+  [604s/3600s] RSS=103.9MB FD=41 CPU=10.0%(/core ncpu=10) q=00 e=00 panics=00 remain=49m 
+  [619s/3600s] RSS=100.1MB FD=41 CPU=18.0%(/core ncpu=10) q=00 e=00 panics=00 remain=49m 
+  [634s/3600s] RSS=109.1MB FD=41 CPU=5.2%(/core ncpu=10) q=00 e=00 panics=00 remain=49m 
+  [649s/3600s] RSS=107.8MB FD=41 CPU=6.1%(/core ncpu=10) q=00 e=00 panics=00 remain=49m 
+  [664s/3600s] RSS=115.8MB FD=41 CPU=6.0%(/core ncpu=10) q=00 e=00 panics=00 remain=48m 
+  [679s/3600s] RSS=110.5MB FD=41 CPU=6.0%(/core ncpu=10) q=00 e=00 panics=00 remain=48m 
+  [695s/3600s] RSS=107.3MB FD=41 CPU=32.3%(/core ncpu=10) q=00 e=00 panics=00 remain=48m 
+  [710s/3600s] RSS=113.3MB FD=42 CPU=6.8%(/core ncpu=10) q=00 e=00 panics=00 remain=48m 
+  [725s/3600s] RSS=116.5MB FD=41 CPU=4.9%(/core ncpu=10) q=00 e=00 panics=00 remain=47m 
+  [740s/3600s] RSS=111.4MB FD=41 CPU=23.1%(/core ncpu=10) q=00 e=00 panics=00 remain=47m 
+  [755s/3600s] RSS=103.8MB FD=41 CPU=4.8%(/core ncpu=10) q=00 e=00 panics=00 remain=47m 
+  [770s/3600s] RSS=118.0MB FD=41 CPU=9.9%(/core ncpu=10) q=00 e=00 panics=00 remain=47m 
+  [785s/3600s] RSS=121.6MB FD=41 CPU=5.9%(/core ncpu=10) q=00 e=00 panics=00 remain=46m 
+  [800s/3600s] RSS=103.9MB FD=41 CPU=5.8%(/core ncpu=10) q=00 e=00 panics=00 remain=46m 
+  [815s/3600s] RSS=105.7MB FD=41 CPU=4.9%(/core ncpu=10) q=00 e=00 panics=00 remain=46m 
+  [830s/3600s] RSS=114.1MB FD=41 CPU=9.7%(/core ncpu=10) q=00 e=00 panics=00 remain=46m 
+  [846s/3600s] RSS=111.2MB FD=41 CPU=4.6%(/core ncpu=10) q=00 e=00 panics=00 remain=45m 
+  [861s/3600s] RSS=114.6MB FD=41 CPU=0.6%(/core ncpu=10) q=00 e=00 panics=00 remain=45m 
+  [876s/3600s] RSS=108.3MB FD=41 CPU=4.9%(/core ncpu=10) q=00 e=00 panics=00 remain=45m 
+  [892s/3600s] RSS=102.3MB FD=41 CPU=6.1%(/core ncpu=10) q=00 e=00 panics=00 remain=45m 
+  [907s/3600s] RSS=107.5MB FD=41 CPU=5.8%(/core ncpu=10) q=00 e=00 panics=00 remain=44m 
+  [922s/3600s] RSS=109.8MB FD=41 CPU=5.5%(/core ncpu=10) q=00 e=00 panics=00 remain=44m 
+  [937s/3600s] RSS=110.4MB FD=41 CPU=5.7%(/core ncpu=10) q=00 e=00 panics=00 remain=44m 
+  [952s/3600s] RSS=104.2MB FD=41 CPU=6.3%(/core ncpu=10) q=00 e=00 panics=00 remain=44m 
+  [967s/3600s] RSS=110.6MB FD=41 CPU=13.2%(/core ncpu=10) q=00 e=00 panics=00 remain=43m 
+  [982s/3600s] RSS=118.5MB FD=41 CPU=32.8%(/core ncpu=10) q=00 e=00 panics=00 remain=43m 
+  [997s/3600s] RSS=110.3MB FD=43 CPU=5.2%(/core ncpu=10) q=00 e=00 panics=00 remain=43m 
+  [1012s/3600s] RSS=117.5MB FD=41 CPU=6.0%(/core ncpu=10) q=00 e=00 panics=00 remain=43m 
+  [1027s/3600s] RSS=108.7MB FD=41 CPU=4.8%(/core ncpu=10) q=00 e=00 panics=00 remain=42m 
+  [1043s/3600s] RSS=99.1MB FD=41 CPU=21.0%(/core ncpu=10) q=00 e=00 panics=00 remain=42m 
+  [1058s/3600s] RSS=104.1MB FD=41 CPU=4.9%(/core ncpu=10) q=00 e=00 panics=00 remain=42m 
+  [1073s/3600s] RSS=110.2MB FD=41 CPU=4.9%(/core ncpu=10) q=00 e=00 panics=00 remain=42m 
+  [1088s/3600s] RSS=116.8MB FD=41 CPU=5.0%(/core ncpu=10) q=00 e=00 panics=00 remain=41m 
+  [1103s/3600s] RSS=106.9MB FD=41 CPU=4.6%(/core ncpu=10) q=00 e=00 panics=00 remain=41m 
+  [1118s/3600s] RSS=118.1MB FD=41 CPU=7.0%(/core ncpu=10) q=00 e=00 panics=00 remain=41m 
+  [1133s/3600s] RSS=111.4MB FD=41 CPU=7.2%(/core ncpu=10) q=00 e=00 panics=00 remain=41m 
+  [1148s/3600s] RSS=113.8MB FD=41 CPU=5.5%(/core ncpu=10) q=00 e=00 panics=00 remain=40m 
+  [1163s/3600s] RSS=111.5MB FD=41 CPU=5.1%(/core ncpu=10) q=00 e=00 panics=00 remain=40m 
+  [1179s/3600s] RSS=114.1MB FD=41 CPU=4.0%(/core ncpu=10) q=00 e=00 panics=00 remain=40m 
+  [1194s/3600s] RSS=113.1MB FD=41 CPU=6.1%(/core ncpu=10) q=00 e=00 panics=00 remain=40m 
+  [1209s/3600s] RSS=103.6MB FD=41 CPU=5.7%(/core ncpu=10) q=00 e=00 panics=00 remain=39m 
+  [1224s/3600s] RSS=106.3MB FD=41 CPU=5.0%(/core ncpu=10) q=00 e=00 panics=00 remain=39m 
+  [1239s/3600s] RSS=117.4MB FD=41 CPU=12.2%(/core ncpu=10) q=00 e=00 panics=00 remain=39m 
+  [1254s/3600s] RSS=109.9MB FD=41 CPU=22.4%(/core ncpu=10) q=00 e=00 panics=00 remain=39m 
+  [1269s/3600s] RSS=97.6MB FD=41 CPU=6.0%(/core ncpu=10) q=00 e=00 panics=00 remain=38m 
+  [1284s/3600s] RSS=113.7MB FD=41 CPU=5.4%(/core ncpu=10) q=00 e=00 panics=00 remain=38m 
+  [1299s/3600s] RSS=118.8MB FD=41 CPU=5.5%(/core ncpu=10) q=00 e=00 panics=00 remain=38m 
+  [1314s/3600s] RSS=124.7MB FD=41 CPU=7.5%(/core ncpu=10) q=00 e=00 panics=00 remain=38m 
+  [1329s/3600s] RSS=106.4MB FD=41 CPU=7.4%(/core ncpu=10) q=00 e=00 panics=00 remain=37m 
+  [1345s/3600s] RSS=110.9MB FD=41 CPU=8.2%(/core ncpu=10) q=4515 e=78 panics=00 remain=37m 
+  [1360s/3600s] RSS=115.4MB FD=41 CPU=6.7%(/core ncpu=10) q=4515 e=78 panics=00 remain=37m 
+  [1375s/3600s] RSS=120.5MB FD=42 CPU=9.4%(/core ncpu=10) q=4515 e=78 panics=00 remain=37m 
+  [1390s/3600s] RSS=107.9MB FD=41 CPU=28.3%(/core ncpu=10) q=4515 e=78 panics=00 remain=36m 
+  [1405s/3600s] RSS=115.8MB FD=41 CPU=50.1%(/core ncpu=10) q=4515 e=78 panics=00 remain=36m 
+  [1420s/3600s] RSS=127.7MB FD=41 CPU=29.4%(/core ncpu=10) q=4515 e=78 panics=00 remain=36m 
+  [1435s/3600s] RSS=125.6MB FD=41 CPU=21.4%(/core ncpu=10) q=4515 e=78 panics=00 remain=36m 
+  [1450s/3600s] RSS=128.5MB FD=41 CPU=50.8%(/core ncpu=10) q=4515 e=78 panics=00 remain=35m 
+  [1465s/3600s] RSS=128.3MB FD=41 CPU=29.9%(/core ncpu=10) q=4515 e=78 panics=00 remain=35m 
+  [1480s/3600s] RSS=128.8MB FD=41 CPU=25.0%(/core ncpu=10) q=4515 e=78 panics=00 remain=35m 
+  [1496s/3600s] RSS=140.6MB FD=41 CPU=41.0%(/core ncpu=10) q=4515 e=78 panics=00 remain=35m 
+  [1511s/3600s] RSS=138.5MB FD=41 CPU=49.1%(/core ncpu=10) q=4515 e=78 panics=00 remain=34m 
+  [1526s/3600s] RSS=126.3MB FD=41 CPU=77.5%(/core ncpu=10) q=4515 e=78 panics=00 remain=34m 
+  [1541s/3600s] RSS=124.3MB FD=41 CPU=29.4%(/core ncpu=10) q=4515 e=78 panics=00 remain=34m 
+  [1556s/3600s] RSS=139.5MB FD=41 CPU=28.9%(/core ncpu=10) q=4515 e=78 panics=00 remain=34m 
+  [1571s/3600s] RSS=123.5MB FD=41 CPU=46.2%(/core ncpu=10) q=7754 e=79 panics=00 remain=33m 
+  [1586s/3600s] RSS=154.4MB FD=41 CPU=103.9%(/core ncpu=10) q=8159 e=79 panics=00 remain=33m 
+  [1601s/3600s] RSS=149.8MB FD=41 CPU=108.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=33m 
+  [1616s/3600s] RSS=134.5MB FD=41 CPU=6.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=33m 
+  [1631s/3600s] RSS=117.0MB FD=44 CPU=9.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=32m 
+  [1646s/3600s] RSS=121.0MB FD=41 CPU=18.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=32m 
+  [1662s/3600s] RSS=116.0MB FD=41 CPU=7.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=32m 
+  [1677s/3600s] RSS=119.1MB FD=44 CPU=6.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=32m 
+  [1692s/3600s] RSS=118.3MB FD=45 CPU=8.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=31m 
+  [1707s/3600s] RSS=122.0MB FD=43 CPU=6.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=31m 
+  [1722s/3600s] RSS=113.8MB FD=43 CPU=6.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=31m 
+  [1737s/3600s] RSS=115.0MB FD=42 CPU=7.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=31m 
+  [1752s/3600s] RSS=114.3MB FD=42 CPU=11.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=30m 
+  [1767s/3600s] RSS=112.9MB FD=45 CPU=8.1%(/core ncpu=10) q=8159 e=79 panics=00 remain=30m 
+  [1783s/3600s] RSS=119.5MB FD=44 CPU=7.5%(/core ncpu=10) q=8159 e=79 panics=00 remain=30m 
+  [1798s/3600s] RSS=114.1MB FD=43 CPU=8.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=30m 
+  [1813s/3600s] RSS=114.9MB FD=43 CPU=9.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=29m 
+  [1828s/3600s] RSS=115.7MB FD=47 CPU=7.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=29m 
+  [1843s/3600s] RSS=113.9MB FD=42 CPU=8.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=29m 
+  [1858s/3600s] RSS=122.6MB FD=44 CPU=7.1%(/core ncpu=10) q=8159 e=79 panics=00 remain=29m 
+  [1873s/3600s] RSS=112.5MB FD=41 CPU=55.9%(/core ncpu=10) q=8159 e=79 panics=00 remain=28m 
+  [1888s/3600s] RSS=113.4MB FD=41 CPU=8.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=28m 
+  [1903s/3600s] RSS=113.3MB FD=45 CPU=8.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=28m 
+  [1919s/3600s] RSS=121.3MB FD=43 CPU=26.9%(/core ncpu=10) q=8159 e=79 panics=00 remain=28m 
+  [1934s/3600s] RSS=121.6MB FD=44 CPU=7.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=27m 
+  [1949s/3600s] RSS=108.9MB FD=43 CPU=7.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=27m 
+  [1964s/3600s] RSS=117.6MB FD=42 CPU=7.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=27m 
+  [1979s/3600s] RSS=57.2MB FD=42 CPU=7.1%(/core ncpu=10) q=8159 e=79 panics=00 remain=27m 
+  [1994s/3600s] RSS=99.3MB FD=41 CPU=5.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=26m 
+  [2009s/3600s] RSS=106.6MB FD=41 CPU=21.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=26m 
+  [2024s/3600s] RSS=115.3MB FD=43 CPU=7.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=26m 
+  [2040s/3600s] RSS=120.7MB FD=44 CPU=8.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=26m 
+  [2055s/3600s] RSS=115.5MB FD=41 CPU=11.1%(/core ncpu=10) q=8159 e=79 panics=00 remain=25m 
+  [2070s/3600s] RSS=109.3MB FD=45 CPU=6.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=25m 
+  [2085s/3600s] RSS=107.1MB FD=41 CPU=38.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=25m 
+  [2100s/3600s] RSS=102.1MB FD=43 CPU=11.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=25m 
+  [2115s/3600s] RSS=111.7MB FD=45 CPU=7.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=24m 
+  [2130s/3600s] RSS=113.3MB FD=42 CPU=7.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=24m 
+  [2145s/3600s] RSS=120.9MB FD=42 CPU=7.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=24m 
+  [2160s/3600s] RSS=98.3MB FD=43 CPU=8.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=23m 
+  [2176s/3600s] RSS=107.8MB FD=42 CPU=7.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=23m 
+  [2191s/3600s] RSS=106.2MB FD=41 CPU=14.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=23m 
+  [2206s/3600s] RSS=111.7MB FD=42 CPU=7.5%(/core ncpu=10) q=8159 e=79 panics=00 remain=23m 
+  [2221s/3600s] RSS=118.3MB FD=41 CPU=7.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=22m 
+  [2236s/3600s] RSS=119.8MB FD=44 CPU=6.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=22m 
+  [2251s/3600s] RSS=116.9MB FD=41 CPU=6.5%(/core ncpu=10) q=8159 e=79 panics=00 remain=22m 
+  [2266s/3600s] RSS=119.3MB FD=41 CPU=7.5%(/core ncpu=10) q=8159 e=79 panics=00 remain=22m 
+  [2281s/3600s] RSS=127.9MB FD=41 CPU=8.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=21m 
+  [2296s/3600s] RSS=125.1MB FD=44 CPU=5.5%(/core ncpu=10) q=8159 e=79 panics=00 remain=21m 
+  [2312s/3600s] RSS=115.9MB FD=41 CPU=4.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=21m 
+  [2327s/3600s] RSS=116.1MB FD=41 CPU=7.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=21m 
+  [2342s/3600s] RSS=117.9MB FD=41 CPU=7.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=20m 
+  [2357s/3600s] RSS=120.8MB FD=41 CPU=7.9%(/core ncpu=10) q=8159 e=79 panics=00 remain=20m 
+  [2372s/3600s] RSS=122.4MB FD=41 CPU=6.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=20m 
+  [2387s/3600s] RSS=116.4MB FD=41 CPU=16.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=20m 
+  [2402s/3600s] RSS=109.7MB FD=42 CPU=6.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=19m 
+  [2417s/3600s] RSS=110.0MB FD=42 CPU=15.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=19m 
+  [2432s/3600s] RSS=113.5MB FD=42 CPU=8.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=19m 
+  [2448s/3600s] RSS=117.5MB FD=42 CPU=7.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=19m 
+  [2463s/3600s] RSS=115.8MB FD=41 CPU=11.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=18m 
+  [2478s/3600s] RSS=120.2MB FD=46 CPU=6.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=18m 
+  [2493s/3600s] RSS=124.5MB FD=45 CPU=6.5%(/core ncpu=10) q=8159 e=79 panics=00 remain=18m 
+  [2508s/3600s] RSS=116.9MB FD=41 CPU=19.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=18m 
+  [2523s/3600s] RSS=112.6MB FD=42 CPU=5.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=17m 
+  [2538s/3600s] RSS=113.1MB FD=41 CPU=5.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=17m 
+  [2553s/3600s] RSS=112.6MB FD=41 CPU=8.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=17m 
+  [2568s/3600s] RSS=114.5MB FD=45 CPU=6.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=17m 
+  [2584s/3600s] RSS=121.0MB FD=42 CPU=4.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=16m 
+  [2599s/3600s] RSS=115.1MB FD=41 CPU=4.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=16m 
+  [2614s/3600s] RSS=120.5MB FD=41 CPU=5.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=16m 
+  [2629s/3600s] RSS=118.2MB FD=41 CPU=4.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=16m 
+  [2644s/3600s] RSS=109.2MB FD=41 CPU=18.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=15m 
+  [2659s/3600s] RSS=107.4MB FD=42 CPU=6.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=15m 
+  [2674s/3600s] RSS=121.9MB FD=41 CPU=37.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=15m 
+  [2689s/3600s] RSS=130.5MB FD=42 CPU=6.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=15m 
+  [2704s/3600s] RSS=124.2MB FD=41 CPU=20.9%(/core ncpu=10) q=8159 e=79 panics=00 remain=14m 
+  [2719s/3600s] RSS=129.2MB FD=45 CPU=22.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=14m 
+  [2735s/3600s] RSS=125.4MB FD=41 CPU=5.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=14m 
+  [2750s/3600s] RSS=124.4MB FD=41 CPU=7.5%(/core ncpu=10) q=8159 e=79 panics=00 remain=14m 
+  [2765s/3600s] RSS=129.9MB FD=42 CPU=7.3%(/core ncpu=10) q=8159 e=79 panics=00 remain=13m 
+  [2780s/3600s] RSS=128.7MB FD=42 CPU=6.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=13m 
+  [2795s/3600s] RSS=126.9MB FD=41 CPU=6.1%(/core ncpu=10) q=8159 e=79 panics=00 remain=13m 
+  [2810s/3600s] RSS=120.0MB FD=41 CPU=25.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=13m 
+  [2825s/3600s] RSS=121.2MB FD=41 CPU=12.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=12m 
+  [2840s/3600s] RSS=116.1MB FD=41 CPU=17.2%(/core ncpu=10) q=8159 e=79 panics=00 remain=12m 
+  [2855s/3600s] RSS=122.2MB FD=41 CPU=8.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=12m 
+  [2871s/3600s] RSS=120.8MB FD=41 CPU=18.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=12m 
+  [2886s/3600s] RSS=123.3MB FD=41 CPU=5.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=11m 
+  [2901s/3600s] RSS=116.7MB FD=41 CPU=7.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=11m 
+  [2916s/3600s] RSS=123.8MB FD=41 CPU=15.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=11m 
+  [2931s/3600s] RSS=122.0MB FD=41 CPU=9.9%(/core ncpu=10) q=8159 e=79 panics=00 remain=11m 
+  [2946s/3600s] RSS=131.5MB FD=41 CPU=7.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=10m 
+  [2961s/3600s] RSS=126.1MB FD=41 CPU=6.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=10m 
+  [2976s/3600s] RSS=115.0MB FD=41 CPU=40.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=10m 
+  [2991s/3600s] RSS=119.8MB FD=41 CPU=7.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=10m 
+  [3006s/3600s] RSS=119.2MB FD=41 CPU=12.0%(/core ncpu=10) q=8159 e=79 panics=00 remain=9m 
+  [3022s/3600s] RSS=131.2MB FD=41 CPU=10.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=9m 
+  [3037s/3600s] RSS=135.4MB FD=41 CPU=6.6%(/core ncpu=10) q=8159 e=79 panics=00 remain=9m 
+  [3052s/3600s] RSS=123.7MB FD=41 CPU=6.8%(/core ncpu=10) q=8159 e=79 panics=00 remain=9m 
+  [3067s/3600s] RSS=120.8MB FD=41 CPU=6.7%(/core ncpu=10) q=8159 e=79 panics=00 remain=8m 
+  [3082s/3600s] RSS=116.9MB FD=41 CPU=26.4%(/core ncpu=10) q=8159 e=79 panics=00 remain=8m 
+  [3097s/3600s] RSS=126.1MB FD=42 CPU=6.4%(/core ncpu=10) q=11874 e=360 panics=00 remain=8m 
+  [3112s/3600s] RSS=132.3MB FD=41 CPU=6.1%(/core ncpu=10) q=11874 e=360 panics=00 remain=8m 
+  [3127s/3600s] RSS=122.5MB FD=41 CPU=8.4%(/core ncpu=10) q=11874 e=360 panics=00 remain=7m 
+  [3142s/3600s] RSS=131.0MB FD=41 CPU=12.3%(/core ncpu=10) q=11874 e=360 panics=00 remain=7m 
+  [3157s/3600s] RSS=130.9MB FD=41 CPU=6.7%(/core ncpu=10) q=11874 e=360 panics=00 remain=7m 
+  [3173s/3600s] RSS=135.0MB FD=41 CPU=13.1%(/core ncpu=10) q=11874 e=360 panics=00 remain=7m 
+  [3188s/3600s] RSS=131.5MB FD=41 CPU=4.8%(/core ncpu=10) q=11874 e=360 panics=00 remain=6m 
+  [3203s/3600s] RSS=118.7MB FD=44 CPU=6.1%(/core ncpu=10) q=11874 e=360 panics=00 remain=6m 
+  [3218s/3600s] RSS=132.8MB FD=41 CPU=8.5%(/core ncpu=10) q=11874 e=360 panics=00 remain=6m 
+  [3233s/3600s] RSS=142.0MB FD=43 CPU=6.5%(/core ncpu=10) q=11874 e=360 panics=00 remain=6m 
+  [3248s/3600s] RSS=120.4MB FD=41 CPU=11.4%(/core ncpu=10) q=11874 e=360 panics=00 remain=5m 
+  [3263s/3600s] RSS=136.8MB FD=43 CPU=16.4%(/core ncpu=10) q=11874 e=360 panics=00 remain=5m 
+  [3278s/3600s] RSS=129.0MB FD=42 CPU=5.2%(/core ncpu=10) q=11874 e=360 panics=00 remain=5m 
+  [3293s/3600s] RSS=125.5MB FD=43 CPU=3.8%(/core ncpu=10) q=11874 e=360 panics=00 remain=5m 
+  [3309s/3600s] RSS=131.6MB FD=41 CPU=5.1%(/core ncpu=10) q=11874 e=360 panics=00 remain=4m 
+  [3324s/3600s] RSS=132.3MB FD=42 CPU=6.2%(/core ncpu=10) q=11874 e=360 panics=00 remain=4m 
+  [3339s/3600s] RSS=129.0MB FD=41 CPU=24.8%(/core ncpu=10) q=11874 e=360 panics=00 remain=4m 
+  [3354s/3600s] RSS=134.0MB FD=43 CPU=5.9%(/core ncpu=10) q=11874 e=360 panics=00 remain=4m 
+  [3369s/3600s] RSS=140.1MB FD=43 CPU=5.3%(/core ncpu=10) q=11874 e=360 panics=00 remain=3m 
+  [3384s/3600s] RSS=126.1MB FD=41 CPU=5.8%(/core ncpu=10) q=11874 e=360 panics=00 remain=3m 
+  [3399s/3600s] RSS=128.0MB FD=41 CPU=6.3%(/core ncpu=10) q=11874 e=360 panics=00 remain=3m 
+  [3414s/3600s] RSS=131.3MB FD=41 CPU=8.1%(/core ncpu=10) q=11874 e=360 panics=00 remain=3m 
+  [3429s/3600s] RSS=123.9MB FD=41 CPU=5.0%(/core ncpu=10) q=11874 e=360 panics=00 remain=2m 
+  [3444s/3600s] RSS=125.5MB FD=41 CPU=5.1%(/core ncpu=10) q=11874 e=360 panics=00 remain=2m 
+  [3460s/3600s] RSS=133.5MB FD=43 CPU=6.2%(/core ncpu=10) q=11874 e=360 panics=00 remain=2m 
+  [3475s/3600s] RSS=129.5MB FD=41 CPU=5.7%(/core ncpu=10) q=11874 e=360 panics=00 remain=2m 
+  [3490s/3600s] RSS=130.4MB FD=41 CPU=5.1%(/core ncpu=10) q=11874 e=360 panics=00 remain=1m 
+  [3505s/3600s] RSS=139.1MB FD=42 CPU=8.4%(/core ncpu=10) q=11874 e=360 panics=00 remain=1m 
+  [3520s/3600s] RSS=119.4MB FD=41 CPU=5.8%(/core ncpu=10) q=11874 e=360 panics=00 remain=1m 
+  [3535s/3600s] RSS=128.3MB FD=41 CPU=6.7%(/core ncpu=10) q=11874 e=360 panics=00 remain=1m 
+  [3550s/3600s] RSS=128.8MB FD=41 CPU=5.7%(/core ncpu=10) q=11874 e=360 panics=00 remain=0m 
+  [3565s/3600s] RSS=140.3MB FD=42 CPU=18.4%(/core ncpu=10) q=11874 e=360 panics=00 remain=0m 
+  [3580s/3600s] RSS=153.1MB FD=41 CPU=7.6%(/core ncpu=10) q=11874 e=360 panics=00 remain=0m 
+  [3596s/3600s] RSS=133.4MB FD=41 CPU=5.8%(/core ncpu=10) q=11874 e=360 panics=00 remain=0m 
+  [3611s/3600s] RSS=126.4MB FD=9 CPU=5.2%(/core ncpu=10) q=13260 e=461 panics=00 remain=0m 
+[5/5] Stopping driver + server...
+summary → /tmp/srg-ab003-soak-20261112_055140/summary.json
+PASS — 13260 queries via 16 threads in 60min, 461 errors, 0 high-CPU episodes.
