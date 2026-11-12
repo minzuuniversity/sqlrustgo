@@ -183,16 +183,40 @@ pub fn reset_v312_58_sprint3_diag() {
 // `dump_v312_58_sprint5_diag()`.
 static DIAG_HASH_SEMI_JOIN_BUILDS: AtomicU64 = AtomicU64::new(0);
 static DIAG_HASH_SEMI_JOIN_PROBE_HITS: AtomicU64 = AtomicU64::new(0);
+// #5498: per-conjunct evaluation counters for the **static** residual
+// build-time filter.
+//
+// The filter walks the residual's conjuncts in encounter order and stops at
+// the first false one (`Iterator::all` short-circuits), so "the remaining
+// conjuncts were not evaluated" is a fact about the run — but until now
+// nothing observed it, and the test that claimed to check it only checked
+// the result (see #5498). Counter *i* counts how often conjunct *i* was
+// actually evaluated.
+//
+// The counters are process-global, like the other DIAG_* counters: the
+// integration test that reads them runs with `--test-threads=1` (the
+// convention of `scripts/gate/check_test_inventory.sh`).
+static DIAG_RESIDUAL_CONJUNCT_EVALS: [AtomicU64; 8] = [const { AtomicU64::new(0) }; 8];
+
 #[allow(dead_code)]
 pub fn reset_v312_58_sprint5_diag() {
     DIAG_HASH_SEMI_JOIN_BUILDS.store(0, Ordering::SeqCst);
     DIAG_HASH_SEMI_JOIN_PROBE_HITS.store(0, Ordering::SeqCst);
+    for counter in DIAG_RESIDUAL_CONJUNCT_EVALS.iter() {
+        counter.store(0, Ordering::SeqCst);
+    }
 }
 #[allow(dead_code)]
 pub fn dump_v312_58_sprint5_diag() -> String {
+    let conjunct_evals = DIAG_RESIDUAL_CONJUNCT_EVALS
+        .iter()
+        .enumerate()
+        .map(|(i, c)| format!("residual_conjunct_evals_{i}={}", c.load(Ordering::SeqCst)))
+        .collect::<Vec<_>>()
+        .join(" ");
     format!(
         "V312-58 Sprint 5 diag:\n\
-         hash_semi_join_builds={} hash_semi_join_probe_hits={}",
+         hash_semi_join_builds={} hash_semi_join_probe_hits={} {conjunct_evals}",
         DIAG_HASH_SEMI_JOIN_BUILDS.load(Ordering::SeqCst),
         DIAG_HASH_SEMI_JOIN_PROBE_HITS.load(Ordering::SeqCst),
     )
@@ -9304,12 +9328,21 @@ fn try_build_hash_semi_join_index_for_subq<S: StorageEngine + 'static>(
             // Static residual: pre-filter inner rows with short-circuit.
             // For `R1 AND R2 AND R3`, when `R1` is false for a row the
             // loop halts and skips evaluating `R2` and `R3` for that row.
+            //
+            // #5498: the per-conjunct counters make that short-circuit
+            // observable: conjunct *i* is counted exactly when it is
+            // evaluated, so a row that fails conjunct 1 contributes to
+            // counter 0 only.
             inner_rows
                 .into_iter()
                 .filter(|row| {
-                    residual_conjuncts
-                        .iter()
-                        .all(|c| crate::engine_utils::eval_predicate(c, row, &inner_storage_info))
+                    residual_conjuncts.iter().enumerate().all(|(idx, c)| {
+                        let keep = crate::engine_utils::eval_predicate(c, row, &inner_storage_info);
+                        if let Some(counter) = DIAG_RESIDUAL_CONJUNCT_EVALS.get(idx) {
+                            counter.fetch_add(1, Ordering::SeqCst);
+                        }
+                        keep
+                    })
                 })
                 .collect()
         }
