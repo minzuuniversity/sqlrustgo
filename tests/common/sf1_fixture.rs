@@ -114,19 +114,14 @@ pub fn looks_like_sf1(dir: &Path) -> bool {
 pub fn report_not_run(target: &str, reason: &str, detail: &str) {
     let line = format!("TPCH-NOT-RUN: {target} reason={reason} detail={detail}");
     println!("{line}");
-    if let Ok(path) = std::env::var("TPCH_NOT_RUN_FILE") {
-        if !path.trim().is_empty() {
-            use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path.trim())
-            {
-                let _ = writeln!(f, "{line}");
-            }
-        }
-    }
+    // #5503: shared file channel with a default local path (and a single
+    // write syscall per record, unlike the `writeln!` this used).
+    not_run_log::record(&line);
 }
+
+// #5503: shared NOT-RUN file channel.
+#[path = "not_run_log.rs"]
+mod not_run_log;
 
 /// 解析 SF=1 夹具；缺失时**披露 NOT-RUN** 并返回 `None`。
 ///
