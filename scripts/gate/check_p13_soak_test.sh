@@ -170,6 +170,16 @@ echo "  [11/11] ✅ PASS: scripts/soak/crud_templates.py importable"
 echo ""
 echo "=== G7 Gate: PASS ==="
 echo "P1-3 (#3175) Soak Test: Layer 1 (harness) + Layer 2/3 (mysqlslap scripts) verified"
+# 诚实披露（2026-11-13，看板 VACUOUS-GREEN-1 轻档发现）：上面 11 个子检查里的
+# Rust 侧断言跑在 soak_test 的**模拟查询环**上（soak_test_harness.rs 的
+# run_soak_smoke：源码注释原文 "// Simulated query loop"，时延/内存都是构造值）
+# ⇒ 本门禁验的是 harness 计分算术与脚本形态，不是任何一次真实 soak 的证据。
+echo ""
+echo "DISCLOSURE: the soak_test checks above run on a SIMULATED HARNESS SMOKE"
+echo "  (run_soak_smoke fabricates latency/memory; this gate does NOT constitute"
+echo "   evidence of a real soak). A real soak is tracked as ING-1 / V400-09"
+echo "  (known_gaps.V400_09_soak) — long-run entry point:"
+echo "  scripts/soak/run_soak_with_heartbeat.sh"
 echo ""
 echo "Next steps for full soak:"
 echo "  1. bash scripts/soak/prepare_sf01_data.sh       # Generate SF=0.1 fixture"
