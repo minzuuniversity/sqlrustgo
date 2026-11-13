@@ -705,7 +705,26 @@ known_gaps:
       #4944 于 10-06 16:40Z 关闭，早于其自身承诺的 SOAK ETA 10-09 16:04Z
       三天，且 issue body 的 7 条验收项全部为未勾选状态。其中 WP-D/F/G
       已由 #5041/#5043/#5045/#5047 交付（有 PR 与实测证据），但未被勾选。
-    decision: "OPEN — 是否重跑 168h SOAK 属架构师裁决，本 SSOT 不代为决定。"
+    decision: >-
+      DEFERRED 2026-11-13（owner 裁决，经 opencode-macmini 会话执行记录）：
+      168h SOAK 重跑**推迟**，本缺口以显式 deferral 收口（正是 ALPHA→BETA 判据
+      第 2 条允许的「explicit deferral recorded in known_gaps」路径）。
+      deferral 记录的事实基线（2026-11-13 实测）：
+      (a) 168h 从未跑完（FINAL_REPORT 2026-09-30 自述第一轮失败，run3/run4 无落盘）；
+      (b) 168h 基础设施零缺口在仓（run_168h_ci.sh / soak_heartbeat.py /
+          run_soak_with_heartbeat.sh / v400_168h_soak_status.sh / 72h_soak_monitor.py /
+          Dockerfile.soak；心跳 sidecar 已进 develop，merge-base 核实）；
+      (c) v4.1.0 已有真实短程 soak 归档：1h（2026-10-08，b1e9a98ee6，582,585 查询
+          0 错误、重启后行数完整性 PASS、FD 无泄漏）+ 5min 冒烟 + AB-07
+          run 20261112-soak-ab003（4 臂 exit 0；manifest 自述 manual-wrapper
+          偏差，如实保留）。1h/短程**不构成** 168h 判据的替代。
+      deferral 成立的前提（任一失效即须重新裁决）：
+      (d1) 进入 BETA→RC 前必须重开裁决（推迟不是永久豁免）；
+      (d2) 上述短程 soak 归档与 run 20261112-soak-ab003 不得被后续发现证伪；
+      (d3) 重跑决策时基础设施仍以本记录所列为零缺口基线。
+      provenance: source_agent=opencode-macmini, timestamp=2026-11-13,
+      授权=owner 会话指令「2 推迟」（同会话含 github 忽略、issue 清账推进、
+      分支保护清单询问三项裁决）。
 
 open_issues:
   # 2026-10-23 复核（第二批）：7 条中 6 条已由实测证据销账，移入
