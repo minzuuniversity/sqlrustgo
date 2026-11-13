@@ -449,7 +449,7 @@ mod tests {
 
         // Reader between snapshots (impossible in practice but valid
         // for the visibility rule) sees the previous version.
-        let r_mid = t.scan_visible(ts1 + 0, 0); // same as ts1
+        let r_mid = t.scan_visible(ts1, 0); // same as ts1（+0 无效果已删）
         assert_eq!(r_mid[0].1, vec![int(10)]);
     }
 

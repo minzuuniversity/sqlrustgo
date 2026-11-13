@@ -6,10 +6,8 @@
 //! Bugs covered:
 //! - BUG-1:  UTF-8 Chinese string data lexer panic
 //! - BUG-2a: nested function call parse error (e.g. `year(now())`)
-//! - BUG-2b: built-in functions returning Null (`now`/`curdate`/
-//!           `datediff`/`round`/`rand`/`length`)
-//! - BUG-3a: JOIN `alias.column` non-aggregate non-GROUP BY column
-//!           returning Null in GROUP BY query
+//! - BUG-2b: built-in functions returning Null (`now`/`curdate`/`datediff`/`round`/`rand`/`length`)
+//! - BUG-3a: JOIN `alias.column` non-aggregate non-GROUP BY column returning Null in GROUP BY query
 //! - BUG-3b: scalar subquery in WHERE returning 0 rows
 //! - BUG-4:  `char(n)` blank-padded comparison failure
 

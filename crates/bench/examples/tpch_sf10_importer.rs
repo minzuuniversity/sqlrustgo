@@ -16,6 +16,7 @@ const SF10_ORDERS: usize = 15_000_000;
 const SF10_CUSTOMER: usize = 1_500_000;
 const SF10_PART: usize = 2_000_000;
 const SF10_SUPPLIER: usize = 100_000;
+#[allow(dead_code)] // SF10 档位常量组的预留成员（导入面待接）
 const SF10_PARTSUPP: usize = 8_000_000;
 
 // LINT-1 批次 5（clippy::type_complexity）：四类批量行形态的别名，列序与下面
