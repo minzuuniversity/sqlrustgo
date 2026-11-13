@@ -1131,6 +1131,24 @@ mod utilities_tests {
     }
 
     #[test]
+    fn decode_lenenc_int_3byte_max_value() {
+        // 0xFFFFFF = 16_777_215，三字节小端全 0xff。
+        let payload = [0xfd, 0xff, 0xff, 0xff];
+        let mut pos = 0;
+        assert_eq!(decode_lenenc_int(&payload, &mut pos), Some(16_777_215));
+        assert_eq!(pos, 4);
+    }
+
+    #[test]
+    fn decode_lenenc_int_truncated_3byte_returns_none() {
+        // 声明 3 字节但只剩 2 字节 ⇒ None，且只消费掉 marker。
+        let payload = [0xfd, 0x01, 0x00];
+        let mut pos = 0;
+        assert_eq!(decode_lenenc_int(&payload, &mut pos), None);
+        assert_eq!(pos, 1);
+    }
+
+    #[test]
     fn decode_lenenc_int_8byte_via_0xfe() {
         let payload = [0xfe, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         let mut pos = 0;
