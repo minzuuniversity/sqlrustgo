@@ -132,11 +132,10 @@ impl<Plan> Rule<Plan> for ConstantFolding {
 mod tests {
     use super::*;
 
-    /// Simple plan struct for testing
+    /// Simple plan struct for testing（无需 modified：Rule trait 只需类型本身，
+    /// 该字段全仓零读取 ⇒ clippy dead_code 报的就是它）
     #[derive(Debug, Default)]
-    struct TestPlan {
-        modified: bool,
-    }
+    struct TestPlan;
 
     #[test]
     fn test_predicate_pushdown_name() {
@@ -147,7 +146,7 @@ mod tests {
     #[test]
     fn test_predicate_pushdown_apply() {
         let rule = PredicatePushdown::new();
-        let mut plan = TestPlan::default();
+        let mut plan = TestPlan;
         let result = Rule::<TestPlan>::apply(&rule, &mut plan);
         assert!(!result); // Returns false (no change) for stub
     }
@@ -167,7 +166,7 @@ mod tests {
     #[test]
     fn test_projection_pruning_apply() {
         let rule = ProjectionPruning::new();
-        let mut plan = TestPlan::default();
+        let mut plan = TestPlan;
         let result = Rule::<TestPlan>::apply(&rule, &mut plan);
         assert!(!result);
     }
@@ -187,7 +186,7 @@ mod tests {
     #[test]
     fn test_constant_folding_apply() {
         let rule = ConstantFolding::new();
-        let mut plan = TestPlan::default();
+        let mut plan = TestPlan;
         let result = Rule::<TestPlan>::apply(&rule, &mut plan);
         assert!(!result);
     }

@@ -259,6 +259,8 @@ fn fast_load_tbl_data(storage: &Arc<RwLock<MemoryStorage>>, data_dir: &str, _sf:
     }
 }
 
+// 慢路径对照版（调用点已切 fast_load_tbl_data）；保留供 A/B 与回退 —— dead_code 属预期。
+#[allow(dead_code)]
 fn load_tbl_data(engine: &mut ExecutionEngine<MemoryStorage>, data_dir: &str, sf: f64) {
     let tables = [
         "region", "nation", "supplier", "customer", "part", "partsupp", "orders", "lineitem",

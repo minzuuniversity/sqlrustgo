@@ -9,6 +9,7 @@
 //!   - Default impl: still missing (ExecutionEngine<S> requires S: StorageEngine)
 //!   - execute_plan: still missing (use `execute(sql)` instead)
 //!   - storage accessor: present as `pub(crate) storage: Arc<RwLock<S>>`
+//!
 //! PR #4160 partially mitigated the bench+test layer. This file
 //! pins what IS public so any future regression is caught.
 
