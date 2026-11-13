@@ -1,0 +1,175 @@
+schema_version: 1
+run_id: 20261114-clippy3-001
+source_agent: opencode-macmini
+frozen_commit: 23523ff8ee5500fd2829e380c0766d4217fd3ea3
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: clippy3-head
+  name: 记录最终 HEAD（与 002 的 frozen 1cb5d8889e 对照）
+  cmd: git rev-parse HEAD
+  cwd: .
+  timeout_sec: 60
+- id: clippy3-code-diff-vs-frozen
+  name: 最终 HEAD 相对 002 冻结基线的 code/scripts 差异清单（应只有 vtu_guard/lenenc/security 注释/AFP）
+  cmd: git diff --name-only 1cb5d8889e..HEAD -- crates/ scripts/
+  cwd: .
+  timeout_sec: 60
+- id: clippy3-clean-touched
+  name: 清掉被改 crate 的编译缓存 ⇒ 后面 clippy/测试不是暖缓存假绿
+  cmd: cargo clean -p sqlrustgo-storage -p sqlrustgo-mysql-server
+  cwd: .
+  timeout_sec: 600
+- id: clippy3-clippy-ci-same
+  name: CI 同款 clippy --locked --all-features --all-targets -- -D warnings
+  cmd: cargo clippy --locked --all-features --all-targets -- -D warnings
+  cwd: .
+  timeout_sec: 5400
+- id: clippy3-fmt
+  name: cargo fmt --check --all
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+- id: clippy3-test-mysql-server-lib
+  name: mysql-server 单测（含 0xfd 边界 10 条）
+  cmd: cargo test -p sqlrustgo-mysql-server --lib
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3-test-storage-lib
+  name: storage 单测（含 vtu_guard 21 条）
+  cmd: cargo test -p sqlrustgo-storage --lib
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3-test-vtu-forwarding
+  name: 既有 5266 回归：VtuGuard 必须转发 inner 的 no-namespace 拒绝
+  cmd: cargo test -p sqlrustgo-storage --test no_namespace_db_refusal_5266
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3-test-security
+  name: security：SEC-1 文件头注释加固后仍全绿
+  cmd: cargo test -p sqlrustgo-security
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3-gate-anti-ignore
+  name: anti-ignore：树内 136 与 registry 一致
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: clippy3-gate-registry
+  name: gate_registry：168 行 + 现场重算
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+- id: clippy3-secrets-selftest
+  name: I4 反向自检：check_no_hardcoded_secrets --selftest 必须能抓注入形态（含第 5 处 || true 的排除路径）
+  cmd: bash scripts/gate/check_no_hardcoded_secrets.sh --selftest
+  cwd: .
+  timeout_sec: 900
+results:
+- id: clippy3-head
+  started_at: '2026-11-13T23:55:29Z'
+  finished_at: '2026-11-13T23:55:29Z'
+  exit_code: 0
+  stdout_sha256: 4406a1c0f000e540d7b037b0de6bcc5e20d1458a19b207eb2c873df64f03a6c2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-clippy3-head.stdout
+  stderr_path: logs/001-clippy3-head.stderr
+- id: clippy3-code-diff-vs-frozen
+  started_at: '2026-11-13T23:55:29Z'
+  finished_at: '2026-11-13T23:55:29Z'
+  exit_code: 0
+  stdout_sha256: 68287b30c6bc3216075e743ba51953753ffcbab5a4ec804944b034351efe38ad
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-clippy3-code-diff-vs-frozen.stdout
+  stderr_path: logs/002-clippy3-code-diff-vs-frozen.stderr
+- id: clippy3-clean-touched
+  started_at: '2026-11-13T23:55:29Z'
+  finished_at: '2026-11-13T23:55:43Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 4566d7ad3860e1440da29e3b8888fed61e694adf980ff68a8bf9180b69d99ef9
+  stdout_path: logs/003-clippy3-clean-touched.stdout
+  stderr_path: logs/003-clippy3-clean-touched.stderr
+- id: clippy3-clippy-ci-same
+  started_at: '2026-11-13T23:55:43Z'
+  finished_at: '2026-11-13T23:56:58Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 6d56c7ef63afbf7e1118fd8ed24963a60a476e3e1356a69af115e927be127453
+  stdout_path: logs/004-clippy3-clippy-ci-same.stdout
+  stderr_path: logs/004-clippy3-clippy-ci-same.stderr
+- id: clippy3-fmt
+  started_at: '2026-11-13T23:56:58Z'
+  finished_at: '2026-11-13T23:57:07Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-clippy3-fmt.stdout
+  stderr_path: logs/005-clippy3-fmt.stderr
+- id: clippy3-test-mysql-server-lib
+  started_at: '2026-11-13T23:57:07Z'
+  finished_at: '2026-11-13T23:57:39Z'
+  exit_code: 0
+  stdout_sha256: 6b376b0ae5b2481613693461ec8ee24ef172fadb1c83e7f1c4df4b4974ebc397
+  stderr_sha256: af526b302dc23331fced835c15e5777529ed7f6d1da725aab87189deb8600da8
+  stdout_path: logs/006-clippy3-test-mysql-server-lib.stdout
+  stderr_path: logs/006-clippy3-test-mysql-server-lib.stderr
+- id: clippy3-test-storage-lib
+  started_at: '2026-11-13T23:57:39Z'
+  finished_at: '2026-11-13T23:58:02Z'
+  exit_code: 0
+  stdout_sha256: d82ee9223046ca46f61a0c857b115a217e330d6a832aee7a20978dea214c3233
+  stderr_sha256: 8dcc03d070f41506d007b98e0b7f17bd36332ded48c5783387d367928363620d
+  stdout_path: logs/007-clippy3-test-storage-lib.stdout
+  stderr_path: logs/007-clippy3-test-storage-lib.stderr
+- id: clippy3-test-vtu-forwarding
+  started_at: '2026-11-13T23:58:02Z'
+  finished_at: '2026-11-13T23:58:04Z'
+  exit_code: 0
+  stdout_sha256: df166913f47ff1f04202cae9b31df67ed272d692d99a0023a8117dc3029100dd
+  stderr_sha256: 898c46e6f322b62eac6f2571a1cb53f19702fa29dd84cd0d3b881dd4c7522a48
+  stdout_path: logs/008-clippy3-test-vtu-forwarding.stdout
+  stderr_path: logs/008-clippy3-test-vtu-forwarding.stderr
+- id: clippy3-test-security
+  started_at: '2026-11-13T23:58:04Z'
+  finished_at: '2026-11-13T23:58:16Z'
+  exit_code: 0
+  stdout_sha256: c17b0fbe5a611edd2611977c0d3ed562103439f03ad25c597e25d8802f2b2d47
+  stderr_sha256: 71ed2a1a7945c0216280f34b595709254e0472a414ec2969b4915949079bf779
+  stdout_path: logs/009-clippy3-test-security.stdout
+  stderr_path: logs/009-clippy3-test-security.stderr
+- id: clippy3-gate-anti-ignore
+  started_at: '2026-11-13T23:58:16Z'
+  finished_at: '2026-11-13T23:58:17Z'
+  exit_code: 0
+  stdout_sha256: fe823fd2b89ecbe830ca5bd204494352ee4a176c427b29f7062165ce56ed32ac
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-clippy3-gate-anti-ignore.stdout
+  stderr_path: logs/010-clippy3-gate-anti-ignore.stderr
+- id: clippy3-gate-registry
+  started_at: '2026-11-13T23:58:17Z'
+  finished_at: '2026-11-13T23:58:17Z'
+  exit_code: 0
+  stdout_sha256: 756dc383628c6884828f1acc68875ba1c5161824c98723e64785e024b3a17e70
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-clippy3-gate-registry.stdout
+  stderr_path: logs/011-clippy3-gate-registry.stderr
+- id: clippy3-secrets-selftest
+  started_at: '2026-11-13T23:58:17Z'
+  finished_at: '2026-11-13T23:58:18Z'
+  exit_code: 0
+  stdout_sha256: e23c57e722434fe070acd3a4b0b2f5e2cb9ca41935e531a13145b0f4ad89f325
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-clippy3-secrets-selftest.stdout
+  stderr_path: logs/012-clippy3-secrets-selftest.stderr
+evidence_hash: sha256:cb9880ca463c8dd0588fcc3229556e2d89487043e342e448954c869578a5fcaa
+completed_at: '2026-11-13T23:58:18Z'

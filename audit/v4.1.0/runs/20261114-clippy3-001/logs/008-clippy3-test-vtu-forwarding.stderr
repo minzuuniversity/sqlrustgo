@@ -1,0 +1,3 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.95s
+     Running tests/no_namespace_db_refusal_5266.rs (target/debug/deps/no_namespace_db_refusal_5266-dd60b3f959d3d117)

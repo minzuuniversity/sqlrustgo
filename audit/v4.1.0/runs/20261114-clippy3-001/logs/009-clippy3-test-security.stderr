@@ -1,0 +1,7 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/storage)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/security)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.37s
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_security-5302ab80d1a205ea)
+     Running tests/v400_acl_audit.rs (target/debug/deps/v400_acl_audit-e4562e5c00e39f56)
+     Running tests/v400_unified_acl_audit.rs (target/debug/deps/v400_unified_acl_audit-0a4a255396ad6724)
+   Doc-tests sqlrustgo_security
