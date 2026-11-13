@@ -32,7 +32,8 @@ fn main() {
     let mut all_rows: Vec<Vec<Value>> = Vec::new();
     let mut count = 0usize;
 
-    for line in reader.lines().map_while(Result::ok) {   // clippy::lines_filter_map_ok：读错误后继续拉无意义 ⇒ 遇 Err 即停（help 官方形态）
+    for line in reader.lines().map_while(Result::ok) {
+        // clippy::lines_filter_map_ok：读错误后继续拉无意义 ⇒ 遇 Err 即停（help 官方形态）
         let fields: Vec<&str> = line.split('|').collect();
         if fields.len() >= 6 {
             all_rows.push(vec![
