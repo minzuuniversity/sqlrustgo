@@ -1,0 +1,68 @@
+# 外部评审回应验证（2026-11-14，run 20261114-clippy3-001）
+#
+# 针对 chatGPT-web review（2026-11-14）的 B2 / I1 / I2 / I3 / I4：
+#   - B2：VtuGuard 事务生命周期等价（lifecycle / lockfree / nested）
+#   - I1：0xfd 边界（max 0xFFFFFF / truncated 3-byte）
+#   - I2：001 -> 修复 commit -> 002 -> 最终 HEAD 的链路（arm 1/2 记录）
+#   - I3：最终 HEAD 与冻结基线差异只允许预期文件（arm 2 输出逐文件）
+#   - I4：secrets 门禁反向自检（arm 12）
+- id: clippy3-head
+  name: "记录最终 HEAD（与 002 的 frozen 1cb5d8889e 对照）"
+  cmd: git rev-parse HEAD
+  cwd: .
+  timeout_sec: 60
+- id: clippy3-code-diff-vs-frozen
+  name: "最终 HEAD 相对 002 冻结基线的 code/scripts 差异清单（应只有 vtu_guard/lenenc/security 注释/AFP）"
+  cmd: git diff --name-only 1cb5d8889e..HEAD -- crates/ scripts/
+  cwd: .
+  timeout_sec: 60
+- id: clippy3-clean-touched
+  name: "清掉被改 crate 的编译缓存 ⇒ 后面 clippy/测试不是暖缓存假绿"
+  cmd: cargo clean -p sqlrustgo-storage -p sqlrustgo-mysql-server
+  cwd: .
+  timeout_sec: 600
+- id: clippy3-clippy-ci-same
+  name: "CI 同款 clippy --locked --all-features --all-targets -- -D warnings"
+  cmd: cargo clippy --locked --all-features --all-targets -- -D warnings
+  cwd: .
+  timeout_sec: 5400
+- id: clippy3-fmt
+  name: "cargo fmt --check --all"
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+- id: clippy3-test-mysql-server-lib
+  name: "mysql-server 单测（含 0xfd 边界 10 条）"
+  cmd: cargo test -p sqlrustgo-mysql-server --lib
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3-test-storage-lib
+  name: "storage 单测（含 vtu_guard 21 条）"
+  cmd: cargo test -p sqlrustgo-storage --lib
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3-test-vtu-forwarding
+  name: "既有 5266 回归：VtuGuard 必须转发 inner 的 no-namespace 拒绝"
+  cmd: cargo test -p sqlrustgo-storage --test no_namespace_db_refusal_5266
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3-test-security
+  name: "security：SEC-1 文件头注释加固后仍全绿"
+  cmd: cargo test -p sqlrustgo-security
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3-gate-anti-ignore
+  name: "anti-ignore：树内 136 与 registry 一致"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: clippy3-gate-registry
+  name: "gate_registry：168 行 + 现场重算"
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+- id: clippy3-secrets-selftest
+  name: "I4 反向自检：check_no_hardcoded_secrets --selftest 必须能抓注入形态（含第 5 处 || true 的排除路径）"
+  cmd: bash scripts/gate/check_no_hardcoded_secrets.sh --selftest
+  cwd: .
+  timeout_sec: 900
