@@ -48,6 +48,7 @@ fn main() {
         scan_time.as_secs_f64() * 1000.0
     );
     println!("  SQLite (B-tree):     ~80ms");
+    println!("  Found {} rows", count);   // 此前 count 只累加不读 ⇒ dead_code；点查命中数本就该报
 
     // Range query
     let start_key = 1000i64;

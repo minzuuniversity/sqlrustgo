@@ -4,6 +4,16 @@
 //! Per `docs/releases/v4.0.0/V400_07_ACL_AUDIT_DEV_PLAN.md`, v4.0.0 GA
 //! ships the v3.8.0 SQL-only ACL baseline; cross-model extensions are
 //! deferred to v4.0.1. These tests document the contract.
+//!
+//! # 为什么整个文件 allow `const_is_empty`
+//!
+//! 本文件的占位契约测试写法是 `let contract = "<契约文字>"; assert!(!contract.is_empty());`
+//! —— 对**字符串字面量**判空是编译期常量 ⇒ clippy::const_is_empty 判恒真断言。
+//! 这些断言的语义是「**防手滑把契约文字清空**」（占位仍要占位），而非产品行为
+//! 判据；多数已带 `#[ignore = "契约未实现…假覆盖…"]` 声明其占位性质。
+//! 真实实现落地时断言会换成产品调用（lint 自然回来）⇒ **文件级 allow + 此注**，
+//! 不逐个 allow（12 处同族，逐个会让豁免散落得看不出边界）。
+#![allow(clippy::const_is_empty)]
 
 // ===========================================================================
 // ACL baseline contract (v3.8.0 carry-over)

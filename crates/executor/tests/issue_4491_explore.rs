@@ -2,10 +2,8 @@
 //! subqueries in WHERE.
 //!
 //! Two sub-bugs are reported:
-//! - (a) `SELECT s.name, AVG(sc.final) FROM s JOIN sc ON s.id=sc.sid
-//!        GROUP BY sc.sid` returns Null for the qualified `s.name`.
-//! - (b) `WHERE id = (SELECT MIN(id) FROM s WHERE name='bob')` returns
-//!        0 rows (or all-Null rows on vendor v3.11.0).
+//! - (a) `SELECT s.name, AVG(sc.final) FROM s JOIN sc ON s.id=sc.sid GROUP BY sc.sid` returns Null for the qualified `s.name`.
+//! - (b) `WHERE id = (SELECT MIN(id) FROM s WHERE name='bob')` returns 0 rows (or all-Null rows on vendor v3.11.0).
 //!
 //! Status of this fix:
 //! - (a) **FIXED.** GROUP BY re-project now has a functional-dependency

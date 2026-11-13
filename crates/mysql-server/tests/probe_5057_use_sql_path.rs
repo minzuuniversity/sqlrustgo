@@ -79,7 +79,6 @@ fn scalar(rs: ResultSet) -> String {
         },
         ResultSet::Ok { .. } => "<ok packet>".to_string(),
         ResultSet::Error { error_message, .. } => format!("<error: {error_message}>"),
-        other => format!("<{other:?}>"),
     }
 }
 

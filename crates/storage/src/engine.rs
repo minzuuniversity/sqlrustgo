@@ -314,7 +314,6 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
 /// superseded by the AST-based `evaluate_check_constraint_ast`. The
 /// remaining string-evaluator code below is retained only for the
 /// legacy test fixtures under `mod tests` and is gated to test builds.
-
 #[cfg(test)]
 mod legacy_string_evaluator {
     use super::*;
