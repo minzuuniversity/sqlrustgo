@@ -83,6 +83,27 @@ impl<S: 'static> VtuGuard<S> {
 }
 
 impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
+    // 事务状态必须向被包裹的存储透传。此前这些方法全部落到 trait 默认实现
+    // （in_transaction=false / current_tx_id=0 / set=no-op），于是
+    // `guarded.in_transaction()` 在 inner 已开事务时仍报 false。
+    // 由 vtu_guard 的 tx-state 测试激活后实测暴露（该测试此前被嵌套结构
+    // 吞掉、从未运行）。VtuGuard 的契约是"不干扰被包裹存储"，故一律透传。
+    fn in_transaction(&self) -> bool {
+        self.inner.in_transaction()
+    }
+
+    fn current_tx_id(&self) -> u64 {
+        self.inner.current_tx_id()
+    }
+
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.inner.set_current_tx_id(id)
+    }
+
+    fn set_current_tx_id_shared(&self, id: u64) {
+        self.inner.set_current_tx_id_shared(id)
+    }
+
     /// #5277: forward `(db, table, reader_tx)`. Without this the type
     /// inherited the trait default, which dropped `db` and resolved the table
     /// against the storage's current database. The guard must not disturb the wrapped storage.

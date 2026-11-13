@@ -1,0 +1,85 @@
+   Compiling scopeguard v1.2.0
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling crc32fast v1.5.2
+   Compiling lock_api v0.4.14
+   Compiling num-traits v0.2.19
+   Compiling tracing-core v0.1.36
+   Compiling zerocopy v0.8.57
+   Compiling regex-automata v0.4.18
+   Compiling either v1.18.0
+   Compiling encoding_rs v0.8.41
+   Compiling parking_lot v0.12.5
+   Compiling tracing v0.1.44
+   Compiling tokio v1.53.1
+   Compiling rayon v1.12.0
+   Compiling actix-router v0.5.4
+   Compiling anstream v1.0.0
+   Compiling flate2 v1.1.10
+   Compiling plotters-backend v0.3.7
+   Compiling ciborium-io v0.2.2
+   Compiling actix-web-codegen v4.3.0
+   Compiling clap_builder v4.6.7
+   Compiling plotters-svg v0.3.7
+   Compiling alloca v0.4.0
+   Compiling itertools v0.13.0
+   Compiling regex v1.13.1
+   Compiling serde_json v1.0.151
+   Compiling env_filter v2.0.0
+   Compiling uuid v1.26.1
+   Compiling same-file v1.0.6
+   Compiling env_logger v0.11.11
+   Compiling cast v0.3.0
+   Compiling chrono v0.4.45
+   Compiling serde_urlencoded v0.7.1
+   Compiling bincode v1.3.3
+   Compiling sqlrustgo-types v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/types)
+   Compiling sqlrustgo-spill v0.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/spill)
+   Compiling tinytemplate v1.2.1
+   Compiling criterion-plot v0.8.2
+   Compiling clap v4.6.7
+   Compiling ppv-lite86 v0.2.21
+   Compiling sqlrustgo_gis v0.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/gis)
+   Compiling half v2.7.1
+   Compiling rand_chacha v0.3.1
+   Compiling walkdir v2.5.0
+   Compiling sqlrustgo-common v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/common)
+   Compiling rand v0.8.8
+   Compiling ciborium-ll v0.2.2
+   Compiling plotters v0.3.7
+   Compiling page_size v0.6.0
+   Compiling tokio-util v0.7.19
+   Compiling tokio-native-tls v0.3.1
+   Compiling tower v0.5.3
+   Compiling actix-rt v2.15.0
+   Compiling ciborium v0.2.2
+   Compiling sqlrustgo-parser v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/parser)
+   Compiling oorandom v11.1.5
+   Compiling h2 v0.4.19
+   Compiling actix-codec v0.5.4
+   Compiling h2 v0.3.27
+   Compiling sqlrustgo-catalog v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/catalog)
+   Compiling tower-http v0.6.11
+   Compiling actix-server v2.9.5
+   Compiling anes v0.1.6
+   Compiling criterion v0.8.2
+   Compiling sqlrustgo-wal-verification v0.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/wal-verification)
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/storage)
+   Compiling sqlrustgo-cache v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/cache)
+   Compiling information-schema v0.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/information-schema)
+   Compiling actix-http v3.13.6
+   Compiling hyper v1.11.1
+   Compiling hyper-util v0.1.20
+   Compiling hyper-tls v0.6.0
+   Compiling reqwest v0.12.28
+   Compiling actix-web v4.15.0
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/optimizer)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/transaction)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/security)
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/planner)
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/executor)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 35.02s
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_storage-be7f4a078002e1cc)
+error: test failed, to rerun pass `-p sqlrustgo-storage --lib`
