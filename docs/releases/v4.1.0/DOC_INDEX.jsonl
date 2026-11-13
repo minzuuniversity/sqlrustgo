@@ -88,6 +88,11 @@
 {"bytes": 4767, "file": "PR-5537_TEST_DESIGN.md", "lines": 116, "sha256": "4085ac622a184143330fa154acce2aba588fd52d3f707932fc8f6680d2daf59a", "stamp_ok": false, "stamped": false}
 {"bytes": 4130, "file": "PR-5537_TEST_PLAN.md", "lines": 85, "sha256": "f0cbb2444c4b81691b7711e6c1bb0d1f0aa85a4e381f9a56e4b4003693d1ea24", "stamp_ok": false, "stamped": false}
 {"bytes": 4813, "file": "PR-5537_TEST_REVIEW.md", "lines": 112, "sha256": "4d657fb91d95f9fa2099c8b0c3885bcf03f3ac437ca4be4cd054ae18af250e32", "stamp_ok": false, "stamped": false}
+{"bytes": 4486, "file": "PR-5785_ACCEPTANCE.md", "lines": 88, "sha256": "0011965aa2b703764b60bb10a0f6bd92936e2e8439372da7eff61e8d6246a4c6", "stamp_ok": false, "stamped": false}
+{"bytes": 3792, "file": "PR-5785_SPEC.md", "lines": 71, "sha256": "7c2ae7fd9bbb2babe742d76c80ac250edab42c5c4b0e7e0cfd2cb7608da21887", "stamp_ok": false, "stamped": false}
+{"bytes": 3797, "file": "PR-5785_TEST_DESIGN.md", "lines": 79, "sha256": "f3e51e73a403fbf113f505e2018d897118562e606e86e66f9660f58580eb636f", "stamp_ok": false, "stamped": false}
+{"bytes": 3107, "file": "PR-5785_TEST_PLAN.md", "lines": 62, "sha256": "21e0fdfca8ca655e6e3f3172d096645f9874f9a4837f658b954cba82162a6086", "stamp_ok": false, "stamped": false}
+{"bytes": 2893, "file": "PR-5785_TEST_REVIEW.md", "lines": 48, "sha256": "f50a8068335d2821bceea3fa9e0485edab0b758eac2e2df30cd3d6ffb2de9e02", "stamp_ok": false, "stamped": false}
 {"bytes": 18854, "file": "QUICK_START.md", "lines": 389, "sha256": "594c05eff689233025bc6356315a8d6d6cd8f3bc31c85f436d8843b95ac61326", "stamp_ok": false, "stamped": false}
 {"bytes": 3284, "file": "README.md", "lines": 82, "sha256": "9e14bb07f6233efd94721d60717d756db0882a2a1950fa624f91654cf8745681", "stamp_ok": false, "stamped": false}
 {"bytes": 17349, "file": "RELEASE_GATE_CHECKLIST.md", "lines": 281, "sha256": "ee7c0f2e5d01accae715c632471a00ab1f1492c814c41a1db9764f5bbce09761", "stamp_ok": false, "stamped": false}
