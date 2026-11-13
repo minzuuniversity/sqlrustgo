@@ -262,6 +262,15 @@ if [[ ! "$VERSION" =~ ^v[0-9][^/.]*([.][^/.]+)*$ ]]; then
 fi
 STAGE=$(detect_stage "$VERSION")
 
+# S-3（2026-11-13，docs/releases/v4.1.0/ALPHA_GATES_RERUN_2026-11-13.md §2）：
+# 覆盖率臂必须显式声明被判定阶段。check_coverage_v312.sh 的缺省是 ga（最严档，
+# 防"漏声明的调用方悄悄放宽"——#5581 的刻意设计）；但本脚本**知道**自己在判哪个
+# 阶段（STAGE 就在这里解析出来），所以必须声明，而不是吃缺省：
+# 否则 ALPHA 阶段门禁跑出来写着 `stage=ga threshold=85%`，读者会把 GA 口径的
+# 判定当成 ALPHA 口径的结论。归档对照臂已证明 ALPHA(50%) 下同样 PASS（87.70%），
+# 因此这只改"判据标签"，不改变本轮任何臂的通过/失败方向。
+COV_STAGE="$(printf '%s' "$STAGE" | tr '[:upper:]' '[:lower:]')"
+
 # Read stage config
 read_stage_info() {
     python3 - "$STAGE_CONFIG" "$STAGE" <<'EOF'
@@ -473,10 +482,23 @@ if [[ ${#REQ_GATES[@]} -gt 0 ]]; then
         elif [[ -n "$script_path" ]]; then
             label=$(basename "$g_expanded")
             if [[ "$DRY_RUN" == true ]]; then
-                say "  [DRY]  $g_expanded -> $script_path"
+                if [[ "$label" == "check_coverage_v312.sh" ]]; then
+                    say "  [DRY]  SQLRUSTGO_COVERAGE_STAGE=${COV_STAGE} bash $script_path"
+                else
+                    say "  [DRY]  $g_expanded -> $script_path"
+                fi
                 continue
             fi
-            if bash "$script_path" >"${LOG_DIR}/gates/${label//[^A-Za-z0-9._-]/_}.log" 2>&1; then
+            if [[ "$label" == "check_coverage_v312.sh" ]]; then
+                if SQLRUSTGO_COVERAGE_STAGE="${COV_STAGE}" bash "$script_path" >"${LOG_DIR}/gates/${label//[^A-Za-z0-9._-]/_}.log" 2>&1; then
+                    say "  [PASS] $label (SQLRUSTGO_COVERAGE_STAGE=${COV_STAGE})"
+                    GATE_PASS=$((GATE_PASS + 1))
+                else
+                    say "  [FAIL] $label (SQLRUSTGO_COVERAGE_STAGE=${COV_STAGE})"
+                    GATE_FAIL=$((GATE_FAIL + 1))
+                    GATE_FAIL_LIST+=("$g_expanded")
+                fi
+            elif bash "$script_path" >"${LOG_DIR}/gates/${label//[^A-Za-z0-9._-]/_}.log" 2>&1; then
                 say "  [PASS] $label"
                 GATE_PASS=$((GATE_PASS + 1))
             else

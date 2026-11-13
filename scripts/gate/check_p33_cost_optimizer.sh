@@ -99,15 +99,25 @@ else
 fi
 
 # 7. TPC-H 22/22 (smoke)
-TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || echo "0")
-if echo "$TPCH_PASSED" | grep -q "ok"; then
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tpch_gate_subcheck.sh"
+TPCH_RC=$?
+if [[ "${TPCH_RC}" -eq 0 ]]; then
     echo "  [7/7] ✅ PASS: TPC-H gate (22/22) maintained"
+elif [[ "${TPCH_RC}" -eq 2 ]]; then
+    echo "  [7/7] ⚠️ INCOMPLETE: TPC-H sub-check could not be performed (fixture missing / NOT-RUN disclosed) — not a drift"
 else
-    echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly (may need re-check)"
-    echo "  [7/7] ✅ PASS (warned): TPC-H gate check skipped"
+    echo "  [7/7] ❌ FAIL: TPC-H gate did not pass"
 fi
 
 echo
+if [[ "${TPCH_RC:-0}" -eq 2 ]]; then
+    echo "=== G10 Gate (P3-3): INCOMPLETE (TPC-H sub-check not performed; see INCOMPLETE line above) ==="
+    exit 2
+fi
+if [[ "${TPCH_RC:-0}" -eq 1 ]]; then
+    echo "=== G10 Gate (P3-3): FAIL (TPC-H gate did not pass) ==="
+    exit 1
+fi
 echo "=== G10 Gate (P3-3): PASS ==="
 echo "P3-3 (#3182) Cost Optimizer: 5 categories + ≥20 tests + optimizer/cost verified"
 exit 0
