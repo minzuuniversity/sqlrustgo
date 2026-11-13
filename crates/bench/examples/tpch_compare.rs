@@ -44,6 +44,7 @@ impl LatencyStats {
         self.sorted = false;
     }
 
+    #[allow(dead_code)] // 排序输出面预留（当前用别的展示路径）
     fn sort(&mut self) {
         if !self.sorted {
             self.samples.sort();

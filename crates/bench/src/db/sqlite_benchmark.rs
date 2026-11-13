@@ -158,6 +158,5 @@ mod tests {
     #[test]
     fn test_sqlite_benchmark_creation() {
         let _bench = SQLiteBenchmark::new(":memory:", 100);
-        assert!(true);
     }
 }

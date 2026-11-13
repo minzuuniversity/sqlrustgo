@@ -520,11 +520,11 @@ mod tests {
         assert!(guarded.get_trigger("tr").is_none());
     }
 
+    // 修复 tip 存量的嵌套损坏：此处曾是「外层 fn 半截（注释截断在 'as'）＋
+    // 函数体中间又插入一个完整 #[test] fn」的双层结构 ⇒ clippy
+    // `cannot test inner items` + dead_code。合并为单个完整 test。
     #[test]
     fn test_vtu_guard_tx_state_via_set_current_tx_id() {
-        // Use set_current_tx_id (the canonical way to mark storage as
-        #[test]
-        fn test_vtu_guard_tx_state_via_set_current_tx_id() {
             // VtuGuard does not expose set_current_tx_id directly (the
             // delegation is via inner storage). Exercise the accessor
             // pattern: get inner, set tx, then confirm guarded.in_transaction()
@@ -537,8 +537,7 @@ mod tests {
             assert_eq!(guarded.current_tx_id(), 7);
             guarded.inner_mut().set_current_tx_id(0);
             assert!(!guarded.in_transaction());
-            guarded.flush().unwrap();
-        }
+        guarded.flush().unwrap();
     }
 
     #[test]

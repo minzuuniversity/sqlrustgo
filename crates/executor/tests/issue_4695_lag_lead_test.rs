@@ -15,14 +15,6 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
     ExecutionEngine::new(storage)
 }
 
-fn first_value(result: &sqlrustgo::ExecutorResult) -> &Value {
-    result
-        .rows
-        .first()
-        .and_then(|row| row.first())
-        .expect("at least one row")
-}
-
 fn row_values(result: &sqlrustgo::ExecutorResult) -> Vec<Vec<Value>> {
     result.rows.clone()
 }

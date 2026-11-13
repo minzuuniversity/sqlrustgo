@@ -1111,11 +1111,12 @@ mod utilities_tests {
         assert_eq!(decode_lenenc_int(&payload, &mut pos), Some(251));
         assert_eq!(pos, 3);
     }
+    #[test]   // 此前漏属性 ⇒ 是死函数（clippy dead_code 抓到）；补上后成为真测试
+    #[ignore = "实现疑点：decode_lenenc_int 的 0xfd 分支用 u32::from_le_bytes([0, b0, b1, b2]) —— 0 落在最低字节 ⇒ 值被 ×256（本 payload 实得 256，而 MySQL lenenc 3 字节语义应为 1）；0xfc/0xfe 分支均无此错位。修正实现属协议行为变更，超出本轮 lint 清债范围 ⇒ 先按正确语义断言并忽略，留线索防漂移。"]
     fn decode_lenenc_int_3byte_via_0xfd() {
-        // The impl uses [0, b0, b1, b2] = LE u32, so for [0xfd, 0x01, 0x00, 0x00]
         let payload = [0xfd, 0x01, 0x00, 0x00];
         let mut pos = 0;
-        assert_eq!(decode_lenenc_int(&payload, &mut pos), Some(65536));
+        assert_eq!(decode_lenenc_int(&payload, &mut pos), Some(1));   // 正确语义（0x01 LE 三字节 = 1）
         assert_eq!(pos, 4);
     }
 
@@ -10300,7 +10301,7 @@ fn g3_disk_graph_store_round_trip_persists_nodes() {
 /// pins the contract at the parse-and-parse-strip level (without
 /// running a full server) so the SQL form is covered.
 #[test]
-fn g4_graph_match_sql_form_strips_GRAPH_prefix() {
+fn g4_graph_match_sql_form_strips_graph_prefix() {
     use sqlrustgo_graph::types::Label;
     // Simulate the G4 dispatch path: take a SQL-form query
     // "GRAPH MATCH (n:Person) RETURN n", strip "GRAPH " (6 chars),
