@@ -1,0 +1,3 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.78s
+     Running tests/fault_coordination.rs (target/debug/deps/fault_coordination-3c6e3cb9bda5fefa)

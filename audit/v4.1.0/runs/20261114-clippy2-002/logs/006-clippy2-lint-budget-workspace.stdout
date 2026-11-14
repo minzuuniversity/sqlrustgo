@@ -1,0 +1,17 @@
+=== Test-Target Lint Budget Gate ===
+  scope:    workspace
+  baseline: tests/baseline/workspace_lint_budget.json
+  toolchain: default (cargo on PATH)
+  running: cargo clippy --workspace --all-features --all-targets --message-format=json
+  compile: OK (no errors)
+  lint warnings: 0 across 0 lint name(s)
+  [NOTE] no baseline entry for the running toolchain (cargo 1.97.0 (c980f4866 2026-06-30));
+         comparing against the union of the recorded toolchains
+         (union of: 1.91.0, 1.95.0). A lint name that no recorded toolchain ever
+         produced is still red, and a count above every recorded
+         maximum is still red. Record this toolchain explicitly with:
+           SQLRUSTGO_CLIPPY_TOOLCHAIN=1.97.0 \
+             bash scripts/gate/check_test_target_lint_budget.sh --scope workspace --update
+  [OK] no lint exceeds the baseline (total 0 <= 708, comparison=union)
+  [PASS] Test-Target Lint Budget Gate
+  [OK] the baseline was not modified (compare mode)

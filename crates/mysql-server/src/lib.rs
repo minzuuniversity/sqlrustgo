@@ -1111,13 +1111,41 @@ mod utilities_tests {
         assert_eq!(decode_lenenc_int(&payload, &mut pos), Some(251));
         assert_eq!(pos, 3);
     }
-    #[test] // 此前漏属性 ⇒ 是死函数（clippy dead_code 抓到）；补上后成为真测试
-    #[ignore = "实现疑点：decode_lenenc_int 的 0xfd 分支用 u32::from_le_bytes([0, b0, b1, b2]) —— 0 落在最低字节 ⇒ 值被 ×256（本 payload 实得 256，而 MySQL lenenc 3 字节语义应为 1）；0xfc/0xfe 分支均无此错位。修正实现属协议行为变更，超出本轮 lint 清债范围 ⇒ 先按正确语义断言并忽略，留线索防漂移。"]
+    // 此前漏属性 ⇒ 是死函数（clippy dead_code 抓到）；补上后成为真测试，并钉住 0xfd
+    // 三字节小端语义（实现曾用 [0, b0, b1, b2] ⇒ 值被 ×256）。
+    #[test]
     fn decode_lenenc_int_3byte_via_0xfd() {
         let payload = [0xfd, 0x01, 0x00, 0x00];
         let mut pos = 0;
-        assert_eq!(decode_lenenc_int(&payload, &mut pos), Some(1)); // 正确语义（0x01 LE 三字节 = 1）
+        assert_eq!(decode_lenenc_int(&payload, &mut pos), Some(1));
         assert_eq!(pos, 4);
+    }
+
+    #[test]
+    fn decode_lenenc_int_3byte_uses_all_three_bytes() {
+        // 65536 = 0x01_00_00 ⇒ 三字节小端 [0x00, 0x00, 0x01]
+        let payload = [0xfd, 0x00, 0x00, 0x01];
+        let mut pos = 0;
+        assert_eq!(decode_lenenc_int(&payload, &mut pos), Some(65_536));
+        assert_eq!(pos, 4);
+    }
+
+    #[test]
+    fn decode_lenenc_int_3byte_max_value() {
+        // 0xFFFFFF = 16_777_215，三字节小端全 0xff。
+        let payload = [0xfd, 0xff, 0xff, 0xff];
+        let mut pos = 0;
+        assert_eq!(decode_lenenc_int(&payload, &mut pos), Some(16_777_215));
+        assert_eq!(pos, 4);
+    }
+
+    #[test]
+    fn decode_lenenc_int_truncated_3byte_returns_none() {
+        // 声明 3 字节但只剩 2 字节 ⇒ None，且只消费掉 marker。
+        let payload = [0xfd, 0x01, 0x00];
+        let mut pos = 0;
+        assert_eq!(decode_lenenc_int(&payload, &mut pos), None);
+        assert_eq!(pos, 1);
     }
 
     #[test]
@@ -4146,7 +4174,7 @@ fn decode_lenenc_int(payload: &[u8], pos: &mut usize) -> Option<u64> {
         if *pos + 3 > payload.len() {
             return None;
         }
-        let v = u32::from_le_bytes([0, payload[*pos], payload[*pos + 1], payload[*pos + 2]]);
+        let v = u32::from_le_bytes([payload[*pos], payload[*pos + 1], payload[*pos + 2], 0]);
         *pos += 3;
         Some(v as u64)
     } else if b0 == 0xfe {
