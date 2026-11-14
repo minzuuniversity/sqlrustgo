@@ -6,7 +6,7 @@
 {"bytes": 28634, "file": "ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md", "lines": 320, "sha256": "7432621d7eb40b7b7e260c08be920c2212be54922a40e6bfa0b4b09d6302dad8", "stamp_ok": false, "stamped": false}
 {"bytes": 4763, "file": "ARCHITECTURE.md", "lines": 94, "sha256": "533404ace8adfbd21a47bd0873367fc63e0d5d958b63b7510671921151391cb8", "stamp_ok": false, "stamped": false}
 {"bytes": 6630, "file": "ARCHITECTURE_ROUTE_DECISION_5193.md", "lines": 159, "sha256": "32545a30b19013818a19ed157da046ce7081a25c187f703e1b1d2bf1fca6bfa4", "stamp_ok": false, "stamped": false}
-{"bytes": 4865, "file": "AUDIT_MANIFEST_RED_LEDGER_2026-11-14.md", "lines": 55, "sha256": "ab5117b06d37afb141f395e6e180e9c99e751a248eab7d97c483ff352af4f44d", "stamp_ok": false, "stamped": false}
+{"bytes": 4954, "file": "AUDIT_MANIFEST_RED_LEDGER_2026-11-14.md", "lines": 56, "sha256": "6f8eac8b327b9708922ed66c8cbf2fcfd90549904e3d2835909ac400864be67f", "stamp_ok": false, "stamped": false}
 {"bytes": 6098, "file": "AUDIT_RECORD_INTEGRITY_2026-11-05.md", "lines": 107, "sha256": "59b9f461aed58c6f3969cedb32835fe0135aa9d50505b59cf00af2f28ff70146", "stamp_ok": false, "stamped": false}
 {"bytes": 20093, "file": "BRANCH_MERGE_VERDICTS_2026-11-06.md", "lines": 126, "sha256": "274c3e39911565b7849ff44210838d0e67b5a6e3226ff89dfdad88c87f5e8738", "stamp_ok": false, "stamped": false}
 {"bytes": 9998, "file": "BRANCH_MERGE_VERDICTS_2026-11-07.md", "lines": 115, "sha256": "b92fbe3b8470ee15b7847f0e2dfb71920519063e4d8900cc0ec1002972928ceb", "stamp_ok": false, "stamped": false}
