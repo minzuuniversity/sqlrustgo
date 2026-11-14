@@ -1,3 +1,5 @@
+// 占位契约测试同 v400_acl_audit：字面量防清空断言 ⇒ 文件级 allow（见该文件头注）。
+#![allow(clippy::const_is_empty)]
 //! V400-06 unified backup/restore — design-level tests.
 //!
 //! Tests verify the BackupCoordinator API surface (functions, manifest

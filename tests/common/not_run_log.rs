@@ -29,6 +29,7 @@
 //! `O_APPEND`, so `writeln!` (which formats through `write_fmt` and may
 //! issue several `write()` syscalls) could split a record between two
 //! processes and cost it its trailing newline.
+#![allow(clippy::duplicate_mod)]
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

@@ -504,7 +504,6 @@ impl ParallelGroupBy {
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
     use sqlrustgo_storage::ColumnDefinition;
