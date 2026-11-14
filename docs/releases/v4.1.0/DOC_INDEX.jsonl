@@ -88,7 +88,7 @@
 {"bytes": 4767, "file": "PR-5537_TEST_DESIGN.md", "lines": 116, "sha256": "4085ac622a184143330fa154acce2aba588fd52d3f707932fc8f6680d2daf59a", "stamp_ok": false, "stamped": false}
 {"bytes": 4130, "file": "PR-5537_TEST_PLAN.md", "lines": 85, "sha256": "f0cbb2444c4b81691b7711e6c1bb0d1f0aa85a4e381f9a56e4b4003693d1ea24", "stamp_ok": false, "stamped": false}
 {"bytes": 4813, "file": "PR-5537_TEST_REVIEW.md", "lines": 112, "sha256": "4d657fb91d95f9fa2099c8b0c3885bcf03f3ac437ca4be4cd054ae18af250e32", "stamp_ok": false, "stamped": false}
-{"bytes": 7186, "file": "PR-5785_ACCEPTANCE.md", "lines": 124, "sha256": "b2680d0d7c4e49f54cf6665916b282ae601fcc0eac3182fe44ffb74a0348e530", "stamp_ok": false, "stamped": false}
+{"bytes": 8126, "file": "PR-5785_ACCEPTANCE.md", "lines": 139, "sha256": "af8db2de856510490ea0a7600ea8b65c3798ae28d0286fd86ad0c29e6eaabfa5", "stamp_ok": false, "stamped": false}
 {"bytes": 3792, "file": "PR-5785_SPEC.md", "lines": 71, "sha256": "7c2ae7fd9bbb2babe742d76c80ac250edab42c5c4b0e7e0cfd2cb7608da21887", "stamp_ok": false, "stamped": false}
 {"bytes": 4665, "file": "PR-5785_TEST_DESIGN.md", "lines": 98, "sha256": "6c9d714e1c9da1b85903044f84bf642ce900829a9e11f8be6fadcbd058641091", "stamp_ok": false, "stamped": false}
 {"bytes": 3107, "file": "PR-5785_TEST_PLAN.md", "lines": 62, "sha256": "21e0fdfca8ca655e6e3f3172d096645f9874f9a4837f658b954cba82162a6086", "stamp_ok": false, "stamped": false}

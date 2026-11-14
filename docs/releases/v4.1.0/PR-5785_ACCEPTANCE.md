@@ -92,6 +92,21 @@
 | `decode_lenenc_int` 0xfd 三字节 | `cargo test -p sqlrustgo-mysql-server --lib decode_lenenc_int` | `8 passed; 0 failed`（含 65536 三字节用例） |
 | `VtuGuard` 事务状态透传 | `cargo test -p sqlrustgo-storage --lib vtu_guard` | `18 passed; 0 failed` |
 
+## 4a. CI 工具链 1.99 实测（2026-11-14）
+
+CI 已重新开始执行（runner-02/03/04 online）。run **12569**（head `526ca80dc4`）实测：
+
+| job | 结果 |
+|---|---|
+| `lint-build` | **success**（此前 red 的根因是 1.99 新 lint `clippy::result_large_err`，10 条全来自 `sqlrustgo-network` 的 tonic 生成代码；本 PR 对 `pub mod dtc` 定向 allow + 修 1 处 `unused_mut`） |
+| `mutation` | success |
+| `test-soak-detach` | success |
+| `test` / `test-crates` / `postcheck` | 被仓库级 `concurrency` 取消（同一 ci.yml group 一次只跑一个；随后 #5786 的推送取消了本 run），**不是失败** |
+| `gate.yml` | pending → cancelled（同上） |
+
+本机 1.99 同款命令：`cargo +1.99.0 clippy --locked --all-features --all-targets -- -D warnings` ⇒ rc=0、0 warning。
+**不声明 CI 已全绿**；需要一次不被后续推送取消的完整 run（含 postcheck）才能改状态。
+
 ## 4b. 失败 → 修复 → 通过 → 最终 HEAD 的链路（外部评审 I2）
 
 | 环节 | commit / run | 证据 |
