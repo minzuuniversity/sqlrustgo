@@ -56,6 +56,14 @@ def git(*args: str) -> str:
 
 
 def evidence_hash_of(manifest: dict) -> str:
+    # #5698: a run renamed on disk (e.g. to resolve a run-id collision) kept
+    # its original evidence_hash, which was computed over the ORIGINAL
+    # run_id — so `verify` reported a permanent mismatch even though every
+    # log hash and exit code was untouched. `canonical_run_id` records the
+    # id the hash was computed over; runs without it keep the exact old
+    # behaviour (their own run_id). Only the id used by the hash changes;
+    # results, artifacts and frozen_commit are untouched.
+    canonical_run_id = manifest.get("canonical_run_id") or manifest["run_id"]
     results = sorted(
         (
             {
@@ -71,7 +79,7 @@ def evidence_hash_of(manifest: dict) -> str:
     canonical = json.dumps(
         {
             "schema_version": manifest["schema_version"],
-            "run_id": manifest["run_id"],
+            "run_id": canonical_run_id,
             "frozen_commit": manifest["frozen_commit"],
             "artifacts": manifest["artifacts"],
             "results": results,

@@ -81,7 +81,74 @@ def build_run(sb: pathlib.Path, tool_mod, *, cmd_key: str = "cmd", drop_cmd: boo
                    capture_output=True, text=True)
     if drop_log:
         (cmds_dir / "001.stdout.log").unlink()
+    git_commit(sb)
     return run_dir
+
+
+LEGACY_NEW_ID = "20261105-lb1-006-mcode"
+LEGACY_OLD_ID = "20261105-lb1-006"
+
+
+def build_legacy_run(sb: pathlib.Path, tool_mod, *, with_canonical: bool) -> pathlib.Path:
+    """造一条 schema_version=1 的 run：hash 按 OLD id 算，目录/清单用 NEW id。
+
+    这正是 #5698 的真实形态：20261106 撞车处置把目录改名，但 evidence_hash
+    仍是按原名算的。`canonical_run_id` 是修复开关。
+    """
+    import yaml
+
+    run_dir = sb / "audit" / "v4.1.0" / "runs" / LEGACY_NEW_ID
+    logs = run_dir / "logs"
+    logs.mkdir(parents=True)
+    out, err = b"legacy-stdout\n", b""
+    (logs / "001-x.stdout").write_bytes(out)
+    (logs / "001-x.stderr").write_bytes(err)
+    base = {
+        "schema_version": 1,
+        "run_id": LEGACY_NEW_ID,
+        "frozen_commit": "0" * 40,
+        "artifacts": {"cargo_lock_sha256": "0" * 64, "dataset_hashes": {}},
+        "commands": [{"id": "001", "name": "fixture", "cwd": ".", "timeout_sec": 30,
+                      "cmd": "echo legacy-stdout"}],
+        "results": [{
+            "id": "001", "exit_code": 0,
+            "stdout_sha256": _sha(out), "stderr_sha256": _sha(err),
+            "stdout_path": "logs/001-x.stdout", "stderr_path": "logs/001-x.stderr",
+        }],
+    }
+    old = dict(base)
+    old["run_id"] = LEGACY_OLD_ID
+    base["evidence_hash"] = tool_mod.evidence_hash_of(old)
+    if with_canonical:
+        base["canonical_run_id"] = LEGACY_OLD_ID
+    (run_dir / "manifest.yaml").write_text(
+        yaml.safe_dump(base, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    git_commit(sb)
+    return run_dir
+
+
+def verify_id(sb: pathlib.Path, run_id: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(sb / "audit" / "v4.1.0" / "audit_run.py"),
+         "verify", "--run-id", run_id],
+        cwd=sb, capture_output=True, text=True, timeout=120,
+    )
+
+
+def git_commit(sb: pathlib.Path) -> None:
+    """AMAN-1：门禁枚举的是 **已提交的树**（`git ls-tree HEAD`）。
+
+    旧夹具只建目录、不建 git 提交，于是门禁永远看到空树 ⇒ M5 的
+    “无清单目录必须点名”从未真正被判过。这里把沙箱变成真 git 仓库并提交。
+    """
+    if not (sb / ".git").exists():
+        subprocess.run(["git", "init", "-q"], cwd=sb, check=True)
+        subprocess.run(["git", "config", "user.email", "fixture@local"], cwd=sb, check=True)
+        subprocess.run(["git", "config", "user.name", "fixture"], cwd=sb, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=sb, check=True)
+    # --allow-empty：M6 的空仓控制组也要有一个真实 HEAD。
+    subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "fixture"], cwd=sb, check=True)
 
 
 def fresh_sandbox() -> pathlib.Path:
@@ -90,6 +157,7 @@ def fresh_sandbox() -> pathlib.Path:
     shutil.copy(TOOL, sb / "audit" / "v4.1.0" / "audit_run.py")
     (sb / "scripts" / "gate").mkdir(parents=True)
     shutil.copy(GATE, sb / "scripts" / "gate" / "check_audit_manifest.sh")
+    git_commit(sb)
     return sb
 
 
@@ -130,7 +198,10 @@ def main() -> int:
     # M5 有目录无清单 ⇒ 门禁必须点名（改前：静默跳过）
     sb = fresh_sandbox()
     build_run(sb, mod)
-    (sb / "audit" / "v4.1.0" / "iaia410-fixture-nomanifest").mkdir()
+    nm = sb / "audit" / "v4.1.0" / "iaia410-fixture-nomanifest"
+    nm.mkdir()
+    (nm / "findings.txt").write_text("no manifest here\n", encoding="utf-8")
+    git_commit(sb)
     g = gate(sb)
     if g.returncode == 0 or "without manifest" not in (g.stderr + g.stdout):
         fails.append(f"M5 无清单运行目录未被点名: rc={g.returncode}")
@@ -143,11 +214,29 @@ def main() -> int:
         fails.append(f"M6 空仓控制组应绿: rc={g.returncode} {(g.stdout + g.stderr).strip()[:120]}")
     shutil.rmtree(sb, ignore_errors=True)
 
+    # M7 #5698：改名后的 legacy run 带 canonical_run_id ⇒ 必须重算一致（绿）
+    sb = fresh_sandbox()
+    build_legacy_run(sb, mod, with_canonical=True)
+    r = verify_id(sb, LEGACY_NEW_ID)
+    if r.returncode != 0:
+        fails.append("M7 canonical_run_id 存在时仍判红: "
+                     f"{ (r.stdout + r.stderr).strip()[:160] }")
+    shutil.rmtree(sb, ignore_errors=True)
+
+    # M8 #5698 反向臂：同样的改名记录但去掉 canonical_run_id ⇒ 必须判红
+    # （证明 M7 的绿来自修复，而不是判据被放松）
+    sb = fresh_sandbox()
+    build_legacy_run(sb, mod, with_canonical=False)
+    r = verify_id(sb, LEGACY_NEW_ID)
+    if r.returncode == 0:
+        fails.append("M8 去掉 canonical_run_id 后仍判绿 ⇒ canonical 判据失去鉴别力")
+    shutil.rmtree(sb, ignore_errors=True)
+
     if fails:
         for f in fails:
             print("FIXTURE FAIL:", f)
         return 1
-    print("test_audit_manifest_integrity: OK (CTRL/M1..M6 all held)")
+    print("test_audit_manifest_integrity: OK (CTRL/M1..M8 all held)")
     return 0
 
 
