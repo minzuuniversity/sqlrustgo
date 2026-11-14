@@ -23,9 +23,6 @@
 // 的 dead-code 检测保持有效。
 #[allow(dead_code)] // 本二进制仅引用共享模块子集；模块本体在别处是活路径
 #[path = "../../common/not_run_log.rs"]
-// 本 target 只用 default_log_path/record_to（可见性断言面），record/NOT_RUN_ENV
-// 不在本 target 语义内 ⇒ dead_code 属预期（别处在用；见该文件顶部 duplicate_mod 注）。
-#[allow(dead_code)]
 mod not_run_log;
 
 use std::path::{Path, PathBuf};
