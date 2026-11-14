@@ -15,6 +15,13 @@
 //! 3. a self-proof: a target that reports NOT-RUN has a record in that
 //!    file, and a target that actually ran has none.
 
+// 本二进制只用到共享模块的一个子集（default_log_path / append_to /
+// record_to / record_into_default）——`record()` 与 `NOT_RUN_ENV` 在此
+// 二进制确实无引用，但它们在其它 30+ 个经 `#[path]` 引同一文件的
+// 测试二进制里是**活的生产面**（#5503 的 NOT-RUN 通道）。
+// 因此豁免只落在**本二进制的引入点**，不落在模块本体：其它二进制
+// 的 dead-code 检测保持有效。
+#[allow(dead_code)] // 本二进制仅引用共享模块子集；模块本体在别处是活路径
 #[path = "../../common/not_run_log.rs"]
 mod not_run_log;
 
