@@ -304,3 +304,41 @@ fn idx2_page_backed_index_loses_rows() {
         "IDX-2：走索引路径同样必须返回该行"
     );
 }
+
+/// IDX-2 的插入维护：CREATE INDEX 之后再 INSERT，新行也必须进索引。
+/// 旧实现只在建树时读一次 `tables.rows`；页式后端的新行走页插入路径，
+/// 若不更新索引，新行就会“存在但按索引列查不到”。
+#[test]
+fn idx2_page_backed_index_sees_rows_inserted_after_index() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let pool = Arc::new(BufferPool::new(64));
+    let storage = Arc::new(parking_lot::RwLock::new(
+        sqlrustgo_storage::FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool)
+            .expect("new_with_bufferpool"),
+    ));
+    let mut engine: Eng = ExecutionEngine::new(storage);
+
+    for sql in [
+        "CREATE TABLE d (id INTEGER PRIMARY KEY, v INTEGER);",
+        "INSERT INTO d VALUES (1,10),(2,20),(3,30);",
+    ] {
+        must_ok(&mut engine, sql);
+    }
+    must_ok(&mut engine, "CREATE INDEX idx_d_v ON d(v);");
+    assert_eq!(query_rows(&mut engine, "SELECT id FROM d WHERE v = 20;"), 1);
+
+    must_ok(&mut engine, "INSERT INTO d VALUES (4,20);");
+    assert_eq!(
+        query_rows(&mut engine, "SELECT id FROM d WHERE v = 20;"),
+        2,
+        "IDX-2：建索引后的 INSERT 必须同步进索引"
+    );
+    assert_eq!(
+        query_rows(
+            &mut engine,
+            "SELECT id FROM d INDEXED BY idx_d_v WHERE v = 20;"
+        ),
+        2,
+        "IDX-2：INDEXED BY 路径也必须看到新插入的行"
+    );
+}
