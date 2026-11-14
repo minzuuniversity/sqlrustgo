@@ -89,7 +89,15 @@ LEGACY_NEW_ID = "20261105-lb1-006-mcode"
 LEGACY_OLD_ID = "20261105-lb1-006"
 
 
-def build_legacy_run(sb: pathlib.Path, tool_mod, *, with_canonical: bool) -> pathlib.Path:
+def build_legacy_run(
+    sb: pathlib.Path,
+    tool_mod,
+    *,
+    with_canonical: bool = True,
+    canonical_id: str = LEGACY_OLD_ID,
+    run_id: str = LEGACY_NEW_ID,
+    tamper_exit: int | None = None,
+) -> pathlib.Path:
     """造一条 schema_version=1 的 run：hash 按 OLD id 算，目录/清单用 NEW id。
 
     这正是 #5698 的真实形态：20261106 撞车处置把目录改名，但 evidence_hash
@@ -97,7 +105,7 @@ def build_legacy_run(sb: pathlib.Path, tool_mod, *, with_canonical: bool) -> pat
     """
     import yaml
 
-    run_dir = sb / "audit" / "v4.1.0" / "runs" / LEGACY_NEW_ID
+    run_dir = sb / "audit" / "v4.1.0" / "runs" / run_id
     logs = run_dir / "logs"
     logs.mkdir(parents=True)
     out, err = b"legacy-stdout\n", b""
@@ -105,7 +113,7 @@ def build_legacy_run(sb: pathlib.Path, tool_mod, *, with_canonical: bool) -> pat
     (logs / "001-x.stderr").write_bytes(err)
     base = {
         "schema_version": 1,
-        "run_id": LEGACY_NEW_ID,
+        "run_id": run_id,
         "frozen_commit": "0" * 40,
         "artifacts": {"cargo_lock_sha256": "0" * 64, "dataset_hashes": {}},
         "commands": [{"id": "001", "name": "fixture", "cwd": ".", "timeout_sec": 30,
@@ -117,10 +125,13 @@ def build_legacy_run(sb: pathlib.Path, tool_mod, *, with_canonical: bool) -> pat
         }],
     }
     old = dict(base)
-    old["run_id"] = LEGACY_OLD_ID
+    old["run_id"] = canonical_id
     base["evidence_hash"] = tool_mod.evidence_hash_of(old)
     if with_canonical:
-        base["canonical_run_id"] = LEGACY_OLD_ID
+        base["canonical_run_id"] = canonical_id
+    if tamper_exit is not None:
+        # 只在 hash 计算之后改受保护字段 ⇒ verify 必须发现 hash mismatch。
+        base["results"][0]["exit_code"] = tamper_exit
     (run_dir / "manifest.yaml").write_text(
         yaml.safe_dump(base, allow_unicode=True, sort_keys=False), encoding="utf-8"
     )
@@ -157,8 +168,19 @@ def fresh_sandbox() -> pathlib.Path:
     shutil.copy(TOOL, sb / "audit" / "v4.1.0" / "audit_run.py")
     (sb / "scripts" / "gate").mkdir(parents=True)
     shutil.copy(GATE, sb / "scripts" / "gate" / "check_audit_manifest.sh")
+    alias_src = TOOL.parent / "canonical_run_aliases.json"
+    if alias_src.is_file():
+        shutil.copy(alias_src, sb / "audit" / "v4.1.0" / "canonical_run_aliases.json")
     git_commit(sb)
     return sb
+
+
+def write_alias_file(sb: pathlib.Path, entries: list[dict]) -> None:
+    (sb / "audit" / "v4.1.0" / "canonical_run_aliases.json").write_text(
+        json.dumps({"schema_version": 1, "aliases": entries}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    git_commit(sb)
 
 
 def verify(sb: pathlib.Path) -> subprocess.CompletedProcess:
@@ -232,11 +254,47 @@ def main() -> int:
         fails.append("M8 去掉 canonical_run_id 后仍判绿 ⇒ canonical 判据失去鉴别力")
     shutil.rmtree(sb, ignore_errors=True)
 
+    # M9：canonical_run_id 未登记（hash 本身能对上）⇒ 必须拒绝，不得成为逃生门
+    sb = fresh_sandbox()
+    build_legacy_run(sb, mod, with_canonical=True, canonical_id="evil-2026")
+    r = verify_id(sb, LEGACY_NEW_ID)
+    if r.returncode == 0:
+        fails.append("M9 未登记的 canonical_run_id 仍判绿 ⇒ 别名可任意指向")
+    shutil.rmtree(sb, ignore_errors=True)
+
+    # M10：两个 run 共用同一个 canonical id ⇒ 登记表本身必须拒绝（身份歧义）
+    sb = fresh_sandbox()
+    build_legacy_run(sb, mod)
+    write_alias_file(sb, [
+        {"current_run_id": LEGACY_NEW_ID, "canonical_run_id": LEGACY_OLD_ID},
+        {"current_run_id": "20261105-lb1-006-other", "canonical_run_id": LEGACY_OLD_ID},
+    ])
+    r = verify_id(sb, LEGACY_NEW_ID)
+    if r.returncode == 0:
+        fails.append("M10 重复 canonical id 仍判绿 ⇒ 身份唯一性未校验")
+    shutil.rmtree(sb, ignore_errors=True)
+
+    # M11：只改当前 run_id、不登记 alias ⇒ hash 必须对不上
+    sb = fresh_sandbox()
+    build_legacy_run(sb, mod, with_canonical=False, run_id="20261105-lb1-006-renamed2")
+    r = verify_id(sb, "20261105-lb1-006-renamed2")
+    if r.returncode == 0:
+        fails.append("M11 改 run_id 未登记 alias 仍判绿")
+    shutil.rmtree(sb, ignore_errors=True)
+
+    # M12：alias 合法，但篡改受 hash 保护的 results.exit_code ⇒ 必须红
+    sb = fresh_sandbox()
+    build_legacy_run(sb, mod, with_canonical=True, tamper_exit=1)
+    r = verify_id(sb, LEGACY_NEW_ID)
+    if r.returncode == 0:
+        fails.append("M12 篡改 results.exit_code 后仍判绿 ⇒ hash 未覆盖受保护字段")
+    shutil.rmtree(sb, ignore_errors=True)
+
     if fails:
         for f in fails:
             print("FIXTURE FAIL:", f)
         return 1
-    print("test_audit_manifest_integrity: OK (CTRL/M1..M8 all held)")
+    print("test_audit_manifest_integrity: OK (CTRL/M1..M12 all held)")
     return 0
 
 
