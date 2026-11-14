@@ -47,6 +47,22 @@
   15. `clippy2-test-security`
   16. `clippy2-test-admin`
 
+### 2.1b 外部评审回应验证：`20261114-clippy3-001` + `20261114-clippy3b-001`
+
+- `20261114-clippy3-001`（frozen `23523ff8ee`，12 臂全 rc=0，
+  evidence_hash=`sha256:cb9880ca463c8dd0588fcc3229556e2d89487043e342e448954c869578a5fcaa`）
+  - 记录最终 HEAD；`git diff --name-only 1cb5d8889e..HEAD -- crates/ scripts/` 只输出
+    4 个预期文件（mysql-server lib、security 测试注释、vtu_guard、AFP 白名单）；
+  - 清掉被改 crate 缓存后 CI 同款 clippy 仍 rc=0；
+  - mysql-server lib **290 passed**（0xfd 边界 10 条）；storage lib **919 passed**
+    （vtu_guard 21 条）；security 153+21+29 passed。
+- `20261114-clippy3b-001`（frozen `93c8a9dbbe`，3 臂全 rc=0，
+  evidence_hash=`sha256:3ce1c1d2e882eac1aad7abed9b91d6e7e4838edc14927895da5360e133be06d3`）
+  - 003 的 `no_namespace_db_refusal_5266` 臂因 `#![cfg(feature = "bin_storage_default")]`
+    编译为 0 测试（不承重，已披露）；
+  - 本 run 用 `--features bin_storage_default` 重跑 ⇒ **5 passed**，含
+    `vtu_guard_forwards_foreign_db_to_inner`；同 feature 组合下 CI 同款 clippy 仍 rc=0。
+
 ### 2.2 真红取证：`20261114-clippy2-001`
 
 - `frozen_commit`: `e590a50ed15b8d26e8ae020e50c74c9e60d3da30`
@@ -75,6 +91,26 @@
 |---|---|---|
 | `decode_lenenc_int` 0xfd 三字节 | `cargo test -p sqlrustgo-mysql-server --lib decode_lenenc_int` | `8 passed; 0 failed`（含 65536 三字节用例） |
 | `VtuGuard` 事务状态透传 | `cargo test -p sqlrustgo-storage --lib vtu_guard` | `18 passed; 0 failed` |
+
+## 4b. 失败 → 修复 → 通过 → 最终 HEAD 的链路（外部评审 I2）
+
+| 环节 | commit / run | 证据 |
+|---|---|---|
+| 真红 | run `20261114-clippy2-001` | storage-lib rc=101；`vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id` 断言 `guarded.in_transaction()` 失败 |
+| 根因修复 | `1cb5d8889e` | `impl StorageEngine for VtuGuard` 透传事务状态 |
+| 通过 | run `20261114-clippy2-002` | 16 臂全 rc=0；storage lib 916 passed |
+| 评审加固 | `d4ef219a84` / `23523ff8ee` / `93c8a9dbbe` | VtuGuard 事务生命周期/嵌套/feature 用例；0xfd max/截断；SEC-1 NOT-VERIFIED 注记 |
+| 最终 HEAD 验证 | run `20261114-clippy3-001` / `3b-001` | 相对 `1cb5d8889e` 的 code+scripts 差异只 4 个预期文件；12+3 臂全绿 |
+
+## 4c. 外部评审指出的行为变更（已核对，不再隐藏）
+
+1. **0xfd 是协议行为修复，不只是 lint 修复**：`decode_lenenc_int` 的 3 字节长度从
+   “旧错误值 ×256” 变为 MySQL lenenc 语义。影响面：`crates/mysql-server/src/lib.rs`
+   的 4306/4317 参数长度解码。已补 0x01、65536、0xFFFFFF、truncated-3byte 用例；
+   本仓库未发现依赖旧错值的调用方。若下游有外部消费者依赖旧值，需另案兼容性说明。
+2. **VtuGuard 事务透传**：生产代码里 `VtuGuard::new` 命中 0（只有测试与静态 marker
+   `VtuGuard::<()>::assert_path_for_dml`），因此运行时行为变化限于测试/未来包装；
+   已补 begin/commit/rollback、lockfree、nested、`is_transaction_active` 用例。
 
 ## 5. 偏差与未覆盖（与 TEST_REVIEW §3 一致）
 

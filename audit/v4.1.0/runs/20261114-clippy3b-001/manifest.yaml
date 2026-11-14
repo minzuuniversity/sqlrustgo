@@ -1,0 +1,58 @@
+schema_version: 1
+run_id: 20261114-clippy3b-001
+source_agent: opencode-macmini
+frozen_commit: 93c8a9dbbe9f60ba1c2a3bf6a9c4ce59d1543b51
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: clippy3b-head
+  name: 记录本 run 的最终 HEAD
+  cmd: git rev-parse HEAD
+  cwd: .
+  timeout_sec: 60
+- id: clippy3b-vtu-forwarding-with-feature
+  name: 5266 回归（显式 bin_storage_default）：5 条必须真跑，含 vtu_guard_forwards_foreign_db_to_inner
+  cmd: cargo test -p sqlrustgo-storage --features bin_storage_default --test no_namespace_db_refusal_5266
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3b-clippy-ci-same
+  name: 该 feature 组合下 CI 同款 clippy 仍 0 warning
+  cmd: cargo clippy --locked --all-features --all-targets -- -D warnings
+  cwd: .
+  timeout_sec: 5400
+results:
+- id: clippy3b-head
+  started_at: '2026-11-14T00:00:00Z'
+  finished_at: '2026-11-14T00:00:00Z'
+  exit_code: 0
+  stdout_sha256: bf4340dad67bb369272a36d33a8e327db1b823cdee68f1922f8e88add1080d54
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-clippy3b-head.stdout
+  stderr_path: logs/001-clippy3b-head.stderr
+- id: clippy3b-vtu-forwarding-with-feature
+  started_at: '2026-11-14T00:00:00Z'
+  finished_at: '2026-11-14T00:00:02Z'
+  exit_code: 0
+  stdout_sha256: 7ea15ba18d812eda379b41a6fe1ba366ff863628ea60e41ae52b3aca9c989e8e
+  stderr_sha256: 2ab822ea52a665ea5bb62342493c66d0240666fc0b54b3f470feab564aa4b59b
+  stdout_path: logs/002-clippy3b-vtu-forwarding-with-feature.stdout
+  stderr_path: logs/002-clippy3b-vtu-forwarding-with-feature.stderr
+- id: clippy3b-clippy-ci-same
+  started_at: '2026-11-14T00:00:02Z'
+  finished_at: '2026-11-14T00:00:09Z'
+  exit_code: 0
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: ef463ccf693d05cd193694140e19079ab55a2c858ad7dda64e42a8bb5ce0b6c2
+  stdout_path: logs/003-clippy3b-clippy-ci-same.stdout
+  stderr_path: logs/003-clippy3b-clippy-ci-same.stderr
+evidence_hash: sha256:3ce1c1d2e882eac1aad7abed9b91d6e7e4838edc14927895da5360e133be06d3
+completed_at: '2026-11-14T00:00:09Z'

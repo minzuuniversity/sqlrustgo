@@ -58,8 +58,27 @@ assert!(!guarded.in_transaction());
 ```
 
 修复：`in_transaction` / `current_tx_id` / `set_current_tx_id` /
-`set_current_tx_id_shared` 一律透传 inner。`cargo test -p sqlrustgo-storage --lib
-vtu_guard` ⇒ 18 passed。
+`set_current_tx_id_shared` / `is_transaction_active` 以及
+`begin/commit/rollback`（含 `_for` 与 `*_lockfree(_for)`）一律透传 inner。
+`cargo test -p sqlrustgo-storage --lib vtu_guard` ⇒ **21 passed**（含生命周期、
+lockfree、嵌套 Guard 三组等价性用例）。
+
+外部评审（chatGPT-web）要求“证明等价而非只跑单测”后补的用例：
+- `test_vtu_guard_transaction_lifecycle_matches_inner`
+- `test_vtu_guard_lockfree_tx_control_delegates`（用 WalStorage，MemoryStorage
+  本身不支持 lockfree）
+- `test_nested_vtu_guard_propagates_tx_state`
+- `no_namespace_db_refusal_5266::vtu_guard_forwards_foreign_db_to_inner`
+  （需 `--features bin_storage_default`，否则 0 测试；run 3b-001 已实证 5 passed）
+
+### 3.3 `decode_lenenc_int` 协议边界
+
+| 输入 | 期望 |
+|---|---|
+| `[0xfd, 0x01, 0, 0]` | 1 |
+| `[0xfd, 0, 0, 1]` | 65536 |
+| `[0xfd, 0xff, 0xff, 0xff]` | 16_777_215 |
+| `[0xfd, 0x01, 0]` | `None`，只消费 marker |
 
 ## 4. 豁免审计
 
