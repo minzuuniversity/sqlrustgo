@@ -27,7 +27,7 @@
 {"bytes": 35027, "file": "FEATURE_MATRIX.md", "lines": 309, "sha256": "e8e65becac26589ac638290d5581bc93d5810c079de378d133d17fe1450911dd", "stamp_ok": false, "stamped": false}
 {"bytes": 9024, "file": "FILE_STORAGE_WAL_INTEGRATION_AUDIT.md", "lines": 182, "sha256": "5df422e5a208c700723fbab1358b3f1a4771e55f54d5bc0e934c24015c5110e5", "stamp_ok": false, "stamped": false}
 {"bytes": 6505, "file": "G1_PROVENANCE_2026-11-14.md", "lines": 123, "sha256": "02cee886e62f43a8c1a42081e20e02dbe7bfe72bed9d2da0c1c813a531fdc85b", "stamp_ok": false, "stamped": false}
-{"bytes": 11352, "file": "GA_BLOCKER_MAP_2026-11-14.md", "lines": 105, "sha256": "205c4789101663cfcb09db89d06638b953493899b43dc4871d7092eb80c254f9", "stamp_ok": false, "stamped": false}
+{"bytes": 12858, "file": "GA_BLOCKER_MAP_2026-11-14.md", "lines": 122, "sha256": "2da88204b497d0278aca1b210c88280a89fe57256361c285537fec9cddfcf6ca", "stamp_ok": false, "stamped": false}
 {"bytes": 15732, "file": "GA_GATE_REPORT.md", "lines": 300, "sha256": "bf9dedf81972ebbbe951e986fb159f1693470c994cf74f6d50af3cb1f2bd12d1", "stamp_ok": false, "stamped": false}
 {"bytes": 11040, "file": "GA_READINESS_VERIFICATION_2026-11-06.md", "lines": 126, "sha256": "baac17563ea073bc0e3ef32bb0558e4b1b55e73fe6f5bcc20ce9efe45ad90a65", "stamp_ok": false, "stamped": false}
 {"bytes": 39810, "file": "GA_RELEASE_TIMELINE.md", "lines": 425, "sha256": "e0e10aae9b606137777c1a108d5af03928da4eedcd785bba17ea1823537706ba", "stamp_ok": false, "stamped": false}

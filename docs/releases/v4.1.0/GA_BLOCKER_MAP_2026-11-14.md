@@ -17,7 +17,7 @@
 |---|---|---|---|
 | C1 | 阶段必须逐级 ALPHA→BETA→RC→GA | 当前 ALPHA；BETA 门禁未逐项取证 | `STAGE.yaml current_stage`；`ALPHA_TO_BETA_GATE_PLAN.md` AB-01..AB-10 |
 | C2 | GA 只能在 `main` / `release/v*` / `hotfix/v*` 判定 | `release/v4.1.0` **不存在** | `STAGE_CONFIG.yaml stages.GA.branch_pattern`；#5436 |
-| C3 | CI 必须提供 lint/build/test/full-gate/anti-fab 证据 | CI 执行面死（#5597；8 job 全未执行）；postcheck 600 run 内 0 成功（#5402） | #5597 / #5402 |
+| C3 | CI 必须提供 lint/build/test/full-gate/anti-fab 证据 | **2026-11-14 恢复中**：runner-02/03/04 online，job 真执行；run 12569 的 `lint-build`/`mutation`/`test-soak-detach` 已 success（1.99 新 lint 由 #5785 修复），`test`/`test-crates`/`postcheck` 被仓库级 concurrency 取消（非失败）。**尚无一次完整 run 全绿**；#5402 的 postcheck 仍未拿到 success。另：run 12581 的 `test-crates` 在 `cargo build` 阶段被 crates.io 网络拖住（`spurious network error: transfer too slow ... 120s`，`cache: no cached registry`），属 #5451/#5533 的外部依赖面 | #5597 / #5402 / #5451 |
 | C4 | 独立 Reviewer 回执 | Hub `ai-project-hub` #133 未回；不许自签 | `STAGE.yaml merge_policy`；ADR-014 |
 | C5 | 覆盖率 ≥ 85%（GA） | 最近单 crate 读数：parser 86.20%、mysql-server 87.89%、storage 87.70%；**workspace 全局 85% 未在冻结快照上重测** | COV-01/02 归档；#5579 |
 | C6 | 168h SOAK | Owner 2026-11-13 裁决「推迟」= **deferral，不是 PASS** | `STAGE.yaml` V400-09；看板 ING-1 |
@@ -97,7 +97,24 @@
 5. **审计可信性**：归档 run + `evidence_hash` + rc + 干净检出复现 + 冲突处置。
 6. **独立审批**：2/3 reviewers、codeowner、governance、human-architect 的有效回执。
 
-## 5. 本文件不做什么
+## 5. 168h SOAK deferral 建议措辞（专家建议，待 Owner 采用）
+
+> 现状：Owner 2026-11-13 裁决「推迟」；它不是 PASS，也未写明适用范围。
+> 专家建议把延期写成「限阶段、限期限的风险接受记录」，并明确：
+
+1. **适用范围**：168h SOAK 暂列 `DEFERRED`，**仅适用于 ALPHA→BETA** 的阶段评审材料；
+   不代表验收通过，不自动适用于 RC/GA。
+2. **证据状态**：SOAK 证据不足的维度保持 `INCOMPLETE`（或原始 `FAIL`）；
+   延期不改变原始测试结果，不计入 PASS 数量。
+3. **终止条件**：进入 RC/GA 评审前必须完成适用验收标准要求的 SOAK，
+   或提交新的、明确写明适用阶段的新裁定；未满足时相应出口保持 `HOLD`。
+
+最小可接受证据：Owner 2026-11-13 决定原文引用、适用版本与阶段、延期理由、已知风险、
+责任人、补测触发条件、168h 测试协议与验收指标。
+
+> 本文件不改 `STAGE.yaml`；正式措辞由 Owner 采用后再入 SSOT。
+
+## 6. 本文件不做什么
 
 - 不改变 `STAGE.yaml` 的 `current_stage`；
 - 不替 Owner 给任何 P0 豁免；
