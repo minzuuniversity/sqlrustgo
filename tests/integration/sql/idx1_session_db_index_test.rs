@@ -265,10 +265,10 @@ fn test_idx1_index_is_scoped_per_database() {
 /// ```
 /// 根因：`crates/storage/src/file_storage.rs` 的 `create_index` 用
 /// `table_data.rows.iter().enumerate()` 取行（行 id = 在 `tables.rows` 里的下标），
-/// 而 BufferPool 后端把行放在页中；修它要重想索引的 row-id 寻址（page/offset），
-/// 属 IDX-2 的范围。`#[ignore = …]` 已登记 `tests/baseline/ignore_registry.json`（ADR-015 台账）。
+/// 而 BufferPool 后端把行放在页中。IDX-2 的修复：页式后端一页一条记录，
+/// 索引 RID 直接用 `page_id`；建树从页取，读侧从页解析，插入后同步维护索引。
+/// 本测试不再 `#[ignore]`，是修复的常驻回归。
 #[test]
-#[ignore = "看板行 IDX-2：页式表的 CREATE INDEX 建树看不到页里的行 ⇒ 按索引列查询静默丢行"]
 fn idx2_page_backed_index_loses_rows() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let pool = Arc::new(BufferPool::new(64));

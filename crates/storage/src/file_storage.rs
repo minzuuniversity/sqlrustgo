@@ -4826,11 +4826,24 @@ impl FileStorage {
             .clone();
 
         let scoped = self.tbl_in(db, table);
+        // IDX-2: keep existing secondary indexes current for rows inserted
+        // after CREATE INDEX. Column names are resolved once; each index is
+        // keyed by (scoped table, column name).
+        let column_names: Vec<String> = self.with_table_in(db, table, |t| {
+            t.map(|t| {
+                t.info
+                    .columns
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect::<Vec<String>>()
+            })
+            .unwrap_or_default()
+        });
         let mut page_ids = self
             .bufferpool_page_ids
             .lock()
             .expect("bufferpool_page_ids poisoned");
-        let entry = page_ids.entry(scoped).or_default();
+        let entry = page_ids.entry(scoped.clone()).or_default();
 
         for record in records {
             let page_id = self
@@ -4848,6 +4861,24 @@ impl FileStorage {
                 Arc::new(p)
             });
             entry.push(page_id);
+
+            // IDX-2: index RID == page_id on the BufferPool backend.
+            if !column_names.is_empty() {
+                if let Ok(mut indexes) = self.indexes.write() {
+                    for ((tkey, col_name), tree) in indexes.iter_mut() {
+                        if *tkey != scoped {
+                            continue;
+                        }
+                        if let Some(ci) = column_names.iter().position(|n| n == col_name) {
+                            if let Some(value) = record.get(ci) {
+                                if let Some(key) = value.to_index_key() {
+                                    tree.insert(key, page_id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -5899,6 +5930,22 @@ impl FileStorage {
                 // Find all row IDs with this key
                 let row_ids = index.search_all(search_key);
 
+                // IDX-2: BufferPool mode stores one serialized record per
+                // page and the index RID is that page_id. Resolve through
+                // the pool; never fall back to `tables.rows` (it is empty
+                // on this path, which is exactly how rows used to vanish).
+                if let Some(pool) = self.buffer_pool.as_ref() {
+                    let mut results = Vec::with_capacity(row_ids.len());
+                    for &page_id in &row_ids {
+                        if let Some(page) = pool.get(page_id) {
+                            if let Some(record) = deserialize_record_from_page_bytes(&page.data) {
+                                results.push(record);
+                            }
+                        }
+                    }
+                    return Ok(results);
+                }
+
                 // #4951: single read guard over tables + insert_buffer
                 // so the table and the buffer are read at one instant.
                 let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
@@ -6801,6 +6848,38 @@ impl StorageEngine for FileStorage {
             md.insert((db.to_string(), info.name.clone()), info.clone());
         }
 
+        // IDX-2: in BufferPool mode the rows live in pages, not in
+        // `tables.rows`. Snapshot the page-backed records first; each page
+        // holds exactly one serialized record, so `page_id` is the RID the
+        // index stores. Building from `tables.rows` here produced an empty
+        // tree and an index scan silently returned zero rows.
+        let bufferpool_rows: Option<Vec<(u32, Record)>> = if self.buffer_pool.is_some() {
+            let scoped = crate::engine::scoped_key(db, table);
+            let page_ids: Vec<u32> = self
+                .bufferpool_page_ids
+                .lock()
+                .expect("bufferpool_page_ids poisoned")
+                .get(&scoped)
+                .cloned()
+                .unwrap_or_default();
+            let pool = self
+                .buffer_pool
+                .as_ref()
+                .expect("buffer_pool checked above")
+                .clone();
+            let mut rows = Vec::with_capacity(page_ids.len());
+            for page_id in page_ids {
+                if let Some(page) = pool.get(page_id) {
+                    if let Some(record) = deserialize_record_from_page_bytes(&page.data) {
+                        rows.push((page_id, record));
+                    }
+                }
+            }
+            Some(rows)
+        } else {
+            None
+        };
+
         // Build a B+ Tree for each column in the index
         let mut indexes = self.indexes.write().unwrap();
         for column in info.columns.iter() {
@@ -6826,10 +6905,26 @@ impl StorageEngine for FileStorage {
                 .position(|c| c.name == column_name)
                 .unwrap_or(0);
             let mut index = crate::bplus_tree::BPlusTree::new();
-            for (row_id, row) in table_data.rows.iter().enumerate() {
-                if let Some(value) = row.get(column_index) {
-                    if let Some(key) = value.to_index_key() {
-                        index.insert(key, row_id as u32);
+            match &bufferpool_rows {
+                Some(rows) => {
+                    // IDX-2: RID = page_id. One page == one record on this
+                    // backend, so the read side can resolve the RID directly
+                    // through BufferPool::get (no second row store).
+                    for (page_id, row) in rows {
+                        if let Some(value) = row.get(column_index) {
+                            if let Some(key) = value.to_index_key() {
+                                index.insert(key, *page_id);
+                            }
+                        }
+                    }
+                }
+                None => {
+                    for (row_id, row) in table_data.rows.iter().enumerate() {
+                        if let Some(value) = row.get(column_index) {
+                            if let Some(key) = value.to_index_key() {
+                                index.insert(key, row_id as u32);
+                            }
+                        }
                     }
                 }
             }
