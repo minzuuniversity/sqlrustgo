@@ -598,10 +598,7 @@ mod tests {
                 .unwrap_or_else(|_| "PANICKED".to_string());
             let _ = tx.send(out);
         });
-        match rx.recv_timeout(within) {
-            Ok(s) => Some(s),
-            Err(_) => None,
-        }
+        rx.recv_timeout(within).ok()
     }
 
     /// WALGC-2 core: after the leader dies in fsync, the NEXT caller must

@@ -73,6 +73,11 @@ use sqlrustgo_types::Value as SqlValue;
 // #5503: the NOT-RUN file channel lives in one place, shared by every
 // copy of this fixture module (this file is compiled into many test
 // binaries through `#[path]` includes).
+// #5503 共享 NOT-RUN 文件通道。duplicate_mod 的窄豁免理由见
+// tests/common/sf1_fixture.rs 同处注释：not_run_log.rs 无 static/全局状态，
+// 纯文件通道（O_APPEND + 单 write_all + cargo 父 pid 幂等 round 标记），
+// 一个二进制里的多副本行为等价，源文件仍是唯一实现。
+#[allow(clippy::duplicate_mod)] // 无状态纯函数模块，重复加载无行为差异（CI lint-build #5465 口径）
 #[path = "not_run_log.rs"]
 mod not_run_log;
 
