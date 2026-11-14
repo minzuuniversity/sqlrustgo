@@ -6,6 +6,7 @@
 {"bytes": 28634, "file": "ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md", "lines": 320, "sha256": "7432621d7eb40b7b7e260c08be920c2212be54922a40e6bfa0b4b09d6302dad8", "stamp_ok": false, "stamped": false}
 {"bytes": 4763, "file": "ARCHITECTURE.md", "lines": 94, "sha256": "533404ace8adfbd21a47bd0873367fc63e0d5d958b63b7510671921151391cb8", "stamp_ok": false, "stamped": false}
 {"bytes": 6630, "file": "ARCHITECTURE_ROUTE_DECISION_5193.md", "lines": 159, "sha256": "32545a30b19013818a19ed157da046ce7081a25c187f703e1b1d2bf1fca6bfa4", "stamp_ok": false, "stamped": false}
+{"bytes": 4865, "file": "AUDIT_MANIFEST_RED_LEDGER_2026-11-14.md", "lines": 55, "sha256": "ab5117b06d37afb141f395e6e180e9c99e751a248eab7d97c483ff352af4f44d", "stamp_ok": false, "stamped": false}
 {"bytes": 6098, "file": "AUDIT_RECORD_INTEGRITY_2026-11-05.md", "lines": 107, "sha256": "59b9f461aed58c6f3969cedb32835fe0135aa9d50505b59cf00af2f28ff70146", "stamp_ok": false, "stamped": false}
 {"bytes": 20093, "file": "BRANCH_MERGE_VERDICTS_2026-11-06.md", "lines": 126, "sha256": "274c3e39911565b7849ff44210838d0e67b5a6e3226ff89dfdad88c87f5e8738", "stamp_ok": false, "stamped": false}
 {"bytes": 9998, "file": "BRANCH_MERGE_VERDICTS_2026-11-07.md", "lines": 115, "sha256": "b92fbe3b8470ee15b7847f0e2dfb71920519063e4d8900cc0ec1002972928ceb", "stamp_ok": false, "stamped": false}
@@ -25,6 +26,7 @@
 {"bytes": 62918, "file": "FEATURE_CHECKLIST.md", "lines": 570, "sha256": "e9cd5857ca009dd4a6434d67c7f3daca805bdcb621ffdd7cc00b2847a0c7a6d9", "stamp_ok": false, "stamped": false}
 {"bytes": 35027, "file": "FEATURE_MATRIX.md", "lines": 309, "sha256": "e8e65becac26589ac638290d5581bc93d5810c079de378d133d17fe1450911dd", "stamp_ok": false, "stamped": false}
 {"bytes": 9024, "file": "FILE_STORAGE_WAL_INTEGRATION_AUDIT.md", "lines": 182, "sha256": "5df422e5a208c700723fbab1358b3f1a4771e55f54d5bc0e934c24015c5110e5", "stamp_ok": false, "stamped": false}
+{"bytes": 10530, "file": "GA_BLOCKER_MAP_2026-11-14.md", "lines": 105, "sha256": "6fe96b9fa4ff3a9a5b234dfaa5de7e735822a521e747df8227d5bf02ccf901db", "stamp_ok": false, "stamped": false}
 {"bytes": 15732, "file": "GA_GATE_REPORT.md", "lines": 300, "sha256": "bf9dedf81972ebbbe951e986fb159f1693470c994cf74f6d50af3cb1f2bd12d1", "stamp_ok": false, "stamped": false}
 {"bytes": 11040, "file": "GA_READINESS_VERIFICATION_2026-11-06.md", "lines": 126, "sha256": "baac17563ea073bc0e3ef32bb0558e4b1b55e73fe6f5bcc20ce9efe45ad90a65", "stamp_ok": false, "stamped": false}
 {"bytes": 39810, "file": "GA_RELEASE_TIMELINE.md", "lines": 425, "sha256": "e0e10aae9b606137777c1a108d5af03928da4eedcd785bba17ea1823537706ba", "stamp_ok": false, "stamped": false}
@@ -47,7 +49,7 @@
 {"bytes": 34239, "file": "ISSUE_LEDGER_2026-11-11C.md", "lines": 158, "sha256": "73e959ab2e69afaad39f17197e04f6afe9bd88b74bc2671f0b112e0fa37a54fb", "stamp_ok": false, "stamped": false}
 {"bytes": 34575, "file": "ISSUE_LEDGER_2026-11-11D.md", "lines": 159, "sha256": "b7d9010f266c5c59c206e6dc3aa73fdfc76fe369bd8c412c7059c670fdf47122", "stamp_ok": false, "stamped": false}
 {"bytes": 3319, "file": "KANBAN_MERGE_POLICY_2026-11-08.md", "lines": 68, "sha256": "6803c6e73df03d8d30fe0ff9bc48e3e1f7ed908459462020bc9a7a4aebd0c8ab", "stamp_ok": false, "stamped": false}
-{"bytes": 346523, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 215, "sha256": "cc492fdbc6050129ab1fc4a7ea65572d90173f7b1a3bab922520f32504feee46", "stamp_ok": false, "stamped": false}
+{"bytes": 347393, "file": "KANBAN_v4.1.0_ALPHA.md", "lines": 215, "sha256": "8f26f4fddea76c065dadbd5ecc4d5d1ac1943eb4c82637d1fa69296e5cec8085", "stamp_ok": false, "stamped": false}
 {"bytes": 7898, "file": "LB1_ISSUE_LABEL_TAXONOMY_2026-11-05.md", "lines": 130, "sha256": "48beaabd302723271e23a753c63c7a47bdac49bf8d84ce3c7b534764e8c70f65", "stamp_ok": false, "stamped": false}
 {"bytes": 4052, "file": "LEGACY_ISSUES.md", "lines": 77, "sha256": "1dcf9d29e123e15b1ca1b8af3fcedcb5d43f9476cf5873b550e8f266f8d56ee6", "stamp_ok": false, "stamped": false}
 {"bytes": 27878, "file": "LEGACY_LEDGER_v3.6_to_v4.1.md", "lines": 484, "sha256": "edf34ff0a22540cbda719db2622513169e0fc155d041390251228197dc723e5f", "stamp_ok": false, "stamped": false}
