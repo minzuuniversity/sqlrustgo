@@ -4,9 +4,11 @@
 #   "RC-B1 B-track oracle corpus | bash scripts/gate/check_bustubx_b_track_v312.sh
 #    | Core B-track seed + exercises pass against SQLite oracle or issue-linked exclusion."
 #
-# STATUS (2026-09-04): SKELETON — Awaiting Phase 2 implementation.
-# This stub intentionally exits 1 (NOT PASS) to comply with Round-24
-# Anti-Fabrication-Policy-v1.0 and avoid fake PASS markers.
+# Phase 2 (2026-11-14, #5114): the runner below executes every manifest case
+# against SQLite and SQLRustGo and compares exit + normalized rows + SHA256.
+# It also checks the committed oracle against a live SQLite run (a stale
+# oracle is FAIL, not PASS). Missing engine/sqlite => exit 2 INCOMPLETE.
+# The previous SKELETON only checked artifact presence and always exited 1.
 
 set -euo pipefail
 
@@ -47,6 +49,17 @@ if [ "$MISSING" -gt 0 ]; then
 fi
 
 echo
-echo "RESULT: artifacts present — falling through to execution phase (Phase 2)."
-echo "Phase 2 will add: SQLRustGo vs SQLite row-count + SHA256 diff for each B-track SQL"
-exit 1
+echo "RESULT: artifacts present — running Phase 2 differential runner."
+RUNNER="$REPO_ROOT/scripts/gate/run_bustubx_b_track.py"
+if [ ! -f "$RUNNER" ]; then
+  echo "FAIL: runner missing: $RUNNER" >&2
+  exit 2
+fi
+python3 "$RUNNER" "$@"
+rc=$?
+case "$rc" in
+  0) echo "RESULT: PASS (all B-track cases match SQLite oracle)";;
+  2) echo "RESULT: INCOMPLETE (engine/sqlite/oracle unavailable — not PASS)";;
+  *) echo "RESULT: FAIL (see per-case output above)";;
+esac
+exit "$rc"
