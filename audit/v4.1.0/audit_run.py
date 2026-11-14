@@ -295,6 +295,16 @@ def _require_cmd_recorded(m: dict, run_id: str) -> None:
         )
 
 
+def cmd_check_aliases(args: argparse.Namespace) -> None:
+    """Validate the canonical alias allowlist itself, even if no run uses it.
+
+    A duplicate/ill-typed alias file is a latent identity hazard: the next
+    renamed manifest could silently bind to the wrong canonical id.
+    """
+    mapping = load_canonical_aliases()
+    print(f"canonical_run_aliases: OK ({len(mapping)} entrie(s))")
+
+
 def cmd_verify(args: argparse.Namespace) -> None:
     m = load_manifest(args.run_id)
     if m.get("schema_version") == SCHEMA_VERSION_V2:
@@ -637,6 +647,9 @@ def main() -> None:
     p = sub.add_parser("verify", help="recompute evidence_hash from committed logs")
     p.add_argument("--run-id", required=True)
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser("check-aliases", help="validate canonical_run_aliases.json")
+    p.set_defaults(func=cmd_check_aliases)
 
     p = sub.add_parser("scaffold", help="create run skeleton from a commands YAML")
     p.add_argument("--run-id", required=True)

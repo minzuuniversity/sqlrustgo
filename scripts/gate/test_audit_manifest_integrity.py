@@ -147,6 +147,13 @@ def verify_id(sb: pathlib.Path, run_id: str) -> subprocess.CompletedProcess:
     )
 
 
+def check_aliases(sb: pathlib.Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(sb / "audit" / "v4.1.0" / "audit_run.py"), "check-aliases"],
+        cwd=sb, capture_output=True, text=True, timeout=120,
+    )
+
+
 def git_commit(sb: pathlib.Path) -> None:
     """AMAN-1：门禁枚举的是 **已提交的树**（`git ls-tree HEAD`）。
 
@@ -290,11 +297,23 @@ def main() -> int:
         fails.append("M12 篡改 results.exit_code 后仍判绿 ⇒ hash 未覆盖受保护字段")
     shutil.rmtree(sb, ignore_errors=True)
 
+    # M13：alias 文件自身有重复 canonical id（即使没有 run 使用）⇒ check-aliases 必须红
+    sb = fresh_sandbox()
+    build_run(sb, mod)
+    write_alias_file(sb, [
+        {"current_run_id": "run-a", "canonical_run_id": "same-canonical"},
+        {"current_run_id": "run-b", "canonical_run_id": "same-canonical"},
+    ])
+    r = check_aliases(sb)
+    if r.returncode == 0:
+        fails.append("M13 重复 canonical 的 alias 文件仍判绿 ⇒ check-aliases 不承重")
+    shutil.rmtree(sb, ignore_errors=True)
+
     if fails:
         for f in fails:
             print("FIXTURE FAIL:", f)
         return 1
-    print("test_audit_manifest_integrity: OK (CTRL/M1..M12 all held)")
+    print("test_audit_manifest_integrity: OK (CTRL/M1..M13 all held)")
     return 0
 
 

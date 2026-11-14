@@ -77,6 +77,15 @@ else
     fi
 fi
 
+# #5698: validate the canonical alias allowlist itself before judging runs.
+# A duplicate/ill-typed alias file is a latent identity hazard (two runs
+# could bind to one canonical id). Fail closed even if no run uses it yet.
+if ! "${PY}" "${TOOL}" check-aliases >/dev/null 2>&1; then
+    "${PY}" "${TOOL}" check-aliases || true
+    echo "FAIL: audit/v4.1.0/canonical_run_aliases.json is invalid" >&2
+    exit 1
+fi
+
 exclude_runs=""
 selftest=0
 while [[ $# -gt 0 ]]; do
