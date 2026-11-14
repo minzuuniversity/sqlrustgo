@@ -2,7 +2,9 @@
 
 > **性质**：执行者整理的**处置提案**，不是裁定。每条最终路径需 Owner 按看板 P0-6 / IL-5 / #5596 决定。
 > **实测命令**：`bash scripts/gate/check_audit_manifest.sh`（本分支 HEAD `1b36ef4dcc`）
-> **实测结果**：rc=1，10 条红；本会话 4 条新 run（002/3-001/3b-001/2-001）全部 `verify OK`。
+> **实测结果**：rc=1，**10 条红**；其中 #8（`20261105-lb1-006-mcode`）已由 PR #5787
+> 修复（canonical_run_id），修复后实测 **9 条红**（见 §1 第 8 行）。本会话 4 条新 run
+> （002/3-001/3b-001/2-001）全部 `verify OK`。
 > **门禁定位（重要）**：`GATE_CATALOG.jsonl` 把本门禁登记为 `orphan_referenced`
 > （`stages: []`，`needs-execution-point`）——它**不在任何阶段的 required_gates 里**，
 > 因此不会机械阻断 GA；但它是审计证据完整性的唯一检查器，`#5596` 未处置前无法挂执行点。
@@ -22,7 +24,7 @@
 | 5 | `iaia410-a03-20261011T070845Z-omp` | `commands` 为空 | empty | ① 重跑；或 ② 退役。空记录不得被任何结论引用 | Owner |
 | 6 | `iaia410-a04-20261011T180837Z-609a8e81` | 5/5 条命令缺 `cmd` | hollow | 同上 | Owner |
 | 7 | `iaia410-a05-20261012T004948Z-bf48818c` | 9/9 条命令缺 `cmd` | hollow | 同上 | Owner |
-| 8 | `20261105-lb1-006-mcode` | `evidence_hash mismatch`：manifest `74a3d0c5…` vs recomputed `f54c6130…` | hash 不一致 | 先查 canonical 化缺陷（#5698：canonical 含 run_id 导致改名/撞车后永久假红）；**修 canonical 后重算**，不手改 manifest hash。若确属内容被改，则保留原样并标 invalid | Owner + 工具修复 |
+| 8 | `20261105-lb1-006-mcode` | ~~`evidence_hash mismatch`~~ **已修复**：canonical 含 run_id；该 run 改名后 hash 永久假红 | 已修（PR #5787） | `evidence_hash_of` 支持 `canonical_run_id`；manifest 补记原名，**不改** results/artifacts/frozen_commit/evidence_hash；夹具 M7/M8 承重；实测 verify OK，红项 10→9 | 待 PR 合并 |
 | 9 | `20261112-ab08-core3` | manual-wrapper（非 `audit_run.py`）：无 `commands` | manual-wrapper | 二选一：① 用 `audit_run.py` 重跑同一 bench 集；② 认定它**不是 audit run**，移出 `runs/` 到 `audit/v4.1.0/attachments/` 并在原位置留指针 + 原始 artifacts sha256 | Owner（#5596） |
 | 10 | `20261112-soak-ab003` | manual-wrapper：无 `results/evidence_hash`（`run it first`） | manual-wrapper | 同 #9；SOAK 报告本身可作为附件，但不得冒充 audit run | Owner |
 
@@ -46,8 +48,7 @@
 
 ## 4. 下一步（最小动作）
 
-1. 先处理 #8（canonical 缺陷）：它是唯一可能“工具误报”而非“证据真的坏”的一条；
-   修好后重跑 `verify`，确认是否转绿。
+1. ~~先处理 #8（canonical 缺陷）~~ **已由 PR #5787 修复并实测转绿**（红项 10→9）。
 2. 再处理 #9/#10（manual-wrapper）：它们数量少、边界清楚，适合先定为
    “附件而非 audit run”，给其余 hollow 记录一个可复制的处置模板。
 3. 最后处理 #2–#7（IAIA-410 hollow 记录）：逐条重跑成本高，建议按 A01–A06 的
