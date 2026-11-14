@@ -21,7 +21,7 @@
 | C4 | 独立 Reviewer 回执 | Hub `ai-project-hub` #133 未回；不许自签 | `STAGE.yaml merge_policy`；ADR-014 |
 | C5 | 覆盖率 ≥ 85%（GA） | 最近单 crate 读数：parser 86.20%、mysql-server 87.89%、storage 87.70%；**workspace 全局 85% 未在冻结快照上重测** | COV-01/02 归档；#5579 |
 | C6 | 168h SOAK | Owner 2026-11-13 裁决「推迟」= **deferral，不是 PASS** | `STAGE.yaml` V400-09；看板 ING-1 |
-| C7 | 强制门禁必须 PASS 或具合法例外 | `check_audit_manifest.sh` rc=1（9 条红，见 §4；canonical 已修 10→9）；G1 基线哈希 2026-11-14 实测红（`7439ce80…` vs `b8854271…`）；IDX-2 未闭 | 本会话实测 |
+| C7 | 强制门禁必须 PASS 或具合法例外 | `check_audit_manifest.sh` rc=1（9 条红，见 §4；canonical 已修 10→9）；G1 基线哈希 2026-11-14 实测红（`7439ce80…` vs `b8854271…`，但原始 LFS 夹具不可复现 ⇒ 判 INCOMPLETE，见 `G1_PROVENANCE_2026-11-14.md`）；IDX-2 已提交修复 PR #5789（待复核） | 本会话实测 |
 | C8 | merge_policy | GA: 3 reviewers + codeowner + governance + human-architect + release-manager | `STAGE_CONFIG.yaml stages.GA.merge_policy`；#5452 |
 
 > 结论：C1–C8 中任意一条未满足都不足以发表 GA 结论。当前至少 C2/C3/C4/C5(workspace)/C6/C7 未满足。
@@ -65,7 +65,7 @@
 | #5584 | 崩溃测试没有在声称边界崩溃 | **阻断 RC** | 另一线 `state/claimed`；看板 ENG-13 仍阻塞 | G8 crash matrix | 等认领线交付 + 本线复证 |
 | IDX-2 | 页式存储建索引后静默丢行 | **阻断 RC**（数据正确性） | 看板 IDX-2 仍登记为产品缺陷 | 索引/存储正确性 | 修 row-id 寻址；不接受为边界 |
 | #5428 | quick_query 依赖 `/tmp/tpch-sf1` | **阻断 RC** | 干净环境必失败 | G1 / 自包含测试 | 改为仓内 fixture 或显式 NOT-RUN |
-| G1 wire | TPC-H wire 侧 Q9/Q18/Q19/资源限制 + **基线哈希** | **阻断 RC**（若 G1 属 RC 必需） | 文件后端 22/22；2026-11-14 本机实测：SF=0.001 生成夹具下 `tpch_hash_test` **红**（actual `7439ce80…` vs baseline `b8854271…`）；无夹具 ⇒ NOT-RUN；SF=0.01 ⇒ `profile_mismatch`。`prepare_tpch_fixture.sh` 对 SF=0.001 自报“NOT verified for standard-query suitability”，门禁仍接受 ⇒ 口径缺口 | `check_g1_tpch_baseline.sh` / `tests/tpch_hashes_v380.json` | 按 `tpch_hashes_v380.json` 的 BUMP WORKFLOW：逐 query 证明差异来自 v3.9.0 之后的合法修复（Q13/Q17/Q19/Q9/Q18 等）后再 bump；**不得**用换 fixture/调 profile 让门禁变绿 |
+| G1 wire | TPC-H wire 侧 Q9/Q18/Q19/资源限制 + **基线哈希** | **阻断 RC**（若 G1 属 RC 必需） | 文件后端 22/22；2026-11-14 实测：无夹具 ⇒ NOT-RUN；SF=0.01 ⇒ `profile_mismatch`；SF=0.001 生成夹具 ⇒ hash mismatch（actual `7439ce80…` vs baseline `b8854271…`）；14 个 seed 无一命中。**关键**：v3.9.0 原始夹具是 LFS 指针，本机/252 LFS 端点不可用 ⇒ 无法复现原始 profile；当前生成器在 v3.9.0 后改过两次。详见 `G1_PROVENANCE_2026-11-14.md` | `check_g1_tpch_baseline.sh` / `tests/tpch_hashes_v380.json` | 专家建议：保持 **INCOMPLETE**；先尝试恢复 v3.9.0 LFS 夹具（选项 A），否则做逐 query provenance 后建立**新基线**并明确标注不是历史连续（选项 B）；**禁止**直接 bump/换 profile |
 | #5557 | server 大量写入后不可中断 I/O | **阻断 RC** | 进程状态 U；SIGTERM 无效 | 运维/崩溃恢复 | 定位 fsync/IO 路径 |
 | #5362 | clippy -D warnings 失败 | **阻断 RC（临）** | PR #5785 已修，待合并验收 | RC `cargo clippy` | 合并后关闭 |
 | #5412 / #5507 | 逐行 INSERT O(N²) / 提交快照 | **候选边界（性能）** | #5507 有修复线；性能门禁 G11/G12 为 optional | GA optional_gates | 若 GA 性能目标要求则升阻断；否则 release notes 披露 |
