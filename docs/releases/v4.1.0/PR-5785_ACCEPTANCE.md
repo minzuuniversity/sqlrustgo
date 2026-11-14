@@ -104,8 +104,16 @@ CI 已重新开始执行（runner-02/03/04 online）。run **12569**（head `526
 | `test` / `test-crates` / `postcheck` | 被仓库级 `concurrency` 取消（同一 ci.yml group 一次只跑一个；随后 #5786 的推送取消了本 run），**不是失败** |
 | `gate.yml` | pending → cancelled（同上） |
 
+run **12581**（head `e39bd0c3ad`，同一 ci.yml group）进一步实测：
+- `lint-build` **success**；`test-soak-detach` **success**；
+- `postcheck` **in_progress**（不再是 skipped；L1 build PASS 后进入 cargo test）；
+- `test-crates` 在 `cargo build` 阶段被 crates.io 网络拖住
+  （`spurious network error: transfer too slow ... 120s`，`cache: no cached registry`），
+  属 #5451/#5533 的外部依赖面；
+- 该 run 随后被下一次推送按仓库级 `concurrency` 取消（不是失败）。
+
 本机 1.99 同款命令：`cargo +1.99.0 clippy --locked --all-features --all-targets -- -D warnings` ⇒ rc=0、0 warning。
-**不声明 CI 已全绿**；需要一次不被后续推送取消的完整 run（含 postcheck）才能改状态。
+**不声明 CI 已全绿**；需要一次不被后续推送取消的完整 run（含 postcheck success）才能改状态。
 
 ## 4b. 失败 → 修复 → 通过 → 最终 HEAD 的链路（外部评审 I2）
 
