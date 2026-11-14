@@ -634,7 +634,7 @@ mod tests {
             crate::wal::MemoryWalManager::new(),
         )
         .unwrap();
-        let mut guarded = VtuGuard::new(wal_storage, "tx_lockfree");
+        let guarded = VtuGuard::new(wal_storage, "tx_lockfree");
         guarded.begin_transaction_lockfree(41).unwrap();
         assert_eq!(guarded.current_tx_id(), 41);
         assert!(guarded.is_transaction_active(41));
