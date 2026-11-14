@@ -6853,32 +6853,29 @@ impl StorageEngine for FileStorage {
         // holds exactly one serialized record, so `page_id` is the RID the
         // index stores. Building from `tables.rows` here produced an empty
         // tree and an index scan silently returned zero rows.
-        let bufferpool_rows: Option<Vec<(u32, Record)>> = if self.buffer_pool.is_some() {
-            let scoped = crate::engine::scoped_key(db, table);
-            let page_ids: Vec<u32> = self
-                .bufferpool_page_ids
-                .lock()
-                .expect("bufferpool_page_ids poisoned")
-                .get(&scoped)
-                .cloned()
-                .unwrap_or_default();
-            let pool = self
-                .buffer_pool
-                .as_ref()
-                .expect("buffer_pool checked above")
-                .clone();
-            let mut rows = Vec::with_capacity(page_ids.len());
-            for page_id in page_ids {
-                if let Some(page) = pool.get(page_id) {
-                    if let Some(record) = deserialize_record_from_page_bytes(&page.data) {
-                        rows.push((page_id, record));
+        let bufferpool_rows: Option<Vec<(u32, Record)>> =
+            if let Some(pool) = self.buffer_pool.as_ref() {
+                let scoped = crate::engine::scoped_key(db, table);
+                let page_ids: Vec<u32> = self
+                    .bufferpool_page_ids
+                    .lock()
+                    .expect("bufferpool_page_ids poisoned")
+                    .get(&scoped)
+                    .cloned()
+                    .unwrap_or_default();
+                let pool = pool.clone();
+                let mut rows = Vec::with_capacity(page_ids.len());
+                for page_id in page_ids {
+                    if let Some(page) = pool.get(page_id) {
+                        if let Some(record) = deserialize_record_from_page_bytes(&page.data) {
+                            rows.push((page_id, record));
+                        }
                     }
                 }
-            }
-            Some(rows)
-        } else {
-            None
-        };
+                Some(rows)
+            } else {
+                None
+            };
 
         // Build a B+ Tree for each column in the index
         let mut indexes = self.indexes.write().unwrap();
