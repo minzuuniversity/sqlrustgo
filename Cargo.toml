@@ -796,6 +796,10 @@ name = "coverage_notrun_honesty_test"
 path = "tests/integration/gate/coverage_notrun_honesty_test.rs"
 
 [[test]]
+name = "soak_steady_window_test"
+path = "tests/integration/soak/soak_steady_window_test.rs"
+
+[[test]]
 name = "gate_dimension_honesty_test"
 path = "tests/integration/gate/gate_dimension_honesty_test.rs"
 

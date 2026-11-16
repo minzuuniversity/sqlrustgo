@@ -18,8 +18,22 @@ in a tight loop until duration expires. Errors trigger reconnect with
 exponential backoff (50ms → 2s cap).
 
 Emits one CSV line per query to --output (default stdout):
-    Q,<elapsed_ms>,<thread_id>,<query_kind>,<row_count>
-    E,<elapsed_ms>,<thread_id>,<query_kind>,<error_msg>
+    Q,<query_latency_ms>,<thread_id>,<query_kind>,<row_count>
+    E,<query_latency_ms>,<thread_id>,<query_kind>,<error_msg>
+
+The 2nd field is **the duration of that one query** (milliseconds) — NOT
+"elapsed since the driver started". `t0` is taken inside the loop, right
+before each query (see `t0 = time.monotonic()` below), so the field is a
+latency sample.
+
+2026-11-17: this distinction cost a real run. The launcher read that
+column as if it were an elapsed timestamp and computed its steady-state
+window as "rows whose elapsed >= 30 s" — a predicate no latency sample
+can ever satisfy (it needs a single query to take 30 s). The steady-state
+window came out empty on every attempt, so the launcher judged every
+attempt to be "0 q/s, 100% errors" and rejected healthy runs. The
+launcher now derives its time base from metrics.csv (which carries
+`elapsed_s` plus cumulative driver_q / driver_e).
 
 Tunable:
     --threads=N        default 16
