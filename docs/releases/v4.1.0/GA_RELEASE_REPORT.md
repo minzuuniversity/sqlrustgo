@@ -580,3 +580,41 @@ cargo test --test gate_honesty_test
 **真实 SQL**，失败会计入 `ops_failed`）；心跳 15 个样本、**最大间隙 16.0 s**
 （要求 ≤ 90 s）。臂 B 的 `mixed-workload-summary.md`（含 W1..W5 与 verdict）
 按设计**只在 168 h 结束时写**。
+
+### 7.14 两条崩溃测试的「红」是缺前置的假红（GA-P0-1）
+
+看板上有两条 P0/P1 长期挂在「阻塞」：**ENG-12**（#5376，`crash_commit_fsync_b1`）
+与 **ENG-13**（#5584，`crash_wal_index_b1`）。两行的 evidence 里其实各自已经记下了
+「缺前置 ⇒ 假红」，但结论仍停在红上。本轮按**正确前置**在交付树上复跑：
+
+| 前置 | 现象 |
+|---|---|
+| 没有带 `fault-injection` 的服务端二进制 | `fault_coordination.rs:118` 直接 panic：`server binary not found` |
+| 二进制在，但未开 `fault-injection` | 60 s 后 `actual=<never reached>`（钩子从未命中） |
+| **先 `cargo build -p sqlrustgo-mysql-server --all-features`（armed），再 `cargo test --all-features`** | **真跑，12 passed / 0 failed** |
+
+ENG-13 那条红的具体形态是 seed 脚本报
+`ERROR 1146 (42000) at line 1: Table not found: t`（5.2 s，崩溃之前就没建出可读的表）——
+那是**客户端在崩溃后重连、丢了 `USE d1` 的会话上下文**，不是引擎丢了表。
+
+实测（交付树 `d94d9bccde`，macOS arm64，MariaDB client 15.2）：
+
+```
+cargo build -q -p sqlrustgo-mysql-server --all-features
+  ⇒ Finished dev profile in 1m 44s；target/debug/sqlrustgo-mysql-server（55 MB）
+cargo test -q --no-fail-fast -p sqlrustgo-storage --all-features \
+  --test crash_wal_index_b1 --test crash_commit_fsync_b1 \
+  --test e2e_crash_recovery_proof --test multi_db_crash_recovery_5192
+  ⇒ 2 + 2 + 4 + 4 = 12 passed / 0 failed      （ENG-13 记录的是 11 passed / 1 failed）
+crash_wal_index_b1 单独连跑 3 次 ⇒ 3/3 全绿（5.23 / 5.23 / 5.22 s）
+```
+
+**如实登记**：ENG-13 的测量点（`307db14c2b`）与交付树相差 602 个提交，
+**未逐提交定位**是哪一次让它转绿 —— 本节只断言「交付树上已不复现」，不臆断根因。
+
+这条复验也决定了一条执行纪律：**armed 二进制是崩溃测试的前置**。007 的 plan 里
+`cargo build --all-features`（seq 32）排在 `cargo test --all-features`（seq 33）**之前**，
+顺序天然满足；这正是「先量仪器、再量被测物」在执行顺序上的体现。
+
+看板既有行 ENG-12 / ENG-13 **一个字节未改**（SSOT 只增不改），本轮的结论以
+新行 **GA-P0-1** 追加登记。
