@@ -16,7 +16,18 @@
 # Exit codes:
 #   0  = 0 ACTIVE, all CLOSED or DEFERRED with v3.9.0+ plans
 #   1  = ANY ACTIVE without plan (blocker)
-#   2  = DRIFT (deferred but no v3.9.0+ plan linked)
+#   2  = DRIFT (deferred but no v3.9.0+ plan linked) **或检测无法完成**
+#
+# 2026-11-16（#5598 fail-closed 裁决 · 双血统征询 + ADR-014 D-06 ⇒ D-03 三态）：
+#   本门禁原先有**两处 fail-open**，两处都由既有负向夹具 fx06/fx10 记录在案：
+#   (a) 状态列非空但不是已知状态时，代码**回退到「整行扫关键字」** ——
+#       于是一行 `| INT-2 | … | WIP-DONOTUSE | - | - |` 会因为 Notes 里出现
+#       "CLOSED" 字样而被判成 CLOSED；
+#   (b) 「not in CV debt doc」与「unknown status」只进 FAILED_ITEMS，
+#       **而退出码判定只看 ACTIVE_COUNT / DEFERRED_WITHOUT_PLAN** ——
+#       于是债务行被改名或删除时，失败项不再被计数，门禁仍报 PASS（fx10 实测）。
+#   本次修复：列 4 非空且未知 ⇒ 直接判 FAIL；列 4 为空才允许整行回退；
+#   FAILED_ITEMS 非空 ⇒ FAIL；台账读不到 ⇒ INCOMPLETE(2)，不得 PASS。
 # =============================================================================
 
 set -uo pipefail
@@ -62,14 +73,18 @@ echo
 
 # Validate input docs
 if [ ! -f "$CROSS_VERSION_DEBT_DOC" ]; then
-    echo "❌ $CROSS_VERSION_DEBT_DOC not found"
-    exit 1
+    # 2026-11-16（#5598 fail-closed · D-03）：检测无法完成 ⇒ INCOMPLETE(2)，
+    # 不得当作 FAIL(1) 也不得当作 PASS(0)。fx06 负向夹具要求「非 0」，两者都满足。
+    echo "❌ $CROSS_VERSION_DEBT_DOC not found — 检测无法完成 ⇒ INCOMPLETE"
+    exit 2
 fi
 
 ACTIVE_COUNT=0
 CLOSED_COUNT=0
 DEFERRED_WITH_PLAN=0
 DEFERRED_WITHOUT_PLAN=0
+UNKNOWN_COUNT=0
+MISSING_COUNT=0
 FAILED_ITEMS=()
 
 for int_id in INT-1 INT-2 INT-3 INT-4; do
@@ -81,16 +96,23 @@ for int_id in INT-1 INT-2 INT-3 INT-4; do
     if [ -z "$status_line" ]; then
             echo "  [$int_id] NOT FOUND in $CV_DEBT"
         FAILED_ITEMS+=("$int_id (not in CV debt doc)")
+        MISSING_COUNT=$((MISSING_COUNT + 1))
         continue
     fi
 
     # Extract the status column (column 4 in CROSS-VERSION-DEBT.md table:
     # | ID | Topic | Status | Closing PR | Notes |). Strip emoji markers
-    # (✅/⚠️/❌) and bold so the case branch below matches. Fall back to a
-    # canonical-keyword scan of the line (handles backticks, asterisks, emoji,
-    # free-form notes) if column 4 is non-conforming.
-    status=$(echo "$status_line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); gsub(/\*\*?/, "", $4); print $4}' | sed -E 's/[✅⚠️❌]//g' | xargs)
-    if ! [[ "$status" =~ ^(CLOSED|ACTIVE|DEFERRED)$ ]]; then
+    # and bold so the case branch below matches.
+    #
+    # 2026-11-16（#5598 fail-closed 裁决 · D-03 三态）：**列 4 非空但不是已知状态
+    # ⇒ 不可分类 ⇒ FAIL。** 原实现在这里无条件回退到「整行扫 (CLOSED|ACTIVE|
+    # DEFERRED)」，于是 `WIP-DONOTUSE` 这类行会因为 Notes 里的 "CLOSED" 字样
+    # 被误判成 CLOSED —— 这正是 fx10 特征化夹具记录的真实 fail-open。
+    # 回退**只在列 4 为空**时允许（照顾列数不同的表行）。
+    status_col=$(echo "$status_line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); gsub(/\*\*?/, "", $4); print $4}' | sed -E 's/[✅⚠️❌]//g' | xargs)
+    if [ -n "$status_col" ]; then
+        status="$status_col"
+    else
         status=$(echo "$status_line" | grep -oE "(CLOSED|ACTIVE|DEFERRED)" | head -1)
     fi
     echo -n "  [$int_id] status=$status"
@@ -124,6 +146,7 @@ for int_id in INT-1 INT-2 INT-3 INT-4; do
         *)
             echo " (unknown status: $status)"
             FAILED_ITEMS+=("$int_id (unknown status)")
+            UNKNOWN_COUNT=$((UNKNOWN_COUNT + 1))
             ;;
     esac
 done
@@ -134,19 +157,26 @@ echo "  CLOSED:               $CLOSED_COUNT"
 echo "  ACTIVE:               $ACTIVE_COUNT"
 echo "  DEFERRED w/ plan:     $DEFERRED_WITH_PLAN"
 echo "  DEFERRED w/o plan:    $DEFERRED_WITHOUT_PLAN"
+echo "  UNKNOWN status:       $UNKNOWN_COUNT"
+echo "  NOT FOUND rows:       $MISSING_COUNT"
 echo
 
 # Decision logic
-if [ $ACTIVE_COUNT -gt 0 ] || [ $DEFERRED_WITHOUT_PLAN -gt 0 ]; then
+# 2026-11-16（#5598 fail-closed · D-03）：**FAILED_ITEMS 必须参与判定。**
+# 原实现只判 ACTIVE_COUNT / DEFERRED_WITHOUT_PLAN ⇒ 「not in CV debt doc」与
+# 「unknown status」这两类失败项被收集却不计数 ⇒ 债务行被改名/删除时门禁仍
+# 报 PASS（fx10 用真实门禁证明过这条 fail-open）。现在三类失败一律 ⇒ FAIL。
+if [ $ACTIVE_COUNT -gt 0 ] || [ $DEFERRED_WITHOUT_PLAN -gt 0 ] || [ ${#FAILED_ITEMS[@]} -gt 0 ]; then
     echo "=== Failed Items ==="
     for item in "${FAILED_ITEMS[@]}"; do
         echo "  - $item"
     done
     echo
-    echo "❌ D7 INT Debt: FAILED ($ACTIVE_COUNT ACTIVE, $DEFERRED_WITHOUT_PLAN DEFERRED w/o plan)"
+    echo "❌ D7 INT Debt: FAILED ($ACTIVE_COUNT ACTIVE, $DEFERRED_WITHOUT_PLAN DEFERRED w/o plan, ${#FAILED_ITEMS[@]} failed item(s))"
     echo "   5-Principle P5 violated: ACTIVE debt must be either:"
     echo "     1. Closed (implemented and tested)"
     echo "     2. Deferred with v3.9.0+ plan in $DEBT_PLAN_DOC"
+    echo "   and every INT row must be classifiable (missing / unknown status ⇒ FAIL, not PASS)."
     exit 1
 fi
 
