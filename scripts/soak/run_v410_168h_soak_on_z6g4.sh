@@ -206,17 +206,32 @@ load1() {
 # ---------------------------------------------------------------------------
 # kill_soak_tree — 停掉刚才起跑的那一轮（用于复验不通过时）
 # ---------------------------------------------------------------------------
+# 收掉一轮失败/被拒的 attempt。
+#
+# 顺序是有讲究的：**先杀「臂 A 脚本」本身**，因为它自带
+# `trap cleanup INT TERM` —— 那条 trap 会把服务端与驱动收干净。
+# 只杀运行器的子 shell 是不够的：臂 A 在自己的进程组里（运行器用
+# `set -m` 让每条臂独占进程组），杀 wrapper 不会连带杀臂 A，服务端
+# 会继续占着端口。
+#
+# 端口残留会让下一轮 attempt 直接撞上「port already in use」，
+# 于是每一轮都失败、每一轮都重试 —— 一个永远不会收敛的循环。
+# 所以最后还要按端口兜底清理，并在清完后断言端口已空。
 kill_soak_tree() {
   local pids p
+
+  for p in $(pgrep -f "v400_1h_soak.sh" 2>/dev/null || true); do
+    [ "$p" = "$$" ] && continue
+    kill -TERM "$p" 2>/dev/null || true
+  done
+  for p in $(pgrep -f "v400_soak_driver.py" 2>/dev/null || true); do
+    [ "$p" = "$$" ] && continue
+    kill -TERM "$p" 2>/dev/null || true
+  done
   pids="$(pgrep -f "run_v410_168h_soak.sh --hours" 2>/dev/null || true)"
   for p in $pids; do
     [ "$p" = "$$" ] && continue
     kill -TERM "$p" 2>/dev/null || true
-  done
-  # 驱动与服务端的 pid 由运行器自己写进产物目录
-  for p in "$(cat "$ATTEMPT_DIR/armA/driver.pid" 2>/dev/null)" \
-           "$(cat "$ATTEMPT_DIR/armA/server.pid" 2>/dev/null)"; do
-    [ -n "$p" ] && kill -TERM "$p" 2>/dev/null || true
   done
   # 臂 B 的 cargo test 与它拉起的测试二进制不是 wrapper 的直接子进程，
   # 不收掉就会在下一轮 attempt 之后继续占着机器 —— 下一轮复验读到的
@@ -225,20 +240,43 @@ kill_soak_tree() {
     [ "$p" = "$$" ] && continue
     kill -TERM "$p" 2>/dev/null || true
   done
+  # 端口兜底：任何还占着端口的进程
+  for p in $(lsof -ti "tcp:$PORT" 2>/dev/null || true); do
+    [ "$p" = "$$" ] && continue
+    kill -TERM "$p" 2>/dev/null || true
+  done
+
   sleep 3
-  for p in $pids; do
+
+  for p in $(pgrep -f "v400_1h_soak.sh" 2>/dev/null || true); do
     [ "$p" = "$$" ] && continue
     kill -KILL "$p" 2>/dev/null || true
   done
-  for p in "$(cat "$ATTEMPT_DIR/armA/driver.pid" 2>/dev/null)" \
-           "$(cat "$ATTEMPT_DIR/armA/server.pid" 2>/dev/null)"; do
-    [ -n "$p" ] && kill -KILL "$p" 2>/dev/null || true
+  for p in $(pgrep -f "v400_soak_driver.py" 2>/dev/null || true); do
+    [ "$p" = "$$" ] && continue
+    kill -KILL "$p" 2>/dev/null || true
+  done
+  for p in $pids; do
+    [ "$p" = "$$" ] && continue
+    kill -KILL "$p" 2>/dev/null || true
   done
   for p in $(pgrep -f "v312_mixed_soak" 2>/dev/null || true); do
     [ "$p" = "$$" ] && continue
     kill -KILL "$p" 2>/dev/null || true
   done
-  log "stopped the contaminated attempt ($ATTEMPT_DIR)"
+  for p in $(lsof -ti "tcp:$PORT" 2>/dev/null || true); do
+    [ "$p" = "$$" ] && continue
+    kill -KILL "$p" 2>/dev/null || true
+  done
+
+  sleep 1
+  local still
+  still="$(lsof -ti "tcp:$PORT" 2>/dev/null | tr '\n' ' ')"
+  if [ -n "$still" ]; then
+    log "WARNING: port $PORT is STILL held by [$still] after cleanup — the next attempt would collide on it."
+  else
+    log "stopped the contaminated attempt ($ATTEMPT_DIR); port $PORT is free again"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -309,7 +347,7 @@ while true; do
     Q="$(grep -c '^Q,' "$ATTEMPT_DIR/armA/driver.log" 2>/dev/null || echo 0)"
     [ -n "$Q" ] || Q=0
     QPS=$(( Q / VERIFY_SECS ))
-    log "throughput re-check: driver queries=$Q in ${VERIFY_SECS}s => ${QPS} q/s (floor $MIN_DRIVER_QPS)"
+    log "throughput re-check: driver queries=$Q in ${VERIFY_SECS}s => ${QPS} q/s (floor $MIN_DRIVER_QPS; a clean run does ~50 q/s, so anything under the floor means the host, not the software, is the limit)"
     if [ "$QPS" -ge "$MIN_DRIVER_QPS" ]; then
       bin_sha="$(sha256sum "$SOAK_REPO_ROOT/target/release/sqlrustgo-mysql-server" 2>/dev/null | cut -d" " -f1)"
       cat > "$ART_DIR/STARTED.json" <<JSON
