@@ -1112,7 +1112,6 @@ mod utilities_tests {
         assert_eq!(pos, 3);
     }
     #[test] // 此前漏属性 ⇒ 是死函数（clippy dead_code 抓到）；补上后成为真测试
-    #[ignore = "实现疑点：decode_lenenc_int 的 0xfd 分支用 u32::from_le_bytes([0, b0, b1, b2]) —— 0 落在最低字节 ⇒ 值被 ×256（本 payload 实得 256，而 MySQL lenenc 3 字节语义应为 1）；0xfc/0xfe 分支均无此错位。修正实现属协议行为变更，超出本轮 lint 清债范围 ⇒ 先按正确语义断言并忽略，留线索防漂移。"]
     fn decode_lenenc_int_3byte_via_0xfd() {
         let payload = [0xfd, 0x01, 0x00, 0x00];
         let mut pos = 0;
@@ -4146,7 +4145,23 @@ fn decode_lenenc_int(payload: &[u8], pos: &mut usize) -> Option<u64> {
         if *pos + 3 > payload.len() {
             return None;
         }
-        let v = u32::from_le_bytes([0, payload[*pos], payload[*pos + 1], payload[*pos + 2]]);
+        // MySQL length-encoded integer, 3-byte form: the length follows as
+        // three bytes in **little-endian** order, so the value is
+        // b0 + b1·256 + b2·65536.
+        //
+        // The 0 filler belongs in the **highest** byte. Putting it in the
+        // lowest one (the earlier `[0, b0, b1, b2]`) shifted every byte by
+        // one position and multiplied the decoded length by 256 — so a
+        // 64 KiB–16 MiB VARCHAR/BLOB value decoded as 256× its real length,
+        // the length check at the call site then failed, and the row decode
+        // broke. The 0xfc (2-byte) and 0xfe (8-byte) branches had no such
+        // displacement, which is why only this one was wrong.
+        let v = u32::from_le_bytes([
+            payload[*pos],
+            payload[*pos + 1],
+            payload[*pos + 2],
+            0,
+        ]);
         *pos += 3;
         Some(v as u64)
     } else if b0 == 0xfe {
