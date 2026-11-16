@@ -1,0 +1,98 @@
+schema_version: 1
+run_id: 20261116-fakebase-guard-001
+source_agent: mcode-macmini
+frozen_commit: 7fc7b48f8fefcfc2b0f01a49de17781d51b4671e
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: fakebase-5688-placeholder-guard
+  name: '#5688 正臂：占位基线守卫自证 4/4 绿（空存基线⇒PLACEHOLDER；真实存基线⇒仍验证；PENDING⇒非占位；空结果对真实基线⇒仍比对）'
+  cmd: "CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test -q -p sqlrustgo --test\
+    \ oracle_g1_tpch_sha256 placeholder_guard_tests -- --nocapture\n"
+  cwd: .
+  timeout_sec: 1200
+- id: fakebase-5688-baseline-file-shape
+  name: '#5688 取证臂：受保护基线文件 22 条中 15 条 row_count=0 且 sha256 全部相同（空结果集哈希 af5570f5…）⇒ 假基线机制坐实；基线文件本身零写入'
+  cmd: 'python3 - <<''PY''
+
+    import json, hashlib
+
+    p = "tests/oracle/baselines/tpch_sha256.json"
+
+    d = json.load(open(p, encoding="utf-8"))
+
+    qs = d["queries"]
+
+    empty = [q for q in qs if q.get("row_count") == 0]
+
+    hashes = {q["sha256"] for q in empty}
+
+    print("总条数:", len(qs))
+
+    print("row_count=0:", len(empty), "->", [q["query_id"] for q in empty])
+
+    print("零行条目的 sha256 去重数:", len(hashes), "->", sorted(hashes))
+
+    print("基线文件 sha256:", hashlib.sha256(open(p,''rb'').read()).hexdigest())
+
+    assert len(empty) == 15, "预期 15 条零行占位"
+
+    assert len(hashes) == 1, "预期零行条目共用同一空结果集哈希"
+
+    print("OK: 假基线机制坐实（15 条 = 同一份空）")
+
+    PY
+
+    '
+  cwd: .
+  timeout_sec: 300
+- id: fakebase-5688-reverse-mutation-guard-off
+  name: '#5688 反向变异臂：把占位判定去掉（is_placeholder_entry 恒 false）⇒ 占位条目会被计为 PASS，判据失效 ⇒ 该变异必须让自证测试翻红'
+  cmd: "f=tests/integration/tpch/oracle_g1_tpch_sha256.rs\nbak=$(mktemp -d)/oracle_g1_tpch_sha256.rs.bak\n\
+    cp \"$f\" \"$bak\"\nrestore() { cp \"$bak\" \"$f\"; }\ntrap restore EXIT\npython3 - \"$f\" <<'PY'\n\
+    import sys\nfrom pathlib import Path\nf = Path(sys.argv[1])\nsrc = f.read_text(encoding=\"utf-8\"\
+    )\n# 变异：占位判定恒为 false ⇒ 占位条目回到「哈希相等即 PASS」的旧行为\nmutated = src.replace(\n    'entry.row_count == 0 &&\
+    \ entry.sha256 != \"PENDING_GENERATION\"',\n    'false',\n)\nassert mutated != src, \"变异未命中：占位判定表达式已改形状\"\
+    \nf.write_text(mutated, encoding=\"utf-8\")\nprint(\"变异已注入：is_placeholder_entry => false\")\nPY\n\
+    rc=0\n# 退出码必须取自 cargo 本身：`cmd | tail` 的 $? 是 tail 的，会把\n# 「测试已翻红」记成 0（假绿）。用 PIPESTATUS 取管道第一段的码。\n\
+    CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test -q -p sqlrustgo --test oracle_g1_tpch_sha256\
+    \ placeholder_guard_tests 2>&1 | tail -25\nrc=${PIPESTATUS[0]}\nrestore; trap - EXIT\necho \"reverse-mutation\
+    \ cargo exit=$rc （预期非 0：去掉占位判定后自证测试必须翻红）\"\ngit diff --stat -- \"$f\" | tail -2\nexit $rc\n"
+  cwd: .
+  timeout_sec: 1800
+results:
+- id: fakebase-5688-placeholder-guard
+  started_at: '2026-11-16T15:27:11Z'
+  finished_at: '2026-11-16T15:28:02Z'
+  exit_code: 0
+  stdout_sha256: d5049a6ee1d3207b99ee8c876b3ef07d18bf2c5cbccf61e0d8e9b619087a03f6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-fakebase-5688-placeholder-guard.stdout
+  stderr_path: logs/001-fakebase-5688-placeholder-guard.stderr
+- id: fakebase-5688-baseline-file-shape
+  started_at: '2026-11-16T15:28:02Z'
+  finished_at: '2026-11-16T15:28:02Z'
+  exit_code: 0
+  stdout_sha256: 0fce249345ddf55ca72922accfdbe95d00552ad2a8db282a60eea67f8208afd3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-fakebase-5688-baseline-file-shape.stdout
+  stderr_path: logs/002-fakebase-5688-baseline-file-shape.stderr
+- id: fakebase-5688-reverse-mutation-guard-off
+  started_at: '2026-11-16T15:28:02Z'
+  finished_at: '2026-11-16T15:28:58Z'
+  exit_code: 101
+  stdout_sha256: 97bf52b287bf0b7428c35cd0b750a942ab5334af9c8e2db585254bed82f40f94
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-fakebase-5688-reverse-mutation-guard-off.stdout
+  stderr_path: logs/003-fakebase-5688-reverse-mutation-guard-off.stderr
+evidence_hash: sha256:d8fadde46c70473484c706b55ca690304189fcdc03a093e46b7b471423d6a6a0
+completed_at: '2026-11-16T15:28:58Z'
