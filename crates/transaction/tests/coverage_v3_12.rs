@@ -182,8 +182,8 @@ fn cov_savepoint_add_undo() {
 
 #[test]
 #[allow(deprecated)]
-    // rollback_to_noop 已 deprecated 但本测试正是其**过渡契约**的守卫
-    // （调用面与行为在删除前必须保持）⇒ allow(deprecated)，不改测新 API。
+// rollback_to_noop 已 deprecated 但本测试正是其**过渡契约**的守卫
+// （调用面与行为在删除前必须保持）⇒ allow(deprecated)，不改测新 API。
 fn cov_savepoint_rollback_noop_existing() {
     let mut sp = SavepointManager::new();
     sp.savepoint("s1".to_string()).unwrap();
@@ -194,8 +194,8 @@ fn cov_savepoint_rollback_noop_existing() {
 
 #[test]
 #[allow(deprecated)]
-    // rollback_to_noop 已 deprecated 但本测试正是其**过渡契约**的守卫
-    // （调用面与行为在删除前必须保持）⇒ allow(deprecated)，不改测新 API。
+// rollback_to_noop 已 deprecated 但本测试正是其**过渡契约**的守卫
+// （调用面与行为在删除前必须保持）⇒ allow(deprecated)，不改测新 API。
 fn cov_savepoint_rollback_noop_missing_is_err() {
     let mut sp = SavepointManager::new();
     assert!(sp.rollback_to_noop("nonexistent").is_err());
