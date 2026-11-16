@@ -344,6 +344,19 @@ A_COVERAGE_PCT=$(( A_ELAPSED_S * 100 / DURATION_SEC ))
 A_LOAD_OK=0
 [ "$A_QUERIES" -gt 0 ] && [ "$A_METRIC_ROWS" -ge "$A_ROWS_FLOOR" ] && A_LOAD_OK=1
 
+# --- host contention: was the box ours while we soaked? ------------------
+# The arm-A metrics carry a host-load column per sample. Summarise it
+# here so the report answers "was this a quiet machine?" without the
+# reader having to go dig through the CSV — and so a reviewer can tell
+# "the server got slow" apart from "the box got busy".
+A_HOST_LOAD_MAX=0; A_HOST_BUSY_SAMPLES=0
+if [ -f "$OUT/armA/metrics.csv" ]; then
+  A_HOST_LOAD_MAX=$(awk -F, 'NR>1 && $10+0 > m {m=$10+0} END{printf "%.2f", m}' "$OUT/armA/metrics.csv" 2>/dev/null || echo 0)
+  A_HOST_BUSY_SAMPLES=$(awk -F, 'NR>1 && $11+0 > 0 {n++} END{print n+0}' "$OUT/armA/metrics.csv" 2>/dev/null || echo 0)
+fi
+A_HOST_BUSY_PCT=0
+[ "$A_METRIC_ROWS" -gt 0 ] && A_HOST_BUSY_PCT=$(( A_HOST_BUSY_SAMPLES * 100 / A_METRIC_ROWS ))
+
 # --- arm B: the harness really executed SQL across all five classes ------
 B_ATTEMPTED=0; B_SUCCEEDED=0; B_FAILED=0; B_VERDICT="none"; B_CLASSES_OK=0
 if [ -f "$OUT/armB/mixed-workload-summary.md" ]; then
@@ -403,6 +416,7 @@ cat > "$OUT/FINAL_REPORT.md" <<EOF
 | 负载已实际施加 | $A_LOAD_OK (1=查询数>0 且覆盖窗口) |
 | 负载 | 80% 读 / 10% 写，16 客户端线程 |
 | 采样 | 15s：RSS / FD / 线程 / WAL 字节 / 磁盘余量 / 探针 / 存活 |
+| **主机争用** | 负载均值峰值 $A_HOST_LOAD_MAX；有 ≥50% CPU 进程的采样 $A_HOST_BUSY_SAMPLES/$A_METRIC_ROWS（$A_HOST_BUSY_PCT%） |
 
 ## 3. 臂 B —— 多模型 workload class W1..W5（$HOURS_LABEL 连续）
 
@@ -435,6 +449,10 @@ cat > "$OUT/FINAL_REPORT.md" <<EOF
 - 臂 A 的 FD 采集用 \`lsof\`（本机无 /proc）。
 - 机器在 run 启动窗口内可能并发其它 cargo 作业（门禁实跑），会影响吞吐/延迟分位数，
   **不影响**崩溃、panic、错误率、FD 泄漏、WAL 增长这些稳定性指标。
+- **主机争用已逐采样记录**（metrics.csv 的 host_load1 / host_busy 两列）：
+  负载均值峰值 $A_HOST_LOAD_MAX，有 ≥50% CPU 进程的采样占 $A_HOST_BUSY_PCT%。
+  若这个比例不为 0，则吞吐/延迟分位数要按「机器当时被别人占着」来读，
+  而崩溃、panic、FD 泄漏、WAL 增长这些稳定性指标仍然成立。
 EOF
 
 echo ""
