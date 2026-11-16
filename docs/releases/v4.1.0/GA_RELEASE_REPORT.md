@@ -28,17 +28,19 @@
 | 3 | **#5598 两处 fail-open 闭合**（退出码三态化 0/1/2）＋ A7-4 测量假阴性修正 | PR #5805；fx06/fx09/fx10 三道负向夹具实测全部 FIXTURE-PASS |
 | 4 | **168h SOAK 运行器交付并启动**（两臂：服务端稳定性 + 多模型 W1..W5） | PR #5806；`scripts/soak/run_v410_168h_soak.sh`；GA-2 harness 时长可配（`SQLRUSTGO_SOAK_DURATION_SECS`，单测 1 passed） |
 | 5 | **GA 全清单 35 项实跑**（冻结提交 `7e26c2b7c6`） | run `20261116-ga-gates-002`（plan sha256 `sha256:6466a0ec156…`） |
+| 6 | **三处红点的根因全在仪器上**：A5 覆盖率用整数口径比较小数（87.38 % 被判不达标）、V312-24 staging 认证**过期二进制**、两个新测试文件没跑 rustfmt | PR #5825 / #5827 / #5829；回归用例 12 + 5 条全绿 |
+| 7 | **SOAK 复验的两处仪器错误**：把「单条查询耗时」当「已过时间」（误杀三轮健康的 168 h）、helper 文件无可执行位（误杀第四轮） | PR #5826 / #5828；「同一份真实数据、两台仪器」回算对照见 §7.13 |
 
 ## 2. GA 判据逐条状态（rc_to_ga）
 
 | 判据 | 状态 | 依据 |
 |---|---|---|
 | All RC{N} release-blocking bugs closed | **未验证** | 仓内无执行点；本轮未做 RC 候选轮次 |
-| All 5 dimensions (D1-D5) PASS | **实跑中** | run `20261116-ga-gates-002`；结果以该 run 的 `results.jsonl` 为准 |
+| All 5 dimensions (D1-D5) PASS | **交付树上的认证轮进行中** | run `20261117-ga-gates-007`（在交付提交上执行）；结果以该 run 的 `results.jsonl` 为准。先行轮 `20261117-ga-gates-006` 已确认 `D1 Result: 10/10 (not-run: 0, blockers: 0)` |
 | 168h multi-model SOAK PASS | **未通过**（今日物理不可达） | 本轮 2026-11-16 启动两臂 run；满 168h 最早 2026-11-23 |
 | Tag v4.1.0-rcN cut, no P0 bugs since | **未验证** | 无 rc tag；P0 计数无门禁覆盖 |
 | GA promotion approved by human architect | **未取得** | `transitions.RC_to_GA.requires_human_approval: true`；明文「批准记录不能由 Agent 生成」 |
-| Coverage >= 80% | **实跑中** | 同 run |
+| Coverage >= 80% | **实测达标** | run `20261117-ga-gates-006`：`✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（GA 门槛 85，SSOT 源） |
 | GA 门禁清单 35 项全绿 | **实跑中** | 同 run |
 | GA 承载分支（main / release/v*） | **未满足** | `release/v4.1.0` 尚不存在；develop 上不得宣称 GA |
 
@@ -356,3 +358,225 @@ fixture_identity_mismatch`（**没有假漂移**）。门禁侧：`check_g1_tpch
 - 仍需属主/人类完成的事项不变：人类架构师签批（RC→GA）、承载分支
   `release/v4.1.0`、Hub #133 独立 Reviewer 回执、168 h SOAK 跑满；另两个
   **已过期**的 ADR-008 例外（2026-09-01 / 2026-10-31）需属主重新签发。
+
+> **本节状态已被 §7.13 更新**（以 §7.13 为准）：SOAK 已于
+> **2026-11-16T23:05:02Z** 在 Z6G4 上**起跑**（冻结提交 `d46bf93024`，
+> 复验 43.4 q/s、0 错误，预计 **2026-11-23T23:05:02Z** 跑满 168 h）；
+> 权威门禁轮为 **run `20261117-ga-gates-007`**（在交付提交上执行）。
+
+### 7.13 五台仪器，五次「测的不是被测物」
+
+run `20261117-ga-gates-005`（冻结提交 `578350cb70`，19/35 完成：PASS 16 / FAIL 3）暴露的三处红，
+**根因全都不在被测代码，而在量它的仪器**。三处的形状完全一样：一台仪器把某个量读错了，
+于是它给出的结论与被测物无关。
+
+修这三处的过程中，又在同一条链上撞见了**第四个同形状的实例**（(4)）——
+它不在门禁清单里，却当场又杀了一轮健康的 168h；随后在**门禁自己的链上**撞见
+**第五个实例**（(5)）—— 这一次杀的不是 168h，而是**一次从未发生的 TPC-H 比对**：
+门禁以为它比过了，其实一条查询都没跑。五处合起来指向同一条教训，
+所以本节按五处一起写。
+
+#### (1) A5 覆盖率：整数比较把 87.38 % 判成不达标（PR #5825）
+
+判据用 bash 的 `[ "$pct" -ge "$threshold" ]` 比较，而 `coverage_verdict` 用 `bc` 的
+`scale=2` 算出的是**小数**（`"87.38"`）。bash 的 `[ ]` 只做整数比较：
+
+```
+[ "87.38" -ge "85" ]  ⇒  "[: 87.38: integer expected"（rc=2）
+```
+
+于是「87.38 % ≥ 85 %」落进 else 分支判红。**同一个数、两套判据** —— 同一轮里
+`coverage_verdict` 判了 PASS（`average coverage: 87.38% (threshold: 85%)`），
+A5 紧跟着打印 `✗ [FAIL] A5 Coverage: 87.38% (min: 85%)`。
+
+这一个红同时打红三项：**seq1**（D1 的 A5）、**seq15**（B5 集成门禁）、**seq30**
+（SGL-001）。另有一处 fmt 红（PR #5823 改的两个文件没跑 rustfmt）打红 **B4 Format**
+与 **SGL-001** —— 与上一条同源。
+
+修法：判据改用浮点口径（`awk`），三种失败分开（低于门槛 / 覆盖率读不出
+`COVERAGE_VALUE_UNPARSEABLE` / 门槛读不出 `NO_THRESHOLD_IN_SSOT`），**读不出数值仍判红**。
+回归用例三条互为正反锚（87.38 vs 85 ⇒ PASS；84.99 vs 85 ⇒ FAIL；`"N/A"` ⇒ FAIL）。
+实测：bash 3.2.57 下 9 个判定用例全部符合预期；
+`cargo test --test coverage_notrun_honesty_test` ⇒ **12 passed / 0 failed**；
+`cargo fmt --check` ⇒ 干净。
+
+#### (2) SOAK 复验：把「单条查询耗时」当「已过时间」，三轮健康的 168h 被误杀（PR #5826）
+
+复验从 `driver.log` 的第 2 列取数，用它筛「驱动启动 30 s 之后」的行。但驱动写的
+第 2 列是**单条查询自己的耗时**（`t0` 取在循环体内、`ms=(monotonic-t0)*1000`）——
+于是那个谓词**任何一条延迟采样都满足不了**（它要求单条查询跑满 30 s），
+稳态区间恒为空集 ⇒ 复验恒判「0 q/s、错误率 100 %」。
+
+2026-11-17 在 Z6G4 实跑，**三轮都是健康的**，全被这道仪器判红：
+
+| attempt | 驱动真实产出 | 旧仪器判定 |
+|---|---|---|
+| `attempt-20261116T213208Z` | 9194 条查询 / 0 错误 | `0 q/s vs floor 10, error rate 100.000%` ⇒ REJECT |
+| `attempt-20261116T214113Z` | 12167 条查询 / 0 错误 | `0 q/s vs floor 10, error rate 100.000%` ⇒ REJECT |
+| `attempt-20261116T215924Z` | 起跑 180 s 内被判红（旧仪器） | 同上 |
+
+修法：时间基准改从臂 A 的 `metrics.csv` 取（15 s 一采样，带 `elapsed_s` 与**累计**
+`driver_q`/`driver_e`）；计算收敛到**单一实现** `scripts/soak/soak_steady_window.py`
+（启动器不再自带一份内联 awk —— 两份实现正是这次分歧的来源）；
+口径是「**读不出来 ≠ 达标**」。
+
+**同一份真实数据、两台仪器**（252 上 attempt-31 / attempt-32 的原始 metrics.csv 回算）：
+
+```
+attempt-31  新仪器: 6694 queries / 0 errors / 138s => 48.5 q/s, 0.000%, sustained=1  ⇒ 放行
+            旧仪器: 0 queries                                                        ⇒ REJECT
+attempt-32  新仪器: 8823 queries / 0 errors / 138s => 63.9 q/s, 0.000%, sustained=1  ⇒ 放行
+            旧仪器: 0 queries                                                        ⇒ REJECT
+```
+
+#### (3) V312-24 staging：门禁在认证过期二进制（PR #5827）
+`check_anti_fabrication.sh` 的 staging 有两处失守：①它**猜**哪个 artifact 是对的
+（「扫 `deps/`，取 mtime 最新的那个」）；②目标路径已存在时**直接跳过拷贝**，
+把旧文件当证据用。合起来的后果是：**门禁验的是上一版代码**。
+
+实测（GA 实跑 005 的 seq16）：VtuGuard 事务透传修复（`1f9425134d`，04:14）落地之后，
+门禁仍然报 `vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id` 失败 ——
+它跑的是 **02:30** 那个修复前的二进制；cargo 在 **05:31** 已经编出了含修复的新二进制，
+只是没被拷过去。同机同树两份二进制对照：
+
+| 二进制 | mtime | `vtu_guard` 18 条用例 |
+|---|---|---|
+| `target/release/sqlrustgo_storage`（门禁实际跑的） | Nov 17 02:30 | **17 passed / 1 failed** |
+| `target/release/deps/sqlrustgo_storage-162279769eca63aa`（cargo 05:31 编出） | Nov 17 05:31 | **18 passed / 0 failed** |
+
+修复本身是好的 —— 门禁在测上一版。
+
+修法：**让 cargo 自己说出它这次编出了什么**（`--message-format=json` ⇒ 取
+`compiler-artifact` 里 `profile.test == true` 的 `executable`），摆到 manifest 指定路径时
+**每次都覆盖**，并**拒绝**摆一个比它自己的源码还旧的 artifact（fail closed）。
+顺带把报告校验补严：`failed` 与 `summary.failed` 都判红（旧校验只看 `crashed`）。
+落法抽到 `scripts/gate/stage_test_binaries.py`（**非 `check_*` ⇒ 门禁分母仍是 168**）。
+回归用例 5 条，其中一条就是**「目标已存在时必须被覆盖」** —— 即事故本身。
+
+#### (4) 第四个实例：helper 没有可执行位，第四轮健康的 168h 被误杀（PR #5828）
+
+(2) 的修复引入的 `scripts/soak/soak_steady_window.py` 在 git 里是 `100644`
+—— **没有可执行位**。而启动器是**直接执行**它（靠 shebang）：
+
+```bash
+STEADY_LINE="$("$SOAK_REPO_ROOT/scripts/soak/soak_steady_window.py" ... 2>/dev/null || true)"
+```
+
+⇒ `Permission denied`（rc=126）⇒ stderr 被 `2>/dev/null` 吞掉、stdout 为空
+⇒ 复验读到空统计行，走 fail-closed 分支 ⇒ 判成「0 q/s、错误率 100 %」。
+
+**2026-11-17T22:24:58Z 实测**：Z6G4 上刚走**安静窗口**起跑的一轮
+（load=11、streak 10/10 —— 机器当时最安静的一刻）被这道仪器判红并停掉。
+而那份数据本身是健康的：
+
+```
+python3 scripts/soak/soak_steady_window.py <该 attempt 的 metrics.csv> 30
+⇒ 7617 8 138 55.2 0.105 1
+  （7617 条查询 / 8 次错误 / 138 s ⇒ 55.2 q/s、0.105 % 错误、sustained=1）
+```
+
+**坏的从来不是测量，是调用方式。** 同一个文件用 `python3 <path>` 调用就能出数。
+
+修法三层：①文件在 git 里改为 `100755`；②启动器改用 `python3 <path>` 调用，
+**不依赖可执行位**（让工具链与文件模式解耦，任何 checkout / 打包 / 镜像过程都不可能
+再把它改坏）；③复验加重试与诊断 —— 「读不出来」既不等于「不达标」，也不该一次就
+杀掉一轮健康的 attempt ⇒ 最多试 6 次（每次间隔 30 s），每次把**退出码、metrics 行数、
+helper 的原始输出**写进日志；6 次全失败才判红（仍是 fail closed）。
+
+#### (5) 第五个实例：夹具的**两套解析链**，一次从未发生的 TPC-H 比对（PR #5830）
+
+同一个问题「夹具在哪儿」，这棵树里有**两套实现**：
+
+| 侧 | 解析链 |
+|---|---|
+| shell（`scripts/gate/*.sh`） | `TPCH_DATA_DIR` → `~/sqlrustgo-tpch/data` |
+| Rust（`tests/common/tpch_fixture.rs::resolve_fixture_dir`） | `TPCH_DATA_DIR` → 仓库内候选目录（**不含** `~/sqlrustgo-tpch/data`） |
+
+于是：门禁预检看到「8/8 .tbl 都在」（**它以为自己能比一次**），Rust 侧却只看到
+「没有夹具」⇒ 测试自报 `TPCH-NOT-RUN: … reason=fixture_missing` ⇒ **比对从未发生**。
+而 G1 的 step 3 只看退出码（NOT-RUN 的测试仍以 0 退出）⇒ 把一次空跑说成
+「tpch_hash_test executed」——**一个 NOT-RUN 被记成了执行过的证据**。
+
+这是 §7.13 前面第 (2) 处的同一条教训在**门禁侧**的重演：**「读不出来」被当成了
+「读过了」**。夹具补齐（GA-GATES-4）之后，比对**仍然没有发生** —— 补的是数据，
+不是**交接**。
+
+修法两层：①**交接** —— G1 与 TPCH 子检查在预检通过后显式 `export TPCH_DATA_DIR`
+指向**自己验过的那个目录**（Rust 侧文档化的契约，CI 也用它递运行时生成的夹具）；
+②**诚实三态** —— G1 的三个 cargo 步骤改走 `run_tpch_test`，把「没跑成」（测试自报
+NOT-RUN）与「跑过了」分开，判成 **INCOMPLETE（exit 2）**，绝不记成 PASS；
+输出**先全量落盘再判定**（`| tail -10` 会把出现在前面的 NOT-RUN 标记截掉，
+截掉之后 grep 不到，空跑又会被当成通过）。
+
+实测（真实比对，不是空跑）：
+
+```
+TPCH_DATA_DIR=<fixture> cargo test --test tpch_hash_test
+  ⇒ G1 PASS: TPC-H 22/22 baseline hash matches (7439ce80…)
+TPCH_DATA_DIR=<fixture> cargo test --test tpch_gate_test
+  ⇒ 40 passed / 0 failed        （此前无环境变量时：TPCH-NOT-RUN 仍报 ok 的空跑）
+cargo test --test gate_honesty_test
+  ⇒ 26 passed / 0 failed         （既有 23 + 新增 3）
+```
+
+顺带独立验证了一件此前没人验过的事：**基线捕获点之后 `crates/` 变动过**
+（#5823 的 IDX-2 索引丢行修复、#5825 的 fmt 修复）—— 实测当前树的哈希仍等于
+`7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3`
+⇒ **真实缺陷的修复没有改变 TPC-H 输出，基线无漂移**。
+
+#### 五处红的共同形状
+
+五台仪器犯的是**同一种**错：把一个**只表示"某个量"**的东西当成了**另一个量**。
+
+- A5 把「覆盖率是小数」当成了「整数」；
+- SOAK 复验把「这条查询跑了多久」当成了「驱动跑了多久」；
+- V312-24 把「deps/ 里最新的那个文件」当成了「这次构建的那个文件」；
+- 复验把「文件没有可执行位（rc=126）」当成了「测量读不出数」；
+- TPC-H 门禁把「**shell 侧**解析出的夹具目录」当成了「**Rust 侧**也会用这个目录」。
+
+**量错 ⇒ 判错 ⇒ 门禁要么误杀健康物，要么认证过期物。** 两者的危害都比「没有门禁」大：
+门禁看起来在工作。
+
+更根本的一条：**每一处都在「读不出来」时给出了红，而红的形式与「真的不达标」无法区分。**
+所以修法不只在于把量读对，还在于让「读不出来」**自带原因**（rc、行数、原始输出）
+并**允许重试** —— 未知必须被写成未知，不能被写成事实。
+
+#### 权威实跑的落点
+
+| 轮次 | 冻结提交 | 作用 |
+|---|---|---|
+| `20261116-ga-gates-005` | `578350cb70` | 暴露上述三处红（PASS 16 / FAIL 3，19/35 完成时） |
+| `20261117-ga-gates-006` | `a73d88950b` | 验证三处修复：A5 `✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`、`D1 Result: 10/10 (not-run: 0, blockers: 0)`；同时又抓出 B4 fmt（两个新测试文件没跑 rustfmt ⇒ PR #5829）与本机 TPC-H 夹具缺失（G1/P22/G16 ⇒ INCOMPLETE `reason=fixture_missing`，已重建）。夹具补齐之后才继续往下查，撞见 (5) 那处**交接**缺口 ⇒ PR #5830 |
+| `20261117-ga-gates-007` | **交付提交**（本节所在的提交） | **交付树上的权威认证轮** —— 结果以该 run 的 `results.jsonl` 为准 |
+
+007 与 006 的树差异：006→007 多了 `docs/`（本节与看板行）与三个修复提交
+（#5828 只动 `scripts/soak/**` 与文件模式、#5829 只动 `tests/integration/**` 的格式、
+#5830 动 `scripts/gate/**` 与 `tests/integration/gate/**`）⇒ **`crates/` 与
+`scripts/soak/` 逐字节未变** ⇒ 被 soak 的二进制与 SOAK 脚本一致；但**门禁脚本在
+007 树里是修过的版本** —— (5) 那处交接修复正是第一次被完整执行。
+
+#### 168 h SOAK 已起跑（2026-11-16T23:05:02Z）
+
+`STARTED.json`（Z6G4 的 `~/soak-artifacts/20261116-168h-v410/STARTED.json`）：
+
+| 字段 | 值 |
+|---|---|
+| `started_utc` / `planned_end_utc` | `2026-11-16T23:05:02Z` / `2026-11-23T23:05:02Z` |
+| `frozen_commit` | `d46bf93024`（#5828） |
+| `soaked_binary_sha256` | `fa0928b2237cba7a1b897404cbb8bfe5b6530cec45942c189d1fdd58197368ab` |
+| `start_path` / `attempt` | `optimistic-after-wait` / 33（Z6G4 上的第 33 次尝试） |
+| 复验量 | `driver_queries_at_verify=5991`、`errors=0`、`qps=43.4`（门槛 10）、`error_rate=0.000 %`（上限 1 %） |
+
+起跑时宿主并不安静（`load1=30`、外来 CPU 856 %、系统 CPU 887 %）—— 安静窗口
+（load1 ≤ 40 连续 10 次）在 root 的 CI 常驻抢 CPU 的情况下凑不齐，
+因此走的是**乐观兜底**（等满 1800 s 后只要当下 load ≤ 40 就起跑），
+而**安全性由复验承担**：复验量的是**我们自己的真实吞吐与错误率**
+（受污染轮实测 4.7 q/s + 9.6 % 错误，干净轮 47–65 q/s + 0.00–0.12 % 错误）。
+
+运行期核验（起跑后实测）：臂 A `driver.log` 6963 行全是 `Q`（**0 行 `E`**），
+`metrics.csv` 的 `driver_q` 持续增长；臂 B 的 `v312_mixed_soak` 进程存活、
+7 线程（5 个负载类 + 主线程 + 测试框架）、CPU 时间 40 s 内 +0.28 CPU-s
+（≈1.4 %，属设计内限速：每类按自己的 ops/min 目标 `sleep` 限流，执行的仍是
+**真实 SQL**，失败会计入 `ops_failed`）；心跳 15 个样本、**最大间隙 16.0 s**
+（要求 ≤ 90 s）。臂 B 的 `mixed-workload-summary.md`（含 W1..W5 与 verdict）
+按设计**只在 168 h 结束时写**。
