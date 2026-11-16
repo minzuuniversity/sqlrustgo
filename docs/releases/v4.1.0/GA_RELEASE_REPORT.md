@@ -546,7 +546,7 @@ cargo test --test gate_honesty_test
 | 轮次 | 冻结提交 | 作用 |
 |---|---|---|
 | `20261116-ga-gates-005` | `578350cb70` | 暴露上述三处红（PASS 16 / FAIL 3，19/35 完成时） |
-| `20261117-ga-gates-006` | `a73d88950b` | 验证三处修复：A5 `✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`、`D1 Result: 10/10 (not-run: 0, blockers: 0)`；同时又抓出 B4 fmt（两个新测试文件没跑 rustfmt ⇒ PR #5829）与本机 TPC-H 夹具缺失（G1/P22/G16 ⇒ INCOMPLETE `reason=fixture_missing`，已重建）。夹具补齐之后才继续往下查，撞见 (5) 那处**交接**缺口 ⇒ PR #5830 |
+| `20261117-ga-gates-006` | `a73d88950b` | 验证三处修复：A5 `✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`、`D1 Result: 10/10 (not-run: 0, blockers: 0)`、`check_anti_fabrication` PASS（1288.6 s，#5827 的 staging 修复生效）；同时又抓出 B4 fmt（两个新测试文件没跑 rustfmt ⇒ PR #5829）与本机 TPC-H 夹具缺失（G1/P22/G16 ⇒ INCOMPLETE `reason=fixture_missing`，已重建）。夹具补齐之后才继续往下查，撞见 (5) 那处**交接**缺口 ⇒ PR #5830。**先行轮在 19/35 处主动停止**，把机器让给 007：已完成 19 项 = **14 PASS / 2 FAIL / 3 INCOMPLETE**，两个 FAIL（seq1 / seq15）同源于 fmt 根因（#5829 已修），三个 INCOMPLETE（seq11 / 13 / 14）同源于夹具（#5830 已修） |
 | `20261117-ga-gates-007` | **交付提交**（本节所在的提交） | **交付树上的权威认证轮** —— 结果以该 run 的 `results.jsonl` 为准 |
 
 007 与 006 的树差异：006→007 多了 `docs/`（本节与看板行）与三个修复提交
