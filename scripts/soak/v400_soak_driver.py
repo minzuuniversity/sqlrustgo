@@ -143,13 +143,20 @@ def _thread_main(thread_id: int, host: str, port: int, user: str, password: str,
                 row_count = len(rows) if rows else 0
                 output_fp.write(f"Q,{ms:.1f},{thread_id},{kind},{row_count}\n")
                 count += 1
-                if count % 500 == 0:
-                    output_fp.flush()
+                # **Flush every row.** This file is the SOAK's evidence of
+                # what the driver actually did; a row that sits in a
+                # buffer is a row nobody can count. The old code flushed
+                # only every 500th Q, so a slow run wrote nothing for
+                # minutes and a failure could not even be seen — and the
+                # E rows were never flushed at all, which made the
+                # error counts approximate.
+                output_fp.flush()
                 backoff = 0.05
             except Exception as e:
                 ms = (time.monotonic() - t0) * 1000.0
                 err_str = str(e).split("\n", 1)[0][:200]
                 output_fp.write(f"E,{ms:.1f},{thread_id},query,{err_str}\n")
+                output_fp.flush()
                 errs += 1
                 time.sleep(min(backoff, max_backoff))
                 backoff = min(backoff * 2.0, max_backoff)

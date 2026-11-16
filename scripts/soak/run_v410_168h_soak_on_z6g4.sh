@@ -136,11 +136,24 @@ foreign_heavy() {
       if (index(args, "run_v410_168h_soak_on_z6g4") > 0) next;
       if (index(args, "awk -v self=") > 0) next;
       if (args ~ /postgres|gitea/) next;
-      if (args ~ /cargo|rustc|oltp_test|sysbench|jemalloc/) {
+      # 正在干活的编译/压测进程：rustc、oltp_test、sysbench 永远是活的。
+      if (args ~ /rustc|oltp_test|sysbench|jemalloc/) {
         printf("%s|%s|%s|%s\n", pid, user, cpu, args); next
       }
+      # 任何吃掉半个核以上的进程。
       if (cpu+0 >= 50) {
-        printf("%s|%s|%s|%s\n", pid, user, cpu, args)
+        printf("%s|%s|%s|%s\n", pid, user, cpu, args); next
+      }
+      # cargo：只在它**正在干活**时算争用。
+      #
+      # 一个停在 0% CPU 的 `cargo build`（在等锁、在等网络）此刻并没有
+      # 抢机器；若把它也算成争用，机器上只要有人挂着 cargo，本 SOAK
+      # 就永远起不了跑 —— 那是把「有人在旁边待着」误当成「有人在抢」。
+      # 它一旦开始编译，rustc 子进程会被上一条命中；它自己也会很快
+      # 越过 10% CPU，被下一条命中。安静窗口要求连续 10 次满足，
+      # 所以「间歇性抢机器」照样会把计数清零。
+      if (args ~ /cargo/ && cpu+0 >= 10) {
+        printf("%s|%s|%s|%s\n", pid, user, cpu, args); next
       }
     }'
 }
