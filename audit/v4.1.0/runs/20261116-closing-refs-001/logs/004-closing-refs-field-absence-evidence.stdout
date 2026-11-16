@@ -1,0 +1,7 @@
+== 已关闭 issue #3186 的 payload ==
+  closedByPullRequestsReferences in payload: False
+  相关字段: ['ref', 'closed_at', 'pull_request']
+  state= closed closed_at= 2026-06-05T15:01:23Z
+== #5498 timeline 的 pull_ref 条目 ==
+   PR #5761 state=closed
+   PR #5799 state=open
