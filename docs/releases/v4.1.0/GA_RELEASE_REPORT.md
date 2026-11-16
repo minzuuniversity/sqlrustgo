@@ -148,7 +148,7 @@ cargo test --all-features --no-fail-fast                      timeout 16800s ≈
 
 ### 7.5 当前状态
 
-- 冻结提交 `902df14a6f2e6c2f7df505c4dce1437e3455faaf`（252 上 dirty=0）
+- 冻结提交 `3264b5dafd36cca7c52f03154d86d3945eb4f7b9`（252 上 dirty=0；2026-11-16T19:15:58Z 起的新版启动器用的是这一版）
 - release 二进制 sha256 `de7c4e09445d9697dedcd612e0ffabe0e3a1b63df242e2e8c7b732173cd1512f`
   —— `crates/` 在 `baa3f769c2`→`902df14a6` 间**未变**，故已构建二进制确属该冻结提交
 - pymysql 装在 `~/venv-srg`（venv；该机 PEP 668 管控，`pip --user` 不可用）
@@ -156,3 +156,36 @@ cargo test --all-features --no-fail-fast                      timeout 16800s ≈
 
 起跑时刻由门禁决定，不由人决定；`~/soak-artifacts/20261116-168h-v410/STARTED.json`
 会写下起跑时的冻结提交、二进制指纹、起止时间与复验 QPS，作为规范记录。
+
+### 7.6 驱动的证据文件此前是假的（PR #5812，合并 `3264b5dafd`）
+
+`scripts/soak/v400_soak_driver.py` 写证据文件的方式是：Q 行**每 500 次**才
+flush 一次，E 行**从不 flush** —— 落盘实际靠 8 KB 缓冲区隐式完成。两个后果：
+
+1. **证据不可读**：慢一点的 run 几分钟内一个字节都落不下去。
+2. **错误数不真**：E 行不 flush ⇒ 报告里的错误计数是「缓冲区最后一次冲出去
+   之前」的数，不是总数。
+
+第 1 条还直接导致 §7.2 那道「驱动活着但零查询 ⇒ 判红」的断言**误伤**：
+本机一个 2 分钟窗口的 run 里 `driver.log` 全空（驱动其实在跑，账在缓冲区
+里），断言在第 61 秒判红。**判据本身没错，但它读到的是缓冲区的账。**
+
+修法：Q 行与 E 行**每行都 flush**。复测（2 分钟臂 A，venv + pymysql）：
+
+```
+rc=0  耗时=128s
+ts,elapsed_s,rss_mb,fd_count,cpu_pct,driver_q,driver_e,panic_count,error_high,host_load1,host_busy
+2026-11-17T03:14:57,121,43.9,11,3.0,7793,3,00,0,12.92,1
+PASS — 7793 queries via 16 threads in 2min, 3 errors, 0 high-CPU episodes.
+```
+
+同时把**主机争用**纳入证据：臂 A 的 metrics.csv 新增 `host_load1` /
+`host_busy` 两列（逐采样记录主机负载均值与「是否有进程吃掉 ≥50% 核」），
+FINAL_REPORT 新增「主机争用」行与偏差说明。SOAK 的数字只有放在主机状态
+旁边才可读 —— 机器被别人压着时，「慢」说的是机器，不是服务端。
+
+启动器的「外来重负载」判据也相应放宽为**只算正在干活的**：停在 0 % CPU
+的 cargo build（在等锁/等网络）此刻并没有抢机器，把它算成争用会让 SOAK
+永远起不了跑 —— 那是把「有人在旁边待着」误当成「有人在抢」。它一开始
+编译，rustc 子进程会被立即命中；安静窗口要求连续 10 次满足，间歇性抢
+机器照样把计数清零。
