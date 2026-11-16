@@ -67,6 +67,24 @@ DRIVER_STARTUP_GRACE=$(( DRIVER_STARTUP_GRACE_SECS ))
 # to opt in; defaults preserve the every-tx durable behaviour.
 WAL_SYNC="${WAL_SYNC:-every}"
 
+# 错误率上限 —— 臂 A 的**可证伪性**判据（v4.1.0，2026-11-17 补）。
+#
+# 补之前臂 A 只有「负载是否真的施加上去」与「服务是否崩溃」两类判据，
+# **没有错误率判据**：驱动把 9.6% 的查询打成错误，臂 A 依然写 PASS。
+# 那样的 PASS 证明不了任何事 —— 它分不出「被测系统健康」与「被测系统
+# 已经坏了但没崩」。臂 B 一直有这道判据（v312_mixed_soak 的
+# "GA failure rate exceeds 1% threshold"），两臂口径不一致本身就是缺陷。
+#
+# 阈值取 1%，与臂 B 同值，且落在 252 的两个实测点之间：
+#
+#     干净轮      6 / 8445 = 0.07 %     ← 距上限 14 倍
+#     争用探针    9 / 7379 = 0.12 %     ← 距上限 8 倍
+#     受污染轮   89 / 1298 = 9.60 %     ← 超上限 9.6 倍（原来会被判 PASS！）
+#
+# 也就是说：这道判据在「干净」与「被邻机压垮」之间留出了两个数量级的
+# 余量，既不会误伤正常轮，又能让真正退化的一轮**判红**而不是写 PASS。
+MAX_ERROR_RATE_PCT="${MAX_ERROR_RATE_PCT:-1}"
+
 # Host contention, sampled next to the server's own metrics.
 #
 # A SOAK's numbers are only interpretable next to the host's state. If the
@@ -397,6 +415,17 @@ fi
 # Generate report
 REPORT="$RESULTS_DIR/STABILITY_REPORT.md"
 HOST_SAMPLE_COUNT=$(( $(wc -l < "$METRICS") - 1 ))
+# 错误率 —— 臂 A 的可证伪性判据（见上文 MAX_ERROR_RATE_PCT 的标定）。
+#
+# 从驱动日志的行数直接算，不依赖 summary.json：判据必须能从**原始证据**
+# 重算出来，报告里的数字与判据用的数字必须是同一个来源。
+DRIVER_TOTAL=$(( DRIVER_Q + DRIVER_E ))
+if [ "$DRIVER_TOTAL" -gt 0 ]; then
+  ERROR_RATE_PCT="$(awk -v e="$DRIVER_E" -v t="$DRIVER_TOTAL" 'BEGIN { printf "%.3f", 100.0 * e / t }')"
+else
+  ERROR_RATE_PCT="100.000"
+fi
+
 SUMMARY_DATA=$(cat "$SUMMARY")
 {
 echo "# v4.0.0 server-read-perf SOAK — ${DURATION_MIN}min"
@@ -419,6 +448,7 @@ echo "| Load proof (driver actually loaded the server) | $( [ "$LOAD_PROOF_OK" -
 echo "| Trigger panics | $PANIC_COUNT |"
 echo "| Driver queries done | $DRIVER_Q |"
 echo "| Driver errors | $DRIVER_E |"
+echo "| Driver error rate | $ERROR_RATE_PCT % (max $MAX_ERROR_RATE_PCT %) |"
 echo "| Server send_result_set done | $Q_DONE |"
 echo "| High-CPU episodes (>80%/core sustained >60s) | $HIGH_CPU_EPISODES |"
 echo "| High-CPU longest streak (s) | $HIGH_CPU_MAX_STREAK |"
@@ -460,7 +490,16 @@ if [ "$DRIVER_Q" -lt 100 ]; then
   echo "FAIL — driver completed fewer than 100 queries ($DRIVER_Q)." | tee -a "$REPORT"
   exit 1
 fi
+# 错误率判据 —— 放在最后：前面任何一条更严重的失败都先报。
+#
+# 退出码 4 是**新增**的（此前臂 A 只用 1/2/3），好让调用方能区分
+# 「跑挂了」与「跑完了但已经退化」。臂 B 的 1% 失败率判据一直存在，
+# 这里让两臂同一把尺子。
+if awk -v r="$ERROR_RATE_PCT" -v m="$MAX_ERROR_RATE_PCT" 'BEGIN { exit !(r + 0 > m + 0) }'; then
+  echo "FAIL — driver error rate ${ERROR_RATE_PCT}% exceeds ${MAX_ERROR_RATE_PCT}% (${DRIVER_E} errors / ${DRIVER_TOTAL} attempts): the run completed but the server was already degraded." | tee -a "$REPORT"
+  exit 4
+fi
 
-echo "PASS — ${DRIVER_Q} queries via ${THREADS} threads in ${DURATION_MIN}min, ${DRIVER_E} errors, ${HIGH_CPU_EPISODES} high-CPU episodes." \
+echo "PASS — ${DRIVER_Q} queries via ${THREADS} threads in ${DURATION_MIN}min, ${DRIVER_E} errors (${ERROR_RATE_PCT}%, max ${MAX_ERROR_RATE_PCT}%), ${HIGH_CPU_EPISODES} high-CPU episodes." \
   | tee -a "$REPORT"
 exit 0
