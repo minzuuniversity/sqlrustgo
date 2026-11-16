@@ -34,6 +34,20 @@
 #      本用户自己的进程也不算。
 #   2. **负载均值 ≤ QUIET_MAX_LOAD**（默认 40，对 80 核即 ≤50 % 占用）。
 #
+# **外来 CPU 怎么量（2026-11-17 实测修正）**
+# ------------------------------------------
+# 第一版用 `ps -eo pcpu` 求和。两个错误让它**虚高 5.7 倍**：`ps` 的 pcpu 是
+# **进程生命周期均值**（四小时前启动、现在空闲的进程仍按一生均值计费），
+# 而且**已经退出的进程完全不被计入** —— 而别人的编译负载恰恰是「spawn
+# 一个 rustc、烧 30 秒、退出」。同一时刻实测：
+#
+#     ps 生命周期均值口径   7985 %  （= 80 核，看起来满载）
+#     增量口径（8 s 差分）   1396 %  （= 14 核，实际占用）
+#
+# 现在改用**系统级 busy（/proc/stat 差分）− 自有进程 busy（/proc/<pid>/stat
+# 差分）**：不漏短命进程，本启动器自己的臂 B 被整块扣掉。阈值 2400 % 不变，
+# 且两端判定不变（污染轮 root 的 oltp_test 独占 29 核 = 2900 %，仍被拒）。
+#
 # 为什么按**总量**判，不按「有没有某个重进程」判
 # ----------------------------------------------
 # 第一版判据是「存在一个外来进程吃 ≥50 % CPU ⇒ 争用」。实测它太敏感：
@@ -67,8 +81,22 @@
 # 吞吐复验
 # --------
 # 安静窗口只是「起跑那一刻」的状态。起跑后等 VERIFY_SECS 秒，看驱动真实
-# 跑了多少查询；折算 QPS 低于 MIN_DRIVER_QPS 就说明机器还是被压着 —— 停掉
-# 这一轮，回到等待，绝不把一份被污染的 run 撑满 168 小时。
+# 跑了多少查询、错了多少；折算 QPS 低于 MIN_DRIVER_QPS、或错误率高于
+# MAX_ERROR_RATE_PCT，就说明机器还是被压着 —— 停掉这一轮，回到等待，
+# 绝不把一份被污染的 run 撑满 168 小时。
+#
+# 复验量的是**稳态区间**（驱动启动 30 s 之后）：热身段（连接建立、首屏
+# 数据准备）的错误不代表稳态。
+#
+# 等待超时后的乐观起跑
+# --------------------
+# 252 上 root 的 CI 常驻（`bustubx-unpause-ci.sh` 连续跑 4 h 20 m，不断
+# 拉起 cargo build/check/test/clippy），「连续 10 分钟既低负载又无外来
+# CPU」这个组合几乎凑不齐 —— 只留安静窗口的话，启动器会永远等下去，
+# 而**等下去不是保护，是死锁**。所以等满 QUIET_WAIT_MAX（默认 2 h）后，
+# 只要 load1 ≤ QUIET_MAX_LOAD（机器没有过载）就允许试跑一次，由**复验**
+# 决定收不收：复验量的是我们自己的真实吞吐与错误率，是**结果指标**，
+# 比「机器看起来安静」这个代理指标可靠。
 #
 # 用法
 # ----
@@ -87,7 +115,10 @@
 #   FOREIGN_CPU_MAX    安静窗口的外来 CPU 总量上限（默认 2400 %）
 #   QUIET_SAMPLES      安静窗口需连续满足的次数（默认 10，每次 60 s ⇒ 10 分钟）
 #   QUIET_INTERVAL     采样间隔秒数（默认 60）
-#   MIN_DRIVER_QPS     吞吐复验的 QPS 下限（默认 5）
+#   QUIET_WAIT_MAX     等满这么多秒还没凑齐安静窗口就允许乐观起跑（默认 7200）
+#   MIN_DRIVER_QPS     吞吐复验的 QPS 下限（默认 10）
+#   MAX_ERROR_RATE_PCT 复验的错误率上限（默认 1）
+#   RETRY_BACKOFF      一轮被拒后的退避秒数（默认 300）
 #   VERIFY_SECS        吞吐复验的等待秒数（默认 180）
 #
 # 退出码
@@ -110,7 +141,27 @@ QUIET_MAX_LOAD="${QUIET_MAX_LOAD:-40}"
 FOREIGN_CPU_MAX="${FOREIGN_CPU_MAX:-2400}"
 QUIET_SAMPLES="${QUIET_SAMPLES:-10}"
 QUIET_INTERVAL="${QUIET_INTERVAL:-60}"
-MIN_DRIVER_QPS="${MIN_DRIVER_QPS:-5}"
+# 吞吐复验的 QPS 下限。
+#
+# 从 5 提到 10：旧值 5 贴着**实测的受污染轮**（4.7 q/s）—— 只差 6 % 余量，
+# 等于没有余量。252 上三个实测点：
+#
+#     受污染轮   4.7 q/s   错误率 9.6 %      ← 必须被拒
+#     干净轮      47 q/s   错误率 0.07 %     ← 必须被收
+#     争用探针    61 q/s   错误率 0.12 %     ← 必须被收
+#
+# 10 落在 4.7 与 47 之间：距污染轮 2.1 倍、距健康轮 4.7 倍，两个方向都有余量。
+MIN_DRIVER_QPS="${MIN_DRIVER_QPS:-10}"
+# 复验的错误率上限 —— 与臂 A / 臂 B 的 1% 同口径（2026-11-17 实测标定：
+# 健康 0.07–0.12 %，受污染 9.6 %）。
+MAX_ERROR_RATE_PCT="${MAX_ERROR_RATE_PCT:-1}"
+# 等满这么多秒还没凑齐安静窗口，就允许一次「乐观起跑」：由复验（吞吐 +
+# 错误率）决定收不收。252 上 root 的 CI 常驻，安静窗口几乎凑不齐 ——
+# 死锁不是保护（2026-11-17 实测：外来 CPU 1396 % 远低于上限，但 load1
+# 反复越过 40）。默认 2 小时。
+QUIET_WAIT_MAX="${QUIET_WAIT_MAX:-7200}"
+# 一轮被拒后的退避秒数（避免连着试，把机器搅得更挤）。
+RETRY_BACKOFF="${RETRY_BACKOFF:-300}"
 VERIFY_SECS="${VERIFY_SECS:-180}"
 
 mkdir -p "$ART_DIR"
@@ -158,45 +209,174 @@ fi
   || fail "release binary missing after build: $SOAK_REPO_ROOT/target/release/sqlrustgo-mysql-server"
 
 log "launcher up: repo=$SOAK_REPO_ROOT head=$HEAD_COMMIT art=$ART_DIR run_id=$RUN_ID hours=$HOURS port=$PORT"
-log "policy: quiet_max_load=$QUIET_MAX_LOAD foreign_cpu_max=$FOREIGN_CPU_MAX quiet_samples=$QUIET_SAMPLES interval=${QUIET_INTERVAL}s min_qps=$MIN_DRIVER_QPS verify_secs=$VERIFY_SECS"
+log "policy: quiet_max_load=$QUIET_MAX_LOAD foreign_cpu_max=$FOREIGN_CPU_MAX quiet_samples=$QUIET_SAMPLES interval=${QUIET_INTERVAL}s min_qps=$MIN_DRIVER_QPS max_error_rate_pct=$MAX_ERROR_RATE_PCT quiet_wait_max=${QUIET_WAIT_MAX}s retry_backoff=${RETRY_BACKOFF}s verify_secs=$VERIFY_SECS"
 
 # ---------------------------------------------------------------------------
-# 安静窗口判据
+# 外来 CPU 总量 —— **增量**口径（2026-11-17 实测修正）
 # ---------------------------------------------------------------------------
-# 列出「外来重负载」：不是本仓、不是 forge 自己、且（像一次构建/压测）
-# 或（吃掉了 ≥50 % CPU）的进程。
-# **只把「别人」的作业算作外来重负载。**
 #
-# 这一条是承重的，不是随手写的过滤：本启动器自己起的那一轮 SOAK 里，
-# 臂 B 就是一个 `cargo test --release --test v312_mixed_soak` —— 它命中
-# 「像 cargo」这一条，却是我们自己的作业。若不按 owner 区分，启动器会在
-# 自己起跑之后判定「机器还是被压着」，把刚起的 run 停掉，然后永远等下去。
+# 旧口径（`ps -eo pcpu` 求和）有两个致命错误，252 上实测把它**虚高 5.7 倍**：
 #
-# 所有者相同 ⇒ 不是外来争用；整机层面的争用由 load 均值那一道门禁兜底。
-# 外来 CPU 总量（%），以及逐条明细（供日志留痕）。
+#   1. `ps` 的 pcpu 是**进程生命周期均值**，不是当前占用。一个 4 小时前
+#      启动、现在空闲的进程，仍然按它一生的均值计费。
+#   2. **已经退出的进程完全不被计入** —— 而别人的编译负载恰恰是
+#      「spawn 一个 rustc、烧 30 秒、退出」，样本之间这些 CPU 一个都不算。
 #
-# **只把「别人 owner」的作业算作争用。**
+# 实测对照（同一时刻、同一台 80 核机器、同一组别的作业）：
 #
-# 这一条是承重的，不是随手写的过滤：本启动器自己起的那一轮 SOAK 里，
-# 臂 B 就是一个 `cargo test --release --test v312_mixed_soak` —— 它命中
-# 「像 cargo」这一条，却是我们自己的作业。若不按 owner 区分，启动器会在
-# 自己起跑之后判定「机器还是被压着」，把刚起的 run 停掉，然后永远等下去。
+#     ps 生命周期均值口径   7985 %   （= 80 核，看起来是满载）
+#     增量口径（8 s 差分）   1396 %   （= 14 核，实际占用）
 #
-# 所有者相同 ⇒ 不是外来争用；整机层面的争用由 load 均值那一道门禁兜底。
-foreign_cpu_total() {
-  ps -eo user=,pcpu=,args= 2>/dev/null | awk -v repo="$SOAK_REPO_ROOT" -v me="$(id -un)" '
-    {
-      user=$1; cpu=$2;
-      $1=""; $2=""; args=$0;
-      if (user == me) next;
-      if (index(args, repo) > 0) next;
-      if (index(args, "run_v410_168h_soak_on_z6g4") > 0) next;
-      if (index(args, "awk -v repo=") > 0) next;
-      if (args ~ /postgres|gitea/) next;
-      s += cpu;
-      if (cpu+0 >= 20) printf("%s|%s|%s\n", user, cpu, substr(args, 1, 90));
-    }
-    END { printf("TOTAL|%s|%.0f\n", (s+0), (s+0)) }'
+# 用虚高 5.7 倍的数字卡门禁，等于要求一台「80 核全空闲」的机器。而 252 上
+# root 的 CI 常驻（`bustubx-unpause-ci.sh` 已连续跑 4 h 20 m，不断拉起
+# cargo build/check/test/clippy），旧口径下安静窗口**永远不会满足** ——
+# 门禁不是保护，是死锁。
+#
+# 新口径：**系统级 busy（/proc/stat 差分）− 自有进程 busy（/proc/<pid>/stat 差分）**。
+#
+#   * 系统级口径**不漏短命进程**：它们烧掉的 CPU 计入 /proc/stat 的 total。
+#     iowait 计入 idle（I/O 阻塞由 load1 那道门禁与 fsync 探针兜底）。
+#   * 自有进程整块扣掉：本启动器自己起的臂 B（cargo test）不会被误判成
+#     「外来争用」—— 这与旧口径按 owner 区分的意图一致，但更彻底。
+#   * **标定不失效**：污染轮里 root 的 oltp_test 独占 29 核 = 2900 %，
+#     单这一项就超过 2400 % 的上限，仍然会被拒；干净轮与争用探针
+#     （实测 61 q/s、0.12 % 错误）仍落在上限之内。两端判定不变。
+#
+# 代价：系统级口径把 forge 自己的 postgres/gitea 也算成外来（各约 1–3 %，
+# 合计 < 0.5 核），方向是**偏严**，可接受。
+CPU_SNAP="$ART_DIR/.cpu_snapshot.json"
+
+sample_cpu() {
+  python3 - "$CPU_SNAP" <<'PYEOF'
+import os, sys, time, glob, json
+
+SNAP = sys.argv[1]
+HZ = os.sysconf('SC_CLK_TCK')
+
+
+def read_now():
+    total = idle = 0
+    try:
+        with open('/proc/stat') as f:
+            for line in f:
+                if line.startswith('cpu '):
+                    v = [int(x) for x in line.split()[1:9]]
+                    total = sum(v)
+                    idle = v[3] + v[4]   # idle + iowait
+                    break
+    except Exception:
+        pass
+    procs = {}
+    for p in glob.glob('/proc/[0-9]*/stat'):
+        try:
+            with open(p) as f:
+                raw = f.read()
+            rp = raw.rindex(')')
+            pid = p.split('/')[2]
+            rest = raw[rp + 2:].split()
+            procs[pid] = (os.stat(p).st_uid, int(rest[11]) + int(rest[12]))
+        except Exception:
+            pass
+    return {'t': time.time(), 'total': total, 'idle': idle, 'procs': procs}
+
+
+def uname_of(uid):
+    try:
+        import pwd
+        return pwd.getpwuid(uid).pw_name
+    except Exception:
+        return str(uid)
+
+
+now = read_now()
+try:
+    with open(SNAP) as f:
+        prev = json.load(f)
+except Exception:
+    prev = None
+with open(SNAP, 'w') as f:
+    json.dump(now, f)
+if prev is None:
+    # 第一次采样没有基线：这一轮**不算数**（宁可少一次机会，不可误判安静）
+    print('warmup|0|0')
+    print('top|')
+    sys.exit(0)
+
+dt = now['t'] - prev['t']
+d_total = now['total'] - prev['total']
+d_idle = now['idle'] - prev['idle']
+sys_pct = 100.0 * (d_total - d_idle) / d_total if d_total > 0 else 0.0
+
+me = os.getuid()
+own_ticks = 0
+for pid, (uid, ticks) in now['procs'].items():
+    if uid != me:
+        continue
+    old = prev['procs'].get(pid)
+    if old is not None:
+        own_ticks += ticks - old[1]
+own_pct = 100.0 * own_ticks / (dt * HZ) if dt > 0 else 0.0
+
+foreign = sys_pct - own_pct
+if foreign < 0:
+    foreign = 0.0
+
+# 明细：逐进程的当前占用（仅供日志留痕；短命进程可能已退出而看不到）
+detail = []
+for pid, (uid, ticks) in now['procs'].items():
+    if uid == me:
+        continue
+    old = prev['procs'].get(pid)
+    if old is None:
+        continue
+    pct = 100.0 * (ticks - old[1]) / (dt * HZ)
+    if pct >= 20:
+        detail.append((pct, uname_of(uid)))
+detail.sort(reverse=True)
+top = ';'.join('%s|%.0f' % (u, p) for p, u in detail[:3])
+
+print('%.0f|%.0f|%.0f' % (foreign, sys_pct, own_pct))
+print('top|%s' % top)
+PYEOF
+}
+
+# ---------------------------------------------------------------------------
+# fsync 探针 —— 量**这块盘**在起跑那一刻的写延迟
+# ---------------------------------------------------------------------------
+#
+# 252 上 root 的编译与我们的 WAL 落在**同一块 NVMe**（/home 与 /workspace
+# 同属 /dev/nvme0n1p2），所以「盘现在挤不挤」比「CPU 挤不挤」更直接地
+# 决定这次 SOAK 的数字有没有意义。实测（同一时刻）：
+#
+#     fsync p50 = 4.16 ms    p95 = 11.88 ms    max = 782 ms
+#     （健康 NVMe 应在 0.2–0.5 ms 量级）
+#
+# 这个探针**只记录、不设门禁**：真正的门禁是复验（吞吐 + 错误率），
+# 它是结果指标；探针是上下文，写进 STARTED.json 与日志，让报告能说清
+# 「这次跑的盘是什么状态」。
+fsync_probe() {
+  python3 - "$1" <<'PYEOF'
+import os, sys, time, statistics
+d = sys.argv[1]
+try:
+    os.makedirs(d, exist_ok=True)
+    lat = []
+    for i in range(7):
+        p = os.path.join(d, '.fsync-probe-%d' % i)
+        fd = os.open(p, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
+        os.write(fd, b'x' * 4096)
+        t0 = time.perf_counter()
+        os.fsync(fd)
+        t1 = time.perf_counter()
+        os.close(fd)
+        os.unlink(p)
+        lat.append((t1 - t0) * 1000.0)
+        time.sleep(0.02)
+    lat.sort()
+    print('%.2f' % statistics.median(lat))
+except Exception:
+    print('unknown')
+PYEOF
 }
 
 # Portable "now + N seconds" (GNU -d / BSD -v).
@@ -331,14 +511,23 @@ start_soak() {
 # ---------------------------------------------------------------------------
 STREAK=0
 ATTEMPT=0
+WAIT_START="$(date +%s)"
 while true; do
   ATTEMPT=$((ATTEMPT + 1))
   LOAD="$(load1)"
-  FOREIGN_OUT="$(foreign_cpu_total)"
-  FOREIGN_TOTAL="$(printf '%s\n' "$FOREIGN_OUT" | awk -F'|' '/^TOTAL\|/ {print $3}')"
+  CPU_OUT="$(sample_cpu)"
+  FOREIGN_TOTAL="$(printf '%s\n' "$CPU_OUT" | sed -n '1p' | cut -d'|' -f1)"
+  SYS_CPU="$(printf '%s\n' "$CPU_OUT" | sed -n '1p' | cut -d'|' -f2)"
+  OWN_CPU="$(printf '%s\n' "$CPU_OUT" | sed -n '1p' | cut -d'|' -f3)"
+  FOREIGN_TOP="$(printf '%s\n' "$CPU_OUT" | sed -n '2p' | cut -d'|' -f2-)"
   [ -n "$FOREIGN_TOTAL" ] || FOREIGN_TOTAL=0
-  FOREIGN_TOP="$(printf '%s\n' "$FOREIGN_OUT" | grep -v '^TOTAL|' | head -3 | tr '\n' ';' | cut -c1-200)"
+  [ -n "$SYS_CPU" ] || SYS_CPU=0
+  [ -n "$OWN_CPU" ] || OWN_CPU=0
+  WARMUP=0
+  [ "$FOREIGN_TOTAL" = "0" ] && [ "$SYS_CPU" = "0" ] && WARMUP=1
+
   QUIET=1
+  [ "$WARMUP" -eq 1 ] && QUIET=0
   [ "$FOREIGN_TOTAL" -gt "$FOREIGN_CPU_MAX" ] && QUIET=0
   LOAD_INT="$(printf '%.0f' "$LOAD" 2>/dev/null || echo 0)"
   [ "$LOAD_INT" -gt "$QUIET_MAX_LOAD" ] && QUIET=0
@@ -349,23 +538,73 @@ while true; do
     STREAK=0
   fi
 
+  WAITED=$(( $(date +%s) - WAIT_START ))
   if [ "$QUIET" -eq 1 ]; then
-    log "host QUIET load=$LOAD_INT foreign_cpu=${FOREIGN_TOTAL}% streak=$STREAK/$QUIET_SAMPLES"
+    log "host QUIET load=$LOAD_INT foreign_cpu=${FOREIGN_TOTAL}% system_cpu=${SYS_CPU}% own_cpu=${OWN_CPU}% streak=$STREAK/$QUIET_SAMPLES waited=${WAITED}s"
   else
-    log "host BUSY  load=$LOAD_INT foreign_cpu=${FOREIGN_TOTAL}% (max $FOREIGN_CPU_MAX%) streak=0/$QUIET_SAMPLES top=[$FOREIGN_TOP]"
+    log "host BUSY  load=$LOAD_INT foreign_cpu=${FOREIGN_TOTAL}% (max $FOREIGN_CPU_MAX%) system_cpu=${SYS_CPU}% streak=0/$QUIET_SAMPLES waited=${WAITED}s top=[$FOREIGN_TOP]"
   fi
 
+  # ---- 起跑条件：两条路 ----------------------------------------------------
+  #
+  # (a) **安静窗口**（首选）：连续 QUIET_SAMPLES 次同时满足
+  #     外来 CPU ≤ FOREIGN_CPU_MAX 与 load1 ≤ QUIET_MAX_LOAD。
+  #     这是「主机确实空闲」的正面证据。
+  #
+  # (b) **等待超时后的乐观起跑**：等满 QUIET_WAIT_MAX 秒仍未凑齐安静窗口时，
+  #     只要 load1 ≤ QUIET_MAX_LOAD（机器**没有过载**）就允许试跑一次，
+  #     由**复验**（真实吞吐 + 错误率）决定收不收。
+  #
+  # 为什么要 (b)：252 上 root 的 CI 常驻，「连续 10 分钟既无外来 CPU 又有
+  # 低负载」这个组合几乎不会出现（2026-11-17 实测：外来 CPU 实测 1396%，
+  # 但 load1 在 31–47 之间反复越过 40）。只留 (a) 的话，启动器会永远等下去，
+  # 而「等下去」不是保护，是死锁。
+  #
+  # (b) 的安全性来自复验而不是来自「机器看起来安静」：复验量的是**我们自己的
+  # 真实吞吐与错误率**。受污染轮实测 4.7 q/s + 9.6% 错误，干净轮 47–65 q/s
+  # + 0.07–0.12% 错误 —— 两道结果指标都能把污染轮挡在外面。宁可多试几轮
+  # （每轮代价 3 分钟），不可带噪起跑，也不可永远不起跑。
+  START_PATH=""
   if [ "$STREAK" -ge "$QUIET_SAMPLES" ]; then
-    log "quiet window satisfied ($STREAK consecutive samples) — starting the $HOURS h clock"
+    START_PATH="quiet-window"
+  elif [ "$WAITED" -ge "$QUIET_WAIT_MAX" ] && [ "$LOAD_INT" -le "$QUIET_MAX_LOAD" ]; then
+    START_PATH="optimistic-after-wait"
+  fi
+
+  if [ -n "$START_PATH" ]; then
+    log "starting attempt (path=$START_PATH): load=$LOAD_INT foreign_cpu=${FOREIGN_TOTAL}% system_cpu=${SYS_CPU}% waited=${WAITED}s attempt=$ATTEMPT"
     start_soak
 
     sleep "$VERIFY_SECS"
-    Q="$(grep -c '^Q,' "$ATTEMPT_DIR/armA/driver.log" 2>/dev/null || echo 0)"
-    [ -n "$Q" ] || Q=0
-    QPS=$(( Q / VERIFY_SECS ))
-    log "throughput re-check: driver queries=$Q in ${VERIFY_SECS}s => ${QPS} q/s (floor $MIN_DRIVER_QPS; a clean run does ~50 q/s, so anything under the floor means the host, not the software, is the limit)"
-    if [ "$QPS" -ge "$MIN_DRIVER_QPS" ]; then
+    # 复验只看**稳态区间**：驱动启动后前 30 s 是热身（连接建立、首屏数据
+    # 准备），那段的错误不代表稳态。稳态 = elapsed ≥ 30 s 的那些行。
+    DRIVER_LOG="$ATTEMPT_DIR/armA/driver.log"
+    read -r Q_STEADY E_STEADY DRIVER_END_MS <<EOF
+$(awk -F, '
+  /^Q,/ { if ($2+0 >= 30000) q++; if ($2+0 > m) m = $2+0 }
+  /^E,/ { if ($2+0 >= 30000) e++; if ($2+0 > m) m = $2+0 }
+  END { printf "%d %d %d\n", q+0, e+0, m+0 }' "$DRIVER_LOG" 2>/dev/null)
+EOF
+    [ -n "${Q_STEADY:-}" ] || Q_STEADY=0
+    [ -n "${E_STEADY:-}" ] || E_STEADY=0
+    [ -n "${DRIVER_END_MS:-}" ] || DRIVER_END_MS=0
+    STEADY_SECS=$(( (DRIVER_END_MS - 30000) / 1000 ))
+    [ "$STEADY_SECS" -lt 1 ] && STEADY_SECS=1
+    QPS="$(awk -v q="$Q_STEADY" -v s="$STEADY_SECS" 'BEGIN { printf "%d", q / s }')"
+    TOTAL_STEADY=$(( Q_STEADY + E_STEADY ))
+    if [ "$TOTAL_STEADY" -gt 0 ]; then
+      ERR_PCT="$(awk -v e="$E_STEADY" -v t="$TOTAL_STEADY" 'BEGIN { printf "%.3f", 100.0 * e / t }')"
+    else
+      ERR_PCT="100.000"
+    fi
+    SUSTAINED=1
+    [ "$DRIVER_END_MS" -lt 60000 ] && SUSTAINED=0
+    log "throughput re-check: steady ${Q_STEADY} queries / ${E_STEADY} errors in ${STEADY_SECS}s => ${QPS} q/s (floor $MIN_DRIVER_QPS), error rate ${ERR_PCT}% (max $MAX_ERROR_RATE_PCT%)"
+
+    if [ "$SUSTAINED" -eq 1 ] && [ "$QPS" -ge "$MIN_DRIVER_QPS" ] && \
+       awk -v r="$ERR_PCT" -v m="$MAX_ERROR_RATE_PCT" 'BEGIN { exit !(r + 0 <= m + 0) }'; then
       bin_sha="$(sha256sum "$SOAK_REPO_ROOT/target/release/sqlrustgo-mysql-server" 2>/dev/null | cut -d" " -f1)"
+      FSYNC_P50="$(fsync_probe "${SOAK_DATA_DIR:-/tmp/sqlrustgo-v410-168h-$RUN_ID}")"
       cat > "$ART_DIR/STARTED.json" <<JSON
 {
   "run_id": "$RUN_ID",
@@ -379,21 +618,36 @@ while true; do
   "started_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "planned_end_utc": "$(end_utc_in $((HOURS*3600)))",
   "verify_secs": $VERIFY_SECS,
-  "driver_queries_at_verify": $Q,
+  "driver_queries_at_verify": $Q_STEADY,
+  "driver_errors_at_verify": $E_STEADY,
   "driver_qps_at_verify": $QPS,
+  "driver_error_rate_pct_at_verify": $ERR_PCT,
   "quiet_max_load": $QUIET_MAX_LOAD,
   "foreign_cpu_max": $FOREIGN_CPU_MAX,
-  "quiet_samples": $QUIET_SAMPLES
+  "quiet_samples": $QUIET_SAMPLES,
+  "min_driver_qps": $MIN_DRIVER_QPS,
+  "max_error_rate_pct": $MAX_ERROR_RATE_PCT,
+  "start_path": "$START_PATH",
+  "attempt": $ATTEMPT,
+  "waited_secs": $WAITED,
+  "host_at_start": {
+    "load1": $LOAD_INT,
+    "foreign_cpu_pct": $FOREIGN_TOTAL,
+    "system_cpu_pct": $SYS_CPU,
+    "own_cpu_pct": $OWN_CPU,
+    "fsync_p50_ms": $FSYNC_P50
+  }
 }
 JSON
-      log "PASS: the host carried real load (${QPS} q/s); the $HOURS h clock is running."
+      log "PASS: the host carried real load (${QPS} q/s, ${ERR_PCT}% errors); the $HOURS h clock is running."
       log "artifacts: $ATTEMPT_DIR"
       log "canonical record: $ART_DIR/STARTED.json"
       exit 0
     fi
-    log "REJECT: the host is still carrying someone else's load (${QPS} q/s < ${MIN_DRIVER_QPS} q/s) — stopping this attempt and going back to waiting."
+    log "REJECT: the host is still carrying someone else's load (${QPS} q/s vs floor $MIN_DRIVER_QPS, error rate ${ERR_PCT}% vs max $MAX_ERROR_RATE_PCT%, sustained=$SUSTAINED) — stopping this attempt and going back to waiting."
     kill_soak_tree
     STREAK=0
+    sleep "$RETRY_BACKOFF"
   fi
 
   sleep "$QUIET_INTERVAL"
