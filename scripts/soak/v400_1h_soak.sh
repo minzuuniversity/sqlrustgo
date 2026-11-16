@@ -67,6 +67,27 @@ DRIVER_STARTUP_GRACE=$(( DRIVER_STARTUP_GRACE_SECS ))
 # to opt in; defaults preserve the every-tx durable behaviour.
 WAL_SYNC="${WAL_SYNC:-every}"
 
+# Host contention, sampled next to the server's own metrics.
+#
+# A SOAK's numbers are only interpretable next to the host's state. If the
+# machine was busy with someone else's build, "slow" means the BOX was
+# slow — it does not mean the server regressed. Recording the host load
+# per sample is what lets a reviewer tell those two apart afterwards,
+# instead of discovering the ambiguity weeks later.
+host_load1() {
+  if [ -r /proc/loadavg ]; then
+    awk '{print $1}' /proc/loadavg
+  elif command -v sysctl >/dev/null 2>&1; then
+    sysctl -n vm.loadavg 2>/dev/null | tr -d '{}' | awk '{print $1}'
+  else
+    echo 0
+  fi
+}
+# How many processes are eating at least half a core right now.
+host_busy_procs() {
+  ps -eo pcpu= 2>/dev/null | awk '$1+0 >= 50' | wc -l | tr -d '[:space:]'
+}
+
 mkdir -p "$RESULTS_DIR"
 LOG="$RESULTS_DIR/server.log"
 METRICS="$RESULTS_DIR/metrics.csv"
@@ -151,7 +172,7 @@ DRIVER_PID=$!
 echo "$DRIVER_PID" > "$RESULTS_DIR/driver.pid"
 echo "  driver PID=$DRIVER_PID"
 
-echo "ts,elapsed_s,rss_mb,fd_count,cpu_pct,driver_q,driver_e,panic_count,error_high" > "$METRICS"
+echo "ts,elapsed_s,rss_mb,fd_count,cpu_pct,driver_q,driver_e,panic_count,error_high,host_load1,host_busy" > "$METRICS"
 
 # --- 4. Monitor loop --------------------------------------------------
 echo "[4/5] Monitoring (interval=${SAMPLE_INTERVAL}s) — Ctrl-C to abort."
@@ -159,6 +180,8 @@ START_TS=$(date +%s)
 END_TS=$((START_TS + DURATION))
 SERVER_ALIVE=1
 DRIVER_DIED=0
+HOST_LOAD_MAX=0
+HOST_BUSY_SAMPLES=0
 HIGH_CPU_STREAK=0
 HIGH_CPU_MAX_STREAK=0
 HIGH_CPU_EPISODES=0
@@ -242,6 +265,14 @@ while [ "$(date +%s)" -lt "$END_TS" ] && [ "$SERVER_ALIVE" -eq 1 ]; do
   PANIC_COUNT=${PANIC_COUNT:-0}
   REMAIN=$(( (END_TS - $(date +%s)) / 60 ))
 
+  # Host contention for this sample.
+  HOST_LOAD1="$(host_load1)"
+  HOST_BUSY="$(host_busy_procs)"
+  [ -n "$HOST_LOAD1" ] || HOST_LOAD1=0
+  [ -n "$HOST_BUSY" ] || HOST_BUSY=0
+  [ "$HOST_BUSY" -gt 0 ] && HOST_BUSY_SAMPLES=$((HOST_BUSY_SAMPLES + 1))
+  HOST_LOAD_MAX="$(awk -v a="$HOST_LOAD_MAX" -v b="$HOST_LOAD1" 'BEGIN{printf "%.2f", (b+0 > a+0) ? b+0 : a+0}')"
+
   # CPU high-load detection: >80% system-wide (i.e., >80% on a 10-core box
   # means >=8 fully saturated cores). Note ps %cpu on macOS is per-core;
   # to map to system-wide we multiply by NCPU.
@@ -267,7 +298,7 @@ while [ "$(date +%s)" -lt "$END_TS" ] && [ "$SERVER_ALIVE" -eq 1 ]; do
   if [ "$HIGH" -eq 1 ]; then MARK="⚠️ HIGH-CPU"; fi
   if [ "${PANIC_COUNT:-0}" -gt 0 ]; then MARK="🔥 PANIC"; fi
   echo "  [${ELAPSED}s/${DURATION}s] RSS=${RSS_MB}MB FD=${FD_COUNT} CPU=${CPU}%(/core ncpu=${NCPU}) q=${DRIVER_Q} e=${DRIVER_E} panics=${PANIC_COUNT} remain=${REMAIN}m ${MARK}"
-  echo "$(date '+%Y-%m-%dT%H:%M:%S'),${ELAPSED},${RSS_MB},${FD_COUNT},${CPU},${DRIVER_Q},${DRIVER_E},${PANIC_COUNT},${HIGH}" >> "$METRICS"
+  echo "$(date '+%Y-%m-%dT%H:%M:%S'),${ELAPSED},${RSS_MB},${FD_COUNT},${CPU},${DRIVER_Q},${DRIVER_E},${PANIC_COUNT},${HIGH},${HOST_LOAD1},${HOST_BUSY}" >> "$METRICS"
 done
 
 # --- 5. Cleanup + report ----------------------------------------------
@@ -365,6 +396,7 @@ fi
 
 # Generate report
 REPORT="$RESULTS_DIR/STABILITY_REPORT.md"
+HOST_SAMPLE_COUNT=$(( $(wc -l < "$METRICS") - 1 ))
 SUMMARY_DATA=$(cat "$SUMMARY")
 {
 echo "# v4.0.0 server-read-perf SOAK — ${DURATION_MIN}min"
@@ -390,6 +422,8 @@ echo "| Driver errors | $DRIVER_E |"
 echo "| Server send_result_set done | $Q_DONE |"
 echo "| High-CPU episodes (>80%/core sustained >60s) | $HIGH_CPU_EPISODES |"
 echo "| High-CPU longest streak (s) | $HIGH_CPU_MAX_STREAK |"
+echo "| Host load avg (1min) peak | $HOST_LOAD_MAX |"
+echo "| Samples with a busy host (>=1 proc at >=50% CPU) | $HOST_BUSY_SAMPLES / ${HOST_SAMPLE_COUNT:-0} |"
 echo
 echo "## Latency stats (driver log)"
 echo
