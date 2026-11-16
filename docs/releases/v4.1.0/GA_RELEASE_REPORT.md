@@ -74,10 +74,85 @@
 
 | 序 | 动作 | 责任方 |
 |---|---|---|
-| 1 | 让 168h SOAK 独占窗口跑满（2026-11-16 → 2026-11-23），两臂产物齐备 | 执行（已启动） |
+| 1 | 让 168h SOAK 独占窗口跑满（起跑时刻由 Z6G4 安静窗口门禁决定），两臂产物齐备 | 执行（**守门启动器已起，等待主机安静窗口**） |
 | 2 | 跑完 GA 35 项实跑并按结果清零可消红项 | 执行 |
 | 3 | 恢复 owner 2026-11-08 裁决的 23 道「执行点」（或从声称面撤下） | 执行 + 属主裁定 |
 | 4 | 建 `release/v4.1.0` 承载分支并落 RC 内容 | 执行 + 属主授权 |
 | 5 | 独立 Reviewer 回执（Hub #133） | 属主 / Reviewer |
 | 6 | 人类架构师签批 RC→GA | **属主** |
 | 7 | 镜像同步（gitea250 / gitcode / gitee / github） | 属主（§3.2 禁止 Agent push） |
+
+## 7. 168h SOAK 的执行实况（2026-11-16，如实登记）
+
+> 本节只陈述**实测到的**内容，不预判结论。
+
+### 7.1 第一次在本机启动的那一轮是「空转绿」，已停
+
+臂 A 的负载由 `scripts/soak/v400_1h_soak.sh` 的 pymysql 驱动施加。本机实测：
+
+- `driver.stdout` = `FATAL: pymysql not installed. pip install pymysql`
+- `driver.log` **从未生成**
+- 而 `metrics.csv` 已有 210 行「健康」采样：`driver_q=0`、RSS≈8MB、FD=10、panic_count=00
+
+服务端健康地空转，负载为零。若只看 metrics 与退出码，会误以为「在跑」。
+该轮已停，产物留在 `/Volumes/workspace/dev/soak-artifacts/20261116-168h-v410`
+（**仅预检价值**）。
+
+### 7.2 补上承重断言（PR #5809，合并 `baa3f769c2`）
+
+| 断言 | 实测 |
+|---|---|
+| 预检缺 pymysql ⇒ 拒跑 | `PRECONDITION FAILED: pymysql is required by the arm-A load driver`，rc=2，**零产物目录**（没有消耗任何窗口） |
+| 驱动秒死 ⇒ 立刻判红 | 2 分钟窗口的 run 在第 **16 秒**报 `FAIL-CLOSED: driver died at elapsed=15s`（改前要空转到时长结束；168h 场景即 7 天） |
+| 产物必须带负载证据 | 判定为合取：退出码 0 ∧ 产物齐全 ∧ 负载已施加 |
+
+252 上的绿路径冒烟（3 分钟，两臂全开）**两臂 PASS**：臂 A 查询 8439 / 错误 6 /
+覆盖 102%；臂 B attempted 1979 / succeeded 1979 / failed 0、五类齐全、harness 判 PASS。
+
+### 7.3 Z6G4 的第一轮 168h 被主机噪声污染，已主动停掉
+
+起跑时刻 02:59:52，而**同一台机器**上 root 的作业在 02:59 开始：
+
+```
+/workspace/openclaw/sqlrustgo/target/debug/deps/oltp_test-…   占 29 核
+cargo test --workspace --exclude sqlrustgo --no-fail-fast    timeout 17400s ≈ 4.8h
+cargo test --all-features --no-fail-fast                      timeout 16800s ≈ 4.7h
+```
+
+80 核的机器 load average 冲到 **89.48**，本 run 的服务端只拿到 8.5% CPU。
+
+| 指标 | 受污染的 168h run | 同一脚本的 3 分钟冒烟（root 作业起之前） |
+|---|---|---|
+| 成功查询耗时 | 9.4 s | 正常量级 |
+| 超时查询耗时 | 15 s | — |
+| 错误率 | 9.6%（89 / 1298） | 0.07%（6 / 8445） |
+| 吞吐 | 4.7 q/s | 47 q/s |
+
+**那是主机争用，不是被测系统的缺陷**；但一份被争用写出来的 SOAK 报告，
+证明的是那几分钟的争用。宁可晚起跑，不可带噪起跑。该轮已停并原样留档：
+`~/soak-artifacts/20261116-168h-v410-CONTAMINATED/CONTAMINATED.md`。
+
+### 7.4 守门启动器（PR #5810，合并 `902df14a6`）
+
+`scripts/soak/run_v410_168h_soak_on_z6g4.sh` 两道门禁：
+
+1. **安静窗口（起跑前）**：无外来重负载（无他人 `cargo build/test`、`rustc`、
+   `oltp_test`、`sysbench`，无他人进程吃 ≥50% CPU；forge 自己的 postgres/gitea
+   不算）+ load 均值 ≤ 40，连续满足 10 次（每次 60 s ⇒ 10 分钟）。
+2. **吞吐复验（起跑后 180 s）**：驱动真实 QPS ≥ 5，否则停掉这一轮、退回等待。
+
+两个承重的实现细节：**只把「别人 owner」的作业算作争用**（启动器自己起的臂 B
+就是 `cargo test`，若不按 owner 区分会把自己起的 run 判成争用而永远起不了跑）；
+**每轮 attempt 独立产物目录**（复验读的是 `driver.log` 的 Q 行数，沿用上一轮
+目录会把旧账算进来，复验门禁即废）。
+
+### 7.5 当前状态
+
+- 冻结提交 `902df14a6f2e6c2f7df505c4dce1437e3455faaf`（252 上 dirty=0）
+- release 二进制 sha256 `de7c4e09445d9697dedcd612e0ffabe0e3a1b63df242e2e8c7b732173cd1512f`
+  —— `crates/` 在 `baa3f769c2`→`902df14a6` 间**未变**，故已构建二进制确属该冻结提交
+- pymysql 装在 `~/venv-srg`（venv；该机 PEP 668 管控，`pip --user` 不可用）
+- 启动器 2026-11-16T19:08:18Z 实测判 **BUSY**（load=41 + root 的 cargo 作业）⇒ 等待安静窗口，**尚未起跑**
+
+起跑时刻由门禁决定，不由人决定；`~/soak-artifacts/20261116-168h-v410/STARTED.json`
+会写下起跑时的冻结提交、二进制指纹、起止时间与复验 QPS，作为规范记录。
