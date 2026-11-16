@@ -233,8 +233,8 @@ fn baseline_fixture_identity() -> Option<serde_json::Value> {
 /// The identity of the fixture that is actually on disk (from its manifest).
 fn on_disk_fixture_identity() -> Option<serde_json::Value> {
     let dir = common::tpch_wire_harness::resolve_fixture_dir()?;
-    let raw = std::fs::read_to_string(dir.join(common::tpch_wire_harness::FIXTURE_MANIFEST_FILE))
-        .ok()?;
+    let raw =
+        std::fs::read_to_string(dir.join(common::tpch_wire_harness::FIXTURE_MANIFEST_FILE)).ok()?;
     serde_json::from_str(&raw).ok()
 }
 
