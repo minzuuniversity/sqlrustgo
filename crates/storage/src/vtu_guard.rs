@@ -525,18 +525,18 @@ mod tests {
     // `cannot test inner items` + dead_code。合并为单个完整 test。
     #[test]
     fn test_vtu_guard_tx_state_via_set_current_tx_id() {
-            // VtuGuard does not expose set_current_tx_id directly (the
-            // delegation is via inner storage). Exercise the accessor
-            // pattern: get inner, set tx, then confirm guarded.in_transaction()
-            // delegates correctly.
-            let storage = crate::MemoryStorage::new();
-            let mut guarded = VtuGuard::new(storage, "tx_test");
-            assert!(!guarded.in_transaction());
-            guarded.inner_mut().set_current_tx_id(7);
-            assert!(guarded.in_transaction());
-            assert_eq!(guarded.current_tx_id(), 7);
-            guarded.inner_mut().set_current_tx_id(0);
-            assert!(!guarded.in_transaction());
+        // VtuGuard does not expose set_current_tx_id directly (the
+        // delegation is via inner storage). Exercise the accessor
+        // pattern: get inner, set tx, then confirm guarded.in_transaction()
+        // delegates correctly.
+        let storage = crate::MemoryStorage::new();
+        let mut guarded = VtuGuard::new(storage, "tx_test");
+        assert!(!guarded.in_transaction());
+        guarded.inner_mut().set_current_tx_id(7);
+        assert!(guarded.in_transaction());
+        assert_eq!(guarded.current_tx_id(), 7);
+        guarded.inner_mut().set_current_tx_id(0);
+        assert!(!guarded.in_transaction());
         guarded.flush().unwrap();
     }
 
