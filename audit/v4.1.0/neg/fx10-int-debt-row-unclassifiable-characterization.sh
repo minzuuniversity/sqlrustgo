@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# fx10-int-debt-row-unclassifiable-characterization.sh — characterization probe for
-# expect: green-characterization
+# fx10-int-debt-row-unclassifiable-characterization.sh — negative fixture for
+# expect: red
 # fixture-id: fx10-int-debt-row-unclassifiable-characterization
 # fault: make the INT-2 row of the debt table unclassifiable, and (arm 2) delete it
 #
@@ -63,9 +63,14 @@ LC_ALL=C grep -nE 'INT-2|unknown status|not in CV debt|D7 INT Debt|D7:' "$LOG" |
 echo "----- end -----"
 rm -f "$LOG"
 
-if [ "$RC" -eq 0 ]; then
-    echo "fx10-int-debt-row-unclassifiable-characterization: gate rc=0 while reporting the item as failed -> UNFALSIFIABLE (fail-open hole, as documented)"
+# 2026-11-16（#5598 fail-closed · D-03）：本夹具原本是**特征化**夹具
+# （expect: green-characterization），用来证明「债务行不可分类时门禁仍 rc=0」
+# 这条 fail-open 真实存在（#5600 候选发现）。该洞已由 D-03 裁决闭合
+# （列 4 非空且未知 ⇒ FAIL；FAILED_ITEMS 必须参与退出码判定）⇒ 期望翻转为 **red**：
+# 债务行不可分类时门禁**必须** rc≠0。
+if [ "$RC" -ne 0 ]; then
+    echo "fx10-int-debt-row-unclassifiable-characterization: gate rc=$RC (want non-zero) -> FIXTURE-PASS (the gate detects the unclassifiable row)"
     exit 0
 fi
-echo "fx10-int-debt-row-unclassifiable-characterization: gate rc=$RC -> the fail-open claim is WRONG (the gate does go red)"
+echo "fx10-int-debt-row-unclassifiable-characterization: gate rc=0 while reporting the item as failed -> FIXTURE-FAIL (the fail-open hole is still open)"
 exit 3

@@ -14,7 +14,7 @@ set -uo pipefail
 
 T="${1:?usage: fx09-architecture-freeze-characterization.sh <scratch-tree>}"
 GATE="scripts/gate/check_architecture_freeze.sh"
-EXPECT="green-characterization"
+EXPECT="red"
 
 restore() {
     git -C "$T" checkout -- . >/dev/null 2>&1 || true
