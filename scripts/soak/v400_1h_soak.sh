@@ -39,6 +39,27 @@ SAMPLE_INTERVAL="${SAMPLE_INTERVAL:-15}"
 ROWS="${ROWS:-10000}"
 READ_PCT="${READ_PCT:-80}"
 INSERT_PCT="${INSERT_PCT:-10}"
+# Fail-closed grace windows for the LOAD GENERATOR (see the monitor loop):
+#   DRIVER_GRACE_SECS
+#     The driver is meant to exit right when the run ends, so a death
+#     inside this window is the expected hand-off, not a failure.
+#   DRIVER_STARTUP_GRACE_SECS
+#     How long the driver gets to produce its first query before we call
+#     it "alive but dead" (started, wedged, loading nothing).
+DRIVER_GRACE_SECS="${DRIVER_GRACE_SECS:-120}"
+DRIVER_STARTUP_GRACE_SECS="${DRIVER_STARTUP_GRACE_SECS:-180}"
+
+# The grace windows are scaled to the run length. Without this, a
+# 120-second grace would swallow a 60-second smoke test whole: the driver
+# could die at second 1 and the run would keep going, because "the driver
+# died" would only be judged at second 54 of a 60-second run.
+#   DRIVER_GRACE_LIMIT     elapsed below which a driver death is a failure
+#   DRIVER_STARTUP_GRACE   elapsed by which the driver must have queried
+DRIVER_GRACE=$(( DRIVER_GRACE_SECS ))
+[ "$DRIVER_GRACE" -gt $(( DURATION / 10 )) ] && DRIVER_GRACE=$(( DURATION / 10 ))
+DRIVER_GRACE_LIMIT=$(( DURATION - DRIVER_GRACE ))
+DRIVER_STARTUP_GRACE=$(( DRIVER_STARTUP_GRACE_SECS ))
+[ "$DRIVER_STARTUP_GRACE" -gt $(( DURATION / 2 )) ] && DRIVER_STARTUP_GRACE=$(( DURATION / 2 ))
 # WAL sync mode: "every" (default, durable), "batch:N" (fsync every N
 # tx; trades durability for throughput), "off" (no fsync; test only).
 # V400-WAL-BATCH (2026-09-16): batch:100 cuts p50 latency by ~43% in the
@@ -137,6 +158,7 @@ echo "[4/5] Monitoring (interval=${SAMPLE_INTERVAL}s) — Ctrl-C to abort."
 START_TS=$(date +%s)
 END_TS=$((START_TS + DURATION))
 SERVER_ALIVE=1
+DRIVER_DIED=0
 HIGH_CPU_STREAK=0
 HIGH_CPU_MAX_STREAK=0
 HIGH_CPU_EPISODES=0
@@ -162,6 +184,27 @@ while [ "$(date +%s)" -lt "$END_TS" ] && [ "$SERVER_ALIVE" -eq 1 ]; do
     SERVER_ALIVE=0
     break
   fi
+  # Fail-closed on the LOAD GENERATOR, not only on the server.
+  #
+  # The driver is what makes this a SOAK rather than an idle-server
+  # uptime measurement. If it dies (pymysql missing, connection refused,
+  # a crash) the remaining hours would measure a server that looks
+  # perfectly healthy in metrics.csv — RSS flat, no panics, no FD growth
+  # — and the run would only be judged at the very end, 168 hours later.
+  # Abort as soon as the workload stops.
+  if ! kill -0 "$DRIVER_PID" 2>/dev/null; then
+    if [ "$ELAPSED" -lt "$DRIVER_GRACE_LIMIT" ]; then
+      echo "  FAIL-CLOSED: driver died at elapsed=${ELAPSED}s (the run ends at ${DURATION}s)"
+      echo "  The workload stopped; the rest of the window would measure an idle server."
+      echo "  --- driver.stdout (tail) ---"
+      tail -20 "$RESULTS_DIR/driver.stdout" 2>/dev/null || true
+      # SERVER_ALIVE is deliberately NOT touched here: the server may be
+      # perfectly healthy while the load generator is gone. Reporting it
+      # as "server crashed" would be a second, different lie.
+      DRIVER_DIED=1
+      break
+    fi
+  fi
   # macOS-compatible metric sampling: trim whitespace+newlines that would
   # otherwise corrupt CSV field boundaries.
   RSS_KB=$(ps -o rss= -p "$SERVER_PID" 2>/dev/null | tr -d '[:space:]' || echo "0")
@@ -172,7 +215,9 @@ while [ "$(date +%s)" -lt "$END_TS" ] && [ "$SERVER_ALIVE" -eq 1 ]; do
   FD_COUNT=${FD_COUNT:-0}
   # macOS ps %cpu is per-single-core normalized (100% = one full core).
   # sysctl -n hw.ncpu gives physical core count; compute system-wide %.
-  NCPU=$(sysctl -n hw.ncpu 2>/dev/null || echo 1)
+  # Portable core count: macOS has no `nproc`, Linux has no
+  # `sysctl -n hw.ncpu`. Either may be absent; fall back to 1.
+  NCPU=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 1)
   CPU=$(ps -o %cpu= -p "$SERVER_PID" 2>/dev/null | tr -d '[:space:]' || echo "0")
   CPU=${CPU:-0}
   # Convert single-core % to system-wide % (capped at 100*NCPU)
@@ -181,6 +226,18 @@ while [ "$(date +%s)" -lt "$END_TS" ] && [ "$SERVER_ALIVE" -eq 1 ]; do
   DRIVER_Q=${DRIVER_Q:-0}
   DRIVER_E=$(grep -c '^E,' "$DRIVER_LOG" 2>/dev/null | tr -d '[:space:]' || echo "0")
   DRIVER_E=${DRIVER_E:-0}
+  # A driver that is alive but has produced no query at all is just as
+  # dead as one that exited: it loaded nothing. The process-liveness
+  # probe above catches "driver exited"; this catches "driver is wedged
+  # and will never load anything".
+  if [ "$DRIVER_Q" -eq 0 ] && [ "$ELAPSED" -ge "$DRIVER_STARTUP_GRACE" ]; then
+    echo "  FAIL-CLOSED: driver produced 0 queries after ${ELAPSED}s (it is alive but loading nothing)"
+    echo "  --- driver.stdout (tail) ---"
+    tail -20 "$RESULTS_DIR/driver.stdout" 2>/dev/null || true
+    # See above: the server's own liveness is reported on its own terms.
+    DRIVER_DIED=1
+    break
+  fi
   PANIC_COUNT=$(grep -c "panicked at\|MUST be WalStorage\|internal error: entered unreachable code" "$LOG" 2>/dev/null | tr -d '[:space:]' || echo "0")
   PANIC_COUNT=${PANIC_COUNT:-0}
   REMAIN=$(( (END_TS - $(date +%s)) / 60 ))
@@ -215,6 +272,11 @@ done
 
 # --- 5. Cleanup + report ----------------------------------------------
 echo "[5/5] Stopping driver + server..."
+# Capture the driver's liveness BEFORE we stop it — after this point the
+# pid is gone and the question "was the load generator alive when the
+# window closed?" can no longer be answered.
+DRIVER_ALIVE_AT_END=0
+kill -0 "$DRIVER_PID" 2>/dev/null && DRIVER_ALIVE_AT_END=1
 kill -TERM "$DRIVER_PID" 2>/dev/null || true
 wait "$DRIVER_PID" 2>/dev/null || true
 kill -TERM "$SERVER_PID" 2>/dev/null || true
@@ -235,16 +297,26 @@ DRIVER_E=${DRIVER_E:-0}
 # FileNotFoundError when the driver never produced output (e.g. missing
 # pymysql) — or, worse in other variants, summarise an idle server as a
 # successful soak. An unloaded soak is a FAILURE, stated honestly.
+#
+# The failure is recorded as a FLAG rather than an immediate exit, so the
+# run still writes its STABILITY_REPORT.md: a failed run must leave behind
+# the evidence of *how* it failed, not just an exit code.
+LOAD_PROOF_OK=1
 if [ ! -f "$DRIVER_LOG" ]; then
   echo "FAIL-CLOSED: $DRIVER_LOG missing — driver never produced output; this soak loaded nothing." >&2
-  exit 1
-fi
-if [ "$DRIVER_Q" -eq 0 ] && [ "$DRIVER_E" -eq 0 ]; then
+  LOAD_PROOF_OK=0
+elif [ "$DRIVER_Q" -eq 0 ] && [ "$DRIVER_E" -eq 0 ]; then
   echo "FAIL-CLOSED: driver.log has zero Q rows and zero E rows — no workload observed on the server." >&2
-  exit 1
+  LOAD_PROOF_OK=0
 fi
 
 # Compute QPS, latency stats from driver log
+if [ "$LOAD_PROOF_OK" -eq 0 ]; then
+  # No driver output to summarise. Write an explicit zero-load summary so
+  # that the artifact set stays complete and says what happened, instead
+  # of leaving a consumer to guess why the file is absent.
+  printf '{"total_queries": 0, "total_errors": 0, "error_rate_pct": 100.0, "latency_ms": {}, "by_kind": {}, "load_proof": "FAILED - driver produced no output"}\n' > "$SUMMARY"
+else
 python3 - "$DRIVER_LOG" "$SUMMARY" <<'PYEOF'
 import sys, json, statistics
 log = sys.argv[1]
@@ -289,6 +361,7 @@ with open(out, "w") as f:
     json.dump(summary, f, indent=2)
 print(f"summary → {out}")
 PYEOF
+fi
 
 # Generate report
 REPORT="$RESULTS_DIR/STABILITY_REPORT.md"
@@ -309,6 +382,8 @@ echo
 echo "| Metric | Value |"
 echo "|--------|-------|"
 echo "| Server alive at end | $SERVER_ALIVE |"
+echo "| Load driver alive at end | $DRIVER_ALIVE_AT_END |"
+echo "| Load proof (driver actually loaded the server) | $( [ "$LOAD_PROOF_OK" -eq 1 ] && echo PASS || echo FAIL ) |"
 echo "| Trigger panics | $PANIC_COUNT |"
 echo "| Driver queries done | $DRIVER_Q |"
 echo "| Driver errors | $DRIVER_E |"
@@ -331,6 +406,14 @@ echo "- \`summary.json\` — aggregate stats"
 echo
 } > "$REPORT"
 
+if [ "${DRIVER_DIED:-0}" -eq 1 ]; then
+  echo "FAIL — the load driver died before the run ended; this SOAK did not cover the full window." | tee -a "$REPORT"
+  exit 1
+fi
+if [ "$LOAD_PROOF_OK" -ne 1 ]; then
+  echo "FAIL — no workload was observed on the server; an unloaded soak is not a soak." | tee -a "$REPORT"
+  exit 1
+fi
 if [ "$SERVER_ALIVE" -eq 0 ]; then
   echo "FAIL — server crashed during the soak run." | tee -a "$REPORT"
   exit 2
