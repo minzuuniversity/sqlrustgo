@@ -628,11 +628,41 @@ while true; do
     #
     # 稳态窗口 = 驱动启动 30 s 之后（热身段：连接建立、首屏数据准备）
     # 到复验时刻之间的那段时间。
-    STEADY_LINE="$("$SOAK_REPO_ROOT/scripts/soak/soak_steady_window.py" \
-                  "$ATTEMPT_DIR/armA/metrics.csv" 30 2>/dev/null || true)"
+    #
+    # **「读不出来」不等于「不达标」**：测量可能因为文件还没建好、采样点还
+    # 不够而失败一次。所以这里**重试**若干次（每次间隔 30 s），并把每次的
+    # 失败原因写进日志；全部失败才判红 —— 判红仍然是 fail closed。
+    #
+    # 2026-11-17 实测（第二次踩同一个坑）：helper 文件在 git 里是 `100644`
+    # （**没有可执行位**），而这里是**直接执行**它（靠 shebang）⇒
+    # `Permission denied`（rc=126）⇒ stderr 被吞、stdout 为空 ⇒ 复验读到
+    # 空统计行，把一轮**健康**的 attempt（55.2 q/s、0.105 % 错误）判成
+    # 「0 q/s、错误率 100 %」。两处已修：① 文件在 git 里改为 `100755`；
+    # ② 这里改用 `python3 <path>` 调用，不依赖可执行位。
+    STEADY_LINE=""
+    STEADY_WHY=""
+    VERIFY_TRIES="${VERIFY_TRIES:-6}"
+    try=1
+    while [ "$try" -le "$VERIFY_TRIES" ]; do
+      METRICS_FILE="$ATTEMPT_DIR/armA/metrics.csv"
+      METRICS_ROWS=0
+      [ -f "$METRICS_FILE" ] && METRICS_ROWS="$(wc -l < "$METRICS_FILE" 2>/dev/null | tr -d ' ')"
+      STEADY_OUT="$(python3 "$SOAK_REPO_ROOT/scripts/soak/soak_steady_window.py" \
+                    "$METRICS_FILE" 30 2>&1)"
+      STEADY_RC=$?
+      if [ "$STEADY_RC" -eq 0 ] && [ -n "$STEADY_OUT" ]; then
+        STEADY_LINE="$STEADY_OUT"
+        break
+      fi
+      STEADY_WHY="try ${try}/${VERIFY_TRIES}: rc=$STEADY_RC metrics_rows=${METRICS_ROWS} ${STEADY_OUT}"
+      log "throughput re-check: no measurement yet — $STEADY_WHY"
+      try=$((try + 1))
+      [ "$try" -le "$VERIFY_TRIES" ] && sleep 30
+    done
     if [ -z "$STEADY_LINE" ]; then
       # 读不出来 ⇒ 一律判红，绝不把「读不出来」当成「达标」。
       Q_STEADY=0; E_STEADY=0; STEADY_SECS=0; QPS=0; ERR_PCT="100.000"; SUSTAINED=0
+      log "throughput re-check: FAILED to measure the steady window after ${VERIFY_TRIES} tries — $STEADY_WHY"
     else
       read -r Q_STEADY E_STEADY STEADY_SECS QPS ERR_PCT SUSTAINED <<< "$STEADY_LINE"
     fi
