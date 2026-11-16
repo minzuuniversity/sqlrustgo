@@ -1,0 +1,68 @@
+=== 5-remote drift check ===
+branches: develop/v4.1.0 main release/v4.0.0 develop/v4.0.0
+threshold: 2 commits
+
+measuring remotes (ls-remote + fetch)...
+  gitcode: OK
+  gitea250: OK
+  gitea252: OK
+  gitee: OK
+  github: OK
+
+branch	pair	pair	ahead	behind
+develop/v4.1.0	gitcode	gitea250	0	0
+develop/v4.1.0	gitcode	gitea252	0	0
+develop/v4.1.0	gitcode	gitee	0	0
+develop/v4.1.0	gitcode	github	0	0
+develop/v4.1.0	gitea250	gitea252	0	0
+develop/v4.1.0	gitea250	gitee	0	0
+develop/v4.1.0	gitea250	github	0	0
+develop/v4.1.0	gitea252	gitee	0	0
+develop/v4.1.0	gitea252	github	0	0
+develop/v4.1.0	gitee	github	0	0
+main	gitcode	gitea250	0	0
+main	gitcode	gitea252	0	0
+main	gitcode	gitee	0	0
+main	gitcode	github	0	0
+main	gitea250	gitea252	0	0
+main	gitea250	gitee	0	0
+main	gitea250	github	0	0
+main	gitea252	gitee	0	0
+main	gitea252	github	0	0
+main	gitee	github	0	0
+release/v4.0.0	gitcode	gitea250	0	0
+release/v4.0.0	gitcode	gitea252	0	0
+release/v4.0.0	gitcode	gitee	0	0
+release/v4.0.0	gitcode	github	0	0
+release/v4.0.0	gitea250	gitea252	0	0
+release/v4.0.0	gitea250	gitee	0	0
+release/v4.0.0	gitea250	github	0	0
+release/v4.0.0	gitea252	gitee	0	0
+release/v4.0.0	gitea252	github	0	0
+release/v4.0.0	gitee	github	0	0
+develop/v4.0.0	gitcode	gitea250	0	0
+develop/v4.0.0	gitcode	gitea252	0	0
+develop/v4.0.0	gitcode	gitee	0	0
+develop/v4.0.0	gitcode	github	0	3
+develop/v4.0.0	gitea250	gitea252	0	0
+develop/v4.0.0	gitea250	gitee	0	0
+develop/v4.0.0	gitea250	github	0	3
+develop/v4.0.0	gitea252	gitee	0	0
+develop/v4.0.0	gitea252	github	0	3
+develop/v4.0.0	gitee	github	0	3
+
+--- remote state ---
+  gitcode: OK
+      develop/v4.1.0=605f59948791 main=be044dfa7725 release/v4.0.0=1f62d46f0625 develop/v4.0.0=ac3fa16afb4a
+  gitea250: OK
+      develop/v4.1.0=605f59948791 main=be044dfa7725 release/v4.0.0=1f62d46f0625 develop/v4.0.0=ac3fa16afb4a
+  gitea252: OK
+      develop/v4.1.0=605f59948791 main=be044dfa7725 release/v4.0.0=1f62d46f0625 develop/v4.0.0=ac3fa16afb4a
+  gitee: OK
+      develop/v4.1.0=605f59948791 main=be044dfa7725 release/v4.0.0=1f62d46f0625 develop/v4.0.0=ac3fa16afb4a
+  github: OK
+      develop/v4.1.0=605f59948791 main=be044dfa7725 release/v4.0.0=1f62d46f0625 develop/v4.0.0=17435988ca5e
+
+MAIN: OK — identical across all remotes (be044dfa7725 be044dfa7725 be044dfa7725 be044dfa7725 be044dfa7725)
+
+RESULT: drift detected (threshold=2, strict_main=1)

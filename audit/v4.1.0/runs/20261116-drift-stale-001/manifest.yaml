@@ -1,0 +1,62 @@
+schema_version: 1
+run_id: 20261116-drift-stale-001
+source_agent: mcode-macmini
+frozen_commit: 8beb8cfd94539d19a93fa770b32bda5c949dc446
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: drift-stale-fixture-new
+  name: 正臂：新脚本 + 新夹具 ⇒ 15/15 PASS（量不到的远端一律不给数字，也没有静默 exit 0）
+  cmd: bash scripts/sync/test_5remotes_drift_check.sh
+  cwd: .
+  timeout_sec: 900
+- id: drift-stale-reverse-mutation-old-script
+  name: 反向变异臂：同一夹具跑**修复前**的脚本（基线 commit 605f599487 的版本）⇒ 必须报红（旧实现把过期 tracking ref 当实测数，T4 印出 "gitcode
+    gitea252 0 1" 且误报 main 已分叉）
+  cmd: d=$(mktemp -d) && mkdir -p "$d/scripts/sync" && git show 605f59948791c194149ccb13b309fe26871beacc:scripts/sync/5remotes_drift_check.sh
+    > "$d/scripts/sync/5remotes_drift_check.sh" && cp scripts/sync/test_5remotes_drift_check.sh "$d/scripts/sync/"
+    && bash "$d/scripts/sync/test_5remotes_drift_check.sh"; rc=$?; rm -rf "$d"; echo "reverse-mutation
+    exit=$rc （预期非 0：旧实现必须被夹具抓住）"; exit $rc
+  cwd: .
+  timeout_sec: 900
+- id: drift-stale-real-five-remotes
+  name: 实跑：对真实五远端（gitcode/gitea250/gitea252/gitee/github）测三条核心分支 ⇒ 预期暴露 develop/v4.0.0 上 github 领先 3 笔的真实漂移
+  cmd: bash scripts/sync/5remotes_drift_check.sh
+  cwd: .
+  timeout_sec: 1800
+results:
+- id: drift-stale-fixture-new
+  started_at: '2026-11-16T09:50:58Z'
+  finished_at: '2026-11-16T09:51:39Z'
+  exit_code: 0
+  stdout_sha256: 1c3a76298ef91c0ee675e105c2b8fb172df7fc2154e845703eef87a841b60057
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-drift-stale-fixture-new.stdout
+  stderr_path: logs/001-drift-stale-fixture-new.stderr
+- id: drift-stale-reverse-mutation-old-script
+  started_at: '2026-11-16T09:51:39Z'
+  finished_at: '2026-11-16T09:52:11Z'
+  exit_code: 1
+  stdout_sha256: 28b297608856e614bb397a25e96463db0e8cfb9ae7ba5f9d9cd2e8eeab0f16a6
+  stderr_sha256: 177874571aa39c76d945364a804fa9fbe8073c761a186182e3acfbe18afc161f
+  stdout_path: logs/002-drift-stale-reverse-mutation-old-script.stdout
+  stderr_path: logs/002-drift-stale-reverse-mutation-old-script.stderr
+- id: drift-stale-real-five-remotes
+  started_at: '2026-11-16T09:52:11Z'
+  finished_at: '2026-11-16T09:52:37Z'
+  exit_code: 1
+  stdout_sha256: 3ef82f58f54ab4ac3134cc5a144b1773b516a1a9ce94093d902fee42df0e0e26
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-drift-stale-real-five-remotes.stdout
+  stderr_path: logs/003-drift-stale-real-five-remotes.stderr
+evidence_hash: sha256:b42ba26dbf4fb968d701daee90419c34797ddf587df904ed32a03902a836521b
+completed_at: '2026-11-16T09:52:37Z'
