@@ -29,10 +29,40 @@
 #
 # 安静窗口（两条件同时满足，且连续满足 QUIET_SAMPLES 次）
 # ----------------------------------------------------------
-#   1. **没有外来重负载**：没有别人起的 cargo build/test、rustc、oltp_test、
-#      sysbench，也没有别人的进程吃掉 ≥50 % CPU。forge 自己的 postgres/gitea
-#      不算（本仓的 Gitea 就跑在这台机上）。
+#   1. **外来 CPU 总量 ≤ FOREIGN_CPU_MAX**（默认 2400 %，即 80 核里的 30 核）。
+#      forge 自己的 postgres/gitea 不算（本仓的 Gitea 就跑在这台机上），
+#      本用户自己的进程也不算。
 #   2. **负载均值 ≤ QUIET_MAX_LOAD**（默认 40，对 80 核即 ≤50 % 占用）。
+#
+# 为什么按**总量**判，不按「有没有某个重进程」判
+# ----------------------------------------------
+# 第一版判据是「存在一个外来进程吃 ≥50 % CPU ⇒ 争用」。实测它太敏感：
+# 别人跑 `cargo test --workspace` 时会**接连不断地**拉起一个个测试二进制
+# （four_way_compare_test / oracle_g15_tpch_sf01 …），每个都占 100–245 %，
+# 但每个只活几秒 —— 在 80 核的机器上，一个占 1 核的短命测试二进制根本
+# 构不成争用，而计数会被它一次次清零，SOAK 永远起不了跑。
+#
+# 而真正毁掉那一次 168h 的是**总量**：oltp_test 占 29 核 + 多个 rustc，
+# 外来 CPU 合计约 3264 %（41 核），load average 89.48 ⇒ 成功查询耗时
+# 9.4 s、错误率 9.6 %。
+#
+# 阈值不是拍脑袋来的，是**在 252 上量出来的**。三档实测，同一台机器、
+# 同一套脚本、同一个二进制：
+#
+#   外来 CPU    load1   错误率        吞吐      p50 延迟   判定
+#   178 %       3.67    0.07 %       47 q/s    —          PASS
+#   1123-1831 % 12-31   0.12 %       61 q/s    126 ms     PASS   ← 争用探针
+#   3264 %      89.48   9.6 %        4.7 q/s   9400 ms    FAIL   ← 污染轮
+#
+# 退化只发生在 ~40 核那一档；11–18 核时错误率仍是 0.12 %、吞吐不降反升。
+# 阈值取 2400 %（24 核）：落在两个实测点之间，且**偏向安全一侧**
+# （距 PASS 侧 1.31 倍，距 FAIL 侧 1.36 倍）。
+#
+# 这与「我的 SOAK 需要几个核」也自洽 —— 16 个驱动线程 + 1 个服务端线程
+# （Exec par: 1）实打实要 2–4 核，剩 56 核时测量结果与空机无异。
+#
+# load1 ≤ 40 这一道是独立的兜底：它不依赖 ps 的口径，1 分钟均值对
+# 突发不敏感，与上面的总量门禁互补。
 #
 # 吞吐复验
 # --------
@@ -53,7 +83,8 @@
 #   HOURS              SOAK 时长（默认 168）
 #   PORT               服务端口（默认 3411）
 #   EXPECT_COMMIT      期望的冻结提交；给了就必须是当前 HEAD，否则拒绝起跑
-#   QUIET_MAX_LOAD     安静窗口的负载上限（默认 40）
+#   QUIET_MAX_LOAD     安静窗口的负载均值上限（默认 40）
+#   FOREIGN_CPU_MAX    安静窗口的外来 CPU 总量上限（默认 2400 %）
 #   QUIET_SAMPLES      安静窗口需连续满足的次数（默认 10，每次 60 s ⇒ 10 分钟）
 #   QUIET_INTERVAL     采样间隔秒数（默认 60）
 #   MIN_DRIVER_QPS     吞吐复验的 QPS 下限（默认 5）
@@ -76,6 +107,7 @@ PORT="${PORT:-3411}"
 EXPECT_COMMIT="${EXPECT_COMMIT:-}"
 
 QUIET_MAX_LOAD="${QUIET_MAX_LOAD:-40}"
+FOREIGN_CPU_MAX="${FOREIGN_CPU_MAX:-2400}"
 QUIET_SAMPLES="${QUIET_SAMPLES:-10}"
 QUIET_INTERVAL="${QUIET_INTERVAL:-60}"
 MIN_DRIVER_QPS="${MIN_DRIVER_QPS:-5}"
@@ -110,7 +142,7 @@ if [ -n "$EXPECT_COMMIT" ] && [ "$HEAD_COMMIT" != "$EXPECT_COMMIT" ]; then
 fi
 
 log "launcher up: repo=$SOAK_REPO_ROOT head=$HEAD_COMMIT art=$ART_DIR run_id=$RUN_ID hours=$HOURS port=$PORT"
-log "policy: quiet_max_load=$QUIET_MAX_LOAD quiet_samples=$QUIET_SAMPLES interval=${QUIET_INTERVAL}s min_qps=$MIN_DRIVER_QPS verify_secs=$VERIFY_SECS"
+log "policy: quiet_max_load=$QUIET_MAX_LOAD foreign_cpu_max=$FOREIGN_CPU_MAX quiet_samples=$QUIET_SAMPLES interval=${QUIET_INTERVAL}s min_qps=$MIN_DRIVER_QPS verify_secs=$VERIFY_SECS"
 
 # ---------------------------------------------------------------------------
 # 安静窗口判据
@@ -125,37 +157,30 @@ log "policy: quiet_max_load=$QUIET_MAX_LOAD quiet_samples=$QUIET_SAMPLES interva
 # 自己起跑之后判定「机器还是被压着」，把刚起的 run 停掉，然后永远等下去。
 #
 # 所有者相同 ⇒ 不是外来争用；整机层面的争用由 load 均值那一道门禁兜底。
-foreign_heavy() {
-  ps -eo pid=,user=,pcpu=,args= 2>/dev/null | awk -v self="$$" -v repo="$SOAK_REPO_ROOT" -v me="$(id -un)" '
+# 外来 CPU 总量（%），以及逐条明细（供日志留痕）。
+#
+# **只把「别人 owner」的作业算作争用。**
+#
+# 这一条是承重的，不是随手写的过滤：本启动器自己起的那一轮 SOAK 里，
+# 臂 B 就是一个 `cargo test --release --test v312_mixed_soak` —— 它命中
+# 「像 cargo」这一条，却是我们自己的作业。若不按 owner 区分，启动器会在
+# 自己起跑之后判定「机器还是被压着」，把刚起的 run 停掉，然后永远等下去。
+#
+# 所有者相同 ⇒ 不是外来争用；整机层面的争用由 load 均值那一道门禁兜底。
+foreign_cpu_total() {
+  ps -eo user=,pcpu=,args= 2>/dev/null | awk -v repo="$SOAK_REPO_ROOT" -v me="$(id -un)" '
     {
-      pid=$1; user=$2; cpu=$3;
-      $1=""; $2=""; $3=""; args=$0;
-      if (pid == self) next;
+      user=$1; cpu=$2;
+      $1=""; $2=""; args=$0;
       if (user == me) next;
       if (index(args, repo) > 0) next;
       if (index(args, "run_v410_168h_soak_on_z6g4") > 0) next;
-      if (index(args, "awk -v self=") > 0) next;
+      if (index(args, "awk -v repo=") > 0) next;
       if (args ~ /postgres|gitea/) next;
-      # 正在干活的编译/压测进程：rustc、oltp_test、sysbench 永远是活的。
-      if (args ~ /rustc|oltp_test|sysbench|jemalloc/) {
-        printf("%s|%s|%s|%s\n", pid, user, cpu, args); next
-      }
-      # 任何吃掉半个核以上的进程。
-      if (cpu+0 >= 50) {
-        printf("%s|%s|%s|%s\n", pid, user, cpu, args); next
-      }
-      # cargo：只在它**正在干活**时算争用。
-      #
-      # 一个停在 0% CPU 的 `cargo build`（在等锁、在等网络）此刻并没有
-      # 抢机器；若把它也算成争用，机器上只要有人挂着 cargo，本 SOAK
-      # 就永远起不了跑 —— 那是把「有人在旁边待着」误当成「有人在抢」。
-      # 它一旦开始编译，rustc 子进程会被上一条命中；它自己也会很快
-      # 越过 10% CPU，被下一条命中。安静窗口要求连续 10 次满足，
-      # 所以「间歇性抢机器」照样会把计数清零。
-      if (args ~ /cargo/ && cpu+0 >= 10) {
-        printf("%s|%s|%s|%s\n", pid, user, cpu, args); next
-      }
-    }'
+      s += cpu;
+      if (cpu+0 >= 20) printf("%s|%s|%s\n", user, cpu, substr(args, 1, 90));
+    }
+    END { printf("TOTAL|%s|%.0f\n", (s+0), (s+0)) }'
 }
 
 # Portable "now + N seconds" (GNU -d / BSD -v).
@@ -255,9 +280,12 @@ ATTEMPT=0
 while true; do
   ATTEMPT=$((ATTEMPT + 1))
   LOAD="$(load1)"
-  BUSY="$(foreign_heavy | head -3)"
+  FOREIGN_OUT="$(foreign_cpu_total)"
+  FOREIGN_TOTAL="$(printf '%s\n' "$FOREIGN_OUT" | awk -F'|' '/^TOTAL\|/ {print $3}')"
+  [ -n "$FOREIGN_TOTAL" ] || FOREIGN_TOTAL=0
+  FOREIGN_TOP="$(printf '%s\n' "$FOREIGN_OUT" | grep -v '^TOTAL|' | head -3 | tr '\n' ';' | cut -c1-200)"
   QUIET=1
-  [ -n "$BUSY" ] && QUIET=0
+  [ "$FOREIGN_TOTAL" -gt "$FOREIGN_CPU_MAX" ] && QUIET=0
   LOAD_INT="$(printf '%.0f' "$LOAD" 2>/dev/null || echo 0)"
   [ "$LOAD_INT" -gt "$QUIET_MAX_LOAD" ] && QUIET=0
 
@@ -268,9 +296,9 @@ while true; do
   fi
 
   if [ "$QUIET" -eq 1 ]; then
-    log "host QUIET load=$LOAD_INT streak=$STREAK/$QUIET_SAMPLES"
+    log "host QUIET load=$LOAD_INT foreign_cpu=${FOREIGN_TOTAL}% streak=$STREAK/$QUIET_SAMPLES"
   else
-    log "host BUSY  load=$LOAD_INT streak=0/$QUIET_SAMPLES busy=[$(echo "$BUSY" | tr '\n' ';' | cut -c1-220)]"
+    log "host BUSY  load=$LOAD_INT foreign_cpu=${FOREIGN_TOTAL}% (max $FOREIGN_CPU_MAX%) streak=0/$QUIET_SAMPLES top=[$FOREIGN_TOP]"
   fi
 
   if [ "$STREAK" -ge "$QUIET_SAMPLES" ]; then
@@ -299,6 +327,7 @@ while true; do
   "driver_queries_at_verify": $Q,
   "driver_qps_at_verify": $QPS,
   "quiet_max_load": $QUIET_MAX_LOAD,
+  "foreign_cpu_max": $FOREIGN_CPU_MAX,
   "quiet_samples": $QUIET_SAMPLES
 }
 JSON
