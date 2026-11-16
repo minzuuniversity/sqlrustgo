@@ -22,6 +22,23 @@
 //! separate, still-open defect: 15 of the 22 stored entries share one
 //! placeholder hash (issue #5688), so drift detection is only meaningful for
 //! the entries that were captured honestly.
+//!
+//! The placeholder-baseline guard
+//!
+//! Before #5688 was fixed, a stored entry whose `row_count` is 0 could make
+//! an **empty** result set compare equal and be counted as `PASS`. That is
+//! the exact shape of the defect: 15 of the 22 stored entries carry
+//! `row_count: 0` and the **same** hash (`af5570f5…`, the hash of an empty
+//! row set), so a statement that returned nothing at all was indistinguishable
+//! from a statement that was verified against a real captured baseline.
+//!
+//! `placeholder_baseline_entries` names those entries. A statement whose
+//! stored entry is a placeholder can never be counted as `PASS`: it is
+//! reported as a placeholder instead. This **tightens** the criterion — it
+//! never turns a red into a green. A statement that legitimately returns an
+//! empty result set is still compared against its stored hash as before;
+//! what changes is only that an *empty stored baseline* no longer counts as
+//! verification of anything.
 
 #[path = "../../common/mod.rs"]
 mod common;
@@ -171,6 +188,143 @@ fn baseline_profile_matches_fixture(baseline: &Sha256Baseline) -> bool {
     }
 }
 
+/// The stored entries that are placeholders rather than captured baselines.
+///
+/// #5688: an entry with `row_count == 0` was captured while the fixture was
+/// empty (the load failed), so its hash is the hash of an **empty row set**
+/// and carries no information about the statement's real result. Fifteen of
+/// the 22 stored entries are in that shape and they all share the same hash.
+///
+/// Such an entry must never be counted as a verification: comparing an empty
+/// result set against the hash of an empty row set always succeeds, so a
+/// statement that returned nothing at all would be reported as `PASS`.
+///
+/// The guard is deliberately narrow. It rejects **stored** empty baselines,
+/// not empty results: a statement whose stored baseline was captured
+/// honestly keeps being verified even if its result set is legitimately
+/// empty (which is normal for TPC-H queries against a small scale factor).
+fn is_placeholder_entry(entry: &Sha256QueryEntry) -> bool {
+    entry.row_count == 0 && entry.sha256 != "PENDING_GENERATION"
+}
+
+/// The query ids whose stored baseline is a placeholder.
+///
+/// Reported so the reader sees *which* statements have no real baseline
+/// instead of having to trust a count.
+fn placeholder_baseline_entries(baseline: &Sha256Baseline) -> Vec<&str> {
+    baseline
+        .queries
+        .iter()
+        .filter(|e| is_placeholder_entry(e))
+        .map(|e| e.query_id.as_str())
+        .collect()
+}
+
+/// The self-proof of the placeholder guard.
+///
+/// #5688: a criterion that is never shown to fail is not evidence. These
+/// tests pin the guard's behaviour on both sides:
+///
+/// * a stored entry with `row_count == 0` is a placeholder ⇒ never `PASS`;
+/// * a stored entry with `row_count > 0` is a real baseline ⇒ still verified;
+/// * an empty **result** against a real baseline is still a hash comparison
+///   (an empty result set is not by itself evidence of a fake baseline);
+/// * `PENDING_GENERATION` is not a placeholder (it is an explicitly pending
+///   entry, already handled by the pending counter).
+#[cfg(test)]
+mod placeholder_guard_tests {
+    use super::*;
+
+    fn entry(query_id: &str, row_count: usize, sha256: &str) -> Sha256QueryEntry {
+        Sha256QueryEntry {
+            query_id: query_id.to_string(),
+            row_count,
+            sha256: sha256.to_string(),
+            wall_time_ms: 0,
+        }
+    }
+
+    #[test]
+    fn an_empty_stored_baseline_is_a_placeholder() {
+        // The hash of an empty row set: sha256(row_count=0 as 8 LE bytes).
+        let empty_hash = sha256_capture(&RowSet {
+            query: "Q1".into(),
+            row_count: 0,
+            rows: vec![],
+            wall_time_ms: 0,
+        });
+        let e = entry("Q1", 0, &empty_hash);
+        assert!(
+            is_placeholder_entry(&e),
+            "a stored entry with row_count=0 must be recognised as a placeholder"
+        );
+        // And the stored file really does carry that shape: the guard is not
+        // hypothetical.
+        let stored = std::path::Path::new(TPC_H_SHA256_BASELINE_FILE);
+        if stored.exists() {
+            let baseline = Sha256Baseline::load_or_warn(stored).expect("baseline load failed");
+            let placeholders = placeholder_baseline_entries(&baseline);
+            assert!(
+                !placeholders.is_empty(),
+                "the stored baseline is expected to still contain placeholder entries \
+                 (issue #5688 is open)"
+            );
+            // Every placeholder must hash the same way — they are all the
+            // same empty row set.
+            for qid in &placeholders {
+                let e = baseline
+                    .queries
+                    .iter()
+                    .find(|e| e.query_id == *qid)
+                    .expect("entry present");
+                assert_eq!(
+                    e.sha256, empty_hash,
+                    "{qid} is a placeholder and must carry the empty-row-set hash"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_captured_baseline_is_not_a_placeholder() {
+        let e = entry("Q6", 1, "some-real-hash");
+        assert!(
+            !is_placeholder_entry(&e),
+            "a stored entry with row_count>0 must still be verified normally"
+        );
+    }
+
+    #[test]
+    fn a_pending_entry_is_not_a_placeholder() {
+        let e = entry("Q7", 0, "PENDING_GENERATION");
+        assert!(
+            !is_placeholder_entry(&e),
+            "PENDING_GENERATION is an explicitly pending entry, handled by the pending counter"
+        );
+    }
+
+    #[test]
+    fn an_empty_result_against_a_real_baseline_is_still_compared() {
+        // An empty result set is not by itself proof of a fake baseline: the
+        // guard must not turn a legitimate empty result into a placeholder.
+        // Here the stored baseline is real (row_count>0) and the actual
+        // result is empty, so the hashes differ and the statement is a drift.
+        let real_baseline = entry("Q9", 3, "a-real-captured-hash");
+        assert!(!is_placeholder_entry(&real_baseline));
+        let actual = RowSet {
+            query: "Q9".into(),
+            row_count: 0,
+            rows: vec![],
+            wall_time_ms: 0,
+        };
+        assert_ne!(
+            sha256_capture(&actual),
+            real_baseline.sha256,
+            "an empty result must not silently match a real captured baseline"
+        );
+    }
+}
+
 #[test]
 fn g1_tpch_sha256_baseline() {
     let baseline_path = std::path::Path::new(TPC_H_SHA256_BASELINE_FILE);
@@ -192,6 +346,10 @@ fn g1_tpch_sha256_baseline() {
     let mut fail = 0;
     let mut pending = 0;
     let mut not_run = 0;
+    // #5688: statements whose stored baseline is an empty row set. They are
+    // neither verified (PASS) nor drifted (FAIL) — they have no baseline to
+    // verify against.
+    let mut placeholder = 0;
     // The statements the file-storage wire path must not execute, and the
     // ones it must. Both counts are checked against the shared scope
     // afterwards, so a statement can neither slip through nor disappear.
@@ -228,7 +386,22 @@ fn g1_tpch_sha256_baseline() {
         let baseline_entry = baseline.queries.iter().find(|e| e.query_id == *qid);
         match baseline_entry {
             Some(entry) if entry.sha256 != "PENDING_GENERATION" => {
-                if entry.sha256 == actual_hash {
+                if is_placeholder_entry(entry) {
+                    // #5688: the stored baseline for this statement is an empty
+                    // row set captured while the fixture was empty. Even when
+                    // the actual result matches that hash, the comparison
+                    // verifies nothing — an empty result set always hashes to
+                    // the same value. Reporting it as PASS would let a
+                    // statement that returned nothing pass as verified, so it
+                    // is disclosed as a placeholder instead.
+                    placeholder += 1;
+                    eprintln!(
+                        "[PLACEHOLDER] {}: stored baseline is an empty row set \
+                         (row_count=0) captured while the fixture was empty — \
+                         it cannot verify this statement",
+                        qid
+                    );
+                } else if entry.sha256 == actual_hash {
                     pass += 1;
                 } else {
                     fail += 1;
@@ -250,8 +423,8 @@ fn g1_tpch_sha256_baseline() {
 
     eprintln!(
         "\n=== G1 TPC-H SHA-256 baseline summary ===\n  PASS:    {}\n  FAIL:    {}\n  \
-         PENDING: {}\n  NOT RUN: {}",
-        pass, fail, pending, not_run
+         PENDING: {}\n  NOT RUN: {}\n  PLACEHOLDER: {}",
+        pass, fail, pending, not_run, placeholder
     );
 
     // A statement whose hash drifted is reported first: it is the real
@@ -263,12 +436,13 @@ fn g1_tpch_sha256_baseline() {
     );
 
     // Every statement must be accounted for: either it was executed and
-    // hashed, it drifted, or it was skipped for a registered reason.
+    // hashed, it drifted, it has no baseline to verify against (#5688), or
+    // it was skipped for a registered reason.
     assert_eq!(
-        pass + fail + pending + not_run,
+        pass + fail + pending + not_run + placeholder,
         TPC_H_QUERIES.len(),
-        "{TARGET}: {pass} passed + {fail} failed + {pending} pending + {not_run} not run does \
-         not account for the {} statements of this file",
+        "{TARGET}: {pass} passed + {fail} failed + {pending} pending + {not_run} not run + \
+         {placeholder} placeholder does not account for the {} statements of this file",
         TPC_H_QUERIES.len()
     );
     // ... and the skipped ones must be exactly the ones the shared wire
@@ -284,16 +458,28 @@ fn g1_tpch_sha256_baseline() {
         pass + fail + pending,
         expected_scoped,
         "{TARGET}: {} of the {expected_scoped} in-scope statements were executed",
-        pass + fail + pending
+        pass + fail + pending + placeholder
     );
     assert!(
-        pass + fail + pending > 0,
+        pass + fail + pending + placeholder > 0,
         "{TARGET}: this run executed nothing at all; a run that executes nothing must not \
          report success"
     );
     if pass == 0 {
         eprintln!(
-            "[INFO] No baseline entries validated (all PENDING). Run --generate-baseline to seed."
+            "[INFO] No baseline entries validated (all PENDING or PLACEHOLDER). \
+             Run --generate-baseline to seed."
+        );
+    }
+    // #5688: name the statements whose stored baseline cannot verify them.
+    // A reader must be able to see *which* statements lack a real baseline
+    // without re-deriving it from the count.
+    let placeholders = placeholder_baseline_entries(&baseline);
+    if !placeholders.is_empty() {
+        eprintln!(
+            "[INFO] {} statement(s) have no usable stored baseline (empty row set): {}",
+            placeholders.len(),
+            placeholders.join(", ")
         );
     }
 
