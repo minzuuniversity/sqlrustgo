@@ -311,6 +311,10 @@ for k in ('successful_queries','failed_queries','iterations_requested'):
     # `cargo --version` and synthesised a `Crashed` entry. The gate then
     # exited 0 having run no test at all.
     local tr_manifest="${REPO_ROOT}/config/test-runner-manifest.toml"
+    # cargo's JSON build report for THIS run — the authoritative list of the
+    # test binaries it just produced. Staging reads it instead of guessing
+    # from the deps/ directory.
+    local tr_build_json="${REPO_ROOT}/target/cargo-test-bins.json"
     if [ ! -s "$tr_manifest" ]; then
         log_error "  V312-24: ${tr_manifest} missing — test-runner would fall back to probe mode"
         errors=$((errors + 1))
@@ -381,55 +385,36 @@ PYEOF2
             for p in $tr_pkgs; do
                 tr_pflags="$tr_pflags -p $p"
             done
+            # `--message-format=json` 让 cargo **指名**它这次产出的每一个测试
+            # 二进制（executable 的绝对路径）。
+            #
+            # 旧做法是「扫 deps/ 目录、按 mtime 猜最新的那个」，而且目标路径
+            # 已存在时干脆**跳过拷贝**，直接拿旧文件当证据。猜错 + 跳过拷贝
+            # 合在一起的后果是：**门禁在认证过期代码**。
+            #
+            # 2026-11-17 实测：VtuGuard 的事务透传修复（1f9425134d，04:14）
+            # 落地之后，门禁仍然报
+            # `vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id`
+            # 失败 —— 因为它跑的是 02:30 那个**修复前**的二进制；05:31 cargo
+            # 已经编出了含修复的新二进制，只是没被拷到目标路径。同一份源码，
+            # 门禁验的是上一版。
+            #
             # shellcheck disable=SC2086
-            ( cd "$REPO_ROOT" && cargo test --no-run --release $tr_pflags ) \
-                2>/tmp/cargo-build-test-bins.log || errors=$((errors + 1))
+            ( cd "$REPO_ROOT" && cargo test --no-run --release $tr_pflags --message-format=json ) \
+                >"$tr_build_json" 2>/tmp/cargo-build-test-bins.log || errors=$((errors + 1))
         fi
-        # Stage `deps/<crate>-<hash>` to the hashless `target/release/<crate>`
-        # path that the manifest (and therefore `ManagedTest::binary`) names.
-        tr_staged=$(cd "$REPO_ROOT" && python3 - "$tr_manifest" <<'PYEOF3'
-import os, re, shutil, sys
-
-REPO = os.getcwd()
-REL = os.path.join(REPO, 'target', 'release')
-DEPS = os.path.join(REL, 'deps')
-
-wanted = []
-try:
-    for line in open(os.path.join(REPO, sys.argv[1])):
-        m = re.search(r'binary\s*=\s"([^"]+)"', line)
-        if m:
-            wanted.append(m.group(1))
-except OSError:
-    pass
-
-staged = []
-for rel in wanted:
-    dst = os.path.join(REPO, rel)
-    name = os.path.basename(rel)
-    if os.path.isfile(dst) and os.access(dst, os.X_OK):
-        staged.append(name)
-        continue
-    crate = name.replace('_', '-')
-    hits = []
-    if os.path.isdir(DEPS):
-        for entry in os.listdir(DEPS):
-            if not entry.startswith(crate.replace('-', '_') + '-'):
-                continue
-            if entry.endswith(('.d', '.rlib', '.rmeta', '.o')):
-                continue
-            p = os.path.join(DEPS, entry)
-            if os.path.isfile(p) and os.access(p, os.X_OK):
-                hits.append(p)
-    if not hits:
-        continue
-    # Prefer the newest artifact; cargo leaves stale hashes behind.
-    newest = max(hits, key=lambda p: os.path.getmtime(p))
-    shutil.copy2(newest, dst)
-    staged.append(name)
-print(' '.join(sorted(set(staged))))
-PYEOF3
-)
+        # Stage the test binaries cargo just built to the hashless
+        # `target/release/<crate>` path that the manifest (and therefore
+        # `ManagedTest::binary`) names — **always overwriting**, and refusing
+        # to stage an artifact that is older than its own sources.
+        #
+        # The logic lives in scripts/gate/stage_test_binaries.py so that it
+        # can be regression-tested (tests/integration/gate/
+        # stage_test_binaries_test.rs) — the whole point is that the gate must
+        # not certify a binary built from an earlier revision.
+        tr_staged=$(cd "$REPO_ROOT" && python3 "${REPO_ROOT}/scripts/gate/stage_test_binaries.py" \
+            "$tr_build_json" "$tr_manifest") \
+            || { errors=$((errors + 1)); log_error "  V312-24: test binary staging failed (missing or stale artifact — see details above)"; }
             [ -n "$tr_staged" ] && log_info "  staged test binaries: $tr_staged"
     fi
 
@@ -460,13 +445,26 @@ for k in ('started_at', 'finished_at', 'config', 'summary', 'results'):
 results = d['results']
 if not isinstance(results, list) or not results:
     print('results is empty — no test actually ran'); sys.exit(1)
+# A test that FAILED is not a crash — but it is a failure. The old validator
+# only looked for 'crashed', so a report full of ordinary failures could
+# pass this check as long as the runner happened to exit 0. The runner's own
+# exit code is a second line of defence, not the only one.
+failed = [r for r in results
+          if isinstance(r, dict) and str(r.get('status', '')).lower() in ('failed', 'failure')]
+if failed:
+    print('%d test(s) FAILED: %s' % (
+        len(failed), ', '.join(str(r.get('name', '?')) for r in failed)))
+    sys.exit(1)
+summary_failed = int((d.get('summary') or {}).get('failed') or 0)
+if summary_failed:
+    print('summary reports %d failed test(s)' % summary_failed); sys.exit(1)
 crashed = [r for r in results
            if isinstance(r, dict) and str(r.get('status', '')).lower() == 'crashed']
 if crashed:
     print('%d test(s) crashed: %s' % (
         len(crashed), ', '.join(str(r.get('name', '?')) for r in crashed)))
     sys.exit(1)
-print('%d test(s) ran, none crashed' % len(results))
+print('%d test(s) ran, 0 failed, 0 crashed' % len(results))
             " 2>/tmp/test-runner-schema.log >/tmp/test-runner-schema.out; then
                 local total_duration tr_count
                 tr_count=$(grep -oE '^[0-9]+' /tmp/test-runner-schema.out | tail -1 || true)
