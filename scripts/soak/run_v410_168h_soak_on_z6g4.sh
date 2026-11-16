@@ -516,15 +516,35 @@ while true; do
   ATTEMPT=$((ATTEMPT + 1))
   LOAD="$(load1)"
   CPU_OUT="$(sample_cpu)"
-  FOREIGN_TOTAL="$(printf '%s\n' "$CPU_OUT" | sed -n '1p' | cut -d'|' -f1)"
-  SYS_CPU="$(printf '%s\n' "$CPU_OUT" | sed -n '1p' | cut -d'|' -f2)"
-  OWN_CPU="$(printf '%s\n' "$CPU_OUT" | sed -n '1p' | cut -d'|' -f3)"
+  CPU_LINE1="$(printf '%s\n' "$CPU_OUT" | sed -n '1p')"
   FOREIGN_TOP="$(printf '%s\n' "$CPU_OUT" | sed -n '2p' | cut -d'|' -f2-)"
-  [ -n "$FOREIGN_TOTAL" ] || FOREIGN_TOTAL=0
-  [ -n "$SYS_CPU" ] || SYS_CPU=0
-  [ -n "$OWN_CPU" ] || OWN_CPU=0
-  WARMUP=0
-  [ "$FOREIGN_TOTAL" = "0" ] && [ "$SYS_CPU" = "0" ] && WARMUP=1
+  # 三态：warmup（还没有基线，**这一轮不算数**）/ 读数 / 测量失败。
+  #
+  # 测量失败与 warmup 一样必须**归零并判为「非安静」**：把「读不出来」
+  # 当成「没有争用」，等于把仪器坏了当成机器安静 —— 那正是门禁失守的
+  # 形式。宁可多等，不可误判。
+  WARMUP=1
+  FOREIGN_TOTAL=0
+  SYS_CPU=0
+  OWN_CPU=0
+  case "${CPU_LINE1%%|*}" in
+    warmup)
+      WARMUP=1
+      ;;
+    ''|*[!0-9]*)
+      WARMUP=1
+      log "WARNING: CPU measurement unreadable (raw='${CPU_LINE1}') — this sample counts as NOT quiet."
+      ;;
+    *)
+      WARMUP=0
+      FOREIGN_TOTAL="$(printf '%s' "$CPU_LINE1" | cut -d'|' -f1)"
+      SYS_CPU="$(printf '%s' "$CPU_LINE1" | cut -d'|' -f2)"
+      OWN_CPU="$(printf '%s' "$CPU_LINE1" | cut -d'|' -f3)"
+      [ -n "$FOREIGN_TOTAL" ] || FOREIGN_TOTAL=0
+      [ -n "$SYS_CPU" ] || SYS_CPU=0
+      [ -n "$OWN_CPU" ] || OWN_CPU=0
+      ;;
+  esac
 
   QUIET=1
   [ "$WARMUP" -eq 1 ] && QUIET=0
