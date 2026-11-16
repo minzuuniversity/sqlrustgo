@@ -496,9 +496,10 @@ kill_soak_tree() {
 # ---------------------------------------------------------------------------
 # 每一次 attempt 写进**自己的**产物目录。
 #
-# 为什么不能共用一个目录：吞吐复验读的是 armA/driver.log 里的 Q 行数。
-# 若上一轮 attempt 的 driver.log 还在，新一轮的计数会把旧账算进来 ——
-# 一轮几乎没跑起来的 attempt 也会被算成「QPS 达标」，复验门禁就废了。
+# 为什么不能共用一个目录：吞吐复验读的是 armA 的 metrics.csv（累计
+# driver_q / driver_e 与 elapsed_s）。若上一轮 attempt 的 metrics.csv 还在，
+# 新一轮的计数会把旧账算进来 —— 一轮几乎没跑起来的 attempt 也会被算成
+# 「QPS 达标」，复验门禁就废了。
 # 每轮独立目录，复验只读本轮，失败的那几轮原样留档作为「为什么停」的证据。
 ATTEMPT_DIR=""
 start_soak() {
@@ -612,32 +613,33 @@ while true; do
     start_soak
 
     sleep "$VERIFY_SECS"
-    # 复验只看**稳态区间**：驱动启动后前 30 s 是热身（连接建立、首屏数据
-    # 准备），那段的错误不代表稳态。稳态 = elapsed ≥ 30 s 的那些行。
-    DRIVER_LOG="$ATTEMPT_DIR/armA/driver.log"
-    read -r Q_STEADY E_STEADY DRIVER_END_MS <<EOF
-$(awk -F, '
-  /^Q,/ { if ($2+0 >= 30000) q++; if ($2+0 > m) m = $2+0 }
-  /^E,/ { if ($2+0 >= 30000) e++; if ($2+0 > m) m = $2+0 }
-  END { printf "%d %d %d\n", q+0, e+0, m+0 }' "$DRIVER_LOG" 2>/dev/null)
-EOF
-    [ -n "${Q_STEADY:-}" ] || Q_STEADY=0
-    [ -n "${E_STEADY:-}" ] || E_STEADY=0
-    [ -n "${DRIVER_END_MS:-}" ] || DRIVER_END_MS=0
-    STEADY_SECS=$(( (DRIVER_END_MS - 30000) / 1000 ))
-    [ "$STEADY_SECS" -lt 1 ] && STEADY_SECS=1
-    QPS="$(awk -v q="$Q_STEADY" -v s="$STEADY_SECS" 'BEGIN { printf "%d", q / s }')"
-    TOTAL_STEADY=$(( Q_STEADY + E_STEADY ))
-    if [ "$TOTAL_STEADY" -gt 0 ]; then
-      ERR_PCT="$(awk -v e="$E_STEADY" -v t="$TOTAL_STEADY" 'BEGIN { printf "%.3f", 100.0 * e / t }')"
+    # 复验的**时间基准**取自 armA 的 metrics.csv（15 s 一采样，带
+    # elapsed_s 与累计 driver_q / driver_e），**不是** driver.log。
+    #
+    # 为什么不能读 driver.log：驱动写的第 2 列是**单条查询自己的耗时**
+    # （`ms = (time.monotonic() - t0) * 1000`，t0 取在循环体内、每条查询
+    # 之前），不是「驱动启动以来的经过时间」。把它当 elapsed 用，等于要求
+    # 「单条查询跑了 30 秒」才把这一行算进稳态 —— 稳态区间恒为空集，
+    # 复验恒判「0 q/s、错误率 100%」。
+    #
+    # 2026-11-17 实测：attempt-31 被这道仪器误杀 —— 那轮其实健康
+    # （180 s 内 9194 条查询 ≈ 51 q/s、0 错误），却因读错时间基准被判
+    # 「0 q/s vs floor 10」，白跑一轮。
+    #
+    # 稳态窗口 = 驱动启动 30 s 之后（热身段：连接建立、首屏数据准备）
+    # 到复验时刻之间的那段时间。
+    STEADY_LINE="$("$SOAK_REPO_ROOT/scripts/soak/soak_steady_window.py" \
+                  "$ATTEMPT_DIR/armA/metrics.csv" 30 2>/dev/null || true)"
+    if [ -z "$STEADY_LINE" ]; then
+      # 读不出来 ⇒ 一律判红，绝不把「读不出来」当成「达标」。
+      Q_STEADY=0; E_STEADY=0; STEADY_SECS=0; QPS=0; ERR_PCT="100.000"; SUSTAINED=0
     else
-      ERR_PCT="100.000"
+      read -r Q_STEADY E_STEADY STEADY_SECS QPS ERR_PCT SUSTAINED <<< "$STEADY_LINE"
     fi
-    SUSTAINED=1
-    [ "$DRIVER_END_MS" -lt 60000 ] && SUSTAINED=0
     log "throughput re-check: steady ${Q_STEADY} queries / ${E_STEADY} errors in ${STEADY_SECS}s => ${QPS} q/s (floor $MIN_DRIVER_QPS), error rate ${ERR_PCT}% (max $MAX_ERROR_RATE_PCT%)"
 
-    if [ "$SUSTAINED" -eq 1 ] && [ "$QPS" -ge "$MIN_DRIVER_QPS" ] && \
+    if [ "$SUSTAINED" -eq 1 ] && \
+       awk -v q="$QPS" -v m="$MIN_DRIVER_QPS" 'BEGIN { exit !(q + 0 >= m + 0) }' && \
        awk -v r="$ERR_PCT" -v m="$MAX_ERROR_RATE_PCT" 'BEGIN { exit !(r + 0 <= m + 0) }'; then
       bin_sha="$(sha256sum "$SOAK_REPO_ROOT/target/release/sqlrustgo-mysql-server" 2>/dev/null | cut -d" " -f1)"
       FSYNC_P50="$(fsync_probe "${SOAK_DATA_DIR:-/tmp/sqlrustgo-v410-168h-$RUN_ID}")"
