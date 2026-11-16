@@ -370,6 +370,121 @@ stage_decision_2026-11-10:
 # executed deliberately; the 3 gate blockers are cleared as of 2026-09-30 and
 # re-run evidence is archived under evidence/gate-runs-*/.
 # ============================================================================
+stage_decision_2026-11-16:
+  decided_by: >-
+    MCode（AI Developer）—— 依 owner 2026-11-16 会话指令「咨询 2 专家进行决策和裁决，
+    不要问我任何技术问题，我只要最后的、合格的 GA 版本」授权；技术待决项由 AI 裁决，
+    阶段跃迁签批仍须人类架构师署名（STAGE_CONFIG transitions.*.requires_human_approval: true）
+  dual_lineage_consultation:
+    note: >-
+      ADR-014 D-06 —— 两血统分歧**不取平均**，下列分歧点逐条列出后由本席裁决。
+    seats:
+    - seat: flash-next-252
+      family: qwen-strata
+      lineage: qwen
+      model: qwen3.8-flash-next-iq3_s
+      prompt_sha256: sha256:1b0d5dd4f9865aaf21a39324ec02a6c8b6d69d854c45096701426d431dac5c8a
+      output_sha256: sha256:80af18fbf30c5af6dab7bf851ec09f6c45f0aeabc9ed7250532315d7b3b9b418
+      ok: true
+    - seat: chatgpt-web
+      family: gpt
+      lineage: gpt
+      model: web-session-chat
+      prompt_sha256: sha256:1b0d5dd4f9865aaf21a39324ec02a6c8b6d69d854c45096701426d431dac5c8a
+      output_sha256: sha256:e14a51bbef0377b305650bd8a43fdc4849d55d53095b40969c914d4bb3324819
+      ok: true
+    unavailable:
+    - seat: deepseek-website
+      reason: >-
+        HTTP 500（需人工登录）⇒ 双血统席位实到 2 席（qwen + gpt），满足 R1=2
+    role: >-
+      AFP §5.1 —— 专家意见仅作 soft gate，**不作门禁依据**；本记录的每一条落地动作都有独立实跑证据。
+  divergences_resolved:
+  - id: D-01
+    topic: "#5717 —— Q17 的 NULL 表示"
+    qwen: >-
+      维持 Guard 触发为预期红；**不修改 wire 协议**；把 Q17 标为已知协议限制并调整测试预期
+    gpt: >-
+      **修复 wire 的 NULL 表示**；Guard 保留；期间判 INCOMPLETE 不计 PASS；不得把 NULL=空串固化为合法语义
+    ruling: >-
+      两席都对，**但都不可直接执行**：qwen 的「调整测试预期」= 把红改成绿（AFP 禁止的假绿）；
+      gpt 的「改 wire」= 破坏性外部兼容面变更，且与 P0 #5584 崩溃边界邻接，未经影响分析与架构师签批不得擅动。
+      本席裁决：**本轮不改 wire、不改测试预期**，Q17 判 **INCOMPLETE（门禁诚实报红）**；
+      wire 侧给兼容性方案 + 影响面分析 + 立 P0 案，交人类架构师裁决。
+  - id: D-02
+    topic: "#5702 —— m6/m7 与 4 个未绑定声明"
+    qwen: >-
+      尺子先红 —— 先修基线自身的 4 个未绑定声明，再修测试臂
+    gpt: >-
+      先证 m6/m7 判别力（独立负向变异），再绑定声明；并必须**明确指定 claims SSOT 文件名**
+    ruling: >-
+      取 gpt 的**顺序**（判别力 ⇒ 绑定 ⇒ 重跑 17 臂），因为 m6/m7 不能判别时，
+      把声明绑到一个无效检查器上毫无意义；gpt 指出的「SSOT 文件名必须显式指定」是真缺口，本席补齐。
+      qwen 的「尺子先红」被包含在此顺序内。
+  - id: D-03
+    topic: "#5598 —— Fail-open 退出码语义"
+    qwen: >-
+      exit 0 改为 exit 1；标记为阻断级，不得移出 GA required
+    gpt: >-
+      两个门禁都 fail-closed；统一 0=PASS / 1=FAIL / 2=INCOMPLETE；检测无法完成不得 PASS
+    ruling: >-
+      取 gpt 的**三态**（它是 qwen 的超集且更符合 fail-closed）：0=PASS / 1=FAIL / 2=INCOMPLETE。
+      两席一致的部分（保留在 GA required、不降级为 optional）直接采纳。
+  - id: D-04
+    topic: "今天最远能诚实交付的阶段"
+    qwen: >-
+      ALPHA 维持；若门禁全绿可进 BETA
+    gpt: >-
+      只到 ALPHA；不得宣布 BETA / RC / GA
+    ruling: >-
+      这不是意见分歧而是**事实问题**，按实测判定而非投票：若 ALPHA→BETA 的 exit_criteria
+      （ALPHA 全绿 + 有效 deferral + 覆盖率 ≥50% + 人类批准）在冻结提交上全部为绿，则 BETA 可诚实推进；
+      否则停在 ALPHA。**RC→GA 今日不可达**（168h SOAK 物理需 7 天独占窗口 + 人类架构师签批 +
+      main/release 承载分支），不得以 CONDITIONAL PASS 冒充（v4.0.0 的该模式已于 2026-09-30 撤销）。
+  rulings:
+  - id: BASELINE
+    topic: "4.0.0 的基线是否升级更新为 4.1.0 自有基线"
+    ruling: >-
+      **升级 —— 判据继承、清单全量重盘。** v4.0.0 的 GA 判定已于 2026-09-30 撤销
+      （ga_promotion_status.verdict = REVOKED），其继承清单不得充当 v4.1.0 的合格证据；
+      但其仍有效的技术判据（覆盖率门槛、SOAK 时长、E2E/回归全通过等）继续沿用。
+      执行面唯一权威 = docs/governance/STAGE_CONFIG.yaml；本文件三段 required_gates_for_* 改为其镜像。
+    evidence: >-
+      docs/releases/v4.1.0/GATE_BASELINE_V410.jsonl（168 行，与 gov_probe check_n=168 严格对齐）
+  - id: "168h-SOAK"
+    ruling: >-
+      今天启动真实 168h 重跑（干净检出 + release 二进制 + 独占窗口 + 树内心跳脚本）；
+      **同时保留** 2026-11-13 的显式 deferral，且它**仅适用于 ALPHA→BETA**，
+      d1 前提（BETA→RC 前必须重开裁决）不变；RC→GA 必须有真实 168h PASS。
+  - id: COVERAGE
+    ruling: >-
+      CI 执行面已死（#5597/#5551/#5569/#5573）⇒ 覆盖率只认**干净检出的本地可复现口径**：
+      固定 commit + 工具链版本 + 覆盖率工具版本 + 测试命令 + 逐文件分子分母 + 原始数据 + SHA256；
+      排除规则显式登记；**CI 项如实标 INCOMPLETE，不以本地覆盖率替代 CI 绿灯**。
+  ga_feasibility_2026_11_16:
+    verdict: >-
+      GA 今日**不可达**（诚实结论，不得以 CONDITIONAL PASS 冒充）
+    hard_blockers:
+    - id: SOAK-168H
+      detail: >-
+        rc_to_ga 判据要求「168h multi-model SOAK PASS」。SOAK 物理需 7 天独占窗口；
+        本轮于 2026-11-16 启动 ⇒ 最早 2026-11-23 满 168h。
+    - id: HUMAN-SIGNOFF
+      detail: >-
+        STAGE_CONFIG transitions.RC_to_GA.requires_human_approval: true；
+        manual_only_criteria 明文：「批准记录写进本文件的变更记录，**不能由 Agent 生成**」。
+    - id: CARRIER
+      detail: >-
+        GA 的 branch_pattern = [main, release/v*, hotfix/v*] 且 carrier_enforced: true；
+        release/v4.1.0 分支尚不存在。
+    - id: BASELINE-GAP
+      detail: >-
+        168 道门禁重盘结果 —— REQUIRED 134 / HISTORICAL 32 / RETIRED 2；
+        其中 **49 道「应在 v4.1.0 范围内执行但当前无执行点」**（37 NONE_PENDING + 12 NONE_BLOCKED_EXTERNAL）。
+        owner 2026-11-08 裁决的「23 道恢复执行点」实测仍未落地（gov_probe 实测 dead 仍 = 61）。
+    note: >-
+      以上四条为**外部 / 物理 / 人类**约束，AI 不可自行消除；本席已把可由仓内完成的部分全部做完并归档。
+
 last_transition:
   from: "DRAFT"
   to: "ALPHA"
@@ -499,14 +614,143 @@ required_gates_for_alpha:
     - gate: "scripts/gate/check_cross_version_debt.sh"
       status: "PASS (4 OPEN debt warnings; not re-run this cycle — status carried from v4.0.0 baseline; UNVERIFIED in 2026-09-30 run)"
 
+gate_baseline_2026-11-16:
+  artifact: "docs/releases/v4.1.0/GATE_BASELINE_V410.jsonl"
+  generator: "audit/v4.1.0/gate_baseline_v410.py（探针：不叫 check_*、不进 STAGE_CONFIG ⇒ 分母 168 不变）"
+  denominator: 168
+  denominator_check: "gov_probe.py metrics → check_n = 168（重盘前后一致）"
+  labels:
+    REQUIRED: 134
+    HISTORICAL: 32
+    RETIRED: 2
+    NOT_APPLICABLE: 0
+  execution_points:
+    STAGE_LIST: 34
+    CI_DECLARED: 51
+    NONE_PENDING: 37
+    NONE_BLOCKED_EXTERNAL: 12
+  ga_critical: 31
+  gap_required_without_execution_point: 49
+  gap_meaning: "「应当执行」与「已经执行并通过」是两件事；基线不把前者算成后者。"
+  owner_ruling_2026_11_08_measured:
+    ruling: "61 道「有引用、无执行点」门禁 → 23 道恢复执行点 / 38 道标 historical-退役"
+    measured_now: "gov_probe 实测 dead = 61、orphan = 83、ci_reach = 107、listed_n = 34"
+    finding: "该裁决的「恢复执行点」部分**至今未落地**（dead 仍是 61）⇒ GA 前置项，非本轮可静默通过。"
+  selftest: "12 臂反向变异全绿（篡改标签 / 删条目 / 伪造执行点 三类变异均被检出）"
+
 required_gates_for_beta:
-  note: "Beta gates for v4.1.0 are the v4.0.0 beta gates, MINUS those specifically marked v4.0.0-GA-only, PLUS any new gates introduced in PHASE_1_SCOPE.md. As of 2026-09-29 PHASE_1_SCOPE.md does not exist; the v4.0.0 required_gates_for_beta apply by inheritance."
+  rebaselined_on: "2026-11-16"
+  rebaseline_basis: "stage_decision_2026-11-16（双血统征询 flash-next-252/qwen + chatgpt-web/gpt；按 ADR-014 D-06 逐点裁决，不取平均）"
+  execution_authority: "docs/governance/STAGE_CONFIG.yaml —— 本节是**镜像文档**；实测全仓无消费方读取 required_gates_for_*（scripts/gate/check_stage.sh 只读 STAGE_CONFIG 的 stages.*.required_gates）"
+
+  source: "docs/governance/STAGE_CONFIG.yaml → stages.BETA.required_gates（19 项）"
+  gates:
+    - scripts/gate/check_beta_gate.sh
+    - scripts/gate/check_anti_fabrication.sh
+    - scripts/gate/check_arch_invariants.sh
+    - scripts/gate/check_arch3_no_bypass.sh
+    - scripts/gate/check_int2_no_orphan.sh
+    - scripts/gate/check_int3_single_expr.sh
+    - scripts/gate/check_sem1_savepoint.sh
+    - scripts/gate/check_backup_restore.sh
+    - scripts/gate/check_g1_tpch_baseline.sh
+    - scripts/gate/check_arch_sem_debt.sh
+    - scripts/gate/check_cross_version_debt.sh
+    - scripts/gate/check_int_debt.sh
+    - scripts/gate/check_coverage_v312.sh
+    - scripts/gate/check_sql_corpus_gate.sh
+    - scripts/gate/check_anti_ignore_gate.sh
+    - cargo build --all-features
+    - cargo test --all-features
+    - cargo fmt --check
+    - cargo clippy --all-features -- -D warnings
 
 required_gates_for_rc:
-  note: "Deferred until v4.1.0 reaches RC phase."
+  rebaselined_on: "2026-11-16"
+  rebaseline_basis: "stage_decision_2026-11-16（双血统征询 flash-next-252/qwen + chatgpt-web/gpt；按 ADR-014 D-06 逐点裁决，不取平均）"
+  execution_authority: "docs/governance/STAGE_CONFIG.yaml —— 本节是**镜像文档**；实测全仓无消费方读取 required_gates_for_*（scripts/gate/check_stage.sh 只读 STAGE_CONFIG 的 stages.*.required_gates）"
+
+  source: "docs/governance/STAGE_CONFIG.yaml → stages.RC.required_gates（26 项）"
+  gates:
+    - scripts/gate/check_rc_ga_gate.sh
+    - scripts/gate/check_arch_invariants.sh
+    - scripts/gate/check_arch3_no_bypass.sh
+    - scripts/gate/check_int2_no_orphan.sh
+    - scripts/gate/check_int3_single_expr.sh
+    - scripts/gate/check_sem1_savepoint.sh
+    - scripts/gate/check_backup_restore.sh
+    - scripts/gate/check_p12_crash_test.sh
+    - scripts/gate/check_p14_upgrade_test.sh
+    - scripts/gate/check_p21_audit_log.sh
+    - scripts/gate/check_p22_time_travel.sh
+    - scripts/gate/check_p23_hash_chain.sh
+    - scripts/gate/check_g1_tpch_baseline.sh
+    - scripts/gate/check_integration_gate.sh
+    - scripts/gate/check_anti_fabrication.sh
+    - scripts/gate/check_arch_sem_debt.sh
+    - scripts/gate/check_cross_version_debt.sh
+    - scripts/gate/check_int_debt.sh
+    - scripts/gate/check_full_gate_verification.sh
+    - scripts/gate/check_coverage_v312.sh
+    - scripts/gate/check_sql_corpus_gate.sh
+    - scripts/gate/check_anti_ignore_gate.sh
+    - cargo build --all-features
+    - cargo test --all-features
+    - cargo fmt --check
+    - cargo clippy --all-features -- -D warnings
 
 required_gates_for_ga:
-  note: "Deferred until v4.1.0 reaches GA phase."
+  rebaselined_on: "2026-11-16"
+  rebaseline_basis: "stage_decision_2026-11-16（双血统征询 flash-next-252/qwen + chatgpt-web/gpt；按 ADR-014 D-06 逐点裁决，不取平均）"
+  execution_authority: "docs/governance/STAGE_CONFIG.yaml —— 本节是**镜像文档**；实测全仓无消费方读取 required_gates_for_*（scripts/gate/check_stage.sh 只读 STAGE_CONFIG 的 stages.*.required_gates）"
+
+  source: "docs/governance/STAGE_CONFIG.yaml → stages.GA.required_gates（35 项）"
+  gates:
+    - scripts/gate/check_rc_ga_gate.sh ga
+    - scripts/gate/check_arch_invariants.sh
+    - scripts/gate/check_arch3_no_bypass.sh
+    - scripts/gate/check_int2_no_orphan.sh
+    - scripts/gate/check_int3_single_expr.sh
+    - scripts/gate/check_sem1_savepoint.sh
+    - scripts/gate/check_backup_restore.sh
+    - scripts/gate/check_p12_crash_test.sh
+    - scripts/gate/check_p14_upgrade_test.sh
+    - scripts/gate/check_p21_audit_log.sh
+    - scripts/gate/check_p22_time_travel.sh
+    - scripts/gate/check_p23_hash_chain.sh
+    - scripts/gate/check_g1_tpch_baseline.sh
+    - scripts/gate/check_g16_compatibility.sh
+    - scripts/gate/check_integration_gate.sh
+    - scripts/gate/check_anti_fabrication.sh
+    - scripts/gate/check_arch_sem_debt.sh
+    - scripts/gate/check_cross_version_debt.sh
+    - scripts/gate/check_int_debt.sh
+    - scripts/gate/check_full_gate_verification.sh
+    - scripts/gate/check_drift_not_pass.sh
+    - scripts/gate/check_architecture_freeze.sh
+    - scripts/gate/check_gate_self_verification.sh
+    - scripts/gate/check_gate_test_integrity.sh
+    - scripts/gate/check_gate_executability.sh
+    - scripts/gate/check_coverage_v312.sh
+    - scripts/gate/check_coverage_single_implementation.sh
+    - scripts/gate/check_tests_dont_write_archived_evidence.sh
+    - scripts/gate/check_commit_message.sh
+    - scripts/gate/check_sql_corpus_gate.sh
+    - scripts/gate/check_anti_ignore_gate.sh
+    - cargo build --all-features
+    - cargo test --all-features
+    - cargo fmt --check
+    - cargo clippy --all-features -- -D warnings
+  carry_constraints:
+    branch_pattern: [main, release/v*, hotfix/v*]
+    carrier_enforced: true
+    carrier_note: "GA 必须由 main/release 承载；develop/v4.1.0 上不得宣称 GA"
+    required_files:
+      - docs/releases/v{VER}/STAGE.yaml
+      - docs/releases/v{VER}/RELEASE_NOTES.md
+      - docs/releases/v{VER}/GA_GATE_REPORT.md
+      - docs/releases/v{VER}/GA_RELEASE_TIMELINE.md
+      - docs/releases/v{VER}/CHANGELOG.md
 
 merge_policy:
   reviewers: 2

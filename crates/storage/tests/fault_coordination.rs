@@ -147,7 +147,6 @@ impl Scratch {
         std::fs::create_dir_all(&path).expect("create scratch dir");
         Self { path, keep: false }
     }
-
 }
 
 impl Drop for Scratch {
