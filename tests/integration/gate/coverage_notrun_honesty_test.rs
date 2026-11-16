@@ -216,6 +216,85 @@ fn test_5581_a5_threshold_comes_from_ssot_when_caller_gives_none() {
 }
 
 // =============================================================================
+// A5 decimal comparison — GA 实跑 005 实测复现的误判
+// =============================================================================
+
+/// 覆盖率是**小数**，判定必须用浮点口径。
+///
+/// 回归（GA 实跑 005）：判据用 `[ "$pct" -ge "$threshold" ]`（bash 的
+/// `[ ]` 只做整数比较），对 `bc` scale=2 算出的 "87.38" 会报
+/// `[: 87.38: integer expected` 并返回 2 ⇒ 落进 else 分支判红。
+/// 实测同一轮里 `coverage_verdict` 已判 PASS（"average coverage:
+/// 87.38% (threshold: 85%)"），A5 紧跟着打印
+/// "✗ [FAIL] A5 Coverage: 87.38% (min: 85%)" —— **同一个数、两套判据**。
+///
+/// 这条用例钉住 GA 实测值 87.38 vs GA 门槛 85 必须 PASS。
+#[test]
+fn test_a5_coverage_decision_compares_decimal_values_as_floats() {
+    let (code, stdout, stderr) = run_bash_snippet(
+        "source scripts/gate/check_rc_ga_gate.sh; \
+         a5_coverage_decision 1 8 \"87.38\" 85; echo \"STATUS=$A5_STATUS\"; echo \"REASON=$A5_REASON\"",
+        &repo_root(),
+    );
+    assert_eq!(code, 0, "stderr: {}", stderr);
+    let out = strip_ansi(&stdout);
+    assert!(
+        out.contains("STATUS=PASS"),
+        "87.38% ≥ 85% 必须 PASS —— 整数比较会把它误判成 FAIL；got:\n{}",
+        out
+    );
+    assert!(
+        !out.contains("REASON=COVERAGE_VALUE_UNPARSEABLE"),
+        "87.38 是合法数值，不该被判为读不出；got:\n{}",
+        out
+    );
+}
+
+/// 浮点比较不是「一律放行」：差 0.01 个百分点也必须判红。
+///
+/// 这条用例是上一条的**反向锚** —— 只测「87.38 PASS」的话，把比较改成
+/// 恒真也能骗过它。
+#[test]
+fn test_a5_coverage_decision_decimal_just_below_threshold_fails() {
+    let (code, stdout, stderr) = run_bash_snippet(
+        "source scripts/gate/check_rc_ga_gate.sh; \
+         a5_coverage_decision 1 8 \"84.99\" 85; echo \"STATUS=$A5_STATUS\"",
+        &repo_root(),
+    );
+    assert_eq!(code, 0, "stderr: {}", stderr);
+    assert!(
+        strip_ansi(&stdout).contains("STATUS=FAIL"),
+        "84.99% < 85% 必须 FAIL —— 浮点比较不能变成「一律放行」；got:\n{}",
+        stdout
+    );
+}
+
+/// 读不出数值仍判红：绝不把「读不出来」当成「通过」。
+///
+/// 口径与 #3844 的 NOT-RUN 一致：工具在、但**读不出数字**时，判红并写明
+/// 原因（COVERAGE_VALUE_UNPARSEABLE），而不是当成 0% 或直接放行。
+#[test]
+fn test_a5_coverage_decision_unparseable_value_fails_closed() {
+    let (code, stdout, stderr) = run_bash_snippet(
+        "source scripts/gate/check_rc_ga_gate.sh; \
+         a5_coverage_decision 1 8 \"N/A\" 85; echo \"STATUS=$A5_STATUS\"; echo \"REASON=$A5_REASON\"",
+        &repo_root(),
+    );
+    assert_eq!(code, 0, "stderr: {}", stderr);
+    let out = strip_ansi(&stdout);
+    assert!(
+        out.contains("STATUS=FAIL"),
+        "读不出覆盖率数值必须 FAIL（fail-closed）；got:\n{}",
+        out
+    );
+    assert!(
+        out.contains("REASON=COVERAGE_VALUE_UNPARSEABLE"),
+        "读不出数值必须写明原因，不能是无理由的红；got:\n{}",
+        out
+    );
+}
+
+// =============================================================================
 // End-to-end: the gate script itself
 // =============================================================================
 
