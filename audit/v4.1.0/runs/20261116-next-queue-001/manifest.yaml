@@ -1,0 +1,170 @@
+schema_version: 1
+run_id: 20261116-next-queue-001
+source_agent: mcode-macmini
+frozen_commit: 7fc7b48f8fefcfc2b0f01a49de17781d51b4671e
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: tlsproc-5712-regression
+  name: '#5712 正臂：tls_read_spin_5099 在 darwin 上不再 panic（PR #5763 跨平台 CPU 计量 + pymysql 发现）⇒ 必须绿'
+  cmd: "PYTHONPATH=\"$(python3.14 -c 'import pymysql,os;print(os.path.dirname(os.path.dirname(pymysql.__file__)))'\
+    \ 2>/dev/null)\" \\\n  CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test -q -p\
+    \ sqlrustgo-mysql-server --test tls_read_spin_5099\n"
+  cwd: .
+  timeout_sec: 1200
+- id: harq11-5711-regression
+  name: '#5711 正臂：harness_validation_test 全套 11 条在 develop 树上绿（PR #5764 按测试名披露 NOT-RUN）⇒ 必须绿'
+  cmd: "CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test -q -p sqlrustgo --test\
+    \ harness_validation_test\n"
+  cwd: .
+  timeout_sec: 1200
+- id: q4-5498-regression
+  name: '#5498 正臂：q4_nested_and_short_circuit_test 2/2 绿（PR #5761 逐合取残差计数）⇒ 必须绿'
+  cmd: "CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test -q -p sqlrustgo --test\
+    \ q4_nested_and_short_circuit_test\n"
+  cwd: .
+  timeout_sec: 1200
+- id: notrun-5503-regression
+  name: '#5503 正臂：not_run_log_visibility_5503 绿（PR #5762 NOT-RUN 默认文件通道）⇒ 必须绿'
+  cmd: "CARGO_TARGET_DIR=/Volumes/workspace/dev/walgc2-target \\\n  cargo test -q -p sqlrustgo --test\
+    \ not_run_log_visibility_5503\n"
+  cwd: .
+  timeout_sec: 1200
+- id: det1-5702-claims-selftest
+  name: '#5702 实测：claims_selftest 17 臂中 3 臂不符（P1-5/M2、P1-5/M4、P2-1/M4）⇒ 退出码必须非 0（该尺当前判红）'
+  cmd: 'timeout 300 python3 audit/v4.1.0/claims_selftest.py
+
+    '
+  cwd: .
+  timeout_sec: 600
+- id: det1-5702-baseline-leak-p1-5
+  name: '#5702 反向夹具臂：P1-5/M1（夹具带未绑定声明 ⇒ 期望红）与 P1-5/M2（夹具带已绑定声明 ⇒ 期望绿）分别实跑 ⇒ M1 的红必须来自夹具自身而非无关文件；基线本身已红
+    ⇒ M2 必然红'
+  cmd: "python3 - <<'PY'\nimport subprocess, sys\nfrom pathlib import Path\nREPO = Path(\".\").resolve()\n\
+    scratch = REPO / \"docs\" / \"releases\" / \"v4.1.0\" / \"ZZ_claims_selftest_scratch.md\"\ndef run(script,\
+    \ *args):\n    p = subprocess.run([sys.executable, str(REPO / \"audit\" / \"v4.1.0\" / script), *args],\n\
+    \                       cwd=str(REPO), capture_output=True, text=True, timeout=900)\n    return p.returncode,\
+    \ (p.stdout + p.stderr)\nscratch.write_text(\"# selftest scratch\\n\\n本模块测试 PASS。\\n\", encoding=\"\
+    utf-8\")\ntry:\n    rc, o = run(\"evidence_inventory_ledger_omp.py\", \"check\")\n    print(\"M1 未绑定声明\
+    \ rc=\", rc)\n    print(\"  夹具自身是否被点名:\", \"ZZ_claims_selftest_scratch\" in o)\nfinally:\n    scratch.unlink(missing_ok=True)\n\
+    scratch.write_text(\"# selftest scratch\\n\\n见 run 20261105-lb1-006，本模块测试 PASS。\\n\", encoding=\"\
+    utf-8\")\ntry:\n    rc, o = run(\"evidence_inventory_ledger_omp.py\", \"check\")\n    print(\"M2 已绑定声明\
+    \ rc=\", rc, \"(期望 0)\")\n    print(\"  夹具自身是否被点名:\", \"ZZ_claims_selftest_scratch\" in o)\nfinally:\n\
+    \    scratch.unlink(missing_ok=True)\nrc, o = run(\"evidence_inventory_ledger_omp.py\", \"check\"\
+    )\nprint(\"基线 check rc=\", rc, \"(基线是否已红)\")\nfor line in o.splitlines():\n    if line.startswith(\"\
+    FAIL:\"):\n        print(\"  \", line[:160])\nPY\n"
+  cwd: .
+  timeout_sec: 900
+- id: det1-5702-lb1-arm-count
+  name: '#5702 第二把尺：lb1_arm_count_check 7 臂中 m6/m7 不判别（control rc=1 且 mutated rc=1）⇒ 退出码必须非 0'
+  cmd: 'timeout 300 python3 audit/v4.1.0/lb1_arm_count_check.py
+
+    '
+  cwd: .
+  timeout_sec: 600
+- id: det1-5702-issue-labels-mutations
+  name: '#5702 第二把尺（同名臂来源）：issue_labels_mutations 7 臂中 m6/m7 不判别 ⇒ 退出码必须非 0'
+  cmd: 'timeout 300 python3 audit/v4.1.0/issue_labels_mutations.py
+
+    '
+  cwd: .
+  timeout_sec: 600
+- id: nf1-5598-fail-open-unchanged
+  name: '#5598 两处 fail-open 现状取证：architecture_freeze 末尾仍 exit 0；int_debt 判定仍只看 ACTIVE_COUNT/DEFERRED_WITHOUT_PLAN
+    ⇒ 验收判据要求 owner 先定语义'
+  cmd: 'echo "--- check_architecture_freeze.sh 末尾 ---"
+
+    tail -12 scripts/gate/check_architecture_freeze.sh
+
+    echo "--- check_int_debt.sh 判定段 ---"
+
+    grep -n "FAILED_ITEMS\|ACTIVE_COUNT\|DEFERRED_WITHOUT_PLAN\|exit " scripts/gate/check_int_debt.sh
+    | head -25
+
+    '
+  cwd: .
+  timeout_sec: 300
+results:
+- id: tlsproc-5712-regression
+  started_at: '2026-11-16T12:14:09Z'
+  finished_at: '2026-11-16T12:14:47Z'
+  exit_code: 0
+  stdout_sha256: e3041b0afd178048772fe3194b5c77e103accaa2c6604e1e1e884219f1109fe3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-tlsproc-5712-regression.stdout
+  stderr_path: logs/001-tlsproc-5712-regression.stderr
+- id: harq11-5711-regression
+  started_at: '2026-11-16T12:14:47Z'
+  finished_at: '2026-11-16T12:15:10Z'
+  exit_code: 0
+  stdout_sha256: 7d73db6d91fb69d5ed38663cb14600011d275b7872c3320b8ee9f9dcccc7a78a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-harq11-5711-regression.stdout
+  stderr_path: logs/002-harq11-5711-regression.stderr
+- id: q4-5498-regression
+  started_at: '2026-11-16T12:15:10Z'
+  finished_at: '2026-11-16T12:16:02Z'
+  exit_code: 0
+  stdout_sha256: f5a3698a77e0fc139ecfc75d920108ed991f754fcd7c8ff075b9b48a1764ace4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-q4-5498-regression.stdout
+  stderr_path: logs/003-q4-5498-regression.stderr
+- id: notrun-5503-regression
+  started_at: '2026-11-16T12:16:02Z'
+  finished_at: '2026-11-16T12:16:24Z'
+  exit_code: 0
+  stdout_sha256: e4fd03577ca0f149e6bae28a99557c5c630e633810d67f933135eb83b8a920d3
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-notrun-5503-regression.stdout
+  stderr_path: logs/004-notrun-5503-regression.stderr
+- id: det1-5702-claims-selftest
+  started_at: '2026-11-16T12:16:24Z'
+  finished_at: '2026-11-16T12:16:29Z'
+  exit_code: 1
+  stdout_sha256: 1ba4bd7a3f2678a2e82b42c81740b04edcc0ba6a7c458a988764296171ca6285
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-det1-5702-claims-selftest.stdout
+  stderr_path: logs/005-det1-5702-claims-selftest.stderr
+- id: det1-5702-baseline-leak-p1-5
+  started_at: '2026-11-16T12:16:29Z'
+  finished_at: '2026-11-16T12:16:29Z'
+  exit_code: 0
+  stdout_sha256: b0bab3211de5fc67149b8b1571d7bbed69734de6418951f4a12b98237f5c1112
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-det1-5702-baseline-leak-p1-5.stdout
+  stderr_path: logs/006-det1-5702-baseline-leak-p1-5.stderr
+- id: det1-5702-lb1-arm-count
+  started_at: '2026-11-16T12:16:29Z'
+  finished_at: '2026-11-16T12:16:40Z'
+  exit_code: 1
+  stdout_sha256: 6f8a3660fc34de9555e91b2fe277f41409d2951ba17428e682f5d669c217c3ff
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-det1-5702-lb1-arm-count.stdout
+  stderr_path: logs/007-det1-5702-lb1-arm-count.stderr
+- id: det1-5702-issue-labels-mutations
+  started_at: '2026-11-16T12:16:40Z'
+  finished_at: '2026-11-16T12:16:45Z'
+  exit_code: 1
+  stdout_sha256: 0fd69528bd6c61cc9cbf3440259155df7c65f59599e40ddec87fad7194c7fa21
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-det1-5702-issue-labels-mutations.stdout
+  stderr_path: logs/008-det1-5702-issue-labels-mutations.stderr
+- id: nf1-5598-fail-open-unchanged
+  started_at: '2026-11-16T12:16:45Z'
+  finished_at: '2026-11-16T12:16:45Z'
+  exit_code: 0
+  stdout_sha256: 33eee5d64fe848ec13c5dde104f46aa4d8aa34ca92d49454eb4cbb48686bf82f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-nf1-5598-fail-open-unchanged.stdout
+  stderr_path: logs/009-nf1-5598-fail-open-unchanged.stderr
+evidence_hash: sha256:7dbadc70dd97f7c3cfbf5b5c87562cdf50a62f66e10b532bf163fcb5755cdcdd
+completed_at: '2026-11-16T12:16:45Z'
