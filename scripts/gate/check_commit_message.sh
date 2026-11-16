@@ -73,8 +73,12 @@ fail() { echo "FAIL: $*"; exit 1; }
 # `ci` 与 `style` 是 #5453 批次按实测补进去的（见 CONTRIBUTING §5.2 的说明）。
 # `merge` 同理：人工写的批次合并提交普遍用 `merge(<scope>): ...` 作为 type
 # （git 自动生成的那种标题是 "Merge branch ..."，由下面的豁免规则处理）。
+# `evidence` / `bench` / `spec` 是 2026-11-16（v4.1.0 GA 基线重盘批次）按实测补进去的
+# （见 CONTRIBUTING §5.2 的说明）：全历史实测这三者分别出现 32 / 51 / 43 次，
+# 都不在旧表里 ⇒ L2 会把**合规提交**判成 BAD_SHAPE（实测 b36cc51114d0）。
+# 补表不放宽形态规则，也不改 L1 与 168 的分母。
 # ---------------------------------------------------------------------------
-ALLOWED_TYPES="feat fix refactor docs test chore perf ci style merge audit"
+ALLOWED_TYPES="feat fix refactor docs test chore perf ci style merge audit evidence bench spec"
 
 # 规范里**唯一**允许定义 type 表的文件与小节。
 CANONICAL_SPEC="docs/governance/CONTRIBUTING.md"
@@ -93,8 +97,8 @@ DERIVED_SPECS="docs/governance/DEVELOPMENT_PROCESS.md docs/governance/ENGINEERIN
 #     ENGINEERING_AUTOMATION.md §11.1）
 # 二者都含 `fix`，但都不是 type 取值表。按"第一格命中"计数会把它们误报。
 #
-# 阈值取 6：允许集合有 9 个 type，**完整枚举**至少会命中 6 个；
-# 上面那两张表分别只命中 1 个和 2 个。
+# 阈值取 6：允许集合有 16 个 type（2026-11-16 补入 evidence/bench/spec 后），
+# **完整枚举**至少会命中 6 个；上面那两张表分别只命中 1 个和 2 个。
 L1_THRESHOLD=6
 
 L1_PY='

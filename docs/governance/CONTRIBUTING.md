@@ -148,6 +148,9 @@ SQLRustGo 是一个开源的 Rust SQL 数据库执行引擎，我们欢迎所有
 | `style` | 纯格式（不改语义） | style: rustfmt the storage crate |
 | `merge` | 批次合并提交 | merge(gate): fold batch 39 into batch 40 |
 | `audit` | 审计/治理记录类改动（只记录、不改产品语义） | audit(gate): 把 8 项 GA 判据修正落到归档 run |
+| `evidence` | 证据/取证记录类改动（归档 run、判定证据、基线取证） | evidence(v4.1.0): 归档 run 20261116-drift-stale-001 的实测证据 |
+| `bench` | 基准/性能基线类改动 | bench: 记录 TPC-H SF=1 导入基线 |
+| `spec` | 规范/契约类改动（判据口径、协议契约、SSOT 条款） | spec: 收敛 G1 基线比较器的语义契约 |
 
 > `ci` / `style` / `merge` 是本表在 #5453 批次中**按实测**补进去的：
 > `ci` 在最近 200 个 commit 里出现 4 次却不在旧表里，`style` 在
@@ -158,6 +161,17 @@ SQLRustGo 是一个开源的 Rust SQL 数据库执行引擎，我们欢迎所有
 > （判据修正的取证记录、治理状态重置记录）此前只能用 `chore`/`docs` 硬套，
 > `chore` 被当成维护杂项、`docs` 被当成文档改动 ⇒ 提交历史里审计记录无法检索。
 > 取值范围仅限**审计/治理记录**；产品语义改动仍须用 `fix`/`feat`/`refactor`。
+>
+> `evidence` / `bench` / `spec` 是 2026-11-16（v4.1.0 GA 基线重盘批次）**按实测**补进去的，
+> 与 2026-11-08 补 `audit` 的理由完全同型 —— **表不完整，而不是提交写错了**：
+> 全历史实测 `evidence` 出现 32 次、`bench` 51 次、`spec` 43 次，三者都在用，
+> 但都不在旧表里 ⇒ `check_commit_message.sh` 的 L2 会把**合规提交判成 BAD_SHAPE**
+> （实测：`b36cc51114d0` = `evidence(v4.1.0): 归档 run 20261116-drift-stale-001 …`
+> 在最近 50 个 commit 窗口内被判红）。
+> 补表**不放宽形态规则**（仍是 `<type>(<scope>): <subject>` + type 取自本表），
+> 也不动 L1「type 表唯一」的判据与 168 的分母。
+> 取值范围：`evidence` 仅限取证/归档记录，`bench` 仅限基线产物，`spec` 仅限判据契约条款；
+> 产品语义改动仍须用 `fix`/`feat`/`refactor`。
 
 ### 5.3 提交示例
 
