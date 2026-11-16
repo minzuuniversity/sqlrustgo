@@ -1,0 +1,19 @@
+== 反向变异自证（每臂必须精确翻红，且失效条件集合与期望完全一致）==
+  ✓ 引用文法来源一致：check_commit_message.sh → ^Refs:?\s*#\d+\s*$
+  ✓ 原样夹具 PASS
+  ✓ M1_merged_false              ⇒ FAIL             失效=['R1_merged'] (期望 ['R1_merged'])
+  ✓ M2_merged_at_empty           ⇒ FAIL             失效=['R1_merged_at'] (期望 ['R1_merged_at'])
+  ✓ M3_ancestor_no               ⇒ FAIL             失效=['R2_ancestor'] (期望 ['R2_ancestor'])
+  ✓ M4_ancestor_unknown          ⇒ FAIL             失效=['R2_ancestor'] (期望 ['R2_ancestor'])
+  ✓ M5_no_declared_ref           ⇒ FAIL             失效=['R3_declared'] (期望 ['R3_declared'])
+  ✓ M6_declared_ref_wrong_issue  ⇒ FAIL             失效=['R3_declared'] (期望 ['R3_declared'])
+  ✓ M7_loose_ref_only            ⇒ FAIL             失效=['R3_declared'] (期望 ['R3_declared'])
+  ✓ 文法 own_line_refs          'Refs #900001'                         ⇒ 声明=True(期望True) 自动关单=False(期望False)
+  ✓ 文法 own_line_refs_colon    'Refs: #900001'                        ⇒ 声明=True(期望True) 自动关单=False(期望False)
+  ✓ 文法 inline_mention         '本 PR 修的是 #900001 那个问题'                ⇒ 声明=False(期望False) 自动关单=False(期望False)
+  ✓ 文法 quoted_convention      '按规范写 `Refs #900001`'                  ⇒ 声明=False(期望False) 自动关单=False(期望False)
+  ✓ 文法 closes_own_line        'Closes #900001'                       ⇒ 声明=False(期望False) 自动关单=True(期望True)
+  ✓ 文法 wrong_issue            'Refs #123456'                         ⇒ 声明=False(期望False) 自动关单=False(期望False)
+  ✓ C1 非承重回归：删掉交叉引用索引后判定仍为 PASS（与保留时 PASS 一致）
+  ✓ Closes 只标记不判 PASS：AUTO_CLOSE_PATH
+== 结论：全部臂符合预期 ==
