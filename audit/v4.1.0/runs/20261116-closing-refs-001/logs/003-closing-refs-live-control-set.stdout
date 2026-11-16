@@ -1,0 +1,32 @@
+#5520  ⛔ 禁止
+    理由：1 个 PR 提到本 issue，但正文没有**独立一行**的 `Refs #5520` 声明（R3 不成立）
+    佐证 C1（Gitea 交叉引用索引）：PR [5522, 5523, 5558]
+      PR #5522 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | fix(security)+fix(sync): 清洗公开可读的凭据、门禁扩到文档并首次接入 CI、5 
+      PR #5523 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | fix(security): 批次18 证据文档脱敏 —— 证据文档不该把凭据再公开一遍（#5520）
+      PR #5558 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | fix(sync-5520): 同步工具不再吞错 + 凭据不再进进程列表 + 三态区分「远端没有该分支」
+      近失：PR #5558 fix(sync-5520): 同步工具不再吞错 + 凭据不再进进程列表 + 三态区分「远端没有该分支」与「查不到」
+#5702  ⛔ 禁止
+    理由：候选 PR 未同时满足 R1-R3
+    佐证 C1（Gitea 交叉引用索引）：PR [5704, 5724, 5799]
+      PR #5704 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | audit(evidence/IL-4C): D 代台账 + run 20261111-ledger-0
+      PR #5724 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | docs(v4.1.0): r12 修订块⑩——三把自测尺复核 + BETASYNC-1 立案全录
+      PR #5799 merged=False ancestor=no R3=True base=docs/issue-cover-1-board-rows-land-20261116  未满足=['R1_merged', 'R1_merged_at', 'R2_ancestor']  | docs(v4.1.0): 下一轮推进队列的双血统征询与实测复核 —— 专家建议须回仓核对，4 条「已修
+#5717  ⛔ 禁止
+    理由：候选 PR 未同时满足 R1-R3
+    佐证 C1（Gitea 交叉引用索引）：PR [5718, 5799, 5800, 5801]
+      PR #5718 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | docs(v4.1.0): Q17 NULL 渲染分歧立案落账 #5717 + 撤回「负载红隔离绿」误判
+      PR #5799 merged=False ancestor=no R3=False base=docs/issue-cover-1-board-rows-land-20261116  未满足=['R1_merged', 'R1_merged_at', 'R3_declared', 'R2_ancestor']  | docs(v4.1.0): 下一轮推进队列的双血统征询与实测复核 —— 专家建议须回仓核对，4 条「已修
+      PR #5800 merged=False ancestor=no R3=True base=develop/v4.1.0  未满足=['R1_merged', 'R1_merged_at', 'R2_ancestor']  | fix(#5688): 占位基线不得冒充 PASS —— 15/22 条空结果基线曾让「什么都没返回」计
+      PR #5801 merged=False ancestor=no R3=True base=develop/v4.1.0  未满足=['R1_merged', 'R1_merged_at', 'R2_ancestor']  | fix(#5688): 占位基线不得冒充 PASS —— 15/22 条空结果基线曾让「什么都没返回」计
+#5598  ⛔ 禁止
+    理由：候选 PR 未同时满足 R1-R3
+    佐证 C1（Gitea 交叉引用索引）：PR [5618, 5626, 5799]
+      PR #5618 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | fix(audit): 台账补齐到覆盖当期全部 104 条 open（6 条新分诊入仓）+ 判据口径再对
+      PR #5626 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | docs(kanban): patch5 —— GA 归档 run 打出的 7 条新缺陷入行 + COV
+      PR #5799 merged=False ancestor=no R3=True base=docs/issue-cover-1-board-rows-land-20261116  未满足=['R1_merged', 'R1_merged_at', 'R2_ancestor']  | docs(v4.1.0): 下一轮推进队列的双血统征询与实测复核 —— 专家建议须回仓核对，4 条「已修
+
+#5520：FAIL
+#5702：FAIL
+#5717：FAIL
+#5598：FAIL
+control-set exit=1 （预期非 0：判据必须能拦住没修的 issue）

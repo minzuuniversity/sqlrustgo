@@ -1,0 +1,38 @@
+#5498  ✅ 可关单
+    理由：#5761 同时满足 R1-R3（已合并、合并提交是 develop/v4.1.0 的祖先、正文有独立一行的 `Refs #5498` 声明）
+    佐证 C1（Gitea 交叉引用索引）：PR [5761, 5799]
+      PR #5761 merged=True ancestor=yes R3=True base=develop/v4.1.0  | test(engine): per-conjunct residual counters make th
+      PR #5799 merged=False ancestor=no R3=True base=docs/issue-cover-1-board-rows-land-20261116  未满足=['R1_merged', 'R1_merged_at', 'R2_ancestor']  | docs(v4.1.0): 下一轮推进队列的双血统征询与实测复核 —— 专家建议须回仓核对，4 条「已修
+#5503  ✅ 可关单
+    理由：#5762 同时满足 R1-R3（已合并、合并提交是 develop/v4.1.0 的祖先、正文有独立一行的 `Refs #5503` 声明）
+    佐证 C1（Gitea 交叉引用索引）：PR [5762, 5764, 5765, 5799]
+      PR #5762 merged=True ancestor=yes R3=True base=develop/v4.1.0  | test(harness): give the NOT-RUN disclosure a local f
+      PR #5764 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | test(stress): disclose a NOT-RUN record per skipped 
+      PR #5765 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | docs(v4.1.0): 看板 SSOT 追加 AB campaign 与今日修复行（123→129 
+      PR #5799 merged=False ancestor=no R3=True base=docs/issue-cover-1-board-rows-land-20261116  未满足=['R1_merged', 'R1_merged_at', 'R2_ancestor']  | docs(v4.1.0): 下一轮推进队列的双血统征询与实测复核 —— 专家建议须回仓核对，4 条「已修
+#5711  ✅ 可关单
+    理由：#5764 同时满足 R1-R3（已合并、合并提交是 develop/v4.1.0 的祖先、正文有独立一行的 `Refs #5711` 声明）
+    佐证 C1（Gitea 交叉引用索引）：PR [5715, 5716, 5764, 5765, 5799]
+      PR #5715 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | docs(v4.1.0): sweep 归因登记——看板 120 行 + handoff r12 块⑧ 
+      PR #5716 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | chore(labels): #5711 #5712 标签台账两行 + apply（本线标签债同轮闭环）
+      PR #5764 merged=True ancestor=yes R3=True base=develop/v4.1.0  | test(stress): disclose a NOT-RUN record per skipped 
+      PR #5765 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | docs(v4.1.0): 看板 SSOT 追加 AB campaign 与今日修复行（123→129 
+      PR #5799 merged=False ancestor=no R3=True base=docs/issue-cover-1-board-rows-land-20261116  未满足=['R1_merged', 'R1_merged_at', 'R2_ancestor']  | docs(v4.1.0): 下一轮推进队列的双血统征询与实测复核 —— 专家建议须回仓核对，4 条「已修
+#5712  ✅ 可关单
+    理由：#5763 同时满足 R1-R3（已合并、合并提交是 develop/v4.1.0 的祖先、正文有独立一行的 `Refs #5712` 声明）
+    佐证 C1（Gitea 交叉引用索引）：PR [5716, 5763, 5765, 5799]
+      PR #5716 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | chore(labels): #5711 #5712 标签台账两行 + apply（本线标签债同轮闭环）
+      PR #5763 merged=True ancestor=yes R3=True base=develop/v4.1.0  | test(mysql-server): portable CPU accounting + pymysq
+      PR #5765 merged=True ancestor=yes R3=False base=develop/v4.1.0  未满足=['R3_declared']  | docs(v4.1.0): 看板 SSOT 追加 AB campaign 与今日修复行（123→129 
+      PR #5799 merged=False ancestor=no R3=True base=docs/issue-cover-1-board-rows-land-20261116  未满足=['R1_merged', 'R1_merged_at', 'R2_ancestor']  | docs(v4.1.0): 下一轮推进队列的双血统征询与实测复核 —— 专家建议须回仓核对，4 条「已修
+#5774  ✅ 可关单
+    理由：#5776 同时满足 R1-R3（已合并、合并提交是 develop/v4.1.0 的祖先、正文有独立一行的 `Refs #5774` 声明）
+    佐证 C1（Gitea 交叉引用索引）：PR [5776, 5796]
+      PR #5776 merged=True ancestor=yes R3=True base=develop/v4.1.0  | fix(gate): 空转绿家族（7 道）三态化 + check_stage 覆盖率臂显式声明阶段（S-
+      PR #5796 merged=True ancestor=no R3=False base=fix/drift-check-server-authority-20261116  未满足=['R3_declared', 'R2_ancestor']  | docs(v4.1.0): 看板补登 ISS-COVER-1 映射出的 6 条新行 —— 27 条 op
+
+#5498：PASS
+#5503：PASS
+#5711：PASS
+#5712：PASS
+#5774：PASS
