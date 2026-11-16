@@ -4156,12 +4156,7 @@ fn decode_lenenc_int(payload: &[u8], pos: &mut usize) -> Option<u64> {
         // the length check at the call site then failed, and the row decode
         // broke. The 0xfc (2-byte) and 0xfe (8-byte) branches had no such
         // displacement, which is why only this one was wrong.
-        let v = u32::from_le_bytes([
-            payload[*pos],
-            payload[*pos + 1],
-            payload[*pos + 2],
-            0,
-        ]);
+        let v = u32::from_le_bytes([payload[*pos], payload[*pos + 1], payload[*pos + 2], 0]);
         *pos += 3;
         Some(v as u64)
     } else if b0 == 0xfe {
