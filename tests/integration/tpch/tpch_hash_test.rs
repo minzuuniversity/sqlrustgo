@@ -211,19 +211,99 @@ fn assert_scope_accounting(run: &HashRun, total: usize) {
     );
 }
 
+/// The dataset identity the stored baseline was captured on.
+///
+/// A hash is only comparable on the **same dataset**. The same scale factor can
+/// be produced by a different (generator, seed) pair — the bytes differ, so
+/// the query results differ, so the hash differs. That is not drift; it is
+/// "we are not comparing the same thing".
+///
+/// Comparing the scale factor alone is therefore **not enough**: it was the
+/// reason this gate could report a false drift (or, before that, could never
+/// compare anything at all). The baseline file records the identity
+/// (generator + generator sha256 + seed + row counts); the fixture carries
+/// the same fields in its manifest; the two must agree before any hash
+/// comparison happens.
+fn baseline_fixture_identity() -> Option<serde_json::Value> {
+    let v: serde_json::Value =
+        serde_json::from_str(BASELINE_JSON).expect("tpch_hashes_v380.json is valid JSON");
+    v.get("fixture").cloned()
+}
+
+/// The identity of the fixture that is actually on disk (from its manifest).
+fn on_disk_fixture_identity() -> Option<serde_json::Value> {
+    let dir = common::tpch_wire_harness::resolve_fixture_dir()?;
+    let raw = std::fs::read_to_string(dir.join(common::tpch_wire_harness::FIXTURE_MANIFEST_FILE))
+        .ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// Does the on-disk fixture match the identity the baseline was captured on?
+///
+/// `None` = comparable (or nothing to compare against). `Some(detail)` =
+/// not comparable, with the concrete difference spelled out.
+fn fixture_identity_mismatch() -> Option<String> {
+    let expected = baseline_fixture_identity()?;
+    let actual = match on_disk_fixture_identity() {
+        Some(v) => v,
+        None => {
+            return Some(
+                "the fixture on disk carries no manifest, so its dataset identity cannot be \
+                 verified against the identity the baseline was captured on (generator + seed \
+                 + row counts)"
+                    .to_string(),
+            )
+        }
+    };
+    let expected = expected.as_object()?;
+    for (key, want) in expected {
+        match actual.get(key) {
+            Some(g) if g == want => {}
+            Some(g) => {
+                return Some(format!(
+                    "the baseline was captured on a different dataset: `{key}` is {g} on disk, \
+                     but the baseline recorded {want}"
+                ));
+            }
+            None => {
+                return Some(format!(
+                    "the fixture manifest on disk does not carry `{key}` (the baseline recorded \
+                     {want})"
+                ));
+            }
+        }
+    }
+    None
+}
+
 /// Compare the computed hash with the stored baseline — or disclose why the
 /// comparison is not possible.
 ///
 /// The stored baseline was captured over **all 22** statements on a
-/// **different dataset** (scale factor 0.001). Neither the wire scope nor a
-/// regenerated fixture keeps that comparable, so a comparison that cannot be
-/// made is disclosed as NOT-RUN instead of being reported as a drift.
+/// **specific dataset** (SF=0.001, generator + seed recorded in the baseline
+/// file). Neither the wire scope nor a differently-generated fixture keeps
+/// that comparable, so a comparison that cannot be made is disclosed as
+/// NOT-RUN instead of being reported as a drift.
 fn compare_or_disclose(run: &HashRun, expected: &str) {
     if !run.skipped.is_empty() {
         eprintln!(
             "G1: the stored hash covers all 22 statements, but {} statement(s) were excluded \
              by the wire scope — the comparison is not possible",
             run.skipped.len()
+        );
+        return;
+    }
+    // Dataset identity first: without it, "the hash differs" cannot be told
+    // apart from "we hashed a different dataset".
+    if let Some(detail) = fixture_identity_mismatch() {
+        report_not_run(
+            TARGET,
+            "fixture_identity_mismatch",
+            &format!(
+                "{detail}; the stored hash belongs to a different dataset and cannot be compared \
+                 against it (the computed hash over the {} executed statement(s) is {})",
+                run.executed, run.hash
+            ),
         );
         return;
     }
