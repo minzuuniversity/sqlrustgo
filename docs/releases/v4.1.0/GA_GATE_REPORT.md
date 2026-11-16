@@ -298,3 +298,61 @@ NOT MET。**按 AFP §7.1 Type B，在判据未满足时写「已具备 GA 条�
 - `docs/releases/v4.1.0/POST_GA_PLAN.md` —— 发布后计划
 - `docs/releases/v4.1.0/evidence/` —— 81 份一手证据
 - `docs/releases/v4.0.0/GA_GATE_REPORT.md` —— 结构先例；以及它的**撤销**记录
+
+---
+
+## 9. 2026-11-16 追加段：GA 门禁基线自有化重盘与实跑状态
+
+> 依 `docs/governance/DOC_CHECK_CORRECTION_RULES.md`：**上文原始记录一字未删**，
+> 本段只追加实测到的内容（不订正上文任何一句，因为上文没有与实测冲突的表述）。
+
+### 9.1 基线升级裁决（用户「4.0.0 基线是否升级为 4.1.0 自有基线」的答复）
+
+**裁决：升级 —— 判据继承、清单全量重盘。**
+
+- v4.0.0 的 GA 判定已于 2026-09-30 撤销（`docs/releases/v4.0.0/STAGE.yaml` →
+  `ga_promotion_status.verdict = REVOKED — v4.0.0 never legitimately reached GA`），
+  其继承清单**不得**充当 v4.1.0 的合格证据；仍有效的技术判据继续沿用。
+- v4.1.0 的 `STAGE.yaml` 三段 `required_gates_for_beta/_rc/_ga` 此前只是
+  「Deferred / 继承」占位 note，且**全仓无任何消费方**（实测
+  `grep -rn "required_gates_for" scripts/ docs/governance/` 零命中 ⇒ 执行面只读
+  `docs/governance/STAGE_CONFIG.yaml`）⇒ 现已换成**实际清单镜像**：
+  **BETA 19 项 / RC 26 项 / GA 35 项**（31 脚本门禁 + 4 条 cargo 命令）。
+- 168 道门禁逐条归属基线：`docs/releases/v4.1.0/GATE_BASELINE_V410.jsonl`（168 行，
+  与 `gov_probe.metrics.check_n=168` 严格对齐）。
+  **REQUIRED 134 / HISTORICAL 32 / RETIRED 2 / NOT_APPLICABLE 0**；
+  execution_point：STAGE_LIST 34 / CI_DECLARED 51 / **NONE_PENDING 37** /
+  **NONE_BLOCKED_EXTERNAL 12**；`ga_critical` = 31。
+  ⇒ **49 道门禁「应在 v4.1.0 范围内执行但当前无执行点」**；
+  其中含 `check_audit_manifest.sh`、`check_security.sh`、`check_architecture.sh`、
+  `check_test_count_monotonic.sh`、`check_a04_evidence_reproducible.sh`、
+  `check_attack_surface.sh`。
+
+### 9.2 存量红清零（本轮）
+
+| 门禁 | 改前 | 改后 | 根因 |
+|---|---|---|---|
+| `cargo fmt --check --all` | rc=1（10 处 / 6 文件） | **rc=0** | 纯格式漂移（已复验 `git diff -w` 仅 2 处非空白且均为 rustfmt 语义等价改写） |
+| `scripts/gate/check_commit_message.sh` | rc=1（1 条 BAD_SHAPE） | **rc=0** | **类型表不完整**：全历史实测 `evidence` 32 次 / `bench` 51 次 / `spec` 43 次都在用却不在表内 ⇒ L2 把合规提交判成 BAD_SHAPE。按 2026-11-08 补 `audit` 的**同型先例**补入规范表与机器镜像（不放宽形态规则、不动 L1、不动分母） |
+| `scripts/gate/check_architecture_freeze.sh` | rc=0 但**自报 finding**（A7-4 读到 0 个 DriftGate 测试） | **rc=0 且 PASS 5/5** | 两处：①「部分检查未通过」仍 `exit 0`（fail-open）⇒ 三态化；② A7-4 只扫 `crates/*/tests/`，漏掉 src 内 `#[cfg(test)]` ⇒ **测量假阴性**（DriftGate 的负面测试确实存在于 `crates/executor/src/execution/drift_gate.rs`） |
+| `scripts/gate/check_int_debt.sh` | rc=0 但**可被绕过** | rc=0（正常态） | 两处 fail-open：① 状态列未知时无条件回退到「整行扫关键字」；② `FAILED_ITEMS` 收集失败却**从不参与退出码判定** ⇒ 债务行被改名/删除时门禁仍报 PASS |
+
+后两门的 fail-open 闭合有**反向变异证明**：fx06 / fx09 / fx10 三道负向夹具实测
+全部 FIXTURE-PASS（门禁读数分别为 rc=2 / rc=1 / rc=1），两条特征化夹具的期望随之
+由 `green-characterization` 翻转为 `red`。
+
+### 9.3 实跑状态（run `20261116-ga-gates-002`）
+
+- 冻结提交：`7e26c2b7c6840e3bbec804a0bf3bbcc706a646d7`
+- 计划：`plan.jsonl`，35 项，plan sha256 `sha256:6466a0ec156…`
+- 执行器：`scripts/gate/run_gates.py`（三态：exit 0 ⇒ PASS；exit 1 ⇒ FAIL；
+  其它（2/124/信号/脚本缺失/无法启动）⇒ **INCOMPLETE**）
+- **逐项结果以该 run 的 `results.jsonl` 为准**（本段不预写结论）。
+
+### 9.4 结论
+
+**GA 今日未发布。** 四条硬约束（SOAK-168H / HUMAN-SIGNOFF / CARRIER / BASELINE-GAP）
+见 `GA_RELEASE_REPORT.md` §3；阶段治理与签批行见 `STAGE_GOVERNANCE_RC_TO_GA.md`。
+
+> 本段由 `mcode-macmini` 线 2026-11-16 追加。证据：PR #5804 / #5805 / #5806；
+> 归档 run `20261116-ga-gates-002`；看板行 `GA-BASELINE-1`。
