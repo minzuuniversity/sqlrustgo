@@ -126,8 +126,7 @@ fail() { echo "LAUNCHER FAILED: $*" >&2 | tee -a "$WAIT_LOG"; exit 1; }
 # 前置条件
 # ---------------------------------------------------------------------------
 [ -d "$SOAK_REPO_ROOT" ] || fail "SOAK_REPO_ROOT is not a directory: $SOAK_REPO_ROOT"
-[ -x "$SOAK_REPO_ROOT/target/release/sqlrustgo-mysql-server" ] \
-  || fail "release binary missing: $SOAK_REPO_ROOT/target/release/sqlrustgo-mysql-server"
+command -v cargo >/dev/null 2>&1 || fail "cargo required (to build the frozen binary)"
 command -v python3 >/dev/null 2>&1 || fail "python3 required"
 python3 -c "import pymysql" >/dev/null 2>&1 \
   || fail "pymysql required by the arm-A load driver (pip install pymysql)"
@@ -140,6 +139,23 @@ HEAD_COMMIT="$(git -C "$SOAK_REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unkno
 if [ -n "$EXPECT_COMMIT" ] && [ "$HEAD_COMMIT" != "$EXPECT_COMMIT" ]; then
   fail "HEAD is $HEAD_COMMIT but EXPECT_COMMIT is $EXPECT_COMMIT"
 fi
+
+# 冻结提交必须与被 soak 的二进制**同源**。
+#
+# 提交号本身不保证二进制是新的：crates/ 改过之后如果不重建，被 soak 的
+# 仍然是旧二进制，而报告里的 frozen_commit 会写着新提交 —— 证据链当场
+# 就假了。所以起跑前按当前检出重建一次（已经是最新时是空操作，秒级），
+# 让「二进制 ↔ 冻结提交」由**构造**保证，而不是靠人的纪律。
+#
+# 这一条是 VtuGuard 那次修复逼出来的：crates/storage/src/vtu_guard.rs
+# 改了（事务状态透传），若不同步重建，SOAK 跑的就是修复前的二进制。
+log "building the release binary from the frozen checkout (no-op when already current)..."
+if ! cargo build --release -p sqlrustgo-mysql-server \
+      --manifest-path "$SOAK_REPO_ROOT/Cargo.toml" >> "$ART_DIR/build.log" 2>&1; then
+  fail "cargo build failed — see $ART_DIR/build.log"
+fi
+[ -x "$SOAK_REPO_ROOT/target/release/sqlrustgo-mysql-server" ] \
+  || fail "release binary missing after build: $SOAK_REPO_ROOT/target/release/sqlrustgo-mysql-server"
 
 log "launcher up: repo=$SOAK_REPO_ROOT head=$HEAD_COMMIT art=$ART_DIR run_id=$RUN_ID hours=$HOURS port=$PORT"
 log "policy: quiet_max_load=$QUIET_MAX_LOAD foreign_cpu_max=$FOREIGN_CPU_MAX quiet_samples=$QUIET_SAMPLES interval=${QUIET_INTERVAL}s min_qps=$MIN_DRIVER_QPS verify_secs=$VERIFY_SECS"
@@ -356,6 +372,7 @@ while true; do
   "attempt_dir": "$ATTEMPT_DIR",
   "frozen_commit": "$HEAD_COMMIT",
   "soaked_binary_sha256": "$bin_sha",
+  "binary_built_from_frozen_commit": true,
   "host": "$(uname -n) $(uname -s) $(uname -r) $(uname -m)",
   "hours": $HOURS,
   "port": $PORT,
