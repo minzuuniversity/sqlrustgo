@@ -112,7 +112,13 @@ fn run_helper(csv: &Path, warmup: &str) -> (i32, String, String) {
 fn test_steady_window_excludes_warmup_and_uses_cumulative_counters() {
     let csv = write_metrics(
         "warmup",
-        &[(15.0, 100, 0), (31.0, 200, 0), (46.0, 400, 1), (61.0, 600, 1), (76.0, 900, 2)],
+        &[
+            (15.0, 100, 0),
+            (31.0, 200, 0),
+            (46.0, 400, 1),
+            (61.0, 600, 1),
+            (76.0, 900, 2),
+        ],
     );
     let (code, stdout, stderr) = run_helper(&csv, "30");
     assert_eq!(code, 0, "stderr: {}", stderr);
@@ -199,6 +205,63 @@ fn test_launcher_uses_the_single_steady_window_implementation() {
     );
 }
 
+/// The helper must be **executable** in git.
+///
+/// 2026-11-17 实测（同一个坑踩了第二次）：helper 是新文件，git 里记的是
+/// `100644` —— **没有可执行位**。启动器当时是**直接执行**它（靠 shebang）
+/// ⇒ `Permission denied`（rc=126）⇒ stderr 被 `2>/dev/null` 吞掉、stdout
+/// 为空 ⇒ 复验读到空统计行，把一轮**健康**的 attempt（实测 55.2 q/s、
+/// 0.105 % 错误）判成「0 q/s、错误率 100 %」。
+///
+/// 同一份 metrics.csv 用 `python3 <path>` 调用时能正确算出
+/// `7617 8 138 55.2 0.105 1` —— 所以坏的从来不是测量，是**调用方式**。
+#[cfg(unix)]
+#[test]
+fn test_helper_is_executable() {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(helper_path())
+        .expect("stat helper")
+        .permissions()
+        .mode();
+    assert_ne!(
+        mode & 0o111,
+        0,
+        "scripts/soak/soak_steady_window.py must be executable (git mode \
+         100755) — a direct invocation without the exec bit fails with \
+         'Permission denied' and the launcher then reads an empty measurement"
+    );
+}
+
+/// And the launcher must not depend on that bit at all: it invokes the
+/// helper through `python3 <path>`.
+#[test]
+fn test_launcher_invokes_the_helper_through_python3() {
+    let launcher = std::fs::read_to_string(launcher_path()).expect("read launcher");
+    assert!(
+        launcher.contains("python3 \"$SOAK_REPO_ROOT/scripts/soak/soak_steady_window.py\""),
+        "the launcher must call the helper as `python3 <path>` — relying on \
+         the exec bit is what broke it on 2026-11-17"
+    );
+}
+
+/// The launcher must not swallow the helper's error output: a measurement
+/// that cannot be taken has to say WHY in the log.
+#[test]
+fn test_launcher_keeps_the_measurement_failure_reason() {
+    let launcher = std::fs::read_to_string(launcher_path()).expect("read launcher");
+    assert!(
+        !launcher.contains("soak_steady_window.py\" \\\n                  \"$ATTEMPT_DIR/armA/metrics.csv\" 30 2>/dev/null"),
+        "the helper's stderr must not be discarded — a failed measurement \
+         has to be diagnosable from the log"
+    );
+    assert!(
+        launcher.contains("VERIFY_TRIES"),
+        "a measurement that cannot be taken must be retried, not turned into \
+         an immediate rejection of a healthy attempt"
+    );
+}
+
+///
 /// The driver's own documentation must state what the column actually is.
 ///
 /// The docstring said `elapsed_ms` while the code wrote a per-query
