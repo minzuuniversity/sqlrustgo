@@ -146,7 +146,7 @@ cargo test --all-features --no-fail-fast                      timeout 16800s ≈
 **每轮 attempt 独立产物目录**（复验读的是 `driver.log` 的 Q 行数，沿用上一轮
 目录会把旧账算进来，复验门禁即废）。
 
-### 7.5 当前状态
+### 7.5 当前状态（截至 2026-11-16T19:08Z；后续进展见 §7.7–§7.12）
 
 - 冻结提交 `3264b5dafd36cca7c52f03154d86d3945eb4f7b9`（252 上 dirty=0；2026-11-16T19:15:58Z 起的新版启动器用的是这一版）
 - release 二进制 sha256 `de7c4e09445d9697dedcd612e0ffabe0e3a1b63df242e2e8c7b732173cd1512f`
@@ -189,3 +189,170 @@ FINAL_REPORT 新增「主机争用」行与偏差说明。SOAK 的数字只有�
 永远起不了跑 —— 那是把「有人在旁边待着」误当成「有人在抢」。它一开始
 编译，rustc 子进程会被立即命中；安静窗口要求连续 10 次满足，间歇性抢
 机器照样把计数清零。
+
+
+### 7.7 启动器的仪器错了三处 —— 门禁从「保护」变成了「死锁」
+
+安静窗口这道门禁的「外来 CPU」读数，此前是 `ps -eo pcpu` 求和。三个错误叠在
+一起，每一个单独都足以让这道门禁失效：
+
+1. **口径错**：`ps` 的 pcpu 是**进程生命周期均值**，不是当前占用 —— 四小时前
+   启动、现在空闲的进程，仍按它一生的均值计费。
+2. **漏算**：**已经退出的进程完全不被计入** —— 而别人的编译负载恰恰是
+   「spawn 一个 rustc、烧 30 秒、退出」，样本之间这些 CPU 一个都不算。
+3. **单位错**（换增量口径后踩的）：系统侧算成「整机百分比」（0–100）、自有侧
+   算成「核百分比」，两者相减 ⇒ 外来 CPU **恒等于 0** ⇒ `[ "0" -gt "2400" ]`
+   恒为假 ⇒ `FOREIGN_CPU_MAX` **永不触发**。
+
+同一台 80 核机器、同一组别的作业，两种口径实测：
+
+| 口径 | 读数 | 折算 |
+|---|---|---|
+| `ps` 生命周期均值 | 7985 % | = 80 核（看起来满载） |
+| 增量（修正单位后） | 674 – 1784 % | = 6.7 – 17.8 核（实际占用） |
+
+即 `ps` 口径虚高约 **4–11 倍**。用它卡门禁，等于要求一台「80 核全空闲」的
+机器；而 252 上 root 的 CI 常驻（`bustubx-unpause-ci.sh` 连续跑 4 h 20 m，不断
+拉起 cargo build/check/test/clippy）⇒ 旧口径下安静窗口**永远不会满足** ——
+**等下去不是保护，是死锁**。
+
+修正后的口径：**系统级 busy（/proc/stat 差分）− 自有进程 busy（/proc/<pid>/stat
+差分）**，单位统一为「核百分比」（100 % = 1 核），与 2400 % 的门禁同口径，且
+**不漏短命进程**。标定不失效：污染轮里 root 的 `oltp_test` 独占 29 核 =
+2900 % > 2400 % ⇒ 仍被拒；干净轮与争用探针（61 q/s、0.12 % 错误）仍被收。
+
+第四个问题在采样解析：`sample_cpu` 的首轮输出是 `warmup|0|0`（还没有基线），
+而解析按 `cut -d'|' -f1` 取值 ⇒ 拿到字符串 `warmup` ⇒ bash 对
+`[ "warmup" -gt 2400 ]` 返回非零 ⇒ `&& QUIET=0` **不执行** ⇒ QUIET 保持 1
+⇒ **一个没读出来的采样被当成一次合格的安静采样**。现改为三态：warmup /
+读数 / **读失败**，读失败与 warmup 一律判「非安静」并落 WARNING（把未知当成
+事实，是这类门禁出错的根）。
+
+复验同时加严（PR #5819）：`MIN_DRIVER_QPS` 5 → **10**（旧值贴着实测的受污染轮
+4.7 q/s，只差 6 % 余量，等于没有余量；10 距污染轮 2.1 倍、距健康轮 4.7 倍）；
+新增**错误率 ≤ 1 %**（与臂 A / 臂 B 同口径）；复验只看驱动启动 30 s 后的
+**稳态区间**（热身段的错误不代表稳态）。另补一条兜底：等满 `QUIET_WAIT_MAX`
+（默认 2 h）仍未凑齐安静窗口时，只要 load1 ≤ 40（机器**没有过载**）就允许
+试跑一次，**收不收由复验决定** —— 复验量的是我们自己的真实吞吐与错误率，是
+**结果指标**，比「机器看起来安静」这个代理指标可靠。
+
+### 7.8 臂 A 此前没有错误率判据（PR #5818）
+
+臂 A 的判定此前只有三类：负载是否真的施加上去、服务是否崩溃、查询数是否够。
+**没有错误率判据** —— 驱动把 9.6 % 的查询打成错误，臂 A 照样写 PASS。那样
+一份 PASS 证明不了任何事：它分不出「被测系统健康」与「被测系统已经坏了但
+没崩」。臂 B 一直有这道判据（`v312_mixed_soak` 的 `GA failure rate exceeds
+1 % threshold`），**两臂口径不一致本身就是缺陷**。
+
+阈值取 1 %（与臂 B 同值），落在 252 的三个实测点之间：干净轮 6/8445 =
+0.07 %、争用探针 9/7379 = 0.12 %（均远低于上限）、受污染轮 89/1298 =
+9.60 %（超上限 9.6 倍，改前会被判 PASS）。判据从**原始证据**（driver.log 的
+E 行）重算，不读 summary.json —— 报告里的数字与判据用的数字必须同源。退出码
+**4** 是新增的，用来区分「跑挂了」（1/2/3）与「跑完了但已经退化」。
+
+252 上两条路径都实跑过：
+
+```
+验证 #1（默认 1%）  ⇒ PASS — 2857 queries via 16 threads in 2min, 00 errors (0.000%, max 1%)   rc=0
+验证 #2（上限 0%）  ⇒ FAIL — driver error rate 1.636% exceeds 0% (15 errors / 917 attempts)  rc=4
+```
+
+### 7.9 两条被 `#[ignore]` 掩盖的真实缺陷（PR #5823）
+
+反-ignore 门禁（G19）查出台账漂移：树里 **137** 个真实 `#[ignore]`，台账只
+登记 **136** ⇒ 有一条**从未登记**。顺着这条线挖出两个真实产品缺陷：
+
+**（一）页式存储下 `CREATE INDEX` 让已有的行消失**（看板行 IDX-2）：
+
+```
+SELECT id FROM d WHERE v = 20;   => 1 行
+CREATE INDEX idx_d_v ON d(v);
+SELECT id FROM d WHERE v = 20;   => 0 行    ← 建索引后丢行
+```
+
+根因不是「行号编码不对」，而是**行号语义两侧不一致**：写侧把行号当成
+「`tables.rows` 里的下标」，而页式后端的行根本不在 `tables.rows` 里（它们在
+页中）⇒ 建出的是空树；读侧又按同一套（错的）语义解析行号 ⇒ 查询返回 0 行。
+修法：两侧用**同一套语义** —— 行号 = 表行序里的位置（页式后端即
+`insert_via_bufferpool` 记下的页序 = `scan_via_bufferpool` 遍历的顺序）。
+此前属主口径是「要不要把 row-id 改成 (page, offset)」—— 本次证明那不是唯一解：
+**语义统一即可**，回归面小得多。
+
+**（二）MySQL 长度编码整数三字节分支被 ×256**：`decode_lenenc_int` 的 0xfd
+分支写成 `u32::from_le_bytes([0, b0, b1, b2])` —— 0 落在**最低**字节 ⇒ 每个
+字节移了一位 ⇒ 解出的长度是真实值的 256 倍（0xfc/0xfe 分支无此错位）。
+该函数在**生产路径**上（解析 VARCHAR/BLOB 列值长度）⇒ 64 KiB–16 MiB 的
+文本/blob 值会被解成 256 倍 ⇒ 长度校验失败 ⇒ 该行解码崩掉。
+
+修后实测：`cargo test -p sqlrustgo-storage --lib` ⇒ **916 passed / 0 failed**；
+`cargo test -p sqlrustgo-mysql-server --lib` ⇒ **287 passed / 0 failed / 0 ignored**；
+`cargo test --test idx1_session_db_index_test` ⇒ **5 passed**（IDX-2 那条不再
+被忽略）；P16 ⇒ `48 gate tests, 0 NEW #[ignore]` ⇒ **PASS**；G19 ⇒ tree 135 =
+registry 135 ⇒ **PASS**。台账同步：`total_allowed` 136 → 135，顺带把台账里
+**本来就陈旧**的描述字段 `known_deficiencies.active` 由 69 改为实算值 81。
+
+### 7.10 TPC-H 哈希基线重锚（PR #5822）
+
+`tests/tpch_hashes_v380.json` 的 `b8854271…` 是 2026-06-28 在
+`545814c3d1 (v3.9.0)` 上采的。**本仓历史里没有任何生成器能产出那份数据集**：
+
+| 夹具 | customer / lineitem 行数 | 22 条聚合哈希 |
+|---|---|---|
+| 旧基线（v3.9.0） | — | `b8854271…` |
+| `generate_tpch_sf.py`（2026-07-18 才加入，SF=0.001 / seed 42） | 150 / 6018 | `7439ce80…` |
+| `generate_sf001_fixture.py`（采集时在树里、后被删；其「SF=0.001」行数只有标准值 1/10） | 15 / 501 | `d7ec506b…` |
+
+即自 v3.9.0 起，**引擎的 TPC-H 输出与夹具都变了** ⇒ 旧基线不可复现，G1 只能
+永远 INCOMPLETE。新基线按 issue #5688 的口径**逐条用独立 SQLite oracle 复算**
+（明确不用 `--generate-baseline` 的引擎自捕获 —— 引擎自证正是要消灭的形态）：
+
+```
+statements=22   oracle_set_equal=21   unresolved=[]
+唯一不等的一条 Q17：row 0 col 0: engine="" oracle="<NUL>NULL"
+  （wire 协议把 SQL NULL 渲染成空串；dump 自己单列为 null_representation_only，不计入 unresolved）
+```
+
+同时给基线补上**数据集身份**校验：基线记录 generator + generator_sha256 +
+seed + row_counts，夹具的 manifest 带同样字段；身份不符 ⇒ 披露
+`TPCH-NOT-RUN … reason=fixture_identity_mismatch`，**不得**误报漂移。此前只比
+scale factor，而同一个 sf 可以由不同的（生成器, 种子）产出 —— 那不是漂移，
+是「比的不是同一个东西」。
+
+实测（两个用例都跑过）：身份匹配 ⇒ `G1 PASS: TPC-H 22/22 baseline hash matches
+(7439ce80…)`（50 passed / 0 failed）；身份不匹配 ⇒ `TPCH-NOT-RUN … reason=
+fixture_identity_mismatch`（**没有假漂移**）。门禁侧：`check_g1_tpch_baseline.sh`
+⇒ **G1 PASS**；同一份 hermetic SF=0.001 夹具（已部署到 252 的
+`~/sqlrustgo-tpch/data`，8 个 .tbl + manifest）使 `check_p22_time_travel.sh`
+与 `check_g16_compatibility.sh` 由 INCOMPLETE 转 **PASS**（两者均报
+`TPCH-SUBCHECK: PASS`）。旧值留档在基线文件的 `previous` 字段，不删。
+
+### 7.11 35 项 GA 门禁实跑的逐项归因
+
+实跑 `20261116-ga-gates-003`（32/35：PASS 23 / FAIL 6 / INCOMPLETE 3）的红项
+根因与处置：
+
+| seq | 门禁 | 根因 | 处置 |
+|---|---|---|---|
+| 1 | `check_rc_ga_gate` | D1 的 A2 测试 + A5 覆盖率**测不到** `sqlrustgo-storage` | PR #5816（VtuGuard 事务状态被 trait 默认值静默丢弃）⇒ storage 单测 916 passed / 0 failed |
+| 16 | `check_anti_fabrication` | V312-24 test-runner 挂了 `vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id` | 同上 |
+| 20 | `check_full_gate_verification` | 承接 seq1（D1–D5 维度） | 同上 |
+| 24 | `check_gate_test_integrity` | P16：多 1 个 `#[ignore]`（IDX-2 那条） | PR #5823 修缺陷 + 撤销 ignore ⇒ P16 实测 PASS |
+| 26 | `check_coverage_v312` | 同 seq1 的覆盖率根因（storage 跑不起来 ⇒ exit 101） | 同 PR #5816 |
+| 31 | `check_anti_ignore_gate` | 台账漂移：树 137 vs 台账 136 | PR #5823 ⇒ G19 实测 PASS |
+| 11/13/14 | P22 / G1 / G16 | **同一根因**：TPC-H 夹具缺失 | 部署 hermetic SF=0.001 夹具 + PR #5822 ⇒ 三项实测 PASS |
+
+**003 轮本身已作废**：其工作树在实跑中途被我更新过（PR #5818–#5822）⇒
+前后两段门禁跑的不是同一棵树，结果**不同源**，不能作为 GA 证据。权威实跑必须
+在**最终提交**上重跑。
+
+### 7.12 当前状态（2026-11-17）
+
+- 252 上的守门启动器**已按新版口径实跑采样**（20:46 起连续 QUIET：load 21–31、
+  外来 CPU 1176–1533 %，均低于 2400 % 的上限；绑定门禁是 load1 ≤ 40）。
+- 20:51 起**主动暂停**并留档（`launcher.log` 的 `PAUSED` 行）：冻结提交
+  `6129aa064d` 缺少 IDX-2 修复（crates/ 变更 ⇒ 二进制变更）⇒ **SOAK 必须与
+  GA 候选同源**，故待最终提交确定后用同一策略重启。
+- 权威实跑（run 005）将在最终提交上启动；35/35 尚未取得。
+- 仍需属主/人类完成的事项不变：人类架构师签批（RC→GA）、承载分支
+  `release/v4.1.0`、Hub #133 独立 Reviewer 回执、168 h SOAK 跑满；另两个
+  **已过期**的 ADR-008 例外（2026-09-01 / 2026-10-31）需属主重新签发。
