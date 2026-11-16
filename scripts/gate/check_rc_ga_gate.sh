@@ -303,8 +303,9 @@ gate_verdict_for() {
 #   A5_STATUS  = PASS | FAIL | NOT-RUN
 #   A5_REASON  = "" | COVERAGE_TOOL_MISSING | COVERAGE_NO_MEASUREMENTS
 #
-# Usage: a5_coverage_decision <tool_available:0|1> <measured_crates:int> [pct:int] [threshold:int]
-#   A5_REASON 还可能是 NO_THRESHOLD_IN_SSOT（三个来源都给不出门槛时）。
+# Usage: a5_coverage_decision <tool_available:0|1> <measured_crates:int> [pct:decimal] [threshold:decimal]
+#   A5_REASON 还可能是 NO_THRESHOLD_IN_SSOT（三个来源都给不出门槛时）
+#   与 COVERAGE_VALUE_UNPARSEABLE（覆盖率读不出数值时）。
 #
 # 门槛是判定输入，不是环境残留：第 4 个参数优先，其次 COVERAGE_MIN
 # （main() 从 SSOT 读到的值），都没有就现读 SSOT。三条路都给不出门槛
@@ -336,10 +337,35 @@ a5_coverage_decision() {
         A5_REASON="NO_THRESHOLD_IN_SSOT"
         return 0
     fi
-    if [ "$pct" -ge "$threshold" ] 2>/dev/null; then
+    # 覆盖率是**小数**：`coverage_verdict`（scripts/gate/common.sh）用 `bc`
+    # 的 scale=2 算出 "87.38" 这样的值，而这里的比较用的是 bash 的 `[ ]`
+    # —— 它只做整数比较：
+    #
+    #     [ "87.38" -ge "85" ]  ⇒  "[: 87.38: integer expected"（rc=2）
+    #
+    # 于是「87.38% ≥ 85%」落进 else 分支被判红。GA 实跑 005 实测复现：
+    # 同一轮里 `coverage_verdict` 已经判了 PASS（"average coverage:
+    # 87.38% (threshold: 85%)"），A5 却紧跟着打印
+    # "✗ [FAIL] A5 Coverage: 87.38% (min: 85%)" —— **同一个数、两套判据**。
+    #
+    # 现在两处都用浮点口径（awk），并把三种失败分开：
+    #   rc=1 低于门槛     ⇒ FAIL（无 REASON）
+    #   rc=2 覆盖率读不出 ⇒ FAIL / COVERAGE_VALUE_UNPARSEABLE
+    #   rc=3 门槛读不出   ⇒ FAIL / NO_THRESHOLD_IN_SSOT
+    # 读不出数值仍然判红：绝不把「读不出来」当成「通过」。
+    if awk -v p="$pct" -v t="$threshold" '
+        BEGIN {
+            if (t !~ /^[0-9]+([.][0-9]+)?$/) exit 3
+            if (p !~ /^[0-9]+([.][0-9]+)?$/) exit 2
+            exit (p + 0 >= t + 0) ? 0 : 1
+        }'; then
         A5_STATUS="PASS"
     else
-        A5_STATUS="FAIL"
+        case "$?" in
+            1) A5_STATUS="FAIL" ;;
+            2) A5_STATUS="FAIL"; A5_REASON="COVERAGE_VALUE_UNPARSEABLE" ;;
+            *) A5_STATUS="FAIL"; A5_REASON="NO_THRESHOLD_IN_SSOT" ;;
+        esac
     fi
     return 0
 }
