@@ -5899,6 +5899,20 @@ impl FileStorage {
                 // Find all row IDs with this key
                 let row_ids = index.search_all(search_key);
 
+                // IDX-2: with a BufferPool the row id is the **position in
+                // the page order** (the order `insert_via_bufferpool`
+                // recorded and `scan_via_bufferpool` walks) — see
+                // `create_index`. Resolving the ids against `tables.rows`
+                // would always come up empty there, and the query would
+                // silently return **zero rows**.
+                if self.buffer_pool.is_some() {
+                    let rows = self.scan_via_bufferpool(db, table)?;
+                    return Ok(row_ids
+                        .into_iter()
+                        .filter_map(|row_id| rows.get(row_id as usize).cloned())
+                        .collect());
+                }
+
                 // #4951: single read guard over tables + insert_buffer
                 // so the table and the buffer are read at one instant.
                 let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
@@ -6825,8 +6839,32 @@ impl StorageEngine for FileStorage {
                 .iter()
                 .position(|c| c.name == column_name)
                 .unwrap_or(0);
+            // IDX-2: with a BufferPool the rows live in **pages**, and
+            // `table_data.rows` is empty — so building the tree over
+            // `table_data.rows` builds an **empty** tree, and every lookup
+            // afterwards returns zero rows. Observed: create a table, insert
+            // rows, `CREATE INDEX` on a column, then query by that column —
+            // 0 rows, where the pre-index scan had returned the right
+            // answer. The index must not make existing rows disappear.
+            //
+            // The row id must mean the same thing on **both** sides of the
+            // lookup. Here it is the *position in the table's row order*:
+            // for the paged backend that order is the page-id order
+            // recorded by `insert_via_bufferpool` (insertion order) — the
+            // very order `scan_via_bufferpool` walks. The read side
+            // (`scan_with_index_in`) resolves the ids against that same
+            // list, so the two agree by construction.
+            let paged_rows: Option<Vec<Record>> = if self.buffer_pool.is_some() {
+                Some(self.scan_via_bufferpool(db, table)?)
+            } else {
+                None
+            };
+            let rows: &[Record] = match &paged_rows {
+                Some(r) => r.as_slice(),
+                None => table_data.rows.as_slice(),
+            };
             let mut index = crate::bplus_tree::BPlusTree::new();
-            for (row_id, row) in table_data.rows.iter().enumerate() {
+            for (row_id, row) in rows.iter().enumerate() {
                 if let Some(value) = row.get(column_index) {
                     if let Some(key) = value.to_index_key() {
                         index.insert(key, row_id as u32);
