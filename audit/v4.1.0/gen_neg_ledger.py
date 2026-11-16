@@ -119,10 +119,18 @@ for gate, (fx, cost, note) in sorted(MUT.items()):
 
 for r in rows:
     if r["gate"] == "scripts/gate/check_int_debt.sh":
-        r["known_hole"] = NEG + "fx10-int-debt-row-unclassifiable-characterization.sh"
-        r["known_hole_reason"] = ("债务行被改名或删除时只进 FAILED_ITEMS，判定逻辑只看 ACTIVE_COUNT/"
-                                  "DEFERRED_WITHOUT_PLAN ⇒ 退出码仍是 0（PASS）。fx10 用真实门禁证明这条 "
-                                  "fail-open 洞存在；改判定属 owner 决策（#5595 / #5598）")
+        r["known_hole"] = None
+        r["known_hole_closed"] = NEG + "fx10-int-debt-row-unclassifiable-characterization.sh"
+        r["known_hole_reason"] = ("【已闭合 2026-11-16】原 fail-open：债务行被改名或删除时只进 FAILED_ITEMS，"
+                                  "判定逻辑只看 ACTIVE_COUNT/DEFERRED_WITHOUT_PLAN ⇒ 退出码仍是 0（PASS）；"
+                                  "另有一处：状态列非空但未知时回退到「整行扫关键字」，于是 WIP-DONOTUSE 这类行"
+                                  "会因 Notes 里的 CLOSED 字样被误判成 CLOSED。修复（#5598 / D-03 裁决）："
+                                  "列 4 非空且未知 ⇒ FAIL；列 4 为空才允许整行回退；FAILED_ITEMS 非空 ⇒ FAIL；"
+                                  "台账读不到 ⇒ INCOMPLETE(2)。fx10 的期望随之由 green-characterization 翻转为 red，"
+                                  "现在它是一条**真正的负向夹具**：不可分类行必须让门禁 rc≠0。"
+                                  "治理链：owner 2026-11-16 会话授权 → 双血统征询（qwen flash-next-252 + "
+                                  "gpt chatgpt-web，均 ok=true）→ ADR-014 D-06 裁决 D-03（三态 0/1/2）"
+                                  "→ 本次落地。")
 
 rows.append({"gate": "scripts/gate/check_alpha_entry_v4.10.sh",
              "stages": [], "class": cat["scripts/gate/check_alpha_entry_v4.10.sh"]["class"],
