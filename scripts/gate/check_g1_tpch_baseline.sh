@@ -136,40 +136,113 @@ fi
 pass "fixture present: ${FIXTURE_DIR} (8/8 .tbl)"
 
 # ---------------------------------------------------------------------------
+# 0c. 把夹具交给 Rust 侧（2026-11-17）
+# ---------------------------------------------------------------------------
+# 本脚本（shell）的解析链是 TPCH_DATA_DIR → ~/sqlrustgo-tpch/data；
+# Rust 侧（tests/common/tpch_fixture.rs::resolve_fixture_dir）的解析链是
+# TPCH_DATA_DIR → 仓库内候选目录，**不含** ~/sqlrustgo-tpch/data。
+#
+# 不交接的后果（实测）：预检说「8/8 .tbl 都在」⇒ 本门禁准备做真实比对，
+# 但 cargo 侧拿不到夹具 ⇒ `TPCH-NOT-RUN: ... reason=fixture_missing` ⇒
+# 比对根本没发生。step 3 会把这条 NOT-RUN 当成「测试执行了」而报 PASS，
+# step 4 的比较器才把它译成 INCOMPLETE —— 也就是说，**比较从未发生，
+# 门禁却走到了结论**。AFP：没有实跑证据不得声称通过。
+#
+# TPCH_DATA_DIR 是 Rust 侧文档化的交接契约（CI 也用它递运行时夹具），
+# 在这里导出，shell 验过的目录才会真的被 Rust 用上。
+export TPCH_DATA_DIR="${FIXTURE_DIR}"
+
+# ---------------------------------------------------------------------------
+# 跑一个 TPC-H 测试目标，并把结果**诚实**地分成三类
+# ---------------------------------------------------------------------------
+# 返回码：0 = 真跑了且通过；1 = 真红；2 = 没跑成（自报 NOT-RUN）。
+#
+# 为什么不能只看退出码：这些测试在缺夹具时打印
+# `TPCH-NOT-RUN: ... reason=fixture_missing` 之后**仍以 0 退出**（一条查询
+# 都没跑）。只看退出码 ⇒「没跑」被记成「跑过了」⇒ 门禁对着一份**从未产生
+# 的**比对下了结论。2026-11-17 实测：G1 的 step 3 就是这么把一次 NOT-RUN
+# 说成「tpch_hash_test executed」的。
+#
+# 输出先全量落盘再判定：NOT-RUN 标记可能出现在很前面，`| tail -10`
+# 会把它截掉 —— 截掉之后 grep 不到，空跑就会被当成通过。
+run_tpch_test() {
+    local target="$1"
+    shift
+    local out rc reason
+    out="$(mktemp "${TMPDIR:-/tmp}/tpch_gate_out.XXXXXX")"
+    timeout 1800 env "$@" cargo test --test "${target}" > "${out}" 2>&1
+    rc=$?
+    tail -10 "${out}"
+    if [ "${rc}" -ne 0 ]; then
+        rm -f "${out}"
+        return 1
+    fi
+    if grep -q "TPCH-NOT-RUN" "${out}"; then
+        reason="$(grep -oE "reason=[a-z_]+" "${out}" | head -1 | cut -d= -f2)"
+        echo "  NOT-RUN reason=${reason:-undisclosed} (see output above)"
+        rm -f "${out}"
+        return 2
+    fi
+    rm -f "${out}"
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # 1. tpch_gate_test (22/22 inline)
 # ---------------------------------------------------------------------------
 step "G1 step 1/4: cargo test --test tpch_gate_test"
-timeout 1800 cargo test --test tpch_gate_test 2>&1 | tail -5
-TEST_RC=${PIPESTATUS[0]}
-if [ "$TEST_RC" -eq 0 ]; then
-    pass "tpch_gate_test executed (see output above for the 22/22 line)"
-else
-    fail "tpch_gate_test exited non-zero (see output above)"
-    OVERALL_RC=1
-fi
+run_tpch_test tpch_gate_test
+TEST_RC=$?
+case "${TEST_RC}" in
+    0)
+        pass "tpch_gate_test executed (see output above for the 22/22 line)"
+        ;;
+    2)
+        incomplete "tpch_gate_test did NOT run (the test disclosed NOT-RUN) — 22/22 was not verified"
+        if [ "${OVERALL_RC}" -eq 0 ]; then OVERALL_RC=2; fi
+        ;;
+    *)
+        fail "tpch_gate_test exited non-zero (see output above)"
+        OVERALL_RC=1
+        ;;
+esac
 
 # ---------------------------------------------------------------------------
 step "G1 step 2/4: cargo test --test tpch_full_22_test"
-timeout 1800 env TPCH_FORCE=1 cargo test --test tpch_full_22_test 2>&1 | tail -10
-TEST_RC=${PIPESTATUS[0]}
-if [ "$TEST_RC" -eq 0 ]; then
-    pass "tpch_full_22_test executed"
-else
-    fail "tpch_full_22_test exited non-zero (see output above)"
-    OVERALL_RC=1
-fi
+run_tpch_test tpch_full_22_test TPCH_FORCE=1
+TEST_RC=$?
+case "${TEST_RC}" in
+    0)
+        pass "tpch_full_22_test executed"
+        ;;
+    2)
+        incomplete "tpch_full_22_test did NOT run (the test disclosed NOT-RUN) — 22/22 was not verified"
+        if [ "${OVERALL_RC}" -eq 0 ]; then OVERALL_RC=2; fi
+        ;;
+    *)
+        fail "tpch_full_22_test exited non-zero (see output above)"
+        OVERALL_RC=1
+        ;;
+esac
 
 # ---------------------------------------------------------------------------
 # 3. tpch_hash_test (Rust regression test)
 step "G1 step 3/4: cargo test --test tpch_hash_test"
-timeout 1800 cargo test --test tpch_hash_test 2>&1 | tail -10
-TEST_RC=${PIPESTATUS[0]}
-if [ "$TEST_RC" -eq 0 ]; then
-    pass "tpch_hash_test executed"
-else
-    fail "tpch_hash_test exited non-zero"
-    OVERALL_RC=1
-fi
+run_tpch_test tpch_hash_test
+TEST_RC=$?
+case "${TEST_RC}" in
+    0)
+        pass "tpch_hash_test executed"
+        ;;
+    2)
+        incomplete "tpch_hash_test did NOT run (the test disclosed NOT-RUN) — the hash was NOT compared"
+        if [ "${OVERALL_RC}" -eq 0 ]; then OVERALL_RC=2; fi
+        ;;
+    *)
+        fail "tpch_hash_test exited non-zero"
+        OVERALL_RC=1
+        ;;
+esac
 
 # ---------------------------------------------------------------------------
 # 4. Python --check (independent verification)
