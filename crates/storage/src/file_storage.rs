@@ -287,6 +287,48 @@ pub struct FileStorage {
     /// wall-clock derivation was not good enough. Starts at 1 because
     /// `current_tx_id == 0` means autocommit.
     next_tx_id_counter: std::sync::atomic::AtomicU64,
+    /// #5834: connection-scoped ownership of undo entries.
+    ///
+    /// `tx_undo_log` is **instance-level** — one `FileStorage` is shared by
+    /// every connection — but a transaction belongs to a **connection**. The
+    /// instance slot `current_tx_id` therefore cannot answer "which
+    /// transaction owns this DML": a peer's `BEGIN` overwrites the slot
+    /// between our `BEGIN` and our `DELETE`, so the undo entry is stamped
+    /// with the **peer's** id. The peer's `ROLLBACK` then undoes *our*
+    /// write, and our `ROLLBACK` does not undo ours — both while reporting
+    /// success.
+    ///
+    /// Measured on `tests/integration/transaction/concurrent_rollback_isolation_test.rs`
+    /// (30 trials): 1/30 wrong end state, in either direction.
+    ///
+    /// The owner is therefore recorded **per thread**. Every caller in this
+    /// tree runs one connection per thread — the MySQL server spawns
+    /// `thread::spawn(handle_connection(..))` per connection — so the thread
+    /// *is* the connection. Keyed by `ThreadId` so one thread using two
+    /// storages keeps two independent owners.
+    ///
+    /// Three kinds of call **write** an entry here:
+    ///
+    /// 1. the **explicit** ownership APIs — `set_current_tx_id` /
+    ///    `set_current_tx_id_shared`, i.e. the `*_for(tx_id)` family — which
+    ///    the server's product path uses (`WalStorage::begin_transaction_lockfree_for`
+    ///    → `inner.set_current_tx_id_shared(tx_id)`);
+    /// 2. `begin_transaction()`, which records the transaction it just
+    ///    opened (or adopted) **for the calling thread** — it previously
+    ///    only wrote the instance slot, so a peer's `BEGIN` could turn our
+    ///    `BEGIN` into a "nested" one and hand us the peer's id;
+    /// 3. the transaction-ending paths, which set the entry to **0** (see
+    ///    [`clear_undo_owner_if`](Self::clear_undo_owner_if)).
+    ///
+    /// A thread with **no** entry falls back to the instance slot, so a
+    /// thread that never opened a transaction behaves exactly as before.
+    ///
+    /// An entry of **0** means "this thread is explicitly *not* in a
+    /// transaction" and therefore must **not** fall back to the instance
+    /// slot — otherwise a peer's `BEGIN` would hand this thread's next DML
+    /// to the wrong transaction again. That is why the entry is zeroed
+    /// rather than removed.
+    undo_owners: RwLock<HashMap<std::thread::ThreadId, u64>>,
     /// #5055: the write-ahead log, opened by [`new_with_wal`].
     ///
     /// `None` in every other constructor, which is what makes
@@ -587,9 +629,11 @@ impl FileStorage {
             // issue: `entries_total=3, skipped_entries=3` for a three-row
             // table in `aud`.
             database_name: Some(db.to_string()),
-            tx_id: self
-                .current_tx_id
-                .load(std::sync::atomic::Ordering::Acquire),
+            // #5834: the WAL must name the **same** transaction the undo
+            // log does, or a replay attributes the row to the wrong
+            // transaction (a dirty read on recovery). The undo owner is
+            // resolved once per DML and used by both.
+            tx_id: self.undo_owner_tx_id(),
             entry_type,
             table_id: crate::wal_record_codec::table_name_to_id(table),
             table_name: Some(table.to_string()),
@@ -923,6 +967,7 @@ impl FileStorage {
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            undo_owners: RwLock::new(HashMap::new()),
             wal: Mutex::new(None),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
@@ -974,6 +1019,7 @@ impl FileStorage {
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            undo_owners: RwLock::new(HashMap::new()),
             wal: Mutex::new(None),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
@@ -1073,6 +1119,7 @@ impl FileStorage {
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            undo_owners: RwLock::new(HashMap::new()),
             wal: Mutex::new(Some(wal)),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
@@ -1151,6 +1198,7 @@ impl FileStorage {
             gap_lock_manager: Some(lock_manager),
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            undo_owners: RwLock::new(HashMap::new()),
             wal: Mutex::new(None),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
@@ -4953,7 +5001,7 @@ impl FileStorage {
             // #5059: record one undo entry per row. Without this,
             // ROLLBACK had nothing to act on for buffered inserts and
             // every rolled-back row survived — see `UndoOp`.
-            let tx_id = self.current_tx_id();
+            let tx_id = self.undo_owner_tx_id();
             Self::with_write_lock(self, |s| {
                 for row in &records {
                     s.tx_undo_log.push(TxUndoEntry {
@@ -5428,7 +5476,7 @@ impl FileStorage {
         let key = self.tbl_in(db, table);
         let wal_on = self.wal_enabled();
         let watching = self.change_log_enabled();
-        let tx_id = self.current_tx_id();
+        let tx_id = self.undo_owner_tx_id();
         let in_tx = tx_id != 0;
         let assignments = mutation.assignments().to_vec();
         let match_row = |record: &Record| filter(record);
@@ -5497,7 +5545,7 @@ impl FileStorage {
         // INSERT followed by an UPDATE now affects 1 row instead of 0.
         let wal_on = self.wal_enabled();
         let watching = self.change_log_enabled();
-        let tx_id = self.current_tx_id();
+        let tx_id = self.undo_owner_tx_id();
         let in_tx = tx_id != 0;
         let key = self.tbl_in(db, table);
         let match_row = |record: &Record| {
@@ -5568,7 +5616,7 @@ impl FileStorage {
         // a row the live table no longer has.
         let watching = self.change_log_enabled();
         let wal_on = self.wal_enabled();
-        let tx_id = self.current_tx_id();
+        let tx_id = self.undo_owner_tx_id();
         let in_tx = tx_id != 0;
         let scoped = crate::engine::scoped_key(db, table);
         let table_name = table.to_string();
@@ -5579,7 +5627,7 @@ impl FileStorage {
                 if let Some(buffered) = s.insert_buffer.get(&scoped) {
                     for row in buffered.iter().filter(|r| match_row(r)) {
                         s.tx_undo_log.push(TxUndoEntry {
-                            tx_id: self.current_tx_id(),
+                            tx_id,
                             op: UndoOp::BufferedDelete {
                                 table: table_name.clone(),
                                 row: row.clone(),
@@ -5618,11 +5666,16 @@ impl FileStorage {
         // `with_write_lock` because every step touches the protected
         // fields. Splitting would mean multiple lock acquisitions
         // and risk of torn state.
+        //
+        // #5834: capture the undo owner ONCE, before the lock. The
+        // previous form read the instance slot inside the closure while
+        // the `in_tx` test read it just above — two different reads of a
+        // value a peer can change in between, so the test and the stamp
+        // could disagree. The owner is now resolved once, from the
+        // thread-scoped table.
+        let tx_id = self.undo_owner_tx_id();
         Self::with_write_lock(self, |s| {
-            let in_tx = self
-                .current_tx_id
-                .load(std::sync::atomic::Ordering::Acquire)
-                != 0;
+            let in_tx = tx_id != 0;
 
             // Snapshot rows for ROLLBACK (same as `delete`).
             let removed_pks: Vec<Value> = if let Some(ref mut data) =
@@ -5635,7 +5688,7 @@ impl FileStorage {
                     if filters.is_empty() {
                         let snap = data.rows.clone();
                         s.tx_undo_log.push(TxUndoEntry {
-                            tx_id: self.current_tx_id(),
+                            tx_id,
                             op: UndoOp::DeleteAll {
                                 table: table.to_string(),
                                 original_rows: snap,
@@ -5649,7 +5702,7 @@ impl FileStorage {
                                 .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
                             if matches {
                                 s.tx_undo_log.push(TxUndoEntry {
-                                    tx_id: self.current_tx_id(),
+                                    tx_id,
                                     op: UndoOp::DeleteRow {
                                         table: table.to_string(),
                                         row_idx: idx,
@@ -5787,7 +5840,7 @@ impl FileStorage {
         let wal_on = self.wal_enabled();
         let watching = self.change_log_enabled();
         let scoped = crate::engine::scoped_key(db, table);
-        let tx_id = self.current_tx_id();
+        let tx_id = self.undo_owner_tx_id();
         let in_tx = tx_id != 0;
         let table_name = table.to_string();
         let match_row = |row: &Record| {
@@ -5805,7 +5858,7 @@ impl FileStorage {
                 if let Some(data) = s.tables.get(&scoped) {
                     if filters.is_empty() {
                         s.tx_undo_log.push(TxUndoEntry {
-                            tx_id: self.current_tx_id(),
+                            tx_id,
                             op: UndoOp::DeleteAll {
                                 table: table_name.clone(),
                                 original_rows: data.rows.clone(),
@@ -5815,7 +5868,7 @@ impl FileStorage {
                         for (idx, row) in data.rows.iter().enumerate().rev() {
                             if match_row(row) {
                                 s.tx_undo_log.push(TxUndoEntry {
-                                    tx_id: self.current_tx_id(),
+                                    tx_id,
                                     op: UndoOp::DeleteRow {
                                         table: table_name.clone(),
                                         row_idx: idx,
@@ -5831,7 +5884,7 @@ impl FileStorage {
                 if let Some(buffered) = s.insert_buffer.get(&scoped) {
                     for row in buffered.iter().filter(|r| match_row(r)) {
                         s.tx_undo_log.push(TxUndoEntry {
-                            tx_id: self.current_tx_id(),
+                            tx_id,
                             op: UndoOp::BufferedDelete {
                                 table: table_name.clone(),
                                 row: row.clone(),
@@ -6076,15 +6129,24 @@ impl StorageEngine for FileStorage {
         // unsynchronised read/write of the same word. An atomic makes
         // the read well-defined; it does NOT make the value
         // per-connection, which is the remaining part of #4951.
-        self.current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0
+        //
+        // #5834: the value IS per-connection now. The instance slot
+        // cannot answer "am I in a transaction?" when every connection
+        // shares it — a peer's COMMIT used to clear it and the VTU guard
+        // then aborted a healthy transaction.
+        self.undo_owner_tx_id() != 0
     }
 
     fn current_tx_id(&self) -> u64 {
         // #4951: see `in_transaction`.
-        self.current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
+        //
+        // #5834: the transaction that belongs to **this** connection, not
+        // whichever transaction last wrote the instance slot. A peer's
+        // BEGIN/COMMIT used to change the answer between our own BEGIN and
+        // our own statement — which made the VTU guard abort a healthy
+        // transaction ("DML called without an open transaction") and made
+        // MvccStorage stamp rows with the wrong transaction id.
+        self.undo_owner_tx_id()
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
@@ -6093,6 +6155,11 @@ impl StorageEngine for FileStorage {
         // `WriteState` field left to touch.
         self.current_tx_id
             .store(id, std::sync::atomic::Ordering::Release);
+        // #5834: claiming a transaction also claims **ownership** of the
+        // undo entries this thread is about to produce. Without this the
+        // ownership lives only in the instance slot, and a peer's BEGIN
+        // can take it away between our BEGIN and our DML.
+        self.set_undo_owner(id);
     }
 
     /// #4974: the `&self` counterpart of [`set_current_tx_id`](Self::set_current_tx_id).
@@ -6132,6 +6199,11 @@ impl StorageEngine for FileStorage {
     fn set_current_tx_id_shared(&self, id: u64) {
         self.current_tx_id
             .store(id, std::sync::atomic::Ordering::Release);
+        // #5834: same as `set_current_tx_id` — the explicit-ownership API
+        // must also claim ownership **for this thread**, otherwise a
+        // concurrent connection's BEGIN steals the undo ownership between
+        // our BEGIN and our DML.
+        self.set_undo_owner(id);
     }
 
     /// Issue #4581 / B-track case 35-36: real BEGIN/COMMIT/ROLLBACK
@@ -6158,7 +6230,11 @@ impl StorageEngine for FileStorage {
         let id = self.next_tx_id();
         let (tx_id, is_new) = Self::with_write_lock(self, |s| -> SqlResult<(u64, bool)> {
             use std::sync::atomic::Ordering as O;
-            let existing = self.current_tx_id.load(O::Acquire);
+            // #5834: "already in a tx" must mean "**this connection** is
+            // already in a tx". The shared slot said "somebody is in a tx",
+            // so a peer's BEGIN used to turn our BEGIN into a nested one
+            // and hand us the peer's transaction id.
+            let existing = self.undo_owner_tx_id();
             if existing != 0 {
                 // Already in a tx — keep the existing id (MySQL-style nested BEGIN).
                 return Ok((existing, false));
@@ -6171,6 +6247,13 @@ impl StorageEngine for FileStorage {
                 .retain(|e| e.tx_id != existing && e.tx_id != id);
             Ok((id, true))
         })?;
+        // #5834: this thread now owns the transaction it just began (or
+        // adopted, in the nested-BEGIN case). Recording it keeps the undo
+        // ownership connection-scoped on the non-explicit path too, and
+        // un-sticks a thread whose owner was cleared by an earlier
+        // COMMIT — without this, that thread's BEGIN would be invisible
+        // to its own DML.
+        self.set_undo_owner(tx_id);
         // #5055: log the boundary. A replay can only tell a committed
         // row from an uncommitted one by seeing Commit, and it can only
         // see Commit if Begin was written for the same tx_id. Note this
@@ -6183,9 +6266,9 @@ impl StorageEngine for FileStorage {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire);
+        // #5834: identify **this** connection's transaction, not whatever
+        // the shared instance slot happens to hold.
+        let tx_id = self.current_tx_id();
         self.commit_transaction_for(tx_id)
     }
 
@@ -6209,6 +6292,9 @@ impl StorageEngine for FileStorage {
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
+        // #5834: the transaction is over for this thread — release the
+        // undo ownership so the next DML is not stamped with a dead id.
+        self.clear_undo_owner_if(tx_id);
         // #5055: read the tx_id *before* the reset above and log the
         // Commit under the id the rows were written with. Logging it
         // after the reset — with `current_tx_id` now 0 — would produce a
@@ -6261,6 +6347,8 @@ impl StorageEngine for FileStorage {
         Self::with_write_lock(self, |s| s.tx_undo_log.retain(|e| e.tx_id != tx_id));
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
+        // #5834: release this thread's undo ownership (see above).
+        self.clear_undo_owner_if(tx_id);
         Ok(())
     }
 
@@ -6295,6 +6383,8 @@ impl StorageEngine for FileStorage {
         });
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
+        // #5834: release this thread's undo ownership (see above).
+        self.clear_undo_owner_if(tx_id);
         // #5055: capture `tx_id` before the reset so the Rollback names
         // the transaction whose rows it cancels.
         if self.wal_enabled() {
@@ -6304,9 +6394,9 @@ impl StorageEngine for FileStorage {
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        let rolling_back_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire);
+        // #5834: identify **this** connection's transaction, not whatever
+        // the shared instance slot happens to hold.
+        let rolling_back_tx = self.current_tx_id();
         self.rollback_transaction_for(rolling_back_tx)
     }
 
@@ -6344,6 +6434,8 @@ impl StorageEngine for FileStorage {
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
+        // #5834: release this thread's undo ownership (see above).
+        self.clear_undo_owner_if(rolling_back_tx);
         // #5055: as in `commit_transaction`, the id is captured before
         // the reset. A rollback that logs tx 0 would leave the real
         // transaction looking merely "uncommitted at target", which
@@ -7667,6 +7759,61 @@ impl FileStorage {
 // pollute the trait surface.
 
 impl FileStorage {
+    /// #5834: the transaction that owns DML issued by the **calling thread**.
+    ///
+    /// Returns the thread-scoped owner recorded by
+    /// [`set_current_tx_id`](Self::set_current_tx_id) /
+    /// [`set_current_tx_id_shared`](Self::set_current_tx_id_shared) /
+    /// [`begin_transaction`](StorageEngine::begin_transaction). A thread with
+    /// **no** recorded owner falls back to the instance slot — that is the
+    /// legacy behaviour (one transaction per storage instance), so a thread
+    /// that never opened a transaction is unaffected.
+    ///
+    /// The fallback is only safe because the instance slot is consulted when
+    /// nobody claimed ownership for this thread. Once a thread *has* an
+    /// entry — including an entry of **0** meaning "explicitly not in a
+    /// transaction" — the instance slot is never consulted again for that
+    /// thread, so a peer's `BEGIN`/`COMMIT` can no longer steal it.
+    fn undo_owner_tx_id(&self) -> u64 {
+        let tid = std::thread::current().id();
+        if let Some(tx) = self
+            .undo_owners
+            .read()
+            .ok()
+            .and_then(|owners| owners.get(&tid).copied())
+        {
+            return tx;
+        }
+        // Fall back to the instance slot directly — `current_tx_id()` is
+        // owner-aware itself, and calling it here would recurse.
+        self.current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// #5834: record (or clear, with `0`) this thread's transaction
+    /// ownership. See [`undo_owner_tx_id`](Self::undo_owner_tx_id).
+    fn set_undo_owner(&self, tx_id: u64) {
+        let tid = std::thread::current().id();
+        if let Ok(mut owners) = self.undo_owners.write() {
+            owners.insert(tid, tx_id);
+        }
+    }
+
+    /// #5834: release this thread's ownership when its transaction ends.
+    ///
+    /// The entry is set to **0** rather than removed: "this thread is
+    /// explicitly not in a transaction" must not fall back to the shared
+    /// instance slot, or a peer's BEGIN would hand this thread's next
+    /// DML to the wrong transaction again.
+    fn clear_undo_owner_if(&self, tx_id: u64) {
+        let tid = std::thread::current().id();
+        if let Ok(mut owners) = self.undo_owners.write() {
+            if owners.get(&tid).copied() == Some(tx_id) {
+                owners.insert(tid, 0);
+            }
+        }
+    }
+
     /// Allocate the next transaction id.
     ///
     /// #5055: this used to derive the id from the wall clock —
