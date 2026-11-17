@@ -174,6 +174,16 @@ run_tpch_test() {
     rc=$?
     tail -10 "${out}"
     if [ "${rc}" -ne 0 ]; then
+        # 诊断增量（2026-11-18）：Rust 的 assert_eq! 把实算哈希打在 panic 的
+        # `left:` 行，上面的 `tail -10` 会把它截掉，而这里接着又把完整输出
+        # 删掉 —— 「实算是多少」这条最关键的诊断信息被销毁两次，事后连取证
+        # 都做不到（权威轮 013 的归档 stdout 就是这样只剩一句 hash mismatch）。
+        # 在删除之前把那两行打出来：既有输出一字未动，只在真红时多打几行。
+        if grep -qE '^[[:space:]]*left:' "${out}" 2>/dev/null; then
+            echo "  computed vs baseline (from the Rust assertion):"
+            grep -E '^[[:space:]]*(left|right):' "${out}" | sed 's/^/    /'
+            echo "  locate it with: cargo test --test tpch_hash_test v380_candidate_dump -- --exact --nocapture"
+        fi
         rm -f "${out}"
         return 1
     fi
