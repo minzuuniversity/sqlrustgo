@@ -1066,3 +1066,52 @@ last_status_refresh:
     原 next_action 自 PHASE_0 起从未刷新；(b) 原 7 条 open_issues 中 6 条已解决
     （见 resolved_issues_2026_10_03）；(c) 5 远端已于 2026-10-03 全部收敛。
     故整体重写，不保留原陈旧字段。
+
+# ============================================================================
+# 2026-11-17 可行性复核（数据驱动，取代 2026-11-16 登记中已被实测更新的部分）
+# ----------------------------------------------------------------------------
+# 相对 ga_feasibility_2026_11_16 的变化：**仓内可做的部分已全部完成并有实跑证据**。
+#   ① 权威认证轮 run 20261117-ga-gates-010 在交付树 `1579950048b3` 上 PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0（计划 35 项，plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`）—— **35 项全绿**；
+#   ② 168h SOAK 第一轮实跑把「宿主争用」量化成了可复核的数字：起跑门禁通过
+#      （43.4 q/s、0 错误、fsync_p50 4.59 ms），争用期错误率峰值 1.804 %，
+#      宿主转静时错误数曾冻结、错误率回落，但**冻结不是永久的** —— 宿主再次被抢时
+#      错误数重新增长，吞吐塌到 6.69 q/s（起跑时 43.4 q/s），
+#      错误率回到 0.428 %；错误率是累计计数之比，与宿主环境耦合
+#      （详见 GA_RELEASE_REPORT.md §7.16）；
+#   ③ TPC-H 基线实测未漂移：G1 PASS（22/22 hash matches 7439ce80…），
+#      基线捕获点 6129aa064d 之后 crates/ 变动过，真实比对仍一致。
+# 剩余四条仍是**外部 / 物理 / 人类**约束 —— AI 不可自行消除。
+# ============================================================================
+ga_feasibility_2026_11_17:
+  verdict: >-
+    GA 仍**不可达**（诚实结论，不得以 CONDITIONAL PASS 冒充）；
+    仓内可做的部分已全部完成并有实跑证据，剩余全部是物理与人类约束
+  closed_by_repo_work:
+  - "权威认证轮 20261117-ga-gates-010：run 20261117-ga-gates-010 在交付树 `1579950048b3` 上 PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0（计划 35 项，plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`）—— **35 项全绿**"
+  - "168h SOAK 第一轮实跑：宿主争用归因已量化（fsync 尾部秒级、错误率非单调、零 panic、心跳连续）"
+  - "TPC-H 基线未漂移：G1 PASS（22/22 hash matches 7439ce80…），夹具两套解析链已统一"
+  hard_blockers:
+  - id: SOAK-168H-EXCLUSIVE
+    detail: >-
+      属主 2026-11-16 裁决明文要求「独占窗口」。本轮处于 root 常驻 CI 的争用窗口，
+      产生的客户端读超时**已固化在累计计数里**，不会因宿主转静而消失 ⇒
+      本轮**不是**合格的 GA 证据轮。权威 168 h 需节点被独占后重跑
+      （启动器 / 冻结提交 / 判据均已就绪，节点一空即可起跑）。
+  - id: HUMAN-SIGNOFF
+    detail: >-
+      STAGE_CONFIG transitions.RC_to_GA.requires_human_approval: true；
+      manual_only_criteria 明文：「批准记录写进本文件的变更记录，**不能由 Agent 生成**」。
+      GA_GATE_REPORT.md 顶部刷新块的签署栏**已留空**，等待人类架构师填写。
+  - id: CARRIER
+    detail: >-
+      GA 的 branch_pattern = [main, release/v*, hotfix/v*] 且 carrier_enforced: true；
+      release/v4.1.0 分支尚不存在。按 RELEASE_LIFECYCLE §2.5，顺序为
+      审批 → tag → 并入 main → 建承载分支，**Agent 提前建属越序** ⇒ 属主动作。
+  - id: BASELINE-GAP
+    detail: >-
+      168 道门禁重盘：REQUIRED 134 / HISTORICAL 32 / RETIRED 2；其中 49 道
+      「应在 v4.1.0 范围内执行但当前无执行点」，gov_probe 实测 dead 仍 = 61。
+      逐条分类见 docs/releases/v4.1.0/DEAD_GATES_CLASSIFICATION_2026-11-08.md；
+      AGENTS §2.1/3.2 规定门禁清单不可协商 ⇒ **逐道处置必须属主决定**。
+  note: >-
+    本席已把可由仓内完成的部分全部做完并归档；以上四条为外部 / 物理 / 人类约束。

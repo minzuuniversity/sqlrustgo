@@ -1,6 +1,6 @@
 # v4.1.0 Evidence Status —— D1–D5 五个维度
 
-> **基线**：`develop/v4.1.0` @ `2406559ac09ecf821566d11bf4a3cc1ce4f4dbb8`
+> **基线**：`develop/v4.1.0` @ `1579950048b37628eb19bb9f2fe624ab87198ada`
 > **provenance:** generated_at=2026-10-23, branch=docs/ga-rc-artifacts-batch32,
 > commit=`2406559ac09ecf821566d11bf4a3cc1ce4f4dbb8`, machine=Mac-mini-7.local (arm64, macOS 27.0.1),
 > identity=openclaw-mcode, source_repo=openclaw/sqlrustgo,

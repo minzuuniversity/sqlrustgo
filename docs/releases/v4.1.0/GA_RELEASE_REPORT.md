@@ -5,8 +5,8 @@
 > 任何没有实跑证据的项，本报告一律不写 PASS。
 
 - 版本：v4.1.0
-- 报告日期：2026-11-16
-- 冻结提交（本次全部实跑的唯一基线）：`7e26c2b7c6840e3bbec804a0bf3bbcc706a646d7`
+- 报告日期：2026-11-17
+- 冻结提交（本次全部实跑的唯一基线）：`1579950048b37628eb19bb9f2fe624ab87198ada`（权威认证轮 20261117-ga-gates-010；材料提交 M 只新增 `docs/` 与 `audit/`，代码面不变）
 - 阶段（实测）：**ALPHA**（`docs/releases/v4.1.0/STAGE.yaml` → `current_stage`）
 - 配套文件：`GA_GATE_REPORT.md`（门禁快照）、`STAGE_GOVERNANCE_RC_TO_GA.md`（阶段治理与签批）、
   `GATE_BASELINE_V410.jsonl`（168 门禁归属基线）
@@ -27,7 +27,7 @@
 | 2 | **两处存量红清零**：`cargo fmt --check --all` 10 处 → rc=0；`check_commit_message.sh` 1 条 BAD_SHAPE → rc=0（根因是类型表不完整，按 2026-11-08 补 `audit` 的同型先例补表） | PR #5804；`check_commit_message.sh --selftest` rc=0；`test_criteria_scope_and_types.sh` rc=0 |
 | 3 | **#5598 两处 fail-open 闭合**（退出码三态化 0/1/2）＋ A7-4 测量假阴性修正 | PR #5805；fx06/fx09/fx10 三道负向夹具实测全部 FIXTURE-PASS |
 | 4 | **168h SOAK 运行器交付并启动**（两臂：服务端稳定性 + 多模型 W1..W5） | PR #5806；`scripts/soak/run_v410_168h_soak.sh`；GA-2 harness 时长可配（`SQLRUSTGO_SOAK_DURATION_SECS`，单测 1 passed） |
-| 5 | **GA 全清单 35 项实跑**（冻结提交 `7e26c2b7c6`） | run `20261116-ga-gates-002`（plan sha256 `sha256:6466a0ec156…`） |
+| 5 | **GA 全清单 35 项实跑**（该轮基线 `7e26c2b7c6`；**权威轮见 §7.15**） | run `20261116-ga-gates-002`（plan sha256 `sha256:6466a0ec156…`） |
 | 6 | **三处红点的根因全在仪器上**：A5 覆盖率用整数口径比较小数（87.38 % 被判不达标）、V312-24 staging 认证**过期二进制**、两个新测试文件没跑 rustfmt | PR #5825 / #5827 / #5829；回归用例 12 + 5 条全绿 |
 | 7 | **SOAK 复验的两处仪器错误**：把「单条查询耗时」当「已过时间」（误杀三轮健康的 168 h）、helper 文件无可执行位（误杀第四轮） | PR #5826 / #5828；「同一份真实数据、两台仪器」回算对照见 §7.13 |
 
@@ -618,3 +618,134 @@ crash_wal_index_b1 单独连跑 3 次 ⇒ 3/3 全绿（5.23 / 5.23 / 5.22 s）
 
 看板既有行 ENG-12 / ENG-13 **一个字节未改**（SSOT 只增不改），本轮的结论以
 新行 **GA-P0-1** 追加登记。
+
+### 7.15 权威认证轮 20261117-ga-gates-010 的逐项结果（交付树 `1579950048b3`）
+
+| 项 | 门禁 | 判定 | 退出码 | 耗时(s) | 证据文件（stdout） |
+|---|---|---|---|---|---|
+| 1 | `scripts/gate/check_rc_ga_gate.sh` | PASS | 0 | 863.1 | `001-check_rc_ga_gate.sh.stdout` |
+| 2 | `scripts/gate/check_arch_invariants.sh` | PASS | 0 | 0.0 | `002-check_arch_invariants.sh.stdout` |
+| 3 | `scripts/gate/check_arch3_no_bypass.sh` | PASS | 0 | 0.0 | `003-check_arch3_no_bypass.sh.stdout` |
+| 4 | `scripts/gate/check_int2_no_orphan.sh` | PASS | 0 | 4.1 | `004-check_int2_no_orphan.sh.stdout` |
+| 5 | `scripts/gate/check_int3_single_expr.sh` | PASS | 0 | 1.4 | `005-check_int3_single_expr.sh.stdout` |
+| 6 | `scripts/gate/check_sem1_savepoint.sh` | PASS | 0 | 1.2 | `006-check_sem1_savepoint.sh.stdout` |
+| 7 | `scripts/gate/check_backup_restore.sh` | PASS | 0 | 0.6 | `007-check_backup_restore.sh.stdout` |
+| 8 | `scripts/gate/check_p12_crash_test.sh` | PASS | 0 | 0.4 | `008-check_p12_crash_test.sh.stdout` |
+| 9 | `scripts/gate/check_p14_upgrade_test.sh` | PASS | 0 | 0.6 | `009-check_p14_upgrade_test.sh.stdout` |
+| 10 | `scripts/gate/check_p21_audit_log.sh` | PASS | 0 | 7.7 | `010-check_p21_audit_log.sh.stdout` |
+| 11 | `scripts/gate/check_p22_time_travel.sh` | PASS | 0 | 4.3 | `011-check_p22_time_travel.sh.stdout` |
+| 12 | `scripts/gate/check_p23_hash_chain.sh` | PASS | 0 | 1.3 | `012-check_p23_hash_chain.sh.stdout` |
+| 13 | `scripts/gate/check_g1_tpch_baseline.sh` | PASS | 0 | 10.7 | `013-check_g1_tpch_baseline.sh.stdout` |
+| 14 | `scripts/gate/check_g16_compatibility.sh` | PASS | 0 | 2.9 | `014-check_g16_compatibility.sh.stdout` |
+| 15 | `scripts/gate/check_integration_gate.sh` | PASS | 0 | 5.3 | `015-check_integration_gate.sh.stdout` |
+| 16 | `scripts/gate/check_anti_fabrication.sh` | PASS | 0 | 1118.8 | `016-check_anti_fabrication.sh.stdout` |
+| 17 | `scripts/gate/check_arch_sem_debt.sh` | PASS | 0 | 0.1 | `017-check_arch_sem_debt.sh.stdout` |
+| 18 | `scripts/gate/check_cross_version_debt.sh` | PASS | 0 | 1.3 | `018-check_cross_version_debt.sh.stdout` |
+| 19 | `scripts/gate/check_int_debt.sh` | PASS | 0 | 0.0 | `019-check_int_debt.sh.stdout` |
+| 20 | `scripts/gate/check_full_gate_verification.sh` | PASS | 0 | 1853.6 | `020-check_full_gate_verification.sh.stdout` |
+| 21 | `scripts/gate/check_drift_not_pass.sh` | PASS | 0 | 2.3 | `021-check_drift_not_pass.sh.stdout` |
+| 22 | `scripts/gate/check_architecture_freeze.sh` | PASS | 0 | 0.4 | `022-check_architecture_freeze.sh.stdout` |
+| 23 | `scripts/gate/check_gate_self_verification.sh` | PASS | 0 | 3.8 | `023-check_gate_self_verification.sh.stdout` |
+| 24 | `scripts/gate/check_gate_test_integrity.sh` | PASS | 0 | 10.0 | `024-check_gate_test_integrity.sh.stdout` |
+| 25 | `scripts/gate/check_gate_executability.sh` | PASS | 0 | 0.1 | `025-check_gate_executability.sh.stdout` |
+| 26 | `scripts/gate/check_coverage_v312.sh` | PASS | 0 | 234.1 | `026-check_coverage_v312.sh.stdout` |
+| 27 | `scripts/gate/check_coverage_single_implementation.sh` | PASS | 0 | 0.1 | `027-check_coverage_single_implementation.sh.stdout` |
+| 28 | `scripts/gate/check_tests_dont_write_archived_evidence.sh` | PASS | 0 | 0.4 | `028-check_tests_dont_write_archived_evidence.sh.stdout` |
+| 29 | `scripts/gate/check_commit_message.sh` | PASS | 0 | 0.1 | `029-check_commit_message.sh.stdout` |
+| 30 | `scripts/gate/check_sql_corpus_gate.sh` | PASS | 0 | 13.6 | `030-check_sql_corpus_gate.sh.stdout` |
+| 31 | `scripts/gate/check_anti_ignore_gate.sh` | PASS | 0 | 0.4 | `031-check_anti_ignore_gate.sh.stdout` |
+| 32 | `cargo build --all-features` | PASS | 0 | 0.3 | `032-cargo build --all-features.stdout` |
+| 33 | `cargo test --all-features` | PASS | 0 | 928.5 | `033-cargo test --all-features.stdout` |
+| 34 | `cargo fmt --check` | PASS | 0 | 3.2 | `034-cargo fmt --check.stdout` |
+| 35 | `cargo clippy --all-features -- -D warnings` | PASS | 0 | 0.6 | `035-cargo clippy --all-features -- -D warnings.stdout` |
+
+**总账（由 `results.jsonl` 直接读出，不手抄）**：共 35 项（计划 35 项，
+plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`）—— **PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0**。
+
+非绿项明细：
+
+- （无 FAIL / INCOMPLETE —— 全部 PASS）
+
+判定口径：`PASS` = 退出码 0 且门禁自证完成；`FAIL` = 退出码 1（真红）；
+`INCOMPLETE` = 退出码 2（**读不出来** —— 缺夹具 / 缺前置 / 未披露，**不是**漂移）。
+逐项 stdout/stderr 留在 `audit/v4.1.0/runs/20261117-ga-gates-010/`。
+
+本轮在交付树 `1579950048b3` 上执行，plan 的 `git_head` 与之一致 ⇒
+**测的就是被交付的那棵树**。
+
+**与前一轮的对照**：前一轮跑满的权威认证轮 `20261117-ga-gates-007` 在交付树 `35d52bfdc901` 上为 **PASS 33 / FAIL 1 / INCOMPLETE 1 / 其他 0**（共 35 项）—— 那一轮的**红是真实的**：seq20 FAIL（`scripts/gate/check_full_gate_verification.sh`）、seq33 INCOMPLETE（`cargo test --all-features`）。它们已分别修于 #5835（门禁仪器：失败维度明细不再被 `tail -3` 吞掉）与 #5834（并发事务隔离：undo 归属改为按连接/按线程）。
+
+两轮之间 `crates/`、`scripts/`、`tests/` 的实际差异（`git diff --stat 35d52bfdc901..1579950048b3`）：
+
+```
+crates/storage/src/file_storage.rs                 | 207 ++++++++++++++++++---
+ scripts/gate/check_full_gate_verification.sh       |  32 +++-
+ .../concurrent_rollback_isolation_test.rs          |  90 +++++++++
+ 3 files changed, 298 insertions(+), 31 deletions(-)
+```
+
+⇒ 本轮测的是**包含这两处修复**的那棵树；材料提交 M 只新增 `docs/` 与 `audit/`，代码面不变。
+
+
+
+本轮于 2026-11-17T11:53:08Z 完成归档。
+
+### 7.16 168h SOAK 第一轮实跑：宿主争用把「测产品」变成「测环境」
+
+**总账（数据驱动：以下每个数字都在生成时从实测快照现算，不手抄）**
+
+| 项 | 值 |
+|---|---|
+| run | `20261116-168h-v410`（attempt-33） |
+| 起跑 → 计划结束 | 2026-11-16T23:05:02Z → 2026-11-23T23:05:02Z |
+| 冻结提交 / 二进制 sha256 | `d46bf93024` / `fa0928b223` |
+| 快照时刻 | 2026-11-17T19:52:54（elapsed 46249 s / 604800 s，3017 个采样点） |
+| 累计 | **479195 查 / 2052 错 ⇒ 0.428 %** |
+| 峰值 | elapsed 2316 s：36253 查 / 654 错 ⇒ **1.804 %** |
+| panic | `panic_count=00`（全程零 panic） |
+| 服务端崩溃迹象 | `panic|deadlock|assertion|abort|fatal` 命中 **0** 处 |
+| 客户端错误形态 | 共 2052 条 `E,` 记录：1157 笔 2013 读超时 + 895 笔连接层 errno=0 |
+| 服务端伴随痕迹 | 658 次 `Handshake send: IO: Broken pipe`、9 次 `worker pool full`（背压拒绝）—— 均为客户端超时断开后的**结果** |
+| 引擎 | CPU 全程均值 70.1 %、当前 87.9 %；RSS 1045.4 MB |
+| 宿主 load1 | 中位数 2.9；>40 占 9.1 %；>100 占 1.2 %；当前 2.68 |
+| 当前吞吐 | **6.69 q/s**（起跑时 43.4 q/s） |
+
+**错误率不是单调量，也不是稳定量** —— 它是**累计计数之比**，分子（错）与分母（查）
+都由宿主环境决定：
+
+1. 争用高峰：elapsed 1816 s 时累计错误率**首次越过 1.0 % 阈值**（359 错 / 35805 查 ⇒ 1.003 %）；elapsed 2316 s 峰值 **1.804 %**
+   （654 错 / 36253 查）。
+2. 宿主转静时错误数曾自 elapsed **31744 s 起冻结在 2052**（连续 950 个采样点零新增），错误率随之回落；
+3. （本次快照内未见错误重新增长）
+4. 最近一段安静窗口：elapsed **31744 → 46249 s**（14505 s / 951 个采样点），错误数冻结在 **2052**、**新增 0 笔**，该段 `load1` 均值 2.35（最高 41.69）、吞吐 7.58 q/s。
+
+**机制（可复核，不是推测）**
+
+同盘 `fsync` 延迟实测（**最坏的一次**：2026-11-17T02:54:00Z，60 次 write+fsync）：**p50 5.544 ms / p90 3305.025 ms / max 6401.213 ms / mean 1034.587 ms** —— 与起跑时的 `fsync_p50=4.59 ms` 相比，p50 基本没变，但**尾部恶化到秒级**⇒ 同盘被 root 身份的并行 Rust 构建间歇性饿死，呈双峰分布。
+
+
+**同一宿主、同一方法，重复探测 5 次**：2026-11-17T02:54:00Z → p50 5.544 / p90 3305.025 / max 6401.213 ms；2026-11-17T03:48:28Z → p50 0.124 / p90 0.133 / max 10.317 ms；2026-11-17T03:52:32Z → p50 0.124 / p90 0.238 / max 93.317 ms；2026-11-17T11:51:59Z → p50 0.126 / p90 0.254 / max 91.189 ms；2026-11-17T11:53:06Z → p50 0.121 / p90 0.138 / max 10.251 ms，尾部从 **6401.213 ms** 收到 **10.251 ms** ⇒ 第一次的秒级尾部是**宿主争用的瞬态**，不是被测引擎的固有属性；尾部的量级随 root 当时的编译强度浮动。
+
+
+成功查询的延迟按类型分布（`driver.log` 的 `Q,<latency_ms>,<thread_id>,<kind>,<rows>`）：`point_select` p50 **859.7 ms** / p95 2642.2 ms、`range_scan` p50 **906.8 ms** / p95 2710.4 ms、`count_agg` p50 **881.9 ms** / p95 2646.9 ms、`insert` p50 **2696.1 ms** / p95 6439.4 ms、`point_update` p50 **2368.4 ms** / p95 5860.7 ms ⇒ **写路径（insert / update）的延迟是读路径的 3 倍左右**，代价落在 **fsync 持久化**这一侧，而不是查询解析/执行。
+
+
+客户端 `driver.log` 的 **2052** 条 `E,` 记录里：**1157** 笔显式 2013 读超时（`(2013, 'Lost connection to MySQL server during query (The read operation timed out)')`，观测到的最大延迟 **16611.4 ms**（贴住驱动的 15 s 读超时上限））、**895** 笔连接层 errno=0 空消息 `(0, '')` —— **全部是客户端侧的连接/超时类错误**，没有一条是服务端崩溃、死锁或断言失败（服务端日志里 `panic|deadlock|assertion|abort|fatal` 命中 **0** 处；同一份日志里的 658 次 `Handshake send: IO: Broken pipe` 与 9 次 `worker pool full`（背压拒绝）都是**客户端超时断开之后的结果**，不是原因） ⇒ 变的是磁盘，不是引擎的锁/并发行为。
+
+错误查询自身的延迟：p50 **15011.2 ms** / p95 15017.7 ms / max 16611.4 ms，其中 **1157 笔（56.4 %）≥ 14 s** ⇒ 形态是「**等不到回复直到客户端超时**」，与被饿死的磁盘一致，而不是引擎算错或返回错。
+
+**排除引擎并发病理**：出错采样点与无错采样点的引擎 `cpu_pct` 几乎相同
+（全程均值 70.1 %，当前 87.9 %，RSS 平稳），
+变的是宿主的 `load1`（最高 —）⇒ 变的是环境，
+不是引擎的锁/并发行为。
+
+**但安静 ≠ 独占**：同一时刻实测宿主仍有 **0** 个 root 身份的 `rustc`/`cargo` 在跑（`load1` 2.91），⇒ 该节点**始终不是独占**；这正是属主要求「独占窗口」而本轮**不满足**的可复核证据。
+
+**⇒ 结论**：本轮**不是**合格的 GA 证据轮 —— 属主 2026-11-16 裁决明文要求「独占窗口」，
+而本轮 9.1 % 的采样点 `load1 > 40`（峰值 —）。
+宿主在安静与争用之间来回切：安静时吞吐回到 6.69 q/s、错误不再新增；
+争用时吞吐塌到 — q/s、错误持续累积 —— 而**累计计数只增不减**，
+所以本轮无论宿主后来多安静，那 **2052** 笔读超时都留在账上。
+
+**不改判据、不抬阈值、不重启**：本轮继续跑满 168 h（重启只把计数清零再经历同一段争用）；
+权威 168 h 必须在节点被独占后重跑 —— 启动器、冻结提交、判据均已就绪，节点一空即可起跑。

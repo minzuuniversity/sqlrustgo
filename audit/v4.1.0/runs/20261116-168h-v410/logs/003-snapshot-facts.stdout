@@ -1,0 +1,194 @@
+{
+  "attempt": 33,
+  "binary_sha256": "fa0928b2237cba7a1b897404cbb8bfe5b6530cec45942c189d1fdd58197368ab",
+  "e": 2052,
+  "elapsed_s": 46249,
+  "engine_cpu_mean": 70.1,
+  "engine_cpu_now": 87.9,
+  "err_types": {
+    "E 行合计": 2052,
+    "_timeout_latency_max_ms": 16611.4,
+    "客户端读超时 (2013, read operation timed out)": 1157,
+    "连接层 errno=0 空消息 ((0, ''))": 895
+  },
+  "error_latency_profile": {
+    "ge_14s": 1157,
+    "ge_14s_pct": 56.4,
+    "max_ms": 16611.4,
+    "n": 2052,
+    "p50_ms": 15011.2,
+    "p95_ms": 15017.7
+  },
+  "first_over_threshold": {
+    "e": 359,
+    "elapsed": 1816,
+    "q": 35805,
+    "rate_pct": 1.003
+  },
+  "freeze": {
+    "e": 2052,
+    "from_elapsed": 31744,
+    "len_samples": 950
+  },
+  "frozen_commit": "d46bf9302460b3cbd57b49d257d467e068f6184b",
+  "fsync_p50_at_start": 4.59,
+  "fsync_probe": {
+    "host": "gaoyuanai-HPZ6G4 (252)",
+    "max_ms": 10.251,
+    "mean_ms": 0.344,
+    "measured_at_utc": "2026-11-17T11:53:06Z",
+    "method": "同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync",
+    "min_ms": 0.116,
+    "n": 60,
+    "p50_ms": 0.121,
+    "p90_ms": 0.138,
+    "p99_ms": 3.184
+  },
+  "fsync_probe_history": [
+    {
+      "max_ms": 6401.213,
+      "mean_ms": 1034.587,
+      "measured_at_utc": "2026-11-17T02:54:00Z",
+      "min_ms": 0.081,
+      "n": 60,
+      "note": "第一次探测：p50 尚可，但尾部已是**秒级**（p90 3.3 s / max 6.4 s），双峰分布 ⇒ 同盘被 root 的并行 Rust 构建间歇性饿死。",
+      "p50_ms": 5.544,
+      "p90_ms": 3305.025,
+      "p99_ms": 6401.213
+    },
+    {
+      "max_ms": 10.317,
+      "mean_ms": 0.31,
+      "measured_at_utc": "2026-11-17T03:48:28Z",
+      "min_ms": 0.12,
+      "n": 60,
+      "note": "第二次探测（同一方法、同一宿主、相隔 54 分钟）：尾部已回到 10 ms 量级，p90 0.133 ms ⇒ 第一次的秒级尾部是**宿主争用的瞬态**，不是被测引擎的固有属性。",
+      "p50_ms": 0.124,
+      "p90_ms": 0.133,
+      "p99_ms": 0.713
+    },
+    {
+      "host": "gaoyuanai-HPZ6G4 (252)",
+      "max_ms": 93.317,
+      "mean_ms": 2.186,
+      "measured_at_utc": "2026-11-17T03:52:32Z",
+      "method": "同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync",
+      "min_ms": 0.12,
+      "n": 60,
+      "p50_ms": 0.124,
+      "p90_ms": 0.238,
+      "p99_ms": 17.696
+    },
+    {
+      "host": "gaoyuanai-HPZ6G4 (252)",
+      "max_ms": 91.189,
+      "mean_ms": 1.677,
+      "measured_at_utc": "2026-11-17T11:51:59Z",
+      "method": "同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync",
+      "min_ms": 0.117,
+      "n": 60,
+      "p50_ms": 0.126,
+      "p90_ms": 0.254,
+      "p99_ms": 0.902
+    },
+    {
+      "host": "gaoyuanai-HPZ6G4 (252)",
+      "max_ms": 10.251,
+      "mean_ms": 0.344,
+      "measured_at_utc": "2026-11-17T11:53:06Z",
+      "method": "同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync",
+      "min_ms": 0.116,
+      "n": 60,
+      "p50_ms": 0.121,
+      "p90_ms": 0.138,
+      "p99_ms": 3.184
+    }
+  ],
+  "host_contention": {
+    "host": "gaoyuanai-HPZ6G4 (252)",
+    "load1": 2.91,
+    "load15": 2.7,
+    "load5": 2.98,
+    "measured_at_utc": "2026-11-17T11:53:07Z",
+    "note": "本次取证时刻 root 身份的编译/测试进程为 0 ⇒ **该时刻**的独占性条件满足；但臂 B 的累计错误已固化在计数里（历史窗口内的争用不可回溯消除）⇒ 权威 168h 仍需在独占窗口内重跑，本快照不构成『已满足独占』的结论。",
+    "own_compile_or_test_procs": 1,
+    "root_compile_or_test_procs": 0
+  },
+  "latency_profile": {
+    "count_agg": {
+      "max_ms": 14975.9,
+      "n": 47846,
+      "p50_ms": 881.9,
+      "p95_ms": 2646.9,
+      "p99_ms": 4216.8
+    },
+    "insert": {
+      "max_ms": 14899.1,
+      "n": 47897,
+      "p50_ms": 2696.1,
+      "p95_ms": 6439.4,
+      "p99_ms": 8879.3
+    },
+    "point_select": {
+      "max_ms": 15011.7,
+      "n": 239744,
+      "p50_ms": 859.7,
+      "p95_ms": 2642.2,
+      "p99_ms": 4174.7
+    },
+    "point_update": {
+      "max_ms": 14973.7,
+      "n": 47603,
+      "p50_ms": 2368.4,
+      "p95_ms": 5860.7,
+      "p99_ms": 8125.2
+    },
+    "range_scan": {
+      "max_ms": 15011.3,
+      "n": 96171,
+      "p50_ms": 906.8,
+      "p95_ms": 2710.4,
+      "p99_ms": 4205.2
+    }
+  },
+  "load_gt100_pct": 1.2,
+  "load_gt40_pct": 9.1,
+  "load_median": 2.9,
+  "load_now": 2.68,
+  "panics": "00",
+  "peak_at_elapsed": 2316,
+  "peak_e": 654,
+  "peak_q": 36253,
+  "peak_rate_pct": 1.804,
+  "planned_end_utc": "2026-11-23T23:05:02Z",
+  "q": 479195,
+  "qps_at_start": 43.4,
+  "qps_now": 6.69,
+  "quiet_window": {
+    "e_frozen_at": 2052,
+    "from_elapsed": 31744,
+    "load_max": 41.69,
+    "load_mean": 2.35,
+    "load_min": 1.29,
+    "new_errors": 0,
+    "qps": 7.58,
+    "samples": 951,
+    "span_s": 14505,
+    "to_elapsed": 46249
+  },
+  "rate_pct": 0.428,
+  "regrowth": null,
+  "rss_now": 1045.4,
+  "samples": 3017,
+  "server_side": {
+    "backpressure_rejects": 9,
+    "broken_pipe": 658,
+    "crash_markers": 0,
+    "worker_pool_full": 9
+  },
+  "snapshot_at": "2026-11-17T19:52:54",
+  "start_load1": 30,
+  "started_utc": "2026-11-16T23:05:02Z",
+  "threshold_pct": 1.0,
+  "total_planned_s": 604800
+}
