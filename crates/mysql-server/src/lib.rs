@@ -374,6 +374,47 @@ pub fn deregister_connection(conn_id: u64) {
     CONNECTION_REGISTRY.write().remove(&conn_id);
 }
 
+/// #FALSESUCCESS-1：按 `conn_id` 判定一条连接是否仍然注册着。
+///
+/// 存在的唯一理由是 `KILL` 语句要在**协议层**判存在性 —— 连接注册表
+/// （`CONNECTION_REGISTRY`）在本 crate 里，engine 层（根 crate `sqlrustgo`）
+/// 拿不到它，所以这个判定只能在这里做。
+pub fn connection_exists(conn_id: u64) -> bool {
+    CONNECTION_REGISTRY.read().contains_key(&conn_id)
+}
+
+/// #FALSESUCCESS-1：当前仍注册着的全部 `conn_id`（升序）。
+///
+/// 只读观测口：对��� `KILL` 的运维脚本要能回答「这个 id 现在还活着吗」，
+/// 而 MySQL 的对应能力是 `SHOW PROCESSLIST` / `information_schema.processlist`。
+pub fn registered_connection_ids() -> Vec<u64> {
+    let mut ids: Vec<u64> = CONNECTION_REGISTRY.read().keys().copied().collect();
+    ids.sort_unstable();
+    ids
+}
+
+/// #FALSESUCCESS-1：按 `conn_id` 真正终止一条连接。
+///
+/// 返回 `false` ⇒ 该 `conn_id` 不存在（调用方须报 MySQL 的 1094
+/// `Unknown thread id`）。存在时 shutdown 双向 socket，使对端的阻塞读立刻
+/// 返回 0（EOF）⇒ 连接线程退出。
+///
+/// 与 `reap_socket` 走**同一条** shutdown 路径 —— 复用同一段代码，而不是在
+/// 测试里复刻一遍 shutdown（复刻出来的测试证明不了真的能关连接）。
+pub fn kill_connection_by_id(conn_id: u64) -> bool {
+    let sock = {
+        let reg = CONNECTION_REGISTRY.read();
+        reg.get(&conn_id).map(|(_, s)| s.clone())
+    };
+    match sock {
+        Some(s) => {
+            let _ = reap_socket(&s);
+            true
+        }
+        None => false,
+    }
+}
+
 /// #5582: reaper 关闭连接的**唯一**路径。
 ///
 /// 抽成独立函数，是为了让回归测试走的是**同一段代码**，而不是在测试里
@@ -6212,7 +6253,64 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                         *server_last_sent_seq = seq;
                         continue;
                     }
-                    // G13-OLTP-1: poisoning recovery in both branches.
+                    // #FALSESUCCESS-1：`KILL CONNECTION <id>` 对**不存在的连接**
+                    // 必须报错，不能回 OK。
+                    //
+                    // 改前：KILL 语句直接落进 engine 的 `execute_kill`，那里把
+                    // `set_cancel_flag` 的错误用 `let _ =` 吞掉，然后**无条件**
+                    // 返回 Ok ⇒ 协议层发 OK 包 ⇒ 「不存在的 id」与「真实存在、
+                    // 本来就杀得掉的 id」产生**完全相同**的响应，客户端无从区分
+                    // ⇒ 假成功（MySQL 8.0 在这里是 `ERROR 1094 (HY000):
+                    // Unknown thread id: N`）。
+                    //
+                    // 存在性判定与真正终止都必须在**协议层**做：连接注册表在
+                    // 本 crate 里，engine 层拿不到它。
+                    if let Some((target_id, kill_query)) =
+                        parsed.as_ref().ok().and_then(|s| match s {
+                            Statement::Kill {
+                                connection_id,
+                                kill_query,
+                            } => Some((*connection_id, *kill_query)),
+                            _ => None,
+                        })
+                    {
+                        if !connection_exists(target_id) {
+                            make_err_packet(
+                                seq,
+                                1094u16,
+                                "HY000",
+                                &format!("Unknown thread id: {}", target_id),
+                            )
+                            .write_to(stream)?;
+                            *server_last_sent_seq = seq;
+                            seq = seq.wrapping_add(1);
+                            had_error = true;
+                            continue;
+                        }
+                        if !kill_query {
+                            // KILL CONNECTION：先把 OK 包写出去（顺序要紧 ——
+                            // 一旦 shutdown 自己这条连接，写包就失败），再真正
+                            // 终止被指向的连接。
+                            seq = write_ok_packets(
+                                stream,
+                                make_ok_packet(
+                                    seq,
+                                    0,
+                                    0,
+                                    0x0002 | more_results_flag,
+                                    0,
+                                    cap,
+                                    false,
+                                ),
+                                seq,
+                            )?;
+                            let _ = kill_connection_by_id(target_id);
+                            *server_last_sent_seq = seq;
+                            continue;
+                        }
+                        // KILL QUERY：连接存在 ⇒ 继续交给 engine 去置 cancel flag
+                        // （取消**当前查询**而不是断连接，语义不同）。
+                    }
                     let result = if let Some(stmt) = is_read_only {
                         let rstmt = read_only_stmt(stmt);
                         let eng = engine.read();
@@ -6614,6 +6712,38 @@ fn do_command_loop<S: Read + Write + DrainWrites>(
                 tracing::info!("STMT EXECUTE (id={}): {}", stmt_id, final_sql);
                 // write for DDL/DML).
                 let parsed = parse(&final_sql);
+                // #FALSESUCCESS-1：prepared statement 路径同样必须判存在性 ——
+                // COM_STMT_PREPARE/EXECUTE 与 COM_QUERY 是两条独立的分发路径，
+                // 只改一条会留下「换个协议就又假成功」的洞。
+                if let Some((target_id, kill_query)) = parsed.as_ref().ok().and_then(|s| match s {
+                    Statement::Kill {
+                        connection_id,
+                        kill_query,
+                    } => Some((*connection_id, *kill_query)),
+                    _ => None,
+                }) {
+                    if !connection_exists(target_id) {
+                        make_err_packet(
+                            seq,
+                            1094u16,
+                            "HY000",
+                            &format!("Unknown thread id: {}", target_id),
+                        )
+                        .write_to(stream)?;
+                        *server_last_sent_seq = seq;
+                        continue;
+                    }
+                    if !kill_query {
+                        seq = write_ok_packets(
+                            stream,
+                            make_ok_packet(seq, 0, 0, 0x0002, 0, cap, false),
+                            seq,
+                        )?;
+                        let _ = kill_connection_by_id(target_id);
+                        *server_last_sent_seq = seq;
+                        continue;
+                    }
+                }
                 let is_read_only = parsed
                     .as_ref()
                     .ok()

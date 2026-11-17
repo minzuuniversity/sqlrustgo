@@ -1,0 +1,19 @@
+=== G6 Gate: P1-1 (#3173) Backup/Restore/Verify/PITR ===
+  [1/6] PASS: sqlrustgo-admin crate exists
+  [2/6] PASS: 4 subcommands (backup, restore, verify, pitr) defined
+  [3/6] PASS: 51 e2e tests in tests/integration/sql/backup_restore_test.rs
+  [4/6] Running cargo test -p sqlrustgo-admin (5min budget)...
+
+test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+  [4/6] PASS: sqlrustgo-admin unit tests
+  [5/6] Running cargo test -p sqlrustgo --test backup_restore_test (5min budget)...
+
+test result: ok. 51 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+  [5/6] PASS: 51 e2e tests
+  [6/6] Running end-to-end CLI smoke test...
+  [6/6] SKIP: sqlrustgo-admin binary not found (build manually: cargo build -p sqlrustgo-admin)
+
+=== G6 Gate: PASS ===
+P1-1 (#3173) Backup/Restore/Verify/PITR verified

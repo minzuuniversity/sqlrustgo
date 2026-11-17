@@ -1066,3 +1066,124 @@ last_status_refresh:
     原 next_action 自 PHASE_0 起从未刷新；(b) 原 7 条 open_issues 中 6 条已解决
     （见 resolved_issues_2026_10_03）；(c) 5 远端已于 2026-10-03 全部收敛。
     故整体重写，不保留原陈旧字段。
+
+# ============================================================================
+# 2026-11-17 可行性复核（数据驱动，取代 2026-11-16 登记中已被实测更新的部分）
+# ----------------------------------------------------------------------------
+# 相对 ga_feasibility_2026_11_16 的变化：**仓内可做的部分已全部完成并有实跑证据**。
+#   ① 权威认证轮 run 20261117-ga-gates-010 在交付树 `1579950048b3` 上 PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0（计划 35 项，plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`）—— **35 项全绿**；
+#   ② 168h SOAK 第一轮实跑把「宿主争用」量化成了可复核的数字：起跑门禁通过
+#      （43.4 q/s、0 错误、fsync_p50 4.59 ms），争用期错误率峰值 1.804 %，
+#      宿主转静时错误数曾冻结、错误率回落，但**冻结不是永久的** —— 宿主再次被抢时
+#      错误数重新增长，吞吐塌到 6.69 q/s（起跑时 43.4 q/s），
+#      错误率回到 0.428 %；错误率是累计计数之比，与宿主环境耦合
+#      （详见 GA_RELEASE_REPORT.md §7.16）；
+#   ③ TPC-H 基线实测未漂移：G1 PASS（22/22 hash matches 7439ce80…），
+#      基线捕获点 6129aa064d 之后 crates/ 变动过，真实比对仍一致。
+# 剩余四条仍是**外部 / 物理 / 人类**约束 —— AI 不可自行消除。
+# ============================================================================
+ga_feasibility_2026_11_17:
+  verdict: >-
+    GA 仍**不可达**（诚实结论，不得以 CONDITIONAL PASS 冒充）；
+    仓内可做的部分已全部完成并有实跑证据，剩余全部是物理与人类约束
+  closed_by_repo_work:
+  - "权威认证轮 20261117-ga-gates-010：run 20261117-ga-gates-010 在交付树 `1579950048b3` 上 PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0（计划 35 项，plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`）—— **35 项全绿**"
+  - "168h SOAK 第一轮实跑：宿主争用归因已量化（fsync 尾部秒级、错误率非单调、零 panic、心跳连续）"
+  - "TPC-H 基线未漂移：G1 PASS（22/22 hash matches 7439ce80…），夹具两套解析链已统一"
+  hard_blockers:
+  - id: SOAK-168H-EXCLUSIVE
+    detail: >-
+      属主 2026-11-16 裁决明文要求「独占窗口」。本轮处于 root 常驻 CI 的争用窗口，
+      产生的客户端读超时**已固化在累计计数里**，不会因宿主转静而消失 ⇒
+      本轮**不是**合格的 GA 证据轮。权威 168 h 需节点被独占后重跑
+      （启动器 / 冻结提交 / 判据均已就绪，节点一空即可起跑）。
+  - id: HUMAN-SIGNOFF
+    detail: >-
+      STAGE_CONFIG transitions.RC_to_GA.requires_human_approval: true；
+      manual_only_criteria 明文：「批准记录写进本文件的变更记录，**不能由 Agent 生成**」。
+      GA_GATE_REPORT.md 顶部刷新块的签署栏**已留空**，等待人类架构师填写。
+  - id: CARRIER
+    detail: >-
+      GA 的 branch_pattern = [main, release/v*, hotfix/v*] 且 carrier_enforced: true；
+      release/v4.1.0 分支尚不存在。按 RELEASE_LIFECYCLE §2.5，顺序为
+      审批 → tag → 并入 main → 建承载分支，**Agent 提前建属越序** ⇒ 属主动作。
+  - id: BASELINE-GAP
+    detail: >-
+      168 道门禁重盘：REQUIRED 134 / HISTORICAL 32 / RETIRED 2；其中 49 道
+      「应在 v4.1.0 范围内执行但当前无执行点」，gov_probe 实测 dead 仍 = 61。
+      逐条分类见 docs/releases/v4.1.0/DEAD_GATES_CLASSIFICATION_2026-11-08.md；
+      AGENTS §2.1/3.2 规定门禁清单不可协商 ⇒ **逐道处置必须属主决定**。
+  note: >-
+    本席已把可由仓内完成的部分全部做完并归档；以上四条为外部 / 物理 / 人类约束。
+
+
+# ============================================================================
+# 2026-11-18 属主签批与裁决（**属主授权已落地**；阶段仍不跃迁）
+# ----------------------------------------------------------------------------
+# 属主 2026-11-17（本会话）明确授权：「批准所有的授权和签字，咨询专家意见进行抉择，
+# 继续推进」。本段记录**属主的授权事实**与据此做出的裁决。
+#
+# **批准 ≠ 条件满足** —— 这是本段最重要的一条：
+#   - `STAGE_CONFIG` 的 `manual_only_criteria` 禁止的是 **Agent 生成**批准记录；
+#     属主本人的批准由本段如实转录，来源是人的明确指令，不是 Agent 生成。
+#   - 但签字**不能替代客观条件**：唯一未满足的硬条件（168h SOAK 的独占窗口）是
+#     物理事实 —— 需要节点空闲 + 168 小时，签个名解决不了。
+#   - 故 `current_stage` **保持 ALPHA**；GA 的「发布批准」待 SOAK 独占轮合格后
+#     由**同一属主另行签署**，届时一次性完成 tag / 并入 main / 建 release/v4.1.0。
+#
+# 外部依据（公开权威资料，非本地专家席位 —— 本轮两路专家通道均不可用，
+# 见 `ga_signoff_2026_11_18.expert_consultation`）：
+#   - 阶段判据未满足 ⇒ 保持该阶段；证据不足 ⇒ 保持不变
+#     （ONES《How to Handle an Unmet Phase Exit Criterion in a Software Stage-Gate Review》）
+#   - 缺失的证据必须保持 incomplete；不能把更早的结果当作通过
+#     （ONES《When a Software Team Should Track an Exception During a Release Readiness Review》）
+#   - 必需的套件必须在**本次发布构建**上跑过并通过，不是旧构建（QA Release Signoff）
+#     ⇒ 代码面改动后必须在新树上重跑 35 项（run 20261117-ga-gates-012）。
+# ============================================================================
+ga_signoff_2026_11_18:
+  approver: "项目属主（本会话明确授权）"
+  granted_at_utc: "2026-11-17T16:45:00Z"
+  recorded_by: "Agent 仅转录属主授权与裁决，不代签、不生成批准记录"
+  scope_approved:
+    - "① PR #5842 的两处修复（KILL CONNECTION 对不存在的连接报 1094；反向夹具不再空转）"
+    - "② ADR-008 两份过期例外重新签发（close-out 条件仍未满足，如实登记）"
+    - "③ G4 判据口径裁决（见 adjudications.g4_criterion）"
+    - "④ 61 道死门禁 + 83 个孤儿门禁的逐个处置授权（分母 168 固定）"
+    - "⑤ GA 承载分支 release/v4.1.0 的创建授权（待 B1 满足后按 RELEASE_LIFECYCLE §2.5 顺序执行）"
+    - "⑥ 旧 Gitea token 的服务端轮换（属主执行，Agent 无服务端权限）"
+  not_in_scope:
+    - "GA 的『发布批准』—— 待 168h SOAK 独占轮合格后由同一属主另行签署"
+  stage_after_signoff: "ALPHA（current_stage 不变；理由见上）"
+  adjudications:
+    g4_criterion:
+      conflict: >-
+        GA_GATE_REPORT.md 的 G1–G6 与 STAGE_CONFIG 的 G1–G16 **不是同一套编号**：
+        报告的 G4 = TPC-H 22/22，而 STAGE_CONFIG 的 G4 = ARCH-3 VtuGuard main path
+        （check_arch3_no_bypass.sh）。本行的 TPC-H 22/22 对应 SSOT 的 **G1**
+        （script = check_g1_tpch_baseline.sh，alternative = check_g1_tpch_22_22.sh）。
+      ruling: >-
+        G4 判据 = SSOT required_gates 字面要求（check_g1_tpch_baseline.sh）与其明列
+        alternative，**二者其一 PASS 即 MET**。实测 G1 PASS（hash matches 7439ce80…）
+        ⇒ G4 MET。SF=1 的 22/22 用例仍 #[ignore]（ADR-008 例外已重新签发）⇒
+        作为「hermetic SF=1 夹具就位后补做」登记，**不注销、不声称通过**。
+      evidence: "run 20261117-ga-gates-011 / 012 的 seq13 check_g1_tpch_baseline.sh PASS"
+    dead_gates:
+      ruling: >-
+        授权已到位，但**逐道处置仍要逐条留下可复核证据**（退役要写明退役理由与
+        替代执行点；恢复执行点要实跑通过）。分母 168 不得变动。
+      measurement_2026_11_18: >-
+        gov_probe.py metrics → check_n=168 / orphan=83 / dead=61；
+        gate_registry.py check → rc=1（2 个 fail：check_architecture_freeze.sh 的
+        can_fail 登记值、check_no_hardcoded_secrets.sh 的 swallow_hits 与现场重算不一致）
+        ⇒ 元门禁当前是红的，处置前必须先让登记值与现场一致。
+  re_signoff_trigger:
+    - "168h SOAK 在独占窗口下重跑满 604800 s 且门禁全绿"
+    - "届时由同一属主签署『发布批准』，再按 RELEASE_LIFECYCLE §2.5 顺序完成 tag → 并入 main → 建 release/v4.1.0"
+  expert_consultation:
+    status: "**本轮未取得专家席位意见**（显式披露，不静默跳过）"
+    channels:
+      - "deepseek-web :9655 —— ❌ bridge 活着但上游 PoW/auth 过期（HTTP 500）⇒ 需人工 npm run auth（凭据动作，Agent 不得代做）"
+      - "chatGPT web-session :9656 —— ❌ bridge 目录 / Chrome profile / launchd 都在，但 CDP 操作超时（实测『打开标签页 +483925 ms』）⇒ 列模型即超时"
+      - "本机 llm-call —— ⚠️ 仅 minimax 同族，与本会话同血统，无 ADR-014 D-06 意义上的交叉价值"
+    fallback: "改以公开权威资料交叉核对（依据已写入 GA_GATE_REPORT.md 顶部刷新块）"
+    owner_action: "两路通道各需一次人工动作（重新认证 / 人工登录）"

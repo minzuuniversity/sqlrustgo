@@ -232,7 +232,10 @@ fn test_binary_not_built_by_this_run_is_refused() {
     write_manifest(&root, "target/release/sqlrustgo_storage");
 
     let (code, _stdout, stderr) = run_stager(&root);
-    assert_ne!(code, 0, "a binary this build did not produce must be refused");
+    assert_ne!(
+        code, 0,
+        "a binary this build did not produce must be refused"
+    );
     assert!(
         stderr.contains("did not build"),
         "the failure must say the binary was not built; got:\n{}",

@@ -1,0 +1,21 @@
+=== P11 Gate Self-Verification (Meta-Gate) ===
+Date: 2026-11-17T17:18:55Z
+
+--- V1 detector (cargo test actually runs tests) ---
+  [PASS] V1_cargo_test_real: cargo test produced 696 test results, test result: ok. 696 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+--- V7 detector (gate scripts have headers) ---
+  [WARN] gate_scripts_have_headers: 18 gate scripts lack documentation header
+          (informational only; add P11-comments to gate scripts)
+
+--- V8 detector (gate detects 0-tests-run as FAIL) ---
+  [PASS] gate_detects_zero_test_output: correctly identifies 0-tests-run as FAIL (no false positive)
+
+--- V2 detector (test result parsing) ---
+  [PASS] test_result_parsing: cargo test summary parsed: 696 passed, 0 failed, 0 ignored
+
+=== P11 Summary ===
+  PASS: 4
+  FAIL: 0
+
+✅ PASS — P11 satisfied. Gates verified to produce trustworthy outputs.
