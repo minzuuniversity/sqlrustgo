@@ -91,7 +91,37 @@ run_gate() {
     local code
     output=$(bash "$script" "$@" 2>&1)
     code=$?
-    echo "$output" | tail -3
+    # #5835: a FAILURE must be diagnosable from the log alone.
+    #
+    # `tail -3` keeps the verdict but throws away **which** dimension
+    # failed: the inner gate prints the failing dimension right after the
+    # `GATE: FAIL — 逐维实测：` marker, and the next lines are exactly
+    # what `tail -3` drops. Measured in GA round `20261117-ga-gates-007`:
+    # seq20 reported `✗ [FAIL] GATE: FAIL` with an EMPTY dimension list,
+    # and the dimension could not be recovered afterwards — the inner
+    # gate's output was captured in a shell variable and discarded.
+    #
+    # A gate that can say "red" but not "why" is not a gate, it is a
+    # coin toss. On failure we print the tail that contains the
+    # per-dimension verdict, and we archive the **full** inner output so
+    # nothing is lost.
+    if [ "$code" -eq "$expect_code" ]; then
+        echo "$output" | tail -3
+    else
+        echo "$output" | tail -40
+        # Archive the FULL inner output. Note the deliberate absence of
+        # `|| true` here: the #5417 rule is that `run_gate()` must not
+        # contain that anti-pattern anywhere in its body, because it
+        # normalises "the command failed" into "the command succeeded".
+        # The archive write is guarded by an `if` instead, which keeps the
+        # same "best effort, never fatal" semantics without the pattern.
+        local inner_log_dir="${GATE_INNER_LOG_DIR:-$REPO_ROOT/artifacts/gate/v3.8.0/inner}"
+        local inner_log_file="$inner_log_dir/${name//[^A-Za-z0-9._-]/_}.log"
+        if mkdir -p "$inner_log_dir" 2>/dev/null; then
+            printf '%s\n' "$output" > "$inner_log_file" 2>/dev/null
+        fi
+        echo "  (full inner output archived: $inner_log_file)"
+    fi
     # #5456: `tail -3` drops the gate's own dimension report, so the
     # orchestrator log carried NO evidence of WHICH dimensions actually
     # ran. The CI "Gate summary" step has to decide whether D1/D2 were
