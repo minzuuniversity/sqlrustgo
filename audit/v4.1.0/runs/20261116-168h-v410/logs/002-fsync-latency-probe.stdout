@@ -1,0 +1,1 @@
+{"measured_at_utc": "2026-11-17T11:53:06Z", "host": "gaoyuanai-HPZ6G4 (252)", "method": "同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync", "n": 60, "p50_ms": 0.121, "p90_ms": 0.138, "p99_ms": 3.184, "max_ms": 10.251, "min_ms": 0.116, "mean_ms": 0.344}
