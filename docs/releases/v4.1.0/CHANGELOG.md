@@ -1,8 +1,8 @@
 # v4.1.0 — CHANGELOG
 
-> **基线**：`develop/v4.1.0` @ `8ea6d0e5923aab86bf34e2f0f6faf07d4e413915`
+> **基线**：`develop/v4.1.0` @ `1579950048b37628eb19bb9f2fe624ab87198ada`
 > **Date**: 2026-09-29
-> **Status**: DRAFT (per `docs/releases/v4.1.0/STAGE.yaml`)
+> **Status**: ALPHA (per `docs/releases/v4.1.0/STAGE.yaml` `current_stage`) — **GA 未晋升**
 > **Format**: v4.1.0-specific commits only; for v4.0.0 history, see `docs/releases/v4.0.0/CHANGELOG.md`
 
 ## [Unreleased] — DRAFT phase
