@@ -1,0 +1,13 @@
+=== Coverage single-implementation gate (#5581) ===
+Repo root: /Volumes/workspace/dev/srg-gate-m
+Allowlist: scripts/gate/coverage_measurement_allowlist.txt
+
+PASS: scripts/gate/check_v312_coverage_baseline.sh (listed; lines 114,319,395)
+PASS: scripts/gate/legacy/check_10_principles.sh (listed; lines 150,152)
+PASS: scripts/gate/legacy/check_r1_r10_content.sh (listed; lines 142,144)
+PASS: gate/gate.sh (listed; lines 98)
+PASS: .gitea/workflows/ci-trusted-baseline.yml (listed; lines 247,255,261,273)
+PASS: .github/workflows/coverage-parallel.yml (listed; lines 38,73,104,135,167,199,236,237)
+PASS: .github/workflows/coverage.yml (listed; lines 38)
+
+PASS: every direct coverage measurement is the shared implementation or a listed exception

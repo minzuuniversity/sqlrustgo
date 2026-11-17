@@ -619,45 +619,45 @@ crash_wal_index_b1 单独连跑 3 次 ⇒ 3/3 全绿（5.23 / 5.23 / 5.22 s）
 看板既有行 ENG-12 / ENG-13 **一个字节未改**（SSOT 只增不改），本轮的结论以
 新行 **GA-P0-1** 追加登记。
 
-### 7.15 权威认证轮 20261117-ga-gates-010 的逐项结果（交付树 `1579950048b3`）
+### 7.15 权威认证轮 20261117-ga-gates-011 的逐项结果（交付树 `fa2b41abfa6b`）
 
 | 项 | 门禁 | 判定 | 退出码 | 耗时(s) | 证据文件（stdout） |
 |---|---|---|---|---|---|
-| 1 | `scripts/gate/check_rc_ga_gate.sh` | PASS | 0 | 863.1 | `001-check_rc_ga_gate.sh.stdout` |
+| 1 | `scripts/gate/check_rc_ga_gate.sh` | PASS | 0 | 669.6 | `001-check_rc_ga_gate.sh.stdout` |
 | 2 | `scripts/gate/check_arch_invariants.sh` | PASS | 0 | 0.0 | `002-check_arch_invariants.sh.stdout` |
 | 3 | `scripts/gate/check_arch3_no_bypass.sh` | PASS | 0 | 0.0 | `003-check_arch3_no_bypass.sh.stdout` |
-| 4 | `scripts/gate/check_int2_no_orphan.sh` | PASS | 0 | 4.1 | `004-check_int2_no_orphan.sh.stdout` |
-| 5 | `scripts/gate/check_int3_single_expr.sh` | PASS | 0 | 1.4 | `005-check_int3_single_expr.sh.stdout` |
-| 6 | `scripts/gate/check_sem1_savepoint.sh` | PASS | 0 | 1.2 | `006-check_sem1_savepoint.sh.stdout` |
+| 4 | `scripts/gate/check_int2_no_orphan.sh` | PASS | 0 | 3.8 | `004-check_int2_no_orphan.sh.stdout` |
+| 5 | `scripts/gate/check_int3_single_expr.sh` | PASS | 0 | 1.3 | `005-check_int3_single_expr.sh.stdout` |
+| 6 | `scripts/gate/check_sem1_savepoint.sh` | PASS | 0 | 3.6 | `006-check_sem1_savepoint.sh.stdout` |
 | 7 | `scripts/gate/check_backup_restore.sh` | PASS | 0 | 0.6 | `007-check_backup_restore.sh.stdout` |
 | 8 | `scripts/gate/check_p12_crash_test.sh` | PASS | 0 | 0.4 | `008-check_p12_crash_test.sh.stdout` |
 | 9 | `scripts/gate/check_p14_upgrade_test.sh` | PASS | 0 | 0.6 | `009-check_p14_upgrade_test.sh.stdout` |
-| 10 | `scripts/gate/check_p21_audit_log.sh` | PASS | 0 | 7.7 | `010-check_p21_audit_log.sh.stdout` |
-| 11 | `scripts/gate/check_p22_time_travel.sh` | PASS | 0 | 4.3 | `011-check_p22_time_travel.sh.stdout` |
-| 12 | `scripts/gate/check_p23_hash_chain.sh` | PASS | 0 | 1.3 | `012-check_p23_hash_chain.sh.stdout` |
-| 13 | `scripts/gate/check_g1_tpch_baseline.sh` | PASS | 0 | 10.7 | `013-check_g1_tpch_baseline.sh.stdout` |
+| 10 | `scripts/gate/check_p21_audit_log.sh` | PASS | 0 | 6.7 | `010-check_p21_audit_log.sh.stdout` |
+| 11 | `scripts/gate/check_p22_time_travel.sh` | PASS | 0 | 6.0 | `011-check_p22_time_travel.sh.stdout` |
+| 12 | `scripts/gate/check_p23_hash_chain.sh` | PASS | 0 | 1.6 | `012-check_p23_hash_chain.sh.stdout` |
+| 13 | `scripts/gate/check_g1_tpch_baseline.sh` | PASS | 0 | 10.4 | `013-check_g1_tpch_baseline.sh.stdout` |
 | 14 | `scripts/gate/check_g16_compatibility.sh` | PASS | 0 | 2.9 | `014-check_g16_compatibility.sh.stdout` |
-| 15 | `scripts/gate/check_integration_gate.sh` | PASS | 0 | 5.3 | `015-check_integration_gate.sh.stdout` |
-| 16 | `scripts/gate/check_anti_fabrication.sh` | PASS | 0 | 1118.8 | `016-check_anti_fabrication.sh.stdout` |
-| 17 | `scripts/gate/check_arch_sem_debt.sh` | PASS | 0 | 0.1 | `017-check_arch_sem_debt.sh.stdout` |
-| 18 | `scripts/gate/check_cross_version_debt.sh` | PASS | 0 | 1.3 | `018-check_cross_version_debt.sh.stdout` |
+| 15 | `scripts/gate/check_integration_gate.sh` | PASS | 0 | 5.1 | `015-check_integration_gate.sh.stdout` |
+| 16 | `scripts/gate/check_anti_fabrication.sh` | PASS | 0 | 1046.8 | `016-check_anti_fabrication.sh.stdout` |
+| 17 | `scripts/gate/check_arch_sem_debt.sh` | PASS | 0 | 0.0 | `017-check_arch_sem_debt.sh.stdout` |
+| 18 | `scripts/gate/check_cross_version_debt.sh` | PASS | 0 | 1.2 | `018-check_cross_version_debt.sh.stdout` |
 | 19 | `scripts/gate/check_int_debt.sh` | PASS | 0 | 0.0 | `019-check_int_debt.sh.stdout` |
-| 20 | `scripts/gate/check_full_gate_verification.sh` | PASS | 0 | 1853.6 | `020-check_full_gate_verification.sh.stdout` |
-| 21 | `scripts/gate/check_drift_not_pass.sh` | PASS | 0 | 2.3 | `021-check_drift_not_pass.sh.stdout` |
+| 20 | `scripts/gate/check_full_gate_verification.sh` | PASS | 0 | 1776.5 | `020-check_full_gate_verification.sh.stdout` |
+| 21 | `scripts/gate/check_drift_not_pass.sh` | PASS | 0 | 1.5 | `021-check_drift_not_pass.sh.stdout` |
 | 22 | `scripts/gate/check_architecture_freeze.sh` | PASS | 0 | 0.4 | `022-check_architecture_freeze.sh.stdout` |
-| 23 | `scripts/gate/check_gate_self_verification.sh` | PASS | 0 | 3.8 | `023-check_gate_self_verification.sh.stdout` |
-| 24 | `scripts/gate/check_gate_test_integrity.sh` | PASS | 0 | 10.0 | `024-check_gate_test_integrity.sh.stdout` |
+| 23 | `scripts/gate/check_gate_self_verification.sh` | PASS | 0 | 5.6 | `023-check_gate_self_verification.sh.stdout` |
+| 24 | `scripts/gate/check_gate_test_integrity.sh` | PASS | 0 | 10.1 | `024-check_gate_test_integrity.sh.stdout` |
 | 25 | `scripts/gate/check_gate_executability.sh` | PASS | 0 | 0.1 | `025-check_gate_executability.sh.stdout` |
-| 26 | `scripts/gate/check_coverage_v312.sh` | PASS | 0 | 234.1 | `026-check_coverage_v312.sh.stdout` |
+| 26 | `scripts/gate/check_coverage_v312.sh` | PASS | 0 | 269.3 | `026-check_coverage_v312.sh.stdout` |
 | 27 | `scripts/gate/check_coverage_single_implementation.sh` | PASS | 0 | 0.1 | `027-check_coverage_single_implementation.sh.stdout` |
-| 28 | `scripts/gate/check_tests_dont_write_archived_evidence.sh` | PASS | 0 | 0.4 | `028-check_tests_dont_write_archived_evidence.sh.stdout` |
+| 28 | `scripts/gate/check_tests_dont_write_archived_evidence.sh` | PASS | 0 | 0.3 | `028-check_tests_dont_write_archived_evidence.sh.stdout` |
 | 29 | `scripts/gate/check_commit_message.sh` | PASS | 0 | 0.1 | `029-check_commit_message.sh.stdout` |
 | 30 | `scripts/gate/check_sql_corpus_gate.sh` | PASS | 0 | 13.6 | `030-check_sql_corpus_gate.sh.stdout` |
 | 31 | `scripts/gate/check_anti_ignore_gate.sh` | PASS | 0 | 0.4 | `031-check_anti_ignore_gate.sh.stdout` |
 | 32 | `cargo build --all-features` | PASS | 0 | 0.3 | `032-cargo build --all-features.stdout` |
-| 33 | `cargo test --all-features` | PASS | 0 | 928.5 | `033-cargo test --all-features.stdout` |
-| 34 | `cargo fmt --check` | PASS | 0 | 3.2 | `034-cargo fmt --check.stdout` |
-| 35 | `cargo clippy --all-features -- -D warnings` | PASS | 0 | 0.6 | `035-cargo clippy --all-features -- -D warnings.stdout` |
+| 33 | `cargo test --all-features` | PASS | 0 | 968.9 | `033-cargo test --all-features.stdout` |
+| 34 | `cargo fmt --check` | PASS | 0 | 3.7 | `034-cargo fmt --check.stdout` |
+| 35 | `cargo clippy --all-features -- -D warnings` | PASS | 0 | 0.7 | `035-cargo clippy --all-features -- -D warnings.stdout` |
 
 **总账（由 `results.jsonl` 直接读出，不手抄）**：共 35 项（计划 35 项，
 plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`）—— **PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0**。
@@ -668,27 +668,24 @@ plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254d
 
 判定口径：`PASS` = 退出码 0 且门禁自证完成；`FAIL` = 退出码 1（真红）；
 `INCOMPLETE` = 退出码 2（**读不出来** —— 缺夹具 / 缺前置 / 未披露，**不是**漂移）。
-逐项 stdout/stderr 留在 `audit/v4.1.0/runs/20261117-ga-gates-010/`。
+逐项 stdout/stderr 留在 `audit/v4.1.0/runs/20261117-ga-gates-011/`。
 
-本轮在交付树 `1579950048b3` 上执行，plan 的 `git_head` 与之一致 ⇒
+本轮在交付树 `fa2b41abfa6b` 上执行，plan 的 `git_head` 与之一致 ⇒
 **测的就是被交付的那棵树**。
 
-**与前一轮的对照**：前一轮跑满的权威认证轮 `20261117-ga-gates-007` 在交付树 `35d52bfdc901` 上为 **PASS 33 / FAIL 1 / INCOMPLETE 1 / 其他 0**（共 35 项）—— 那一轮的**红是真实的**：seq20 FAIL（`scripts/gate/check_full_gate_verification.sh`）、seq33 INCOMPLETE（`cargo test --all-features`）。它们已分别修于 #5835（门禁仪器：失败维度明细不再被 `tail -3` 吞掉）与 #5834（并发事务隔离：undo 归属改为按连接/按线程）。
+**与前一轮的对照**：前一轮跑满的权威认证轮 `20261117-ga-gates-010` 在交付树 `1579950048b3` 上为 **PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0**（共 35 项）—— 那一轮的**红是真实的**：（无）。它们已分别修于 #5835（门禁仪器：失败维度明细不再被 `tail -3` 吞掉）与 #5834（并发事务隔离：undo 归属改为按连接/按线程）。
 
-两轮之间 `crates/`、`scripts/`、`tests/` 的实际差异（`git diff --stat 35d52bfdc901..1579950048b3`）：
+两轮之间 `crates/`、`scripts/`、`tests/` 的实际差异（`git diff --stat 1579950048b3..fa2b41abfa6b`）：
 
-```
-crates/storage/src/file_storage.rs                 | 207 ++++++++++++++++++---
- scripts/gate/check_full_gate_verification.sh       |  32 +++-
- .../concurrent_rollback_isolation_test.rs          |  90 +++++++++
- 3 files changed, 298 insertions(+), 31 deletions(-)
-```
+（未能解析两轮之间的差异）
 
 ⇒ 本轮测的是**包含这两处修复**的那棵树；材料提交 M 只新增 `docs/` 与 `audit/`，代码面不变。
 
+**轮次谱系里还有一轮被中止的**：`20261117-ga-gates-008`（交付树 `1579950048b3`）共规划 35 项，**实际只跑完 19 项**（已跑的 19 项状态：全部 19 项 PASS），**其余 16 项从未开始** —— 未跑满的那部分**不是**判红，是**操作者主动中止**。中止原因、判定过程与处置办法见 `audit/v4.1.0/runs/20261117-ga-gates-008/ABORTED.md`，实测数据见同目录 `abort_facts.yaml`（并已嵌入该轮 `manifest.yaml` 的 `aborted.measured` 段）。该轮 seq20 的 D6b 维度要对 `tests/` 下 **None 个测试目标逐个**执行独立的 `cargo test --test <name>`，而该轮的被测树相对上一轮改过⇒ 全部测试目标的构建缓存同时失效 ⇒ 每个目标都要重新编译并链接一个测试二进制（实测 **34.8 s/目标**），剩余部分约需 **2.8 h**，**必然撞上单门禁 7200 s 预算**。⇒ 处置都是**启动条件**层面的（把「逐个编译 / 嵌套重编译」的成本挪到轮次之外），**不改判据、不改阈值、不改门禁脚本、不改 35 项分母**。
 
+**轮次谱系里还有一轮被中止的**：`20261117-ga-gates-009`（交付树 `1579950048b3`）共规划 35 项，**实际只跑完 19 项**（已跑的 19 项状态：seq1 FAIL），**其余 16 项从未开始** —— 未跑满的那部分**不是**判红，是**操作者主动中止**。中止原因、判定过程与处置办法见 `audit/v4.1.0/runs/20261117-ga-gates-009/ABORTED.md`，实测数据见同目录 `abort_facts.yaml`（并已嵌入该轮 `manifest.yaml` 的 `aborted.measured` 段）。该轮 **seq1 真红**：D7-Reliability 的 G10 Audit/Time-Travel 判红 —— 探针 `timeout 60 cargo test --test audit_log_test --test time_travel_test 2>&1 | tail -3` 的 **60 s 预算把 cargo 的编译时间（实测 22.87 s）算了进去 ⇒ 进程被 `timeout` 杀掉，`tail -3` 里没有 test result ⇒ 判红。**这不是被测代码的缺陷**：同一棵树的 007/008 轮该维度均 5/5 PASS，且该轮 `audit_log_test` 的测试二进制**没有**重编译（只有 lib 编译）。该轮 **seq20 卡住**：D6 批次里 `regression_test` 是个**元测试**（`tests/integration/sql/regression_test.rs:326` 对每个测试文件 `Command::new("cargo")…` **再起一层 cargo**），而 `physical_backup_test` 又**并发**起两个嵌套 cargo ⇒ 三层嵌套共用同一个 target 目录 ⇒ 每层都要等锁、都要重编译 ⇒ 实测**每层 ~4 min**，卡住的进程 **0.13 s CPU / 40 min**。⇒ 处置都是**启动条件**层面的（把「逐个编译 / 嵌套重编译」的成本挪到轮次之外），**不改判据、不改阈值、不改门禁脚本、不改 35 项分母**。
 
-本轮于 2026-11-17T11:53:08Z 完成归档。
+本轮于 2026-11-17T15:06:04Z 完成归档。
 
 ### 7.16 168h SOAK 第一轮实跑：宿主争用把「测产品」变成「测环境」
 

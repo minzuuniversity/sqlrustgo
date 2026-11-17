@@ -16,13 +16,13 @@
 ---
 <!-- BEGIN 2026-11-17 REFRESH BLOCK（取代下方 2026-10-23 的判定；原文保留为历史记录） -->
 
-## 🔄 刷新块（2026-11-17T11:53:08Z）—— 取代下方 2026-10-23 的判定
+## 🔄 刷新块（2026-11-17T15:06:05Z）—— 取代下方 2026-10-23 的判定
 
-> **基线**：`develop/v4.1.0` @ `1579950048b37628eb19bb9f2fe624ab87198ada`
-> **认证轮**：run `20261117-ga-gates-010`（plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`，
+> **基线**：`develop/v4.1.0` @ `fa2b41abfa6bf6d9718e66fa5943e6cb4a96f84f`
+> **认证轮**：run `20261117-ga-gates-011`（plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`，
 > `git_head` 与基线一致 ⇒ **测的就是被交付的那棵树**）
 > **材料提交**：本块随材料提交 M 一起落地；M 只新增 `docs/` 与 `audit/`
-> （`git diff --stat 1579950048b37628eb19bb9f2fe624ab87198ada..M -- crates scripts tests` 为空 ⇒ 认证结论对 M 同样成立）
+> （`git diff --stat fa2b41abfa6bf6d9718e66fa5943e6cb4a96f84f..M -- crates scripts tests` 为空 ⇒ 认证结论对 M 同样成立）
 
 ### 判定：**NOT READY —— 只剩物理与人类约束**
 
@@ -42,12 +42,12 @@
 
 | # | 硬检查 | 结论 | 依据 |
 |---|---|---|---|
-| G1 | RC 硬检查（R1–R4） | ✅ MET | run 20261117-ga-gates-010：35/35 项全 PASS；D1 Result: 10/10 (not-run: 0, blockers: 0)；D2 Result: 6/6；D3 Result: PASS=5 | FAIL=0 | DRIFT=0；D4 Result: 5/5 passed (failures: 0, exit 0)；D5 Result: 7/10 |
-| G2 | Full test | ✅ MET | run 20261117-ga-gates-010 seq33 `cargo test --all-features` **PASS**（exit=0，耗时 928.5 s） |
-| G3 | Coverage | ✅ PASS | run 20261117-ga-gates-010 seq1 实测行：`✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（8-crate 平均；逐 crate 见 §7.13） |
+| G1 | RC 硬检查（R1–R4） | ✅ MET | run 20261117-ga-gates-011：35/35 项全 PASS；D1 Result: 10/10 (not-run: 0, blockers: 0)；D2 Result: 6/6；D3 Result: PASS=5 | FAIL=0 | DRIFT=0；D4 Result: 5/5 passed (failures: 0, exit 0)；D5 Result: 7/10 |
+| G2 | Full test | ✅ MET | run 20261117-ga-gates-011 seq33 `cargo test --all-features` **PASS**（exit=0，耗时 968.9 s） |
+| G3 | Coverage | ✅ PASS | run 20261117-ga-gates-011 seq1 实测行：`✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（8-crate 平均；逐 crate 见 §7.13） |
 | G4 | TPC-H SF=1 22/22 | ⚠️ **NOT MET（已知且已登记）** | SF=1 的 22/22 用例在 `#[ignore]` 下（ADR-008 例外，**已过期且从未签署**）；当前 SSOT（`STAGE_CONFIG`）各阶段要求的是 `check_g1_tpch_baseline.sh`（hermetic SF=0.001，**由独立 SQLite oracle 逐条担保**，实测 `G1 PASS: hash matches (7439ce80…)`）—— 已 MET |
 | G5 | Security audit | ❌ NOT MET | 工作树层面已收敛（凭据 SSOT + `check_no_hardcoded_secrets.sh` 已接 CI）；**历史层面未解决**：旧 Gitea token 仍有效（ENG-8）⇒ 需属主在服务端删除/轮换 |
-| G6 | Documentation | ✅ PASS | 6 份 GA doc_artifacts 齐备（`check_release_artifacts.sh` ⇒ PASS，GA 段 11 份 present）；看板 163 行、`kanban_render.py check` 一致、`kanban_merge_policy` verdict OK |
+| G6 | Documentation | ✅ PASS | 6 份 GA doc_artifacts 齐备（`check_release_artifacts.sh` ⇒ PASS，GA 段 11 份 present）；看板 164 行、`kanban_render.py check` 一致、`kanban_merge_policy` verdict OK |
 
 ### 阻断项（剩余全部为物理 / 人类约束）
 
@@ -71,7 +71,6 @@ GA gate report reviewed and approved by human architect:
 ```
 
 <!-- END 2026-11-17 REFRESH BLOCK -->
-
 
 ## 0. 判定（2026-10-23）
 
