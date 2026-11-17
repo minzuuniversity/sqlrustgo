@@ -1,0 +1,10 @@
+=== L1 - the type table must exist in exactly one place ===
+PASS: L1 - the type table lives only in docs/governance/CONTRIBUTING.md
+=== L2/L3 - commit message shape and traceability ===
+range: last 50 commits
+PASS: L2 - every checked commit matches the shape (50 checked, 25 merge commit(s) exempt)
+NOTE: L3 - Refs compliance is 25/25
+      (reported, not enforced: the existing history predates this rule, and
+       failing it would block every future change without making the history
+       any better. Use --require-refs to enforce it.)
+RESULT: PASS

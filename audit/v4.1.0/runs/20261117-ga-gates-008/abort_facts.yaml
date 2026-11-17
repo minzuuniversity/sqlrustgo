@@ -1,0 +1,82 @@
+round_id: 20261117-ga-gates-008
+aborted_at_utc: '2026-11-17T04:50:00Z'
+seq20_started_utc: '2026-11-17T03:31:00Z'
+seq20_gate: scripts/gate/check_full_gate_verification.sh
+seq20_dimension: D6b Test Inventory
+dimension_script: scripts/gate/check_test_inventory.sh
+single_gate_timeout_s: 7200
+timeout_deadline_utc: '2026-11-17T05:31:00Z'
+test_targets_total: 487
+invocation_pattern: timeout 180 cargo test --test <name> -- --test-threads=1
+per_target_overhead_cause: 每次都是独立的 cargo 调用；被测树改过 ⇒ 全部测试目标构建缓存失效 ⇒ 逐个重新编译并链接
+probes:
+- utc: '2026-11-17T04:44:45Z'
+  target_index: 193
+  target_name: anti_join_main_path_test
+- utc: '2026-11-17T04:47:04Z'
+  target_index: 197
+  target_name: bufferpool_pages_visited_memory_test
+derived:
+  targets_covered_by_probes: 4
+  seconds_between_probes: 139
+  seconds_per_target: 34.8
+  targets_remaining_at_last_probe: 290
+  projected_remaining_s: 10088
+  projected_remaining_h: 2.8
+  would_exceed_timeout: true
+remediation:
+  method: cargo test --no-run（默认 features）预构建全部测试目标；另预构建 --all-features 供 seq33 使用
+  probe_target_index: 300
+  probe_target_name: integration_sql_repro_v312_95_4809
+  probe_wall_s: 9.21
+  probe_user_cpu_s: 0.09
+  probe_sys_cpu_s: 0.08
+  probe_total_cpu_s: 0.17
+  probe_triggered_compilation: false
+  interpretation: 9.21 s 墙钟里只有 0.17 s 是自己的 CPU（其余在等 target 目录锁）⇒ 产物已是热的，D6b 回到「跑已编译二进制」的量级
+  seconds_per_target_before: 34.8
+  seconds_per_target_after_estimate: 2.3
+  seconds_per_target_after_estimate_source: 007 轮同一门禁的实测值（当时缓存也是热的）
+supplement_2026_11_17:
+  disk_before:
+    mount: /Volumes/workspace
+    used_pct: 97
+    avail_gib: 34
+    note: 该卷上并存约 30 个 sqlrustgo 工作树，每个都带一个 target/
+    ls_target_debug_deps: 单次 > 25 s 超时
+    nested_cargo_cost_measured: 每个嵌套 cargo 45–60 s（元测试预检：58 条目中 42 个有效条目几乎全是 45–114 s，而对应测试 harness 报 finished in 0.00s ⇒ 时间在 cargo 启动+指纹扫描+文件系统颠簸，不在测试）
+  disk_after:
+    method: 回收废弃工作树与专用 target 目录的构建缓存（cargo clean；纯产物、可重建；交付树/修复树/材料树的目标目录未动）
+    avail_gib: 236
+    used_pct: 74
+    reclaimed_breakdown_gib:
+      srg-gagate-r2: 152.1
+      srg-clippy-wt: 60.4
+      storage-target: 13.2
+      srg-restore-20261113: 7.4
+      srg-idx2: 5.8
+      storage-base-target: 4.3
+      srg-audit-fix: 3.1
+      srg-btrack: 2.9
+      srg-ci-fix: 1.3
+      srg-soak168-v410: 1.1
+      others_x10: 0.47
+      total: 202
+    same_host_same_command_control:
+      cargo_build_all_features_before_s: 50
+      cargo_build_all_features_after_s: 1
+      cargo_build_sqlrustgo_tools_after_s: 6.82
+  reading: 34.8 s/目标 是「冷缓存 + 磁盘 97% 满」下的数字，不是 D6b 在健康环境下的固有成本；007 轮的 ~2.3 s/目标 才是「缓存热 + 磁盘没满」时的数字
+  nested_chain_legit_cost:
+    command: 'cargo test -p sqlrustgo-tools -- --nocapture（physical_backup_test 第 8 处）'
+    soak_file: crates/tools/tests/v400_multi_model_soak.rs
+    compressed_levels_s: [60, 180, 420]
+    total_s: 660
+    source_lines: [370, 411, 442]
+    cross_ref: 009 轮 ABORTED.md 第 6 节
+    real_root_cause:
+      symptom: D6b 每目标 34.8 s；不是编译慢，是数文件慢
+      stack: 'rustc_session::search_paths::SearchPath::from_cli_opt → SearchPath::new → std::fs::ReadDir → readdir_r → __getdirentries64（99.5% 采样）'
+      deps_file_count: 764176
+      cross_check: '同一时刻 ls target/debug/deps 单次 > 25 s 超时（同一个 readdir）'
+      remediation: 'cargo clean 清空 target/ + CARGO_INCREMENTAL=0 ⇒ deps 只剩 二进制+.d+rlib 量级 ⇒ readdir 回到毫秒级'

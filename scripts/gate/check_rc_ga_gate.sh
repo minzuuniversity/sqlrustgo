@@ -1052,6 +1052,12 @@ D6_INTEGRATION_TESTS=(
     "password_rotation_test"
     "embedded_harnesssmoke"
     "ci_test"
+    # #5490 (FALSESUCCESS-1): KILL CONNECTION 对不存在的连接必须报 1094。
+    # 这条回归测试此前放在 crates/mysql-server/tests/ 下 —— 那个目录不在
+    # 根包的 [[test]] 集合里，`cargo test --all-features`（GA 轮第 33 项）
+    # 根本不会编译它 ⇒ 权威轮从未执行过这条修复的证据。已移入
+    # tests/integration/wire/ 并登记 [[test]]，同时进 D6 契约。
+    "falsesuccess_kill_unknown_thread"
 )
 
 run_d6_integration_tests() {

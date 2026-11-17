@@ -38,6 +38,7 @@ use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
 use sqlrustgo_storage::file_storage::FileStorage;
 use sqlrustgo_storage::StorageEngine;
 use sqlrustgo_types::Value;
+use std::sync::mpsc;
 use std::sync::{Arc, Barrier};
 use std::thread;
 use tempfile::TempDir;
@@ -175,6 +176,95 @@ fn committed_delete_is_not_undone_by_peer_rollback() {
         wrong, 0,
         "{wrong}/{TRIALS} trials had a wrong end state: a committed DELETE was undone \
          by a peer's ROLLBACK, or a rolled-back DELETE was not restored"
+    );
+}
+
+/// #5834 (deterministic regression): a peer's `BEGIN` must not steal the
+/// undo ownership of the transaction that is already open.
+///
+/// The test above pins the same property, but leaves the interleaving to
+/// the scheduler: it fails ~1 run in 30 **under load** (measured: 1/30 in
+/// the GA gate round `20261117-ga-gates-007`, 0/20 on an idle machine), so
+/// "it passed" never proved anything. This one pins the order with
+/// channels:
+///
+/// ```text
+///   1. A: BEGIN(1)            -> A owns tx 1
+///   2. B: BEGIN(2)            -> the instance slot now says 2
+///   3. A: DELETE 42           -> must be owned by tx **1**
+///   4. A: COMMIT(1)
+///   5. B: DELETE 43
+///   6. B: ROLLBACK(2)         -> must undo 43 only
+/// ```
+///
+/// Under the pre-#5834 code, step 3 stamped A's undo entry with
+/// `current_tx_id()` — the **instance** slot, which step 2 had just set to
+/// `2`. So A's committed delete was owned by B's transaction, and step 6
+/// undid it: row 42 came back after A's COMMIT. That is deterministic, not
+/// a race, so this test fails on the old code every single time.
+///
+/// The ownership is per **connection** (= per thread in this tree — the
+/// MySQL server runs one thread per connection), so A keeps tx 1 across
+/// B's BEGIN.
+#[test]
+fn peer_begin_does_not_steal_undo_ownership() {
+    let (_dir, storage) = seeded_storage(50);
+    let committed_target = 42i64;
+    let rolled_back_target = 43i64;
+
+    let (tx_ab, rx_ab) = mpsc::channel::<()>();
+    let (tx_ba, rx_ba) = mpsc::channel::<()>();
+    let (tx_a_done, rx_a_done) = mpsc::channel::<()>();
+
+    let a_storage = Arc::clone(&storage);
+    let b_storage = Arc::clone(&storage);
+
+    let committer = thread::spawn(move || {
+        // 1. A opens its transaction.
+        a_storage.write().begin_transaction_for(1).ok();
+        // ... and only now does B get to open one.
+        tx_ab.send(()).expect("signal A begun");
+        rx_ba.recv().expect("wait for B begun");
+        // 3 + 4. A's write must belong to tx 1 even though the shared
+        // slot says 2 by now.
+        a_storage
+            .write()
+            .delete("t", &[Value::Integer(committed_target)])
+            .ok();
+        a_storage.write().commit_transaction_for(1).ok();
+        tx_a_done.send(()).expect("signal A done");
+    });
+
+    let roller = thread::spawn(move || {
+        rx_ab.recv().expect("wait for A begun");
+        // 2. B opens its transaction — this is the steal.
+        b_storage.write().begin_transaction_for(2).ok();
+        tx_ba.send(()).expect("signal B begun");
+        rx_a_done.recv().expect("wait for A done");
+        // 5 + 6. B writes and rolls back.
+        b_storage
+            .write()
+            .delete("t", &[Value::Integer(rolled_back_target)])
+            .ok();
+        b_storage.write().rollback_transaction_for(2).ok();
+    });
+
+    committer.join().expect("committer thread");
+    roller.join().expect("roller thread");
+
+    // A's committed delete stands: B's ROLLBACK must not undo it.
+    assert_eq!(
+        count_id(&storage, committed_target),
+        0,
+        "A's committed DELETE of {committed_target} was undone by B's ROLLBACK — a peer's \
+         BEGIN took the undo ownership away from the transaction that was already open"
+    );
+    // B's rolled-back delete is undone.
+    assert_eq!(
+        count_id(&storage, rolled_back_target),
+        1,
+        "B's rolled-back DELETE of {rolled_back_target} was not restored — the undo entry \
+         was owned by the wrong transaction"
     );
 }
 

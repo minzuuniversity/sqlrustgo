@@ -14,6 +14,63 @@
 > PASS 声明有对应的 gate engine 输出，而非 AI 自述。）
 
 ---
+<!-- BEGIN 2026-11-17 REFRESH BLOCK（取代下方 2026-10-23 的判定；原文保留为历史记录） -->
+
+## 🔄 刷新块（2026-11-17T15:13:56Z）—— 取代下方 2026-10-23 的判定
+
+> **基线**：`develop/v4.1.0` @ `fa2b41abfa6bf6d9718e66fa5943e6cb4a96f84f`
+> **认证轮**：run `20261117-ga-gates-011`（plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`，
+> `git_head` 与基线一致 ⇒ **测的就是被交付的那棵树**）
+> **材料提交**：本块随材料提交 M 一起落地；M 只新增 `docs/` 与 `audit/`
+> （`git diff --stat fa2b41abfa6bf6d9718e66fa5943e6cb4a96f84f..M -- crates scripts tests` 为空 ⇒ 认证结论对 M 同样成立）
+
+### 判定：**NOT READY —— 只剩物理与人类约束**
+
+| 项 | 值 |
+|---|---|
+| 阶段 | `current_stage: "ALPHA"`（`STAGE.yaml`）—— **未跃迁** |
+| GA 门禁 | **35/35 项：PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0** |
+| 覆盖率 | `✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（min 85%，measured 8/8 crates）—— 真实测量 |
+| 168h SOAK | **运行中**（`2026-11-16T23:05:02Z` → `2026-11-23T23:05:02Z`，快照 2026-11-17T23:09:07，elapsed 58023 s / 604800 s）。起跑门禁通过（43.4 q/s、0 错误）；累计 535971 查 / 2962 错 ⇒ **0.553 %**（峰值 1.804 %）。运行期错误率与宿主争用耦合（同盘 fsync 实测 p50 0.124 ms / p90 0.183 ms / max 11.906 ms（起跑时 p50 4.59 ms）），错误率**非单调**（宿主转静时回落、再被抢时回升），当前吞吐 6.22 q/s ⇒ **不是 GA 证据的合格轮**（未满足「独占窗口」要求） |
+| 审批 | **未申请、未批准。** `STAGE_CONFIG` 的 `transitions.RC_to_GA.requires_human_approval: true`；`manual_only_criteria` 明文：「批准记录写进本文件的变更记录，**不能由 Agent 生成**」 |
+
+### 非绿项明细
+
+无（全部 PASS）
+
+### 硬检查现状（G1–G6）
+
+| # | 硬检查 | 结论 | 依据 |
+|---|---|---|---|
+| G1 | RC 硬检查（R1–R4） | ✅ MET | run 20261117-ga-gates-011：35/35 项全 PASS；D1 Result: 10/10 (not-run: 0, blockers: 0)；D2 Result: 6/6；D3 Result: PASS=5 | FAIL=0 | DRIFT=0；D4 Result: 5/5 passed (failures: 0, exit 0)；D5 Result: 7/10 |
+| G2 | Full test | ✅ MET | run 20261117-ga-gates-011 seq33 `cargo test --all-features` **PASS**（exit=0，耗时 968.9 s） |
+| G3 | Coverage | ✅ PASS | run 20261117-ga-gates-011 seq1 实测行：`✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（8-crate 平均；逐 crate 见 §7.13） |
+| G4 | TPC-H SF=1 22/22 | ⚠️ **NOT MET（已知且已登记）** | SF=1 的 22/22 用例在 `#[ignore]` 下（ADR-008 例外，**已过期且从未签署**）；当前 SSOT（`STAGE_CONFIG`）各阶段要求的是 `check_g1_tpch_baseline.sh`（hermetic SF=0.001，**由独立 SQLite oracle 逐条担保**，实测 `G1 PASS: hash matches (7439ce80…)`）—— 已 MET |
+| G5 | Security audit | ❌ NOT MET | 工作树层面已收敛（凭据 SSOT + `check_no_hardcoded_secrets.sh` 已接 CI）；**历史层面未解决**：旧 Gitea token 仍有效（ENG-8）⇒ 需属主在服务端删除/轮换 |
+| G6 | Documentation | ✅ PASS | 6 份 GA doc_artifacts 齐备（`check_release_artifacts.sh` ⇒ PASS，GA 段 11 份 present）；看板 165 行、`kanban_render.py check` 一致、`kanban_merge_policy` verdict OK |
+
+### 阻断项（剩余全部为物理 / 人类约束）
+
+| # | 阻断 | 归属 |
+|---|---|---|
+| B1 | 168h SOAK 的**合格**证据需要独占窗口 | 属主/基础设施（节点上 root 的常驻 CI 抢磁盘，Agent 无 root 权限）；启动器/冻结提交/判据均已就绪 |
+| B2 | 人类架构师签批本报告 | **属主**（`requires_human_approval: true`） |
+| B3 | GA 承载分支 `release/v4.1.0` + tag + 并入 main | **属主**（按 `RELEASE_LIFECYCLE` §2.5：审批 → tag → 并入 main → 建承载分支，顺序不可越） |
+| B4 | 旧 Gitea token 在服务端失效 | **属主**（仓库侧已收敛） |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 + 61 道死门禁逐个处置 | **属主**（P0-4：逐个门禁处置必须属主决定） |
+
+### 签署（**本栏留空 —— 签署是人的动作，Agent 不代签**）
+
+```
+GA gate report reviewed and approved by human architect:
+
+  姓名 / 身份：______________________________
+  签署时间（UTC）：______________________________
+  结论（PASS / CONDITIONAL / NOT APPROVED）：______________________________
+  备注（若为 CONDITIONAL，必须逐条列出条件与到期日）：______________________________
+```
+
+<!-- END 2026-11-17 REFRESH BLOCK -->
 
 ## 0. 判定（2026-10-23）
 

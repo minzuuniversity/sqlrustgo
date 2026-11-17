@@ -1815,6 +1815,9 @@ path = "tests/integration/wire/oracle_g16_compat.rs"
 name = "wire_deprecate_eof_test"
 path = "tests/integration/wire/wire_deprecate_eof_test.rs"
 [[test]]
+name = "falsesuccess_kill_unknown_thread"
+path = "tests/integration/wire/falsesuccess_kill_unknown_thread.rs"
+[[test]]
 name = "chaos_test"
 path = "tests/stress/chaos_test.rs"
 [[test]]

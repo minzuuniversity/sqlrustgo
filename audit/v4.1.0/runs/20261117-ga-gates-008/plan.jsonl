@@ -1,0 +1,35 @@
+{"gate": "scripts/gate/check_rc_ga_gate.sh", "kind": "script", "alias": "scripts/gate/check_rc_ga_gate.sh ga"}
+{"gate": "scripts/gate/check_arch_invariants.sh", "kind": "script"}
+{"gate": "scripts/gate/check_arch3_no_bypass.sh", "kind": "script"}
+{"gate": "scripts/gate/check_int2_no_orphan.sh", "kind": "script"}
+{"gate": "scripts/gate/check_int3_single_expr.sh", "kind": "script"}
+{"gate": "scripts/gate/check_sem1_savepoint.sh", "kind": "script"}
+{"gate": "scripts/gate/check_backup_restore.sh", "kind": "script"}
+{"gate": "scripts/gate/check_p12_crash_test.sh", "kind": "script"}
+{"gate": "scripts/gate/check_p14_upgrade_test.sh", "kind": "script"}
+{"gate": "scripts/gate/check_p21_audit_log.sh", "kind": "script"}
+{"gate": "scripts/gate/check_p22_time_travel.sh", "kind": "script"}
+{"gate": "scripts/gate/check_p23_hash_chain.sh", "kind": "script"}
+{"gate": "scripts/gate/check_g1_tpch_baseline.sh", "kind": "script"}
+{"gate": "scripts/gate/check_g16_compatibility.sh", "kind": "script"}
+{"gate": "scripts/gate/check_integration_gate.sh", "kind": "script"}
+{"gate": "scripts/gate/check_anti_fabrication.sh", "kind": "script"}
+{"gate": "scripts/gate/check_arch_sem_debt.sh", "kind": "script"}
+{"gate": "scripts/gate/check_cross_version_debt.sh", "kind": "script"}
+{"gate": "scripts/gate/check_int_debt.sh", "kind": "script"}
+{"gate": "scripts/gate/check_full_gate_verification.sh", "kind": "script"}
+{"gate": "scripts/gate/check_drift_not_pass.sh", "kind": "script"}
+{"gate": "scripts/gate/check_architecture_freeze.sh", "kind": "script"}
+{"gate": "scripts/gate/check_gate_self_verification.sh", "kind": "script"}
+{"gate": "scripts/gate/check_gate_test_integrity.sh", "kind": "script"}
+{"gate": "scripts/gate/check_gate_executability.sh", "kind": "script"}
+{"gate": "scripts/gate/check_coverage_v312.sh", "kind": "script"}
+{"gate": "scripts/gate/check_coverage_single_implementation.sh", "kind": "script"}
+{"gate": "scripts/gate/check_tests_dont_write_archived_evidence.sh", "kind": "script"}
+{"gate": "scripts/gate/check_commit_message.sh", "kind": "script"}
+{"gate": "scripts/gate/check_sql_corpus_gate.sh", "kind": "script"}
+{"gate": "scripts/gate/check_anti_ignore_gate.sh", "kind": "script"}
+{"gate": "cargo build --all-features", "kind": "command"}
+{"gate": "cargo test --all-features", "kind": "command"}
+{"gate": "cargo fmt --check", "kind": "command"}
+{"gate": "cargo clippy --all-features -- -D warnings", "kind": "command"}

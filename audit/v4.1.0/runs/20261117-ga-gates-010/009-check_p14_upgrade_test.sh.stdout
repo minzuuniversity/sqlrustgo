@@ -1,0 +1,11 @@
+=== G9 Gate: P1-4 (#3176) Upgrade Test ===
+  [1/7] ✅ PASS: tests/integration/migration/upgrade_test_harness.rs present
+  [2/7] ✅ PASS: tests/integration/migration/upgrade_test.rs present + registered
+  [3/7] ✅ PASS: 8 categories covered (total tests: 50, ≥50)
+  [4/7] ✅ PASS: upgrade_test compiles
+  [5/7] ✅ PASS: upgrade_test 50 passed (≥50)
+  [6/7] ✅ PASS: crates/tools/src/upgrade.rs 36 passed (no regression)
+  [7/7] ✅ PASS: P1-1 backup/restore code present (PITR upgrade path)
+
+=== G9 Gate: PASS ===
+P1-4 (#3176) Upgrade Test: harness + 8 categories + ≥50 tests verified
