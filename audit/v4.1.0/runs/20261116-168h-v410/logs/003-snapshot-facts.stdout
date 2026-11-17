@@ -1,23 +1,23 @@
 {
   "attempt": 33,
   "binary_sha256": "fa0928b2237cba7a1b897404cbb8bfe5b6530cec45942c189d1fdd58197368ab",
-  "e": 2052,
-  "elapsed_s": 46249,
-  "engine_cpu_mean": 70.1,
-  "engine_cpu_now": 87.9,
+  "e": 2962,
+  "elapsed_s": 58023,
+  "engine_cpu_mean": 73.4,
+  "engine_cpu_now": 87.3,
   "err_types": {
-    "E 行合计": 2052,
-    "_timeout_latency_max_ms": 16611.4,
-    "客户端读超时 (2013, read operation timed out)": 1157,
-    "连接层 errno=0 空消息 ((0, ''))": 895
+    "E 行合计": 2962,
+    "_timeout_latency_max_ms": 16914.3,
+    "客户端读超时 (2013, read operation timed out)": 1659,
+    "连接层 errno=0 空消息 ((0, ''))": 1303
   },
   "error_latency_profile": {
-    "ge_14s": 1157,
-    "ge_14s_pct": 56.4,
-    "max_ms": 16611.4,
-    "n": 2052,
-    "p50_ms": 15011.2,
-    "p95_ms": 15017.7
+    "ge_14s": 1659,
+    "ge_14s_pct": 56.0,
+    "max_ms": 16914.3,
+    "n": 2962,
+    "p50_ms": 15010.3,
+    "p95_ms": 15018.8
   },
   "first_over_threshold": {
     "e": 359,
@@ -28,21 +28,21 @@
   "freeze": {
     "e": 2052,
     "from_elapsed": 31744,
-    "len_samples": 950
+    "len_samples": 955
   },
   "frozen_commit": "d46bf9302460b3cbd57b49d257d467e068f6184b",
   "fsync_p50_at_start": 4.59,
   "fsync_probe": {
     "host": "gaoyuanai-HPZ6G4 (252)",
-    "max_ms": 10.251,
-    "mean_ms": 0.344,
-    "measured_at_utc": "2026-11-17T11:53:06Z",
+    "max_ms": 11.906,
+    "mean_ms": 0.39,
+    "measured_at_utc": "2026-11-17T15:09:25Z",
     "method": "同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync",
-    "min_ms": 0.116,
+    "min_ms": 0.117,
     "n": 60,
-    "p50_ms": 0.121,
-    "p90_ms": 0.138,
-    "p99_ms": 3.184
+    "p50_ms": 0.124,
+    "p90_ms": 0.183,
+    "p99_ms": 3.356
   },
   "fsync_probe_history": [
     {
@@ -102,91 +102,118 @@
       "p50_ms": 0.121,
       "p90_ms": 0.138,
       "p99_ms": 3.184
+    },
+    {
+      "host": "gaoyuanai-HPZ6G4 (252)",
+      "max_ms": 11.906,
+      "mean_ms": 0.39,
+      "measured_at_utc": "2026-11-17T15:09:25Z",
+      "method": "同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync",
+      "min_ms": 0.117,
+      "n": 60,
+      "p50_ms": 0.124,
+      "p90_ms": 0.183,
+      "p99_ms": 3.356
     }
   ],
   "host_contention": {
     "host": "gaoyuanai-HPZ6G4 (252)",
-    "load1": 2.91,
-    "load15": 2.7,
-    "load5": 2.98,
-    "measured_at_utc": "2026-11-17T11:53:07Z",
-    "note": "本次取证时刻 root 身份的编译/测试进程为 0 ⇒ **该时刻**的独占性条件满足；但臂 B 的累计错误已固化在计数里（历史窗口内的争用不可回溯消除）⇒ 权威 168h 仍需在独占窗口内重跑，本快照不构成『已满足独占』的结论。",
+    "load1": 2.1,
+    "load15": 2.37,
+    "load5": 2.07,
+    "measured_at_utc": "2026-11-17T15:09:26Z",
+    "note": "独占性结论**由本次实测生成**，不写死：root 身份仍有 1 个编译/测试进程 ⇒ 该节点**不是独占**，属主要求的『独占窗口』在本次取证时刻**不满足**。",
     "own_compile_or_test_procs": 1,
-    "root_compile_or_test_procs": 0
+    "root_compile_or_test_procs": 1
   },
   "latency_profile": {
     "count_agg": {
       "max_ms": 14975.9,
-      "n": 47846,
-      "p50_ms": 881.9,
-      "p95_ms": 2646.9,
-      "p99_ms": 4216.8
+      "n": 53718,
+      "p50_ms": 970.6,
+      "p95_ms": 3044.1,
+      "p99_ms": 5029.9
     },
     "insert": {
       "max_ms": 14899.1,
-      "n": 47897,
-      "p50_ms": 2696.1,
-      "p95_ms": 6439.4,
-      "p99_ms": 8879.3
+      "n": 53397,
+      "p50_ms": 2936.8,
+      "p95_ms": 7380.8,
+      "p99_ms": 10637.2
     },
     "point_select": {
       "max_ms": 15011.7,
-      "n": 239744,
-      "p50_ms": 859.7,
-      "p95_ms": 2642.2,
-      "p99_ms": 4174.7
+      "n": 268123,
+      "p50_ms": 938.4,
+      "p95_ms": 3014.2,
+      "p99_ms": 5097.0
     },
     "point_update": {
-      "max_ms": 14973.7,
-      "n": 47603,
-      "p50_ms": 2368.4,
-      "p95_ms": 5860.7,
-      "p99_ms": 8125.2
+      "max_ms": 14995.2,
+      "n": 53321,
+      "p50_ms": 2578.0,
+      "p95_ms": 6754.5,
+      "p99_ms": 9956.8
     },
     "range_scan": {
       "max_ms": 15011.3,
-      "n": 96171,
-      "p50_ms": 906.8,
-      "p95_ms": 2710.4,
-      "p99_ms": 4205.2
+      "n": 107494,
+      "p50_ms": 991.6,
+      "p95_ms": 3073.4,
+      "p99_ms": 5170.0
     }
   },
-  "load_gt100_pct": 1.2,
-  "load_gt40_pct": 9.1,
-  "load_median": 2.9,
-  "load_now": 2.68,
+  "load_gt100_pct": 1.0,
+  "load_gt40_pct": 8.8,
+  "load_median": 3.1,
+  "load_now": 2.33,
   "panics": "00",
   "peak_at_elapsed": 2316,
   "peak_e": 654,
   "peak_q": 36253,
   "peak_rate_pct": 1.804,
   "planned_end_utc": "2026-11-23T23:05:02Z",
-  "q": 479195,
+  "q": 535971,
   "qps_at_start": 43.4,
-  "qps_now": 6.69,
+  "qps_now": 6.22,
   "quiet_window": {
-    "e_frozen_at": 2052,
-    "from_elapsed": 31744,
-    "load_max": 41.69,
-    "load_mean": 2.35,
-    "load_min": 1.29,
+    "e_frozen_at": 2962,
+    "from_elapsed": 54297,
+    "load_max": 6.82,
+    "load_mean": 2.7,
+    "load_min": 1.31,
     "new_errors": 0,
-    "qps": 7.58,
-    "samples": 951,
-    "span_s": 14505,
-    "to_elapsed": 46249
+    "qps": 6.13,
+    "samples": 245,
+    "span_s": 3726,
+    "to_elapsed": 58023
   },
-  "rate_pct": 0.428,
-  "regrowth": null,
-  "rss_now": 1045.4,
-  "samples": 3017,
+  "rate_pct": 0.553,
+  "regrowth": {
+    "at_elapsed": 46341,
+    "e_at_end": 2962,
+    "e_at_start": 2053,
+    "errors_added": 909,
+    "load_max": 83.64,
+    "load_min": 2.4,
+    "q_at_end": 513113,
+    "q_at_start": 479654,
+    "qps": 4.21,
+    "span_s": 7956,
+    "tail_e_from": 2962,
+    "tail_e_to": 2962,
+    "tail_load_max": 3.08,
+    "tail_qps": 6.24
+  },
+  "rss_now": 1051.2,
+  "samples": 3784,
   "server_side": {
     "backpressure_rejects": 9,
-    "broken_pipe": 658,
+    "broken_pipe": 935,
     "crash_markers": 0,
     "worker_pool_full": 9
   },
-  "snapshot_at": "2026-11-17T19:52:54",
+  "snapshot_at": "2026-11-17T23:09:07",
   "start_load1": 30,
   "started_utc": "2026-11-16T23:05:02Z",
   "threshold_pct": 1.0,
