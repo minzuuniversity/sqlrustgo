@@ -1,0 +1,50 @@
+# 权威轮 20261118-168h-v410（attempt-11）产物清单
+# 归档时间（UTC）：2026-11-18T07:4xZ（本会话）—— 全部条目为**实测**
+round_id: 20261118-168h-v410
+attempt: 11
+attempt_dir: /home/liying/soak-artifacts/20261118-168h-v410/attempt-20261118T035306Z
+host: gaoyuanai-HPZ6G4 (192.168.0.252)
+frozen_commit: e5c42c7fd02d3d2e24086d419920bcea938c19d6
+frozen_tree: 761e3491a8ce91b89d8d79f60fa0f906fc3b09d5
+soaked_binary_sha256: f31cef51669f218c5092dce35770279353ea26fb421734c221b3b91380557c70
+started_utc: 2026-11-18T03:56:06Z
+aborted_at_utc: 2026-11-18T05:02:03Z
+planned_end_utc: 2026-11-25T03:56:06Z
+verdict: INCOMPLETE（宿主整机重启打断；非跑满、非通过）
+
+artifacts:
+  - path: armA/metrics.csv
+    bytes: 16166
+    sha256: 0c9cf92efcee7bacfbcc7e51b1a57ad416beffa3dd6ebce2367d40faa6b48609
+    note: 逐秒采样 272 行；本仓归档内为 results.jsonl 的 kind=metric 部分
+  - path: heartbeat.jsonl
+    bytes: 31258
+    sha256: 3f73004630ec1bd43a168dcd79474700584ca92b15a0f57ec14930b9b243e426
+    note: 277 条；本仓归档内为 results.jsonl 的 kind=heartbeat 部分；末条 ts 2026-11-18T05:02:03Z
+  - path: soak.log
+    bytes: 7559
+    sha256: 876a0cec967aac341d2306743522cff09bbb51f1a22351b9cff23acb5ce1d598
+    note: 运行器逐分钟日志；末行 elapsed=4084s（05:01:10Z）双臂存活
+  - path: armA/driver.log
+    bytes: 3415409
+    sha256: e221fa91a9a41bc0c5dcebe56473763aaa974e9d8712134045f75bcd702ca08e
+    note: 驱动全量日志；**按文件治理门禁不入仓**（*.log），只记哈希与体积
+  - path: armA/server.log
+    bytes: 297
+    sha256: 098b6334d97f969d4d8e7d97ce9d0f835a3f16a0cc9cd232a3f1cd2c3d5625ff
+    note: 服务端日志；crash marker 0
+  - path: armA/armA.log
+    bytes: 27669
+    sha256: 97a8461d93d6e961afd879faac8cbc228d297ebe7da197d43ff92e22666dcb54
+  - path: armB/armB.log
+    bytes: 876
+    sha256: 670c8838b14dff7a0f833ea7f68b244dee5174e78a901ad77b552180c8b2c438
+  - path: supervisor.log
+    bytes: 7559
+    sha256: 876a0cec967aac341d2306743522cff09bbb51f1a22351b9cff23acb5ce1d598
+
+archived_in_repo:
+  - ABORTED.md
+  - abort_facts.yaml
+  - manifest.yaml
+  - results.jsonl

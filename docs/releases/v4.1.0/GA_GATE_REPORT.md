@@ -14,29 +14,35 @@
 > PASS 声明有对应的 gate engine 输出，而非 AI 自述。）
 
 ---
-<!-- BEGIN 2026-11-17 REFRESH BLOCK（取代下方 2026-10-23 的判定；原文保留为历史记录） -->
+<!-- BEGIN 2026-11-17 REFRESH BLOCK
 
-## 🔄 刷新块（2026-11-17T15:13:56Z）—— 取代下方 2026-10-23 的判定
+## 🔄 刷新块（2026-11-18T05:00:55Z）—— 取代下方 2026-10-23 的判定
 
-> **基线**：`develop/v4.1.0` @ `fa2b41abfa6bf6d9718e66fa5943e6cb4a96f84f`
-> **认证轮**：run `20261117-ga-gates-011`（plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`，
-> `git_head` 与基线一致 ⇒ **测的就是被交付的那棵树**）
+> **基线**：`develop/v4.1.0` @ `e5c42c7fd02d3d2e24086d419920bcea938c19d6`（tree `761e3491a8ce91b89d8d79f60fa0f906fc3b09d5`）—— 当前 develop tip
+> **认证轮**：run `20261117-ga-gates-011`（plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`），
+> 被测树 `fa2b41abfa6b`；其 `git_head` 与**当时**的基线一致 ⇒ **那一轮测的是它自己的被交付树**。
+> ⚠️ **但 `fa2b41abfa6b` 的 crates 与当前 tip 差一个 KILL CONNECTION 修复（#5842，`crates/mysql-server/src/lib.rs` +131 行）**
+> ⇒ **35/35 的结论不能直接继承到当前 tip**（见 GA-REWIND-1 的剩余义务）——
+> 最终认证轮仍须在 `e5c42c7fd02d3d2e24086d419920bcea938c19d6`（或其后继 tip）上重跑。
 > **材料提交**：本块随材料提交 M 一起落地；M 只新增 `docs/` 与 `audit/`
-> （`git diff --stat fa2b41abfa6bf6d9718e66fa5943e6cb4a96f84f..M -- crates scripts tests` 为空 ⇒ 认证结论对 M 同样成立）
+> （`git diff --stat e5c42c7fd02d3d2e24086d419920bcea938c19d6..M -- crates scripts tests` 为空 ⇒ M 不改变被测代码面）
+> **本块刷新说明**：上一版刷新块为 2026-11-17T15:13:56Z；本版只刷新本块内容，
+> 下方 2026-10-23 的判定与第 9 段**原样保留为历史记录**，签署栏**仍留空**。
 
-### 判定：**NOT READY —— 只剩物理与人类约束**
+### 判定：**NOT READY —— 只剩物理约束**（人类签批已于 2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8） 取得，见文末签署栏）
 
 | 项 | 值 |
 |---|---|
 | 阶段 | `current_stage: "ALPHA"`（`STAGE.yaml`）—— **未跃迁** |
-| GA 门禁 | **35/35 项：PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0** |
+| GA 门禁 | **35/35 项：PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0**（run `20261117-ga-gates-011`，被测树 `fa2b41abfa6b`）。⚠️ **该树的 crates 与当前 tip 差一个 KILL CONNECTION 修复（#5842）** ⇒ 最终认证轮仍须在 `e5c42c7fd02d3d2e24086d419920bcea938c19d6`（或其后继 tip）上重跑（见 GA-REWIND-1） |
 | 覆盖率 | `✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（min 85%，measured 8/8 crates）—— 真实测量 |
-| 168h SOAK | **运行中**（`2026-11-16T23:05:02Z` → `2026-11-23T23:05:02Z`，快照 2026-11-17T23:09:07，elapsed 58023 s / 604800 s）。起跑门禁通过（43.4 q/s、0 错误）；累计 535971 查 / 2962 错 ⇒ **0.553 %**（峰值 1.804 %）。运行期错误率与宿主争用耦合（同盘 fsync 实测 p50 0.124 ms / p90 0.183 ms / max 11.906 ms（起跑时 p50 4.59 ms）），错误率**非单调**（宿主转静时回落、再被抢时回升），当前吞吐 6.22 q/s ⇒ **不是 GA 证据的合格轮**（未满足「独占窗口」要求） |
-| 审批 | **未申请、未批准。** `STAGE_CONFIG` 的 `transitions.RC_to_GA.requires_human_approval: true`；`manual_only_criteria` 明文：「批准记录写进本文件的变更记录，**不能由 Agent 生成**」 |
+| 168h SOAK | **权威轮已在独占窗口内起跑**（run `20261118-168h-v410`，冻结提交 `e5c42c7fd02d3d2e24086d419920bcea938c19d6`，起跑 2026-11-18T03:56:06Z，计划结束 2026-11-25T03:56:06Z）。上一轮诊断轮 `20261116-168h-v410`（attempt-33）**已出局**：累计 644,800 查 / 20,850 错 ⇒ 3.234 %（> 1 % 阈值，且远超历史 0 错门槛），panic **0**，心跳 max_gap 24.0 s ⇒ 仓内校验器 PASS；诊断轮在独占窗口出现后**主动中止**，为权威轮让位（独占窗口下两轮不能并存）。⚠️ **2026-11-18T05:06:49Z 起 252 整机脱网**（掉线前最后一笔实测 2026-11-18T04:56:23Z：138,029 查 / 0 错、panic 00、双臂存活）⇒ **该轮生死待判**（网络闪断 vs 整机重启取决于恢复后的心跳连续性，见 §7.19 与 `GA-SOAK-14`）⇒ 该项**既不是 PASS 也不是 FAIL**，仍是 **NOT-RUN**；合格判据 = **168 h 内 0 错 + 0 panic**（见 B1b）。⚠️ **后续判定**：attempt-11 已于 2026-11-18T05:02:03Z 被**宿主整机重启**打断（boot_id / 内核 7.0.0-42-generic→7.0.0-43-generic / 心跳与 boot 结束差 3 s 三项独立对上）⇒ 终态 elapsed **4,130 s（0.68 %）**、139,568 查 / 0 错、panic 00、双臂存活 ⇒ 如实记 **INCOMPLETE**（非跑满、非通过、非被测缺陷），已归档于 `audit/v4.1.0/runs/20261118-168h-v410/`（见 §7.21 / `GA-SOAK-16`）。**重跑已就位**：守望器按同一把尺等「root 编译进程 0 且 load1 ≤ 40 连续 ≥2 h」，成立即自动起跑（当下 root 编译进程 8 个、load1 27.74 ⇒ **尚非独占窗口，不抢跑**） |
+| 审批 | **已批准（CONDITIONAL）** —— 属主于 2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8） 在会话中明确答复「全部批准，执行」，答复原文与条件已转录进文末**签署栏**。`transitions.RC_to_GA.requires_human_approval` **已满足**；但 **`current_stage` 仍为 `ALPHA`、不跃迁**（签批解除的是人类约束，物理约束未达成：168 h 未跑满 + 35 项门禁未在最终 tip 重跑）。`manual_only_criteria` 明文「批准记录写进本文件的变更记录，**不能由 Agent 生成**」⇒ 本处只**转录属主的明确答复**，不代拟结论、不代写豁免 |
 
 ### 非绿项明细
 
-无（全部 PASS）
+无（35 项门禁全部 PASS）。**但 168h SOAK 尚未跑满、且起跑后宿主整机脱网 ⇒ 那一项仍未取得**，
+不得记为 PASS，**也不得记为 FAIL**（是环境事件，不是被测系统的判定）。
 
 ### 硬检查现状（G1–G6）
 
@@ -47,27 +53,49 @@
 | G3 | Coverage | ✅ PASS | run 20261117-ga-gates-011 seq1 实测行：`✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（8-crate 平均；逐 crate 见 §7.13） |
 | G4 | TPC-H SF=1 22/22 | ⚠️ **NOT MET（已知且已登记）** | SF=1 的 22/22 用例在 `#[ignore]` 下（ADR-008 例外，**已过期且从未签署**）；当前 SSOT（`STAGE_CONFIG`）各阶段要求的是 `check_g1_tpch_baseline.sh`（hermetic SF=0.001，**由独立 SQLite oracle 逐条担保**，实测 `G1 PASS: hash matches (7439ce80…)`）—— 已 MET |
 | G5 | Security audit | ❌ NOT MET | 工作树层面已收敛（凭据 SSOT + `check_no_hardcoded_secrets.sh` 已接 CI）；**历史层面未解决**：旧 Gitea token 仍有效（ENG-8）⇒ 需属主在服务端删除/轮换 |
-| G6 | Documentation | ✅ PASS | 6 份 GA doc_artifacts 齐备（`check_release_artifacts.sh` ⇒ PASS，GA 段 11 份 present）；看板 165 行、`kanban_render.py check` 一致、`kanban_merge_policy` verdict OK |
+| G6 | Documentation | ✅ PASS | 6 份 GA doc_artifacts 齐备（`check_release_artifacts.sh` ⇒ PASS，GA 段 11 份 present）；看板 184 行、`kanban_render.py check` 一致、`kanban_merge_policy` verdict OK |
 
 ### 阻断项（剩余全部为物理 / 人类约束）
 
 | # | 阻断 | 归属 |
 |---|---|---|
-| B1 | 168h SOAK 的**合格**证据需要独占窗口 | 属主/基础设施（节点上 root 的常驻 CI 抢磁盘，Agent 无 root 权限）；启动器/冻结提交/判据均已就绪 |
-| B2 | 人类架构师签批本报告 | **属主**（`requires_human_approval: true`） |
+| B1 | 168h SOAK 的**合格**证据需要跑满 168 h —— 权威轮已于 2026-11-18T03:56:06Z 在**实测独占窗口**内起跑（root 编译进程连续 ≥2 h 为 0，见 `GA-SOAK-13`），但**尚未跑满** ⇒ 该项仍未取得 | 执行（起跑完成；剩余物理时长） |
+| B1a | **252（Z6G4）整机脱网 —— 已判定为宿主重启** —— 2026-11-18T05:06:49Z 起不可达，2026-11-18T06:30:52Z 恢复；根因 = **宿主整机重启**（boot_id `1287e51dc1494edaae9fce1c583b72f9`、内核 `7.0.0-42-generic → 7.0.0-43-generic`、`unattended-upgrade（2026-11-18 06:57:18Z 处理 linux-hwe-7.0-headers-7.0.0-38）`），权威轮 attempt-11 因此在 2026-11-18T05:02:03Z 中止 ⇒ **INCOMPLETE**（归档见 §7.21 / `audit/v4.1.0/runs/20261118-168h-v410/`） | 已判定；**重跑由守望器自动执行** |
+| B1b | **「独占窗口的合格错误率阈值」已裁定（2026-11-18T05:47:26Z）：维持 0 errors / 0 panics（不改判据、不抬阈值、不改 35 项门禁分母）** —— 门槛原样保留（debt #3265/#3266），**本次提交零判据变更**。⚠️ **裁定的后果**：实测安静档（`load1<4`）错误率仍为 **0.111 %** ⇒ **「独占窗口」是必要条件、不是充分条件**；权威轮合格判据 = 168 h 内 **0 错 + 0 panic**，带错结束即不是 GA 证据（见 §7.20 / `GA-SOAK-15`） | 已裁定（属主，2026-11-18T05:47:26Z）；后续「换一台 0 错节点」与「是否给书面例外」**仍是属主决策**（Agent 不代做） |
+| B1c | **宿主侧自动升级已禁用（属主 2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8） 批准后执行，实测复验）** —— `APT::Periodic::Unattended-Upgrade` → `"0"`、`unattended-upgrades.service` → **disabled+inactive**、`apt-daily-upgrade.timer` → **disabled**（`apt-daily.timer` 只下载不安装，保留）；备份 `/etc/apt/20auto-upgrades.bak-20261118T084115Z`、`/etc/apt/apt.conf.d/50unattended-upgrades.bak-20261118T084115Z` 可回滚。⚠️ **定位更正**（§7.22.2）：这是**预防性风险收敛**，**不是**「修复已证实的死因」—— attempt-11 的死因**触发者仍未定性**（内核 42→43 的安装发生在**新 boot 之后**，上个 boot 无有序关机序列、无 panic/OOM，停机 88.7 分钟） | **已完成**；触发者定性待办见 B1e |
+| B1d | **gitea 侧 `refs/heads/` 下 22 个 ref 目录曾为 `root:root`** ⇒ 带斜杠的新分支无法创建 lock（`cannot lock ref … Permission denied`）；本 PR 改用无斜杠分支名 `docs-v410-soak-daily-20261118` 发布（PR #5855），**未动属主服务器**；该批目录属主现已恢复为 `git:git` | 已绕过；**属主可自行确认**（后续 PR 可正常用 `docs/*` 命名） |
+| B2 | 人类架构师签批本报告 | **已取得**（2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8），CONDITIONAL，条件与到期日见签署栏） |
+| B1e | **宿主非正常停止的触发者仍未定性** —— 需一次「宿主是否会在无人工介入时自停」的复现或排除（§7.22.2） | **属主**（Agent 无带外通道，取不到硬件日志）；到期日：r2 轮起跑前 |
 | B3 | GA 承载分支 `release/v4.1.0` + tag + 并入 main | **属主**（按 `RELEASE_LIFECYCLE` §2.5：审批 → tag → 并入 main → 建承载分支，顺序不可越） |
 | B4 | 旧 Gitea token 在服务端失效 | **属主**（仓库侧已收敛） |
 | B5 | 两条已过期且从未签署的 ADR-008 例外 + 61 道死门禁逐个处置 | **属主**（P0-4：逐个门禁处置必须属主决定） |
 
-### 签署（**本栏留空 —— 签署是人的动作，Agent 不代签**）
+### 签署（**已签署：CONDITIONAL —— 属主于 2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8） 在会话中明确答复「全部批准，执行」；
+Agent 只**转录**该答复，**不代拟结论、不代写豁免、不代签**（`manual_only_criteria`：批准记录不能由 Agent 生成）**）
 
 ```
 GA gate report reviewed and approved by human architect:
 
-  姓名 / 身份：______________________________
-  签署时间（UTC）：______________________________
-  结论（PASS / CONDITIONAL / NOT APPROVED）：______________________________
-  备注（若为 CONDITIONAL，必须逐条列出条件与到期日）：______________________________
+  姓名 / 身份：李莹（属主 / v4.1.0 GA 签批人）—— 答复原文：「全部批准，执行」
+  签署时间（UTC）：2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8）
+  结论（PASS / CONDITIONAL / NOT APPROVED）：CONDITIONAL
+  备注（若为 CONDITIONAL，必须逐条列出条件与到期日）：
+    ① 168h SOAK：r2 轮（run 20261118-168h-v410-r2，冻结 e5c42c7fd0）须跑满 604,800 s
+       且 0 错 + 0 panic；
+       到期日：r2 轮计划结束时刻（起跑 +168 h；起跑日待独占窗口）
+    ② 35 项 GA 门禁须在 e5c42c7fd0（或其后继**最终** tip）上重跑并全绿（GA-REWIND-1）；
+       到期日：2026-11-25（tip 若再变更则顺延至重跑结束）
+    ③ 合格门槛维持 0 errors / 0 panics（不豁免、不放宽）；
+       到期日：常设
+    ④ TPC-H 哈希漂移未定性（GA-GATES-11/12）、61 道死门禁、2 条过期 ADR-008 例外逐个处置；
+       到期日：2026-11-25
+    ⑤ 旧 Gitea token 服务端失效（B4）；
+       到期日：2026-11-25
+    ⑥ 宿主非正常停止的触发者仍未定性（§7.22.2）；
+       到期日：r2 轮起跑前完成一次复现或排除
+    ⑦ release/v4.1.0 承载分支与 v4.1.0 tag 待 ①② 达成后按 RELEASE_LIFECYCLE §2.5 顺序创建；
+       到期日：①② 达成后 7 日内
+  阶段：仍为 ALPHA（**不跃迁** —— 签批解除的是人类约束；物理约束 ①② 未达成）
 ```
 
 <!-- END 2026-11-17 REFRESH BLOCK -->
