@@ -36,7 +36,7 @@
 | 阶段 | `current_stage: "ALPHA"`（`STAGE.yaml`）—— **未跃迁** |
 | GA 门禁 | **35/35 项：PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0**（run `20261117-ga-gates-011`，被测树 `fa2b41abfa6b`）。⚠️ **该树的 crates 与当前 tip 差一个 KILL CONNECTION 修复（#5842）** ⇒ 最终认证轮仍须在 `e5c42c7fd02d3d2e24086d419920bcea938c19d6`（或其后继 tip）上重跑（见 GA-REWIND-1） |
 | 覆盖率 | `✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（min 85%，measured 8/8 crates）—— 真实测量 |
-| 168h SOAK | **权威轮已在独占窗口内起跑**（run `20261118-168h-v410`，冻结提交 `e5c42c7fd02d3d2e24086d419920bcea938c19d6`，起跑 2026-11-18T03:56:06Z，计划结束 2026-11-25T03:56:06Z）。上一轮诊断轮 `20261116-168h-v410`（attempt-33）**已出局**：累计 644,800 查 / 20,850 错 ⇒ 3.234 %（> 1 % 阈值，且远超历史 0 错门槛），panic **0**，心跳 max_gap 24.0 s ⇒ 仓内校验器 PASS；诊断轮在独占窗口出现后**主动中止**，为权威轮让位（独占窗口下两轮不能并存）。⚠️ **2026-11-18T05:06:49Z 起 252 整机脱网**（掉线前最后一笔实测 2026-11-18T04:56:23Z：138,029 查 / 0 错、panic 00、双臂存活）⇒ **该轮生死待判**（网络闪断 vs 整机重启取决于恢复后的心跳连续性，见 §7.19 与 `GA-SOAK-14`）⇒ 该项**既不是 PASS 也不是 FAIL**，仍是 **NOT-RUN** |
+| 168h SOAK | **权威轮已在独占窗口内起跑**（run `20261118-168h-v410`，冻结提交 `e5c42c7fd02d3d2e24086d419920bcea938c19d6`，起跑 2026-11-18T03:56:06Z，计划结束 2026-11-25T03:56:06Z）。上一轮诊断轮 `20261116-168h-v410`（attempt-33）**已出局**：累计 644,800 查 / 20,850 错 ⇒ 3.234 %（> 1 % 阈值，且远超历史 0 错门槛），panic **0**，心跳 max_gap 24.0 s ⇒ 仓内校验器 PASS；诊断轮在独占窗口出现后**主动中止**，为权威轮让位（独占窗口下两轮不能并存）。⚠️ **2026-11-18T05:06:49Z 起 252 整机脱网**（掉线前最后一笔实测 2026-11-18T04:56:23Z：138,029 查 / 0 错、panic 00、双臂存活）⇒ **该轮生死待判**（网络闪断 vs 整机重启取决于恢复后的心跳连续性，见 §7.19 与 `GA-SOAK-14`）⇒ 该项**既不是 PASS 也不是 FAIL**，仍是 **NOT-RUN**；合格判据 = **168 h 内 0 错 + 0 panic**（见 B1b） |
 | 审批 | **未申请、未批准。** `STAGE_CONFIG` 的 `transitions.RC_to_GA.requires_human_approval: true`；`manual_only_criteria` 明文：「批准记录写进本文件的变更记录，**不能由 Agent 生成**」 |
 
 ### 非绿项明细
@@ -53,7 +53,7 @@
 | G3 | Coverage | ✅ PASS | run 20261117-ga-gates-011 seq1 实测行：`✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（8-crate 平均；逐 crate 见 §7.13） |
 | G4 | TPC-H SF=1 22/22 | ⚠️ **NOT MET（已知且已登记）** | SF=1 的 22/22 用例在 `#[ignore]` 下（ADR-008 例外，**已过期且从未签署**）；当前 SSOT（`STAGE_CONFIG`）各阶段要求的是 `check_g1_tpch_baseline.sh`（hermetic SF=0.001，**由独立 SQLite oracle 逐条担保**，实测 `G1 PASS: hash matches (7439ce80…)`）—— 已 MET |
 | G5 | Security audit | ❌ NOT MET | 工作树层面已收敛（凭据 SSOT + `check_no_hardcoded_secrets.sh` 已接 CI）；**历史层面未解决**：旧 Gitea token 仍有效（ENG-8）⇒ 需属主在服务端删除/轮换 |
-| G6 | Documentation | ✅ PASS | 6 份 GA doc_artifacts 齐备（`check_release_artifacts.sh` ⇒ PASS，GA 段 11 份 present）；看板 181 行、`kanban_render.py check` 一致、`kanban_merge_policy` verdict OK |
+| G6 | Documentation | ✅ PASS | 6 份 GA doc_artifacts 齐备（`check_release_artifacts.sh` ⇒ PASS，GA 段 11 份 present）；看板 182 行、`kanban_render.py check` 一致、`kanban_merge_policy` verdict OK |
 
 ### 阻断项（剩余全部为物理 / 人类约束）
 
@@ -61,7 +61,7 @@
 |---|---|---|
 | B1 | 168h SOAK 的**合格**证据需要跑满 168 h —— 权威轮已于 2026-11-18T03:56:06Z 在**实测独占窗口**内起跑（root 编译进程连续 ≥2 h 为 0，见 `GA-SOAK-13`），但**尚未跑满** ⇒ 该项仍未取得 | 执行（起跑完成；剩余物理时长） |
 | B1a | **252（Z6G4）整机脱网** —— 2026-11-18T05:06:49Z 起不可达（当下实测：ping 0/3 包收（100 % 丢包），端口 22/222/3000/3411/80/443 全不通，ARP 无条目）；同网段 192.168.0.250 同样不可达 ⇒ 断点在**网段路由/交换侧**（第 2 跳 `192.168.0.9` 报 `!H`）。⇒ **权威轮 `20261118-168h-v410` 生死待判**（恢复后看心跳连续性）；**本次材料推送与建 PR 同样被此阻断**，已挂「取证 → 推送 → 建 PR」自动恢复链 | **属主/基础设施**（Agent 无 root、无带外通道、四个 ssh 别名同 IP ⇒ 无备用入口） |
-| B1b | **「独占窗口的合格错误率阈值」尚未裁定** —— 实测安静档（`load1<4`）错误率是 **0.111 %**，压不到 0；历史登记的门槛是 **0 errors / 0 panics**（debt #3265/#3266） | **属主裁定**（Agent 不改判据、不抬阈值） |
+| B1b | **「独占窗口的合格错误率阈值」已裁定（2026-11-18T05:47:26Z）：维持 0 errors / 0 panics（不改判据、不抬阈值、不改 35 项门禁分母）** —— 门槛原样保留（debt #3265/#3266），**本次提交零判据变更**。⚠️ **裁定的后果**：实测安静档（`load1<4`）错误率仍为 **0.111 %** ⇒ **「独占窗口」是必要条件、不是充分条件**；权威轮合格判据 = 168 h 内 **0 错 + 0 panic**，带错结束即不是 GA 证据（见 §7.20 / `GA-SOAK-15`） | 已裁定（属主，2026-11-18T05:47:26Z）；后续「换一台 0 错节点」与「是否给书面例外」**仍是属主决策**（Agent 不代做） |
 | B2 | 人类架构师签批本报告 | **属主**（`requires_human_approval: true`） |
 | B3 | GA 承载分支 `release/v4.1.0` + tag + 并入 main | **属主**（按 `RELEASE_LIFECYCLE` §2.5：审批 → tag → 并入 main → 建承载分支，顺序不可越） |
 | B4 | 旧 Gitea token 在服务端失效 | **属主**（仓库侧已收敛） |
