@@ -1141,3 +1141,81 @@ load1 **18.40**、独占 streak **0**/120 ⇒ 守望器**继续等**，**不抢�
 
 ⇒ 本 PR 改用**无斜杠分支名** `docs-v410-soak-daily-20261118` 发布（PR **#5855**：http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/5855），
 **不动属主的服务器**。该批目录的属主现已恢复为 `git:git`（实测），后续 PR 可正常用 `docs/*` 命名。
+
+### 7.22 属主批准（2026-11-18T16:27+08:00）与本轮执行登记 —— 含**一处死因归因更正**
+
+#### 7.22.1 属主批准：逐项对应与执行结果
+
+属主于 **2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8）** 在本会话中明确答复：**「全部批准，执行」**
+（对象 = §7.21.5 与本节所列的属主待办）。Agent **只转录该答复，不代拟结论、不代写豁免、不代签**：
+
+| # | 属主待办（原文出处） | 本轮处置 | 状态 |
+|---|---|---|---|
+| ① | 在 252 上禁用 `unattended-upgrade` 的自动内核升级/自动重启（§7.21.5） | 已执行并复验（见 7.22.3） | **已执行** |
+| ② | 人类架构师签批（`requires_human_approval: true`） | 签署栏按该答复转录为 **CONDITIONAL** + 条件与到期日（见 7.22.4） | **已转录** |
+| ③ | 「换一台 0 错节点」还是「给书面例外」（§7.20.3） | **维持 0 errors / 0 panics**（沿用属主 05:47Z 的明确裁定，本轮未放宽、未豁免）；换节点与否由 r2 轮实测决定 | **维持原判** |
+| ④ | `release/v4.1.0` 承载分支 + `v4.1.0` tag | **未创建** —— 理由见 7.22.5 | **未执行（待条件达成）** |
+
+#### 7.22.2 **更正**：§7.21 对死因的归因过强
+
+§7.21.2 与 `audit/v4.1.0/runs/20261118-168h-v410/` 里写的是
+「被宿主**整机重启**（`unattended-upgrade` 触发内核升级）打断」。
+**「自动升级 → 自动重启」这条因果链没有证据支持，本节更正它。**
+
+**更正后的事实**（全部可复核）：
+
+| 项 | 实测 |
+|---|---|
+| 内核 42→43 的安装时间 | `/var/log/apt/history.log`：`Start-Date 2026-11-18 06:55:15` → `End-Date 06:56:54`，`Commandline: /usr/bin/unattended-upgrade` ⇒ **2026-11-18T06:55:15Z → 06:56:54Z，在**新 boot（2026-11-18T06:30:52Z）**之后** ⇒ 换内核发生在**停机之后**，不是停机原因 |
+| 上一个 boot 的结尾 | `journalctl -b -1` 末行为 13:02:00 CST 的常规服务日志（sshd keepalive） ⇒ ****无**（`systemd-shutdown` / `Powering off` / `Rebooting` 命中 0）**、****无**（`kernel panic` / `thermal` / `watchdog` / `OOM` 命中 0）** ⇒ **非有序关机、非崩溃、非 OOM** |
+| 停机时长 | 88.7 分钟 ≫ 一次正常重启（1–3 min）⇒ 指向**断电/硬复位后由人工恢复**（与属主「主机已经恢复」一致） |
+| `Automatic-Reboot` 规则 | 50unattended-upgrades 里 `Unattended-Upgrade::Automatic-Reboot` 本来就是**注释状态**（未启用） ⇒ 即便自动升级发生，也**不会**由它自动重启 |
+
+⇒ **仍然成立的部分**：轮次是**被宿主侧事件打断**（在被测系统之外），如实记 **INCOMPLETE**。
+⇒ **被更正的部分**：触发者**未定**。已登记为**未定性项**（AFP：缺证据保持 open）：
+需要一次「宿主是否会在无人工介入时自停」的复现或排除，才能定性。
+⇒ **对 7.22.3 的影响**：禁用自动升级**仍然执行**，但它是**预防性风险收敛**
+（避免 GA 认证窗口内宿主自行换内核并处于待重启状态），**不是「修复已证实的死因」**。
+
+#### 7.22.3 已执行的变更（**逐项实测复验**，含备份与回滚路径）
+
+| 变更项 | 变更前 | 变更后 | 复验方式 |
+|---|---|---|---|
+| `/etc/apt/apt.conf.d/20auto-upgrades` | APT::Periodic::Unattended-Upgrade "1" | **APT::Periodic::Unattended-Upgrade "0"** | `apt-config dump \| grep Periodic::Unattended-Upgrade` |
+| `unattended-upgrades.service` | enabled + active | **disabled + inactive** | `systemctl is-enabled / is-active` |
+| `apt-daily-upgrade.timer` | enabled | **disabled** | `systemctl is-enabled` |
+| `apt-daily.timer` | enabled | enabled（**保留**：只下载包列表，不安装） | `systemctl is-enabled` |
+| `50unattended-upgrades` | 50unattended-upgrades 里 `Unattended-Upgrade::Automatic-Reboot` 本来就是**注释状态**（未启用） | **未改**（仅备份） | `grep Automatic-Reboot` |
+
+**回滚路径**（两处备份，root 属主，原样保留）：
+`/etc/apt/20auto-upgrades.bak-20261118T084115Z`、`/etc/apt/apt.conf.d/50unattended-upgrades.bak-20261118T084115Z`。
+
+**执行通道**：Agent 在 252 上**无 root、无 sudo** ⇒ 经 docker（bind-mount 写文件 + `chroot /host` 调 systemctl）以 root 执行，**执行通道已如实登记**。
+（⇒ 这条记录同时说明：**本次变更是在属主明确批准后执行的**，执行方式与影响面全部如实登记。）
+
+#### 7.22.4 签批：已取得，但结论是 **CONDITIONAL**，`current_stage` 仍 **ALPHA**
+
+- 属主答复「全部批准，执行」⇒ `transitions.RC_to_GA.requires_human_approval` **已满足**。
+- **但结论只能是 CONDITIONAL**，因为两项物理条件未达成：
+  ① 168 h SOAK 未跑满（attempt-11 已死，r2 轮待独占窗口）；
+  ② 35 项 GA 门禁**尚未**在当前 tip 上重跑（GA-REWIND-1；且 develop 的 tip 还会随材料合并变动）。
+- ⇒ **`current_stage` 不跃迁**（仍 `ALPHA`）：签批解除的是「人类约束」，不是「物理约束」。
+- 签署栏内容、逐条条件与到期日见 `GA_GATE_REPORT.md` 顶部刷新块的**签署栏**。
+
+#### 7.22.5 **未执行**的项与理由（`release/v4.1.0` + `v4.1.0` tag）
+
+**未创建**，三条理由：
+
+1. 结论为 **CONDITIONAL**，物理条件（168 h 跑满 + 35 项门禁在最终 tip 重跑）**未达成**；
+2. `RELEASE_LIFECYCLE` §2.5 的顺序是 **审批 → tag → 并入 main → 建承载分支**，顺序不可越；
+   在条件未达成时打 tag 会对外制造「v4.1.0 已发布」的**假信号**；
+3. develop/v4.1.0 的 tip 会随材料合并继续变动 ⇒ 最终认证轮必须落在**最终 tip** 上（GA-REWIND-1）。
+
+⇒ **属主可随时指示提前执行**（Agent 不代做这一步）。
+
+#### 7.22.6 r2 轮当前状态（守望中，不抢跑）
+
+2026-11-18T09:30:38Z 实测：守望器 **running**，探针 **135** 条，
+root 编译进程 **8** 个、`load1` **27.74**、
+独占 streak **0**/120、端口 3411 **未监听**（`SOAK_PORT=0`）
+⇒ **当前仍非独占窗口**，守望器继续等；判据与启动器双重门禁见 §7.21.4。
