@@ -1,0 +1,5 @@
+[NOT-A-GATE-OUTPUT]
+本文件不是 scripts/gate/check_full_gate_verification.sh 的 stderr。
+
+该项在执行超时上限（--timeout-sec 7200）处被终止（exit_code=124 / state=INCOMPLETE），
+run_gates.py 的超时分支未落盘任何 stderr。详见同目录 020-...stdout 的说明。
