@@ -428,13 +428,36 @@ echo "LIST_SIZE=${#D6_INTEGRATION_TESTS[@]}"
         stderr
     );
     assert!(
-        out.contains("LIST_SIZE=49"),
-        "the curated list must keep its 49 entries; got:\n{}",
+        out.contains("LIST_SIZE=50"),
+        "the curated list must keep its 50 entries; got:\n{}",
         out
     );
     assert!(
-        out.contains("RESOLVED=49"),
-        "all 49 curated entries must resolve; got:\n{}",
+        out.contains("RESOLVED=50"),
+        "all 50 curated entries must resolve; got:\n{}",
+        out
+    );
+    // The two pins above are tied to the curated list's length, so a future
+    // change to that list turns them red and asks for a deliberate update.
+    // This third assertion states the *invariant* directly — the resolved
+    // count must equal the list size — so the "every entry resolves"
+    // property cannot rot on a stale number again:
+    //   #5846 added the 50th curated entry (falsesuccess_kill_unknown_thread)
+    //   but did not update the two pins ⇒ GA rounds 20 (D6b) and 33
+    //   (cargo test --all-features) went red on a *stale count*; the
+    //   resolver itself was fine (UNRESOLVED was empty in every run).
+    // Parsing both numbers and comparing them keeps the pinned length
+    // assertion above intact while making "all entries resolve" checkable
+    // without hard-coding a second copy of the same number.
+    let num = |key: &str| -> Option<i64> {
+        out.lines()
+            .find_map(|l| l.strip_prefix(&format!("{key}=")))
+            .and_then(|v| v.trim().parse::<i64>().ok())
+    };
+    assert_eq!(
+        num("RESOLVED"),
+        num("LIST_SIZE"),
+        "the resolved count must equal the curated list size; got:\n{}",
         out
     );
     assert_eq!(code, 0, "the snippet itself must succeed:\n{}", stderr);
