@@ -31,7 +31,7 @@
 | `uptime -s` / `uptime` | `2026-11-18 14:30:41`（= 06:30:41Z）；`up 0 min` | 取证时机器刚起来 0 分钟 |
 | `boot_id` | `1287e51d-c149-4eda-ae9f-ce1c583b72f9` | 与 boot 0 一致 |
 | `last -x reboot` | `reboot system boot **7.0.0-43-generic** Wed Nov 18 14:30 still running`（前一条是 `7.0.0-42-generic`） | **内核版本变了** |
-| `/var/log/apt/history.log` | `Start-Date: 2026-11-18 06:57:18` / `Commandline: /usr/bin/unattended-upgrade` / `Remove: linux-hwe-7.0-headers-7.0.0-38` | **自动内核升级是本次重启的触发源** |
+| `/var/log/apt/history.log` | `Start-Date: 2026-11-18 06:55:15` → `End-Date 06:56:54` / `Commandline: /usr/bin/unattended-upgrade` / `Install: linux-image-7.0.0-43-generic` | **〔更正 2026-11-18T09:05Z〕换内核发生在新 boot（06:30:52Z）之后** ⇒ **不是停机原因**；原表述「自动内核升级是本次重启的触发源」**已更正**（见下方更正条与 `GA_RELEASE_REPORT.md` §7.22.2） |
 | 心跳末条 | `2026-11-18T05:02:03Z` | 与 boot -1 的结束时刻（05:02:00Z）相差 **3 s** |
 | 停机时长 | 05:02:00Z → 06:30:41Z ≈ **88.7 分钟** | 机器整个不在 |
 | 端口 3411 / 残留进程 | 未监听 / 无 | 轮次随宿主一起没了 |
@@ -39,11 +39,20 @@
 **判定**：轮次与宿主**同时**停止（差 3 s），且新 boot 的 boot_id、内核版本、开机时刻三项独立对上
 ⇒ **整机重启**，不是网络闪断（网络闪断不会改变 boot_id，也不会让心跳与 boot 结束时刻对齐）。
 
+> **〔更正 2026-11-18T09:05Z —— 见 `GA_RELEASE_REPORT.md` §7.22.2 / 看板 `GA-SOAK-17`〕**
+> **「整机重启」这一定性不变**；但**「重启由 unattended-upgrade 触发」不成立**，现更正为：
+> ① 内核 42→43 的安装条目时间是 **2026-11-18 06:55:15–06:56:54Z**，即**新 boot 之后**；
+> ② 上一个 boot 的 journal 末行是 **13:02:00 CST 的常规服务日志**，
+>    **无 `systemd-shutdown` / `Powering off` / `Rebooting` 序列**、**无 kernel panic / thermal / watchdog / OOM**
+>    ⇒ **非有序关机、非崩溃**；
+> ③ 停机 **88.7 分钟** ≫ 一次正常重启（1–3 min）⇒ 指向**断电/硬复位后人工恢复**。
+> ⇒ **死因触发者仍未定性**（登记为未定性项）；本归档中一切「unattended-upgrade 触发」的表述按本条执行。
+
 ## 3. 这不是被测系统的判定
 
 - `panic_count` 全程 `00`（271 个采样点无一例外）；服务端日志 crash marker **0**；
   累计 **0 错 / 139,568 查**。
-- 死因在**被测系统之外**（宿主的自动内核升级 + 重启）。
+- 死因在**被测系统之外**（宿主侧事件；〔更正 2026-11-18T09:05Z〕**触发者仍未定性**，见 §2 更正条）。
 - ⇒ 轮次如实记为 **INCOMPLETE**；**不写「跑满」，不写「通过」，也不写「被测代码失败」**。
 
 ## 4. 重跑安排（已就位，等独占窗口）
@@ -60,11 +69,17 @@
 **当前不是独占窗口**：07:27Z 实测 root 的 CI 在跑（`cargo test --no-run --release` 等，
 root 编译进程 **31** 个，load1 19.4）⇒ 守望器正在等窗口，**不抢跑**。
 
-## 5. 属主必须做的一件事（否则 168 h 轮随时会再被打断）
+## 5. 属主动作：**已执行**（2026-11-18T08:27Z 属主批准后落地并复验）
 
-**在承载节点 252 上禁用 `unattended-upgrade` 的自动内核升级/自动重启**（或在 GA 认证窗口内
-禁止自动升级）。本次中断的直接原因就是它：内核 `7.0.0-42 → 7.0.0-43` 的自动升级触发重启，
-把起跑 66 分钟的轮次打掉。Agent 无 root、无法改该配置 ⇒ **这一步只能由属主做**。
+**在承载节点 252 上禁用 `unattended-upgrade` 的自动内核升级/自动重启** —— 已执行：
+`APT::Periodic::Unattended-Upgrade` → `"0"`、`unattended-upgrades.service` → **disabled + inactive**、
+`apt-daily-upgrade.timer` → **disabled**（`apt-daily.timer` 只下载不安装，保留）；
+备份 `/etc/apt/20auto-upgrades.bak-20261118T084115Z`、
+`/etc/apt/apt.conf.d/50unattended-upgrades.bak-20261118T084115Z` 可回滚。
+
+> **〔更正 2026-11-18T09:05Z〕这一动作的定位要写准**：它是**预防性风险收敛**
+> （避免 GA 认证窗口内宿主自行换内核并处于待重启状态），
+> **不是「修复已证实的死因」** —— 见 §2 更正条：**死因触发者仍未定性**。
 
 ## 6. 附带修正：§7.20.2 的证据外推范围（门槛不变）
 
