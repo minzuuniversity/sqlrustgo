@@ -197,6 +197,22 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
 impl<S: StorageEngine + 'static, W: WalManager + 'static> StorageEngine
     for ParallelWalStorage<S, W>
 {
+    /// V4.1.0 / #5412: forward the change-stamp question to the inner
+    /// engine.
+    ///
+    /// The group-commit coordinator only merges fsyncs — a persistence
+    /// concern, not a visibility one — and this layer's scans and writes
+    /// are the inner engine's. So the inner engine's counter is the answer.
+    fn table_change_stamp(&self, table: &str) -> u64 {
+        self.inner.table_change_stamp(table)
+    }
+
+    /// V4.1.0 / #5412: forward the bump to the inner engine, so the
+    /// counter the leaf keeps is the one every layer reports.
+    fn bump_change_stamp(&self, table: &str) {
+        self.inner.bump_change_stamp(table);
+    }
+
     /// #5250: the check must be asked of the stated database. The old trait
     /// default resolved this question against the current database, so a
     /// storage could correctly refuse a write and still answer `true` here.

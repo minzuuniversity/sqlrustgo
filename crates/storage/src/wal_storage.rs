@@ -624,6 +624,23 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
 }
 
 impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalStorage<S, T> {
+    /// V4.1.0 / #5412: forward the change-stamp question to the inner
+    /// engine.
+    ///
+    /// The WAL layer adds no visibility of its own: its scans are the
+    /// inner engine's scans, its writes are the inner engine's writes, and
+    /// WAL replay happens at start-up, before this layer wraps anything.
+    /// So the inner engine's counter is the answer.
+    fn table_change_stamp(&self, table: &str) -> u64 {
+        self.inner().table_change_stamp(table)
+    }
+
+    /// V4.1.0 / #5412: forward the bump to the inner engine, so the
+    /// counter the leaf keeps is the one every layer reports.
+    fn bump_change_stamp(&self, table: &str) {
+        self.inner().bump_change_stamp(table);
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         self.inner().scan(table)
     }

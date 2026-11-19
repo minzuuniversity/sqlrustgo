@@ -1580,6 +1580,34 @@ pub trait StorageEngine: Send + Sync {
         0
     }
 
+    /// V4.1.0 / #5412: record that `table`'s rows changed.
+    ///
+    /// The counterpart of [`table_change_stamp`](Self::table_change_stamp):
+    /// an implementation that answers that question with a changing value
+    /// has to move the same counter from here, or the two answers drift and
+    /// a caller that trusted the stamp would hold a stale cache.
+    ///
+    /// A wrapper layer must forward the bump **downward**, to the layer
+    /// that owns the counter, so that every layer of a stack reports the
+    /// same value. This is what lets a stack answer the question at all:
+    /// the caller asks the outermost layer, and the outermost layer has to
+    /// be able to reach the counter the leaf keeps.
+    ///
+    /// Two rules make the pairing safe, and both are load-bearing:
+    ///
+    /// * **Bump after the mutation, in the same critical section.** If the
+    ///   stamp moved before the rows did, a reader could capture the new
+    ///   stamp together with the old row set and cache that pair — and the
+    ///   pair would look fresh after the rows changed.
+    /// * **Bump only when the visible row set changed.** A bump that does
+    ///   not correspond to a change is merely conservative; a missing bump
+    ///   is a wrong answer.
+    ///
+    /// The default does nothing, which keeps every implementation that has
+    /// not opted in behaving exactly as before — "returning a constant is
+    /// always correct, just unoptimised".
+    fn bump_change_stamp(&self, _table: &str) {}
+
     /// List all tables
     fn list_tables(&self) -> Vec<String>;
 

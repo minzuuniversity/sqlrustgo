@@ -325,3 +325,45 @@ P16 step 2.6/3: verify no swallowed exit code is read afterwards
 - 该项与本线 SOAK 根因结论（写路径 O(N)）**同族**，宜与存储面根因一并推进（相关项 **#5507**
   「重构 MemoryStorage 的『提交快照』机制」在当期 open P0 清单里）；
 - **零 crates/ scripts/ tests/ 改动** ⇒ 交付树与 252 检出（均 detached @ `64269eaa08`）不失配。
+
+---
+
+## 11. 补记三（2026-11-19 深夜）：#5412 的源码修复已实现并取证
+
+**本节只是指针**：完整的技术裁决、逐点分歧、实现说明与回归取证见
+**`docs/releases/v4.1.0/evidence/ISSUE_5412_PK_CACHE_FILE_BACKEND_2026-11-19.md`**。
+
+### 11.1 做了什么
+
+按**双专家三轮裁决**（deepseek-web + chatGPT-web，同一事实集）实现 **D1 + X2**：
+
+- **D1（存储层）**：trait 增 `bump_change_stamp`（默认空实现）；计数器只存在于叶子 `FileStorage`
+  （**21 个 bump 调用点**，覆盖全部改变「扫描会返回什么」的写路径）；包装层（MVCC / WAL / ParallelWal / Box）
+  纯向下委托；MVCC 的 commit / rollback 只对「本次 tx 真有 pending 版本」的表向下 bump。
+- **X2（引擎层）**：`PkIndexCache` 增 `db: String`；命中判定加 `e.db == stmt_db`；
+  `stmt_db` 规范化为小写；写后维护加 db 守卫（防止把别库的键混进同一个索引）。
+
+⇒ **file 后端首次能给出非零 stamp ⇒ PK 缓存快路径首次在生产后端生效 ⇒ 逐行 INSERT 回到 O(N)。**
+
+### 11.2 取证
+
+| 项 | 结果 |
+|---|---|
+| 新套件 `pk_cache_file_backend_test` | **24 passed / 0 failed**（memory + file 双后端参数化 11 例 + MVCC 栈 2 例） |
+| 既有 `pk_cache_regression_test` | **14 passed / 0 failed** |
+| `cargo test -p sqlrustgo-storage --lib` | **919 passed / 0 failed** |
+| `cargo test --lib`（根 crate） | **174 passed / 0 failed** |
+| **变异测试** | 去掉两处 `db` 守卫 ⇒ **3 个跨库方向真的变红**（误拒绝 ×2 后端 + 误接受 ×1 后端）⇒ 护栏承重，非装饰 |
+
+### 11.3 本轮新登记的 issue
+
+- **#5891**（`priority/p0`）：**非默认库里的 ROLLBACK 不撤销写入** ⇒ 被回滚的行仍然可见，并挡住后续同键 INSERT。
+  **既有缺陷，非本 PR 引入**（基线 `f6beacad31` 已有；本 PR 对该文件的 diff 中涉及 `DEFAULT_DATABASE` 的增删行数 = 0）。
+  本 PR **不修**（要往 undo 日志补 `db`，改动面超出 #5412 范围）⇒ 由属主决定是否并入本批次。
+
+### 11.4 诚实登记
+
+- **本轮改了 `crates/` ⇒ 019 认证轮的既有结论对新的冻结点失效**，需在新的冻结点重跑。
+- 本轮取证期间 019 仍在运行（PID 18229），所有 cargo 命令以 `nice -n 19` + `-j 2` 让路 ⇒ **与 019 存在并发**，如实登记。
+- **阶段仍是 ALPHA，不产生任何 PASS 声明**；ALPHA→BETA 的 AB-01..AB-10 逐项取证与人工批准**未做**。
+- 当期 open P0 由 **27 变为 28**（新增 #5891）⇒ **E1 仍不满足**。

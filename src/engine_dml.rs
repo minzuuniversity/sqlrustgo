@@ -58,6 +58,19 @@ pub struct PkIndexCache {
     /// `StorageEngine::table_change_stamp` when this snapshot was captured.
     /// An entry is only trusted while this still equals the live stamp.
     pub stamp: u64,
+    /// V4.1.0 / #5412: the database this index was built from.
+    ///
+    /// The cache is keyed by table name alone, so `d1.t` and `d2.t` share
+    /// one slot — and the storage layer's change stamp is keyed by table
+    /// name too, so both databases' writes move the same counter. Without
+    /// this field the two databases' indexes are interchangeable: a cache
+    /// built from `d1.t` could be handed to a statement about `d2.t`,
+    /// whose duplicate-key check would then answer from `d1.t`'s keys.
+    ///
+    /// The stamp alone cannot catch that, because a stamp says "something
+    /// about this table name changed", not "these rows changed". Recording
+    /// the database turns a possible match into a definite one.
+    pub db: String,
 }
 
 impl PkIndexCache {
@@ -125,7 +138,19 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // the rows to the wrong database — measured at 6% under a writer
     // switching databases continuously.
     // qualified `INSERT INTO db.table`: explicit schema wins over session_db.
-    let stmt_db = insert.schema.clone().unwrap_or_else(|| engine.session_db());
+    // #5412: the database identity is compared against the cache entry's
+    // `db` field, so both sides have to be the same *normalised* name.
+    // The parser keeps the qualifier as written (`MyDb`), while the
+    // storage layer resolves it case-insensitively (`scoped_key`
+    // lower-cases both halves). Comparing raw spellings would make
+    // `MyDb` and `mydb` look like two different databases — never a
+    // wrong answer, but it throws away a usable cache entry on every
+    // case variation.
+    let stmt_db = insert
+        .schema
+        .clone()
+        .unwrap_or_else(|| engine.session_db())
+        .to_lowercase();
     if engine.clustered_tables.read().contains_key(&insert.table) {
         return execute_insert_clustered(engine, insert);
     }
@@ -445,7 +470,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 .pk_lookup_cache
                 .read()
                 .get(&table_name)
-                .is_some_and(|e| e.is_fresh(live_stamp) && e.pk_idx == pk_idx);
+                .is_some_and(|e| e.is_fresh(live_stamp) && e.pk_idx == pk_idx && e.db == stmt_db);
             if cached {
                 pk_index_ready = true;
                 cached_stamp = live_stamp;
@@ -471,12 +496,18 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                     .filter_map(|row| pk_key_of(row, &pk_idx))
                     .collect();
                 drop(storage);
+                // #5412: the index was rebuilt from a full table scan.
+                // Counting the rebuilds is what pins this issue's claim:
+                // without a change stamp this line ran once per INSERT,
+                // so N inserts cost N full scans.
+                engine.pk_cache_builds.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 engine.pk_lookup_cache.write().insert(
                     table_name.clone(),
                     PkIndexCache {
                         pk_idx: pk_idx.clone(),
                         index,
                         stamp: live_stamp,
+                        db: stmt_db.clone(),
                     },
                 );
                 pk_index_ready = true;
@@ -807,12 +838,27 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         if pk_index_ready {
             let mut cache = engine.pk_lookup_cache.write();
             let new_stamp = storage.table_change_stamp(&table_name);
+            let mut extendable = false;
             if let Some(entry) = cache.get_mut(&table_name) {
-                entry.index.extend(published_keys);
-                entry.stamp = new_stamp;
-            } else {
-                // Dropped by a concurrent statement; do not resurrect it —
-                // it would carry a stamp without a matching scan.
+                // #5412: only extend an entry that belongs to *this*
+                // statement's database. Between this statement's lookup
+                // and this write, a concurrent statement on a same-named
+                // table in another database can have replaced the slot —
+                // and extending that entry would mix the two databases'
+                // keys into one index, so a later statement about the
+                // other database would answer from a key set that is
+                // partly not its own.
+                extendable = entry.db == stmt_db;
+                if extendable {
+                    entry.index.extend(published_keys);
+                    entry.stamp = new_stamp;
+                }
+            }
+            if !extendable {
+                // Either the slot was dropped by a concurrent statement, or
+                // it now belongs to another database. Do not resurrect or
+                // pollute it — an entry carrying a stamp without a
+                // matching scan is worse than no entry at all.
                 cache.remove(&table_name);
             }
         }
