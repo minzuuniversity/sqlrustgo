@@ -1,0 +1,213 @@
+# 权威轮 20261118-168h-v410-r2（attempt-11）的中止/判红事实 —— **实测数据**
+# 结论：INCOMPLETE —— 被**另一条 Agent 线主动停止**（不是跑满，不是通过，也不是被测系统的缺陷）。
+#       另登记两处口径缺陷：① metrics 累计 q/e 在末桶滞后于 driver.log；② dmesg 在本账号不可读
+#          （早前「dmesg 无 OOM/panic/watchdog/thermal」是空读，不是阴性证据）。
+# 数据来源：252 上现取的 metrics.csv / heartbeat.jsonl / driver.log / sha256 / 体积 + 本地现算。
+round_id: '20261118-168h-v410-r2'
+attempt: 11
+attempt_dir: '/home/liying/soak-artifacts/20261118-168h-v410-r2/attempt-20261118T123344Z'
+host: 'gaoyuanai-HPZ6G4 (192.168.0.252) Linux 7.0.0-43-generic x86_64'
+port: 3411
+frozen_commit: e5c42c7fd02d3d2e24086d419920bcea938c19d6
+frozen_tree: 761e3491a8ce91b89d8d79f60fa0f906fc3b09d5
+soaked_binary_sha256: f31cef51669f218c5092dce35770279353ea26fb421734c221b3b91380557c70
+attempt_started_utc: '2026-11-18T12:33:47Z'      # attempt 目录 20261118T123344Z；首个采样 elapsed=15 @ 12:34:02Z
+clock_started_utc: '2026-11-18T12:36:45Z'        # STARTED.json：起跑复验通过、168 h 时钟起点
+start_path: 'quiet-window'
+waited_secs_before_start: 601
+verify_at_start: '14,114 查 / 0 错 / 103.0 q/s / 0.000 %'
+planned_end_utc: '2026-11-25T12:36:45Z'
+stopped_at_utc: '2026-11-19T00:47:26Z'           # STOPPED_BY_AGENT.txt
+heartbeat_last_beat_utc: '2026-11-19T00:47:23Z'
+heartbeat_exit_record_utc: '2026-11-19T00:47:38Z'
+verdict: INCOMPLETE — 被另一条 Agent 线主动停止；不是跑满，不是通过
+cause: agent_stop_by_other_line
+cause_attribution: attributed                 # 停轮者与理由有**明文记录**（STOPPED_BY_AGENT.txt），非未定性
+stop_record_verbatim: |
+  stopped_at_utc: 2026-11-19T00:47:26Z
+  stopped_by: mcode-macmini 线上（累计错误数已超 0 错门槛，且需让出同盘给 r3）
+  reason: r2 的累计错误 716 > 属主裁定的 0 错门槛 ⇒ 不可能是合格轮；继续跑会与 r3 抢 NVMe
+zero_error_threshold: 不可逆地不成立（累计 717 错 / 0.1494 %；driver.log 全量口径 784 错 ⇒ 两个口径都远超 0 门槛）
+
+final_state:
+  elapsed_s: 44060
+  planned_s: 604800
+  pct_of_planned: 7.2867
+  driver_q: 479795            # metrics 口径（判定口径）
+  driver_e: 717               # metrics 口径（判定口径）
+  error_rate_pct: 0.1494
+  panic_count: 00             # 2,882 个采样点唯一值
+  armA_alive: 1
+  armB_alive: 1
+  fd_count: 46                # 全程恒定
+  rss_mb_first: 191.8
+  rss_mb_peak: 1044.7         # elapsed 43,892 s
+  rss_mb_last_sample: 1012.3
+  rss_growth_mb_12h: 853
+  host_load1_last: 2.66
+  metric_samples: 2882
+  heartbeat_records: 2928      # start 1 + beat 2926 + exit 1
+  heartbeat_beats: 2926
+  heartbeat_max_gap_s: 22.0
+  heartbeat_alive_false: 0
+  port_listening_after_stop: false
+
+other_cause_ruled_out:
+  host_reboot: 'boot 未变（uptime -s = 2026-11-18 14:30:41 CST = 06:30:41Z）；journalctl --list-boots 无新 boot；心跳 max_gap 22.0 s 连续到 00:47:23Z'
+  server_crash: 'panic_count 全程 00；server.log 崩溃标记 0；soak.log 末行 armA_alive=1 armB_alive=1'
+  oom_kill: 'MemTotal 404 GB / MemAvailable 408 GB / SwapFree 265 GB；earlyoom 03:31Z 记 mem avail 76.34 % 且无 kill；systemd-oomd masked；OOM-guard cron（sqlrustgo-watch.sh --enable-oom-guard，每分钟）在 8.4 MB 日志中无任何 kill 记录'
+  freeze_watchdog: 'srg-soak-freeze-watch 全程 frozen_now=0 total_frozen=0；host_native_frozen.json = {}；该脚本只用 SIGSTOP/SIGCONT'
+  exclusive_watchdog: 'srg-soak-exclusive-watch 脚本自述「只 pause / 只 stop，从不 kill / rm」；其 journal 在该窗口无条目'
+
+verdict_basis:
+  not_reran_to_completion: 'elapsed 44060 s / 604800 s = 7.2867 % ⇒ 远未跑满'
+  not_a_pass: '168 h 未跑满 ⇒ 不构成任何合格结论'
+  not_a_product_failure: '死因在被测系统之外（人为调度决策）；但「0 错」一项本轮已判死（717/784 错），这是事实陈述，不等于 SOAK 判 FAIL'
+  register_as: 'INCOMPLETE（与 attempt-11 / GA-GATES-008/009/013/017/018 同范式：ABORTED.md + abort_facts.yaml + manifest.yaml + results.jsonl）'
+
+error_timeline_metrics_basis:
+  first_error_utc: '2026-11-18T13:21:03Z'
+  first_error_elapsed_s: 2836
+  errors_by_16h07z: 714        # 99.58 % 的错误落在起跑后头 3.5 h
+  stragglers: '23:01:56Z(+1) / 23:30:42Z(+1) / 00:47:21Z(+1)'
+  error_buckets_1800s_driver_log_basis: [0, 30, 204, 5, 65, 348, 37, 25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 68]
+  error_kinds_driver_log_basis:
+    mysql_2013_read_timeout: 638
+    connection_empty_message_0x27: 146
+  last_window_error_mix: '51 条空消息 + 17 条 2013（延迟 max 15015.6 ms）⇒ 末窗构成与头部爆发窗不同（登记为观察，不下结论）'
+
+latency_distribution:
+  method: 'driver.log 第 2 字段 = 单次查询耗时(ms)；按「行序 → 事件序号 → metrics elapsed」二分映射后按 1800 s 分桶'
+  total_ok_samples: 479855
+  samples_ge_15s: 0            # 成功样本中 >= 15,000 ms 的 = 0 个
+  max_ms: 14964.2
+  p50_first_ms: 240.9
+  p50_last_ms: 2240.4
+  p90_first_ms: 626.6
+  p90_last_ms: 5349.2
+  p99_first_ms: 1301.0
+  p99_last_ms: 9670.6
+  p99_peak_ms: 12358.2
+  p99_peak_bucket_elapsed_s: '9000-10800'   # ← 同一桶的错误最多（348）⇒ 机制被强支持
+  buckets:
+    - {elapsed_s: '0-1800',     n: 92340, p50: 240.9,  p90: 626.6,  p99: 1301.0,  max: 2488.7,  err: 0}
+    - {elapsed_s: '1800-3600',  n: 35992, p50: 582.2,  p90: 1506.2, p99: 3471.3,  max: 14902.3, err: 30}
+    - {elapsed_s: '3600-5400',  n: 21281, p50: 754.3,  p90: 2120.0, p99: 8624.0,  max: 14556.8, err: 204}
+    - {elapsed_s: '5400-7200',  n: 26937, p50: 843.9,  p90: 2093.5, p99: 3902.8,  max: 14667.1, err: 5}
+    - {elapsed_s: '7200-9000',  n: 17122, p50: 1169.1, p90: 3221.1, p99: 7066.5,  max: 14873.5, err: 65}
+    - {elapsed_s: '9000-10800', n: 9460,  p50: 1314.5, p90: 4789.6, p99: 12358.2, max: 14964.2, err: 348}
+    - {elapsed_s: '10800-12600',n: 18847, p50: 1157.5, p90: 2929.9, p99: 5775.8,  max: 13570.4, err: 37}
+    - {elapsed_s: '12600-14400',n: 22506, p50: 1044.7, p90: 2488.4, p99: 4279.0,  max: 11629.0, err: 25}
+    - {elapsed_s: '21600-23400',n: 14798, p50: 1545.1, p90: 3832.8, p99: 6940.5,  max: 12267.7, err: 0}
+    - {elapsed_s: '32400-34200',n: 12556, p50: 1864.8, p90: 4521.1, p99: 7664.8,  max: 13792.2, err: 0}
+    - {elapsed_s: '41400-43200',n: 11055, p50: 2128.0, p90: 5160.1, p99: 9090.5,  max: 13907.0, err: 0}
+    - {elapsed_s: '43200-44100',n: 5111,  p50: 2240.4, p90: 5349.2, p99: 9670.6,  max: 14715.9, err: 68}
+
+rss_vs_disk:
+  rss_track_mb:
+    - {elapsed_s: 15,    rss_mb: 191.8}
+    - {elapsed_s: 3145,  rss_mb: 445.9}
+    - {elapsed_s: 6295,  rss_mb: 541.6}
+    - {elapsed_s: 9443,  rss_mb: 611.3}
+    - {elapsed_s: 12598, rss_mb: 762.6}
+    - {elapsed_s: 15725, rss_mb: 805.4}
+    - {elapsed_s: 18852, rss_mb: 843.1}
+    - {elapsed_s: 21981, rss_mb: 867.5}
+    - {elapsed_s: 25110, rss_mb: 870.1}
+    - {elapsed_s: 28239, rss_mb: 918.1}
+    - {elapsed_s: 31369, rss_mb: 916.3}
+    - {elapsed_s: 34499, rss_mb: 978.3}
+    - {elapsed_s: 37629, rss_mb: 980.6}
+    - {elapsed_s: 40760, rss_mb: 1029.8}
+    - {elapsed_s: 43892, rss_mb: 1044.7}
+  data_dir_bytes: 28125316
+  data_dir_files: 10
+  data_dir_stable_over_20s: true
+  data_dir_breakdown:
+    sbtest1.json: 11510057
+    sqlrustgo.wal: 16611875
+    others: 3384
+  conclusion: 'RSS 12 h +853 MB 而落盘数据整轮几乎不变（27 MB 且不增长）⇒「表变大导致查询变慢」被排除 ⇒ 增长是内存内的'
+  candidate_site: 'crates/storage/src/file_storage.rs 的 tx_undo_log: Vec<TxUndoEntry>（只读参考，未改任何 crates 代码）'
+  mechanism: 未定性   # 不预判
+
+segments_1800s_style:
+  - {elapsed_s: '0-2400',     qps: 44.77, errors: 0,   load1_max: 2.39,  rss_end: 414.1}
+  - {elapsed_s: '2400-4500',  qps: 12.48, errors: 234, load1_max: 40.73, rss_end: 478.2}
+  - {elapsed_s: '4500-9000',  qps: 13.12, errors: 70,  load1_max: 66.34, rss_end: 623.1}
+  - {elapsed_s: '9000-10800', qps: 5.23,  errors: 348, load1_max: 28.99, rss_end: 623.9}
+  - {elapsed_s: '10800-21600',qps: 10.59, errors: 62,  load1_max: 36.19, rss_end: 841.7}
+  - {elapsed_s: '21600-36000',qps: 7.72,  errors: 0,   load1_max: 7.45,  rss_end: 997.6}
+  - {elapsed_s: '36000-44060',qps: 6.34,  errors: 3,   load1_max: 33.60, rss_end: 1012.3}
+  reading: '吞吐 44.77 → 6.34 q/s（约 1/7）；21600-36000 段 load1 max 仅 7.45 且 0 错 ⇒ 吞吐衰减不能只用宿主争用解释'
+
+measurement_defects:
+  counter_lag_last_bucket:
+    what: 'metrics 累计 driver_q/driver_e 在轮次最后 15 分钟滞后于 driver.log 全量计数'
+    buckets_0_to_23: 'ΔQ = 0 且 ΔE = 0（逐桶完全一致，覆盖 98.2 % 轮次时长）'
+    bucket_24: {driverQ: 5111, metricsQ: 5051, dQ: -60, driverE: 68, metricsE: 1, dE: -67}
+    totals: {driver_q: 479855, metrics_q: 479795, driver_e: 784, metrics_e: 717}
+    which_is_used_for_verdict: 'metrics 口径 717（与 armA.log / supervisor.log / STOPPED_BY_AGENT.txt 三方一致）；driver.log 全量 784 作为独立计数一并登记'
+    impact_on_verdict: '无 —— 两个口径都远超 0 错门槛'
+    mechanism: 未定性   # 形态与「采样器末段计数快照未刷新 / 逐次重扫整份日志追不上」一致；不预判
+  dmesg_unreadable:
+    what: '本账号 dmesg 读不到内核环形缓冲'
+    evidence: 'dmesg → "read kernel buffer failed: Operation not permitted"；/proc/sys/kernel/dmesg_restrict = 1'
+    corrects: 'GA_RELEASE_REPORT.md §7.23.3 与 §7.24.4 宿主行里的「dmesg 无 OOM/panic/watchdog/thermal」—— 那是**空读**，不是阴性证据'
+    still_true: '「宿主未重启」不变（由 boot_id / uptime -s / journalctl --list-boots / 心跳连续性独立支撑）'
+    new_basis_for_not_oom: 'earlyoom 无 kill 记录 + systemd-oomd masked + OOM-guard cron 无 kill 记录 + /proc/meminfo（MemAvailable 408 GB）'
+    lesson: '引用 dmesg 作阴性证据前必须先验证可读性，否则写「不可读」而不是「无命中」'
+
+artifacts_sha256:
+  armA/metrics.csv: 9bb1a3679c74d64e99dcfc782317b075708cb79b72c8f25508d0a6fa0a459c09
+  armA/driver.log: d6173ab494765b4410c1933af295d342af76a6034d440f781b649a72f0b6ccce
+  armA/server.log: 425b0a4d10b3fcbc5a0b15ed944732e4fc50de1ddee97c310d0e252dac94f3c9
+  armA/armA.log: 0841a74346f61cee632c8aad7aab7b944b2c83eccbd49cfd789834b251908f91
+  armB/armB.log: b361dd40e968ba0b94e3c2c66c81c16de72ede2c4753217e1704d3e3602e536b
+  heartbeat.jsonl: 07a916f0df7f8826da25bff8af17617d1bd04150efd7a329fd33b0ff34d909d7
+  soak.log: f8d85a8b8d6f3be03607888e04fd300e0aef7f3d5e20ba383343bbe37d00c902
+  supervisor.log: f8d85a8b8d6f3be03607888e04fd300e0aef7f3d5e20ba383343bbe37d00c902
+  STARTED.json: c7cc965ed9d806773619e9787f6feb621e281765e1270e9a62235b35f59cc7af
+  STOPPED_BY_AGENT.txt: 74ec8b760e47b6a059e3adf60f5bd6fff6393fa282c9c932c28ef3cc5f9e73d2
+  launcher.log: c1c3eec29f0df365f4bce0096b4d3a653f5cc6ee31abb37e7e64a1821f1fec80
+artifacts_bytes:
+  armA/metrics.csv: 181103
+  armA/driver.log: 12036087
+  armA/server.log: 10438
+  armA/armA.log: 291467
+  armB/armB.log: 876
+  heartbeat.jsonl: 341803
+  soak.log: 74599
+  supervisor.log: 74599
+  STARTED.json: 1019
+  STOPPED_BY_AGENT.txt: 625
+  launcher.log: 2435
+
+successors:
+  r3:
+    run_id: '20261119-168h-v410-r3'
+    port: 3412
+    frozen_commit: 680418e9f931e3f2423377ff4692a707ff5d60c0
+    started_utc: '2026-11-19T01:11:50Z'
+    stopped_utc: '2026-11-19T03:11:27Z'
+    stop_evidence: 'sudo 日志逐条：kill -INT 4194283 (03:11:27Z) → kill -INT 4194091 (03:11:28Z) → kill -KILL 4194283 (03:11:30Z) → kill -KILL 4194091 (03:11:30Z)；随后 03:11:37Z 在同一 checkout 目录 git checkout -B soak/v410-r4、03:11:41Z cargo build --release'
+    final_state: {elapsed_s: 7207, driver_q: 183668, driver_e: 7, panic_count: 00, rc: 'armA rc=2 / armB rc=143'}
+    verdict: INCOMPLETE（被显式停止）
+  r4:
+    run_id: '20261119-168h-v410-r4'
+    port: 3413
+    frozen_commit: 93ac1d427ec0694f613da8470a88003db08b9f53
+    binary_sha256: 910029ce1f0658e1028fbfad12d7f3d109fe6516e8ef303d03abefa06daffa33
+    started_utc: '2026-11-19T03:28:01Z'
+    planned_end_utc: '2026-11-26T03:28:01Z'
+    verify_at_start: '43,192 查 / 0 错 / 315.3 q/s / 0.000 %'
+    exclusivity_caveat: '独占探针字段 root_compile_or_test_procs 实为「root 属主的 rustc|cargo|rust-lld|rustdoc」计数 ⇒ 对非 root 编译与非 Rust 外来负载（如 strata --serve，24-37 核）完全不可见；r4 起跑后 27 个样本该字段全为 0，但同期 load1 达 31.46'
+
+owner_blockers:
+  - '权威 0 错 168 h 需要独占宿主（B1f）—— 但独占只解决宿主争用这一条路径，不消除服务端侧退化 ⇒ 独占宿主 + 长时跑满 + 监控 RSS/表规模/单查询 p99 三者要一起'
+  - '独占判据要换尺：按「任何 uid 的非本轮进程占用 CPU/IO」重做（srg-soak-cpu-sampler 已可按 uid 抓）；属主批准后再改 scripts/soak/'
+  - '宿主非正常停止的触发者仍未定性（B1e）—— 本轮新增线索：主动停轮是另一条 Agent 线用 sudo 显式 kill，与「宿主自停」是两回事'
+  - '安全补丁更新窗口（自动升级已按属主 2026-11-18T08:27Z 批准关闭）'
+  - '35 项 GA 门禁需在最终 tip 重跑'
+  - 'release/v4.1.0 + v4.1.0 tag 待条件达成（属主已明确「暂不创建，等条件达成」）'
+scope_note: '本归档与本轮提交**未改任何判据、未抬阈值、未改 35 项门禁分母**；只新增 docs/ 与 audit/ 下的材料'
