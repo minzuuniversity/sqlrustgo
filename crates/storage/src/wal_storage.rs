@@ -1403,7 +1403,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .as_secs(),
                 table_name: None,
             };
-            let entry = entry;
             // #5317: route through `wal_do`. The manager stamps the
             // entry and reports the LSN back, so this layer and the log
             // file share ONE LSN space.
@@ -1443,7 +1442,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .as_secs(),
                 table_name: None,
             };
-            let entry = entry;
             // #5317: route through `wal_do`. The manager stamps the
             // entry and reports the LSN back, so this layer and the log
             // file share ONE LSN space.
@@ -1519,7 +1517,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .as_secs(),
                 table_name: None,
             };
-            let entry = entry;
             // #5317: route through `wal_do`. The manager stamps the
             // entry and reports the LSN back, so this layer and the log
             // file share ONE LSN space.
