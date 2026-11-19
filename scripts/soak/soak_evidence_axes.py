@@ -100,8 +100,8 @@ def read_metrics(path: str) -> List[dict]:
     return rows
 
 
-def read_driver_log(path: str) -> Tuple[List[Tuple[float, str]], List[Tuple[float, str]]]:
-    """读 driver.log → (Q 行列表, E 行列表)。
+def read_driver_log(path: str) -> Tuple[List[Tuple[float, str]], List[Tuple[float, str]], Dict[str, int]]:
+    """读 driver.log → (Q 行列表, E 行列表, 各 kind 的计数)。
 
     行格式（v400 驱动）：
         Q,<latency_ms>,<thread_id>,<query_kind>,<row_count>
@@ -110,8 +110,9 @@ def read_driver_log(path: str) -> Tuple[List[Tuple[float, str]], List[Tuple[floa
     """
     qs: List[Tuple[float, str]] = []
     es: List[Tuple[float, str]] = []
+    kinds: Dict[str, int] = defaultdict(int)
     if not os.path.exists(path):
-        return qs, es
+        return qs, es, kinds
     with open(path, encoding="utf-8", errors="replace") as f:
         for raw in f:
             line = raw.strip()
@@ -128,11 +129,12 @@ def read_driver_log(path: str) -> Tuple[List[Tuple[float, str]], List[Tuple[floa
             except ValueError:
                 continue
             kind = parts[3] if len(parts) > 3 else ""
+            kinds[kind] += 1
             if tag == "Q":
                 qs.append((latency, kind))
             else:
                 es.append((latency, kind))
-    return qs, es
+    return qs, es, kinds
 
 
 def read_data_size(path: str) -> List[dict]:
@@ -195,7 +197,7 @@ def main(argv: List[str]) -> int:
     server_log = os.path.join(ad, "armA", "server.log")
 
     metrics = read_metrics(metrics_path)
-    qs, es = read_driver_log(driver_path)
+    qs, es, kinds = read_driver_log(driver_path)
     dsize = read_data_size(args.data_size_jsonl)
 
     if not metrics and not qs:
@@ -289,7 +291,13 @@ def main(argv: List[str]) -> int:
     }
 
     # ---- 3. 表规模 --------------------------------------------------------
-    table_axis: Dict[str, object] = {"collected": bool(dsize)}
+    # 行数增长：驱动每次 insert 追加一行 ⇒ insert 查询数 = 本轮新增行数
+    inserts = kinds.get("insert", 0)
+    table_axis: Dict[str, object] = {
+        "collected": bool(dsize) or bool(inserts),
+        "insert_queries": inserts,
+        "insert_source": "driver.log 的 Q 行 kind=insert 计数（采样器不查库，见 soak_data_size_sampler.py 的说明）",
+    }
     if dsize:
         sizes = [d.get("bytes") for d in dsize if isinstance(d.get("bytes"), (int, float))]
         rows_ = [d.get("rows") for d in dsize if isinstance(d.get("rows"), (int, float))]
@@ -298,10 +306,9 @@ def main(argv: List[str]) -> int:
             "bytes_first": sizes[0] if sizes else None,
             "bytes_last": sizes[-1] if sizes else None,
             "bytes_max": max(sizes) if sizes else None,
-            "rows_first": rows_[0] if rows_ else None,
-            "rows_last": rows_[-1] if rows_ else None,
+            "files_last": dsize[-1].get("files") if dsize else None,
         })
-    else:
+    if not dsize:
         table_axis["reason"] = "未提供 --data-size-jsonl（配套采样器未运行或产物不在仓外路径）"
 
     # ---- 5. 汇总事实 ------------------------------------------------------
@@ -420,7 +427,10 @@ def render_md(out: dict) -> str:
         a(f"| 采样数 | {t2['samples']} |")
         a(f"| 数据目录占用 首→末 | {t2.get('bytes_first')} → {t2.get('bytes_last')} bytes |")
         a(f"| 峰值 | {t2.get('bytes_max')} bytes |")
-        a(f"| 行数 首→末 | {t2.get('rows_first')} → {t2.get('rows_last')} |")
+        a(f"| 末态文件数 | {t2.get('files_last')} |")
+    a("")
+    a(f"**新增行数（insert 查询数）= {t2.get('insert_queries')}**"
+      f" —— 来源：{t2.get('insert_source')}")
     a("")
     a("---")
     a("")
