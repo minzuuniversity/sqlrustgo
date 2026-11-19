@@ -256,3 +256,37 @@ sed -n '215,222p' \
 3. **门槛口径冲突** —— `STAGE_CONFIG.yaml` ALPHA 的 4 条 exit_criteria（其「No P0 bugs open」按台账读是 49 条）与 `docs/releases/v4.1.0/STAGE.yaml` 的 5 条 `exit_criteria.alpha_to_beta` 不一致，本线按**更具体的 5 条**执行并**登记分歧**，不自行择一放宽。
 4. **CI 开关** —— `has_actions=false` 何时恢复（影响 #5461 这类「配置已对、执行未发生」的项）。
 5. **r5 是否提前收尾** —— 本轮不可能合格（判据⑤ + 根因需改 `crates/`），是否提前释放 252 属属主授权域。
+
+---
+
+## 9. 补记（2026-11-19 晚，同一轮内）
+
+### 9.1 `check_gate_test_integrity.sh` 复跑 ⇒ **rc=0 PASS**
+
+§6 里记的「rc=124（120 s 超时，非失败）」是**我自己 harness 的 120 s 超时**，不是门禁失败。复跑（预算 900 s）结果 **rc=0**，关键断言原文：
+
+```
+P16 step 2.5/3: verify no `cargo test ... || true` masks in gate scripts
+  ✅ PASS: no `cargo test ... || true` masking in any gate script
+P16 step 2.6/3: verify no swallowed exit code is read afterwards
+  ✅ PASS: no swallowed exit code is read afterwards in any gate script
+  ✅ PASS: P16: 48 gate tests, 0 NEW #[ignore] (baseline-tolerated: 2 pre-existing #[ignore] under ADR-008 exceptions)
+```
+
+⇒ **本 PR 对 G9/G10 的改写（`|| G9_RC=$?` 取代 `|| true`、全量输出落盘）被该门禁显式认可**。
+
+**并发口径的核实（本线自查，避免发布不实自纠）**：复跑期间曾担心它与 019 认证轮抢 CPU，**核实后不成立** —— 该脚本**只做文本扫描，不执行 cargo**（源码中无任何 cargo 调用；日志里 `Compiling` / `Finished test` / `test result` 命中数 = **0**）。它慢的原因是纯文本扫描量（483 个 `[[test]]` 目标 + 全部 workflow + 全部 gate 脚本 + ignore registry），**不是重量门禁** ⇒ **未违反「认证轮期间不得并发重量门禁」**。
+
+### 9.2 本线的两处自纠（工具残留）
+
+1. **A/B 桩 cargo 的 `sleep 3600` 泄漏**：§3.2 场景 1 的桩 cargo 以 `sleep 3600` 模拟「被 timeout 杀掉」，但 `timeout` 的 SIGTERM 只送到脚本本身，**其 `sleep` 子进程活了下来**，以孤儿进程形态存活约 **12 分钟**（PID 63682 / 63684）。它是一个**空闲 sleep（不占 CPU）**，但确实是本线的残留 ⇒ **已按具体 PID 清理**（未用 `pkill -f`）。教训：桩脚本里模拟长跑时，必须让桩自己处理 SIGTERM（`trap`）或改用「限时 sleep + 显式 exit」。
+2. **一个自己写错的变量前缀**：第一版 `release_line_prev_tag` 写成 `git tag -l "v${prev}*"`，而 `prev` **自带 `v` 前缀** ⇒ 模式变成 `vv4.0.0*` ⇒ 匹配不到任何 tag ⇒ D5-5 的窗口退化成 `HEAD`（1172 笔，弱判据）。**在合入前已由 A/B 复跑发现并修正**为 `"${prev}*"` ⇒ 窗口变为 `v4.0.0-final..HEAD`（54 笔，有意义窗口）。
+
+### 9.3 §6 的状态更新
+
+| §6 原记 | 现况 |
+|---|---|
+| `check_gate_test_integrity.sh` rc=124（120 s 超时，非失败）⇒ 不宣称已通过 | **已复跑 rc=0 PASS**（见 §9.1） |
+| **ALPHA 10 门禁在当前 tip 的复跑取证** | **仍未做**（等 CPU 窗口；019 认证轮仍在跑） |
+| **#5580 的 cargo 级验证**（G9/G10 真跑） | **仍未做**（等 CPU 窗口；桩 A/B 不能替代） |
+| Gitea issue 关闭动作 | **#5364 / #5368 已由 PR #5887 关闭**（当期 open P0 **29 → 27**）；其余 27 条**未关闭** |
