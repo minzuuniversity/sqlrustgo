@@ -459,12 +459,44 @@ fn key_of(row: &[Value]) -> Vec<Value> {
 /// Captures a pre-tx row state so ROLLBACK can revert it. Replayed in
 /// reverse insertion order during rollback (last-in / first-out),
 /// matching the standard SQL semantics for nested-row restore.
+///
+/// # #5891: the entry names the DATABASE as well as the table
+///
+/// Every variant carries the `db` the write happened in, next to the bare
+/// `table` name. The entry used to name only the table, while the replay
+/// side resolved that table against a hard-coded `DEFAULT_DATABASE` — so a
+/// write into any other database was logged as if it had happened in
+/// `default`, and the ROLLBACK went looking for it in `default`, found
+/// nothing, and undid **nothing**. The row survived the rollback and kept
+/// occupying its primary key, so the next INSERT of that key was rejected
+/// as a duplicate.
+///
+/// The `db` is stored exactly as the write path received it (same bytes,
+/// same case) so that the replay composes the same internal key the write
+/// path composed — `scoped_key(db, table)` — and so that `dirty_tables`
+/// keeps receiving the `(db, table)` pair it receives today.
+///
+/// # Persistence: this log never reaches the disk
+///
+/// `tx_undo_log` lives in [`WriteState`], a plain in-memory
+/// `parking_lot::RwLock`. Neither `UndoOp`, nor `TxUndoEntry`, nor
+/// `WriteState` derives `Serialize`, and nothing writes them to a file:
+/// the on-disk records are the WAL entries and the change log, and neither
+/// replays undo ops. The WAL already carries the database in its own
+/// field (`wal_row_entry(db, …)` → `WalEntry::database_name`).
+///
+/// So there is **no on-disk undo format to stay backward-compatible with**:
+/// adding the `db` field changes an in-memory struct only, and a restarted
+/// process simply begins with an empty undo log. A WAL written before this
+/// change is still read by the same code as before, because the WAL
+/// format is untouched by it.
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // BufferedInsert reserved for a future per-INSERT undo path
 enum UndoOp {
     /// UPDATE on a row at `row_idx` in `table`. `original` is the row
     /// value BEFORE the UPDATE statement modified it.
     UpdateRow {
+        db: String,
         table: String,
         row_idx: usize,
         original: Vec<crate::engine::Value>,
@@ -472,17 +504,20 @@ enum UndoOp {
     /// DELETE on a row at `row_idx`. ROLLBACK re-inserts the row at
     /// the same index (or end-of-table if subsequent INSERTs shifted it).
     DeleteRow {
+        db: String,
         table: String,
         row_idx: usize,
         original: Vec<crate::engine::Value>,
     },
     /// DELETE-all (filters empty). ROLLBACK restores the full row set.
     DeleteAll {
+        db: String,
         table: String,
         original_rows: Vec<Vec<crate::engine::Value>>,
     },
     /// INSERT inside a tx. ROLLBACK removes the buffered row.
     BufferedInsert {
+        db: String,
         table: String,
         row: Vec<crate::engine::Value>,
     },
@@ -500,6 +535,7 @@ enum UndoOp {
     /// matched no buffer. 100 committed + 100 rolled-back inserts all
     /// survived, and the test saw 200.
     BufferedDelete {
+        db: String,
         table: String,
         row: Vec<crate::engine::Value>,
     },
@@ -516,6 +552,7 @@ enum UndoOp {
     /// updated again — the buffered copy has nothing left to undo, and
     /// the `tables` copy is covered by the ordinary `UpdateRow` entry.
     BufferedUpdate {
+        db: String,
         table: String,
         post: Vec<crate::engine::Value>,
         original: Vec<crate::engine::Value>,
@@ -5079,6 +5116,7 @@ impl FileStorage {
                     s.tx_undo_log.push(TxUndoEntry {
                         tx_id,
                         op: UndoOp::BufferedInsert {
+                            db: db.to_string(),
                             table: table.to_string(),
                             row: row.clone(),
                         },
@@ -5464,47 +5502,38 @@ impl FileStorage {
         for entry in mine.into_iter().rev() {
             match entry.op {
                 UndoOp::UpdateRow {
+                    db,
                     table,
                     row_idx,
                     original,
                 } => {
-                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        crate::engine::DEFAULT_DATABASE,
-                        &table,
-                    )) {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(&db, &table)) {
                         if row_idx < data.rows.len() {
                             data.rows[row_idx] = original;
-                            s.dirty_tables
-                                .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
+                            s.dirty_tables.insert((db, table));
                         }
                     }
                 }
                 UndoOp::DeleteRow {
+                    db,
                     table,
                     row_idx,
                     original,
                 } => {
-                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        crate::engine::DEFAULT_DATABASE,
-                        &table,
-                    )) {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(&db, &table)) {
                         let idx = row_idx.min(data.rows.len());
                         data.rows.insert(idx, original);
-                        s.dirty_tables
-                            .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
+                        s.dirty_tables.insert((db, table));
                     }
                 }
                 UndoOp::DeleteAll {
+                    db,
                     table,
                     original_rows,
                 } => {
-                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        crate::engine::DEFAULT_DATABASE,
-                        &table,
-                    )) {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(&db, &table)) {
                         data.rows = original_rows;
-                        s.dirty_tables
-                            .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
+                        s.dirty_tables.insert((db, table));
                     }
                 }
                 // #5055 / #5060: the row was inserted by *this*
@@ -5512,16 +5541,16 @@ impl FileStorage {
                 // goes back out of the buffer. Keyed by value, not
                 // position — the buffer is drained and refilled by
                 // concurrent work.
-                UndoOp::BufferedInsert { table, row } => {
-                    let key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, &table);
+                UndoOp::BufferedInsert { db, table, row } => {
+                    let key = crate::engine::scoped_key(&db, &table);
                     if let Some(buffered) = s.insert_buffer.get_mut(&key) {
                         if let Some(pos) = buffered.iter().position(|r| *r == row) {
                             buffered.remove(pos);
                         }
                     }
                 }
-                UndoOp::BufferedDelete { table, row } => {
-                    let key = crate::engine::scoped_key(crate::engine::DEFAULT_DATABASE, &table);
+                UndoOp::BufferedDelete { db, table, row } => {
+                    let key = crate::engine::scoped_key(&db, &table);
                     s.insert_buffer.entry(key).or_default().push(row);
                 }
                 // #5060: put the pre-image back where the post-image
@@ -5529,14 +5558,15 @@ impl FileStorage {
                 // has moved on (flushed, or updated again) and the
                 // `tables` copy is covered by `UpdateRow`.
                 UndoOp::BufferedUpdate {
+                    db,
                     table,
                     post,
                     original,
                 } => {
-                    if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                        crate::engine::DEFAULT_DATABASE,
-                        &table,
-                    )) {
+                    if let Some(buffered) = s
+                        .insert_buffer
+                        .get_mut(&crate::engine::scoped_key(&db, &table))
+                    {
                         if let Some(pos) = buffered.iter().position(|r| *r == post) {
                             buffered[pos] = original;
                         }
@@ -5614,6 +5644,7 @@ impl FileStorage {
                     st.tx_undo_log.push(TxUndoEntry {
                         tx_id,
                         op: UndoOp::BufferedUpdate {
+                            db: db.to_string(),
                             table: table.to_string(),
                             post: post.clone(),
                             original: pre.clone(),
@@ -5692,6 +5723,7 @@ impl FileStorage {
                     st.tx_undo_log.push(TxUndoEntry {
                         tx_id,
                         op: UndoOp::BufferedUpdate {
+                            db: db.to_string(),
                             table: table.to_string(),
                             post: post.clone(),
                             original: pre.clone(),
@@ -5748,6 +5780,7 @@ impl FileStorage {
                             s.tx_undo_log.push(TxUndoEntry {
                                 tx_id,
                                 op: UndoOp::BufferedDelete {
+                                    db: db.to_string(),
                                     table: table_name.clone(),
                                     row: row.clone(),
                                 },
@@ -5813,6 +5846,7 @@ impl FileStorage {
                         s.tx_undo_log.push(TxUndoEntry {
                             tx_id,
                             op: UndoOp::DeleteAll {
+                                db: db.to_string(),
                                 table: table.to_string(),
                                 original_rows: snap,
                             },
@@ -5827,6 +5861,7 @@ impl FileStorage {
                                 s.tx_undo_log.push(TxUndoEntry {
                                     tx_id,
                                     op: UndoOp::DeleteRow {
+                                        db: db.to_string(),
                                         table: table.to_string(),
                                         row_idx: idx,
                                         original: row.clone(),
@@ -5984,6 +6019,7 @@ impl FileStorage {
                             s.tx_undo_log.push(TxUndoEntry {
                                 tx_id,
                                 op: UndoOp::DeleteAll {
+                                    db: db.to_string(),
                                     table: table_name.clone(),
                                     original_rows: data.rows.clone(),
                                 },
@@ -5994,6 +6030,7 @@ impl FileStorage {
                                     s.tx_undo_log.push(TxUndoEntry {
                                         tx_id,
                                         op: UndoOp::DeleteRow {
+                                            db: db.to_string(),
                                             table: table_name.clone(),
                                             row_idx: idx,
                                             original: row.clone(),
@@ -6010,6 +6047,7 @@ impl FileStorage {
                             s.tx_undo_log.push(TxUndoEntry {
                                 tx_id,
                                 op: UndoOp::BufferedDelete {
+                                    db: db.to_string(),
                                     table: table_name.clone(),
                                     row: row.clone(),
                                 },
@@ -8077,77 +8115,66 @@ impl FileStorage {
         Self::with_write_lock(self, |s| {
             match op {
                 UndoOp::UpdateRow {
+                    db,
                     table,
                     row_idx,
                     original,
                 } => {
-                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        crate::engine::DEFAULT_DATABASE,
-                        &table,
-                    )) {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(&db, &table)) {
                         if row_idx < data.rows.len() {
                             data.rows[row_idx] = original;
-                            s.dirty_tables
-                                .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
+                            s.dirty_tables.insert((db, table));
                         }
                     }
                 }
                 UndoOp::DeleteRow {
+                    db,
                     table,
                     row_idx,
                     original,
                 } => {
-                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        crate::engine::DEFAULT_DATABASE,
-                        &table,
-                    )) {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(&db, &table)) {
                         let idx = row_idx.min(data.rows.len());
                         data.rows.insert(idx, original);
-                        s.dirty_tables
-                            .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
+                        s.dirty_tables.insert((db, table));
                     }
                 }
                 UndoOp::DeleteAll {
+                    db,
                     table,
                     original_rows,
                 } => {
-                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(
-                        crate::engine::DEFAULT_DATABASE,
-                        &table,
-                    )) {
+                    if let Some(data) = s.tables.get_mut(&crate::engine::scoped_key(&db, &table)) {
                         data.rows = original_rows;
-                        s.dirty_tables
-                            .insert((crate::engine::DEFAULT_DATABASE.to_string(), table));
+                        s.dirty_tables.insert((db, table));
                     }
                 }
-                UndoOp::BufferedInsert { table, row } => {
-                    if let Some(buf) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                        crate::engine::DEFAULT_DATABASE,
-                        &table,
-                    )) {
+                UndoOp::BufferedInsert { db, table, row } => {
+                    if let Some(buf) = s
+                        .insert_buffer
+                        .get_mut(&crate::engine::scoped_key(&db, &table))
+                    {
                         buf.retain(|r| r != &row);
                     }
                 }
                 // #5059: mirror of `rollback_transaction`'s arm.
-                UndoOp::BufferedDelete { table, row } => {
+                UndoOp::BufferedDelete { db, table, row } => {
                     s.insert_buffer
-                        .entry(crate::engine::scoped_key(
-                            crate::engine::DEFAULT_DATABASE,
-                            &table,
-                        ))
+                        .entry(crate::engine::scoped_key(&db, &table))
                         .or_default()
                         .push(row);
                 }
                 // #5060: mirror of `rollback_transaction`'s arm.
                 UndoOp::BufferedUpdate {
+                    db,
                     table,
                     post,
                     original,
                 } => {
-                    if let Some(buffered) = s.insert_buffer.get_mut(&crate::engine::scoped_key(
-                        crate::engine::DEFAULT_DATABASE,
-                        &table,
-                    )) {
+                    if let Some(buffered) = s
+                        .insert_buffer
+                        .get_mut(&crate::engine::scoped_key(&db, &table))
+                    {
                         if let Some(pos) = buffered.iter().position(|r| *r == post) {
                             buffered[pos] = original;
                         }
