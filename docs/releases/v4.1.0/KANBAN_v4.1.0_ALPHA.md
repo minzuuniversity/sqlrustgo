@@ -4,6 +4,8 @@
 - 阶段状态 SSOT：`docs/releases/v4.1.0/STAGE.yaml`（`current_stage: "ALPHA"`）——本看板不复制它，只引用它
 - 看板制度：`docs/governance/STAGE_KANBAN.md`　机读台账：`KANBAN_v4.1.0_ALPHA.jsonl`　看板 ISSUE：**#5592**
 - 建立：2026-11-04，`mcode-macmini`
+
+> ⚠️ **〔更正〕GA-SOAK-27 行内的「r5 二进制 sha256」为**启动准备段 workspace 全量构建**的测量值、**不是 r5 的运行产物**；r5 已于 2026-11-19T04:42:04Z 起跑，**运行产物 sha256 = `4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`**（`STARTED.json` 的 `soaked_binary_sha256`）⇒ 以 GA-SOAK-29 与 `GA_RELEASE_REPORT.md` §7.29 为准。
 <!-- LEDGER:BEGIN (generated from KANBAN_v4.1.0_ALPHA.jsonl — 不要手改本段) -->
 
 - 台账计数：未开始 4 / 进行中 21 / 待复核 28 / 完成 117 / 阻塞 37 / 合计 207

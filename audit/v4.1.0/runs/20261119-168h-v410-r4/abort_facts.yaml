@@ -20,7 +20,7 @@ server_gone_at_utc: '2026-11-19T04:18:42Z'
 heartbeat_last_beat_utc: '2026-11-19T04:18:56Z'
 heartbeat_exit_record_utc: '2026-11-19T04:19:11Z'
 verdict: INCOMPLETE — 被主动停掉以换轮（r4 → r5）；非跑满、非通过、非服务端崩溃
-zero_error_threshold: **本轮 0 错成立**（累计 0 错 / 0 panic）—— 但 168 h 未跑满 ⇒ 不构成 GA 证据
+zero_error_threshold: '**本轮 0 错成立**（累计 0 错 / 0 panic）—— 但 168 h 未跑满 ⇒ 不构成 GA 证据'
 
 final_state:
   elapsed_s: 3244
@@ -94,6 +94,11 @@ successor:
   port: 3414
   frozen_commit: e2fcf73c2e0b4eb45d9c3379bf2ca9a01ca1869f   # = 当前 develop tip（含 #5868 clippy 修复）
   binary_sha256: f5ec5a67eb9655e8d837704eb30c66dc4ebb75e98aadfce08793acf337a47740
+  # 〔更正 2026-11-19T04:45Z〕上方 binary_sha256 是**启动准备段 workspace 全量构建**的
+  # 测量值、**不是 r5 的运行产物**；r5 实际运行产物 = 4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94
+  # （STARTED.json 的 soaked_binary_sha256，已与 252 现场文件复核一致）。
+  # 且 r5 冻结提交已改为 64269eaa0848c4d47485d1f45b1b91779502a089、已于 2026-11-19T04:42:04Z 起跑
+  # ⇒ 详见 GA_RELEASE_REPORT.md §7.29。
   build: '04:19:13Z 起 cargo build --release，2 m 21 s 完成'
   launcher_up_utc: '2026-11-19T04:21:35Z'
   status_at_probe: '04:22:35Z host QUIET load=1 foreign_cpu=88 % streak=1/10 waited=60 s ⇒ **仍在等安静窗口**，尚未起跑（3414 未监听）'
