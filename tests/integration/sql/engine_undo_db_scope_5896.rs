@@ -47,7 +47,7 @@
 
 use parking_lot::RwLock;
 use sqlrustgo::ExecutionEngine;
-use sqlrustgo_storage::MemoryStorage;
+use sqlrustgo_storage::{MemoryStorage, StorageEngine};
 use std::sync::Arc;
 
 /// A storage per call: these tests run in parallel by default and every
@@ -59,6 +59,19 @@ fn engine() -> ExecutionEngine<MemoryStorage> {
     let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let _ = n;
     ExecutionEngine::new(Arc::new(RwLock::new(MemoryStorage::new())))
+}
+
+/// An engine **plus** a handle to its storage.
+///
+/// The idempotence case below has to reproduce the storage backend's own
+/// half of a ROLLBACK, and the only way to do that from the outside is to
+/// put the row back through the storage API itself.
+fn engine_with_storage() -> (ExecutionEngine<MemoryStorage>, Arc<RwLock<MemoryStorage>>) {
+    static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let _ = n;
+    let storage = Arc::new(RwLock::new(MemoryStorage::new()));
+    (ExecutionEngine::new(storage.clone()), storage)
 }
 
 /// `d1` and `default` each hold a table `t` with one row.
@@ -149,6 +162,66 @@ fn rollback_restores_a_deleted_row_in_the_named_database_5896() {
         rows(&mut e, "d1"),
         vec![(10, 1)],
         "ROLLBACK must restore the row in d1, not in default"
+    );
+    assert_eq!(rows(&mut e, "default"), vec![(30, 1)], "default untouched");
+}
+
+/// The engine's replay must be **idempotent** with respect to the storage
+/// backend's own undo.
+///
+/// A ROLLBACK consults **two** undo logs: the engine's `UndoRecord` and
+/// the storage backend's own (`FileStorage` keeps a per-transaction
+/// `UndoOp` log and replays it from `rollback_transaction_lockfree_for`).
+/// Once both know which database the write happened in (#5891 / #5896 /
+/// #5897), **both** restore a deleted row — and a replay that merely
+/// *appends* leaves **two** copies of it behind.
+///
+/// The DELETE path is the only one where that shows. The INSERT path's
+/// engine undo *deletes* a row, and the UPDATE path's storage-side undo
+/// *assigns* by index — both are idempotent — but a DELETE is restored by
+/// an insert on both sides.
+///
+/// This case reproduces the backend's half of that interaction directly:
+/// it puts the deleted row back through the storage API (exactly what the
+/// backend's own undo does) and then lets the engine's ROLLBACK replay its
+/// records. The row must end up there **exactly once** — before the fix
+/// the replay appended a second copy.
+#[test]
+fn rollback_restores_a_deleted_row_exactly_once_when_the_backend_already_restored_it_5896() {
+    let (mut e, storage) = engine_with_storage();
+    seeded(&mut e);
+
+    e.execute("USE `d1`").unwrap();
+    e.execute("BEGIN").unwrap();
+    e.execute("DELETE FROM t WHERE id = 10").unwrap();
+    assert!(rows(&mut e, "d1").is_empty(), "gone inside the transaction");
+
+    // The storage backend's own undo puts the row back — this is the
+    // state the engine's replay then finds.
+    {
+        let mut s = storage.write();
+        s.insert_in_db(
+            "d1",
+            "t",
+            vec![vec![
+                sqlrustgo_storage::Value::Integer(10),
+                sqlrustgo_storage::Value::Integer(1),
+            ]],
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        rows(&mut e, "d1").len(),
+        1,
+        "the backend restored exactly one copy before the engine replayed"
+    );
+
+    e.execute("ROLLBACK").unwrap();
+
+    assert_eq!(
+        rows(&mut e, "d1"),
+        vec![(10, 1)],
+        "the engine's replay must leave exactly one copy of the restored row"
     );
     assert_eq!(rows(&mut e, "default"), vec![(30, 1)], "default untouched");
 }

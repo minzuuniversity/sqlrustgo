@@ -2002,6 +2002,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         key: _,
                         old_value,
                     } => {
+                        // #5898 (merge-state gate): restoring a deleted row
+                        // must be a **replace**, not an **append**.
+                        //
+                        // A ROLLBACK consults TWO undo logs: this one (the
+                        // engine-level `UndoRecord`) and the storage
+                        // backend's own (FileStorage's per-transaction
+                        // `UndoOp` log, replayed by
+                        // `rollback_transaction_lockfree_for`). Once both
+                        // know which database the write happened in
+                        // (#5891 / #5896 / #5897), **both** restore the row —
+                        // and a plain append left **two** copies of it
+                        // behind.
+                        //
+                        // The DELETE path was the only one that showed it:
+                        // the INSERT path's engine undo *deletes* a row
+                        // (idempotent) and the UPDATE path's storage-side
+                        // undo *assigns* by index (idempotent), but a
+                        // DELETE is restored by an insert on both sides.
+                        //
+                        // Deleting the target first makes the replay
+                        // idempotent: exactly one copy survives whether or
+                        // not the backend already restored it. Same shape
+                        // as the UPDATE variant below.
+                        //
+                        // The filter is the **full pre-image row**, not the
+                        // primary key: the key filter is matched
+                        // positionally from the first column, so on a table
+                        // whose primary key is not the leading column it
+                        // would address an unrelated row. The pre-image
+                        // is exact — it is the very row that was removed.
+                        storage
+                            .delete_in_db(db, table, &old_value)
+                            .map_err(|e| {
+                                format!("rollback delete on {}.{}: {}", db, table, e)
+                            })?;
                         storage
                             .insert_in_db(db, table, vec![old_value.clone()])
                             .map_err(|e| format!("rollback reinsert on {}.{}: {}", db, table, e))?;
