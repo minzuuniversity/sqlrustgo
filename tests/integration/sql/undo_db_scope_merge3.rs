@@ -36,33 +36,35 @@
 //! to leave a deleted row restored **twice** (#5905), because each side
 //! restored it on its own.
 //!
-//! ## The applicability probe
+//! ## Two independent judgements — there is no NOT-RUN state
 //!
-//! A suite that only passes on the merged tree cannot simply be asserted
-//! on the develop tip, so each case here first checks whether this tree
-//! carries the three fixes — and the check is made from **source
-//! markers**, not from behaviour.
+//! A suite that only holds on the merged tree must not be able to report
+//! success on a tree that has not been merged. So the gate is split into
+//! two halves that are **judged independently**:
 //!
-//! Why not from behaviour: a behavioural probe cannot tell "the fix is
-//! missing" apart from "the fix regressed" — both look like "the
-//! rollback did not restore the row" — and the second one must **fail**,
-//! not be skipped. With source markers the decision is made up front and
-//! the assertions then run **unconditionally**: once the markers are
-//! present, any behavioural difference is a test failure.
+//! * the **static** half (`merge_state_fix_markers_present_...`) checks
+//!   that the three fixes are present, by reading their source paths
+//!   (`UndoRecord::Delete`, `UndoOp::DeleteRow`, `TxLog`'s tuple head);
+//! * the **dynamic** half (the ten cases below) checks the resulting
+//!   ROLLBACK behaviour, and each case verifies the marks first and
+//!   **fails** if they are missing.
 //!
-//! So the suite has two states, not three:
+//! Why the marker check is by source and not by behaviour: a behavioural
+//! probe cannot tell "the fix is missing" apart from "the fix regressed"
+//! — both look like "the rollback did not restore the row" — and the
+//! second one must fail, not be skipped.
 //!
-//! * the markers are present ⇒ the assertions run and any mismatch is a
-//!   failure;
-//! * the markers are absent ⇒ the case reports **NOT-RUN** and returns
-//!   without asserting (same three-state convention the sibling
-//!   `quick_query` suite uses for its fixture-dependent case).
+//! Why there is no NOT-RUN: a tree without the three fixes genuinely has
+//! the wrong ROLLBACK semantics, so the gate must not report success for
+//! it. An earlier version reported NOT-RUN when the marks were absent;
+//! that state could be read as a pass, which is exactly what GA evidence
+//! must not allow. **The merge-state gate is satisfied only when it is
+//! green** — the static check passing and every behavioural assertion
+//! passing.
 //!
-//! A source file that cannot be read is a failure, not a skip: without
-//! the sources the evidence would be meaningless.
-//!
-//! For the GA evidence: a NOT-RUN here means the merge-state gate was
-//! **not** evaluated — it must never be counted as a pass.
+//! On the develop tip — before #5899 / #5902 / #5903 are merged — this
+//! gate is therefore **red on purpose**. That redness is the proof that
+//! the fixes are not in yet.
 //!
 //! ## Merge order
 //!
@@ -245,20 +247,32 @@ fn tree_carries_the_db_scope_fixes() -> bool {
         && block_carries(&engine, "pub struct TxLog", "String, String, Record")
 }
 
-/// Whether the assertions of this suite apply to the tree under test.
+/// Whether this tree carries the three database-scope fixes.
 ///
 /// Probed once per process: the answer cannot change while the suite
 /// runs, and reading the sources is not free.
 fn suite_applies() -> bool {
     static STATE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    let carries = *STATE.get_or_init(tree_carries_the_db_scope_fixes);
-    if !carries {
-        eprintln!(
-            "NOT-RUN: this tree does not carry the three database-scope fixes yet \
-             (#5891 / #5896 / #5897), so the merge-state assertions do not apply to it."
-        );
-    }
-    carries
+    *STATE.get_or_init(tree_carries_the_db_scope_fixes)
+}
+
+/// The **static** half of the gate, judged on its own.
+///
+/// A source marker proves only that the fix path EXISTS — it cannot prove
+/// the behaviour is right. The dynamic half below proves the behaviour.
+/// Both are judged independently, and a missing marker is a FAILURE, not a
+/// skip: a tree without the three fixes genuinely has the wrong ROLLBACK
+/// semantics, so the gate must not report success for it. (An earlier
+/// version reported NOT-RUN here; that state could be mistaken for a pass,
+/// which is exactly what the GA evidence must not allow.)
+#[test]
+fn merge_state_fix_markers_present_5891_5896_5897() {
+    assert!(
+        tree_carries_the_db_scope_fixes(),
+        "合并态门禁：三条库身份修复（#5891 存储层 / #5896 引擎层 / #5897 MemoryStorage）\
+         尚未全部合入 —— 本门禁要求它们同时到位（合并顺序：#5899 → #5902 → #5903 → 本 PR）。\
+         当前树缺失修复路径，ROLLBACK 语义尚未正确，因此判红而非跳过。"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -269,7 +283,10 @@ fn suite_applies() -> bool {
 #[test]
 fn file_backend_rollback_in_a_named_database_undoes_the_insert_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let (mut e, dir) = file_engine();
@@ -304,7 +321,10 @@ fn file_backend_rollback_in_a_named_database_undoes_the_insert_5891_5896_5897() 
 #[test]
 fn file_backend_rollback_in_a_named_database_restores_the_deleted_row_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let (mut e, dir) = file_engine();
@@ -341,7 +361,10 @@ fn file_backend_rollback_in_a_named_database_restores_the_deleted_row_5891_5896_
 #[test]
 fn file_backend_rollback_in_a_named_database_restores_the_updated_row_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let (mut e, dir) = file_engine();
@@ -377,7 +400,10 @@ fn file_backend_rollback_in_a_named_database_restores_the_updated_row_5891_5896_
 #[test]
 fn file_backend_rollback_in_a_named_database_leaves_default_intact_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let (mut e, dir) = file_engine();
@@ -416,7 +442,10 @@ fn file_backend_rollback_in_a_named_database_leaves_default_intact_5891_5896_589
 #[test]
 fn file_backend_rollback_to_savepoint_undoes_in_the_named_database_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let (mut e, dir) = file_engine();
@@ -455,7 +484,10 @@ fn file_backend_rollback_to_savepoint_undoes_in_the_named_database_5891_5896_589
 #[test]
 fn file_backend_rollback_in_the_default_database_still_undoes_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let (mut e, dir) = file_engine();
@@ -490,7 +522,10 @@ fn file_backend_rollback_in_the_default_database_still_undoes_5891_5896_5897() {
 #[test]
 fn memory_backend_rollback_in_a_named_database_undoes_the_insert_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let mut e = memory_engine();
@@ -523,7 +558,10 @@ fn memory_backend_rollback_in_a_named_database_undoes_the_insert_5891_5896_5897(
 #[test]
 fn memory_backend_rollback_in_a_named_database_restores_the_deleted_row_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let mut e = memory_engine();
@@ -555,7 +593,10 @@ fn memory_backend_rollback_in_a_named_database_restores_the_deleted_row_5891_589
 #[test]
 fn memory_backend_rollback_in_a_named_database_restores_the_updated_row_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let mut e = memory_engine();
@@ -588,7 +629,10 @@ fn memory_backend_rollback_in_a_named_database_restores_the_updated_row_5891_589
 #[test]
 fn memory_backend_rollback_in_the_default_database_still_undoes_5891_5896_5897() {
     if !suite_applies() {
-        return;
+        panic!(
+            "合并态门禁：三条库身份修复尚未全部合入，ROLLBACK 语义未正确 —— 判红而非跳过\
+             （合并顺序：#5899 → #5902 → #5903 → 本 PR）。"
+        );
     }
 
     let mut e = memory_engine();
