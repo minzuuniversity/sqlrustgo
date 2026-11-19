@@ -36,23 +36,33 @@
 //! to leave a deleted row restored **twice** (#5905), because each side
 //! restored it on its own.
 //!
-//! ## The three states
+//! ## The applicability probe
 //!
 //! A suite that only passes on the merged tree cannot simply be asserted
-//! on the develop tip, so each case here starts with a **probe** that
-//! classifies the tree it is running on:
+//! on the develop tip, so each case here first checks whether this tree
+//! carries the three fixes — and the check is made from **source
+//! markers**, not from behaviour.
 //!
-//! * **Ready** — the three database-scope fixes are in place and the
-//!   ROLLBACK behaves. The assertions run.
-//! * **Not yet fixed** — the fixes are not in place on this tree. The
-//!   case reports **NOT-RUN** and returns without asserting; the tree
-//!   simply is not the one this suite is about. (Same three-state
-//!   convention the sibling `quick_query` suite uses for its
-//!   fixture-dependent case.)
-//! * **Broken** — the fixes *are* in place, yet the ROLLBACK still
-//!   misbehaves (e.g. it touched the `default` database). The probe
-//!   **fails loudly** instead of skipping, because that is a regression
-//!   of the merged state and must not be masked by the NOT-RUN branch.
+//! Why not from behaviour: a behavioural probe cannot tell "the fix is
+//! missing" apart from "the fix regressed" — both look like "the
+//! rollback did not restore the row" — and the second one must **fail**,
+//! not be skipped. With source markers the decision is made up front and
+//! the assertions then run **unconditionally**: once the markers are
+//! present, any behavioural difference is a test failure.
+//!
+//! So the suite has two states, not three:
+//!
+//! * the markers are present ⇒ the assertions run and any mismatch is a
+//!   failure;
+//! * the markers are absent ⇒ the case reports **NOT-RUN** and returns
+//!   without asserting (same three-state convention the sibling
+//!   `quick_query` suite uses for its fixture-dependent case).
+//!
+//! A source file that cannot be read is a failure, not a skip: without
+//! the sources the evidence would be meaningless.
+//!
+//! For the GA evidence: a NOT-RUN here means the merge-state gate was
+//! **not** evaluated — it must never be counted as a pass.
 //!
 //! ## Merge order
 //!
@@ -182,70 +192,73 @@ fn memory_rows(e: &mut ExecutionEngine<MemoryStorage>, db: &str) -> Vec<(i64, i6
 }
 
 // ---------------------------------------------------------------------------
-// The three-state probe
+// The applicability probe
 // ---------------------------------------------------------------------------
 
-/// What the tree under test looks like, from the point of view of a
-/// ROLLBACK in a named database.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum TreeState {
-    /// The three database-scope fixes are in place — run the assertions.
-    Ready,
-    /// The fixes are not in place on this tree — the suite is NOT-RUN.
-    NotYetFixed,
-    /// The fixes are in place but the ROLLBACK is still wrong.
-    Broken(String),
-}
-
-/// Classify the tree by running the canonical scenario once.
+/// Whether this tree carries the three database-scope fixes.
 ///
-/// A DELETE in `d1` followed by a ROLLBACK must restore the row **in
-/// `d1`** and leave `default` exactly as it was. Before the three fixes
-/// the row was not restored in `d1` at all (the undo log named only the
-/// table), and the undo could write into `default`; after them it is
-/// restored exactly once.
-fn probe_tree() -> TreeState {
-    let (mut e, dir) = file_engine();
-    seed(&mut e);
+/// The decision is made from **source markers**, not from behaviour.
+///
+/// A behavioural probe cannot tell "the fix is missing" apart from "the fix
+/// regressed" — both look like "the rollback did not restore the row" — and
+/// the second one must **fail**, not be skipped. So the markers decide
+/// whether the suite applies at all, and once they are present the
+/// assertions below run **unconditionally**: any behavioural difference is
+/// a test failure.
+///
+/// A source file that cannot be read is a failure too, not a skip: a
+/// missing source means the evidence would be meaningless.
+fn tree_carries_the_db_scope_fixes() -> bool {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
 
-    e.execute("USE `d1`").unwrap();
-    e.execute("BEGIN").unwrap();
-    e.execute("DELETE FROM t WHERE id = 10").unwrap();
-    e.execute("ROLLBACK").unwrap();
+    // #5896 — the engine's `UndoRecord` carries the database.
+    let savepoint = std::fs::read_to_string(root.join("crates/transaction/src/savepoint.rs"))
+        .expect("crates/transaction/src/savepoint.rs must be readable");
+    // #5891 — the storage layer's `UndoOp` carries the database.
+    let file_storage = std::fs::read_to_string(root.join("crates/storage/src/file_storage.rs"))
+        .expect("crates/storage/src/file_storage.rs must be readable");
+    // #5897 — `MemoryStorage`'s `TxLog` carries the database.
+    let engine = std::fs::read_to_string(root.join("crates/storage/src/engine.rs"))
+        .expect("crates/storage/src/engine.rs must be readable");
 
-    let d1 = file_rows(&mut e, "d1");
-    let default = file_rows(&mut e, "default");
-    let _ = std::fs::remove_dir_all(&dir);
-
-    let restored_in_d1 = d1.iter().any(|(id, _)| *id == 10);
-    let default_untouched = default == vec![(30, 1)];
-
-    match (restored_in_d1, default_untouched) {
-        (true, true) => TreeState::Ready,
-        (false, _) => TreeState::NotYetFixed,
-        (true, false) => TreeState::Broken(format!(
-            "the ROLLBACK restored the row in d1 but also changed the default database: {default:?}"
-        )),
+    /// Whether the block that starts at `anchor` carries `needle`.
+    ///
+    /// The anchor is the **semantic path this gate exercises** — the
+    /// DELETE variant of each undo log — not a loose keyword, so the
+    /// check cannot be satisfied by an unrelated field elsewhere.
+    fn block_carries(source: &str, anchor: &str, needle: &str) -> bool {
+        let start = match source.find(anchor) {
+            Some(i) => i,
+            None => return false,
+        };
+        let rest = &source[start..];
+        let end = rest.find('}').unwrap_or(rest.len());
+        rest[..end].contains(needle)
     }
+
+    // #5896 — the engine's `UndoRecord::Delete` carries the database.
+    // #5891 — the storage layer's `UndoOp::DeleteRow` carries it.
+    // #5897 — `MemoryStorage`'s `TxLog` carries it as the first element
+    //         of each tuple: `(db, table, row)`.
+    block_carries(&savepoint, "Delete {", "db: String")
+        && block_carries(&file_storage, "DeleteRow {", "db: String")
+        && block_carries(&engine, "pub struct TxLog", "String, String, Record")
 }
 
 /// Whether the assertions of this suite apply to the tree under test.
 ///
 /// Probed once per process: the answer cannot change while the suite
-/// runs, and the probe is not free (it starts a storage engine).
+/// runs, and reading the sources is not free.
 fn suite_applies() -> bool {
-    static STATE: std::sync::OnceLock<TreeState> = std::sync::OnceLock::new();
-    match STATE.get_or_init(probe_tree) {
-        TreeState::Ready => true,
-        TreeState::NotYetFixed => {
-            eprintln!(
-                "NOT-RUN: this tree does not carry the three database-scope fixes yet \
-                 (#5891 / #5896 / #5897), so the merge-state assertions do not apply to it."
-            );
-            false
-        }
-        TreeState::Broken(why) => panic!("merge-state probe: {why}"),
+    static STATE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let carries = *STATE.get_or_init(tree_carries_the_db_scope_fixes);
+    if !carries {
+        eprintln!(
+            "NOT-RUN: this tree does not carry the three database-scope fixes yet \
+             (#5891 / #5896 / #5897), so the merge-state assertions do not apply to it."
+        );
     }
+    carries
 }
 
 // ---------------------------------------------------------------------------
