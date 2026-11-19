@@ -14,6 +14,112 @@
 > PASS 声明有对应的 gate engine 输出，而非 AI 自述。）
 
 ---
+<!-- BEGIN 2026-11-19 REFRESH BLOCK
+
+## 🔄 刷新块（2026-11-19T02:00:00Z）—— 第 7 次刷新，取代下方 2026-11-19T00:46:07Z 的判定
+
+> **本块只写「已实测的事实」与「仍未达成的项」**；**不产生任何 PASS 声明**。
+> 阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏自 2026-11-18T08:27:00Z 起已转录为 CONDITIONAL（见文末），本块未改动签署内容**。
+
+### 一、最终认证轮：017 轮**正在**最终 tip 上跑（run `20261119-ga-gates-017`）
+
+| 项 | 值 |
+|---|---|
+| 被测树 | `develop/v4.1.0` @ **`b697a9a6875bad40d2acb892e2864fa2e1cbecd6`** —— **远端 develop 最新 tip**（`git ls-remote` 实测 HEAD 同一 sha；fetch 后与本树 diff 为空 ⇒ **无分叉**） |
+| 执行超时上限 | **21600 s（6 h）** —— 016 轮为 10800 s。**放宽的是运行参数，不是门禁判据/阈值/分母**；plan sha256 仍强校验 `sha256:6466a0ec156…`（由 gate 名单唯一决定） |
+| 二进制指纹 | `3574da045b956f86…` / `944b58aea8b04b92…` —— **第 5 次同指纹**（013/014/015/016 轮均相同）⇒ **代码面未变** |
+| 状态 | **进行中**。预计 execute 6.8–9.0 h ⇒ 完成约 2026-11-19T08:00–10:30Z |
+| 缺口定位 | 016 轮 seq 20（`check_full_gate_verification.sh`）与 seq 33（`cargo test --all-features`）**双双 10800.0 s 超时**；已排除「代码面变化」与「休眠」两种解释，机理 = prep 的默认 features 预构建覆盖 all-features 产物 ⇒ seq 33 必须整树重编译，**这段编译时间被计入门禁超时** ⇒ **执行预算问题，不是判红** |
+
+### 二、GA 门禁清单与 GA 阶段的对应关系（已实测比对）
+
+017 轮的 35 项 plan 与 `STAGE_CONFIG.yaml` → `stages.GA.required_gates`（**35 项**）
+**逐条相同**：31 个脚本门禁完全一致 + 4 条 cargo 项（`cargo build --all-features` /
+`cargo test --all-features` / `cargo fmt --check` / `cargo clippy`）完全一致；
+唯一差别是 GA 清单写 `check_rc_ga_gate.sh ga`，plan 写不带参数 —— 而脚本
+**不带参数默认 `all`（D1–D9）**，GA 的 `ga` 只是 **D3–D9** ⇒
+**017 轮 seq 1 跑的是 GA 判据的严格超集**（016 轮 seq1 实测输出：
+`Dimensions executed: D1 D2 D3 D4 D5 D6 D7 D8 D9` / `Dimensions expected: 同` / `✓ GATE: PASS`）。
+
+### 三、168h SOAK：三轮的归因现状（**没有一轮合格**）
+
+| 轮次 | 终态 | 错误 | 成因（实测） | 处置 |
+|---|---|---|---|---|
+| r2 `20261118-168h-v410-r2` | 主动终止 | **717** | 宿主 CPU/内存争用（load1 25–40）+ **服务端侧成分**（§7.25） | 已终止留档；**r2 永不再是 0 错证据** |
+| r3 `20261119-168h-v410-r3` | 2026-11-19T01:37:18Z 起 7 错 | **7** | **宿主同盘 I/O 风暴**（新发现，见下） | 急停开关已开；**r3 已带错 ⇒ 不合格** |
+| r4 | **待起**（起跑前先做受控扩展性探针） | — | — | 见 §四 |
+
+#### 3.1 r3 的 7 个错：根因**已闭合到单一事件**
+
+`2013 Lost connection (The read operation timed out)`，耗时全部 ≈ **15,015 ms**
+（= 客户端 `read_timeout=15` 的上限），7 个线程**同时**发生。
+
+- 宿主 cron `7,37 * * * * /home/openclaw/llama-swap/strata-upgrade-if-idle.sh`
+  在 **2026-11-19T01:37:01Z–01:37:20Z** 把 Strata 引擎目录**复制**到备份树
+  （该树实测 **9.9 GB**）—— 备份目录与 SOAK 数据目录**同盘 `/dev/nvme0n1p2`**；
+- 错误窗 **01:37:02Z–01:37:18Z 与备份窗逐秒对齐**，同期 **load1 仅 3.4–6.6（安静）**、RSS 平稳、panic 00；
+- 按 kind 分桶：**连主键点查都卡到 ~14 s**（point_select p50 408.9 ms / max **13,949.1 ms**，前一片 max 仅 1,352 ms）
+  ⇒ **全局存储层停顿**，不是「某类查询变慢」；
+- **与 r2 的错误是两条不同的成因**（r2 的爆发窗 13:21–13:27Z、load1 25–40、与 :07/:37 标记**不**重合）
+  ⇒ 与 §7.25 的两层结论一致。
+- 完整证据：`audit/v4.1.0/adjudications/soak-r3-io-storm-attribution-20261119.md`。
+
+#### 3.2 处置（可逆、零判据变更、**对租户零功能影响**）
+
+用该脚本**自带且文档化**的急停开关
+`/home/openclaw/llama-swap/strata-upgrade-if-idle.disabled`（判定点在任何动作之前 `exit 11`）。
+零功能影响的依据：实测日志「**已是目标状态** (profile=iq3_s-native 引擎=0.1.60 缓存=98304 64), 无需升级」
+且每轮以「停服务前复查: 有新请求进来, 本轮放弃 (服务不动)」收尾 ⇒ 本来就是空转。
+撤销 = `rm -f` 该文件。**看门狗已把该开关纳入持续重新断言**。
+
+### 四、独占窗口：从「一次性」升级为「持续自愈」
+
+- **实测**：2026-11-19T01:21Z 复查发现 2026-11-18T08:47:38Z 建立的窗口**已失效 16.6 h**
+  （dockerd 未重启、容器 `RestartCount=0` 但 `StartedAt` 被刷新 ⇒ 容器被**重建** ⇒ `docker pause` 的状态随旧容器 ID 丢失）。
+- **处置**：新增 `scripts/soak/soak_exclusive_watch.sh`（每 60 s 幂等重新断言容器 pause / 单元 stop / 急停开关存在），
+  252 上以 **systemd 托管**（`Restart=always`）：
+  `srg-soak-exclusive-watch` / `srg-soak-freeze-watch` / `srg-soak-cpu-sampler` / `srg-soak-data-size-sampler`。
+- **已知副作用**：窗口内的 `docker pause` 会让**同一 Gitea 实例上其它仓库**正在跑的作业挂起（`leave` 可原样恢复）。
+- 证据：`audit/v4.1.0/adjudications/soak-exclusive-window-break-20261119.md`。
+
+### 五、§7.25 的三轴证据工具：已补齐
+
+§7.25 要求合格证据同时覆盖 **RSS / 表规模 / 单查询 p99**。仓内原有工具覆盖不到
+（`extract_soak_report.py` 的 p50/p99 **只从 mysqlslap 输出正则取**，认不了 v400 驱动的 `Q,<latency_ms>,…` 行）。
+已新增并落仓：
+
+- `scripts/soak/soak_evidence_axes.py` —— RSS 趋势 + 单查询延迟分位（**按时间桶**）+
+  分桶明细（errors/load1/busy/RSS/p99 同桶对照）。**只产出事实，不产出 PASS/FAIL**；
+- `scripts/soak/soak_data_size_sampler.py` —— 表规模轴（**纯文件系统采样，不查库**：
+  实测「采样器查库」会与驱动抢服务端执行器 ⇒ 污染被测系统）；
+- `scripts/soak/soak_cpu_sampler.py` —— 新增 **`iowait_pct`** 与 **服务端 I/O 轴**
+  （`system_busy_pct` 口径**保持不变**，保证历史采样可逐条对比）。
+
+### 六、本块刷新期间闭合的其他项
+
+| 项 | 结果 |
+|---|---|
+| 83 道 dead/orphan 门禁（dead 61 + orphan 22） | **已加文件头自标 + 登记在册**（PR #5863），**零副作用**（`gate_registry` fails 0 / check_n **168** / 四类与五类计数全不变；`check_gate_script_refs` errors **0** / warnings **8** / **58** citations；`check_gate_executability` **92** 项 OK） |
+| `check_historical_backlog_disposition.sh` 的 3 条 FIX-TLS 不可达 | **已修正**：原判据指向的 SHA 被 GA-REWIND-1 的 force-push 从仓库里丢弃（`git cat-file -t` 报 no such object），且第三个 SHA **当初就写错了**（round-9 闭合提交自述「发现 ecff2f105cf2a7d… 是无效 SHA」）。改为指向**当前树实测可达且真实承载该修复**的等价提交 ⇒ **PASS=3/FAIL=3 → PASS=7/FAIL=0**；**原始 SHA 全部保留**在 YAML 并另开四块逐条登记 |
+| 252 的 Gitea `refs/heads/` 属主 root | **已自助解除**（`docker exec -u root … chown -R git:git`），复查 30 个 ref 目录全部 `git:git` ⇒ 入库链恢复 |
+| 仓库级 Actions | 已置 `has_actions=false`（可逆）；但**同实例其它仓库**的作业仍会派发 ⇒ 只能靠独占窗口压住 |
+
+### 七、**仍未达成**（GA 判据的物理 / 人类约束，逐条如实登记）
+
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | **168h SOAK 的 0 错证据** | ⏳ **r3 已带 7 错不合格；r4 待起**（起跑前先做受控扩展性探针）。**168 h 未跑满前，任何「SOAK PASS」都不成立** |
+| B1b | **§7.25 的「服务端侧成分」仍是开放问题** | ⏳ r3 实测：吞吐 110 → ~28 q/s、RSS 203 → 387 MB（线性）、`COUNT(*)` p50 120 → 568 ms（4.7×，而行数只涨 1.9×）⇒ **退化速度超过行数增长，且主键点查也变慢 ⇒ 是普适退化**。**尚未定性**（`audit/v4.1.0/adjudications/soak-r3-io-storm-attribution-20261119.md` §8） |
+| B1e | 宿主非正常停止的触发者定性 | ⏳ **属主**（Agent 无带外通道，取不到硬件日志） |
+| B1f | 权威 0 错 168 h 需要的宿主条件 | 🟡 **已按 §7.24 的要求把「派发侧」压住**（看门狗 + 急停开关 + 冻结守护 + 四个 systemd 服务）；**但 §7.25 的服务端侧成分仍未解决** ⇒ 这条**尚未闭合** |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**，7 条条件与到期日见文末签署栏）。⚠️ **条件①指名 r2 轮，r2 已出局 ⇒ 该条件需属主确认由 r4 承接** |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（按 `RELEASE_LIFECYCLE` §2.5：审批 → tag → 并入 main → 建承载分支，顺序不可越；**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主**（仓库侧已收敛） |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 | ⏳ **属主**（61 道死门禁部分**已闭合**，见 §六） |
+
+<!-- END 2026-11-19 REFRESH BLOCK -->
+
 <!-- BEGIN 2026-11-17 REFRESH BLOCK
 
 ## 🔄 刷新块（2026-11-19T00:46:07Z）—— 取代下方 2026-10-23 的判定
