@@ -290,3 +290,38 @@ P16 step 2.6/3: verify no swallowed exit code is read afterwards
 | **ALPHA 10 门禁在当前 tip 的复跑取证** | **仍未做**（等 CPU 窗口；019 认证轮仍在跑） |
 | **#5580 的 cargo 级验证**（G9/G10 真跑） | **仍未做**（等 CPU 窗口；桩 A/B 不能替代） |
 | Gitea issue 关闭动作 | **#5364 / #5368 已由 PR #5887 关闭**（当期 open P0 **29 → 27**）；其余 27 条**未关闭** |
+
+---
+
+## 10. 补记二（2026-11-19 晚）：#5412 的根因已定位到源码级（仍需修）
+
+**#5412** `[引擎] 带 PRIMARY KEY 的逐行 INSERT 仍是 O(N^2) —— pk_lookup_cache 被它自己要加速的那次 INSERT 失效`
+
+**本轮只读核实（零 cargo）得到的结论比 issue 标题更精确**：
+
+| 位置 | 事实 |
+|---|---|
+| `crates/storage/src/engine.rs:1579` | trait **默认实现**返回 **0**，注释自陈：「The default returns 0, i.e. "never trust a cached copy". Callers must honour that by rebuilding, so an engine that has not opted in stays **correct rather than fast**.」 |
+| `crates/storage/src/engine.rs:3588` | **全仓唯一的覆盖实现**，位于 `impl StorageEngine for MemoryStorage`（该 impl 块起于 `:3156`）⇒ `grep -rn "fn table_change_stamp" crates/ src/` 只命中这两处 |
+| `src/engine_dml.rs:443` | PK 缓存快路径的入口条件是 `if cacheable && live_stamp != 0` ⇒ **stamp 为 0 时快路径根本进不去**，直接落到 `:487` 的整表扫描 |
+| `src/engine_dml.rs:578-587` | 写入前再取 `pre_write_stamp`；与 `cached_stamp` 不一致 ⇒ **删缓存并整表重扫** |
+
+⇒ **机制（修正 issue 标题的措辞）**：**不是「缓存被它自己要加速的那次 INSERT 失效」**，而是
+**「FileStorage 与 WAL 包装层都继承 trait 默认实现 ⇒ `table_change_stamp` 恒为 0 ⇒ PK 缓存快路径被永久禁用 ⇒
+每一次带 PK 的 INSERT 都整表扫描 ⇒ O(N²)」**。
+
+⇒ **这解释了为什么这是「正确但未优化」的既有设计、而不是回归**：`engine.rs:1579` 的注释明说未 opt-in 的引擎
+「stays correct rather than fast」。**#5412 因此仍成立、仍需修**，但修法方向明确：
+
+1. 为 `FileStorage`（及其 WAL 包装层）实现 `table_change_stamp` —— 在该表的数据变更（insert/delete/update）时
+   递增 per-table stamp；
+2. 使 `engine_dml.rs:443` 的快路径条件在 file 后端上可成立 ⇒ 带 PK 的逐行 INSERT 回到 O(N)。
+
+**本轮未动手的原因（如实登记）**：
+
+- **改 crates/ 会改冻结点** ⇒ 使 019 认证轮（仍在跑，已落账 15/35）的结论失效 ⇒ 需要与该轮的收尾决策一并处置；
+- **验证需要 cargo** ⇒ 与在跑的 019 认证轮抢 CPU ⇒ 本机 10 核下并发重量门禁会产生**时间预算假红**
+  （与本 PR 所修的 F2 同族）；
+- 该项与本线 SOAK 根因结论（写路径 O(N)）**同族**，宜与存储面根因一并推进（相关项 **#5507**
+  「重构 MemoryStorage 的『提交快照』机制」在当期 open P0 清单里）；
+- **零 crates/ scripts/ tests/ 改动** ⇒ 交付树与 252 检出（均 detached @ `64269eaa08`）不失配。
