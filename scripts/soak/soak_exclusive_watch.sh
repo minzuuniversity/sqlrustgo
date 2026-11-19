@@ -93,6 +93,31 @@ CI_PATTERN='GITEA-ACTIONS-TASK-|runner|ci252-for-gitea'
 # 保护名单：Gitea 本体与其依赖，窗口内不得冻结
 KEEP_PATTERN='openclaw-gitea|openclaw-postgres|gptr-searxng'
 
+# ---------------------------------------------------------------------------
+# 急停开关：抑制「每小时 :07 / :37 复发」的宿主 I/O 风暴
+# ---------------------------------------------------------------------------
+# 2026-11-19 实测（r3 轮，run_id 20261119-168h-v410-r3）：
+#   2026-11-19T01:37:01Z–01:37:20Z，宿主 cron
+#   `7,37 * * * * /home/openclaw/llama-swap/strata-upgrade-if-idle.sh`
+#   把 Strata 引擎目录**复制**到 /home/openclaw/backups/strata-upgrade-if-idle/
+#   （该备份树实测 **9.9 GB**）—— 与 SOAK 的数据目录**同盘 /dev/nvme0n1p2**。
+#   同窗口内被测服务端的**所有**查询类型（连主键点查都算）**同时**卡到
+#   ~14 s ⇒ 全局存储层停顿；7 条在途查询越过客户端 **15 s** 读超时 ⇒
+#   `2013 Lost connection (The read operation timed out)`，错误窗
+#   01:37:02Z–01:37:18Z，与备份窗**逐秒对齐**，而当时 load1 仅 **3.4–6.6**（安静）。
+#
+# 该脚本自带**急停开关**（脚本内 line 73–76：在做任何动作之前 `exit 11`）：
+#   /home/openclaw/llama-swap/strata-upgrade-if-idle.disabled
+# 开着它**对租户零功能影响** —— 实测日志「已是目标状态 (profile=iq3_s-native
+# 引擎=0.1.60 缓存=98304 64), 无需升级」，且每轮都「停服务前复查: 有新请求进来,
+# 本轮放弃 (服务不动)」⇒ 本来就是空转。
+#
+# 本看门狗**持续重新断言**这个开关存在（有人删掉就补上），
+# 因为它是「独占窗口」的一部分 —— 窗口静默打开和开关被删是同一类失效。
+# 撤销方式：`rm -f` 该文件（脚本自带、文档化的急停开关，可逆）。
+GUARD_FILE="${GUARD_FILE:-/home/openclaw/llama-swap/strata-upgrade-if-idle.disabled}"
+GUARD_OWNER="${GUARD_OWNER:-openclaw}"
+
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 journal() {
@@ -144,9 +169,22 @@ $names
 EOF
 }
 
+assert_guard() {
+  # 急停开关必须存在（抑制每小时 :07/:37 的宿主 I/O 风暴）
+  [ -z "${GUARD_FILE:-}" ] && return 0
+  if [ ! -f "$GUARD_FILE" ]; then
+    if touch "$GUARD_FILE" 2>/dev/null; then
+      journal "restore_guard_file" "$GUARD_FILE" "was_missing"
+    else
+      journal "restore_guard_file_failed" "$GUARD_FILE" "was_missing"
+    fi
+  fi
+}
+
 one_round() {
   assert_units
   assert_containers
+  assert_guard
 }
 
 case "${1:-run}" in
