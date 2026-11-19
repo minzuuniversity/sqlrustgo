@@ -62,10 +62,43 @@ fi
 
 # round-9: each closing_merge_commit must be reachable from HEAD
 # FIX-TLS-WRITE-BLOCK closure evidence
+#
+# 2026-11-19 修正（逐条实测，不是推断）
+# --------------------------------------------
+# 这一段原先硬编码的三个 SHA，在当前 develop 上**全部不可达**，根因有两条：
+#
+#   ① GA-REWIND-1 那次 force-push 改写了 develop 历史 ⇒ 前两个 merge commit
+#      的**对象本身已从仓库里消失**（git cat-file -t 报 no such object），
+#      不是「可达性变了」而是「对象没了」。
+#      但**修复的代码内容仍在当前树里**（crates/mysql-server/src/lib.rs 的
+#      force_drain / drive_writes_only / WouldBlock 处理），
+#      由历史重写后的等价提交承载。
+#
+#   ② 第三个 SHA **本身就是一个无效 SHA**：round-9 的闭合提交
+#      （主题：fix(V312-20 round-9): FIX-TLS-WRITE-BLOCK 已修复 + 添加 V312-20 gate；
+#      当前树可达副本 5890ec7de6…）在自己的提交说明里就写明
+#      「发现 ecff2f105cf2a7d… 是无效 SHA」，并把 PR #3701 的真实 merge commit
+#      更正为 ad68e5037…。
+#
+# 因此这里改为检查**当前树上真实承载这几项修复、且经 git merge-base --is-ancestor
+# 实测为 HEAD 祖先**的提交：
+#   04990a0d7e…  PR #3696 的内容提交：force-drain all TLS cipher records on STMT_PREPARE response
+#   e94f877993…  PR #3700 的内容提交：restore blocking mode on accepted TcpStream
+#   ad68e5037…   PR #3701 的**真实** merge commit（原门禁写的第三个是无效 SHA）
+#   c03e76ee6…   commit：loop TlsStream write through all WouldBlock
+#
+# 这是**把判据指向真实存在的证据**，不是放宽判据：仍然逐条要求
+# 「闭合提交必须是 HEAD 的祖先」，只是不再指向已被历史重写丢弃、
+# 或当初就写错了的对象。
+# 原始 SHA 与逐条对应关系登记在
+# docs/releases/v3.12.0/historical-backlog-disposition.yml 的
+# FIX-TLS-WRITE-BLOCK 条目（history_rewrite_note / reachable_equivalents 字段），
+# 不丢失、不掩盖。
 for sha in \
-  6bec8b4e69feb43d838c6f23db3bd41a30da0e11 \
-  3adbfa597bf14687f224c4ede152eabd6eb0f807 \
-  ecff2f10503959b8715e8ecba055985c8696c92a
+  04990a0d7e9d18f7f8a3d8b2b88d9c62062dc6bb \
+  e94f877993ee404cf7a17c06cc58cab7c1d9796f \
+  ad68e5037399cc608229e928a9966ff96b5e3295 \
+  c03e76ee6833e4c0d4aa17ef41918f23bc0053de
 do
   if git merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
     pass "FIX-TLS closing commit reachable from HEAD: ${sha:0:7}..."
