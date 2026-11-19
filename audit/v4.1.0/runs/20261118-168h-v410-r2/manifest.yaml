@@ -39,7 +39,7 @@ artifacts:
   - path: armA/server.log
     bytes: 10438
     sha256: 425b0a4d10b3fcbc5a0b15ed944732e4fc50de1ddee97c310d0e252dac94f3c9
-    note: 服务端日志；crash marker 0；含 24 条 Handshake send: Broken pipe（客户端断链后的从属症状）
+    note: '服务端日志；crash marker 0；含 24 条 Handshake send: Broken pipe（客户端断链后的从属症状）'
   - path: armA/armA.log
     bytes: 291467
     sha256: 0841a74346f61cee632c8aad7aab7b944b2c83eccbd49cfd789834b251908f91
@@ -55,7 +55,7 @@ artifacts:
   - path: STOPPED_BY_AGENT.txt
     bytes: 625
     sha256: 74ec8b760e47b6a059e3adf60f5bd6fff6393fa282c9c932c28ef3cc5f9e73d2
-    note: **停轮方自己写的停轮记录**（停轮时刻/停轮者/理由）—— 本轮「人为停止」的直接证据
+    note: '**停轮方自己写的停轮记录**（停轮时刻/停轮者/理由）—— 本轮「人为停止」的直接证据'
   - path: launcher.log
     bytes: 2435
     sha256: c1c3eec29f0df365f4bce0096b4d3a653f5cc6ee31abb37e7e64a1821f1fec80

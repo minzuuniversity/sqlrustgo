@@ -83,6 +83,8 @@
 | r5 起跑准备 | 04:19:13Z 起编译（`cargo build --release`，**2 m 21 s**）；04:21:35Z launcher 起（安静窗口 10×60 s + 起跑后 180 s 吞吐复验，同口径）；04:22:35Z `host QUIET load=1 foreign_cpu=88 % streak=1/10 waited=60 s` ⇒ **仍在等安静窗口** |
 | 判据 | **未改**：0 errors / 0 panics；35 项门禁分母 **35** 未动 |
 
+> ⚠️ **〔更正〕本节「r5 二进制 sha256」为**启动准备段 workspace 全量构建**的测量值，**不是 r5 的运行产物**；r5 已于 2026-11-19T04:42:04Z 起跑，运行产物 sha256 = `4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`（见 `STARTED.json` 的 `soaked_binary_sha256`）⇒ 详见 `docs/releases/v4.1.0/GA_RELEASE_REPORT.md` §7.29。
+
 **属主要做的事（顺序按证据重排）**：
 
 1. **「停轮留档」纪律要强制** —— r3 与 r4 两次停轮**都没有**在轮次目录留 `STOPPED_BY_AGENT.txt`，

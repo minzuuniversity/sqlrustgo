@@ -1857,6 +1857,8 @@ busy = ps -eo pcpu= | awk '$1+0 >= 50' | wc -l
 | 起跑准备 | 04:19:13Z 起 `cargo build --release`（**2 m 21 s**）；04:21:35Z launcher 起（安静窗口 10×60 s + 起跑后 180 s 吞吐复验，**与 r3/r4 同口径**）；04:22:35Z `host QUIET load=1 foreign_cpu=88 % streak=1/10 waited=60 s` ⇒ **仍在等安静窗口**（3414 未监听） |
 | 判据 | **未改**：0 errors / 0 panics；35 项分母未动 |
 
+> ⚠️ **〔更正〕本表的「r5 二进制 sha256」与「尚未起跑」两项已被后续实测取代**（r5 已起跑、运行产物指纹另有其值）⇒ **以 §7.29 为准**。
+
 #### 7.27.6 属主待办（顺序按本轮证据重排）
 
 1. **「停轮留档」纪律要强制** —— r3 与 r4 两次停轮**都没有**留 `STOPPED_BY_AGENT.txt` ⇒ 归因只能靠脚本原文 + journal 反推；
@@ -1899,6 +1901,33 @@ busy = ps -eo pcpu= | awk '$1+0 >= 50' | wc -l
 | 冻结提交 | `e2fcf73c2e`（**已落后于 tip `64269eaa08`：`crates/storage/src/{bplus_tree/mod.rs, file_storage.rs}`，2 文件 +53 / −55**） |
 | 252 上的检出 HEAD | `64269eaa08`（= #5870 合并头）⇒ **检出已跟进，只有冻结提交还没跟上** |
 | 二进制 | sha256 `f5ec5a67eb9655e8d837704eb30c66dc4ebb75e98aadfce08793acf337a47740`（对 `e2fcf73c2e` 构建；若改冻结提交需**重新编译并重算指纹**） |
+
+> ⚠️ **〔更正〕本表的「r5 二进制 sha256」与「尚未起跑」两项已被后续实测取代**（r5 已起跑、运行产物指纹另有其值）⇒ **以 §7.29 为准**。
+
+#### 7.29 〔更正〕r5 的冻结提交、起跑事实与**运行产物指纹**口径
+
+> 本节由另一条线追加，**不改** §7.27 / §7.28 的正文，只在其后补上**后续实测**。
+
+| 项 | 权威值 | 来源 |
+|---|---|---|
+| r5 冻结提交 | `64269eaa0848c4d47485d1f45b1b91779502a089`（= #5870 合并头，**crates/ 冻结点**；自此 develop 只动 docs/audit） | 252 检出 HEAD 实测 + `STARTED.json` 的 `frozen_commit` |
+| r5 attempt 发起 | **2026-11-19T04:42:04Z**（`start_path` = quiet-window，attempt = 10，waited = 541 s） | `launcher.log` |
+| 计时起点 | **2026-11-19T04:45:04Z**（180 s 起跑复验通过） | `STARTED.json` 的 `started_utc` |
+| 计划结束 | **2026-11-26T04:45:04Z** | `STARTED.json` 的 `planned_end_utc` |
+| 起跑复验读数 | 35350 查 / **0 错** / 256.2 q/s / 错误率 **0.000 %** | `STARTED.json` |
+| **运行产物指纹（权威）** | **`4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`**（15048264 B） | `STARTED.json` 的 `soaked_binary_sha256` —— 由内层脚本**在自己构建之后**对运行产物哈希写入；已与 252 现场文件复核一致 |
+
+**⚠️ 指纹口径更正（§7.27.5 / §7.28.2 两张表里的 `f5ec5a67…` 是什么）**：
+`f5ec5a67…` 是**启动准备段**用 `cargo build --release`（**workspace 全量构建**）测得的 sha256，
+**不是运行产物** —— 内层 SOAK 脚本 `scripts/soak/run_v410_168h_soak_on_z6g4.sh`
+用 `cargo build --release -p sqlrustgo-mysql-server`（**包级构建**）**覆盖**了同一路径
+⇒ **两条命令产出不同字节** ⇒ **不得**把 `f5ec5a67…` 当作 r5 的运行产物指纹。
+
+**运行侧已同步**：252 上 `_soak_launch_r5.sh` 的 `EXPECT_BIN_SHA` 断言已改为 `4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`
+（原值 `f5ec5a67…` 会让任何一次重启因指纹不符而**直接中止**），`bash -n` 语法自检 PASS，
+现场文件指纹与断言一致。
+
+**治理新增**：**字节指纹必须与构建口径同时登记**，否则指纹不可比。
 
 #### 7.28.3 〔更新〕对 §7.27 与刷新块里「r5 冻结树 = 当前 develop tip」表述的更正
 
