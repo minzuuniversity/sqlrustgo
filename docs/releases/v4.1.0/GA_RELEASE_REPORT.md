@@ -2824,3 +2824,55 @@ r5 与 019 轮的结论**作废**，需在最终代码树（合并 #5892 与其�
 
 宿主上 **r3 的 `data_size_sampler.py`（PID 259534）** 仍在运行 —— 非本轮所起，
 按「任何 Agent 线不得再停掉别人起的 SOAK 轮次」纪律**不代为清理**，仅登记。
+
+### 7.35 合并态门禁与新缺陷 #5905（重复行，已修）+ 019 轮旧树订正（2026-11-20）
+
+本节记两件事：①三条 undo 修复合并后暴露的新数据完整性缺陷及其修复与门禁；②19 轮 item 1 的 FAIL 根因订正 —— **它跑的是旧树，且该问题在 develop 上早已修好**。
+
+#### 7.35.1 新缺陷 #5905：DELETE 的 ROLLBACK 在源库留下**重复行**
+
+一次 ROLLBACK 会查**两份** undo 日志 —— 存储后端自己的（FileStorage 的每事务 `UndoOp` 日志，由 `rollback_transaction_lockfree_for` 回放；MemoryStorage 则是 `TxLog`）与引擎层的（`UndoRecord`，由 `TransactionManager::rollback_with_undo` 驱动回放闭包）。
+
+在 #5891（存储层）/ #5896（引擎层）/ #5897（MemoryStorage）之前，**两份都只记裸表名**，回放时都落到 default 库 ⇒ 源库的撤销不生效，这正是三条修复要治的症状。**三条都修好后，两份都正确地恢复源库 ⇒ 恢复两次**。
+
+| 操作 | 存储层 undo | 引擎 UndoRecord | 合并后 |
+|---|---|---|---|
+| INSERT | 从 insert_buffer 移除 | 删一行（幂等） | 一份 |
+| UPDATE | 按 row_idx 赋值（幂等） | 删+插（幂等） | 一份 |
+| **DELETE** | **push 回原行（追加）** | **再插一次（追加）** | **两份** |
+
+只有 DELETE 路径显形。默认库用例此前只覆盖 INSERT、**未覆盖 DELETE**，故重复行在单库场景下被漏测。
+
+**修复（随 PR #5903 提交）**：引擎层 `UndoRecord::Delete` 的回放由「追加」改为「替换」—— 先用原行全值删掉目标、再插回原行，回放因而幂等，无论后端是否已恢复过该行，最终恰好一份；与 `Update` 变体同构。删除过滤器用**原行全值**而非主键：主键过滤按列位置匹配，在主键非首列的表上会误删无关行。
+
+**取证**：
+
+- 合并态端到端用例（#5891+#5896+#5897 三条齐全）：修复前 **9/10**（DELETE 用例失败，left=[(10,1),(10,1)]），修复后 **10/10**；
+- 新增恒真且可证伪用例 `rollback_restores_a_deleted_row_exactly_once_when_the_backend_already_restored_it_5896`（直接经存储 API 复刻「后端已恢复该行」的现场）：**11/11 通过**；变异测试（摘掉幂等的 `delete_in_db`）⇒ 该用例变红、其余 10 条仍绿；恢复后 11/11 全绿。
+
+**合并态门禁 PR #5907**：该缺陷只在三条修复合入后才显形，单看任何一条 PR 都无法证伪，故另立门禁文件 `tests/integration/sql/undo_db_scope_merge3.rs`，用**三态探针**表达「只对合并后的树有效」—— Ready（跑断言）/ Not yet fixed（报 NOT-RUN，不在一棵尚未修复的树上断言失败）/ Broken（修复已到位却仍错 ⇒ **失败 loudly**，不掩盖合并态的回归）。实测：develop tip 上 **10/10 通过且全部 NOT-RUN**（PR 的 base 是绿的），合并态 **10/10**，合并态但摘掉幂等化修复 **9/10 变红**。合并顺序：#5899 → #5902 → #5903 → #5907（门禁最后合）。
+
+#### 7.35.2 新登记 #5906：UPDATE 改了主键时 ROLLBACK 撤不回来（既有独立缺口）
+
+引擎层 UPDATE 的 undo 先按**旧主键**删当前行、再插回原像；当 UPDATE 改动主键时，被删的行已带着新主键，按旧主键的删除匹配不到任何行 ⇒ 更新后的行留在表里，原像又被插回。**该现象在 default 库同样复现**，因此与库身份无关，是更早存在的独立缺口（已在 #5896 的调查中被实测确认）。已登记为 P0（#5906），**是否阻断 GA 待属主裁定**（可参照 #5507 的条件性延期流程）。本线仅登记与定位，不擅自改动。
+
+#### 7.35.3 〔订正〕019 轮 item 1 的 FAIL 是**旧树产物**，且该问题在 develop 上早已修好
+
+019 轮（run `20261119-ga-gates-019`）item 1 `check_rc_ga_gate.sh` 判 FAIL，唯一的阻断是 D7 的 2 个 blockers：**G9 Upgrade** 与 **G10 Audit/Time-Travel**。
+
+原判读曾把这两笔 FAIL 归因为「测试本身有问题」。**实测订正如下**：
+
+- 两笔 FAIL 的输出都停在**测试二进制启动行**（G9：`Compiling … Finished in 35.00s` → `Running tests/integration/migration/upgrade_test.rs`；G10：编译 16.81 s → `Running tests/integration/stress/audit_log_test.rs`），**没有 `test result:` 判定行** ⇒ `cargo` 被内层 `timeout` 砍断，判据落到 else 分支 ⇒ 恒红。
+- 该内层预算问题**已在 develop tip 上修好**：PR #5886（commit `1e96211cc4`，#5580 的 F1/F2/F3）把 G9/G10 的预算放宽到 `${GATE_RELIABILITY_TEST_TIMEOUT:-1800}s`、全量输出落盘、并把「超时 exit 124」与「测试失败」分别报出（已核实 `git merge-base --is-ancestor` ⇒ 该修复**在** develop tip 内）。
+- **019 轮跑的是 `64269eaa08`**（plan.jsonl.meta.json 的 `git_head`），即 r5 冻结点，**不含**上述修复 ⇒ 两笔 FAIL 是**旧树产物**，不是 GA 阻断项。
+- 独立实测（develop tip，同代码）：G9 两个目标 **50/50 + 18/18 通过，3 s**；G10 两个目标 **20/20 通过，1 s**；交付树里预编译二进制单独运行 **50/50 通过，0.01 s**（测试体自报 `finished in 0.00s`，是纯内存 harness，无端口/无外部依赖）⇒ **无产品缺陷**。
+
+**35 项清单指纹复算**：按 `run_gates.py` 的口径（`sha256("\n".join(sorted(gate_names))`）复算 019 轮 plan 的 35 个 gate 名，得 `sha256:6466a0ec…4da809`，与 `plan.jsonl.meta.json` 的 `expected_sha256` **完全一致**，且 35 个 gate 名**无重复** ⇒ **清单无漂移**（另：`binaries.sha256` 哈希的是编译产物而非门禁脚本，故脚本内容变化不影响任何指纹）。
+
+**结论**：019 轮认证的是**旧树**（r5 冻结点），按「旧轮次结论不外推」的既有纪律，它只能作**诊断证据**；**权威 GA 轮必须在代码面定稿后的最终树上重跑满 35 项**（并另起全新 168 h SOAK）。本节不因这两笔 FAIL 放宽任何判据，也未改动任何门禁脚本（相关分支已清理）。
+
+#### 7.35.4 本节边界
+
+- **零判据变更**（0 errors / 0 panics、35 项清单与 168 h 分母均未动）、**零门禁脚本改动**、**零 `#[ignore]`**；
+- 本节只新增文档与看板行；代码面改动分别随 PR #5903（幂等化修复）与 PR #5907（合并态门禁）提交，均**待审不自行合并**；
+- 阶段仍为 ALPHA；ALPHA→BETA 的跃迁与阶段批准仍需属主人工签批。
