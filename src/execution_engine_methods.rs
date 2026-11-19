@@ -1833,6 +1833,7 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         let mut storage = storage.write();
                         match rec {
                             sqlrustgo_transaction::savepoint::UndoRecord::Insert {
+                                db,
                                 table,
                                 key,
                                 row,
@@ -1842,30 +1843,41 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 // empty `key` filter would otherwise
                                 // clear the whole table.
                                 let target = if key.is_empty() { row } else { key };
-                                storage.delete(table, target).map_err(|e| {
-                                    format!(
-                                        "savepoint undo (insert delete on {} pk={:?}): {}",
-                                        table, key, e
-                                    )
-                                })?;
+                                // #5896: address the database the write
+                                // happened in. The bare-name `delete`
+                                // resolves against the default database,
+                                // so using it here undid nothing for a
+                                // write into a named database (and could
+                                // reach into the default database's
+                                // same-named table).
+                                storage
+                                    .delete_in_db(db, table, target)
+                                    .map_err(|e| {
+                                        format!(
+                                            "savepoint undo (insert delete on {}.{} pk={:?}): {}",
+                                            db, table, key, e
+                                        )
+                                    })?;
                                 Ok(())
                             }
                             sqlrustgo_transaction::savepoint::UndoRecord::Delete {
+                                db,
                                 table,
                                 key: _,
                                 old_value,
                             } => {
                                 storage
-                                    .insert(table, vec![old_value.clone()])
+                                    .insert_in_db(db, table, vec![old_value.clone()])
                                     .map_err(|e| {
                                         format!(
-                                            "savepoint undo (delete reinsert on {}): {}",
-                                            table, e
+                                            "savepoint undo (delete reinsert on {}.{}): {}",
+                                            db, table, e
                                         )
                                     })?;
                                 Ok(())
                             }
                             sqlrustgo_transaction::savepoint::UndoRecord::Update {
+                                db,
                                 table,
                                 key,
                                 old_value,
@@ -1880,18 +1892,20 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                                 // forward UPDATE. We delete-by-key first
                                 // to guarantee idempotence in case the
                                 // on-undo closure is retried.
-                                storage.delete(table, target).map_err(|e| {
-                                    format!(
-                                        "savepoint undo (update clear on {} pk={:?}): {}",
-                                        table, key, e
-                                    )
-                                })?;
                                 storage
-                                    .insert(table, vec![old_value.clone()])
+                                    .delete_in_db(db, table, target)
                                     .map_err(|e| {
                                         format!(
-                                            "savepoint undo (update restore on {}): {}",
-                                            table, e
+                                            "savepoint undo (update clear on {}.{} pk={:?}): {}",
+                                            db, table, key, e
+                                        )
+                                    })?;
+                                storage
+                                    .insert_in_db(db, table, vec![old_value.clone()])
+                                    .map_err(|e| {
+                                        format!(
+                                            "savepoint undo (update restore on {}.{}): {}",
+                                            db, table, e
                                         )
                                     })?;
                                 Ok(())
@@ -1955,7 +1969,12 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                 // or they leak as foreign pending versions.
                 storage.set_current_tx_id(tx_id.as_u64());
                 match rec {
-                    sqlrustgo_transaction::savepoint::UndoRecord::Insert { table, key, row } => {
+                    sqlrustgo_transaction::savepoint::UndoRecord::Insert {
+                        db,
+                        table,
+                        key,
+                        row,
+                    } => {
                         // v312-60: fall back to full-row match when the
                         // table has no primary key — an empty `key`
                         // filter would otherwise clear the whole table.
@@ -1964,22 +1983,32 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         } else {
                             key.to_vec()
                         };
-                        storage.delete(table, &target).map_err(|e| {
-                            format!("rollback delete on {} pk={:?}: {}", table, key, e)
-                        })?;
+                        // #5896: address the database the write happened
+                        // in. The bare-name `delete` resolves against the
+                        // default database, so using it here undid
+                        // nothing for a write into a named database (the
+                        // row stayed visible) and could reach into the
+                        // default database's same-named table.
+                        storage
+                            .delete_in_db(db, table, &target)
+                            .map_err(|e| {
+                                format!("rollback delete on {}.{} pk={:?}: {}", db, table, key, e)
+                            })?;
                         Ok(())
                     }
                     sqlrustgo_transaction::savepoint::UndoRecord::Delete {
+                        db,
                         table,
                         key: _,
                         old_value,
                     } => {
                         storage
-                            .insert(table, vec![old_value.clone()])
-                            .map_err(|e| format!("rollback reinsert on {}: {}", table, e))?;
+                            .insert_in_db(db, table, vec![old_value.clone()])
+                            .map_err(|e| format!("rollback reinsert on {}.{}: {}", db, table, e))?;
                         Ok(())
                     }
                     sqlrustgo_transaction::savepoint::UndoRecord::Update {
+                        db,
                         table,
                         key,
                         old_value,
@@ -1994,11 +2023,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
                         // place). This mirrors the SAVEPOINT undo logic
                         // at `execute_savepoint` (lines 1710+).
                         storage
-                            .delete(table, target)
-                            .map_err(|e| format!("rollback update-delete on {}: {}", table, e))?;
+                            .delete_in_db(db, table, target)
+                            .map_err(|e| format!("rollback update-delete on {}.{}: {}", db, table, e))?;
                         storage
-                            .insert(table, vec![old_value.clone()])
-                            .map_err(|e| format!("rollback update-insert on {}: {}", table, e))?;
+                            .insert_in_db(db, table, vec![old_value.clone()])
+                            .map_err(|e| format!("rollback update-insert on {}.{}: {}", db, table, e))?;
                         Ok(())
                     }
                 }
