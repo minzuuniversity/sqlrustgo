@@ -14,9 +14,120 @@
 > PASS 声明有对应的 gate engine 输出，而非 AI 自述。）
 
 ---
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 16 -->
+
+## 🔄 刷新块（2026-11-19T12:41:13Z）—— 第 16 次刷新：**阶段重心纠正** + ALPHA→BETA 门槛实测
+
+> **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**⚠️ 阶段重心纠正：本线此前的重心压在 GA（最后一阶段）上，属重心错位，现予纠正**
+
+**事实链（全部来自仓内 SSOT，非推断）**：
+
+1. 阶段顺序（`docs/governance/STAGE_CONFIG.yaml` 的 `stages`）：
+   **DRAFT(order 1) → ALPHA(order 2) → BETA(order 3) → RC(order 4) → GA(order 5)**；
+   `docs/releases/v4.1.0/STAGE.yaml` 的 **`current_stage: "ALPHA"`**。
+2. **属主裁决（STAGE.yaml 原文）**：
+   - 「**阶段跃迁与 GA 放行：按 ALPHA_TO_BETA_GATE_PLAN.md 的 AB-01..AB-10 逐项取证后再报，不得跳过**」
+   - 「**ALPHA →（AB-01..AB-10 逐项取证 + 独立 Reviewer 回执）→ BETA → … 每一步都按 governance，不得跳过**」
+   - 「**注意： Alpha 阶段的 ISSUE 必须彻底完成并关闭，才算通过门禁，否则不允许切换阶段，必须 SSOT 证据，不能 AI 直接判断。ISSUE 关闭，必须复核 governance 的证据链规定。**」
+3. ⇒ **当前该推进的跃迁是 ALPHA→BETA**，且路径已被属主明定（AB-01..AB-10 逐项取证 + 独立 Reviewer 回执），
+   **不得跳过**。GA 是**最后一阶段**，其前面还隔着 BETA 与 RC。
+
+**本线此前为何整体落在 GA 语境（如实归因，不掩盖）**：
+
+- ① **被「168h SOAK 需 168 小时物理时间」这个长周期抓手吸住**，把「等物理时间」当成了主线；
+- ② **ALPHA→BETA 不需要 SOAK**（SOAK 门禁属 RC 的 `optional_gates` 与 GA 的 `criteria_gates`），
+  这条**已核实**，却被「GA 判据⑤不满足 ⇒ r5 不合格」的紧迫感盖过；
+- ③ 看板文件名 `KANBAN_v4.1.0_ALPHA.jsonl` 与大量 `GA-SOAK-*` 行，进一步强化了「在做 GA」的错觉；
+- ④ **最关键**：STAGE.yaml 里 2026-11-08/09 的属主裁决虽在仓内，却**没有被读进工作主线**。
+
+⇒ **纠正的含义**：已有的 GA 侧材料**不撤销**（r5 的 0 错证据、019 的逐项归因、根因定位都是真证据），
+**但优先级必须重排** —— 当前主线改为 **ALPHA→BETA**，GA 相关工作降级为「后续阶段的准备」。
+
+### 二、**ALPHA→BETA 的门槛逐条实测状态（截至复查时刻）**
+
+#### 2.1 **ALPHA 的 4 条 exit_criteria（STAGE_CONFIG）**
+
+| # | exit_criteria | 实测状态 | 缺什么 | 谁做 |
+|---|---|---|---|---|
+| E1 | **All alpha-targeted issues closed (tracked in STAGE.yaml)** | ⚠️ **核对基础本身有缺口** —— 台账 `docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.md` 是**人工核对输入，不是门禁**（`manual_only_criteria` 明载）；且看板 `ISS-COVER-1` 记：**50 条 open issue 里 27 条在 ISSUE 台账与看板上都没有登记** | 先补齐 27 条登记 ⇒ 再做关闭核对 | **人工核对 + SSOT 证据链**（裁决明文「不能 AI 直接判断」） |
+| E2 | **Coverage ≥ {COVERAGE_MIN_ALPHA}%** | ✅ **达标**：阈值 **50 %**，ALPHA-GATES-004 的 coverage 臂**绿**（同轮 019 的 D9 实测 **87.69 %**） | — | — |
+| E3 | **No P0 bugs open** | ⚠️ **仓里没有任何 open-P0 门禁**（`issue_ledger.py` / `gov_probe.py` 只统计不阻断）⇒ 只能人工核对 | 人工核对 open P0 清单 | **属主 / 人工** |
+| E4 | **First beta tag cut: v{VER}-beta1** | ❌ **未切** | 切 `v4.1.0-beta1` | **纯人工**（`check_stage.sh` 只从 tag 推断阶段，不要求 tag 存在） |
+
+#### 2.2 **ALPHA 的 10 道门禁**
+
+- 最新一次全量实跑：**看板 `ALPHA-GATES-004`（状态 = 完成）**
+  —— 冻结 `2792759137ef`、干净工作树、wall 26 min ⇒ **9 PASS / 1 FAIL（EXIT=1）**；
+- **绿 9 臂**：`check_alpha_v4.1.0`（内含 `STATUS: ALPHA GATE PASS`）/ `arch_invariants` / `arch3_no_bypass` /
+  **coverage** / `sql_corpus` / `anti_ignore` / `cargo build --all-features` / `cargo test --all-features --lib` / `cargo fmt`；
+- **红 1 臂 = g1**，且**红因不是 TPC-H 漂移**，而是三条**可仓内闭合**的门禁侧缺陷：
+  ① **夹具缺失** —— `check_g1_tpch_baseline.sh` 全文从未设置 `TPCH_DATA_DIR`（只在第 21 行注释里出现），
+     且 `ls -d ~/sqlrustgo-tpch/data /tmp/tpch-fixture` 两者都不存在
+     ⇒ `tpch_full_22_test` / `tpch_hash_test` 实测输出 `TPCH-NOT-RUN: … reason=fixture_missing`，**测试进程仍返回 ok ⇒ 3/4 子检查空转绿**；
+  ② **NOT-RUN 被误译** —— `scripts/gate/tpch_hash_compare.py:36` 的 `HASH_RE` 只认 `G1 PASS: … (<hex>)`，
+     NOT-RUN 分支不打这行 ⇒ `parse_hash()` 走 `die(code=2)`；
+  ③ `check_g1_tpch_baseline.sh:141-149` 把**任意非零译成 `hash mismatch`** ⇒ 一个「不可比」被呈现为「哈希漂移」；
+- ⚠️ **口径提醒**：该 run 冻结在 `2792759137ef`（2026-11-13），此后 tip 已推进 ⇒ **最新 tip 的 ALPHA 10 臂状态需重跑**。
+
+#### 2.3 **AB-01..AB-10（ALPHA→BETA 项目门禁计划）**
+
+- 看板现值：**AB-CAMPAIGN=完成 · AB-07=完成 · AB-08=进行中 · AB-09=完成**
+- **AB-10 在看板上没有独立行** —— 它是「所有 P0/P1 发布阻断项关闭且有合并 PR」+「人工双审通过」；
+- AB-08（性能基线）**进行中**、AB-CAMPAIGN（38 臂 = 29 绿 / 9 红）已完成、AB-07（1h SOAK）已完成、AB-09 已完成；
+- **独立 Reviewer 回执**是计划的硬要求（§3.5「由非执行者复核」），**本线不能自审**。
+
+#### 2.4 **Owner 裁决面**
+
+- 看板 `GA-RESET-1` 记：**Owner 2026-11-08 裁决：8 项全部批准；阶段变化与提升必须按 governance 规则进行、
+  不得跳过或直接通过，必须按 SSOT 要求提供非 AI 判断的证据**；
+- `ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md` 的 5 组硬阻塞仍落在 **Owner 裁决域**
+  （Reviewer 指派、g1 口径、RC-B1 Phase 2、台账口径）与 **CI/infra 域**（runner 镜像、docker 地址池、runner 服务依赖）。
+
+### 三、**结论：目前不能由 AI 单方宣布 ALPHA→BETA 迁移，但缺口已全部定位且大部分可闭合**
+
+| 分类 | 内容 | 能否由本线闭合 |
+|---|---|---|
+| **仓内可闭合（需改 `scripts/`，故当前被物理阻挡）** | ① g1 三条根因（设 `TPCH_DATA_DIR` + 补夹具 `prepare_tpch_fixture.sh --sf 0.001 --seed 42` + 让 `HASH_RE` 认 NOT-RUN + 不把非零一律译成 hash mismatch）；② **F1 同族判据收口**（D5-3 宽泛 grep、D5-4/D5-5 硬编码 v3.7.0/v3.8.0、B-F1~B-F7 绑定 v3.8.0 PR 号）；③ `ISS-COVER-1` 的 27 条 open issue 补登记 | ✅ **能**，但改 `scripts/` 会使 **r5 与 019 的被测树失配** ⇒ 须先决定在跑轮次的处置 |
+| **必须人做** | ① open issue 关闭核对（E1，裁决明文「不能 AI 直接判断」）；② open P0 核对（E3）；③ 切 `v4.1.0-beta1` tag（E4）；④ **独立 Reviewer 指派与回执**（AB-10）；⑤ 5 组 Owner 裁决项 + CI/infra 项 | ❌ **不能** |
+| **需实跑** | ALPHA 10 臂在最新 tip 的重跑；AB-01..AB-10 逐项取证 | ⏳ 需 CPU ⇒ 须先决定 019 的处置 |
+
+### 四、**纠正后的优先级（Agent 裁决）**
+
+1. **主线切到 ALPHA→BETA**；
+2. **可立即做（零干扰、纯文档）**：本块与看板 `ALPHA-BETA-1` 已把门槛逐条登记；BETA 必需文件
+   （`TEST_PLAN.md` / `FEATURE_CHECKLIST.md` / `FEATURE_MATRIX.md` / `STAGE.yaml` 更新）缺口盘点；
+3. **需 CPU 或需改 `scripts/` 的部分排队**：g1 修复 → ALPHA 10 臂重跑 → AB-01..AB-10 取证；
+4. **019（GA 35 项）的处置建议**：seq 1 已 FAIL 且归因于门禁侧缺陷（F1/F2/F3）⇒ **本轮注定给不出可用的 GA 结论**；
+   而它正占满本机 CPU，阻塞着 ALPHA→BETA 的实跑 ⇒ **建议中止并让位**；**该动作属授权边界（中止一轮已跑 12 项的认证轮）⇒ 须属主确认，Agent 不自行决定**；
+5. **r5 的处置建议不变**：判据⑤不满足且根因已定位需改 `crates/` ⇒ 本轮不可能合格 ⇒ 是否提前收尾释放 252 亦须属主授权；
+6. GA 侧材料**不撤销**，降级为 RC/GA 阶段的预备证据。
+
+### 五、**仍未达成**
+
+| # | 项 | 状态 |
+|---|---|---|
+| **C1** | **ALPHA→BETA 跃迁** | ⏳ **当前主线**。E2（覆盖率）✅；E1/E3/E4 与 AB-01..AB-10、Owner 裁决项 **未闭合** ⇒ **不可单方宣布迁移** |
+| C1a | g1 夹具 + NOT-RUN 误译修复 | ⏳ 仓内可闭合 ⇒ **待「在跑轮次处置」决定后执行** |
+| C1b | 最新 tip 的 ALPHA 10 臂重跑 | ⏳ 待 CPU 释放 |
+| C1c | open issue 关闭核对 / open P0 核对 / beta1 tag / 独立 Reviewer | ⏳ **属主** |
+| B1 | 168h SOAK 0 错证据 | ⏳ r5 已跑 **7.98 h（4.75 %）**，**0 错 / 0 panic 成立**（driver_e/panic/error_high 非零 0/0/0 行）、RSS 190.3 → 1346.5 MB；**但判据⑤不满足且根因已定位需改 crates/ ⇒ 本轮不可能合格**（降级为 RC/GA 预备） |
+| B7 | 019 认证轮 | ⚠️ 已落账 **12 项**（PASS 11 / FAIL 1），seq 1 FAIL 已归因于 F1/F2/F3 ⇒ **建议中止让位，待属主授权** |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**）；⚠️ 条件①指名 r2 轮，r2 已出局 ⇒ 需属主确认承接轮 |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主** |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 | ⏳ **属主** |
+
+<!-- END 2026-11-19 REFRESH BLOCK 16 -->
+
 <!-- BEGIN 2026-11-19 REFRESH BLOCK 15 -->
 
 ## 🔄 刷新块（2026-11-19T12:33:55Z）—— 第 15 次刷新，取代本文件内全部既有刷新块的判定
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T12:41:13Z（第 16 次刷新，位于本文件顶部）**，其中「阶段重心纠正」「ALPHA→BETA 门槛实测」「纠正后的优先级」等状态已被该块更新 ⇒ **状态以顶部第 16 次块为准**。
+
 
 > **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
 > **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
