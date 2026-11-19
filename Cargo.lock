@@ -2638,9 +2638,9 @@ dependencies = [
 
 [[package]]
 name = "lz4_flex"
-version = "0.11.6"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
+checksum = "f56455fff36934a9500d69062aec1c77037179b6f0669e4d5d6b72b84722d6a3"
 dependencies = [
  "twox-hash 2.1.4",
 ]
@@ -4605,6 +4605,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "sqlrustgo-storage",
  "tempfile",
  "thiserror 1.0.69",
  "uuid",
