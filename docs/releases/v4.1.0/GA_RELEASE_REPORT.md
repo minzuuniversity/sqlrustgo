@@ -2803,7 +2803,7 @@ runtime 不接受该格式 ⇒ 规则库被判 `invalid-v2-rule` ⇒ **全部工
 | 停轮方式 | 按**具体 PID**（9 个：supervisor / heartbeat / tee / armA shell ×2 / server / driver / data_size_sampler），**TERM → 4 s → KILL**，停轮后匹配进程 = 0，**无看门狗复活** |
 | 留档 | `20261119-168h-v410-r5/STOPPED_BY_AGENT.txt`（含 `stopped_by:` / `reason:`，与 r2 同规格）；**r3/r4 漏留档的坑本轮未再犯** |
 | 归档 | `audit/v4.1.0/runs/20261119-168h-v410-r5/`（manifest.yaml + abort_facts.yaml + ABORTED.md + 结构化产物；`*.log` 只记哈希不入仓） |
-| 查询 / 错误 | 1,260,501 / **4**（0.0003%），4 笔集中于 `23:20:43Z–23:20:58Z` 一个 15 秒窗口（窗口内 host_load1 33.8 / 22 个忙进程）⇒ **与宿主争用相关** |
+| 查询 / 错误 | 1,260,501 / **4**（0.0003%），4 笔集中于 `15:20:43Z–15:20:58Z` 一个 15 秒窗口（窗口内 host_load1 33.8 / 22 个忙进程）⇒ **与宿主争用相关**（【2026-11-20 时区订正】原写作 `23:20:43Z` —— `metrics.csv` 的 `ts` 是宿主本地时间 UTC+8，减 8 h 后与本值一致；订正依据见 `docs/releases/v4.1.0/evidence/SOAK_R5_FAIL_001_TRIAGE_2026-11-20.md` §2，归因结论不变） |
 | 心跳 / panic | **2,766 拍、`alive=false` 0 次**（连续到停）；`panic_count` 全程 **00**；`error_high` 全程 0；server.log 无崩溃标记 ⇒ **无崩溃** |
 | 独占性 | **2,715 / 2,715 个采样点宿主皆忙** ⇒ VIOLATED；GA 资格 NOT-EVALUATED；**判据⑤不满足** |
 
