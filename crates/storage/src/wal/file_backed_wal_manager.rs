@@ -137,13 +137,15 @@ impl FileBackedWalManager {
 
 impl WalManager for FileBackedWalManager {
     /// #5055: stamp `next_lsn` into the entry before it reaches the
-    /// file, then advance.
-    fn append(&mut self, entry: WalEntry) -> SqlResult<()> {
+    /// file, then advance. The stamped LSN is returned so the caller
+    /// works in the SAME LSN space as the file.
+    fn append(&mut self, entry: WalEntry) -> SqlResult<u64> {
         let mut entry = entry;
-        entry.lsn = self.next_lsn;
+        let lsn = self.next_lsn;
+        entry.lsn = lsn;
         self.append_preserving_lsn(&entry)?;
         self.next_lsn += 1;
-        Ok(())
+        Ok(lsn)
     }
 
     fn flush(&mut self) -> SqlResult<()> {
@@ -176,7 +178,16 @@ impl WalManager for FileBackedWalManager {
 
     fn truncate_before(&mut self, lsn: u64) -> SqlResult<()> {
         let entries = self.recover()?;
-        let retained: Vec<_> = entries.into_iter().filter(|e| e.lsn >= lsn).collect();
+        let retained: Vec<_> = entries.iter().filter(|e| e.lsn >= lsn).cloned().collect();
+        if retained.len() == entries.len() {
+            // Nothing would be dropped. The old code truncated the file
+            // and rewrote the identical content anyway, which cost
+            // O(log size) of I/O on EVERY commit. Over a long run that
+            // made the write cost grow with the log — quadratic — and a
+            // workload that outlives its own log size would time out.
+            return Ok(());
+        }
+        let previous_next_lsn = self.next_lsn;
         self.truncate()?;
         // #5055: preserve the surviving entries' own LSNs, then resume
         // numbering after the highest of them.
@@ -188,7 +199,11 @@ impl WalManager for FileBackedWalManager {
             .map(|e| e.lsn)
             .max()
             .map(|m| m + 1)
-            .unwrap_or(0);
+            // Never move the counter backwards: a log that ends up empty
+            // must not restart the LSN sequence, or the entries written
+            // after it would carry LSNs the checkpoint has already
+            // passed.
+            .unwrap_or(previous_next_lsn);
         Ok(())
     }
 

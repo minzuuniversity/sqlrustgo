@@ -344,6 +344,26 @@ A_COVERAGE_PCT=$(( A_ELAPSED_S * 100 / DURATION_SEC ))
 A_LOAD_OK=0
 [ "$A_QUERIES" -gt 0 ] && [ "$A_METRIC_ROWS" -ge "$A_ROWS_FLOOR" ] && A_LOAD_OK=1
 
+# --- arm A: did the primary-key lookups actually FIND their rows? ---------
+# The driver logs one line per query:
+#   Q,<latency_ms>,<thread_id>,<query_kind>,<row_count>
+# `A_QUERIES > 0` says only that the driver ran. It says nothing about
+# whether the queries returned anything, so a round whose equality
+# lookups silently answered with the wrong row — or with none — still
+# counted as "load applied" and was judged PASS. The point-select hit
+# rate is asserted here so that class of defect cannot pass again.
+A_PS_QUERIES=0; A_PS_HITS=0; A_PS_HIT_PCT=0
+if [ -f "$OUT/armA/driver.log" ]; then
+  A_PS_QUERIES=$(awk -F, '$1=="Q" && $4=="point_select"{n++} END{print n+0}' "$OUT/armA/driver.log" 2>/dev/null || echo 0)
+  A_PS_HITS=$(awk -F, '$1=="Q" && $4=="point_select" && $5+0>0{n++} END{print n+0}' "$OUT/armA/driver.log" 2>/dev/null || echo 0)
+  if [ "$A_PS_QUERIES" -gt 0 ]; then
+    A_PS_HIT_PCT=$(( A_PS_HITS * 100 / A_PS_QUERIES ))
+  fi
+fi
+A_PS_MIN_HIT_PCT=99
+A_PS_OK=0
+[ "$A_PS_QUERIES" -gt 0 ] && [ "$A_PS_HIT_PCT" -ge "$A_PS_MIN_HIT_PCT" ] && A_PS_OK=1
+
 # --- host contention: was the box ours while we soaked? ------------------
 # The arm-A metrics carry a host-load column per sample. Summarise it
 # here so the report answers "was this a quiet machine?" without the
@@ -378,7 +398,7 @@ ELAPSED=$(( $(date +%s) - T0 ))
 # The overall verdict is a conjunction of BOTH arms' exit codes, artifact
 # completeness, and load proof. Any one of them missing ⇒ NOT PASS.
 A_PASS=0
-[ "$A_RC" = "0" ] && [ "$ART_A_OK" = "1" ] && [ "$A_LOAD_OK" = "1" ] && A_PASS=1
+[ "$A_RC" = "0" ] && [ "$ART_A_OK" = "1" ] && [ "$A_LOAD_OK" = "1" ] && [ "$A_PS_OK" = "1" ] && A_PASS=1
 B_PASS=0
 [ "$B_RC" = "0" ] && [ "$ART_B_OK" = "1" ] && [ "$B_LOAD_OK" = "1" ] && B_PASS=1
 
@@ -414,6 +434,7 @@ cat > "$OUT/FINAL_REPORT.md" <<EOF
 | metrics 行数 | $A_METRIC_ROWS (期望 ≥ $A_ROWS_FLOOR，覆盖 ${A_COVERAGE_PCT}%) |
 | 采样到的最长 elapsed_s | $A_ELAPSED_S |
 | 负载已实际施加 | $A_LOAD_OK (1=查询数>0 且覆盖窗口) |
+| **主键等值点查命中** | **$A_PS_HITS/$A_PS_QUERIES = $A_PS_HIT_PCT%**（门槛 ≥ $A_PS_MIN_HIT_PCT%，$A_PS_OK） |
 | 负载 | 80% 读 / 10% 写，16 客户端线程 |
 | 采样 | 15s：RSS / FD / 线程 / WAL 字节 / 磁盘余量 / 探针 / 存活 |
 | **主机争用** | 负载均值峰值 $A_HOST_LOAD_MAX；有 ≥50% CPU 进程的采样 $A_HOST_BUSY_SAMPLES/$A_METRIC_ROWS（$A_HOST_BUSY_PCT%） |
@@ -436,10 +457,10 @@ cat > "$OUT/FINAL_REPORT.md" <<EOF
 
 | 臂 | 判定 |
 |---|---|
-| A | $( [ "$A_PASS" = "1" ] && echo "PASS" || echo "NOT PASS（rc=$A_RC 产物齐=$ART_A_OK 负载已施加=$A_LOAD_OK 查询数=$A_QUERIES 覆盖=${A_COVERAGE_PCT}%）" ) |
+| A | $( [ "$A_PASS" = "1" ] && echo "PASS" || echo "NOT PASS（rc=$A_RC 产物齐=$ART_A_OK 负载已施加=$A_LOAD_OK 查询数=$A_QUERIES 覆盖=${A_COVERAGE_PCT}% 点查命中=${A_PS_HIT_PCT}%）" ) |
 | B | $( [ "$B_PASS" = "1" ] && echo "PASS" || echo "NOT PASS（rc=$B_RC 产物齐=$ART_B_OK 负载已施加=$B_LOAD_OK attempted=$B_ATTEMPTED verdict=$B_VERDICT 五类=$B_CLASSES_OK）" ) |
 
-> 判定是**合取**：退出码 0、产物齐全、负载已实际施加，三者同时成立才算 PASS。
+> 判定是**合取**：退出码 0、产物齐全、负载已实际施加、主键等值点查命中率达标，四者同时成立才算 PASS。
 > 任何一项不成立即为 NOT PASS —— 空转的 run 不会被写成 PASS。
 
 ## 5. 未覆盖 / 偏差（如实登记）

@@ -181,22 +181,28 @@ impl WriteState {
     /// the recorded indices does NOT restore the original table for more than
     /// one removed row, because the removals shift every later index. `retain`
     /// keeps survivors in their original relative order, so replay does.
-    fn remove_matching<F>(&mut self, scoped_table: &str, matches: F) -> Vec<Record>
+    fn remove_matching<F>(&mut self, scoped_table: &str, matches: F) -> (Vec<Record>, Vec<usize>)
     where
         F: Fn(&Record) -> bool,
     {
         let mut removed: Vec<Record> = Vec::new();
+        // Positions (in the table's row vector) the removed rows occupied,
+        // in ascending order. The PK/secondary B+Trees store physical row
+        // positions, and compacting the vector shifts every later one —
+        // the caller uses these positions to repair the trees.
+        let mut removed_positions: Vec<usize> = Vec::new();
         if let Some(data) = self.tables.get_mut(scoped_table) {
-            let mut rows = std::mem::take(&mut data.rows);
-            rows.retain(|row| {
-                if matches(row) {
-                    removed.push(row.clone());
-                    false
+            let rows = std::mem::take(&mut data.rows);
+            let mut survivors: Vec<Record> = Vec::with_capacity(rows.len());
+            for (pos, row) in rows.into_iter().enumerate() {
+                if matches(&row) {
+                    removed_positions.push(pos);
+                    removed.push(row);
                 } else {
-                    true
+                    survivors.push(row);
                 }
-            });
-            data.rows = rows;
+            }
+            data.rows = survivors;
         }
         if let Some(buffered) = self.insert_buffer.get_mut(scoped_table) {
             let mut buf = std::mem::take(buffered);
@@ -210,7 +216,7 @@ impl WriteState {
             });
             *buffered = buf;
         }
-        removed
+        (removed, removed_positions)
     }
 }
 
@@ -594,6 +600,8 @@ impl FileStorage {
         };
         let mut inner = shared.lock().expect("SharedWalHandle inner mutex poisoned");
         for entry in entries {
+            // The manager stamps each entry with the LSN it owns; the
+            // caller does not get to choose one.
             inner.append(entry)?;
         }
         Ok(())
@@ -3637,6 +3645,70 @@ mod tests {
         assert!(storage.get_table_mut("nonexistent").is_none());
     }
 
+    /// A DELETE compacts the table's row vector, so every later row's
+    /// position shifts down by one. The primary-key B+Tree stores those
+    /// positions — so without a repair the tree keeps pointing at the
+    /// PREVIOUS row and an equality lookup answers with the wrong row.
+    ///
+    /// This is not a corner case: the engine implements UPDATE as
+    /// delete + insert, so every update moved every later key's row
+    /// position. The equality lookup then returned a row carrying a
+    /// different key, the query layer filtered it out, and the user saw
+    /// "no such row" for a row that was plainly there.
+
+    #[test]
+    fn pk_lookup_stays_correct_after_a_delete() {
+        let mut storage = make_storage("fs_pk_after_delete");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: true,
+                char_max_length: None,
+                collation: None,
+                default_value: None,
+                auto_increment: false,
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            partition_info: None,
+            original_sql: String::new(),
+            clustered: false,
+        };
+        storage.create_table(&info).unwrap();
+
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
+        let rows: Vec<Record> = (1..=5i64).map(|i| vec![Value::Integer(i)]).collect();
+        storage.insert_at(&db, "t", rows).unwrap();
+        // Move the rows out of the insert buffer into the table itself, so
+        // the primary-key tree really holds their positions.
+        storage.flush_buffer(&db, "t").unwrap();
+
+        // Delete the middle row: every later row shifts down by one.
+        storage.delete_at(&db, "t", &[Value::Integer(3)]).unwrap();
+
+        for id in [1i64, 2, 4, 5] {
+            let found = storage.scan_pk("t", "id", &Value::Integer(id)).unwrap();
+            assert_eq!(
+                found.and_then(|r| r.first().cloned()),
+                Some(Value::Integer(id)),
+                "primary-key lookup for id={id} must return that row, not another one"
+            );
+        }
+        assert!(
+            storage
+                .scan_pk("t", "id", &Value::Integer(3))
+                .unwrap()
+                .is_none(),
+            "the deleted row must not be found"
+        );
+    }
+
     #[test]
     fn test_insert_table() {
         let storage = make_storage("fs_insert_table");
@@ -5062,7 +5134,7 @@ impl FileStorage {
                 }
                 result
             });
-        if let Some((start_row_id, _row_count, columns)) = snap {
+        if let Some((start_row_id, row_count, columns)) = snap {
             // V400-PERF-FIX: pass &records directly. The closure
             // returns the columns/start_row_id but the records
             // have been moved into the closure body. Since
@@ -5073,7 +5145,20 @@ impl FileStorage {
             // the buffer out — but `records` is still owned by
             // us at this point because we cloned into the buffer),
             // we can pass &records to read PKs directly.
-            Self::update_pk_index(self, db, table, &columns, &records, start_row_id);
+            //
+            // BUT the closure flushed the WHOLE buffer — the rows that
+            // were already buffered plus this call's rows — while
+            // `records` holds only this call's rows. Indexing `records`
+            // against the batch's start position therefore
+            //   * pointed this call's keys at the PREVIOUSLY buffered
+            //     rows' positions, and
+            //   * left the previously buffered rows' keys out of the
+            //     index entirely.
+            // The flushed batch is exactly the window
+            // `[start_row_id, start_row_id + row_count)` of the table's
+            // row vector, so index that window instead — the same
+            // window-based helper `flush_buffer` uses.
+            Self::update_pk_index_window(self, db, table, &columns, start_row_id, row_count);
         }
         Ok(())
     }
@@ -5245,6 +5330,39 @@ impl FileStorage {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// Repair every B+Tree index of `db.table` after rows were physically
+    /// removed from the table's row vector.
+    ///
+    /// The trees store **physical row positions**. `remove_matching`
+    /// compacts the row vector, so every position after a removed row
+    /// shifts down by one. Without this repair the tree keeps pointing at
+    /// the previous row and an equality lookup silently returns the
+    /// WRONG row — which the query layer then filters out, so the user
+    /// sees "no such row" for a row that is plainly there.
+    ///
+    /// `removed_positions` are the positions the removed rows occupied,
+    /// ascending. Cost is O(number of indexed row ids), the same order as
+    /// the `Vec::retain` that produced the removal.
+    fn repair_indexes_after_removal(&self, db: &str, table: &str, removed_positions: &[usize]) {
+        if removed_positions.is_empty() {
+            return;
+        }
+        let scoped = self.tbl_in(db, table);
+        let Ok(mut indexes) = self.indexes.write() else {
+            return;
+        };
+        let affected: Vec<(String, String)> = indexes
+            .keys()
+            .filter(|(t, _)| t == &scoped)
+            .cloned()
+            .collect();
+        for key in affected {
+            if let Some(index) = indexes.get_mut(&key) {
+                index.adjust_after_removal(removed_positions);
             }
         }
     }
@@ -5622,26 +5740,31 @@ impl FileStorage {
         let table_name = table.to_string();
         let match_row = |row: &Record| filter(row);
 
-        let removed_rows = Self::with_write_lock(self, |s| -> Vec<Record> {
-            if in_tx {
-                if let Some(buffered) = s.insert_buffer.get(&scoped) {
-                    for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(TxUndoEntry {
-                            tx_id,
-                            op: UndoOp::BufferedDelete {
-                                table: table_name.clone(),
-                                row: row.clone(),
-                            },
-                        });
+        let (removed_rows, removed_positions) =
+            Self::with_write_lock(self, |s| -> (Vec<Record>, Vec<usize>) {
+                if in_tx {
+                    if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                        for row in buffered.iter().filter(|r| match_row(r)) {
+                            s.tx_undo_log.push(TxUndoEntry {
+                                tx_id,
+                                op: UndoOp::BufferedDelete {
+                                    table: table_name.clone(),
+                                    row: row.clone(),
+                                },
+                            });
+                        }
                     }
                 }
-            }
-            let removed = s.remove_matching(&scoped, match_row);
-            if !removed.is_empty() {
-                s.dirty_tables.insert((db.to_string(), table_name.clone()));
-            }
-            removed
-        });
+                let (removed, positions) = s.remove_matching(&scoped, match_row);
+                if !removed.is_empty() {
+                    s.dirty_tables.insert((db.to_string(), table_name.clone()));
+                }
+                (removed, positions)
+            });
+
+        // The row vector was compacted — repoint the B+Trees at the rows
+        // that survived, or every equality lookup returns the wrong row.
+        self.repair_indexes_after_removal(db, table, &removed_positions);
 
         if watching {
             for row in &removed_rows {
@@ -5851,7 +5974,8 @@ impl FileStorage {
                     .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
         };
 
-        let removed_rows = Self::with_write_lock(self, |s| -> SqlResult<Vec<Record>> {
+        let (removed_rows, removed_positions) =
+            Self::with_write_lock(self, |s| -> SqlResult<(Vec<Record>, Vec<usize>)> {
             // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
             // BEFORE the removal, while the rows still exist.
             if in_tx {
@@ -5894,7 +6018,7 @@ impl FileStorage {
                 }
             }
 
-            let removed = s.remove_matching(&scoped, match_row);
+            let (removed, removed_positions) = s.remove_matching(&scoped, match_row);
 
             // V311-07: Mark dirty instead of immediate persist. The old
             // condition keyed off the tables-only count, which missed
@@ -5902,8 +6026,12 @@ impl FileStorage {
             if !removed.is_empty() || filters.is_empty() {
                 s.dirty_tables.insert((db.to_string(), table_name.clone()));
             }
-            Ok(removed)
+            Ok((removed, removed_positions))
         })?;
+
+        // The row vector was compacted — repoint the B+Trees at the rows
+        // that survived, or every equality lookup returns the wrong row.
+        self.repair_indexes_after_removal(db, table, &removed_positions);
 
         // #5048: record the deletion. `filters` is already positional
         // against the row's leading columns — exactly what a change
@@ -5970,11 +6098,34 @@ impl FileStorage {
                 // so the table and the buffer are read at one instant.
                 let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
                     st.tables.get(&self.tbl_in(db, table)).map(|data| {
+                        // The tree stores PHYSICAL row positions. A DELETE
+                        // compacts the row vector, so a position that was
+                        // correct when it was written can later address a
+                        // DIFFERENT row. Accept a row only when the indexed
+                        // column really carries the key we looked up —
+                        // otherwise the lookup would silently answer with
+                        // somebody else's row.
+                        let key_col_idx = data
+                            .info
+                            .columns
+                            .iter()
+                            .position(|c| c.name == index_name);
                         // Collect matching rows
                         let mut results = Vec::new();
                         for &row_id in &row_ids {
                             if (row_id as usize) < data.rows.len() {
-                                results.push(data.rows[row_id as usize].clone());
+                                let row = &data.rows[row_id as usize];
+                                let matches = match key_col_idx {
+                                    Some(idx) => row
+                                        .get(idx)
+                                        .and_then(|v| v.to_index_key())
+                                        .map(|k| k == search_key)
+                                        .unwrap_or(false),
+                                    None => true,
+                                };
+                                if matches {
+                                    results.push(row.clone());
+                                }
                             }
                         }
                         // Also check insert_buffer
@@ -6516,11 +6667,33 @@ impl StorageEngine for FileStorage {
         // Phase D.1: `pk_column` is now an explicit parameter
         // (previously hard-coded to `"id"`, which broke lookup on any
         // table whose PK column had a different name).
+        //
+        // Compare against the DECLARED PK column's position, not
+        // `row.first()` — the latter only works when the PK happens to be
+        // the first column.
+        let pk_idx = self.get_table_info(table).ok().and_then(|info| {
+            info.columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(pk_column))
+        });
+        let search_key = pk.to_index_key();
+        let key_matches = |row: &Record| -> bool {
+            match pk_idx {
+                Some(idx) => row
+                    .get(idx)
+                    .map(|v| v == pk || v.to_index_key() == search_key)
+                    .unwrap_or(false),
+                None => row.first() == Some(pk),
+            }
+        };
         if let Ok(info) = self.get_table_info(table) {
             if info.columns.iter().any(|c| c.primary_key) {
                 let rows = self.scan_with_index(table, pk_column, pk)?;
-                if !rows.is_empty() {
-                    return Ok(rows.into_iter().next());
+                // The tree stores PHYSICAL row positions; a DELETE compacts
+                // the row vector, so a stale position addresses a DIFFERENT
+                // row. Accept only a row that really carries the key.
+                if let Some(row) = rows.into_iter().find(|r| key_matches(r)) {
+                    return Ok(Some(row));
                 }
                 // V400-MVCC-PKFAST: B+Tree lookup returned empty.
                 // This can mean either (a) no such PK in the table,
@@ -6534,7 +6707,7 @@ impl StorageEngine for FileStorage {
         Ok(self
             .scan(table)?
             .into_iter()
-            .find(|row| row.first() == Some(pk)))
+            .find(|row| key_matches(row)))
     }
 
     /// #5057: `scan_pk` against a stated database — uses the B+Tree via
@@ -6546,19 +6719,71 @@ impl StorageEngine for FileStorage {
         pk_column: &str,
         pk: &Value,
     ) -> SqlResult<Option<Record>> {
+        // The DECLARED PK column's position. Comparing against
+        // `row.first()` only works when the PK happens to be the first
+        // column; with any other layout the equality lookup silently
+        // never matches.
+        let pk_idx = self.get_table_info_in(db, table).ok().and_then(|info| {
+            info.columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(pk_column))
+        });
+        let search_key = pk.to_index_key();
+        let key_matches = |row: &Record| -> bool {
+            match pk_idx {
+                Some(idx) => row
+                    .get(idx)
+                    .map(|v| v == pk || v.to_index_key() == search_key)
+                    .unwrap_or(false),
+                None => row.first() == Some(pk),
+            }
+        };
         if let Ok(info) = self.get_table_info_in(db, table) {
             if info.columns.iter().any(|c| c.primary_key) {
                 let rows = self.scan_with_index_in(db, table, pk_column, pk)?;
-                if !rows.is_empty() {
-                    return Ok(rows.into_iter().next());
+                // The tree stores PHYSICAL row positions. A DELETE compacts
+                // the row vector, so a position that was correct when it
+                // was written can later address a DIFFERENT row. Accept
+                // only a row that really carries the key; otherwise fall
+                // through to the search below.
+                if let Some(row) = rows.into_iter().find(|r| key_matches(r)) {
+                    return Ok(Some(row));
                 }
             }
         }
-        let pk = pk.clone();
-        Ok(self
-            .scan_in_db(db, table)?
-            .into_iter()
-            .find(|row| row.first() == Some(&pk)))
+        // Fallback: a TARGETED search that does not copy the whole table.
+        // `scan_in_db` clones every row out of the table, which turns one
+        // point lookup into an O(table size) copy — unusable on a table
+        // that grows to hundreds of thousands of rows.
+        let Some(pk_idx) = pk_idx else {
+            return Ok(None);
+        };
+        Ok(self.with_read_lock(|st| {
+            let scoped = self.tbl_in(db, table);
+            let data = st.tables.get(&scoped)?;
+            let hit = data
+                .rows
+                .iter()
+                .find(|row| {
+                    row.get(pk_idx)
+                        .map(|v| v == pk || v.to_index_key() == search_key)
+                        .unwrap_or(false)
+                })
+                .cloned();
+            if hit.is_some() {
+                return hit;
+            }
+            // Rows still in the insert buffer are not in `data.rows` yet.
+            let buffered = st.insert_buffer.get(&scoped)?;
+            buffered
+                .iter()
+                .find(|row| {
+                    row.get(pk_idx)
+                        .map(|v| v == pk || v.to_index_key() == search_key)
+                        .unwrap_or(false)
+                })
+                .cloned()
+        }))
     }
 
     fn scan_with_index(
