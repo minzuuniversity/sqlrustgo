@@ -1,0 +1,177 @@
+schema_version: 1
+run_id: 20261119-ga-gates-017
+source_agent: mcode-macmini
+frozen_commit: b697a9a6875bad40d2acb892e2864fa2e1cbecd6
+harness: scripts/gate/run_gates.py（plan + execute）—— 门禁清单本身是清单的一部分，分母 35，plan sha256 sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809
+environment:
+  stage: GA
+  version: v4.1.0
+  git_head: b697a9a6875bad40d2acb892e2864fa2e1cbecd6
+  expected_n: 35
+  expected_sha256: sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809
+  planned_at: '2026-11-19T01:56:17Z'
+  tree: /Volumes/workspace/dev/srg-gate-d1
+  timeout_sec: 21600
+note: '017 轮在 seq 1 执行阶段（已跑 72 min）被中止：中止原因是代码面变更（PR #5865 合并头 93ac1d427e 落地），验收对象已变为新树 ⇒ 017 的结论对新树无效。已按
+  PID 终止 run_gates.py execute 85470 及其 cargo 子进程。results.jsonl 为 0 行（seq 1 未完成，无逐项结果）。本归档如实记录中止事实，不冒充跑满。'
+artifacts:
+  plan.jsonl:
+    bytes: 2439
+    sha256: 3cb712ecf04e74936193d0aeded281a4a888ca74ab50d29503ef24aa6b845573
+  results.jsonl:
+    bytes: 0
+    sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  binaries.sha256:
+    bytes: 408
+    sha256: 89d8ffc6cdb9a7ebd5d6dd998e6b7a9ef563227600ed6c7efd741278cf725ceb
+remote_sources:
+  plan.jsonl.meta.json:
+    bytes: 357
+    sha256: 99acc300d8953c0b458b490c6482d00b37c95c81507cc9a5aa5a555fe4e6c948
+    note: 内容已嵌入本清单的 environment 段（expected_n / expected_sha256 / git_head / planned_at）
+commands:
+- id: 001-check_rc_ga_gate.sh
+  cmd: bash scripts/gate/check_rc_ga_gate.sh
+  desc: GA 清单第 1 项（kind=script）
+  cwd: .
+- id: 002-check_arch_invariants.sh
+  cmd: bash scripts/gate/check_arch_invariants.sh
+  desc: GA 清单第 2 项（kind=script）
+  cwd: .
+- id: 003-check_arch3_no_bypass.sh
+  cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  desc: GA 清单第 3 项（kind=script）
+  cwd: .
+- id: 004-check_int2_no_orphan.sh
+  cmd: bash scripts/gate/check_int2_no_orphan.sh
+  desc: GA 清单第 4 项（kind=script）
+  cwd: .
+- id: 005-check_int3_single_expr.sh
+  cmd: bash scripts/gate/check_int3_single_expr.sh
+  desc: GA 清单第 5 项（kind=script）
+  cwd: .
+- id: 006-check_sem1_savepoint.sh
+  cmd: bash scripts/gate/check_sem1_savepoint.sh
+  desc: GA 清单第 6 项（kind=script）
+  cwd: .
+- id: 007-check_backup_restore.sh
+  cmd: bash scripts/gate/check_backup_restore.sh
+  desc: GA 清单第 7 项（kind=script）
+  cwd: .
+- id: 008-check_p12_crash_test.sh
+  cmd: bash scripts/gate/check_p12_crash_test.sh
+  desc: GA 清单第 8 项（kind=script）
+  cwd: .
+- id: 009-check_p14_upgrade_test.sh
+  cmd: bash scripts/gate/check_p14_upgrade_test.sh
+  desc: GA 清单第 9 项（kind=script）
+  cwd: .
+- id: 010-check_p21_audit_log.sh
+  cmd: bash scripts/gate/check_p21_audit_log.sh
+  desc: GA 清单第 10 项（kind=script）
+  cwd: .
+- id: 011-check_p22_time_travel.sh
+  cmd: bash scripts/gate/check_p22_time_travel.sh
+  desc: GA 清单第 11 项（kind=script）
+  cwd: .
+- id: 012-check_p23_hash_chain.sh
+  cmd: bash scripts/gate/check_p23_hash_chain.sh
+  desc: GA 清单第 12 项（kind=script）
+  cwd: .
+- id: 013-check_g1_tpch_baseline.sh
+  cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  desc: GA 清单第 13 项（kind=script）
+  cwd: .
+- id: 014-check_g16_compatibility.sh
+  cmd: bash scripts/gate/check_g16_compatibility.sh
+  desc: GA 清单第 14 项（kind=script）
+  cwd: .
+- id: 015-check_integration_gate.sh
+  cmd: bash scripts/gate/check_integration_gate.sh
+  desc: GA 清单第 15 项（kind=script）
+  cwd: .
+- id: 016-check_anti_fabrication.sh
+  cmd: bash scripts/gate/check_anti_fabrication.sh
+  desc: GA 清单第 16 项（kind=script）
+  cwd: .
+- id: 017-check_arch_sem_debt.sh
+  cmd: bash scripts/gate/check_arch_sem_debt.sh
+  desc: GA 清单第 17 项（kind=script）
+  cwd: .
+- id: 018-check_cross_version_debt.sh
+  cmd: bash scripts/gate/check_cross_version_debt.sh
+  desc: GA 清单第 18 项（kind=script）
+  cwd: .
+- id: 019-check_int_debt.sh
+  cmd: bash scripts/gate/check_int_debt.sh
+  desc: GA 清单第 19 项（kind=script）
+  cwd: .
+- id: 020-check_full_gate_verification.sh
+  cmd: bash scripts/gate/check_full_gate_verification.sh
+  desc: GA 清单第 20 项（kind=script）
+  cwd: .
+- id: 021-check_drift_not_pass.sh
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  desc: GA 清单第 21 项（kind=script）
+  cwd: .
+- id: 022-check_architecture_freeze.sh
+  cmd: bash scripts/gate/check_architecture_freeze.sh
+  desc: GA 清单第 22 项（kind=script）
+  cwd: .
+- id: 023-check_gate_self_verification.sh
+  cmd: bash scripts/gate/check_gate_self_verification.sh
+  desc: GA 清单第 23 项（kind=script）
+  cwd: .
+- id: 024-check_gate_test_integrity.sh
+  cmd: bash scripts/gate/check_gate_test_integrity.sh
+  desc: GA 清单第 24 项（kind=script）
+  cwd: .
+- id: 025-check_gate_executability.sh
+  cmd: bash scripts/gate/check_gate_executability.sh
+  desc: GA 清单第 25 项（kind=script）
+  cwd: .
+- id: 026-check_coverage_v312.sh
+  cmd: bash scripts/gate/check_coverage_v312.sh
+  desc: GA 清单第 26 项（kind=script）
+  cwd: .
+- id: 027-check_coverage_single_implementation.sh
+  cmd: bash scripts/gate/check_coverage_single_implementation.sh
+  desc: GA 清单第 27 项（kind=script）
+  cwd: .
+- id: 028-check_tests_dont_write_archived_evidence.sh
+  cmd: bash scripts/gate/check_tests_dont_write_archived_evidence.sh
+  desc: GA 清单第 28 项（kind=script）
+  cwd: .
+- id: 029-check_commit_message.sh
+  cmd: bash scripts/gate/check_commit_message.sh
+  desc: GA 清单第 29 项（kind=script）
+  cwd: .
+- id: 030-check_sql_corpus_gate.sh
+  cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  desc: GA 清单第 30 项（kind=script）
+  cwd: .
+- id: 031-check_anti_ignore_gate.sh
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  desc: GA 清单第 31 项（kind=script）
+  cwd: .
+- id: 032-cargo build --all-features
+  cmd: cargo build --all-features
+  desc: GA 清单第 32 项（kind=command）
+  cwd: .
+- id: 033-cargo test --all-features
+  cmd: cargo test --all-features
+  desc: GA 清单第 33 项（kind=command）
+  cwd: .
+- id: 034-cargo fmt --check
+  cmd: cargo fmt --check
+  desc: GA 清单第 34 项（kind=command）
+  cwd: .
+- id: 035-cargo clippy --all-features -- -D warnings
+  cmd: cargo clippy --all-features -- -D warnings
+  desc: GA 清单第 35 项（kind=command）
+  cwd: .
+results: []
+unexecuted_gates: []
+fail_summary: []
+evidence_hash: sha256:603ef55219540069ee73b5df9d0bc824b443efdf1bb65fe80e1da00c171586c5
+round_status: INCOMPLETE
