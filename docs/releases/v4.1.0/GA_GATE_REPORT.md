@@ -14,9 +14,155 @@
 > PASS 声明有对应的 gate engine 输出，而非 AI 自述。）
 
 ---
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 17 -->
+
+## 🔄 刷新块（2026-11-19T12:44:58Z）—— 第 17 次刷新：**ALPHA→BETA 的 issue 销账侧实测（E1 / E3 明确不满足）**
+
+> **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**ISSUE 台账实测（v4.1.0 台账 `20261111-ledger-006`）**
+
+| 项 | 实测 |
+|---|---|
+| **当期 open issue** | **107 条** |
+| **其中 priority/p0** | **49 条** ⇒ **ALPHA exit_criteria E3「No P0 bugs open」明确不满足** |
+| 可执行性分类（限 P0） | **auto 14 条** · auto-needs-infra 15 条 · needs-human-decision 14 条 · manual-host 5 条 · infra-config 1 条 |
+| P0 的域分布 | ci-infra 11、gate 9、storage-wal-crash 7、release-stage 6、tooling 3、perf-tpch 3、test-validity 3、coverage 2、docs-claims 2、sql-semantics 1、security 1、backup-restore 1 |
+| 全台账 evidence_grade | advisory-only 107 ⇒ **无一行为双血统 cross-checked** |
+| qualifying_families 分布 | [] × 55、['gpt'] × 52 ⇒ **合格血统只有 1 席（属主裁定合格血统为 deepseek + chatGPT）⇒ 双血统复核缺失** |
+| state_label 分布 | state/ready 72、None 23、state/claimed 11、state/blocked 1 |
+
+### 二、**总控 issue 本身就是 open P0**
+
+- **#5117 = `[v4.1.0][总控] Alpha→Beta 门禁整改与晋级审核`**
+  （URL: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5117）
+- `breaks_claim` = **「Alpha至Beta晋级门禁满足」** ⇒ **它就是「Alpha 至 Beta 晋级门禁满足」这条声称的阻断项**
+- `automatable` = **needs-human-decision**、`state_label` = state/ready、`blast` = large、`fix_shape` = cross-module
+- `triage_families` = ['gpt', 'qwen-strata']、`qualifying_families` = ['gpt']
+  ⇒ **晋级总控本身落在人裁决域，且其分诊只有 1 个合格血统**
+
+⇒ **结论**：ALPHA→BETA **不能由 AI 单方宣布迁移**；
+且 **E1（alpha-targeted issues 关闭）与 E3（No P0 bugs open）当前均不满足**，
+**E1/E3 的核对输入本身**存在证据等级缺口（全表 advisory-only、单血统）。
+
+### 三、**⭐ 最高杠杆项 #5580：与本线 GA-SOAK-36 的 F1/F2/F3 同源**
+
+`#5580` = 「[门禁] `check_rc_ga_gate.sh` 的 ga / rc / beta 模式永远判 FAIL（期望 D1/D2 却从不执行）」
+（`automatable` = **auto**、`domain` = gate、priority = **p0**、**open**）
+
+⇒ **与本线 GA-SOAK-36 已归因的三条完全同源**：
+
+| 本线归因 | 判据 | #5580 覆盖 |
+|---|---|---|
+| **F1** D5-3/4/5 判据版本绑定 / 文本匹配脆弱 | D5 判据硬编码 v3.7.0 / v3.8.0；D5-3 用宽泛 grep 扫全 crates | ✅ 同一文件同一缺陷族 |
+| **F2** G9/G10 内层 `timeout 90` / `timeout 60` + `tail -3` 截断 | 判据不可执行 ⇒ 永远 FAIL | ✅ **正是 #5580 标题所指的「永远判 FAIL」** |
+| **F3** `V312_COVERAGE_FULL` 未设 | GA/Beta/RC 证据要求 full run | ✅ 覆盖链 |
+
+⇒ **一处改动（修 `check_rc_ga_gate.sh` 的模式分支 + 内层预算 + 输出捕获 + 覆盖率环境变量）可同时**：
+① 修掉 GA 判据面（019 重跑才有可用结论）；② 修掉 ALPHA→BETA 的门禁面（AB-10 依赖 GA/RC 门禁链）；
+③ 消掉 019 当前的假红。
+
+### 四、**本线可立即推进的工作面：14 条 `auto` P0（不需要人裁决、不需要 infra）**
+
+| issue | 域 | 标题 |
+|---|---|---|
+| #5362 | `tooling` | [toolchain] develop 上 cargo clippy -D warnings 失败：fault_injection.rs unused import Path |
+| #5364 | `ci-infra` | [CI][evidence-graph] ingest_git_commit 对短 commit hash panic —— evidence-graph-gate 在每个 run 上都失败 |
+| #5368 | `ci-infra` | [CI] evidence-graph-gate 解析不了自己的 PASS：grep 模式与 pretty-print JSON 不匹配 |
+| #5375 | `ci-infra` | test job 编译失败：partition_e2e_test 缺 clustered 字段；另有 storage --lib 29 个既有错误 |
+| #5377 | `storage-wal-crash` | create_index 没有 _in_db 变体：命名库的索引既建不了也查不到 |
+| #5388 | `coverage` | [CI] fail-fast 掩盖了 382 个从未执行的测试目标：首次全量跑暴露出与 TPC-H 无关的失败，需归因分流 |
+| #5393 | `perf-tpch` | [wire 路径] file storage 后端上 TPC-H Q9/Q18 资源耗尽致服务器 OOM 被杀、Q19 解析失败 |
+| #5400 | `gate` | [门禁失效] check_correctness_tests_production_storage.sh 的 R2/R4 断言在 #5317 重构后失效 —— 恒红假阳性，且丧失判别力 |
+| #5412 | `perf-tpch` | [引擎] 带 PRIMARY KEY 的逐行 INSERT 仍是 O(N^2) —— pk_lookup_cache 被它自己要加速的那次 INSERT 失效 |
+| #5461 | `gate` | [GA 流程] 证据 §7.25.7 把 3 项 GA 门禁标注为「本机未验证（**CI 承接**）」，实测 **CI 也从不调用它们** ⇒ 「委托 CI」不成立，GA 20 项里有 **3 |
+| #5537 | `gate` | [门禁失效] v4.1.0 ALPHA 阶段 2 个门禁阻塞项：coverage 脚本漏传 feature（storage 覆盖率为 0）+ env!(CARGO_TARGET_DIR) 编译 |
+| #5577 | `test-validity` | [测试副作用] cargo test --workspace 会覆写已提交的证据文件（a04-5226 的 21 个对照输出被抹成占位符） |
+| #5579 | `coverage` | [门禁] RC/GA 门禁的覆盖率算法与 coverage 门禁不是一份实现 ⇒ storage 被静默跳过 ⇒ GA 的 A5「67%」是假红 |
+| #5580 | `gate` | [门禁] check_rc_ga_gate.sh 的 ga / rc / beta 模式永远判 FAIL（期望 D1/D2 却从不执行）⇒ GA 的 required_gate 结构性不可通过 |
+
+⇒ 其中与 ALPHA→BETA 门禁链**直接相关**的至少 5 条：
+**#5580**（rc_ga_gate 模式永远 FAIL）、**#5537**（ALPHA 阶段 2 个门禁阻塞项：coverage 脚本漏传 feature + env!(CARGO_TARGET…)）、
+**#5400**（check_correctness_tests_production_storage.sh 的 R2/R4 断言在 #5317 重构后失效 ⇒ 恒红假阳性）、
+**#5362**（`cargo clippy -D warnings` 失败：fault_injection.rs unused import Path）、
+**#5393**（file storage 后端上 TPC-H Q9/Q18 资源耗尽致 OOM 被杀、Q19 解析失败 ⇒ **这正是 ALPHA 的 g1 红臂的真前置**）
+⇒ 且 **#5412**（带 PRIMARY KEY 的逐行 INSERT 仍是 O(N²)，pk_lookup_cache 被它自己要加速的那次 INSERT 失效）
+**与本线 GA-SOAK-34 的根因结论同族**（写路径 O(N) 操作）⇒ 可一并推进。
+
+### 五、**需 infra / 需人裁决 / 需宿主的三类（不属本线单方可闭合）**
+
+**auto-needs-infra（15 条）**：
+
+| issue | 域 | 标题 |
+|---|---|---|
+| #5223 | `ci-infra` | [IAIA-410/A01] 冻结审计基线与证据 manifest 契约 |
+| #5226 | `sql-semantics` | [IAIA-410/A04] SQL 语义与 MySQL 协议差分审计 |
+| #5227 | `storage-wal-crash` | [IAIA-410/A05] 索引、Buffer Pool 与持久化存储真实性审计 |
+| #5228 | `storage-wal-crash` | [IAIA-410/A06] 事务、WAL、恢复与故障注入真实性审计 |
+| #5366 | `ci-infra` | [CI] evidence-graph-gate 结构上无法 PASS：SHA 未回退 + 边早于节点 + 缺 VERIFIED_BY 边 |
+| #5402 | `gate` | [治理缺口] CI postcheck job 在 600 次历史 run 中从未成功执行过一次 —— 其内含的发布门禁与 6 个硬阻塞 meta-gate 形同虚设 |
+| #5403 | `gate` | [门禁失效] postcheck 另有 3 个必失败步骤：调用已废弃的 check_coverage.sh、v3.7.0 证据绑定 74 项违规、auto_env_blocke |
+| #5427 | `test-validity` | [测试非自包含] tpch_compliance_test 依赖仓库里不存在的 `data/tpch-tiny/`（8 个 .tbl + 预建的 tpch.db）⇒ 任何干净  |
+| #5428 | `test-validity` | [测试非自包含] quick_query 依赖机器本地的绝对路径 `/tmp/tpch-sf1`（含 WAL 文件）⇒ 任何干净环境必然失败 |
+| #5452 | `gate` | [分支保护] `STAGE_CONFIG.yaml` 的 `GA.merge_policy`（3 个 reviewer + 4 类审批 + 7 个 required check |
+| #5491 | `gate` | [门禁] GA-2 的 SOAK 判据只检查「脚手架文件在不在」；`run_ga_soak.sh` 与 `extract_soak_report.py` **不存在** |
+| #5507 | `storage-wal-crash` | [存储/性能] 重构 MemoryStorage 的「提交快照」机制：让逐行 INSERT 的提交代价回到 O(1)（#5412 的根因修复） |
+| #5525 | `backup-restore` | [备份/恢复] 逻辑备份与恢复都是骨架：backup 枚举 0 张表、restore 只数 INSERT 行数 |
+| #5528 | `ci-infra` | [CI] runner 换成 Alpine/musl 镜像后缺静态 zlib ⇒ 所有需要链接测试二进制的 job 都红 |
+| #5551 | `ci-infra` | [基础设施红] docker 地址池被占满 ⇒ CI job 在「Start image」这一步全灭，一个测试都没跑 |
+
+**needs-human-decision（14 条）**：
+
+| issue | 域 | 标题 |
+|---|---|---|
+| #5117 | `release-stage` | [v4.1.0][总控] Alpha→Beta 门禁整改与晋级审核 |
+| #5204 | `tooling` | [IAIA-410] AOCI-CODE 索引实测：治理在 HEAD 已阻塞且工具工作流无法解开；索引格式内嵌机器相关绝对路径 |
+| #5233 | `release-stage` | [IAIA-410/A11] Independent Judge 证据复核与冲突裁决 |
+| #5234 | `release-stage` | [IAIA-410/A12] 最终审计报告、治理审批与阶段门禁衔接 |
+| #5235 | `release-stage` | [IAIA-410] v4.1.0 实现真实性与系统集成正式审计 Master |
+| #5381 | `security` | 仓库内硬编码可用的 Gitea 明文凭据（token 嵌入 git push URL、curl -u、文档） |
+| #5436 | `release-stage` | [GA 流程] `STAGE_CONFIG.yaml` 的 GA `branch_pattern` 不含 `develop/*`，而 v4.1.0 的整条发布线都在 `deve |
+| #5454 | `release-stage` | [治理流程] 版本自动化的 release-please 链路在仓库里**不存在**，同时规范又把**所有** PR 标题锁死为 `fix(gate):` 前缀 ⇒ 版本决策链 |
+| #5557 | `storage-wal-crash` | [运维阻塞] server 在 --wal-sync every 大量写入后卡进不可中断 I/O（进程状态 U）⇒ SIGTERM 不生效、SIGKILL 也要等 I/O 返回 |
+| #5584 | `storage-wal-crash` | [测试/恢复] 崩溃测试从来没有在它声称的边界上崩溃：`after_commit_fsync` 只在 autocommit 提交上触发，且在文件存储路径上不是 fsync；索引 |
+| #5596 | `gate` | [4.1.0][owner] 7 条历史审计记录不可复核（5 hollow 无命令行 / 1 未封板 / 1 无清单）：退役、标注还是重做？ |
+| #5603 | `docs-claims` | [4.1.0][LEDGER-2] claims 证据台账三套并存（CLAIM_BINDINGS_LEDGER vs CLAIMS_*）：debt 口径可对任意一份讲故事 |
+| #5605 | `docs-claims` | [4.1.0][KAN-2] 看板 SSOT 合并后再次双向漂移（两侧各 72/73 行、7 行状态判定相反）：看板写入口径没人定 |
+| #5686 | `storage-wal-crash` | [v4.1.0][P0][WALGC-2] GroupCommit leader panic ⇒ 全部 waiter 永久挂死:无接管、无超时,模块头 liveness 声明为 |
+
+**manual-host（5 条）**：#5363 · #5415 · #5520 · #5569 · #5597
+
+### 六、**口径提醒**
+
+- 本块以台账 **20261111-ledger-006** 为准；看板 `ISS-COVER-1` 记的是「50 条 open issue 里 27 条未登记」
+  （**11-05 口径**）⇒ **须以最新台账重核该数字**，不沿用旧口径；
+- 台账 .md 自载「分诊只回答域 / 破坏了哪条声称 / 可否自动化 / 修复形状 / 疑似重复，
+  **不回答『是否已修好』**，销账仍走 PR 关联与关闭验证」⇒
+  **台账绿不构成『已关闭』的证据**；
+- 远端 tip **cbfa3c50ae**；看板 **214 行、id 唯一 = 是**；
+  **crates/ scripts/ tests/ 自 64269eaa08：零变化（crates/ scripts/ tests/ 自冻结点无差异）**。
+
+### 七、**仍未达成**
+
+| # | 项 | 状态 |
+|---|---|---|
+| **C1** | **ALPHA→BETA 跃迁** | ⏳ **当前主线**。门禁面仅差 g1 一条（且红因是误报可闭合）；**但 E1 / E3 明确不满足**（49 条 open P0，含晋级总控 #5117 本身）⇒ **不可单方宣布迁移** |
+| C1a | **#5580 等 `auto` P0 修复（14 条）** | ⏳ **本线可立即推进**（不需要人裁决 / 不需要 infra）；改 `scripts/` **不影响**两个被测树（交付树与 252 检出均为 detached @ 64269eaa08）⇒ **零失配**；但**验证**需 cargo ⇒ 与 019 抢 CPU ⇒ 验证排期 |
+| C1b | #5393（TPC-H Q9/Q18/Q19）⇒ 修 g1 的红臂 | ⏳ auto；是 ALPHA g1 的真前置（STAGE.yaml 2026-11-09 已登记） |
+| C1c | ISS-COVER-1 的 27 条按最新台账重核 | ⏳ 纯统计，零 CPU |
+| C1d | open issue 关闭核对 / open P0 核对 / beta1 tag / 独立 Reviewer 回执 / 5 组 Owner 裁决 | ⏳ **属主**（裁决明文「不能 AI 直接判断」；切 tag 与 Reviewer 回执为纯人工） |
+| B7 | 019（GA 35 项） | ⚠️ seq 1 已 FAIL 且归因于门禁侧缺陷（F1/F2/F3 = #5580 同源）⇒ **修好 #5580 后需在新冻结点重跑**；本轮剩余臂的结论仍有参考价值 |
+| B1 | 168h SOAK | ⏳ r5 0 错 / 0 panic 成立，但判据⑤不满足且根因需改 crates/ ⇒ 本轮不可能合格（降级为 RC/GA 预备） |
+
+<!-- END 2026-11-19 REFRESH BLOCK 17 -->
+
 <!-- BEGIN 2026-11-19 REFRESH BLOCK 16 -->
 
 ## 🔄 刷新块（2026-11-19T12:41:13Z）—— 第 16 次刷新：**阶段重心纠正** + ALPHA→BETA 门槛实测
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T12:44:58Z（第 17 次刷新，位于本文件顶部）**，其中「issue 销账侧实测」「#5580 最高杠杆项」「auto P0 工作面」等状态已被该块更新 ⇒ **状态以顶部第 17 次块为准**。
+
 
 > **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
 > **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
