@@ -1,0 +1,25 @@
+[NOT-A-GATE-OUTPUT]
+本文件不是 `cargo test --all-features` 的测试输出。
+
+事实（可在同目录 results.jsonl 第 33 条逐字段核对）：
+  seq=33  gate=cargo test --all-features
+  state=INCOMPLETE  exit_code=124（timeout）  duration_s=10800.0
+
+run_gates.py 的超时分支**不落盘 stdout/stderr** ⇒ 该项没有任何测试输出产物。
+
+对照事实：同一项在 **015 轮是 PASS（6254.2 s）**；016 轮把执行超时上限从 7200 s
+放宽到 10800 s 后仍然超时。已排除「休眠导致变慢」——本机 `pmset -g` 显示
+`SleepDisabled = 1`。已排除「代码面变化」——016 轮树 `3732811582` 相对 015 轮树
+`680418e9f9` 的差异**全部在 docs/ 与 audit/**（非 docs/audit 目录变更数 = 0），
+两轮二进制指纹完全相同（3574da045b956f86… / 944b58aea8b04b92…）。
+
+机理（已定性）：prep 的默认 features 预构建（`cargo test --no-run`）会把 target 里的
+all-features 产物**覆盖**成默认侧版本 —— 这是为让门禁里每个默认侧 `cargo test --test X`
+不必重编译（G10 的 60 s 探针预算）而刻意做的；代价是 `cargo test --all-features`
+（第 33 项）必须**整树重编译**才能跑起来，这段编译时间被计入门禁超时。
+⇒ 这是**执行预算**问题，不是门禁判红。
+
+因此本文件是一个**显式的缺口占位**：不含任何测试输出，不得被引用为该项的测试证据。
+
+补法：把执行超时上限放宽到 21600 s（6 h）重跑；放宽的是**运行参数**，门禁判据/阈值/
+分母未动（plan sha256 仍为 sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809）。
