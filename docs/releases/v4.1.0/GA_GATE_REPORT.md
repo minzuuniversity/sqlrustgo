@@ -14,9 +14,122 @@
 > PASS 声明有对应的 gate engine 输出，而非 AI 自述。）
 
 ---
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 15 -->
+
+## 🔄 刷新块（2026-11-19T12:33:55Z）—— 第 15 次刷新，取代本文件内全部既有刷新块的判定
+
+> **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**定期复查结果**
+
+| 轴 | 实测 |
+|---|---|
+| **019 认证轮落账** | **8 项已落账**（PASS 7 / **FAIL 1**）；当前在跑 `check_p14_upgrade_test.sh`（已 00:46） |
+| **⚠️ seq 1 判红** | **seq 1 `scripts/gate/check_rc_ga_gate.sh` exit_code=1，11395.7 s** ⇒ **不是超时，是真 FAIL** |
+| 019 plan 指纹 | `expected_n`=35、`git_head`=64269eaa0848c4d47485d1f45b1b91779502a089、`expected_sha256`=sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809 ⇒ **35 项分母守恒** |
+| **r5 168h 轮** | elapsed **28294 s = 7.86 h**（4.68 % of 168 h）、driver_q **1058388**、**driver_e 非零 0 行 / panic 非零 0 行 / error_high 非零 0 行** ⇒ **0 错 / 0 panic 持续成立** |
+| r5 RSS / 吞吐 | **190.3 MB → 1334.2 MB**；**145.1 → 18.8 q/s（-87.0 %）** ⇒ **判据⑤「RSS 平稳」仍不满足** |
+| r5 FD / 点查 | FD **46 / 47 / 48 / 51**；点查 **命中 407769 / 未命中 0 ⇒ 100.0000 %**（判据 ≥ 99 % **达标**） |
+| **并行线 tip** | `origin/develop/v4.1.0` = **2e98b88b72**（2e98b88b72 Merge pull request '[v4.1.0][文档] 〔更正〕第 13 块落盘机制两处表述 + 量化自洽性校验 + RSS 增长源诚实界定（GA-SOAK-35）' (#5881) from docs/v410-write-path-correction into develop/v4.1.0）⇒ **本轮无并行线新提交推进** |
+| 看板 | **212 行**、id 唯一 = **是**；完成 119 / 阻塞 37 / 待复核 28 / 进行中 24 / 未开始 4 |
+| **冻结点校验** | crates/ scripts/ tests/ 自 64269eaa08：**零变化（crates/ scripts/ tests/ 自冻结点无差异）** ⇒ **r5 与 019 的被测树仍成立** |
+
+### 二、**⚠️ 019 seq 1 判红的逐项归因：三条全部指向「门禁自身缺陷」，不是已证实的产品缺陷**
+
+`check_rc_ga_gate.sh` 的逐维实测（D1–D9 全执行）：**D1 10 · D2 6 · D3 PASS=5 · D4 5 · D5 7 · D6 ? · D7 3（blockers 2）· D8 1 · D9 1**（覆盖率 87.69 %）。
+门禁自身的推荐条件写着「RC → GA: PASS when **D5=10/10, D7=5/5**」⇒ 本轮**两条不满足**：
+
+| # | 判红项 | 逐项归因（读源码 + 读 stdout） | 性质 |
+|---|---|---|---|
+| **F1** | **D5 = 7/10** | 三个 WARN 全部是**判据与 v4.1.0 不匹配**：**D5-3** 用 `grep -r "EEK.*v2\|WAL.*v2\|v2.*WAL" --include="*.rs" crates/ \| wc -l` 判定「无 EEK v2 混入」⇒ **该模式与版本无关地宽泛，v4.1.0 必然命中**；**D5-4** 判据硬编码 `origin/develop/v3.7.0..origin/develop/v3.8.0`（注释即「Verify 3.7.0 is frozen and 3.8.0 is WAL integration」）；**D5-5** 判据硬编码 `origin/develop/v3.8.0` | **判据版本绑定 / 文本匹配脆弱 ⇒ 结构性假红**（与 `STAGE_CONFIG.yaml` 的 `manual_only_criteria` 所载「B-F1~B-F3 的检查方法写的是 v3.8.0 的 PR 号，**对 v4.1.0 不可执行**」**同一类缺陷**） |
+| **F2** | **D7 = 3（blockers 2）** | 两个 blocker 是 **G9 Upgrade** 与 **G10 Audit/Time-Travel**。源码：`timeout **90** cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test 2>&1 \| tail -3` 与 `timeout **60** cargo test --test audit_log_test --test time_travel_test 2>&1 \| tail -3`；判定条件为 `grep -qE "0 failed\|test result: ok"`。stdout 实际留下的三行是「Compiling … / Finished test profile in 35.00s / Running …upgrade_test.rs」⇒ **编译已成功、失败发生在测试运行阶段，且 `tail -3` 恰好只抓到编译行 ⇒ 真实失败详情丢失** | **内层超时预算不足（90 s / 60 s）+ 输出截断 ⇒ 失败原因不可判定**（「时间不够」与「测试 hang」不可区分）⇒ **状态是证据不足，不是已证实的红**；与排雷 B 轮 seq 35 该门禁 **rc=124 超时**同源 |
+| **F3** | **D9 WARN** | stdout 明写「full coverage execution skipped; set **V312_COVERAGE_FULL=1** for nightly/Beta/RC/GA evidence」⇒ 本轮 prep **未设该变量** ⇒ D9 只检「coverage framework config」而**未跑 full** | **prep 配置缺陷 ⇒ 本轮 019 的覆盖率证据不完整**（正式 GA/Beta/RC 证据要求 full run） |
+
+⇒ **裁决**：019 当前的 FAIL **不构成「v4.1.0 已证实质量不合格」的结论**；它是
+**① 门禁判据版本绑定（F1）+ ② 门禁内层超时/输出截断（F2）+ ③ 证据环境变量未设（F3）** 三条**门禁侧缺陷**的总和。
+**但也不能声明 PASS** —— 三者都**必须先修再重跑**，019 才可能给出可用于 GA 的结论。
+⇒ **F1 与 B-F 判据、STAGE_CONFIG 的 v3.8.0 绑定属同一族缺陷 ⇒ 宜一次性收口**（仓内可闭合并有实跑证据）。
+
+### 三、**「168h SOAK 期间能否并行推进 BETA 阶段任务」—— 层级裁决**
+
+#### 3.1 **先纠正一个前提**
+
+阶段顺序（`docs/governance/STAGE_CONFIG.yaml` 的 `stages`）：
+**DRAFT(order 1) → ALPHA(order 2) → BETA(order 3) → RC(order 4) → GA(order 5)**。
+⇒ v4.1.0 现在在 **ALPHA**，**BETA 是下一个阶段**，不是 GA 之后。
+⇒ 本题实质是「**ALPHA→BETA 跃迁的准备工作**能否与 r5 并行」。
+
+#### 3.2 **决定性事实：168h SOAK 不在 BETA 判据里 ⇒ BETA 跃迁不被 r5 物理阻挡**
+
+- **BETA 的 19 项 `required_gates` 里没有任何 SOAK 门禁**
+  （`check_beta_gate.sh` / `check_anti_fabrication.sh` / `check_arch_invariants.sh` / `check_arch3_no_bypass.sh` /
+  `check_int2_no_orphan.sh` / `check_int3_single_expr.sh` / `check_sem1_savepoint.sh` / `check_backup_restore.sh` /
+  `check_g1_tpch_baseline.sh` / `check_arch_sem_debt.sh` / `check_cross_version_debt.sh` / `check_int_debt.sh` /
+  `check_coverage_v312.sh` / `check_sql_corpus_gate.sh` / `check_anti_ignore_gate.sh` +
+  `cargo build --all-features` / `cargo test --all-features` / `cargo fmt --check` / `cargo clippy --all-features -- -D warnings`）；
+- **SOAK 门禁的位置**：`check_p13_soak_test.sh` / `check_g13_stability.sh` / `check_chaos_soak.sh`
+  出现在 **RC 的 `optional_gates`** 与 **GA 的 `criteria_gates`**，**不在 BETA**；
+- **ALPHA→BETA 项目门禁计划**（`ALPHA_TO_BETA_GATE_PLAN.md`）的 **AB-07 只要求「1h SOAK 完成 + heartbeat 连续 + 24h runner 可执行」**，
+  **不是 168 h**；且看板 **AB-07 = 完成**（v4.1.0 首个有效 1 小时稳定性归档已入仓）；
+- ⇒ **ALPHA→BETA 跃迁不需要 r5 跑满 168 h，也不需要 r5 现在合格。**
+
+#### 3.3 **分层裁决**
+
+| 层 | 内容 | 能否与 r5 并行 | 理由 |
+|---|---|---|---|
+| **L1 材料/规范面** | BETA 必需文件（`TEST_PLAN.md` / `FEATURE_CHECKLIST.md` / `FEATURE_MATRIX.md` / `STAGE.yaml`）；**F1 同族缺陷的规范收口**（B-F1~B-F7 与 D5-3/4/5 的版本绑定一并规范化）；Owner 裁决包整理 | ✅ **可以，现在就做** | 纯文档，零 CPU、不触 252 |
+| **L2 仓内代码/脚本面** | 37 个「阻塞」行中需改 `crates/` 或 `scripts/` 的项（`BETASYNC-1`；`DIAGQ11-1` / `HARQ11-1` / `Q17-1` / `FLTACC-1`；`IDX-2` 建索引后按索引列查询静默丢行；`MX-1` / `NF-1` 门禁 fail-open 与死门禁引用口径；`SEC-1/A/B` 假覆盖）+ **本轮新增的 F1/F2/F3 三条门禁侧修复** | ❌ **现在不行** | 改 `crates/` 或 `scripts/` 会使 **r5 与 019 认证轮的被测树失配**（r4 即因此出局）⇒ 须等本轮结束或由属主裁定换轮 |
+| **L3 本机重量门禁** | BETA 19 项里的 `cargo build/test --all-features`、`clippy -D warnings`、`check_coverage_v312.sh`、`check_g1_tpch_baseline.sh`、`check_sql_corpus_gate.sh`、`check_backup_restore.sh`（内部跑 `cargo test`）、AB-08 的 `cargo bench` 基线 | ❌ **不能与 019 并发** | 两条硬理由：① 与本机正在跑的 019 抢 CPU，违反「认证轮期间不得并发重量门禁」「长任务串行」；② **本轮已实测证明门禁内部存在 90 s / 60 s 的紧超时**（F2）⇒ **并发抢 CPU 会把门禁直接推成假红** ⇒ 这不是惯例，是**有实证支撑的硬约束** |
+| **L4 252 独占窗口面** | AB-08 性能基线（需**固定环境 A/B + ≥5 次 + 宿主负载守卫**，2026-11-12 复核建议「排到容器内独占窗口」）；任何新 SOAK / 压测 / TPC-H 在 252 上跑 | ❌ **不能与 r5 并行** | r5 正占用 252 独占窗口（planned_end 2026-11-26T04:45:04Z）⇒ 争用会污染被测对象与基线 |
+
+#### 3.4 **AB 系列现状（看板现值）**
+
+- AB-CAMPAIGN=完成 · AB-07=完成 · AB-08=进行中 · AB-09=完成
+- **AB-10 在看板上没有独立行** —— 它是「人工双审 + 所有 P0/P1 发布阻断项关闭且有合并 PR」；
+  按 `ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md`，剩余硬阻塞项全部落在 **Owner 裁决域**
+  （Reviewer 指派、g1 口径、RC-B1 Phase 2、台账口径）与 **CI/infra 域**（runner 镜像、docker 地址池、runner 服务依赖）
+  ⇒ **ALPHA→BETA 不能由 Agent 单方推进**（`requires_human_approval: true`）。
+
+#### 3.5 **排队次序（Agent 裁决）**
+
+1. **现在**：**L1 材料/规范面**（BETA 必需文件 + F1 同族判据规范化 + Owner 裁定清单整理）—— 零干扰，可立即执行；
+2. **019 跑完后（本机）**：① **G9/G10 单独复验**（用足够预算重跑 `cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test` 与 `--test audit_log_test --test time_travel_test`，**抓完整输出而非 tail -3**）⇒ 判定「时间不够」还是「测试 hang」—— **纯跑测试、不改代码 ⇒ 零失配、零 252 干扰**；② **F1/F2/F3 三条门禁侧修复**（改 `scripts/`）+ 重跑 GA 认证；③ **BETA 19 项实跑门禁**；
+3. **r5 结束 / 换轮后（252 独占窗口）**：**L4** AB-08 性能基线 + 修复后的新一轮 SOAK；
+4. **L2 代码/脚本修复**：与「修复写路径根因」（P0 UPDATE 原地化等）**合并到同一次改动**一并回归，避免两次失配。
+
+### 四、**一个必须点明的战略事实：r5 已不可能成为 GA 合格轮**
+
+- 判据⑤「RSS 平稳」**不满足**（§一）；
+- 且**根因已定位到代码级**（写路径：O(N) 全表扫描 + 单执行线程 + 分配滞留）⇒ **修复必须改 `crates/`**
+  ⇒ **改完必须重跑 SOAK** ⇒ **r5 无论跑多久都不可能满足判据⑤**；
+- ⇒ **r5 跑满 168 h 的边际价值只剩「长样本 0 错证据」**（该结论已由 7.86 h 数据 + 与并行线 GA-SOAK-33 的独立交叉验证确立），
+  **作为 GA 合格轮的候选价值已归零**；
+- ⇒ 是否**提前收尾 r5 以释放 252 独占窗口**给 L4 与修复后的新一轮 SOAK，
+  属**授权边界**（中止一轮已投入 8 h 的 168 h 轮次 + 换轮承接）⇒ **须属主确认**，Agent 不自行决定。
+
+### 五、**仍未达成**
+
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | **168h SOAK 的 0 错证据** | ⏳ r5 已跑 **7.86 h（4.68 %）**，**0 错 / 0 panic 成立**，点查命中 **100.0000 %** 达标 ✅；**但判据⑤不满足，且根因已定位需改 crates/ ⇒ 本轮不可能成为合格轮** |
+| B1c | 吞吐退化 | ✅ 机制已定位到代码级、量化自洽（见第 13/14 块）⇒ 修复方案已明确 |
+| B1d | RSS 单调增长的具体分配点 | ⚠️ **未定位**（需堆剖析） |
+| **B7** | **019 认证轮 seq 1 判红** | ⚠️ **已归因到三条门禁侧缺陷（F1 判据版本绑定 / F2 内层超时 + 输出截断 / F3 覆盖率 full 未启用）⇒ 不是已证实的产品缺陷，但也未 PASS ⇒ 须先修 F1–F3 再重跑**（L2，被物理阻挡） |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**）。⚠️ 条件①指名 r2 轮，r2 已出局；**r5 已不可能合格 ⇒ 承接轮只能是修复后的新一轮** ⇒ 需属主确认 |
+| B5 | ALPHA→BETA 的 Owner 裁决域阻塞（Reviewer 指派、g1 口径、RC-B1 Phase 2、台账口径、CI/infra） | ⏳ **属主 / infra**（2026-11-12 复核 §7 已给三选项 + 代价 + 建议） |
+| **B6** | **r5 是否提前收尾（释放 252 独占窗口）** | ⏳ **属主授权**（见 §四） |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主** |
+
+<!-- END 2026-11-19 REFRESH BLOCK 15 -->
+
 <!-- BEGIN 2026-11-19 REFRESH BLOCK 14 -->
 
 ## 🔄 刷新块（2026-11-19T12:19:48Z）—— 第 14 次刷新，取代本文件内全部既有刷新块的判定
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T12:33:55Z（第 15 次刷新，位于本文件顶部）**，其中「定期复查结果」「019 seq 1 判红归因」「BETA 阶段并行性分层裁决」「r5 战略事实」等状态已被该块更新 ⇒ **状态以顶部第 15 次块为准**。
+
 
 > **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
 > **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
