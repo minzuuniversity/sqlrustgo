@@ -243,7 +243,11 @@ mod tests {
         );
         assert_eq!(tree.search_all(30), vec![1], "row 3 moved to position 1");
         assert_eq!(tree.search_all(40), vec![2], "row 4 moved to position 2");
-        assert_eq!(tree.search_all(10), vec![0], "rows before the deletion do not move");
+        assert_eq!(
+            tree.search_all(10),
+            vec![0],
+            "rows before the deletion do not move"
+        );
     }
 
     /// Several deletions at once shift every later row by the number of

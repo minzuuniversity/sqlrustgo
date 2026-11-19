@@ -5976,58 +5976,58 @@ impl FileStorage {
 
         let (removed_rows, removed_positions) =
             Self::with_write_lock(self, |s| -> SqlResult<(Vec<Record>, Vec<usize>)> {
-            // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
-            // BEFORE the removal, while the rows still exist.
-            if in_tx {
-                if let Some(data) = s.tables.get(&scoped) {
-                    if filters.is_empty() {
-                        s.tx_undo_log.push(TxUndoEntry {
-                            tx_id,
-                            op: UndoOp::DeleteAll {
-                                table: table_name.clone(),
-                                original_rows: data.rows.clone(),
-                            },
-                        });
-                    } else {
-                        for (idx, row) in data.rows.iter().enumerate().rev() {
-                            if match_row(row) {
-                                s.tx_undo_log.push(TxUndoEntry {
-                                    tx_id,
-                                    op: UndoOp::DeleteRow {
-                                        table: table_name.clone(),
-                                        row_idx: idx,
-                                        original: row.clone(),
-                                    },
-                                });
+                // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
+                // BEFORE the removal, while the rows still exist.
+                if in_tx {
+                    if let Some(data) = s.tables.get(&scoped) {
+                        if filters.is_empty() {
+                            s.tx_undo_log.push(TxUndoEntry {
+                                tx_id,
+                                op: UndoOp::DeleteAll {
+                                    table: table_name.clone(),
+                                    original_rows: data.rows.clone(),
+                                },
+                            });
+                        } else {
+                            for (idx, row) in data.rows.iter().enumerate().rev() {
+                                if match_row(row) {
+                                    s.tx_undo_log.push(TxUndoEntry {
+                                        tx_id,
+                                        op: UndoOp::DeleteRow {
+                                            table: table_name.clone(),
+                                            row_idx: idx,
+                                            original: row.clone(),
+                                        },
+                                    });
+                                }
                             }
                         }
                     }
-                }
-                // #5059: buffered rows have no index in `tables`, so they
-                // are undone by value.
-                if let Some(buffered) = s.insert_buffer.get(&scoped) {
-                    for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(TxUndoEntry {
-                            tx_id,
-                            op: UndoOp::BufferedDelete {
-                                table: table_name.clone(),
-                                row: row.clone(),
-                            },
-                        });
+                    // #5059: buffered rows have no index in `tables`, so they
+                    // are undone by value.
+                    if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                        for row in buffered.iter().filter(|r| match_row(r)) {
+                            s.tx_undo_log.push(TxUndoEntry {
+                                tx_id,
+                                op: UndoOp::BufferedDelete {
+                                    table: table_name.clone(),
+                                    row: row.clone(),
+                                },
+                            });
+                        }
                     }
                 }
-            }
 
-            let (removed, removed_positions) = s.remove_matching(&scoped, match_row);
+                let (removed, removed_positions) = s.remove_matching(&scoped, match_row);
 
-            // V311-07: Mark dirty instead of immediate persist. The old
-            // condition keyed off the tables-only count, which missed
-            // buffered deletions entirely.
-            if !removed.is_empty() || filters.is_empty() {
-                s.dirty_tables.insert((db.to_string(), table_name.clone()));
-            }
-            Ok((removed, removed_positions))
-        })?;
+                // V311-07: Mark dirty instead of immediate persist. The old
+                // condition keyed off the tables-only count, which missed
+                // buffered deletions entirely.
+                if !removed.is_empty() || filters.is_empty() {
+                    s.dirty_tables.insert((db.to_string(), table_name.clone()));
+                }
+                Ok((removed, removed_positions))
+            })?;
 
         // The row vector was compacted — repoint the B+Trees at the rows
         // that survived, or every equality lookup returns the wrong row.
@@ -6105,11 +6105,8 @@ impl FileStorage {
                         // column really carries the key we looked up —
                         // otherwise the lookup would silently answer with
                         // somebody else's row.
-                        let key_col_idx = data
-                            .info
-                            .columns
-                            .iter()
-                            .position(|c| c.name == index_name);
+                        let key_col_idx =
+                            data.info.columns.iter().position(|c| c.name == index_name);
                         // Collect matching rows
                         let mut results = Vec::new();
                         for &row_id in &row_ids {
@@ -6704,10 +6701,7 @@ impl StorageEngine for FileStorage {
             }
         }
         // Fallback: full scan.
-        Ok(self
-            .scan(table)?
-            .into_iter()
-            .find(|row| key_matches(row)))
+        Ok(self.scan(table)?.into_iter().find(|row| key_matches(row)))
     }
 
     /// #5057: `scan_pk` against a stated database — uses the B+Tree via
