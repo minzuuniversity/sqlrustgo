@@ -73,6 +73,10 @@ PROTECTED_CMD = (
     'sqlrustgo-mysql-server', 'soak_heartbeat', 'soak_cpu_sampler',
     'soak_host_native_freeze', 'soak_exclusive_window',
     'v312_mixed_soak', 'run_soak_with_heartbeat',
+    # ⚠️ 2026-11-19 实测踩坑：臂 A 的负载驱动是 `python3 scripts/soak/v400_soak_driver.py`，
+    # 它是 **python3** 进程且占用 ~2 核 —— 第一次漏进白名单，被冻结守护 SIGSTOP 住
+    # （r2 轮的驱动因此僵在 T 态）。凡是被测系统自己拉起的东西，都必须在这里。
+    'v400_soak_driver', 'soak_driver',
     'gitea', 'postgres', 'dockerd', 'containerd', 'sshd', 'cron', 'systemd',
     'rsyslog', 'journald', 'dbus', 'docker-proxy', 'containerd-shim',
     'bash -c', 'ps ', 'awk', 'grep', 'tr ', 'cut ', 'sed ',
@@ -83,7 +87,9 @@ BUILD_TOOLS = (
     'rustc', 'cargo', 'cmake', 'gmake', 'make', 'cc1', 'cc1plus', 'nvcc',
     'cicc', 'ptxas', 'cudafe++', 'ccache', 'ld', 'ld.lld', 'ar', 'ranlib',
     'gcc', 'g++', 'clang', 'clang++', 'nvlink', 'fatbinary', 'nvcc',
-    'cc', 'c++', 'as', 'python3', 'cc1obj',
+    'cc', 'c++', 'as', 'cc1obj',
+    # ⚠️ **不**把 python3 列入构建工具：解释器不是编译工具，且 SOAK 自己的负载驱动
+    # 就是 python3 —— 列入会把被测系统冻住。宁可漏冻，不可误伤。
 )
 
 
@@ -194,6 +200,10 @@ def save_frozen(path, data):
     with open(tmp, 'w') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o644)   # 守护以 root 跑 ⇒ 产物不该只有 root 能读/能改
+    except Exception:
+        pass
 
 
 def do_freeze(path, min_pct, interval):
