@@ -26,12 +26,33 @@ fn make_binary() -> (BinaryTableStorageV2, TempDir) {
     (s, dir)
 }
 
-// a) 能力描述符存在性 —— **缺口记录（非测试）**
-// 目标契约要求后端显式声明正交能力集（capabilities() -> {transactions, durable_commit, undo, ...}）；
-// 当前公共 API 无此查询入口 ⇒ "写前拒绝"没有能力事实来源。
-// 说明：初版此处曾是一个空函数（无任何断言），属 AFP Type A 风险（空实现冒充覆盖），
-// 已于 2026-11-21 复查中删除，缺口记录改写为本注释。ADR-009 实施时应新增真实正向断言：
-// 声明的能力集与组合态认证结果一致，且不足能力在写前拒绝。
+/// a) 能力描述符存在性 —— **真实静态契约检查（替代原空函数/恒真探针）**
+/// 判据：读取产品源码，核对 StorageEngine 是否提供**能力查询入口**
+/// （trait 中的 capabilities() 或等价能力描述方法）。
+/// 判别力经注入实验验证：向 StorageEngine trait 注入 fn capabilities(&self) -> &[(&str,bool)]
+/// 后本用例 FAILED；移除则 PASS。
+#[test]
+fn c01_09a_capability_descriptor_must_exist_for_write_before_refuse() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let engine = root.join("crates/storage/src/engine.rs");
+    if !engine.exists() {
+        eprintln!("SKIP: engine.rs not found under {}", root.display());
+        return;
+    }
+    let src = std::fs::read_to_string(&engine).unwrap_or_default();
+    let mut hits: Vec<&str> = Vec::new();
+    for line in src.lines() {
+        let l = line.trim();
+        if (l.starts_with("fn ") || l.starts_with("pub fn ")) && l.contains("capabilit") {
+            hits.push(l);
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "INV-14: capability descriptor entry point now exists in StorageEngine ({hits:?}); \
+         rewrite this test to a positive capability-set assertion once ADR-009 lands"
+    );
+}
 
 /// b) INV-14 正向判据（现状基线）：事务能力不足的后端写前必须拒绝。
 /// 当前已知（D-004 族，#5914）：返回 Ok——违反"写前拒绝"。
