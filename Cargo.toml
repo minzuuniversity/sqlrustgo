@@ -2078,3 +2078,6 @@ path = "tests/integration/test_factory/ca01_backend_caps.rs"
 [[test]]
 name = "ca01_complex_dml"
 path = "tests/integration/test_factory/ca01_complex_dml.rs"
+[[test]]
+name = "ca01_bufferpool"
+path = "tests/integration/test_factory/ca01_bufferpool.rs"
