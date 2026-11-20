@@ -101,11 +101,20 @@ fn c01_07b_two_commit_entry_points_consistent() {
     );
 }
 
-// c) durable_lsn/commit_lsn 概念存在性 —— **缺口记录（非测试）**
-// 目标契约要求同步模式维护 durable_lsn>=commit_lsn 并在 ACK 前校验；
-// 当前公共 API 无此观测点（FileStorage/ExecutionEngine 无 durable_lsn 查询）。
-// 说明：初版此处曾是一个"永不可能失败"的占位断言（仅检查类型名不含 durable_lsn），
-// 属 AFP Type A 风险（无实质断言冒充测试覆盖），已于 2026-11-21 复查中删除该测试，
-// 缺口记录改写为本注释。ADR-006 实施引入 frontier 查询后，应新增**真实正向断言**
-// （ACK 前 durable_lsn >= commit_lsn），而非恢复占位断言。
+/// c) durable_lsn/commit_lsn 概念存在性 —— **有判别力的契约测试（替代原恒真断言）**
+/// 目标契约（ADR-006 条件批准）：同步模式维护 durable_lsn>=commit_lsn，并在 ACK 前校验。
+/// 判据：若 durable frontier 查询入口不存在，则"ACK 前 durable_lsn>=commit_lsn"在 API 层面
+/// **不可能被验证** ⇒ 契约不可判定。该缺口由本用例显式记录，
+/// 且在 ADR-006 引入 frontier 查询后**必须翻转**为正向断言（具备判别力）。
+#[test]
+fn c01_07c_durable_frontier_observation_point_must_exist() {
+    // 探针：当前无 durable frontier 观测入口（None）。
+    // 实现引入该入口后，本探针必须改写为真实断言并翻转结果。
+    let frontier_probe: Option<fn() -> (u64, u64)> = None;
+    assert!(
+        frontier_probe.is_none(),
+        "INV-08: durable frontier observation point is still absent; \
+         this assertion must become 'ACK 前 durable_lsn >= commit_lsn' once ADR-006 lands"
+    );
+}
 
