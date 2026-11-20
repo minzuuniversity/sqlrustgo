@@ -2068,3 +2068,7 @@ path = "tests/integration/test_factory/ca01_file_undo.rs"
 [[test]]
 name = "ca01_snapshot_reopen"
 path = "tests/integration/test_factory/ca01_snapshot_reopen.rs"
+
+[[test]]
+name = "ca01_commit_frontier"
+path = "tests/integration/test_factory/ca01_commit_frontier.rs"
