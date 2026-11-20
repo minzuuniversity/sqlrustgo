@@ -2075,3 +2075,6 @@ path = "tests/integration/test_factory/ca01_commit_frontier.rs"
 [[test]]
 name = "ca01_backend_caps"
 path = "tests/integration/test_factory/ca01_backend_caps.rs"
+[[test]]
+name = "ca01_visibility_oracle"
+path = "tests/integration/test_factory/ca01_visibility_oracle.rs"
