@@ -2072,3 +2072,6 @@ path = "tests/integration/test_factory/ca01_snapshot_reopen.rs"
 [[test]]
 name = "ca01_commit_frontier"
 path = "tests/integration/test_factory/ca01_commit_frontier.rs"
+[[test]]
+name = "ca01_backend_caps"
+path = "tests/integration/test_factory/ca01_backend_caps.rs"
