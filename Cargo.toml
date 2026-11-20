@@ -2060,3 +2060,7 @@ path = "tests/integration/gate/test_target_manifest_honesty_test.rs"
 [[test]]
 name = "not_run_log_visibility_5503"
 path = "tests/integration/sql/not_run_log_visibility_5503.rs"
+
+[[test]]
+name = "ca01_file_undo"
+path = "tests/integration/test_factory/ca01_file_undo.rs"
