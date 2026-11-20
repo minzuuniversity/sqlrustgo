@@ -1,0 +1,11 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "C-ALPHA-01-HANDOFF-20261120",
+  "started_at": "2026-11-20T13:55:16.849Z",
+  "timestamp": "2026-11-20T13:55:16.907Z",
+  "command": "SOURCE_AGENT=codex SOURCE_RUN=C-ALPHA-01-HANDOFF-20261120 bash scripts/gate/check_pr_template_sections.sh --pr-body docs/releases/v4.1.0/refactoring/evidence/PR_BODY.md",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-calpha01-20261120",
+  "exit_code": 0,
+  "stdout_stderr": "=== PR Body 5-类文档 Section Check (issue #5458) ===\n  source_agent: codex\n  source_run:   C-ALPHA-01-HANDOFF-20261120\n  timestamp:    2026-11-20T13:55:16Z\n\n[PASS] section:SPEC\n[PASS] section:TEST_PLAN\n[PASS] section:TEST_DESIGN\n[PASS] section:REVIEW\n[PASS] section:ACCEPTANCE\n\n--- Summary ---\n  required sections: 5\n  present:           5\n  missing:           0\n\n✅ PASS: all 5 required sections are present.\n",
+  "conflict_resolution": "Machine output only, not product acceptance"
+}

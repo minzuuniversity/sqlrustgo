@@ -1,0 +1,11 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "C-ALPHA-01-HANDOFF-20261120",
+  "timestamp": "2026-11-20T14:01:18.055Z",
+  "command": "gitnexus detect-changes --scope staged -r sqlrustgo",
+  "git_dir": "/Volumes/workspace/dev/sqlrustgo/.git/worktrees/codex-calpha01-20261120",
+  "git_work_tree": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-calpha01-20261120",
+  "exit_code": 0,
+  "stdout_stderr": "No changes detected.\n",
+  "conflict_resolution": "Git diff scoped to document worktree; graph may be stale, no production code changes"
+}

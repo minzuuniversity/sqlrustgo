@@ -1,0 +1,20 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T21:39:05.843069+00:00",
+  "timestamp": "2026-11-19T21:39:09.375663+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "cargo",
+    "run",
+    "--offline",
+    "--manifest-path",
+    "docs/audits/HARA-410/evidence/historical/v311/Cargo.toml",
+    "--target-dir",
+    "target-hara410-history",
+    "-j",
+    "2"
+  ],
+  "exit": 0,
+  "output": "     Locking 82 packages to latest compatible versions\n   Compiling sqlrustgo-types v3.11.0 (/Users/liying/dev/sqlrustgo/.worktrees/codex-hara410-history-v311/crates/types)\n   Compiling sqlrustgo-common v3.11.0 (/Users/liying/dev/sqlrustgo/.worktrees/codex-hara410-history-v311/crates/common)\n   Compiling sqlrustgo-storage v3.11.0 (/Users/liying/dev/sqlrustgo/.worktrees/codex-hara410-history-v311/crates/storage)\nwarning: unreachable pattern\n   --> /Users/liying/dev/sqlrustgo/.worktrees/codex-hara410-history-v311/crates/storage/src/binary_storage.rs:149:21\n    |\n149 |                     _ => {\n    |                     ^ no value can reach this\n    |\nnote: multiple earlier patterns match some of the same values\n   --> /Users/liying/dev/sqlrustgo/.worktrees/codex-hara410-history-v311/crates/storage/src/binary_storage.rs:149:21\n    |\n118 |                     sqlrustgo_types::Value::Integer(i) => {\n    |                     ---------------------------------- matches some of the same values\n...\n122 |                     sqlrustgo_types::Value::Float(f) => {\n    |                     -------------------------------- matches some of the same values\n...\n126 |                     sqlrustgo_types::Value::Text(s) => {\n    |                     ------------------------------- matches some of the same values\n...\n132 |                     sqlrustgo_types::Value::Null => {\n    |                     ---------------------------- matches some of the same values\n...\n149 |                     _ => {\n    |                     ^ ...and 3 other patterns collectively make this unreachable\n    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default\n\nwarning: unused `Result` that must be used\n   --> /Users/liying/dev/sqlrustgo/.worktrees/codex-hara410-history-v311/crates/storage/src/binary_storage.rs:147:25\n    |\n147 |                         w.write_all(&[u8::from(*b)]);\n    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    |\n    = note: this `Result` may be an `Err` variant, which should be handled\n    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default\nhelp: use `let _ = ...` to ignore the resulting value\n    |\n147 |                         let _ = w.write_all(&[u8::from(*b)]);\n    |                         +++++++\n\nwarning: `sqlrustgo-storage` (lib) generated 2 warnings\n   Compiling hara410-historical-v311 v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120/docs/audits/HARA-410/evidence/historical/v311)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.95s\n     Running `target-hara410-history/debug/historical-probe`\nHARA historical begin=UNSUPPORTED ExecutionError(\"Transactions not supported by this storage engine\")\nHARA historical begin=UNSUPPORTED ExecutionError(\"Transactions not supported by this storage engine\")\n"
+}

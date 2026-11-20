@@ -1,0 +1,21 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T21:48:23.162050+00:00",
+  "timestamp": "2026-11-19T21:48:23.208786+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "shasum",
+    "-a",
+    "256",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_410_ARCHITECTURE_REVIEW.md",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_410_REVIEW_RESPONSE.md",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_410_B_EXTENDED_ARCHITECTURE_REVIEW.md",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_B1_TRANSACTION_RECOVERY.md",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_B2_STORAGE_IDENTITY.md",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_B3_DML_COVERAGE.md",
+    "/Volumes/workspace/dev/srg-handover-p2a/M_PRE2_EVIDENCE.md"
+  ],
+  "exit": 0,
+  "output": "019ab6f184736d2a176c159987fde22c062bcc7c03a01ca782fbb5064ce47aa8  /Volumes/workspace/dev/srg-handover-p2a/ARR_410_ARCHITECTURE_REVIEW.md\nadf03113e90ecb15dba82e4e85094bacc63fbd7004b826a36ff077c2f180fd14  /Volumes/workspace/dev/srg-handover-p2a/ARR_410_REVIEW_RESPONSE.md\n2d3887b50550251d1fdc3b7e770d8bd0255f0806341b10c4d51cd981ccb7321f  /Volumes/workspace/dev/srg-handover-p2a/ARR_410_B_EXTENDED_ARCHITECTURE_REVIEW.md\na1a077a60764f15a681afdd432b2a0cbf3e5b2b845c4460b16f7670bb3770633  /Volumes/workspace/dev/srg-handover-p2a/ARR_B1_TRANSACTION_RECOVERY.md\nba426f11f7a9844890dfa6c7ac11dad3ff698666e773fc8c367151fdc53da12d  /Volumes/workspace/dev/srg-handover-p2a/ARR_B2_STORAGE_IDENTITY.md\n73156091df70a92cbd18df52bb01ff749319069de8cc389a65e0fbe24656e8b7  /Volumes/workspace/dev/srg-handover-p2a/ARR_B3_DML_COVERAGE.md\n4fff02db5c9c54c0472de5270fb25998c949190cd6545e5da50e40c1814ec44f  /Volumes/workspace/dev/srg-handover-p2a/M_PRE2_EVIDENCE.md\n"
+}

@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentRunResult",
+  "type": "object",
+  "required": [
+    "task_id",
+    "run_id",
+    "harness",
+    "base_commit",
+    "head_commit",
+    "changed_files",
+    "test_results",
+    "started_at",
+    "finished_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "harness": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "resource_id": {
+      "type": "string"
+    },
+    "base_commit": {
+      "type": "string"
+    },
+    "head_commit": {
+      "type": "string",
+      "description": "空串表示无提交（只读/失败）"
+    },
+    "changed_files": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "test_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure",
+              "skipped",
+              "INCONCLUSIVE"
+            ]
+          },
+          "evidence": {
+            "type": "string",
+            "description": "日志文件路径或命令输出引用"
+          }
+        }
+      }
+    },
+    "unfinished": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "string"
+    },
+    "error_class": {
+      "type": "string",
+      "enum": [
+        "none",
+        "task",
+        "infra",
+        "timeout",
+        "cancelled"
+      ]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resource_usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runtime_seconds": {
+          "type": "number"
+        },
+        "attempts": {
+          "type": "integer"
+        },
+        "tokens_est": {
+          "type": "integer"
+        }
+      }
+    },
+    "recovery_checks": {
+      "type": "object",
+      "description": "infra/recovery 任务必填（Gatekeeper 四判据）；普通任务省略。四键必需，name 必须等于键名",
+      "additionalProperties": false,
+      "required": [
+        "service_recovered",
+        "functional_recovered",
+        "no_regression",
+        "evidence_recorded"
+      ],
+      "properties": {
+        "service_recovered": {
+          "type": "object",
+          "required": [
+            "name",
+            "status"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "const": "service_recovered"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failure",
+                "skipped",
+                "INCONCLUSIVE"
+              ]
+            },
+            "evidence": {
+              "type": "string"
+            }
+          }
+        },
+        "functional_recovered": {
+          "type": "object",
+          "required": [
+            "name",
+            "status"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "const": "functional_recovered"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failure",
+                "skipped",
+                "INCONCLUSIVE"
+              ]
+            },
+            "evidence": {
+              "type": "string"
+            }
+          }
+        },
+        "no_regression": {
+          "type": "object",
+          "required": [
+            "name",
+            "status"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "const": "no_regression"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failure",
+                "skipped",
+                "INCONCLUSIVE"
+              ]
+            },
+            "evidence": {
+              "type": "string"
+            }
+          }
+        },
+        "evidence_recorded": {
+          "type": "object",
+          "required": [
+            "name",
+            "status"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "const": "evidence_recorded"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "success",
+                "failure",
+                "skipped",
+                "INCONCLUSIVE"
+              ]
+            },
+            "evidence": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {}
+}

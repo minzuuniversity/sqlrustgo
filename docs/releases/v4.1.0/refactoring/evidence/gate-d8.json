@@ -1,0 +1,11 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "C-ALPHA-01-HANDOFF-20261120",
+  "started_at": "2026-11-20T13:55:16.849Z",
+  "timestamp": "2026-11-20T13:55:16.938Z",
+  "command": "bash scripts/gate/check_arch_sem_debt.sh",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-calpha01-20261120",
+  "exit_code": 0,
+  "stdout_stderr": "=== D8: Architecture/Semantic Debt Gate (5-Principle P5) ===\n  SSOT: /Volumes/workspace/dev/sqlrustgo/.worktrees/codex-calpha01-20261120/docs/governance/debt/debt-registry.yaml\n\n  [ARCH-1] state=CLOSED ✅\n  [ARCH-2] state=CLOSED ✅\n  [ARCH-3] state=CLOSED ✅\n  [SEM-1] state=CLOSED ✅\n  [SEM-2] state=CLOSED ✅\n  [SEM-3] state=CLOSED (100%) ✅\n  [SEM-4] state=CLOSED (87.80%) ✅\n\n=== D8 Arch/Sem Debt Summary ===\n  CLOSED:               7\n  IN_PROGRESS/BLOCKED:  0 (with plan)\n  OPEN w/o plan:        0\n  UNKNOWN:              0\n\n✅ D8 Arch/Sem Debt: PASS (all 7 items CLOSED)\n",
+  "conflict_resolution": "Machine output only, not product acceptance"
+}

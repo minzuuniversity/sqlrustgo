@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-11-19T21:25:20.627600+00:00",
+  "responses": [
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "capabilities": {
+          "logging": {},
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+          "name": "aoci-code",
+          "version": "dev"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"request_mode\":\"check_only\",\"delivery_mode\":\"checkpoint\",\"full_text_included\":false,\"reason\":\"explicit_check_only\",\"server_delivery_complete\":true,\"host_delivery_status\":\"host_delivery_incomplete\",\"assessment\":{\"version\":1,\"state\":\"invalid\",\"reason\":\"refresh_deferred_until_stable\",\"recall\":\"none\",\"refresh_status\":\"refresh_deferred_until_stable\",\"refresh_reasons\":[\"semantic_threshold\"],\"initial_cognition\":true,\"stable_checkpoint\":false,\"semantic\":{\"semantic_change_count\":1370,\"semantic_change_threshold\":30,\"semantic_change_paths_sha256\":\"993a47ca0c6e290606dea2e671ec8b5f16d43fb731d34e865ed72f3c8357cc40\",\"semantic_stale\":411,\"actionable_missing\":960,\"pending_curation\":0,\"format_only\":0,\"line_ending_only\":15,\"curation_excluded\":0,\"technical_skipped\":0,\"orphan\":12,\"unbaselined\":959,\"warnings\":0,\"index_self_stale\":false,\"governance_blocker_count\":2343,\"governance_aligned\":false,\"scope_change_required\":false,\"scope_policy_identity\":\"e415c04158223069cdce7872546804a2038dbcdb7bc4cb5d1b6f1e7a072b89ac\",\"observed_new\":93,\"observed_changed\":272,\"observed_removed\":1,\"observed_pending_review\":366,\"whole_index_tokens\":522412,\"budget_mode\":\"enforce\",\"budget_status\":\"warning\",\"budget_violation_count\":0},\"cognition_receipt\":{\"asset_state\":\"present\",\"cognition_scope\":\"all\",\"cognition_state\":\"invalid\",\"composite_identity\":\"56d0afc6b452706ce2a12a6245b1711e85ef226a56e8c66ddf14877f3f4253c7\",\"delivered_volumes\":[],\"effective_scope\":\"all\",\"layout_mode\":\"volumes-v1\",\"mcp_service_version\":\"dev\",\"meta_sha256\":\"ebafbe54981dfb23686171bb5253ded8c2bbf9c697b73a1b1af9283d686a5cc4\",\"model_full_cognition_reliable\":false,\"model_scope_cognition_reliable\":false,\"pending_refresh_reasons\":[\"semantic_threshold\"],\"refresh_generation\":0,\"requested_scope\":\"all\",\"root_sha256\":\"ecb54e312196e7bb7e93d052ab5796d34bc77cfb36fd771dd49f8e1570187935\",\"runtime_repository_root\":\"/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120\",\"scope_available\":true,\"scope_identity\":\"b6ff9145eda40ca13799f89c3fd0156f3fa7c257f47e420f9d780649c4292a7c\",\"scope_object_count\":5285,\"state_owner\":\"host_model\",\"version\":2},\"aoci_tool_calls\":1,\"overview_reads\":0,\"local_recalls\":0,\"next_action\":\"Keep the current work unit stable first. Do not read the old full Overview or maintain while edits and checks are still unstable.\"},\"cognition_state_v2\":{\"version\":\"cognition-state/v2\",\"model_cognition_level\":1,\"model_cognition_level_state\":\"index_loaded\",\"delivery_verified\":false,\"model_cognition_usable\":false,\"model_cognition_usability_status\":\"not_established\",\"strict_attestation_verified\":false,\"strict_attestation_status\":\"not_provided\",\"strict_attestation_failure_reasons\":[\"not_provided\"],\"governance_aligned\":false,\"current_system_cognition_reliable\":false,\"protocol_completed\":true}}"
+          }
+        ]
+      }
+    }
+  ]
+}

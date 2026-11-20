@@ -1,0 +1,13 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T22:03:07.904881+00:00",
+  "timestamp": "2026-11-19T22:03:08.005651+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "python3",
+    "docs/audits/HARA-410/evidence/verify_delivery.py"
+  ],
+  "exit": 1,
+  "output": "Traceback (most recent call last):\n  File \"/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120/docs/audits/HARA-410/evidence/verify_delivery.py\", line 67, in <module>\n    main()\n    ~~~~^^\n  File \"/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120/docs/audits/HARA-410/evidence/verify_delivery.py\", line 34, in main\n    assert not any('pull_request' in x for x in data)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n"
+}

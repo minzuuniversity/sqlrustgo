@@ -1,0 +1,20 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T21:28:30.435537+00:00",
+  "timestamp": "2026-11-19T21:28:30.480325+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "cargo",
+    "run",
+    "--offline",
+    "--manifest-path",
+    "docs/audits/HARA-410/evidence/probe/Cargo.toml",
+    "--target-dir",
+    "target-hara410",
+    "-j",
+    "2"
+  ],
+  "exit": 101,
+  "output": "error: failed to load manifest for dependency `sqlrustgo-storage`\n\nCaused by:\n  failed to read `/Volumes/workspace/dev/sqlrustgo/.worktrees/crates/storage/Cargo.toml`\n\nCaused by:\n  No such file or directory (os error 2)\n"
+}

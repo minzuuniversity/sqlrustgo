@@ -1,0 +1,2275 @@
+{
+  "version": "C-TF-0.1-PLAN",
+  "required_fields": [
+    "case_id",
+    "feature",
+    "invariant_ids",
+    "source",
+    "seed",
+    "backend",
+    "assembly",
+    "base_sha",
+    "expected",
+    "actual",
+    "execution_status",
+    "artifact_sha256"
+  ],
+  "source_pilot_count": 75,
+  "source_summary_claims": {
+    "PASS": 68,
+    "KNOWN_FAIL": 4,
+    "NOT_RUN": 3
+  },
+  "reexecution_pass_count": 0,
+  "source_claims_are_not_acceptance": true,
+  "cases": [
+    {
+      "case_id": "PILOT-T1-001",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::transaction_lifecycle",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-002",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-003",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "engine::tests::rollback_actually_undoes_an_insert_4948",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-004",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "engine::tests::rollback_of_update_restores_only_the_changed_row_5072",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-005",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "engine::tests::test_nested_transaction_returns_error",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-006",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "engine::tests::test_rollback_removes_inserted_rows",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-007",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "engine::tests::test_rollback_restores_deleted_rows",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-008",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "engine::tests::test_storage_engine_begin_rollback",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-009",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "engine::tests::test_storage_engine_set_current_tx_id",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-010",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "engine::tests::test_storage_engine_transaction",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-011",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "file_storage::tests::test_in_transaction",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-012",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "file_storage::tests::test_set_current_tx_id",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-013",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "parallel_wal_storage::tests::transaction_lifecycle_via_wal",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-014",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "pitr::tests::open_transaction_at_target_is_not_applied",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-015",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "read_write_split::tests::test_classify_sql_transaction",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-016",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "semisync::tests::test_semi_sync_master_record_transactions",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-017",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "table_level_storage::tests::transaction_lifecycle_passthrough",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-018",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-019",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-020",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-021",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "wal_legacy::tests::test_wal_5_transactions",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-022",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "wal_legacy::tests::test_wal_manager_log_rollback",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-023",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "wal_legacy::tests::test_wal_multiple_transactions",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-024",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "wal_storage::tests::test_active_txs_lifecycle_begin_rollback",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-025",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "wal_storage::tests::test_wal_active_tx_ids_empty",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-026",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "wal_storage::tests::test_wal_set_current_tx_id",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-027",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "wal_storage::tests::test_wal_storage_multiple_transactions",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-028",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "wal_storage::tests::test_wal_storage_rollback",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-101",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "tf_t1_01_insert_then_rollback",
+        "declared_source": null,
+        "claimed_status": "PASS",
+        "declared_invariant": "undo log 语义"
+      },
+      "seed": "N/A",
+      "backend": "MemoryStorage",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T1-102",
+      "feature": "T1",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "tf_t1_02_savepoint_partial_rollback",
+        "declared_source": null,
+        "claimed_status": "PASS",
+        "declared_invariant": "SAVEPOINT 部分撤销"
+      },
+      "seed": "N/A",
+      "backend": "MemoryStorage",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T2-001",
+      "feature": "T2",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "bplus_tree::tests::duplicate_keys_keep_every_row_id",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T2-002",
+      "feature": "T2",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "file_storage::tests::test_save_trigger_load_trigger_duplicate",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T2-003",
+      "feature": "T2",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "mvcc::tests::test_empty_table_snapshot",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T2-004",
+      "feature": "T2",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "mvcc::tests::test_find_visible_at_snapshot_before_all",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T2-005",
+      "feature": "T2",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "mvcc::tests::test_gc_drops_old_versions",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T2-006",
+      "feature": "T2",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "mvcc::tests::test_get_visible_pk_lookup",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T3-001",
+      "feature": "T3",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "adaptive_hash_index::tests::test_invalidate_page_removes_entries",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "buffer/flush：页可见性与写回时机"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T3-002",
+      "feature": "T3",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::flush_clears_dirty",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "buffer/flush：页可见性与写回时机"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T3-003",
+      "feature": "T3",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "binary_storage::tests::test_bin_flush",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "buffer/flush：页可见性与写回时机"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T3-004",
+      "feature": "T3",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "buffer/flush：页可见性与写回时机"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T3-005",
+      "feature": "T3",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "buffer/flush：页可见性与写回时机"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T3-006",
+      "feature": "T3",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "buffer/flush：页可见性与写回时机"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T3-007",
+      "feature": "T3",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "buffer/flush：页可见性与写回时机"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T3-008",
+      "feature": "T3",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "buffer_pool::tests::test_buffer_pool_basic",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "buffer/flush：页可见性与写回时机"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-101",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "tf_t4_01_scan_after_insert_sees_rows",
+        "declared_source": null,
+        "claimed_status": "KNOWN_FAIL",
+        "declared_invariant": "后端能力契约"
+      },
+      "seed": "N/A",
+      "backend": "BinaryTableStorageV2",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-102",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "tf_t4_02_delete_reports_real_count",
+        "declared_source": null,
+        "claimed_status": "KNOWN_FAIL",
+        "declared_invariant": "后端能力契约"
+      },
+      "seed": "N/A",
+      "backend": "BinaryTableStorageV2",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-103",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "tf_t4_03_update_reports_real_count",
+        "declared_source": null,
+        "claimed_status": "KNOWN_FAIL",
+        "declared_invariant": "后端能力契约"
+      },
+      "seed": "N/A",
+      "backend": "BinaryTableStorageV2",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-104",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "tf_t4_04_non_tx_backend_must_reject_or_document",
+        "declared_source": null,
+        "claimed_status": "KNOWN_FAIL",
+        "declared_invariant": "非事务后端须显式拒绝"
+      },
+      "seed": "N/A",
+      "backend": "BinaryTableStorageV2",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-001",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::compact_table_drops_tombstones",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-002",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::create_insert_scan_roundtrip",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-003",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::delete_with_tombstones",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-004",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::has_list_get_drop_table",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-005",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::insert_missing_table_errors",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-006",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::load_table_nonexistent_is_noop",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-007",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::new_creates_dir_and_load_all_empty",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-008",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "append_only_storage::tests::stub_methods_return_ok_or_empty",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-009",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "binary_format::tests::test_binary_format_error_display",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T4-010",
+      "feature": "T4",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "binary_format::tests::test_helpers_write_read_string",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T5-001",
+      "feature": "T5",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "adaptive_hash_index::tests::test_record_access_updates_promoted_count",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T5-002",
+      "feature": "T5",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "bplus_tree::index::composite_index_tests::test_composite_btree_insert_and_search",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T5-003",
+      "feature": "T5",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "bplus_tree::index::tests::test_btree_index_delete",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T5-004",
+      "feature": "T5",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "bplus_tree::index::tests::test_btree_index_delete_multiple",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T5-005",
+      "feature": "T5",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "bplus_tree::index::tests::test_btree_index_insert",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T5-006",
+      "feature": "T5",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "bplus_tree::index::tests::test_btree_index_insert_multiple",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T5-007",
+      "feature": "T5",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "bplus_tree::index::tests::test_btree_index_search_after_insert",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T5-008",
+      "feature": "T5",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "bplus_tree::index::tests::test_btree_node_insert_key_value",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T6-001",
+      "feature": "T6",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "checkpoint::tests::test_checkpoint_cleanup",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T6-002",
+      "feature": "T6",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "checkpoint::tests::test_checkpoint_manager_default",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T6-003",
+      "feature": "T6",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "checkpoint::tests::test_checkpoint_metadata_serialization",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T6-004",
+      "feature": "T6",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "checkpoint::tests::test_checkpoint_needs",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T6-005",
+      "feature": "T6",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "checkpoint::tests::test_checkpoint_record",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T6-006",
+      "feature": "T6",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "checkpoint::tests::test_checkpoint_save_load",
+        "declared_source": "cargo test --list @ e9ff21fc",
+        "claimed_status": "PASS",
+        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+      },
+      "seed": "N/A (deterministic)",
+      "backend": "MemoryStorage/FileStorage (默认工厂产物)",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T6-001",
+      "feature": "T6",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "(crash-recovery-kill-9)",
+        "declared_source": null,
+        "claimed_status": "NOT_RUN",
+        "declared_invariant": "崩溃恢复"
+      },
+      "seed": "fixed",
+      "backend": "FileStorage+WAL",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T6-002",
+      "feature": "T6",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "(checkpoint-torn-write)",
+        "declared_source": null,
+        "claimed_status": "NOT_RUN",
+        "declared_invariant": "checkpoint 安全性"
+      },
+      "seed": "fixed",
+      "backend": "FileStorage+WAL",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    },
+    {
+      "case_id": "PILOT-T5-101",
+      "feature": "T5",
+      "invariant_ids": [],
+      "invariant_mapping_status": "UNREVIEWED",
+      "source": {
+        "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
+        "test_name": "(odku-rollback-noop)",
+        "declared_source": null,
+        "claimed_status": "NOT_RUN",
+        "declared_invariant": "ODKU 回滚不空转"
+      },
+      "seed": "N/A",
+      "backend": "FileStorage",
+      "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "expected": "由独立Reviewer实读断言并绑定不变量；不得直接继承cargo --list声称",
+      "actual": null,
+      "execution_status": "NOT_RUN",
+      "artifact_sha256": null,
+      "required_for_certification": false,
+      "activation_requires": [
+        "ASSERTION_REVIEW",
+        "INPUT_HASH_BINDING",
+        "REAL_EXECUTION"
+      ],
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+    }
+  ],
+  "hara_families": [
+    {
+      "finding_id": "F01",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "trigger": "FileStorage SQL DELETE rollback duplicate",
+      "responsible_task": "C01-05",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    },
+    {
+      "finding_id": "F02",
+      "invariant_ids": [
+        "INV-02"
+      ],
+      "trigger": "FileStorage flush then rollback residue",
+      "responsible_task": "C01-05",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    },
+    {
+      "finding_id": "F03",
+      "invariant_ids": [
+        "INV-07"
+      ],
+      "trigger": "pending snapshot process exit/reopen",
+      "responsible_task": "C01-06",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    },
+    {
+      "finding_id": "F04",
+      "invariant_ids": [
+        "INV-08",
+        "INV-09"
+      ],
+      "trigger": "commit sync paths",
+      "responsible_task": "C01-07",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    },
+    {
+      "finding_id": "F05",
+      "invariant_ids": [
+        "INV-06"
+      ],
+      "trigger": "undo callback failure",
+      "responsible_task": "C01-08",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    },
+    {
+      "finding_id": "F06",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "trigger": "backend fake transaction",
+      "responsible_task": "C01-09",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    },
+    {
+      "finding_id": "F07",
+      "invariant_ids": [
+        "INV-12"
+      ],
+      "trigger": "failed recovery second call",
+      "responsible_task": "C01-08",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    },
+    {
+      "finding_id": "F08",
+      "invariant_ids": [
+        "INV-10",
+        "INV-11"
+      ],
+      "trigger": "checkpoint/reclaim interruption hypothesis",
+      "responsible_task": "C01-13",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HYPOTHESIS_NOT_RUN",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "NO_FORCED_RED"
+    },
+    {
+      "finding_id": "F09",
+      "invariant_ids": [
+        "INV-15"
+      ],
+      "trigger": "clustered rollback",
+      "responsible_task": "C01-10",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    },
+    {
+      "finding_id": "F10",
+      "invariant_ids": [
+        "INV-05"
+      ],
+      "trigger": "REPLACE/ODKU old row loss",
+      "responsible_task": "C01-10",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    },
+    {
+      "finding_id": "F11",
+      "invariant_ids": [
+        "INV-14",
+        "INV-15"
+      ],
+      "trigger": "optional BufferPool API rollback",
+      "responsible_task": "C01-11",
+      "evidence_ref": "audit/HARA-410/evidence/probe-run6.json",
+      "source_status": "HISTORICAL_VERIFIED_RUN_IN_PREVIOUS_HARA",
+      "execution_this_batch": "NOT_RUN",
+      "required_for_exit": true,
+      "baseline_expectation": "Replay exact assembly and compare expected/actual; do not generalize wrappers"
+    }
+  ]
+}

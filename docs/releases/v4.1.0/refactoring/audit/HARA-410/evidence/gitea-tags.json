@@ -1,0 +1,1258 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "timestamp": "2026-11-19T21:23:02.890251+00:00",
+  "pages": [
+    {
+      "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/tags?limit=50&page=1",
+      "status": 200,
+      "count": 50,
+      "headers": {
+        "Access-Control-Expose-Headers": "X-Total-Count",
+        "Cache-Control": "max-age=0, private, must-revalidate",
+        "Content-Type": "application/json;charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "SAMEORIGIN",
+        "X-Total-Count": "100",
+        "Date": "Thu, 19 Nov 2026 21:23:02 GMT",
+        "Connection": "close",
+        "Transfer-Encoding": "chunked"
+      }
+    },
+    {
+      "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/tags?limit=50&page=2",
+      "status": 200,
+      "count": 50,
+      "headers": {
+        "Access-Control-Expose-Headers": "X-Total-Count",
+        "Cache-Control": "max-age=0, private, must-revalidate",
+        "Content-Type": "application/json;charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "SAMEORIGIN",
+        "X-Total-Count": "100",
+        "Date": "Thu, 19 Nov 2026 21:23:02 GMT",
+        "Connection": "close",
+        "Transfer-Encoding": "chunked"
+      }
+    },
+    {
+      "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/tags?limit=50&page=3",
+      "status": 200,
+      "count": 0,
+      "headers": {
+        "Access-Control-Expose-Headers": "X-Total-Count",
+        "Cache-Control": "max-age=0, private, must-revalidate",
+        "Content-Type": "application/json;charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "SAMEORIGIN",
+        "X-Total-Count": "100",
+        "Date": "Thu, 19 Nov 2026 21:23:02 GMT",
+        "Content-Length": "2",
+        "Connection": "close"
+      }
+    }
+  ],
+  "count": 100,
+  "data": [
+    {
+      "name": "ci-cargo-cache-prewarm",
+      "message": "Merge pull request 'fix(tests): 清掉 clippy --all-targets 两族红（duplicate_mod + 共享模块 per-binary dead_code，#5362 尾巴 / #5465 口径）' (#5788) from fix/clippy-all-targets-not-run-log-5362 into develop/v4.1.0\n",
+      "id": "662f1ebe333743ed8cb41fae996e5c63e92c0646",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/662f1ebe333743ed8cb41fae996e5c63e92c0646",
+        "sha": "662f1ebe333743ed8cb41fae996e5c63e92c0646",
+        "created": "2026-11-14T00:16:18Z"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/ci-cargo-cache-prewarm.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/ci-cargo-cache-prewarm.tar.gz"
+    },
+    {
+      "name": "archive/cleanup-20261028-wt-v410-batch15",
+      "message": "docs(evidence): `scripts/` 纳入 C3 范围**归 #5516 批次做**，本批次保持可独立合并\n\n原计划把「`scripts/` 纳入 C3 扫描范围」放在本批次（批次15 建了这个门禁）。\n评估合并顺序后改判：**不放本批次**。\n\n理由（合并顺序）：\n\n* 本门禁的 C3 step 接线在 ci.yml 的 `test` job 里（`if: always()`）。\n* 一旦纳入 `scripts/`，本分支 CI 就会因 `scripts/` 尚未修的 9 处断口而红\n  （backup.sh / restore.sh -> sqlrustgo-tools；check_bustubx_edu_cli_smoke_v312.sh\n  / run_24h_soak_v2.sh / soak_1h.sh -> sqlrustgo-cli；run_sf10.sh -> tpch_runner ×4）\n  ⇒ **本批次将无法单独合并**（合并即 CI 红）。\n* 而 #5516 那个批次正是修这 6 个脚本的批次。把「修断口」与「扩范围」放在同一\n  分支里，合并后 C3 立即全绿，**两个 PR 各自独立可合并**。\n\n实测确认依赖链闭合：把「扩了范围」的这份门禁拿到 #5516 分支上跑，`scripts/`\n侧**零断口**（唯一命中是门禁自己的豁免文件）。\n\n§5.4 记录原判据（排除 `scripts/` 的理由已过期）、实测数据、归属决定与理由；\n§7 恢复「没有把 scripts/ 纳入 C3 扫描范围」这条并指向 #5516。\n",
+      "id": "2cb2a05a4f20a6ccc796869d58b1cc75517ad7de",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/2cb2a05a4f20a6ccc796869d58b1cc75517ad7de",
+        "sha": "2cb2a05a4f20a6ccc796869d58b1cc75517ad7de",
+        "created": "2026-10-22T13:55:28+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-20261028-wt-v410-batch15.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-20261028-wt-v410-batch15.tar.gz"
+    },
+    {
+      "name": "archive/cleanup-20261028-wt-v410-batch4",
+      "message": "Merge commit '1a8fc3f07b0cfa5e51d16ec281bd010080b57b21' into fix/engine-defects-batch11\n",
+      "id": "95f3d49807c78f90a40862be731213bfc147495c",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/95f3d49807c78f90a40862be731213bfc147495c",
+        "sha": "95f3d49807c78f90a40862be731213bfc147495c",
+        "created": "2026-10-22T05:57:49+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-20261028-wt-v410-batch4.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-20261028-wt-v410-batch4.tar.gz"
+    },
+    {
+      "name": "archive/cleanup-2026-10-08-test-4938",
+      "message": "test(#4938): 端到端测试 + 揭示「增量备份其实是全量」\n\n补 AC2/AC3 要求的端到端证据。已有 21 个单元测试只覆盖 LSN/manifest/\nValue→SQL/change-context 记账，一个都没创建过备份文件或执行过恢复。\n\n## 核心发现：被接线的\"增量\"不是增量\n\n读入口函数时发现（单元测试结构性看不见）：\n\n- `create_full_backup(dir, format, _data_dir)` —— 第三个参数带下划线\n  前缀即**未被使用**，内部调 `create_demo_storage()` 导出硬编码 demo 数据\n- `create_incremental_backup(parent, dir, format, _data_dir)` —— 同样忽略\n  data_dir、同样用 demo storage，其自身注释直言：\n\n      // For incremental backup, we would compare with parent LSN\n      // In this demo, we backup all tables\n\n  然后照样把 manifest 标成 `BackupType::Incremental`\n\n即：CLI 上 `Incremental` 子命令执行的是**全量导出 + 一个增量标签**。\n\n真正做增量的是 `create_incremental_backup_with_changeset`——它从\n`IncrementalBackupContext` 取真实变化、导出 `.inc.sql`、记录\n`parent_lsn`。但它带 `#[allow(dead_code)]`，**无生产调用者**。\n\n**这与 #4937 完全同构**：全绿的组件 / 可编译的文件 / 零生产调用。\n\n## 测试（5 项）\n\n- incremental_backup_is_not_incremental —— 核心：断言增量导出与全量导出\n  逐字节相同，把上述事实钉死，将来真的实现增量时它会 FAILED（提示更新）\n- changeset_backup_captures_only_the_delta —— 真增量只含 delta 且小于全量\n- changeset_chain_links_back_to_its_parent —— full→inc1→inc2 链式，\n  各自只含自己的变化、互不重复、parent_lsn 齐全\n- changeset_backup_requires_an_existing_parent —— 链式依赖的前置条件\n- full_backup_writes_data_and_manifest —— 基线\n\n## 变异验证\n\n- M: 把「we would compare with parent LSN」注释换成 `let _ = &parent_lsn;`\n  -> 5 passed，**无效变异**。行为等价：备份逻辑本来就没用 parent_lsn 做\n  diff，改注释不改任何输出。如实标注。\n- N: 让增量只导出一张表（模拟真增量）\n  -> incremental_backup_is_not_incremental FAILED，**有效**\n\n## 回归\n\n- incremental_backup_chain_4938: 5 passed\n- cargo test -p sqlrustgo-tools: FAILED=0\n- cargo fmt --check --all: clean\n\n## 遗留（需独立决策，本 PR 不做）\n\n1. CLI 的 `Incremental` 子命令指向 demo 假实现。是否改指\n   `create_incremental_backup_with_changeset`？\n2. 两个函数都忽略 `data_dir`，备份的是 `create_demo_storage()` 的硬编码\n   数据——**没有任何一条路径能备份真实数据库**。这是比\"是不是真增量\"更\n   根本的问题。\n3. 上述测试只能证明输出形态，无法证明对真实数据库的正确性（数据源仍是\n   demo storage）。\n\n<sub>source_agent: mcode (minimax-M3.1) / base: 8a9f34a8e2 / timestamp: 2026-10-06</sub>\n",
+      "id": "4201bfe9aba8ec8b5c5650e688aae584deebc9c1",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/4201bfe9aba8ec8b5c5650e688aae584deebc9c1",
+        "sha": "4201bfe9aba8ec8b5c5650e688aae584deebc9c1",
+        "created": "2026-10-06T00:51:58+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-test-4938.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-test-4938.tar.gz"
+    },
+    {
+      "name": "archive/cleanup-2026-10-08-tmp-verify-4942b",
+      "message": "fix(gate): #4942 — 解析测试二进制真实路径，manifest args 修正\n\n三处连带修正，均由门禁实跑逐个暴露：\n\n1. **cargo test 只接受一个 -p**。传三个包名会报\n   \"unexpected argument\" 并且**一个都不构建**，于是 5 条测试全 Crashed。\n   改为逐个调用。\n\n2. **测试二进制在 target/release/deps/<pkg>-<hash>，不在\n   target/release/<pkg>**。后者不存在，所以路径永远解析失败。\n   门禁现在生成一份**运行时 manifest**，把包名替换为真实可执行文件路径\n   再交给 test-runner 调度。\n\n   解析方式是**扫描 deps 目录**而不是对每个包再跑一次\n   `cargo test --no-run --message-format=json`——后者会三次进入 cargo\n   并可能触发重链接，实测把门禁从秒级拖到 300s 超时。扫描耗时 0.07s。\n\n3. **`--lib` 不被库 crate 的测试二进制识别**。那是 `cargo test` 的参数，\n   不是测试二进制的参数，会报 \"Unrecognized option: 'lib'\"。\n   改为直接传 `--test-threads=1`。\n\n## 端到端验证\n\n```\n$ ./target/release/test-runner --manifest <resolved> --out report.json\ntest-runner: mode=manifest wrote 5 entries — total=5 passed=5 failed=0              timed_out=0 crashed=0 duration_ms=39686\n```\n\n对比修复前：`crashed=5`（秒崩，因路径不存在）。\n\n门禁本轮多次实跑证明 fail-closed 生效——中途每一步失败都被新的\nschema 断言捕获并 exit 1，而旧版会静默放过。这正是本次修复的价值：\n不是让门禁变绿，而是让它**在说真话**。\n",
+      "id": "3f7feb130fb714e55cb20c180adbc83404233b61",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/3f7feb130fb714e55cb20c180adbc83404233b61",
+        "sha": "3f7feb130fb714e55cb20c180adbc83404233b61",
+        "created": "2026-10-05T04:03:26+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-tmp-verify-4942b.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-tmp-verify-4942b.tar.gz"
+    },
+    {
+      "name": "archive/cleanup-2026-10-08-feat-4936b-ack-v2",
+      "message": "feat(storage): #4936 PR-B — 主库记账从库的 ACK（L 半同步复制的硬前置）\n\n`ReplicationMessage::HeartbeatAck` 的处理是 `=> {}` —— **主库把从库的确认\n直接丢掉**。于是主库无从知道任一从库应用到哪了，而\"等从库确认到某个位点\n再向源库确认提交\"正是半同步复制（#4937）要做的事。没有可等待的对象，\n#4937 只能从零实现整个等待机制。\n\n## 改动\n\n**`BinlogServer::acked_lsn: Arc<Mutex<HashMap<u32, u64>>>`** —— 每个从库\n已确认的最高 LSN。三个查询接口：\n\n- `acked_lsn_of(slave_id)` —— 单个从库的水位\n- `min_acked_lsn()` —— **所有从库中最低的**。半同步的等待条件是\"最慢的那个\"，\n  不是平均也不是任意一个；快的从库不能掩盖慢的\n- `acking_slave_count()` —— 区分\"没有从库\"与\"从库都在 0\"，前者没有可等待的\n  对象，后者是真的追上了\n\n**`ReplicationMessage::AckOk { lsn }`** —— 协议里原本**没有**\"ACK 已被记账\"\n的应答。缺它，从库无法区分\"确认被记录\"与\"确认在半路丢了\"，而这正是半同步\n要保证的那件事。\n\n**单调性保护** —— 重复或乱序到达的 ACK 不会让水位回退，否则一个延迟的心跳\n会让半同步的等待永远不满足。\n\n**`slave_id` 提升到循环作用域** —— 它原先只在 Handshake 分支解构，而\n`HeartbeatAck` 分支在后续迭代里需要它来给记账表定键。ACK 先于握手到达\n无法归属从库，改为发协议错误而非猜测。\n\n## 4 个新测试\n\n- `test_acked_lsn_starts_at_zero`\n- `test_min_acked_lsn_tracks_the_slowest_replica` —— 900/100/500 → 100\n- `test_acked_lsn_never_moves_backwards` —— 500 后收到 300 的陈旧 ACK\n- `test_min_acked_lsn_distinguishes_empty_from_caught_up` —— 两者都返回 0，\n  必须靠 count 区分\n\n```\ncargo test -p sqlrustgo-storage --lib    # 821 passed; 0 failed（原 817）\ncargo fmt -p sqlrustgo-storage --check    # clean\n```\n\nRefs: #4936, #4937\n",
+      "id": "5dbc67af8df273bea04c7723cd5a188ba0d1a024",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/5dbc67af8df273bea04c7723cd5a188ba0d1a024",
+        "sha": "5dbc67af8df273bea04c7723cd5a188ba0d1a024",
+        "created": "2026-10-05T03:03:40+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-feat-4936b-ack-v2.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-feat-4936b-ack-v2.tar.gz"
+    },
+    {
+      "name": "archive/cleanup-2026-10-08-refactor-find-column-index",
+      "message": "feat(gate): GMP-Platform consumer gate — 订正 #4873 的错误前提（V400-10 / #4943）\n\n#4873 记录「PR #207 self-approval pending」为 GA 阻塞项，#4943 复核后\n判定其**前提不成立**：该 PR 不在 SQLRustGo 仓库——`GET /pulls/207`\n在本实例返回 404——它位于 GMP-Platform，且已于 2026-09-11 合入：\n\n    67fc628 Merge PR#207: M5 sqlrustgo-graph migration\n             (resolve cypher_engine.rs conflict)          ai <ai@z440>\n\n内容随后经 PR #210 forward 到 `develop/v1.5.0`，由 `develop/v1.6.0`\n继续演进（`crates/gmp-storage/src/cypher_engine.rs` 在位）。原记录是\n**查错了仓库**。\n\n因此本 gate 不检查 PR，而是检查四类 consumer surface 能否对当前\nSQLRustGo crates 构建与应答——那才是「No GMP-Platform compatibility\nclaim without V400-10 evidence」这条硬边界要的东西。\n\n## 为什么门禁放在本仓库\n\nGA_GATE_REPORT.md 把 V400-10 列为晋升前必须通过的项，所以检查必须能在\n本仓库的门禁套件里跑、证据写进本仓库的 evidence 树。被驱动的资产\n（REST / WebUI / audit / 408）属于 GMP-Platform，在原地被检验。两仓库\n同级，`gmp-graph` / `gmp-kg` 对 `sqlrustgo-{graph,storage,types}` 的\n`path` 依赖因此成立。\n\n## 七项检查\n\n| 检查 | 作用 |\n|---|---|\n| `pr-207-resolved` | 订正 #4873 的错误前提，并固定 PR #207 的真实位置 |\n| `compile-gmp-api` / `gmp-auth` / `gmp-audit-db` | 逐 crate `cargo check`，避免拖入与 consumer 契约无关的 crate |\n| `sqlrustgo-linkage` | **证明 consumer 契约是活的而非名义上的**：确认有 GMP crate path 依赖本仓库，且被依赖的 `sqlrustgo-storage` 仍能构建 |\n| `smoke-408` | 需 LLM 凭据；无凭据时记 SKIP 并写明原因，**绝不静默算通过** |\n| `webui-manifest` | `web/` 是 node 工程，本门禁不装 node 依赖，只校验 manifest 良构 |\n\nGMP-Platform 不可达时整体记 SKIP 并 exit 2——**不是通过**，证据文件里\n也这么写。\n\n## 实跑\n\n```\nGMP-Platform: /Volumes/workspace/dev/GMP-Platform  head: 3cf3c34 (develop/v1.6.0)\n  [PASS] pr-207-resolved — found and merged at 67fc628 (2026-09-11)\n  [PASS] compile-gmp-api\n  [PASS] compile-gmp-auth\n  [PASS] compile-gmp-audit-db\n  [PASS] sqlrustgo-linkage — 4 GMP crate(s) path-depend on this repo\n  [SKIP] smoke-408 — not requested (needs LLM credentials)\n  [PASS] webui-manifest\nRESULT: 6 passed, 0 failed, 1 skipped        EXIT=0\n```\n\n证据：`docs/releases/v4.1.0/evidence/gmp_consumer_gate_20261004.md`\n\n## 写的过程中踩到的两个 shell 陷阱（都已修）\n\n**SIGPIPE + pipefail 造成假阴性。** 初版用\n`git log --all --oneline | grep -qE \"Merge PR#?207:\"`。`grep -q` 匹配后\n立即退出，`git log` 收 SIGPIPE 返回 **141**，`set -o pipefail` 把它变成\n失败——门禁把一个**存在**的 PR 报成 NOT FOUND。改为先捕获输出再匹配。\n\n**BSD grep 不支持 PCRE 前瞻。** `grep -oE \"^[0-9a-f]+(?= Merge ...)\"` 在\nmacOS 上报 `repetition-operator operand invalid`，sha 退化成 `unknown`。\n改用 `cut -d' ' -f1`。\n\n第一版的 `EXIT=0` 是我自己的测量错误——`| tail -20` 让 `$?` 取到了\n`tail` 的退出码。门禁的退出码逻辑本身是对的。\n\nRefs: #4943, #4873, V400-10\n",
+      "id": "56fb38b4561a84f9ff0c4fe09184abcf92d9cff3",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/56fb38b4561a84f9ff0c4fe09184abcf92d9cff3",
+        "sha": "56fb38b4561a84f9ff0c4fe09184abcf92d9cff3",
+        "created": "2026-10-05T02:55:21+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-refactor-find-column-index.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-refactor-find-column-index.tar.gz"
+    },
+    {
+      "name": "archive/cleanup-2026-10-08-pr-5001",
+      "message": "refactor(executor): finish find_column_index delegation cleanup\n\nAfter the previous commit's replacement of the local\n`find_column_index` body with a 1-line delegate, two leftover items\nstill referenced the removed private `trailing_segments_eq`:\n\n  - the doc-comment block immediately above the new delegate\n    (`/// Look up a column index…`, originally for the wide impl)\n    was still attached to a now-orphaned `trailing_segments_eq`\n    function and broke the brace balance\n  - `test_trailing_segments_eq_contract` inside the executor test\n    module still called the removed function\n\nThis commit:\n  - collapses the wide-impl + helper doc blocks into a single short\n    doc on the 1-line delegate\n  - removes the executor-level `trailing_segments_eq_contract` test\n    (the same contract is pinned by `trailing_segments_eq_contract`\n    in `crates/storage/src/engine.rs`, which we added earlier in this\n    series)\n",
+      "id": "5fadc451cc7a6463921bb4bff90294ff673bcf44",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/5fadc451cc7a6463921bb4bff90294ff673bcf44",
+        "sha": "5fadc451cc7a6463921bb4bff90294ff673bcf44",
+        "created": "2026-10-05T02:49:06+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-pr-5001.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-pr-5001.tar.gz"
+    },
+    {
+      "name": "archive/cleanup-2026-10-08-fix-4936-repl",
+      "message": "style(storage): fmt failover_manager.rs after it entered the build graph\n\n2a40c9ce56 added the mod declaration that pulls this file into the\nbuild, which brought it under cargo fmt for the first time. Pure\nformatting — four long assert! calls in test_failover_state_variants\nwere over the line limit.\n\nRefs: #4936\n",
+      "id": "d2a9e34cea78491695160df23b6dcb99d82bc348",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/d2a9e34cea78491695160df23b6dcb99d82bc348",
+        "sha": "d2a9e34cea78491695160df23b6dcb99d82bc348",
+        "created": "2026-10-04T12:38:41+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-fix-4936-repl.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-fix-4936-repl.tar.gz"
+    },
+    {
+      "name": "v4.1.0-alpha1",
+      "message": "v4.1.0-alpha1 — DRAFT -> ALPHA promotion\n\n*** INVALIDATED 2026-09-30 (AFP §7.1 Type-B rollback) ***\n\nThis tag is RETAINED as an audit trail. It is NOT a valid ALPHA\ncredential and must not be cited as evidence that v4.1.0 reached ALPHA.\n\nThe original annotation claimed:\n\n  \"3 inherited v4.0.0 alpha-gate FAILs resolved (P0.1/P0.2/P0.3)\"\n\nThat claim had no real gate evidence behind it. On 2026-09-30 a real run\nof scripts/gate/check_anti_fabrication.sh returned exit 1 (CHECK 4: the\nHEAD commit email was not in the allowlist), i.e. at least one of the\nthree \"resolved\" FAILs was in fact still red at the time this tag was\ncut. That is `[AFP-VIOLATION: Type-B]` — a claim presented as PASS with\nno execution evidence behind it.\n\nPer ANTI_FABRICATION_POLICY.md §7.1, v4.1.0 was rolled back:\n\n    ALPHA (2026-09-29) -> DRAFT (2026-09-30)\n\nThe three blockers were then genuinely cleared with recorded output\n(evidence under docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/):\n\n  - check_anti_fabrication.sh  -> exit 0 after adding\n    'claude@macmini.dev' to the CHECK 4 allowlist (explicit user\n    decision; rewriting the 8 affected commits was declined)\n  - check_arch_invariants.sh    -> exit 0, 5/5 PASS\n  - check_anti_ignore_gate.sh   -> exit 0, BUT the gate is hollow: it\n    never scans the source tree (see DEFECTS_AND_ISSUES.md P0-01)\n\nv4.1.0 is DRAFT, not ALPHA. See docs/releases/v4.1.0/STAGE.yaml\n(`current_stage: DRAFT`, `last_transition`).\n\nReaching ALPHA again requires, per STAGE_CONFIG\n`required_gates_for_alpha`, that the P0 items in\ndocs/releases/v4.1.0/DEFECTS_AND_ISSUES.md are closed first — including\na real source-vs-registry diff for check_anti_ignore_gate.sh, which\ncurrently cannot detect an unregistered #[ignore] at all.\n\nA green gate does not by itself advance the stage. The stage transition\nmust be executed explicitly and recorded.\n\nRef: docs/releases/v4.1.0/STAGE.yaml §last_transition\n     docs/releases/v4.1.0/RELEASE_NOTES.md §5\n     docs/governance/incidents/2026-09-30-V410-ALPHA-UNSUPPORTED-BY-GATE-EVIDENCE.md\n     docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md\n",
+      "id": "7a9d953c0625db170eb1d98ad04f3cccac382b0c",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/7a9d953c0625db170eb1d98ad04f3cccac382b0c",
+        "sha": "03e0ddcfcdbca842864b7a286ff8e0e2b237e6fc",
+        "created": "2026-10-04T00:06:14+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v4.1.0-alpha1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v4.1.0-alpha1.tar.gz"
+    },
+    {
+      "name": "archive/main-pre-convergence-2026-09-30",
+      "message": "main 分叉收敛前快照 (2026-09-30)\n\n诊断: main 与 develop/v4.1.0 双向分叉 (main 独有 16657 commits / develop 独有 16944)。\n实测: main 无任何 develop 缺失的文件 (0 deletions),仅缺 develop 上的实现工作。\n此 tag 为 reset 前的唯一回退点,依据 docs/releases/v4.1.0/MAIN_DIVERGENCE_RESOLUTION_2026-09-30.md\n",
+      "id": "cfa2a3b3d34aca437c7b06f78ea891b1456b699d",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/cfa2a3b3d34aca437c7b06f78ea891b1456b699d",
+        "sha": "1f3492a4dc2bbd48a12cdd5a5fc3f87a98b3d8fb",
+        "created": "2026-09-30T23:06:09+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fmain-pre-convergence-2026-09-30.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fmain-pre-convergence-2026-09-30.tar.gz"
+    },
+    {
+      "name": "archive/cleanup-2026-10-08-main-pre-convergence",
+      "message": "docs(v4.0.0): add 1h SOAK baseline evidence\n\nAdds docs/releases/v4.0.0/SOAK_BASELINE_1H_2026-09-16.md — the 1h\nmixed read/write SOAK that produced v4.0.0's pre-merge stability baseline:\nRSS 359->1630 MB, 107,880 queries, 0 panics. This file was staged in\nthe v400-mvcc-gc worktree before the v4.0.0 GA cut but never committed.\n\nThis is the same SOAK whose metrics.csv and wrap-script stdout are\nreferenced in docs/releases/v4.0.0/PHASE_B_MVCC_GC.md (PR #3755 evidence)\nand docs/releases/v4.0.0/PHASE_B_GROUP_COMMIT.md (PR #3754 evidence).\n\nv4.0.0 docs are force-added past the broad 'releases/' .gitignore\nrule so this evidence file is captured. v4.1.0's PERF_A1_4912_AB_MEASUREMENT.md\ncomplements this baseline by recording the post-#4912 lockfree-forwarding\nA/B (TPS 402 -> 6,846, 17x).\n\nRefs: PR #3754 (WAL group commit), PR #3755 (MVCC GC), PR #4916 (lockfree\nforwarding A/B), PERF_A1_4912_AB_MEASUREMENT.md\n",
+      "id": "1f3492a4dc2bbd48a12cdd5a5fc3f87a98b3d8fb",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/1f3492a4dc2bbd48a12cdd5a5fc3f87a98b3d8fb",
+        "sha": "1f3492a4dc2bbd48a12cdd5a5fc3f87a98b3d8fb",
+        "created": "2026-09-30T21:54:21+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-main-pre-convergence.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/archive%2Fcleanup-2026-10-08-main-pre-convergence.tar.gz"
+    },
+    {
+      "name": "ga/v4.0.0",
+      "message": "v4.0.0 GA FINAL — frozen at release/v4.0.0 HEAD = 07178c9d66\n",
+      "id": "846a900511223180b7e96b4d69f8905db5c377f8",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/846a900511223180b7e96b4d69f8905db5c377f8",
+        "sha": "bb330d1681cd7e628c06954ea45ca3d3841c277e",
+        "created": "2026-09-20T01:55:46+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/ga%2Fv4.0.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/ga%2Fv4.0.0.tar.gz"
+    },
+    {
+      "name": "v4.0.0-final",
+      "message": "v4.0.0 GA FINAL\n",
+      "id": "c4b6f0552845f29e90ee9c9d176ba1c310b2103e",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/c4b6f0552845f29e90ee9c9d176ba1c310b2103e",
+        "sha": "0e3cc02bd147c292a57fe47e63bd084ac1b7cddc",
+        "created": "2026-09-20T01:55:24+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v4.0.0-final.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v4.0.0-final.tar.gz"
+    },
+    {
+      "name": "rc/v4.0.0",
+      "message": "RC gate CONDITIONAL PASS — v4.0.0 promotes to RC stage\n\nRefs:\n- docs/releases/v4.0.0/RC_GATE_REPORT.md\n- PR #3778 (gitea250)\n- PR #4893 (gitea252)\n\nNotes:\n- R1-R4 hard checks: all PASS\n- G17 coverage CONDITIONAL: 78.28% avg (parser 74.32%, mysql-server 75.41%)\n- RSS peak optimized: 1s GC interval cuts peak ~5x (30 MB vs 150 MB)\n- V400-02/03 acceptance: PASS with 5+ crash/rebuild scenarios each\n",
+      "id": "29957d1ee03b15586f3a8d3c7ac024254c8579ec",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/29957d1ee03b15586f3a8d3c7ac024254c8579ec",
+        "sha": "107a909a0f1e4a11d5f840e9fcd8e950a746965e",
+        "created": "2026-09-19T17:43:09+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/rc%2Fv4.0.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/rc%2Fv4.0.0.tar.gz"
+    },
+    {
+      "name": "beta/v4.0.0",
+      "message": "Beta gate CONDITIONAL PASS — v4.0.0 promotes to BETA stage\n\nRefs:\n- docs/releases/v4.0.0/BETA_GATE_REPORT.md\n- PR #3777 (gitea250)\n- PR #4892 (gitea252)\n",
+      "id": "ea4df89ab559d54393dc63d37f2d85cfb3a2fba1",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/ea4df89ab559d54393dc63d37f2d85cfb3a2fba1",
+        "sha": "b326415334769741cc42bfa9c58f4247ee6a2b54",
+        "created": "2026-09-19T17:33:18+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/beta%2Fv4.0.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/beta%2Fv4.0.0.tar.gz"
+    },
+    {
+      "name": "backup/v400-wal-group-commit-pre-resolve-20260917",
+      "message": "docs(v4.0.0): PR merge blocker analysis 2026-09-17\n\nDocuments the failed merge attempt: feat/v4.0.0-wal-group-commit\n→ develop/v4.0.0 cannot be completed via naive rebase due to\nMvccStorage<S> struct field conflict (scan_skip_cache vs upstream's\nmaybe_gc() throttle from PR #3755/#3771).\n\nBranch restored to pre-rebase state (2865129bc6). All 5 remotes in sync.\nBuild OK. Working tree clean.\n\nFour options documented for next steps. No PR was created because the\ncode conflict prevents safe auto-merge — manual resolution required.\n",
+      "id": "aa7d7f12843b358121239d2b3c5f7d5ba76b2939",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/aa7d7f12843b358121239d2b3c5f7d5ba76b2939",
+        "sha": "aa7d7f12843b358121239d2b3c5f7d5ba76b2939",
+        "created": "2026-09-18T00:04:52+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/backup%2Fv400-wal-group-commit-pre-resolve-20260917.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/backup%2Fv400-wal-group-commit-pre-resolve-20260917.tar.gz"
+    },
+    {
+      "name": "backup/v400-wal-group-commit-rebased-20260917",
+      "message": "docs(v4.0.0): governance-compliant doc rectification plan 2026-09-17\n\nFollowing DOC_CHECK_CORRECTION_RULES.md 5-step workflow:\n\nStep 1 (DISCOVER) + Step 2 (PLAN): DOC_RECTIFICATION_PLAN_2026-09-17.md\n  - documented 41 v4.0.0 docs inventory + 22 issues found\n  - P0-1..P0-5, P1-1..P1-4, P2-1 classification\n  - Out-of-scope items declared (FEATURE_CHECKLIST, RELEASE_NOTES, ignore_registry)\n\nStep 3 (EXECUTE) - this commit:\n\nA. Pulled 6 missing docs from develop/v4.0.0:\n  - ALPHA_GATE_REPORT.md (v3, status CONDITIONAL PASS)\n  - COVERAGE_ANALYSIS_REPORT.md\n  - V400_02_VECTOR_WAL_ACCEPTANCE.md\n  - V400_02_VECTOR_WAL_DEV_PLAN.md\n  - V400_03_GRAPH_ACCEPTANCE.md\n  - V400_03_GRAPH_DEV_PLAN.md\n\nB. Created STAGE.yaml (10255 bytes, YAML verified):\n  - SSOT for v4.0.0 stage per STAGE_CONFIG.yaml governance\n  - current_stage: DRAFT\n  - last_transition: 2026-09-08\n  - worktree_local_additions: feat/v4.0.0-wal-group-commit ahead 10 commits\n  - required_gates_for_alpha (7 items, 4 PASS / 3 FAIL per V400_04_20MIN_SOAK.md)\n  - required_gates_for_beta / _rc / _ga (per STAGE_CONFIG)\n  - merge_policy, doc_artifacts_required, exit_criteria, claims_boundaries\n  - last_status_refresh: 2026-09-17 d81d7c65df\n\nC. Updated 14 docs with last-modified + STAGE.yaml cross-reference:\n  README, CHANGELOG (added V400-04 + V400-DOC entries), VERSION_PLAN,\n  ROADMAP, DEV_PLAN, TEST_PLAN, ISSUES_PLAN, LEGACY_ISSUES,\n  GMP_PLATFORM_REQUIREMENTS, GMP_PLATFORM_INTEGRATION_VERIFICATION,\n  MEMORY_LEAK_ROOT_CAUSE, PERFORMANCE_PLAN, PERFORMANCE_TASK_ANALYSIS,\n  PERFORMANCE_OPTIMIZATION_ROADMAP, SYNC_RECONCILIATION_20260909\n\nStep 4 (REVIEW) - included as checklist in DOC_RECTIFICATION_PLAN:\n  - 4.1 modification correctness\n  - 4.2 no over-modification (PHASE_B_*.md untouched per anti-pattern)\n  - 4.3 link validity\n  - 4.4 git status\n  - 4.5 reversibility\n\nOut-of-scope (NOT modified):\n  - tests/baseline/ignore_registry.json (fabrication risk - engineering team)\n  - FEATURE_CHECKLIST.md / RELEASE_NOTES.md (require stage advancement)\n  - English appendices (preserved per minimal-modification rule)\n\nRefs: V400_04_20MIN_SOAK.md (B+Tree overwrite bug disclosure),\n      STAGE.yaml (current stage authority),\n      DOC_CHECK_CORRECTION_RULES.md (5-step workflow)\n",
+      "id": "a274fbd8928363b96d64fa86edf3597f90ecde02",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/a274fbd8928363b96d64fa86edf3597f90ecde02",
+        "sha": "a274fbd8928363b96d64fa86edf3597f90ecde02",
+        "created": "2026-09-18T00:02:20+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/backup%2Fv400-wal-group-commit-rebased-20260917.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/backup%2Fv400-wal-group-commit-rebased-20260917.tar.gz"
+    },
+    {
+      "name": "backup/v400-wal-group-commit-pre-rebase-20260917",
+      "message": "docs(v4.0.0): governance-compliant doc rectification plan 2026-09-17\n\nFollowing DOC_CHECK_CORRECTION_RULES.md 5-step workflow:\n\nStep 1 (DISCOVER) + Step 2 (PLAN): DOC_RECTIFICATION_PLAN_2026-09-17.md\n  - documented 41 v4.0.0 docs inventory + 22 issues found\n  - P0-1..P0-5, P1-1..P1-4, P2-1 classification\n  - Out-of-scope items declared (FEATURE_CHECKLIST, RELEASE_NOTES, ignore_registry)\n\nStep 3 (EXECUTE) - this commit:\n\nA. Pulled 6 missing docs from develop/v4.0.0:\n  - ALPHA_GATE_REPORT.md (v3, status CONDITIONAL PASS)\n  - COVERAGE_ANALYSIS_REPORT.md\n  - V400_02_VECTOR_WAL_ACCEPTANCE.md\n  - V400_02_VECTOR_WAL_DEV_PLAN.md\n  - V400_03_GRAPH_ACCEPTANCE.md\n  - V400_03_GRAPH_DEV_PLAN.md\n\nB. Created STAGE.yaml (10255 bytes, YAML verified):\n  - SSOT for v4.0.0 stage per STAGE_CONFIG.yaml governance\n  - current_stage: DRAFT\n  - last_transition: 2026-09-08\n  - worktree_local_additions: feat/v4.0.0-wal-group-commit ahead 10 commits\n  - required_gates_for_alpha (7 items, 4 PASS / 3 FAIL per V400_04_20MIN_SOAK.md)\n  - required_gates_for_beta / _rc / _ga (per STAGE_CONFIG)\n  - merge_policy, doc_artifacts_required, exit_criteria, claims_boundaries\n  - last_status_refresh: 2026-09-17 e3eed8b93d\n\nC. Updated 14 docs with last-modified + STAGE.yaml cross-reference:\n  README, CHANGELOG (added V400-04 + V400-DOC entries), VERSION_PLAN,\n  ROADMAP, DEV_PLAN, TEST_PLAN, ISSUES_PLAN, LEGACY_ISSUES,\n  GMP_PLATFORM_REQUIREMENTS, GMP_PLATFORM_INTEGRATION_VERIFICATION,\n  MEMORY_LEAK_ROOT_CAUSE, PERFORMANCE_PLAN, PERFORMANCE_TASK_ANALYSIS,\n  PERFORMANCE_OPTIMIZATION_ROADMAP, SYNC_RECONCILIATION_20260909\n\nStep 4 (REVIEW) - included as checklist in DOC_RECTIFICATION_PLAN:\n  - 4.1 modification correctness\n  - 4.2 no over-modification (PHASE_B_*.md untouched per anti-pattern)\n  - 4.3 link validity\n  - 4.4 git status\n  - 4.5 reversibility\n\nOut-of-scope (NOT modified):\n  - tests/baseline/ignore_registry.json (fabrication risk - engineering team)\n  - FEATURE_CHECKLIST.md / RELEASE_NOTES.md (require stage advancement)\n  - English appendices (preserved per minimal-modification rule)\n\nRefs: V400_04_20MIN_SOAK.md (B+Tree overwrite bug disclosure),\n      STAGE.yaml (current stage authority),\n      DOC_CHECK_CORRECTION_RULES.md (5-step workflow)\n",
+      "id": "2865129bc64e5dd89ccfdfb46bd651154c7ea9ed",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/2865129bc64e5dd89ccfdfb46bd651154c7ea9ed",
+        "sha": "2865129bc64e5dd89ccfdfb46bd651154c7ea9ed",
+        "created": "2026-09-17T20:25:10+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/backup%2Fv400-wal-group-commit-pre-rebase-20260917.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/backup%2Fv400-wal-group-commit-pre-rebase-20260917.tar.gz"
+    },
+    {
+      "name": "v3.12.0-ga",
+      "message": "v3.12.0-ga — GA milestone tag (mirror of v3.12.0)\n\nPer STAGE_CONFIG RC_to_GA trigger, both v3.12.0 (semver) and\nv3.12.0-ga (GA milestone) tags are cut at the GA commit. v3.12.0-ga\nserves as the explicit GA-promotion marker and aligns with the\nv3.11.0-ga pattern used in v3.11.0 GA cut.\n\nGate evidence and claims: see v3.12.0 tag message.\n",
+      "id": "f47f4cc4f319a3671c9118e90c607041a2d5c3b0",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/f47f4cc4f319a3671c9118e90c607041a2d5c3b0",
+        "sha": "cc5e54c8582ec6c41ee2ede6780f7b258789a1c6",
+        "created": "2026-09-08T12:12:28+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0-ga.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0-ga.tar.gz"
+    },
+    {
+      "name": "v3.12.0",
+      "message": "v3.12.0 GA — GMP internal-audit retrieval database\n\nGA gate verdict: PASS at HEAD 355b5a3837 (extends 34d8adc56c runner fix).\n- BETA 40/40 (blockers: 0)\n- RC 11/11 (blockers: 0)\n- GA 8/8 (blockers: 0)\n- thresholds_override 13/13 (blockers: 0)\n- TOTAL 72/72 (blockers: 0)\n- B2 per-binary: 338 PASS / 0 FAIL / 90 SKIP_DISABLED\n\nSTAGE.yaml current_stage: GA. Evidence at\ndocs/releases/v3.12.0/evidence/v312-59/ga_gate_report.json.\n\n3 GA-claim-caveat items carried per CLAIM_DOWNGRADE_MANIFEST.md §3+§9.6:\n- #4846 CHAR(n) padding/comparison point lookup (teaching scope)\n- #4847 explicit transaction semantics (single-statement batch scope)\n- #4848 ALTER TABLE RENAME COLUMN (catalog-evolution scope)\n\nUser directive 2026-09-08: '尽快推进到 GA' (override prior 2026-09-07 deferral).\nPer STAGE_CONFIG RC_to_GA trigger 'GA gate report signed by human architect'\nplus Anti-Fabrication-Policy-v1.0 gate-evidence-clean PASS + claim-scope\ndeclared → GA promotion authorized.\n",
+      "id": "75031c0c88aeb2471a7c7ef151a846b685d381a9",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/75031c0c88aeb2471a7c7ef151a846b685d381a9",
+        "sha": "cc5e54c8582ec6c41ee2ede6780f7b258789a1c6",
+        "created": "2026-09-08T12:12:26+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0.tar.gz"
+    },
+    {
+      "name": "v3.12.0-rc1",
+      "message": "v3.12.0-rc1: BETA -> RC transition per #4386 (V312-59-C)\n\n12/12 promotion_to_RC_requires PASS; 156/156 crash recovery + injection tests PASS.\n\nAnti-Fabrication-Policy-v1.0 applied. See RC_GATE_REPORT.md and V312-59-C-RC-PROMOTION-REPORT.md.\n",
+      "id": "72e178476a260d80e9385fab0ebeaf0d05a59043",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/72e178476a260d80e9385fab0ebeaf0d05a59043",
+        "sha": "07a5dfd0ac4a14f3f8e95b3264a5d6da5e2d135c",
+        "created": "2026-08-26T03:04:50Z"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0-rc1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0-rc1.tar.gz"
+    },
+    {
+      "name": "v3.12.0-beta1",
+      "message": "v3.12.0-beta1 (after ALPHA -> BETA transition per STAGE.yaml)\n\nFirst beta tag per docs/governance/STAGE_CONFIG.yaml ALPHA exit criterion\n(\"First beta tag cut: v{VER}-beta1\") and per Anti-Fabrication-Policy v1.0\ntransition trigger from PR #4358 (merge commit f1c131506).\n\nCut on develop/v3.12.0 HEAD 32f330dbf (post-PR #4362 EDU CLI task correction).\n\nBeta stage transition recorded in:\n- docs/releases/v3.12.0/STAGE.yaml:\n    current_stage: ALPHA -> BETA (date 2026-08-19)\n    last_transition: full gate output + blocker resolution story\n    prior_transition: nested DRAFT -> ALPHA (audit trail)\n    stage_boundary_lock.status: ACTIVE -> RELEASED\n    controlling_report: V312-56-VERIFICATION.md Beta Gate Snapshot\n- docs/releases/v3.12.0/CHANGELOG.md:\n    Status header: \"BETA (2026-08-19 转入)\"\n    stage_history: DRAFT -> ALPHA -> BETA\n    New section \"2026-08-19 ALPHA -> BETA transition\" with verbatim gate output\n\nBeta gate snapshot at HEAD 32f330dbf:\n- PASS: 38/40\n- WARN: 2\n- BLOCKERS: 0\n- All 12 promotion_to_BETA_requires items satisfied\n\nResolved blockers since ALPHA:\n- PR #4354 fix(clippy): resolve workspace-wide clippy errors (B1_CLIPPY)\n- PR #4355 fix(v312-48): PR #4332 verification (5 CLOSE + 2 DEFER)\n- PR #4357 fix(v312-48 / #4278 partial): LIKE backtracking partial fix\n- PR #4353 fix(gate): remove orphan ======= merge marker\n- PR #4351 docs(v312-56): refresh verification doc\n- PR #4356 docs(v312-56 + test-plan): mark BETA-READY\n\nRemaining open items (5 issues on v3.12.0 milestone):\n- #3887 V312-MASTER (master tracking, stays open until GA)\n- #4221 V312-48 (TPC-H SF=1 correctness parent)\n- #4274 V312-48-Q8 8-way join region filter (DEFERRED -> v3.13 per V313 #4313)\n- #4278 V312-48-Q16 NOT IN subquery + count distinct (DEFERRED -> v3.13 per V313 #4313)\n- #4359 V312-57 sqlite3-like 一体化教学 CLI (NEW RC-BLOCKER 2026-08-19)\n\nv3.13 follow-up tracking via #4313 (V313-MASTER, FROZEN) per Round-24\nchatgpt/codex strict evidence manifest.\n\nNOT included in this tag:\n- v3.13 active development work (per 252 Gitea 整改 — no跨版本开发)\n- v3.12 GA promotion (still requires 168h mixed SOAK, security scan,\n  SQLLogicTest selected targets PASS, TPC-H SF=1 close-out, etc.)\n- Loosening stage boundary lock (RELEASED for BETA progression, BETA -> RC\n  requires new boundary lock at RC transition)\n\nTag signing off:\n- generated_by=openclaw-minimax\n- generated_at=2026-08-19T15:00:00Z\n- branch=develop/v3.12.0\n- commit=32f330dbf1f2d4c0be65ef37ab7dfdd13c4e7dc8\n- policy=Anti-Fabrication-Policy-v1.0\n- cross-engine: 252 Gitea primary + 250 Gitea mirror\n",
+      "id": "6831abbfdcc6aed76a02c36ce779b3b7973e668c",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/6831abbfdcc6aed76a02c36ce779b3b7973e668c",
+        "sha": "d4a3712e826a0744ec69c221a84c59bebaeabdff",
+        "created": "2026-08-19T22:38:19+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0-beta1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0-beta1.tar.gz"
+    },
+    {
+      "name": "v3.12.0-alpha1",
+      "message": "v3.12.0 alpha1 (after V312-WIRE-8 + Prometheus fixes)\n\nFirst alpha tag per docs/governance/STAGE_CONFIG.yaml DRAFT_to_ALPHA trigger.\n\nMoved from 4444620901 to 29289365c8 to reflect merged gate fixes:\n\n- #4121 [V312-WIRE-8] fix D: 0xFE OK terminator + #4019.1/.2 follow-up\n  (parser @@system_variable + MySqlTestClient DEPRECATE_EOF)\n- #4126 fix: align test fixtures with PR #4121 SelectStatement/TableRef\n  simplifications (regression fix)\n- #4128 feat(V312-26 / #4021): Prometheus /metrics endpoint +\n  CLI --metrics-port (added ColumnDefinition.collation field)\n- #4140 fix(V312-26 / #4077 downstream): propagate\n  ColumnDefinition.collation + TableInfo.collations\n- #4141 fix: align qps_benchmark_test with PR #4128\n  ColumnDefinition.collation + fmt (regression fix)\n\nALPHA gate composite verified at HEAD 29289365c8:\n- ENTRY_STATUS: 0 (17/17 PASS)\n- QUALITY_STATUS: 0 (7/7 PASS)\n- STATUS: ALPHA GATE PASS\n- cargo fmt --check: PASS\n\nSTAGE.yaml transitioned DRAFT -> ALPHA at 5904d0d4df via PR #4113.\n",
+      "id": "d4717aa9539fd1aba4e834a93046f02d360c631d",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/d4717aa9539fd1aba4e834a93046f02d360c631d",
+        "sha": "229d6224bb7276b62ab3448be60d5b1c9af60957",
+        "created": "2026-08-13T02:34:20+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0-alpha1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.12.0-alpha1.tar.gz"
+    },
+    {
+      "name": "v3.11.0-ga",
+      "message": "v3.11.0 GA tag — 6/6 GA gates PASS (commit 36691ed2b, 2026-08-09 final report bundle)\n\nG1: R1-R4 RC metrics          ✅ PASS\nG2: Full test suite            ✅ PASS (2,571 lib tests)\nG3: Coverage ≥80% per crate   ✅ PASS (tools 80.31% / 80.17% branch; 7/10 main crates ≥80%)\nG4: TPC-H SF=1 22/22           ✅ PASS (519.15s, 0 OOM, 0 panic)\nG5: Security audit             ✅ PASS\nG6: Documentation              ✅ PASS\n\nCommit: 36691ed2b — 5 remotes synced.\nTPC-H SF=1 22/22 PASS report: docs/releases/v3.11.0/TPCH_SF1_22_22_PASS_REPORT.md\nComprehensive Assessment: docs/releases/v3.11.0/COMPREHENSIVE_ASSESSMENT_REPORT.md\nReal measured data: 2,571 lib tests, 7/10 main crates ≥80%, 23/23 V311-XX DONE.\n\nCo-Authored-By: hermes-agent <hermes@nousresearch.com>\n",
+      "id": "d35c2ba16500c21d3d506467f150d4bede19bd70",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/d35c2ba16500c21d3d506467f150d4bede19bd70",
+        "sha": "4efaa74af21ebf755ab6b7a152d390fe8f890756",
+        "created": "2026-08-09T12:54:17+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.11.0-ga.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.11.0-ga.tar.gz"
+    },
+    {
+      "name": "v3.11.0",
+      "message": "v3.11.0 GA release\n\nBranches: develop/v3.11.0, ga/v3.11.0, release/v3.11.0 = 889517e94d\nMain: 250/main = 4ee8dd1fcd (via #3648), 252/main = 02c1c02d0a (via #3867)\nGA: 2026-07-20\nCommits since v3.10.0: 382\n\nHighlights:\n- 13 missing fix/docs commits synced from 250 to 252\n- 3 branches brought to identical tip\n- Release branch created from develop/v3.11.0\n- Merged to main with conflict resolution preserving release-side content\n",
+      "id": "d26103b18160867da4a4668368f4602416e854fb",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/d26103b18160867da4a4668368f4602416e854fb",
+        "sha": "c7ad0c0dd3f78d5fc1f439816584403e9ddfd853",
+        "created": "2026-07-20T05:23:58+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.11.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.11.0.tar.gz"
+    },
+    {
+      "name": "v3.10.0",
+      "message": "v3.10.0 GA release\n",
+      "id": "cd3aefcec97cc2bb5ed00f6ac182ab120f9eaeca",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/cd3aefcec97cc2bb5ed00f6ac182ab120f9eaeca",
+        "sha": "23bdebf64cd76984cab300d53af651c5ef3a7324",
+        "created": "2026-07-14T03:28:12+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.10.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.10.0.tar.gz"
+    },
+    {
+      "name": "v3.10.0-rc1",
+      "message": "promotion(v3.10.0): RC -> GA promotion\n\n- STAGE.yaml: current_stage GA, new RC->GA transition + stage_history entry\n- GA_GATE_REPORT.md: updated with verified R1-R7 PASS, D4 hardware-blocked\n- CA_SIGNING_LOG.md: Entry 004 RC->GA awaiting human (hermes) sign-off\n- debt-registry.yaml: SEM-3/SEM-4 DEFERRED -> IN_PROGRESS (fixes R2 drift)\n- Clippy fixes: 8 errors across parser, catalog, storage, executor, engine_select\n- Fmt: clean\n\nGA blocked on: D4 perf baseline (TPC-H SF1, hardware), human CA sign-off (hermes)\n",
+      "id": "23bdebf64cd76984cab300d53af651c5ef3a7324",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/23bdebf64cd76984cab300d53af651c5ef3a7324",
+        "sha": "23bdebf64cd76984cab300d53af651c5ef3a7324",
+        "created": "2026-07-14T03:28:06+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.10.0-rc1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.10.0-rc1.tar.gz"
+    },
+    {
+      "name": "v3.10.0-alpha1",
+      "message": "v3.10.0-alpha1: ALPHA 启动 (DRAFT → ALPHA promotion)\n\nALPHA gate 6/6 PASS:\n- check_alpha_v3.10.0.sh 15/15 (新建 per-version gate)\n- check_arch_invariants.sh 5/5 (C-ARCH-05 修复)\n- check_arch3_no_bypass.sh PASS\n- cargo build/test/fmt PASS\n\nDRAFT 5/5 任务完成. 17 MySQL 5.7 替代 核心 tasks (C-1~C-5) 准备就绪.\n\nRefs: #3721 (V310-MASTER), DRAFT_ASSESSMENT_AND_ALPHA_GATE.md\n",
+      "id": "7a065bd1830bfbf6cee1c9e52b1910e5a1ae47f8",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/7a065bd1830bfbf6cee1c9e52b1910e5a1ae47f8",
+        "sha": "07bf0c4d72fe8080933a77cf9ec7c1a2b5fe08f0",
+        "created": "2026-07-11T16:12:00+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.10.0-alpha1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.10.0-alpha1.tar.gz"
+    },
+    {
+      "name": "v3.9.0",
+      "message": "v3.9.0 GA — 72h SOAK PASS, TPC-H 22/22, Q9 6.7x, 168h in progress (ETA 2026-07-12 22:02)\n",
+      "id": "0402def82810f28e00879717bae45b683fb027d6",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/0402def82810f28e00879717bae45b683fb027d6",
+        "sha": "85b62fcd424d0f747628dc9d045198ecc64dbf3b",
+        "created": "2026-07-11T14:25:16+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0.tar.gz"
+    },
+    {
+      "name": "v3.9.0-rc8",
+      "message": "v3.9.0-rc8\n\nKey changes since rc7:\n- 72h real soak PASSED (72h57m, zero errors, zero leaks)\n- Issue #3265 closed (WAL/memory/thread/fd — all stable)\n- WAL LSN + fsync fix (PR #3702)\n- E2E SELECT fix (PR #3684, 16/16 tests)\n- G13 deadlock fix: parking_lot RwLock unified (PR #3680)\n- Clippy 0 warnings (PR #3683, #3687)\n- Cargo fmt cleanup (PR #3710, #3711)\n- SOAK_72H_REPORT.md added\n- soak_orchestrator.sh critical data_dir fix (PR #3709)\n",
+      "id": "08c8f59f516630df03c2109063302c7a10033334",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/08c8f59f516630df03c2109063302c7a10033334",
+        "sha": "898b726c655219127f5477fe98418afe9971851d",
+        "created": "2026-07-08T23:38:05+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc8.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc8.tar.gz"
+    },
+    {
+      "name": "v3.9.0-rc7",
+      "message": "v3.9.0-rc7 — Performance docs + MariaDB comparison (PR #3363)\n",
+      "id": "ebdfb5cb578ea235348ab841297c85a78567d6d5",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/ebdfb5cb578ea235348ab841297c85a78567d6d5",
+        "sha": "dc6efd33713c0003dd1c4a8494be8bb98cfc3fdd",
+        "created": "2026-06-12T16:52:28+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc7.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc7.tar.gz"
+    },
+    {
+      "name": "v3.9.0-rc6",
+      "message": "v3.9.0-rc6 — INT-2/INT-3 full substance (Issues #3146, #3108)\n\n- INT-3: 13/14 Expression branches delegate to executor::expr\n  - BinaryOp → eval_binary_op (NEW P0-2 §4.14)\n  - Literal → eval_literal_from_str (NEW P0-2 §4.15)\n- INT-2: ParallelVolcanoExecutor main-path verified\n  - 9 substance tests (partition_scan, scaling, consistency)\n- 26 new tests, all PASS\n- PR #3362 closes #3146\n",
+      "id": "4d7bbdee25cd0e7e429c2fdf8732460d8f874ca7",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/4d7bbdee25cd0e7e429c2fdf8732460d8f874ca7",
+        "sha": "2df209c6e3278490fcba1a85ec97cea096fc45e4",
+        "created": "2026-06-12T16:39:38+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc6.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc6.tar.gz"
+    },
+    {
+      "name": "v3.9.0-rc5",
+      "message": "v3.9.0-rc5 — G2 substance + Z6G4 QPS baseline + cross-version upgrade chain\n\n- PR #3357: G2 INT-2 substance tests (4 tests)\n- PR #3359: Z6G4 QPS baseline (15/15 PASS)\n- PR #3361: Cross-version upgrade chain tests (6 tests)\n- 3 issues closed: #3230, #3224, #3270\n",
+      "id": "ec2c03b1496261f57e63043194a65be9d42eb063",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/ec2c03b1496261f57e63043194a65be9d42eb063",
+        "sha": "09ed612e5245a036c93f594c2f71a0b8040ad5d2",
+        "created": "2026-06-12T16:28:16+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc5.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc5.tar.gz"
+    },
+    {
+      "name": "v3.9.0-rc4",
+      "message": "v3.9.0-rc4 — RC4 gate PASS (G1/G7/G8/G9/G13), SHA-256 baseline, QPS baseline, un-ignore tests\n",
+      "id": "6405ef8329ec646b9b79dbe56869cdcd21a8ccf5",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/6405ef8329ec646b9b79dbe56869cdcd21a8ccf5",
+        "sha": "07175990d5b9f8fcb5855830ac38abbe855f0d55",
+        "created": "2026-06-12T15:37:53+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc4.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc4.tar.gz"
+    },
+    {
+      "name": "v3.9.0-rc3",
+      "message": "v3.9.0-rc3 @ c8fc21978 — All 5 RC3 P0 blockers closed, G1-G16 PASS\n",
+      "id": "1afdc4893bb9f6024bf0fd7269152c9b94d8c238",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/1afdc4893bb9f6024bf0fd7269152c9b94d8c238",
+        "sha": "f822a8520b2f912c36651782deaf79b28fec32e5",
+        "created": "2026-06-12T10:06:39+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc3.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc3.tar.gz"
+    },
+    {
+      "name": "v3.9.0-q21-gate",
+      "message": "docs(track): v3.9.0 RC3 Sprint 5 progress — Q17+Q21 fixes, 22/22 PASS in-process\n",
+      "id": "7e17a1cfc8ba1a7f45aa82b764664b22c2b4af25",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/7e17a1cfc8ba1a7f45aa82b764664b22c2b4af25",
+        "sha": "7e17a1cfc8ba1a7f45aa82b764664b22c2b4af25",
+        "created": "2026-06-11T00:44:48+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-q21-gate.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-q21-gate.tar.gz"
+    },
+    {
+      "name": "v3.9.0-rc2",
+      "message": "v3.9.0-rc2 (16/16 sub-tasks + 10/10 G1-G10 + G11-G15 + 6 perf reports)\n\nStage: RC2 (post-rc1, pre-ga, 1 week soak window)\nDate: 2026-06-05\nBranch: develop/v3.9.0\nBase: v3.9.0-rc1\nType: Production Readiness Release\n\nHighlights:\n- 16/16 v3.9.0 sub-tasks closed (P0/P1/P2/P3)\n- 10/10 G1-G10 gates PASS (G10 non-blocking warn)\n- G11 QPS infra (5 workloads × 4 thread counts)\n- G12 Sysbench OLTP infra (5 workloads + 30+ tests)\n- G13 24h 真实稳定性 (infra ready, real run in GA-final)\n- G14 真实崩溃 8 类 (infra ready, real run in GA-final)\n- G15 汇总报告 (PERFORMANCE_REPORT.md + 5 sub-reports)\n- G16 Compatibility v3.8 → v3.9 (5/7 PASS)\n- 6 performance reports (QPS/SYSBENCH/STABILITY/CRASH_TEST/COMPATIBILITY/PERFORMANCE_BASELINE)\n- 10/10 soak tests PASS (24h/72h/168h compressed-time)\n- TPC-H 22/22 maintained (Q11/Q14/Q22 fixes in PR #3213)\n\nRefs: docs/releases/v3.9.0/rc/{RC2_RELEASE_NOTES,RC2_GATE_REPORT}.md\n",
+      "id": "e6d78f6e318fae204222fd8c4c7689141866e7d2",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/e6d78f6e318fae204222fd8c4c7689141866e7d2",
+        "sha": "c61aaaed38d7362335966d72ca56aa394276f892",
+        "created": "2026-06-06T09:26:03+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc2.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc2.tar.gz"
+    },
+    {
+      "name": "v3.9.0-rc1",
+      "message": "v3.9.0-rc1 (16/16 sub-tasks + 10/10 G1-G10 + G11-G16 infra + 10/10 soak)\n\nStage: RC1 (post-beta, pre-rc2)\nDate: 2026-06-05\nBranch: develop/v3.9.0\nBase: v3.9.0-beta\nType: Production Readiness Release\n\nHighlights:\n- 16/16 v3.9.0 sub-tasks closed (P0/P1/P2/P3)\n- 10/10 G1-G10 gates PASS (G10 non-blocking warn)\n- G11 QPS infra (5 workloads × 4 thread counts)\n- G12 Sysbench OLTP infra (5 workloads + 30+ tests)\n- G16 Compatibility (4 case scripts + rollback + 18 tests)\n- 10/10 soak tests PASS (24h/72h/168h compressed-time)\n- TPC-H 22/22 maintained (inherited from v3.8.0-rc1)\n\nRefs: docs/releases/v3.9.0/rc/{RC1_RELEASE_NOTES,RC1_GATE_REPORT}.md\n",
+      "id": "d1533717e5c8d167aea8e31b1c92a3a47cee66dc",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/d1533717e5c8d167aea8e31b1c92a3a47cee66dc",
+        "sha": "4b69f3757843a9797ad373f445797d5c7cce9a58",
+        "created": "2026-06-06T08:23:49+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-rc1.tar.gz"
+    },
+    {
+      "name": "v3.9.0-beta",
+      "message": "v3.9.0-beta (16/16 sub-tasks + 10/10 G-gates + 10/10 soak)\n\nStage: Beta (post-alpha, pre-RC)\nDate: 2026-06-05\nBranch: develop/v3.9.0\nBase: v3.8.0 (Strong Beta)\nType: Production Readiness Release\n\nHighlights:\n- 16/16 v3.9.0 sub-tasks closed (P0/P1/P2/P3)\n- 10/10 G1-G10 gates PASS (G10 non-blocking warn)\n- 10/10 soak tests PASS (24h/72h/168h compressed-time)\n- TPC-H 22/22 maintained (inherited from v3.8.0-rc1)\n\nRefs: docs/releases/v3.9.0/beta/{BETA_RELEASE_NOTES,SOAK_72H_REPORT}.md\n",
+      "id": "ff212ff599ffeae9c61ec4f3c9cca86d64ac671f",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/ff212ff599ffeae9c61ec4f3c9cca86d64ac671f",
+        "sha": "44aba9be70ae43ae0728bcb95bcc8fe5b77d1ff8",
+        "created": "2026-06-06T07:33:29+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-beta.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-beta.tar.gz"
+    },
+    {
+      "name": "v3.9.0-alpha1",
+      "message": "v3.9.0-alpha1 (Alpha 准入, 含 ALPHA_GATE_REPORT_V390.md)\n\nSQLRustGo v3.9.0 Production Readiness Release — Alpha 准入.\n\n依据 docs/governance/RELEASE_LIFECYCLE.md §2.2 + §3.1:\n- 编译通过 (cargo check RC=0)\n- 单元测试 871/871 PASS (100%, ≥ 80% threshold)\n- 分支治理规范\n- 阶段转换检查点 (Draft → Alpha) 全部通过\n- v3.9.0 计划文档完整 (V390_VERSION/DEVELOPMENT/TEST_PLAN, 32K)\n- ALPHA_GATE_REPORT_V390.md (新建, 6.5K)\n- Milestone v3.9.0 (id=32) + 12 Labels 已建立\n- 17 issues 已创建 (1 启动公告 + 16 任务)\n\n- P0-1 #3169: ARCH-3 Complete (VtuGuard 主路径强制)\n- P0-2 #3170: INT-3 Single Expression Engine\n- P0-3 #3171: INT-2 ParallelExecutor 真集成\n- P0-4 #3172: SEM-1 Savepoint MVCC 真实还原\n\n- alpha/ALPHA_GATE_REPORT_V390.md\n- plans/V390_VERSION_PLAN.md\n- plans/V390_DEVELOPMENT_PLAN.md\n- plans/V390_TEST_PLAN.md\n\nRefs: PR #3163, AGENTS.md, SPEC-026\nDate: 2026-06-05\nTagger: Hermes Agent\n",
+      "id": "38d6814a09106b62faba74591b00defa438d7445",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/38d6814a09106b62faba74591b00defa438d7445",
+        "sha": "a254385c3a99e40f61cc7969bf45fde082900f6c",
+        "created": "2026-06-05T12:23:25+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-alpha1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.9.0-alpha1.tar.gz"
+    },
+    {
+      "name": "v3.8.0",
+      "message": "v3.8.0 GA Final (13 GA 收口 PR 合并后)\n\nSQLRustGo v3.8.0 General Availability — Final.\n\n- PR #3076 (Phase 2): 7→12/22 (parser inline-alias)\n- PR #3095 (Phase 3): 12→18/22 (scalar subquery + derived table)\n- PR #3098 (Phase 4): 18→19/22 (predicate isolation)\n- PR #3119 (Phase 5): 19→22/22 (Q2 explicit JOIN rewrite)\n- PR #3158 (RC2): TPC-H 22 + AVG Float + LIMIT in aggregate\n\n- INT-1 (v1.2.0→v3.8.0): PR-3019 + PR-3050\n- INT-4 (v2.6.0→v3.8.0): PR-2999 + PR-3051\n- ARCH-1 (v2.6.0→v3.8.0): PR-3001\n- SEM-2 (v3.7.0→v3.8.0): PR-2790/2815\n- ARCH-3 Blocker-1+2 (v3.5.0→v3.8.0): PR-3152 (子集, #3129)\n\nPR #3140, #3152, #3154, #3155, #3156, #3157, #3158, #3159,\nPR #3160, #3161, #3162, #3163, #3164\n合并 via PR #3165: develop/v3.8.0 → main\n\n- TPC-H: 22/22 PASS\n- Coverage: 81.62% (8 crates, ≥ 80% threshold)\n- L1 Unit: 868/868 (parser 110 + executor 363 + storage 293 + transaction 105)\n- ACID: 49/49 (wal_tx_contract 26 + mvcc 11 + INT1 4 + l3_05 6 + #3129 3)\n- Clippy: 0 warnings\n- Format: clean\n\n- 8.4~8.7/10 (实用型数据库引擎)\n- GA Decision: PASS (开发/测试/中小规模生产)\n- Production Ready: YES (中小规模场景)\n- Production Grade: NOT YET (缺 24-168h Soak Test)\n\n- ga/GA_GATE_REPORT.md (73+/80 PASS)\n- ga/V380_GA_CLOSURE_TECHNICAL_DEBT_AND_ROADMAP.md\n- V380_COMPREHENSIVE_ASSESSMENT.md (v3.2 GA Release Decision)\n- INDEX.md (188 .md / 17 分类)\n- plans/V390_VERSION_PLAN.md + V390_DEVELOPMENT_PLAN.md + V390_TEST_PLAN.md\n\n- 6 Phase 12 周\n- 16 任务 451h\n- G1-G10 门禁\n- 详见 plans/V390_*.md\n\nRefs: AGENTS.md, SPEC-026\nDate: 2026-06-05\nTagger: Hermes Agent (openheart@gaoyuanyiyao.com)\n",
+      "id": "1a8f9605fac57cd995f50fec402c565feaaf740c",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/1a8f9605fac57cd995f50fec402c565feaaf740c",
+        "sha": "8935a8f380b3cae8a90bc03090e927c737a68b2c",
+        "created": "2026-06-05T11:50:50+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.8.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.8.0.tar.gz"
+    },
+    {
+      "name": "v3.8.0-rc1",
+      "message": "Merge pull request 'test(tpch): un-#[ignore] bug #4/#5 — root cause was fixture loader, not engine (Phase 1b, #2977)' (#3093) from feature/tpch-22-bugfixes into develop/v3.8.0\n\ntest(tpch): un-#[ignore] bug #4/#5 (Phase 1b, #2977, #3093) — 6/6 PASS, root cause was fixture loader\n",
+      "id": "e11fab20327eb167e8c69fa457a3cf69ee2af825",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/e11fab20327eb167e8c69fa457a3cf69ee2af825",
+        "sha": "e11fab20327eb167e8c69fa457a3cf69ee2af825",
+        "created": "2026-06-04T18:34:54Z"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.8.0-rc1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.8.0-rc1.tar.gz"
+    },
+    {
+      "name": "v3.8.0-beta",
+      "message": "v3.8.0-beta: Strong Beta Release (8.0/10). INT-1 (P0) CLOSED. Core SQL engine 100%. Corpus 86.5%. D9 8/8 PASS. 6 real bug fixes. 11 issues closed. Feature Freeze. Next: v3.9.0 Verification Release (5 KPIs, 180h).\n",
+      "id": "2b4926009f1f447189b3533b53a4d9051465d772",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/2b4926009f1f447189b3533b53a4d9051465d772",
+        "sha": "89bc7f2500ca594335921bfade13967f512bc150",
+        "created": "2026-06-04T09:09:42Z"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.8.0-beta.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.8.0-beta.tar.gz"
+    },
+    {
+      "name": "v3.8.0-alpha",
+      "message": "v3.8.0-alpha — Alpha Gate PASS, clean main HEAD, no artifacts\n",
+      "id": "85c882c7bebe55e71a208d20d4686017a9ab82ff",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/85c882c7bebe55e71a208d20d4686017a9ab82ff",
+        "sha": "eefa37aceb4059bf369cbdf8d5f2283716dc6679",
+        "created": "2026-05-31T22:30:13+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.8.0-alpha.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.8.0-alpha.tar.gz"
+    },
+    {
+      "name": "v3.7.0",
+      "message": "v3.7.0 GA release — stage-gate workflow complete\n\nAlpha: A1-A4 ✅ PASS\nBeta: B1-B5 ✅ PASS\nRC: R1-R3,R6 ✅ PASS\nCoverage: 84.99% avg\nGA Docs: 13/13 ✅\n\nCommit: fc7f603f1dc4774309a2712f05ad882e33aced3a\n",
+      "id": "f93a501207594171dadcf19633a62ca9b880ef0f",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/f93a501207594171dadcf19633a62ca9b880ef0f",
+        "sha": "71ba720cea72b96c4b89580a0719fbf4a45b7d58",
+        "created": "2026-05-30T23:00:36+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.7.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.7.0.tar.gz"
+    },
+    {
+      "name": "v3.7.0-RC1",
+      "message": "v3.7.0-RC1: Freeze as non-transactional SQL engine. DDL/DML/Protocol working. TransactionManager not connected. See docs/releases/v3.7.0/RELEASE_CANDIDATE_GATE.md\n",
+      "id": "a2653ded7eff4c5d86dbd955d8f35bfbebb97127",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/a2653ded7eff4c5d86dbd955d8f35bfbebb97127",
+        "sha": "0899b6d6892f302e3e390bc6d8bd5330d0d93bf2",
+        "created": "2026-05-30T15:53:54+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.7.0-RC1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.7.0-RC1.tar.gz"
+    },
+    {
+      "name": "vtu-phase-1-2-final",
+      "message": "feat(vtu): implement MutationCompiler::compile()\n",
+      "id": "2909cc2d422e5042ba1df144961f4875b4a49ac3",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/2909cc2d422e5042ba1df144961f4875b4a49ac3",
+        "sha": "2909cc2d422e5042ba1df144961f4875b4a49ac3",
+        "created": "2026-05-30T08:08:03+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/vtu-phase-1-2-final.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/vtu-phase-1-2-final.tar.gz"
+    },
+    {
+      "name": "v3.5.0",
+      "message": "fix(clippy): resolve v3.5.0 GA clippy warnings\n\n- Add Default impl for CancellationToken (new_without_default)\n- Add #[expect(dead_code)] to unused ChatResponse struct\n- Run cargo fmt to fix formatting\n",
+      "id": "31544f07b3be42ca837251ff51465e00af32634f",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/31544f07b3be42ca837251ff51465e00af32634f",
+        "sha": "31544f07b3be42ca837251ff51465e00af32634f",
+        "created": "2026-05-29T01:56:51+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.5.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.5.0.tar.gz"
+    },
+    {
+      "name": "v3.5.0-rc2",
+      "message": "SQLRustGo v3.5.0 RC2 — Coverage 84.99%, RC Gate PASSED\n",
+      "id": "924c69e46846039162dcb73eba70ce213b200399",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/924c69e46846039162dcb73eba70ce213b200399",
+        "sha": "e69beeeeae67325a88f6bcb84e0e93f5cbfa4626",
+        "created": "2026-05-28T08:26:34+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.5.0-rc2.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.5.0-rc2.tar.gz"
+    },
+    {
+      "name": "v3.5.0-rc1",
+      "message": "SQLRustGo v3.5.0 RC1 - Gate reports complete, TPC-H SF=1 passed, 85.00% coverage\n",
+      "id": "5c25debe49209bf25d04d00ced3614fe3550e7ab",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/5c25debe49209bf25d04d00ced3614fe3550e7ab",
+        "sha": "9e8dcb5a450d38c24e476d80bf9384c3099a45ee",
+        "created": "2026-05-28T07:43:09+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.5.0-rc1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.5.0-rc1.tar.gz"
+    },
+    {
+      "name": "v1.4.0-ga",
+      "message": "docs: update v1.4.0 gate doc with GA status and branch structure\n",
+      "id": "7c6963422f14a97bab845fd690aa1d885ac9a25b",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/7c6963422f14a97bab845fd690aa1d885ac9a25b",
+        "sha": "7c6963422f14a97bab845fd690aa1d885ac9a25b",
+        "created": "2026-05-26T00:50:11+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0-ga.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0-ga.tar.gz"
+    },
+    {
+      "name": "v1.4.0-alpha",
+      "message": "docs: update v1.4.0 gate doc with GA status and branch structure\n",
+      "id": "2c184a62b2554c72244497e645b27c1de5a9e5f8",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/2c184a62b2554c72244497e645b27c1de5a9e5f8",
+        "sha": "2c184a62b2554c72244497e645b27c1de5a9e5f8",
+        "created": "2026-05-26T00:47:59+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0-alpha.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0-alpha.tar.gz"
+    },
+    {
+      "name": "v1.4.0-beta",
+      "message": "docs: update v1.4.0 gate doc with GA status and branch structure\n",
+      "id": "2c184a62b2554c72244497e645b27c1de5a9e5f8",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/2c184a62b2554c72244497e645b27c1de5a9e5f8",
+        "sha": "2c184a62b2554c72244497e645b27c1de5a9e5f8",
+        "created": "2026-05-26T00:47:59+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0-beta.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0-beta.tar.gz"
+    },
+    {
+      "name": "v2.6.0-ga",
+      "message": "docs(v2.6.0): update gate checklist to GA status\n\n- Update header to reflect GA stage\n- Add branch structure documentation (alpha/beta/rc/ga)\n- Update metadata section\n\nBranch structure:\n- alpha/v2.6.0 (newly created)\n- beta/v2.6.0 (existing)\n- rc/v2.6.0 (newly created)\n- ga/v2.6.0 (current GA branch)\n",
+      "id": "327f37406aba04e4f903b085584e8fa86e78605c",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/327f37406aba04e4f903b085584e8fa86e78605c",
+        "sha": "327f37406aba04e4f903b085584e8fa86e78605c",
+        "created": "2026-05-26T00:43:31+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0-ga.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0-ga.tar.gz"
+    },
+    {
+      "name": "v2.6.0",
+      "message": "docs(v2.6.0): update gate checklist to GA status\n\n- Update header to reflect GA stage\n- Add branch structure documentation (alpha/beta/rc/ga)\n- Update metadata section\n\nBranch structure:\n- alpha/v2.6.0 (newly created)\n- beta/v2.6.0 (existing)\n- rc/v2.6.0 (newly created)\n- ga/v2.6.0 (current GA branch)\n",
+      "id": "327f37406aba04e4f903b085584e8fa86e78605c",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/327f37406aba04e4f903b085584e8fa86e78605c",
+        "sha": "327f37406aba04e4f903b085584e8fa86e78605c",
+        "created": "2026-05-26T00:43:31+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0.tar.gz"
+    },
+    {
+      "name": "v1.3.1",
+      "message": "v1.3.1: 7 performance improvements + Layer 0/4 + 408 @95.8%\n",
+      "id": "8cc0e57a1dfdf0ac6d9bfb51a50545f69b3dffeb",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/8cc0e57a1dfdf0ac6d9bfb51a50545f69b3dffeb",
+        "sha": "21bd54239b94feea9eb84cd5a0977cc7c354f0ba",
+        "created": "2026-05-24T20:23:21+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.3.1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.3.1.tar.gz"
+    },
+    {
+      "name": "v3.4.0",
+      "message": "SQLRustGo v3.4.0 GA - GMP Management Suite\n",
+      "id": "91f198c96ae5f406e4ae211b0cc93f39d4410291",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/91f198c96ae5f406e4ae211b0cc93f39d4410291",
+        "sha": "919d9d91888353fe3cbc3d61028e670a927566c9",
+        "created": "2026-05-24T15:50:43+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.4.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.4.0.tar.gz"
+    },
+    {
+      "name": "beta/v1.2.0",
+      "message": "GMP-Platform v1.2.0 Beta\n",
+      "id": "42cd57e1a1cdb6ef58c57b3ff513add974eb5f96",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/42cd57e1a1cdb6ef58c57b3ff513add974eb5f96",
+        "sha": "ee351f5cdfce7e2aae1c516b4e1ae9c40643ca7d",
+        "created": "2026-05-24T12:56:33+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/beta%2Fv1.2.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/beta%2Fv1.2.0.tar.gz"
+    },
+    {
+      "name": "v3.3.0",
+      "message": "v3.3.0 GA release\n",
+      "id": "f9fde32f096cbbc9a8b68e29030fb4fbe6053180",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/f9fde32f096cbbc9a8b68e29030fb4fbe6053180",
+        "sha": "bb98545cde4c2714a8ef4904a889738d163b660f",
+        "created": "2026-05-20T09:26:41Z"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.3.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.3.0.tar.gz"
+    },
+    {
+      "name": "v3.2.0",
+      "message": "Release v3.2.0\n",
+      "id": "7bb38f0f0962577ed942b6f15e763d0c9e319248",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/7bb38f0f0962577ed942b6f15e763d0c9e319248",
+        "sha": "10271e235e23cb1589d2919d8f458cfd4fb932d0",
+        "created": "2026-05-18T02:44:40+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.2.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.2.0.tar.gz"
+    },
+    {
+      "name": "v3.0.0",
+      "message": "v3.0.0 GA release\n",
+      "id": "c02fd4f4e2d17f69c3287b9b00131f7792febbac",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/c02fd4f4e2d17f69c3287b9b00131f7792febbac",
+        "sha": "8b13e355449c1633bd0721e86ad64f9218a48b1e",
+        "created": "2026-05-11T08:03:19+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.0.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.0.0.tar.gz"
+    },
+    {
+      "name": "v3.0.0-alpha",
+      "message": "Merge pull request 'style: apply rustfmt to fix format inconsistencies (Alpha Gate A4)' (#406) from alpha_check into develop/v3.0.0\n\nReviewed-on: http://192.168.0.252:3000/openclaw/sqlrustgo/pulls/406\n",
+      "id": "e07b0ea3400fc068f2d3e0a606e832cff9a25468",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/e07b0ea3400fc068f2d3e0a606e832cff9a25468",
+        "sha": "e07b0ea3400fc068f2d3e0a606e832cff9a25468",
+        "created": "2026-05-07T05:59:00Z"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.0.0-alpha.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v3.0.0-alpha.tar.gz"
+    },
+    {
+      "name": "v2.9.0",
+      "message": "v2.9.0 GA - Enterprise Resilience\n\nRC Gate: 13/13 PASS\nBeta Gate: 4/4 PASS\nCoverage: 84.18% | SQL Corpus: 92.6% | Formal Proofs: 18/18\n\nKey: optimizer 91%, planner 86%, JOIN QPS 12,617\n",
+      "id": "d80a92a3854f1f60170a9514fab5272a6c3718d9",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/d80a92a3854f1f60170a9514fab5272a6c3718d9",
+        "sha": "f473f0f04430724d352f75f3d4327fb0889fb339",
+        "created": "2026-05-05T13:29:44+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.9.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.9.0.tar.gz"
+    },
+    {
+      "name": "v2.9.0-rc.1",
+      "message": "Merge remote-tracking branch 'origin/develop/v2.9.0' into temp-merge\n",
+      "id": "b530dcf17651ed70876a05cccddffef0766cc892",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/b530dcf17651ed70876a05cccddffef0766cc892",
+        "sha": "b530dcf17651ed70876a05cccddffef0766cc892",
+        "created": "2026-05-04T21:27:06+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.9.0-rc.1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.9.0-rc.1.tar.gz"
+    },
+    {
+      "name": "test-system-phase1-stable",
+      "message": "Phase1 stable: llvm-cov pipeline working, coverage 24.0%, Δ0.0%\n",
+      "id": "8b601fa9b05f5dde158bc2dee0224760f02b3a11",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/8b601fa9b05f5dde158bc2dee0224760f02b3a11",
+        "sha": "db24d9099a78f52401bcf78633e0977475e898ad",
+        "created": "2026-05-03T20:21:31+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/test-system-phase1-stable.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/test-system-phase1-stable.tar.gz"
+    },
+    {
+      "name": "v2.9.0-beta",
+      "message": "v2.9.0 Beta release\n",
+      "id": "2d565845c1cb9d0384b982cbfff0feaba6b26ae1",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/2d565845c1cb9d0384b982cbfff0feaba6b26ae1",
+        "sha": "f1631480c707c9abc0a67e2338af8b82614581ca",
+        "created": "2026-05-03T07:31:11+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.9.0-beta.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.9.0-beta.tar.gz"
+    },
+    {
+      "name": "v2.8.0",
+      "message": "v2.8.0 GA release - 2026-05-01 - 258 tests, verification passed\n",
+      "id": "b63e5f38884a2a8784488287a0d5de5d9b8844ca",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/b63e5f38884a2a8784488287a0d5de5d9b8844ca",
+        "sha": "78e2f5bd50b7d4b46a9dabf9f4d158b277896d6e",
+        "created": "2026-05-01T20:09:11+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.8.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.8.0.tar.gz"
+    },
+    {
+      "name": "v2.8.0-beta1",
+      "message": "SQLRustGo v2.8.0 Beta 1\n",
+      "id": "ed7089a8610713a89280d99a6c1f5b15371a83d5",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/ed7089a8610713a89280d99a6c1f5b15371a83d5",
+        "sha": "2860d18a4c0768e37013ccc74018bca03eaef1b8",
+        "created": "2026-05-01T01:33:01+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.8.0-beta1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.8.0-beta1.tar.gz"
+    },
+    {
+      "name": "v2.8.0-alpha1",
+      "message": "v2.8.0-alpha1: 编译通过, 测试通过(16 passed), clippy零警告, protoc已安装\n",
+      "id": "a41ce6e4800582b0214223c306e337eb256f3678",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/a41ce6e4800582b0214223c306e337eb256f3678",
+        "sha": "9744182c990c9c2a0c4338baa66a178bc7241543",
+        "created": "2026-04-30T03:16:28+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.8.0-alpha1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.8.0-alpha1.tar.gz"
+    },
+    {
+      "name": "hermes-stable-v2.8.1",
+      "message": "Stable baseline v2.8.1 — dual-path audit, 3x determinism, proof vs reality cross-check\n",
+      "id": "c48d021c024dd76f93cc84b70a258b167303fd81",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/c48d021c024dd76f93cc84b70a258b167303fd81",
+        "sha": "65f56453a4a327fed40a60b43531bd66ddd905ef",
+        "created": "2026-04-24T08:29:36+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/hermes-stable-v2.8.1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/hermes-stable-v2.8.1.tar.gz"
+    },
+    {
+      "name": "v2.7.0-legacy",
+      "message": "fix(parser): fix partition parsing (#1819)\n\nCo-authored-by: yinglichina8848 <yinglichina8848@users.noreply.github.com>",
+      "id": "5f6fd3cbd3b321e80501b53cef1ec20ea0f4ce4d",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/5f6fd3cbd3b321e80501b53cef1ec20ea0f4ce4d",
+        "sha": "5f6fd3cbd3b321e80501b53cef1ec20ea0f4ce4d",
+        "created": "2026-04-24T02:05:16+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.7.0-legacy.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.7.0-legacy.tar.gz"
+    },
+    {
+      "name": "v2.7.0",
+      "message": "SQLRustGo v2.7.0 GA\n",
+      "id": "86f632f8051f6c04dd206a5bfb30ec06dea3b6d9",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/86f632f8051f6c04dd206a5bfb30ec06dea3b6d9",
+        "sha": "523759b4f40318fc89075f67b745b72db71f203f",
+        "created": "2026-04-22T17:20:26+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.7.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.7.0.tar.gz"
+    },
+    {
+      "name": "v2.6.0-alpha",
+      "message": "docs: update version status - Phase A-C complete, entering Phase D (#1720)\n\nCo-authored-by: CI Bot <openheart@gaoyuanyiyao.com>",
+      "id": "411cbdb51486977f839dff43de77bac0817945bb",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/411cbdb51486977f839dff43de77bac0817945bb",
+        "sha": "411cbdb51486977f839dff43de77bac0817945bb",
+        "created": "2026-04-22T14:18:10+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0-alpha.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0-alpha.tar.gz"
+    },
+    {
+      "name": "v2.6.0-rc",
+      "message": "fix(parser): consume LParen before parsing column list in CREATE INDEX (#1689)\n\nThe parser was calling parse_column_list() without first consuming\nthe opening parenthesis, causing 'No columns in index' error for\nstatements like 'CREATE INDEX k_1 ON sbtest1(k)'.\n\nCo-authored-by: heartopen <heartopen@guizhouminzuuniversity.edu.cn>",
+      "id": "4e6bf8763dcb292246f75f2f1b9dea56d506ca3c",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/4e6bf8763dcb292246f75f2f1b9dea56d506ca3c",
+        "sha": "4e6bf8763dcb292246f75f2f1b9dea56d506ca3c",
+        "created": "2026-04-21T23:11:12+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0-rc.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0-rc.tar.gz"
+    },
+    {
+      "name": "v2.6.0-beta",
+      "message": "fix(parser): consume LParen before parsing column list in CREATE INDEX (#1689)\n\nThe parser was calling parse_column_list() without first consuming\nthe opening parenthesis, causing 'No columns in index' error for\nstatements like 'CREATE INDEX k_1 ON sbtest1(k)'.\n\nCo-authored-by: heartopen <heartopen@guizhouminzuuniversity.edu.cn>",
+      "id": "4e6bf8763dcb292246f75f2f1b9dea56d506ca3c",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/4e6bf8763dcb292246f75f2f1b9dea56d506ca3c",
+        "sha": "4e6bf8763dcb292246f75f2f1b9dea56d506ca3c",
+        "created": "2026-04-21T23:11:12+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0-beta.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.6.0-beta.tar.gz"
+    },
+    {
+      "name": "v2.4.0",
+      "message": "sync: 同步 develop/v2.4.0 剩余 commits (IndexHint/Optimizer Bridge) (#1359)\n\nCherry-pick non-merge commits from origin/develop/v2.4.0:\n- 51cad733 Add Parser IndexHint parsing tests\n- 81c4cd7a docs: vectorized vs parallel execution performance\n- 8b089568 docs: update v2.4.0 integration test report\n- a1182b38 docs: 更新 v2.4.0 门禁清单 - PR #1348\n- fdbea9a5 feat: 实现向量化并行执行引擎 v2.4.0\n- 50f15313 docs: update v2.4.0 gate checklist PR #1347\n- d1150636 feat(optimizer): Parser → Optimizer bridge\n- b5dea67d Fix review findings: CompositeKey Ord, IndexHint Eq\n- 9cafb30e Complete Phase 2 Tasks 4.1 & 4.2\n- 837f337b Continue Phase 2 - IndexHint parsing\n- d8b89d06 feat(optimizer): add StatsRegistry\n- 7e6cbc45 feat(storage): add composite index API\n- 57f82d37 feat(phase2): apply Phase 2 foundation changes\n- f5484977 chore: sync with v2.4.0 release state\n- ee12e09a feat(storage): add IndexRegistry and IndexId type\n- cf8527b4 feat(storage): update CompositeKey to Vec<Value>\n- 9018ab0a refactor(optimizer): IndexSelect uses OptimizerContext\n- 9817c743 feat(optimizer): add OptimizerContext\n- b5cd3d3a docs: add Phase 2 implementation plan\n- 80d8b692 docs: add Phase 2 design\n\nPRs: #1347, #1348, #1349\n\nCo-authored-by: yinglichina8848 <yinglichina8848@guizhouminzuuniversity.edu.cn>",
+      "id": "0b80a23dbc500d0773b88ba2a73ce5b11a19d18f",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/0b80a23dbc500d0773b88ba2a73ce5b11a19d18f",
+        "sha": "0b80a23dbc500d0773b88ba2a73ce5b11a19d18f",
+        "created": "2026-04-09T16:43:31+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.4.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.4.0.tar.gz"
+    },
+    {
+      "name": "v2.4.0-rc1",
+      "message": "SQLRustGo v2.4.0 RC1 - Graph Engine, OpenClaw API, Columnar Compression\n",
+      "id": "d291d274f7bb1004de214b0df1812f508525bbde",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/d291d274f7bb1004de214b0df1812f508525bbde",
+        "sha": "bd5a9e76282145b041490796c45665a678ccf4fc",
+        "created": "2026-04-09T00:50:39+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.4.0-rc1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.4.0-rc1.tar.gz"
+    },
+    {
+      "name": "v2.1.0",
+      "message": "style: apply cargo fmt formatting\n\nFix formatting issues that were blocking CI gates.\n",
+      "id": "0b6a6959f2d07bbf051cd4e33d3fd225f9cf7c24",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/0b6a6959f2d07bbf051cd4e33d3fd225f9cf7c24",
+        "sha": "0b6a6959f2d07bbf051cd4e33d3fd225f9cf7c24",
+        "created": "2026-04-04T22:44:29+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.1.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.1.0.tar.gz"
+    },
+    {
+      "name": "v2.0.0",
+      "message": "Release v2.0.0 - GA release with NULL FK support\n",
+      "id": "0bafc493867090906e99c674e4d74d48535862c0",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/0bafc493867090906e99c674e4d74d48535862c0",
+        "sha": "3dd876923eb7b5cb35fd5098927ac44fa9a0dff2",
+        "created": "2026-03-29T16:44:42+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.0.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v2.0.0.tar.gz"
+    },
+    {
+      "name": "v1.9.0",
+      "message": "Release v1.9.0 GA\n",
+      "id": "e50ab96292e04c2dd079ea729385813f7e14afd9",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/e50ab96292e04c2dd079ea729385813f7e14afd9",
+        "sha": "1a331718c228a1df74a4caf9cd6c4c1d70170f55",
+        "created": "2026-03-26T07:00:48+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.9.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.9.0.tar.gz"
+    },
+    {
+      "name": "v1.7.0",
+      "message": "release: bump version to v1.7.0\n\nAgent: OpenClaw-Refactor\n",
+      "id": "62558ea4b5dd155661d48349a3892e3d83326ced",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/62558ea4b5dd155661d48349a3892e3d83326ced",
+        "sha": "62558ea4b5dd155661d48349a3892e3d83326ced",
+        "created": "2026-03-23T02:46:05+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.7.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.7.0.tar.gz"
+    },
+    {
+      "name": "v1.6.0",
+      "message": "SQLRustGo v1.6.0 GA Release\n",
+      "id": "dee51f62fc5c87c164c2a4a8e9fe271e7a6ef5a5",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/dee51f62fc5c87c164c2a4a8e9fe271e7a6ef5a5",
+        "sha": "cd86f37861b15d853543d433ca16bbf860b70d68",
+        "created": "2026-03-20T19:34:30+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.6.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.6.0.tar.gz"
+    },
+    {
+      "name": "v1.5.0",
+      "message": "Merge pull request #595 from minzuuniversity/temp-release\n\nrelease: v1.5.0 GA - version bump and final updates",
+      "id": "b91081c7ea9428bc8513982a25c46f20acc56f7f",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/b91081c7ea9428bc8513982a25c46f20acc56f7f",
+        "sha": "b91081c7ea9428bc8513982a25c46f20acc56f7f",
+        "created": "2026-03-18T23:32:19+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.5.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.5.0.tar.gz"
+    },
+    {
+      "name": "v1.4.0-rc",
+      "message": "Merge pull request #560 from minzuuniversity/fix/v1.4.0-benchmark-update\n\ndocs: update v1.4.0 GA performance benchmark report",
+      "id": "bd87ca45022dc8700a4947d6a69fccec09504b04",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/bd87ca45022dc8700a4947d6a69fccec09504b04",
+        "sha": "bd87ca45022dc8700a4947d6a69fccec09504b04",
+        "created": "2026-03-18T18:18:08+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0-rc.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0-rc.tar.gz"
+    },
+    {
+      "name": "v1.4.0",
+      "message": "v1.4.0 Release - CBO & SortMergeJoin\n",
+      "id": "b105e6a37c3efe6f37c6d10c290296e1e96d9abf",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/b105e6a37c3efe6f37c6d10c290296e1e96d9abf",
+        "sha": "ba2cdaef43f3a81058b5b19f7d124b05f1fb2d11",
+        "created": "2026-03-18T17:38:08+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.4.0.tar.gz"
+    },
+    {
+      "name": "v1.3.0",
+      "message": "Release v1.3.0 - Enterprise Ready (架构稳定版)\n",
+      "id": "16bc0b0dc49783c72eedcaccc767d5861ea3eca3",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/16bc0b0dc49783c72eedcaccc767d5861ea3eca3",
+        "sha": "159a8012d22e2629e81b325434f7733bdd71c692",
+        "created": "2026-03-15T17:09:05+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.3.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.3.0.tar.gz"
+    },
+    {
+      "name": "v1.2.0",
+      "message": "SQLRustGo v1.2.0 GA Release\n\n- 测试覆盖率 80.11%\n- 新增优化器规则: PredicatePushdown, ProjectionPruning, ConstantFolding, ExpressionSimplification, JoinReordering\n- 性能优化和 bug 修复\n\n- 总行数: 3021\n- 覆盖行数: 2420\n- 覆盖率: 80.11%\n\n感谢所有贡献者的努力！\n",
+      "id": "edceeedaec970bce2ccff6dfaa9ed7f0894c79a6",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/edceeedaec970bce2ccff6dfaa9ed7f0894c79a6",
+        "sha": "f0b2f992d2e3bae39852795788aa34915325f3b7",
+        "created": "2026-03-13T00:59:42+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.2.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.2.0.tar.gz"
+    },
+    {
+      "name": "v1.2.0-draft",
+      "message": "v1.2.0 Draft - Performance optimization phase\n",
+      "id": "53919f0eb8d00b48ca7839309db188e7ad1502cf",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/53919f0eb8d00b48ca7839309db188e7ad1502cf",
+        "sha": "9411f735f2bf711fa180de0ef3ff3e5a51e07823",
+        "created": "2026-03-05T04:54:35+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.2.0-draft.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.2.0-draft.tar.gz"
+    },
+    {
+      "name": "v1.1.0-ga",
+      "message": "v1.1.0 GA Release\n\n- LogicalPlan/PhysicalPlan 分离\n- ExecutionEngine 插件化架构\n- Client-Server 架构\n- 异步网络层\n- HashJoin 实现\n- 测试覆盖率 85.68%\n\n- 编译: 通过\n- 测试: 282 passed\n- Clippy: 零警告\n- 格式: 通过\n- unwrap: 3 处\n- 性能: 无退化\n- 安全审计: 通过\n",
+      "id": "550ea7cde310d6cf3791bb4bdbe0c4a359f06b34",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/550ea7cde310d6cf3791bb4bdbe0c4a359f06b34",
+        "sha": "48ad9cd43ecbd5020be23a4627e8b77c3b86d6f4",
+        "created": "2026-03-05T04:27:01+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-ga.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-ga.tar.gz"
+    },
+    {
+      "name": "v1.1.0-rc.1",
+      "message": "v1.1.0 RC.1 - Release Candidate\n",
+      "id": "76ae76945083c5e4cca1ebe565ed9870002b549a",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/76ae76945083c5e4cca1ebe565ed9870002b549a",
+        "sha": "f85caca0fea9e715e4836a308229b6086f64d863",
+        "created": "2026-03-05T03:48:01+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-rc.1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-rc.1.tar.gz"
+    },
+    {
+      "name": "v1.1.0-beta",
+      "message": "v1.1.0 Beta Release - Stability verification phase\n",
+      "id": "37fc47f88ec53d585bf2438e28cde5181f99a839",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/37fc47f88ec53d585bf2438e28cde5181f99a839",
+        "sha": "886f2e1f7d6f03fae00336d756235351d24be130",
+        "created": "2026-03-05T03:22:25+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-beta.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-beta.tar.gz"
+    },
+    {
+      "name": "v1.1.0-alpha",
+      "message": "v1.1.0 Alpha Release - Feature development phase\n",
+      "id": "8283b0c201d34b2188976773b48d88fc6b31f48a",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/8283b0c201d34b2188976773b48d88fc6b31f48a",
+        "sha": "886f2e1f7d6f03fae00336d756235351d24be130",
+        "created": "2026-03-05T03:14:05+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-alpha.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-alpha.tar.gz"
+    },
+    {
+      "name": "v1.1.0",
+      "message": "SQLRustGo v1.1.0 - L3 Product Ready\n\n- 🏗️ Architecture upgrade: L2 → L3 Product Level\n- 📊 Test coverage: 94.18% (target ≥80%)\n- 🔌 ExecutionEngine plugin architecture\n- 📐 LogicalPlan/PhysicalPlan separation\n- �� Client-Server architecture with async network\n- 🔗 HashJoin implementation (Inner/Left Join)\n\n- ✅ All A-class gates passed (100%)\n- ✅ Test coverage ≥ 90%\n- ✅ Clippy clean\n- ✅ Security audit passed\n- ✅ Performance benchmark passed\n\n- L0 Experimental: 0%\n- L1 Working: 100% ✅\n- L2 Engineering: 100% ✅\n- L3 Product: 90% ← Current\n- L4 Enterprise: 30%\n\n- @yinglichina8848\n- @openheart-opencode (TRAE AI Assistant)\n",
+      "id": "c0bc5a83072fd438ecea15fc38b039d7720882a6",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/c0bc5a83072fd438ecea15fc38b039d7720882a6",
+        "sha": "ab8bc71880821d836d3c5e27d851dd58b6e56d56",
+        "created": "2026-03-04T12:33:07+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0.tar.gz"
+    },
+    {
+      "name": "v1.1.0-draft",
+      "message": "SQLRustGo v1.1.0 Draft Release\n\n- Architecture upgrade: L2 → L3 Product Level\n- LogicalPlan/PhysicalPlan separation\n- ExecutionEngine plugin architecture\n- Client-Server architecture with async network layer\n- HashJoin implementation\n- Test coverage: 94.18%\n\n- All A-class gates passed\n- Test coverage ≥ 90%\n- Clippy clean\n- Security audit passed\n\n- @yinglichina8848\n- @openheart-opencode (TRAE AI Assistant)\n",
+      "id": "2f0eed14a3c8d481d0064c17457c9e227b18248d",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/2f0eed14a3c8d481d0064c17457c9e227b18248d",
+        "sha": "7c8eebd2758e842bfeb08977affc4c1137a78020",
+        "created": "2026-03-04T12:05:09+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-draft.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.1.0-draft.tar.gz"
+    },
+    {
+      "name": "feature/v1.0.0-beta-frozen",
+      "message": "Merge pull request #48 from minzuuniversity/docs/version-planning-docs\n\ndocs(governance): add comprehensive version planning documentation",
+      "id": "eaf6a922f7167901a4cd7326656f7fbfad85feda",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/eaf6a922f7167901a4cd7326656f7fbfad85feda",
+        "sha": "eaf6a922f7167901a4cd7326656f7fbfad85feda",
+        "created": "2026-02-20T07:10:35+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/feature%2Fv1.0.0-beta-frozen.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/feature%2Fv1.0.0-beta-frozen.tar.gz"
+    },
+    {
+      "name": "v1.0.0-rc.1",
+      "message": "Merge pull request #48 from minzuuniversity/docs/version-planning-docs\n\ndocs(governance): add comprehensive version planning documentation",
+      "id": "eaf6a922f7167901a4cd7326656f7fbfad85feda",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/eaf6a922f7167901a4cd7326656f7fbfad85feda",
+        "sha": "eaf6a922f7167901a4cd7326656f7fbfad85feda",
+        "created": "2026-02-20T07:10:35+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.0.0-rc.1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.0.0-rc.1.tar.gz"
+    },
+    {
+      "name": "v1.0.0-beta.0",
+      "message": "Beta phase start v1.0.0-beta.0\n\nStarting Beta phase for:\n- Aggregate functions (COUNT/SUM/AVG/MIN/MAX)\n- Error handling improvement\n- Coverage improvement (target: 85%)\n- Client/Server separation\n\nMerged from alpha v1.0.0-alpha.1\n\nCreated by TRAE (GLM-5.0)\n",
+      "id": "af3facc88f05d59c44da91c0053cb43e8af637aa",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/af3facc88f05d59c44da91c0053cb43e8af637aa",
+        "sha": "dee8e985439fdf86f4392fa2083fedbbb418599c",
+        "created": "2026-02-19T00:40:11+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.0.0-beta.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.0.0-beta.0.tar.gz"
+    },
+    {
+      "name": "v1.0.0-alpha.1",
+      "message": "Alpha release v1.0.0-alpha.1\n\nFeatures:\n- Basic SQL parsing (SELECT, INSERT, UPDATE, DELETE)\n- B+ Tree index\n- Volcano execution engine\n- Transaction management (BEGIN, COMMIT, ROLLBACK)\n- WAL logging\n- MySQL protocol basics (handshake, OK/ERR packets)\n- ORDER BY parsing support\n- LIMIT parsing support\n\nDocumentation:\n- Complete API documentation\n- User manual\n- Project evolution guide\n- Documentation reading guide\n- AI collaboration methodology\n\nQuality:\n- 284 tests passing\n- Coverage: ~76%\n- Clippy clean\n\nCreated by TRAE (GLM-5.0)\n",
+      "id": "0ce1ba518fb9cef6bcbe47b871f9e4b65985db0b",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/0ce1ba518fb9cef6bcbe47b871f9e4b65985db0b",
+        "sha": "5ea6f44571b9952889f9a89fe1418fbf157916d1",
+        "created": "2026-02-19T00:32:13+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.0.0-alpha.1.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.0.0-alpha.1.tar.gz"
+    },
+    {
+      "name": "v1.0.0",
+      "message": "Release v1.0.0 Alpha\n",
+      "id": "0ebf09c0fbb82bf95e71aa42dc14bb048b81de65",
+      "commit": {
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/git/commits/0ebf09c0fbb82bf95e71aa42dc14bb048b81de65",
+        "sha": "e415ed97d1a45169b9217516e9ecf6ad88d995d4",
+        "created": "2026-02-18T15:08:05+08:00"
+      },
+      "zipball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.0.0.zip",
+      "tarball_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/archive/v1.0.0.tar.gz"
+    }
+  ]
+}

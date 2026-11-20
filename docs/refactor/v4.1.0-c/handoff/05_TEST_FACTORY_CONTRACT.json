@@ -1,0 +1,50 @@
+{
+  "version": "C-TF-CONTRACT-1",
+  "matrix_ref": "docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json",
+  "reused_runners": [
+    "existing SQLRustGo pilot tools/test_factory.py (requires fixes)",
+    "crates/sqlrustgo_sqllogictest",
+    "cargo existing tests"
+  ],
+  "new_scheduler_or_runner": false,
+  "required_case_fields": [
+    "case_id",
+    "feature",
+    "invariant_ids",
+    "source",
+    "seed",
+    "backend",
+    "assembly",
+    "base_sha",
+    "expected",
+    "actual",
+    "execution_status",
+    "artifact_sha256"
+  ],
+  "execution_classes": [
+    "PASS",
+    "FAIL",
+    "KNOWN_FAIL",
+    "UNSUPPORTED",
+    "NOT_RUN",
+    "DIALECT_DIFFERENCE",
+    "INFRA_ERROR"
+  ],
+  "required_case_success_classes": [
+    "PASS"
+  ],
+  "dsh_status_mapping": {
+    "PASS": "success",
+    "FAIL": "failure",
+    "KNOWN_FAIL": "failure",
+    "NOT_RUN": "INCONCLUSIVE",
+    "INFRA_ERROR": "INCONCLUSIVE",
+    "UNSUPPORTED": "skipped",
+    "DIALECT_DIFFERENCE": "skipped"
+  },
+  "skipped_requires_owner_scope_receipt": true,
+  "gatekeeper_pass_to_review_is_not_acceptance": true,
+  "oracle_owner": "Owner/Independent Reviewer not implementer",
+  "mock_vs_live_required": true,
+  "unknown_token_usage": null
+}

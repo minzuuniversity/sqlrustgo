@@ -1,0 +1,18 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T21:30:38.077995+00:00",
+  "timestamp": "2026-11-19T21:30:39.058399+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "gitnexus",
+    "context",
+    "-r",
+    "sqlrustgo",
+    "rollback_transaction",
+    "-f",
+    "src/execution_engine_methods.rs"
+  ],
+  "exit": 0,
+  "output": "{\n  \"status\": \"found\",\n  \"symbol\": {\n    \"uid\": \"Function:src/execution_engine_methods.rs:rollback_transaction\",\n    \"name\": \"rollback_transaction\",\n    \"kind\": \"Function\",\n    \"filePath\": \"src/execution_engine_methods.rs\",\n    \"startLine\": 1918,\n    \"endLine\": 2021\n  },\n  \"incoming\": {\n    \"calls\": [\n      {\n        \"uid\": \"Function:src/execution_engine_methods.rs:execute_transaction\",\n        \"name\": \"execute_transaction\",\n        \"filePath\": \"src/execution_engine_methods.rs\"\n      }\n    ]\n  },\n  \"outgoing\": {\n    \"calls\": [\n      {\n        \"uid\": \"Function:crates/transaction/src/transaction_manager.rs:TransactionManager.rollback_with_undo\",\n        \"name\": \"rollback_with_undo\",\n        \"filePath\": \"crates/transaction/src/transaction_manager.rs\"\n      },\n      {\n        \"uid\": \"Function:crates/storage/src/engine.rs:StorageEngine.release_all_gap_locks\",\n        \"name\": \"release_all_gap_locks\",\n        \"filePath\": \"crates/storage/src/engine.rs\"\n      }\n    ]\n  },\n  \"processes\": []\n}\n"
+}

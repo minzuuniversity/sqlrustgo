@@ -1,0 +1,2774 @@
+{
+  "version": "C-PLAN-1",
+  "source_run": "C-ALPHA-01-HANDOFF-20261120",
+  "native_task_schema": "evidence/contracts/dsh-task.schema.json",
+  "native_manifest": "docs/refactor/v4.1.0-c/handoff/03_TASK_MANIFEST.jsonl",
+  "authority": "Planning extension, not DSH live queue state",
+  "policy_status": "REQUIRES_OWNER_AND_DSH_ENFORCEMENT_NO_IMPORT",
+  "external_gates": [
+    {
+      "id": "G-OWNER-TAKEOVER",
+      "approved": false
+    },
+    {
+      "id": "G-LOCAL-ONLY",
+      "approved": false
+    },
+    {
+      "id": "G-POLICY-BINDING",
+      "approved": false
+    },
+    {
+      "id": "G-ISOLATED-CRASH-WINDOW",
+      "approved": false
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "C01-01",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-FOUNDATION",
+      "issue_refs": [
+        5905,
+        5909
+      ],
+      "dependencies": [],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-18"
+      ],
+      "target_files": [
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-01"
+      ],
+      "allowed_paths": [
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-01"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L0",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 30000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F01,F02,F03,F04,F05,F06,F07,F08,F09,F10,F11的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "python3.14 docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "APPROVED_READ_ONLY_HANDOFF_CHECKOUT"
+        }
+      ],
+      "acceptance_criteria": [
+        "校验56归档文件及原路径假设；只生成映射，不改写HARA原件。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-02",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-FOUNDATION",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-01"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-17",
+        "INV-18"
+      ],
+      "target_files": [
+        "evidence/dsh-schema-binding.json",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-02",
+        "tests/integration/test_factory/test_c01_02.py"
+      ],
+      "allowed_paths": [
+        "evidence/dsh-schema-binding.json",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-02",
+        "tests/integration/test_factory/test_c01_02.py"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 80000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "原试点未闭合；此任务没有预设产品RED",
+      "required_tests": [
+        {
+          "command": "python3.14 -m pytest tests/integration/test_factory/test_dsh_contract_binding.py -q",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "用真实Schema校验payload，负向证明丢sidecar/human gate/token策略时拒绝导入；不改Scheduler。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-03",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-FOUNDATION",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-01"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-18"
+      ],
+      "target_files": [
+        "evidence/local-only-review.json",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-03",
+        "tests/integration/test_factory/test_c01_03.py"
+      ],
+      "allowed_paths": [
+        "evidence/local-only-review.json",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-03",
+        "tests/integration/test_factory/test_c01_03.py"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 100000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "原试点未闭合；此任务没有预设产品RED",
+      "required_tests": [
+        {
+          "command": "python3.14 -m pytest tests/integration/test_factory/test_local_only_policy_observation.py -q",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "审Controller/adapter/子agent/credentials/egress/模型身份，区分MOCK与LIVE；不改服务或配置，不发起云推理。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-04",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-FOUNDATION",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-02",
+        "C01-03"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-17",
+        "INV-18"
+      ],
+      "target_files": [
+        "tools/test_factory.py",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-04",
+        "tests/integration/test_factory/test_c01_04.py"
+      ],
+      "allowed_paths": [
+        "tools/test_factory.py",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-04",
+        "tests/integration/test_factory/test_c01_04.py"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OpenCode",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 120000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "原试点未闭合；此任务没有预设产品RED",
+      "required_tests": [
+        {
+          "command": "python3.14 -m pytest tests/integration/test_factory/test_result_classification.py -q",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "在独立候选worktree移植已hash的pilot runner；覆盖空测试、ignored、非零exit、超时、原始日志，不新建通用Runner。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-05",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5905,
+        5909
+      ],
+      "dependencies": [
+        "C01-01",
+        "C01-04"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-01",
+        "INV-02"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/ca01_file_undo.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-05",
+        "tests/integration/test_factory/test_c01_05.py",
+        "Cargo.toml"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/ca01_file_undo.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-05",
+        "tests/integration/test_factory/test_c01_05.py",
+        "Cargo.toml"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 160000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F01,F02的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test --test ca01_file_undo -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "复用F01/F02并加入PK变化、相同值、阈值/peer flush；物理scan和SQL观察分开。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止",
+        "Cargo.toml仅允许登记本任务新测试[[test]]；禁止改version、依赖、features、workspace或门禁阈值。"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-06",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-05"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-07"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/ca01_snapshot_reopen.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-06",
+        "tests/integration/test_factory/test_c01_06.py",
+        "Cargo.toml"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/ca01_snapshot_reopen.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-06",
+        "tests/integration/test_factory/test_c01_06.py",
+        "Cargo.toml"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L2",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 180000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F03的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test --test ca01_snapshot_reopen -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "只在tempdir生成committed/uncommitted fixture；process exit与SIGKILL分别标注，校验Recovery report和实际行。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止",
+        "Cargo.toml仅允许登记本任务新测试[[test]]；禁止改version、依赖、features、workspace或门禁阈值。"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-07",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-04"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-08",
+        "INV-09"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/ca01_commit_frontier.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-07",
+        "tests/integration/test_factory/test_c01_07.py",
+        "Cargo.toml"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/ca01_commit_frontier.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-07",
+        "tests/integration/test_factory/test_c01_07.py",
+        "Cargo.toml"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L2",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 140000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F04的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test --test ca01_commit_frontier -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "保留CountWal契约桩，另记录真实FBWM sync路径；不把桩次数当真实断电durability。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止",
+        "Cargo.toml仅允许登记本任务新测试[[test]]；禁止改version、依赖、features、workspace或门禁阈值。"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-08",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-04"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-06",
+        "INV-12"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/ca01_failed_state.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-08",
+        "tests/integration/test_factory/test_c01_08.py",
+        "Cargo.toml"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/ca01_failed_state.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-08",
+        "tests/integration/test_factory/test_c01_08.py",
+        "Cargo.toml"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 120000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F05,F07的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test --test ca01_failed_state -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "固定第N条undo和WAL recover错误；首次/二次调用结果、cursor是否保留单独断言，不修正式状态机。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止",
+        "Cargo.toml仅允许登记本任务新测试[[test]]；禁止改version、依赖、features、workspace或门禁阈值。"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-09",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-04"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/ca01_backend_caps.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-09",
+        "tests/integration/test_factory/test_c01_09.py",
+        "Cargo.toml"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/ca01_backend_caps.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-09",
+        "tests/integration/test_factory/test_c01_09.py",
+        "Cargo.toml"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 160000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F06的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test --test ca01_backend_caps -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "逐个枚举、构造并记录begin/rollback/namespace差异；BinaryV2是leaf，禁止把有undo代码认证为TRANSACTIONAL。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止",
+        "Cargo.toml仅允许登记本任务新测试[[test]]；禁止改version、依赖、features、workspace或门禁阈值。"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-10",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-05"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-05",
+        "INV-15"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/ca01_complex_dml.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-10",
+        "tests/integration/test_factory/test_c01_10.py",
+        "Cargo.toml"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/ca01_complex_dml.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-10",
+        "tests/integration/test_factory/test_c01_10.py",
+        "Cargo.toml"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 160000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F09,F10的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test --test ca01_complex_dml -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "精确重放F09/F10的无wrapper条件并比较默认wire；REPLACE/ODKU旧值和聚类读权威分别检查。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止",
+        "Cargo.toml仅允许登记本任务新测试[[test]]；禁止改version、依赖、features、workspace或门禁阈值。"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-11",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-09"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-14",
+        "INV-15"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/ca01_bufferpool.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-11",
+        "tests/integration/test_factory/test_c01_11.py",
+        "Cargo.toml"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/ca01_bufferpool.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-11",
+        "tests/integration/test_factory/test_c01_11.py",
+        "Cargo.toml"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 80000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F11的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test --test ca01_bufferpool -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "用公开new_with_bufferpool做on/off对照；不扩大为默认服务器缺陷；记录eviction/reopen未证边界。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止",
+        "Cargo.toml仅允许登记本任务新测试[[test]]；禁止改version、依赖、features、workspace或门禁阈值。"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-12",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5905,
+        5909
+      ],
+      "dependencies": [
+        "C01-04",
+        "C01-09"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-03",
+        "INV-05",
+        "INV-13"
+      ],
+      "target_files": [
+        "crates/mysql-server/tests/ca01_wire_assemblies.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-12",
+        "tests/integration/test_factory/test_c01_12.py"
+      ],
+      "allowed_paths": [
+        "crates/mysql-server/tests/ca01_wire_assemblies.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-12",
+        "tests/integration/test_factory/test_c01_12.py"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L2",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 240000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F01,F03,F09的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test -p sqlrustgo-mysql-server --test ca01_wire_assemblies -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "复用start_ephemeral和MySQL client，在独立端口/data-dir比较两个装配；不使用已安装旧二进制fallback。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-13",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5228,
+        5584
+      ],
+      "dependencies": [
+        "C01-06",
+        "C01-07",
+        "C01-12"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-10",
+        "INV-11"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/ca01_checkpoint_interrupt.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-13",
+        "tests/integration/test_factory/test_c01_13.py",
+        "Cargo.toml"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/ca01_checkpoint_interrupt.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-13",
+        "tests/integration/test_factory/test_c01_13.py",
+        "Cargo.toml"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L4",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 3600,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 240000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F08的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test --test ca01_checkpoint_interrupt -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "先冻结父子handshake/目标PID/tempdir和资源窗口；仅隔离实验，若需改正式故障点则停。F08允许INCONCLUSIVE，不强制RED。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止",
+        "Cargo.toml仅允许登记本任务新测试[[test]]；禁止改version、依赖、features、workspace或门禁阈值。"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": true,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING",
+          "G-ISOLATED-CRASH-WINDOW"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": false,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-14",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-EVIDENCE",
+      "issue_refs": [
+        5905,
+        5909
+      ],
+      "dependencies": [
+        "C01-05",
+        "C01-12"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-02",
+        "INV-04",
+        "INV-13",
+        "INV-15"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/ca01_visibility_oracle.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-14",
+        "tests/integration/test_factory/test_c01_14.py",
+        "Cargo.toml"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/ca01_visibility_oracle.rs",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-14",
+        "tests/integration/test_factory/test_c01_14.py",
+        "Cargo.toml"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L2",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 220000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F01,F03的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "cargo test --test ca01_visibility_oracle -- --nocapture",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "比较SQL可见结果、底层多重集和pending/版本；按观察记录隔离，不自行宣告/降低RC或SI。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止",
+        "Cargo.toml仅允许登记本任务新测试[[test]]；禁止改version、依赖、features、workspace或门禁阈值。"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-15",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-INTEGRATION",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-04"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-17"
+      ],
+      "target_files": [
+        "tests/test_factory/ca01_common_subset.slt",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-15",
+        "tests/integration/test_factory/test_c01_15.py"
+      ],
+      "allowed_paths": [
+        "tests/test_factory/ca01_common_subset.slt",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-15",
+        "tests/integration/test_factory/test_c01_15.py"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OpenCode",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 160000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "原试点未闭合；此任务没有预设产品RED",
+      "required_tests": [
+        {
+          "command": "cargo run -p sqlrustgo_sqllogictest -- --test-dir tests/test_factory",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "复用已有sqllogictest runner与自写共同SQL小夹具；外部corpus授权未核前不导入，不替换MySQL oracle。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-16",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-INTEGRATION",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-02",
+        "C01-04"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-17",
+        "INV-18"
+      ],
+      "target_files": [
+        "tests/integration/test_factory/test_receipt_mapping.py",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-16",
+        "tests/integration/test_factory/test_c01_16.py"
+      ],
+      "allowed_paths": [
+        "tests/integration/test_factory/test_receipt_mapping.py",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-16",
+        "tests/integration/test_factory/test_c01_16.py"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L1",
+      "worker_role": "OpenCode",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 160000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "原试点未闭合；此任务没有预设产品RED",
+      "required_tests": [
+        {
+          "command": "python3.14 -m pytest tests/integration/test_factory/test_receipt_mapping.py -q",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "复用现有DSH result/receipt，完整hash原文；KNOWN_FAIL不变PASS，未知token记null，KOS只知识索引。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-17",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-INTEGRATION",
+      "issue_refs": [
+        5911,
+        5909
+      ],
+      "dependencies": [
+        "C01-01",
+        "C01-06"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-11",
+        "INV-16"
+      ],
+      "target_files": [
+        "tests/test_factory/fixtures/ca01-history/README.md",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-17",
+        "tests/integration/test_factory/test_c01_17.py"
+      ],
+      "allowed_paths": [
+        "tests/test_factory/fixtures/ca01-history/README.md",
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-17",
+        "tests/integration/test_factory/test_c01_17.py"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L2",
+      "worker_role": "OMP",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 160000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "参照F02,F03,F08的精确装配，F08仅HYPOTHESIS；HARA其余证据不可推广全装配",
+      "required_tests": [
+        {
+          "command": "python3.14 -m pytest tests/integration/test_factory/test_history_fixture_manifest.py -q",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "TASK_WORKTREE_FROM_BASE_SHA"
+        }
+      ],
+      "acceptance_criteria": [
+        "从真实tag独立生成极小fixture与hash；不迁移生产数据，不把BEGIN中断当历史回滚通过。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": false,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": true,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    },
+    {
+      "task_id": "C01-18",
+      "project_id": "sqlrustgo",
+      "milestone_id": "C-ALPHA-01",
+      "epic_id": "E01-INTEGRATION",
+      "issue_refs": [
+        5235
+      ],
+      "dependencies": [
+        "C01-03",
+        "C01-05",
+        "C01-06",
+        "C01-07",
+        "C01-08",
+        "C01-09",
+        "C01-10",
+        "C01-11",
+        "C01-12",
+        "C01-13",
+        "C01-14",
+        "C01-15",
+        "C01-16",
+        "C01-17"
+      ],
+      "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "approved_adr_refs": [],
+      "proposed_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-004",
+        "ADR-410-005",
+        "ADR-410-006",
+        "ADR-410-007",
+        "ADR-410-008",
+        "ADR-410-009",
+        "ADR-410-010"
+      ],
+      "invariant_ids": [
+        "INV-01",
+        "INV-07",
+        "INV-08",
+        "INV-13",
+        "INV-18"
+      ],
+      "target_files": [
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-18"
+      ],
+      "allowed_paths": [
+        "docs/releases/v4.1.0/refactoring/evidence/ca01/C01-18"
+      ],
+      "forbidden_paths": [
+        "src/",
+        "crates/storage/src/",
+        "crates/transaction/src/",
+        "crates/mysql-server/src/",
+        "scripts/gate/",
+        "docs/governance/",
+        "docs/releases/v4.1.0/STAGE.yaml",
+        ".gitea/",
+        "aoci.txt",
+        "aoci.code.txt",
+        ".aoci/",
+        ".env",
+        "secrets/"
+      ],
+      "task_type": "preparation_test_or_analysis",
+      "risk_level": "L4",
+      "worker_role": "Independent Reviewer",
+      "model_policy": "LOCAL_ONLY",
+      "required_capabilities": [
+        "source_read",
+        "structured_evidence",
+        "local_tool_use",
+        "rust_tests_or_python_contract_tests"
+      ],
+      "execution_budget": {
+        "max_runtime_seconds": 1800,
+        "max_attempts": 2,
+        "max_parallel_per_repo": 1
+      },
+      "token_budget": {
+        "upper_all_attempts": 60000,
+        "unit": "tokens",
+        "status": "PROPOSED_NOT_AUTHORIZED"
+      },
+      "retry_limit": 1,
+      "expected_baseline_behavior": "原试点未闭合；此任务没有预设产品RED",
+      "required_tests": [
+        {
+          "command": "python3.14 docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check",
+          "when": "POST_TASK_ASSET_IMPLEMENTATION",
+          "status": "PLANNED_NOT_RUN",
+          "negative_control": "移除目标断言/策略/证据绑定应拒绝；未知产品假设不强求RED",
+          "cwd_contract": "APPROVED_READ_ONLY_HANDOFF_CHECKOUT"
+        }
+      ],
+      "acceptance_criteria": [
+        "独立于Codex设计者与实施者审证据；列未闭合项，不自签。提交Owner对ADR/隔离/格式/DSH启动的决定。",
+        "固定源码SHA和输入hash；记录实际stdout/stderr/exit/执行数",
+        "不得改oracle/门禁刷绿；缺能力停止"
+      ],
+      "evidence_contract": {
+        "case_fields": [
+          "Case ID",
+          "Feature",
+          "Invariant ID",
+          "Source",
+          "Seed",
+          "Backend",
+          "Assembly",
+          "Baseline SHA",
+          "Expected",
+          "Actual",
+          "execution_status",
+          "artifact_sha256"
+        ],
+        "dsh_schema_refs": [
+          "evidence/contracts/dsh-result.schema.json",
+          "evidence/contracts/dsh-receipt.schema.json"
+        ],
+        "kos_fields": [
+          "repo",
+          "commit",
+          "as_of",
+          "source_uri",
+          "status"
+        ],
+        "raw_log_required": true,
+        "full_sha256_required": true,
+        "synthetic_receipt_forbidden": true
+      },
+      "review_requirements": {
+        "independent_harness": true,
+        "oracle_owner": "Owner_or_independent_Reviewer",
+        "codex_not_final_independent_signer": true
+      },
+      "human_gate": {
+        "required": true,
+        "approval_refs": [],
+        "gates": [
+          "G-OWNER-TAKEOVER",
+          "G-LOCAL-ONLY",
+          "G-POLICY-BINDING"
+        ]
+      },
+      "stop_conditions": [
+        "未获Owner接管授权",
+        "schema/ADR/source digest变化",
+        "非LOCAL_ONLY/云fallback/模型身份不符",
+        "越过allowed_paths或触及正式接口/阶段/服务",
+        "超预算/无新证据重试/资源窗口冲突"
+      ],
+      "candidate_automatic": false,
+      "authorized_for_execution": false,
+      "dispatch_allowed": false,
+      "status": "AWAITING_OWNER_TAKEOVER"
+    }
+  ],
+  "future_epics": [
+    {
+      "id": "E02-REFERENCE-TX",
+      "milestone_id": "C-ALPHA-02",
+      "depends_on": [
+        "C-ALPHA-01"
+      ],
+      "scope": "Memory/File参考TxStore、RowId、MutationBatch、UndoCursor",
+      "dispatch_allowed": false,
+      "status": "CANDIDATE_EPIC_ONLY_NO_NATIVE_TASKS"
+    },
+    {
+      "id": "E03-DURABILITY",
+      "milestone_id": "C-ALPHA-03",
+      "depends_on": [
+        "C-ALPHA-02"
+      ],
+      "scope": "M2 WAL/Checkpoint/Recovery",
+      "dispatch_allowed": false,
+      "status": "CANDIDATE_EPIC_ONLY_NO_NATIVE_TASKS"
+    },
+    {
+      "id": "E03-VISIBILITY",
+      "milestone_id": "C-ALPHA-03",
+      "depends_on": [
+        "C-ALPHA-02"
+      ],
+      "scope": "M3 MVCC/Index可并行设计，组合出口",
+      "dispatch_allowed": false,
+      "status": "CANDIDATE_EPIC_ONLY_NO_NATIVE_TASKS"
+    },
+    {
+      "id": "E04-COMPAT",
+      "milestone_id": "C-ALPHA-04",
+      "depends_on": [
+        "C-ALPHA-03"
+      ],
+      "scope": "全后端/DML/历史迁移/复制PITR",
+      "dispatch_allowed": false,
+      "status": "CANDIDATE_EPIC_ONLY_NO_NATIVE_TASKS"
+    },
+    {
+      "id": "E05-CERTIFICATION",
+      "milestone_id": "C-ALPHA-05",
+      "depends_on": [
+        "C-ALPHA-04"
+      ],
+      "scope": "完整CI/组合态/恢复/SOAK/独立认证",
+      "dispatch_allowed": false,
+      "status": "CANDIDATE_EPIC_ONLY_NO_NATIVE_TASKS"
+    }
+  ],
+  "single_writer": {
+    "core_interfaces": true,
+    "max_concurrent_per_repo": 1,
+    "no_parallel_pairs": [
+      [
+        "C01-04",
+        "C01-16"
+      ],
+      [
+        "E03-DURABILITY",
+        "E03-VISIBILITY"
+      ]
+    ],
+    "note": "M2/M3可设计并行；共同接口/文件变更合并必须串行，组合态验证后出阶段"
+  },
+  "budget": {
+    "proposed_total_token_upper": 2570000,
+    "first_batch_requested_ceiling": 5000000,
+    "authorized_tokens": 0
+  },
+  "artifact_context": {
+    "source_code_base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+    "package_commit_binding": "OWNER_MUST_BIND_PUBLISHED_DOC_COMMIT_BEFORE_ACTIVATION",
+    "read_only_package_checkout_required": true,
+    "package_is_not_implicitly_present_in_base_sha": true,
+    "no_unpinned_latest_ref": true
+  }
+}

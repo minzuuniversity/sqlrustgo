@@ -1,0 +1,28 @@
+{
+  "kind": "OFFLINE_DELIVERY_VALIDATION_NOT_EXECUTION_CERTIFICATION",
+  "source_run": "C-ALPHA-01-HANDOFF-20261120",
+  "timestamp": "2026-11-20T14:05:18.808925+00:00",
+  "native_tasks": 18,
+  "adrs": 10,
+  "pilot_input_cases": 75,
+  "hara_hashed_files": 55,
+  "manifest_bound_files": 121,
+  "task_dag": "ACYCLIC_NO_MISSING_DEPENDENCIES",
+  "mutation_rejections": [
+    "cycle",
+    "missing",
+    "unapproved_dispatch",
+    "unapproved_adr",
+    "human_gate_removed",
+    "cloud_policy",
+    "later_stage_task",
+    "native_extra_field"
+  ],
+  "local_links": 27,
+  "authorized_dispatch_count": 0,
+  "authorized_tokens": 0,
+  "proposed_token_upper": 2570000,
+  "handoff_manifest_sha256": "c722885fef98a93ec0eae8157104861fffdeaa1454bf4710bd12464c25ab76de",
+  "source_agent": "Codex GPT-6.1 Sol",
+  "conflict_resolution": "Delivery checks only; architecture approval, task dispatch and product acceptance remain pending"
+}
