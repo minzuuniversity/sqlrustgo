@@ -101,20 +101,11 @@ fn c01_07b_two_commit_entry_points_consistent() {
     );
 }
 
-/// c) durable_lsn/commit_lsn 概念存在性（目标契约缺口记录，预期 NOT_RUN 性质）
-#[test]
-fn c01_07c_durable_frontier_concept_absence_documented() {
-    // 目标契约要求同步模式维护 durable_lsn>=commit_lsn 并在 ACK 前校验。
-    // 当前公共 API 无此观测点（FileStorage/ExecutionEngine 无 durable_lsn 查询）。
-    // 本测试作为缺口的存在性证明：断言当前 API 表面不含 frontier 查询入口，
-    // 一旦 ADR-006 实施引入，本测试应改造为正向断言（而非删除）。
-    let debug = format!(
-        "{:?}",
-        std::any::type_name::<FileStorage>()
-    );
-    assert!(
-        !debug.contains("durable_lsn"),
-        "placeholder assertion; replace with real frontier check after ADR-006 implementation"
-    );
-    // 诚实声明：这是缺口记录，不是产品缺陷判定。
-}
+// c) durable_lsn/commit_lsn 概念存在性 —— **缺口记录（非测试）**
+// 目标契约要求同步模式维护 durable_lsn>=commit_lsn 并在 ACK 前校验；
+// 当前公共 API 无此观测点（FileStorage/ExecutionEngine 无 durable_lsn 查询）。
+// 说明：初版此处曾是一个"永不可能失败"的占位断言（仅检查类型名不含 durable_lsn），
+// 属 AFP Type A 风险（无实质断言冒充测试覆盖），已于 2026-11-21 复查中删除该测试，
+// 缺口记录改写为本注释。ADR-006 实施引入 frontier 查询后，应新增**真实正向断言**
+// （ACK 前 durable_lsn >= commit_lsn），而非恢复占位断言。
+
