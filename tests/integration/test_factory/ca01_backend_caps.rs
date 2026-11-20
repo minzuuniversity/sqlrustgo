@@ -26,14 +26,12 @@ fn make_binary() -> (BinaryTableStorageV2, TempDir) {
     (s, dir)
 }
 
-/// a) 能力描述符存在性：目标契约要求后端显式声明正交能力集。
-/// 当前公共 API 无 capabilities() 查询入口 ⇒ "写前拒绝"没有能力事实来源。
-/// 缺口记录（非缺陷判定）；实现后改造为正向断言。
-#[test]
-fn c01_09a_capability_descriptor_absence_documented() {
-    // 目标：capabilities() -> {transactions, durable_commit, undo, ...}
-    // 现状：API 表面缺失（结构化记录，供 ADR-009 组合态认证矩阵输入）
-}
+// a) 能力描述符存在性 —— **缺口记录（非测试）**
+// 目标契约要求后端显式声明正交能力集（capabilities() -> {transactions, durable_commit, undo, ...}）；
+// 当前公共 API 无此查询入口 ⇒ "写前拒绝"没有能力事实来源。
+// 说明：初版此处曾是一个空函数（无任何断言），属 AFP Type A 风险（空实现冒充覆盖），
+// 已于 2026-11-21 复查中删除，缺口记录改写为本注释。ADR-009 实施时应新增真实正向断言：
+// 声明的能力集与组合态认证结果一致，且不足能力在写前拒绝。
 
 /// b) INV-14 正向判据（现状基线）：事务能力不足的后端写前必须拒绝。
 /// 当前已知（D-004 族，#5914）：返回 Ok——违反"写前拒绝"。
@@ -55,9 +53,7 @@ fn c01_09b_insufficient_capability_must_refuse_before_write() {
     }
 }
 
-/// c) wrapper 诚实性：组合态认证入口缺失记录（目标契约：wrapper 声明 ≤ inner 能力+已验证增量）
-#[test]
-fn c01_09c_wrapper_capability_honesty_observed() {
-    // 观测：parallel_wal 组合的 undo/事务能力声明不存在于 API 表面；
-    // ADR-009 目标 C 的组合态认证矩阵实施后，本测试改造为正向断言。
-}
+// c) wrapper 诚实性 —— **缺口记录（非测试）**
+// 目标契约：wrapper 声明 ≤ inner 能力 + 已验证增量；parallel_wal 组合的 undo/事务能力声明
+// 当前不存在于 API 表面。说明：初版此处为空函数（无断言），已于 2026-11-21 复查中删除。
+// ADR-009 组合态认证矩阵实施后，应新增真实断言（wrapper 声明能力 ⊆ inner+已验证增量）。
