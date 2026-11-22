@@ -38,6 +38,10 @@ CLAUDE.md
 !**/docs/governance/*.json
 !**/docs/releases/*/manifest.json
 !**/docs/releases/*/evidence/*/summary.json
+# GPT 评审 R1 整改交付包（docs/releases/v4.1.0/refactoring/gpt-r1/）——
+# 其中 CONTROL-PLANE-GAP-MATRIX.json 与 manifest.json 是评审任务书点名的交付物，
+# 必须可提交，否则交付物只存在于本地、无法被审核。
+!**/docs/releases/*/refactoring/gpt-r1/*.json
 !**/.claude/**/*.json
 !**/.gitea/workflows/*.json
 
@@ -190,6 +194,10 @@ docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
 !docs/governance/*.json
 !docs/releases/*/manifest.json
 !docs/releases/*/evidence/*/summary.json
+# GPT 评审 R1 整改交付包（docs/releases/v4.1.0/refactoring/gpt-r1/）——
+# CONTROL-PLANE-GAP-MATRIX.json 与 manifest.json 是评审任务书点名的交付物，
+# 必须可提交，否则交付物只存在于本地、无法被审核。
+!docs/releases/*/refactoring/gpt-r1/*.json
 # #5441: the per-run stage/GA gate decision record IS the governance
 # evidence chain — docs/governance/GATE_CONDITIONS.md "门禁执行要求 / 日志保存"
 # requires it at `docs/releases/v{VERSION}/logs/gate_<stage>_<commit>_<ts>.log`.

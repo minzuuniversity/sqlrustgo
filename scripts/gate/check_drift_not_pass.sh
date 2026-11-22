@@ -36,6 +36,41 @@ echo
 FAIL=0
 FINDINGS=()
 
+# How many gate scripts were actually scanned? A gate that scans zero
+# scripts finds zero anti-patterns and says PASS — that is a vacuous green,
+# not a verification. The count is asserted below.
+SCANNED_GATE_SCRIPTS=0
+
+# ---------------------------------------------------------------------------
+# Fail-closed: a missing baseline must NOT be self-healing.
+#
+# The previous shape auto-created the baseline on first run and then reset
+# FAIL=0, so the gate exited 0 (PASS) **on a tree where it had just found
+# anti-patterns**. Measured on the authoritative tree (2026-11-23,
+# 8cbde5b6d3): with `tests/baseline/drift_baseline.json` absent the gate
+# reported 14 findings — including "check_full_gate_verification.sh accepts
+# exit 2 (DRIFT) without proper failure handling", which is the exact V5
+# vulnerability this gate exists to detect — and then printed
+# "✅ PASS — P14 satisfied" with rc=0.
+#
+# A gate that manufactures its own reference data mid-verification asserts
+# nothing: the baseline it writes contains exactly the debt it just found,
+# so the second run is green and the first run was a false green too.
+# The sibling gate `check_gate_test_integrity.sh` was already fixed for the
+# identical defect (#5113: "a missing baseline is a FAIL, not a 'first run,
+# capturing it'"). This gate had the same hole and the same fix was owed.
+#
+# Recording the baseline stays possible, but it becomes an explicit,
+# reviewable act: `--init-baseline`.
+# ---------------------------------------------------------------------------
+INIT_BASELINE=0
+for arg in "$@"; do
+    case "$arg" in
+        --init-baseline) INIT_BASELINE=1 ;;
+        *) : ;;
+    esac
+done
+
 # ---------------------------------------------------------------------------
 # Check 1: gate scripts that accept exit 2 as success
 # ---------------------------------------------------------------------------
@@ -47,6 +82,15 @@ echo "[1/5] Scanning for DRIFT-accepting patterns..."
 # 显式排除，并在下面把排除原因写进判据说明（判据口径必须自解释）。
 drift_pattern=$(grep -rnE '\[\s*"\$?(code|exit_code|status)"?\s*-eq\s*2\s*\]' \
     scripts/gate/ --exclude='check_drift_not_pass.sh' --exclude-dir='legacy' 2>/dev/null | head -20)
+
+# Count the gate scripts this run actually polices. The two detectors are
+# excluded because the scan excludes them too (self-reference is by design):
+# a watchdog that watches no other gate has nothing to say.
+SCANNED_GATE_SCRIPTS=$(find "$SCRIPT_DIR" -maxdepth 1 -name '*.sh' -type f \
+    ! -path "$SCRIPT_DIR/legacy/*" \
+    ! -name 'check_drift_not_pass.sh' \
+    ! -name 'check_gate_test_integrity.sh' \
+    2>/dev/null | wc -l | tr -d ' ')
 
 if [ -n "$drift_pattern" ]; then
     echo "  Found $(echo "$drift_pattern" | wc -l | tr -d ' ') potential DRIFT-handling sites"
@@ -222,8 +266,20 @@ DRIFT_BASELINE="$PROJECT_ROOT/tests/baseline/drift_baseline.json"
 mkdir -p "$(dirname "$DRIFT_BASELINE")"
 
 if [ ! -f "$DRIFT_BASELINE" ]; then
+    if [ "$INIT_BASELINE" != "1" ]; then
+        # Fail closed: no reference data ⇒ nothing was compared ⇒ a PASS
+        # here would assert nothing.
+        echo
+        echo "  ❌ FAIL: DRIFT anti-pattern baseline not found: $DRIFT_BASELINE"
+        echo "     A missing baseline means P14 has no reference to compare against,"
+        echo "     so a PASS would assert nothing — and self-creating the baseline"
+        echo "     here would silently absorb whatever debt this run just found"
+        echo "     (measured: 14 findings absorbed, rc=0, 'P14 satisfied')."
+        echo "     Record the baseline deliberately with --init-baseline, then commit it."
+        exit 1
+    fi
     echo
-    echo "  ℹ️  First run: auto-creating DRIFT-anti-pattern baseline..."
+    echo "  ℹ️  --init-baseline given: recording the DRIFT-anti-pattern baseline..."
     {
         echo "{"
         echo "  \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
@@ -294,6 +350,17 @@ fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Zero-execution guard: a scan that looked at nothing must not report PASS.
+# ---------------------------------------------------------------------------
+if [ "$SCANNED_GATE_SCRIPTS" -eq 0 ]; then
+    echo
+    echo "  ❌ FAIL: 0 gate scripts were scanned — the DRIFT scan executed nothing,"
+    echo "     so a PASS here would assert nothing. (check scripts/gate/ exists and"
+    echo "     is populated; a gate that scans an empty tree is a vacuous green.)"
+    exit 1
+fi
+
 echo
 echo "=== P14 Summary ==="
 echo "  Total anti-patterns: $FAIL"

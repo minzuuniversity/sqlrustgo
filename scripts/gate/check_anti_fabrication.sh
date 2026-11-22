@@ -274,11 +274,27 @@ check_v312_24_test_infra_artifacts() {
         cargo build --release -p sqlancer 2>/tmp/cargo-build-sqlancer.log || errors=$((errors + 1))
     fi
     if [ -x "${REPO_ROOT}/target/release/sqlancer" ]; then
-        if [ ! -s "${REPO_ROOT}/target/sqlancer-report.json" ]; then
-            log_info "  target/sqlancer-report.json missing; running sqlancer (--duration 5)..."
-            "${REPO_ROOT}/target/release/sqlancer" --duration 5 \
-                --out "${REPO_ROOT}/target/sqlancer-report.json" 2>/tmp/sqlancer-run.log || errors=$((errors + 1))
-        fi
+        # Always re-run. The previous shape guarded on
+        # `if [ ! -s .../sqlancer-report.json ]`, which meant a report left by
+        # any earlier invocation was accepted as THIS run's result — the
+        # same defect that was already fixed for the test-runner below
+        # ("Always re-run. The previous shape guarded on `if [ ! -s
+        # .../test-runner-report.json ]`"). The two artifacts were
+        # asymmetric: the test-runner was re-run every time, the sqlancer
+        # was not, so a stale sqlancer report certified a gate run that
+        # executed nothing.
+        #
+        # Measured 2026-11-23 (GPT 评审 R1 · G1 行为级缺陷证明): with a
+        # schema-valid but stale `target/sqlancer-report.json` present, the
+        # gate printed
+        #   [PASS]   V312-24: target/sqlancer-report.json valid (iterations=100)
+        # and the sqlancer binary was **never invoked** (recorded via an
+        # invocation log). The gate certified an artifact it had not
+        # produced. A report from a previous run is not evidence about this
+        # run.
+        log_info "  running sqlancer (--duration 5)..."
+        "${REPO_ROOT}/target/release/sqlancer" --duration 5 \
+            --out "${REPO_ROOT}/target/sqlancer-report.json" 2>/tmp/sqlancer-run.log || errors=$((errors + 1))
         if [ -s "${REPO_ROOT}/target/sqlancer-report.json" ]; then
             if python3 -c "import json,sys
 d=json.load(open('${REPO_ROOT}/target/sqlancer-report.json'))

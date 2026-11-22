@@ -60,6 +60,81 @@ fi
 
 RELEASE_DIR="docs/releases/$VERSION"
 
+# ---------------------------------------------------------------------------
+# evidence_binding_has_positive_claim <line>
+#
+# Decides whether a line contains a **positive** claim of success
+# ("PASS" / "通过" / "成功" / "completed" / "done") as opposed to a negated
+# one ("不声称任何门禁通过" / "没有改变结论" / "未通过").
+#
+# 2026-11-23（GPT 评审 R1 · G1 行为级缺陷证明）：原来的判据是**整行**扫描
+# 否定词 ——
+#
+#     case "$claim_line" in
+#         *不*|*未*|*无*|*非*|*没有*|*不能*|*禁止*|*杜绝*) continue ;;
+#     esac
+#
+# 只要**这一行里任何位置**出现「不 / 未 / 无 / 非」之一，整行就被豁免。
+# 于是下面两行待遇完全相同：
+#
+#     本批次不涉及其他阶段，全部测试通过      ← 含「不」，被豁免
+#     全部测试通过。                          ← 无否定词，被查
+#
+# 第一行是一个**正向**的完成声明，却因为同一行里前半分句提到「不」而被
+# 免于证据检查 —— 伪造者只要在同一行加一个无关的否定词就能绕过判据。
+#
+# 修法：否定词必须作用在**声明所在的那个分句**上，而不是整行。按
+# 中英文标点切分分句，只在声明所在分句内找否定词。
+# ---------------------------------------------------------------------------
+evidence_binding_has_positive_claim() {
+  python3 - "$1" <<'PYEOF_CLAIM'
+import re
+import sys
+
+line = sys.argv[1]
+
+CLAIM = re.compile(r"PASS|通过|成功|completed|done")
+NEG = ("不", "未", "无", "非", "没有", "不能", "禁止", "杜绝", "尚未", "并未")
+# Clause separators: Chinese and ASCII punctuation that ends a statement.
+CLAUSE_SPLIT = re.compile(r"[，。；;,、|！？!？]")
+
+# Quoted spans: a claim keyword inside 「...」 / “...” / `...` / "..." is a
+# **mention of the concept**, not an assertion of it. Examples on the real
+# tree (docs/releases/v4.1.0):
+#     "# P1-5：把文档里的「通过」声明绑回可复现的 run"   <- a task title
+#     "本条**不构成任何门禁通过声明**"                    <- a disclaimer
+# Both mention 通过; neither asserts that something passed.
+# The spans are blanked out with spaces so character offsets (and therefore
+# the clause boundaries below) stay correct.
+QUOTED = re.compile(r"「[^」]*」|“[^”]*”|`[^`]*`|\"[^\"]*\"")
+
+
+def _blank(m):
+    return " " * len(m.group(0))
+
+
+scan_line = QUOTED.sub(_blank, line)
+
+# Clause boundaries, computed from the separator positions.
+bounds = []
+start = 0
+for m in CLAUSE_SPLIT.finditer(scan_line):
+    bounds.append((start, m.start()))
+    start = m.end()
+bounds.append((start, len(scan_line)))
+
+for m in CLAIM.finditer(scan_line):
+    clause = scan_line
+    for a, b in bounds:
+        if a <= m.start() < b:
+            clause = scan_line[a:b]
+            break
+    if not any(n in clause for n in NEG):
+        sys.exit(0)   # a positive, un-negated claim
+sys.exit(1)
+PYEOF_CLAIM
+}
+
 # ============================================================
 # 检查函数
 # ============================================================
@@ -168,11 +243,21 @@ check_pass_fail_evidence() {
 
   # 整文档无 provenance 且无 env:blocked 标记 — 逐行检查
   while IFS=: read -r line_num content; do
-    # 跳过注释行和代码块
-    skip_pattern="^#"
-    if grep -qE "$skip_pattern" <<< "$content"; then
-      continue
-    fi
+    # 代码块检测用单独命令
+    #
+    # 2026-11-23（GPT 评审 R1 · G1 行为级缺陷证明）：原来这里还有一条
+    # 「跳过注释行」规则 `^#`。但这是 **Markdown** 文件 —— 在 Markdown 里
+    # 行首的 `#` 是**标题标记**，不是注释。于是下面这两行待遇相同：
+    #
+    #     全部测试通过。        ← 被查 → Type A/B 违规（正确判红）
+    #     ## 全部测试通过        ← 以 `#` 开头 → 整行被跳过 ⇒ 零违规（假阴性）
+    #
+    # 任何一句声明只要写成标题就能免于证据检查 —— 判决取决于行首的标点，
+    # 而不是句子的意思。Markdown 没有行注释语法，所以这条规则没有它想
+    # 跳过的对象，只跳过了标题。
+    #
+    # 代码块由下面那条 `^\`\`\`` 规则单独处理（代码块里的 shell 注释
+    # 确实该跳过）。
     # 代码块检测用单独命令
     if grep -q "^\`\`\`" <<< "$content"; then
       continue
@@ -195,7 +280,19 @@ check_pass_fail_evidence() {
     fi
     has_ci_ref=false
     has_gate_ref=false
-    if grep -qE "(run_|#|ci_run|CI_RUN|log_hash|log-hash)" <<< "$content"; then
+    # 2026-11-23（GPT 评审 R1 · G1 行为级缺陷证明）：原来的判据里有一个
+    # **裸 `#`**，而裸 `#` 是 Markdown 的标题标记。于是同一句伪造声明，
+    # 写成正文时被判成 Type A/B 违规，只要在同一行前面带上一个 Markdown
+    # 标题符就被当成「有 CI 引用」而放行。
+    #
+    # 实测（权威树 8cbde5b6d3，2026-11-23）：
+    #   `全部测试通过。`            ⇒ Type A/B 违规（正确判红）
+    #   `## 全部测试通过`           ⇒ 无任何违规（假阴性）
+    # 两句的语义完全相同，只是后者多了一个标题标记。
+    #
+    # 修法：Issue/PR 引用是 `#[0-9]+`（带数字），标题标记不是。所以判据
+    # 收紧为 `#[0-9]+` —— 仍然认 `#5910` 这类引用，但不再认 `##`。
+    if grep -qE "(run_|#[0-9]+|ci_run|CI_RUN|log_hash|log-hash)" <<< "$content"; then
       has_ci_ref=true
     fi
 
@@ -229,7 +326,7 @@ check_pass_fail_evidence() {
     # 排除教程/分析类文档中的历史引用（降级为警告）
     elif grep -qE "v3\.[0-9]\.[0-9]|历史版本|legacy|过去|已过时" <<< "$content"; then
       add_warn "警告：第 $line_num 行历史版本引用可能需更新: $(echo "$content" | cut -c1-50)"
-    elif grep -qE "PASS|通过|成功|completed|done|PASS" <<< "$content"; then
+    elif evidence_binding_has_positive_claim "$content"; then
       # 已完成声明需要证据
       if [ "$has_ci_ref" = false ] && [ "$has_gate_ref" = false ] && [ "$has_commit_ref" = false ]; then
         add_fail "Type A/B 违规：第 $line_num 行声明无 CI/gate/commit 证据: $(echo "$content" | cut -c1-60)"
@@ -298,6 +395,23 @@ check_fabricated_evidence() {
       elif [ -n "$actual_hash" ]; then
         add_pass "evidence_hash 真实验证通过（log 文件 SHA256）: $doc ($target_file)"
       fi
+    elif [ -n "$target_file" ]; then
+      # 2026-11-23（GPT 评审 R1 · G1 行为级缺陷证明）：文档点名了一个
+      # `| log | <path>` 证据文件，但那个文件在仓库里**不存在**。
+      #
+      # 原形状里这一支落到「self hash 当前快照」比较，于是最多只得到一个
+      # WARN（evidence_hash 与文件快照不匹配）—— 也就是说，一份**引用了
+      # 不存在的日志**的文档只被降级为警告，仍然算 PASS。
+      #
+      # 这正是「缺少证据不通过」被违反的形状：被引用的证据不存在，
+      # 却仍然通过了证据绑定检查。
+      #
+      # 影响面（实测，权威树 8cbde5b6d3，docs/releases/v4.1.0 全量 424 份
+      # 文档）：同时带 `evidence_hash` 与 `| log |` 行的文档 **0 份**，
+      # 所以这条判据在当前树上不产生任何新红 —— 它把一个从未被触发的
+      # 分支从「静默放过」改成「明确判红」。
+      add_fail "Type C 违规: evidence_hash 引用的 log 文件不存在: $target_file ($doc)"
+      add_unverified "evidence log file not found: $target_file in $doc"
     else
       # 没有可验证的 log 路径 — 尝试 commit 时间点的 self hash
       # 查找 evidence_hash 字段附近的 commit 字段
