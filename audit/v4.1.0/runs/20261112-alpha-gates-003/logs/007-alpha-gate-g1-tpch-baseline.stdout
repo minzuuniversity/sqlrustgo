@@ -1,0 +1,43 @@
+
+=== G1 preflight ===
+  [0;32mPASS[0m: hash file parsed: b8854271...
+
+=== G1 step 1/4: cargo test --test tpch_gate_test ===
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.17s
+
+  [0;32mPASS[0m: tpch_gate_test executed (see output above for the 22/22 line)
+
+=== G1 step 2/4: cargo test --test tpch_full_22_test ===
+test tpch_full_22_queries ... ok
+test common::tpch_wire_scope::tests::wire_scope_and_exclusions_cover_every_standard_query ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+  [0;32mPASS[0m: tpch_full_22_test executed
+
+=== G1 step 3/4: cargo test --test tpch_hash_test ===
+test v380_candidate_dump ... ok
+test sqlite_oracle::tests::the_tpch_indexes_are_created ... ok
+test common::tpch_cli_harness::bin_resolver::tests::explicit_env_var_wins_over_every_other_candidate ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_prefers_the_explicit_env_var ... ok
+test common::tpch_cli_harness::bin_resolver::tests::external_tool_resolution_never_invents_an_absolute_path ... ok
+test common::tpch_cli_harness::tests::test_mysql_binary_resolves ... ok
+test common::tpch_wire_harness::tests::consecutive_stagings_must_not_share_a_directory ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+  [0;32mPASS[0m: tpch_hash_test executed
+
+=== G1 step 4/4: python3 tpch_hash_compare.py --check b8854271... ===
+ERROR: cannot find hash in test output
+  [0;31mFAIL[0m: python3 --check failed (hash mismatch)
+
+G1 FAIL: at least one sub-check failed (see above)
