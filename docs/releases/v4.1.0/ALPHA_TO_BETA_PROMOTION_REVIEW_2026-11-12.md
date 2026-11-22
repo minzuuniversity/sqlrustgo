@@ -11,15 +11,34 @@
 
 ## 0. 结论
 
-1. **ALPHA 阶段本线可闭合项已闭合并留证**：ALPHA 门禁清单（10 条）正在按 §7 纪律重跑
-   （run `20261112-alpha-gates-003`，共享 target 软链，避免 coverage 假红）。
-2. **ALPHA→Beta 仍不可由 Worker 单方推进**：剩余硬阻塞项全部落在
+1. **ALPHA 阶段本线可闭合项已闭合并留证**：ALPHA 门禁清单（10 条）已按 §7 纪律重跑完毕
+   （run `20261112-alpha-gates-003`，冻结 `aec1a3673c`，verify OK，
+   evidence_hash `sha256:3cf2c844d2090b3f921fabebd89375daaced5ad4b98c019ad8f46ae5503f2c4a`，
+   wall 1129s，归档 PR #5770）⇒ **8 绿 / 2 红**：
+   `alpha-gate-check-alpha-v410`（ALPHA 清单门禁本体）**绿**、`arch-invariants`/`arch3-no-bypass`/
+   `sql-corpus`/`anti-ignore`/`cargo build`/`cargo test --lib`/`cargo fmt` 全绿；
+   两条红都在裁决域：**coverage**（门禁以 `stage=ga threshold=85%` 跑，与 ALPHA SSOT 阈值口径不一致；
+   实测 L1_8 平均 **29.73%**，parser 9.51% / planner 1.21% 等数值不可信 ⇒ 指向覆盖率测量口径，
+   与 #5537/#5579 同族，逐 crate 实测值已贴到那两条 issue）与 **g1**（`tpch_hash_compare --check`
+   「cannot find hash in test output」⇒ 与 #5688/#5735 同源）。
+   顺带修掉一处**清单缺陷**：第三份清单 `commands_alpha_gates_003.yaml` 与仓内既有的 001/002 只差一处 ——
+   聚合门禁臂预算 **1800 → 10800s**（该门禁内部跑 llvm-cov 覆盖率、实测 >30min，1800s 会把它杀掉
+   ⇒ **门禁逐项结果全丢**，「预算不足」被记成「门禁不过」）。
+2. **合入进展（2026-11-12 晚）**：Owner 已合入本线 **11 个 PR**
+   （#5753 #5754 #5755 #5756 #5757 #5761 #5762 #5763 #5764 #5765 #5766）⇒ 新 tip
+   `2792759137efe492919d30953d451370350addcc`；各 head commit 均经
+   `git merge-base --is-ancestor` 校验在 develop 历史中（§5 集成判据 ✔）。
+   其中四条 issue（#5498 / #5503 / #5711 / #5712）的 **§5 关闭包**已回填到各自 issue
+   （PR URL + head commit + ancestor 校验 + 修复前后证据 + 命令/退出码/计数 + 验收逐项勾选）
+   ⇒ **待 Owner 执行关闭**（Agent 不代关）。仍 open 的本线 PR：#5758 #5759 #5760 #5767
+   #5769 #5770（6 个）。**第二轮 campaign 已在新 tip 启动**（run `20261112-ab-002`，50 臂）。
+3. **ALPHA→Beta 仍不可由 Worker 单方推进**：剩余硬阻塞项全部落在
    **Owner 裁决域**（Reviewer 指派、g1 口径、RC-B1 Phase 2、台账口径）与 **CI/infra 域**
    （runner 镜像、docker 地址池、runner 服务依赖）。计划 §6 要求「P0/P1 blockers = 0 OPEN
    且有合并 PR」——本线已备好 **15 个提交-only PR**，但**合并权与指派权不在本线**。
-3. **本复核给出决策就绪包**（§7）：5 组阻塞，每组给出「现状 / 三个选项 / 代价 / 建议 /
+4. **本复核给出决策就绪包**（§7）：5 组阻塞，每组给出「现状 / 三个选项 / 代价 / 建议 /
    不裁的后果」，供 Owner 一次裁定即可解锁后续自动执行。
-4. **今日自查发现并已纠正 6 项**（§4）：3 处已发布数字、1 处管道正确性缺陷、1 处引擎语义缺陷、
+5. **今日自查发现并已纠正 8 项**（§4）：3 处已发布数字、1 处管道正确性缺陷、1 处引擎语义缺陷、
    1 处超时死锁、1 处看板绑定口径缺陷。
 
 ---
@@ -71,10 +90,10 @@
 | AB-04 | 6 绿 / 0 红 | — | #5760 顺带修 `apply_committed_log` 的裸表名键（广播删除/更新此前静默丢失） | — | — |
 | AB-05 | 2 绿 / 3 红 | `ab05-bustubx-btrack`（B 轨 gate 因 Phase 2 未实现硬编码 exit 1）；`ab05-b2-per-binary`（529 二进制仅 `tls_read_spin_5099` 红）；`ab05-g1-tpch` | #5757 B 轨 compat 语料（oracle 本机 sqlite3 3.54.0 再生，6/6 周已证）；#5763 修掉 `tls_read_spin_5099` 的 darwin 平台红（pristine tip 同命令 FAILED，本分支 1/1 绿） | B 轨 gate 的 Phase 2 执行实现 | **Owner**（gate 脚本域） |
 | AB-06 | 1 绿 / 0 红 | — | —（本轮 coverage 绿；ALPHA 重跑按 §7 纪律用共享 target 防假红） | — | — |
-| AB-07 | 3 绿 / 1 红 | `ab07-soak-1h`（脚本硬编码作者机路径） | **v4.1.0 首个有效 1h SOAK**：13260 queries/16 线程/60min、panics=0、RSS 126–153MB、心跳 241 beats 无缺口且闭合、summary.json 落盘（归档 PR #5766，run `20261112-soak-ab003`）；机制 #5753（心跳 emitter/checker + 监督 wrapper）、#5755（路径可移植 + 未加载 fail-closed） | **24h runner 可执行**（依赖 CI 执行面） | **CI/infra** |
+| AB-07 | 3 绿 / 1 红 | `ab07-soak-1h`（脚本硬编码作者机路径） | **v4.1.0 首个有效 1h SOAK**：13260 queries/16 线程/60min、panics=0、RSS 126–153MB、心跳 241 beats 无缺口且闭合、summary.json 落盘（归档 PR #5766，run `20261112-soak-ab003`）；机制 #5753（心跳 emitter/checker + 监督 wrapper）、#5755（路径可移植 + 未加载 fail-closed） | **24h runner 可执行**：仓内路径已证可执行（PR #5769：短段镜像 ⇒ 1 000 行播种、worker **0 errors**、指标列全为数值；并修掉 runner 的五处缺陷——**不建工作负载表**导致 1122/1122 全错却照报 qps、qps 取到 chatter 行、日志二进制未用 `grep -a`、qps 正则与实际格式不符、`ps -o nlwp=` 在 macOS 写出字段名列表）；CI runner 本身仍不可用 | **CI/infra** |
 | AB-08 | 3 绿 / 0 红 | — | 管道 5 处硬化（负载守卫 / 逐 bench 超时 + 诚实 NOT-RUN / 进程组 kill 修管道死锁 / 探针自排除 / 指标键按 bench 命名空间）+ 13 臂守卫自测；首次六核全集测量 5/6 目标、96 唯一组（bench_cbo 诚实 NOT-RUN），归档 PR #5766 | **正式基线 promote**：需**完全静默窗口**（实测并行开发时 load1=15.68 ⇒ 守卫拒绝；负载下的基线会掩盖回归） | 本线（窗口）+ **CI/infra**（容器天然独占） |
 | AB-09 | 2 绿 / 1 红 | `ab09-no-secrets`（v312-59 证据 JSON `local-git:` 哈希误报） | #5381 仓库侧复核 rc=0 全 PASS（5 脚本 env-only + 缺参 fail-closed）；证据文件覆写副作用已披露并还原（#5577 同类），第二轮清单把该臂输出重定向到 /tmp | 误报项在已封存证据 JSON 内 + 检测器豁免属裁决域 | **Owner** |
-| AB-10 | 1 绿 / 0 红 | — | 看板 SSOT 129 行 + 50 臂第二轮清单 + 跑法要点（PR #5765）；本线 15 个提交-only PR 已备 | **合并 PR**（g3 receipts 域，Worker 不自合并）+ 独立 Reviewer 回执（Hub #133） | **Owner** |
+| AB-10 | 1 绿 / 0 红 | — | 看板 SSOT **130 行**（含 ALPHA 门禁重跑行）+ 50 臂第二轮清单 + 跑法要点（PR #5765）；本线 **17** 个提交-only PR 已备（含证据归档 PR #5770） | **合并 PR**（g3 receipts 域，Worker 不自合并）+ 独立 Reviewer 回执（Hub #133） | **Owner** |
 
 **汇总**：9 红中，**3 红可由本线已备好的 PR 消除**（`ab05-b2-per-binary` ← #5763；
 `ab07-soak-1h` ← #5753+#5755；`ab02-test-all` 的唯一失败属 g1 基线 ⇒ 需 #5688 裁决），
@@ -96,7 +115,7 @@
 | #4640 短 INSERT 静默补 NULL | #5767 | 新增 6 判别用例；**语料 22 文件/3 红/88.0% → 23 文件/2 红/92.0%** |
 | #5679/#5686 WAL group commit | 已在 tip 修复 | 8/8 ×5 确定性绿；建议 Owner 关闭 |
 | #5548/#5549 契约未验证 / 机器依赖 flaky | 已在 tip 修复 | e2e 54/54（契约 2 真被执行）；负载机 3 × 40/0 绿；建议 Owner 关闭 |
-| #5528 musl 缺静态 zlib | 仓库侧已在 tip（`d914c4caaf`） | 特征统一已核；链接层验证需 CI 镜像；建议 Owner 关闭（残余=镜像/工具链固定） |
+| #5567 CI fixture 步骤无 NOT RUN 兜底 | 已在 tip（`scripts/ci/prepare_tpch_fixture_ci.sh`，两 job 共用一份实现） | 三模式实测：正常（8 表/86482 行、无 NOT-RUN 记录、rc=0）/ 环境阻塞（PATH 无 python3 ⇒ NOT RUN 记录 + rc=0）/ 生成器坏（前提齐 ⇒ **rc=1** 并明说「code regression, not an environment block」）| | #5528 musl 缺静态 zlib | 仓库侧已在 tip（`d914c4caaf`） | 特征统一已核；链接层验证需 CI 镜像；建议 Owner 关闭（残余=镜像/工具链固定） |
 | #5381 明文凭据 | 仓库侧已闭环 | 检测器 rc=0 全 PASS；残余=凭据轮换（Owner/infra） |
 
 ### 3.2 Owner 裁决域（只报不裁）
@@ -136,6 +155,8 @@
 | 3 | **AB-08 超时只 kill 直接子进程** ⇒ `cargo bench` 的孙进程仍持有 stdout 管道 ⇒ `communicate()` 永久阻塞 ⇒ **超时永不生效**（正是该预算要防的挂死） | bench 挂死无法转成 NOT-RUN | 独立进程组 + `killpg`（commit `1d209857b9`），实测 4s 预算 ⇒ 4.0s 返回 rc=124 | 同上 |
 | 4 | **INSERT 短式（VALUES 列表长度 < 表列数）被静默补 NULL** ⇒ 打错的 INSERT 丢列仍成功；而给多值却报错 ⇒ 两方向不一致 | 静默数据损坏；与 SQLite/MySQL 相悖；仓内 SQLite 官方语料 `insert__test_insert_invalid.test` 期望报错 | PR #5767（两处：VALUES 短式与 `INSERT…SELECT` 短式；显式列清单形式不变） | 语料 **22/3 88.0% → 23/2 92.0%**；sql-corpus 91/0；6 判别用例绿 |
 | 5 | 看板追加行会**加重 AB-01 债**（debt 1216→1219、ambiguous 34→37）：`evidence_inventory` 的强绑定只认 `run:<id>` 形式 | ALPHA 的 AB-01 会因我的改动更红 | 两行改 `run:<id>` 强绑定形式；把「先合证据 run、再合看板行」的**合并顺序**写进 §5.1 并升级给 Owner | `STRONG_RE` 规则 + 实测前后 debt |
+| 7 | **我本次合入使 AB-01 债 +15**：tip `aec1a3673c` 测得 debt 1216 / unbound 1182 / ambiguous 34；Owner 合入 11 个 PR 后的新 tip `2792759137` 为 **debt 1231 / unbound 1193 / ambiguous 38**（台账基线 1144）。逐文件归因：本复核文档 **+12**（11 unbound + 1 ambiguous）、看板 MD +若干。机制：`evidence_inventory` 的强绑定**逐行**判定（`run[:：]<run-id>` 形式），且看板行会被**渲染成 MD 的多行** ⇒ 一个行级标记只能覆盖其中一行 | ①不隐瞒：债的增加已如实计量并写进本复核；②降本路径：把新增 claim 行的证据改写成点名 `run:<id>` 的形式（待第二轮 campaign run 全绿后，它的 run 才是「clean」run，绑定才成立）；③**口径归属**：债的计量与台账口径属 #5603（Owner 裁决域），本线不自行放宽 |
+| 8 | 我一度怀疑「新增未绑定 claim」判据是 fail-open（`diff_claims` 引用了未定义的 `claim_re_re`）⇒ **自查后不成立**：该名字是 `main()` 里赋值的全局，脱离 `main()` 直接调用才会触发；实际 verify 路径**正常产出** `unbound-new-claim` findings ⇒ **不上报该伪缺陷**，此处留痕以免下一轮再踩 | 已排除 | `evidence_inventory.py:272-274`（全局赋值）+ verify 输出的实际 findings |
 | 6 | AB-01 的 `findings=131` 的真实构成此前被我归到「g1 家族」——实测其主因是 **unbound 1182 + ambiguous 34 + debt 1216**（claim 绑定/债务口径），与 g1 基线是**两件事** | 归因不准会把 Owner 引向错误的裁定对象 | 本复核 §2/§3.1 已按实测改写归因 | `evidence_inventory.py verify` 的 JSON 输出 |
 
 ---
@@ -214,7 +235,7 @@ hub 更新。计划 §3 要求「修复后必须新建 `source_run` 并重跑受
 - AB-08 首次六核全集：`audit/v4.1.0/runs/20261112-ab08-core3/`（PR #5766）。
 - ALPHA 门禁清单重跑：`20261112-alpha-gates-003`（本线执行中）。
 - 第二轮 campaign 清单：`audit/v4.1.0/commands_ab_002.yaml`（50 臂，PR #5765）。
-- 本线 15 个提交-only PR：#5753–#5767。
+- 本线 17 个提交-only PR：#5753–#5767、#5769（168h runner 路径）、#5770（三份证据归档：AB-07 soak / AB-08 首测 / ALPHA 门禁重跑）。
 - 复核评论：sqlrustgo#5117（campaign 总账）、#5507、#5498、#5503、#5711、#5712、#5548、#5549、
   #5679、#5686、#5528、#4640、#5381；Hub 看板条目（#239/#243/#251/#253/#254）。
 
