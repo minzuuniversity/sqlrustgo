@@ -108,7 +108,6 @@ pub struct WalStorage<S: StorageEngine, T: WalManager> {
     /// Monotonically increasing LSN counter for WAL entries.
     /// Each `append_wal_entry` increments this and assigns the value to the entry.
     /// `AtomicU64` so concurrent appends don't race.
-    next_lsn: AtomicU64,
     /// #3223 Phase 1: Active transaction set with their last WAL LSN.
     /// Populated on `begin_transaction` (insert), drained on
     /// `commit_transaction`/`rollback_transaction` (remove).
@@ -136,7 +135,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             pending_flush_count: std::sync::atomic::AtomicU64::new(0),
             checkpoint_manager: None,
             current_tx_id: AtomicU64::new(0),
-            next_lsn: AtomicU64::new(0),
             active_txs: Mutex::new(HashMap::new()),
         })
     }
@@ -166,7 +164,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             pending_flush_count: std::sync::atomic::AtomicU64::new(0),
             checkpoint_manager: None,
             current_tx_id: AtomicU64::new(0),
-            next_lsn: AtomicU64::new(0),
             active_txs: Mutex::new(HashMap::new()),
         })
     }
@@ -193,7 +190,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             pending_flush_count: std::sync::atomic::AtomicU64::new(0),
             checkpoint_manager: Some(checkpoint_manager),
             current_tx_id: AtomicU64::new(0),
-            next_lsn: AtomicU64::new(0),
             active_txs: Mutex::new(HashMap::new()),
         })
     }
@@ -241,7 +237,6 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             pending_flush_count: std::sync::atomic::AtomicU64::new(0),
             checkpoint_manager,
             current_tx_id: AtomicU64::new(0),
-            next_lsn: AtomicU64::new(0),
             active_txs: Mutex::new(HashMap::new()),
         })
     }
@@ -306,17 +301,45 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
             .unwrap_or_default()
     }
 
-    /// Append a WAL entry with a monotonically increasing LSN.
-    /// Returns the assigned LSN.
+    /// Append a WAL entry and return the LSN the manager stamped it with.
+    ///
     /// PR-830F: This is the single chokepoint for LSN assignment;
     /// without it, `current_lsn()` returns 0 and checkpoint advance never triggers.
-    fn append_wal_entry(&mut self, mut entry: WalEntry) -> SqlResult<u64> {
-        let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
-        entry.lsn = lsn;
+    ///
+    /// The WAL manager OWNS the LSN space: it stamps the entry and
+    /// reports the number back. This layer used to stamp its own counter
+    /// instead, which produced **two** LSN spaces over one shared log —
+    /// `self.next_lsn` counted only the entries this layer appended,
+    /// while the manager counted every entry that went through the shared
+    /// handle (the storage layer appends its own). The two advanced at
+    /// different rates, so the checkpoint's LSN and the truncation point
+    /// were expressed in different spaces, `truncate_before` kept an
+    /// ever-growing tail, and the log grew without bound. Every commit
+    /// then rewrote the whole log, making the write cost O(log size) —
+    /// quadratic over a long run.
+    fn append_wal_entry(&mut self, entry: WalEntry) -> SqlResult<u64> {
         // #5317: see `force_sync` for the rationale; same helper
         // applies here.
-        self.wal_do(|w| w.append(entry))?;
-        Ok(lsn)
+        let lsn = self.wal_do(|w| w.append(entry))?;
+        Ok(lsn.unwrap_or(0))
+    }
+
+    /// The highest LSN it is safe to truncate below.
+    ///
+    /// Everything below the checkpoint is already in the on-disk snapshot,
+    /// so those log entries are redundant and may be dropped. A
+    /// transaction that is still running, however, has entries below that
+    /// point which are in NO snapshot — dropping them would lose that
+    /// transaction's data. The point is therefore capped at the oldest
+    /// running transaction's first LSN.
+    fn safe_truncation_lsn(&self, checkpoint_lsn: u64) -> u64 {
+        let oldest_active = self
+            .active_txs
+            .lock()
+            .ok()
+            .and_then(|active| active.values().min().copied())
+            .unwrap_or(u64::MAX);
+        checkpoint_lsn.min(oldest_active)
     }
 
     /// BLK-2: this is now the ONLY way the `*_transaction_lockfree(&self)`
@@ -601,6 +624,23 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> WalStorage<S, T> {
 }
 
 impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalStorage<S, T> {
+    /// V4.1.0 / #5412: forward the change-stamp question to the inner
+    /// engine.
+    ///
+    /// The WAL layer adds no visibility of its own: its scans are the
+    /// inner engine's scans, its writes are the inner engine's writes, and
+    /// WAL replay happens at start-up, before this layer wraps anything.
+    /// So the inner engine's counter is the answer.
+    fn table_change_stamp(&self, table: &str) -> u64 {
+        self.inner().table_change_stamp(table)
+    }
+
+    /// V4.1.0 / #5412: forward the bump to the inner engine, so the
+    /// counter the leaf keeps is the one every layer reports.
+    fn bump_change_stamp(&self, table: &str) {
+        self.inner().bump_change_stamp(table);
+    }
+
     fn scan(&self, table: &str) -> SqlResult<Vec<Record>> {
         self.inner().scan(table)
     }
@@ -1130,11 +1170,10 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
         let tx_id = self.current_tx_id.load(Ordering::Relaxed);
-        // Use WalStorage's own LSN (self.next_lsn) for checkpoint + truncation,
-        // NOT self.wal.current_lsn() which belongs to the WalWriter and can
-        // diverge after truncation (WalWriter is recreated with LSN=0).
-        // append_wal_entry overrides entry.lsn with self.next_lsn, so the
-        // returned LSN is the authoritative value.
+        // The WAL manager stamps every entry and reports the LSN back,
+        // so the commit LSN, the checkpoint's LSN and the truncation
+        // point all live in ONE space — the space of the LSNs actually
+        // written to the log file.
         let commit_lsn = if self.wal_enabled {
             let entry = WalEntry {
                 database_name: None,
@@ -1251,7 +1290,8 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
             if let Some(cp) = &self.checkpoint_manager {
                 if let Ok(guard) = cp.read() {
                     if let Some(cp_lsn) = guard.last_checkpoint_lsn() {
-                        let _ = self.wal_do(|w| w.truncate_before(cp_lsn));
+                        let truncate_lsn = self.safe_truncation_lsn(cp_lsn);
+                        let _ = self.wal_do(|w| w.truncate_before(truncate_lsn));
                     }
                 }
             }
@@ -1380,11 +1420,10 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .as_secs(),
                 table_name: None,
             };
-            let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
-            let mut entry = entry;
-            entry.lsn = lsn;
-            // #5317: route through `wal_do`.
-            self.wal_do(|w| w.append(entry))?;
+            // #5317: route through `wal_do`. The manager stamps the
+            // entry and reports the LSN back, so this layer and the log
+            // file share ONE LSN space.
+            let lsn = self.wal_do(|w| w.append(entry))?.unwrap_or(0);
             if tx_id != 0 {
                 if let Ok(mut active) = self.active_txs.lock() {
                     active.insert(tx_id, lsn);
@@ -1420,11 +1459,10 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .as_secs(),
                 table_name: None,
             };
-            let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
-            let mut entry = entry;
-            entry.lsn = lsn;
-            // #5317: route through `wal_do`.
-            self.wal_do(|w| w.append(entry))?;
+            // #5317: route through `wal_do`. The manager stamps the
+            // entry and reports the LSN back, so this layer and the log
+            // file share ONE LSN space.
+            let _lsn = self.wal_do(|w| w.append(entry))?.unwrap_or(0);
         }
         // #4974: let the inner engine commit **before** the tx ids are
         // cleared.
@@ -1496,11 +1534,10 @@ impl<S: StorageEngine + 'static, T: WalManager + 'static> StorageEngine for WalS
                     .as_secs(),
                 table_name: None,
             };
-            let lsn = self.next_lsn.fetch_add(1, Ordering::Relaxed) + 1;
-            let mut entry = entry;
-            entry.lsn = lsn;
-            // #5317: route through `wal_do`.
-            self.wal_do(|w| w.append(entry))?;
+            // #5317: route through `wal_do`. The manager stamps the
+            // entry and reports the LSN back, so this layer and the log
+            // file share ONE LSN space.
+            let _lsn = self.wal_do(|w| w.append(entry))?.unwrap_or(0);
             self.wal_do(|w| w.sync())?;
         }
         // #4974: same delegation omission as the commit path, with the same

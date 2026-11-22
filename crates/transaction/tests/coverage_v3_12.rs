@@ -173,6 +173,7 @@ fn cov_savepoint_duplicate_name_is_err() {
 fn cov_savepoint_add_undo() {
     let mut sp = SavepointManager::new();
     sp.add_undo(sqlrustgo_transaction::savepoint::UndoRecord::Insert {
+        db: "default".to_string(),
         table: "t".to_string(),
         key: vec![sqlrustgo_types::Value::Integer(1)],
         row: vec![sqlrustgo_types::Value::Integer(1)],
@@ -182,8 +183,8 @@ fn cov_savepoint_add_undo() {
 
 #[test]
 #[allow(deprecated)]
-    // rollback_to_noop 已 deprecated 但本测试正是其**过渡契约**的守卫
-    // （调用面与行为在删除前必须保持）⇒ allow(deprecated)，不改测新 API。
+// rollback_to_noop 已 deprecated 但本测试正是其**过渡契约**的守卫
+// （调用面与行为在删除前必须保持）⇒ allow(deprecated)，不改测新 API。
 fn cov_savepoint_rollback_noop_existing() {
     let mut sp = SavepointManager::new();
     sp.savepoint("s1".to_string()).unwrap();
@@ -194,8 +195,8 @@ fn cov_savepoint_rollback_noop_existing() {
 
 #[test]
 #[allow(deprecated)]
-    // rollback_to_noop 已 deprecated 但本测试正是其**过渡契约**的守卫
-    // （调用面与行为在删除前必须保持）⇒ allow(deprecated)，不改测新 API。
+// rollback_to_noop 已 deprecated 但本测试正是其**过渡契约**的守卫
+// （调用面与行为在删除前必须保持）⇒ allow(deprecated)，不改测新 API。
 fn cov_savepoint_rollback_noop_missing_is_err() {
     let mut sp = SavepointManager::new();
     assert!(sp.rollback_to_noop("nonexistent").is_err());
@@ -207,6 +208,7 @@ fn cov_savepoint_rollback_to_with_undo_closure() {
     let mut sp = SavepointManager::new();
     sp.savepoint("s1".to_string()).unwrap();
     sp.add_undo(UndoRecord::Insert {
+        db: "default".to_string(),
         table: "t".to_string(),
         key: vec![sqlrustgo_types::Value::Integer(1)],
         row: vec![sqlrustgo_types::Value::Integer(1)],

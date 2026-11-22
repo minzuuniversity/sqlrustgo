@@ -1,0 +1,56 @@
+# audit/v4.1.0/commands_closing_refs_20261116.yaml
+#
+# 归档 run `20261116-closing-refs-001` 的命令清单 —— #5797 关单判据执行点。
+#
+# 五条命令分别覆盖：
+#   ① 正臂：判据自身的反向变异自证（16 臂）⇒ 必须全绿
+#   ② 实跑臂：5 条「已合并且正文合规声明」的 issue ⇒ 判据必须判可关单
+#   ③ 对照臂：4 条**没有**修复 PR 的 issue ⇒ 判据必须拦住（预期非 0）
+#   ④ 取证臂：Gitea issue payload 里**没有** closedByPullRequestsReferences
+#             这个字段（它是 GitHub 专有字段）⇒ Step 1 的字面判据无执行点
+#   ⑤ 分母臂：门禁分母 check_n 仍必须是 168（本工具不是 check_*、不进 STAGE_CONFIG）
+#
+# ③ 预期 **非 0 退出**（那是对照臂存在的意义：判据必须能拦住没修的 issue）。
+- id: closing-refs-mutation-selftest
+  name: 正臂：判据的反向变异自证（7 条变异臂精确翻红 + 6 条文法臂 + C1 非承重回归 + Closes 只标记）⇒ 全部符合预期
+  cmd: >-
+    python3 audit/v4.1.0/issue_closing_refs.py mutation-selftest
+  cwd: .
+  timeout_sec: 300
+- id: closing-refs-live-pass-set
+  name: 实跑臂：#5498/#5503/#5711/#5712（已修未关）+ #5774 ⇒ 判据须判「可关单」
+  cmd: >-
+    python3 audit/v4.1.0/issue_closing_refs.py --issue 5498 --issue 5503 --issue 5711 --issue 5712 --issue 5774
+  cwd: .
+  timeout_sec: 600
+- id: closing-refs-live-control-set
+  name: 对照臂：#5520/#5702/#5717/#5598（无合规修复 PR）⇒ 判据须判「禁止」；本臂预期非 0 退出
+  cmd: >-
+    python3 audit/v4.1.0/issue_closing_refs.py --issue 5520 --issue 5702 --issue 5717 --issue 5598;
+    rc=$?; echo "control-set exit=$rc （预期非 0：判据必须能拦住没修的 issue）"; exit $rc
+  cwd: .
+  timeout_sec: 600
+- id: closing-refs-field-absence-evidence
+  name: 取证臂：Gitea 的 issue payload 里根本没有 closedByPullRequestsReferences 这个键（GitHub 专有字段）⇒ Step 1 的字面判据在本仓无执行点；同一条命令打印 #5498 的 timeline pull_ref 抽样
+  cmd: >-
+    python3 -c "import json,urllib.request,subprocess;
+    B='http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo';
+    p=subprocess.run(['git','credential','fill'],input=b'url=http://192.168.0.252:3000\n\n',capture_output=True);
+    tok=[l.split('=',1)[1] for l in p.stdout.decode().splitlines() if l.startswith('password=')][0];
+    get=lambda u: json.loads(urllib.request.urlopen(urllib.request.Request(u,headers={'Authorization':'token '+tok}),timeout=40).read().decode());
+    d=get(B+'/issues/3186');
+    print('== 已关闭 issue #3186 的 payload ==');
+    print('  closedByPullRequestsReferences in payload:', 'closedByPullRequestsReferences' in d);
+    print('  相关字段:', [k for k in d if any(t in k.lower() for t in ('clos','ref','pull'))]);
+    print('  state=', d.get('state'), 'closed_at=', d.get('closed_at'));
+    print('== #5498 timeline 的 pull_ref 条目 ==');
+    [print('   PR #%s state=%s' % ((e.get('ref_issue') or {}).get('number'), (e.get('ref_issue') or {}).get('state'))) for e in get(B+'/issues/5498/timeline?limit=50') if isinstance(e,dict) and e.get('type')=='pull_ref']"
+  cwd: .
+  timeout_sec: 300
+- id: closing-refs-gate-denominator
+  name: 分母臂：门禁分母 check_n 必须仍是 168（新工具不叫 check_*、不进 STAGE_CONFIG ⇒ 分母不动）
+  cmd: >-
+    python3 scripts/gate/gov_probe.py metrics | python3 -c "import sys,json;
+    [print('check_n =', json.loads(l)['check_n']) for l in sys.stdin if l.strip() and 'check_n' in json.loads(l)]"
+  cwd: .
+  timeout_sec: 300

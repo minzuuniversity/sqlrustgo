@@ -61,6 +61,32 @@ mkdir -p "$CACHE_VOLUME" 2>/dev/null || true
 case "$MODE" in
 restore)
     # A cache restore is never allowed to fail the job.
+    # ── 第 106 轮：crates.io 出站预热 ─────────────────────────────────────
+    # 12625 两轮铁证：冷缓存 + 出站 'transfer too slow: 1 byte/120s' ×10 ⇒
+    # protoc-bin-vendored 拉不下来 ⇒ lint-build 必红（与代码无关）。
+    # ⇒ 把本机全量 .crate cache（Cargo.lock 的 516 个 registry 依赖）
+    #   打包挂为 release asset，restore 时 wget 并入 —— cargo 逐 crate
+    #   校验 hash，不新鲜无害；幂等（已有 protoc 家族即跳过 198MB 下载）。
+    #   best-effort：下载失败绝不 fail job（同 no-cache 语义）。
+    PREWARM_MARK="$CARGO_BASE/registry/cache/index.crates.io-1949cf8c6b5b557f/protoc-bin-vendored-3.3.0.crate"
+    PREWARM_URL="${CI_CARGO_CACHE_PREWARM_URL:-http://192.168.0.252:3000/attachments/351f8b37-e6f2-48d1-9689-01ded2fe9537}"
+    if [ ! -f "$PREWARM_MARK" ]; then
+        echo "cache: prewarm from release asset (one-shot, ~200MB) ..."
+        T="$(mktemp -t cargoprewarm.XXXXXX.tgz)"
+        if wget -q -O "$T" "$PREWARM_URL" 2>/dev/null || curl -fsSL -o "$T" "$PREWARM_URL" 2>/dev/null; then
+            mkdir -p "$CARGO_BASE/registry" "$CACHE_VOLUME/registry"
+            if tar xzf "$T" -C "$CARGO_BASE/registry/" 2>/dev/null; then
+                # 双写进共享卷：下一轮 restore 即有（无网也命中的持久化路径）
+                cp -a "$CARGO_BASE/registry/cache/." "$CACHE_VOLUME/registry/cache/" 2>/dev/null || true
+                echo "cache: prewarm OK ($(du -sh "$CARGO_BASE/registry/cache" 2>/dev/null | cut -f1))"
+            else
+                echo "cache: prewarm tar extract failed — continuing"
+            fi
+        else
+            echo "cache: prewarm download failed — continuing without it"
+        fi
+        rm -f "$T"
+    fi
     if [ ! -d "$CACHE_VOLUME/registry" ]; then
         echo "cache: no cached registry at $CACHE_VOLUME — starting cold (this is not an error)"
         exit 0

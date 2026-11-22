@@ -1,8 +1,8 @@
 # ADR-008 Exception: v3.11.0 G4 TPC-H SF=1 Wire Test Deferral
 
-> **Status**: PROPOSED (2026-08-09)
-> **Deciders**: Hermes Agent (claude-macmini) + User
-> **Date**: 2026-08-09
+> **Status**: **APPROVED (2026-11-17 重新签发)**
+> **Deciders**: Hermes Agent (claude-macmini) + User + **项目属主（2026-11-17 重新签发批准）**
+> **Date**: 2026-08-09（原始起草）｜ **重新签发：2026-11-17**
 > **Supersedes**: None (first exception under [ADR-008 §Policy 2](../../governance/adr/ADR-008-test-claim-transparency.md))
 > **Authorising ADR**: [ADR-008-test-claim-transparency.md](ADR-008-test-claim-transparency.md) §Policy 2
 > **Related**:
@@ -58,7 +58,21 @@ the close-out plan in [`docs/releases/v3.11.0/G4_WIRE_TEST_CLOSE_OUT_PLAN.md`](.
 
 ### Deadline
 
-**2026-09-01** (23 days from 2026-08-09). On this date the exception auto-expires
+**2026-12-31**（自 **2026-11-17 重新签发** 起重新计时；原定 2026-09-01 的
+deadline 已在例外**从未签署**的状态下过期 —— 本次为重新签发，不是复活）。
+
+### 重新签发记录（2026-11-17）
+
+- **原状**：`Status: PROPOSED`（2026-08-09 起草）⇒ **从未签署**；deadline 2026-09-01
+  在未签署状态下自动过期。
+- **本次**：属主明确授权「批准所有的授权和签字」⇒ 本例外**重新签发**，自重新签发日
+  起重新计时，deadline = 2026-12-31。
+- **close-out 条件当前状态（如实登记，不因重新签发而声称已满足）**：本例外覆盖的
+  SF=1 用例仍处于 `#[ignore]` 下（ADR-008 §Policy 2 允许的状态），
+  `tests/baseline/gate_test_baseline.json` 的 `total_ignore_hits` 实测仍为 **2**
+  ⇒ **例外继续生效**。
+- **不 bump 基线计数、不 un-ignore**：AFP —— 无实跑证据不得声称通过；SF=1 夹具与
+  ≤ 300 s 的实跑证据本机不具备 ⇒ 计数**保持 2**。
 and G4 must satisfy strict PASS unless renewed by a successor exception ADR.
 
 ### Owner

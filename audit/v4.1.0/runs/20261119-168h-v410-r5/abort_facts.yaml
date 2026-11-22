@@ -1,0 +1,68 @@
+run_id: 20261119-168h-v410-r5
+attempt_dir: attempt-20261119T044204Z
+host: gaoyuanai-HPZ6G4
+port: 3414
+frozen_commit: 64269eaa0848c4d47485d1f45b1b91779502a089
+binary_sha256: 4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94
+started_utc: '2026-11-19T04:45:04Z'
+planned_end_utc: '2026-11-26T04:45:04Z'
+stopped_utc: '2026-11-19T16:15:36Z'
+elapsed_s: 41590
+planned_s: 604800
+completion_pct: 6.88
+stopped_by: mcode-macmini 线（属主授权：三件事交专家决定、只要完整 GA 结果、持续推进）
+stop_cause: agent_initiated_stop
+stop_reason: '独占性第 5 次确认 VIOLATED 且判据⑤不满足 ⇒ 本轮不可能是合格轮；且 GA-SOAK-38 的 tip 冻结窗口只冻结带
+  crates/ 影响的合并，#5892（动 crates/）需解除冻结；r5 结论针对不含 #5412 修复的冻结提交，对 GA 无效'
+expert_adjudication: 双专家（deepseek-web + chatGPT-web，同一事实集）就 Q1 一致裁决「立即合并」，前置条件为「结束
+  r5 并确认冻结窗口解除」
+queries: 1260501
+errors: 4
+error_rate_pct: 0.0003
+error_window_utc:
+- '2026-11-19T15:20:43Z'
+- '2026-11-19T15:20:58Z'
+# 【2026-11-20 时区订正】原值误写为 '2026-11-19T23:20:43Z' / '23:20:58Z'。
+# metrics.csv 的 ts 列是**宿主本地时间（UTC+8）**，不是 UTC：首行 12:42:21（elapsed 15s）
+# 减 8h ⇒ 04:42:21Z，与 heartbeat start 04:42:04Z / 末拍 16:15:26Z / stopped 16:15:36Z 全部吻合；
+# 时间轴 2715 行单调无倒退。订正后与 SOAK 事件 SOAK-R5-FAIL-001 所述窗口一致。
+# 归因结论不变（仍是宿主 CPU 争用）；原始证据 metrics.csv 未被修改。
+# 订正依据：docs/releases/v4.1.0/evidence/SOAK_R5_FAIL_001_TRIAGE_2026-11-20.md §2
+error_window_utc_original_mistaken:
+- '2026-11-19T23:20:43Z'
+- '2026-11-19T23:20:58Z'
+error_window_host_load1:
+- 33.8
+- 33.44
+error_window_host_busy:
+- 22
+- 3
+error_attribution: 4 笔错误集中在一个 15 秒窗口，窗口内 host_load1 33.8 / 22 个忙进程 ⇒ 与宿主争用相关，非服务端缺陷（panic_count
+  全程 00、error_high 全程 0、server.log 无崩溃标记）
+panic_count_max: '00'
+panic_samples_nonzero: 0
+error_high_samples_nonzero: 0
+heartbeat_beats: 2766
+heartbeat_alive_false: 0
+last_beat_utc: '2026-11-19T16:15:26Z'
+rss_mb_first: 190.3
+rss_mb_last: 1359.3
+rss_mb_peak: 1428.2
+fd_count_last: 46
+host_busy_samples: 2715/2715
+host_busy_pct: 100.0
+host_load1_peak: 39.62
+exclusive_ownership: VIOLATED
+ga_eligibility: NOT-EVALUATED
+criterion_5_0_error: NOT_MET (4 errors; 且 0 错门槛被 4 笔错误突破)
+stability_report_caveat: 自动生成的 STABILITY_REPORT.md 判「FAIL — server crashed during
+  the soak run」，该结论是 Agent 停轮导致的 artifact（停轮时 server/driver 自然不在 ⇒ alive at end=0）；权威证据为
+  panic_count 全程 00、heartbeat 2766 拍无 alive=false、server.log 300 B 无崩溃标记 ⇒ 本轮无崩溃
+run_status: STOPPED_NO_GA_ELIGIBILITY
+artifacts_committed: true
+artifacts_dir: audit/v4.1.0/runs/20261119-168h-v410-r5
+successors:
+  note: '本轮终止后，#5892（修 #5412）可解除 tip 冻结窗口合入；最终代码树需重跑 35 项 GA 门禁 + 全新 168h SOAK'
+  r6: 待起跑（最终代码树冻结后）
+residual_on_host: r3 的 data_size_sampler.py（PID 259534）仍在跑 —— 非本轮所起，按「不得停掉别人起的 SOAK
+  轮次」纪律不动，仅登记

@@ -242,12 +242,30 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         // overwrites that field. A lagging stamp put the tombstone behind
         // versions that were already newer, so `find_visible` returned the
         // older `put` and a committed DELETE silently reverted.
-        let tables: Vec<Arc<VersionedTable>> = {
+        let tables: Vec<(String, Arc<VersionedTable>)> = {
             let g = self.mvcc.read();
-            g.values().cloned().collect()
+            g.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
         };
-        for t in tables {
+        // #5412: promoting a version changes what a scan of that table
+        // returns — the row becomes visible to other readers — **without
+        // changing the inner engine's rows**. The tables that had a
+        // pending version of this transaction therefore have to move their
+        // change stamp, or a cached primary-key index would keep
+        // describing the pre-commit state.
+        //
+        // The set is collected BEFORE the promotion: afterwards the
+        // versions are committed and can no longer be recognised as
+        // pending.
+        let touched: Vec<String> = tables
+            .iter()
+            .filter(|(_, t)| t.has_pending_for(tx_id))
+            .filter_map(|(key, _)| crate::engine::split_scoped_key(key).map(|(_, t)| t.to_string()))
+            .collect();
+        for (_, t) in &tables {
             t.commit_tx_auto(tx_id);
+        }
+        for table in touched {
+            self.inner.bump_change_stamp(&table);
         }
     }
 
@@ -258,12 +276,24 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
         if tx_id == 0 {
             return;
         }
-        let tables: Vec<Arc<VersionedTable>> = {
+        let tables: Vec<(String, Arc<VersionedTable>)> = {
             let g = self.mvcc.read();
-            g.values().cloned().collect()
+            g.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
         };
-        for t in tables {
+        // #5412: dropping the pending versions changes what a scan of
+        // those tables returns — the rows stop being visible — without
+        // changing the inner engine's rows. Collected before the discard,
+        // for the same reason as in `promote_pending_for`.
+        let touched: Vec<String> = tables
+            .iter()
+            .filter(|(_, t)| t.has_pending_for(tx_id))
+            .filter_map(|(key, _)| crate::engine::split_scoped_key(key).map(|(_, t)| t.to_string()))
+            .collect();
+        for (_, t) in &tables {
             t.rollback_tx(tx_id);
+        }
+        for table in touched {
+            self.inner.bump_change_stamp(&table);
         }
     }
 
@@ -695,6 +725,30 @@ impl<S: StorageEngine + 'static> MvccStorage<S> {
 }
 
 impl<S: StorageEngine + 'static> StorageEngine for MvccStorage<S> {
+    /// V4.1.0 / #5412: forward the change-stamp question to the inner
+    /// engine.
+    ///
+    /// The counter lives in the leaf (`FileStorage`), so every layer of a
+    /// stack has to report the same value — a wrapper that answered 0
+    /// would tell the engine "do not trust any cached copy", and the
+    /// engine's primary-key cache would never be used on the production
+    /// stack.
+    ///
+    /// Note this is **not** the whole story for this layer: a COMMIT
+    /// changes what a scan returns without changing the inner engine's
+    /// rows, so [`promote_pending_for`](Self::promote_pending_for) and
+    /// [`discard_pending_for`](Self::discard_pending_for) bump the inner
+    /// stamp themselves.
+    fn table_change_stamp(&self, table: &str) -> u64 {
+        self.inner.table_change_stamp(table)
+    }
+
+    /// V4.1.0 / #5412: forward a bump to the inner engine, so the counter
+    /// the leaf keeps is the one every layer reports.
+    fn bump_change_stamp(&self, table: &str) {
+        self.inner.bump_change_stamp(table);
+    }
+
     /// Phase B Step 4.2: PK lookup using MVCC chain. Fast path:
     /// MVCC chain lookup (O(log N)). If MVCC has no entry (rebuild
     /// lag), fall back to the inner engine (which has the B+ Tree

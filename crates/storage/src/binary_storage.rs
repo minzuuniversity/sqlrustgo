@@ -961,6 +961,22 @@ impl std::ops::DerefMut for BoxStorageEngine {
 }
 
 impl StorageEngine for BoxStorageEngine {
+    /// V4.1.0 / #5412: forward the change-stamp question to the inner
+    /// engine.
+    ///
+    /// This box is a pure type eraser — every method is a forwarding
+    /// call and it keeps no state of its own — so the inner engine's
+    /// counter is the answer.
+    fn table_change_stamp(&self, table: &str) -> u64 {
+        self.inner.table_change_stamp(table)
+    }
+
+    /// V4.1.0 / #5412: forward the bump to the inner engine, so the
+    /// counter the leaf keeps is the one every layer reports.
+    fn bump_change_stamp(&self, table: &str) {
+        self.inner.bump_change_stamp(table);
+    }
+
     /// #5266 S1: reads must be asked of the stated database. The old trait
     /// default resolved them against the current one, so a read of `BoxStorageEngine`'s
     /// inner `d1.t` could return `default.t`'s rows or report it missing.

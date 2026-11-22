@@ -1,0 +1,182 @@
+schema_version: 1
+run_id: 20261119-ga-gates-018
+source_agent: mcode-macmini
+frozen_commit: 93ac1d427ec0694f613da8470a88003db08b9f53
+harness: scripts/gate/run_gates.py（plan + execute）—— 门禁清单本身是清单的一部分，分母 35，plan sha256 sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809
+environment:
+  stage: GA
+  version: v4.1.0
+  git_head: 93ac1d427ec0694f613da8470a88003db08b9f53
+  expected_n: 35
+  expected_sha256: sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809
+  planned_at: '2026-11-19T03:13:27Z'
+  tree: /Volumes/workspace/dev/srg-gate-d1
+  timeout_sec: 21600
+note: '018 轮在 prep 阶段③（cargo test --no-run 默认 features 全量预编译）被中止，未执行任何一项门禁（results.jsonl 0 行，35 项全部未执行）。中止原因既不是超时也不是判红，而是认证前排雷发现
+  P14 drift 门禁在该被测树上必然判红：实测 rc=1、报 7 条 NEW anti-patterns，逐条比对确认全部是既有债务被 PR #5863 的 15 行文件头平移误判（该门禁在 GA
+  35 项 plan 内、seq 21 ⇒ 本轮跑到 seq 21 必红）。已先修基线（tests/baseline/drift_baseline.json 行号重同步，笔数与描述不变）再起跑 019。prep
+  ① 已完成（cargo build --all-features rc=0 / 187 s、sqlrustgo-cli rc=0、sqlrustgo-mysql-server rc=0），② 二进制指纹已生成，③
+  于 03:20:53Z 起、03:40:16Z 按 PID 终止（run_gates.py 80460 / 80458 与其 cargo 子进程 30086 / 88691，退出码 143 = SIGTERM）。plan
+  生成步（prep ④）未到达，故本归档内的 plan.jsonl 取自同一份固定清单（35 项，plan 不含 run_id，与 017/019 逐字节相同，sha256 3cb712ec…），meta
+  的 run_id / git_head / planned_at 按 018 实际值填写。本归档如实记为 round_status=INCOMPLETE，不冒充跑满。'
+artifacts:
+  plan.jsonl:
+    bytes: 2439
+    sha256: 3cb712ecf04e74936193d0aeded281a4a888ca74ab50d29503ef24aa6b845573
+  results.jsonl:
+    bytes: 0
+    sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  binaries.sha256:
+    bytes: 408
+    sha256: 3054e10baeb257c4f402457c5e6a351f17fc74839ce8aaf2fc6e18f2d821634a
+remote_sources:
+  plan.jsonl.meta.json:
+    bytes: 358
+    sha256: c4ff8f94e8af3361d43450357054dd67cbac1bce381f18fcafaca89e7a3e8271
+    note: 内容已嵌入本清单的 environment 段（expected_n / expected_sha256 / git_head / planned_at）
+commands:
+- id: 001-check_rc_ga_gate.sh
+  cmd: bash scripts/gate/check_rc_ga_gate.sh
+  desc: GA 清单第 1 项（kind=script）
+  cwd: .
+- id: 002-check_arch_invariants.sh
+  cmd: bash scripts/gate/check_arch_invariants.sh
+  desc: GA 清单第 2 项（kind=script）
+  cwd: .
+- id: 003-check_arch3_no_bypass.sh
+  cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  desc: GA 清单第 3 项（kind=script）
+  cwd: .
+- id: 004-check_int2_no_orphan.sh
+  cmd: bash scripts/gate/check_int2_no_orphan.sh
+  desc: GA 清单第 4 项（kind=script）
+  cwd: .
+- id: 005-check_int3_single_expr.sh
+  cmd: bash scripts/gate/check_int3_single_expr.sh
+  desc: GA 清单第 5 项（kind=script）
+  cwd: .
+- id: 006-check_sem1_savepoint.sh
+  cmd: bash scripts/gate/check_sem1_savepoint.sh
+  desc: GA 清单第 6 项（kind=script）
+  cwd: .
+- id: 007-check_backup_restore.sh
+  cmd: bash scripts/gate/check_backup_restore.sh
+  desc: GA 清单第 7 项（kind=script）
+  cwd: .
+- id: 008-check_p12_crash_test.sh
+  cmd: bash scripts/gate/check_p12_crash_test.sh
+  desc: GA 清单第 8 项（kind=script）
+  cwd: .
+- id: 009-check_p14_upgrade_test.sh
+  cmd: bash scripts/gate/check_p14_upgrade_test.sh
+  desc: GA 清单第 9 项（kind=script）
+  cwd: .
+- id: 010-check_p21_audit_log.sh
+  cmd: bash scripts/gate/check_p21_audit_log.sh
+  desc: GA 清单第 10 项（kind=script）
+  cwd: .
+- id: 011-check_p22_time_travel.sh
+  cmd: bash scripts/gate/check_p22_time_travel.sh
+  desc: GA 清单第 11 项（kind=script）
+  cwd: .
+- id: 012-check_p23_hash_chain.sh
+  cmd: bash scripts/gate/check_p23_hash_chain.sh
+  desc: GA 清单第 12 项（kind=script）
+  cwd: .
+- id: 013-check_g1_tpch_baseline.sh
+  cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  desc: GA 清单第 13 项（kind=script）
+  cwd: .
+- id: 014-check_g16_compatibility.sh
+  cmd: bash scripts/gate/check_g16_compatibility.sh
+  desc: GA 清单第 14 项（kind=script）
+  cwd: .
+- id: 015-check_integration_gate.sh
+  cmd: bash scripts/gate/check_integration_gate.sh
+  desc: GA 清单第 15 项（kind=script）
+  cwd: .
+- id: 016-check_anti_fabrication.sh
+  cmd: bash scripts/gate/check_anti_fabrication.sh
+  desc: GA 清单第 16 项（kind=script）
+  cwd: .
+- id: 017-check_arch_sem_debt.sh
+  cmd: bash scripts/gate/check_arch_sem_debt.sh
+  desc: GA 清单第 17 项（kind=script）
+  cwd: .
+- id: 018-check_cross_version_debt.sh
+  cmd: bash scripts/gate/check_cross_version_debt.sh
+  desc: GA 清单第 18 项（kind=script）
+  cwd: .
+- id: 019-check_int_debt.sh
+  cmd: bash scripts/gate/check_int_debt.sh
+  desc: GA 清单第 19 项（kind=script）
+  cwd: .
+- id: 020-check_full_gate_verification.sh
+  cmd: bash scripts/gate/check_full_gate_verification.sh
+  desc: GA 清单第 20 项（kind=script）
+  cwd: .
+- id: 021-check_drift_not_pass.sh
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  desc: GA 清单第 21 项（kind=script）
+  cwd: .
+- id: 022-check_architecture_freeze.sh
+  cmd: bash scripts/gate/check_architecture_freeze.sh
+  desc: GA 清单第 22 项（kind=script）
+  cwd: .
+- id: 023-check_gate_self_verification.sh
+  cmd: bash scripts/gate/check_gate_self_verification.sh
+  desc: GA 清单第 23 项（kind=script）
+  cwd: .
+- id: 024-check_gate_test_integrity.sh
+  cmd: bash scripts/gate/check_gate_test_integrity.sh
+  desc: GA 清单第 24 项（kind=script）
+  cwd: .
+- id: 025-check_gate_executability.sh
+  cmd: bash scripts/gate/check_gate_executability.sh
+  desc: GA 清单第 25 项（kind=script）
+  cwd: .
+- id: 026-check_coverage_v312.sh
+  cmd: bash scripts/gate/check_coverage_v312.sh
+  desc: GA 清单第 26 项（kind=script）
+  cwd: .
+- id: 027-check_coverage_single_implementation.sh
+  cmd: bash scripts/gate/check_coverage_single_implementation.sh
+  desc: GA 清单第 27 项（kind=script）
+  cwd: .
+- id: 028-check_tests_dont_write_archived_evidence.sh
+  cmd: bash scripts/gate/check_tests_dont_write_archived_evidence.sh
+  desc: GA 清单第 28 项（kind=script）
+  cwd: .
+- id: 029-check_commit_message.sh
+  cmd: bash scripts/gate/check_commit_message.sh
+  desc: GA 清单第 29 项（kind=script）
+  cwd: .
+- id: 030-check_sql_corpus_gate.sh
+  cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  desc: GA 清单第 30 项（kind=script）
+  cwd: .
+- id: 031-check_anti_ignore_gate.sh
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  desc: GA 清单第 31 项（kind=script）
+  cwd: .
+- id: 032-cargo build --all-features
+  cmd: cargo build --all-features
+  desc: GA 清单第 32 项（kind=command）
+  cwd: .
+- id: 033-cargo test --all-features
+  cmd: cargo test --all-features
+  desc: GA 清单第 33 项（kind=command）
+  cwd: .
+- id: 034-cargo fmt --check
+  cmd: cargo fmt --check
+  desc: GA 清单第 34 项（kind=command）
+  cwd: .
+- id: 035-cargo clippy --all-features -- -D warnings
+  cmd: cargo clippy --all-features -- -D warnings
+  desc: GA 清单第 35 项（kind=command）
+  cwd: .
+results: []
+unexecuted_gates: []
+fail_summary: []
+evidence_hash: sha256:43db9b1d4d39a3494061420612bbd79aadbc76c15d43fc418cd807fbf528d7d1
+round_status: INCOMPLETE

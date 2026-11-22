@@ -1,5 +1,10 @@
 schema_version: 1
 run_id: 20261105-lb1-006-mcode
+# #5698: 本 run 原先叫 20261105-lb1-006；20261106 撞车处置时目录被改名为
+# `-mcode`，但 evidence_hash 是按原名计算的，于是 verify 永久假红。
+# 这里记录 hash 计算时使用的原始 run id（不改 results/artifacts/frozen_commit，
+# 也不改 evidence_hash 本身）。无此字段的历史 run 行为不变。
+canonical_run_id: 20261105-lb1-006
 source_agent: mcode-macmini
 frozen_commit: c1a5b0ba9dc34eeb24eefae22e4f3aa7af7e815e
 environment:
@@ -232,3 +237,5 @@ notes:
   看板正文由仓内生成器 --post 刷新（len 21300 / 46 行）。'
 - '未闭环项仍按看板计数：未开始 10 / 待复核 15 / 完成 13 / 阻塞 8（后者均为 owner 专属）。GA 前必须补上 CI 执行点（IL-9 / #5597），否则 LB-1 与 GEN-1
   只能停在待复核。'
+- '#5698 订正（2026-11-14）：本清单记录 canonical_run_id=20261105-lb1-006 —— 即 evidence_hash 计算时使用的原始 run id。目录改名后 hash 不再匹配是
+  工具侧 canonical 缺陷（hash 覆盖 run_id），不是证据损坏。results/artifacts/frozen_commit/evidence_hash 均未改动；verify 现应重算一致。'

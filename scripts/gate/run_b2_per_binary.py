@@ -165,6 +165,23 @@ DISABLED_BINARIES = [
     # Environmental: requires /tmp/tpch-sf1 fixture with sqlrustgo.wal; only
     # populated post-SOAK. Test asserts on `data_dir.exists()` and panics
     # when the directory is absent. Not a code defect.
+    #
+    # 2026-11-20 更新（#5428 整改后）：上面的理由**部分过期**，但**禁用状态不变**：
+    # #5428 把该 target 拆成了两个用例 ——
+    #   · quick_query_wal_recovery：自包含（自建库→LOAD DATA→断言行数→断言 WAL 非空→
+    #     同目录重开 server 走恢复→断言 8 表与行数），**不再依赖外部夹具**；
+    #   · quick_query_sfid1：规模层，仍需外部预置的 TPC-H SF=1 夹具，夹具缺失时走
+    #     既有的 NOT-RUN 三态（TPCH-NOT-RUN: quick_query reason=fixture_missing）。
+    # ⇒ **按 target 名匹配的禁用仍然成立**（本 target 仍含依赖夹具的规模层用例，
+    # 解除禁用会改变门禁的判定覆盖面 ⇒ 属 AGENTS 3.2 / §8-7 的属主域，本线不擅自放行）。
+    #   注意：解除禁用**不能**简单地删掉本条目 —— 那样会让规模层用例在无夹具宿主上
+    #   以 NOT-RUN 三态参与判定，与本条目的历史处置口径不同；是否放行、由谁放行，
+    #   需属主裁定并同步 shell 侧 DISABLED_TESTS_LIST（下方有同步守卫）。
+    #   ⚠️ 本注释刻意不写闭合方括号、也不写带双引号的目标名：
+    #   下方同步守卫用非贪婪正则抓取本列表（模式为 DISABLED_BINARIES 等号 + 左方括号 +
+    #   捕获组 + 闭合方括号），捕获组在遇到第一个闭合方括号处即终止 ——
+    #   注释里出现闭合方括号会把捕获体提前截断（后半段条目连同本条一起丢失）、
+    #   出现引号名会被误抓成条目 —— 本条注释的两个早期版本分别踩过一次，均已实测确认。
     "quick_query",
     # === Added 2026-09-07 from per-binary B2 run (V312 RC final gate cleanup) ===
     # 11 binaries that the V312 RC audit at c95884cf66 claimed had auto-passed

@@ -1,0 +1,77 @@
+# 权威轮 20261118-168h-v410-r2（attempt-11）产物清单
+# 归档时间（UTC）：2026-11-19T04:07Z（本会话）—— 全部条目为**实测**
+round_id: 20261118-168h-v410-r2
+attempt: 11
+attempt_dir: /home/liying/soak-artifacts/20261118-168h-v410-r2/attempt-20261118T123344Z
+host: gaoyuanai-HPZ6G4 (192.168.0.252)
+port: 3411
+frozen_commit: e5c42c7fd02d3d2e24086d419920bcea938c19d6
+frozen_tree: 761e3491a8ce91b89d8d79f60fa0f906fc3b09d5
+soaked_binary_sha256: f31cef51669f218c5092dce35770279353ea26fb421734c221b3b91380557c70
+attempt_started_utc: '2026-11-18T12:33:47Z'
+clock_started_utc: '2026-11-18T12:36:45Z'
+stopped_at_utc: '2026-11-19T00:47:26Z'
+planned_end_utc: '2026-11-25T12:36:45Z'
+verdict: INCOMPLETE（被另一条 Agent 线主动停止；非跑满、非通过、非被测系统缺陷）
+zero_error_threshold: 不可逆不成立（717 错 / 0.1494 %；driver.log 全量口径 784 错）
+
+artifacts:
+  - path: armA/metrics.csv
+    bytes: 181103
+    sha256: 9bb1a3679c74d64e99dcfc782317b075708cb79b72c8f25508d0a6fa0a459c09
+    note: 逐 15 s 采样 2,882 行；本仓归档内为 results.jsonl 的 kind=metric 部分（ts 已由宿主本地 CST 转 UTC）
+  - path: heartbeat.jsonl
+    bytes: 341803
+    sha256: 07a916f0df7f8826da25bff8af17617d1bd04150efd7a329fd33b0ff34d909d7
+    note: 2,928 条 = start 1 + beat 2,926 + exit 1；本仓归档内为 results.jsonl 的 kind=heartbeat 部分；末条 beat ts 2026-11-19T00:47:23Z、exit 记录 ts 00:47:38Z
+  - path: soak.log
+    bytes: 74599
+    sha256: f8d85a8b8d6f3be03607888e04fd300e0aef7f3d5e20ba383343bbe37d00c902
+    note: 运行器逐分钟日志；末行 elapsed=44014 s（00:46:33Z）armA_alive=1 armB_alive=1
+  - path: supervisor.log
+    bytes: 74599
+    sha256: f8d85a8b8d6f3be03607888e04fd300e0aef7f3d5e20ba383343bbe37d00c902
+    note: 与 soak.log 同内容（同一份文件的两份副本）
+  - path: armA/driver.log
+    bytes: 12036087
+    sha256: d6173ab494765b4410c1933af295d342af76a6034d440f781b649a72f0b6ccce
+    note: 驱动全量日志；**按文件治理门禁不入仓**（*.log），只记哈希与体积。实测 480,639 行 = Q 479,855 + E 784（OTHER 0、无 NUL 字节）；第 2 字段是**单次查询耗时(ms)**，不是 elapsed
+  - path: armA/server.log
+    bytes: 10438
+    sha256: 425b0a4d10b3fcbc5a0b15ed944732e4fc50de1ddee97c310d0e252dac94f3c9
+    note: '服务端日志；crash marker 0；含 24 条 Handshake send: Broken pipe（客户端断链后的从属症状）'
+  - path: armA/armA.log
+    bytes: 291467
+    sha256: 0841a74346f61cee632c8aad7aab7b944b2c83eccbd49cfd789834b251908f91
+    note: 臂 A 逐 15 s 进度行（RSS/FD/CPU/q/e/panics/remain）
+  - path: armB/armB.log
+    bytes: 876
+    sha256: b361dd40e968ba0b94e3c2c66c81c16de72ede2c4753217e1704d3e3602e536b
+    note: 臂 B 进度行（臂 B 为混合 workload，未参与本轮错误判定）
+  - path: STARTED.json
+    bytes: 1019
+    sha256: c7cc965ed9d806773619e9787f6feb621e281765e1270e9a62235b35f59cc7af
+    note: 起跑记录（run_id/冻结提交/二进制指纹/安静窗口等待 601 s/起跑复验 14,114 查 0 错 103.0 q/s）
+  - path: STOPPED_BY_AGENT.txt
+    bytes: 625
+    sha256: 74ec8b760e47b6a059e3adf60f5bd6fff6393fa282c9c932c28ef3cc5f9e73d2
+    note: '**停轮方自己写的停轮记录**（停轮时刻/停轮者/理由）—— 本轮「人为停止」的直接证据'
+  - path: launcher.log
+    bytes: 2435
+    sha256: c1c3eec29f0df365f4bce0096b4d3a653f5cc6ee31abb37e7e64a1821f1fec80
+    note: 启动器日志（安静窗口判定与起跑复验）
+
+archived_in_repo:
+  - ABORTED.md
+  - abort_facts.yaml
+  - manifest.yaml
+  - results.jsonl
+
+results_jsonl_shape:
+  rows: 5810
+  metric_rows: 2882
+  heartbeat_rows: 2928
+  metric_keys: [kind, ts_utc, elapsed_s, rss_mb, fd_count, cpu_pct, driver_q, driver_e, panic_count, error_high, host_load1, host_busy]
+  heartbeat_keys: [kind, ts_utc, event, alive, pid, log_bytes, log_lines]
+  timezone_note: '源 metrics.csv 的 ts 是宿主本地时间 CST(UTC+8) ⇒ 归档内统一转成 UTC'
+  provenance: '由本地取回的 metrics.csv + heartbeat.jsonl 现算生成（脚本见提交说明）'

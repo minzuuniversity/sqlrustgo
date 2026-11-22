@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.87s
+     Running tests/no_namespace_db_refusal_5266.rs (target/debug/deps/no_namespace_db_refusal_5266-e8c1bc20e1bd54e4)

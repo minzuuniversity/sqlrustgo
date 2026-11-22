@@ -83,6 +83,74 @@ impl<S: 'static> VtuGuard<S> {
 }
 
 impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
+    // 事务状态必须向被包裹的存储透传。此前这些方法全部落到 trait 默认实现
+    // （in_transaction=false / current_tx_id=0 / set=no-op），于是
+    // `guarded.in_transaction()` 在 inner 已开事务时仍报 false。
+    // 由 vtu_guard 的 tx-state 测试激活后实测暴露（该测试此前被嵌套结构
+    // 吞掉、从未运行）。VtuGuard 的契约是"不干扰被包裹存储"，故一律透传。
+    fn in_transaction(&self) -> bool {
+        self.inner.in_transaction()
+    }
+
+    fn current_tx_id(&self) -> u64 {
+        self.inner.current_tx_id()
+    }
+
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.inner.set_current_tx_id(id)
+    }
+
+    fn set_current_tx_id_shared(&self, id: u64) {
+        self.inner.set_current_tx_id_shared(id)
+    }
+
+    fn is_transaction_active(&self, tx_id: u64) -> bool {
+        self.inner.is_transaction_active(tx_id)
+    }
+
+    // 事务生命周期同样必须透传：trait 默认实现是「不支持事务」错误，
+    // 若不转发，任何经 VtuGuard 包装的存储都会在执行 BEGIN/COMMIT/ROLLBACK
+    // 时直接失败。VtuGuard 是透明包装，唯一有权拦截的是 DML（VTU 违规检测）。
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        self.inner.begin_transaction()
+    }
+
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        self.inner.commit_transaction()
+    }
+
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        self.inner.rollback_transaction()
+    }
+
+    fn commit_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.inner.commit_transaction_for(tx_id)
+    }
+
+    fn rollback_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.inner.rollback_transaction_for(tx_id)
+    }
+
+    fn begin_transaction_lockfree(&self, tx_id: u64) -> SqlResult<()> {
+        self.inner.begin_transaction_lockfree(tx_id)
+    }
+
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.commit_transaction_lockfree()
+    }
+
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.rollback_transaction_lockfree()
+    }
+
+    fn commit_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
+        self.inner.commit_transaction_lockfree_for(tx_id)
+    }
+
+    fn rollback_transaction_lockfree_for(&self, tx_id: u64) -> SqlResult<()> {
+        self.inner.rollback_transaction_lockfree_for(tx_id)
+    }
+
     /// #5277: forward `(db, table, reader_tx)`. Without this the type
     /// inherited the trait default, which dropped `db` and resolved the table
     /// against the storage's current database. The guard must not disturb the wrapped storage.
@@ -105,6 +173,84 @@ impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
     /// storage could correctly refuse a write and still answer `true` here.
     fn has_table_in(&self, db: &str, table: &str) -> bool {
         self.inner.has_table_in(db, table)
+    }
+
+    // -------------------------------------------------------------------------
+    // Transaction state and control must be FORWARDED, not dropped.
+    //
+    // The `StorageEngine` trait gives every one of these a default that
+    // reports "this engine has no transactions":
+    //
+    //   in_transaction()                  -> false
+    //   current_tx_id()                   -> 0
+    //   set_current_tx_id(id)             -> a no-op
+    //   set_current_tx_id_shared(id)      -> a no-op
+    //   begin_transaction()               -> Err("Transactions not supported
+    //                                         by this storage engine")
+    //
+    // A wrapper that does not override them therefore does not merely return
+    // stale values — it *silently removes the capability*. Ask a VtuGuard
+    // whether a transaction is open and it says no; set a transaction id
+    // through it and the id is dropped on the floor, so the wrapped storage
+    // never learns which transaction it is in, and its own DML guard then
+    // sees "no transaction" and rejects legitimate in-transaction writes.
+    //
+    // `VtuGuard`'s whole purpose is to be a TRANSPARENT wrapper around an
+    // engine — it forwards reads and writes (see the delegations above) — so
+    // the transaction family has to travel the same road. `WalStorage`
+    // implements all of these soundly (its tx id lives in an `AtomicU64`);
+    // the wrapper was simply not carrying them.
+    //
+    // Found by the GA gate run: `vtu_guard::tests::
+    // test_vtu_guard_tx_state_via_set_current_tx_id` failed with
+    // `assertion failed: guarded.in_transaction()` — the tx id was set on
+    // the inner storage and the wrapper still reported "not in a
+    // transaction", because the wrapper was answering from the trait's
+    // default rather than from the engine it wraps.
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        self.inner.begin_transaction()
+    }
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        self.inner.commit_transaction()
+    }
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        self.inner.rollback_transaction()
+    }
+    fn commit_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.inner.commit_transaction_for(tx_id)
+    }
+    fn rollback_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.inner.rollback_transaction_for(tx_id)
+    }
+    fn begin_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.inner.begin_transaction_for(tx_id)
+    }
+    fn begin_transaction_lockfree(&self, tx_id: u64) -> SqlResult<()> {
+        self.inner.begin_transaction_lockfree(tx_id)
+    }
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.commit_transaction_lockfree()
+    }
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.rollback_transaction_lockfree()
+    }
+    fn in_transaction(&self) -> bool {
+        self.inner.in_transaction()
+    }
+    fn current_tx_id(&self) -> u64 {
+        self.inner.current_tx_id()
+    }
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.inner.set_current_tx_id(id)
+    }
+    fn set_current_tx_id_shared(&self, id: u64) {
+        self.inner.set_current_tx_id_shared(id)
+    }
+    /// `flush` was a no-op on the wrapper for the same reason: the trait's
+    /// default is `Ok(())`, so a flush asked of a VtuGuard never reached the
+    /// engine it wraps.
+    fn flush(&mut self) -> SqlResult<()> {
+        self.inner.flush()
     }
     /// #5250: delegate with the stated database. This wrapper holds a
     /// single inner `StorageEngine`, so the database has to be carried
@@ -525,19 +671,69 @@ mod tests {
     // `cannot test inner items` + dead_code。合并为单个完整 test。
     #[test]
     fn test_vtu_guard_tx_state_via_set_current_tx_id() {
-            // VtuGuard does not expose set_current_tx_id directly (the
-            // delegation is via inner storage). Exercise the accessor
-            // pattern: get inner, set tx, then confirm guarded.in_transaction()
-            // delegates correctly.
-            let storage = crate::MemoryStorage::new();
-            let mut guarded = VtuGuard::new(storage, "tx_test");
-            assert!(!guarded.in_transaction());
-            guarded.inner_mut().set_current_tx_id(7);
-            assert!(guarded.in_transaction());
-            assert_eq!(guarded.current_tx_id(), 7);
-            guarded.inner_mut().set_current_tx_id(0);
-            assert!(!guarded.in_transaction());
+        // VtuGuard does not expose set_current_tx_id directly (the
+        // delegation is via inner storage). Exercise the accessor
+        // pattern: get inner, set tx, then confirm guarded.in_transaction()
+        // delegates correctly.
+        let storage = crate::MemoryStorage::new();
+        let mut guarded = VtuGuard::new(storage, "tx_test");
+        assert!(!guarded.in_transaction());
+        guarded.inner_mut().set_current_tx_id(7);
+        assert!(guarded.in_transaction());
+        assert_eq!(guarded.current_tx_id(), 7);
+        guarded.inner_mut().set_current_tx_id(0);
+        assert!(!guarded.in_transaction());
         guarded.flush().unwrap();
+    }
+
+    /// 事务生命周期必须与直接调用 inner 等价：trait 默认实现是
+    /// “Transactions not supported” 错误，不透传会让透明包装变成功能削减。
+    #[test]
+    fn test_vtu_guard_transaction_lifecycle_matches_inner() {
+        let mut guarded = VtuGuard::new(crate::MemoryStorage::new(), "tx_lifecycle");
+        let tx = guarded.begin_transaction().unwrap();
+        assert!(guarded.in_transaction());
+        assert_eq!(guarded.current_tx_id(), tx);
+        guarded.rollback_transaction().unwrap();
+        assert!(!guarded.in_transaction());
+
+        let tx = guarded.begin_transaction().unwrap();
+        guarded.commit_transaction().unwrap();
+        assert!(!guarded.in_transaction());
+        assert!(tx > 0);
+    }
+
+    #[test]
+    fn test_vtu_guard_lockfree_tx_control_delegates() {
+        // MemoryStorage / MvccStorage 本身不实现 lockfree 变体（trait 默认
+        // 返回 unsupported）；WalStorage 有真实的 lockfree 事务控制可透传。
+        let wal_storage = crate::WalStorage::new(
+            crate::MemoryStorage::new(),
+            crate::wal::MemoryWalManager::new(),
+        )
+        .unwrap();
+        let guarded = VtuGuard::new(wal_storage, "tx_lockfree");
+        guarded.begin_transaction_lockfree(41).unwrap();
+        assert_eq!(guarded.current_tx_id(), 41);
+        assert!(guarded.is_transaction_active(41));
+        guarded.commit_transaction_lockfree_for(41).unwrap();
+        assert!(!guarded.in_transaction());
+
+        guarded.begin_transaction_lockfree(42).unwrap();
+        guarded.rollback_transaction_lockfree_for(42).unwrap();
+        assert!(!guarded.in_transaction());
+    }
+
+    /// 嵌套包装也必须逐层透传，不能在内层 Guard 处退化成默认实现。
+    #[test]
+    fn test_nested_vtu_guard_propagates_tx_state() {
+        let inner = VtuGuard::new(crate::MemoryStorage::new(), "nested_inner");
+        let mut outer = VtuGuard::new(inner, "nested_outer");
+        outer.inner_mut().set_current_tx_id(77);
+        assert!(outer.in_transaction());
+        assert_eq!(outer.current_tx_id(), 77);
+        outer.set_current_tx_id_shared(0);
+        assert!(!outer.in_transaction());
     }
 
     #[test]

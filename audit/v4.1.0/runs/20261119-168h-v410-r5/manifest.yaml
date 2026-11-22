@@ -1,0 +1,54 @@
+run_id: 20261119-168h-v410-r5
+attempt_dir: attempt-20261119T044204Z
+host: gaoyuanai-HPZ6G4
+frozen_commit: 64269eaa0848c4d47485d1f45b1b91779502a089
+archived_at_utc: 2026-11-19T16:20:00Z
+note: "*.log 按文件治理门禁不入仓，只记哈希（下列 remote_logs）"
+archived_files:
+  - path: .cpu_snapshot.json
+    bytes: 20254
+    sha256: d6fb62169c3cdad8c62c5b8e0a6c0afa0627884f0607a2108097b7ec72309afb
+  - path: STARTED.json
+    bytes: 1019
+    sha256: 5c7badc6fb0fd318db566ec6ec33d7c2f9f176c1b0e52fdb9c0add641ef2dbbd
+  - path: STOPPED_BY_AGENT.txt
+    bytes: 1202
+    sha256: bcf92686b2837e6b2d1a3f57f55b7e819e1be3ffc2d0b64b5a9254d142a1a5fd
+  - path: attempt-20261119T044204Z/armA/STABILITY_REPORT.md
+    bytes: 1577
+    sha256: a3fcf777490e25f57885af7e1b12fe859b7d4ab5e93eb9021ebfc6f107f084cd
+  - path: attempt-20261119T044204Z/armA/driver.pid
+    bytes: 8
+    sha256: c667acd5336b39591d52fd35960765a623d0036edfdaca21cd1fb37ac737a251
+  - path: attempt-20261119T044204Z/armA/metrics.csv
+    bytes: 167366
+    sha256: cbdb976aae378b12fa233c87786e5ec051a9c8ca1a1339747b4ac6c8b5338536
+  - path: attempt-20261119T044204Z/armA/server.pid
+    bytes: 8
+    sha256: 0a075699c3aef52623fbd65d673ce00b78cd130cdd31b1e5fd3bad61a9435395
+  - path: attempt-20261119T044204Z/armA/summary.json
+    bytes: 380
+    sha256: 6da56abbbee60b22176e2215bb2e96be45ffc3d794d8427f26e21493e29fd05c
+  - path: attempt-20261119T044204Z/heartbeat.jsonl
+    bytes: 322978
+    sha256: 9ca2571b9ffd62b26645f7414d61476357b83227631f568615e530bfb0017647
+  - path: data_size.jsonl
+    bytes: 159232
+    sha256: 50259603e852ecca457fdad23e1f2869cfaad10626ff85fa6147828fd05f7aab
+remote_logs_not_committed:
+  - path: 20261119-168h-v410-r5/launcher.log
+    sha256: b3c316322a4fc4c0bf33006ca0f5ebb5f7bc287430cafe194f51e762fe401555
+  - path: 20261119-168h-v410-r5/build.log
+    sha256: 59b38138268f46e4b4efbf3f255030c35822327f9d1be4143197cb083f93f543
+  - path: 20261119-168h-v410-r5/wait_for_quiet_host.log
+    sha256: a70e8d76bb8dfad08469cc04a715fdb0b432f10f643c55a50a8f487e2fb9a533
+  - path: 20261119-168h-v410-r5/attempt-20261119T044204Z/soak.log
+    sha256: 48fe39dae19c1523f405928ea767ecbab1852addb97baac446f2f8053b2a2dc3
+  - path: 20261119-168h-v410-r5/attempt-20261119T044204Z/supervisor.log
+    sha256: 48fe39dae19c1523f405928ea767ecbab1852addb97baac446f2f8053b2a2dc3
+  - path: 20261119-168h-v410-r5/attempt-20261119T044204Z/armA/driver.log
+    sha256: 7178cd51419789b26b9572cf6a07233ab2559491d5cd6e8a17d741a0cd06662f
+  - path: 20261119-168h-v410-r5/attempt-20261119T044204Z/armA/armA.log
+    sha256: 11d2ff7f85b03fca95dbd82d7a4122f03ffd0cc233aa788d74350edeaec59f37
+  - path: 20261119-168h-v410-r5/attempt-20261119T044204Z/armB/armB.log
+    sha256: 265c6d6193013a91a4144b298cc66c310c4ba8cc4e67fa68d286c798f729fe1e

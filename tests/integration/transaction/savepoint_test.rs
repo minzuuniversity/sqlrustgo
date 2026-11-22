@@ -24,6 +24,7 @@ fn make_manager() -> SavepointManager {
 
 fn insert_key(k: i64) -> UndoRecord {
     UndoRecord::Insert {
+        db: "default".to_string(),
         table: "t".to_string(),
         key: vec![Value::Integer(k)],
         row: vec![Value::Integer(k)],
@@ -32,6 +33,7 @@ fn insert_key(k: i64) -> UndoRecord {
 
 fn delete_key(k: i64) -> UndoRecord {
     UndoRecord::Delete {
+        db: "default".to_string(),
         table: "t".to_string(),
         key: vec![Value::Integer(k)],
         old_value: vec![Value::Integer(k), Value::Integer(0)],

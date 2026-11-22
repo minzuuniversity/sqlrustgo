@@ -1,0 +1,86 @@
+# 权威认证轮 009 的中止/判红事实 —— **实测数据**
+round_id: 20261117-ga-gates-009
+aborted_at_utc: '2026-11-17T08:09:00Z'
+git_head: 1579950048b37628eb19bb9f2fe624ab87198ada
+plan_sha256: sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809
+planned_n: 35
+executed_n: 19
+not_started_n: 16
+
+seq1_red:
+  dimension: D7-Reliability
+  sub_check: G10 Audit/Time-Travel
+  gate_line: 'scripts/gate/check_rc_ga_gate.sh:1511'
+  probe: 'timeout 60 cargo test --test audit_log_test --test time_travel_test 2>&1 | tail -3'
+  probe_budget_s: 60
+  lib_recompile_s: 22.87
+  cause: 预构建顺序为「先默认 features、后 --all-features」；cargo 把 lib 最终产物 uplift 到 target/debug/libsqlrustgo.rlib（该路径不区分 features）⇒ all-features 构建覆盖默认侧 ⇒ 默认 features 的 lib 单元被置脏
+  not_a_product_defect_evidence:
+    - audit_log_test 的测试二进制本身没有重编译（只有 lib 编译）
+    - 007/008 轮同一棵树 G10 均 5/5 PASS，差别只在缓存状态
+    - 判红形态是进程被 timeout 杀掉（无 test result），不是断言失败；日志里 panic|assertion 命中 0 处
+  remediation: 把默认 features 的构建放最后（不改门禁脚本、不改阈值、不改 35 项分母）
+
+seq20_stuck:
+  gate: scripts/gate/check_full_gate_verification.sh
+  dimension: D1-D5 RC/GA 内的 D6 批次
+  nested_chain:
+    - cargo test --no-fail-fast --test <51 个目标>
+    - regression_test（元测试：逐个测试文件 Command::new("cargo")）
+    - cargo test --test physical_backup_test（再起一层 cargo）
+    - physical_backup_test（并发起两个嵌套 cargo）
+    - cargo test -p sqlrustgo-tools -- --nocapture
+    - cargo test -p sqlrustgo-tools physical_b...
+  observed_cpu_s_of_stuck_processes: 0.13
+  observed_elapsed_min_of_stuck_processes: 40
+  per_nested_level_s: 210
+  build_lock_holder_at_sample_time: 无（lsof target/debug/.cargo-lock 为空 ⇒ 不是死锁，是嵌套+锁竞争+反复重编译）
+  stack_evidence:
+    regression_test: 'std::process::Command::output → read_output → poll()（等子进程输出）'
+    nested_cargo: 'dispatch_semaphore_wait_slow（等自己的 jobserver）'
+  why_it_was_fine_in_007: lib 干净时嵌套 cargo 不必重编译 ⇒ 每层秒级；lib 被置脏时每层 3.5 min。007 轮 seq20 能在 44.8 min 内跑完，正是因为当时缓存是热的。
+  correction_2026_11_17:
+    not_a_deadlock: 栈复看显示嵌套 cargo 停在 cargo_test::run_tests → run_unit_tests → ProcessBuilder::exec → wait4（等自己的测试二进制退出），不是等锁
+    one_layer_is_legitimately_slow:
+      command: 'cargo test -p sqlrustgo-tools -- --nocapture（physical_backup_test 第 8 处，跑 tools 包全部测试）'
+      soak_file: crates/tools/tests/v400_multi_model_soak.rs
+      compressed_levels_s: [60, 180, 420]
+      total_s: 660
+      source_lines: [370, 411, 442]
+    real_amplifier: 磁盘余量
+    disk_before: /Volumes/workspace 97% 满（可用 34 GiB）；ls target/debug/deps 单次 > 25 s 超时
+    nested_cargo_cost_measured: 每个嵌套 cargo 45–60 s（58 条目中 42 个有效条目几乎全是 45–114 s，而对应测试 harness 报 finished in 0.00s ⇒ 时间在 cargo 启动+指纹扫描+FS 颠簸，不在测试）
+    disk_after: 可用 236 GiB（74%）；同机同命令 cargo build --all-features 50 s → 1 s（命中缓存），cargo build -p sqlrustgo-tools 50 s → 6.82 s
+    reclaimed: '废弃工作树与专用 target 目录的构建缓存（cargo clean，纯产物可重建；交付树/修复树/材料树未动）：srg-gagate-r2 152.1 GiB + srg-clippy-wt 60.4 GiB + storage-target 13.2 GiB + srg-restore-20261113 7.4 GiB + srg-idx2 5.8 GiB + storage-base-target 4.3 GiB + srg-audit-fix 3.1 GiB + srg-btrack 2.9 GiB + srg-ci-fix 1.3 GiB + srg-soak168-v410 1.1 GiB + 其余 ~0.47 GiB × 10 ≈ 202 GiB'
+    effect_on_this_round: 无（本轮未跑满 35 项，不产生总账结论；seq1 的 G10 判红根因独立于磁盘，未被推翻）
+meta_test_drift_finding:
+  file: tests/integration/sql/regression_test.rs
+  finding: 清单里 57 个条目指向并不存在的 Cargo target 名（backup_test / buffer_pool_test / planner_test 等）
+  measured: 'cargo test --test backup_test ⇒ 立即报 no test target named，0.16 s 退出；Cargo.toml 只声明 482/487 个 [[test]]'
+  valid_entries: 42
+  pkg_entries: 6
+  gate_impact: 无（meta-test 聚合口径只数 passed/failed ⇒ 42 个有效条目全绿即判绿）
+  disposition: 本轮不改测试代码（会改变门禁覆盖面，属属主裁决范围）—— 登记为待办项
+
+seq33_already_verified_elsewhere:
+  tree: 1579950048b37628eb19bb9f2fe624ab87198ada
+  source: 修复树上的 workspace 全量测试
+  result: 7216 passed / 0 failed
+  note: 含 concurrent_rollback_isolation ⇒ #5834 的修复已端到端验证，009 的 seq33 不提供新信息
+real_root_cause:
+  symptom: 每个嵌套 cargo 45–60 s；预构建 482 个目标时 rustc 存活 3 min 只拿到 2 s CPU，新 rustc 不断顶上来
+  stack: 'rustc_session::search_paths::SearchPath::from_cli_opt → SearchPath::new → std::fs::ReadDir → readdir_r → __getdirentries64（723/726 采样 = 99.5%）'
+  meaning: rustc 每次启动都要 readdir 扫描 target/debug/deps
+  deps_file_count: 764176
+  deps_file_count_measured_at: '2026-11-17（010 轮起跑前，同一棵交付树）'
+  why_not_compile: '同一时刻 ls target/debug/deps 单次 > 25 s 超时 —— 同一个 readdir'
+  remediation: 'cargo clean 清空 target/（纯产物可重建）+ CARGO_INCREMENTAL=0（增量目录本身是文件数大户）⇒ deps 只剩 二进制+.d+rlib 量级 ⇒ readdir 回到毫秒级'
+tools_package_layer_cost:
+  command: 'cargo test -p sqlrustgo-tools -- --nocapture'
+  measured_real: 25m0.011s
+  measured_user: 0.616s
+  measured_sys: 0.618s
+  rc: 124
+  rc_meaning: 被 1500 s timeout 在最后的 Doc-tests 阶段截断；此前所有测试二进制全绿（含 soak 29 passed）
+  implication: physical_backup_test 里的那一层合法成本 ≈ 25 min；user+sys ≈ 1.2 s ⇒ 这 25 分钟几乎全在等（soak 压缩时间等价），不是在算
+  where_009_aborted: 40 min 处中止时，42 个有效条目（每个 45–60 s ≈ 30 min）刚好还没走到这一层 —— 中止点落在链条中段，不是卡死

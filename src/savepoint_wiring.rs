@@ -12,9 +12,18 @@
 //! The functions in this module are the bridge between the DML
 //! executors (`src/engine_dml.rs`) and the typed
 //! `sqlrustgo_transaction::savepoint::UndoRecord` enum. They capture
-//! enough information — table name, primary-key column values, and
-//! the full pre-image row — to let `execute_savepoint` drive
-//! `storage.delete` / `storage.insert` in reverse order.
+//! enough information — database name, table name, primary-key column
+//! values, and the full pre-image row — to let `execute_savepoint`
+//! drive `storage.delete_in_db` / `storage.insert_in_db` in reverse
+//! order.
+//!
+//! #5896: the database is part of what has to be captured. The undo
+//! log used to hold the bare table name only, so a replay could not
+//! tell `default.t` from `other_db.t` and had to assume the default
+//! database — which meant a ROLLBACK in a named database undid
+//! nothing, while a ROLLBACK in the default database could reach into
+//! a named database's same-named table. Every wrapper therefore takes
+//! the database the write happened in and stores it in the record.
 //!
 //! ## Scope discipline (v3.12 RC scope)
 //! Issue #4581 fix: the wiring is now active for ANY active
@@ -60,9 +69,19 @@ pub fn primary_key_values(table_info: &TableInfo, row: &[Value]) -> Vec<Value> {
 /// v312-60: also captures the full inserted row so replayers can fall
 /// back to full-row matching (`storage.delete(table, &row)`) when the
 /// table has no primary key — see the doc on `UndoRecord::Insert`.
+///
+/// #5896: `db` is the database the INSERT actually wrote into — the
+/// same value the DML executor passed to `storage.insert_in_db`. The
+/// undo log used to hold the bare table name only, so the replay could
+/// not tell `default.t` from `other_db.t` and had to assume the default
+/// database. The database therefore travels with the record; it is an
+/// explicit field on `UndoRecord` rather than a prefix glued onto the
+/// table name (folding it into `table` would silently change the shape
+/// of the key every consumer of `table` relies on).
 pub fn record_insert_undo(
     tx_manager: &mut TransactionManager,
     tx_id: sqlrustgo_transaction::TxId,
+    db: &str,
     table: &str,
     table_info: &TableInfo,
     row: &[Value],
@@ -71,6 +90,7 @@ pub fn record_insert_undo(
     let _ = tx_manager.add_undo_record(
         tx_id,
         UndoRecord::Insert {
+            db: db.to_string(),
             table: table.to_string(),
             key,
             row: row.to_vec(),
@@ -80,9 +100,13 @@ pub fn record_insert_undo(
 
 /// Append a typed `UndoRecord::Delete` (so `ROLLBACK` can re-insert
 /// the deleted row verbatim). Call AFTER `storage.delete` succeeds.
+///
+/// #5896: `db` is the database the DELETE happened in — see
+/// [`record_insert_undo`] for why the database travels with the record.
 pub fn record_delete_undo(
     tx_manager: &mut TransactionManager,
     tx_id: sqlrustgo_transaction::TxId,
+    db: &str,
     table: &str,
     table_info: &TableInfo,
     row: &[Value],
@@ -91,6 +115,7 @@ pub fn record_delete_undo(
     let _ = tx_manager.add_undo_record(
         tx_id,
         UndoRecord::Delete {
+            db: db.to_string(),
             table: table.to_string(),
             key,
             old_value: row.to_vec(),
@@ -106,9 +131,13 @@ pub fn record_delete_undo(
 /// v312-60: also captures `new_row` so replayers can fall back to
 /// full-row matching (`storage.delete(table, &new_row)`) when the table
 /// has no primary key — see the doc on `UndoRecord::Update`.
+///
+/// #5896: `db` is the database the UPDATE happened in — see
+/// [`record_insert_undo`] for why the database travels with the record.
 pub fn record_update_undo(
     tx_manager: &mut TransactionManager,
     tx_id: sqlrustgo_transaction::TxId,
+    db: &str,
     table: &str,
     table_info: &TableInfo,
     prior_row: &[Value],
@@ -118,6 +147,7 @@ pub fn record_update_undo(
     let _ = tx_manager.add_undo_record(
         tx_id,
         UndoRecord::Update {
+            db: db.to_string(),
             table: table.to_string(),
             key,
             old_value: prior_row.to_vec(),

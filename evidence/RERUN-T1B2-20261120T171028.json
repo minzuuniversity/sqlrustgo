@@ -1,0 +1,1113 @@
+{
+ "suite": "RERUN-T1B2",
+ "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+ "generated_at": "20261120T171028",
+ "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+ "cargo": "cargo 1.97.0 (c980f4866 2026-06-30)",
+ "result": {
+  "tests": [
+   {
+    "name": "append_only_storage::tests::insert_missing_table_errors",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::new_creates_dir_and_load_all_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::transaction_lifecycle",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::stub_methods_return_ok_or_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::create_insert_scan_roundtrip",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::flush_clears_dirty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::has_list_get_drop_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::compact_table_drops_tombstones",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::load_table_nonexistent_is_noop",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::delete_with_tombstones",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::bufferpool_routing_tests::file_storage_scan_empty_table_returns_empty_bufferpool",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::bufferpool_routing_tests::file_storage_insert_via_bufferpool_bumps_pages_visited",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::parallel_scan_tests::test_parallel_scan_empty_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::bufferpool_routing_tests::file_storage_scan_after_insert_bumps_pages_visited",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::bufferpool_routing_tests::file_storage_insert_100_records_bumps_pages_visited_at_least_100",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::bufferpool_routing_tests::file_storage_concurrent_inserts_via_bufferpool_do_not_corrupt",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::bufferpool_routing_tests::file_storage_scan_after_bufferpool_eviction_keeps_the_pages_that_survived",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::db_isolation_tests::pre_5025_root_layout_is_still_readable",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_add_column_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_clear_all_tables",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::pk_lookup_stays_correct_after_a_delete",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_contains_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::db_isolation_tests::tables_and_files_are_scoped_per_database",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_buffered_insert_flush",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_create_database_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_create_database",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_create_index_table_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_create_table_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_buffered_insert_in_tx",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_drop_column_table_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_delete_if_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::parallel_scan_tests::test_parallel_scan_single_partition",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_delete_if",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_drop_database_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_drop_column_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::parallel_scan_tests::test_parallel_scan_file_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_drop_database_nonempty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_drop_column_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_create_index_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_drop_trigger_disk_removal",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_drop_index_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_contains_and_drop",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_get_mut",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_drop_index_no_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_empty_tables",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_add_column",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_has_index_no_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_get_index",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_index_no_matching_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_insert_with_index_no_index",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_persist_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_range_index_no_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_index_search",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_index",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_flush_all_buffers_extra",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_persist",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_rename_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_trigger_operations",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_view_operations",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_range_index_no_results",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_flush_all_buffers_with_buffered_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_storage_rename_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_has_index_no_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_get_table_info_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_file_with_buffer_disabled_flow",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_get_trigger_none",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_get_table_mut_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_force_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_flush_buffer_with_buffered_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_get_table_mut",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_in_transaction",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_flush_all_buffers",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_has_table_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_has_view_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_insert_direct_table_not_in_map",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_list_indexes_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_insert_buffered_threshold_flushing",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_insert_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_list_tables_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_modify_column_table_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_list_indexes_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_modify_column_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_insert_buffering",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_list_triggers_by_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_new_with_buffer_config",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_modify_column_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_insert_buffer_threshold",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_partition_rows_missing_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_load_table_invalid_json",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_rename_table_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_partition_rows_below_threshold",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_new_with_wal",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_save_trigger_load_trigger_duplicate",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_set_current_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_rename_table_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_scan_merges_buffer",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_storage_engine_drop_index_nonexistent_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_storage_engine_get_table_info_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_storage_engine_table_operations_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_table_names",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_table_names_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_update_if_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_trigger_operations_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "parallel_wal_storage::tests::create_drop_table_passthrough",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_update_if_existing",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_storage_save_reload_roundtrip",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "parallel_wal_storage::tests::new_and_sync_mode_default",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "parallel_wal_storage::tests::set_sync_mode_changes_mode",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "parallel_wal_storage::tests::passthrough_methods_and_insert_scan",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "parallel_wal_storage::tests::transaction_lifecycle_via_wal",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::autocommit_rows_are_applied",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::checkpoints_are_scanned_but_not_applied",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::commit_after_the_target_does_not_apply",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_update_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::committed_work_with_nothing_applied_is_suspicious",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::committed_rows_are_applied",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::empty_log_is_a_clean_no_op",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::begin_before_the_window_still_bounds_its_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::open_transaction_at_target_is_not_applied",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_trigger_roundtrip_disk",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::unknown_table_is_counted_as_failed",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::tables_touched_names_the_affected_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::window_is_inclusive_of_the_target",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_add_replica",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_classify_sql_create",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_classify_sql_drop",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_classify_sql_delete",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_classify_sql_select",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_classify_sql_transaction",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_classify_sql_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_classify_sql_update",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_connection_pool_get_replica_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_connection_pool_return_smoke",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_connection_struct",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_consistency_mode_variants",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_get_healthy_replica_count_all",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_connection_pool_get_master_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_get_master_addr",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_get_replica_addrs",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_increment_decrement_connection_count",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_least_connections_selects_min",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_least_connections_tracks_counts",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_load_balance_strategy_variants",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_query_type_classification",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_read_after_write_consistency",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_read_after_write_record_replica",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_read_write_router_add_replica",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_read_write_router_remove_replica",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_read_write_split_config_default",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_remove_replica",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_replica_node_creation",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_replica_node_with_lag",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_replica_with_lag",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_route_result_fields",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_route_sql_select",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_route_sql_write",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_router_read_route",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_router_write_route",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_update_replica_lag",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_error_display",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_ack_counter",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_default",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_enable_disable",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_new",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_record_transactions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_set_client_count",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_set_mode",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_set_replica_health",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_router_multiple_reads_distributed",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_set_timeout",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_set_wait_count",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_wait_for_acks_disabled",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_status",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_status_clone",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_wait_for_acks_success",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_with_config",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_mode_clone",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_mode_debug",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_mode_default",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_slave_default",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_slave_enable_disable",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_slave_master_uuid",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_slave_status",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_timeout_error_display",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_slave_ack",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "table_level_storage::tests::insert_scan_via_registry",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_slave_new",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "table_level_storage::tests::list_tables_via_registry",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "table_level_storage::tests::new_writes_and_flush_wal",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "table_level_storage::tests::stub_methods_are_known_unimplemented",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "table_level_storage::tests::transaction_lifecycle_passthrough",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_3129_vtu_guard_execute_dml_with_memory_storage_in_tx",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_int4_execute_dml_routes_closure_to_inner",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_int4_assert_dml_safe_passes_inside_tx",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_int4_assert_dml_safe_panics_outside_tx",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_add_column_rename_passthrough",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_assert_path_for_dml_is_idempotent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_create_drop_table_passthrough",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_get_table_info_allowed",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_dml_violation_panic_message_contains_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_scan_allowed",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_inner_accessors",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_trigger_methods_passthrough",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_violation_delete",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_violation_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_violation_update",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_legacy::tests::test_pitr_recover_table_filter",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_legacy::tests::test_pitr_recover_to_timestamp",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_wait_for_acks_timeout",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_partition_rows_num_partitions_zero",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_partition_rows_two_partitions_above_threshold",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_partition_rows_uneven_remainder",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_partition_rows_above_threshold",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_partition_rows_with_buffer",
+    "class": "PASS",
+    "raw_status": "ok"
+   }
+  ],
+  "summary": {
+   "passed": 218,
+   "failed": 0,
+   "ignored": 0,
+   "cargo_status": "ok"
+  },
+  "exit_code": 0,
+  "class": "PASS",
+  "duration_s": 1.18,
+  "cmd": "cargo test -p sqlrustgo-storage --lib -- vtu_guard semisync read_write_split pitr parallel_wal_storage append_only_storage file_storage table_level_storage"
+ },
+ "raw_log": "evidence/RERUN-T1B2-20261120T171028.log",
+ "artifact_digest": "8390947eac29a7b2"
+}

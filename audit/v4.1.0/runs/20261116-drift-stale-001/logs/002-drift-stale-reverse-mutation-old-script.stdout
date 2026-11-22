@@ -1,0 +1,53 @@
+
+[T1] 全部对齐 ⇒ exit 0，且每行都是实测数字（0 0）
+----------------------------------------------------------
+  ✅ PASS: 全部对齐 ⇒ exit 0
+  ✅ PASS: gitcode/gitea252 这一行是数字（实测）
+  ✅ PASS: 所有远端两两都是 0/0（确实无漂移）
+
+[T2] 某远端不可达 ⇒ 该行**不得是数字**，须标 UNREACHABLE，且 rc≠0
+----------------------------------------------------------
+  ❌ FAIL: 不可达远端的行没有标 UNREACHABLE
+       develop/v4.1.0	gitcode	gitee	0	0
+  ❌ FAIL: 有远端不可达时仍然 exit 0
+       —— 「查不到」被当成了「一致」
+  ✅ PASS: 其余（可测量的）远端之间仍然给出实测数字
+
+[T3] 服务器答了但 fetch 失败 ⇒ 该行标 STALE-DATA，**过期数字不得当实测**
+----------------------------------------------------------
+  ❌ FAIL: fetch 失败的远端没有标 STALE-DATA
+       develop/v4.1.0	gitcode	gitee	1	0
+  ❌ FAIL: 有远端量不到时仍然 exit 0
+       —— 过期 tracking ref 被当成了实测
+  ❌ FAIL: gitee 那一行仍是数字
+       develop/v4.1.0	gitcode	gitee	1	0
+develop/v4.1.0	gitea250	gitee	1	0
+develop/v4.1.0	gitea252	gitee	1	0
+
+[T4] DRIFT-STALE-1 现场形态：远端已对齐但本地 ref 过期 ⇒ 不得报出反向漂移数
+----------------------------------------------------------
+  ❌ FAIL: 仍然把过期 ref 当成 gitcode 的现状报了数字
+       develop/v4.1.0	gitcode	gitea252	0	1
+  ❌ FAIL: 量不到却 exit 0
+       —— 「查不到」被当成了「一致」
+  ❌ FAIL: 输出没有点名不可测量的形态
+       MAIN: ERROR — 'main' has DIVERGED across remotes (strict mode, zero tolerance).
+      Distinct tips: 2
+      'main' is the GA release pointer and must be byte-identical everywhere.
+      Resolve via docs/releases/v4.1.0/MAIN_DIVERGENCE_RESOLUTION_2026-09-30.md
+      (backup branch/tag: backup/main-pre-convergence-2026-09-30,
+       archive/main-pre-convergence-2026-09-30)
+
+RESULT: all branches within threshold (2)
+
+[T5] fetch 成功但本地 ref 过期 ⇒ 数字必须按**服务器 tip**算（不是过期 ref）
+----------------------------------------------------------
+  ✅ PASS: gitcode/gitea252 行是数字
+  ✅ PASS: 按服务器 tip 算出 0/0（真实结论：无漂移）
+  ✅ PASS: 全部对齐 ⇒ exit 0
+
+==========================================
+Total: PASS=7  FAIL=8
+==========================================
+❌ 测量可信度不达标 — 阻止合并
+reverse-mutation exit=1 （预期非 0：旧实现必须被夹具抓住）

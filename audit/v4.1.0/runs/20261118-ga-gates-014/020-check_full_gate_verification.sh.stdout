@@ -1,0 +1,101 @@
+=== D9: Full Gate Verification (8 Dimensions) ===
+Date: 2026-11-17T20:16:15Z
+
+--- [D1-D5 RC/GA] ---
+                  D7 (G6-G10 reliability) 是 Hermes 2026-06-12 审计新增的 GA 卡死门禁
+                  D8 (V312-19 release gates) 是 Issue #3906 strict-close 硬性条件
+                  D9 (v3.12 coverage framework) 要求覆盖率框架配置 PASS；正式 RC/GA 证据需 V312_COVERAGE_FULL=1
+  Dimensions executed: D1 D2 D3 D4 D5 D6 D7 D8 D9
+  Dimensions expected: D1 D2 D3 D4 D5 D6 D7 D8 D9
+  [0;32m✓ GATE: PASS[0m — 9 dimension(s) validated: D1 D2 D3 D4 D5 D6 D7 D8 D9
+  ✅ PASS (exit 0)
+
+--- [D6b Test Inventory] ---
+[462/488] operators_char_padding                             OK (4 passed, 0 ignored)
+[463/488] operators_date_string_compare                      OK (4 passed, 0 ignored)
+[464/488] operators_exists                                   OK (4 passed, 0 ignored)
+[465/488] operators_exists_correlated                        OK (2 passed, 2 ignored)
+[466/488] operators_in_subquery                              OK (7 passed, 2 ignored)
+[467/488] operators_join                                     OK (21 passed, 0 ignored)
+[468/488] operators_multi_join_3_table                       OK (3 passed, 0 ignored)
+[469/488] operators_order_by_desc                            OK (4 passed, 0 ignored)
+[470/488] operators_pragma_table_info                        OK (13 passed, 0 ignored)
+[471/488] operators_three_valued_logic                       OK (23 passed, 0 ignored)
+[472/488] read_path_db_5113                                  OK (3 passed, 2 ignored)
+[473/488] result_column_types_5271                           OK (6 passed, 0 ignored)
+[474/488] result_schema_5271                                 OK (11 passed, 0 ignored)
+[475/488] toplevel_sequence_test                             OK (10 passed, 0 ignored)
+[476/488] session_db_isolation_5057                          OK (6 passed, 0 ignored)
+[477/488] v312_mixed_soak                                    OK (3 passed, 1 ignored)
+[478/488] chaos_test                                         OK (12 passed, 0 ignored)
+[479/488] bplus_tree_test                                    OK (6 passed, 0 ignored)
+[480/488] file_storage_test                                  OK (10 passed, 0 ignored)
+[481/488] mysqldump_test                                     OK (45 passed, 0 ignored)
+[482/488] parser_token_test                                  OK (4 passed, 0 ignored)
+[483/488] prometheus_test                                    OK (16 passed, 0 ignored)
+[484/488] query_cache_config_test                            OK (2 passed, 0 ignored)
+[485/488] server_health_test                                 OK (10 passed, 0 ignored)
+[486/488] slow_query_log_test                                OK (7 passed, 0 ignored)
+[487/488] types_value_test                                   OK (13 passed, 0 ignored)
+[488/488] view_db_isolation_5140                             OK (5 passed, 0 ignored)
+
+=== D6 Test Inventory Summary ===
+Test files:        488 total
+Files PASSED:      476
+Files FAILED:      1
+Files NOT_RUN:     11  (missing [[test]] entry or build skip)
+Individual tests:  6906 passed, 1 failed, 88 ignored
+Elapsed:           3431s
+
+=== Failed Tests ===
+  - gate_honesty_test
+
+❌ D6 Test Inventory: FAILED (1 files, 1 tests)
+  (full inner output archived: /Volumes/workspace/dev/srg-gate-d1/artifacts/gate/v3.8.0/inner/D6b_Test_Inventory.log)
+  ❌ [FAIL] (exit 1, expected 0)
+
+--- [D7 INT Debt] ---
+  NOT FOUND rows:       0
+
+✅ D7 INT Debt: PASS (0 ACTIVE, 0 DEFERRED, all CLOSED)
+  ✅ PASS (exit 0)
+
+--- [D8 Arch/Sem Debt] ---
+  UNKNOWN:              0
+
+✅ D8 Arch/Sem Debt: PASS (all 7 items CLOSED)
+  ✅ PASS (exit 0)
+
+--- [Cross-Version Debt] ---
+
+=== Cross-Version Debt Gate Check Complete ===
+✅ PASS
+  ✅ PASS (exit 0)
+
+--- [Test Plan Consistency] ---
+  TEST_PLAN_INTEGRATED.md rows:       42
+  Cargo.toml [[test]] entries: 488
+  ✅ PASS (plan has       42 tests, cargo has 488 entries)
+
+--- [PR Template] ---
+  ✅ PASS (template has 5-类文档 + 5-原则)
+
+--- [Evidence Generation] ---
+  ✅ PASS (evidence dirs ready)
+
+=== D9 Full Gate Verification Summary ===
+  PASS:    7
+  FAIL:    1
+  DRIFT:   0
+
+--- Results ---
+  D1-D5 RC/GA: PASS
+  D6b Test Inventory: FAIL (exit 1)
+  D7 INT Debt: PASS
+  D8 Arch/Sem Debt: PASS
+  Cross-Version Debt: PASS
+  Test Plan Consistency: PASS
+  PR Template: PASS
+  Evidence Generation: PASS
+
+❌ [FAIL] D9 Full Gate Verification: FAILED (1 dimensions failed)

@@ -210,7 +210,29 @@ impl VersionedTable {
             .collect()
     }
 
-    /// #4974: drop every pending version written by `tx_id`. Nothing was
+    /// #5412: whether this table holds an **uncommitted** version written
+    /// by `tx_id`.
+    ///
+    /// The MVCC layer's commit and rollback change what a scan returns
+    /// **without** changing the inner engine's rows, so the tables they
+    /// touched have to move their change stamp. Only those tables may,
+    /// though: bumping every table would invalidate every table's cached
+    /// index on every commit, which is exactly the cost the stamp exists
+    /// to remove.
+    ///
+    /// The answer has to be collected **before** the promotion, because
+    /// afterwards the versions are committed and can no longer be told
+    /// apart from any other transaction's.
+    pub fn has_pending_for(&self, tx_id: u64) -> bool {
+        if tx_id == 0 {
+            return false;
+        }
+        let r = self.versions.read();
+        r.values()
+            .any(|chain| chain.iter().any(|v| v.created_by_tx == tx_id && !v.committed))
+    }
+
+    /// #5412: drop every pending version written by `tx_id`. Nothing was
     /// ever visible, so the previous committed version of each key is
     /// still the newest one and simply remains in place.
     pub fn rollback_tx(&self, tx_id: u64) {

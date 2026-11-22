@@ -166,7 +166,15 @@ jobs:
     # volume).
     container:
       volumes:
-        - sqlrustgo-cargo-cache:/opt/cargo-cache
+        # 2026-11-14：`sqlrustgo-cargo-cache:/opt/cargo-cache`（docker named volume 引用）
+        # 被 act 判 "not a valid volume, will be ignored"（act 不自动创建 named volume，
+        # src 非路径 ⇒ 忽略）⇒ /opt/cargo-cache 一直是**容器内临时目录**：
+        # 每轮 save 的 154M 随容器销毁、下一轮 restore 永远 starting cold
+        # ⇒ protoc-bin-vendored 等 crate 每轮都要从 crates.io 拉，
+        # 出站极慢（1 byte/120s ×10 重试）⇒ lint-build 必红（12625 attempt1/2 铁证）。
+        # 改 **宿主 bind 路径**（同 /opt/gmp-offline 先例：docker 自动建宿主目录、
+        # act 接受绝对路径 src）⇒ save 跨 job 持久、restore 命中。
+        - /opt/cargo-cache:/opt/cargo-cache
     steps:
       - name: Checkout
         # #5448 / #5532 — the checkout is done against the **Gitea instance**
@@ -326,7 +334,7 @@ jobs:
     runs-on: [hp-z6g4]
     container:
       volumes:
-        - sqlrustgo-cargo-cache:/opt/cargo-cache
+        - /opt/cargo-cache:/opt/cargo-cache
     # ── #5533 — `needs: [lint-build]` made this job **never run**. ──────────
     #
     # On this Gitea (28.1.0) a job that declares a non-empty `needs:` stays
@@ -739,7 +747,7 @@ jobs:
     runs-on: [hp-z6g4]
     container:
       volumes:
-        - sqlrustgo-cargo-cache:/opt/cargo-cache
+        - /opt/cargo-cache:/opt/cargo-cache
     # #5533 — same defect as the root `test` job: a non-empty `needs:` never
     # leaves status Waiting on this Gitea, so this job would have been dead
     # on arrival.  See the long explanation on the root `test` job.
@@ -994,7 +1002,7 @@ jobs:
     runs-on: [hp-z6g4]
     container:
       volumes:
-        - sqlrustgo-cargo-cache:/opt/cargo-cache
+        - /opt/cargo-cache:/opt/cargo-cache
     # #5455: `needs: [test]` masked this job too — the `test` job has never
     # succeeded, so the mutation analysis never ran once. It is a
     # post-test criterion, so it must not be gated behind the test job.
@@ -1366,7 +1374,7 @@ jobs:
     runs-on: [hp-z6g4]
     container:
       volumes:
-        - sqlrustgo-cargo-cache:/opt/cargo-cache
+        - /opt/cargo-cache:/opt/cargo-cache
     # #5455: `needs: [test]` completely masked this job. The `test` job has
     # never succeeded (0 success / 8 fail / 16 cancel / 1 skip over 50 CI
     # cycles), so postcheck's 18 steps — the last set of criteria before a

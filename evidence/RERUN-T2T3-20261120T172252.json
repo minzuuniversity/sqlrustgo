@@ -1,0 +1,1133 @@
+{
+ "suite": "RERUN-T2T3",
+ "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+ "generated_at": "20261120T172252",
+ "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+ "cargo": "cargo 1.97.0 (c980f4866 2026-06-30)",
+ "result": {
+  "tests": [
+   {
+    "name": "adaptive_hash_index::tests::test_new_has_zero_size",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_binary_format_error_display",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_helpers_write_read_string",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_helpers_write_read_u64",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_roundtrip_blob",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_roundtrip_boolean",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_roundtrip_float",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_roundtrip_integer",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_roundtrip_null",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_roundtrip_point",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_roundtrip_text",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_to_bytes_boolean",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_to_bytes_float",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_to_bytes_integer",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_to_bytes_null",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_format::tests::test_value_to_bytes_text",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_record_access_updates_promoted_count",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_custom_threshold",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_into_shared",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_record_access_below_threshold_does_not_promote",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_lookup_miss_returns_none",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_hit_rate_calculation",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_invalidate_page_removes_entries",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_record_access_at_threshold_promotes",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_invalidate_table_removes_only_that_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_box_storage_engine_has_view",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_box_storage_engine_new",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_box_storage_engine_is_wal_enabled",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_box_storage_engine_list_triggers",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_box_storage_engine_list_indexes",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_create_database_is_rejected",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_create_index_noop",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_create_trigger_is_rejected",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_delete_if_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_delete_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_drop_database_is_rejected",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_drop_index_noop",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_drop_trigger_is_rejected",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_get_table_info_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_get_trigger_none",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_force_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_flush",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_delete",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_add_column",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_delete_all",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_create_drop_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_box_storage_engine_delete_if",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_box_storage_engine_delegate",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_persist_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_list_tables",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_box_storage_engine_update_if",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_rename_table",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_update_if_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_update_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_scan_nonexistent",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_scan",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_binary_storage_exists",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_binary_storage_new",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_update",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_binary_storage_multiple_tables",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_binary_storage_load_float",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_null_value",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_binary_storage_load_text",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_binary_storage_multiple_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_binary_save_load",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::composite_index_tests::test_composite_key_creation",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::composite_index_tests::test_composite_btree_insert_and_search",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::composite_index_tests::test_composite_key_equality",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::composite_index_tests::test_composite_key_from_slice",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::composite_index_tests::test_index_stats_selectivity",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::composite_index_tests::test_composite_btree_split_then_search_boundary_keys",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::composite_index_tests::test_composite_btree_survives_multiple_node_splits",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::composite_index_tests::test_composite_btree_internal_node_split",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::composite_index_tests::test_composite_btree_range_query_sees_all_splits",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_collect_stats",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_collect_stats_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_delete",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_delete_multiple",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_height",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_insert_multiple",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_is_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::index_selection_tests::test_selectivity_calculation",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::index_selection_tests::test_best_index_selection",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_len",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_keys",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_keys_sorted",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_new",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_range_query",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_search_after_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_usage_stats",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_index_search_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_metadata_default",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_node_insert_key_value",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_node_insert_key_value_split",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_node_remove_key",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_node_remove_key_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_range_query_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_range_query_partial",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_search_not_found",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_range_query_sees_all_splits",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_split_then_search_boundary_keys",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_composite_btree_index_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_composite_btree_index_insert_unique",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_composite_btree_index_num_columns",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_composite_btree_index_range_query",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_composite_btree_index_search",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_survives_multiple_node_splits",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_composite_key_creation",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_composite_key_from_slice",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_deserialize_invalid_data",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_btree_internal_node_split",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::covering_index_tests::test_index_only_scan_decision",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::covering_index_tests::test_covering_index_check",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::covering_index_tests::test_non_covering_index_check",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_index_is_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_index_new",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_intersect",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_intersect_no_overlap",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_posting_list_sorted",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage_v2::tests::test_v2_insert_streaming_iter_accepts_arbitrary_iterator",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage_v2::tests::test_v2_insert_streaming_basic",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_index_contains",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_terms",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_tokenize",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_tokenize_chinese",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_tokenize_punctuation",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_tokenize_short_words",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_index_stats_default",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_index_stats_selectivity",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_index_stats_selectivity_clamped",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage_v2::tests::test_v2_insert_streaming_iter_basic",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_index_stats_selectivity_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_internal_node_serialization",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_node_can_split",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_node_find_child_index",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_node_find_key_index",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_node_is_full",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_node_serialization",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_posting_list_contains",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_serialize_deserialize_empty_node",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_complex_query",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_search_case_insensitive",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_term_frequency",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_delete_lazy",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_search_no_match",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_search_and",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::index::tests::test_fts_search_single_term",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::duplicate_keys_keep_every_row_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::test_bplus_tree_insert_and_search",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::range_query_returns_all_rows_in_range",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::test_bplus_tree_range_query",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::test_simple_bplus_tree_is_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::test_simple_bplus_tree_keys",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::test_simple_bplus_tree_search_all",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::adjust_after_removal_repoints_the_surviving_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::adjust_after_removal_handles_several_removals",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_buffer_pool_basic",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_buffer_pool_hit_rate",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_buffer_pool_get_page",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_buffer_pool_lru_eviction",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_buffer_pool_remove",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_buffer_pool_prefetch",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_buffer_pool_stats_synthetic_zero_field_order",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_buffer_pool_stats",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_memory_pool",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_memory_pool_wrong_size",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::legacy_scalar_form_still_deserializes",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::current_list_form_round_trips",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_checkpoint_manager_default",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_checkpoint_record",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_checkpoint_needs",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_truncation_gate_blocks_before_checkpoint",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::memory_storage_new_with_bufferpool_exposes_real_buffer_pool_stats",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_find_visible_at_snapshot_before_all",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_empty_table_snapshot",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_get_visible_pk_lookup",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_gc_drops_old_versions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_truncation_gate_allows_after_checkpoint",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_insert_after_delete_resurrects",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_put_and_scan_visible",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_key_count",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_safe_truncate_lsn",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_scan_visible_returns_in_pk_order",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_snapshot_counter_monotonic",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_last_checkpoint_lsn",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_tombstone_hides_row",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_version_chain_update",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_list_checkpoints_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_high_contention_snapshot_advances",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_storage::tests::test_delete_hides_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_storage::tests::test_delete_then_gc_keeps_tombstone",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_storage::tests::test_get_visible_pk_lookup",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_storage::tests::test_rebuild_from_inner_after_inserts",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_storage::tests::test_scan_pk_range",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_storage::tests::test_scan_returns_inserted_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_storage::tests::test_gc_runs_without_error",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_storage::tests::test_snapshot_progresses_with_inserts",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_ir::predicate_ir::tests::test_predicate_binary_and",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_ir::predicate_ir::tests::test_predicate_binary_eq",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::checkpoints_are_scanned_but_not_applied",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_ir::predicate_ir::tests::test_predicate_binary_lt",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_ir::predicate_ir::tests::test_predicate_binary_gt",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_ir::predicate_ir::tests::test_predicate_binary_neq",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_ir::predicate_ir::tests::test_predicate_binary_or",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_pr830f_lifecycle_commit_advances_checkpoint_and_truncates",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_checkpoint_metadata_serialization",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_wal_with_checkpoint_manager_skipped",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_checkpoint_save_load",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_legacy::tests::test_wal_manager_log_checkpoint",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "checkpoint::tests::test_checkpoint_cleanup",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_gc::tests::gc_now_works",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_storage::db_isolation_tests::mvcc_version_store_is_scoped_per_database",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_gc::tests::gc_thread_stops_on_drop",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc_gc::tests::gc_thread_runs_and_reclaims",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage_v2::tests::test_v2_insert_streaming_iter_multiple_segments",
+    "class": "PASS",
+    "raw_status": "ok"
+   }
+  ],
+  "summary": {
+   "passed": 222,
+   "failed": 0,
+   "ignored": 0,
+   "cargo_status": "ok"
+  },
+  "exit_code": 0,
+  "class": "PASS",
+  "duration_s": 1.46,
+  "cmd": "cargo test -p sqlrustgo-storage --lib -- bplus_tree mvcc binary buffer_pool adaptive_hash_index checkpoint"
+ },
+ "raw_log": "evidence/RERUN-T2T3-20261120T172252.log",
+ "artifact_digest": "525d0a3728ba2098"
+}

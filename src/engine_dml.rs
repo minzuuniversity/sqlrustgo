@@ -58,6 +58,19 @@ pub struct PkIndexCache {
     /// `StorageEngine::table_change_stamp` when this snapshot was captured.
     /// An entry is only trusted while this still equals the live stamp.
     pub stamp: u64,
+    /// V4.1.0 / #5412: the database this index was built from.
+    ///
+    /// The cache is keyed by table name alone, so `d1.t` and `d2.t` share
+    /// one slot — and the storage layer's change stamp is keyed by table
+    /// name too, so both databases' writes move the same counter. Without
+    /// this field the two databases' indexes are interchangeable: a cache
+    /// built from `d1.t` could be handed to a statement about `d2.t`,
+    /// whose duplicate-key check would then answer from `d1.t`'s keys.
+    ///
+    /// The stamp alone cannot catch that, because a stamp says "something
+    /// about this table name changed", not "these rows changed". Recording
+    /// the database turns a possible match into a definite one.
+    pub db: String,
 }
 
 impl PkIndexCache {
@@ -125,7 +138,19 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // the rows to the wrong database — measured at 6% under a writer
     // switching databases continuously.
     // qualified `INSERT INTO db.table`: explicit schema wins over session_db.
-    let stmt_db = insert.schema.clone().unwrap_or_else(|| engine.session_db());
+    // #5412: the database identity is compared against the cache entry's
+    // `db` field, so both sides have to be the same *normalised* name.
+    // The parser keeps the qualifier as written (`MyDb`), while the
+    // storage layer resolves it case-insensitively (`scoped_key`
+    // lower-cases both halves). Comparing raw spellings would make
+    // `MyDb` and `mydb` look like two different databases — never a
+    // wrong answer, but it throws away a usable cache entry on every
+    // case variation.
+    let stmt_db = insert
+        .schema
+        .clone()
+        .unwrap_or_else(|| engine.session_db())
+        .to_lowercase();
     if engine.clustered_tables.read().contains_key(&insert.table) {
         return execute_insert_clustered(engine, insert);
     }
@@ -157,81 +182,72 @@ pub fn execute_insert<S: StorageEngine + 'static>(
     // 没有错误通道。
     validate_insert_columns(&insert.columns, &table_info.columns)?;
 
-    let all_records: Vec<Vec<Value>> =
-        if insert.default_values {
-            // V312-65 / Issue #4643: `INSERT INTO t DEFAULT VALUES` — one
-            // row populated entirely from each column's declared DEFAULT
-            // expression (or NULL when no default is defined). Reuses the
-            // existing `materialise_default_tokens` machinery that already
-            // handles per-value DEFAULT sentinels.
-            let sentinel_row = vec![Value::Text("DEFAULT".to_string()); table_info.columns.len()];
-            materialise_default_tokens(vec![sentinel_row], &[], &table_info.columns)
-        } else if let Some(ref select) = insert.select {
-            let select_result = engine.execute_select(select)?;
-            map_select_result_to_records(select_result, &insert.columns, &table_info)?
-        } else {
-            // V312-17 #3970: validate row consistency and column count
-            if insert.values.len() >= 2 {
-                let first_len = insert.values[0].len();
-                for row in &insert.values {
-                    if row.len() != first_len {
-                        return Err(SqlError::ExecutionError(
-                            "Parser Error: VALUES lists must all be the same length".to_string(),
-                        ));
-                    }
+    let all_records: Vec<Vec<Value>> = if insert.default_values {
+        // V312-65 / Issue #4643: `INSERT INTO t DEFAULT VALUES` — one
+        // row populated entirely from each column's declared DEFAULT
+        // expression (or NULL when no default is defined). Reuses the
+        // existing `materialise_default_tokens` machinery that already
+        // handles per-value DEFAULT sentinels.
+        let sentinel_row = vec![Value::Text("DEFAULT".to_string()); table_info.columns.len()];
+        materialise_default_tokens(vec![sentinel_row], &[], &table_info.columns)
+    } else if let Some(ref select) = insert.select {
+        let select_result = engine.execute_select(select)?;
+        map_select_result_to_records(select_result, &insert.columns, &table_info)?
+    } else {
+        // V312-17 #3970: validate row consistency and column count
+        if insert.values.len() >= 2 {
+            let first_len = insert.values[0].len();
+            for row in &insert.values {
+                if row.len() != first_len {
+                    return Err(SqlError::ExecutionError(
+                        "Parser Error: VALUES lists must all be the same length".to_string(),
+                    ));
                 }
             }
-            let expected_cols = if !insert.columns.is_empty() {
-                insert.columns.len()
-            } else {
-                table_info.columns.len()
-            };
-            // V312-63 / Issue #4640: SQLite-compatible short INSERT
-            // (`INSERT INTO t VALUES (10)` into a 2-column table). When the
-            // user did NOT specify a column list, pad missing columns with
-            // Value::Null. Excess values are still hard-rejected.
-            let padded_values: Vec<Vec<Expression>> =
-                if insert.columns.is_empty() {
-                    insert
-                        .values
-                        .iter()
-                        .map(|row| {
-                            if row.len() > expected_cols {
-                                Err(SqlError::ExecutionError(format!(
-                            "Binder Error: table {} has {} columns but {} values were supplied",
-                            insert.table, expected_cols, row.len()
-                        )))
-                            } else {
-                                let mut padded = row.clone();
-                                while padded.len() < expected_cols {
-                                    padded.push(Expression::Literal("NULL".to_string()));
-                                }
-                                Ok(padded)
-                            }
-                        })
-                        .collect::<SqlResult<Vec<_>>>()?
-                } else {
-                    insert
-                        .values
-                        .iter()
-                        .map(|row| {
-                            if row.len() != expected_cols {
-                                Err(SqlError::ExecutionError(format!(
-                            "Binder Error: table {} has {} columns but {} values were supplied",
-                            insert.table, expected_cols, row.len()
-                        )))
-                            } else {
-                                Ok(row.clone())
-                            }
-                        })
-                        .collect::<SqlResult<Vec<_>>>()?
-                };
-            materialise_default_tokens(
-                build_insert_records(&padded_values),
-                &insert.columns,
-                &table_info.columns,
-            )
+        }
+        let expected_cols = if !insert.columns.is_empty() {
+            insert.columns.len()
+        } else {
+            table_info.columns.len()
         };
+        // #4640 introduced a "short INSERT" that padded the missing
+        // columns with NULL, on the premise that "SQLite allows it".
+        // **That premise is wrong**: SQLite rejects a VALUES list whose
+        // length differs from the table's column count
+        // (`table a has 2 columns but 1 values were supplied`), and so
+        // does MySQL (`Column count doesn't match value count at row 1`).
+        // The repository's own SQLite corpus says so:
+        // `crates/sqlrustgo_sqllogictest/testdata/insert__test_insert_invalid.test`
+        // expects exactly that error for `INSERT INTO a VALUES (1)`.
+        //
+        // Padding instead of rejecting is silent data corruption: a
+        // typo'd INSERT drops the remaining columns to NULL and the
+        // statement still succeeds. The explicit-column form
+        // (`INSERT INTO t (id) VALUES (1)`) is a different thing and
+        // stays as it is — naming a subset of columns is legal, and the
+        // unnamed ones take their defaults.
+        let padded_values: Vec<Vec<Expression>> = insert
+            .values
+            .iter()
+            .map(|row| {
+                if row.len() != expected_cols {
+                    Err(SqlError::ExecutionError(format!(
+                        "Binder Error: table {} has {} columns but {} values were supplied",
+                        insert.table,
+                        expected_cols,
+                        row.len()
+                    )))
+                } else {
+                    Ok(row.clone())
+                }
+            })
+            .collect::<SqlResult<Vec<_>>>()?;
+        materialise_default_tokens(
+            build_insert_records(&padded_values),
+            &insert.columns,
+            &table_info.columns,
+        )
+    };
 
     // For REPLACE INTO: if any row in `all_records` collides on a primary key
     // (or other UNIQUE constraint) with an existing row, delete the EXISTING
@@ -445,7 +461,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 .pk_lookup_cache
                 .read()
                 .get(&table_name)
-                .is_some_and(|e| e.is_fresh(live_stamp) && e.pk_idx == pk_idx);
+                .is_some_and(|e| e.is_fresh(live_stamp) && e.pk_idx == pk_idx && e.db == stmt_db);
             if cached {
                 pk_index_ready = true;
                 cached_stamp = live_stamp;
@@ -471,12 +487,18 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                     .filter_map(|row| pk_key_of(row, &pk_idx))
                     .collect();
                 drop(storage);
+                // #5412: the index was rebuilt from a full table scan.
+                // Counting the rebuilds is what pins this issue's claim:
+                // without a change stamp this line ran once per INSERT,
+                // so N inserts cost N full scans.
+                engine.pk_cache_builds.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 engine.pk_lookup_cache.write().insert(
                     table_name.clone(),
                     PkIndexCache {
                         pk_idx: pk_idx.clone(),
                         index,
                         stamp: live_stamp,
+                        db: stmt_db.clone(),
                     },
                 );
                 pk_index_ready = true;
@@ -807,12 +829,27 @@ pub fn execute_insert<S: StorageEngine + 'static>(
         if pk_index_ready {
             let mut cache = engine.pk_lookup_cache.write();
             let new_stamp = storage.table_change_stamp(&table_name);
+            let mut extendable = false;
             if let Some(entry) = cache.get_mut(&table_name) {
-                entry.index.extend(published_keys);
-                entry.stamp = new_stamp;
-            } else {
-                // Dropped by a concurrent statement; do not resurrect it —
-                // it would carry a stamp without a matching scan.
+                // #5412: only extend an entry that belongs to *this*
+                // statement's database. Between this statement's lookup
+                // and this write, a concurrent statement on a same-named
+                // table in another database can have replaced the slot —
+                // and extending that entry would mix the two databases'
+                // keys into one index, so a later statement about the
+                // other database would answer from a key set that is
+                // partly not its own.
+                extendable = entry.db == stmt_db;
+                if extendable {
+                    entry.index.extend(published_keys);
+                    entry.stamp = new_stamp;
+                }
+            }
+            if !extendable {
+                // Either the slot was dropped by a concurrent statement, or
+                // it now belongs to another database. Do not resurrect or
+                // pollute it — an entry carrying a stamp without a
+                // matching scan is worse than no entry at all.
                 cache.remove(&table_name);
             }
         }
@@ -826,6 +863,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             record_insert_undo(
                 &mut engine.transaction_manager.lock(),
                 undo_tx,
+                &stmt_db,
                 &table_name,
                 &table_info,
                 record,
@@ -1181,6 +1219,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 record_update_undo(
                     &mut engine.transaction_manager.lock(),
                     undo_tx,
+                    &stmt_db,
                     &table_name,
                     &table_info,
                     prior_row,
@@ -1371,6 +1410,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
             record_update_undo(
                 &mut engine.transaction_manager.lock(),
                 undo_tx,
+                &stmt_db,
                 &table_name,
                 &table_info,
                 prior_row,
@@ -1484,6 +1524,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
                 record_delete_undo(
                     &mut engine.transaction_manager.lock(),
                     undo_tx,
+                    &stmt_db,
                     &table_name,
                     &table_info,
                     prior_row,
@@ -1673,6 +1714,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
             record_delete_undo(
                 &mut engine.transaction_manager.lock(),
                 undo_tx,
+                &stmt_db,
                 &table_name,
                 &table_info,
                 prior_row,
@@ -2489,9 +2531,25 @@ fn build_trigger_auth_check<S: StorageEngine + 'static>(
 /// Mirrors the [`TriggerBodyAuthCheck`] / `build_trigger_auth_check`
 /// pattern — trait + factory keeps the call site in trigger.rs free of
 /// any `crate::engine_dml::` import.
+///
+/// #5896: the recorded `UndoRecord`s must name the database the
+/// trigger-side write actually landed in, so the replay can address the
+/// very same table.
+///
+/// The trigger executor's body DML goes through the **bare-name**
+/// storage APIs (`storage.get_table_info(name)`,
+/// `storage.delete(name, …)`, `storage.insert(name, …)` — see
+/// `crates/executor/src/trigger.rs`), and both `MemoryStorage` and
+/// `FileStorage` resolve a bare table name against
+/// `DEFAULT_DATABASE`. So a trigger body's write always lands in the
+/// default database, and that is the database the undo record has to
+/// name — naming the session's database instead would send the replay
+/// after a table the write never touched, and the trigger's side
+/// effect would survive the ROLLBACK.
 fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
 ) -> std::sync::Arc<dyn TriggerUndoRecorder> {
+    use sqlrustgo_storage::DEFAULT_DATABASE;
     use sqlrustgo_transaction::savepoint::UndoRecord;
 
     struct EngineUndoRecorder {
@@ -2502,6 +2560,7 @@ fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
         fn record_insert_undo(&self, table: &str, table_info: &TableInfo, row: &[Value]) {
             let key = crate::savepoint_wiring::primary_key_values(table_info, row);
             self.sink.lock().push(UndoRecord::Insert {
+                db: DEFAULT_DATABASE.to_string(),
                 table: table.to_string(),
                 key,
                 row: row.to_vec(),
@@ -2517,6 +2576,7 @@ fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
         ) {
             let key = crate::savepoint_wiring::primary_key_values(table_info, prior_row);
             self.sink.lock().push(UndoRecord::Update {
+                db: DEFAULT_DATABASE.to_string(),
                 table: table.to_string(),
                 key,
                 old_value: prior_row.to_vec(),
@@ -2527,6 +2587,7 @@ fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
         fn record_delete_undo(&self, table: &str, table_info: &TableInfo, row: &[Value]) {
             let key = crate::savepoint_wiring::primary_key_values(table_info, row);
             self.sink.lock().push(UndoRecord::Delete {
+                db: DEFAULT_DATABASE.to_string(),
                 table: table.to_string(),
                 key,
                 old_value: row.to_vec(),
