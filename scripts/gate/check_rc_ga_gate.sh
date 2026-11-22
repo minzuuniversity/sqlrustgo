@@ -243,6 +243,80 @@ coverage_min_for_mode() {
     printf '%s %s' "$stage" "$threshold"
 }
 
+# =============================================================================
+# RELEASE-LINE RESOLUTION — #5580
+# =============================================================================
+#
+# #5580 (根因 F1): D5 的四条 git 判据全部硬编码在 **v3.8.0 时代**的发布线上：
+#
+#   D5-2  git diff --stat origin/develop/v3.8.0~3..HEAD
+#   D5-4  git log origin/develop/v3.7.0..origin/develop/v3.8.0
+#   D5-5  git log origin/develop/v3.8.0
+#
+# `origin/develop/v3.7.0` 与 `origin/develop/v3.8.0` 在**当前任何远端都不存在**
+# （Gitea 上这两个分支已被删；gitcode/gitee/github 是只读镜像，见 AGENTS.md §3.2）。
+# 于是这三条判据在 v4.1.0 上：
+#
+#   * D5-2 的 diff 为**空** ⇒ `tail -1 | awk '{print $1}'` 得到空串 ⇒
+#     bash 的 `[ "" -lt 500 ]` 把空串当 0 ⇒ 判据报 **PASS**，而它其实
+#     **什么也没查**（空真通过）；
+#   * D5-5 的计数恒为 **0** ⇒ 判据恒红；
+#   * D5-4 的红绿取决于 `wc -l` 从管道读入时**是否补前导空格**：补 ⇒ 判红；
+#     不补 ⇒ "0" 匹配 `^[0-9]+$` ⇒ **什么都没查也算通过**（空真）。
+#
+# 三条都是「发布线绑定错了」而不是「代码有缺陷」，但在 v4.1.0 上表现为
+# 「D5 7/10，判红」⇒ **结构性假红**。
+#
+# 修法：发布线**从 SSOT 解析**，不再写死版本号。版本解析复用 #5446 引入的
+# 同一份助手 scripts/gate/resolve_release_version.sh（它的存在理由就是这个：
+# 「一个错但看起来合理的版本，比一次可见的失败更糟」）。边界、窗口、门禁判据
+# 与 500 行阈值**一字未动**；变的只有「查哪条发布线」。
+
+# release_line_version — 当前 checkout 所属发布线的版本号（带 "v"）。
+# 解析顺序（与 resolve_release_version.sh 一致）：
+#   1. $GITEA_REF / $GITHUB_REF 等环境变量
+#   2. 当前分支名
+#   3. docs/releases/ 下最新的、带 STAGE.yaml 的版本目录
+#   4. VERSION 文件
+# 解析不出来时返回空串（调用方必须显式处理「解析不出来」，
+# 不允许用别的版本号顶替 —— 同 #5446 的口径）。
+release_line_version() {
+    local v=""
+    if [ -f "$SCRIPT_DIR/resolve_release_version.sh" ]; then
+        v="$(bash "$SCRIPT_DIR/resolve_release_version.sh" 2>/dev/null || true)"
+    fi
+    if [ -z "$v" ] || [ ! -d "docs/releases/$v" ]; then
+        v="$(find docs/releases -maxdepth 1 -type d -name 'v[0-9]*' \
+              -exec basename {} \; 2>/dev/null | sort -V | tail -1)"
+    fi
+    printf '%s' "$v"
+}
+
+# release_line_prev_version <cur> — 上一条发布线的版本目录名。
+# 定义：docs/releases/ 下按 sort -V 排序后**紧邻** <cur> 之前的那一个
+# （没有则返回空串）。sort -V 保证 v4.10.0 排在 v4.9.0 之后。
+release_line_prev_version() {
+    local cur="${1:-}" prev="" cand
+    while IFS= read -r cand; do
+        if [ "$cand" = "$cur" ]; then
+            break
+        fi
+        prev="$cand"
+    done < <(find docs/releases -maxdepth 1 -type d -name 'v[0-9]*' \
+                  -exec basename {} \; 2>/dev/null | sort -V)
+    printf '%s' "$prev"
+}
+
+# release_line_prev_tag <prev_version> — 上一发布线的封版 tag（可为空）。
+# 用途：把「当前发布线自己的提交」这一窗口锚定在上一发布线的封版点上。
+# 注意：<prev_version> **自带 "v" 前缀**（如 v4.0.0），模式里不能再加一个 v，
+# 否则会变成 "vv4.0.0*" 而匹配不到任何 tag（本轮实测踩过）。
+release_line_prev_tag() {
+    local prev="${1:-}"
+    [ -n "$prev" ] || return 0
+    git tag -l "${prev}*" 2>/dev/null | head -1
+}
+
 # gate_verdict_for <mode> <executed_csv> <d1_blk> <d2_blk> <d8_blk>
 #                <d9_blk> <d6_fail> <d7_blk> <d3_fails> <d3_drifts>
 #
@@ -303,8 +377,9 @@ gate_verdict_for() {
 #   A5_STATUS  = PASS | FAIL | NOT-RUN
 #   A5_REASON  = "" | COVERAGE_TOOL_MISSING | COVERAGE_NO_MEASUREMENTS
 #
-# Usage: a5_coverage_decision <tool_available:0|1> <measured_crates:int> [pct:int] [threshold:int]
-#   A5_REASON 还可能是 NO_THRESHOLD_IN_SSOT（三个来源都给不出门槛时）。
+# Usage: a5_coverage_decision <tool_available:0|1> <measured_crates:int> [pct:decimal] [threshold:decimal]
+#   A5_REASON 还可能是 NO_THRESHOLD_IN_SSOT（三个来源都给不出门槛时）
+#   与 COVERAGE_VALUE_UNPARSEABLE（覆盖率读不出数值时）。
 #
 # 门槛是判定输入，不是环境残留：第 4 个参数优先，其次 COVERAGE_MIN
 # （main() 从 SSOT 读到的值），都没有就现读 SSOT。三条路都给不出门槛
@@ -336,10 +411,35 @@ a5_coverage_decision() {
         A5_REASON="NO_THRESHOLD_IN_SSOT"
         return 0
     fi
-    if [ "$pct" -ge "$threshold" ] 2>/dev/null; then
+    # 覆盖率是**小数**：`coverage_verdict`（scripts/gate/common.sh）用 `bc`
+    # 的 scale=2 算出 "87.38" 这样的值，而这里的比较用的是 bash 的 `[ ]`
+    # —— 它只做整数比较：
+    #
+    #     [ "87.38" -ge "85" ]  ⇒  "[: 87.38: integer expected"（rc=2）
+    #
+    # 于是「87.38% ≥ 85%」落进 else 分支被判红。GA 实跑 005 实测复现：
+    # 同一轮里 `coverage_verdict` 已经判了 PASS（"average coverage:
+    # 87.38% (threshold: 85%)"），A5 却紧跟着打印
+    # "✗ [FAIL] A5 Coverage: 87.38% (min: 85%)" —— **同一个数、两套判据**。
+    #
+    # 现在两处都用浮点口径（awk），并把三种失败分开：
+    #   rc=1 低于门槛     ⇒ FAIL（无 REASON）
+    #   rc=2 覆盖率读不出 ⇒ FAIL / COVERAGE_VALUE_UNPARSEABLE
+    #   rc=3 门槛读不出   ⇒ FAIL / NO_THRESHOLD_IN_SSOT
+    # 读不出数值仍然判红：绝不把「读不出来」当成「通过」。
+    if awk -v p="$pct" -v t="$threshold" '
+        BEGIN {
+            if (t !~ /^[0-9]+([.][0-9]+)?$/) exit 3
+            if (p !~ /^[0-9]+([.][0-9]+)?$/) exit 2
+            exit (p + 0 >= t + 0) ? 0 : 1
+        }'; then
         A5_STATUS="PASS"
     else
-        A5_STATUS="FAIL"
+        case "$?" in
+            1) A5_STATUS="FAIL" ;;
+            2) A5_STATUS="FAIL"; A5_REASON="COVERAGE_VALUE_UNPARSEABLE" ;;
+            *) A5_STATUS="FAIL"; A5_REASON="NO_THRESHOLD_IN_SSOT" ;;
+        esac
     fi
     return 0
 }
@@ -1026,6 +1126,12 @@ D6_INTEGRATION_TESTS=(
     "password_rotation_test"
     "embedded_harnesssmoke"
     "ci_test"
+    # #5490 (FALSESUCCESS-1): KILL CONNECTION 对不存在的连接必须报 1094。
+    # 这条回归测试此前放在 crates/mysql-server/tests/ 下 —— 那个目录不在
+    # 根包的 [[test]] 集合里，`cargo test --all-features`（GA 轮第 33 项）
+    # 根本不会编译它 ⇒ 权威轮从未执行过这条修复的证据。已移入
+    # tests/integration/wire/ 并登记 [[test]]，同时进 D6 契约。
+    "falsesuccess_kill_unknown_thread"
 )
 
 run_d6_integration_tests() {
@@ -1207,57 +1313,142 @@ run_d5_deepseek() {
     echo "  ${BOLD}Principle 2: Minimal Enforcement${NC}"
     D5_TOTAL=$((D5_TOTAL+1))
     echo -n "  [D5-2] Minimal change enforcement ... "
-    # Check that recent commits are minimal (not large refactors)
-    RECENT_LINES=$(git diff --stat origin/develop/v3.8.0~3..HEAD -- "*.rs" 2>/dev/null | tail -1 | awk '{print $1}' || echo "0")
-    echo "recent .rs changes: $RECENT_LINES lines"
-    if [ "$RECENT_LINES" -lt 500 ]; then
-        log_pass "D5-2: Minimal enforcement (recent: ${RECENT_LINES} lines)"
+    # #5580 (根因 F1-a): 旧写法
+    #   `git diff --stat origin/develop/v3.8.0~3..HEAD -- "*.rs" | tail -1 | awk '{print $1}'`
+    # 有三个独立缺陷：
+    #   (1) base ref `origin/develop/v3.8.0` 在**当前任何远端都不存在** ⇒ diff 为空；
+    #   (2) `git diff --stat` 末行第 1 列是**改动文件数**，不是行数 —— 变量名
+    #       RECENT_LINES、文案「lines」与实现三方不一致（实测该列为文件数）；
+    #   (3) diff 为空时 `tail -1 | awk` 得到**空串** ⇒ bash 的 `[ "" -lt 500 ]`
+    #       把空串当 0 ⇒ 判据报 **PASS**，而它其实**什么也没查**（空真通过）。
+    #       A/B 实测（同一段代码，修复前）：`✓ PASS D5-2: Minimal enforcement
+    #       (recent: 0 lines)` —— 0 不是量出来的，是空串被当成了 0。
+    # 修法（判据自述「recent changes 必须小于 500」与 500 这个阈值一字未动，
+    # 只把它接到**当前发布线**并按其自述口径计量）：
+    #   * 窗口 = 本 checkout 最近 3 笔提交（HEAD~3..HEAD；浅克隆退化为 HEAD~1..HEAD）；
+    #   * 计量 = 实算增删**行数**（git diff --numstat 求和），与判据自述的「行数」一致；
+    #   * 空 diff = 0 行 = 通过（不再是整数报错）。
+    RECENT_LINES=0
+    RECENT_BASE=""
+    if git rev-parse --verify --quiet "HEAD~3^{commit}" >/dev/null 2>&1; then
+        RECENT_BASE="HEAD~3"
+    elif git rev-parse --verify --quiet "HEAD~1^{commit}" >/dev/null 2>&1; then
+        RECENT_BASE="HEAD~1"
+    fi
+    if [ -n "$RECENT_BASE" ]; then
+        RECENT_LINES=$(git diff --numstat "$RECENT_BASE..HEAD" -- "*.rs" 2>/dev/null \
+                       | awk '{a+=$1; d+=$2} END {print a+d+0}')
+        RECENT_LINES=${RECENT_LINES:-0}
+    fi
+    echo "recent .rs changed lines (base=${RECENT_BASE:-none}): ${RECENT_LINES}"
+    if [ -z "$RECENT_BASE" ]; then
+        log_warn "D5-2: cannot establish the 'recent changes' window (checkout has no parent commit)"
+    elif [ "${RECENT_LINES:-0}" -lt 500 ] 2>/dev/null; then
+        log_pass "D5-2: Minimal enforcement (recent: ${RECENT_LINES} changed lines)"
         D5_PASS=$((D5_PASS+1))
     else
-        log_warn "D5-2: Large recent changes (${RECENT_LINES} lines)"
+        log_warn "D5-2: Large recent changes (${RECENT_LINES} changed lines)"
     fi
 
     echo "  ${BOLD}Principle 3: Strict Scope Control${NC}"
     D5_TOTAL=$((D5_TOTAL+1))
     echo -n "  [D5-3] EEK v1 scope enforcement ... "
-    # Check that no EEK v2 features are mixed into v1
-    EEK2_PATTERNS=$(grep -r "EEK.*v2\|WAL.*v2\|v2.*WAL" --include="*.rs" crates/ 2>/dev/null | wc -l | tr -d ' ')
-    echo "EEK v2 patterns found: $EEK2_PATTERNS"
-    if [ -n "$EEK2_PATTERNS" ] && [ "$EEK2_PATTERNS" -eq 0 ] 2>/dev/null; then
-        log_pass "D5-3: Strict scope (no EEK v2 mixed)"
+    # #5580 (根因 F1-b): 旧模式
+    #   grep -r "EEK.*v2\|WAL.*v2\|v2.*WAL" --include="*.rs" crates/
+    # 是**同一行内任意位置**的共现匹配，在 v4.1.0 上必然误伤**合法代码**：
+    #   * crates/storage/tests/multi_db_crash_recovery_5192.rs:84
+    #       "Re-open the WAL the way `run_server_v2` does"          ← WAL + v2
+    #   * crates/storage/src/file_storage.rs:1386 / :7382
+    #       "V312-95 v2 / Issue #4814: save a view to disk (WAL-style:" ← v2 + WAL
+    # 实测命中 3 处，**全部是假阳性** ⇒ D5 永远拿不到 10/10。
+    # 另有一个概念性问题：**"EEK" 在本仓根本不存在** —— 它只作为 "WEEK" 的子串
+    # 出现（实测 `grep -rn EEK crates/ --include=*.rs` 的命中全是 WEEK）。
+    # 也就是说，这一条判据在校验一个**本仓不存在的概念**，它的红与绿都不携带信息。
+    # 修法（判据「严格范围控制：不得把 EEK v2 / WAL v2 混进 v1」保留，模式修正为
+    # **相邻记号**，并加左边界以免 "WEEK v2" 这类子串误伤）：
+    #   * 命中即**逐条打印 file:line**，判定可被人复核（判据从此可审计）；
+    #   * 判据与阈值一字未动 —— 只是让模式真正表达判据自述的意思。
+    EEK2_PATTERNS=$(grep -rnE '(^|[^A-Za-z])(EEK|WAL)[ _-]?v2' --include="*.rs" crates/ 2>/dev/null | wc -l | tr -d ' ')
+    EEK2_PATTERNS=${EEK2_PATTERNS:-0}
+    echo "EEK/WAL v2 markers found: $EEK2_PATTERNS"
+    if [ "${EEK2_PATTERNS:-0}" -eq 0 ] 2>/dev/null; then
+        log_pass "D5-3: Strict scope (no EEK v2 / WAL v2 markers mixed in)"
         D5_PASS=$((D5_PASS+1))
     else
-        log_warn "D5-3: EEK v2 patterns detected ($EEK2_PATTERNS)"
+        grep -rnE '(^|[^A-Za-z])(EEK|WAL)[ _-]?v2' --include="*.rs" crates/ 2>/dev/null \
+            | head -10 | sed 's/^/         hit: /'
+        log_warn "D5-3: EEK v2 / WAL v2 markers detected ($EEK2_PATTERNS)"
     fi
 
     echo "  ${BOLD}Principle 4: Version Boundary Clarity${NC}"
     D5_TOTAL=$((D5_TOTAL+1))
     echo -n "  [D5-4] Version boundaries respected ... "
-    # Verify 3.7.0 is frozen and 3.8.0 is WAL integration
-    if git log --oneline origin/develop/v3.7.0..origin/develop/v3.8.0 -- "*.rs" 2>/dev/null | wc -l | grep -qE "^[0-9]+$"; then
-        log_pass "D5-4: Version boundaries clear"
+    # #5580 (根因 F1-c): 旧写法
+    #   git log --oneline origin/develop/v3.7.0..origin/develop/v3.8.0 -- "*.rs" | wc -l | grep -qE "^[0-9]+$"
+    # 判据自述是「Verify <上一版> is frozen and <当前版> is active」，但实现是
+    # **两个写死的 ref 之间有多少条 .rs 提交**。两个 ref 都不存在时 git 报错、
+    # stdout 为空，`wc -l` 输出的是**带前导空格的 "       0"**（管道输入时 wc 会
+    # 对齐列宽），而判据是 `grep -qE "^[0-9]+$"` ⇒ **匹配不上** ⇒ 判红。
+    # A/B 实测（同一段代码，修复前）：`⚠ WARN D5-4: Version boundary unclear`。
+    # ⇒ 这条判据的红绿**取决于一个与判据无关的格式细节**（wc 是否补空格）：
+    #   补空格 ⇒ 红；不补 ⇒ "0" 匹配 ^[0-9]+$ ⇒ **什么都没查也算通过**（空真）。
+    # 无论哪一种，它问的都不是「版本边界是否清晰」。
+    # 修法（判据自述保留，改为**发布边界在 SSOT 里显式可查**，且不依赖 git）：
+    #   * cur  = 当前发布线版本（SSOT: resolve_release_version.sh，见 release_line_version）
+    #   * prev = 上一条发布线（docs/releases/ 下 sort -V 的前一个）
+    #   * 边界显式性 = cur 的 STAGE.yaml 存在 ∧ version 字段与目录名自洽
+    #                 ∧ 显式声明 current_stage
+    #                 ∧ prev 的 STAGE.yaml 已封档存在
+    #   * 任一条不满足 ⇒ 明确报出**缺哪一条**，不再出现空真通过。
+    D5_CUR_VERSION="$(release_line_version)"
+    D5_PREV_VERSION="$(release_line_prev_version "$D5_CUR_VERSION")"
+    D5_BOUNDARY_MISSING=""
+    if [ -z "$D5_CUR_VERSION" ]; then
+        D5_BOUNDARY_MISSING="current release version cannot be resolved from the SSOT"
+    elif [ ! -f "docs/releases/$D5_CUR_VERSION/STAGE.yaml" ]; then
+        D5_BOUNDARY_MISSING="docs/releases/$D5_CUR_VERSION/STAGE.yaml is missing"
+    else
+        D5_STAGE_VERSION="$(grep -m1 -E '^version:' "docs/releases/$D5_CUR_VERSION/STAGE.yaml" 2>/dev/null \
+                           | sed -E 's/^version:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/')"
+        if [ -z "$D5_STAGE_VERSION" ]; then
+            D5_BOUNDARY_MISSING="STAGE.yaml of $D5_CUR_VERSION declares no version: field"
+        elif [ "$D5_STAGE_VERSION" != "$D5_CUR_VERSION" ]; then
+            D5_BOUNDARY_MISSING="STAGE.yaml version '$D5_STAGE_VERSION' != release directory '$D5_CUR_VERSION'"
+        elif ! grep -qE '^current_stage:' "docs/releases/$D5_CUR_VERSION/STAGE.yaml" 2>/dev/null; then
+            D5_BOUNDARY_MISSING="STAGE.yaml of $D5_CUR_VERSION declares no current_stage: field"
+        elif [ -z "$D5_PREV_VERSION" ] || [ ! -f "docs/releases/$D5_PREV_VERSION/STAGE.yaml" ]; then
+            D5_BOUNDARY_MISSING="previous release line '${D5_PREV_VERSION:-<none>}' has no archived STAGE.yaml"
+        fi
+    fi
+    echo "release boundary: cur=$D5_CUR_VERSION prev=$D5_PREV_VERSION"
+    if [ -z "$D5_BOUNDARY_MISSING" ]; then
+        log_pass "D5-4: Version boundaries clear ($D5_PREV_VERSION archived, $D5_CUR_VERSION active)"
         D5_PASS=$((D5_PASS+1))
     else
-        log_warn "D5-4: Version boundary unclear"
+        log_warn "D5-4: Version boundary unclear — $D5_BOUNDARY_MISSING"
     fi
 
     echo "  ${BOLD}Principle 5: Root Cause Provenance${NC}"
     D5_TOTAL=$((D5_TOTAL+1))
     echo -n "  [D5-5] Root cause proven by experiment ... "
-    # Check that WAL fixes have experiment evidence
-    # `grep -c` 在**零匹配**时既打印 "0" 又以退出码 1 结束 ⇒ 旧的 `|| echo "0"` 会追加第二个 0，
-    # 变量变成多行 "0\n0" ⇒ `[ "$WAL_FIXES" -gt 0 ]` 直接报 `integer expression expected`，
-    # 这一项的判定根本没跑成（GA 归档 run 20261107-ga-gates-001 的 stderr 原文）。
-    # 修法：只留计数命令自己的输出（它本身就打印 0），失败时给变量兜底赋值，
-    # 不追加第二行（那会让整数比较炸掉），也不引入被治理口径计数的「空操作」模式。
-    WAL_FIXES=$(git log --oneline origin/develop/v3.8.0 2>/dev/null | grep -c "WAL\|wal\|checkpoint\|truncate" || WAL_FIXES=0)
+    # #5580 (根因 F1-d): 旧写法数的是 `git log --oneline origin/develop/v3.8.0`
+    # —— **另一条发布线**的 WAL 提交，那条分支已不存在 ⇒ 计数恒 0 ⇒ 恒红。
+    # 修法：窗口换成**当前发布线自己的提交**：上一发布线的封版 tag..HEAD
+    #（tag 不可用时退化为 HEAD 全历史，并在输出里写明用的是哪个窗口）。
+    # 计数模式（WAL|wal|checkpoint|truncate）与判据自述一字未动。
+    D5_PREV_TAG="$(release_line_prev_tag "$D5_PREV_VERSION")"
+    D5_WAL_WINDOW="HEAD"
+    if [ -n "$D5_PREV_TAG" ]; then
+        D5_WAL_WINDOW="${D5_PREV_TAG}..HEAD"
+    fi
+    WAL_FIXES=$(git log --oneline "$D5_WAL_WINDOW" 2>/dev/null | grep -cE "WAL|wal|checkpoint|truncate" || true)
     WAL_FIXES=${WAL_FIXES:-0}
-    echo "WAL-related commits in v3.8.0: $WAL_FIXES"
-    if [ "$WAL_FIXES" -gt 0 ]; then
-        log_pass "D5-5: WAL fixes documented"
+    echo "WAL-related commits in window '$D5_WAL_WINDOW': $WAL_FIXES"
+    if [ "${WAL_FIXES:-0}" -gt 0 ] 2>/dev/null; then
+        log_pass "D5-5: WAL fixes documented ($WAL_FIXES commits in $D5_WAL_WINDOW)"
         D5_PASS=$((D5_PASS+1))
     else
-        log_warn "D5-5: No WAL fix evidence"
+        log_warn "D5-5: No WAL fix evidence in $D5_WAL_WINDOW"
     fi
 
     echo "  ${BOLD}Principle 6: No False Positives${NC}"
@@ -1470,24 +1661,65 @@ run_d7_reliability() {
     # G9: Upgrade Test
     D7_TOTAL=$((D7_TOTAL+1))
     echo -n "  [G9] Upgrade Test (v3.8→v3.9) ... "
-    UPGRADE_TEST=$(timeout 90 cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test 2>&1 | tail -3)
-    if grep -qE "0 failed|test result: ok" <<< "$UPGRADE_TEST"; then
+    # #5580 (根因 F2): 旧写法
+    #   UPGRADE_TEST=$(timeout 90 cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test 2>&1 | tail -3)
+    #   if grep -qE "0 failed|test result: ok" <<< "$UPGRADE_TEST"; then PASS else FAIL
+    # 一手证据（GA 认证轮 20261119-ga-gates-019 第 001 臂，stdout 第 215-217 行）：
+    #   [G9] Upgrade Test ... ✗ FAIL G9 Upgrade:
+    #       Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/srg-gate-d1)
+    #       Finished `test` profile [...] in 35.00s
+    #       Running tests/integration/migration/upgrade_test.rs (...)
+    #   ⇒ cargo **被 timeout 90 砍断在测试阶段**（编译已耗 35 s），输出里根本没有
+    #     判定行 `test result: ok. N passed; 0 failed` ⇒ 判据必然落到 else ⇒ 恒红。
+    #   G10 同因：编译 16.81 s 后在 `Running tests/integration/stress/audit_log_test.rs`
+    #   处被 timeout 60 砍断（该预算比 G9 的还小 1/3）。
+    # 所以**主因是内层预算不足**，不是判据本身；`tail -3` 是**诊断毁证**的次因：
+    # 它把 FAIL 消息压成三行「Compiling / Finished / Running」，于是
+    # 「编译失败」「测试失败」「时间不够」三种结局**长得一模一样** ——
+    # 证据不足被当成红，而没人能看出它是预算问题。
+    # 修法（判据 `0 failed|test result: ok` 与阈值**一字未动**，只放宽运行参数 +
+    # 抓完整输出）：
+    #   * 预算放宽到 ${GATE_RELIABILITY_TEST_TIMEOUT:-1800}s（可用环境变量覆盖）；
+    #   * 全量输出落盘，判据对**全量**输出匹配，不再先截断；
+    #   * 超时（exit 124）与测试失败分别报出，诊断信息不再被销毁。
+    G9_OUT="${TMPDIR:-/tmp}/g9_upgrade_$$.log"
+    G9_RC=0
+    timeout "${GATE_RELIABILITY_TEST_TIMEOUT:-1800}" \
+        cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test \
+        > "$G9_OUT" 2>&1 || G9_RC=$?
+    if grep -qE "0 failed|test result: ok" "$G9_OUT"; then
         log_pass "G9 Upgrade"
         D7_PASS=$((D7_PASS+1))
     else
-        log_fail "G9 Upgrade: $UPGRADE_TEST"
+        if [ "$G9_RC" -eq 124 ]; then
+            log_fail "G9 Upgrade: TIMEOUT after ${GATE_RELIABILITY_TEST_TIMEOUT:-1800}s (inconclusive, not a test failure; full output: $G9_OUT)"
+        else
+            log_fail "G9 Upgrade: cargo exit=$G9_RC — $(grep -E 'test result:' "$G9_OUT" | tail -1) (full output: $G9_OUT)"
+        fi
         D7_BLOCKERS=$((D7_BLOCKERS+1))
     fi
 
     # G10: Audit Log + Time Travel
     D7_TOTAL=$((D7_TOTAL+1))
     echo -n "  [G10] Audit Log + Time Travel ... "
-    AUDIT_TEST=$(timeout 60 cargo test --test audit_log_test --test time_travel_test 2>&1 | tail -3)
-    if grep -qE "0 failed|test result: ok" <<< "$AUDIT_TEST"; then
+    # #5580 (根因 F2): 与 G9 同因同修 —— G10 的预算比 G9 还小（60 s vs 90 s），
+    # 而它要跑的是**两个**测试目标（audit_log_test + time_travel_test），
+    # 一手证据（019 第 001 臂 stdout 第 218-220 行）显示它在
+    # `Running tests/integration/stress/audit_log_test.rs` 处被砍断 ⇒ 恒红。
+    G10_OUT="${TMPDIR:-/tmp}/g10_audit_$$.log"
+    G10_RC=0
+    timeout "${GATE_RELIABILITY_TEST_TIMEOUT:-1800}" \
+        cargo test --test audit_log_test --test time_travel_test \
+        > "$G10_OUT" 2>&1 || G10_RC=$?
+    if grep -qE "0 failed|test result: ok" "$G10_OUT"; then
         log_pass "G10 Audit/Time-Travel"
         D7_PASS=$((D7_PASS+1))
     else
-        log_fail "G10 Audit/Time-Travel: $AUDIT_TEST"
+        if [ "$G10_RC" -eq 124 ]; then
+            log_fail "G10 Audit/Time-Travel: TIMEOUT after ${GATE_RELIABILITY_TEST_TIMEOUT:-1800}s (inconclusive, not a test failure; full output: $G10_OUT)"
+        else
+            log_fail "G10 Audit/Time-Travel: cargo exit=$G10_RC — $(grep -E 'test result:' "$G10_OUT" | tail -1) (full output: $G10_OUT)"
+        fi
         D7_BLOCKERS=$((D7_BLOCKERS+1))
     fi
 
@@ -1564,6 +1796,9 @@ run_d8_v312_19_release_gates() {
 D9_PASS=0
 D9_TOTAL=0
 D9_BLOCKERS=0
+# #5580 (F3): 全量覆盖率扫描是否真的跑过 —— 摘要必须能一眼看出「跑过」还是
+# 「没跑」。旧实现里没跑时这一项根本不进分母，摘要显示 1/1，读起来像已验。
+D9_COVERAGE_STATUS="unknown"
 
 run_d9_v312_coverage_framework() {
     log_dim "9" "v3.12.0 Coverage Framework and Per-Crate Baseline"
@@ -1586,11 +1821,26 @@ run_d9_v312_coverage_framework() {
         return
     fi
 
+    # #5580 (根因 F3): 两处实现问题
+    #   (1) **门槛映射错**：`all` 模式把覆盖率门槛当成 **RC** 的
+    #       （`if [ "$coverage_stage" = "all" ]; then coverage_stage="rc"`），
+    #       而 SSOT 映射（coverage_min_for_mode / #5581）规定 `all → GA`。
+    #       ⇒ 同一轮里 D9 按 RC 的门槛判、阶段级 check_coverage_v312.sh 按 GA 的
+    #       门槛判，**两条不是同一把尺子**。
+    #   (2) **跳过时摘要读起来像「覆盖率已验」**：不跑全量时 D9 不进分母，
+    #       摘要显示 "D9-Coverage: 1/1"，读者会以为覆盖率这一维度已经过了。
+    # 修法（判据与门槛数值一字未动）：
+    #   * 门槛档位一律从 SSOT 映射取（all→GA / ga→GA / rc→RC / beta→BETA）；
+    #   * 跳过时**仍然计入分母**，并明确写出「全量未跑 + 覆盖率证据由阶段级
+    #     check_coverage_v312.sh 提供」，让摘要不再看起来像已验。
+    #     （**不新增 blocker**：阶段级 required_gates 里本来就有
+    #       check_coverage_v312.sh，覆盖率证据不因此缺失；新增 blocker 会把
+    #       判据收紧，属越权。）
+    local coverage_stage
+    coverage_stage="$(coverage_min_for_mode "${GATE_TYPE:-all}" 2>/dev/null | awk '{print $1}')"
+    coverage_stage="${coverage_stage:-rc}"
     if [ "${V312_COVERAGE_FULL:-0}" = "1" ]; then
-        local coverage_stage="${GATE_TYPE:-rc}"
-        if [ "$coverage_stage" = "all" ]; then
-            coverage_stage="rc"
-        fi
+        D9_COVERAGE_STATUS="full(${coverage_stage})"
         D9_TOTAL=$((D9_TOTAL+1))
         if bash "$COVERAGE_SCRIPT" --enforce-stage "$coverage_stage" > /tmp/d9_v312_coverage_full.log 2>&1; then
             log_pass "D9 per-crate coverage enforcement (${coverage_stage})"
@@ -1600,7 +1850,9 @@ run_d9_v312_coverage_framework() {
             D9_BLOCKERS=$((D9_BLOCKERS+1))
         fi
     else
-        log_warn "D9 full coverage execution skipped; set V312_COVERAGE_FULL=1 for nightly/Beta/RC/GA evidence"
+        D9_COVERAGE_STATUS="NOT-RUN(阶段级 check_coverage_v312.sh 提供覆盖率证据；门槛档位 ${coverage_stage})"
+        D9_TOTAL=$((D9_TOTAL+1))
+        log_warn "D9 full coverage execution NOT run (V312_COVERAGE_FULL!=1) — 覆盖率证据由阶段级 check_coverage_v312.sh 提供"
     fi
 }
 
@@ -1757,7 +2009,7 @@ ${NC}"
         echo "  D8-V312-19:     NOT RUN (not in '$GATE' plan)"
     fi
     if dim_ran D9; then
-        echo "  D9-Coverage:    $D9_PASS/$D9_TOTAL (blockers: $D9_BLOCKERS)  (v3.12 L0-L5 test framework + per-crate coverage baseline)"
+        echo "  D9-Coverage:    $D9_PASS/$D9_TOTAL (blockers: $D9_BLOCKERS)  (v3.12 L0-L5 test framework + per-crate coverage baseline; full sweep: $D9_COVERAGE_STATUS)"
     else
         echo "  D9-Coverage:    NOT RUN (not in '$GATE' plan)"
     fi

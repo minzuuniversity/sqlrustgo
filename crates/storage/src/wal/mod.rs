@@ -78,7 +78,7 @@ pub type SharedWalHandle = Arc<Mutex<Box<dyn WalManager>>>;
 pub struct DynWalManager(pub SharedWalHandle);
 
 impl WalManager for DynWalManager {
-    fn append(&mut self, entry: WalEntry) -> SqlResult<()> {
+    fn append(&mut self, entry: WalEntry) -> SqlResult<u64> {
         let mut g = self.0.lock().expect("SharedWalHandle inner mutex poisoned");
         g.append(entry)
     }
@@ -132,8 +132,15 @@ impl WalManager for DynWalManager {
 /// - `sync`: Force sync to durable storage
 /// - `recover`: Read and return WAL entries for recovery
 pub trait WalManager: Send + Sync {
-    /// Append a WAL entry
-    fn append(&mut self, entry: WalEntry) -> SqlResult<()>;
+    /// Append a WAL entry and return the LSN it was stamped with.
+    ///
+    /// The manager OWNS the LSN space: it stamps the entry and reports
+    /// the number back. A caller that stamped its own counter instead
+    /// produced two different LSN spaces over one shared log — the
+    /// checkpoint's LSN and the truncation point were then expressed in
+    /// different units, and `truncate_before` could not tell which
+    /// entries were safe to drop.
+    fn append(&mut self, entry: WalEntry) -> SqlResult<u64>;
 
     /// Flush buffered writes
     fn flush(&mut self) -> SqlResult<()>;

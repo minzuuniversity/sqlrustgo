@@ -121,8 +121,8 @@ python3 - "$CM_GATE" "$WORK/cm_mutated.sh" <<'PY'
 import sys
 src, dst = sys.argv[1], sys.argv[2]
 s = open(src, encoding="utf-8").read()
-out = s.replace('ALLOWED_TYPES="feat fix refactor docs test chore perf ci style merge audit"',
-                'ALLOWED_TYPES="feat fix refactor docs test chore perf ci style merge"')
+out = s.replace('ALLOWED_TYPES="feat fix refactor docs test chore perf ci style merge audit evidence bench spec"',
+                'ALLOWED_TYPES="feat fix refactor docs test chore perf ci style merge evidence bench spec"')
 if out == s:
     print("MUTATE_FAIL: 没找到 ALLOWED_TYPES 行（形态与预期不符）")
     sys.exit(3)

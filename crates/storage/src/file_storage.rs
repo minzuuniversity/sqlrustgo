@@ -181,22 +181,28 @@ impl WriteState {
     /// the recorded indices does NOT restore the original table for more than
     /// one removed row, because the removals shift every later index. `retain`
     /// keeps survivors in their original relative order, so replay does.
-    fn remove_matching<F>(&mut self, scoped_table: &str, matches: F) -> Vec<Record>
+    fn remove_matching<F>(&mut self, scoped_table: &str, matches: F) -> (Vec<Record>, Vec<usize>)
     where
         F: Fn(&Record) -> bool,
     {
         let mut removed: Vec<Record> = Vec::new();
+        // Positions (in the table's row vector) the removed rows occupied,
+        // in ascending order. The PK/secondary B+Trees store physical row
+        // positions, and compacting the vector shifts every later one —
+        // the caller uses these positions to repair the trees.
+        let mut removed_positions: Vec<usize> = Vec::new();
         if let Some(data) = self.tables.get_mut(scoped_table) {
-            let mut rows = std::mem::take(&mut data.rows);
-            rows.retain(|row| {
-                if matches(row) {
-                    removed.push(row.clone());
-                    false
+            let rows = std::mem::take(&mut data.rows);
+            let mut survivors: Vec<Record> = Vec::with_capacity(rows.len());
+            for (pos, row) in rows.into_iter().enumerate() {
+                if matches(&row) {
+                    removed_positions.push(pos);
+                    removed.push(row);
                 } else {
-                    true
+                    survivors.push(row);
                 }
-            });
-            data.rows = rows;
+            }
+            data.rows = survivors;
         }
         if let Some(buffered) = self.insert_buffer.get_mut(scoped_table) {
             let mut buf = std::mem::take(buffered);
@@ -210,7 +216,7 @@ impl WriteState {
             });
             *buffered = buf;
         }
-        removed
+        (removed, removed_positions)
     }
 }
 
@@ -287,6 +293,48 @@ pub struct FileStorage {
     /// wall-clock derivation was not good enough. Starts at 1 because
     /// `current_tx_id == 0` means autocommit.
     next_tx_id_counter: std::sync::atomic::AtomicU64,
+    /// #5834: connection-scoped ownership of undo entries.
+    ///
+    /// `tx_undo_log` is **instance-level** — one `FileStorage` is shared by
+    /// every connection — but a transaction belongs to a **connection**. The
+    /// instance slot `current_tx_id` therefore cannot answer "which
+    /// transaction owns this DML": a peer's `BEGIN` overwrites the slot
+    /// between our `BEGIN` and our `DELETE`, so the undo entry is stamped
+    /// with the **peer's** id. The peer's `ROLLBACK` then undoes *our*
+    /// write, and our `ROLLBACK` does not undo ours — both while reporting
+    /// success.
+    ///
+    /// Measured on `tests/integration/transaction/concurrent_rollback_isolation_test.rs`
+    /// (30 trials): 1/30 wrong end state, in either direction.
+    ///
+    /// The owner is therefore recorded **per thread**. Every caller in this
+    /// tree runs one connection per thread — the MySQL server spawns
+    /// `thread::spawn(handle_connection(..))` per connection — so the thread
+    /// *is* the connection. Keyed by `ThreadId` so one thread using two
+    /// storages keeps two independent owners.
+    ///
+    /// Three kinds of call **write** an entry here:
+    ///
+    /// 1. the **explicit** ownership APIs — `set_current_tx_id` /
+    ///    `set_current_tx_id_shared`, i.e. the `*_for(tx_id)` family — which
+    ///    the server's product path uses (`WalStorage::begin_transaction_lockfree_for`
+    ///    → `inner.set_current_tx_id_shared(tx_id)`);
+    /// 2. `begin_transaction()`, which records the transaction it just
+    ///    opened (or adopted) **for the calling thread** — it previously
+    ///    only wrote the instance slot, so a peer's `BEGIN` could turn our
+    ///    `BEGIN` into a "nested" one and hand us the peer's id;
+    /// 3. the transaction-ending paths, which set the entry to **0** (see
+    ///    [`clear_undo_owner_if`](Self::clear_undo_owner_if)).
+    ///
+    /// A thread with **no** entry falls back to the instance slot, so a
+    /// thread that never opened a transaction behaves exactly as before.
+    ///
+    /// An entry of **0** means "this thread is explicitly *not* in a
+    /// transaction" and therefore must **not** fall back to the instance
+    /// slot — otherwise a peer's `BEGIN` would hand this thread's next DML
+    /// to the wrong transaction again. That is why the entry is zeroed
+    /// rather than removed.
+    undo_owners: RwLock<HashMap<std::thread::ThreadId, u64>>,
     /// #5055: the write-ahead log, opened by [`new_with_wal`].
     ///
     /// `None` in every other constructor, which is what makes
@@ -552,6 +600,8 @@ impl FileStorage {
         };
         let mut inner = shared.lock().expect("SharedWalHandle inner mutex poisoned");
         for entry in entries {
+            // The manager stamps each entry with the LSN it owns; the
+            // caller does not get to choose one.
             inner.append(entry)?;
         }
         Ok(())
@@ -587,9 +637,11 @@ impl FileStorage {
             // issue: `entries_total=3, skipped_entries=3` for a three-row
             // table in `aud`.
             database_name: Some(db.to_string()),
-            tx_id: self
-                .current_tx_id
-                .load(std::sync::atomic::Ordering::Acquire),
+            // #5834: the WAL must name the **same** transaction the undo
+            // log does, or a replay attributes the row to the wrong
+            // transaction (a dirty read on recovery). The undo owner is
+            // resolved once per DML and used by both.
+            tx_id: self.undo_owner_tx_id(),
             entry_type,
             table_id: crate::wal_record_codec::table_name_to_id(table),
             table_name: Some(table.to_string()),
@@ -923,6 +975,7 @@ impl FileStorage {
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            undo_owners: RwLock::new(HashMap::new()),
             wal: Mutex::new(None),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
@@ -974,6 +1027,7 @@ impl FileStorage {
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            undo_owners: RwLock::new(HashMap::new()),
             wal: Mutex::new(None),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
@@ -1073,6 +1127,7 @@ impl FileStorage {
             gap_lock_manager: None,
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            undo_owners: RwLock::new(HashMap::new()),
             wal: Mutex::new(Some(wal)),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
@@ -1151,6 +1206,7 @@ impl FileStorage {
             gap_lock_manager: Some(lock_manager),
             last_saved_row_count: Mutex::new(HashMap::new()),
             next_tx_id_counter: std::sync::atomic::AtomicU64::new(1),
+            undo_owners: RwLock::new(HashMap::new()),
             wal: Mutex::new(None),
             // #5048: off unless `enable_change_log` is called.
             change_log: Mutex::new(None),
@@ -3589,6 +3645,70 @@ mod tests {
         assert!(storage.get_table_mut("nonexistent").is_none());
     }
 
+    /// A DELETE compacts the table's row vector, so every later row's
+    /// position shifts down by one. The primary-key B+Tree stores those
+    /// positions — so without a repair the tree keeps pointing at the
+    /// PREVIOUS row and an equality lookup answers with the wrong row.
+    ///
+    /// This is not a corner case: the engine implements UPDATE as
+    /// delete + insert, so every update moved every later key's row
+    /// position. The equality lookup then returned a row carrying a
+    /// different key, the query layer filtered it out, and the user saw
+    /// "no such row" for a row that was plainly there.
+
+    #[test]
+    fn pk_lookup_stays_correct_after_a_delete() {
+        let mut storage = make_storage("fs_pk_after_delete");
+        let info = TableInfo {
+            name: "t".into(),
+            columns: vec![ColumnDefinition {
+                name: "id".to_string(),
+                data_type: "INTEGER".to_string(),
+                nullable: false,
+                primary_key: true,
+                char_max_length: None,
+                collation: None,
+                default_value: None,
+                auto_increment: false,
+            }],
+            foreign_keys: vec![],
+            unique_constraints: vec![],
+            check_constraints: vec![],
+            compression: None,
+            collations: std::collections::HashMap::new(),
+            partition_info: None,
+            original_sql: String::new(),
+            clustered: false,
+        };
+        storage.create_table(&info).unwrap();
+
+        let db = crate::engine::DEFAULT_DATABASE.to_string();
+        let rows: Vec<Record> = (1..=5i64).map(|i| vec![Value::Integer(i)]).collect();
+        storage.insert_at(&db, "t", rows).unwrap();
+        // Move the rows out of the insert buffer into the table itself, so
+        // the primary-key tree really holds their positions.
+        storage.flush_buffer(&db, "t").unwrap();
+
+        // Delete the middle row: every later row shifts down by one.
+        storage.delete_at(&db, "t", &[Value::Integer(3)]).unwrap();
+
+        for id in [1i64, 2, 4, 5] {
+            let found = storage.scan_pk("t", "id", &Value::Integer(id)).unwrap();
+            assert_eq!(
+                found.and_then(|r| r.first().cloned()),
+                Some(Value::Integer(id)),
+                "primary-key lookup for id={id} must return that row, not another one"
+            );
+        }
+        assert!(
+            storage
+                .scan_pk("t", "id", &Value::Integer(3))
+                .unwrap()
+                .is_none(),
+            "the deleted row must not be found"
+        );
+    }
+
     #[test]
     fn test_insert_table() {
         let storage = make_storage("fs_insert_table");
@@ -4953,7 +5073,7 @@ impl FileStorage {
             // #5059: record one undo entry per row. Without this,
             // ROLLBACK had nothing to act on for buffered inserts and
             // every rolled-back row survived — see `UndoOp`.
-            let tx_id = self.current_tx_id();
+            let tx_id = self.undo_owner_tx_id();
             Self::with_write_lock(self, |s| {
                 for row in &records {
                     s.tx_undo_log.push(TxUndoEntry {
@@ -5014,7 +5134,7 @@ impl FileStorage {
                 }
                 result
             });
-        if let Some((start_row_id, _row_count, columns)) = snap {
+        if let Some((start_row_id, row_count, columns)) = snap {
             // V400-PERF-FIX: pass &records directly. The closure
             // returns the columns/start_row_id but the records
             // have been moved into the closure body. Since
@@ -5025,7 +5145,20 @@ impl FileStorage {
             // the buffer out — but `records` is still owned by
             // us at this point because we cloned into the buffer),
             // we can pass &records to read PKs directly.
-            Self::update_pk_index(self, db, table, &columns, &records, start_row_id);
+            //
+            // BUT the closure flushed the WHOLE buffer — the rows that
+            // were already buffered plus this call's rows — while
+            // `records` holds only this call's rows. Indexing `records`
+            // against the batch's start position therefore
+            //   * pointed this call's keys at the PREVIOUSLY buffered
+            //     rows' positions, and
+            //   * left the previously buffered rows' keys out of the
+            //     index entirely.
+            // The flushed batch is exactly the window
+            // `[start_row_id, start_row_id + row_count)` of the table's
+            // row vector, so index that window instead — the same
+            // window-based helper `flush_buffer` uses.
+            Self::update_pk_index_window(self, db, table, &columns, start_row_id, row_count);
         }
         Ok(())
     }
@@ -5197,6 +5330,39 @@ impl FileStorage {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// Repair every B+Tree index of `db.table` after rows were physically
+    /// removed from the table's row vector.
+    ///
+    /// The trees store **physical row positions**. `remove_matching`
+    /// compacts the row vector, so every position after a removed row
+    /// shifts down by one. Without this repair the tree keeps pointing at
+    /// the previous row and an equality lookup silently returns the
+    /// WRONG row — which the query layer then filters out, so the user
+    /// sees "no such row" for a row that is plainly there.
+    ///
+    /// `removed_positions` are the positions the removed rows occupied,
+    /// ascending. Cost is O(number of indexed row ids), the same order as
+    /// the `Vec::retain` that produced the removal.
+    fn repair_indexes_after_removal(&self, db: &str, table: &str, removed_positions: &[usize]) {
+        if removed_positions.is_empty() {
+            return;
+        }
+        let scoped = self.tbl_in(db, table);
+        let Ok(mut indexes) = self.indexes.write() else {
+            return;
+        };
+        let affected: Vec<(String, String)> = indexes
+            .keys()
+            .filter(|(t, _)| t == &scoped)
+            .cloned()
+            .collect();
+        for key in affected {
+            if let Some(index) = indexes.get_mut(&key) {
+                index.adjust_after_removal(removed_positions);
             }
         }
     }
@@ -5428,7 +5594,7 @@ impl FileStorage {
         let key = self.tbl_in(db, table);
         let wal_on = self.wal_enabled();
         let watching = self.change_log_enabled();
-        let tx_id = self.current_tx_id();
+        let tx_id = self.undo_owner_tx_id();
         let in_tx = tx_id != 0;
         let assignments = mutation.assignments().to_vec();
         let match_row = |record: &Record| filter(record);
@@ -5497,7 +5663,7 @@ impl FileStorage {
         // INSERT followed by an UPDATE now affects 1 row instead of 0.
         let wal_on = self.wal_enabled();
         let watching = self.change_log_enabled();
-        let tx_id = self.current_tx_id();
+        let tx_id = self.undo_owner_tx_id();
         let in_tx = tx_id != 0;
         let key = self.tbl_in(db, table);
         let match_row = |record: &Record| {
@@ -5568,32 +5734,37 @@ impl FileStorage {
         // a row the live table no longer has.
         let watching = self.change_log_enabled();
         let wal_on = self.wal_enabled();
-        let tx_id = self.current_tx_id();
+        let tx_id = self.undo_owner_tx_id();
         let in_tx = tx_id != 0;
         let scoped = crate::engine::scoped_key(db, table);
         let table_name = table.to_string();
         let match_row = |row: &Record| filter(row);
 
-        let removed_rows = Self::with_write_lock(self, |s| -> Vec<Record> {
-            if in_tx {
-                if let Some(buffered) = s.insert_buffer.get(&scoped) {
-                    for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(TxUndoEntry {
-                            tx_id: self.current_tx_id(),
-                            op: UndoOp::BufferedDelete {
-                                table: table_name.clone(),
-                                row: row.clone(),
-                            },
-                        });
+        let (removed_rows, removed_positions) =
+            Self::with_write_lock(self, |s| -> (Vec<Record>, Vec<usize>) {
+                if in_tx {
+                    if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                        for row in buffered.iter().filter(|r| match_row(r)) {
+                            s.tx_undo_log.push(TxUndoEntry {
+                                tx_id,
+                                op: UndoOp::BufferedDelete {
+                                    table: table_name.clone(),
+                                    row: row.clone(),
+                                },
+                            });
+                        }
                     }
                 }
-            }
-            let removed = s.remove_matching(&scoped, match_row);
-            if !removed.is_empty() {
-                s.dirty_tables.insert((db.to_string(), table_name.clone()));
-            }
-            removed
-        });
+                let (removed, positions) = s.remove_matching(&scoped, match_row);
+                if !removed.is_empty() {
+                    s.dirty_tables.insert((db.to_string(), table_name.clone()));
+                }
+                (removed, positions)
+            });
+
+        // The row vector was compacted — repoint the B+Trees at the rows
+        // that survived, or every equality lookup returns the wrong row.
+        self.repair_indexes_after_removal(db, table, &removed_positions);
 
         if watching {
             for row in &removed_rows {
@@ -5618,11 +5789,16 @@ impl FileStorage {
         // `with_write_lock` because every step touches the protected
         // fields. Splitting would mean multiple lock acquisitions
         // and risk of torn state.
+        //
+        // #5834: capture the undo owner ONCE, before the lock. The
+        // previous form read the instance slot inside the closure while
+        // the `in_tx` test read it just above — two different reads of a
+        // value a peer can change in between, so the test and the stamp
+        // could disagree. The owner is now resolved once, from the
+        // thread-scoped table.
+        let tx_id = self.undo_owner_tx_id();
         Self::with_write_lock(self, |s| {
-            let in_tx = self
-                .current_tx_id
-                .load(std::sync::atomic::Ordering::Acquire)
-                != 0;
+            let in_tx = tx_id != 0;
 
             // Snapshot rows for ROLLBACK (same as `delete`).
             let removed_pks: Vec<Value> = if let Some(ref mut data) =
@@ -5635,7 +5811,7 @@ impl FileStorage {
                     if filters.is_empty() {
                         let snap = data.rows.clone();
                         s.tx_undo_log.push(TxUndoEntry {
-                            tx_id: self.current_tx_id(),
+                            tx_id,
                             op: UndoOp::DeleteAll {
                                 table: table.to_string(),
                                 original_rows: snap,
@@ -5649,7 +5825,7 @@ impl FileStorage {
                                 .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false));
                             if matches {
                                 s.tx_undo_log.push(TxUndoEntry {
-                                    tx_id: self.current_tx_id(),
+                                    tx_id,
                                     op: UndoOp::DeleteRow {
                                         table: table.to_string(),
                                         row_idx: idx,
@@ -5787,7 +5963,7 @@ impl FileStorage {
         let wal_on = self.wal_enabled();
         let watching = self.change_log_enabled();
         let scoped = crate::engine::scoped_key(db, table);
-        let tx_id = self.current_tx_id();
+        let tx_id = self.undo_owner_tx_id();
         let in_tx = tx_id != 0;
         let table_name = table.to_string();
         let match_row = |row: &Record| {
@@ -5798,59 +5974,64 @@ impl FileStorage {
                     .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
         };
 
-        let removed_rows = Self::with_write_lock(self, |s| -> SqlResult<Vec<Record>> {
-            // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
-            // BEFORE the removal, while the rows still exist.
-            if in_tx {
-                if let Some(data) = s.tables.get(&scoped) {
-                    if filters.is_empty() {
-                        s.tx_undo_log.push(TxUndoEntry {
-                            tx_id: self.current_tx_id(),
-                            op: UndoOp::DeleteAll {
-                                table: table_name.clone(),
-                                original_rows: data.rows.clone(),
-                            },
-                        });
-                    } else {
-                        for (idx, row) in data.rows.iter().enumerate().rev() {
-                            if match_row(row) {
-                                s.tx_undo_log.push(TxUndoEntry {
-                                    tx_id: self.current_tx_id(),
-                                    op: UndoOp::DeleteRow {
-                                        table: table_name.clone(),
-                                        row_idx: idx,
-                                        original: row.clone(),
-                                    },
-                                });
+        let (removed_rows, removed_positions) =
+            Self::with_write_lock(self, |s| -> SqlResult<(Vec<Record>, Vec<usize>)> {
+                // Issue #4581 / B-track case 35-36: snapshot for ROLLBACK
+                // BEFORE the removal, while the rows still exist.
+                if in_tx {
+                    if let Some(data) = s.tables.get(&scoped) {
+                        if filters.is_empty() {
+                            s.tx_undo_log.push(TxUndoEntry {
+                                tx_id,
+                                op: UndoOp::DeleteAll {
+                                    table: table_name.clone(),
+                                    original_rows: data.rows.clone(),
+                                },
+                            });
+                        } else {
+                            for (idx, row) in data.rows.iter().enumerate().rev() {
+                                if match_row(row) {
+                                    s.tx_undo_log.push(TxUndoEntry {
+                                        tx_id,
+                                        op: UndoOp::DeleteRow {
+                                            table: table_name.clone(),
+                                            row_idx: idx,
+                                            original: row.clone(),
+                                        },
+                                    });
+                                }
                             }
                         }
                     }
-                }
-                // #5059: buffered rows have no index in `tables`, so they
-                // are undone by value.
-                if let Some(buffered) = s.insert_buffer.get(&scoped) {
-                    for row in buffered.iter().filter(|r| match_row(r)) {
-                        s.tx_undo_log.push(TxUndoEntry {
-                            tx_id: self.current_tx_id(),
-                            op: UndoOp::BufferedDelete {
-                                table: table_name.clone(),
-                                row: row.clone(),
-                            },
-                        });
+                    // #5059: buffered rows have no index in `tables`, so they
+                    // are undone by value.
+                    if let Some(buffered) = s.insert_buffer.get(&scoped) {
+                        for row in buffered.iter().filter(|r| match_row(r)) {
+                            s.tx_undo_log.push(TxUndoEntry {
+                                tx_id,
+                                op: UndoOp::BufferedDelete {
+                                    table: table_name.clone(),
+                                    row: row.clone(),
+                                },
+                            });
+                        }
                     }
                 }
-            }
 
-            let removed = s.remove_matching(&scoped, match_row);
+                let (removed, removed_positions) = s.remove_matching(&scoped, match_row);
 
-            // V311-07: Mark dirty instead of immediate persist. The old
-            // condition keyed off the tables-only count, which missed
-            // buffered deletions entirely.
-            if !removed.is_empty() || filters.is_empty() {
-                s.dirty_tables.insert((db.to_string(), table_name.clone()));
-            }
-            Ok(removed)
-        })?;
+                // V311-07: Mark dirty instead of immediate persist. The old
+                // condition keyed off the tables-only count, which missed
+                // buffered deletions entirely.
+                if !removed.is_empty() || filters.is_empty() {
+                    s.dirty_tables.insert((db.to_string(), table_name.clone()));
+                }
+                Ok((removed, removed_positions))
+            })?;
+
+        // The row vector was compacted — repoint the B+Trees at the rows
+        // that survived, or every equality lookup returns the wrong row.
+        self.repair_indexes_after_removal(db, table, &removed_positions);
 
         // #5048: record the deletion. `filters` is already positional
         // against the row's leading columns — exactly what a change
@@ -5899,15 +6080,49 @@ impl FileStorage {
                 // Find all row IDs with this key
                 let row_ids = index.search_all(search_key);
 
+                // IDX-2: with a BufferPool the row id is the **position in
+                // the page order** (the order `insert_via_bufferpool`
+                // recorded and `scan_via_bufferpool` walks) — see
+                // `create_index`. Resolving the ids against `tables.rows`
+                // would always come up empty there, and the query would
+                // silently return **zero rows**.
+                if self.buffer_pool.is_some() {
+                    let rows = self.scan_via_bufferpool(db, table)?;
+                    return Ok(row_ids
+                        .into_iter()
+                        .filter_map(|row_id| rows.get(row_id as usize).cloned())
+                        .collect());
+                }
+
                 // #4951: single read guard over tables + insert_buffer
                 // so the table and the buffer are read at one instant.
                 let collected: Option<SqlResult<Vec<Record>>> = self.with_read_lock(|st| {
                     st.tables.get(&self.tbl_in(db, table)).map(|data| {
+                        // The tree stores PHYSICAL row positions. A DELETE
+                        // compacts the row vector, so a position that was
+                        // correct when it was written can later address a
+                        // DIFFERENT row. Accept a row only when the indexed
+                        // column really carries the key we looked up —
+                        // otherwise the lookup would silently answer with
+                        // somebody else's row.
+                        let key_col_idx =
+                            data.info.columns.iter().position(|c| c.name == index_name);
                         // Collect matching rows
                         let mut results = Vec::new();
                         for &row_id in &row_ids {
                             if (row_id as usize) < data.rows.len() {
-                                results.push(data.rows[row_id as usize].clone());
+                                let row = &data.rows[row_id as usize];
+                                let matches = match key_col_idx {
+                                    Some(idx) => row
+                                        .get(idx)
+                                        .and_then(|v| v.to_index_key())
+                                        .map(|k| k == search_key)
+                                        .unwrap_or(false),
+                                    None => true,
+                                };
+                                if matches {
+                                    results.push(row.clone());
+                                }
                             }
                         }
                         // Also check insert_buffer
@@ -6062,15 +6277,24 @@ impl StorageEngine for FileStorage {
         // unsynchronised read/write of the same word. An atomic makes
         // the read well-defined; it does NOT make the value
         // per-connection, which is the remaining part of #4951.
-        self.current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
-            != 0
+        //
+        // #5834: the value IS per-connection now. The instance slot
+        // cannot answer "am I in a transaction?" when every connection
+        // shares it — a peer's COMMIT used to clear it and the VTU guard
+        // then aborted a healthy transaction.
+        self.undo_owner_tx_id() != 0
     }
 
     fn current_tx_id(&self) -> u64 {
         // #4951: see `in_transaction`.
-        self.current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire)
+        //
+        // #5834: the transaction that belongs to **this** connection, not
+        // whichever transaction last wrote the instance slot. A peer's
+        // BEGIN/COMMIT used to change the answer between our own BEGIN and
+        // our own statement — which made the VTU guard abort a healthy
+        // transaction ("DML called without an open transaction") and made
+        // MvccStorage stamp rows with the wrong transaction id.
+        self.undo_owner_tx_id()
     }
 
     fn set_current_tx_id(&mut self, id: u64) {
@@ -6079,6 +6303,11 @@ impl StorageEngine for FileStorage {
         // `WriteState` field left to touch.
         self.current_tx_id
             .store(id, std::sync::atomic::Ordering::Release);
+        // #5834: claiming a transaction also claims **ownership** of the
+        // undo entries this thread is about to produce. Without this the
+        // ownership lives only in the instance slot, and a peer's BEGIN
+        // can take it away between our BEGIN and our DML.
+        self.set_undo_owner(id);
     }
 
     /// #4974: the `&self` counterpart of [`set_current_tx_id`](Self::set_current_tx_id).
@@ -6118,6 +6347,11 @@ impl StorageEngine for FileStorage {
     fn set_current_tx_id_shared(&self, id: u64) {
         self.current_tx_id
             .store(id, std::sync::atomic::Ordering::Release);
+        // #5834: same as `set_current_tx_id` — the explicit-ownership API
+        // must also claim ownership **for this thread**, otherwise a
+        // concurrent connection's BEGIN steals the undo ownership between
+        // our BEGIN and our DML.
+        self.set_undo_owner(id);
     }
 
     /// Issue #4581 / B-track case 35-36: real BEGIN/COMMIT/ROLLBACK
@@ -6144,7 +6378,11 @@ impl StorageEngine for FileStorage {
         let id = self.next_tx_id();
         let (tx_id, is_new) = Self::with_write_lock(self, |s| -> SqlResult<(u64, bool)> {
             use std::sync::atomic::Ordering as O;
-            let existing = self.current_tx_id.load(O::Acquire);
+            // #5834: "already in a tx" must mean "**this connection** is
+            // already in a tx". The shared slot said "somebody is in a tx",
+            // so a peer's BEGIN used to turn our BEGIN into a nested one
+            // and hand us the peer's transaction id.
+            let existing = self.undo_owner_tx_id();
             if existing != 0 {
                 // Already in a tx — keep the existing id (MySQL-style nested BEGIN).
                 return Ok((existing, false));
@@ -6157,6 +6395,13 @@ impl StorageEngine for FileStorage {
                 .retain(|e| e.tx_id != existing && e.tx_id != id);
             Ok((id, true))
         })?;
+        // #5834: this thread now owns the transaction it just began (or
+        // adopted, in the nested-BEGIN case). Recording it keeps the undo
+        // ownership connection-scoped on the non-explicit path too, and
+        // un-sticks a thread whose owner was cleared by an earlier
+        // COMMIT — without this, that thread's BEGIN would be invisible
+        // to its own DML.
+        self.set_undo_owner(tx_id);
         // #5055: log the boundary. A replay can only tell a committed
         // row from an uncommitted one by seeing Commit, and it can only
         // see Commit if Begin was written for the same tx_id. Note this
@@ -6169,9 +6414,9 @@ impl StorageEngine for FileStorage {
     }
 
     fn commit_transaction(&mut self) -> SqlResult<()> {
-        let tx_id = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire);
+        // #5834: identify **this** connection's transaction, not whatever
+        // the shared instance slot happens to hold.
+        let tx_id = self.current_tx_id();
         self.commit_transaction_for(tx_id)
     }
 
@@ -6195,6 +6440,9 @@ impl StorageEngine for FileStorage {
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
+        // #5834: the transaction is over for this thread — release the
+        // undo ownership so the next DML is not stamped with a dead id.
+        self.clear_undo_owner_if(tx_id);
         // #5055: read the tx_id *before* the reset above and log the
         // Commit under the id the rows were written with. Logging it
         // after the reset — with `current_tx_id` now 0 — would produce a
@@ -6247,6 +6495,8 @@ impl StorageEngine for FileStorage {
         Self::with_write_lock(self, |s| s.tx_undo_log.retain(|e| e.tx_id != tx_id));
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
+        // #5834: release this thread's undo ownership (see above).
+        self.clear_undo_owner_if(tx_id);
         Ok(())
     }
 
@@ -6281,6 +6531,8 @@ impl StorageEngine for FileStorage {
         });
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
+        // #5834: release this thread's undo ownership (see above).
+        self.clear_undo_owner_if(tx_id);
         // #5055: capture `tx_id` before the reset so the Rollback names
         // the transaction whose rows it cancels.
         if self.wal_enabled() {
@@ -6290,9 +6542,9 @@ impl StorageEngine for FileStorage {
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        let rolling_back_tx = self
-            .current_tx_id
-            .load(std::sync::atomic::Ordering::Acquire);
+        // #5834: identify **this** connection's transaction, not whatever
+        // the shared instance slot happens to hold.
+        let rolling_back_tx = self.current_tx_id();
         self.rollback_transaction_for(rolling_back_tx)
     }
 
@@ -6330,6 +6582,8 @@ impl StorageEngine for FileStorage {
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
+        // #5834: release this thread's undo ownership (see above).
+        self.clear_undo_owner_if(rolling_back_tx);
         // #5055: as in `commit_transaction`, the id is captured before
         // the reset. A rollback that logs tx 0 would leave the real
         // transaction looking merely "uncommitted at target", which
@@ -6410,11 +6664,33 @@ impl StorageEngine for FileStorage {
         // Phase D.1: `pk_column` is now an explicit parameter
         // (previously hard-coded to `"id"`, which broke lookup on any
         // table whose PK column had a different name).
+        //
+        // Compare against the DECLARED PK column's position, not
+        // `row.first()` — the latter only works when the PK happens to be
+        // the first column.
+        let pk_idx = self.get_table_info(table).ok().and_then(|info| {
+            info.columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(pk_column))
+        });
+        let search_key = pk.to_index_key();
+        let key_matches = |row: &Record| -> bool {
+            match pk_idx {
+                Some(idx) => row
+                    .get(idx)
+                    .map(|v| v == pk || v.to_index_key() == search_key)
+                    .unwrap_or(false),
+                None => row.first() == Some(pk),
+            }
+        };
         if let Ok(info) = self.get_table_info(table) {
             if info.columns.iter().any(|c| c.primary_key) {
                 let rows = self.scan_with_index(table, pk_column, pk)?;
-                if !rows.is_empty() {
-                    return Ok(rows.into_iter().next());
+                // The tree stores PHYSICAL row positions; a DELETE compacts
+                // the row vector, so a stale position addresses a DIFFERENT
+                // row. Accept only a row that really carries the key.
+                if let Some(row) = rows.into_iter().find(|r| key_matches(r)) {
+                    return Ok(Some(row));
                 }
                 // V400-MVCC-PKFAST: B+Tree lookup returned empty.
                 // This can mean either (a) no such PK in the table,
@@ -6425,10 +6701,7 @@ impl StorageEngine for FileStorage {
             }
         }
         // Fallback: full scan.
-        Ok(self
-            .scan(table)?
-            .into_iter()
-            .find(|row| row.first() == Some(pk)))
+        Ok(self.scan(table)?.into_iter().find(|row| key_matches(row)))
     }
 
     /// #5057: `scan_pk` against a stated database — uses the B+Tree via
@@ -6440,19 +6713,71 @@ impl StorageEngine for FileStorage {
         pk_column: &str,
         pk: &Value,
     ) -> SqlResult<Option<Record>> {
+        // The DECLARED PK column's position. Comparing against
+        // `row.first()` only works when the PK happens to be the first
+        // column; with any other layout the equality lookup silently
+        // never matches.
+        let pk_idx = self.get_table_info_in(db, table).ok().and_then(|info| {
+            info.columns
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(pk_column))
+        });
+        let search_key = pk.to_index_key();
+        let key_matches = |row: &Record| -> bool {
+            match pk_idx {
+                Some(idx) => row
+                    .get(idx)
+                    .map(|v| v == pk || v.to_index_key() == search_key)
+                    .unwrap_or(false),
+                None => row.first() == Some(pk),
+            }
+        };
         if let Ok(info) = self.get_table_info_in(db, table) {
             if info.columns.iter().any(|c| c.primary_key) {
                 let rows = self.scan_with_index_in(db, table, pk_column, pk)?;
-                if !rows.is_empty() {
-                    return Ok(rows.into_iter().next());
+                // The tree stores PHYSICAL row positions. A DELETE compacts
+                // the row vector, so a position that was correct when it
+                // was written can later address a DIFFERENT row. Accept
+                // only a row that really carries the key; otherwise fall
+                // through to the search below.
+                if let Some(row) = rows.into_iter().find(|r| key_matches(r)) {
+                    return Ok(Some(row));
                 }
             }
         }
-        let pk = pk.clone();
-        Ok(self
-            .scan_in_db(db, table)?
-            .into_iter()
-            .find(|row| row.first() == Some(&pk)))
+        // Fallback: a TARGETED search that does not copy the whole table.
+        // `scan_in_db` clones every row out of the table, which turns one
+        // point lookup into an O(table size) copy — unusable on a table
+        // that grows to hundreds of thousands of rows.
+        let Some(pk_idx) = pk_idx else {
+            return Ok(None);
+        };
+        Ok(self.with_read_lock(|st| {
+            let scoped = self.tbl_in(db, table);
+            let data = st.tables.get(&scoped)?;
+            let hit = data
+                .rows
+                .iter()
+                .find(|row| {
+                    row.get(pk_idx)
+                        .map(|v| v == pk || v.to_index_key() == search_key)
+                        .unwrap_or(false)
+                })
+                .cloned();
+            if hit.is_some() {
+                return hit;
+            }
+            // Rows still in the insert buffer are not in `data.rows` yet.
+            let buffered = st.insert_buffer.get(&scoped)?;
+            buffered
+                .iter()
+                .find(|row| {
+                    row.get(pk_idx)
+                        .map(|v| v == pk || v.to_index_key() == search_key)
+                        .unwrap_or(false)
+                })
+                .cloned()
+        }))
     }
 
     fn scan_with_index(
@@ -6825,8 +7150,32 @@ impl StorageEngine for FileStorage {
                 .iter()
                 .position(|c| c.name == column_name)
                 .unwrap_or(0);
+            // IDX-2: with a BufferPool the rows live in **pages**, and
+            // `table_data.rows` is empty — so building the tree over
+            // `table_data.rows` builds an **empty** tree, and every lookup
+            // afterwards returns zero rows. Observed: create a table, insert
+            // rows, `CREATE INDEX` on a column, then query by that column —
+            // 0 rows, where the pre-index scan had returned the right
+            // answer. The index must not make existing rows disappear.
+            //
+            // The row id must mean the same thing on **both** sides of the
+            // lookup. Here it is the *position in the table's row order*:
+            // for the paged backend that order is the page-id order
+            // recorded by `insert_via_bufferpool` (insertion order) — the
+            // very order `scan_via_bufferpool` walks. The read side
+            // (`scan_with_index_in`) resolves the ids against that same
+            // list, so the two agree by construction.
+            let paged_rows: Option<Vec<Record>> = if self.buffer_pool.is_some() {
+                Some(self.scan_via_bufferpool(db, table)?)
+            } else {
+                None
+            };
+            let rows: &[Record] = match &paged_rows {
+                Some(r) => r.as_slice(),
+                None => table_data.rows.as_slice(),
+            };
             let mut index = crate::bplus_tree::BPlusTree::new();
-            for (row_id, row) in table_data.rows.iter().enumerate() {
+            for (row_id, row) in rows.iter().enumerate() {
                 if let Some(value) = row.get(column_index) {
                     if let Some(key) = value.to_index_key() {
                         index.insert(key, row_id as u32);
@@ -7629,6 +7978,61 @@ impl FileStorage {
 // pollute the trait surface.
 
 impl FileStorage {
+    /// #5834: the transaction that owns DML issued by the **calling thread**.
+    ///
+    /// Returns the thread-scoped owner recorded by
+    /// [`set_current_tx_id`](Self::set_current_tx_id) /
+    /// [`set_current_tx_id_shared`](Self::set_current_tx_id_shared) /
+    /// [`begin_transaction`](StorageEngine::begin_transaction). A thread with
+    /// **no** recorded owner falls back to the instance slot — that is the
+    /// legacy behaviour (one transaction per storage instance), so a thread
+    /// that never opened a transaction is unaffected.
+    ///
+    /// The fallback is only safe because the instance slot is consulted when
+    /// nobody claimed ownership for this thread. Once a thread *has* an
+    /// entry — including an entry of **0** meaning "explicitly not in a
+    /// transaction" — the instance slot is never consulted again for that
+    /// thread, so a peer's `BEGIN`/`COMMIT` can no longer steal it.
+    fn undo_owner_tx_id(&self) -> u64 {
+        let tid = std::thread::current().id();
+        if let Some(tx) = self
+            .undo_owners
+            .read()
+            .ok()
+            .and_then(|owners| owners.get(&tid).copied())
+        {
+            return tx;
+        }
+        // Fall back to the instance slot directly — `current_tx_id()` is
+        // owner-aware itself, and calling it here would recurse.
+        self.current_tx_id
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    /// #5834: record (or clear, with `0`) this thread's transaction
+    /// ownership. See [`undo_owner_tx_id`](Self::undo_owner_tx_id).
+    fn set_undo_owner(&self, tx_id: u64) {
+        let tid = std::thread::current().id();
+        if let Ok(mut owners) = self.undo_owners.write() {
+            owners.insert(tid, tx_id);
+        }
+    }
+
+    /// #5834: release this thread's ownership when its transaction ends.
+    ///
+    /// The entry is set to **0** rather than removed: "this thread is
+    /// explicitly not in a transaction" must not fall back to the shared
+    /// instance slot, or a peer's BEGIN would hand this thread's next
+    /// DML to the wrong transaction again.
+    fn clear_undo_owner_if(&self, tx_id: u64) {
+        let tid = std::thread::current().id();
+        if let Ok(mut owners) = self.undo_owners.write() {
+            if owners.get(&tid).copied() == Some(tx_id) {
+                owners.insert(tid, 0);
+            }
+        }
+    }
+
     /// Allocate the next transaction id.
     ///
     /// #5055: this used to derive the id from the wall clock —

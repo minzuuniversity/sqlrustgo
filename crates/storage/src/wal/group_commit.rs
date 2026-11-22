@@ -507,7 +507,7 @@ mod tests {
     }
 
     impl WalManager for CountingWal {
-        fn append(&mut self, entry: crate::wal::WalEntry) -> SqlResult<()> {
+        fn append(&mut self, entry: crate::wal::WalEntry) -> SqlResult<u64> {
             self.inner.append(entry)
         }
         fn flush(&mut self) -> SqlResult<()> {
@@ -559,7 +559,7 @@ mod tests {
     }
 
     impl WalManager for PanickingWal {
-        fn append(&mut self, entry: crate::wal::WalEntry) -> SqlResult<()> {
+        fn append(&mut self, entry: crate::wal::WalEntry) -> SqlResult<u64> {
             self.inner.append(entry)
         }
         fn flush(&mut self) -> SqlResult<()> {
@@ -650,7 +650,7 @@ mod tests {
             gate: Mutex<Option<mpsc::Receiver<()>>>,
         }
         impl WalManager for GatedWal {
-            fn append(&mut self, e: crate::wal::WalEntry) -> SqlResult<()> {
+            fn append(&mut self, e: crate::wal::WalEntry) -> SqlResult<u64> {
                 self.inner.append(e)
             }
             fn flush(&mut self) -> SqlResult<()> {
@@ -830,8 +830,8 @@ mod tests {
         // error and record it in the epoch.
         struct FailingWal;
         impl WalManager for FailingWal {
-            fn append(&mut self, _: crate::wal::WalEntry) -> SqlResult<()> {
-                Ok(())
+            fn append(&mut self, _: crate::wal::WalEntry) -> SqlResult<u64> {
+                Ok(0)
             }
             fn flush(&mut self) -> SqlResult<()> {
                 Ok(())

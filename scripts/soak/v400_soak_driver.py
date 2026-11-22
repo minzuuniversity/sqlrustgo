@@ -18,8 +18,22 @@ in a tight loop until duration expires. Errors trigger reconnect with
 exponential backoff (50ms → 2s cap).
 
 Emits one CSV line per query to --output (default stdout):
-    Q,<elapsed_ms>,<thread_id>,<query_kind>,<row_count>
-    E,<elapsed_ms>,<thread_id>,<query_kind>,<error_msg>
+    Q,<query_latency_ms>,<thread_id>,<query_kind>,<row_count>
+    E,<query_latency_ms>,<thread_id>,<query_kind>,<error_msg>
+
+The 2nd field is **the duration of that one query** (milliseconds) — NOT
+"elapsed since the driver started". `t0` is taken inside the loop, right
+before each query (see `t0 = time.monotonic()` below), so the field is a
+latency sample.
+
+2026-11-17: this distinction cost a real run. The launcher read that
+column as if it were an elapsed timestamp and computed its steady-state
+window as "rows whose elapsed >= 30 s" — a predicate no latency sample
+can ever satisfy (it needs a single query to take 30 s). The steady-state
+window came out empty on every attempt, so the launcher judged every
+attempt to be "0 q/s, 100% errors" and rejected healthy runs. The
+launcher now derives its time base from metrics.csv (which carries
+`elapsed_s` plus cumulative driver_q / driver_e).
 
 Tunable:
     --threads=N        default 16
@@ -143,13 +157,20 @@ def _thread_main(thread_id: int, host: str, port: int, user: str, password: str,
                 row_count = len(rows) if rows else 0
                 output_fp.write(f"Q,{ms:.1f},{thread_id},{kind},{row_count}\n")
                 count += 1
-                if count % 500 == 0:
-                    output_fp.flush()
+                # **Flush every row.** This file is the SOAK's evidence of
+                # what the driver actually did; a row that sits in a
+                # buffer is a row nobody can count. The old code flushed
+                # only every 500th Q, so a slow run wrote nothing for
+                # minutes and a failure could not even be seen — and the
+                # E rows were never flushed at all, which made the
+                # error counts approximate.
+                output_fp.flush()
                 backoff = 0.05
             except Exception as e:
                 ms = (time.monotonic() - t0) * 1000.0
                 err_str = str(e).split("\n", 1)[0][:200]
                 output_fp.write(f"E,{ms:.1f},{thread_id},query,{err_str}\n")
+                output_fp.flush()
                 errs += 1
                 time.sleep(min(backoff, max_backoff))
                 backoff = min(backoff * 2.0, max_backoff)

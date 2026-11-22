@@ -1,0 +1,320 @@
+schema_version: 1
+run_id: 20261116-168h-v410
+source_agent: mcode-macmini
+frozen_commit: d46bf9302460b3cbd57b49d257d467e068f6184b
+harness: scripts/soak/v400_soak_driver.py（pymysql 2.2.8，16 线程）+ 仓内启动器；本目录是**时点快照**，run 仍在跑
+environment:
+  host: gaoyuanai-HPZ6G4（192.168.0.252，80 核，同盘 NVMe）
+  os: Linux 7.0.0-42-generic x86_64
+  driver: pymysql 2.2.8（/home/liying/venv-srg），--threads=16 --duration=604800
+  run_id: 20261116-168h-v410
+  attempt: 33
+  started_utc: "2026-11-16T23:05:02Z"
+  planned_end_utc: "2026-11-23T23:05:02Z"
+  soaked_binary_sha256: fa0928b2237cba7a1b897404cbb8bfe5b6530cec45942c189d1fdd58197368ab
+note: "材料（GA_RELEASE_REPORT.md §7.16 / GA_GATE_REPORT.md 刷新块 / 看板 GA-SOAK-8）引用的每一个 SOAK 数字都出自本快照，由脚本从原始文件现算，不手抄。 snapshot_at=2026-11-17T23:09:07，elapsed=58023 s，Q=535971，E=2962，rate=0.553 %。"
+artifacts:
+  artifacts/metrics.csv:
+    bytes: 242240
+    sha256: 482ce2076721d41bac105deaa6ded4dfbfd208c857e15d858b89468cc8161a15
+  artifacts/driver.log.gz:
+    bytes: 2472945
+    sha256: 6d0ac21268d9d060467e0f677874958aeb805878b3c6d69b99cd036fc70fc6fd
+  logs/heartbeat.jsonl:
+    bytes: 450392
+    sha256: d67009e2810cd8360e67a47068b4125d4b9f9751cf752b4dd350d4118e076b30
+remote_sources:
+  STARTED.json:
+    bytes: 1025
+    sha256: 7c84bf5b00b64c7e283c395b770fd57cee083536138a8c7f368b0119dc468d51
+    origin: "252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/"
+  armA.log:
+    bytes: 386378
+    sha256: f87c0a3a07ee066f08812f5b85fd22f12e2f0cd2c892639bab826548ba74bed7
+    origin: "252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/"
+  server.log:
+    bytes: 130138
+    sha256: a6c1ebd1faed6529921db0db358851a58e80f3e282afb4a63b900fa63e29b168
+    origin: "252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/"
+  soak.log:
+    bytes: 98389
+    sha256: 898b59d9bfb24855230811127f943f94744f2add3461e616f67dd0556ec36f00
+    origin: "252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/"
+  driver_errors.log:
+    bytes: 202288
+    sha256: 9c130ea174025461a010670c50aacb453c1e3d2ea2ed444c5c89aa8b6d063e63
+    origin: "252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/"
+  fsync_probe.json:
+    bytes: 290
+    sha256: 4666bb4712aea166a0f6ae33d898d9eb577d5a07449528d016e8f7753db6b74b
+    origin: "252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/"
+  driver.log:
+    bytes: 13605260
+    sha256: e9bda78d4e991bf19a66f719e49dedb4731fe4821ccc63c3475954ad1ceefcbe
+    origin: "252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/"
+start_record:
+  run_id: 20261116-168h-v410
+  attempt_dir: /home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z
+  frozen_commit: d46bf9302460b3cbd57b49d257d467e068f6184b
+  soaked_binary_sha256: fa0928b2237cba7a1b897404cbb8bfe5b6530cec45942c189d1fdd58197368ab
+  binary_built_from_frozen_commit: true
+  host: gaoyuanai-HPZ6G4 Linux 7.0.0-42-generic x86_64
+  hours: 168
+  port: 3411
+  started_utc: "2026-11-16T23:05:02Z"
+  planned_end_utc: "2026-11-23T23:05:02Z"
+  verify_secs: 180
+  driver_queries_at_verify: 5991
+  driver_errors_at_verify: 0
+  driver_qps_at_verify: 43.4
+  driver_error_rate_pct_at_verify: 0.0
+  quiet_max_load: 40
+  foreign_cpu_max: 2400
+  quiet_samples: 10
+  min_driver_qps: 10
+  max_error_rate_pct: 1
+  start_path: optimistic-after-wait
+  attempt: 33
+  waited_secs: 1930
+  host_at_start:
+    load1: 30
+    foreign_cpu_pct: 856
+    system_cpu_pct: 887
+    own_cpu_pct: 31
+    fsync_p50_ms: 4.59
+fsync_probe:
+  measured_at_utc: "2026-11-17T15:09:25Z"
+  host: gaoyuanai-HPZ6G4 (252)
+  method: 同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync
+  n: 60
+  p50_ms: 0.124
+  p90_ms: 0.183
+  p99_ms: 3.356
+  max_ms: 11.906
+  min_ms: 0.117
+  mean_ms: 0.39
+facts:
+  samples: 3784
+  snapshot_at: "2026-11-17T23:09:07"
+  elapsed_s: 58023
+  q: 535971
+  e: 2962
+  rate_pct: 0.553
+  peak_rate_pct: 1.804
+  peak_at_elapsed: 2316
+  peak_q: 36253
+  peak_e: 654
+  threshold_pct: 1.0
+  first_over_threshold:
+    elapsed: 1816
+    q: 35805
+    e: 359
+    rate_pct: 1.003
+  freeze:
+    from_elapsed: 31744
+    e: 2052
+    len_samples: 955
+  regrowth:
+    at_elapsed: 46341
+    e_at_start: 2053
+    e_at_end: 2962
+    q_at_start: 479654
+    q_at_end: 513113
+    span_s: 7956
+    qps: 4.21
+    load_max: 83.64
+    load_min: 2.4
+    errors_added: 909
+    tail_qps: 6.24
+    tail_load_max: 3.08
+    tail_e_from: 2962
+    tail_e_to: 2962
+  load_median: 3.1
+  load_gt40_pct: 8.8
+  load_gt100_pct: 1.0
+  load_now: 2.33
+  qps_now: 6.22
+  qps_at_start: 43.4
+  engine_cpu_now: 87.3
+  engine_cpu_mean: 73.4
+  rss_now: 1051.2
+  panics: 00
+  err_types:
+    客户端读超时 (2013, read operation timed out): 1659
+    "连接层 errno=0 空消息 ((0, ''))": 1303
+    E 行合计: 2962
+    _timeout_latency_max_ms: 16914.3
+  server_side:
+    crash_markers: 0
+    broken_pipe: 935
+    backpressure_rejects: 9
+    worker_pool_full: 9
+  started_utc: "2026-11-16T23:05:02Z"
+  planned_end_utc: "2026-11-23T23:05:02Z"
+  frozen_commit: d46bf9302460b3cbd57b49d257d467e068f6184b
+  binary_sha256: fa0928b2237cba7a1b897404cbb8bfe5b6530cec45942c189d1fdd58197368ab
+  start_load1: 30
+  fsync_p50_at_start: 4.59
+  attempt: 33
+  total_planned_s: 604800
+  fsync_probe:
+    measured_at_utc: "2026-11-17T15:09:25Z"
+    host: gaoyuanai-HPZ6G4 (252)
+    method: 同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync
+    n: 60
+    p50_ms: 0.124
+    p90_ms: 0.183
+    p99_ms: 3.356
+    max_ms: 11.906
+    min_ms: 0.117
+    mean_ms: 0.39
+  fsync_probe_history:
+    - measured_at_utc: "2026-11-17T02:54:00Z"
+      n: 60
+      p50_ms: 5.544
+      p90_ms: 3305.025
+      p99_ms: 6401.213
+      max_ms: 6401.213
+      min_ms: 0.081
+      mean_ms: 1034.587
+      note: 第一次探测：p50 尚可，但尾部已是**秒级**（p90 3.3 s / max 6.4 s），双峰分布 ⇒ 同盘被 root 的并行 Rust 构建间歇性饿死。
+    - measured_at_utc: "2026-11-17T03:48:28Z"
+      n: 60
+      p50_ms: 0.124
+      p90_ms: 0.133
+      p99_ms: 0.713
+      max_ms: 10.317
+      min_ms: 0.12
+      mean_ms: 0.31
+      note: 第二次探测（同一方法、同一宿主、相隔 54 分钟）：尾部已回到 10 ms 量级，p90 0.133 ms ⇒ 第一次的秒级尾部是**宿主争用的瞬态**，不是被测引擎的固有属性。
+    - measured_at_utc: "2026-11-17T03:52:32Z"
+      host: gaoyuanai-HPZ6G4 (252)
+      method: 同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync
+      n: 60
+      p50_ms: 0.124
+      p90_ms: 0.238
+      p99_ms: 17.696
+      max_ms: 93.317
+      min_ms: 0.12
+      mean_ms: 2.186
+    - measured_at_utc: "2026-11-17T11:51:59Z"
+      host: gaoyuanai-HPZ6G4 (252)
+      method: 同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync
+      n: 60
+      p50_ms: 0.126
+      p90_ms: 0.254
+      p99_ms: 0.902
+      max_ms: 91.189
+      min_ms: 0.117
+      mean_ms: 1.677
+    - measured_at_utc: "2026-11-17T11:53:06Z"
+      host: gaoyuanai-HPZ6G4 (252)
+      method: 同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync
+      n: 60
+      p50_ms: 0.121
+      p90_ms: 0.138
+      p99_ms: 3.184
+      max_ms: 10.251
+      min_ms: 0.116
+      mean_ms: 0.344
+    - measured_at_utc: "2026-11-17T15:09:25Z"
+      host: gaoyuanai-HPZ6G4 (252)
+      method: 同一目录新建文件，60 次 4096B write + fsync，逐次计时；Python os.fsync
+      n: 60
+      p50_ms: 0.124
+      p90_ms: 0.183
+      p99_ms: 3.356
+      max_ms: 11.906
+      min_ms: 0.117
+      mean_ms: 0.39
+  host_contention:
+    measured_at_utc: "2026-11-17T15:09:26Z"
+    host: gaoyuanai-HPZ6G4 (252)
+    load1: 2.1
+    load5: 2.07
+    load15: 2.37
+    root_compile_or_test_procs: 1
+    own_compile_or_test_procs: 1
+    note: 独占性结论**由本次实测生成**，不写死：root 身份仍有 1 个编译/测试进程 ⇒ 该节点**不是独占**，属主要求的『独占窗口』在本次取证时刻**不满足**。
+  quiet_window:
+    from_elapsed: 54297
+    to_elapsed: 58023
+    span_s: 3726
+    samples: 245
+    e_frozen_at: 2962
+    new_errors: 0
+    load_min: 1.31
+    load_max: 6.82
+    load_mean: 2.7
+    qps: 6.13
+  latency_profile:
+    point_select:
+      n: 268123
+      p50_ms: 938.4
+      p95_ms: 3014.2
+      p99_ms: 5097.0
+      max_ms: 15011.7
+    insert:
+      n: 53397
+      p50_ms: 2936.8
+      p95_ms: 7380.8
+      p99_ms: 10637.2
+      max_ms: 14899.1
+    count_agg:
+      n: 53718
+      p50_ms: 970.6
+      p95_ms: 3044.1
+      p99_ms: 5029.9
+      max_ms: 14975.9
+    range_scan:
+      n: 107494
+      p50_ms: 991.6
+      p95_ms: 3073.4
+      p99_ms: 5170.0
+      max_ms: 15011.3
+    point_update:
+      n: 53321
+      p50_ms: 2578.0
+      p95_ms: 6754.5
+      p99_ms: 9956.8
+      max_ms: 14995.2
+  error_latency_profile:
+    n: 2962
+    p50_ms: 15010.3
+    p95_ms: 15018.8
+    max_ms: 16914.3
+    ge_14s: 1659
+    ge_14s_pct: 56.0
+commands:
+  - id: collect-soak-snapshot
+    cmd: "for f in armA/metrics.csv armA/armA.log armA/server.log armA/driver.log heartbeat.jsonl soak.log; do ssh liying@192.168.0.252 \"cat /home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/$f\"; done"
+    desc: 从 252 取 168h SOAK 的时点快照（指标 / 臂 A 日志 / 服务端日志 / 驱动日志 / 心跳 / 监督日志）
+    cwd: .
+  - id: fsync-latency-probe
+    cmd: "ssh liying@192.168.0.252 'python3 - <<PY  # 同盘新建文件，60 次 4096B write+fsync，逐次计时\nimport os, time, tempfile, statistics, json\nd = tempfile.mkdtemp(prefix='fsyncprobe-'); p = os.path.join(d, 'probe.bin')\nlat = []; fd = os.open(p, os.O_CREAT | os.O_WRONLY)\nfor i in range(60):\n    os.write(fd, b'x' * 4096); t0 = time.perf_counter(); os.fsync(fd)\n    lat.append((time.perf_counter() - t0) * 1000)\nos.close(fd); lat.sort()\npct = lambda p: round(lat[min(len(lat)-1, int(len(lat)*p))], 3)\nprint(json.dumps({'n': len(lat), 'p50_ms': pct(0.50), 'p90_ms': pct(0.90),\n  'p99_ms': pct(0.99), 'max_ms': round(max(lat), 3), 'min_ms': round(min(lat), 3),\n  'mean_ms': round(statistics.mean(lat), 3)}))\nPY"
+    desc: 在 252 同盘实测 fsync 延迟分布（证明尾部秒级恶化 ⇒ 同盘被间歇性饿死）
+    cwd: .
+  - id: snapshot-facts
+    cmd: python3 /tmp/_soak_facts.py
+    desc: 从快照算出全部事实（错误率、峰值、冻结段、重新增长段、load 分布、错误形态）
+    cwd: .
+results:
+  - id: collect-soak-snapshot
+    exit_code: 0
+    stdout_path: logs/001-collect-soak-snapshot.stdout
+    stderr_path: logs/001-collect-soak-snapshot.stderr
+    stdout_sha256: 7d7f7543e2d39dcafc237d20cb2ef168aed59b14323d6b5c8d35c5ad0e4120ce
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: fsync-latency-probe
+    exit_code: 0
+    stdout_path: logs/002-fsync-latency-probe.stdout
+    stderr_path: logs/002-fsync-latency-probe.stderr
+    stdout_sha256: 4666bb4712aea166a0f6ae33d898d9eb577d5a07449528d016e8f7753db6b74b
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  - id: snapshot-facts
+    exit_code: 0
+    stdout_path: logs/003-snapshot-facts.stdout
+    stderr_path: logs/003-snapshot-facts.stderr
+    stdout_sha256: 2ffe52f97c66e7e9fa7a2ad61b271a8fc1a8108d91dd1981d29871706de9fd08
+    stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+evidence_hash: "sha256:dcaddce8ee2cfa7336e0835975716de9d40beb815a489e22b4c4bb943d55b673"

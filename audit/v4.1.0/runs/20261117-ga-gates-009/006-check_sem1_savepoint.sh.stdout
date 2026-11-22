@@ -1,0 +1,13 @@
+=== G5 Gate: SEM-1 (#3172) Savepoint ===
+  [1/8] ✅ PASS: SavepointOp exported from sqlrustgo_parser
+  [2/8] ✅ PASS: SavepointStatement AST variant present
+  [3/8] ✅ PASS: parse_savepoint_* functions present (count=2)
+  [4/8] ✅ PASS: TransactionManager has 3 savepoint methods (count=4)
+  [5/8] ✅ PASS: SAVEPOINT statement path complete (lexer → parser → savepoint_wiring → engine_dml)
+  [6/8] ✅ PASS: ActiveTransaction has savepoint_manager field
+  [7/8] ⏳ running: cargo test --test sem1_savepoint_test
+  [7/8] ✅ PASS: sem1_savepoint_test 通过（实测 passed=6）
+  [8/8] ✅ PASS: SavepointStatement dispatched → execute_savepoint (execution_engine_methods.rs)
+
+=== G5 Gate: PASS ===
+SEM-1 (#3172) Savepoint: AST + parser + TransactionManager + executor + tests verified

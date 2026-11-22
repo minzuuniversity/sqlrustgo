@@ -428,13 +428,36 @@ echo "LIST_SIZE=${#D6_INTEGRATION_TESTS[@]}"
         stderr
     );
     assert!(
-        out.contains("LIST_SIZE=49"),
-        "the curated list must keep its 49 entries; got:\n{}",
+        out.contains("LIST_SIZE=50"),
+        "the curated list must keep its 50 entries; got:\n{}",
         out
     );
     assert!(
-        out.contains("RESOLVED=49"),
-        "all 49 curated entries must resolve; got:\n{}",
+        out.contains("RESOLVED=50"),
+        "all 50 curated entries must resolve; got:\n{}",
+        out
+    );
+    // The two pins above are tied to the curated list's length, so a future
+    // change to that list turns them red and asks for a deliberate update.
+    // This third assertion states the *invariant* directly — the resolved
+    // count must equal the list size — so the "every entry resolves"
+    // property cannot rot on a stale number again:
+    //   #5846 added the 50th curated entry (falsesuccess_kill_unknown_thread)
+    //   but did not update the two pins ⇒ GA rounds 20 (D6b) and 33
+    //   (cargo test --all-features) went red on a *stale count*; the
+    //   resolver itself was fine (UNRESOLVED was empty in every run).
+    // Parsing both numbers and comparing them keeps the pinned length
+    // assertion above intact while making "all entries resolve" checkable
+    // without hard-coding a second copy of the same number.
+    let num = |key: &str| -> Option<i64> {
+        out.lines()
+            .find_map(|l| l.strip_prefix(&format!("{key}=")))
+            .and_then(|v| v.trim().parse::<i64>().ok())
+    };
+    assert_eq!(
+        num("RESOLVED"),
+        num("LIST_SIZE"),
+        "the resolved count must equal the curated list size; got:\n{}",
         out
     );
     assert_eq!(code, 0, "the snippet itself must succeed:\n{}", stderr);
@@ -1000,4 +1023,223 @@ fn test_5456_not_run_lines_name_the_plan_that_excludes_them() {
             line.trim()
         );
     }
+}
+
+// ===========================================================================
+// TPC-H 夹具交接：shell 侧与 Rust 侧必须指向**同一个**目录
+// ===========================================================================
+//
+// 背景（2026-11-17 实测）：同一个问题「夹具在哪儿」有两套实现——
+//
+//   shell 侧（scripts/gate/*.sh）：TPCH_DATA_DIR → ~/sqlrustgo-tpch/data
+//   Rust 侧（tests/common/tpch_fixture.rs::resolve_fixture_dir）：
+//                              TPCH_DATA_DIR → 仓库内候选目录
+//                              （**不含** ~/sqlrustgo-tpch/data）
+//
+// 于是：门禁预检看到「8/8 .tbl 都在」，Rust 侧却只看到「没有夹具」⇒
+// 测试自报 `TPCH-NOT-RUN: ... reason=fixture_missing` ⇒ 比对**从未发生**，
+// 而 G1 的 step 3 还把它说成「tpch_hash_test executed」。
+//
+// 这三条测试锁住两件事：
+//   ① 夹具被**交出去**了（Rust 侧真的拿到了 shell 验过的那个目录）；
+//   ② 没跑成 ≠ 跑过了（NOT-RUN 只能被判成 INCOMPLETE）。
+
+/// 建一个「临时 HOME」，其中 `sqlrustgo-tpch/data/` 放齐 8 个 .tbl，
+/// 返回 `(home_dir, fixture_dir)`。
+fn fake_home_with_tpch_fixture(tag: &str) -> (PathBuf, PathBuf) {
+    let home = std::env::temp_dir().join(format!("sqlrustgo_gate_home_{}", tag));
+    let fixture = home.join("sqlrustgo-tpch").join("data");
+    std::fs::create_dir_all(&fixture).expect("create fake fixture dir");
+    for tbl in [
+        "customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier",
+    ] {
+        std::fs::write(fixture.join(format!("{}.tbl", tbl)), b"").expect("write .tbl");
+    }
+    (home, fixture)
+}
+
+/// cargo 桩：把它看到的 `TPCH_DATA_DIR` **写进报告文件**，再以 0 退出
+/// （复刻「测试跑过了」的样子，但把交接的目录暴露出来）。
+///
+/// 用文件而不是 stdout：门禁脚本会把 cargo 的输出收进变量，成功时不一定
+/// 回显（`tpch_gate_subcheck.sh` 的 PASS 分支只打印一行结论），断言不能
+/// 依赖「门禁把子进程输出原样吐出来」。
+fn stub_cargo_reporting_tpch_data_dir(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("sqlrustgo_gate_cargo_{}", tag));
+    std::fs::create_dir_all(&dir).expect("create stub dir");
+    let cargo = dir.join("cargo");
+    std::fs::write(
+        &cargo,
+        "#!/usr/bin/env bash\n\
+         if [[ -n \"${STUB_CARGO_REPORT:-}\" ]]; then\n\
+         \x20 printf '%s\\n' \"${TPCH_DATA_DIR:-<unset>}\" > \"${STUB_CARGO_REPORT}\"\n\
+         fi\n\
+         echo \"test result: ok. 1 passed; 0 failed\"\n\
+         exit 0\n",
+    )
+    .expect("write stub cargo");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perm = std::fs::metadata(&cargo)
+            .expect("stat stub cargo")
+            .permissions();
+        perm.set_mode(0o755);
+        std::fs::set_permissions(&cargo, perm).expect("chmod stub cargo");
+    }
+    dir
+}
+
+/// cargo 桩：自报 NOT-RUN 之后**以 0 退出** —— 这正是「缺夹具时测试仍然
+/// ok」的真实形状（一条查询都没跑，进程却是绿的）。
+fn stub_cargo_reporting_not_run(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("sqlrustgo_gate_cargo_{}", tag));
+    std::fs::create_dir_all(&dir).expect("create stub dir");
+    let cargo = dir.join("cargo");
+    std::fs::write(
+        &cargo,
+        "#!/usr/bin/env bash\n\
+         echo \"TPCH-NOT-RUN: tpch_gate_test reason=fixture_missing detail=no fixture\"\n\
+         echo \"test result: ok. 0 passed; 0 failed; 0 ignored\"\n\
+         exit 0\n",
+    )
+    .expect("write stub cargo");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perm = std::fs::metadata(&cargo)
+            .expect("stat stub cargo")
+            .permissions();
+        perm.set_mode(0o755);
+        std::fs::set_permissions(&cargo, perm).expect("chmod stub cargo");
+    }
+    dir
+}
+
+/// 用给定的 HOME / PATH 跑一个门禁脚本；**不**继承外界的 TPCH_DATA_DIR。
+fn run_gate_with_env(
+    script: &Path,
+    home: &Path,
+    stub_dir: &Path,
+    report: &Path,
+    tag: &str,
+) -> (i32, String) {
+    let path = format!(
+        "{}:{}",
+        stub_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = Command::new("bash")
+        .arg(script)
+        .current_dir(repo_root())
+        .env("PATH", path)
+        .env("HOME", home)
+        .env("STUB_CARGO_REPORT", report)
+        .env_remove("TPCH_DATA_DIR")
+        .output()
+        .expect("failed to spawn bash");
+    let mut text = String::from_utf8_lossy(&out.stdout).to_string();
+    text.push_str(&String::from_utf8_lossy(&out.stderr));
+    (out.status.code().unwrap_or(-1), text)
+}
+
+/// 读取 cargo 桩记下的 `TPCH_DATA_DIR`（`<unset>` 表示环境里根本没有它）。
+fn observed_tpch_data_dir(report: &Path) -> String {
+    std::fs::read_to_string(report)
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|e| panic!("cargo stub did not report: {}", e))
+}
+
+#[test]
+fn test_tpch_subcheck_hands_the_fixture_dir_to_the_rust_side() {
+    let (home, fixture) = fake_home_with_tpch_fixture("subcheck");
+    let stub = stub_cargo_reporting_tpch_data_dir("subcheck");
+    let report = std::env::temp_dir().join("sqlrustgo_gate_report_subcheck.txt");
+    let _ = std::fs::remove_file(&report);
+    let (rc, text) = run_gate_with_env(
+        &gate_script("tpch_gate_subcheck.sh"),
+        &home,
+        &stub,
+        &report,
+        "subcheck",
+    );
+    assert_eq!(
+        rc, 0,
+        "the sub-check must PASS when the fixture is present:\n{}",
+        text
+    );
+    assert!(
+        text.contains("TPCH-SUBCHECK: PASS"),
+        "expected a PASS verdict:\n{}",
+        text
+    );
+    assert_eq!(
+        observed_tpch_data_dir(&report),
+        fixture.display().to_string(),
+        "the Rust side must receive the very directory the shell validated"
+    );
+}
+
+#[test]
+fn test_g1_tpch_baseline_hands_the_fixture_dir_to_the_rust_side() {
+    let (home, fixture) = fake_home_with_tpch_fixture("g1");
+    let stub = stub_cargo_reporting_tpch_data_dir("g1");
+    let report = std::env::temp_dir().join("sqlrustgo_gate_report_g1.txt");
+    let _ = std::fs::remove_file(&report);
+    let (rc, text) = run_gate_with_env(
+        &gate_script("check_g1_tpch_baseline.sh"),
+        &home,
+        &stub,
+        &report,
+        "g1",
+    );
+    assert!(
+        !text.contains("fixture missing"),
+        "the preflight must find the fixture in the default location:\n{}",
+        text
+    );
+    assert_eq!(
+        observed_tpch_data_dir(&report),
+        fixture.display().to_string(),
+        "G1 must hand the fixture to the Rust side through TPCH_DATA_DIR"
+    );
+    assert!(
+        rc != 0,
+        "a stub cargo cannot produce a real hash, so G1 must not claim PASS:\n{}",
+        text
+    );
+}
+
+#[test]
+fn test_g1_tpch_baseline_does_not_call_a_not_run_test_executed() {
+    let (home, _fixture) = fake_home_with_tpch_fixture("g1_notrun");
+    let stub = stub_cargo_reporting_not_run("g1_notrun");
+    let report = std::env::temp_dir().join("sqlrustgo_gate_report_g1_notrun.txt");
+    let (rc, text) = run_gate_with_env(
+        &gate_script("check_g1_tpch_baseline.sh"),
+        &home,
+        &stub,
+        &report,
+        "g1_notrun",
+    );
+    assert_eq!(
+        rc, 2,
+        "a NOT-RUN test must be INCOMPLETE (exit 2), never PASS:\n{}",
+        text
+    );
+    assert!(
+        text.contains("G1 INCOMPLETE"),
+        "the verdict must say INCOMPLETE:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("tpch_gate_test executed"),
+        "a NOT-RUN test must never be reported as executed:\n{}",
+        text
+    );
+    assert!(
+        !text.contains("G1 PASS"),
+        "G1 must not claim PASS when the comparison never ran:\n{}",
+        text
+    );
 }

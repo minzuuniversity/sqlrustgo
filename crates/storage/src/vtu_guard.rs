@@ -174,6 +174,84 @@ impl<S: StorageEngine + 'static> StorageEngine for VtuGuard<S> {
     fn has_table_in(&self, db: &str, table: &str) -> bool {
         self.inner.has_table_in(db, table)
     }
+
+    // -------------------------------------------------------------------------
+    // Transaction state and control must be FORWARDED, not dropped.
+    //
+    // The `StorageEngine` trait gives every one of these a default that
+    // reports "this engine has no transactions":
+    //
+    //   in_transaction()                  -> false
+    //   current_tx_id()                   -> 0
+    //   set_current_tx_id(id)             -> a no-op
+    //   set_current_tx_id_shared(id)      -> a no-op
+    //   begin_transaction()               -> Err("Transactions not supported
+    //                                         by this storage engine")
+    //
+    // A wrapper that does not override them therefore does not merely return
+    // stale values — it *silently removes the capability*. Ask a VtuGuard
+    // whether a transaction is open and it says no; set a transaction id
+    // through it and the id is dropped on the floor, so the wrapped storage
+    // never learns which transaction it is in, and its own DML guard then
+    // sees "no transaction" and rejects legitimate in-transaction writes.
+    //
+    // `VtuGuard`'s whole purpose is to be a TRANSPARENT wrapper around an
+    // engine — it forwards reads and writes (see the delegations above) — so
+    // the transaction family has to travel the same road. `WalStorage`
+    // implements all of these soundly (its tx id lives in an `AtomicU64`);
+    // the wrapper was simply not carrying them.
+    //
+    // Found by the GA gate run: `vtu_guard::tests::
+    // test_vtu_guard_tx_state_via_set_current_tx_id` failed with
+    // `assertion failed: guarded.in_transaction()` — the tx id was set on
+    // the inner storage and the wrapper still reported "not in a
+    // transaction", because the wrapper was answering from the trait's
+    // default rather than from the engine it wraps.
+    fn begin_transaction(&mut self) -> SqlResult<u64> {
+        self.inner.begin_transaction()
+    }
+    fn commit_transaction(&mut self) -> SqlResult<()> {
+        self.inner.commit_transaction()
+    }
+    fn rollback_transaction(&mut self) -> SqlResult<()> {
+        self.inner.rollback_transaction()
+    }
+    fn commit_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.inner.commit_transaction_for(tx_id)
+    }
+    fn rollback_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.inner.rollback_transaction_for(tx_id)
+    }
+    fn begin_transaction_for(&mut self, tx_id: u64) -> SqlResult<()> {
+        self.inner.begin_transaction_for(tx_id)
+    }
+    fn begin_transaction_lockfree(&self, tx_id: u64) -> SqlResult<()> {
+        self.inner.begin_transaction_lockfree(tx_id)
+    }
+    fn commit_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.commit_transaction_lockfree()
+    }
+    fn rollback_transaction_lockfree(&self) -> SqlResult<()> {
+        self.inner.rollback_transaction_lockfree()
+    }
+    fn in_transaction(&self) -> bool {
+        self.inner.in_transaction()
+    }
+    fn current_tx_id(&self) -> u64 {
+        self.inner.current_tx_id()
+    }
+    fn set_current_tx_id(&mut self, id: u64) {
+        self.inner.set_current_tx_id(id)
+    }
+    fn set_current_tx_id_shared(&self, id: u64) {
+        self.inner.set_current_tx_id_shared(id)
+    }
+    /// `flush` was a no-op on the wrapper for the same reason: the trait's
+    /// default is `Ok(())`, so a flush asked of a VtuGuard never reached the
+    /// engine it wraps.
+    fn flush(&mut self) -> SqlResult<()> {
+        self.inner.flush()
+    }
     /// #5250: delegate with the stated database. This wrapper holds a
     /// single inner `StorageEngine`, so the database has to be carried
     /// through — the previous trait default dropped it (`let _ = db;`) and

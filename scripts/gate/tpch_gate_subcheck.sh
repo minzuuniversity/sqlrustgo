@@ -39,6 +39,22 @@ if [[ "${MISSING_COUNT}" -gt 0 ]]; then
     exit 2
 fi
 
+# ---------------------------------------------------------------------------
+# 把夹具**交出去**（2026-11-17）：两套解析链必须指向同一个目录
+# ---------------------------------------------------------------------------
+# shell 侧（本脚本）的解析链是：TPCH_DATA_DIR → ~/sqlrustgo-tpch/data
+# Rust 侧（tests/common/tpch_fixture.rs::resolve_fixture_dir）的解析链是：
+#   TPCH_DATA_DIR → 仓库内候选目录（tests/data/tpch-fixture、data/tpch-sf01）
+# **不含** ~/sqlrustgo-tpch/data。
+#
+# 两套实现回答同一个问题（「夹具在哪儿」），答案却可能不同：shell 预检看到
+# 8/8 .tbl 都在，Rust 侧却只看到「没有夹具」⇒ 测试自报
+# `TPCH-NOT-RUN: ... reason=fixture_missing` ⇒ 这里判 INCOMPLETE。
+#
+# 交接点就是 TPCH_DATA_DIR —— Rust 侧文档化的契约（CI 也是这样把运行时
+# 生成的夹具递进去的）。在这里显式导出，shell 验过的目录才会真的被 Rust 用上。
+export TPCH_DATA_DIR="${FIXTURE_DIR}"
+
 OUT="$(cargo test --test tpch_gate_test 2>&1)"
 RC=$?
 

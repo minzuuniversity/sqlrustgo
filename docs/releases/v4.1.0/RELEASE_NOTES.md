@@ -1,7 +1,7 @@
 # SQLRustGo v4.1.0 — Release Notes (DRAFT)
 
-> **基线**：`develop/v4.1.0` @ `c1a73a5320a500ce2aa4e7fc16ebd59a802824af`
-> **Status**: DRAFT (per `docs/releases/v4.1.0/STAGE.yaml`) — **NOT YET ALPHA**
+> **基线**：`develop/v4.1.0` @ `1579950048b37628eb19bb9f2fe624ab87198ada`
+> **Status**: ALPHA (per `docs/releases/v4.1.0/STAGE.yaml` `current_stage`) — **GA 未晋升**：门禁认证轮 run `20261117-ga-gates-010` 在交付树 `1579950048b37628eb19bb9f2fe624ab87198ada` 上全绿，剩余为物理与人类约束（见 `GA_GATE_REPORT.md` 顶部刷新块）
 > **Branch**: `develop/v4.1.0`
 > **Base**: v4.0.0 GA **已被撤销** (2026-09-30, verdict: REVOKED，见
 > `docs/releases/v4.0.0/STAGE.yaml` `ga_promotion_status` + `GA_RELEASE_TIMELINE.md`)
