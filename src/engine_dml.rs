@@ -817,6 +817,7 @@ pub fn execute_insert<S: StorageEngine + 'static>(
             record_insert_undo(
                 &mut engine.transaction_manager.lock(),
                 undo_tx,
+                &stmt_db,
                 &table_name,
                 &table_info,
                 record,
@@ -1172,6 +1173,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
                 record_update_undo(
                     &mut engine.transaction_manager.lock(),
                     undo_tx,
+                    &stmt_db,
                     &table_name,
                     &table_info,
                     prior_row,
@@ -1362,6 +1364,7 @@ pub fn execute_update<S: StorageEngine + 'static>(
             record_update_undo(
                 &mut engine.transaction_manager.lock(),
                 undo_tx,
+                &stmt_db,
                 &table_name,
                 &table_info,
                 prior_row,
@@ -1475,6 +1478,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
                 record_delete_undo(
                     &mut engine.transaction_manager.lock(),
                     undo_tx,
+                    &stmt_db,
                     &table_name,
                     &table_info,
                     prior_row,
@@ -1664,6 +1668,7 @@ pub fn execute_delete<S: StorageEngine + 'static>(
             record_delete_undo(
                 &mut engine.transaction_manager.lock(),
                 undo_tx,
+                &stmt_db,
                 &table_name,
                 &table_info,
                 prior_row,
@@ -2480,9 +2485,25 @@ fn build_trigger_auth_check<S: StorageEngine + 'static>(
 /// Mirrors the [`TriggerBodyAuthCheck`] / `build_trigger_auth_check`
 /// pattern — trait + factory keeps the call site in trigger.rs free of
 /// any `crate::engine_dml::` import.
+///
+/// #5896: the recorded `UndoRecord`s must name the database the
+/// trigger-side write actually landed in, so the replay can address the
+/// very same table.
+///
+/// The trigger executor's body DML goes through the **bare-name**
+/// storage APIs (`storage.get_table_info(name)`,
+/// `storage.delete(name, …)`, `storage.insert(name, …)` — see
+/// `crates/executor/src/trigger.rs`), and both `MemoryStorage` and
+/// `FileStorage` resolve a bare table name against
+/// `DEFAULT_DATABASE`. So a trigger body's write always lands in the
+/// default database, and that is the database the undo record has to
+/// name — naming the session's database instead would send the replay
+/// after a table the write never touched, and the trigger's side
+/// effect would survive the ROLLBACK.
 fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
     engine: &ExecutionEngine<S>,
 ) -> std::sync::Arc<dyn TriggerUndoRecorder> {
+    use sqlrustgo_storage::DEFAULT_DATABASE;
     use sqlrustgo_transaction::savepoint::UndoRecord;
 
     struct EngineUndoRecorder {
@@ -2493,6 +2514,7 @@ fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
         fn record_insert_undo(&self, table: &str, table_info: &TableInfo, row: &[Value]) {
             let key = crate::savepoint_wiring::primary_key_values(table_info, row);
             self.sink.lock().push(UndoRecord::Insert {
+                db: DEFAULT_DATABASE.to_string(),
                 table: table.to_string(),
                 key,
                 row: row.to_vec(),
@@ -2508,6 +2530,7 @@ fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
         ) {
             let key = crate::savepoint_wiring::primary_key_values(table_info, prior_row);
             self.sink.lock().push(UndoRecord::Update {
+                db: DEFAULT_DATABASE.to_string(),
                 table: table.to_string(),
                 key,
                 old_value: prior_row.to_vec(),
@@ -2518,6 +2541,7 @@ fn build_trigger_undo_recorder<S: StorageEngine + 'static>(
         fn record_delete_undo(&self, table: &str, table_info: &TableInfo, row: &[Value]) {
             let key = crate::savepoint_wiring::primary_key_values(table_info, row);
             self.sink.lock().push(UndoRecord::Delete {
+                db: DEFAULT_DATABASE.to_string(),
                 table: table.to_string(),
                 key,
                 old_value: row.to_vec(),
