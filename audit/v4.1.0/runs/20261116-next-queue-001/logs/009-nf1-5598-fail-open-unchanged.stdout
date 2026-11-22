@@ -1,0 +1,32 @@
+--- check_architecture_freeze.sh 末尾 ---
+echo "PASS: $PASS/$TOTAL"
+echo ""
+
+if [ "$PASS" -eq "$TOTAL" ]; then
+    echo "✅ Architecture Freeze PASS"
+    exit 0
+else
+    echo "⚠️  Architecture Freeze 部分检查未通过"
+    echo "   注意: A7 检查项在 Alpha 阶段未强制执行"
+    echo "   详见: docs/releases/v3.8.0/alpha/ALPHA_STAGE_REVIEW.md"
+    exit 0  # 不阻塞，因为是改进项
+fi
+--- check_int_debt.sh 判定段 ---
+66:    exit 1
+69:ACTIVE_COUNT=0
+72:DEFERRED_WITHOUT_PLAN=0
+73:FAILED_ITEMS=()
+83:        FAILED_ITEMS+=("$int_id (not in CV debt doc)")
+110:                ACTIVE_COUNT=$((ACTIVE_COUNT + 1))
+111:                FAILED_ITEMS+=("$int_id (ACTIVE without v3.9.0+ plan)")
+120:                DEFERRED_WITHOUT_PLAN=$((DEFERRED_WITHOUT_PLAN + 1))
+121:                FAILED_ITEMS+=("$int_id (DEFERRED without plan)")
+126:            FAILED_ITEMS+=("$int_id (unknown status)")
+134:echo "  ACTIVE:               $ACTIVE_COUNT"
+136:echo "  DEFERRED w/o plan:    $DEFERRED_WITHOUT_PLAN"
+140:if [ $ACTIVE_COUNT -gt 0 ] || [ $DEFERRED_WITHOUT_PLAN -gt 0 ]; then
+142:    for item in "${FAILED_ITEMS[@]}"; do
+146:    echo "❌ D7 INT Debt: FAILED ($ACTIVE_COUNT ACTIVE, $DEFERRED_WITHOUT_PLAN DEFERRED w/o plan)"
+150:    exit 1
+156:    exit 2
+160:exit 0

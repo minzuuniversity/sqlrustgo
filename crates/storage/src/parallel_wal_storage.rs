@@ -181,14 +181,14 @@ impl<S: StorageEngine + 'static, W: WalManager + 'static> ParallelWalStorage<S, 
         self.group_commit.as_ref()
     }
 
-    fn append_wal_entry(&mut self, mut entry: WalEntry) -> SqlResult<u64> {
-        let lsn = self.next_lsn;
-        self.next_lsn += 1;
-        entry.lsn = lsn;
+    fn append_wal_entry(&mut self, entry: WalEntry) -> SqlResult<u64> {
         // #5317: route through `wal_do` so the shared handle
         // (when `shared_wal` is `Some`) serialises with the inner
-        // `FileStorage`'s commits.
-        self.wal_do(|w| w.append(entry))
+        // `FileStorage`'s commits. The manager stamps the entry and
+        // reports the LSN back, so this layer and the log file share ONE
+        // LSN space.
+        let lsn = self
+            .wal_do(|w| w.append(entry))
             .and_then(|opt| opt.ok_or_else(|| SqlError::ExecutionError("WAL disabled".into())))?;
         Ok(lsn)
     }

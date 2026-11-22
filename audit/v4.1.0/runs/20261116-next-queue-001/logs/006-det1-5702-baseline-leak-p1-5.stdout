@@ -1,0 +1,9 @@
+M1 未绑定声明 rc= 1
+  夹具自身是否被点名: True
+M2 已绑定声明 rc= 1 (期望 0)
+  夹具自身是否被点名: False
+基线 check rc= 1 (基线是否已红)
+   FAIL: NEW-FILE docs/releases/v4.1.0/ALPHA_GATES_RERUN_2026-11-13.md 带 29 处未绑定声明（新写的声明必须同小节引用 run id 或 evidence 文档）
+   FAIL: NEW-FILE docs/releases/v4.1.0/ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md 带 8 处未绑定声明（新写的声明必须同小节引用 run id 或 evidence 文档）
+   FAIL: NEW-FILE docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md 带 5 处未绑定声明（新写的声明必须同小节引用 run id 或 evidence 文档）
+   FAIL: NEW-FILE docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11D.md 带 5 处未绑定声明（新写的声明必须同小节引用 run id 或 evidence 文档）

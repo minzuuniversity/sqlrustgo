@@ -14,6 +14,1222 @@
 > PASS 声明有对应的 gate engine 输出，而非 AI 自述。）
 
 ---
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 17 -->
+
+## 🔄 刷新块（2026-11-19T12:44:58Z）—— 第 17 次刷新：**ALPHA→BETA 的 issue 销账侧实测（E1 / E3 明确不满足）**
+
+> **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**ISSUE 台账实测（v4.1.0 台账 `20261111-ledger-006`）**
+
+| 项 | 实测 |
+|---|---|
+| **当期 open issue** | **107 条** |
+| **其中 priority/p0** | **49 条** ⇒ **ALPHA exit_criteria E3「No P0 bugs open」明确不满足** |
+| 可执行性分类（限 P0） | **auto 14 条** · auto-needs-infra 15 条 · needs-human-decision 14 条 · manual-host 5 条 · infra-config 1 条 |
+| P0 的域分布 | ci-infra 11、gate 9、storage-wal-crash 7、release-stage 6、tooling 3、perf-tpch 3、test-validity 3、coverage 2、docs-claims 2、sql-semantics 1、security 1、backup-restore 1 |
+| 全台账 evidence_grade | advisory-only 107 ⇒ **无一行为双血统 cross-checked** |
+| qualifying_families 分布 | [] × 55、['gpt'] × 52 ⇒ **合格血统只有 1 席（属主裁定合格血统为 deepseek + chatGPT）⇒ 双血统复核缺失** |
+| state_label 分布 | state/ready 72、None 23、state/claimed 11、state/blocked 1 |
+
+### 二、**总控 issue 本身就是 open P0**
+
+- **#5117 = `[v4.1.0][总控] Alpha→Beta 门禁整改与晋级审核`**
+  （URL: http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5117）
+- `breaks_claim` = **「Alpha至Beta晋级门禁满足」** ⇒ **它就是「Alpha 至 Beta 晋级门禁满足」这条声称的阻断项**
+- `automatable` = **needs-human-decision**、`state_label` = state/ready、`blast` = large、`fix_shape` = cross-module
+- `triage_families` = ['gpt', 'qwen-strata']、`qualifying_families` = ['gpt']
+  ⇒ **晋级总控本身落在人裁决域，且其分诊只有 1 个合格血统**
+
+⇒ **结论**：ALPHA→BETA **不能由 AI 单方宣布迁移**；
+且 **E1（alpha-targeted issues 关闭）与 E3（No P0 bugs open）当前均不满足**，
+**E1/E3 的核对输入本身**存在证据等级缺口（全表 advisory-only、单血统）。
+
+### 三、**⭐ 最高杠杆项 #5580：与本线 GA-SOAK-36 的 F1/F2/F3 同源**
+
+`#5580` = 「[门禁] `check_rc_ga_gate.sh` 的 ga / rc / beta 模式永远判 FAIL（期望 D1/D2 却从不执行）」
+（`automatable` = **auto**、`domain` = gate、priority = **p0**、**open**）
+
+⇒ **与本线 GA-SOAK-36 已归因的三条完全同源**：
+
+| 本线归因 | 判据 | #5580 覆盖 |
+|---|---|---|
+| **F1** D5-3/4/5 判据版本绑定 / 文本匹配脆弱 | D5 判据硬编码 v3.7.0 / v3.8.0；D5-3 用宽泛 grep 扫全 crates | ✅ 同一文件同一缺陷族 |
+| **F2** G9/G10 内层 `timeout 90` / `timeout 60` + `tail -3` 截断 | 判据不可执行 ⇒ 永远 FAIL | ✅ **正是 #5580 标题所指的「永远判 FAIL」** |
+| **F3** `V312_COVERAGE_FULL` 未设 | GA/Beta/RC 证据要求 full run | ✅ 覆盖链 |
+
+⇒ **一处改动（修 `check_rc_ga_gate.sh` 的模式分支 + 内层预算 + 输出捕获 + 覆盖率环境变量）可同时**：
+① 修掉 GA 判据面（019 重跑才有可用结论）；② 修掉 ALPHA→BETA 的门禁面（AB-10 依赖 GA/RC 门禁链）；
+③ 消掉 019 当前的假红。
+
+### 四、**本线可立即推进的工作面：14 条 `auto` P0（不需要人裁决、不需要 infra）**
+
+| issue | 域 | 标题 |
+|---|---|---|
+| #5362 | `tooling` | [toolchain] develop 上 cargo clippy -D warnings 失败：fault_injection.rs unused import Path |
+| #5364 | `ci-infra` | [CI][evidence-graph] ingest_git_commit 对短 commit hash panic —— evidence-graph-gate 在每个 run 上都失败 |
+| #5368 | `ci-infra` | [CI] evidence-graph-gate 解析不了自己的 PASS：grep 模式与 pretty-print JSON 不匹配 |
+| #5375 | `ci-infra` | test job 编译失败：partition_e2e_test 缺 clustered 字段；另有 storage --lib 29 个既有错误 |
+| #5377 | `storage-wal-crash` | create_index 没有 _in_db 变体：命名库的索引既建不了也查不到 |
+| #5388 | `coverage` | [CI] fail-fast 掩盖了 382 个从未执行的测试目标：首次全量跑暴露出与 TPC-H 无关的失败，需归因分流 |
+| #5393 | `perf-tpch` | [wire 路径] file storage 后端上 TPC-H Q9/Q18 资源耗尽致服务器 OOM 被杀、Q19 解析失败 |
+| #5400 | `gate` | [门禁失效] check_correctness_tests_production_storage.sh 的 R2/R4 断言在 #5317 重构后失效 —— 恒红假阳性，且丧失判别力 |
+| #5412 | `perf-tpch` | [引擎] 带 PRIMARY KEY 的逐行 INSERT 仍是 O(N^2) —— pk_lookup_cache 被它自己要加速的那次 INSERT 失效 |
+| #5461 | `gate` | [GA 流程] 证据 §7.25.7 把 3 项 GA 门禁标注为「本机未验证（**CI 承接**）」，实测 **CI 也从不调用它们** ⇒ 「委托 CI」不成立，GA 20 项里有 **3 |
+| #5537 | `gate` | [门禁失效] v4.1.0 ALPHA 阶段 2 个门禁阻塞项：coverage 脚本漏传 feature（storage 覆盖率为 0）+ env!(CARGO_TARGET_DIR) 编译 |
+| #5577 | `test-validity` | [测试副作用] cargo test --workspace 会覆写已提交的证据文件（a04-5226 的 21 个对照输出被抹成占位符） |
+| #5579 | `coverage` | [门禁] RC/GA 门禁的覆盖率算法与 coverage 门禁不是一份实现 ⇒ storage 被静默跳过 ⇒ GA 的 A5「67%」是假红 |
+| #5580 | `gate` | [门禁] check_rc_ga_gate.sh 的 ga / rc / beta 模式永远判 FAIL（期望 D1/D2 却从不执行）⇒ GA 的 required_gate 结构性不可通过 |
+
+⇒ 其中与 ALPHA→BETA 门禁链**直接相关**的至少 5 条：
+**#5580**（rc_ga_gate 模式永远 FAIL）、**#5537**（ALPHA 阶段 2 个门禁阻塞项：coverage 脚本漏传 feature + env!(CARGO_TARGET…)）、
+**#5400**（check_correctness_tests_production_storage.sh 的 R2/R4 断言在 #5317 重构后失效 ⇒ 恒红假阳性）、
+**#5362**（`cargo clippy -D warnings` 失败：fault_injection.rs unused import Path）、
+**#5393**（file storage 后端上 TPC-H Q9/Q18 资源耗尽致 OOM 被杀、Q19 解析失败 ⇒ **这正是 ALPHA 的 g1 红臂的真前置**）
+⇒ 且 **#5412**（带 PRIMARY KEY 的逐行 INSERT 仍是 O(N²)，pk_lookup_cache 被它自己要加速的那次 INSERT 失效）
+**与本线 GA-SOAK-34 的根因结论同族**（写路径 O(N) 操作）⇒ 可一并推进。
+
+### 五、**需 infra / 需人裁决 / 需宿主的三类（不属本线单方可闭合）**
+
+**auto-needs-infra（15 条）**：
+
+| issue | 域 | 标题 |
+|---|---|---|
+| #5223 | `ci-infra` | [IAIA-410/A01] 冻结审计基线与证据 manifest 契约 |
+| #5226 | `sql-semantics` | [IAIA-410/A04] SQL 语义与 MySQL 协议差分审计 |
+| #5227 | `storage-wal-crash` | [IAIA-410/A05] 索引、Buffer Pool 与持久化存储真实性审计 |
+| #5228 | `storage-wal-crash` | [IAIA-410/A06] 事务、WAL、恢复与故障注入真实性审计 |
+| #5366 | `ci-infra` | [CI] evidence-graph-gate 结构上无法 PASS：SHA 未回退 + 边早于节点 + 缺 VERIFIED_BY 边 |
+| #5402 | `gate` | [治理缺口] CI postcheck job 在 600 次历史 run 中从未成功执行过一次 —— 其内含的发布门禁与 6 个硬阻塞 meta-gate 形同虚设 |
+| #5403 | `gate` | [门禁失效] postcheck 另有 3 个必失败步骤：调用已废弃的 check_coverage.sh、v3.7.0 证据绑定 74 项违规、auto_env_blocke |
+| #5427 | `test-validity` | [测试非自包含] tpch_compliance_test 依赖仓库里不存在的 `data/tpch-tiny/`（8 个 .tbl + 预建的 tpch.db）⇒ 任何干净  |
+| #5428 | `test-validity` | [测试非自包含] quick_query 依赖机器本地的绝对路径 `/tmp/tpch-sf1`（含 WAL 文件）⇒ 任何干净环境必然失败 |
+| #5452 | `gate` | [分支保护] `STAGE_CONFIG.yaml` 的 `GA.merge_policy`（3 个 reviewer + 4 类审批 + 7 个 required check |
+| #5491 | `gate` | [门禁] GA-2 的 SOAK 判据只检查「脚手架文件在不在」；`run_ga_soak.sh` 与 `extract_soak_report.py` **不存在** |
+| #5507 | `storage-wal-crash` | [存储/性能] 重构 MemoryStorage 的「提交快照」机制：让逐行 INSERT 的提交代价回到 O(1)（#5412 的根因修复） |
+| #5525 | `backup-restore` | [备份/恢复] 逻辑备份与恢复都是骨架：backup 枚举 0 张表、restore 只数 INSERT 行数 |
+| #5528 | `ci-infra` | [CI] runner 换成 Alpine/musl 镜像后缺静态 zlib ⇒ 所有需要链接测试二进制的 job 都红 |
+| #5551 | `ci-infra` | [基础设施红] docker 地址池被占满 ⇒ CI job 在「Start image」这一步全灭，一个测试都没跑 |
+
+**needs-human-decision（14 条）**：
+
+| issue | 域 | 标题 |
+|---|---|---|
+| #5117 | `release-stage` | [v4.1.0][总控] Alpha→Beta 门禁整改与晋级审核 |
+| #5204 | `tooling` | [IAIA-410] AOCI-CODE 索引实测：治理在 HEAD 已阻塞且工具工作流无法解开；索引格式内嵌机器相关绝对路径 |
+| #5233 | `release-stage` | [IAIA-410/A11] Independent Judge 证据复核与冲突裁决 |
+| #5234 | `release-stage` | [IAIA-410/A12] 最终审计报告、治理审批与阶段门禁衔接 |
+| #5235 | `release-stage` | [IAIA-410] v4.1.0 实现真实性与系统集成正式审计 Master |
+| #5381 | `security` | 仓库内硬编码可用的 Gitea 明文凭据（token 嵌入 git push URL、curl -u、文档） |
+| #5436 | `release-stage` | [GA 流程] `STAGE_CONFIG.yaml` 的 GA `branch_pattern` 不含 `develop/*`，而 v4.1.0 的整条发布线都在 `deve |
+| #5454 | `release-stage` | [治理流程] 版本自动化的 release-please 链路在仓库里**不存在**，同时规范又把**所有** PR 标题锁死为 `fix(gate):` 前缀 ⇒ 版本决策链 |
+| #5557 | `storage-wal-crash` | [运维阻塞] server 在 --wal-sync every 大量写入后卡进不可中断 I/O（进程状态 U）⇒ SIGTERM 不生效、SIGKILL 也要等 I/O 返回 |
+| #5584 | `storage-wal-crash` | [测试/恢复] 崩溃测试从来没有在它声称的边界上崩溃：`after_commit_fsync` 只在 autocommit 提交上触发，且在文件存储路径上不是 fsync；索引 |
+| #5596 | `gate` | [4.1.0][owner] 7 条历史审计记录不可复核（5 hollow 无命令行 / 1 未封板 / 1 无清单）：退役、标注还是重做？ |
+| #5603 | `docs-claims` | [4.1.0][LEDGER-2] claims 证据台账三套并存（CLAIM_BINDINGS_LEDGER vs CLAIMS_*）：debt 口径可对任意一份讲故事 |
+| #5605 | `docs-claims` | [4.1.0][KAN-2] 看板 SSOT 合并后再次双向漂移（两侧各 72/73 行、7 行状态判定相反）：看板写入口径没人定 |
+| #5686 | `storage-wal-crash` | [v4.1.0][P0][WALGC-2] GroupCommit leader panic ⇒ 全部 waiter 永久挂死:无接管、无超时,模块头 liveness 声明为 |
+
+**manual-host（5 条）**：#5363 · #5415 · #5520 · #5569 · #5597
+
+### 六、**口径提醒**
+
+- 本块以台账 **20261111-ledger-006** 为准；看板 `ISS-COVER-1` 记的是「50 条 open issue 里 27 条未登记」
+  （**11-05 口径**）⇒ **须以最新台账重核该数字**，不沿用旧口径；
+- 台账 .md 自载「分诊只回答域 / 破坏了哪条声称 / 可否自动化 / 修复形状 / 疑似重复，
+  **不回答『是否已修好』**，销账仍走 PR 关联与关闭验证」⇒
+  **台账绿不构成『已关闭』的证据**；
+- 远端 tip **cbfa3c50ae**；看板 **214 行、id 唯一 = 是**；
+  **crates/ scripts/ tests/ 自 64269eaa08：零变化（crates/ scripts/ tests/ 自冻结点无差异）**。
+
+### 七、**仍未达成**
+
+| # | 项 | 状态 |
+|---|---|---|
+| **C1** | **ALPHA→BETA 跃迁** | ⏳ **当前主线**。门禁面仅差 g1 一条（且红因是误报可闭合）；**但 E1 / E3 明确不满足**（49 条 open P0，含晋级总控 #5117 本身）⇒ **不可单方宣布迁移** |
+| C1a | **#5580 等 `auto` P0 修复（14 条）** | ⏳ **本线可立即推进**（不需要人裁决 / 不需要 infra）；改 `scripts/` **不影响**两个被测树（交付树与 252 检出均为 detached @ 64269eaa08）⇒ **零失配**；但**验证**需 cargo ⇒ 与 019 抢 CPU ⇒ 验证排期 |
+| C1b | #5393（TPC-H Q9/Q18/Q19）⇒ 修 g1 的红臂 | ⏳ auto；是 ALPHA g1 的真前置（STAGE.yaml 2026-11-09 已登记） |
+| C1c | ISS-COVER-1 的 27 条按最新台账重核 | ⏳ 纯统计，零 CPU |
+| C1d | open issue 关闭核对 / open P0 核对 / beta1 tag / 独立 Reviewer 回执 / 5 组 Owner 裁决 | ⏳ **属主**（裁决明文「不能 AI 直接判断」；切 tag 与 Reviewer 回执为纯人工） |
+| B7 | 019（GA 35 项） | ⚠️ seq 1 已 FAIL 且归因于门禁侧缺陷（F1/F2/F3 = #5580 同源）⇒ **修好 #5580 后需在新冻结点重跑**；本轮剩余臂的结论仍有参考价值 |
+| B1 | 168h SOAK | ⏳ r5 0 错 / 0 panic 成立，但判据⑤不满足且根因需改 crates/ ⇒ 本轮不可能合格（降级为 RC/GA 预备） |
+
+<!-- END 2026-11-19 REFRESH BLOCK 17 -->
+
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 16 -->
+
+## 🔄 刷新块（2026-11-19T12:41:13Z）—— 第 16 次刷新：**阶段重心纠正** + ALPHA→BETA 门槛实测
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T12:44:58Z（第 17 次刷新，位于本文件顶部）**，其中「issue 销账侧实测」「#5580 最高杠杆项」「auto P0 工作面」等状态已被该块更新 ⇒ **状态以顶部第 17 次块为准**。
+
+
+> **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**⚠️ 阶段重心纠正：本线此前的重心压在 GA（最后一阶段）上，属重心错位，现予纠正**
+
+**事实链（全部来自仓内 SSOT，非推断）**：
+
+1. 阶段顺序（`docs/governance/STAGE_CONFIG.yaml` 的 `stages`）：
+   **DRAFT(order 1) → ALPHA(order 2) → BETA(order 3) → RC(order 4) → GA(order 5)**；
+   `docs/releases/v4.1.0/STAGE.yaml` 的 **`current_stage: "ALPHA"`**。
+2. **属主裁决（STAGE.yaml 原文）**：
+   - 「**阶段跃迁与 GA 放行：按 ALPHA_TO_BETA_GATE_PLAN.md 的 AB-01..AB-10 逐项取证后再报，不得跳过**」
+   - 「**ALPHA →（AB-01..AB-10 逐项取证 + 独立 Reviewer 回执）→ BETA → … 每一步都按 governance，不得跳过**」
+   - 「**注意： Alpha 阶段的 ISSUE 必须彻底完成并关闭，才算通过门禁，否则不允许切换阶段，必须 SSOT 证据，不能 AI 直接判断。ISSUE 关闭，必须复核 governance 的证据链规定。**」
+3. ⇒ **当前该推进的跃迁是 ALPHA→BETA**，且路径已被属主明定（AB-01..AB-10 逐项取证 + 独立 Reviewer 回执），
+   **不得跳过**。GA 是**最后一阶段**，其前面还隔着 BETA 与 RC。
+
+**本线此前为何整体落在 GA 语境（如实归因，不掩盖）**：
+
+- ① **被「168h SOAK 需 168 小时物理时间」这个长周期抓手吸住**，把「等物理时间」当成了主线；
+- ② **ALPHA→BETA 不需要 SOAK**（SOAK 门禁属 RC 的 `optional_gates` 与 GA 的 `criteria_gates`），
+  这条**已核实**，却被「GA 判据⑤不满足 ⇒ r5 不合格」的紧迫感盖过；
+- ③ 看板文件名 `KANBAN_v4.1.0_ALPHA.jsonl` 与大量 `GA-SOAK-*` 行，进一步强化了「在做 GA」的错觉；
+- ④ **最关键**：STAGE.yaml 里 2026-11-08/09 的属主裁决虽在仓内，却**没有被读进工作主线**。
+
+⇒ **纠正的含义**：已有的 GA 侧材料**不撤销**（r5 的 0 错证据、019 的逐项归因、根因定位都是真证据），
+**但优先级必须重排** —— 当前主线改为 **ALPHA→BETA**，GA 相关工作降级为「后续阶段的准备」。
+
+### 二、**ALPHA→BETA 的门槛逐条实测状态（截至复查时刻）**
+
+#### 2.1 **ALPHA 的 4 条 exit_criteria（STAGE_CONFIG）**
+
+| # | exit_criteria | 实测状态 | 缺什么 | 谁做 |
+|---|---|---|---|---|
+| E1 | **All alpha-targeted issues closed (tracked in STAGE.yaml)** | ⚠️ **核对基础本身有缺口** —— 台账 `docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.md` 是**人工核对输入，不是门禁**（`manual_only_criteria` 明载）；且看板 `ISS-COVER-1` 记：**50 条 open issue 里 27 条在 ISSUE 台账与看板上都没有登记** | 先补齐 27 条登记 ⇒ 再做关闭核对 | **人工核对 + SSOT 证据链**（裁决明文「不能 AI 直接判断」） |
+| E2 | **Coverage ≥ {COVERAGE_MIN_ALPHA}%** | ✅ **达标**：阈值 **50 %**，ALPHA-GATES-004 的 coverage 臂**绿**（同轮 019 的 D9 实测 **87.69 %**） | — | — |
+| E3 | **No P0 bugs open** | ⚠️ **仓里没有任何 open-P0 门禁**（`issue_ledger.py` / `gov_probe.py` 只统计不阻断）⇒ 只能人工核对 | 人工核对 open P0 清单 | **属主 / 人工** |
+| E4 | **First beta tag cut: v{VER}-beta1** | ❌ **未切** | 切 `v4.1.0-beta1` | **纯人工**（`check_stage.sh` 只从 tag 推断阶段，不要求 tag 存在） |
+
+#### 2.2 **ALPHA 的 10 道门禁**
+
+- 最新一次全量实跑：**看板 `ALPHA-GATES-004`（状态 = 完成）**
+  —— 冻结 `2792759137ef`、干净工作树、wall 26 min ⇒ **9 PASS / 1 FAIL（EXIT=1）**；
+- **绿 9 臂**：`check_alpha_v4.1.0`（内含 `STATUS: ALPHA GATE PASS`）/ `arch_invariants` / `arch3_no_bypass` /
+  **coverage** / `sql_corpus` / `anti_ignore` / `cargo build --all-features` / `cargo test --all-features --lib` / `cargo fmt`；
+- **红 1 臂 = g1**，且**红因不是 TPC-H 漂移**，而是三条**可仓内闭合**的门禁侧缺陷：
+  ① **夹具缺失** —— `check_g1_tpch_baseline.sh` 全文从未设置 `TPCH_DATA_DIR`（只在第 21 行注释里出现），
+     且 `ls -d ~/sqlrustgo-tpch/data /tmp/tpch-fixture` 两者都不存在
+     ⇒ `tpch_full_22_test` / `tpch_hash_test` 实测输出 `TPCH-NOT-RUN: … reason=fixture_missing`，**测试进程仍返回 ok ⇒ 3/4 子检查空转绿**；
+  ② **NOT-RUN 被误译** —— `scripts/gate/tpch_hash_compare.py:36` 的 `HASH_RE` 只认 `G1 PASS: … (<hex>)`，
+     NOT-RUN 分支不打这行 ⇒ `parse_hash()` 走 `die(code=2)`；
+  ③ `check_g1_tpch_baseline.sh:141-149` 把**任意非零译成 `hash mismatch`** ⇒ 一个「不可比」被呈现为「哈希漂移」；
+- ⚠️ **口径提醒**：该 run 冻结在 `2792759137ef`（2026-11-13），此后 tip 已推进 ⇒ **最新 tip 的 ALPHA 10 臂状态需重跑**。
+
+#### 2.3 **AB-01..AB-10（ALPHA→BETA 项目门禁计划）**
+
+- 看板现值：**AB-CAMPAIGN=完成 · AB-07=完成 · AB-08=进行中 · AB-09=完成**
+- **AB-10 在看板上没有独立行** —— 它是「所有 P0/P1 发布阻断项关闭且有合并 PR」+「人工双审通过」；
+- AB-08（性能基线）**进行中**、AB-CAMPAIGN（38 臂 = 29 绿 / 9 红）已完成、AB-07（1h SOAK）已完成、AB-09 已完成；
+- **独立 Reviewer 回执**是计划的硬要求（§3.5「由非执行者复核」），**本线不能自审**。
+
+#### 2.4 **Owner 裁决面**
+
+- 看板 `GA-RESET-1` 记：**Owner 2026-11-08 裁决：8 项全部批准；阶段变化与提升必须按 governance 规则进行、
+  不得跳过或直接通过，必须按 SSOT 要求提供非 AI 判断的证据**；
+- `ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md` 的 5 组硬阻塞仍落在 **Owner 裁决域**
+  （Reviewer 指派、g1 口径、RC-B1 Phase 2、台账口径）与 **CI/infra 域**（runner 镜像、docker 地址池、runner 服务依赖）。
+
+### 三、**结论：目前不能由 AI 单方宣布 ALPHA→BETA 迁移，但缺口已全部定位且大部分可闭合**
+
+| 分类 | 内容 | 能否由本线闭合 |
+|---|---|---|
+| **仓内可闭合（需改 `scripts/`，故当前被物理阻挡）** | ① g1 三条根因（设 `TPCH_DATA_DIR` + 补夹具 `prepare_tpch_fixture.sh --sf 0.001 --seed 42` + 让 `HASH_RE` 认 NOT-RUN + 不把非零一律译成 hash mismatch）；② **F1 同族判据收口**（D5-3 宽泛 grep、D5-4/D5-5 硬编码 v3.7.0/v3.8.0、B-F1~B-F7 绑定 v3.8.0 PR 号）；③ `ISS-COVER-1` 的 27 条 open issue 补登记 | ✅ **能**，但改 `scripts/` 会使 **r5 与 019 的被测树失配** ⇒ 须先决定在跑轮次的处置 |
+| **必须人做** | ① open issue 关闭核对（E1，裁决明文「不能 AI 直接判断」）；② open P0 核对（E3）；③ 切 `v4.1.0-beta1` tag（E4）；④ **独立 Reviewer 指派与回执**（AB-10）；⑤ 5 组 Owner 裁决项 + CI/infra 项 | ❌ **不能** |
+| **需实跑** | ALPHA 10 臂在最新 tip 的重跑；AB-01..AB-10 逐项取证 | ⏳ 需 CPU ⇒ 须先决定 019 的处置 |
+
+### 四、**纠正后的优先级（Agent 裁决）**
+
+1. **主线切到 ALPHA→BETA**；
+2. **可立即做（零干扰、纯文档）**：本块与看板 `ALPHA-BETA-1` 已把门槛逐条登记；BETA 必需文件
+   （`TEST_PLAN.md` / `FEATURE_CHECKLIST.md` / `FEATURE_MATRIX.md` / `STAGE.yaml` 更新）缺口盘点；
+3. **需 CPU 或需改 `scripts/` 的部分排队**：g1 修复 → ALPHA 10 臂重跑 → AB-01..AB-10 取证；
+4. **019（GA 35 项）的处置建议**：seq 1 已 FAIL 且归因于门禁侧缺陷（F1/F2/F3）⇒ **本轮注定给不出可用的 GA 结论**；
+   而它正占满本机 CPU，阻塞着 ALPHA→BETA 的实跑 ⇒ **建议中止并让位**；**该动作属授权边界（中止一轮已跑 12 项的认证轮）⇒ 须属主确认，Agent 不自行决定**；
+5. **r5 的处置建议不变**：判据⑤不满足且根因已定位需改 `crates/` ⇒ 本轮不可能合格 ⇒ 是否提前收尾释放 252 亦须属主授权；
+6. GA 侧材料**不撤销**，降级为 RC/GA 阶段的预备证据。
+
+### 五、**仍未达成**
+
+| # | 项 | 状态 |
+|---|---|---|
+| **C1** | **ALPHA→BETA 跃迁** | ⏳ **当前主线**。E2（覆盖率）✅；E1/E3/E4 与 AB-01..AB-10、Owner 裁决项 **未闭合** ⇒ **不可单方宣布迁移** |
+| C1a | g1 夹具 + NOT-RUN 误译修复 | ⏳ 仓内可闭合 ⇒ **待「在跑轮次处置」决定后执行** |
+| C1b | 最新 tip 的 ALPHA 10 臂重跑 | ⏳ 待 CPU 释放 |
+| C1c | open issue 关闭核对 / open P0 核对 / beta1 tag / 独立 Reviewer | ⏳ **属主** |
+| B1 | 168h SOAK 0 错证据 | ⏳ r5 已跑 **7.98 h（4.75 %）**，**0 错 / 0 panic 成立**（driver_e/panic/error_high 非零 0/0/0 行）、RSS 190.3 → 1346.5 MB；**但判据⑤不满足且根因已定位需改 crates/ ⇒ 本轮不可能合格**（降级为 RC/GA 预备） |
+| B7 | 019 认证轮 | ⚠️ 已落账 **12 项**（PASS 11 / FAIL 1），seq 1 FAIL 已归因于 F1/F2/F3 ⇒ **建议中止让位，待属主授权** |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**）；⚠️ 条件①指名 r2 轮，r2 已出局 ⇒ 需属主确认承接轮 |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主** |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 | ⏳ **属主** |
+
+<!-- END 2026-11-19 REFRESH BLOCK 16 -->
+
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 15 -->
+
+## 🔄 刷新块（2026-11-19T12:33:55Z）—— 第 15 次刷新，取代本文件内全部既有刷新块的判定
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T12:41:13Z（第 16 次刷新，位于本文件顶部）**，其中「阶段重心纠正」「ALPHA→BETA 门槛实测」「纠正后的优先级」等状态已被该块更新 ⇒ **状态以顶部第 16 次块为准**。
+
+
+> **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**定期复查结果**
+
+| 轴 | 实测 |
+|---|---|
+| **019 认证轮落账** | **8 项已落账**（PASS 7 / **FAIL 1**）；当前在跑 `check_p14_upgrade_test.sh`（已 00:46） |
+| **⚠️ seq 1 判红** | **seq 1 `scripts/gate/check_rc_ga_gate.sh` exit_code=1，11395.7 s** ⇒ **不是超时，是真 FAIL** |
+| 019 plan 指纹 | `expected_n`=35、`git_head`=64269eaa0848c4d47485d1f45b1b91779502a089、`expected_sha256`=sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809 ⇒ **35 项分母守恒** |
+| **r5 168h 轮** | elapsed **28294 s = 7.86 h**（4.68 % of 168 h）、driver_q **1058388**、**driver_e 非零 0 行 / panic 非零 0 行 / error_high 非零 0 行** ⇒ **0 错 / 0 panic 持续成立** |
+| r5 RSS / 吞吐 | **190.3 MB → 1334.2 MB**；**145.1 → 18.8 q/s（-87.0 %）** ⇒ **判据⑤「RSS 平稳」仍不满足** |
+| r5 FD / 点查 | FD **46 / 47 / 48 / 51**；点查 **命中 407769 / 未命中 0 ⇒ 100.0000 %**（判据 ≥ 99 % **达标**） |
+| **并行线 tip** | `origin/develop/v4.1.0` = **2e98b88b72**（2e98b88b72 Merge pull request '[v4.1.0][文档] 〔更正〕第 13 块落盘机制两处表述 + 量化自洽性校验 + RSS 增长源诚实界定（GA-SOAK-35）' (#5881) from docs/v410-write-path-correction into develop/v4.1.0）⇒ **本轮无并行线新提交推进** |
+| 看板 | **212 行**、id 唯一 = **是**；完成 119 / 阻塞 37 / 待复核 28 / 进行中 24 / 未开始 4 |
+| **冻结点校验** | crates/ scripts/ tests/ 自 64269eaa08：**零变化（crates/ scripts/ tests/ 自冻结点无差异）** ⇒ **r5 与 019 的被测树仍成立** |
+
+### 二、**⚠️ 019 seq 1 判红的逐项归因：三条全部指向「门禁自身缺陷」，不是已证实的产品缺陷**
+
+`check_rc_ga_gate.sh` 的逐维实测（D1–D9 全执行）：**D1 10 · D2 6 · D3 PASS=5 · D4 5 · D5 7 · D6 ? · D7 3（blockers 2）· D8 1 · D9 1**（覆盖率 87.69 %）。
+门禁自身的推荐条件写着「RC → GA: PASS when **D5=10/10, D7=5/5**」⇒ 本轮**两条不满足**：
+
+| # | 判红项 | 逐项归因（读源码 + 读 stdout） | 性质 |
+|---|---|---|---|
+| **F1** | **D5 = 7/10** | 三个 WARN 全部是**判据与 v4.1.0 不匹配**：**D5-3** 用 `grep -r "EEK.*v2\|WAL.*v2\|v2.*WAL" --include="*.rs" crates/ \| wc -l` 判定「无 EEK v2 混入」⇒ **该模式与版本无关地宽泛，v4.1.0 必然命中**；**D5-4** 判据硬编码 `origin/develop/v3.7.0..origin/develop/v3.8.0`（注释即「Verify 3.7.0 is frozen and 3.8.0 is WAL integration」）；**D5-5** 判据硬编码 `origin/develop/v3.8.0` | **判据版本绑定 / 文本匹配脆弱 ⇒ 结构性假红**（与 `STAGE_CONFIG.yaml` 的 `manual_only_criteria` 所载「B-F1~B-F3 的检查方法写的是 v3.8.0 的 PR 号，**对 v4.1.0 不可执行**」**同一类缺陷**） |
+| **F2** | **D7 = 3（blockers 2）** | 两个 blocker 是 **G9 Upgrade** 与 **G10 Audit/Time-Travel**。源码：`timeout **90** cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test 2>&1 \| tail -3` 与 `timeout **60** cargo test --test audit_log_test --test time_travel_test 2>&1 \| tail -3`；判定条件为 `grep -qE "0 failed\|test result: ok"`。stdout 实际留下的三行是「Compiling … / Finished test profile in 35.00s / Running …upgrade_test.rs」⇒ **编译已成功、失败发生在测试运行阶段，且 `tail -3` 恰好只抓到编译行 ⇒ 真实失败详情丢失** | **内层超时预算不足（90 s / 60 s）+ 输出截断 ⇒ 失败原因不可判定**（「时间不够」与「测试 hang」不可区分）⇒ **状态是证据不足，不是已证实的红**；与排雷 B 轮 seq 35 该门禁 **rc=124 超时**同源 |
+| **F3** | **D9 WARN** | stdout 明写「full coverage execution skipped; set **V312_COVERAGE_FULL=1** for nightly/Beta/RC/GA evidence」⇒ 本轮 prep **未设该变量** ⇒ D9 只检「coverage framework config」而**未跑 full** | **prep 配置缺陷 ⇒ 本轮 019 的覆盖率证据不完整**（正式 GA/Beta/RC 证据要求 full run） |
+
+⇒ **裁决**：019 当前的 FAIL **不构成「v4.1.0 已证实质量不合格」的结论**；它是
+**① 门禁判据版本绑定（F1）+ ② 门禁内层超时/输出截断（F2）+ ③ 证据环境变量未设（F3）** 三条**门禁侧缺陷**的总和。
+**但也不能声明 PASS** —— 三者都**必须先修再重跑**，019 才可能给出可用于 GA 的结论。
+⇒ **F1 与 B-F 判据、STAGE_CONFIG 的 v3.8.0 绑定属同一族缺陷 ⇒ 宜一次性收口**（仓内可闭合并有实跑证据）。
+
+### 三、**「168h SOAK 期间能否并行推进 BETA 阶段任务」—— 层级裁决**
+
+#### 3.1 **先纠正一个前提**
+
+阶段顺序（`docs/governance/STAGE_CONFIG.yaml` 的 `stages`）：
+**DRAFT(order 1) → ALPHA(order 2) → BETA(order 3) → RC(order 4) → GA(order 5)**。
+⇒ v4.1.0 现在在 **ALPHA**，**BETA 是下一个阶段**，不是 GA 之后。
+⇒ 本题实质是「**ALPHA→BETA 跃迁的准备工作**能否与 r5 并行」。
+
+#### 3.2 **决定性事实：168h SOAK 不在 BETA 判据里 ⇒ BETA 跃迁不被 r5 物理阻挡**
+
+- **BETA 的 19 项 `required_gates` 里没有任何 SOAK 门禁**
+  （`check_beta_gate.sh` / `check_anti_fabrication.sh` / `check_arch_invariants.sh` / `check_arch3_no_bypass.sh` /
+  `check_int2_no_orphan.sh` / `check_int3_single_expr.sh` / `check_sem1_savepoint.sh` / `check_backup_restore.sh` /
+  `check_g1_tpch_baseline.sh` / `check_arch_sem_debt.sh` / `check_cross_version_debt.sh` / `check_int_debt.sh` /
+  `check_coverage_v312.sh` / `check_sql_corpus_gate.sh` / `check_anti_ignore_gate.sh` +
+  `cargo build --all-features` / `cargo test --all-features` / `cargo fmt --check` / `cargo clippy --all-features -- -D warnings`）；
+- **SOAK 门禁的位置**：`check_p13_soak_test.sh` / `check_g13_stability.sh` / `check_chaos_soak.sh`
+  出现在 **RC 的 `optional_gates`** 与 **GA 的 `criteria_gates`**，**不在 BETA**；
+- **ALPHA→BETA 项目门禁计划**（`ALPHA_TO_BETA_GATE_PLAN.md`）的 **AB-07 只要求「1h SOAK 完成 + heartbeat 连续 + 24h runner 可执行」**，
+  **不是 168 h**；且看板 **AB-07 = 完成**（v4.1.0 首个有效 1 小时稳定性归档已入仓）；
+- ⇒ **ALPHA→BETA 跃迁不需要 r5 跑满 168 h，也不需要 r5 现在合格。**
+
+#### 3.3 **分层裁决**
+
+| 层 | 内容 | 能否与 r5 并行 | 理由 |
+|---|---|---|---|
+| **L1 材料/规范面** | BETA 必需文件（`TEST_PLAN.md` / `FEATURE_CHECKLIST.md` / `FEATURE_MATRIX.md` / `STAGE.yaml`）；**F1 同族缺陷的规范收口**（B-F1~B-F7 与 D5-3/4/5 的版本绑定一并规范化）；Owner 裁决包整理 | ✅ **可以，现在就做** | 纯文档，零 CPU、不触 252 |
+| **L2 仓内代码/脚本面** | 37 个「阻塞」行中需改 `crates/` 或 `scripts/` 的项（`BETASYNC-1`；`DIAGQ11-1` / `HARQ11-1` / `Q17-1` / `FLTACC-1`；`IDX-2` 建索引后按索引列查询静默丢行；`MX-1` / `NF-1` 门禁 fail-open 与死门禁引用口径；`SEC-1/A/B` 假覆盖）+ **本轮新增的 F1/F2/F3 三条门禁侧修复** | ❌ **现在不行** | 改 `crates/` 或 `scripts/` 会使 **r5 与 019 认证轮的被测树失配**（r4 即因此出局）⇒ 须等本轮结束或由属主裁定换轮 |
+| **L3 本机重量门禁** | BETA 19 项里的 `cargo build/test --all-features`、`clippy -D warnings`、`check_coverage_v312.sh`、`check_g1_tpch_baseline.sh`、`check_sql_corpus_gate.sh`、`check_backup_restore.sh`（内部跑 `cargo test`）、AB-08 的 `cargo bench` 基线 | ❌ **不能与 019 并发** | 两条硬理由：① 与本机正在跑的 019 抢 CPU，违反「认证轮期间不得并发重量门禁」「长任务串行」；② **本轮已实测证明门禁内部存在 90 s / 60 s 的紧超时**（F2）⇒ **并发抢 CPU 会把门禁直接推成假红** ⇒ 这不是惯例，是**有实证支撑的硬约束** |
+| **L4 252 独占窗口面** | AB-08 性能基线（需**固定环境 A/B + ≥5 次 + 宿主负载守卫**，2026-11-12 复核建议「排到容器内独占窗口」）；任何新 SOAK / 压测 / TPC-H 在 252 上跑 | ❌ **不能与 r5 并行** | r5 正占用 252 独占窗口（planned_end 2026-11-26T04:45:04Z）⇒ 争用会污染被测对象与基线 |
+
+#### 3.4 **AB 系列现状（看板现值）**
+
+- AB-CAMPAIGN=完成 · AB-07=完成 · AB-08=进行中 · AB-09=完成
+- **AB-10 在看板上没有独立行** —— 它是「人工双审 + 所有 P0/P1 发布阻断项关闭且有合并 PR」；
+  按 `ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md`，剩余硬阻塞项全部落在 **Owner 裁决域**
+  （Reviewer 指派、g1 口径、RC-B1 Phase 2、台账口径）与 **CI/infra 域**（runner 镜像、docker 地址池、runner 服务依赖）
+  ⇒ **ALPHA→BETA 不能由 Agent 单方推进**（`requires_human_approval: true`）。
+
+#### 3.5 **排队次序（Agent 裁决）**
+
+1. **现在**：**L1 材料/规范面**（BETA 必需文件 + F1 同族判据规范化 + Owner 裁定清单整理）—— 零干扰，可立即执行；
+2. **019 跑完后（本机）**：① **G9/G10 单独复验**（用足够预算重跑 `cargo test --test upgrade_test --test v380_to_v390_full_upgrade_test` 与 `--test audit_log_test --test time_travel_test`，**抓完整输出而非 tail -3**）⇒ 判定「时间不够」还是「测试 hang」—— **纯跑测试、不改代码 ⇒ 零失配、零 252 干扰**；② **F1/F2/F3 三条门禁侧修复**（改 `scripts/`）+ 重跑 GA 认证；③ **BETA 19 项实跑门禁**；
+3. **r5 结束 / 换轮后（252 独占窗口）**：**L4** AB-08 性能基线 + 修复后的新一轮 SOAK；
+4. **L2 代码/脚本修复**：与「修复写路径根因」（P0 UPDATE 原地化等）**合并到同一次改动**一并回归，避免两次失配。
+
+### 四、**一个必须点明的战略事实：r5 已不可能成为 GA 合格轮**
+
+- 判据⑤「RSS 平稳」**不满足**（§一）；
+- 且**根因已定位到代码级**（写路径：O(N) 全表扫描 + 单执行线程 + 分配滞留）⇒ **修复必须改 `crates/`**
+  ⇒ **改完必须重跑 SOAK** ⇒ **r5 无论跑多久都不可能满足判据⑤**；
+- ⇒ **r5 跑满 168 h 的边际价值只剩「长样本 0 错证据」**（该结论已由 7.86 h 数据 + 与并行线 GA-SOAK-33 的独立交叉验证确立），
+  **作为 GA 合格轮的候选价值已归零**；
+- ⇒ 是否**提前收尾 r5 以释放 252 独占窗口**给 L4 与修复后的新一轮 SOAK，
+  属**授权边界**（中止一轮已投入 8 h 的 168 h 轮次 + 换轮承接）⇒ **须属主确认**，Agent 不自行决定。
+
+### 五、**仍未达成**
+
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | **168h SOAK 的 0 错证据** | ⏳ r5 已跑 **7.86 h（4.68 %）**，**0 错 / 0 panic 成立**，点查命中 **100.0000 %** 达标 ✅；**但判据⑤不满足，且根因已定位需改 crates/ ⇒ 本轮不可能成为合格轮** |
+| B1c | 吞吐退化 | ✅ 机制已定位到代码级、量化自洽（见第 13/14 块）⇒ 修复方案已明确 |
+| B1d | RSS 单调增长的具体分配点 | ⚠️ **未定位**（需堆剖析） |
+| **B7** | **019 认证轮 seq 1 判红** | ⚠️ **已归因到三条门禁侧缺陷（F1 判据版本绑定 / F2 内层超时 + 输出截断 / F3 覆盖率 full 未启用）⇒ 不是已证实的产品缺陷，但也未 PASS ⇒ 须先修 F1–F3 再重跑**（L2，被物理阻挡） |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**）。⚠️ 条件①指名 r2 轮，r2 已出局；**r5 已不可能合格 ⇒ 承接轮只能是修复后的新一轮** ⇒ 需属主确认 |
+| B5 | ALPHA→BETA 的 Owner 裁决域阻塞（Reviewer 指派、g1 口径、RC-B1 Phase 2、台账口径、CI/infra） | ⏳ **属主 / infra**（2026-11-12 复核 §7 已给三选项 + 代价 + 建议） |
+| **B6** | **r5 是否提前收尾（释放 252 独占窗口）** | ⏳ **属主授权**（见 §四） |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主** |
+
+<!-- END 2026-11-19 REFRESH BLOCK 15 -->
+
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 14 -->
+
+## 🔄 刷新块（2026-11-19T12:19:48Z）—— 第 14 次刷新，取代本文件内全部既有刷新块的判定
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T12:33:55Z（第 15 次刷新，位于本文件顶部）**，其中「定期复查结果」「019 seq 1 判红归因」「BETA 阶段并行性分层裁决」「r5 战略事实」等状态已被该块更新 ⇒ **状态以顶部第 15 次块为准**。
+
+
+> **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**〔更正〕第 13 块 §2.2③ 的落盘机制表述 —— 两处更正**
+
+第 13 块把「周期性全表重写」写成了常态机制。**本线继续逐行读仓内冻结点源码后，发现该表述不准确，现予更正**：
+
+| 第 13 块的表述 | 实际代码行为 | 性质 |
+|---|---|---|
+| 「`save_table_window` **全量序列化落盘**」 | **正常路径是 delta-only 增量追加** —— 只把新窗口的行 `append_table_delta` 追加到 `<table>.delta`；**全量重写只在两条分支**：① **UPDATE/DELETE 路径**（行数不增，`total_rows <= last_saved` ⇒ 强制 `save_table_full`）；② **delta 文件 > 10 MB 的周期性压缩** ⇒ `save_table_full` 重写基线并清空 delta | ❌ **表述错误，已更正** |
+| 「周期性全表重写（写放大）」作为**每次写**的常态 | 是**周期性**的（由 delta > 10 MB 阈值触发），**不是每次写** | ❌ **表述错误，已更正** |
+
+**更正后仍成立的部分**：
+- `insert_buffered` 在 buffer 攒满 **10000 行**时 `data.rows.extend(records.iter().cloned())`（**再克隆一遍整窗**）
+  并 `save_table_window` 落盘 ⇒ **每次写产生 2 次行深拷贝**（入 buffer 一次、flush 时一次）⇒ 分配 churn 属实；
+- `data_size.jsonl` 实测表字节在 **1.0 MB ~ 21.7 MB** 之间震荡、`files` 在 **9 / 10** 间切换（413 拍）
+  ⇒ **周期性压缩的全量重写确实在发生**（delta 累积到阈值 ⇒ 基线重写 ⇒ 回落）⇒ 该实测旁证有效。
+
+### 二、**量化自洽性校验（新增；反证「每次写全量落盘」）**
+
+- **实测服务端 CPU 仅 166 %（峰值 166 %）/ 80 核** ⇒ 约 **1.66 核**；
+- 若「每次写都全量序列化落盘」成立：写速率 **37.0 写/s** × 表字节上限 **21.7 MB**
+  ⇒ 需要 **804.7 MB/s** 的 JSON 序列化带宽，折合 **1005.9 %** 的整机 CPU
+  ⇒ **远超实测的 166 %** ⇒ **「每次写全量落盘」不成立** ⇒ 量化自洽，支持「周期性」结论。
+
+### 三、**机制归属的精确化（更正后的最终表述）**
+
+| 现象 | **已证实的机制**（代码级） | 量化自洽性 |
+|---|---|---|
+| **吞吐单调退化** | **每次 UPDATE 的删除是 O(表行数) 全表扫描**：`file_storage.rs` 的 `remove_matching` 以 `mem::take` + `Vec::retain` 遍历全表；`engine_dml.rs` 的 UPDATE 走 **delete + insert**；且服务端 **单执行线程**（`Exec par: 1`）⇒ O(N) 操作**串行阻塞全部请求** | 表行数自 10000 增至约 **97235** 行；写速率 37.0/s ⇒ **每秒扫描约 3602261 行**（约 833.6 MB/s 的逐行比较）⇒ **在 1.66 核内完全吻合**，且**纯 CPU、几乎不产生分配** ⇒ 完美解释「CPU 温和但吞吐退化」 |
+| **RSS 尖刺** | **周期性压缩的全量 JSON 序列化**（delta > 10 MB ⇒ `save_table_full`）⇒ 每次分配数 MB 级缓冲 | 与 data_size 的 1.0 ↔ 21.7 MB 震荡一一对应 |
+| **RSS 单调增长**（1133.6 MB / 1.117 KB per query） | ⚠️ **尚未定位到单一分配点** ⇒ 如实登记为**未定位**。已排除：MVCC 版本链（量级差 726 倍，§四）；`delete_at` 的整表 `data.rows.clone()`（**只在 `filters.is_empty()` 的全表删除分支，UPDATE 不触发** ⇒ 不适用）；每次写的 2 次行深拷贝（按 243 B/行估算仅约 243 × 2 B/写 ⇒ 分摊到每查询仅数十 B，**量级不足**） | ⇒ **不能把 RSS 增长与已证实的 O(N) 扫描机制画等号**；前者是分配滞留问题，后者是 CPU 问题 |
+
+### 四、**排除项（维持第 13 块结论）**
+
+- **MVCC 版本链排除为本次主因**：仓内 `crates/storage/src/mvcc_gc.rs` 文档注释自陈
+  「无 GC 时 RSS 无界增长，**v4.0.0 SOAK 约 30 MB/s**」，本轮实测 RSS 增速仅 **0.0413 MB/s**
+  ⇒ **量级差 726 倍 ⇒ 不是同一机制**。
+- **「reclaimed=N」零成本判决线仍失效**（`log::info!` 打点，而 `server.log` 全程仅 300 B 启动横幅）。
+
+### 五、**修复方向的修正（依更正后的机制）**
+
+| 优先级 | 修复项 | 依据 | 语义影响 |
+|---|---|---|---|
+| **P0** | **UPDATE 改走原地 update**（`file_storage.rs` 已有 `mutate_matching` 原地改） | **一处改动同时消除四个症状**：O(N) 全表扫描、O(N) 事务快照、行深拷贝翻倍、delta/压缩压力 | ⚠️ **会改 WAL 语义**（WAL 只 hook delete/insert，`engine_dml.rs` 有明确注释说明这是刻意为之）⇒ 须同步改 WAL 记录方式并回归 |
+| **P1** | 派生表 TLS 每条语句结束清空（`engine_select.rs` 的 `DERIVED_RESULTS`、`parser.rs` 的 `DERIVED_ALIASES`，两者均无 clear） | 真实无界泄漏，但**本负载未命中** | 无（只清派生表注册表） |
+| **P1** | 四个全局缓存加容量上限（`engine_select.rs` 的 `LINEITEM_INDEX_CACHE` / `LINEITEM_ROWS_CACHE` / `SCALAR_SUBQ_CACHE` / `SCALAR_AGG_INDEX_CACHE`） | 真实无界缓存，本负载未命中 | 需回归 TPC-H Q15/Q17 |
+| **P1** | B+Tree 同键插入改替换而非追加（`bplus_tree/index.rs`） | ⚠️ 当前会返回**陈旧 row_id** ⇒ **读正确性隐患**（独立于性能） | **会改读结果**，须回归索引扫描 |
+| **P2** | RSS 单调增长的具体分配点定位 | 需**堆剖析**（jeprof / heap dump）定位 inuse 占比 | 本轮**不改代码**（会使 r5 与 019 认证轮失配）⇒ 下一轮 |
+
+### 六、**仍未达成**
+
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | **168h SOAK 的 0 错证据** | ⏳ r5 已跑 **7.62 h（4.54 %）**，**0 错 / 0 panic 成立**，点查命中 **100.0000 %** 达标 ✅；**但判据⑤「RSS 平稳」当前不满足** ⇒ **r5 单凭 0 错不足以成为 GA 合格轮** |
+| B1c | 吞吐退化 | ✅ **机制已定位到代码级**（O(N) 全表扫描 + 单执行线程，量化自洽）⇒ 修复方案已明确（§五 P0） |
+| B1d | RSS 单调增长的具体分配点 | ⚠️ **未定位**（已排除 MVCC 与整表快照）⇒ 需堆剖析，下一轮 |
+| B1e | 宿主非正常停止的触发者定性 | ⏳ **属主** |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**）。⚠️ 条件①指名 r2 轮，r2 已出局 ⇒ 需属主确认由 r5 承接 |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主** |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 | ⏳ **属主** |
+
+<!-- END 2026-11-19 REFRESH BLOCK 14 -->
+
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 13 -->
+
+## 🔄 刷新块（2026-11-19T12:14:14Z）—— 第 13 次刷新，取代本文件内全部既有刷新块的判定
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T12:19:48Z（第 14 次刷新，位于本文件顶部）**，其中「落盘机制的两处更正」「量化自洽性校验」「RSS 增长源界定」「修复方向修正」等状态已被该块更新 ⇒ **状态以顶部第 14 次块为准**。
+
+
+> **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**判据⑤「RSS 平稳」当前不满足（数据已刷新到最新）**
+
+| 项 | 实测 |
+|---|---|
+| 已跑 | **27127 s = 7.54 h**（4.49 % of 168 h） |
+| 查询数 | **1037624** |
+| **driver_e 非零 / panic 非零 / error_high 非零** | **0 / 0 / 0**（0 错 / 0 panic 仍成立） |
+| **吞吐** | **145.1 q/s → 20.1 q/s（-86.1 %）**，逐 20 min 单调下行，未见平台化 |
+| **RSS** | **190.3 MB → 1298.3 MB**（armA.log 末读数峰值 1314.3 MB），逐 20 min 单调上行，未见平台化 |
+| 每查询净增长 | **1.098 KB/query**（ΔRSS 1108.0 MB / Δq 1037624），逐 10 min 窗口 **-1.13 ~ +8.55 KB/query** ⇒ **突发型，不是稳定线性泄漏** |
+| FD | 取值集合 **46 / 47 / 48 / 51** |
+
+### 二、**根因分析结论（本线本地代码核实 + 只读子代理）—— 分岔有答案了**
+
+#### 2.1 **分岔裁决：净增长与「写次数」线性相关，不是与「查询次数」线性相关**
+
+| 项 | 实测 |
+|---|---|
+| 负载构成（driver.log 末 20 MB 有界快照，本地分析） | point_select 407769 · range_scan 163302 · point_update 81958 · count_agg 81721 · insert 81460 |
+| **写合计（point_update + insert）** | **163418 拍 = 20.022 %**；读 652792 拍 |
+| 每查询净增 | **1.098 KB/query** |
+| **⇒ 每写净增** | **5.484 KB/写** |
+| ⇒ 每读净增 | **1.373 KB/读** |
+
+⇒ 「约 1.1 KB/每查询」与「约 5.6 KB/每写」在数值上等价，**但机制归属于写路径**：
+**修复方向应指向写路径（UPDATE / INSERT），不是读路径**。
+（负载构成与并行线 GA-SOAK-33 的全量统计 **20.0 % 完全一致** ⇒ 两个独立会话、两种取数口径互证。）
+
+#### 2.2 **内因三条（本线逐条读仓内冻结点源码确认）**
+
+1. **服务端被刻意限制为单执行线程**：启动横幅 `Exec par: 1`（Issue #3703, --executor-parallelism），
+   `THREADS=16` 只是客户端线程数 ⇒ **任何 O(N) 服务端操作都会串行阻塞全部请求**。
+2. **每次 UPDATE 的删除是 O(表行数) 全表扫描**：`crates/storage/src/file_storage.rs` 的 `remove_matching`
+   用 `mem::take` + `Vec::retain` 遍历**全表**并对命中行 `row.clone()`；
+   而 `src/engine_dml.rs` 的 UPDATE 走 **delete + insert** 两条路径。
+   ⇒ **表越大，每次 UPDATE 越慢** ⇒ **吞吐单调退化的机制成立**。
+3. **周期性全表重写（写放大）**：`insert_buffered` 在 buffer 攒满阈值（10000 行）时
+   `data.rows.extend(records.iter().cloned())` 并 `save_table_window` **全量序列化落盘**；
+   UPDATE 也往 `insert_buffer` 加行 ⇒ flush 频率随写次数线性、**每次 flush 的成本随表增大**。
+   **实测旁证**：`data_size.jsonl` 的表字节在 **1.0 MB ~ 21.6 MB** 之间剧烈震荡，
+   `files` 数在 **9 / 10** 之间切换（408 拍，末拍 21.6 MB）⇒ **表文件被反复重写**。
+
+#### 2.3 **关键澄清（本块公开更正第 12 块的一处说法）**
+
+- 第 12 块写过「『随表变大』这一解释已被量级排除」⇒ **该说法只对 RSS 成立，对吞吐不成立，须更正**：
+  - **对 RSS**：表文件 168 h 外推约 0.46 GB，而 RSS 外推远大于此 ⇒ 量级排除成立（继续成立）。
+  - **对吞吐**：**「随表变大」正是主因** —— 表行数自 10000 行起、随 insert 速率 3.21 行/s
+    增长至约 **97047 行**（约 87046.6 倍），而每次 UPDATE / flush 的成本都是 O(行数)；
+    **吞吐退化 86.1 % 与成本随行数线性增长方向一致**。
+- ⇒ **吞吐退化与 RSS 增长是同源机制（写路径的 O(N) 操作 + 周期性全表重写），但不是同一物理量**：
+  退化来自 **CPU/串行阻塞**；RSS 增长来自 **分配 churn + allocator 滞留**。
+
+#### 2.4 **排除项（有代码/量级依据）**
+
+- **MVCC 版本链泄漏排除为本次主因**：仓内 `crates/storage/src/mvcc_gc.rs` 文档注释自陈
+  「无 GC 时 RSS 无界增长，**v4.0.0 SOAK 约 30 MB/s**」；本轮实测 **RSS 增速仅 0.0408 MB/s**
+  ⇒ **量级差 734 倍 ⇒ 不是同一机制**。
+- **「reclaimed=N」这条零成本判决线在当前 harness 下不可观测**：`mvcc_gc.rs` 用 `log::info!` 打点，
+  而 `server.log` 全程仅 **300 B**（只有启动横幅）⇒ 该日志既未进入 server.log，
+  也无法区分「被级别滤掉」与「GC 线程未跑」⇒ **如实登记为手段失效，不作为结论依据**。
+
+### 三、**分歧裁决（ADR-014 D-06：逐点裁决，不取平均）**
+
+| 分歧点 | 并行线 | 本线 | 裁决 |
+|---|---|---|---|
+| GA-SOAK-27「修复后 RSS 不再单调累积」 | 54.1 min 样本，末段 420–462 MB 波动 | 7.4 h 样本单调上行 | **观测保留、推论修正**（前者样本过短） |
+| GA-SOAK-33「宿主争用 4,506.7 % 是否解释退化」 | 归因于外来负载重 | **服务端 CPU 仅 166 %（峰值 166 %）/ 80 核** | **并存不悖**：争用确实存在，但服务端只用了约 2 % 的核 ⇒ **争用不足以单独解释 86.1 % 退化**；退化有**内因**（§2.2） |
+| 点查命中率口径 | 全量 driver.log：507,712 / 507,712 | 末 20 MB 快照：407769 / 407769（100.0000 %） | **两个独立口径互证同一结论**；全量口径更完整，快照口径可独立复现 |
+| 负载构成 | 全量统计写占 20.0 % | 快照统计写占 20.022 % | **一致** |
+
+### 四、**污染归属裁决（两线重叠认领）**
+
+- 并行线 GA-SOAK-33 认领**一处** O(n²) awk 污染，并写「由并行线按具体 PID 清除」；
+  本线 GA-SOAK-32 登记**两处**污染（递归 grep + O(n²) awk）并记载**由本线按具体 PID 清除**（含 PID）。
+- ⇒ **归属陈述不一致**。裁决：
+  1. **污染源不重复计数**：按 **2 处**计（递归 grep + O(n²) awk），存活窗口 04:38Z–05:24Z；
+  2. **清除动作以 GA-SOAK-32 的 PID 级记录为准**（唯一可机器复核的一手记录），并行线的陈述**原文保留不改**；
+  3. **影响界定不变**：窗口内宿主负载读数不可作干净证据；**产品侧读数（0 错 / 0 panic / 点查命中率）不受影响**；
+  4. **新纪律生效**：不得在 SOAK 宿主上对活动中的产物/日志做分析命令（分析先快照、再在本地做）。
+
+### 五、**仍未达成**
+
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | **168h SOAK 的 0 错证据** | ⏳ r5 已跑 **7.54 h（4.49 %）**，**0 错 / 0 panic 成立**，点查命中 **100.0000 %** 达标 ✅；**但判据⑤「RSS 平稳」当前不满足** ⇒ **r5 单凭 0 错不足以成为 GA 合格轮** |
+| B1c | **吞吐退化 + 延迟劣化 + RSS 单调增长** | ⚠️ **已定性为写路径的 O(N) 操作 + 周期性全表重写**（§2.2，机制清楚、量级吻合）。是否**新增**「吞吐/延迟不单调退化」判据 ⇒ 属**判据变更**，需 GA 治理/属主决定；**Agent 不自行加严也不自行放宽** |
+| B1d | **代码修复** | ⏳ **现在不能改 `crates/`**（会使 r5 与 019 认证轮的被测树失配）⇒ 修复须等本轮结束，或由属主裁定换轮 |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**）。⚠️ 条件①指名 r2 轮，r2 已出局 ⇒ 需属主确认由 r5 承接 |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主** |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 | ⏳ **属主** |
+
+<!-- END 2026-11-19 REFRESH BLOCK 13 -->
+
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 12 -->
+
+## 🔄 刷新块（2026-11-19T12:05:45Z）—— 第 12 次刷新，取代本文件内全部既有刷新块的判定
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T12:14:14Z（第 13 次刷新，位于本文件顶部）**，其中「根因分析结论」「分岔裁决」「与 GA-SOAK-33 的交叉验证」「污染归属裁决」等状态已被该块更新 ⇒ **状态以顶部第 13 次块为准**。
+
+
+> **本块是文件内最新的刷新块** —— 其下方各块正文原样保留为历史记录；状态以本块为准。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**⚠️ r5 轮 7.2 h 实测：吞吐单调退化 + RSS 单调增长 ⇒ 判据⑤「RSS 平稳」当前不满足**
+
+| 项 | 实测 |
+|---|---|
+| 已跑 | **26605 s = 7.39 h**（4.4 % of 168 h） |
+| 查询数 | **1027598** |
+| **driver_e 非零 / panic 非零 / error_high 非零** | **0 / 0 / 0**（0 错 / 0 panic 仍成立） |
+| **吞吐** | **145.1 q/s → 20.1 q/s（-86.1 %）**，逐 20 min 单调下行，**未见平台化** |
+| **RSS** | **190.3 MB → 1297.1 MB**，逐 20 min 单调上行，**未见平台化** |
+| 每查询净增长 | **1.107 KB/query**（合计 ΔRSS 1107 MB / Δq 1023410），逐 10 min 窗口在 **-1.13 ~ +8.553 KB/query** 间波动 ⇒ **突发型，不是稳定线性泄漏** |
+| FD / WAL | FD 取值集合 **46 / 47 / 51**（偶见 51，其余 46/47）；WAL 恒 **850 B** |
+| `server.log` | 300 B，崩溃标记 **0** |
+
+**吞吐与 RSS 的同向变化（每 20 min 分桶，实测）**：
+
+| 窗口 | q/s | RSS(MB) | ΔRSS(MB) |
+|---|---|---|---|
+| 0–1200 s | 145.1 | 334.9 | +144.6 |
+| 1200–2400 s | 79.1 | 413.6 | +78.0 |
+| 3600–4800 s | 58.5 | 492.3 | +59.5 |
+| 6000–7200 s | 41.2 | 537.2 | -9.9 |
+| 8400–9600 s | 34.5 | 630.5 | +53.2 |
+| 10800–12000 s | 30.5 | 697.9 | +61.8 |
+| 13200–14400 s | 28.6 | 722.6 | -1.0 |
+| 15600–16800 s | 27.9 | 831.4 | +50.2 |
+| 18000–19200 s | 24.4 | 906.4 | +35.7 |
+| 20400–21600 s | 22.8 | 1139.8 | +79.1 |
+| 22800–24000 s | 21.5 | 1229.2 | +37.7 |
+| 25200–26400 s | 20.1 | 1288.3 | +26.5 |
+
+**⚠️ 对验收判据的影响（不掩盖、不自行放宽）**：`GA-SOAK-29` 的验收第⑤条写的是
+「**FD 恒定、RSS 平稳、WAL 不无界增长**」。本轮实测：FD 实质恒定 ✅、WAL 恒 850 B ✅、
+但 **RSS 自 190 MB 单调涨到 1297.1 MB 且未见平台化 ⇒ 「RSS 平稳」当前不满足**。
+⇒ **r5 单凭「0 错 / 0 panic」不足以成为 GA 合格轮**；该判据的处置见 §三。
+
+### 二、**与并行线 GA-SOAK-27 的分歧裁决（ADR-014 D-06：逐点裁决，不取平均）**
+
+| 项 | 并行线 GA-SOAK-27 | 本线 r5 7.2 h 实测 |
+|---|---|---|
+| 观测 | r4 轮 RSS 191.2 → 434.7 MB，末段 **420–462 MB 波动** | r5 轮 RSS 190.3 → 1297.1 MB，**单调上行** |
+| 样本长度 | **54.1 min** | **7.2 h** |
+| 推论 | 「修复后 RSS **不再单调累积**」 | **该推论被更长样本证伪** |
+
+**裁决（逐点，不取平均）**：
+1. 并行线的**观测本身准确** —— r4 那 54.1 min 内确实没有单调累积；**观测保留**。
+2. 其**推论**（「修复后 RSS 不再单调累积」）**按更长的样本修正**为：
+   **修复后的二进制在更长运行下 RSS 仍单调累积**，只是速率低于 r2。
+3. **决定性旁证**：r2 轮的 RSS 是 **191.8 → 1,044.7 MB 单调累积**（12.2 h），
+   而 r5 现在的曲线形状与之**同源** ⇒ r4 的 54 min 短样本**看不出**这个形态。
+4. ⇒ **结论**：GA-SOAK-27 里「RSS 不再单调累积」这半句**须按本块修正**；其余观测不受影响。
+
+### 三、**点查命中率判据达标（有界快照实测）**
+
+- **快照口径**：`driver.log` 的**末 20 MB**（`tail -c` **一次顺序读**，**不是**在宿主上做分析；
+  **全部分析在本地完成**；分析期间**不查库**、不施加负载）⇒ **816210 行** Q 记录；
+- 日志格式（仓内驱动源码 `scripts/soak/v400_soak_driver.py`）：
+  `Q,<query_latency_ms>,<thread_id>,<query_kind>,<row_count>` ⇒ 第 5 字段是**返回行数**
+  （`point_select` 下 0 = 未命中、≥1 = 命中）；
+- **`point_select` 命中 407769 / 未命中 0 ⇒ 命中率 100.0 %** ⇒ **判据 ≥ 99 % 达标** ✅
+- **快照段（即轮次后段）延迟分位**：
+
+| kind | n | p50 (ms) | p90 (ms) | p99 (ms) | max (ms) |
+|---|---|---|---|---|---|
+| `count_agg` | 81721 | 394.0 | 739.8 | 1093.7 | 9069.4 |
+| `insert` | 81460 | 902.8 | 1694.7 | 2465.8 | 10861.8 |
+| `point_select` | 407769 | 300.0 | 616.7 | 966.6 | 9077.0 |
+| `point_update` | 81958 | 738.5 | 1461.2 | 2164.4 | 10825.5 |
+| `range_scan` | 163302 | 400.0 | 746.9 | 1105.9 | 9129.9 |
+
+⇒ 对照 r4 轮（p50 113.1 ms / p99 644.8 ms）：**延迟明显劣化**；
+且**写路径（`insert` / `point_update`）比读路径慢一倍以上**。
+
+### 四、**019 认证轮与排雷 B 轮现状**
+
+| 项 | 实测 |
+|---|---|
+| 排雷 B 轮（冻结点 64269eaa08） | **33 项：PASS 30 / FAIL 0 / INCOMPLETE 3**，合计 13334.4 s（3.70 h）；**零判红**（排雷脚本自身汇总：PASS=30 FAIL=0 INCOMPLETE=3 合计=33  耗时=13334.5 s (3.70 h)） |
+| 排雷的 INCOMPLETE | seq 15 `scripts/gate/check_anti_fabrication.sh` rc=124；seq 22 `scripts/gate/check_gate_self_verification.sh` rc=124；seq 35 `scripts/gate/check_rc_ga_gate.sh` rc=124 —— **三项全部是超时**（排雷单项上限 600/3600/5400 s），**不是判红**；019 轮对应上限 43200 s |
+| 019 权威 plan | `expected_n` = 35、`git_head` = `64269eaa0848c4d47485d1f45b1b91779502a089`、`expected_sha256` = `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809` ⇒ **35 项分母守恒** |
+| 019 执行 | 09:19:41 起执行 35 项（timeout-sec 43200）；已落账 **0** 项 |
+
+### 五、**根因分析进行中（本块不预判）**
+
+- 已派**只读**子代理在 `crates/` 冻结点排查「随查询/随插入累积、不回收」的内存结构
+  （**不改文件、不跑 cargo、不读认证轮的被测树** ⇒ 不干扰在跑的轮次）；
+- 已有量化事实：净增长 **1.107 KB/query**，逐窗口 **-1.13 ~ +8.553 KB/query** 波动；
+- **「随表变大」这一解释已被量级排除**：表文件 168 h 外推约 **0.46 GB**，而 RSS 外推约 **26 GB**
+  ⇒ 差约 56 倍 ⇒ 指向**随查询次数**（或随插入次数）累积，而非随表线性增长；
+- **归因分岔待裁决**：净增长既可解释为「约 1.1 KB / 每查询」，也可解释为「约 4.7 KB / 每插入」
+  （二者在现有数据上同时成立）⇒ 需代码级结论才能区分。
+
+### 六、**仍未达成**（GA 判据的物理 / 人类约束，逐条如实登记）
+
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | **168h SOAK 的 0 错证据** | ⏳ r5 已跑 **7.39 h（4.4 %）**，**0 错 / 0 panic 成立**，点查命中 **100.0 %** 达标 ✅；**但判据⑤「RSS 平稳」当前不满足**（§一）⇒ **r5 单凭 0 错不足以成为合格轮** |
+| B1b | §7.25 的「服务端侧成分」 | ✅ 已定性并修复；**最终确认依赖 r5 跑满** |
+| B1c | **吞吐单调退化（145.1 → 20.1 q/s，-86.1 %）+ 延迟劣化 + RSS 单调增长** | ⚠️ **本轮新登记的产品质量信号**。是否**新增**「吞吐/延迟不单调退化」判据 ⇒ 属**判据变更**，需 GA 治理/属主决定；**Agent 不自行加严也不自行放宽** |
+| B1e | 宿主非正常停止的触发者定性 | ⏳ **属主** |
+| B1f | 权威 0 错 168 h 需要的宿主条件 | 🟡 派发侧已压住；⚠️ **独占探针已被同秒双证据证伪**（`GA-SOAK-31`）⇒ 独占性**不可声称** |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**）。⚠️ **条件①指名 r2 轮，r2 已出局 ⇒ 该条件需属主确认由 r5 承接** |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主** |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 | ⏳ **属主** |
+
+<!-- END 2026-11-19 REFRESH BLOCK 12 -->
+
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 11 -->
+
+## 🔄 刷新块（2026-11-19T05:33:36Z）—— 第 11 次刷新，取代本文件内全部既有刷新块的判定
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T12:05:45Z（第 12 次刷新，位于本文件顶部）**，其中「r5 实时读数」「宿主污染登记」「吞吐退化 / RSS 增长」「分歧裁决」等状态已被该块更新 ⇒ **状态以顶部第 12 次块为准**。
+
+
+> **本块是文件内最新的刷新块** —— 其下方各块（含 04:46Z 第 10 次、04:56Z 一块）正文原样保留为历史记录；
+> 其中「r5 起跑事实」「指纹口径」等状态以本块为准。
+>
+> ⚠️ **〔状态更新 2026-11-19T12:00Z —— 本块已不是文件内最新〕**：文件内另有一块**更晚**的刷新块
+> **2026-11-19T12:00:00Z（第 13 次刷新，另一条并行线所写）**，位于本块**下方**
+> （标记对 `<!-- BEGIN 2026-11-17 REFRESH BLOCK -->`）。
+> 该块正文原样保留为历史记录；**状态以该块为准** —— 该块登记了
+> **r5 已跑 7.22 h 仍 0 错**（且在比 r2 更重的争用下、RSS 已超 r2 出错水平）、
+> **「延迟随状态累积单调劣化」在 r5 上干净复现**、以及**本线自身的宿主污染认领与治理纪律**
+> （§7.32.2 / §7.32.3 / §7.32.4）。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏未改动**。
+
+### 一、**⚠️ 本线自身在 r5 宿主上留下两处污染 —— 如实登记、已清除、不掩盖**
+
+这两处是**本线自己的**分析命令遗留在 SOAK 宿主上的进程（不是产品缺陷，也不是 harness 缺陷），
+**在证据面自证**：
+
+| # | 污染源 | 存活窗口 | 仪器采样证据 | 影响 | 处置 |
+|---|---|---|---|---|---|
+| ① | 一条**递归 grep**（`grep -rl <pattern> /home/liying/ /tmp/`），扫过 SOAK 产物目录**与数据目录** | 约 04:38Z–05:24Z | 仪器在 **2026-11-19T04:39:06Z** 抓到 **1** 个采样点（uid 1000, cpu 34.3 %） | 外来**同盘 I/O** | 按**具体 PID** 清除；残留复查为空 |
+| ② | 一条**手写的 O(n²) 分位数 awk**（冒泡排序，跑在**活动中的** driver.log 上） | 约 04:56Z–05:24Z | 仪器连续抓到 **114** 个采样点（uid 1000, cpu 100.0 %） | 占 1 核 + 读活动日志 | 按**具体 PID** 清除；残留复查为空 |
+
+**澄清（避免混淆）**：② 是**本线手写**的分析代码，**不是** harness 的实现。
+harness 自己产 `summary.json` / `STABILITY_REPORT.md` 的脚本是仓内
+`scripts/soak/v400_1h_soak.sh`，用 **Python + statistics**（C 层排序，O(n log n)）
+⇒ **没有 O(n²) 瓶颈**（实测见 §三）。
+
+**残留复查（已逐一核对）**：`uid=1000 且 ppid=1` 的进程现存全部是 harness 合法组件
+（`cpu_sampler` / `data_size_sampler` / `_excl_probe.sh` / `run_soak_with_heartbeat.sh` /
+`systemd --user`）⇒ **无本线遗留**。
+
+**⚠️ 该窗口的「独占」状态不可断言**：并行线 `GA-SOAK-31` 已用**同秒双证据**证伪独占探针
+（04:53:40Z `strata --serve` 占 **711.7 %** CPU，而同一时刻探针报
+`root_compile_or_test_procs=0` / `own_compile_or_test_procs=1`）⇒ 本窗口的独占性
+**既不能声称、也不能反证**；**本块不作任何独占声明**。
+
+**影响评估（实测，非推断）**：清理后 `driver_e` 恒 **0**、`panic_count` 恒
+**0**、`error_high` 恒 **0**、FD 恒 **46 / 47**、
+WAL **906 B**、`server.log` 300 B 崩溃标记 **0**、
+RSS 190.3 → 440.7 MB 无单调累积。
+（r2 轮的首个错误出现在第 **47.3 min**；r5 已过该时点仍 0 错 —— **不外推**。）
+
+**治理新增（本轮写入）**：**不得在 SOAK 宿主上对「活动中的」产物/日志做分析命令**
+（同盘 I/O 与占核都会改变被测对象）；分析必须在**本地**做，或对**快照**做。
+
+### 二、**表规模轴的采样器已补位（此前指向已出局的 r3 轮）**
+
+既有 `_soak_data_size_sampler.py` 实例的 `--data-dir` 仍指向**已出局的 r3 轮**数据目录
+⇒ r5 的「表在变大」这条替代解释轴**没有采样器**（与并行线 `GA-SOAK-31` 指出的缺口一致）。
+
+- 已为 r5 起一个实例：`--data-dir` 指向 r5 数据目录、**60 s** 间隔、**逐行 flush**；
+- 该采样器**纯文件系统采样**（`os.walk` 累加字节），**行数由 driver.log 的 insert 行事后推导**
+  ⇒ **不查库、不碰被测系统**（查库会污染被测系统：实测并发重查询会超时）；
+- 已落样本行数 **7**，最新一条：`{"ts_utc": "2026-11-19T05:32:59Z", "sample": 7, "bytes": 8009709, "files": 9, "rows": null, "rows_note": "not-collected-here（行数由 driver.log 的 insert 行事后推导）", "data_dir": "/tmp/sqlrustgo-v410-168h-2026`；
+- **实测速率**（采样器相邻两拍之差）：**803 B/s**；
+  当前数据目录构成：`sbtest1.json` **8041280 B**、`sbtest1.delta` **0 B**、
+  `sqlrustgo.wal` **135 B**（WAL 稳在 KB 级 ⇒ checkpoint 正常）；
+- **168 h 外推**：`sbtest1.json` 末值约 **0.46 GB** ⇒ 磁盘余量（418G 可用）**不构成风险**。
+  （注：采样器首拍取到 **3,150,076 B** 的偏小值，是撞上 checkpoint 重写瞬间的**采样异常**，
+  不代表真实占用；后续各拍与逐文件 `ls` 实测一致。）
+
+### 三、**harness 产物在 168 h 末端的规模可行性（实测核，不再是推断）**
+
+| 项 | 实测 |
+|---|---|
+| `driver.log` 增长率 | **1218 B/s**（相隔 20 s 两次 `stat` 实测） |
+| 168 h 末 `driver.log` 体积 | 约 **0.69 GB** |
+| 宿主内存 | **405 GB** 总量 / **308 GB** 可用 |
+| 宿主磁盘 | 可用 **418G** |
+| 判定 | harness 的末端分析（Python + `statistics`）**不构成收尾风险** |
+
+### 四、**r5 轮实时读数（2026-11-19T05:33:36Z）**
+
+| 项 | 实测 |
+|---|---|
+| 计时起点 / 计划结束 | **2026-11-19T04:45:04Z** / **2026-11-26T04:45:04Z** |
+| 已跑时长 | **3054 s** |
+| 查询数 | **307387** |
+| **driver_e 非零行 / panic 非零行 / error_high 非零行** | **0 / 0 / 0** |
+| FD 取值集合 | **46 / 47** |
+| RSS | 190.3 → 440.7 MB |
+| 心跳 | **205** 拍，**最大间隙 16.0 s**（判据 ≤ 90 s） |
+| WAL | **906 B** |
+| 数据目录占用 | **8022390 B** |
+| `server.log` | 300 B，崩溃标记 **0** |
+| 运行产物指纹 | `4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94` |
+
+### 五、**排雷 B 轮进度（019 起跑前置）**
+
+已跑 **14** 项，红项 **无**；最近一项：seq 14 `scripts/gate/check_integration_gate.sh`
+（rc=0，100.1 s）。
+**关键**：排雷 seq 14 = 权威 plan seq 15（`check_integration_gate.sh`）在冻结点上 **PASS**
+⇒ **rustfmt 修复已实证生效**（A 轮在同一门禁上判红）。
+⇒ 排雷全绿后由守护脚本自动起 019 认证轮（timeout 43200 s）。
+
+### 六、**仍未达成**（GA 判据的物理 / 人类约束，逐条如实登记）
+
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | **168h SOAK 的 0 错证据** | ⏳ r5 在跑（计时起点 2026-11-19T04:45:04Z，计划结束 2026-11-26T04:45:04Z）；判据 **0 errors / 0 panics / point_select 命中率 ≥ 99%**；**168 h 未跑满前，任何「SOAK PASS」都不成立** |
+| B1b | §7.25 的「服务端侧成分」 | ✅ 已定性并修复；**最终确认依赖 r5 跑满** |
+| B1e | 宿主非正常停止的触发者定性 | ⏳ **属主** |
+| B1f | 权威 0 错 168 h 需要的宿主条件 | 🟡 **派发侧已压住**；⚠️ **独占探针已被同秒双证据证伪**（`GA-SOAK-31`）⇒ 独占性**不可声称**；本轮两处本线污染已登记清除（§一）；**表规模轴已补位采样器**（§二） |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**）。⚠️ **条件①指名 r2 轮，r2 已出局 ⇒ 该条件需属主确认由 r5 承接** |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主** |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 | ⏳ **属主** |
+
+<!-- END 2026-11-19 REFRESH BLOCK 11 -->
+
+<!-- BEGIN 2026-11-19 REFRESH BLOCK 10 -->
+
+## 🔄 刷新块（2026-11-19T04:46:28Z）—— 第 10 次刷新，取代本文件内全部既有刷新块的判定
+
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T05:33:36Z（第 11 次刷新，位于本文件顶部）**，其中「r5 实时读数」「宿主污染登记」等状态已被该块更新 ⇒ **状态以顶部第 11 次块为准**。
+
+
+> **本块是文件内最新的刷新块** —— 其下方另有两块（2026-11-19T03:30:00Z 第 8 次、
+> 2026-11-19T04:35:00Z 第 9 次，另一条并行线所写），两块正文原样保留为历史记录；
+> 其中「r4 已起跑」「r5 尚未起跑」等状态**均已被本块取代** ⇒ **状态以本块为准**。
+> **本块只写「已实测的事实」与「仍未达成的项」**，**不产生任何 PASS 声明**。
+> 阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏自 2026-11-18T08:27:00Z 起已转录为 CONDITIONAL（见文末），本块未改动签署内容**。
+>
+> ⚠️ **〔状态更新 2026-11-19T12:00Z —— 本块已不是文件内最新〕**：文件内另有一块**更晚**的刷新块
+> **2026-11-19T12:00:00Z（第 13 次刷新，另一条并行线所写）**，位于本块**下方**
+> （标记对 `<!-- BEGIN 2026-11-17 REFRESH BLOCK -->`）。
+> 该块正文原样保留为历史记录；**状态以该块为准** —— 该块登记了**独占判据的第二重盲区**
+> （arm B 自身即编译负载 ⇒ 本轮不可能独占宿主）与两条新增结构性风险（§7.30.4 / §7.30.5 / §7.30.6）。
+
+### 一、**r5 轮已在 crates/ 冻结树上起跑**（计时起点 2026-11-19T04:45:04Z）
+
+| 项 | 实测值 |
+|---|---|
+| 被测树（crates/ 冻结点） | `64269eaa0848c4d47485d1f45b1b91779502a089` |
+| attempt 发起（`start_path` = quiet-window，attempt = 10，waited = 541 s） | **2026-11-19T04:42:04Z** |
+| 起跑门禁（安静窗口） | [2026-11-19T04:42:04Z] starting attempt (path=quiet-window): load=2 foreign_cpu=61% system_cpu=70% waited=541s attempt=10 |
+| 安静窗口末次采样 | [2026-11-19T04:42:04Z] host QUIET load=2 foreign_cpu=61% system_cpu=70% own_cpu=9% streak=10/10 waited=541s |
+| **正式起跑时刻（`started_utc`，= 180 s 起跑复验通过、计时起点）** | **2026-11-19T04:45:04Z** |
+| **起跑复验读数（`STARTED.json`）** | `driver_queries_at_verify` = **35350**、`driver_errors_at_verify` = **0**、`driver_qps_at_verify` = **256.2** q/s、`driver_error_rate_pct_at_verify` = **0.000** % |
+| 起跑瞬间宿主状态 | load1 = **2**、外来 CPU = **61** %、fsync p50 = **0.35** ms（健康 NVMe 量级，探针**只记录不设门禁**） |
+| 产物目录 | `/home/liying/soak-artifacts/20261119-168h-v410-r5/attempt-20261119T044204Z` |
+| **运行产物指纹（权威）** | **`4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`**（15048264 B）—— 由内层 SOAK 脚本在**自己构建之后**对运行产物哈希后写入 `STARTED.json` 的 `soaked_binary_sha256`（**已现场复核一致**） |
+| 端口 / 时长 | **3414** / **168 h** ⇒ `planned_end_utc` = **2026-11-26T04:45:04Z** |
+
+### 二、**⚠️ 二进制指纹口径的第三次更正（前两次更正仍成立，本条为追加更正）**
+
+**前两次更正（仍然成立）**：① clippy 修复后重编的 sha256 与 r4 的产物**逐字节相同**
+⇒ 那 3 行纯冗余局部变量的删除**不改变编译产物**；② rustfmt 规范化后重编的 sha256 **已不同**
+（大小相同；ELF `not stripped` ⇒ 产物含符号与编译单元元数据，源码行号一变字节即变）。
+
+**本条更正（口径错误，已修正）**：先前材料把 **workspace 全量构建口径**的测量值
+`f5ec5a67…` 登记为「r5 的二进制指纹」—— **那是错的**：它**不是**运行产物。
+根因是两条构建命令产出**不同字节**：
+- 启动准备段：`cargo build --release`（**workspace 全量构建**）⇒ 测得 `f5ec5a67…`；
+- 内层 SOAK 脚本（`scripts/soak/run_v410_168h_soak_on_z6g4.sh`，由 `d981e60535`
+  「起跑前按冻结提交重建二进制 —— 二进制与提交必须同源」引入）：
+  `cargo build --release -p sqlrustgo-mysql-server`（**包级构建**）⇒ **覆盖**同一路径 ⇒
+  实际运行产物为 **`4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`**。
+
+⇒ **治理要求（本轮新增）**：**字节指纹必须与构建口径同时登记**，否则指纹不可比。
+本轮已据此修正：启动器 `_soak_launch_r5.sh` 的 `EXPECT_BIN_SHA` 断言**已同步为
+`4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`**（原值 `f5ec5a67…` 会让任何一次重启因指纹不符而**直接中止**），
+`bash -n` 语法自检 PASS，现场文件指纹与断言一致。
+
+**「可执行代码等价」的论证不依赖字节指纹**，仍由三条独立证据支撑：
+① rustfmt **只改空白与折行、不改 token 序列**（源码级事实）；
+② `cargo test -p sqlrustgo-storage --lib` **919 passed / 0 failed**；
+③ 同一次判定中 SGL-002/003/004/005（WAL-002 checkpoint advance、WAL-003 truncation、
+WAL-004 DELETE replay 幂等、TX-002 storage bypass）**全 PASS**。
+⇒ **r4 的读数对 r5 仍是强前置佐证**；`.text` 段逐段哈希的等价性验证**列为留项**
+（r4 的二进制已被新构建覆盖，无法回取）。
+
+### 三、**019 起跑前的排雷：三处真问题已修，并做了两轮排雷**
+
+**共性教训（这是本块最重要的一条）**：016 轮之所以全绿，是因为
+**`cargo clippy` 与 `cargo fmt --check` 都命中了 #5865 之前的旧构建缓存，根本没有重跑**。
+⇒ **「改过 `crates/` 之后从未真正重跑」的那一类红项，只能靠排雷暴露**，读代码看不出来。
+⇒ **排雷固定为 019 轮的起跑前置**（排雷本身不是认证轮）。
+
+| # | 红项 | plan 内位置 | 根因 | 修法 | 验证 |
+|---|---|---|---|---|---|
+| ① | **P14 drift 门禁真回归** | **seq 21**（`check_drift_not_pass.sh`） | #5863 给 83 道 dead/orphan 门禁各加 **15 行**文件头自标，把 `tests/baseline/drift_baseline.json` 登记的 `file:line` 整体平移 **+15**，而 `check_drift_not_pass.sh` 的比较用 `basename`（**仍含行号**）⇒ 同一笔既有债务被判成 NEW | **只同步行号**（PR #5867）：9 条按当前树**实测位置**逐条更新，同一文件内位移**一致为 +15**；**条目数 29 / `total_findings` 29 / 描述文本 / `created_at` 全部不变**，**不改判据、不改阈值、不动分母 168** | 改后 **rc=0**（`No NEW anti-patterns` / `Total anti-patterns: 0`）；**中和验证**：植入真实反模式 ⇒ 判红并**点名该处**，移除 ⇒ 回 rc=0 ⇒ 检出能力未削弱 |
+| ② | **clippy `redundant_locals` 真回归** | **seq 4**（`check_int2_no_orphan.sh`） | `wal_storage.rs` 的 1406 / 1446 / 1522 行各有一句 `let entry = entry;`（**#5865 遗留的纯冗余局部变量绑定**） | **只删这 3 行**（PR #5868）：`entry` 紧随其后被唯一一次 `w.append(entry)` 消费，**语义完全等价**；**爆炸半径 = 0**（不改签名 / trait / 数据结构；GitNexus 对本仓 not indexed，改前已做仓内等价检索逐处确认） | `cargo clippy -p sqlrustgo-storage --all-features` ⇒ **rc=0，0 error**；`cargo test -p sqlrustgo-storage --lib` ⇒ **919 passed / 0 failed**；复测该门禁 ⇒ **PASS** |
+| ③ | **`cargo fmt --check` 真回归** | **seq 15**（`check_integration_gate.sh`）的 **SGL-001** | #5865 引入的代码未过 rustfmt；差异实测展开后是 `bplus_tree/mod.rs` 与 `file_storage.rs` 两个文件、合计 **102 行**，其中 `file_storage.rs` 的 3 处落在**生产代码**内（该文件的 `#[cfg(test)]` 模块从 2697 行才开始）。**016 轮的 `cargo fmt --check` 是 PASS（1.2 s）** ⇒ 仓库在 #5865 之前 fmt-clean ⇒ 差异必然来自 #5865 | **`cargo fmt` 规范化**（PR #5870）：纯空白与折行规范化，**不改 token 序列** | `cargo fmt --check` ⇒ **rc=0，0 处差异**；同次判定 **SGL-002/003/004/005 全 PASS** |
+
+> **seq 编号口径**：上表与下文一律用**权威 plan（`plan.jsonl`）内的 seq**；
+> 排雷脚本为「先出快门禁结论」把最慢的 `check_rc_ga_gate.sh`（plan 内 **seq 1**）挪到了最后，
+> ⇒ **排雷脚本自身的 seq 比 plan seq 小 1**（排雷的 seq 14 = plan 的 seq 15）。
+
+**排雷的轮次与作废口径（如实登记）**：
+
+| 排雷轮 | 被测树 | 已跑项数 | 合计耗时 | 红项 | 处置 |
+|---|---|---|---|---|---|
+| **A 轮** | `e2fcf73c2e（rustfmt 修复**之前**的树）` | 14 | 1595.0 s（约 26.6 min） | seq 14 `scripts/gate/check_integration_gate.sh` rc=1 | **作废**：跑在 rustfmt 修复**之前**的树上 ⇒ 其 crates 相关结论整体失效；红项（排雷 seq 14 = plan seq 15 `check_integration_gate.sh`）即「SGL-001 fmt 未修」的**旧树残留**，非新回归 |
+| **B 轮**（进行中） | `64269eaa0848c4d47485d1f45b1b91779502a089` | 6 | 393.9 s | 无 | 切到冻结点后重跑；**结论以 019 认证轮为准** |
+
+**⏳ 排雷耗时口径的更正**：先前按 016 轮读数估计「29 项快门禁合计约 135 s」—— **该估计不成立**：
+A 轮实测前 14 项即已用 **1595.0 s（约 26.6 min）**。016 轮之所以「快」，
+是因为命中旧构建缓存（与上面「没真正重跑」是同一件事的两面）⇒ **排雷必须实跑，耗时不可用缓存命中值外推**。
+
+### 四、**019 认证轮与 r5 用同一棵冻结树**
+
+自 `64269eaa0848c4d47485d1f45b1b91779502a089` 起，`crates/` `scripts/` `tests/` **零变化**（此后 develop tip 的推进只动 `docs/` 与
+`audit/`，即**材料面**；实测 `git diff --stat 64269eaa0848c4d47485d1f45b1b91779502a089..origin/develop/v4.1.0 -- crates scripts tests` 为空）
+⇒ 019 轮的被测树取**同一冻结点**，**与 252 上的 r5 轮口径完全一致**；
+此后 tip 的材料面推进**不使轮次结论失效**（既定原则：材料提交不使轮次结论失效）。
+
+019 轮的权威 plan 已用**仓内工具**（`scripts/gate/run_gates.py plan`）在冻结点上重建：
+`expected_n = 35`、`git_head = 64269eaa0848c4d47485d1f45b1b91779502a089`、`expected_sha256 = sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`
+（与登记值**逐字符一致** ⇒ **35 项清单未变、分母守恒**），plan 清单与 017 轮**逐行一致**。
+执行参数：**`--timeout-sec 43200`**（**只放宽运行参数**，不改门禁判据 / 阈值 / 分母），
+跳过 seq 20（`check_full_gate_verification.sh`）与 seq 33（`cargo test --all-features`）——
+两者在 016 轮各卡满 10,800 s，属**执行预算**问题而非判红风险，**留给认证轮跑完并计时**。
+
+### 五、本块刷新期间闭合的其他项
+
+| 项 | 结果 |
+|---|---|
+| 门禁分母 / 判据 | **一律不动**：分母 **168** 未变、GA 清单 35 项 sha256 未变、**只放宽运行参数**、**不放宽任何阈值**（0 errors / 0 panics 不豁免） |
+| 启动器指纹断言 | 已从 workspace 口径值同步为**运行产物**指纹 `4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`（`bash -n` PASS，现场文件与断言一致）⇒ 消除「重启必中止」的隐患 |
+| 看板 | 追加 `GA-SOAK-29`（本块）；**既有 205 行逐字节未变**、键序固定、未 sort_keys；`kanban_merge_policy` 判定 **OK** |
+| 并行工作线 | 本块与对方的第 9 次刷新块**并存**，互不覆盖；r4 归档由对方落仓，本线不重复提交 |
+
+### 六、**仍未达成**（GA 判据的物理 / 人类约束，逐条如实登记）
+
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | **168h SOAK 的 0 错证据** | ⏳ **r5 已起跑**（计时起点 2026-11-19T04:45:04Z，被测树 = 冻结点 `64269eaa0848c4d47485d1f45b1b91779502a089`，运行产物 `4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`，port 3414，`planned_end_utc` = 2026-11-26T04:45:04Z）；判据 **0 errors / 0 panics / point_select 命中率 ≥ 99%**；**168 h 未跑满前，任何「SOAK PASS」都不成立** |
+| B1b | §7.25 的「服务端侧成分」 | ✅ **已定性并修复**（= 缺陷 A + 缺陷 B）；r4 现场读数佐证（0 错 0 panic / 点查 100 %% / WAL KB 级 / 崩溃标记 0）；**最终确认依赖 r5 跑满** |
+| B1e | 宿主非正常停止的触发者定性 | ⏳ **属主**（Agent 无带外通道，取不到硬件日志） |
+| B1f | 权威 0 错 168 h 需要的宿主条件 | 🟡 **派发侧已压住**（看门狗 + 急停开关 + 冻结守护 + 四服务）；服务端侧成分已闭合 ⇒ **待 r5 跑满确认** |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**，7 条条件与到期日见文末签署栏）。⚠️ **条件①指名 r2 轮，r2 已出局 ⇒ 该条件需属主确认由 r5 承接** |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（按 `RELEASE_LIFECYCLE` §2.5：审批 → tag → 并入 main → 建承载分支，顺序不可越；**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主**（仓库侧已收敛） |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 | ⏳ **属主**（61 道死门禁部分**已闭合**） |
+
+<!-- END 2026-11-19 REFRESH BLOCK 10 -->
+
+<!-- BEGIN 2026-11-19 REFRESH BLOCK
+
+## 🔄 刷新块（2026-11-19T03:30:00Z）—— 第 8 次刷新，取代下方 2026-11-19T02:00:00Z 的判定
+
+> ⚠️ **〔状态更新 —— 本块已不是文件内最新〕**：文件内最新为 **2026-11-19T04:37:43Z（第 10 次刷新，位于本文件顶部）**，其中「r5 尚未起跑」等状态已被该块取代 ⇒ **状态以顶部第 10 次块为准**。
+
+
+> ⚠️ **〔状态更新 2026-11-19T12:00Z —— 本块已不是文件内最新】**：文件内另有一块**更晚**的刷新块
+> **2026-11-19T12:00:00Z（第 13 次刷新）**，位于本块**下方**（标记对 `<!-- BEGIN 2026-11-17 REFRESH BLOCK -->`）。
+> 本块正文**一字未改**（历史记录原样保留），但**其中「r4 已起跑」等状态已被 2026-11-19T04:18Z 的换轮作废**
+> （r4 被换轮脚本主动停止，r5 尚未起跑；详见 `GA_RELEASE_REPORT.md` §7.27 / §7.28）⇒ **状态以 04:35Z 块为准**。
+
+> **本块只写「已实测的事实」与「仍未达成的项」**；**不产生任何 PASS 声明**。
+> 阶段仍为 **ALPHA**，**未跃迁**。
+> **签署栏自 2026-11-18T08:27:00Z 起已转录为 CONDITIONAL（见文末），本块未改动签署内容**。
+
+### 一、**第三层阻塞已闭合**：两个叠加缺陷被判决性复现、归因、修复，并在 252 上现场验证
+
+本块期间新发现并闭合了**两个此前未识别的叠加缺陷**。二者都是「r4 按原配置必然失败」的原因，
+若不修，r4 跑满 168 h 也只会得到又一轮不合格。
+
+#### 1.1 缺陷 A：主键等值点查约 **99% 返回 0 行**
+
+- **现象（252/r3 实测）**：`point_select` 72,449 次仅 **653 次命中（0.90%）**，
+  而 `range_scan` 29,264 次 **100% 返回 100 行**、`count_agg` 14,393 次 100% 正常；
+  落盘 `sbtest1.json` **24,399 行、id 1..10000 齐全** ⇒ **数据不缺、范围查能看到，只有等值查看不到**。
+- **命中率的形状本身就是线索**：起跑首个千行 **7.30%** → 稳定 **0.3%–0.5%**
+  ⇒ 指向「某个随写操作单调恶化的状态」。
+- **因果归因（三组对照实验，本机实跑）**：
+
+  | 实验 | 负载 | point_select 命中率 | 判读 |
+  |---|---|---|---|
+  | E1 | 纯读（40,150 次） | **100.00%** | 读路径健康 |
+  | E2 | 读 + INSERT | **100.00%** | **INSERT 不是触发条件** |
+  | E3 | 读 + UPDATE | **8.03%** | **UPDATE 是触发条件** |
+
+- **根因（四环，缺一不可，全部代码级坐实）**：
+  1. 引擎把 UPDATE 实现成 **delete + insert**；
+  2. 删除用 `Vec::retain` **就地压缩行向量** ⇒ 被删行之后每一行**物理下标前移一位**；
+  3. 主键 B+Tree 存的是**物理行号**，且 DELETE 路径**从不维护索引**（全仓无一处 `index.remove`）；
+  4. 取行时**不校验键值** ⇒ 等值查拿到**别的 id 的行** ⇒ 随后被 WHERE 复算清空 ⇒
+     **表现为「查不到」而不是「查错了行」**。
+- **历史对照**：`audit/v4.1.0/runs/20261112-soak-ab003/artifacts/driver.log` 同形态
+  （点查 4.3% 命中）⇒ **长期存在的既有缺陷，非本轮回归**。
+- **修复**：删除后**原地修正**索引行号（`BPlusTree::adjust_after_removal`）＋
+  取行**校验键值**＋ Eq 未命中回落**定点查找**（不整表克隆）＋
+  `insert_buffered` 阈值刷盘分支改用**窗口法**（原先用本次调用的行去索引整批 ⇒ 漏键且行号整体平移）。
+
+#### 1.2 缺陷 B：每个写事务把**整个 WAL 读一遍再重写** ⇒ 写代价 O(WAL) 二次方
+
+- **syscall 级证据**（隔离探针实例，`strace -f -y`）每提交重复出现：
+  `openat(O_RDONLY)` → `openat(O_WRONLY|O_TRUNC)` → `openat(O_APPEND)` → 逐条重写 → `fdatasync`；
+  实测斜率精确 **1.00**。
+- **根因**：同一份日志上存在**两个 LSN 空间** —— `WalStorage` 用自己的计数器盖章，
+  `FileBackedWalManager::append` 又**覆盖**成它自己的 `next_lsn`（而它统计的是**所有**经共享
+  handle 的条目，含 `FileStorage` 自己的）⇒ 两个计数器速率不同 ⇒
+  **检查点记录的 LSN 与截断点不在同一空间** ⇒ `truncate_before` 判不出哪些条目可回收 ⇒
+  **WAL 无界增长**，而每次提交都要整份读改写。
+- **修复**：`WalManager::append` 改为**返回管理器盖的 LSN**（LSN 空间由管理器独占）＋
+  `truncate_before` **无可回收即直接返回** ＋ 截断点取 `min(检查点 LSN, 最老在途事务起始 LSN)`
+  （在途事务的条目尚未进任何快照，回收会丢数据）。
+
+#### 1.3 修复前后对比（同一探针、同一台架、同一驱动）
+
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| 点查命中率（E3 读+UPDATE） | **8.03%** | **100.00%** |
+| 点查命中率（SOAK 同参混合负载） | **5.67%** | **100.00%** |
+| WAL 大小（混合负载） | 1,611,118 B | **135 B** |
+| WAL 大小（放大探针，每轮 200 INSERT） | 37,800 → 226,800 B（线性无界） | **恒定 90 B** |
+| UPDATE 吞吐 / 180 s | 1,484 | **6,037**（4.07×） |
+| 错误数 | 0 | 0 |
+
+- **回归测试的有效性已实测**：把「索引修复」与「键值校验」两道防线**同时中和**后，
+  新增的回归测试**失败**并精确暴露错行（`id=4` 查到 `Integer(5)`）⇒ **真回归测试**，非恒真断言。
+- 存储层单测 **919 passed / 0 failed**。
+- 提交：`757b538046`（PK 索引）、`56587af2ce`（WAL）、`4cc3ab942a`（门禁判据）；**PR #5865 已合并**。
+- 完整证据：`audit/v4.1.0/adjudications/soak-third-layer-pk-and-wal-20261119.md`。
+
+### 二、**门禁判据加严**：臂 A 增「主键等值点查命中率 ≥ 99%」断言
+
+`scripts/soak/run_v410_168h_soak.sh` 的臂 A 判据此前**只看 `A_QUERIES > 0`** 与采样覆盖率，
+**不校验任何一次查询返回了多少行** ⇒ **一轮点查 99% 返空的运行照样会被判 PASS**。
+现从 `armA/driver.log` 统计 `point_select` 命中率，要求 **≥ 99%**，并并入臂 A 的 PASS 合取式
+与最终报告表格。**判据只增严，不放宽任何既有门槛；门禁分母 168 不动。**
+
+### 三、认证轮：017 / 018 **连续两轮中止（均非判红）**，019 在基线修复后的树上起跑
+
+| 轮次 | 终态 | 说明 |
+|---|---|---|
+| 017 `20261119-ga-gates-017` | **中止（INCOMPLETE）** | 在被测树 `b697a9a687` 上起跑，seq 1 已跑 72 min 时**代码面变更**（PR #5865 合并头 `93ac1d427e`）⇒「验收对象是已提交的那棵树」的前提已变 ⇒ 017 的结论对新树无效 ⇒ 按 PID 终止（`run_gates.py execute` 85470 及其 cargo 子进程）。**已归档为 `round_status=INCOMPLETE`（非 PASS），verify rc=0**，plan 与二进制指纹留存作 pre-fix 基线 |
+| 018 `20261119-ga-gates-018` | **中止（INCOMPLETE）** | 在被测树 `93ac1d427ec0694f613da8470a88003db08b9f53`（= PR #5865 合并头）上起跑，prep 阶段 ① 全绿（`cargo build --all-features` rc=0 / 187 s、`sqlrustgo-cli` rc=0、`sqlrustgo-mysql-server` rc=0）、② 二进制指纹已生成；③ 阶段因**认证前排雷**发现 P14 drift 门禁在该树**必然判红**（实测 rc=1、7 条 NEW，逐条比对确认全是既有债务被 #5863 的 15 行文件头平移误判）而中止 —— 该门禁在 35 项 plan 内、**seq 21** ⇒ 本轮跑到 seq 21 必红 ⇒ 先修基线再起跑 019。**未执行任何一项门禁**（results 0 行），按 PID 终止 80460 / 80458 与 cargo 子进程 30086 / 88691（退出码 143）。**已归档为 `round_status=INCOMPLETE`（非 PASS），verify rc=0**，evidence_hash `sha256:43db9b1d…` |
+| 019 `20261119-ga-gates-019` | **待起跑** | 被测树 = **drift 基线修复合并后的 develop tip**；timeout **21600 s**（只放宽运行参数）；plan sha256 强校验 `sha256:6466a0ec…` ⇒ **35 项清单未变、分母守恒**。**起跑前先排雷**：按 016 轮实测耗时把 29 项快门禁（合计约 135 s）与 4 项中等门禁（约 72 min）先跑一遍，确认无红再跑满，避免「跑 7.24 h 才撞红」。对照 016 轮实测耗时 **7.24 h**（其中 seq 20 与 seq 33 双双 10,800 s 超时，**已定性为执行预算问题，不是判红**） |
+
+**019 与 r4 在两台不同宿主上并行**（019 跑本机、r4 跑 252）⇒ 不争 CPU，不构成 r4 的前置。
+
+### 四、168h SOAK：**r4 已起跑**（run `20261119-168h-v410-r4`）
+
+| 项 | 值 |
+|---|---|
+| 起跑时刻 | **2026-11-19T03:25:01Z**（安静窗口 **10/10** 连续满足，waited 602 s，attempt 11） |
+| planned_end | **≈ 2026-11-26T03:25:01Z** |
+| 被测树 | `93ac1d427ec0694f613da8470a88003db08b9f53` —— **含缺陷 A/B 两处修复** |
+| release 二进制 | sha256 `910029ce1f0658e1028fbfad12d7f3d109fe6516e8ef303d03abefa06daffa33`（15,048,264 B） |
+| 起跑门禁 | 急停开关**在位**；四个守护服务（独占看门狗 / 冻结守护 / CPU 采样 / 表规模采样）全 **active**；端口 3413 起跑前实测空闲 |
+| **起跑后首批实测读数** | **`point_select` 22,058 次全部命中 = 100.00%**（r3 轮同指标 0.90%）；**`sqlrustgo.wal` 恒为 90 B**（r3 轮 90 min 后为 8,054,374 B）；**errors 00 / panic 00**；**343 q/s**（r3 轮为 25.6 q/s ⇒ **14×**） |
+
+r3 轮已在 elapsed **7168 s** 处终止并留档：最终读数 **errors 7 / panic 00**，
+且**急停开关开启后的 1.5 h 内错误零复发** ⇒ 宿主同盘 I/O 风暴根因的**二次印证**。
+
+### 五、§7.25「服务端侧成分」（B1b）：**已定性 —— 就是本块闭合的两个缺陷**
+
+第 7 次刷新块登记的开放问题「r3 实测退化速度超过行数增长、且主键点查也变慢 ⇒ 是普适退化」
+—— 本块已给出答案：
+
+- **点查变慢且大量返空** = 缺陷 A（UPDATE ⇒ 删除压缩 ⇒ 索引行号漂移 ⇒ 等值查退化到全扫兜底）；
+- **吞吐随时间下降、行数越多越慢** = 缺陷 B（每次提交整份读改写 WAL ⇒ 写代价随 WAL 线性增长 ⇒ 二次方）。
+
+两处均已修复，且**在 252 的真实轮次上现场验证**（点查 100%、WAL 90 B、吞吐 14×）。
+⇒ **B1b 从「开放问题」转为「已定性并修复」，其最终确认依赖 r4 跑满 168 h。**
+
+### 六、本块刷新期间闭合的其他项
+
+| 项 | 结果 |
+|---|---|
+| 83 道 dead/orphan 门禁（dead 61 + orphan 22） | **已加文件头自标 + 登记在册**（PR #5863），**零副作用**（`gate_registry` fails 0 / check_n **168**；`check_gate_script_refs` errors **0** / warnings **8** / **58** citations；`check_gate_executability` **92** 项 OK） |
+| `check_historical_backlog_disposition.sh` 的 3 条 FIX-TLS 不可达 | **已修正**（指向当前树实测可达且真实承载该修复的等价提交）⇒ **PASS=3/FAIL=3 → PASS=7/FAIL=0**；**原始 SHA 全部保留**（PR #5864 已合） |
+| 独占窗口从「一次性」升级为「持续自愈」 | 看门狗 + 急停开关 + 冻结守护 + 四个 systemd 服务（PR #5864 已合） |
+| 252 的 Gitea `refs/heads/` 属主 root | **已自助解除**（`docker exec -u root … chown -R git:git`） |
+| 看板 | 补 **4** 行（GA-SOAK-24 / GA-GATES-18 / GA-SOAK-25 / GA-GATES-19）；既有 198 行**逐字节未变**、键序固定、未 sort_keys；`kanban_merge_policy` 判定 **OK**（rows=**202**、problems=[]） |
+| r4 被测树与当前 develop tip 的差异 | **运行时行为面 = 0**（`crates/` **零变化** ⇒ r4 的 release 二进制 sha256 `910029ce…` 仍是 tip 的真实构建产物）；非运行时面 = docs/audit + `tests/baseline/drift_baseline.json`（9 行行号同步）⇒ **材料提交与门禁基线同步都不使 r4 结论失效**（见 §六 下一行的公开裁决） |
+| P14 drift 基线行号重同步（#5863 的 15 行文件头平移误判） | **已修**（提交 `c5bf397472`）：9 条条目按当前树**实测位置**逐条更新（同一文件内位移一致为 **+15**，与 #5863 给 83 道门禁各加的文件头行数吻合）；**条目数 29 / `total_findings` 29 / 描述文本 / `created_at` 全部不变**，**不改门禁判据、不改阈值、不动门禁分母 168**。改后实测 **rc=0**（`No NEW anti-patterns vs baseline` / `Total anti-patterns: 0`）；**中和验证**：植入一处真实反模式 ⇒ 判红并**点名该处**；移除 ⇒ 回 rc=0 ⇒ **新反模式检出能力未削弱**。旁证：`check_gate_script_refs` 58/58、`check_gate_executability` 92/92、`gate_registry` fails=0 check_n=**168** |
+| **公开裁决（ADR-014 D-06）**：`tests/baseline/*.json` 归**门禁自检基线面**，**不归运行时行为面** | **分歧**：本轮合并的 drift 基线同步改了 `tests/baseline/drift_baseline.json` ⇒ 若把「代码面」定义为「整树字节」，则 r4 被测树 `93ac1d427e` 与合并后 tip 的差异**不再为 0**，SOAK 结论的「被测对象同一性」前提会被质疑。**裁决**：「代码面」= **参与被测系统运行时行为的产品代码**（`crates/` 下被编入二进制的代码及其运行时配置）。依据：① `tests/baseline/` 是**门禁自检用的登记数据**，不进任何二进制、不参与任何查询路径；② 它与 SOAK 的三条判据（**0 errors / 0 panics / point_select 命中率 ≥ 99%**）**无因果关系** —— 改它既不可能产生错误、也不可能改变点查命中率；③ **决定性判据**：本次合并 **`crates/` 零变化** ⇒ r4 的 release 二进制（sha256 `910029ce…`）**仍是合并后 tip 的真实构建产物** ⇒ 被测**运行时行为**同一性成立。**该裁决不掩盖任何东西**：漂移基线同步的判据收紧过程（9 条逐条实测定位 + 中和验证 + rc=1→0）已在本块 §六 与裁决文档中完整公开 |
+
+### 七、**仍未达成**（GA 判据的物理 / 人类约束，逐条如实登记）
+
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | **168h SOAK 的 0 错证据** | ⏳ **r4 已起跑（03:25:01Z）**，判据 **0 errors / 0 panics / point_select 命中率 ≥ 99%**；**168 h 未跑满前，任何「SOAK PASS」都不成立** |
+| B1b | §7.25 的「服务端侧成分」 | ✅ **已定性并修复**（= 缺陷 A + 缺陷 B，见 §五）；**最终确认依赖 r4 跑满** |
+| B1e | 宿主非正常停止的触发者定性 | ⏳ **属主**（Agent 无带外通道，取不到硬件日志） |
+| B1f | 权威 0 错 168 h 需要的宿主条件 | 🟡 **派发侧已压住**（看门狗 + 急停开关 + 冻结守护 + 四服务）；服务端侧成分已闭合 ⇒ **待 r4 跑满确认** |
+| B2 | 人类架构师签批 | ✅ 已取得（2026-11-18T08:27:00Z，**CONDITIONAL**，7 条条件与到期日见文末签署栏）。⚠️ **条件①指名 r2 轮，r2 已出局 ⇒ 该条件需属主确认由 r4 承接** |
+| B3 | `release/v4.1.0` 承载分支 + tag + 并入 main | ⏳ **属主**（按 `RELEASE_LIFECYCLE` §2.5：审批 → tag → 并入 main → 建承载分支，顺序不可越；**Agent 不得直推 main**） |
+| B4 | 旧 Gitea token 在服务端失效 | ⏳ **属主**（仓库侧已收敛） |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 | ⏳ **属主**（61 道死门禁部分**已闭合**，见 §六） |
+
+<!-- END 2026-11-19 REFRESH BLOCK -->
+
+<!-- BEGIN 2026-11-17 REFRESH BLOCK
+
+## 🔄 刷新块（2026-11-19T12:00:00Z）—— 取代下方 2026-10-23 的判定　【**本线最后一块** · 截止 2026-11-19T13:15Z】
+
+> ⚠️ **本块是文件内最新的刷新块** —— 其上方另有两块：**2026-11-19T04:46:28Z（第 10 次刷新，另一条并行线所写）**
+> 与 **2026-11-19T03:30:00Z（第 8 次刷新，另一条并行线所写）**；
+> 两块正文均原样保留为历史记录，但其中「r4 已起跑」「r5 尚未起跑」等状态**均已被本块取代** ⇒ **状态以本块为准**。
+> ⚠️ **本块新增的判据级内容（两条）**：① **独占判据的第二重盲区** —— arm B 自身即编译负载 ⇒ **本轮不可能独占宿主**
+> （§7.30.4 / `GA-SOAK-30`）⇒ **「在独占宿主上跑」本轮不能下**；
+> ② **〔第 13 次刷新新增〕r5 已跑 7.22 h 仍 0 错，且在比 r2 更重的争用下、RSS 已超过 r2 出错时的水平**
+> ⇒ 〔更正 §7.33.1〕**该表述已降级为 E1–E2 级运行观测**：r5 在**更强争用 + 更高 RSS** 下**仍 0 错** ⇒ **与「修复有效」一致**，但**非受控实验**（二进制 / 冻结树 / 数据状态 / 负载形态 / 时长均不同，**未排除重要混杂**）⇒ **不足以断言任一具体修复独立消除了 r2 的错误机制**；**但「延迟随状态累积单调劣化」这条机制在 r5 上干净复现**（E2 级 · 重复观察到）
+> （p50/p90/p99 逐桶单调上升 7–8 倍、吞吐衰减到 1/4.5），**max 尚未越过 15 s 读超时线**（最高 10,861.8 ms = 线的 72.4 %）
+> ⇒ **不预判 r5 一定会出错**，但 **max 与 ≥5 s 样本数必须成为一等指标**（§7.32.2 / §7.32.3）。
+> ⚠️ **〔第 13 次刷新新增〕本线自身的宿主污染已认领并披露**：04:56Z–05:24Z 我在 r5 宿主上跑了 **O(n²) 冒泡排序 awk**
+> （跑在活动中的 `driver.log` 上，1 核 100 %、同盘 I/O），由并行线按具体 PID 清除并披露；
+> **⇒ 新纪律：不得在 SOAK 宿主上对活动中的产物/日志做分析命令，分析必须先快照再在本地做**（§7.32.4）。
+
+> **基线**：`develop/v4.1.0` @ `8b1a45a404cba8683aa4103d9f5087c1217d29f0`（tree `adff0290cf2aedc05063ce6612b8115cb0003eff`）—— **当前 develop tip（本次提交前实测）**；⚠️ tip 自 `e5c42c7fd0…` 起已前移；⚠️ **自 `64269eaa08…` 起 tip 的推进只动 `docs/` 与 `audit/`（材料面），`crates/`+`scripts/`+`tests/` **零变化**⇒ r5 轮的被测代码面仍 == tip 的被测代码面**
+> **认证轮**：run `20261117-ga-gates-011`（plan sha256 `sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809`），
+> 被测树 `fa2b41abfa6b`；其 `git_head` 与**当时**的基线一致 ⇒ **那一轮测的是它自己的被交付树**。
+> ⚠️ **`fa2b41abfa6b` 的 crates 与当前 tip 的差距已扩大到 9 个文件 / +614 / −101**（实测 `git diff --stat fa2b41abfa6b e2fcf73c2e -- crates`）：
+> #5842 KILL CONNECTION 修复（`crates/mysql-server/src/lib.rs` +132）、**#5865 点查命中与 WAL 两处修复**
+> （`crates/storage/src/file_storage.rs`、`bplus_tree/mod.rs`、`wal*` —— 即 `GA-SOAK-24` 判决的那两个缺陷）、
+> #5868 clippy 冗余局部变量（`crates/storage/src/wal_storage.rs` −3）。
+> ⇒ **35/35 的结论不能继承到当前 tip**（GA-REWIND-1 的剩余义务**变大**，不是变小）——
+> 最终认证轮仍须在**最终 tip**（当前为 `e2fcf73c2e`，且会继续前移）上重跑。
+> ⚠️ **连带影响**：r4 轮冻结树 `93ac1d427e` **已是当前 tip 的祖先**（不是 tip 本身）⇒ r4 的结果只能作「`93ac1d427e` 上的证据」，不能直接当最终 tip 的证据。
+> **材料提交**：本块随材料提交 M 一起落地；M 只新增 `docs/` 与 `audit/`
+> （`git diff --stat e5c42c7fd02d3d2e24086d419920bcea938c19d6..M -- crates scripts tests` 为空 ⇒ M 不改变被测代码面）
+> **本块刷新说明**：本版为第 13 次刷新（**上一版刷新块时间戳 2026-11-19T04:56:00Z**；更早为 2026-11-19T04:50:00Z、2026-11-19T04:35:00Z、2026-11-19T04:26:00Z、2026-11-19T04:07:00Z、2026-11-19T00:46:07Z、2026-11-18T14:49:03Z、2026-11-18T14:37:27Z、2026-11-18T05:00:55Z、2026-11-17T15:13:56Z）；
+> ⚠️ **编号说明**：**第 10 次刷新（2026-11-19T04:46:28Z）是另一条并行线所写**（PR #5874 / `GA-SOAK-29`，在文件顶部）⇒ 本块取 **第 13 次**，**两线编号不冲突**（文件内另两块属并行线：第 10 次 04:46Z、第 11 次 05:33Z；**本块仍排在文件最下方** ⇒ 编号与位置已不一致，此为「并行编号链」的已知后果，**收敛与否待属主裁定**）；三块并存，**互不改写正文**，只以〔状态更新〕指针互指。
+> 本版只刷新本块内容，下方 2026-10-23 的判定与第 9 段**原样保留为历史记录**；
+> **签署栏自 2026-11-18T08:27:00Z 起已转录为 CONDITIONAL（见文末），不再留空**。
+> **本版含两处〔更正〕**：① §7.23.5 的「错误与宿主负载尖峰时间上完全重合」**只在前半轮成立**（详见 §7.25 / `GA-SOAK-21`）——
+> **§7.23 原文保留不改**；② **本版新增**：§7.23.3 与 §7.24.4 宿主行里的「`dmesg` 无 OOM/panic/watchdog/thermal」**建立在一次**空读**之上**
+> （本账号 `dmesg` 不可读：`dmesg_restrict=1`，读报 `Operation not permitted`）⇒ **该阴性表述撤回**；
+> 「宿主未重启」的定性由 `boot_id` / `uptime` / `journalctl --list-boots` / 心跳连续性**独立**支撑（详见 §7.26.4 / `GA-SOAK-26`）——**两处原文保留不改**。
+> **〔第 11 次刷新新增〕独占判据的盲区由「一处」深化为「两处」**：§7.26.6 / B1f 记的「探针只数 **root 属主**的 Rust 工具链」**依然成立**；**新增**的是 —— 探针的 `own_compile_or_test_procs` 数的是**同账号**编译，而 **arm B 自己就是同账号的编译负载**
+> ⇒ **同账号的真正外来编译不可见、而自身负载被计入争用侧** ⇒ **本轮不可能独占宿主**（详见 §7.30.4 / `GA-SOAK-30`）。
+> ⚠️ **另两条结构性风险**：**共享 checkout 可能导致双臂口径不一致**（§7.30.5）、**数据规模/WAL 轴在 r5 上无采样器**（§7.30.6）。
+
+> 🔒 **〔本线最后一块〕本块为巡检本线（`GA-SOAK-37` / §7.33）最后一次写入的刷新块（截止 2026-11-19T13:15Z）**。
+> **本线自此不再新增刷新块** —— 后续巡检**只在本块内更新**；**也不再编辑他方段落**（**含不再加指向指针**）。
+> 整体收敛（文件内现 **10 块**、编号交叉重复：他方 13 / 我方 13）**待属主 / 单写入者裁定**（§7.33.8）。
+> ⚠️ **本块内的过强结论已按〔更正〕降级**（见下方 §〔更正〕标注与 §7.33.1）⇒ **以〔更正〕后的表述为准**。
+
+### 当前状态（四分模型 · 2026-11-19T13:11Z 快照 · §7.33.3）
+
+| 状态维度 | 取值 | 依据 |
+|---|---|---|
+| **运行状态** | **`RUNNING`** | r5 `20261119-168h-v410-r5`，port 3414；`started_utc=2026-11-19T04:45:04Z`，`planned_end_utc=2026-11-26T04:45:04Z`；心跳末拍 13:11:52Z |
+| **证据状态** | **`PENDING`** | elapsed **30,582 s / 604,800 s（5.06 %）** ⇒ 168 h **未跑满，证据尚未取得**（**不是 FAIL**） |
+| **GA 资格** | **`NOT-EVALUATED`** | 门槛 = 168 h + **0 errors + 0 panics**；本轮 **1,094,587 查 / 0 错 / panic 00** ⇒ 「0 错」持续成立，**时长未达 ⇒ 整体未评估**（**不是 PASS**） |
+| **独占性** | **`VIOLATED`** | 全程外来峰值 `system_busy_pct` **4,506.7 %（45 核）**，同期探针 `root=0 / own=1`（那 1 个是 **arm B 自己**）⇒ **探针与实际脱节**（§7.32.7） |
+
+> **证据等级（E0–E4，本线自 §7.33.2 起统一标注）**：**E0** 未取得/不完整 ⇒ UNKNOWN；**E1** 单次观测；**E2** 多次重复一致；**E3** 控制变量/排除重要混杂；**E4** 专门验证/复现/反向验证。
+> 机制另标 `OBSERVED` / `HYPOTHESIS` / `VERIFIED`。本轮最高等级 = **E2**；**「修复消除了 r2 错误机制」= E1–E2**（与「修复有效」一致，**非受控实验**）⇒ **不得表述为 E3/E4**。
+
+### 属主裁定落地（2026-11-19T14:00Z）—— **10 项裁定已逐项执行**
+
+| # | 裁定 | 执行结果 |
+|---|---|---|
+| ① | **桌面端收紧实际授权面** | `allow` 的 SSH 由 `ssh:*` 收窄为「限定主机 + 强制 `IdentityAgent=none` 等安全选项」；`deny` 36 → **58 条**；**实测拦截命中**：`docker:*` / `sudo:*` / `systemctl:*` / `git merge:*` 均被拦（§7.34.7） |
+| ② | **合并 PR + 合并树复跑门禁** | PR **#5885** 已合入（merge **`f6beacad3196`**）；**合并树门禁 5 项全绿**；远端分支已删 |
+| ③ | **tip 冻结窗口判据收窄** | 改为「**带 `crates/` 或 `scripts/soak/` 影响的合并才作废**」⇒ **r5 不作废**（§7.34.4） |
+| ④ | **独占判据换尺** | 新口径 =「**任何 uid 的非本轮进程**」+「**剔除本轮 arm B 编译链**」；外来峰值 **4,002.2 %**（uid 1004）+ **869.7 %**（uid 0 编译 `bustubx-edu`，**非本轮**）；`system_busy_pct` 全程峰值刷新为 **5,383.9 %** @ 12:39:40Z ⇒ **独占性仍 `VIOLATED`（第 5 次）且证据更硬**（§7.34.2 / §7.34.3） |
+| ⑤ | **加密观察 max / ≥5 s** | 加密**巡检侧取数**（每轮 +2 次轻量实时快照），**不提高宿主采样频率**；cron 范围与时刻不变 |
+| ⑥ | **刷新块收敛** | **最小侵入**：状态权威集中本块，**不改他方块正文与历史编号**；物理收敛留给属主/单写入者（§7.34.5） |
+| ⑦ | **条件①承接** | **由 r5 承接**（r2/r3/r4 已出局）—— ⚠️ **承接 ≠ 合格**：r5 判据⑤不满足 |
+| ⑧ | **35 项门禁第 20 项更高超时重跑** | **无需另起重跑**：该脚本**无内层 timeout**，019 轮外层 `--timeout-sec 43200`（015 轮 7200）**已覆盖** |
+| ⑨ | **B1e 触发者定性** | **Agent 侧范围已穷尽**：近 3 h **无** reboot/shutdown/hw error/oom-killer/thermal；三停轮窗**全部**是 CRON + docker scope + sshd ⇒ **人为主动**；残余不确定性收窄到**带外硬件层**（§7.34.8） |
+| ⑩ | **安全补丁 / tag** | **只读盘点**：待升级 **14** 个（**5 个 Docker 栈**，升级会重启容器运行时 ⇒ 影响 SOAK/CI）⇒ **属主排窗执行**；tag **不提前创建**（§7.34.9） |
+
+> ⚠️ **〔更正〕换尺过程中本线自身的分类错误**：曾把「`rustc`」整体当 arm B 自身编译剔除；实际 `rustc --crate-name bustubx_edu`（uid 0）是**真正的外来编译** ⇒ 已修正，**外来峰值未被高估**（§7.34.2）。
+> ⚠️ **探针盲区的再定性**：探针**能看见 root 编译**（13:57Z 实测 `root_compile_or_test_procs=1`）；真实盲区是「只数 root 的 Rust 工具链」+「own 把 arm B 计入争用侧」+「采样窗口稀」⇒ **换尺 + 加密 + 改采样器三者齐备才够**（§7.34.3.1）。
+> ⚠️ **换尺口径的新盲区**：采样器每样本 `top[]` **最多 4 条** ⇒ 按 uid 聚合**只覆盖 top4** ⇒ 换尺结论 = **E1**，**不构成 E3**（§7.34.3.2）。
+
+### 判定：**NOT READY —— 只剩物理约束**（人类签批已于 2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8） 取得，见文末签署栏）
+
+| 项 | 值 |
+|---|---|
+| 阶段 | `current_stage: "ALPHA"`（`STAGE.yaml`）—— **未跃迁** |
+| GA 门禁 | **35/35 项：PASS 35 / FAIL 0 / INCOMPLETE 0 / 其他 0**（run `20261117-ga-gates-011`，被测树 `fa2b41abfa6b`）。⚠️ **该树的 crates 与当前 tip 差一个 KILL CONNECTION 修复（#5842）** ⇒ 最终认证轮仍须在 `e5c42c7fd02d3d2e24086d419920bcea938c19d6`（或其后继 tip）上重跑（见 GA-REWIND-1） |
+| 覆盖率 | `✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（min 85%，measured 8/8 crates）—— 真实测量 |
+| 168h SOAK | ⚠️ **权威轮已换轮：r2 轮 `20261118-168h-v410-r2` 于 2026-11-18T12:36:45Z 在实测独占窗口内起跑**（独占窗口 **12:23:42Z** 成立 = root 编译进程 0 且 load1 ≤ 40 连续 **120/120** = 2 h；启动器安静窗口等待 601 s；起跑复验 **14,114 查 / 0 错 / 103.0 q/s / 0.000 %**；冻结提交 `e5c42c7fd02d3d2e24086d419920bcea938c19d6` **不变**；计划结束 2026-11-25T12:36:45Z）。⚠️ **该轮已于 2026-11-19T00:47:26Z 被另一条 Agent 线主动停止 ⇒ 终局记 INCOMPLETE**（停轮方自述「累计错误数已超 0 错门槛，且需让出同盘给 r3」；死因逐项排除宿主重启/服务端崩溃/OOM/看门狗误杀；详见 §7.26.1，归档 `audit/v4.1.0/runs/20261118-168h-v410-r2/`）—— **§7.25.7 写的「r2 轮继续跑不停」已被现实打破**。**r2 终态实测**：elapsed **44,060 s / 604,800 s（7.2867 %）**、**479,795 查 / 717 错 ⇒ 0.1494 %**（driver.log 全量口径 **784** 错）、**panic 00**（2,882 采样点唯一值 `00`；server.log 崩溃标记 0）、FD 恒定 46、心跳 **2,926** 拍 / max_gap **22.0 s**、**双臂存活** ⇒ **0 panic 成立、168 h 未跑满 ⇒ NOT-RUN、0 错不可逆不成立**（算术事实）。**当前在跑轮 = r4**（`20261119-168h-v410-r4`，port 3413，冻结 `93ac1d427e`，起跑 2026-11-19T03:28:01Z，计划结束 2026-11-26T03:28:01Z；起跑复验 **43,192 查 / 0 错 / 315.3 q/s**；实测 elapsed **2,183 s**、**274,525 查 / 0 错**、panic 00、RSS 428.9 MB、load1 3.13）⚠️ **但 r4 的「独占」尚未被证明**（探针硬盲区，见 §7.26.6 / B1f）；**r3 轮**已于 03:11:27Z 被同一批人 `sudo kill` 显式停止（逐条日志见 §7.26.5）。⚠️ **〔本版新增〕r4 轮也已于 2026-11-19T04:18:39Z 被「换轮脚本」主动停掉 ⇒ 终局 INCOMPLETE**（§7.27 / `GA-SOAK-27`，归档 `audit/v4.1.0/runs/20261119-168h-v410-r4/`）：elapsed **3,244 s / 604,800 s（0.5366 %）**、**343,026 查 / 0 错**、panic **00**、**点查命中 171,641/171,641 = 100.0000 %**、**WAL 恒定 90 B**、RSS 191.2→**434.7 MB（末段 420–462 MB 波动、无单调累积）**、延迟 p50 **113.1 ms** / p99 **644.8 ms**、心跳 216 拍 max_gap 16.0 s；**不是服务端崩溃**（`server.log` 仅 300 B、崩溃标记 0、停机前读数健康）——停它的是另一条线的 `_soak_r5_start.sh` 第 ① 步「停 r4」，换轮理由 = **被测树 ≠ 最终 tip**（#5865 遗留 clippy 回归导致 tip 又变）。**当前在跑轮 = r5**（`20261119-168h-v410-r5`，port **3414**，冻结 `e2fcf73c2e` = **当前 develop tip**，二进制 sha256 `f5ec5a67eb9…`；04:19:13Z 起编译、04:21:35Z launcher 起、04:22:35Z 仍在等安静窗口 `streak=1/10`）。⚠️ **〔第 9 次刷新新增〕两处更新**：① **r5 尚未起跑**（2026-11-19T04:30Z 实测：无 `STARTED.json`、无 attempt 目录、**端口 3414 未监听**），只是 launcher 已起、等安静窗口；② **「r5 冻结树 = 当前 develop tip」这个括注已不成立** —— tip 在 2.5 小时内被 **3 笔带 `crates/` 影响的变更**推动（`93ac1d427e` → `c99f1b6d12` → `e2fcf73c2e`(#5868) → `64269eaa08`(#5870)），**r2 → r3 → r4 三轮已连续作废**，而 **r5 的冻结树 `e2fcf73c2e` 已被 `64269eaa08` 甩在后面**（`crates/storage/src/{bplus_tree/mod.rs, file_storage.rs}`，2 文件 +53 / −55）⇒ **起跑前对齐冻结提交的成本此刻为零**（§7.28）。⭐ **本版最重要的一条**：**修复后二进制（#5865）首次实测健康** —— r4 在**更重的宿主负载**下（`strata` 占 24–37 核）跑到 **54.1 min 仍 0 错 0 panic**，而 **r2 的第一个错误出现在第 47.3 分钟** ⇒ **「点查命中 + WAL 修复消除了主路径退化」首次获得直接支持**（⚠️ 样本仅 54 min，**不得外推到 168 h**）。⚠️ **关键新证据**：**270 错中 234 条全部落在 13:21:03Z–13:47:54Z 一个 27 分钟窗口内**（13:47:54Z 至 14:30Z 零新增）；构成 = MySQL 2013 客户端 **15 s 读超时**（延迟字段 15,000–15,599 ms）+ 连接层空消息 `(0, '')`（聚集在 5 个时点、同一 query 序号多线程同时失败）；server.log 的 `Handshake send: Broken pipe` 是**客户端断链后的从属症状**而非起因。**错误与宿主负载尖峰时间上完全重合、两次独立复现**：elapsed 2,400–4,500 段 `host_load1` max **40.73** / busy max **18** ⇒ 234 错，elapsed 0–2,400 与 4,500–7,000 两段 load1 ≤ 21 ⇒ **0 错**；elapsed 7,000 起（14:30:41Z）root 属主 CI 构建出现（探针 root 编译进程 0→**293**、busy **84**、load1 **47.85**）⇒ 错误同一时刻由 234 增至 239，14:49Z 再增至 **270**（12 分钟 +31 错，与该时段 load1 41.23 同步）。⚠️ **但争用来源未逐项定性** —— 两段成分不同（13:13–13:48Z root 编译进程 **0/34** 样本；14:30Z 起 **19/19**）⇒ 不下「已证实是服务端缺陷」或「已证实纯属宿主争用」的结论。⚠️ **〔更正〕（§7.25 / `GA-SOAK-21`，2026-11-19）**：**上述「完全重合」只在前半轮成立，不成立于全轮** —— 12 h 分段实测：**9,000–10,800 s 段仅 load1 10.76–12.13、busy 2–4 却 +348 错（段错误率 3.7275 %）**；**后半程（elapsed ≥ 21,600）load1 仅 1.30–3.62、busy 1–2 仍 +2 错** ⇒ **宿主争用不是错误的唯一驱动**。**新的证据轴 = 服务端状态累积量（RSS）**：同宿主、同二进制、同负载档下，**RSS 414.2 MB（load1 1.70 / busy 2）时累计 0 错**，**RSS 1,018.4 MB（load1 1.30 / busy 1）时累计 715 错且该笔就发生在 load1 仅 1.30 的时刻**；同期 **RSS 12 h 单调增长 ~852 MB（191.8 → 1,044.4 MB）、吞吐从 44.77 q/s 衰减到 7.28 q/s（约 1/6）**，而宿主几乎无争用 ⇒ **存在与宿主争用无关的服务端侧成分**（**机制仍未定性**：RSS 增长 ≠ 泄漏已证实）。⚠️ **〔本版新增〕第三条证据轴 = 单查询延迟分布**（§7.26.2）：p50 **240.9 → 2,240.4 ms**、p90 **626.6 → 5,349.2 ms**、p99 **1,301.0 → 9,670.6 ms**（峰值 **12,358.2 ms** 落在错误最多的 9,000–10,800 桶）、max 14,964.2 ms、**`>= 15 s` 的成功样本 = 0** ⇒ **「服务端状态累积 ⇒ 单查询变慢 ⇒ 越过 15 s 读超时」这条机制被强支持**；⚠️ **「表变大」这一替代解释已被排除**：数据目录整轮恒定 **28,125,316 B（27 MB）**、20 s 内无变化（`sbtest1.json` 11.5 MB + `wal` 16.6 MB）⇒ RSS 增长是**内存内**的（候选落点 `crates/storage/src/file_storage.rs` 的 `tx_undo_log`，**只读参考，未改 crates**）。⚠️ **〔本版新增〕两处口径缺陷**（§7.26.4）：① metrics 的累计 q/e 在**轮次最后 15 分钟**滞后于 driver.log（前 24 桶逐桶完全一致，末桶 ΔQ −60 / ΔE −67 ⇒ 判定取 717，driver.log 的 784 并列登记，**两个口径都远超门槛**）；② **`dmesg` 在本账号不可读**（`dmesg_restrict=1`）⇒ §7.23.3 / §7.24.4 的「`dmesg` 无 OOM/panic/watchdog/thermal」**是空读、不是阴性证据**，该表述撤回（〔更正〕，原文保留不改）。**错误形态全程未变**（按 elapsed 1 h 桶：2013 读超时 30/184/357/48/2，空消息 0/25/56/14/0 ⇒ 无新错误种类、无 panic、无崩溃）。⚠️ **独占在 168 h 尺度上不成立**：252 上 **26 个容器（15 个 gitea act_runner CI 任务）** + root/openclaw cron 每分钟批量拉起脚本，独占探针 streak 于 14:30:41Z 被打断归零；**候选节点 250 同样不是独占机**（load1 15.74/20.87/15.50、root 编译进程 4、8 个 CI 容器、`/` 86 %）⇒ **权威 0 错 168 h 需要一台独占宿主**（属主，见 B1f）——**但本轮证据表明：独占宿主只解决「宿主争用」这一条路径，不能排除服务端侧退化 ⇒ 独占宿主 + 长时跑满 + 监控 RSS/表规模 三者要一起做**。⚠️ **〔本版新增〕「独占」这把尺本身有硬盲区**（§7.26.6）：探针字段 `root_compile_or_test_procs` 实为「**root 属主的** `rustc|cargo|rust-lld|rustdoc`」计数 ⇒ 对**非 root 的编译/测试**与**一切非 Rust 外来负载**（推理服务、Java/Maven、CI 打包、容器任务）**不可见**；r4 起跑后 27 个探针样本该字段**全为 0**（按现行判据「独占成立」），但同期 `cpu_sampler` 实测 **`strata --serve`（uid 1004）独占 24–37 核**、load1 冲到 **31.46** ⇒ **r4 不能被登记为「在独占宿主上跑」**；另 `host_busy_ge50cpu` 用 `ps` 的生命周期均值，对「单进程占 30 核」同样会漏判。⭐ **〔本版新增〕但服务端侧那条路已被削弱**：r4（**修复后二进制** `93ac1d427e`）在**更重的宿主负载**下跑到 **54.1 min 仍 0 错 0 panic**、**点查命中 100 %**、**WAL 恒定 90 B**、**RSS 不再单调累积**、**p99 644.8 ms（无 15 s 量级）** ⇒ **「点查命中 + WAL 修复消除了主路径退化」首次获得直接支持**（⚠️ 样本仅 54 min，**不得外推到 168 h**）⇒ **独占宿主的必要性从「同时排除服务端侧退化」降级为「排除宿主争用」**，但**仍是必要条件**。⚠️ **「独占窗口」机制本身要复核**（§7.24 / `GA-SOAK-20`）：2026-11-18T08:39:48Z 那次**显式独占窗口**（`docker pause` **20 个** CI/runner 容器 + `systemctl stop` 两个 unit，`pause_failed` = **[]**）**并未造出独占** —— 窗口内（08:39–09:47Z）root 编译进程 **67/67 个样本全部非 0**、load1 max **87.28**；「停 unit」一半保住了（两个 unit 至今仍 inactive），「pause 容器」一半被 **act_runner 栈在 09:33:15Z 的整体重建**冲掉；真正干净的 120 个样本（10:23:40–12:23:42Z，root **0/120**、load1 max 2.60）出现在**窗口被拆穿之后** ⇒ **共享宿主上的「独占窗口」是概率事件，不是可工程化取得的条件**。**历史**：诊断轮 `20261116-168h-v410`（attempt-33）累计 644,800 查 / 20,850 错 ⇒ 3.234 % 已出局；attempt-11 于 2026-11-18T05:02:03Z 被**宿主整机重启**打断 ⇒ 终态 elapsed **4,130 s（0.68 %）**、139,568 查 / 0 错、panic 00 ⇒ 如实记 **INCOMPLETE**，归档于 `audit/v4.1.0/runs/20261118-168h-v410/`（§7.21 / `GA-SOAK-16`）；**死因归因已在 §7.22.2 更正**（触发者**仍未定性**）；**r2 轮**于 2026-11-19T00:47:26Z 被**另一条 Agent 线主动停止** ⇒ 终态 elapsed **44,060 s（7.2867 %）**、479,795 查 / **717 错**、panic 00 ⇒ 如实记 **INCOMPLETE**，归档于 `audit/v4.1.0/runs/20261118-168h-v410-r2/`（§7.26 / `GA-SOAK-26`）；**r3 轮**于 2026-11-19T03:11:27Z 被 `sudo kill -INT/-KILL` **显式停止**（日志逐条可查）⇒ elapsed **7,207 s（1.19 %）**、183,668 查 / 7 错、panic 00 ⇒ 同样记 **INCOMPLETE**（§7.26.5）；**r4 轮**于 2026-11-19T04:18:39Z 被**换轮脚本主动停掉**（**不是崩溃**）⇒ elapsed **3,244 s（0.5366 %）**、**343,026 查 / 0 错**、panic 00、**点查命中 100 %**、**WAL 恒定 90 B** ⇒ 同样记 **INCOMPLETE**（§7.27 / `GA-SOAK-27`，归档 `audit/v4.1.0/runs/20261119-168h-v410-r4/`）；⚠️ **r2 → r3 → r4 三轮连续被 tip 变更作废** ⇒ **每一轮 168 h 都必须落在「不会再动的最终 tip」上**才有 GA 效力。⚠️ **〔第 11 次刷新新增〕r5 已起跑并通过起跑复验**：soak 进程 **2026-11-19T04:42:04Z** 起跑、**04:45:04Z** canonical record 落盘（`STARTED.json`：`started_utc=2026-11-19T04:45:04Z`、`planned_end_utc=2026-11-26T04:45:04Z`、168 h、port **3414**），**起跑复验 35,350 查 / 0 错 / 256.2 q/s / 0.000 %**（`verify_secs=180`、稳态窗 138 s、`quiet-window` 起跑、attempt 10、安静等待 541 s）；冻结提交 `64269eaa08`、运行产物 sha256 `4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94`（**该指纹的口径更正见本文件顶部第 10 次刷新块「二进制指纹口径的第三次更正」**）；**被测代码面 == 当前 tip**（`git diff --stat 64269eaa08 f9075a3e74 -- crates scripts tests` **为空**，全量差异 8 文件全在 `audit/`+`docs/`）⇒ §7.28 记的「r5 冻结树已过期」**已消解**。⚠️ **但独占仍未被证明，且本轮查明了一个结构性原因**：**arm B 自己就是编译负载**（arm B = `cargo test --release --test v312_mixed_soak`，cwd = 冻结 checkout；起跑后重编整个 release workspace，`Finished release profile in 1m 50s`；`cpu_sampler` 连续抓到 uid=1000 的 `rustc`，探针 `own_compile_or_test_procs` 0→2）⇒ **该脚本形态下本轮不可能独占宿主**；**「在独占宿主上跑」本轮不能下**（§7.30.4 / `GA-SOAK-30`）。⚠️ **〔第 12 次刷新新增〕r5 熬过了一次真实 tip 推进** —— tip 由 `4225249003` 前移到 `bef1418a63`（PR #5876，**只动 `audit/`+`docs/`**）⇒ `git diff --stat 64269eaa08 bef1418a63 -- crates scripts tests` **仍为空** ⇒ **r5 未被作废** ⇒ **「材料面提交不使轮次结论失效」首次在真实 tip 推进下得到验证**。⚠️ **同一时刻的独占双证据再次证伪独占**（§7.31.2）：04:53:40Z `cpu_sampler` 实测 **`strata --serve`（uid 1004）占 711.7 % CPU**（system_busy 峰值 **963.4 %**、load1 **6.71**），而**同一时刻探针 `root_compile_or_test_procs=0`、`own_compile_or_test_procs=1`（那个 1 还是 soak 自己的 arm B）** ⇒ **探针把真正的外来负载全漏掉、把自己的算进来**。⚠️ **〔第 12 次刷新新增〕r5 的表在变大、而该轴无采样器**：数据目录 **2,534,191 B（04:44Z）→ 4,356,907 B（04:54Z）**、insert **3,468（04:46Z）→ 12,406（04:54Z）**、WAL 在 **90–1,285 B** 间波动（12:54:01 回到 90 B）⇒ r2 当年用「数据目录整轮恒定 27 MB」排除过「表变大」，而 **r5 的表在长且无自动采样**（§7.31.3）。**arm A 截至 elapsed 702 s：124,794 查 / 0 错 / panic 00、点查 100.0000 %（63,451/63,451）、RSS 289.5 MB、FD 46–47、双臂 alive**（§7.31 / `GA-SOAK-31`）。⚠️ **〔第 13 次刷新新增〕r5 已跑 7.22 h 仍 0 错**（`elapsed 26,007 s / 604,800 s = 4.30 %`）：**1,015,641 查 / 0 错 / panic 00 / error_high 0、`driver.log` 非 `Q` 行 0、点查 507,712/507,712 = 100.0000 %、FD 46 恒定、心跳 1,727 拍 max_gap 16.0 s、`server.log` 崩溃标记 0、宿主未重启、`dmesg` 仍不可读**；**RSS 190.3 → 1,290.5 MB（6.8×）**、**吞吐 92.4 → 20.5 q/s（1/4.5）**、**外来负载峰值 `system_busy_pct` 4,506.7 %（45 核：strata 4,002.2 % + basalt 1,780.6 % + Java 829.8 %）、`load1` max 34.43**⇒ **比 r2 的错误窗（load1 max 40.73）更重，且 RSS 已超过 r2 出错时的 1,018.4 MB，仍 0 错** ⇒ 〔更正 §7.33.1〕**降级为 E1–E2 级运行观测**（与「修复有效」**一致**；**非受控实验**、未排除重要混杂 ⇒ **不足以断言任一具体修复独立消除了 r2 的错误机制**）（§7.32.2 / §7.33.1）。⚠️ **但「延迟随状态累积单调劣化」在 r5 上干净复现**：按行序等分 8 桶，**p50 74.6→630.0（8.4×）、p90 172.5→1,386.4（8.0×）、p99 332.5→2,345.8（7.1×）三个分位逐桶单调上升**、**max 最高 10,861.8 ms（15 s 线的 72.4 %，且为单点离群，其后回落 2.5–4.8 s）**、≥5 s 样本共 18 个⇒ **不预判 r5 一定会出错**，但 **max 与 ≥5 s 样本数必须成为一等指标**（§7.32.3）。⚠️ **〔第 13 次刷新新增〕本线自身的宿主污染已认领**：04:56Z–05:24Z 我在 r5 宿主上跑 **O(n²) 冒泡排序 awk**（跑在活动中的 `driver.log` 上、1 核 100 %、同盘 I/O），由并行线按具体 PID 清除并披露；**⇒ 新纪律：不得在 SOAK 宿主上对活动中的产物/日志做分析命令，分析必须先快照再在本地做**（§7.32.4）。〔更新〕**表规模采样器缺口已消解**（并行线 05:25Z 为 r5 补位，11:57Z 实测 sample 391 / bytes 22,253,149）（§7.32.5） |
+| 审批 | **已批准（CONDITIONAL）** —— 属主于 2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8） 在会话中明确答复「全部批准，执行」，答复原文与条件已转录进文末**签署栏**。`transitions.RC_to_GA.requires_human_approval` **已满足**；但 **`current_stage` 仍为 `ALPHA`、不跃迁**（签批解除的是人类约束，物理约束未达成：168 h 未跑满 + 35 项门禁未在最终 tip 重跑）。`manual_only_criteria` 明文「批准记录写进本文件的变更记录，**不能由 Agent 生成**」⇒ 本处只**转录属主的明确答复**，不代拟结论、不代写豁免 |
+
+### 非绿项明细
+
+无（35 项门禁全部 PASS）。**但 168h SOAK 尚未跑满、且起跑后宿主整机脱网 ⇒ 那一项仍未取得**，
+不得记为 PASS，**也不得记为 FAIL**（是环境事件，不是被测系统的判定）。
+
+### 硬检查现状（G1–G6）
+
+| # | 硬检查 | 结论 | 依据 |
+|---|---|---|---|
+| G1 | RC 硬检查（R1–R4） | ✅ MET | run 20261117-ga-gates-011：35/35 项全 PASS；D1 Result: 10/10 (not-run: 0, blockers: 0)；D2 Result: 6/6；D3 Result: PASS=5 | FAIL=0 | DRIFT=0；D4 Result: 5/5 passed (failures: 0, exit 0)；D5 Result: 7/10 |
+| G2 | Full test | ✅ MET | run 20261117-ga-gates-011 seq33 `cargo test --all-features` **PASS**（exit=0，耗时 968.9 s） |
+| G3 | Coverage | ✅ PASS | run 20261117-ga-gates-011 seq1 实测行：`✓ PASS A5 Coverage: 87.69% (min: 85%, measured 8/8 crates)`（8-crate 平均；逐 crate 见 §7.13） |
+| G4 | TPC-H SF=1 22/22 | ⚠️ **NOT MET（已知且已登记）** | SF=1 的 22/22 用例在 `#[ignore]` 下（ADR-008 例外，**已过期且从未签署**）；当前 SSOT（`STAGE_CONFIG`）各阶段要求的是 `check_g1_tpch_baseline.sh`（hermetic SF=0.001，**由独立 SQLite oracle 逐条担保**，实测 `G1 PASS: hash matches (7439ce80…)`）—— 已 MET |
+| G5 | Security audit | ❌ NOT MET | 工作树层面已收敛（凭据 SSOT + `check_no_hardcoded_secrets.sh` 已接 CI）；**历史层面未解决**：旧 Gitea token 仍有效（ENG-8）⇒ 需属主在服务端删除/轮换 |
+| G6 | Documentation | ✅ PASS | 6 份 GA doc_artifacts 齐备（`check_release_artifacts.sh` ⇒ PASS，GA 段 11 份 present）；看板 **205 行**、`kanban_render.py check` 一致、`kanban_merge_policy` verdict OK |
+
+### 阻断项（剩余全部为物理 / 人类约束）
+
+| # | 阻断 | 归属 |
+|---|---|---|
+| B1 | 168h SOAK 的**合格**证据需要跑满 168 h **且 0 错** —— ⚠️ **r2 / r3 / r4 三轮已连续出局**（§7.26 / §7.27）：① **r2**（2026-11-19T00:47:26Z 被另一条 Agent 线主动停止）终态 elapsed **44,060 s（7.2867 %）**、**717 错**、panic 00 ⇒ **0 错不可逆不成立**；② **r3**（03:11:27Z 被 `sudo kill` 显式停止）终态 **7,207 s（1.19 %）**、183,668 查 / 7 错、panic 00；③ **r4**（04:18:39Z 被**换轮脚本**主动停掉，**不是崩溃**）终态 **3,244 s（0.5366 %）**、**343,026 查 / 0 错**、panic 00、**点查命中 100 %**、**WAL 恒定 90 B** ⇒ **0 错成立但 168 h 未跑满**；④ **当前在跑轮 = r5** `20261119-168h-v410-r5`（port **3414**，**已于 2026-11-19T04:42:04Z 起跑、04:45:04Z 起跑复验通过**：35,350 查 / 0 错 / 256.2 q/s / 0.000 %，canonical record `STARTED.json` 已落盘，`planned_end_utc=2026-11-26T04:45:04Z`；冻结 `64269eaa08`、运行产物 sha256 `4f21cff4…`、**被测代码面 == 当前 tip**）⇒ 合格证据的载体是 r5。⚠️ **结构性约束**：**tip 连续三笔变更（#5865/#5867/#5868）已连续作废三轮** ⇒ **每一轮 168 h 都必须落在「不会再动的最终 tip」上**才有 GA 效力（见 B1f / §7.27.3） | 执行（**r5 已在跑**；剩余物理时长 168 h + 需独占宿主（⚠️ **arm B 自带编译负载 ⇒ 须先换 arm B 的编译方式或换尺**）+ 需冻结 tip + 需换独占判据的尺） |
+| B1a | **252（Z6G4）整机脱网 —— 已判定为宿主重启** —— 2026-11-18T05:06:49Z 起不可达，2026-11-18T06:30:52Z 恢复；根因 = **宿主整机重启**（boot_id `1287e51dc1494edaae9fce1c583b72f9`、内核 `7.0.0-42-generic → 7.0.0-43-generic`、`unattended-upgrade（2026-11-18 06:57:18Z 处理 linux-hwe-7.0-headers-7.0.0-38）`），权威轮 attempt-11 因此在 2026-11-18T05:02:03Z 中止 ⇒ **INCOMPLETE**（归档见 §7.21 / `audit/v4.1.0/runs/20261118-168h-v410/`） | 已判定；**重跑由守望器自动执行** |
+| B1b | **「独占窗口的合格错误率阈值」已裁定（2026-11-18T05:47:26Z）：维持 0 errors / 0 panics（不改判据、不抬阈值、不改 35 项门禁分母）** —— 门槛原样保留（debt #3265/#3266），**本次提交零判据变更**。⚠️ **裁定的后果**：实测安静档（`load1<4`）错误率仍为 **0.111 %** ⇒ **「独占窗口」是必要条件、不是充分条件**；权威轮合格判据 = 168 h 内 **0 错 + 0 panic**，带错结束即不是 GA 证据（见 §7.20 / `GA-SOAK-15`）。⚠️ **2026-11-18T14:37Z 的新观测（§7.23 / `GA-SOAK-18`）**：r2 轮的 239 错**全部落在宿主负载尖峰窗内**（两次独立复现：错误形态为客户端 **15 s 读超时** + 连接层空消息，panic 全程 `00`、服务端零崩溃）⇒ 在「独占机上服务端并发语义本身有残余错误」之外，**又确认了第二个独立成因：共享宿主上的他人负载**（252 实测 26 个容器 / 15 个 act_runner CI 任务；独占探针 streak 于 14:30:41Z 被打断）。**这两层须分开记，门槛不变**（0 errors / 0 panics 不放宽、不豁免）；**具体争用资源未逐项定性** ⇒ 不下「已证实是服务端缺陷」或「已证实纯属宿主争用」的结论。⚠️ **第三层（§7.24 / `GA-SOAK-20`）**：连「独占」这个前提本身在共享宿主上**也不是可保证的** —— 2026-11-18T08:39:48Z 的显式独占窗口（pause 20 个 CI 容器、失败 0 个）实测**没有造出独占**（窗口内 root 编译进程 67/67 样本非 0），真正干净的 2 h 是其后的**自然空档** ⇒ **「独占窗口」在共享宿主上是概率事件**（见 B1f）。⚠️ **第四层（§7.25 / `GA-SOAK-21`，2026-11-19）**：**宿主争用不是错误的唯一驱动** —— r2 轮后半程（elapsed ≥ 21,600 s）在 `host_load1` 仅 **1.30–3.62**、`host_busy` 1–2 的近乎无争用时段**仍出现错误**；且在**同宿主、同二进制、同负载档**下，**RSS 414 MB 时累计 0 错、RSS 1,018 MB 时累计 715 错** ⇒ **存在与宿主争用无关的服务端侧成分**（机制仍未定性）。⇒ **门槛不变**，但**「换一台 0 错节点」这一条路现在只覆盖一半成因** ⇒ 合格证据需要**独占宿主 + 长时跑满 + 监控 RSS/表规模/单查询 p99** 三者一起（后两项需 `scripts/soak/` 采集增强，属主批准后另行执行）。⚠️ **第五层（§7.26 / `GA-SOAK-26`，2026-11-19T04:07Z）**：**第三条证据轴已就位且与前两条同向** —— 单查询延迟分布 p50 **240.9 → 2,240.4 ms**、p90 **626.6 → 5,349.2 ms**、p99 **1,301.0 → 9,670.6 ms**（峰值 **12,358.2 ms** 落在错误最多的 9,000–10,800 桶）、max 14,964.2 ms、**`>= 15 s` 的成功样本 = 0** ⇒ **「服务端状态累积 ⇒ 单查询变慢 ⇒ 越过 15 s 读超时」这条机制被强支持**；且 **「表变大」这一替代解释已被排除**（数据目录整轮恒定 **28,125,316 B / 27 MB**、20 s 内无变化）⇒ RSS 增长是**内存内**的。⚠️ **两处口径缺陷一并登记**：① metrics 累计 q/e 在**轮次最后 15 分钟**滞后于 driver.log（前 24 桶逐桶完全一致；判定取 **717**，driver.log 的 **784** 并列登记 ⇒ **两个口径都远超门槛，判定不受影响**）；② **`dmesg` 在本账号不可读**（`dmesg_restrict=1`）⇒ §7.23.3 / §7.24.4 的「`dmesg` 无 OOM/panic/watchdog/thermal」**是空读、不是阴性证据**〔更正〕。**门槛依旧不变**（0 errors / 0 panics），本次提交**零判据变更**。⚠️ **第六层（§7.27 / `GA-SOAK-27`，2026-11-19T04:26Z）**：**修复后二进制首次实测健康** —— r4 轮（`93ac1d427e`，含 #5865 点查命中 + WAL 两处修复）在**更重的宿主负载**下（`strata --serve` 占 24–37 核）跑到 **elapsed 54.1 min 仍 0 错 / 0 panic**、**点查命中 171,641/171,641 = 100 %**、**WAL 恒定 90 B**、**RSS 末段 420–462 MB 波动（无单调累积）**、**延迟 p99 644.8 ms（max 1,985.3 ms，无 15 s 量级）**；而 **r2 的第一个错误出现在第 47.3 分钟** ⇒ **「点查命中 + WAL 修复消除了主路径退化」首次获得直接支持** ⇒ **本层（服务端侧退化）已被削弱**，但 ⚠️ **样本仅 54 min，只比 r2 首个错误时点多 7 分钟 ⇒ 不得外推到 168 h，不预判 r5**；且 r4 的**独占性仍未被证明**（探针盲区）⇒ **门槛依旧维持 0 errors / 0 panics，本提交零判据变更** | 已裁定（属主，2026-11-18T05:47:26Z）；后续「换一台 0 错节点」与「是否给书面例外」**仍是属主决策**（Agent 不代做） |
+| B1c | **宿主侧自动升级已禁用（属主 2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8） 批准后执行，实测复验）** —— `APT::Periodic::Unattended-Upgrade` → `"0"`、`unattended-upgrades.service` → **disabled+inactive**、`apt-daily-upgrade.timer` → **disabled**（`apt-daily.timer` 只下载不安装，保留）；备份 `/etc/apt/20auto-upgrades.bak-20261118T084115Z`、`/etc/apt/apt.conf.d/50unattended-upgrades.bak-20261118T084115Z` 可回滚。⚠️ **定位更正**（§7.22.2）：这是**预防性风险收敛**，**不是**「修复已证实的死因」—— attempt-11 的死因**触发者仍未定性**（内核 42→43 的安装发生在**新 boot 之后**，上个 boot 无有序关机序列、无 panic/OOM，停机 88.7 分钟） | **已完成**；触发者定性待办见 B1e |
+| B1d | **gitea 侧 `refs/heads/` 下 22 个 ref 目录曾为 `root:root`** ⇒ 带斜杠的新分支无法创建 lock（`cannot lock ref … Permission denied`）；本 PR 改用无斜杠分支名 `docs-v410-soak-daily-20261118` 发布（PR #5855），**未动属主服务器**；该批目录属主现已恢复为 `git:git` | 已绕过；**属主可自行确认**（后续 PR 可正常用 `docs/*` 命名） |
+| B2 | 人类架构师签批本报告 | **已取得**（2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8），CONDITIONAL，条件与到期日见签署栏） |
+| B1e | **宿主非正常停止的触发者仍未定性** —— 需一次「宿主是否会在无人工介入时自停」的复现或排除（§7.22.2） | **属主**（Agent 无带外通道，取不到硬件日志）；⚠️ **原到期日「r2 轮起跑前」已过**（r2 已于 2026-11-18T12:36:45Z 起跑），触发者**至今仍未定性**。⚠️ **〔本版新增〕一条反向线索（§7.26.5）**：本机上「SOAK 轮次非正常终止」至少**有一种已被证实的形态 = 他方主动 `sudo kill`**（r3 轮 03:11:27Z 起 4 条 kill 命令，逐条在 journal 里：`-INT` driver → `-INT` server → `-KILL` driver → `-KILL` server）⇒ 这**不是**「宿主自停」，后者仍需带外日志。**并新增一条操作纪律**：任何 Agent 线**不得停掉别人起的 SOAK 轮次**；确需停轮时，须在轮次目录留下与 r2 同规格的 `STOPPED_BY_AGENT.txt`（r3 就**没留** ⇒ 只能靠 journal 反推） |
+| B1f | **权威 0 错 168 h 需要一台独占宿主**（2026-11-18T14:37Z 新增，14:49Z 补机制层）—— 实测 **252 与 250 均为多租户 CI 机**：252 上 **26 个 docker 容器（其中 15 个 gitea act_runner CI 任务）** ＋ root/openclaw cron 每分钟批量拉起 `z6g4-mem-watch.sh` / `hw-monitor.sh` / `ci-docker-cleanup.sh` / `gitea-runner-watchdog.sh` / `sqlrustgo-watch.sh` / `gitea-startup.sh`，**独占探针 streak 于 2026-11-18T14:30:41Z 被打断归零**；候选 250 上 load1 **15.74 / 20.87 / 15.50**、root 编译进程 **4** 个、`strata-host` 占 **53 %** 内存、**8 个 CI 容器**在跑、`/` 已用 **86 %** ⇒ **起跑前 2 h 的独占窗口不覆盖 168 h 窗口**。⚠️ **机制层补充（§7.24 / `GA-SOAK-20`）**：「pause CI 容器」这条路**已被实测证伪为充分条件** —— 2026-11-18T08:39:48Z 的显式独占窗口（`docker pause` **20 个** CI/runner 容器 + `systemctl stop` `gmp-platform-runner.service` / `bustubx-unpause-ci.service`，`pause_failed` = **[]**）**并未造出独占**：窗口内 08:39–09:47Z **root 编译进程 67/67 个样本全部非 0**、load1 max **87.28**；「停 unit」一半保住了（两个 unit 至今仍 inactive），「pause 容器」一半被 **act_runner 栈在 09:33:15Z 的整体重建**冲掉（重建 ≠ unpause）；真正干净的 120 个样本（10:23:40–12:23:42Z，root **0/120**、load1 max 2.60）出现在**窗口被拆穿之后** ⇒ **共享宿主上的「独占窗口」是概率事件，不是可工程化取得的条件**。⇒ 二选一：① **属主提供专用/隔离宿主**，或**在认证窗口内停摆该机 CI 调度**（服务器调度决策，**Agent 不代做**；若仍用 252，则**必须同时压住「派发侧」**——act_runner daemon / runner 池容器的重建入口——**且用探针连续验证**，中断即视为独占失效）；② **属主给书面例外**（批准记录**不能由 Agent 生成**）。**附带建议（仅登记，不在本轮执行）**：把 SOAK 放进**独立 cgroup + CPU/IO 权重**（`CPUWeight` / `IOWeight`）⇒ 只改承载方式、**不改判据**，让宿主争用只降吞吐、**不产生 15 s 读超时** ⇒ 共享宿主也能拿到「0 错」判定；但会改 `scripts/`，需属主批准后另行执行。⚠️ **〔本版新增，优先级最高〕「独占」这把尺要换**：现行探针 `_excl_probe.sh` 的 `root_compile_or_test_procs` 实为「**root 属主的** `rustc|cargo|rust-lld|rustdoc`」计数 ⇒ 对**非 root 编译/测试**与**一切非 Rust 外来负载**（推理服务、Java/Maven、CI 打包、容器任务）**不可见**；r4 起跑后 27 个探针样本该字段**全为 0**，而同期 `cpu_sampler` 实测 **`strata --serve`（uid 1004）独占 24–37 核**、load1 冲到 **31.46** ⇒ **r4 不能登记为「在独占宿主上跑」**。建议按「**任何 uid 的非本轮进程占用 CPU/IO**」重做（`srg-soak-cpu-sampler` 已能按 uid 抓到 `strata`，可直接复用）；**属主批准后**再改 `scripts/soak/`。⚠️ **〔本版新增，另两条属主决策〕**：① **tip 冻结窗口** —— tip 在 11-19 一天内连续三笔变更（#5865 PK/WAL → #5867 drift 基线 → #5868 clippy），**已连续作废 r2 / r3 / r4 三轮**（每轮都是「被测树 ≠ 最终 tip」而非跑出问题）⇒ 认证轮期间需**冻结 `crates/` 合并**，或接受「tip 一变即作废重跑」的成本；⚠️ **〔第 9 次刷新补量化〕2.5 小时内 3 笔带 `crates/` 影响的变更**（`93ac1d427e` → `c99f1b6d12` → `e2fcf73c2e`#5868 → `64269eaa08`#5870），**r5 的冻结树当时也已过期**（§7.28；**已于 04:33:03Z 由 launcher 重冻到 `64269eaa08` 而消解**）⇒ **起跑前必须有一道机械校验**；⚠️ **〔第 11 次刷新修正〕该校验的表述应为「被测**代码面**（`crates/`+`scripts/`+`tests/`）与远端 develop tip 的同一路径差异为空」，而不是「提交 SHA 字面相等」** —— r5 实测：`64269eaa08` → tip `f9075a3e74` 的 `crates/scripts/tests` 差异**为空**，SHA 字面差的 8 个文件全在本线自己的 `audit/`+`docs/`（另见本文件顶部第 10 次刷新块「四」节：同一结论）；② **停轮留档纪律** —— r3 与 r4 两次停轮**都没有**在轮次目录留 `STOPPED_BY_AGENT.txt` ⇒ 归因只能靠脚本原文 + journal 反推 ⇒ **任何 Agent 线停 SOAK 轮次时必须留档**（时刻、停轮者、理由、是否换轮）；⚠️ **〔第 11 次刷新新增，本条升级为最优先〕独占这把尺要换两处，不只一处**：① 原问题（`root_compile_or_test_procs` 只数 root 属主 ⇒ 非 root 编译/非 Rust 外来负载不可见）**依然成立**；② **本轮新发现 arm B 自身就是编译负载** —— arm B = `cargo test --release --test v312_mixed_soak`，**cwd 就是冻结 checkout**，起跑后重编整个 release workspace（`Finished release profile in 1m 50s`），`cpu_sampler` 连续抓到 uid=1000 的 `rustc`（`sqlrustgo_storage` / `sqlrustgo_mysql_server` / `v312_mixed_soak`），探针 `own_compile_or_test_procs` 0→2 ⇒ **同账号发起的真正外来编译同样被计成 "own"（不可见），而 soak 自身的 arm B 编译被计进外来视角** ⇒ **这把尺既漏又混淆**；③ **推论：只要 arm B 继续现场 `cargo test`，本轮就不可能独占宿主**（安静窗口只在**起跑前**测 —— 起跑瞬间 foreign_cpu 61 %，arm B 一开编译 system_busy 峰值 **772.6 %**、iowait 峰值 **130.2 %**）⇒ **「在独占宿主上跑」本轮不能下**（§7.30.4）。⚠️ **〔第 11 次刷新再新增两条结构性风险〕**：④ **共享 checkout** —— 冻结 checkout 被 r3/r4/r5 共用且 reflog 证明被反复 `git checkout` 切换，而 arm B **在该目录内现场编译** ⇒ 若别线在此 checkout 别提交，**双臂会测的不是同一份代码**，且现有仪器测不出来（§7.30.5）；⑤ **数据规模/WAL 采样器仍指向已停的 r3**（`bytes` 恒定 14,950,972、sample 185）⇒ **r5 的「表规模是否变大」这条替代解释轴无自动采样覆盖**（§7.30.6；**〔第 12 次刷新补强〕r5 的表确实在变大** —— 数据目录 2.53 MB（04:44Z）→ **4.36 MB（04:54Z）**、insert 3,468 → **12,406**、WAL 在 **90–1,285 B** 间波动 ⇒ **这条轴现在必须手工盯**，采样器重指向从「建议」升为**紧急**）；⚠️ **〔第 12 次刷新新增，最强的一次独占证伪〕同一时刻的两条证据**：04:53:40Z `cpu_sampler` 实测 **`strata --serve`（uid 1004）占 711.7 % CPU**（system_busy 峰值 **963.4 %**、load1 **6.71**），而**同一时刻探针 `root_compile_or_test_procs=0`、`own_compile_or_test_procs=1`（那 1 个还是 soak 自己的 arm B）** ⇒ **探针把真正的外来负载完全漏掉、把自己的 arm B 算进来** ⇒ **这把尺的「既漏又混淆」在同一秒内同时成立**（§7.31.2）。⚠️ **〔第 13 次刷新新增，第 3 次独立确认〕全轮尺度上更重**：全程 `system_busy_pct` 峰值 **4,506.7 %（45 核）**、`load1` max **34.43**（外来 top：`strata` 4,002.2 %、`basalt` 1,780.6 %、`Java_Temurin` 829.8 %），而**同期探针全程 `root_compile_or_test_procs=0`、`own_compile_or_test_procs=1`（那 1 个是 soak 自己的 arm B）** ⇒ **探针与实际完全脱节**（§7.32.7）。⚠️ **〔第 13 次刷新新增〕r5 已跑 7.22 h 仍 0 错，且在比 r2 更重的争用下、RSS 已超过 r2 出错时的 ⇒ 〔更正 §7.33.1〕**降级为 E1–E2 级运行观测**（与「修复有效」**一致**；**非受控实验**、未排除重要混杂 ⇒ **不足以断言任一具体修复独立消除了 r2 的错误机制**）；**但「延迟随状态累积单调劣化」这条机制在 r5 上干净复现**（E2 级）（p50/p90/p99 逐桶单调上升 7–8 倍、吞吐衰减到 1/4.5），**max 距 15 s 读超时线仅 27.6 %** ⇒ **max 与 ≥5 s 样本数须升为一等指标**（§7.32.2 / §7.32.3） | **属主**（独占宿主 **或** 书面例外；tip 冻结窗口；停轮留档纪律；**外加：换 arm B 的编译方式或换尺（最优先）、arm B 改独立 checkout**；**采样器重指向已由并行线完成（§7.32.5）**；**外加：是否加密巡检 / 提前取证以盯 max**；Agent 五条都不代做） |
+| B3 | GA 承载分支 `release/v4.1.0` + tag + 并入 main | **属主**（按 `RELEASE_LIFECYCLE` §2.5：审批 → tag → 并入 main → 建承载分支，顺序不可越） |
+| B4 | 旧 Gitea token 在服务端失效 | **属主**（仓库侧已收敛） |
+| B5 | 两条已过期且从未签署的 ADR-008 例外 + 61 道死门禁逐个处置 | **属主**（P0-4：逐个门禁处置必须属主决定） |
+
+### 签署（**已签署：CONDITIONAL —— 属主于 2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8） 在会话中明确答复「全部批准，执行」；
+Agent 只**转录**该答复，**不代拟结论、不代写豁免、不代签**（`manual_only_criteria`：批准记录不能由 Agent 生成）**）
+
+```
+GA gate report reviewed and approved by human architect:
+
+  姓名 / 身份：李莹（属主 / v4.1.0 GA 签批人）—— 答复原文：「全部批准，执行」
+  签署时间（UTC）：2026-11-18T08:27:00Z（本地 2026-11-18 16:27 GMT+8）
+  结论（PASS / CONDITIONAL / NOT APPROVED）：CONDITIONAL
+  备注（若为 CONDITIONAL，必须逐条列出条件与到期日）：
+    ① 168h SOAK：r2 轮（run 20261118-168h-v410-r2，冻结 e5c42c7fd0）须跑满 604,800 s
+       且 0 错 + 0 panic；
+       到期日：r2 轮计划结束时刻（起跑 +168 h；起跑日待独占窗口）
+    ② 35 项 GA 门禁须在 e5c42c7fd0（或其后继**最终** tip）上重跑并全绿（GA-REWIND-1）；
+       到期日：2026-11-25（tip 若再变更则顺延至重跑结束）
+    ③ 合格门槛维持 0 errors / 0 panics（不豁免、不放宽）；
+       到期日：常设
+    ④ TPC-H 哈希漂移未定性（GA-GATES-11/12）、61 道死门禁、2 条过期 ADR-008 例外逐个处置；
+       到期日：2026-11-25
+    ⑤ 旧 Gitea token 服务端失效（B4）；
+       到期日：2026-11-25
+    ⑥ 宿主非正常停止的触发者仍未定性（§7.22.2）；
+       到期日：r2 轮起跑前完成一次复现或排除
+    ⑦ release/v4.1.0 承载分支与 v4.1.0 tag 待 ①② 达成后按 RELEASE_LIFECYCLE §2.5 顺序创建；
+       到期日：①② 达成后 7 日内
+  阶段：仍为 ALPHA（**不跃迁** —— 签批解除的是人类约束；物理约束 ①② 未达成）
+```
+
+**签署栏所载条件的落地状态（事实登记，2026-11-19T00:46:07Z；**签署内容本身未被改动**）**：
+
+| 条件 | 落地状态 |
+|---|---|
+| ① 168h SOAK：r2 轮跑满 604,800 s 且 0 错 + 0 panic | ⚠️ **条件①原指名 r2 轮，r2 已于 2026-11-19T00:47:26Z 被另一条 Agent 线主动停止 ⇒ INCOMPLETE**（44,060 s / 7.2867 %、717 错、panic 00；归档 `audit/v4.1.0/runs/20261118-168h-v410-r2/`）；其后 **r3**（03:11:27Z 被 `sudo kill` 停止，7,207 s、7 错）与 **r4**（04:18:39Z 被换轮脚本停止，3,244 s、**0 错**、点查 100 %、WAL 恒定 90 B）**也先后出局** ⇒ **该条件在 r2/r3/r4 三个载体上均已不可达成**（归档 `audit/v4.1.0/runs/20261119-168h-v410-r4/`）。**当前在跑轮 = r5**（起跑待安静窗口，计划结束 2026-11-26；冻结树 = 当前 develop tip）⇒ **该条件未被撤销**，仅事实状态变化；**并提请属主裁定**：条件①由**哪一轮**承接 —— **属主决策，Agent 不代做** |
+| ② 35 项 GA 门禁在最终 tip 重跑 | 未达成（GA-REWIND-1 仍在）；tip 会随材料合并继续变动 |
+| ③ 门槛维持 0 errors / 0 panics | **维持，未放宽、未豁免**（本次提交零判据变更） |
+| ④ TPC-H 哈希漂移 / 61 道死门禁 / 2 条过期 ADR-008 例外 | 未达成（属主） |
+| ⑤ 旧 Gitea token 服务端失效 | 未达成（属主） |
+| ⑥ 宿主非正常停止的触发者定性 | **到期日「r2 轮起跑前」已过**，触发者**仍未定性**（见 B1e）；⚠️ **本版新增一条反向线索**：本机上「SOAK 轮次非正常终止」已确认**另一种形态 = 他方主动 `sudo kill`**（r3 轮 2026-11-19T03:11:27Z 起 4 条 kill 命令、逐条在 journal 里）⇒ **这不能替代「宿主自停」的定性** —— 后者仍需带外日志。⚠️ **〔本版再补〕r4 轮同样是被主动停掉的**（另一条线的换轮脚本 `_soak_r5_start.sh` 第 ① 步，04:18:39Z 执行）⇒ **「轮次非正常终止」目前已确认的两种形态都是人为动作（`sudo kill` / 换轮脚本）**，**没有一种指向宿主自停** ⇒ B1e 的问法应保持：**宿主是否会在无人工介入时自停，仍未定性** |
+| ⑦ `release/v4.1.0` + `v4.1.0` tag | 未创建（按属主 2026-11-18 的明确答复「暂不创建，等条件达成」——**该答复本身即是本条的执行依据**） |
+
+<!-- END 2026-11-17 REFRESH BLOCK -->
 
 ## 0. 判定（2026-10-23）
 
@@ -298,3 +1514,61 @@ NOT MET。**按 AFP §7.1 Type B，在判据未满足时写「已具备 GA 条�
 - `docs/releases/v4.1.0/POST_GA_PLAN.md` —— 发布后计划
 - `docs/releases/v4.1.0/evidence/` —— 81 份一手证据
 - `docs/releases/v4.0.0/GA_GATE_REPORT.md` —— 结构先例；以及它的**撤销**记录
+
+---
+
+## 9. 2026-11-16 追加段：GA 门禁基线自有化重盘与实跑状态
+
+> 依 `docs/governance/DOC_CHECK_CORRECTION_RULES.md`：**上文原始记录一字未删**，
+> 本段只追加实测到的内容（不订正上文任何一句，因为上文没有与实测冲突的表述）。
+
+### 9.1 基线升级裁决（用户「4.0.0 基线是否升级为 4.1.0 自有基线」的答复）
+
+**裁决：升级 —— 判据继承、清单全量重盘。**
+
+- v4.0.0 的 GA 判定已于 2026-09-30 撤销（`docs/releases/v4.0.0/STAGE.yaml` →
+  `ga_promotion_status.verdict = REVOKED — v4.0.0 never legitimately reached GA`），
+  其继承清单**不得**充当 v4.1.0 的合格证据；仍有效的技术判据继续沿用。
+- v4.1.0 的 `STAGE.yaml` 三段 `required_gates_for_beta/_rc/_ga` 此前只是
+  「Deferred / 继承」占位 note，且**全仓无任何消费方**（实测
+  `grep -rn "required_gates_for" scripts/ docs/governance/` 零命中 ⇒ 执行面只读
+  `docs/governance/STAGE_CONFIG.yaml`）⇒ 现已换成**实际清单镜像**：
+  **BETA 19 项 / RC 26 项 / GA 35 项**（31 脚本门禁 + 4 条 cargo 命令）。
+- 168 道门禁逐条归属基线：`docs/releases/v4.1.0/GATE_BASELINE_V410.jsonl`（168 行，
+  与 `gov_probe.metrics.check_n=168` 严格对齐）。
+  **REQUIRED 134 / HISTORICAL 32 / RETIRED 2 / NOT_APPLICABLE 0**；
+  execution_point：STAGE_LIST 34 / CI_DECLARED 51 / **NONE_PENDING 37** /
+  **NONE_BLOCKED_EXTERNAL 12**；`ga_critical` = 31。
+  ⇒ **49 道门禁「应在 v4.1.0 范围内执行但当前无执行点」**；
+  其中含 `check_audit_manifest.sh`、`check_security.sh`、`check_architecture.sh`、
+  `check_test_count_monotonic.sh`、`check_a04_evidence_reproducible.sh`、
+  `check_attack_surface.sh`。
+
+### 9.2 存量红清零（本轮）
+
+| 门禁 | 改前 | 改后 | 根因 |
+|---|---|---|---|
+| `cargo fmt --check --all` | rc=1（10 处 / 6 文件） | **rc=0** | 纯格式漂移（已复验 `git diff -w` 仅 2 处非空白且均为 rustfmt 语义等价改写） |
+| `scripts/gate/check_commit_message.sh` | rc=1（1 条 BAD_SHAPE） | **rc=0** | **类型表不完整**：全历史实测 `evidence` 32 次 / `bench` 51 次 / `spec` 43 次都在用却不在表内 ⇒ L2 把合规提交判成 BAD_SHAPE。按 2026-11-08 补 `audit` 的**同型先例**补入规范表与机器镜像（不放宽形态规则、不动 L1、不动分母） |
+| `scripts/gate/check_architecture_freeze.sh` | rc=0 但**自报 finding**（A7-4 读到 0 个 DriftGate 测试） | **rc=0 且 PASS 5/5** | 两处：①「部分检查未通过」仍 `exit 0`（fail-open）⇒ 三态化；② A7-4 只扫 `crates/*/tests/`，漏掉 src 内 `#[cfg(test)]` ⇒ **测量假阴性**（DriftGate 的负面测试确实存在于 `crates/executor/src/execution/drift_gate.rs`） |
+| `scripts/gate/check_int_debt.sh` | rc=0 但**可被绕过** | rc=0（正常态） | 两处 fail-open：① 状态列未知时无条件回退到「整行扫关键字」；② `FAILED_ITEMS` 收集失败却**从不参与退出码判定** ⇒ 债务行被改名/删除时门禁仍报 PASS |
+
+后两门的 fail-open 闭合有**反向变异证明**：fx06 / fx09 / fx10 三道负向夹具实测
+全部 FIXTURE-PASS（门禁读数分别为 rc=2 / rc=1 / rc=1），两条特征化夹具的期望随之
+由 `green-characterization` 翻转为 `red`。
+
+### 9.3 实跑状态（run `20261116-ga-gates-002`）
+
+- 冻结提交：`7e26c2b7c6840e3bbec804a0bf3bbcc706a646d7`
+- 计划：`plan.jsonl`，35 项，plan sha256 `sha256:6466a0ec156…`
+- 执行器：`scripts/gate/run_gates.py`（三态：exit 0 ⇒ PASS；exit 1 ⇒ FAIL；
+  其它（2/124/信号/脚本缺失/无法启动）⇒ **INCOMPLETE**）
+- **逐项结果以该 run 的 `results.jsonl` 为准**（本段不预写结论）。
+
+### 9.4 结论
+
+**GA 今日未发布。** 四条硬约束（SOAK-168H / HUMAN-SIGNOFF / CARRIER / BASELINE-GAP）
+见 `GA_RELEASE_REPORT.md` §3；阶段治理与签批行见 `STAGE_GOVERNANCE_RC_TO_GA.md`。
+
+> 本段由 `mcode-macmini` 线 2026-11-16 追加。证据：PR #5804 / #5805 / #5806；
+> 归档 run `20261116-ga-gates-002`；看板行 `GA-BASELINE-1`。

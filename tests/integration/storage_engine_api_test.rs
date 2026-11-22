@@ -99,46 +99,34 @@ fn parse_invalid_kill_returns_error() {
 // =============================================================================
 
 #[test]
-fn kill_returns_graceful_not_implemented_result() {
-    // MemoryStorage does not override kill_connection, and there is no live
-    // process registry yet, so `execute_kill` returns a **graceful** result
-    // rather than an error: the SQL path must not fail, and the wire
-    // protocol still emits its OK packet.
-    //
-    // This is the behaviour the executor's own unit tests lock in
-    // (`src/execution_engine_tests.rs::test_executor_kill_v312_35`):
-    // Ok, 0 affected rows, one row whose text names the target. The dead
-    // version of this test asserted `expect_err` — an API shape that was
-    // designed but never implemented — so it had to be corrected to the
-    // behaviour that actually ships.
+fn kill_fails_closed_on_unsupported_backend() {
+    // #5490: `execute_kill` used to discard the backend result and emit an OK
+    // packet with a "not yet implemented" row for every id — a no-op reported
+    // as success. It now propagates the backend outcome. MemoryStorage uses
+    // the StorageEngine defaults (no kill_connection / set_cancel_flag
+    // override, no live process registry), so KILL must surface a real error
+    // instead of pretending to have killed something.
     let mut eng = engine();
-    let res = eng
-        .execute("KILL CONNECTION 99")
-        .expect("KILL must not fail");
-
-    assert_eq!(res.affected_rows, 0);
-    assert_eq!(res.rows.len(), 1, "expected exactly one result row");
-    let cell = format!("{:?}", res.rows[0][0]);
-    assert!(
-        cell.contains("KILL") && cell.contains("99"),
-        "KILL result row must name the target, got: {}",
-        cell
-    );
+    let res = eng.execute("KILL CONNECTION 99");
+    let err = match res {
+        Ok(r) => panic!("KILL on unsupported backend must fail, got rows: {:?}", r.rows),
+        Err(e) => e,
+    };
+    let msg = format!("{err:?}");
+    assert!(msg.contains("not supported"), "unexpected error: {msg}");
 }
 
 #[test]
-fn kill_query_distinguishes_query_from_connection() {
+fn kill_query_fails_closed_on_unsupported_backend() {
+    // #5490: same fail-closed semantics for the KILL QUERY form.
     let mut eng = engine();
-    let res = eng
-        .execute("KILL QUERY 7")
-        .expect("KILL QUERY must not fail");
-    assert_eq!(res.rows.len(), 1);
-    let cell = format!("{:?}", res.rows[0][0]);
-    assert!(
-        cell.contains("QUERY") && cell.contains("7"),
-        "KILL QUERY result row must mark the QUERY form, got: {}",
-        cell
-    );
+    let res = eng.execute("KILL QUERY 7");
+    let err = match res {
+        Ok(r) => panic!("KILL QUERY on unsupported backend must fail, got rows: {:?}", r.rows),
+        Err(e) => e,
+    };
+    let msg = format!("{err:?}");
+    assert!(msg.contains("not supported"), "unexpected error: {msg}");
 }
 
 #[test]

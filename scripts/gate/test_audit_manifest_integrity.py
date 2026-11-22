@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`check_audit_manifest.sh` / `audit_run.py verify` 的**反向夹具**（P0-6）。
+"""`check_audit_manifest.sh` / `audit_run.py verify` 的**反向夹具**（P0-6 / AMAN-1①）。
 
 不是门禁（不叫 check_*，不进 STAGE_CONFIG 阶段清单）。它回答两件事：
 
@@ -9,6 +9,21 @@
 
 夹具自己造一条**合法的** iaia410-manifest/v1 记录（v2 的写入端早已不在仓里），
 所有散列用被测工具自己的函数算，避免夹具与被测实现各写一套口径。
+
+AMAN-1① 的修正（**只改测试侧**）：
+    原夹具**从不建 git 提交**，而 `check_audit_manifest.sh` 枚举的是**已提交的树**
+    （`git ls-tree -r --name-only HEAD -- audit/v4.1.0`，不是工作区目录）⇒
+    沙箱里没有 HEAD ⇒ 门禁在 `git rev-parse --verify HEAD` 失败处早退
+    `PASS: no committed audit runs yet` + `exit 0` ⇒ 门禁那条判据**从未被测过**
+    （M5 臂恒红，其余臂因为走 `audit_run.py verify`、不看 git 而绿）。
+    ⇒ 现在沙箱是**真 git 仓库**，run 目录建好后立即提交。
+
+    另一个坑：**git 不跟踪空目录**。M5 的「无清单 run 目录」必须**含文件**
+    （真实案例形态是「只有 findings/」），否则它压根不在已提交树里，
+    门禁看不到，M5 依然测不到那条判据。
+
+每条臂再配一条**反向变异**（撤掉对应判据 ⇒ 该臂必须**变绿**），
+用来证明这条臂真的压在它声称的那条判据上，而不是碰巧红。
 """
 from __future__ import annotations
 
@@ -36,6 +51,45 @@ def _load_tool(sb_tool: pathlib.Path):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+# ---------------------------------------------------------------------------
+# git 沙箱：门禁枚举的是**已提交树**，所以沙箱必须是真仓库。
+# ---------------------------------------------------------------------------
+
+
+def _git(sb: pathlib.Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", "-C", str(sb), *args], capture_output=True, text=True, check=True
+    )
+
+
+def _commit_all(sb: pathlib.Path, msg: str) -> None:
+    _git(sb, "add", "-A")
+    _git(sb, "commit", "-q", "--allow-empty", "-m", msg)
+
+
+def _init_repo(sb: pathlib.Path) -> None:
+    _git(sb, "init", "-q")
+    _git(sb, "config", "user.email", "fixture@example.invalid")
+    _git(sb, "config", "user.name", "audit-manifest-fixture")
+    _git(sb, "config", "commit.gpgsign", "false")
+    _commit_all(sb, "fixture baseline")
+
+
+def _mutate(path: pathlib.Path, old: str, new: str, *, tag: str) -> None:
+    """在**沙箱副本**上做一次**唯一**文本替换。
+
+    替换点命中数不等于 1 ⇒ 直接失败：命中 0 次说明锚点漂了（改动的判据
+    已经不在那儿，变异臂就变成了「什么都没改」的假承重），命中 2 次说明
+    锚点不唯一（可能改到别的判据上去）。两种情况都必须让整套件红，
+    不能默默放过。
+    """
+    txt = path.read_text(encoding="utf-8")
+    n = txt.count(old)
+    if n != 1:
+        raise AssertionError(f"{tag}: 变异锚点命中 {n} 次（必须恰好 1 次）")
+    path.write_text(txt.replace(old, new), encoding="utf-8")
 
 
 def build_run(sb: pathlib.Path, tool_mod, *, cmd_key: str = "cmd", drop_cmd: bool = False,
@@ -81,92 +135,9 @@ def build_run(sb: pathlib.Path, tool_mod, *, cmd_key: str = "cmd", drop_cmd: boo
                    capture_output=True, text=True)
     if drop_log:
         (cmds_dir / "001.stdout.log").unlink()
-    git_commit(sb)
+    # run 目录必须在**已提交树**里，否则门禁枚举不到它。
+    _commit_all(sb, "fixture run")
     return run_dir
-
-
-LEGACY_NEW_ID = "20261105-lb1-006-mcode"
-LEGACY_OLD_ID = "20261105-lb1-006"
-
-
-def build_legacy_run(
-    sb: pathlib.Path,
-    tool_mod,
-    *,
-    with_canonical: bool = True,
-    canonical_id: str = LEGACY_OLD_ID,
-    run_id: str = LEGACY_NEW_ID,
-    tamper_exit: int | None = None,
-) -> pathlib.Path:
-    """造一条 schema_version=1 的 run：hash 按 OLD id 算，目录/清单用 NEW id。
-
-    这正是 #5698 的真实形态：20261106 撞车处置把目录改名，但 evidence_hash
-    仍是按原名算的。`canonical_run_id` 是修复开关。
-    """
-    import yaml
-
-    run_dir = sb / "audit" / "v4.1.0" / "runs" / run_id
-    logs = run_dir / "logs"
-    logs.mkdir(parents=True)
-    out, err = b"legacy-stdout\n", b""
-    (logs / "001-x.stdout").write_bytes(out)
-    (logs / "001-x.stderr").write_bytes(err)
-    base = {
-        "schema_version": 1,
-        "run_id": run_id,
-        "frozen_commit": "0" * 40,
-        "artifacts": {"cargo_lock_sha256": "0" * 64, "dataset_hashes": {}},
-        "commands": [{"id": "001", "name": "fixture", "cwd": ".", "timeout_sec": 30,
-                      "cmd": "echo legacy-stdout"}],
-        "results": [{
-            "id": "001", "exit_code": 0,
-            "stdout_sha256": _sha(out), "stderr_sha256": _sha(err),
-            "stdout_path": "logs/001-x.stdout", "stderr_path": "logs/001-x.stderr",
-        }],
-    }
-    old = dict(base)
-    old["run_id"] = canonical_id
-    base["evidence_hash"] = tool_mod.evidence_hash_of(old)
-    if with_canonical:
-        base["canonical_run_id"] = canonical_id
-    if tamper_exit is not None:
-        # 只在 hash 计算之后改受保护字段 ⇒ verify 必须发现 hash mismatch。
-        base["results"][0]["exit_code"] = tamper_exit
-    (run_dir / "manifest.yaml").write_text(
-        yaml.safe_dump(base, allow_unicode=True, sort_keys=False), encoding="utf-8"
-    )
-    git_commit(sb)
-    return run_dir
-
-
-def verify_id(sb: pathlib.Path, run_id: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(sb / "audit" / "v4.1.0" / "audit_run.py"),
-         "verify", "--run-id", run_id],
-        cwd=sb, capture_output=True, text=True, timeout=120,
-    )
-
-
-def check_aliases(sb: pathlib.Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(sb / "audit" / "v4.1.0" / "audit_run.py"), "check-aliases"],
-        cwd=sb, capture_output=True, text=True, timeout=120,
-    )
-
-
-def git_commit(sb: pathlib.Path) -> None:
-    """AMAN-1：门禁枚举的是 **已提交的树**（`git ls-tree HEAD`）。
-
-    旧夹具只建目录、不建 git 提交，于是门禁永远看到空树 ⇒ M5 的
-    “无清单目录必须点名”从未真正被判过。这里把沙箱变成真 git 仓库并提交。
-    """
-    if not (sb / ".git").exists():
-        subprocess.run(["git", "init", "-q"], cwd=sb, check=True)
-        subprocess.run(["git", "config", "user.email", "fixture@local"], cwd=sb, check=True)
-        subprocess.run(["git", "config", "user.name", "fixture"], cwd=sb, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=sb, check=True)
-    # --allow-empty：M6 的空仓控制组也要有一个真实 HEAD。
-    subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "fixture"], cwd=sb, check=True)
 
 
 def fresh_sandbox() -> pathlib.Path:
@@ -175,19 +146,8 @@ def fresh_sandbox() -> pathlib.Path:
     shutil.copy(TOOL, sb / "audit" / "v4.1.0" / "audit_run.py")
     (sb / "scripts" / "gate").mkdir(parents=True)
     shutil.copy(GATE, sb / "scripts" / "gate" / "check_audit_manifest.sh")
-    alias_src = TOOL.parent / "canonical_run_aliases.json"
-    if alias_src.is_file():
-        shutil.copy(alias_src, sb / "audit" / "v4.1.0" / "canonical_run_aliases.json")
-    git_commit(sb)
+    _init_repo(sb)
     return sb
-
-
-def write_alias_file(sb: pathlib.Path, entries: list[dict]) -> None:
-    (sb / "audit" / "v4.1.0" / "canonical_run_aliases.json").write_text(
-        json.dumps({"schema_version": 1, "aliases": entries}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    git_commit(sb)
 
 
 def verify(sb: pathlib.Path) -> subprocess.CompletedProcess:
@@ -200,6 +160,14 @@ def verify(sb: pathlib.Path) -> subprocess.CompletedProcess:
 def gate(sb: pathlib.Path) -> subprocess.CompletedProcess:
     return subprocess.run(["bash", "scripts/gate/check_audit_manifest.sh"], cwd=sb,
                           capture_output=True, text=True, timeout=300)
+
+
+def tool_in(sb: pathlib.Path) -> pathlib.Path:
+    return sb / "audit" / "v4.1.0" / "audit_run.py"
+
+
+def gate_in(sb: pathlib.Path) -> pathlib.Path:
+    return sb / "scripts" / "gate" / "check_audit_manifest.sh"
 
 
 def main() -> int:
@@ -218,6 +186,7 @@ def main() -> int:
         shutil.rmtree(sb, ignore_errors=True)
         return sb
 
+    # ---- 正臂：判据承重 + 不误伤 -------------------------------------------
     case("CTRL 健康 v2 记录", expect_red=False)
     case("M1 抹掉命令行(cmd)", expect_red=True, drop_cmd=True)
     case("M2 同义键 command 不误伤", expect_red=False, cmd_key="command")
@@ -227,93 +196,126 @@ def main() -> int:
     # M5 有目录无清单 ⇒ 门禁必须点名（改前：静默跳过）
     sb = fresh_sandbox()
     build_run(sb, mod)
-    nm = sb / "audit" / "v4.1.0" / "iaia410-fixture-nomanifest"
-    nm.mkdir()
-    (nm / "findings.txt").write_text("no manifest here\n", encoding="utf-8")
-    git_commit(sb)
+    # 无清单的 run 目录**必须含文件**：git 不跟踪空目录，不含文件它就不在
+    # 已提交树里 ⇒ 门禁枚举不到 ⇒ M5 依然测不到那条判据。
+    # 真实案例形态是「只有 findings/」。
+    nom = sb / "audit" / "v4.1.0" / "iaia410-fixture-nomanifest"
+    (nom / "findings").mkdir(parents=True)
+    (nom / "findings" / "summary.txt").write_text("fixture findings\n", encoding="utf-8")
+    _commit_all(sb, "fixture no-manifest run")
     g = gate(sb)
     if g.returncode == 0 or "without manifest" not in (g.stderr + g.stdout):
-        fails.append(f"M5 无清单运行目录未被点名: rc={g.returncode}")
+        fails.append(f"M5 无清单运行目录未被点名: rc={g.returncode} "
+                     f"{(g.stdout + g.stderr).strip()[:160]}")
     shutil.rmtree(sb, ignore_errors=True)
 
-    # M6 控制组：整个沙箱里没有运行记录时，门禁不该凭空报错
+    # M6 控制组：沙箱里**有提交**但没有任何 run 目录 ⇒ 门禁不该凭空报错
     sb = fresh_sandbox()
     g = gate(sb)
     if g.returncode != 0:
         fails.append(f"M6 空仓控制组应绿: rc={g.returncode} {(g.stdout + g.stderr).strip()[:120]}")
     shutil.rmtree(sb, ignore_errors=True)
 
-    # M7 #5698：改名后的 legacy run 带 canonical_run_id ⇒ 必须重算一致（绿）
+    # ---- 反向变异臂：撤掉对应判据 ⇒ 该臂必须**变绿** ----------------------
+    # 没有这一组，「正臂是红的」只能证明「跑出了红」，不能证明「红在它声称的
+    # 那条判据上」。每条变异臂都在**沙箱副本**上改，不碰仓库里的真文件。
+
+    # M1R：抹掉命令行（该红）⇒ 再撤掉「缺命令行」判据 ⇒ 必须变绿
     sb = fresh_sandbox()
-    build_legacy_run(sb, mod, with_canonical=True)
-    r = verify_id(sb, LEGACY_NEW_ID)
+    build_run(sb, mod, drop_cmd=True)
+    try:
+        _mutate(
+            tool_in(sb),
+            '        if not (c.get("cmd") or c.get("command")):',
+            '        if False:  # MUTATED: 撤掉「缺命令行」判据',
+            tag="M1R",
+        )
+    except AssertionError as e:
+        fails.append(f"M1R 变异失败: {e}")
+    r = verify(sb)
     if r.returncode != 0:
-        fails.append("M7 canonical_run_id 存在时仍判红: "
-                     f"{ (r.stdout + r.stderr).strip()[:160] }")
+        fails.append(f"M1R 撤掉判据后应变绿，实际 rc={r.returncode} "
+                     f"{(r.stdout + r.stderr).strip()[:160]}")
     shutil.rmtree(sb, ignore_errors=True)
 
-    # M8 #5698 反向臂：同样的改名记录但去掉 canonical_run_id ⇒ 必须判红
-    # （证明 M7 的绿来自修复，而不是判据被放松）
+    # M3R：commands 为空（该红）⇒ 再撤掉「commands 为空」判据 ⇒ 必须变绿
     sb = fresh_sandbox()
-    build_legacy_run(sb, mod, with_canonical=False)
-    r = verify_id(sb, LEGACY_NEW_ID)
-    if r.returncode == 0:
-        fails.append("M8 去掉 canonical_run_id 后仍判绿 ⇒ canonical 判据失去鉴别力")
+    build_run(sb, mod, empty_commands=True)
+    try:
+        _mutate(
+            tool_in(sb),
+            "    if not cmds:",
+            "    if False:  # MUTATED: 撤掉「commands 为空」判据",
+            tag="M3R",
+        )
+    except AssertionError as e:
+        fails.append(f"M3R 变异失败: {e}")
+    r = verify(sb)
+    if r.returncode != 0:
+        fails.append(f"M3R 撤掉判据后应变绿，实际 rc={r.returncode} "
+                     f"{(r.stdout + r.stderr).strip()[:160]}")
     shutil.rmtree(sb, ignore_errors=True)
 
-    # M9：canonical_run_id 未登记（hash 本身能对上）⇒ 必须拒绝，不得成为逃生门
+    # M4R：删掉日志（该红）⇒ 再撤掉「日志缺失」检查与 SHA256SUMS 校验 ⇒ 必须变绿。
+    # 两个变异点缺一不可：只撤「missing log」的话，随后 `sha256_file(p)` 读不到
+    # 文件会直接抛异常（照样非零退出），M4R 就测不出承重。
     sb = fresh_sandbox()
-    build_legacy_run(sb, mod, with_canonical=True, canonical_id="evil-2026")
-    r = verify_id(sb, LEGACY_NEW_ID)
-    if r.returncode == 0:
-        fails.append("M9 未登记的 canonical_run_id 仍判绿 ⇒ 别名可任意指向")
+    build_run(sb, mod, drop_log=True)
+    try:
+        _mutate(
+            tool_in(sb),
+            '    for c in m.get("commands", []):\n'
+            '        cid = str(c["id"])\n'
+            '        for key in ("stdout", "stderr"):',
+            '    for c in []:  # MUTATED: 撤掉「日志缺失/散列不符」检查\n'
+            '        cid = str(c["id"])\n'
+            '        for key in ("stdout", "stderr"):',
+            tag="M4R-日志检查",
+        )
+        _mutate(
+            tool_in(sb),
+            "    for line in sums.read_text().splitlines():",
+            "    for line in []:  # MUTATED: 撤掉 SHA256SUMS 逐行校验",
+            tag="M4R-SHA256SUMS",
+        )
+    except AssertionError as e:
+        fails.append(f"M4R 变异失败: {e}")
+    r = verify(sb)
+    if r.returncode != 0:
+        fails.append(f"M4R 撤掉判据后应变绿，实际 rc={r.returncode} "
+                     f"{(r.stdout + r.stderr).strip()[:160]}")
     shutil.rmtree(sb, ignore_errors=True)
 
-    # M10：两个 run 共用同一个 canonical id ⇒ 登记表本身必须拒绝（身份歧义）
-    sb = fresh_sandbox()
-    build_legacy_run(sb, mod)
-    write_alias_file(sb, [
-        {"current_run_id": LEGACY_NEW_ID, "canonical_run_id": LEGACY_OLD_ID},
-        {"current_run_id": "20261105-lb1-006-other", "canonical_run_id": LEGACY_OLD_ID},
-    ])
-    r = verify_id(sb, LEGACY_NEW_ID)
-    if r.returncode == 0:
-        fails.append("M10 重复 canonical id 仍判绿 ⇒ 身份唯一性未校验")
-    shutil.rmtree(sb, ignore_errors=True)
-
-    # M11：只改当前 run_id、不登记 alias ⇒ hash 必须对不上
-    sb = fresh_sandbox()
-    build_legacy_run(sb, mod, with_canonical=False, run_id="20261105-lb1-006-renamed2")
-    r = verify_id(sb, "20261105-lb1-006-renamed2")
-    if r.returncode == 0:
-        fails.append("M11 改 run_id 未登记 alias 仍判绿")
-    shutil.rmtree(sb, ignore_errors=True)
-
-    # M12：alias 合法，但篡改受 hash 保护的 results.exit_code ⇒ 必须红
-    sb = fresh_sandbox()
-    build_legacy_run(sb, mod, with_canonical=True, tamper_exit=1)
-    r = verify_id(sb, LEGACY_NEW_ID)
-    if r.returncode == 0:
-        fails.append("M12 篡改 results.exit_code 后仍判绿 ⇒ hash 未覆盖受保护字段")
-    shutil.rmtree(sb, ignore_errors=True)
-
-    # M13：alias 文件自身有重复 canonical id（即使没有 run 使用）⇒ check-aliases 必须红
+    # M5R：有目录无清单（该红且被点名）⇒ 再撤掉门禁的「点名」判据 ⇒ 必须变绿
     sb = fresh_sandbox()
     build_run(sb, mod)
-    write_alias_file(sb, [
-        {"current_run_id": "run-a", "canonical_run_id": "same-canonical"},
-        {"current_run_id": "run-b", "canonical_run_id": "same-canonical"},
-    ])
-    r = check_aliases(sb)
-    if r.returncode == 0:
-        fails.append("M13 重复 canonical 的 alias 文件仍判绿 ⇒ check-aliases 不承重")
+    nom = sb / "audit" / "v4.1.0" / "iaia410-fixture-nomanifest"
+    (nom / "findings").mkdir(parents=True)
+    (nom / "findings" / "summary.txt").write_text("fixture findings\n", encoding="utf-8")
+    _commit_all(sb, "fixture no-manifest run")
+    try:
+        _mutate(
+            gate_in(sb),
+            '        echo "FAIL: run dir without manifest: ${id}" >&2\n'
+            "        fail=1",
+            '        echo "MUTATED: run dir without manifest: ${id}" >&2\n'
+            "        fail=0",
+            tag="M5R",
+        )
+    except AssertionError as e:
+        fails.append(f"M5R 变异失败: {e}")
+    g = gate(sb)
+    if g.returncode != 0:
+        fails.append(f"M5R 撤掉判据后应变绿，实际 rc={g.returncode} "
+                     f"{(g.stdout + g.stderr).strip()[:160]}")
     shutil.rmtree(sb, ignore_errors=True)
 
     if fails:
         for f in fails:
             print("FIXTURE FAIL:", f)
         return 1
-    print("test_audit_manifest_integrity: OK (CTRL/M1..M13 all held)")
+    print("test_audit_manifest_integrity: OK "
+          "(CTRL/M1..M6 + 反向变异 M1R/M3R/M4R/M5R all held)")
     return 0
 
 

@@ -189,10 +189,65 @@ develop/v4.1.0       gitcode     gitea252    0        0
 ...
 ```
 
+**The `ahead` / `behind` columns always mean "measured against the server".**
+They are computed between the tips reported by `git ls-remote`, never between
+local remote-tracking refs. A remote that cannot be measured yields a **word**
+in those columns instead of a number:
+
+```
+develop/v4.1.0       gitcode     gitee       UNREACHABLE   UNREACHABLE
+develop/v4.1.0       gitcode     gitee       STALE-DATA    STALE-DATA
+develop/v4.1.0       gitcode     gitee       NO-BRANCH     NO-BRANCH
+```
+
+Per-remote state (printed in the `--- remote state ---` block):
+
+| state | meaning |
+|---|---|
+| `OK` | the server answered, the objects were fetched, the tip is known |
+| `UNREACHABLE` | the server did not answer (`ls-remote` failed) ⇒ the tip is unknown |
+| `STALE-DATA` | the server answered but the object view could not be confirmed (fetch failed) |
+
+Why this matters (issue #5791, board row `DRIFT-STALE-1`): the previous
+implementation read `git rev-parse $remote/$branch` — the **local** tracking
+ref — after a `git fetch --all … | tail -3` whose exit code is *tail's*, so a
+failed fetch was invisible and the report printed that remote's numbers from a
+stale ref. Measured consequence: gitcode had been pushed to the 252 tip
+(proved by `ls-remote`) while the report said `gitcode gitea252 0 357` — the
+opposite of the truth. The sibling `5remotes_sync.sh` had already learned this
+("ask the server, never the cache", Step 4); this script now follows it.
+
 Exit codes:
-- 0: all branches within threshold
-- 1: drift exceeds threshold
-- 2: network error
+- 0: all branches within threshold AND `main` identical across remotes
+- 1: drift exceeds threshold, OR `main` diverged, OR a remote does not carry a
+  branch the others have
+- 2: at least one remote could not be measured (`UNREACHABLE` / `STALE-DATA`) —
+  "cannot tell" is not "in sync", so the run refuses to conclude
+
+### `test_5remotes_drift_check.sh` — regression test for the drift checker's **measurement trustworthiness**
+
+```bash
+bash scripts/sync/test_5remotes_drift_check.sh
+```
+
+Fully offline: the five "remotes" are local bare repos and a stub `git`
+injects fetch failures. Five arms, 15 assertions — a remote that cannot be
+measured must yield a **word**, never a number, and the run must not exit 0:
+
+| arm | construction | expectation |
+|---|---|---|
+| T1 | everything aligned | rc=0, every row is `0 0` |
+| T2 | one remote pointed at an unreachable path | that row says `UNREACHABLE`, rc≠0 |
+| T3 | the server answers but the fetch fails | `STALE-DATA`, no numbers on that remote's rows |
+| T4 | remote already aligned, local ref stale, fetch fails | no reverse drift number, rc≠0 |
+| T5 | fetch succeeds, local ref stale | numbers computed from the **server** tip (`0 0`) |
+
+Reverse mutation: the same fixture against the pre-fix script fails 8
+assertions (T4 prints `gitcode gitea252 0 1` — the opposite of the truth — and
+mis-reports `main` as diverged).
+
+Archived evidence: `audit/v4.1.0/runs/20261116-drift-stale-001/`
+(`evidence_hash=sha256:b42ba26dbf4fb968d701daee90419c34797ddf587df904ed32a03902a836521b`).
 
 ### `verify_merge_ref.sh` — assert a merge actually landed on its base ref
 

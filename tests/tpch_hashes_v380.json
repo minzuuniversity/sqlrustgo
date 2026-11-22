@@ -9,18 +9,63 @@
     "",
     "A legitimate bump is required for any change that alters the row count, column values, or row order (after sort) of any of TPC-H Q1..Q22. The PR description must explain WHY the hash changed (e.g., 'Q5 now returns correct rows after fix for subquery flattening').",
     "",
-    "An accidental bump (no legitimate output change) is detectable: the diff is small and the new hash has no provenance. The G1 shell gate does not auto-bump; it always requires this file to be updated by a human-reviewed PR."
+    "An accidental bump (no legitimate output change) is detectable: the diff is small and the new hash has no provenance. The G1 shell gate does not auto-bump; it always requires this file to be updated by a human-reviewed PR.",
+    "",
+    "ADDITIONAL RULE ADDED 2026-11-17 (see `fixture` + `oracle_verification` below):",
+    "A hash is only comparable on the SAME DATASET. This file now records the dataset",
+    "identity (generator + generator sha256 + seed + row counts + scale factor) the hash",
+    "was computed on. `tpch_hash_test` refuses to compare against a fixture whose",
+    "identity does not match, and discloses `TPCH-NOT-RUN ... reason=fixture_identity_mismatch`",
+    "instead of reporting a false drift. A bump MUST carry the matching `fixture` block.",
+    "",
+    "AND: the hash MUST be verified against the independent SQLite oracle",
+    "(`tests/common/sqlite_oracle.rs`) statement by statement — the engine's own",
+    "capture is engine self-certification, which is exactly the form issue #5688",
+    "exists to eliminate. The `oracle_verification` block records that verification."
   ],
-   "version": "v3.9.0",
-   "captured_at": "2026-06-28",
-   "captured_from": "545814c3d1 (develop/v3.9.0 @ post Phase 0-2 merge)",
-   "tpc_h_hash_sha256": "b8854271b6636811c95e254791793973482036d09b1a96b4c5aefda6e8b715c1",
-   "tpc_h_queries": 22,
-   "tpc_h_test_files": [
-     "tests/tpch_hash_test.rs",
-     "tests/tpch_gate_test.rs"
-   ],
-   "scale_factor": 0.001,
-   "runner": "Mac-mini-6 (Apple Silicon M2, G1 worktree)",
-   "status": "CAPTURED \u2014 TPC-H 22/22 baseline hash via in-process start_sf001() + MySqlTestClient. All 22 queries complete in <1s (SF=0.001). Hash computed from simplified TPC-H queries (same as tpch_full_22_test)."
- }
+  "version": "v4.1.0",
+  "captured_at": "2026-11-17",
+  "captured_from": "6129aa064d (develop/v4.1.0 @ 2026-11-17)",
+  "tpc_h_hash_sha256": "7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3",
+  "tpc_h_queries": 22,
+  "tpc_h_test_files": [
+    "tests/integration/tpch/tpch_hash_test.rs",
+    "tests/tpch_gate_test.rs"
+  ],
+  "scale_factor": 0.001,
+  "fixture": {
+    "generator": "scripts/gate/generate_tpch_sf.py",
+    "generator_sha256": "23bded0c177a72e4611751db10360314bd77aa48af58e571203e10473a6f5806",
+    "seed": 42,
+    "row_counts": {
+      "region": 5,
+      "nation": 25,
+      "supplier": 10,
+      "customer": 150,
+      "part": 200,
+      "partsupp": 800,
+      "orders": 1500,
+      "lineitem": 6018
+    }
+  },
+  "oracle_verification": {
+    "tool": "tests/integration/tpch/tpch_hash_test.rs::v380_candidate_dump",
+    "oracle": "independent SQLite oracle (tests/common/sqlite_oracle.rs)",
+    "statements_total": 22,
+    "oracle_set_equal": 21,
+    "null_representation_only": [
+      "Q17"
+    ],
+    "unresolved": [],
+    "note": "21/22 statements are byte-identical to the independent SQLite oracle on this fixture. The single remaining difference (Q17) is the wire protocol rendering a SQL NULL as the empty string — the dump records it as `null_representation_only` and explicitly does NOT count it as a disagreement (`unresolved` is empty). So the aggregate above is oracle-backed, not engine self-certified.",
+    "issue": "#5688"
+  },
+  "previous": {
+    "tpc_h_hash_sha256": "b8854271b6636811c95e254791793973482036d09b1a96b4c5aefda6e8b715c1",
+    "captured_from": "545814c3d1 (develop/v3.9.0 @ post Phase 0-2 merge)",
+    "captured_at": "2026-06-28",
+    "status": "NOT REPRODUCIBLE — kept on record, not deleted. No generator in this tree's history produces that dataset: the SF=0.001 fixture of `scripts/gate/generate_tpch_sf.py` (added 2026-07-18, after the capture) hashes to 7439ce80…, and the older `scripts/gate/generate_sf001_fixture.py` (present at the capture commit, since removed; its 'SF=0.001' row counts are 1/10 of the standard ones) hashes to d7ec506b…. The engine's TPC-H output has legitimately changed since v3.9.0; the new value is anchored on the independent SQLite oracle rather than on the engine's own capture."
+  },
+  "runner": "macOS arm64 (G1 worktree) + Linux x86_64 (Z6G4 252)",
+  "status": "CAPTURED — TPC-H 22/22 aggregate hash over the hermetic SF=0.001 fixture named in `fixture`, verified statement-by-statement against the independent SQLite oracle (see `oracle_verification`). Hash computed via the in-process wire path (start_sf001_named + MySqlTestClient)."
+}

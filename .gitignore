@@ -165,7 +165,6 @@ scripts/.scratch/
 # V312-48 TPC-H SF=1 correctness bundle output (~1.8GB oracle.sqlite)
 docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
 
-<<<<<<< HEAD
 # v4.0.0 commit hygiene (user rule 2026-09-08):
 #   No *.log, *.tbl, *.json files in commits.
 #   Single file < 100MB (GitHub compatibility).
@@ -317,7 +316,6 @@ jeprof.*.heap
 # v4.0.0 alpha gate worktree scratch
 /rustup_junction/
 /ps_run.ps1
-=======
 
 # Per user rule 2026-09-11: "禁止 log, tbl, json 这类测试输出文件提交"
 # Catch-all for CI test outputs under any docs/releases/*/evidence/ path
@@ -400,7 +398,6 @@ docs/sprint4/
 docs/教学案/
 docs/教学实践/
 docs/教学计划/
->>>>>>> a12e2da9f4 (chore(gitignore): catch test outputs in evidence/ + AI/local dev artifacts)
 
 # Test-required fixtures — re-included despite the cleanup rules above, because
 # tests/ci/ci_test.rs, tests/e2e/monitoring_test.rs and tests/data_loader.rs

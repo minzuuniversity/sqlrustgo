@@ -796,6 +796,14 @@ name = "coverage_notrun_honesty_test"
 path = "tests/integration/gate/coverage_notrun_honesty_test.rs"
 
 [[test]]
+name = "soak_steady_window_test"
+path = "tests/integration/soak/soak_steady_window_test.rs"
+
+[[test]]
+name = "stage_test_binaries_test"
+path = "tests/integration/gate/stage_test_binaries_test.rs"
+
+[[test]]
 name = "gate_dimension_honesty_test"
 path = "tests/integration/gate/gate_dimension_honesty_test.rs"
 
@@ -1806,6 +1814,9 @@ path = "tests/integration/wire/oracle_g16_compat.rs"
 [[test]]
 name = "wire_deprecate_eof_test"
 path = "tests/integration/wire/wire_deprecate_eof_test.rs"
+[[test]]
+name = "falsesuccess_kill_unknown_thread"
+path = "tests/integration/wire/falsesuccess_kill_unknown_thread.rs"
 [[test]]
 name = "chaos_test"
 path = "tests/stress/chaos_test.rs"

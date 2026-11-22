@@ -1,0 +1,14 @@
+=== G2 Gate: INT-2 (#3171) ParallelExecutor main-path ===
+  [1/6] PASS: 6 ParallelExecutor/parallel_executor references in src/execution_engine.rs
+  [2/6] PASS: 6 parallel_degree usages in src/engine_select.rs
+  [3/6] PASS: parallel_executor is pub mod in crates/executor
+  [4/6] PASS: partition API is public
+  [5/6] PASS: 7 tests in tests/integration/sql/parallel_executor_integration_test.rs
+  [6/6] Running cargo clippy on sqlrustgo-executor (5min budget)...
+    Checking reqwest v0.12.28
+    Checking sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/srg-gate-d1/crates/executor)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.68s
+  [6/6] PASS: clippy clean on sqlrustgo-executor
+
+=== G2 Gate: PASS ===
+INT-2 (#3171) ParallelExecutor main-path verified

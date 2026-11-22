@@ -1,0 +1,142 @@
+{
+ "snapshot_dir": "/tmp/_soak_snap",
+ "method": "v3 —— 时间维只信 metrics.csv；类型维来自错误日志；f2 语义由仓内源码定案",
+ "field_semantics_proof": {
+  "source": "scripts/soak/pymysql_driver.py",
+  "evidence": {
+   "format_doc_line": 17,
+   "format_doc_text": "Q,<elapsed_ms>,<thread_id>,<query_kind>,<row_count>",
+   "read_timeout_15_line": 87,
+   "read_timeout_15_text": "connect_timeout=5, read_timeout=15, write_timeout=15,",
+   "connect_err_elapsed0_line": 95,
+   "query_err_elapsedms_line": 118
+  },
+  "conclusion": "f2 = 单次操作耗时(ms)，**不是时间戳** ⇒ 错误日志无墙钟时间轴 ⇒ 「类型 × 时间」交叉不可做（未归因）"
+ },
+ "error_lines_total": 10895,
+ "error_lines_unparsed": 0,
+ "metrics_rows": 4464,
+ "metrics_cumulative_driver_e": 10895,
+ "metrics_cumulative_driver_q": 554453,
+ "totals_reconcile": true,
+ "panic_count_max": 0,
+ "op_distribution": {
+  "query": 10895
+ },
+ "classes": [
+  {
+   "op": "query",
+   "error_text": "0, ''",
+   "count": 7946,
+   "pct_of_errors": 72.933,
+   "duration_ms_min": 0.0,
+   "duration_ms_median": 0.0,
+   "duration_ms_max": 0.4,
+   "duration_ms_zero_fraction": 0.9417,
+   "matches_15s_read_timeout": false,
+   "is_instant_failure": true
+  },
+  {
+   "op": "query",
+   "error_text": "2013, 'Lost connection to MySQL server during query (The read operation timed ou",
+   "count": 2949,
+   "pct_of_errors": 27.067,
+   "duration_ms_min": 15000.4,
+   "duration_ms_median": 15015.4,
+   "duration_ms_max": 16914.3,
+   "duration_ms_zero_fraction": 0.0,
+   "matches_15s_read_timeout": true,
+   "is_instant_failure": false
+  }
+ ],
+ "load_dose_response": [
+  {
+   "load1_range": [
+    0,
+    5
+   ],
+   "samples": 2479,
+   "errors": 37,
+   "queries": 338087,
+   "err_rate_pct": 0.0109
+  },
+  {
+   "load1_range": [
+    5,
+    10
+   ],
+   "samples": 576,
+   "errors": 129,
+   "queries": 77178,
+   "err_rate_pct": 0.1671
+  },
+  {
+   "load1_range": [
+    10,
+    20
+   ],
+   "samples": 371,
+   "errors": 214,
+   "queries": 80543,
+   "err_rate_pct": 0.2657
+  },
+  {
+   "load1_range": [
+    20,
+    50
+   ],
+   "samples": 444,
+   "errors": 1455,
+   "queries": 49323,
+   "err_rate_pct": 2.9499
+  },
+  {
+   "load1_range": [
+    50,
+    null
+   ],
+   "samples": 594,
+   "errors": 9060,
+   "queries": 9227,
+   "err_rate_pct": 98.1901
+  }
+ ],
+ "load_split_measured_quantiles": {
+  "p50_load1": 3.99,
+  "p75_load1": 17.47,
+  "high": {
+   "samples": 1116,
+   "errors": 10599,
+   "queries": 78109,
+   "err_rate_pct": 13.5695,
+   "mean_load1": 64.3
+  },
+  "low": {
+   "samples": 3348,
+   "errors": 296,
+   "queries": 476249,
+   "err_rate_pct": 0.0622,
+   "mean_load1": 4.27
+  },
+  "rate_ratio_high_over_low": 218.16
+ },
+ "correlations": {
+  "pearson_delta_e_vs_load1": 0.8000211767204986,
+  "pearson_delta_e_vs_delta_q": -0.3520650932237326
+ },
+ "attribution": {
+  "attributed_to_load_pressure": {
+   "basis": "metrics.csv 逐采样 Δe/Δq 对 host_load1 的剂量-反应（分档错误率随 load1 单调上升） + Pearson 相关系数",
+   "high_load_error_rate_pct": 13.5695,
+   "low_load_error_rate_pct": 0.0622,
+   "ratio": 218.16
+  },
+  "unattributed_residual": {
+   "what": "错误日志无墙钟时间轴 ⇒ 两类错误（瞬时失败 / 15s 读超时）各自落在哪些负载区间**不可考**；且无法排除「只在高负载下才显现的产品缺陷」这一可能",
+   "errors_without_wallclock": 10895,
+   "pct": 100.0,
+   "not_a_claim": "本行**不**宣称全部错误均由争用造成；AFP：缺失证据保持 incomplete"
+  }
+ },
+ "no_threshold_or_judgement_change": "本次分析不剔除争用窗口、不改验收阈值、不改判据、不重启 SOAK"
+}

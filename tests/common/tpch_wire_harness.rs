@@ -87,7 +87,9 @@ pub fn report_not_run(target: &str, reason: &str, detail: &str) {
     not_run_log::record(&line);
 }
 
-// #5503: shared NOT-RUN file channel.
+// #5503: shared NOT-RUN file channel。duplicate_mod 的窄豁免理由见
+// tests/common/sf1_fixture.rs 同处注释（无状态纯函数模块，多副本行为等价）。
+#[allow(clippy::duplicate_mod)] // 无状态纯函数模块，重复加载无行为差异（CI lint-build #5465 口径）
 #[path = "not_run_log.rs"]
 mod not_run_log;
 

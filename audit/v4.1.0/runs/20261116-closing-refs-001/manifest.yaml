@@ -1,0 +1,97 @@
+schema_version: 1
+run_id: 20261116-closing-refs-001
+source_agent: mcode-macmini
+frozen_commit: 7fc7b48f8fefcfc2b0f01a49de17781d51b4671e
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: closing-refs-mutation-selftest
+  name: 正臂：判据的反向变异自证（7 条变异臂精确翻红 + 6 条文法臂 + C1 非承重回归 + Closes 只标记）⇒ 全部符合预期
+  cmd: python3 audit/v4.1.0/issue_closing_refs.py mutation-selftest
+  cwd: .
+  timeout_sec: 300
+- id: closing-refs-live-pass-set
+  name: 实跑臂：#5498/#5503/#5711/#5712（已修未关）+
+  cmd: python3 audit/v4.1.0/issue_closing_refs.py --issue 5498 --issue 5503 --issue 5711 --issue 5712
+    --issue 5774
+  cwd: .
+  timeout_sec: 600
+- id: closing-refs-live-control-set
+  name: 对照臂：#5520/#5702/#5717/#5598（无合规修复 PR）⇒ 判据须判「禁止」；本臂预期非 0 退出
+  cmd: python3 audit/v4.1.0/issue_closing_refs.py --issue 5520 --issue 5702 --issue 5717 --issue 5598;
+    rc=$?; echo "control-set exit=$rc （预期非 0：判据必须能拦住没修的 issue）"; exit $rc
+  cwd: .
+  timeout_sec: 600
+- id: closing-refs-field-absence-evidence
+  name: 取证臂：Gitea 的 issue payload 里根本没有 closedByPullRequestsReferences 这个键（GitHub 专有字段）⇒ Step 1 的字面判据在本仓无执行点；同一条命令打印
+  cmd: 'python3 -c "import json,urllib.request,subprocess; B=''http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo'';
+    p=subprocess.run([''git'',''credential'',''fill''],input=b''url=http://192.168.0.252:3000\n\n'',capture_output=True);
+    tok=[l.split(''='',1)[1] for l in p.stdout.decode().splitlines() if l.startswith(''password='')][0];
+    get=lambda u: json.loads(urllib.request.urlopen(urllib.request.Request(u,headers={''Authorization'':''token
+    ''+tok}),timeout=40).read().decode()); d=get(B+''/issues/3186''); print(''== 已关闭 issue #3186 的 payload
+    ==''); print(''  closedByPullRequestsReferences in payload:'', ''closedByPullRequestsReferences''
+    in d); print(''  相关字段:'', [k for k in d if any(t in k.lower() for t in (''clos'',''ref'',''pull''))]);
+    print(''  state='', d.get(''state''), ''closed_at='', d.get(''closed_at'')); print(''== #5498 timeline
+    的 pull_ref 条目 ==''); [print(''   PR #%s state=%s'' % ((e.get(''ref_issue'') or {}).get(''number''),
+    (e.get(''ref_issue'') or {}).get(''state''))) for e in get(B+''/issues/5498/timeline?limit=50'') if
+    isinstance(e,dict) and e.get(''type'')==''pull_ref'']"'
+  cwd: .
+  timeout_sec: 300
+- id: closing-refs-gate-denominator
+  name: 分母臂：门禁分母 check_n 必须仍是 168（新工具不叫 check_*、不进 STAGE_CONFIG ⇒ 分母不动）
+  cmd: python3 scripts/gate/gov_probe.py metrics | python3 -c "import sys,json; [print('check_n =', json.loads(l)['check_n'])
+    for l in sys.stdin if l.strip() and 'check_n' in json.loads(l)]"
+  cwd: .
+  timeout_sec: 300
+results:
+- id: closing-refs-mutation-selftest
+  started_at: '2026-11-16T16:16:56Z'
+  finished_at: '2026-11-16T16:16:56Z'
+  exit_code: 0
+  stdout_sha256: dc46a1f90a8053d3eaf9d1063927cde783537bb275c11898014289dcc344c922
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-closing-refs-mutation-selftest.stdout
+  stderr_path: logs/001-closing-refs-mutation-selftest.stderr
+- id: closing-refs-live-pass-set
+  started_at: '2026-11-16T16:16:56Z'
+  finished_at: '2026-11-16T16:16:59Z'
+  exit_code: 0
+  stdout_sha256: 903a959cf4518bf370ac1c254e1db599e2bdf0724d254bf0d34faf25f487ed8c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-closing-refs-live-pass-set.stdout
+  stderr_path: logs/002-closing-refs-live-pass-set.stderr
+- id: closing-refs-live-control-set
+  started_at: '2026-11-16T16:16:59Z'
+  finished_at: '2026-11-16T16:17:02Z'
+  exit_code: 1
+  stdout_sha256: bf90c09a9e3f96315de4405ec7a4cb054854ed4236b7f61ea9bfaa8827adfaa8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-closing-refs-live-control-set.stdout
+  stderr_path: logs/003-closing-refs-live-control-set.stderr
+- id: closing-refs-field-absence-evidence
+  started_at: '2026-11-16T16:17:02Z'
+  finished_at: '2026-11-16T16:17:02Z'
+  exit_code: 0
+  stdout_sha256: 7c5ec67b350d4f78f12bcc570ffdbb349cd1d8ec79dce75dc441cf7194f8615d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-closing-refs-field-absence-evidence.stdout
+  stderr_path: logs/004-closing-refs-field-absence-evidence.stderr
+- id: closing-refs-gate-denominator
+  started_at: '2026-11-16T16:17:02Z'
+  finished_at: '2026-11-16T16:17:02Z'
+  exit_code: 0
+  stdout_sha256: e551fee1aba45775e5f3aea3eb7fda27208256ea9a4fbb10edc038ae6a1aa566
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-closing-refs-gate-denominator.stdout
+  stderr_path: logs/005-closing-refs-gate-denominator.stderr
+evidence_hash: sha256:f3c7490b70cc5c7a3e6826c90bd97ee03792899e834f54bd218ac4e9f5cb56c2
+completed_at: '2026-11-16T16:17:02Z'

@@ -85,7 +85,29 @@ use sqlrustgo::{ExecutionEngine, MemoryStorage};
 #[path = "../common/evidence_output.rs"]
 mod evidence_output;
 
-const DEMO_DURATION_SECS: u64 = 60 * 60; // 1h demo (GA gate)
+const DEMO_DURATION_SECS_DEFAULT: u64 = 60 * 60; // 1h demo (GA gate)
+
+/// Duration of the GA-2 mixed-workload demo, in seconds.
+///
+/// 2026-11-16 (v4.1.0 168h SOAK, #5598/GA 路径): the 168h run needs the SAME
+/// harness to execute **continuously for 168 hours** rather than a fixed 1h.
+/// `SQLRUSTGO_SOAK_DURATION_SECS` follows the env-var convention this file
+/// already uses (`SQLRUSTGO_SOAK_SUMMARY_PATH`), so the **default stays 1h**
+/// and every existing caller is bit-for-bit unaffected.
+///
+/// A malformed / zero / negative value falls back to the default rather than
+/// running a zero-length soak that would look like a completed run.
+fn demo_duration_secs() -> u64 {
+    match std::env::var("SQLRUSTGO_SOAK_DURATION_SECS") {
+        Ok(raw) => raw
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .filter(|secs| *secs > 0)
+            .unwrap_or(DEMO_DURATION_SECS_DEFAULT),
+        Err(_) => DEMO_DURATION_SECS_DEFAULT,
+    }
+}
 const SMOKE_DURATION_SECS: u64 = 60; // 60s smoke (CI)
 const WORKLOAD_FRACTION: [u32; 5] = [30, 25, 15, 10, 20];
 const TARGET_OPS_PER_MIN: u32 = 600; // total across all 5 classes
@@ -393,8 +415,9 @@ fn v312_ga_mixed_workload_demo() {
     eprintln!("║  Classes: W1-OLTP / W2-ReadHeavy / W3-Aggregate / W4-DDL / W5-Rep ║");
     eprintln!("╚══════════════════════════════════════════════════════════════════╝");
 
+    let demo_secs = demo_duration_secs();
     let (metric_arcs, total_attempted, total_succeeded, total_failed) =
-        run_mixed(DEMO_DURATION_SECS, TARGET_OPS_PER_MIN);
+        run_mixed(demo_secs, TARGET_OPS_PER_MIN);
 
     print_summary(&metric_arcs);
 
@@ -436,7 +459,7 @@ fn v312_ga_mixed_workload_demo() {
         &metric_arcs,
         totals,
         totals.verdict(),
-        DEMO_DURATION_SECS,
+        demo_secs,
     );
 
     // GA gate: 每个 class 都必须真的跑到 SQL，失败率必须低于 1%。
@@ -449,6 +472,31 @@ fn v312_ga_mixed_workload_demo() {
         totals.attempted
     );
     let _ = total_succeeded;
+}
+
+/// 2026-11-16 (v4.1.0 168h SOAK): the duration override must be exactly what
+/// the operator asked for, and anything malformed must fall back to the 1h
+/// default rather than running a zero-length "completed" soak.
+#[test]
+fn demo_duration_env_override_behaviour() {
+    // The default (no env) is the historical 1h GA demo.
+    assert_eq!(demo_duration_secs(), DEMO_DURATION_SECS_DEFAULT);
+
+    // A valid override is honoured verbatim.
+    std::env::set_var("SQLRUSTGO_SOAK_DURATION_SECS", "604800");
+    assert_eq!(demo_duration_secs(), 604_800);
+
+    // Malformed / zero / negative values fall back to the default — a
+    // zero-length soak would look like a completed run.
+    for bad in ["", "   ", "abc", "0", "-1"] {
+        std::env::set_var("SQLRUSTGO_SOAK_DURATION_SECS", bad);
+        assert_eq!(
+            demo_duration_secs(),
+            DEMO_DURATION_SECS_DEFAULT,
+            "malformed duration {bad:?} must fall back to the default"
+        );
+    }
+    std::env::remove_var("SQLRUSTGO_SOAK_DURATION_SECS");
 }
 
 /// The current UTC time as ISO-8601, e.g. `2026-10-24T12:00:00Z`.

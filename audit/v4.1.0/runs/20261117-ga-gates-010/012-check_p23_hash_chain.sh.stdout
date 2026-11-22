@@ -1,0 +1,11 @@
+=== G10 Gate (P2-3 #3179 Hash Chain) ===
+  [1/7] ✅ PASS: tests/integration/sql/hash_chain_harness.rs present
+  [2/7] ✅ PASS: tests/integration/sql/hash_chain_test.rs present + registered
+  [3/7] ✅ PASS: 4 categories covered (total: 20 tests, ≥20)
+  [4/7] ✅ PASS: hash_chain_test compiles
+  [5/7] ✅ PASS: hash_chain_test 20 passed (≥20)
+  [6/7] ✅ PASS: crates/gmp (audit.rs) compiles (no regression)
+  [7/7] ✅ PASS: link() output is 16 hex chars (64-bit simplified SHA-256, hex-only)
+
+=== G10 Gate (P2-3): PASS ===
+P2-3 (#3179) Hash Chain: 4 categories + ≥20 tests + tamper detection + SHA-256 hex verified

@@ -79,7 +79,9 @@ jobs:
     timeout-minutes: 180
     container:
       volumes:
-        - sqlrustgo-cargo-cache:/opt/cargo-cache
+        # 同 ci.yml：named volume 被 act 忽略（not a valid volume）⇒ 改宿主 bind
+        # 才能让 /opt/cargo-cache 跨 job 持久（12625 铁证每轮 starting cold）。
+        - /opt/cargo-cache:/opt/cargo-cache
     steps:
       - name: Checkout
         # The canonical checkout body, byte-identical to the one in
