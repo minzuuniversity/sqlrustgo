@@ -59,6 +59,11 @@ impl ExecutionEngine<MemoryStorage> {
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
+            // #5412: how many times the primary-key index was rebuilt
+            // from a full table scan. The regression gate pins this
+            // number: without a change stamp every INSERT rebuilt the
+            // index, so N inserts cost N full scans.
+            pk_cache_builds: AtomicU64::new(0),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -119,6 +124,11 @@ impl ExecutionEngine<MemoryStorage> {
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
+            // #5412: how many times the primary-key index was rebuilt
+            // from a full table scan. The regression gate pins this
+            // number: without a change stamp every INSERT rebuilt the
+            // index, so N inserts cost N full scans.
+            pk_cache_builds: AtomicU64::new(0),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -161,6 +171,11 @@ impl ExecutionEngine<MemoryStorage> {
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
+            // #5412: how many times the primary-key index was rebuilt
+            // from a full table scan. The regression gate pins this
+            // number: without a change stamp every INSERT rebuilt the
+            // index, so N inserts cost N full scans.
+            pk_cache_builds: AtomicU64::new(0),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -214,6 +229,11 @@ impl ExecutionEngine<MemoryStorage> {
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
+            // #5412: how many times the primary-key index was rebuilt
+            // from a full table scan. The regression gate pins this
+            // number: without a change stamp every INSERT rebuilt the
+            // index, so N inserts cost N full scans.
+            pk_cache_builds: AtomicU64::new(0),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -272,6 +292,11 @@ impl ExecutionEngine<MemoryStorage> {
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
+            // #5412: how many times the primary-key index was rebuilt
+            // from a full table scan. The regression gate pins this
+            // number: without a change stamp every INSERT rebuilt the
+            // index, so N inserts cost N full scans.
+            pk_cache_builds: AtomicU64::new(0),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -336,6 +361,11 @@ impl ExecutionEngine<MemoryStorage> {
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
+            // #5412: how many times the primary-key index was rebuilt
+            // from a full table scan. The regression gate pins this
+            // number: without a change stamp every INSERT rebuilt the
+            // index, so N inserts cost N full scans.
+            pk_cache_builds: AtomicU64::new(0),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
@@ -394,6 +424,11 @@ impl ExecutionEngine<MemoryStorage> {
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
+            // #5412: how many times the primary-key index was rebuilt
+            // from a full table scan. The regression gate pins this
+            // number: without a change stamp every INSERT rebuilt the
+            // index, so N inserts cost N full scans.
+            pk_cache_builds: AtomicU64::new(0),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
 
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),

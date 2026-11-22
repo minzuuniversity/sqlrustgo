@@ -1613,6 +1613,34 @@ pub trait StorageEngine: Send + Sync {
         0
     }
 
+    /// V4.1.0 / #5412: record that `table`'s rows changed.
+    ///
+    /// The counterpart of [`table_change_stamp`](Self::table_change_stamp):
+    /// an implementation that answers that question with a changing value
+    /// has to move the same counter from here, or the two answers drift and
+    /// a caller that trusted the stamp would hold a stale cache.
+    ///
+    /// A wrapper layer must forward the bump **downward**, to the layer
+    /// that owns the counter, so that every layer of a stack reports the
+    /// same value. This is what lets a stack answer the question at all:
+    /// the caller asks the outermost layer, and the outermost layer has to
+    /// be able to reach the counter the leaf keeps.
+    ///
+    /// Two rules make the pairing safe, and both are load-bearing:
+    ///
+    /// * **Bump after the mutation, in the same critical section.** If the
+    ///   stamp moved before the rows did, a reader could capture the new
+    ///   stamp together with the old row set and cache that pair — and the
+    ///   pair would look fresh after the rows changed.
+    /// * **Bump only when the visible row set changed.** A bump that does
+    ///   not correspond to a change is merely conservative; a missing bump
+    ///   is a wrong answer.
+    ///
+    /// The default does nothing, which keeps every implementation that has
+    /// not opted in behaving exactly as before — "returning a constant is
+    /// always correct, just unoptimised".
+    fn bump_change_stamp(&self, _table: &str) {}
+
     /// List all tables
     fn list_tables(&self) -> Vec<String>;
 
@@ -2343,16 +2371,11 @@ impl MemoryStorage {
             let keep = !filter(r);
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
-<<<<<<< refs/heads/b410m
                     // #5897: the log entry names the database the DELETE
                     // happened in, so the undo addresses `db`, not whatever
                     // database is active when the log is replayed.
                     log.deleted.push((db.to_string(), table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
-=======
-                    log.deleted.push((table.to_string(), r.clone()));
-                } else if let Some(committed) = self.committed_tables.get_mut(&key) {
->>>>>>> 9abf5e5142335723744c0face28184cdfbb16ef9
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
                     let committed = cow_mut(committed);
@@ -2577,16 +2600,11 @@ impl MemoryStorage {
             let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
-<<<<<<< refs/heads/b410m
                     // #5897: the log entry names the database the DELETE
                     // happened in.
                     log.deleted
                         .push((db.to_string(), table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
-=======
-                    log.deleted.push((table.to_string(), r.clone()));
-                } else if let Some(committed) = self.committed_tables.get_mut(&key) {
->>>>>>> 9abf5e5142335723744c0face28184cdfbb16ef9
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
                     let committed = cow_mut(committed);
@@ -3269,23 +3287,11 @@ impl MemoryStorage {
                     .deleted
                     .push((db.clone(), table.clone(), record.clone()));
             }
-<<<<<<< refs/heads/b410m
             if let Some(records) = self.tables.get_mut(&key) {
                 Arc::make_mut(records).retain(|r| r != record);
             }
             if let Some(records) = self.committed_tables.get_mut(&key) {
                 Arc::make_mut(records).retain(|r| r != record);
-=======
-            // #5507: the log carries bare table names, but the rows live
-            // under the scoped key — a bare lookup missed both views and the
-            // broadcast delete was silently lost.
-            let key = self.tbl(table);
-            if let Some(records) = self.tables.get_mut(&key) {
-                cow_mut(records).retain(|r| r != record);
-            }
-            if let Some(records) = self.committed_tables.get_mut(&key) {
-                cow_mut(records).retain(|r| r != record);
->>>>>>> 9abf5e5142335723744c0face28184cdfbb16ef9
             }
         }
 
@@ -3297,11 +3303,6 @@ impl MemoryStorage {
                     .updated
                     .push((db.clone(), table.clone(), prior.clone(), new.clone()));
             }
-<<<<<<< refs/heads/b410m
-=======
-            // #5507: bare log names vs scoped row keys — see the delete branch.
-            let key = self.tbl(table);
->>>>>>> 9abf5e5142335723744c0face28184cdfbb16ef9
             if let Some(records) = self.tables.get_mut(&key) {
                 // #4948: clone-on-write; the post-commit snapshot may
                 // still share this table's rows.
@@ -3593,7 +3594,6 @@ impl StorageEngine for MemoryStorage {
         // being undone.
         self.tx_scoped_keys.clear();
         if let Some(log) = self.tx_log.take() {
-<<<<<<< refs/heads/b410m
             // #5897: the log records the database each change happened in,
             // so the undo addresses THAT database — `scoped_key(db, table)`
             // — and not the database that happens to be active on the
@@ -3607,16 +3607,6 @@ impl StorageEngine for MemoryStorage {
             for (db, table, row) in log.deleted.into_iter().rev() {
                 let key = scoped_key(&db, &table);
                 Arc::make_mut(self.tables.entry(key).or_default()).push(row);
-=======
-            // #5025: the log stores the caller's bare table names, so each
-            // one is scoped to the database that is active here. Replaying
-            // under a different database than the one that produced the log
-            // would restore rows into the wrong tables; `set_current_db`
-            // refuses an unknown database, which is what keeps this honest.
-            for (table, row) in log.deleted.into_iter().rev() {
-                let key = self.tbl(table);
-                cow_mut(self.tables.entry(key).or_default()).push(row);
->>>>>>> 9abf5e5142335723744c0face28184cdfbb16ef9
             }
             for (db, table, row) in log.inserted.into_iter().rev() {
                 let key = scoped_key(&db, &table);

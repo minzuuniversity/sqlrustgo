@@ -225,6 +225,20 @@ pub struct ExecutionEngine<S: StorageEngine> {
     /// fast path rather than risking a stale hit.
     pub(crate) pk_lookup_cache:
         parking_lot::RwLock<HashMap<String, crate::engine_dml::PkIndexCache>>,
+    /// V4.1.0 / #5412: how many times the primary-key index was rebuilt
+    /// from a full table scan.
+    ///
+    /// This is the metric #5412 is about. Without a change stamp the
+    /// storage layer could not say whether a cached index was still
+    /// valid, so every single-row INSERT rebuilt it — N inserts, N full
+    /// table scans, O(N^2). With the stamp in place the index is built
+    /// once and then reused, so the count stays at 1 however many rows
+    /// are inserted.
+    ///
+    /// Same shape as #5413's `parallel_filter_runs`: a counter that says
+    /// which path really ran, so a test can assert on it instead of on
+    /// a wall-clock number.
+    pub(crate) pk_cache_builds: AtomicU64,
     /// V311-02 F-24: shared AdaptiveHashIndex instance for hot-page caching.
     /// The AHI is shared across all queries and is the production-API
     /// landing point for V311-02 v1. v2 (deferred) will wire AHI into
@@ -494,6 +508,11 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             views: parking_lot::RwLock::new(HashMap::new()),
             clustered_tables: parking_lot::RwLock::new(HashMap::new()),
             pk_lookup_cache: parking_lot::RwLock::new(HashMap::new()),
+            // #5412: how many times the primary-key index was rebuilt
+            // from a full table scan. The regression gate pins this
+            // number: without a change stamp every INSERT rebuilt the
+            // index, so N inserts cost N full scans.
+            pk_cache_builds: AtomicU64::new(0),
             adaptive_hash_index: AdaptiveHashIndex::new().into_shared(),
             instrumentation: Arc::new(sqlrustgo_executor::instrumentation::NoopInstrumentationHook),
             session_vars: Arc::new(RwLock::new(HashMap::new())),
@@ -657,6 +676,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// and `lookup` on subsequent reads to amortize point-lookup cost.
     pub fn adaptive_hash_index(&self) -> Arc<AdaptiveHashIndex> {
         Arc::clone(&self.adaptive_hash_index)
+    }
+
+    /// V4.1.0 / #5412: how many times the primary-key index was rebuilt
+    /// from a full table scan.
+    ///
+    /// The regression gate for #5412 asserts on this number rather than
+    /// on a wall-clock measurement: with the storage layer's change stamp
+    /// in place, N single-row INSERTs rebuild the index once, so the
+    /// count stays at 1 however many rows are inserted. Without it, the
+    /// index was rebuilt on every statement and the count grew with N —
+    /// which is the O(N^2) the issue is about.
+    pub fn pk_cache_build_count(&self) -> u64 {
+        self.pk_cache_builds.load(Ordering::Relaxed)
     }
 
     /// V311-02 F-24: Replace the AHI with a custom-configured instance.

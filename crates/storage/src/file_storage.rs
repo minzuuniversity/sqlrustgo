@@ -254,6 +254,31 @@ pub struct FileStorage {
     /// 裸名下，`d1.idx` 与 `d2.idx` 会互相覆盖：`INDEXED BY idx` 在两个库里
     /// 都只能看到后登记的那条（甚至被误判成"不存在"），跨库隔离无从谈起。
     index_metadata: RwLock<HashMap<(String, String), IndexInfo>>,
+    /// V4.1.0 / #5412: per-table change stamps.
+    ///
+    /// A caller (the engine's primary-key cache) keeps a derived view of a
+    /// table and uses the stamp to notice that the view went stale. The
+    /// engine asks the **outermost** storage layer for the stamp, so every
+    /// layer of a stack has to report the same value — which is why the
+    /// counter lives here, at the leaf, and the layers above only forward
+    /// to it.
+    ///
+    /// It is a separate lock from `write_state` on purpose: the write paths
+    /// hold `write_state` while they mutate the rows, and they have to bump
+    /// the stamp **inside** that critical section. A separate lock lets them
+    /// do that without re-entering the state lock, and it keeps the stamp
+    /// read (`table_change_stamp`) off the row lock's contention path.
+    ///
+    /// Keyed by the **bare** table name, lower-cased. The engine's cache is
+    /// keyed by table name alone too, so a scoped key would never be found
+    /// by the reader; and sharing one slot between two databases that hold
+    /// a table with the same name only costs an extra invalidation. The
+    /// engine records which database a cache entry was built from, so the
+    /// sharing cannot turn into a wrong answer.
+    ///
+    /// `u64::MAX` is the poison value: the counter refuses to wrap, because
+    /// a wrap can make an old value look current again.
+    change_stamps: parking_lot::RwLock<HashMap<String, u64>>,
     /// Threshold to trigger buffer flush
     buffer_threshold: usize,
     /// Enable insert buffering
@@ -585,6 +610,32 @@ enum UndoOp {
 struct TxUndoEntry {
     tx_id: u64,
     op: UndoOp,
+}
+
+/// V4.1.0 / #5412: move `table`'s change stamp.
+///
+/// Takes the map rather than `&FileStorage` on purpose: a write path holds
+/// a mutable borrow of one field of the storage while it mutates the rows,
+/// and this lets it bump the stamp in the same critical section without
+/// asking for the whole struct.
+///
+/// Must be called **after** the mutation it describes. A stamp that moved
+/// before the rows did would let a reader pair the new stamp with the old
+/// row set, and that pair looks fresh once the rows change.
+fn bump_change_stamp_slot(stamps: &parking_lot::RwLock<HashMap<String, u64>>, table: &str) {
+    let mut stamps = stamps.write();
+    let slot = stamps.entry(table.to_lowercase()).or_insert(0);
+    match slot.checked_add(1) {
+        Some(next) => *slot = next,
+        None => {
+            // Poison the slot rather than wrap it. `table_change_stamp`
+            // then reports 0, which the trait contract defines as "this
+            // engine does not track changes" — the caller rebuilds instead
+            // of trusting a cache it can no longer vouch for. A wrap would
+            // be the opposite: it can make an old value look current again.
+            *slot = u64::MAX;
+        }
+    }
 }
 
 impl FileStorage {
@@ -996,6 +1047,7 @@ impl FileStorage {
             }),
             indexes: RwLock::new(HashMap::new()),
             index_metadata: RwLock::new(HashMap::new()),
+            change_stamps: parking_lot::RwLock::new(HashMap::new()),
             // v3.12.0 #4020 follow-up: raise default buffer flush threshold from
             // 100 to 10_000. Each flush goes through insert_direct, which clones
             // the full TableData and serializes it via serde_json::to_string_pretty
@@ -1057,6 +1109,7 @@ impl FileStorage {
             }),
             indexes: RwLock::new(HashMap::new()),
             index_metadata: RwLock::new(HashMap::new()),
+            change_stamps: parking_lot::RwLock::new(HashMap::new()),
             buffer_threshold,
             enable_buffer,
             current_tx_id: std::sync::atomic::AtomicU64::new(0),
@@ -1155,6 +1208,7 @@ impl FileStorage {
             }),
             indexes: RwLock::new(HashMap::new()),
             index_metadata: RwLock::new(HashMap::new()),
+            change_stamps: parking_lot::RwLock::new(HashMap::new()),
             // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
             // 10_000 to amortise O(N) insert_direct over a much larger batch.
             buffer_threshold: 10_000,
@@ -1234,6 +1288,7 @@ impl FileStorage {
             }),
             indexes: RwLock::new(HashMap::new()),
             index_metadata: RwLock::new(HashMap::new()),
+            change_stamps: parking_lot::RwLock::new(HashMap::new()),
             // v3.12.0 #4020 follow-up: see FileStorage::new — default raised to
             // 10_000 to amortise O(N) insert_direct over a much larger batch.
             buffer_threshold: 10_000,
@@ -2083,6 +2138,14 @@ impl FileStorage {
     pub fn get_table_mut(&mut self, name: &str) -> Option<&mut TableData> {
         // #5025: the cache is keyed by scoped name.
         let key = self.tbl(name);
+        // #5412: this hands the caller a `&mut` to the table's rows, so it
+        // is the one write path the container layer cannot intercept.
+        // Bumping here is safe **because** the caller has exclusive access
+        // to the whole storage while it holds the borrow: no reader can
+        // scan the table in between, so nobody can pair the new stamp with
+        // the old row set. The bump is deliberately conservative — it
+        // happens whether or not the caller actually changes a row.
+        bump_change_stamp_slot(&self.change_stamps, name);
         self.write_state.get_mut().tables.get_mut(&key)
     }
 
@@ -2107,6 +2170,12 @@ impl FileStorage {
             // #5025: scope the cache key, but keep the bare name for the
             // on-disk file and `TableData.info.name`.
             s.tables.insert(self.tbl_in(db, &name), table_data.clone());
+            // #5412: the table's whole content was replaced. Creating a
+            // table that did not exist replaces an empty row set with an
+            // empty row set, but creating one that DID exist replaces its
+            // rows with an empty set — so the stamp has to move either
+            // way.
+            bump_change_stamp_slot(&self.change_stamps, &name);
             self.save_table(db, s, &name, &table_data)
         })
     }
@@ -2143,6 +2212,11 @@ impl FileStorage {
             let key = self.tbl_in(db, name);
             s.tables.remove(&key);
             s.insert_buffer.remove(&key);
+            // #5412: the table is gone, so a scan of it now returns
+            // nothing where it used to return rows. The stamp moves, so a
+            // cached primary-key index over the old rows cannot be
+            // mistaken for one over the new (empty) table.
+            bump_change_stamp_slot(&self.change_stamps, name);
             let path = self.table_path_in(db, name);
             if path.exists() {
                 std::fs::remove_file(path)?;
@@ -4923,6 +4997,12 @@ impl FileStorage {
                 if let Some(ref mut data) = s.tables.get_mut(&self.tbl_in(db, table)) {
                     start_row_id = data.rows.len() as u32;
                     data.rows.extend(records.iter().cloned());
+                    // #5412: the rows are in place — move the stamp with
+                    // them, inside the same critical section. Bumping
+                    // before the mutation would let a reader pair the new
+                    // stamp with the old row set, and that pair looks
+                    // fresh once the rows change.
+                    self.bump_change_stamp(table);
                     let cols = data.info.columns.clone();
                     // B2.1 / #4915 (F-09): the original code did
                     // `let table_data = data.clone();` — a full copy of
@@ -5006,6 +5086,9 @@ impl FileStorage {
             });
             entry.push(page_id);
         }
+        // #5412: the rows are in the pool, and `scan_via_bufferpool` reads
+        // them from there — so the table's visible row set grew.
+        self.bump_change_stamp(table);
         Ok(())
     }
 
@@ -5148,6 +5231,14 @@ impl FileStorage {
             Self::with_write_lock(self, |s| -> Option<(usize, usize, Vec<ColumnDefinition>)> {
                 let buffered = s.insert_buffer.entry(self.tbl_in(db, table)).or_default();
                 buffered.extend(records.iter().cloned());
+                // #5412: the rows are in the insert buffer, and `scan`
+                // merges that buffer unconditionally — so the table's
+                // visible row set grew even though `tables.rows` did not.
+                // Bump here, after the rows landed, in the same critical
+                // section.
+                if !records.is_empty() {
+                    self.bump_change_stamp(table);
+                }
 
                 let mut result: Option<(usize, usize, Vec<ColumnDefinition>)> = None;
                 if buffered.len() >= self.buffer_threshold {
@@ -5220,6 +5311,17 @@ impl FileStorage {
                             .is_ok()
                         {
                             result = Some((start_row_id, row_count, cols));
+                        }
+                    } else {
+                        // #5412: the table is not in `tables`, so the rows
+                        // that were just taken out of the insert buffer are
+                        // dropped rather than moved — the visible row set
+                        // shrank. (In the normal branch the rows only
+                        // moved from the buffer to `tables.rows`, and `scan`
+                        // reads both, so the visible set does not change
+                        // and there is nothing to bump.)
+                        if row_count > 0 {
+                            bump_change_stamp_slot(&self.change_stamps, table);
                         }
                     }
                 }
@@ -5473,7 +5575,7 @@ impl FileStorage {
     /// and this removes exactly those. A blanket sweep would also delete
     /// *other* connections' buffered rows — the buffer is instance-level,
     /// not connection-level (#5060) — turning a rollback into data loss.
-    fn undo_transaction_in_place(s: &mut WriteState, rolling_back_tx: u64) {
+    fn undo_transaction_in_place(s: &mut WriteState, rolling_back_tx: u64) -> Vec<String> {
         // #5112: drain this transaction's entries and KEEP everyone
         // else's.
         //
@@ -5497,6 +5599,23 @@ impl FileStorage {
                 true
             }
         });
+        // #5412: the tables this transaction touched are the ones whose
+        // rows are about to change, so they are collected before the
+        // entries are consumed. The caller bumps their stamps.
+        let mut touched: Vec<String> = Vec::new();
+        for entry in &mine {
+            let table = match &entry.op {
+                UndoOp::UpdateRow { table, .. }
+                | UndoOp::DeleteRow { table, .. }
+                | UndoOp::DeleteAll { table, .. }
+                | UndoOp::BufferedInsert { table, .. }
+                | UndoOp::BufferedDelete { table, .. }
+                | UndoOp::BufferedUpdate { table, .. } => table.clone(),
+            };
+            if !touched.contains(&table) {
+                touched.push(table);
+            }
+        }
         // Reverse order: the undo log is a stack, so the last change is
         // undone first.
         for entry in mine.into_iter().rev() {
@@ -5574,6 +5693,7 @@ impl FileStorage {
                 }
             }
         }
+        touched
     }
 
     /// Discard all buffered in-memory inserts without persisting them.
@@ -5584,12 +5704,28 @@ impl FileStorage {
     /// persisted the table to disk — making rolled-back rows visible.
     pub fn discard_all_buffers(&self) {
         Self::with_write_lock(self, |s| {
+            // #5412: the buffer is a second copy of table state, and
+            // `scan` merges it — so dropping it shrinks every table that
+            // had buffered rows. The keys are collected first because
+            // `clear()` throws away exactly the information needed to say
+            // which tables were affected.
+            let tables: Vec<String> = s
+                .insert_buffer
+                .iter()
+                .filter(|(_, rows)| !rows.is_empty())
+                .map(|(key, _)| key.clone())
+                .collect();
             s.insert_buffer.clear();
             // No dirty_tables entry to remove — the buffer was never
             // persisted, so the dirty marker for the rolled-back tx was
             // either not yet added or, if previously added by a prior
             // committed tx in the same session, the next flush() will
             // simply re-save the persisted state.
+            for key in tables {
+                if let Some((_, table)) = crate::engine::split_scoped_key(&key) {
+                    bump_change_stamp_slot(&self.change_stamps, table);
+                }
+            }
         });
     }
 
@@ -5599,10 +5735,24 @@ impl FileStorage {
     /// and replayed rows for the same entries.
     pub fn clear_all_tables(&self) {
         Self::with_write_lock(self, |s| {
+            // #5412: every table lost its rows, so every table's stamp
+            // has to move. The keys are collected first because the
+            // iteration below consumes the map's values.
+            let tables: Vec<String> = s
+                .tables
+                .keys()
+                .chain(s.insert_buffer.keys())
+                .cloned()
+                .collect();
             for data in s.tables.values_mut() {
                 data.rows.clear();
             }
             s.insert_buffer.clear();
+            for key in tables {
+                if let Some((_, table)) = crate::engine::split_scoped_key(&key) {
+                    bump_change_stamp_slot(&self.change_stamps, table);
+                }
+            }
         });
     }
 
@@ -5639,6 +5789,12 @@ impl FileStorage {
         let (count, updated) = {
             let st = self.write_state.get_mut();
             let touched = st.mutate_matching(&key, match_row, apply);
+            // #5412: an UPDATE changes what a scan returns (the row's
+            // values), so the stamp has to move with it. An UPDATE that
+            // matched nothing changed nothing, so it does not bump.
+            if !touched.is_empty() {
+                bump_change_stamp_slot(&self.change_stamps, table);
+            }
             for (pre, post) in &touched {
                 if in_tx {
                     st.tx_undo_log.push(TxUndoEntry {
@@ -5718,6 +5874,12 @@ impl FileStorage {
             // ROLLBACK can restore them. `mutate_matching` returns them
             // alongside the post-images.
             let touched = st.mutate_matching(&key, match_row, apply);
+            // #5412: an UPDATE changes what a scan returns (the row's
+            // values), so the stamp has to move with it. An UPDATE that
+            // matched nothing changed nothing, so it does not bump.
+            if !touched.is_empty() {
+                bump_change_stamp_slot(&self.change_stamps, table);
+            }
             for (pre, post) in &touched {
                 if in_tx {
                     st.tx_undo_log.push(TxUndoEntry {
@@ -5791,6 +5953,10 @@ impl FileStorage {
                 let (removed, positions) = s.remove_matching(&scoped, match_row);
                 if !removed.is_empty() {
                     s.dirty_tables.insert((db.to_string(), table_name.clone()));
+                    // #5412: rows left the table, so its visible row set
+                    // shrank. Bumped in the same critical section as the
+                    // removal, and after it.
+                    bump_change_stamp_slot(&self.change_stamps, table);
                 }
                 (removed, positions)
             });
@@ -5972,6 +6138,13 @@ impl FileStorage {
                         .all(|(i, f)| row.get(i).map(|v| v == f).unwrap_or(false))
                 });
             }
+            // #5412: rows left the table — from `tables.rows`, from the
+            // insert buffer, or both — so its visible row set shrank.
+            // Bumped at the end, after every removal, still inside the
+            // write lock.
+            if !removed_pks.is_empty() {
+                bump_change_stamp_slot(&self.change_stamps, table);
+            }
             Ok(removed_pks)
         })
     }
@@ -6063,6 +6236,12 @@ impl FileStorage {
                 // buffered deletions entirely.
                 if !removed.is_empty() || filters.is_empty() {
                     s.dirty_tables.insert((db.to_string(), table_name.clone()));
+                }
+                // #5412: rows left the table, so its visible row set
+                // shrank. Bumped in the same critical section as the
+                // removal, and after it.
+                if !removed.is_empty() {
+                    bump_change_stamp_slot(&self.change_stamps, table);
                 }
                 Ok((removed, removed_positions))
             })?;
@@ -6301,6 +6480,38 @@ impl FileStorage {
 }
 
 impl StorageEngine for FileStorage {
+    /// V4.1.0 / #5412: the file backend now answers the change-stamp
+    /// question, which is what makes the engine's primary-key cache usable
+    /// here.
+    ///
+    /// Until this override, every implementation except `MemoryStorage`
+    /// inherited the trait default of 0 — "never trust a cached copy" —
+    /// so the engine's INSERT duplicate-key check fell back to a full table
+    /// scan on every statement. N single-row INSERTs into a table with a
+    /// PRIMARY KEY therefore cost O(N^2) on the production (file / WAL)
+    /// backend, while the in-memory backend was already O(N).
+    ///
+    /// The counter lives in [`FileStorage::change_stamps`], a field of its
+    /// own rather than one of `WriteState`, so that a write path can move
+    /// the stamp inside the same critical section in which it moves the
+    /// rows, without re-entering the state lock.
+    fn table_change_stamp(&self, table: &str) -> u64 {
+        match self.change_stamps.read().get(&table.to_lowercase()) {
+            Some(&u64::MAX) | None => 0,
+            Some(&v) => v,
+        }
+    }
+
+    /// V4.1.0 / #5412: record that `table`'s rows changed.
+    ///
+    /// Every write path that changes what a scan would return calls this
+    /// **after** the mutation. A wrapper layer above this one (MVCC, WAL,
+    /// the type-erasing box) forwards its own bumps down here, so a stack
+    /// reports one value no matter which layer is asked.
+    fn bump_change_stamp(&self, table: &str) {
+        bump_change_stamp_slot(&self.change_stamps, table);
+    }
+
     /// PR-A / #5305: override the trait default which returns `synthetic_zero`.
     /// When constructed via `new_with_bufferpool`, return real stats from
     /// the configured pool; otherwise keep the synthetic-zero back-compat
@@ -6565,7 +6776,12 @@ impl StorageEngine for FileStorage {
         // data loss under concurrency (the buffer is instance-level, not
         // connection-level — #5060).
         Self::with_write_lock(self, |s| {
-            Self::undo_transaction_in_place(s, tx_id);
+            let touched = Self::undo_transaction_in_place(s, tx_id);
+            // #5412: the rollback restored (or removed) rows, so the
+            // tables it touched have a different visible row set now.
+            for table in touched {
+                bump_change_stamp_slot(&self.change_stamps, &table);
+            }
         });
         self.current_tx_id
             .store(0, std::sync::atomic::Ordering::Release);
@@ -6616,7 +6832,12 @@ impl StorageEngine for FileStorage {
         // buffered rows — the buffer is instance-level, not
         // connection-level (#5060) — turning a rollback into data loss.
         Self::with_write_lock(self, |s| {
-            Self::undo_transaction_in_place(s, rolling_back_tx);
+            let touched = Self::undo_transaction_in_place(s, rolling_back_tx);
+            // #5412: the rollback restored (or removed) rows, so the
+            // tables it touched have a different visible row set now.
+            for table in touched {
+                bump_change_stamp_slot(&self.change_stamps, &table);
+            }
             self.current_tx_id
                 .store(0, std::sync::atomic::Ordering::Release);
         });
@@ -7305,6 +7526,9 @@ impl StorageEngine for FileStorage {
                 for row in data.rows.iter_mut() {
                     row.push(fill.clone());
                 }
+                // #5412: every row grew a column, so what a scan returns
+                // changed even though the row set did not.
+                bump_change_stamp_slot(&self.change_stamps, table);
                 let table_data = data.clone();
                 self.save_table(&db, s, table, &table_data)?;
             }
@@ -7337,6 +7561,10 @@ impl StorageEngine for FileStorage {
             Some(td) => td,
             None => return Ok(()),
         };
+        // #5412: the rows left the old name, so a scan of the old name now
+        // returns nothing. Bumped here so a cached index over the old
+        // rows cannot outlive them.
+        bump_change_stamp_slot(&self.change_stamps, table);
         table_data.info.name = new_name.to_string();
 
         let db = crate::engine::DEFAULT_DATABASE.to_string();
@@ -7349,6 +7577,9 @@ impl StorageEngine for FileStorage {
             let st = self.write_state.get_mut();
             st.tables.insert(new_table_key, table_data);
         }
+        // #5412: the rows arrived under the new name, so a scan of it now
+        // returns what a scan of the old name used to.
+        bump_change_stamp_slot(&self.change_stamps, new_name);
         {
             // `indexes` is a std::sync::RwLock (poison-aware), not the
             // parking_lot one `write_state` uses, so it is reached
@@ -7630,6 +7861,9 @@ impl StorageEngine for FileStorage {
                 record.remove(col_idx);
             }
         }
+        // #5412: every row lost a column, so what a scan returns changed
+        // even though the row set did not.
+        bump_change_stamp_slot(&self.change_stamps, table);
         Ok(())
     }
 
@@ -8112,6 +8346,16 @@ impl FileStorage {
     /// follow-up proves no caller ever needs it.
     #[allow(dead_code)]
     fn apply_undo(&self, op: UndoOp) -> SqlResult<()> {
+        // #5412: the undo changes the table's rows, so its stamp has to
+        // move with them. The table name is read before `op` is consumed.
+        let table = match &op {
+            UndoOp::UpdateRow { table, .. }
+            | UndoOp::DeleteRow { table, .. }
+            | UndoOp::DeleteAll { table, .. }
+            | UndoOp::BufferedInsert { table, .. }
+            | UndoOp::BufferedDelete { table, .. }
+            | UndoOp::BufferedUpdate { table, .. } => table.clone(),
+        };
         Self::with_write_lock(self, |s| {
             match op {
                 UndoOp::UpdateRow {
@@ -8181,6 +8425,8 @@ impl FileStorage {
                     }
                 }
             }
+            // #5412: bumped after the replay, in the same critical section.
+            bump_change_stamp_slot(&self.change_stamps, &table);
             Ok(())
         })
     }

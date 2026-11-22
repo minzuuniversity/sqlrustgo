@@ -1921,6 +1921,12 @@ path = "tests/operators/three_valued_logic.rs"
 name = "pk_cache_regression_test"
 path = "tests/integration/sql/pk_cache_regression_test.rs"
 
+# V4.1.0 / #5412 — the primary-key cache on the file backend, and the
+# cross-database guard that keeps it from answering about another database.
+[[test]]
+name = "pk_cache_file_backend_test"
+path = "tests/integration/sql/pk_cache_file_backend_test.rs"
+
 [[test]]
 name = "insert_db_isolation_5057"
 path = "tests/insert_db_isolation_5057.rs"
