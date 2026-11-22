@@ -1024,30 +1024,30 @@ fn test_ahi_does_not_promote_for_different_tables() {
 
 #[test]
 fn test_executor_kill_v312_35() {
+    // #5490: KILL must not report success when the backend cannot honour it.
+    // MemoryStorage uses the StorageEngine defaults, whose kill_connection /
+    // set_cancel_flag return "not supported" — the executor now propagates
+    // that instead of returning an OK packet with a "not yet implemented" row.
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
 
-    // Default KILL <id> form (kill_query=false).
     let result = engine.execute_kill(42, false);
-    assert!(result.is_ok(), "KILL must succeed: {:?}", result.err());
-    let result = result.unwrap();
-    assert_eq!(result.affected_rows, 0);
-    assert_eq!(result.rows.len(), 1);
-    let cell = format!("{:?}", result.rows[0][0]);
-    assert!(cell.contains("KILL"), "unexpected row: {}", cell);
-    assert!(cell.contains("42"), "missing connection_id: {}", cell);
-
-    // KILL QUERY <id> form.
-    let result_q = engine.execute_kill(7, true);
-    assert!(result_q.is_ok());
-    let result_q = result_q.unwrap();
-    let cell_q = format!("{:?}", result_q.rows[0][0]);
     assert!(
-        cell_q.contains("QUERY"),
-        "expected QUERY marker: {}",
-        cell_q
+        result.is_err(),
+        "KILL CONNECTION on an unsupported backend must fail, got Ok: {:?}",
+        result.map(|r| format!("{:?}", r.rows))
     );
-    assert!(cell_q.contains("7"), "missing connection_id 7: {}", cell_q);
+    let msg = format!("{:?}", result.err());
+    assert!(msg.contains("not supported"), "unexpected error: {msg}");
+
+    let result_q = engine.execute_kill(7, true);
+    assert!(
+        result_q.is_err(),
+        "KILL QUERY on an unsupported backend must fail, got Ok: {:?}",
+        result_q.map(|r| format!("{:?}", r.rows))
+    );
+    let msg_q = format!("{:?}", result_q.err());
+    assert!(msg_q.contains("not supported"), "unexpected error: {msg_q}");
 }
 
 #[test]
@@ -1070,14 +1070,15 @@ fn test_executor_show_processlist_v312_35() {
 
 #[test]
 fn test_executor_kill_via_sql_v312_35() {
-    // Drive the full dispatch path: KILL 42 → Statement::Kill → execute_kill.
+    // #5490: full dispatch path KILL 42 → Statement::Kill → execute_kill must
+    // now fail on an unsupported backend instead of returning Ok.
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage);
     let result = engine.execute("KILL 42");
     assert!(
-        result.is_ok(),
-        "KILL via SQL must succeed: {:?}",
-        result.err()
+        result.is_err(),
+        "KILL via SQL must fail on unsupported backend: {:?}",
+        result.map(|r| format!("{:?}", r.rows))
     );
 }
 
