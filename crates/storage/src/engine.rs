@@ -2156,16 +2156,6 @@ pub struct MemoryStorage {
     /// The public `SchemaSnapshot` is unaffected; `snapshot_schema` still
     /// materialises owned rows at that boundary.
     committed_tables: HashMap<String, Arc<Vec<Record>>>,
-    /// #5507: bare table name (as recorded in `TxLog`) → the scoped key the
-    /// transaction actually wrote under.
-    ///
-    /// The log stores bare names (#5072) and the replay sites resolve them
-    /// against the current database, but publishing a commit to the
-    /// post-commit view needs the *exact* key the transaction touched: a
-    /// transaction may have written into a named database, which `tbl()`
-    /// (default database) would not resolve. The write paths know the
-    /// scoped key, so they record it here.
-    tx_scoped_keys: HashMap<String, String>,
     /// V312-62 / Issues #4617 & #4621: track `(table, column)` pairs for
     /// every `CREATE INDEX` so `list_indexes` returns them to the planner
     /// and the EXPLAIN planner-shape oracle. The actual B+ tree is still
@@ -2515,12 +2505,6 @@ impl MemoryStorage {
         } else {
             records
         };
-        if self.tx_log.is_some() {
-            // #5507: remember the scoped key this transaction writes under,
-            // so the commit can publish its delta to the right table.
-            self.tx_scoped_keys
-                .insert(table.to_string(), table_key.clone());
-        }
         if let Some(log) = self.tx_log.as_mut() {
             for row in &padded {
                 // #5072: `TxLog` holds BARE table names — every replay site
@@ -2556,10 +2540,6 @@ impl MemoryStorage {
         let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        if self.tx_log.is_some() {
-            // #5507: remember the scoped key (see `insert_in_key`).
-            self.tx_scoped_keys.insert(table.to_string(), key.clone());
-        }
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
         // only if the post-commit snapshot still holds this table's rows.
         let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
@@ -2624,10 +2604,6 @@ impl MemoryStorage {
         let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        if self.tx_log.is_some() {
-            // #5507: remember the scoped key (see `insert_in_key`).
-            self.tx_scoped_keys.insert(table.to_string(), key.clone());
-        }
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
         // only if the post-commit snapshot still holds this table's rows.
         let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
@@ -2689,10 +2665,6 @@ impl MemoryStorage {
         let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        if self.tx_log.is_some() {
-            // #5507: remember the scoped key (see `insert_in_key`).
-            self.tx_scoped_keys.insert(table.to_string(), key.clone());
-        }
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
         // only if the post-commit snapshot still holds this table's rows.
         let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
@@ -2797,10 +2769,6 @@ impl MemoryStorage {
         let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
-        if self.tx_log.is_some() {
-            // #5507: remember the scoped key (see `insert_in_key`).
-            self.tx_scoped_keys.insert(table.to_string(), key.clone());
-        }
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
         // only if the post-commit snapshot still holds this table's rows.
         let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
@@ -2883,7 +2851,6 @@ impl MemoryStorage {
             tx_log: None,
             last_committed_log: parking_lot::Mutex::new(None),
             committed_tables: HashMap::new(),
-            tx_scoped_keys: HashMap::new(),
             indexes: HashSet::new(),
             index_infos: HashMap::new(),
             auto_inc_counters: std::sync::Arc::new(std::sync::Mutex::new(
@@ -3172,18 +3139,22 @@ impl MemoryStorage {
     /// what the transaction touched and leaves the live and the committed
     /// view on separate `Arc`s, so the write path never copies.
     fn publish_commit_delta(&mut self, log: &TxLog) {
-        for (table, record) in &log.inserted {
-            let key = self.resolve_log_key(table);
+        // #5897: the log names the database the change happened in, so the
+        // delta is published under THAT database — the same key the write
+        // path used (`scoped_key(db, table)`). Publishing under the default
+        // database would put the rows in a table nobody reads.
+        for (db, table, record) in &log.inserted {
+            let key = scoped_key(db, table);
             cow_mut(self.committed_tables.entry(key).or_default()).push(record.clone());
         }
-        for (table, record) in &log.deleted {
-            let key = self.resolve_log_key(table);
+        for (db, table, record) in &log.deleted {
+            let key = scoped_key(db, table);
             if let Some(records) = self.committed_tables.get_mut(&key) {
                 cow_mut(records).retain(|r| r != record);
             }
         }
-        for (table, prior, new) in &log.updated {
-            let key = self.resolve_log_key(table);
+        for (db, table, prior, new) in &log.updated {
+            let key = scoped_key(db, table);
             if let Some(records) = self.committed_tables.get_mut(&key) {
                 let records = cow_mut(records);
                 for record in records.iter_mut() {
@@ -3193,19 +3164,6 @@ impl MemoryStorage {
                     }
                 }
             }
-        }
-    }
-
-    /// #5507: resolve a bare table name from the transaction log to the
-    /// scoped key the transaction actually wrote under.
-    ///
-    /// The write paths record the exact key in `tx_scoped_keys`; the
-    /// fallback is `tbl()` (default database), which is what the replay
-    /// sites use.
-    fn resolve_log_key(&self, bare: &str) -> String {
-        match self.tx_scoped_keys.get(bare) {
-            Some(key) => key.clone(),
-            None => self.tbl(bare),
         }
     }
 
@@ -3237,7 +3195,6 @@ impl MemoryStorage {
         if let Some(ref l) = log {
             self.publish_commit_delta(l);
         }
-        self.tx_scoped_keys.clear();
         if let Some(ref l) = log {
             *self.last_committed_log.lock() = Some(l.clone());
         }
@@ -3582,7 +3539,6 @@ impl StorageEngine for MemoryStorage {
         if let Some(ref l) = log {
             self.publish_commit_delta(l);
         }
-        self.tx_scoped_keys.clear();
         if let Some(ref l) = log {
             *self.last_committed_log.lock() = Some(l.clone());
         }
@@ -3590,9 +3546,6 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
-        // #5507: the scoped-key map belongs to the transaction that is
-        // being undone.
-        self.tx_scoped_keys.clear();
         if let Some(log) = self.tx_log.take() {
             // #5897: the log records the database each change happened in,
             // so the undo addresses THAT database — `scoped_key(db, table)`
