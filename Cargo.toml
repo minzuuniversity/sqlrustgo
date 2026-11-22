@@ -1921,6 +1921,12 @@ path = "tests/operators/three_valued_logic.rs"
 name = "pk_cache_regression_test"
 path = "tests/integration/sql/pk_cache_regression_test.rs"
 
+# V4.1.0 / #5891 — a ROLLBACK must undo the writes of the database they
+# happened in, and must not reach into another database.
+[[test]]
+name = "undo_db_scope_test"
+path = "tests/integration/sql/undo_db_scope_test.rs"
+
 [[test]]
 name = "insert_db_isolation_5057"
 path = "tests/insert_db_isolation_5057.rs"
