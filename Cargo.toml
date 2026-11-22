@@ -1921,11 +1921,12 @@ path = "tests/operators/three_valued_logic.rs"
 name = "pk_cache_regression_test"
 path = "tests/integration/sql/pk_cache_regression_test.rs"
 
-# V4.1.0 / #5891 — a ROLLBACK must undo the writes of the database they
-# happened in, and must not reach into another database.
+# The merge-state gate for the three database-scope undo fixes
+# (#5891 storage layer / #5896 engine layer / #5897 MemoryStorage). It
+# asserts the behaviour of the **merged** tree, so it merges last.
 [[test]]
-name = "undo_db_scope_test"
-path = "tests/integration/sql/undo_db_scope_test.rs"
+name = "undo_db_scope_merge3"
+path = "tests/integration/sql/undo_db_scope_merge3.rs"
 
 [[test]]
 name = "insert_db_isolation_5057"
@@ -2066,6 +2067,9 @@ path = "tests/integration/gate/test_target_manifest_honesty_test.rs"
 [[test]]
 name = "not_run_log_visibility_5503"
 path = "tests/integration/sql/not_run_log_visibility_5503.rs"
+[[test]]
+name = "undo_db_scope_test"
+path = "tests/integration/sql/undo_db_scope_test.rs"
 
 [[test]]
 name = "ca01_file_undo"
@@ -2078,9 +2082,12 @@ path = "tests/integration/test_factory/ca01_snapshot_reopen.rs"
 [[test]]
 name = "ca01_commit_frontier"
 path = "tests/integration/test_factory/ca01_commit_frontier.rs"
+
 [[test]]
 name = "ca01_backend_caps"
 path = "tests/integration/test_factory/ca01_backend_caps.rs"
+
 [[test]]
 name = "ca01_visibility_oracle"
 path = "tests/integration/test_factory/ca01_visibility_oracle.rs"
+
