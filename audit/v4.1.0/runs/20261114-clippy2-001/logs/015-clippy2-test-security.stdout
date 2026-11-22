@@ -1,0 +1,235 @@
+
+running 153 tests
+test alert::tests::test_alert_config_default ... ok
+test alert::tests::test_alert_manager_get_stats ... ok
+test alert::tests::test_alert_manager_send_alert_disabled ... ok
+test alert::tests::test_alert_manager_new ... ok
+test alert::tests::test_alert_manager_acknowledge_alert_not_found ... ok
+test alert::tests::test_alert_error_queue_full ... ok
+test alert::tests::test_alert_error_channel_error ... ok
+test alert::tests::test_alert_error_send_failed ... ok
+test alert::tests::test_alert_manager_get_alerts_mut ... ok
+test alert::tests::test_alert_manager_update_config ... ok
+test alert::tests::test_alert_stats_default ... ok
+test alert::tests::test_create_shared_alert_manager ... ok
+test alert_tests::tests::test_acknowledge_nonexistent_alert ... ok
+test alert_tests::tests::test_alert_acknowledge ... ok
+test alert_tests::tests::test_alert_config_default ... ok
+test alert::tests::test_alert_manager_clear_alerts ... ok
+test alert_tests::tests::test_acknowledge_alert ... ok
+test alert_tests::tests::test_alert_creation ... ok
+test alert_tests::tests::test_alert_manager_disabled ... ok
+test alert_tests::tests::test_alert_manager_send_alert ... ok
+test alert_tests::tests::test_alert_manager_severity_filter ... ok
+test alert_tests::tests::test_alert_with_metadata ... ok
+test alert_tests::tests::test_alert_manager_stats ... ok
+test alert_tests::tests::test_clear_alerts ... ok
+test alert_tests::tests::test_queue_full ... ok
+test alert_tests::tests::test_send_specific_alert_types ... ok
+test audit::tests::test_audit_event_to_record ... ok
+test audit::tests::test_audit_filter_empty ... ok
+test audit::tests::test_audit_filter_multiple_users ... ok
+test audit::tests::test_audit_filter ... ok
+test audit::tests::test_audit_record_builder_pattern ... ok
+test audit::tests::test_audit_record_creation ... ok
+test audit::tests::test_audit_record_from_json_invalid ... ok
+test audit::tests::test_json_serialization ... ok
+test audit_chain::tests::alcoa_attributable ... ok
+test audit_chain::tests::alcoa_available_readable ... ok
+test audit::test_audit_manager_log_logout ... ok
+test audit_chain::tests::alcoa_complete ... ok
+test audit::test_audit_manager_log_error ... ok
+test audit_chain::tests::alcoa_consistent_internal_ordering ... ok
+test audit_chain::tests::alcoa_contemporaneous ... ok
+test audit_chain::tests::alcoa_accurate_chain_verifies ... ok
+test audit::test_audit_manager_get_stats ... ok
+test audit_chain::tests::alcoa_enduring_in_memory ... ok
+test audit_chain::tests::alcoa_legible_jsonl_format ... ok
+test audit_chain::tests::alcoa_original_payload_preserved ... ok
+test audit_chain::tests::append_increments_seq ... ok
+test audit_chain::tests::bypass_attempt_empty_user_fails ... ok
+test audit_chain::tests::bypass_attempt_special_chars_user ... ok
+test audit::tests::test_audit_manager ... ok
+test audit_chain::tests::chain_length_zero ... ok
+test audit_chain::tests::chain_links_correctly ... ok
+test audit_chain::tests::default_constructor_empty ... ok
+test audit_chain::tests::empty_chain_is_ok ... ok
+test audit_chain::tests::chain_length_correct ... ok
+test audit_chain::tests::genesis_prev_hash ... ok
+test audit_chain::tests::genesis_hash_constant ... ok
+test audit_chain::tests::hash_format_lowercase_hex_64_chars ... ok
+test audit_chain::tests::replay_detection_reappending_old_entry ... ok
+test audit_chain::tests::seq_must_be_monotonic ... ok
+test audit_chain::tests::single_byte_change_breaks_chain ... ok
+test audit_chain::tests::tail_handles_short_chain ... ok
+test audit_chain::tests::tail_returns_last_n ... ok
+test audit_chain::tests::tamper_detection_at_first_entry ... ok
+test audit_chain::tests::tamper_detection_break_link ... ok
+test audit_chain::tests::tamper_detection_modify_entry ... ok
+test audit_chain::tests::tamper_detection_modify_hash ... ok
+test cancel::test_cancel_guard_disable ... ok
+test cancel::test_cancel_guard_reenable ... ok
+test audit_chain::tests::verify_intact_chain ... ok
+test cancel::test_cancel_token_connection_killed_flag ... ok
+test cancel::test_cancel_token_is_active ... ok
+test cancel::test_cancel_token_new ... ok
+test cancel::test_cancel_token_query_cancelled_flag ... ok
+test cancel::test_cancel_token_reset_query_cancelled ... ok
+test cancel::tests::test_cancel_guard ... ok
+test cancel::tests::test_cancel_guard_preserves_previous_state ... ok
+test cancel::tests::test_cancel_query ... ok
+test cancel::tests::test_cancel_token_new ... ok
+test cancel::tests::test_check_cancel ... ok
+test cancel::tests::test_check_cancel_connection_killed ... ok
+test cancel::tests::test_kill_connection ... ok
+test cancel::tests::test_reset_query_cancelled ... ok
+test encryption::test_encryption_error_variants ... ok
+test encryption::tests::test_encryption_error_display ... ok
+test encryption::tests::test_key_manager_list_keys ... ok
+test encryption::tests::test_key_manager_generate ... ok
+test encryption::tests::test_key_manager_generate_key ... ok
+test encryption::tests::test_key_manager_default ... ok
+test firewall::tests::test_ip_blacklist_basic ... ok
+test firewall::tests::test_ip_blacklist_remove ... ok
+test firewall::tests::test_sql_firewall_check_batch_operation ... ok
+test firewall::tests::test_sql_firewall_check_query_timeout ... ok
+test firewall::tests::test_sql_firewall_check_row_limit ... ok
+test firewall::tests::test_sql_firewall_new ... ok
+test firewall_tests::tests::test_allow_single_delete ... ok
+test firewall_tests::tests::test_batch_delete_blocked ... ok
+test firewall_tests::tests::test_batch_update_blocked ... ok
+test encryption::tests::test_encrypt_decrypt ... ok
+test firewall::tests::test_sql_firewall_builder ... ok
+test firewall_tests::tests::test_block_sql_injection_drop_table ... ok
+test firewall_tests::tests::test_block_sql_injection_or_classic ... ok
+test audit::test_audit_manager_log_revoke ... ok
+test audit::test_audit_manager_get_recent ... ok
+test firewall_tests::tests::test_case_insensitive_detection ... ok
+test firewall_tests::tests::test_block_sql_injection_union ... ok
+test firewall_tests::tests::test_block_sql_injection_comment ... ok
+test firewall_tests::tests::test_disabled_firewall ... ok
+test firewall_tests::tests::test_ip_blocking ... ok
+test firewall_tests::tests::test_row_limit_ok ... ok
+test firewall_tests::tests::test_ip_not_blocked ... ok
+test firewall_tests::tests::test_query_timeout ... ok
+test firewall_tests::tests::test_query_timeout_ok ... ok
+test firewall_tests::tests::test_row_limit_exceeded ... ok
+test session::tests::test_active_sessions ... ok
+test session::tests::test_create_session ... ok
+test session::tests::test_get_processlist_rows ... ok
+test session::tests::test_get_session ... ok
+test firewall_tests::tests::test_whitelist_bypass ... ok
+test session::tests::test_close_session ... ok
+test session::tests::test_cleanup_closed ... ok
+test session::tests::test_kill_permission_check ... ok
+test session::tests::test_processlist_row_from_session ... ok
+test session::tests::test_session_activity ... ok
+test session::tests::test_session_cancel_token ... ok
+test firewall_tests::tests::test_allow_normal_insert ... ok
+test session::tests::test_session_activity_update ... ok
+test session::tests::test_session_can_kill ... ok
+test session::tests::test_session_can_view_processlist ... ok
+test session::tests::test_session_idle_time ... ok
+test session::tests::test_session_manager_create_session ... ok
+test firewall_tests::tests::test_block_sql_injection_file_write ... ok
+test session::tests::test_session_manager_get_session_not_found ... ok
+test firewall_tests::tests::test_block_sql_injection_exec ... ok
+test firewall_tests::tests::test_allow_normal_select ... ok
+test session::tests::test_session_is_active ... ok
+test session::tests::test_session_manager_close_session ... ok
+test session::tests::test_session_manager_get_session ... ok
+test session::tests::test_session_reset_query_cancelled ... ok
+test session::tests::test_session_privilege_grant_revoke ... ok
+test session::tests::test_session_manager_with_max_idle ... ok
+test tls::tests::test_tls_config_builder ... ok
+test tls::tests::test_tls_config_builder_pattern ... ok
+test tls::tests::test_tls_config_default ... ok
+test session::tests::test_session_manager_new ... ok
+test tls::tests::test_tls_config_with_ca ... ok
+test session::tests::test_session_status_close ... ok
+test session::tests::test_user_sessions ... ok
+test tls::tests::test_certificate_manager_new_no_identity ... ok
+test tls::tests::test_certificate_manager_no_identity ... ok
+test tls::tests::test_tls_version_variants ... ok
+test firewall_tests::tests::test_custom_blacklist_pattern ... ok
+test firewall_tests::tests::test_stats_tracking ... ok
+
+test result: ok. 153 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 33 tests
+test acl_baseline_default_deny ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test acl_baseline_fail_closed_on_unknown_table ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test acl_check_latency_target ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test acl_baseline_fail_closed_on_unknown_user ... ok
+test acl_baseline_action_set ... ok
+test acl_baseline_per_user_per_table_per_action ... ok
+test alcoa_accurate ... ok
+test alcoa_attributable ... ok
+test alcoa_attribute_count ... ok
+test alcoa_available ... ok
+test alcoa_complete ... ok
+test alcoa_consistent ... ok
+test alcoa_contemporaneous ... ok
+test alcoa_enduring ... ok
+test alcoa_legible ... ok
+test alcoa_original ... ok
+test audit_chain_append_latency_target ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test audit_event_attached_to_txn ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test bypass_attempt_case_sensitivity ... ok
+test bypass_attempt_role_based_grant ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test bypass_attempt_empty_user ... ok
+test bypass_attempt_sql_injection_user ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test bypass_attempt_wildcard_user ... ok
+test chain_entry_hash_components ... ok
+test chain_first_entry_prev_hash ... ok
+test chain_sequence_monotonic ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test chain_verify_detects_replay ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test chain_verify_detects_modification ... ok
+test graph_edge_acl_extension_documented ... ok
+test graph_node_acl_extension_documented ... ok
+test rollback_discards_audit_chain_extension ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test sql_vector_graph_audit_consistent ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+test vector_acl_extension_documented ... ignored, 契约未实现：本测试原本只断言一句描述文字非空（没有触及任何产品行为），属于假覆盖；真实实现落地前不得计入覆盖
+
+test result: ok. 21 passed; 0 failed; 12 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 29 tests
+test acl_audit_log_access ... ok
+test acl_entry_creation ... ok
+test acl_audit_grant_event ... ok
+test acl_audit_revoke_event ... ok
+test acl_graph_edge_access ... ok
+test acl_permission_types ... ok
+test acl_policy_add_entry ... ok
+test acl_policy_check_denied ... ok
+test acl_graph_node_access ... ok
+test acl_entry_serialization ... ok
+test acl_policy_check_granted ... ok
+test acl_principal_types ... ok
+test acl_policy_revoke ... ok
+test acl_resource_types ... ok
+test acl_sql_table_access ... ok
+test acl_vector_index_access ... ok
+test audit_log_append ... ok
+test audit_entry_serialization ... ok
+test audit_log_query_by_action ... ok
+test audit_log_query_by_principal ... ok
+test audit_log_query_combined ... ok
+test audit_log_verify_chain ... ok
+test edge_case_empty_acl ... ok
+test edge_case_empty_audit ... ok
+test edge_case_permission_hierarchy ... ok
+test edge_case_wildcard_resource ... ok
+test scenario_audit_compliance ... ok
+test scenario_multi_model_permissions ... ok
+test scenario_role_based_access ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

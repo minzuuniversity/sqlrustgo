@@ -1,7 +1,10 @@
 {"bound": 0, "claims": 2, "file": "docs/releases/v4.1.0/A04_MYSQL_DIFF_MATRIX_REPORT.md", "unbound": 2}
 {"bound": 0, "claims": 3, "file": "docs/releases/v4.1.0/A08_DISABLED_BINARIES_REVIEW_2026-10-09.md", "unbound": 3}
 {"bound": 0, "claims": 55, "file": "docs/releases/v4.1.0/ALIGNMENT_AUDIT_2026-09-30.md", "unbound": 55}
+{"bound": 3, "claims": 32, "file": "docs/releases/v4.1.0/ALPHA_GATES_RERUN_2026-11-13.md", "unbound": 29}
 {"bound": 0, "claims": 7, "file": "docs/releases/v4.1.0/ALPHA_TO_BETA_GATE_PLAN.md", "unbound": 7}
+{"bound": 4, "claims": 12, "file": "docs/releases/v4.1.0/ALPHA_TO_BETA_PROMOTION_REVIEW_2026-11-12.md", "unbound": 8}
+{"bound": 3, "claims": 3, "file": "docs/releases/v4.1.0/BRANCH_MERGE_VERDICTS_2026-11-06.md", "unbound": 0}
 {"bound": 0, "claims": 3, "file": "docs/releases/v4.1.0/CHANGELOG.md", "unbound": 3}
 {"bound": 1, "claims": 1, "file": "docs/releases/v4.1.0/CI_EXECUTION_OUTAGE_2026-11-05.md", "unbound": 0}
 {"bound": 0, "claims": 1, "file": "docs/releases/v4.1.0/COMPREHENSIVE_ASSESSMENT_REPORT.md", "unbound": 1}
@@ -14,6 +17,7 @@
 {"bound": 6, "claims": 10, "file": "docs/releases/v4.1.0/FEATURE_MATRIX.md", "unbound": 4}
 {"bound": 0, "claims": 5, "file": "docs/releases/v4.1.0/FILE_STORAGE_WAL_INTEGRATION_AUDIT.md", "unbound": 5}
 {"bound": 0, "claims": 71, "file": "docs/releases/v4.1.0/GA_GATE_REPORT.md", "unbound": 71}
+{"bound": 15, "claims": 15, "file": "docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md", "unbound": 0}
 {"bound": 9, "claims": 41, "file": "docs/releases/v4.1.0/GA_RELEASE_TIMELINE.md", "unbound": 32}
 {"bound": 3, "claims": 23, "file": "docs/releases/v4.1.0/GOVERNANCE_REMEDIATION_PLAN_2026-11-04.md", "unbound": 20}
 {"bound": 0, "claims": 16, "file": "docs/releases/v4.1.0/IAIA_410_AUDIT_PLAN.md", "unbound": 16}
@@ -23,7 +27,9 @@
 {"bound": 0, "claims": 15, "file": "docs/releases/v4.1.0/ISSUES_PLAN.md", "unbound": 15}
 {"bound": 0, "claims": 4, "file": "docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05.md", "unbound": 4}
 {"bound": 0, "claims": 5, "file": "docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.md", "unbound": 5}
-{"bound": 21, "claims": 22, "file": "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md", "unbound": 1}
+{"bound": 0, "claims": 5, "file": "docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md", "unbound": 5}
+{"bound": 0, "claims": 5, "file": "docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11D.md", "unbound": 5}
+{"bound": 96, "claims": 97, "file": "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md", "unbound": 1}
 {"bound": 0, "claims": 1, "file": "docs/releases/v4.1.0/LEGACY_ISSUES.md", "unbound": 1}
 {"bound": 0, "claims": 28, "file": "docs/releases/v4.1.0/LEGACY_LEDGER_v3.6_to_v4.1.md", "unbound": 28}
 {"bound": 0, "claims": 22, "file": "docs/releases/v4.1.0/MAIN_DIVERGENCE_RESOLUTION_2026-09-30.md", "unbound": 22}
@@ -50,6 +56,8 @@
 {"bound": 0, "claims": 1, "file": "docs/releases/v4.1.0/PR-5537_TEST_DESIGN.md", "unbound": 1}
 {"bound": 0, "claims": 13, "file": "docs/releases/v4.1.0/PR-5537_TEST_PLAN.md", "unbound": 13}
 {"bound": 0, "claims": 21, "file": "docs/releases/v4.1.0/PR-5537_TEST_REVIEW.md", "unbound": 21}
+{"bound": 1, "claims": 6, "file": "docs/releases/v4.1.0/PR-5785_ACCEPTANCE.md", "unbound": 5}
+{"bound": 0, "claims": 2, "file": "docs/releases/v4.1.0/PR-5785_TEST_PLAN.md", "unbound": 2}
 {"bound": 0, "claims": 1, "file": "docs/releases/v4.1.0/QUICK_START.md", "unbound": 1}
 {"bound": 0, "claims": 1, "file": "docs/releases/v4.1.0/README.md", "unbound": 1}
 {"bound": 0, "claims": 53, "file": "docs/releases/v4.1.0/RELEASE_GATE_CHECKLIST.md", "unbound": 53}
