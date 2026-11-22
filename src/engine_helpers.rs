@@ -165,11 +165,13 @@ pub fn map_select_result_to_records(
     target_table_info: &TableInfo,
 ) -> SqlResult<Vec<Vec<Value>>> {
     let target_col_indices: Vec<usize> = if target_columns.is_empty() {
-        // V312-63 / Issue #4640: short-insert via INSERT INTO ... SELECT —
-        // pad missing columns with NULL rather than erroring out, mirroring
-        // the VALUES short-form behaviour for consistency. Excess columns
-        // are still hard-rejected.
-        if !result.rows.is_empty() && result.rows[0].len() > target_table_info.columns.len() {
+        // #4640 padded a short `INSERT INTO ... SELECT` with NULL, on the
+        // same wrong premise as the VALUES form ("SQLite allows it"). SQLite
+        // rejects it (`table a has 2 columns but 1 values were supplied`) and
+        // so does MySQL. Padding here would silently drop the target's
+        // remaining columns to NULL — and the mapping below would read
+        // `row.get(source_idx)` past the end of the row.
+        if !result.rows.is_empty() && result.rows[0].len() != target_table_info.columns.len() {
             return Err(SqlError::ExecutionError(format!(
                 "Binder Error: table {} has {} columns but {} values were supplied",
                 target_table_info.name,

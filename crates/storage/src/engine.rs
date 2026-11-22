@@ -2131,21 +2131,40 @@ pub struct MemoryStorage {
     bufferpool_page_ids: parking_lot::Mutex<HashMap<String, Vec<u32>>>,
 }
 
+/// The row-level undo log of one `MemoryStorage` transaction.
+///
+/// #5897: every entry carries the **database** the change happened in,
+/// right next to the bare table name. The database used to be LOST: the
+/// log held bare table names only, and the replay sites resolved them
+/// against the database that was active at replay time
+/// (`MemoryStorage::tbl()` — always `default`). A log produced in `d1`
+/// and replayed under `default` therefore addressed the WRONG table:
+/// the change was applied to `default.t` (cross-database pollution) and
+/// the matching ROLLBACK undid nothing, because the row it had to remove
+/// lived in `d1.t`.
+///
+/// The database is a **separate element**, never folded into the table
+/// name. Folding it in would change the shape of the keys that
+/// `scoped_key` already produces — the same "silently mis-keyed" class
+/// of bug #5072 was about (#5072's own note: pushing an already-scoped
+/// key here makes the replay compute a key that matches nothing, so the
+/// undo quietly does not happen).
+///
+/// The tuple order is `(db, table, ...)` in all three vectors, and every
+/// site destructures it into named bindings so the order is explicit.
+///
+/// #5072: the table name stays **bare** (unscoped) — the `db` element
+/// carries the database separately, so the replay resolves
+/// `scoped_key(db, table)` exactly once, from the two halves the log
+/// was written with.
 #[derive(Default, Clone, Debug)]
 pub struct TxLog {
-    /// #5072: every table name in this log is a **bare** (unscoped) table
-    /// name. Replay sites resolve it through `MemoryStorage::tbl()` against
-    /// the database active at replay time, which is what lets a log be
-    /// applied on a connection other than the one that produced it.
-    ///
-    /// Pushing an already-scoped key here is a silent no-op bug: the replay
-    /// computes `<db>\x01<db>\x01<table>`, finds nothing, and the undo
-    /// quietly does not happen. `MemoryStorage::insert` did exactly that and
-    /// `test_rollback_removes_inserted_rows` did not catch it because the
-    /// test seeded its fixture with an unscoped key.
-    pub inserted: Vec<(String, Record)>,
-    pub deleted: Vec<(String, Record)>,
-    pub updated: Vec<(String, Record, Record)>,
+    /// Rows INSERTed in this transaction: `(db, table, row)`.
+    pub inserted: Vec<(String, String, Record)>,
+    /// Rows DELETEd in this transaction: `(db, table, row)`.
+    pub deleted: Vec<(String, String, Record)>,
+    /// Rows UPDATEd in this transaction: `(db, table, prior_row, new_row)`.
+    pub updated: Vec<(String, String, Record, Record)>,
 }
 
 impl MemoryStorage {
@@ -2249,13 +2268,20 @@ impl MemoryStorage {
         Ok(rows.iter().filter(|r| filter(r)).cloned().collect())
     }
 
-    /// #5057: `delete_if` with the storage key already resolved.
+    /// #5057: `delete_if` against a stated database.
+    ///
+    /// #5897: the database is an **input** here (not derived from the key),
+    /// because the transaction log has to record which database the change
+    /// happened in — the key alone is a composed string, and recovering the
+    /// database out of it is exactly the identity-smuggling this issue
+    /// removes.
     pub(crate) fn delete_if_in_key(
         &mut self,
+        db: &str,
         table: &str,
-        key: String,
         filter: &RowFilter,
     ) -> SqlResult<usize> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
@@ -2268,7 +2294,10 @@ impl MemoryStorage {
             let keep = !filter(r);
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.deleted.push((table.to_string(), r.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in, so the undo addresses `db`, not whatever
+                    // database is active when the log is replayed.
+                    log.deleted.push((db.to_string(), table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
@@ -2281,12 +2310,8 @@ impl MemoryStorage {
         Ok(original_len - records.len())
     }
 
-    fn insert_in_key(
-        &mut self,
-        table: &str,
-        table_key: String,
-        records: Vec<Record>,
-    ) -> SqlResult<()> {
+    fn insert_in_key(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        let table_key = scoped_key(db, table);
         self.bump_change_stamp(table);
         let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key).cloned() {
             let ncols = info.columns.len();
@@ -2417,11 +2442,13 @@ impl MemoryStorage {
             for row in &padded {
                 // #5072: `TxLog` holds BARE table names — every replay site
                 // (`rollback_transaction`, `apply_committed_log`) resolves them
-                // through `tbl()` against the database active at replay time.
-                // Pushing `table_key` (already scoped) made ROLLBACK look for
-                // `default\x01default\x01t1` and silently undo nothing.
-                // `delete` and `update` already push the bare `table`.
-                log.inserted.push((table.to_string(), row.clone()));
+                // through the `db` element of the entry (issue #5897) plus
+                // `scoped_key`. Pushing `table_key` (already scoped) made
+                // ROLLBACK look for `default\x01default\x01t1` and silently
+                // undo nothing. `delete` and `update` already push the bare
+                // `table`.
+                log.inserted
+                    .push((db.to_string(), table.to_string(), row.clone()));
             }
         } else {
             // V312-26 #3969: autocommit insert — propagate to the post-commit
@@ -2433,13 +2460,17 @@ impl MemoryStorage {
         Ok(())
     }
 
-    /// #5057: `delete_collect_pks` with the storage key already resolved.
+    /// #5057: `delete_collect_pks` against a stated database.
+    ///
+    /// #5897: `db` is an input so the transaction log can record the
+    /// database the DELETE happened in.
     fn delete_collect_pks_in_key(
         &mut self,
+        db: &str,
         table: &str,
-        key: String,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
@@ -2452,7 +2483,10 @@ impl MemoryStorage {
             // all visible rows. Empty Vec signals that.
             if let Some(log) = self.tx_log.as_mut() {
                 for row in records.iter() {
-                    log.deleted.push((table.to_string(), row.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in.
+                    log.deleted
+                        .push((db.to_string(), table.to_string(), row.clone()));
                 }
             } else if let Some(committed) = self.committed_tables.get_mut(&key) {
                 // #4948: clone-on-write; the post-commit snapshot may
@@ -2479,7 +2513,10 @@ impl MemoryStorage {
             let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.deleted.push((table.to_string(), r.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in.
+                    log.deleted
+                        .push((db.to_string(), table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
@@ -2492,8 +2529,12 @@ impl MemoryStorage {
         Ok(pks)
     }
 
-    /// #5057: `delete` with the storage key already resolved.
-    fn delete_in_key(&mut self, table: &str, key: String, filters: &[Value]) -> SqlResult<usize> {
+    /// #5057: `delete` against a stated database.
+    ///
+    /// #5897: `db` is an input so the transaction log can record the
+    /// database the DELETE happened in.
+    fn delete_in_key(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
@@ -2504,7 +2545,10 @@ impl MemoryStorage {
         if filters.is_empty() {
             if let Some(log) = self.tx_log.as_mut() {
                 for row in records.iter() {
-                    log.deleted.push((table.to_string(), row.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in.
+                    log.deleted
+                        .push((db.to_string(), table.to_string(), row.clone()));
                 }
             } else {
                 // V312-26 #3969: autocommit delete — keep post-commit view in sync.
@@ -2524,7 +2568,10 @@ impl MemoryStorage {
             let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.deleted.push((table.to_string(), r.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in.
+                    log.deleted
+                        .push((db.to_string(), table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(&key) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
@@ -2537,13 +2584,18 @@ impl MemoryStorage {
         Ok(original_len - records.len())
     }
 
+    /// #5057: `update` against a stated database.
+    ///
+    /// #5897: `db` is an input so the transaction log can record the
+    /// database the UPDATE happened in.
     fn update_in_key(
         &mut self,
+        db: &str,
         table: &str,
-        key: String,
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
@@ -2563,7 +2615,14 @@ impl MemoryStorage {
                     }
                 }
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.updated.push((table.to_string(), prior, record.clone()));
+                    // #5897: the log entry names the database the UPDATE
+                    // happened in.
+                    log.updated.push((
+                        db.to_string(),
+                        table.to_string(),
+                        prior,
+                        record.clone(),
+                    ));
                 } else {
                     // V312-26 #3969: autocommit update — keep post-commit view in sync.
                     if let Some(committed) = self.committed_tables.get_mut(&key) {
@@ -2599,7 +2658,14 @@ impl MemoryStorage {
                         }
                     }
                     if let Some(log) = self.tx_log.as_mut() {
-                        log.updated.push((table.to_string(), prior, record.clone()));
+                        // #5897: the log entry names the database the UPDATE
+                        // happened in.
+                        log.updated.push((
+                            db.to_string(),
+                            table.to_string(),
+                            prior,
+                            record.clone(),
+                        ));
                     } else {
                         // V312-26 #3969: autocommit update — keep post-commit view in sync.
                         if let Some(committed) = self.committed_tables.get_mut(&key) {
@@ -2622,13 +2688,18 @@ impl MemoryStorage {
         Ok(count)
     }
 
+    /// #5057: `update_if` against a stated database.
+    ///
+    /// #5897: `db` is an input so the transaction log can record the
+    /// database the UPDATE happened in.
     fn update_if_in_key(
         &mut self,
+        db: &str,
         table: &str,
-        key: String,
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
@@ -2649,7 +2720,14 @@ impl MemoryStorage {
                     }
                 }
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.updated.push((table.to_string(), prior, record.clone()));
+                    // #5897: the log entry names the database the UPDATE
+                    // happened in.
+                    log.updated.push((
+                        db.to_string(),
+                        table.to_string(),
+                        prior,
+                        record.clone(),
+                    ));
                 } else {
                     // V312-26 #3969: autocommit update — keep post-commit view in sync.
                     if let Some(committed) = self.committed_tables.get_mut(&key) {
@@ -3021,15 +3099,22 @@ impl MemoryStorage {
     /// `Some`), the same change is appended to the receiver's `tx_log` so a
     /// subsequent ROLLBACK on the receiver reverts the broadcast, preserving
     /// the multi-connection isolation guarantee.
+    ///
+    /// #5897: the replay addresses the database the change happened in —
+    /// the `db` element of every log entry — and not the database that is
+    /// active on the receiving connection. Before this, the log carried bare
+    /// table names only and the replay scoped them with `tbl()` (always
+    /// `default`), so a commit made in `d1` was broadcast into `default`:
+    /// cross-database pollution on the way in, and a ROLLBACK on the
+    /// receiver that could not undo what it had just applied.
     pub fn apply_committed_log(&mut self, log: &TxLog) -> SqlResult<()> {
-        for (table, record) in &log.inserted {
-            // #5025: the log records the caller's bare table name, so it
-            // must be scoped to the database that is active on replay.
-            // Replaying under a different database than the one that wrote
-            // the log is prevented by #5025's `set_current_db` check.
-            let key = self.tbl(table);
+        for (db, table, record) in &log.inserted {
+            // #5897: the log names the database the INSERT happened in.
+            let key = scoped_key(db, table);
             if let Some(active_log) = self.tx_log.as_mut() {
-                active_log.inserted.push((table.clone(), record.clone()));
+                active_log
+                    .inserted
+                    .push((db.clone(), table.clone(), record.clone()));
             }
             Arc::make_mut(self.tables.entry(key.clone()).or_default()).push(record.clone());
             // V312-26 #3969: keep the post-commit snapshot in sync so a
@@ -3038,25 +3123,31 @@ impl MemoryStorage {
                 .push(record.clone());
         }
 
-        for (table, record) in &log.deleted {
+        for (db, table, record) in &log.deleted {
+            // #5897: the log names the database the DELETE happened in.
+            let key = scoped_key(db, table);
             if let Some(active_log) = self.tx_log.as_mut() {
-                active_log.deleted.push((table.clone(), record.clone()));
+                active_log
+                    .deleted
+                    .push((db.clone(), table.clone(), record.clone()));
             }
-            if let Some(records) = self.tables.get_mut(table) {
+            if let Some(records) = self.tables.get_mut(&key) {
                 Arc::make_mut(records).retain(|r| r != record);
             }
-            if let Some(records) = self.committed_tables.get_mut(table) {
+            if let Some(records) = self.committed_tables.get_mut(&key) {
                 Arc::make_mut(records).retain(|r| r != record);
             }
         }
 
-        for (table, prior, new) in &log.updated {
+        for (db, table, prior, new) in &log.updated {
+            // #5897: the log names the database the UPDATE happened in.
+            let key = scoped_key(db, table);
             if let Some(active_log) = self.tx_log.as_mut() {
                 active_log
                     .updated
-                    .push((table.clone(), prior.clone(), new.clone()));
+                    .push((db.clone(), table.clone(), prior.clone(), new.clone()));
             }
-            if let Some(records) = self.tables.get_mut(table) {
+            if let Some(records) = self.tables.get_mut(&key) {
                 // #4948: clone-on-write; the post-commit snapshot may
                 // still share this table's rows.
                 let records = Arc::make_mut(records);
@@ -3067,7 +3158,7 @@ impl MemoryStorage {
                     }
                 }
             }
-            if let Some(records) = self.committed_tables.get_mut(table) {
+            if let Some(records) = self.committed_tables.get_mut(&key) {
                 // #4948: clone-on-write; the post-commit snapshot may
                 // still share this table's rows.
                 let records = Arc::make_mut(records);
@@ -3326,17 +3417,22 @@ impl StorageEngine for MemoryStorage {
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
         if let Some(log) = self.tx_log.take() {
-            // #5025: the log stores the caller's bare table names, so each
-            // one is scoped to the database that is active here. Replaying
-            // under a different database than the one that produced the log
-            // would restore rows into the wrong tables; `set_current_db`
-            // refuses an unknown database, which is what keeps this honest.
-            for (table, row) in log.deleted.into_iter().rev() {
-                let key = self.tbl(table);
+            // #5897: the log records the database each change happened in,
+            // so the undo addresses THAT database — `scoped_key(db, table)`
+            // — and not the database that happens to be active on the
+            // connection that replays the log.
+            //
+            // Before this, the log stored bare table names only and the
+            // replay scoped them with `tbl()` (always `default`). A
+            // transaction in a named database therefore undid nothing:
+            // the row it had to remove lived in `d1\x01t`, while the undo
+            // looked in `default\x01t`.
+            for (db, table, row) in log.deleted.into_iter().rev() {
+                let key = scoped_key(&db, &table);
                 Arc::make_mut(self.tables.entry(key).or_default()).push(row);
             }
-            for (table, row) in log.inserted.into_iter().rev() {
-                let key = self.tbl(table);
+            for (db, table, row) in log.inserted.into_iter().rev() {
+                let key = scoped_key(&db, &table);
                 if let Some(records) = self.tables.get_mut(&key) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
@@ -3344,8 +3440,8 @@ impl StorageEngine for MemoryStorage {
                     records.retain(|r| r != &row);
                 }
             }
-            for (table, prior, _new) in log.updated.into_iter().rev() {
-                let key = self.tbl(table);
+            for (db, table, prior, _new) in log.updated.into_iter().rev() {
+                let key = scoped_key(&db, &table);
                 if let Some(records) = self.tables.get_mut(&key) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
@@ -3377,8 +3473,10 @@ impl StorageEngine for MemoryStorage {
         if self.buffer_pool.is_some() {
             return self.insert_via_bufferpool(table, records);
         }
-        let table_key = self.tbl(table);
-        self.insert_in_key(table, table_key, records)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.insert_in_key(DEFAULT_DATABASE, table, records)
     }
 
     /// #5057: `insert` into a stated database.
@@ -3389,23 +3487,25 @@ impl StorageEngine for MemoryStorage {
             // routed via the scoped helper below; kept here for symmetry.
             return self.insert_via_bufferpool_in_db(db, table, records);
         }
-        self.insert_in_key(table, scoped_key(db, table), records)
+        self.insert_in_key(db, table, records)
     }
 
-    /// #5057: `insert` with the storage key already resolved.
+    /// #5057: `delete` with the storage key already resolved.
     ///
     /// Every table access in the 150-line body below goes through
     /// `table_key` — the info lookup, the AUTO_INCREMENT scan, the
     /// transaction log, and the post-commit snapshot. Resolving it once
     /// here is what keeps a concurrent `USE` from redirecting the write.
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        let key = self.tbl(table);
-        self.delete_in_key(table, key, filters)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.delete_in_key(DEFAULT_DATABASE, table, filters)
     }
 
     /// #5057: `delete` against a stated database.
     fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        self.delete_in_key(table, scoped_key(db, table), filters)
+        self.delete_in_key(db, table, filters)
     }
 
     /// Phase B Step 4.1: collect primary keys (column 0) of deleted rows
@@ -3414,8 +3514,10 @@ impl StorageEngine for MemoryStorage {
     /// the caller wants the coarse "tombstone all" fallback for full
     /// table wipes).
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
-        let key = self.tbl(table);
-        self.delete_collect_pks_in_key(table, key, filters)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.delete_collect_pks_in_key(DEFAULT_DATABASE, table, filters)
     }
 
     /// #5057: `delete_collect_pks` against a stated database.
@@ -3425,17 +3527,19 @@ impl StorageEngine for MemoryStorage {
         table: &str,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
-        self.delete_collect_pks_in_key(table, scoped_key(db, table), filters)
+        self.delete_collect_pks_in_key(db, table, filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        let key = self.tbl(table);
-        self.delete_if_in_key(table, key, filter)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.delete_if_in_key(DEFAULT_DATABASE, table, filter)
     }
 
     /// #5057: `delete_if` against a stated database.
     fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        self.delete_if_in_key(table, scoped_key(db, table), filter)
+        self.delete_if_in_key(db, table, filter)
     }
 
     fn update(
@@ -3444,8 +3548,10 @@ impl StorageEngine for MemoryStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        let key = self.tbl(table);
-        self.update_in_key(table, key, filters, updates)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.update_in_key(DEFAULT_DATABASE, table, filters, updates)
     }
 
     /// #5057: `update` against a stated database.
@@ -3456,7 +3562,7 @@ impl StorageEngine for MemoryStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        self.update_in_key(table, scoped_key(db, table), filters, updates)
+        self.update_in_key(db, table, filters, updates)
     }
 
     /// #5057: `update` with the storage key already resolved.
@@ -3466,8 +3572,10 @@ impl StorageEngine for MemoryStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        let key = self.tbl(table);
-        self.update_if_in_key(table, key, filter, mutation)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.update_if_in_key(DEFAULT_DATABASE, table, filter, mutation)
     }
 
     /// #5057: `update_if` against a stated database.
@@ -3478,7 +3586,7 @@ impl StorageEngine for MemoryStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        self.update_if_in_key(table, scoped_key(db, table), filter, mutation)
+        self.update_if_in_key(db, table, filter, mutation)
     }
 
     /// #5057: `update_if` with the storage key already resolved.

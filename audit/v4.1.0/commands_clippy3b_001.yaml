@@ -1,0 +1,20 @@
+# 外部评审回应验证（补充，2026-11-14，run 20261114-clippy3b-001）
+#
+# 003 的 arm 8 因 `#![cfg(feature = "bin_storage_default")]` 编译为 0 个测试，
+# 不承重。本 run 用同一条测试目标 + 显式 feature 重跑，证明 VtuGuard 转发
+# inner 的 no-namespace 拒绝不是靠「0 tests」蒙混。
+- id: clippy3b-head
+  name: "记录本 run 的最终 HEAD"
+  cmd: git rev-parse HEAD
+  cwd: .
+  timeout_sec: 60
+- id: clippy3b-vtu-forwarding-with-feature
+  name: "5266 回归（显式 bin_storage_default）：5 条必须真跑，含 vtu_guard_forwards_foreign_db_to_inner"
+  cmd: cargo test -p sqlrustgo-storage --features bin_storage_default --test no_namespace_db_refusal_5266
+  cwd: .
+  timeout_sec: 3600
+- id: clippy3b-clippy-ci-same
+  name: "该 feature 组合下 CI 同款 clippy 仍 0 warning"
+  cmd: cargo clippy --locked --all-features --all-targets -- -D warnings
+  cwd: .
+  timeout_sec: 5400

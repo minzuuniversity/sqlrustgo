@@ -21,7 +21,7 @@
 //! encoding requirements.
 
 use sqlrustgo_storage::binary_storage_v2::BinaryTableStorageV2;
-use sqlrustgo_storage::engine::{ColumnDefinition, TableInfo};
+use sqlrustgo_storage::engine::ColumnDefinition;
 use sqlrustgo_storage::Record;
 use tempfile::TempDir;
 
@@ -41,21 +41,6 @@ fn bigint_col(name: &str) -> ColumnDefinition {
         collation: None,
         default_value: None,
         auto_increment: false,
-    }
-}
-
-fn make_bigint_info(name: &str) -> TableInfo {
-    TableInfo {
-        name: name.to_string(),
-        columns: vec![bigint_col("a")],
-        foreign_keys: vec![],
-        unique_constraints: vec![],
-        check_constraints: vec![],
-        partition_info: None,
-        collations: Default::default(),
-        original_sql: String::new(),
-        clustered: false,
-        compression: None,
     }
 }
 

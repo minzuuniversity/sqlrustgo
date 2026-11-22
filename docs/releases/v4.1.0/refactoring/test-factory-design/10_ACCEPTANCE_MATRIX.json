@@ -1,0 +1,23 @@
+{
+  "schema_version": "test-factory-acceptance/v1",
+  "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+  "design_only": true,
+  "cases": [
+    {"id":"A01","condition":"correct behavior implementation","expected":"EXECUTED+CONTRACT_PASS"},
+    {"id":"A02","condition":"wrong behavior implementation","expected":"EXECUTED+UNEXPECTED_RED"},
+    {"id":"A03","condition":"name or string injection only","expected":"not CONTRACT_PASS"},
+    {"id":"A04","condition":"unimplemented or constant probe","expected":"INEFFECTIVE_TEST or NOT_RUN"},
+    {"id":"A05","condition":"child exit 0 with zero tests","expected":"NOT_RUN and aggregate exit 2"},
+    {"id":"A06","condition":"wrong failure signature","expected":"UNEXPECTED_RED and exit 1"},
+    {"id":"A07","condition":"compile failure","expected":"COMPILE_ERROR and exit 2"},
+    {"id":"A08","condition":"timeout","expected":"TIMEOUT and exit 2"},
+    {"id":"A09","condition":"planned case missing","expected":"NOT_RUN and exit 2"},
+    {"id":"A10","condition":"known RED becomes green","expected":"UNEXPECTED_GREEN and independent review"},
+    {"id":"A11","condition":"regular CI command","expected":"no contract-domain case executed"},
+    {"id":"A12","condition":"root --all-features","expected":"contract domain remains excluded"},
+    {"id":"A13","condition":"baseline CHECK","expected":"complete file hash unchanged"},
+    {"id":"A14","condition":"unauthorized UPDATE","expected":"rejected and file unchanged"},
+    {"id":"A15","condition":"RED migration","expected":"identity and assertion semantics complete"},
+    {"id":"A16","condition":"open applicable RED at release","expected":"release blocked"}
+  ]
+}

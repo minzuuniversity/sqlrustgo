@@ -1,0 +1,43 @@
+
+running 38 tests
+test cov_gid_new_with_node_id ... ok
+test cov_gid_two_nodes_differ ... ok
+test cov_gid_parse_empty ... ok
+test cov_gid_parse_invalid ... ok
+test cov_lock_acquire_exclusive_granted ... ok
+test cov_lock_acquire_shared_granted ... ok
+test cov_lock_has_exclusive ... ok
+test cov_lock_exclusive_then_shared ... ok
+test cov_lock_deadlock_detect_no_cycle ... ok
+test cov_lock_counts ... ok
+test cov_lock_is_locked_by_tx ... ok
+test cov_lock_release_all ... ok
+test cov_lock_release_not_held_is_err ... ok
+test cov_lock_release_specific ... ok
+test cov_lock_shared_shared_both_granted ... ok
+test cov_lock_upgrade_shared_to_exclusive ... ok
+test cov_savepoint_add_undo ... ok
+test cov_savepoint_create_and_count ... ok
+test cov_savepoint_duplicate_name_is_err ... ok
+test cov_savepoint_new_empty ... ok
+test cov_savepoint_release_existing ... ok
+test cov_savepoint_release_missing_is_err ... ok
+test cov_savepoint_rollback_noop_existing ... ok
+test cov_savepoint_rollback_noop_missing_is_err ... ok
+test cov_savepoint_rollback_to_with_undo_closure ... ok
+test cov_ssi_graph_add_dependency ... ok
+test cov_ssi_graph_new_no_cycle ... ok
+test cov_ssi_graph_remove_tx ... ok
+test cov_ssi_graph_self_edge ... ok
+test cov_tm_begin_commit_cycle ... ok
+test cov_tm_begin_read_only ... ok
+test cov_tm_begin_rollback_cycle ... ok
+test cov_tm_begin_serializable ... ok
+test cov_tm_commit_outside_tx_err ... ok
+test cov_tm_global_timestamp ... ok
+test cov_tm_new_not_in_tx ... ok
+test cov_tm_rollback_outside_tx_err ... ok
+test cov_tm_set_isolation_outside_tx ... ok
+
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

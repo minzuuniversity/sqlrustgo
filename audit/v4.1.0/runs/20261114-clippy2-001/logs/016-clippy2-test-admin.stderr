@@ -1,0 +1,14 @@
+   Compiling sqlrustgo-mysql-server v0.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/mysql-server)
+   Compiling sqlrustgo-admin v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/admin)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.08s
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_admin-2b65303c6528e90f)
+     Running unittests src/main.rs (target/debug/deps/sqlrustgo_admin-b8edb5d7cf1f2307)
+     Running tests/admin_coverage_tests.rs (target/debug/deps/admin_coverage_tests-1815df446d95aacd)
+     Running tests/admin_pitr_tests.rs (target/debug/deps/admin_pitr_tests-449d2143eee37831)
+     Running tests/admin_test.rs (target/debug/deps/admin_test-f32487f7ae4e9bf1)
+     Running tests/admin_wire_client_tests.rs (target/debug/deps/admin_wire_client_tests-9e11fdac64db22ac)
+     Running tests/mysqladmin_tests.rs (target/debug/deps/mysqladmin_tests-8058aab3f479ef17)
+     Running tests/unit_tests.rs (target/debug/deps/unit_tests-145e8f0c4ec363de)
+     Running tests/verify_tests.rs (target/debug/deps/verify_tests-062fabaaa11e45f9)
+     Running tests/wire_client_integration_tests.rs (target/debug/deps/wire_client_integration_tests-b958ef57b0fde414)
+   Doc-tests sqlrustgo_admin

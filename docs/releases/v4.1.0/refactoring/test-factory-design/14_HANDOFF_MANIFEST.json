@@ -1,0 +1,46 @@
+{
+  "schema_version": "test-factory-handoff/v2",
+  "status": "DESIGN_FROZEN_IMPLEMENTATION_NOT_AUTHORIZED",
+  "source_agent": "Codex",
+  "source_run": "TF-DESIGN-20261121",
+  "timestamp": "2026-11-21T07:07:39+08:00",
+  "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+  "stage": "ALPHA",
+  "adr_base_commit": "45da6968ae2baaade6a31206eeee5854a8514ee2",
+  "adr_011_candidate_commit": "b681b74ca3",
+  "authority": {
+    "design": true,
+    "implementation": false,
+    "worker_dispatch": false,
+    "ci_or_gate_change": false,
+    "design_manifest_resign": true,
+    "upstream_c01_manifest_resign": false,
+    "pr_merge": false,
+    "stage_change": false
+  },
+  "s1_classification": {
+    "TF-S1-001": "GAP_PROBE",
+    "TF-S1-002": "GAP_PROBE",
+    "TF-S1-003": "INEFFECTIVE_TEST"
+  },
+  "candidate_red_count": 17,
+  "verified_red_count": null,
+  "reason_verified_red_null": "No independent rerun of all 17 candidates in this design run.",
+  "binding": {
+    "head_binding_mode": "GITEA_PR_FINAL_HEAD_PLUS_MANIFEST_SHA256",
+    "final_head_sha": null,
+    "final_head_bound_by": "Gitea PR head plus DSH-A HANDOFF_READY receipt; a file cannot contain its own commit SHA without recursion",
+    "manifest_sha256_bound_by": "SHA256SUMS and HANDOFF_READY receipt",
+    "sha256sums_file": "SHA256SUMS"
+  },
+  "review_authority": {
+    "formal_check_is_technical_approval": false,
+    "reviewer_must_differ_from_implementer": true,
+    "review_binds_final_head": true,
+    "head_change_invalidates_review": true
+  },
+  "package_binding": {"package_count":18,"naming_corrections":4,"implementation_authorized":false},
+  "files_digest_algorithm": "sha256(sorted sha256sum lines for 00-13 and 15; excludes manifest and SHA256SUMS to avoid recursion)",
+  "files_digest": "44c72a4b1857a6231f5c9890dbbfb73a9247d3c7f94a50eba0a377eb849da814",
+  "conflict_resolution": "Owner authorized formal design freeze and delivery, not TF implementation, worker dispatch, merge, HUMAN_GATE removal, stage change, or release."
+}
