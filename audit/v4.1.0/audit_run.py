@@ -56,6 +56,14 @@ def git(*args: str) -> str:
 
 
 def evidence_hash_of(manifest: dict) -> str:
+    # #5698: a run renamed on disk (e.g. to resolve a run-id collision) kept
+    # its original evidence_hash, which was computed over the ORIGINAL
+    # run_id — so `verify` reported a permanent mismatch even though every
+    # log hash and exit code was untouched. `canonical_run_id` records the
+    # id the hash was computed over; runs without it keep the exact old
+    # behaviour (their own run_id). Only the id used by the hash changes;
+    # results, artifacts and frozen_commit are untouched.
+    canonical_run_id = manifest.get("canonical_run_id") or manifest["run_id"]
     results = sorted(
         (
             {
@@ -71,7 +79,7 @@ def evidence_hash_of(manifest: dict) -> str:
     canonical = json.dumps(
         {
             "schema_version": manifest["schema_version"],
-            "run_id": manifest["run_id"],
+            "run_id": canonical_run_id,
             "frozen_commit": manifest["frozen_commit"],
             "artifacts": manifest["artifacts"],
             "results": results,
@@ -108,6 +116,62 @@ def load_manifest(run_id: str) -> dict:
     if not isinstance(m, dict):
         die("manifest is not a mapping")
     return m
+
+
+ALIASES_FILE = AUDIT_DIR / "canonical_run_aliases.json"
+
+
+def load_canonical_aliases() -> dict:
+    """current_run_id -> canonical_run_id, from the explicit allowlist.
+
+    #5698: `canonical_run_id` must never be an arbitrary escape hatch. A
+    renamed legacy run may only point at a canonical id that is registered
+    here, once, with the manifest blob SHAs and reason recorded.
+    """
+    if not ALIASES_FILE.is_file():
+        return {}
+    data = json.loads(ALIASES_FILE.read_text(encoding="utf-8"))
+    entries = data.get("aliases") or []
+    mapping: dict[str, str] = {}
+    owners: dict[str, str] = {}
+    for i, e in enumerate(entries):
+        if not isinstance(e, dict):
+            die(f"canonical_run_aliases.json: entry {i} is not an object")
+        cur = e.get("current_run_id")
+        can = e.get("canonical_run_id")
+        if not isinstance(cur, str) or not cur.strip():
+            die(f"canonical_run_aliases.json: entry {i} has no current_run_id")
+        if not isinstance(can, str) or not can.strip():
+            die(f"canonical_run_aliases.json: entry {i} has no canonical_run_id")
+        if cur in mapping:
+            die(f"canonical_run_aliases.json: duplicate current_run_id {cur}")
+        if can in owners:
+            die(
+                "canonical_run_aliases.json: canonical_run_id "
+                f"{can} is assigned to both {owners[can]} and {cur}"
+            )
+        mapping[cur] = can
+        owners[can] = cur
+    return mapping
+
+
+def validate_canonical_alias(manifest: dict, run_id: str) -> None:
+    alias = manifest.get("canonical_run_id")
+    if alias is None:
+        return
+    if not isinstance(alias, str) or not alias.strip():
+        die(f"{run_id}: canonical_run_id must be a non-empty string")
+    mapping = load_canonical_aliases()
+    if run_id not in mapping:
+        die(
+            f"{run_id}: canonical_run_id={alias} but this run is not registered "
+            "in audit/v4.1.0/canonical_run_aliases.json"
+        )
+    if mapping[run_id] != alias:
+        die(
+            f"{run_id}: canonical_run_id={alias} != registered "
+            f"{mapping[run_id]}"
+        )
 
 
 def save_manifest(run_dir: Path, m: dict) -> None:
@@ -231,11 +295,22 @@ def _require_cmd_recorded(m: dict, run_id: str) -> None:
         )
 
 
+def cmd_check_aliases(args: argparse.Namespace) -> None:
+    """Validate the canonical alias allowlist itself, even if no run uses it.
+
+    A duplicate/ill-typed alias file is a latent identity hazard: the next
+    renamed manifest could silently bind to the wrong canonical id.
+    """
+    mapping = load_canonical_aliases()
+    print(f"canonical_run_aliases: OK ({len(mapping)} entrie(s))")
+
+
 def cmd_verify(args: argparse.Namespace) -> None:
     m = load_manifest(args.run_id)
     if m.get("schema_version") == SCHEMA_VERSION_V2:
         _verify_v2(args, m)
         return
+    validate_canonical_alias(m, args.run_id)
     _require_cmd_recorded(m, args.run_id)
     if "results" not in m or "evidence_hash" not in m:
         die("manifest has no results/evidence_hash; run it first")
@@ -572,6 +647,9 @@ def main() -> None:
     p = sub.add_parser("verify", help="recompute evidence_hash from committed logs")
     p.add_argument("--run-id", required=True)
     p.set_defaults(func=cmd_verify)
+
+    p = sub.add_parser("check-aliases", help="validate canonical_run_aliases.json")
+    p.set_defaults(func=cmd_check_aliases)
 
     p = sub.add_parser("scaffold", help="create run skeleton from a commands YAML")
     p.add_argument("--run-id", required=True)

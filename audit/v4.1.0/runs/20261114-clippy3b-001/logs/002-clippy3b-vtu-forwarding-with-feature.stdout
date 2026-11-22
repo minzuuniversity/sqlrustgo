@@ -1,0 +1,10 @@
+
+running 5 tests
+test vtu_guard_forwards_foreign_db_to_inner ... ok
+test table_level_refuses_foreign_db ... ok
+test binary_table_refuses_foreign_db ... ok
+test binary_table_v2_refuses_foreign_db ... ok
+test append_only_refuses_foreign_db ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

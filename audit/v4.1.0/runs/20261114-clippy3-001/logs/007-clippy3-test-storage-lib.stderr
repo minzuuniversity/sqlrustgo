@@ -1,0 +1,21 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/storage)
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/optimizer)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/security)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/transaction)
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/planner)
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/executor)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt)
+warning: variable does not need to be mutable
+   --> crates/storage/src/vtu_guard.rs:637:13
+    |
+637 |         let mut guarded = VtuGuard::new(wal_storage, "tx_lockfree");
+    |             ----^^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-storage` (lib test) generated 1 warning (run `cargo fix --lib -p sqlrustgo-storage --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.86s
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_storage-be7f4a078002e1cc)

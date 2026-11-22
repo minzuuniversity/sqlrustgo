@@ -32,9 +32,26 @@ use sqlrustgo_types::Value;
 /// `Delete` does not need a separate fallback field because it re-inserts
 /// `old_value` (which is already the full row); the empty-key case is
 /// handled by the same fall-back path used by `Update` when needed.
+///
+/// #5896: every variant now carries the **database** the write happened
+/// in (`db`), as an explicit field — not folded into `table`.
+///
+/// Before this change the undo log held only a bare table name, so the
+/// replay could not tell `default.t` from `other_db.t`. The replayers
+/// therefore had to assume the default database, which meant a ROLLBACK
+/// in a named database undid nothing (the row stayed visible) and a
+/// ROLLBACK in the default database could reach into a named database's
+/// same-named table. The database travels with the record so the replayer
+/// can address the exact `(db, table)` the write touched.
+///
+/// The field is deliberately separate from `table`: folding the database
+/// into the table string would silently change the shape of every
+/// existing key (and would break any consumer that reads `table`).
 #[derive(Debug, Clone)]
 pub enum UndoRecord {
     Insert {
+        /// #5896: the database the row was inserted into.
+        db: String,
         table: String,
         key: Vec<Value>,
         /// Full inserted row; used by replayers to delete by full-row
@@ -42,11 +59,15 @@ pub enum UndoRecord {
         row: Vec<Value>,
     },
     Delete {
+        /// #5896: the database the row was deleted from.
+        db: String,
         table: String,
         key: Vec<Value>,
         old_value: Vec<Value>,
     },
     Update {
+        /// #5896: the database the row was updated in.
+        db: String,
         table: String,
         key: Vec<Value>,
         old_value: Vec<Value>,
@@ -233,6 +254,7 @@ mod tests {
     #[test]
     fn test_undo_record_insert() {
         let record = UndoRecord::Insert {
+            db: "default".to_string(),
             table: "t".to_string(),
             key: vec![Value::Integer(1)],
             row: vec![Value::Integer(1)],
@@ -284,6 +306,7 @@ mod tests {
     fn test_add_undo() {
         let mut manager = SavepointManager::new();
         manager.add_undo(UndoRecord::Insert {
+            db: "default".to_string(),
             table: "t".to_string(),
             key: vec![Value::Integer(1)],
             row: vec![Value::Integer(1)],
@@ -295,12 +318,14 @@ mod tests {
     fn test_add_undo_update() {
         let mut manager = SavepointManager::new();
         manager.add_undo(UndoRecord::Update {
+            db: "default".to_string(),
             table: "t".to_string(),
             key: vec![Value::Integer(1)],
             old_value: vec![Value::Integer(2)],
             new_value: vec![Value::Integer(3)],
         });
         manager.add_undo(UndoRecord::Delete {
+            db: "default".to_string(),
             table: "t".to_string(),
             key: vec![Value::Integer(3)],
             old_value: vec![Value::Integer(4)],
@@ -355,6 +380,7 @@ mod tests {
     fn test_savepoint_override() {
         let mut manager = SavepointManager::new();
         manager.add_undo(UndoRecord::Insert {
+            db: "default".to_string(),
             table: "t".to_string(),
             key: vec![Value::Integer(1)],
             row: vec![Value::Integer(1)],
@@ -362,11 +388,13 @@ mod tests {
         manager.savepoint("sp1".to_string()).unwrap();
 
         manager.add_undo(UndoRecord::Insert {
+            db: "default".to_string(),
             table: "t".to_string(),
             key: vec![Value::Integer(2)],
             row: vec![Value::Integer(2)],
         });
         manager.add_undo(UndoRecord::Insert {
+            db: "default".to_string(),
             table: "t".to_string(),
             key: vec![Value::Integer(3)],
             row: vec![Value::Integer(3)],
