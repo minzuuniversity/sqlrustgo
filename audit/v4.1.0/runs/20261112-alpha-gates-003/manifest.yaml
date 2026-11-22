@@ -1,0 +1,158 @@
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- cmd: bash scripts/gate/check_alpha_v410.sh
+  cwd: .
+  id: alpha-gate-check-alpha-v410
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_alpha_v{VER}.sh（VER=4.1.0 ⇒ check_alpha_v410.sh）（预算
+    1800s→10800s：实测该聚合门禁内部会跑 llvm-cov 覆盖率，在共享开发机上 >30min，被 1800s 预算杀掉 ⇒ 门禁结果丢失）
+  timeout_sec: 10800
+- cmd: bash scripts/gate/check_arch_invariants.sh
+  cwd: .
+  id: alpha-gate-arch-invariants
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_arch_invariants.sh
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  cwd: .
+  id: alpha-gate-arch3-no-bypass
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_arch3_no_bypass.sh
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  id: alpha-gate-coverage-v312
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_coverage_v312.sh（阈值取 SSOT 的 COVERAGE_MIN_ALPHA）
+  timeout_sec: 5400
+- cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  id: alpha-gate-sql-corpus
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_sql_corpus_gate.sh
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  id: alpha-gate-anti-ignore
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_anti_ignore_gate.sh
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  id: alpha-gate-g1-tpch-baseline
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_g1_tpch_baseline.sh
+  timeout_sec: 1800
+- cmd: cargo build --all-features
+  cwd: .
+  id: alpha-cargo-build
+  name: ALPHA 清单 cargo 命令（原文）：cargo build --all-features
+  timeout_sec: 3600
+- cmd: cargo test --all-features --lib
+  cwd: .
+  id: alpha-cargo-test-lib
+  name: ALPHA 清单 cargo 命令（原文）：cargo test --all-features --lib
+  timeout_sec: 5400
+- cmd: cargo fmt --check
+  cwd: .
+  id: alpha-cargo-fmt-check
+  name: ALPHA 清单 cargo 命令（原文）：cargo fmt --check
+  timeout_sec: 900
+completed_at: '2026-11-12T12:02:30Z'
+deviations:
+- 清单来源：audit/v4.1.0/commands_alpha_gates_003.yaml（随本 run 收录为 commands.yaml）。与仓内既有
+  001/002 两份 ALPHA 清单的**唯一**差异：`alpha-gate-check-alpha-v410` 臂的 timeout_sec 1800 →
+  10800 —— 该聚合门禁内部会跑 llvm-cov 覆盖率，在共享开发机上超过 30 分钟，1800s 预算会把它杀掉（rc=124）⇒ 门禁自身的逐项结果全部丢失
+  ⇒ 「预算不足」不是「门禁不过」。
+- 执行纪律（计划 §7）：工作树的 target 指向共享 CARGO_TARGET_DIR（软链）⇒ 崩溃用例能找到 target/debug/sqlrustgo-mysql-server，覆盖率也不会对着正在重建的
+  target 测量。
+- 顺序要求：audit_run.py freeze 必须先于 scaffold（scaffold 从 commit.txt 取冻结值）。
+environment:
+  arch: arm64
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars: {}
+  hostname: Mac-mini-7.local
+  os: Darwin
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  worktree_clean: false
+evidence_hash: sha256:3cf2c844d2090b3f921fabebd89375daaced5ad4b98c019ad8f46ae5503f2c4a
+frozen_commit: aec1a3673cb83d8800b27e8a7aa11f690f346817
+results:
+- exit_code: 0
+  finished_at: '2026-11-12T11:53:46Z'
+  id: alpha-gate-check-alpha-v410
+  started_at: '2026-11-12T11:43:42Z'
+  stderr_path: logs/001-alpha-gate-check-alpha-v410.stderr
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-alpha-gate-check-alpha-v410.stdout
+  stdout_sha256: 87d33fd39206c69761838882400cad4daa545fadfcba373b9a3dd7f09bbcd7d1
+- exit_code: 0
+  finished_at: '2026-11-12T11:53:46Z'
+  id: alpha-gate-arch-invariants
+  started_at: '2026-11-12T11:53:46Z'
+  stderr_path: logs/002-alpha-gate-arch-invariants.stderr
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-alpha-gate-arch-invariants.stdout
+  stdout_sha256: 7a4ad832e77eaf5cf645b7241af81f4d60436e5a293042970f387f3505890a88
+- exit_code: 0
+  finished_at: '2026-11-12T11:53:46Z'
+  id: alpha-gate-arch3-no-bypass
+  started_at: '2026-11-12T11:53:46Z'
+  stderr_path: logs/003-alpha-gate-arch3-no-bypass.stderr
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-alpha-gate-arch3-no-bypass.stdout
+  stdout_sha256: 8fc41d8cb57dcaafd6c73483e2045fed418f2fa20ca4fd2f43fb630b5f277d31
+- exit_code: 1
+  finished_at: '2026-11-12T11:59:59Z'
+  id: alpha-gate-coverage-v312
+  started_at: '2026-11-12T11:53:46Z'
+  stderr_path: logs/004-alpha-gate-coverage-v312.stderr
+  stderr_sha256: f3c8bff5ee3216f7c533dac00865b7c3eb857b97226722be9e638d3c16a5bdbd
+  stdout_path: logs/004-alpha-gate-coverage-v312.stdout
+  stdout_sha256: c5f6e2d2dc652d8ecef291e26be0ec2a6eb624ae09d8ffa801d56d7947e4898f
+- exit_code: 0
+  finished_at: '2026-11-12T12:00:00Z'
+  id: alpha-gate-sql-corpus
+  started_at: '2026-11-12T11:59:59Z'
+  stderr_path: logs/005-alpha-gate-sql-corpus.stderr
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-alpha-gate-sql-corpus.stdout
+  stdout_sha256: 245051ea7dea1eb1cf64cf73b5484009e81eacf0c61c5778bc21a53d3948a60d
+- exit_code: 0
+  finished_at: '2026-11-12T12:00:00Z'
+  id: alpha-gate-anti-ignore
+  started_at: '2026-11-12T12:00:00Z'
+  stderr_path: logs/006-alpha-gate-anti-ignore.stderr
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-alpha-gate-anti-ignore.stdout
+  stdout_sha256: fe823fd2b89ecbe830ca5bd204494352ee4a176c427b29f7062165ce56ed32ac
+- exit_code: 1
+  finished_at: '2026-11-12T12:02:21Z'
+  id: alpha-gate-g1-tpch-baseline
+  started_at: '2026-11-12T12:00:00Z'
+  stderr_path: logs/007-alpha-gate-g1-tpch-baseline.stderr
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-alpha-gate-g1-tpch-baseline.stdout
+  stdout_sha256: 496e3f869535fee1bfa11057cb8530afc9813822dcb2ca019bb993aa481c91ae
+- exit_code: 0
+  finished_at: '2026-11-12T12:02:21Z'
+  id: alpha-cargo-build
+  started_at: '2026-11-12T12:02:21Z'
+  stderr_path: logs/008-alpha-cargo-build.stderr
+  stderr_sha256: 0b53209db424367e80c52cd8cde8b75e37af110438a0efde777104a1463956de
+  stdout_path: logs/008-alpha-cargo-build.stdout
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- exit_code: 0
+  finished_at: '2026-11-12T12:02:27Z'
+  id: alpha-cargo-test-lib
+  started_at: '2026-11-12T12:02:21Z'
+  stderr_path: logs/009-alpha-cargo-test-lib.stderr
+  stderr_sha256: 599c279d1a33bab674e26d4f6e4dc1ac6c0df170a55801d224a477d0e3474c63
+  stdout_path: logs/009-alpha-cargo-test-lib.stdout
+  stdout_sha256: 4c9afb6d3d404d56fab1c67b4a69a7186b477bb93db9f7cfe79aeceb74626f3d
+- exit_code: 0
+  finished_at: '2026-11-12T12:02:30Z'
+  id: alpha-cargo-fmt-check
+  started_at: '2026-11-12T12:02:27Z'
+  stderr_path: logs/010-alpha-cargo-fmt-check.stderr
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-alpha-cargo-fmt-check.stdout
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+run_id: 20261112-alpha-gates-003
+schema_version: 1
+source_agent: omp-macmini

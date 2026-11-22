@@ -68,12 +68,12 @@ def shrunk_after(tmp):
 
 
 def check_arm_count_matches_verdicts():
-    """核对 1：跑法声称的 arms= 必须等于它实际打印的逐臂 verdict 行数。"""
+    """核对 1：跑法声称的 arms= 必须等于它实际打印的逐臂 verdict 行数。
+
+    变异跑法的 rc 不要求 0：rc=1 可能来自「有臂没判别」（NOT-DISCRIMINATING），
+    那是另一个判据的职责；本核对只看「臂数声明 vs 实际 verdict 行数」是否一致。
+    """
     rc, out = run([sys.executable, str(MUT)], timeout=600)
-    if rc != 0:
-        print(f"BAD  arm-count-vs-verdicts: 变异跑法 rc={rc}（先修好再谈核对）")
-        print(out[-1500:])
-        return False
     m = ARMS_RE.search(out)
     if not m:
         print("BAD  arm-count-vs-verdicts: 输出里没有 arms= 汇总行")
@@ -130,14 +130,20 @@ def check_lost_guard_mutation():
     try:
         build_tree(tmp)
         shrunk, dropped = shrunk_after(tmp)
+        # 空台账 ⇒ expected_ops=0 ⇒ added==expected 自然通过，
+        # 唯一可能判红的就剩 `if lost: return 1` 这条守卫本身。
+        # （真台账的 expected=39 来自它记的历史 ops，会让 added!=expected
+        #  也判红，把「守卫是否被摘掉」这条判据淹没。）
+        empty_ledger = tmp / "empty-ledger.jsonl"
+        empty_ledger.write_text("", encoding="utf-8")
         # 未变异：用真工具对「少一个标签」的状态核对，必须判红
         rc_ctl, out_ctl = run([sys.executable, str(TOOL), "verify", str(AFTER),
-                               "--after", str(shrunk), "--ledger", str(LEDGER)], timeout=300)
+                               "--after", str(shrunk), "--ledger", str(empty_ledger)], timeout=300)
         # 变异：把守卫摘掉，同一夹具必须放行
         mutant = tmp / "audit" / "v4.1.0" / "issue_labels.py"
         mutant.write_text(base.replace(anchor, "    if lost:\n        pass"), encoding="utf-8")
         rc_mut, out_mut = run([sys.executable, str(mutant), "verify", str(AFTER),
-                               "--after", str(shrunk), "--ledger", str(LEDGER)], timeout=300)
+                               "--after", str(shrunk), "--ledger", str(empty_ledger)], timeout=300)
         ok = rc_ctl != 0 and rc_mut == 0
         print(f"{'OK  ' if ok else 'BAD '} lost-guard-mutation: control rc={rc_ctl} "
               f"mutated rc={rc_mut} dropped={dropped}")

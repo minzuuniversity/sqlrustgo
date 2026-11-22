@@ -816,6 +816,7 @@ fn rollback_with_undo_must_invoke_closure_and_remove_tx() {
         .expect("begin");
 
     let record = UndoRecord::Insert {
+        db: "default".into(),
         table: "t".into(),
         key: vec![Value::Integer(1)],
         row: vec![Value::Integer(1), Value::Text("a".into())],
@@ -866,6 +867,7 @@ fn rollback_with_undo_replays_in_reverse_order() {
 
     for i in 0..3 {
         let record = UndoRecord::Insert {
+            db: "default".into(),
             table: "t".into(),
             key: vec![Value::Integer(i)],
             row: vec![Value::Integer(i)],
@@ -978,6 +980,7 @@ fn rollback_to_savepoint_with_undo_must_invoke_closure() {
     tm.savepoint(tx_id, "s1".into()).expect("savepoint");
 
     let record = UndoRecord::Insert {
+        db: "default".into(),
         table: "t".into(),
         key: vec![Value::Integer(1)],
         row: vec![Value::Integer(1)],
@@ -1021,6 +1024,7 @@ fn add_undo_record_must_persist_for_later_rollback() {
         .expect("begin");
 
     let record = UndoRecord::Delete {
+        db: "default".into(),
         table: "t".into(),
         key: vec![Value::Integer(1)],
         old_value: vec![Value::Integer(1), Value::Text("old".into())],

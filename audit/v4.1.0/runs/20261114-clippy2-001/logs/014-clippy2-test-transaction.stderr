@@ -1,0 +1,11 @@
+   Compiling errno v0.3.14
+   Compiling tokio-macros v2.7.2
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.3
+   Compiling signal-hook-registry v1.4.8
+   Compiling rustix v1.1.4
+   Compiling tokio v1.53.1
+   Compiling tempfile v3.27.0
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/srg-clippy-wt/crates/transaction)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.01s
+     Running tests/coverage_v3_12.rs (target/debug/deps/coverage_v3_12-8ea3a7e178e91093)

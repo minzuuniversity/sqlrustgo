@@ -17,6 +17,39 @@ pub enum ForeignKeyAction {
     NoAction,
 }
 
+/// #5507: number of times a table's row vector had to be **deep-copied**
+/// because the live map and the post-commit view shared it.
+///
+/// The counter exists so the regression test can assert the cost of a
+/// commit without a wall-clock assertion (which is how
+/// `wal_legacy::tests::test_wal_perf_1000_insert` turned flaky under CPU
+/// contention). It only counts *copies*, never the copy-free writes.
+#[cfg(test)]
+static COW_DEEP_COPIES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// #5507: the single choke point for the copy-on-write of a table's rows.
+///
+/// `Arc::make_mut` clones the whole row vector when the `Arc` is shared.
+/// Before #5507 the commit published the post-commit view by cloning the
+/// table map, so the live and the committed view shared every `Arc` and
+/// the next write to a table paid a full copy of it. Routing every write
+/// through this helper makes that cost observable.
+#[inline]
+fn cow_mut(rows: &mut Arc<Vec<Record>>) -> &mut Vec<Record> {
+    #[cfg(test)]
+    if Arc::strong_count(rows) > 1 {
+        COW_DEEP_COPIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    cow_mut_body(rows)
+}
+
+/// The one place that actually clones the row vector. Kept separate from
+/// `cow_mut` so the counter above never counts itself.
+#[inline]
+fn cow_mut_body(rows: &mut Arc<Vec<Record>>) -> &mut Vec<Record> {
+    Arc::make_mut(rows)
+}
+
 /// V312-35 / Issue #4218: process info for SHOW PROCESSLIST.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessInfo {
@@ -2062,12 +2095,14 @@ pub trait StorageEngine: Send + Sync {
 
 /// In-memory storage implementation for testing and caching
 pub struct MemoryStorage {
-    /// #4948: the rows live behind an `Arc` so that the post-commit
-    /// snapshot (`committed_tables`) can share them instead of deep-copying
-    /// the whole database on every commit. A write path that needs to
-    /// mutate a table goes through `Arc::make_mut`, which clones that one
-    /// table's rows — and only the first time after a commit, while the
-    /// snapshot still shares it.
+    /// #4948: the rows live behind an `Arc` so that a write path can hand
+    /// out row slices without copying them.
+    /// #5507: the `Arc` is now **never shared with the post-commit view** —
+    /// the commit publishes its delta instead of cloning the table map, so
+    /// `Arc::make_mut` (through `cow_mut`) never has to clone a table to
+    /// detach it. That sharing was what made a row-at-a-time load quadratic
+    /// (#5412): every COMMIT shared the rows, so the next write copied the
+    /// whole table.
     tables: HashMap<String, Arc<Vec<Record>>>,
     /// V4.1.0: per-table stamp bumped by every row mutation. See
     /// `StorageEngine::table_change_stamp`; read it to detect that a
@@ -2109,14 +2144,28 @@ pub struct MemoryStorage {
     /// commit (or autocommit write). Used so that a newly created named
     /// connection can inherit the **last committed** state of a peer, NOT
     /// the peer's current in-transaction live state. Updated in
-    /// `commit_transaction_with_log` and on every autocommit write.
+    /// `publish_commit_delta` and on every autocommit write.
     ///
-    /// #4948: shares its `Arc`s with `tables` rather than owning a private
-    /// deep copy. `committed_tables = tables.clone()` at commit time is now
-    /// a HashMap shallow clone — O(tables) instead of O(total rows). The
-    /// public `SchemaSnapshot` is unaffected; `snapshot_schema` still
+    /// #5507: the view is maintained **by delta** — a commit applies the
+    /// transaction's own inserted/deleted/updated rows — instead of
+    /// re-cloning the whole table map. Two consequences: the commit costs
+    /// what the transaction touched rather than the size of the database,
+    /// and the view keeps its own `Arc`s, so the live table never has to
+    /// detach (deep-copy) itself on the next write.
+    ///
+    /// The public `SchemaSnapshot` is unaffected; `snapshot_schema` still
     /// materialises owned rows at that boundary.
     committed_tables: HashMap<String, Arc<Vec<Record>>>,
+    /// #5507: bare table name (as recorded in `TxLog`) → the scoped key the
+    /// transaction actually wrote under.
+    ///
+    /// The log stores bare names (#5072) and the replay sites resolve them
+    /// against the current database, but publishing a commit to the
+    /// post-commit view needs the *exact* key the transaction touched: a
+    /// transaction may have written into a named database, which `tbl()`
+    /// (default database) would not resolve. The write paths know the
+    /// scoped key, so they record it here.
+    tx_scoped_keys: HashMap<String, String>,
     /// V312-62 / Issues #4617 & #4621: track `(table, column)` pairs for
     /// every `CREATE INDEX` so `list_indexes` returns them to the planner
     /// and the EXPLAIN planner-shape oracle. The actual B+ tree is still
@@ -2159,21 +2208,40 @@ pub struct MemoryStorage {
     bufferpool_page_ids: parking_lot::Mutex<HashMap<String, Vec<u32>>>,
 }
 
+/// The row-level undo log of one `MemoryStorage` transaction.
+///
+/// #5897: every entry carries the **database** the change happened in,
+/// right next to the bare table name. The database used to be LOST: the
+/// log held bare table names only, and the replay sites resolved them
+/// against the database that was active at replay time
+/// (`MemoryStorage::tbl()` — always `default`). A log produced in `d1`
+/// and replayed under `default` therefore addressed the WRONG table:
+/// the change was applied to `default.t` (cross-database pollution) and
+/// the matching ROLLBACK undid nothing, because the row it had to remove
+/// lived in `d1.t`.
+///
+/// The database is a **separate element**, never folded into the table
+/// name. Folding it in would change the shape of the keys that
+/// `scoped_key` already produces — the same "silently mis-keyed" class
+/// of bug #5072 was about (#5072's own note: pushing an already-scoped
+/// key here makes the replay compute a key that matches nothing, so the
+/// undo quietly does not happen).
+///
+/// The tuple order is `(db, table, ...)` in all three vectors, and every
+/// site destructures it into named bindings so the order is explicit.
+///
+/// #5072: the table name stays **bare** (unscoped) — the `db` element
+/// carries the database separately, so the replay resolves
+/// `scoped_key(db, table)` exactly once, from the two halves the log
+/// was written with.
 #[derive(Default, Clone, Debug)]
 pub struct TxLog {
-    /// #5072: every table name in this log is a **bare** (unscoped) table
-    /// name. Replay sites resolve it through `MemoryStorage::tbl()` against
-    /// the database active at replay time, which is what lets a log be
-    /// applied on a connection other than the one that produced it.
-    ///
-    /// Pushing an already-scoped key here is a silent no-op bug: the replay
-    /// computes `<db>\x01<db>\x01<table>`, finds nothing, and the undo
-    /// quietly does not happen. `MemoryStorage::insert` did exactly that and
-    /// `test_rollback_removes_inserted_rows` did not catch it because the
-    /// test seeded its fixture with an unscoped key.
-    pub inserted: Vec<(String, Record)>,
-    pub deleted: Vec<(String, Record)>,
-    pub updated: Vec<(String, Record, Record)>,
+    /// Rows INSERTed in this transaction: `(db, table, row)`.
+    pub inserted: Vec<(String, String, Record)>,
+    /// Rows DELETEd in this transaction: `(db, table, row)`.
+    pub deleted: Vec<(String, String, Record)>,
+    /// Rows UPDATEd in this transaction: `(db, table, prior_row, new_row)`.
+    pub updated: Vec<(String, String, Record, Record)>,
 }
 
 impl MemoryStorage {
@@ -2277,13 +2345,20 @@ impl MemoryStorage {
         Ok(rows.iter().filter(|r| filter(r)).cloned().collect())
     }
 
-    /// #5057: `delete_if` with the storage key already resolved.
+    /// #5057: `delete_if` against a stated database.
+    ///
+    /// #5897: the database is an **input** here (not derived from the key),
+    /// because the transaction log has to record which database the change
+    /// happened in — the key alone is a composed string, and recovering the
+    /// database out of it is exactly the identity-smuggling this issue
+    /// removes.
     pub(crate) fn delete_if_in_key(
         &mut self,
+        db: &str,
         table: &str,
-        key: String,
         filter: &RowFilter,
     ) -> SqlResult<usize> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
@@ -2296,11 +2371,14 @@ impl MemoryStorage {
             let keep = !filter(r);
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.deleted.push((table.to_string(), r.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in, so the undo addresses `db`, not whatever
+                    // database is active when the log is replayed.
+                    log.deleted.push((db.to_string(), table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
-                    let committed = Arc::make_mut(committed);
+                    let committed = cow_mut(committed);
                     committed.retain(|c| c != r);
                 }
             }
@@ -2309,12 +2387,8 @@ impl MemoryStorage {
         Ok(original_len - records.len())
     }
 
-    fn insert_in_key(
-        &mut self,
-        table: &str,
-        table_key: String,
-        records: Vec<Record>,
-    ) -> SqlResult<()> {
+    fn insert_in_key(&mut self, db: &str, table: &str, records: Vec<Record>) -> SqlResult<()> {
+        let table_key = scoped_key(db, table);
         self.bump_change_stamp(table);
         let padded: Vec<Record> = if let Some(info) = self.table_infos.get(&table_key).cloned() {
             let ncols = info.columns.len();
@@ -2441,35 +2515,51 @@ impl MemoryStorage {
         } else {
             records
         };
+        if self.tx_log.is_some() {
+            // #5507: remember the scoped key this transaction writes under,
+            // so the commit can publish its delta to the right table.
+            self.tx_scoped_keys
+                .insert(table.to_string(), table_key.clone());
+        }
         if let Some(log) = self.tx_log.as_mut() {
             for row in &padded {
                 // #5072: `TxLog` holds BARE table names — every replay site
                 // (`rollback_transaction`, `apply_committed_log`) resolves them
-                // through `tbl()` against the database active at replay time.
-                // Pushing `table_key` (already scoped) made ROLLBACK look for
-                // `default\x01default\x01t1` and silently undo nothing.
-                // `delete` and `update` already push the bare `table`.
-                log.inserted.push((table.to_string(), row.clone()));
+                // through the `db` element of the entry (issue #5897) plus
+                // `scoped_key`. Pushing `table_key` (already scoped) made
+                // ROLLBACK look for `default\x01default\x01t1` and silently
+                // undo nothing. `delete` and `update` already push the bare
+                // `table`.
+                log.inserted
+                    .push((db.to_string(), table.to_string(), row.clone()));
             }
         } else {
             // V312-26 #3969: autocommit insert — propagate to the post-commit
             // snapshot so a late-joining connection sees the row.
-            Arc::make_mut(self.committed_tables.entry(table_key.clone()).or_default())
+            cow_mut(self.committed_tables.entry(table_key.clone()).or_default())
                 .extend(padded.iter().cloned());
         }
-        Arc::make_mut(self.tables.entry(table_key).or_default()).extend(padded);
+        cow_mut(self.tables.entry(table_key).or_default()).extend(padded);
         Ok(())
     }
 
-    /// #5057: `delete_collect_pks` with the storage key already resolved.
+    /// #5057: `delete_collect_pks` against a stated database.
+    ///
+    /// #5897: `db` is an input so the transaction log can record the
+    /// database the DELETE happened in.
     fn delete_collect_pks_in_key(
         &mut self,
+        db: &str,
         table: &str,
-        key: String,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
+        if self.tx_log.is_some() {
+            // #5507: remember the scoped key (see `insert_in_key`).
+            self.tx_scoped_keys.insert(table.to_string(), key.clone());
+        }
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
         // only if the post-commit snapshot still holds this table's rows.
         let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
@@ -2480,12 +2570,15 @@ impl MemoryStorage {
             // all visible rows. Empty Vec signals that.
             if let Some(log) = self.tx_log.as_mut() {
                 for row in records.iter() {
-                    log.deleted.push((table.to_string(), row.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in.
+                    log.deleted
+                        .push((db.to_string(), table.to_string(), row.clone()));
                 }
             } else if let Some(committed) = self.committed_tables.get_mut(&key) {
                 // #4948: clone-on-write; the post-commit snapshot may
                 // still share this table's rows.
-                let committed = Arc::make_mut(committed);
+                let committed = cow_mut(committed);
                 committed.clear();
             }
             records.clear();
@@ -2507,11 +2600,14 @@ impl MemoryStorage {
             let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.deleted.push((table.to_string(), r.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in.
+                    log.deleted
+                        .push((db.to_string(), table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
-                    let committed = Arc::make_mut(committed);
+                    let committed = cow_mut(committed);
                     committed.retain(|c| c != r);
                 }
             }
@@ -2520,10 +2616,18 @@ impl MemoryStorage {
         Ok(pks)
     }
 
-    /// #5057: `delete` with the storage key already resolved.
-    fn delete_in_key(&mut self, table: &str, key: String, filters: &[Value]) -> SqlResult<usize> {
+    /// #5057: `delete` against a stated database.
+    ///
+    /// #5897: `db` is an input so the transaction log can record the
+    /// database the DELETE happened in.
+    fn delete_in_key(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
+        if self.tx_log.is_some() {
+            // #5507: remember the scoped key (see `insert_in_key`).
+            self.tx_scoped_keys.insert(table.to_string(), key.clone());
+        }
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
         // only if the post-commit snapshot still holds this table's rows.
         let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
@@ -2532,14 +2636,17 @@ impl MemoryStorage {
         if filters.is_empty() {
             if let Some(log) = self.tx_log.as_mut() {
                 for row in records.iter() {
-                    log.deleted.push((table.to_string(), row.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in.
+                    log.deleted
+                        .push((db.to_string(), table.to_string(), row.clone()));
                 }
             } else {
                 // V312-26 #3969: autocommit delete — keep post-commit view in sync.
                 if let Some(committed) = self.committed_tables.get_mut(&key) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
-                    let committed = Arc::make_mut(committed);
+                    let committed = cow_mut(committed);
                     committed.clear();
                 }
             }
@@ -2552,11 +2659,14 @@ impl MemoryStorage {
             let keep = !filters.iter().enumerate().all(|(i, v)| r.get(i) == Some(v));
             if !keep {
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.deleted.push((table.to_string(), r.clone()));
+                    // #5897: the log entry names the database the DELETE
+                    // happened in.
+                    log.deleted
+                        .push((db.to_string(), table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(&key) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
-                    let committed = Arc::make_mut(committed);
+                    let committed = cow_mut(committed);
                     committed.retain(|c| c != r);
                 }
             }
@@ -2565,15 +2675,24 @@ impl MemoryStorage {
         Ok(original_len - records.len())
     }
 
+    /// #5057: `update` against a stated database.
+    ///
+    /// #5897: `db` is an input so the transaction log can record the
+    /// database the UPDATE happened in.
     fn update_in_key(
         &mut self,
+        db: &str,
         table: &str,
-        key: String,
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
+        if self.tx_log.is_some() {
+            // #5507: remember the scoped key (see `insert_in_key`).
+            self.tx_scoped_keys.insert(table.to_string(), key.clone());
+        }
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
         // only if the post-commit snapshot still holds this table's rows.
         let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
@@ -2591,13 +2710,20 @@ impl MemoryStorage {
                     }
                 }
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.updated.push((table.to_string(), prior, record.clone()));
+                    // #5897: the log entry names the database the UPDATE
+                    // happened in.
+                    log.updated.push((
+                        db.to_string(),
+                        table.to_string(),
+                        prior,
+                        record.clone(),
+                    ));
                 } else {
                     // V312-26 #3969: autocommit update — keep post-commit view in sync.
                     if let Some(committed) = self.committed_tables.get_mut(&key) {
                         // #4948: clone-on-write; the post-commit snapshot may
                         // still share this table's rows.
-                        let committed = Arc::make_mut(committed);
+                        let committed = cow_mut(committed);
                         for committed_record in committed.iter_mut() {
                             if committed_record == &prior {
                                 *committed_record = record.clone();
@@ -2627,13 +2753,20 @@ impl MemoryStorage {
                         }
                     }
                     if let Some(log) = self.tx_log.as_mut() {
-                        log.updated.push((table.to_string(), prior, record.clone()));
+                        // #5897: the log entry names the database the UPDATE
+                        // happened in.
+                        log.updated.push((
+                            db.to_string(),
+                            table.to_string(),
+                            prior,
+                            record.clone(),
+                        ));
                     } else {
                         // V312-26 #3969: autocommit update — keep post-commit view in sync.
                         if let Some(committed) = self.committed_tables.get_mut(&key) {
                             // #4948: clone-on-write; the post-commit snapshot may
                             // still share this table's rows.
-                            let committed = Arc::make_mut(committed);
+                            let committed = cow_mut(committed);
                             for committed_record in committed.iter_mut() {
                                 if committed_record == &prior {
                                     *committed_record = record.clone();
@@ -2650,15 +2783,24 @@ impl MemoryStorage {
         Ok(count)
     }
 
+    /// #5057: `update_if` against a stated database.
+    ///
+    /// #5897: `db` is an input so the transaction log can record the
+    /// database the UPDATE happened in.
     fn update_if_in_key(
         &mut self,
+        db: &str,
         table: &str,
-        key: String,
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
+        let key = scoped_key(db, table);
         // V4.1.0: any derived cache over this table is now stale.
         self.bump_change_stamp(table);
+        if self.tx_log.is_some() {
+            // #5507: remember the scoped key (see `insert_in_key`).
+            self.tx_scoped_keys.insert(table.to_string(), key.clone());
+        }
         // #4948: `map(Arc::make_mut)` unwraps the shared handle and clones
         // only if the post-commit snapshot still holds this table's rows.
         let Some(records) = self.tables.get_mut(&key).map(Arc::make_mut) else {
@@ -2677,13 +2819,20 @@ impl MemoryStorage {
                     }
                 }
                 if let Some(log) = self.tx_log.as_mut() {
-                    log.updated.push((table.to_string(), prior, record.clone()));
+                    // #5897: the log entry names the database the UPDATE
+                    // happened in.
+                    log.updated.push((
+                        db.to_string(),
+                        table.to_string(),
+                        prior,
+                        record.clone(),
+                    ));
                 } else {
                     // V312-26 #3969: autocommit update — keep post-commit view in sync.
                     if let Some(committed) = self.committed_tables.get_mut(&key) {
                         // #4948: clone-on-write; the post-commit snapshot may
                         // still share this table's rows.
-                        let committed = Arc::make_mut(committed);
+                        let committed = cow_mut(committed);
                         for committed_record in committed.iter_mut() {
                             if committed_record == &prior {
                                 *committed_record = record.clone();
@@ -2734,6 +2883,7 @@ impl MemoryStorage {
             tx_log: None,
             last_committed_log: parking_lot::Mutex::new(None),
             committed_tables: HashMap::new(),
+            tx_scoped_keys: HashMap::new(),
             indexes: HashSet::new(),
             index_infos: HashMap::new(),
             auto_inc_counters: std::sync::Arc::new(std::sync::Mutex::new(
@@ -3008,6 +3158,57 @@ impl MemoryStorage {
         Ok(total)
     }
 
+    /// #5507: publish a committed transaction to the post-commit view
+    /// (`committed_tables`) **by delta** instead of re-cloning the whole
+    /// `tables` map.
+    ///
+    /// The old `self.committed_tables = self.tables.clone()` shared every
+    /// table's `Arc` between the live and the committed view, so the next
+    /// write had to detach that table through `Arc::make_mut` — a deep copy
+    /// of the whole table (O(rows)) for every COMMIT. With one transaction
+    /// per INSERT row that made a row-at-a-time load O(N²) (#5412).
+    ///
+    /// Applying the transaction's own delta keeps the commit proportional to
+    /// what the transaction touched and leaves the live and the committed
+    /// view on separate `Arc`s, so the write path never copies.
+    fn publish_commit_delta(&mut self, log: &TxLog) {
+        for (table, record) in &log.inserted {
+            let key = self.resolve_log_key(table);
+            cow_mut(self.committed_tables.entry(key).or_default()).push(record.clone());
+        }
+        for (table, record) in &log.deleted {
+            let key = self.resolve_log_key(table);
+            if let Some(records) = self.committed_tables.get_mut(&key) {
+                cow_mut(records).retain(|r| r != record);
+            }
+        }
+        for (table, prior, new) in &log.updated {
+            let key = self.resolve_log_key(table);
+            if let Some(records) = self.committed_tables.get_mut(&key) {
+                let records = cow_mut(records);
+                for record in records.iter_mut() {
+                    if record == prior {
+                        *record = new.clone();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// #5507: resolve a bare table name from the transaction log to the
+    /// scoped key the transaction actually wrote under.
+    ///
+    /// The write paths record the exact key in `tx_scoped_keys`; the
+    /// fallback is `tbl()` (default database), which is what the replay
+    /// sites use.
+    fn resolve_log_key(&self, bare: &str) -> String {
+        match self.tx_scoped_keys.get(bare) {
+            Some(key) => key.clone(),
+            None => self.tbl(bare),
+        }
+    }
+
     /// V312-26 #3969: commit the current transaction and return the recorded
     /// `TxLog` so the sqllogictest runner can broadcast it to other connections.
     ///
@@ -3030,7 +3231,13 @@ impl MemoryStorage {
         // V312-26 #3969: refresh the post-commit row snapshot so a late-joining
         // connection can inherit committed rows without seeing this
         // connection's in-flight transaction state.
-        self.committed_tables = self.tables.clone();
+        // #5507: publish the committed delta instead of re-cloning the whole
+        // table map — the clone shared every table's `Arc` with the live map,
+        // which forced the next write to deep-copy that whole table.
+        if let Some(ref l) = log {
+            self.publish_commit_delta(l);
+        }
+        self.tx_scoped_keys.clear();
         if let Some(ref l) = log {
             *self.last_committed_log.lock() = Some(l.clone());
         }
@@ -3049,45 +3256,57 @@ impl MemoryStorage {
     /// `Some`), the same change is appended to the receiver's `tx_log` so a
     /// subsequent ROLLBACK on the receiver reverts the broadcast, preserving
     /// the multi-connection isolation guarantee.
+    ///
+    /// #5897: the replay addresses the database the change happened in —
+    /// the `db` element of every log entry — and not the database that is
+    /// active on the receiving connection. Before this, the log carried bare
+    /// table names only and the replay scoped them with `tbl()` (always
+    /// `default`), so a commit made in `d1` was broadcast into `default`:
+    /// cross-database pollution on the way in, and a ROLLBACK on the
+    /// receiver that could not undo what it had just applied.
     pub fn apply_committed_log(&mut self, log: &TxLog) -> SqlResult<()> {
-        for (table, record) in &log.inserted {
-            // #5025: the log records the caller's bare table name, so it
-            // must be scoped to the database that is active on replay.
-            // Replaying under a different database than the one that wrote
-            // the log is prevented by #5025's `set_current_db` check.
-            let key = self.tbl(table);
+        for (db, table, record) in &log.inserted {
+            // #5897: the log names the database the INSERT happened in.
+            let key = scoped_key(db, table);
             if let Some(active_log) = self.tx_log.as_mut() {
-                active_log.inserted.push((table.clone(), record.clone()));
+                active_log
+                    .inserted
+                    .push((db.clone(), table.clone(), record.clone()));
             }
-            Arc::make_mut(self.tables.entry(key.clone()).or_default()).push(record.clone());
+            cow_mut(self.tables.entry(key.clone()).or_default()).push(record.clone());
             // V312-26 #3969: keep the post-commit snapshot in sync so a
             // later connection joining via this storage sees the broadcast.
-            Arc::make_mut(self.committed_tables.entry(key.clone()).or_default())
-                .push(record.clone());
+            cow_mut(self.committed_tables.entry(key.clone()).or_default()).push(record.clone());
         }
 
-        for (table, record) in &log.deleted {
+        for (db, table, record) in &log.deleted {
+            // #5897: the log names the database the DELETE happened in.
+            let key = scoped_key(db, table);
             if let Some(active_log) = self.tx_log.as_mut() {
-                active_log.deleted.push((table.clone(), record.clone()));
+                active_log
+                    .deleted
+                    .push((db.clone(), table.clone(), record.clone()));
             }
-            if let Some(records) = self.tables.get_mut(table) {
+            if let Some(records) = self.tables.get_mut(&key) {
                 Arc::make_mut(records).retain(|r| r != record);
             }
-            if let Some(records) = self.committed_tables.get_mut(table) {
+            if let Some(records) = self.committed_tables.get_mut(&key) {
                 Arc::make_mut(records).retain(|r| r != record);
             }
         }
 
-        for (table, prior, new) in &log.updated {
+        for (db, table, prior, new) in &log.updated {
+            // #5897: the log names the database the UPDATE happened in.
+            let key = scoped_key(db, table);
             if let Some(active_log) = self.tx_log.as_mut() {
                 active_log
                     .updated
-                    .push((table.clone(), prior.clone(), new.clone()));
+                    .push((db.clone(), table.clone(), prior.clone(), new.clone()));
             }
-            if let Some(records) = self.tables.get_mut(table) {
+            if let Some(records) = self.tables.get_mut(&key) {
                 // #4948: clone-on-write; the post-commit snapshot may
                 // still share this table's rows.
-                let records = Arc::make_mut(records);
+                let records = cow_mut(records);
                 for record in records.iter_mut() {
                     if record == prior {
                         *record = new.clone();
@@ -3095,10 +3314,10 @@ impl MemoryStorage {
                     }
                 }
             }
-            if let Some(records) = self.committed_tables.get_mut(table) {
+            if let Some(records) = self.committed_tables.get_mut(&key) {
                 // #4948: clone-on-write; the post-commit snapshot may
                 // still share this table's rows.
-                let records = Arc::make_mut(records);
+                let records = cow_mut(records);
                 for record in records.iter_mut() {
                     if record == prior {
                         *record = new.clone();
@@ -3121,8 +3340,9 @@ impl MemoryStorage {
     pub fn snapshot_schema(&self) -> SchemaSnapshot {
         SchemaSnapshot {
             table_infos: self.table_infos.clone(),
-            // #4948: `committed_tables` shares `Arc`s with `tables`, but
-            // `SchemaSnapshot` is public API and keeps its owned
+            // #5507: `committed_tables` no longer shares its `Arc`s with
+            // `tables` (that sharing forced the next write to copy the whole
+            // table), but `SchemaSnapshot` is public API and keeps its owned
             // `HashMap<String, Vec<Record>>`. Materialise here so the public
             // type — and every caller of `snapshot_schema` — is unchanged.
             // Cost stays O(total rows), but this runs when a named
@@ -3146,6 +3366,17 @@ impl MemoryStorage {
         self.table_infos = snapshot.table_infos.clone();
         // #4948: wrap each owned row vector in an `Arc` on the way in.
         self.tables = snapshot
+            .tables
+            .iter()
+            .map(|(k, v)| (k.clone(), Arc::new(v.clone())))
+            .collect();
+        // #5507: the snapshot IS the committed state, so the post-commit
+        // view starts from it as well — on its own `Arc`s, so the live and
+        // the committed view never share storage. Before #5507 the commit
+        // refreshed the committed view by cloning the whole table map, which
+        // also covered this case; with delta publication the view has to be
+        // seeded here.
+        self.committed_tables = snapshot
             .tables
             .iter()
             .map(|(k, v)| (k.clone(), Arc::new(v.clone())))
@@ -3345,7 +3576,13 @@ impl StorageEngine for MemoryStorage {
         // V312-26 #3969: refresh the post-commit row snapshot so a late-joining
         // connection can inherit committed rows without seeing this
         // connection's in-flight transaction state.
-        self.committed_tables = self.tables.clone();
+        // #5507: publish the committed delta instead of re-cloning the whole
+        // table map (the clone forced a deep copy of the written table on
+        // the next write — O(N) per COMMIT, O(N²) for a row-at-a-time load).
+        if let Some(ref l) = log {
+            self.publish_commit_delta(l);
+        }
+        self.tx_scoped_keys.clear();
         if let Some(ref l) = log {
             *self.last_committed_log.lock() = Some(l.clone());
         }
@@ -3353,31 +3590,39 @@ impl StorageEngine for MemoryStorage {
     }
 
     fn rollback_transaction(&mut self) -> SqlResult<()> {
+        // #5507: the scoped-key map belongs to the transaction that is
+        // being undone.
+        self.tx_scoped_keys.clear();
         if let Some(log) = self.tx_log.take() {
-            // #5025: the log stores the caller's bare table names, so each
-            // one is scoped to the database that is active here. Replaying
-            // under a different database than the one that produced the log
-            // would restore rows into the wrong tables; `set_current_db`
-            // refuses an unknown database, which is what keeps this honest.
-            for (table, row) in log.deleted.into_iter().rev() {
-                let key = self.tbl(table);
+            // #5897: the log records the database each change happened in,
+            // so the undo addresses THAT database — `scoped_key(db, table)`
+            // — and not the database that happens to be active on the
+            // connection that replays the log.
+            //
+            // Before this, the log stored bare table names only and the
+            // replay scoped them with `tbl()` (always `default`). A
+            // transaction in a named database therefore undid nothing:
+            // the row it had to remove lived in `d1\x01t`, while the undo
+            // looked in `default\x01t`.
+            for (db, table, row) in log.deleted.into_iter().rev() {
+                let key = scoped_key(&db, &table);
                 Arc::make_mut(self.tables.entry(key).or_default()).push(row);
             }
-            for (table, row) in log.inserted.into_iter().rev() {
-                let key = self.tbl(table);
+            for (db, table, row) in log.inserted.into_iter().rev() {
+                let key = scoped_key(&db, &table);
                 if let Some(records) = self.tables.get_mut(&key) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
-                    let records = Arc::make_mut(records);
+                    let records = cow_mut(records);
                     records.retain(|r| r != &row);
                 }
             }
-            for (table, prior, _new) in log.updated.into_iter().rev() {
-                let key = self.tbl(table);
+            for (db, table, prior, _new) in log.updated.into_iter().rev() {
+                let key = scoped_key(&db, &table);
                 if let Some(records) = self.tables.get_mut(&key) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
-                    let records = Arc::make_mut(records);
+                    let records = cow_mut(records);
                     for record in records.iter_mut() {
                         if *record == _new {
                             *record = prior.clone();
@@ -3405,8 +3650,10 @@ impl StorageEngine for MemoryStorage {
         if self.buffer_pool.is_some() {
             return self.insert_via_bufferpool(table, records);
         }
-        let table_key = self.tbl(table);
-        self.insert_in_key(table, table_key, records)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.insert_in_key(DEFAULT_DATABASE, table, records)
     }
 
     /// #5057: `insert` into a stated database.
@@ -3417,23 +3664,25 @@ impl StorageEngine for MemoryStorage {
             // routed via the scoped helper below; kept here for symmetry.
             return self.insert_via_bufferpool_in_db(db, table, records);
         }
-        self.insert_in_key(table, scoped_key(db, table), records)
+        self.insert_in_key(db, table, records)
     }
 
-    /// #5057: `insert` with the storage key already resolved.
+    /// #5057: `delete` with the storage key already resolved.
     ///
     /// Every table access in the 150-line body below goes through
     /// `table_key` — the info lookup, the AUTO_INCREMENT scan, the
     /// transaction log, and the post-commit snapshot. Resolving it once
     /// here is what keeps a concurrent `USE` from redirecting the write.
     fn delete(&mut self, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        let key = self.tbl(table);
-        self.delete_in_key(table, key, filters)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.delete_in_key(DEFAULT_DATABASE, table, filters)
     }
 
     /// #5057: `delete` against a stated database.
     fn delete_in_db(&mut self, db: &str, table: &str, filters: &[Value]) -> SqlResult<usize> {
-        self.delete_in_key(table, scoped_key(db, table), filters)
+        self.delete_in_key(db, table, filters)
     }
 
     /// Phase B Step 4.1: collect primary keys (column 0) of deleted rows
@@ -3442,8 +3691,10 @@ impl StorageEngine for MemoryStorage {
     /// the caller wants the coarse "tombstone all" fallback for full
     /// table wipes).
     fn delete_collect_pks(&mut self, table: &str, filters: &[Value]) -> SqlResult<Vec<Value>> {
-        let key = self.tbl(table);
-        self.delete_collect_pks_in_key(table, key, filters)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.delete_collect_pks_in_key(DEFAULT_DATABASE, table, filters)
     }
 
     /// #5057: `delete_collect_pks` against a stated database.
@@ -3453,17 +3704,19 @@ impl StorageEngine for MemoryStorage {
         table: &str,
         filters: &[Value],
     ) -> SqlResult<Vec<Value>> {
-        self.delete_collect_pks_in_key(table, scoped_key(db, table), filters)
+        self.delete_collect_pks_in_key(db, table, filters)
     }
 
     fn delete_if(&mut self, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        let key = self.tbl(table);
-        self.delete_if_in_key(table, key, filter)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.delete_if_in_key(DEFAULT_DATABASE, table, filter)
     }
 
     /// #5057: `delete_if` against a stated database.
     fn delete_if_in_db(&mut self, db: &str, table: &str, filter: &RowFilter) -> SqlResult<usize> {
-        self.delete_if_in_key(table, scoped_key(db, table), filter)
+        self.delete_if_in_key(db, table, filter)
     }
 
     fn update(
@@ -3472,8 +3725,10 @@ impl StorageEngine for MemoryStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        let key = self.tbl(table);
-        self.update_in_key(table, key, filters, updates)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.update_in_key(DEFAULT_DATABASE, table, filters, updates)
     }
 
     /// #5057: `update` against a stated database.
@@ -3484,7 +3739,7 @@ impl StorageEngine for MemoryStorage {
         filters: &[Value],
         updates: &[(usize, Value)],
     ) -> SqlResult<usize> {
-        self.update_in_key(table, scoped_key(db, table), filters, updates)
+        self.update_in_key(db, table, filters, updates)
     }
 
     /// #5057: `update` with the storage key already resolved.
@@ -3494,8 +3749,10 @@ impl StorageEngine for MemoryStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        let key = self.tbl(table);
-        self.update_if_in_key(table, key, filter, mutation)
+        // #5057: the database-less call resolves against `default`.
+        // #5897: the database is passed down explicitly so the transaction
+        // log can record it.
+        self.update_if_in_key(DEFAULT_DATABASE, table, filter, mutation)
     }
 
     /// #5057: `update_if` against a stated database.
@@ -3506,7 +3763,7 @@ impl StorageEngine for MemoryStorage {
         filter: &RowFilter,
         mutation: &RowMutation,
     ) -> SqlResult<usize> {
-        self.update_if_in_key(table, scoped_key(db, table), filter, mutation)
+        self.update_if_in_key(db, table, filter, mutation)
     }
 
     /// #5057: `update_if` with the storage key already resolved.
@@ -3744,7 +4001,7 @@ impl StorageEngine for MemoryStorage {
             if let Some(records) = self.tables.get_mut(&key.clone()) {
                 // #4948: clone-on-write; the post-commit snapshot may
                 // still share this table's rows.
-                let records = Arc::make_mut(records);
+                let records = cow_mut(records);
                 for row in records.iter_mut() {
                     row.push(fill.clone());
                 }
@@ -4008,7 +4265,7 @@ impl StorageEngine for MemoryStorage {
         if let Some(records) = self.tables.get_mut(&table_key.clone()) {
             // #4948: clone-on-write; the post-commit snapshot may
             // still share this table's rows.
-            let records = Arc::make_mut(records);
+            let records = cow_mut(records);
             for record in records.iter_mut() {
                 if col_idx < record.len() {
                     record.remove(col_idx);
@@ -4223,6 +4480,12 @@ mod _storage_engine_pr2_compile_check {
 mod tests {
     use super::legacy_string_evaluator::evaluate_sql_expression;
     use super::*;
+
+    /// #5507: how many table copies the storage had to make — the test-only
+    /// counter behind `COW_DEEP_COPIES`.
+    fn deep_copies() -> usize {
+        COW_DEEP_COPIES.load(std::sync::atomic::Ordering::Relaxed)
+    }
 
     /// #5025: build a minimal table description for tests that used to
     /// poke `storage.tables` directly. Going through `create_table` keeps
@@ -5240,7 +5503,7 @@ mod tests {
             .store(1, std::sync::atomic::Ordering::Relaxed);
         s.tx_log = Some(TxLog::default());
         // #4948: raw-map writes must clone-on-write through the Arc.
-        Arc::make_mut(s.tables.get_mut("t").unwrap()).push(vec![Value::Integer(2)]);
+        cow_mut(s.tables.get_mut("t").unwrap()).push(vec![Value::Integer(2)]);
     }
 
     // #5072: this test used to seed the raw map with the **unscoped** key
@@ -5722,75 +5985,76 @@ mod tests {
         s.insert(name, batch).unwrap();
     }
 
+    /// #5507: the commit must publish the committed view **without copying
+    /// any rows**, and the write that follows must not copy the table either.
+    ///
+    /// Before #5507 the commit published the view by cloning the whole table
+    /// map (`committed_tables = tables.clone()`), which shared every table's
+    /// `Arc` between the live map and the committed view. The next write to a
+    /// table then had to detach it — a deep copy of the whole table — so a
+    /// row-at-a-time load paid O(rows) per COMMIT and O(N²) in total
+    /// (#5412).
+    ///
+    /// Both commit entry points are exercised:
+    ///   - `StorageEngine::commit_transaction`  — what the engine actually
+    ///     calls on every autocommit write and explicit COMMIT;
+    ///   - `commit_transaction_with_log`        — the TxLog-returning variant.
+    /// Mutation M22 showed a test that only covers the second one lets the
+    /// first silently go back to deep-copying, so exercise both.
     #[test]
-    fn commit_shares_row_vectors_instead_of_deep_copying_4948() {
-        // Both commit entry points carry the snapshot assignment:
-        //   - `StorageEngine::commit_transaction`  — what the engine actually
-        //     calls on every autocommit write and explicit COMMIT;
-        //   - `commit_transaction_with_log`        — the TxLog-returning variant.
-        // Mutation M22 showed a test that only covers the second one lets the
-        // first silently go back to deep-copying, so exercise both.
+    fn commit_publishes_the_committed_view_without_copying_rows_5507() {
         for use_trait_commit in [true, false] {
             let mut s = MemoryStorage::new();
             table_with_rows_4948(&mut s, "t1", 10);
             table_with_rows_4948(&mut s, "t2", 10);
 
+            let before = deep_copies();
             s.begin_transaction().unwrap();
             if use_trait_commit {
                 s.commit_transaction().unwrap();
             } else {
                 s.commit_transaction_with_log();
             }
+            assert_eq!(
+                deep_copies() - before,
+                0,
+                "trait_commit={use_trait_commit}: the commit must not copy any rows"
+            );
 
             for name in ["t1", "t2"] {
                 let key = s.tbl(name);
                 let live = s.tables.get(&key).expect("live table");
                 let committed = s.committed_tables.get(&key).expect("post-commit snapshot");
-                assert!(
-                    Arc::ptr_eq(live, committed),
-                    "trait_commit={use_trait_commit} {name}: live and committed rows \
-                 must share one allocation"
+                assert_eq!(
+                    live.len(),
+                    committed.len(),
+                    "trait_commit={use_trait_commit} {name}: the committed view must \
+                     carry the committed rows"
                 );
                 assert_eq!(
-                    Arc::strong_count(live),
-                    2,
-                    "trait_commit={use_trait_commit} {name}: expected live + snapshot only"
+                    live.as_slice(),
+                    committed.as_slice(),
+                    "trait_commit={use_trait_commit} {name}: the committed view must \
+                     carry the committed rows"
+                );
+                assert!(
+                    !Arc::ptr_eq(live, committed),
+                    "trait_commit={use_trait_commit} {name}: the committed view must be \
+                     its own snapshot — sharing the live table's rows is exactly what \
+                     made the next write copy the whole table (#5507)"
                 );
             }
         }
     }
 
+    /// #5507: a write after a commit must not copy the table it writes to.
+    ///
+    /// The old design shared the live and the committed `Arc`, so this write
+    /// detached (and therefore copied) the whole table. The committed view
+    /// is now published by delta, so nothing is shared and the write costs
+    /// what it inserts.
     #[test]
-    fn commit_with_log_shares_row_vectors_instead_of_deep_copying_4948() {
-        let mut s = MemoryStorage::new();
-        table_with_rows_4948(&mut s, "t1", 10);
-        table_with_rows_4948(&mut s, "t2", 10);
-
-        s.begin_transaction().unwrap();
-        s.commit_transaction_with_log();
-
-        // The whole point of #4948: after a commit, every table's rows are
-        // held by exactly two handles — the live map and the post-commit
-        // snapshot — pointing at ONE buffer. Before the change this was a
-        // separate allocation per table.
-        for name in ["t1", "t2"] {
-            let key = s.tbl(name);
-            let live = s.tables.get(&key).expect("live table");
-            let committed = s.committed_tables.get(&key).expect("post-commit snapshot");
-            assert!(
-                Arc::ptr_eq(live, committed),
-                "{name}: live and committed rows must share one allocation"
-            );
-            assert_eq!(
-                Arc::strong_count(live),
-                2,
-                "{name}: expected live + snapshot only"
-            );
-        }
-    }
-
-    #[test]
-    fn writing_one_table_after_commit_clones_only_that_table_4948() {
+    fn writing_one_table_after_commit_copies_nothing_5507() {
         let mut s = MemoryStorage::new();
         table_with_rows_4948(&mut s, "t1", 10);
         table_with_rows_4948(&mut s, "t2", 10);
@@ -5801,23 +6065,26 @@ mod tests {
         let k1 = s.tbl("t1");
         let k2 = s.tbl("t2");
 
-        // Write t1 only, inside an open transaction. `Arc::make_mut` must detach
-        // t1 and leave t2 shared.
+        // Write t1 only, inside an open transaction. The live rows of t1 must
+        // not be copied for this, and the committed view must not see the
+        // in-transaction row.
         //
         // NOTE: an *autocommit* insert would not do — `MemoryStorage::insert`
         // deliberately propagates autocommit writes into `committed_tables`
         // (V312-26 #3969), so both maps would legitimately change.
         // `commit_transaction_with_log` takes `tx_log`, so a fresh transaction
         // has to be opened for the write to actually be in-transaction.
+        let before = deep_copies();
         s.begin_transaction().unwrap();
         s.insert("t1", vec![vec![Value::Integer(999)]]).unwrap();
+        assert_eq!(
+            deep_copies() - before,
+            0,
+            "writing one row must not copy the table"
+        );
 
         let t1_live = s.tables.get(&k1).unwrap();
         let t1_committed = s.committed_tables.get(&k1).unwrap();
-        assert!(
-            !Arc::ptr_eq(t1_live, t1_committed),
-            "t1 was written, so the live copy must have been detached"
-        );
         assert_eq!(t1_live.len(), 11, "live t1 must carry the new row");
         assert_eq!(
             t1_committed.len(),
@@ -5827,10 +6094,76 @@ mod tests {
 
         let t2_live = s.tables.get(&k2).unwrap();
         let t2_committed = s.committed_tables.get(&k2).unwrap();
-        assert!(
-            Arc::ptr_eq(t2_live, t2_committed),
-            "t2 was untouched, so it must still be shared — no copy"
+        assert_eq!(
+            t2_live.len(),
+            t2_committed.len(),
+            "t2 was untouched, so both views must still agree"
         );
+    }
+
+    /// #5507: the shape that made #5412 quadratic — one transaction per
+    /// inserted row.
+    ///
+    /// Before the fix every commit shared the table's rows between the live
+    /// and the committed view, so the next INSERT copied the whole table:
+    /// O(rows) per inserted row, O(N²) for the load.
+    #[test]
+    fn row_at_a_time_committed_inserts_never_copy_the_table_5507() {
+        let mut s = MemoryStorage::new();
+        table_with_rows_4948(&mut s, "t1", 0);
+
+        let before = deep_copies();
+        for i in 0..200i64 {
+            s.begin_transaction().unwrap();
+            s.insert("t1", vec![vec![Value::Integer(i)]]).unwrap();
+            s.commit_transaction().unwrap();
+        }
+        assert_eq!(
+            deep_copies() - before,
+            0,
+            "a row-at-a-time load must not copy the table on every commit"
+        );
+
+        let key = s.tbl("t1");
+        let committed = s.committed_tables.get(&key).expect("committed view");
+        assert_eq!(
+            committed.len(),
+            200,
+            "every committed row must be published to the committed view"
+        );
+        let live = s.tables.get(&key).expect("live table");
+        assert_eq!(live.len(), 200, "the live table must carry every row");
+    }
+
+    /// #5507: an autocommit DELETE must also remove the row from the
+    /// post-commit view.
+    ///
+    /// The delete path looked the committed view up under the **bare** table
+    /// name while the rows live under the scoped key, so the lookup missed
+    /// and the deleted row stayed visible to a late-joining connection.
+    #[test]
+    fn autocommit_delete_removes_the_row_from_the_committed_view_5507() {
+        let mut s = MemoryStorage::new();
+        table_with_rows_4948(&mut s, "t1", 0);
+        s.insert("t1", vec![vec![Value::Integer(1)]]).unwrap();
+        s.insert("t1", vec![vec![Value::Integer(2)]]).unwrap();
+
+        let key = s.tbl("t1");
+        assert_eq!(
+            s.committed_tables.get(&key).map(|rows| rows.len()),
+            Some(2),
+            "both rows are committed and must be visible in the committed view"
+        );
+
+        s.delete("t1", &[Value::Integer(1)]).unwrap();
+
+        let committed = s.committed_tables.get(&key).expect("committed view");
+        assert_eq!(
+            committed.len(),
+            1,
+            "the deleted row must not stay in the committed view"
+        );
+        assert_eq!(committed[0], vec![Value::Integer(2)]);
     }
 
     /// #4948 follow-up, and a PRE-EXISTING defect unrelated to the commit clone.
