@@ -88,3 +88,7 @@ path = "tests/memory_list_views_5433.rs"
 [[test]]
 name = "memory_set_column_default_4154"
 path = "tests/memory_set_column_default_4154.rs"
+
+[[test]]
+name = "memory_txlog_db_scope_5897"
+path = "tests/memory_txlog_db_scope_5897.rs"
