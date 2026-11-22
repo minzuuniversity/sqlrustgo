@@ -176,10 +176,12 @@
 |---|---|---|
 | `docs/releases/v4.1.0/GATE_CATALOG.jsonl` 行数 | **168** | `wc -l` |
 | `docs/releases/v4.1.0/GATE_BASELINE_V410.jsonl` 行数 | **168** | `wc -l` |
-| `scripts/gate/*.sh` 实际文件数 | **217** | `ls scripts/gate/*.sh \| wc -l` |
+| `scripts/gate/` 顶层 `.sh` 文件数 | **196** | `ls scripts/gate/*.sh \| wc -l` |
+| `scripts/gate/` 递归 `.sh` 文件数（含 `legacy/`） | **217**（其中 `legacy/` 18 个） | `find scripts/gate -name '*.sh' -type f \| wc -l` |
+| `check_drift_not_pass.sh` 实际管辖的门禁数（顶层、排除 `legacy/` 与两个检测器自身） | **194** | 见 §6.1 |
 | 分类分布 | `dead` 61 / `ci_reachable` 51 / `stage_required` 34 / `orphan_referenced` 22 | `GATE_CATALOG.jsonl` 的 `class` 字段 |
 
-- **「168 道门禁」= 台账口径，不是脚本文件数**（217 个 `.sh`）。评审要求「不批量删除 168 道门禁」——按台账口径理解是对的，但执行时必须知道台账 168 与文件 217 不等。
+- **「168 道门禁」= 台账口径，不是脚本文件数**。脚本侧：顶层 `scripts/gate/*.sh` **196** 个；递归（含 `scripts/gate/legacy/` 的 18 个历史实现）**217** 个；`check_drift_not_pass.sh` 实际管辖的是**顶层排除 `legacy/` 与两个检测器自身后的 194** 个。评审要求「不批量删除 168 道门禁」——按台账口径理解是对的，但执行时必须知道这三个数不是同一个数。
 - **「34 道阶段绑定」= `stage_required` 34 —— VERIFIED，精确吻合**。
 - **「85 道静态可能可达」—— 无法从这两份 168 行台账复算**：可推导的拆分是 `ci_reachable + orphan_referenced = 73`、`dead + orphan_referenced = 83`、`stage_required + ci_reachable = 85`，均与评审表述不吻合。**判定 UNKNOWN**，需 dsh-ops 给出 85 的推导口径。任务书 §6 第 4 项「区分 34 道阶段绑定与 85 道静态可能可达」在拿到口径之前无法执行。
 
@@ -223,7 +225,7 @@
 | ADR 文档实际位置 | `45da6968ae` / `b681b74ca3` / `8cbde5b6d3` | 2026-11-23T07:34+08:00 | `git ls-tree -r <ref>` |
 | 75 场景矩阵 | `8cbde5b6d3` 工作树 | 2026-11-23T07:35+08:00 | `python3` 解析 `evidence/case-mapping-20261120.json` |
 | Issue / PR 计数 | Gitea API 实时 | 2026-11-23T07:36+08:00 | `X-Total-Count` 响应头 |
-| 门禁清单 168 / 217 | `8cbde5b6d3` | 2026-11-23T07:38+08:00 | `wc -l` / `ls` |
+| 门禁清单 168（台账）/ 196（顶层 .sh）/ 217（递归 .sh）/ 194（漂移门禁管辖数） | `8cbde5b6d3` | 2026-11-23T07:38+08:00 | `wc -l` / `find` |
 | fmt / clippy 基线 | `8cbde5b6d3` | 2026-11-23T08:05+08:00 | `cargo fmt --check --all` / `cargo clippy --all-features --all-targets` |
 | Swift 端点探活 | 250:8021 实时 | 2026-11-23T07:40+08:00 | `GET /v1/models` |
 
@@ -236,7 +238,7 @@
 | 1 | 评审包基线 `cd8cefe623` 相对 develop「behind 104」 | 相对**当前** `origin/develop/v4.1.0` 是 **behind 242** | **更正**（§2） |
 | 2 | 「交接包 manifest 需要重签」「SHA256SUMS 实际 16/16」 | `SHA256SUMS` 在权威 tip 上实测 **16/16 OK** | **该子项已满足**；待修的是 `base_sha` / `final_head_sha` / 上游 C01 重签 |
 | 3 | 「18 工作包 / 10 ADR / 75 场景矩阵」在同一基线上 | 工作包 18 与场景矩阵 75 **在**权威 tip；**10 份 ADR 文档不在**，载体是两个未合并 PR | **拆分标注**（§4） |
-| 4 | 「168 道门禁」 | 台账 168（`GATE_CATALOG.jsonl`），脚本 217 | **口径澄清**（§6.1） |
+| 4 | 「168 道门禁」 | 台账 168（`GATE_CATALOG.jsonl`）；脚本顶层 196 / 递归 217 / 漂移门禁管辖 194 | **口径澄清**（§6.1） |
 | 5 | 「34 道阶段绑定与 85 道静态可能可达」 | 34 精确吻合 `stage_required`；**85 不可复算** | 34 VERIFIED / 85 UNKNOWN |
 | 6 | 权威 tip 的 lint/fmt 是绿的 | **fmt 14 文件红、clippy 6 warning** | **新增基线事实**（§6.3） |
 | 7 | `audit/v4.1.0/commit.txt` 是当前冻结点 | 内容 `93c8a9dbbe9f…` ≠ HEAD `8cbde5b6d3…` | **STALE**（合并提交 `712eff7e18` 恢复了它，但相对 HEAD 仍落后） |

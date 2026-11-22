@@ -93,7 +93,7 @@ $ cd docs/releases/v4.1.0/refactoring/test-factory-design && shasum -a 256 -c SH
 
 - **34 ⇒ VERIFIED**，与评审说法精确吻合。
 - **85 ⇒ UNKNOWN**。可从这两份 168 行台账推导出的拆分是 `ci_reachable + orphan_referenced = 73`、`dead + orphan_referenced = 83`、`stage_required + ci_reachable = 85` —— 最后一个虽然等于 85，但语义是「阶段绑定 + CI 可达」，与「静态可能可达」相反。**在拿到 dsh-ops 的推导口径之前，这一条无法执行。**
-- 附带澄清：**台账 168 ≠ 脚本文件数 217**（`ls scripts/gate/*.sh | wc -l`）。评审「不批量删除 168 道门禁」按台账口径理解是对的，但执行时必须知道这个差。
+- 附带澄清：**台账 168 ≠ 脚本文件数**。脚本侧实测三个口径：顶层 `scripts/gate/*.sh` = **196**；递归（含 `legacy/` 的 18 个历史实现）= **217**；`check_drift_not_pass.sh` 实际管辖的（顶层排除 `legacy/` 与两个检测器自身）= **194**。评审「不批量删除 168 道门禁」按台账口径理解是对的，但执行时必须知道这三个数都不是 168。
 
 **建议 dsh-ops**：给出 85 的推导脚本或口径，本轮再据以复核。
 
@@ -156,7 +156,7 @@ $ cd docs/releases/v4.1.0/refactoring/test-factory-design && shasum -a 256 -c SH
 | 10 | 矩阵证据绑定 0/75 可机器校验；4 条 RED 证据文件不存在；`evidence/` 下 0 个 `.log` | python 逐条解析 | 10:00 |
 | 11 | manifest `base_sha` 落后 138 提交；`final_head_sha=null` | `14_HANDOFF_MANIFEST.json` | 07:33 |
 | 12 | Open Issue 105 / Open PR 2（#5916、#5917 均待批） | Gitea API `X-Total-Count` | 07:36 |
-| 13 | 门禁台账 168，分类 61/51/34/22；`scripts/gate/*.sh` = 217 | `GATE_CATALOG.jsonl` / `ls` | 07:38 |
+| 13 | 门禁台账 168，分类 61/51/34/22；脚本顶层 196 / 递归 217 / 漂移门禁管辖 194 | `GATE_CATALOG.jsonl` / `find` | 07:38 |
 | 14 | 权威 tip fmt 14 文件红、clippy 6 warning | `cargo fmt --check --all` / `cargo clippy` | 08:05 |
 | 15 | 10 个门禁行为缺陷，各有 before/after rc | `HARNESS-P0-FINDINGS.md` | 09:00 |
 | 16 | 行为契约套件 20 条：整改后 20/20 通过，整改前 8 条失败 | `cargo test --test gate_behavior_contract_test` | 09:20 |
