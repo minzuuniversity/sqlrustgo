@@ -1,0 +1,133 @@
+{
+ "suite": "RERUN-T1",
+ "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+ "generated_at": "20261120T170800",
+ "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+ "cargo": "cargo 1.97.0 (c980f4866 2026-06-30)",
+ "result": {
+  "tests": [
+   {
+    "name": "append_only_storage::tests::transaction_lifecycle",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_storage_engine_begin_rollback",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_nested_transaction_returns_error",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_storage_engine_transaction",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "parallel_wal_storage::tests::transaction_lifecycle_via_wal",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "table_level_storage::tests::transaction_lifecycle_passthrough",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_record_transactions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_in_transaction",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_classify_sql_transaction",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_active_txs_lifecycle_begin_rollback",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_rollback_restores_deleted_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::open_transaction_at_target_is_not_applied",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::rollback_of_update_restores_only_the_changed_row_5072",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_rollback_removes_inserted_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::rollback_actually_undoes_an_insert_4948",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_wal_storage_multiple_transactions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_wal_storage_rollback",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_legacy::tests::test_wal_5_transactions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_legacy::tests::test_wal_multiple_transactions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_legacy::tests::test_wal_manager_log_rollback",
+    "class": "PASS",
+    "raw_status": "ok"
+   }
+  ],
+  "summary": {
+   "passed": 22,
+   "failed": 0,
+   "ignored": 0,
+   "cargo_status": "ok"
+  },
+  "exit_code": 0,
+  "class": "PASS",
+  "duration_s": 0.67,
+  "cmd": "cargo test -p sqlrustgo-storage --lib -- undo rollback savepoint transaction"
+ },
+ "raw_log": "evidence/RERUN-T1-20261120T170800.log",
+ "artifact_digest": "7fa53e101ed8fe92"
+}

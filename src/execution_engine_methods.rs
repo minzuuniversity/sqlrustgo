@@ -789,16 +789,19 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
     /// the SQL path does not fail. The storage layer cancel flag is set
     /// for future use when a real process registry is implemented.
     pub fn execute_kill(&self, connection_id: u64, kill_query: bool) -> SqlResult<ExecutorResult> {
+        // #5490: the backend result used to be discarded with `let _ =` and an
+        // OK packet was returned for every id — even ids that were never
+        // registered and backends whose cancel/kill hooks are unsupported
+        // defaults. The backend outcome now propagates: an unsupported or
+        // unknown target fails honestly (MySQL errors on `KILL` for unknown
+        // thread ids too; the `not yet implemented` row text disguised that).
         let mut storage = self.storage.write();
-        let _ = storage.set_cancel_flag(connection_id);
-        Ok(ExecutorResult::new(
-            vec![vec![Value::Text(format!(
-                "KILL {} {}: not yet implemented",
-                if kill_query { "QUERY" } else { "CONNECTION" },
-                connection_id
-            ))]],
-            0,
-        ))
+        if kill_query {
+            storage.set_cancel_flag(connection_id)?;
+        } else {
+            storage.kill_connection(connection_id)?;
+        }
+        Ok(ExecutorResult::empty())
     }
 
     pub(super) fn execute_truncate(

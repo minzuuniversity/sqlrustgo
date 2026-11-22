@@ -1,0 +1,534 @@
+[
+ {
+  "case_id": "PILOT-T1-001",
+  "matrix_index": 0,
+  "test_name": "append_only_storage::tests::transaction_lifecycle",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-002",
+  "matrix_index": 1,
+  "test_name": "engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-003",
+  "matrix_index": 2,
+  "test_name": "engine::tests::rollback_actually_undoes_an_insert_4948",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-004",
+  "matrix_index": 3,
+  "test_name": "engine::tests::rollback_of_update_restores_only_the_changed_row_5072",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-005",
+  "matrix_index": 4,
+  "test_name": "engine::tests::test_nested_transaction_returns_error",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-006",
+  "matrix_index": 5,
+  "test_name": "engine::tests::test_rollback_removes_inserted_rows",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-007",
+  "matrix_index": 6,
+  "test_name": "engine::tests::test_rollback_restores_deleted_rows",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-008",
+  "matrix_index": 7,
+  "test_name": "engine::tests::test_storage_engine_begin_rollback",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-009",
+  "matrix_index": 8,
+  "test_name": "engine::tests::test_storage_engine_set_current_tx_id",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-010",
+  "matrix_index": 9,
+  "test_name": "engine::tests::test_storage_engine_transaction",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-011",
+  "matrix_index": 10,
+  "test_name": "file_storage::tests::test_in_transaction",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-012",
+  "matrix_index": 11,
+  "test_name": "file_storage::tests::test_set_current_tx_id",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-013",
+  "matrix_index": 12,
+  "test_name": "parallel_wal_storage::tests::transaction_lifecycle_via_wal",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-014",
+  "matrix_index": 13,
+  "test_name": "pitr::tests::open_transaction_at_target_is_not_applied",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-015",
+  "matrix_index": 14,
+  "test_name": "read_write_split::tests::test_classify_sql_transaction",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-016",
+  "matrix_index": 15,
+  "test_name": "semisync::tests::test_semi_sync_master_record_transactions",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-017",
+  "matrix_index": 16,
+  "test_name": "table_level_storage::tests::transaction_lifecycle_passthrough",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-018",
+  "matrix_index": 17,
+  "test_name": "vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-019",
+  "matrix_index": 18,
+  "test_name": "vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-020",
+  "matrix_index": 19,
+  "test_name": "vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-021",
+  "matrix_index": 20,
+  "test_name": "wal_legacy::tests::test_wal_5_transactions",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-022",
+  "matrix_index": 21,
+  "test_name": "wal_legacy::tests::test_wal_manager_log_rollback",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-023",
+  "matrix_index": 22,
+  "test_name": "wal_legacy::tests::test_wal_multiple_transactions",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-024",
+  "matrix_index": 23,
+  "test_name": "wal_storage::tests::test_active_txs_lifecycle_begin_rollback",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-025",
+  "matrix_index": 24,
+  "test_name": "wal_storage::tests::test_wal_active_tx_ids_empty",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-026",
+  "matrix_index": 25,
+  "test_name": "wal_storage::tests::test_wal_set_current_tx_id",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-027",
+  "matrix_index": 26,
+  "test_name": "wal_storage::tests::test_wal_storage_multiple_transactions",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-028",
+  "matrix_index": 27,
+  "test_name": "wal_storage::tests::test_wal_storage_rollback",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-101",
+  "matrix_index": 28,
+  "test_name": "tf_t1_01_insert_then_rollback",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T1-102",
+  "matrix_index": 29,
+  "test_name": "tf_t1_02_savepoint_partial_rollback",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T2-001",
+  "matrix_index": 30,
+  "test_name": "bplus_tree::tests::duplicate_keys_keep_every_row_id",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T2-002",
+  "matrix_index": 31,
+  "test_name": "file_storage::tests::test_save_trigger_load_trigger_duplicate",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T2-003",
+  "matrix_index": 32,
+  "test_name": "mvcc::tests::test_empty_table_snapshot",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T2-004",
+  "matrix_index": 33,
+  "test_name": "mvcc::tests::test_find_visible_at_snapshot_before_all",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T2-005",
+  "matrix_index": 34,
+  "test_name": "mvcc::tests::test_gc_drops_old_versions",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T2-006",
+  "matrix_index": 35,
+  "test_name": "mvcc::tests::test_get_visible_pk_lookup",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T3-001",
+  "matrix_index": 36,
+  "test_name": "adaptive_hash_index::tests::test_invalidate_page_removes_entries",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T3-002",
+  "matrix_index": 37,
+  "test_name": "append_only_storage::tests::flush_clears_dirty",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T3-003",
+  "matrix_index": 38,
+  "test_name": "binary_storage::tests::test_bin_flush",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T3-004",
+  "matrix_index": 39,
+  "test_name": "buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T3-005",
+  "matrix_index": 40,
+  "test_name": "buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T3-006",
+  "matrix_index": 41,
+  "test_name": "buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T3-007",
+  "matrix_index": 42,
+  "test_name": "buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T3-008",
+  "matrix_index": 43,
+  "test_name": "buffer_pool::tests::test_buffer_pool_basic",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-101",
+  "matrix_index": 44,
+  "test_name": "tf_t4_01_scan_after_insert_sees_rows",
+  "rerun_status": "FAILED_RED",
+  "note": "D-001 桩静默成功 RED (CARGO_EXIT=101)",
+  "evidence": "evidence/D001-red-run-20261120T165449.log"
+ },
+ {
+  "case_id": "PILOT-T4-102",
+  "matrix_index": 45,
+  "test_name": "tf_t4_02_delete_reports_real_count",
+  "rerun_status": "FAILED_RED",
+  "note": "D-001 桩静默成功 RED (CARGO_EXIT=101)",
+  "evidence": "evidence/D001-red-run-20261120T165449.log"
+ },
+ {
+  "case_id": "PILOT-T4-103",
+  "matrix_index": 46,
+  "test_name": "tf_t4_03_update_reports_real_count",
+  "rerun_status": "FAILED_RED",
+  "note": "D-001 桩静默成功 RED (CARGO_EXIT=101)",
+  "evidence": "evidence/D001-red-run-20261120T165449.log"
+ },
+ {
+  "case_id": "PILOT-T4-104",
+  "matrix_index": 47,
+  "test_name": "tf_t4_04_non_tx_backend_must_reject_or_document",
+  "rerun_status": "FAILED_RED",
+  "note": "D-001 桩静默成功 RED (CARGO_EXIT=101)",
+  "evidence": "evidence/D001-red-run-20261120T165449.log"
+ },
+ {
+  "case_id": "PILOT-T4-001",
+  "matrix_index": 48,
+  "test_name": "append_only_storage::tests::compact_table_drops_tombstones",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-002",
+  "matrix_index": 49,
+  "test_name": "append_only_storage::tests::create_insert_scan_roundtrip",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-003",
+  "matrix_index": 50,
+  "test_name": "append_only_storage::tests::delete_with_tombstones",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-004",
+  "matrix_index": 51,
+  "test_name": "append_only_storage::tests::has_list_get_drop_table",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-005",
+  "matrix_index": 52,
+  "test_name": "append_only_storage::tests::insert_missing_table_errors",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-006",
+  "matrix_index": 53,
+  "test_name": "append_only_storage::tests::load_table_nonexistent_is_noop",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-007",
+  "matrix_index": 54,
+  "test_name": "append_only_storage::tests::new_creates_dir_and_load_all_empty",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-008",
+  "matrix_index": 55,
+  "test_name": "append_only_storage::tests::stub_methods_return_ok_or_empty",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-009",
+  "matrix_index": 56,
+  "test_name": "binary_format::tests::test_binary_format_error_display",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T4-010",
+  "matrix_index": 57,
+  "test_name": "binary_format::tests::test_helpers_write_read_string",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T5-001",
+  "matrix_index": 58,
+  "test_name": "adaptive_hash_index::tests::test_record_access_updates_promoted_count",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T5-002",
+  "matrix_index": 59,
+  "test_name": "bplus_tree::index::composite_index_tests::test_composite_btree_insert_and_search",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T5-003",
+  "matrix_index": 60,
+  "test_name": "bplus_tree::index::tests::test_btree_index_delete",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T5-004",
+  "matrix_index": 61,
+  "test_name": "bplus_tree::index::tests::test_btree_index_delete_multiple",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T5-005",
+  "matrix_index": 62,
+  "test_name": "bplus_tree::index::tests::test_btree_index_insert",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T5-006",
+  "matrix_index": 63,
+  "test_name": "bplus_tree::index::tests::test_btree_index_insert_multiple",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T5-007",
+  "matrix_index": 64,
+  "test_name": "bplus_tree::index::tests::test_btree_index_search_after_insert",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T5-008",
+  "matrix_index": 65,
+  "test_name": "bplus_tree::index::tests::test_btree_node_insert_key_value",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T6-001",
+  "matrix_index": 66,
+  "test_name": "checkpoint::tests::test_checkpoint_cleanup",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T6-002",
+  "matrix_index": 67,
+  "test_name": "checkpoint::tests::test_checkpoint_manager_default",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T6-003",
+  "matrix_index": 68,
+  "test_name": "checkpoint::tests::test_checkpoint_metadata_serialization",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T6-004",
+  "matrix_index": 69,
+  "test_name": "checkpoint::tests::test_checkpoint_needs",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T6-005",
+  "matrix_index": 70,
+  "test_name": "checkpoint::tests::test_checkpoint_record",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T6-006",
+  "matrix_index": 71,
+  "test_name": "checkpoint::tests::test_checkpoint_save_load",
+  "rerun_status": "PASS",
+  "evidence": "RERUN-* evidence json/log"
+ },
+ {
+  "case_id": "PILOT-T6-001",
+  "matrix_index": 72,
+  "test_name": "(crash-recovery-kill-9)",
+  "rerun_status": "COVERED_PASS",
+  "note": "crash_commit_fsync_b1 2/2 PASS (real SIGKILL at commit fsync)",
+  "evidence": "evidence/d003-red-run-*.log"
+ },
+ {
+  "case_id": "PILOT-T6-002",
+  "matrix_index": 73,
+  "test_name": "(checkpoint-torn-write)",
+  "rerun_status": "COVERED_PASS",
+  "note": "torn_write_recovery 1/1 PASS（矩阵声明 KNOWN_FAIL 未复现）",
+  "evidence": "evidence/rerun-torn_write_recovery-*.log"
+ },
+ {
+  "case_id": "PILOT-T5-101",
+  "matrix_index": 74,
+  "test_name": "(odku-rollback-noop)",
+  "rerun_status": "COVERED_RED",
+  "note": "基线 RED（adapted probe, CARGO_EXIT=101）",
+  "evidence": "dsh-b/artifacts/d002-base-adapted-*.log"
+ }
+]
