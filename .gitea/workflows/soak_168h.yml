@@ -52,10 +52,14 @@ jobs:
         run: |
           INPUTS_FILE="/tmp/soak_inputs.sh"
           source "$INPUTS_FILE"
-          git clone --depth=1 --branch "${BRANCH:-develop/v3.9.0}" \
+          # The branch default must match the workflow input default
+          # (develop/v4.1.0). It used to fall back to develop/v3.9.0, so a
+          # trigger without an explicit branch cloned — and soaked — the
+          # v3.9.0 tree while the run announced itself as the current line.
+          git clone --depth=1 --branch "${BRANCH:-develop/v4.1.0}" \
             "${GITHUB_SERVER_URL}/openclaw/sqlrustgo" repo
           cd repo
-          echo "Checked out $(git rev-parse HEAD) on ${BRANCH:-develop/v3.9.0}"
+          echo "Checked out $(git rev-parse HEAD) on ${BRANCH:-develop/v4.1.0}"
           echo "REPO=$PWD" >> $GITHUB_ENV
 
       - name: Build
@@ -107,6 +111,41 @@ jobs:
 
           echo "CREATE DATABASE IF NOT EXISTS sbtest" | "$CLI_BIN" soak --port "$PORT" --user root || true
 
+          # #5567 follow-up — provision the table the workload actually reads.
+          #
+          # The three query files read `sbtest.sbtest1`, but **nothing in
+          # this job created it**: the runner therefore executed every query
+          # against a missing table and still reported a qps number
+          # (measured locally with the same shape: 1122 queries, 1122 errors,
+          # "18.7 qps"). That is the "exit 0 ≠ the arm really ran" failure
+          # mode, in the runner that AB-07 ("24h runner 可执行") depends on.
+          #
+          # The schema matches scripts/soak/v400_prepare_soak.sh (id PK, k, c,
+          # pad) — one shape, two consumers.
+          echo "=== provisioning sbtest.sbtest1 ==="
+          SBTEST_ROWS="${SBTEST_ROWS:-1000}"
+          {
+            echo "CREATE DATABASE IF NOT EXISTS sbtest"
+            echo "CREATE TABLE IF NOT EXISTS sbtest.sbtest1 (id INTEGER PRIMARY KEY, k INTEGER NOT NULL DEFAULT 0, c TEXT NOT NULL DEFAULT '', pad TEXT NOT NULL DEFAULT '')"
+            i=1
+            while [ "$i" -le "$SBTEST_ROWS" ]; do
+              echo "INSERT INTO sbtest.sbtest1 (id, k, c, pad) VALUES ($i, $((i % 100)), 'c$i', 'p$i')"
+              i=$((i + 1))
+            done
+          } | "$CLI_BIN" soak --port "$PORT" --user root
+          # The soak CLI prints a preamble plus ROWS/COL/DATA/ROW lines:
+          # `DATA` is the number of *result rows* (always 1 for a scalar
+          # query), the scalar value is on the `ROW` line.
+          SBTEST_COUNT=$(echo "SELECT COUNT(*) FROM sbtest.sbtest1" | "$CLI_BIN" soak --port "$PORT" --user root 2>/dev/null | awk -F'\t' '$1=="ROW"{print $2; exit}')
+          echo "sbtest1 rows: ${SBTEST_COUNT:-?}"
+          case "${SBTEST_COUNT:-}" in
+            ''|*[!0-9]*) echo "FATAL: sbtest.sbtest1 was not provisioned — the workload would fail every query" >&2; exit 1 ;;
+          esac
+          if [ "${SBTEST_COUNT}" -lt 1 ]; then
+            echo "FATAL: sbtest.sbtest1 is empty — the workload would fail every query" >&2
+            exit 1
+          fi
+
           get_rss_kb() { ps -o rss= -p $1 2>/dev/null | tr -d ' ' || echo 0; }
           get_fd_count() { ls /proc/$1/fd 2>/dev/null | wc -l || echo 0; }
           get_thread_count() { ps -o nlwp= -p $1 2>/dev/null | tr -d ' ' || echo 0; }
@@ -114,10 +153,21 @@ jobs:
           get_disk_kb() { df / 2>/dev/null | tail -1 | awk '{print $4}' || echo 0; }
           parse_soak_qps() {
             [ -f "$1" ] || { echo "$2:--:--"; return; }
-            local last=$(grep 'SOAK:' "$1" 2>/dev/null | tail -1)
+            # `grep -a`: the worker log can contain binary bytes, and without
+            # it grep prints "Binary file … matches" instead of the line —
+            # that string then lands in the metrics row as garbage.
+            # The pattern also selects the **report** line: the log contains
+            # per-query chatter ("SOAK: reconnected (total N)") too, and
+            # `tail -1` over every SOAK: line picks that chatter instead.
+            local last=$(grep -a 'SOAK: [0-9]* queries' "$1" 2>/dev/null | tail -1)
             [ -n "$last" ] || { echo "$2:--:--"; return; }
             local q=$(echo "$last" | sed 's/.*SOAK:[[:space:]]*\([0-9][0-9]*\).*/\1/' 2>/dev/null)
-            local p=$(echo "$last" | sed 's/.*qps,[[:space:]]*\([0-9.]*\).*/\1/' 2>/dev/null)
+            # The report line reads "SOAK: 11049 queries, 0 errors, 220.9 qps, …":
+            # the qps value **precedes** the "qps" tag, so the old
+            # "qps, <value>" pattern never matched and the whole line leaked
+            # into the metrics column. POSIX-safe pattern (`\+` is a GNU
+            # extension).
+            local p=$(echo "$last" | sed -n 's/.*[^0-9.]\([0-9.][0-9.]*\)[[:space:]]*qps.*/\1/p' 2>/dev/null)
             echo "$2:${q:-0}:${p:-0}"
           }
 
