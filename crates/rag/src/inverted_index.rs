@@ -47,7 +47,14 @@ impl InvertedIndex {
         }
 
         result
-            .map(|set| set.into_iter().collect())
+            // #5386: HashSet iteration order is unspecified, so `search_with_limit`
+            // truncated a *random* subset. Sort ascending before returning: the
+            // contract is now "deterministic, smallest doc ids win".
+            .map(|set| {
+                let mut ids: Vec<u64> = set.into_iter().collect();
+                ids.sort_unstable();
+                ids
+            })
             .unwrap_or_default()
     }
 
@@ -175,14 +182,19 @@ mod tests {
 
     #[test]
     fn test_search_with_limit() {
+        // #5386: the old assertion only pinned len()==5, which any random
+        // subset satisfies. The contract: deterministic order, smallest ids win.
         let mut index = InvertedIndex::new();
         for i in 1..=10 {
             index.add_document(i, "matching content");
         }
         index.add_document(99, "non-matching");
 
-        let results = index.search_with_limit("matching", 5);
-        assert_eq!(results.len(), 5);
+        let first = index.search_with_limit("matching", 5);
+        let second = index.search_with_limit("matching", 5);
+        assert_eq!(first, second, "limit must not select a random subset");
+        assert_eq!(first, vec![1, 2, 3, 4, 5]);
+        assert!(!first.contains(&99));
     }
 
     #[test]
