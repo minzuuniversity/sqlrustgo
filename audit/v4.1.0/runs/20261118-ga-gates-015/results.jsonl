@@ -1,0 +1,35 @@
+{"gate": "scripts/gate/check_rc_ga_gate.sh", "seq": 1, "kind": "script", "duration_s": 1124.4, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:13:47Z", "finished": "2026-11-18T07:32:32Z"}
+{"gate": "scripts/gate/check_arch_invariants.sh", "seq": 2, "kind": "script", "duration_s": 0.0, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:32Z", "finished": "2026-11-18T07:32:32Z"}
+{"gate": "scripts/gate/check_arch3_no_bypass.sh", "seq": 3, "kind": "script", "duration_s": 0.0, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:32Z", "finished": "2026-11-18T07:32:32Z"}
+{"gate": "scripts/gate/check_int2_no_orphan.sh", "seq": 4, "kind": "script", "duration_s": 0.3, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:32Z", "finished": "2026-11-18T07:32:32Z"}
+{"gate": "scripts/gate/check_int3_single_expr.sh", "seq": 5, "kind": "script", "duration_s": 0.1, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:32Z", "finished": "2026-11-18T07:32:32Z"}
+{"gate": "scripts/gate/check_sem1_savepoint.sh", "seq": 6, "kind": "script", "duration_s": 5.2, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:32Z", "finished": "2026-11-18T07:32:37Z"}
+{"gate": "scripts/gate/check_backup_restore.sh", "seq": 7, "kind": "script", "duration_s": 2.6, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:37Z", "finished": "2026-11-18T07:32:40Z"}
+{"gate": "scripts/gate/check_p12_crash_test.sh", "seq": 8, "kind": "script", "duration_s": 0.5, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:40Z", "finished": "2026-11-18T07:32:40Z"}
+{"gate": "scripts/gate/check_p14_upgrade_test.sh", "seq": 9, "kind": "script", "duration_s": 0.6, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:40Z", "finished": "2026-11-18T07:32:41Z"}
+{"gate": "scripts/gate/check_p21_audit_log.sh", "seq": 10, "kind": "script", "duration_s": 0.7, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:41Z", "finished": "2026-11-18T07:32:42Z"}
+{"gate": "scripts/gate/check_p22_time_travel.sh", "seq": 11, "kind": "script", "duration_s": 2.3, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:42Z", "finished": "2026-11-18T07:32:44Z"}
+{"gate": "scripts/gate/check_p23_hash_chain.sh", "seq": 12, "kind": "script", "duration_s": 4.1, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:44Z", "finished": "2026-11-18T07:32:48Z"}
+{"gate": "scripts/gate/check_g1_tpch_baseline.sh", "seq": 13, "kind": "script", "duration_s": 88.3, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:32:48Z", "finished": "2026-11-18T07:34:16Z"}
+{"gate": "scripts/gate/check_g16_compatibility.sh", "seq": 14, "kind": "script", "duration_s": 34.2, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:34:16Z", "finished": "2026-11-18T07:34:51Z"}
+{"gate": "scripts/gate/check_integration_gate.sh", "seq": 15, "kind": "script", "duration_s": 7.8, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:34:51Z", "finished": "2026-11-18T07:34:58Z"}
+{"gate": "scripts/gate/check_anti_fabrication.sh", "seq": 16, "kind": "script", "duration_s": 285.8, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:34:58Z", "finished": "2026-11-18T07:39:44Z"}
+{"gate": "scripts/gate/check_arch_sem_debt.sh", "seq": 17, "kind": "script", "duration_s": 0.1, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:39:44Z", "finished": "2026-11-18T07:39:44Z"}
+{"gate": "scripts/gate/check_cross_version_debt.sh", "seq": 18, "kind": "script", "duration_s": 5.2, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:39:44Z", "finished": "2026-11-18T07:39:49Z"}
+{"gate": "scripts/gate/check_int_debt.sh", "seq": 19, "kind": "script", "duration_s": 0.1, "exit_code": 0, "state": "PASS", "started": "2026-11-18T07:39:49Z", "finished": "2026-11-18T07:39:50Z"}
+{"gate": "scripts/gate/check_full_gate_verification.sh", "seq": 20, "kind": "script", "duration_s": 7200.0, "reason": "timeout", "exit_code": 124, "state": "INCOMPLETE", "started": "2026-11-18T07:39:50Z", "finished": "2026-11-18T09:39:50Z"}
+{"gate": "scripts/gate/check_drift_not_pass.sh", "seq": 21, "kind": "script", "duration_s": 1.5, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:39:50Z", "finished": "2026-11-18T09:39:51Z"}
+{"gate": "scripts/gate/check_architecture_freeze.sh", "seq": 22, "kind": "script", "duration_s": 0.6, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:39:51Z", "finished": "2026-11-18T09:39:52Z"}
+{"gate": "scripts/gate/check_gate_self_verification.sh", "seq": 23, "kind": "script", "duration_s": 8.0, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:39:52Z", "finished": "2026-11-18T09:40:00Z"}
+{"gate": "scripts/gate/check_gate_test_integrity.sh", "seq": 24, "kind": "script", "duration_s": 435.7, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:40:00Z", "finished": "2026-11-18T09:47:15Z"}
+{"gate": "scripts/gate/check_gate_executability.sh", "seq": 25, "kind": "script", "duration_s": 0.1, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:47:15Z", "finished": "2026-11-18T09:47:16Z"}
+{"gate": "scripts/gate/check_coverage_v312.sh", "seq": 26, "kind": "script", "duration_s": 229.1, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:47:16Z", "finished": "2026-11-18T09:51:05Z"}
+{"gate": "scripts/gate/check_coverage_single_implementation.sh", "seq": 27, "kind": "script", "duration_s": 0.1, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:51:05Z", "finished": "2026-11-18T09:51:05Z"}
+{"gate": "scripts/gate/check_tests_dont_write_archived_evidence.sh", "seq": 28, "kind": "script", "duration_s": 1.6, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:51:05Z", "finished": "2026-11-18T09:51:06Z"}
+{"gate": "scripts/gate/check_commit_message.sh", "seq": 29, "kind": "script", "duration_s": 1.0, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:51:06Z", "finished": "2026-11-18T09:51:07Z"}
+{"gate": "scripts/gate/check_sql_corpus_gate.sh", "seq": 30, "kind": "script", "duration_s": 4.2, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:51:07Z", "finished": "2026-11-18T09:51:12Z"}
+{"gate": "scripts/gate/check_anti_ignore_gate.sh", "seq": 31, "kind": "script", "duration_s": 4.3, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:51:12Z", "finished": "2026-11-18T09:51:16Z"}
+{"gate": "cargo build --all-features", "seq": 32, "kind": "command", "duration_s": 0.5, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:51:16Z", "finished": "2026-11-18T09:51:16Z"}
+{"gate": "cargo test --all-features", "seq": 33, "kind": "command", "duration_s": 6254.2, "exit_code": 0, "state": "PASS", "started": "2026-11-18T09:51:16Z", "finished": "2026-11-18T11:35:31Z"}
+{"gate": "cargo fmt --check", "seq": 34, "kind": "command", "duration_s": 3.1, "exit_code": 0, "state": "PASS", "started": "2026-11-18T11:35:31Z", "finished": "2026-11-18T11:35:34Z"}
+{"gate": "cargo clippy --all-features -- -D warnings", "seq": 35, "kind": "command", "duration_s": 0.6, "exit_code": 0, "state": "PASS", "started": "2026-11-18T11:35:34Z", "finished": "2026-11-18T11:35:34Z"}

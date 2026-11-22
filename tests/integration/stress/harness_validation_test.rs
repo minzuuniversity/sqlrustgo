@@ -59,6 +59,14 @@ const DDL: [&str; 5] = [
 
 /// Load the TPC-H fixture into a fresh in-memory engine.
 ///
+/// #5711: the `NOT-RUN` record used to carry the shared TPC-H target name,
+/// so all four tests of this file produced the **same** record. CI counts
+/// NOT-RUN records *uniquely* (`grep -o 'TPCH-NOT-RUN:.*' | sort -u | wc -l`)
+/// and subtracts that count from the passed count — one record for four
+/// skipped tests left three of them counted as **passed**: a silent green
+/// for tests that never ran. The caller now passes its own test name, so
+/// every skipped test discloses its own record.
+///
 /// The rows are loaded through the storage layer in 10 000-row batches.
 ///
 /// The previous loader issued **one `INSERT` statement per row** (~62 000
@@ -79,9 +87,9 @@ const DDL: [&str; 5] = [
 /// empty field inside a row (every empty field is the trailing one after the
 /// final `|`, which is dropped together with the row terminator), so the two
 /// loaders put the same values into the same tables.
-fn make_engine_with_data() -> Option<Box<ExecutionEngine<MemoryStorage>>> {
+fn make_engine_with_data(test_name: &str) -> Option<Box<ExecutionEngine<MemoryStorage>>> {
     let state = FixtureState::resolve();
-    let fixture = state.require(TARGET)?.clone();
+    let fixture = state.require(test_name)?.clone();
 
     let storage = Arc::new(RwLock::new(MemoryStorage::new()));
     let mut engine = ExecutionEngine::new(storage.clone());
@@ -204,7 +212,7 @@ fn test_q6_aggregate_returns_one_row() {
     // exactly one row — with a NULL value when the filter matches nothing,
     // and with a REAL value when it matches. The assertion is therefore
     // data-independent; it is the *row count* that is checked, not the sum.
-    let Some(mut engine) = make_engine_with_data() else {
+    let Some(mut engine) = make_engine_with_data("test_q6_aggregate_returns_one_row") else {
         return;
     };
     let q6 = "SELECT SUM(l_extendedprice * l_discount) AS revenue FROM lineitem WHERE l_shipdate >= '1994-01-01' AND l_shipdate < '1995-01-01' AND l_discount BETWEEN 0.06 AND 0.08 AND l_quantity < 25";
@@ -216,7 +224,7 @@ fn test_q6_aggregate_returns_one_row() {
 #[test]
 fn test_q14_aggregate_returns_one_row() {
     // Q14: SUM(CASE WHEN ... END) / SUM(...) - always 1 row
-    let Some(mut engine) = make_engine_with_data() else {
+    let Some(mut engine) = make_engine_with_data("test_q14_aggregate_returns_one_row") else {
         return;
     };
     let q14 = "SELECT 100.00 * SUM(CASE WHEN p_type LIKE 'PROMO%' THEN l_extendedprice * (1 - l_discount) ELSE 0 END) / SUM(l_extendedprice * (1 - l_discount)) AS promo_revenue FROM lineitem, part WHERE l_partkey = p_partkey AND l_shipdate >= '1995-09-01' AND l_shipdate < '1995-10-01'";
@@ -231,7 +239,7 @@ fn test_q1_groupby_returns_six_rows() {
     // six combinations (R/A/N × O/F), so a dataset that contains all of them
     // produces exactly six groups. The generated fixture draws both columns
     // uniformly, so every combination occurs thousands of times.
-    let Some(mut engine) = make_engine_with_data() else {
+    let Some(mut engine) = make_engine_with_data("test_q1_groupby_returns_six_rows") else {
         return;
     };
     let q1 = "SELECT l_returnflag, l_linestatus, SUM(l_quantity) AS sum_qty, SUM(l_extendedprice) AS sum_base_price, SUM(l_extendedprice*(1-l_discount)) AS sum_disc_price, SUM(l_extendedprice*(1-l_discount)*(1+l_tax)) AS sum_charge, AVG(l_quantity) AS avg_qty, AVG(l_extendedprice) AS avg_price, AVG(l_discount) AS avg_disc, COUNT(*) AS count_order FROM lineitem WHERE l_shipdate <= '1998-09-02' GROUP BY l_returnflag, l_linestatus ORDER BY l_returnflag, l_linestatus";
@@ -399,10 +407,10 @@ fn test_q11_in_subquery_returns_zero() {
     // out is a **failure**, not a reason to skip: the data it needs is
     // present.
     let state = FixtureState::resolve();
-    let Some(fixture) = state.require(TARGET).cloned() else {
+    let Some(fixture) = state.require("test_q11_in_subquery_returns_zero").cloned() else {
         return;
     };
-    let Some(mut engine) = make_engine_with_data() else {
+    let Some(mut engine) = make_engine_with_data("test_q11_in_subquery_returns_zero") else {
         return;
     };
 

@@ -219,6 +219,9 @@ impl Default for LocalExecutorDml {
 }
 
 #[cfg(test)]
+// LocalExecutorDml 自身 deprecated（3.10.0 将移除，迁移到 ExecutionEngine）——
+// 本 mod 是它的**过渡期测试面**（9 处引用都是其行为守卫），allow 不改语义。
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use sqlrustgo_storage::MemoryStorage;

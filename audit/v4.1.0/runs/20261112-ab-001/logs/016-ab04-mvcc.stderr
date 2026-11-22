@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.06s
+     Running tests/integration/transaction/mvcc_transaction_test.rs (/Volumes/workspace/dev/walgc2-target/debug/deps/mvcc_transaction_test-3058e90cf0fb344a)

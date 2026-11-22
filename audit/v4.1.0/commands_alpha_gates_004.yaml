@@ -1,0 +1,65 @@
+# ALPHA 阶段 10 道门禁 + 1 个对照臂（2026-11-13，run 20261113-alpha-gates-004）
+#
+# 与仓内 002/003 两份清单的关系：
+#   * 10 条主臂 = ALPHA 清单原文（与 20261112-alpha-gates-003 相同的 10 条）；
+#   * 第 11 条是**新增对照臂**：同一覆盖率门禁显式声明 stage=alpha，
+#     用于把「S-3：ALPHA 臂实际按 GA 85% 判」从断言变成同一次测量里的两个读数；
+#   * 不复制 003 的共享 CARGO_TARGET_DIR 软链偏差（20261113 报告 §2 S-2 已把该
+#     读数判为离群值；本 run 全部用默认 target）；
+#   * 主臂 alpha 聚合门禁沿用 003 的教训：预算 1800 → 10800（内部 llvm-cov >30min
+#     会被 1800s 杀掉，把「预算不足」记成「门禁不过」）。
+- cmd: bash scripts/gate/check_alpha_v4.1.0.sh
+  cwd: .
+  id: alpha-gate-check-alpha-v410
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_alpha_v410.sh（预算 10800s，沿用 003 教训）
+  timeout_sec: 10800
+- cmd: bash scripts/gate/check_arch_invariants.sh
+  cwd: .
+  id: alpha-gate-arch-invariants
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_arch_invariants.sh
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  cwd: .
+  id: alpha-gate-arch3-no-bypass
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_arch3_no_bypass.sh
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  id: alpha-gate-coverage-v312
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_coverage_v312.sh（未声明 stage ⇒ 实际按 GA 85% 判，即 S-3 的复现臂）
+  timeout_sec: 5400
+- cmd: SQLRUSTGO_COVERAGE_STAGE=alpha bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  id: alpha-gate-coverage-v312-stage-alpha
+  name: 对照臂：同一覆盖率门禁显式声明 stage=alpha（SSOT COVERAGE_MIN_ALPHA=50）
+  timeout_sec: 5400
+- cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  cwd: .
+  id: alpha-gate-sql-corpus
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_sql_corpus_gate.sh
+  timeout_sec: 1800
+- cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  id: alpha-gate-anti-ignore
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_anti_ignore_gate.sh
+  timeout_sec: 900
+- cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  cwd: .
+  id: alpha-gate-g1-tpch-baseline
+  name: ALPHA 清单门禁（原文）：scripts/gate/check_g1_tpch_baseline.sh（本 run 冻结在未含三态修复的树上，预期仍报 hash mismatch，归因见 PR #5773）
+  timeout_sec: 1800
+- cmd: cargo build --all-features
+  cwd: .
+  id: alpha-cargo-build
+  name: ALPHA 清单 cargo 命令（原文）：cargo build --all-features
+  timeout_sec: 3600
+- cmd: cargo test --all-features --lib
+  cwd: .
+  id: alpha-cargo-test-lib
+  name: ALPHA 清单 cargo 命令（原文）：cargo test --all-features --lib
+  timeout_sec: 5400
+- cmd: cargo fmt --check
+  cwd: .
+  id: alpha-cargo-fmt-check
+  name: ALPHA 清单 cargo 命令（原文）：cargo fmt --check
+  timeout_sec: 900

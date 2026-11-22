@@ -1,0 +1,2 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/integration/transaction/concurrent_rollback_isolation_test.rs (/Volumes/workspace/dev/walgc2-target/debug/deps/concurrent_rollback_isolation_test-e6fba028087d561f)

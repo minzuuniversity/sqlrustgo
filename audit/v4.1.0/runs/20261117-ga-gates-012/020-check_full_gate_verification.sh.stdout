@@ -1,0 +1,101 @@
+=== D9: Full Gate Verification (8 Dimensions) ===
+Date: 2026-11-17T16:49:27Z
+
+--- [D1-D5 RC/GA] ---
+[1m[0;34m  GATE SUMMARY[0m
+[1m[0;34m═══════════════════════════════════════════════════════════[0m
+
+  D1-Alpha:  10/10 (not-run: 0, blockers: 0)
+  D2-Beta:   4/6 (blockers: 2)
+  D3-SGL:    PASS=4 | FAIL=1 | DRIFT=0
+  D4-WAL:    5/5 (failures: 0)
+  D5-DeepSeek: 7/10
+  D6-Integration: 47/47 (failures: 0)  (curated integration test targets — Issue #2874)
+  D7-Reliability: 5/5 (blockers: 0)  (G6-G10: Backup/Soak/Crash/Upgrade/Audit — Hermes 2026-06-12 审计新增)
+  D8-V312-19:     1/1 (blockers: 0)  (corpus/R2/signoff freshness — V312-19 / Issue #3906)
+  D9-Coverage:    1/1 (blockers: 0)  (v3.12 L0-L5 test framework + per-crate coverage baseline)
+  Dimensions executed: D1 D2 D3 D4 D5 D6 D7 D8 D9
+  Dimensions expected: D1 D2 D3 D4 D5 D6 D7 D8 D9
+  [0;31m✗ [FAIL] GATE: FAIL[0m — 逐维实测：
+    D1_BLOCKERS=0 D1_NOTRUN=0 D1_PASS=10/10
+    D2_BLOCKERS=2 D2_PASS=4/6
+    D3_FAILS=1 D3_DRIFTS=0 D3_PASS=4/5
+    D4_FAILS=0 D4_PASS=5/5
+    D5_PASS=7/10
+    D6_FAIL=0 D6_FAILED_TESTS=0
+    D7_BLOCKERS=0 D7_PASS=5/5
+    D8_BLOCKERS=0 D8_PASS=1/1
+    D9_BLOCKERS=0 D9_PASS=1/1
+
+  Key metrics:
+    • WAL contract: 22 passed (wal_tx_contract_test)
+    • WAL invariants: 5 passed (INV-1~INV-3)
+    • SGL: 4/5 PASS | 0 DRIFT | 1 FAIL
+    • Coverage: PASS: 87.67% avg (min: 85%, measured 8/8 crates)
+    • v3.12 coverage framework: D9=1/1; full run via V312_COVERAGE_FULL=1
+    • execution_engine.rs:     1236 lines (limit: 1500)
+
+  Gate recommendations:
+    Alpha → Beta: PASS when D1=10/10, D3_DRIFTS=0
+    Beta → RC:    PASS when D2=4/6, D3_FAILS=0
+    RC → GA:      PASS when D5=7/10, D7=5/5, C-ARCH-05 drift tracked
+                  D7 (G6-G10 reliability) 是 Hermes 2026-06-12 审计新增的 GA 卡死门禁
+                  D8 (V312-19 release gates) 是 Issue #3906 strict-close 硬性条件
+                  D9 (v3.12 coverage framework) 要求覆盖率框架配置 PASS；正式 RC/GA 证据需 V312_COVERAGE_FULL=1
+  (full inner output archived: /Volumes/workspace/dev/srg-gate-d1/artifacts/gate/v3.8.0/inner/D1-D5_RC_GA.log)
+  Dimensions executed: D1 D2 D3 D4 D5 D6 D7 D8 D9
+  Dimensions expected: D1 D2 D3 D4 D5 D6 D7 D8 D9
+  [0;31m✗ [FAIL] GATE: FAIL[0m — 逐维实测：
+  ❌ [FAIL] (exit 1, expected 0)
+
+--- [D6b Test Inventory] ---
+✅ D6 Test Inventory: PASS (100.0% of test files invoked, 0 failures)
+   (with 11 NOT_RUN — see list above; not counted as failure)
+Evidence written to artifacts/gate/v3.8.0/d6_test_inventory.json
+  ✅ PASS (exit 0)
+
+--- [D7 INT Debt] ---
+  NOT FOUND rows:       0
+
+✅ D7 INT Debt: PASS (0 ACTIVE, 0 DEFERRED, all CLOSED)
+  ✅ PASS (exit 0)
+
+--- [D8 Arch/Sem Debt] ---
+  UNKNOWN:              0
+
+✅ D8 Arch/Sem Debt: PASS (all 7 items CLOSED)
+  ✅ PASS (exit 0)
+
+--- [Cross-Version Debt] ---
+
+=== Cross-Version Debt Gate Check Complete ===
+✅ PASS
+  ✅ PASS (exit 0)
+
+--- [Test Plan Consistency] ---
+  TEST_PLAN_INTEGRATED.md rows:       42
+  Cargo.toml [[test]] entries: 487
+  ✅ PASS (plan has       42 tests, cargo has 487 entries)
+
+--- [PR Template] ---
+  ✅ PASS (template has 5-类文档 + 5-原则)
+
+--- [Evidence Generation] ---
+  ✅ PASS (evidence dirs ready)
+
+=== D9 Full Gate Verification Summary ===
+  PASS:    7
+  FAIL:    1
+  DRIFT:   0
+
+--- Results ---
+  D1-D5 RC/GA: FAIL (exit 1)
+  D6b Test Inventory: PASS
+  D7 INT Debt: PASS
+  D8 Arch/Sem Debt: PASS
+  Cross-Version Debt: PASS
+  Test Plan Consistency: PASS
+  PR Template: PASS
+  Evidence Generation: PASS
+
+❌ [FAIL] D9 Full Gate Verification: FAILED (1 dimensions failed)

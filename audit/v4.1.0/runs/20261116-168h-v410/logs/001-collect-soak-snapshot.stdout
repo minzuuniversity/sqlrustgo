@@ -1,0 +1,16 @@
+# 快照采集：下列命令在 252 上执行，输出原样落盘
+for f in armA/metrics.csv armA/armA.log armA/server.log armA/driver.log heartbeat.jsonl soak.log; do ssh liying@192.168.0.252 "cat /home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/$f"; done
+
+# 进仓的文件（合规扩展名）：
+#   artifacts/driver.log.gz  bytes=2472945  sha256=6d0ac21268d9d060467e0f677874958aeb805878b3c6d69b99cd036fc70fc6fd
+#   artifacts/metrics.csv  bytes=242240  sha256=482ce2076721d41bac105deaa6ded4dfbfd208c857e15d858b89468cc8161a15
+#   logs/heartbeat.jsonl  bytes=450392  sha256=d67009e2810cd8360e67a47068b4125d4b9f9751cf752b4dd350d4118e076b30
+
+# 未进仓的原件（*.log / *.json 被提交卫生门禁禁止入仓；内容与 sha256 记在清单的 remote_sources / start_record / fsync_probe）：
+#   STARTED.json  bytes=1025  sha256=7c84bf5b00b64c7e283c395b770fd57cee083536138a8c7f368b0119dc468d51  (252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/)
+#   armA.log  bytes=386378  sha256=f87c0a3a07ee066f08812f5b85fd22f12e2f0cd2c892639bab826548ba74bed7  (252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/)
+#   driver.log  bytes=13605260  sha256=e9bda78d4e991bf19a66f719e49dedb4731fe4821ccc63c3475954ad1ceefcbe  (252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/)
+#   driver_errors.log  bytes=202288  sha256=9c130ea174025461a010670c50aacb453c1e3d2ea2ed444c5c89aa8b6d063e63  (252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/)
+#   fsync_probe.json  bytes=290  sha256=4666bb4712aea166a0f6ae33d898d9eb577d5a07449528d016e8f7753db6b74b  (252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/)
+#   server.log  bytes=130138  sha256=a6c1ebd1faed6529921db0db358851a58e80f3e282afb4a63b900fa63e29b168  (252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/)
+#   soak.log  bytes=98389  sha256=898b59d9bfb24855230811127f943f94744f2add3461e616f67dd0556ec36f00  (252:/home/liying/soak-artifacts/20261116-168h-v410/attempt-20261116T230159Z/)

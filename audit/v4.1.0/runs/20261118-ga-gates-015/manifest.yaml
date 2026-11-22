@@ -1,0 +1,409 @@
+schema_version: 1
+run_id: 20261118-ga-gates-015
+source_agent: mcode-macmini
+frozen_commit: 680418e9f931e3f2423377ff4692a707ff5d60c0
+harness: scripts/gate/run_gates.py（plan + execute）—— 门禁清单本身是清单的一部分，分母 35，plan sha256 sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809
+environment:
+  stage: GA
+  version: v4.1.0
+  git_head: 680418e9f931e3f2423377ff4692a707ff5d60c0
+  expected_n: 35
+  expected_sha256: sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809
+  planned_at: '2026-11-18T07:13:47Z'
+  tree: /Volumes/workspace/dev/srg-gate-d1
+  timeout_sec: 7200
+note: '本目录是权威轮 **20261118-ga-gates-015** 的归档：计划 35 项、**35 项全部执行并落账**，总耗时 15706.9 s，状态分布 **PASS 34 / INCOMPLETE 1**。
+
+
+  ## 唯一非 PASS：第 20 项超时（不是判红）
+
+
+  `scripts/gate/check_full_gate_verification.sh`（D9 汇总）耗时 **7200.0 s**，**正好等于本轮的执行超时上限**（run_gates.py --timeout-sec 7200）⇒ 被判 INCOMPLETE，**不是门禁判红**。014 轮同一项耗时 4075.7 s 是因为它在 D6b Test Inventory 维度上**提前判 FAIL 退出**；015 轮修好 D6（提交 680418e9f9）后该项要跑完整套 D1–D9 验证，因此耗时超过上限。
+
+
+  **该轮的直接后果**：第 33 项 `cargo test --all-features`（014 轮的 INCOMPLETE 项）在 015 轮 **PASS（6254.2 s）** ⇒ D6 修复已被全量测试证实；第 13 项 `check_g1_tpch_baseline.sh` 亦 PASS（88.3 s）⇒ TPC-H 基线仍逐字节一致。
+
+
+  **缺口与补法**：超时分支不落盘 stdout/stderr，故第 20 项无输出产物（见 results 里该条的 stdout_path/stderr_path 为 null）—— 这是**证据缺口**，如实保留，不以任何方式补写。补法是由在**同一棵树、同一提交**上、把执行超时上限放宽到 10800 s 的后续轮次（20261118-ga-gates-016）重跑补齐；放宽的是**运行参数**，门禁判据/阈值/分母未动 —— plan sha256 仍为 sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809（由 gate 名单唯一决定）。
+
+
+  ## 与 014 轮的关系
+
+
+  015 轮的树 `680418e9f9` 与 014 轮的树 `e5c42c7fd0` 的差异**仅一个测试文件**（`tests/integration/gate/gate_honesty_test.rs`，非 tests/ 目录变更数 = 0）⇒ Rust 代码面零变化。'
+artifacts:
+  plan.jsonl:
+    bytes: 2439
+    sha256: 3cb712ecf04e74936193d0aeded281a4a888ca74ab50d29503ef24aa6b845573
+  results.jsonl:
+    bytes: 7118
+    sha256: cdd6cf9d261e0efde3fafeede4b5f831e232473d5dca3de5c926b3ab3e754586
+  binaries.sha256:
+    bytes: 408
+    sha256: 2d5727eb272237cbfc4168f361bb50678b1e881f5ec47c878292301127bd0e63
+remote_sources:
+  plan.jsonl.meta.json:
+    bytes: 357
+    sha256: 4944a32302f1e549fe8d4a631a64208e8b71d94daa407a1c0023fd44e68994a0
+    note: 内容已嵌入本清单的 environment 段（expected_n / expected_sha256 / git_head / planned_at）
+commands:
+- id: 001-check_rc_ga_gate.sh
+  cmd: bash scripts/gate/check_rc_ga_gate.sh
+  desc: GA 清单第 1 项（kind=script）
+  cwd: .
+- id: 002-check_arch_invariants.sh
+  cmd: bash scripts/gate/check_arch_invariants.sh
+  desc: GA 清单第 2 项（kind=script）
+  cwd: .
+- id: 003-check_arch3_no_bypass.sh
+  cmd: bash scripts/gate/check_arch3_no_bypass.sh
+  desc: GA 清单第 3 项（kind=script）
+  cwd: .
+- id: 004-check_int2_no_orphan.sh
+  cmd: bash scripts/gate/check_int2_no_orphan.sh
+  desc: GA 清单第 4 项（kind=script）
+  cwd: .
+- id: 005-check_int3_single_expr.sh
+  cmd: bash scripts/gate/check_int3_single_expr.sh
+  desc: GA 清单第 5 项（kind=script）
+  cwd: .
+- id: 006-check_sem1_savepoint.sh
+  cmd: bash scripts/gate/check_sem1_savepoint.sh
+  desc: GA 清单第 6 项（kind=script）
+  cwd: .
+- id: 007-check_backup_restore.sh
+  cmd: bash scripts/gate/check_backup_restore.sh
+  desc: GA 清单第 7 项（kind=script）
+  cwd: .
+- id: 008-check_p12_crash_test.sh
+  cmd: bash scripts/gate/check_p12_crash_test.sh
+  desc: GA 清单第 8 项（kind=script）
+  cwd: .
+- id: 009-check_p14_upgrade_test.sh
+  cmd: bash scripts/gate/check_p14_upgrade_test.sh
+  desc: GA 清单第 9 项（kind=script）
+  cwd: .
+- id: 010-check_p21_audit_log.sh
+  cmd: bash scripts/gate/check_p21_audit_log.sh
+  desc: GA 清单第 10 项（kind=script）
+  cwd: .
+- id: 011-check_p22_time_travel.sh
+  cmd: bash scripts/gate/check_p22_time_travel.sh
+  desc: GA 清单第 11 项（kind=script）
+  cwd: .
+- id: 012-check_p23_hash_chain.sh
+  cmd: bash scripts/gate/check_p23_hash_chain.sh
+  desc: GA 清单第 12 项（kind=script）
+  cwd: .
+- id: 013-check_g1_tpch_baseline.sh
+  cmd: bash scripts/gate/check_g1_tpch_baseline.sh
+  desc: GA 清单第 13 项（kind=script）
+  cwd: .
+- id: 014-check_g16_compatibility.sh
+  cmd: bash scripts/gate/check_g16_compatibility.sh
+  desc: GA 清单第 14 项（kind=script）
+  cwd: .
+- id: 015-check_integration_gate.sh
+  cmd: bash scripts/gate/check_integration_gate.sh
+  desc: GA 清单第 15 项（kind=script）
+  cwd: .
+- id: 016-check_anti_fabrication.sh
+  cmd: bash scripts/gate/check_anti_fabrication.sh
+  desc: GA 清单第 16 项（kind=script）
+  cwd: .
+- id: 017-check_arch_sem_debt.sh
+  cmd: bash scripts/gate/check_arch_sem_debt.sh
+  desc: GA 清单第 17 项（kind=script）
+  cwd: .
+- id: 018-check_cross_version_debt.sh
+  cmd: bash scripts/gate/check_cross_version_debt.sh
+  desc: GA 清单第 18 项（kind=script）
+  cwd: .
+- id: 019-check_int_debt.sh
+  cmd: bash scripts/gate/check_int_debt.sh
+  desc: GA 清单第 19 项（kind=script）
+  cwd: .
+- id: 020-check_full_gate_verification.sh
+  cmd: bash scripts/gate/check_full_gate_verification.sh
+  desc: GA 清单第 20 项（kind=script）
+  cwd: .
+- id: 021-check_drift_not_pass.sh
+  cmd: bash scripts/gate/check_drift_not_pass.sh
+  desc: GA 清单第 21 项（kind=script）
+  cwd: .
+- id: 022-check_architecture_freeze.sh
+  cmd: bash scripts/gate/check_architecture_freeze.sh
+  desc: GA 清单第 22 项（kind=script）
+  cwd: .
+- id: 023-check_gate_self_verification.sh
+  cmd: bash scripts/gate/check_gate_self_verification.sh
+  desc: GA 清单第 23 项（kind=script）
+  cwd: .
+- id: 024-check_gate_test_integrity.sh
+  cmd: bash scripts/gate/check_gate_test_integrity.sh
+  desc: GA 清单第 24 项（kind=script）
+  cwd: .
+- id: 025-check_gate_executability.sh
+  cmd: bash scripts/gate/check_gate_executability.sh
+  desc: GA 清单第 25 项（kind=script）
+  cwd: .
+- id: 026-check_coverage_v312.sh
+  cmd: bash scripts/gate/check_coverage_v312.sh
+  desc: GA 清单第 26 项（kind=script）
+  cwd: .
+- id: 027-check_coverage_single_implementation.sh
+  cmd: bash scripts/gate/check_coverage_single_implementation.sh
+  desc: GA 清单第 27 项（kind=script）
+  cwd: .
+- id: 028-check_tests_dont_write_archived_evidence.sh
+  cmd: bash scripts/gate/check_tests_dont_write_archived_evidence.sh
+  desc: GA 清单第 28 项（kind=script）
+  cwd: .
+- id: 029-check_commit_message.sh
+  cmd: bash scripts/gate/check_commit_message.sh
+  desc: GA 清单第 29 项（kind=script）
+  cwd: .
+- id: 030-check_sql_corpus_gate.sh
+  cmd: bash scripts/gate/check_sql_corpus_gate.sh
+  desc: GA 清单第 30 项（kind=script）
+  cwd: .
+- id: 031-check_anti_ignore_gate.sh
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  desc: GA 清单第 31 项（kind=script）
+  cwd: .
+- id: 032-cargo build --all-features
+  cmd: cargo build --all-features
+  desc: GA 清单第 32 项（kind=command）
+  cwd: .
+- id: 033-cargo test --all-features
+  cmd: cargo test --all-features
+  desc: GA 清单第 33 项（kind=command）
+  cwd: .
+- id: 034-cargo fmt --check
+  cmd: cargo fmt --check
+  desc: GA 清单第 34 项（kind=command）
+  cwd: .
+- id: 035-cargo clippy --all-features -- -D warnings
+  cmd: cargo clippy --all-features -- -D warnings
+  desc: GA 清单第 35 项（kind=command）
+  cwd: .
+results:
+- id: 001-check_rc_ga_gate.sh
+  exit_code: 0
+  stdout_path: 001-check_rc_ga_gate.sh.stdout
+  stderr_path: 001-check_rc_ga_gate.sh.stderr
+  stdout_sha256: 8b330ffb2ec2adaf606453150e152cb1b849e65183933cb89c4d2979c49687af
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 002-check_arch_invariants.sh
+  exit_code: 0
+  stdout_path: 002-check_arch_invariants.sh.stdout
+  stderr_path: 002-check_arch_invariants.sh.stderr
+  stdout_sha256: 7a4ad832e77eaf5cf645b7241af81f4d60436e5a293042970f387f3505890a88
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 003-check_arch3_no_bypass.sh
+  exit_code: 0
+  stdout_path: 003-check_arch3_no_bypass.sh.stdout
+  stderr_path: 003-check_arch3_no_bypass.sh.stderr
+  stdout_sha256: 8fc41d8cb57dcaafd6c73483e2045fed418f2fa20ca4fd2f43fb630b5f277d31
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 004-check_int2_no_orphan.sh
+  exit_code: 0
+  stdout_path: 004-check_int2_no_orphan.sh.stdout
+  stderr_path: 004-check_int2_no_orphan.sh.stderr
+  stdout_sha256: 3d31ae71df4b5c24929342859cf7cf466f7a858a6f958e6b4834084abcdca554
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 005-check_int3_single_expr.sh
+  exit_code: 0
+  stdout_path: 005-check_int3_single_expr.sh.stdout
+  stderr_path: 005-check_int3_single_expr.sh.stderr
+  stdout_sha256: 88e257de48260c1839a5679d80f2a1396d80d5c34772aa8064eb19209ef3638d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 006-check_sem1_savepoint.sh
+  exit_code: 0
+  stdout_path: 006-check_sem1_savepoint.sh.stdout
+  stderr_path: 006-check_sem1_savepoint.sh.stderr
+  stdout_sha256: d265b933f567f0a5951dff0822122f905516562a404bf14036939472aa0d7a86
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 007-check_backup_restore.sh
+  exit_code: 0
+  stdout_path: 007-check_backup_restore.sh.stdout
+  stderr_path: 007-check_backup_restore.sh.stderr
+  stdout_sha256: ca88bfa63d4ba845193b276b313dd8ac8c17358c30cfb96d078070ff56be50eb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 008-check_p12_crash_test.sh
+  exit_code: 0
+  stdout_path: 008-check_p12_crash_test.sh.stdout
+  stderr_path: 008-check_p12_crash_test.sh.stderr
+  stdout_sha256: 5f98c71555e1829c2735a8d89ab4c6ac7bda419f1d35d028ba86b0f2524444e4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 009-check_p14_upgrade_test.sh
+  exit_code: 0
+  stdout_path: 009-check_p14_upgrade_test.sh.stdout
+  stderr_path: 009-check_p14_upgrade_test.sh.stderr
+  stdout_sha256: b94020627634fc2fd248839d736aec5fb8561b55b2b55b637f704b0d244adddb
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 010-check_p21_audit_log.sh
+  exit_code: 0
+  stdout_path: 010-check_p21_audit_log.sh.stdout
+  stderr_path: 010-check_p21_audit_log.sh.stderr
+  stdout_sha256: 6284cc5be47ce8291063c0c3f43670027df7dfd691ead75fe42315bedc72dea8
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 011-check_p22_time_travel.sh
+  exit_code: 0
+  stdout_path: 011-check_p22_time_travel.sh.stdout
+  stderr_path: 011-check_p22_time_travel.sh.stderr
+  stdout_sha256: 91b2aaab56a813d28c52d1adb582c5c7dac38533063e013b83df40b3b05d0345
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 012-check_p23_hash_chain.sh
+  exit_code: 0
+  stdout_path: 012-check_p23_hash_chain.sh.stdout
+  stderr_path: 012-check_p23_hash_chain.sh.stderr
+  stdout_sha256: 1175916fb45c84a4c49ea1481c22f9df04f805298a62a6ae820b337e0141de0e
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 013-check_g1_tpch_baseline.sh
+  exit_code: 0
+  stdout_path: 013-check_g1_tpch_baseline.sh.stdout
+  stderr_path: 013-check_g1_tpch_baseline.sh.stderr
+  stdout_sha256: 26b367ab0a89535421543fb83aa885cfe4d859dae90d348c43f95f6738b53e8c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 014-check_g16_compatibility.sh
+  exit_code: 0
+  stdout_path: 014-check_g16_compatibility.sh.stdout
+  stderr_path: 014-check_g16_compatibility.sh.stderr
+  stdout_sha256: 2dd6a5d2cb2be9fa02c2d09aba0abaa30270c0ae052342fe5d9fba81606579ef
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 015-check_integration_gate.sh
+  exit_code: 0
+  stdout_path: 015-check_integration_gate.sh.stdout
+  stderr_path: 015-check_integration_gate.sh.stderr
+  stdout_sha256: 06f80fd0d39a9841354d0763d49e972a5354de019d15b4608ca6e159fdd3176a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 016-check_anti_fabrication.sh
+  exit_code: 0
+  stdout_path: 016-check_anti_fabrication.sh.stdout
+  stderr_path: 016-check_anti_fabrication.sh.stderr
+  stdout_sha256: 22dba86b695c817ae921820d4bfea0a860c1223cb2a304d4b80d148fa499588a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 017-check_arch_sem_debt.sh
+  exit_code: 0
+  stdout_path: 017-check_arch_sem_debt.sh.stdout
+  stderr_path: 017-check_arch_sem_debt.sh.stderr
+  stdout_sha256: 9ba2d4a2541220771ffe4a944316ff0c544e1316da4f337e1cb870876122b4ca
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 018-check_cross_version_debt.sh
+  exit_code: 0
+  stdout_path: 018-check_cross_version_debt.sh.stdout
+  stderr_path: 018-check_cross_version_debt.sh.stderr
+  stdout_sha256: e0f92eea3544a2ed166edcf6df9a192f71386d36d68a8f138b4ace7dab4d703c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 019-check_int_debt.sh
+  exit_code: 0
+  stdout_path: 019-check_int_debt.sh.stdout
+  stderr_path: 019-check_int_debt.sh.stderr
+  stdout_sha256: 34747f17fd1fafae903bb6379c3398f7f4d7dac20196f062495bbbde88ad3b00
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 020-check_full_gate_verification.sh
+  exit_code: 124
+  stdout_path: 020-check_full_gate_verification.sh.stdout
+  stderr_path: 020-check_full_gate_verification.sh.stderr
+  stdout_sha256: f89c9dfcb11d7c3405e1b8c14aa6c941ad464210fbd7f27be4b58282ba4b77b3
+  stderr_sha256: 8bd722be90cd0d3660c5eda19484c8450ab24d1f6a1279e68dd711035fade7de
+- id: 021-check_drift_not_pass.sh
+  exit_code: 0
+  stdout_path: 021-check_drift_not_pass.sh.stdout
+  stderr_path: 021-check_drift_not_pass.sh.stderr
+  stdout_sha256: fe277993c4e119d3ddd9aabcd1ba2690fb9fd34035d61fa75f54015b2a0775e6
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 022-check_architecture_freeze.sh
+  exit_code: 0
+  stdout_path: 022-check_architecture_freeze.sh.stdout
+  stderr_path: 022-check_architecture_freeze.sh.stderr
+  stdout_sha256: 7f4e582213d1e9e48ddec05ef88ec7019f2c24cbb2be4e5d0f525c1837c2dd84
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 023-check_gate_self_verification.sh
+  exit_code: 0
+  stdout_path: 023-check_gate_self_verification.sh.stdout
+  stderr_path: 023-check_gate_self_verification.sh.stderr
+  stdout_sha256: c0a248e3d3773e21cf37e828c492e48c13b27aa172f2a80f5232db03ec22b2c4
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 024-check_gate_test_integrity.sh
+  exit_code: 0
+  stdout_path: 024-check_gate_test_integrity.sh.stdout
+  stderr_path: 024-check_gate_test_integrity.sh.stderr
+  stdout_sha256: 902ef4a47cae6c2f5d52b6856f2a231caf59798067e783846b061824c3d8975a
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 025-check_gate_executability.sh
+  exit_code: 0
+  stdout_path: 025-check_gate_executability.sh.stdout
+  stderr_path: 025-check_gate_executability.sh.stderr
+  stdout_sha256: 7c8ea58fd8dde1d857a6479673a069b44e9be54b46e1189c23a3f4b294f51b60
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 026-check_coverage_v312.sh
+  exit_code: 0
+  stdout_path: 026-check_coverage_v312.sh.stdout
+  stderr_path: 026-check_coverage_v312.sh.stderr
+  stdout_sha256: ac76b2646871d8834921add31dba4855f0c24f129fd805c67338556b3d208249
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 027-check_coverage_single_implementation.sh
+  exit_code: 0
+  stdout_path: 027-check_coverage_single_implementation.sh.stdout
+  stderr_path: 027-check_coverage_single_implementation.sh.stderr
+  stdout_sha256: 140e846d102398437436b8dd0e3b8cee557b2132693913f8b7797ad3fadeafd0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 028-check_tests_dont_write_archived_evidence.sh
+  exit_code: 0
+  stdout_path: 028-check_tests_dont_write_archived_evidence.sh.stdout
+  stderr_path: 028-check_tests_dont_write_archived_evidence.sh.stderr
+  stdout_sha256: af07448babf5a97ff82cc384b87f1b6183dfa2d8b96aa00fe504ca292cbadea0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 029-check_commit_message.sh
+  exit_code: 0
+  stdout_path: 029-check_commit_message.sh.stdout
+  stderr_path: 029-check_commit_message.sh.stderr
+  stdout_sha256: 63b8a24990c2a728a931c2f356c05cbfa2f7ff4d821fc76ea633e70f577e8427
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 030-check_sql_corpus_gate.sh
+  exit_code: 0
+  stdout_path: 030-check_sql_corpus_gate.sh.stdout
+  stderr_path: 030-check_sql_corpus_gate.sh.stderr
+  stdout_sha256: 245051ea7dea1eb1cf64cf73b5484009e81eacf0c61c5778bc21a53d3948a60d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 031-check_anti_ignore_gate.sh
+  exit_code: 0
+  stdout_path: 031-check_anti_ignore_gate.sh.stdout
+  stderr_path: 031-check_anti_ignore_gate.sh.stderr
+  stdout_sha256: 9ce41ded00cdfd661e93fa559c67fbeefd3478c9db69ea335e61f9b7d6ae7bb2
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 032-cargo build --all-features
+  exit_code: 0
+  stdout_path: 032-cargo build --all-features.stdout
+  stderr_path: 032-cargo build --all-features.stderr
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 9c73735a1033f44f00ea48e15c38d73843ff5a391557aac653bd81d564a34b5f
+- id: 033-cargo test --all-features
+  exit_code: 0
+  stdout_path: 033-cargo test --all-features.stdout
+  stderr_path: 033-cargo test --all-features.stderr
+  stdout_sha256: 0508d2733902ad41d9e506b5f8033250c792ef21048bd6b92cf020ca268d16f8
+  stderr_sha256: 29357b659e54340ba32c93be7256be5be067ab9ad79551ca4a309e2c624bd4a5
+- id: 034-cargo fmt --check
+  exit_code: 0
+  stdout_path: 034-cargo fmt --check.stdout
+  stderr_path: 034-cargo fmt --check.stderr
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+- id: 035-cargo clippy --all-features -- -D warnings
+  exit_code: 0
+  stdout_path: 035-cargo clippy --all-features -- -D warnings.stdout
+  stderr_path: 035-cargo clippy --all-features -- -D warnings.stderr
+  stdout_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stderr_sha256: 0b9c85a57402765a9638848a90eec54abbd9a68f42a071a97aaa9d8acc5ba131
+unexecuted_gates: []
+fail_summary:
+- id: 020-check_full_gate_verification.sh
+  exit_code: 124
+  state: INCOMPLETE
+  duration_s: 7200.0
+  note: 执行超时（timeout-sec=7200）—— run_gates.py 在超时分支不落盘 stdout/stderr，故本条无输出产物；判据未判红，属「未完成」而非「不通过」。
+evidence_hash: sha256:c0d9b66770a40ee3fd5db3af0977df02714fd2c6c8a54260e34efd415abe784e
+round_status: INCOMPLETE

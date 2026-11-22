@@ -52,3 +52,31 @@ use crate::data_loader::TestDataLoader;
 
 let data = TestDataLoader::load_json("test_data.json");
 ```
+
+## NOT-RUN 披露通道（#5503）
+
+某些目标会因为外部工具/夹具不可得而**没有真的运行**（NOT-RUN 三态，而不是通过）。
+这类目标会留下一条机器可读记录：
+
+```
+TPCH-NOT-RUN: <target> reason=<原因> detail=<细节>
+```
+
+`cargo test` 会**吞掉通过测试的 stdout**，所以本地要看这些记录，请读**文件通道**：
+
+| 场景 | 记录文件 |
+|---|---|
+| CI（`.gitea/workflows/ci.yml` 设置 `TPCH_NOT_RUN_FILE`） | `TPCH_NOT_RUN_FILE` 指向的文件（CI 每轮一个） |
+| 本地（未设置该变量） | **默认路径**：`<target>/tpch_not_run.log`（`target` 为 cargo 的 target 目录；未设置 `CARGO_TARGET_DIR` 时是工作区的 `target/`） |
+
+本地默认文件里保存的是**当前这一轮**的记录：第一轮测试二进制会清空它，同一轮的后续
+测试二进制追加写入（轮次由 cargo 进程的 pid 标识）。若环境里没有 `ps`（无法判定轮次），
+文件只追加、不清空 —— 宁可多留一条旧记录，也不丢记录。
+
+CI 的统计口径与此一致：
+
+```bash
+NOT_RUN=$(grep -o 'TPCH-NOT-RUN:.*' "$TPCH_NOT_RUN_FILE" | sort -u | wc -l)
+```
+
+本地自证：`cargo test -p sqlrustgo --test not_run_log_visibility_5503`。

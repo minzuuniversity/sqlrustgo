@@ -1,0 +1,148 @@
+# 权威轮 20261119-168h-v410-r4（attempt-11）的中止/判红事实 —— **实测数据**
+# 结论：INCOMPLETE —— 被**另一条 Agent 线主动停掉以换轮**（r4 → r5）。
+#       不是跑满，不是通过，也不是服务端崩溃（server.log 300 B、无崩溃标记、panic 全程 00、停机前读数健康）。
+#       另登记一处**记录缺陷**：轮次目录**没有** STOPPED_BY_AGENT.txt ⇒ 归因靠脚本原文 + journal 执行时刻交叉推出。
+round_id: '20261119-168h-v410-r4'
+attempt: 11
+attempt_dir: '/home/liying/soak-artifacts/20261119-168h-v410-r4/attempt-20261119T032501Z'
+host: 'gaoyuanai-HPZ6G4 (192.168.0.252) Linux 7.0.0-43-generic x86_64'
+port: 3413
+frozen_commit: 93ac1d427ec0694f613da8470a88003db08b9f53
+soaked_binary_sha256: 910029ce1f0658e1028fbfad12d7f3d109fe6516e8ef303d03abefa06daffa33
+attempt_started_utc: '2026-11-19T03:25:01Z'
+clock_started_utc: '2026-11-19T03:28:01Z'
+start_path: 'quiet-window'
+waited_secs_before_start: 602
+verify_at_start: '43,192 查 / 0 错 / 315.3 q/s / 0.000 %'
+planned_end_utc: '2026-11-26T03:28:01Z'
+stopped_at_utc: '2026-11-19T04:18:39Z'      # 换轮脚本 _soak_r5_start.sh 执行时刻
+server_gone_at_utc: '2026-11-19T04:18:42Z'
+heartbeat_last_beat_utc: '2026-11-19T04:18:56Z'
+heartbeat_exit_record_utc: '2026-11-19T04:19:11Z'
+verdict: INCOMPLETE — 被主动停掉以换轮（r4 → r5）；非跑满、非通过、非服务端崩溃
+zero_error_threshold: '**本轮 0 错成立**（累计 0 错 / 0 panic）—— 但 168 h 未跑满 ⇒ 不构成 GA 证据'
+
+final_state:
+  elapsed_s: 3244
+  planned_s: 604800
+  pct_of_planned: 0.5366
+  driver_q: 343026
+  driver_e: 0
+  error_rate_pct: 0.0
+  panic_count: 00
+  metric_samples: 210
+  heartbeat_records: 218
+  heartbeat_beats: 216
+  heartbeat_max_gap_s: 16.0
+  fd_count: 46
+  rss_mb_first: 191.2
+  rss_mb_last: 434.7
+  rss_behaviour: '末段在 420-462 MB 之间波动，**无单调累积**'
+  cpu_pct_per_core: 175
+  wal_bytes_final: 90
+  data_dir_bytes: 8755642
+  point_select_total: 171641
+  point_select_hit_rate_pct: 100.0     # 门槛 ≥ 99 %
+  latency_ms: {min: 0.3, p50: 113.1, p90: 302.1, p95: 409.2, p99: 644.8, max: 1985.3, mean: 149.891}
+  by_kind: {insert: 34186, point_select: 171641, count_agg: 34308, range_scan: 68541, point_update: 34350}
+  server_log_bytes: 300
+  server_log_crash_markers: 0
+
+stop_attribution:
+  mechanism: '另一条 Agent 线的换轮脚本 /home/liying/_soak_r5_start.sh 的第 ① 步'
+  script_comment_verbatim: |
+    本脚本做四件事（顺序不可颠倒）：
+       ① 停 r4（按**具体 PID**，不用 pkill -f）并留档最终读数；
+       ② 252 检出切到最终 tip（`e2fcf73c2e`）；
+       ③ 重新编译 release 并算出二进制 sha256（**r5 与 r4 的二进制不同**）；
+       ④ 把实测值填进 `_soak_launch_r5.sh` 后先 --dry 自检、再起跑。
+  script_steps: '停 supervisor（TERM→3s→KILL）→ 按 r4 产物的 driver.pid / server.pid 逐个 TERM→KILL → 停臂 B 的 v312_mixed_soak（TERM→3s→KILL）→ 打印「r4 已停；产物保留在 $OLD_ART（归档用）」'
+  execution_evidence: 'journal 04:18:39Z：sudo … USER=liying ; COMMAND=/usr/bin/bash /home/liying/_soak_r5_start.sh'
+  timeline: '脚本执行 04:18:39Z → server 消失 04:18:42Z（3 s 后）→ 心跳 exit 04:19:11Z'
+  artifacts_pulled_by_other_line: 'journal 04:19:28Z 起 cp metrics.csv / driver.log / driver.stdout / armA.log / server.log 到 /tmp/_r4_pull/'
+  record_defect: '轮次目录**没有** STOPPED_BY_AGENT.txt ⇒ 归因靠脚本原文 + journal 执行时刻 + 停机前健康读数三方交叉，**非停轮方自述**'
+  swap_reason_verbatim: |
+    r4 轮……实测读数全部正常（point_select 137,795 次 100.0000% 命中 / WAL 818 B / errors 00 / panic 00 /
+    心跳最大间隙 16 s），**但它出局**：019 轮起跑前的排雷在 `check_int2_no_orphan.sh`（GA 35 项 plan 内 seq 4）
+    上判红，根因是 `cargo clippy` 编译 `sqlrustgo-storage` 时报 3 个 `redundant_locals`
+    （`wal_storage.rs` 三处 `let entry = entry;`，#5865 遗留）。修法必须改动 `crates/`
+    ⇒ 合并后 develop tip 的产品代码与 r4 被测树不再相同 ⇒ **r4 的二进制不再代表最终 tip**
+    ⇒ 按既定判据 r4 出局，改起 r5。
+
+other_cause_ruled_out:
+  server_crash: 'server.log 仅 300 B（只有启动横幅），panic|abort|segv|segmentation|panicked 命中 0；panic_count 全程 00；停机前最后一个采样仍健康（q=342,379 e=00 RSS=434.7 FD=46 CPU=175%）'
+  oom_kill: 'earlyoom 无 kill 记录；systemd-oomd masked；RSS 峰值仅 434.7 MB'
+  host_reboot: '心跳连续（216 拍、max_gap 16.0 s）直到 04:18:56Z；宿主全程在线'
+  spontaneous_degradation: '0 错 / 0 panic / 点查 100 % / WAL 恒定 90 B / p99 644.8 ms ⇒ 无任何退化迹象'
+
+comparison_with_r2:
+  r2_binary: e5c42c7fd02d3d2e24086d419920bcea938c19d6
+  r4_binary: 93ac1d427ec0694f613da8470a88003db08b9f53   # 含 #5865 点查命中 + WAL 两处修复
+  errors: {r2: 717, r4: 0}
+  point_select_hit_pct: {r2: 未测, r4: 100.0}
+  wal_bytes: {r2: 16611875, r4: 90}
+  rss_mb_end: {r2: 1044.7, r4: 434.7}
+  rss_shape: {r2: 单调累积 +853 MB, r4: 420-462 MB 波动、无单调累积}
+  latency_p99_ms: {r2: 9670.6, r4: 644.8}
+  first_error_elapsed_s: {r2: 2836, r4: 未出现（轮次在 3244 s 结束）}
+  host_contention: {r2: load1 峰值 66.34, r4: 'strata --serve 占 24-37 核、load1 峰值 31.46（更重）'}
+  reading: '修复后二进制在**更重**宿主负载下、跑到 **54.1 min** 仍 **0 错 0 panic**，而 r2 的第一个错误出现在 **47.3 min** ⇒「#5865 消除了主路径退化」**首次获得直接支持**'
+  caution: '样本仅 54.1 min，只比 r2 首个错误时点多 7 min ⇒ **不得外推到 168 h，不预判 r5**；且独占性仍未被证明'
+
+successor:
+  run_id: '20261119-168h-v410-r5'
+  port: 3414
+  frozen_commit: e2fcf73c2e0b4eb45d9c3379bf2ca9a01ca1869f   # = 当前 develop tip（含 #5868 clippy 修复）
+  binary_sha256: f5ec5a67eb9655e8d837704eb30c66dc4ebb75e98aadfce08793acf337a47740
+  # 〔更正 2026-11-19T04:45Z〕上方 binary_sha256 是**启动准备段 workspace 全量构建**的
+  # 测量值、**不是 r5 的运行产物**；r5 实际运行产物 = 4f21cff42999cd8f1f48f9672e11c9c108ca39074d2f7e67bded084f12ccdd94
+  # （STARTED.json 的 soaked_binary_sha256，已与 252 现场文件复核一致）。
+  # 且 r5 冻结提交已改为 64269eaa0848c4d47485d1f45b1b91779502a089、已于 2026-11-19T04:42:04Z 起跑
+  # ⇒ 详见 GA_RELEASE_REPORT.md §7.29。
+  build: '04:19:13Z 起 cargo build --release，2 m 21 s 完成'
+  launcher_up_utc: '2026-11-19T04:21:35Z'
+  status_at_probe: '04:22:35Z host QUIET load=1 foreign_cpu=88 % streak=1/10 waited=60 s ⇒ **仍在等安静窗口**，尚未起跑（3414 未监听）'
+  gate_policy: 'quiet_max_load=40 foreign_cpu_max=2400 quiet_samples=10 interval=60s min_qps=10 max_error_rate_pct=1 quiet_wait_max=7200s retry_backoff=300s verify_secs=180（与 r3/r4 同口径）'
+
+artifacts_sha256:
+  armA/metrics.csv: 60495f733ad409b806e23cdc3bc04d9e03461ec8a5f5ed39fb7e24b665e0ac43
+  armA/driver.log: 18fe63762c0cb4e1dee8b151f06994087eb3cfea7b8f570c86f21e8194e2c448
+  armA/server.log: b319049200e022bda9435b906e1a30d0f4caa76d93be41976589af6836156362
+  armA/armA.log: 1e8d1b8100320ea82cd54e587960804c1c13f3372bfb7fa3f9a61f6ce463462c
+  armA/summary.json: 2863e8f9e4d49d12e07fd00375dabca07568846481ab22e380eced6abdd0357e
+  armA/STABILITY_REPORT.md: 338220847d947b1257b9232697f942bfcf184a1fafdffca427e0e6c074daa34f
+  heartbeat.jsonl: c364088b8e2c176ac2e763e7bec034f52e3f941c41de9555a640a9a3d9aa7998
+  soak.log: 56af2365eb927f3ad47759d19464024b51eb753977e7d186cf1463298196bcc2
+  supervisor.log: d5ca1f068769c24b3cc2ca9cb82a790e33a958ac56c508e04e29e464c218a8d7
+  FINAL_REPORT.md: e2b28af92ed40219e3fd5b215686ed79028d7f8933785e9e3922856d706d0801
+  STARTED.json: 0ab5254fd3643db59030c3f5b87361ca19130e496f7065e03847ff4024dec84f
+artifacts_bytes:
+  armA/metrics.csv: 12641
+  armA/driver.log: 8238130
+  armA/server.log: 300
+  armA/armA.log: 21956
+  armA/summary.json: 369
+  armA/STABILITY_REPORT.md: 1564
+  heartbeat.jsonl: 24799
+  soak.log: 6392
+  supervisor.log: 6750
+  FINAL_REPORT.md: 3243
+  STARTED.json: 1019
+
+data_dir_breakdown:
+  total_bytes: 8755642
+  sbtest1.json: 8752407
+  sqlrustgo.wal: 90
+  others: 3145
+
+owner_blockers:
+  - '**停轮留档纪律要强制** —— r3 与 r4 两次停轮都没有在轮次目录留 STOPPED_BY_AGENT.txt ⇒ 归因只能靠脚本原文 + journal 反推'
+  - '**每一轮 168 h 必须落在「不会再动的最终 tip」上** —— tip 连续三笔变更（#5865/#5867/#5868）已连续作废 r2/r3/r4 三轮'
+  - '**独占判据要换尺**（按「任何 uid 的非本轮进程占用 CPU/IO」重做；srg-soak-cpu-sampler 已能按 uid 抓 strata）—— 属主批准后才改 scripts/soak/'
+  - '**权威 0 错 168 h 仍需独占宿主 + 长时跑满 + 监控 RSS/表规模/单查询 p99**（r4 已削弱「服务端侧退化」这条路径，但 54 min 不能替代 168 h）'
+  - '**条件①（r2 轮）已连续作废两轮**（r2 → r3 → r4），由哪一轮承接需属主裁定（Agent 不代做）'
+  - '宿主非正常停止的触发者仍未定性（B1e）'
+  - '安全补丁更新窗口（自动升级已按属主 2026-11-18T08:27Z 批准关闭）'
+  - '35 项 GA 门禁需在最终 tip 重跑（第 20 项 check_full_gate_verification.sh 需更高超时）'
+  - 'release/v4.1.0 + v4.1.0 tag 待条件达成'
+scope_note: '本归档与本轮提交**未改任何判据、未抬阈值、未改 35 项门禁分母**；只新增 docs/ 与 audit/ 下的材料'

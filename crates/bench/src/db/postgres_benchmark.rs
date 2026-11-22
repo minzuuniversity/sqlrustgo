@@ -203,6 +203,5 @@ mod tests {
     #[test]
     fn test_postgres_benchmark_creation() {
         let _bench = PostgresBenchmark::new("host=localhost user=test");
-        assert!(true);
     }
 }

@@ -20,6 +20,8 @@ if ! command -v cargo >/dev/null 2>&1; then
 fi
 
 PASS=0; TOTAL=0
+# 2026-11-16（#5598 fail-closed · D-03 三态）：INCOMPLETE = 检测无法完成的检查项。
+INCOMPLETE=0
 
 echo "=== Architecture Freeze Check (A7) ==="
 echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -97,7 +99,9 @@ if [ -f "$EE_FILE" ]; then
         PASS=$((PASS+1))  # 记录但不断言失败
     fi
 else
-    echo "SKIP (execution_engine.rs not found at expected path)"
+    # 2026-11-16（#5598 fail-closed）：SKIP 不是 PASS —— 检测没做成 ⇒ INCOMPLETE(2)。
+    echo "SKIP (execution_engine.rs not found at expected path) — 检测无法完成 ⇒ INCOMPLETE"
+    INCOMPLETE=$((INCOMPLETE+1))
 fi
 
 # === A7-4: DriftGate 阻断测试 ===
@@ -106,12 +110,32 @@ echo ""
 echo "--- A7-4: DriftGate 阻断测试 ---"
 TOTAL=$((TOTAL+1))
 echo -n "[A7-4] DriftGate test coverage ... "
-DRIFT_TEST=$(grep -r "DriftGate" crates/*/tests/ --include="*.rs" 2>/dev/null | wc -l)
+# 2026-11-16（#5598 fail-closed · D-03）：原口径 `grep -r DriftGate crates/*/tests/`
+# **只扫集成测试目录**，漏掉 src 内的 `#[cfg(test)]` 单元测试 ⇒ 实测假阴性：
+# DriftGate 的 5 个负面单元测试在 crates/executor/src/execution/drift_gate.rs 内
+# （其中 3 个断言 `validate(...).is_err()`），原口径读到 0 ⇒ 把「有负面测试」
+# 误报成「没有负面测试」。
+# 新口径：统计「**引用 DriftGate 的文件**里、位于 `#[cfg(test)]` 块内的 `#[test]`」个数 ——
+# 测的是判据的**意图**（DriftGate 有没有负面测试），不是某个目录的形状。
+DRIFT_TEST=$(grep -rl "DriftGate" crates --include="*.rs" 2>/dev/null | grep -v '/target/' | while IFS= read -r f; do
+    # 精确到「函数体确实引用 DriftGate 的 #[test]」，避免把同文件里与 DriftGate
+    # 无关的测试算进来（否则计数被无关测试抬高 = 另一种测量失真）。
+    awk '
+      /#\[test\]/ { pending=1; body=""; next }
+      pending && /^[[:space:]]*fn[[:space:]]/ { infn=1; pending=0; body=$0; next }
+      infn {
+        body = body "\n" $0
+        if ($0 ~ /^[[:space:]]*\}[[:space:]]*$/) { if (body ~ /DriftGate/) c++; infn=0 }
+      }
+      END{print c+0}' "$f"
+  done | awk '{s+=$1} END{print s+0}')
 if [ "$DRIFT_TEST" -gt 0 ]; then
-    echo "PASS ($DRIFT_TEST test references)"
+    echo "PASS ($DRIFT_TEST 个 #[cfg(test)] 负面测试引用)"
     PASS=$((PASS+1))
 else
-    echo "TODO (0 test references - 需要负面测试验证阻断)"
+    # 2026-11-16（#5598 fail-closed）：0 个负面测试是**真实 finding**，不是 TODO ——
+    # 原实现把它记成「TODO」却不计入 FAIL，于是门禁自报有 finding 却仍 exit 0。
+    echo "FAIL (0 个 #[cfg(test)] 负面测试引用 — 需要负面测试验证 DriftGate 阻断)"
 fi
 
 # === 汇总 ===
@@ -120,12 +144,19 @@ echo "=== Architecture Freeze Summary ==="
 echo "PASS: $PASS/$TOTAL"
 echo ""
 
+# 2026-11-16（#5598 fail-closed · D-03）：原实现在「部分检查未通过」时仍 `exit 0`
+# （注释写「不阻塞，因为是改进项」）⇒ **真实 fail-open：自报有 finding 却仍 PASS**。
+# fx09 特征化夹具记录过这条洞（删掉所有 DriftGate 引用后门禁仍 rc=0）。
+# 三态：0=PASS / 1=FAIL / 2=INCOMPLETE（检测无法完成）。
+if [ "$INCOMPLETE" -gt 0 ]; then
+    echo "⚠️  Architecture Freeze INCOMPLETE ($INCOMPLETE 项检查无法完成)"
+    echo "   检测没做成 ≠ 通过 ⇒ INCOMPLETE(2)，不得 PASS"
+    exit 2
+fi
 if [ "$PASS" -eq "$TOTAL" ]; then
     echo "✅ Architecture Freeze PASS"
     exit 0
-else
-    echo "⚠️  Architecture Freeze 部分检查未通过"
-    echo "   注意: A7 检查项在 Alpha 阶段未强制执行"
-    echo "   详见: docs/releases/v3.8.0/alpha/ALPHA_STAGE_REVIEW.md"
-    exit 0  # 不阻塞，因为是改进项
 fi
+echo "❌ Architecture Freeze FAILED ($PASS/$TOTAL 通过)"
+echo "   有检查项未通过 ⇒ FAIL(1)；本门禁在 GA required 清单内，不得降级为 optional"
+exit 1

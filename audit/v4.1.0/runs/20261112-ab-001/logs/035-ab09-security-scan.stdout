@@ -1,0 +1,34 @@
+═════════════════════════════════════════════════════════════
+  v3.12.0 GA Security Scan (Issue #4387 / GA-3)
+  Branch: develop/v4.1.0
+  Commit: aec1a3673c
+  Timestamp: 2026-11-11T20:29:51Z
+═════════════════════════════════════════════════════════════
+
+[1;33m== SC-1: cargo audit (RUSTSEC advisories) ==[0m
+  ℹ cargo audit: 00 unsound advisories (existing baseline)
+  ℹ   - RUSTSEC-2021-0145 (atty 0.2.14) — unsound, dev-deps only
+  ℹ   - RUSTSEC-2026-0002 (lru 0.12.5) — unsound, via mysql 25.0.1 -> sqlrustgo-bench
+  ℹ   - RUSTSEC-2026-0253 (lru 0.12.5) — unsound, via mysql 25.0.1 -> sqlrustgo-bench
+
+[1;33m== SC-2: License compliance check ==[0m
+  ℹ cargo-deny not installed; using cargo metadata fallback
+  ℹ Scanned 165 Cargo.toml files; 0 missing license metadata
+  [0;32m✓ PASS[0m license check: all 165 manifests have license metadata
+
+[1;33m== SC-3: Hardcoded secret scan (regex over crates/ + tests/) ==[0m
+  [0;32m✓ PASS[0m secret scan: 0 hardcoded credentials detected
+
+[1;33m== SC-4: Plaintext password scan (wire protocol handler code) ==[0m
+  ℹ plaintext password scan: 2 potential matches (review for fixture vs. real)
+
+═════════════════════════════════════════════════════════════
+  Security Scan Summary
+═════════════════════════════════════════════════════════════
+  SC-1 cargo audit:      PASS
+  SC-2 license check:    PASS
+  SC-3 secret scan:      PASS
+  SC-4 plaintext pw:     PASS
+  ───────────────────────────────────────────────────────────
+  Report: docs/releases/v3.12.0/evidence/v312-59/GA3_SECURITY_SCAN_REPORT.md
+

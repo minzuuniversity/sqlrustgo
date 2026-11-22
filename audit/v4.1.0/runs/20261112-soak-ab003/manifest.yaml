@@ -1,0 +1,97 @@
+schema_version: 1
+run_id: 20261112-soak-ab003
+source_agent: omp-macmini
+frozen_commit: aec1a3673cb83d8800b27e8a7aa11f690f346817
+harness: manual-wrapper (NOT audit_run.py) — 见 deviations
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
+  cargo: cargo 1.97.0 (c980f4866 2026-06-30)
+  env_vars:
+    SQLRUSTGO_BIN: /Volumes/workspace/dev/walgc2-target/debug/sqlrustgo-mysql-server
+    RESULTS_DIR: /tmp/srg-ab003-soak-20261112_055140
+    DATA_DIR: /tmp/sqlrustgo-v400-soak-ab003
+    PATH_prefix: /Volumes/workspace/dev/srg-soak-venv/bin (pymysql 2.2.8)
+artifacts:
+  artifacts/STABILITY_REPORT.md:
+    bytes: 1346
+    sha256: f89309af56dddd1fdc0bf374aa9a5976448536fa1f3d498034d29ffab340e517
+  artifacts/driver.log:
+    bytes: 383615
+    sha256: 6b80feb15aaa21a11f053bc13e343c63c170b9e5d110ae386d1ca9618b324bdd
+  artifacts/driver.stdout:
+    bytes: 114
+    sha256: 2e7358eaf68efa50a8824b0c455ea4cc0792e75401a3c7713c6e4a2c6128d206
+  artifacts/metrics.csv:
+    bytes: 12152
+    sha256: 98098c77a177728bea7993dee06ddacee34f661ab7f9d29a80ed4acbe8392b2d
+  artifacts/server.log:
+    bytes: 1067
+    sha256: 62ccf66ae4bd251ea132f49f79b4e9d124be8342e57174a573d8b2a1d154ce80
+  artifacts/soak_heartbeat.jsonl:
+    bytes: 27723
+    sha256: d8f62323b2bd2688b9366c9e2414652fad1fcdfe7a490c72dfd1c939264297f7
+  artifacts/summary.json:
+    bytes: 375
+    sha256: ecd439c430e6c48088e3f01d07ad3df78241dc4c4ad2f1e6cbebad206a6e8f1f
+  artifacts/wrapper.sh:
+    bytes: 1179
+    sha256: 6c0c43a1e735a9832b0e6ede1c18a689ac77a833183570f2e7982ac4738adfb0
+  logs/001-v400_1h_soak.stdout:
+    bytes: 22973
+    sha256: be9cba959613f254255993087fcb984112be5c6621857722adfa641b80519850
+  logs/002-wrapper-console.stdout:
+    bytes: 688
+    sha256: 6f4f54f43218ff370d61f5108259c6c7be1ef4101b779d5113376ad246dcce71
+commands:
+  - id: v400-1h-soak
+    cmd: bash scripts/soak/v400_1h_soak.sh 60 3412
+    wrapper: artifacts/wrapper.sh
+    started_at: "2026-11-12T05:51:40Z"
+    finished_at: "2026-11-12T06:51:59Z"
+    exit_code: 0
+    stdout_path: logs/001-v400_1h_soak.stdout
+  - id: soak-heartbeat
+    cmd: python3 scripts/soak/soak_heartbeat.py --pid <real driver pid> --out soak_heartbeat.jsonl --interval 15 --log <run log>
+    started_at: "2026-11-12T05:51:40Z"
+    finished_at: "2026-11-12T06:51:59Z"
+    exit_code: 0
+    note: 243 records / 241 beats / start..exit 闭合；max_gap<=90s
+  - id: soak-heartbeat-check
+    cmd: python3 scripts/soak/check_soak_heartbeat.py --file soak_heartbeat.jsonl --max-gap 90
+    started_at: "2026-11-12T06:51:59Z"
+    finished_at: "2026-11-12T06:51:59Z"
+    exit_code: 0
+    stdout_path: logs/002-wrapper-console.stdout
+results:
+  - id: v400-1h-soak
+    exit_code: 0
+    summary:
+      total_queries: 13260
+      total_errors: 461
+      error_rate_pct: 3.3598
+      latency_ms:
+        min: 0.8
+        p50: 2669.1
+        p90: 8614.6
+        p95: 10965.5
+        p99: 13697.4
+        max: 14984.2
+        mean: 3543.434
+      by_kind:
+        point_update: 1224
+        insert: 1079
+        count_agg: 1321
+        range_scan: 2744
+        point_select: 6892
+    metrics_rows: 240
+    heartbeat_records: 243
+deviations:
+  - "harness=manual-wrapper: 本 run 不是 audit_run.py 跑出的（001 轮之后临时手写 wrapper 修正 「首跑空转」问题）；manifest 字段按同 schema 手工填写，commands/results 与实际命令一致，但**不含** audit_run.py 的 evidence_hash 重算路径。"
+  - "产物为 debug 二进制（walgc2-target/debug/sqlrustgo-mysql-server，冻结 tip aec1a3673c 的产物）：延迟/吞吐数字**不可**作性能基线引用（AB-08 基线另走 #5754 管道）。"
+  - 461/13260 errors 全部为客户端 15s 读超时签名 (2013, 'Lost connection … read operation timed out')：归因 debug 构建 + 共享开发机负载（latency p50 2.7s / p99 13.7s）；server 超时后继续服务、无 panic。
+  - "心跳 emitter 与 checker 来自未合并的 PR #5753（scripts/soak/{soak_heartbeat,check_soak_heartbeat}.py），本归档同时收录了实际使用的 wrapper 脚本副本以保证可复现。"
+  - "首跑（/tmp/srg-soak-ab002-20261112_044647）因驱动缺 pymysql 空转一小时，**未**入本归档；其披露见 sqlrustgo#5117 comment 210706。"
+completed_at: "2026-11-12T06:51:59Z"

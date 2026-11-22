@@ -1,0 +1,5 @@
+STDERR: Parse error near line 12: no such column: nonexistent|  SELECT nonexistent FROM t;|         ^--- error here|
+EXIT: 1
+--- stdout ---
+1|alice
+2|bob

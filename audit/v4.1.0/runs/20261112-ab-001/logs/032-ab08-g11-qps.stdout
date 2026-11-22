@@ -1,0 +1,9 @@
+=== G11 Gate: QPS/TPS 基准 ===
+  [1/5] ✅ PASS: benches/qps_bench.rs present + registered
+  [2/5] ✅ PASS: qps_bench compiles
+  [3/5] ✅ PASS: 15 workloads run successfully
+  [4/5] ✅ PASS: PERFORMANCE_BASELINE.md present
+  [5/5] ✅ PASS: TPC-H gate (22/22) maintained
+
+=== G11 Gate: PASS ===
+QPS/TPS 基准: 5 workloads × thread counts verified

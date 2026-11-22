@@ -1,0 +1,11 @@
+=== G8 Gate: P1-2 (#3174) Crash Test Framework ===
+  [1/7] ✅ PASS: tests/integration/stress/crash_test_framework.rs present
+  [2/7] ✅ PASS: tests/integration/stress/crash_test_harness.rs present
+  [3/7] ✅ PASS: crash_test_framework has 16 tests (≥1 per category)
+  [4/7] ✅ PASS: total crash/fault tests = 126 (≥100)
+  [5/7] ✅ PASS: crash_test_framework compiles
+  [6/7] ✅ PASS: crash_test_framework 16 passed
+  [7/7] ✅ PASS: pre-existing crash/fault test files intact
+
+=== G8 Gate: PASS ===
+P1-2 (#3174) Crash Test Framework: harness + 8 categories + ≥100 total tests verified

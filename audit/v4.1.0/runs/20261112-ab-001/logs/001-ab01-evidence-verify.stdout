@@ -1,0 +1,133 @@
+{"kind": "evidence_inventory", "strong_bound": 1, "nonzero_run": 2, "run_missing": 0, "stale_binding": 0, "invalid_manifest": 0, "unread_manifest": 0, "ambiguous": 34, "unbound": 1182, "files": 63, "total": 1219, "debt": 1216, "claims_ref": 1, "mode": "verify", "ledger": "docs/releases/v4.1.0/CLAIM_BINDINGS_LEDGER.jsonl", "diff_base": "5741831f08cf713f8ad778e94f57eef9c2e99df5", "today": "2026-11-12", "binding_validity": {"docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md": ["irrelevant_run:20261108-lint1-001"]}}
+NOT-OK: unsafe-binding:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:90 分级 nonzero_run：| DEBT-2 | 债务不变量在 develop tip 现场为红，且与「新发现必须 append 看板」互相死锁：每 append 一行，看板 md 就多一条未绑定 claim ⇒ `eviden
+NOT-OK: unsafe-binding:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:97 分级 nonzero_run：| LINT-1 | develop 上 `cargo clippy --workspace --all-features --all-targets -- -D warnings` 有 279 处欠
+NOT-OK: debt-grew:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.md 台账 4 → 现场 5（未绑定债务只准减不准增）
+NOT-OK: debt-grew:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md 台账 14 → 现场 57（未绑定债务只准减不准增）
+NOT-OK: total-debt-grew: 台账 1144 → 现场 1216
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/BRANCH_MERGE_VERDICTS_2026-11-06.md:0 | `mcode-macmini/e5-r9-r11-verify` | **部分并入**（本轮） | 同上（同一批内容）；`check_anti_fabric
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/BRANCH_MERGE_VERDICTS_2026-11-06.md:0 `selftest_anti_fabrication.sh` 的判定与退出码以脚本自身为准：`PASS`=0、`UNFIXED`=10、
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/BRANCH_MERGE_VERDICTS_2026-11-06.md:0 | `mcode-macmini/e5-r9-r11-verify` | 2026-10-15 | 2 | 7 | 764 | **部分并入**（本轮） | 同
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/CLAIMS_BINDINGS.jsonl:0 {"claims": 18, "evidence_refs": ["docs/releases/v4.1.0/evidence/BATCH28_SEM4_AND
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/CLAIMS_BINDINGS.jsonl:0 {"claims": 2, "evidence_refs": [], "excerpt": "## 3. 问题汇总（现象 / 实测根因 / 影响 / 谁能解） 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/CLAIMS_BINDINGS.jsonl:0 {"claims": 13, "evidence_refs": [], "excerpt": "### AC-1: BE5 / B-F5 的判据可执行 **标准
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | ALPHA | `STAGE_CONFIG.yaml` 的 `stages.ALPHA` 门禁全绿；`ALPHA→BETA` 需**人批准** | **当前
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | BETA | `stages.BETA` 门禁全绿；**人批准** | **从未进入** |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | RC | `stages.RC` 门禁全绿；**人批准**；RC 期间禁功能新增、只允许 bugfix/文档 | **从未进入** |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | GA | `stages.GA` 门禁全绿（34 门禁 + 5 cargo 命令）；`current_stage` 必须 GA；发布文件 5 份齐备；由 `
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | `docs/releases/v4.1.0/STAGE.yaml` | ✅ 在位（但 `current_stage` 仍是 ALPHA ⇒ 阶段未到 GA）
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | `docs/releases/v4.1.0/RELEASE_NOTES.md` | ✅ 在位 |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | `docs/releases/v4.1.0/GA_GATE_REPORT.md` | ✅ 在位（**内容需按本轮实跑刷新**） |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | `docs/releases/v4.1.0/GA_RELEASE_TIMELINE.md` | ✅ 在位 |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | `docs/releases/v4.1.0/CHANGELOG.md` | ✅ 在位 |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | 流程合规（所有修改走 PR） | ✅ | 本会话 12 个 PR 全部走 Gitea PR + 归档 run + 自审评论（#5608–#5619；证据 r
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | #5601（BIN-1 binary 假成功） | ✅ **已闭合** | 修复 + 两条回归 + probe `false_success_count 3
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | #5604（DRIFT-2 看板/工具漂移） | ✅ **已闭合** | P2-1/P2-2 已完成、P1-4 已迁待复核，三个工具现值全绿 ⇒ 漂移消除 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/GA_READINESS_VERIFICATION_2026-11-06.md:0 | #5594（执行点门禁把注释当调用） | ✅ **已闭合**（本批） | 行尾注释里的门禁路径不再算执行点；反向变异：`--selftest` D2 臂变红
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.jsonl:0 {"number": 5366, "title": "[CI] evidence-graph-gate 结构上无法 PASS：SHA 未回退 + 边早于节点 +
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.jsonl:0 {"number": 5368, "title": "[CI] evidence-graph-gate 解析不了自己的 PASS：grep 模式与 pretty
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.jsonl:0 {"number": 5452, "title": "[分支保护] `STAGE_CONFIG.yaml` 的 `GA.merge_policy`（3 个 re
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.jsonl:0 {"number": 5598, "title": "[v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-05B.md:0 | [#5598](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5598) | p1 | gate 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.jsonl:0 {"number": 5366, "title": "[CI] evidence-graph-gate 结构上无法 PASS：SHA 未回退 + 边早于节点 +
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.jsonl:0 {"number": 5368, "title": "[CI] evidence-graph-gate 解析不了自己的 PASS：grep 模式与 pretty
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.jsonl:0 {"number": 5452, "title": "[分支保护] `STAGE_CONFIG.yaml` 的 `GA.merge_policy`（3 个 re
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.jsonl:0 {"number": 5598, "title": "[v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md:0 | [#5366](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5366) | p0 | ci-in
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md:0 | [#5368](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5368) | p0 | ci-in
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11C.md:0 | [#5598](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5598) | p1 | gate 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11D.jsonl:0 {"number": 5366, "title": "[CI] evidence-graph-gate 结构上无法 PASS：SHA 未回退 + 边早于节点 +
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11D.jsonl:0 {"number": 5368, "title": "[CI] evidence-graph-gate 解析不了自己的 PASS：grep 模式与 pretty
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11D.jsonl:0 {"number": 5452, "title": "[分支保护] `STAGE_CONFIG.yaml` 的 `GA.merge_policy`（3 个 re
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11D.jsonl:0 {"number": 5598, "title": "[v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11D.md:0 | [#5366](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5366) | p0 | ci-in
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11D.md:0 | [#5368](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5368) | p0 | ci-in
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_LEDGER_2026-11-11D.md:0 | [#5598](http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5598) | p1 | gate 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_SNAPSHOT_2026-11-05.jsonl:0 {"comments": 0, "created_at": "2026-10-15T21:39:11Z", "html_url": "http://192.16
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_SNAPSHOT_2026-11-05.jsonl:0 {"comments": 0, "created_at": "2026-10-15T22:42:24Z", "html_url": "http://192.16
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_SNAPSHOT_2026-11-05.jsonl:0 {"comments": 0, "created_at": "2026-10-20T18:05:14Z", "html_url": "http://192.16
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_SNAPSHOT_2026-11-05.jsonl:0 {"comments": 2, "created_at": "2026-11-05T05:12:34Z", "html_url": "http://192.16
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-05C.jsonl:0 {"number": 5598, "title": "[v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_2026-11-06D.jsonl:0 {"number": 5598, "title": "[v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl:0 {"number": 5366, "title": "[CI] evidence-graph-gate 结构上无法 PASS：SHA 未回退 + 边早于节点 +
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl:0 {"number": 5368, "title": "[CI] evidence-graph-gate 解析不了自己的 PASS：grep 模式与 pretty
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-05C.jsonl:0 {"number": 5452, "title": "[分支保护] `STAGE_CONFIG.yaml` 的 `GA.merge_policy`（3 个 re
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/ISSUE_TRIAGE_CROSSCHECK_2026-11-06D.jsonl:0 {"number": 5598, "title": "[v4.1.0][P1-3] 阶段门禁反向夹具缺口：23 道门禁无夹具，另有 2 处 fail-open（
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "DRIFT-2", "domain": "governance", "priority": "P1", "status": "完成", "blo
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "armed 构建下 `crash_wal_index_b1` 两个测试必须全绿；索引更新边界 SIGKILL 重启后，`SELE
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "夹具对 R1/R2/R3 各做反向变异后结论必须翻转；证据含 MANIFEST+sha256", "blocked_by": "
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "FL-1", "board": "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md", "version"
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "引擎产出不可用（接口不支持/只出横幅/空结果）⇒ 判 NOT RUN 披露，不得当成可比结果参与比对；bin_resolver 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "重生成后 rows==triaged==当期 open issue 数（verify_ledger L1），且 #5594 出现
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "check 在干净板上 exit 0 且 render 幂等；夹具含反向变异（删一行 JSONL ⇒ check 必须红，恢复 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "gate_calls() 去注释/去文档字符串后，**同口径**的死门禁读数在两个工具间必须一致（现场：gov_probe de
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "缺一项/重复一项/退出码丢失 三个夹具都必须判 INCOMPLETE；再加：缩小期望集合、假门禁名、第四态 SKIP、脚本缺失、
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "把 enable_status_check 关掉 ⇒ 该门禁必须红；API 不通 ⇒ 输出必须 INCOMPLETE 而非 PA
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"acceptance": "悬空路径 0；生成物『写盘口径』==『核对口径』（墙钟时间不得进比对域）", "blocked_by": "-", "board
+NOT-OK: bound-but-unclean:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 指名的 run 不存在或有非零退出码
+NOT-OK: bound-but-unclean:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 指名的 run 不存在或有非零退出码
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "CARRY-1", "task": "4 个文件只存在于分支上、develop 上没有：#4910 锁画像文档、`v410_short_soak
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "AMAN-1", "priority": "P1", "stage": "ALPHA", "version": "v4.1.0", "domai
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "GA-SEM1", "priority": "P0", "stage": "GA", "version": "v4.1.0", "domain"
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "GA-TPCH1", "priority": "P1", "stage": "GA", "version": "v4.1.0", "domain
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "GA-COV1", "priority": "P1", "stage": "GA", "version": "v4.1.0", "domain"
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "GA-SHELL1", "priority": "P2", "stage": "GA", "version": "v4.1.0", "domai
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "GA-CARGO1", "priority": "P0", "stage": "GA", "version": "v4.1.0", "domai
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "GA-CARGO2", "priority": "P2", "stage": "GA", "version": "v4.1.0", "domai
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "A04-EV1", "priority": "P2", "stage": "ALPHA", "version": "v4.1.0", "doma
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "IDX-1", "priority": "P0", "stage": "ALPHA", "version": "v4.1.0", "domain
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "GA-RESET-1", "priority": "P0", "stage": "ALPHA", "version": "v4.1.0", "d
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "WALGC-2", "task": "`GroupCommitCoordinator` leader-panic livelock(比 WALG
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "W-Q19", "task": "TPC-H Q19 wire 解析恢复(#5393 三兄弟之一):深度感知比较克隆缺 IN/NOT IN/IS
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "W-Q9Q18", "task": "TPC-H Q9/Q18 wire 恢复(#5393 其余两兄弟):Q9 星形等值图无哈密顿路径 ⇒ 链构
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "IL-4C", "task": "IL-4 跟进(台账 C→D 代):新鲜度探针 DRIFT(4 条未分诊+2 条已关)⇒ C 代 106 行;
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "DIAGQ11-1", "task": "全仓总遍历红:`diag_q11_having_three_way` 反空断言(3-way join 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:0 {"id": "FLTACC-1", "task": "Q9 聚合的浮点累加次序随工序变 ⇒ 同一棵树、同一夹具、同一条 SQL，两条既有捕获奖给出两个各自稳定
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | DRIFT-2 | P1-4/P2-1/P2-2 三行在看板仍写「未开始」，但对应工具与基线**已在 develop 落库**：`audit/v4.1.0/
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | ENG-13 | #5584 实测确认：`AfterIndexUpdate` 边界崩溃后整表读不出（`crash_wal_index_b1` 在 devel
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | EX-1 | 咨询专家梯：席位注册表 + fail-closed 聚合(R1/R2/R3) + 证据契约 | 完成 | 夹具对 R1/R2/R3 各做反向变
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | FL-1 | #5392 的 wire 回归在归档 run 里出现过一次非确定性红：20000 行 LOAD DATA 途中连接被打断，客户端只拿到 Io(
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | IL-10 | A04 证据门禁假红：引擎「跑得动但干不了活」被判成可比结果 ⇒ 误报「归档证据已与引擎漂移」 | 完成 | 引擎产出不可用（接口不支持/只
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | IL-4 | 台账快照边界：A 代输入快照 106 条已过期（当期 open 110，多出 #5594/#5595/#5596/#5597）⇒ 用当期快照重
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | KR-1 | 看板台账改为 JSONL 单一来源：kanban_render.py（render/check/counts）+ 夹具 | 完成 | chec
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | MX-1 | 生产门禁引用图 gate_executability.gate_calls() 扫描未去注释的正文 ⇒ 注释里的『参见 xxx.sh』会把死门
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | P0-2 | run_gates.py + gate_report.py + results(jsonl) + 三态（PASS/FAIL/INCOMPLET
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | P0-3 | 打开合并拦截（分支保护状态检查+审批）+ merge_blocking.py | 阻塞 | 把 enable_status_check 关掉 
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | P2-1 | 文档事实面：doc_stamp/doc_freshness/doc_path_claim_check/gen_doc_index 移植接入 |
+NOT-OK: bound-but-unclean:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 指名的 run 不存在或有非零退出码
+NOT-OK: bound-but-unclean:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 指名的 run 不存在或有非零退出码
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | CARRY-1 | 4 个文件只存在于分支上、develop 上没有：#4910 锁画像文档、`v410_short_soak.sh`（SOAK 短程入口）
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | AMAN-1 | 两条现场实证的门禁缺陷（都不是推测）： ① `test_audit_manifest_integrity.py` 整套夹具**空转**：它
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | GA-SEM1 | `check_sem1_savepoint.sh` 在 GA 清单里判红，**根因是门禁判据陈旧（假红），不是产品缺口**： 第 5 项
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | GA-TPCH1 | G1 TPC-H 基线门禁在 GA 清单里判红：`G1 FAIL: at least one sub-check failed (se
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | GA-COV1 | `check_coverage_single_implementation.sh` 判红：`FAIL: 1 problem(s) — a
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | GA-SHELL1 | `check_rc_ga_gate.sh` 自己报 shell 错误（stderr 原文）： `scripts/gate/check
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | GA-CARGO1 | GA 全量 `cargo test --all-features` 实跑**红了，且只红 1 个**（exit_code=101）：
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | GA-CARGO2 | GA-CARGO1 暴露的撞名模式**不止一处**：仓里用 `pid + as_nanos()` 给临时目录命名的测试文件有 **1
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | A04-EV1 | A04 差分矩阵的**归档证据有一处过期**，来源是**有意修复**而不是漂移： 归档 `docs/releases/v4.1.0/ev
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | IDX-1 | `CREATE INDEX` 只能给**默认库**（`default`）里的表建索引： ① **不跟随会话当前库** —— `USE d1`
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | GA-RESET-1 | **Owner 2026-11-08 裁决**：8 项全部批准；阶段变化与提升必须按 governance 规则进行、**不得跳过
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | WALGC-2 | `GroupCommitCoordinator` leader-panic livelock(比 WALGC-1 更深一层):phase
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | W-Q19 | TPC-H Q19 wire 解析恢复(#5393 三兄弟之一):深度感知比较克隆缺 IN/NOT IN/IS/BETWEEN/LIKE/N
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | W-Q9Q18 | TPC-H Q9/Q18 wire 恢复(#5393 其余两兄弟):Q9 星形等值图无哈密顿路径 ⇒ 链构造器返回 None ⇒ par
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | IL-4C | IL-4 跟进(台账 C→D 代):新鲜度探针 DRIFT(4 条未分诊+2 条已关)⇒ C 代 106 行;本线 apply 标签又使 r
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | DIAGQ11-1 | 全仓总遍历红:`diag_q11_having_three_way` 反空断言(3-way join n_name='GERMANY
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md:0 | FLTACC-1 | Q9 聚合的浮点累加次序随工序变 ⇒ 同一棵树、同一夹具、同一条 SQL，两条既有捕获奖给出两个各自稳定但互不相同的哈希（`56d46
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/STAGE.yaml:0 仍 open;按 ALPHA_TO_BETA_GATE_PLAN.md §1(历史 PASS/关闭不能替代本次执行证据)
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/STAGE.yaml:0 - "#5112/#5113 closed(2026-10-15),但其 Hard Gate 在 tip 不全绿(clippy -D warnings 62 处
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/STAGE.yaml:0 - "WALGC-2 先红探针(tip c06209fd11,scratch):PanickingWal.sync() panic 注入 ⇒ 第二个 commi
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/STAGE.yaml:0 landing: "已实施并合并:PR #5691 → `9ce6f1cb3e`。先红探针转正 3 条永久回归(`walgc2_*`,修复前 3 红/修复后 3
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/AB_GAP_LEDGER_2026-11-09.md:0 > 本文件只登记「已有证据 / 缺口」,不做任何 PASS 声明;历史 closed 不能替代本次取证
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/AB_GAP_LEDGER_2026-11-09.md:0 8. 三类变异:gate-ignore ✅、错误库读取 ✅(三处独立 CAUGHT)、**共享 tx id 半覆盖**
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/AOCI_INDEX_VERIFICATION_2026-11-08.md:0 | 索引是否合入 develop | ✅ 是（`docs/iaia-410-aoci-index` 已并入） |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/AOCI_INDEX_VERIFICATION_2026-11-08.md:0 | 结构有效性 | ✅ `structure_valid: true` |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 [PASS]   V312-24: test-runner report valid (1 test(s) ran, total_duration_ms=42)
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 | 0 | `PASS` | 全部断言成立 |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 ### 2.3 四次运行的实测矩阵（BASELINE_FAIL / FIXED_PASS / NEGATIVE_FAIL / DEVELOP_PASS）
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 | 2 | develop `e453dc42d1`（已被 `1ad69b7351` 修掉） | `PASS` | `VERDICT: PASS`，**rc=0
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 | 3 | 本基线 + 本次修复后 | `PASS` | `VERDICT: PASS`，**rc=0** |
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 VERDICT: PASS
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 r11_selftest: PASS
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 VERDICT: PASS
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 r11_selftest: PASS
+NOT-OK: unbound-new-claim:docs/releases/v4.1.0/evidence/E5_R9_R11_VERIFICATION_2026-10-25.md:0 VERDICT: PASS
+findings=131
