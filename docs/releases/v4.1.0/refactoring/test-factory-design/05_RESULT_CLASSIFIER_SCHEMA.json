@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sqlrustgo://test-factory/result-classifier/v1",
+  "title": "SQLRustGo contract test result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "base_sha", "source_sha256", "execution_status", "contract_status", "evidence", "classification_reason"],
+  "properties": {
+    "schema_version": {"const": "test-factory-result/v1"},
+    "case_id": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9._-]+$"},
+    "invariant_id": {"type": "string"},
+    "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "execution_status": {"enum": ["EXECUTED", "NOT_RUN", "COMPILE_ERROR", "TIMEOUT", "INFRA_ERROR"]},
+    "contract_status": {"enum": ["CONTRACT_PASS", "EXPECTED_RED", "UNEXPECTED_RED", "UNEXPECTED_GREEN", "INEFFECTIVE_TEST", "NOT_APPLICABLE"]},
+    "raw_exit_code": {"type": ["integer", "null"]},
+    "expected_failure_signature": {"type": ["object", "null"]},
+    "actual_failure_signature": {"type": ["object", "null"]},
+    "issue_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_agent", "source_run", "timestamp", "evidence_hash", "conflict_resolution"],
+      "properties": {
+        "source_agent": {"type": "string", "minLength": 1},
+        "source_run": {"type": "string", "minLength": 1},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "evidence_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "conflict_resolution": {"type": "string", "minLength": 1}
+      }
+    },
+    "classification_reason": {"type": "string", "minLength": 1},
+    "independent_review": {"enum": ["NOT_REQUESTED", "PENDING", "VERIFIED", "REJECTED"]}
+  },
+  "allOf": [
+    {"if": {"properties": {"execution_status": {"const": "EXECUTED"}}}, "then": {"not": {"properties": {"contract_status": {"const": "NOT_APPLICABLE"}}}}},
+    {"if": {"properties": {"execution_status": {"enum": ["NOT_RUN", "COMPILE_ERROR", "TIMEOUT", "INFRA_ERROR"]}}}, "then": {"properties": {"contract_status": {"const": "NOT_APPLICABLE"}}}}
+  ]
+}

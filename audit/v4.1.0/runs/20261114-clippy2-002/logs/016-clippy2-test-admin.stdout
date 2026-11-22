@@ -1,0 +1,413 @@
+
+running 73 tests
+test manifest::tests::test_manifest_new ... ok
+test manifest::tests::test_manifest_default ... ok
+test backup::tests::test_backup_data_dir_not_found ... ok
+test manifest::tests::test_manifest_serialize_roundtrip ... ok
+test backup::tests::test_tar_extract_corrupt_short ... ok
+test manifest::tests::test_manifest_to_json_and_back ... ok
+test manifest::tests::test_sha256_bytes ... ok
+test manifest::tests::test_manifest_scan_with_data ... ok
+test manifest::tests::test_manifest_scan_with_wal ... ok
+test manifest::tests::test_manifest_write_read_file ... ok
+test backup::tests::test_backup_empty ... ok
+test manifest::tests::test_walk_files_empty ... ok
+test mysqladmin::tests::test_add_connection_returns_incremental_id ... ok
+test mysqladmin::tests::test_dispatch_flush_logs ... ok
+test mysqladmin::tests::test_dispatch_kill_invalid_arg ... ok
+test manifest::tests::test_sha256_file ... ok
+test mysqladmin::tests::test_dispatch_kill_missing_arg ... ok
+test mysqladmin::tests::test_dispatch_kill_valid ... ok
+test mysqladmin::tests::test_dispatch_ping ... ok
+test mysqladmin::tests::test_dispatch_reload ... ok
+test mysqladmin::tests::test_dispatch_unknown_command ... ok
+test backup::tests::test_tar_extract_one ... ok
+test manifest::tests::test_walk_files_nested ... ok
+test mysqladmin::tests::test_dispatch_version ... ok
+test mysqladmin::tests::test_dispatch_variables ... ok
+test mysqladmin::tests::test_flush_logs ... ok
+test mysqladmin::tests::test_inc_query ... ok
+test mysqladmin::tests::test_inc_slow ... ok
+test mysqladmin::tests::test_kill_existing_connection ... ok
+test mysqladmin::tests::test_kill_nonexistent_connection ... ok
+test mysqladmin::tests::test_new_has_default_variables ... ok
+test mysqladmin::tests::test_ping ... ok
+test backup::tests::test_backup_with_data_and_wal ... ok
+test mysqladmin::tests::test_processlist_empty ... ok
+test mysqladmin::tests::test_processlist_with_connections ... ok
+test mysqladmin::tests::test_reload ... ok
+test mysqladmin::tests::test_set_and_get_variable ... ok
+test mysqladmin::tests::test_status_contains_uptime_threads ... ok
+test mysqladmin::tests::test_version ... ok
+test pitr::tests::empty_log_is_not_suspicious ... ok
+test pitr::tests::exit_code_is_non_zero_when_entries_failed ... ok
+test pitr::tests::exit_code_is_non_zero_when_nothing_was_restored ... ok
+test pitr::tests::exit_code_is_zero_for_a_clean_restore ... ok
+test pitr::tests::failures_take_precedence_over_the_empty_warning ... ok
+test pitr::tests::parse_target_time_invalid ... ok
+test pitr::tests::parse_target_time_rfc3339 ... ok
+test pitr::tests::parse_target_time_unix ... ok
+test restore::tests::test_verify_error_display_checksum ... ok
+test restore::tests::test_verify_error_display_file_missing ... ok
+test restore::tests::test_verify_error_display_wal_missing ... ok
+test pitr::tests::pitr_replay_into_missing_data_dir_errors ... ok
+test pitr::tests::pitr_replay_into_missing_wal_errors ... ok
+test wire_client::additional_tests::test_extract_first_cell_error_paths ... ok
+test storage_commands::tests::test_cleanup_bak_removes_old_files ... ok
+test wire_client::additional_tests::test_extract_first_cell_ok ... ok
+test wire_client::additional_tests::test_logical_manifest_from ... ok
+test wire_client::additional_tests::test_logical_manifest_from_missing_counts ... ok
+test storage_commands::tests::test_rollback_fails_without_bak ... ok
+test wire_client::additional_tests::test_serialize_result_set_csv_special_chars ... ok
+test wire_client::additional_tests::test_serialize_result_set_csv_empty ... ok
+test wire_client::additional_tests::test_serialize_result_set_csv_basic ... ok
+test wire_client::additional_tests::test_write_padding_exact_block ... ok
+test restore::tests::test_physical_restore_missing_manifest ... ok
+test wire_client::additional_tests::test_write_padding_partial_block ... ok
+test wire_client::additional_tests::test_write_padding_zero ... ok
+test wire_client::additional_tests::test_write_tar_header_basic ... ok
+test wire_client::additional_tests::test_write_tar_header_long_name_truncated ... ok
+test wire_client::tests::csv_escape_roundtrip_empty ... ok
+test wire_client::tests::csv_escapes_special_chars ... ok
+test storage_commands::tests::test_rollback_creates_json_from_bak ... ok
+test backup::tests::test_tar_extract_round_trip ... ok
+test restore::tests::test_physical_restore_success ... ok
+test restore::tests::test_physical_restore_with_wal ... ok
+
+test result: ok. 73 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 56 tests
+test manifest::tests::test_manifest_default ... ok
+test manifest::tests::test_manifest_new ... ok
+test backup::tests::test_backup_data_dir_not_found ... ok
+test manifest::tests::test_manifest_serialize_roundtrip ... ok
+test manifest::tests::test_manifest_to_json_and_back ... ok
+test backup::tests::test_tar_extract_corrupt_short ... ok
+test manifest::tests::test_sha256_bytes ... ok
+test manifest::tests::test_manifest_write_read_file ... ok
+test manifest::tests::test_manifest_scan_with_data ... ok
+test mysqladmin::tests::test_dispatch_flush_logs ... ok
+test mysqladmin::tests::test_add_connection_returns_incremental_id ... ok
+test manifest::tests::test_walk_files_empty ... ok
+test backup::tests::test_backup_empty ... ok
+test manifest::tests::test_manifest_scan_with_wal ... ok
+test mysqladmin::tests::test_dispatch_kill_invalid_arg ... ok
+test mysqladmin::tests::test_dispatch_kill_missing_arg ... ok
+test mysqladmin::tests::test_dispatch_kill_valid ... ok
+test manifest::tests::test_walk_files_nested ... ok
+test mysqladmin::tests::test_dispatch_ping ... ok
+test mysqladmin::tests::test_dispatch_reload ... ok
+test mysqladmin::tests::test_dispatch_unknown_command ... ok
+test mysqladmin::tests::test_dispatch_variables ... ok
+test mysqladmin::tests::test_flush_logs ... ok
+test mysqladmin::tests::test_dispatch_version ... ok
+test mysqladmin::tests::test_inc_query ... ok
+test mysqladmin::tests::test_inc_slow ... ok
+test backup::tests::test_tar_extract_one ... ok
+test mysqladmin::tests::test_kill_existing_connection ... ok
+test mysqladmin::tests::test_kill_nonexistent_connection ... ok
+test manifest::tests::test_sha256_file ... ok
+test mysqladmin::tests::test_new_has_default_variables ... ok
+test mysqladmin::tests::test_ping ... ok
+test mysqladmin::tests::test_processlist_empty ... ok
+test mysqladmin::tests::test_reload ... ok
+test mysqladmin::tests::test_processlist_with_connections ... ok
+test mysqladmin::tests::test_set_and_get_variable ... ok
+test mysqladmin::tests::test_status_contains_uptime_threads ... ok
+test mysqladmin::tests::test_version ... ok
+test pitr::tests::empty_log_is_not_suspicious ... ok
+test pitr::tests::exit_code_is_non_zero_when_entries_failed ... ok
+test pitr::tests::exit_code_is_non_zero_when_nothing_was_restored ... ok
+test pitr::tests::exit_code_is_zero_for_a_clean_restore ... ok
+test pitr::tests::failures_take_precedence_over_the_empty_warning ... ok
+test pitr::tests::parse_target_time_rfc3339 ... ok
+test pitr::tests::parse_target_time_invalid ... ok
+test pitr::tests::parse_target_time_unix ... ok
+test restore::tests::test_verify_error_display_checksum ... ok
+test restore::tests::test_verify_error_display_file_missing ... ok
+test restore::tests::test_verify_error_display_wal_missing ... ok
+test backup::tests::test_backup_with_data_and_wal ... ok
+test pitr::tests::pitr_replay_into_missing_wal_errors ... ok
+test backup::tests::test_tar_extract_round_trip ... ok
+test pitr::tests::pitr_replay_into_missing_data_dir_errors ... ok
+test restore::tests::test_physical_restore_missing_manifest ... ok
+test restore::tests::test_physical_restore_with_wal ... ok
+test restore::tests::test_physical_restore_success ... ok
+
+test result: ok. 56 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+
+running 62 tests
+test test_backup_error_display_checksum_mismatch ... ok
+test test_backup_error_display_corrupt_tar ... ok
+test test_backup_error_display_data_dir_not_found ... ok
+test test_backup_error_display_io ... ok
+test test_backup_error_display_entry_not_found ... ok
+test test_manifest_default ... ok
+test test_manifest_new ... ok
+test test_backup_error_display_json ... ok
+test test_mysqladmin_dispatch_kill_no_args ... ok
+test test_mysqladmin_dispatch_ping ... ok
+test test_mysqladmin_dispatch_processlist ... ok
+test test_mysqladmin_dispatch_version ... ok
+test test_manifest_to_json_from_json_roundtrip ... ok
+test test_mysqladmin_new_with_variables ... ok
+test test_manifest_scan_empty_dir ... ok
+test test_physical_restore_missing_data_file_in_staging ... ok
+test test_manifest_write_to_read_from ... ok
+test test_manifest_scan_with_wal ... ok
+test test_physical_backup_data_dir_not_found ... ok
+test test_manifest_scan_calculates_total_size ... ok
+test test_manifest_scan_with_files ... ok
+test test_physical_restore_missing_manifest ... ok
+test test_physical_backup_with_wal ... ok
+test test_pitr_replay_missing_data_dir_is_an_error ... ok
+test test_physical_restore_corrupt_tar ... ok
+test test_pitr_replay_missing_wal_is_an_error ... ok
+test test_pitr_replay_empty_entries ... ok
+test test_sha256_bytes_empty ... ok
+test test_sha256_bytes_hello ... ok
+test test_sha256_bytes_known ... ok
+test test_physical_restore_target_already_exists ... ok
+test test_tar_extract_all_nonexistent_file ... ok
+test test_sha256_file_known_content ... ok
+test test_tar_extract_all_corrupt_file ... ok
+test test_physical_backup_restore_no_wal ... ok
+test test_verify_backup_corrupt_archive ... ok
+test test_tar_extract_one_file_not_found ... ok
+test test_tar_extract_one_with_real_backup ... ok
+test test_verify_backup_nonexistent_file ... ok
+test test_tar_extract_all_with_real_backup ... ok
+test test_pitr_replay_with_rollback ... ok
+test test_verify_error_display_file_missing ... ok
+test test_verify_error_display_checksum ... ok
+test test_verify_error_display_wal_missing ... ok
+test test_pitr_replay_with_transactions ... ok
+test test_verify_backup_cleans_up_staging ... ok
+test test_physical_restore_success_no_wal ... ok
+test test_verify_extracted_empty_manifest ... ok
+test test_verify_extracted_file_missing ... ok
+test test_physical_restore_success_with_wal ... ok
+test test_verify_extracted_checksum_mismatch ... ok
+test test_verify_extracted_all_files_ok ... ok
+test test_verify_result_manifest_cloned ... ok
+test test_verify_extracted_wal_missing ... ok
+test test_walk_files_empty_dir ... ok
+test test_verify_backup_valid_archive ... ok
+test test_verify_backup_multiple_data_files ... ok
+test test_verify_extracted_wal_checksum_mismatch ... ok
+test test_walk_files_nested_dirs ... ok
+test test_walk_files_subdir_only_files ... ok
+test test_physical_backup_restore_roundtrip ... ok
+test test_verify_backup_with_wal ... ok
+
+test result: ok. 62 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 6 tests
+test test_parse_target_time_large_unix ... ok
+test test_parse_target_time_empty_string ... ok
+test test_parse_target_time_unix_zero ... ok
+test test_parse_target_time_rfc3339_with_offset ... ok
+test test_parse_target_time_rfc3339_utc ... ok
+test test_pitr_replay_file_not_found ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 23 tests
+test test_mysqladmin_dispatch_ping ... ok
+test test_mysqladmin_dispatch_unknown ... ok
+test test_connection_struct ... ok
+test test_mysqladmin_flush_logs ... ok
+test test_mysqladmin_new ... ok
+test test_mysqladmin_ping ... ok
+test test_mysqladmin_inc_query ... ok
+test test_mysqladmin_inc_slow ... ok
+test test_mysqladmin_add_connection ... ok
+test test_mysqladmin_processlist ... ok
+test test_mysqladmin_kill ... ok
+test test_mysqladmin_reload ... ok
+test test_mysqladmin_set_variable ... ok
+test test_mysqladmin_status ... ok
+test test_mysqladmin_variables ... ok
+test test_mysqladmin_version ... ok
+test test_restore_result_no_wal ... ok
+test test_restore_result_struct ... ok
+test test_system_variable ... ok
+test test_verify_error_checksum ... ok
+test test_verify_error_display ... ok
+test test_verify_result_empty ... ok
+test test_verify_result_with_errors ... ok
+
+test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 27 tests
+test test_status_report_clone ... ok
+test test_logical_manifest_clone ... ok
+test test_logical_manifest_fields ... ok
+test test_logical_backup_result_clone ... ok
+test test_status_report_fields ... ok
+test test_logical_backup_result_fields ... ok
+test test_status_report_debug ... ok
+test test_logical_backup_result_debug ... ok
+test test_logical_table_entry_debug ... ok
+test test_status_report_serde ... ok
+test test_logical_manifest_serde_roundtrip ... ok
+test test_wire_admin_connect_port_zero ... ok
+test test_wire_error_all_variants_display ... ok
+test test_wire_error_connect_display ... ok
+test test_wire_error_connect_variant ... ok
+test test_wire_error_debug ... ok
+test test_wire_admin_connect_port_refused ... ok
+test test_wire_error_io_display ... ok
+test test_wire_admin_connect_port_out_of_range ... ok
+test test_wire_error_io_from ... ok
+test test_wire_error_protocol_display ... ok
+test test_wire_error_protocol_variant ... ok
+test test_wire_error_query_display ... ok
+test test_wire_error_query_variant ... ok
+test test_wire_error_source ... ok
+test test_wire_admin_connect_empty_host ... ok
+test test_wire_admin_connect_invalid_host ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 57 tests
+test test_connection_clone ... ok
+test test_dispatch_kill_invalid_id ... ok
+test test_dispatch_kill_no_args ... ok
+test test_dispatch_kill ... ok
+test test_add_connection_multiple ... ok
+test test_add_connection_single ... ok
+test test_dispatch_flush_logs ... ok
+test test_connection_debug ... ok
+test test_dispatch_ping ... ok
+test test_dispatch_processlist ... ok
+test test_dispatch_reload ... ok
+test test_dispatch_status ... ok
+test test_dispatch_unknown ... ok
+test test_dispatch_unknown_command ... ok
+test test_dispatch_variables ... ok
+test test_dispatch_version ... ok
+test test_flush_logs ... ok
+test test_inc_query ... ok
+test test_inc_slow ... ok
+test test_is_grants_reloaded_after_reload ... ok
+test test_is_grants_reloaded_initially_false ... ok
+test test_is_log_flushed_after_flush ... ok
+test test_is_log_flushed_initially_false ... ok
+test test_kill_connection ... ok
+test test_kill_nonexistent ... ok
+test test_kill_nonexistent_connection ... ok
+test test_mysql_admin_default ... ok
+test test_mysql_admin_flush_logs ... ok
+test test_mysql_admin_inc_query ... ok
+test test_mysql_admin_inc_query_and_slow ... ok
+test test_mysql_admin_inc_slow ... ok
+test test_mysql_admin_kill_connection ... ok
+test test_mysql_admin_kill_nonexistent ... ok
+test test_mysql_admin_new ... ok
+test test_mysql_admin_ping ... ok
+test test_mysql_admin_processlist ... ok
+test test_mysql_admin_processlist_with_connections ... ok
+test test_mysql_admin_reload ... ok
+test test_mysql_admin_set_multiple_variables ... ok
+test test_mysql_admin_set_variable ... ok
+test test_mysql_admin_status ... ok
+test test_mysql_admin_variables ... ok
+test test_mysql_admin_version ... ok
+test test_processlist_empty ... ok
+test test_processlist_with_connections ... ok
+test test_reload ... ok
+test test_set_variable ... ok
+test test_status_contains_threads ... ok
+test test_status_contains_uptime ... ok
+test test_status_format ... ok
+test test_system_variable_clone ... ok
+test test_system_variable_debug ... ok
+test test_variables_contains_max_connections ... ok
+test test_variables_contains_port ... ok
+test test_variables_contains_version ... ok
+test test_variables_user_var ... ok
+test test_version_value ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 33 tests
+test test_file_entry_fields ... ok
+test test_backup_error_io_display ... ok
+test test_manifest_with_entries ... ok
+test test_parse_target_time_valid ... ok
+test test_parse_target_time_invalid ... ok
+test test_manifest_new_empty ... ok
+test test_manifest_from_json_invalid ... ok
+test test_backup_result_fields ... ok
+test test_logical_backup_result_fields ... ok
+test test_pitr_report_fields ... ok
+test test_restore_result_fields ... ok
+test test_pitr_report_flags_an_empty_replay_with_committed_work ... ok
+test test_manifest_to_from_json ... ok
+test test_sha256_bytes_a ... ok
+test test_sha256_bytes_empty ... ok
+test test_sha256_bytes_hello ... ok
+test test_sha256_file_not_found ... ok
+test test_status_report_fields ... ok
+test test_verify_error_display ... ok
+test test_verify_error_kind_file_missing ... ok
+test test_verify_error_kind_checksum ... ok
+test test_verify_error_kind_wal_missing ... ok
+test test_verify_result_no_errors ... ok
+test test_verify_result_with_errors ... ok
+test test_wire_error_connect ... ok
+test test_wire_error_io ... ok
+test test_wire_error_protocol ... ok
+test test_wire_error_query ... ok
+test test_walk_files_empty ... ok
+test test_sha256_file_basic ... ok
+test test_tar_extract_one_not_found ... ok
+test test_tar_extract_all_empty ... ok
+test test_walk_files_nested ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 14 tests
+test test_verify_error_clone ... ok
+test test_verify_error_kind_clone ... ok
+test test_verify_error_eq ... ok
+test test_verify_error_display ... ok
+test test_verify_error_kind_checksum_mismatch_debug ... ok
+test test_verify_error_debug ... ok
+test test_verify_error_checksum_mismatch ... ok
+test test_verify_error_kind_eq ... ok
+test test_verify_error_kind_wal_missing_debug ... ok
+test test_verify_error_kind_file_missing_debug ... ok
+test test_verify_result_debug ... ok
+test test_verify_result_empty ... ok
+test test_verify_result_with_errors ... ok
+test test_verify_extracted_empty_manifest ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 6 tests
+test test_wire_admin_connect_refused ... ok
+test test_wire_admin_connect_invalid_host ... ok
+test test_wire_admin_logical_backup ... ok
+test test_wire_admin_version ... ok
+test test_wire_admin_status ... ok
+test test_wire_admin_ping ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+
+running 1 test
+test crates/admin/src/wire_client.rs - wire_client (line 9) - compile ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+

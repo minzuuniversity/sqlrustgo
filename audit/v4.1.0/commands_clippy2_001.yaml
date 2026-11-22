@@ -1,0 +1,89 @@
+# LINT-2 / clippy 全仓清债（2026-11-14，run 20261114-clippy2-001）
+#
+# 目标：把 `cargo clippy ... -- -D warnings`（CI 同款）与
+# `cargo clippy --workspace --all-targets -- -D warnings` 两面在**冷编译**下
+# 都清到 rc=0，并证明不是暖缓存不重放造成的假绿。
+#
+# 第 1 臂先 cargo clean ⇒ 后续 clippy 必须重新编译全部 target，warning 无处缓存。
+# 第 9-16 臂覆盖本分支触碰的 crate/test target；bench examples 仅编译面，
+# 由 clippy --all-targets 覆盖。
+- id: clippy2-clean
+  name: "先清空 target ⇒ 后续 clippy 是冷编译，避免 cargo 重放旧诊断导致假绿"
+  cmd: cargo clean
+  cwd: .
+  timeout_sec: 600
+- id: clippy2-clippy-ci-same
+  name: "CI 同款：cargo clippy --locked --all-features --all-targets -- -D warnings（冷编译）"
+  cmd: cargo clippy --locked --all-features --all-targets -- -D warnings
+  cwd: .
+  timeout_sec: 5400
+- id: clippy2-clippy-workspace
+  name: "workspace 面：cargo clippy --workspace --all-targets -- -D warnings"
+  cmd: cargo clippy --workspace --all-targets -- -D warnings
+  cwd: .
+  timeout_sec: 5400
+- id: clippy2-fmt
+  name: "格式：cargo fmt --check --all"
+  cmd: cargo fmt --check --all
+  cwd: .
+  timeout_sec: 900
+- id: clippy2-lint-budget-root
+  name: "test-target lint 预算（root 面，mode=compare 不改基线）"
+  cmd: bash scripts/gate/check_test_target_lint_budget.sh --scope root
+  cwd: .
+  timeout_sec: 1800
+- id: clippy2-lint-budget-workspace
+  name: "test-target lint 预算（workspace 面，mode=compare 不改基线）"
+  cmd: bash scripts/gate/check_test_target_lint_budget.sh --scope workspace
+  cwd: .
+  timeout_sec: 1800
+- id: clippy2-gate-anti-ignore
+  name: "忽略台账：树内真实 #[ignore] 数必须与 registry 136 一致（本分支取消 1 个 ignore 后仍 136）"
+  cmd: bash scripts/gate/check_anti_ignore_gate.sh
+  cwd: .
+  timeout_sec: 900
+- id: clippy2-gate-registry
+  name: "门禁登记表：168 行一致 + 现场重算字段（含 swallow_hits 4→5 的对齐）"
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 900
+- id: clippy2-test-mysql-server-lib
+  name: "mysql-server 单测（含 decode_lenenc_int 0xfd 修复的 8 条）"
+  cmd: cargo test -p sqlrustgo-mysql-server --lib
+  cwd: .
+  timeout_sec: 3600
+- id: clippy2-test-storage-lib
+  name: "storage 单测（含 vtu_guard 结构修复）"
+  cmd: cargo test -p sqlrustgo-storage --lib
+  cwd: .
+  timeout_sec: 3600
+- id: clippy2-test-storage-fault-coordination
+  name: "storage 集成测试 fault_coordination（本分支删了两个未使用的 builder 方法）"
+  cmd: cargo test -p sqlrustgo-storage --test fault_coordination
+  cwd: .
+  timeout_sec: 3600
+- id: clippy2-test-executor
+  name: "executor 全测试（本分支删了未使用 helper、改 allow(deprecated) 过渡面）"
+  cmd: cargo test -p sqlrustgo-executor --tests
+  cwd: .
+  timeout_sec: 5400
+- id: clippy2-test-optimizer
+  name: "optimizer 单测（rules.rs 的排序/推导改写）"
+  cmd: cargo test -p sqlrustgo-optimizer --lib
+  cwd: .
+  timeout_sec: 3600
+- id: clippy2-test-transaction
+  name: "transaction coverage_v3_12 测试（Result 显形加固处）"
+  cmd: cargo test -p sqlrustgo-transaction --test coverage_v3_12
+  cwd: .
+  timeout_sec: 3600
+- id: clippy2-test-security
+  name: "security 测试（v400_acl_audit 文件级 const_is_empty allow 后仍全绿）"
+  cmd: cargo test -p sqlrustgo-security
+  cwd: .
+  timeout_sec: 3600
+- id: clippy2-test-admin
+  name: "admin 测试（删 new_admin 与恒真断言后仍全绿）"
+  cmd: cargo test -p sqlrustgo-admin
+  cwd: .
+  timeout_sec: 3600
