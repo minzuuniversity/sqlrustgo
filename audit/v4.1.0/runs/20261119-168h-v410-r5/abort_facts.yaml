@@ -20,6 +20,15 @@ queries: 1260501
 errors: 4
 error_rate_pct: 0.0003
 error_window_utc:
+- '2026-11-19T15:20:43Z'
+- '2026-11-19T15:20:58Z'
+# 【2026-11-20 时区订正】原值误写为 '2026-11-19T23:20:43Z' / '23:20:58Z'。
+# metrics.csv 的 ts 列是**宿主本地时间（UTC+8）**，不是 UTC：首行 12:42:21（elapsed 15s）
+# 减 8h ⇒ 04:42:21Z，与 heartbeat start 04:42:04Z / 末拍 16:15:26Z / stopped 16:15:36Z 全部吻合；
+# 时间轴 2715 行单调无倒退。订正后与 SOAK 事件 SOAK-R5-FAIL-001 所述窗口一致。
+# 归因结论不变（仍是宿主 CPU 争用）；原始证据 metrics.csv 未被修改。
+# 订正依据：docs/releases/v4.1.0/evidence/SOAK_R5_FAIL_001_TRIAGE_2026-11-20.md §2
+error_window_utc_original_mistaken:
 - '2026-11-19T23:20:43Z'
 - '2026-11-19T23:20:58Z'
 error_window_host_load1:
