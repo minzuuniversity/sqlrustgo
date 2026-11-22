@@ -1,0 +1,37 @@
+{
+  "schema_version": "adr-package-binding/v2",
+  "status": "FORMALLY_BOUND_DESIGN_IMPLEMENTATION_BLOCKED",
+  "base_dag_commit": "45da6968ae2baaade6a31206eeee5854a8514ee2",
+  "adr_011_commit": "b681b74ca3",
+  "binding_authority": "Owner binding decision recorded 2026-11-21; freezes design references but does not authorize implementation",
+  "approval_classes": {
+    "APPROVED": ["ADR-410-001", "ADR-410-002", "ADR-410-005"],
+    "DIRECTION_APPROVED": ["ADR-410-003", "ADR-410-004", "ADR-410-007", "ADR-410-008", "ADR-410-009", "ADR-410-010"],
+    "CONDITIONAL": ["ADR-410-006", "ADR-410-011"],
+    "IMPLEMENTATION_AUTHORIZED": []
+  },
+  "packages": [
+    {"task_id":"C01-01","approved_adr_refs":[],"conditional_adr_refs":[],"implementation_authorized":false},
+    {"task_id":"C01-02","approved_adr_refs":[],"conditional_adr_refs":[],"implementation_authorized":false,"naming_correction":{"required_test":"tests/integration/test_factory/test_dsh_contract_binding.py","allowed_path":"tests/integration/test_factory/test_dsh_contract_binding.py","supersedes_allowed_path":"tests/integration/test_factory/test_c01_02.py"}},
+    {"task_id":"C01-03","approved_adr_refs":[],"conditional_adr_refs":[],"implementation_authorized":false,"naming_correction":{"required_test":"tests/integration/test_factory/test_local_only_policy_observation.py","allowed_path":"tests/integration/test_factory/test_local_only_policy_observation.py","supersedes_allowed_path":"tests/integration/test_factory/test_c01_03.py"}},
+    {"task_id":"C01-04","approved_adr_refs":[],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false,"naming_correction":{"required_test":"tests/integration/test_factory/test_result_classification.py","allowed_path":"tests/integration/test_factory/test_result_classification.py","supersedes_allowed_path":"tests/integration/test_factory/test_c01_04.py"}},
+    {"task_id":"C01-05","approved_adr_refs":["ADR-410-001","ADR-410-002","ADR-410-003","ADR-410-005"],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-06","approved_adr_refs":["ADR-410-005","ADR-410-008"],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-07","approved_adr_refs":["ADR-410-004"],"conditional_adr_refs":["ADR-410-006","ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-08","approved_adr_refs":["ADR-410-003","ADR-410-004"],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-09","approved_adr_refs":["ADR-410-009"],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-10","approved_adr_refs":["ADR-410-003"],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-11","approved_adr_refs":["ADR-410-008","ADR-410-009"],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-12","approved_adr_refs":["ADR-410-008","ADR-410-009"],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-13","approved_adr_refs":["ADR-410-007"],"conditional_adr_refs":["ADR-410-006","ADR-410-011"],"implementation_authorized":false,"human_gate_required":true},
+    {"task_id":"C01-14","approved_adr_refs":["ADR-410-002","ADR-410-003","ADR-410-008"],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-15","approved_adr_refs":[],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-16","approved_adr_refs":[],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false},
+    {"task_id":"C01-17","approved_adr_refs":["ADR-410-007","ADR-410-010"],"conditional_adr_refs":["ADR-410-011"],"implementation_authorized":false,"naming_correction":{"required_test":"tests/integration/test_factory/test_history_fixture_manifest.py","allowed_path":"tests/integration/test_factory/test_history_fixture_manifest.py","supersedes_allowed_path":"tests/integration/test_factory/test_c01_17.py"}},
+    {"task_id":"C01-18","approved_adr_refs":["ADR-410-001","ADR-410-002","ADR-410-003","ADR-410-004","ADR-410-005","ADR-410-007","ADR-410-008","ADR-410-009","ADR-410-010"],"conditional_adr_refs":["ADR-410-006","ADR-410-011"],"implementation_authorized":false,"human_gate_required":true}
+  ],
+  "package_count": 18,
+  "naming_correction_count": 4,
+  "human_gates_preserved": true,
+  "formal_approval_is_not_technical_review": true
+}

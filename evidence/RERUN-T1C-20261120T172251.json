@@ -1,0 +1,38 @@
+{
+ "suite": "RERUN-T1C",
+ "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+ "generated_at": "20261120T172251",
+ "rustc": "rustc 1.97.0 (2d8144b78 2026-07-07)",
+ "cargo": "cargo 1.97.0 (c980f4866 2026-06-30)",
+ "result": {
+  "tests": [
+   {
+    "name": "engine::tests::test_storage_engine_set_current_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_wal_set_current_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_wal_active_tx_ids_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   }
+  ],
+  "summary": {
+   "passed": 3,
+   "failed": 0,
+   "ignored": 0,
+   "cargo_status": "ok"
+  },
+  "exit_code": 0,
+  "class": "PASS",
+  "duration_s": 64.41,
+  "cmd": "cargo test -p sqlrustgo-storage --lib -- test_storage_engine_set_current_tx_id test_wal_active_tx_ids_empty test_wal_set_current_tx_id"
+ },
+ "raw_log": "evidence/RERUN-T1C-20261120T172251.log",
+ "artifact_digest": "2be3916c214cc606"
+}
