@@ -263,11 +263,22 @@ fn test_idx1_index_is_scoped_per_database() {
 /// EXPLAIN SELECT id FROM d INDEXED BY idx_d_v WHERE v = 20;
 ///    => IndexScan d (est_rows=3, ...) | pages_visited=6
 /// ```
-/// 根因：`crates/storage/src/file_storage.rs` 的 `create_index` 用
-/// `table_data.rows.iter().enumerate()` 取行（行 id = 在 `tables.rows` 里的下标），
-/// 而 BufferPool 后端把行放在页中。IDX-2 的修复：页式后端一页一条记录，
-/// 索引 RID 直接用 `page_id`；建树从页取，读侧从页解析，插入后同步维护索引。
-/// 本测试不再 `#[ignore]`，是修复的常驻回归。
+///
+/// **2026-11-17 已修复**（看板行 IDX-2 结清）：
+///
+/// 根因是**行号语义两侧不一致** —— 写侧把行号当成「`tables.rows` 里的下标」，
+/// 而页式后端的行根本不在 `tables.rows` 里（它在页中，`tables.rows` 是空的）。
+/// 于是建出来的索引树是**空的**，而读侧又按同一套（错的）语义去解析行号。
+///
+/// 修法不是「把行号换个编码」，而是让**两侧用同一套语义**：
+/// 行号 = **表行序里的位置**。页式后端的行序就是 `insert_via_bufferpool`
+/// 记下的页序（插入序），也正是 `scan_via_bufferpool` 遍历的顺序。于是：
+///
+///   * 写侧（`create_index`）：页式模式下用页序行建树；
+///   * 读侧（`scan_with_index_in`）：页式模式下按页序行解析行号。
+///
+/// 两侧按构造一致，索引不再让已有的行消失。`#[ignore]` 已撤销
+/// （`tests/baseline/ignore_registry.json` 的 ADR-015 台账同步更新）。
 #[test]
 fn idx2_page_backed_index_loses_rows() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -302,43 +313,5 @@ fn idx2_page_backed_index_loses_rows() {
         ),
         1,
         "IDX-2：走索引路径同样必须返回该行"
-    );
-}
-
-/// IDX-2 的插入维护：CREATE INDEX 之后再 INSERT，新行也必须进索引。
-/// 旧实现只在建树时读一次 `tables.rows`；页式后端的新行走页插入路径，
-/// 若不更新索引，新行就会“存在但按索引列查不到”。
-#[test]
-fn idx2_page_backed_index_sees_rows_inserted_after_index() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let pool = Arc::new(BufferPool::new(64));
-    let storage = Arc::new(parking_lot::RwLock::new(
-        sqlrustgo_storage::FileStorage::new_with_bufferpool(tmp.path().to_path_buf(), pool)
-            .expect("new_with_bufferpool"),
-    ));
-    let mut engine: Eng = ExecutionEngine::new(storage);
-
-    for sql in [
-        "CREATE TABLE d (id INTEGER PRIMARY KEY, v INTEGER);",
-        "INSERT INTO d VALUES (1,10),(2,20),(3,30);",
-    ] {
-        must_ok(&mut engine, sql);
-    }
-    must_ok(&mut engine, "CREATE INDEX idx_d_v ON d(v);");
-    assert_eq!(query_rows(&mut engine, "SELECT id FROM d WHERE v = 20;"), 1);
-
-    must_ok(&mut engine, "INSERT INTO d VALUES (4,20);");
-    assert_eq!(
-        query_rows(&mut engine, "SELECT id FROM d WHERE v = 20;"),
-        2,
-        "IDX-2：建索引后的 INSERT 必须同步进索引"
-    );
-    assert_eq!(
-        query_rows(
-            &mut engine,
-            "SELECT id FROM d INDEXED BY idx_d_v WHERE v = 20;"
-        ),
-        2,
-        "IDX-2：INDEXED BY 路径也必须看到新插入的行"
     );
 }

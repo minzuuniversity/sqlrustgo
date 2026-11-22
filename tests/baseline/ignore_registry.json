@@ -29,13 +29,13 @@
     "PARKED": "Reason is an external prerequisite (live server, --release, large memory, platform permission, dedicated script). Not actionable in normal development."
   },
   "known_deficiencies": {
-    "active": 69,
+    "active": 81,
     "parked": 54,
     "categories": {
       "AUTO_REG_AT_PROMOTION": 2,
       "EXTERNAL_PREREQ": 48,
       "FUNC_NOT_IMPL": 23,
-      "GAP_DOCUMENTED": 14,
+      "GAP_DOCUMENTED": 13,
       "NO_REASON": 32
     },
     "missing_reason_text": 34,

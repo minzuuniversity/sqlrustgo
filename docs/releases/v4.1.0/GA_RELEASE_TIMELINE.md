@@ -1,6 +1,6 @@
 # v4.1.0 — GA 发布时间线
 
-> **基线**：`develop/v4.1.0` @ `2406559ac09ecf821566d11bf4a3cc1ce4f4dbb8`
+> **基线**：`develop/v4.1.0` @ `1579950048b37628eb19bb9f2fe624ab87198ada`
 > **provenance:** generated_at=2026-10-23, branch=docs/ga-rc-artifacts-batch32,
 > commit=`2406559ac09ecf821566d11bf4a3cc1ce4f4dbb8`, machine=Mac-mini-7.local (arm64, macOS 27.0.1),
 > identity=openclaw-mcode, source_repo=openclaw/sqlrustgo,
@@ -24,7 +24,7 @@
 ## 1. 已发生的事实时间线
 
 > 全部条目取自 `git log` 实测（commit 与日期均为仓库真实记录），不是推演。
-> 分支基线：`develop/v4.1.0` @ `2406559ac09ecf821566d11bf4a3cc1ce4f4dbb8`。
+> 分支基线：`develop/v4.1.0` @ `1579950048b37628eb19bb9f2fe624ab87198ada`。
 
 | 日期 | 事件 | commit（短 SHA + 主题） | 证据 |
 |---|---|---|---|

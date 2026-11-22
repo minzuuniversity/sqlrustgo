@@ -23,6 +23,16 @@ import subprocess
 import sys
 import tempfile
 
+import tempfile
+
+
+def _read_issues(path):
+    """Local copy of issue_labels.read_issues for building the m6 fixture."""
+    p = pathlib.Path(path)
+    if p.is_dir():
+        return []
+    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+
 HERE = pathlib.Path(__file__).resolve().parent
 TOOL = HERE / "issue_labels.py"
 BEFORE = HERE / "neg/snapshots/labelgap-open-before-20261105.jsonl"
@@ -113,13 +123,33 @@ def main() -> int:
                 bad_arms.append(f"dim-{dim}")
 
         # m6: 台账 under-count —— verify 必须因为 added != expected 判红
-        short_ledger = tmp / "short-ledger.jsonl"
-        rows = [json.loads(l) for l in ledger_text.splitlines() if l.strip()]
-        dropped = rows[0]["assign"].popitem()
-        short_ledger.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+        # 先从 BEFORE→AFTER 的实际 diff 构造一份**精确**台账（added==expected ⇒ rc=0），
+        # 再从它删一条 ⇒ expected 少 1 ⇒ added!=expected ⇒ rc=1。
+        # （真台账有 82 条 ops，其中 39 条不在这对快照的 diff 里，控制臂必红。）
+        before_l = {i["number"]: i.get("labels") or [] for i in _read_issues(BEFORE)}
+        after_l = {i["number"]: i.get("labels") or [] for i in _read_issues(AFTER)}
+        exact_rows = []
+        for num, albl in sorted(after_l.items()):
+            blbl = before_l.get(num, [])
+            # 只取三维（priority/cost/cap）；其他维度（如 cap/test）会被工具的
+            # LEDGER-BAD 校验拒绝 ⇒ rc=2 而非我们想要的 added!=expected。
+            new_ops = {x.split("/", 1)[0]: x for x in albl
+                       if x not in blbl and x.split("/", 1)[0] in ("priority", "cost", "cap")}
+            if new_ops:
+                exact_rows.append({"number": num, "assign": new_ops,
+                                   "rationale": "m6 fixture: exact BEFORE→AFTER diff"})
+        exact_ledger = tmp / "exact-ledger.jsonl"
+        exact_ledger.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in exact_rows),
                                  encoding="utf-8")
-        rc_ctl, s_ctl = run(TOOL, ["verify", str(BEFORE)])
-        rc_m6, s_m6 = run(TOOL, ["verify", str(BEFORE), "--ledger", str(short_ledger)])
+        short_rows = [dict(r) for r in exact_rows]
+        dropped = short_rows[0]["assign"].popitem()
+        short_ledger = tmp / "short-ledger.jsonl"
+        short_ledger.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in short_rows),
+                                 encoding="utf-8")
+        rc_ctl, s_ctl = run(TOOL, ["verify", str(BEFORE), "--after", str(AFTER),
+                                   "--ledger", str(exact_ledger)])
+        rc_m6, s_m6 = run(TOOL, ["verify", str(BEFORE), "--after", str(AFTER),
+                                 "--ledger", str(short_ledger)])
         ok6 = rc_ctl == 0 and rc_m6 != 0
         print(f"{'OK  ' if ok6 else 'BAD '} m6-ledger-undercount: control rc={rc_ctl} mutated rc={rc_m6} dropped={dropped[0]}={dropped[1]} sighting={s_m6[:100]}")
         if not ok6:
@@ -141,8 +171,11 @@ def main() -> int:
             shrunk.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in srows),
                               encoding="utf-8")
             # --ledger 显式传：变异副本放在临时目录里，REPO 推导不出仓根。
+            # 空台账 ⇒ expected=0 ⇒ added==expected 通过；唯一判红来源就是 lost 守卫。
+            empty7 = tmp / "empty-ledger-m7.jsonl"
+            empty7.write_text("", encoding="utf-8")
             rc_ctl7, s_ctl7 = run(TOOL, ["verify", str(AFTER), "--after", str(shrunk),
-                                         "--ledger", str(LEDGER)])
+                                         "--ledger", str(empty7)])
             anchor7 = "    if lost:\n        return 1"
             if base.count(anchor7) != 1:
                 drift.append(f"m7-lost-label-guard: anchor={base.count(anchor7)}")
@@ -151,7 +184,7 @@ def main() -> int:
                 copy7 = tmp / "m7-lost-label-guard.py"
                 copy7.write_text(base.replace(anchor7, "    if lost:\n        pass"), encoding="utf-8")
                 rc_m7, s_m7 = run(copy7, ["verify", str(AFTER), "--after", str(shrunk),
-                                          "--ledger", str(LEDGER)])
+                                          "--ledger", str(empty7)])
                 ok7 = rc_ctl7 != 0 and rc_m7 == 0
                 print(f"{'OK  ' if ok7 else 'BAD '} m7-lost-label-guard: control rc={rc_ctl7} mutated rc={rc_m7} dropped={dropped7} sighting={s_m7[:100]}")
                 if not ok7:

@@ -1,0 +1,11 @@
+=== G10 Gate: P2-1 (#3177) Audit Log ===
+  [1/7] ✅ PASS: tests/integration/stress/audit_log_harness.rs present
+  [2/7] ✅ PASS: tests/integration/stress/audit_log_test.rs present + registered
+  [3/7] ✅ PASS: 8 audit fields present (who/when/what/target/before/after/tx_id/source)
+  [4/7] ✅ PASS: audit_log_test compiles
+  [5/7] ✅ PASS: audit_log_test 20 passed (≥20)
+  [6/7] ✅ PASS: crates/gmp/src/audit.rs compiles (no regression)
+  [7/7] ✅ PASS: crates/executor/src/sql_log.rs compiles (no regression)
+
+=== G10 Gate: PASS ===
+P2-1 (#3177) Audit Log: 8 fields + ≥20 tests + gmp/audit.rs + sql_log.rs verified

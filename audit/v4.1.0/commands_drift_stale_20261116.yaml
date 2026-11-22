@@ -1,0 +1,25 @@
+# audit/v4.1.0/commands_drift_stale_20261116.yaml
+#
+# 归档 run `20261116-drift-stale-001` 的命令清单 —— 看板行 DRIFT-STALE-1。
+#
+# 三条命令分别覆盖：
+#   ① 正臂：新脚本 + 新夹具 ⇒ 15/15 PASS
+#   ② 反向变异臂：同一夹具跑**旧脚本** ⇒ 必须报红（8 断言失败）
+#   ③ 实跑：对真实五远端测三条核心分支
+#
+# ② 预期 **非 0 退出**（那是变异臂存在的意义：旧实现必须被夹具抓住）。
+- id: drift-stale-fixture-new
+  name: 正臂：新脚本 + 新夹具 ⇒ 15/15 PASS（量不到的远端一律不给数字，也没有静默 exit 0）
+  cmd: bash scripts/sync/test_5remotes_drift_check.sh
+  cwd: .
+  timeout_sec: 900
+- id: drift-stale-reverse-mutation-old-script
+  name: 反向变异臂：同一夹具跑**修复前**的脚本（基线 commit 605f599487 的版本）⇒ 必须报红（旧实现把过期 tracking ref 当实测数，T4 印出 "gitcode gitea252 0 1" 且误报 main 已分叉）
+  cmd: d=$(mktemp -d) && mkdir -p "$d/scripts/sync" && git show 605f59948791c194149ccb13b309fe26871beacc:scripts/sync/5remotes_drift_check.sh > "$d/scripts/sync/5remotes_drift_check.sh" && cp scripts/sync/test_5remotes_drift_check.sh "$d/scripts/sync/" && bash "$d/scripts/sync/test_5remotes_drift_check.sh"; rc=$?; rm -rf "$d"; echo "reverse-mutation exit=$rc （预期非 0：旧实现必须被夹具抓住）"; exit $rc
+  cwd: .
+  timeout_sec: 900
+- id: drift-stale-real-five-remotes
+  name: 实跑：对真实五远端（gitcode/gitea250/gitea252/gitee/github）测三条核心分支 ⇒ 预期暴露 develop/v4.0.0 上 github 领先 3 笔的真实漂移
+  cmd: bash scripts/sync/5remotes_drift_check.sh
+  cwd: .
+  timeout_sec: 1800

@@ -1,0 +1,10 @@
+{
+  "run_id": "20261117-ga-gates-012",
+  "stage": "GA",
+  "version": "v4.1.0",
+  "git_head": "f327286c011c7458c5ab543053f5965042155c3a",
+  "planned_at": "2026-11-17T16:06:21Z",
+  "expected_n": 35,
+  "expected_sha256": "sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809",
+  "plan": "audit/v4.1.0/runs/20261117-ga-gates-012/plan.jsonl"
+}

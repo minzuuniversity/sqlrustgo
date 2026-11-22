@@ -1,0 +1,4 @@
+# 二进制指纹 —— 认证轮 20261118-ga-gates-016 的被测产物
+# generated_at=2026-11-18T14:44:35Z  tree=/Volumes/workspace/dev/srg-gate-d1  head=37328115829096358e9c197e8512e05b2cee9150
+3574da045b956f8689e8c34e881a1f4d9243c5f5293103610ff468e3160d0865  31160408  target/debug/sqlrustgo
+944b58aea8b04b92487de041c1bc227637ef44ecef8e423fed8b93381ecf8db3  54698760  target/debug/sqlrustgo-mysql-server

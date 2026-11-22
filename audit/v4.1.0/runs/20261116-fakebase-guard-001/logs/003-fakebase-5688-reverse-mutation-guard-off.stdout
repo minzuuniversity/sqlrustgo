@@ -1,0 +1,29 @@
+变异已注入：is_placeholder_entry => false
+206 | fn is_placeholder_entry(entry: &Sha256QueryEntry) -> bool {
+    |                         ^^^^^ help: if this is intentional, prefix it with an underscore: `_entry`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+
+running 4 tests
+... 3/4
+placeholder_guard_tests::an_empty_stored_baseline_is_a_placeholder --- FAILED
+
+failures:
+
+---- placeholder_guard_tests::an_empty_stored_baseline_is_a_placeholder stdout ----
+
+thread 'placeholder_guard_tests::an_empty_stored_baseline_is_a_placeholder' (87373) panicked at tests/integration/tpch/oracle_g1_tpch_sha256.rs:257:9:
+a stored entry with row_count=0 must be recognised as a placeholder
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    placeholder_guard_tests::an_empty_stored_baseline_is_a_placeholder
+
+test result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p sqlrustgo --test oracle_g1_tpch_sha256`
+reverse-mutation cargo exit=101 （预期非 0：去掉占位判定后自证测试必须翻红）
+ tests/integration/tpch/oracle_g1_tpch_sha256.rs | 206 ++++++++++++++++++++++--
+ 1 file changed, 196 insertions(+), 10 deletions(-)

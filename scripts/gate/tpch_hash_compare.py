@@ -42,13 +42,31 @@ HASH_RE = re.compile(rb"G1 PASS: TPC-H 22/22 baseline hash matches \(([a-f0-9]+)
 NOT_RUN_RE = re.compile(rb"TPCH-NOT-RUN:\s+(\S+)\s+reason=(\S+)")
 MISMATCH_RE = re.compile(rb"G1 FAIL: TPC-H hash mismatch")
 
+# 实算哈希（Rust 侧断言的左值）。Rust 的 assert_eq! 总是先打印
+#     left: "<实算>"
+#    right: "<基线>"
+# 再追加 compare_or_disclose 的自定义消息
+#     G1 FAIL: TPC-H hash mismatch / expected: … / actual: …
+# 过去 MISMATCH 态把 payload 丢成空串 ⇒「实算是多少」这条最关键的诊断信息
+# 在门禁输出里彻底消失，只剩一句 hash mismatch（2026-11-18 实测确认）。
+# 这两个正则只读不改：verdict、退出码、判红语义全部不变，只是把实算哈希带出来。
+# 取不到就返回空串 —— 不猜、不补造。
+LEFT_RE = re.compile(rb"left:\s*\"([a-f0-9]{64})\"")
+ACTUAL_RE = re.compile(rb"actual:\s+([a-f0-9]{64})")
+
+
+def mismatch_actual(output: bytes) -> str:
+    """MISMATCH 时的实算哈希；测试输出里没有就返回空串（不猜、不补造）。"""
+    m = LEFT_RE.search(output) or ACTUAL_RE.search(output)
+    return m.group(1).decode() if m else ""
+
 
 def classify(output: bytes) -> tuple[str, str]:
     """把测试输出分成四态：OK / NOT_RUN / MISMATCH / UNDISCLOSED。
 
     OK          → ("OK", <64 位哈希>)
     NOT_RUN     → ("NOT_RUN", <reason 码>)，如 fixture_missing / profile_mismatch
-    MISMATCH    → ("MISMATCH", "")
+    MISMATCH    → ("MISMATCH", <实算哈希或空串>)
     UNDISCLOSED → ("UNDISCLOSED", "")：既没给哈希也没说明为什么不能比
     """
     m = NOT_RUN_RE.search(output)
@@ -58,7 +76,7 @@ def classify(output: bytes) -> tuple[str, str]:
     if m:
         return "OK", m.group(1).decode()
     if MISMATCH_RE.search(output):
-        return "MISMATCH", ""
+        return "MISMATCH", mismatch_actual(output)
     return "UNDISCLOSED", ""
 
 
@@ -98,6 +116,8 @@ def parse_hash(output: bytes) -> str:
         die(f"NOT-RUN: reason={payload} — the hash comparison cannot be made "
             f"(set TPCH_DATA_DIR to a directory with the 8 .tbl files)", code=2)
     if verdict == "MISMATCH":
+        if payload:
+            die(f"the Rust test reported a hash mismatch (actual={payload})", code=1)
         die("the Rust test reported a hash mismatch", code=1)
     die("cannot find hash in test output; neither was a NOT-RUN reason disclosed",
         code=2)
@@ -117,6 +137,23 @@ def cmd_check(expected: str) -> int:
         die(f"expected hash must be {HASH_LEN} hex chars")
 
     output = run_tpch_hash_test()
+    # MISMATCH 单独处理：parse_hash() 在这一态会 die()，拿不到实算哈希 ——
+    # 而「实算是多少」正是看板 GA-TPCH1 验收条件 ① 要求归档的那个数字。
+    verdict, actual = classify(output)
+    if verdict == "MISMATCH":
+        print(f"G1 FAIL: hash mismatch", file=sys.stderr)
+        print(f"  expected: {expected}", file=sys.stderr)
+        if actual:
+            print(f"  actual:   {actual}", file=sys.stderr)
+        else:
+            print("  actual:   <not recoverable from the test output>; run "
+                  "`cargo test --test tpch_hash_test -- --nocapture` and read the "
+                  "panic's `left:` line", file=sys.stderr)
+        print(file=sys.stderr)
+        print(f"  To update the baseline:", file=sys.stderr)
+        print(f"    python3 scripts/gate/tpch_hash_compare.py --capture", file=sys.stderr)
+        return 1
+
     actual = parse_hash(output)
     if actual == expected:
         print(f"G1 PASS: TPC-H 22/22 baseline hash matches ({actual[:8]}...)")

@@ -1,0 +1,20 @@
+BAD  arm-count-vs-verdicts: 变异跑法 rc=1（先修好再谈核对）
+BASELINE before-fixture: rc=1 {"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/audit/v4.1.0/neg/snapshots/labelgap-open-before-
+BASELINE after-fixture: rc=0 {"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/audit/v4.1.0/neg/snapshots/labelgap-open-after-2
+OK   m1-has-always-true: mutated rc=0 want=green sighting={"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/audit/v4.1.0/neg/snapshots/labelgap-op
+OK   m5-ledger-rationale-check-removed: mutated rc=0 want=green sighting={"kind": "label_gap_check", "source": "/Volumes/workspace/dev/sqlrustgo/audit/v4.1.0/neg/snapshots/labelgap-op
+OK   dim-priority: only-priority rc=1 only-cost,cap rc=0
+OK   dim-cost: only-cost rc=1 only-priority,cap rc=0
+OK   dim-cap: only-cap rc=1 only-priority,cost rc=0
+BAD  m6-ledger-undercount: control rc=1 mutated rc=1 dropped=cost=cost/t0 sighting={"kind": "label_apply_verify", "snapshot": "/Volumes/workspace/dev/sqlrustgo/audit/v4.1.0/neg/snapsh
+BAD  m7-lost-label-guard: control rc=1 mutated rc=1 dropped=priority/p1 sighting={"kind": "label_apply_verify", "snapshot": "/Volumes/workspace/dev/sqlrustgo/audit/v4.1.0/neg/snapsh
+arms=7 discriminating=5 not_discriminating=2 drift=0
+NOT-DISCRIMINATING m6-ledger-undercount
+NOT-DISCRIMINATING m7-lost-label-guard
+
+OK   counter-mutation-caught: arms=6 discriminating=5 not_discriminating=2 drift=0 verdict_lines=7 外部尺子判红=True
+BAD  lost-guard-mutation: control rc=1 mutated rc=1 dropped=priority/p1
+     摘掉守卫后仍判红 rc=1 ⇒ 守卫另有来源或本核对失效
+checks=3 ok=1 not_ok=2 drift=0
+NOT-OK arm-count-vs-verdicts
+NOT-OK lost-guard-mutation

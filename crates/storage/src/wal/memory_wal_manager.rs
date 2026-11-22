@@ -3,12 +3,16 @@ use crate::wal::{WalEntry, WalManager};
 
 pub struct MemoryWalManager {
     entries: Vec<WalEntry>,
+    /// The LSN the next `append` will stamp. The manager owns the LSN
+    /// space, so the counter lives here rather than in the caller.
+    next_lsn: u64,
 }
 
 impl MemoryWalManager {
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
+            next_lsn: 0,
         }
     }
 }
@@ -20,9 +24,12 @@ impl Default for MemoryWalManager {
 }
 
 impl WalManager for MemoryWalManager {
-    fn append(&mut self, entry: WalEntry) -> SqlResult<()> {
+    fn append(&mut self, mut entry: WalEntry) -> SqlResult<u64> {
+        let lsn = self.next_lsn;
+        entry.lsn = lsn;
+        self.next_lsn += 1;
         self.entries.push(entry);
-        Ok(())
+        Ok(lsn)
     }
 
     fn flush(&mut self) -> SqlResult<()> {
@@ -43,7 +50,11 @@ impl WalManager for MemoryWalManager {
     }
 
     fn current_lsn(&self) -> u64 {
-        self.entries.iter().map(|e| e.lsn).max().unwrap_or(0)
+        // The LSN the NEXT append will stamp — one past the highest LSN
+        // written so far. Returning the maximum instead made the two
+        // off by one, so a caller that appended and then read this back
+        // saw the LSN it had just used rather than the next one.
+        self.next_lsn
     }
 }
 

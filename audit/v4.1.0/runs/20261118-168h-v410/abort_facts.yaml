@@ -1,0 +1,97 @@
+# 权威轮 20261118-168h-v410（attempt-11）的中止/判红事实 —— **实测数据**
+# 结论：INCOMPLETE —— 被宿主整机重启（unattended-upgrade 触发内核升级）打断。
+#       不是跑满，不是通过，也不是被测系统的缺陷。
+# 数据来源：本地取回的 metrics.csv / heartbeat.jsonl + 252 上现算的 sha256/体积/boot 记录。
+round_id: '20261118-168h-v410'
+attempt: 11
+attempt_dir: '/home/liying/soak-artifacts/20261118-168h-v410/attempt-20261118T035306Z'
+host: 'gaoyuanai-HPZ6G4 (192.168.0.252)'
+frozen_commit: e5c42c7fd02d3d2e24086d419920bcea938c19d6
+frozen_tree: 761e3491a8ce91b89d8d79f60fa0f906fc3b09d5
+soaked_binary_sha256: f31cef51669f218c5092dce35770279353ea26fb421734c221b3b91380557c70
+started_utc: '2026-11-18T03:56:06Z'
+planned_end_utc: '2026-11-25T03:56:06Z'
+start_path: 'quiet-window'
+waited_secs_before_start: 601
+aborted_at_utc: '2026-11-18T05:02:03Z'
+verdict: INCOMPLETE — 被宿主整机重启中断；不是跑满，也不是通过
+cause: host_reboot
+cause_attribution: undetermined  # 〔更正 2026-11-18T09:05Z〕「整机重启」成立，但**触发者未定**（见 corrections）
+cause_attribution: undetermined  # 〔更正 2026-11-18T09:0xZ〕「整机重启」成立，但**触发者未定**（见 corrections）
+final_state:
+  elapsed_s: 4130
+  planned_s: 604800
+  pct_of_planned: 0.68
+  driver_q: 139568
+  driver_e: 0
+  panic_count: 00
+  armA_alive: 1
+  armB_alive: 1
+  host_load1: 1.62
+  cpu_pct_per_core: 99.1
+  rss_mb: 494.1
+  metric_samples: 271
+  heartbeat_samples: 277
+  heartbeat_last_utc: '2026-11-18T05:02:03Z'
+  error_rate_pct: 0.0
+host_reboot_evidence:
+  boot_before: '988cdf3eed204232afafbc283aeb3ee3 (journalctl --list-boots -1: 2026-11-16 23:42:24 CST → 2026-11-18 13:02:00 CST)'
+  boot_after: '1287e51dc1494edaae9fce1c583b72f9 (boot 0: 2026-11-18 14:30:52 CST)'
+  boot_id_now: '1287e51d-c149-4eda-ae9f-ce1c583b72f9'
+  uptime_s_at_probe: '2026-11-18 14:30:41 (CST) = 2026-11-18T06:30:41Z'
+  downtime_window_utc: '2026-11-18T05:02:00Z → 2026-11-18T06:30:41Z (约 88.7 分钟)'
+  kernel_before: '7.0.0-42-generic'
+  kernel_after: '7.0.0-43-generic'
+  last_reboot_line: 'reboot system boot 7.0.0-43-generic Wed Nov 18 14:30 still running'
+  apt_history: 'Start-Date: 2026-11-18 06:55:15 → End-Date 06:56:54 / Commandline: /usr/bin/unattended-upgrade / Install: linux-image-7.0.0-43-generic ⇒ 在新 boot(06:30:52Z) 之后，换内核发生在停机之后'
+  previous_boot_last_log: '13:02:00 CST 常规服务日志（sshd keepalive）'
+  previous_boot_shutdown_sequence: '无（systemd-shutdown / Powering off / Rebooting 命中 0）'
+  previous_boot_crash_markers: '无（kernel panic / thermal / watchdog / OOM 命中 0）'
+  automatic_reboot_rule: '50unattended-upgrades 里 Unattended-Upgrade::Automatic-Reboot 本就是注释状态（未启用）'
+  readback: 'uptime=up 0 min（重启后 0 分钟）'
+  decisive: '心跳末条 ts 2026-11-18T05:02:03Z 与 boot -1 的结束时刻 05:02:00Z 相差 3 s ⇒ 轮次随宿主停机而止，不是网络闪断'
+verdict_basis:
+  not_reran_to_completion: 'elapsed 4130 s / 604800 s = 0.68 % ⇒ 远未跑满'
+  not_a_pass: '0 错 / 0 panic 只覆盖 0.68 % 的时长（4130 s），且轮次是被环境打断的 ⇒ 不构成任何合格结论'
+  not_a_product_defect: 宿主侧事件属环境问题，不在被测系统内；服务端日志 crash marker 0、panic_count 全程 00（〔更正 2026-11-18T09:05Z〕触发者仍未定性）
+  register_as: 'INCOMPLETE（与 GA-GATES-008/009/013 同范式：ABORTED.md + abort_facts.yaml + manifest.yaml + results.jsonl）'
+artifacts_sha256:
+  armA/metrics.csv: 0c9cf92efcee7bacfbcc7e51b1a57ad416beffa3dd6ebce2367d40faa6b48609
+  heartbeat.jsonl: 3f73004630ec1bd43a168dcd79474700584ca92b15a0f57ec14930b9b243e426
+  soak.log: 876a0cec967aac341d2306743522cff09bbb51f1a22351b9cff23acb5ce1d598
+  armA/driver.log: e221fa91a9a41bc0c5dcebe56473763aaa974e9d8712134045f75bcd702ca08e
+  armA/server.log: 098b6334d97f969d4d8e7d97ce9d0f835a3f16a0cc9cd232a3f1cd2c3d5625ff
+  armA/armA.log: 97a8461d93d6e961afd879faac8cbc228d297ebe7da197d43ff92e22666dcb54
+  armB/armB.log: 670c8838b14dff7a0f833ea7f68b244dee5174e78a901ad77b552180c8b2c438
+  supervisor.log: 876a0cec967aac341d2306743522cff09bbb51f1a22351b9cff23acb5ce1d598
+artifacts_bytes:
+  armA/metrics.csv: 16166
+  heartbeat.jsonl: 31258
+  soak.log: 7559
+  armA/driver.log: 3415409
+  armA/server.log: 297
+  armA/armA.log: 27669
+  armB/armB.log: 876
+  supervisor.log: 7559
+relaunch_plan:
+  run_dir: '/home/liying/soak-artifacts/20261118-168h-v410-r2'
+  frozen_commit: e5c42c7fd02d3d2e24086d419920bcea938c19d6
+  launcher: scripts/soak/run_v410_168h_soak_on_z6g4.sh
+  launcher_own_gates: '安静窗口 10×60 s（load ≤ 40、外来 CPU ≤ 2400 %）+ 起跑后 180 s 吞吐复验（≥10 q/s、错误率 ≤1 %）'
+  exclusivity_criterion: '常驻探针 60 s 粒度；root_compile_or_test_procs == 0 且 load1 ≤ 40 **连续 ≥120 个样本（= 2 h）**（与 §7.18.2 同一把尺）'
+  probe: '/home/liying/soak-artifacts/exclusive_probe_current.jsonl'
+  watcher: /home/liying/_soak_watch_and_start.sh（判定成立即起跑）
+  owner_blocker: '〔更正 2026-11-18T09:05Z〕原写「unattended-upgrade 会再次重启宿主」**过强**：停机触发者仍未定性；已执行的「禁用周期自动升级」是**预防性风险收敛**（避免 GA 认证窗口内宿主自行换内核并处于待重启状态），**不是死因修复**。已落地：APT::Periodic::Unattended-Upgrade="0"、unattended-upgrades.service=disabled/inactive、apt-daily-upgrade.timer=disabled（备份 /etc/apt/20auto-upgrades.bak-20261118T084115Z、/etc/apt/apt.conf.d/50unattended-upgrades.bak-20261118T084115Z）'
+scope_correction_to_7202:
+  what_7202_said: '「即使完全独占，服务端仍然产出少量错误（安静档 0.111 %）⇒ 独占窗口不是充分条件」'
+  why_it_needs_correction: '那 0.111 % 来自**诊断轮**二进制 d46bf93024（它缺 per-connection undo 修复）；**权威轮二进制** e5c42c7fd0 在其 66 分钟安静窗口内实测 **0 错 / 139,568 查**'
+  corrected_statement: '「独占窗口下必然存在残余错误」在**权威轮二进制上尚未成立**（样本仅 4130 s）；它只在诊断轮二进制 + 有争用历史下成立。**门槛不变**（仍 0 errors / 0 panics），改的是**证据外推的范围**'
+  no_threshold_change: 本归档与 §7.21 均未改判据、未抬阈值、未改 35 项门禁分母
+
+corrections:
+  - at_utc: '2026-11-18T09:05:00Z'
+    by: 'mcode-macmini 线（GA-SOAK-17 / GA_RELEASE_REPORT.md §7.22.2）'
+    corrects: '原表述「被 unattended-upgrade 的自动内核升级触发重启」'
+    why: '内核 42→43 的 apt 安装条目时间是 2026-11-18T06:55:15–06:56:54Z，在新 boot(06:30:52Z) 之后；上个 boot 无有序关机序列、无 panic/thermal/watchdog/OOM；停机 88.7 分钟 ≫ 正常重启 ⇒ 「自动升级触发自动重启」的因果链没有证据支持'
+    still_true: '宿主在 2026-11-18T05:02:00Z 结束 boot（非网络闪断）、轮次随之终止、判 INCOMPLETE —— 这些结论不变'
+    now: '死因触发者未定性（登记为未定性项）；已执行的「禁用周期自动升级」是预防性风险收敛，不是死因修复'
