@@ -3,7 +3,7 @@
   "status": "CANDIDATE_NOT_ISSUED",
   "source_agent": "DSH-B (opencode / MiniMax-M3)",
   "source_run": "SQLRUSTGO-V410-REFACTOR-HARNESS-R1-20261123",
-  "timestamp": "2026-11-23T07:55:30+08:00",
+  "timestamp": "2026-11-23T07:57:03+08:00",
   "base_sha": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
   "base_sha_note": "权威开发分支 origin/develop/v4.1.0 的 tip。评审包 V1 绑定的 cd8cefe623 落后 242 个提交 / 1074 个文件。",
   "stage": "ALPHA",
@@ -27,7 +27,7 @@
     "note": "base_sha 绑定的是**实测来源树**，不是最终 HEAD —— 本包尚未提交，HEAD 未知。提交后需按 head_binding_mode 重签。"
   },
   "files_digest_algorithm": "sha256(sorted '<sha256>  <name>' lines for the 6 content files; excludes manifest.json and SHA256SUMS to avoid recursion)",
-  "files_digest": "2bc8ac623bf2c29d52b95350cc1349c7a81c81a0a45444e87da01cd8774bee0e",
+  "files_digest": "c9a094964983cd61223e68df5da3d6ae3e21036e6a4d823f831ceb953118150e",
   "content_files": [
     "BASELINE-RECONCILIATION.md",
     "HARNESS-P0-FINDINGS.md",
