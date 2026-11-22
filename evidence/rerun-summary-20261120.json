@@ -1,0 +1,17 @@
+{
+ "source_agent": "DSH-B (opencode-go/glm-5.3-flash)",
+ "source_run": "goal-R5 rerun-mapping-v2",
+ "timestamp": "2026-11-20T17:35:00+08:00",
+ "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+ "total_cases": 75,
+ "reexecution_pass_count": 70,
+ "red_confirmed": 5,
+ "status_counts": {
+  "PASS": 68,
+  "FAILED_RED": 4,
+  "COVERED_PASS": 2,
+  "COVERED_RED": 1
+ },
+ "mapping_file": "evidence/case-mapping-20261120.json",
+ "note": "matrix case_id 存在重复（T6-001 等），以 matrix_index 区分；新增 dirty-read RED 为 75 外发现。"
+}
