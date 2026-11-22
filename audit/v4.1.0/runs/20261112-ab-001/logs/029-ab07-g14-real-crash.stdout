@@ -1,0 +1,13 @@
+=== G14 Gate: Real Crash Test (8 类) ===
+  [1/7] ✅ PASS: orchestrator + 8 sub-scripts present
+  [2/7] ✅ PASS: docs/releases/v3.9.0/perf/CRASH_TEST_REPORT.md present
+  [3/7] ✅ PASS: G8 Crash Matrix (mock) gate PASS
+  [4/7] ✅ PASS: TPC-H gate (22/22) maintained
+  [5/7] ✅ PASS: orchestrator handles        8 crash kinds (≥8)
+  [6/7] ✅ PASS: sysbench installed
+  ⚠️ WARN: 真实 crash run not yet executed (W12 D3-4, Z6G4 only)
+  [7/7] ✅ PASS (warned): real run deferred to W12
+
+=== G14 Gate: PASS ===
+Real Crash: orchestrator + 8 sub-scripts + G8 mock PASS
+Real 8-case run deferred to W12 D3-4 (Z6G4)

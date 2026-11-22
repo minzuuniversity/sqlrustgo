@@ -65,7 +65,10 @@ impl ProgressTracker {
 }
 
 /// Batch insert configuration
+/// （num_threads/progress_interval 是单线程实现尚未接的**配置预留**：args 已解析
+///  并打印，读取端待并行化 —— dead_code 属预期，不删配置面）
 #[derive(Clone)]
+#[allow(dead_code)]
 struct BatchConfig {
     batch_size: usize,
     num_threads: usize,
@@ -83,7 +86,9 @@ impl Default for BatchConfig {
 }
 
 /// Import result stats
+/// （time_secs/mb_processed 为**待接的输出面预留**：new() 已算好，打印面尚未消费）
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 struct ImportStats {
     rows_imported: usize,
     time_secs: f64,

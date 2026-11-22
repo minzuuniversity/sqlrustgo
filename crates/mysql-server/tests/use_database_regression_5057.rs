@@ -89,7 +89,6 @@ fn scalar(rs: ResultSet) -> String {
             .unwrap_or_else(|| "<no rows>".to_string()),
         ResultSet::Ok { .. } => "<ok packet>".to_string(),
         ResultSet::Error { error_message, .. } => format!("<error: {error_message}>"),
-        other => format!("<{other:?}>"),
     }
 }
 

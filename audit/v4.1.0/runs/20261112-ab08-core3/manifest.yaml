@@ -1,0 +1,87 @@
+schema_version: 1
+run_id: 20261112-ab08-core3
+source_agent: omp-macmini
+frozen_commit: aec1a3673cb83d8800b27e8a7aa11f690f346817
+harness: scripts/perf/ab08_criterion_ab.py run --core --tag ab08core3 --samples 30 --bench-timeout 420 (非 audit_run.py)
+artifacts:
+  artifacts/ab08-run-ab08core3.json:
+    bytes: 44453
+    sha256: 677e9dbf501837d32808270573770e87c236b4b32c36d8164bd2567d35819462
+results:
+  - id: ab08-core-bench-set
+    exit_code: 0
+    bench_groups_measured: 96
+    bench_targets_measured:
+      - columnar_stub
+      - expr_eval_identifier
+      - expr_find_column_index
+      - expr_find_column_index_multijoin
+      - expr_where_eq_multicolumn
+      - insert
+      - insert_batch
+      - insert_multi_column
+      - insert_throughput
+      - lexer_aggregate
+      - lexer_batch_100_simple
+      - lexer_complex_join
+      - lexer_create_table
+      - lexer_delete
+      - lexer_drop_table
+      - lexer_empty
+      - lexer_insert
+      - lexer_medium_select
+      - lexer_multi_line
+      - lexer_simple_select
+      - lexer_single_keyword
+      - lexer_update
+      - lexer_whitespace_only
+      - parser_aggregate_avg
+      - parser_aggregate_count
+      - parser_aggregate_min_max
+      - parser_aggregate_multi
+      - parser_aggregate_sum
+      - parser_aggregate_with_where
+      - parser_batch_100_select
+      - parser_create_all_types
+      - parser_create_multi_cols
+      - parser_create_simple
+      - parser_create_with_cols
+      - parser_delete_simple
+      - parser_delete_with_where
+      - parser_drop_table
+      - parser_empty
+      - parser_insert_multi_col
+      - parser_insert_multi_row
+      - parser_insert_simple
+      - parser_insert_with_cols
+      - parser_select_all
+      - parser_select_join
+      - parser_select_limit
+      - parser_select_limit_offset
+      - parser_select_multi_col
+      - parser_select_order_by
+      - parser_select_simple
+      - parser_select_where_and
+      - parser_select_where_complex
+      - parser_select_where_or
+      - parser_update_multi_set
+      - parser_update_simple
+      - parser_update_with_where
+      - parser_whitespace_only
+    not_run:
+      bench_cbo: pre-gate (criterion --test) failed or timed out (exit 124)
+    env_load_worst:
+      load1: 7.203125
+      other_build_processes: 13
+    env_load_samples:
+      - load1: 5.3037109375
+        other_build_processes: 2
+      - load1: 7.203125
+        other_build_processes: 13
+    samples_requested: 30
+deviations:
+  - "**未 promote 为正式基线**：测量窗口内宿主有外部负载（worst: load1=7.20、13 个外部 build/bench 进程 —— 他人 cargo + 9 个 rustc + btb_concurrent），负载守卫按设计拒绝 promote；负载下取得的基线会**掩盖回归**（未来空闲跑的均值天然更低 ⇒ compare 的「均值跌 10%」判据失灵），故不 promote、不入库为基线。"
+  - bench_cbo 记为 NOT-RUN：其 criterion --test 前置门在 420s 预算内未结束（exit 124）⇒ 逐 bench 超时与诚实 NOT-RUN 生效（本臂未挂死、未谎报为失败或通过）。
+  - criterion 的原始 baseline 目录未随本归档入库（位于 CARGO_TARGET_DIR/criterion，体积大且可再生）；本归档保存的是**蒸馏后的 run JSON**（逐 bench 组的 mean/median/slope 与置信区间）。
+  - 本 run 是 AB-08 的**首次六核 bench 全集**测量（5/6 个 bench 目标完成，共 96 个 bench 组）；正式基线仍待宿主空闲窗口。
+completed_at: "2026-11-12T19:03:00Z"

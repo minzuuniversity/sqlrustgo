@@ -1,0 +1,21 @@
+=== Architecture Freeze Check (A7) ===
+Timestamp: 2026-11-17T11:24:10Z
+
+--- A7-1: 双路径残留检查 ---
+[A7-1] storage DML bypass in server/network ... INFO (5 calls found in server/network crates — verify they go through ExecutionEngine)
+
+--- A7-2: 架构关键路径可达性 ---
+[A7-2] DriftGate references in src/ ... PASS (      18 references)
+[A7-2] TransactionContext references in src/ ... PASS (      47 references)
+
+--- A7-3: ExecutionEngine 行数 ---
+[A7-3] ExecutionEngine:     1236 lines
+PASS (< 1500 lines as per AD-001)
+
+--- A7-4: DriftGate 阻断测试 ---
+[A7-4] DriftGate test coverage ... PASS (7 个 #[cfg(test)] 负面测试引用)
+
+=== Architecture Freeze Summary ===
+PASS: 5/5
+
+✅ Architecture Freeze PASS

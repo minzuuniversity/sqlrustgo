@@ -1,8 +1,8 @@
 # ADR-008 Exception: V312-58 Q17 SF=1 Perf Benchmark Deferral
 
-> **Status**: PROPOSED (2026-08-31)
-> **Deciders**: openclaw + Hermes Agent
-> **Date**: 2026-08-31
+> **Status**: **APPROVED (2026-11-17 重新签发)**
+> **Deciders**: openclaw + Hermes Agent + **项目属主（2026-11-17 重新签发批准）**
+> **Date**: 2026-08-31（原始起草）｜ **重新签发：2026-11-17**
 > **Supersedes**: None
 > **Authorising ADR**: [ADR-008-test-claim-transparency.md](ADR-008-test-claim-transparency.md) §Policy 2
 > **Related**:
@@ -55,9 +55,25 @@ Under ADR-008 §Policy 2, grant a **time-bounded exception** allowing
 
 ### Deadline
 
-**2026-10-31** (60 days from 2026-08-31). On this date the exception auto-expires
-and either (a) the test must run by default, or (b) a successor exception ADR
-must be opened with concrete close-out criteria.
+**2026-12-31**（自 **2026-11-17 重新签发** 起重新计时；原定 2026-10-31 的
+deadline 已在例外**从未签署**的状态下过期 —— 本次为重新签发，不是复活）。
+
+### 重新签发记录（2026-11-17）
+
+- **原状**：`Status: PROPOSED`（2026-08-31 起草）⇒ **从未签署**；deadline 2026-10-31
+  在未签署状态下自动过期。
+- **本次**：属主明确授权「批准所有的授权和签字」⇒ 本例外**重新签发**，自重新签发日
+  起重新计时，deadline = 2026-12-31。
+- **close-out 条件当前状态（如实登记，不因重新签发而声称已满足）**：
+  | close-out 条件 | 状态 |
+  |---|---|
+  | ① Q17 SF=1 perf ≤ 300 s 连续 ≥ 5 次 | **未实测**（本机无 SF=1 数据集） |
+  | ② 进入默认 `cargo test` 套件且不超 300 s | **未实测**（同上） |
+  | ③ `tests/baseline/gate_test_baseline.json` 的 `total_ignore_hits` 由 2 减到 1 | **未达成**（实测仍为 2） |
+  ⇒ **例外继续生效**；本条 ADR 允许 `q17_small_order_shortage_sf1` 保持 `#[ignore]`。
+- **不 bump 基线计数、不 un-ignore**：AFP —— 无实跑证据不得声称通过；且 un-ignore
+  需要 SF=1 夹具与 5 次连续 ≤ 300 s 的实跑证据，本机不具备 ⇒ 计数**保持 2**，
+  处置留给 close-out 条件具备时再动。
 
 ### Owner
 

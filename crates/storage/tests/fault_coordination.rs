@@ -147,11 +147,6 @@ impl Scratch {
         std::fs::create_dir_all(&path).expect("create scratch dir");
         Self { path, keep: false }
     }
-
-    pub fn keep(mut self) -> Self {
-        self.keep = true;
-        self
-    }
 }
 
 impl Drop for Scratch {
@@ -323,11 +318,6 @@ impl Arm {
     /// commit, so the arm says `with_occurrence(2)`.
     pub fn with_occurrence(mut self, n: u32) -> Self {
         self.occurrence = n.max(1);
-        self
-    }
-
-    pub fn with_sync_mode(mut self, m: &str) -> Self {
-        self.sync_mode = m.to_string();
         self
     }
 

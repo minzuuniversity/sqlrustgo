@@ -70,6 +70,17 @@ use parking_lot::RwLock;
 use sqlrustgo::{MemoryStorage, StorageEngine};
 use sqlrustgo_types::Value as SqlValue;
 
+// #5503: the NOT-RUN file channel lives in one place, shared by every
+// copy of this fixture module (this file is compiled into many test
+// binaries through `#[path]` includes).
+// #5503 共享 NOT-RUN 文件通道。duplicate_mod 的窄豁免理由见
+// tests/common/sf1_fixture.rs 同处注释：not_run_log.rs 无 static/全局状态，
+// 纯文件通道（O_APPEND + 单 write_all + cargo 父 pid 幂等 round 标记），
+// 一个二进制里的多副本行为等价，源文件仍是唯一实现。
+#[allow(clippy::duplicate_mod)] // 无状态纯函数模块，重复加载无行为差异（CI lint-build #5465 口径）
+#[path = "not_run_log.rs"]
+mod not_run_log;
+
 /// Marker prefix printed by a test that could not run.
 ///
 /// CI counts these occurrences and reports them as `not_run`; they are
@@ -467,19 +478,12 @@ pub fn not_run_line(target: &str, reason: &str, detail: &str) -> String {
 pub fn report_not_run(target: &str, reason: &str, detail: &str) {
     let line = not_run_line(target, reason, detail);
     println!("{line}");
-    if let Ok(path) = std::env::var("TPCH_NOT_RUN_FILE") {
-        if !path.trim().is_empty() {
-            use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path.trim())
-            {
-                // One syscall for the whole record **including** the newline.
-                let _ = f.write_all(format!("{line}\n").as_bytes());
-            }
-        }
-    }
+    // #5503: the file channel is shared and falls back to a default local
+    // path, so a local run can see the NOT-RUN records the same way CI
+    // does. The write itself (one syscall, newline included) lives in
+    // `not_run_log` — the other two copies of this function used
+    // `writeln!`, which can split a record across processes.
+    not_run_log::record(&line);
 }
 
 // =========================================================================

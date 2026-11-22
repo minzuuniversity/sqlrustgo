@@ -114,19 +114,24 @@ pub fn looks_like_sf1(dir: &Path) -> bool {
 pub fn report_not_run(target: &str, reason: &str, detail: &str) {
     let line = format!("TPCH-NOT-RUN: {target} reason={reason} detail={detail}");
     println!("{line}");
-    if let Ok(path) = std::env::var("TPCH_NOT_RUN_FILE") {
-        if !path.trim().is_empty() {
-            use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path.trim())
-            {
-                let _ = writeln!(f, "{line}");
-            }
-        }
-    }
+    // #5503: shared file channel with a default local path (and a single
+    // write syscall per record, unlike the `writeln!` this used).
+    not_run_log::record(&line);
 }
+
+// #5503: shared NOT-RUN file channel.
+// 同一测试二进制可能经由多条 common 链加载本文件（如 common/mod.rs 与
+// 某 harness 的 `#[path]` 各引一次）⇒ clippy::duplicate_mod 报警。
+// 为什么这里允许重复加载（2026-11-14 实读，见 tests/common/not_run_log.rs）：
+// 该模块**没有任何 static / 全局状态** —— 全部是对文件系统操作的纯函数，
+// 通道是 `TPCH_NOT_RUN_FILE`（或默认 `target/tpch_not_run.log`）文件本身，
+// 写入用 `O_APPEND` + 单次 `write_all`，round 标记按 cargo 父 pid 幂等判定。
+// ⇒ 一个二进制里存在两份副本时，两份的行为与状态完全等价（都写同一文件），
+// 不存在「计数器被分裂」类危害；SSOT 是**源文件唯一**（#5503），编译期
+// 每二进制一份副本不构成第二份实现。
+#[allow(clippy::duplicate_mod)] // 无状态纯函数模块，重复加载无行为差异（CI lint-build #5465 口径）
+#[path = "not_run_log.rs"]
+mod not_run_log;
 
 /// 解析 SF=1 夹具；缺失时**披露 NOT-RUN** 并返回 `None`。
 ///

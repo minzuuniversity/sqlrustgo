@@ -1,0 +1,12 @@
+=== G10 Gate (P2-2 #3178 Time Travel Query) ===
+  [1/7] ✅ PASS: tests/integration/sql/time_travel_harness.rs present
+  [2/7] ✅ PASS: tests/integration/sql/time_travel_test.rs present + registered
+  [3/7] ✅ PASS: 5 categories covered (total: 20 tests, ≥20)
+  [4/7] ✅ PASS: time_travel_test compiles
+  [5/7] ✅ PASS: time_travel_test 20 passed (≥20)
+  [6/7] ✅ PASS: crates/transaction (mvcc + version_chain) compiles (no regression)
+TPCH-SUBCHECK: PASS
+  [7/7] ✅ PASS: TPC-H gate (22/22) maintained
+
+=== G10 Gate (P2-2): PASS ===
+P2-2 (#3178) Time Travel: 5 categories + ≥20 tests + mvcc/version_chain verified

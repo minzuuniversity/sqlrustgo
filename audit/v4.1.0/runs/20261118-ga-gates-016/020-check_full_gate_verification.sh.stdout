@@ -1,0 +1,23 @@
+[NOT-A-GATE-OUTPUT]
+本文件不是 scripts/gate/check_full_gate_verification.sh 的门禁输出。
+
+事实（可在同目录 results.jsonl 第 20 条逐字段核对）：
+  seq=20  gate=scripts/gate/check_full_gate_verification.sh
+  state=INCOMPLETE  exit_code=124（timeout）  duration_s=10800.0
+本轮的执行超时上限为 run_gates.py --timeout-sec 10800（015 轮为 7200，016 轮已放宽
+一倍），该项**仍卡在上限被终止**。
+
+run_gates.py 的超时分支**不落盘 stdout/stderr** ⇒ 该项没有任何门禁输出产物。
+
+因此本文件是一个**显式的缺口占位**：它让归档结构完整、可被 audit_run.py verify 重算哈希，
+但它**不含任何门禁判定内容**，**不得**被引用为该项的门禁输出，也**不得**被当作该项
+「已通过」的证据。
+
+与 015 轮的关系：015 轮该项同样超时（7200.0 s = 当时上限），而 015 轮的第 33 项
+`cargo test --all-features` 是 PASS（6254.2 s）⇒ 015 轮证明 D6 修复已被全量测试证实。
+016 轮放宽超时后**两项都超时**（本项与第 33 项），且本机 `pmset -g` 显示
+`SleepDisabled = 1`（无休眠）⇒ 属**执行预算不足**，不是门禁判红，也不是被测行为变化。
+
+补法：由后续轮次在同一棵树、同一提交上把执行超时上限放宽到 21600 s（6 h）重跑。
+放宽的是**运行参数**，门禁判据/阈值/分母未动（plan sha256 仍为
+sha256:6466a0ec156075daf3bc53ece379c4ecc2b13b63da27cd17a1f39cb2254da809）。

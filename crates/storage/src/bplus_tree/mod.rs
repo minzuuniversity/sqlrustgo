@@ -127,6 +127,67 @@ impl BPlusTree {
     pub fn keys(&self) -> Vec<i64> {
         self.map.keys().copied().collect()
     }
+
+    /// Drop one row id from a key's entry.
+    ///
+    /// Returns `true` when the row id was present. When the key's entry
+    /// becomes empty the key itself is removed, so a deleted row leaves
+    /// no trace in the tree.
+    pub fn remove_value(&mut self, key: i64, value: u32) -> bool {
+        let Some(values) = self.map.get_mut(&key) else {
+            return false;
+        };
+        let before = values.len();
+        values.retain(|v| *v != value);
+        let removed = values.len() != before;
+        if values.is_empty() {
+            self.map.remove(&key);
+        }
+        removed
+    }
+
+    /// Reposition every stored row id after rows were physically removed
+    /// from the table.
+    ///
+    /// The tree stores **physical row positions** into the table's row
+    /// vector. A DELETE compacts that vector (`Vec::retain`), so every
+    /// position after the deleted one shifts down by one. Without this
+    /// repair the tree keeps pointing at the *previous* row and an
+    /// equality lookup returns a wrong row instead of the requested one.
+    ///
+    /// `removed_positions` are the positions the removed rows occupied,
+    /// in ascending order. A stored row id that pointed at one of them
+    /// is dropped; every other stored row id is shifted down by the
+    /// number of removed positions below it.
+    ///
+    /// Cost: O(number of stored row ids) — the same order as the
+    /// `Vec::retain` that produced the removal, and far cheaper than
+    /// rebuilding the tree from scratch.
+    pub fn adjust_after_removal(&mut self, removed_positions: &[usize]) {
+        if removed_positions.is_empty() {
+            return;
+        }
+        debug_assert!(
+            removed_positions.windows(2).all(|w| w[0] < w[1]),
+            "removed_positions must be strictly ascending"
+        );
+        for values in self.map.values_mut() {
+            let mut write = 0;
+            for read in 0..values.len() {
+                let pos = values[read] as usize;
+                // How many removed positions sat strictly below `pos`?
+                let below = removed_positions.partition_point(|p| *p < pos);
+                // Did this row id point AT a removed row?
+                if below < removed_positions.len() && removed_positions[below] == pos {
+                    continue;
+                }
+                values[write] = (pos - below) as u32;
+                write += 1;
+            }
+            values.truncate(write);
+        }
+        self.map.retain(|_, v| !v.is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -157,6 +218,54 @@ mod tests {
         );
         assert_eq!(tree.len(), 1, "one distinct key");
         assert!(tree.search_all(43).is_empty());
+    }
+
+    /// A DELETE compacts the table's row vector, so every later row's
+    /// position shifts down. The tree stores those positions, so it has
+    /// to be repaired — otherwise an equality lookup answers with the
+    /// PREVIOUS row.
+    #[test]
+    fn adjust_after_removal_repoints_the_surviving_rows() {
+        let mut tree = BPlusTree::new();
+        // key -> row position
+        tree.insert(10, 0);
+        tree.insert(20, 1);
+        tree.insert(30, 2);
+        tree.insert(40, 3);
+
+        // Row at position 1 was deleted: it disappears from its key, and
+        // every later row moves down by one.
+        tree.adjust_after_removal(&[1]);
+
+        assert!(
+            tree.search_all(20).is_empty(),
+            "the deleted row's key must be gone"
+        );
+        assert_eq!(tree.search_all(30), vec![1], "row 3 moved to position 1");
+        assert_eq!(tree.search_all(40), vec![2], "row 4 moved to position 2");
+        assert_eq!(
+            tree.search_all(10),
+            vec![0],
+            "rows before the deletion do not move"
+        );
+    }
+
+    /// Several deletions at once shift every later row by the number of
+    /// removed rows below it.
+    #[test]
+    fn adjust_after_removal_handles_several_removals() {
+        let mut tree = BPlusTree::new();
+        for i in 0..6i64 {
+            tree.insert(i, i as u32);
+        }
+        tree.adjust_after_removal(&[0, 2, 4]);
+
+        assert!(tree.search_all(0).is_empty());
+        assert!(tree.search_all(2).is_empty());
+        assert!(tree.search_all(4).is_empty());
+        assert_eq!(tree.search_all(1), vec![0]);
+        assert_eq!(tree.search_all(3), vec![1]);
+        assert_eq!(tree.search_all(5), vec![2]);
     }
 
     /// A pre-#5209 `.idx` file stored a bare `u32`. Loading one must not

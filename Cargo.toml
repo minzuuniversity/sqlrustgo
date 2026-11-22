@@ -796,6 +796,14 @@ name = "coverage_notrun_honesty_test"
 path = "tests/integration/gate/coverage_notrun_honesty_test.rs"
 
 [[test]]
+name = "soak_steady_window_test"
+path = "tests/integration/soak/soak_steady_window_test.rs"
+
+[[test]]
+name = "stage_test_binaries_test"
+path = "tests/integration/gate/stage_test_binaries_test.rs"
+
+[[test]]
 name = "gate_dimension_honesty_test"
 path = "tests/integration/gate/gate_dimension_honesty_test.rs"
 
@@ -1807,6 +1815,9 @@ path = "tests/integration/wire/oracle_g16_compat.rs"
 name = "wire_deprecate_eof_test"
 path = "tests/integration/wire/wire_deprecate_eof_test.rs"
 [[test]]
+name = "falsesuccess_kill_unknown_thread"
+path = "tests/integration/wire/falsesuccess_kill_unknown_thread.rs"
+[[test]]
 name = "chaos_test"
 path = "tests/stress/chaos_test.rs"
 [[test]]
@@ -2045,7 +2056,7 @@ path = "tests/soak/v312_mixed_soak.rs"
 name = "test_target_manifest_honesty_test"
 path = "tests/integration/gate/test_target_manifest_honesty_test.rs"
 
-# #4640 —— INSERT 的 VALUES 列表长度必须与表列数一致（SQLite/MySQL 语义）。
+# #5503 —— NOT-RUN 披露的本地可见性自证。
 [[test]]
-name = "insert_column_count_parity_4640"
-path = "tests/integration/sql/insert_column_count_parity_4640.rs"
+name = "not_run_log_visibility_5503"
+path = "tests/integration/sql/not_run_log_visibility_5503.rs"

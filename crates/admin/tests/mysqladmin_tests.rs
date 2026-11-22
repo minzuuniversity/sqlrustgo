@@ -4,10 +4,6 @@
 
 use sqlrustgo_admin::mysqladmin::{Connection, MysqlAdmin, SystemVariable};
 
-fn new_admin() -> MysqlAdmin {
-    MysqlAdmin::new()
-}
-
 // ============ Connection tests ============
 
 #[test]
@@ -457,8 +453,7 @@ fn test_mysql_admin_processlist_with_connections() {
     admin.add_connection("user1", "localhost", "db1");
     admin.add_connection("user2", "127.0.0.1", "db2");
     let _result = admin.processlist();
-    // Should contain connection info
-    assert!(true); // processlist returns whatever it returns
+    // 语义 = 不 panic 即过（processlist 返回内容无稳定序）；原 assert!(true) 恒真已删。
 }
 
 #[test]

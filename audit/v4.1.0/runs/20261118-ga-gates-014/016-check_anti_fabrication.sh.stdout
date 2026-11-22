@@ -1,0 +1,35 @@
+============================================
+Anti-Fabrication Policy Check (AFP) v4
+[INFO] CHECK 1: cargo build -p sqlrustgo-mysql-server (canonical binary)...
+[PASS] sqlrustgo-mysql-server: cargo check PASS
+
+[INFO] CHECK 1.5: V312-24 SQLancer + test-runner report artifacts...
+[PASS]   V312-24: target/sqlancer-report.json valid (iterations=1000)
+[INFO]   building test binaries for packages: sqlrustgo-executor sqlrustgo-storage sqlrustgo-tools
+[INFO]   staged test binaries: scan_with_filter_contract_test sqlrustgo_executor sqlrustgo_storage sqlrustgo_tools tx_isolation_and_escape_hatch_test
+[INFO]   running test-runner against config/test-runner-manifest.toml...
+test-runner: mode=manifest wrote 5 entries — total=5 passed=5 failed=0 timed_out=0 crashed=0 duration_ms=9787
+[PASS]   V312-24: test-runner report valid (5 test(s) ran, total_duration_ms=9787)
+[PASS]   V312-24: both SQLancer + test-runner report artifacts present and valid
+
+[INFO] CHECK 2: cargo test --workspace --no-run (test compile only, fast)...
+[PASS] Test binaries compile PASS
+
+[INFO] CHECK 3: Gate report test counts vs actual cargo test compile output...
+[INFO] docs/releases/v3.8.0/alpha/ALPHA_GATE_REPORT.md: declares 10/10 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.8.0/beta/BETA_GATE_REPORT.md: declares 15/15 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.8.0/rc/RC_GA_GATE_REPORT.md: declares 5/5 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.9.0/rc/RC1_GATE_REPORT.md: declares 4/4 PASS (test binaries: unknown)
+[INFO] docs/releases/v3.9.0/rc/RC2_GATE_REPORT.md: declares 4/4 PASS (test binaries: unknown)
+
+[INFO] CHECK 4: HEAD commit author must be a known AI/Human identity...
+[PASS] HEAD author email: openclaw@gaoyuanyiyao.com (allowed multi-AI identity)
+
+[INFO] CHECK 5: Code examples in documentation (sanity scan)...
+[PASS] Scanned 434 markdown files in docs/releases + docs/governance
+
+============================================
+Results: ERRORS=0, WARNINGS=0
+============================================
+
+[PASS] Anti-fabrication check (AFP v4): PASS

@@ -1,0 +1,10 @@
+================================================
+v4.0.0 server-read-perf SOAK (60 min)
+================================================
+  PORT=3411  THREADS=16  SERVER_THREADS=16
+  DATA_DIR=/tmp/sqlrustgo-v400-soak
+  RESULTS_DIR=/Users/liying/dev/sqlrustgo/results/soak-v400-1h-20261112_041433
+  ROWS=10000  READ_PCT=80%  INSERT_PCT=10%
+  WAL_SYNC=every
+  BIN=/Users/liying/dev/sqlrustgo/target/release/sqlrustgo-mysql-server
+================================================

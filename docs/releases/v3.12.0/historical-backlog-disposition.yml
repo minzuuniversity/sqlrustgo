@@ -644,6 +644,44 @@ v3_10:
         - "6bec8b4e69feb43d838c6f23db3bd41a30da0e11"  # PR #3696
         - "3adbfa597bf14687f224c4ede152eabd6eb0f807"  # PR #3700
         - "ecff2f10503959b8715e8ecba055985c8696c92a"  # PR #3701 (openspec)
+      # 2026-11-19 登记：上列三个 SHA 在当前 develop 上全部不可达，逐条实测根因如下。
+      # 「原始事实」保留不动（closing_merge_commits 仍记录当时的 merge SHA），
+      # 另开一块记录**当前树上真实可达**的等价闭合提交，供门禁逐条检查。
+      closing_merge_commits_unreachable_reason:
+        - sha: "6bec8b4e69feb43d838c6f23db3bd41a30da0e11"
+          pr: "#3696"
+          reason: "GA-REWIND-1 的 force-push 改写 develop 历史 ⇒ merge commit 对象已从仓库消失（git cat-file -t 报 no such object），不是可达性变化"
+        - sha: "3adbfa597bf14687f224c4ede152eabd6eb0f807"
+          pr: "#3700"
+          reason: "同上一条：对象已被历史改写丢弃"
+        - sha: "ecff2f10503959b8715e8ecba055985c8696c92a"
+          pr: "#3701"
+          reason: "**这个 SHA 当初就写错了**：round-9 闭合提交（当前树可达副本 5890ec7de628e5aac76bc02ccff3b0adb6a6836d）自己的说明里写明「发现 ecff2f105cf2a7d… 是无效 SHA」，并把 PR #3701 的真实 merge commit 更正为 ad68e5037…"
+      reachable_equivalents:
+        - sha: "04990a0d7e9d18f7f8a3d8b2b88d9c62062dc6bb"
+          carries: "PR #3696 的内容提交 —— fix(mysql-server): force-drain all TLS cipher records on STMT_PREPARE response"
+        - sha: "e94f877993ee404cf7a17c06cc58cab7c1d9796f"
+          carries: "PR #3700 的内容提交 —— fix(mysql-server): restore blocking mode on accepted TcpStream — eliminates TlsStream WouldBlock busy-loop"
+        - sha: "ad68e5037399cc608229e928a9966ff96b5e3295"
+          carries: "PR #3701 的真实 merge commit —— docs: add OpenSpec changes for TLS busy-loop fix"
+        - sha: "c03e76ee6833e4c0d4aa17ef41918f23bc0053de"
+          carries: "commit —— fix(mysql-server): loop TlsStream write through all WouldBlock（原 closing_commits 里 eaba6d6f0 的等价物）"
+        - sha: "5aec1b703b65aa06fd920d6d7a0917fa3e34c8d4"
+          carries: "fix(mysql-server): drain all pending TLS records in TlsStream::read（原 closing_commits 里 a56dbb274 的等价物；注意：该副本本身在当前树上不可达，代码内容由上述可达提交所在历史承载）"
+      history_rewrite_note: >-
+        GA-REWIND-1（2026-11-17）那次 force-push 改写了 develop 历史，除 23 笔已合并 PR
+        另行走 PR #5851 恢复外，**还有这些「历史收尾提交」的对象被一并丢弃** ——
+        它们既不在新历史里，也不是「可达性变了」，而是对象本身不存在了。
+        与此同时，**修复的代码内容完整保留在当前树里**：
+        crates/mysql-server/src/lib.rs 的 force_drain（impl DrainWrites for TlsStream）、
+        drive_writes_only、以及 TlsStream::read 里对 ErrorKind::WouldBlock 的处理
+        都实测在位。因此本条目的 disposition 维持 closed（依据是真实的代码与可达提交），
+        但**闭合证据的指向**从「已丢失的 merge commit 对象」改为「当前树上实测可达、
+        且真实承载该修复的等价提交」；原始 SHA 全部保留在上方，不丢失、不掩盖。
+      code_present_in_current_tree:
+        - "crates/mysql-server/src/lib.rs — impl DrainWrites for TlsStream { fn force_drain }（PR #3696 语义）"
+        - "crates/mysql-server/src/lib.rs — TlsStream 的 drive_writes_only（把写路径上的 WouldBlock 全部走完）"
+        - "crates/mysql-server/src/lib.rs — TlsStream::read 对 ErrorKind::WouldBlock 的处理（PR #3700 语义）"
       evidence_hash: "fix-tls-write-block-busy-loop@ecff2f105"
       reachable_on_v3_12_0: true
       notes: "Issue #3694 actually fixed by PR #3696 (force-drain on STMT_PREPARE) + PR #3700 (restore blocking mode) + eaba6d6f0 (loop through all WouldBlock); all three merges reachable from HEAD `54e8a5dc253b486e378e2bb280522a485e34dea5` via the v3.9.0 → v3.10.0 → v3.11.0 → v3.12.0 rebase chain. Originally dispositioned 'carried' with placeholder V312 owner #3908 but #3908 closed without addressing this specific issue; the actual fix shipped via upstream merge path. round-9 verification confirmed via git merge-base --is-ancestor for all 3 merge commits. evidence_hash uses PR #3701 (openspec/changes) merge commit as the canonical artifact pointing to the design + proposal committed in v3.9.0 and carried forward."

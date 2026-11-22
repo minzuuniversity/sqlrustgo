@@ -1,4 +1,19 @@
 #!/bin/bash
+# ==========================================================================
+# GATE-DISPOSITION-SELF-MARK —— 本文件**不会在权威轮里被执行**，登记结论就地写在这里
+#
+# 分类：死门禁（dead）—— 既无执行点也无正文引用 ⇒ 永远不会运行
+# 处置：归档候选（archive-candidate）
+# 责任任务：P0-4
+# 登记说明：头部绑定历史版本线，v4.1.0 的 STAGE_CONFIG 与 CI 都不引用它 ⇒ 归档候选；删除门禁脚本属门禁清单变更，须 owner 批准
+# 效果声明：尚无可证伪夹具（NEG_FIXTURES 里本门禁没有可证伪行），因此不声称能抓任何东西 —— 无声明的「能抓」比错的「能抓」更坏。
+#
+# 为什么保留文件而不是删掉：删文件会改变门禁总数（当前 168，固定不可动），
+# 而「不执行」是**登记在册的已知状态**，不是遗漏。删除会让「这一项为什么
+# 没有判定」变成不可追溯。因此：**保留文件 + 就地自标 + 登记在册**。
+#
+# 权威登记：docs/releases/v4.1.0/GATE_CATALOG.jsonl（同一 gate 键）
+# ==========================================================================
 # check_p35_simd.sh - P3-5 (#3184) SIMD 集成 G10 gate
 #
 # Verifies:
@@ -100,15 +115,25 @@ fi
 [ "$VEC_OK" = "true" ] || exit 1
 
 # 7. TPC-H 22/22 (smoke)
-TPCH_PASSED=$(cargo test --test tpch_gate_test 2>&1 | grep -E "test result.*ok" | head -1 || echo "0")
-if echo "$TPCH_PASSED" | grep -q "ok"; then
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tpch_gate_subcheck.sh"
+TPCH_RC=$?
+if [[ "${TPCH_RC}" -eq 0 ]]; then
     echo "  [7/7] ✅ PASS: TPC-H gate (22/22) maintained"
+elif [[ "${TPCH_RC}" -eq 2 ]]; then
+    echo "  [7/7] ⚠️ INCOMPLETE: TPC-H sub-check could not be performed (fixture missing / NOT-RUN disclosed) — not a drift"
 else
-    echo "  ⚠️ WARN: TPC-H gate test did not pass cleanly"
-    echo "  [7/7] ✅ PASS (warned): TPC-H gate check skipped"
+    echo "  [7/7] ❌ FAIL: TPC-H gate did not pass"
 fi
 
 echo
+if [[ "${TPCH_RC:-0}" -eq 2 ]]; then
+    echo "=== G10 Gate (P3-5): INCOMPLETE (TPC-H sub-check not performed; see INCOMPLETE line above) ==="
+    exit 2
+fi
+if [[ "${TPCH_RC:-0}" -eq 1 ]]; then
+    echo "=== G10 Gate (P3-5): FAIL (TPC-H gate did not pass) ==="
+    exit 1
+fi
 echo "=== G10 Gate (P3-5): PASS ==="
 echo "P3-5 (#3184) SIMD: 5 categories + ≥20 tests + vector/executor verified"
 exit 0
