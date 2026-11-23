@@ -1,0 +1,24 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.18s
+     Running tests/p2c0_undo_proto.rs (target/debug/deps/p2c0_undo_proto-beaa126a69fc8b5f)
+
+running 1 test
+test p2c1iso_dirty_read_and_commit_visibility ... FAILED
+
+failures:
+
+---- p2c1iso_dirty_read_and_commit_visibility stdout ----
+PROBE isolation: uncommitted_seen=2 after_commit_seen=2
+
+thread 'p2c1iso_dirty_read_and_commit_visibility' (36713881) panicked at tests/p2c0_undo_proto.rs:522:5:
+assertion `left == right` failed: DIRTY READ: another connection saw an uncommitted row
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    p2c1iso_dirty_read_and_commit_visibility
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p sqlrustgo --test p2c0_undo_proto`

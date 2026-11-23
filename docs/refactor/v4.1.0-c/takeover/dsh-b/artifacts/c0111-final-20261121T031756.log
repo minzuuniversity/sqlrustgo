@@ -1,0 +1,43 @@
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.22s
+     Running tests/integration/test_factory/ca01_bufferpool.rs (target/debug/deps/ca01_bufferpool-453911f102d11542)
+
+running 4 tests
+test inv14_bp_update_undo_applied ... ok
+test inv14_bp_delete_insert_undo_applied ... FAILED
+test inv14_bp_adds_no_extra_transaction_semantics ... FAILED
+test inv15_bp_and_plain_assembly_semantically_equal ... FAILED
+
+failures:
+
+---- inv14_bp_delete_insert_undo_applied stdout ----
+
+thread 'inv14_bp_delete_insert_undo_applied' (884446) panicked at tests/integration/test_factory/ca01_bufferpool.rs:79:5:
+assertion `left == right` failed: INV-14: buffer_pool assembly must restore deleted and remove inserted rows on rollback
+  left: [["Integer(1)", "Integer(10)"], ["Integer(2)", "Integer(20)"], ["Integer(3)", "Integer(30)"]]
+ right: [["Integer(1)", "Integer(10)"], ["Integer(2)", "Integer(20)"]]
+
+---- inv14_bp_adds_no_extra_transaction_semantics stdout ----
+
+thread 'inv14_bp_adds_no_extra_transaction_semantics' (884445) panicked at tests/integration/test_factory/ca01_bufferpool.rs:133:5:
+assertion `left == right` failed: INV-14: committed value must be immediately visible through buffer_pool assembly
+  left: []
+ right: [["Integer(10)"]]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- inv15_bp_and_plain_assembly_semantically_equal stdout ----
+
+thread 'inv15_bp_and_plain_assembly_semantically_equal' (884448) panicked at tests/integration/test_factory/ca01_bufferpool.rs:106:5:
+assertion `left == right` failed: INV-15: buffer_pool and plain assembly must expose identical visible state
+  left: [["Integer(1)", "Integer(10)"], ["Integer(2)", "Integer(20)"], ["Integer(1)", "Integer(15)"], ["Integer(2)", "Integer(15)"], ["Integer(3)", "Integer(30)"], ["Integer(2)", "Integer(20)"], ["Integer(1)", "Integer(10)"]]
+ right: [["Integer(2)", "Integer(20)"], ["Integer(1)", "Integer(10)"]]
+
+
+failures:
+    inv14_bp_adds_no_extra_transaction_semantics
+    inv14_bp_delete_insert_undo_applied
+    inv15_bp_and_plain_assembly_semantically_equal
+
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p sqlrustgo --test ca01_bufferpool`

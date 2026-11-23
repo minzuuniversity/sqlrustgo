@@ -1,0 +1,102 @@
+warning: function `slot_at` is never used
+  --> crates/storage/src/file_storage.rs:64:4
+   |
+64 | fn slot_at(state: &mut WriteState, db: &str, table: &str, idx: usize) -> u64 {
+   |    ^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo-storage` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.71s
+     Running tests/p2c0_undo_proto.rs (target/debug/deps/p2c0_undo_proto-beaa126a69fc8b5f)
+
+running 19 tests
+test p2c0_u_matrix_wal_mvcc_file ... FAILED
+test p2c0_e9_buffer_capacity_boundary ... FAILED
+test p2c0_e9_peer_flush_then_rollback ... FAILED
+test p2c0_d5_undo_stats_and_idempotence ... FAILED
+test p2c0_e9_own_flush_then_rollback ... FAILED
+test p2c1b_a_delete_b_insert_then_a_rollback ... FAILED
+test p2c1b_concurrent_deletes_both_rollback ... FAILED
+test p2c1id_odku_rollback_restores_the_old_value ... ignored, P2-C1-ID: storage.update records BufferedUpdate for table rows; rollback is a silent no-op
+test p2c1iso_dirty_read_and_commit_visibility ... ignored, MP-3 FAIL: dirty read measured (uncommitted row visible to another connection)
+test p2c0_u_matrix_file_storage ... FAILED
+test p2c1a_failed_write_leaves_no_undo_entry ... ok
+test p2c1s3_panic_after_buffer_write_is_compensated ... FAILED
+test p2c1id_restore_targets_the_logical_row_not_the_index ... FAILED
+test p2c1b_concurrent_same_value_commit_vs_rollback ... ok
+test p2c1b_concurrent_insert_and_peer_flush ... ok
+test p2c1b_same_value_other_tx_survives_a_rollback ... ok
+test p2c1b_two_transactions_roll_back_independently ... ok
+test p2c1s3_partial_write_is_compensated ... ok
+test p2c0_u_matrix_memory ... ok
+
+failures:
+
+---- p2c0_u_matrix_wal_mvcc_file stdout ----
+
+thread 'p2c0_u_matrix_wal_mvcc_file' (36650698) panicked at tests/p2c0_undo_proto.rs:28:46:
+called `Result::unwrap()` on an `Err` value: ExecutionError("injected: buffer write failed")
+
+---- p2c0_e9_buffer_capacity_boundary stdout ----
+
+thread 'p2c0_e9_buffer_capacity_boundary' (36650693) panicked at tests/p2c0_undo_proto.rs:137:66:
+called `Result::unwrap()` on an `Err` value: ExecutionError("injected: buffer write failed")
+
+---- p2c0_e9_peer_flush_then_rollback stdout ----
+
+thread 'p2c0_e9_peer_flush_then_rollback' (36650695) panicked at tests/p2c0_undo_proto.rs:160:45:
+called `Result::unwrap()` on an `Err` value: ExecutionError("injected: buffer write failed")
+
+---- p2c0_d5_undo_stats_and_idempotence stdout ----
+
+thread 'p2c0_d5_undo_stats_and_idempotence' (36650692) panicked at tests/p2c0_undo_proto.rs:176:45:
+called `Result::unwrap()` on an `Err` value: ExecutionError("injected: buffer write failed")
+
+---- p2c0_e9_own_flush_then_rollback stdout ----
+
+thread 'p2c0_e9_own_flush_then_rollback' (36650694) panicked at tests/p2c0_undo_proto.rs:122:45:
+called `Result::unwrap()` on an `Err` value: ExecutionError("injected: buffer write failed")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- p2c1b_a_delete_b_insert_then_a_rollback stdout ----
+
+thread 'p2c1b_a_delete_b_insert_then_a_rollback' (36650700) panicked at tests/p2c0_undo_proto.rs:237:45:
+called `Result::unwrap()` on an `Err` value: ExecutionError("injected: buffer write failed")
+
+---- p2c1b_concurrent_deletes_both_rollback stdout ----
+
+thread 'p2c1b_concurrent_deletes_both_rollback' (36650701) panicked at tests/p2c0_undo_proto.rs:381:53:
+called `Result::unwrap()` on an `Err` value: ExecutionError("injected: buffer write failed")
+
+---- p2c0_u_matrix_file_storage stdout ----
+
+thread 'p2c0_u_matrix_file_storage' (36650696) panicked at tests/p2c0_undo_proto.rs:28:46:
+called `Result::unwrap()` on an `Err` value: ExecutionError("injected: buffer write failed")
+
+---- p2c1s3_panic_after_buffer_write_is_compensated stdout ----
+
+thread 'p2c1s3_panic_after_buffer_write_is_compensated' (36650708) panicked at tests/p2c0_undo_proto.rs:459:5:
+the panic failpoint did not fire
+
+---- p2c1id_restore_targets_the_logical_row_not_the_index stdout ----
+
+thread 'p2c1id_restore_targets_the_logical_row_not_the_index' (36650707) panicked at tests/p2c0_undo_proto.rs:482:45:
+called `Result::unwrap()` on an `Err` value: ExecutionError("injected: undo-log append failed after the rows were buffered; the rows were removed again (no partial write left behind)")
+
+
+failures:
+    p2c0_d5_undo_stats_and_idempotence
+    p2c0_e9_buffer_capacity_boundary
+    p2c0_e9_own_flush_then_rollback
+    p2c0_e9_peer_flush_then_rollback
+    p2c0_u_matrix_file_storage
+    p2c0_u_matrix_wal_mvcc_file
+    p2c1b_a_delete_b_insert_then_a_rollback
+    p2c1b_concurrent_deletes_both_rollback
+    p2c1id_restore_targets_the_logical_row_not_the_index
+    p2c1s3_panic_after_buffer_write_is_compensated
+
+test result: FAILED. 7 passed; 10 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+error: test failed, to rerun pass `-p sqlrustgo --test p2c0_undo_proto`

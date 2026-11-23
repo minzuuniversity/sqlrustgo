@@ -1,0 +1,9 @@
+   Compiling sqlrustgo v4.1.0 (/private/tmp/srg-d002-base)
+error[E0599]: no method named `undo_all` found for struct `parking_lot::lock_api::RwLockWriteGuard<'_, parking_lot::RawRwLock, DefaultStorageEngine>` in the current scope
+   --> tests/p2c0_undo_proto.rs:185:11
+    |
+185 |         s.undo_all(2)
+    |           ^^^^^^^^ method not found in `parking_lot::lock_api::RwLockWriteGuard<'_, parking_lot::RawRwLock, DefaultStorageEngine>`
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `sqlrustgo` (test "p2c0_undo_proto") due to 1 previous error

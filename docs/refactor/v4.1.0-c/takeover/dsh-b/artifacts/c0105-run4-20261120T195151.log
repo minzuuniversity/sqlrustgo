@@ -1,0 +1,34 @@
+   Compiling sqlrustgo v4.1.0 (/private/tmp/srg-d004-task)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.51s
+     Running tests/integration/test_factory/ca01_file_undo.rs (target/debug/deps/ca01_file_undo-e9aaeaa5712f39a6)
+
+running 3 tests
+test inv01b_mutation_revoked_exactly_once ... ok
+test inv02_identical_rows_have_independent_rowids ... FAILED
+test inv01a_rollback_restores_exact_multiset ... FAILED
+
+failures:
+
+---- inv02_identical_rows_have_independent_rowids stdout ----
+
+thread 'inv02_identical_rows_have_independent_rowids' (38006518) panicked at tests/integration/test_factory/ca01_file_undo.rs:90:5:
+assertion `left == right` failed: INV-02: identical rows must be independently addressable; rollback must restore (see #5908)
+  left: 4
+ right: 2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- inv01a_rollback_restores_exact_multiset stdout ----
+
+thread 'inv01a_rollback_restores_exact_multiset' (38006516) panicked at tests/integration/test_factory/ca01_file_undo.rs:51:5:
+assertion `left == right` failed: INV-01: rollback must restore the exact pre-tx multiset
+  left: [["Integer(1)", "Integer(10)"], ["Integer(1)", "Integer(10)"], ["Integer(1)", "Integer(10)"], ["Integer(1)", "Integer(10)"], ["Integer(2)", "Integer(20)"], ["Integer(2)", "Integer(20)"]]
+ right: [["Integer(1)", "Integer(10)"], ["Integer(1)", "Integer(10)"], ["Integer(2)", "Integer(20)"]]
+
+
+failures:
+    inv01a_rollback_restores_exact_multiset
+    inv02_identical_rows_have_independent_rowids
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p sqlrustgo --test ca01_file_undo`

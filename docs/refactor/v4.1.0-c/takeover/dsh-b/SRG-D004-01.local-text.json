@@ -1,0 +1,4 @@
+{
+ "objective_text": "BinaryTableStorageV2 的 begin_transaction/commit_transaction/rollback_transaction 三个方法当前返回 Ok(0)/Ok(())（binary_storage_v2.rs:771-780），对不支持事务的后端构成\"静默成功\"。修复为显式返回 Err(SqlError)，错误信息须含 \"UNSUPPORTED\"/\"not support\"（与 tf_t4_04 断言一致）。commit/rollback 在无活动事务时同样返回 Err（幂等拒绝）。",
+ "acceptance_text_json": "[\"RED: tf_t4_stub_silent_success 当前 4 FAILED（已成立，2026-11-20 16:54 实测）\", \"GREEN: 修复后 tf_t4_04 PASS 且 tf_t4_01/02/03 仍 FAILED（不扩大修复面）\", \"REGRESSION: storage lib 全量无新增 FAIL；75 场景基线 70 PASS 不回退\", \"MUTATION_RED: 独立副本恢复 Ok(0) → tf_t4_04 再次 FAILED\"]"
+}

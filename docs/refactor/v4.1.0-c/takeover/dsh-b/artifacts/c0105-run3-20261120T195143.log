@@ -1,0 +1,17 @@
+   Compiling sqlrustgo v4.1.0 (/private/tmp/srg-d004-task)
+error[E0599]: no method named `into_rows` found for struct `ExecutorResult` in the current scope
+  --> tests/integration/test_factory/ca01_file_undo.rs:17:10
+   |
+15 | /     e.execute(sql)
+16 | |         .unwrap()
+17 | |         .into_rows()
+   | |_________-^^^^^^^^^
+   |
+help: there is a method `into_raw` with a similar name
+   |
+17 -         .into_rows()
+17 +         .into_raw()
+   |
+
+For more information about this error, try `rustc --explain E0599`.
+error: could not compile `sqlrustgo` (test "ca01_file_undo") due to 1 previous error

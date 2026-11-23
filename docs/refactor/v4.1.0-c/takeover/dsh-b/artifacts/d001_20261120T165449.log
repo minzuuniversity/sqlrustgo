@@ -1,0 +1,48 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running tests/tf_t4_stub_silent_success.rs (target/debug/deps/tf_t4_stub_silent_success-1c452e70608ac0dc)
+
+running 4 tests
+test tf_t4_04_non_tx_backend_must_reject_or_document ... FAILED
+test tf_t4_01_scan_after_insert_sees_rows ... FAILED
+test tf_t4_03_update_reports_real_count ... FAILED
+test tf_t4_02_delete_reports_real_count ... FAILED
+
+failures:
+
+---- tf_t4_04_non_tx_backend_must_reject_or_document stdout ----
+
+thread 'tf_t4_04_non_tx_backend_must_reject_or_document' (36618291) panicked at crates/storage/tests/tf_t4_stub_silent_success.rs:69:18:
+UNSUPPORTED_NOT_REJECTED: begin_transaction Ok on a backend whose scan/delete are stubs — must be UNSUPPORTED
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tf_t4_01_scan_after_insert_sees_rows stdout ----
+
+thread 'tf_t4_01_scan_after_insert_sees_rows' (36618288) panicked at crates/storage/tests/tf_t4_stub_silent_success.rs:36:5:
+assertion `left == right` failed: STUB_SILENT_SUCCESS: insert Ok but scan returned 0 rows (expected 2)
+  left: 0
+ right: 2
+
+---- tf_t4_03_update_reports_real_count stdout ----
+
+thread 'tf_t4_03_update_reports_real_count' (36618290) panicked at crates/storage/tests/tf_t4_stub_silent_success.rs:59:5:
+assertion `left == right` failed: STUB_SILENT_SUCCESS: update Ok(0) though 1 row exists
+  left: 0
+ right: 1
+
+---- tf_t4_02_delete_reports_real_count stdout ----
+
+thread 'tf_t4_02_delete_reports_real_count' (36618289) panicked at crates/storage/tests/tf_t4_stub_silent_success.rs:48:5:
+assertion `left == right` failed: STUB_SILENT_SUCCESS: delete Ok(0) though 1 row was inserted
+  left: 0
+ right: 1
+
+
+failures:
+    tf_t4_01_scan_after_insert_sees_rows
+    tf_t4_02_delete_reports_real_count
+    tf_t4_03_update_reports_real_count
+    tf_t4_04_non_tx_backend_must_reject_or_document
+
+test result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p sqlrustgo-storage --test tf_t4_stub_silent_success`

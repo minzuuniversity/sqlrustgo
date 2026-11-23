@@ -1,0 +1,18 @@
+[
+ {
+  "task_id": "C01-02",
+  "issue": "required_test 文件不在 allowed_paths: tests/integration/test_factory/test_dsh_contract_binding.py (cmd: python3.14 -m pytest tests/integration/test_factory/test_dsh)"
+ },
+ {
+  "task_id": "C01-03",
+  "issue": "required_test 文件不在 allowed_paths: tests/integration/test_factory/test_local_only_policy_observation.py (cmd: python3.14 -m pytest tests/integration/test_factory/test_loc)"
+ },
+ {
+  "task_id": "C01-04",
+  "issue": "required_test 文件不在 allowed_paths: tests/integration/test_factory/test_result_classification.py (cmd: python3.14 -m pytest tests/integration/test_factory/test_res)"
+ },
+ {
+  "task_id": "C01-17",
+  "issue": "required_test 文件不在 allowed_paths: tests/integration/test_factory/test_history_fixture_manifest.py (cmd: python3.14 -m pytest tests/integration/test_factory/test_his)"
+ }
+]

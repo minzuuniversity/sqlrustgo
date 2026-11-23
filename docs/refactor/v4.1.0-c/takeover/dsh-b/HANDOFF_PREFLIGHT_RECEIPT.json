@@ -1,0 +1,38 @@
+{
+  "receipt": "HANDOFF_PREFLIGHT_RECEIPT",
+  "source_agent": "DSH-B (opencode-go/glm-5.3-flash)",
+  "source_run": "v78-takeover-T1-preflight",
+  "timestamp": "2026-11-20T22:35:00+08:00",
+  "idempotency_key": {
+    "pr": 5916,
+    "commit": "45da6968ae2baaade6a31206eeee5854a8514ee2",
+    "manifest_sha256": "c722885fef98a93ec0eae8157104861fffdeaa1454bf4710bd12464c25ab76de"
+  },
+  "method": "确定性只读：git show 固定 Commit 逐文件 sha256 复算（未执行交接自带脚本，未调用模型）",
+  "summary": "MANIFEST_VERIFIED_WITH_ONE_REMAINING_NAMING_DEFECT",
+  "checks": {
+    "git_commit": {"state": "VERIFIED", "detail": "45da6968ae '归档 HARA-410、C 路线架构与 DSH 交接包'（22:06，123 files, 64685 insertions）"},
+    "manifest_sha256": {"state": "VERIFIED", "detail": "与指令宣告值精确一致；重签 ts=2026-11-20T14:04:22Z；base_sha=e9ff21fca3 与 develop tip 一致（无漂移）"},
+    "bound_files_121": {"state": "VERIFIED", "detail": "121/121 逐文件 sha256 一致，0 BAD / 0 MISSING（全量复算，非抽检）"},
+    "unbound_files_2": {"state": "VERIFIED", "detail": "①10_HANDOFF_MANIFEST.json（必要自排除）②refactoring/evidence/validation.json（Codex 离线交付验证记录，kind=OFFLINE_DELIVERY_VALIDATION_NOT_EXECUTION_CERTIFICATION）——两者性质良性，非遗漏"},
+    "native_schema": {"state": "VERIFIED", "detail": "03_TASK_MANIFEST.jsonl 18/18 通过 dsh-task.schema.json（Draft202012）；负向抽测：注入未批准字段被 REJECTED"},
+    "packages_18": {"state": "VERIFIED", "detail": "18 包齐全（C01-01..18），deps 闭合、无环（DFS 验证）"},
+    "dag_topology": {"state": "VERIFIED", "detail": "ACLYCLIC_NO_MISSING_DEPENDENCIES（与 validation.json 自检一致）"},
+    "adr_dependencies": {"state": "VERIFIED", "detail": "ADR-410-001~010 全部被 manifest 绑定；18 包 proposed_adr_refs 覆盖全部 10 份；审批状态=待属主（NOT_RUN）"},
+    "allowed_paths": {"state": "INVALID_PARTIAL", "detail": "原 4 包缺陷以新形式残留：allowed_paths 已增补 test_c01_XX.py，但 C01-02/03/04/17 的 required_tests 命令仍引用描述性文件名（test_dsh_contract_binding.py 等）→ worker 按命令写文件仍会被白名单拒绝。需 Codex/属主定夺（命令改名 或 allowed_paths 增补描述名）。其余 14 包无不匹配"},
+    "workpackage_budget": {"state": "VERIFIED", "detail": "18 包 token_budget 均 PROPOSED_NOT_AUTHORIZED；合计 2,570,000 = 建议总额；authorized_dispatch_count=0, authorized_tokens=0（validation.json 一致）"},
+    "reviewer_constraints": {"state": "VERIFIED", "detail": "review_requirements: independent_harness=true; oracle_owner=Owner_or_independent_Reviewer; codex_not_final_independent_signer=true；evidence_contract 含 synthetic_receipt_forbidden/full_sha256_required"},
+    "negative_checks_8": {"state": "VERIFIED", "detail": "validation.json 申报 8 类 mutation_rejections（cycle/missing/unapproved_dispatch/unapproved_adr/human_gate_removed/cloud_policy/later_stage_task/native_extra_field）；DSH-B 独立抽测 native_extra_field 类=REJECTED"},
+    "phase_and_approval_limits": {"state": "VERIFIED", "detail": "status=CANDIDATE_NOT_AUTHORIZED；当前阶段 ALPHA；授权任务数=0"},
+    "local_only_and_resource_block": {"state": "BLOCKED", "detail": "model_policy=LOCAL_ONLY×18 ✓（契约层）；运行时层：G5 出口控制未解除（DSH-A triage 判 SRG-D004-01=BLOCKED_GATES，OD-002 pending）→ 运行时 LOCAL_ONLY 端到端尚未成立"}
+  },
+  "verdict": {
+    "VERIFIED": ["commit", "manifest_sha256", "bound_files", "unbound_nature", "schema", "packages", "dag", "adr_binding", "budget_proposal", "reviewer_constraints", "negative_checks", "phase_limits"],
+    "INVALID": ["allowed_paths_vs_commands_naming_mismatch_C01-02/03/04/17"],
+    "BLOCKED": ["runtime_local_only_egress_G5"],
+    "UNKNOWN": [],
+    "NOT_RUN": ["adr_owner_approval", "authorized_dispatch"]
+  },
+  "no_manifest_modification": true,
+  "note": "发现错误未自行修改 Codex Manifest；命名错位已作为唯一 INVALID 项上报，等待 Codex/属主处置"
+}

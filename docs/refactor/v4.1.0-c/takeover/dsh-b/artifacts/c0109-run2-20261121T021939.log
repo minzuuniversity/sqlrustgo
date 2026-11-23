@@ -1,0 +1,4 @@
+error: failed to parse manifest at `/private/tmp/srg-d004-task/Cargo.toml`
+
+Caused by:
+  this virtual manifest specifies a `test` section, which is not allowed

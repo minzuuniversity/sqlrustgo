@@ -1,0 +1,34 @@
+{
+ "task_id": "SRG-D004-01",
+ "project": "sqlrustgo",
+ "objective_digest": "71a9ed1f1bae5a0d9632d8d8e10b6801b505abea11019bfdf469e2f621ded284",
+ "acceptance_count": 4,
+ "acceptance_digest": "14b62e3999be6cf68546a5ec30b3697a8145336010f1b53e5e203d35fd2a2870",
+ "allowed_paths_glob": [
+  "crates/storage/src/binary_storage_v2.rs"
+ ],
+ "forbidden_paths_glob": [
+  "src/",
+  "crates/transaction/",
+  "crates/mysql-server/",
+  "scripts/gate/",
+  "docs/governance/",
+  "docs/releases/v4.1.0/STAGE.yaml",
+  ".gitea/",
+  "aoci.txt",
+  "aoci.code.txt",
+  ".aoci/",
+  ".env",
+  "secrets/"
+ ],
+ "risk": "L1",
+ "file_count": 1,
+ "line_stats": {
+  "added": 9,
+  "removed": 3
+ },
+ "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+ "execution_mode": "LOCAL_ONLY",
+ "budget_seconds": 1800,
+ "budget_attempts": 2
+}

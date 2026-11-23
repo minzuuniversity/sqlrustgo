@@ -1,0 +1,42 @@
+   Compiling sqlrustgo v4.1.0 (/private/tmp/srg-d004-task)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.60s
+     Running tests/integration/test_factory/ca01_snapshot_reopen.rs (target/debug/deps/ca01_snapshot_reopen-b36537d3c64076cc)
+
+running 3 tests
+test inv07b_reopen_baseline_excludes_uncommitted ... FAILED
+test inv07a_uncommitted_invisible_to_other_connection ... FAILED
+test inv07c_rollback_then_reopen_is_clean ... FAILED
+
+failures:
+
+---- inv07b_reopen_baseline_excludes_uncommitted stdout ----
+
+thread 'inv07b_reopen_baseline_excludes_uncommitted' (39446084) panicked at tests/integration/test_factory/ca01_snapshot_reopen.rs:85:5:
+assertion `left == right` failed: INV-07: reopen baseline must contain only committed data
+  left: []
+ right: [["Integer(1)", "Integer(10)"]]
+
+---- inv07a_uncommitted_invisible_to_other_connection stdout ----
+
+thread 'inv07a_uncommitted_invisible_to_other_connection' (39446083) panicked at tests/integration/test_factory/ca01_snapshot_reopen.rs:58:5:
+assertion `left == right` failed: INV-07: uncommitted row (2,20) must be invisible to connection B
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- inv07c_rollback_then_reopen_is_clean stdout ----
+
+thread 'inv07c_rollback_then_reopen_is_clean' (39446085) panicked at tests/integration/test_factory/ca01_snapshot_reopen.rs:106:5:
+assertion `left == right` failed: INV-07: rollback + reopen must show exactly the committed rows
+  left: []
+ right: [["Integer(1)", "Integer(10)"]]
+
+
+failures:
+    inv07a_uncommitted_invisible_to_other_connection
+    inv07b_reopen_baseline_excludes_uncommitted
+    inv07c_rollback_then_reopen_is_clean
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p sqlrustgo --test ca01_snapshot_reopen`
